@@ -1,0 +1,59 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27870",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex MCP operators tracking selected executor plugin support",
+  "candidate_text": [
+    "Defer public post for Codex PR #27870: it adds executor-owned discovery for stdio MCP servers in selected plugins, but the PR says app-server does not install the provider yet. https://github.com/openai/codex/pull/27870"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27870.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27870.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27870"
+    ]
+  },
+  "evidence_notes": [
+    "PR #27870 says selected plugin MCP config is read through the owning executor filesystem and normalized with the stable environment ID.",
+    "The PR body says app-server does not install the provider in this change and existing local plugin MCP loading is unchanged.",
+    "The checked impact artifact classifies this as a Control Plane candidate with deferred public publishing."
+  ],
+  "claims": [
+    {
+      "text": "Codex adds provider code for stdio MCP declarations inside selected executor plugins.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27870.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Selected plugin MCP discovery uses the owning executor filesystem rather than host filesystem fallback.",
+      "evidence": "artifacts/github/bundles/openai-codex-pr-27870.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "This PR alone does not install the provider in app-server.",
+      "evidence": "https://github.com/openai/codex/pull/27870",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "Provider groundwork is source-backed, but public capability claims should wait for app-server activation.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27870:watch-note:defer"
+  },
+  "caveats": [
+    "Do not imply selected executor plugin MCPs are live in app-server yet.",
+    "The current source-backed vertical accepts stdio servers only."
+  ],
+  "next_steps": [
+    "Do not hand this defer candidate to X Publisher as publish-ready.",
+    "Re-evaluate after app-server installation is reviewed."
+  ]
+}

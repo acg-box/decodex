@@ -1,0 +1,59 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27884",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex MCP and plugin operators tracking selected-plugin support",
+  "candidate_text": [
+    "Defer public post for Codex PR #27884: it adds selected-plugin MCP catalog precedence, attribution, and approval-policy plumbing, but the PR says no production host contributes selected-plugin MCP registrations yet. https://github.com/openai/codex/pull/27884"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27884.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27884.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27884"
+    ]
+  },
+  "evidence_notes": [
+    "PR #27884 explicitly says this is a catalog and provenance change only and no production host contributes selected-plugin MCP registrations yet.",
+    "The extension API adds a selected-plugin MCP contribution shape and the MCP catalog retains plugin attribution.",
+    "The checked impact artifact classifies this as a Control Plane candidate with deferred public publishing."
+  ],
+  "claims": [
+    {
+      "text": "Codex adds a selected-plugin MCP registration tier in the catalog.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27884.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Selected-plugin MCP approval policy is read from the running catalog/connection manager rather than local config.",
+      "evidence": "artifacts/github/bundles/openai-codex-pr-27884.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "This PR alone does not activate production selected-plugin MCP registrations.",
+      "evidence": "https://github.com/openai/codex/pull/27884",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "Useful selected-plugin MCP groundwork, but public copy should wait for activation evidence.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27884:watch-note:defer"
+  },
+  "caveats": [
+    "Do not imply selected executor plugin MCPs are live from this PR alone.",
+    "Pair with #27870 and app-server activation before making user-facing capability claims."
+  ],
+  "next_steps": [
+    "Do not hand this defer candidate to X Publisher as publish-ready.",
+    "Re-evaluate after the activation PR is reviewed."
+  ]
+}

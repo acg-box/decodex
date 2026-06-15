@@ -1,0 +1,52 @@
+{
+  "adoption_opportunity": "No Decodex runtime adoption needed; track only as release-window context for Windows packaging throughput.",
+  "changed_surfaces": [
+    "Windows Rust release workflow",
+    "Windows ARM64 packaging runner selection"
+  ],
+  "community_value": "Low as a standalone public item; it may be useful only as release-rollup context for faster Windows artifact packaging.",
+  "compatibility_risk": "None identified for Decodex Control Plane or Codex runtime clients because the change only moves Windows ARM64 packaging onto x64 runners after binaries are already built.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "None. This is release infrastructure rather than app-server, plugin, MCP, sandbox, CLI, or protocol behavior.",
+  "deprecated_or_breaking_notes": "No deprecated or removed user behavior identified.",
+  "evidence": [
+    "PR #28001 says packaging only downloads, signs, archives, and compresses already built binaries and does not execute target code.",
+    "PR #28001 says the first release after parallelizing Windows packaging was held by the ARM64 packaging job and proposes running both packaging jobs on x64 runners.",
+    "`.github/workflows/rust-release-windows.yml` changes the `aarch64-pc-windows-msvc` packaging matrix runner from `windows-arm64` to `windows-x64`.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-28001.json` records 1 changed workflow file for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "Record an explicit impact decision so downstream release automation does not need to redo source analysis for this release-infrastructure PR.",
+      "type": "upstream_impact"
+    }
+  ],
+  "observed_change": "Codex now packages Windows ARM64 release artifacts on Windows x64 runners instead of Windows ARM64 runners.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-15T12:08:04Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-28001",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-13T19:55:53Z",
+        "title": "[codex] package Windows ARM64 on x64",
+        "url": "https://github.com/openai/codex/pull/28001"
+      },
+      {
+        "kind": "commit",
+        "title": "[codex] package Windows ARM64 on x64",
+        "url": "https://github.com/openai/codex/commit/4b3fd5e359221031616a66cad36299c4becd810b"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "4b3fd5e359221031616a66cad36299c4becd810b"
+    ],
+    "subject_id": "28001",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "No direct runtime path; users may only experience faster or less bottlenecked Windows ARM64 release packaging."
+}
