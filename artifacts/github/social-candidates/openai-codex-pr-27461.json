@@ -1,0 +1,51 @@
+{
+  "audience": "Codex plugin authors and operators evaluating dual App/MCP auth behavior",
+  "candidate_text": [
+    "Codex PR #27461 makes plugin MCP loading auth-aware: ChatGPT/SIWC auth suppresses same-name App-route MCP OAuth, while API-key/direct auth keeps MCP servers visible. https://github.com/openai/codex/pull/27461"
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27461.review.json",
+      "text": "Codex filters same-name plugin MCP servers for ChatGPT/SIWC auth when a plugin App route exists."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27461.json",
+      "text": "API-key/direct auth preserves plugin MCP server visibility and OAuth behavior."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/bundles/openai-codex-pr-27461.json",
+      "text": "The app-server install path passes auth mode into the plugin MCP loader before MCP OAuth startup."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27461:practical-explainer:publish",
+    "reason": "The source-backed auth-routing behavior has concrete value for dual App/MCP plugin authors.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "PR #27461 says plugin MCP loading should reflect the MCPs available for the current auth route.",
+    "The source review records the loader and app-server install path that enforce same-name filtering.",
+    "The impact artifact classifies this as a Control Plane compatibility risk with a practical public angle."
+  ],
+  "mode": "practical_explainer",
+  "priority": "high",
+  "repo": "openai/codex",
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27461",
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27461.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27461.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27461"
+    ]
+  },
+  "target_account": "decodexspace"
+}
