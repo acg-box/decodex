@@ -1,0 +1,139 @@
+{
+  "audience": "Codex operators, plugin authors, and remote-execution integrators tracking prerelease compatibility changes",
+  "caveats": [
+    "This is a prerelease thread, not a stable release claim.",
+    "No previous live and quote-eligible @decodexspace 0.140 prerelease post existed, so this post starts the visible 0.140 prerelease quote-chain anchor for future checkpoints.",
+    "The public comparison is scoped to the adjacent alpha.18 -> alpha.19 window, not stable 0.139.0 -> alpha.19.",
+    "The PathUri claim is scoped to exec-server cwd handling; do not imply every exec-server path-like field moved to PathUri.",
+    "The plugin routing claim is scoped to matching App/MCP names under ChatGPT/SIWC auth; non-conflicting MCP servers remain available.",
+    "No generated image was attached because this prerelease thread remains valuable text-only: the reader value is the source-backed thread structure, direct PR cards, and adjacent compare link."
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.19",
+      "text": "rust-v0.140.0-alpha.19 is a real OpenAI Codex prerelease checkpoint."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.18...rust-v0.140.0-alpha.19",
+      "text": "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.18 -> rust-v0.140.0-alpha.19."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-28032.review.json",
+      "text": "The alpha.19 window includes a source-backed exec-server cwd PathUri compatibility change for remote executor and MCP launcher clients."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27607.review.json",
+      "text": "The alpha.19 window includes a source-backed plugin App/MCP routing change where matching App/MCP names prefer the App route while non-conflicting MCP servers remain available."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-28001.review.json",
+      "text": "The Windows ARM64 packaging-on-x64 change in the alpha.19 window is release infrastructure rather than direct runtime behavior."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "https://x.com/decodexspace/status/2066507194129060178",
+      "text": "The alpha.19 prerelease thread is live on @decodexspace."
+    }
+  ],
+  "controller_account": "hackink",
+  "decision": {
+    "daily_count_after": 5,
+    "daily_count_before": 1,
+    "daily_limit": 8,
+    "day": "2026-06-15",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0-alpha-19:alpha18-alpha19:thread",
+    "priority": "high",
+    "reason": "The alpha.19 adjacent prerelease window now has source-backed operator-impact evidence for exec-server cwd URI handling and dual App/MCP plugin routing, with release-infrastructure caveats separated.",
+    "timezone": "Asia/Shanghai",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "The social_candidate/v1 artifact has decision.worthiness = publish, priority high, mode thread, and target_account decodexspace.",
+    "The release publisher gates passed: release and prerelease channels stayed separate, this post used alpha.18 -> alpha.19 adjacent prerelease lineage, no previous quote-eligible 0.140 prerelease post existed, and the copy used scan-friendly thread posts rather than dense paragraph prerelease copy.",
+    "The x-post-quality-system gate passed because the thread answers what changed, who can act on it, and which source proves it while preserving direct PR URLs on first important PR mention.",
+    "Checked durable social_post/v1 records contained one published @decodexspace record for 2026-06-15 before publication and no published or blocked record for this idempotency key.",
+    "Checked durable social_publish_reservation/v1 records contained no active reservation for this idempotency key before the new reservation was created.",
+    "Open GitHub PR readback after PR #386 landed found no active publication PR touching this candidate or idempotency key.",
+    "PR #389 made the active reservation visible before X compose; GitHub PR readback confirmed the PR was open, non-draft, targeted main, and contained only the reservation file.",
+    "Chrome account-menu readback initially showed @aurexav_; the account switcher exposed an existing @decodexspace session, and after switching, Chrome readback showed active account @decodexspace with Profile -> /decodexspace and no Follow @decodexspace button.",
+    "Bounded @decodexspace profile readback before reservation showed nine recent status URLs and no alpha.19, PathUri, alpha.18 -> alpha.19, PR #28032, or PR #27607 duplicate text.",
+    "Supporting X search for from:decodexspace alpha.19 / PathUri / 28032 / 27607 returned no results; this was supporting evidence only, not the primary duplicate gate.",
+    "Immediate profile readback after the PR-visible reservation and before clicking Post all still showed active @decodexspace, the same recent status set, and no alpha.19 / PathUri / PR #28032 / PR #27607 duplicate.",
+    "The X composer showed @decodexspace active, four filled thread textboxes, PR cards for #28032 and #27607, and a visible enabled Post all button before publication.",
+    "After clicking Post all, X showed the alert Your posts were sent with the lead status URL.",
+    "Home timeline readback showed four new @decodexspace posts with the expected alpha.19, PathUri, plugin routing, and caveat/compare text.",
+    "Lead permalink readback showed the full four-post conversation, @decodexspace account attribution, Automated by @hackink, PR cards for #28032 and #27607, the final compare link, and no /photo/N media link.",
+    "The status IDs decode to 2026-06-15T13:04:43.584Z, 2026-06-15T13:04:44.074Z, 2026-06-15T13:04:44.586Z, and 2026-06-15T13:04:45.084Z."
+  ],
+  "media_refs": [
+    "media_caveat: no generated media was attached; the prerelease thread remained valuable text-only because the source-backed thread structure, direct GitHub PR cards, and adjacent compare link carry the reader value."
+  ],
+  "mode": "thread",
+  "post_lifecycle": {
+    "current_state": "live",
+    "quote_eligible": true,
+    "reason": "This live alpha.19 prerelease thread is eligible as the previous @decodexspace prerelease quote target for the next 0.140 prerelease checkpoint."
+  },
+  "publication": {
+    "account_verified": true,
+    "made_with_ai": false,
+    "posted_at": "2026-06-15T13:04:43.584Z",
+    "published_urls": [
+      "https://x.com/decodexspace/status/2066507194129060178",
+      "https://x.com/decodexspace/status/2066507196184302066",
+      "https://x.com/decodexspace/status/2066507198331793432",
+      "https://x.com/decodexspace/status/2066507200420532365"
+    ],
+    "publisher": "chrome"
+  },
+  "schema": "social_post/v1",
+  "slug": "openai-codex-rust-v0-140-0-alpha-19-operator-thread",
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "reservations": [
+      "artifacts/social/x/reservations/2026-06-15/openai-codex-rust-v0-140-0-alpha-19-operator-thread.json"
+    ],
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-rust-v0-140-0-alpha-19-operator-thread.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-28001.json",
+      "artifacts/github/impact/openai-codex-pr-28032.json",
+      "artifacts/github/impact/openai-codex-pr-27607.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-28001.review.json",
+      "artifacts/github/reviews/openai-codex-pr-28032.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27607.review.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.18",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.19",
+      "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.18...rust-v0.140.0-alpha.19",
+      "https://github.com/openai/codex/pull/28001",
+      "https://github.com/openai/codex/pull/28032",
+      "https://github.com/openai/codex/pull/27607",
+      "https://x.com/decodexspace/status/2066507194129060178",
+      "https://x.com/decodexspace/status/2066507196184302066",
+      "https://x.com/decodexspace/status/2066507198331793432",
+      "https://x.com/decodexspace/status/2066507200420532365"
+    ]
+  },
+  "status": "published",
+  "target_account": "decodexspace",
+  "text": [
+    "Codex 0.140.0-alpha.19 is a small operator checkpoint.\n\nalpha.18 -> alpha.19 has 4 commits. Reviewed impact is concentrated in exec-server cwd URI handling and dual App/MCP plugin routing.",
+    "Exec-server cwd changed: `process/start.cwd` is now a `PathUri`. Remote exec and MCP launcher clients should send target-native `file:` cwd URIs and handle non-native cwd rejection.\n\nPR: https://github.com/openai/codex/pull/28032",
+    "Plugin routing changed: for ChatGPT/SIWC auth, Codex hides only the MCP server whose name matches an App declaration. Non-conflicting MCP servers stay available.\n\nPR: https://github.com/openai/codex/pull/27607",
+    "Caveat: the alpha.19 release body is sparse. Windows ARM64 packaging-on-x64 is release infrastructure, not runtime behavior.\n\nCompare/source: https://github.com/openai/codex/compare/rust-v0.140.0-alpha.18...rust-v0.140.0-alpha.19"
+  ]
+}
