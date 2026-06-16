@@ -25,7 +25,7 @@ should not be treated as repository source.
 | `artifacts/archive/` | Checked-in manifests for cold Radar archive batches stored as GitHub Release assets. |
 | `artifacts/social/` | Checked-in Publisher social publication records, blocked-cap records, and generated-media evidence. |
 | `dev/skills/` | Repository-development skills for Radar upstream triage, code analysis, release analysis, GitHub signal drafting, and X publishing. These are not part of installable plugin distribution. |
-| `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including planning, manual CLI, automation, commit, land, and labels. |
+| `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including issue briefing, planning, manual CLI, automation, commit, land, and labels. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
 | `docs/reference/` | Current repository and artifact surface maps. |
