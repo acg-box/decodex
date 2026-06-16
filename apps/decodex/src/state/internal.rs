@@ -2,6 +2,7 @@
 use std::mem::{self, MaybeUninit};
 use std::sync::atomic::AtomicU64;
 use std::env;
+use std::ptr;
 
 use libc::FD_CLOEXEC;
 use libc::F_GETFD;
@@ -3687,12 +3688,13 @@ fn read_platform_host_boot_id() -> Option<String> {
 	let query_status = unsafe {
 		libc::sysctlbyname(
 			BOOT_SESSION_UUID_SYSCTL.as_ptr().cast::<c_char>(),
-			std::ptr::null_mut(),
+			ptr::null_mut(),
 			&mut size,
-			std::ptr::null_mut(),
+			ptr::null_mut(),
 			0,
 		)
 	};
+
 	if query_status != 0 || size == 0 {
 		return None;
 	}
@@ -3703,15 +3705,17 @@ fn read_platform_host_boot_id() -> Option<String> {
 			BOOT_SESSION_UUID_SYSCTL.as_ptr().cast::<c_char>(),
 			boot_id.as_mut_ptr().cast::<c_void>(),
 			&mut size,
-			std::ptr::null_mut(),
+			ptr::null_mut(),
 			0,
 		)
 	};
+
 	if read_status != 0 || size == 0 {
 		return None;
 	}
 
 	boot_id.truncate(size);
+
 	if boot_id.last() == Some(&0) {
 		boot_id.pop();
 	}
