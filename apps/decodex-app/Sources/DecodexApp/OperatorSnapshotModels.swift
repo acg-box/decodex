@@ -1,5 +1,7 @@
 import Foundation
 
+private let operatorActiveRunIdleTimeoutSeconds = 300
+
 struct OperatorSnapshotResponse: Decodable, Sendable {
 	let warnings: [String]
 	let projects: [OperatorProjectStatus]
@@ -30,13 +32,13 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 
 	var reviewCount: Int {
 		max(
-			postReviewLanes.count,
+			postReviewLanes.filter { $0.shadowedByActiveRun == false }.count,
 			projects.reduce(0) { $0 + $1.postReviewLaneCount }
 		)
 	}
 
 	var landingCount: Int {
-		postReviewLanes.filter { $0.isReadyToLand }.count
+		postReviewLanes.filter { $0.isReadyToLand && $0.shadowedByActiveRun == false }.count
 	}
 
 	var waitingCount: Int {
@@ -298,13 +300,21 @@ struct OperatorQueuedIssueStatus: Decodable, Sendable {
 
 struct OperatorPostReviewLaneStatus: Decodable, Sendable {
 	let classification: String?
+	let shadowedByActiveRun: Bool
 
 	var isReadyToLand: Bool {
-		classification == "ready_to_land"
+		classification == "ready_to_land" && shadowedByActiveRun == false
 	}
 
 	enum CodingKeys: String, CodingKey {
 		case classification
+		case shadowedByActiveRun = "shadowed_by_active_run"
+	}
+
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		classification = try container.decodeIfPresent(String.self, forKey: .classification)
+		shadowedByActiveRun = try container.decodeIfPresent(Bool.self, forKey: .shadowedByActiveRun) ?? false
 	}
 }
 
@@ -420,6 +430,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	let waitReason: String?
 	let currentOperation: String?
 	let threadStatus: String?
+	let threadActiveFlags: [String]
 	let idleForSeconds: Int?
 	let protocolIdleForSeconds: Int?
 	let updatedAt: String?
@@ -427,7 +438,12 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	let nextRetryAt: String?
 	let lastEventType: String?
 	let eventCount: Int?
+	let executionLiveness: String?
+	let hasFreshExecutionSnapshot: Bool?
+	let countsAsRunningSnapshot: Bool?
+	let needsAttentionSnapshot: Bool?
 	let processAlive: Bool?
+	let processLivenessReason: String?
 	let activeLease: Bool?
 	let branchName: String?
 	let worktreePath: String?
@@ -511,11 +527,15 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	}
 
 	var hasAttentionTone: Bool {
-		suspectedStall
+		if let needsAttentionSnapshot {
+			return needsAttentionSnapshot
+		}
+
+		return suspectedStall
 			|| attemptStatus == "waiting_for_review"
 			|| status == "manual_attention"
 			|| status == "blocked"
-			|| processAlive == false
+			|| stoppedProcessNeedsAttention
 	}
 
 	var isWaiting: Bool {
@@ -542,16 +562,37 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	var shouldRetainDuringPartialRunActivity: Bool {
 		activeLease == true
 			|| processAlive == true
+			|| hasRecentAppServerExecution
 			|| status == "running"
 			|| phase == "executing"
 	}
 
 	var countsAsRunning: Bool {
-		hasRunningStatus
+		if let countsAsRunningSnapshot {
+			return countsAsRunningSnapshot
+		}
+
+		return hasRunningStatus
 			&& phase == "executing"
-			&& processAlive != false
+			&& (processAlive != false || hasFreshExecution)
 			&& hasAttentionTone == false
 			&& hasStaleExecutionWithoutKnownProcess == false
+	}
+
+	var hasFreshExecution: Bool {
+		if let hasFreshExecutionSnapshot {
+			return hasFreshExecutionSnapshot
+		}
+
+		return hasRunningStatus
+			&& (processAlive == true || hasRecentAppServerExecution)
+	}
+
+	private var hasRecentAppServerExecution: Bool {
+		threadStatus == "active"
+			|| threadActiveFlags.isEmpty == false
+			|| ["thread_active", "protocol_observed"].contains(executionLiveness ?? "")
+			|| protocolIdleForSeconds.isSomeAndLessThan(operatorActiveRunIdleTimeoutSeconds)
 	}
 
 	private var hasRunningStatus: Bool {
@@ -560,6 +601,13 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		}
 
 		return ["starting", "running"].contains(status)
+	}
+
+	private var stoppedProcessNeedsAttention: Bool {
+		processAlive == false
+			&& hasRunningStatus
+			&& waitReason == nil
+			&& hasFreshExecution == false
 	}
 
 	private var hasStaleExecutionWithoutKnownProcess: Bool {
@@ -591,6 +639,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			waitReason: activity.waitReason ?? waitReason,
 			currentOperation: activity.currentOperation ?? currentOperation,
 			threadStatus: activity.threadStatus ?? threadStatus,
+			threadActiveFlags: activity.threadActiveFlags.isEmpty ? threadActiveFlags : activity.threadActiveFlags,
 			idleForSeconds: activity.idleForSeconds ?? idleForSeconds,
 			protocolIdleForSeconds: activity.protocolIdleForSeconds ?? protocolIdleForSeconds,
 			updatedAt: activity.updatedAt ?? updatedAt,
@@ -598,7 +647,12 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			nextRetryAt: activity.nextRetryAt ?? nextRetryAt,
 			lastEventType: activity.lastEventType ?? lastEventType,
 			eventCount: activity.eventCount ?? eventCount,
+			executionLiveness: activity.executionLiveness ?? executionLiveness,
+			hasFreshExecutionSnapshot: activity.hasFreshExecutionSnapshot ?? hasFreshExecutionSnapshot,
+			countsAsRunningSnapshot: activity.countsAsRunningSnapshot ?? countsAsRunningSnapshot,
+			needsAttentionSnapshot: activity.needsAttentionSnapshot ?? needsAttentionSnapshot,
 			processAlive: activity.processAlive ?? processAlive,
+			processLivenessReason: activity.processLivenessReason ?? processLivenessReason,
 			activeLease: activity.activeLease ?? activeLease,
 			branchName: activity.branchName ?? branchName,
 			worktreePath: activity.worktreePath ?? worktreePath,
@@ -640,6 +694,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		case waitReason = "wait_reason"
 		case currentOperation = "current_operation"
 		case threadStatus = "thread_status"
+		case threadActiveFlags = "thread_active_flags"
 		case idleForSeconds = "idle_for_seconds"
 		case protocolIdleForSeconds = "protocol_idle_for_seconds"
 		case updatedAt = "updated_at"
@@ -647,7 +702,12 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		case nextRetryAt = "next_retry_at"
 		case lastEventType = "last_event_type"
 		case eventCount = "event_count"
+		case executionLiveness = "execution_liveness"
+		case hasFreshExecutionSnapshot = "has_fresh_execution"
+		case countsAsRunningSnapshot = "counts_as_running"
+		case needsAttentionSnapshot = "needs_attention"
 		case processAlive = "process_alive"
+		case processLivenessReason = "process_liveness_reason"
 		case activeLease = "active_lease"
 		case branchName = "branch_name"
 		case worktreePath = "worktree_path"
@@ -676,6 +736,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		waitReason = try container.decodeIfPresent(String.self, forKey: .waitReason)
 		currentOperation = try container.decodeIfPresent(String.self, forKey: .currentOperation)
 		threadStatus = try container.decodeIfPresent(String.self, forKey: .threadStatus)
+		threadActiveFlags = try container.decodeIfPresent([String].self, forKey: .threadActiveFlags) ?? []
 		idleForSeconds = try container.decodeIfPresent(Int.self, forKey: .idleForSeconds)
 		protocolIdleForSeconds = try container.decodeIfPresent(Int.self, forKey: .protocolIdleForSeconds)
 		updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
@@ -683,7 +744,12 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		nextRetryAt = try container.decodeIfPresent(String.self, forKey: .nextRetryAt)
 		lastEventType = try container.decodeIfPresent(String.self, forKey: .lastEventType)
 		eventCount = try container.decodeIfPresent(Int.self, forKey: .eventCount)
+		executionLiveness = try container.decodeIfPresent(String.self, forKey: .executionLiveness)
+		hasFreshExecutionSnapshot = try container.decodeIfPresent(Bool.self, forKey: .hasFreshExecutionSnapshot)
+		countsAsRunningSnapshot = try container.decodeIfPresent(Bool.self, forKey: .countsAsRunningSnapshot)
+		needsAttentionSnapshot = try container.decodeIfPresent(Bool.self, forKey: .needsAttentionSnapshot)
 		processAlive = try container.decodeIfPresent(Bool.self, forKey: .processAlive)
+		processLivenessReason = try container.decodeIfPresent(String.self, forKey: .processLivenessReason)
 		activeLease = try container.decodeIfPresent(Bool.self, forKey: .activeLease)
 		branchName = try container.decodeIfPresent(String.self, forKey: .branchName)
 		worktreePath = try container.decodeIfPresent(String.self, forKey: .worktreePath)
@@ -714,6 +780,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		waitReason: String?,
 		currentOperation: String?,
 		threadStatus: String?,
+		threadActiveFlags: [String],
 		idleForSeconds: Int?,
 		protocolIdleForSeconds: Int?,
 		updatedAt: String?,
@@ -721,7 +788,12 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		nextRetryAt: String?,
 		lastEventType: String?,
 		eventCount: Int?,
+		executionLiveness: String?,
+		hasFreshExecutionSnapshot: Bool?,
+		countsAsRunningSnapshot: Bool?,
+		needsAttentionSnapshot: Bool?,
 		processAlive: Bool?,
+		processLivenessReason: String?,
 		activeLease: Bool?,
 		branchName: String?,
 		worktreePath: String?,
@@ -744,6 +816,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		self.waitReason = waitReason
 		self.currentOperation = currentOperation
 		self.threadStatus = threadStatus
+		self.threadActiveFlags = threadActiveFlags
 		self.idleForSeconds = idleForSeconds
 		self.protocolIdleForSeconds = protocolIdleForSeconds
 		self.updatedAt = updatedAt
@@ -751,7 +824,12 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		self.nextRetryAt = nextRetryAt
 		self.lastEventType = lastEventType
 		self.eventCount = eventCount
+		self.executionLiveness = executionLiveness
+		self.hasFreshExecutionSnapshot = hasFreshExecutionSnapshot
+		self.countsAsRunningSnapshot = countsAsRunningSnapshot
+		self.needsAttentionSnapshot = needsAttentionSnapshot
 		self.processAlive = processAlive
+		self.processLivenessReason = processLivenessReason
 		self.activeLease = activeLease
 		self.branchName = branchName
 		self.worktreePath = worktreePath
@@ -760,6 +838,16 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		self.lifecycleMetrics = lifecycleMetrics
 		self.account = account
 		self.accounts = accounts
+	}
+}
+
+private extension Optional where Wrapped == Int {
+	func isSomeAndLessThan(_ threshold: Int) -> Bool {
+		guard let value = self else {
+			return false
+		}
+
+		return value < threshold
 	}
 }
 

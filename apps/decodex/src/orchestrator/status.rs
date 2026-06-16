@@ -665,6 +665,7 @@ where
 	)?;
 	apply_terminal_history_ledger_outcomes(&mut snapshot);
 	suppress_terminal_attention_queue_echoes(&mut snapshot);
+	hydrate_post_review_lane_active_run_shadowing(&mut snapshot);
 	refresh_worktree_ownership(
 		&mut snapshot,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
@@ -1376,7 +1377,11 @@ fn refresh_operator_project_summary(
 		.iter()
 		.filter(|candidate| queued_candidate_counts_as_waiting_intake(candidate))
 		.count();
-	let post_review_lane_count = snapshot.post_review_lanes.len();
+	let post_review_lane_count = snapshot
+		.post_review_lanes
+		.iter()
+		.filter(|lane| !lane.shadowed_by_active_run)
+		.count();
 	let retained_worktree_count = rendered_recovery_worktrees(snapshot).len();
 	let waiting_lane_count = project_waiting_lane_count(snapshot);
 	let attention_count = project_attention_count(snapshot, completed_state);
@@ -1417,7 +1422,7 @@ fn project_waiting_lane_count(snapshot: &OperatorStatusSnapshot) -> usize {
 	let review_waiting = snapshot
 		.post_review_lanes
 		.iter()
-		.filter(|lane| lane.classification == "wait_for_review")
+		.filter(|lane| !lane.shadowed_by_active_run && lane.classification == "wait_for_review")
 		.count();
 
 	waiting_run_count + queued_waiting + review_waiting
@@ -1496,6 +1501,10 @@ fn queued_candidate_counts_as_attention(candidate: &OperatorQueuedIssueStatus) -
 }
 
 fn post_review_lane_counts_as_attention(lane: &OperatorPostReviewLaneStatus) -> bool {
+	if lane.shadowed_by_active_run {
+		return false;
+	}
+
 	matches!(
 		lane.classification.as_str(),
 		"blocked" | "needs_review_repair" | "closeout_blocked"
@@ -1624,7 +1633,7 @@ fn project_cleanup_blocked_count(snapshot: &OperatorStatusSnapshot) -> usize {
 	for lane in snapshot
 		.post_review_lanes
 		.iter()
-		.filter(|lane| lane.classification == "cleanup_blocked")
+		.filter(|lane| !lane.shadowed_by_active_run && lane.classification == "cleanup_blocked")
 	{
 		cleanup_keys.insert(post_review_lane_cleanup_key(lane));
 	}
@@ -1661,6 +1670,22 @@ fn post_review_lane_cleanup_key(lane: &OperatorPostReviewLaneStatus) -> String {
 	lane.issue_identifier.clone()
 }
 
+fn hydrate_post_review_lane_active_run_shadowing(snapshot: &mut OperatorStatusSnapshot) {
+	let active_issue_keys = snapshot
+		.active_runs
+		.iter()
+		.filter(|run| run.counts_as_running || run.has_fresh_execution)
+		.map(|run| operator_run_group_key(run).to_ascii_uppercase())
+		.collect::<HashSet<_>>();
+
+	for lane in &mut snapshot.post_review_lanes {
+		lane.shadowed_by_active_run = active_issue_keys.contains(&operator_issue_attention_key(
+			&lane.issue_id,
+			Some(&lane.issue_identifier),
+		));
+	}
+}
+
 fn worktree_cleanup_key(worktree: &OperatorWorktreeStatus) -> String {
 	worktree
 		.issue_identifier
@@ -1684,7 +1709,7 @@ fn operator_run_has_live_execution(run: &OperatorRunStatus) -> bool {
 fn operator_run_counts_as_running(run: &OperatorRunStatus) -> bool {
 	matches!(run.status.as_str(), "starting" | "running")
 		&& run.phase == "executing"
-		&& (run.process_alive != Some(false) || operator_run_has_recent_app_server_execution(run))
+		&& (run.process_alive != Some(false) || run.has_fresh_execution)
 		&& !operator_run_needs_attention(run)
 }
 
@@ -1696,8 +1721,13 @@ fn operator_run_needs_attention(run: &OperatorRunStatus) -> bool {
 		|| run.process_alive == Some(false)
 			&& matches!(run.status.as_str(), "starting" | "running")
 			&& run.wait_reason.is_none()
-			&& !operator_run_has_recent_app_server_execution(run)
+			&& !run.has_fresh_execution
 		|| operator_run_has_stale_execution_without_known_process(run)
+}
+
+fn operator_run_has_fresh_execution(run: &OperatorRunStatus) -> bool {
+	matches!(run.status.as_str(), "starting" | "running")
+		&& (run.process_alive == Some(true) || operator_run_has_recent_app_server_execution(run))
 }
 
 fn operator_run_has_recent_app_server_execution(run: &OperatorRunStatus) -> bool {
@@ -1714,6 +1744,7 @@ fn operator_run_has_stale_execution_without_known_process(run: &OperatorRunStatu
 		&& run.phase == "executing"
 		&& run.wait_reason.is_none()
 		&& run.process_alive != Some(true)
+		&& !run.has_fresh_execution
 		&& [run.idle_for_seconds, run.protocol_idle_for_seconds].iter().any(|idle_for| {
 			idle_for.is_some_and(|idle_for| {
 				u64::try_from(idle_for).is_ok_and(|idle_for| idle_for >= ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
@@ -3467,6 +3498,7 @@ fn degraded_post_review_lane_status_from_classification(
 		mergeable: classification.mergeable,
 		check_state: classification.check_state,
 		unresolved_review_threads: classification.unresolved_review_threads,
+		shadowed_by_active_run: false,
 		readback_warning: classification.readback_warning,
 		readback_root_cause: classification.readback_root_cause,
 		loop_status: Some(loop_status),
@@ -3679,6 +3711,7 @@ fn post_review_lane_status_from_classification(
 		mergeable: classification.mergeable,
 		check_state: classification.check_state,
 		unresolved_review_threads: classification.unresolved_review_threads,
+		shadowed_by_active_run: false,
 		readback_warning: classification.readback_warning,
 		readback_root_cause: classification.readback_root_cause,
 		loop_status,
@@ -4752,6 +4785,7 @@ fn blocked_post_review_lane_status(
 		mergeable: None,
 		check_state: None,
 		unresolved_review_threads: None,
+		shadowed_by_active_run: false,
 		readback_warning: None,
 		readback_root_cause: post_review_readback_root_cause_for_reason(reason)
 			.map(|root_cause| root_cause.as_str().to_owned()),
@@ -5491,11 +5525,10 @@ fn operator_run_status(
 			&run,
 			&lifecycle.status,
 			&lifecycle.phase,
-			&lifecycle.current_operation,
-		)?;
-	let control_capability = operator_run_control_capability(&run, &app_server_state);
+		&lifecycle.current_operation,
+	)?;
 
-	Ok(OperatorRunStatus {
+	Ok(hydrate_operator_run_derived_status(OperatorRunStatus {
 		project_id: project.service_id().to_owned(),
 		project_display_name: project_display_name.to_owned(),
 		run_id: run.run_id().to_owned(),
@@ -5510,6 +5543,7 @@ fn operator_run_status(
 		phase: lifecycle.phase,
 		wait_reason,
 		current_operation: lifecycle.current_operation,
+		control_capability: operator_run_control_capability(&run, &app_server_state),
 		thread_id: app_server_state.thread_id,
 		turn_id: app_server_state.turn_id,
 		thread_status: app_server_state.thread_status,
@@ -5519,6 +5553,9 @@ fn operator_run_status(
 		active_lease: lifecycle.active_lease,
 		queue_lease_state: operator_run_queue_lease_state(lifecycle.active_lease),
 		execution_liveness: lifecycle.execution_liveness,
+		has_fresh_execution: false,
+		counts_as_running: false,
+		needs_attention: false,
 		updated_at: run.updated_at().to_owned(),
 		last_run_activity_at: format_optional_unix_timestamp(timing.last_run_activity_unix_epoch),
 		last_protocol_activity_at: format_optional_unix_timestamp(
@@ -5534,7 +5571,6 @@ fn operator_run_status(
 		event_count: protocol_summary.event_count,
 		private_evidence,
 		loop_status: Some(loop_status),
-		control_capability,
 		process_id: timing.process_id,
 		process_alive: timing.process_alive,
 		process_liveness_reason: timing.process_liveness_reason,
@@ -5545,15 +5581,23 @@ fn operator_run_status(
 		effective_cwd: app_server_state.effective_cwd,
 		effective_approval_policy: app_server_state.effective_approval_policy,
 		effective_approvals_reviewer: app_server_state.effective_approvals_reviewer,
-			effective_sandbox_mode: app_server_state.effective_sandbox_mode,
-			child_agent_activity,
-			protocol_activity,
-			lifecycle_metrics: OperatorLaneLifecycleMetrics::default(),
-			account,
-			accounts,
-			branch_name,
-			worktree_path,
-		})
+		effective_sandbox_mode: app_server_state.effective_sandbox_mode,
+		child_agent_activity,
+		protocol_activity,
+		lifecycle_metrics: OperatorLaneLifecycleMetrics::default(),
+		account,
+		accounts,
+		branch_name,
+		worktree_path,
+	}))
+}
+
+fn hydrate_operator_run_derived_status(mut status: OperatorRunStatus) -> OperatorRunStatus {
+	status.has_fresh_execution = operator_run_has_fresh_execution(&status);
+	status.needs_attention = operator_run_needs_attention(&status);
+	status.counts_as_running = operator_run_counts_as_running(&status);
+
+	status
 }
 
 fn operator_run_lifecycle_projection(
@@ -7032,12 +7076,13 @@ fn append_rendered_post_review_lanes(output: &mut String, snapshot: &OperatorSta
 		let loop_boundary = render_loop_boundary_summary(lane.loop_status.as_ref());
 
 		output.push_str(&format!(
-			"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n  readback_root_cause: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n",
+			"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  shadowed_by_active_run: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n  readback_root_cause: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n",
 			lane.issue_id,
 			lane.issue_identifier,
 			lane.issue_state,
 			lane.classification,
 			lane.reason,
+			if lane.shadowed_by_active_run { "yes" } else { "no" },
 			lane.branch_name,
 			lane.worktree_path,
 			lane.pr_url.as_deref().unwrap_or("none"),
@@ -8278,7 +8323,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let control_capability = render_control_capability_summary(run.control_capability.as_ref());
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -8295,6 +8340,9 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		run.queue_lease_state,
 		queue_lease,
 		run.execution_liveness,
+		if run.has_fresh_execution { "yes" } else { "no" },
+		if run.counts_as_running { "yes" } else { "no" },
+		if run.needs_attention { "yes" } else { "no" },
 		freshness_at,
 		freshness_source,
 		idle_for_seconds,
