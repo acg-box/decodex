@@ -1412,6 +1412,8 @@ impl OperatorExecutionProgramStatus {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorExecutionProgramNodeStatus {
+	#[serde(default = "operator_execution_program_unknown_status")]
+	program_stage: String,
 	lifecycle_state: String,
 	readiness_state: String,
 	issue_identifier: Option<String>,
@@ -1548,8 +1550,14 @@ struct OperatorRunStatus {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	lane_control_conditions: Vec<String>,
 	phase: String,
+	#[serde(default)]
+	run_phase: String,
 	wait_reason: Option<String>,
 	current_operation: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	active_goal_phase: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	public_progress_phase: Option<String>,
 	thread_id: Option<String>,
 	turn_id: Option<String>,
 	thread_status: Option<String>,
@@ -2376,6 +2384,7 @@ fn operator_execution_program_node_readback(
 	let issue = node.linear_issue();
 
 	OperatorExecutionProgramNodeStatus {
+		program_stage: node.stage().as_str().to_owned(),
 		lifecycle_state: node.lifecycle_state().as_str().to_owned(),
 		readiness_state: node.state().as_str().to_owned(),
 		issue_identifier: issue.map(|issue| issue.issue_identifier().to_owned()),
@@ -2398,6 +2407,7 @@ fn operator_execution_program_missing_contract_nodes(
 			let issue = node.linear_issue();
 
 			OperatorExecutionProgramNodeStatus {
+				program_stage: node.stage().as_str().to_owned(),
 				lifecycle_state: String::from("stale"),
 				readiness_state: String::from("stale"),
 				issue_identifier: issue.map(|issue| issue.issue_identifier().to_owned()),

@@ -2878,6 +2878,12 @@ struct OperatorLanePopoverView: View {
 					)
 				}
 
+				if statusReadoutItems.isEmpty == false {
+					measuredReadout {
+						OperatorLaneReadoutRow(title: "Status", items: statusReadoutItems)
+					}
+				}
+
 				if let modelProgress {
 					measuredReadout {
 						OperatorLaneProgressReadoutRow(
@@ -3007,10 +3013,47 @@ struct OperatorLanePopoverView: View {
 
 	private var hasReadoutContent: Bool {
 		modelProgress != nil
+			|| statusReadoutItems.isEmpty == false
 			|| totalOverviewMetrics.isEmpty == false
 			|| detailBuckets.isEmpty == false
 			|| lifecycleTableRows.isEmpty == false
 			|| fallbackRunReadoutItems.isEmpty == false
+	}
+
+	private var statusReadoutItems: [OperatorLaneReadoutItem] {
+		var items = [OperatorLaneReadoutItem]()
+
+		if let runPhase = panelTrimmed(run.runPhase ?? run.phase) {
+			items.append(
+				OperatorLaneReadoutItem(label: "run phase", value: rawPanelToken(runPhase))
+			)
+		}
+		if let currentOperation = panelTrimmed(run.currentOperation) {
+			items.append(
+				OperatorLaneReadoutItem(
+					label: "current operation",
+					value: rawPanelToken(currentOperation)
+				)
+			)
+		}
+		if let activeGoalPhase = panelTrimmed(run.activeGoalPhase) {
+			items.append(
+				OperatorLaneReadoutItem(
+					label: "active goal phase",
+					value: rawPanelToken(activeGoalPhase)
+				)
+			)
+		}
+		if let publicProgressPhase = panelTrimmed(run.publicProgressPhase) {
+			items.append(
+				OperatorLaneReadoutItem(
+					label: "public progress phase",
+					value: rawPanelToken(publicProgressPhase)
+				)
+			)
+		}
+
+		return items
 	}
 
 	private var fallbackRunReadoutItems: [OperatorLaneReadoutItem] {
@@ -3187,9 +3230,9 @@ struct OperatorLanePopoverView: View {
 
 		return lifecycleMetrics.phases.map { phase in
 			lifecycleTableRow(
-				stage: panelTrimmed(phase.label)
+				lifecycleBucket: panelTrimmed(phase.label)
 					?? panelTrimmed(phase.phase).map(rawPanelToken)
-					?? "Phase",
+					?? "Lifecycle bucket",
 				attemptCount: phase.attemptCount,
 				wallSeconds: phase.wallSeconds,
 				buckets: phase.buckets,
@@ -3202,7 +3245,7 @@ struct OperatorLanePopoverView: View {
 	}
 
 	private func lifecycleTableRow(
-		stage: String,
+		lifecycleBucket: String,
 		attemptCount: Int,
 		wallSeconds: Int,
 		buckets: [OperatorLifecycleMetricBucket],
@@ -3223,7 +3266,7 @@ struct OperatorLanePopoverView: View {
 		let largestOutput = formatLargestOutput(bytes: largestOutputBytes)
 
 		return OperatorLifecycleTableRow(
-			stage: stage,
+			lifecycleBucket: lifecycleBucket,
 			attempts: attemptCount > 0 ? formatCompactCount(attemptCount) : "-",
 			runtime: runtime.text,
 			inputTokens: inputTokens > 0 ? formatCompactCount(inputTokens) : "-",
@@ -3560,7 +3603,7 @@ private enum OperatorTotalMetricGridCellRole {
 }
 
 struct OperatorLifecycleTableRow: Identifiable {
-	let stage: String
+	let lifecycleBucket: String
 	let attempts: String
 	let runtime: String
 	let inputTokens: String
@@ -3569,7 +3612,7 @@ struct OperatorLifecycleTableRow: Identifiable {
 	let largestOutput: String
 
 	var id: String {
-		stage
+		lifecycleBucket
 	}
 }
 
@@ -3584,7 +3627,7 @@ struct OperatorLifecycleTableView: View {
 			verticalSpacing: OperatorLaneReadoutLayout.itemRowSpacing
 		) {
 			GridRow(alignment: .firstTextBaseline) {
-				headerCell("Stage", alignment: .leading)
+				headerCell("Lifecycle bucket", alignment: .leading)
 				headerCell("attempts", alignment: .trailing)
 				headerCell("inference", alignment: .trailing)
 				headerCell("input", alignment: .trailing)
@@ -3594,7 +3637,7 @@ struct OperatorLifecycleTableView: View {
 			}
 			ForEach(rows) { row in
 				GridRow(alignment: .firstTextBaseline) {
-					tableCell(row.stage, alignment: .leading)
+					tableCell(row.lifecycleBucket, alignment: .leading)
 					tableCell(row.attempts, alignment: .trailing)
 					tableCell(row.runtime, alignment: .trailing)
 					tableCell(row.inputTokens, alignment: .trailing)
@@ -3611,7 +3654,7 @@ struct OperatorLifecycleTableView: View {
 
 	private var accessibilityText: String {
 		rows.map { row in
-			"\(row.stage), attempts \(row.attempts), inference \(row.runtime), input \(row.inputTokens), output \(row.outputTokens), tools \(row.toolCalls), max output \(row.largestOutput)"
+			"\(row.lifecycleBucket), attempts \(row.attempts), inference \(row.runtime), input \(row.inputTokens), output \(row.outputTokens), tools \(row.toolCalls), max output \(row.largestOutput)"
 		}
 		.joined(separator: "; ")
 	}
