@@ -244,6 +244,7 @@ enum LoopGuardrailReason {
 	NoEffectiveDiff,
 	RemainingDeltaUnchanged,
 	ReviewChurn,
+	ReviewHandoffStateDrift,
 	DependencyProgramStale,
 	UncoveredDirection,
 	AmbiguousRetainedProgress,
@@ -255,6 +256,7 @@ impl LoopGuardrailReason {
 			Self::NoEffectiveDiff => "no_effective_diff",
 			Self::RemainingDeltaUnchanged => "remaining_delta_unchanged",
 			Self::ReviewChurn => "review_churn",
+			Self::ReviewHandoffStateDrift => "review_handoff_state_drift",
 			Self::DependencyProgramStale => "dependency_program_stale",
 			Self::UncoveredDirection => "uncovered_direction",
 			Self::AmbiguousRetainedProgress => "ambiguous_retained_progress",
@@ -267,6 +269,9 @@ impl LoopGuardrailReason {
 			"no_effective_diff" => Some(Self::NoEffectiveDiff),
 			"remaining_delta_unchanged" => Some(Self::RemainingDeltaUnchanged),
 			"review_churn" | "review_policy_exhausted" => Some(Self::ReviewChurn),
+			"review_handoff_state_drift" | "review_handoff_rebind_required" => {
+				Some(Self::ReviewHandoffStateDrift)
+			},
 			"dependency_program_stale" | "dependency_blocked" => {
 				Some(Self::DependencyProgramStale)
 			},
@@ -293,6 +298,9 @@ impl LoopGuardrailReason {
 			),
 			Self::ReviewChurn => format!(
 				"inspect the repeated review findings and current head; decide the next repair or architecture review manually before requeueing, {recovery_gate}"
+			),
+			Self::ReviewHandoffStateDrift => format!(
+				"inspect the retained review handoff marker, clean review checkpoint, PR head, and issue state; restore or rebind the post-review lifecycle before clearing attention, {recovery_gate}"
 			),
 			Self::DependencyProgramStale => format!(
 				"inspect the dependency blocker and Execution Program readiness evidence; refresh dependencies or split/research the program before requeueing, {recovery_gate}"
