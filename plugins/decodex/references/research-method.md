@@ -3,6 +3,19 @@
 Use this reference when Decodex research needs the full Decision Contract protocol.
 Decodex is the default research surface for bounded technical investigation.
 
+## Contract-First Rule
+
+The primary research output is a top-level `decodex.decision_contract/1` candidate.
+The contract is a current-state snapshot of the decision, evidence, selected option,
+gaps, validation expectations, and promotion target. It is not an append-only run log.
+
+`docs/research/` is JSON-only, but the old `docs/research/*.json`
+`research-run/2` event format is not the new Decodex research shape. The tracked
+legacy JSON event logs were consolidated into
+`docs/research/legacy-research-goal-audit.json`; use Git history only when raw old
+event logs are needed as provenance. Do not write new Decodex research as old-shape
+event logs, and do not infer current authority from an old research artifact.
+
 ## Loop
 
 Run the same decision-quality loop for bounded research:
@@ -47,6 +60,30 @@ The first durable event for machine-authored runs is `probe_completed`.
 - Preserve conflicting evidence and name what would resolve it.
 - Use private evidence refs for local, sensitive, or runtime-private proof.
 - Map supported claims into `research_evidence`.
+
+## Evidence Ledger Shape
+
+Every Decision Contract candidate must carry an evidence ledger that can be read
+without replaying the chat transcript.
+
+Use these ledger classes:
+
+| Class | Contract field | Use |
+| --- | --- | --- |
+| `external_source` | `research_provenance` or `research_evidence.kind/source_ref` | Public specifications, official docs, standards, changelogs, or vendor policy. Prefer exact URLs and version dates. |
+| `repo_source` | `research_evidence.kind/source_ref` | Checked-in files, code references, fixtures, tests, docs, or command output from this repository. |
+| `live_readback` | `research_evidence.kind` or `evidence_boundary.private_evidence_refs` | Current runtime, tracker, GitHub, Linear, local SQLite, or service state. Keep sensitive proof private. |
+| `inference` | `research_evidence.kind/support` plus `accepted_authority.assumptions` when promoted | Reasoned conclusion derived from evidence. Name the evidence it depends on. |
+| `gap` | `research_evidence.kind`, `execution_readiness.missing_decisions`, `risk_notes`, or `evidence_boundary` | Missing proof, unresolved contradiction, blocker, or human choice. |
+
+Evidence is sufficient only when a later agent can answer these questions from the
+contract:
+
+- Which claims are supported by external evidence?
+- Which claims are supported by repository state?
+- Which claims are live readback rather than static docs?
+- Which conclusions are inferences, not direct observations?
+- Which gaps remain, and do they block `decision_ready`?
 
 ## Option Rules
 
@@ -112,16 +149,38 @@ No unresolved decisions, evidence gaps, or blockers may remain for `decision_rea
 ## Decision Contract Shape
 
 The durable output is a `decodex.decision_contract/1` payload retained in runtime
-state. In chat, present the same shape plainly:
+state. In chat or docs, present the same shape plainly.
+
+Required sections:
 
 - source intent and decision question
-- evidence and provenance
+- terminal decision status
+- evidence ledger and provenance
 - realistic options and tradeoffs
 - selected decision or why no safe decision exists
 - assumptions, constraints, non-goals, objections, and stop conditions
 - validation expectations
+- promotion target, such as `docs/spec`, `docs/runbook`, `docs/reference`,
+  `docs/decisions`, `plugins/decodex/skills`, runtime code, tests, or no promotion
 - proposed issue summaries only when downstream work is appropriate
 - unresolved decisions, evidence gaps, or blockers
+
+Use the existing runtime fields this way:
+
+| Need | Field |
+| --- | --- |
+| Original request and decision question | `source_intent` |
+| External docs, repo files, legacy artifacts, or subwork used | `research_provenance` |
+| Supported claims, evidence class, and source/code refs | `research_evidence` |
+| Compared choices and selected/rejected rationale | `research_options` |
+| Objectives, constraints, assumptions, objections, non-goals, and stop rules | `accepted_authority` |
+| Readiness, validation, risks, issue summaries, promotion targets, conflict domains, and dispatch intent | `execution_readiness` |
+| Acceptance metadata | `promotion` |
+| Generated issues or Program nodes | `links` |
+| Private proof and public-safe projections | `evidence_boundary` |
+
+Do not bury the terminal status, selected option, or unresolved gaps only in an event
+tail. They must be visible from the top-level contract.
 
 ## Promotion Boundary
 
@@ -139,3 +198,19 @@ When promoting:
 4. Route accepted work to `planning`.
 5. Let Program Intake persist Execution Program readiness and dispatch ready mapped
    nodes directly.
+
+Promotion must choose the correct durable lane:
+
+- `docs/spec/` when the accepted result defines correctness, schema, invariants, or
+  required behavior.
+- `docs/runbook/` when it defines an operator sequence.
+- `docs/reference/` when it explains current implementation or repository structure.
+- `docs/decisions/` when it records durable rationale or tradeoffs.
+- `docs/research/` when the user explicitly asks for a supporting JSON research report
+  or evidence extraction that should remain non-authoritative until promoted.
+- `plugins/decodex/skills/` when it changes agent-facing workflow instructions.
+- Runtime code and tests only when accepted behavior cannot be represented by docs or
+  skills alone.
+
+If the accepted contract needs multiple lanes, preserve one authority source and link
+other lanes to it rather than duplicating the same rule.

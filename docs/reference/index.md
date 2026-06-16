@@ -9,7 +9,7 @@ Question this index answers: "how is it currently organized or implemented?"
 
 - You need the current repository layout, ownership boundaries, or where a topic lives.
 - You need to know which directory or file surface is authoritative for a class of work.
-- You need to understand the role of machine-authored artifacts such as `docs/research/`.
+- You need to understand where research reports and supporting evidence fit.
 
 ## Do not use this index when
 
@@ -29,5 +29,5 @@ Question this index answers: "how is it currently organized or implemented?"
   and keep/merge/delete standards.
 - [`workspace-layout.md`](./workspace-layout.md) for the repository surface map and
   directory ownership boundaries, including the canonical Decodex plugin source.
-- [`research-runs.md`](./research-runs.md) for the role and limits of `docs/research/`
-  artifacts.
+- [`research-runs.md`](./research-runs.md) for the role and limits of the
+  `docs/research/` JSON research-report and evidence artifact lane.

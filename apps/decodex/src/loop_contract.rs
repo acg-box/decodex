@@ -314,6 +314,8 @@ impl DecisionResearchProvenance {
 /// Non-authoritative research evidence retained before promotion.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct DecisionResearchEvidence {
+	#[serde(default = "default_research_evidence_kind")]
+	kind: String,
 	claim: String,
 	support: String,
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -321,6 +323,7 @@ pub(crate) struct DecisionResearchEvidence {
 }
 impl DecisionResearchEvidence {
 	fn validate(&self) -> Result<()> {
+		validate_required("decision contract research_evidence.kind", &self.kind)?;
 		validate_required("decision contract research_evidence.claim", &self.claim)?;
 		validate_required("decision contract research_evidence.support", &self.support)?;
 
@@ -432,6 +435,8 @@ pub(crate) struct DecisionExecutionReadiness {
 	#[serde(default)]
 	proposed_issue_summaries: Vec<String>,
 	#[serde(default)]
+	promotion_targets: Vec<String>,
+	#[serde(default)]
 	conflict_domains: Vec<String>,
 	#[serde(default)]
 	queue_intent: Vec<String>,
@@ -452,6 +457,10 @@ impl DecisionExecutionReadiness {
 
 	pub(crate) fn proposed_issue_summaries(&self) -> &[String] {
 		&self.proposed_issue_summaries
+	}
+
+	pub(crate) fn promotion_targets(&self) -> &[String] {
+		&self.promotion_targets
 	}
 
 	pub(crate) fn conflict_domains(&self) -> &[String] {
@@ -482,6 +491,7 @@ impl DecisionExecutionReadiness {
 			"decision contract proposed_issue_summaries",
 			&self.proposed_issue_summaries,
 		)?;
+		validate_string_list("decision contract promotion_targets", &self.promotion_targets)?;
 		validate_string_list("decision contract conflict_domains", &self.conflict_domains)?;
 		validate_string_list("decision contract queue_intent", &self.queue_intent)?;
 
@@ -707,6 +717,10 @@ fn decision_contract_schema() -> String {
 
 fn decision_contract_record_version() -> u16 {
 	DECISION_CONTRACT_RECORD_VERSION
+}
+
+fn default_research_evidence_kind() -> String {
+	String::from("unspecified")
 }
 
 fn validate_required(name: &str, value: &str) -> Result<()> {

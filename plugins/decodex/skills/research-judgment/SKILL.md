@@ -10,6 +10,8 @@ Turn evidence and options into a testable conclusion. Read
 
 - Name the recommendation or non-decision, criteria fit, evidence, assumptions,
   rejected alternatives, gaps, and validation.
+- Keep the terminal status, selected option, and unresolved gaps visible in the
+  top-level Decision Contract, not only in narrative text.
 - Do not call judgment final before challenge.
 - Do not hide weak evidence behind confident language.
 - Do not mark decision-ready while material evidence or human direction is unresolved.
