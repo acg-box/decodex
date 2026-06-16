@@ -204,6 +204,330 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 }
 
 #[test]
+fn retry_phase_goal_resumes_cross_attempt_handoff_after_recovered_validation_pass() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let first_issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.repo_root().to_path_buf(),
+			reused_existing: false,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1"),
+		retry_budget_base: 0,
+	};
+
+	RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &first_issue_run,
+	}
+	.phase_goal_completed(PhaseGoalKind::ImplementToValidationReady)
+	.expect("completed implementation phase should persist handoff phase");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			&first_issue_run.run_id,
+			first_issue_run.attempt_number,
+			PHASE_GOAL_RECOVERY_EVENT_TYPE,
+			serde_json::json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": "implement_to_validation_ready",
+				"signal": "phase_goal_recovered",
+				"payload": {
+					"nextPhase": "handoff_evidence",
+					"sourceErrorClass": "app_server_run_failed",
+				},
+			}),
+		)
+		.expect("phase goal recovery should record");
+
+	let retry_issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: first_issue_run.worktree.clone(),
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Retry,
+		attempt_number: 2,
+		run_id: String::from("pub-101-attempt-2"),
+		retry_budget_base: 1,
+	};
+	let goal = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &retry_issue_run,
+	}
+	.initial_phase_goal()
+	.expect("retry phase goal should build")
+	.expect("retry should still set a phase goal");
+
+	assert_eq!(goal.phase, PhaseGoalKind::HandoffEvidence);
+	assert!(
+		goal.objective.contains("prepare PR-backed handoff evidence"),
+		"retry should continue to handoff instead of repeating implementation"
+	);
+}
+
+#[test]
+fn retry_phase_goal_resumes_cross_attempt_active_handoff_phase() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree = WorktreeSpec {
+		branch_name: String::from("x/pubfi-pub-101"),
+		issue_identifier: issue.identifier.clone(),
+		path: config.repo_root().to_path_buf(),
+		reused_existing: false,
+	};
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"pub-101-attempt-2",
+			2,
+			"phase_goal_set",
+			serde_json::json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": "handoff_evidence",
+				"payload": {
+					"phase": "handoff_evidence",
+					"status": "active",
+				},
+			}),
+		)
+		.expect("active handoff phase should record");
+
+	let retry_issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree,
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Retry,
+		attempt_number: 3,
+		run_id: String::from("pub-101-attempt-3"),
+		retry_budget_base: 2,
+	};
+	let goal = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &retry_issue_run,
+	}
+	.initial_phase_goal()
+	.expect("retry phase goal should build")
+	.expect("retry should still set a phase goal");
+
+	assert_eq!(goal.phase, PhaseGoalKind::HandoffEvidence);
+	assert!(
+		goal.objective.contains("prepare PR-backed handoff evidence"),
+		"retry should resume handoff evidence instead of repeating implementation"
+	);
+}
+
+#[test]
+fn retry_phase_goal_does_not_resume_cross_attempt_phase_after_terminal_finalize() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree = WorktreeSpec {
+		branch_name: String::from("x/pubfi-pub-101"),
+		issue_identifier: issue.identifier.clone(),
+		path: config.repo_root().to_path_buf(),
+		reused_existing: false,
+	};
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"pub-101-attempt-2",
+			2,
+			"phase_goal_set",
+			serde_json::json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": "handoff_evidence",
+				"payload": {
+					"phase": "handoff_evidence",
+					"status": "active",
+				},
+			}),
+		)
+		.expect("active handoff phase should record");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"pub-101-attempt-2",
+			2,
+			"terminal_finalize",
+			serde_json::json!({
+				"schema": "decodex.terminal_finalize/1",
+				"path": "review_handoff",
+			}),
+		)
+		.expect("terminal finalize should record");
+
+	let retry_issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree,
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Retry,
+		attempt_number: 3,
+		run_id: String::from("pub-101-attempt-3"),
+		retry_budget_base: 2,
+	};
+	let goal = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &retry_issue_run,
+	}
+	.initial_phase_goal()
+	.expect("retry phase goal should build")
+	.expect("retry should still set a phase goal");
+
+	assert_eq!(goal.phase, PhaseGoalKind::ImplementToValidationReady);
+}
+
+#[test]
+fn retry_phase_goal_uses_only_latest_previous_attempt_for_cross_attempt_resume() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree = WorktreeSpec {
+		branch_name: String::from("x/pubfi-pub-101"),
+		issue_identifier: issue.identifier.clone(),
+		path: config.repo_root().to_path_buf(),
+		reused_existing: false,
+	};
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"pub-101-attempt-1",
+			1,
+			"phase_goal_next",
+			serde_json::json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": "handoff_evidence",
+				"reason": "validation_pass",
+			}),
+		)
+		.expect("older handoff phase should record");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"pub-101-attempt-2",
+			2,
+			"phase_goal_set",
+			serde_json::json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": "implement_to_validation_ready",
+				"payload": {
+					"phase": "implement_to_validation_ready",
+					"status": "active",
+				},
+			}),
+		)
+		.expect("newer implementation phase should record");
+
+	let retry_issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree,
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Retry,
+		attempt_number: 3,
+		run_id: String::from("pub-101-attempt-3"),
+		retry_budget_base: 2,
+	};
+	let goal = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &retry_issue_run,
+	}
+	.initial_phase_goal()
+	.expect("retry phase goal should build")
+	.expect("retry should still set a phase goal");
+
+	assert_eq!(goal.phase, PhaseGoalKind::ImplementToValidationReady);
+}
+
+#[test]
+fn retry_phase_goal_does_not_skip_empty_previous_attempt_for_cross_attempt_resume() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree = WorktreeSpec {
+		branch_name: String::from("x/pubfi-pub-101"),
+		issue_identifier: issue.identifier.clone(),
+		path: config.repo_root().to_path_buf(),
+		reused_existing: false,
+	};
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"pub-101-attempt-1",
+			1,
+			"phase_goal_next",
+			serde_json::json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": "handoff_evidence",
+				"reason": "validation_pass",
+			}),
+		)
+		.expect("older handoff phase should record");
+	state_store
+		.record_run_attempt("pub-101-attempt-2", &issue.id, 2, "failed")
+		.expect("empty previous attempt should record");
+
+	let retry_issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree,
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Retry,
+		attempt_number: 3,
+		run_id: String::from("pub-101-attempt-3"),
+		retry_budget_base: 2,
+	};
+	let goal = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &retry_issue_run,
+	}
+	.initial_phase_goal()
+	.expect("retry phase goal should build")
+	.expect("retry should still set a phase goal");
+
+	assert_eq!(goal.phase, PhaseGoalKind::ImplementToValidationReady);
+}
+
+#[test]
 fn open_phase_goal_tracked_rewrites_stop_instead_of_repair_continuation() {
 	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
 		&sample_workflow_markdown(
