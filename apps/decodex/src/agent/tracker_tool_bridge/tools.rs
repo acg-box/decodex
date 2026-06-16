@@ -9,11 +9,11 @@ use crate::{
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LabelArgs,
 		NormalizedProgressCheckpoint, NormalizedReviewCheckpointPayload, PendingReviewAction,
-		PendingReviewCompletion, ProgressCheckpointArgs, PullRequestDetails, ReviewCheckpointArgs,
-		ReviewCheckpointChecksArgs, ReviewCheckpointFindingArgs,
-		ReviewCheckpointRejectedFindingArgs, ReviewExecutionMode, ReviewHandoffArgs,
-		ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus, RunCompletionDisposition,
-		TerminalFinalizeArgs, TrackerToolBridge, TransitionArgs,
+		PendingReviewCompletion, ProgressCheckpointArgs, PullRequestDetails,
+		REVIEW_POLICY_CONVERGENCE_BUDGET, ReviewCheckpointArgs, ReviewCheckpointChecksArgs,
+		ReviewCheckpointFindingArgs, ReviewCheckpointRejectedFindingArgs, ReviewExecutionMode,
+		ReviewHandoffArgs, ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus,
+		RunCompletionDisposition, TerminalFinalizeArgs, TrackerToolBridge, TransitionArgs,
 	},
 	orchestrator::{
 		self, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AuthorityDecisionOption,
@@ -521,6 +521,10 @@ impl<'a> TrackerToolBridge<'a> {
 		tool_name: &str,
 		arguments: Value,
 	) -> DynamicToolCallResponse {
+		if let Some(response) = self.review_policy_mutation_fence(tool_name) {
+			return response;
+		}
+
 		match tool_name {
 			ISSUE_TRANSITION_TOOL_NAME => self.handle_transition(arguments),
 			ISSUE_COMMENT_TOOL_NAME => self.handle_comment(arguments),
@@ -533,6 +537,30 @@ impl<'a> TrackerToolBridge<'a> {
 			ISSUE_TERMINAL_FINALIZE_TOOL_NAME => self.handle_terminal_finalize(arguments),
 			_ =>
 				DynamicToolCallResponse::failure(format!("Unsupported tracker tool `{tool_name}`.")),
+		}
+	}
+
+	fn review_policy_mutation_fence(&self, tool_name: &str) -> Option<DynamicToolCallResponse> {
+		if matches!(
+			tool_name,
+			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME | ISSUE_TERMINAL_FINALIZE_TOOL_NAME
+		) {
+			return None;
+		}
+
+		let review_context = self.review_context.as_ref()?;
+
+		match self.review_policy_stop_requested_for_current_phase(review_context) {
+			Ok(Some(stop)) => Some(DynamicToolCallResponse::failure(format!(
+				"Review policy stop `{}` is active for issue `{}` after `{}` non-clean rounds; `{tool_name}` is fenced until architecture recovery or human attention resolves the lane.",
+				stop.reason.error_class(),
+				stop.issue_identifier,
+				stop.nonclean_rounds.unwrap_or_default()
+			))),
+			Ok(None) => None,
+			Err(error) => Some(DynamicToolCallResponse::failure(format!(
+				"Failed to evaluate review policy mutation fence for `{tool_name}`: {error}"
+			))),
 		}
 	}
 
@@ -1347,6 +1375,14 @@ impl<'a> TrackerToolBridge<'a> {
 				rejected_findings: checkpoint_payload.rejected_findings.len(),
 			},
 		);
+
+		if review_policy_status == ReviewPolicyStatus::Findings
+			&& nonclean_rounds >= REVIEW_POLICY_CONVERGENCE_BUDGET
+		{
+			return DynamicToolCallResponse::failure(format!(
+				"{message} Review churn threshold exceeded; stop the current repair strategy now and route through architecture recovery or human attention before making further repair mutations."
+			));
+		}
 
 		DynamicToolCallResponse::success(message)
 	}
