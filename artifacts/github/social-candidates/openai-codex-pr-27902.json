@@ -1,0 +1,60 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27902",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Codex plugin authors and Control Plane operators",
+  "candidate_text": [
+    "Codex PR #27902 centralizes plugin app/MCP auth routing: Codex-backed auth keeps app connectors, API-key/direct auth drops app declarations, and active app routes hide same-name MCP servers. https://github.com/openai/codex/pull/27902",
+    "Operator angle: plugin lists and details should consume effective capabilities, not raw manifests, or users may see unusable app connectors under API-key auth or duplicate app/MCP routes under Codex-backed auth."
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27902.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27902.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27902"
+    ]
+  },
+  "evidence_notes": [
+    "PR #27902 states the product rule for app connector availability and same-name app/MCP conflicts.",
+    "`apps_route_available` gates app declarations on Codex-backed auth modes.",
+    "`apply_app_mcp_routing_policy` clears apps for API-key/direct auth and removes conflicting MCP servers for active app-capable plugins.",
+    "The checked upstream review and impact artifacts classify the change as a Decodex Control Plane compatibility risk."
+  ],
+  "claims": [
+    {
+      "text": "Codex plugin app declarations are effective only when the auth mode can use the Codex backend.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27902.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "For active plugins, same-name app declarations take precedence over MCP server declarations under Codex-backed auth.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27902.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Operators should present effective auth-filtered plugin capabilities rather than raw manifest declarations.",
+      "evidence": "https://github.com/openai/codex/pull/27902",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "Source-backed operator-impact change for plugin auth routing and effective capability presentation.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27902:operator-impact"
+  },
+  "caveats": [
+    "Do not imply Decodex has already adopted this routing rule in every plugin UI.",
+    "Keep claims scoped to effective capability filtering; this PR does not remove the plugin manifest format."
+  ],
+  "next_steps": [
+    "Let Publisher decide whether to post; this automation must not write social_post/v1 or publish to X."
+  ]
+}
