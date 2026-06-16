@@ -193,6 +193,53 @@ impl RepoGatePhaseGoalController<'_> {
 			.and_then(phase_goal_kind_from_str))
 	}
 
+	fn latest_cross_attempt_phase_goal(&self) -> Result<Option<PhaseGoalKind>> {
+		if self.issue_run.dispatch_mode != IssueDispatchMode::Retry {
+			return Ok(None);
+		}
+
+		// Retry attempts inherit only the immediately previous attempt's open phase
+		// boundary, so older validation passes cannot override newer work.
+		let events = self.state_store.list_private_execution_events_for_issue(
+			self.project.service_id(),
+			&self.issue_run.issue.id,
+		)?;
+		let previous_attempt = self.issue_run.attempt_number - 1;
+
+		if previous_attempt < 1 {
+			return Ok(None);
+		}
+
+		for event in events.iter().rev().filter(|event| {
+			event.attempt_number() == previous_attempt
+				&& event.run_id() != self.issue_run.run_id
+		}) {
+			match event.event_type() {
+				"terminal_finalize"
+				| "review_completion_intent"
+				| AUTHORITY_DECISION_REQUEST_EVENT_TYPE
+				| PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE => return Ok(None),
+				"progress_checkpoint" if progress_checkpoint_has_blockers(event.payload()) =>
+					return Ok(None),
+				PHASE_GOAL_RECOVERY_EVENT_TYPE | "phase_goal_next" | "phase_goal_transition" => {
+					if let Some(phase) =
+						phase_goal_continuation_next_phase(event.event_type(), event.payload())
+					{
+						return Ok(Some(phase));
+					}
+				},
+				"phase_goal_set" | "phase_goal_status" => {
+					if let Some(phase) = phase_goal_active_phase(event.payload()) {
+						return Ok(Some(phase));
+					}
+				},
+				_ => {},
+			}
+		}
+
+		Ok(None)
+	}
+
 	fn validate_phase_goal_output(&self, phase: PhaseGoalKind) -> Result<PhaseGoalTransition> {
 		let selected_repo_gate = select_repo_gate_for_worktree(
 			self.workflow.frontmatter().execution(),
@@ -364,6 +411,9 @@ impl RepoGatePhaseGoalController<'_> {
 impl PhaseGoalController for RepoGatePhaseGoalController<'_> {
 	fn initial_phase_goal(&self) -> Result<Option<PhaseGoalSpec>> {
 		if let Some(phase) = self.latest_persisted_phase_goal()? {
+			return Ok(Some(self.phase_goal_spec(phase, None)));
+		}
+		if let Some(phase) = self.latest_cross_attempt_phase_goal()? {
 			return Ok(Some(self.phase_goal_spec(phase, None)));
 		}
 
@@ -1469,6 +1519,13 @@ fn phase_goal_recovery_candidate_from_status(
 	}
 }
 
+fn phase_goal_active_phase(payload: &Value) -> Option<PhaseGoalKind> {
+	let phase = phase_goal_event_phase(payload)?;
+	let status = phase_goal_event_status(payload)?;
+
+	(status == "active").then_some(phase)
+}
+
 fn matching_phase_goal_recovery_count(
 	project: &ServiceConfig,
 	state_store: &StateStore,
@@ -1500,6 +1557,19 @@ fn phase_goal_recovery_event_source_phase(payload: &Value) -> Option<&str> {
 
 fn phase_goal_recovery_event_source_error_class(payload: &Value) -> Option<&str> {
 	payload.get("payload")?.get("sourceErrorClass")?.as_str()
+}
+
+fn phase_goal_continuation_next_phase(
+	event_type: &str,
+	payload: &Value,
+) -> Option<PhaseGoalKind> {
+	let phase = if event_type == "phase_goal_next" {
+		payload.get("phase")?.as_str()?
+	} else {
+		payload.get("payload")?.get("nextPhase")?.as_str()?
+	};
+
+	phase_goal_kind_from_str(phase)
 }
 
 fn record_phase_goal_recovery_continuation(record: PhaseGoalRecoveryRecord<'_>) -> Result<()> {
