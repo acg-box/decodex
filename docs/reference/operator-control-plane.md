@@ -409,9 +409,10 @@ Worktree visibility follows the owning dashboard section:
   when `process_alive` is false.
   `run_lease` is queue lease ownership only; `execution_liveness` explains why
   the lane is still visible when the queue lease is not held.
-  If a newer attempt for the same issue holds the run lease, older unleased attempts
-  with stale protocol/process evidence are shadowed out of `Running Lanes` and
-  current-attention counts so one issue does not appear as simultaneous current work.
+  If a newer visible attempt for the same issue exists, older attempts with stale
+  protocol/process evidence are shadowed out of `Running Lanes` and current-attention
+  counts so one issue does not appear as simultaneous current work or rebound after
+  the newer attempt releases its lease.
   Retry attempts also read the immediately previous attempt's unterminated phase-goal
   state, so a lane already in `handoff_evidence` resumes handoff instead of repeating
   implementation just because the attempt identity changed.
