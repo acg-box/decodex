@@ -14,7 +14,7 @@ fn failure_comments_use_repo_relative_worktree_paths() {
 }
 
 #[test]
-fn operator_status_snapshot_includes_active_runs_and_repo_relative_paths() {
+fn operator_status_snapshot_includes_current_lanes_and_repo_relative_paths() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("Todo", &[]);
@@ -48,33 +48,106 @@ fn operator_status_snapshot_includes_active_runs_and_repo_relative_paths() {
 		.expect("snapshot should build");
 
 	assert_eq!(snapshot.project_id, "pubfi");
-	assert_eq!(snapshot.active_runs.len(), 1);
+	assert_eq!(snapshot.current_lanes.len(), 1);
 	assert_eq!(snapshot.recent_runs.len(), 1);
-	assert_eq!(snapshot.active_runs[0].project_id, "pubfi");
-	assert_eq!(snapshot.active_runs[0].project_display_name, "hack-ink/pubfi-mono-v2");
-	assert_eq!(snapshot.active_runs[0].run_id, "run-1");
-	assert_eq!(snapshot.active_runs[0].phase, "executing");
-	assert_eq!(snapshot.active_runs[0].current_operation, state::RUN_OPERATION_AGENT_RUN);
-	assert_eq!(snapshot.active_runs[0].thread_id.as_deref(), Some("thread-1"));
-	assert_eq!(snapshot.active_runs[0].branch_name.as_deref(), Some("x/pubfi-pub-101"));
-	assert_eq!(snapshot.active_runs[0].worktree_path.as_deref(), Some(".worktrees/PUB-101"));
-	assert!(snapshot.active_runs[0].last_run_activity_at.is_some());
-	assert!(snapshot.active_runs[0].last_progress_at.is_some());
-	assert!(!snapshot.active_runs[0].suspected_stall);
-	assert_eq!(snapshot.active_runs[0].last_event_type.as_deref(), Some("turn/completed"));
+	assert_eq!(snapshot.current_lanes[0].project_id, "pubfi");
+	assert_eq!(snapshot.current_lanes[0].project_display_name, "hack-ink/pubfi-mono-v2");
+	assert_eq!(snapshot.current_lanes[0].run_id, "run-1");
+	assert_eq!(snapshot.current_lanes[0].phase, "executing");
+	assert_eq!(snapshot.current_lanes[0].current_operation, state::RUN_OPERATION_AGENT_RUN);
+	assert_eq!(snapshot.current_lanes[0].thread_id.as_deref(), Some("thread-1"));
+	assert_eq!(snapshot.current_lanes[0].branch_name.as_deref(), Some("x/pubfi-pub-101"));
+	assert_eq!(snapshot.current_lanes[0].worktree_path.as_deref(), Some(".worktrees/PUB-101"));
+	assert!(snapshot.current_lanes[0].last_run_activity_at.is_some());
+	assert!(snapshot.current_lanes[0].last_progress_at.is_some());
+	assert!(!snapshot.current_lanes[0].suspected_stall);
+	assert_eq!(snapshot.current_lanes[0].last_event_type.as_deref(), Some("turn/completed"));
 	assert_eq!(snapshot.worktrees[0].worktree_path, ".worktrees/PUB-101");
-	assert_eq!(snapshot.worktrees[0].ownership, "active_lane");
-	assert!(snapshot.worktrees[0].ownership_reason.contains("Active lane `run-1`"));
+	assert_eq!(snapshot.worktrees[0].ownership, "current_lane");
+	assert!(snapshot.worktrees[0].ownership_reason.contains("Current lane `run-1`"));
 
 	let project = snapshot.projects.first().expect("project summary should exist");
 
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(
 		project.retained_worktree_count, 0,
-		"active running lane worktrees must not inflate project recovery counts"
+		"current lane worktrees must not inflate project recovery counts"
 	);
 	assert_eq!(project.connector_state, "ok");
 	assert!(project.last_activity_at.is_some());
+}
+
+#[test]
+fn operator_status_snapshot_surfaces_repeated_continuation_recovery_lineage() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	for (run_id, attempt_number) in [("run-1", 1), ("run-2", 2)] {
+		state_store
+			.append_private_execution_event(
+				TEST_SERVICE_ID,
+				&issue.id,
+				run_id,
+				attempt_number,
+				PHASE_GOAL_RECOVERY_EVENT_TYPE,
+				serde_json::json!({
+					"schema": "decodex.phase_goal_signal/1",
+					"phase": "implement_to_validation_ready",
+					"signal": "phase_goal_recovered",
+					"payload": {
+						"nextPhase": "repair_validation_failures",
+						"sourceErrorClass": "app_server_preflight_timeout",
+						"sourceErrorMessage": "Timed out while waiting for app-server output.",
+					},
+				}),
+			)
+			.expect("phase goal recovery event should record");
+	}
+
+	state_store
+		.record_run_attempt("run-3", &issue.id, 3, "running")
+		.expect("current run attempt should record");
+	state_store
+		.upsert_lease(TEST_SERVICE_ID, &issue.id, "run-3", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
+	let recovery = run
+		.continuation_recovery
+		.as_ref()
+		.expect("continuation recovery lineage should project onto current lane");
+	let rendered = orchestrator::render_operator_status(&snapshot);
+	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
+
+	assert_eq!(recovery.state, "continuation_scheduled");
+	assert_eq!(recovery.source_phase, "implement_to_validation_ready");
+	assert_eq!(recovery.next_phase, "repair_validation_failures");
+	assert_eq!(recovery.source_error_class, "app_server_preflight_timeout");
+	assert_eq!(recovery.recovery_count, 2);
+	assert_eq!(recovery.automatic_continuation_limit, 1);
+	assert!(recovery.budget_exceeded);
+	assert_eq!(run.policy_state, "continuation_recovery_churn_exceeded");
+	assert!(run.lane_control_conditions.contains(&String::from(
+		"continuation_recovery_budget_exceeded"
+	)));
+	assert!(rendered.contains("continuation_recovery: state=continuation_scheduled"));
+	assert!(rendered.contains("count=2/1 budget_exceeded=yes"));
+	assert_eq!(
+		snapshot_json["current_lanes"][0]["continuation_recovery"]["budget_exceeded"],
+		true
+	);
 }
 
 #[test]
@@ -235,7 +308,7 @@ fn operator_status_snapshot_updates_owned_merged_worktree_hygiene_without_global
 }
 
 #[test]
-fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
+fn live_operator_status_snapshot_hydrates_current_lane_issue_display_metadata() {
 	let (temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "xy-392-attempt-1-1777551056";
@@ -260,10 +333,10 @@ fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 
 	state_store
 		.record_run_attempt(run_id, &issue.id, 1, "running")
-		.expect("active run should record");
+		.expect("current lane should record");
 	state_store
 		.upsert_lease(config.service_id(), &issue.id, run_id, "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 	state_store.update_run_thread(run_id, "thread-1").expect("thread should record");
 	state_store.update_run_turn(run_id, "turn-1").expect("turn should record");
 
@@ -281,44 +354,44 @@ fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 		10,
 	)
 	.expect("snapshot should build");
-	let active_run = snapshot.active_runs.first().expect("active run should exist");
+	let current_lane = snapshot.current_lanes.first().expect("current lane should exist");
 	let recent_run = snapshot.recent_runs.first().expect("recent run should exist");
 	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
 
-	assert_eq!(active_run.project_id, config.service_id());
-	assert_eq!(active_run.project_display_name, "hack-ink/pubfi-mono-v2");
-	assert_eq!(active_run.issue_identifier.as_deref(), Some("XY-392"));
-	assert_eq!(active_run.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
-	assert_eq!(active_run.author.as_deref(), Some("Yvette"));
+	assert_eq!(current_lane.project_id, config.service_id());
+	assert_eq!(current_lane.project_display_name, "hack-ink/pubfi-mono-v2");
+	assert_eq!(current_lane.issue_identifier.as_deref(), Some("XY-392"));
+	assert_eq!(current_lane.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
+	assert_eq!(current_lane.author.as_deref(), Some("Yvette"));
 	assert_eq!(
-		active_run.private_evidence.read_command,
+		current_lane.private_evidence.read_command,
 		format!("decodex evidence XY-392 --run-id {run_id} --attempt 1 --json")
 	);
 	assert_eq!(recent_run.issue_identifier.as_deref(), Some("XY-392"));
 	assert_eq!(recent_run.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
 	assert_eq!(recent_run.author.as_deref(), Some("Yvette"));
-	assert_eq!(snapshot_json["active_runs"][0]["project_id"], "pubfi");
+	assert_eq!(snapshot_json["current_lanes"][0]["project_id"], "pubfi");
 	assert_eq!(
-		snapshot_json["active_runs"][0]["project_display_name"],
+		snapshot_json["current_lanes"][0]["project_display_name"],
 		"hack-ink/pubfi-mono-v2"
 	);
-	assert_eq!(snapshot_json["active_runs"][0]["issue_identifier"], "XY-392");
+	assert_eq!(snapshot_json["current_lanes"][0]["issue_identifier"], "XY-392");
 	assert_eq!(
-		snapshot_json["active_runs"][0]["title"],
+		snapshot_json["current_lanes"][0]["title"],
 		"Hydrate issue display metadata on run rows"
 	);
-	assert_eq!(snapshot_json["active_runs"][0]["author"], "Yvette");
+	assert_eq!(snapshot_json["current_lanes"][0]["author"], "Yvette");
 	assert_eq!(
-		snapshot_json["active_runs"][0]["private_evidence"]["read_command"],
+		snapshot_json["current_lanes"][0]["private_evidence"]["read_command"],
 		format!("decodex evidence XY-392 --run-id {run_id} --attempt 1 --json")
 	);
-	assert_eq!(snapshot_json["active_runs"][0]["control_capability"]["status"], "active");
+	assert_eq!(snapshot_json["current_lanes"][0]["control_capability"]["status"], "active");
 	assert_eq!(
-		snapshot_json["active_runs"][0]["control_capability"]["thread_id"],
+		snapshot_json["current_lanes"][0]["control_capability"]["thread_id"],
 		"thread-1"
 	);
 	assert_eq!(
-		snapshot_json["active_runs"][0]["control_capability"]["turn_id"],
+		snapshot_json["current_lanes"][0]["control_capability"]["turn_id"],
 		"turn-1"
 	);
 }
@@ -342,7 +415,7 @@ fn idle_operator_status_snapshot_has_no_runtime_or_recovery_noise() {
 	assert_eq!(snapshot.project_id, "pubfi");
 	assert_eq!(snapshot.run_limit, 10);
 	assert!(snapshot.warnings.is_empty(), "idle snapshot warnings: {:?}", snapshot.warnings);
-	assert!(snapshot.active_runs.is_empty(), "idle snapshot should have no active runs");
+	assert!(snapshot.current_lanes.is_empty(), "idle snapshot should have no current lanes");
 	assert!(snapshot.recent_runs.is_empty(), "idle snapshot should have no run history");
 	assert!(snapshot.history_lanes.is_empty(), "idle snapshot should have no run ledger lanes");
 	assert!(
@@ -368,7 +441,7 @@ fn idle_operator_status_snapshot_has_no_runtime_or_recovery_noise() {
 	for field in [
 		"warnings",
 		"warning_details",
-		"active_runs",
+		"current_lanes",
 		"recent_runs",
 		"history_lanes",
 		"queued_candidates",
@@ -386,20 +459,20 @@ fn idle_operator_status_snapshot_has_no_runtime_or_recovery_noise() {
 	assert!(rendered.contains("Running lanes: 0"));
 	assert!(rendered.contains("Run ledger shown: 0 issue lanes from 0 history attempts"));
 	assert!(rendered.contains("Backlog: 0"));
-	assert!(rendered.contains("Active queue echoes: 0"));
+	assert!(rendered.contains("Claimed queue echoes: 0"));
 	assert!(rendered.contains("Stale closed queue labels: 0"));
 	assert!(rendered.contains("Recovery worktrees: 0"));
 	assert!(rendered.contains("Post-review lanes: 0"));
-	assert!(rendered.contains("\nRunning Lanes\n- none\n"));
+	assert!(rendered.contains("\nCurrent Lanes\n- none\n"));
 	assert!(rendered.contains("\nRun Ledger\n- none\n"));
 	assert!(rendered.contains("\nBacklog\n- none\n"));
-	assert!(rendered.contains("\nActive Queue Echoes\n- none\n"));
+	assert!(rendered.contains("\nClaimed Queue Echoes\n- none\n"));
 	assert!(rendered.contains("\nStale Closed Queue Labels\n- none\n"));
 	assert!(rendered.contains("\nRecovery Worktrees\n- none\n"));
 	assert!(rendered.contains("\nPost-Review Lanes\n- none\n"));
 	assert!(!rendered.contains("Warning details:"));
 	assert!(!rendered.contains("run_id:"));
-	assert!(!rendered.contains("active_lease: true"));
+	assert!(!rendered.contains("run_lease: true"));
 	assert!(!rendered.contains("role: post_review_lane"));
 	assert!(!rendered.contains("role: cleanup_only"));
 }
@@ -452,7 +525,7 @@ fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
 	let accounts =
 		snapshot_json["accounts"].as_array().expect("snapshot should expose configured accounts");
 
-	assert!(snapshot.active_runs.is_empty());
+	assert!(snapshot.current_lanes.is_empty());
 	assert_eq!(snapshot_json["account_control"]["mode"], "balanced");
 	assert_eq!(
 		snapshot_json["account_control"]["account_selector"],
@@ -755,7 +828,7 @@ fn runtime_recovery_preserves_legacy_cleanup_only_provenance_without_recoverable
 		.expect("legacy mapping should remain");
 
 	assert!(
-		recovered_state.active_issues.is_empty(),
+		recovered_state.recoverable_issues.is_empty(),
 		"terminal cleanup-only worktree should not become a retry lane"
 	);
 	assert_eq!(mapping.provenance().source(), "legacy_unknown");
@@ -798,8 +871,8 @@ fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
 		.expect("fresh active marker should recover the lease");
 
 	assert!(
-		recovered_state.active_issues.is_empty(),
-		"fresh marker should recover as the active lease instead of a retry queue item"
+		recovered_state.recoverable_issues.is_empty(),
+		"fresh marker should recover as the run lease instead of a retry queue item"
 	);
 	assert_eq!(mapping.provenance().source(), "runtime_recovered");
 	assert_eq!(mapping.provenance().created_at_unix(), Some(observed_at_unix));
@@ -887,7 +960,7 @@ fn operator_status_snapshot_ignores_retry_schedule_on_running_attempt() {
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should exist");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
 
 	assert_eq!(run.phase, "executing");
 	assert_eq!(run.wait_reason, None);
@@ -1051,7 +1124,7 @@ fn operator_status_snapshot_marks_soft_stalls_before_hard_timeout() {
 
 	let marker_path = worktree_path.join(RUN_ACTIVITY_MARKER_FILE);
 	let marker_body = fs::read_to_string(&marker_path).expect("marker body should load");
-	let suspected_age = (ACTIVE_RUN_IDLE_TIMEOUT.as_secs() / 2).saturating_add(1) as i64;
+	let suspected_age = (RUN_LEASE_IDLE_TIMEOUT.as_secs() / 2).saturating_add(1) as i64;
 	let stale_progress = OffsetDateTime::now_utc().unix_timestamp() - suspected_age;
 	let rewritten = marker_body
 		.lines()
@@ -1070,7 +1143,7 @@ fn operator_status_snapshot_marks_soft_stalls_before_hard_timeout() {
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should exist");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
 
 	assert_eq!(run.current_operation, state::RUN_OPERATION_AGENT_RUN);
 	assert!(run.last_progress_at.is_some());
@@ -1166,7 +1239,7 @@ fn operator_status_snapshot_diagnoses_protocol_only_model_execution() {
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should exist");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
 	assert_eq!(run.wait_reason.as_deref(), Some("model_execution"));
@@ -1205,13 +1278,13 @@ fn operator_status_snapshot_counts_stopped_active_process_as_attention_not_runni
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should remain visible");
+	let run = snapshot.current_lanes.first().expect("current lane should remain visible");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
 	assert_eq!(run.phase, "executing");
 	assert_eq!(run.process_alive, Some(false));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_stopped"));
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 }
@@ -1272,13 +1345,13 @@ fn operator_status_snapshot_counts_zombie_active_process_as_attention_not_runnin
 	assert!(observed_stopped, "exited child process must not count as alive");
 
 	let snapshot = snapshot.expect("snapshot should be captured while child is unreaped");
-	let run = snapshot.active_runs.first().expect("active run should remain visible");
+	let run = snapshot.current_lanes.first().expect("current lane should remain visible");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
 	assert_eq!(run.phase, "executing");
 	assert_eq!(run.process_alive, Some(false));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_stopped"));
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 }
@@ -1314,7 +1387,7 @@ fn operator_status_snapshot_counts_previous_boot_process_as_attention_not_runnin
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should remain visible");
+	let run = snapshot.current_lanes.first().expect("current lane should remain visible");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
 	assert_eq!(run.phase, "executing");
@@ -1325,14 +1398,14 @@ fn operator_status_snapshot_counts_previous_boot_process_as_attention_not_runnin
 	assert!(!run.has_fresh_execution);
 	assert!(!run.counts_as_running);
 	assert!(run.needs_attention);
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
-fn operator_status_snapshot_projects_unleased_app_server_active_run_as_retained_attention() {
+fn operator_status_snapshot_projects_unleased_app_server_current_lane_as_retained_attention() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("Todo", &[]);
@@ -1365,14 +1438,14 @@ fn operator_status_snapshot_projects_unleased_app_server_active_run_as_retained_
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should remain visible");
+	let run = snapshot.current_lanes.first().expect("current lane should remain visible");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
-	assert_eq!(snapshot.active_runs.len(), 1);
+	assert_eq!(snapshot.current_lanes.len(), 1);
 	assert_eq!(run.run_id, "run-1");
 	assert_eq!(run.status, "running");
 	assert_eq!(run.phase, "executing");
-	assert!(!run.active_lease);
+	assert!(!run.run_lease);
 	assert_eq!(run.queue_lease_state, "not_held");
 	assert_eq!(run.execution_liveness, "process_identity_mismatch");
 	assert_eq!(run.process_alive, Some(false));
@@ -1388,7 +1461,7 @@ fn operator_status_snapshot_projects_unleased_app_server_active_run_as_retained_
 	assert!(run.has_fresh_execution);
 	assert!(!run.counts_as_running);
 	assert!(run.needs_attention);
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 	assert_eq!(snapshot.worktrees[0].ownership, "retained_attention");
@@ -1446,29 +1519,29 @@ fn operator_status_snapshot_does_not_shadow_post_review_lane_with_retained_atten
 		mergeable: Some(String::from("UNKNOWN")),
 		check_state: Some(String::from("SUCCESS")),
 		unresolved_review_threads: Some(1),
-		shadowed_by_active_run: false,
+		shadowed_by_current_lane: false,
 		readback_warning: None,
 		readback_root_cause: Some(String::from("lineage_validation_failed")),
 		loop_status: None,
 	}];
 
-	orchestrator::hydrate_post_review_lane_active_run_shadowing(&mut snapshot);
+	orchestrator::hydrate_post_review_lane_current_lane_shadowing(&mut snapshot);
 	orchestrator::refresh_operator_project_summary(&mut snapshot, None);
 
 	let project = snapshot.projects.first().expect("project summary should exist");
 	let lane = snapshot.post_review_lanes.first().expect("post-review lane should remain visible");
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
-	assert!(snapshot.active_runs[0].has_fresh_execution);
-	assert!(!snapshot.active_runs[0].counts_as_running);
-	assert!(snapshot.active_runs[0].needs_attention);
-	assert_eq!(snapshot.active_runs[0].ownership_state, "retained_attention");
-	assert!(!lane.shadowed_by_active_run);
+	assert!(snapshot.current_lanes[0].has_fresh_execution);
+	assert!(!snapshot.current_lanes[0].counts_as_running);
+	assert!(snapshot.current_lanes[0].needs_attention);
+	assert_eq!(snapshot.current_lanes[0].ownership_state, "retained_attention");
+	assert!(!lane.shadowed_by_current_lane);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.post_review_lane_count, 1);
 	assert_eq!(project.waiting_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
-	assert!(rendered.contains("shadowed_by_active_run: no"));
+	assert!(rendered.contains("shadowed_by_current_lane: no"));
 	assert!(rendered.contains("readback_root_cause: lineage_validation_failed"));
 }
 
@@ -1503,7 +1576,7 @@ fn operator_status_snapshot_counts_reused_pid_as_attention_not_running() {
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should remain visible");
+	let run = snapshot.current_lanes.first().expect("current lane should remain visible");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
 	assert_eq!(run.phase, "executing");
@@ -1514,7 +1587,7 @@ fn operator_status_snapshot_counts_reused_pid_as_attention_not_running() {
 		run.process_liveness_reason.as_deref(),
 		Some("process_start_identity_mismatch")
 	);
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 }
@@ -1544,14 +1617,14 @@ fn operator_status_snapshot_keeps_unleased_live_process_visible_but_not_running(
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should remain visible");
+	let run = snapshot.current_lanes.first().expect("current lane should remain visible");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
-	assert_eq!(snapshot.active_runs.len(), 1);
+	assert_eq!(snapshot.current_lanes.len(), 1);
 	assert_eq!(run.run_id, "run-1");
 	assert_eq!(run.status, "running");
 	assert_eq!(run.attempt_status, "running");
-	assert!(!run.active_lease);
+	assert!(!run.run_lease);
 	assert_eq!(run.queue_lease_state, "not_held");
 	assert_eq!(run.execution_liveness, "process_alive");
 	assert_eq!(run.process_alive, Some(true));
@@ -1565,11 +1638,11 @@ fn operator_status_snapshot_keeps_unleased_live_process_visible_but_not_running(
 	assert!(run
 		.lane_control_conditions
 		.iter()
-		.any(|condition| condition == "active_lease_missing"));
+		.any(|condition| condition == "run_lease_missing"));
 	assert!(run.has_fresh_execution);
 	assert!(!run.counts_as_running);
 	assert!(!run.needs_attention);
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.retained_worktree_count, 1);
 	assert_eq!(snapshot.worktrees[0].ownership, "orphaned_live_thread");
@@ -1607,13 +1680,13 @@ fn operator_status_snapshot_keeps_terminal_status_live_process_in_recent_orphan_
 		.expect("live terminal run should remain inspectable");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
-	assert!(snapshot.active_runs.is_empty());
+	assert!(snapshot.current_lanes.is_empty());
 	assert_eq!(run.run_id, "run-1");
 	assert_eq!(run.status, "failed");
 	assert_eq!(run.attempt_status, "failed");
 	assert_eq!(run.status_projection_reason, None);
 	assert_eq!(run.phase, "failed");
-	assert!(!run.active_lease);
+	assert!(!run.run_lease);
 	assert_eq!(run.queue_lease_state, "not_held");
 	assert_eq!(run.execution_liveness, "not_running");
 	assert_eq!(run.ownership_state, "orphaned_live_thread");
@@ -1625,7 +1698,7 @@ fn operator_status_snapshot_keeps_terminal_status_live_process_in_recent_orphan_
 		.any(|condition| condition == "terminal_attempt_has_live_evidence"));
 	assert_eq!(run.process_alive, Some(true));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_alive"));
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.current_lane_count, 0);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.retained_worktree_count, 1);
 	assert_eq!(snapshot.worktrees[0].ownership, "orphaned_live_thread");
@@ -1649,10 +1722,10 @@ fn operator_status_snapshot_excludes_terminal_thread_archive_from_running_lanes(
 	let project = snapshot.projects.first().expect("project summary should exist");
 
 	assert!(
-		snapshot.active_runs.is_empty(),
+		snapshot.current_lanes.is_empty(),
 		"terminal archive-only protocol events must not present as active execution"
 	);
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.current_lane_count, 0);
 	assert_eq!(project.running_lane_count, 0);
 	assert!(
 		snapshot.recent_runs.iter().all(|run| run.run_id != "run-1"),
@@ -1700,11 +1773,11 @@ fn operator_status_snapshot_projects_terminal_run_with_active_thread_as_retained
 		.find(|run| run.run_id == "run-1")
 		.expect("terminal run should remain inspectable");
 
-	assert!(snapshot.active_runs.is_empty());
+	assert!(snapshot.current_lanes.is_empty());
 	assert_eq!(run.status, "stalled");
 	assert_eq!(run.attempt_status, "stalled");
 	assert_eq!(run.status_projection_reason, None);
-	assert!(!run.active_lease);
+	assert!(!run.run_lease);
 	assert_eq!(run.queue_lease_state, "not_held");
 	assert_eq!(run.execution_liveness, "not_running");
 	assert_eq!(run.ownership_state, "retained_attention");
@@ -1750,13 +1823,13 @@ fn operator_status_snapshot_keeps_succeeded_status_live_process_in_recent_orphan
 		.expect("live succeeded run should remain inspectable");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
-	assert!(snapshot.active_runs.is_empty());
+	assert!(snapshot.current_lanes.is_empty());
 	assert_eq!(run.run_id, "run-1");
 	assert_eq!(run.status, "succeeded");
 	assert_eq!(run.attempt_status, "succeeded");
 	assert_eq!(run.status_projection_reason, None);
 	assert_eq!(run.phase, "completed");
-	assert!(!run.active_lease);
+	assert!(!run.run_lease);
 	assert_eq!(run.queue_lease_state, "not_held");
 	assert_eq!(run.execution_liveness, "not_running");
 	assert_eq!(run.ownership_state, "orphaned_live_thread");
@@ -1764,7 +1837,7 @@ fn operator_status_snapshot_keeps_succeeded_status_live_process_in_recent_orphan
 	assert_eq!(run.terminalization_state, "barrier_started");
 	assert_eq!(run.process_alive, Some(true));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_alive"));
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.current_lane_count, 0);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.retained_worktree_count, 1);
 	assert_eq!(snapshot.worktrees[0].ownership, "orphaned_live_thread");
@@ -1851,17 +1924,17 @@ fn assert_terminal_pending_status_projection(snapshot: &OperatorStatusSnapshot) 
 		.expect("terminal-pending run should remain inspectable in recent runs");
 
 	assert!(
-		snapshot.active_runs.is_empty(),
+		snapshot.current_lanes.is_empty(),
 		"terminal-finalized runs must not keep presenting as active execution"
 	);
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.current_lane_count, 0);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(run.status, "review_handoff_pending");
 	assert_eq!(run.attempt_status, "running");
 	assert_eq!(run.phase, "terminal_pending");
 	assert_eq!(run.wait_reason.as_deref(), Some("review_handoff_writeback"));
 	assert_eq!(run.current_operation, state::RUN_OPERATION_REVIEW_WRITEBACK);
-	assert!(!run.active_lease);
+	assert!(!run.run_lease);
 	assert_eq!(run.queue_lease_state, "not_held");
 	assert_eq!(run.execution_liveness, "not_running");
 	assert!(!run.suspected_stall);
@@ -1890,7 +1963,7 @@ fn assert_terminal_pending_lane_inspect(state_store: &StateStore) {
 	assert_eq!(data["runs"][0]["phase"], "terminal_pending");
 	assert_eq!(data["runs"][0]["waitReason"], "review_handoff_writeback");
 	assert_eq!(data["runs"][0]["currentOperation"], state::RUN_OPERATION_REVIEW_WRITEBACK);
-	assert_eq!(data["runs"][0]["activeLease"], false);
+	assert_eq!(data["runs"][0]["runLease"], false);
 	assert_eq!(data["runs"][0]["executionLiveness"], "not_running");
 	assert_eq!(data["runs"][0]["softInterruptAvailable"], false);
 	assert_eq!(data["runs"][0]["hardInterruptAvailable"], false);
@@ -1991,7 +2064,7 @@ fn operator_status_snapshot_promotes_starting_after_app_server_activity() {
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should remain visible");
+	let run = snapshot.current_lanes.first().expect("current lane should remain visible");
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
 	assert_eq!(run.status, "running");
@@ -2012,7 +2085,7 @@ fn operator_status_snapshot_counts_stale_starting_run_as_attention_not_running()
 	let issue = sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let stale_activity =
-		OffsetDateTime::now_utc().unix_timestamp() - ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 - 30;
+		OffsetDateTime::now_utc().unix_timestamp() - RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 - 30;
 
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "starting")
@@ -2040,22 +2113,22 @@ fn operator_status_snapshot_counts_stale_starting_run_as_attention_not_running()
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should remain visible");
+	let run = snapshot.current_lanes.first().expect("current lane should remain visible");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
 	assert_eq!(run.status, "starting");
 	assert_eq!(run.phase, "executing");
 	assert_eq!(run.process_alive, None);
 	assert!(run.protocol_idle_for_seconds.is_some_and(|idle| {
-		u64::try_from(idle).is_ok_and(|idle| idle >= ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
+		u64::try_from(idle).is_ok_and(|idle| idle >= RUN_LEASE_IDLE_TIMEOUT.as_secs())
 	}));
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 }
 
 #[test]
-fn operator_status_snapshot_excludes_completed_lingering_lease_from_active_runs() {
+fn operator_status_snapshot_excludes_completed_lingering_lease_from_current_lanes() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let completed_issue = sample_issue_with_sort_fields(
@@ -2075,14 +2148,14 @@ fn operator_status_snapshot_excludes_completed_lingering_lease_from_active_runs(
 		"2026-04-29T17:01:33.133Z",
 	);
 	let completed_run_id = "xy-379-attempt-1-1777482033";
-	let active_run_id = "xy-378-attempt-1-1777482000";
+	let current_lane_run_id = "xy-378-attempt-1-1777482000";
 
 	state_store
 		.record_run_attempt(completed_run_id, &completed_issue.id, 1, "running")
 		.expect("completed run should record");
 	state_store
 		.upsert_lease("pubfi", &completed_issue.id, completed_run_id, "In Progress")
-		.expect("stale active lease should remain in runtime db");
+		.expect("stale run lease should remain in runtime db");
 	state_store
 		.append_event(completed_run_id, 1, "turn/completed", "{\"turn\":\"1\"}")
 		.expect("terminal protocol evidence should record");
@@ -2090,11 +2163,11 @@ fn operator_status_snapshot_excludes_completed_lingering_lease_from_active_runs(
 		.update_run_status(completed_run_id, "succeeded")
 		.expect("terminal status should update");
 	state_store
-		.record_run_attempt(active_run_id, &active_issue.id, 1, "running")
-		.expect("active run should record");
+		.record_run_attempt(current_lane_run_id, &active_issue.id, 1, "running")
+		.expect("current lane should record");
 	state_store
-		.upsert_lease("pubfi", &active_issue.id, active_run_id, "In Progress")
-		.expect("active lease should record");
+		.upsert_lease("pubfi", &active_issue.id, current_lane_run_id, "In Progress")
+		.expect("run lease should record");
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 25)
 		.expect("snapshot should build");
@@ -2105,14 +2178,14 @@ fn operator_status_snapshot_excludes_completed_lingering_lease_from_active_runs(
 		.find(|run| run.run_id == completed_run_id)
 		.expect("completed stale-lease run should remain in history");
 
-	assert_eq!(snapshot.active_runs.len(), 1);
-	assert_eq!(snapshot.active_runs[0].run_id, active_run_id);
-	assert_eq!(snapshot.active_runs[0].phase, "executing");
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(snapshot.current_lanes.len(), 1);
+	assert_eq!(snapshot.current_lanes[0].run_id, current_lane_run_id);
+	assert_eq!(snapshot.current_lanes[0].phase, "executing");
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(snapshot.recent_runs.len(), 2);
 	assert_eq!(completed_run.phase, "completed");
 	assert!(
-		completed_run.active_lease,
+		completed_run.run_lease,
 		"regression setup should keep the stale lease visible in history"
 	);
 }
@@ -2171,7 +2244,7 @@ fn operator_status_snapshot_rolls_current_child_bucket_elapsed_time_into_bucket(
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should exist");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
 	let activity = run.child_agent_activity.as_ref().expect("activity should render");
 	let protocol_activity =
 		run.protocol_activity.as_ref().expect("protocol fallback should render");
@@ -2248,7 +2321,7 @@ fn operator_status_snapshot_uses_structured_protocol_activity_summary() {
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should exist");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
 	assert_eq!(run.wait_reason.as_deref(), Some("approval_or_user_input"));
@@ -2301,7 +2374,7 @@ fn operator_status_snapshot_ignores_marker_from_newer_attempt_for_stored_run() {
 }
 
 #[test]
-fn operator_status_snapshot_keeps_all_active_runs_when_recent_runs_are_limited() {
+fn operator_status_snapshot_keeps_all_current_lanes_when_recent_runs_are_limited() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let first_issue = sample_issue_with_sort_fields(
@@ -2345,8 +2418,8 @@ fn operator_status_snapshot_keeps_all_active_runs_when_recent_runs_are_limited()
 
 	assert_eq!(snapshot.run_limit, 1);
 	assert_eq!(snapshot.recent_runs.len(), 2);
-	assert_eq!(snapshot.active_runs.len(), 2);
-	assert!(snapshot.active_runs.iter().all(|run| run.active_lease));
+	assert_eq!(snapshot.current_lanes.len(), 2);
+	assert!(snapshot.current_lanes.iter().all(|run| run.run_lease));
 }
 
 #[test]
@@ -2365,7 +2438,7 @@ fn operator_status_snapshot_keeps_terminal_run_after_lane_cleanup() {
 	state_store.record_run_attempt("run-done", &issue.id, 1, "running").expect("run should record");
 	state_store
 		.upsert_lease("pubfi", &issue.id, "run-done", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 	state_store
 		.upsert_worktree(
 			"pubfi",
@@ -2375,18 +2448,18 @@ fn operator_status_snapshot_keeps_terminal_run_after_lane_cleanup() {
 		)
 		.expect("worktree should record");
 	state_store.update_run_status("run-done", "succeeded").expect("terminal status should update");
-	state_store.clear_lease(&issue.id).expect("terminal cleanup should clear active lease");
+	state_store.clear_lease(&issue.id).expect("terminal cleanup should clear run lease");
 	state_store.clear_worktree(&issue.id).expect("terminal cleanup should clear worktree");
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 25)
 		.expect("snapshot should build");
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
-	assert!(snapshot.active_runs.is_empty());
+	assert!(snapshot.current_lanes.is_empty());
 	assert_eq!(snapshot.recent_runs.len(), 1);
 	assert_eq!(snapshot.recent_runs[0].run_id, "run-done");
 	assert_eq!(snapshot.recent_runs[0].phase, "completed");
-	assert!(!snapshot.recent_runs[0].active_lease);
+	assert!(!snapshot.recent_runs[0].run_lease);
 	assert_eq!(snapshot.recent_runs[0].branch_name, None);
 	assert_eq!(snapshot.recent_runs[0].worktree_path, None);
 	assert_eq!(snapshot.history_lanes.len(), 1);
@@ -2396,7 +2469,7 @@ fn operator_status_snapshot_keeps_terminal_run_after_lane_cleanup() {
 }
 
 #[test]
-fn status_hydration_does_not_fabricate_active_leases_for_recovered_candidates() {
+fn status_hydration_does_not_fabricate_run_leases_for_recovered_candidates() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("In Progress", &[]);
@@ -2414,7 +2487,7 @@ fn status_hydration_does_not_fabricate_active_leases_for_recovered_candidates() 
 	orchestrator::hydrate_status_snapshot_state(
 		&config,
 		&state_store,
-		RecoveredRuntimeState { active_issues: vec![issue.clone()] },
+		RecoveredRuntimeState { recoverable_issues: vec![issue.clone()] },
 	)
 	.expect("status hydration should succeed");
 
@@ -2422,8 +2495,8 @@ fn status_hydration_does_not_fabricate_active_leases_for_recovered_candidates() 
 		.expect("snapshot should build");
 
 	assert!(
-		snapshot.active_runs.is_empty(),
-		"recovered retry candidates should not appear as active leased runs"
+		snapshot.current_lanes.is_empty(),
+		"recovered retry candidates should not appear as run leased runs"
 	);
 	assert!(
 		snapshot.recent_runs.is_empty(),
@@ -2432,7 +2505,7 @@ fn status_hydration_does_not_fabricate_active_leases_for_recovered_candidates() 
 }
 
 #[test]
-fn live_operator_status_snapshot_hydrates_active_run_thread_and_event_metadata_from_marker() {
+fn live_operator_status_snapshot_hydrates_current_lane_thread_and_event_metadata_from_marker() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let issue = sample_issue("In Progress", &[active_label.as_str()]);
@@ -2508,20 +2581,20 @@ fn live_operator_status_snapshot_hydrates_active_run_thread_and_event_metadata_f
 	)
 	.expect("snapshot should build");
 
-	assert_eq!(snapshot.active_runs.len(), 1);
-	assert_eq!(snapshot.active_runs[0].thread_id.as_deref(), Some("thread-1"));
-	assert_eq!(snapshot.active_runs[0].turn_id.as_deref(), Some("turn-1"));
-	assert_eq!(snapshot.active_runs[0].thread_status.as_deref(), Some("active"));
+	assert_eq!(snapshot.current_lanes.len(), 1);
+	assert_eq!(snapshot.current_lanes[0].thread_id.as_deref(), Some("thread-1"));
+	assert_eq!(snapshot.current_lanes[0].turn_id.as_deref(), Some("turn-1"));
+	assert_eq!(snapshot.current_lanes[0].thread_status.as_deref(), Some("active"));
 	assert_eq!(
-		snapshot.active_runs[0].thread_active_flags,
+		snapshot.current_lanes[0].thread_active_flags,
 		vec![String::from("waitingOnApproval")]
 	);
-	assert!(snapshot.active_runs[0].interactive_requested);
-	assert_eq!(snapshot.active_runs[0].event_count, 2);
-	assert_eq!(snapshot.active_runs[0].last_event_type.as_deref(), Some("turn/completed"));
-	assert_eq!(snapshot.active_runs[0].effective_model.as_deref(), Some("gpt-5.4"));
-	assert_eq!(snapshot.active_runs[0].effective_model_provider.as_deref(), Some("openai"));
-	assert_eq!(snapshot.active_runs[0].effective_approval_policy.as_deref(), Some("never"));
-	assert_eq!(snapshot.active_runs[0].effective_sandbox_mode.as_deref(), Some("workspaceWrite"));
-	assert!(snapshot.active_runs[0].last_event_at.is_some());
+	assert!(snapshot.current_lanes[0].interactive_requested);
+	assert_eq!(snapshot.current_lanes[0].event_count, 2);
+	assert_eq!(snapshot.current_lanes[0].last_event_type.as_deref(), Some("turn/completed"));
+	assert_eq!(snapshot.current_lanes[0].effective_model.as_deref(), Some("gpt-5.4"));
+	assert_eq!(snapshot.current_lanes[0].effective_model_provider.as_deref(), Some("openai"));
+	assert_eq!(snapshot.current_lanes[0].effective_approval_policy.as_deref(), Some("never"));
+	assert_eq!(snapshot.current_lanes[0].effective_sandbox_mode.as_deref(), Some("workspaceWrite"));
+	assert!(snapshot.current_lanes[0].last_event_at.is_some());
 }

@@ -820,7 +820,7 @@ fn schedule_retry_after_child_exit_records_continuation_retry_for_clean_exit() {
 }
 
 #[test]
-fn schedule_retry_after_child_exit_terminalizes_active_phase_goal_tracked_rewrites() {
+fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites() {
 	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
 		&sample_workflow_markdown(
 			"pubfi",
@@ -894,7 +894,7 @@ fn schedule_retry_after_child_exit_terminalizes_active_phase_goal_tracked_rewrit
 		IssueDispatchMode::Retry,
 		exit_status,
 	)
-	.expect("active phase goal tracked rewrites should terminalize cleanly");
+	.expect("open phase goal tracked rewrites should terminalize cleanly");
 
 	let run_attempt = state_store
 		.run_attempt(run_id)
@@ -1464,7 +1464,7 @@ fn spawn_sleeping_daemon_child(
 	DaemonRunChild {
 		child,
 		issue_id: active_issue.id.clone(),
-		run_id: String::from("active-run"),
+		run_id: String::from("leased-run"),
 		attempt_number: 1,
 		initial_issue_state: active_issue.state.name.clone(),
 		retry_project_slug: active_issue
@@ -1528,8 +1528,8 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 		)
 		.expect("retained worktree should record");
 	state_store
-		.record_run_attempt("active-run", &active_issue.id, 1, "running")
-		.expect("active run should record");
+		.record_run_attempt("leased-run", &active_issue.id, 1, "running")
+		.expect("current lane should record");
 
 	seed_review_handoff_marker_value(
 		&state_store,

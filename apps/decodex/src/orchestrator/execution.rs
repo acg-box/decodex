@@ -470,6 +470,17 @@ struct ArchitectureRecoveryTerminalEventInput<'a> {
 	recovery_attempt_number: usize,
 }
 
+#[derive(Clone, Copy)]
+struct PhaseGoalRecoveryRecord<'a> {
+	project: &'a ServiceConfig,
+	state_store: &'a StateStore,
+	issue_run: &'a IssueRunPlan,
+	source_phase: PhaseGoalKind,
+	next_phase: PhaseGoalKind,
+	source_error_class: &'a str,
+	source_error_message: Option<&'a str>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RunFailureWritebackDisposition {
 	RetryableGeneric,
@@ -1114,7 +1125,7 @@ where
 				input.review_context,
 			),
 			max_turns: input.workflow.frontmatter().execution().max_turns(),
-			timeout: ACTIVE_RUN_IDLE_TIMEOUT,
+			timeout: RUN_LEASE_IDLE_TIMEOUT,
 			process_env: input.process_env.clone(),
 			continuation_user_input: Some(build_issue_run_continuation_user_input(
 				input.project,
@@ -1148,7 +1159,7 @@ where
 			}
 
 			if !input.tracker_tool_bridge.has_tracker_exit_signal()
-				&& let Some(summary) = maybe_continue_after_active_phase_goal_recovery(
+				&& let Some(summary) = maybe_continue_after_phase_goal_recovery(
 					input.project,
 					input.workflow,
 					input.state_store,
@@ -1262,19 +1273,21 @@ where
 	Ok(Some(run_summary_from_issue_run(project.service_id(), issue_run)))
 }
 
-fn maybe_continue_after_active_phase_goal_recovery(
+fn maybe_continue_after_phase_goal_recovery(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 	error: &Report,
 ) -> Result<Option<RunSummary>> {
-	let Some(recovery) = recover_active_phase_goal_continuation(
+	let source_error_message = phase_goal_recovery_source_error_message(error);
+	let Some(recovery) = recover_phase_goal_continuation(
 		project,
 		workflow,
 		state_store,
 		issue_run,
 		phase_goal_recovery_source_error_class(error),
+		Some(source_error_message.as_str()),
 	)? else {
 		return Ok(None);
 	};
@@ -1291,24 +1304,25 @@ fn maybe_continue_after_active_phase_goal_recovery(
 		source_phase = recovery.source_phase.as_str(),
 		next_phase = recovery.next_phase.as_str(),
 		error = %error,
-		"Recovered active phase goal after app-server failure; scheduling continuation."
+		"Recovered phase goal after app-server failure; scheduling continuation."
 	);
 
 	Ok(Some(summary))
 }
 
-fn recover_active_phase_goal_continuation(
+fn recover_phase_goal_continuation(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 	source_error_class: &str,
+	source_error_message: Option<&str>,
 ) -> Result<Option<PhaseGoalRecoveryContinuation>> {
 	if !worktree_has_tracked_changes(&issue_run.worktree.path) {
 		return Ok(None);
 	}
 
-	let Some(source_phase) = latest_active_phase_goal_recovery_candidate(
+	let Some(source_phase) = latest_phase_goal_recovery_candidate(
 		project,
 		state_store,
 		issue_run,
@@ -1326,15 +1340,30 @@ fn recover_active_phase_goal_continuation(
 		PhaseGoalTransition::Continue(next_goal) => next_goal.phase,
 		PhaseGoalTransition::CompleteRun => return Ok(None),
 	};
-
-	record_phase_goal_recovery_continuation(
+	let prior_recovery_count = matching_phase_goal_recovery_count(
+		project,
+		state_store,
+		issue_run,
+		source_phase,
+		source_error_class,
+	)?;
+	let recovery_record = PhaseGoalRecoveryRecord {
 		project,
 		state_store,
 		issue_run,
 		source_phase,
 		next_phase,
 		source_error_class,
-	)?;
+		source_error_message,
+	};
+
+	if prior_recovery_count >= PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT {
+		record_phase_goal_recovery_blocked(recovery_record, prior_recovery_count)?;
+
+		return Ok(None);
+	}
+
+	record_phase_goal_recovery_continuation(recovery_record)?;
 
 	Ok(Some(PhaseGoalRecoveryContinuation { source_phase, next_phase }))
 }
@@ -1343,7 +1372,23 @@ fn phase_goal_recovery_source_error_class(error: &Report) -> &'static str {
 	retained_progress_source_error_class(error).unwrap_or("app_server_run_failed")
 }
 
-fn latest_active_phase_goal_recovery_candidate(
+fn phase_goal_recovery_source_error_message(error: &Report) -> String {
+	truncate_phase_goal_recovery_error(error.to_string(), 512)
+}
+
+fn truncate_phase_goal_recovery_error(value: String, max_chars: usize) -> String {
+	if value.chars().count() <= max_chars {
+		return value;
+	}
+
+	let mut truncated = value.chars().take(max_chars).collect::<String>();
+
+	truncated.push_str("...");
+
+	truncated
+}
+
+fn latest_phase_goal_recovery_candidate(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -1424,27 +1469,81 @@ fn phase_goal_recovery_candidate_from_status(
 	}
 }
 
-fn record_phase_goal_recovery_continuation(
+fn matching_phase_goal_recovery_count(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 	source_phase: PhaseGoalKind,
-	next_phase: PhaseGoalKind,
 	source_error_class: &str,
-) -> Result<()> {
-	state_store.append_private_execution_event(
-		project.service_id(),
-		&issue_run.issue.id,
-		&issue_run.run_id,
-		issue_run.attempt_number,
-		"phase_goal_recovery",
+) -> Result<i64> {
+	let events =
+		state_store.list_private_execution_events_for_issue(project.service_id(), &issue_run.issue.id)?;
+
+	Ok(events
+		.iter()
+		.filter(|event| {
+			event.event_type() == PHASE_GOAL_RECOVERY_EVENT_TYPE
+				&& phase_goal_recovery_event_source_phase(event.payload())
+					.is_some_and(|phase| phase == source_phase.as_str())
+				&& phase_goal_recovery_event_source_error_class(event.payload())
+					.is_some_and(|class| class == source_error_class)
+		})
+		.count() as i64)
+}
+
+fn phase_goal_recovery_event_source_phase(payload: &Value) -> Option<&str> {
+	payload
+		.get("phase")
+		.and_then(Value::as_str)
+		.or_else(|| payload.get("payload")?.get("sourcePhase")?.as_str())
+}
+
+fn phase_goal_recovery_event_source_error_class(payload: &Value) -> Option<&str> {
+	payload.get("payload")?.get("sourceErrorClass")?.as_str()
+}
+
+fn record_phase_goal_recovery_continuation(record: PhaseGoalRecoveryRecord<'_>) -> Result<()> {
+	record.state_store.append_private_execution_event(
+		record.project.service_id(),
+		&record.issue_run.issue.id,
+		&record.issue_run.run_id,
+		record.issue_run.attempt_number,
+		PHASE_GOAL_RECOVERY_EVENT_TYPE,
 		json!({
 			"schema": "decodex.phase_goal_signal/1",
-			"phase": source_phase.as_str(),
-			"signal": "active_goal_recovered",
+			"phase": record.source_phase.as_str(),
+			"signal": "phase_goal_recovered",
 			"payload": {
-				"nextPhase": next_phase.as_str(),
-				"sourceErrorClass": source_error_class,
+				"nextPhase": record.next_phase.as_str(),
+				"sourceErrorClass": record.source_error_class,
+				"sourceErrorMessage": record.source_error_message,
+			},
+		}),
+	)?;
+
+	Ok(())
+}
+
+fn record_phase_goal_recovery_blocked(
+	record: PhaseGoalRecoveryRecord<'_>,
+	prior_recovery_count: i64,
+) -> Result<()> {
+	record.state_store.append_private_execution_event(
+		record.project.service_id(),
+		&record.issue_run.issue.id,
+		&record.issue_run.run_id,
+		record.issue_run.attempt_number,
+		PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE,
+		json!({
+			"schema": "decodex.phase_goal_signal/1",
+			"phase": record.source_phase.as_str(),
+			"signal": "continuation_budget_exhausted",
+			"payload": {
+				"nextPhase": record.next_phase.as_str(),
+				"sourceErrorClass": record.source_error_class,
+				"sourceErrorMessage": record.source_error_message,
+				"priorRecoveryCount": prior_recovery_count,
+				"automaticContinuationLimit": PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT,
 			},
 		}),
 	)?;

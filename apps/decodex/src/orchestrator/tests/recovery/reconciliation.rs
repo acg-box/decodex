@@ -17,7 +17,7 @@ fn reconciliation_sample_service_owned_issue(state_name: &str) -> TrackerIssue {
 }
 
 #[test]
-fn active_run_reconciliation_detects_terminal_nonactive_and_stalled_runs() {
+fn run_lease_reconciliation_detects_terminal_not_dispatchable_and_stalled_runs() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let terminal_issue = sample_issue_with_sort_fields(
@@ -28,8 +28,8 @@ fn active_run_reconciliation_detects_terminal_nonactive_and_stalled_runs() {
 		Some(3),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let nonactive_issue = sample_issue_with_sort_fields(
-		"issue-nonactive",
+	let not_dispatchable_issue = sample_issue_with_sort_fields(
+		"issue-not-dispatchable",
 		"PUB-202",
 		"Blocked",
 		&[],
@@ -46,11 +46,11 @@ fn active_run_reconciliation_detects_terminal_nonactive_and_stalled_runs() {
 	);
 	let tracker = FakeTracker::new(vec![
 		terminal_issue.clone(),
-		nonactive_issue.clone(),
+		not_dispatchable_issue.clone(),
 		stalled_issue.clone(),
 	]);
 
-	for issue in [&terminal_issue, &nonactive_issue, &stalled_issue] {
+	for issue in [&terminal_issue, &not_dispatchable_issue, &stalled_issue] {
 		state_store
 			.record_run_attempt(&format!("run-{}", issue.identifier), &issue.id, 1, "running")
 			.expect("run attempt should record");
@@ -69,8 +69,8 @@ fn active_run_reconciliation_detects_terminal_nonactive_and_stalled_runs() {
 		.expect("stalled issue protocol event should record");
 
 	let now =
-		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1;
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		OffsetDateTime::now_utc().unix_timestamp() + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1;
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
@@ -78,28 +78,28 @@ fn active_run_reconciliation_detects_terminal_nonactive_and_stalled_runs() {
 		None,
 		now,
 	)
-	.expect("active-run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert!(actions.iter().any(|action| {
 		action.issue.id == terminal_issue.id
-			&& matches!(action.disposition, orchestrator::ActiveRunDisposition::Terminal)
+			&& matches!(action.disposition, orchestrator::RunLeaseDisposition::Terminal)
 	}));
 	assert!(actions.iter().any(|action| {
-		action.issue.id == nonactive_issue.id
-			&& matches!(action.disposition, orchestrator::ActiveRunDisposition::NonActive)
+		action.issue.id == not_dispatchable_issue.id
+			&& matches!(action.disposition, orchestrator::RunLeaseDisposition::NotDispatchable)
 	}));
 	assert!(actions.iter().any(|action| {
 		action.issue.id == stalled_issue.id
 			&& matches!(
 			action.disposition,
-			ActiveRunDisposition::Stalled{ idle_for }
-				if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT
+			RunLeaseDisposition::Stalled{ idle_for }
+				if idle_for >= RUN_LEASE_IDLE_TIMEOUT
 			)
 	}));
 }
 
 #[test]
-fn active_run_reconciliation_detects_stalled_run_without_protocol_events() {
+fn run_lease_reconciliation_detects_stalled_run_without_protocol_events() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let stalled_issue = sample_issue_with_sort_fields(
@@ -130,8 +130,8 @@ fn active_run_reconciliation_detects_stalled_run_without_protocol_events() {
 		.expect("lease should record");
 
 	let now =
-		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1;
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		OffsetDateTime::now_utc().unix_timestamp() + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1;
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
@@ -139,20 +139,20 @@ fn active_run_reconciliation_detects_stalled_run_without_protocol_events() {
 		None,
 		now,
 	)
-	.expect("active-run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert!(actions.iter().any(|action| {
 		action.issue.id == stalled_issue.id
 			&& matches!(
 				action.disposition,
-				ActiveRunDisposition::Stalled{ idle_for }
-					if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT
+				RunLeaseDisposition::Stalled{ idle_for }
+					if idle_for >= RUN_LEASE_IDLE_TIMEOUT
 			)
 	}));
 }
 
 #[test]
-fn active_run_reconciliation_supersedes_stale_lease_for_newer_attempt() {
+fn run_lease_reconciliation_supersedes_stale_lease_for_newer_attempt() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue_with_sort_fields(
@@ -179,7 +179,7 @@ fn active_run_reconciliation_supersedes_stale_lease_for_newer_attempt() {
 		.upsert_lease(config.service_id(), &issue.id, stale_run_id, "In Progress")
 		.expect("stale lease should record");
 
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
@@ -187,18 +187,18 @@ fn active_run_reconciliation_supersedes_stale_lease_for_newer_attempt() {
 		None,
 		OffsetDateTime::now_utc().unix_timestamp(),
 	)
-	.expect("active-run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert_eq!(actions.len(), 1);
 	assert!(matches!(
 		&actions[0].disposition,
-		ActiveRunDisposition::Superseded {
+		RunLeaseDisposition::Superseded {
 			newer_run_id: observed_run_id,
 			newer_attempt_number: 2,
 		} if observed_run_id == newer_run_id
 	));
 
-	orchestrator::apply_active_run_reconciliation(
+	orchestrator::apply_run_lease_reconciliation(
 		&tracker,
 		&config,
 		&state_store,
@@ -223,7 +223,7 @@ fn active_run_reconciliation_supersedes_stale_lease_for_newer_attempt() {
 }
 
 #[test]
-fn active_run_reconciliation_keeps_completed_closeout_lane_with_fresh_activity() {
+fn run_lease_reconciliation_keeps_completed_closeout_lane_with_fresh_activity() {
 	let (_temp_dir, base_config, workflow) = temp_project_layout();
 	let config = service_config_with_github_token_env_var(
 		&base_config,
@@ -264,7 +264,7 @@ fn active_run_reconciliation_keeps_completed_closeout_lane_with_fresh_activity()
 	state::write_run_activity_marker(&worktree.path, run_id, 1)
 		.expect("fresh activity marker should write");
 
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
@@ -272,11 +272,11 @@ fn active_run_reconciliation_keeps_completed_closeout_lane_with_fresh_activity()
 		None,
 		OffsetDateTime::now_utc().unix_timestamp(),
 	)
-	.expect("active-run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert!(
 		actions.is_empty(),
-		"completed retained closeout lanes with fresh activity must not be reconciled as terminal or non-active"
+		"completed retained closeout lanes with fresh activity must not be reconciled as terminal or not-dispatchable"
 	);
 }
 
@@ -322,32 +322,32 @@ fn active_daemon_child_reconciliation_keeps_completed_closeout_lane_with_fresh_a
 	state::write_run_activity_marker(&worktree.path, run_id, 1)
 		.expect("fresh activity marker should write");
 
-	let actions = orchestrator::inspect_active_daemon_child_reconciliation(
+	let actions = orchestrator::inspect_current_daemon_child_reconciliation(
 		&tracker,
 		&config,
 		&workflow,
 		&state_store,
-		ActiveChildRunContext {
+		CurrentChildRunContext {
 			child: ChildRunRef { issue_id: &issue.id, run_id, attempt_number: 1 },
 			workflow: &workflow,
 			dispatch_mode: IssueDispatchMode::Closeout,
 		},
 	)
-	.expect("active daemon-child inspection should succeed");
+	.expect("current daemon-child inspection should succeed");
 
 	assert!(
 		actions.is_empty(),
-		"completed retained closeout daemon children with fresh activity must not be reconciled as terminal or non-active"
+		"completed retained closeout daemon children with fresh activity must not be reconciled as terminal or not-dispatchable"
 	);
 }
 
 #[test]
-fn active_daemon_child_reconciliation_keeps_review_repair_lane_in_review() {
+fn current_daemon_child_reconciliation_keeps_review_repair_lane_in_review() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = reconciliation_sample_service_owned_issue("In Review");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let run_id = "run-review-repair-active";
+	let run_id = "run-review-repair-current";
 	let worktree_manager =
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree = worktree_manager
@@ -369,27 +369,27 @@ fn active_daemon_child_reconciliation_keeps_review_repair_lane_in_review() {
 		)
 		.expect("worktree mapping should record");
 
-	let actions = orchestrator::inspect_active_daemon_child_reconciliation(
+	let actions = orchestrator::inspect_current_daemon_child_reconciliation(
 		&tracker,
 		&config,
 		&workflow,
 		&state_store,
-		ActiveChildRunContext {
+		CurrentChildRunContext {
 			child: ChildRunRef { issue_id: &issue.id, run_id, attempt_number: 1 },
 			workflow: &workflow,
 			dispatch_mode: IssueDispatchMode::ReviewRepair,
 		},
 	)
-	.expect("active review-repair daemon-child inspection should succeed");
+	.expect("current review-repair daemon-child inspection should succeed");
 
 	assert!(
 		actions.is_empty(),
-		"active review-repair lanes in In Review must stay active instead of being interrupted as non-active"
+		"review-repair lanes in In Review must stay current instead of being interrupted as not-dispatchable"
 	);
 }
 
 #[test]
-fn active_daemon_child_reconciliation_keeps_closeout_child_after_tracker_completion() {
+fn current_daemon_child_reconciliation_keeps_closeout_child_after_tracker_completion() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue("Done", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
@@ -403,18 +403,18 @@ fn active_daemon_child_reconciliation_keeps_closeout_child_after_tracker_complet
 		.upsert_lease(config.service_id(), &issue.id, run_id, "Done")
 		.expect("lease should record");
 
-	let actions = orchestrator::inspect_active_daemon_child_reconciliation(
+	let actions = orchestrator::inspect_current_daemon_child_reconciliation(
 		&tracker,
 		&config,
 		&workflow,
 		&state_store,
-		ActiveChildRunContext {
+		CurrentChildRunContext {
 			child: ChildRunRef { issue_id: &issue.id, run_id, attempt_number: 1 },
 			workflow: &workflow,
 			dispatch_mode: IssueDispatchMode::Closeout,
 		},
 	)
-	.expect("active closeout daemon-child inspection should succeed");
+	.expect("current closeout daemon-child inspection should succeed");
 
 	assert!(
 		actions.is_empty(),
@@ -423,7 +423,7 @@ fn active_daemon_child_reconciliation_keeps_closeout_child_after_tracker_complet
 }
 
 #[test]
-fn active_run_reconciliation_treats_completed_retained_handoff_as_success() {
+fn run_lease_reconciliation_treats_completed_retained_handoff_as_success() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue_with_sort_fields(
 		"issue-handoff-complete",
@@ -470,8 +470,8 @@ fn active_run_reconciliation_treats_completed_retained_handoff_as_success() {
 	);
 
 	let now =
-		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1;
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		OffsetDateTime::now_utc().unix_timestamp() + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1;
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
@@ -479,12 +479,12 @@ fn active_run_reconciliation_treats_completed_retained_handoff_as_success() {
 		None,
 		now,
 	)
-	.expect("active-run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert_eq!(actions.len(), 1);
-	assert!(matches!(actions[0].disposition, ActiveRunDisposition::RetainedReviewComplete));
+	assert!(matches!(actions[0].disposition, RunLeaseDisposition::RetainedReviewComplete));
 
-	orchestrator::apply_active_run_reconciliation(
+	orchestrator::apply_run_lease_reconciliation(
 		&tracker,
 		&config,
 		&state_store,
@@ -516,7 +516,7 @@ fn active_run_reconciliation_treats_completed_retained_handoff_as_success() {
 }
 
 #[test]
-fn active_run_reconciliation_ignores_stale_retained_handoff_marker() {
+fn run_lease_reconciliation_ignores_stale_retained_handoff_marker() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue_with_sort_fields(
 		"issue-stale-handoff",
@@ -570,8 +570,8 @@ fn active_run_reconciliation_ignores_stale_retained_handoff_marker() {
 	);
 
 	let now =
-		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1;
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		OffsetDateTime::now_utc().unix_timestamp() + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1;
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
@@ -579,13 +579,13 @@ fn active_run_reconciliation_ignores_stale_retained_handoff_marker() {
 		None,
 		now,
 	)
-	.expect("active-run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert_eq!(actions.len(), 1);
 	assert!(matches!(
 		actions[0].disposition,
-		ActiveRunDisposition::Stalled { idle_for }
-			if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT
+		RunLeaseDisposition::Stalled { idle_for }
+			if idle_for >= RUN_LEASE_IDLE_TIMEOUT
 	));
 }
 
@@ -637,23 +637,23 @@ fn active_daemon_child_reconciliation_treats_completed_retained_handoff_as_succe
 	);
 
 	let now =
-		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1;
-	let actions = orchestrator::inspect_active_daemon_child_reconciliation_at(
+		OffsetDateTime::now_utc().unix_timestamp() + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1;
+	let actions = orchestrator::inspect_current_daemon_child_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
 		&state_store,
-		ActiveChildRunContext {
+		CurrentChildRunContext {
 			child: ChildRunRef { issue_id: &issue.id, run_id, attempt_number: 1 },
 			workflow: &workflow,
 			dispatch_mode: IssueDispatchMode::Normal,
 		},
 		now,
 	)
-	.expect("active daemon-child inspection should succeed");
+	.expect("current daemon-child inspection should succeed");
 
 	assert_eq!(actions.len(), 1);
-	assert!(matches!(actions[0].disposition, ActiveRunDisposition::RetainedReviewComplete));
+	assert!(matches!(actions[0].disposition, RunLeaseDisposition::RetainedReviewComplete));
 }
 
 #[test]
@@ -687,7 +687,7 @@ fn stalled_idle_duration_ignores_future_last_activity() {
 }
 
 #[test]
-fn active_run_reconciliation_uses_worktree_activity_marker_from_child_process() {
+fn run_lease_reconciliation_uses_worktree_activity_marker_from_child_process() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
@@ -722,20 +722,20 @@ fn active_run_reconciliation_uses_worktree_activity_marker_from_child_process() 
 		&marker_path,
 		format!(
 			"run_id={run_id}\nattempt_number=1\nlast_activity_unix_epoch={}\n",
-			last_activity + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64
+			last_activity + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64
 		),
 	)
 	.expect("activity marker should write");
 
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
 		&state_store,
 		None,
-		last_activity + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+		last_activity + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1,
 	)
-	.expect("active run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert!(
 		actions.is_empty(),
@@ -744,7 +744,7 @@ fn active_run_reconciliation_uses_worktree_activity_marker_from_child_process() 
 }
 
 #[test]
-fn active_run_reconciliation_allows_running_model_execution_until_model_timeout() {
+fn run_lease_reconciliation_allows_running_model_execution_until_model_timeout() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
@@ -784,22 +784,22 @@ fn active_run_reconciliation_allows_running_model_execution_until_model_timeout(
 	)
 	.expect("activity marker should write");
 
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
 		&state_store,
 		None,
-		last_activity + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+		last_activity + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1,
 	)
-	.expect("active run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert!(
 		actions.is_empty(),
 		"running model execution should not stall on the generic active idle timeout"
 	);
 
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
@@ -807,20 +807,20 @@ fn active_run_reconciliation_allows_running_model_execution_until_model_timeout(
 		None,
 		last_activity + MODEL_EXECUTION_IDLE_TIMEOUT.as_secs() as i64 + 1,
 	)
-	.expect("active run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert!(actions.iter().any(|action| {
 		action.issue.id == issue.id
 			&& matches!(
 				action.disposition,
-				ActiveRunDisposition::Stalled{ idle_for }
+				RunLeaseDisposition::Stalled{ idle_for }
 					if idle_for >= MODEL_EXECUTION_IDLE_TIMEOUT
 			)
 		}));
 }
 
 #[test]
-fn active_run_reconciliation_defers_live_repo_gate_even_with_dirty_worktree() {
+fn run_lease_reconciliation_defers_live_repo_gate_even_with_dirty_worktree() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
@@ -871,15 +871,15 @@ fn active_run_reconciliation_defers_live_repo_gate_even_with_dirty_worktree() {
 		.expect("marker should load")
 		.expect("marker should exist");
 	let last_activity = marker.last_activity_unix_epoch().expect("marker should record activity");
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
 		&state_store,
 		None,
-		last_activity + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+		last_activity + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1,
 	)
-	.expect("active run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert!(
 		actions.is_empty(),
@@ -899,22 +899,22 @@ fn active_run_reconciliation_defers_live_repo_gate_even_with_dirty_worktree() {
 		.expect("marker should reload")
 		.expect("marker should exist");
 	let last_activity = marker.last_activity_unix_epoch().expect("marker should record activity");
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
 		&state_store,
 		None,
-		last_activity + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+		last_activity + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1,
 	)
-	.expect("active run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert!(actions.iter().any(|action| {
 		action.issue.id == issue.id
 			&& matches!(
 				action.disposition,
-				ActiveRunDisposition::StalledRetainedPartialProgress{ idle_for }
-					if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT
+				RunLeaseDisposition::StalledRetainedPartialProgress{ idle_for }
+					if idle_for >= RUN_LEASE_IDLE_TIMEOUT
 			)
 	}));
 }
@@ -970,7 +970,7 @@ fn exited_child_reconciliation_defers_dirty_worktree_with_retry_marker() {
 		&state_store,
 		&issue.id,
 		run_id,
-		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+		OffsetDateTime::now_utc().unix_timestamp() + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1,
 	)
 	.expect("exited child reconciliation should evaluate");
 
@@ -1076,8 +1076,8 @@ fn apply_stalled_phase_goal_reconciliation(
 		.expect("stalled dirty issue protocol event should record");
 
 	let now =
-		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1;
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		OffsetDateTime::now_utc().unix_timestamp() + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1;
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
@@ -1090,10 +1090,10 @@ fn apply_stalled_phase_goal_reconciliation(
 	assert_eq!(actions.len(), 1);
 	assert!(matches!(
 		actions[0].disposition,
-		ActiveRunDisposition::StalledRetainedPartialProgress { .. }
+		RunLeaseDisposition::StalledRetainedPartialProgress { .. }
 	));
 
-	orchestrator::apply_active_run_reconciliation(
+	orchestrator::apply_run_lease_reconciliation(
 		&tracker,
 		&config,
 		&state_store,
@@ -1190,7 +1190,7 @@ fn stalled_protocol_idle_duration_ignores_future_protocol_activity() {
 }
 
 #[test]
-fn active_run_reconciliation_ignores_startable_preclaim_states() {
+fn run_lease_reconciliation_ignores_startable_preclaim_states() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue_with_sort_fields(
@@ -1211,7 +1211,7 @@ fn active_run_reconciliation_ignores_startable_preclaim_states() {
 		.expect("lease should record");
 
 	let now = OffsetDateTime::now_utc().unix_timestamp() + 1;
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
@@ -1219,13 +1219,13 @@ fn active_run_reconciliation_ignores_startable_preclaim_states() {
 		None,
 		now,
 	)
-	.expect("active-run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert!(actions.is_empty(), "startable pre-claim states should not be interrupted");
 }
 
 #[test]
-fn active_run_reconciliation_clears_terminal_lane_labels() {
+fn run_lease_reconciliation_clears_terminal_lane_labels() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = reconciliation_sample_service_owned_issue("Done");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
@@ -1250,7 +1250,7 @@ fn active_run_reconciliation_clears_terminal_lane_labels() {
 		)
 		.expect("worktree mapping should record");
 
-	let action = ActiveRunReconciliation {
+	let action = RunLeaseReconciliation {
 		issue: issue.clone(),
 		run_attempt: state_store
 			.run_attempt(run_id)
@@ -1259,11 +1259,11 @@ fn active_run_reconciliation_clears_terminal_lane_labels() {
 		worktree_mapping: state_store
 			.worktree_for_issue(&issue.id)
 			.expect("worktree query should succeed"),
-		disposition: ActiveRunDisposition::Terminal,
+		disposition: RunLeaseDisposition::Terminal,
 		workflow: workflow.clone(),
 	};
 
-	orchestrator::apply_active_run_reconciliation(
+	orchestrator::apply_run_lease_reconciliation(
 		&tracker,
 		&config,
 		&state_store,
@@ -1283,14 +1283,14 @@ fn active_run_reconciliation_clears_terminal_lane_labels() {
 }
 
 #[test]
-fn active_run_reconciliation_keeps_nonterminal_nonactive_worktrees() {
+fn run_lease_reconciliation_keeps_nonterminal_not_dispatchable_worktrees() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
 		WorktreeManager::new("pubfi", config.repo_root(), config.worktree_root());
 	let issue = sample_issue("Todo", &[]);
-	let run_id = "run-nonactive";
+	let run_id = "run-not-dispatchable";
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1308,7 +1308,7 @@ fn active_run_reconciliation_keeps_nonterminal_nonactive_worktrees() {
 		)
 		.expect("worktree mapping should record");
 
-	let action = ActiveRunReconciliation {
+	let action = RunLeaseReconciliation {
 		issue: issue.clone(),
 		run_attempt: state_store
 			.run_attempt(run_id)
@@ -1317,11 +1317,11 @@ fn active_run_reconciliation_keeps_nonterminal_nonactive_worktrees() {
 		worktree_mapping: state_store
 			.worktree_for_issue(&issue.id)
 			.expect("worktree query should succeed"),
-		disposition: ActiveRunDisposition::NonActive,
+		disposition: RunLeaseDisposition::NotDispatchable,
 		workflow: workflow.clone(),
 	};
 
-	orchestrator::apply_active_run_reconciliation(
+	orchestrator::apply_run_lease_reconciliation(
 		&tracker,
 		&config,
 		&state_store,
@@ -1375,7 +1375,7 @@ fn stalled_run_reconciliation_schedules_retry_before_attention_budget_exhaustion
 		)
 		.expect("worktree mapping should record");
 
-	let action = ActiveRunReconciliation {
+	let action = RunLeaseReconciliation {
 		issue: issue.clone(),
 		run_attempt: state_store
 			.run_attempt(run_id)
@@ -1384,13 +1384,13 @@ fn stalled_run_reconciliation_schedules_retry_before_attention_budget_exhaustion
 		worktree_mapping: state_store
 			.worktree_for_issue(&issue.id)
 			.expect("worktree query should succeed"),
-		disposition: ActiveRunDisposition::Stalled {
-			idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+		disposition: RunLeaseDisposition::Stalled {
+			idle_for: RUN_LEASE_IDLE_TIMEOUT + Duration::from_secs(1),
 		},
 		workflow: workflow.clone(),
 	};
 
-	orchestrator::apply_active_run_reconciliation(
+	orchestrator::apply_run_lease_reconciliation(
 		&tracker,
 		&config,
 		&state_store,
@@ -1476,7 +1476,7 @@ fn stalled_run_reconciliation_routes_to_needs_attention_after_retry_budget_exhau
 		)
 		.expect("worktree mapping should record");
 
-	let action = ActiveRunReconciliation {
+	let action = RunLeaseReconciliation {
 		issue: issue.clone(),
 		run_attempt: state_store
 			.run_attempt(run_id)
@@ -1485,13 +1485,13 @@ fn stalled_run_reconciliation_routes_to_needs_attention_after_retry_budget_exhau
 		worktree_mapping: state_store
 			.worktree_for_issue(&issue.id)
 			.expect("worktree query should succeed"),
-		disposition: ActiveRunDisposition::Stalled {
-			idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+		disposition: RunLeaseDisposition::Stalled {
+			idle_for: RUN_LEASE_IDLE_TIMEOUT + Duration::from_secs(1),
 		},
 		workflow: workflow.clone(),
 	};
 
-	orchestrator::apply_active_run_reconciliation(
+	orchestrator::apply_run_lease_reconciliation(
 		&tracker,
 		&config,
 		&state_store,
@@ -1563,8 +1563,8 @@ fn stalled_run_reconciliation_reports_retained_partial_progress_for_dirty_worktr
 		.expect("stalled dirty issue protocol event should record");
 
 	let now =
-		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1;
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		OffsetDateTime::now_utc().unix_timestamp() + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1;
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&workflow,
@@ -1577,11 +1577,11 @@ fn stalled_run_reconciliation_reports_retained_partial_progress_for_dirty_worktr
 	assert_eq!(actions.len(), 1);
 	assert!(matches!(
 		actions[0].disposition,
-		ActiveRunDisposition::StalledRetainedPartialProgress { idle_for }
-			if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT
+		RunLeaseDisposition::StalledRetainedPartialProgress { idle_for }
+			if idle_for >= RUN_LEASE_IDLE_TIMEOUT
 	));
 
-	orchestrator::apply_active_run_reconciliation(
+	orchestrator::apply_run_lease_reconciliation(
 		&tracker,
 		&config,
 		&state_store,
@@ -1816,7 +1816,7 @@ fn stalled_run_reconciliation_preserves_retry_budget_marker_from_retained_worktr
 		)
 		.expect("worktree mapping should record");
 
-	let action = ActiveRunReconciliation {
+	let action = RunLeaseReconciliation {
 		issue: issue.clone(),
 		run_attempt: state_store
 			.run_attempt(run_id)
@@ -1825,13 +1825,13 @@ fn stalled_run_reconciliation_preserves_retry_budget_marker_from_retained_worktr
 		worktree_mapping: state_store
 			.worktree_for_issue(&issue.id)
 			.expect("worktree query should succeed"),
-		disposition: ActiveRunDisposition::Stalled {
-			idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+		disposition: RunLeaseDisposition::Stalled {
+			idle_for: RUN_LEASE_IDLE_TIMEOUT + Duration::from_secs(1),
 		},
 		workflow: workflow.clone(),
 	};
 
-	orchestrator::apply_active_run_reconciliation(
+	orchestrator::apply_run_lease_reconciliation(
 		&tracker,
 		&config,
 		&state_store,

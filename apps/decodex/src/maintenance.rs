@@ -556,7 +556,7 @@ fn maintain_runtime_protocol_events(
 			event_count: candidate.event_count,
 			last_event_at: candidate.last_event_at.clone(),
 			reason: format!(
-				"terminal run has no active lease, retained worktree, or review marker and its latest protocol event is older than {} days",
+				"terminal run has no run lease, retained worktree, or review marker and its latest protocol event is older than {} days",
 				policy.protocol_event_retention_days
 			),
 		});
@@ -631,7 +631,7 @@ fn protocol_event_compaction_candidates(
 		 JOIN protocol_events last
 			ON last.run_id = totals.run_id
 			AND last.sequence_number = totals.last_sequence_number
-		 LEFT JOIN leases active_lease ON active_lease.issue_id = attempts.issue_id
+		 LEFT JOIN leases run_lease ON run_lease.issue_id = attempts.issue_id
 		 LEFT JOIN worktrees retained_worktree ON retained_worktree.issue_id = attempts.issue_id
 		 LEFT JOIN review_handoffs review_handoff ON review_handoff.issue_id = attempts.issue_id
 		 LEFT JOIN review_orchestrations review_orchestration
@@ -648,7 +648,7 @@ fn protocol_event_compaction_candidates(
 			AND human_stop_event.run_id = attempts.run_id
 		 WHERE attempts.status IN ('succeeded', 'failed', 'interrupted', 'terminated')
 			AND totals.last_created_at_unix < ?1
-			AND active_lease.issue_id IS NULL
+			AND run_lease.issue_id IS NULL
 			AND retained_worktree.issue_id IS NULL
 			AND review_handoff.issue_id IS NULL
 			AND review_orchestration.issue_id IS NULL
@@ -681,7 +681,7 @@ fn protected_protocol_run_count(connection: &Connection) -> Result<usize> {
 		"SELECT COUNT(DISTINCT attempts.run_id)
 		 FROM run_attempts attempts
 		 JOIN protocol_events events ON events.run_id = attempts.run_id
-		 LEFT JOIN leases active_lease ON active_lease.issue_id = attempts.issue_id
+		 LEFT JOIN leases run_lease ON run_lease.issue_id = attempts.issue_id
 		 LEFT JOIN worktrees retained_worktree ON retained_worktree.issue_id = attempts.issue_id
 		 LEFT JOIN review_handoffs review_handoff ON review_handoff.issue_id = attempts.issue_id
 		 LEFT JOIN review_orchestrations review_orchestration
@@ -696,7 +696,7 @@ fn protected_protocol_run_count(connection: &Connection) -> Result<usize> {
 		 ) human_stop_event
 			ON human_stop_event.issue_id = attempts.issue_id
 			AND human_stop_event.run_id = attempts.run_id
-		 WHERE active_lease.issue_id IS NOT NULL
+		 WHERE run_lease.issue_id IS NOT NULL
 			OR retained_worktree.issue_id IS NOT NULL
 			OR review_handoff.issue_id IS NOT NULL
 			OR review_orchestration.issue_id IS NOT NULL
@@ -1043,18 +1043,18 @@ mod tests {
 		insert_attempt(&connection, "old-run", "old-issue", "succeeded");
 		insert_event(&connection, "old-run", 1, old);
 		insert_event(&connection, "old-run", 2, old + 60);
-		insert_attempt(&connection, "active-run", "active-issue", "running");
-		insert_event(&connection, "active-run", 1, old);
-		insert_attempt(&connection, "old-active-issue-run", "active-issue", "succeeded");
-		insert_event(&connection, "old-active-issue-run", 1, old);
+		insert_attempt(&connection, "leased-run", "leased-issue", "running");
+		insert_event(&connection, "leased-run", 1, old);
+		insert_attempt(&connection, "old-leased-issue-run", "leased-issue", "succeeded");
+		insert_event(&connection, "old-leased-issue-run", 1, old);
 
 		connection
 			.execute(
 				"INSERT INTO leases (issue_id, project_id, run_id, issue_state)
-				 VALUES ('active-issue', 'decodex', 'active-run', 'In Progress')",
+				 VALUES ('leased-issue', 'decodex', 'leased-run', 'In Progress')",
 				[],
 			)
-			.expect("active lease should insert");
+			.expect("run lease should insert");
 
 		insert_attempt(&connection, "retained-run", "retained-issue", "failed");
 		insert_event(&connection, "retained-run", 1, old);
@@ -1106,8 +1106,8 @@ mod tests {
 		assert_eq!(report.runtime.compacted_events, 2);
 		assert_eq!(protocol_event_count(&connection, "old-run"), 0);
 		assert_eq!(protocol_summary_event_count(&connection, "old-run"), Some(2));
-		assert_eq!(protocol_event_count(&connection, "active-run"), 1);
-		assert_eq!(protocol_event_count(&connection, "old-active-issue-run"), 1);
+		assert_eq!(protocol_event_count(&connection, "leased-run"), 1);
+		assert_eq!(protocol_event_count(&connection, "old-leased-issue-run"), 1);
 		assert_eq!(protocol_event_count(&connection, "retained-run"), 1);
 		assert_eq!(protocol_event_count(&connection, "review-handoff-run"), 1);
 		assert_eq!(protocol_event_count(&connection, "cleanup-blocked-run"), 1);

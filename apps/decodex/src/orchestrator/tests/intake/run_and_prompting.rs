@@ -349,7 +349,7 @@ fn targeted_identifier_dispatch_accepts_stopped_active_closeout_lease() {
 
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "running")
-		.expect("stopped active run attempt should record");
+		.expect("stopped running run attempt should record");
 	state_store
 		.upsert_lease(config.service_id(), &issue.id, "run-1", "Done")
 		.expect("stopped closeout lease should record");
@@ -390,8 +390,8 @@ fn targeted_identifier_dispatch_accepts_stopped_active_closeout_lease() {
 	assert_eq!(lane.classification, "continue");
 	assert_eq!(lane.reason, "pull_request_merged_closeout_pending");
 	assert_eq!(lane.pr_state.as_deref(), Some("MERGED"));
-	assert_eq!(snapshot.active_runs.len(), 1);
-	assert_eq!(snapshot.active_runs[0].process_alive, Some(false));
+	assert_eq!(snapshot.current_lanes.len(), 1);
+	assert_eq!(snapshot.current_lanes[0].process_alive, Some(false));
 	assert!(
 		orchestrator::issue_passes_closeout_dispatch_policy(
 			&tracker,

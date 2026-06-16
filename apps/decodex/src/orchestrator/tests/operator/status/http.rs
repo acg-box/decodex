@@ -13,14 +13,14 @@ use crate::runtime;
 const OPERATOR_DASHBOARD_TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[cfg(unix)]
-struct ActiveLeaseMissingControlFixture {
+struct RunLeaseMissingControlFixture {
 	issue: TrackerIssue,
 	channel_path: PathBuf,
 	child: Child,
 	child_process_id: u32,
 }
 #[cfg(unix)]
-impl Drop for ActiveLeaseMissingControlFixture {
+impl Drop for RunLeaseMissingControlFixture {
 	fn drop(&mut self) {
 		if matches!(self.child.try_wait(), Ok(None)) {
 			let _ = self.child.kill();
@@ -80,7 +80,7 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains("error-banner"));
 		assert!(!response.contains("metric-active"));
 		assert!(!response.contains("Queued issue -> reviewed change -> landed branch"));
-		assert!(response.contains("Running Lanes"));
+		assert!(response.contains("Current Lanes"));
 		assert!(response.contains("Intake Queue"));
 		assert!(!response.contains("At capacity"));
 		assert!(response.contains("Review &amp; Landing"));
@@ -321,7 +321,7 @@ fn operator_dashboard_websocket_sends_current_snapshot_on_connect() {
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
 	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot {
-		snapshot_json: Some(br#"{"project_id":"pubfi","active_runs":[]}"#.to_vec()),
+		snapshot_json: Some(br#"{"project_id":"pubfi","current_lanes":[]}"#.to_vec()),
 		last_publish_unix_epoch: Some(SNAPSHOT_UNIX_EPOCH),
 	}));
 	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
@@ -368,7 +368,7 @@ fn operator_dashboard_websocket_sends_cached_run_activity_on_connect() {
 	let address = listener.local_addr().expect("listener address should resolve");
 	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot {
 		snapshot_json: Some(
-			br#"{"project_id":"pubfi","active_runs":[],"account_control":{"mode":"balanced","account_selector":null}}"#.to_vec(),
+			br#"{"project_id":"pubfi","current_lanes":[],"account_control":{"mode":"balanced","account_selector":null}}"#.to_vec(),
 		),
 		last_publish_unix_epoch: Some(1_774_000_000),
 	}));
@@ -448,13 +448,13 @@ fn operator_dashboard_websocket_sends_cached_run_activity_on_connect() {
 		payload["type"] == "runActivity"
 	});
 
-	assert_eq!(activity["payload"]["activeRuns"][0]["run_id"], "run-1");
+	assert_eq!(activity["payload"]["currentLanes"][0]["run_id"], "run-1");
 	assert_eq!(
-		activity["payload"]["activeRuns"][0]["account"]["account_fingerprint"],
+		activity["payload"]["currentLanes"][0]["account"]["account_fingerprint"],
 		"acct-1"
 	);
 	assert_eq!(
-		activity["payload"]["activeRuns"][0]["accounts"][0]["account_fingerprint"],
+		activity["payload"]["currentLanes"][0]["accounts"][0]["account_fingerprint"],
 		"acct-1"
 	);
 
@@ -471,7 +471,7 @@ fn operator_dashboard_websocket_accepts_subscription_and_account_selection_contr
 	let address = listener.local_addr().expect("listener address should resolve");
 	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot {
 		snapshot_json: Some(
-			br#"{"project_id":"pubfi","active_runs":[],"account_control":{"mode":"balanced","account_selector":null}}"#.to_vec(),
+			br#"{"project_id":"pubfi","current_lanes":[],"account_control":{"mode":"balanced","account_selector":null}}"#.to_vec(),
 		),
 		last_publish_unix_epoch: Some(1_774_000_000),
 	}));
@@ -728,7 +728,7 @@ fn operator_dashboard_websocket_filters_run_activity_by_subscription() {
 		"runActivity",
 		serde_json::json!({
 			"emittedAtUnixEpoch": 1_774_000_010_i64,
-			"activeRuns": [
+			"currentLanes": [
 				{ "project_id": "pubfi", "issue_id": "PUB-101", "run_id": "run-1" },
 				{ "project_id": "pubfi", "issue_id": "PUB-102", "run_id": "run-2" },
 				{ "project_id": "rsnap", "issue_id": "RS-1", "run_id": "run-2" }
@@ -739,16 +739,16 @@ fn operator_dashboard_websocket_filters_run_activity_by_subscription() {
 	let activity = read_websocket_json_until(&mut client, &mut frame, |payload| {
 		payload["type"] == "runActivity"
 	});
-	let active_runs = activity["payload"]["activeRuns"]
+	let current_lanes = activity["payload"]["currentLanes"]
 		.as_array()
-		.expect("active runs should list");
+		.expect("current lanes should list");
 
-	assert_eq!(active_runs.len(), 1);
-	assert_eq!(active_runs[0]["project_id"], "pubfi");
-	assert_eq!(active_runs[0]["issue_id"], "PUB-102");
-	assert_eq!(active_runs[0]["run_id"], "run-2");
-	assert_eq!(activity["payload"]["activeRunsComplete"], false);
-	assert_eq!(activity["payload"]["activeRunScope"], "filtered");
+	assert_eq!(current_lanes.len(), 1);
+	assert_eq!(current_lanes[0]["project_id"], "pubfi");
+	assert_eq!(current_lanes[0]["issue_id"], "PUB-102");
+	assert_eq!(current_lanes[0]["run_id"], "run-2");
+	assert_eq!(activity["payload"]["currentLanesComplete"], false);
+	assert_eq!(activity["payload"]["currentLaneScope"], "filtered");
 
 	drop(client);
 
@@ -989,7 +989,7 @@ fn read_websocket_json_until(
 }
 
 #[test]
-fn operator_dashboard_run_activity_event_summarizes_active_runs() {
+fn operator_dashboard_run_activity_event_summarizes_current_lanes() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
@@ -1082,34 +1082,34 @@ fn operator_dashboard_run_activity_event_summarizes_active_runs() {
 
 	assert_eq!(payload["type"], "runActivity");
 	assert_eq!(data["accountControl"]["mode"], "balanced");
-	assert_eq!(data["activeRunsComplete"], true);
-	assert_eq!(data["activeRunScope"], "complete");
+	assert_eq!(data["currentLanesComplete"], true);
+	assert_eq!(data["currentLaneScope"], "complete");
 	assert!(data["accounts"].is_array());
 	assert!(fingerprint.get("emittedAtUnixEpoch").is_none());
 	assert_eq!(fingerprint["accountControl"]["mode"], "balanced");
-	assert_eq!(fingerprint["activeRunsComplete"], true);
-	assert_eq!(fingerprint["activeRunScope"], "complete");
+	assert_eq!(fingerprint["currentLanesComplete"], true);
+	assert_eq!(fingerprint["currentLaneScope"], "complete");
 	assert!(fingerprint["accounts"].is_array());
-	assert_eq!(fingerprint["activeRuns"][0]["run_id"], "run-1");
+	assert_eq!(fingerprint["currentLanes"][0]["run_id"], "run-1");
 	assert_eq!(
-		fingerprint["activeRuns"][0]["project_display_name"],
+		fingerprint["currentLanes"][0]["project_display_name"],
 		"hack-ink/pubfi-mono-v2"
 	);
-	assert_eq!(data["activeRuns"][0]["run_id"], "run-1");
-	assert_eq!(data["activeRuns"][0]["project_id"], "pubfi");
-	assert_eq!(data["activeRuns"][0]["project_display_name"], "hack-ink/pubfi-mono-v2");
-	assert_eq!(data["activeRuns"][0]["protocol_activity"]["waiting_reason"], "model");
-	assert_eq!(data["activeRuns"][0]["account"]["account_fingerprint"], "acct-1");
-	assert_eq!(data["activeRuns"][0]["accounts"][0]["account_fingerprint"], "acct-1");
-	assert!(data["activeRuns"][0].get("idle_for_seconds").is_some());
-	assert!(data["activeRuns"][0].get("protocol_idle_for_seconds").is_some());
-	assert!(fingerprint["activeRuns"][0].get("idle_for_seconds").is_none());
-	assert!(fingerprint["activeRuns"][0].get("protocol_idle_for_seconds").is_none());
+	assert_eq!(data["currentLanes"][0]["run_id"], "run-1");
+	assert_eq!(data["currentLanes"][0]["project_id"], "pubfi");
+	assert_eq!(data["currentLanes"][0]["project_display_name"], "hack-ink/pubfi-mono-v2");
+	assert_eq!(data["currentLanes"][0]["protocol_activity"]["waiting_reason"], "model");
+	assert_eq!(data["currentLanes"][0]["account"]["account_fingerprint"], "acct-1");
+	assert_eq!(data["currentLanes"][0]["accounts"][0]["account_fingerprint"], "acct-1");
+	assert!(data["currentLanes"][0].get("idle_for_seconds").is_some());
+	assert!(data["currentLanes"][0].get("protocol_idle_for_seconds").is_some());
+	assert!(fingerprint["currentLanes"][0].get("idle_for_seconds").is_none());
+	assert!(fingerprint["currentLanes"][0].get("protocol_idle_for_seconds").is_none());
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
-fn operator_dashboard_run_activity_event_keeps_unleased_app_server_active_run() {
+fn operator_dashboard_run_activity_event_keeps_unleased_app_server_current_lane() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
@@ -1166,19 +1166,95 @@ fn operator_dashboard_run_activity_event_keeps_unleased_app_server_active_run() 
 	let (payload, _consumed) = websocket_text_payload(&message).expect("event should be a text frame");
 	let payload: Value = serde_json::from_slice(payload).expect("event data should be json");
 	let data = &payload["payload"];
-	let active_runs = data["activeRuns"].as_array().expect("active runs should list");
+	let current_lanes = data["currentLanes"].as_array().expect("current lanes should list");
 
 	assert_eq!(payload["type"], "runActivity");
-	assert_eq!(data["activeRunsComplete"], true);
-	assert_eq!(active_runs.len(), 1);
-	assert_eq!(active_runs[0]["run_id"], "run-1");
-	assert_eq!(active_runs[0]["project_id"], "pubfi");
-	assert_eq!(active_runs[0]["project_display_name"], "hack-ink/pubfi-mono-v2");
-	assert_eq!(active_runs[0]["active_lease"], false);
-	assert_eq!(active_runs[0]["execution_liveness"], "process_identity_mismatch");
-	assert_eq!(active_runs[0]["process_alive"], false);
-	assert_eq!(active_runs[0]["process_liveness_reason"], "host_boot_id_mismatch");
-	assert_eq!(active_runs[0]["thread_status"], "active");
+	assert_eq!(data["currentLanesComplete"], true);
+	assert_eq!(current_lanes.len(), 1);
+	assert_eq!(current_lanes[0]["run_id"], "run-1");
+	assert_eq!(current_lanes[0]["project_id"], "pubfi");
+	assert_eq!(current_lanes[0]["project_display_name"], "hack-ink/pubfi-mono-v2");
+	assert_eq!(current_lanes[0]["run_lease"], false);
+	assert_eq!(current_lanes[0]["execution_liveness"], "process_identity_mismatch");
+	assert_eq!(current_lanes[0]["process_alive"], false);
+	assert_eq!(current_lanes[0]["process_liveness_reason"], "host_boot_id_mismatch");
+	assert_eq!(current_lanes[0]["thread_status"], "active");
+}
+
+#[test]
+fn operator_dashboard_run_activity_event_demotes_cleanup_complete_unleased_current_lane() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
+	let issue = sample_issue_with_sort_fields(
+		"issue-xy-952",
+		"XY-952",
+		"Done",
+		&[],
+		Some(3),
+		"2026-06-16T08:50:00Z",
+	);
+	let worktree_path = config.worktree_root().join("XY-952");
+
+	git_status_success(
+		config.repo_root(),
+		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
+	);
+
+	state_store.upsert_project(&registration).expect("project should register");
+	state_store
+		.record_run_attempt("xy-952-attempt-2-1781598614", &issue.id, 2, "running")
+		.expect("stale running attempt should record");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"y/elf-xy-952",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+	state_store
+		.append_event(
+			"xy-952-attempt-2-1781598614",
+			1,
+			"item/tool/call",
+			"{\"tool\":\"issue_progress_checkpoint\"}",
+		)
+		.expect("protocol evidence should record");
+
+	seed_local_linear_execution_events(
+		&state_store,
+		&successful_linear_execution_history_comments_with_cleanup(&issue),
+	);
+
+	let event =
+		orchestrator::build_operator_run_activity_event(&state_store).expect("event should build");
+	let message = orchestrator::dashboard_websocket_message(
+		event.event.event_type,
+		&event.event.payload,
+	)
+	.expect("event should serialize");
+	let (payload, _consumed) = websocket_text_payload(&message).expect("event should be a text frame");
+	let payload: Value = serde_json::from_slice(payload).expect("event data should be json");
+	let data = &payload["payload"];
+	let fingerprint: Value =
+		serde_json::from_slice(&event.fingerprint).expect("fingerprint should be json");
+
+	assert_eq!(payload["type"], "runActivity");
+	assert_eq!(data["currentLanesComplete"], true);
+	assert_eq!(data["currentLaneScope"], "complete");
+	assert_eq!(data["currentLanes"].as_array().map(Vec::len), Some(0));
+	assert_eq!(fingerprint["currentLanes"].as_array().map(Vec::len), Some(0));
+	assert!(!data.to_string().contains("xy-952-attempt-2-1781598614"));
 }
 
 #[test]
@@ -1189,7 +1265,7 @@ fn operator_dashboard_run_activity_fingerprint_ignores_volatile_timing_fields() 
 			"account_selector": null,
 		},
 		"accounts": [],
-		"activeRuns": [
+		"currentLanes": [
 			{
 				"run_id": "run-1",
 				"status": "running",
@@ -1209,8 +1285,8 @@ fn operator_dashboard_run_activity_fingerprint_ignores_volatile_timing_fields() 
 				},
 			},
 		],
-		"activeRunsComplete": true,
-		"activeRunScope": "complete",
+		"currentLanesComplete": true,
+		"currentLaneScope": "complete",
 	});
 	let mut second = serde_json::json!({
 		"accountControl": {
@@ -1218,7 +1294,7 @@ fn operator_dashboard_run_activity_fingerprint_ignores_volatile_timing_fields() 
 			"account_selector": null,
 		},
 		"accounts": [],
-		"activeRuns": [
+		"currentLanes": [
 			{
 				"run_id": "run-1",
 				"status": "running",
@@ -1238,24 +1314,24 @@ fn operator_dashboard_run_activity_fingerprint_ignores_volatile_timing_fields() 
 				},
 			},
 		],
-		"activeRunsComplete": true,
-		"activeRunScope": "complete",
+		"currentLanesComplete": true,
+		"currentLaneScope": "complete",
 	});
 
 	orchestrator::strip_dashboard_run_activity_volatile_fields(&mut first);
 	orchestrator::strip_dashboard_run_activity_volatile_fields(&mut second);
 
 	assert_eq!(first, second);
-	assert_eq!(first["activeRuns"][0]["run_id"], "run-1");
-	assert_eq!(first["activeRuns"][0]["child_agent_activity"]["buckets"][0]["event_count"], 7);
-	assert!(first["activeRuns"][0].get("idle_for_seconds").is_none());
+	assert_eq!(first["currentLanes"][0]["run_id"], "run-1");
+	assert_eq!(first["currentLanes"][0]["child_agent_activity"]["buckets"][0]["event_count"], 7);
+	assert!(first["currentLanes"][0].get("idle_for_seconds").is_none());
 	assert!(
-		first["activeRuns"][0]["child_agent_activity"]
+		first["currentLanes"][0]["child_agent_activity"]
 			.get("current_elapsed_seconds")
 			.is_none()
 	);
 	assert!(
-		first["activeRuns"][0]["child_agent_activity"]["buckets"][0]
+		first["currentLanes"][0]["child_agent_activity"]["buckets"][0]
 			.get("wall_seconds")
 			.is_none()
 	);
@@ -1309,7 +1385,7 @@ fn dashboard_event_hub_caches_and_filters_last_run_activity_event() {
 			"account_selector": null,
 		},
 		"accounts": [],
-		"activeRuns": [
+		"currentLanes": [
 			{
 				"project_id": "decodex",
 				"issue_id": "issue-1",
@@ -1321,8 +1397,8 @@ fn dashboard_event_hub_caches_and_filters_last_run_activity_event() {
 				"run_id": "run-2",
 			},
 		],
-		"activeRunsComplete": true,
-		"activeRunScope": "complete",
+		"currentLanesComplete": true,
+		"currentLaneScope": "complete",
 	});
 	let subscription = DashboardClientSubscription {
 		project_id: Some(String::from("decodex")),
@@ -1336,19 +1412,19 @@ fn dashboard_event_hub_caches_and_filters_last_run_activity_event() {
 	let event = hub
 		.cached_run_activity_event(&subscription)
 		.expect("cached run activity should remain available after other event types");
-	let active_runs = event.payload["activeRuns"]
+	let current_lanes = event.payload["currentLanes"]
 		.as_array()
-		.expect("filtered active runs should be an array");
+		.expect("filtered current lanes should be an array");
 
 	assert_eq!(event.event_type, "runActivity");
-	assert_eq!(active_runs.len(), 1);
-	assert_eq!(active_runs[0]["issue_id"], "issue-1");
-	assert_eq!(event.payload["activeRunsComplete"], false);
-	assert_eq!(event.payload["activeRunScope"], "filtered");
+	assert_eq!(current_lanes.len(), 1);
+	assert_eq!(current_lanes[0]["issue_id"], "issue-1");
+	assert_eq!(event.payload["currentLanesComplete"], false);
+	assert_eq!(event.payload["currentLaneScope"], "filtered");
 }
 
 #[test]
-fn operator_dashboard_run_activity_event_includes_disabled_project_active_runs() {
+fn operator_dashboard_run_activity_event_includes_disabled_project_current_lanes() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
@@ -1374,10 +1450,10 @@ fn operator_dashboard_run_activity_event_includes_disabled_project_active_runs()
 	observer_store.upsert_project(&registration).expect("project should register");
 	writer_store
 		.record_run_attempt("run-disabled-active", &issue.id, 1, "running")
-		.expect("active run should record");
+		.expect("current lane should record");
 	writer_store
 		.upsert_lease(config.service_id(), &issue.id, "run-disabled-active", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 	writer_store
 		.upsert_worktree(
 			config.service_id(),
@@ -1397,15 +1473,15 @@ fn operator_dashboard_run_activity_event_includes_disabled_project_active_runs()
 	let (payload, _consumed) = websocket_text_payload(&message).expect("event should be a text frame");
 	let payload: Value = serde_json::from_slice(payload).expect("event data should be json");
 	let data = &payload["payload"];
-	let active_runs = data["activeRuns"].as_array().expect("active runs should list");
+	let current_lanes = data["currentLanes"].as_array().expect("current lanes should list");
 
 	assert_eq!(payload["type"], "runActivity");
-	assert_eq!(active_runs.len(), 1);
-	assert_eq!(active_runs[0]["run_id"], "run-disabled-active");
-	assert_eq!(active_runs[0]["project_id"], "pubfi");
-	assert_eq!(active_runs[0]["project_display_name"], "hack-ink/pubfi-mono-v2");
-	assert_eq!(data["activeRunsComplete"], true);
-	assert_eq!(data["activeRunScope"], "complete");
+	assert_eq!(current_lanes.len(), 1);
+	assert_eq!(current_lanes[0]["run_id"], "run-disabled-active");
+	assert_eq!(current_lanes[0]["project_id"], "pubfi");
+	assert_eq!(current_lanes[0]["project_display_name"], "hack-ink/pubfi-mono-v2");
+	assert_eq!(data["currentLanesComplete"], true);
+	assert_eq!(data["currentLaneScope"], "complete");
 }
 
 #[test]
@@ -1461,7 +1537,7 @@ fn operator_state_endpoint_overlays_live_account_control_on_published_snapshot()
 			"account_selector": null,
 		},
 		"accounts": [],
-		"active_runs": [],
+		"current_lanes": [],
 		"recent_runs": [],
 		"history_lanes": [],
 		"queued_candidates": [],
@@ -1533,7 +1609,7 @@ fn operator_state_endpoint_serves_large_app_snapshot_without_truncation() {
 			"account_selector": null,
 		},
 		"accounts": [],
-		"active_runs": [],
+		"current_lanes": [],
 		"recent_runs": [],
 		"history_lanes": [{
 			"issue_identifier": "PUB-100",
@@ -1785,8 +1861,8 @@ fn operator_lane_inspect_api_returns_lane_identity() {
 	assert_eq!(data["matchedRunCount"], 1);
 	assert_eq!(data["runs"][0]["runId"], "pub-101-attempt-1");
 	assert_eq!(data["runs"][0]["attemptStatus"], "running");
-	assert_eq!(data["runs"][0]["activeLease"], true);
-	assert_eq!(data["runs"][0]["ownershipState"], "owned_active");
+	assert_eq!(data["runs"][0]["runLease"], true);
+	assert_eq!(data["runs"][0]["ownershipState"], "leased_run");
 	assert_eq!(data["runs"][0]["livenessState"], "unknown");
 	assert_eq!(data["runs"][0]["policyState"], "review_pending");
 	assert_eq!(data["runs"][0]["terminalizationState"], "none");
@@ -2044,10 +2120,10 @@ fn operator_lane_interrupt_api_force_does_not_hard_fallback_after_control_reject
 }
 
 #[cfg(unix)]
-fn active_lease_missing_control_fixture(
+fn run_lease_missing_control_fixture(
 	config: &ServiceConfig,
 	state_store: &StateStore,
-) -> ActiveLeaseMissingControlFixture {
+) -> RunLeaseMissingControlFixture {
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
 		&service_config_path(config.repo_root()),
@@ -2112,7 +2188,7 @@ fn active_lease_missing_control_fixture(
 		.expect("control channel should publish");
 	state_store.clear_lease(&issue.id).expect("lease should clear");
 
-	ActiveLeaseMissingControlFixture { issue, channel_path, child, child_process_id }
+	RunLeaseMissingControlFixture { issue, channel_path, child, child_process_id }
 }
 
 #[cfg(unix)]
@@ -2126,7 +2202,7 @@ fn operator_json_response_body(response: &str, context: &str) -> Value {
 }
 
 #[cfg(unix)]
-fn reap_active_lease_missing_child(fixture: &mut ActiveLeaseMissingControlFixture) {
+fn reap_run_lease_missing_child(fixture: &mut RunLeaseMissingControlFixture) {
 	if orchestrator::process_is_alive(fixture.child_process_id) {
 		fixture
 			.child
@@ -2138,10 +2214,10 @@ fn reap_active_lease_missing_child(fixture: &mut ActiveLeaseMissingControlFixtur
 }
 
 #[cfg(unix)]
-fn assert_active_lease_missing_control_audit(
+fn assert_run_lease_missing_control_audit(
 	config: &ServiceConfig,
 	state_store: &StateStore,
-	fixture: &ActiveLeaseMissingControlFixture,
+	fixture: &RunLeaseMissingControlFixture,
 	run_id: &str,
 ) {
 	let events = state_store
@@ -2152,17 +2228,17 @@ fn assert_active_lease_missing_control_audit(
 		.find(|event| {
 			event.event_type() == "control_action"
 				&& event.payload()["action"] == "steer"
-				&& event.payload()["reason"] == "active_lease_missing"
+				&& event.payload()["reason"] == "run_lease_missing"
 		})
-		.expect("active lease steer rejection should be audited");
+		.expect("run lease steer rejection should be audited");
 	let missing_lease_interrupt_event = events
 		.iter()
 		.find(|event| {
 			event.event_type() == "control_action"
 				&& event.payload()["action"] == "interrupt"
-				&& event.payload()["reason"] == "active_lease_missing"
+				&& event.payload()["reason"] == "run_lease_missing"
 		})
-		.expect("active lease interrupt rejection should be audited");
+		.expect("run lease interrupt rejection should be audited");
 	let expected_channel_path = fixture.channel_path.display().to_string();
 
 	assert_eq!(
@@ -2174,7 +2250,7 @@ fn assert_active_lease_missing_control_audit(
 		Some(expected_channel_path.as_str())
 	);
 	assert_eq!(
-		missing_lease_interrupt_event.payload()["lane"]["active_lease"].as_bool(),
+		missing_lease_interrupt_event.payload()["lane"]["run_lease"].as_bool(),
 		Some(false)
 	);
 	assert_eq!(
@@ -2199,7 +2275,7 @@ fn assert_active_lease_missing_control_audit(
 	);
 	assert_eq!(
 		missing_lease_interrupt_event.payload()["context"]["lane_control_conditions"][0].as_str(),
-		Some("active_lease_missing")
+		Some("run_lease_missing")
 	);
 	assert_eq!(
 		missing_lease_interrupt_event.payload()["context"]["control_capability"]["channel_path"]
@@ -2219,10 +2295,10 @@ fn assert_active_lease_missing_control_audit(
 
 #[cfg(unix)]
 #[test]
-fn operator_lane_interrupt_api_force_hard_fallbacks_after_active_lease_missing() {
+fn operator_lane_interrupt_api_force_hard_fallbacks_after_run_lease_missing() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let mut fixture = active_lease_missing_control_fixture(&config, &state_store);
+	let mut fixture = run_lease_missing_control_fixture(&config, &state_store);
 	let project_id = config.service_id().to_owned();
 	let issue_identifier = fixture.issue.identifier.clone();
 	let run_id = "pub-101-attempt-1";
@@ -2257,19 +2333,19 @@ fn operator_lane_interrupt_api_force_hard_fallbacks_after_active_lease_missing()
 	.expect("lane interrupt response should be utf-8");
 	let data = operator_json_response_body(&response, "lane interrupt");
 
-	reap_active_lease_missing_child(&mut fixture);
+	reap_run_lease_missing_child(&mut fixture);
 
 	assert!(
 		steer_response.starts_with("HTTP/1.1 409 Conflict\r\n"),
 		"{steer_response}"
 	);
 	assert_eq!(steer_data["outcome"], "rejected");
-	assert_eq!(steer_data["reason"], "active_lease_missing");
+	assert_eq!(steer_data["reason"], "run_lease_missing");
 	assert_eq!(steer_data["failureClass"], "run_control_action_failed");
 	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
 	assert_eq!(data["classification"], "hard_interrupt_fallback");
 	assert_eq!(data["softInterrupt"]["status"], "rejected");
-	assert_eq!(data["softInterrupt"]["errorClass"], "active_lease_missing");
+	assert_eq!(data["softInterrupt"]["errorClass"], "run_lease_missing");
 	assert_eq!(data["hardInterrupt"]["classification"], "hard_interrupt_fallback");
 	assert_eq!(data["hardInterrupt"]["status"], "sent");
 	assert_eq!(
@@ -2278,7 +2354,7 @@ fn operator_lane_interrupt_api_force_hard_fallbacks_after_active_lease_missing()
 	);
 	assert_eq!(data["hardInterrupt"]["processAliveAfter"], false);
 
-	assert_active_lease_missing_control_audit(&config, &state_store, &fixture, run_id);
+	assert_run_lease_missing_control_audit(&config, &state_store, &fixture, run_id);
 }
 
 #[cfg(unix)]

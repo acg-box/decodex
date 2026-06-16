@@ -1064,7 +1064,7 @@ fn rebind_state_transition_next_action(issue_identifier: &str, pr_url: &str) -> 
 
 fn issue_state_mismatch_next_action(success_state: &str, in_progress_state: &str) -> String {
 	format!(
-		"Move the issue to `{success_state}` or `{in_progress_state}` only after confirming the retained handoff lineage still belongs to the active lane."
+		"Move the issue to `{success_state}` or `{in_progress_state}` only after confirming the retained handoff lineage still belongs to the current lane."
 	)
 }
 
