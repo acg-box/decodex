@@ -1,0 +1,75 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27902",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-16T12:41:03Z",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27902",
+    "commit_shas": [
+      "867e7dfb0167f048017a79a8da2ce8e5ecb9b51e",
+      "47889f50220135ea1d170b620ef79aa9e3dd34b2",
+      "17cd2e0d77b51fecfef350a41194cd659c224756"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Centralize plugin auth capability filtering",
+        "url": "https://github.com/openai/codex/pull/27902",
+        "meta": "Merged 2026-06-16T00:13:28Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Centralize plugin auth capability filtering",
+        "url": "https://github.com/openai/codex/commit/867e7dfb0167f048017a79a8da2ce8e5ecb9b51e"
+      },
+      {
+        "kind": "commit",
+        "title": "Simplify plugin auth capability helper",
+        "url": "https://github.com/openai/codex/commit/47889f50220135ea1d170b620ef79aa9e3dd34b2"
+      },
+      {
+        "kind": "commit",
+        "title": "Rename plugin app MCP routing module",
+        "url": "https://github.com/openai/codex/commit/17cd2e0d77b51fecfef350a41194cd659c224756"
+      }
+    ]
+  },
+  "observed_change": "Codex core plugin loading now centralizes auth-aware app/MCP routing so effective plugin capabilities depend on auth mode and active plugin state.",
+  "changed_surfaces": [
+    "core plugin app/MCP routing helper",
+    "plugin MCP server loader",
+    "project plugin load outcome projection",
+    "core plugin public helper export",
+    "auth-routing unit tests"
+  ],
+  "user_visible_path": "Plugin consumers that display or load effective capabilities can now see app declarations only when the auth mode uses the Codex backend; when an active plugin has app and MCP declarations with the same name, the app route wins and the conflicting MCP server is hidden.",
+  "control_plane_relevance": "High. Decodex plugin discovery, marketplace, and Control Plane plugin views need to distinguish declared manifest capabilities from the effective app/MCP capabilities allowed by the operator's current auth mode.",
+  "compatibility_risk": "Moderate. The change is centralized and mostly consolidates existing policy, but clients that assumed manifests expose every app or MCP declaration may now observe app declarations cleared for API-key/direct auth or same-name MCP servers removed for active Codex-backed app routes.",
+  "adoption_opportunity": "Use the upstream effective-capability rule when Decodex reads plugin load outcomes, imports marketplace entries, or presents plugin details so API-key users are not offered unusable app connectors and Codex-backed users do not see duplicate app/MCP routes.",
+  "community_value": "High for plugin authors and operators because the PR documents and enforces one concrete auth policy: app connectors require Codex-backed auth, while same-name app routes take precedence over MCP servers for active plugins.",
+  "deprecated_or_breaking_notes": "No schema or manifest format removal is recorded. The effective capability surface changes by auth mode: API-key/direct auth removes app declarations, and active Codex-backed plugins hide same-name MCP server entries when an app declaration exists.",
+  "caveats": "This PR is a core plugin routing foundation. It does not by itself prove every marketplace, app-server, or UI consumer has switched to the shared resolver; later PRs may extend the same policy into those surfaces.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27902 states that SiWC/Codex-backed auth can use app connectors, API-key/direct auth cannot, and active same-name app/MCP declarations should prefer the app route.",
+    "`codex-rs/core-plugins/src/app_mcp_routing.rs` adds `apps_route_available` and `apply_app_mcp_routing_policy`, clearing apps when `AuthMode::uses_codex_backend` is false and removing same-name MCP servers when a plugin is active and apps remain.",
+    "`codex-rs/core-plugins/src/loader.rs` now uses `apps_route_available` and `apply_app_mcp_routing_policy` when loading plugin MCP servers.",
+    "`codex-rs/core-plugins/src/manager.rs` now applies the same routing policy while projecting plugin load outcomes for an auth mode.",
+    "`codex-rs/core-plugins/src/app_mcp_routing_tests.rs` covers ChatGPT and AgentIdentity as app-route-capable, API-key and missing auth as unavailable, active-plugin same-name app/MCP conflict removal, and inactive-plugin conflict preservation.",
+    "`codex-rs/core-plugins/src/lib.rs` exports `apps_route_available` for shared consumers.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27902.json` records five changed files for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The auth-dependent plugin capability rule is a Decodex Control Plane compatibility watchpoint and adoption candidate."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The change has a clear public operator angle for plugin authors and clients that need to explain why app connectors or MCP servers appear or disappear by auth mode."
+    }
+  ]
+}
