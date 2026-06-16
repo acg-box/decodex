@@ -77,6 +77,13 @@ from protocol activity.
 - A lane counts as a running lane only when `ownership_state` is `leased_run`.
 - Liveness evidence may update `liveness_state`, but it must not create or restore
   `leased_run` ownership.
+- When a newer attempt for the same issue has `ownership_state=leased_run`, older
+  unleased attempts with stale or protocol-only liveness evidence stay out of
+  current-lane projection and current-attention counts.
+- A retry or automatic continuation for the same issue must resume the latest
+  unterminated phase-goal state from the immediately previous attempt. A validated
+  or active `handoff_evidence` phase must not be reset to
+  `implement_to_validation_ready` merely because the runtime created a new attempt.
 - `run_lease=false` is incompatible with `ownership_state=leased_run`.
 - Terminal attempt statuses such as `failed`, `interrupted`, `stalled`, or `succeeded`
   must not be promoted to `running` by live process, thread, or protocol evidence.
