@@ -1534,6 +1534,9 @@ struct OperatorRunStatus {
 	active_lease: bool,
 	queue_lease_state: String,
 	execution_liveness: String,
+	has_fresh_execution: bool,
+	counts_as_running: bool,
+	needs_attention: bool,
 	updated_at: String,
 	last_run_activity_at: Option<String>,
 	last_protocol_activity_at: Option<String>,
@@ -1741,6 +1744,7 @@ struct OperatorPostReviewLaneStatus {
 	mergeable: Option<String>,
 	check_state: Option<String>,
 	unresolved_review_threads: Option<usize>,
+	shadowed_by_active_run: bool,
 	readback_warning: Option<String>,
 	readback_root_cause: Option<String>,
 	#[serde(skip_serializing_if = "Option::is_none")]

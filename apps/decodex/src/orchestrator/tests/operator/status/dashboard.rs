@@ -501,6 +501,10 @@ fn assert_liveness_and_cleanup_contract(response: &str) {
 	assert_contains_all(
 		response,
 		&[
+			"runHasFreshExecution",
+			"typeof run?.has_fresh_execution === \"boolean\"",
+			"typeof run?.needs_attention === \"boolean\"",
+			"typeof run?.counts_as_running === \"boolean\"",
 			"runStaleWithoutKnownProcessNeedsAttention",
 			"runExecutionLivenessSummary",
 			"runQueueLeaseSummary",
@@ -579,6 +583,9 @@ fn operator_dashboard_active_run_status_copy_stays_concise() {
 
 	assert!(response.contains("runNeedsAttention"));
 	assert!(response.contains("runCountsAsRunning"));
+	assert!(response.contains("return run.counts_as_running;"));
+	assert!(response.contains("return run.needs_attention;"));
+	assert!(response.contains("return run.has_fresh_execution;"));
 	assert!(response.contains("runWaitReasonShowsExecutionProgress"));
 	assert!(response.contains(
 		"[\"model_execution\", \"tool_execution\", \"protocol_activity\"].includes(run.wait_reason)"
@@ -1538,7 +1545,8 @@ fn operator_dashboard_normalizes_review_state_tokens() {
 fn operator_dashboard_review_cards_omit_static_summary_copy() {
 	let response = dashboard_response();
 
-	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: `run ${displayToken(activeRun.phase)}`"));
+	assert!(response.contains("const shadowedByActiveRun ="));
+	assert!(response.contains("status: activeRun ? `run ${displayToken(activeRun.phase)}` : \"active run\""));
 	assert!(response.contains("function postReviewBlockerStatus(lane, blockerScope)"));
 	assert!(response.contains("status: postReviewBlockerStatus(lane, blockerScope)"));
 	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: lane.check_state"));

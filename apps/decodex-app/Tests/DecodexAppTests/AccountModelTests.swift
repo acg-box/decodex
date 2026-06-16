@@ -283,6 +283,36 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertEqual(run.inactiveDurationSeconds, 20840)
 	}
 
+	func testFreshProtocolExecutionOverridesStaleProcessMarker() throws {
+		let payload = """
+		{
+		  "run_id": "xy-957-attempt-3",
+		  "issue_identifier": "XY-957",
+		  "status": "running",
+		  "phase": "executing",
+		  "wait_reason": "model_execution",
+		  "execution_liveness": "process_identity_mismatch",
+		  "has_fresh_execution": true,
+		  "counts_as_running": true,
+		  "needs_attention": false,
+		  "process_alive": false,
+		  "process_liveness_reason": "host_boot_id_mismatch",
+		  "thread_status": "active",
+		  "idle_for_seconds": 1,
+		  "protocol_idle_for_seconds": 1,
+		  "last_progress_at": "2026-06-16T03:27:31Z",
+		  "last_event_type": "turn/diff/updated"
+		}
+		""".data(using: .utf8)!
+
+		let run = try JSONDecoder().decode(OperatorRunStatus.self, from: payload)
+
+		XCTAssertTrue(run.hasFreshExecution)
+		XCTAssertTrue(run.countsAsRunning)
+		XCTAssertFalse(run.hasAttentionTone)
+		XCTAssertEqual(run.inactiveDurationSeconds, 1)
+	}
+
 	func testOperatorSnapshotAssignsCodexAccountRunsToAccountRows() throws {
 		let assignedAccount = makeAccount(
 			status: "available",
@@ -421,6 +451,31 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertEqual(project.activeRunCount, 2)
 		XCTAssertEqual(project.runningLaneCount, 2)
 		XCTAssertEqual(snapshot.runningLaneCount, 2)
+	}
+
+	func testShadowedPostReviewLaneDoesNotInflateReviewOrLandingCounts() throws {
+		let payload = """
+		{
+		  "projects": [
+		    {
+		      "project_id": "pubfi-platform",
+		      "post_review_lane_count": 0
+		    }
+		  ],
+		  "post_review_lanes": [
+		    {
+		      "classification": "ready_to_land",
+		      "shadowed_by_active_run": true
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
+
+		XCTAssertEqual(snapshot.reviewCount, 0)
+		XCTAssertEqual(snapshot.landingCount, 0)
+		XCTAssertEqual(snapshot.postReviewLanes.first?.shadowedByActiveRun, true)
 	}
 
 	func testOperatorSnapshotAssignsSelectedAccountWhenPrimaryAccountIsMissing() throws {

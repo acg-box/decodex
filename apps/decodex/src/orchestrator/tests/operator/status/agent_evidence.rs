@@ -10,6 +10,8 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 
 	active_run.suspected_stall = true;
 	active_run.phase = String::from("stalled");
+	active_run.counts_as_running = false;
+	active_run.needs_attention = true;
 
 	let snapshot = OperatorStatusSnapshot {
 		project_id: String::from(TEST_SERVICE_ID),
