@@ -45,9 +45,9 @@ agent-facing skills must guide responsible use.
 | Project dispatch pause | Supported for future dispatch | `decodex project disable <service-id>` and the runtime project enabled flag | Pause prevents new dispatch for the project. It must not kill or rewrite already active lanes. |
 | Project dispatch resume | Supported for future dispatch | `decodex project enable <service-id>` and the runtime project enabled flag | Resume re-enables future dispatch after the operator has inspected blockers, capacity, and queue state. |
 | Linear scan request | Supported | `POST /api/linear-scan` with optional `projectId` | Queue a scan for the next control-plane tick while respecting tracker backoff. This is an intake/status refresh request, not an execution command. |
-| Run-control channel foundation | Supported foundation | Active attempts publish a local `.decodex-run-control/*` channel record, runtime SQLite `run_control_channels`, operator status `control_capability`, and private `control_action` audit events | Route lane-control mutations through the active attempt's project, issue, run id, attempt, thread id, current turn id, active lease, and local channel metadata. Invalid or stale requests fail closed and remain local audit evidence. |
-| Soft interrupt | Supported CLI/API control | `decodex lane interrupt <ISSUE> --run-id <RUN_ID>` and `POST /api/lane/interrupt` write a run-control request that the active app-server child delivers with `turn/interrupt` | Prefer soft interrupt before hard interruption when the active turn id is known and the app-server capability is present. Soft interrupt requests a graceful turn stop and records the protocol outcome when app-server returns one. If the run-control resolver rejects soft delivery with `active_lease_missing`, preserve the observed process, channel, branch, and retained worktree evidence instead of hiding the lane as inactive. |
-| Hard interrupt fallback | Explicit fallback only | `decodex lane interrupt <ISSUE> --run-id <RUN_ID> --force` and `POST /api/lane/interrupt` with `"force": true` classify process signaling as `hard_interrupt_fallback` | Use only when soft interrupt is unavailable, timed out, or impossible because the process, app-server boundary, or active lease cannot be reached. A forced interrupt may signal the recorded child process after `active_lease_missing` only when inspection still identifies the same issue, run id, attempt, channel, and live process. Preserve retained worktree evidence and runtime classification. |
+| Run-control channel foundation | Supported foundation | Active attempts publish a local `.decodex-run-control/*` channel record, runtime SQLite `run_control_channels`, operator status `control_capability`, and private `control_action` audit events | Route lane-control mutations through the active attempt's project, issue, run id, attempt, thread id, current turn id, run lease, and local channel metadata. Invalid or stale requests fail closed and remain local audit evidence. |
+| Soft interrupt | Supported CLI/API control | `decodex lane interrupt <ISSUE> --run-id <RUN_ID>` and `POST /api/lane/interrupt` write a run-control request that the active app-server child delivers with `turn/interrupt` | Prefer soft interrupt before hard interruption when the active turn id is known and the app-server capability is present. Soft interrupt requests a graceful turn stop and records the protocol outcome when app-server returns one. If the run-control resolver rejects soft delivery with `run_lease_missing`, preserve the observed process, channel, branch, and retained worktree evidence instead of hiding the lane as inactive. |
+| Hard interrupt fallback | Explicit fallback only | `decodex lane interrupt <ISSUE> --run-id <RUN_ID> --force` and `POST /api/lane/interrupt` with `"force": true` classify process signaling as `hard_interrupt_fallback` | Use only when soft interrupt is unavailable, timed out, or impossible because the process, app-server boundary, or run lease cannot be reached. A forced interrupt may signal the recorded child process after `run_lease_missing` only when inspection still identifies the same issue, run id, attempt, channel, and live process. Preserve retained worktree evidence and runtime classification. |
 | Steer active lane | Supported CLI/API control; bottom-layer method stays broad | `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>`, canonical `POST /api/lane/steer`, legacy alias `POST /api/lane-steer`, local run-control steer request/response files, app-server `turn/steer`, private `control_action` audit events, and protocol activity `turn/steer` summaries | Pass operator-supplied steer text through CLI/API to the current active turn. Require `expectedTurnId`; stale turn ids fail closed. Do not narrow the protocol to a fixed set of task-content categories. Apply policy, audit, privacy, and lifecycle guardrails above the protocol. |
 | Retained resume/retry | Supported through runtime lifecycle | `decodex run <ISSUE>`, retry scheduling, retained worktree recovery, and `thread/resume` for same-thread app-server continuation | Resume only when retained worktree, issue, branch, PR, and runtime evidence still prove the same lane. Treat ambiguous lineage as manual attention. |
 | Manual attention | Supported terminal control path | `issue_label_add` intent for `decodex:needs-attention`, `issue_comment(kind = "manual_attention")`, and `issue_terminal_finalize(path = "manual_attention")` | Stop automation when policy requires a human decision. Explain the blocker through structured public fields and keep private evidence local. |
@@ -63,7 +63,7 @@ Before any lane-control mutation, the operator or agent must inspect:
 - issue identifier and tracker state
 - branch and retained worktree ownership
 - run id, attempt number, thread id, and current turn id when available
-- active lease state, process liveness, and protocol activity
+- run lease state, process liveness, and protocol activity
 - recent private evidence and any public Linear lifecycle signal
 - PR lineage when the lane already crossed into review handoff
 
@@ -74,7 +74,7 @@ guessing.
 ## Run-Control Channel Foundation
 
 Every live app-server attempt publishes a per-attempt local control capability when
-Decodex still owns the active lease for the run. The current mechanism is a local file
+Decodex still owns the run lease for the run. The current mechanism is a local file
 channel under the run worktree's `.decodex-run-control/` directory plus a
 `run_control_channels` runtime SQLite row. This is foundation plumbing only: it proves
 where an active attempt can receive future control traffic without exposing steer,
@@ -92,14 +92,14 @@ A control request is valid only when all of the following hold:
 - the requested run exists
 - requested project id, issue id, run id, and attempt number match the active attempt
 - requested thread id and turn id, when supplied, match the current attempt values
-- the active lease for the issue is held by the same project and run id
+- the run lease for the issue is held by the same project and run id
 - the attempt status is active
 - the persisted channel row is active and the local channel path still exists
 
 Any mismatch fails closed. Rejections are not converted into process signals, tracker
 state changes, or worktree mutations.
 
-`active_lease_missing` is a soft-control rejection, not proof that execution is gone.
+`run_lease_missing` is a soft-control rejection, not proof that execution is gone.
 The audit payload must retain the requested project, issue, run id, attempt, current
 thread and turn ids, active channel metadata when present, branch, retained worktree
 mapping, and operator-local process/protocol liveness context. If the operator used
@@ -143,7 +143,7 @@ evidence, marks an active attempt as `interrupted` when a recorded child is sign
 clears or retains ownership according to the runtime contract, and avoids pretending
 the agent completed a terminal path.
 
-When forced interrupt follows an `active_lease_missing` soft-control rejection, the
+When forced interrupt follows an `run_lease_missing` soft-control rejection, the
 CLI/API response must show both facts: soft control was rejected, and hard fallback was
 attempted only because force was explicit and process evidence was still present. If no
 signalable child process is recorded, the hard-fallback report must say it was

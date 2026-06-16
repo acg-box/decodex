@@ -86,7 +86,7 @@ Required fields:
 - `source`: `diagnose_command` or `serve_tick`
 - `evidence_root`, `handoff_index_path`, `blockers_dir`, `runs_dir`, `events_path`:
   absolute local paths
-- `summary`: counts for projects, active runs, recent runs, history lanes, queued
+- `summary`: counts for projects, current lanes, recent runs, history lanes, queued
   candidates, post-review lanes, recovery worktrees, blockers, run capsules,
   connector backoffs, and warnings
 - `warnings`: typed operator snapshot or diagnose warning strings

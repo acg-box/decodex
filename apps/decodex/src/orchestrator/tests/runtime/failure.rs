@@ -182,11 +182,11 @@ fn failure_writeback_disposition_marks_retryable_recovery_classes() {
 			RunFailureWritebackDisposition::RetryableStructuredRecovery,
 		),
 		(
-			"stalled active run",
+			"stalled current lane",
 			Report::new(StalledRunNeedsAttention {
 				issue_identifier: String::from("PUB-101"),
 				run_id: String::from("pub-101-attempt-1-123"),
-				idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+				idle_for: RUN_LEASE_IDLE_TIMEOUT + Duration::from_secs(1),
 			}),
 			RunFailureWritebackDisposition::RetryableStructuredRecovery,
 		),
@@ -646,7 +646,7 @@ fn stalled_run_retry_comments_preserve_specific_error_class() {
 	let error = Report::new(StalledRunNeedsAttention {
 		issue_identifier: String::from("PUB-101"),
 		run_id: String::from("pub-101-attempt-1-123"),
-		idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+		idle_for: RUN_LEASE_IDLE_TIMEOUT + Duration::from_secs(1),
 	});
 	let (error_class, next_action) = orchestrator::retry_comment_details(&error);
 
