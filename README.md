@@ -125,6 +125,7 @@ cargo run -p decodex --bin decodex -- intake goal --project decodex <CONTRACT_ID
 cargo run -p decodex --bin decodex -- intake goal --project decodex <CONTRACT_ID> --apply
 cargo run -p decodex --bin decodex -- intake issues --project decodex XY-1 XY-2 --dry-run
 cargo run -p decodex --bin decodex -- intake issues --project decodex XY-1 XY-2 --apply
+cargo run -p decodex --bin decodex -- mcp serve --transport stdio
 cargo run -p decodex --bin decodex -- radar refresh-upstream-queue
 cargo run -p decodex --bin decodex -- radar refresh-release-delta
 cargo run -p decodex --bin decodex -- radar validate
@@ -184,6 +185,12 @@ report without mutation. `--apply` persists the local Program Intake Plan, Execu
 Program, and issue mappings. It never applies or removes service queue labels; ready
 mapped nodes are dispatched directly by the Program scheduler instead of being
 converted into queued-label work.
+
+`decodex mcp serve --transport stdio` starts the phase-one read-only MCP gateway for
+local desktop and CLI clients. The gateway exposes checked-in documentation, checked-in
+JSON research reports, runtime Decision Contract readback, local status snapshots, and
+lane-control readback as MCP resources only. It does not expose mutating MCP tools.
+Stdout is reserved for MCP JSON-RPC messages; diagnostics and logs stay off stdout.
 
 ### Install from Source
 

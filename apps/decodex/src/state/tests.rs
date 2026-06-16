@@ -3115,6 +3115,13 @@ fn decision_contracts_persist_reload_and_promote_without_linear_mirror() {
 
 	assert_eq!(issue_contracts.len(), 1);
 	assert_eq!(issue_contracts[0].contract_id(), "research-x-loop-contract");
+
+	let project_contracts = reopened
+		.list_decision_contracts_for_project("decodex")
+		.expect("project contracts should list");
+
+	assert_eq!(project_contracts.len(), 1);
+	assert_eq!(project_contracts[0].contract_id(), "research-x-loop-contract");
 }
 
 #[test]
