@@ -82,7 +82,7 @@ large catch-all test file unless the behavior crosses several of these stages.
 | `apps/decodex/src/orchestrator/tests/recovery/runtime_reentry.rs` | 30 | Runtime reentry, recovered worktrees, liveness, and live-run recovery |
 | `apps/decodex/src/orchestrator/tests/operator/status_support.rs` | 0 | Shared operator status fixtures |
 | `apps/decodex/src/orchestrator/tests/operator/status/control_plane.rs` | 10 | Registered project control-plane rows |
-| `apps/decodex/src/orchestrator/tests/operator/status/running_lanes.rs` | 34 | Running lanes, stalled lanes, active-run hydration, and local worktrees |
+| `apps/decodex/src/orchestrator/tests/operator/status/running_lanes.rs` | 34 | Running lanes, stalled lanes, current-lane hydration, and local worktrees |
 | `apps/decodex/src/orchestrator/tests/operator/status/history.rs` | 7 | Run ledger and Linear history hydration |
 | `apps/decodex/src/orchestrator/tests/operator/status/text.rs` | 10 | Human-readable operator status text |
 | `apps/decodex/src/orchestrator/tests/operator/status/publishing.rs` | 11 | Snapshot publishing, degraded observers, and tracker backoff |

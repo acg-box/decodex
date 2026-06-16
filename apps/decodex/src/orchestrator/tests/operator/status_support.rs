@@ -328,7 +328,7 @@ fn operator_status_text_protocol_activity() -> ProtocolActivitySummary {
 	}
 }
 
-fn operator_status_text_active_run() -> OperatorRunStatus {
+fn operator_status_text_current_lane() -> OperatorRunStatus {
 	let account = operator_status_text_codex_account();
 	let backup_account = operator_status_text_backup_codex_account();
 
@@ -340,11 +340,14 @@ fn operator_status_text_active_run() -> OperatorRunStatus {
 		issue_identifier: Some(String::from("PUB-101")),
 		title: Some(String::from("Implement orchestration")),
 		author: Some(String::from("Yvette")),
+		issue_state: None,
+		active_label_present: None,
+		needs_attention_label_present: None,
 		attempt_number: 1,
 		status: String::from("running"),
 		attempt_status: String::from("running"),
 		status_projection_reason: None,
-		ownership_state: String::from("owned_active"),
+		ownership_state: String::from("leased_run"),
 		liveness_state: String::from("process_alive"),
 		policy_state: String::from("allowed"),
 		terminalization_state: String::from("none"),
@@ -359,7 +362,8 @@ fn operator_status_text_active_run() -> OperatorRunStatus {
 		thread_active_flags: vec![String::from("waitingOnApproval")],
 		interactive_requested: true,
 		continuation_pending: false,
-		active_lease: true,
+		continuation_recovery: None,
+		run_lease: true,
 		queue_lease_state: String::from("held"),
 		execution_liveness: String::from("process_alive"),
 		has_fresh_execution: true,
@@ -465,7 +469,7 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 			worktree_path: String::from(".worktrees/PUB-104"),
 			ownership: String::from("cleanup_only"),
 			ownership_reason: String::from(
-				"No active lane, queued recovery, or post-review lane owns this worktree; local cleanup only.",
+				"No current lane, queued recovery, or post-review lane owns this worktree; local cleanup only.",
 			),
 			provenance: test_worktree_provenance("runtime_recorded"),
 			recovery_next_action: None,
@@ -478,8 +482,8 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 			issue_state: Some(String::from("In Progress")),
 			branch_name: String::from("x/pubfi-pub-101"),
 			worktree_path: String::from(".worktrees/PUB-101"),
-			ownership: String::from("active_lane"),
-			ownership_reason: String::from("Active lane `run-1` owns this worktree."),
+			ownership: String::from("current_lane"),
+			ownership_reason: String::from("Current lane `run-1` owns this worktree."),
 			provenance: test_worktree_provenance("runtime_recorded"),
 			recovery_next_action: None,
 			hygiene: None,
@@ -528,7 +532,7 @@ fn operator_status_text_post_review_lanes() -> Vec<OperatorPostReviewLaneStatus>
 		mergeable: Some(String::from("MERGEABLE")),
 		check_state: Some(String::from("SUCCESS")),
 		unresolved_review_threads: Some(0),
-		shadowed_by_active_run: false,
+		shadowed_by_current_lane: false,
 		readback_warning: None,
 		readback_root_cause: None,
 		loop_status: None,

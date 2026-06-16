@@ -399,7 +399,7 @@ Operator status and dashboard consumers may aggregate ledger records for complet
 history lanes that are already present in the local runtime attempt window. That
 aggregation is display-only: it may show PR URL, landed or merge commit, closeout
 status, needs-attention reason, and elapsed lifecycle timing from Linear comments, but
-it must not replay those comments as active leases, dispatch ownership, retry state, or
+it must not replay those comments as run leases, dispatch ownership, retry state, or
 post-review orchestration authority.
 
 Successful closeout and cleanup results must remain successful in local runtime history.

@@ -1587,8 +1587,8 @@ fn clear_manual_closeout_runtime_state(
 	issue_id: &str,
 	handoff_run_id: &str,
 ) -> Result<()> {
-	state_store.succeed_active_run_attempts_for_issue(issue_id).wrap_err_with(|| {
-		format!("Failed to finalize active runtime attempts for issue `{issue_id}`.")
+	state_store.succeed_running_run_attempts_for_issue(issue_id).wrap_err_with(|| {
+		format!("Failed to finalize running runtime attempts for issue `{issue_id}`.")
 	})?;
 
 	succeed_manual_land_handoff_attempt(state_store, issue_id, handoff_run_id)?;

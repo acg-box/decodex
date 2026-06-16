@@ -301,10 +301,10 @@ fn live_operator_status_snapshot_excludes_claimed_candidates_from_waiting_intake
 
 	state_store
 		.record_run_attempt("run-claimed", &claimed_issue.id, 1, "running")
-		.expect("active run should record");
+		.expect("current lane should record");
 	state_store
 		.upsert_lease(config.service_id(), &claimed_issue.id, "run-claimed", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
@@ -319,9 +319,9 @@ fn live_operator_status_snapshot_excludes_claimed_candidates_from_waiting_intake
 		snapshot.queued_candidates.first().expect("claimed queue echo should remain raw-visible");
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
-	assert_eq!(snapshot.active_runs.len(), 1);
-	assert_eq!(snapshot.active_runs[0].run_id, "run-claimed");
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(snapshot.current_lanes.len(), 1);
+	assert_eq!(snapshot.current_lanes[0].run_id, "run-claimed");
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(candidate.issue_identifier, "PUB-103");
 	assert_eq!(candidate.classification, "claimed");
 	assert_eq!(candidate.reason, "shared_claim_present");
@@ -334,7 +334,7 @@ fn live_operator_status_snapshot_excludes_claimed_candidates_from_waiting_intake
 		"claimed queue echoes must not inflate project waiting counts"
 	);
 	assert!(rendered.contains("Backlog: 0"));
-	assert!(rendered.contains("Active queue echoes: 1"));
+	assert!(rendered.contains("Claimed queue echoes: 1"));
 }
 
 #[test]
@@ -353,10 +353,10 @@ fn live_operator_status_snapshot_prioritizes_needs_attention_over_shared_claim()
 
 	state_store
 		.record_run_attempt("run-attention-claimed", &issue.id, 1, "running")
-		.expect("active run should record");
+		.expect("current lane should record");
 	state_store
 		.upsert_lease(config.service_id(), &issue.id, "run-attention-claimed", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
@@ -613,7 +613,7 @@ fn live_operator_status_snapshot_reports_capacity_waiting_separately_from_blocke
 
 	state_store
 		.upsert_lease(config.service_id(), "issue-running", "run-active", "In Progress")
-		.expect("active lease should consume the single global slot");
+		.expect("run lease should consume the single global slot");
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
@@ -1178,7 +1178,7 @@ fn live_operator_status_snapshot_surfaces_git_credential_failures() {
 		.expect("needs-attention queued issue should exist");
 	let attention = candidate.attention.as_ref().expect("attention details should render");
 
-	assert!(snapshot.active_runs.is_empty());
+	assert!(snapshot.current_lanes.is_empty());
 	assert_eq!(candidate.classification, "blocked");
 	assert_eq!(candidate.reason, "issue_needs_attention");
 	assert_eq!(attention.current_operation.as_deref(), Some(state::RUN_OPERATION_GIT_CREDENTIALS));
@@ -1254,7 +1254,7 @@ fn live_operator_status_snapshot_recovers_shared_claims_for_fresh_status_store_i
 		"shared_claim_present"
 	);
 	assert!(
-		snapshot.active_runs.is_empty(),
+		snapshot.current_lanes.is_empty(),
 		"fresh observer stores should not invent local running lanes while reconstructing the shared claim view"
 	);
 }
@@ -1303,13 +1303,13 @@ fn live_operator_status_snapshot_reconstructs_same_shared_view_for_fresh_state_s
 		.expect("snapshot should build");
 
 		serde_json::json!({
-			"active_runs": snapshot.active_runs.iter().map(|run| {
+			"current_lanes": snapshot.current_lanes.iter().map(|run| {
 				serde_json::json!({
 					"run_id": run.run_id,
 					"issue_id": run.issue_id,
 					"phase": run.phase,
 					"current_operation": run.current_operation,
-					"active_lease": run.active_lease,
+					"run_lease": run.run_lease,
 					"branch_name": run.branch_name,
 					"worktree_path": run.worktree_path,
 				})

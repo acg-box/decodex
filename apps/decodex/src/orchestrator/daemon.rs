@@ -290,12 +290,12 @@ where
 				child_ref.run_id,
 			)?
 		} else {
-			inspect_active_daemon_child_reconciliation(
+			inspect_current_daemon_child_reconciliation(
 				tracker,
 				project,
 				workflow,
 				state_store,
-				ActiveChildRunContext {
+				CurrentChildRunContext {
 					child: child_ref,
 					workflow: &active_children[index].workflow,
 					dispatch_mode: active_children[index].dispatch_mode,
@@ -357,23 +357,23 @@ where
 			stop_daemon_child(&mut daemon_child.child)?;
 		}
 
-		apply_active_run_reconciliation(tracker, project, state_store, worktree_manager, actions)?;
+		apply_run_lease_reconciliation(tracker, project, state_store, worktree_manager, actions)?;
 	}
 
 	Ok(())
 }
 
-fn inspect_active_daemon_child_reconciliation<T>(
+fn inspect_current_daemon_child_reconciliation<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
-	child_context: ActiveChildRunContext<'_>,
-) -> Result<Vec<ActiveRunReconciliation>>
+	child_context: CurrentChildRunContext<'_>,
+) -> Result<Vec<RunLeaseReconciliation>>
 where
 	T: IssueTracker,
 {
-	inspect_active_daemon_child_reconciliation_at(
+	inspect_current_daemon_child_reconciliation_at(
 		tracker,
 		project,
 		workflow,
@@ -383,14 +383,14 @@ where
 	)
 }
 
-fn inspect_active_daemon_child_reconciliation_at<T>(
+fn inspect_current_daemon_child_reconciliation_at<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
-	child_context: ActiveChildRunContext<'_>,
+	child_context: CurrentChildRunContext<'_>,
 	now_unix_epoch: i64,
-) -> Result<Vec<ActiveRunReconciliation>>
+) -> Result<Vec<RunLeaseReconciliation>>
 where
 	T: IssueTracker,
 {
@@ -404,7 +404,7 @@ where
 	let worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
 
 	if let Some(disposition) = superseded_run_disposition(state_store, &run_attempt)? {
-		return Ok(vec![ActiveRunReconciliation {
+		return Ok(vec![RunLeaseReconciliation {
 			issue: issue.clone(),
 			run_attempt,
 			worktree_mapping,
@@ -413,7 +413,7 @@ where
 		}]);
 	}
 
-	let action_workflow = active_reconciliation_workflow_for_lease(
+	let action_workflow = run_lease_reconciliation_workflow(
 		workflow,
 		Some(ActiveWorkflowOverride { child, workflow: child_context.workflow }),
 		&issue,
@@ -432,9 +432,9 @@ where
 	let disposition = if !retained_closeout && !completed_closeout_child
 		&& is_terminal_issue(&issue, action_workflow)
 	{
-		Some(ActiveRunDisposition::Terminal)
+		Some(RunLeaseDisposition::Terminal)
 	} else if !retained_closeout && !completed_closeout_child
-		&& is_issue_nonactive_for_active_dispatch(
+		&& is_issue_not_dispatchable_for_current_dispatch(
 			tracker,
 			&issue,
 			project,
@@ -442,7 +442,7 @@ where
 			child_context.dispatch_mode,
 		)?
 	{
-		Some(ActiveRunDisposition::NonActive)
+		Some(RunLeaseDisposition::NotDispatchable)
 	} else if let Some(idle_for) = stalled_idle_duration(
 		state_store,
 		&run_attempt,
@@ -454,18 +454,18 @@ where
 			&run_attempt,
 			worktree_mapping.as_ref(),
 		)? {
-			Some(ActiveRunDisposition::RetainedReviewComplete)
+			Some(RunLeaseDisposition::RetainedReviewComplete)
 		} else if stalled_run_has_retained_partial_progress(worktree_mapping.as_ref()) {
-			Some(ActiveRunDisposition::StalledRetainedPartialProgress { idle_for })
+			Some(RunLeaseDisposition::StalledRetainedPartialProgress { idle_for })
 		} else {
-			Some(ActiveRunDisposition::Stalled { idle_for })
+			Some(RunLeaseDisposition::Stalled { idle_for })
 		}
 	} else {
 		None
 	};
 
 	Ok(disposition.map_or_else(Vec::new, |disposition| {
-		vec![ActiveRunReconciliation {
+		vec![RunLeaseReconciliation {
 			issue: issue.clone(),
 			run_attempt,
 			worktree_mapping,
@@ -619,7 +619,7 @@ where
 				issue = summary.issue_identifier,
 				worktree = %daemon_spawn_state.worktree.path.display(),
 				retry = from_retry_queue,
-				"Spawned control-plane child for active issue lane."
+				"Spawned control-plane child for current issue lane."
 			);
 
 			active_children.push(DaemonRunChild {
@@ -1242,7 +1242,7 @@ where
 		return Ok(ChildExitPhaseGoalRecovery::None);
 	}
 
-	let recovery = maybe_recover_child_exit_active_phase_goal_continuation(
+	let recovery = maybe_recover_child_exit_phase_goal_continuation(
 		context,
 		issue,
 		child,
@@ -1257,7 +1257,7 @@ where
 	Ok(recovery)
 }
 
-fn maybe_recover_child_exit_active_phase_goal_continuation<T>(
+fn maybe_recover_child_exit_phase_goal_continuation<T>(
 	context: &ChildExitRetryContext<'_, T>,
 	issue: &TrackerIssue,
 	child: ChildRunRef<'_>,
@@ -1280,12 +1280,13 @@ where
 		run_id: child.run_id.to_owned(),
 		retry_budget_base: 0,
 	};
-	let recovery = match recover_active_phase_goal_continuation(
+	let recovery = match recover_phase_goal_continuation(
 		context.project,
 		context.workflow,
 		context.state_store,
 		&issue_run,
 		"child_exit_failed",
+		Some("child_exit_failed"),
 	) {
 		Ok(recovery) => recovery,
 		Err(error) if run_failure_requires_terminal_attention(&error) => {
@@ -1312,7 +1313,7 @@ where
 			attempt = child.attempt_number,
 			source_phase = recovery.source_phase.as_str(),
 			next_phase = recovery.next_phase.as_str(),
-			"Recovered active phase goal after child exit failure; scheduling continuation."
+			"Recovered phase goal after child exit failure; scheduling continuation."
 		);
 	}
 

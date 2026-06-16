@@ -89,7 +89,7 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 	);
 	assert!(
 		state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none(),
-		"deterministic closeout should not leave an active lease"
+		"deterministic closeout should not leave an run lease"
 	);
 	assert_eq!(
 		tracker.label_removals.borrow().len(),
