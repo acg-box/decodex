@@ -4316,8 +4316,8 @@ fn adopt_thread_bound_notification_turn_id(
 	if observed_turn_id == target_turn_id {
 		return Ok(());
 	}
-	if !thread_id_from_notification(notification)
-		.is_some_and(|thread_id| thread_id == target_thread_id)
+	if thread_id_from_notification(notification)
+		.is_none_or(|thread_id| thread_id != target_thread_id)
 	{
 		return Ok(());
 	}
