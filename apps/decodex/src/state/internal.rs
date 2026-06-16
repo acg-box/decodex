@@ -2,6 +2,7 @@
 use std::mem::{self, MaybeUninit};
 use std::sync::atomic::AtomicU64;
 use std::env;
+#[cfg(target_os = "macos")]
 use std::ptr;
 
 use libc::FD_CLOEXEC;
