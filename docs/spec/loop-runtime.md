@@ -514,6 +514,11 @@ the only valid way to exit a satisfied phase and hand control back to Decodex's
 repo-gate transition. A progress checkpoint or final message that says the lane is
 validation-ready and waiting for the next phase is only evidence; it must not replace
 the Codex goal-complete signal.
+When Decodex has already recorded a valid phase-goal continuation or active phase in
+the immediately previous attempt and must create a retry or automatic continuation
+attempt, the new attempt resumes that unterminated phase state instead of restarting
+implementation. This preserves the state-machine boundary between validated work and
+the later review/handoff contract.
 
 ## Validation And Review
 
