@@ -4449,8 +4449,28 @@
 				return runTelemetryMissing(run) && numericSeconds(run.idle_for_seconds) >= RUN_ATTENTION_IDLE_SECONDS;
 			}
 
+			function runHasFreshExecution(run) {
+				if (typeof run?.has_fresh_execution === "boolean") {
+					return run.has_fresh_execution;
+				}
+
+				return (
+					run?.thread_status === "active" ||
+					(run?.thread_active_flags?.length ?? 0) > 0 ||
+					["thread_active", "protocol_observed"].includes(run?.execution_liveness) ||
+					run?.process_alive === true ||
+					(run?.protocol_idle_for_seconds != null &&
+						numericSeconds(run.protocol_idle_for_seconds) < RUN_STALE_NO_PROCESS_SECONDS)
+				);
+			}
+
 			function runProcessStoppedWhileActive(run) {
-				return run.status === "running" && run.process_alive === false && !run.wait_reason;
+				return (
+					run.status === "running" &&
+					run.process_alive === false &&
+					!run.wait_reason &&
+					!runHasFreshExecution(run)
+				);
 			}
 
 			function runOperationRequiresLiveAgent(run) {
@@ -4492,11 +4512,16 @@
 					run.phase === "executing" &&
 					!run.wait_reason &&
 					run.process_alive !== true &&
+					!runHasFreshExecution(run) &&
 					runStaleWithoutKnownProcessAgeSeconds(run) >= RUN_STALE_NO_PROCESS_SECONDS
 				);
 			}
 
 			function runNeedsAttention(run) {
+				if (typeof run?.needs_attention === "boolean") {
+					return run.needs_attention;
+				}
+
 				return (
 					run.suspected_stall ||
 					run.phase === "stalled" ||
@@ -4506,10 +4531,14 @@
 			}
 
 			function runCountsAsRunning(run) {
+				if (typeof run?.counts_as_running === "boolean") {
+					return run.counts_as_running;
+				}
+
 				return (
 					["starting", "running"].includes(run.status) &&
 					run.phase === "executing" &&
-					run.process_alive !== false &&
+					(run.process_alive !== false || runHasFreshExecution(run)) &&
 					!runNeedsAttention(run)
 				);
 			}
@@ -4574,6 +4603,10 @@
 			}
 
 			function isPostReviewBlocker(lane) {
+				if (lane?.shadowed_by_active_run === true) {
+					return false;
+				}
+
 				return ["blocked", "needs_review_repair", "closeout_blocked", "cleanup_blocked"].includes(
 					lane.classification,
 				);
@@ -9511,20 +9544,36 @@
 
 				for (const lane of postReviewLanes) {
 					const tone = toneForLane(lane);
-					const activeRun = activeRunByIssue.get(lane.issue_id);
+					const activeRun = issueIdentityKeys(lane)
+						.map((key) => activeRunByIssue.get(key))
+						.find(Boolean);
+					const shadowedByActiveRun =
+						lane.shadowed_by_active_run === true ||
+						(typeof lane.shadowed_by_active_run !== "boolean" &&
+							activeRun &&
+							lane.classification === "needs_review_repair");
 					const issueKey = issueDisplayKey(lane);
 
-					if (activeRun && lane.classification === "needs_review_repair") {
+					if (shadowedByActiveRun) {
+						const activeRunFacts = activeRun
+							? [
+								["Run", activeRun.run_id],
+								[
+									"Operation",
+									displayToken(activeRun.current_operation || activeRun.phase),
+								],
+							]
+							: [["Run", "active"]];
+
 						waitingItems.push({
 							tone: "tone-run",
 							scope: "Review",
 							issue: issueKey,
 							title: "Repair running",
 							summary: "",
-							status: `run ${displayToken(activeRun.phase)}`,
+							status: activeRun ? `run ${displayToken(activeRun.phase)}` : "active run",
 							facts: [
-								["Run", activeRun.run_id],
-								["Operation", displayToken(activeRun.current_operation || activeRun.phase)],
+								...activeRunFacts,
 								["Checks", compactStateToken(lane.check_state)],
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
@@ -11182,7 +11231,12 @@
 			}
 
 			function dashboardRunShouldRetainDuringPartialActivity(run) {
-				return run?.active_lease === true || run?.process_alive === true || runCountsAsRunning(run);
+				return (
+					run?.active_lease === true ||
+					run?.process_alive === true ||
+					runHasFreshExecution(run) ||
+					runCountsAsRunning(run)
+				);
 			}
 
 			function mergeDashboardActiveRuns(snapshot, activeRunRows, activeRunsComplete = true) {

@@ -845,6 +845,7 @@ fn live_status_treats_adopted_ready_to_land_history_attention_as_history_only() 
 		mergeable: Some(String::from("MERGEABLE")),
 		check_state: Some(String::from("SUCCESS")),
 		unresolved_review_threads: Some(0),
+		shadowed_by_active_run: false,
 		readback_warning: None,
 		readback_root_cause: None,
 		loop_status: None,
@@ -861,7 +862,6 @@ fn live_status_treats_adopted_ready_to_land_history_attention_as_history_only() 
 	assert_eq!(snapshot.projects[0].post_review_lane_count, 1);
 	assert_eq!(snapshot.projects[0].retained_worktree_count, 1);
 	assert_eq!(snapshot.worktrees[0].ownership, "post_review_lane");
-	assert_eq!(snapshot.post_review_lanes[0].classification, "ready_to_land");
 	assert!(rendered.contains("Current attention: 0"));
 	assert!(rendered.contains("History-only terminal attention: 1"));
 	assert!(rendered.contains("classification: ready_to_land"));
