@@ -76,6 +76,23 @@ impl ProjectLoopEvidenceSnapshot {
 			.unwrap_or(&[])
 	}
 
+	pub(crate) fn private_events_for_issue(&self, issue_id: &str) -> Vec<&PrivateExecutionEvent> {
+		let mut events = self
+			.private_events
+			.iter()
+			.filter(|((event_issue_id, _, _), _)| event_issue_id == issue_id)
+			.flat_map(|(_, events)| events.iter())
+			.collect::<Vec<_>>();
+
+		events.sort_by(|left, right| {
+			left.recorded_at_unix()
+				.cmp(&right.recorded_at_unix())
+				.then_with(|| left.record_id().cmp(&right.record_id()))
+		});
+
+		events
+	}
+
 	pub(crate) fn review_policy_checkpoint(
 		&self,
 		issue_id: &str,
@@ -374,7 +391,7 @@ impl StateStore {
 		self.retarget_issue_identity_locked(previous_issue_id, canonical_issue_id)
 	}
 
-	/// Create or replace the active lease for one issue.
+	/// Create or replace the run lease for one issue.
 	pub fn upsert_lease(
 		&self,
 		project_id: &str,
@@ -516,14 +533,14 @@ impl StateStore {
 		Ok(true)
 	}
 
-	/// Read the active lease for one issue.
+	/// Read the run lease for one issue.
 	pub fn lease_for_issue(&self, issue_id: &str) -> Result<Option<IssueLease>> {
 		let state = self.lock()?;
 
 		Ok(state.leases.get(issue_id).cloned())
 	}
 
-	/// List all active leases.
+	/// List all run leases.
 	pub fn list_leases(&self, project_id: &str) -> Result<Vec<IssueLease>> {
 		let mut state = self.lock_without_refresh()?;
 
@@ -669,7 +686,7 @@ impl StateStore {
 		}
 	}
 
-	/// Remove the active lease for one issue.
+	/// Remove the run lease for one issue.
 	pub fn clear_lease(&self, issue_id: &str) -> Result<()> {
 		let mut state = self.lock()?;
 		let _coordinator = match (
@@ -953,7 +970,7 @@ impl StateStore {
 		self.upsert_run_control_channel_locked(&channel)
 	}
 
-	/// Resolve a local run-control request against active runtime ownership and audit it.
+	/// Resolve a local run-control request against run lease ownership and audit it.
 	#[cfg_attr(not(test), allow(dead_code))]
 	pub(crate) fn resolve_run_control_action(
 		&self,
@@ -1025,7 +1042,7 @@ impl StateStore {
 			attempt_status: None,
 			branch_name: None,
 			worktree_path: None,
-			active_lease: None,
+			run_lease: None,
 			event_count: None,
 			last_event_type: None,
 			last_event_at: None,
@@ -1066,7 +1083,7 @@ impl StateStore {
 			attempt_status: None,
 			branch_name: None,
 			worktree_path: None,
-			active_lease: None,
+			run_lease: None,
 			event_count: None,
 			last_event_type: None,
 			last_event_at: None,
@@ -1116,7 +1133,7 @@ impl StateStore {
 			},
 			"lane": {
 				"attempt_status": target.attempt_status.as_deref(),
-				"active_lease": target.active_lease,
+				"run_lease": target.run_lease,
 				"branch": target.branch_name.as_deref(),
 				"worktree_path": target.worktree_path.as_ref().map(|path| path.display().to_string()),
 				"event_count": target.event_count,
@@ -1266,8 +1283,8 @@ impl StateStore {
 		Ok(())
 	}
 
-	/// Mark all active run attempts for one issue as succeeded.
-	pub fn succeed_active_run_attempts_for_issue(&self, issue_id: &str) -> Result<usize> {
+	/// Mark all running run attempts for one issue as succeeded.
+	pub fn succeed_running_run_attempts_for_issue(&self, issue_id: &str) -> Result<usize> {
 		let now = timestamp_parts();
 		let mut state = self.lock()?;
 		let mut updated_count = 0;
@@ -1276,7 +1293,7 @@ impl StateStore {
 			.run_attempts
 			.values_mut()
 			.filter(|attempt| attempt.issue_id == issue_id)
-			.filter(|attempt| active_run_attempt_status(&attempt.status))
+			.filter(|attempt| running_run_attempt_status(&attempt.status))
 		{
 			attempt.status = "succeeded".to_owned();
 			attempt.updated_at = now.text.clone();
@@ -1444,18 +1461,18 @@ impl StateStore {
 
 		runs.sort_by(compare_project_run_status);
 
-		let active_runs = runs
+		let leased_runs = runs
 			.iter()
-			.filter(|status| status.active_lease())
+			.filter(|status| status.run_lease())
 			.cloned()
 			.collect::<Vec<_>>();
-		let recent_limit = base_recent_limit.saturating_add(active_runs.len());
+		let recent_limit = base_recent_limit.saturating_add(leased_runs.len());
 		let recent_run_ids = runs
 			.iter()
 			.take(recent_limit)
 			.map(|run| run.run_id().to_owned())
 			.collect::<Vec<_>>();
-		let mut summary_run_ids = active_runs
+		let mut summary_run_ids = leased_runs
 			.iter()
 			.map(|run| run.run_id().to_owned())
 			.collect::<Vec<_>>();
@@ -1475,20 +1492,20 @@ impl StateStore {
 
 		selected_runs.sort_by(compare_project_run_status);
 
-		let active_runs = selected_runs
+		let leased_runs = selected_runs
 			.iter()
-			.filter(|status| status.active_lease())
+			.filter(|status| status.run_lease())
 			.cloned()
 			.collect::<Vec<_>>();
 		let mut recent_runs = selected_runs;
 
 		recent_runs.truncate(recent_limit);
 
-		Ok((active_runs, recent_runs))
+		Ok((leased_runs, recent_runs))
 	}
 
-	/// List all active leased runs for one project without applying the recent-run limit.
-	pub fn list_active_runs(&self, project_id: &str) -> Result<Vec<ProjectRunStatus>> {
+	/// List all leased run attempts for one project without applying the recent-run limit.
+	pub fn list_leased_runs(&self, project_id: &str) -> Result<Vec<ProjectRunStatus>> {
 		let mut state = self.lock_without_refresh()?;
 
 		self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
@@ -1499,7 +1516,7 @@ impl StateStore {
 			.filter_map(|attempt| {
 				let status = state.project_run_status(project_id, attempt)?;
 
-				status.active_lease.then_some(status)
+				status.run_lease.then_some(status)
 			})
 			.collect::<Vec<_>>();
 		let mut run_ids = runs.iter().map(|run| run.run_id().to_owned()).collect::<Vec<_>>();
@@ -1515,7 +1532,7 @@ impl StateStore {
 			.filter_map(|attempt| {
 				let status = state.project_run_status(project_id, attempt)?;
 
-				status.active_lease.then_some(status)
+				status.run_lease.then_some(status)
 			})
 			.collect::<Vec<_>>();
 
@@ -3025,7 +3042,7 @@ struct RunControlAuditTarget {
 	context: Option<Value>,
 	branch_name: Option<String>,
 	worktree_path: Option<PathBuf>,
-	active_lease: Option<bool>,
+	run_lease: Option<bool>,
 	event_count: Option<i64>,
 	last_event_type: Option<String>,
 	last_event_at: Option<String>,
@@ -3158,7 +3175,7 @@ fn retarget_loop_guardrail_issue(
 	}
 }
 
-fn active_run_attempt_status(status: &str) -> bool {
+fn running_run_attempt_status(status: &str) -> bool {
 	matches!(status, "starting" | "running")
 }
 
@@ -3202,7 +3219,7 @@ fn resolve_run_control_action_locked(
 		worktree_path: project_run_status
 			.as_ref()
 			.and_then(|status| status.worktree_path().map(Path::to_path_buf)),
-		active_lease: project_run_status.as_ref().map(ProjectRunStatus::active_lease),
+		run_lease: project_run_status.as_ref().map(ProjectRunStatus::run_lease),
 		event_count: project_run_status.as_ref().map(ProjectRunStatus::event_count),
 		last_event_type: project_run_status
 			.as_ref()
@@ -3229,16 +3246,16 @@ fn resolve_run_control_action_locked(
 	}
 
 	let Some(lease) = state.leases.get(request.issue_id) else {
-		return rejected_run_control_resolution(request, Some(audit_target), "active_lease_missing");
+		return rejected_run_control_resolution(request, Some(audit_target), "run_lease_missing");
 	};
 
 	if lease.project_id != request.project_id {
 		return rejected_run_control_resolution(request, Some(audit_target), "project_mismatch");
 	}
 	if lease.run_id != request.run_id {
-		return rejected_run_control_resolution(request, Some(audit_target), "active_run_mismatch");
+		return rejected_run_control_resolution(request, Some(audit_target), "run_lease_mismatch");
 	}
-	if !active_run_attempt_status(&attempt.status) {
+	if !running_run_attempt_status(&attempt.status) {
 		return rejected_run_control_resolution(request, Some(audit_target), "run_not_active");
 	}
 
@@ -3275,7 +3292,7 @@ fn resolve_run_control_action_locked(
 	RunControlActionResolution {
 		audit_target,
 		outcome: RUN_CONTROL_ACTION_ACCEPTED.to_owned(),
-		reason: String::from("active_run_control_channel_resolved"),
+		reason: String::from("run_lease_control_channel_resolved"),
 		channel: Some(channel),
 	}
 }
@@ -3304,7 +3321,7 @@ fn rejected_run_control_resolution(
 			context: request.context.cloned(),
 			branch_name: None,
 			worktree_path: None,
-			active_lease: None,
+			run_lease: None,
 			event_count: None,
 			last_event_type: None,
 			last_event_at: None,

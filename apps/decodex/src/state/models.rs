@@ -76,7 +76,7 @@ impl RunAttempt {
 	}
 }
 
-/// Local control capability published by one active run attempt.
+/// Local control capability published by one running run attempt.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunControlChannel {
 	project_id: String,
@@ -313,7 +313,7 @@ pub struct ProjectRunStatus {
 	updated_at_unix: i64,
 	branch_name: Option<String>,
 	worktree_path: Option<PathBuf>,
-	active_lease: bool,
+	run_lease: bool,
 	event_count: i64,
 	last_event_type: Option<String>,
 	last_event_at: Option<String>,
@@ -369,8 +369,8 @@ impl ProjectRunStatus {
 	}
 
 	/// Whether this run still holds the active local lease.
-	pub fn active_lease(&self) -> bool {
-		self.active_lease
+	pub fn run_lease(&self) -> bool {
+		self.run_lease
 	}
 
 	/// Number of recorded protocol events for the run.

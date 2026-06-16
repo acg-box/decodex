@@ -67,7 +67,7 @@ use crate::{
 	},
 };
 
-pub(crate) const ACTIVE_RUN_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+pub(crate) const RUN_LEASE_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 pub(crate) const MODEL_EXECUTION_IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);

@@ -1,5 +1,5 @@
 #[test]
-fn operator_status_history_limit_applies_after_active_runs_are_split_out() {
+fn operator_status_history_limit_applies_after_current_lanes_are_split_out() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_issue = sample_issue_with_sort_fields(
@@ -21,10 +21,10 @@ fn operator_status_history_limit_applies_after_active_runs_are_split_out() {
 
 	state_store
 		.record_run_attempt("run-active", &active_issue.id, 1, "running")
-		.expect("active run should record");
+		.expect("current lane should record");
 	state_store
 		.upsert_lease("pubfi", &active_issue.id, "run-active", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 	state_store
 		.upsert_worktree(
 			"pubfi",
@@ -50,12 +50,12 @@ fn operator_status_history_limit_applies_after_active_runs_are_split_out() {
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
 	assert_eq!(snapshot.run_limit, 1);
-	assert_eq!(snapshot.active_runs.len(), 1);
+	assert_eq!(snapshot.current_lanes.len(), 1);
 	assert_eq!(snapshot.recent_runs.len(), 2);
 	assert_eq!(snapshot.history_lanes.len(), 1);
 	assert_eq!(snapshot.history_lanes[0].attempt_count, 1);
 	assert!(rendered.contains(
-		"Run ledger shown: 1 issue lanes from 1 history attempts (running lanes inline)"
+		"Run ledger shown: 1 issue lanes from 1 history attempts (current lanes inline)"
 	));
 	assert_eq!(rendered.matches("run_id: run-active").count(), 1);
 	assert_eq!(rendered.matches("run_id: run-failed").count(), 1);
@@ -65,7 +65,7 @@ fn operator_status_history_limit_applies_after_active_runs_are_split_out() {
 
 	assert!(
 		failed_index > history_index,
-		"non-running history run should remain visible after running lane overlap is hidden"
+		"history-only run should remain visible after current lane overlap is hidden"
 	);
 }
 
@@ -528,6 +528,84 @@ fn local_operator_history_lanes_prefer_terminal_ledger_outcome() {
 }
 
 #[test]
+fn live_status_terminal_cleanup_demotes_unleased_protocol_observed_current_lane() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue_with_sort_fields(
+		"issue-xy-952",
+		"XY-952",
+		"Done",
+		&[],
+		Some(3),
+		"2026-06-16T08:50:00Z",
+	);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let worktree_path = config.worktree_root().join("XY-952");
+
+	state_store
+		.record_run_attempt("xy-952-attempt-2-1781598614", &issue.id, 2, "running")
+		.expect("stale running attempt should record");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"y/elf-xy-952",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+	state_store
+		.append_event(
+			"xy-952-attempt-2-1781598614",
+			1,
+			"item/tool/call",
+			"{\"tool\":\"issue_progress_checkpoint\"}",
+		)
+		.expect("protocol evidence should record");
+
+	seed_local_linear_execution_events(
+		&state_store,
+		&successful_linear_execution_history_comments_with_cleanup(&issue),
+	);
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let rendered = orchestrator::render_operator_status(&snapshot);
+	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
+
+	assert!(snapshot.current_lanes.is_empty());
+	assert_eq!(snapshot.projects[0].current_lane_count, 0);
+	assert_eq!(snapshot.projects[0].running_lane_count, 0);
+	assert_eq!(snapshot.projects[0].attention_count, 0);
+	assert_eq!(snapshot.history_lanes.len(), 1);
+	assert_eq!(snapshot.history_lanes[0].issue_identifier.as_deref(), Some("XY-952"));
+	assert_eq!(
+		snapshot.history_lanes[0].latest_run.run_id,
+		"xy-952-attempt-2-1781598614"
+	);
+	assert_eq!(snapshot.history_lanes[0].latest_run.status, "cleanup_complete");
+	assert_eq!(snapshot.history_lanes[0].latest_run.phase, "completed");
+	assert_eq!(
+		snapshot.history_lanes[0].latest_run.current_operation,
+		"ledger_outcome"
+	);
+	assert_eq!(
+		snapshot.history_lanes[0].ledger_outcome.final_outcome,
+		"cleanup_complete"
+	);
+	assert_eq!(snapshot_json["current_lanes"].as_array().map(Vec::len), Some(0));
+	assert!(rendered.contains("Current lanes: 0"));
+	assert!(rendered.contains("Running lanes: 0"));
+	assert!(rendered.contains("\nCurrent Lanes\n- none\n"));
+	assert!(rendered.contains("outcome: cleanup_complete"));
+}
+
+#[test]
 fn local_status_summary_counts_terminal_history_needs_attention_without_queue_candidate() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -638,11 +716,11 @@ fn local_status_summary_ignores_history_only_terminal_attention_without_current_
 	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
-	assert_eq!(snapshot.active_runs.len(), 0);
+	assert_eq!(snapshot.current_lanes.len(), 0);
 	assert_eq!(snapshot.queued_candidates.len(), 0);
 	assert_eq!(snapshot.post_review_lanes.len(), 0);
 	assert_eq!(snapshot.worktrees.len(), 0);
-	assert_eq!(snapshot.projects[0].active_run_count, 0);
+	assert_eq!(snapshot.projects[0].current_lane_count, 0);
 	assert_eq!(snapshot.projects[0].running_lane_count, 0);
 	assert_eq!(snapshot.projects[0].queued_candidate_count, 0);
 	assert_eq!(snapshot.projects[0].post_review_lane_count, 0);
@@ -654,7 +732,7 @@ fn local_status_summary_ignores_history_only_terminal_attention_without_current_
 	assert_eq!(lane.ledger_outcome.final_outcome, "needs_attention");
 	assert_eq!(lane.latest_run.status, "needs_attention");
 	assert_eq!(lane.latest_run.phase, "needs_attention");
-	assert!(!lane.latest_run.active_lease);
+	assert!(!lane.latest_run.run_lease);
 	assert_eq!(snapshot_json["projects"][0]["attention_count"], 0);
 	assert_eq!(snapshot_json["worktrees"].as_array().map(Vec::len), Some(0));
 	assert_eq!(
@@ -845,7 +923,7 @@ fn live_status_treats_adopted_ready_to_land_history_attention_as_history_only() 
 		mergeable: Some(String::from("MERGEABLE")),
 		check_state: Some(String::from("SUCCESS")),
 		unresolved_review_threads: Some(0),
-		shadowed_by_active_run: false,
+		shadowed_by_current_lane: false,
 		readback_warning: None,
 		readback_root_cause: None,
 		loop_status: None,

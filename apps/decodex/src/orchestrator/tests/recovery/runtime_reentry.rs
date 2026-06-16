@@ -59,7 +59,7 @@ fn exited_child_reconciliation_detects_stalled_failed_runs_from_protocol_idle() 
 		&state_store,
 		&issue.id,
 		run_id,
-		last_protocol_activity + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+		last_protocol_activity + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1,
 	)
 	.expect("exited child inspection should succeed");
 
@@ -67,8 +67,8 @@ fn exited_child_reconciliation_detects_stalled_failed_runs_from_protocol_idle() 
 		action.issue.id == issue.id
 			&& matches!(
 				action.disposition,
-				ActiveRunDisposition::Stalled{ idle_for }
-					if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT
+				RunLeaseDisposition::Stalled{ idle_for }
+					if idle_for >= RUN_LEASE_IDLE_TIMEOUT
 			)
 	}));
 }
@@ -134,15 +134,15 @@ fn exited_child_reconciliation_detects_retained_partial_progress_from_dirty_work
 		&state_store,
 		&issue.id,
 		run_id,
-		last_protocol_activity + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+		last_protocol_activity + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1,
 	)
 	.expect("exited child inspection should succeed");
 
 	assert_eq!(actions.len(), 1);
 	assert!(matches!(
 		actions[0].disposition,
-		ActiveRunDisposition::StalledRetainedPartialProgress { idle_for }
-			if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT
+		RunLeaseDisposition::StalledRetainedPartialProgress { idle_for }
+			if idle_for >= RUN_LEASE_IDLE_TIMEOUT
 	));
 }
 
@@ -207,20 +207,20 @@ fn exited_child_reconciliation_ignores_superseded_failed_run() {
 		&state_store,
 		&issue.id,
 		stale_run_id,
-		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+		OffsetDateTime::now_utc().unix_timestamp() + RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 + 1,
 	)
 	.expect("exited child inspection should succeed");
 
 	assert_eq!(actions.len(), 1);
 	assert!(matches!(
 		&actions[0].disposition,
-		ActiveRunDisposition::Superseded {
+		RunLeaseDisposition::Superseded {
 			newer_run_id: observed_run_id,
 			newer_attempt_number: 2,
 		} if observed_run_id == newer_run_id
 	));
 
-	orchestrator::apply_active_run_reconciliation(
+	orchestrator::apply_run_lease_reconciliation(
 		&tracker,
 		&config,
 		&state_store,
@@ -294,7 +294,7 @@ fn recover_runtime_state_recovers_fresh_review_repair_activity_marker() {
 	.expect("runtime recovery should succeed");
 
 	assert!(
-		recovered.active_issues.is_empty(),
+		recovered.recoverable_issues.is_empty(),
 		"fresh review-repair activity should rebuild the lease instead of requeueing the lane"
 	);
 
@@ -378,7 +378,7 @@ fn run_project_once_recovers_ready_post_review_lane_before_landing() {
 
 	assert!(
 		summary.is_none(),
-		"ready retained post-review landing should not dispatch a new active run"
+		"ready retained post-review landing should not dispatch a new current lane"
 	);
 
 	let marker = persisted_review_orchestration_marker_for_path(
@@ -606,7 +606,7 @@ fn run_project_once_skips_recovered_worktree_with_fresh_activity_marker() {
 
 	assert!(
 		summary.is_none(),
-		"fresh child activity should recover as an active lane instead of redispatching"
+		"fresh child activity should recover as a current lane instead of redispatching"
 	);
 	assert_eq!(
 		state_store
@@ -1227,8 +1227,8 @@ fn recovery_skip_cache_suppresses_repeated_unowned_worktree_lookup() {
 	.expect("cached recovery probe should succeed");
 	let identifier_queries = tracker.identifier_queries.borrow();
 
-	assert!(first.active_issues.is_empty());
-	assert!(second.active_issues.is_empty());
+	assert!(first.recoverable_issues.is_empty());
+	assert!(second.recoverable_issues.is_empty());
 	assert_eq!(identifier_queries.len(), 1);
 	assert_eq!(identifier_queries[0], issue.identifier);
 	assert!(

@@ -287,21 +287,21 @@ fn operator_dashboard_cards_and_accounts_share_running_lane_typography() {
 }
 
 #[test]
-fn operator_dashboard_patches_active_run_cards_without_replacing_the_list() {
+fn operator_dashboard_patches_current_lane_cards_without_replacing_the_list() {
 	let response = dashboard_response();
 
 	assert!(response.contains("function renderStableList(container, html)"));
 	assert!(response.contains("function animateStableListSize(container, startHeight)"));
 	assert!(response.contains("function markStableListEnter(node)"));
 	assert!(response.contains("function patchChildNodes(current, next)"));
-	assert!(response.contains("function activeRunRenderKey(run)"));
+	assert!(response.contains("function currentLaneRenderKey(run)"));
 	assert!(response.contains("data-render-key=\"${escapeHtml(renderKey)}\""));
-	assert!(response.contains("renderStableList(\n\t\t\t\t\tnodes.activeRuns,"));
+	assert!(response.contains("renderStableList(\n\t\t\t\t\tnodes.currentLanes,"));
 	assert!(response.contains("markStableListEnter(clone);"));
 	assert!(response.contains("container.style.height = `${startHeight}px`;"));
 	assert!(response.contains(".is-list-entering"));
 	assert!(response.contains("@keyframes stable-list-item-enter"));
-	assert!(!response.contains("nodes.activeRuns.innerHTML = runs"));
+	assert!(!response.contains("nodes.currentLanes.innerHTML = runs"));
 	assert!(response.contains("return node.dataset.renderKey || node.dataset.detailKey || \"\";"));
 	assert!(response.contains("current.closest(\"details.is-animating\")"));
 	assert!(response.contains("width var(--slow) var(--ease),"));
@@ -482,7 +482,7 @@ fn assert_running_lane_meta_contract(response: &str) {
 			"runningLaneMetaText",
 			"const parts = [`${derived.liveRuns ?? 0} running`];",
 			"attentionCount === 1",
-			"nodes.activeRunsMeta,",
+			"nodes.currentLanesMeta,",
 			"runningLaneMetaText(derived),",
 		],
 	);
@@ -514,7 +514,7 @@ fn assert_liveness_and_cleanup_contract(response: &str) {
 			"runLaneControlConditionsSummary",
 			"runQueueLeaseSummary",
 			"return displayToken(run.execution_liveness || \"liveness_unknown\");",
-			"return displayToken(run.ownership_state || (runCountsAsRunning(run) ? \"owned_active\" : \"unknown\"));",
+			"return displayToken(run.ownership_state || (runCountsAsRunning(run) ? \"leased_run\" : \"unknown\"));",
 			"field(\"Attempt status\", run.attempt_status || run.status)",
 			"field(\"Queue lease\", runQueueLeaseSummary(run))",
 			"field(\"Execution liveness\", runExecutionLivenessSummary(run))",
@@ -592,7 +592,7 @@ fn operator_dashboard_keys_child_bucket_rows_for_stable_patching() {
 }
 
 #[test]
-fn operator_dashboard_active_run_status_copy_stays_concise() {
+fn operator_dashboard_current_lane_status_copy_stays_concise() {
 	let response = dashboard_response();
 
 	assert!(response.contains("runNeedsAttention"));
@@ -724,7 +724,7 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(!response.contains("Running · Intake"));
 	assert!(!response.contains("Review · Recovery · History"));
 	assert!(!response.contains("data-fold-key=\"panel:projects\""));
-	assert!(response.contains("panel section-execution\" id=\"active-panel\""));
+	assert!(response.contains("panel section-execution\" id=\"current-lanes-panel\""));
 	assert!(response.contains("panel section-aftercare\" id=\"review-panel\""));
 	assert!(!response.contains("section-group-start"));
 	assert!(response.contains("#queue-panel .panel-head"));
@@ -736,7 +736,7 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"active\", \"programs\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
 	assert!(!response.contains("#account-pool-panel {"));
 	assert!(!response.contains("No accounts"));
-	assert!(response.contains("#active-panel {\n\t\t\t\tbackground: transparent;"));
+	assert!(response.contains("#current-lanes-panel {\n\t\t\t\tbackground: transparent;"));
 	assert!(!response.contains("account-pool-title"));
 	assert!(response.contains("account-privacy-toggle"));
 	assert!(response.contains("account-eye-open"));
@@ -853,7 +853,7 @@ fn operator_dashboard_account_errors_route_to_notice_dock_with_privacy() {
 fn operator_dashboard_uses_expanded_section_titles() {
 	let response = dashboard_response();
 
-	assert!(response.contains("<h2 id=\"active-title\">Running Lanes</h2>"));
+	assert!(response.contains("<h2 id=\"current-lanes-title\">Current Lanes</h2>"));
 	assert!(response.contains("<h2 id=\"queue-title\">Intake Queue</h2>"));
 	assert!(response.contains("<h2>Review &amp; Landing</h2>"));
 	assert!(response.contains("<h2 id=\"worktrees-title\">Recovery Worktrees</h2>"));
@@ -1502,8 +1502,8 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("`${cleanup} cleanup`"));
 	assert!(response.contains("run.process_alive !== false"));
 	assert!(response.contains("running_lane_count: runningCountsByProject.get(project.project_id) || 0"));
-	assert!(!response.contains("const running = project.active_run_count ?? 0;"));
-	assert!(!response.contains("`${project.active_run_count ?? 0} running`"));
+	assert!(!response.contains("const running = project.current_lane_count ?? 0;"));
+	assert!(!response.contains("`${project.current_lane_count ?? 0} running`"));
 	assert!(response.contains("projectNumber(project.cleanup_blocked_count)"));
 	assert!(response.contains("projectNumber(project.cleanup_pending_count)"));
 	assert!(!response.contains("[project.post_review_lane_count ?? 0, \"review/land\"]"));
@@ -1559,8 +1559,8 @@ fn operator_dashboard_normalizes_review_state_tokens() {
 fn operator_dashboard_review_cards_omit_static_summary_copy() {
 	let response = dashboard_response();
 
-	assert!(response.contains("const shadowedByActiveRun ="));
-	assert!(response.contains("status: activeRun ? `run ${displayToken(activeRun.phase)}` : \"active run\""));
+	assert!(response.contains("const shadowedByCurrentLane ="));
+	assert!(response.contains("status: currentLane ? `run ${displayToken(currentLane.phase)}` : \"current lane\""));
 	assert!(response.contains("function postReviewBlockerStatus(lane, blockerScope)"));
 	assert!(response.contains("status: postReviewBlockerStatus(lane, blockerScope)"));
 	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: lane.check_state"));
@@ -1660,11 +1660,11 @@ fn operator_dashboard_flow_counts_distinguish_intake_attention() {
 fn operator_dashboard_does_not_hide_claimed_queue_without_local_lane() {
 	let response = dashboard_response();
 
-	assert!(response.contains("const activeRunByIssue = new Map();"));
+	assert!(response.contains("const currentLaneByIssue = new Map();"));
 	assert!(response.contains("for (const key of issueIdentityKeys(run))"));
-	assert!(response.contains("const activeRun = issueIdentityKeys(candidate)"));
-	assert!(response.contains("if (activeRun) {"));
-	assert!(!response.contains("activeRun && candidate.classification === \"claimed\""));
+	assert!(response.contains("const currentLane = issueIdentityKeys(candidate)"));
+	assert!(response.contains("if (currentLane) {"));
+	assert!(!response.contains("currentLane && candidate.classification === \"claimed\""));
 	assert!(!response.contains("candidate.classification !== \"claimed\" &&"));
 }
 
@@ -1763,7 +1763,7 @@ fn operator_dashboard_header_shows_endpoint_and_snapshot_freshness() {
 fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	let response = dashboard_response();
 
-	assert!(response.contains("function activeRunFreshness(run)"));
+	assert!(response.contains("function currentLaneFreshness(run)"));
 	assert!(response.contains("source: \"last_run_activity_at\""));
 	assert!(response.contains("source: \"none\""));
 	assert!(!response.contains("source: \"updated_at\""));
@@ -1778,12 +1778,12 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(response.contains("facts.push([\"lane idle\", formatDuration(run.idle_for_seconds)]);"));
 	assert!(response.contains("facts.push([\"agent idle\", formatDuration(run.protocol_idle_for_seconds)]);"));
 	assert!(response.contains("facts.push([\"focus\", detailLabel(focus)]);"));
-	assert!(response.contains("function activeRunLifecycleMetrics(run, summary = childAgentActivity(run))"));
+	assert!(response.contains("function currentLaneLifecycleMetrics(run, summary = childAgentActivity(run))"));
 	assert!(response.contains("function lifecycleMetricFacts(metrics, { includeAttempts = false } = {})"));
 	assert!(response.contains("facts.push([\"tokens\", tokenSummary]);"));
 	assert!(response.contains("facts.push([\"tools\", formatCompactCount(metrics.tool_call_count)]);"));
 	assert!(response.contains("\"max output\","));
-	assert!(response.contains("function childAgentContextRows(run, summary, lifecycle = activeRunLifecycleMetrics(run, summary))"));
+	assert!(response.contains("function childAgentContextRows(run, summary, lifecycle = currentLaneLifecycleMetrics(run, summary))"));
 	assert!(response.contains("renderChildLifecycleOverview(lifecycle, contextFacts)"));
 	assert!(response.contains("renderChildLifecyclePhaseTable(lifecycle.phases || [])"));
 	assert!(!response.contains("rows.push(renderChildContextRow(\"Total\", totalFacts, \"is-total\"));"));
@@ -1801,10 +1801,10 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(!response.contains("m ago"));
 	assert!(!response.contains("h ago"));
 	assert!(!response.contains("d ago"));
-	assert!(response.contains("function activeRunTelemetryFacts(run)"));
+	assert!(response.contains("function currentLaneTelemetryFacts(run)"));
 	assert!(response.contains("function renderRunTelemetryMetaItems(run)"));
 	assert!(response.contains("function renderRunMetaFact(label, value, valueClass = \"\", title = \"\")"));
-	assert!(!response.contains("renderActiveRunActivityStrip(run)"));
+	assert!(!response.contains("renderCurrentLaneActivityStrip(run)"));
 	assert!(!response.contains("run-activity-strip"));
 	assert!(!response.contains("function renderActiveTelemetryLine(run)"));
 	assert!(!response.contains("activity-line"));
@@ -1815,8 +1815,8 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(!response.contains("Last ${freshness.sourceLabel}"));
 	assert!(!response.contains("Latest ${freshness.sourceLabel}"));
 	assert!(!response.contains("renderTimingStrip(run)"));
-	assert!(!response.contains("activeRunFreshnessSource(run)"));
-	assert!(!response.contains("field(\"Freshness source\", activeRunFreshnessSource(run))"));
+	assert!(!response.contains("currentLaneFreshnessSource(run)"));
+	assert!(!response.contains("field(\"Freshness source\", currentLaneFreshnessSource(run))"));
 	assert!(response.contains("field(\"Updated\", formatTimestamp(run.updated_at))"));
 }
 
@@ -1846,15 +1846,15 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 
 	assert!(response.contains("function mergeDashboardRunRecord(snapshotRun, activityRun)"));
 	assert!(
-		response.contains("function mergeDashboardActiveRuns(snapshot, activeRunRows, activeRunsComplete = true)")
+		response.contains("function mergeDashboardCurrentLanes(snapshot, currentLaneRows, currentLanesComplete = true)")
 	);
 	assert!(response.contains("function dashboardRunTitleIsOperationFallback(run)"));
 	assert!(response.contains("const operationFallback = displayToken(run.current_operation || run.phase);"));
 	assert!(response.contains("!(fallback !== \"unknown\" && title === operationFallback)"));
 	assert!(response.contains("return fallback !== \"unknown\" ? fallback : operationFallback;"));
-	assert!(response.contains("let dashboardLiveActiveRuns = [];"));
+	assert!(response.contains("let dashboardLiveCurrentLanes = [];"));
 	assert!(response.contains("let dashboardLiveRunActivitySeen = false;"));
-	assert!(response.contains("let dashboardLiveActiveRunsComplete = true;"));
+	assert!(response.contains("let dashboardLiveCurrentLanesComplete = true;"));
 	assert!(response.contains("let dashboardLiveAccounts = null;"));
 	assert!(response.contains("let dashboardLiveAccountControl = null;"));
 	assert!(response
@@ -1877,14 +1877,14 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("dashboardRunTitleIsOperationFallback(activityRun)"));
 	assert!(response.contains("merged.title = snapshotRun.title;"));
 	assert!(
-		response.contains("const activeRunsComplete =\n\t\t\t\t\tactivityPayload.activeRunsComplete !== false")
+		response.contains("const currentLanesComplete =\n\t\t\t\t\tactivityPayload.currentLanesComplete !== false")
 	);
 	assert!(
-		response.contains("const mergedActiveRuns = mergeDashboardActiveRuns(\n\t\t\t\t\tsnapshot,\n\t\t\t\t\tactiveRunRows,\n\t\t\t\t\tactiveRunsComplete,\n\t\t\t\t);")
+		response.contains("const mergedCurrentLanes = mergeDashboardCurrentLanes(\n\t\t\t\t\tsnapshot,\n\t\t\t\t\tcurrentLaneRows,\n\t\t\t\t\tcurrentLanesComplete,\n\t\t\t\t);")
 	);
-	assert!(response.contains("dashboardLiveActiveRuns = payload.activeRuns"));
+	assert!(response.contains("dashboardLiveCurrentLanes = payload.currentLanes"));
 	assert!(response.contains("dashboardLiveRunActivitySeen = true;"));
-	assert!(response.contains("dashboardLiveActiveRunsComplete ="));
+	assert!(response.contains("dashboardLiveCurrentLanesComplete ="));
 	assert!(response.contains("snapshot: snapshotWithLiveRunActivity(payload.snapshot),"));
 	assert!(response.contains(
 		"snapshot: snapshotWithLiveRunActivity(lastDashboardRender.snapshot, {\n\t\t\t\t\t\tincludeCompletedEmpty: true,\n\t\t\t\t\t}),"
@@ -1892,8 +1892,8 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("clearDashboardLiveRunActivityOverlayIfCompleteEmpty();"));
 	assert!(response.contains("account_control: accountControl,"));
 	assert!(response.contains("accounts,"));
-	assert!(response.contains("active_runs: mergedActiveRuns,"));
-	assert!(!response.contains("active_runs: activeRunRows,"));
+	assert!(response.contains("current_lanes: mergedCurrentLanes,"));
+	assert!(!response.contains("current_lanes: currentLaneRows,"));
 }
 
 #[test]
