@@ -828,7 +828,15 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 		}),
 	);
 
-	assert!(response.success);
+	assert!(!response.success);
+	assert!(
+		matches!(
+			response.content_items.first(),
+			Some(DynamicToolContentItem::InputText { text })
+				if text.contains("Review churn threshold exceeded")
+		),
+		"third consecutive findings checkpoint should fail immediately: {response:?}"
+	);
 
 	let error = DynamicToolHandler::classify_turn_completion(&bridge, "stop")
 		.expect_err("third consecutive findings checkpoint should stop the lane");
@@ -838,6 +846,36 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 
 	assert_eq!(stop.reason, ReviewPolicyStopReason::Exhausted);
 	assert_eq!(stop.nonclean_rounds, Some(3));
+
+	let fenced_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"phase": "implementing",
+			"focus": "Continue repairing after review findings.",
+			"next_action": "Keep editing the same repair strategy.",
+			"blockers": [],
+			"evidence": ["The review checkpoint already exceeded the convergence budget."],
+			"verification": [],
+			"head_sha": sample_local_repo().head_oid,
+			"branch": "x/decodex-1"
+		}),
+	);
+
+	assert!(!fenced_response.success);
+	assert!(
+		matches!(
+			fenced_response.content_items.first(),
+			Some(DynamicToolContentItem::InputText { text })
+				if text.contains("Review policy stop `review_policy_exhausted` is active")
+					&& text.contains("issue_progress_checkpoint")
+		),
+		"review policy stop should fence mutable progress writes: {fenced_response:?}"
+	);
+	assert!(
+		tracker.comments.borrow().is_empty(),
+		"fenced progress checkpoint must not write a tracker comment"
+	);
 }
 
 #[test]
@@ -1564,7 +1602,7 @@ fn review_repair_apply_persists_updated_handoff_marker_without_tracker_transitio
 }
 
 #[test]
-fn review_repair_apply_resets_external_round_budget_after_fourth_round() {
+fn review_repair_apply_does_not_reset_external_round_budget_after_fourth_round() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
 	let issue = sample_review_issue();
@@ -1616,7 +1654,7 @@ fn review_repair_apply_resets_external_round_budget_after_fourth_round() {
 		persisted_review_orchestration_marker(&bridge, &issue, &review_context, &marker);
 
 	assert_eq!(orchestration_marker.phase(), "request_pending");
-	assert_eq!(orchestration_marker.external_round_count(), 0);
+	assert_eq!(orchestration_marker.external_round_count(), 4);
 }
 
 #[test]

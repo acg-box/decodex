@@ -1522,6 +1522,13 @@ struct OperatorRunStatus {
 	attempt_status: String,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	status_projection_reason: Option<String>,
+	ownership_state: String,
+	liveness_state: String,
+	policy_state: String,
+	terminalization_state: String,
+	lane_control_next_action: String,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	lane_control_conditions: Vec<String>,
 	phase: String,
 	wait_reason: Option<String>,
 	current_operation: String,
