@@ -12,4 +12,6 @@ End every bounded research run with one terminal status. Read
 - `not_decision_ready`: useful evidence, unsafe decision.
 - `blocked`: non-decision blocker remains.
 - `needs_human_decision`: remaining uncertainty is human/product/authority choice.
-- Do not use multiple statuses, choose readiness because budget ended, or promote here.
+- Include the promotion target and evidence ledger summary in the terminal contract.
+- Do not use multiple statuses, choose readiness because budget ended, promote here,
+  or write a new Decodex run as an old-shape `docs/research/` event log.
