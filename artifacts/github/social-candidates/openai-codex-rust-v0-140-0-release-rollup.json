@@ -1,0 +1,140 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-140-0-release-rollup",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "release_rollup",
+  "priority": "high",
+  "audience": "Codex operators tracking stable CLI releases and operator-facing surfaces",
+  "candidate_text": [
+    "Codex CLI 0.140.0 stable is out.\n\nRelease notes: `/usage`, durable `/goal`, session deletion, `/import`, unified @ mentions, managed Bedrock auth, MCP OAuth secret storage, and SQLite recovery.\n\nSource: https://github.com/openai/codex/releases/tag/rust-v0.140.0",
+    "Usage + goals:\n\n- `/usage` adds daily, weekly, and cumulative token activity\nhttps://github.com/openai/codex/pull/27925\n\n- `/goal` preserves long text and images, including remote app-server sessions\nhttps://github.com/openai/codex/pull/27508",
+    "Session lifecycle:\n\nPermanent deletion reached CLI, TUI, and app-server `thread/delete`, with confirmation safeguards and subagent cleanup.\n\nhttps://github.com/openai/codex/pull/25018\nhttps://github.com/openai/codex/pull/27476",
+    "Import + composer:\n\n`/import` selectively brings setup, project config, and recent chats from Claude Code. Typing `@` now opens unified mentions for files, plugins, and skills by default.\n\nhttps://github.com/openai/codex/pull/27071",
+    "Auth/MCP operator notes:\n\n0.140.0 adds managed Bedrock API-key auth plus encrypted local storage for CLI and MCP OAuth credentials.\n\nReviewed examples:\nhttps://github.com/openai/codex/pull/27443\nhttps://github.com/openai/codex/pull/27539",
+    "Reliability fixes:\n\n- corrupted SQLite state can be backed up and rebuilt\nhttps://github.com/openai/codex/pull/26859\n\n- MCP startup/OAuth/disabled-server handling improved\nhttps://github.com/openai/codex/pull/25147\nhttps://github.com/openai/codex/pull/27414",
+    "Lineage + caveat:\n\nStable compare is rust-v0.139.0 -> rust-v0.140.0.\nhttps://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0\n\nRelease notes are source evidence; unreviewed PR details should stay release-note-scoped."
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-25018.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27071.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27443.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27504.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27535.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27539.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27541.review.json",
+      "artifacts/github/reviews/openai-codex-pr-26859.review.json",
+      "artifacts/github/reviews/openai-codex-pr-22879.review.json",
+      "artifacts/github/reviews/openai-codex-pr-25147.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27414.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27085.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27223.review.json",
+      "artifacts/github/reviews/openai-codex-pr-26734.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-25018.json",
+      "artifacts/github/impact/openai-codex-pr-27071.json",
+      "artifacts/github/impact/openai-codex-pr-27443.json",
+      "artifacts/github/impact/openai-codex-pr-27504.json",
+      "artifacts/github/impact/openai-codex-pr-27535.json",
+      "artifacts/github/impact/openai-codex-pr-27539.json",
+      "artifacts/github/impact/openai-codex-pr-27541.json",
+      "artifacts/github/impact/openai-codex-pr-26859.json",
+      "artifacts/github/impact/openai-codex-pr-22879.json",
+      "artifacts/github/impact/openai-codex-pr-25147.json",
+      "artifacts/github/impact/openai-codex-pr-27414.json",
+      "artifacts/github/impact/openai-codex-pr-27085.json",
+      "artifacts/github/impact/openai-codex-pr-27223.json",
+      "artifacts/github/impact/openai-codex-pr-26734.json"
+    ],
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.139.0",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0",
+      "https://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0",
+      "https://github.com/openai/codex/pull/27925",
+      "https://github.com/openai/codex/pull/27508",
+      "https://github.com/openai/codex/pull/27509",
+      "https://github.com/openai/codex/pull/27510",
+      "https://github.com/openai/codex/pull/25018",
+      "https://github.com/openai/codex/pull/27476",
+      "https://github.com/openai/codex/pull/27070",
+      "https://github.com/openai/codex/pull/27071",
+      "https://github.com/openai/codex/pull/27703",
+      "https://github.com/openai/codex/pull/27499",
+      "https://github.com/openai/codex/pull/27443",
+      "https://github.com/openai/codex/pull/27689",
+      "https://github.com/openai/codex/pull/27504",
+      "https://github.com/openai/codex/pull/27535",
+      "https://github.com/openai/codex/pull/27539",
+      "https://github.com/openai/codex/pull/27541",
+      "https://github.com/openai/codex/pull/26859",
+      "https://github.com/openai/codex/pull/27719",
+      "https://github.com/openai/codex/pull/22879",
+      "https://github.com/openai/codex/pull/25147",
+      "https://github.com/openai/codex/pull/26713",
+      "https://github.com/openai/codex/pull/27414",
+      "https://github.com/openai/codex/pull/27085",
+      "https://github.com/openai/codex/pull/27223",
+      "https://github.com/openai/codex/pull/27619",
+      "https://github.com/openai/codex/pull/27783",
+      "https://github.com/openai/codex/pull/26734"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows stable rust-v0.140.0 was published at 2026-06-15T21:06:37Z with a detailed release body.",
+    "The official Codex changelog readback for this run shows Codex CLI 0.140.0 on 2026-06-15 with matching release-note bullets, so this stable checkpoint is backed by both the official changelog and GitHub release metadata.",
+    "The stable release lineage gate selects rust-v0.139.0 -> rust-v0.140.0; GitHub compare metadata reports status=diverged, 194 ahead commits, 1 behind commit, and 194 total commits for that stable-to-stable window.",
+    "The release body highlights /usage token activity views, long and image-capable /goal persistence, permanent session deletion, Claude Code import, unified @ mentions, managed Bedrock API-key authentication, encrypted CLI and MCP OAuth credential storage, SQLite recovery, /review crash prevention, MCP reliability, remote plugin uninstall fixes, update dismissal persistence, and non-TTY Ctrl-C handling.",
+    "Checked Radar review and impact artifacts support stronger Decodex/operator claims for PRs #25018, #27071, #27443, #27504, #27535, #27539, #27541, #26859, #22879, #25147, #27414, #27085, #27223, and #26734.",
+    "Release-note bullets without checked Radar review in this tree remain release-note-scoped in candidate copy: #27925, #27508, #27509, #27510, #27476, #27070, #27703, #27499, #27689, #27719, #26713, #27619, and #27783."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.140.0 is the current observed stable OpenAI Codex CLI release checkpoint for this run.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct stable release lineage comparison is rust-v0.139.0 -> rust-v0.140.0.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The 0.140.0 release notes highlight usage views, long/image-capable goal preservation, session deletion, import, unified mentions, managed Bedrock auth, encrypted credential storage, SQLite recovery, MCP reliability, plugin uninstall fixes, and non-TTY Ctrl-C handling.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Checked Radar review/impact artifacts support Decodex-relevant operator claims for selected session deletion, import, Bedrock/auth storage, SQLite recovery, review, MCP, plugin uninstall, and Ctrl-C handling PRs.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Several release-note bullets still lack checked Radar source review in this tree and should remain release-note-scoped until codex-upstream-radar-review covers them.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The stable 0.140.0 official changelog and GitHub release body provide concrete reader-facing release-note evidence, direct PR links, and enough checked Radar context for operator caveats.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0:stable139-stable140:release_rollup"
+  },
+  "caveats": [
+    "This candidate is based on the official Codex changelog, public GitHub release metadata, release-body text, compare metadata, direct PR URLs, refreshed release_delta/v1 metadata, and existing checked review/impact context for selected PRs.",
+    "Do not imply Decodex has adopted or verified every 0.140.0 behavior; route deeper behavior or compatibility claims for unreviewed PRs to codex-upstream-radar-review / codex-code-analysis.",
+    "The current 2026-06-16 Asia/Shanghai cap day has no checked @decodexspace social_post/v1 records yet, but decodex-x-publisher must still verify daily cap, duplicate/idempotency state, pending publication PRs, and live @decodexspace profile state before composing.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If media is required, decodex-x-publisher should generate and verify a fresh candidate-specific decodex_signal_card, then fail closed if upload/readback is unreliable."
+  ],
+  "next_steps": [
+    "Hand this publishable candidate to decodex-x-publisher.",
+    "Before posting, verify @decodexspace account state, daily cap, duplicate/idempotency state, pending publication PRs, and whether candidate-specific media is required.",
+    "If the Publisher needs stronger behavior language than release notes and checked Radar artifacts support, pause publication and route the relevant PRs to codex-upstream-radar-review / codex-code-analysis."
+  ]
+}
