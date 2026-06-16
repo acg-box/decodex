@@ -65,6 +65,9 @@ Then keep the body explicit:
 - [`lane-control.md`](./lane-control.md) defines the CLI/API-first operator
   lane-control capability matrix and the boundary between bottom-layer steer support
   and higher-level policy guardrails.
+- [`lane-control-state.md`](./lane-control-state.md) defines the authoritative lane
+  control state axes, invariants, guard semantics, terminal barrier, and projection
+  rules used by scheduler decisions and operator status.
 - [`github-change-bundle.md`](./github-change-bundle.md) defines the normalized GitHub
   input model for PR-first public signal analysis.
 - [`signal-entry.md`](./signal-entry.md) defines the published signal-entry schema used

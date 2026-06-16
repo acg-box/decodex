@@ -1332,7 +1332,7 @@ fn operator_status_snapshot_counts_previous_boot_process_as_attention_not_runnin
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
-fn operator_status_snapshot_keeps_unleased_app_server_active_run_with_stale_process_marker() {
+fn operator_status_snapshot_projects_unleased_app_server_active_run_as_retained_attention() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("Todo", &[]);
@@ -1378,18 +1378,25 @@ fn operator_status_snapshot_keeps_unleased_app_server_active_run_with_stale_proc
 	assert_eq!(run.process_alive, Some(false));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("host_boot_id_mismatch"));
 	assert_eq!(run.thread_status.as_deref(), Some("active"));
+	assert_eq!(run.ownership_state, "retained_attention");
+	assert_eq!(run.liveness_state, "host_boot_mismatch");
+	assert_eq!(run.lane_control_next_action, "inspect_recovery_evidence");
+	assert!(run
+		.lane_control_conditions
+		.iter()
+		.any(|condition| condition == "host_boot_id_mismatch"));
 	assert!(run.has_fresh_execution);
-	assert!(run.counts_as_running);
-	assert!(!run.needs_attention);
+	assert!(!run.counts_as_running);
+	assert!(run.needs_attention);
 	assert_eq!(project.active_run_count, 1);
-	assert_eq!(project.running_lane_count, 1);
-	assert_eq!(project.attention_count, 0);
-	assert_eq!(snapshot.worktrees[0].ownership, "active_lane");
+	assert_eq!(project.running_lane_count, 0);
+	assert_eq!(project.attention_count, 1);
+	assert_eq!(snapshot.worktrees[0].ownership, "retained_attention");
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
-fn operator_status_snapshot_shadows_post_review_lane_when_active_run_is_fresh() {
+fn operator_status_snapshot_does_not_shadow_post_review_lane_with_retained_attention_run() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("Todo", &[]);
@@ -1453,13 +1460,15 @@ fn operator_status_snapshot_shadows_post_review_lane_when_active_run_is_fresh() 
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
 	assert!(snapshot.active_runs[0].has_fresh_execution);
-	assert!(snapshot.active_runs[0].counts_as_running);
-	assert!(lane.shadowed_by_active_run);
-	assert_eq!(project.running_lane_count, 1);
-	assert_eq!(project.post_review_lane_count, 0);
+	assert!(!snapshot.active_runs[0].counts_as_running);
+	assert!(snapshot.active_runs[0].needs_attention);
+	assert_eq!(snapshot.active_runs[0].ownership_state, "retained_attention");
+	assert!(!lane.shadowed_by_active_run);
+	assert_eq!(project.running_lane_count, 0);
+	assert_eq!(project.post_review_lane_count, 1);
 	assert_eq!(project.waiting_lane_count, 0);
-	assert_eq!(project.attention_count, 0);
-	assert!(rendered.contains("shadowed_by_active_run: yes"));
+	assert_eq!(project.attention_count, 1);
+	assert!(rendered.contains("shadowed_by_active_run: no"));
 	assert!(rendered.contains("readback_root_cause: lineage_validation_failed"));
 }
 
@@ -1511,7 +1520,7 @@ fn operator_status_snapshot_counts_reused_pid_as_attention_not_running() {
 }
 
 #[test]
-fn operator_status_snapshot_keeps_unleased_live_process_in_running_lanes() {
+fn operator_status_snapshot_keeps_unleased_live_process_visible_but_not_running() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("Todo", &[]);
@@ -1547,16 +1556,27 @@ fn operator_status_snapshot_keeps_unleased_live_process_in_running_lanes() {
 	assert_eq!(run.execution_liveness, "process_alive");
 	assert_eq!(run.process_alive, Some(true));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_alive"));
+	assert_eq!(run.ownership_state, "orphaned_live_thread");
+	assert_eq!(run.liveness_state, "process_alive");
+	assert_eq!(
+		run.lane_control_next_action,
+		"inspect_or_interrupt_orphaned_live_thread"
+	);
+	assert!(run
+		.lane_control_conditions
+		.iter()
+		.any(|condition| condition == "active_lease_missing"));
 	assert!(run.has_fresh_execution);
-	assert!(run.counts_as_running);
+	assert!(!run.counts_as_running);
 	assert!(!run.needs_attention);
 	assert_eq!(project.active_run_count, 1);
-	assert_eq!(project.running_lane_count, 1);
-	assert_eq!(project.retained_worktree_count, 0);
+	assert_eq!(project.running_lane_count, 0);
+	assert_eq!(project.retained_worktree_count, 1);
+	assert_eq!(snapshot.worktrees[0].ownership, "orphaned_live_thread");
 }
 
 #[test]
-fn operator_status_snapshot_keeps_terminal_status_live_process_in_running_lanes() {
+fn operator_status_snapshot_keeps_terminal_status_live_process_in_recent_orphan_bucket() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("Todo", &[]);
@@ -1580,26 +1600,35 @@ fn operator_status_snapshot_keeps_terminal_status_live_process_in_running_lanes(
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("live terminal run should remain visible");
+	let run = snapshot
+		.recent_runs
+		.iter()
+		.find(|run| run.run_id == "run-1")
+		.expect("live terminal run should remain inspectable");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
-	assert_eq!(snapshot.active_runs.len(), 1);
+	assert!(snapshot.active_runs.is_empty());
 	assert_eq!(run.run_id, "run-1");
-	assert_eq!(run.status, "running");
+	assert_eq!(run.status, "failed");
 	assert_eq!(run.attempt_status, "failed");
-	assert_eq!(
-		run.status_projection_reason.as_deref(),
-		Some("terminal_attempt_promoted_by_process_alive")
-	);
-	assert_eq!(run.phase, "executing");
+	assert_eq!(run.status_projection_reason, None);
+	assert_eq!(run.phase, "failed");
 	assert!(!run.active_lease);
 	assert_eq!(run.queue_lease_state, "not_held");
-	assert_eq!(run.execution_liveness, "process_alive");
+	assert_eq!(run.execution_liveness, "not_running");
+	assert_eq!(run.ownership_state, "orphaned_live_thread");
+	assert_eq!(run.liveness_state, "process_alive");
+	assert_eq!(run.terminalization_state, "barrier_started");
+	assert!(run
+		.lane_control_conditions
+		.iter()
+		.any(|condition| condition == "terminal_attempt_has_live_evidence"));
 	assert_eq!(run.process_alive, Some(true));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_alive"));
-	assert_eq!(project.active_run_count, 1);
-	assert_eq!(project.running_lane_count, 1);
-	assert_eq!(project.retained_worktree_count, 0);
+	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.running_lane_count, 0);
+	assert_eq!(project.retained_worktree_count, 1);
+	assert_eq!(snapshot.worktrees[0].ownership, "orphaned_live_thread");
 }
 
 #[test]
@@ -1632,7 +1661,7 @@ fn operator_status_snapshot_excludes_terminal_thread_archive_from_running_lanes(
 }
 
 #[test]
-fn operator_status_snapshot_explains_terminal_run_promoted_by_active_thread() {
+fn operator_status_snapshot_projects_terminal_run_with_active_thread_as_retained_attention() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("Todo", &[]);
@@ -1665,28 +1694,32 @@ fn operator_status_snapshot_explains_terminal_run_promoted_by_active_thread() {
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("active run should remain visible");
-	let rendered = orchestrator::render_operator_status(&snapshot);
+	let run = snapshot
+		.recent_runs
+		.iter()
+		.find(|run| run.run_id == "run-1")
+		.expect("terminal run should remain inspectable");
 
-	assert_eq!(run.status, "running");
+	assert!(snapshot.active_runs.is_empty());
+	assert_eq!(run.status, "stalled");
 	assert_eq!(run.attempt_status, "stalled");
-	assert_eq!(
-		run.status_projection_reason.as_deref(),
-		Some("terminal_attempt_promoted_by_thread_active")
-	);
+	assert_eq!(run.status_projection_reason, None);
 	assert!(!run.active_lease);
 	assert_eq!(run.queue_lease_state, "not_held");
-	assert_eq!(run.execution_liveness, "process_identity_mismatch");
+	assert_eq!(run.execution_liveness, "not_running");
+	assert_eq!(run.ownership_state, "retained_attention");
+	assert_eq!(run.liveness_state, "host_boot_mismatch");
 	assert_eq!(run.process_alive, Some(false));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("host_boot_id_mismatch"));
 	assert_eq!(run.thread_status.as_deref(), Some("active"));
-	assert!(rendered.contains(
-		"status_projection_reason: terminal_attempt_promoted_by_thread_active"
-	));
+	assert!(run
+		.lane_control_conditions
+		.iter()
+		.any(|condition| condition == "host_boot_id_mismatch"));
 }
 
 #[test]
-fn operator_status_snapshot_keeps_succeeded_status_live_process_in_running_lanes() {
+fn operator_status_snapshot_keeps_succeeded_status_live_process_in_recent_orphan_bucket() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("Todo", &[]);
@@ -1710,26 +1743,31 @@ fn operator_status_snapshot_keeps_succeeded_status_live_process_in_running_lanes
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
-	let run = snapshot.active_runs.first().expect("live succeeded run should remain visible");
+	let run = snapshot
+		.recent_runs
+		.iter()
+		.find(|run| run.run_id == "run-1")
+		.expect("live succeeded run should remain inspectable");
 	let project = snapshot.projects.first().expect("project summary should exist");
 
-	assert_eq!(snapshot.active_runs.len(), 1);
+	assert!(snapshot.active_runs.is_empty());
 	assert_eq!(run.run_id, "run-1");
-	assert_eq!(run.status, "running");
+	assert_eq!(run.status, "succeeded");
 	assert_eq!(run.attempt_status, "succeeded");
-	assert_eq!(
-		run.status_projection_reason.as_deref(),
-		Some("terminal_attempt_promoted_by_process_alive")
-	);
-	assert_eq!(run.phase, "executing");
+	assert_eq!(run.status_projection_reason, None);
+	assert_eq!(run.phase, "completed");
 	assert!(!run.active_lease);
 	assert_eq!(run.queue_lease_state, "not_held");
-	assert_eq!(run.execution_liveness, "process_alive");
+	assert_eq!(run.execution_liveness, "not_running");
+	assert_eq!(run.ownership_state, "orphaned_live_thread");
+	assert_eq!(run.liveness_state, "process_alive");
+	assert_eq!(run.terminalization_state, "barrier_started");
 	assert_eq!(run.process_alive, Some(true));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_alive"));
-	assert_eq!(project.active_run_count, 1);
-	assert_eq!(project.running_lane_count, 1);
-	assert_eq!(project.retained_worktree_count, 0);
+	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.running_lane_count, 0);
+	assert_eq!(project.retained_worktree_count, 1);
+	assert_eq!(snapshot.worktrees[0].ownership, "orphaned_live_thread");
 }
 
 #[test]
