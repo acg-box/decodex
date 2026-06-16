@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Decodex",
     "shortDescription": "Research, plan, and operate Decodex.",
-    "longDescription": "Routes Decodex research, promotion, planning, CLI, labels, commit, landing, and automation.",
+    "longDescription": "Routes Decodex research, promotion, issue briefing and planning, CLI, labels, commit, landing, and automation.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -33,7 +33,7 @@
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
       "Research this with Decodex.",
-      "Arrange accepted research.",
+      "Arrange accepted Decodex work.",
       "Inspect this Decodex lane."
     ],
     "brandColor": "#0F766E"

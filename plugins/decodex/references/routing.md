@@ -10,7 +10,7 @@ labels, retained automation, commit, or landing boundaries.
 - Promotion: use `research-promote` only after explicit acceptance such as "arrange
   this", "push this forward", "推进", or "做".
 - Planning: use `planning` after promotion or another explicit execution instruction
-  to create Decodex-friendly issue slices and Program readiness.
+  to create Decodex-native issue briefs and Program readiness.
 - Manual CLI: use `manual-cli` when a human is driving local commands, status,
   project registration, dry-run checks, recovery inspection, commit, or land.
 - Retained automation: use `automation` when Decodex owns issue intake, Program
@@ -40,8 +40,9 @@ promotion.
 2. A decision-ready result remains latent until promotion.
 3. Promotion preserves the accepted objectives, non-goals, constraints, assumptions,
    objections, validation expectations, proposed issue summaries, and stop conditions.
-4. Planning turns accepted work into user-readable Linear issue briefs and, when
-   appropriate, persisted Execution Program readiness.
+4. Planning turns accepted work into user-readable Linear issue briefs with generic
+   dispatch briefing quality and, when appropriate, persisted Execution Program
+   readiness.
 5. Program Intake dispatches ready mapped nodes directly. Queue labels are not the
    Program DAG scheduler.
 
@@ -121,6 +122,8 @@ For human-driven PR landing:
 
 - Do not use global `AGENTS.md` as Decodex runtime, tracker, identity, landing,
   closeout, or cleanup authority.
+- Do not route Decodex issue briefing through an external delivery workflow; planning
+  owns Decodex issue shaping after execution authority exists.
 - Do not hand-edit runtime DB rows, kill hidden `_attempt` children, or mutate Linear
   state to simulate lane controls.
 - Do not substitute raw GitHub merge, merge queue, `gh pr merge`, direct API mutation,

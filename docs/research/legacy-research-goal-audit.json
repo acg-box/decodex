@@ -61,13 +61,15 @@
     },
     {
       "legacy_target": "Delivery skill removal and drop-delivery designs",
-      "current_status": "Partially absorbed. Runtime-owned closeout, post-review lifecycle, and issue-scoped tracker tools exist, but the Decodex planning skill still references external delivery issue/split shaping.",
+      "current_status": "Implemented. Runtime-owned closeout, post-review lifecycle, and issue-scoped tracker tools exist, and Decodex planning now owns native issue briefing and issue splitting without an external delivery dependency.",
       "repo_evidence": [
         "docs/spec/post-review-lifecycle.md",
         "docs/spec/tracker-tools.md",
+        "docs/spec/loop-runtime.md",
+        "plugins/decodex/references/issue-briefing.md",
         "plugins/decodex/skills/planning/SKILL.md"
       ],
-      "retained_value": "Future Decodex plugin self-containment should remove the residual external delivery dependency only after Decodex-native issue shaping exists."
+      "retained_value": "Keep Decodex-native issue briefing inside planning, and keep progress, review handoff, landing, closeout, and recovery as runtime-owned lifecycle surfaces."
     },
     {
       "legacy_target": "Plan plugin to progress skill runs",
@@ -211,11 +213,13 @@
     },
     {
       "id": "E9",
-      "kind": "gap",
+      "kind": "repo_source",
       "source": [
+        "docs/spec/loop-runtime.md",
+        "plugins/decodex/references/issue-briefing.md",
         "plugins/decodex/skills/planning/SKILL.md"
       ],
-      "supports": "Decodex planning still points to external delivery issue/split shaping, so full delivery-skill removal is not complete."
+      "supports": "Decodex planning owns issue briefing and issue splitting directly, so Decodex no longer depends on an external delivery issue/split skill for Program Intake readiness."
     }
   ],
   "carry_forward_research_packet": {
@@ -229,7 +233,6 @@
       "New Decodex research continues to use runtime-local decodex.decision_contract/1 records for runtime authority and does not use the old research-run/2 event-log shape."
     ],
     "unresolved_execution_work": [
-      "Decide later whether Decodex planning should become fully self-contained and remove its residual external delivery issue/split dependency.",
       "Reopen remote execution research only with live evidence for task status, diff, apply, issue/run/attempt provenance, repo gate, and PR handoff authority.",
       "Reopen landing receipt research only if the current decodex/commit/1 and GitHub merge/admin-merge records fail a concrete machine-readback requirement.",
       "Keep any future plan/progress adapter below lifecycle authority; progress memory cannot become terminal lane state."
