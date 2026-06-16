@@ -3132,7 +3132,6 @@ struct OperatorLanePopoverView: View {
 
 		return [
 			contextMetric(lifecycleMetrics),
-			toolsMetric(lifecycleMetrics),
 			trackerMetric(lifecycleMetrics),
 			protocolMetric(lifecycleMetrics),
 		].compactMap { $0 }
@@ -3162,31 +3161,6 @@ struct OperatorLanePopoverView: View {
 
 		return OperatorTotalMetric(
 			title: "Context",
-			items: items
-		)
-	}
-
-	private func toolsMetric(_ metrics: OperatorLifecycleMetrics) -> OperatorTotalMetric? {
-		var items = [OperatorLaneReadoutItem]()
-		if metrics.toolCallCount > 0 {
-			items.append(OperatorLaneReadoutItem(label: "tools", value: formatCompactCount(metrics.toolCallCount)))
-		}
-
-		if let largestOutput = metrics.largestToolOutputBytes, largestOutput > 0 {
-			items.append(
-				OperatorLaneReadoutItem(
-					label: "max output",
-					value: formatLargestOutput(bytes: largestOutput)
-				)
-			)
-		}
-
-		guard items.isEmpty == false else {
-			return nil
-		}
-
-		return OperatorTotalMetric(
-			title: "Tools",
 			items: items
 		)
 	}
