@@ -50,6 +50,7 @@ import sys
 TURN_OUTPUTS = __TURN_OUTPUTS__
 GOAL_STATUSES = __GOAL_STATUSES__
 UNSUPPORTED_GOAL_METHODS = __UNSUPPORTED_GOAL_METHODS__
+MISMATCH_NOTIFICATION_TURN_IDS = __MISMATCH_NOTIFICATION_TURN_IDS__
 
 goal = {
     "objective": "",
@@ -171,6 +172,7 @@ for line in sys.stdin:
     elif method == "turn/start":
         turn_count += 1
         turn_id = "turn-" + str(turn_count)
+        notification_turn_id = "notification-" + turn_id if MISMATCH_NOTIFICATION_TURN_IDS else turn_id
         if TURN_OUTPUTS:
             output = TURN_OUTPUTS[min(turn_count - 1, len(TURN_OUTPUTS) - 1)]
         else:
@@ -182,22 +184,22 @@ for line in sys.stdin:
         }})
         send({"method": "turn/started", "params": {
             "threadId": "thread-1",
-            "turn": {"id": turn_id, "status": "running", "error": None},
+            "turn": {"id": notification_turn_id, "status": "running", "error": None},
         }})
         if not unsupported_goal_method("thread/goal/updated"):
             send({"method": "thread/goal/updated", "params": {
                 "threadId": "thread-1",
-                "turnId": turn_id,
+                "turnId": notification_turn_id,
                 "goal": goal_payload("active"),
             }})
         send({"method": "item/completed", "params": {
             "threadId": "thread-1",
-            "turnId": turn_id,
+            "turnId": notification_turn_id,
             "item": {"type": "agentMessage", "text": output},
         }})
         send({"method": "turn/completed", "params": {
             "threadId": "thread-1",
-            "turn": {"id": turn_id, "status": "completed", "error": None},
+            "turn": {"id": notification_turn_id, "status": "completed", "error": None},
         }})
     else:
         method_not_found(message_id, method)
@@ -910,16 +912,32 @@ fn phase_goal_fake_codex_script(
 	goal_statuses: &[&str],
 	unsupported_goal_methods: &[&str],
 ) -> String {
+	phase_goal_fake_codex_script_with_notification_turn_mismatch(
+		turn_outputs,
+		goal_statuses,
+		unsupported_goal_methods,
+		false,
+	)
+}
+
+fn phase_goal_fake_codex_script_with_notification_turn_mismatch(
+	turn_outputs: &[&str],
+	goal_statuses: &[&str],
+	unsupported_goal_methods: &[&str],
+	mismatch_notification_turn_ids: bool,
+) -> String {
 	let outputs_json = serde_json::to_string(turn_outputs).expect("turn outputs should serialize");
 	let statuses_json =
 		serde_json::to_string(goal_statuses).expect("goal statuses should serialize");
 	let unsupported_goal =
 		serde_json::to_string(unsupported_goal_methods).expect("methods should serialize");
+	let mismatch_turn_ids = if mismatch_notification_turn_ids { "True" } else { "False" };
 
 	PHASE_GOAL_FAKE_CODEX_SCRIPT_TEMPLATE
 		.replace("__TURN_OUTPUTS__", &outputs_json)
 		.replace("__GOAL_STATUSES__", &statuses_json)
 		.replace("__UNSUPPORTED_GOAL_METHODS__", &unsupported_goal)
+		.replace("__MISMATCH_NOTIFICATION_TURN_IDS__", mismatch_turn_ids)
 }
 
 fn execute_phase_goal_fake_app_server<'a, F>(
@@ -1024,6 +1042,37 @@ fn phase_goal_complete_runs_validation_transition_before_handoff_goal() {
 	);
 	assert_eq!(goal_set_events.len(), 2);
 	assert_eq!(goal_set_events[1]["phase"], "handoff_evidence");
+}
+
+#[test]
+fn phase_goal_completion_accepts_thread_bound_notification_turn_alias() {
+	let handler = TerminalTokenCompletionHandler::default();
+	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
+	let script = phase_goal_fake_codex_script_with_notification_turn_mismatch(
+		&["DONE", "TERMINAL"],
+		&["complete", "complete"],
+		&[],
+		true,
+	);
+	let (result, state_store) = execute_phase_goal_fake_app_server(script, |request| {
+		request.max_turns = 3;
+		request.dynamic_tool_handler = Some(&handler);
+		request.phase_goal_controller = Some(&controller);
+	});
+	let result = result.expect("thread-bound turn alias should still complete phase goals");
+	let completed_events = private_phase_goal_events(&state_store, "phase_goal_completed");
+	let run_attempt = state_store
+		.run_attempt("phase-goal-run")
+		.expect("run attempt should load")
+		.expect("run attempt should exist");
+
+	assert_eq!(result.turn_count, 2);
+	assert_eq!(result.turn_id, "notification-turn-2");
+	assert_eq!(run_attempt.turn_id(), Some("notification-turn-2"));
+	assert_eq!(
+		completed_events.iter().filter_map(|event| event["phase"].as_str()).collect::<Vec<_>>(),
+		vec!["implement_to_validation_ready", "handoff_evidence"]
+	);
 }
 
 #[test]
