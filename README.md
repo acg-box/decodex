@@ -31,8 +31,8 @@ Repo-native agent orchestration, upstream Codex radar, and public publishing.
 - Publisher workflow for checked-in upstream reviews, impact classification, curated
   public signals, and automated low-frequency X publication records for
   `@decodexspace`.
-- Installable Decodex plugin with reusable agent-facing skills for planning,
-  manual CLI, automation, commit, land, and labels.
+- Installable Decodex plugin with reusable agent-facing skills for issue briefing,
+  planning, manual CLI, automation, commit, land, and labels.
 - Repository documentation split by question type into spec, runbook, reference, and
   decision lanes.
 
