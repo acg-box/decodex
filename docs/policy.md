@@ -26,20 +26,29 @@ This repository standardizes on four primary documentation lanes:
 - `runbook` defines procedure, not truth, current state, or rationale.
 - `reference` defines current state, not truth, procedure, or rationale.
 - `decisions` defines rationale, not truth, procedure, or current state.
-- `docs/research/` is supporting evidence only. It does not own repository truth,
-  procedure, current state, or rationale.
+- `docs/research/` is a JSON-only supporting research-report and evidence artifact
+  lane. It does not own repository truth, procedure, current state, rationale, or
+  runtime authority.
 - If a document starts answering a second question type, split it and link to the
   authoritative lane instead of stretching one document across lanes.
 
 ## Artifact lanes
 
-- `docs/research/` is allowed for legacy or supporting machine-authored research run
-  artifacts.
+- `docs/research/` may hold supporting JSON research reports and extracted evidence.
+- Keep `docs/research/` internally uniform: tracked files under that directory must
+  be JSON research artifacts, not Markdown prose documents.
+- Do not add new old-shape `research-run/2` event-log JSON files under
+  `docs/research/`.
+- Removed legacy machine-authored JSON event logs are consolidated in
+  `docs/research/legacy-research-goal-audit.json`; use Git history only for raw event
+  log provenance.
 - `docs/research/` is not a primary documentation lane and is not authoritative for
   runtime behavior, repository policy, or operator procedures.
+- New Decodex bounded research belongs in runtime-local
+  `decodex.decision_contract/1` records until accepted and promoted.
 - If a research result becomes durable repository guidance, promote it into `spec`,
-  `runbook`, `reference`, or `decisions` and link back to the originating artifact only
-  as supporting evidence.
+  `runbook`, `reference`, or `decisions` and cite source provenance only as supporting
+  evidence.
 
 ## Placement rules
 

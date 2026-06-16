@@ -84,6 +84,8 @@ pub(crate) struct ResearchDesignRunInput {
 	#[serde(default)]
 	proposed_issue_summaries: Vec<String>,
 	#[serde(default)]
+	promotion_targets: Vec<String>,
+	#[serde(default)]
 	conflict_domains: Vec<String>,
 	#[serde(default)]
 	queue_intent: Vec<String>,
@@ -122,6 +124,7 @@ impl ResearchDesignRunInput {
 			validation_expectations: Vec::new(),
 			risk_notes: Vec::new(),
 			proposed_issue_summaries: Vec::new(),
+			promotion_targets: Vec::new(),
 			conflict_domains: Vec::new(),
 			queue_intent: Vec::new(),
 			private_evidence_refs: Vec::new(),
@@ -157,6 +160,8 @@ impl ResearchProvenanceInput {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ResearchEvidenceInput {
+	#[serde(default = "default_input_evidence_kind")]
+	kind: String,
 	claim: String,
 	support: String,
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -165,6 +170,7 @@ pub(crate) struct ResearchEvidenceInput {
 impl ResearchEvidenceInput {
 	fn normalized(self) -> Result<Self> {
 		Ok(Self {
+			kind: normalize_required_text("evidence.kind", self.kind)?,
 			claim: normalize_required_text("evidence.claim", self.claim)?,
 			support: normalize_required_text("evidence.support", self.support)?,
 			source_ref: normalize_optional_text("evidence.source_ref", self.source_ref)?,
@@ -308,6 +314,7 @@ pub(crate) struct ResearchDesignRunReport {
 	pub(crate) missing_decisions: Vec<String>,
 	pub(crate) blockers: Vec<String>,
 	pub(crate) proposed_issue_summaries: Vec<String>,
+	pub(crate) promotion_targets: Vec<String>,
 	pub(crate) conflict_domains: Vec<String>,
 	pub(crate) private_evidence_ref_count: usize,
 	pub(crate) public_projection_ref_count: usize,
@@ -332,6 +339,7 @@ impl ResearchDesignRunReport {
 				.execution_readiness()
 				.proposed_issue_summaries()
 				.to_vec(),
+			promotion_targets: contract.execution_readiness().promotion_targets().to_vec(),
 			conflict_domains: contract.execution_readiness().conflict_domains().to_vec(),
 			private_evidence_ref_count: input.private_evidence_refs.len(),
 			public_projection_ref_count: input.public_projection_refs.len(),
@@ -385,6 +393,7 @@ struct NormalizedResearchDesignInput {
 	validation_expectations: Vec<String>,
 	risk_notes: Vec<String>,
 	proposed_issue_summaries: Vec<String>,
+	promotion_targets: Vec<String>,
 	conflict_domains: Vec<String>,
 	queue_intent: Vec<String>,
 	private_evidence_refs: Vec<ResearchPrivateEvidenceRefInput>,
@@ -452,6 +461,7 @@ impl NormalizedResearchDesignInput {
 				"proposed_issue_summaries",
 				input.proposed_issue_summaries,
 			)?,
+			promotion_targets: normalize_text_list("promotion_targets", input.promotion_targets)?,
 			conflict_domains: normalize_text_list("conflict_domains", input.conflict_domains)?,
 			queue_intent: normalize_text_list("queue_intent", input.queue_intent)?,
 			private_evidence_refs: input
@@ -484,6 +494,9 @@ impl NormalizedResearchDesignInput {
 		if self.evidence.is_empty() {
 			eyre::bail!("decision-ready research requires at least one evidence claim.");
 		}
+		if self.evidence.iter().any(|evidence| evidence.kind == "unspecified") {
+			eyre::bail!("decision-ready research requires an evidence kind for each claim.");
+		}
 		if self.options.is_empty() {
 			eyre::bail!("decision-ready research requires at least one option comparison.");
 		}
@@ -499,6 +512,9 @@ impl NormalizedResearchDesignInput {
 			eyre::bail!(
 				"decision-ready research requires at least one proposed issue summary for downstream shaping."
 			);
+		}
+		if self.promotion_targets.is_empty() {
+			eyre::bail!("decision-ready research requires at least one promotion target.");
 		}
 		if !self.unresolved_decisions.is_empty() || !self.evidence_gaps.is_empty() {
 			eyre::bail!(
@@ -696,6 +712,7 @@ fn build_decision_contract(
 			"validation_expectations": input.validation_expectations,
 			"risk_notes": risk_notes(input),
 			"proposed_issue_summaries": input.proposed_issue_summaries,
+			"promotion_targets": input.promotion_targets,
 			"conflict_domains": input.conflict_domains,
 			"queue_intent": queue_intent(input),
 		},
@@ -764,6 +781,7 @@ fn research_evidence_json(input: &NormalizedResearchDesignInput) -> Vec<Value> {
 		.iter()
 		.map(|item| {
 			serde_json::json!({
+				"kind": item.kind,
 				"claim": item.claim,
 				"support": item.support,
 				"source_ref": item.source_ref,
@@ -871,6 +889,10 @@ fn default_feedback(outcome: ResearchDesignOutcome) -> &'static str {
 	}
 }
 
+fn default_input_evidence_kind() -> String {
+	String::from("unspecified")
+}
+
 fn generated_contract_id(input: &ResearchDesignRunInput) -> Result<String> {
 	let slug = intent_slug(&input.intent);
 	let encoded = serde_json::to_vec(input)?;
@@ -954,6 +976,7 @@ mod tests {
 				summary: String::from("Research output is latent until accepted or promoted."),
 			}],
 			evidence: vec![ResearchEvidenceInput {
+				kind: String::from("repo_source"),
 				claim: String::from("Decision-ready research can shape downstream issues."),
 				support: String::from(
 					"The compiler carries objectives, validation expectations, and issue summaries.",
@@ -993,6 +1016,7 @@ mod tests {
 			proposed_issue_summaries: vec![String::from(
 				"Wire natural-language research trigger into Decodex plugin surface.",
 			)],
+			promotion_targets: vec![String::from("plugins/decodex/skills")],
 			conflict_domains: vec![String::from("runtime")],
 			queue_intent: Vec::new(),
 			private_evidence_refs: vec![ResearchPrivateEvidenceRefInput {
@@ -1060,6 +1084,35 @@ mod tests {
 			};
 
 		assert!(missing_validation_error.to_string().contains("requires validation expectations"));
+
+		let mut missing_evidence_kind = decision_ready_input();
+
+		missing_evidence_kind.evidence[0].kind = String::from("unspecified");
+
+		let missing_evidence_kind_error =
+			match research_design::compile_research_design_run(missing_evidence_kind, "decodex") {
+				Ok(_) => panic!("decision-ready research should require evidence kinds"),
+				Err(error) => error,
+			};
+
+		assert!(missing_evidence_kind_error.to_string().contains("requires an evidence kind"));
+
+		let mut missing_promotion_target = decision_ready_input();
+
+		missing_promotion_target.promotion_targets.clear();
+
+		let missing_promotion_target_error =
+			match research_design::compile_research_design_run(missing_promotion_target, "decodex")
+			{
+				Ok(_) => panic!("decision-ready research should require a promotion target"),
+				Err(error) => error,
+			};
+
+		assert!(
+			missing_promotion_target_error
+				.to_string()
+				.contains("requires at least one promotion target")
+		);
 	}
 
 	#[test]
@@ -1088,6 +1141,10 @@ mod tests {
 		assert_eq!(
 			record.contract().execution_readiness().proposed_issue_summaries(),
 			&[String::from("Wire natural-language research trigger into Decodex plugin surface.")]
+		);
+		assert_eq!(
+			record.contract().execution_readiness().promotion_targets(),
+			&[String::from("plugins/decodex/skills")]
 		);
 		assert!(
 			store
