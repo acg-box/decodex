@@ -442,7 +442,6 @@ fn assert_child_lifecycle_contract(response: &str) {
 			"const header = [\"Stage\", \"attempts\", \"inference\", \"input\", \"output\", \"tools\", \"max output\"];",
 			"const alignRight = new Set([1, 2, 3, 4, 5, 6]);",
 			"width: fit-content;\n\t\t\t\tmax-width: 100%;",
-			"appendLifecycleMetricSegment(\n\t\t\t\t\t\t\ttoolSegments,\n\t\t\t\t\t\t\tformatLargestOutputValue(largestOutput),\n\t\t\t\t\t\t\t\"max output\",",
 			"\"tools\"",
 			"output bytes",
 			"field(\"Large outputs\", childAgentLargeOutputSummary(childAgentActivity(run)))",
@@ -470,6 +469,8 @@ fn assert_child_lifecycle_contract(response: &str) {
 			"const titleAttribute = segment.help ? ` title=\"${escapeHtml(segment.help)}\"` : \"\";",
 			"largestOutputHelp(largestOutput, lifecycle?.largest_tool_output_tool)",
 			"formatLargestOutputValue(largestOutput, lifecycle?.largest_tool_output_tool)",
+			"const toolSegments = [];",
+			"rows.push({ label: \"Tools\", segments: toolSegments });",
 		],
 	);
 }
@@ -1834,7 +1835,12 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("let dashboardLiveActiveRunsComplete = true;"));
 	assert!(response.contains("let dashboardLiveAccounts = null;"));
 	assert!(response.contains("let dashboardLiveAccountControl = null;"));
-	assert!(response.contains("function snapshotWithLiveRunActivity(snapshot)"));
+	assert!(response
+		.contains("function dashboardLiveRunActivityHasOverlay({ includeCompletedEmpty = false } = {})"));
+	assert!(response.contains("function clearDashboardLiveRunActivityOverlayIfCompleteEmpty()"));
+	assert!(response.contains("return includeCompletedEmpty;"));
+	assert!(response.contains("function snapshotWithLiveRunActivity(snapshot, options = {})"));
+	assert!(response.contains("if (!dashboardLiveRunActivityHasOverlay(options))"));
 	assert!(response.contains("\"issue_identifier\""));
 	assert!(response.contains("\"title\""));
 	assert!(!response.contains("field(\"Author\","));
@@ -1858,6 +1864,10 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("dashboardLiveRunActivitySeen = true;"));
 	assert!(response.contains("dashboardLiveActiveRunsComplete ="));
 	assert!(response.contains("snapshot: snapshotWithLiveRunActivity(payload.snapshot),"));
+	assert!(response.contains(
+		"snapshot: snapshotWithLiveRunActivity(lastDashboardRender.snapshot, {\n\t\t\t\t\t\tincludeCompletedEmpty: true,\n\t\t\t\t\t}),"
+	));
+	assert!(response.contains("clearDashboardLiveRunActivityOverlayIfCompleteEmpty();"));
 	assert!(response.contains("account_control: accountControl,"));
 	assert!(response.contains("accounts,"));
 	assert!(response.contains("active_runs: mergedActiveRuns,"));
