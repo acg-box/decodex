@@ -29,7 +29,7 @@ fn operator_status_text_surfaces_github_cli_authority() {
 					"No action needed; Decodex will use the configured GitHub CLI path.",
 				),
 			},
-			active_run_count: 0,
+			current_lane_count: 0,
 			running_lane_count: 0,
 			queued_candidate_count: 0,
 			post_review_lane_count: 0,
@@ -47,7 +47,7 @@ fn operator_status_text_surfaces_github_cli_authority() {
 			account_selector: None,
 		},
 		accounts: Vec::new(),
-		active_runs: Vec::new(),
+		current_lanes: Vec::new(),
 		queued_candidates: Vec::new(),
 		recent_runs: Vec::new(),
 		history_lanes: Vec::new(),
@@ -64,7 +64,7 @@ fn operator_status_text_surfaces_github_cli_authority() {
 
 #[test]
 fn operator_status_text_renders_human_readable_sections() {
-	let active_run = operator_status_text_active_run();
+	let current_lane = operator_status_text_current_lane();
 	let snapshot = OperatorStatusSnapshot {
 		project_id: String::from("pubfi"),
 		run_limit: 10,
@@ -79,9 +79,9 @@ fn operator_status_text_renders_human_readable_sections() {
 			account_selector: None,
 		},
 		accounts: Vec::new(),
-		active_runs: vec![active_run.clone()],
+		current_lanes: vec![current_lane.clone()],
 		queued_candidates: operator_status_text_queued_candidates(),
-		recent_runs: vec![active_run],
+		recent_runs: vec![current_lane],
 		history_lanes: Vec::new(),
 		execution_programs: Vec::new(),
 		worktrees: operator_status_text_worktrees(),
@@ -91,12 +91,12 @@ fn operator_status_text_renders_human_readable_sections() {
 
 	assert!(rendered.contains("Project: pubfi"));
 	assert!(rendered.contains("Warnings: 0"));
-	assert!(rendered.contains("Running Lanes"));
+	assert!(rendered.contains("Current Lanes"));
 	assert!(rendered.contains(
-		"Run ledger shown: 0 issue lanes from 0 history attempts (running lanes inline)"
+		"Run ledger shown: 0 issue lanes from 0 history attempts (current lanes inline)"
 	));
 	assert!(rendered.contains("Run Ledger"));
-	assert!(rendered.contains("- none (running lanes are shown above)"));
+	assert!(rendered.contains("- none (current lanes are shown above)"));
 	assert!(rendered.contains("run_id: run-1"));
 	assert_eq!(rendered.matches("run_id: run-1").count(), 1);
 	assert!(rendered.contains("attempt_status: running"));
@@ -144,12 +144,12 @@ fn operator_status_text_renders_human_readable_sections() {
 	assert!(rendered.contains("last_progress_at: 2026-03-14 10:00:01Z"));
 	assert!(rendered.contains("protocol_event: turn/completed @ 2026-03-14 10:00:01"));
 	assert!(rendered.contains("Backlog: 1"));
-	assert!(rendered.contains("Active queue echoes: 1"));
+	assert!(rendered.contains("Claimed queue echoes: 1"));
 	assert!(rendered.contains("Stale closed queue labels: 1"));
 	assert!(rendered.contains("Backlog"));
 	assert!(rendered.contains("issue: PUB-102"));
 	assert!(rendered.contains("classification: ready"));
-	assert!(rendered.contains("Active Queue Echoes"));
+	assert!(rendered.contains("Claimed Queue Echoes"));
 	assert!(rendered.contains("issue: PUB-101"));
 	assert!(rendered.contains("running_owner_run: run-1"));
 	assert!(rendered.contains("Stale Closed Queue Labels"));
@@ -182,7 +182,7 @@ fn operator_status_text_surfaces_execution_program_summary() {
 			account_selector: None,
 		},
 		accounts: Vec::new(),
-		active_runs: Vec::new(),
+		current_lanes: Vec::new(),
 		queued_candidates: Vec::new(),
 		recent_runs: Vec::new(),
 		history_lanes: Vec::new(),
@@ -251,7 +251,7 @@ fn operator_status_json_uses_direct_dispatch_program_fields() {
 			"account_selector": null,
 		},
 		"accounts": [],
-		"active_runs": [],
+		"current_lanes": [],
 		"recent_runs": [],
 		"history_lanes": [],
 		"execution_programs": [{
@@ -650,10 +650,10 @@ fn operator_status_json_and_text_surface_loop_review_and_recovery_state() {
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
 	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
-	let pending = active_run_json(&snapshot_json, "run-pending");
-	let clean = active_run_json(&snapshot_json, "run-clean");
-	let findings = active_run_json(&snapshot_json, "run-findings");
-	let blocked = active_run_json(&snapshot_json, "run-blocked");
+	let pending = current_lane_json(&snapshot_json, "run-pending");
+	let clean = current_lane_json(&snapshot_json, "run-clean");
+	let findings = current_lane_json(&snapshot_json, "run-findings");
+	let blocked = current_lane_json(&snapshot_json, "run-blocked");
 
 	assert_eq!(pending["loop_status"]["review_level"], "strict");
 	assert_eq!(pending["loop_status"]["review"]["status"], "pending");
@@ -824,13 +824,13 @@ fn seed_loop_status_private_events(state_store: &StateStore, config: &ServiceCon
 		.expect("decision request should record");
 }
 
-fn active_run_json<'a>(snapshot_json: &'a Value, run_id: &str) -> &'a Value {
-	snapshot_json["active_runs"]
+fn current_lane_json<'a>(snapshot_json: &'a Value, run_id: &str) -> &'a Value {
+	snapshot_json["current_lanes"]
 		.as_array()
-		.expect("active runs should be an array")
+		.expect("current lanes should be an array")
 		.iter()
 		.find(|run| run["run_id"] == run_id)
-		.unwrap_or_else(|| panic!("active run `{run_id}` should exist"))
+		.unwrap_or_else(|| panic!("current lane `{run_id}` should exist"))
 }
 
 #[test]
@@ -890,7 +890,7 @@ fn operator_status_text_explains_empty_backlog_checks() {
 			account_selector: None,
 		},
 		accounts: Vec::new(),
-		active_runs: Vec::new(),
+		current_lanes: Vec::new(),
 		queued_candidates: Vec::new(),
 		recent_runs: Vec::new(),
 		history_lanes: Vec::new(),
@@ -928,7 +928,7 @@ fn operator_status_text_surfaces_cleanup_blocker_pr_url() {
 			account_selector: None,
 		},
 		accounts: Vec::new(),
-		active_runs: Vec::new(),
+		current_lanes: Vec::new(),
 		queued_candidates: Vec::new(),
 		recent_runs: Vec::new(),
 		history_lanes: Vec::new(),
@@ -969,7 +969,7 @@ fn operator_status_text_surfaces_cleanup_blocker_pr_url() {
 			mergeable: Some(String::from("MERGEABLE")),
 			check_state: Some(String::from("SUCCESS")),
 			unresolved_review_threads: Some(0),
-			shadowed_by_active_run: false,
+			shadowed_by_current_lane: false,
 			readback_warning: None,
 			readback_root_cause: Some(String::from("lineage_validation_failed")),
 			loop_status: None,
@@ -986,11 +986,11 @@ fn operator_status_text_surfaces_cleanup_blocker_pr_url() {
 
 #[test]
 fn operator_status_text_terminal_run_freshness_uses_terminal_update() {
-	let mut terminal_run = operator_status_text_active_run();
+	let mut terminal_run = operator_status_text_current_lane();
 
 	terminal_run.status = String::from("succeeded");
 	terminal_run.phase = String::from("completed");
-	terminal_run.active_lease = true;
+	terminal_run.run_lease = true;
 	terminal_run.updated_at = String::from("2026-03-14 10:05:00");
 	terminal_run.last_run_activity_at = Some(String::from("2026-03-14 10:10:00Z"));
 
@@ -1009,7 +1009,7 @@ fn operator_status_text_terminal_run_freshness_uses_terminal_update() {
 			account_selector: None,
 		},
 		accounts: Vec::new(),
-		active_runs: Vec::new(),
+		current_lanes: Vec::new(),
 		queued_candidates: Vec::new(),
 		recent_runs: vec![terminal_run],
 		history_lanes,
@@ -1021,20 +1021,20 @@ fn operator_status_text_terminal_run_freshness_uses_terminal_update() {
 
 	assert!(rendered.contains("run_id: run-1"));
 	assert!(rendered.contains("phase: completed"));
-	assert!(rendered.contains("active_lease: yes"));
+	assert!(rendered.contains("run_lease: yes"));
 	assert!(rendered.contains("freshness_at: 2026-03-14 10:05:00"));
 	assert!(rendered.contains("freshness_source: updated_at"));
 	assert!(rendered.contains("last_run_activity_at: 2026-03-14 10:10:00Z"));
 }
 
 #[test]
-fn operator_status_text_active_run_without_live_activity_does_not_promote_updated_at() {
-	let mut active_run = operator_status_text_active_run();
+fn operator_status_text_current_lane_without_live_activity_does_not_promote_updated_at() {
+	let mut current_lane = operator_status_text_current_lane();
 
-	active_run.updated_at = String::from("2026-03-14 09:00:00");
-	active_run.last_run_activity_at = None;
-	active_run.last_protocol_activity_at = None;
-	active_run.last_progress_at = None;
+	current_lane.updated_at = String::from("2026-03-14 09:00:00");
+	current_lane.last_run_activity_at = None;
+	current_lane.last_protocol_activity_at = None;
+	current_lane.last_progress_at = None;
 
 	let snapshot = OperatorStatusSnapshot {
 		project_id: String::from("pubfi"),
@@ -1050,9 +1050,9 @@ fn operator_status_text_active_run_without_live_activity_does_not_promote_update
 			account_selector: None,
 		},
 		accounts: Vec::new(),
-		active_runs: vec![active_run.clone()],
+		current_lanes: vec![current_lane.clone()],
 		queued_candidates: Vec::new(),
-		recent_runs: vec![active_run],
+		recent_runs: vec![current_lane],
 		history_lanes: Vec::new(),
 		execution_programs: Vec::new(),
 		worktrees: Vec::new(),
@@ -1067,12 +1067,12 @@ fn operator_status_text_active_run_without_live_activity_does_not_promote_update
 
 #[test]
 fn operator_status_text_explains_unleased_live_running_lane() {
-	let mut active_run = operator_status_text_active_run();
+	let mut current_lane = operator_status_text_current_lane();
 
-	active_run.active_lease = false;
-	active_run.queue_lease_state = String::from("not_held");
-	active_run.attempt_status = String::from("stalled");
-	active_run.status_projection_reason =
+	current_lane.run_lease = false;
+	current_lane.queue_lease_state = String::from("not_held");
+	current_lane.attempt_status = String::from("stalled");
+	current_lane.status_projection_reason =
 		Some(String::from("terminal_attempt_promoted_by_process_alive"));
 
 	let snapshot = OperatorStatusSnapshot {
@@ -1089,9 +1089,9 @@ fn operator_status_text_explains_unleased_live_running_lane() {
 			account_selector: None,
 		},
 		accounts: Vec::new(),
-		active_runs: vec![active_run.clone()],
+		current_lanes: vec![current_lane.clone()],
 		queued_candidates: Vec::new(),
-		recent_runs: vec![active_run],
+		recent_runs: vec![current_lane],
 		history_lanes: Vec::new(),
 		execution_programs: Vec::new(),
 		worktrees: Vec::new(),
@@ -1099,7 +1099,7 @@ fn operator_status_text_explains_unleased_live_running_lane() {
 	};
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
-	assert!(rendered.contains("active_lease: no"));
+	assert!(rendered.contains("run_lease: no"));
 	assert!(rendered.contains("queue_lease_state: not_held"));
 	assert!(rendered.contains("queue_lease: not_held (process_alive keeps lane visible)"));
 	assert!(

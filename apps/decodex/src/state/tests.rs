@@ -751,7 +751,7 @@ fn persistent_project_run_listing_does_not_refresh_full_event_journal() {
 		.record_linear_execution_event(&writer_record)
 		.expect("writer ledger event should persist");
 
-	let runs = observer.list_active_runs("pubfi").expect("active runs should load");
+	let runs = observer.list_leased_runs("pubfi").expect("leased runs should load");
 	let recent_runs = observer.list_recent_runs("pubfi", 10).expect("recent runs should load");
 	let leases = observer.list_active_shared_leases("pubfi").expect("shared leases should load");
 	let worktrees = observer.list_worktrees("pubfi").expect("worktrees should load");
@@ -2695,7 +2695,7 @@ fn lists_recent_project_runs_with_protocol_summary() {
 		.expect("older run attempt should be recorded");
 	store
 		.record_run_attempt("run-1", "PUB-101", 1, "running")
-		.expect("active run attempt should be recorded");
+		.expect("running run attempt should be recorded");
 	store.update_run_thread("run-1", "thread-1").expect("thread id should attach");
 	store
 		.upsert_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
@@ -2717,14 +2717,14 @@ fn lists_recent_project_runs_with_protocol_summary() {
 
 	assert_eq!(runs.len(), 2);
 	assert_eq!(runs[0].run_id(), "run-1");
-	assert!(runs[0].active_lease());
+	assert!(runs[0].run_lease());
 	assert_eq!(runs[0].thread_id(), Some("thread-1"));
 	assert_eq!(runs[0].event_count(), 2);
 	assert_eq!(runs[0].last_event_type(), Some("turn/completed"));
 	assert_eq!(runs[0].branch_name(), Some("x/pubfi-pub-101"));
 	assert_eq!(runs[0].worktree_path(), Some(Path::new("/tmp/worktrees/pub-101")));
 	assert_eq!(runs[1].run_id(), "run-2");
-	assert!(!runs[1].active_lease());
+	assert!(!runs[1].run_lease());
 	assert_eq!(runs[1].event_count(), 0);
 }
 
@@ -2742,7 +2742,7 @@ fn lists_recent_project_runs_after_terminal_lane_cleanup() {
 		.upsert_worktree("pubfi", "PUB-101", "x/pubfi-pub-101", "/tmp/worktrees/pub-101")
 		.expect("worktree should record project ownership");
 	store.update_run_status("run-1", "succeeded").expect("terminal status should update");
-	store.clear_lease("PUB-101").expect("terminal cleanup should clear active lease");
+	store.clear_lease("PUB-101").expect("terminal cleanup should clear run lease");
 	store.clear_worktree("PUB-101").expect("terminal cleanup should clear worktree mapping");
 
 	let runs = store.list_recent_runs("pubfi", 10).expect("recent project runs should load");
@@ -2750,7 +2750,7 @@ fn lists_recent_project_runs_after_terminal_lane_cleanup() {
 	assert_eq!(runs.len(), 1);
 	assert_eq!(runs[0].run_id(), "run-1");
 	assert_eq!(runs[0].status(), "succeeded");
-	assert!(!runs[0].active_lease());
+	assert!(!runs[0].run_lease());
 	assert_eq!(runs[0].branch_name(), None);
 	assert_eq!(runs[0].worktree_path(), None);
 	assert!(
@@ -2778,11 +2778,11 @@ fn lists_active_project_runs_only() {
 		.upsert_worktree("other", "PUB-102", "x/other-pub-102", "/tmp/worktrees/pub-102")
 		.expect("second worktree should record");
 
-	let runs = store.list_active_runs("pubfi").expect("active project runs should load");
+	let runs = store.list_leased_runs("pubfi").expect("active project runs should load");
 
 	assert_eq!(runs.len(), 1);
 	assert_eq!(runs[0].run_id(), "run-1");
-	assert!(runs[0].active_lease());
+	assert!(runs[0].run_lease());
 }
 
 #[test]
@@ -2835,7 +2835,7 @@ fn state_store_open_persists_runtime_history_across_instances() {
 	assert_eq!(second.event_count("run-1").expect("event count should load"), 1);
 	assert!(
 		second.lease_for_issue("PUB-101").expect("lease lookup should succeed").is_some(),
-		"persistent store should recover active leases"
+		"persistent store should recover run leases"
 	);
 	assert!(
 		second.worktree_for_issue("PUB-101").expect("worktree lookup should succeed").is_some(),
@@ -3526,7 +3526,7 @@ fn run_control_accepts_active_attempt_and_persists_audit() {
 		.expect("control request should resolve");
 
 	assert_eq!(receipt.outcome(), "accepted");
-	assert_eq!(receipt.reason(), "active_run_control_channel_resolved");
+	assert_eq!(receipt.reason(), "run_lease_control_channel_resolved");
 	assert!(receipt.channel().is_some());
 
 	for (outcome, reason) in [
@@ -3673,7 +3673,7 @@ fn run_control_rejects_missing_channel_file() {
 }
 
 #[test]
-fn run_control_requires_active_run_ownership() {
+fn run_control_requires_run_lease_ownership() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let channel_path = temp_dir.path().join("control.channel");
 	let worktree_path = temp_dir.path().join("PUB-101");
@@ -3733,12 +3733,12 @@ fn run_control_requires_active_run_ownership() {
 			metadata: None,
 			context: None,
 		})
-		.expect("wrong active run should be audited");
+		.expect("wrong run lease should be audited");
 
 	assert_eq!(no_lease.outcome(), "rejected");
-	assert_eq!(no_lease.reason(), "active_lease_missing");
+	assert_eq!(no_lease.reason(), "run_lease_missing");
 	assert_eq!(wrong_run.outcome(), "rejected");
-	assert_eq!(wrong_run.reason(), "active_run_mismatch");
+	assert_eq!(wrong_run.reason(), "run_lease_mismatch");
 
 	let events = store
 		.list_private_execution_events("pubfi", "issue-1", "run-1", 1)
@@ -3750,7 +3750,7 @@ fn run_control_requires_active_run_ownership() {
 	let expected_worktree_path = worktree_path.display().to_string();
 	let expected_channel_path = channel_path.display().to_string();
 
-	assert_eq!(no_lease_event.payload()["lane"]["active_lease"].as_bool(), Some(false));
+	assert_eq!(no_lease_event.payload()["lane"]["run_lease"].as_bool(), Some(false));
 	assert_eq!(no_lease_event.payload()["lane"]["attempt_status"].as_str(), Some("running"));
 	assert_eq!(no_lease_event.payload()["lane"]["branch"].as_str(), Some("x/pubfi-issue-1"));
 	assert_eq!(

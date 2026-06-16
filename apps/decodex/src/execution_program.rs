@@ -329,7 +329,7 @@ pub(crate) enum ExecutionProgramNodeLifecycleState {
 	Ready,
 	/// Node was retained in a ready-to-dispatch position.
 	Queued,
-	/// Node already has an active lane.
+	/// Node already has a current lane.
 	Active,
 	/// Node is blocked by dependency, conflict, issue, or briefing evidence.
 	Blocked,
@@ -1492,7 +1492,7 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 			ExecutionQueueIntent::Active => {
 				state = ExecutionReadinessState::Active;
 
-				reasons.push(String::from("node already has an active lane"));
+				reasons.push(String::from("node already has a current lane"));
 			},
 			ExecutionQueueIntent::Done | ExecutionQueueIntent::Canceled => {
 				state = ExecutionReadinessState::Completed;

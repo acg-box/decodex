@@ -1289,7 +1289,7 @@ fn reconcile_post_review_orchestration_fails_closed_when_pull_request_is_closed(
 }
 
 #[test]
-fn reconcile_post_review_orchestration_skips_issue_with_active_lease() {
+fn reconcile_post_review_orchestration_skips_issue_with_run_lease() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = post_review_sample_service_owned_issue("In Review");
@@ -1335,7 +1335,7 @@ fn reconcile_post_review_orchestration_skips_issue_with_active_lease() {
 				"active-repair-run",
 				workflow.frontmatter().tracker().in_progress_state(),
 			)
-			.expect("active lease should acquire")
+			.expect("run lease should acquire")
 	);
 
 	orchestrator::reconcile_post_review_orchestration_with_inspector(

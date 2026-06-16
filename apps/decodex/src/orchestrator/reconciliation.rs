@@ -1,12 +1,12 @@
 #[cfg(test)]
-fn inspect_active_run_reconciliation_at<T>(
+fn inspect_run_lease_reconciliation_at<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	active_workflow_override: Option<ActiveWorkflowOverride<'_>>,
 	now_unix_epoch: i64,
-) -> Result<Vec<ActiveRunReconciliation>>
+) -> Result<Vec<RunLeaseReconciliation>>
 where
 	T: IssueTracker,
 {
@@ -30,7 +30,7 @@ where
 			continue;
 		};
 		let worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
-		let action_workflow = active_reconciliation_workflow_for_lease(
+		let action_workflow = run_lease_reconciliation_workflow(
 			workflow,
 			active_workflow_override,
 			&issue,
@@ -47,11 +47,11 @@ where
 			if let Some(disposition) = superseded_run_disposition(state_store, &run_attempt)? {
 				Some(disposition)
 			} else if !retained_closeout && is_terminal_issue(&issue, action_workflow) {
-			Some(ActiveRunDisposition::Terminal)
+			Some(RunLeaseDisposition::Terminal)
 		} else if !retained_closeout
-			&& is_issue_nonactive_for_run(&issue, action_workflow)
+			&& is_issue_not_dispatchable_for_run(&issue, action_workflow)
 		{
-			Some(ActiveRunDisposition::NonActive)
+			Some(RunLeaseDisposition::NotDispatchable)
 		} else if let Some(idle_for) = stalled_idle_duration(
 			state_store,
 			&run_attempt,
@@ -63,18 +63,18 @@ where
 				&run_attempt,
 				worktree_mapping.as_ref(),
 			)? {
-				Some(ActiveRunDisposition::RetainedReviewComplete)
+				Some(RunLeaseDisposition::RetainedReviewComplete)
 			} else if stalled_run_has_retained_partial_progress(worktree_mapping.as_ref()) {
-				Some(ActiveRunDisposition::StalledRetainedPartialProgress { idle_for })
+				Some(RunLeaseDisposition::StalledRetainedPartialProgress { idle_for })
 			} else {
-				Some(ActiveRunDisposition::Stalled { idle_for })
+				Some(RunLeaseDisposition::Stalled { idle_for })
 			}
 		} else {
 			None
 		};
 
 		if let Some(disposition) = disposition {
-			actions.push(ActiveRunReconciliation {
+			actions.push(RunLeaseReconciliation {
 				issue: issue.clone(),
 				run_attempt,
 				worktree_mapping,
@@ -94,7 +94,7 @@ fn inspect_exited_daemon_child_reconciliation<T>(
 	state_store: &StateStore,
 	issue_id: &str,
 	run_id: &str,
-) -> Result<Vec<ActiveRunReconciliation>>
+) -> Result<Vec<RunLeaseReconciliation>>
 where
 	T: IssueTracker,
 {
@@ -117,7 +117,7 @@ fn inspect_exited_daemon_child_reconciliation_at<T>(
 	issue_id: &str,
 	run_id: &str,
 	now_unix_epoch: i64,
-) -> Result<Vec<ActiveRunReconciliation>>
+) -> Result<Vec<RunLeaseReconciliation>>
 where
 	T: IssueTracker,
 {
@@ -130,7 +130,7 @@ where
 	let worktree_mapping = state_store.worktree_for_issue(issue_id)?;
 
 	if let Some(disposition) = superseded_run_disposition(state_store, &run_attempt)? {
-		return Ok(vec![ActiveRunReconciliation {
+		return Ok(vec![RunLeaseReconciliation {
 			issue,
 			run_attempt,
 			worktree_mapping,
@@ -139,7 +139,7 @@ where
 		}]);
 	}
 
-	if run_attempt.status() != "failed" || !is_issue_active_for_run(&issue, workflow) {
+	if run_attempt.status() != "failed" || !is_issue_in_progress_for_run(&issue, workflow) {
 		return Ok(Vec::new());
 	}
 
@@ -153,12 +153,12 @@ where
 		return Ok(Vec::new());
 	};
 	let disposition = if stalled_run_has_retained_partial_progress(worktree_mapping.as_ref()) {
-		ActiveRunDisposition::StalledRetainedPartialProgress { idle_for }
+		RunLeaseDisposition::StalledRetainedPartialProgress { idle_for }
 	} else {
-		ActiveRunDisposition::Stalled { idle_for }
+		RunLeaseDisposition::Stalled { idle_for }
 	};
 
-	Ok(vec![ActiveRunReconciliation {
+	Ok(vec![RunLeaseReconciliation {
 		issue,
 		run_attempt,
 		worktree_mapping,
@@ -167,7 +167,7 @@ where
 	}])
 }
 
-fn active_reconciliation_workflow_for_lease<'a>(
+fn run_lease_reconciliation_workflow<'a>(
 	current_workflow: &'a WorkflowDocument,
 	active_workflow_override: Option<ActiveWorkflowOverride<'a>>,
 	issue: &TrackerIssue,
@@ -182,26 +182,26 @@ fn active_reconciliation_workflow_for_lease<'a>(
 	}
 }
 
-fn apply_active_run_reconciliation<T>(
+fn apply_run_lease_reconciliation<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	worktree_manager: &WorktreeManager,
-	actions: Vec<ActiveRunReconciliation>,
+	actions: Vec<RunLeaseReconciliation>,
 ) -> Result<()>
 where
 	T: IssueTracker,
 {
 	for action in actions {
 		match &action.disposition {
-			ActiveRunDisposition::RetainedReviewComplete => {
-				reconcile_retained_review_complete_active_run(project, state_store, &action)?;
+			RunLeaseDisposition::RetainedReviewComplete => {
+				reconcile_retained_review_complete_run_lease(project, state_store, &action)?;
 			},
-			ActiveRunDisposition::Superseded {
+			RunLeaseDisposition::Superseded {
 				newer_run_id,
 				newer_attempt_number,
 			} => {
-				reconcile_superseded_active_run(
+				reconcile_superseded_run_lease(
 					project,
 					state_store,
 					&action,
@@ -209,14 +209,14 @@ where
 					*newer_attempt_number,
 				)?;
 			},
-			ActiveRunDisposition::Terminal => {
+			RunLeaseDisposition::Terminal => {
 				tracing::info!(
 					project_id = project.service_id(),
 					issue_id = action.issue.id,
 					issue = action.issue.identifier,
 					run_id = action.run_attempt.run_id(),
 					disposition = "terminal",
-					"Reconciling terminal active run."
+					"Reconciling terminal run lease."
 				);
 
 				mark_run_attempt_if_active(state_store, action.run_attempt.run_id(), "terminated")?;
@@ -235,11 +235,11 @@ where
 					)?;
 				}
 			},
-			ActiveRunDisposition::NonActive => {
-				reconcile_nonactive_active_run(project, state_store, worktree_manager, &action)?;
+			RunLeaseDisposition::NotDispatchable => {
+				reconcile_not_dispatchable_run_lease(project, state_store, worktree_manager, &action)?;
 			},
-			ActiveRunDisposition::Stalled { idle_for } => {
-				reconcile_stalled_active_run(
+			RunLeaseDisposition::Stalled { idle_for } => {
+				reconcile_stalled_run_lease(
 					tracker,
 					project,
 					state_store,
@@ -248,7 +248,7 @@ where
 					*idle_for,
 				)?;
 			},
-			ActiveRunDisposition::StalledRetainedPartialProgress { idle_for } => {
+			RunLeaseDisposition::StalledRetainedPartialProgress { idle_for } => {
 				reconcile_stalled_retained_partial_progress_run(
 					tracker,
 					project,
@@ -258,8 +258,8 @@ where
 					*idle_for,
 				)?;
 			},
-			ActiveRunDisposition::StalledAlreadyNeedsAttention { idle_for } => {
-				reconcile_stalled_attention_run(project, state_store, &action, *idle_for)?;
+			RunLeaseDisposition::StalledAlreadyNeedsAttention { idle_for } => {
+				reconcile_stalled_attention_run_lease(project, state_store, &action, *idle_for)?;
 			},
 		}
 	}
@@ -267,10 +267,10 @@ where
 	Ok(())
 }
 
-fn reconcile_superseded_active_run(
+fn reconcile_superseded_run_lease(
 	project: &ServiceConfig,
 	state_store: &StateStore,
-	action: &ActiveRunReconciliation,
+	action: &RunLeaseReconciliation,
 	newer_run_id: &str,
 	newer_attempt_number: i64,
 ) -> Result<()> {
@@ -283,7 +283,7 @@ fn reconcile_superseded_active_run(
 		superseded_by_run_id = newer_run_id,
 		superseded_by_attempt = newer_attempt_number,
 		disposition = "superseded",
-		"Reconciling superseded active run without tracker writeback."
+		"Reconciling superseded run lease without tracker writeback."
 	);
 
 	mark_run_attempt_if_active(state_store, action.run_attempt.run_id(), "interrupted")?;
@@ -297,10 +297,10 @@ fn reconcile_superseded_active_run(
 	Ok(())
 }
 
-fn reconcile_retained_review_complete_active_run(
+fn reconcile_retained_review_complete_run_lease(
 	project: &ServiceConfig,
 	state_store: &StateStore,
-	action: &ActiveRunReconciliation,
+	action: &RunLeaseReconciliation,
 ) -> Result<()> {
 	tracing::info!(
 		project_id = project.service_id(),
@@ -318,19 +318,19 @@ fn reconcile_retained_review_complete_active_run(
 	Ok(())
 }
 
-fn reconcile_nonactive_active_run(
+fn reconcile_not_dispatchable_run_lease(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	worktree_manager: &WorktreeManager,
-	action: &ActiveRunReconciliation,
+	action: &RunLeaseReconciliation,
 ) -> Result<()> {
 	tracing::info!(
 		project_id = project.service_id(),
 		issue_id = action.issue.id,
 		issue = action.issue.identifier,
 		run_id = action.run_attempt.run_id(),
-		disposition = "non_active",
-		"Reconciling non-active run."
+		disposition = "not_dispatchable",
+		"Reconciling run lease for issue that no longer matches dispatch policy."
 	);
 
 	mark_run_attempt_if_active(state_store, action.run_attempt.run_id(), "interrupted")?;
@@ -354,12 +354,12 @@ fn reconcile_nonactive_active_run(
 	Ok(())
 }
 
-fn reconcile_stalled_active_run<T>(
+fn reconcile_stalled_run_lease<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	worktree_manager: &WorktreeManager,
-	action: &ActiveRunReconciliation,
+	action: &RunLeaseReconciliation,
 	idle_for: Duration,
 ) -> Result<()>
 where
@@ -407,7 +407,7 @@ fn reconcile_stalled_retained_partial_progress_run<T>(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	worktree_manager: &WorktreeManager,
-	action: &ActiveRunReconciliation,
+	action: &RunLeaseReconciliation,
 	idle_for: Duration,
 ) -> Result<()>
 where
@@ -496,12 +496,13 @@ fn try_recover_stalled_retained_phase_goal(
 		RUN_OPERATION_RECONCILIATION,
 	);
 
-	let recovery = recover_active_phase_goal_continuation(
+	let recovery = recover_phase_goal_continuation(
 		project,
 		workflow,
 		state_store,
 		issue_run,
 		"stalled_run_detected",
+		Some("stalled_run_detected"),
 	)?;
 	let Some(recovery) = recovery else {
 		return Ok(false);
@@ -550,7 +551,7 @@ fn write_stalled_phase_goal_continuation_retry_marker(
 fn stalled_reconciliation_issue_run(
 	state_store: &StateStore,
 	worktree_manager: &WorktreeManager,
-	action: &ActiveRunReconciliation,
+	action: &RunLeaseReconciliation,
 ) -> Result<IssueRunPlan> {
 	let worktree = action.worktree_mapping.as_ref().map_or_else(
 		|| worktree_manager.plan_for_issue(&action.issue.identifier),
@@ -583,10 +584,10 @@ fn stalled_reconciliation_issue_run(
 	})
 }
 
-fn reconcile_stalled_attention_run(
+fn reconcile_stalled_attention_run_lease(
 	project: &ServiceConfig,
 	state_store: &StateStore,
-	action: &ActiveRunReconciliation,
+	action: &RunLeaseReconciliation,
 	idle_for: Duration,
 ) -> Result<()> {
 	tracing::warn!(
@@ -660,7 +661,7 @@ fn retained_review_handoff_matches_run(
 fn superseded_run_disposition(
 	state_store: &StateStore,
 	run_attempt: &RunAttempt,
-) -> Result<Option<ActiveRunDisposition>> {
+) -> Result<Option<RunLeaseDisposition>> {
 	let Some(latest_attempt) = state_store.latest_run_attempt_for_issue(run_attempt.issue_id())?
 	else {
 		return Ok(None);
@@ -670,7 +671,7 @@ fn superseded_run_disposition(
 		return Ok(None);
 	}
 
-	Ok(Some(ActiveRunDisposition::Superseded {
+	Ok(Some(RunLeaseDisposition::Superseded {
 		newer_run_id: latest_attempt.run_id().to_owned(),
 		newer_attempt_number: latest_attempt.attempt_number(),
 	}))
@@ -697,7 +698,7 @@ fn stalled_idle_duration(
 	let Some(idle_for) = observed_idle_duration(last_activity, now_unix_epoch) else {
 		return Ok(None);
 	};
-	let idle_timeout = active_run_idle_timeout(run_attempt, worktree_mapping)?;
+	let idle_timeout = run_lease_idle_timeout(run_attempt, worktree_mapping)?;
 
 	if idle_for >= idle_timeout {
 		return Ok(Some(idle_for));
@@ -706,27 +707,27 @@ fn stalled_idle_duration(
 	Ok(None)
 }
 
-fn active_run_idle_timeout(
+fn run_lease_idle_timeout(
 	run_attempt: &RunAttempt,
 	worktree_mapping: Option<&WorktreeMapping>,
 ) -> Result<Duration> {
 	let Some(worktree_mapping) = worktree_mapping else {
-		return Ok(ACTIVE_RUN_IDLE_TIMEOUT);
+		return Ok(RUN_LEASE_IDLE_TIMEOUT);
 	};
 	let Some(marker) = state::read_run_activity_marker_snapshot(worktree_mapping.worktree_path())?
 	else {
-		return Ok(ACTIVE_RUN_IDLE_TIMEOUT);
+		return Ok(RUN_LEASE_IDLE_TIMEOUT);
 	};
 
 	if marker.run_id() != run_attempt.run_id()
 		|| marker.attempt_number() != run_attempt.attempt_number()
 	{
-		return Ok(ACTIVE_RUN_IDLE_TIMEOUT);
+		return Ok(RUN_LEASE_IDLE_TIMEOUT);
 	}
 
 	Ok(agent::protocol_activity_idle_timeout(
 		marker.protocol_activity(),
-		ACTIVE_RUN_IDLE_TIMEOUT,
+		RUN_LEASE_IDLE_TIMEOUT,
 	))
 }
 
@@ -771,7 +772,7 @@ fn stalled_protocol_idle_duration(
 		return Ok(None);
 	};
 
-	if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT {
+	if idle_for >= RUN_LEASE_IDLE_TIMEOUT {
 		return Ok(Some(idle_for));
 	}
 

@@ -55,7 +55,7 @@ struct AgentHandoffIndex {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct AgentEvidenceSummary {
 	project_count: usize,
-	active_run_count: usize,
+	current_lane_count: usize,
 	recent_run_count: usize,
 	history_lane_count: usize,
 	queued_candidate_count: usize,
@@ -156,7 +156,7 @@ struct AgentRunCapsule {
 	terminalization_state: String,
 	lane_control_next_action: String,
 	lane_control_conditions: Vec<String>,
-	active_lease: bool,
+	run_lease: bool,
 	continuation_pending: bool,
 	suspected_stall: bool,
 	thread_id: Option<String>,
@@ -356,7 +356,7 @@ struct AgentEvidenceProjectView<'a> {
 	warnings: Vec<String>,
 	projects: Vec<&'a OperatorProjectStatus>,
 	connector_backoffs: Vec<&'a OperatorConnectorBackoffStatus>,
-	active_runs: Vec<&'a OperatorRunStatus>,
+	current_lanes: Vec<&'a OperatorRunStatus>,
 	recent_runs: Vec<&'a OperatorRunStatus>,
 	history_lanes: Vec<&'a OperatorHistoryLaneStatus>,
 	queued_candidates: Vec<&'a OperatorQueuedIssueStatus>,
@@ -376,8 +376,8 @@ impl<'a> AgentEvidenceProjectView<'a> {
 			.iter()
 			.filter(|backoff| backoff.project_id == project_id)
 			.collect::<Vec<_>>();
-		let active_runs = snapshot
-			.active_runs
+		let current_lanes = snapshot
+			.current_lanes
 			.iter()
 			.filter(|run| run.project_id == project_id)
 			.collect::<Vec<_>>();
@@ -419,7 +419,7 @@ impl<'a> AgentEvidenceProjectView<'a> {
 			warnings: snapshot.warnings.clone(),
 			projects,
 			connector_backoffs,
-			active_runs,
+			current_lanes,
 			recent_runs,
 			history_lanes,
 			queued_candidates,
@@ -479,7 +479,7 @@ fn write_agent_evidence_snapshot(
 			.collect::<Vec<_>>();
 		let summary = AgentEvidenceSummary {
 			project_count: project_view.projects.len(),
-			active_run_count: project_view.active_runs.len(),
+			current_lane_count: project_view.current_lanes.len(),
 			recent_run_count: project_view.recent_runs.len(),
 			history_lane_count: project_view.history_lanes.len(),
 			queued_candidate_count: project_view.queued_candidates.len(),
@@ -1437,7 +1437,7 @@ fn lane_issue_belongs_to_project(
 	snapshot: &OperatorStatusSnapshot,
 ) -> bool {
 	snapshot
-		.active_runs
+		.current_lanes
 		.iter()
 		.chain(snapshot.recent_runs.iter())
 		.any(|run| run.project_id == project_id && run.issue_id == issue_id)
@@ -1454,7 +1454,7 @@ fn agent_evidence_project_ids(snapshot: &OperatorStatusSnapshot) -> Vec<String> 
 	for project in &snapshot.projects {
 		project_ids.insert(project.project_id.clone());
 	}
-	for run in snapshot.active_runs.iter().chain(snapshot.recent_runs.iter()) {
+	for run in snapshot.current_lanes.iter().chain(snapshot.recent_runs.iter()) {
 		project_ids.insert(run.project_id.clone());
 	}
 	for lane in &snapshot.history_lanes {
@@ -1481,7 +1481,7 @@ fn build_run_capsules(
 	let mut capsules = Vec::new();
 
 	for run in project_view
-		.active_runs
+		.current_lanes
 		.iter()
 		.chain(project_view.recent_runs.iter())
 		.copied()
@@ -1579,7 +1579,7 @@ fn agent_run_capsule(
 		terminalization_state: run.terminalization_state.clone(),
 		lane_control_next_action: run.lane_control_next_action.clone(),
 		lane_control_conditions: run.lane_control_conditions.clone(),
-		active_lease: run.active_lease,
+		run_lease: run.run_lease,
 		continuation_pending: run.continuation_pending,
 		suspected_stall: run.suspected_stall,
 		thread_id: run.thread_id.clone(),
@@ -1715,7 +1715,7 @@ fn push_run_blockers(
 	blockers_dir: &Path,
 	run_refs: &[AgentRunCapsuleRef],
 ) {
-	for run in &project_view.active_runs {
+	for run in &project_view.current_lanes {
 		if let Some(reason_code) = agent_run_blocker_reason(run) {
 			let issue_key = issue_key(run.issue_identifier.as_deref(), &run.issue_id);
 
