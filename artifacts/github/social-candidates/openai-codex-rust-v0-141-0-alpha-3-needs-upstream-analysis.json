@@ -1,0 +1,75 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-141-0-alpha-3-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease changes before stable",
+  "candidate_text": [
+    "0.141.0-alpha.3: defer, no X handoff.\n\nAdjacent alpha.2 -> alpha.3 has 8 commits. PR titles point to API marketplace auth, plugin capability details, app-server permission paths, sleep tooling, and shell environment work, but source review is missing."
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.141.0-alpha.2",
+      "https://github.com/openai/codex/releases/tag/rust-v0.141.0-alpha.3",
+      "https://github.com/openai/codex/compare/rust-v0.141.0-alpha.2...rust-v0.141.0-alpha.3",
+      "https://github.com/openai/codex/pull/28383",
+      "https://github.com/openai/codex/pull/27958",
+      "https://github.com/openai/codex/pull/28367",
+      "https://github.com/openai/codex/pull/28421",
+      "https://github.com/openai/codex/pull/28429",
+      "https://github.com/openai/codex/pull/28441",
+      "https://github.com/openai/codex/pull/28163"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.141.0-alpha.3 was published at 2026-06-16T06:07:17Z with only a sparse release body: Release 0.141.0-alpha.3.",
+    "The official Codex changelog readback for this run still shows Codex CLI 0.140.0 dated 2026-06-15 as the newest official CLI entry; no official 0.141 changelog entry was visible.",
+    "The correct prerelease comparison for this checkpoint is rust-v0.141.0-alpha.2 -> rust-v0.141.0-alpha.3 because alpha.3 is not the first prerelease after stable rust-v0.140.0.",
+    "GitHub compare metadata for alpha.2 -> alpha.3 reports status=diverged, 8 ahead commits, 1 behind commit, and 8 total commits.",
+    "PR-title metadata in the adjacent compare window points to API curated marketplace auth, plugin details capability awareness, app-server filesystem permission paths, retained shell snapshots, interruptible sleep tooling, integration-test harness changes, and local environment use for shell commands.",
+    "Checked Decodex review/impact artifacts are absent for #27958, #28163, #28367, #28383, #28421, #28429, and #28441 in this checkout.",
+    "The refreshed release_delta/v1 records stable rust-v0.140.0 and latest prerelease rust-v0.141.0-alpha.3 with no tracked signal slugs.",
+    "No previous quote-eligible @decodexspace 0.141 prerelease post exists for alpha.2 because alpha.2 is recorded as defer / needs_upstream_analysis."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.141.0-alpha.3 is a real OpenAI Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.141.0-alpha.3",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct prerelease comparison for alpha.3 is rust-v0.141.0-alpha.2 -> rust-v0.141.0-alpha.3.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.141.0-alpha.2...rust-v0.141.0-alpha.3",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.3 release body is sparse, and behavior claims from the compare window require source review before publication.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: the alpha.3 release body is sparse and the adjacent alpha.2 -> alpha.3 compare has unreviewed primary PR metadata.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-141-0-alpha-3:alpha2-alpha3:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "Do not hand this alpha.3 record to decodex-x-publisher until the listed source-review gaps are resolved.",
+    "Do not compare alpha.3 against stable rust-v0.140.0 for public prerelease copy; the adjacent prerelease lineage is alpha.2 -> alpha.3.",
+    "Exact source-review gap list for alpha.2 -> alpha.3 primary compare PRs: #27958, #28163, #28367, #28383, #28421, #28429, #28441.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If this checkpoint later becomes publishable, decodex-x-publisher should generate and verify candidate-specific media only when it adds reader value."
+  ],
+  "next_steps": [
+    "Do not hand this alpha.3 defer record to decodex-x-publisher.",
+    "Route #27958, #28163, #28367, #28383, #28421, #28429, and #28441 to codex-upstream-radar-review / codex-code-analysis before turning alpha.3 into a release_rollup, watch_note, delta_explainer, or operator_impact post.",
+    "Use rust-v0.141.0-alpha.3 as the latest prerelease checkpoint until a newer openai/codex release appears."
+  ]
+}
