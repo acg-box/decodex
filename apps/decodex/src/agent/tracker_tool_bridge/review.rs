@@ -653,9 +653,8 @@ impl<'a> TrackerToolBridge<'a> {
 			})
 			.transpose()?
 			.flatten();
-		let external_round_count = persisted_orchestration.map_or(0, |marker| {
-			if marker.external_round_count() >= 4 { 0 } else { marker.external_round_count() }
-		});
+		let external_round_count =
+			persisted_orchestration.map_or(0, |marker| marker.external_round_count());
 
 		tracker::create_prepared_linear_execution_event_comment(
 			self.tracker,
@@ -1086,12 +1085,36 @@ impl<'a> TrackerToolBridge<'a> {
 		let Some(checkpoint) = self.review_policy_state_for_current_head(review_context)? else {
 			return Ok(None);
 		};
+
+		Ok(self.review_policy_stop_from_checkpoint(review_context, checkpoint))
+	}
+
+	pub(super) fn review_policy_stop_requested_for_current_phase(
+		&self,
+		review_context: &ReviewHandoffContext,
+	) -> crate::prelude::Result<Option<ReviewPolicyStopRequested>> {
+		if !review_context.decodex_review_checkpoint_enabled() {
+			return Ok(None);
+		}
+
+		let Some(checkpoint) = self.review_policy_state_for_current_phase(review_context)? else {
+			return Ok(None);
+		};
+
+		Ok(self.review_policy_stop_from_checkpoint(review_context, checkpoint))
+	}
+
+	fn review_policy_stop_from_checkpoint(
+		&self,
+		review_context: &ReviewHandoffContext,
+		checkpoint: ReviewPolicyState,
+	) -> Option<ReviewPolicyStopRequested> {
 		let stop_reason = match checkpoint.status {
-			ReviewPolicyStatus::Clean => return Ok(None),
+			ReviewPolicyStatus::Clean => return None,
 			ReviewPolicyStatus::Findings
 				if checkpoint.nonclean_rounds < REVIEW_POLICY_CONVERGENCE_BUDGET =>
 			{
-				return Ok(None);
+				return None;
 			},
 			ReviewPolicyStatus::Findings => ReviewPolicyStopReason::Exhausted,
 			ReviewPolicyStatus::NeedsArchitectureReview =>
@@ -1099,13 +1122,13 @@ impl<'a> TrackerToolBridge<'a> {
 			ReviewPolicyStatus::Blocked => ReviewPolicyStopReason::Blocked,
 		};
 
-		Ok(Some(ReviewPolicyStopRequested {
+		Some(ReviewPolicyStopRequested {
 			head_sha: checkpoint.head_sha,
 			issue_identifier: self.issue.identifier.clone(),
 			nonclean_rounds: Some(checkpoint.nonclean_rounds),
 			reason: stop_reason,
 			run_id: review_context.run_id.clone(),
-		}))
+		})
 	}
 
 	pub(super) fn required_pr_completion_tool_name(&self) -> &'static str {

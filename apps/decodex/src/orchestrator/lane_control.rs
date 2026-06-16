@@ -107,6 +107,12 @@ struct LaneRunInspect {
 	current_operation: String,
 	active_lease: bool,
 	execution_liveness: String,
+	ownership_state: String,
+	liveness_state: String,
+	policy_state: String,
+	terminalization_state: String,
+	lane_control_next_action: String,
+	lane_control_conditions: Vec<String>,
 	thread_id: Option<String>,
 	turn_id: Option<String>,
 	thread_status: Option<String>,
@@ -136,6 +142,12 @@ impl LaneRunInspect {
 			current_operation: run.current_operation.clone(),
 			active_lease: run.active_lease,
 			execution_liveness: run.execution_liveness.clone(),
+			ownership_state: run.ownership_state.clone(),
+			liveness_state: run.liveness_state.clone(),
+			policy_state: run.policy_state.clone(),
+			terminalization_state: run.terminalization_state.clone(),
+			lane_control_next_action: run.lane_control_next_action.clone(),
+			lane_control_conditions: run.lane_control_conditions.clone(),
 			thread_id: run.thread_id.clone(),
 			turn_id: run.turn_id.clone(),
 			thread_status: run.thread_status.clone(),
@@ -554,6 +566,12 @@ fn lane_control_operator_context(run: &OperatorRunStatus) -> Value {
 		"active_lease": run.active_lease,
 		"queue_lease_state": run.queue_lease_state.as_str(),
 		"execution_liveness": run.execution_liveness.as_str(),
+		"ownership_state": run.ownership_state.as_str(),
+		"liveness_state": run.liveness_state.as_str(),
+		"policy_state": run.policy_state.as_str(),
+		"terminalization_state": run.terminalization_state.as_str(),
+		"lane_control_next_action": run.lane_control_next_action.as_str(),
+		"lane_control_conditions": &run.lane_control_conditions,
 		"thread_status": run.thread_status.as_deref(),
 		"process_id": run.process_id,
 		"process_alive": run.process_alive,
@@ -1185,13 +1203,26 @@ fn render_lane_inspect_report(report: &LaneInspectReport) -> String {
 
 	for run in &report.runs {
 		output.push_str(&format!(
-			"- {} attempt {}: status={}, phase={}, activeLease={}, liveness={}\n",
+			"- {} attempt {}: status={}, phase={}, activeLease={}, owner={}, liveness={}\n",
 			run.run_id,
 			run.attempt_number,
 			run.status,
 			run.phase,
 			run.active_lease,
+			run.ownership_state,
 			run.execution_liveness
+		));
+		output.push_str(&format!(
+			"  laneControl: livenessState={}, policyState={}, terminalization={}, nextAction={}, conditions={}\n",
+			run.liveness_state,
+			run.policy_state,
+			run.terminalization_state,
+			run.lane_control_next_action,
+			if run.lane_control_conditions.is_empty() {
+				String::from("none")
+			} else {
+				run.lane_control_conditions.join(",")
+			}
 		));
 		output.push_str(&format!(
 			"  appServer: thread={}, turn={}, softInterruptAvailable={}\n",
