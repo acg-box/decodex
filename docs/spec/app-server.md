@@ -176,6 +176,9 @@ app-server connection for active turns.
 6. Send `thread/goal/set` with the controller-owned phase goal for the run.
 7. Send `turn/start`.
 8. Consume notifications until that turn reaches a terminal outcome.
+   If the `turn/start` response id and same-thread notification turn id differ,
+   Decodex treats the notification turn id as the active turn id for subsequent
+   item, goal, completion, and lane-control readbacks.
 9. Send `thread/goal/get` after the turn completes. If the goal status is `complete`,
    Decodex runs the next owned phase transition such as repository validation,
    validation repair, review repair, or handoff evidence. If the goal remains active
@@ -496,11 +499,16 @@ Rationale:
 ### `turn/started`
 
 - Record the turn identifier and transition the local run into `running`.
+- When this id differs from the id returned by `turn/start` but the thread id matches,
+  adopt the notification id as the current active turn id before filtering later
+  turn-scoped events.
 
 ### `turn/completed`
 
 - Record the completed turn payload.
 - Classify the turn as success, retryable failure, or terminal failure.
+- A same-thread completion for the adopted notification turn id completes the active
+  Decodex turn even when the original `turn/start` response id was different.
 
 ## Error handling
 
