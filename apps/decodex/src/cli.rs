@@ -20,6 +20,7 @@ use crate::{
 	archive_hygiene::{self, ArchiveHygieneRequest},
 	maintenance::{self, MaintenanceMode, MaintenancePruneRequest, MaintenanceScope},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
+	mcp::{self, McpServeRequest, McpTransport},
 	orchestrator::{
 		self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, DiagnoseRequest, EvidenceRequest,
 		IssueDispatchMode, LaneInspectRequest, LaneInterruptRequest, LaneSteerReport,
@@ -73,6 +74,7 @@ impl Cli {
 			Command::Land(args) => args.run(),
 			Command::Run(args) => args.run(),
 			Command::Serve(args) => args.run(),
+			Command::Mcp(args) => args.run(),
 			Command::Project(args) => args.run(),
 			Command::Lane(args) => args.run(),
 			Command::Status(args) => args.run(),
@@ -364,6 +366,36 @@ impl ServeCommand {
 			config_path: self.project_config.as_path(),
 			listen_address: &self.listen_address,
 			dev: self.dev,
+		})
+	}
+}
+
+#[derive(Debug, Args)]
+struct McpCommand {
+	#[command(subcommand)]
+	command: McpSubcommand,
+}
+impl McpCommand {
+	fn run(&self) -> Result<()> {
+		match &self.command {
+			McpSubcommand::Serve(args) => args.run(),
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct McpServeCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
+	/// MCP transport.
+	#[arg(long, value_enum, default_value_t = McpTransport::Stdio)]
+	transport: McpTransport,
+}
+impl McpServeCommand {
+	fn run(&self) -> Result<()> {
+		mcp::serve(McpServeRequest {
+			transport: self.transport,
+			config_path: self.project_config.as_path(),
 		})
 	}
 }
@@ -1634,6 +1666,8 @@ enum Command {
 	Run(RunCommand),
 	/// Run the local multi-project Decodex control plane.
 	Serve(ServeCommand),
+	/// Serve the read-only Decodex MCP gateway.
+	Mcp(McpCommand),
 	/// Manage the local Decodex project registry.
 	Project(ProjectCommand),
 	/// Inspect or influence a local lane.
@@ -1695,6 +1729,12 @@ enum ProjectSubcommand {
 	Disable(ProjectToggleCommand),
 	/// Remove one registered project from the local registry.
 	Remove(ProjectToggleCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum McpSubcommand {
+	/// Serve read-only Decodex resources over MCP.
+	Serve(McpServeCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1929,22 +1969,26 @@ mod tests {
 
 	use clap::Parser;
 
-	use crate::cli::{
-		AccountCommand, AccountSubcommand, AccountUseCommand, AppCommand, AttemptCommand, Cli,
-		Command, CommitCommand, DiagnoseCommand, EvidenceCommand, IntakeCommand, IntakeGoalCommand,
-		IntakeIssuesCommand, IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand,
-		LaneInterruptCommand, LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand,
-		MergedCloseoutRecoveryCommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
-		ProjectSubcommand, RadarBackfillReleaseRangeCommand, RadarBundleBuildCommand,
-		RadarBundleCommand, RadarBundleSubcommand, RadarBundleValidateCommand, RadarCommand,
-		RadarLedgerCommand, RadarLedgerIngestExistingCommand, RadarLedgerSubcommand,
-		RadarLedgerSummaryCommand, RadarRefreshReleaseDeltaCommand,
-		RadarRefreshUpstreamQueueCommand, RadarRenderSignalCommand, RadarSubcommand,
-		RadarValidateCommand, RecoverCommand, RecoverSubcommand, ResearchCommand,
-		ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
-		ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
-		ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand,
-		StatusCommand,
+	use crate::{
+		cli::{
+			AccountCommand, AccountSubcommand, AccountUseCommand, AppCommand, AttemptCommand, Cli,
+			Command, CommitCommand, DiagnoseCommand, EvidenceCommand, IntakeCommand,
+			IntakeGoalCommand, IntakeIssuesCommand, IntakeSubcommand, LandCommand, LaneCommand,
+			LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand, LaneSubcommand,
+			LegacyCloseoutRecoveryCommand, McpCommand, McpServeCommand, McpSubcommand,
+			MergedCloseoutRecoveryCommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
+			ProjectSubcommand, RadarBackfillReleaseRangeCommand, RadarBundleBuildCommand,
+			RadarBundleCommand, RadarBundleSubcommand, RadarBundleValidateCommand, RadarCommand,
+			RadarLedgerCommand, RadarLedgerIngestExistingCommand, RadarLedgerSubcommand,
+			RadarLedgerSummaryCommand, RadarRefreshReleaseDeltaCommand,
+			RadarRefreshUpstreamQueueCommand, RadarRenderSignalCommand, RadarSubcommand,
+			RadarValidateCommand, RecoverCommand, RecoverSubcommand, ResearchCommand,
+			ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
+			ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
+			ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand,
+			ServeCommand, StatusCommand,
+		},
+		mcp::McpTransport,
 	};
 
 	#[test]
@@ -2189,6 +2233,29 @@ mod tests {
 				"unexpected parsed serve command for `{case_name}`"
 			);
 		}
+	}
+
+	#[test]
+	fn parses_mcp_stdio_serve() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"mcp",
+			"serve",
+			"--config",
+			"./project.toml",
+			"--transport",
+			"stdio",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Mcp(McpCommand {
+				command: McpSubcommand::Serve(McpServeCommand {
+					project_config: ProjectConfigArgs { config: Some(config) },
+					transport: McpTransport::Stdio,
+				})
+			}) if config == Path::new("./project.toml")
+		));
 	}
 
 	#[test]

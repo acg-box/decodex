@@ -1914,6 +1914,38 @@ impl StateStore {
 		Ok(records.into_iter().map(|record| record.as_public()).collect())
 	}
 
+	/// List local Loop/Decision Contracts for one project.
+	#[allow(dead_code)]
+	pub(crate) fn list_decision_contracts_for_project(
+		&self,
+		project_id: &str,
+	) -> Result<Vec<DecisionContractRecord>> {
+		validate_required_decision_contract_field("project_id", project_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let records = sqlite
+				.list_decision_contracts_for_project(project_id)?
+				.into_iter()
+				.map(|record| record.as_public())
+				.collect();
+
+			return Ok(records);
+		}
+
+		let state = self.lock()?;
+		let mut records = state
+			.decision_contracts
+			.values()
+			.filter(|record| record.project_id == project_id)
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_decision_contract_runtime_records);
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
 	/// Promote a latent Loop/Decision Contract into accepted execution authority.
 	#[allow(dead_code)]
 	pub(crate) fn promote_decision_contract(

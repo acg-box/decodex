@@ -18,6 +18,7 @@ mod github;
 mod loop_contract;
 mod maintenance;
 mod manual;
+mod mcp;
 mod orchestrator;
 mod program_intake;
 mod pull_request;
