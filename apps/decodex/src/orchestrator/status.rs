@@ -1371,6 +1371,7 @@ fn apply_terminal_history_ledger_outcome_to_latest_run(lane: &mut OperatorHistor
 	lane.latest_run.attempt_status = final_outcome;
 	lane.latest_run.status_projection_reason = None;
 	lane.latest_run.phase = String::from(if requires_attention { "needs_attention" } else { "completed" });
+	lane.latest_run.run_phase = lane.latest_run.phase.clone();
 	lane.latest_run.wait_reason = None;
 	lane.latest_run.current_operation = String::from("ledger_outcome");
 	lane.latest_run.continuation_pending = false;
@@ -5839,6 +5840,10 @@ fn operator_run_status(
 	);
 	let private_evidence = operator_run_private_evidence(project, &run, issue_identifier.as_deref());
 	let continuation_recovery = operator_run_continuation_recovery_status(loop_evidence, &run);
+	let private_events =
+		loop_evidence.private_events(run.issue_id(), run.run_id(), run.attempt_number());
+	let active_goal_phase = operator_run_active_goal_phase(private_events);
+	let public_progress_phase = operator_run_public_progress_phase(private_events);
 	let loop_status =
 		operator_run_loop_status(
 			project,
@@ -5846,7 +5851,7 @@ fn operator_run_status(
 			&run,
 			&lifecycle.status,
 			&lifecycle.phase,
-		&lifecycle.current_operation,
+			&lifecycle.current_operation,
 	)?;
 
 	Ok(hydrate_operator_run_derived_status(operator_run_status_from_parts(
@@ -5868,6 +5873,8 @@ fn operator_run_status(
 		issue_identifier,
 		private_evidence,
 		continuation_recovery,
+		active_goal_phase,
+		public_progress_phase,
 		loop_status,
 	)))
 }
@@ -5892,8 +5899,12 @@ fn operator_run_status_from_parts(
 	issue_identifier: Option<String>,
 	private_evidence: AgentPrivateEvidenceRef,
 	continuation_recovery: Option<OperatorContinuationRecoveryStatus>,
+	active_goal_phase: Option<String>,
+	public_progress_phase: Option<String>,
 	loop_status: OperatorLoopStatus,
 ) -> OperatorRunStatus {
+	let run_phase = lifecycle.phase.clone();
+
 	OperatorRunStatus {
 		project_id: project.service_id().to_owned(),
 		project_display_name: project_display_name.to_owned(),
@@ -5916,8 +5927,11 @@ fn operator_run_status_from_parts(
 		lane_control_next_action: String::new(),
 		lane_control_conditions: Vec::new(),
 		phase: lifecycle.phase,
+		run_phase,
 		wait_reason,
 		current_operation: lifecycle.current_operation,
+		active_goal_phase,
+		public_progress_phase,
 		control_capability: operator_run_control_capability(run, &app_server_state),
 		thread_id: app_server_state.thread_id,
 		turn_id: app_server_state.turn_id,
@@ -5966,6 +5980,46 @@ fn operator_run_status_from_parts(
 		branch_name,
 		worktree_path,
 	}
+}
+
+fn operator_run_active_goal_phase(events: &[PrivateExecutionEvent]) -> Option<String> {
+	for event in events.iter().rev() {
+		if matches!(event.event_type(), "phase_goal_completed" | "phase_goal_transition") {
+			return None;
+		}
+		if !matches!(event.event_type(), "phase_goal_set" | "phase_goal_status") {
+			continue;
+		}
+
+		let payload = event.payload();
+		let nested = payload.get("payload").unwrap_or(payload);
+		let status = nested
+			.get("status")
+			.or_else(|| payload.get("status"))
+			.and_then(Value::as_str);
+
+		if status.is_some_and(|value| matches!(value, "complete" | "completed" | "blocked")) {
+			return None;
+		}
+
+		return nested
+			.get("phase")
+			.or_else(|| payload.get("phase"))
+			.and_then(Value::as_str)
+			.map(str::to_owned);
+	}
+
+	None
+}
+
+fn operator_run_public_progress_phase(events: &[PrivateExecutionEvent]) -> Option<String> {
+	events.iter().rev().find_map(|event| {
+		(event.event_type() == "progress_checkpoint")
+			.then_some(event.payload())
+			.and_then(|payload| payload.get("phase"))
+			.and_then(Value::as_str)
+			.map(str::to_owned)
+	})
 }
 
 fn hydrate_operator_run_derived_status(mut status: OperatorRunStatus) -> OperatorRunStatus {
@@ -7723,9 +7777,10 @@ fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorSt
 			};
 
 			output.push_str(&format!(
-				"  - node: issue={} issue_state={} lifecycle={} readiness={} dispatch_action={} reason_codes={} reasons=\"{}\" next_action=\"{}\"\n",
+				"  - node: issue={} issue_state={} program_stage={} lifecycle={} readiness={} dispatch_action={} reason_codes={} reasons=\"{}\" next_action=\"{}\"\n",
 				issue_identifier,
 				issue_state,
+				node.program_stage,
 				node.lifecycle_state,
 				node.readiness_state,
 				dispatch_action,
@@ -8895,13 +8950,13 @@ fn append_rendered_history_lane(output: &mut String, lane: &OperatorHistoryLaneS
 		return;
 	}
 
-	output.push_str("  phase_breakdown:\n");
+	output.push_str("  lifecycle_bucket_breakdown:\n");
 
 	for phase in &lane.lifecycle_metrics.phases {
 		output.push_str(&format!(
-			"    - phase: {} label: {} attempts: {} captured: {}/{} protocol_events: {} child_events: {} wall: {} tool_calls: {} input_tokens: {} output_tokens: {}\n",
-			phase.phase,
+			"    - lifecycle_bucket: {} lifecycle_bucket_key: {} attempts: {} captured: {}/{} protocol_events: {} child_events: {} wall: {} tool_calls: {} input_tokens: {} output_tokens: {}\n",
 			phase.label,
+			phase.phase,
 			phase.attempt_count,
 			phase.captured_attempt_count,
 			phase.attempt_count,
@@ -8975,6 +9030,14 @@ fn history_ledger_outcome_has_records(outcome: &OperatorHistoryLedgerOutcome) ->
 	matches!(outcome.ledger_status.as_str(), "present" | "partial")
 }
 
+fn operator_run_phase_readback(run: &OperatorRunStatus) -> &str {
+	if run.run_phase.trim().is_empty() {
+		&run.phase
+	} else {
+		&run.run_phase
+	}
+}
+
 fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let (freshness_source, freshness_at) = operator_run_freshness(run);
 	let protocol_event = render_run_protocol_event(run);
@@ -9012,7 +9075,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		render_continuation_recovery_summary(run.continuation_recovery.as_ref());
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  run_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  continuation_recovery: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  run_phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_goal_phase: {}\n  public_progress_phase: {}\n  run_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  continuation_recovery: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -9028,9 +9091,11 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		run.terminalization_state,
 		run.lane_control_next_action,
 		lane_control_conditions,
-		run.phase,
+		operator_run_phase_readback(run),
 		run.wait_reason.as_deref().unwrap_or("none"),
 		run.current_operation,
+		run.active_goal_phase.as_deref().unwrap_or("none"),
+		run.public_progress_phase.as_deref().unwrap_or("none"),
 		if run.run_lease { "yes" } else { "no" },
 		run.queue_lease_state,
 		queue_lease,

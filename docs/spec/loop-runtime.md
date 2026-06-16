@@ -419,6 +419,7 @@ Each program node carries:
 - objective lineage back to the accepted Decision Contract or issue-batch authority
 - executable stage: `research`, `design`, `spec`, `schema`, `runtime`, `plugin`,
   `eval`, or `handoff`
+- operator readbacks must surface that concept as `program_stage`
 - explicit dependencies with optional terminal-state requirements; when omitted, the
   registered `WORKFLOW.md` terminal states satisfy the dependency
 - conflict domains for `file`, `module`, `state`, `credentials`,

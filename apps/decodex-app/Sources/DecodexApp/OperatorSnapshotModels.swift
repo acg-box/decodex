@@ -427,8 +427,11 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	let attemptStatus: String?
 	let attemptNumber: Int?
 	let phase: String?
+	let runPhase: String?
 	let waitReason: String?
 	let currentOperation: String?
+	let activeGoalPhase: String?
+	let publicProgressPhase: String?
 	let threadStatus: String?
 	let threadActiveFlags: [String]
 	let idleForSeconds: Int?
@@ -482,8 +485,8 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		if let operation = trimmed(currentOperation), operation.isEmpty == false, operation != "idle" {
 			return rawDisplayToken(operation)
 		}
-		if let phase = trimmed(phase), phase.isEmpty == false {
-			return rawDisplayToken(phase)
+		if let runPhase = trimmed(runPhase ?? phase), runPhase.isEmpty == false {
+			return rawDisplayToken(runPhase)
 		}
 		if let threadStatus = trimmed(threadStatus), threadStatus.isEmpty == false {
 			return rawDisplayToken(threadStatus)
@@ -637,8 +640,11 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			attemptStatus: activity.attemptStatus ?? attemptStatus,
 			attemptNumber: activity.attemptNumber ?? attemptNumber,
 			phase: activity.phase ?? phase,
+			runPhase: activity.runPhase ?? runPhase,
 			waitReason: activity.waitReason ?? waitReason,
 			currentOperation: activity.currentOperation ?? currentOperation,
+			activeGoalPhase: activity.activeGoalPhase ?? activeGoalPhase,
+			publicProgressPhase: activity.publicProgressPhase ?? publicProgressPhase,
 			threadStatus: activity.threadStatus ?? threadStatus,
 			threadActiveFlags: activity.threadActiveFlags.isEmpty ? threadActiveFlags : activity.threadActiveFlags,
 			idleForSeconds: activity.idleForSeconds ?? idleForSeconds,
@@ -693,8 +699,11 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		case attemptStatus = "attempt_status"
 		case attemptNumber = "attempt_number"
 		case phase
+		case runPhase = "run_phase"
 		case waitReason = "wait_reason"
 		case currentOperation = "current_operation"
+		case activeGoalPhase = "active_goal_phase"
+		case publicProgressPhase = "public_progress_phase"
 		case threadStatus = "thread_status"
 		case threadActiveFlags = "thread_active_flags"
 		case idleForSeconds = "idle_for_seconds"
@@ -736,8 +745,11 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		attemptStatus = try container.decodeIfPresent(String.self, forKey: .attemptStatus)
 		attemptNumber = try container.decodeIfPresent(Int.self, forKey: .attemptNumber)
 		phase = try container.decodeIfPresent(String.self, forKey: .phase)
+		runPhase = try container.decodeIfPresent(String.self, forKey: .runPhase)
 		waitReason = try container.decodeIfPresent(String.self, forKey: .waitReason)
 		currentOperation = try container.decodeIfPresent(String.self, forKey: .currentOperation)
+		activeGoalPhase = try container.decodeIfPresent(String.self, forKey: .activeGoalPhase)
+		publicProgressPhase = try container.decodeIfPresent(String.self, forKey: .publicProgressPhase)
 		threadStatus = try container.decodeIfPresent(String.self, forKey: .threadStatus)
 		threadActiveFlags = try container.decodeIfPresent([String].self, forKey: .threadActiveFlags) ?? []
 		idleForSeconds = try container.decodeIfPresent(Int.self, forKey: .idleForSeconds)
@@ -784,8 +796,11 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		attemptStatus: String?,
 		attemptNumber: Int?,
 		phase: String?,
+		runPhase: String?,
 		waitReason: String?,
 		currentOperation: String?,
+		activeGoalPhase: String?,
+		publicProgressPhase: String?,
 		threadStatus: String?,
 		threadActiveFlags: [String],
 		idleForSeconds: Int?,
@@ -821,8 +836,11 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		self.attemptStatus = attemptStatus
 		self.attemptNumber = attemptNumber
 		self.phase = phase
+		self.runPhase = runPhase
 		self.waitReason = waitReason
 		self.currentOperation = currentOperation
+		self.activeGoalPhase = activeGoalPhase
+		self.publicProgressPhase = publicProgressPhase
 		self.threadStatus = threadStatus
 		self.threadActiveFlags = threadActiveFlags
 		self.idleForSeconds = idleForSeconds

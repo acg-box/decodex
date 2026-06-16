@@ -246,9 +246,13 @@ fn operator_status_history_lanes_group_attempts_by_issue() {
 	assert!(rendered.contains("issue: XY-323"));
 	assert!(rendered.contains("attempts: 2"));
 	assert!(rendered.contains("lifecycle_metrics: attempts=2; captured=2/2; missing=0; protocol_events=2"));
-	assert!(rendered.contains("phase_breakdown"));
-	assert!(rendered.contains("phase: development label: Development attempts: 1"));
-	assert!(rendered.contains("phase: review label: Review attempts: 1"));
+	assert!(rendered.contains("lifecycle_bucket_breakdown"));
+	assert!(rendered.contains(
+		"lifecycle_bucket: Development lifecycle_bucket_key: development attempts: 1"
+	));
+	assert!(rendered.contains(
+		"lifecycle_bucket: Review lifecycle_bucket_key: review attempts: 1"
+	));
 }
 
 #[test]
@@ -429,8 +433,10 @@ fn live_operator_history_lanes_prefer_linear_ledger_outcome() {
 	assert!(rendered.contains("closeout_status: Done"));
 	assert!(rendered.contains("lifecycle_elapsed_seconds: 600"));
 	assert!(rendered.contains("local_attempts: 2"));
-	assert!(rendered.contains("phase_breakdown"));
-	assert!(rendered.contains("phase: development label: Development attempts: 2"));
+	assert!(rendered.contains("lifecycle_bucket_breakdown"));
+	assert!(rendered.contains(
+		"lifecycle_bucket: Development lifecycle_bucket_key: development attempts: 2"
+	));
 	assert!(!rendered.contains("pr_url: none"));
 	assert_eq!(
 		snapshot_json["history_lanes"][0]["latest_run"]["status"],

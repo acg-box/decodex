@@ -129,7 +129,8 @@ The capsule captures the compact runtime state an agent needs before opening a
 worktree:
 
 - issue id, issue identifier, title, run id, attempt number
-- status, raw attempt status, phase, wait reason, current operation
+- status, raw attempt status, run phase, wait reason, current operation, active goal
+  phase, and public progress phase when present
 - queue lease state and execution liveness
 - thread, turn, process, protocol event, idle, and progress fields
 - effective model/provider/cwd/approval/sandbox fields when known
