@@ -712,6 +712,7 @@ The minimum supported surface is:
 
 - structured runtime logs with stable identifiers such as `project_id`, `issue_id`, `issue`, `run_id`, `attempt`, `branch`, and repository-relative `worktree_path`
 - a local status command that renders the current service snapshot in both human-readable and JSON forms, including non-secret GitHub CLI authority diagnostics for the resolved command path, discovery tier, configured path when present, availability, and operator next action
+- status command output must treat a downstream-closed stdout pipe as normal operator-side output truncation, not as a runtime, database, tracker, or GitHub failure
 - an agent evidence command, `decodex diagnose`, that writes a compact derived handoff index, blocker snapshots, run capsules, and an append-only evidence event stream under `~/.codex/decodex/agent-evidence/<service-id>/`; the handoff index includes the same non-secret GitHub CLI authority readback so repair agents can diagnose missing or fallback-only `gh` authority
 
 Structured logs remain diagnostic. They may help explain a live failure, but they are
