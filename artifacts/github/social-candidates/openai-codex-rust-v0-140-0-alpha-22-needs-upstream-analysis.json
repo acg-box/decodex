@@ -1,0 +1,87 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-140-0-alpha-22-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease changes before stable",
+  "candidate_text": [
+    "0.140.0-alpha.22: defer, no X handoff.\n\nAdjacent alpha.21 -> alpha.22 has 19 commits. PR titles point to websocket/request performance, environment cwd, Guardian isolation, plugin sharing, skills cache, Windows sandbox, and input timer work."
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.21",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.22",
+      "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.21...rust-v0.140.0-alpha.22",
+      "https://github.com/openai/codex/pull/28309",
+      "https://github.com/openai/codex/pull/28306",
+      "https://github.com/openai/codex/pull/28323",
+      "https://github.com/openai/codex/pull/28313",
+      "https://github.com/openai/codex/pull/28344",
+      "https://github.com/openai/codex/pull/27059",
+      "https://github.com/openai/codex/pull/28327",
+      "https://github.com/openai/codex/pull/27995",
+      "https://github.com/openai/codex/pull/28285",
+      "https://github.com/openai/codex/pull/26702",
+      "https://github.com/openai/codex/pull/28294",
+      "https://github.com/openai/codex/pull/28257",
+      "https://github.com/openai/codex/pull/28341",
+      "https://github.com/openai/codex/pull/28336",
+      "https://github.com/openai/codex/pull/28357",
+      "https://github.com/openai/codex/pull/27706",
+      "https://github.com/openai/codex/pull/28347",
+      "https://github.com/openai/codex/pull/28235",
+      "https://x.com/decodexspace/status/2066507194129060178"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.140.0-alpha.22 was published at 2026-06-15T19:38:35Z with only a sparse release body: Release 0.140.0-alpha.22.",
+    "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.21 -> rust-v0.140.0-alpha.22; alpha.22 is not the first prerelease after stable rust-v0.139.0.",
+    "GitHub compare metadata for alpha.21 -> alpha.22 reports status=diverged, 19 ahead commits, 1 behind commit, and 19 total commits.",
+    "PR-title metadata in the alpha.21 -> alpha.22 compare points to history output normalization, sampling and websocket request-body reuse, environment cwd preservation, Guardian review-context isolation, remote plugin section plumbing, prompt image cache bounds, staging OAuth overrides, wait_agent steering, per-thread orchestrator resource caching, Windows sandbox session extraction, aws-lc-rs rustls crypto, a path-types skill, and request_user_input timer work.",
+    "Checked Decodex review/impact artifacts are absent for #28309, #28306, #28323, #28313, #28344, #27059, #28327, #27995, #28285, #26702, #28294, #28257, #28341, #28336, #28357, #27706, #28347, and #28235 in this checkout.",
+    "The refreshed release_delta/v1 records stable rust-v0.140.0 and latest prerelease rust-v0.140.0-alpha.22 with no tracked signal slugs; this terminal alpha.22 record uses the adjacent prerelease lineage required for public prerelease copy.",
+    "Official Codex changelog readback for this run shows Codex CLI 0.140.0 on 2026-06-15 after alpha.22, so alpha.22 is superseded by a stable release in the same observed window.",
+    "A previous live and quote-eligible @decodexspace 0.140 prerelease post exists for alpha.19, but alpha.20 and alpha.21 have only needs_upstream_analysis records and no quote-eligible post should be invented for alpha.22."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.140.0-alpha.22 is a real OpenAI Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.22",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct public prerelease comparison for alpha.22 is rust-v0.140.0-alpha.21 -> rust-v0.140.0-alpha.22.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.21...rust-v0.140.0-alpha.22",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.22 release body is sparse, and behavior claims from the compare window require source review before publication.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: the alpha.22 release body is sparse, stable 0.140.0 superseded it in the same observed window, and every named PR in the adjacent alpha.21 -> alpha.22 compare lacks checked source-review evidence in this checkout.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0-alpha-22:alpha21-alpha22:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "Do not hand this alpha.22 record to decodex-x-publisher until the listed source-review gaps are resolved and stable rust-v0.140.0 is accounted for.",
+    "Do not compare alpha.22 against stable rust-v0.139.0 for public prerelease copy; the adjacent prerelease lineage is alpha.21 -> alpha.22 because alpha.22 is not the first prerelease after stable.",
+    "Exact source-review gap list for alpha.21 -> alpha.22 primary compare PRs: #28309, #28306, #28323, #28313, #28344, #27059, #28327, #27995, #28285, #26702, #28294, #28257, #28341, #28336, #28357, #27706, #28347, #28235.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If this checkpoint later becomes publishable, decodex-x-publisher should generate and verify candidate-specific media only when it adds reader value."
+  ],
+  "next_steps": [
+    "Do not hand this alpha.22 defer record to decodex-x-publisher.",
+    "Route #28309, #28306, #28323, #28313, #28344, #27059, #28327, #27995, #28285, #26702, #28294, #28257, #28341, #28336, #28357, #27706, #28347, and #28235 to codex-upstream-radar-review / codex-code-analysis before turning alpha.22 into a release_rollup, watch_note, delta_explainer, or operator_impact post.",
+    "Use stable rust-v0.140.0 as the current stable release checkpoint for release-channel copy after this prerelease defer record."
+  ]
+}
