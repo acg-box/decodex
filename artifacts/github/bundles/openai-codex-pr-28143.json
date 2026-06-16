@@ -1,0 +1,352 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-14T00:39:07Z",
+      "message": "feat(app-server): expose rate-limit reset credits",
+      "sha": "713056e48864fd3c8c1ea03f5719182f4f01ffb2",
+      "url": "https://github.com/openai/codex/commit/713056e48864fd3c8c1ea03f5719182f4f01ffb2"
+    },
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-15T00:06:29Z",
+      "message": "fix(app-server): consolidate rate-limit reset reads",
+      "sha": "405f51d5977e3c60a72bd486b664acea430e232f",
+      "url": "https://github.com/openai/codex/commit/405f51d5977e3c60a72bd486b664acea430e232f"
+    },
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-15T01:00:35Z",
+      "message": "fix(app-server): update rate-limit response fixture",
+      "sha": "3f8ed5c89516e23036777fbd7408a19871f1051a",
+      "url": "https://github.com/openai/codex/commit/3f8ed5c89516e23036777fbd7408a19871f1051a"
+    },
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-15T16:53:06Z",
+      "message": "docs(app-server): use redemption request ID terminology",
+      "sha": "c446387416a2d359c152bd66bb9093954017598e",
+      "url": "https://github.com/openai/codex/commit/c446387416a2d359c152bd66bb9093954017598e"
+    },
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-15T16:55:27Z",
+      "message": "docs(backend-client): describe rate-limit reset module",
+      "sha": "a32381a342c5ce30db88a90525b7b85c2335df9d",
+      "url": "https://github.com/openai/codex/commit/a32381a342c5ce30db88a90525b7b85c2335df9d"
+    },
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-15T17:02:54Z",
+      "message": "test(app-server): avoid real reset timeout wait",
+      "sha": "ebf7ec1b75b90609a71296befcb17603438eb230",
+      "url": "https://github.com/openai/codex/commit/ebf7ec1b75b90609a71296befcb17603438eb230"
+    },
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-15T17:23:22Z",
+      "message": "refactor(app-server): name reset idempotency key",
+      "sha": "d461c4b72f7f92480bdebdd515a05a51b0e4c635",
+      "url": "https://github.com/openai/codex/commit/d461c4b72f7f92480bdebdd515a05a51b0e4c635"
+    },
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-15T17:42:57Z",
+      "message": "refactor(app-server): name reset consume outcome",
+      "sha": "4cfa908a023e9e22c57f2066ce25399ebe9bcf0a",
+      "url": "https://github.com/openai/codex/commit/4cfa908a023e9e22c57f2066ce25399ebe9bcf0a"
+    },
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-15T17:56:25Z",
+      "message": "refactor(app-server): simplify reset consume response",
+      "sha": "dad73d1a17d0d99b9881d85158e63aa3864f8d18",
+      "url": "https://github.com/openai/codex/commit/dad73d1a17d0d99b9881d85158e63aa3864f8d18"
+    },
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-15T18:05:14Z",
+      "message": "docs(app-server): explain reset consume outcomes",
+      "sha": "9d82478f61f3d56170b59f1956cdca9a219cf2fa",
+      "url": "https://github.com/openai/codex/commit/9d82478f61f3d56170b59f1956cdca9a219cf2fa"
+    },
+    {
+      "author": "jayp-oai",
+      "committed_at": "2026-06-15T18:59:04Z",
+      "message": "fix(app-server): camel-case reset outcomes",
+      "sha": "73d786196c659d99e1b456da766ec0ebe6b2a129",
+      "url": "https://github.com/openai/codex/commit/73d786196c659d99e1b456da766ec0ebe6b2a129"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API",
+    "TUI",
+    "UUID",
+    "JSON",
+    "AGENTS",
+    "RPC",
+    "GENERATED",
+    "CODE",
+    "NOT",
+    "MODIFY",
+    "HAND",
+    "LOGIN_CHATGPT_TIMEOUT",
+    "ACCOUNT_TOKEN_USAGE_FETCH_TIMEOUT",
+    "JSONRPCE",
+    "RATE_LIMIT_RESET_REQUEST_TIMEOUT",
+    "RATE_LIMIT_RESET_REQUEST_TIMEOUT_ENV_VAR",
+    "CODEX_TEST_RATE_LIMIT_RESET_REQUEST_TIMEOUT_MS",
+    "JSONRPCR",
+    "DEFAULT_READ_TIMEOUT",
+    "SERVER_TIMEOUT_READ_TIMEOUT",
+    "INVALID_REQUEST_ERROR_CODE",
+    "INTERNAL_ERROR_CODE",
+    "POST",
+    "OPENAI_API_KEY",
+    "GET",
+    "CONTENT_TYPE"
+  ],
+  "files": [
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -261,6 +261,7 @@ These guidelines apply to app-server protocol work in `codex-rs`, especially:\n   `*Params` for request payloads, `*Response` for responses, and `*Notification` for notifications.\n - Expose RPC methods as `<resource>/<method>` and keep `<resource>` singular (for example, `thread/read`, `app/list`).\n - Always expose fields as camelCase on the wire with `#[serde(rename_all = \"camelCase\")]` unless a tagged union or explicit compatibility requirement needs a targeted rename.\n+- Always expose string enum values as camelCase on the wire with matching serde and TS `rename_all = \"camelCase\"` annotations unless an explicit compatibility requirement needs targeted renames.\n - Exception: config RPC payloads are expected to use snake_case to mirror config.toml keys (see the config read/write/list APIs in `app-server-protocol/src/protocol/v2.rs`).\n - Always set `#[ts(export_to = \"v...",
+      "path": "AGENTS.md",
+      "status": "modified"
+    },
+    {
+      "additions": 36,
+      "deletions": 0,
+      "patch_excerpt": "@@ -554,6 +554,18 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"ConsumeAccountRateLimitResetCreditParams\": {\n+      \"properties\": {\n+        \"idempotencyKey\": {\n+          \"description\": \"Identifies one logical reset attempt. A UUID is recommended; reuse the same value when retrying that attempt.\",\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"idempotencyKey\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"ContentItem\": {\n       \"oneOf\": [\n         {\n@@ -6108,6 +6120,30 @@\n       \"title\": \"Account/rateLimits/readRequest\",\n       \"type\": \"object\"\n     },\n+    {\n+      \"properties\": {\n+        \"id\": {\n+          \"$ref\": \"#/definitions/RequestId\"\n+        },\n+        \"method\": {\n+          \"enum\": [\n+            \"account/rateLimitResetCredit/consume\"\n+          ],\n+          \"title\": \"Account/rateLimitResetCredit/consumeRequestMethod\",\n+          \"type...",
+      "path": "codex-rs/app-server-protocol/schema/json/ClientRequest.json",
+      "status": "modified"
+    },
+    {
+      "additions": 105,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1857,6 +1857,30 @@\n           \"title\": \"Account/rateLimits/readRequest\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"id\": {\n+              \"$ref\": \"#/definitions/v2/RequestId\"\n+            },\n+            \"method\": {\n+              \"enum\": [\n+                \"account/rateLimitResetCredit/consume\"\n+              ],\n+              \"title\": \"Account/rateLimitResetCredit/consumeRequestMethod\",\n+              \"type\": \"string\"\n+            },\n+            \"params\": {\n+              \"$ref\": \"#/definitions/v2/ConsumeAccountRateLimitResetCreditParams\"\n+            }\n+          },\n+          \"required\": [\n+            \"id\",\n+            \"method\",\n+            \"params\"\n+          ],\n+          \"title\": \"Account/rateLimitResetCredit/consumeRequest\",\n+          \"type\": \"object\"\n+        },\n         {\n           \"properties\": {\n             \"id\": {\n@...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 105,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2841,6 +2841,30 @@\n           \"title\": \"Account/rateLimits/readRequest\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"id\": {\n+              \"$ref\": \"#/definitions/RequestId\"\n+            },\n+            \"method\": {\n+              \"enum\": [\n+                \"account/rateLimitResetCredit/consume\"\n+              ],\n+              \"title\": \"Account/rateLimitResetCredit/consumeRequestMethod\",\n+              \"type\": \"string\"\n+            },\n+            \"params\": {\n+              \"$ref\": \"#/definitions/ConsumeAccountRateLimitResetCreditParams\"\n+            }\n+          },\n+          \"required\": [\n+            \"id\",\n+            \"method\",\n+            \"params\"\n+          ],\n+          \"title\": \"Account/rateLimitResetCredit/consumeRequest\",\n+          \"type\": \"object\"\n+        },\n         {\n           \"properties\": {\n             \"id\": {\n@@ -476...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,14 @@\n+{\n+  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n+  \"properties\": {\n+    \"idempotencyKey\": {\n+      \"description\": \"Identifies one logical reset attempt. A UUID is recommended; reuse the same value when retrying that attempt.\",\n+      \"type\": \"string\"\n+    }\n+  },\n+  \"required\": [\n+    \"idempotencyKey\"\n+  ],\n+  \"title\": \"ConsumeAccountRateLimitResetCreditParams\",\n+  \"type\": \"object\"\n+}\n\\ No newline at end of file",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ConsumeAccountRateLimitResetCreditParams.json",
+      "status": "added"
+    },
+    {
+      "additions": 47,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,47 @@\n+{\n+  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n+  \"definitions\": {\n+    \"ConsumeAccountRateLimitResetCreditOutcome\": {\n+      \"oneOf\": [\n+        {\n+          \"description\": \"A reset credit was consumed and the eligible rate-limit windows were reset.\",\n+          \"enum\": [\n+            \"reset\"\n+          ],\n+          \"type\": \"string\"\n+        },\n+        {\n+          \"description\": \"No current rate-limit window is eligible for a reset.\",\n+          \"enum\": [\n+            \"nothingToReset\"\n+          ],\n+          \"type\": \"string\"\n+        },\n+        {\n+          \"description\": \"The account has no earned reset credits available.\",\n+          \"enum\": [\n+            \"noCredit\"\n+          ],\n+          \"type\": \"string\"\n+        },\n+        {\n+          \"description\": \"The same idempotency key already completed a reset successfully.\",\n+          \"enum\": [\n+     ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ConsumeAccountRateLimitResetCreditResponse.json",
+      "status": "added"
+    },
+    {
+      "additions": 22,
+      "deletions": 0,
+      "patch_excerpt": "@@ -49,6 +49,18 @@\n       ],\n       \"type\": \"string\"\n     },\n+    \"RateLimitResetCreditsSummary\": {\n+      \"properties\": {\n+        \"availableCount\": {\n+          \"format\": \"int64\",\n+          \"type\": \"integer\"\n+        }\n+      },\n+      \"required\": [\n+        \"availableCount\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"RateLimitSnapshot\": {\n       \"properties\": {\n         \"credits\": {\n@@ -179,6 +191,16 @@\n     }\n   },\n   \"properties\": {\n+    \"rateLimitResetCredits\": {\n+      \"anyOf\": [\n+        {\n+          \"$ref\": \"#/definitions/RateLimitResetCreditsSummary\"\n+        },\n+        {\n+          \"type\": \"null\"\n+        }\n+      ]\n+    },\n     \"rateLimits\": {\n       \"allOf\": [\n         {",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/GetAccountRateLimitsResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -16,6 +16,7 @@ import type { CommandExecWriteParams } from \"./v2/CommandExecWriteParams\";\n import type { ConfigBatchWriteParams } from \"./v2/ConfigBatchWriteParams\";\n import type { ConfigReadParams } from \"./v2/ConfigReadParams\";\n import type { ConfigValueWriteParams } from \"./v2/ConfigValueWriteParams\";\n+import type { ConsumeAccountRateLimitResetCreditParams } from \"./v2/ConsumeAccountRateLimitResetCreditParams\";\n import type { ExperimentalFeatureEnablementSetParams } from \"./v2/ExperimentalFeatureEnablementSetParams\";\n import type { ExperimentalFeatureListParams } from \"./v2/ExperimentalFeatureListParams\";\n import type { ExternalAgentConfigDetectParams } from \"./v2/ExternalAgentConfigDetectParams\";\n@@ -87,4 +88,4 @@ import type { WindowsSandboxSetupStartParams } from \"./v2/WindowsSandboxSetupSta\n /**\n  * Request from the client to the server.\n  */\n-export type ClientRequest ={ \"meth...",
+      "path": "codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,5 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+export type ConsumeAccountRateLimitResetCreditOutcome = \"reset\" | \"nothingToReset\" | \"noCredit\" | \"alreadyRedeemed\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ConsumeAccountRateLimitResetCreditOutcome.ts",
+      "status": "added"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,10 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+export type ConsumeAccountRateLimitResetCreditParams = {\n+/**\n+ * Identifies one logical reset attempt. A UUID is recommended; reuse the same value when\n+ * retrying that attempt.\n+ */\n+idempotencyKey: string, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ConsumeAccountRateLimitResetCreditParams.ts",
+      "status": "added"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,6 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+import type { ConsumeAccountRateLimitResetCreditOutcome } from \"./ConsumeAccountRateLimitResetCreditOutcome\";\n+\n+export type ConsumeAccountRateLimitResetCreditResponse = { outcome: ConsumeAccountRateLimitResetCreditOutcome, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ConsumeAccountRateLimitResetCreditResponse.ts",
+      "status": "added"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n // GENERATED CODE! DO NOT MODIFY BY HAND!\n \n // This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+import type { RateLimitResetCreditsSummary } from \"./RateLimitResetCreditsSummary\";\n import type { RateLimitSnapshot } from \"./RateLimitSnapshot\";\n \n export type GetAccountRateLimitsResponse = {\n@@ -11,4 +12,4 @@ rateLimits: RateLimitSnapshot,\n /**\n  * Multi-bucket view keyed by metered `limit_id` (for example, `codex`).\n  */\n-rateLimitsByLimitId: { [key in string]?: RateLimitSnapshot } | null, };\n+rateLimitsByLimitId: { [key in string]?: RateLimitSnapshot } | null, rateLimitResetCredits: RateLimitResetCreditsSummary | null, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/GetAccountRateLimitsResponse.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,5 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+export type RateLimitResetCreditsSummary = { availableCount: bigint, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/RateLimitResetCreditsSummary.ts",
+      "status": "added"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -85,6 +85,9 @@ export type { ConfigWarningNotification } from \"./ConfigWarningNotification\";\n export type { ConfigWriteResponse } from \"./ConfigWriteResponse\";\n export type { ConfiguredHookHandler } from \"./ConfiguredHookHandler\";\n export type { ConfiguredHookMatcherGroup } from \"./ConfiguredHookMatcherGroup\";\n+export type { ConsumeAccountRateLimitResetCreditOutcome } from \"./ConsumeAccountRateLimitResetCreditOutcome\";\n+export type { ConsumeAccountRateLimitResetCreditParams } from \"./ConsumeAccountRateLimitResetCreditParams\";\n+export type { ConsumeAccountRateLimitResetCreditResponse } from \"./ConsumeAccountRateLimitResetCreditResponse\";\n export type { ContextCompactedNotification } from \"./ContextCompactedNotification\";\n export type { CreditsSnapshot } from \"./CreditsSnapshot\";\n export type { DeprecationNoticeNotification } from \"./DeprecationNoticeNotification\";\n@@ -317,6 +320,7 @@ e...",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1003,6 +1003,12 @@ client_request_definitions! {\n         response: v2::GetAccountRateLimitsResponse,\n     },\n \n+    ConsumeAccountRateLimitResetCredit => \"account/rateLimitResetCredit/consume\" {\n+        params: v2::ConsumeAccountRateLimitResetCreditParams,\n+        serialization: global(\"account-auth\"),\n+        response: v2::ConsumeAccountRateLimitResetCreditResponse,\n+    },\n+\n     GetAccountTokenUsage => \"account/usage/read\" {\n         params: #[ts(type = \"undefined\")] #[serde(skip_serializing_if = \"Option::is_none\")] Option<()>,\n         serialization: None,",
+      "path": "codex-rs/app-server-protocol/src/protocol/common.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 38,
+      "deletions": 0,
+      "patch_excerpt": "@@ -256,6 +256,44 @@ pub struct GetAccountRateLimitsResponse {\n     pub rate_limits: RateLimitSnapshot,\n     /// Multi-bucket view keyed by metered `limit_id` (for example, `codex`).\n     pub rate_limits_by_limit_id: Option<HashMap<String, RateLimitSnapshot>>,\n+    pub rate_limit_reset_credits: Option<RateLimitResetCreditsSummary>,\n+}\n+\n+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub struct RateLimitResetCreditsSummary {\n+    pub available_count: i64,\n+}\n+\n+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub struct ConsumeAccountRateLimitResetCreditParams {\n+    /// Identifies one logical reset attempt. A UUID is recommended; reuse the same value when\n+    /// retrying that attempt.\n+    pub idempo...",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/account.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 23,
+      "deletions": 5,
+      "patch_excerpt": "@@ -1838,7 +1838,8 @@ Codex supports these authentication modes. The current mode is surfaced in `acco\n - `account/login/cancel` — cancel a pending managed ChatGPT login by `loginId`.\n - `account/logout` — sign out; triggers `account/updated`.\n - `account/updated` (notify) — emitted whenever auth mode changes (`authMode`: `apikey`, `chatgpt`, `personalAccessToken`, or `null`) and includes the current ChatGPT `planType` when available.\n-- `account/rateLimits/read` — fetch ChatGPT rate limits and an optional effective monthly credit limit; updates arrive via `account/rateLimits/updated` (notify).\n+- `account/rateLimits/read` — fetch ChatGPT rate limits, an optional effective monthly credit limit, and the number of earned rate-limit resets currently available. Rate-limit updates arrive via `account/rateLimits/updated` (notify); the reset count is snapshot-only.\n+- `account/rateLimitResetCre...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1375,6 +1375,11 @@ impl MessageProcessor {\n             ClientRequest::GetAccountRateLimits { .. } => {\n                 self.account_processor.get_account_rate_limits().await\n             }\n+            ClientRequest::ConsumeAccountRateLimitResetCredit { params, .. } => {\n+                self.account_processor\n+                    .consume_account_rate_limit_reset_credit(params)\n+                    .await\n+            }\n             ClientRequest::GetAccountTokenUsage { .. } => {\n                 self.account_processor.get_account_token_usage().await\n             }",
+      "path": "codex-rs/app-server/src/message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 1,
+      "patch_excerpt": "@@ -52,6 +52,9 @@ use codex_app_server_protocol::CommandExecResizeParams;\n use codex_app_server_protocol::CommandExecTerminateParams;\n use codex_app_server_protocol::CommandExecWriteParams;\n use codex_app_server_protocol::ConfigWarningNotification;\n+use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditOutcome;\n+use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditParams;\n+use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditResponse;\n use codex_app_server_protocol::ConversationGitInfo;\n use codex_app_server_protocol::ConversationSummary;\n use codex_app_server_protocol::DynamicToolSpec as ApiDynamicToolSpec;\n@@ -147,6 +150,7 @@ use codex_app_server_protocol::PluginSource;\n use codex_app_server_protocol::PluginSummary;\n use codex_app_server_protocol::PluginUninstallParams;\n use codex_app_server_protocol::PluginUninstallResponse;\n+use codex_app_server_pro...",
+      "path": "codex-rs/app-server/src/request_processors.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 59,
+      "deletions": 67,
+      "patch_excerpt": "@@ -1,5 +1,7 @@\n use super::*;\n \n+mod rate_limit_resets;\n+\n // Duration before a browser ChatGPT login attempt is abandoned.\n const LOGIN_CHATGPT_TIMEOUT: Duration = Duration::from_secs(10 * 60);\n const ACCOUNT_TOKEN_USAGE_FETCH_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 10);\n@@ -851,19 +853,64 @@ impl AccountRequestProcessor {\n     async fn get_account_rate_limits_response(\n         &self,\n     ) -> Result<GetAccountRateLimitsResponse, JSONRPCErrorError> {\n-        self.fetch_account_rate_limits()\n+        let Some(auth) = self.auth_manager.auth().await else {\n+            return Err(invalid_request(\n+                \"codex account authentication required to read rate limits\",\n+            ));\n+        };\n+\n+        if !auth.uses_codex_backend() {\n+            return Err(invalid_request(\n+                \"chatgpt authentication required to read rate limits\",\n+            ));\n+    ...",
+      "path": "codex-rs/app-server/src/request_processors/account_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 66,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,66 @@\n+use super::*;\n+\n+const RATE_LIMIT_RESET_REQUEST_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 10);\n+#[cfg(debug_assertions)]\n+const RATE_LIMIT_RESET_REQUEST_TIMEOUT_ENV_VAR: &str =\n+    \"CODEX_TEST_RATE_LIMIT_RESET_REQUEST_TIMEOUT_MS\";\n+\n+impl AccountRequestProcessor {\n+    pub(crate) async fn consume_account_rate_limit_reset_credit(\n+        &self,\n+        params: ConsumeAccountRateLimitResetCreditParams,\n+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {\n+        if params.idempotency_key.is_empty() {\n+            return Err(invalid_request(\"idempotencyKey must not be empty\"));\n+        }\n+\n+        let client = self.rate_limit_reset_backend_client().await?;\n+        let request_timeout = RATE_LIMIT_RESET_REQUEST_TIMEOUT;\n+        #[cfg(debug_assertions)]\n+        let request_timeout = std::env::var(RATE_LIMIT_RESET_REQUEST_TIMEOUT_ENV_VAR)\n+    ...",
+      "path": "codex-rs/app-server/src/request_processors/account_processor/rate_limit_resets.rs",
+      "status": "added"
+    },
+    {
+      "additions": 13,
+      "deletions": 0,
+      "patch_excerpt": "@@ -24,6 +24,7 @@ use codex_app_server_protocol::CommandExecWriteParams;\n use codex_app_server_protocol::ConfigBatchWriteParams;\n use codex_app_server_protocol::ConfigReadParams;\n use codex_app_server_protocol::ConfigValueWriteParams;\n+use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditParams;\n use codex_app_server_protocol::ExperimentalFeatureListParams;\n use codex_app_server_protocol::FeedbackUploadParams;\n use codex_app_server_protocol::FsCopyParams;\n@@ -382,6 +383,18 @@ impl TestAppServer {\n             .await\n     }\n \n+    /// Send an `account/rateLimitResetCredit/consume` JSON-RPC request.\n+    pub async fn send_consume_account_rate_limit_reset_credit_request(\n+        &mut self,\n+        params: ConsumeAccountRateLimitResetCreditParams,\n+    ) -> anyhow::Result<i64> {\n+        self.send_request(\n+            \"account/rateLimitResetCredit/consume\",\n+            Some(s...",
+      "path": "codex-rs/app-server/tests/common/test_app_server.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -39,6 +39,7 @@ mod plugin_read;\n mod plugin_share;\n mod plugin_uninstall;\n mod process_exec;\n+mod rate_limit_reset_credits;\n mod rate_limits;\n mod realtime_conversation;\n mod remote_control;",
+      "path": "codex-rs/app-server/tests/suite/v2/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 288,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,288 @@\n+use std::path::Path;\n+\n+use anyhow::Result;\n+use app_test_support::ChatGptAuthFixture;\n+use app_test_support::TestAppServer;\n+use app_test_support::to_response;\n+use app_test_support::write_chatgpt_auth;\n+use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditOutcome;\n+use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditParams;\n+use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditResponse;\n+use codex_app_server_protocol::GetAccountParams;\n+use codex_app_server_protocol::JSONRPCError;\n+use codex_app_server_protocol::JSONRPCResponse;\n+use codex_app_server_protocol::LoginAccountResponse;\n+use codex_app_server_protocol::RequestId;\n+use codex_config::types::AuthCredentialsStoreMode;\n+use pretty_assertions::assert_eq;\n+use serde::de::DeserializeOwned;\n+use serde_json::json;\n+use tempfile::TempDir;\n+use tokio::time::timeout;\n+use wiremock::...",
+      "path": "codex-rs/app-server/tests/suite/v2/rate_limit_reset_credits.rs",
+      "status": "added"
+    },
+    {
+      "additions": 5,
+      "deletions": 1,
+      "patch_excerpt": "@@ -10,6 +10,7 @@ use codex_app_server_protocol::JSONRPCError;\n use codex_app_server_protocol::JSONRPCResponse;\n use codex_app_server_protocol::LoginAccountResponse;\n use codex_app_server_protocol::RateLimitReachedType;\n+use codex_app_server_protocol::RateLimitResetCreditsSummary;\n use codex_app_server_protocol::RateLimitSnapshot;\n use codex_app_server_protocol::RateLimitWindow;\n use codex_app_server_protocol::RequestId;\n@@ -157,14 +158,16 @@ async fn get_account_rate_limits_returns_snapshot() -> Result<()> {\n                     }\n                 }\n             }\n-        ]\n+        ],\n+        \"rate_limit_reset_credits\": { \"available_count\": 3 }\n     });\n \n     Mock::given(method(\"GET\"))\n         .and(path(\"/api/codex/usage\"))\n         .and(header(\"authorization\", \"Bearer chatgpt-token\"))\n         .and(header(\"chatgpt-account-id\", \"account-123\"))\n         .respond_with(ResponseTemplat...",
+      "path": "codex-rs/app-server/tests/suite/v2/rate_limits.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 8,
+      "patch_excerpt": "@@ -28,6 +28,8 @@ use serde::Serialize;\n use serde::de::DeserializeOwned;\n use std::fmt;\n \n+mod rate_limit_resets;\n+\n #[derive(Debug)]\n pub enum RequestError {\n     UnexpectedStatus {\n@@ -294,14 +296,7 @@ impl Client {\n     }\n \n     pub async fn get_rate_limits_many(&self) -> Result<Vec<RateLimitSnapshot>> {\n-        let url = match self.path_style {\n-            PathStyle::CodexApi => format!(\"{}/api/codex/usage\", self.base_url),\n-            PathStyle::ChatGptApi => format!(\"{}/wham/usage\", self.base_url),\n-        };\n-        let req = self.http.get(&url).headers(self.headers());\n-        let (body, ct) = self.exec_request(req, \"GET\", &url).await?;\n-        let payload: RateLimitStatusPayload = self.decode_json(&url, &ct, &body)?;\n-        Ok(Self::rate_limit_snapshots_from_payload(payload))\n+        Ok(self.get_rate_limits_with_reset_credits().await?.rate_limits)\n     }\n \n     pub as...",
+      "path": "codex-rs/backend-client/src/client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 73,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,73 @@\n+//! Backend client operations for reading available rate-limit reset credits and consuming one.\n+\n+use super::Client;\n+use super::PathStyle;\n+use crate::types::ConsumeRateLimitResetCreditResponse;\n+use crate::types::RateLimitStatusWithResetCredits;\n+use crate::types::RateLimitsWithResetCredits;\n+use anyhow::Result;\n+use reqwest::header::CONTENT_TYPE;\n+use reqwest::header::HeaderValue;\n+use serde::Serialize;\n+\n+#[derive(Serialize)]\n+struct ConsumeRateLimitResetCreditRequest<'a> {\n+    redeem_request_id: &'a str,\n+}\n+\n+impl Client {\n+    pub async fn get_rate_limits_with_reset_credits(&self) -> Result<RateLimitsWithResetCredits> {\n+        let payload = self.get_rate_limit_status().await?;\n+        Ok(RateLimitsWithResetCredits {\n+            rate_limits: Self::rate_limit_snapshots_from_payload(payload.rate_limits),\n+            rate_limit_reset_credits: payload.rate_limi...",
+      "path": "codex-rs/backend-client/src/client/rate_limit_resets.rs",
+      "status": "added"
+    },
+    {
+      "additions": 71,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,71 @@\n+use super::*;\n+use crate::types::ConsumeRateLimitResetCreditCode;\n+use crate::types::RateLimitResetCreditsSummary;\n+use pretty_assertions::assert_eq;\n+\n+#[test]\n+fn rate_limit_reset_contract_uses_expected_paths_and_payloads() {\n+    assert_eq!(\n+        test_client(\"https://example.test\", PathStyle::CodexApi).rate_limit_status_url(),\n+        \"https://example.test/api/codex/usage\"\n+    );\n+    assert_eq!(\n+        test_client(\"https://example.test\", PathStyle::CodexApi)\n+            .consume_rate_limit_reset_credit_url(),\n+        \"https://example.test/api/codex/rate-limit-reset-credits/consume\"\n+    );\n+    assert_eq!(\n+        test_client(\"https://chatgpt.com/backend-api\", PathStyle::ChatGptApi)\n+            .rate_limit_status_url(),\n+        \"https://chatgpt.com/backend-api/wham/usage\"\n+    );\n+    assert_eq!(\n+        test_client(\"https://chatgpt.com/backend-api\", P...",
+      "path": "codex-rs/backend-client/src/client/rate_limit_resets_tests.rs",
+      "status": "added"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -9,10 +9,14 @@ pub use types::AccountsCheckResponse;\n pub use types::CodeTaskDetailsResponse;\n pub use types::CodeTaskDetailsResponseExt;\n pub use types::ConfigBundleResponse;\n+pub use types::ConsumeRateLimitResetCreditCode;\n+pub use types::ConsumeRateLimitResetCreditResponse;\n pub use types::DeliveredConfigToml;\n pub use types::DeliveredRequirementsToml;\n pub use types::DeliveredTomlFragment;\n pub use types::PaginatedListTaskListItem;\n+pub use types::RateLimitResetCreditsSummary;\n+pub use types::RateLimitsWithResetCredits;\n pub use types::TaskListItem;\n pub use types::TokenUsageProfile;\n pub use types::TokenUsageProfileDailyBucket;",
+      "path": "codex-rs/backend-client/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 35,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12,11 +12,46 @@ pub use codex_backend_openapi_models::models::RateLimitWindowSnapshot;\n pub use codex_backend_openapi_models::models::SpendControlLimitDetails;\n pub use codex_backend_openapi_models::models::TaskListItem;\n \n+use codex_protocol::protocol::RateLimitSnapshot;\n use serde::Deserialize;\n use serde::de::Deserializer;\n use serde_json::Value;\n use std::collections::HashMap;\n \n+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]\n+pub struct RateLimitResetCreditsSummary {\n+    pub available_count: i64,\n+}\n+\n+#[derive(Clone, Debug, PartialEq)]\n+pub struct RateLimitsWithResetCredits {\n+    pub rate_limits: Vec<RateLimitSnapshot>,\n+    pub rate_limit_reset_credits: Option<RateLimitResetCreditsSummary>,\n+}\n+\n+#[derive(Clone, Debug, Deserialize, PartialEq)]\n+pub(crate) struct RateLimitStatusWithResetCredits {\n+    #[serde(flatten)]\n+    pub rate_limits: RateLimitStatusPayload,\n+    p...",
+      "path": "codex-rs/backend-client/src/types.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1792,6 +1792,7 @@ mod tests {\n                 (\"codex\".to_string(), rate_limit_snapshot(\"codex\")),\n                 (\"other\".to_string(), rate_limit_snapshot(\"other\")),\n             ])),\n+            rate_limit_reset_credits: None,\n         };\n \n         let snapshots = app_server_rate_limit_snapshots(response);",
+      "path": "codex-rs/tui/src/app_server_session.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#28154"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Built during codex-upstream-radar-review automation run on 2026-06-16."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nCodex users can earn personal rate-limit reset credits, but app-server clients do not currently have an API for reading or redeeming them. This adds the backend and protocol foundation used by the `/usage` TUI flow in #28154.\n\n## What changed\n\n- Extend `account/rateLimits/read` with a nullable `rateLimitResetCredits` summary sourced from the existing usage response.\n- Add backend-client and app-server support for consuming a reset with a caller-generated idempotency key. A UUID is recommended, and clients reuse the same key when retrying the same logical reset.\n- Return only the consume `outcome`; clients refetch `account/rateLimits/read` for updated window state.\n- Document the response field and each consume outcome, and regenerate the JSON and TypeScript schema fixtures.\n- Clarify in `AGENTS.md` that new app-server string enum values use camelCase on the wire.\n- Update the existing TUI response fixture for the expanded protocol shape.\n- Add coverage for authentication, response mapping, backend failures, consume outcomes, and request timeout behavior.\n\n## Validation\n\n- `just test -p codex-app-server-protocol` — 231 passed.\n- `just test -p codex-backend-client` — 14 passed.\n- Focused `codex-app-server` reset-credit tests — 5 passed.\n- Focused `codex-tui` protocol response fixture test — passed.\n- `just fix -p codex-backend-client -p codex-app-server-protocol -p codex-app-server` — passed.\n- `just fmt` — passed.\n",
+    "labels": [],
+    "merged_at": "2026-06-15T21:54:02Z",
+    "number": 28143,
+    "state": "merged",
+    "title": "feat(app-server): expose rate-limit reset credits",
+    "url": "https://github.com/openai/codex/pull/28143"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
