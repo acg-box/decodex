@@ -8606,23 +8606,6 @@
 						rows.push({ label: "Context", segments: contextSegments });
 					}
 
-					const toolCalls = lifecycleNumber(lifecycle?.tool_call_count);
-					const largestOutput = lifecycle?.largest_tool_output_bytes;
-					const toolSegments = [];
-					if (toolCalls > 0) {
-						appendLifecycleMetricSegment(toolSegments, formatCompactCount(toolCalls), "tools");
-					}
-					if (largestOutput != null) {
-						appendLifecycleMetricSegment(
-							toolSegments,
-							formatLargestOutputValue(largestOutput),
-							"max output",
-						);
-					}
-					if (toolSegments.length) {
-						rows.push({ label: "Tools", segments: toolSegments });
-					}
-
 					const tracker = lifecycleBucket(lifecycle, "Tracker");
 					if (tracker) {
 						const trackerSegments = [];
@@ -11321,17 +11304,37 @@
 				};
 			}
 
-			function snapshotWithLiveRunActivity(snapshot) {
+			function dashboardLiveRunActivityHasOverlay({ includeCompletedEmpty = false } = {}) {
+				if (!dashboardLiveRunActivitySeen) {
+					return false;
+				}
+				if (dashboardLiveActiveRuns.length || !dashboardLiveActiveRunsComplete) {
+					return true;
+				}
+
+				return includeCompletedEmpty;
+			}
+
+			function clearDashboardLiveRunActivityOverlayIfCompleteEmpty() {
+				if (
+					dashboardLiveRunActivitySeen &&
+					dashboardLiveActiveRunsComplete &&
+					!dashboardLiveActiveRuns.length
+				) {
+					dashboardLiveRunActivitySeen = false;
+					dashboardLiveActiveRuns = [];
+					dashboardLiveActiveRunsComplete = true;
+					dashboardLiveAccounts = null;
+					dashboardLiveAccountControl = null;
+				}
+			}
+
+			function snapshotWithLiveRunActivity(snapshot, options = {}) {
 				if (!snapshot || !dashboardSocketIsOpen()) {
 					return snapshot;
 				}
 
-				if (
-					!dashboardLiveRunActivitySeen &&
-					!dashboardLiveActiveRuns.length &&
-					!dashboardLiveAccounts &&
-					!dashboardLiveAccountControl
-				) {
+				if (!dashboardLiveRunActivityHasOverlay(options)) {
 					return snapshot;
 				}
 
@@ -11373,13 +11376,16 @@
 						error: false,
 						lastEventAt: new Date().toISOString(),
 					});
+					clearDashboardLiveRunActivityOverlayIfCompleteEmpty();
 
 					return;
 				}
 
 				lastDashboardRender = {
 					...lastDashboardRender,
-					snapshot: snapshotWithLiveRunActivity(lastDashboardRender.snapshot),
+					snapshot: snapshotWithLiveRunActivity(lastDashboardRender.snapshot, {
+						includeCompletedEmpty: true,
+					}),
 				};
 				updateDashboardStreamState(
 					{
@@ -11390,6 +11396,7 @@
 					false,
 				);
 				renderDashboardState(lastDashboardRender);
+				clearDashboardLiveRunActivityOverlayIfCompleteEmpty();
 			}
 
 			function applyDashboardSnapshotEvent(payload) {
