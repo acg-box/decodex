@@ -478,17 +478,19 @@ fn operator_current_lane_statuses(
 		.into_iter()
 		.filter(operator_run_counts_as_current_lane)
 		.collect::<Vec<_>>();
+	let latest_attempt_by_issue_key =
+		operator_latest_attempt_by_issue_key(current_lanes.iter().chain(recent_runs.iter()));
+
+	current_lanes.retain(|run| {
+		!operator_run_is_superseded_by_newer_attempt(run, &latest_attempt_by_issue_key)
+	});
+
 	let mut current_lane_run_ids =
 		current_lanes.iter().map(|run| run.run_id.clone()).collect::<HashSet<_>>();
-	let current_lane_shadow_keys = current_lanes
-		.iter()
-		.filter(|run| run.run_lease)
-		.map(operator_run_group_key)
-		.collect::<HashSet<_>>();
 
 	for run in recent_runs {
 		if current_lane_run_ids.contains(&run.run_id)
-			|| current_lane_shadow_keys.contains(&operator_run_group_key(run))
+			|| operator_run_is_superseded_by_newer_attempt(run, &latest_attempt_by_issue_key)
 			|| !operator_run_has_live_execution(run)
 		{
 			continue;
@@ -501,6 +503,30 @@ fn operator_current_lane_statuses(
 	hydrate_current_lane_lifecycle_metrics(&mut current_lanes, recent_runs);
 
 	Ok(current_lanes)
+}
+
+fn operator_latest_attempt_by_issue_key<'a>(
+	runs: impl Iterator<Item = &'a OperatorRunStatus>,
+) -> HashMap<String, i64> {
+	let mut latest_attempt_by_issue_key = HashMap::new();
+
+	for run in runs {
+		let issue_key = operator_run_group_key(run);
+		let latest_attempt = latest_attempt_by_issue_key.entry(issue_key).or_insert(run.attempt_number);
+
+		*latest_attempt = (*latest_attempt).max(run.attempt_number);
+	}
+
+	latest_attempt_by_issue_key
+}
+
+fn operator_run_is_superseded_by_newer_attempt(
+	run: &OperatorRunStatus,
+	latest_attempt_by_issue_key: &HashMap<String, i64>,
+) -> bool {
+	latest_attempt_by_issue_key
+		.get(&operator_run_group_key(run))
+		.is_some_and(|latest_attempt| run.attempt_number < *latest_attempt)
 }
 
 fn global_codex_account_control_status() -> OperatorCodexAccountControlStatus {
