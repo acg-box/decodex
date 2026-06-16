@@ -362,6 +362,15 @@ be represented internally as a DAG, but executable work still enters Decodex as
 ordinary Linear issue lanes with generic natural-language descriptions, tracker
 states, validation expectations, and Decodex lifecycle writeback.
 
+Every mapped normal issue must carry a generic dispatch briefing that a cold-start
+implementation lane can execute without replaying chat or reading private runtime
+state. A complete Decodex-planned briefing names one outcome, required reading,
+in-scope work, explicit non-goals, current-tree landing zone, ownership boundary,
+acceptance criteria, validation expectations, and any real dependencies, blockers, or
+conflict domains. At minimum, runtime eligibility rejects a machine-only fenced block
+as the issue description; private pointers, progress checkpoints, review summaries,
+PR bodies, or runtime events do not substitute for the issue briefing.
+
 The operator CLI surface for promoted goals is
 `decodex intake goal --project <service-id> <CONTRACT_ID> --dry-run`, or the same
 command with `--config <PROJECT_DIR>`. Dry-run reads the promoted Decision Contract

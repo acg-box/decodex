@@ -33,8 +33,8 @@ instructions.
 The plugin should own reusable agent-facing procedures and mode routing:
 
 - `decodex` for choosing manual CLI mode versus automation mode
-- `planning` for Decodex-friendly issue splitting, dispatch readiness, dependencies,
-  and concurrency
+- `planning` for Decodex-native issue briefing, issue splitting, dispatch readiness,
+  dependencies, and concurrency
 - `manual-cli` for operator CLI use
 - `automation` for retained-lane control-plane use
 - `commit` for human-driven `decodex commit`
@@ -50,6 +50,9 @@ copying their full contracts.
 - Decodex-specific skill updates can land with matching runtime, spec, and runbook
   updates.
 - Generic Playbook skills can shrink to generic repo discipline and explicit routing.
+- Decodex issue briefing belongs to the Decodex plugin instead of a separate delivery
+  workflow. Generic progress, handoff, review, landing, and closeout state remains
+  runtime-owned rather than skill-owned.
 - `~/.codex/AGENTS.md` remains a portable bootstrap surface, not a Decodex runtime or
   operator contract.
 - Semantic drift audits for Decodex behavior changes should include `plugins/decodex/`
