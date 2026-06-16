@@ -4166,6 +4166,7 @@ fn wait_for_turn_completion(
 					target_thread_id,
 					&mut target_turn_id,
 				)?;
+
 				if let Some(outcome) = handle_turn_execution_notification(
 					notification,
 					target_thread_id,
@@ -4331,6 +4332,7 @@ fn adopt_thread_bound_notification_turn_id(
 
 	recorder.state_store.update_run_turn(recorder.run_id, observed_turn_id)?;
 	recorder.set_turn_id(observed_turn_id)?;
+
 	*target_turn_id = observed_turn_id.to_owned();
 
 	Ok(())
