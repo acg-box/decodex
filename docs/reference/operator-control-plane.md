@@ -68,6 +68,11 @@ Use `decodex app` to open the installed macOS app from the CLI; use
 the caller's environment, so `DECODEX_APP_SERVER_URL` remains an explicit App preview
 override when set.
 
+Local MCP hosts can use `decodex mcp serve --transport stdio` for read-only resource
+access. The stdio gateway lists and reads checked-in docs, checked-in JSON research
+reports, Decision Contract readback, status snapshots, and lane-control readback. It
+does not serve Streamable HTTP and does not expose mutating MCP tools in this phase.
+
 `decodex serve` has two hardcoded scheduler cadences:
 
 - The local control-plane loop publishes operator snapshots every 15 seconds.
@@ -305,6 +310,10 @@ command surface.
 After a steer request is handled, current lane protocol activity may show a compact
 `turn/steer` entry with outcome, failure class, and response turn id. It does not
 include the operator message.
+MCP lane-control resources are readback only and mirror the local status/inspect
+projection. Operators must still use `decodex lane inspect`, `decodex lane interrupt`,
+`decodex lane steer`, or the local `/api/lane/*` endpoints for supported CLI/API
+controls.
 Snapshot `warnings` remain stable machine-readable tokens. When a warning needs
 operator action, snapshots may also include `warning_details` entries with the
 affected `project_id`, `repo_root`, reason, and next action; for example, a stale

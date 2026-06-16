@@ -2167,6 +2167,27 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(records)
 	}
 
+	fn list_decision_contracts_for_project(
+		&self,
+		project_id: &str,
+	) -> Result<Vec<DecisionContractRuntimeRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, contract_id, source_issue_id, status, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM decision_contracts \
+			 WHERE project_id = ?1 \
+			 ORDER BY created_at_unix ASC, contract_id ASC",
+		)?;
+		let rows = statement.query_map(params![project_id], decision_contract_runtime_row_parts)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(decision_contract_record_from_row_parts(row?)?);
+		}
+
+		Ok(records)
+	}
+
 	fn load_execution_programs(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, program_id, source_contract_id, payload_json, created_at, \

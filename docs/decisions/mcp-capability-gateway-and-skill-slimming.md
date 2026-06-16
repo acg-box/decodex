@@ -174,6 +174,7 @@ Target shape:
 
 ## Open Follow-Up
 
-Implementation is intentionally not included here. The next promoted work should be
-split into one read-only MCP gateway issue, one research compile/promote tool issue,
-one skill-slimming eval issue, and one docs/resource validation issue.
+The first promoted implementation is the read-only stdio gateway exposed as
+`decodex mcp serve --transport stdio`. Later promoted work should stay split across
+research compile/promote tools, skill-slimming eval, and docs/resource validation
+lanes so mutating MCP tools do not bypass Decision Contract or lane-control authority.
