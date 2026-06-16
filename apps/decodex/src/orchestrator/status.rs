@@ -221,6 +221,7 @@ struct OperatorTerminalFinalizeProjection {
 
 struct OperatorRunLifecycleProjection {
 	status: String,
+	status_projection_reason: Option<String>,
 	phase: String,
 	wait_reason: Option<String>,
 	current_operation: String,
@@ -1124,6 +1125,7 @@ fn apply_terminal_history_ledger_outcome_to_latest_run(lane: &mut OperatorHistor
 
 	lane.latest_run.status = final_outcome.clone();
 	lane.latest_run.attempt_status = final_outcome;
+	lane.latest_run.status_projection_reason = None;
 	lane.latest_run.phase = String::from(if requires_attention { "needs_attention" } else { "completed" });
 	lane.latest_run.wait_reason = None;
 	lane.latest_run.current_operation = String::from("ledger_outcome");
@@ -5504,6 +5506,7 @@ fn operator_run_status(
 		attempt_number: run.attempt_number(),
 		status: lifecycle.status,
 		attempt_status: run.status().to_owned(),
+		status_projection_reason: lifecycle.status_projection_reason,
 		phase: lifecycle.phase,
 		wait_reason,
 		current_operation: lifecycle.current_operation,
@@ -5574,6 +5577,18 @@ fn operator_run_lifecycle_projection(
 				marker_current_operation,
 			)
 		});
+	let status_projection_reason = if terminal_finalize_projection.is_some() {
+		None
+	} else {
+		operator_run_status_projection_reason(
+			run.status(),
+			&status,
+			app_server_state,
+			protocol_summary,
+			timing,
+			marker_current_operation,
+		)
+	};
 	let (retry_kind, retry_ready_at_unix_epoch) = visible_operator_run_retry_schedule(
 		&status,
 		marker.and_then(RunActivityMarker::retry_kind),
@@ -5610,6 +5625,7 @@ fn operator_run_lifecycle_projection(
 
 	OperatorRunLifecycleProjection {
 		status,
+		status_projection_reason,
 		phase,
 		wait_reason,
 		current_operation,
@@ -6364,6 +6380,63 @@ fn operator_run_visible_status(
 	}
 
 	attempt_status.to_owned()
+}
+
+fn operator_run_status_projection_reason(
+	attempt_status: &str,
+	visible_status: &str,
+	app_server_state: &OperatorRunAppServerState,
+	protocol_summary: &OperatorRunProtocolSummary,
+	timing: &OperatorRunTiming,
+	marker_current_operation: Option<&str>,
+) -> Option<String> {
+	if attempt_status == visible_status || visible_status != "running" {
+		return None;
+	}
+
+	let projection_kind = if attempt_status == "starting" {
+		"starting_attempt"
+	} else if matches!(attempt_status, "failed" | "interrupted" | "stalled" | "succeeded")
+		&& operator_marker_operation_allows_terminal_status_promotion(marker_current_operation)
+	{
+		"terminal_attempt"
+	} else {
+		return None;
+	};
+
+	operator_run_live_evidence_source(app_server_state, protocol_summary, timing)
+		.map(|source| format!("{projection_kind}_promoted_by_{source}"))
+}
+
+fn operator_run_live_evidence_source(
+	app_server_state: &OperatorRunAppServerState,
+	protocol_summary: &OperatorRunProtocolSummary,
+	timing: &OperatorRunTiming,
+) -> Option<&'static str> {
+	if timing.process_alive == Some(true) {
+		return Some("process_alive");
+	}
+	if matches!(app_server_state.thread_status.as_deref(), Some("active")) {
+		return Some("thread_active");
+	}
+	if !app_server_state.thread_active_flags.is_empty() {
+		return Some("thread_active_flags");
+	}
+	if operator_run_has_recent_protocol_execution_evidence(protocol_summary, timing) {
+		return Some("recent_protocol_activity");
+	}
+	if app_server_state.effective_model.is_some()
+		|| app_server_state.effective_model_provider.is_some()
+		|| protocol_summary.event_count > 0
+		|| protocol_summary.last_event_type.is_some()
+	{
+		return Some("app_server_metadata");
+	}
+	if timing.protocol_idle_for_seconds.is_some() {
+		return Some("protocol_timing");
+	}
+
+	None
 }
 
 fn operator_run_has_live_process_or_thread_evidence(
@@ -8205,7 +8278,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let control_capability = render_control_capability_summary(run.control_capability.as_ref());
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -8214,6 +8287,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		run.attempt_number,
 		run.status,
 		run.attempt_status,
+		run.status_projection_reason.as_deref().unwrap_or("none"),
 		run.phase,
 		run.wait_reason.as_deref().unwrap_or("none"),
 		run.current_operation,
