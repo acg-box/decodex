@@ -8,12 +8,11 @@ use libc::F_GETFD;
 use libc::F_SETFD;
 #[cfg(target_os = "macos")]
 use libc::{
+	c_char,
 	c_void,
 	proc_bsdinfo,
 	PROC_PIDTBSDINFO,
 };
-#[cfg(target_os = "macos")]
-use process::Command;
 use rusqlite::{self, Row, types::Type};
 
 static RUN_ACTIVITY_MARKER_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -3682,18 +3681,44 @@ fn read_platform_host_boot_id() -> Option<String> {
 
 #[cfg(target_os = "macos")]
 fn read_platform_host_boot_id() -> Option<String> {
-	let output = Command::new("/usr/sbin/sysctl")
-		.args(["-n", "kern.boottime"])
-		.output()
-		.ok()?;
+	const BOOT_SESSION_UUID_SYSCTL: &[u8] = b"kern.bootsessionuuid\0";
 
-	if !output.status.success() {
+	let mut size = 0_usize;
+	let query_status = unsafe {
+		libc::sysctlbyname(
+			BOOT_SESSION_UUID_SYSCTL.as_ptr().cast::<c_char>(),
+			std::ptr::null_mut(),
+			&mut size,
+			std::ptr::null_mut(),
+			0,
+		)
+	};
+	if query_status != 0 || size == 0 {
 		return None;
 	}
 
-	String::from_utf8(output.stdout)
-		.ok()
-		.map(|boot_id| format!("macos:{boot_id}"))
+	let mut boot_id = vec![0_u8; size];
+	let read_status = unsafe {
+		libc::sysctlbyname(
+			BOOT_SESSION_UUID_SYSCTL.as_ptr().cast::<c_char>(),
+			boot_id.as_mut_ptr().cast::<c_void>(),
+			&mut size,
+			std::ptr::null_mut(),
+			0,
+		)
+	};
+	if read_status != 0 || size == 0 {
+		return None;
+	}
+
+	boot_id.truncate(size);
+	if boot_id.last() == Some(&0) {
+		boot_id.pop();
+	}
+
+	String::from_utf8(boot_id).ok().map(|boot_id| {
+		format!("macos_bootsessionuuid:{boot_id}")
+	})
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
