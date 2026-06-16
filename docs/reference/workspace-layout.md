@@ -30,7 +30,7 @@ should not be treated as repository source.
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
 | `docs/reference/` | Current repository and artifact surface maps. |
 | `docs/decisions/` | Durable rationale for repository-level design choices. |
-| `docs/research/` | Legacy or supporting machine-authored research run artifacts; current Decodex research authority is runtime-local Decision Contracts. |
+| `docs/research/` | Supporting JSON research reports and evidence. It does not own runtime authority, policy, current-state reference, or durable rationale until promoted into the matching primary docs lane. |
 | `dev/` | Local development helpers outside `dev/skills/`, such as the operator dashboard mock server. |
 | `assets/` | Shared static assets that are not owned by the Astro app's generated output. Decodex App icons live under `assets/app-icon/{source,composer,generated}/`; menu bar template assets live under `assets/tray-icon/{source,generated}/`; `scripts/assets/render_decodex_app_icons.swift` regenerates the icon set. |
 | `.github/` | CI, release, Pages deployment, and content-refresh workflows. |
@@ -160,8 +160,11 @@ tracker routing, and policy.
 - Reusable agent-facing Decodex usage instructions live under `plugins/decodex/`.
 - `docs/runbook/`, `docs/reference/`, and `docs/decisions/` must not override runtime or
   workflow authority.
-- `docs/research/` is supporting evidence only. It does not become policy until its
-  conclusions are promoted into governing docs.
+- `docs/research/` remains a supporting JSON report and evidence lane. Removed legacy JSON
+  event logs are consolidated in
+  [`../research/legacy-research-goal-audit.json`](../research/legacy-research-goal-audit.json).
+  Current Decodex runtime research authority still flows through runtime-local
+  Decision Contracts until accepted and promoted.
 
 ## Local-only and generated directories
 
