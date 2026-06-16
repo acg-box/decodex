@@ -75,6 +75,17 @@ If these signals disagree and the disagreement cannot be resolved without guessi
 not infer a PR lineage from branch names, current heads, PR titles, or Linear comments,
 and `decodex run` must not repair this state automatically.
 
+Failure writeback must also respect this post-review boundary. If an execution failure
+arrives after a retained review handoff marker already binds the current issue,
+branch, and local HEAD lineage, Decodex may self-heal state drift by rebuilding the
+review orchestration marker, clearing loop guardrail checkpoints for the issue, and
+moving the tracker issue back to `tracker.success_state` when the issue had drifted to
+`tracker.in_progress_state` or `tracker.failure_state`. This is not implementation
+repair and must happen before retry/no-diff loop guardrails run. If the retained marker
+is absent, unverified, or diverged, Decodex must stop with
+`review_handoff_state_drift` or the existing `missing_review_handoff_record` posture
+and require explicit recovery evidence rather than guessing a PR lineage.
+
 When the retained review handoff marker exists but a direct PR-state read or local
 worktree branch/head read fails, operator status must degrade the readback instead of
 replacing the bound lane with a null-PR blocked state. The status row must keep the
