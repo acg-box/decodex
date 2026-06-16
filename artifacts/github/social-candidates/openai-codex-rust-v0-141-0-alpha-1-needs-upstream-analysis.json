@@ -1,0 +1,119 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-141-0-alpha-1-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease changes before stable",
+  "candidate_text": [
+    "0.141.0-alpha.1: defer, no X handoff.\n\nFirst prerelease after stable 0.140.0; compare has 64 commits. PR titles point to plugin/auth, exec-server/path, Windows sandbox, realtime, and MCP/tooling work, but source-review gaps block behavior claims."
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0",
+      "https://github.com/openai/codex/releases/tag/rust-v0.141.0-alpha.1",
+      "https://github.com/openai/codex/compare/rust-v0.140.0...rust-v0.141.0-alpha.1",
+      "https://github.com/openai/codex/pull/26242",
+      "https://github.com/openai/codex/pull/26702",
+      "https://github.com/openai/codex/pull/27058",
+      "https://github.com/openai/codex/pull/27059",
+      "https://github.com/openai/codex/pull/27086",
+      "https://github.com/openai/codex/pull/27093",
+      "https://github.com/openai/codex/pull/27258",
+      "https://github.com/openai/codex/pull/27365",
+      "https://github.com/openai/codex/pull/27706",
+      "https://github.com/openai/codex/pull/27756",
+      "https://github.com/openai/codex/pull/27794",
+      "https://github.com/openai/codex/pull/27813",
+      "https://github.com/openai/codex/pull/27819",
+      "https://github.com/openai/codex/pull/27902",
+      "https://github.com/openai/codex/pull/27917",
+      "https://github.com/openai/codex/pull/27944",
+      "https://github.com/openai/codex/pull/27955",
+      "https://github.com/openai/codex/pull/27992",
+      "https://github.com/openai/codex/pull/27995",
+      "https://github.com/openai/codex/pull/28008",
+      "https://github.com/openai/codex/pull/28120",
+      "https://github.com/openai/codex/pull/28125",
+      "https://github.com/openai/codex/pull/28164",
+      "https://github.com/openai/codex/pull/28165",
+      "https://github.com/openai/codex/pull/28203",
+      "https://github.com/openai/codex/pull/28234",
+      "https://github.com/openai/codex/pull/28235",
+      "https://github.com/openai/codex/pull/28257",
+      "https://github.com/openai/codex/pull/28283",
+      "https://github.com/openai/codex/pull/28285",
+      "https://github.com/openai/codex/pull/28286",
+      "https://github.com/openai/codex/pull/28294",
+      "https://github.com/openai/codex/pull/28300",
+      "https://github.com/openai/codex/pull/28306",
+      "https://github.com/openai/codex/pull/28309",
+      "https://github.com/openai/codex/pull/28313",
+      "https://github.com/openai/codex/pull/28323",
+      "https://github.com/openai/codex/pull/28327",
+      "https://github.com/openai/codex/pull/28332",
+      "https://github.com/openai/codex/pull/28333",
+      "https://github.com/openai/codex/pull/28336",
+      "https://github.com/openai/codex/pull/28341",
+      "https://github.com/openai/codex/pull/28344",
+      "https://github.com/openai/codex/pull/28347",
+      "https://github.com/openai/codex/pull/28355",
+      "https://github.com/openai/codex/pull/28357",
+      "https://github.com/openai/codex/pull/28358",
+      "https://github.com/openai/codex/pull/28365",
+      "https://github.com/openai/codex/pull/28395",
+      "https://github.com/openai/codex/pull/28405",
+      "https://github.com/openai/codex/pull/28415"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.141.0-alpha.1 was published at 2026-06-16T01:00:22Z with only a sparse release body: Release 0.141.0-alpha.1.",
+    "The official Codex changelog readback for this run still shows Codex CLI 0.140.0 dated 2026-06-15 as the newest official CLI entry; no official 0.141 changelog entry was visible.",
+    "The correct prerelease comparison for this checkpoint is rust-v0.140.0 -> rust-v0.141.0-alpha.1 because alpha.1 is the first prerelease after stable rust-v0.140.0.",
+    "GitHub compare metadata for rust-v0.140.0 -> rust-v0.141.0-alpha.1 reports status=diverged, 64 ahead commits, 1 behind commit, and 64 total commits.",
+    "PR-title metadata in the compare window points to plugin/auth, exec-server/path, Windows sandbox, realtime, MCP/tooling, telemetry, and remote environment work, but this automation did not inspect upstream source or patches.",
+    "Checked Decodex review/impact artifacts are absent for #26242, #26702, #27058, #27059, #27086, #27093, #27258, #27365, #27706, #27756, #27794, #27813, #27819, #27902, #27917, #27944, #27955, #27992, #27995, #28008, #28120, #28125, #28164, #28165, #28203, #28234, #28235, #28257, #28283, #28285, #28286, #28294, #28300, #28306, #28309, #28313, #28323, #28327, #28332, #28333, #28336, #28341, #28344, #28347, #28355, #28357, #28358, #28365, #28395, #28405, and #28415 in this checkout.",
+    "The refreshed release_delta/v1 records stable rust-v0.140.0 and latest prerelease rust-v0.141.0-alpha.3 with no tracked signal slugs; this alpha.1 terminal record preserves the first-prerelease-after-stable lineage separately.",
+    "Because this is the first prerelease after stable rust-v0.140.0, no previous prerelease post should be quoted for alpha.1."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.141.0-alpha.1 is a real OpenAI Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.141.0-alpha.1",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct prerelease comparison for alpha.1 is rust-v0.140.0 -> rust-v0.141.0-alpha.1.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0...rust-v0.141.0-alpha.1",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.1 release body is sparse, and behavior claims from the compare window require source review before publication.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: alpha.1 is the first prerelease after stable 0.140.0, its release body is sparse, and the compare window has source-review gaps that block behavior claims.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-141-0-alpha-1:stable140-alpha1:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "Do not hand this alpha.1 record to decodex-x-publisher until the listed source-review gaps are resolved.",
+    "Do not quote the older alpha.19 prerelease post for this checkpoint; alpha.1 is the first prerelease after stable rust-v0.140.0.",
+    "Exact source-review gap list for rust-v0.140.0 -> rust-v0.141.0-alpha.1 primary compare PRs: #26242, #26702, #27058, #27059, #27086, #27093, #27258, #27365, #27706, #27756, #27794, #27813, #27819, #27902, #27917, #27944, #27955, #27992, #27995, #28008, #28120, #28125, #28164, #28165, #28203, #28234, #28235, #28257, #28283, #28285, #28286, #28294, #28300, #28306, #28309, #28313, #28323, #28327, #28332, #28333, #28336, #28341, #28344, #28347, #28355, #28357, #28358, #28365, #28395, #28405, #28415.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If this checkpoint later becomes publishable, decodex-x-publisher should generate and verify candidate-specific media only when it adds reader value."
+  ],
+  "next_steps": [
+    "Do not hand this alpha.1 defer record to decodex-x-publisher.",
+    "Route the listed gap PRs to codex-upstream-radar-review / codex-code-analysis before turning alpha.1 into a release_rollup, watch_note, delta_explainer, or operator_impact post.",
+    "Use rust-v0.141.0-alpha.1 as the previous checkpoint when evaluating rust-v0.141.0-alpha.2."
+  ]
+}
