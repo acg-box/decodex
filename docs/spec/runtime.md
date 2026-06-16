@@ -44,7 +44,7 @@ state or this state machine.
 
 ## Source of truth boundaries
 
-- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, run-control channels, protocol events, private execution events, harness-outcome telemetry, latent and promoted Decision Contracts, internal Execution Programs, worktree mappings, retained PR state, review-policy checkpoints, loop-guardrail checkpoints, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
+- The Decodex runtime SQLite database is the single-machine source of truth for run leases, attempts, run-control channels, protocol events, private execution events, harness-outcome telemetry, latent and promoted Decision Contracts, internal Execution Programs, worktree mappings, retained PR state, review-policy checkpoints, loop-guardrail checkpoints, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
 - Linear remains the team-visible tracker surface for issue lifecycle, queue/active/manual-attention labels, and coarse lifecycle summaries such as start, PR-ready, blocked, failed, landed, and done.
 - Versioned Linear execution event comments use the schema in
   [`linear-execution-ledger.md`](./linear-execution-ledger.md), but fine-grained runtime truth must not be rebuilt from comments every tick.
@@ -79,7 +79,7 @@ state or this state machine.
   `--apply` writes only local runtime Program Intake and Execution Program state.
 - Each scheduler pass evaluates persisted Execution Programs before ordinary queued
   issue selection. The Program scheduler refreshes mapped Linear issue state,
-  dependency observations, local active leases, retained review/landing worktrees,
+  dependency observations, local run leases, retained review/landing worktrees,
   needs-attention labels, and occupied conflict domains; then it directly selects
   dispatchable ready nodes with `program` dispatch mode. It must not apply or remove
   service queue labels, and Program readiness must not wait for the ordinary
@@ -95,7 +95,7 @@ mirror:
 | Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads with embedded or linked `decodex.program_intake_plan/1` planning data. They hold internal node lifecycle/readiness, dependency, conflict-domain, dispatch intent, drift, and normal-issue mapping; Linear issue descriptions and ledger comments are only coarse projections. |
 | Runtime SQLite `program_intake_plans` | Queryable local projection of `decodex.program_intake_plan/1` metadata, including intake kind, source contract when present, authority fingerprint, and public-safe summary. |
 | Runtime SQLite `program_issue_mappings` | Queryable local projection of each internal program node's mapped Linear issue, tracker state, dispatch intent, active/manual/attention facts, and dispatch-briefing fact. |
-| Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing active lease ownership. |
+| Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing run lease ownership. |
 | Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating. |
 | Runtime SQLite `loop_guardrail_checkpoints` | Latest convergence checkpoint for one project, issue, and guardrail reason. It stores the fingerprint, consecutive count, run id, attempt number, and structured detail used to stop non-converging loops without replaying Linear comments. |
 | Agent evidence under `~/.codex/decodex/agent-evidence/<service-id>/` | Derived local handoff view for repair agents. It may reference private evidence readback commands and compact run capsules, but it is not scheduling authority and is not a public mirror. |
@@ -126,7 +126,7 @@ The following facts are local runtime truth and must not be rebuilt from Linear 
 - phase timing and operator activity summaries
 - retained worktree mappings, retained PR handoff identity, post-review phase, and cleanup or repair ownership
 
-Linear issue fields and Linear execution ledger comments are the team-visible tracker mirror for low-frequency lifecycle records. They may enrich completed run history when the connector is available, but they must not become the live source for active leases, dispatch ownership, retry/backoff state, phase timing, retained worktree ownership, or operator snapshot continuity.
+Linear issue fields and Linear execution ledger comments are the team-visible tracker mirror for low-frequency lifecycle records. They may enrich completed run history when the connector is available, but they must not become the live source for run leases, dispatch ownership, retry/backoff state, phase timing, retained worktree ownership, or operator snapshot continuity.
 
 Operator snapshots must expose lightweight protocol event summaries, not materialized
 event journals. Count and latest-event metadata such as `event_count`,
@@ -216,7 +216,7 @@ Current runtime note:
 - The runtime owns lane planning, creation, reuse, and cleanup for those linked worktrees.
 - The visible lane path lives under the configured worktree root, commonly `.worktrees/<ISSUE>` inside the target repository, while `git_dir` resolves under the repository's shared `.git/worktrees/*` admin area and `git_common_dir` resolves to the repository's primary `.git`.
 - Before starting a live run, `decodex` must reject any prepared lane that is not a registered linked Git worktree for the configured repository.
-- Worktree mappings and active leases must remain scoped to the registered project `service_id` so reconciliation does not cross project boundaries.
+- Worktree mappings and run leases must remain scoped to the registered project `service_id` so reconciliation does not cross project boundaries.
 
 ## Runtime state machine
 
@@ -290,7 +290,7 @@ the repo gate and select the next phase. An `issue_progress_checkpoint`, final c
 text, or "await next phase" statement is evidence only; it is not a phase exit and
 must not be treated as a substitute for goal completion.
 
-If an app-server run fails, a supervised child exits unsuccessfully, or active-run
+If an app-server run fails, a supervised child exits unsuccessfully, or current-lane
 reconciliation finds a stalled retained lane while the latest private phase-goal signal
 for that same run is still an `active` implementation or repair phase, Decodex must
 run the registered repo gate before converting retained tracked changes into human
@@ -534,7 +534,7 @@ Before writing a retry comment, transitioning an issue, or applying
 `decodex:needs-attention`, Decodex must classify the failure through one writeback
 disposition: generic retryable failure, structured retryable recovery, or
 human-required terminal attention. Structured retryable recovery includes typed runtime
-failures such as zero-evidence app-server startup failures, stalled active-run
+failures such as zero-evidence app-server startup failures, stalled current-lane
 reconciliation without retained tracked changes, app-server capability preflight
 timeouts, startup transport disconnects, turn failures, dynamic-tool failures, and
 retryable repo-gate failures;
@@ -665,7 +665,7 @@ disabled and public projections rely on the schema and deterministic guard only.
 The runtime database stores at least:
 
 - registered projects and config fingerprints
-- active leases and dispatch ownership
+- run leases and dispatch ownership
 - run attempts and attempt status
 - protocol event journals
 - private execution events scoped by project, issue, run, and attempt
@@ -683,7 +683,7 @@ The runtime database stores at least:
 - tracker and PR cache rows needed to survive connector outages
 - typed connector health and external API backoff
 
-For child supervision, the active lane may also carry a short-lived worktree heartbeat marker at `.worktrees/<ISSUE>/.decodex-run-activity`. That marker is advisory, keyed to the current `run_id` plus `attempt_number`, and exists so the control plane can observe child activity across process boundaries, surface active thread and protocol progress in operator status, and keep high-frequency telemetry out of Linear. When the marker records process liveness, it must pair `process_id` with both host boot identity (`host_boot_id`) and process start identity (`process_start_identity`). A marker from a previous boot, a marker missing either identity, a marker whose process start identity no longer matches the live PID, a marker whose PID has exited into an unreaped zombie state, or a marker observed while Decodex cannot read the current host or process identity must not be treated as a live process even if that PID currently exists. Operator snapshots expose `process_liveness_reason` so operators can distinguish stopped processes, previous-boot markers, and same-boot PID reuse from genuine live execution. The marker may also carry additive `child_agent_activity`, protocol, account, and legacy review-policy JSON or scalar fields for operator diagnostics. Legacy review-policy marker fields are breadcrumbs only: review-policy gating belongs to the runtime store and must not be overwritten from marker values. Operator snapshots must keep queue ownership separate from execution liveness: `active_lease` and `queue_lease_state` describe the local queue lease, while `execution_liveness` describes the observed process, app-server thread, or protocol marker that keeps an active lane visible. If a raw attempt is still `starting` after app-server thread, model, or protocol activity is observed, operator-facing `status` must report `running` and preserve the raw value in `attempt_status`. If a raw attempt is already terminal but the matching marker still proves live process, active thread, or active work-protocol execution, operator-facing status must also keep the lane visible as `running` while preserving the raw terminal value in `attempt_status`; terminal maintenance events such as `thread/archive` and completed-turn bookkeeping are not active execution evidence. Only terminal-finalize writeback projections may hide a live marker from active execution. High-frequency heartbeat, child-agent buckets, token counts, idle ages, and other transient liveness details stay local/operator-only under the boundary defined by [`linear-execution-ledger.md`](./linear-execution-ledger.md).
+For child supervision, the active lane may also carry a short-lived worktree heartbeat marker at `.worktrees/<ISSUE>/.decodex-run-activity`. That marker is advisory, keyed to the current `run_id` plus `attempt_number`, and exists so the control plane can observe child activity across process boundaries, surface active thread and protocol progress in operator status, and keep high-frequency telemetry out of Linear. When the marker records process liveness, it must pair `process_id` with both host boot identity (`host_boot_id`) and process start identity (`process_start_identity`). A marker from a previous boot, a marker missing either identity, a marker whose process start identity no longer matches the live PID, a marker whose PID has exited into an unreaped zombie state, or a marker observed while Decodex cannot read the current host or process identity must not be treated as a live process even if that PID currently exists. Operator snapshots expose `process_liveness_reason` so operators can distinguish stopped processes, previous-boot markers, and same-boot PID reuse from genuine live execution. The marker may also carry additive `child_agent_activity`, protocol, account, and legacy review-policy JSON or scalar fields for operator diagnostics. Legacy review-policy marker fields are breadcrumbs only: review-policy gating belongs to the runtime store and must not be overwritten from marker values. Operator snapshots must keep queue ownership separate from execution liveness: `run_lease` and `queue_lease_state` describe the local queue lease, while `execution_liveness` describes the observed process, app-server thread, or protocol marker that keeps an active lane visible. If a raw attempt is still `starting` after app-server thread, model, or protocol activity is observed, operator-facing `status` must report `running` and preserve the raw value in `attempt_status`. If a raw attempt is already terminal but the matching marker still proves live process, active thread, or active work-protocol execution, operator-facing status must also keep the lane visible as `running` while preserving the raw terminal value in `attempt_status`; terminal maintenance events such as `thread/archive` and completed-turn bookkeeping are not active execution evidence. Only terminal-finalize writeback projections may hide a live marker from active execution. High-frequency heartbeat, child-agent buckets, token counts, idle ages, and other transient liveness details stay local/operator-only under the boundary defined by [`linear-execution-ledger.md`](./linear-execution-ledger.md).
 If a persisted attempt has a terminal-looking status such as `failed`, `interrupted`,
 or `stalled` while current marker, active thread, or active work-protocol evidence
 still identifies the same `run_id` and `attempt_number` as live, operator status must
@@ -700,7 +700,7 @@ After the hidden `_attempt` child adopts the inherited issue-claim and dispatch-
 
 - The child-owned dispatch-slot FD is the cross-process mutual-exclusion guard for the occupied slot. A competing `decodex` process must still observe that slot as unavailable while the child owns the descriptor.
 - The parent must release its process-local issue-claim and dispatch-slot guard handles after the child adopts them. Any parent-side record left for observation or cleanup is bookkeeping only and must not hold an additional dispatch-slot FD or reserve another slot.
-- The runtime database lease remains visible while the child owns the run. Releasing parent-local guard handles must not delete, hide, or downgrade the DB-backed active lease that operator status and restart recovery use to identify the running lane.
+- The runtime database lease remains visible while the child owns the run. Releasing parent-local guard handles must not delete, hide, or downgrade the DB-backed run lease that operator status and restart recovery use to identify the running lane.
 
 Restart recovery must use the runtime database plus retained worktrees and external caches instead of replaying Linear comments as the runtime ledger.
 
@@ -721,7 +721,7 @@ coarse lifecycle records.
 
 The status surface should describe runtime DB-backed execution state, plus low-frequency connector refreshes and retained `.worktrees` lanes, for example:
 
-- active leased runs
+- run-leased runs
 - persisted run attempts with local status, thread id, and latest recorded protocol event
 - registered project summaries with enabled state, fleet health/capacity counts, connector state, last activity, and retained worktree counts that exclude actively running lane worktrees
 - queued tracker issues currently labeled for automatic dispatch, together with the current dispatch classification (`ready`, `claimed`, `blocked`, or `closed`) and any local policy reason that explains why they would or would not run next
@@ -730,7 +730,7 @@ The status surface should describe runtime DB-backed execution state, plus low-f
 
 Retained worktree counts and recovery-worktree details must come from one consistent operator snapshot. If the summary count and detail list disagree, surface it as a snapshot consistency warning or bug, not as cleanup work for the operator.
 
-After a process restart, recent-run history, active lease ownership, retained post-review state, and recovery worktree mappings must be reloaded from the runtime database before new work is scheduled. The control plane may refresh low-frequency tracker and PR cache rows, but it must continue publishing local operator state while Linear or GitHub is unavailable.
+After a process restart, recent-run history, run lease ownership, retained post-review state, and recovery worktree mappings must be reloaded from the runtime database before new work is scheduled. The control plane may refresh low-frequency tracker and PR cache rows, but it must continue publishing local operator state while Linear or GitHub is unavailable.
 
 ## Retention and cleanup
 
@@ -740,7 +740,7 @@ After a process restart, recent-run history, active lease ownership, retained po
   terminal runs may be compacted by `decodex maintenance prune --apply` or by the
   automatic `decodex serve` auto-safe maintenance path once the latest event is at
   least 14 days old, but only after Decodex writes the compact run summary and
-  confirms that no active lease, retained worktree, review handoff, review
+  confirms that no run lease, retained worktree, review handoff, review
   orchestration, human-attention ledger event, terminal-failure ledger event, or
   cleanup blocker still owns that run or issue. The first private execution event
   schema has no compaction path; add one only when runtime maintenance owns a
@@ -823,7 +823,7 @@ After a process restart, recent-run history, active lease ownership, retained po
   and `terminal_path = "retained_partial_progress"`.
 - If stalled reconciliation finds no tracked changes in the retained worktree, it must classify the lane as structured retryable recovery with `error_class = "stalled_run_detected"` while retry budget remains. The retry must keep active ownership, write a failure retry schedule for the same worktree, and must not add `decodex:needs-attention` until retry budget exhaustion or another terminal boundary applies.
 - If the supervised child already exited before the next control-plane tick, stalled reconciliation must still inspect the just-finished lane using recorded protocol activity and retained worktree state rather than skipping directly to generic failure handling.
-- Operator status snapshots must expose structured liveness and wait-state fields derived from runtime records plus marker breadcrumbs, including current phase, optional wait reason, current operation, last run/protocol/progress times, idle age, a soft `suspected_stall` signal, optional progress diagnostics, and any queued retry kind plus due time, so operators can distinguish active execution from continuation waits, retry backoff, early stall suspicion, and genuine hard stalls without inferring progress from filesystem churn. The snapshot producer owns the derived operator booleans `has_fresh_execution`, `counts_as_running`, and `needs_attention`; dashboard, App, and other UI consumers must use those fields when present instead of reinterpreting raw `process_alive`, thread, protocol, or idle fields independently. The snapshot producer also owns `shadowed_by_active_run` on retained post-review lanes, and current project review, waiting, attention, landing, and cleanup counts must exclude lanes shadowed by fresh active execution for the same issue. `process_alive = false` is only process-marker evidence and must not be displayed as stopped when `has_fresh_execution = true`. `last_progress_at` is meaningful-work progress only: tool calls, file or diff changes, plan/model output, repo validation, PR/review/terminal lifecycle, or other explicit work events may refresh it, but account, rate-limit, phase-goal, passive status, warning, token-usage, heartbeat, or similar non-work protocol traffic must only refresh protocol liveness. When a lane remains in `model_execution` with fresh protocol activity but stale or missing work progress and the recent protocol events are only non-work traffic, status should expose `progress_diagnostic = "protocol_only_activity"` while preserving process and protocol liveness separately.
+- Operator status snapshots must expose structured liveness and wait-state fields derived from runtime records plus marker breadcrumbs, including current phase, optional wait reason, current operation, last run/protocol/progress times, idle age, a soft `suspected_stall` signal, optional progress diagnostics, and any queued retry kind plus due time, so operators can distinguish active execution from continuation waits, retry backoff, early stall suspicion, and genuine hard stalls without inferring progress from filesystem churn. The snapshot producer owns the derived operator booleans `has_fresh_execution`, `counts_as_running`, and `needs_attention`; dashboard, App, and other UI consumers must use those fields when present instead of reinterpreting raw `process_alive`, thread, protocol, or idle fields independently. The snapshot producer also owns `shadowed_by_current_lane` on retained post-review lanes, and current project review, waiting, attention, landing, and cleanup counts must exclude lanes shadowed by fresh active execution for the same issue. `process_alive = false` is only process-marker evidence and must not be displayed as stopped when `has_fresh_execution = true`. `last_progress_at` is meaningful-work progress only: tool calls, file or diff changes, plan/model output, repo validation, PR/review/terminal lifecycle, or other explicit work events may refresh it, but account, rate-limit, phase-goal, passive status, warning, token-usage, heartbeat, or similar non-work protocol traffic must only refresh protocol liveness. When a lane remains in `model_execution` with fresh protocol activity but stale or missing work progress and the recent protocol events are only non-work traffic, status should expose `progress_diagnostic = "protocol_only_activity"` while preserving process and protocol liveness separately.
 - Operator status snapshots may expose an additive `child_agent_activity` object when app-server protocol events have produced one for the current run. The object must stay machine-readable and dashboard/CLI shared, and should describe dynamic observed buckets rather than a fixed workflow: current child bucket and elapsed time, bucket wall/event/tool counts, current/max/cumulative input tokens, cumulative output tokens, largest tool output, and warnings for repeated large outputs. Missing `child_agent_activity` means no child breakdown was captured; existing JSON consumers must continue to work without it.
 - If the agent Git credential preflight fails, operator status must report the retained lane as a credential failure requiring operator recovery, not as a still-running lane.
 - If retry budget or needs-attention recovery finds tracked changes in the retained worktree after active phase-goal recovery has no applicable continuation path, operator status must report retained partial progress rather than only a generic retry-budget hold. Retained progress is the recovery disposition; later runtime, app-server, credential, transport, or repo-gate failure classes must be preserved as source evidence instead of overriding the retained-progress lifecycle path. The failure class may be `partial_progress_retained` when no more specific runtime error class is available. Operators should then inspect the patch, finish validation and PR handoff if it is useful, or reset the retained worktree explicitly.
@@ -868,7 +868,7 @@ After a process restart, recent-run history, active lease ownership, retained po
   operator projection. Status must not also render the issue as an intake queue
   candidate, because the queue label is then a stale echo of the retained terminal
   lane rather than dispatchable backlog.
-- If Linear still has `decodex:active:<service-id>` on an issue that also remains queued, but the local runtime cannot prove a matching active lease, status must classify the queued row as blocked with reason `linear_active_label_present`; it must not treat the issue as ready intake. If the retained marker or private execution event rows for that run are missing, status must surface `evidence_missing` in the recovery details. If the retained worktree has tracked changes, that dirty worktree remains owned by queued recovery/attention instead of being hidden as cleanup-only state.
+- If Linear still has `decodex:active:<service-id>` on an issue that also remains queued, but the local runtime cannot prove a matching run lease, status must classify the queued row as blocked with reason `linear_active_label_present`; it must not treat the issue as ready intake. If the retained marker or private execution event rows for that run are missing, status must surface `evidence_missing` in the recovery details. If the retained worktree has tracked changes, that dirty worktree remains owned by queued recovery/attention instead of being hidden as cleanup-only state.
 - Operator status snapshots must expose worktree provenance in both JSON and human text
   output. A cleanup-only worktree with `provenance_source = "legacy_unknown"` must set
   `audit_required = true` and provide a `decodex recover legacy-closeout` next action;
@@ -876,7 +876,7 @@ After a process restart, recent-run history, active lease ownership, retained po
 - During an active run, operator snapshots must expose `thread_id` as soon as the Codex thread exists, plus monotonically advancing `event_count`, `last_event_type`, and `last_event_at` once protocol events are recorded. These fields may be hydrated either from the current process journal or from the active lane's `.decodex-run-activity` marker when `status` is running in a separate process.
 - `thread_id = null` is expected only before the worker creates the Codex thread for the current run. `event_count = 0`, `last_event_type = null`, and `last_event_at = null` are expected only before the first protocol event for that same run. After the thread exists and protocol activity has started, those empty values indicate missing hydration rather than normal progress.
 - Operator snapshots may expose an additive `protocol_activity` object derived from app-server structured messages for the current run. The object stays local/operator-only and should summarize turn status, waiting reason, rate-limit status, and a compact recent event list for high-value app-server activity such as `turn/started`, `turn/completed`, plan updates, diff updates, item start/completion, command output deltas, server request responses, account updates, and rate-limit updates. Missing `protocol_activity` means no structured summary was captured yet; consumers must continue to rely on the older `event_count`, `last_event_type`, `last_event_at`, thread fields, and `child_agent_activity` fields when it is absent. Presence in `protocol_activity` is not by itself meaningful progress; non-work account, rate-limit, phase-goal, passive status, warning, model-routing, and token-usage events must remain distinguishable from work-progress events through `last_progress_at` and `progress_diagnostic`.
-- The operator snapshot transport must stay local/operator-only. `decodex serve` exposes the human-facing operator console from the canonical HTTP `GET /` and `GET /dashboard` routes, serves only the necessary dashboard assets, `GET /livez` liveness probe, and local account-control API over HTTP, and delivers published snapshots, active-run activity, and dashboard control acknowledgements through the local `GET /dashboard/control` WebSocket upgrade.
+- The operator snapshot transport must stay local/operator-only. `decodex serve` exposes the human-facing operator console from the canonical HTTP `GET /` and `GET /dashboard` routes, serves only the necessary dashboard assets, `GET /livez` liveness probe, and local account-control API over HTTP, and delivers published snapshots, current-lane activity, and dashboard control acknowledgements through the local `GET /dashboard/control` WebSocket upgrade.
 - `GET /livez` is only a process- and listener-level liveness probe. It must not claim control-plane tick freshness or forward progress by itself.
 - The dashboard must not depend on a separate HTTP snapshot or readiness endpoint; snapshot freshness belongs to the WebSocket-delivered snapshot payload and the browser connection state.
 - Reconciliation must mark locally active run attempts as `interrupted` when their

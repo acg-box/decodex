@@ -6,12 +6,12 @@ use orchestrator::PrivateEvidenceReadback;
 fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
 	let _home_guard = TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be utf-8"));
-	let mut active_run = operator_status_text_active_run();
+	let mut current_lane = operator_status_text_current_lane();
 
-	active_run.suspected_stall = true;
-	active_run.phase = String::from("stalled");
-	active_run.counts_as_running = false;
-	active_run.needs_attention = true;
+	current_lane.suspected_stall = true;
+	current_lane.phase = String::from("stalled");
+	current_lane.counts_as_running = false;
+	current_lane.needs_attention = true;
 
 	let snapshot = OperatorStatusSnapshot {
 		project_id: String::from(TEST_SERVICE_ID),
@@ -27,8 +27,8 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 			account_selector: None,
 		},
 		accounts: Vec::new(),
-		active_runs: vec![active_run.clone()],
-		recent_runs: vec![active_run],
+		current_lanes: vec![current_lane.clone()],
+		recent_runs: vec![current_lane],
 		history_lanes: Vec::new(),
 		execution_programs: Vec::new(),
 		queued_candidates: vec![agent_evidence_blocked_candidate()],
@@ -164,7 +164,7 @@ fn agent_evidence_project_status_with_configured_gh() -> OperatorProjectStatus {
 				"No action needed; Decodex will use the configured GitHub CLI path.",
 			),
 		},
-		active_run_count: 0,
+		current_lane_count: 0,
 		running_lane_count: 0,
 		queued_candidate_count: 0,
 		post_review_lane_count: 0,

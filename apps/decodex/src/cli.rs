@@ -514,7 +514,7 @@ struct LaneInterruptCommand {
 
 #[derive(Debug, Args)]
 struct LaneSteerCommand {
-	/// Issue identifier or local issue id for the active lane.
+	/// Issue identifier or local issue id for the current lane.
 	#[arg(value_name = "ISSUE")]
 	issue: String,
 	/// Run id that must own the active turn.
