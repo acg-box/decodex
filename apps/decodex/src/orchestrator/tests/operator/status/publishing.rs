@@ -406,7 +406,7 @@ fn operator_state_snapshot_publish_skips_terminal_run_metadata_refresh() {
 }
 
 #[test]
-fn operator_state_snapshot_publish_still_refreshes_active_run_metadata() {
+fn operator_state_snapshot_publish_still_refreshes_current_lane_metadata() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue_with_sort_fields(
@@ -425,7 +425,7 @@ fn operator_state_snapshot_publish_still_refreshes_active_run_metadata() {
 		.expect("running attempt should record");
 	state_store
 		.upsert_lease(TEST_SERVICE_ID, &issue.id, "xy-355-attempt-1", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 	state_store
 		.upsert_worktree(
 			TEST_SERVICE_ID,
@@ -444,19 +444,19 @@ fn operator_state_snapshot_publish_still_refreshes_active_run_metadata() {
 		&[],
 		&[],
 	)
-	.expect("active publish should build");
+	.expect("current-lane publish should build");
 	let refresh_queries = tracker.refresh_queries.borrow();
 
 	assert!(
 		refresh_queries
 			.iter()
 			.any(|query| query.len() == 1 && query.first() == Some(&issue.id)),
-		"active publish should still refresh the active run issue metadata"
+		"current-lane publish should still refresh the current lane issue metadata"
 	);
-	assert_eq!(snapshot.active_runs.len(), 1);
-	assert_eq!(snapshot.active_runs[0].issue_identifier.as_deref(), Some("XY-355"));
-	assert_eq!(snapshot.active_runs[0].title.as_deref(), Some("Implement orchestration"));
-	assert_eq!(snapshot.active_runs[0].author.as_deref(), Some("Yvette"));
+	assert_eq!(snapshot.current_lanes.len(), 1);
+	assert_eq!(snapshot.current_lanes[0].issue_identifier.as_deref(), Some("XY-355"));
+	assert_eq!(snapshot.current_lanes[0].title.as_deref(), Some("Implement orchestration"));
+	assert_eq!(snapshot.current_lanes[0].author.as_deref(), Some("Yvette"));
 }
 
 #[test]

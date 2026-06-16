@@ -105,7 +105,7 @@ struct LaneRunInspect {
 	phase: String,
 	wait_reason: Option<String>,
 	current_operation: String,
-	active_lease: bool,
+	run_lease: bool,
 	execution_liveness: String,
 	ownership_state: String,
 	liveness_state: String,
@@ -140,7 +140,7 @@ impl LaneRunInspect {
 			phase: run.phase.clone(),
 			wait_reason: run.wait_reason.clone(),
 			current_operation: run.current_operation.clone(),
-			active_lease: run.active_lease,
+			run_lease: run.run_lease,
 			execution_liveness: run.execution_liveness.clone(),
 			ownership_state: run.ownership_state.clone(),
 			liveness_state: run.liveness_state.clone(),
@@ -418,7 +418,7 @@ fn soft_interrupt_allows_hard_fallback(
 		"pending" | "failed" | "unavailable" =>
 			soft.error_class.as_deref() != Some("lane_not_active")
 				|| run.process_id.is_some() && run.process_alive != Some(false),
-		"rejected" => soft.error_class.as_deref() == Some("active_lease_missing"),
+		"rejected" => soft.error_class.as_deref() == Some("run_lease_missing"),
 		_ => false,
 	}
 }
@@ -500,7 +500,7 @@ fn matching_lane_runs(
 	let mut seen_run_ids = HashSet::new();
 	let mut runs = Vec::new();
 
-	for run in snapshot.active_runs.iter().chain(snapshot.recent_runs.iter()) {
+	for run in snapshot.current_lanes.iter().chain(snapshot.recent_runs.iter()) {
 		if !seen_run_ids.insert(run.run_id.clone()) {
 			continue;
 		}
@@ -529,7 +529,7 @@ fn lane_issue_matches(run: &OperatorRunStatus, issue: &str) -> bool {
 }
 
 fn soft_interrupt_available_for_run(run: &OperatorRunStatus) -> bool {
-	orchestrator::operator_run_counts_as_active(run)
+	orchestrator::operator_run_counts_as_current_lane(run)
 		&& run.worktree_path.is_some()
 		&& run.thread_id.is_some()
 		&& run.turn_id.is_some()
@@ -563,7 +563,7 @@ fn lane_control_operator_context(run: &OperatorRunStatus) -> Value {
 		"phase": run.phase.as_str(),
 		"wait_reason": run.wait_reason.as_deref(),
 		"current_operation": run.current_operation.as_str(),
-		"active_lease": run.active_lease,
+		"run_lease": run.run_lease,
 		"queue_lease_state": run.queue_lease_state.as_str(),
 		"execution_liveness": run.execution_liveness.as_str(),
 		"ownership_state": run.ownership_state.as_str(),
@@ -625,7 +625,7 @@ fn attempt_lane_steer(
 	}
 
 	let Some(worktree_path) = absolute_lane_worktree_path(project, state_store, run)? else {
-		eyre::bail!("Lane steer was accepted without an active lane worktree.");
+		eyre::bail!("Lane steer was accepted without a current lane worktree.");
 	};
 	let Some(thread_id) = run.thread_id.as_deref() else {
 		eyre::bail!("Lane steer was accepted before the active app-server thread id was known.");
@@ -827,7 +827,7 @@ fn lane_steer_failure_class_for_reason(reason: &str) -> Option<&'static str> {
 		"app_server_turn_steer_timed_out" => Some("app_server_turn_steer_timed_out"),
 		"app_server_turn_steer_unsupported" => Some("app_server_turn_steer_unsupported"),
 		"app_server_turn_steer_failed" => Some("app_server_turn_steer_failed"),
-		"active_run_control_channel_resolved" | "queued_wait_timeout" => None,
+		"run_lease_control_channel_resolved" | "queued_wait_timeout" => None,
 		_ => Some("run_control_action_failed"),
 	}
 }
@@ -847,7 +847,7 @@ fn attempt_soft_lane_interrupt(
 	let Some(worktree_path) = absolute_lane_worktree_path(project, state_store, run)? else {
 		return Ok(LaneSoftInterruptReport::unavailable(
 			"worktree_missing",
-			"Soft interrupt requires the active lane worktree and run-control directory.",
+			"Soft interrupt requires the current lane worktree and run-control directory.",
 		));
 	};
 	let Some(thread_id) = run.thread_id.as_deref() else {
@@ -863,10 +863,10 @@ fn attempt_soft_lane_interrupt(
 		));
 	};
 
-	if !orchestrator::operator_run_counts_as_active(run) {
+	if !orchestrator::operator_run_counts_as_current_lane(run) {
 		return Ok(LaneSoftInterruptReport::unavailable(
 			"lane_not_active",
-			"Soft interrupt only targets active or live local lane runs.",
+			"Soft interrupt only targets current or live local lane runs.",
 		));
 	}
 
@@ -1203,12 +1203,12 @@ fn render_lane_inspect_report(report: &LaneInspectReport) -> String {
 
 	for run in &report.runs {
 		output.push_str(&format!(
-			"- {} attempt {}: status={}, phase={}, activeLease={}, owner={}, liveness={}\n",
+			"- {} attempt {}: status={}, phase={}, runLease={}, owner={}, liveness={}\n",
 			run.run_id,
 			run.attempt_number,
 			run.status,
 			run.phase,
-			run.active_lease,
+			run.run_lease,
 			run.ownership_state,
 			run.execution_liveness
 		));

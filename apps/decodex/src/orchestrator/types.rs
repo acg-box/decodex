@@ -16,6 +16,10 @@ pub(crate) const ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE: &str =
 	"architecture_recovery_started";
 pub(crate) const ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE: &str =
 	"architecture_recovery_terminal";
+pub(crate) const PHASE_GOAL_RECOVERY_EVENT_TYPE: &str = "phase_goal_recovery";
+pub(crate) const PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE: &str =
+	"phase_goal_recovery_blocked";
+pub(crate) const PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT: i64 = 1;
 
 #[allow(dead_code)]
 const AUTHORITY_BOUNDARY_CHECK_SCHEMA: &str = "decodex.authority_boundary_check/1";
@@ -151,14 +155,14 @@ pub(crate) enum RetryDispatchDecision {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum ActiveRunDisposition {
+pub(crate) enum RunLeaseDisposition {
 	RetainedReviewComplete,
 	Superseded {
 		newer_run_id: String,
 		newer_attempt_number: i64,
 	},
 	Terminal,
-	NonActive,
+	NotDispatchable,
 	Stalled { idle_for: Duration },
 	StalledRetainedPartialProgress { idle_for: Duration },
 	StalledAlreadyNeedsAttention { idle_for: Duration },
@@ -423,7 +427,7 @@ pub(crate) struct EvidenceRequest<'a> {
 	pub(crate) include_payload: bool,
 }
 
-/// Active lane steer request.
+/// Current lane steer request.
 pub(crate) struct LaneSteerRequest<'a> {
 	pub(crate) config_path: Option<&'a Path>,
 	pub(crate) project_id: Option<&'a str>,
@@ -435,7 +439,7 @@ pub(crate) struct LaneSteerRequest<'a> {
 	pub(crate) wait_timeout: Duration,
 }
 
-/// Active lane steer result without raw operator message content.
+/// Current lane steer result without raw operator message content.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LaneSteerReport {
@@ -525,7 +529,7 @@ struct IssueRunPlan {
 
 #[derive(Default)]
 struct RecoveredRuntimeState {
-	active_issues: Vec<TrackerIssue>,
+	recoverable_issues: Vec<TrackerIssue>,
 }
 
 #[derive(Clone, Copy)]
@@ -952,7 +956,7 @@ struct ChildRunRef<'a> {
 }
 
 #[derive(Clone, Copy)]
-struct ActiveChildRunContext<'a> {
+struct CurrentChildRunContext<'a> {
 	child: ChildRunRef<'a>,
 	workflow: &'a WorkflowDocument,
 	dispatch_mode: IssueDispatchMode,
@@ -1225,11 +1229,11 @@ struct ActiveWorkflowOverride<'a> {
 }
 
 #[derive(Clone, Debug)]
-struct ActiveRunReconciliation {
+struct RunLeaseReconciliation {
 	issue: TrackerIssue,
 	run_attempt: RunAttempt,
 	worktree_mapping: Option<WorktreeMapping>,
-	disposition: ActiveRunDisposition,
+	disposition: RunLeaseDisposition,
 	workflow: WorkflowDocument,
 }
 
@@ -1252,7 +1256,7 @@ struct OperatorStatusSnapshot {
 	projects: Vec<OperatorProjectStatus>,
 	account_control: OperatorCodexAccountControlStatus,
 	accounts: Vec<CodexAccountActivitySummary>,
-	active_runs: Vec<OperatorRunStatus>,
+	current_lanes: Vec<OperatorRunStatus>,
 	recent_runs: Vec<OperatorRunStatus>,
 	history_lanes: Vec<OperatorHistoryLaneStatus>,
 	execution_programs: Vec<OperatorExecutionProgramStatus>,
@@ -1291,7 +1295,7 @@ struct OperatorProjectStatus {
 	repo_root: String,
 	enabled: bool,
 	github_cli_authority: OperatorGitHubCliAuthority,
-	active_run_count: usize,
+	current_lane_count: usize,
 	running_lane_count: usize,
 	queued_candidate_count: usize,
 	post_review_lane_count: usize,
@@ -1525,6 +1529,12 @@ struct OperatorRunStatus {
 	issue_identifier: Option<String>,
 	title: Option<String>,
 	author: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	issue_state: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	active_label_present: Option<bool>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	needs_attention_label_present: Option<bool>,
 	attempt_number: i64,
 	status: String,
 	attempt_status: String,
@@ -1546,7 +1556,9 @@ struct OperatorRunStatus {
 	thread_active_flags: Vec<String>,
 	interactive_requested: bool,
 	continuation_pending: bool,
-	active_lease: bool,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	continuation_recovery: Option<OperatorContinuationRecoveryStatus>,
+	run_lease: bool,
 	queue_lease_state: String,
 	execution_liveness: String,
 	has_fresh_execution: bool,
@@ -1587,6 +1599,23 @@ struct OperatorRunStatus {
 		accounts: Vec<CodexAccountActivitySummary>,
 		branch_name: Option<String>,
 	worktree_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorContinuationRecoveryStatus {
+	state: String,
+	source_phase: String,
+	next_phase: String,
+	source_error_class: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	source_error_message: Option<String>,
+	recorded_at: String,
+	run_id: String,
+	attempt_number: i64,
+	recovery_count: i64,
+	automatic_continuation_limit: i64,
+	budget_exceeded: bool,
+	next_action: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1759,7 +1788,7 @@ struct OperatorPostReviewLaneStatus {
 	mergeable: Option<String>,
 	check_state: Option<String>,
 	unresolved_review_threads: Option<usize>,
-	shadowed_by_active_run: bool,
+	shadowed_by_current_lane: bool,
 	readback_warning: Option<String>,
 	readback_root_cause: Option<String>,
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -1954,17 +1983,17 @@ struct TargetIssueRunContext<'a, T> {
 }
 
 struct ConcurrencySnapshot {
-	total_active: usize,
+	total_leased: usize,
 }
 impl ConcurrencySnapshot {
 	fn new(project_id: &str, state_store: &StateStore) -> crate::prelude::Result<Self> {
 		let leases = state_store.list_active_shared_leases(project_id)?;
 
-		Ok(Self { total_active: leases.len() })
+		Ok(Self { total_leased: leases.len() })
 	}
 
 	fn has_global_capacity(&self, execution: &WorkflowExecution) -> bool {
-		execution.max_concurrent_agents().has_capacity(self.total_active)
+		execution.max_concurrent_agents().has_capacity(self.total_leased)
 	}
 }
 
@@ -2417,8 +2446,8 @@ fn operator_execution_program_reason_code(reason: &str) -> &'static str {
 		"dispatch_intent_not_ready"
 	} else if reason == "node dispatch intent is paused" {
 		"dispatch_intent_paused"
-	} else if reason == "node already has an active lane" {
-		"active_lane_present"
+	} else if reason == "node already has a current lane" {
+		"current_lane_present"
 	} else if reason == "node dispatch intent is terminal" {
 		"dispatch_intent_terminal"
 	} else if reason == "node is ready for normal Linear issue execution" {
@@ -2495,7 +2524,7 @@ fn operator_execution_program_node_next_action(
 		crate::execution_program::ExecutionProgramNodeLifecycleState::Active
 	) {
 		return String::from(
-			"Wait for the active lane or recover its retained state before dispatching this node.",
+			"Wait for the current lane or recover its retained state before dispatching this node.",
 		);
 	}
 	if node.dispatch_action().is_some() {

@@ -191,7 +191,7 @@ impl StateData {
 		attempt: &RunAttemptRecord,
 	) -> Option<ProjectRunStatus> {
 		let worktree = self.worktrees.get(&attempt.issue_id);
-		let active_lease = self
+		let run_lease = self
 			.leases
 			.get(&attempt.issue_id)
 			.is_some_and(|lease| lease.project_id == project_id && lease.run_id == attempt.run_id);
@@ -199,7 +199,7 @@ impl StateData {
 		let in_project =
 			remembered_project
 				|| worktree.is_some_and(|mapping| mapping.project_id == project_id)
-				|| active_lease;
+				|| run_lease;
 
 		if !in_project {
 			return None;
@@ -228,7 +228,7 @@ impl StateData {
 			updated_at_unix: attempt.updated_at_unix,
 			branch_name: worktree.map(|mapping| mapping.branch_name.clone()),
 			worktree_path: worktree.map(|mapping| mapping.worktree_path.clone()),
-			active_lease,
+			run_lease,
 			event_count: event_summary.event_count,
 			last_event_type: event_summary.last_event_type,
 			last_event_at: event_summary.last_event_at,
@@ -5380,8 +5380,8 @@ fn derived_program_issue_mapping_records(
 
 fn compare_project_run_status(left: &ProjectRunStatus, right: &ProjectRunStatus) -> cmp::Ordering {
 	right
-		.active_lease
-		.cmp(&left.active_lease)
+		.run_lease
+		.cmp(&left.run_lease)
 		.then_with(|| right.updated_at.cmp(&left.updated_at))
 		.then_with(|| right.attempt_number.cmp(&left.attempt_number))
 		.then_with(|| right.run_id.cmp(&left.run_id))
