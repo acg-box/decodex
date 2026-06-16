@@ -1520,6 +1520,8 @@ struct OperatorRunStatus {
 	attempt_number: i64,
 	status: String,
 	attempt_status: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	status_projection_reason: Option<String>,
 	phase: String,
 	wait_reason: Option<String>,
 	current_operation: String,
