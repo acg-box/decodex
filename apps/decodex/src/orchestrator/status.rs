@@ -19,6 +19,7 @@ use state::WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN;
 use state::WORKTREE_PROVENANCE_LEGACY_UNKNOWN;
 use state::ProjectLoopEvidenceSnapshot;
 
+use crate::agent::REVIEW_POLICY_CONVERGENCE_BUDGET;
 use crate::pull_request::{self, PullRequestLandingGateView};
 use crate::worktree;
 use crate::worktree::MergedWorktreeCleanupDebt;
@@ -278,6 +279,15 @@ struct OperatorLifecycleMetricPhase {
 	key: &'static str,
 	label: &'static str,
 	rank: u8,
+}
+
+struct OperatorLaneControlProjection {
+	ownership_state: String,
+	liveness_state: String,
+	policy_state: String,
+	terminalization_state: String,
+	next_action: String,
+	conditions: Vec<String>,
 }
 
 pub(crate) fn ensure_project_has_no_merged_worktree_cleanup_debt(
@@ -1202,11 +1212,37 @@ fn worktree_ownership(
 	completed_state: Option<&str>,
 ) -> WorktreeOwnership {
 	if let Some(run) = worktree_active_run_owner(worktree, snapshot) {
-		return WorktreeOwnership {
-			kind: "active_lane",
-			reason: format!("Active lane `{}` owns this worktree.", run.run_id),
-			next_action: None,
-			audit_required: false,
+		return match run.ownership_state.as_str() {
+			"owned_active" => WorktreeOwnership {
+				kind: "active_lane",
+				reason: format!("Active lane `{}` owns this worktree.", run.run_id),
+				next_action: None,
+				audit_required: false,
+			},
+			"retained_attention" => WorktreeOwnership {
+				kind: "retained_attention",
+				reason: format!("Lane `{}` requires operator attention before it can own this worktree.", run.run_id),
+				next_action: Some(run.lane_control_next_action.clone()),
+				audit_required: true,
+			},
+			"orphaned_live_thread" => WorktreeOwnership {
+				kind: "orphaned_live_thread",
+				reason: format!("Lane `{}` has live evidence but no active Decodex lease.", run.run_id),
+				next_action: Some(run.lane_control_next_action.clone()),
+				audit_required: true,
+			},
+			"terminalizing" => WorktreeOwnership {
+				kind: "terminalizing_lane",
+				reason: format!("Lane `{}` is inside terminalization and no longer counts as running.", run.run_id),
+				next_action: Some(run.lane_control_next_action.clone()),
+				audit_required: true,
+			},
+			_ => WorktreeOwnership {
+				kind: "orphaned_local_worktree",
+				reason: format!("Lane `{}` is not an active owner for this worktree.", run.run_id),
+				next_action: Some(run.lane_control_next_action.clone()),
+				audit_required: true,
+			},
 		};
 	}
 	if let Some(lane) = worktree_post_review_owner(worktree, snapshot) {
@@ -1278,11 +1314,18 @@ fn worktree_active_run_owner<'a>(
 	worktree: &OperatorWorktreeStatus,
 	snapshot: &'a OperatorStatusSnapshot,
 ) -> Option<&'a OperatorRunStatus> {
-	snapshot.active_runs.iter().find(|run| {
-		run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
-			|| run.branch_name.as_deref() == Some(worktree.branch_name.as_str())
-			|| run.issue_id == worktree.issue_id
-	})
+	snapshot
+		.active_runs
+		.iter()
+		.chain(snapshot.recent_runs.iter())
+		.find(|run| {
+			matches!(
+				run.ownership_state.as_str(),
+				"owned_active" | "retained_attention" | "orphaned_live_thread" | "terminalizing"
+			) && (run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
+				|| run.branch_name.as_deref() == Some(worktree.branch_name.as_str())
+				|| run.issue_id == worktree.issue_id)
+		})
 }
 
 fn worktree_post_review_owner<'a>(
@@ -1453,7 +1496,7 @@ fn project_attention_count(
 	for run in snapshot
 		.active_runs
 		.iter()
-		.filter(|run| operator_run_needs_attention(run))
+		.filter(|run| operator_run_counts_as_attention(run))
 	{
 		attention_keys.insert(operator_run_group_key(run));
 	}
@@ -1674,7 +1717,7 @@ fn hydrate_post_review_lane_active_run_shadowing(snapshot: &mut OperatorStatusSn
 	let active_issue_keys = snapshot
 		.active_runs
 		.iter()
-		.filter(|run| run.counts_as_running || run.has_fresh_execution)
+		.filter(|run| run.counts_as_running)
 		.map(|run| operator_run_group_key(run).to_ascii_uppercase())
 		.collect::<HashSet<_>>();
 
@@ -1707,10 +1750,20 @@ fn operator_run_has_live_execution(run: &OperatorRunStatus) -> bool {
 }
 
 fn operator_run_counts_as_running(run: &OperatorRunStatus) -> bool {
-	matches!(run.status.as_str(), "starting" | "running")
+	run.ownership_state == "owned_active"
+		&& matches!(run.status.as_str(), "starting" | "running")
 		&& run.phase == "executing"
 		&& (run.process_alive != Some(false) || run.has_fresh_execution)
 		&& !operator_run_needs_attention(run)
+}
+
+fn operator_run_counts_as_attention(run: &OperatorRunStatus) -> bool {
+	run.needs_attention
+		|| run.ownership_state == "retained_attention"
+		|| matches!(
+			run.policy_state.as_str(),
+			"review_churn_exceeded" | "authority_boundary_required" | "human_attention_required"
+		)
 }
 
 fn operator_run_needs_attention(run: &OperatorRunStatus) -> bool {
@@ -5528,7 +5581,50 @@ fn operator_run_status(
 		&lifecycle.current_operation,
 	)?;
 
-	Ok(hydrate_operator_run_derived_status(OperatorRunStatus {
+	Ok(hydrate_operator_run_derived_status(operator_run_status_from_parts(
+		project,
+		project_display_name,
+		&run,
+		lifecycle,
+		wait_reason,
+		app_server_state,
+		timing,
+		protocol_summary,
+		child_agent_activity,
+		protocol_activity,
+		progress_diagnostic,
+		account,
+		accounts,
+		branch_name,
+		worktree_path,
+		issue_identifier,
+		private_evidence,
+		loop_status,
+	)))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn operator_run_status_from_parts(
+	project: &ServiceConfig,
+	project_display_name: &str,
+	run: &ProjectRunStatus,
+	lifecycle: OperatorRunLifecycleProjection,
+	wait_reason: Option<String>,
+	app_server_state: OperatorRunAppServerState,
+	timing: OperatorRunTiming,
+	protocol_summary: OperatorRunProtocolSummary,
+	child_agent_activity: Option<ChildAgentActivitySummary>,
+	protocol_activity: Option<ProtocolActivitySummary>,
+	progress_diagnostic: Option<String>,
+	account: Option<CodexAccountActivitySummary>,
+	accounts: Vec<CodexAccountActivitySummary>,
+	branch_name: Option<String>,
+	worktree_path: Option<String>,
+	issue_identifier: Option<String>,
+	private_evidence: AgentPrivateEvidenceRef,
+	loop_status: OperatorLoopStatus,
+) -> OperatorRunStatus {
+	OperatorRunStatus {
 		project_id: project.service_id().to_owned(),
 		project_display_name: project_display_name.to_owned(),
 		run_id: run.run_id().to_owned(),
@@ -5540,10 +5636,16 @@ fn operator_run_status(
 		status: lifecycle.status,
 		attempt_status: run.status().to_owned(),
 		status_projection_reason: lifecycle.status_projection_reason,
+		ownership_state: String::new(),
+		liveness_state: String::new(),
+		policy_state: String::new(),
+		terminalization_state: String::new(),
+		lane_control_next_action: String::new(),
+		lane_control_conditions: Vec::new(),
 		phase: lifecycle.phase,
 		wait_reason,
 		current_operation: lifecycle.current_operation,
-		control_capability: operator_run_control_capability(&run, &app_server_state),
+		control_capability: operator_run_control_capability(run, &app_server_state),
 		thread_id: app_server_state.thread_id,
 		turn_id: app_server_state.turn_id,
 		thread_status: app_server_state.thread_status,
@@ -5589,15 +5691,262 @@ fn operator_run_status(
 		accounts,
 		branch_name,
 		worktree_path,
-	}))
+	}
 }
 
 fn hydrate_operator_run_derived_status(mut status: OperatorRunStatus) -> OperatorRunStatus {
 	status.has_fresh_execution = operator_run_has_fresh_execution(&status);
 	status.needs_attention = operator_run_needs_attention(&status);
+
+	let lane_control_state = operator_lane_control_state(&status);
+
+	status.ownership_state = lane_control_state.ownership_state;
+	status.liveness_state = lane_control_state.liveness_state;
+	status.policy_state = lane_control_state.policy_state;
+	status.terminalization_state = lane_control_state.terminalization_state;
+	status.lane_control_next_action = lane_control_state.next_action;
+	status.lane_control_conditions = lane_control_state.conditions;
+	status.needs_attention = operator_run_counts_as_attention(&status);
 	status.counts_as_running = operator_run_counts_as_running(&status);
 
 	status
+}
+
+fn operator_lane_control_state(run: &OperatorRunStatus) -> OperatorLaneControlProjection {
+	let liveness_state = operator_run_liveness_state(run);
+	let policy_state = operator_run_policy_state(run);
+	let terminalization_state = operator_run_terminalization_state(run, &liveness_state);
+	let ownership_state =
+		operator_run_ownership_state(run, &liveness_state, &policy_state, &terminalization_state);
+	let next_action = operator_run_lane_control_next_action(
+		run,
+		&ownership_state,
+		&liveness_state,
+		&policy_state,
+		&terminalization_state,
+	);
+	let mut conditions = operator_run_lane_control_conditions(run, &liveness_state, &policy_state);
+
+	if ownership_state == "owned_active" && !run.active_lease {
+		conditions.push(String::from("invalid_owned_active_without_lease"));
+	}
+
+	OperatorLaneControlProjection {
+		ownership_state,
+		liveness_state,
+		policy_state,
+		terminalization_state,
+		next_action,
+		conditions,
+	}
+}
+
+fn operator_run_ownership_state(
+	run: &OperatorRunStatus,
+	liveness_state: &str,
+	policy_state: &str,
+	terminalization_state: &str,
+) -> String {
+	if run.active_lease
+		&& matches!(run.attempt_status.as_str(), "starting" | "running" | "continuation_pending")
+		&& !matches!(
+			policy_state,
+			"review_churn_exceeded" | "authority_boundary_required" | "human_attention_required"
+		)
+	{
+		return String::from("owned_active");
+	}
+	if matches!(
+		policy_state,
+		"review_churn_exceeded" | "authority_boundary_required" | "human_attention_required"
+	) || run.needs_attention
+		|| (!run.active_lease && liveness_state == "host_boot_mismatch")
+	{
+		return String::from("retained_attention");
+	}
+	if !run.active_lease
+		&& matches!(liveness_state, "process_alive" | "thread_active" | "protocol_recent")
+	{
+		return String::from("orphaned_live_thread");
+	}
+	if terminalization_state != "none" && terminalization_state != "cleanup_complete" {
+		return String::from("terminalizing");
+	}
+	if matches!(run.attempt_status.as_str(), "starting" | "running" | "continuation_pending") {
+		return String::from("pending");
+	}
+
+	String::from("closed")
+}
+
+fn operator_run_liveness_state(run: &OperatorRunStatus) -> String {
+	if matches!(run.process_liveness_reason.as_deref(), Some("host_boot_id_mismatch")) {
+		return String::from("host_boot_mismatch");
+	}
+	if run.process_alive == Some(true) {
+		return String::from("process_alive");
+	}
+	if matches!(run.thread_status.as_deref(), Some("active")) || !run.thread_active_flags.is_empty() {
+		return String::from("thread_active");
+	}
+	if operator_run_has_recent_app_server_execution(run) {
+		return String::from("protocol_recent");
+	}
+	if run.process_alive == Some(false)
+		|| matches!(
+			run.execution_liveness.as_str(),
+			"not_running" | "process_identity_mismatch"
+		)
+	{
+		return String::from("not_running");
+	}
+
+	String::from("unknown")
+}
+
+fn operator_run_policy_state(run: &OperatorRunStatus) -> String {
+	let Some(loop_status) = run.loop_status.as_ref() else {
+		return String::from("allowed");
+	};
+
+	if loop_status.decision_request.is_some() {
+		return String::from("authority_boundary_required");
+	}
+	if loop_status.autonomy == "human_required" {
+		return String::from("human_attention_required");
+	}
+
+	if let Some(recovery) = loop_status.architecture_recovery.as_ref() {
+		return if recovery.status == "active" {
+			String::from("architecture_recovery_pending")
+		} else {
+			String::from("human_attention_required")
+		};
+	}
+	if let Some(review) = loop_status.review.as_ref() {
+		return match review.status.as_str() {
+			"pending" => String::from("review_pending"),
+			"findings" => {
+				if review
+					.checkpoint
+					.as_ref()
+					.is_some_and(|checkpoint| checkpoint.nonclean_rounds >= REVIEW_POLICY_CONVERGENCE_BUDGET)
+				{
+					String::from("review_churn_exceeded")
+				} else {
+					String::from("review_findings")
+				}
+			},
+			"blocked" | "needs_architecture_review" => String::from("human_attention_required"),
+			_ => String::from("allowed"),
+		};
+	}
+
+	String::from("allowed")
+}
+
+fn operator_run_terminalization_state(run: &OperatorRunStatus, liveness_state: &str) -> String {
+	if matches!(
+		run.status.as_str(),
+		"cleanup_complete" | "merged_closeout_reconciled"
+	) || matches!(run.current_operation.as_str(), "ledger_outcome")
+		&& matches!(run.phase.as_str(), "completed")
+	{
+		return String::from("cleanup_complete");
+	}
+	if matches!(run.phase.as_str(), "completed" | "failed" | "terminated")
+		&& !run.active_lease
+		&& matches!(liveness_state, "not_running" | "unknown")
+	{
+		return String::from("cleanup_complete");
+	}
+	if matches!(run.phase.as_str(), "completed" | "failed" | "terminated") {
+		return String::from("barrier_started");
+	}
+
+	String::from("none")
+}
+
+fn operator_run_lane_control_conditions(
+	run: &OperatorRunStatus,
+	liveness_state: &str,
+	policy_state: &str,
+) -> Vec<String> {
+	let mut conditions = Vec::new();
+
+	if !run.active_lease
+		&& matches!(run.attempt_status.as_str(), "starting" | "running" | "continuation_pending")
+	{
+		conditions.push(String::from("active_lease_missing"));
+	}
+	if matches!(
+		run.attempt_status.as_str(),
+		"failed" | "interrupted" | "stalled" | "succeeded"
+	) && matches!(liveness_state, "process_alive" | "thread_active" | "protocol_recent")
+	{
+		conditions.push(String::from("terminal_attempt_has_live_evidence"));
+	}
+	if liveness_state == "host_boot_mismatch" {
+		conditions.push(String::from("host_boot_id_mismatch"));
+	}
+	if policy_state == "review_churn_exceeded" {
+		conditions.push(String::from("review_churn_threshold_exceeded"));
+	}
+	if matches!(
+		policy_state,
+		"authority_boundary_required" | "human_attention_required"
+	) {
+		conditions.push(String::from("policy_requires_human_attention"));
+	}
+
+	conditions
+}
+
+fn operator_run_lane_control_next_action(
+	run: &OperatorRunStatus,
+	ownership_state: &str,
+	liveness_state: &str,
+	policy_state: &str,
+	terminalization_state: &str,
+) -> String {
+	if policy_state == "review_churn_exceeded" {
+		return String::from("start_architecture_recovery_or_stop_for_human_attention");
+	}
+	if matches!(
+		policy_state,
+		"authority_boundary_required" | "human_attention_required"
+	) {
+		return String::from("resolve_policy_stop_before_mutating_lane");
+	}
+	if ownership_state == "orphaned_live_thread" {
+		return String::from("inspect_or_interrupt_orphaned_live_thread");
+	}
+	if liveness_state == "host_boot_mismatch" {
+		return String::from("inspect_recovery_evidence");
+	}
+	if terminalization_state != "none" && terminalization_state != "cleanup_complete" {
+		return String::from("finish_terminalization");
+	}
+	if ownership_state == "owned_active" {
+		if let Some(next_action) =
+			run.loop_status.as_ref().and_then(|loop_status| loop_status.next_action.clone())
+		{
+			return next_action;
+		}
+
+		return String::from("continue_owned_attempt");
+	}
+	if ownership_state == "closed" {
+		return String::from("no_action");
+	}
+
+	if let Some(next_action) =
+		run.loop_status.as_ref().and_then(|loop_status| loop_status.next_action.clone())
+	{
+		return next_action;
+	}
+
+	String::from("inspect_lane_state")
 }
 
 fn operator_run_lifecycle_projection(
@@ -6399,7 +6748,7 @@ fn operator_run_visible_status(
 	app_server_state: &OperatorRunAppServerState,
 	protocol_summary: &OperatorRunProtocolSummary,
 	timing: &OperatorRunTiming,
-	marker_current_operation: Option<&str>,
+	_marker_current_operation: Option<&str>,
 ) -> String {
 	if attempt_status == "starting"
 		&& operator_run_has_app_server_execution_evidence(
@@ -6407,18 +6756,6 @@ fn operator_run_visible_status(
 			protocol_summary,
 			timing,
 		)
-	{
-		return String::from("running");
-	}
-	if attempt_status == "succeeded"
-		&& operator_marker_operation_allows_terminal_status_promotion(marker_current_operation)
-		&& operator_run_has_live_process_or_thread_evidence(app_server_state, timing)
-	{
-		return String::from("running");
-	}
-	if matches!(attempt_status, "failed" | "interrupted" | "stalled")
-		&& operator_marker_operation_allows_terminal_status_promotion(marker_current_operation)
-		&& operator_run_has_live_execution_evidence(app_server_state, protocol_summary, timing)
 	{
 		return String::from("running");
 	}
@@ -6432,7 +6769,7 @@ fn operator_run_status_projection_reason(
 	app_server_state: &OperatorRunAppServerState,
 	protocol_summary: &OperatorRunProtocolSummary,
 	timing: &OperatorRunTiming,
-	marker_current_operation: Option<&str>,
+	_marker_current_operation: Option<&str>,
 ) -> Option<String> {
 	if attempt_status == visible_status || visible_status != "running" {
 		return None;
@@ -6440,10 +6777,6 @@ fn operator_run_status_projection_reason(
 
 	let projection_kind = if attempt_status == "starting" {
 		"starting_attempt"
-	} else if matches!(attempt_status, "failed" | "interrupted" | "stalled" | "succeeded")
-		&& operator_marker_operation_allows_terminal_status_promotion(marker_current_operation)
-	{
-		"terminal_attempt"
 	} else {
 		return None;
 	};
@@ -6481,30 +6814,6 @@ fn operator_run_live_evidence_source(
 	}
 
 	None
-}
-
-fn operator_run_has_live_process_or_thread_evidence(
-	app_server_state: &OperatorRunAppServerState,
-	timing: &OperatorRunTiming,
-) -> bool {
-	timing.process_alive == Some(true)
-		|| matches!(app_server_state.thread_status.as_deref(), Some("active"))
-		|| !app_server_state.thread_active_flags.is_empty()
-}
-
-fn operator_marker_operation_allows_terminal_status_promotion(
-	marker_current_operation: Option<&str>,
-) -> bool {
-	matches!(marker_current_operation, None | Some(RUN_OPERATION_AGENT_RUN))
-}
-
-fn operator_run_has_live_execution_evidence(
-	app_server_state: &OperatorRunAppServerState,
-	protocol_summary: &OperatorRunProtocolSummary,
-	timing: &OperatorRunTiming,
-) -> bool {
-	operator_run_has_live_process_or_thread_evidence(app_server_state, timing)
-		|| operator_run_has_recent_protocol_execution_evidence(protocol_summary, timing)
 }
 
 fn operator_run_has_recent_protocol_execution_evidence(
@@ -7744,7 +8053,7 @@ fn active_run_id_for_queue_candidate<'a>(
 	snapshot
 		.active_runs
 		.iter()
-		.find(|run| run.issue_id == queued_issue.issue_id)
+		.find(|run| run.issue_id == queued_issue.issue_id && run.counts_as_running)
 		.map(|run| run.run_id.as_str())
 }
 
@@ -7828,9 +8137,10 @@ fn rendered_worktree_role<'a>(
 		return worktree.ownership.as_str();
 	}
 	if snapshot.active_runs.iter().any(|run| {
-		run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
-			|| run.branch_name.as_deref() == Some(worktree.branch_name.as_str())
-			|| run.issue_id == worktree.issue_id
+		run.ownership_state == "owned_active"
+			&& (run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
+				|| run.branch_name.as_deref() == Some(worktree.branch_name.as_str())
+				|| run.issue_id == worktree.issue_id)
 	}) {
 		return "active_lane";
 	}
@@ -8321,9 +8631,10 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		render_loop_architecture_recovery_summary(run.loop_status.as_ref());
 	let loop_boundary = render_loop_boundary_summary(run.loop_status.as_ref());
 	let control_capability = render_control_capability_summary(run.control_capability.as_ref());
+	let lane_control_conditions = render_lane_control_conditions(run);
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -8333,6 +8644,12 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		run.status,
 		run.attempt_status,
 		run.status_projection_reason.as_deref().unwrap_or("none"),
+		run.ownership_state,
+		run.liveness_state,
+		run.policy_state,
+		run.terminalization_state,
+		run.lane_control_next_action,
+		lane_control_conditions,
 		run.phase,
 		run.wait_reason.as_deref().unwrap_or("none"),
 		run.current_operation,
@@ -8394,6 +8711,14 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		protocol_event,
 		run.event_count
 	));
+}
+
+fn render_lane_control_conditions(run: &OperatorRunStatus) -> String {
+	if run.lane_control_conditions.is_empty() {
+		String::from("none")
+	} else {
+		run.lane_control_conditions.join(",")
+	}
 }
 
 fn operator_run_queue_lease_summary(run: &OperatorRunStatus) -> String {

@@ -5987,6 +5987,27 @@
 				return displayToken(run.execution_liveness || "liveness_unknown");
 			}
 
+			function runOwnershipSummary(run) {
+				return displayToken(run.ownership_state || (runCountsAsRunning(run) ? "owned_active" : "unknown"));
+			}
+
+			function runLivenessStateSummary(run) {
+				return displayToken(run.liveness_state || "unknown");
+			}
+
+			function runPolicyStateSummary(run) {
+				return displayToken(run.policy_state || "allowed");
+			}
+
+			function runTerminalizationSummary(run) {
+				return displayToken(run.terminalization_state || "none");
+			}
+
+			function runLaneControlConditionsSummary(run) {
+				const conditions = run.lane_control_conditions ?? [];
+				return conditions.length ? conditions.map(displayToken).join(", ") : "none";
+			}
+
 			function runQueueLeaseSummary(run) {
 				const leaseState = run.queue_lease_state || (run.active_lease ? "held" : "not_held");
 
@@ -10602,6 +10623,12 @@
 							const issueKey = issueDisplayKey(run);
 							const issueTitle = runIssueTitle(run, derived);
 							const summary = activeRunSummary(run);
+							if (run.ownership_state && run.ownership_state !== "owned_active") {
+								statusBits.push(inlineStatusFact("Owner", displayToken(run.ownership_state)));
+							}
+							if (run.policy_state && !["allowed", "review_findings", "review_pending"].includes(run.policy_state)) {
+								statusBits.push(inlineStatusFact("Policy", displayToken(run.policy_state)));
+							}
 
 							if (run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) {
 								const waitReason = displayToken(run.wait_reason);
@@ -10671,6 +10698,12 @@
 										${field("Worktree", run.worktree_path || "none")}
 										${field("Queue lease", runQueueLeaseSummary(run))}
 										${field("Execution liveness", runExecutionLivenessSummary(run))}
+										${field("Ownership", runOwnershipSummary(run))}
+										${field("Liveness state", runLivenessStateSummary(run))}
+										${field("Policy state", runPolicyStateSummary(run))}
+										${field("Terminalization", runTerminalizationSummary(run))}
+										${field("Lane next action", capturedValue(run.lane_control_next_action))}
+										${field("Lane conditions", runLaneControlConditionsSummary(run))}
 										${field("Loop", run.loop_status?.summary || "none")}
 										${field("Review loop", loopStatusFacts(run.loop_status).map(([label, value]) => `${label}: ${value}`).join("; ") || "none")}
 										${field("Model", runModelSummary(run))}
