@@ -1502,6 +1502,10 @@ fn operator_status_snapshot_keeps_terminal_status_live_process_in_running_lanes(
 	assert_eq!(run.run_id, "run-1");
 	assert_eq!(run.status, "running");
 	assert_eq!(run.attempt_status, "failed");
+	assert_eq!(
+		run.status_projection_reason.as_deref(),
+		Some("terminal_attempt_promoted_by_process_alive")
+	);
 	assert_eq!(run.phase, "executing");
 	assert!(!run.active_lease);
 	assert_eq!(run.queue_lease_state, "not_held");
@@ -1543,6 +1547,60 @@ fn operator_status_snapshot_excludes_terminal_thread_archive_from_running_lanes(
 }
 
 #[test]
+fn operator_status_snapshot_explains_terminal_run_promoted_by_active_thread() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "stalled")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_thread_status_marker(
+		&worktree_path,
+		"run-1",
+		1,
+		Some("thread-1"),
+		Some("turn-1"),
+		"active",
+		&[],
+	)
+	.expect("thread status should write");
+
+	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let run = snapshot.active_runs.first().expect("active run should remain visible");
+	let rendered = orchestrator::render_operator_status(&snapshot);
+
+	assert_eq!(run.status, "running");
+	assert_eq!(run.attempt_status, "stalled");
+	assert_eq!(
+		run.status_projection_reason.as_deref(),
+		Some("terminal_attempt_promoted_by_thread_active")
+	);
+	assert!(!run.active_lease);
+	assert_eq!(run.queue_lease_state, "not_held");
+	assert_eq!(run.execution_liveness, "process_identity_mismatch");
+	assert_eq!(run.process_alive, Some(false));
+	assert_eq!(run.process_liveness_reason.as_deref(), Some("host_boot_id_mismatch"));
+	assert_eq!(run.thread_status.as_deref(), Some("active"));
+	assert!(rendered.contains(
+		"status_projection_reason: terminal_attempt_promoted_by_thread_active"
+	));
+}
+
+#[test]
 fn operator_status_snapshot_keeps_succeeded_status_live_process_in_running_lanes() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1574,6 +1632,10 @@ fn operator_status_snapshot_keeps_succeeded_status_live_process_in_running_lanes
 	assert_eq!(run.run_id, "run-1");
 	assert_eq!(run.status, "running");
 	assert_eq!(run.attempt_status, "succeeded");
+	assert_eq!(
+		run.status_projection_reason.as_deref(),
+		Some("terminal_attempt_promoted_by_process_alive")
+	);
 	assert_eq!(run.phase, "executing");
 	assert!(!run.active_lease);
 	assert_eq!(run.queue_lease_state, "not_held");

@@ -1067,6 +1067,9 @@ fn operator_status_text_explains_unleased_live_running_lane() {
 
 	active_run.active_lease = false;
 	active_run.queue_lease_state = String::from("not_held");
+	active_run.attempt_status = String::from("stalled");
+	active_run.status_projection_reason =
+		Some(String::from("terminal_attempt_promoted_by_process_alive"));
 
 	let snapshot = OperatorStatusSnapshot {
 		project_id: String::from("pubfi"),
@@ -1095,5 +1098,10 @@ fn operator_status_text_explains_unleased_live_running_lane() {
 	assert!(rendered.contains("active_lease: no"));
 	assert!(rendered.contains("queue_lease_state: not_held"));
 	assert!(rendered.contains("queue_lease: not_held (process_alive keeps lane visible)"));
+	assert!(
+		rendered.contains(
+			"status_projection_reason: terminal_attempt_promoted_by_process_alive"
+		)
+	);
 	assert!(rendered.contains("execution_liveness: process_alive"));
 }
