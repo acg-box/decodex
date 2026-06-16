@@ -866,6 +866,71 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertTrue(store.operatorSnapshot?.activeRuns(for: account).isEmpty ?? false)
 	}
 
+	@MainActor
+	func testCompleteEmptyRunActivityDoesNotKeepClearingNewSnapshots() throws {
+		let account = makeAccount(
+			status: "available",
+			email: "copy@example.com",
+			accountFingerprint: "...123456"
+		)
+		let store = AccountStore()
+
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "snapshot",
+			payload: """
+			{
+			  "snapshotPublishedAtUnixEpoch": 20,
+			  "snapshot": {
+			    "active_runs": [
+			      {
+			        "run_id": "run-live",
+			        "issue_identifier": "XY-672",
+			        "account": {
+			          "email": "copy@example.com",
+			          "account_fingerprint": "...123456"
+			        }
+			      }
+			    ]
+			  }
+			}
+			"""
+		))
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "runActivity",
+			payload: """
+			{
+			  "emittedAtUnixEpoch": 30,
+			  "activeRunsComplete": true,
+			  "activeRuns": []
+			}
+			"""
+		))
+		XCTAssertTrue(store.operatorSnapshot?.activeRuns(for: account).isEmpty ?? false)
+
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "snapshot",
+			payload: """
+			{
+			  "snapshotPublishedAtUnixEpoch": 40,
+			  "snapshot": {
+			    "active_runs": [
+			      {
+			        "run_id": "run-returned",
+			        "issue_identifier": "XY-934",
+			        "account": {
+			          "email": "copy@example.com",
+			          "account_fingerprint": "...123456"
+			        }
+			      }
+			    ]
+			  }
+			}
+			"""
+		))
+
+		XCTAssertEqual(store.operatorSnapshot?.activeRuns(for: account).map(\.runID), ["run-returned"])
+	}
+
 	func testOperatorSnapshotWarningSummaryUsesRawWarningToken() throws {
 		let payload = """
 		{

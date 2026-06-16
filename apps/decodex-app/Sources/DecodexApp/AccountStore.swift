@@ -231,12 +231,12 @@ final class AccountStore: ObservableObject {
 				activeRunsComplete: payload.activeRunsComplete ?? true,
 				emittedAt: payload.emittedAt ?? Date()
 			)
-			liveRunActivity = activity
 			if let operatorSnapshot {
 				self.operatorSnapshot = activity.merging(into: operatorSnapshot)
 			} else {
 				operatorSnapshot = OperatorSnapshotResponse.activeRunsOnly(activeRuns)
 			}
+			liveRunActivity = activity.shouldPersistAsSnapshotOverlay ? activity : nil
 			operatorSnapshotUpdatedAt = activity.emittedAt
 		default:
 			break
