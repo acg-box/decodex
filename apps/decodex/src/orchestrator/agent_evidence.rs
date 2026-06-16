@@ -150,6 +150,12 @@ struct AgentRunCapsule {
 	current_operation: String,
 	queue_lease_state: String,
 	execution_liveness: String,
+	ownership_state: String,
+	liveness_state: String,
+	policy_state: String,
+	terminalization_state: String,
+	lane_control_next_action: String,
+	lane_control_conditions: Vec<String>,
 	active_lease: bool,
 	continuation_pending: bool,
 	suspected_stall: bool,
@@ -1567,6 +1573,12 @@ fn agent_run_capsule(
 		current_operation: run.current_operation.clone(),
 		queue_lease_state: run.queue_lease_state.clone(),
 		execution_liveness: run.execution_liveness.clone(),
+		ownership_state: run.ownership_state.clone(),
+		liveness_state: run.liveness_state.clone(),
+		policy_state: run.policy_state.clone(),
+		terminalization_state: run.terminalization_state.clone(),
+		lane_control_next_action: run.lane_control_next_action.clone(),
+		lane_control_conditions: run.lane_control_conditions.clone(),
 		active_lease: run.active_lease,
 		continuation_pending: run.continuation_pending,
 		suspected_stall: run.suspected_stall,
@@ -1623,11 +1635,23 @@ fn agent_run_diagnosis(run: &OperatorRunStatus) -> AgentRunDiagnosis {
 	AgentRunDiagnosis {
 		attention_required: reason.is_some(),
 		reason_code: reason.map(str::to_owned),
-		next_action: agent_run_next_action(run).map(str::to_owned),
+		next_action: agent_run_next_action(run),
 	}
 }
 
 fn agent_run_blocker_reason(run: &OperatorRunStatus) -> Option<&'static str> {
+	if run.policy_state == "review_churn_exceeded" {
+		return Some("review_churn_exceeded");
+	}
+	if run.ownership_state == "retained_attention" {
+		return Some("retained_attention");
+	}
+	if run.ownership_state == "orphaned_live_thread" {
+		return Some("orphaned_live_thread");
+	}
+	if run.ownership_state == "terminalizing" {
+		return Some("terminalizing");
+	}
 	if run.suspected_stall {
 		return Some("suspected_stall");
 	}
@@ -1650,15 +1674,19 @@ fn agent_run_blocker_reason(run: &OperatorRunStatus) -> Option<&'static str> {
 	None
 }
 
-fn agent_run_next_action(run: &OperatorRunStatus) -> Option<&'static str> {
+fn agent_run_next_action(run: &OperatorRunStatus) -> Option<String> {
+	if !run.lane_control_next_action.trim().is_empty() {
+		return Some(run.lane_control_next_action.clone());
+	}
+
 	match agent_run_blocker_reason(run) {
 		Some("suspected_stall" | "run_stalled" | "stale_execution_without_known_process") =>
-			Some("Inspect the run capsule, retained worktree, protocol activity, and process state before retrying."),
+			Some(String::from("Inspect the run capsule, retained worktree, protocol activity, and process state before retrying.")),
 		Some("process_exited_without_terminal_status") =>
-			Some("Inspect the retained worktree and runtime markers; reconcile or retry only after preserving useful local changes."),
+			Some(String::from("Inspect the retained worktree and runtime markers; reconcile or retry only after preserving useful local changes.")),
 		Some("run_waiting") =>
-			Some("Inspect wait_reason, thread status, and protocol activity before deciding whether the agent can continue."),
-		Some("retry_backoff") => Some("Wait until next_retry_at or run an explicit operator retry after reviewing the retained state."),
+			Some(String::from("Inspect wait_reason, thread status, and protocol activity before deciding whether the agent can continue.")),
+		Some("retry_backoff") => Some(String::from("Wait until next_retry_at or run an explicit operator retry after reviewing the retained state.")),
 		_ => None,
 	}
 }
@@ -1705,7 +1733,8 @@ fn push_run_blockers(
 					.wait_reason
 					.clone()
 					.unwrap_or_else(|| reason_code.to_owned()),
-				next_action: agent_run_next_action(run).unwrap_or("Inspect the run capsule.").to_owned(),
+				next_action: agent_run_next_action(run)
+					.unwrap_or_else(|| String::from("Inspect the run capsule.")),
 				blocker_snapshot_path: blocker_snapshot_path(blockers_dir, &issue_key)
 					.display()
 					.to_string(),
