@@ -1870,16 +1870,6 @@ struct AccountRunChipView: View {
 				.lineLimit(1)
 				.truncationMode(.middle)
 				.fixedSize(horizontal: true, vertical: false)
-
-			if let modelProgress {
-				Text("\(modelProgress.percent)%")
-					.font(PanelFont.usageLabel)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.86))
-					.monospacedDigit()
-					.lineLimit(1)
-					.fixedSize(horizontal: true, vertical: false)
-					.help("\(modelProgress.title) \(modelProgress.percent)%")
-			}
 		}
 		.frame(height: AccountRunChipLayout.height)
 		.padding(.horizontal, AccountRunChipLayout.horizontalPadding)
@@ -1941,10 +1931,6 @@ struct AccountRunChipView: View {
 
 	private var chipTitle: String {
 		panelTrimmed(run.issueIdentifier) ?? "Run"
-	}
-
-	private var modelProgress: OperatorModelProgressReadout? {
-		operatorModelProgressReadout(for: run, currentTime: currentTime)
 	}
 
 	private var tint: Color {
