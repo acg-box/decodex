@@ -6481,10 +6481,7 @@
 					if (metrics.largest_tool_output_bytes != null) {
 						facts.push([
 							"max output",
-							formatLargestOutputValue(
-								metrics.largest_tool_output_bytes,
-								metrics.largest_tool_output_tool,
-							),
+							formatLargestOutputValue(metrics.largest_tool_output_bytes),
 						]);
 					}
 
@@ -8525,14 +8522,12 @@
 				}
 			}
 
-			function formatLargestOutputValue(bytes, tool = "") {
+			function formatLargestOutputValue(bytes) {
 				if (bytes == null) {
 					return "-";
 				}
 
-				const output = formatCompactBytes(bytes);
-				const source = tool ? String(tool).trim() : "";
-				return source ? `${output}(${source})` : output;
+				return formatCompactBytes(bytes);
 			}
 
 				function renderLifecycleMetricSegment(segment, slotIndex) {
@@ -8620,7 +8615,7 @@
 					if (largestOutput != null) {
 						appendLifecycleMetricSegment(
 							toolSegments,
-							formatLargestOutputValue(largestOutput, lifecycle?.largest_tool_output_tool),
+							formatLargestOutputValue(largestOutput),
 							"max output",
 						);
 					}
@@ -8671,10 +8666,7 @@
 							const outputTokens = lifecycleNumber(phase.output_tokens_cumulative);
 							const toolCalls = lifecycleNumber(phase.tool_call_count);
 							const largestOutput = phase?.largest_tool_output_bytes != null
-								? formatLargestOutputValue(
-										phase.largest_tool_output_bytes,
-										phase.largest_tool_output_tool,
-									)
+								? formatLargestOutputValue(phase.largest_tool_output_bytes)
 								: "-";
 
 							return [
@@ -8862,7 +8854,7 @@
 					? ""
 					: `, ${peakInput} peak window`;
 
-				return `input ${latestInput} current window${peakSummary}, cumulative input ${formatCompactCount(summary.input_tokens_cumulative)}, max output ${formatLargestOutputValue(summary.largest_tool_output_bytes, summary.largest_tool_output_tool)}`;
+				return `input ${latestInput} current window${peakSummary}, cumulative input ${formatCompactCount(summary.input_tokens_cumulative)}, max output ${formatLargestOutputValue(summary.largest_tool_output_bytes)}`;
 			}
 
 			function childAgentLargeOutputSummary(summary) {
@@ -8987,10 +8979,9 @@
 				];
 
 				if (metrics.largest_tool_output_bytes != null) {
-					const tool = metrics.largest_tool_output_tool || "tool";
 					facts.push([
 						"Largest output",
-						formatLargestOutputValue(metrics.largest_tool_output_bytes, displayToken(tool)),
+						formatLargestOutputValue(metrics.largest_tool_output_bytes),
 					]);
 				}
 
