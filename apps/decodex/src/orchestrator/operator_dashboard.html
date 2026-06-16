@@ -824,7 +824,7 @@
 					transform var(--medium) var(--ease);
 			}
 
-			#active-panel {
+			#current-lanes-panel {
 				background: transparent;
 			}
 
@@ -3733,15 +3733,15 @@
 					>
 						<span>Execution</span>
 					</div>
-					<section class="panel section-execution" id="active-panel">
+					<section class="panel section-execution" id="current-lanes-panel">
 						<div class="panel-head">
 							<div>
-								<h2 id="active-title">Running Lanes</h2>
+								<h2 id="current-lanes-title">Current Lanes</h2>
 							</div>
-							<p class="table-meta" id="active-runs-meta"></p>
+							<p class="table-meta" id="current-lanes-meta"></p>
 						</div>
 						<div class="panel-body">
-							<div class="card-list" id="active-runs"></div>
+							<div class="card-list" id="current-lanes"></div>
 						</div>
 					</section>
 
@@ -3939,7 +3939,7 @@
 				panels: {
 					projects: document.getElementById("projects-panel"),
 					accountPool: document.getElementById("account-pool-panel"),
-					active: document.getElementById("active-panel"),
+					currentLanes: document.getElementById("current-lanes-panel"),
 					programs: document.getElementById("programs-panel"),
 					queue: document.getElementById("queue-panel"),
 					recent: document.getElementById("recent-panel"),
@@ -3957,8 +3957,8 @@
 				accountPool: document.getElementById("account-pool"),
 				queuedCandidates: document.getElementById("queued-candidates"),
 				queuedMeta: document.getElementById("queued-meta"),
-				activeRuns: document.getElementById("active-runs"),
-				activeRunsMeta: document.getElementById("active-runs-meta"),
+				currentLanes: document.getElementById("current-lanes"),
+				currentLanesMeta: document.getElementById("current-lanes-meta"),
 				executionPrograms: document.getElementById("execution-programs"),
 				programsMeta: document.getElementById("programs-meta"),
 				recentRuns: document.getElementById("recent-runs"),
@@ -3973,9 +3973,9 @@
 			let dashboardSocket = null;
 			let dashboardSocketReconnectTimer = null;
 			let dashboardLocalClockTimer = null;
-			let dashboardLiveActiveRuns = [];
+			let dashboardLiveCurrentLanes = [];
 			let dashboardLiveRunActivitySeen = false;
-			let dashboardLiveActiveRunsComplete = true;
+			let dashboardLiveCurrentLanesComplete = true;
 			let dashboardLiveAccounts = null;
 			let dashboardLiveAccountControl = null;
 			let dashboardStreamState = {
@@ -4015,7 +4015,7 @@
 				{ marker: "aftercare", panels: ["review", "worktrees", "recent"] },
 			];
 			const COPY = {
-				runningLane: "Running Lanes",
+				currentLane: "Current Lanes",
 				runningInline: "Running here",
 				runningInlineMeta: "already running",
 				runningInlineMetaPlural: "already running",
@@ -4603,7 +4603,7 @@
 			}
 
 			function isPostReviewBlocker(lane) {
-				if (lane?.shadowed_by_active_run === true) {
+				if (lane?.shadowed_by_current_lane === true) {
 					return false;
 				}
 
@@ -4635,7 +4635,7 @@
 			}
 
 			function toneForQueuedCandidate(candidate) {
-				if (candidate.display_classification === "owned_active") {
+				if (candidate.display_classification === "leased_run") {
 					return "tone-run";
 				}
 				if (candidate.classification === "ready") {
@@ -4661,7 +4661,7 @@
 
 			function queuedCandidateRank(candidate) {
 				switch (candidate.display_classification || candidate.classification) {
-					case "owned_active":
+					case "leased_run":
 						return 0;
 					case "ready":
 						return 1;
@@ -4690,7 +4690,7 @@
 			}
 
 			function summarizeQueuedCandidate(candidate) {
-				if (candidate.display_classification === "owned_active") {
+				if (candidate.display_classification === "leased_run") {
 					return `Shown in ${COPY.runningLane}; excluded from queue.`;
 				}
 				if (
@@ -4718,7 +4718,7 @@
 			}
 
 			function queuedCandidateStatusText(candidate) {
-				if (candidate.display_classification === "owned_active") {
+				if (candidate.display_classification === "leased_run") {
 					return COPY.runningInline;
 				}
 				if (candidate.reason === "global_concurrency_exhausted") {
@@ -4729,7 +4729,7 @@
 			}
 
 			function queuedCandidateReasonText(candidate) {
-				if (candidate.display_classification === "owned_active") {
+				if (candidate.display_classification === "leased_run") {
 					return "running lane claim";
 				}
 				if (
@@ -5388,8 +5388,8 @@
 				return `run:${run.run_id}:more-fields`;
 			}
 
-			function activeRunRenderKey(run) {
-				return `active-run:${run.run_id || issueDisplayKey(run)}`;
+			function currentLaneRenderKey(run) {
+				return `current-lane:${run.run_id || issueDisplayKey(run)}`;
 			}
 
 			function detailsOpenAttribute(detailKey) {
@@ -5749,10 +5749,10 @@
 			}
 
 			function rawSessionHistoryRuns(snapshot) {
-				const activeRunIds = new Set((snapshot?.active_runs ?? []).map((run) => run.run_id));
-				const activeIssueKeys = new Set((snapshot?.active_runs ?? []).flatMap(issueIdentityKeys));
+				const currentLaneIds = new Set((snapshot?.current_lanes ?? []).map((run) => run.run_id));
+				const currentLaneIssueKeys = new Set((snapshot?.current_lanes ?? []).flatMap(issueIdentityKeys));
 				return (snapshot?.recent_runs ?? []).filter(
-					(run) => !activeRunIds.has(run.run_id) && !issueMatchesKeySet(run, activeIssueKeys),
+					(run) => !currentLaneIds.has(run.run_id) && !issueMatchesKeySet(run, currentLaneIssueKeys),
 				);
 			}
 
@@ -5988,7 +5988,7 @@
 			}
 
 			function runOwnershipSummary(run) {
-				return displayToken(run.ownership_state || (runCountsAsRunning(run) ? "owned_active" : "unknown"));
+				return displayToken(run.ownership_state || (runCountsAsRunning(run) ? "leased_run" : "unknown"));
 			}
 
 			function runLivenessStateSummary(run) {
@@ -6008,8 +6008,23 @@
 				return conditions.length ? conditions.map(displayToken).join(", ") : "none";
 			}
 
+			function runContinuationRecoverySummary(run) {
+				const recovery = run.continuation_recovery;
+				if (!recovery) {
+					return "none";
+				}
+
+				const count = `${recovery.recovery_count ?? 0}/${recovery.automatic_continuation_limit ?? 0}`;
+				const exceeded = recovery.budget_exceeded ? "budget exceeded" : "within budget";
+				const message = recovery.source_error_message
+					? `; ${recovery.source_error_message}`
+					: "";
+
+				return `${displayToken(recovery.state)} · ${displayToken(recovery.source_phase)} -> ${displayToken(recovery.next_phase)} · ${displayToken(recovery.source_error_class)} · ${count} · ${exceeded}${message}`;
+			}
+
 			function runQueueLeaseSummary(run) {
-				const leaseState = run.queue_lease_state || (run.active_lease ? "held" : "not_held");
+				const leaseState = run.queue_lease_state || (run.run_lease ? "held" : "not_held");
 
 				if (leaseState === "held") {
 					return "held";
@@ -6147,7 +6162,7 @@
 				return issueIdentityKeys(item).some((key) => keySet.has(key));
 			}
 
-			function activeRunFreshness(run) {
+			function currentLaneFreshness(run) {
 				if (run?.last_run_activity_at) {
 					return {
 						label: "Lane activity",
@@ -6180,8 +6195,8 @@
 				};
 			}
 
-			function activeRunFreshnessFact(run, formatter = formatTimestamp) {
-				const freshness = activeRunFreshness(run);
+			function currentLaneFreshnessFact(run, formatter = formatTimestamp) {
+				const freshness = currentLaneFreshness(run);
 				return [
 					freshness.label,
 					freshness.timestamp ? formatter(freshness.timestamp) : "not captured",
@@ -6344,9 +6359,9 @@
 				return missing > 0 ? `${captured}/${attempts} captured · ${missing} missing` : `${captured}/${attempts} captured`;
 			}
 
-			function activeRunTelemetryFacts(run) {
+			function currentLaneTelemetryFacts(run) {
 				const facts = [];
-				const freshness = activeRunFreshness(run);
+				const freshness = currentLaneFreshness(run);
 				const focus = protocolActivityFocus(run);
 
 				if (freshness.timestamp) {
@@ -6377,7 +6392,7 @@
 			}
 
 			function renderRunTelemetryMetaItems(run) {
-				const facts = activeRunTelemetryFacts(run);
+				const facts = currentLaneTelemetryFacts(run);
 
 				if (!facts.length) {
 					return "";
@@ -6386,7 +6401,7 @@
 				return facts.map(([label, value]) => renderRunMetaFact(label, value)).join("");
 			}
 
-				function activeRunLifecycleMetrics(run, summary = childAgentActivity(run)) {
+				function currentLaneLifecycleMetrics(run, summary = childAgentActivity(run)) {
 					const provided = run?.lifecycle_metrics || {};
 					const providedPhases = Array.isArray(provided.phases)
 						? provided.phases.map(normalizeLifecyclePhaseMetrics)
@@ -8082,7 +8097,7 @@
 					const accountsByIdentity = new Map();
 					const configuredAccounts = configuredDashboardAccounts(snapshot);
 					const runs = [
-						...(snapshot?.active_runs ?? []).map((run) => [run, true]),
+						...(snapshot?.current_lanes ?? []).map((run) => [run, true]),
 						...(snapshot?.recent_runs ?? []).map((run) => [run, false]),
 					];
 
@@ -8096,7 +8111,7 @@
 						accountsByIdentity.set(identity, existing ? { ...existing, ...account } : account);
 					}
 
-					for (const [run, isActiveRun] of runs) {
+					for (const [run, isCurrentLane] of runs) {
 						const selected = codexAccount(run);
 						for (const account of codexAccounts(run)) {
 							const identity = codexAccountIdentity(account);
@@ -8112,7 +8127,7 @@
 								...existing,
 								...account,
 								status:
-									isActiveRun && selectedForRun
+									isCurrentLane && selectedForRun
 										? "selected"
 										: accountStatus === "selected"
 											? "available"
@@ -8746,7 +8761,7 @@
 					return `<span class="child-phase-table-cell is-value" data-align="${align}">${escapeHtml(String(value))}</span>`;
 				}
 
-				function childAgentContextRows(run, summary, lifecycle = activeRunLifecycleMetrics(run, summary)) {
+				function childAgentContextRows(run, summary, lifecycle = currentLaneLifecycleMetrics(run, summary)) {
 					const rows = [];
 					const contextFacts = childAgentContextFacts(summary);
 					const overview = renderChildLifecycleOverview(lifecycle, contextFacts);
@@ -8769,7 +8784,7 @@
 					return "";
 				}
 
-				const lifecycle = activeRunLifecycleMetrics(run, summary);
+				const lifecycle = currentLaneLifecycleMetrics(run, summary);
 				const buckets = (lifecycle.buckets || []).length ? lifecycle.buckets : childAgentBuckets(summary);
 				const totalWall = Math.max(
 					1,
@@ -8912,7 +8927,7 @@
 			return `Latest run ${displayToken(run.status || run.phase)}; lifecycle cost is grouped by phase.`;
 		}
 				if (isSuccessfulTerminalRun(run)) {
-					return "Finished; no active lane.";
+					return "Finished; no current lane.";
 				}
 				if (run.status === "interrupted") {
 					return "Stopped before completion; replaced after a later success.";
@@ -9039,7 +9054,7 @@
 				`;
 			}
 
-			function activeRunSummary(run) {
+			function currentLaneSummary(run) {
 				if (runTelemetryMissingNeedsAttention(run)) {
 					if (runHasChildAgentActivity(run)) {
 						return `Metadata missing ${formatDuration(run.idle_for_seconds)}.`;
@@ -9073,7 +9088,7 @@
 				if (run.wait_reason) {
 					return `Waiting on ${displayToken(run.wait_reason)}.`;
 				}
-				if (!run.active_lease) {
+				if (!run.run_lease) {
 					return "No queue lease.";
 				}
 				const childCurrent = childAgentCurrentSummary(childAgentActivity(run));
@@ -9141,7 +9156,7 @@
 				if (run.wait_reason) {
 					return displayToken(run.wait_reason);
 				}
-				if (!run.active_lease && runCountsAsRunning(run)) {
+				if (!run.run_lease && runCountsAsRunning(run)) {
 					return "live_no_queue_lease";
 				}
 				if (run.thread_status) {
@@ -9156,7 +9171,7 @@
 				}
 
 				return (
-					(snapshot.active_runs?.length ?? 0) === 0 &&
+					(snapshot.current_lanes?.length ?? 0) === 0 &&
 					(snapshot.recent_runs?.length ?? 0) === 0 &&
 					(snapshot.worktrees?.length ?? 0) === 0 &&
 					(snapshot.post_review_lanes?.length ?? 0) === 0
@@ -9442,31 +9457,31 @@
 			}
 
 			function buildDerivedState(snapshot) {
-				const activeRuns = snapshot?.active_runs ?? [];
+				const currentLanes = snapshot?.current_lanes ?? [];
 				const recentRuns = snapshot?.recent_runs ?? [];
 				const historyRuns = sessionHistoryRuns(snapshot);
 				const executionPrograms = snapshot?.execution_programs ?? [];
 				const postReviewLanes = snapshot?.post_review_lanes ?? [];
 				const postReviewIssueKeys = new Set(postReviewLanes.flatMap(issueIdentityKeys));
-				const activeRunByIssue = new Map();
-				for (const run of activeRuns) {
+				const currentLaneByIssue = new Map();
+				for (const run of currentLanes) {
 					for (const key of issueIdentityKeys(run)) {
-						if (!activeRunByIssue.has(key)) {
-							activeRunByIssue.set(key, run);
+						if (!currentLaneByIssue.has(key)) {
+							currentLaneByIssue.set(key, run);
 						}
 					}
 				}
 				const queuedCandidates = [...(snapshot?.queued_candidates ?? [])]
 					.map((candidate) => {
-						const activeRun = issueIdentityKeys(candidate)
-							.map((key) => activeRunByIssue.get(key))
+						const currentLane = issueIdentityKeys(candidate)
+							.map((key) => currentLaneByIssue.get(key))
 							.find(Boolean);
 
-						if (activeRun) {
+						if (currentLane) {
 							return {
 								...candidate,
-								display_classification: "owned_active",
-								active_run_id: activeRun.run_id,
+								display_classification: "leased_run",
+								current_lane_run_id: currentLane.run_id,
 							};
 						}
 
@@ -9475,13 +9490,13 @@
 					.sort(compareQueuedCandidates);
 				const queueBacklogCandidates = queuedCandidates.filter(
 					(candidate) =>
-						candidate.display_classification !== "owned_active" &&
+						candidate.display_classification !== "leased_run" &&
 						candidate.classification !== "closed" &&
 						!issueMatchesKeySet(candidate, postReviewIssueKeys),
 				);
 				const reviewOwnedQueueCount = queuedCandidates.filter(
 					(candidate) =>
-						candidate.display_classification !== "owned_active" &&
+						candidate.display_classification !== "leased_run" &&
 						candidate.classification !== "closed" &&
 						issueMatchesKeySet(candidate, postReviewIssueKeys),
 				).length;
@@ -9499,7 +9514,7 @@
 				const readyItems = [];
 				const attentionItems = [];
 
-				for (const run of activeRuns) {
+				for (const run of currentLanes) {
 					const tone = toneForRun(run);
 					const issueKey = issueDisplayKey(run);
 
@@ -9523,7 +9538,7 @@
 								["Codex thread", runThreadSummary(run)],
 								["Thread flags", runThreadFlagSummary(run)],
 								["Process", runProcessSummary(run)],
-								activeRunFreshnessFact(run),
+								currentLaneFreshnessFact(run),
 								["Protocol idle", formatDuration(run.protocol_idle_for_seconds)],
 								["Last progress", formatTimestamp(run.last_progress_at)],
 								[COPY.protocolEvent, protocolEventSummary(run)],
@@ -9552,7 +9567,7 @@
 							facts: [
 								["Codex thread", runThreadSummary(run)],
 								["Thread flags", runThreadFlagSummary(run)],
-								activeRunFreshnessFact(run),
+								currentLaneFreshnessFact(run),
 								["Lane idle", formatDuration(run.idle_for_seconds)],
 								["Protocol idle", formatDuration(run.protocol_idle_for_seconds)],
 								[COPY.protocolEvent, protocolEventSummary(run)],
@@ -9565,23 +9580,19 @@
 
 				for (const lane of postReviewLanes) {
 					const tone = toneForLane(lane);
-					const activeRun = issueIdentityKeys(lane)
-						.map((key) => activeRunByIssue.get(key))
+					const currentLane = issueIdentityKeys(lane)
+						.map((key) => currentLaneByIssue.get(key))
 						.find(Boolean);
-					const shadowedByActiveRun =
-						lane.shadowed_by_active_run === true ||
-						(typeof lane.shadowed_by_active_run !== "boolean" &&
-							activeRun &&
-							lane.classification === "needs_review_repair");
+					const shadowedByCurrentLane = lane.shadowed_by_current_lane === true;
 					const issueKey = issueDisplayKey(lane);
 
-					if (shadowedByActiveRun) {
-						const activeRunFacts = activeRun
+					if (shadowedByCurrentLane) {
+						const currentLaneFacts = currentLane
 							? [
-								["Run", activeRun.run_id],
+								["Run", currentLane.run_id],
 								[
 									"Operation",
-									displayToken(activeRun.current_operation || activeRun.phase),
+									displayToken(currentLane.current_operation || currentLane.phase),
 								],
 							]
 							: [["Run", "active"]];
@@ -9592,9 +9603,9 @@
 							issue: issueKey,
 							title: "Repair running",
 							summary: "",
-							status: activeRun ? `run ${displayToken(activeRun.phase)}` : "active run",
+							status: currentLane ? `run ${displayToken(currentLane.phase)}` : "current lane",
 							facts: [
-								...activeRunFacts,
+								...currentLaneFacts,
 								["Checks", compactStateToken(lane.check_state)],
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
@@ -9682,7 +9693,7 @@
 				).length;
 				const cleanupCount = cleanupIssueKeys.size;
 				const runningAttentionCount = attentionItems.filter((item) => item.scope === "Running").length;
-				const liveRuns = activeRuns.filter(runCountsAsRunning).length;
+				const liveRuns = currentLanes.filter(runCountsAsRunning).length;
 				const intakeAttentionCount = queueBacklogCandidates.filter(queuedCandidateNeedsAttention).length;
 				const programAttentionCount = executionPrograms.filter((program) =>
 					["attention", "blocked", "stale"].includes(program.status),
@@ -9699,14 +9710,14 @@
 				return {
 					projects: snapshot?.projects ?? [],
 					liveRuns,
-					activeLaneCount: activeRuns.length,
-					liveLeases: activeRuns.filter((run) => run.active_lease).length,
+					currentLaneCount: currentLanes.length,
+					liveLeases: currentLanes.filter((run) => run.run_lease).length,
 					readyCount: readyItems.length,
 					queuedCandidates,
 					queueBacklogCandidates,
 					queuedReady: queueBacklogCandidates.filter((candidate) => candidate.classification === "ready").length,
 					queuedWaiting: queueBacklogCandidates.filter((candidate) => candidate.classification === "waiting").length,
-					queuedActiveOwned: queuedCandidates.filter((candidate) => candidate.display_classification === "owned_active").length,
+					queuedActiveOwned: queuedCandidates.filter((candidate) => candidate.display_classification === "leased_run").length,
 					queuedBlocked: queueBacklogCandidates.filter((candidate) => candidate.classification === "blocked").length,
 					queuedBlockedWithoutAttention: queueBacklogCandidates.filter(
 						(candidate) =>
@@ -9774,7 +9785,7 @@
 
 			function projectHasActiveWork(project) {
 				const workCount =
-					(project.active_run_count ?? 0) +
+					(project.current_lane_count ?? 0) +
 					(project.queued_candidate_count ?? 0) +
 					(project.waiting_lane_count ?? 0) +
 					(project.attention_count ?? 0) +
@@ -9786,7 +9797,7 @@
 			}
 
 			function projectRunningLaneCount(project) {
-				return project.running_lane_count ?? project.active_run_count ?? 0;
+				return project.running_lane_count ?? project.current_lane_count ?? 0;
 			}
 
 			function activeProjects(projects) {
@@ -10275,17 +10286,17 @@
 					return;
 				}
 
-				const activeLaneCount = (snapshot.active_runs ?? []).length;
+				const currentLaneCount = (snapshot.current_lanes ?? []).length;
 				const retainedCount = (snapshot.post_review_lanes ?? []).length;
 				setFlowCounts(
 					pluralize(derived.queueBacklogCandidates.length, "issue"),
-					pluralize(activeLaneCount, "lane"),
+					pluralize(currentLaneCount, "lane"),
 					pluralize(retainedCount, "PR"),
 					pluralize(derived.readyCount, "PR"),
 				);
 				setFlowActivity({
 					queue: derived.queueBacklogCandidates.length > 0,
-					run: activeLaneCount > 0,
+					run: currentLaneCount > 0,
 					review:
 						derived.reviewBlockerCount > 0 ||
 						derived.reviewWaitingCount > 0 ||
@@ -10599,31 +10610,31 @@
 				);
 			}
 
-			function renderActiveRuns(snapshot, derived) {
-				const runs = snapshot?.active_runs ?? [];
+			function renderCurrentLanes(snapshot, derived) {
+				const runs = snapshot?.current_lanes ?? [];
 				setPanelMeta(
-					nodes.activeRunsMeta,
+					nodes.currentLanesMeta,
 					runningLaneMetaText(derived),
 					derived.runningAttentionCount ? "attention" : "",
 				);
 
 				if (!runs.length) {
-					renderRoutineEmptyList(nodes.activeRuns);
+					renderRoutineEmptyList(nodes.currentLanes);
 					return;
 				}
 
 				renderStableList(
-					nodes.activeRuns,
+					nodes.currentLanes,
 					runs
 						.map((run) => {
 							const tone = toneForRun(run);
 							const statusBits = [statusLabel(runStageLabel(run), tone)];
 							const detailKey = runDetailKey(run);
-							const renderKey = activeRunRenderKey(run);
+							const renderKey = currentLaneRenderKey(run);
 							const issueKey = issueDisplayKey(run);
 							const issueTitle = runIssueTitle(run, derived);
-							const summary = activeRunSummary(run);
-							if (run.ownership_state && run.ownership_state !== "owned_active") {
+							const summary = currentLaneSummary(run);
+							if (run.ownership_state && run.ownership_state !== "leased_run") {
 								statusBits.push(inlineStatusFact("Owner", displayToken(run.ownership_state)));
 							}
 							if (run.policy_state && !["allowed", "review_findings", "review_pending"].includes(run.policy_state)) {
@@ -10704,6 +10715,7 @@
 										${field("Terminalization", runTerminalizationSummary(run))}
 										${field("Lane next action", capturedValue(run.lane_control_next_action))}
 										${field("Lane conditions", runLaneControlConditionsSummary(run))}
+										${field("Continuation recovery", runContinuationRecoverySummary(run))}
 										${field("Loop", run.loop_status?.summary || "none")}
 										${field("Review loop", loopStatusFacts(run.loop_status).map(([label, value]) => `${label}: ${value}`).join("; ") || "none")}
 										${field("Model", runModelSummary(run))}
@@ -10856,7 +10868,7 @@
 
 			function worktreeRoleMeta(worktree, snapshot) {
 				const hygiene = worktree.hygiene;
-				const activeMatch = (snapshot?.active_runs ?? []).find(
+				const currentLaneMatch = (snapshot?.current_lanes ?? []).find(
 					(run) =>
 						(run.worktree_path === worktree.worktree_path ||
 							run.branch_name === worktree.branch_name ||
@@ -10870,11 +10882,11 @@
 						lane.issue_identifier === worktree.issue_id,
 				);
 
-				if (activeMatch) {
+				if (currentLaneMatch) {
 					return {
 						sortRank: 0,
 						tone: "tone-run",
-						label: "active lane",
+						label: "current lane",
 						summary: worktree.ownership_reason || "Leased by a running lane.",
 					};
 				}
@@ -10924,11 +10936,11 @@
 							"Owned by Intake Queue attention; recover there before cleanup.",
 					};
 				}
-				if (worktree.ownership === "active_lane") {
+				if (worktree.ownership === "current_lane") {
 					return {
 						sortRank: 0,
 						tone: "tone-run",
-						label: "active lane",
+						label: "current lane",
 						summary: worktree.ownership_reason || "Leased by a running lane.",
 					};
 				}
@@ -11265,20 +11277,20 @@
 
 			function dashboardRunShouldRetainDuringPartialActivity(run) {
 				return (
-					run?.active_lease === true ||
+					run?.run_lease === true ||
 					run?.process_alive === true ||
 					runHasFreshExecution(run) ||
 					runCountsAsRunning(run)
 				);
 			}
 
-			function mergeDashboardActiveRuns(snapshot, activeRunRows, activeRunsComplete = true) {
-				const snapshotActiveRuns = snapshot.active_runs || [];
-				const snapshotRunLookup = dashboardRunLookup(snapshotActiveRuns);
+			function mergeDashboardCurrentLanes(snapshot, currentLaneRows, currentLanesComplete = true) {
+				const snapshotCurrentLanes = snapshot.current_lanes || [];
+				const snapshotRunLookup = dashboardRunLookup(snapshotCurrentLanes);
 				const seenSnapshotRuns = new Set();
 				const mergedRuns = [];
 
-				for (const activityRun of activeRunRows) {
+				for (const activityRun of currentLaneRows) {
 					const snapshotRun = dashboardRunIdentityKeys(activityRun)
 						.map((key) => snapshotRunLookup.get(key))
 						.find(Boolean);
@@ -11290,9 +11302,9 @@
 					mergedRuns.push(mergeDashboardRunRecord(snapshotRun, activityRun));
 				}
 
-				for (const snapshotRun of snapshotActiveRuns) {
+				for (const snapshotRun of snapshotCurrentLanes) {
 					if (
-						!activeRunsComplete &&
+						!currentLanesComplete &&
 						!seenSnapshotRuns.has(snapshotRun) &&
 						dashboardRunShouldRetainDuringPartialActivity(snapshotRun)
 					) {
@@ -11303,20 +11315,20 @@
 				return mergedRuns;
 			}
 
-			function mergeDashboardRunActivity(snapshot, activeRuns, activityPayload = {}) {
-				const activeRunRows = activeRuns
+			function mergeDashboardRunActivity(snapshot, currentLanes, activityPayload = {}) {
+				const currentLaneRows = currentLanes
 					.filter((run) => run && typeof run === "object")
 					.map((run) => ({ ...run }));
-				const activeRunsComplete =
-					activityPayload.activeRunsComplete !== false &&
-					activityPayload.activeRunScope !== "filtered";
-				const mergedActiveRuns = mergeDashboardActiveRuns(
+				const currentLanesComplete =
+					activityPayload.currentLanesComplete !== false &&
+					activityPayload.currentLaneScope !== "filtered";
+				const mergedCurrentLanes = mergeDashboardCurrentLanes(
 					snapshot,
-					activeRunRows,
-					activeRunsComplete,
+					currentLaneRows,
+					currentLanesComplete,
 				);
 				const activeById = new Map(
-					mergedActiveRuns
+					mergedCurrentLanes
 						.filter((run) => run.run_id)
 						.map((run) => [run.run_id, run]),
 				);
@@ -11327,19 +11339,19 @@
 					}
 
 					seenRecentIds.add(run.run_id);
-					const activeRun = activeById.get(run.run_id);
+					const currentLane = activeById.get(run.run_id);
 
-					return activeRun ? mergeDashboardRunRecord(run, activeRun) : run;
+					return currentLane ? mergeDashboardRunRecord(run, currentLane) : run;
 				});
 
-				for (const run of mergedActiveRuns) {
+				for (const run of mergedCurrentLanes) {
 					if (run.run_id && !seenRecentIds.has(run.run_id)) {
 						recentRuns.unshift(run);
 						seenRecentIds.add(run.run_id);
 					}
 				}
 
-				const activeCountsByProject = mergedActiveRuns.reduce((counts, run) => {
+				const currentLaneCountsByProject = mergedCurrentLanes.reduce((counts, run) => {
 					const projectId = run.project_id || snapshot.project_id;
 					if (!projectId) {
 						return counts;
@@ -11349,7 +11361,7 @@
 
 					return counts;
 				}, new Map());
-				const runningCountsByProject = mergedActiveRuns.reduce((counts, run) => {
+				const runningCountsByProject = mergedCurrentLanes.reduce((counts, run) => {
 					const projectId = run.project_id || snapshot.project_id;
 					if (!projectId || !runCountsAsRunning(run)) {
 						return counts;
@@ -11368,7 +11380,7 @@
 
 						return {
 							...project,
-							active_run_count: activeCountsByProject.get(project.project_id) || 0,
+							current_lane_count: currentLaneCountsByProject.get(project.project_id) || 0,
 							running_lane_count: runningCountsByProject.get(project.project_id) || 0,
 						};
 					})
@@ -11385,7 +11397,7 @@
 					...snapshot,
 					account_control: accountControl,
 					accounts,
-					active_runs: mergedActiveRuns,
+					current_lanes: mergedCurrentLanes,
 					recent_runs: recentRuns,
 					projects,
 				};
@@ -11395,7 +11407,7 @@
 				if (!dashboardLiveRunActivitySeen) {
 					return false;
 				}
-				if (dashboardLiveActiveRuns.length || !dashboardLiveActiveRunsComplete) {
+				if (dashboardLiveCurrentLanes.length || !dashboardLiveCurrentLanesComplete) {
 					return true;
 				}
 
@@ -11405,12 +11417,12 @@
 			function clearDashboardLiveRunActivityOverlayIfCompleteEmpty() {
 				if (
 					dashboardLiveRunActivitySeen &&
-					dashboardLiveActiveRunsComplete &&
-					!dashboardLiveActiveRuns.length
+					dashboardLiveCurrentLanesComplete &&
+					!dashboardLiveCurrentLanes.length
 				) {
 					dashboardLiveRunActivitySeen = false;
-					dashboardLiveActiveRuns = [];
-					dashboardLiveActiveRunsComplete = true;
+					dashboardLiveCurrentLanes = [];
+					dashboardLiveCurrentLanesComplete = true;
 					dashboardLiveAccounts = null;
 					dashboardLiveAccountControl = null;
 				}
@@ -11425,15 +11437,15 @@
 					return snapshot;
 				}
 
-				return mergeDashboardRunActivity(snapshot, dashboardLiveActiveRuns, {
+				return mergeDashboardRunActivity(snapshot, dashboardLiveCurrentLanes, {
 					accountControl: dashboardLiveAccountControl,
 					accounts: dashboardLiveAccounts,
-					activeRunsComplete: dashboardLiveActiveRunsComplete,
+					currentLanesComplete: dashboardLiveCurrentLanesComplete,
 				});
 			}
 
 			function applyDashboardRunActivity(payload) {
-				if (!Array.isArray(payload?.activeRuns)) {
+				if (!Array.isArray(payload?.currentLanes)) {
 					updateDashboardStreamState({
 						connected: true,
 						error: false,
@@ -11443,12 +11455,12 @@
 					return;
 				}
 
-				dashboardLiveActiveRuns = payload.activeRuns
+				dashboardLiveCurrentLanes = payload.currentLanes
 					.filter((run) => run && typeof run === "object")
 					.map((run) => ({ ...run }));
 				dashboardLiveRunActivitySeen = true;
-				dashboardLiveActiveRunsComplete =
-					payload.activeRunsComplete !== false && payload.activeRunScope !== "filtered";
+				dashboardLiveCurrentLanesComplete =
+					payload.currentLanesComplete !== false && payload.currentLaneScope !== "filtered";
 				dashboardLiveAccounts = Array.isArray(payload.accounts) && payload.accounts.length
 					? payload.accounts.filter(Boolean).map((account) => ({ ...account }))
 					: null;
@@ -11612,9 +11624,9 @@
 					syncDashboardSubscriptionToSocket();
 				};
 				dashboardSocket.onclose = () => {
-					dashboardLiveActiveRuns = [];
+					dashboardLiveCurrentLanes = [];
 					dashboardLiveRunActivitySeen = false;
-					dashboardLiveActiveRunsComplete = true;
+					dashboardLiveCurrentLanesComplete = true;
 					dashboardLiveAccounts = null;
 					dashboardLiveAccountControl = null;
 					updateDashboardStreamState({
@@ -11624,9 +11636,9 @@
 					scheduleDashboardSocketReconnect();
 				};
 				dashboardSocket.onerror = () => {
-					dashboardLiveActiveRuns = [];
+					dashboardLiveCurrentLanes = [];
 					dashboardLiveRunActivitySeen = false;
-					dashboardLiveActiveRunsComplete = true;
+					dashboardLiveCurrentLanesComplete = true;
 					dashboardLiveAccounts = null;
 					dashboardLiveAccountControl = null;
 					updateDashboardStreamState({
@@ -11666,7 +11678,7 @@
 				renderFlow(snapshot, derived);
 				renderProjects(snapshot, derived);
 				renderAccountPool(snapshot);
-				renderActiveRuns(snapshot, derived);
+				renderCurrentLanes(snapshot, derived);
 				renderExecutionPrograms(snapshot, derived);
 				renderQueuedCandidates(
 					nodes.queuedCandidates,

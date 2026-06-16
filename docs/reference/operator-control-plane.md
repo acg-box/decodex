@@ -121,7 +121,7 @@ curl -sS -X POST http://127.0.0.1:8192/api/lane/interrupt \
 app-server child to deliver with `turn/interrupt`. Add `"force": true` only when the
 operator explicitly wants hard process-kill fallback after soft interrupt is
 unavailable, does not return in the local wait window, or is rejected with
-`active_lease_missing` while the same lane still has recorded live process evidence.
+`run_lease_missing` while the same lane still has recorded live process evidence.
 Hard fallback is reported as `hard_interrupt_fallback`, not as a graceful stop. If no
 signalable child process is recorded, the force response remains a recovery/inspection
 result and must not be read as a successful soft interrupt.
@@ -207,7 +207,7 @@ pins all new runs to an exhausted fixed account.
 
 | Surface | Owns | Does Not Own |
 | --- | --- | --- |
-| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, Decision Contracts, Program Intake Plans, internal Execution Programs, dispatch readiness, worktree mappings, retry state, retained PR state, review-policy checkpoints with structured independent-review detail, loop-guardrail checkpoints, phase-goal signals, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
+| Runtime SQLite DB | run leases, attempts, run-control channels, protocol events, private execution events, Decision Contracts, Program Intake Plans, internal Execution Programs, dispatch readiness, worktree mappings, retry state, retained PR state, review-policy checkpoints with structured independent-review detail, loop-guardrail checkpoints, phase-goal signals, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
 | Central project config | `service_id`, repo root, worktree root, tracker/GitHub credential env-var names, enabled project registration | per-run state or issue ownership |
 | Project `WORKFLOW.md` | repo policy, validation gate, state names, retry/review policy | runtime ownership, queue labels, credentials, model overrides |
 | Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, private execution evidence, connector retry budgets |
@@ -228,7 +228,7 @@ snapshot so an operator can catch stale tabs or an old listener port quickly.
 Because the runtime SQLite DB is authoritative, dashboard sections describe current
 runtime ownership before local directory presence. An existing `.worktrees/XY-*`
 directory does not, by itself, mean an active lane is still running; the owning
-section says whether the path belongs to an active lease, retained review/landing
+section says whether the path belongs to a run lease, retained review/landing
 lane, queued attention state, or cleanup/recovery inbox.
 
 `Projects` is its own dashboard section. It renders a single fleet table for this local
@@ -250,7 +250,7 @@ service queue label before treating it as a connector problem.
 
 The browser dashboard and Decodex App read the complete published operator state from
 the local `GET /dashboard/control` WebSocket. That socket is the dashboard/App
-authority for published snapshots, active-lane activity updates, and local dashboard
+authority for published snapshots, current-lane activity updates, and local dashboard
 control acknowledgements. The App still uses the same base URL's `/api/accounts`
 HTTP surface for account-pool rows and actions. `GET /api/operator-snapshot` is a
 status/cache read path over the same runtime database, not a browser-dashboard or App
@@ -276,31 +276,31 @@ diagnostics use `dependency_not_terminal` with a next action to complete the
 dependency issue or refresh the Execution Program dependency plan when a stale
 dependency program is the real blocker.
 
-For the lane-control rollout, active-lane UI posture is observe-only. The dashboard
-renders active-lane state, protocol activity, liveness, private-evidence references,
+For the lane-control rollout, current-lane UI posture is observe-only. The dashboard
+renders current-lane state, protocol activity, liveness, private-evidence references,
 local run-control capability metadata, and local acknowledgement/account controls, but
 it is not the supported place to author
 steer, retry, task replacement, or lifecycle mutations. CLI/API is the first
 operator-control surface for lane control, governed by
 [`../spec/lane-control.md`](../spec/lane-control.md). The browser UI does not show or
-accept active-lane stop/interrupt controls, project pause/resume controls, manual retry
-controls, or active-lane steer controls; use `decodex lane inspect`, `decodex lane
+accept current-lane stop/interrupt controls, project pause/resume controls, manual retry
+controls, or current-lane steer controls; use `decodex lane inspect`, `decodex lane
 interrupt`, or the local `/api/lane/*` endpoints instead. Account-pool selection remains available
-because it changes the global Codex account selector, not an active lane.
+because it changes the global Codex account selector, not a current lane.
 Active-lane steer is available through `decodex lane steer <ISSUE> --run-id <RUN_ID>
 --expected-turn-id <TURN_ID> --message <TEXT>`, canonical `POST /api/lane/steer`,
 and legacy alias `POST /api/lane-steer`. These surfaces require the expected active
 turn id, audit accepted or rejected state locally, and keep raw steer text out of
 public tracker projections.
-`runActivity.activeRunsComplete`
-marks whether a payload is the complete active-run list; subscription-filtered
+`runActivity.currentLanesComplete`
+marks whether a payload is the complete current-lane list; subscription-filtered
 payloads set it to `false`, so consumers must not treat a missing run in that payload
 as ended.
-Active run rows may include `control_capability` with the active attempt's project,
+Current lane rows may include `control_capability` with the active attempt's project,
 issue, run id, attempt, current thread/turn ids, local transport, channel path, status,
 and timestamps. It is local routing metadata for CLI/API controls, not a dashboard
 command surface.
-After a steer request is handled, active run protocol activity may show a compact
+After a steer request is handled, current lane protocol activity may show a compact
 `turn/steer` entry with outcome, failure class, and response turn id. It does not
 include the operator message.
 Snapshot `warnings` remain stable machine-readable tokens. When a warning needs
@@ -387,7 +387,7 @@ runtime evidence unless explicitly read through the local evidence command.
 
 Worktree visibility follows the owning dashboard section:
 
-- `Running Lanes` means the runtime DB still has an active lease, active attempt, or
+- `Running Lanes` means the runtime DB still has a run lease, active attempt, or
   child process/thread/protocol relationship for the path. Process liveness requires
   an alive PID plus matching `.decodex-run-activity` `host_boot_id` and
   `process_start_identity`; a previous-boot marker, same-boot PID reuse, missing
@@ -396,15 +396,15 @@ Worktree visibility follows the owning dashboard section:
   process_identity_mismatch` is the stable summary for previous-boot or PID-reuse
   evidence, while `process_liveness_reason` explains the exact failed identity check
   when `process_alive` is false.
-  `active_lease` is queue lease ownership only; `execution_liveness` explains why
+  `run_lease` is queue lease ownership only; `execution_liveness` explains why
   the lane is still visible when the queue lease is not held.
-- Lane steer and interrupt rejections such as `active_lease_missing` are private
+- Lane steer and interrupt rejections such as `run_lease_missing` are private
   runtime evidence. They should preserve the queue lease state, branch, retained
   worktree path, current run id and attempt, active channel metadata, and observed
   process/protocol liveness so operators can decide between wait, force interrupt,
   retained resume, or manual attention without reconstructing state from local paths.
-- In the JSON snapshot, `active_run_count` follows the same visibility boundary as
-  the top-level `active_runs` list. The `Projects` table's `running` work number uses
+- In the JSON snapshot, `current_lane_count` follows the same visibility boundary as
+  the top-level `current_lanes` list. The `Projects` table's `running` work number uses
   `running_lane_count`, so stopped, stale, or attention lanes can stay visible as
   active work without being counted as currently running.
 - Running lanes derive CLI and dashboard text from the same `OperatorRunStatus`
@@ -491,7 +491,7 @@ Worktree visibility follows the owning dashboard section:
   not clear it as a transient queue delay.
 - `linear_active_label_present` in `Intake Queue` means the issue still carries
   service active ownership while it is also queued, but local status could not prove a
-  matching active lease. Treat it as a recovery/attention row, not ready work. If its
+  matching run lease. Treat it as a recovery/attention row, not ready work. If its
   attention cause is `evidence_missing`, use the retained marker, worktree, and public
   Linear state as the available recovery evidence before retrying or cleaning labels.
 - `Recovery Worktrees` means the path is retained local state after the authoritative
@@ -517,7 +517,7 @@ Worktree visibility follows the owning dashboard section:
   supersedes it.
 
 Every operator snapshot worktree row includes `ownership`, `ownership_reason`,
-`provenance`, and optional `recovery_next_action` fields that distinguish active-lane
+`provenance`, and optional `recovery_next_action` fields that distinguish current-lane
 ownership, post-review ownership, queued attention, retained attention, post-land
 cleanup, and cleanup-only local retention. Runtime-recorded mappings report
 `provenance.source =
@@ -531,12 +531,12 @@ report `provenance.source = "legacy_unknown"` and may set
 
 A `Recovery Worktrees` row tells the operator to inspect the local path and either
 clean it up or recover local-only changes; it is not, by itself, evidence that the
-SQLite runtime store lost an active lane. When the tracker issue is already `Done`,
+SQLite runtime store lost a current lane. When the tracker issue is already `Done`,
 the row has runtime provenance, and no retained lane owns the worktree, the row is
 neutral cleanup-only state, not a blocking recovery error.
 
 When a retained worktree reports `role: cleanup_only`, treat it as local cleanup
-hygiene rather than an active lane. It does not imply that an agent, child
+hygiene rather than a current lane. It does not imply that an agent, child
 process, post-review repair, closeout, or queued recovery run is still executing,
 and it is not queue pressure or a hidden capacity claim. The row only says local
 disk still has a retained checkout after the runtime owner is gone; once the

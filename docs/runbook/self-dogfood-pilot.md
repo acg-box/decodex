@@ -92,7 +92,7 @@ project directory:
 - `decodex status --json` or the operator UI should show no project backed by a flat `*.toml`
   config path inside a checkout or lane worktree.
 
-Runtime state now lives in the Decodex-owned SQLite database at `~/.codex/decodex/runtime.sqlite3`, and logs live under `~/.codex/decodex/logs/`. On restart, `decodex` reloads retained worktree knowledge and active-lane recovery intent from that database, then refreshes low-frequency Linear and GitHub state as connector budgets allow.
+Runtime state now lives in the Decodex-owned SQLite database at `~/.codex/decodex/runtime.sqlite3`, and logs live under `~/.codex/decodex/logs/`. On restart, `decodex` reloads retained worktree knowledge and current-lane recovery intent from that database, then refreshes low-frequency Linear and GitHub state as connector budgets allow.
 
 That recovery is still scoped by configured `service_id`, so reconciliation and cleanup stay within the single service instance represented by the registered project config.
 
@@ -579,7 +579,7 @@ Decodex stores private runtime evidence in one SQLite database owned by the loca
 Decodex installation:
 
 - registered projects and config fingerprints
-- active leases, dispatch slots, run attempts, retry schedules, protocol events, and
+- run leases, dispatch slots, run attempts, retry schedules, protocol events, and
   local `Run Ledger` attempt rows
 - private execution events for full checkpoint payloads, verification notes, local head
   evidence, and recovery details scoped by project, issue, run, and attempt
@@ -652,7 +652,7 @@ ordinary `decodex serve` and leaves scheduler cadence to CLI-owned defaults. Dev
 not a scheduler and must not be used for this runbook's automation, queue intake,
 project registration, or retained-lane recovery steps.
 
-The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `cargo run -p decodex --bin decodex -- status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as active queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
+The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `cargo run -p decodex --bin decodex -- status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as claimed queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
 
 - `GET /` or `GET /dashboard`: the same single-page operator console
 - `GET /dashboard/control`: WebSocket transport for snapshots, live run activity, and local dashboard control acknowledgements

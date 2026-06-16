@@ -576,14 +576,14 @@ fn state_name_is_terminal(state_name: &str, workflow: &WorkflowDocument) -> bool
 	workflow.frontmatter().tracker().terminal_states().iter().any(|state| state == state_name)
 }
 
-fn is_issue_active_for_run(issue: &TrackerIssue, workflow: &WorkflowDocument) -> bool {
+fn is_issue_in_progress_for_run(issue: &TrackerIssue, workflow: &WorkflowDocument) -> bool {
 	let tracker_policy = workflow.frontmatter().tracker();
 
 	issue.state.name == tracker_policy.in_progress_state()
 		&& !issue.has_label(tracker_policy.needs_attention_label())
 }
 
-fn is_issue_nonactive_for_run(issue: &TrackerIssue, workflow: &WorkflowDocument) -> bool {
+fn is_issue_not_dispatchable_for_run(issue: &TrackerIssue, workflow: &WorkflowDocument) -> bool {
 	let tracker_policy = workflow.frontmatter().tracker();
 
 	issue.has_label(tracker_policy.opt_out_label())
@@ -592,7 +592,7 @@ fn is_issue_nonactive_for_run(issue: &TrackerIssue, workflow: &WorkflowDocument)
 			&& !tracker_policy.startable_states().iter().any(|state| state == &issue.state.name))
 }
 
-fn is_issue_nonactive_for_active_dispatch<T>(
+fn is_issue_not_dispatchable_for_current_dispatch<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
@@ -609,7 +609,7 @@ where
 		IssueDispatchMode::Normal
 		| IssueDispatchMode::Program
 		| IssueDispatchMode::Retry
-		| IssueDispatchMode::Closeout => Ok(is_issue_nonactive_for_run(issue, workflow)),
+		| IssueDispatchMode::Closeout => Ok(is_issue_not_dispatchable_for_run(issue, workflow)),
 	}
 }
 

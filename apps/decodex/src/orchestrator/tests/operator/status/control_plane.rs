@@ -29,14 +29,14 @@ fn control_plane_snapshot_lists_disabled_registered_projects() {
 	assert_eq!(snapshot.account_control.mode, "balanced");
 	assert_eq!(snapshot.account_control.account_selector, None);
 	assert_eq!(project.connector_state, "disabled");
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.current_lane_count, 0);
 	assert_eq!(project.retained_worktree_count, 0);
 	assert!(snapshot.warnings.contains(&String::from("no_enabled_projects")));
 	assert!(project_runtimes.is_empty(), "disabled projects should not be ticked");
 }
 
 #[test]
-fn control_plane_snapshot_includes_disabled_project_active_runs_without_ticking() {
+fn control_plane_snapshot_includes_disabled_project_current_lanes_without_ticking() {
 	let (temp_dir, config, _workflow) = temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
@@ -55,10 +55,10 @@ fn control_plane_snapshot_includes_disabled_project_active_runs_without_ticking(
 	observer_store.upsert_project(&registration).expect("project should register");
 	writer_store
 		.record_run_attempt("run-disabled-active", &issue.id, 1, "running")
-		.expect("active run should record");
+		.expect("current lane should record");
 	writer_store
 		.upsert_lease(config.service_id(), &issue.id, "run-disabled-active", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 
 	let mut project_runtimes = HashMap::new();
 	let snapshot =
@@ -71,11 +71,11 @@ fn control_plane_snapshot_includes_disabled_project_active_runs_without_ticking(
 	assert_eq!(project.project_id, "pubfi");
 	assert!(!project.enabled);
 	assert_eq!(project.connector_state, "disabled");
-	assert_eq!(project.active_run_count, 1);
-	assert_eq!(snapshot.active_runs.len(), 1);
-	assert_eq!(snapshot.active_runs[0].run_id, "run-disabled-active");
-	assert_eq!(snapshot.active_runs[0].project_id, "pubfi");
-	assert_eq!(snapshot.active_runs[0].phase, "executing");
+	assert_eq!(project.current_lane_count, 1);
+	assert_eq!(snapshot.current_lanes.len(), 1);
+	assert_eq!(snapshot.current_lanes[0].run_id, "run-disabled-active");
+	assert_eq!(snapshot.current_lanes[0].project_id, "pubfi");
+	assert_eq!(snapshot.current_lanes[0].phase, "executing");
 	assert!(snapshot.warnings.contains(&String::from("no_enabled_projects")));
 	assert!(project_runtimes.is_empty(), "disabled projects should not be ticked");
 }
@@ -202,10 +202,10 @@ fn control_plane_dev_snapshot_does_not_tick_enabled_projects() {
 	assert_eq!(project.project_id, "pubfi");
 	assert!(project.enabled);
 	assert_eq!(project.connector_state, "dev");
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.current_lane_count, 0);
 	assert_eq!(project.queued_candidate_count, 0);
 	assert_eq!(project.warning_count, 1);
-	assert!(snapshot.active_runs.is_empty());
+	assert!(snapshot.current_lanes.is_empty());
 	assert!(snapshot.queued_candidates.is_empty());
 	assert!(snapshot.warnings.contains(&String::from("automation_disabled")));
 	assert!(!snapshot.warnings.contains(&String::from("no_enabled_projects")));
@@ -237,13 +237,13 @@ fn control_plane_dev_snapshot_marks_unloadable_project_config() {
 	assert!(project.enabled);
 	assert_eq!(project.connector_state, "config_error");
 	assert_eq!(project.warning_count, 2);
-	assert!(snapshot.active_runs.is_empty());
+	assert!(snapshot.current_lanes.is_empty());
 	assert!(snapshot.warnings.contains(&String::from("automation_disabled")));
 	assert!(snapshot.warnings.contains(&String::from("operator_snapshot_build_failed")));
 }
 
 #[test]
-fn control_plane_dev_snapshot_includes_local_active_runs() {
+fn control_plane_dev_snapshot_includes_local_current_lanes() {
 	let (temp_dir, config, _workflow) = temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
@@ -260,10 +260,10 @@ fn control_plane_dev_snapshot_includes_local_active_runs() {
 	state_store.upsert_project(&registration).expect("project should register");
 	state_store
 		.record_run_attempt("run-active", &issue.id, 1, "running")
-		.expect("active run should record");
+		.expect("current lane should record");
 	state_store
 		.upsert_lease(config.service_id(), &issue.id, "run-active", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 
 	let snapshot =
 		orchestrator::run_control_plane_dev_tick(&state_store).expect("dev snapshot should build");
@@ -272,18 +272,18 @@ fn control_plane_dev_snapshot_includes_local_active_runs() {
 	assert_eq!(snapshot.projects.len(), 1);
 	assert_eq!(project.project_id, "pubfi");
 	assert_eq!(project.connector_state, "dev");
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(project.running_lane_count, 1);
-	assert_eq!(snapshot.active_runs.len(), 1);
-	assert_eq!(snapshot.active_runs[0].run_id, "run-active");
-	assert_eq!(snapshot.active_runs[0].project_id, "pubfi");
-	assert_eq!(snapshot.active_runs[0].phase, "executing");
+	assert_eq!(snapshot.current_lanes.len(), 1);
+	assert_eq!(snapshot.current_lanes[0].run_id, "run-active");
+	assert_eq!(snapshot.current_lanes[0].project_id, "pubfi");
+	assert_eq!(snapshot.current_lanes[0].phase, "executing");
 	assert!(snapshot.queued_candidates.is_empty());
 	assert!(snapshot.warnings.contains(&String::from("automation_disabled")));
 }
 
 #[test]
-fn control_plane_dev_snapshot_separates_visible_active_runs_from_running_lanes() {
+fn control_plane_dev_snapshot_separates_visible_current_lanes_from_running_lanes() {
 	let (temp_dir, config, _workflow) = temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
@@ -301,10 +301,10 @@ fn control_plane_dev_snapshot_separates_visible_active_runs_from_running_lanes()
 	state_store.upsert_project(&registration).expect("project should register");
 	state_store
 		.record_run_attempt("run-active", &issue.id, 1, "running")
-		.expect("active run should record");
+		.expect("current lane should record");
 	state_store
 		.upsert_lease(config.service_id(), &issue.id, "run-active", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 	state_store
 		.upsert_worktree(
 			config.service_id(),
@@ -321,10 +321,10 @@ fn control_plane_dev_snapshot_separates_visible_active_runs_from_running_lanes()
 	let snapshot =
 		orchestrator::run_control_plane_dev_tick(&state_store).expect("dev snapshot should build");
 	let project = snapshot.projects.first().expect("enabled project should be listed");
-	let run = snapshot.active_runs.first().expect("stopped active run should stay visible");
+	let run = snapshot.current_lanes.first().expect("stopped current lane should stay visible");
 
-	assert_eq!(project.active_run_count, snapshot.active_runs.len());
-	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.current_lane_count, snapshot.current_lanes.len());
+	assert_eq!(project.current_lane_count, 1);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 	assert_eq!(run.run_id, "run-active");
@@ -374,10 +374,10 @@ fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects
 
 	state_store
 		.record_run_attempt("run-active", &issue.id, 1, "running")
-		.expect("active run should record");
+		.expect("current lane should record");
 	state_store
 		.upsert_lease(active_config.service_id(), &issue.id, "run-active", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 
 	let active_snapshot =
 		orchestrator::build_operator_status_snapshot(&active_config, &state_store, 10)
@@ -416,18 +416,18 @@ fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects
 	assert_eq!(snapshot.project_id, "all");
 	assert_eq!(snapshot.projects.len(), 2);
 	assert_eq!(
-		project_by_id.get("pubfi").expect("active project summary should exist").active_run_count,
+		project_by_id.get("pubfi").expect("active project summary should exist").current_lane_count,
 		1,
 	);
 	assert_eq!(
-		project_by_id.get("rsnap").expect("idle project summary should exist").active_run_count,
+		project_by_id.get("rsnap").expect("idle project summary should exist").current_lane_count,
 		0,
 	);
 	assert_eq!(snapshot.account_control.mode, "balanced");
-	assert_eq!(snapshot.active_runs.len(), 1);
-	assert_eq!(snapshot.active_runs[0].run_id, "run-active");
-	assert_eq!(snapshot.active_runs[0].project_id, "pubfi");
-	assert_eq!(snapshot.active_runs[0].phase, "executing");
+	assert_eq!(snapshot.current_lanes.len(), 1);
+	assert_eq!(snapshot.current_lanes[0].run_id, "run-active");
+	assert_eq!(snapshot.current_lanes[0].project_id, "pubfi");
+	assert_eq!(snapshot.current_lanes[0].phase, "executing");
 }
 
 #[test]
@@ -472,10 +472,10 @@ fn status_cache_projects_aggregate_snapshot_to_requested_project() {
 
 	state_store
 		.record_run_attempt("run-active", &issue.id, 1, "running")
-		.expect("active run should record");
+		.expect("current lane should record");
 	state_store
 		.upsert_lease(active_config.service_id(), &issue.id, "run-active", "In Progress")
-		.expect("active lease should record");
+		.expect("run lease should record");
 	state_store
 		.upsert_worktree(
 			active_config.service_id(),
@@ -530,8 +530,8 @@ fn status_cache_projects_aggregate_snapshot_to_requested_project() {
 	assert_eq!(cached.snapshot_age_seconds, Some(5));
 	assert_eq!(cached.projects.len(), 1);
 	assert_eq!(cached.projects[0].project_id, "pubfi");
-	assert_eq!(cached.active_runs.len(), 1);
-	assert_eq!(cached.active_runs[0].project_id, "pubfi");
+	assert_eq!(cached.current_lanes.len(), 1);
+	assert_eq!(cached.current_lanes[0].project_id, "pubfi");
 	assert!(cached.worktrees.iter().all(|worktree| worktree.project_id == "pubfi"));
 	assert!(cached.recent_runs.iter().all(|run| run.project_id == "pubfi"));
 }

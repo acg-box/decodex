@@ -3,7 +3,7 @@
 Purpose: Define the authoritative Decodex lane-control state model used by
 scheduler decisions, policy guards, terminal cleanup, and operator projections.
 Status: normative
-Read this when: You are implementing or validating lane scheduling, active-run
+Read this when: You are implementing or validating lane scheduling, current-lane
 projection, review-policy stops, retained recovery, closeout, or dashboard status.
 Not this document: The operator command sequence for steering or interrupting a lane.
 Use [`lane-control.md`](./lane-control.md) for CLI/API controls and
@@ -31,7 +31,7 @@ from protocol activity.
 `ownership_state` values:
 
 - `pending`: eligible or waiting before an owned attempt starts.
-- `owned_active`: Decodex owns the active lease and the active attempt may mutate the
+- `leased_run`: Decodex owns the run lease and the active attempt may mutate the
   lane.
 - `terminalizing`: Decodex is retiring run control, finishing writeback, archiving the
   app-server thread, or cleaning up an owned attempt.
@@ -74,10 +74,10 @@ from protocol activity.
 
 ## Invariants
 
-- A lane counts as a running lane only when `ownership_state` is `owned_active`.
+- A lane counts as a running lane only when `ownership_state` is `leased_run`.
 - Liveness evidence may update `liveness_state`, but it must not create or restore
-  `owned_active` ownership.
-- `active_lease=false` is incompatible with `ownership_state=owned_active`.
+  `leased_run` ownership.
+- `run_lease=false` is incompatible with `ownership_state=leased_run`.
 - Terminal attempt statuses such as `failed`, `interrupted`, `stalled`, or `succeeded`
   must not be promoted to `running` by live process, thread, or protocol evidence.
 - `policy_state=review_churn_exceeded` blocks further review-repair mutation for the
@@ -119,8 +119,8 @@ projection renders it.
 ## Projection Rules
 
 Operator status and dashboard views must show the four state axes and `next_action`.
-Legacy fields such as `status`, `phase`, and `execution_liveness` may remain for
-compatibility, but they must not be used to infer ownership in new scheduler code.
+Raw observation fields such as `status`, `phase`, and `execution_liveness` are
+diagnostics; scheduler code must not infer ownership from them.
 
 Examples:
 
@@ -141,7 +141,7 @@ next_action: inspect_recovery_evidence
 ```
 
 ```text
-ownership_state: owned_active
+ownership_state: leased_run
 liveness_state: process_alive
 policy_state: review_findings
 terminalization_state: none

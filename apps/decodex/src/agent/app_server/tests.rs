@@ -1027,7 +1027,7 @@ fn phase_goal_complete_runs_validation_transition_before_handoff_goal() {
 }
 
 #[test]
-fn still_active_phase_goal_stops_at_max_turns_without_terminal_signal() {
+fn open_phase_goal_stops_at_max_turns_without_terminal_signal() {
 	let handler = ContinueTokenCompletionHandler;
 	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
 	let script = phase_goal_fake_codex_script(&["CONTINUE", "DONE"], &["active", "active"], &[]);
@@ -1036,7 +1036,7 @@ fn still_active_phase_goal_stops_at_max_turns_without_terminal_signal() {
 		request.dynamic_tool_handler = Some(&handler);
 		request.phase_goal_controller = Some(&controller);
 	});
-	let result = result.expect("active goal should allow another bounded turn");
+	let result = result.expect("open phase goal should allow another bounded turn");
 
 	assert_eq!(result.turn_count, 2);
 	assert_eq!(result.turn_id, "turn-2");
@@ -1052,7 +1052,7 @@ fn still_active_phase_goal_stops_at_max_turns_without_terminal_signal() {
 }
 
 #[test]
-fn still_active_phase_goal_stops_at_max_turns_with_continuation_pending() {
+fn open_phase_goal_stops_at_max_turns_with_continuation_pending() {
 	let handler = ContinueTokenCompletionHandler;
 	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
 	let script = phase_goal_fake_codex_script(&["CONTINUE"], &["active"], &[]);
@@ -1061,7 +1061,7 @@ fn still_active_phase_goal_stops_at_max_turns_with_continuation_pending() {
 		request.dynamic_tool_handler = Some(&handler);
 		request.phase_goal_controller = Some(&controller);
 	});
-	let result = result.expect("active goal should exit cleanly at max_turns");
+	let result = result.expect("open phase goal should exit cleanly at max_turns");
 
 	assert_eq!(result.turn_count, 1);
 	assert!(result.continuation_pending);
@@ -1613,7 +1613,7 @@ fn protocol_activity_idle_timeout_extends_running_model_execution() {
 	assert_eq!(
 		super::protocol_activity_idle_timeout(
 			Some(&protocol_activity),
-			super::ACTIVE_RUN_IDLE_TIMEOUT
+			super::RUN_LEASE_IDLE_TIMEOUT
 		),
 		super::MODEL_EXECUTION_IDLE_TIMEOUT
 	);
@@ -1630,9 +1630,9 @@ fn protocol_activity_idle_timeout_keeps_base_timeout_for_other_waits() {
 	assert_eq!(
 		super::protocol_activity_idle_timeout(
 			Some(&protocol_activity),
-			super::ACTIVE_RUN_IDLE_TIMEOUT
+			super::RUN_LEASE_IDLE_TIMEOUT
 		),
-		super::ACTIVE_RUN_IDLE_TIMEOUT
+		super::RUN_LEASE_IDLE_TIMEOUT
 	);
 }
 

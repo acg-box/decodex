@@ -222,19 +222,19 @@ final class AccountStore: ObservableObject {
 			operatorSnapshot = liveRunActivity?.merging(into: snapshot) ?? snapshot
 			operatorSnapshotUpdatedAt = payload.snapshotPublishedAt ?? Date()
 		case "runActivity":
-			guard let activeRuns = payload.activeRuns else {
+			guard let currentLanes = payload.currentLanes else {
 				return
 			}
 
 			let activity = OperatorRunActivitySnapshot(
-				activeRuns: activeRuns,
-				activeRunsComplete: payload.activeRunsComplete ?? true,
+				currentLanes: currentLanes,
+				currentLanesComplete: payload.currentLanesComplete ?? true,
 				emittedAt: payload.emittedAt ?? Date()
 			)
 			if let operatorSnapshot {
 				self.operatorSnapshot = activity.merging(into: operatorSnapshot)
 			} else {
-				operatorSnapshot = OperatorSnapshotResponse.activeRunsOnly(activeRuns)
+				operatorSnapshot = OperatorSnapshotResponse.currentLanesOnly(currentLanes)
 			}
 			liveRunActivity = activity.shouldPersistAsSnapshotOverlay ? activity : nil
 			operatorSnapshotUpdatedAt = activity.emittedAt
