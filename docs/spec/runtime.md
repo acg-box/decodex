@@ -448,6 +448,17 @@ effective worktree status and tracked diff against `HEAD`, so retained partial p
 remains inspectable instead of being deleted, hidden, or mislabeled as an empty-diff
 retry.
 
+Review handoff is a lifecycle boundary for loop guardrails. If a retryable failure
+occurs after Decodex has a retained review handoff marker for the current issue,
+branch, and local HEAD lineage, failure handling must recover the post-review
+orchestration marker and return the lane to the review lifecycle before recording a
+new `no_effective_diff` checkpoint or terminalizing the run. If the worktree has a
+clean handoff checkpoint for the current head but the retained handoff marker is
+missing or has unverified/diverged lineage, Decodex must classify the failure as
+`review_handoff_state_drift` and require explicit handoff recovery evidence. It must
+not send this condition through implementation architecture recovery and must not
+mislabel it as ordinary no-effective-diff repair churn.
+
 When `[codex].review` is `"standard"` or `"strict"`, handoff and retained
 review-repair runs also consume the latest structured `issue_review_checkpoint`
 state for the current phase and current lane head from the owned lane:
