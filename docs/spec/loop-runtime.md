@@ -59,16 +59,19 @@ natural-language intent such as `research X` plus bounded research/design eviden
 when available, then stores a local Decision Contract candidate. It supersedes the
 external research skill for Decodex runtime authority: Decodex plugin `research*`
 skills are the current agent-facing method, and the old external `docs/research/`
-artifact lane remains legacy or supporting evidence that can be imported into a
-Decision Contract. It is not the authority surface for Decodex loop state.
+`research-run/2` event-log shape is no longer the current research format. New
+Decodex research must not use an old `research-run/2` event tail as the authority
+surface for loop state. Supporting JSON research reports may live under
+`docs/research/` when they are explicit reports, but runtime authority still comes
+from the runtime-local Decision Contract until accepted and promoted.
 
 The native research method has these ordered gates:
 
 1. Probe frames the decision question, scope, success criteria, constraints, stop rule,
    primary hypothesis, rival hypotheses, and falsifiers before broad evidence
    collection.
-2. Evidence records an auditable ledger of observations, source references,
-   contradictions, inferences, and missing evidence. No evidence, no claim.
+2. Evidence records an auditable ledger of external sources, repository sources, live
+   readbacks, contradictions, inferences, and gaps. No evidence, no claim.
 3. Options compare realistic choices, including status quo or explicit no-go when
    relevant, with evidence-grounded tradeoffs.
 4. Judgment creates a challenge-ready recommendation or explicitly states that the run
@@ -81,7 +84,7 @@ The native research method has these ordered gates:
 A Research/Decision stage may produce a latent Loop/Decision Contract with:
 
 - objective and objective lineage
-- evidence, constraints, assumptions, and rejected alternatives
+- evidence ledger, constraints, assumptions, and rejected alternatives
 - proposed decisions and open direction questions
 - non-goals and scope boundaries
 - acceptance criteria and validation expectations
@@ -90,6 +93,9 @@ A Research/Decision stage may produce a latent Loop/Decision Contract with:
   repository-owned domain
 - proposed issue split and dispatch intent
 - risk notes that decide whether independent review is required
+- promotion target, such as `docs/spec`, `docs/runbook`, `docs/reference`,
+  `docs/decisions`, `plugins/decodex/skills`, runtime code, tests, or explicit
+  `no_promotion`
 
 The latent contract is a candidate decision package. It becomes authoritative only
 after the user or an accepted runtime policy promotes it.
@@ -120,10 +126,10 @@ The payload carries these top-level fields:
 | `status` | One of `draft_latent`, `accepted_promoted`, `rejected_superseded`, or `needs_human_decision`. |
 | `source_intent` | Natural-language source intent, including the original utterance or issue reference when known. |
 | `research_provenance` | Research/design sources used to produce the candidate package. |
-| `research_evidence` | Non-authoritative evidence claims retained for later review and issue shaping. |
+| `research_evidence` | Non-authoritative evidence claims retained for later review and issue shaping. Each item carries `kind`, `claim`, `support`, and optional `source_ref`; `kind` identifies whether the support is an external source, repository source, live readback, inference, or unresolved gap. |
 | `research_options` | Non-authoritative option comparisons retained with tradeoffs, selected decision notes, or rejected-option reasons. |
 | `accepted_authority` | Objectives, non-goals, constraints, assumptions, objections, and stop conditions that become authority only when status is `accepted_promoted`. |
-| `execution_readiness` | Natural-language readiness summary, missing decisions, validation expectations, risk notes, proposed issue summaries, conflict domains, and dispatch intent. It must not expose graph ids or require the user to operate a DAG. Accepted contracts must be ready for issue shaping and must not carry unresolved missing decisions. |
+| `execution_readiness` | Natural-language readiness summary, missing decisions, validation expectations, risk notes, proposed issue summaries, promotion targets, conflict domains, and dispatch intent. It must not expose graph ids or require the user to operate a DAG. Accepted contracts must be ready for issue shaping and must not carry unresolved missing decisions. |
 | `promotion` | Metadata recording who or what accepted the decision, the acceptance source, and the acceptance time. Required only for `accepted_promoted`. |
 | `links` | Generated Linear issue ids/identifiers or internal Execution Program node ids when those exist. |
 | `evidence_boundary` | Local private evidence references and sparse public projection references. |
@@ -146,6 +152,12 @@ The status is the authority boundary:
 Research provenance and research evidence are not execution authority. They explain
 why the candidate package exists and give future agents enough context to avoid asking
 the user to restate all details after promotion.
+
+Decision Contracts are top-level snapshots. Terminal status, selected option, material
+evidence, unresolved gaps, validation expectations, and promotion target must be
+readable from the payload without replaying chat or scanning a chronological event
+log. Event trails and legacy research provenance from Git history may support audit,
+but they must not be the primary research output.
 
 The runtime stores Decision Contracts in local SQLite first. Linear issue descriptions,
 Linear execution-ledger comments, generated issue text, and operator summaries may link

@@ -50,6 +50,8 @@ The split below is by question type, not by human-versus-agent audience.
 - Need rationale for keeping execution-graph semantics internal behind a
   natural-language user surface ->
   `docs/decisions/natural-language-loop-runtime.md`
+- Need rationale for Decodex MCP integration, MCP/skills/docs/runtime boundaries, or
+  skill slimming -> `docs/decisions/mcp-capability-gateway-and-skill-slimming.md`
 - Need the current Radar, Control Plane, and Publisher capability boundary ->
   `docs/decisions/radar-control-plane-publisher.md`
 - Need Radar raw-artifact retention, archive manifests, or GitHub Release archive
@@ -57,10 +59,10 @@ The split below is by question type, not by human-versus-agent audience.
   `docs/runbook/radar-artifact-archive.md`
 - Need historical upstream commit trace, skipped-candidate state, or local Radar ledger
   behavior -> `docs/spec/radar-ledger.md`
-- Need older machine-authored research run artifacts or supporting evidence trails ->
-  `docs/research/`
-- Need new Decodex bounded research, design investigation, or research-to-execution
-  promotion -> `plugins/decodex/skills/research*/` and
+- Need research reports, supporting research evidence, or the implemented/superseded
+  status of older machine-authored research targets -> `docs/reference/research-runs.md`
+- Need new Decodex bounded research, design investigation, evidence ledger, or
+  research-to-execution promotion -> `plugins/decodex/skills/research*/` and
   `docs/spec/loop-runtime.md`
 - Need reusable agent-facing Decodex usage instructions -> `plugins/decodex/`
 - Need repo-local Radar skills for upstream Codex triage, code analysis, release
@@ -92,6 +94,7 @@ The split below is by question type, not by human-versus-agent audience.
 - Start each document with a short routing header that says what the document is for,
   when to read it, and what it does not cover.
 - Keep links explicit and stable.
-- Treat `docs/research/` as supporting evidence, not as a primary authority lane.
+- Treat `docs/research/` as a JSON-only supporting research-report and evidence lane,
+  not as a primary authority lane or old event-log write target.
 - Treat Decodex research output as latent until accepted or promoted through the
   loop-runtime contract in `docs/spec/loop-runtime.md`.

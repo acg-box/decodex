@@ -1,0 +1,179 @@
+# MCP Capability Gateway And Skill Slimming
+
+Status: decision_ready
+Date: 2026-06-16
+Question: Should Decodex introduce MCP, and if so how should MCP, skills, docs, and
+runtime authority divide responsibilities?
+Decision: Build a Decodex MCP capability gateway and slim skills into static routing,
+policy, and safety entrypoints. Keep runtime state authoritative in Decodex, expose
+docs and runtime state through MCP resources, expose state-changing operations through
+schema-bound MCP tools, expose reusable workflows through MCP prompts, and keep skills
+small enough to route the agent to the right capability without embedding full docs or
+runtime state.
+Consequences: Skills lose bulk instructional content and become stable policy
+wrappers. Docs stay authoritative and can be fetched as resources. Runtime actions stay
+typed, auditable, and authority-checked. Decodex can evolve capability surfaces without
+reinstalling large skill text.
+
+## Decision Contract Snapshot
+
+Source intent: Evaluate whether Decodex should introduce MCP, whether MCP enables
+skill slimming, and what the strongest architecture should be.
+
+Terminal status: `decision_ready`
+
+Promotion targets:
+
+- `docs/decisions`: this rationale record.
+- `docs/spec/loop-runtime.md`: research method and Decision Contract authority rules.
+- `plugins/decodex/skills/research*/`: slim, contract-first research routing.
+- Future runtime issue: MCP server implementation, only after explicit promotion.
+
+Selected option: Hybrid Decodex MCP capability gateway plus thin skills.
+
+Non-goals:
+
+- Do not make MCP the source of Decodex truth.
+- Do not replace checked-in docs with generated MCP-only content.
+- Do not let MCP tools bypass Decision Contract, Authority Envelope, validation, or
+  identity routing.
+- Do not keep large method bodies inside every skill when docs/resources can supply
+  them on demand.
+
+## Evidence Ledger
+
+| Kind | Evidence | Source |
+| --- | --- | --- |
+| `external_source` | The latest official MCP spec is `2025-11-25`; it defines MCP as a JSON-RPC protocol where hosts connect through clients to servers that provide context and capabilities. | [MCP specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) |
+| `external_source` | MCP separates server features into resources for context/data, prompts for templated workflows, and tools for executable functions. That maps cleanly to Decodex docs, reusable workflows, and state-changing runtime operations. | [MCP specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) |
+| `external_source` | Resources are application-driven and addressed by URI; servers can list, read, template, subscribe, and notify resource changes. Decodex docs, Decision Contracts, status snapshots, and skill references fit this model better than skill-embedded text. | [MCP resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources) |
+| `external_source` | Tools are model-invoked executable functions and can return structured content with output schemas; MCP guidance expects user consent and visible authorization for tool invocations. Decodex mutating operations belong here, with authority checks. | [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) |
+| `external_source` | Prompts are user-controlled templates discoverable from the server. Decodex research, promotion, validation, and handoff workflows can become prompts instead of large skill bodies. | [MCP prompts](https://modelcontextprotocol.io/specification/2025-11-25/server/prompts) |
+| `external_source` | MCP standard transports are stdio and Streamable HTTP. Local Decodex should start with stdio for desktop/CLI use and add Streamable HTTP only when the local daemon or app needs multi-client access. | [MCP transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) |
+| `external_source` | MCP authorization is optional, but HTTP transports that support authorization should follow the spec; stdio should retrieve credentials from environment rather than the HTTP auth flow. | [MCP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) |
+| `repo_source` | Decodex already treats runtime-local `decodex.decision_contract/1` payloads as research authority and keeps research latent until promotion. | [`docs/spec/loop-runtime.md`](../spec/loop-runtime.md) |
+| `repo_source` | The repository documentation policy requires durable guidance to live in `docs/spec`, `docs/runbook`, `docs/reference`, or `docs/decisions`; `docs/research/` is JSON supporting evidence, not governing authority. | [`docs/policy.md`](../policy.md) |
+| `inference` | Because MCP resources can expose docs/current state on demand, skills should not duplicate long reference bodies. Because MCP tools can mutate external state, skills must still carry authority routing and safety triggers. | Derived from MCP resource/tool controls plus Decodex authority model. |
+
+## Options
+
+| Option | Decision | Reason |
+| --- | --- | --- |
+| Keep skills-only architecture | Rejected | Skills are good at static routing but poor at fresh state, structured readback, typed mutation, and external source freshness. Large skills also increase token load and drift. |
+| Replace skills with MCP-only architecture | Rejected | MCP can expose capabilities, but it does not by itself teach the agent when a Decodex authority boundary applies. A small skill layer is still the right installable policy surface. |
+| Build a hybrid MCP gateway and slim skills | Selected | MCP owns dynamic resources, prompts, and tools; skills own trigger routing, safety boundaries, and progressive disclosure. This uses each surface for the behavior it is best at. |
+| Remote HTTP MCP first | Deferred | Streamable HTTP is useful for app/server integration, but local stdio is simpler for first implementation and avoids premature auth and multi-client complexity. |
+
+## Architecture
+
+```mermaid
+flowchart TD
+    U["User / Codex thread"] --> S["Thin Decodex skills"]
+    S --> P["MCP prompts: research, promote, validate, handoff"]
+    S --> R["MCP resources: docs, contracts, status, skill refs"]
+    S --> T["MCP tools: compile, promote, status, intake, lane controls"]
+    R --> D["Checked-in docs"]
+    R --> DB["Runtime SQLite"]
+    T --> C["Decodex Rust runtime"]
+    C --> DB
+    C --> L["Linear/GitHub/local worktrees"]
+    P --> S
+```
+
+Layer responsibilities:
+
+- Decodex Rust runtime is the source of truth for state, contracts, queue readiness,
+  lane lifecycle, and authority checks.
+- MCP gateway is the typed capability facade over runtime and docs.
+- Skills are the small policy pack that decides when to read resources, call tools, or
+  stop for human authority.
+- Docs remain the durable source for contracts, runbooks, reference maps, and design
+  rationale.
+- Eval/harness gates verify that skill slimming did not remove required routing,
+  safety, or evidence behavior.
+
+## MCP Surface
+
+Resources:
+
+- `decodex://docs/index`
+- `decodex://docs/spec/{topic}`
+- `decodex://docs/runbook/{topic}`
+- `decodex://docs/reference/{topic}`
+- `decodex://docs/decisions/{topic}`
+- `decodex://skills/{skill_name}`
+- `decodex://decision-contracts/{contract_id}`
+- `decodex://projects/{service_id}/status`
+- `decodex://projects/{service_id}/agent-evidence/{issue_id}`
+
+Prompts:
+
+- `decodex_research`: starts contract-first bounded research.
+- `decodex_arrange_accepted_research`: promotes accepted research into planning.
+- `decodex_validation_ready`: runs a validation-ready lane to its native gate and
+  stops.
+- `decodex_handoff`: produces a human-readable handoff after verification.
+
+Tools:
+
+- `research_compile(input)`: validates evidence kinds, options, objections,
+  promotion targets, validation expectations, and writes a latent Decision Contract.
+- `research_promote(contract_id, acceptance_source)`: records explicit acceptance and
+  refuses unresolved gaps.
+- `status_live(service_id, limit)`: performs fresh runtime/tracker readback.
+- `intake_goal_dry_run(contract_id)`: previews generated issues and Program nodes.
+- `intake_goal_apply(contract_id)`: mutates only after accepted authority exists.
+- `lane_control(action, issue_id, reason)`: pause, resume, scan, interrupt, or steer
+  inside existing lane-control policy.
+- `docs_validate(paths)`: runs repo-native docs or surface checks when available.
+
+Tool rules:
+
+- Read-only tools may run without promotion when they only expose public-safe state.
+- Mutating tools must require explicit authority and return structured results.
+- Tools must not expose raw private evidence, credentials, transcript text, hidden
+  graph ids, or local paths unless the governing Decodex surface allows it.
+- Every mutating result should include `status`, `authority_source`, `changed_surfaces`,
+  `validation_next_step`, and `public_projection`.
+
+## Skill Slimming Rules
+
+Keep in skills:
+
+- Trigger descriptions and routing order.
+- Authority boundaries and refusal conditions.
+- Which MCP resources or prompts to load.
+- Which MCP tools are allowed for the phase.
+- What evidence is required before claiming done, fixed, ready, or decision-ready.
+
+Move out of skills:
+
+- Long method bodies.
+- Static docs that already live in `docs/`.
+- Current runtime state.
+- Large examples that can be exposed as resources.
+- Repeated copies of specs, runbooks, and reference maps.
+
+Target shape:
+
+- One router skill for Decodex.
+- Thin phase skills for research, planning, automation, commit, land, and labels.
+- Shared method references either checked into docs or exposed as MCP resources.
+- Eval gate for every slimming pass to catch broken trigger coverage, missing safety
+  boundaries, stale links, and token bloat.
+
+## Validation Expectations
+
+- `plugin-eval analyze` on changed research skills should find no critical routing,
+  safety, or progressive-disclosure issue.
+- `cargo test -p decodex plugin_surface_tests research_design` should pass after
+  schema and packaged-skill changes.
+- `git diff --check` should pass.
+- Future MCP implementation should start read-only: resources plus status readback,
+  then add `research_compile`, then add mutating promotion/intake controls.
+
+## Open Follow-Up
+
+Implementation is intentionally not included here. The next promoted work should be
+split into one read-only MCP gateway issue, one research compile/promote tool issue,
+one skill-slimming eval issue, and one docs/resource validation issue.
