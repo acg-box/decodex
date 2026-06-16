@@ -3039,10 +3039,7 @@ struct OperatorLanePopoverView: View {
 			items.append(
 				OperatorLaneReadoutItem(
 					label: "max output",
-					value: formatLargestOutput(
-						bytes: largestOutput,
-						tool: activity.largestToolOutputTool
-					)
+					value: formatLargestOutput(bytes: largestOutput)
 				)
 			)
 		}
@@ -3179,10 +3176,7 @@ struct OperatorLanePopoverView: View {
 			items.append(
 				OperatorLaneReadoutItem(
 					label: "max output",
-					value: formatLargestOutput(
-						bytes: largestOutput,
-						tool: metrics.largestToolOutputTool
-					)
+					value: formatLargestOutput(bytes: largestOutput)
 				)
 			)
 		}
@@ -3258,8 +3252,7 @@ struct OperatorLanePopoverView: View {
 				inputTokens: phase.inputTokensCumulative,
 				outputTokens: phase.outputTokensCumulative,
 				toolCallCount: phase.toolCallCount,
-				largestOutputBytes: phase.largestToolOutputBytes,
-				largestOutputTool: phase.largestToolOutputTool
+				largestOutputBytes: phase.largestToolOutputBytes
 			)
 		}
 	}
@@ -3272,8 +3265,7 @@ struct OperatorLanePopoverView: View {
 		inputTokens: Int,
 		outputTokens: Int,
 		toolCallCount: Int,
-		largestOutputBytes: Int?,
-		largestOutputTool: String?
+		largestOutputBytes: Int?
 	) -> OperatorLifecycleTableRow {
 		let runtimeSeconds = lifecycleModelSeconds(buckets) ?? 0
 		let runtime = runtimeShareParts(
@@ -3284,7 +3276,7 @@ struct OperatorLanePopoverView: View {
 				runtimeSeconds: runtimeSeconds
 			)
 		)
-		let largestOutput = formatLargestOutput(bytes: largestOutputBytes, tool: largestOutputTool)
+		let largestOutput = formatLargestOutput(bytes: largestOutputBytes)
 
 		return OperatorLifecycleTableRow(
 			stage: stage,
@@ -3297,15 +3289,12 @@ struct OperatorLanePopoverView: View {
 		)
 	}
 
-	private func formatLargestOutput(bytes: Int?, tool: String?) -> String {
+	private func formatLargestOutput(bytes: Int?) -> String {
 		guard let bytes, bytes > 0 else {
 			return "-"
 		}
-		guard let tool = panelTrimmed(tool) else {
-			return formatCompactBytes(bytes)
-		}
 
-		return "\(formatCompactBytes(bytes))(\(tool))"
+		return formatCompactBytes(bytes)
 	}
 
 	private func lifecycleWallSeconds(
@@ -3771,9 +3760,6 @@ struct OperatorLaneReadoutItem: Identifiable {
 		case "output bytes":
 			return [.value(displayValue), .meta(" output")]
 		case "max output", "max tool output", "largest output":
-			if let source = splitLargestOutputSource(displayValue) {
-				return [.value("\(source.output)(\(source.tool))"), .meta(" max output")]
-			}
 			return [.value(displayValue), .meta(" max output")]
 		case "largest tool", "source":
 			return [.value(displayValue), .meta(" source")]
@@ -3794,20 +3780,6 @@ struct OperatorLaneReadoutItem: Identifiable {
 	func matchesLabel(_ expected: String) -> Bool {
 		label?.caseInsensitiveCompare(expected) == .orderedSame
 	}
-}
-
-fileprivate func splitLargestOutputSource(_ value: String) -> (output: String, tool: String)? {
-	guard let range = value.range(of: " from ") else {
-		return nil
-	}
-
-	let output = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-	let tool = String(value[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-	guard output.isEmpty == false, tool.isEmpty == false else {
-		return nil
-	}
-
-	return (output, tool)
 }
 
 fileprivate enum OperatorLaneReadoutTextRole {
@@ -3884,15 +3856,7 @@ struct OperatorLaneReadoutRow: View {
 			fragments.append([.value(calls), .meta(" tools")])
 		}
 		if let maxOutput = value(for: "max output") ?? value(for: "max tool output") ?? value(for: "largest output") {
-			if let embeddedSource = splitLargestOutputSource(maxOutput) {
-				fragments.append([.value("\(embeddedSource.output)(\(embeddedSource.tool))"), .meta(" max output")])
-			} else if let source = value(for: "source") ?? value(for: "largest tool") {
-				fragments.append([.value("\(maxOutput)(\(source))"), .meta(" max output")])
-			} else {
-				fragments.append([.value(maxOutput), .meta(" max output")])
-			}
-		} else if let source = value(for: "source") ?? value(for: "largest tool") {
-			fragments.append([.value(source), .meta(" source")])
+			fragments.append([.value(maxOutput), .meta(" max output")])
 		}
 
 		return fragments
