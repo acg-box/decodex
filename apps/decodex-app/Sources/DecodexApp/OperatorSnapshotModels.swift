@@ -797,6 +797,10 @@ struct OperatorRunActivitySnapshot: Sendable {
 	let activeRunsComplete: Bool
 	let emittedAt: Date
 
+	var shouldPersistAsSnapshotOverlay: Bool {
+		activeRuns.isEmpty == false || activeRunsComplete == false
+	}
+
 	func merging(into snapshot: OperatorSnapshotResponse) -> OperatorSnapshotResponse {
 		snapshot.mergingRunActivity(activeRuns, activeRunsComplete: activeRunsComplete)
 	}
