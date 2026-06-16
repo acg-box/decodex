@@ -2954,7 +2954,7 @@ struct OperatorLanePopoverView: View {
 	}
 
 	private var currentSummary: String {
-		if run.processAlive == false {
+		if run.processAlive == false, run.hasFreshExecution == false {
 			if let idle = formatActivityDuration(run.inactiveDurationSeconds) {
 				return "Stopped · idle \(idle)"
 			}
