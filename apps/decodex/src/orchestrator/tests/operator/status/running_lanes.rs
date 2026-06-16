@@ -1322,6 +1322,9 @@ fn operator_status_snapshot_counts_previous_boot_process_as_attention_not_runnin
 	assert_eq!(run.process_alive, Some(false));
 	assert_eq!(run.execution_liveness, "process_identity_mismatch");
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("host_boot_id_mismatch"));
+	assert!(!run.has_fresh_execution);
+	assert!(!run.counts_as_running);
+	assert!(run.needs_attention);
 	assert_eq!(project.active_run_count, 1);
 	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
@@ -1375,10 +1378,89 @@ fn operator_status_snapshot_keeps_unleased_app_server_active_run_with_stale_proc
 	assert_eq!(run.process_alive, Some(false));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("host_boot_id_mismatch"));
 	assert_eq!(run.thread_status.as_deref(), Some("active"));
+	assert!(run.has_fresh_execution);
+	assert!(run.counts_as_running);
+	assert!(!run.needs_attention);
 	assert_eq!(project.active_run_count, 1);
 	assert_eq!(project.running_lane_count, 1);
 	assert_eq!(project.attention_count, 0);
 	assert_eq!(snapshot.worktrees[0].ownership, "active_lane");
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn operator_status_snapshot_shadows_post_review_lane_when_active_run_is_fresh() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_thread_status_marker(
+		&worktree_path,
+		"run-1",
+		1,
+		Some("thread-1"),
+		Some("turn-1"),
+		"active",
+		&[],
+	)
+	.expect("thread status should write");
+
+	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
+
+	let mut snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+
+	snapshot.post_review_lanes = vec![orchestrator::OperatorPostReviewLaneStatus {
+		project_id: String::from("pubfi"),
+		issue_id: issue.id.clone(),
+		issue_identifier: issue.identifier.clone(),
+		issue_state: String::from("In Review"),
+		branch_name: String::from("x/pubfi-pub-101"),
+		worktree_path: String::from(".worktrees/PUB-101"),
+		classification: String::from("blocked"),
+		reason: String::from("review_handoff_lineage_mismatch"),
+		pr_url: Some(String::from("https://github.com/hack-ink/pubfi-mono-v2/pull/101")),
+		pr_head_sha: Some(String::from("1111111111111111111111111111111111111111")),
+		pr_state: Some(String::from("OPEN")),
+		review_decision: Some(String::from("CHANGES_REQUESTED")),
+		mergeable: Some(String::from("UNKNOWN")),
+		check_state: Some(String::from("SUCCESS")),
+		unresolved_review_threads: Some(1),
+		shadowed_by_active_run: false,
+		readback_warning: None,
+		readback_root_cause: Some(String::from("lineage_validation_failed")),
+		loop_status: None,
+	}];
+
+	orchestrator::hydrate_post_review_lane_active_run_shadowing(&mut snapshot);
+	orchestrator::refresh_operator_project_summary(&mut snapshot, None);
+
+	let project = snapshot.projects.first().expect("project summary should exist");
+	let lane = snapshot.post_review_lanes.first().expect("post-review lane should remain visible");
+	let rendered = orchestrator::render_operator_status(&snapshot);
+
+	assert!(snapshot.active_runs[0].has_fresh_execution);
+	assert!(snapshot.active_runs[0].counts_as_running);
+	assert!(lane.shadowed_by_active_run);
+	assert_eq!(project.running_lane_count, 1);
+	assert_eq!(project.post_review_lane_count, 0);
+	assert_eq!(project.waiting_lane_count, 0);
+	assert_eq!(project.attention_count, 0);
+	assert!(rendered.contains("shadowed_by_active_run: yes"));
+	assert!(rendered.contains("readback_root_cause: lineage_validation_failed"));
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1465,6 +1547,9 @@ fn operator_status_snapshot_keeps_unleased_live_process_in_running_lanes() {
 	assert_eq!(run.execution_liveness, "process_alive");
 	assert_eq!(run.process_alive, Some(true));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_alive"));
+	assert!(run.has_fresh_execution);
+	assert!(run.counts_as_running);
+	assert!(!run.needs_attention);
 	assert_eq!(project.active_run_count, 1);
 	assert_eq!(project.running_lane_count, 1);
 	assert_eq!(project.retained_worktree_count, 0);

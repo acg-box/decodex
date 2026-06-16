@@ -105,6 +105,9 @@ fn operator_status_text_renders_human_readable_sections() {
 	assert!(rendered.contains("queue_lease_state: held"));
 	assert!(rendered.contains("queue_lease: held"));
 	assert!(rendered.contains("execution_liveness: process_alive"));
+	assert!(rendered.contains("has_fresh_execution: yes"));
+	assert!(rendered.contains("counts_as_running: yes"));
+	assert!(rendered.contains("needs_attention: no"));
 	assert!(rendered.contains(
 		"timing: run_idle=1 protocol_idle=1 last_progress=2026-03-14 10:00:01Z protocol_event=turn/completed @ 2026-03-14 10:00:01 events=4"
 	));
@@ -966,6 +969,7 @@ fn operator_status_text_surfaces_cleanup_blocker_pr_url() {
 			mergeable: Some(String::from("MERGEABLE")),
 			check_state: Some(String::from("SUCCESS")),
 			unresolved_review_threads: Some(0),
+			shadowed_by_active_run: false,
 			readback_warning: None,
 			readback_root_cause: Some(String::from("lineage_validation_failed")),
 			loop_status: None,
