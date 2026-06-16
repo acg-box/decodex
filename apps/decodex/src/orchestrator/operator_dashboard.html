@@ -636,7 +636,7 @@
 				pointer-events: none;
 			}
 
-			.flow-stage span {
+			.flow-step span {
 				font-family: var(--mono);
 				font-size: var(--type-label);
 				font-weight: var(--weight-label);
@@ -644,7 +644,7 @@
 				color: var(--muted-strong);
 			}
 
-			.flow-stage-labels {
+			.flow-step-labels {
 				display: grid;
 				grid-template-columns: repeat(4, minmax(0, 1fr));
 				align-items: baseline;
@@ -652,7 +652,7 @@
 				min-width: 0;
 			}
 
-			.flow-stage {
+			.flow-step {
 				display: grid;
 				grid-template-columns: auto minmax(0, 1fr);
 				align-items: baseline;
@@ -663,15 +663,15 @@
 					color var(--fast) var(--ease);
 			}
 
-			.flow-stage:first-child {
+			.flow-step:first-child {
 				padding-left: 0;
 			}
 
-			.flow-stage + .flow-stage {
+			.flow-step + .flow-step {
 				border-left: 1px solid var(--line);
 			}
 
-			.flow-stage strong {
+			.flow-step strong {
 				color: var(--text);
 				font-family: var(--mono);
 				font-size: var(--type-label);
@@ -685,40 +685,40 @@
 				white-space: nowrap;
 			}
 
-			.flow-stage.active span {
+			.flow-step.active span {
 				color: var(--accent);
 			}
 
-			.flow-stage.active strong {
+			.flow-step.active strong {
 				color: var(--accent);
 			}
 
-			.flow-stage strong .metric-number {
+			.flow-step strong .metric-number {
 				color: var(--text);
 			}
 
-			.flow-stage strong .metric-label {
+			.flow-step strong .metric-label {
 				color: var(--muted);
 			}
 
-			.flow-stage.active strong .metric-number,
-			.flow-stage.active strong .metric-label {
+			.flow-step.active strong .metric-number,
+			.flow-step.active strong .metric-label {
 				color: var(--accent);
 			}
 
-			.flow-stage[data-flow-stage="queue"] {
+			.flow-step[data-flow-step="queue"] {
 				--accent: var(--tone-queue);
 			}
 
-			.flow-stage[data-flow-stage="run"] {
+			.flow-step[data-flow-step="run"] {
 				--accent: var(--tone-run);
 			}
 
-			.flow-stage[data-flow-stage="review"] {
+			.flow-step[data-flow-step="review"] {
 				--accent: var(--tone-review);
 			}
 
-			.flow-stage[data-flow-stage="land"] {
+			.flow-step[data-flow-step="land"] {
 				--accent: var(--tone-land);
 			}
 
@@ -3386,21 +3386,21 @@
 					grid-template-columns: 1fr;
 				}
 
-				.flow-stage-labels {
+				.flow-step-labels {
 					grid-template-columns: repeat(2, minmax(0, 1fr));
 					gap: 8px 0;
 				}
 
-				.flow-stage {
+				.flow-step {
 					padding-top: 8px;
 				}
 
-				.flow-stage:nth-child(odd) {
+				.flow-step:nth-child(odd) {
 					border-left: 0;
 					padding-left: 0;
 				}
 
-				.flow-stage:nth-child(n + 3) {
+				.flow-step:nth-child(n + 3) {
 					border-top: 1px solid var(--line);
 				}
 
@@ -3535,15 +3535,15 @@
 					padding-top: 10px;
 				}
 
-				.flow-stage-labels {
+				.flow-step-labels {
 					grid-template-columns: 1fr;
 				}
 
-				.flow-stage {
+				.flow-step {
 					padding: 8px 0 0;
 				}
 
-				.flow-stage + .flow-stage {
+				.flow-step + .flow-step {
 					border-top: 1px solid var(--line);
 					border-left: 0;
 				}
@@ -3669,20 +3669,20 @@
 				</div>
 
 				<section class="flow-strip" aria-label="Delivery flow">
-					<div class="flow-stage-labels" aria-label="Delivery stages">
-						<div class="flow-stage" data-flow-stage="queue">
+					<div class="flow-step-labels" aria-label="Delivery flow">
+						<div class="flow-step" data-flow-step="queue">
 							<span>Intake</span>
 							<strong id="flow-queue">0 issues</strong>
 						</div>
-						<div class="flow-stage" data-flow-stage="run">
+						<div class="flow-step" data-flow-step="run">
 							<span>Running</span>
 							<strong id="flow-run">0 lanes</strong>
 						</div>
-						<div class="flow-stage" data-flow-stage="review">
+						<div class="flow-step" data-flow-step="review">
 							<span>Review</span>
 							<strong id="flow-review">0 PRs</strong>
 						</div>
-						<div class="flow-stage" data-flow-stage="land">
+						<div class="flow-step" data-flow-step="land">
 							<span>Landing</span>
 							<strong id="flow-land">0 PRs</strong>
 						</div>
@@ -3920,7 +3920,7 @@
 
 			const nodes = {
 				projectTitle: document.getElementById("project-title"),
-				flowStageLabels: [...document.querySelectorAll("[data-flow-stage]")],
+				flowStepLabels: [...document.querySelectorAll("[data-flow-step]")],
 				flowCounts: {
 					queue: document.getElementById("flow-queue"),
 					run: document.getElementById("flow-run"),
@@ -4485,18 +4485,18 @@
 				return runProcessStoppedWhileActive(run) && !runStoppedProcessNeedsAttention(run);
 			}
 
-				function runStageLabel(run) {
+				function runPhaseLabel(run) {
 					if (runStoppedProcessNeedsAttention(run)) {
 						return run.process_liveness_reason || "process_stopped";
 					}
 					if (runProcessStoppedWhileActive(run)) {
-						return run.current_operation || run.phase || "process_stopped";
+						return run.current_operation || run.run_phase || run.phase || "process_stopped";
 					}
-					if (run.phase === "executing") {
-						return displayToken(run.current_operation || run.phase);
+					if ((run.run_phase || run.phase) === "executing") {
+						return displayToken(run.current_operation || run.run_phase || run.phase);
 					}
 
-					return displayToken(run.phase || run.status);
+					return displayToken(run.run_phase || run.phase || run.status);
 				}
 
 			function runStaleWithoutKnownProcessAgeSeconds(run) {
@@ -6364,6 +6364,16 @@
 				const freshness = currentLaneFreshness(run);
 				const focus = protocolActivityFocus(run);
 
+				facts.push(["run phase", displayToken(run.run_phase || run.phase || run.status)]);
+				if (run.current_operation) {
+					facts.push(["current operation", displayToken(run.current_operation)]);
+				}
+				if (run.active_goal_phase) {
+					facts.push(["active goal phase", displayToken(run.active_goal_phase)]);
+				}
+				if (run.public_progress_phase) {
+					facts.push(["public progress phase", displayToken(run.public_progress_phase)]);
+				}
 				if (freshness.timestamp) {
 					facts.push([freshness.sourceLabel, formatRelativeTimestamp(freshness.timestamp)]);
 				}
@@ -8738,7 +8748,7 @@
 						return "";
 					}
 
-					const header = ["Stage", "attempts", "inference", "input", "output", "tools", "max output"];
+					const header = ["Lifecycle bucket", "attempts", "inference", "input", "output", "tools", "max output"];
 					const alignRight = new Set([1, 2, 3, 4, 5, 6]);
 					const cells = [
 						...header.map(
@@ -8753,7 +8763,7 @@
 						),
 					].join("");
 
-					return `<div class="child-phase-table" role="table" aria-label="Lifecycle phase metrics">${cells}</div>`;
+					return `<div class="child-phase-table" role="table" aria-label="Lifecycle bucket metrics">${cells}</div>`;
 				}
 
 				function renderChildLifecyclePhaseCell(value, index, alignRight) {
@@ -8919,12 +8929,12 @@
 				if (run.current_operation && run.current_operation !== "idle") {
 					return displayToken(run.current_operation);
 				}
-				return displayToken(run.phase || run.status);
+				return displayToken(run.run_phase || run.phase || run.status);
 			}
 
 	function recentRunSummary(run, lane = null) {
 		if ((lane?.attempt_count ?? 1) > 1) {
-			return `Latest run ${displayToken(run.status || run.phase)}; lifecycle cost is grouped by phase.`;
+			return `Latest run ${displayToken(run.status || run.run_phase || run.phase)}; lifecycle cost is grouped by lifecycle bucket.`;
 		}
 				if (isSuccessfulTerminalRun(run)) {
 					return "Finished; no current lane.";
@@ -9071,7 +9081,7 @@
 					return "";
 				}
 				if (runProcessStoppedWhileActive(run)) {
-					return `Agent done; finalizing ${displayToken(run.current_operation || run.phase)}.`;
+					return `Agent done; finalizing ${displayToken(run.current_operation || run.run_phase || run.phase)}.`;
 				}
 				if (run.suspected_stall) {
 					return `No progress ${formatDuration(run.protocol_idle_for_seconds ?? run.idle_for_seconds)}.`;
@@ -9109,7 +9119,7 @@
 
 			function runIssueTitle(run, derived) {
 				const issueRecord = runIssueRecord(run, derived);
-				const operationFallback = displayToken(run.current_operation || run.phase);
+				const operationFallback = displayToken(run.current_operation || run.run_phase || run.phase);
 				const fallback = issueDisplayKey(run);
 
 				for (const value of [run.title, run.issue_title, issueRecord?.title]) {
@@ -9139,7 +9149,7 @@
 					return "needs_attention";
 				}
 				if (runProcessStoppedWhileActive(run)) {
-					return runStageLabel(run);
+					return runPhaseLabel(run);
 				}
 				if (run.suspected_stall) {
 					return "needs_attention";
@@ -9162,7 +9172,7 @@
 				if (run.thread_status) {
 					return displayToken(run.thread_status);
 				}
-				return displayToken(run.status || run.phase);
+				return displayToken(run.status || run.run_phase || run.phase);
 			}
 
 			function snapshotIsIdle(snapshot) {
@@ -9525,7 +9535,7 @@
 							issue: issueKey,
 							title: runStoppedProcessNeedsAttention(run)
 								? "Stopped agent process"
-								: displayToken(run.current_operation || run.phase),
+								: displayToken(run.current_operation || run.run_phase || run.phase),
 							summary: runStoppedProcessNeedsAttention(run)
 								? `Agent process stopped while lane remains active. ${COPY.protocolEvent} ${run.last_event_type || "none"}.`
 								: runStaleWithoutKnownProcessNeedsAttention(run)
@@ -9533,7 +9543,7 @@
 									: `No confirmed progress for ${formatDuration(run.idle_for_seconds)}. ${COPY.protocolEvent} ${run.last_event_type || "none"}.`,
 							status: runStoppedProcessNeedsAttention(run)
 								? "attention stopped"
-								: `phase ${displayToken(run.phase)}`,
+								: `run phase ${displayToken(run.run_phase || run.phase)}`,
 							facts: [
 								["Codex thread", runThreadSummary(run)],
 								["Thread flags", runThreadFlagSummary(run)],
@@ -9559,10 +9569,10 @@
 							tone,
 							scope: "Running",
 							issue: issueKey,
-							title: displayToken(run.current_operation || run.phase),
+							title: displayToken(run.current_operation || run.run_phase || run.phase),
 							summary: run.next_retry_at
 								? `Retry scheduled for ${formatTimestamp(run.next_retry_at)}.`
-								: `Waiting on ${displayToken(run.wait_reason || run.phase)}.`,
+								: `Waiting on ${displayToken(run.wait_reason || run.run_phase || run.phase)}.`,
 							status: "waiting",
 							facts: [
 								["Codex thread", runThreadSummary(run)],
@@ -9592,7 +9602,7 @@
 								["Run", currentLane.run_id],
 								[
 									"Operation",
-									displayToken(currentLane.current_operation || currentLane.phase),
+									displayToken(currentLane.current_operation || currentLane.run_phase || currentLane.phase),
 								],
 							]
 							: [["Run", "active"]];
@@ -9603,7 +9613,9 @@
 							issue: issueKey,
 							title: "Repair running",
 							summary: "",
-							status: currentLane ? `run ${displayToken(currentLane.phase)}` : "current lane",
+							status: currentLane
+								? `run phase ${displayToken(currentLane.run_phase || currentLane.phase)}`
+								: "current lane",
 							facts: [
 								...currentLaneFacts,
 								["Checks", compactStateToken(lane.check_state)],
@@ -10274,8 +10286,8 @@
 			}
 
 			function setFlowActivity(activity) {
-				for (const label of nodes.flowStageLabels) {
-					label.classList.toggle("active", Boolean(activity[label.dataset.flowStage]));
+				for (const label of nodes.flowStepLabels) {
+					label.classList.toggle("active", Boolean(activity[label.dataset.flowStep]));
 				}
 			}
 
@@ -10450,6 +10462,7 @@
 									const reasonCodes = (node.reason_codes ?? []).map(displayToken).join(", ") || "none";
 									return `
 										${field("Issue", programNodeIssue(node))}
+										${field("Program stage", displayToken(node.program_stage || "unknown"))}
 										${field("Lifecycle", displayToken(node.lifecycle_state || "unknown"))}
 										${field("Readiness", displayToken(node.readiness_state || "unknown"))}
 										${field("Issue state", node.issue_state || "none")}
@@ -10628,7 +10641,7 @@
 					runs
 						.map((run) => {
 							const tone = toneForRun(run);
-							const statusBits = [statusLabel(runStageLabel(run), tone)];
+							const statusBits = [statusLabel(runPhaseLabel(run), tone)];
 							const detailKey = runDetailKey(run);
 							const renderKey = currentLaneRenderKey(run);
 							const issueKey = issueDisplayKey(run);
@@ -10747,7 +10760,7 @@
 
 				return `
 					<details class="phase-timeline" data-detail-key="${escapeHtml(`history-phases:${lane.issue_key}`)}"${detailsOpenAttribute(`history-phases:${lane.issue_key}`)}>
-						<summary>${escapeHtml(pluralize(phases.length, "phase"))}</summary>
+						<summary>${escapeHtml(pluralize(phases.length, "lifecycle bucket"))}</summary>
 						<div class="phase-list">
 							${phases
 								.map(
@@ -11248,7 +11261,7 @@
 					return false;
 				}
 
-				return title === displayToken(run?.current_operation || run?.phase);
+				return title === displayToken(run?.current_operation || run?.run_phase || run?.phase);
 			}
 
 			function dashboardRunIdentityKeys(run) {
