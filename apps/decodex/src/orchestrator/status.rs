@@ -480,12 +480,22 @@ fn operator_current_lane_statuses(
 		.collect::<Vec<_>>();
 	let mut current_lane_run_ids =
 		current_lanes.iter().map(|run| run.run_id.clone()).collect::<HashSet<_>>();
+	let current_lane_shadow_keys = current_lanes
+		.iter()
+		.filter(|run| run.run_lease)
+		.map(operator_run_group_key)
+		.collect::<HashSet<_>>();
 
 	for run in recent_runs {
-		if !current_lane_run_ids.contains(&run.run_id) && operator_run_has_live_execution(run) {
-			current_lane_run_ids.insert(run.run_id.clone());
-			current_lanes.push(run.clone());
+		if current_lane_run_ids.contains(&run.run_id)
+			|| current_lane_shadow_keys.contains(&operator_run_group_key(run))
+			|| !operator_run_has_live_execution(run)
+		{
+			continue;
 		}
+
+		current_lane_run_ids.insert(run.run_id.clone());
+		current_lanes.push(run.clone());
 	}
 
 	hydrate_current_lane_lifecycle_metrics(&mut current_lanes, recent_runs);
