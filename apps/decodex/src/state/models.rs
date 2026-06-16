@@ -1393,6 +1393,10 @@ impl ReviewHandoffMarker {
 		self.target_base_ref_name.as_deref()
 	}
 
+	pub(crate) fn pr_head_ref_name(&self) -> &str {
+		&self.pr_head_ref_name
+	}
+
 	pub(crate) fn pr_head_oid(&self) -> &str {
 		&self.pr_head_oid
 	}
