@@ -4006,12 +4006,12 @@
 			const detailAnimationTimers = new WeakMap();
 
 			const DASHBOARD_LAYOUT = {
-				primary: ["accountPool", "projects", "active", "programs", "queue", "review", "worktrees", "recent"],
+				primary: ["accountPool", "projects", "currentLanes", "programs", "queue", "review", "worktrees", "recent"],
 			};
 			const DASHBOARD_SECTION_GROUPS = [
 				{ marker: "control", panels: ["accountPool"] },
 				{ marker: "projects", panels: ["projects"] },
-				{ marker: "execution", panels: ["active", "programs", "queue"] },
+				{ marker: "execution", panels: ["currentLanes", "programs", "queue"] },
 				{ marker: "aftercare", panels: ["review", "worktrees", "recent"] },
 			];
 			const COPY = {
