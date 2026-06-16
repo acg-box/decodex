@@ -39,8 +39,8 @@ pub(crate) const ISSUE_REVIEW_HANDOFF_TOOL_NAME: &str = "issue_review_handoff";
 pub(crate) const ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME: &str = "issue_review_repair_complete";
 pub(crate) const ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME: &str = "issue_closeout_complete";
 pub(crate) const ISSUE_TERMINAL_FINALIZE_TOOL_NAME: &str = "issue_terminal_finalize";
+pub(crate) const REVIEW_POLICY_CONVERGENCE_BUDGET: i64 = 3;
 
-const REVIEW_POLICY_CONVERGENCE_BUDGET: i64 = 3;
 const REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK: &str =
 	"Implementation completed and the PR is ready for review.";
 const REVIEW_REPAIR_PUBLIC_SUMMARY_FALLBACK: &str =

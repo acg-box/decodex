@@ -1786,6 +1786,14 @@ fn operator_lane_inspect_api_returns_lane_identity() {
 	assert_eq!(data["runs"][0]["runId"], "pub-101-attempt-1");
 	assert_eq!(data["runs"][0]["attemptStatus"], "running");
 	assert_eq!(data["runs"][0]["activeLease"], true);
+	assert_eq!(data["runs"][0]["ownershipState"], "owned_active");
+	assert_eq!(data["runs"][0]["livenessState"], "unknown");
+	assert_eq!(data["runs"][0]["policyState"], "review_pending");
+	assert_eq!(data["runs"][0]["terminalizationState"], "none");
+	assert_eq!(
+		data["runs"][0]["laneControlNextAction"],
+		"Record the independent Decodex Review checkpoint for the current lane head."
+	);
 	assert_eq!(data["runs"][0]["threadId"], "thread-1");
 	assert_eq!(data["runs"][0]["turnId"], "turn-1");
 	assert_eq!(data["runs"][0]["softInterruptAvailable"], false);
@@ -2178,6 +2186,22 @@ fn assert_active_lease_missing_control_audit(
 		Some("process_alive")
 	);
 	assert_eq!(
+		missing_lease_interrupt_event.payload()["context"]["ownership_state"].as_str(),
+		Some("orphaned_live_thread")
+	);
+	assert_eq!(
+		missing_lease_interrupt_event.payload()["context"]["liveness_state"].as_str(),
+		Some("process_alive")
+	);
+	assert_eq!(
+		missing_lease_interrupt_event.payload()["context"]["lane_control_next_action"].as_str(),
+		Some("inspect_or_interrupt_orphaned_live_thread")
+	);
+	assert_eq!(
+		missing_lease_interrupt_event.payload()["context"]["lane_control_conditions"][0].as_str(),
+		Some("active_lease_missing")
+	);
+	assert_eq!(
 		missing_lease_interrupt_event.payload()["context"]["control_capability"]["channel_path"]
 			.as_str(),
 		Some(expected_channel_path.as_str())
@@ -2259,7 +2283,7 @@ fn operator_lane_interrupt_api_force_hard_fallbacks_after_active_lease_missing()
 
 #[cfg(unix)]
 #[test]
-fn operator_lane_interrupt_api_force_hard_fallbacks_after_succeeded_status_with_live_process() {
+fn operator_lane_interrupt_api_force_hard_fallbacks_terminal_live_process_without_soft_owner() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
@@ -2326,8 +2350,8 @@ fn operator_lane_interrupt_api_force_hard_fallbacks_after_succeeded_status_with_
 
 	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{response}");
 	assert_eq!(data["classification"], "hard_interrupt_fallback");
-	assert_eq!(data["softInterrupt"]["status"], "rejected");
-	assert_eq!(data["softInterrupt"]["errorClass"], "active_lease_missing");
+	assert_eq!(data["softInterrupt"]["status"], "unavailable");
+	assert_eq!(data["softInterrupt"]["errorClass"], "lane_not_active");
 	assert_eq!(data["hardInterrupt"]["classification"], "hard_interrupt_fallback");
 	assert_eq!(data["hardInterrupt"]["status"], "sent");
 	assert_eq!(
