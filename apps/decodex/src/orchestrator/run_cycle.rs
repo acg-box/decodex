@@ -1383,7 +1383,7 @@ fn select_recovered_retry_issue_candidate(
 	recovered_state: RecoveredRuntimeState,
 	excluded_issue_ids: &[&str],
 ) -> Result<Option<SelectedIssueRunCandidate>> {
-	for issue in recovered_state.active_issues {
+	for issue in recovered_state.recoverable_issues {
 		if excluded_issue_ids.contains(&issue.id.as_str()) {
 			continue;
 		}
@@ -2854,7 +2854,7 @@ where
 		orphaned_actions.push(action);
 	}
 
-	apply_active_run_reconciliation(
+	apply_run_lease_reconciliation(
 		context.tracker,
 		context.project,
 		context.state_store,
@@ -2907,7 +2907,7 @@ fn inspect_orphaned_active_worktree_reconciliation<T>(
 	issue: &TrackerIssue,
 	worktree_mapping: &WorktreeMapping,
 	now_unix_epoch: i64,
-) -> Result<Option<ActiveRunReconciliation>>
+) -> Result<Option<RunLeaseReconciliation>>
 where
 	T: IssueTracker,
 {
@@ -2924,7 +2924,7 @@ where
 		return Ok(None);
 	};
 	let Some(idle_for) =
-		orphaned_active_run_idle_duration(
+		orphaned_run_lease_idle_duration(
 			context.state_store,
 			&run_attempt,
 			worktree_mapping,
@@ -2934,18 +2934,18 @@ where
 		return Ok(None);
 	};
 	let disposition = if needs_attention {
-		ActiveRunDisposition::StalledAlreadyNeedsAttention { idle_for }
-	} else if is_issue_active_for_run(issue, context.workflow)
+		RunLeaseDisposition::StalledAlreadyNeedsAttention { idle_for }
+	} else if is_issue_in_progress_for_run(issue, context.workflow)
 		&& worktree_has_tracked_changes(worktree_mapping.worktree_path())
 	{
-		ActiveRunDisposition::StalledRetainedPartialProgress { idle_for }
-	} else if is_issue_active_for_run(issue, context.workflow) {
-		ActiveRunDisposition::Stalled { idle_for }
+		RunLeaseDisposition::StalledRetainedPartialProgress { idle_for }
+	} else if is_issue_in_progress_for_run(issue, context.workflow) {
+		RunLeaseDisposition::Stalled { idle_for }
 	} else {
 		return Ok(None);
 	};
 
-	Ok(Some(ActiveRunReconciliation {
+	Ok(Some(RunLeaseReconciliation {
 		issue: issue.clone(),
 		run_attempt,
 		worktree_mapping: Some(worktree_mapping.clone()),
@@ -2954,7 +2954,7 @@ where
 	}))
 }
 
-fn orphaned_active_run_idle_duration(
+fn orphaned_run_lease_idle_duration(
 	state_store: &StateStore,
 	run_attempt: &RunAttempt,
 	worktree_mapping: &WorktreeMapping,

@@ -51,7 +51,7 @@ enum AccountActivityMode {
 #[derive(Clone, Copy)]
 enum RunIssueMetadataHydration {
 	AllRows,
-	ActiveRowsOnly,
+	CurrentLaneRowsOnly,
 }
 
 enum TrackerObserverOutcome {
@@ -228,7 +228,7 @@ struct OperatorRunLifecycleProjection {
 	current_operation: String,
 	suspected_stall: bool,
 	execution_liveness: String,
-	active_lease: bool,
+	run_lease: bool,
 	retry_kind: Option<String>,
 	retry_ready_at_unix_epoch: Option<i64>,
 }
@@ -290,6 +290,11 @@ struct OperatorLaneControlProjection {
 	conditions: Vec<String>,
 }
 
+#[derive(Default)]
+struct OperatorLaneTerminalProjection {
+	outcomes_by_issue_key: HashMap<String, OperatorHistoryLedgerOutcome>,
+}
+
 pub(crate) fn ensure_project_has_no_merged_worktree_cleanup_debt(
 	project: &ServiceConfig,
 ) -> crate::prelude::Result<()> {
@@ -341,7 +346,7 @@ fn build_operator_status_snapshot_with_account_mode(
 			)
 		})
 		.collect::<crate::prelude::Result<Vec<_>>>()?;
-	let active_runs = operator_active_run_statuses(
+	let current_lanes = operator_current_lane_statuses(
 		project,
 		&loop_evidence,
 		&project_display_name,
@@ -349,7 +354,7 @@ fn build_operator_status_snapshot_with_account_mode(
 		&recent_runs,
 		now_unix_epoch,
 	)?;
-	let history_lanes = operator_history_lanes(&active_runs, &recent_runs);
+	let history_lanes = operator_history_lanes(&current_lanes, &recent_runs);
 	let (worktrees, mut warnings, warning_details) =
 		operator_status_worktrees(project, state_store)?;
 	let accounts = codex_account_activity_summaries(project, &mut warnings, account_activity_mode);
@@ -367,8 +372,8 @@ fn build_operator_status_snapshot_with_account_mode(
 			repo_root: project.repo_root().display().to_string(),
 			enabled: true,
 			github_cli_authority: operator_github_cli_authority(project),
-			active_run_count: active_runs.len(),
-			running_lane_count: active_runs.len(),
+			current_lane_count: current_lanes.len(),
+			running_lane_count: current_lanes.len(),
 			queued_candidate_count: 0,
 			post_review_lane_count: 0,
 			retained_worktree_count: 0,
@@ -382,7 +387,7 @@ fn build_operator_status_snapshot_with_account_mode(
 		}],
 		account_control: global_codex_account_control_status(),
 		accounts,
-		active_runs,
+		current_lanes,
 		recent_runs,
 		history_lanes,
 		execution_programs: Vec::new(),
@@ -405,13 +410,13 @@ fn build_lane_inspect_operator_runs(
 	limit: usize,
 ) -> crate::prelude::Result<Vec<OperatorRunStatus>> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
-	let (active_runs, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
+	let (current_lanes, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
 	let loop_evidence = state_store.project_loop_evidence_snapshot(project.service_id())?;
 	let project_display_name = operator_project_display_name(project);
 	let mut seen_run_ids = HashSet::new();
 	let mut runs = Vec::new();
 
-	for run in active_runs.into_iter().chain(recent_runs) {
+	for run in current_lanes.into_iter().chain(recent_runs) {
 		if !seen_run_ids.insert(run.run_id().to_owned()) {
 			continue;
 		}
@@ -450,7 +455,7 @@ fn project_run_status_issue_matches(run: &ProjectRunStatus, issue: &str) -> bool
 			.is_some_and(|identifier| identifier.eq_ignore_ascii_case(issue))
 }
 
-fn operator_active_run_statuses(
+fn operator_current_lane_statuses(
 	project: &ServiceConfig,
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	project_display_name: &str,
@@ -458,7 +463,7 @@ fn operator_active_run_statuses(
 	recent_runs: &[OperatorRunStatus],
 	now_unix_epoch: i64,
 ) -> crate::prelude::Result<Vec<OperatorRunStatus>> {
-	let mut active_runs = leased_runs
+	let mut current_lanes = leased_runs
 		.into_iter()
 		.map(|run| {
 			operator_run_status(
@@ -471,21 +476,21 @@ fn operator_active_run_statuses(
 		})
 		.collect::<crate::prelude::Result<Vec<_>>>()?
 		.into_iter()
-		.filter(operator_run_counts_as_active)
+		.filter(operator_run_counts_as_current_lane)
 		.collect::<Vec<_>>();
-	let mut active_run_ids =
-		active_runs.iter().map(|run| run.run_id.clone()).collect::<HashSet<_>>();
+	let mut current_lane_run_ids =
+		current_lanes.iter().map(|run| run.run_id.clone()).collect::<HashSet<_>>();
 
 	for run in recent_runs {
-		if !active_run_ids.contains(&run.run_id) && operator_run_has_live_execution(run) {
-			active_run_ids.insert(run.run_id.clone());
-			active_runs.push(run.clone());
+		if !current_lane_run_ids.contains(&run.run_id) && operator_run_has_live_execution(run) {
+			current_lane_run_ids.insert(run.run_id.clone());
+			current_lanes.push(run.clone());
 		}
 	}
 
-	hydrate_active_run_lifecycle_metrics(&mut active_runs, recent_runs);
+	hydrate_current_lane_lifecycle_metrics(&mut current_lanes, recent_runs);
 
-	Ok(active_runs)
+	Ok(current_lanes)
 }
 
 fn global_codex_account_control_status() -> OperatorCodexAccountControlStatus {
@@ -623,7 +628,7 @@ where
 		limit,
 		LiveOperatorStatusSnapshotOptions {
 			hydrate_history_ledger: false,
-			run_issue_metadata_hydration: RunIssueMetadataHydration::ActiveRowsOnly,
+			run_issue_metadata_hydration: RunIssueMetadataHydration::CurrentLaneRowsOnly,
 			account_activity_mode: AccountActivityMode::Snapshot,
 		},
 	)
@@ -673,9 +678,17 @@ where
 		},
 		&mut snapshot,
 	)?;
-	apply_terminal_history_ledger_outcomes(&mut snapshot);
+
+	let terminal_projection =
+		current_lane_terminal_projection_from_local_ledger(project, state_store, &snapshot)?;
+
+	apply_operator_lane_terminal_projection(
+		&mut snapshot,
+		terminal_projection,
+		Some(workflow.frontmatter().tracker().resolved_completed_state()),
+	);
 	suppress_terminal_attention_queue_echoes(&mut snapshot);
-	hydrate_post_review_lane_active_run_shadowing(&mut snapshot);
+	hydrate_post_review_lane_current_lane_shadowing(&mut snapshot);
 	refresh_worktree_ownership(
 		&mut snapshot,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
@@ -1051,6 +1064,190 @@ fn hydrate_history_lanes_from_local_ledger(
 	Ok(())
 }
 
+fn current_lane_terminal_projection_from_local_ledger(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	snapshot: &OperatorStatusSnapshot,
+) -> crate::prelude::Result<OperatorLaneTerminalProjection> {
+	let mut projection = OperatorLaneTerminalProjection::default();
+
+	for run in &snapshot.current_lanes {
+		let records = state_store.list_linear_execution_events(project.service_id(), &run.issue_id)?;
+
+		if records.is_empty() {
+			continue;
+		}
+
+		let records = local_history_ledger_records(records);
+		let outcome = operator_history_ledger_outcome(&records);
+
+		if history_ledger_outcome_is_terminal(&outcome) {
+			projection
+				.outcomes_by_issue_key
+				.insert(operator_run_group_key(run), outcome);
+		}
+	}
+
+	Ok(projection)
+}
+
+fn apply_operator_lane_terminal_projection(
+	snapshot: &mut OperatorStatusSnapshot,
+	projection: OperatorLaneTerminalProjection,
+	completed_state: Option<&str>,
+) {
+	apply_terminal_history_ledger_outcomes(snapshot);
+
+	if projection.outcomes_by_issue_key.is_empty() {
+		return;
+	}
+
+	let current_attention_worktree_keys = snapshot
+		.worktrees
+		.iter()
+		.map(|worktree| operator_issue_attention_key(&worktree.issue_id, worktree.issue_identifier.as_deref()))
+		.collect::<HashSet<_>>();
+	let mut retained_current_lanes = Vec::new();
+	let mut demoted_lanes = Vec::new();
+
+	for run in snapshot.current_lanes.drain(..) {
+		if let Some(outcome) = projection.outcomes_by_issue_key.get(&operator_run_group_key(&run))
+			&& current_lane_terminal_outcome_supersedes(
+				&run,
+				outcome,
+				completed_state,
+				&current_attention_worktree_keys,
+			)
+		{
+			demoted_lanes.push((run, outcome.clone()));
+		} else {
+			retained_current_lanes.push(run);
+		}
+	}
+
+	snapshot.current_lanes = retained_current_lanes;
+
+	for (run, outcome) in demoted_lanes {
+		append_current_lane_to_history(snapshot, run, outcome);
+	}
+
+	apply_terminal_history_ledger_outcomes(snapshot);
+}
+
+fn current_lane_terminal_outcome_supersedes(
+	run: &OperatorRunStatus,
+	outcome: &OperatorHistoryLedgerOutcome,
+	completed_state: Option<&str>,
+	current_attention_worktree_keys: &HashSet<String>,
+) -> bool {
+	if !history_ledger_outcome_is_terminal(outcome) {
+		return false;
+	}
+	if current_lane_has_authoritative_live_owner(run) {
+		return false;
+	}
+	if history_ledger_outcome_requires_attention(outcome) {
+		return !current_lane_has_current_attention_signal(run, current_attention_worktree_keys);
+	}
+
+	current_lane_tracker_terminal_is_clean(run, completed_state)
+}
+
+fn current_lane_has_authoritative_live_owner(run: &OperatorRunStatus) -> bool {
+	run.run_lease
+		|| run.process_alive == Some(true)
+		|| matches!(run.thread_status.as_deref(), Some("active"))
+		|| !run.thread_active_flags.is_empty()
+}
+
+fn current_lane_has_current_attention_signal(
+	run: &OperatorRunStatus,
+	current_attention_worktree_keys: &HashSet<String>,
+) -> bool {
+	run.needs_attention_label_present == Some(true)
+		|| run.active_label_present == Some(true)
+		|| current_attention_worktree_keys.contains(&operator_run_group_key(run))
+}
+
+fn current_lane_tracker_terminal_is_clean(
+	run: &OperatorRunStatus,
+	completed_state: Option<&str>,
+) -> bool {
+	let has_tracker_metadata = run.issue_state.is_some()
+		|| run.active_label_present.is_some()
+		|| run.needs_attention_label_present.is_some();
+
+	if !has_tracker_metadata {
+		return true;
+	}
+
+	let Some(completed_state) = completed_state else {
+		return false;
+	};
+
+	run.issue_state.as_deref() == Some(completed_state)
+		&& run.active_label_present == Some(false)
+		&& run.needs_attention_label_present == Some(false)
+}
+
+fn append_current_lane_to_history(
+	snapshot: &mut OperatorStatusSnapshot,
+	run: OperatorRunStatus,
+	outcome: OperatorHistoryLedgerOutcome,
+) {
+	let group_key = operator_run_group_key(&run);
+
+	if let Some(lane) = snapshot
+		.history_lanes
+		.iter_mut()
+		.find(|lane| history_lane_group_key(lane) == group_key)
+	{
+		if !lane.attempts.iter().any(|attempt| attempt.run_id == run.run_id) {
+			hydrate_history_lane_from_run(lane, &run);
+
+			if run.attempt_number > lane.latest_run.attempt_number {
+				lane.latest_run = run.clone();
+			}
+
+			lane.attempts.push(run);
+
+			lane.attempt_count = lane.attempts.len();
+			lane.lifecycle_metrics = operator_lane_lifecycle_metrics(&lane.attempts);
+		}
+
+		lane.ledger_outcome = outcome;
+
+		apply_terminal_history_ledger_outcome_to_latest_run(lane);
+
+		return;
+	}
+
+	let attempts = vec![run.clone()];
+	let lifecycle_metrics = operator_lane_lifecycle_metrics(&attempts);
+	let issue_identifier = run.issue_identifier.clone();
+	let issue_key = operator_run_issue_key(&run);
+	let mut lane = OperatorHistoryLaneStatus {
+		project_id: run.project_id.clone(),
+		issue_id: run.issue_id.clone(),
+		issue_identifier,
+		title: run.title.clone(),
+		author: run.author.clone(),
+		issue_state: run.issue_state.clone(),
+		active_label_present: run.active_label_present,
+		needs_attention_label_present: run.needs_attention_label_present,
+		issue_key,
+		attempt_count: 1,
+		ledger_outcome: outcome,
+		lifecycle_metrics,
+		latest_run: run,
+		attempts,
+	};
+
+	apply_terminal_history_ledger_outcome_to_latest_run(&mut lane);
+
+	snapshot.history_lanes.push(lane);
+}
+
 fn apply_terminal_history_ledger_outcomes(snapshot: &mut OperatorStatusSnapshot) {
 	let mut terminal_history_keys = HashSet::new();
 
@@ -1068,13 +1265,13 @@ fn apply_terminal_history_ledger_outcomes(snapshot: &mut OperatorStatusSnapshot)
 		return;
 	}
 
-	let active_run_ids = snapshot
-		.active_runs
+	let current_lane_run_ids = snapshot
+		.current_lanes
 		.iter()
 		.map(|run| run.run_id.clone())
 		.collect::<HashSet<_>>();
-	let active_issue_keys = snapshot
-		.active_runs
+	let current_lane_issue_keys = snapshot
+		.current_lanes
 		.iter()
 		.map(operator_run_group_key)
 		.collect::<HashSet<_>>();
@@ -1082,8 +1279,8 @@ fn apply_terminal_history_ledger_outcomes(snapshot: &mut OperatorStatusSnapshot)
 	snapshot.recent_runs.retain(|run| {
 		let run_group_key = operator_run_group_key(run);
 
-		active_run_ids.contains(&run.run_id)
-			|| active_issue_keys.contains(&run_group_key)
+		current_lane_run_ids.contains(&run.run_id)
+			|| current_lane_issue_keys.contains(&run_group_key)
 			|| !terminal_history_keys.contains(&run_group_key)
 	});
 }
@@ -1141,7 +1338,7 @@ fn apply_terminal_history_ledger_outcome_to_latest_run(lane: &mut OperatorHistor
 	lane.latest_run.wait_reason = None;
 	lane.latest_run.current_operation = String::from("ledger_outcome");
 	lane.latest_run.continuation_pending = false;
-	lane.latest_run.active_lease = false;
+	lane.latest_run.run_lease = false;
 	lane.latest_run.queue_lease_state = String::from("not_held");
 	lane.latest_run.execution_liveness = String::from("not_running");
 	lane.latest_run.suspected_stall = false;
@@ -1211,11 +1408,11 @@ fn worktree_ownership(
 	snapshot: &OperatorStatusSnapshot,
 	completed_state: Option<&str>,
 ) -> WorktreeOwnership {
-	if let Some(run) = worktree_active_run_owner(worktree, snapshot) {
+	if let Some(run) = worktree_current_lane_owner(worktree, snapshot) {
 		return match run.ownership_state.as_str() {
-			"owned_active" => WorktreeOwnership {
-				kind: "active_lane",
-				reason: format!("Active lane `{}` owns this worktree.", run.run_id),
+			"leased_run" => WorktreeOwnership {
+				kind: "current_lane",
+				reason: format!("Current lane `{}` owns this worktree.", run.run_id),
 				next_action: None,
 				audit_required: false,
 			},
@@ -1310,18 +1507,18 @@ fn worktree_ownership(
 	}
 }
 
-fn worktree_active_run_owner<'a>(
+fn worktree_current_lane_owner<'a>(
 	worktree: &OperatorWorktreeStatus,
 	snapshot: &'a OperatorStatusSnapshot,
 ) -> Option<&'a OperatorRunStatus> {
 	snapshot
-		.active_runs
+		.current_lanes
 		.iter()
 		.chain(snapshot.recent_runs.iter())
 		.find(|run| {
 			matches!(
 				run.ownership_state.as_str(),
-				"owned_active" | "retained_attention" | "orphaned_live_thread" | "terminalizing"
+				"leased_run" | "retained_attention" | "orphaned_live_thread" | "terminalizing"
 			) && (run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
 				|| run.branch_name.as_deref() == Some(worktree.branch_name.as_str())
 				|| run.issue_id == worktree.issue_id)
@@ -1395,7 +1592,7 @@ fn worktree_cleanup_only_reason(
 	}
 
 	String::from(
-		"No active lane, queued recovery, or post-review lane owns this worktree; local cleanup only.",
+		"No current lane, queued recovery, or post-review lane owns this worktree; local cleanup only.",
 	)
 }
 
@@ -1412,9 +1609,9 @@ fn refresh_operator_project_summary(
 	snapshot: &mut OperatorStatusSnapshot,
 	completed_state: Option<&str>,
 ) {
-	let active_run_count = snapshot.active_runs.len();
+	let current_lane_count = snapshot.current_lanes.len();
 	let running_lane_count =
-		snapshot.active_runs.iter().filter(|run| operator_run_counts_as_running(run)).count();
+		snapshot.current_lanes.iter().filter(|run| operator_run_counts_as_running(run)).count();
 	let queued_candidate_count = snapshot
 		.queued_candidates
 		.iter()
@@ -1423,7 +1620,7 @@ fn refresh_operator_project_summary(
 	let post_review_lane_count = snapshot
 		.post_review_lanes
 		.iter()
-		.filter(|lane| !lane.shadowed_by_active_run)
+		.filter(|lane| !lane.shadowed_by_current_lane)
 		.count();
 	let retained_worktree_count = rendered_recovery_worktrees(snapshot).len();
 	let waiting_lane_count = project_waiting_lane_count(snapshot);
@@ -1435,7 +1632,7 @@ fn refresh_operator_project_summary(
 	let warning_count = snapshot.warnings.len();
 
 	if let Some(project_status) = snapshot.projects.first_mut() {
-		project_status.active_run_count = active_run_count;
+		project_status.current_lane_count = current_lane_count;
 		project_status.running_lane_count = running_lane_count;
 		project_status.queued_candidate_count = queued_candidate_count;
 		project_status.post_review_lane_count = post_review_lane_count;
@@ -1465,14 +1662,14 @@ fn project_waiting_lane_count(snapshot: &OperatorStatusSnapshot) -> usize {
 	let review_waiting = snapshot
 		.post_review_lanes
 		.iter()
-		.filter(|lane| !lane.shadowed_by_active_run && lane.classification == "wait_for_review")
+		.filter(|lane| !lane.shadowed_by_current_lane && lane.classification == "wait_for_review")
 		.count();
 
 	waiting_run_count + queued_waiting + review_waiting
 }
 
 fn project_summary_runs(snapshot: &OperatorStatusSnapshot) -> Vec<&OperatorRunStatus> {
-	let mut runs = snapshot.active_runs.iter().collect::<Vec<_>>();
+	let mut runs = snapshot.current_lanes.iter().collect::<Vec<_>>();
 
 	runs.extend(snapshot.history_lanes.iter().map(|lane| &lane.latest_run));
 
@@ -1494,7 +1691,7 @@ fn project_attention_count(
 	let mut attention_keys = HashSet::new();
 
 	for run in snapshot
-		.active_runs
+		.current_lanes
 		.iter()
 		.filter(|run| operator_run_counts_as_attention(run))
 	{
@@ -1544,7 +1741,7 @@ fn queued_candidate_counts_as_attention(candidate: &OperatorQueuedIssueStatus) -
 }
 
 fn post_review_lane_counts_as_attention(lane: &OperatorPostReviewLaneStatus) -> bool {
-	if lane.shadowed_by_active_run {
+	if lane.shadowed_by_current_lane {
 		return false;
 	}
 
@@ -1676,7 +1873,7 @@ fn project_cleanup_blocked_count(snapshot: &OperatorStatusSnapshot) -> usize {
 	for lane in snapshot
 		.post_review_lanes
 		.iter()
-		.filter(|lane| !lane.shadowed_by_active_run && lane.classification == "cleanup_blocked")
+		.filter(|lane| !lane.shadowed_by_current_lane && lane.classification == "cleanup_blocked")
 	{
 		cleanup_keys.insert(post_review_lane_cleanup_key(lane));
 	}
@@ -1713,19 +1910,20 @@ fn post_review_lane_cleanup_key(lane: &OperatorPostReviewLaneStatus) -> String {
 	lane.issue_identifier.clone()
 }
 
-fn hydrate_post_review_lane_active_run_shadowing(snapshot: &mut OperatorStatusSnapshot) {
-	let active_issue_keys = snapshot
-		.active_runs
+fn hydrate_post_review_lane_current_lane_shadowing(snapshot: &mut OperatorStatusSnapshot) {
+	let current_lane_issue_keys = snapshot
+		.current_lanes
 		.iter()
 		.filter(|run| run.counts_as_running)
 		.map(|run| operator_run_group_key(run).to_ascii_uppercase())
 		.collect::<HashSet<_>>();
 
 	for lane in &mut snapshot.post_review_lanes {
-		lane.shadowed_by_active_run = active_issue_keys.contains(&operator_issue_attention_key(
-			&lane.issue_id,
-			Some(&lane.issue_identifier),
-		));
+		lane.shadowed_by_current_lane =
+			current_lane_issue_keys.contains(&operator_issue_attention_key(
+				&lane.issue_id,
+				Some(&lane.issue_identifier),
+			));
 	}
 }
 
@@ -1736,8 +1934,8 @@ fn worktree_cleanup_key(worktree: &OperatorWorktreeStatus) -> String {
 		.unwrap_or_else(|| worktree.issue_id.clone())
 }
 
-fn operator_run_counts_as_active(run: &OperatorRunStatus) -> bool {
-	(run.active_lease || operator_run_has_live_execution(run))
+fn operator_run_counts_as_current_lane(run: &OperatorRunStatus) -> bool {
+	(run.run_lease || operator_run_has_live_execution(run))
 		&& !matches!(run.phase.as_str(), "completed" | "failed" | "terminated")
 }
 
@@ -1750,7 +1948,7 @@ fn operator_run_has_live_execution(run: &OperatorRunStatus) -> bool {
 }
 
 fn operator_run_counts_as_running(run: &OperatorRunStatus) -> bool {
-	run.ownership_state == "owned_active"
+	run.ownership_state == "leased_run"
 		&& matches!(run.status.as_str(), "starting" | "running")
 		&& run.phase == "executing"
 		&& (run.process_alive != Some(false) || run.has_fresh_execution)
@@ -1762,7 +1960,10 @@ fn operator_run_counts_as_attention(run: &OperatorRunStatus) -> bool {
 		|| run.ownership_state == "retained_attention"
 		|| matches!(
 			run.policy_state.as_str(),
-			"review_churn_exceeded" | "authority_boundary_required" | "human_attention_required"
+			"review_churn_exceeded"
+				| "continuation_recovery_churn_exceeded"
+				| "authority_boundary_required"
+				| "human_attention_required"
 		)
 }
 
@@ -1788,7 +1989,7 @@ fn operator_run_has_recent_app_server_execution(run: &OperatorRunStatus) -> bool
 		|| !run.thread_active_flags.is_empty()
 		|| run.protocol_idle_for_seconds.is_some_and(|idle_for| {
 			u64::try_from(idle_for)
-				.is_ok_and(|idle_for| idle_for < ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
+				.is_ok_and(|idle_for| idle_for < RUN_LEASE_IDLE_TIMEOUT.as_secs())
 		})
 }
 
@@ -1800,7 +2001,7 @@ fn operator_run_has_stale_execution_without_known_process(run: &OperatorRunStatu
 		&& !run.has_fresh_execution
 		&& [run.idle_for_seconds, run.protocol_idle_for_seconds].iter().any(|idle_for| {
 			idle_for.is_some_and(|idle_for| {
-				u64::try_from(idle_for).is_ok_and(|idle_for| idle_for >= ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
+				u64::try_from(idle_for).is_ok_and(|idle_for| idle_for >= RUN_LEASE_IDLE_TIMEOUT.as_secs())
 			})
 		})
 }
@@ -1826,7 +2027,7 @@ fn project_connector_state(snapshot: &OperatorStatusSnapshot) -> String {
 
 fn project_last_activity_at(snapshot: &OperatorStatusSnapshot) -> Option<String> {
 	snapshot
-		.active_runs
+		.current_lanes
 		.iter()
 		.chain(snapshot.recent_runs.iter())
 		.chain(snapshot.history_lanes.iter().map(|lane| &lane.latest_run))
@@ -1865,7 +2066,7 @@ fn operator_status_worktrees(
 			worktree_path: relative_worktree_path_for_path(project, mapping.worktree_path()),
 			ownership: String::from("cleanup_only"),
 			ownership_reason: String::from(
-				"No active lane, queued recovery, or post-review lane currently owns this worktree.",
+				"No current lane, queued recovery, or post-review lane currently owns this worktree.",
 			),
 			provenance: operator_worktree_provenance_from_mapping(&mapping),
 			recovery_next_action: None,
@@ -1899,7 +2100,7 @@ fn operator_status_worktrees(
 			worktree_path: relative_path,
 			ownership: String::from("cleanup_only"),
 			ownership_reason: String::from(
-				"No active lane, queued recovery, or post-review lane currently owns this worktree.",
+				"No current lane, queued recovery, or post-review lane currently owns this worktree.",
 			),
 			provenance: operator_worktree_provenance(
 				WORKTREE_PROVENANCE_FILESYSTEM_SCAN,
@@ -2214,7 +2415,7 @@ fn operator_snapshot_run_issue_ids(
 ) -> Vec<String> {
 	let mut issue_ids = BTreeSet::new();
 
-	for run in &snapshot.active_runs {
+	for run in &snapshot.current_lanes {
 		append_operator_run_issue_id(&mut issue_ids, run);
 	}
 
@@ -2246,7 +2447,7 @@ fn hydrate_operator_snapshot_run_rows(
 	snapshot: &mut OperatorStatusSnapshot,
 	metadata_by_issue_id: &HashMap<String, OperatorIssueDisplayMetadata>,
 ) {
-	for run in snapshot.active_runs.iter_mut().chain(snapshot.recent_runs.iter_mut()) {
+	for run in snapshot.current_lanes.iter_mut().chain(snapshot.recent_runs.iter_mut()) {
 		hydrate_operator_run_row_from_issue_metadata(run, metadata_by_issue_id);
 	}
 	for lane in &mut snapshot.history_lanes {
@@ -2322,6 +2523,19 @@ fn apply_run_issue_metadata(
 	if let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty()) {
 		run.author = Some(author.clone());
 	}
+	if let Some(issue_state) = metadata
+		.issue_state
+		.as_ref()
+		.filter(|issue_state| !issue_state.trim().is_empty())
+	{
+		run.issue_state = Some(issue_state.clone());
+	}
+	if let Some(active_label_present) = metadata.active_label_present {
+		run.active_label_present = Some(active_label_present);
+	}
+	if let Some(needs_attention_label_present) = metadata.needs_attention_label_present {
+		run.needs_attention_label_present = Some(needs_attention_label_present);
+	}
 }
 
 fn fill_missing_history_lane_issue_metadata(
@@ -2370,6 +2584,23 @@ fn fill_missing_run_issue_metadata(
 		&& let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty())
 	{
 		run.author = Some(author.clone());
+	}
+	if run
+		.issue_state
+		.as_ref()
+		.is_none_or(|issue_state| issue_state.trim().is_empty())
+		&& let Some(issue_state) = metadata
+			.issue_state
+			.as_ref()
+			.filter(|issue_state| !issue_state.trim().is_empty())
+	{
+		run.issue_state = Some(issue_state.clone());
+	}
+	if run.active_label_present.is_none() {
+		run.active_label_present = metadata.active_label_present;
+	}
+	if run.needs_attention_label_present.is_none() {
+		run.needs_attention_label_present = metadata.needs_attention_label_present;
 	}
 }
 
@@ -3290,7 +3521,7 @@ fn operator_queued_issue_attention_summary(
 		}
 
 		return String::from(
-			"Linear active ownership is still present without a matching local active lease; reconcile before dispatch.",
+			"Linear active ownership is still present without a matching local run lease; reconcile before dispatch.",
 		);
 	}
 	if worktree_has_tracked_changes {
@@ -3551,7 +3782,7 @@ fn degraded_post_review_lane_status_from_classification(
 		mergeable: classification.mergeable,
 		check_state: classification.check_state,
 		unresolved_review_threads: classification.unresolved_review_threads,
-		shadowed_by_active_run: false,
+		shadowed_by_current_lane: false,
 		readback_warning: classification.readback_warning,
 		readback_root_cause: classification.readback_root_cause,
 		loop_status: Some(loop_status),
@@ -3764,7 +3995,7 @@ fn post_review_lane_status_from_classification(
 		mergeable: classification.mergeable,
 		check_state: classification.check_state,
 		unresolved_review_threads: classification.unresolved_review_threads,
-		shadowed_by_active_run: false,
+		shadowed_by_current_lane: false,
 		readback_warning: classification.readback_warning,
 		readback_root_cause: classification.readback_root_cause,
 		loop_status,
@@ -4838,7 +5069,7 @@ fn blocked_post_review_lane_status(
 		mergeable: None,
 		check_state: None,
 		unresolved_review_threads: None,
-		shadowed_by_active_run: false,
+		shadowed_by_current_lane: false,
 		readback_warning: None,
 		readback_root_cause: post_review_readback_root_cause_for_reason(reason)
 			.map(|root_cause| root_cause.as_str().to_owned()),
@@ -5059,10 +5290,10 @@ where
 	}
 
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
-	let mut active_issues = Vec::new();
+	let mut recoverable_issues = Vec::new();
 
 	for issue in issues {
-		if let Some(active_issue) = recover_issue_runtime_state(
+		if let Some(recoverable_issue) = recover_issue_runtime_state(
 			tracker,
 			project,
 			workflow,
@@ -5071,13 +5302,13 @@ where
 			issue,
 			now_unix_epoch,
 		)? {
-			active_issues.push(active_issue);
+			recoverable_issues.push(recoverable_issue);
 		}
 	}
 
-	active_issues.sort_by(compare_issue_candidates);
+	recoverable_issues.sort_by(compare_issue_candidates);
 
-	Ok(RecoveredRuntimeState { active_issues })
+	Ok(RecoveredRuntimeState { recoverable_issues })
 }
 
 fn recover_issue_runtime_state<T>(
@@ -5353,7 +5584,7 @@ fn worktree_activity_marker_is_fresh(marker: &RunActivityMarker, now_unix_epoch:
 fn run_activity_idle_timeout(marker: Option<&RunActivityMarker>) -> Duration {
 	agent::protocol_activity_idle_timeout(
 		marker.and_then(RunActivityMarker::protocol_activity),
-		ACTIVE_RUN_IDLE_TIMEOUT,
+		RUN_LEASE_IDLE_TIMEOUT,
 	)
 }
 
@@ -5571,6 +5802,7 @@ fn operator_run_status(
 		worktree_path.as_deref(),
 	);
 	let private_evidence = operator_run_private_evidence(project, &run, issue_identifier.as_deref());
+	let continuation_recovery = operator_run_continuation_recovery_status(loop_evidence, &run);
 	let loop_status =
 		operator_run_loop_status(
 			project,
@@ -5599,6 +5831,7 @@ fn operator_run_status(
 		worktree_path,
 		issue_identifier,
 		private_evidence,
+		continuation_recovery,
 		loop_status,
 	)))
 }
@@ -5622,6 +5855,7 @@ fn operator_run_status_from_parts(
 	worktree_path: Option<String>,
 	issue_identifier: Option<String>,
 	private_evidence: AgentPrivateEvidenceRef,
+	continuation_recovery: Option<OperatorContinuationRecoveryStatus>,
 	loop_status: OperatorLoopStatus,
 ) -> OperatorRunStatus {
 	OperatorRunStatus {
@@ -5632,6 +5866,9 @@ fn operator_run_status_from_parts(
 		issue_identifier,
 		title: None,
 		author: None,
+		issue_state: None,
+		active_label_present: None,
+		needs_attention_label_present: None,
 		attempt_number: run.attempt_number(),
 		status: lifecycle.status,
 		attempt_status: run.status().to_owned(),
@@ -5652,8 +5889,9 @@ fn operator_run_status_from_parts(
 		thread_active_flags: app_server_state.thread_active_flags,
 		interactive_requested: app_server_state.interactive_requested,
 		continuation_pending: app_server_state.continuation_pending,
-		active_lease: lifecycle.active_lease,
-		queue_lease_state: operator_run_queue_lease_state(lifecycle.active_lease),
+		continuation_recovery,
+		run_lease: lifecycle.run_lease,
+		queue_lease_state: operator_run_queue_lease_state(lifecycle.run_lease),
 		execution_liveness: lifecycle.execution_liveness,
 		has_fresh_execution: false,
 		counts_as_running: false,
@@ -5727,8 +5965,8 @@ fn operator_lane_control_state(run: &OperatorRunStatus) -> OperatorLaneControlPr
 	);
 	let mut conditions = operator_run_lane_control_conditions(run, &liveness_state, &policy_state);
 
-	if ownership_state == "owned_active" && !run.active_lease {
-		conditions.push(String::from("invalid_owned_active_without_lease"));
+	if ownership_state == "leased_run" && !run.run_lease {
+		conditions.push(String::from("invalid_leased_run_without_lease"));
 	}
 
 	OperatorLaneControlProjection {
@@ -5747,24 +5985,30 @@ fn operator_run_ownership_state(
 	policy_state: &str,
 	terminalization_state: &str,
 ) -> String {
-	if run.active_lease
+	if run.run_lease
 		&& matches!(run.attempt_status.as_str(), "starting" | "running" | "continuation_pending")
 		&& !matches!(
 			policy_state,
-			"review_churn_exceeded" | "authority_boundary_required" | "human_attention_required"
+			"review_churn_exceeded"
+				| "continuation_recovery_churn_exceeded"
+				| "authority_boundary_required"
+				| "human_attention_required"
 		)
 	{
-		return String::from("owned_active");
+		return String::from("leased_run");
 	}
 	if matches!(
 		policy_state,
-		"review_churn_exceeded" | "authority_boundary_required" | "human_attention_required"
+		"review_churn_exceeded"
+			| "continuation_recovery_churn_exceeded"
+			| "authority_boundary_required"
+			| "human_attention_required"
 	) || run.needs_attention
-		|| (!run.active_lease && liveness_state == "host_boot_mismatch")
+		|| (!run.run_lease && liveness_state == "host_boot_mismatch")
 	{
 		return String::from("retained_attention");
 	}
-	if !run.active_lease
+	if !run.run_lease
 		&& matches!(liveness_state, "process_alive" | "thread_active" | "protocol_recent")
 	{
 		return String::from("orphaned_live_thread");
@@ -5805,6 +6049,14 @@ fn operator_run_liveness_state(run: &OperatorRunStatus) -> String {
 }
 
 fn operator_run_policy_state(run: &OperatorRunStatus) -> String {
+	if run
+		.continuation_recovery
+		.as_ref()
+		.is_some_and(|recovery| recovery.budget_exceeded)
+	{
+		return String::from("continuation_recovery_churn_exceeded");
+	}
+
 	let Some(loop_status) = run.loop_status.as_ref() else {
 		return String::from("allowed");
 	};
@@ -5855,7 +6107,7 @@ fn operator_run_terminalization_state(run: &OperatorRunStatus, liveness_state: &
 		return String::from("cleanup_complete");
 	}
 	if matches!(run.phase.as_str(), "completed" | "failed" | "terminated")
-		&& !run.active_lease
+		&& !run.run_lease
 		&& matches!(liveness_state, "not_running" | "unknown")
 	{
 		return String::from("cleanup_complete");
@@ -5874,10 +6126,10 @@ fn operator_run_lane_control_conditions(
 ) -> Vec<String> {
 	let mut conditions = Vec::new();
 
-	if !run.active_lease
+	if !run.run_lease
 		&& matches!(run.attempt_status.as_str(), "starting" | "running" | "continuation_pending")
 	{
-		conditions.push(String::from("active_lease_missing"));
+		conditions.push(String::from("run_lease_missing"));
 	}
 	if matches!(
 		run.attempt_status.as_str(),
@@ -5891,6 +6143,9 @@ fn operator_run_lane_control_conditions(
 	}
 	if policy_state == "review_churn_exceeded" {
 		conditions.push(String::from("review_churn_threshold_exceeded"));
+	}
+	if policy_state == "continuation_recovery_churn_exceeded" {
+		conditions.push(String::from("continuation_recovery_budget_exceeded"));
 	}
 	if matches!(
 		policy_state,
@@ -5912,6 +6167,9 @@ fn operator_run_lane_control_next_action(
 	if policy_state == "review_churn_exceeded" {
 		return String::from("start_architecture_recovery_or_stop_for_human_attention");
 	}
+	if policy_state == "continuation_recovery_churn_exceeded" {
+		return String::from("stop_auto_continuation_and_request_architecture_recovery");
+	}
 	if matches!(
 		policy_state,
 		"authority_boundary_required" | "human_attention_required"
@@ -5927,7 +6185,7 @@ fn operator_run_lane_control_next_action(
 	if terminalization_state != "none" && terminalization_state != "cleanup_complete" {
 		return String::from("finish_terminalization");
 	}
-	if ownership_state == "owned_active" {
+	if ownership_state == "leased_run" {
 		if let Some(next_action) =
 			run.loop_status.as_ref().and_then(|loop_status| loop_status.next_action.clone())
 		{
@@ -6014,7 +6272,7 @@ fn operator_run_lifecycle_projection(
 	} else {
 		operator_run_execution_liveness(&status, timing, app_server_state, protocol_summary)
 	};
-	let active_lease = terminal_finalize_projection.is_none() && run.active_lease();
+	let run_lease = terminal_finalize_projection.is_none() && run.run_lease();
 
 	OperatorRunLifecycleProjection {
 		status,
@@ -6024,7 +6282,7 @@ fn operator_run_lifecycle_projection(
 		current_operation,
 		suspected_stall,
 		execution_liveness,
-		active_lease,
+		run_lease,
 		retry_kind,
 		retry_ready_at_unix_epoch,
 	}
@@ -6743,6 +7001,86 @@ fn operator_run_terminal_finalize_projection(
 	}
 }
 
+fn operator_run_continuation_recovery_status(
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+	run: &ProjectRunStatus,
+) -> Option<OperatorContinuationRecoveryStatus> {
+	let recovery_events = loop_evidence
+		.private_events_for_issue(run.issue_id())
+		.into_iter()
+		.filter(|event| event.attempt_number() <= run.attempt_number())
+		.filter_map(operator_continuation_recovery_event_status)
+		.collect::<Vec<_>>();
+	let latest = recovery_events.last()?.clone();
+	let recovery_count = recovery_events
+		.iter()
+		.filter(|event| {
+			event.source_phase == latest.source_phase
+				&& event.source_error_class == latest.source_error_class
+				&& event.state == "continuation_scheduled"
+		})
+		.count() as i64;
+	let budget_exceeded = latest.state == "continuation_blocked"
+		|| recovery_count > PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT;
+
+	Some(OperatorContinuationRecoveryStatus {
+		state: latest.state,
+		source_phase: latest.source_phase,
+		next_phase: latest.next_phase,
+		source_error_class: latest.source_error_class,
+		source_error_message: latest.source_error_message,
+		recorded_at: latest.recorded_at,
+		run_id: latest.run_id,
+		attempt_number: latest.attempt_number,
+		recovery_count,
+		automatic_continuation_limit: PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT,
+		budget_exceeded,
+		next_action: if budget_exceeded {
+			String::from("stop_auto_continuation_and_request_architecture_recovery")
+		} else {
+			String::from("monitor_continuation_recovery")
+		},
+	})
+}
+
+fn operator_continuation_recovery_event_status(
+	event: &PrivateExecutionEvent,
+) -> Option<OperatorContinuationRecoveryStatus> {
+	let state = match event.event_type() {
+		PHASE_GOAL_RECOVERY_EVENT_TYPE => "continuation_scheduled",
+		PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE => "continuation_blocked",
+		_ => return None,
+	};
+	let payload = event.payload();
+	let event_payload = payload.get("payload").unwrap_or(payload);
+	let source_phase = payload
+		.get("phase")
+		.and_then(Value::as_str)
+		.or_else(|| event_payload.get("sourcePhase").and_then(Value::as_str))?
+		.to_owned();
+	let next_phase = event_payload.get("nextPhase")?.as_str()?.to_owned();
+	let source_error_class = event_payload.get("sourceErrorClass")?.as_str()?.to_owned();
+	let source_error_message = event_payload
+		.get("sourceErrorMessage")
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+
+	Some(OperatorContinuationRecoveryStatus {
+		state: String::from(state),
+		source_phase,
+		next_phase,
+		source_error_class,
+		source_error_message,
+		recorded_at: event.recorded_at().to_owned(),
+		run_id: event.run_id().to_owned(),
+		attempt_number: event.attempt_number(),
+		recovery_count: 0,
+		automatic_continuation_limit: PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT,
+		budget_exceeded: false,
+		next_action: String::new(),
+	})
+}
+
 fn operator_run_visible_status(
 	attempt_status: &str,
 	app_server_state: &OperatorRunAppServerState,
@@ -6823,7 +7161,7 @@ fn operator_run_has_recent_protocol_execution_evidence(
 	operator_protocol_event_counts_as_live_execution(protocol_summary.last_event_type.as_deref())
 		&& timing.protocol_idle_for_seconds.is_some_and(|idle_for| {
 			u64::try_from(idle_for)
-				.is_ok_and(|idle_for| idle_for < ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
+				.is_ok_and(|idle_for| idle_for < RUN_LEASE_IDLE_TIMEOUT.as_secs())
 		})
 }
 
@@ -6852,12 +7190,12 @@ fn operator_run_has_app_server_execution_evidence(
 		|| protocol_summary.last_event_type.is_some()
 		|| timing.protocol_idle_for_seconds.is_some_and(|idle_for| {
 			u64::try_from(idle_for)
-				.is_ok_and(|idle_for| idle_for < ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
+				.is_ok_and(|idle_for| idle_for < RUN_LEASE_IDLE_TIMEOUT.as_secs())
 		})
 }
 
-fn operator_run_queue_lease_state(active_lease: bool) -> String {
-	if active_lease {
+fn operator_run_queue_lease_state(run_lease: bool) -> String {
+	if run_lease {
 		String::from("held")
 	} else {
 		String::from("not_held")
@@ -6959,7 +7297,7 @@ fn operator_run_protocol_activity(
 	if is_running
 		&& summary.waiting_reason.is_none()
 		&& protocol_idle_for_seconds.is_some_and(|idle_for| {
-			u64::try_from(idle_for).is_ok_and(|idle_for| idle_for < ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
+			u64::try_from(idle_for).is_ok_and(|idle_for| idle_for < RUN_LEASE_IDLE_TIMEOUT.as_secs())
 		}) {
 		summary.waiting_reason = Some(String::from("protocol_idleness"));
 	}
@@ -7154,13 +7492,13 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 		.iter()
 		.map(|lane| lane.attempt_count)
 		.sum::<usize>();
-	let hides_running_lanes = session_history_attempt_count < snapshot.recent_runs.len();
-	let (running_inline_claims, non_running_queued_candidates): (Vec<_>, Vec<_>) = snapshot
+	let hides_current_lanes = session_history_attempt_count < snapshot.recent_runs.len();
+	let (current_lane_claims, backlog_or_stale_queue_candidates): (Vec<_>, Vec<_>) = snapshot
 		.queued_candidates
 		.iter()
-		.partition(|queued_issue| queue_claim_belongs_to_active_run(queued_issue, snapshot));
+		.partition(|queued_issue| queue_claim_belongs_to_current_lane(queued_issue, snapshot));
 	let (stale_closed_queue_labels, backlog_candidates) =
-		rendered_backlog_queue_groups(non_running_queued_candidates);
+		rendered_backlog_queue_groups(backlog_or_stale_queue_candidates);
 	let recovery_worktrees = rendered_recovery_worktrees(snapshot);
 	let hides_owned_worktrees = recovery_worktrees.len() < snapshot.worktrees.len();
 	let mut output = String::new();
@@ -7182,17 +7520,24 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 
 	append_rendered_github_cli_authority(&mut output, snapshot);
 
-	output.push_str(&format!("Running lanes: {}\n", snapshot.active_runs.len()));
+	let running_lane_count = snapshot
+		.current_lanes
+		.iter()
+		.filter(|run| operator_run_counts_as_running(run))
+		.count();
+
+	output.push_str(&format!("Current lanes: {}\n", snapshot.current_lanes.len()));
+	output.push_str(&format!("Running lanes: {running_lane_count}\n"));
 	output.push_str(&format!(
 		"Run ledger shown: {} issue lanes from {} history attempts{}\n",
 		snapshot.history_lanes.len(),
 		session_history_attempt_count,
-		if hides_running_lanes { " (running lanes inline)" } else { "" },
+		if hides_current_lanes { " (current lanes inline)" } else { "" },
 	));
 	output.push_str(&format!("Backlog: {}\n", backlog_candidates.len()));
 	output.push_str(&format!(
-		"Active queue echoes: {}\n",
-		running_inline_claims.len()
+		"Claimed queue echoes: {}\n",
+		current_lane_claims.len()
 	));
 	output.push_str(&format!(
 		"Stale closed queue labels: {}\n",
@@ -7208,12 +7553,12 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	append_rendered_attention_summary(&mut output, snapshot);
 	append_rendered_execution_programs(&mut output, snapshot);
 
-	output.push_str("\nRunning Lanes\n");
+	output.push_str("\nCurrent Lanes\n");
 
-	if snapshot.active_runs.is_empty() {
+	if snapshot.current_lanes.is_empty() {
 		output.push_str("- none\n");
 	} else {
-		for run in &snapshot.active_runs {
+		for run in &snapshot.current_lanes {
 			append_rendered_run(&mut output, run);
 		}
 	}
@@ -7221,8 +7566,8 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	output.push_str("\nRun Ledger\n");
 
 	if snapshot.history_lanes.is_empty() {
-		if hides_running_lanes {
-			output.push_str("- none (running lanes are shown above)\n");
+		if hides_current_lanes {
+			output.push_str("- none (current lanes are shown above)\n");
 		} else {
 			output.push_str("- none\n");
 		}
@@ -7233,10 +7578,10 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	}
 
 	append_rendered_queued_issue_section(&mut output, "Backlog", &backlog_candidates, snapshot, false);
-	append_rendered_queued_issue_section(
+append_rendered_queued_issue_section(
 		&mut output,
-		"Active Queue Echoes",
-		&running_inline_claims,
+		"Claimed Queue Echoes",
+		&current_lane_claims,
 		snapshot,
 		true,
 	);
@@ -7385,13 +7730,13 @@ fn append_rendered_post_review_lanes(output: &mut String, snapshot: &OperatorSta
 		let loop_boundary = render_loop_boundary_summary(lane.loop_status.as_ref());
 
 		output.push_str(&format!(
-			"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  shadowed_by_active_run: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n  readback_root_cause: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n",
+			"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  shadowed_by_current_lane: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n  readback_root_cause: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n",
 			lane.issue_id,
 			lane.issue_identifier,
 			lane.issue_state,
 			lane.classification,
 			lane.reason,
-			if lane.shadowed_by_active_run { "yes" } else { "no" },
+			if lane.shadowed_by_current_lane { "yes" } else { "no" },
 			lane.branch_name,
 			lane.worktree_path,
 			lane.pr_url.as_deref().unwrap_or("none"),
@@ -7616,7 +7961,7 @@ fn append_rendered_queued_issue_section(
 
 	for queued_issue in queued_issues {
 		let running_owner = show_running_owner
-			.then(|| active_run_id_for_queue_candidate(queued_issue, snapshot))
+			.then(|| current_lane_run_id_for_queue_candidate(queued_issue, snapshot))
 			.flatten();
 
 		append_rendered_queued_issue(output, queued_issue, running_owner);
@@ -7624,14 +7969,14 @@ fn append_rendered_queued_issue_section(
 }
 
 fn operator_history_lanes(
-	active_runs: &[OperatorRunStatus],
+	current_lanes: &[OperatorRunStatus],
 	recent_runs: &[OperatorRunStatus],
 ) -> Vec<OperatorHistoryLaneStatus> {
-	let active_run_ids = active_runs
+	let current_lane_run_ids = current_lanes
 		.iter()
 		.map(|run| run.run_id.as_str())
 		.collect::<HashSet<_>>();
-	let active_issue_ids = active_runs
+	let current_lane_issue_ids = current_lanes
 		.iter()
 		.map(|run| run.issue_id.as_str())
 		.collect::<HashSet<_>>();
@@ -7639,8 +7984,8 @@ fn operator_history_lanes(
 	let mut lanes = Vec::new();
 
 	for run in recent_runs {
-		if active_run_ids.contains(run.run_id.as_str())
-			|| active_issue_ids.contains(run.issue_id.as_str())
+		if current_lane_run_ids.contains(run.run_id.as_str())
+			|| current_lane_issue_ids.contains(run.issue_id.as_str())
 		{
 			continue;
 		}
@@ -7709,35 +8054,35 @@ fn hydrate_history_lane_from_run(lane: &mut OperatorHistoryLaneStatus, run: &Ope
 	}
 }
 
-fn hydrate_active_run_lifecycle_metrics(
-	active_runs: &mut [OperatorRunStatus],
+fn hydrate_current_lane_lifecycle_metrics(
+	current_lanes: &mut [OperatorRunStatus],
 	recent_runs: &[OperatorRunStatus],
 ) {
-	for active_run in active_runs {
-		let group_key = operator_run_group_key(active_run);
-		let active_run_id = active_run.run_id.clone();
-		let active_snapshot = active_run.clone();
+	for current_lane in current_lanes {
+		let group_key = operator_run_group_key(current_lane);
+		let current_lane_run_id = current_lane.run_id.clone();
+		let current_lane_snapshot = current_lane.clone();
 		let mut attempts = Vec::new();
-		let mut captured_active_snapshot = false;
+		let mut captured_current_lane_snapshot = false;
 
 		for run in recent_runs
 			.iter()
 			.filter(|run| operator_run_group_key(run) == group_key)
 		{
-			if run.run_id == active_run_id {
-				captured_active_snapshot = true;
+			if run.run_id == current_lane_run_id {
+				captured_current_lane_snapshot = true;
 
-				attempts.push(active_snapshot.clone());
+				attempts.push(current_lane_snapshot.clone());
 			} else {
 				attempts.push(run.clone());
 			}
 		}
 
-		if !captured_active_snapshot {
-			attempts.push(active_snapshot);
+		if !captured_current_lane_snapshot {
+			attempts.push(current_lane_snapshot);
 		}
 
-		active_run.lifecycle_metrics = operator_lane_lifecycle_metrics(&attempts);
+		current_lane.lifecycle_metrics = operator_lane_lifecycle_metrics(&attempts);
 	}
 }
 
@@ -8038,20 +8383,20 @@ fn issue_identifier_in_text(value: &str) -> Option<String> {
 	None
 }
 
-fn queue_claim_belongs_to_active_run(
+fn queue_claim_belongs_to_current_lane(
 	queued_issue: &OperatorQueuedIssueStatus,
 	snapshot: &OperatorStatusSnapshot,
 ) -> bool {
 	queued_issue.classification == "claimed"
-		&& active_run_id_for_queue_candidate(queued_issue, snapshot).is_some()
+		&& current_lane_run_id_for_queue_candidate(queued_issue, snapshot).is_some()
 }
 
-fn active_run_id_for_queue_candidate<'a>(
+fn current_lane_run_id_for_queue_candidate<'a>(
 	queued_issue: &OperatorQueuedIssueStatus,
 	snapshot: &'a OperatorStatusSnapshot,
 ) -> Option<&'a str> {
 	snapshot
-		.active_runs
+		.current_lanes
 		.iter()
 		.find(|run| run.issue_id == queued_issue.issue_id && run.counts_as_running)
 		.map(|run| run.run_id.as_str())
@@ -8060,7 +8405,7 @@ fn active_run_id_for_queue_candidate<'a>(
 fn append_rendered_queued_issue(
 	output: &mut String,
 	queued_issue: &OperatorQueuedIssueStatus,
-	active_run_id: Option<&str>,
+	current_lane_run_id: Option<&str>,
 ) {
 	let priority = queued_issue
 		.priority
@@ -8070,7 +8415,7 @@ fn append_rendered_queued_issue(
 	} else {
 		queued_issue.blocker_identifiers.join(", ")
 	};
-	let running_owner = active_run_id.unwrap_or("none");
+	let running_owner = current_lane_run_id.unwrap_or("none");
 
 	output.push_str(&format!(
 		"- issue_id: {}\n  issue: {}\n  title: {}\n  state: {}\n  priority: {}\n  created_at: {}\n  classification: {}\n  reason: {}\n  running_owner_run: {}\n  blockers: {}\n",
@@ -8136,13 +8481,13 @@ fn rendered_worktree_role<'a>(
 	if !worktree.ownership.trim().is_empty() {
 		return worktree.ownership.as_str();
 	}
-	if snapshot.active_runs.iter().any(|run| {
-		run.ownership_state == "owned_active"
+	if snapshot.current_lanes.iter().any(|run| {
+		run.ownership_state == "leased_run"
 			&& (run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
 				|| run.branch_name.as_deref() == Some(worktree.branch_name.as_str())
 				|| run.issue_id == worktree.issue_id)
 	}) {
-		return "active_lane";
+		return "current_lane";
 	}
 	if snapshot.post_review_lanes.iter().any(|lane| {
 		lane.worktree_path == worktree.worktree_path
@@ -8173,7 +8518,7 @@ fn rendered_worktree_role<'a>(
 
 fn rendered_worktree_role_rank(role: &str) -> u8 {
 	match role {
-		"active_lane" | "running_lane" | "blocked_queue_issue" | "queued_attention" => 0,
+		"current_lane" | "running_lane" | "blocked_queue_issue" | "queued_attention" => 0,
 		"post_review_lane" => 1,
 		_ => 2,
 	}
@@ -8596,12 +8941,7 @@ fn history_ledger_outcome_has_records(outcome: &OperatorHistoryLedgerOutcome) ->
 
 fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let (freshness_source, freshness_at) = operator_run_freshness(run);
-	let protocol_event = match (&run.last_event_type, &run.last_event_at) {
-		(Some(event_type), Some(timestamp)) => format!("{event_type} @ {timestamp}"),
-		(Some(event_type), None) => event_type.clone(),
-		(None, Some(timestamp)) => timestamp.clone(),
-		(None, None) => String::from("none"),
-	};
+	let protocol_event = render_run_protocol_event(run);
 	let thread_id = run.thread_id.as_deref().unwrap_or("none");
 	let turn_id = run.turn_id.as_deref().unwrap_or("none");
 	let thread_status = run.thread_status.as_deref().unwrap_or("none");
@@ -8632,9 +8972,11 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let loop_boundary = render_loop_boundary_summary(run.loop_status.as_ref());
 	let control_capability = render_control_capability_summary(run.control_capability.as_ref());
 	let lane_control_conditions = render_lane_control_conditions(run);
+	let continuation_recovery =
+		render_continuation_recovery_summary(run.continuation_recovery.as_ref());
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  run_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  continuation_recovery: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -8653,7 +8995,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		run.phase,
 		run.wait_reason.as_deref().unwrap_or("none"),
 		run.current_operation,
-		if run.active_lease { "yes" } else { "no" },
+		if run.run_lease { "yes" } else { "no" },
 		run.queue_lease_state,
 		queue_lease,
 		run.execution_liveness,
@@ -8684,6 +9026,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		thread_active_flags,
 		if run.interactive_requested { "yes" } else { "no" },
 		if run.continuation_pending { "yes" } else { "no" },
+		continuation_recovery,
 		branch_name,
 		worktree_path,
 		run.updated_at,
@@ -8713,6 +9056,15 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	));
 }
 
+fn render_run_protocol_event(run: &OperatorRunStatus) -> String {
+	match (&run.last_event_type, &run.last_event_at) {
+		(Some(event_type), Some(timestamp)) => format!("{event_type} @ {timestamp}"),
+		(Some(event_type), None) => event_type.clone(),
+		(None, Some(timestamp)) => timestamp.clone(),
+		(None, None) => String::from("none"),
+	}
+}
+
 fn render_lane_control_conditions(run: &OperatorRunStatus) -> String {
 	if run.lane_control_conditions.is_empty() {
 		String::from("none")
@@ -8721,8 +9073,41 @@ fn render_lane_control_conditions(run: &OperatorRunStatus) -> String {
 	}
 }
 
+fn render_continuation_recovery_summary(
+	recovery: Option<&OperatorContinuationRecoveryStatus>,
+) -> String {
+	let Some(recovery) = recovery else {
+		return String::from("none");
+	};
+	let message = recovery
+		.source_error_message
+		.as_deref()
+		.map(single_line_status_value)
+		.unwrap_or_else(|| String::from("none"));
+
+	format!(
+		"state={} source_phase={} next_phase={} source_error_class={} source_error_message={} count={}/{} budget_exceeded={} recorded_at={} run_id={} attempt={} next_action={}",
+		recovery.state,
+		recovery.source_phase,
+		recovery.next_phase,
+		recovery.source_error_class,
+		message,
+		recovery.recovery_count,
+		recovery.automatic_continuation_limit,
+		if recovery.budget_exceeded { "yes" } else { "no" },
+		recovery.recorded_at,
+		recovery.run_id,
+		recovery.attempt_number,
+		recovery.next_action,
+	)
+}
+
+fn single_line_status_value(value: &str) -> String {
+	value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn operator_run_queue_lease_summary(run: &OperatorRunStatus) -> String {
-	if run.active_lease {
+	if run.run_lease {
 		return String::from("held");
 	}
 
@@ -8742,7 +9127,7 @@ fn operator_run_queue_lease_summary(run: &OperatorRunStatus) -> String {
 }
 
 fn operator_run_freshness(run: &OperatorRunStatus) -> (&'static str, &str) {
-	if operator_run_counts_as_active(run) {
+	if operator_run_counts_as_current_lane(run) {
 		if let Some(timestamp) = run.last_run_activity_at.as_deref() {
 			return ("last_run_activity_at", timestamp);
 		}

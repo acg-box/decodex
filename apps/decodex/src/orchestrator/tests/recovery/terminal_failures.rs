@@ -1194,7 +1194,7 @@ fn retryable_orchestrator_failures_do_not_write_attention_before_budget_exhausti
 		Report::new(StalledRunNeedsAttention {
 			issue_identifier: String::from("PUB-103"),
 			run_id: String::from("pub-103-attempt-1-123"),
-			idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+			idle_for: RUN_LEASE_IDLE_TIMEOUT + Duration::from_secs(1),
 		}),
 		"stalled_run_detected",
 	);

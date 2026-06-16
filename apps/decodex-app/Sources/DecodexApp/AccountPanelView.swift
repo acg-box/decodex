@@ -669,7 +669,7 @@ struct AccountPanelView: View {
 	}
 
 	private func operatorRuns(for account: CodexAccount) -> [OperatorRunStatus] {
-		store.operatorSnapshot?.activeRuns(for: account) ?? []
+		store.operatorSnapshot?.currentLanes(for: account) ?? []
 	}
 
 	private func accountRowHeight(for account: CodexAccount) -> CGFloat {
@@ -951,7 +951,7 @@ struct AccountRunSummaryView: View {
 		.frame(height: AccountRunChipLayout.height)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.contentShape(Rectangle())
-		.accessibilityLabel("\(runs.count) active lane\(runs.count == 1 ? "" : "s")")
+		.accessibilityLabel("\(runs.count) current lane\(runs.count == 1 ? "" : "s")")
 		.onAppear {
 			placementStore.retainOnly(Set(runs.map(\.id)))
 		}
@@ -1870,6 +1870,16 @@ struct AccountRunChipView: View {
 				.lineLimit(1)
 				.truncationMode(.middle)
 				.fixedSize(horizontal: true, vertical: false)
+
+			if let modelProgress {
+				Text("\(modelProgress.percent)%")
+					.font(PanelFont.usageLabel)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.86))
+					.monospacedDigit()
+					.lineLimit(1)
+					.fixedSize(horizontal: true, vertical: false)
+					.help("\(modelProgress.title) \(modelProgress.percent)%")
+			}
 		}
 		.frame(height: AccountRunChipLayout.height)
 		.padding(.horizontal, AccountRunChipLayout.horizontalPadding)
@@ -1931,6 +1941,10 @@ struct AccountRunChipView: View {
 
 	private var chipTitle: String {
 		panelTrimmed(run.issueIdentifier) ?? "Run"
+	}
+
+	private var modelProgress: OperatorModelProgressReadout? {
+		operatorModelProgressReadout(for: run, currentTime: currentTime)
 	}
 
 	private var tint: Color {
@@ -2889,6 +2903,12 @@ struct OperatorLanePopoverView: View {
 						)
 					}
 				}
+
+				if let continuationRecoveryReadout {
+					measuredReadout {
+						OperatorLaneReadoutRow(title: "Recovery", items: continuationRecoveryReadout)
+					}
+				}
 			}
 
 			if modelProgress != nil,
@@ -2980,6 +3000,30 @@ struct OperatorLanePopoverView: View {
 		panelTrimmed(run.projectDisplayName) ?? panelTrimmed(run.projectID)
 	}
 
+	private var continuationRecoveryReadout: [OperatorLaneReadoutItem]? {
+		guard let recovery = run.continuationRecovery else {
+			return nil
+		}
+
+		let state = rawPanelToken(recovery.state ?? "continuation")
+		let phase = [
+			recovery.sourcePhase.map(rawPanelToken),
+			recovery.nextPhase.map(rawPanelToken),
+		]
+			.compactMap { $0 }
+			.joined(separator: " -> ")
+		let count = "\(recovery.recoveryCount ?? 0)/\(recovery.automaticContinuationLimit ?? 0)"
+		let budget = recovery.budgetExceeded == true ? "exceeded" : "within"
+		let error = rawPanelToken(recovery.sourceErrorClass ?? "unknown")
+
+		return [
+			OperatorLaneReadoutItem(label: "state", value: state),
+			OperatorLaneReadoutItem(label: "phase", value: phase.isEmpty ? "unknown" : phase),
+			OperatorLaneReadoutItem(label: "count", value: "\(count) \(budget)"),
+			OperatorLaneReadoutItem(label: "error", value: error),
+		]
+	}
+
 	private var alignedWidth: CGFloat? {
 		readoutWidth > 0 ? readoutWidth : nil
 	}
@@ -3047,44 +3091,8 @@ struct OperatorLanePopoverView: View {
 		return items
 	}
 
-	private var modelBucket: OperatorChildAgentBucket? {
-		return orderedBuckets.first { bucket in
-			bucket.name.caseInsensitiveCompare("Model") == .orderedSame
-		}
-	}
-
 	private var modelProgress: OperatorModelProgressReadout? {
-		if let lifecycleMetrics = run.lifecycleMetrics,
-			let modelSeconds = lifecycleModelSeconds(lifecycleMetrics.buckets)
-		{
-			let totalSeconds = max(
-				1,
-				lifecycleMetrics.wallSeconds,
-				lifecycleMetrics.buckets.reduce(0) { $0 + max(0, $1.wallSeconds) },
-				modelSeconds
-			)
-			let share = CGFloat(modelSeconds) / CGFloat(totalSeconds)
-
-			return OperatorModelProgressReadout(
-				title: "Inference",
-				percent: Int((Double(modelSeconds) / Double(totalSeconds) * 100).rounded()),
-				elapsed: formatActivityDuration(modelSeconds) ?? "0s",
-				total: formatActivityDuration(totalSeconds) ?? "0s",
-				barShare: min(1, max(0.02, share))
-			)
-		}
-
-		guard let modelBucket else {
-			return nil
-		}
-
-		return OperatorModelProgressReadout(
-			title: "Inference",
-			percent: bucketPercent(modelBucket),
-			elapsed: formatActivityDuration(bucketWallSeconds(modelBucket)) ?? "0s",
-			total: formatActivityDuration(totalWallSeconds) ?? "0s",
-			barShare: bucketShare(modelBucket)
-		)
+		operatorModelProgressReadout(for: run, currentTime: currentTime)
 	}
 
 	private var detailBuckets: [OperatorChildAgentBucket] {
@@ -3380,20 +3388,6 @@ struct OperatorLanePopoverView: View {
 		return 10
 	}
 
-	private func bucketShare(_ bucket: OperatorChildAgentBucket) -> CGFloat {
-		let wallSeconds = bucketWallSeconds(bucket)
-
-		guard wallSeconds > 0 else {
-			return 0
-		}
-
-		return min(1, max(0.02, CGFloat(wallSeconds) / CGFloat(max(1, totalWallSeconds))))
-	}
-
-	private func bucketPercent(_ bucket: OperatorChildAgentBucket) -> Int {
-		Int((Double(bucketWallSeconds(bucket)) / Double(max(1, totalWallSeconds)) * 100).rounded())
-	}
-
 	private func bucketWallSeconds(_ bucket: OperatorChildAgentBucket) -> Int {
 		activity?.wallSeconds(for: bucket, at: currentTime) ?? bucket.wallSeconds
 	}
@@ -3432,6 +3426,68 @@ struct OperatorModelProgressReadout {
 	let elapsed: String
 	let total: String
 	let barShare: CGFloat
+}
+
+fileprivate func operatorModelProgressReadout(
+	for run: OperatorRunStatus,
+	currentTime: Date
+) -> OperatorModelProgressReadout? {
+	if let lifecycleMetrics = run.lifecycleMetrics,
+		let modelSeconds = operatorLifecycleModelSeconds(lifecycleMetrics.buckets)
+	{
+		let totalSeconds = max(
+			1,
+			lifecycleMetrics.wallSeconds,
+			lifecycleMetrics.buckets.reduce(0) { $0 + max(0, $1.wallSeconds) },
+			modelSeconds
+		)
+		let share = CGFloat(modelSeconds) / CGFloat(totalSeconds)
+
+		return OperatorModelProgressReadout(
+			title: "Inference",
+			percent: Int((Double(modelSeconds) / Double(totalSeconds) * 100).rounded()),
+			elapsed: formatActivityDuration(modelSeconds) ?? "0s",
+			total: formatActivityDuration(totalSeconds) ?? "0s",
+			barShare: min(1, max(0.02, share))
+		)
+	}
+
+	guard let activity = run.childAgentActivity,
+		let modelBucket = activity.buckets.first(where: { bucket in
+			bucket.name.caseInsensitiveCompare("Model") == .orderedSame
+		})
+	else {
+		return nil
+	}
+
+	let totalSeconds = max(
+		1,
+		activity.wallSeconds(at: currentTime),
+		activity.buckets.reduce(0) { total, bucket in
+			total + max(0, activity.wallSeconds(for: bucket, at: currentTime))
+		}
+	)
+	let modelSeconds = activity.wallSeconds(for: modelBucket, at: currentTime)
+	guard modelSeconds > 0 else {
+		return nil
+	}
+	let share = CGFloat(modelSeconds) / CGFloat(totalSeconds)
+
+	return OperatorModelProgressReadout(
+		title: "Inference",
+		percent: Int((Double(modelSeconds) / Double(totalSeconds) * 100).rounded()),
+		elapsed: formatActivityDuration(modelSeconds) ?? "0s",
+		total: formatActivityDuration(totalSeconds) ?? "0s",
+		barShare: min(1, max(0.02, share))
+	)
+}
+
+fileprivate func operatorLifecycleModelSeconds(
+	_ buckets: [OperatorLifecycleMetricBucket]
+) -> Int? {
+	buckets.first { bucket in
+		bucket.name.caseInsensitiveCompare("Model") == .orderedSame
+	}?.wallSeconds
 }
 
 struct OperatorTotalMetric: Identifiable {

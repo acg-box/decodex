@@ -119,7 +119,7 @@ Runtime state that belongs to the local operator, not to this repository, lives 
 `~/.codex/decodex/`:
 
 - `runtime.sqlite3` is the single-machine control-plane database for all registered
-  projects. It owns active leases, attempts, private execution events, tracker/PR
+  projects. It owns run leases, attempts, private execution events, tracker/PR
   caches, retained PR state, retry state, and project registration.
 - `agent-evidence/<service-id>/` stores local agent-readable diagnosis artifacts,
   including `handoff-index.json`, `events.jsonl`, `blockers/*.json`, and
