@@ -1,3 +1,5 @@
+use std::io;
+
 use state::{ConnectorBackoff, ConnectorBackoffInput};
 
 use crate::runtime;
@@ -804,13 +806,26 @@ fn print_operator_status_snapshot(
 	snapshot: &OperatorStatusSnapshot,
 	json: bool,
 ) -> Result<()> {
-	if json {
-		println!("{}", serde_json::to_string_pretty(snapshot)?);
+	let output = if json {
+		format!("{}\n", serde_json::to_string_pretty(snapshot)?)
 	} else {
-		print!("{}", render_operator_status(snapshot));
-	}
+		render_operator_status(snapshot)
+	};
+	let stdout = io::stdout();
+	let mut stdout = stdout.lock();
 
-	Ok(())
+	write_cli_output(&mut stdout, &output)
+}
+
+fn write_cli_output<W>(writer: &mut W, output: &str) -> Result<()>
+where
+	W: Write,
+{
+	match writer.write_all(output.as_bytes()).and_then(|()| writer.flush()) {
+		Ok(()) => Ok(()),
+		Err(error) if error.kind() == ErrorKind::BrokenPipe => Ok(()),
+		Err(error) => Err(error.into()),
+	}
 }
 
 fn operator_connector_backoff_status(

@@ -265,7 +265,9 @@ JSON output identifies cache hits with `"status_source": "operator_snapshot_cach
 the command falls back to a direct local runtime read and emits
 `status_cached_snapshot_unavailable` in `warning_details`. `decodex status --live`
 always bypasses the cached snapshot and rebuilds status with fresh Linear/GitHub
-observers.
+observers. If a downstream consumer such as `head` closes stdout before status output
+finishes, the CLI treats that broken pipe as normal truncated output rather than an
+operator status failure.
 
 Operator JSON snapshots include `execution_programs[]` for Program Intake and
 Execution Program readback. Each program row carries public intake kind/summary,
