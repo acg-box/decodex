@@ -60,8 +60,8 @@ fn operator_dashboard_surfaces_program_intake_panel() {
 	assert!(response.contains("program.dispatchable_count"));
 	assert!(response.contains("node.dispatch_action"));
 	assert!(response.contains("renderExecutionPrograms(snapshot, derived);"));
-	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"active\", \"programs\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
-	assert!(response.contains("{ marker: \"execution\", panels: [\"active\", \"programs\", \"queue\"] }"));
+	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"currentLanes\", \"programs\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
+	assert!(response.contains("{ marker: \"execution\", panels: [\"currentLanes\", \"programs\", \"queue\"] }"));
 	assert!(!response.contains("data-program-edit"));
 	assert!(!response.contains("data-program-mutate"));
 }
@@ -733,7 +733,7 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(!response.contains("queue-group-count"));
 	assert!(response.contains("nodes.projectTitle.textContent = \"Decodex\""));
 	assert!(!response.contains("Decodex Operator"));
-	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"active\", \"programs\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
+	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"currentLanes\", \"programs\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
 	assert!(!response.contains("#account-pool-panel {"));
 	assert!(!response.contains("No accounts"));
 	assert!(response.contains("#current-lanes-panel {\n\t\t\t\tbackground: transparent;"));
