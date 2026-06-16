@@ -343,6 +343,7 @@ fn operator_status_text_active_run() -> OperatorRunStatus {
 		attempt_number: 1,
 		status: String::from("running"),
 		attempt_status: String::from("running"),
+		status_projection_reason: None,
 		phase: String::from("executing"),
 		wait_reason: None,
 		current_operation: String::from(RUN_OPERATION_AGENT_RUN),
