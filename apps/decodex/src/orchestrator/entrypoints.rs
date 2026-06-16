@@ -304,6 +304,75 @@ pub(crate) fn print_status(
 	Ok(())
 }
 
+pub(crate) fn build_mcp_status_resource(
+	config_path: Option<&Path>,
+	limit: usize,
+) -> Result<Value> {
+	if limit == 0 {
+		eyre::bail!("MCP status resource limit must be greater than zero.");
+	}
+
+	let state_store = runtime::open_runtime_store_lazy()?;
+	let Some(config_path) = resolve_config_path(config_path, &state_store)? else {
+		eyre::bail!(
+			"No Decodex project config found. Start MCP from a registered checkout or pass --config."
+		);
+	};
+	let config = ServiceConfig::from_path(&config_path)?;
+	let mut snapshot = build_operator_status_snapshot_with_account_mode(
+		&config,
+		&state_store,
+		limit,
+		AccountActivityMode::Snapshot,
+	)?;
+
+	snapshot.status_source = Some(String::from("local_runtime"));
+
+	serde_json::to_value(snapshot).map_err(Into::into)
+}
+
+pub(crate) fn build_mcp_lane_control_resource(
+	config_path: Option<&Path>,
+	issue: Option<&str>,
+	run_id: Option<&str>,
+	limit: usize,
+) -> Result<Value> {
+	if limit == 0 {
+		eyre::bail!("MCP lane-control resource limit must be greater than zero.");
+	}
+
+	let state_store = runtime::open_runtime_store_lazy()?;
+	let Some(config_path) = resolve_config_path(config_path, &state_store)? else {
+		eyre::bail!(
+			"No Decodex project config found. Start MCP from a registered checkout or pass --config."
+		);
+	};
+	let config = ServiceConfig::from_path(&config_path)?;
+
+	if let Some(issue) = issue {
+		let report = lane_control::build_lane_inspect_report(&state_store, &config, issue, run_id)?;
+
+		return serde_json::to_value(report).map_err(Into::into);
+	}
+
+	let snapshot = build_operator_status_snapshot_with_account_mode(
+		&config,
+		&state_store,
+		limit,
+		AccountActivityMode::Snapshot,
+	)?;
+
+	Ok(json!({
+		"schema": "decodex.mcp.lane_control_readback/1",
+		"project_id": snapshot.project_id,
+		"read_only": true,
+		"mutating_tools": [],
+		"current_lanes": snapshot.current_lanes,
+		"recent_runs": snapshot.recent_runs,
+		"post_review_lanes": snapshot.post_review_lanes
+	}))
+}
+
 pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
 	if request.limit == 0 {
 		eyre::bail!("`diagnose --limit` must be greater than zero.");
