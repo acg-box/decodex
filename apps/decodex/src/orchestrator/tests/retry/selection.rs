@@ -279,7 +279,7 @@ fn future_retry_claim_stays_blocked_when_issue_moves_to_another_project_before_d
 }
 
 #[test]
-fn future_retry_claim_stays_blocked_when_issue_becomes_non_active_before_due_time() {
+fn future_retry_claim_stays_blocked_when_issue_becomes_not_dispatchable_before_due_time() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Review");
 	let tracker =
@@ -326,7 +326,7 @@ fn future_retry_claim_stays_blocked_when_issue_becomes_non_active_before_due_tim
 }
 
 #[test]
-fn due_retry_claim_releases_when_issue_becomes_non_active() {
+fn due_retry_claim_releases_when_issue_becomes_not_dispatchable() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Review");
 	let tracker =
@@ -357,7 +357,7 @@ fn due_retry_claim_releases_when_issue_becomes_non_active() {
 	.expect("retry planning should succeed");
 
 	assert!(matches!(decision, orchestrator::RetryDispatchDecision::Continue));
-	assert!(retry_queue.is_empty(), "due non-active issue should release the queued claim");
+	assert!(retry_queue.is_empty(), "due not-dispatchable issue should release the queued claim");
 }
 
 #[test]
@@ -411,7 +411,7 @@ fn due_retry_claim_release_clears_persisted_retry_marker() {
 	.expect("retry planning should succeed");
 
 	assert!(matches!(decision, orchestrator::RetryDispatchDecision::Continue));
-	assert!(retry_queue.is_empty(), "non-active issue should release the queued claim when due");
+	assert!(retry_queue.is_empty(), "not-dispatchable issue should release the queued claim when due");
 
 	let marker = state::read_run_activity_marker_snapshot(&worktree_path)
 		.expect("marker should load")

@@ -566,7 +566,7 @@ fn build_operator_run_activity_event(
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 	let account_control = global_codex_account_control_status();
 	let mut accounts = Vec::new();
-	let mut active_runs = Vec::new();
+	let mut current_lanes = Vec::new();
 
 	for registration in state_store.list_projects()? {
 		let project = match ServiceConfig::from_path(registration.config_path()) {
@@ -582,58 +582,47 @@ fn build_operator_run_activity_event(
 				continue;
 			},
 		};
-		let (leased_runs, recent_runs) =
-			state_store.list_project_runs(project.service_id(), DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT)?;
-		let loop_evidence = state_store.project_loop_evidence_snapshot(project.service_id())?;
-		let project_display_name = operator_project_display_name(&project);
-		let recent_runs = recent_runs
-			.into_iter()
-			.map(|run| {
-				operator_run_status(
-					&project,
-					&loop_evidence,
-					&project_display_name,
-					run,
-					now_unix_epoch,
-				)
-			})
-			.collect::<Result<Vec<_>>>()?;
-		let project_active_runs = operator_active_run_statuses(
+		let workflow = match WorkflowDocument::from_path(project.workflow_path()) {
+			Ok(workflow) => workflow,
+			Err(error) => {
+				tracing::debug!(
+					project_id = project.service_id(),
+					workflow_path = %project.workflow_path().display(),
+					?error,
+					"Skipped dashboard run activity for a project with an unreadable workflow."
+				);
+
+				continue;
+			},
+		};
+		let project_snapshot = build_operator_state_snapshot_without_live_observers(
 			&project,
-			&loop_evidence,
-			&project_display_name,
-			leased_runs,
-			&recent_runs,
-			now_unix_epoch,
+			&workflow,
+			state_store,
+			DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
 		)?;
 
-		if project_active_runs.is_empty() {
+		if project_snapshot.current_lanes.is_empty() {
 			continue;
 		}
 
-		let mut account_warnings = Vec::new();
-
-		accounts.extend(codex_account_activity_summaries(
-			&project,
-			&mut account_warnings,
-			AccountActivityMode::Snapshot,
-		));
-		active_runs.extend(project_active_runs);
+		accounts.extend(project_snapshot.accounts);
+		current_lanes.extend(project_snapshot.current_lanes);
 	}
 
 	let fingerprint_payload = dashboard_run_activity_fingerprint_payload(
 		&account_control,
 		&accounts,
-		&active_runs,
+		&current_lanes,
 	);
 	let fingerprint = serde_json::to_vec(&fingerprint_payload)?;
 	let payload = json!({
 		"emittedAtUnixEpoch": now_unix_epoch,
 		"accountControl": &account_control,
 		"accounts": &accounts,
-		"activeRuns": &active_runs,
-		"activeRunsComplete": true,
-		"activeRunScope": "complete",
+		"currentLanes": &current_lanes,
+		"currentLanesComplete": true,
+		"currentLaneScope": "complete",
 	});
 
 	Ok(DashboardRunActivityEvent {
@@ -645,14 +634,14 @@ fn build_operator_run_activity_event(
 fn dashboard_run_activity_fingerprint_payload(
 	account_control: &OperatorCodexAccountControlStatus,
 	accounts: &[CodexAccountActivitySummary],
-	active_runs: &[OperatorRunStatus],
+	current_lanes: &[OperatorRunStatus],
 ) -> Value {
 	let mut fingerprint_payload = json!({
 		"accountControl": account_control,
 		"accounts": accounts,
-		"activeRuns": active_runs,
-		"activeRunsComplete": true,
-		"activeRunScope": "complete",
+		"currentLanes": current_lanes,
+		"currentLanesComplete": true,
+		"currentLaneScope": "complete",
 	});
 
 	strip_dashboard_run_activity_volatile_fields(&mut fingerprint_payload);
@@ -720,7 +709,7 @@ fn write_cached_dashboard_run_activity_event(
 	subscription: &DashboardClientSubscription,
 ) {
 	match dashboard_events.cached_run_activity_event(subscription) {
-		Some(event) if dashboard_run_activity_event_has_active_runs(&event) => {
+		Some(event) if dashboard_run_activity_event_has_current_lanes(&event) => {
 			if let Err(error) = write_dashboard_websocket_event(stream, event.event_type, &event.payload)
 			{
 				tracing::warn!(
@@ -733,8 +722,8 @@ fn write_cached_dashboard_run_activity_event(
 	}
 }
 
-fn dashboard_run_activity_event_has_active_runs(event: &DashboardBroadcastEvent) -> bool {
-	event.payload.get("activeRuns").and_then(Value::as_array).is_some_and(|runs| !runs.is_empty())
+fn dashboard_run_activity_event_has_current_lanes(event: &DashboardBroadcastEvent) -> bool {
+	event.payload.get("currentLanes").and_then(Value::as_array).is_some_and(|runs| !runs.is_empty())
 }
 
 fn write_dashboard_websocket_event(
@@ -1185,7 +1174,7 @@ fn dashboard_event_for_subscription(
 		return Some(event.clone());
 	}
 
-	let active_runs = event.payload.get("activeRuns").and_then(Value::as_array).map(|runs| {
+	let current_lanes = event.payload.get("currentLanes").and_then(Value::as_array).map(|runs| {
 		runs.iter()
 			.filter(|run| dashboard_run_matches_subscription(run, subscription))
 			.cloned()
@@ -1193,9 +1182,9 @@ fn dashboard_event_for_subscription(
 	})?;
 	let mut payload = event.payload.clone();
 
-	payload["activeRuns"] = Value::Array(active_runs);
-	payload["activeRunsComplete"] = Value::Bool(false);
-	payload["activeRunScope"] = Value::String(String::from("filtered"));
+	payload["currentLanes"] = Value::Array(current_lanes);
+	payload["currentLanesComplete"] = Value::Bool(false);
+	payload["currentLaneScope"] = Value::String(String::from("filtered"));
 
 	Some(DashboardBroadcastEvent { event_type: event.event_type, payload })
 }

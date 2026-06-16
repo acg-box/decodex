@@ -560,8 +560,8 @@ fn project_status_snapshot_from_operator_cache(
 		.into_iter()
 		.filter(|backoff| backoff.project_id == project.service_id())
 		.collect();
-	project_snapshot.active_runs = snapshot
-		.active_runs
+	project_snapshot.current_lanes = snapshot
+		.current_lanes
 		.into_iter()
 		.filter(|run| run.project_id == project.service_id())
 		.collect();
@@ -1262,14 +1262,14 @@ fn control_plane_disabled_project_observer_tick(
 	snapshot_warnings: &mut Vec<&'static str>,
 ) -> ControlPlaneProjectTick {
 	let project_status = operator_project_status_from_registration(project, 0);
-	let active_runs = match state_store.list_active_runs(project.service_id()) {
-		Ok(active_runs) => active_runs,
+	let current_lanes = match state_store.list_leased_runs(project.service_id()) {
+		Ok(current_lanes) => current_lanes,
 		Err(error) => {
 			let _ = error;
 
 			tracing::warn!(
 					project_id = project.service_id(),
-					"Disabled project active-run lookup failed; sensitive runtime details were withheld."
+					"Disabled project leased-run lookup failed; sensitive runtime details were withheld."
 				);
 
 				snapshot_warnings.push("operator_snapshot_build_failed");
@@ -1281,7 +1281,7 @@ fn control_plane_disabled_project_observer_tick(
 		},
 	};
 
-	if active_runs.is_empty() {
+	if current_lanes.is_empty() {
 		return ControlPlaneProjectTick {
 			snapshot: None,
 			project_status: Some(project_status),
@@ -1304,7 +1304,7 @@ fn control_plane_disabled_project_observer_tick(
 
 			tracing::warn!(
 					project_id = project.service_id(),
-					"Disabled project active-run snapshot build failed; sensitive runtime details were withheld."
+					"Disabled project leased-run snapshot build failed; sensitive runtime details were withheld."
 				);
 
 				snapshot_warnings.push("operator_snapshot_build_failed");
@@ -1339,9 +1339,9 @@ fn hydrate_project_status_from_local_snapshot(
 	if let Some(local_status) = project_snapshot.projects.first() {
 		hydrate_project_status_from_registered_status(project_status, local_status);
 	} else {
-		project_status.active_run_count = project_snapshot.active_runs.len();
+		project_status.current_lane_count = project_snapshot.current_lanes.len();
 		project_status.running_lane_count = project_snapshot
-			.active_runs
+			.current_lanes
 			.iter()
 			.filter(|run| operator_run_counts_as_running(run))
 			.count();
@@ -1352,7 +1352,7 @@ fn hydrate_project_status_from_registered_status(
 	project_status: &mut OperatorProjectStatus,
 	local_status: &OperatorProjectStatus,
 ) {
-	project_status.active_run_count = local_status.active_run_count;
+	project_status.current_lane_count = local_status.current_lane_count;
 	project_status.running_lane_count = local_status.running_lane_count;
 	project_status.retained_worktree_count = local_status.retained_worktree_count;
 	project_status.waiting_lane_count = local_status.waiting_lane_count;
@@ -1392,7 +1392,7 @@ fn append_control_plane_project_snapshot(
 	snapshot.warning_details.extend(project_snapshot.warning_details);
 	snapshot.connector_backoffs.extend(project_snapshot.connector_backoffs);
 	snapshot.accounts.extend(project_snapshot.accounts);
-	snapshot.active_runs.extend(project_snapshot.active_runs);
+	snapshot.current_lanes.extend(project_snapshot.current_lanes);
 	snapshot.recent_runs.extend(project_snapshot.recent_runs);
 	snapshot.history_lanes.extend(project_snapshot.history_lanes);
 	snapshot.execution_programs.extend(project_snapshot.execution_programs);
@@ -1639,7 +1639,15 @@ fn build_operator_state_snapshot_without_live_observers(
 	)?;
 
 	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
-	apply_terminal_history_ledger_outcomes(&mut snapshot);
+
+	let terminal_projection =
+		current_lane_terminal_projection_from_local_ledger(project, state_store, &snapshot)?;
+
+	apply_operator_lane_terminal_projection(
+		&mut snapshot,
+		terminal_projection,
+		Some(workflow.frontmatter().tracker().resolved_completed_state()),
+	);
 	refresh_worktree_ownership(
 		&mut snapshot,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
@@ -1932,7 +1940,7 @@ fn empty_control_plane_snapshot(limit: usize) -> OperatorStatusSnapshot {
 			account_selector: None,
 		},
 		accounts: Vec::new(),
-		active_runs: Vec::new(),
+		current_lanes: Vec::new(),
 		recent_runs: Vec::new(),
 		history_lanes: Vec::new(),
 		execution_programs: Vec::new(),
@@ -1952,7 +1960,7 @@ fn operator_project_status_from_registration(
 		repo_root: project.repo_root().display().to_string(),
 		enabled: project.enabled(),
 		github_cli_authority: operator_github_cli_authority_from_registration(project),
-		active_run_count: 0,
+		current_lane_count: 0,
 		running_lane_count: 0,
 		queued_candidate_count: 0,
 		post_review_lane_count: 0,
@@ -1984,7 +1992,7 @@ fn operator_project_status_from_dev_registration(
 		repo_root: project.repo_root().display().to_string(),
 		enabled: project.enabled(),
 		github_cli_authority: operator_github_cli_authority_from_registration(project),
-		active_run_count: 0,
+		current_lane_count: 0,
 		running_lane_count: 0,
 		queued_candidate_count: 0,
 		post_review_lane_count: 0,

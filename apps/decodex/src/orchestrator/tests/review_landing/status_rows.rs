@@ -1025,7 +1025,7 @@ fn build_post_review_lane_statuses_blocks_review_handoff_lineage_rewrite() {
 }
 
 #[test]
-fn build_post_review_lane_statuses_blocks_nonactive_labeled_post_review_issues() {
+fn build_post_review_lane_statuses_blocks_not_dispatchable_labeled_post_review_issues() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 

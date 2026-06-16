@@ -119,7 +119,7 @@ fn active_child_reconciliation_keeps_spawn_time_workflow_until_exit() {
 		.upsert_lease("pubfi", &stale_issue.id, "run-stale", "In Progress")
 		.expect("stale lease should record");
 
-	let actions = orchestrator::inspect_active_run_reconciliation_at(
+	let actions = orchestrator::inspect_run_lease_reconciliation_at(
 		&tracker,
 		&config,
 		&current_workflow,
@@ -134,7 +134,7 @@ fn active_child_reconciliation_keeps_spawn_time_workflow_until_exit() {
 		}),
 		OffsetDateTime::now_utc().unix_timestamp() + 1,
 	)
-	.expect("active-run inspection should succeed");
+	.expect("run lease inspection should succeed");
 
 	assert!(
 		actions.iter().all(|action| action.issue.id != child_issue.id),
@@ -142,7 +142,7 @@ fn active_child_reconciliation_keeps_spawn_time_workflow_until_exit() {
 	);
 	assert!(actions.iter().any(|action| {
 		action.issue.id == stale_issue.id
-			&& matches!(action.disposition, orchestrator::ActiveRunDisposition::NonActive)
+			&& matches!(action.disposition, orchestrator::RunLeaseDisposition::NotDispatchable)
 	}));
 }
 
