@@ -11,7 +11,7 @@ rules.
 
 - Identify the accepted contract or conversational contract.
 - Preserve objectives, non-goals, constraints, assumptions, objections, validation,
-  issue summaries, and stop conditions.
+  structured proposed issues, and stop conditions.
 - Promote into the correct durable lane: `docs/spec`, `docs/runbook`,
   `docs/reference`, `docs/decisions`, `plugins/decodex/skills`, runtime code, tests,
   or explicit `no_promotion`.

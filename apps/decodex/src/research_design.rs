@@ -14,6 +14,7 @@ use crate::{
 	config::ServiceConfig,
 	loop_contract::{
 		DecisionContract, DecisionContractStatus, DecisionPromotion, DecisionPromotionActorKind,
+		DecisionProposedIssue,
 	},
 	prelude::{Result, eyre},
 	runtime,
@@ -82,13 +83,11 @@ pub(crate) struct ResearchDesignRunInput {
 	#[serde(default)]
 	risk_notes: Vec<String>,
 	#[serde(default)]
-	proposed_issue_summaries: Vec<String>,
+	proposed_issues: Vec<ResearchProposedIssueInput>,
 	#[serde(default)]
 	promotion_targets: Vec<String>,
 	#[serde(default)]
 	conflict_domains: Vec<String>,
-	#[serde(default)]
-	queue_intent: Vec<String>,
 	#[serde(default)]
 	private_evidence_refs: Vec<ResearchPrivateEvidenceRefInput>,
 	#[serde(default)]
@@ -123,10 +122,9 @@ impl ResearchDesignRunInput {
 			readiness_summary: None,
 			validation_expectations: Vec::new(),
 			risk_notes: Vec::new(),
-			proposed_issue_summaries: Vec::new(),
+			proposed_issues: Vec::new(),
 			promotion_targets: Vec::new(),
 			conflict_domains: Vec::new(),
-			queue_intent: Vec::new(),
 			private_evidence_refs: Vec::new(),
 			public_projection_refs: Vec::new(),
 			public_summary: None,
@@ -233,6 +231,53 @@ impl ResearchSubworkInput {
 	}
 }
 
+/// Structured issue-shaping input emitted into Decision Contract readiness.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ResearchProposedIssueInput {
+	key: String,
+	title: String,
+	objective: String,
+	stage: String,
+	dependencies: Vec<String>,
+	conflict_domains: Vec<String>,
+	acceptance: Vec<String>,
+	validation: Vec<String>,
+	risk: Vec<String>,
+	queue_intent: String,
+}
+impl ResearchProposedIssueInput {
+	fn normalized(self) -> Result<Self> {
+		let issue = Self {
+			key: normalize_required_text("proposed_issues.key", self.key)?,
+			title: normalize_required_text("proposed_issues.title", self.title)?,
+			objective: normalize_required_text("proposed_issues.objective", self.objective)?,
+			stage: normalize_required_text("proposed_issues.stage", self.stage)?,
+			dependencies: normalize_text_list("proposed_issues.dependencies", self.dependencies)?,
+			conflict_domains: normalize_text_list(
+				"proposed_issues.conflict_domains",
+				self.conflict_domains,
+			)?,
+			acceptance: normalize_text_list("proposed_issues.acceptance", self.acceptance)?,
+			validation: normalize_text_list("proposed_issues.validation", self.validation)?,
+			risk: normalize_text_list("proposed_issues.risk", self.risk)?,
+			queue_intent: normalize_required_text(
+				"proposed_issues.queue_intent",
+				self.queue_intent,
+			)?,
+		};
+
+		if issue.acceptance.is_empty() {
+			eyre::bail!("proposed_issues.acceptance must include at least one item.");
+		}
+		if issue.validation.is_empty() {
+			eyre::bail!("proposed_issues.validation must include at least one item.");
+		}
+
+		Ok(issue)
+	}
+}
+
 /// Runtime-private evidence pointer retained inside the Decision Contract boundary.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -313,7 +358,7 @@ pub(crate) struct ResearchDesignRunReport {
 	pub(crate) feedback: String,
 	pub(crate) missing_decisions: Vec<String>,
 	pub(crate) blockers: Vec<String>,
-	pub(crate) proposed_issue_summaries: Vec<String>,
+	pub(crate) proposed_issues: Vec<DecisionProposedIssue>,
 	pub(crate) promotion_targets: Vec<String>,
 	pub(crate) conflict_domains: Vec<String>,
 	pub(crate) private_evidence_ref_count: usize,
@@ -335,10 +380,7 @@ impl ResearchDesignRunReport {
 			feedback: default_feedback(input.outcome).to_owned(),
 			missing_decisions: input.missing_decisions(),
 			blockers: input.blockers.clone(),
-			proposed_issue_summaries: contract
-				.execution_readiness()
-				.proposed_issue_summaries()
-				.to_vec(),
+			proposed_issues: contract.execution_readiness().proposed_issues().to_vec(),
 			promotion_targets: contract.execution_readiness().promotion_targets().to_vec(),
 			conflict_domains: contract.execution_readiness().conflict_domains().to_vec(),
 			private_evidence_ref_count: input.private_evidence_refs.len(),
@@ -392,10 +434,9 @@ struct NormalizedResearchDesignInput {
 	readiness_summary: String,
 	validation_expectations: Vec<String>,
 	risk_notes: Vec<String>,
-	proposed_issue_summaries: Vec<String>,
+	proposed_issues: Vec<ResearchProposedIssueInput>,
 	promotion_targets: Vec<String>,
 	conflict_domains: Vec<String>,
-	queue_intent: Vec<String>,
 	private_evidence_refs: Vec<ResearchPrivateEvidenceRefInput>,
 	public_projection_refs: Vec<ResearchPublicProjectionRefInput>,
 	public_summary: Option<String>,
@@ -457,13 +498,13 @@ impl NormalizedResearchDesignInput {
 				input.validation_expectations,
 			)?,
 			risk_notes: normalize_text_list("risk_notes", input.risk_notes)?,
-			proposed_issue_summaries: normalize_text_list(
-				"proposed_issue_summaries",
-				input.proposed_issue_summaries,
-			)?,
+			proposed_issues: input
+				.proposed_issues
+				.into_iter()
+				.map(ResearchProposedIssueInput::normalized)
+				.collect::<Result<Vec<_>>>()?,
 			promotion_targets: normalize_text_list("promotion_targets", input.promotion_targets)?,
 			conflict_domains: normalize_text_list("conflict_domains", input.conflict_domains)?,
-			queue_intent: normalize_text_list("queue_intent", input.queue_intent)?,
 			private_evidence_refs: input
 				.private_evidence_refs
 				.into_iter()
@@ -508,9 +549,9 @@ impl NormalizedResearchDesignInput {
 		if self.validation_expectations.is_empty() {
 			eyre::bail!("decision-ready research requires validation expectations.");
 		}
-		if self.proposed_issue_summaries.is_empty() {
+		if self.proposed_issues.is_empty() {
 			eyre::bail!(
-				"decision-ready research requires at least one proposed issue summary for downstream shaping."
+				"decision-ready research requires at least one structured proposed issue for downstream shaping."
 			);
 		}
 		if self.promotion_targets.is_empty() {
@@ -662,6 +703,12 @@ fn ensure_contract_authorizes_execution(record: &DecisionContractRecord) -> Resu
 			record.contract_id()
 		);
 	}
+	if record.contract().execution_readiness().proposed_issues().is_empty() {
+		eyre::bail!(
+			"Accepted research/design contract `{}` has no structured proposed issues.",
+			record.contract_id()
+		);
+	}
 
 	Ok(())
 }
@@ -711,10 +758,9 @@ fn build_decision_contract(
 			"missing_decisions": input.missing_decisions(),
 			"validation_expectations": input.validation_expectations,
 			"risk_notes": risk_notes(input),
-			"proposed_issue_summaries": input.proposed_issue_summaries,
+			"proposed_issues": input.proposed_issues,
 			"promotion_targets": input.promotion_targets,
 			"conflict_domains": input.conflict_domains,
-			"queue_intent": queue_intent(input),
 		},
 		"links": {
 			"generated_issue_ids": [],
@@ -865,17 +911,6 @@ fn risk_notes(input: &NormalizedResearchDesignInput) -> Vec<String> {
 	risk_notes
 }
 
-fn queue_intent(input: &NormalizedResearchDesignInput) -> Vec<String> {
-	if !input.queue_intent.is_empty() {
-		return input.queue_intent.clone();
-	}
-	if input.proposed_issue_summaries.is_empty() {
-		return Vec::new();
-	}
-
-	vec![String::from("Shape generated issues only after explicit Decision Contract promotion.")]
-}
-
 fn default_feedback(outcome: ResearchDesignOutcome) -> &'static str {
 	match outcome {
 		ResearchDesignOutcome::DecisionReady =>
@@ -958,8 +993,8 @@ mod tests {
 		loop_contract::{DecisionContractStatus, DecisionPromotion, DecisionPromotionActorKind},
 		research_design::{
 			self, ResearchDesignOutcome, ResearchDesignRunInput, ResearchEvidenceInput,
-			ResearchOptionInput, ResearchPrivateEvidenceRefInput, ResearchProvenanceInput,
-			ResearchPublicProjectionRefInput, ResearchSubworkInput,
+			ResearchOptionInput, ResearchPrivateEvidenceRefInput, ResearchProposedIssueInput,
+			ResearchProvenanceInput, ResearchPublicProjectionRefInput, ResearchSubworkInput,
 		},
 		state::StateStore,
 	};
@@ -979,7 +1014,7 @@ mod tests {
 				kind: String::from("repo_source"),
 				claim: String::from("Decision-ready research can shape downstream issues."),
 				support: String::from(
-					"The compiler carries objectives, validation expectations, and issue summaries.",
+					"The compiler carries objectives, validation expectations, and structured proposed issues.",
 				),
 				source_ref: Some(String::from("docs/spec/loop-runtime.md")),
 			}],
@@ -1013,12 +1048,26 @@ mod tests {
 			)),
 			validation_expectations: vec![String::from("Run the registered Decodex gate.")],
 			risk_notes: vec![String::from("Do not expose internal graph mechanics.")],
-			proposed_issue_summaries: vec![String::from(
-				"Wire natural-language research trigger into Decodex plugin surface.",
-			)],
+			proposed_issues: vec![ResearchProposedIssueInput {
+				key: String::from("research-trigger-plugin"),
+				title: String::from(
+					"Wire natural-language research trigger into Decodex plugin surface.",
+				),
+				objective: String::from(
+					"Wire natural-language research trigger into Decodex plugin surface.",
+				),
+				stage: String::from("plugin"),
+				dependencies: Vec::new(),
+				conflict_domains: vec![String::from("module:runtime")],
+				acceptance: vec![String::from(
+					"Natural-language research requests compile into latent Decision Contracts.",
+				)],
+				validation: vec![String::from("Run the registered Decodex gate.")],
+				risk: vec![String::from("Do not expose internal graph mechanics.")],
+				queue_intent: String::from("ready_to_queue"),
+			}],
 			promotion_targets: vec![String::from("plugins/decodex/skills")],
 			conflict_domains: vec![String::from("runtime")],
-			queue_intent: Vec::new(),
 			private_evidence_refs: vec![ResearchPrivateEvidenceRefInput {
 				project_id: None,
 				issue_id: String::from("XY-860"),
@@ -1139,8 +1188,12 @@ mod tests {
 		assert_eq!(record.status(), DecisionContractStatus::DraftLatent);
 		assert_eq!(record.contract().research_options().len(), 1);
 		assert_eq!(
-			record.contract().execution_readiness().proposed_issue_summaries(),
-			&[String::from("Wire natural-language research trigger into Decodex plugin surface.")]
+			record.contract().execution_readiness().proposed_issues()[0].key(),
+			"research-trigger-plugin"
+		);
+		assert_eq!(
+			report.proposed_issues[0].title(),
+			"Wire natural-language research trigger into Decodex plugin surface."
 		);
 		assert_eq!(
 			record.contract().execution_readiness().promotion_targets(),
@@ -1164,7 +1217,7 @@ mod tests {
 		input.outcome = ResearchDesignOutcome::NotDecisionReady;
 
 		input.objectives.clear();
-		input.proposed_issue_summaries.clear();
+		input.proposed_issues.clear();
 
 		input.unresolved_decisions =
 			vec![String::from("Choose whether runtime or plugin UX owns first exposure.")];
@@ -1193,7 +1246,7 @@ mod tests {
 
 		blocked.objectives.clear();
 		blocked.evidence.clear();
-		blocked.proposed_issue_summaries.clear();
+		blocked.proposed_issues.clear();
 
 		let blocked_report = research_design::persist_research_design_run(
 			&StateStore::open_in_memory().expect("store should open"),
@@ -1214,7 +1267,7 @@ mod tests {
 
 		human.objectives.clear();
 		human.evidence.clear();
-		human.proposed_issue_summaries.clear();
+		human.proposed_issues.clear();
 
 		let human_report = research_design::persist_research_design_run(
 			&StateStore::open_in_memory().expect("store should open"),
