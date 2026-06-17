@@ -115,7 +115,8 @@ mirror:
 | Runtime SQLite `program_intake_plans` | Queryable local projection of `decodex.program_intake_plan/1` metadata, including intake kind, source contract when present, authority fingerprint, and public-safe summary. |
 | Runtime SQLite `program_issue_mappings` | Queryable local projection of each internal program node's mapped Linear issue, tracker state, dispatch intent, active/manual/attention facts, and dispatch-briefing fact. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing run lease ownership. |
-| Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating. |
+| Runtime SQLite `review_lifecycle_records` | Single authoritative post-review record for one retained PR-backed lane. It stores handoff identity, PR URL, base/head branch, validated head OID, current post-review phase, review-request metadata, landing/closeout/repair state, evidence, and next action. Handoff and orchestration tool-boundary shapes are projections of this record, not separate durable authority. Historical `review_handoffs` and `review_orchestrations` tables are one-time bootstrap migration input, then dropped and never used as readback authority. |
+| Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating before a post-review lifecycle record exists. |
 | Runtime SQLite `loop_guardrail_checkpoints` | Latest convergence checkpoint for one project, issue, and guardrail reason. It stores the fingerprint, consecutive count, run id, attempt number, and structured detail used to stop non-converging loops without replaying Linear comments. |
 | Agent evidence under `~/.codex/decodex/agent-evidence/<service-id>/` | Derived local handoff view for repair agents. It may reference private evidence readback commands and compact run capsules, but it is not scheduling authority and is not a public mirror. |
 | Logs under `~/.codex/decodex/logs/` and `.decodex-run-activity` | Diagnostic process and liveness signals. They may explain what a local process did, but they are not the structured execution ledger and must not be replayed as tracker state. |
@@ -143,7 +144,8 @@ The following facts are local runtime truth and must not be rebuilt from Linear 
   observation count, source run, and structured stop detail
 - retry and backoff state: queued retry kind, due time, retry budget, and connector backoff
 - phase timing and operator activity summaries
-- retained worktree mappings, retained PR handoff identity, post-review phase, and cleanup or repair ownership
+- retained worktree mappings, review lifecycle records, retained PR handoff identity,
+  post-review phase, and cleanup or repair ownership
 
 Linear issue fields and Linear execution ledger comments are the team-visible tracker mirror for low-frequency lifecycle records. They may enrich completed run history when the connector is available, but they must not become the live source for run leases, dispatch ownership, retry/backoff state, phase timing, retained worktree ownership, or operator snapshot continuity.
 
@@ -360,7 +362,7 @@ projections.
 - Before starting a live run, the service must reconcile stale local leases,
   terminal worktree mappings, and runtime-provenance worktree mappings whose checkout
   path no longer exists and has no active lease, active service label,
-  needs-attention label, shared claim, running attempt, or review-handoff marker.
+  needs-attention label, shared claim, running attempt, or review lifecycle record.
 - Generic live dispatch must not require GitHub CLI authority before the lane actually attempts PR-backed review handoff.
 - Generic live dispatch must resolve `github.token_env_var` before launching the agent app-server so lane-owned `git push` and `gh pr create` commands inherit noninteractive GitHub credentials. Missing or blank GitHub credentials must fail the run through the human-required path instead of retrying or leaving a promptable lane running.
 - Project configs may set `[github].command_path` to make one expected GitHub CLI binary authoritative for project-scoped GitHub operations. When it is configured, review handoff validation, retained review readback, landing inspection, GitHub comments, admin merge, merge readback, and remote branch cleanup must invoke that path instead of silently rediscovering another `gh` binary.
@@ -474,12 +476,13 @@ remains inspectable instead of being deleted, hidden, or mislabeled as an empty-
 retry.
 
 Review handoff is a lifecycle boundary for loop guardrails. If a retryable failure
-occurs after Decodex has a retained review handoff marker for the current issue,
-branch, and local HEAD lineage, failure handling must recover the post-review
-orchestration marker and return the lane to the review lifecycle before recording a
-new `no_effective_diff` checkpoint or terminalizing the run. If the worktree has a
-clean handoff checkpoint for the current head but the retained handoff marker is
-missing or has unverified/diverged lineage, Decodex must classify the failure as
+occurs after Decodex has a retained review lifecycle record for the current issue,
+branch, PR, and local HEAD lineage, failure handling must recover the post-review
+phase in that lifecycle record and return the lane to the review lifecycle before
+recording a new `no_effective_diff` checkpoint or terminalizing the run. If the
+worktree has a clean handoff checkpoint for the current head but the retained
+lifecycle record is missing or has unverified/diverged lineage, Decodex must classify
+the failure as
 `review_handoff_state_drift` and require explicit handoff recovery evidence. It must
 not send this condition through implementation architecture recovery and must not
 mislabel it as ordinary no-effective-diff repair churn.
@@ -714,7 +717,6 @@ or `stalled` while current marker, active thread, or active work-protocol eviden
 still identifies the same `run_id` and `attempt_number` as live, operator status must
 keep the lane visible with the process/protocol liveness details instead of hiding it
 as only terminal history or cleanup work.
-
 Operator status lifecycle reconstruction may use recorded run attempts plus local
 evidence that is already scoped to the same project, issue, run id, and attempt:
 runtime run leases, run-control channels, protocol activity summaries, private
@@ -728,8 +730,43 @@ source evidence and any missing-evidence gaps so operators and agents can invest
 restart or manual-recovery failures without replaying Linear comments as runtime
 state. Evidence that cannot be bound to a local project, issue, run id, and attempt is
 diagnostic context only, not a synthesized lifecycle attempt.
-Post-review ownership is stored in the runtime database. Retained handoff rows record the authoritative PR URL, branch lineage, validated PR head OID, run id, and attempt number that completed the `In Review` handoff. Retained orchestration rows record the current post-review phase for that exact handoff identity. If the matching database row is missing, post-review ownership must block as unresolved instead of rebinding from branch-name, current-head, Linear comments, or other heuristics. An explicit operator manual takeover command may adopt a human-owned PR into this same retained database shape only after validating the managed clean worktree, PR repository, default-branch target, exact branch/head match, and green landable PR gates. If the active service label is missing but exists on the issue team, live adopt may restore it after all other invariants pass and must roll that restoration back if the audit write fails. If a retained review marker exists but a stored handoff or orchestration head no longer matches a clean retained worktree and matching PR head, operator status must keep the marker PR URL visible when known and recovery diagnosis must report the concrete mismatched field before any explicit rebind refresh. When the retained handoff still matches the same branch and PR, and PR readback plus local worktree lineage have already accepted the current head as the current PR head, a stale retained orchestration `head_sha` may be rebound to that current head by resetting the orchestration phase to `request_pending`, clearing prior GitHub Review request metadata, and preserving round-count history. Branch, PR, handoff-lineage, or rewritten-history mismatches must continue to block or report for operator recovery instead of being silently rebound. When a fresh active run owns the same issue, operator status must project that active execution as the current lane state and mark the retained post-review lane as shadowed instead of letting stale PR readback drive current project counts. When retained PR readback degrades but the handoff identity is still safe to preserve, operator-local status may expose a typed `readback_root_cause` diagnostic such as missing GitHub CLI, missing GitHub token, GitHub auth failure, API/read failure, parse/shape failure, or lineage validation failure while keeping public-safe warning reasons such as `pull_request_state_read_failed` stable. Retained orchestration must preserve the post-review classification decision when it converts status readback into runtime action: only a non-shadowed `Block` classification may write passive retained manual attention or add `decodex:needs-attention`; degraded readback classified as `WaitForReview` must remain a wait/retry status row and must not be promoted to manual attention by the run-cycle path.
-The only source-tree runtime artifacts that clean-source checks may ignore are the untracked top-level `.decodex-run-activity` heartbeat marker and `.decodex-run-control/` local control-channel directory. Durable review handoff, orchestration, review-policy checkpoints, retry, phase timing, and retained PR state belong in the Decodex runtime database, not in root-level or worktree-local review marker files. If the heartbeat marker carries similarly named fields for compatibility or operator diagnostics, those breadcrumb values cannot override runtime-store rows.
+
+Post-review ownership is stored in the runtime database. One
+`review_lifecycle_records` row records the authoritative PR URL, branch lineage,
+validated PR head OID, run id, attempt number, current post-review phase,
+review-request metadata, landing/closeout/repair state, evidence, and next action for
+the retained lane. If the matching database row is missing, post-review ownership must
+block as unresolved instead of rebinding from branch-name, current-head, Linear
+comments, or other heuristics. An explicit operator manual takeover command may adopt
+a human-owned PR into this same retained database shape only after validating the
+managed clean worktree, PR repository, default-branch target, exact branch/head match,
+and green landable PR gates. If the active service label is missing but exists on the
+issue team, live adopt may restore it after all other invariants pass and must roll
+that restoration back if the audit write fails. If a retained lifecycle record exists
+but a stored handoff or phase head no longer matches a clean retained worktree and
+matching PR head, operator status must keep the lifecycle PR URL visible when known
+and recovery diagnosis must report the concrete mismatched field before any explicit
+rebind refresh. When the retained lifecycle record still matches the same branch and
+PR, and PR readback plus local worktree lineage have already accepted the current head
+as the current PR head, a stale lifecycle `head_sha` may be rebound to that current
+head by resetting the phase to `request_pending`, clearing prior GitHub Review request
+metadata, and preserving round-count history. Branch, PR, handoff-lineage, or
+rewritten-history mismatches must continue to block or report for operator recovery
+instead of being silently rebound. When a fresh active run owns the same issue,
+operator status must project that active execution as the current lane state and mark
+the retained post-review lane as shadowed instead of letting stale PR readback drive
+current project counts. When retained PR readback degrades but the lifecycle identity
+is still safe to preserve, operator-local status may expose a typed
+`readback_root_cause` diagnostic such as missing GitHub CLI, missing GitHub token,
+GitHub auth failure, API/read failure, parse/shape failure, or lineage validation
+failure while keeping public-safe warning reasons such as
+`pull_request_state_read_failed` stable. The retained lifecycle controller must
+preserve the post-review classification decision when it converts status readback into
+runtime action: only a non-shadowed `Block` classification may write passive retained
+manual attention or add `decodex:needs-attention`; degraded readback classified as
+`WaitForReview` must remain a wait/retry status row and must not be promoted to
+manual attention by the run-cycle path.
+The only source-tree runtime artifacts that clean-source checks may ignore are the untracked top-level `.decodex-run-activity` heartbeat marker and `.decodex-run-control/` local control-channel directory. Durable review lifecycle records, review-policy checkpoints, retry, phase timing, and retained PR state belong in the Decodex runtime database, not in root-level or worktree-local review marker files. If the heartbeat marker carries similarly named fields for compatibility or operator diagnostics, those breadcrumb values cannot override runtime-store rows.
 
 ### Dispatch-slot handoff invariant
 
@@ -803,8 +840,9 @@ After a process restart, recent-run history, run lease ownership, retained post-
 - Worktrees: retain while the issue is non-terminal, and also retain terminal owned lanes while authoritative post-merge closeout or deterministic cleanup is still incomplete.
 - Worktree mappings must carry durable local provenance. New runtime-recorded mappings
   use `provenance_source = "runtime_recorded"` with created and updated Unix
-  timestamps. Mappings reconstructed from retained tracker/worktree/marker evidence
-  after local runtime state is missing use `provenance_source = "runtime_recovered"`;
+  timestamps. Mappings reconstructed from retained tracker, worktree,
+  lifecycle-record, or activity-marker evidence after local runtime state is missing
+  use `provenance_source = "runtime_recovered"`;
   they are recoverable runtime state, but not proof that the original runtime row was
   still present. Rows migrated from older runtime stores that lack this information
   must remain readable but must be classified as `provenance_source =
@@ -821,7 +859,7 @@ After a process restart, recent-run history, run lease ownership, retained post-
 
 ## Recovery rules
 
-- On service startup, `decodex` must inspect deterministic `.worktrees/<ISSUE>` paths together with tracker issue ids already known from local leases or worktree mappings to rebuild retained worktree mappings before starting new work. This recovery must only write a recovered worktree mapping after tracker, retained marker, or closeout evidence proves that retry, active-lane, or post-review closeout state owns the worktree; a terminal cleanup-only legacy row must keep `provenance_source = "legacy_unknown"` until the operator runs the explicit legacy closeout audit path.
+- On service startup, `decodex` must inspect deterministic `.worktrees/<ISSUE>` paths together with tracker issue ids already known from local leases or worktree mappings to rebuild retained worktree mappings before starting new work. This recovery must only write a recovered worktree mapping after tracker, retained lifecycle record, or closeout evidence proves that retry, active-lane, or post-review closeout state owns the worktree; a terminal cleanup-only legacy row must keep `provenance_source = "legacy_unknown"` until the operator runs the explicit legacy closeout audit path.
 - If Linear still shows a non-terminal `In Progress` issue and its retained worktree exists locally, `decodex` must treat that lane as a retry-style recovery candidate before selecting fresh `Todo` work.
 - Retry recovery must bind retained lanes to issue identity and local runtime state rather than to Linear project membership.
 - While the control plane is running an active lane, every poll tick must refresh cached tracker state for the leased issue before considering any new selection.
@@ -847,11 +885,11 @@ After a process restart, recent-run history, run lease ownership, retained post-
 - If the leased issue becomes terminal during a control-plane tick, `decodex` must stop the active run, mark the attempt `terminated`, clear the lease, and then retain or clean the worktree according to the retention rules above.
 - If the leased issue becomes non-terminal and leaves both the `In Progress` lane state and any configured startable pre-claim state, `decodex` must stop the active run, mark the attempt `interrupted`, clear the lease, and keep the worktree for inspection.
 - If a recovered lease is already in `tracker.success_state` and its retained
-  review-handoff marker matches the same `run_id` and `attempt_number`, reconciliation
+  review lifecycle record matches the same `run_id` and `attempt_number`, reconciliation
   must mark the local attempt `succeeded` and clear only the lease so deterministic
   retained closeout can reuse the handoff identity.
 - Deterministic retained closeout must take its `run_id` and `attempt_number` from
-  the durable review-handoff marker or equivalent tracker record, not from a later
+  the durable review lifecycle record or equivalent tracker record, not from a later
   same-process re-entry summary. Later local attempts that did not consume retry
   budget must not force a synthetic closeout attempt number.
 - A leased issue that is still in a configured startable state during early control-plane ticks must be treated as a lane that has not finished claiming tracker ownership yet, not as an immediate non-active interruption.
@@ -888,7 +926,7 @@ After a process restart, recent-run history, run lease ownership, retained post-
   the required terminal tool path instead of turning goal completion into issue
   success. Unsupported app-server goal methods remain hard environment blockers.
 - Retained post-review orchestration must treat local branch/head readback failures as
-  transient wait conditions while the review handoff marker still owns the lane. Status
+  transient wait conditions while the review lifecycle record still owns the lane. Status
   may report `worktree_checkout_branch_read_failed` or `worktree_head_read_failed`, but
   the run-cycle path must not write passive retained manual attention or add
   `decodex:needs-attention` for those read failures alone. A later successful readback
@@ -914,7 +952,7 @@ After a process restart, recent-run history, run lease ownership, retained post-
   operator projection. Status must not also render the issue as an intake queue
   candidate, because the queue label is then a stale echo of the retained terminal
   lane rather than dispatchable backlog.
-- If Linear still has `decodex:active:<service-id>` on an issue that also remains queued, but the local runtime cannot prove a matching run lease, status must classify the queued row as blocked with reason `linear_active_label_present`; it must not treat the issue as ready intake. If the retained marker or private execution event rows for that run are missing, status must surface `evidence_missing` in the recovery details. If the retained worktree has tracked changes, that dirty worktree remains owned by queued recovery/attention instead of being hidden as cleanup-only state.
+- If Linear still has `decodex:active:<service-id>` on an issue that also remains queued, but the local runtime cannot prove a matching run lease, status must classify the queued row as blocked with reason `linear_active_label_present`; it must not treat the issue as ready intake. If the retained runtime record or private execution event rows for that run are missing, status must surface `evidence_missing` in the recovery details. If the retained worktree has tracked changes, that dirty worktree remains owned by queued recovery/attention instead of being hidden as cleanup-only state.
 - Operator status snapshots must expose worktree provenance in both JSON and human text
   output. A cleanup-only worktree with `provenance_source = "legacy_unknown"` must set
   `audit_required = true` and provide a `decodex recover legacy-closeout` next action;
