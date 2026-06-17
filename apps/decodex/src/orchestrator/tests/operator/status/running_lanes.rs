@@ -2178,7 +2178,11 @@ fn operator_status_snapshot_shadows_stale_attempt_when_newer_leased_attempt_exis
 	assert_eq!(project.attention_count, 0);
 	assert!(rendered.contains("Current lanes: 1"));
 	assert!(rendered.contains("Running lanes: 1"));
-	assert!(!rendered.contains(stale_run_id));
+	assert!(!rendered.contains(&format!("- run_id: {stale_run_id}")));
+	assert!(
+		rendered.contains(&format!("lifecycle_evidence: run={stale_run_id}")),
+		"shadowed attempts should remain available only in lifecycle evidence"
+	);
 }
 
 #[test]
@@ -2358,11 +2362,243 @@ fn operator_status_snapshot_rolls_current_child_bucket_elapsed_time_into_bucket(
 	assert_eq!(run.lifecycle_metrics.captured_attempt_count, 1);
 	assert_eq!(run.lifecycle_metrics.tool_call_count, 1);
 	assert_eq!(run.lifecycle_metrics.phases.len(), 1);
-	assert_eq!(run.lifecycle_metrics.phases[0].phase, "review");
+	assert_eq!(run.lifecycle_metrics.phases[0].phase, "development");
 	assert!(activity.current_elapsed_seconds.is_some_and(|elapsed| elapsed >= 90));
 	assert!(
 		tracker_bucket.wall_seconds >= 90,
 		"current tool-call elapsed time should contribute to tracker bucket wall time"
+	);
+}
+
+#[test]
+fn operator_status_current_lane_lifecycle_reconstructs_all_issue_attempts() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+	let development_activity = ChildAgentActivitySummary {
+		buckets: vec![state::ChildAgentActivityBucket {
+			name: String::from("Model"),
+			wall_seconds: 600,
+			event_count: 2,
+			tool_call_count: 1,
+			input_tokens: 100,
+			output_tokens: 30,
+			..state::ChildAgentActivityBucket::default()
+		}],
+		wall_seconds: 600,
+		event_count: 2,
+		tool_call_count: 1,
+		input_tokens_cumulative: 100,
+		output_tokens_cumulative: 30,
+		..ChildAgentActivitySummary::default()
+	};
+	let review_activity = ChildAgentActivitySummary {
+		buckets: vec![state::ChildAgentActivityBucket {
+			name: String::from("Model"),
+			wall_seconds: 300,
+			event_count: 3,
+			tool_call_count: 2,
+			input_tokens: 200,
+			output_tokens: 40,
+			..state::ChildAgentActivityBucket::default()
+		}],
+		wall_seconds: 300,
+		event_count: 3,
+		tool_call_count: 2,
+		input_tokens_cumulative: 200,
+		output_tokens_cumulative: 40,
+		..ChildAgentActivitySummary::default()
+	};
+
+	state_store
+		.record_run_attempt("run-development", &issue.id, 1, "failed")
+		.expect("development attempt should record");
+	state_store
+		.record_run_activity_summary("run-development", 1, Some(&development_activity), None)
+		.expect("development activity should record");
+	state_store
+		.record_run_attempt("run-review", &issue.id, 2, "running")
+		.expect("review attempt should record");
+	state_store
+		.record_run_activity_summary("run-review", 2, Some(&review_activity), None)
+		.expect("review activity should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, "run-review", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: TEST_SERVICE_ID,
+			issue_id: &issue.id,
+			run_id: "run-review",
+			attempt_number: 2,
+			phase: "handoff",
+			status: "clean",
+			head_sha: "2222222222222222222222222222222222222222",
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("review checkpoint should record");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 0)
+		.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
+
+	assert_eq!(snapshot.recent_runs.len(), 1);
+	assert_eq!(run.lifecycle_metrics.attempt_count, 2);
+	assert_eq!(run.lifecycle_metrics.captured_attempt_count, 2);
+	assert_eq!(run.lifecycle_metrics.missing_attempt_count, 0);
+	assert_eq!(run.lifecycle_metrics.tool_call_count, 3);
+	assert_eq!(run.lifecycle_metrics.input_tokens_cumulative, 300);
+	assert_eq!(run.lifecycle_metrics.output_tokens_cumulative, 70);
+	assert_eq!(run.lifecycle_metrics.phases.len(), 2);
+	assert_eq!(run.lifecycle_metrics.phases[0].phase, "development");
+	assert_eq!(run.lifecycle_metrics.phases[0].attempt_count, 1);
+	assert_eq!(run.lifecycle_metrics.phases[0].wall_seconds, 600);
+	assert_eq!(run.lifecycle_metrics.phases[1].phase, "review");
+	assert_eq!(run.lifecycle_metrics.phases[1].attempt_count, 1);
+	assert_eq!(run.lifecycle_metrics.phases[1].wall_seconds, 300);
+}
+
+fn sample_lifecycle_activity(
+	wall_seconds: i64,
+	event_count: i64,
+	tool_call_count: i64,
+	input_tokens: i64,
+	output_tokens: i64,
+) -> ChildAgentActivitySummary {
+	ChildAgentActivitySummary {
+		buckets: vec![state::ChildAgentActivityBucket {
+			name: String::from("Model"),
+			wall_seconds,
+			event_count,
+			tool_call_count,
+			input_tokens,
+			output_tokens,
+			..state::ChildAgentActivityBucket::default()
+		}],
+		wall_seconds,
+		event_count,
+		tool_call_count,
+		input_tokens_cumulative: input_tokens,
+		output_tokens_cumulative: output_tokens,
+		..ChildAgentActivitySummary::default()
+	}
+}
+
+#[test]
+fn operator_status_current_lane_lifecycle_recovers_from_local_evidence_after_restart() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+	let development_activity = sample_lifecycle_activity(480, 4, 2, 600, 120);
+	let review_activity = sample_lifecycle_activity(240, 3, 1, 300, 90);
+
+	state_store
+		.upsert_lease("pubfi", &issue.id, "run-review", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+	state_store
+		.record_run_activity_summary("run-development", 1, Some(&development_activity), None)
+		.expect("development activity should record");
+	state_store
+		.append_private_execution_event(
+			"pubfi",
+			&issue.id,
+			"run-development",
+			1,
+			"issue_progress_checkpoint",
+			serde_json::json!({ "source": "restart-recovery-test" }),
+		)
+		.expect("development private evidence should record");
+	state_store
+		.record_run_activity_summary("run-review", 2, Some(&review_activity), None)
+		.expect("review activity should record");
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: TEST_SERVICE_ID,
+			issue_id: &issue.id,
+			run_id: "run-review",
+			attempt_number: 2,
+			phase: "handoff",
+			status: "clean",
+			head_sha: "2222222222222222222222222222222222222222",
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("review checkpoint should record");
+
+	state::write_run_protocol_activity_marker(
+		&worktree_path,
+		&ProtocolActivityMarker {
+			run_id: "run-review",
+			attempt_number: 2,
+			thread_id: Some("thread-review"),
+			turn_id: Some("turn-review"),
+			event_count: 3,
+			last_event_type: "model/response",
+			child_agent_activity: Some(&review_activity),
+			protocol_activity: None,
+		},
+	)
+	.expect("worktree activity marker should record");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 0)
+		.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should recover");
+
+	assert_eq!(snapshot.recent_runs.len(), 1);
+	assert_eq!(run.run_id, "run-review");
+	assert_eq!(run.lifecycle_metrics.attempt_count, 2);
+	assert_eq!(run.lifecycle_metrics.recorded_attempt_count, 0);
+	assert_eq!(run.lifecycle_metrics.recovered_attempt_count, 1);
+	assert_eq!(run.lifecycle_metrics.current_snapshot_attempt_count, 1);
+	assert_eq!(run.lifecycle_metrics.captured_attempt_count, 2);
+	assert_eq!(run.lifecycle_metrics.tool_call_count, 3);
+	assert_eq!(run.lifecycle_metrics.input_tokens_cumulative, 900);
+	assert_eq!(run.lifecycle_metrics.output_tokens_cumulative, 210);
+	assert_eq!(run.lifecycle_metrics.phases.len(), 2);
+	assert_eq!(run.lifecycle_metrics.phases[0].phase, "development");
+	assert_eq!(run.lifecycle_metrics.phases[0].recovered_attempt_count, 1);
+	assert_eq!(run.lifecycle_metrics.phases[1].phase, "review");
+	assert_eq!(run.lifecycle_metrics.phases[1].current_snapshot_attempt_count, 1);
+	assert!(
+		run.lifecycle_metrics
+			.attempt_evidence
+			.iter()
+			.any(|attempt| attempt.run_id == "run-development"
+				&& attempt.source == "recovered"
+				&& attempt
+					.evidence
+					.iter()
+					.any(|evidence| evidence == "private_execution_event:issue_progress_checkpoint"))
+	);
+	assert!(
+		run.lifecycle_metrics
+			.attempt_evidence
+			.iter()
+			.any(|attempt| attempt.run_id == "run-review"
+				&& attempt.source == "current_snapshot"
+				&& attempt
+					.evidence
+					.iter()
+					.any(|evidence| evidence == "worktree_activity_marker"))
 	);
 }
 
