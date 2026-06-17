@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-last_verified: 2026-06-16
+last_verified: 2026-06-17
 ---
 # Lane-Control Specification
 
@@ -244,8 +244,8 @@ When status or failure writeback reports `validation_repeat`, `no_effective_diff
 `remaining_delta_unchanged`, `review_churn`, `review_handoff_state_drift`,
 `dependency_program_stale`, `uncovered_direction`, or `ambiguous_retained_progress`,
 operators must inspect the retained worktree, private evidence, blocker state,
-recovery packet, boundary check, review findings, or retained handoff marker named by
-that reason before clearing `decodex:needs-attention`.
+recovery packet, boundary check, review findings, or retained lifecycle record named
+by that reason before clearing `decodex:needs-attention`.
 Do not use steer, retry, label cleanup, or hard interrupt to bypass the guardrail
 without changing the underlying repair strategy, dependency readiness, research
 contract, authority decision, or retained-progress ownership decision.
