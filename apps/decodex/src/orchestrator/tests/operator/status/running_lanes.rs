@@ -2543,6 +2543,7 @@ fn operator_status_current_lane_lifecycle_recovers_from_local_evidence_after_res
 			details_json: "{}",
 		})
 		.expect("review checkpoint should record");
+
 	state::write_run_protocol_activity_marker(
 		&worktree_path,
 		&ProtocolActivityMarker {
