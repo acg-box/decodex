@@ -58,6 +58,7 @@ fn operator_dashboard_surfaces_program_intake_panel() {
 	assert!(response.contains("function renderProgramNodeReadbacks(program)"));
 	assert!(response.contains("program.node_readbacks ?? []"));
 	assert!(response.contains("program.dispatchable_count"));
+	assert!(response.contains("field(\"Program stage\", displayToken(node.program_stage || \"unknown\"))"));
 	assert!(response.contains("node.dispatch_action"));
 	assert!(response.contains("renderExecutionPrograms(snapshot, derived);"));
 	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"currentLanes\", \"programs\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
@@ -107,13 +108,13 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 		.split(".section-marker-control")
 		.next()
 		.expect("section marker bar style should end before meta rule");
-	let flow_stage_label = response
-		.split(".flow-stage span {")
+	let flow_step_label = response
+		.split(".flow-step span {")
 		.nth(1)
-		.expect("flow stage label style should exist")
-		.split(".flow-stage-labels")
+		.expect("flow step label style should exist")
+		.split(".flow-step-labels")
 		.next()
-		.expect("flow stage label style should end before grid rule");
+		.expect("flow step label style should end before grid rule");
 	let table_meta = response
 		.split(".table-meta {")
 		.nth(1)
@@ -154,11 +155,11 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 	assert!(!section_marker_title.contains("text-transform: uppercase;"));
 	assert!(section_marker_bar.contains("height: 14px;"));
 	assert!(!response.contains(".section-marker > .table-meta {"));
-	assert!(flow_stage_label.contains("font-family: var(--mono);"));
-	assert!(flow_stage_label.contains("font-size: var(--type-label);"));
-	assert!(flow_stage_label.contains("font-weight: var(--weight-label);"));
-	assert!(!flow_stage_label.contains("text-transform: uppercase;"));
-	assert!(flow_stage_label.contains("color: var(--muted-strong);"));
+	assert!(flow_step_label.contains("font-family: var(--mono);"));
+	assert!(flow_step_label.contains("font-size: var(--type-label);"));
+	assert!(flow_step_label.contains("font-weight: var(--weight-label);"));
+	assert!(!flow_step_label.contains("text-transform: uppercase;"));
+	assert!(flow_step_label.contains("color: var(--muted-strong);"));
 	assert!(panel_title.contains("font-size: var(--type-section-title);"));
 	assert!(panel_title.contains("font-weight: var(--weight-label);"));
 	assert!(panel_title.contains("font-family: var(--sans);"));
@@ -432,14 +433,15 @@ fn assert_child_lifecycle_contract(response: &str) {
 			"<span class=\"child-total-segment\">",
 			"repeat(4, max-content max-content);",
 			".child-total-segment {\n\t\t\t\tdisplay: contents;",
-			"<div class=\"child-phase-table\" role=\"table\" aria-label=\"Lifecycle phase metrics\">",
+			"<div class=\"child-phase-table\" role=\"table\" aria-label=\"Lifecycle bucket metrics\">",
 			".child-phase-table {\n\t\t\t\tdisplay: inline-grid;\n\t\t\t\tgrid-template-columns:\n\t\t\t\t\tmax-content",
 			"gap: 4px clamp(24px, 2vw, 34px);",
 			"overflow: hidden;",
 			"text-overflow: ellipsis;",
 			"function formatLargestOutputValue(bytes)",
 			"return formatCompactBytes(bytes);",
-			"const header = [\"Stage\", \"attempts\", \"inference\", \"input\", \"output\", \"tools\", \"max output\"];",
+			"const header = [\"Lifecycle bucket\", \"attempts\", \"inference\", \"input\", \"output\", \"tools\", \"max output\"];",
+			"pluralize(phases.length, \"lifecycle bucket\")",
 			"const alignRight = new Set([1, 2, 3, 4, 5, 6]);",
 			"width: fit-content;\n\t\t\t\tmax-width: 100%;",
 			"\"tools\"",
@@ -555,7 +557,7 @@ fn assert_liveness_and_cleanup_contract(response: &str) {
 }
 
 #[test]
-fn operator_dashboard_history_lifecycle_metrics_are_grouped_by_phase() {
+fn operator_dashboard_history_lifecycle_metrics_are_grouped_by_lifecycle_bucket() {
 	let response = dashboard_response();
 
 	assert!(response.contains("function historyLaneLifecycleMetrics(lane)"));
@@ -607,9 +609,11 @@ fn operator_dashboard_current_lane_status_copy_stays_concise() {
 	assert!(response.contains("run.wait_reason && !runWaitReasonShowsExecutionProgress(run)"));
 	assert!(response.contains("runOperationRequiresLiveAgent"));
 	assert!(response.contains("runProcessStoppedWithoutAttention"));
-	assert!(response.contains("runStageLabel"));
+	assert!(response.contains("runPhaseLabel"));
 	assert!(response.contains("return run.process_liveness_reason || \"process_stopped\";"));
-	assert!(response.contains("return run.current_operation || run.phase || \"process_stopped\";"));
+	assert!(
+		response.contains("return run.current_operation || run.run_phase || run.phase || \"process_stopped\";")
+	);
 	assert!(response.contains("Operator input needed."));
 	assert!(response.contains("Protocol idle."));
 	assert!(response.contains("Stopped agent process"));
@@ -1560,7 +1564,7 @@ fn operator_dashboard_review_cards_omit_static_summary_copy() {
 	let response = dashboard_response();
 
 	assert!(response.contains("const shadowedByCurrentLane ="));
-	assert!(response.contains("status: currentLane ? `run ${displayToken(currentLane.phase)}` : \"current lane\""));
+	assert!(response.contains("`run phase ${displayToken(currentLane.run_phase || currentLane.phase)}`"));
 	assert!(response.contains("function postReviewBlockerStatus(lane, blockerScope)"));
 	assert!(response.contains("status: postReviewBlockerStatus(lane, blockerScope)"));
 	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: lane.check_state"));
@@ -1780,6 +1784,10 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(response.contains("facts.push([\"focus\", detailLabel(focus)]);"));
 	assert!(response.contains("function currentLaneLifecycleMetrics(run, summary = childAgentActivity(run))"));
 	assert!(response.contains("function lifecycleMetricFacts(metrics, { includeAttempts = false } = {})"));
+	assert!(response.contains("facts.push([\"run phase\", displayToken(run.run_phase || run.phase || run.status)]);"));
+	assert!(response.contains("facts.push([\"current operation\", displayToken(run.current_operation)]);"));
+	assert!(response.contains("facts.push([\"active goal phase\", displayToken(run.active_goal_phase)]);"));
+	assert!(response.contains("facts.push([\"public progress phase\", displayToken(run.public_progress_phase)]);"));
 	assert!(response.contains("facts.push([\"tokens\", tokenSummary]);"));
 	assert!(response.contains("facts.push([\"tools\", formatCompactCount(metrics.tool_call_count)]);"));
 	assert!(response.contains("\"max output\","));
@@ -1849,7 +1857,9 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 		response.contains("function mergeDashboardCurrentLanes(snapshot, currentLaneRows, currentLanesComplete = true)")
 	);
 	assert!(response.contains("function dashboardRunTitleIsOperationFallback(run)"));
-	assert!(response.contains("const operationFallback = displayToken(run.current_operation || run.phase);"));
+	assert!(
+		response.contains("const operationFallback = displayToken(run.current_operation || run.run_phase || run.phase);")
+	);
 	assert!(response.contains("!(fallback !== \"unknown\" && title === operationFallback)"));
 	assert!(response.contains("return fallback !== \"unknown\" ? fallback : operationFallback;"));
 	assert!(response.contains("let dashboardLiveCurrentLanes = [];"));
