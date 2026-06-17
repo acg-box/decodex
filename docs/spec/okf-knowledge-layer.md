@@ -7,9 +7,9 @@ authority: normative
 owner: docs
 tags: [okf, llm-wiki, docs, repo-memory]
 source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md, https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/docs_okf.rs, plugins/decodex/skills/docs/SKILL.md]
-related: [../policy.md, ../reference/research-concepts.md]
-drift_watch: [decodex okf, decodex docs, docs lint, okf profile, docs alias]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/docs_okf.rs, plugins/decodex/references/okf-layer.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/docs/SKILL.md]
+related: [../policy.md, ../reference/research-concepts.md, ../evidence/decodex-plugin-eval.md]
+drift_watch: [decodex okf, decodex docs, docs check, docs lint, okf profile, docs alias, okf skill]
 last_verified: 2026-06-17
 ---
 
@@ -117,6 +117,9 @@ Portable OKF skills own cross-repository behavior:
 - build graph/backlink views
 - maintain indexes and logs
 - route a task to the smallest relevant concepts
+
+The Decodex plugin exposes these portable skills as `okf`, `okf-query`, and
+`okf-maintain`.
 
 Decodex docs skills are wrappers around those behaviors for this repository. They may
 apply Decodex profile constraints, but the portable OKF skill family must not depend
