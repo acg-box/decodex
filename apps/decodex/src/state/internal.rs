@@ -216,6 +216,29 @@ impl StateData {
 					&& channel.attempt_number == attempt.attempt_number
 			})
 			.map(RunControlChannelRecord::as_public);
+		let mut recovery_evidence = vec![String::from("run_attempt")];
+
+		if run_lease {
+			recovery_evidence.push(String::from("active_lease"));
+		}
+		if control_channel.is_some() {
+			recovery_evidence.push(String::from("run_control_channel"));
+		}
+		if event_summary.event_count > 0 {
+			recovery_evidence.push(format!("protocol_events:{}", event_summary.event_count));
+		}
+		if run_activity_summary
+			.and_then(|summary| summary.child_agent_activity.as_ref())
+			.is_some()
+		{
+			recovery_evidence.push(String::from("child_agent_activity_summary"));
+		}
+		if run_activity_summary
+			.and_then(|summary| summary.protocol_activity.as_ref())
+			.is_some()
+		{
+			recovery_evidence.push(String::from("protocol_activity_summary"));
+		}
 
 		Some(ProjectRunStatus {
 			run_id: attempt.run_id.clone(),
@@ -238,6 +261,9 @@ impl StateData {
 				.and_then(|summary| summary.child_agent_activity.clone()),
 			protocol_activity: run_activity_summary
 				.and_then(|summary| summary.protocol_activity.clone()),
+			recovery_source: String::from("recorded"),
+			recovery_evidence,
+			recovery_gaps: Vec::new(),
 		})
 	}
 
@@ -1847,8 +1873,16 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	fn load_run_activity_summaries_for_loaded_runs(&self, state: &mut StateData) -> Result<()> {
 		let run_ids = state.run_attempts.keys().cloned().collect::<Vec<_>>();
 
+		self.load_run_activity_summaries_for_runs(state, &run_ids)
+	}
+
+	fn load_run_activity_summaries_for_runs(
+		&self,
+		state: &mut StateData,
+		run_ids: &[String],
+	) -> Result<()> {
 		for run_id in run_ids {
-			self.load_run_activity_summary_for_run(state, &run_id)?;
+			self.load_run_activity_summary_for_run(state, run_id)?;
 		}
 
 		Ok(())

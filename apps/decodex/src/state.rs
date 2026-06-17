@@ -6,7 +6,7 @@
 };
 use std::{
 	cmp,
-	collections::{HashMap, HashSet},
+	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	fs::{self, File, OpenOptions, TryLockError},
 	io::{ErrorKind, Read, Seek, SeekFrom, Write},
 	path::{Path, PathBuf},
