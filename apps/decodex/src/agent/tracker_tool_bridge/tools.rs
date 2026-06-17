@@ -1,4 +1,7 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde_json::{self, Value};
+use sha2::{Digest as _, Sha256};
 
 use crate::{
 	agent::tracker_tool_bridge::{
@@ -8,12 +11,15 @@ use crate::{
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LabelArgs,
-		NormalizedProgressCheckpoint, NormalizedReviewCheckpointPayload, PendingReviewAction,
+		NormalizedProgressCheckpoint, NormalizedRejectedReviewCheckpointFinding,
+		NormalizedReviewCheckpointFinding, NormalizedReviewCheckpointPayload, PendingReviewAction,
 		PendingReviewCompletion, ProgressCheckpointArgs, PullRequestDetails,
 		REVIEW_POLICY_CONVERGENCE_BUDGET, ReviewCheckpointArgs, ReviewCheckpointChecksArgs,
-		ReviewCheckpointFindingArgs, ReviewCheckpointRejectedFindingArgs, ReviewExecutionMode,
-		ReviewHandoffArgs, ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus,
-		RunCompletionDisposition, TerminalFinalizeArgs, TrackerToolBridge, TransitionArgs,
+		ReviewCheckpointFindingArgs, ReviewCheckpointLineRangeArgs,
+		ReviewCheckpointRejectedFindingArgs, ReviewExecutionMode, ReviewFindingPolicyRecord,
+		ReviewFindingPolicyState, ReviewHandoffArgs, ReviewHandoffContext, ReviewPolicyPhase,
+		ReviewPolicyState, ReviewPolicyStatus, RunCompletionDisposition, TerminalFinalizeArgs,
+		TrackerToolBridge, TransitionArgs,
 	},
 	orchestrator::{
 		self, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AuthorityDecisionOption,
@@ -70,6 +76,11 @@ struct ReviewCheckpointPayloadCounts {
 	evidence: usize,
 	accepted_findings: usize,
 	rejected_findings: usize,
+}
+
+struct ReviewFindingPolicyUpdate {
+	nonclean_rounds: i64,
+	finding_policy: ReviewFindingPolicyState,
 }
 
 impl<'a> TrackerToolBridge<'a> {
@@ -396,8 +407,18 @@ impl<'a> TrackerToolBridge<'a> {
 									"items": { "type": "string" },
 									"minItems": 1
 								},
+								"kind": { "type": "string" },
 								"file": { "type": "string" },
 								"line": { "type": "integer", "minimum": 1 },
+								"line_range": {
+									"type": "object",
+									"properties": {
+										"start": { "type": "integer", "minimum": 1 },
+										"end": { "type": "integer", "minimum": 1 }
+									},
+									"required": ["start", "end"],
+									"additionalProperties": false
+								},
 								"guidance": { "type": "string" }
 							},
 							"required": ["severity", "summary", "evidence", "guidance"],
@@ -420,8 +441,18 @@ impl<'a> TrackerToolBridge<'a> {
 									"items": { "type": "string" },
 									"minItems": 1
 								},
+								"kind": { "type": "string" },
 								"file": { "type": "string" },
-								"line": { "type": "integer", "minimum": 1 }
+								"line": { "type": "integer", "minimum": 1 },
+								"line_range": {
+									"type": "object",
+									"properties": {
+										"start": { "type": "integer", "minimum": 1 },
+										"end": { "type": "integer", "minimum": 1 }
+									},
+									"required": ["start", "end"],
+									"additionalProperties": false
+								}
 							},
 							"required": ["severity", "summary", "rejection_reason", "evidence"],
 							"additionalProperties": false
@@ -1332,11 +1363,26 @@ impl<'a> TrackerToolBridge<'a> {
 			Ok(head_sha) => head_sha,
 			Err(error) => return DynamicToolCallResponse::failure(error),
 		};
-		let checkpoint_payload =
-			match normalize_review_checkpoint_payload(parsed, review_policy_status) {
-				Ok(payload) => payload,
-				Err(error) => return DynamicToolCallResponse::failure(error),
-			};
+		let mut checkpoint_payload = match normalize_review_checkpoint_payload(
+			parsed,
+			review_policy_phase,
+			review_policy_status,
+			&head_sha,
+		) {
+			Ok(payload) => payload,
+			Err(error) => return DynamicToolCallResponse::failure(error),
+		};
+		let policy_update = match self.review_checkpoint_finding_policy_update(
+			review_context,
+			review_policy_phase,
+			review_policy_status,
+			&head_sha,
+			&checkpoint_payload,
+		) {
+			Ok(update) => update,
+			Err(error) => return DynamicToolCallResponse::failure(error),
+		};
+		checkpoint_payload.finding_policy = policy_update.finding_policy;
 		let details_json = match serde_json::to_string(&checkpoint_payload) {
 			Ok(details_json) => details_json,
 			Err(error) => {
@@ -1346,14 +1392,7 @@ impl<'a> TrackerToolBridge<'a> {
 				));
 			},
 		};
-		let nonclean_rounds = match self.review_checkpoint_nonclean_rounds(
-			review_context,
-			review_policy_phase,
-			review_policy_status,
-		) {
-			Ok(nonclean_rounds) => nonclean_rounds,
-			Err(error) => return DynamicToolCallResponse::failure(error),
-		};
+		let nonclean_rounds = policy_update.nonclean_rounds;
 
 		if let Err(error) = self.persist_review_policy_state(
 			review_context,
@@ -1391,34 +1430,47 @@ impl<'a> TrackerToolBridge<'a> {
 		if review_policy_status == ReviewPolicyStatus::Findings
 			&& nonclean_rounds >= REVIEW_POLICY_CONVERGENCE_BUDGET
 		{
+			let fingerprint = checkpoint_payload
+				.finding_policy
+				.stop_fingerprint
+				.as_ref()
+				.map_or_else(String::new, |fingerprint| {
+					format!(" Finding fingerprint `{fingerprint}` caused the stop.")
+				});
 			return DynamicToolCallResponse::failure(format!(
-				"{message} Review churn threshold exceeded; stop the current repair strategy now and route through architecture recovery or human attention before making further repair mutations."
+				"{message} Review churn threshold exceeded.{fingerprint} Stop the current repair strategy now and route through architecture recovery or human attention before making further repair mutations."
 			));
 		}
 
 		DynamicToolCallResponse::success(message)
 	}
 
-	fn review_checkpoint_nonclean_rounds(
+	fn review_checkpoint_finding_policy_update(
 		&self,
 		review_context: &ReviewHandoffContext,
 		review_policy_phase: ReviewPolicyPhase,
 		review_policy_status: ReviewPolicyStatus,
-	) -> Result<i64, String> {
+		head_sha: &str,
+		checkpoint_payload: &NormalizedReviewCheckpointPayload,
+	) -> Result<ReviewFindingPolicyUpdate, String> {
 		let previous_state = self
 			.review_policy_state_for_current_phase(review_context)
 			.map_err(|error| error.to_string())?;
-		let phase_changed = previous_state
+		let previous_finding_policy = previous_state
 			.as_ref()
-			.is_some_and(|previous_state| previous_state.phase != review_policy_phase);
-		let previous_nonclean_rounds = if phase_changed {
-			0
-		} else {
-			previous_state.as_ref().map_or(0, |previous_state| previous_state.nonclean_rounds)
-		};
+			.and_then(|previous_state| {
+				review_finding_policy_from_previous_state(previous_state, review_policy_phase)
+			})
+			.unwrap_or_default();
+
+		let previous_threshold_exceeded = previous_state.as_ref().is_some_and(|previous_state| {
+			previous_state.phase == review_policy_phase
+				&& previous_state.status == ReviewPolicyStatus::Findings
+				&& previous_state.nonclean_rounds >= REVIEW_POLICY_CONVERGENCE_BUDGET
+		});
 
 		if review_policy_status == ReviewPolicyStatus::Findings
-			&& previous_nonclean_rounds >= REVIEW_POLICY_CONVERGENCE_BUDGET
+			&& (previous_finding_policy.stop_fingerprint.is_some() || previous_threshold_exceeded)
 		{
 			return Err(format!(
 				"Review churn threshold already exceeded for issue `{}`; do not record another findings checkpoint. Route through architecture recovery or human attention before making further repair mutations.",
@@ -1426,12 +1478,13 @@ impl<'a> TrackerToolBridge<'a> {
 			));
 		}
 
-		Ok(match review_policy_status {
-			ReviewPolicyStatus::Findings => previous_nonclean_rounds.saturating_add(1),
-			ReviewPolicyStatus::Clean
-			| ReviewPolicyStatus::NeedsArchitectureReview
-			| ReviewPolicyStatus::Blocked => 0,
-		})
+		Ok(review_finding_policy_update(
+			previous_finding_policy,
+			review_policy_phase,
+			review_policy_status,
+			head_sha,
+			checkpoint_payload,
+		))
 	}
 
 	fn review_checkpoint_success_message(
@@ -1454,7 +1507,7 @@ impl<'a> TrackerToolBridge<'a> {
 				self.issue.identifier,
 			),
 			ReviewPolicyStatus::Findings => format!(
-				"Recorded `{}` review findings for issue `{}` at HEAD `{head_sha}`; consecutive non-clean rounds now `{nonclean_rounds}`; {evidence_suffix}.",
+				"Recorded `{}` review findings for issue `{}` at HEAD `{head_sha}`; max unresolved finding repeat count now `{nonclean_rounds}`; {evidence_suffix}.",
 				review_policy_phase.as_str(),
 				self.issue.identifier,
 			),
@@ -1489,6 +1542,8 @@ impl<'a> TrackerToolBridge<'a> {
 			"status": review_policy_status.as_str(),
 			"head_sha": head_sha,
 			"nonclean_rounds": nonclean_rounds,
+			"active_fingerprints": &checkpoint_payload.finding_policy.active_fingerprints,
+			"stop_fingerprint": &checkpoint_payload.finding_policy.stop_fingerprint,
 			"review": checkpoint_payload,
 		});
 
@@ -2122,7 +2177,9 @@ fn validate_public_decision_request_field(field_name: &str, value: &str) -> Resu
 
 fn normalize_review_checkpoint_payload(
 	parsed: ReviewCheckpointArgs,
+	review_policy_phase: ReviewPolicyPhase,
 	status: ReviewPolicyStatus,
+	head_sha: &str,
 ) -> Result<NormalizedReviewCheckpointPayload, String> {
 	let reviewer = parsed
 		.reviewer
@@ -2149,7 +2206,7 @@ fn normalize_review_checkpoint_payload(
 	let accepted_findings = parsed
 		.accepted_findings
 		.into_iter()
-		.map(normalize_review_checkpoint_finding)
+		.map(|finding| normalize_review_checkpoint_finding(finding, review_policy_phase))
 		.collect::<Result<Vec<_>, _>>()?;
 	let rejected_findings = parsed
 		.rejected_findings
@@ -2174,6 +2231,7 @@ fn normalize_review_checkpoint_payload(
 		evidence,
 		accepted_findings,
 		rejected_findings,
+		finding_policy: empty_review_finding_policy(review_policy_phase, status, head_sha),
 	})
 }
 
@@ -2214,40 +2272,76 @@ fn normalize_review_checkpoint_checks(
 
 fn normalize_review_checkpoint_finding(
 	finding: ReviewCheckpointFindingArgs,
-) -> Result<ReviewCheckpointFindingArgs, String> {
+	review_policy_phase: ReviewPolicyPhase,
+) -> Result<NormalizedReviewCheckpointFinding, String> {
 	let severity = normalize_review_severity(finding.severity, "accepted_findings.severity")?;
+	let summary = normalize_required_review_text(finding.summary, "accepted_findings.summary")?;
+	let guidance = normalize_required_review_text(finding.guidance, "accepted_findings.guidance")?;
+	let kind = normalize_optional_review_kind(finding.kind, "accepted_findings.kind")?
+		.unwrap_or_else(|| String::from("accepted_finding"));
+	let file = normalize_optional_review_file(finding.file)?;
+	let line = normalize_optional_review_line(finding.line)?;
+	let line_range = normalize_optional_review_line_range(
+		line,
+		finding.line_range,
+		"accepted_findings.line_range",
+	)?;
+	let fingerprint = review_finding_fingerprint(
+		review_policy_phase,
+		&kind,
+		&summary,
+		&guidance,
+		file.as_deref(),
+		line_range.as_ref(),
+	);
 
-	Ok(ReviewCheckpointFindingArgs {
+	Ok(NormalizedReviewCheckpointFinding {
 		severity,
-		summary: normalize_required_review_text(finding.summary, "accepted_findings.summary")?,
+		summary,
 		evidence: normalize_required_review_evidence_list(
 			finding.evidence,
 			"accepted_findings.evidence",
 		)?,
-		file: normalize_optional_review_file(finding.file)?,
-		line: normalize_optional_review_line(finding.line)?,
-		guidance: normalize_required_review_text(finding.guidance, "accepted_findings.guidance")?,
+		kind,
+		file,
+		line,
+		line_range,
+		guidance,
+		fingerprint,
 	})
 }
 
 fn normalize_rejected_review_checkpoint_finding(
 	finding: ReviewCheckpointRejectedFindingArgs,
-) -> Result<ReviewCheckpointRejectedFindingArgs, String> {
+) -> Result<NormalizedRejectedReviewCheckpointFinding, String> {
 	let severity = normalize_review_severity(finding.severity, "rejected_findings.severity")?;
+	let summary = normalize_required_review_text(finding.summary, "rejected_findings.summary")?;
+	let rejection_reason = normalize_required_review_text(
+		finding.rejection_reason,
+		"rejected_findings.rejection_reason",
+	)?;
+	let kind = normalize_optional_review_kind(finding.kind, "rejected_findings.kind")?
+		.unwrap_or_else(|| String::from("rejected_finding"));
+	let file = normalize_optional_review_file(finding.file)?;
+	let line = normalize_optional_review_line(finding.line)?;
+	let line_range = normalize_optional_review_line_range(
+		line,
+		finding.line_range,
+		"rejected_findings.line_range",
+	)?;
 
-	Ok(ReviewCheckpointRejectedFindingArgs {
+	Ok(NormalizedRejectedReviewCheckpointFinding {
 		severity,
-		summary: normalize_required_review_text(finding.summary, "rejected_findings.summary")?,
-		rejection_reason: normalize_required_review_text(
-			finding.rejection_reason,
-			"rejected_findings.rejection_reason",
-		)?,
+		summary,
+		rejection_reason,
 		evidence: normalize_required_review_evidence_list(
 			finding.evidence,
 			"rejected_findings.evidence",
 		)?,
-		file: normalize_optional_review_file(finding.file)?,
-		line: normalize_optional_review_line(finding.line)?,
+		kind,
+		file,
+		line,
+		line_range,
 	})
 }
 
@@ -2307,6 +2401,308 @@ fn normalize_optional_review_line(value: Option<u64>) -> Result<Option<u64>, Str
 	}
 
 	Ok(value)
+}
+
+fn normalize_optional_review_line_range(
+	line: Option<u64>,
+	line_range: Option<ReviewCheckpointLineRangeArgs>,
+	field_name: &str,
+) -> Result<Option<ReviewCheckpointLineRangeArgs>, String> {
+	let Some(line_range) = line_range
+		.or_else(|| line.map(|line| ReviewCheckpointLineRangeArgs { start: line, end: line }))
+	else {
+		return Ok(None);
+	};
+
+	if line_range.start == 0 || line_range.end == 0 {
+		return Err(format!(
+			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `{field_name}` to use one-based line numbers."
+		));
+	}
+	if line_range.end < line_range.start {
+		return Err(format!(
+			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `{field_name}.end` to be greater than or equal to `{field_name}.start`."
+		));
+	}
+	if let Some(line) = line
+		&& (line < line_range.start || line > line_range.end)
+	{
+		return Err(format!(
+			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `line` to fall inside `{field_name}` when both are supplied."
+		));
+	}
+
+	Ok(Some(line_range))
+}
+
+fn normalize_optional_review_kind(
+	value: Option<String>,
+	field_name: &str,
+) -> Result<Option<String>, String> {
+	let Some(kind) = tracker_tool_bridge::normalize_optional_progress_field(value) else {
+		return Ok(None);
+	};
+	let kind = kind.to_ascii_lowercase().replace([' ', '-'], "_");
+	let mut chars = kind.chars();
+	let Some(first) = chars.next() else {
+		return Ok(None);
+	};
+
+	if !first.is_ascii_lowercase()
+		|| !chars.all(|character| {
+			character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+		}) {
+		return Err(format!(
+			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `{field_name}` to be a public snake_case identifier."
+		));
+	}
+
+	Ok(Some(kind))
+}
+
+fn empty_review_finding_policy(
+	review_policy_phase: ReviewPolicyPhase,
+	status: ReviewPolicyStatus,
+	head_sha: &str,
+) -> ReviewFindingPolicyState {
+	ReviewFindingPolicyState {
+		schema: String::from("decodex.review_finding_policy/1"),
+		phase: review_policy_phase.as_str().to_owned(),
+		status: status.as_str().to_owned(),
+		head_sha: head_sha.to_owned(),
+		nonclean_rounds: 0,
+		active_fingerprints: Vec::new(),
+		stop_fingerprint: None,
+		findings: Vec::new(),
+	}
+}
+
+fn review_finding_fingerprint(
+	review_policy_phase: ReviewPolicyPhase,
+	kind: &str,
+	title: &str,
+	body: &str,
+	file: Option<&str>,
+	line_range: Option<&ReviewCheckpointLineRangeArgs>,
+) -> String {
+	let line_range = line_range
+		.map_or_else(|| String::from("none"), |range| format!("{}-{}", range.start, range.end));
+	let input = [
+		("phase", review_policy_phase.as_str()),
+		("kind", kind),
+		("title", title),
+		("body", body),
+		("file", file.unwrap_or("none")),
+		("line_range", line_range.as_str()),
+	]
+	.into_iter()
+	.map(|(key, value)| format!("{key}={value}"))
+	.collect::<Vec<_>>()
+	.join("\n");
+	let digest = Sha256::digest(input.as_bytes());
+	let hash = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+
+	format!("review_finding:{hash}")
+}
+
+fn review_finding_policy_update(
+	previous: ReviewFindingPolicyState,
+	review_policy_phase: ReviewPolicyPhase,
+	status: ReviewPolicyStatus,
+	head_sha: &str,
+	checkpoint_payload: &NormalizedReviewCheckpointPayload,
+) -> ReviewFindingPolicyUpdate {
+	let mut records = previous
+		.findings
+		.into_iter()
+		.map(|record| (record.fingerprint.clone(), record))
+		.collect::<BTreeMap<_, _>>();
+	let active_fingerprints = checkpoint_payload
+		.accepted_findings
+		.iter()
+		.map(|finding| finding.fingerprint.clone())
+		.collect::<BTreeSet<_>>();
+
+	match status {
+		ReviewPolicyStatus::Findings => {
+			for finding in &checkpoint_payload.accepted_findings {
+				upsert_open_review_finding_record(
+					&mut records,
+					finding,
+					head_sha,
+					&checkpoint_payload.evidence,
+				);
+			}
+			resolve_absent_review_findings(&mut records, &active_fingerprints);
+		},
+		ReviewPolicyStatus::Clean => {
+			resolve_all_review_findings(&mut records, &checkpoint_payload.evidence);
+		},
+		ReviewPolicyStatus::NeedsArchitectureReview | ReviewPolicyStatus::Blocked => {},
+	}
+
+	let nonclean_rounds = if status == ReviewPolicyStatus::Findings {
+		active_fingerprints
+			.iter()
+			.filter_map(|fingerprint| records.get(fingerprint))
+			.map(|record| record.repeat_count)
+			.max()
+			.unwrap_or_default()
+	} else {
+		0
+	};
+	let stop_fingerprint = active_fingerprints
+		.iter()
+		.filter_map(|fingerprint| records.get(fingerprint).map(|record| (fingerprint, record)))
+		.filter(|(_fingerprint, record)| record.repeat_count >= REVIEW_POLICY_CONVERGENCE_BUDGET)
+		.max_by_key(|(_fingerprint, record)| record.repeat_count)
+		.map(|(fingerprint, _record)| fingerprint.clone());
+	let mut finding_policy = empty_review_finding_policy(review_policy_phase, status, head_sha);
+
+	finding_policy.nonclean_rounds = nonclean_rounds;
+	finding_policy.active_fingerprints = active_fingerprints.into_iter().collect();
+	finding_policy.stop_fingerprint = stop_fingerprint;
+	finding_policy.findings = records.into_values().collect();
+
+	ReviewFindingPolicyUpdate { nonclean_rounds, finding_policy }
+}
+
+fn upsert_open_review_finding_record(
+	records: &mut BTreeMap<String, ReviewFindingPolicyRecord>,
+	finding: &NormalizedReviewCheckpointFinding,
+	head_sha: &str,
+	checkpoint_evidence: &[String],
+) {
+	let existing_open =
+		records.get(&finding.fingerprint).is_some_and(|record| record.status == "open");
+	let mut record = records
+		.remove(&finding.fingerprint)
+		.unwrap_or_else(|| review_finding_policy_record(finding, head_sha));
+
+	record.kind = finding.kind.clone();
+	record.title = finding.summary.clone();
+	record.body = finding.guidance.clone();
+	record.file = finding.file.clone();
+	record.line_range = finding.line_range.clone();
+	if existing_open {
+		record.repeat_count = record.repeat_count.saturating_add(1);
+	} else {
+		record.first_seen_head = head_sha.to_owned();
+		record.repeat_count = 1;
+	}
+	record.last_seen_head = head_sha.to_owned();
+	record.status = String::from("open");
+	append_review_finding_repair_evidence(&mut record, checkpoint_evidence);
+	append_review_finding_repair_evidence(&mut record, &finding.evidence);
+
+	records.insert(finding.fingerprint.clone(), record);
+}
+
+fn review_finding_policy_record(
+	finding: &NormalizedReviewCheckpointFinding,
+	head_sha: &str,
+) -> ReviewFindingPolicyRecord {
+	ReviewFindingPolicyRecord {
+		fingerprint: finding.fingerprint.clone(),
+		kind: finding.kind.clone(),
+		title: finding.summary.clone(),
+		body: finding.guidance.clone(),
+		file: finding.file.clone(),
+		line_range: finding.line_range.clone(),
+		first_seen_head: head_sha.to_owned(),
+		last_seen_head: head_sha.to_owned(),
+		status: String::from("open"),
+		repeat_count: 0,
+		repair_evidence: Vec::new(),
+	}
+}
+
+fn append_review_finding_repair_evidence(
+	record: &mut ReviewFindingPolicyRecord,
+	evidence: &[String],
+) {
+	for item in evidence {
+		if !record.repair_evidence.iter().any(|existing| existing == item) {
+			record.repair_evidence.push(item.clone());
+		}
+	}
+}
+
+fn resolve_absent_review_findings(
+	records: &mut BTreeMap<String, ReviewFindingPolicyRecord>,
+	active_fingerprints: &BTreeSet<String>,
+) {
+	for (fingerprint, record) in records {
+		if record.status == "open" && !active_fingerprints.contains(fingerprint) {
+			record.status = String::from("resolved");
+		}
+	}
+}
+
+fn resolve_all_review_findings(
+	records: &mut BTreeMap<String, ReviewFindingPolicyRecord>,
+	checkpoint_evidence: &[String],
+) {
+	for record in records.values_mut().filter(|record| record.status == "open") {
+		record.status = String::from("resolved");
+		append_review_finding_repair_evidence(record, checkpoint_evidence);
+	}
+}
+
+fn review_finding_policy_from_previous_state(
+	previous_state: &ReviewPolicyState,
+	review_policy_phase: ReviewPolicyPhase,
+) -> Option<ReviewFindingPolicyState> {
+	if previous_state.phase != review_policy_phase {
+		return None;
+	}
+	let details = serde_json::from_str::<Value>(&previous_state.details_json).ok()?;
+
+	details
+		.get("finding_policy")
+		.cloned()
+		.and_then(|value| serde_json::from_value::<ReviewFindingPolicyState>(value).ok())
+		.or_else(|| migrate_legacy_review_finding_policy(previous_state, &details))
+}
+
+fn migrate_legacy_review_finding_policy(
+	previous_state: &ReviewPolicyState,
+	details: &Value,
+) -> Option<ReviewFindingPolicyState> {
+	let mut finding_policy = empty_review_finding_policy(
+		previous_state.phase,
+		previous_state.status,
+		&previous_state.head_sha,
+	);
+
+	if previous_state.status != ReviewPolicyStatus::Findings {
+		return Some(finding_policy);
+	}
+
+	let findings = details.get("accepted_findings")?.as_array()?;
+	for finding_value in findings {
+		let finding = serde_json::from_value::<ReviewCheckpointFindingArgs>(finding_value.clone())
+			.ok()
+			.and_then(|finding| {
+				normalize_review_checkpoint_finding(finding, previous_state.phase).ok()
+			})?;
+		let mut record = review_finding_policy_record(&finding, &previous_state.head_sha);
+
+		record.repeat_count = previous_state.nonclean_rounds.max(1);
+		append_review_finding_repair_evidence(&mut record, &finding.evidence);
+		finding_policy.active_fingerprints.push(finding.fingerprint.clone());
+		finding_policy.findings.push(record);
+	}
+
+	finding_policy.nonclean_rounds = previous_state.nonclean_rounds;
+	finding_policy.active_fingerprints.sort();
+	finding_policy.active_fingerprints.dedup();
+	finding_policy.stop_fingerprint = (previous_state.nonclean_rounds
+		>= REVIEW_POLICY_CONVERGENCE_BUDGET)
+		.then(|| finding_policy.active_fingerprints.first().cloned())
+		.flatten();
+
+	Some(finding_policy)
 }
 
 fn validate_public_error_class(error_class: &str) -> Result<(), String> {

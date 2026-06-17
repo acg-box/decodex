@@ -56,13 +56,25 @@ fn review_checks_json() -> Value {
 }
 
 fn accepted_review_findings_json() -> Value {
+	accepted_review_findings_with_summary_json(
+		"Accepted reviewer finding",
+		"Repair the accepted issue before requesting another review checkpoint.",
+		1,
+	)
+}
+
+fn accepted_review_findings_with_summary_json(
+	summary: &str,
+	guidance: &str,
+	line: u64,
+) -> Value {
 	serde_json::json!([{
 		"severity": "medium",
-		"summary": "Accepted reviewer finding",
+		"summary": summary,
 		"evidence": ["The reviewer evidence points at the current lane head."],
 		"file": "apps/decodex/src/agent/tracker_tool_bridge/tools.rs",
-		"line": 1,
-		"guidance": "Repair the accepted issue before requesting another review checkpoint."
+		"line": line,
+		"guidance": guidance
 	}])
 }
 
@@ -78,6 +90,18 @@ fn submit_findings_review_checkpoint(
 	bridge: &TrackerToolBridge<'_>,
 	evidence: &str,
 ) -> DynamicToolCallResponse {
+	submit_findings_review_checkpoint_with_findings(
+		bridge,
+		evidence,
+		accepted_review_findings_json(),
+	)
+}
+
+fn submit_findings_review_checkpoint_with_findings(
+	bridge: &TrackerToolBridge<'_>,
+	evidence: &str,
+	accepted_findings: Value,
+) -> DynamicToolCallResponse {
 	DynamicToolHandler::handle_call(
 		bridge,
 		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
@@ -87,7 +111,7 @@ fn submit_findings_review_checkpoint(
 			"head_sha": sample_local_repo().head_oid,
 			"checks": review_checks_json(),
 			"evidence": [evidence],
-			"accepted_findings": accepted_review_findings_json()
+			"accepted_findings": accepted_findings
 		}),
 	)
 }
@@ -724,6 +748,13 @@ fn independent_review_checkpoint_findings_store_accepted_repair_guidance() {
 	assert_eq!(checkpoint.status(), "findings");
 	assert_eq!(checkpoint.nonclean_rounds(), 1);
 	assert_eq!(details["accepted_findings"][0]["severity"], "medium");
+	assert_eq!(details["accepted_findings"][0]["kind"], "accepted_finding");
+	assert_eq!(details["accepted_findings"][0]["line_range"]["start"], 1);
+	assert!(
+		details["accepted_findings"][0]["fingerprint"]
+			.as_str()
+			.is_some_and(|fingerprint| fingerprint.starts_with("review_finding:"))
+	);
 	assert_eq!(
 		details["accepted_findings"][0]["guidance"],
 		"Repair the accepted issue before requesting another review checkpoint."
@@ -844,6 +875,12 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 
 	assert_eq!(stop.reason, ReviewPolicyStopReason::Exhausted);
 	assert_eq!(stop.nonclean_rounds, Some(3));
+	assert!(
+		stop.fingerprint.as_deref().is_some_and(|fingerprint| {
+			fingerprint.starts_with("review_finding:")
+		}),
+		"stop should identify the repeated finding fingerprint: {stop:?}"
+	);
 
 	let fourth_response =
 		submit_findings_review_checkpoint(&bridge, "attempted fourth findings checkpoint");
@@ -892,6 +929,68 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 		tracker.comments.borrow().is_empty(),
 		"fenced progress checkpoint must not write a tracker comment"
 	);
+}
+
+#[test]
+fn review_checkpoint_distinct_findings_do_not_inherit_old_churn() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+	]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context.clone(),
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+
+	for _round in 1..=2 {
+		let response = submit_findings_review_checkpoint(&bridge, "same finding still pending");
+
+		assert!(response.success);
+	}
+
+	let distinct_findings = accepted_review_findings_with_summary_json(
+		"Distinct reviewer finding",
+		"Repair the separate accepted issue before requesting another checkpoint.",
+		12,
+	);
+	let response = submit_findings_review_checkpoint_with_findings(
+		&bridge,
+		"new finding discovered after the earlier one was repaired",
+		distinct_findings,
+	);
+
+	assert!(response.success, "new fingerprints should not trip old churn: {response:?}");
+
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
+	let details =
+		serde_json::from_str::<Value>(checkpoint.details_json()).expect("details should be json");
+	let finding_policy = &details["finding_policy"];
+	let records = finding_policy["findings"].as_array().expect("finding records should persist");
+
+	assert_eq!(checkpoint.nonclean_rounds(), 1);
+	assert_eq!(finding_policy["active_fingerprints"].as_array().expect("active fingerprints").len(), 1);
+	assert!(records.iter().any(|record| {
+		record["title"] == "Accepted reviewer finding"
+			&& record["status"] == "resolved"
+			&& record["repeat_count"] == 2
+	}));
+	assert!(records.iter().any(|record| {
+		record["title"] == "Distinct reviewer finding"
+			&& record["status"] == "open"
+			&& record["repeat_count"] == 1
+	}));
 }
 
 #[test]
