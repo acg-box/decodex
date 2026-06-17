@@ -565,7 +565,6 @@ fn build_operator_run_activity_event(
 ) -> Result<DashboardRunActivityEvent> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 	let account_control = global_codex_account_control_status();
-	let mut accounts = Vec::new();
 	let mut current_lanes = Vec::new();
 
 	for registration in state_store.list_projects()? {
@@ -606,20 +605,15 @@ fn build_operator_run_activity_event(
 			continue;
 		}
 
-		accounts.extend(project_snapshot.accounts);
 		current_lanes.extend(project_snapshot.current_lanes);
 	}
 
-	let fingerprint_payload = dashboard_run_activity_fingerprint_payload(
-		&account_control,
-		&accounts,
-		&current_lanes,
-	);
+	let fingerprint_payload =
+		dashboard_run_activity_fingerprint_payload(&account_control, &current_lanes);
 	let fingerprint = serde_json::to_vec(&fingerprint_payload)?;
 	let payload = json!({
 		"emittedAtUnixEpoch": now_unix_epoch,
 		"accountControl": &account_control,
-		"accounts": &accounts,
 		"currentLanes": &current_lanes,
 		"currentLanesComplete": true,
 		"currentLaneScope": "complete",
@@ -633,12 +627,10 @@ fn build_operator_run_activity_event(
 
 fn dashboard_run_activity_fingerprint_payload(
 	account_control: &OperatorCodexAccountControlStatus,
-	accounts: &[CodexAccountActivitySummary],
 	current_lanes: &[OperatorRunStatus],
 ) -> Value {
 	let mut fingerprint_payload = json!({
 		"accountControl": account_control,
-		"accounts": accounts,
 		"currentLanes": current_lanes,
 		"currentLanesComplete": true,
 		"currentLaneScope": "complete",
