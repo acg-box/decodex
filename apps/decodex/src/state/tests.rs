@@ -578,7 +578,7 @@ fn connector_backoff_roundtrip_and_clear_from_runtime_store() {
 			project_id: "pubfi",
 			connector: "linear",
 			sync_phase: "post_review_lane_status",
-			quota_class: "linear_graphql_api",
+			quota_class: "linear_graphql_rate_limit",
 			reset_unix_epoch: 1_777_392_000,
 			reset_source: "linear",
 			warning: "tracker_rate_limited",
@@ -594,7 +594,7 @@ fn connector_backoff_roundtrip_and_clear_from_runtime_store() {
 	assert_eq!(backoff.project_id(), "pubfi");
 	assert_eq!(backoff.connector(), "linear");
 	assert_eq!(backoff.sync_phase(), "post_review_lane_status");
-	assert_eq!(backoff.quota_class(), "linear_graphql_api");
+	assert_eq!(backoff.quota_class(), "linear_graphql_rate_limit");
 	assert_eq!(backoff.reset_unix_epoch(), 1_777_392_000);
 	assert_eq!(backoff.reset_source(), "linear");
 	assert_eq!(backoff.warning(), "tracker_rate_limited");

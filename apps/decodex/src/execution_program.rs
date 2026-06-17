@@ -331,6 +331,8 @@ pub(crate) enum ExecutionProgramNodeLifecycleState {
 	Queued,
 	/// Node already has a current lane.
 	Active,
+	/// Node is owned by a retained post-review lane.
+	PostReview,
 	/// Node is blocked by dependency, conflict, issue, or briefing evidence.
 	Blocked,
 	/// Node is stopped on human-required issue attention.
@@ -351,6 +353,7 @@ impl ExecutionProgramNodeLifecycleState {
 			Self::Ready => "ready",
 			Self::Queued => "queued",
 			Self::Active => "active",
+			Self::PostReview => "post_review",
 			Self::Blocked => "blocked",
 			Self::NeedsAttention => "needs_attention",
 			Self::Completed => "completed",
@@ -463,6 +466,8 @@ pub(crate) struct ExecutionLinearIssueMapping {
 	#[serde(default, skip_serializing_if = "is_false")]
 	has_open_tracker_blockers: bool,
 	has_generic_dispatch_briefing: bool,
+	#[serde(default, skip_serializing_if = "is_false")]
+	has_post_review_lifecycle: bool,
 }
 impl ExecutionLinearIssueMapping {
 	/// Build a Linear issue mapping with no automation labels and a generic dispatch briefing.
@@ -480,6 +485,7 @@ impl ExecutionLinearIssueMapping {
 			has_needs_attention_label: false,
 			has_open_tracker_blockers: false,
 			has_generic_dispatch_briefing: true,
+			has_post_review_lifecycle: false,
 		};
 
 		mapping.validate()?;
@@ -522,6 +528,13 @@ impl ExecutionLinearIssueMapping {
 		self
 	}
 
+	/// Mark whether the mapped issue is owned by the retained post-review lifecycle.
+	pub(crate) fn with_post_review_lifecycle(mut self, present: bool) -> Self {
+		self.has_post_review_lifecycle = present;
+
+		self
+	}
+
 	/// Linear issue identifier such as `XY-853`.
 	pub(crate) fn issue_identifier(&self) -> &str {
 		&self.issue_identifier
@@ -560,6 +573,11 @@ impl ExecutionLinearIssueMapping {
 	/// Whether the issue description is usable as a generic dispatch briefing.
 	pub(crate) fn has_generic_dispatch_briefing(&self) -> bool {
 		self.has_generic_dispatch_briefing
+	}
+
+	/// Whether Review & Landing currently owns the mapped issue.
+	pub(crate) fn has_post_review_lifecycle(&self) -> bool {
+		self.has_post_review_lifecycle
 	}
 
 	fn validate(&self) -> Result<()> {
@@ -1368,6 +1386,10 @@ impl ExecutionProgramEvaluation {
 					summary.active_count += 1;
 					summary.held_count += 1;
 				},
+				ExecutionProgramNodeLifecycleState::PostReview => {
+					summary.active_count += 1;
+					summary.held_count += 1;
+				},
 				ExecutionProgramNodeLifecycleState::NeedsAttention => {
 					summary.needs_attention_count += 1;
 				},
@@ -1562,13 +1584,19 @@ fn collect_blocking_readiness_reasons(
 			));
 		}
 	}
-	for domain in &node.conflict_domains {
-		if occupied_conflicts.contains(domain) {
-			reasons.push(format!(
-				"conflict domain `{}:{}` is already occupied",
-				domain.kind.as_str(),
-				domain.key()
-			));
+
+	let issue_is_post_review_owned =
+		node.linear_issue().is_some_and(|issue| issue.has_post_review_lifecycle());
+
+	if !issue_is_post_review_owned {
+		for domain in &node.conflict_domains {
+			if occupied_conflicts.contains(domain) {
+				reasons.push(format!(
+					"conflict domain `{}:{}` is already occupied",
+					domain.kind.as_str(),
+					domain.key()
+				));
+			}
 		}
 	}
 
@@ -1590,6 +1618,14 @@ fn collect_issue_mapping_reasons(
 			issue.issue_identifier(),
 			issue.issue_state()
 		));
+	}
+	if issue.has_post_review_lifecycle {
+		reasons.push(format!(
+			"mapped issue `{}` is owned by the retained post-review lifecycle",
+			issue.issue_identifier()
+		));
+
+		return;
 	}
 	if !policy.issue_is_startable(issue) {
 		reasons.push(format!(
@@ -1694,6 +1730,11 @@ fn lifecycle_state_for(
 		&& issue.has_needs_attention_label
 	{
 		return ExecutionProgramNodeLifecycleState::NeedsAttention;
+	}
+	if let Some(issue) = node.linear_issue()
+		&& issue.has_post_review_lifecycle
+	{
+		return ExecutionProgramNodeLifecycleState::PostReview;
 	}
 	if let Some(issue) = node.linear_issue()
 		&& issue.has_active_label
