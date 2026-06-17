@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "App-Server Specification"
+description: "Define the direct `codex app-server` protocol boundary used by the `decodex` MVP. Status: normative Read this when: You are implementing or validating `decodex`'s direct `codex app-server` integration, including transport, handshake, request flow, or dynamic tools. Not this document: The runtime state machine, downstream `WORKFLOW.md` policy, or operator runbooks. Defines: The supported transport, protocol source-of-truth boundary, required request and notification flow, the MVP contract for `initialize`, `thread/start`, and repeated `turn/start` calls on one thread, and the narrow health-check use of standalone `command/exec`."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # App-Server Specification
 
 Purpose: Define the direct `codex app-server` protocol boundary used by the `decodex` MVP.

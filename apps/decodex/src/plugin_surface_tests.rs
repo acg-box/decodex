@@ -44,33 +44,89 @@ const RESEARCH_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research/SKILL.md"
 ));
+const DOCS_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/docs/SKILL.md"
+));
+const DOCS_OKF_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/docs-okf/SKILL.md"
+));
+const DOCS_OKF_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/docs-okf/agents/openai.yaml"
+));
+const DOCS_WIKI_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/docs-wiki/SKILL.md"
+));
+const DOCS_WIKI_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/docs-wiki/agents/openai.yaml"
+));
+const DOCS_DRIFT_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/docs-drift/SKILL.md"
+));
+const DOCS_DRIFT_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/docs-drift/agents/openai.yaml"
+));
 const RESEARCH_PROBE_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-probe/SKILL.md"
+));
+const RESEARCH_PROBE_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/research-probe/agents/openai.yaml"
 ));
 const RESEARCH_EVIDENCE_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-evidence/SKILL.md"
 ));
+const RESEARCH_EVIDENCE_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/research-evidence/agents/openai.yaml"
+));
 const RESEARCH_OPTIONS_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-options/SKILL.md"
+));
+const RESEARCH_OPTIONS_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/research-options/agents/openai.yaml"
 ));
 const RESEARCH_JUDGMENT_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-judgment/SKILL.md"
 ));
+const RESEARCH_JUDGMENT_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/research-judgment/agents/openai.yaml"
+));
 const RESEARCH_CHALLENGE_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-challenge/SKILL.md"
+));
+const RESEARCH_CHALLENGE_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/research-challenge/agents/openai.yaml"
 ));
 const RESEARCH_DECISION_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-decision/SKILL.md"
 ));
+const RESEARCH_DECISION_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/research-decision/agents/openai.yaml"
+));
 const RESEARCH_PROMOTE_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-promote/SKILL.md"
+));
+const RESEARCH_PROMOTE_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/research-promote/agents/openai.yaml"
 ));
 const ROUTING_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
@@ -80,9 +136,37 @@ const ISSUE_BRIEFING_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/references/issue-briefing.md"
 ));
-const RESEARCH_METHOD_REF: &str = include_str!(concat!(
+const DOCS_METHOD_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/references/research-method.md"
+	"/../../plugins/decodex/references/docs-method.md"
+));
+const DOCS_OKF_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/references/docs-okf.md"
+));
+const DOCS_WIKI_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/references/docs-wiki.md"
+));
+const DOCS_DRIFT_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/references/docs-drift.md"
+));
+const RESEARCH_LIFECYCLE_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/references/research-lifecycle.md"
+));
+const RESEARCH_EVIDENCE_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/references/research-evidence.md"
+));
+const RESEARCH_CONTRACT_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/references/research-contract.md"
+));
+const RESEARCH_PROMOTION_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/references/research-promotion.md"
 ));
 
 #[test]
@@ -104,10 +188,12 @@ fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
 		.filter_map(Value::as_str)
 		.collect::<Vec<_>>()
 		.join("\n");
-	let manifest_surface =
-		format!("{long_description}\n{default_prompts}\n{ROUTING_REF}\n{RESEARCH_METHOD_REF}");
+	let manifest_surface = format!(
+		"{long_description}\n{default_prompts}\n{ROUTING_REF}\n{ISSUE_BRIEFING_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_CONTRACT_REF}"
+	);
 
 	assert_contains(&manifest_surface, "natural-language-first");
+	assert_contains(&manifest_surface, "OKF docs");
 	assert_contains(&manifest_surface, "bounded research");
 	assert_contains(&manifest_surface, "probe, evidence, options, judgment, challenge, decision");
 	assert_contains(&manifest_surface, "`research X`");
@@ -117,15 +203,15 @@ fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
 	assert_contains(&manifest_surface, "ready mapped nodes directly");
 	assert_contains(&manifest_surface, "DAG");
 	assert_contains(&manifest_surface, "issue briefing");
+	assert_contains(&default_prompts, "Maintain Decodex docs.");
 	assert_contains(&default_prompts, "Research this with Decodex.");
 	assert_contains(&default_prompts, "Arrange accepted Decodex work.");
-	assert_contains(&default_prompts, "Inspect this Decodex lane.");
 }
 
 #[test]
 fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 	let skill_surface = format!(
-		"{DECODEX_SKILL}\n{PLANNING_SKILL}\n{AUTOMATION_SKILL}\n{LABELS_SKILL}\n{RESEARCH_SKILL}\n{ROUTING_REF}\n{RESEARCH_METHOD_REF}"
+		"{DECODEX_SKILL}\n{PLANNING_SKILL}\n{AUTOMATION_SKILL}\n{LABELS_SKILL}\n{RESEARCH_SKILL}\n{ROUTING_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
 	let planning_surface = format!("{PLANNING_SKILL}\n{ISSUE_BRIEFING_REF}\n{ROUTING_REF}");
 
@@ -133,7 +219,7 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 	assert_contains(&skill_surface, "`research X`");
 	assert_contains(&skill_surface, "`research-probe`");
 	assert_contains(&skill_surface, "`research-promote`");
-	assert_contains(&skill_surface, "legacy external `$research`");
+	assert_contains(&skill_surface, "external research skills");
 	assert_contains(&skill_surface, "latent Decision Contract");
 	assert_contains(&skill_surface, "\"arrange this\"");
 	assert_contains(&skill_surface, "\"推进\"");
@@ -144,7 +230,7 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 	assert_contains_normalized(&skill_surface, "Program Intake dispatches ready mapped nodes");
 	assert_contains(&skill_surface, "Promotion is a separate authority step");
 	assert_contains(&skill_surface, "after execution authority exists");
-	assert_contains_normalized(&skill_surface, "never queues work, mutates Linear");
+	assert_contains_normalized(&skill_surface, "does not queue work, mutate Linear");
 	assert_contains(&skill_surface, "ordinary non-Program issue intake");
 	assert_contains(&skill_surface, "not queue-label polling");
 	assert_contains(&skill_surface, "Require promoted research");
@@ -164,7 +250,7 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 #[test]
 fn packaged_research_skills_encode_decodex_methodology() {
 	let research_surface = format!(
-		"{RESEARCH_SKILL}\n{RESEARCH_PROBE_SKILL}\n{RESEARCH_EVIDENCE_SKILL}\n{RESEARCH_OPTIONS_SKILL}\n{RESEARCH_JUDGMENT_SKILL}\n{RESEARCH_CHALLENGE_SKILL}\n{RESEARCH_DECISION_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{RESEARCH_METHOD_REF}"
+		"{RESEARCH_SKILL}\n{RESEARCH_PROBE_SKILL}\n{RESEARCH_EVIDENCE_SKILL}\n{RESEARCH_OPTIONS_SKILL}\n{RESEARCH_JUDGMENT_SKILL}\n{RESEARCH_CHALLENGE_SKILL}\n{RESEARCH_DECISION_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_EVIDENCE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
 
 	assert_contains(&research_surface, "default research surface");
@@ -173,45 +259,74 @@ fn packaged_research_skills_encode_decodex_methodology() {
 	assert_contains_normalized(&research_surface, "runtime state");
 	assert_contains(
 		&research_surface,
-		"Do not route Decodex research through the legacy external `$research`",
+		"Do not route Decodex research through external research skills",
 	);
 	assert_contains(&research_surface, "primary hypothesis");
 	assert_contains(&research_surface, "rival hypotheses");
 	assert_contains(&research_surface, "falsifiers");
-	assert_contains(&research_surface, "`probe_completed`");
 	assert_contains(&research_surface, "No evidence, no claim");
-	assert_contains(
-		&research_surface,
-		"Separate observations, contradictions, inferences, and missing evidence",
-	);
-	assert_contains(&research_surface, "`research_evidence`");
+	assert_contains(&research_surface, "observations");
+	assert_contains(&research_surface, "contradictions");
+	assert_contains(&research_surface, "external_source");
+	assert_contains(&research_surface, "repo_source");
+	assert_contains(&research_surface, "live_readback");
 	assert_contains(&research_surface, "status quo");
 	assert_contains(&research_surface, "evidence");
-	assert_contains(&research_surface, "`research_options`");
 	assert_contains(&research_surface, "challenge-ready");
-	assert_contains(&research_surface, "stable judgment id or hash");
 	assert_contains(&research_surface, "not_decision_ready");
 	assert_contains(
 		&research_surface,
 		"Do not finalize `decision_ready` while material objections remain unresolved",
 	);
-	assert_contains(&research_surface, "skeptic worker");
-	assert_contains(&research_surface, "Use exactly one terminal outcome");
-	assert_contains(&research_surface, "No unresolved decisions, evidence gaps, or blockers");
+	assert_contains_normalized(
+		&research_surface,
+		"Unresolved material objections block `decision_ready`",
+	);
+	assert_contains(&research_surface, "Use exactly one");
+	assert_contains(&research_surface, "refuse promotion while unresolved decisions");
 	assert_contains(&research_surface, "Promotion is a separate authority step");
-	assert_contains_normalized(&research_surface, "research-to-planning authority boundary");
+	assert_contains(&research_surface, "Promotion requires explicit acceptance");
 	assert_contains(&research_surface, "Do not infer acceptance");
 	assert_contains(&research_surface, "Program Intake");
 }
 
 #[test]
-fn narrow_lifecycle_skills_are_explicit_only() {
+fn packaged_docs_skills_encode_okf_wiki_and_drift_boundaries() {
+	let docs_surface = format!(
+		"{DOCS_SKILL}\n{DOCS_OKF_SKILL}\n{DOCS_WIKI_SKILL}\n{DOCS_DRIFT_SKILL}\n{DOCS_METHOD_REF}\n{DOCS_OKF_REF}\n{DOCS_WIKI_REF}\n{DOCS_DRIFT_REF}\n{ROUTING_REF}"
+	);
+
+	assert_contains(&docs_surface, "OKF");
+	assert_contains(&docs_surface, "LLM Wiki");
+	assert_contains(&docs_surface, "docs lint");
+	assert_contains(&docs_surface, "Markdown-only");
+	assert_contains(&docs_surface, "Research Contract");
+	assert_contains(&docs_surface, "Drift Audit");
+	assert_contains(&docs_surface, "docs impact");
+	assert_contains(&docs_surface, "research_required");
+	assert_contains(&docs_surface, "one authoritative concept per claim");
+	assert_contains(&docs_surface, "pass`, `fail`, or `needs-human");
+	assert_contains(&docs_surface, "Do not create a parallel `wiki/` or `okf/` root");
+}
+
+#[test]
+fn narrow_lifecycle_and_specialist_skills_are_explicit_only() {
 	for policy in [
 		AUTOMATION_AGENT_POLICY,
 		COMMIT_AGENT_POLICY,
 		LABELS_AGENT_POLICY,
 		LAND_AGENT_POLICY,
 		MANUAL_CLI_AGENT_POLICY,
+		DOCS_OKF_AGENT_POLICY,
+		DOCS_WIKI_AGENT_POLICY,
+		DOCS_DRIFT_AGENT_POLICY,
+		RESEARCH_PROBE_AGENT_POLICY,
+		RESEARCH_EVIDENCE_AGENT_POLICY,
+		RESEARCH_OPTIONS_AGENT_POLICY,
+		RESEARCH_JUDGMENT_AGENT_POLICY,
+		RESEARCH_CHALLENGE_AGENT_POLICY,
+		RESEARCH_DECISION_AGENT_POLICY,
+		RESEARCH_PROMOTE_AGENT_POLICY,
 	] {
 		assert_contains(policy, "allow_implicit_invocation: false");
 	}

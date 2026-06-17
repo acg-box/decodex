@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Agent Evidence"
+description: "Define the local, agent-readable evidence files Decodex writes for fast debugging and recovery handoff."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Agent Evidence
 
 Purpose: Define the local, agent-readable evidence files Decodex writes for fast

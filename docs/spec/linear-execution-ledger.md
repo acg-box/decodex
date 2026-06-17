@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Linear Execution Ledger"
+description: "Define the versioned Linear comment records that mirror coarse Decodex lane transitions for team visibility. Status: normative Read this when: You are implementing, reviewing, or consuming structured Linear comments for Decodex team-visible lifecycle summaries. Not this document: The local runtime state machine, operator status snapshot shape, runtime SQLite schema, GitHub review orchestration, or repository validation gate. Defines: The Linear execution event record envelope, event types, required and optional fields, idempotency rules, retention expectations, and the boundary between Linear comments, the Decodex runtime database, and short-lived heartbeat markers."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Linear Execution Ledger
 
 Purpose: Define the versioned Linear comment records that mirror coarse Decodex lane

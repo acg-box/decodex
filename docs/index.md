@@ -23,6 +23,13 @@ The split below is by question type, not by human-versus-agent audience.
   - `docs/reference/index.md` when the question is "how is it currently organized or
     implemented?"
   - `docs/decisions/index.md` when the question is "why was it designed this way?"
+  - `docs/evidence/index.md` when the question is "which reusable public-safe proof
+    supports this claim?"
+  - `docs/research/index.md` when the question is "which latent research concept or
+    supporting evidence exists but is not repository authority yet?"
+  - `docs/evidence/index.md` plus `plugins/decodex/skills/docs-drift/SKILL.md` when
+    the question is "which semantic-drift audit checks docs, code, commands, status,
+    and examples against each other?"
 
 ## Routing matrix
 
@@ -59,11 +66,26 @@ The split below is by question type, not by human-versus-agent audience.
   `docs/runbook/radar-artifact-archive.md`
 - Need historical upstream commit trace, skipped-candidate state, or local Radar ledger
   behavior -> `docs/spec/radar-ledger.md`
-- Need research reports, supporting research evidence, or the implemented/superseded
-  status of older machine-authored research targets -> `docs/reference/research-runs.md`
+- Need research concepts, supporting research evidence, or the implemented/superseded
+  status of candidate research targets ->
+  `docs/reference/research-concepts.md`
+- Need reusable public-safe evidence concepts -> `docs/evidence/index.md`
 - Need new Decodex bounded research, design investigation, evidence ledger, or
   research-to-execution promotion -> `plugins/decodex/skills/research*/` and
   `docs/spec/loop-runtime.md`
+- Need docs-impact classification `research_required` -> switch from the docs router
+  to `plugins/decodex/skills/research*/`; checked-in output under `docs/research/`
+  stays latent and non-authoritative until promoted into `spec`, `runbook`,
+  `reference`, or `decisions`
+- Need a semantic-drift audit concept, stale-claim evidence, or docs/code alignment
+  verdict -> `docs/evidence/index.md` and
+  `plugins/decodex/skills/docs-drift/SKILL.md`
+- Need docs maintenance, OKF concepts, docs impact classification, or drift gate
+  handling -> `plugins/decodex/skills/docs/SKILL.md` and `docs/policy.md`
+- Need OKF concept schema, LLM Wiki routing, or drift audit details ->
+  `plugins/decodex/skills/docs-okf/SKILL.md`,
+  `plugins/decodex/skills/docs-wiki/SKILL.md`, and
+  `plugins/decodex/skills/docs-drift/SKILL.md`
 - Need reusable agent-facing Decodex usage instructions -> `plugins/decodex/`
 - Need repo-local Radar skills for upstream Codex triage, code analysis, release
   analysis, GitHub signal drafting, or X publishing -> `dev/skills/` plus
@@ -81,6 +103,8 @@ The split below is by question type, not by human-versus-agent audience.
 
 - Optimize for agent routing and execution, not narrative flow.
 - Read `docs/policy.md` for lane ownership and authoring rules.
+- Use `plugins/decodex/skills/docs/SKILL.md` when a Decodex lane touches docs or
+  changes behavior that may require docs impact classification.
 - Keep one authoritative document per topic. Link instead of copying.
 - Keep runtime authority explicit: `apps/decodex/src/`, registered project contracts
   under `~/.codex/decodex/projects/<service-id>/`, and `docs/spec/` outrank runbook,
@@ -94,7 +118,7 @@ The split below is by question type, not by human-versus-agent audience.
 - Start each document with a short routing header that says what the document is for,
   when to read it, and what it does not cover.
 - Keep links explicit and stable.
-- Treat `docs/research/` as a JSON-only supporting research-report and evidence lane,
-  not as a primary authority lane or old event-log write target.
+- Treat `docs/research/` as a Markdown OKF research concept lane, not as a primary
+  authority lane or JSON event-log write target.
 - Treat Decodex research output as latent until accepted or promoted through the
   loop-runtime contract in `docs/spec/loop-runtime.md`.

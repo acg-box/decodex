@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Workflow File Specification"
+description: "Define the machine-readable contract for registered project `WORKFLOW.md` files consumed by `decodex`. Status: normative Read this when: You are authoring, parsing, or validating a registered project `WORKFLOW.md` file for use by `decodex`. Not this document: The `decodex` runtime state machine, the `app-server` protocol contract, or the operator pilot sequence. Defines: The file location, parse model, supported frontmatter structure, and the required `WORKFLOW.md` fields that `decodex` consumes."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Workflow File Specification
 
 Purpose: Define the machine-readable contract for registered project `WORKFLOW.md` files consumed by `decodex`.
