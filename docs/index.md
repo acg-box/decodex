@@ -74,6 +74,9 @@ The split below is by question type, not by human-versus-agent audience.
   `plugins/decodex/skills/docs-drift/SKILL.md`
 - Need docs maintenance, OKF concepts, docs impact classification, or drift gate
   handling -> `plugins/decodex/skills/docs/SKILL.md` and `docs/policy.md`
+- Need the current docs knowledge map, OKF/LLM Wiki value evaluation, graph
+  maintenance anchors, or retrieval-quality observations ->
+  `docs/reference/docs-knowledge-map.md`
 - Need OKF concept schema, LLM Wiki routing, or drift audit details ->
   `plugins/decodex/skills/docs-okf/SKILL.md`,
   `plugins/decodex/skills/docs-wiki/SKILL.md`, and

@@ -2,6 +2,8 @@
 
 ## 2026-06-17
 
+- Added `docs/reference/docs-knowledge-map.md` to evaluate the practical OKF/LLM Wiki
+  value in this repository and connect specialized concepts back into the docs graph.
 - Added `docs/spec/okf-knowledge-layer.md` to separate portable OKF engine behavior,
   LLM Wiki graph/retrieval behavior, repository-memory anchors, and the strict
   Decodex docs profile.
