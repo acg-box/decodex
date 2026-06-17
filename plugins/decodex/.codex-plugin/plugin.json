@@ -32,7 +32,7 @@
     "privacyPolicyURL": "https://github.com/hack-ink/decodex",
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
-      "Evaluate or curate a repo-memory OKF bundle.",
+      "Work with an OKF bundle.",
       "Maintain Decodex docs.",
       "Research this with Decodex."
     ],

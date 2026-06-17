@@ -21,7 +21,7 @@ use crate::{
 	docs_okf::{self, DocsCheckScope, OkfCheckProfile, OkfQuery},
 	maintenance::{self, MaintenanceMode, MaintenancePruneRequest, MaintenanceScope},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
-	mcp::{self, McpServeRequest, McpTransport},
+	mcp::{self, McpCapabilityProfile, McpServeRequest, McpTransport},
 	orchestrator::{
 		self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, DiagnoseRequest, EvidenceRequest,
 		IssueDispatchMode, LaneInspectRequest, LaneInterruptRequest, LaneSteerReport,
@@ -579,12 +579,16 @@ struct McpServeCommand {
 	/// MCP transport.
 	#[arg(long, value_enum, default_value_t = McpTransport::Stdio)]
 	transport: McpTransport,
+	/// Capability profile exposed by the MCP gateway.
+	#[arg(long, value_enum, default_value_t = mcp::McpCapabilityProfile::Admin)]
+	capability_profile: McpCapabilityProfile,
 }
 impl McpServeCommand {
 	fn run(&self) -> Result<()> {
 		mcp::serve(McpServeRequest {
 			transport: self.transport,
 			config_path: self.project_config.as_path(),
+			capability_profile: self.capability_profile,
 		})
 	}
 }
@@ -1435,7 +1439,7 @@ enum Command {
 	Run(RunCommand),
 	/// Run the local multi-project Decodex control plane.
 	Serve(ServeCommand),
-	/// Serve the read-only Decodex MCP gateway.
+	/// Serve the Decodex MCP gateway.
 	Mcp(McpCommand),
 	/// Manage the local Decodex project registry.
 	Project(ProjectCommand),
@@ -1504,7 +1508,7 @@ enum ProjectSubcommand {
 
 #[derive(Debug, Subcommand)]
 enum McpSubcommand {
-	/// Serve read-only Decodex resources over MCP.
+	/// Serve Decodex MCP protocol primitives.
 	Serve(McpServeCommand),
 }
 
@@ -1790,16 +1794,16 @@ mod tests {
 			Command, CommitCommand, DiagnoseCommand, DocsCommand, DocsRouteCommand, DocsSubcommand,
 			EvidenceCommand, IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand,
 			IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand, LaneInterruptCommand,
-			LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand, McpCommand,
-			McpServeCommand, McpSubcommand, MergedCloseoutRecoveryCommand, OkfCommand,
-			OkfInitCommand, OkfInitProfileArg, OkfRouteCommand, OkfSubcommand, ProbeCommand,
-			ProjectCommand, ProjectConfigArgs, ProjectSubcommand, RecoverCommand,
-			RecoverSubcommand, ResearchCommand, ResearchCompileCommand, ResearchOutcomeArg,
-			ResearchPromoteCommand, ResearchSubcommand, ReviewHandoffAdoptCommand,
-			ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
-			ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
+			LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand, McpSubcommand,
+			MergedCloseoutRecoveryCommand, OkfCommand, OkfInitCommand, OkfInitProfileArg,
+			OkfRouteCommand, OkfSubcommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
+			ProjectSubcommand, RecoverCommand, RecoverSubcommand, ResearchCommand,
+			ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
+			ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
+			ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand,
+			ServeCommand, StatusCommand,
 		},
-		mcp::McpTransport,
+		mcp::{McpCapabilityProfile, McpTransport},
 	};
 
 	#[test]
@@ -2112,16 +2116,14 @@ mod tests {
 			"--transport",
 			"stdio",
 		]);
+		let Command::Mcp(command) = cli.command else {
+			panic!("expected mcp command");
+		};
+		let McpSubcommand::Serve(serve) = command.command;
 
-		assert!(matches!(
-			cli.command,
-			Command::Mcp(McpCommand {
-				command: McpSubcommand::Serve(McpServeCommand {
-					project_config: ProjectConfigArgs { config: Some(config) },
-					transport: McpTransport::Stdio,
-				})
-			}) if config == Path::new("./project.toml")
-		));
+		assert_eq!(serve.project_config.config.as_deref(), Some(Path::new("./project.toml")));
+		assert_eq!(serve.transport, McpTransport::Stdio);
+		assert_eq!(serve.capability_profile, McpCapabilityProfile::Admin);
 	}
 
 	#[test]
