@@ -88,9 +88,9 @@ Collect evidence in this order:
 8. Verify the current-source CLI path:
 
    ```sh
-   cargo run -p decodex --bin decodex -- probe stdio://
-   cargo run -p decodex --bin decodex -- status --live --json
-   cargo run -p decodex --bin decodex -- run --dry-run
+   decodex probe stdio://
+   decodex status --live --json
+   decodex run --dry-run
    ```
 
 9. Dogfood at least one real Decodex lane with `[codex].review = "standard"`.
@@ -103,7 +103,7 @@ Collect evidence in this order:
 10. Read the dogfood lane private evidence:
 
    ```sh
-   cargo run -p decodex --bin decodex -- evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json
+   decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json
    ```
 
    The readback must summarize review, recovery, boundary, or harness evidence when

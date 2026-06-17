@@ -78,28 +78,28 @@ Public site authority stays in `site/` and the site specs.
 
 ### Runtime CLI
 
-From the workspace root:
+Use:
 
 ```sh
-cargo run -p decodex --bin decodex -- --help
-cargo run -p decodex --bin decodex -- app
-cargo run -p decodex --bin decodex -- probe stdio://
-cargo run -p decodex --bin decodex -- project list
-cargo run -p decodex --bin decodex -- status
-cargo run -p decodex --bin decodex -- status --live
-cargo run -p decodex --bin decodex -- diagnose --json
-cargo run -p decodex --bin decodex -- maintenance prune --dry-run
-cargo run -p decodex --bin decodex -- lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>
-cargo run -p decodex --bin decodex -- research compile --intent "research X"
-cargo run -p decodex --bin decodex -- research compile --input research-design-run.json
-cargo run -p decodex --bin decodex -- research promote <CONTRACT_ID>
-cargo run -p decodex --bin decodex -- intake goal --project decodex <CONTRACT_ID> --dry-run
-cargo run -p decodex --bin decodex -- intake goal --project decodex <CONTRACT_ID> --apply
-cargo run -p decodex --bin decodex -- intake issues --project decodex XY-1 XY-2 --dry-run
-cargo run -p decodex --bin decodex -- intake issues --project decodex XY-1 XY-2 --apply
-cargo run -p decodex --bin decodex -- mcp serve --transport stdio
-cargo run -p decodex --bin decodex -- run --dry-run
-cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8192
+decodex --help
+decodex app
+decodex probe stdio://
+decodex project list
+decodex status
+decodex status --live
+decodex diagnose --json
+decodex maintenance prune --dry-run
+decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>
+decodex research compile --intent "research X"
+decodex research compile --input research-design-run.json
+decodex research promote <CONTRACT_ID>
+decodex intake goal --project decodex <CONTRACT_ID> --dry-run
+decodex intake goal --project decodex <CONTRACT_ID> --apply
+decodex intake issues --project decodex XY-1 XY-2 --dry-run
+decodex intake issues --project decodex XY-1 XY-2 --apply
+decodex mcp serve --transport stdio
+decodex run --dry-run
+decodex serve --listen-address 127.0.0.1:8192
 ```
 
 Project-scoped commands accept `--config <PROJECT_DIR>` after the subcommand when the
@@ -159,16 +159,6 @@ local desktop and CLI clients. The gateway exposes checked-in documentation, che
 JSON research reports, runtime Decision Contract readback, local status snapshots, and
 lane-control readback as MCP resources only. It does not expose mutating MCP tools.
 Stdout is reserved for MCP JSON-RPC messages; diagnostics and logs stay off stdout.
-
-### Install from Source
-
-```sh
-git clone https://github.com/hack-ink/decodex
-cd decodex
-
-cargo install --path apps/decodex --force
-decodex --version
-```
 
 ### Project contracts
 
@@ -273,7 +263,7 @@ default `127.0.0.1:8192` runtime.
 
 ```sh
 DECODEX_APP_SERVER_URL=http://127.0.0.1:57399 open -n target/decodex-app/Decodex.app
-DECODEX_APP_SERVER_URL=http://127.0.0.1:57399 cargo run -p decodex --bin decodex -- app \
+DECODEX_APP_SERVER_URL=http://127.0.0.1:57399 decodex app \
   --bundle target/decodex-app/Decodex.app --new
 ```
 

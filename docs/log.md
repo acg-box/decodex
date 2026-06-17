@@ -6,6 +6,9 @@
   now retain payload SHA-256 identity so app-server continuation/recovery can replay
   the same event without failing the lane, while conflicting same-sequence events still
   fail closed.
+- Simplified Decodex plugin and docs manual command guidance so agent-facing usage
+  examples call `decodex ...` directly instead of teaching source-run or install
+  variants.
 
 ## 2026-06-17
 

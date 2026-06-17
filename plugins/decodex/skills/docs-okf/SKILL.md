@@ -15,5 +15,4 @@ Read `../../references/docs-okf.md` before creating, moving, or repairing concep
 - Keep research contracts and drift audit evidence concepts in their required section
   shape.
 - Do not add JSON or generated state under `docs/`.
-- Run `cargo run -p decodex --bin decodex -- docs check` before claiming docs
-  readiness.
+- Run `decodex docs check` before claiming docs readiness.
