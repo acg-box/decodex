@@ -6,7 +6,7 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-last_verified: 2026-06-17
+last_verified: 2026-06-18
 ---
 # Workspace Layout
 
@@ -50,16 +50,17 @@ For build, test, run, setup, validation, and task-runner command entrypoints, re
 The root `Cargo.toml` is a workspace manifest. It does not define a root package.
 
 `apps/decodex/Cargo.toml` is the only checked-in Rust package in this first integrated
-layout. Use package-qualified commands when invoking the runtime from the workspace root:
+layout. Use package-qualified Cargo commands only when validating source changes from
+the workspace root:
 
 ```sh
-cargo run -p decodex --bin decodex -- --help
+cargo check -p decodex --all-features --all-targets
 cargo build -p decodex
-cargo install --path apps/decodex --force
 ```
 
-For the current aggregate validation gates, use [`./build-test-run.md`](./build-test-run.md)
-instead of treating this layout reference as command authority.
+For Decodex CLI usage and the current aggregate validation gates, use
+[`./build-test-run.md`](./build-test-run.md) instead of treating this layout reference
+as command authority.
 
 Do not add new runtime behavior to a root `src/` directory. If Decodex later needs
 shared crates, add them under `packages/` and make the boundary explicit in this

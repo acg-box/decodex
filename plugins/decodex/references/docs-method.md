@@ -20,7 +20,7 @@ workflow, or docs-impact gates.
 2. Update the owner; do not duplicate claims.
 3. Add `code_refs`, `drift_watch`, or drift audit evidence for behavior changes.
 4. Update indexes and `docs/log.md` for routing, naming, or promotion changes.
-5. Run `cargo run -p decodex --bin decodex -- docs check`.
+5. Run `decodex docs check`.
 
 ## Docs Impact
 
