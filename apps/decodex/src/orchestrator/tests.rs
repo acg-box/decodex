@@ -16,6 +16,7 @@ use std::{
 };
 
 use color_eyre::{Report, eyre};
+use rusqlite::Connection;
 use tempfile::TempDir;
 use time::OffsetDateTime;
 
@@ -1339,7 +1340,7 @@ max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
 max_concurrent_agents = 1
-canonicalize_commands = ["cargo make fmt", "cargo make lint"]
+canonicalize_commands = ["cargo make fmt", "cargo make lint-fix"]
 verify_commands = ["cargo make check"]
 
 [execution.gate_profiles.config_subset]
