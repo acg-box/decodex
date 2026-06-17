@@ -1,5 +1,12 @@
 # Documentation Log
 
+## 2026-06-18
+
+- Added protocol journal replay idempotency to the runtime contract: protocol events
+  now retain payload SHA-256 identity so app-server continuation/recovery can replay
+  the same event without failing the lane, while conflicting same-sequence events still
+  fail closed.
+
 ## 2026-06-17
 
 - Dogfooded the portable `repo-memory-writer` plugin skill on this repository and
