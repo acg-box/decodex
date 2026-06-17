@@ -1,7 +1,7 @@
 {
   "name": "decodex",
   "version": "0.2.0",
-  "description": "Decodex agent workflows for portable OKF bundles, repo memory writing and curation, docs, research, issue planning, automation, commit, and landing.",
+  "description": "Decodex agent workflows for portable OKF bundles, repo memory writing, evaluation, and curation, docs, research, issue planning, automation, commit, and landing.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Decodex",
     "shortDescription": "Maintain docs, research, plan, and operate Decodex.",
-    "longDescription": "Routes portable OKF/LLM Wiki bundle work, source-backed repo-memory writing and curation, Decodex OKF docs maintenance, docs drift audits, bounded research, promotion, issue briefing and planning, CLI, labels, commit, landing, and automation.",
+    "longDescription": "Routes portable OKF/LLM Wiki bundle work, source-backed repo-memory writing, evaluation, and curation, Decodex OKF docs maintenance, docs drift audits, bounded research, promotion, issue briefing and planning, CLI, labels, commit, landing, and automation.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -32,7 +32,7 @@
     "privacyPolicyURL": "https://github.com/hack-ink/decodex",
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
-      "Curate a repo-memory OKF bundle.",
+      "Evaluate or curate a repo-memory OKF bundle.",
       "Maintain Decodex docs.",
       "Research this with Decodex."
     ],

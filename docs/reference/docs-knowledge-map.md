@@ -1,16 +1,16 @@
 ---
 type: Reference
 title: Docs Knowledge Map
-description: Explains how the Decodex docs bundle uses OKF and LLM Wiki routing, and where their value appears in this repository.
+description: Explains Decodex docs OKF/LLM Wiki routing, repo-memory evaluation, route benchmarks, owner coverage, and where their value appears in this repository.
 status: active
 authority: current_state
 owner: docs
-tags: [docs, okf, llm-wiki, repo-memory, reference]
+tags: [docs, okf, llm-wiki, repo-memory, evaluation, route-benchmark, owner-coverage, reference]
 source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md, https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing, https://llmstxt.org/, https://diataxis.fr/, https://developers.openai.com/codex/guides/agents-md, https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions]
-code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/cli.rs, docs/index.md, docs/policy.md, docs/spec/okf-knowledge-layer.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md]
+code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/cli.rs, docs/index.md, docs/policy.md, docs/spec/okf-knowledge-layer.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-evaluator/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md]
 related: [../policy.md, ../spec/okf-knowledge-layer.md, ../evidence/docs-self-iteration.md, ./build-test-run.md, ./workspace-layout.md]
 drift_watch: [decodex docs check, decodex okf graph docs, decodex okf route docs, docs index, docs lane index, okf orphan concepts]
-last_verified: 2026-06-17
+last_verified: 2026-06-18
 ---
 
 # Docs Knowledge Map
@@ -119,6 +119,8 @@ The combined value appears when both layers are used together:
 
 - OKF says whether a concept is well shaped.
 - LLM Wiki says whether the concept is discoverable and connected.
+- Repo-memory evaluation says whether real task questions route to the expected owner
+  concepts and what should be fixed first.
 - Drift audit says whether the concept is still true against code and command output.
 
 The remaining maintenance risk is graph decay: a concept can pass shape checks while
@@ -127,11 +129,14 @@ still being hard to discover. Periodic `decodex okf graph docs` and targeted
 
 ## Cross-Repository Use
 
-In another repository, the Decodex plugin can now provide three distinct layers:
+In another repository, the Decodex plugin can now provide distinct layers:
 
 - `decodex okf init <root> --profile repo-memory` creates the portable scaffold.
 - `repo-memory-writer` guides Codex to read repository evidence and write canonical
   concepts instead of generated summaries.
+- `repo-memory-evaluator` guides Codex to score static quality, route benchmark
+  top-1/top-3, graph health, and before/after curation impact. The LLM judges owner
+  correctness; the CLI supplies repeatable check, graph, find, and route evidence.
 - `repo-memory-curator` guides later graph repair, orphan triage, route benchmarks,
   and metadata/link tuning after real usage exposes misses.
 - `decodex okf check/graph/route` verifies shape, graph health, and task routing.
