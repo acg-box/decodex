@@ -118,12 +118,12 @@ returns a bounded outcome: `decision_ready`, `not_decision_ready`, `blocked`, or
 `needs_human_decision`. Decodex research first probes the decision, records evidence,
 compares options, forms a challenge-ready judgment, resolves or preserves skeptic
 objections, and only then chooses the outcome. It may retain private evidence
-references, option comparisons, proposed issue summaries, conflict domains, and
+references, option comparisons, structured proposed issues, conflict domains, and
 dispatch intent for later issue shaping, but it does not enqueue issues, mutate Linear
 state, set goals, or start lane execution. `research promote` records the accepted
 boundary for an existing contract; later issue generation or Execution Program
-readiness must consume the promoted contract instead of treating a research summary as
-authority.
+readiness must consume the promoted contract's structured `proposed_issues[]` instead
+of treating a research summary as authority.
 
 Lane inspect and interrupt are local control APIs, not dashboard UI actions:
 
