@@ -8245,12 +8245,14 @@ fn operator_lane_lifecycle_totals<'a>(
 		metrics.attempt_count += 1;
 
 		run_ids.insert(run.run_id.clone());
+
 		match run.lifecycle_source.as_str() {
 			"recorded" => metrics.recorded_attempt_count += 1,
 			"recovered" => metrics.recovered_attempt_count += 1,
 			"current_snapshot" => metrics.current_snapshot_attempt_count += 1,
 			_ => {},
 		}
+
 		metrics
 			.recovery_gaps
 			.extend(run.lifecycle_gaps.iter().cloned());
@@ -8321,6 +8323,7 @@ fn operator_lane_lifecycle_totals<'a>(
 		.saturating_sub(metrics.captured_attempt_count);
 	metrics.run_count = run_ids.len();
 	metrics.large_output_warnings = warning_set.into_iter().collect();
+
 	metrics.recovery_gaps.sort();
 	metrics.recovery_gaps.dedup();
 	metrics.attempt_evidence.sort_by(|left, right| {
@@ -8328,7 +8331,6 @@ fn operator_lane_lifecycle_totals<'a>(
 			.cmp(&right.attempt_number)
 			.then_with(|| left.run_id.cmp(&right.run_id))
 	});
-
 	metrics.large_output_warnings.sort();
 
 	metrics.buckets = bucket_totals.into_values().collect();
@@ -9203,8 +9205,6 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let child_agent_activity =
 		render_child_agent_activity_summary(run.child_agent_activity.as_ref());
 	let context_pressure = render_child_agent_context_pressure(run.child_agent_activity.as_ref());
-	let lifecycle_metrics = render_lane_lifecycle_metrics(&run.lifecycle_metrics);
-	let lifecycle_evidence = render_lane_lifecycle_evidence(&run.lifecycle_metrics);
 	let protocol_activity = render_protocol_activity_summary(run.protocol_activity.as_ref());
 	let account = render_account_summary(run.account.as_ref());
 	let accounts = render_accounts_summary(&run.accounts);
@@ -9215,7 +9215,6 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		render_loop_architecture_recovery_summary(run.loop_status.as_ref());
 	let loop_boundary = render_loop_boundary_summary(run.loop_status.as_ref());
 	let control_capability = render_control_capability_summary(run.control_capability.as_ref());
-	let lane_control_conditions = render_lane_control_conditions(run);
 	let continuation_recovery =
 		render_continuation_recovery_summary(run.continuation_recovery.as_ref());
 
@@ -9235,7 +9234,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		run.policy_state,
 		run.terminalization_state,
 		run.lane_control_next_action,
-		lane_control_conditions,
+		render_lane_control_conditions(run),
 		operator_run_phase_readback(run),
 		run.wait_reason.as_deref().unwrap_or("none"),
 		run.current_operation,
@@ -9260,8 +9259,8 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		child_agent_activity,
 		protocol_activity,
 		context_pressure,
-		lifecycle_metrics,
-		lifecycle_evidence,
+		render_lane_lifecycle_metrics(&run.lifecycle_metrics),
+		render_lane_lifecycle_evidence(&run.lifecycle_metrics),
 		private_evidence,
 		loop_status,
 		loop_review,
