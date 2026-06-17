@@ -1977,10 +1977,11 @@ impl StateStore {
 			.map(DecisionContractRuntimeRecord::as_public))
 	}
 
-	/// Read one local Loop/Decision Contract for operator readback only.
+	/// Read one local Loop/Decision Contract for non-mutating readback/reconciliation only.
 	///
-	/// Readback treats quarantined legacy contract payloads as absent so status surfaces can
-	/// report stale Program recovery without re-admitting removed contract shapes into execution.
+	/// Readback and scheduler reconciliation treat quarantined legacy contract payloads as
+	/// absent so stale Programs cannot crash operator surfaces or direct Program selection,
+	/// while strict execution-facing reads still fail closed on removed contract shapes.
 	pub(crate) fn decision_contract_for_readback(
 		&self,
 		project_id: &str,
