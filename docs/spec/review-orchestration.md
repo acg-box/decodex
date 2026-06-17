@@ -100,7 +100,7 @@ Rules:
 - A review round does not complete until the lane either requests the next review or stops for escalation.
 - Each `findings` result from the same review source consumes the normal convergence budget for the current review phase.
 - The third consecutive non-clean result for the same phase stops the current repair strategy as review churn. Further autonomous work requires an Architecture Recovery Packet plus Authority Boundary Check for the current lane head.
-- Recovery may continue only when the Authority Boundary Check is `within_authority` and recovery budget remains. Otherwise the lane stops for `manual_intervention_required`.
+- Recovery may continue only when the Authority Boundary Check policy allows autonomous recovery and recovery budget remains. Review churn uses `block_landing` to preserve the landing block while automatic implementation recovery continues; otherwise the lane stops for `manual_intervention_required`.
 - There is no fourth-result reset path; `clean` is the only review result that clears the non-clean round count.
 
 ## Review levels
@@ -287,9 +287,10 @@ Current required behavior:
   `manual_intervention_required`.
 - Convergence-budget exhaustion for repeated accepted findings is normalized as
   `review_churn`. It stops the current repair strategy and may continue only through
-  autonomous architecture recovery when the Authority Boundary Check is
-  `within_authority` and recovery budget remains. Otherwise it terminates through
-  `manual_intervention_required`.
+  autonomous architecture recovery when the Authority Boundary Check policy allows
+  autonomous recovery and recovery budget remains. Review churn uses `block_landing`
+  to preserve the landing block while recovery continues; otherwise it terminates
+  through `manual_intervention_required`.
 - The terminal failure path must preserve the normalized review-stop class instead of
   collapsing it into a generic retry failure:
   - `architecture_review_required`

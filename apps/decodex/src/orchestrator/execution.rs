@@ -119,6 +119,7 @@ struct PreparedTerminalFailureWriteback {
 struct ArchitectureRecoveryStart {
 	attempt_number: usize,
 	max_attempts: usize,
+	policy_decision: AuthorityBoundaryPolicyDecision,
 	detail: String,
 }
 
@@ -492,8 +493,9 @@ where
 
 struct ArchitectureRecoveryBoundary {
 	disposition: AuthorityBoundaryDisposition,
+	policy_decision: AuthorityBoundaryPolicyDecision,
 	final_reason: &'static str,
-	boundary_type: &'static str,
+	boundary_type: AuthorityBoundarySurface,
 }
 
 struct ArchitectureRecoveryPacketInput<'a> {
@@ -504,6 +506,7 @@ struct ArchitectureRecoveryPacketInput<'a> {
 	contracts: &'a [DecisionContractRecord],
 	boundary_check_record_id: i64,
 	boundary_disposition: AuthorityBoundaryDisposition,
+	boundary_policy_decision: AuthorityBoundaryPolicyDecision,
 	boundary_final_reason: &'a str,
 	reason_code: &'a str,
 	recovery_attempt_number: usize,
@@ -516,6 +519,8 @@ struct ArchitectureRecoveryTerminalEventInput<'a> {
 	stop: &'a LoopGuardrailStopRequested,
 	boundary_check_record_id: i64,
 	boundary_disposition: AuthorityBoundaryDisposition,
+	boundary_policy_decision: AuthorityBoundaryPolicyDecision,
+	boundary_final_reason: &'a str,
 	reason_code: &'a str,
 	recovery_attempt_number: usize,
 }
@@ -3200,6 +3205,11 @@ fn loop_guardrail_architecture_recovery_decision(
 		architecture_recovery_started_count(state_store, project, issue_run)?;
 	let recovery_attempt_number = prior_started_count.saturating_add(1);
 	let boundary = classify_loop_guardrail_authority_boundary(&loop_guardrail_stop, error);
+	let changed_surfaces =
+		architecture_recovery_changed_surfaces(&boundary, &issue_run.worktree.path);
+	let policy_decision = architecture_recovery_policy_decision(&changed_surfaces);
+	let disposition = policy_decision.disposition();
+	let final_reason = architecture_recovery_final_reason(&boundary, policy_decision);
 	let contracts = architecture_recovery_contracts_for_issue(state_store, project, issue_run)?;
 	let decision_contract_ids =
 		contracts.iter().map(|contract| contract.contract_id().to_owned()).collect::<Vec<_>>();
@@ -3215,9 +3225,10 @@ fn loop_guardrail_architecture_recovery_decision(
 			attempt_number: issue_run.attempt_number,
 			decision_contract_ids: decision_contract_id_refs,
 			attempted_recovery_reason: loop_guardrail_stop.reason.error_class(),
-			changed_surfaces: architecture_recovery_changed_surfaces(&boundary),
-			disposition: boundary.disposition,
-			final_disposition_reason: boundary.final_reason,
+			changed_surfaces,
+			policy_decision,
+			disposition,
+			final_disposition_reason: final_reason,
 			improvement_signals: architecture_recovery_improvement_signals(
 				loop_guardrail_stop.reason,
 				&boundary,
@@ -3225,7 +3236,8 @@ fn loop_guardrail_architecture_recovery_decision(
 		},
 	)?;
 	let budget_exhausted = prior_started_count >= ARCHITECTURE_RECOVERY_BUDGET;
-	let reason_code = architecture_recovery_reason_code(&boundary, budget_exhausted);
+	let reason_code =
+		architecture_recovery_reason_code(&boundary, policy_decision, budget_exhausted);
 
 	record_architecture_recovery_packet(
 		state_store,
@@ -3236,52 +3248,32 @@ fn loop_guardrail_architecture_recovery_decision(
 			error,
 			contracts: &contracts,
 			boundary_check_record_id: boundary_event.record_id(),
-			boundary_disposition: boundary.disposition,
-			boundary_final_reason: boundary.final_reason,
+			boundary_disposition: disposition,
+			boundary_policy_decision: policy_decision,
+			boundary_final_reason: final_reason,
 			reason_code,
 			recovery_attempt_number,
 			prior_started_count,
 		},
 	)?;
 
-	if budget_exhausted || boundary.disposition != AuthorityBoundaryDisposition::WithinAuthority {
+	if budget_exhausted || !policy_decision.allows_autonomous_recovery() {
 		loop_guardrail_stop.architecture_recovery_reason_code = Some(reason_code.to_owned());
 
-		record_architecture_recovery_terminal_event(
+		record_architecture_recovery_terminal_outcome(
 			state_store,
 			ArchitectureRecoveryTerminalEventInput {
 				project,
 				issue_run,
 				stop: &loop_guardrail_stop,
 				boundary_check_record_id: boundary_event.record_id(),
-				boundary_disposition: boundary.disposition,
+				boundary_disposition: disposition,
+				boundary_policy_decision: policy_decision,
+				boundary_final_reason: final_reason,
 				reason_code,
 				recovery_attempt_number,
 			},
 		)?;
-
-		if boundary.disposition != AuthorityBoundaryDisposition::WithinAuthority {
-			let decision_request_id = format!(
-				"{}-{}-{}-{}",
-				issue_run.issue.identifier,
-				issue_run.run_id,
-				issue_run.attempt_number,
-				reason_code
-			);
-
-			record_authority_decision_request_private_event(
-				state_store,
-				architecture_recovery_decision_request_input(
-					project,
-					issue_run,
-					&loop_guardrail_stop,
-					boundary_event.record_id(),
-					&decision_request_id,
-					reason_code,
-					boundary.final_reason,
-				),
-			)?;
-		}
 
 		return Ok(LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop));
 	}
@@ -3298,13 +3290,19 @@ fn loop_guardrail_architecture_recovery_decision(
 		issue_run,
 		&loop_guardrail_stop,
 		boundary_event.record_id(),
+		policy_decision,
 		recovery_attempt_number,
 	)?;
 
 	Ok(LoopGuardrailRecoveryDecision::Start(ArchitectureRecoveryStart {
 		attempt_number: recovery_attempt_number,
 		max_attempts: ARCHITECTURE_RECOVERY_BUDGET,
-		detail: architecture_recovery_goal_detail(&loop_guardrail_stop, recovery_attempt_number),
+		policy_decision,
+		detail: architecture_recovery_goal_detail(
+			&loop_guardrail_stop,
+			recovery_attempt_number,
+			policy_decision,
+		),
 	}))
 }
 
@@ -3324,41 +3322,48 @@ fn classify_loop_guardrail_authority_boundary(
 		{
 			ArchitectureRecoveryBoundary {
 				disposition: AuthorityBoundaryDisposition::WithinAuthority,
+				policy_decision: AuthorityBoundaryPolicyDecision::AutoContinue,
 				final_reason: "Repo-gate convergence failed on an engineering implementation problem; architecture recovery may change implementation strategy without weakening validation.",
-				boundary_type: "implementation_strategy",
+				boundary_type: AuthorityBoundarySurface::ImplementationStrategy,
 			}
 		},
 		LoopGuardrailReason::NoEffectiveDiff if source_is_repo_gate => {
 			ArchitectureRecoveryBoundary {
 				disposition: AuthorityBoundaryDisposition::WithinAuthority,
+				policy_decision: AuthorityBoundaryPolicyDecision::AutoContinue,
 				final_reason: "No-effective-diff convergence followed repo-gate repair work; architecture recovery may replace the ineffective implementation strategy.",
-				boundary_type: "implementation_strategy",
+				boundary_type: AuthorityBoundarySurface::ImplementationStrategy,
 			}
 		},
 		LoopGuardrailReason::ReviewChurn => ArchitectureRecoveryBoundary {
 			disposition: AuthorityBoundaryDisposition::WithinAuthority,
+			policy_decision: AuthorityBoundaryPolicyDecision::BlockLanding,
 			final_reason: "Review churn can be recovered autonomously only by changing implementation architecture while preserving accepted behavior and review standards.",
-			boundary_type: "implementation_strategy",
+			boundary_type: AuthorityBoundarySurface::ReviewPolicy,
 		},
 		LoopGuardrailReason::DependencyProgramStale => ArchitectureRecoveryBoundary {
 			disposition: AuthorityBoundaryDisposition::RequiresHuman,
+			policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
 			final_reason: "The next viable action changes dependency or Execution Program readiness and requires accepted authority.",
-			boundary_type: "external_dependency",
+			boundary_type: AuthorityBoundarySurface::ExternalDependency,
 		},
 		LoopGuardrailReason::UncoveredDirection => ArchitectureRecoveryBoundary {
 			disposition: AuthorityBoundaryDisposition::RequiresHuman,
+			policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
 			final_reason: "Execution uncovered missing direction that changes the accepted Decision Contract.",
-			boundary_type: "decision_contract",
+			boundary_type: AuthorityBoundarySurface::Objective,
 		},
 		LoopGuardrailReason::AmbiguousRetainedProgress => ArchitectureRecoveryBoundary {
-			disposition: AuthorityBoundaryDisposition::InsufficientEvidence,
+			disposition: AuthorityBoundaryDisposition::RequiresHuman,
+			policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
 			final_reason: "Retained progress ownership is underspecified, so Decodex lacks evidence that recovery is inside authority.",
-			boundary_type: "retained_ownership",
+			boundary_type: AuthorityBoundarySurface::RetainedOwnership,
 		},
 		_ => ArchitectureRecoveryBoundary {
-			disposition: AuthorityBoundaryDisposition::InsufficientEvidence,
+			disposition: AuthorityBoundaryDisposition::RequiresHuman,
+			policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
 			final_reason: "Guardrail evidence is insufficient to prove autonomous recovery stays inside the Authority Envelope.",
-			boundary_type: "authority_evidence",
+			boundary_type: AuthorityBoundarySurface::AuthorityEvidence,
 		},
 	}
 }
@@ -3400,12 +3405,262 @@ fn architecture_recovery_contracts_for_issue(
 
 fn architecture_recovery_changed_surfaces(
 	boundary: &ArchitectureRecoveryBoundary,
+	worktree_path: &Path,
 ) -> Vec<AuthorityBoundaryChangedSurface<'static>> {
-	vec![AuthorityBoundaryChangedSurface {
-		surface: boundary.boundary_type,
-		change_summary: "Replace the non-converging guardrail repair strategy with a materially different architecture recovery strategy.",
-		classification: boundary.disposition,
-	}]
+	let mut surfaces = Vec::new();
+
+	push_architecture_recovery_changed_surface(
+		&mut surfaces,
+		boundary.boundary_type,
+		"Replace the non-converging guardrail repair strategy with a materially different architecture recovery strategy.",
+		boundary.policy_decision,
+		boundary.disposition,
+	);
+
+	if let Ok(Some(diff_paths)) =
+		git_guardrail_output(worktree_path, &["diff", "--name-only", "HEAD", "--"])
+	{
+		for relative_path in diff_paths.lines().filter(|path| !path.trim().is_empty()) {
+			for surface in architecture_recovery_surfaces_for_path(relative_path) {
+				push_architecture_recovery_changed_surface(
+					&mut surfaces,
+					surface,
+					architecture_recovery_surface_summary(surface),
+					surface.policy_decision(),
+					surface.policy_decision().disposition(),
+				);
+			}
+		}
+	}
+
+	surfaces
+}
+
+fn push_architecture_recovery_changed_surface(
+	surfaces: &mut Vec<AuthorityBoundaryChangedSurface<'static>>,
+	surface: AuthorityBoundarySurface,
+	change_summary: &'static str,
+	policy_decision: AuthorityBoundaryPolicyDecision,
+	legacy_disposition: AuthorityBoundaryDisposition,
+) {
+	if surfaces.iter().any(|existing| existing.surface == surface) {
+		return;
+	}
+
+	surfaces.push(AuthorityBoundaryChangedSurface {
+		surface,
+		change_summary,
+		policy_decision,
+		legacy_disposition,
+	});
+}
+
+fn architecture_recovery_surfaces_for_path(
+	relative_path: &str,
+) -> Vec<AuthorityBoundarySurface> {
+	let normalized = relative_path.replace('\\', "/");
+	let lower = normalized.to_ascii_lowercase();
+	let mut surfaces = Vec::new();
+
+	if lower.starts_with("docs/") {
+		surfaces.push(AuthorityBoundarySurface::Docs);
+
+		return surfaces;
+	}
+	if architecture_recovery_path_is_test(&lower) {
+		surfaces.push(AuthorityBoundarySurface::Tests);
+
+		return surfaces;
+	}
+	if architecture_recovery_path_is_config(&lower) {
+		surfaces.push(AuthorityBoundarySurface::Config);
+
+		return surfaces;
+	}
+	if architecture_recovery_path_is_public_api(&lower) {
+		surfaces.push(AuthorityBoundarySurface::PublicApi);
+	}
+	if architecture_recovery_path_is_security(&lower) {
+		surfaces.push(AuthorityBoundarySurface::Security);
+	}
+	if architecture_recovery_path_is_privacy(&lower) {
+		surfaces.push(AuthorityBoundarySurface::Privacy);
+	}
+	if architecture_recovery_path_is_data(&lower) {
+		surfaces.push(AuthorityBoundarySurface::Data);
+	}
+	if architecture_recovery_path_is_billing(&lower) {
+		surfaces.push(AuthorityBoundarySurface::Billing);
+	}
+	if architecture_recovery_path_is_validation(&lower) {
+		surfaces.push(AuthorityBoundarySurface::Validation);
+	}
+	if architecture_recovery_path_is_review_policy(&lower) {
+		surfaces.push(AuthorityBoundarySurface::ReviewPolicy);
+	}
+	if surfaces.is_empty() && architecture_recovery_path_is_runtime(&lower) {
+		surfaces.push(AuthorityBoundarySurface::Runtime);
+	}
+
+	surfaces
+}
+
+fn architecture_recovery_path_is_test(path: &str) -> bool {
+	path.starts_with("tests/")
+		|| path.contains("/tests/")
+		|| path.ends_with("_test.rs")
+		|| path.ends_with("tests.rs")
+		|| path.contains("/test_")
+}
+
+fn architecture_recovery_path_is_config(path: &str) -> bool {
+	path == "cargo.toml"
+		|| path == "cargo.lock"
+		|| path == "makefile.toml"
+		|| path == "clippy.toml"
+		|| path == "rust-toolchain.toml"
+		|| path == "decodex.example.toml"
+		|| path.starts_with(".github/")
+		|| path.ends_with(".toml")
+		|| path.ends_with(".yaml")
+		|| path.ends_with(".yml")
+		|| path.ends_with(".json")
+		|| path.ends_with(".env")
+}
+
+fn architecture_recovery_path_is_public_api(path: &str) -> bool {
+	architecture_recovery_path_has_segment(path, "cli")
+		|| architecture_recovery_path_has_segment(path, "mcp")
+		|| architecture_recovery_path_has_segment(path, "protocol")
+		|| architecture_recovery_path_has_segment(path, "api")
+		|| path.contains("tracker_tool_bridge")
+		|| path.contains("app_bridge")
+}
+
+fn architecture_recovery_path_is_security(path: &str) -> bool {
+	path.contains("auth")
+		|| path.contains("credential")
+		|| path.contains("secret")
+		|| path.contains("security")
+		|| path.contains("signing")
+		|| path.contains("token")
+}
+
+fn architecture_recovery_path_is_privacy(path: &str) -> bool {
+	path.contains("privacy") || path.contains("public_text") || path.contains("redact")
+}
+
+fn architecture_recovery_path_is_data(path: &str) -> bool {
+	path.contains("database")
+		|| path.contains("migration")
+		|| path.contains("payload")
+		|| path.contains("record")
+		|| path.contains("sqlite")
+		|| path.contains("state")
+}
+
+fn architecture_recovery_path_is_billing(path: &str) -> bool {
+	path.contains("account")
+		|| path.contains("billing")
+		|| path.contains("credit")
+		|| path.contains("invoice")
+		|| path.contains("usage")
+}
+
+fn architecture_recovery_path_is_validation(path: &str) -> bool {
+	path.contains("repo_gate")
+		|| path.contains("validation")
+		|| path.contains("validator")
+		|| path.contains("verify")
+}
+
+fn architecture_recovery_path_is_review_policy(path: &str) -> bool {
+	path.contains("review_policy") || path.contains("review_landing") || path.contains("landing")
+}
+
+fn architecture_recovery_path_is_runtime(path: &str) -> bool {
+	path.starts_with("apps/") || path.starts_with("scripts/") || path.starts_with("dev/")
+}
+
+fn architecture_recovery_path_has_segment(path: &str, segment: &str) -> bool {
+	path.split('/').any(|part| {
+		part == segment
+			|| part
+				.strip_suffix(".rs")
+				.is_some_and(|stem| stem == segment)
+	})
+}
+
+fn architecture_recovery_surface_summary(surface: AuthorityBoundarySurface) -> &'static str {
+	match surface {
+		AuthorityBoundarySurface::ImplementationStrategy => {
+			"Replace the non-converging guardrail repair strategy with a materially different architecture recovery strategy."
+		},
+		AuthorityBoundarySurface::Runtime => {
+			"Runtime implementation files changed during recovery."
+		},
+		AuthorityBoundarySurface::Tests => "Test files changed during recovery.",
+		AuthorityBoundarySurface::Docs => "Documentation files changed during recovery.",
+		AuthorityBoundarySurface::PublicApi => {
+			"Public API or command surface files changed during recovery."
+		},
+		AuthorityBoundarySurface::Config => "Configuration files changed during recovery.",
+		AuthorityBoundarySurface::Security => {
+			"Security-sensitive implementation files changed during recovery."
+		},
+		AuthorityBoundarySurface::Data => "Data or state persistence files changed during recovery.",
+		AuthorityBoundarySurface::Billing => "Billing or usage files changed during recovery.",
+		AuthorityBoundarySurface::Privacy => "Privacy-sensitive files changed during recovery.",
+		AuthorityBoundarySurface::Validation => {
+			"Validation or repository-gate files changed during recovery."
+		},
+		AuthorityBoundarySurface::ReviewPolicy => {
+			"Review policy or landing policy files changed during recovery."
+		},
+		AuthorityBoundarySurface::Objective => {
+			"Objective-changing recovery requires an explicit human decision."
+		},
+		AuthorityBoundarySurface::NonGoal => {
+			"Non-goal-changing recovery requires an explicit human decision."
+		},
+		AuthorityBoundarySurface::ExternalDependency => {
+			"External dependency recovery requires accepted authority."
+		},
+		AuthorityBoundarySurface::RetainedOwnership => {
+			"Retained ownership evidence changed during recovery."
+		},
+		AuthorityBoundarySurface::AuthorityEvidence => {
+			"Authority evidence changed or is insufficient during recovery."
+		},
+	}
+}
+
+fn architecture_recovery_policy_decision(
+	surfaces: &[AuthorityBoundaryChangedSurface<'_>],
+) -> AuthorityBoundaryPolicyDecision {
+	surfaces.iter().fold(AuthorityBoundaryPolicyDecision::AutoContinue, |decision, surface| {
+		AuthorityBoundaryPolicyDecision::max(decision, surface.policy_decision)
+	})
+}
+
+fn architecture_recovery_final_reason(
+	boundary: &ArchitectureRecoveryBoundary,
+	policy_decision: AuthorityBoundaryPolicyDecision,
+) -> &'static str {
+	if policy_decision == boundary.policy_decision {
+		return boundary.final_reason;
+	}
+
+	match policy_decision {
+		AuthorityBoundaryPolicyDecision::AutoContinue => boundary.final_reason,
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence => {
+			"Changed high-risk surfaces can continue recovery autonomously, but require enhanced evidence before review handoff or landing."
+		},
+		AuthorityBoundaryPolicyDecision::BlockLanding => {
+			"Changed validation or review-policy surfaces can continue recovery autonomously, but block landing until the required evidence is restored."
+		},
+		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => boundary.final_reason,
+	}
 }
 
 fn architecture_recovery_improvement_signals(
@@ -3448,13 +3703,14 @@ fn architecture_recovery_improvement_signals(
 
 fn architecture_recovery_reason_code(
 	boundary: &ArchitectureRecoveryBoundary,
+	policy_decision: AuthorityBoundaryPolicyDecision,
 	budget_exhausted: bool,
 ) -> &'static str {
 	if budget_exhausted {
 		"architecture_recovery_exhausted"
-	} else if boundary.boundary_type == "external_dependency" {
+	} else if boundary.boundary_type == AuthorityBoundarySurface::ExternalDependency {
 		"external_dependency_required"
-	} else if boundary.disposition == AuthorityBoundaryDisposition::WithinAuthority {
+	} else if policy_decision.allows_autonomous_recovery() {
 		"architecture_recovery_started"
 	} else {
 		"contract_boundary_required"
@@ -3518,6 +3774,11 @@ fn record_architecture_recovery_packet(
 				"authority_boundary_check": {
 					"record_id": input.boundary_check_record_id,
 					"disposition": input.boundary_disposition.as_str(),
+					"policy_decision": input.boundary_policy_decision.as_str(),
+					"requires_enhanced_evidence": input
+						.boundary_policy_decision
+						.requires_enhanced_evidence(),
+					"blocks_landing": input.boundary_policy_decision.blocks_landing(),
 					"reason": input.boundary_final_reason,
 				},
 			}),
@@ -3665,6 +3926,7 @@ fn record_architecture_recovery_started_event(
 	issue_run: &IssueRunPlan,
 	stop: &LoopGuardrailStopRequested,
 	boundary_check_record_id: i64,
+	boundary_policy_decision: AuthorityBoundaryPolicyDecision,
 	recovery_attempt_number: usize,
 ) -> Result<()> {
 	state_store
@@ -3680,6 +3942,9 @@ fn record_architecture_recovery_started_event(
 				"reason_code": "architecture_recovery_started",
 				"guardrail_reason": stop.reason.error_class(),
 				"authority_boundary_check_record_id": boundary_check_record_id,
+				"boundary_policy_decision": boundary_policy_decision.as_str(),
+				"requires_enhanced_evidence": boundary_policy_decision.requires_enhanced_evidence(),
+				"blocks_landing": boundary_policy_decision.blocks_landing(),
 				"recovery_budget": {
 					"attempt": recovery_attempt_number,
 					"max_attempts": ARCHITECTURE_RECOVERY_BUDGET,
@@ -3690,9 +3955,42 @@ fn record_architecture_recovery_started_event(
 		.map(|_| ())
 }
 
-fn record_architecture_recovery_terminal_event(
+fn record_architecture_recovery_terminal_outcome(
 	state_store: &StateStore,
 	input: ArchitectureRecoveryTerminalEventInput<'_>,
+) -> Result<()> {
+	record_architecture_recovery_terminal_event(state_store, &input)?;
+
+	if input.boundary_policy_decision.allows_autonomous_recovery() {
+		return Ok(());
+	}
+
+	let decision_request_id = format!(
+		"{}-{}-{}-{}",
+		input.issue_run.issue.identifier,
+		input.issue_run.run_id,
+		input.issue_run.attempt_number,
+		input.reason_code
+	);
+
+	record_authority_decision_request_private_event(
+		state_store,
+		architecture_recovery_decision_request_input(
+			input.project,
+			input.issue_run,
+			input.stop,
+			input.boundary_check_record_id,
+			&decision_request_id,
+			input.reason_code,
+			input.boundary_final_reason,
+		),
+	)
+	.map(|_| ())
+}
+
+fn record_architecture_recovery_terminal_event(
+	state_store: &StateStore,
+	input: &ArchitectureRecoveryTerminalEventInput<'_>,
 ) -> Result<()> {
 	state_store
 		.append_private_execution_event(
@@ -3708,6 +4006,11 @@ fn record_architecture_recovery_terminal_event(
 				"guardrail_reason": input.stop.reason.error_class(),
 				"authority_boundary_check_record_id": input.boundary_check_record_id,
 				"boundary_disposition": input.boundary_disposition.as_str(),
+				"boundary_policy_decision": input.boundary_policy_decision.as_str(),
+				"requires_enhanced_evidence": input
+					.boundary_policy_decision
+					.requires_enhanced_evidence(),
+				"blocks_landing": input.boundary_policy_decision.blocks_landing(),
 				"recovery_budget": {
 					"attempt": input.recovery_attempt_number,
 					"max_attempts": ARCHITECTURE_RECOVERY_BUDGET,
@@ -3759,14 +4062,36 @@ fn architecture_recovery_decision_request_input<'a>(
 fn architecture_recovery_goal_detail(
 	stop: &LoopGuardrailStopRequested,
 	recovery_attempt_number: usize,
+	policy_decision: AuthorityBoundaryPolicyDecision,
 ) -> String {
 	format!(
-		"Loop guardrail `{}` stopped the current ineffective strategy after {} matching observations. Decodex recorded an Architecture Recovery Packet and an Authority Boundary Check with `within_authority`; use autonomous architecture recovery attempt {} of {}. Start a materially different implementation strategy, preserve the accepted Decision Contract and all validation/review gates, and request human attention only if the next viable action would change product behavior, public API/config contract, security, data, credential, billing, validation standards, or accepted authority.",
+		"Loop guardrail `{}` stopped the current ineffective strategy after {} matching observations. Decodex recorded an Architecture Recovery Packet and an Authority Boundary Check with policy `{}`; use autonomous architecture recovery attempt {} of {}. Start a materially different implementation strategy, preserve the accepted Decision Contract and all validation/review gates, and {}.",
 		stop.reason.error_class(),
 		stop.consecutive_count,
+		policy_decision.as_str(),
 		recovery_attempt_number,
-		ARCHITECTURE_RECOVERY_BUDGET
+		ARCHITECTURE_RECOVERY_BUDGET,
+		architecture_recovery_policy_recovery_guidance(policy_decision)
 	)
+}
+
+fn architecture_recovery_policy_recovery_guidance(
+	policy_decision: AuthorityBoundaryPolicyDecision,
+) -> &'static str {
+	match policy_decision {
+		AuthorityBoundaryPolicyDecision::AutoContinue => {
+			"request human attention only if the next viable action would change product behavior, public API/config contract, security, data, credential, billing, validation standards, or accepted authority"
+		},
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence => {
+			"preserve enhanced evidence for the changed high-risk surfaces before review handoff or landing"
+		},
+		AuthorityBoundaryPolicyDecision::BlockLanding => {
+			"keep landing blocked until validation or review-policy evidence is restored"
+		},
+		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => {
+			"request human attention before continuing recovery"
+		},
+	}
 }
 
 fn run_failure_requires_terminal_attention(error: &Report) -> bool {
@@ -4156,7 +4481,7 @@ where
 			worktree_path: context.worktree_path.to_owned(),
 			branch_name: &context.issue_run.worktree.branch_name,
 			error_class: "architecture_recovery_started",
-			next_action: "decodex recorded a within-authority boundary check and will retry with a materially different architecture recovery strategy",
+			next_action: architecture_recovery_retry_next_action(recovery.policy_decision),
 		}),
 	)?;
 
@@ -4171,6 +4496,25 @@ where
 	);
 
 	Ok(())
+}
+
+fn architecture_recovery_retry_next_action(
+	policy_decision: AuthorityBoundaryPolicyDecision,
+) -> &'static str {
+	match policy_decision {
+		AuthorityBoundaryPolicyDecision::AutoContinue => {
+			"decodex recorded authority policy `auto_continue` and will retry with a materially different architecture recovery strategy"
+		},
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence => {
+			"decodex recorded authority policy `requires_enhanced_evidence` and will retry with a materially different architecture recovery strategy while preserving enhanced evidence before review handoff or landing"
+		},
+		AuthorityBoundaryPolicyDecision::BlockLanding => {
+			"decodex recorded authority policy `block_landing` and will retry with a materially different architecture recovery strategy while landing remains blocked until validation or review-policy evidence is restored"
+		},
+		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => {
+			"decodex recorded authority policy `requires_human_decision` and requires human attention before retrying"
+		},
+	}
 }
 
 fn apply_loop_guardrail_failure_writeback<T>(

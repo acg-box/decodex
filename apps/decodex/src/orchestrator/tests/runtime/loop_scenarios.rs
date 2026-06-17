@@ -23,6 +23,8 @@ use crate::orchestrator::AuthorityBoundaryChangedSurface;
 use crate::orchestrator::AuthorityBoundaryCheckInput;
 use crate::orchestrator::AuthorityBoundaryDisposition;
 use crate::orchestrator::AuthorityBoundaryImprovementSignal;
+use crate::orchestrator::AuthorityBoundaryPolicyDecision;
+use crate::orchestrator::AuthorityBoundarySurface;
 use crate::orchestrator;
 use crate::orchestrator::HarnessOutcomeKind;
 use crate::orchestrator::HarnessOutcomeRecordInput;
@@ -351,10 +353,12 @@ impl LoopScenarioHarness {
 				decision_contract_ids: vec![contract_id],
 				attempted_recovery_reason: "uncovered_direction",
 				changed_surfaces: vec![AuthorityBoundaryChangedSurface {
-					surface: "accepted_behavior",
+					surface: AuthorityBoundarySurface::Objective,
 					change_summary: private_authority_marker,
-					classification: AuthorityBoundaryDisposition::RequiresHuman,
+					policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
+					legacy_disposition: AuthorityBoundaryDisposition::RequiresHuman,
 				}],
+				policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
 				disposition: AuthorityBoundaryDisposition::RequiresHuman,
 				final_disposition_reason:
 					"Accepted behavior would change and the authority envelope is underspecified.",

@@ -879,11 +879,13 @@ fn live_operator_status_snapshot_surfaces_authority_decision_request() {
 			attempt_number: 1,
 			decision_contract_ids: vec!["contract-pub-118"],
 			attempted_recovery_reason: "uncovered_direction",
-			changed_surfaces: vec![orchestrator::AuthorityBoundaryChangedSurface {
-				surface: "accepted_behavior",
+			changed_surfaces: vec![AuthorityBoundaryChangedSurface {
+				surface: AuthorityBoundarySurface::Objective,
 				change_summary: "Public behavior would change.",
-				classification: orchestrator::AuthorityBoundaryDisposition::RequiresHuman,
+				policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
+				legacy_disposition: AuthorityBoundaryDisposition::RequiresHuman,
 			}],
+			policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
 			disposition: AuthorityBoundaryDisposition::RequiresHuman,
 			final_disposition_reason: "Accepted behavior needs explicit authority.",
 			improvement_signals: Vec::new(),

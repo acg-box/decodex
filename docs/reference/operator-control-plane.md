@@ -486,7 +486,8 @@ Worktree visibility follows the owning dashboard section:
   `remaining_delta_unchanged`, `review_churn`, `dependency_program_stale`,
   `uncovered_direction`, or `ambiguous_retained_progress`. Use the public reason to
   choose the recovery path, then inspect `decodex evidence` or local status for
-  `loop_guardrail_checkpoint` evidence before clearing attention labels or retrying.
+  `loop_guardrail_checkpoint`, Authority Boundary policy decision, enhanced-evidence,
+  and landing-block evidence before clearing attention labels or retrying.
 - `Review & Landing` means a retained PR lane still owns the path for review repair,
   landing, closeout, or retained-lane cleanup.
 - `missing_review_handoff_record` in `Review & Landing` means Decodex found a retained
