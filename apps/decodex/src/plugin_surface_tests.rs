@@ -44,6 +44,28 @@ const RESEARCH_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research/SKILL.md"
 ));
+const OKF_SKILL: &str =
+	include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../plugins/decodex/skills/okf/SKILL.md"));
+const OKF_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/okf/agents/openai.yaml"
+));
+const OKF_QUERY_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/okf-query/SKILL.md"
+));
+const OKF_QUERY_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/okf-query/agents/openai.yaml"
+));
+const OKF_MAINTAIN_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/okf-maintain/SKILL.md"
+));
+const OKF_MAINTAIN_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/okf-maintain/agents/openai.yaml"
+));
 const DOCS_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/docs/SKILL.md"
@@ -152,6 +174,10 @@ const DOCS_DRIFT_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/references/docs-drift.md"
 ));
+const OKF_LAYER_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/references/okf-layer.md"
+));
 const RESEARCH_LIFECYCLE_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/references/research-lifecycle.md"
@@ -193,6 +219,7 @@ fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
 	);
 
 	assert_contains(&manifest_surface, "natural-language-first");
+	assert_contains(&manifest_surface, "portable OKF");
 	assert_contains(&manifest_surface, "OKF docs");
 	assert_contains(&manifest_surface, "bounded research");
 	assert_contains(&manifest_surface, "probe, evidence, options, judgment, challenge, decision");
@@ -204,8 +231,8 @@ fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
 	assert_contains(&manifest_surface, "DAG");
 	assert_contains(&manifest_surface, "issue briefing");
 	assert_contains(&default_prompts, "Maintain Decodex docs.");
+	assert_contains(&default_prompts, "Work with an OKF bundle.");
 	assert_contains(&default_prompts, "Research this with Decodex.");
-	assert_contains(&default_prompts, "Arrange accepted Decodex work.");
 }
 
 #[test]
@@ -298,6 +325,7 @@ fn packaged_docs_skills_encode_okf_wiki_and_drift_boundaries() {
 
 	assert_contains(&docs_surface, "OKF");
 	assert_contains(&docs_surface, "LLM Wiki");
+	assert_contains(&docs_surface, "docs check");
 	assert_contains(&docs_surface, "docs lint");
 	assert_contains(&docs_surface, "Markdown-only");
 	assert_contains(&docs_surface, "Research Contract");
@@ -308,6 +336,32 @@ fn packaged_docs_skills_encode_okf_wiki_and_drift_boundaries() {
 	assert_contains(&docs_surface, "pass`, `fail`, or `needs-human");
 	assert_contains(&docs_surface, "Do not create a parallel `wiki/` or `okf/` root");
 	assert_not_contains(&docs_surface, "Okf");
+	assert_contains(&docs_surface, "portable OKF");
+	assert_contains(&docs_surface, "Decodex profile");
+}
+
+#[test]
+fn packaged_okf_skills_preserve_portable_profile_boundary() {
+	let okf_surface =
+		format!("{OKF_SKILL}\n{OKF_QUERY_SKILL}\n{OKF_MAINTAIN_SKILL}\n{OKF_LAYER_REF}");
+
+	assert_contains(&okf_surface, "portable OKF");
+	assert_contains(&okf_surface, "LLM Wiki");
+	assert_contains(&okf_surface, "decodex okf check");
+	assert_contains(&okf_surface, "decodex okf find");
+	assert_contains(&okf_surface, "decodex okf graph");
+	assert_contains(&okf_surface, "decodex okf route");
+	assert_contains(&okf_surface, "core");
+	assert_contains(&okf_surface, "wiki");
+	assert_contains(&okf_surface, "repo-memory");
+	assert_contains(&okf_surface, "decodex");
+	assert_contains(&okf_surface, "source_refs");
+	assert_contains(&okf_surface, "code_refs");
+	assert_contains(&okf_surface, "related");
+	assert_contains(&okf_surface, "drift_watch");
+	assert_contains_normalized(&okf_surface, "Do not create or recommend `decodex docs okf ...`");
+	assert_contains_normalized(&okf_surface, "do not inherit Decodex lanes");
+	assert_contains(&okf_surface, "Do not require Decodex lanes or Linear workflow");
 }
 
 #[test]
@@ -318,6 +372,9 @@ fn narrow_lifecycle_and_specialist_skills_are_explicit_only() {
 		LABELS_AGENT_POLICY,
 		LAND_AGENT_POLICY,
 		MANUAL_CLI_AGENT_POLICY,
+		OKF_AGENT_POLICY,
+		OKF_QUERY_AGENT_POLICY,
+		OKF_MAINTAIN_AGENT_POLICY,
 		DOCS_OKF_AGENT_POLICY,
 		DOCS_WIKI_AGENT_POLICY,
 		DOCS_DRIFT_AGENT_POLICY,

@@ -1,0 +1,5 @@
+interface:
+  display_name: "OKF Query"
+  short_description: "Find OKF bundle context"
+policy:
+  allow_implicit_invocation: false
