@@ -251,7 +251,7 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertEqual(lifecycle.buckets.first?.wallSeconds, 1313)
 	}
 
-	func testStoppedActiveRunUsesInactiveDurationAndAttentionTone() throws {
+	func testStoppedCurrentLaneUsesInactiveDurationAndAttentionTone() throws {
 		let payload = """
 		{
 		  "run_id": "pub-1524-attempt-2",
@@ -331,7 +331,7 @@ final class AccountModelTests: XCTestCase {
 		)
 		let payload = """
 		{
-		  "active_runs": [
+		  "current_lanes": [
 		    {
 		      "run_id": "run-1",
 		      "issue_identifier": "XY-445",
@@ -378,12 +378,12 @@ final class AccountModelTests: XCTestCase {
 
 		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
 
-		XCTAssertEqual(snapshot.activeRuns(for: assignedAccount).map(\.runID), ["run-1"])
-		XCTAssertEqual(snapshot.activeRuns(for: otherAssignedAccount).map(\.runID), ["run-2"])
-		XCTAssertTrue(snapshot.activeRuns(for: poolOnlyAccount).isEmpty)
+		XCTAssertEqual(snapshot.currentLanes(for: assignedAccount).map(\.runID), ["run-1"])
+		XCTAssertEqual(snapshot.currentLanes(for: otherAssignedAccount).map(\.runID), ["run-2"])
+		XCTAssertTrue(snapshot.currentLanes(for: poolOnlyAccount).isEmpty)
 	}
 
-	func testOperatorSnapshotKeepsUnassignedActiveRunsVisibleGlobally() throws {
+	func testOperatorSnapshotKeepsUnassignedCurrentLanesVisibleGlobally() throws {
 		let account = makeAccount(
 			status: "available",
 			email: "pool@example.com",
@@ -391,7 +391,7 @@ final class AccountModelTests: XCTestCase {
 		)
 		let payload = """
 		{
-		  "active_runs": [
+		  "current_lanes": [
 		    {
 		      "run_id": "run-unassigned",
 		      "project_id": "pubfi-platform",
@@ -404,18 +404,18 @@ final class AccountModelTests: XCTestCase {
 
 		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
 
-		XCTAssertEqual(snapshot.activeRuns.map(\.runID), ["run-unassigned"])
-		XCTAssertEqual(snapshot.activeRunCount, 1)
-		XCTAssertTrue(snapshot.activeRuns(for: account).isEmpty)
+		XCTAssertEqual(snapshot.currentLanes.map(\.runID), ["run-unassigned"])
+		XCTAssertEqual(snapshot.currentLaneCount, 1)
+		XCTAssertTrue(snapshot.currentLanes(for: account).isEmpty)
 	}
 
-	func testOperatorProjectStatusSeparatesActiveAndRunningLaneCounts() throws {
+	func testOperatorProjectStatusSeparatesCurrentAndRunningLaneCounts() throws {
 		let payload = """
 		{
 		  "projects": [
 		    {
 		      "project_id": "pubfi-platform",
-		      "active_run_count": 2,
+		      "current_lane_count": 2,
 		      "running_lane_count": 1,
 		      "attention_count": 1
 		    }
@@ -426,20 +426,20 @@ final class AccountModelTests: XCTestCase {
 		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
 		let project = try XCTUnwrap(snapshot.projects.first)
 
-		XCTAssertEqual(project.activeRunCount, 2)
+		XCTAssertEqual(project.currentLaneCount, 2)
 		XCTAssertEqual(project.runningLaneCount, 1)
-		XCTAssertEqual(snapshot.activeRunCount, 2)
+		XCTAssertEqual(snapshot.currentLaneCount, 2)
 		XCTAssertEqual(snapshot.runningLaneCount, 1)
 		XCTAssertEqual(snapshot.attentionCount, 1)
 	}
 
-	func testOperatorProjectStatusDefaultsRunningLaneCountToActiveRunCount() throws {
+	func testOperatorProjectStatusDefaultsRunningLaneCountToCurrentLaneCount() throws {
 		let payload = """
 		{
 		  "projects": [
 		    {
 		      "project_id": "pubfi-platform",
-		      "active_run_count": 2
+		      "current_lane_count": 2
 		    }
 		  ]
 		}
@@ -448,7 +448,7 @@ final class AccountModelTests: XCTestCase {
 		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
 		let project = try XCTUnwrap(snapshot.projects.first)
 
-		XCTAssertEqual(project.activeRunCount, 2)
+		XCTAssertEqual(project.currentLaneCount, 2)
 		XCTAssertEqual(project.runningLaneCount, 2)
 		XCTAssertEqual(snapshot.runningLaneCount, 2)
 	}
@@ -465,7 +465,7 @@ final class AccountModelTests: XCTestCase {
 		  "post_review_lanes": [
 		    {
 		      "classification": "ready_to_land",
-		      "shadowed_by_active_run": true
+		      "shadowed_by_current_lane": true
 		    }
 		  ]
 		}
@@ -475,7 +475,7 @@ final class AccountModelTests: XCTestCase {
 
 		XCTAssertEqual(snapshot.reviewCount, 0)
 		XCTAssertEqual(snapshot.landingCount, 0)
-		XCTAssertEqual(snapshot.postReviewLanes.first?.shadowedByActiveRun, true)
+		XCTAssertEqual(snapshot.postReviewLanes.first?.shadowedByCurrentLane, true)
 	}
 
 	func testOperatorSnapshotAssignsSelectedAccountWhenPrimaryAccountIsMissing() throws {
@@ -491,7 +491,7 @@ final class AccountModelTests: XCTestCase {
 		)
 		let payload = """
 		{
-		  "active_runs": [
+		  "current_lanes": [
 		    {
 		      "run_id": "run-1",
 		      "issue_identifier": "XY-689",
@@ -514,8 +514,8 @@ final class AccountModelTests: XCTestCase {
 
 		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
 
-		XCTAssertEqual(snapshot.activeRuns(for: assignedAccount).map(\.runID), ["run-1"])
-		XCTAssertTrue(snapshot.activeRuns(for: poolOnlyAccount).isEmpty)
+		XCTAssertEqual(snapshot.currentLanes(for: assignedAccount).map(\.runID), ["run-1"])
+		XCTAssertTrue(snapshot.currentLanes(for: poolOnlyAccount).isEmpty)
 	}
 
 	@MainActor
@@ -533,7 +533,7 @@ final class AccountModelTests: XCTestCase {
 			{
 			  "snapshotPublishedAtUnixEpoch": 20,
 			  "snapshot": {
-			    "active_runs": [
+			    "current_lanes": [
 			      {
 			        "run_id": "run-new",
 			        "issue_identifier": "XY-672",
@@ -552,8 +552,8 @@ final class AccountModelTests: XCTestCase {
 			payload: """
 			{
 			  "emittedAtUnixEpoch": 10,
-			  "activeRunsComplete": true,
-			  "activeRuns": [
+			  "currentLanesComplete": true,
+			  "currentLanes": [
 			    {
 			      "run_id": "run-old",
 			      "issue_identifier": "PUB-1147",
@@ -567,11 +567,11 @@ final class AccountModelTests: XCTestCase {
 			"""
 		))
 
-		XCTAssertEqual(store.operatorSnapshot?.activeRuns(for: account).map(\.runID), ["run-old"])
+		XCTAssertEqual(store.operatorSnapshot?.currentLanes(for: account).map(\.runID), ["run-old"])
 	}
 
 	@MainActor
-	func testRunActivityBeforeSnapshotCreatesVisibleActiveRuns() throws {
+	func testRunActivityBeforeSnapshotCreatesVisibleCurrentLanes() throws {
 		let account = makeAccount(
 			status: "available",
 			email: "copy@example.com",
@@ -584,8 +584,8 @@ final class AccountModelTests: XCTestCase {
 			payload: """
 			{
 			  "emittedAtUnixEpoch": 30,
-			  "activeRunsComplete": true,
-			  "activeRuns": [
+			  "currentLanesComplete": true,
+			  "currentLanes": [
 			    {
 			      "run_id": "run-live",
 			      "issue_identifier": "XY-672",
@@ -599,11 +599,11 @@ final class AccountModelTests: XCTestCase {
 			"""
 		))
 
-		XCTAssertEqual(store.operatorSnapshot?.activeRuns.map(\.runID), ["run-live"])
-		XCTAssertEqual(store.operatorSnapshot?.activeRuns(for: account).map(\.runID), ["run-live"])
+		XCTAssertEqual(store.operatorSnapshot?.currentLanes.map(\.runID), ["run-live"])
+		XCTAssertEqual(store.operatorSnapshot?.currentLanes(for: account).map(\.runID), ["run-live"])
 	}
 
-	func testPartialRunActivityPreservesSnapshotActiveRuns() throws {
+	func testPartialRunActivityPreservesSnapshotCurrentLanes() throws {
 		let account = makeAccount(
 			status: "available",
 			email: "copy@example.com",
@@ -611,11 +611,11 @@ final class AccountModelTests: XCTestCase {
 		)
 		let snapshotPayload = """
 		{
-		  "active_runs": [
+		  "current_lanes": [
 		    {
 		      "run_id": "run-689",
 		      "issue_identifier": "XY-689",
-		      "active_lease": true,
+		      "run_lease": true,
 		      "account": {
 		        "email": "copy@example.com",
 		        "account_fingerprint": "...123456"
@@ -624,7 +624,7 @@ final class AccountModelTests: XCTestCase {
 		    {
 		      "run_id": "run-690",
 		      "issue_identifier": "XY-690",
-		      "active_lease": true,
+		      "run_lease": true,
 		      "account": {
 		        "email": "copy@example.com",
 		        "account_fingerprint": "...123456"
@@ -635,8 +635,8 @@ final class AccountModelTests: XCTestCase {
 		""".data(using: .utf8)!
 		let activityPayload = """
 		{
-		  "activeRunsComplete": false,
-		  "activeRuns": [
+		  "currentLanesComplete": false,
+		  "currentLanes": [
 		    {
 		      "run_id": "run-690",
 		      "issue_identifier": "XY-690",
@@ -653,14 +653,14 @@ final class AccountModelTests: XCTestCase {
 		let event = try JSONDecoder()
 			.decode(OperatorDashboardSocketPayload.self, from: activityPayload)
 		let overlay = OperatorRunActivitySnapshot(
-			activeRuns: event.activeRuns ?? [],
-			activeRunsComplete: event.activeRunsComplete ?? true,
+			currentLanes: event.currentLanes ?? [],
+			currentLanesComplete: event.currentLanesComplete ?? true,
 			emittedAt: Date(timeIntervalSince1970: 30)
 		)
 		let merged = overlay.merging(into: snapshot)
 
-		XCTAssertEqual(merged.activeRuns.map(\.runID), ["run-689", "run-690"])
-		XCTAssertEqual(merged.activeRuns(for: account).map(\.runID), ["run-689", "run-690"])
+		XCTAssertEqual(merged.currentLanes.map(\.runID), ["run-689", "run-690"])
+		XCTAssertEqual(merged.currentLanes(for: account).map(\.runID), ["run-689", "run-690"])
 	}
 
 	func testPartialRunActivityRecomputesProjectRunningLaneCounts() throws {
@@ -669,11 +669,11 @@ final class AccountModelTests: XCTestCase {
 		  "projects": [
 		    {
 		      "project_id": "pubfi-platform",
-		      "active_run_count": 1,
+		      "current_lane_count": 1,
 		      "running_lane_count": 1
 		    }
 		  ],
-		  "active_runs": [
+		  "current_lanes": [
 		    {
 		      "run_id": "run-stopped",
 		      "project_id": "pubfi-platform",
@@ -686,21 +686,21 @@ final class AccountModelTests: XCTestCase {
 		""".data(using: .utf8)!
 		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
 		let overlay = OperatorRunActivitySnapshot(
-			activeRuns: [],
-			activeRunsComplete: false,
+			currentLanes: [],
+			currentLanesComplete: false,
 			emittedAt: Date(timeIntervalSince1970: 30)
 		)
 		let merged = overlay.merging(into: snapshot)
 		let project = try XCTUnwrap(merged.projects.first)
 
-		XCTAssertEqual(merged.activeRuns.map(\.runID), ["run-stopped"])
-		XCTAssertEqual(project.activeRunCount, 1)
+		XCTAssertEqual(merged.currentLanes.map(\.runID), ["run-stopped"])
+		XCTAssertEqual(project.currentLaneCount, 1)
 		XCTAssertEqual(project.runningLaneCount, 0)
-		XCTAssertEqual(merged.activeRunCount, 1)
+		XCTAssertEqual(merged.currentLaneCount, 1)
 		XCTAssertEqual(merged.runningLaneCount, 0)
 	}
 
-	func testEmptyPartialRunActivityPreservesSnapshotActiveRuns() throws {
+	func testEmptyPartialRunActivityPreservesSnapshotCurrentLanes() throws {
 		let account = makeAccount(
 			status: "available",
 			email: "copy@example.com",
@@ -708,11 +708,11 @@ final class AccountModelTests: XCTestCase {
 		)
 		let snapshotPayload = """
 		{
-		  "active_runs": [
+		  "current_lanes": [
 		    {
 		      "run_id": "run-689",
 		      "issue_identifier": "XY-689",
-		      "active_lease": true,
+		      "run_lease": true,
 		      "account": {
 		        "email": "copy@example.com",
 		        "account_fingerprint": "...123456"
@@ -723,17 +723,17 @@ final class AccountModelTests: XCTestCase {
 		""".data(using: .utf8)!
 		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
 		let overlay = OperatorRunActivitySnapshot(
-			activeRuns: [],
-			activeRunsComplete: false,
+			currentLanes: [],
+			currentLanesComplete: false,
 			emittedAt: Date(timeIntervalSince1970: 30)
 		)
 		let merged = overlay.merging(into: snapshot)
 
-		XCTAssertEqual(merged.activeRuns.map(\.runID), ["run-689"])
-		XCTAssertEqual(merged.activeRuns(for: account).map(\.runID), ["run-689"])
+		XCTAssertEqual(merged.currentLanes.map(\.runID), ["run-689"])
+		XCTAssertEqual(merged.currentLanes(for: account).map(\.runID), ["run-689"])
 	}
 
-	func testCompleteRunActivityReplacesSnapshotActiveRuns() throws {
+	func testCompleteRunActivityReplacesSnapshotCurrentLanes() throws {
 		let account = makeAccount(
 			status: "available",
 			email: "copy@example.com",
@@ -741,11 +741,11 @@ final class AccountModelTests: XCTestCase {
 		)
 		let snapshotPayload = """
 		{
-		  "active_runs": [
+		  "current_lanes": [
 		    {
 		      "run_id": "run-689",
 		      "issue_identifier": "XY-689",
-		      "active_lease": true,
+		      "run_lease": true,
 		      "account": {
 		        "email": "copy@example.com",
 		        "account_fingerprint": "...123456"
@@ -754,7 +754,7 @@ final class AccountModelTests: XCTestCase {
 		    {
 		      "run_id": "run-690",
 		      "issue_identifier": "XY-690",
-		      "active_lease": true,
+		      "run_lease": true,
 		      "account": {
 		        "email": "copy@example.com",
 		        "account_fingerprint": "...123456"
@@ -765,8 +765,8 @@ final class AccountModelTests: XCTestCase {
 		""".data(using: .utf8)!
 		let activityPayload = """
 		{
-		  "activeRunsComplete": true,
-		  "activeRuns": [
+		  "currentLanesComplete": true,
+		  "currentLanes": [
 		    {
 		      "run_id": "run-690",
 		      "issue_identifier": "XY-690",
@@ -783,14 +783,14 @@ final class AccountModelTests: XCTestCase {
 		let event = try JSONDecoder()
 			.decode(OperatorDashboardSocketPayload.self, from: activityPayload)
 		let overlay = OperatorRunActivitySnapshot(
-			activeRuns: event.activeRuns ?? [],
-			activeRunsComplete: event.activeRunsComplete ?? true,
+			currentLanes: event.currentLanes ?? [],
+			currentLanesComplete: event.currentLanesComplete ?? true,
 			emittedAt: Date(timeIntervalSince1970: 30)
 		)
 		let merged = overlay.merging(into: snapshot)
 
-		XCTAssertEqual(merged.activeRuns.map(\.runID), ["run-690"])
-		XCTAssertEqual(merged.activeRuns(for: account).map(\.runID), ["run-690"])
+		XCTAssertEqual(merged.currentLanes.map(\.runID), ["run-690"])
+		XCTAssertEqual(merged.currentLanes(for: account).map(\.runID), ["run-690"])
 	}
 
 	func testNewerEmptyRunActivityClearsSnapshotRuns() throws {
@@ -801,7 +801,7 @@ final class AccountModelTests: XCTestCase {
 		)
 		let snapshotPayload = """
 		{
-		  "active_runs": [
+		  "current_lanes": [
 		    {
 		      "run_id": "run-old",
 		      "issue_identifier": "XY-672",
@@ -815,13 +815,13 @@ final class AccountModelTests: XCTestCase {
 		""".data(using: .utf8)!
 		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
 		let overlay = OperatorRunActivitySnapshot(
-			activeRuns: [],
-			activeRunsComplete: true,
+			currentLanes: [],
+			currentLanesComplete: true,
 			emittedAt: Date(timeIntervalSince1970: 30)
 		)
 		let merged = overlay.merging(into: snapshot)
 
-		XCTAssertTrue(merged.activeRuns(for: account).isEmpty)
+		XCTAssertTrue(merged.currentLanes(for: account).isEmpty)
 	}
 
 	@MainActor
@@ -839,7 +839,7 @@ final class AccountModelTests: XCTestCase {
 			{
 			  "snapshotPublishedAtUnixEpoch": 20,
 			  "snapshot": {
-			    "active_runs": []
+			    "current_lanes": []
 			  }
 			}
 			"""
@@ -849,8 +849,8 @@ final class AccountModelTests: XCTestCase {
 			payload: """
 			{
 			  "emittedAtUnixEpoch": 30,
-			  "activeRunsComplete": true,
-			  "activeRuns": [
+			  "currentLanesComplete": true,
+			  "currentLanes": [
 			    {
 			      "run_id": "run-live",
 			      "issue_identifier": "XY-672",
@@ -869,13 +869,13 @@ final class AccountModelTests: XCTestCase {
 			{
 			  "snapshotPublishedAtUnixEpoch": 40,
 			  "snapshot": {
-			    "active_runs": []
+			    "current_lanes": []
 			  }
 			}
 			"""
 		))
 
-		XCTAssertEqual(store.operatorSnapshot?.activeRuns(for: account).map(\.runID), ["run-live"])
+		XCTAssertEqual(store.operatorSnapshot?.currentLanes(for: account).map(\.runID), ["run-live"])
 	}
 
 	@MainActor
@@ -893,7 +893,7 @@ final class AccountModelTests: XCTestCase {
 			{
 			  "snapshotPublishedAtUnixEpoch": 20,
 			  "snapshot": {
-			    "active_runs": [
+			    "current_lanes": [
 			      {
 			        "run_id": "run-live",
 			        "issue_identifier": "XY-672",
@@ -912,13 +912,13 @@ final class AccountModelTests: XCTestCase {
 			payload: """
 			{
 			  "emittedAtUnixEpoch": 30,
-			  "activeRunsComplete": true,
-			  "activeRuns": []
+			  "currentLanesComplete": true,
+			  "currentLanes": []
 			}
 			"""
 		))
 
-		XCTAssertTrue(store.operatorSnapshot?.activeRuns(for: account).isEmpty ?? false)
+		XCTAssertTrue(store.operatorSnapshot?.currentLanes(for: account).isEmpty ?? false)
 	}
 
 	@MainActor
@@ -936,7 +936,7 @@ final class AccountModelTests: XCTestCase {
 			{
 			  "snapshotPublishedAtUnixEpoch": 20,
 			  "snapshot": {
-			    "active_runs": [
+			    "current_lanes": [
 			      {
 			        "run_id": "run-live",
 			        "issue_identifier": "XY-672",
@@ -955,12 +955,12 @@ final class AccountModelTests: XCTestCase {
 			payload: """
 			{
 			  "emittedAtUnixEpoch": 30,
-			  "activeRunsComplete": true,
-			  "activeRuns": []
+			  "currentLanesComplete": true,
+			  "currentLanes": []
 			}
 			"""
 		))
-		XCTAssertTrue(store.operatorSnapshot?.activeRuns(for: account).isEmpty ?? false)
+		XCTAssertTrue(store.operatorSnapshot?.currentLanes(for: account).isEmpty ?? false)
 
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "snapshot",
@@ -968,7 +968,7 @@ final class AccountModelTests: XCTestCase {
 			{
 			  "snapshotPublishedAtUnixEpoch": 40,
 			  "snapshot": {
-			    "active_runs": [
+			    "current_lanes": [
 			      {
 			        "run_id": "run-returned",
 			        "issue_identifier": "XY-934",
@@ -983,7 +983,7 @@ final class AccountModelTests: XCTestCase {
 			"""
 		))
 
-		XCTAssertEqual(store.operatorSnapshot?.activeRuns(for: account).map(\.runID), ["run-returned"])
+		XCTAssertEqual(store.operatorSnapshot?.currentLanes(for: account).map(\.runID), ["run-returned"])
 	}
 
 	func testOperatorSnapshotWarningSummaryUsesRawWarningToken() throws {
