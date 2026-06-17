@@ -154,11 +154,18 @@ Program, and issue mappings. It never applies or removes service queue labels; r
 mapped nodes are dispatched directly by the Program scheduler instead of being
 converted into queued-label work.
 
-`decodex mcp serve --transport stdio` starts the phase-one read-only MCP gateway for
-local desktop and CLI clients. The gateway exposes checked-in documentation, checked-in
-JSON research reports, runtime Decision Contract readback, local status snapshots, and
-lane-control readback as MCP resources only. It does not expose mutating MCP tools.
-Stdout is reserved for MCP JSON-RPC messages; diagnostics and logs stay off stdout.
+`decodex mcp serve --transport stdio` starts the local MCP gateway for desktop and
+CLI clients. The gateway advertises resources, resource templates, prompts, tools,
+logging compatibility, and progress notifications over stdio. Resources expose
+checked-in documentation, checked-in JSON research reports, runtime Decision Contract
+readback, local status snapshots, and lane-control readback. The initial tool catalog
+is schema-bound and deliberately small. Local stdio defaults to the `admin` capability
+profile and can be narrowed with `--capability-profile observe|plan|operate|admin`;
+`tools/list` filters by the active profile and `tools/call` returns structured
+refusals for tools above it. Observe and plan are read-oriented, while operate/admin
+lane-control entries return structured refusal states until the later lane-control MCP
+work lands. Stdout is reserved for MCP JSON-RPC messages; diagnostics and logs stay
+off stdout.
 
 ### Project contracts
 

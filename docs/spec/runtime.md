@@ -6,8 +6,8 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
-drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, protocol_events, decodex intake goal, program_issue_mappings]
+code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
+drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, protocol_events, decodex mcp serve --transport stdio, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings]
 last_verified: 2026-06-18
 ---
 # Runtime Specification
@@ -80,11 +80,18 @@ state or this state machine.
 - `decodex research compile` and `decodex research promote` are runtime-local
   Decision Contract writes. They update the SQLite `decision_contracts` surface and do
   not by themselves create Linear issues, queue intent, goals, or executable lanes.
-- `decodex mcp serve --transport stdio` is the local read-only MCP gateway. Phase one
-  exposes MCP resources that read checked-in docs, checked-in JSON research reports,
-  runtime Decision Contracts, local status snapshots, and lane-control readback. It
-  must not expose mutating MCP tools, and stdout must contain only valid MCP JSON-RPC
-  messages.
+- `decodex mcp serve --transport stdio` is the local MCP gateway for desktop and CLI
+  clients. The stdio gateway advertises resources, resource templates, prompts, tools,
+  logging compatibility, and progress notifications. Resources read checked-in docs,
+  checked-in JSON research reports, runtime Decision Contracts, local status
+  snapshots, and lane-control readback. Tools are schema-bound and deliberately small:
+  observe and plan provide read-oriented structured results, while operate/admin
+  lane-control entries return structured refusal states until the dedicated
+  lane-control MCP work delegates through existing authority gates. Local stdio
+  defaults to the `admin` capability profile and can be narrowed with
+  `--capability-profile observe|plan|operate|admin`; tool discovery is filtered by the
+  active profile and above-profile calls return structured refusals. Stdout must
+  contain only valid MCP JSON-RPC messages.
 - `decodex intake goal <CONTRACT_ID> --dry-run` is a tracker-read-only and
   runtime-read-only operator surface for promoted Decision Contracts. It renders the
   proposed normal Linear issue split, dependencies, conflict domains, and dispatch plan
@@ -1004,9 +1011,12 @@ After a process restart, recent-run history, run lease ownership, retained post-
 - Operator snapshots may expose an additive `protocol_activity` object derived from app-server structured messages for the current run. The object stays local/operator-only and should summarize turn status, waiting reason, rate-limit status, and a compact recent event list for high-value app-server activity such as `turn/started`, `turn/completed`, plan updates, diff updates, item start/completion, command output deltas, server request responses, account updates, and rate-limit updates. Missing `protocol_activity` means no structured summary was captured yet; consumers must continue to rely on the older `event_count`, `last_event_type`, `last_event_at`, thread fields, and `child_agent_activity` fields when it is absent. Presence in `protocol_activity` is not by itself meaningful progress; non-work account, rate-limit, phase-goal, passive status, warning, model-routing, and token-usage events must remain distinguishable from work-progress events through `last_progress_at` and `progress_diagnostic`.
 - The operator snapshot transport must stay local/operator-only. `decodex serve` exposes the human-facing operator console from the canonical HTTP `GET /` and `GET /dashboard` routes, serves only the necessary dashboard assets, `GET /livez` liveness probe, and local account-control API over HTTP, and delivers published snapshots, current-lane activity, and dashboard control acknowledgements through the local `GET /dashboard/control` WebSocket upgrade.
 - The MCP stdio transport is separate from the operator HTTP/WebSocket transport. It is
-  local-client integration for resource readback only; it must not replace the app-server
-  dynamic tool bridge or become a lane-control mutation path before a later authority
-  design delegates through existing lane-control guards.
+  local-client integration for core MCP primitives over stdio only: resources,
+  templates, prompts, schema-bound tools, logging compatibility, progress
+  notifications, and stdio capability-profile filtering. Streamable HTTP endpoint,
+  session, origin, and SSE behavior belongs to later MCP transport work. MCP tools must
+  not replace the app-server dynamic tool bridge or become a lane-control mutation path
+  before a later authority design delegates through existing lane-control guards.
 - `GET /livez` is only a process- and listener-level liveness probe. It must not claim control-plane tick freshness or forward progress by itself.
 - The dashboard must not depend on a separate HTTP snapshot or readiness endpoint; snapshot freshness belongs to the WebSocket-delivered snapshot payload and the browser connection state.
 - Reconciliation must mark locally active run attempts as `interrupted` when their
