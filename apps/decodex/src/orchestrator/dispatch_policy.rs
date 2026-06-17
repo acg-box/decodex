@@ -735,7 +735,6 @@ fn cleanup_completed_post_review_lane(
 	let git_credentials = GitCredentialSource::new(
 		project.github().token_env_var(),
 		&github_token,
-		project.worktree_root(),
 	);
 
 	default_branch_sync::sync_repo_root_default_branch(
