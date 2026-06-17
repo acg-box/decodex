@@ -579,17 +579,30 @@ struct McpServeCommand {
 	/// MCP transport.
 	#[arg(long, value_enum, default_value_t = McpTransport::Stdio)]
 	transport: McpTransport,
-	/// Capability profile exposed by the MCP gateway.
-	#[arg(long, value_enum, default_value_t = mcp::McpCapabilityProfile::Admin)]
-	capability_profile: McpCapabilityProfile,
+	/// Capability profile exposed by the MCP gateway. Defaults to admin for stdio and observe for
+	/// Streamable HTTP.
+	#[arg(long, value_enum)]
+	capability_profile: Option<McpCapabilityProfile>,
+	/// Streamable HTTP listen address.
+	#[arg(long, value_name = "ADDR", default_value_t = mcp::DEFAULT_MCP_HTTP_LISTEN_ADDRESS.to_owned())]
+	listen_address: String,
+	/// Trusted browser Origin for Streamable HTTP. Repeat for multiple origins.
+	#[arg(long = "allow-origin", value_name = "ORIGIN")]
+	allowed_origins: Vec<String>,
 }
 impl McpServeCommand {
 	fn run(&self) -> Result<()> {
 		mcp::serve(McpServeRequest {
 			transport: self.transport,
 			config_path: self.project_config.as_path(),
-			capability_profile: self.capability_profile,
+			capability_profile: self.effective_capability_profile(),
+			listen_address: &self.listen_address,
+			allowed_origins: &self.allowed_origins,
 		})
+	}
+
+	fn effective_capability_profile(&self) -> McpCapabilityProfile {
+		self.capability_profile.unwrap_or_else(|| self.transport.default_capability_profile())
 	}
 }
 
@@ -1788,8 +1801,8 @@ mod tests {
 
 	use clap::Parser;
 
-	use crate::{
-		cli::{
+	use crate::mcp;
+	use crate::{cli::{
 			AccountCommand, AccountSubcommand, AccountUseCommand, AppCommand, AttemptCommand, Cli,
 			Command, CommitCommand, DiagnoseCommand, DocsCommand, DocsRouteCommand, DocsSubcommand,
 			EvidenceCommand, IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand,
@@ -1802,9 +1815,7 @@ mod tests {
 			ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
 			ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand,
 			ServeCommand, StatusCommand,
-		},
-		mcp::{McpCapabilityProfile, McpTransport},
-	};
+		}, mcp::{McpCapabilityProfile, McpTransport}};
 
 	#[test]
 	fn parses_app_command() {
@@ -2123,7 +2134,33 @@ mod tests {
 
 		assert_eq!(serve.project_config.config.as_deref(), Some(Path::new("./project.toml")));
 		assert_eq!(serve.transport, McpTransport::Stdio);
-		assert_eq!(serve.capability_profile, McpCapabilityProfile::Admin);
+		assert_eq!(serve.effective_capability_profile(), McpCapabilityProfile::Admin);
+		assert_eq!(serve.listen_address, mcp::DEFAULT_MCP_HTTP_LISTEN_ADDRESS);
+		assert!(serve.allowed_origins.is_empty());
+	}
+
+	#[test]
+	fn parses_mcp_streamable_http_serve_with_safe_profile_default() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"mcp",
+			"serve",
+			"--transport",
+			"streamable-http",
+			"--listen-address",
+			"127.0.0.1:8194",
+			"--allow-origin",
+			"http://127.0.0.1:8194",
+		]);
+		let Command::Mcp(command) = cli.command else {
+			panic!("expected mcp command");
+		};
+		let McpSubcommand::Serve(serve) = command.command;
+
+		assert_eq!(serve.transport, McpTransport::StreamableHttp);
+		assert_eq!(serve.effective_capability_profile(), McpCapabilityProfile::Observe);
+		assert_eq!(serve.listen_address, "127.0.0.1:8194");
+		assert_eq!(serve.allowed_origins, vec!["http://127.0.0.1:8194"]);
 	}
 
 	#[test]

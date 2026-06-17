@@ -1,22 +1,22 @@
 ---
 type: Evidence
 title: Decodex Plugin Eval
-description: Records plugin-eval results for the Decodex portable OKF, repo-memory, docs, and research skills.
+description: Records plugin-eval results for the Decodex plugin, routing skill, portable OKF, repo-memory, docs, and research skills.
 status: active
 authority: evidence
 owner: docs
 tags: [plugin-eval, skills, docs, research, okf, repo-memory]
 source_refs: []
-code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/okf-layer.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/docs/SKILL.md, plugins/decodex/skills/docs-okf/SKILL.md, plugins/decodex/skills/docs-wiki/SKILL.md, plugins/decodex/skills/docs-drift/SKILL.md, plugins/decodex/skills/research/SKILL.md]
+code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/okf-layer.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/docs/SKILL.md, plugins/decodex/skills/docs-okf/SKILL.md, plugins/decodex/skills/docs-wiki/SKILL.md, plugins/decodex/skills/docs-drift/SKILL.md, plugins/decodex/skills/research/SKILL.md]
 related: [../policy.md, ./docs-self-iteration.md]
-last_verified: 2026-06-17
+last_verified: 2026-06-18
 ---
 
 # Decodex Plugin Eval
 
-Purpose: Preserve public-safe evidence that the Decodex plugin, portable OKF init and
-skill family, repo-memory writer skill, and docs skill family passed local plugin
-evaluation.
+Purpose: Preserve public-safe evidence that the Decodex plugin, routing skill,
+portable OKF init and skill family, repo-memory writer skill, and docs skill family
+passed local plugin evaluation.
 
 Read this when: You need proof that the OKF init/split, repo-memory writer, docs skill
 split, research skill split, and plugin invocation policy were evaluated before
@@ -29,16 +29,10 @@ Covers: Static plugin-eval commands, score results, and the invocation-policy de
 
 ## Commands
 
+Current full-plugin gate:
+
 ```sh
-node /Users/x/.codex/plugins/cache/openai-curated/plugin-eval/43313cc9/scripts/plugin-eval.js analyze plugins/decodex --format json
-node /Users/x/.codex/plugins/cache/openai-curated/plugin-eval/43313cc9/scripts/plugin-eval.js analyze plugins/decodex/skills/okf --format json
-node /Users/x/.codex/plugins/cache/openai-curated/plugin-eval/43313cc9/scripts/plugin-eval.js analyze plugins/decodex/skills/okf-query --format json
-node /Users/x/.codex/plugins/cache/openai-curated/plugin-eval/43313cc9/scripts/plugin-eval.js analyze plugins/decodex/skills/okf-maintain --format json
-node /Users/x/.codex/plugins/cache/openai-curated/plugin-eval/43313cc9/scripts/plugin-eval.js analyze plugins/decodex/skills/repo-memory-writer --format markdown
-node /Users/x/.codex/plugins/cache/openai-curated/plugin-eval/43313cc9/scripts/plugin-eval.js analyze plugins/decodex/skills/docs --format json
-node /Users/x/.codex/plugins/cache/openai-curated/plugin-eval/43313cc9/scripts/plugin-eval.js analyze plugins/decodex/skills/docs-okf --format json
-node /Users/x/.codex/plugins/cache/openai-curated/plugin-eval/43313cc9/scripts/plugin-eval.js analyze plugins/decodex/skills/docs-wiki --format json
-node /Users/x/.codex/plugins/cache/openai-curated/plugin-eval/43313cc9/scripts/plugin-eval.js analyze plugins/decodex/skills/docs-drift --format json
+node ~/.codex/plugins/cache/openai-curated/plugin-eval/015c0dff/scripts/plugin-eval.js analyze plugins/decodex --format markdown
 ```
 
 ## Results
@@ -66,6 +60,7 @@ Implicit skills:
 - `decodex`
 - `docs`
 - `planning`
+- `repo-memory-curator`
 - `research`
 
 Explicit-only skills:
@@ -81,6 +76,7 @@ Explicit-only skills:
 - `okf`
 - `okf-maintain`
 - `okf-query`
+- `repo-memory-evaluator`
 - `repo-memory-writer`
 - `research-challenge`
 - `research-decision`
@@ -92,7 +88,8 @@ Explicit-only skills:
 
 ## Limits
 
-The evaluation is static plugin analysis, not a measured real-usage benchmark. It is
-sufficient for the skill/plugin change gate in this lane because plugin-eval reported
-no warning or failing checks after the OKF split, repo-memory writer addition, and
-invocation-policy adjustment.
+The evaluation is static plugin analysis, not a measured real-usage benchmark. The
+2026-06-18 full-plugin rerun reported score 100/100, grade A, low risk, zero failing
+checks, zero warning checks, and two informational notes. That is sufficient for the
+MCP routing skill change because the remaining notes are coverage and observed-usage
+availability, not safety, routing, authority, or progressive-disclosure failures.

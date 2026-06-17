@@ -21,6 +21,12 @@ labels, automation, commit, or landing boundaries.
   recovery inspection, commit, or landing.
 - Labels: use `labels` only for ordinary non-Program tracker intake and retained-lane
   ownership signals.
+- MCP gateway: use `decodex mcp serve --transport stdio` for local MCP clients and
+  `decodex mcp serve --transport streamable-http` only for remote permitted clients
+  behind the operator's chosen local listener, tunnel, or relay. Treat MCP resources,
+  prompts, and tools as a typed facade over existing Decodex docs/runtime authority,
+  not as a replacement for Decision Contract, lane-control, tracker, review, landing,
+  or closeout gates.
 
 ## First Reads
 
@@ -73,6 +79,9 @@ work. If issue-authority land reports missing retained handoff state, dry-run
   owns Decodex issue shaping after execution authority exists.
 - Do not hand-edit runtime DB rows, kill hidden `_attempt` children, or mutate Linear
   state to simulate lane controls.
+- Do not use MCP tools to bypass Decision Contract promotion, lane-control
+  preconditions, tracker-tool boundaries, review handoff, landing, closeout, or
+  existing runtime authority.
 - Do not substitute raw GitHub merge, merge queue, `gh pr merge`, direct API mutation,
   or hand-assembled merge commits for `decodex land` when Decodex owns landing.
 - Do not expose graph ids, DAG edge editing, hidden goal ids, or Program dispatch
