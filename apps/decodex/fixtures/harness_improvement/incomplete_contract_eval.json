@@ -58,9 +58,9 @@
       "risk_notes": [
         "A future agent could implement from latent evidence if the issue template omits the authority field."
       ],
-      "proposed_issue_summaries": [],
+      "proposed_issues": [],
       "conflict_domains": [],
-      "queue_intent": []
+      "promotion_targets": []
     },
     "links": {
       "generated_issue_ids": [],

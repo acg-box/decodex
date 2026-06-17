@@ -11,7 +11,7 @@ Before promotion:
 
 - identify the accepted contract
 - preserve objectives, non-goals, constraints, assumptions, objections, validation
-  expectations, issue summaries, and stop conditions
+  expectations, structured proposed issues, and stop conditions
 - refuse promotion while unresolved decisions, evidence gaps, or blockers remain
 
 ## Durable Lanes
@@ -36,4 +36,3 @@ companion execution surfaces, not `promotes_to` lanes.
 
 After promotion, route accepted execution work to `planning`. Program Intake may then
 persist Execution Program readiness and dispatch ready mapped nodes directly.
-
