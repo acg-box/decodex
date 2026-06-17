@@ -1,5 +1,3 @@
-use rusqlite::Connection;
-
 #[test]
 fn failure_comments_use_repo_relative_worktree_paths() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();

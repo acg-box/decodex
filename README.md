@@ -302,13 +302,18 @@ Runtime checks follow the Decodex task structure:
 cargo make check
 cargo make fmt
 cargo make lint
+cargo make lint-fix
 cargo make test
 ```
 
-Node package checks are available separately:
+Use `lint` for the read-only lint gate and `lint-fix` for the canonicalizing lint
+path used by registered Decodex workflow gates.
+
+Node package type checks and builds are available separately:
 
 ```sh
 cargo make check-node
+cargo make build-node
 ```
 
 ## Workspace Layout

@@ -131,7 +131,7 @@ fn repo_gate_falls_back_to_full_gate_when_changed_file_classification_is_unavail
 		orchestrator::select_repo_gate_for_worktree(workflow.frontmatter().execution(), repo_root);
 
 	assert_eq!(selection.profile_name(), None);
-	assert_eq!(selection.canonicalize_commands(), ["cargo make fmt", "cargo make lint"]);
+	assert_eq!(selection.canonicalize_commands(), ["cargo make fmt", "cargo make lint-fix"]);
 	assert_eq!(selection.verify_commands(), ["cargo make check"]);
 }
 
