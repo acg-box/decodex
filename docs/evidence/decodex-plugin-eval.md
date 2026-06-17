@@ -14,11 +14,11 @@ last_verified: 2026-06-17
 
 # Decodex Plugin Eval
 
-Purpose: Preserve public-safe evidence that the Decodex plugin, portable OKF skill
-family, and docs skill family passed local plugin evaluation.
+Purpose: Preserve public-safe evidence that the Decodex plugin, portable OKF init and
+skill family, and docs skill family passed local plugin evaluation.
 
-Read this when: You need proof that the OKF split, docs skill split, research skill
-split, and plugin invocation policy were evaluated before landing.
+Read this when: You need proof that the OKF init/split, docs skill split, research
+skill split, and plugin invocation policy were evaluated before landing.
 
 Not this document: A runtime benchmark, coverage report, or replacement for
 `plugin-eval` output.

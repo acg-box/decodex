@@ -347,6 +347,7 @@ fn packaged_okf_skills_preserve_portable_profile_boundary() {
 
 	assert_contains(&okf_surface, "portable OKF");
 	assert_contains(&okf_surface, "LLM Wiki");
+	assert_contains(&okf_surface, "decodex okf init");
 	assert_contains(&okf_surface, "decodex okf check");
 	assert_contains(&okf_surface, "decodex okf find");
 	assert_contains(&okf_surface, "decodex okf graph");
