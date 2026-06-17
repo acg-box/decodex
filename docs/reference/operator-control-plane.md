@@ -194,7 +194,8 @@ ledger records and do not automatically edit prompts, skills, validators, issue
 templates, or loop policy.
 The same private-evidence readback exposes compact review checkpoint, architecture
 recovery, and authority-boundary summaries for the selected run/attempt: review phase,
-status, head, round, finding counts; recovery reason, boundary disposition, budget;
+status, head, compatibility round, active/stop finding fingerprints, finding counts;
+recovery reason, boundary disposition, budget;
 and boundary disposition, reason, attempted recovery, changed-surface count, and
 improvement-signal count. These summaries are safe operator readback; raw reviewer
 finding bodies, changed-surface payloads, retained diffs, logs, and transcripts remain

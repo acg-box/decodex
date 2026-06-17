@@ -290,6 +290,8 @@ struct PrivateEvidenceReviewCheckpointSummary {
 	status: String,
 	head_sha: Option<String>,
 	round: Option<u64>,
+	active_fingerprints: Vec<String>,
+	stop_fingerprint: Option<String>,
 	accepted_finding_count: usize,
 	rejected_finding_count: usize,
 	next_action: String,
@@ -842,6 +844,8 @@ fn review_checkpoint_from_private_event(
 		.or_else(|| payload.get("rejected_findings"))
 		.and_then(Value::as_array)
 		.map_or(0, Vec::len);
+	let (active_fingerprints, stop_fingerprint) =
+		review_checkpoint_fingerprint_summary(payload);
 	let next_action = review_checkpoint_next_action(&status);
 
 	Some(PrivateEvidenceReviewCheckpointSummary {
@@ -849,10 +853,35 @@ fn review_checkpoint_from_private_event(
 		status,
 		head_sha,
 		round,
+		active_fingerprints,
+		stop_fingerprint,
 		accepted_finding_count,
 		rejected_finding_count,
 		next_action,
 	})
+}
+
+fn review_checkpoint_fingerprint_summary(payload: &Value) -> (Vec<String>, Option<String>) {
+	let policy = payload
+		.get("review")
+		.and_then(|review| review.get("finding_policy"));
+	let active_source = payload
+		.get("active_fingerprints")
+		.or_else(|| policy.and_then(|policy| policy.get("active_fingerprints")));
+	let active_fingerprints = active_source
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(Value::as_str)
+		.map(str::to_owned)
+		.collect();
+	let stop_fingerprint = payload
+		.get("stop_fingerprint")
+		.and_then(Value::as_str)
+		.or_else(|| policy.and_then(|policy| policy.get("stop_fingerprint")).and_then(Value::as_str))
+		.map(str::to_owned);
+
+	(active_fingerprints, stop_fingerprint)
 }
 
 fn review_checkpoint_next_action(status: &str) -> String {
@@ -1295,14 +1324,21 @@ fn append_private_evidence_review_checkpoints(
 		output.push_str("- none\n");
 	} else {
 		for checkpoint in review_checkpoints {
+			let active_fingerprints = if checkpoint.active_fingerprints.is_empty() {
+				String::from("none")
+			} else {
+				checkpoint.active_fingerprints.join(", ")
+			};
 			output.push_str(&format!(
-				"- phase: {}\n  status: {}\n  head_sha: {}\n  round: {}\n  accepted_findings: {}\n  rejected_findings: {}\n  next_action: {}\n",
+				"- phase: {}\n  status: {}\n  head_sha: {}\n  round: {}\n  active_fingerprints: {}\n  stop_fingerprint: {}\n  accepted_findings: {}\n  rejected_findings: {}\n  next_action: {}\n",
 				checkpoint.phase,
 				checkpoint.status,
 				checkpoint.head_sha.as_deref().unwrap_or("none"),
 				checkpoint
 					.round
 					.map_or_else(|| String::from("none"), |round| round.to_string()),
+				active_fingerprints,
+				checkpoint.stop_fingerprint.as_deref().unwrap_or("none"),
 				checkpoint.accepted_finding_count,
 				checkpoint.rejected_finding_count,
 				checkpoint.next_action

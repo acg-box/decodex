@@ -568,6 +568,7 @@ impl DynamicToolCallResponse {
 pub(crate) struct ReviewPolicyStopRequested {
 	pub(crate) head_sha: String,
 	pub(crate) issue_identifier: String,
+	pub(crate) fingerprint: Option<String>,
 	pub(crate) nonclean_rounds: Option<i64>,
 	pub(crate) reason: ReviewPolicyStopReason,
 	pub(crate) run_id: String,
@@ -577,11 +578,14 @@ impl Display for ReviewPolicyStopRequested {
 		match self.reason {
 			ReviewPolicyStopReason::Exhausted => write!(
 				f,
-				"Run `{}` for issue `{}` exhausted the runtime-owned review convergence budget at HEAD `{}` after {} non-clean rounds.",
+				"Run `{}` for issue `{}` exhausted the runtime-owned review convergence budget at HEAD `{}` after {} non-clean rounds{}.",
 				self.run_id,
 				self.issue_identifier,
 				self.head_sha,
-				self.nonclean_rounds.unwrap_or_default()
+				self.nonclean_rounds.unwrap_or_default(),
+				self.fingerprint.as_ref().map_or_else(String::new, |fingerprint| format!(
+					" for finding fingerprint `{fingerprint}`"
+				))
 			),
 			ReviewPolicyStopReason::ArchitectureReviewRequired => write!(
 				f,
@@ -852,8 +856,10 @@ struct ReviewCheckpointFindingArgs {
 	summary: String,
 	#[serde(default)]
 	evidence: Vec<String>,
+	kind: Option<String>,
 	file: Option<String>,
 	line: Option<u64>,
+	line_range: Option<ReviewCheckpointLineRangeArgs>,
 	guidance: String,
 }
 
@@ -865,8 +871,17 @@ struct ReviewCheckpointRejectedFindingArgs {
 	rejection_reason: String,
 	#[serde(default)]
 	evidence: Vec<String>,
+	kind: Option<String>,
 	file: Option<String>,
 	line: Option<u64>,
+	line_range: Option<ReviewCheckpointLineRangeArgs>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewCheckpointLineRangeArgs {
+	start: u64,
+	end: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -874,8 +889,63 @@ struct NormalizedReviewCheckpointPayload {
 	reviewer: String,
 	checks: ReviewCheckpointChecksArgs,
 	evidence: Vec<String>,
-	accepted_findings: Vec<ReviewCheckpointFindingArgs>,
-	rejected_findings: Vec<ReviewCheckpointRejectedFindingArgs>,
+	accepted_findings: Vec<NormalizedReviewCheckpointFinding>,
+	rejected_findings: Vec<NormalizedRejectedReviewCheckpointFinding>,
+	finding_policy: ReviewFindingPolicyState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct NormalizedReviewCheckpointFinding {
+	severity: String,
+	summary: String,
+	#[serde(default)]
+	evidence: Vec<String>,
+	kind: String,
+	file: Option<String>,
+	line: Option<u64>,
+	line_range: Option<ReviewCheckpointLineRangeArgs>,
+	guidance: String,
+	fingerprint: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct NormalizedRejectedReviewCheckpointFinding {
+	severity: String,
+	summary: String,
+	rejection_reason: String,
+	#[serde(default)]
+	evidence: Vec<String>,
+	kind: String,
+	file: Option<String>,
+	line: Option<u64>,
+	line_range: Option<ReviewCheckpointLineRangeArgs>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct ReviewFindingPolicyState {
+	schema: String,
+	phase: String,
+	status: String,
+	head_sha: String,
+	nonclean_rounds: i64,
+	active_fingerprints: Vec<String>,
+	stop_fingerprint: Option<String>,
+	findings: Vec<ReviewFindingPolicyRecord>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ReviewFindingPolicyRecord {
+	fingerprint: String,
+	kind: String,
+	title: String,
+	body: String,
+	file: Option<String>,
+	line_range: Option<ReviewCheckpointLineRangeArgs>,
+	first_seen_head: String,
+	last_seen_head: String,
+	status: String,
+	repeat_count: i64,
+	repair_evidence: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -918,6 +988,7 @@ struct ReviewPolicyState {
 	status: ReviewPolicyStatus,
 	head_sha: String,
 	nonclean_rounds: i64,
+	details_json: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
