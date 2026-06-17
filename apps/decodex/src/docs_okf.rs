@@ -3,6 +3,7 @@
 use std::{
 	collections::BTreeSet,
 	fs,
+	io::ErrorKind,
 	path::{Component, Path, PathBuf},
 };
 
@@ -144,6 +145,20 @@ impl OkfCheckReport {
 	}
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct OkfInitReport {
+	profile: OkfCheckProfile,
+	bundle_root: PathBuf,
+	created: Vec<PathBuf>,
+	unchanged: Vec<PathBuf>,
+}
+impl OkfInitReport {
+	/// Return the profile used for this OKF init.
+	pub(crate) fn profile(&self) -> OkfCheckProfile {
+		self.profile
+	}
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct OkfQuery {
 	/// Match a concept `type` value.
@@ -238,6 +253,67 @@ struct DocsFile {
 	relative_path: PathBuf,
 	content: Option<String>,
 	read_error: Option<String>,
+}
+
+struct OkfScaffoldFile {
+	relative_path: &'static str,
+	content: &'static str,
+}
+
+/// Initialize a portable OKF bundle with safe, idempotent scaffold files.
+pub(crate) fn init_okf_bundle(root: &Path, profile: OkfCheckProfile) -> Result<OkfInitReport> {
+	if profile == OkfCheckProfile::Decodex {
+		color_eyre::eyre::bail!(
+			"`decodex okf init` scaffolds portable profiles only; use Decodex docs policy for the `decodex` profile."
+		);
+	}
+
+	let files = okf_scaffold_files(profile);
+
+	ensure_scaffold_targets_available(root, &files)?;
+
+	fs::create_dir_all(root)?;
+
+	let mut report = OkfInitReport {
+		profile,
+		bundle_root: root.to_path_buf(),
+		created: Vec::new(),
+		unchanged: Vec::new(),
+	};
+
+	for file in files {
+		write_scaffold_file(root, file.relative_path, file.content, &mut report)?;
+	}
+
+	Ok(report)
+}
+
+/// Render a stable human-readable OKF init report.
+pub(crate) fn render_okf_init_report(report: &OkfInitReport) -> String {
+	let mut output = String::new();
+
+	output.push_str(&format!(
+		"okf init: profile={} root={} created={} unchanged={}\n",
+		report.profile().as_str(),
+		report.bundle_root.display(),
+		report.created.len(),
+		report.unchanged.len()
+	));
+
+	for path in &report.created {
+		output.push_str(&format!("- created {}\n", path.display()));
+	}
+	for path in &report.unchanged {
+		output.push_str(&format!("- unchanged {}\n", path.display()));
+	}
+
+	output.push_str(&format!(
+		"next: decodex okf check {} --profile {}\n",
+		report.bundle_root.display(),
+		report.profile.as_str()
+	));
+
+	output
 }
 
 /// Validate a docs directory as a Markdown-only OKF bundle.
@@ -488,6 +564,86 @@ pub(crate) fn route_okf_bundle(
 	matches.truncate(limit);
 
 	Ok(matches)
+}
+
+fn okf_scaffold_files(profile: OkfCheckProfile) -> Vec<OkfScaffoldFile> {
+	vec![
+		OkfScaffoldFile {
+			relative_path: "index.md",
+			content: "# OKF Bundle\n\n- [Overview](overview.md)\n\nUse this index to route agents and humans to the smallest relevant concept.\n",
+		},
+		OkfScaffoldFile {
+			relative_path: "log.md",
+			content: "# OKF Log\n\n- Initialized this portable OKF bundle scaffold.\n",
+		},
+		OkfScaffoldFile { relative_path: "overview.md", content: overview_concept(profile) },
+	]
+}
+
+fn ensure_scaffold_targets_available(root: &Path, files: &[OkfScaffoldFile]) -> Result<()> {
+	for file in files {
+		ensure_scaffold_target_available(root, file.relative_path, file.content)?;
+	}
+
+	Ok(())
+}
+
+fn ensure_scaffold_target_available(root: &Path, relative_path: &str, content: &str) -> Result<()> {
+	let path = root.join(relative_path);
+
+	match fs::read_to_string(&path) {
+		Ok(existing) if existing == content => Ok(()),
+		Ok(_) => reject_divergent_scaffold(&path),
+		Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+		Err(error) => Err(error.into()),
+	}
+}
+
+fn overview_concept(profile: OkfCheckProfile) -> &'static str {
+	match profile {
+		OkfCheckProfile::Core =>
+			"---\ntype: Knowledge Bundle\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n",
+		OkfCheckProfile::Wiki =>
+			"---\ntype: Knowledge Bundle\ntitle: OKF Bundle Overview\ndescription: Entry concept for the repository knowledge bundle.\ntags: [okf]\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n",
+		OkfCheckProfile::RepoMemory =>
+			"---\ntype: Knowledge Bundle\ntitle: OKF Bundle Overview\ndescription: Entry concept for the repository knowledge bundle.\ntags: [okf, repo-memory]\nsource_refs: []\ncode_refs: []\nrelated: []\ndrift_watch: [decodex okf check, decodex okf route]\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n",
+		OkfCheckProfile::Decodex => unreachable!("decodex profile is rejected before scaffold"),
+	}
+}
+
+fn write_scaffold_file(
+	root: &Path,
+	relative_path: &str,
+	content: &str,
+	report: &mut OkfInitReport,
+) -> Result<()> {
+	let path = root.join(relative_path);
+
+	if let Some(parent) = path.parent() {
+		fs::create_dir_all(parent)?;
+	}
+
+	match fs::read_to_string(&path) {
+		Ok(existing) if existing == content => {
+			report.unchanged.push(PathBuf::from(relative_path));
+		},
+		Ok(_) => return reject_divergent_scaffold(&path),
+		Err(error) if error.kind() == ErrorKind::NotFound => {
+			fs::write(&path, content)?;
+
+			report.created.push(PathBuf::from(relative_path));
+		},
+		Err(error) => return Err(error.into()),
+	}
+
+	Ok(())
+}
+
+fn reject_divergent_scaffold(path: &Path) -> Result<()> {
+	color_eyre::eyre::bail!(
+		"OKF scaffold target `{}` already exists with different content; move it or edit the bundle manually.",
+		path.display()
+	);
 }
 
 fn collect_files(root: &Path, dir: &Path, files: &mut Vec<DocsFile>) -> Result<()> {
@@ -1992,6 +2148,87 @@ mod tests {
 		let matches = docs_okf::route_okf_bundle(&bundle, "okf command design", 2).expect("route");
 
 		assert_eq!(matches.first().map(|matched| matched.concept.id.as_str()), Some("okf"));
+	}
+
+	#[test]
+	fn okf_init_scaffolds_repo_memory_bundle_that_passes_check() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let bundle = temp_dir.path().join("knowledge");
+		let init_report =
+			docs_okf::init_okf_bundle(&bundle, OkfCheckProfile::RepoMemory).expect("init");
+		let check_report =
+			docs_okf::run_okf_check(&bundle, OkfCheckProfile::RepoMemory).expect("check");
+		let route_matches = docs_okf::route_okf_bundle(&bundle, "repository knowledge", 3)
+			.expect("route initialized bundle");
+
+		assert_eq!(init_report.profile(), OkfCheckProfile::RepoMemory);
+		assert_eq!(init_report.created.len(), 3);
+		assert!(init_report.unchanged.is_empty());
+		assert!(!check_report.has_issues(), "{check_report:#?}");
+		assert_eq!(
+			route_matches.first().map(|matched| matched.concept.id.as_str()),
+			Some("overview")
+		);
+	}
+
+	#[test]
+	fn okf_init_is_idempotent_for_unchanged_scaffold_files() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let bundle = temp_dir.path().join("knowledge");
+
+		docs_okf::init_okf_bundle(&bundle, OkfCheckProfile::Wiki).expect("first init");
+
+		let init_report =
+			docs_okf::init_okf_bundle(&bundle, OkfCheckProfile::Wiki).expect("second init");
+
+		assert!(init_report.created.is_empty());
+		assert_eq!(init_report.unchanged.len(), 3);
+	}
+
+	#[test]
+	fn okf_init_refuses_to_overwrite_existing_content() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let bundle = temp_dir.path().join("knowledge");
+
+		fs::create_dir_all(&bundle).expect("bundle");
+
+		write(&bundle.join("index.md"), "# Existing Index\n");
+
+		let error = docs_okf::init_okf_bundle(&bundle, OkfCheckProfile::Core)
+			.expect_err("init should refuse divergent scaffold files");
+
+		assert!(error.to_string().contains("already exists with different content"));
+	}
+
+	#[test]
+	fn okf_init_preflights_divergence_before_writing_scaffold_files() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let bundle = temp_dir.path().join("knowledge");
+
+		fs::create_dir_all(&bundle).expect("bundle");
+
+		write(&bundle.join("overview.md"), "# Existing Overview\n");
+
+		let error = docs_okf::init_okf_bundle(&bundle, OkfCheckProfile::RepoMemory)
+			.expect_err("init should refuse before writing partial scaffold files");
+
+		assert!(error.to_string().contains("already exists with different content"));
+		assert!(!bundle.join("index.md").exists());
+		assert!(!bundle.join("log.md").exists());
+		assert_eq!(
+			fs::read_to_string(bundle.join("overview.md")).expect("overview"),
+			"# Existing Overview\n"
+		);
+	}
+
+	#[test]
+	fn okf_init_rejects_decodex_profile() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let bundle = temp_dir.path().join("docs");
+		let error = docs_okf::init_okf_bundle(&bundle, OkfCheckProfile::Decodex)
+			.expect_err("portable init should not scaffold decodex profile");
+
+		assert!(error.to_string().contains("portable profiles only"));
 	}
 
 	fn write_minimal_okf_bundle(docs: &std::path::Path) {

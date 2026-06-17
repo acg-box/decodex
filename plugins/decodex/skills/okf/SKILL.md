@@ -10,6 +10,8 @@ Route portable OKF and LLM Wiki work without assuming the Decodex docs profile.
 Read `../../references/okf-layer.md` before changing a bundle, recommending a
 profile, or using OKF commands.
 
+- Use `decodex okf init <root> --profile core|wiki|repo-memory` to create a safe,
+  validated starter bundle.
 - Use `decodex okf check <root> --profile core|wiki|repo-memory|decodex` for bundle
   validation.
 - Use `decodex okf find`, `decodex okf graph`, and `decodex okf route` for consumer
