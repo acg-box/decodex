@@ -432,7 +432,7 @@ fn goal_intake_rejects_latent_then_apply_direct_dispatch_and_status_readback_is_
 		.selected
 		.expect("one generated issue should be selected for direct dispatch");
 
-	assert_eq!(selection.summary.dispatchable_nodes, 2);
+	assert_eq!(selection.summary.dispatchable_nodes, 1);
 	assert_eq!(selected.dispatch_mode, orchestrator::IssueDispatchMode::Program);
 	assert!(tracker.label_additions().is_empty());
 	assert!(tracker.label_removals().is_empty());
@@ -443,14 +443,21 @@ fn goal_intake_rejects_latent_then_apply_direct_dispatch_and_status_readback_is_
 	let program = snapshot.execution_programs.first().expect("goal program should surface");
 	let rendered_status = orchestrator::render_operator_status(&snapshot);
 
-	assert_eq!(program.status, "ready");
+	assert_eq!(program.status, "blocked");
 	assert_eq!(program.source_contract_id.as_deref(), Some(accepted.contract_id()));
 	assert_eq!(program.intake_kind.as_deref(), Some("goal_intake"));
 	assert_eq!(
 		program.public_summary.as_deref(),
 		Some("Dogfood accepted goal intake through generated issues.")
 	);
-	assert_eq!(program.ready_count, 2);
+	assert_eq!(program.ready_count, 1);
+	assert_eq!(program.blocked_count, 1);
+	assert!(
+		program
+			.node_readbacks
+			.iter()
+			.any(|node| node.reason_codes.contains(&String::from("dependency_not_terminal")))
+	);
 	assert_eq!(program.queued_count, 0);
 	assert!(rendered_status.contains("source_contract_id: dogfood-goal-contract"));
 	assert!(!rendered_status.contains("private_evidence"));
@@ -507,16 +514,53 @@ fn dogfood_goal_contract() -> DecisionContract {
 			"risk_notes": [
 				"Public readback must stay sparse."
 			],
-			"proposed_issue_summaries": [
-				"Dogfood generated runtime issue.",
-				"Dogfood generated status readback issue."
+			"proposed_issues": [
+				{
+					"key": "dogfood-runtime",
+					"title": "Dogfood generated runtime issue.",
+					"objective": "Dogfood generated runtime issue.",
+					"stage": "runtime",
+					"dependencies": [],
+					"conflict_domains": [
+						"module:runtime"
+					],
+					"acceptance": [
+						"Dogfood accepted goal intake through a generated runtime issue."
+					],
+					"validation": [
+						"Run focused Program Intake E2E tests."
+					],
+					"risk": [
+						"Public readback must stay sparse."
+					],
+					"queue_intent": "ready_to_queue"
+				},
+				{
+					"key": "dogfood-status",
+					"title": "Dogfood generated status readback issue.",
+					"objective": "Dogfood generated status readback issue.",
+					"stage": "runtime",
+					"dependencies": [
+						"dogfood-runtime"
+					],
+					"conflict_domains": [
+						"module:status"
+					],
+					"acceptance": [
+						"Dogfood accepted goal intake through a generated status readback issue."
+					],
+					"validation": [
+						"Run focused Program Intake E2E tests."
+					],
+					"risk": [
+						"Public readback must stay sparse."
+					],
+					"queue_intent": "ready_to_queue"
+				}
 			],
 			"conflict_domains": [
 				"module:runtime",
 				"module:status"
-			],
-			"queue_intent": [
-				"ready_to_queue_after_apply"
 			]
 		},
 		"links": {

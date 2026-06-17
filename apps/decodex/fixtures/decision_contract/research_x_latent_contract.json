@@ -66,6 +66,29 @@
     ],
     "risk_notes": [
       "Do not infer execution authority from research provenance alone."
+    ],
+    "proposed_issues": [
+      {
+        "key": "research-x-contract-model",
+        "title": "Define the runtime-facing Decision Contract model.",
+        "objective": "Define the runtime-facing Decision Contract model.",
+        "stage": "schema",
+        "dependencies": [],
+        "conflict_domains": [
+          "module:runtime"
+        ],
+        "acceptance": [
+          "The Decision Contract model preserves accepted objectives, constraints, evidence boundaries, and issue readiness."
+        ],
+        "validation": [
+          "Serialization round-trip passes.",
+          "Promotion transition records acceptance metadata."
+        ],
+        "risk": [
+          "Do not infer execution authority from research provenance alone."
+        ],
+        "queue_intent": "ready_to_queue"
+      }
     ]
   },
   "links": {

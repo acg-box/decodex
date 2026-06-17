@@ -140,7 +140,7 @@ The payload carries these top-level fields:
 | `research_evidence` | Non-authoritative evidence claims retained for later review and issue shaping. Each item carries `kind`, `claim`, `support`, and optional `source_ref`; `kind` identifies whether the support is an external source, repository source, live readback, inference, or unresolved gap. |
 | `research_options` | Non-authoritative option comparisons retained with tradeoffs, selected decision notes, or rejected-option reasons. |
 | `accepted_authority` | Objectives, non-goals, constraints, assumptions, objections, and stop conditions that become authority only when status is `accepted_promoted`. |
-| `execution_readiness` | Natural-language readiness summary, missing decisions, validation expectations, risk notes, proposed issue summaries, promotion targets, conflict domains, and dispatch intent. It must not expose graph ids or require the user to operate a DAG. Accepted contracts must be ready for issue shaping and must not carry unresolved missing decisions. |
+| `execution_readiness` | Natural-language readiness summary, missing decisions, validation expectations, risk notes, structured `proposed_issues[]`, promotion targets, and conflict domains. It must not expose graph ids or require the user to operate a DAG. Accepted contracts must be ready for issue shaping, include structured proposed issues, and must not carry unresolved missing decisions. |
 | `promotion` | Metadata recording who or what accepted the decision, the acceptance source, and the acceptance time. Required only for `accepted_promoted`. |
 | `links` | Generated Linear issue ids/identifiers or internal Execution Program node ids when those exist. |
 | `evidence_boundary` | Local private evidence references and sparse public projection references. |
@@ -152,8 +152,9 @@ The status is the authority boundary:
 - `accepted_promoted` means the payload's `accepted_authority` fields may be used by
   the loop runtime to shape dispatch intent, generated issues, or internal Execution
   Program nodes. The payload must include promotion metadata, set
-  `execution_readiness.ready_for_issue_shaping = true`, and leave
-  `execution_readiness.missing_decisions` empty.
+  `execution_readiness.ready_for_issue_shaping = true`, include non-empty
+  `execution_readiness.proposed_issues[]`, and leave `execution_readiness.missing_decisions`
+  empty.
 - `rejected_superseded` means the payload is retained for audit/history but must not
   be promoted later.
 - `needs_human_decision` means the package is incomplete or contradictory enough that
@@ -163,6 +164,14 @@ The status is the authority boundary:
 Research provenance and research evidence are not execution authority. They explain
 why the candidate package exists and give future agents enough context to avoid asking
 the user to restate all details after promotion.
+
+`execution_readiness.proposed_issues[]` is the only issue-shaping input for promoted
+Decision Contracts. The former flat `proposed_issue_summaries` field is removed, not
+deprecated, and runtimes must not compile issues from it. Each proposed issue carries
+`key`, `title`, `objective`, `stage`, `dependencies`, `conflict_domains`,
+`acceptance`, `validation`, `risk`, and `queue_intent`. Accepted contracts without at
+least one structured proposed issue fail readiness validation and cannot be
+materialized for goal intake or Program Intake.
 
 Decision Contracts are top-level snapshots. Terminal status, selected option, material
 evidence, unresolved gaps, validation expectations, and promotion target must be
@@ -400,7 +409,7 @@ natural-language issue brief and does not include those internal ids. Apply must
 run implementation inline and
 must not apply or remove `decodex:queued:<service-id>`; the persisted Program is then
 eligible for direct scheduler dispatch. If the contract is latent, rejected, still needs a human
-decision, carries unresolved missing decisions, or lacks proposed issue summaries,
+decision, carries unresolved missing decisions, or lacks structured `proposed_issues`,
 goal intake stops before creating executable work.
 
 The operator CLI surface for existing issues is
