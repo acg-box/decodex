@@ -1751,6 +1751,8 @@ struct OperatorReviewCheckpointStatus {
 	head_sha: String,
 	round: i64,
 	nonclean_rounds: i64,
+	active_fingerprints: Vec<String>,
+	stop_fingerprint: Option<String>,
 	updated_at: String,
 }
 

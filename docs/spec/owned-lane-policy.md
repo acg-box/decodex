@@ -189,9 +189,13 @@ For review-policy churn, the runtime counts only structured review checkpoints:
 
 - phase is `handoff` before the first PR-backed review handoff succeeds
 - phase is `repair` during retained review-repair runs
-- every `findings` checkpoint increments the runtime checkpoint's non-clean round
-  count and must carry at least one accepted independent-review finding
-- `clean` does not stop the lane and resets that non-clean round count to zero for the current phase
+- every `findings` checkpoint must carry at least one accepted independent-review
+  finding and increments the repeat count only for the accepted finding fingerprints
+  that are still active in the current phase
+- a distinct accepted-finding fingerprint starts at repeat count one and does not
+  inherit churn from an earlier, now-resolved finding
+- `clean` does not stop the lane and resolves active finding records, resetting the
+  compatibility `nonclean_rounds` readback to zero for the current phase
 - `clean` may carry rejected or non-actionable reviewer comments, but those comments
   are not repair input
 - recording `issue_review_handoff` or `issue_review_repair_complete` clears the retained review-policy state

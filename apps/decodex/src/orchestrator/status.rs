@@ -6634,6 +6634,8 @@ fn operator_review_loop_status(
 
 	if let Some(checkpoint) = latest_checkpoint {
 		let nonclean_rounds = checkpoint.nonclean_rounds();
+		let (active_fingerprints, stop_fingerprint) =
+			operator_review_finding_policy_fields(checkpoint.details_json());
 
 		return Ok(Some(OperatorReviewLoopStatus {
 			phase: checkpoint.phase().to_owned(),
@@ -6642,6 +6644,8 @@ fn operator_review_loop_status(
 				head_sha: checkpoint.head_sha().to_owned(),
 				round: nonclean_rounds,
 				nonclean_rounds,
+				active_fingerprints,
+				stop_fingerprint,
 				updated_at: checkpoint.updated_at().to_owned(),
 			}),
 		}));
@@ -6658,6 +6662,29 @@ fn operator_review_loop_status(
 	}
 
 	Ok(None)
+}
+
+fn operator_review_finding_policy_fields(details_json: &str) -> (Vec<String>, Option<String>) {
+	let Ok(details) = serde_json::from_str::<Value>(details_json) else {
+		return (Vec::new(), None);
+	};
+	let Some(policy) = details.get("finding_policy") else {
+		return (Vec::new(), None);
+	};
+	let active_fingerprints = policy
+		.get("active_fingerprints")
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(Value::as_str)
+		.map(str::to_owned)
+		.collect();
+	let stop_fingerprint = policy
+		.get("stop_fingerprint")
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+
+	(active_fingerprints, stop_fingerprint)
 }
 
 fn operator_architecture_recovery_status_from_event(
@@ -6827,6 +6854,15 @@ fn operator_loop_status_summary(
 		);
 	}
 	if let Some(review) = review {
+		if let Some(fingerprint) =
+			review.checkpoint.as_ref().and_then(|checkpoint| checkpoint.stop_fingerprint.as_ref())
+		{
+			return format!(
+				"review {}: {} stopped on fingerprint {}",
+				review.phase, review.status, fingerprint
+			);
+		}
+
 		return format!("review {}: {}", review.phase, review.status);
 	}
 	if let Some(boundary) = boundary {
