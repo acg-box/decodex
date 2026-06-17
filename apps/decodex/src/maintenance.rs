@@ -22,8 +22,11 @@ const DEFAULT_LOG_RETENTION_DAYS: u64 = 14;
 const DEFAULT_EVIDENCE_ROTATE_BYTES: u64 = 10 * 1_024 * 1_024;
 const DEFAULT_EVIDENCE_RETENTION_DAYS: u64 = 14;
 const DEFAULT_PROTOCOL_EVENT_RETENTION_DAYS: i64 = 14;
+const DEFAULT_GIT_ASKPASS_HELPER_RETENTION_DAYS: u64 = 1;
 const DEFAULT_BACKUP_KEEP_RECENT: usize = 3;
 const DEFAULT_BACKUP_RETENTION_DAYS: u64 = 7;
+const LEGACY_GIT_ASKPASS_PREFIX: &str = ".decodex-git-askpass-";
+const LEGACY_GIT_ASKPASS_SUFFIX: &str = ".sh";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum MaintenanceMode {
@@ -64,6 +67,7 @@ pub(crate) struct MaintenanceReport {
 	generated_at: String,
 	pub(crate) logs: FileMaintenanceReport,
 	pub(crate) agent_evidence: FileMaintenanceReport,
+	pub(crate) git_askpass_helpers: FileMaintenanceReport,
 	pub(crate) backups: BackupMaintenanceReport,
 	pub(crate) runtime: RuntimeMaintenanceReport,
 	pub(crate) wal_checkpoint: Option<WalCheckpointReport>,
@@ -124,6 +128,7 @@ struct MaintenancePolicy {
 	evidence_rotate_bytes: u64,
 	evidence_retention: Duration,
 	protocol_event_retention_days: i64,
+	git_askpass_helper_retention: Duration,
 	backup_keep_recent: usize,
 	backup_retention: Duration,
 }
@@ -135,6 +140,9 @@ impl MaintenancePolicy {
 			evidence_rotate_bytes: DEFAULT_EVIDENCE_ROTATE_BYTES,
 			evidence_retention: Duration::from_secs(DEFAULT_EVIDENCE_RETENTION_DAYS * 24 * 60 * 60),
 			protocol_event_retention_days: DEFAULT_PROTOCOL_EVENT_RETENTION_DAYS,
+			git_askpass_helper_retention: Duration::from_secs(
+				DEFAULT_GIT_ASKPASS_HELPER_RETENTION_DAYS * 24 * 60 * 60,
+			),
 			backup_keep_recent: DEFAULT_BACKUP_KEEP_RECENT,
 			backup_retention: Duration::from_secs(DEFAULT_BACKUP_RETENTION_DAYS * 24 * 60 * 60),
 		}
@@ -227,6 +235,8 @@ fn run_prune_with_policy(
 	let system_now = SystemTime::now();
 	let logs = maintain_logs(request.mode, policy, system_now, generated_at)?;
 	let agent_evidence = maintain_agent_evidence(request.mode, policy, system_now, generated_at)?;
+	let git_askpass_helpers =
+		maintain_git_askpass_helpers_for_scope(request.mode, request.scope, policy, system_now)?;
 	let backups = maintain_backups(request.mode, policy, system_now)?;
 	let runtime = maintain_runtime(request.mode, request.scope, policy, generated_at)?;
 	let wal_checkpoint = maintain_wal(request.mode, request.scope)?;
@@ -241,6 +251,7 @@ fn run_prune_with_policy(
 		generated_at: generated_at.format(&Rfc3339)?,
 		logs,
 		agent_evidence,
+		git_askpass_helpers,
 		backups,
 		runtime,
 		wal_checkpoint,
@@ -419,6 +430,96 @@ fn maintain_agent_evidence(
 
 					report.deleted_files += 1;
 				}
+			}
+		}
+	}
+
+	Ok(report)
+}
+
+fn maintain_git_askpass_helpers_for_scope(
+	mode: MaintenanceMode,
+	scope: MaintenanceScope,
+	policy: MaintenancePolicy,
+	system_now: SystemTime,
+) -> Result<FileMaintenanceReport> {
+	match maintain_git_askpass_helpers(mode, policy, system_now) {
+		Ok(report) => Ok(report),
+		Err(error) if scope == MaintenanceScope::AutoSafe => {
+			tracing::warn!(
+				?error,
+				"Skipped Decodex auto-safe legacy Git askpass helper cleanup; control-plane maintenance continued."
+			);
+
+			Ok(FileMaintenanceReport {
+				root: runtime::runtime_db_path()?.display().to_string(),
+				..FileMaintenanceReport::default()
+			})
+		},
+		Err(error) => Err(error),
+	}
+}
+
+fn maintain_git_askpass_helpers(
+	mode: MaintenanceMode,
+	policy: MaintenancePolicy,
+	system_now: SystemTime,
+) -> Result<FileMaintenanceReport> {
+	let database_path = runtime::runtime_db_path()?;
+	let mut report = FileMaintenanceReport {
+		root: database_path.display().to_string(),
+		..FileMaintenanceReport::default()
+	};
+
+	if !database_path.exists() {
+		return Ok(report);
+	}
+
+	let connection = Connection::open(database_path)?;
+
+	if !sqlite_table_exists(&connection, "projects")? {
+		return Ok(report);
+	}
+
+	for worktree_root in registered_worktree_roots(&connection)? {
+		if !worktree_root.exists() {
+			continue;
+		}
+
+		for entry in fs::read_dir(&worktree_root)? {
+			let entry = entry?;
+			let path = entry.path();
+			let file_type = entry.file_type()?;
+
+			if !file_type.is_file() || !is_legacy_git_askpass_helper(&path) {
+				continue;
+			}
+
+			let metadata = entry.metadata()?;
+
+			if !file_is_older_than(&metadata, system_now, policy.git_askpass_helper_retention) {
+				continue;
+			}
+
+			let size = metadata.len();
+
+			report.delete_candidates += 1;
+			report.delete_bytes = report.delete_bytes.saturating_add(size);
+
+			report.actions.push(FileMaintenanceAction {
+				action: "delete",
+				path: path.display().to_string(),
+				bytes: size,
+				target: None,
+				reason: format!(
+					"legacy Git askpass helper is older than {DEFAULT_GIT_ASKPASS_HELPER_RETENTION_DAYS} day"
+				),
+			});
+
+			if mode.applies() {
+				fs::remove_file(&path)?;
+
+				report.deleted_files += 1;
 			}
 		}
 	}
@@ -717,6 +818,29 @@ fn runtime_maintenance_warning_for_error(error: &Report) -> RuntimeMaintenanceWa
 	RuntimeMaintenanceWarning { warning: "auto_protocol_event_compaction_skipped", reason }
 }
 
+fn registered_worktree_roots(connection: &Connection) -> Result<Vec<PathBuf>> {
+	let mut statement =
+		connection.prepare("SELECT DISTINCT worktree_root FROM projects ORDER BY worktree_root")?;
+	let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+	let mut roots = Vec::new();
+
+	for row in rows {
+		roots.push(PathBuf::from(row?));
+	}
+
+	Ok(roots)
+}
+
+fn sqlite_table_exists(connection: &Connection, table: &str) -> Result<bool> {
+	let count = connection.query_row(
+		"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+		rusqlite::params![table],
+		|row| row.get::<_, i64>(0),
+	)?;
+
+	Ok(count > 0)
+}
+
 fn compact_protocol_events(
 	connection: &mut Connection,
 	candidates: &[RuntimeProtocolCandidate],
@@ -823,6 +947,13 @@ fn is_rotated_log_file(path: &Path) -> bool {
 		.is_some_and(|timestamp| timestamp.parse::<i64>().is_ok())
 }
 
+fn is_legacy_git_askpass_helper(path: &Path) -> bool {
+	path.file_name().and_then(|name| name.to_str()).is_some_and(|file_name| {
+		file_name.starts_with(LEGACY_GIT_ASKPASS_PREFIX)
+			&& file_name.ends_with(LEGACY_GIT_ASKPASS_SUFFIX)
+	})
+}
+
 fn collect_backup_candidates(
 	root: &Path,
 	groups: &mut BTreeMap<String, Vec<BackupCandidate>>,
@@ -886,6 +1017,13 @@ fn print_prune_report(report: &MaintenanceReport) -> Result<()> {
 		report.agent_evidence.deleted_files,
 		report.agent_evidence.delete_candidates,
 		report.agent_evidence.delete_bytes
+	)?;
+	writeln!(
+		stdout,
+		"git-askpass: delete {}/{} files ({} bytes)",
+		report.git_askpass_helpers.deleted_files,
+		report.git_askpass_helpers.delete_candidates,
+		report.git_askpass_helpers.delete_bytes
 	)?;
 	writeln!(
 		stdout,
@@ -1295,6 +1433,45 @@ mod tests {
 		assert!(fresh_events_path.exists());
 	}
 
+	#[test]
+	fn prune_deletes_old_legacy_git_askpass_helpers_from_registered_worktree_roots() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let _home_guard =
+			TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
+		let connection = bootstrap_test_runtime_db(&temp_dir);
+		let worktree_root = temp_dir.path().join("repo/.worktrees");
+		let old_helper = worktree_root.join(".decodex-git-askpass-xy-101-attempt-1.sh");
+		let fresh_helper = worktree_root.join(".decodex-git-askpass-xy-102-attempt-1.sh");
+		let unrelated = worktree_root.join("notes.sh");
+		let old_time = SystemTime::now() - Duration::from_secs(2 * 24 * 60 * 60);
+		let fresh_time = SystemTime::now();
+
+		insert_project(&connection, &worktree_root);
+		fs::create_dir_all(&worktree_root).expect("worktree root should create");
+		fs::write(&old_helper, b"#!/bin/sh\n").expect("old helper should write");
+		fs::write(&fresh_helper, b"#!/bin/sh\n").expect("fresh helper should write");
+		fs::write(&unrelated, b"#!/bin/sh\n").expect("unrelated file should write");
+		set_file_modified(&old_helper, old_time);
+		set_file_modified(&fresh_helper, fresh_time);
+		set_file_modified(&unrelated, old_time);
+
+		let report = maintenance::run_prune_with_policy(
+			MaintenancePruneRequest {
+				mode: MaintenanceMode::Apply,
+				scope: MaintenanceScope::AutoSafe,
+				json: false,
+			},
+			MaintenancePolicy::default(),
+		)
+		.expect("maintenance should run");
+
+		assert_eq!(report.git_askpass_helpers.deleted_files, 1);
+		assert_eq!(report.git_askpass_helpers.delete_candidates, 1);
+		assert!(!old_helper.exists());
+		assert!(fresh_helper.exists());
+		assert!(unrelated.exists());
+	}
+
 	fn insert_attempt(connection: &Connection, run_id: &str, issue_id: &str, status: &str) {
 		connection
 			.execute(
@@ -1304,6 +1481,23 @@ mod tests {
 				rusqlite::params![run_id, issue_id, status],
 			)
 			.expect("attempt should insert");
+	}
+
+	fn insert_project(connection: &Connection, worktree_root: &Path) {
+		connection
+			.execute(
+				"INSERT INTO projects (
+					service_id, config_path, repo_root, worktree_root, workflow_path,
+					tracker_api_key_env_var, github_token_env_var, enabled,
+					config_fingerprint, updated_at, updated_at_unix
+				) VALUES (
+					'decodex', '/tmp/project.toml', '/tmp/repo', ?1, '/tmp/WORKFLOW.md',
+					'LINEAR_API_KEY_HACKINK', 'GITHUB_PAT_Y', 1,
+					'fingerprint', '2026-05-01T00:00:00Z', 0
+				)",
+				rusqlite::params![worktree_root.display().to_string()],
+			)
+			.expect("project should insert");
 	}
 
 	fn set_file_modified(path: &Path, modified: SystemTime) {
