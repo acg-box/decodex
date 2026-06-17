@@ -66,6 +66,14 @@ const OKF_MAINTAIN_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/okf-maintain/agents/openai.yaml"
 ));
+const REPO_MEMORY_WRITER_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/repo-memory-writer/SKILL.md"
+));
+const REPO_MEMORY_WRITER_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/repo-memory-writer/agents/openai.yaml"
+));
 const DOCS_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/docs/SKILL.md"
@@ -342,11 +350,15 @@ fn packaged_docs_skills_encode_okf_wiki_and_drift_boundaries() {
 
 #[test]
 fn packaged_okf_skills_preserve_portable_profile_boundary() {
-	let okf_surface =
-		format!("{OKF_SKILL}\n{OKF_QUERY_SKILL}\n{OKF_MAINTAIN_SKILL}\n{OKF_LAYER_REF}");
+	let okf_surface = format!(
+		"{OKF_SKILL}\n{OKF_QUERY_SKILL}\n{OKF_MAINTAIN_SKILL}\n{REPO_MEMORY_WRITER_SKILL}\n{OKF_LAYER_REF}"
+	);
 
 	assert_contains(&okf_surface, "portable OKF");
 	assert_contains(&okf_surface, "LLM Wiki");
+	assert_contains(&okf_surface, "repo-memory-writer");
+	assert_contains(&okf_surface, "source-backed repository knowledge");
+	assert_contains(&okf_surface, "The AI writes the concepts");
 	assert_contains(&okf_surface, "decodex okf init");
 	assert_contains(&okf_surface, "decodex okf check");
 	assert_contains(&okf_surface, "decodex okf find");
@@ -376,6 +388,7 @@ fn narrow_lifecycle_and_specialist_skills_are_explicit_only() {
 		OKF_AGENT_POLICY,
 		OKF_QUERY_AGENT_POLICY,
 		OKF_MAINTAIN_AGENT_POLICY,
+		REPO_MEMORY_WRITER_AGENT_POLICY,
 		DOCS_OKF_AGENT_POLICY,
 		DOCS_WIKI_AGENT_POLICY,
 		DOCS_DRIFT_AGENT_POLICY,
