@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-last_verified: 2026-06-16
+last_verified: 2026-06-17
 ---
 # Linear Execution Ledger
 
@@ -281,12 +281,12 @@ When the exact failed command or raw error contains private information, produce
 omit it and use public `error_class`, `next_action`, `blockers`, and `evidence`
 instead.
 
-`review_handoff_rebind` is only for an explicit operator recovery command that restores a
-missing or stale runtime DB review handoff marker after validating the retained worktree
-and PR lineage. `review_handoff_adopt` is only for the explicit manual takeover command
-that adopts a human-owned PR into the retained review handoff shape after validating the
-managed clean worktree, active service ownership, exact PR head, and green landable PR
-gates. Neither event is a normal agent terminal signal, neither implies
+`review_handoff_rebind` is only for an explicit operator recovery command that
+restores a missing or stale runtime DB review lifecycle record after validating the
+retained worktree and PR lineage. `review_handoff_adopt` is only for the explicit
+manual takeover command that adopts a human-owned PR into the retained review
+lifecycle shape after validating the managed clean worktree, active service ownership,
+exact PR head, and green landable PR gates. Neither event is a normal agent terminal signal, neither implies
 `issue_terminal_finalize` ran, and neither must be emitted automatically from
 `decodex run`.
 

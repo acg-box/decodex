@@ -17,6 +17,53 @@ use libc::{
 };
 use rusqlite::{self, Row, types::Type};
 
+const REVIEW_LIFECYCLE_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS review_lifecycle_records (
+	project_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	branch_name TEXT NOT NULL,
+	run_id TEXT NOT NULL,
+	attempt_number INTEGER NOT NULL,
+	pr_url TEXT NOT NULL,
+	target_base_ref_name TEXT,
+	pr_head_ref_name TEXT NOT NULL,
+	pr_head_oid TEXT NOT NULL,
+	head_sha TEXT NOT NULL,
+	phase TEXT NOT NULL,
+	request_comment_database_id INTEGER,
+	request_created_at_unix_epoch INTEGER,
+	request_description_thumbs_up_count INTEGER,
+	request_retry_count INTEGER NOT NULL,
+	external_round_count INTEGER NOT NULL,
+	auto_merge_enabled_at_unix_epoch INTEGER,
+	landing_state TEXT NOT NULL DEFAULT 'not_started',
+	closeout_state TEXT NOT NULL DEFAULT 'not_started',
+	repair_attempt_count INTEGER NOT NULL DEFAULT 0,
+	evidence_json TEXT NOT NULL DEFAULT '{}',
+	next_action TEXT NOT NULL DEFAULT '',
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, issue_id, branch_name)
+);
+CREATE TABLE IF NOT EXISTS review_policy_checkpoints (
+	project_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	run_id TEXT NOT NULL,
+	attempt_number INTEGER NOT NULL,
+	phase TEXT NOT NULL,
+	status TEXT NOT NULL,
+	head_sha TEXT NOT NULL,
+	nonclean_rounds INTEGER NOT NULL,
+	details_json TEXT NOT NULL DEFAULT '{}',
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, issue_id, run_id, attempt_number, phase)
+);
+"#;
+const DROP_LEGACY_REVIEW_MARKER_TABLES_SQL: &str = r#"
+DROP TABLE IF EXISTS review_handoffs;
+DROP TABLE IF EXISTS review_orchestrations;
+"#;
 static RUN_ACTIVITY_MARKER_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct EffectiveRuntimeMarker<'a> {
@@ -134,8 +181,7 @@ struct StateData {
 	execution_programs: HashMap<ExecutionProgramKey, ExecutionProgramRuntimeRecord>,
 	program_intake_plans: HashMap<ProgramIntakePlanKey, ProgramIntakePlanRecord>,
 	program_issue_mappings: HashMap<ProgramIssueMappingKey, ProgramIssueMappingRecord>,
-	review_handoffs: HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
-	review_orchestrations: HashMap<ReviewOrchestrationKey, ReviewOrchestrationRuntimeRecord>,
+	review_lifecycle_records: HashMap<ReviewLifecycleKey, ReviewLifecycleRuntimeRecord>,
 	review_policy_checkpoints: HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
 	loop_guardrail_checkpoints: HashMap<LoopGuardrailKey, LoopGuardrailRuntimeRecord>,
 	connector_backoffs: HashMap<(String, String), ConnectorBackoff>,
@@ -159,8 +205,7 @@ impl StateData {
 		self.execution_programs = loaded.execution_programs;
 		self.program_intake_plans = loaded.program_intake_plans;
 		self.program_issue_mappings = loaded.program_issue_mappings;
-		self.review_handoffs = loaded.review_handoffs;
-		self.review_orchestrations = loaded.review_orchestrations;
+		self.review_lifecycle_records = loaded.review_lifecycle_records;
 		self.review_policy_checkpoints = loaded.review_policy_checkpoints;
 		self.loop_guardrail_checkpoints = loaded.loop_guardrail_checkpoints;
 		self.connector_backoffs = loaded.connector_backoffs;
@@ -177,6 +222,8 @@ impl StateData {
 	fn replace_project_loop_evidence_state(&mut self, project_id: &str, loaded: Self) {
 		self.private_execution_events.retain(|record| record.project_id != project_id);
 		self.private_execution_events.extend(loaded.private_execution_events);
+		self.review_lifecycle_records.retain(|key, _record| key.project_id != project_id);
+		self.review_lifecycle_records.extend(loaded.review_lifecycle_records);
 		self.review_policy_checkpoints.retain(|key, _record| key.project_id != project_id);
 		self.review_policy_checkpoints.extend(loaded.review_policy_checkpoints);
 	}
@@ -450,57 +497,8 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 	}
 
 	fn bootstrap_review_schema(&self) -> Result<()> {
-		self.connection.execute_batch(
-			r#"
-CREATE TABLE IF NOT EXISTS review_handoffs (
-	project_id TEXT NOT NULL,
-	issue_id TEXT NOT NULL,
-	branch_name TEXT NOT NULL,
-	run_id TEXT NOT NULL,
-	attempt_number INTEGER NOT NULL,
-	pr_url TEXT NOT NULL,
-	target_base_ref_name TEXT,
-	pr_head_ref_name TEXT NOT NULL,
-	pr_head_oid TEXT NOT NULL,
-	updated_at TEXT NOT NULL,
-	updated_at_unix INTEGER NOT NULL,
-	PRIMARY KEY (project_id, issue_id, branch_name)
-);
-CREATE TABLE IF NOT EXISTS review_orchestrations (
-	project_id TEXT NOT NULL,
-	issue_id TEXT NOT NULL,
-	branch_name TEXT NOT NULL,
-	run_id TEXT NOT NULL,
-	attempt_number INTEGER NOT NULL,
-	pr_url TEXT NOT NULL,
-	head_sha TEXT NOT NULL,
-	phase TEXT NOT NULL,
-	request_comment_database_id INTEGER,
-	request_created_at_unix_epoch INTEGER,
-	request_description_thumbs_up_count INTEGER,
-	request_retry_count INTEGER NOT NULL,
-	external_round_count INTEGER NOT NULL,
-	auto_merge_enabled_at_unix_epoch INTEGER,
-	updated_at TEXT NOT NULL,
-	updated_at_unix INTEGER NOT NULL,
-	PRIMARY KEY (project_id, issue_id, branch_name, run_id, attempt_number)
-);
-CREATE TABLE IF NOT EXISTS review_policy_checkpoints (
-	project_id TEXT NOT NULL,
-	issue_id TEXT NOT NULL,
-	run_id TEXT NOT NULL,
-	attempt_number INTEGER NOT NULL,
-	phase TEXT NOT NULL,
-	status TEXT NOT NULL,
-	head_sha TEXT NOT NULL,
-	nonclean_rounds INTEGER NOT NULL,
-	details_json TEXT NOT NULL DEFAULT '{}',
-	updated_at TEXT NOT NULL,
-	updated_at_unix INTEGER NOT NULL,
-	PRIMARY KEY (project_id, issue_id, run_id, attempt_number, phase)
-);
-"#,
-		)?;
+		self.connection.execute_batch(DROP_LEGACY_REVIEW_MARKER_TABLES_SQL)?;
+		self.connection.execute_batch(REVIEW_LIFECYCLE_SCHEMA_SQL)?;
 		self.ensure_column(
 			"review_policy_checkpoints",
 			"details_json",
@@ -853,8 +851,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_decision_contracts(&mut state)?;
 		self.load_execution_programs(&mut state)?;
 		self.load_program_intake_state(&mut state)?;
-		self.load_review_handoffs(&mut state)?;
-		self.load_review_orchestrations(&mut state)?;
+		self.load_review_lifecycle_records(&mut state)?;
 		self.load_review_policy_checkpoints(&mut state)?;
 		self.load_loop_guardrail_checkpoints(&mut state)?;
 		self.load_connector_backoffs(&mut state)?;
@@ -878,6 +875,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let mut state = StateData::default();
 
 		self.load_private_execution_events_for_project(&mut state, project_id)?;
+		self.load_review_lifecycle_records_for_project(&mut state, project_id)?;
 		self.load_review_policy_checkpoints_for_project(&mut state, project_id)?;
 
 		Ok(state)
@@ -906,8 +904,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_decision_contracts(&transaction, state)?;
 		persist_execution_programs(&transaction, state)?;
 		persist_program_intake_state(&transaction, state)?;
-		persist_review_handoffs(&transaction, state)?;
-		persist_review_orchestrations(&transaction, state)?;
+		persist_review_lifecycle_records(&transaction, state)?;
 		persist_review_policy_checkpoints(&transaction, state)?;
 		persist_loop_guardrail_checkpoints(&transaction, state)?;
 		persist_connector_backoffs(&transaction, state)?;
@@ -1361,35 +1358,25 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			params![previous_issue_id],
 		)?;
 		transaction.execute(
-			"INSERT OR IGNORE INTO review_handoffs (
+			"INSERT OR IGNORE INTO review_lifecycle_records (
 					project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
-					target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at, updated_at_unix
+					target_base_ref_name, pr_head_ref_name, pr_head_oid, head_sha, phase,
+					request_comment_database_id, request_created_at_unix_epoch,
+					request_description_thumbs_up_count, request_retry_count, external_round_count,
+					auto_merge_enabled_at_unix_epoch, landing_state, closeout_state,
+					repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix
 				)
 			 SELECT project_id, ?2, branch_name, run_id, attempt_number, pr_url,
-					target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at, updated_at_unix
-			 FROM review_handoffs WHERE issue_id = ?1",
+					target_base_ref_name, pr_head_ref_name, pr_head_oid, head_sha, phase,
+					request_comment_database_id, request_created_at_unix_epoch,
+					request_description_thumbs_up_count, request_retry_count, external_round_count,
+					auto_merge_enabled_at_unix_epoch, landing_state, closeout_state,
+					repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix
+			 FROM review_lifecycle_records WHERE issue_id = ?1",
 			params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
-			"DELETE FROM review_handoffs WHERE issue_id = ?1",
-			params![previous_issue_id],
-		)?;
-		transaction.execute(
-			"INSERT OR IGNORE INTO review_orchestrations (
-					project_id, issue_id, branch_name, run_id, attempt_number, pr_url, head_sha,
-					phase, request_comment_database_id, request_created_at_unix_epoch,
-					request_description_thumbs_up_count, request_retry_count, external_round_count,
-					auto_merge_enabled_at_unix_epoch, updated_at, updated_at_unix
-				)
-			 SELECT project_id, ?2, branch_name, run_id, attempt_number, pr_url, head_sha,
-					phase, request_comment_database_id, request_created_at_unix_epoch,
-					request_description_thumbs_up_count, request_retry_count, external_round_count,
-					auto_merge_enabled_at_unix_epoch, updated_at, updated_at_unix
-			 FROM review_orchestrations WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
-		)?;
-		transaction.execute(
-			"DELETE FROM review_orchestrations WHERE issue_id = ?1",
+			"DELETE FROM review_lifecycle_records WHERE issue_id = ?1",
 			params![previous_issue_id],
 		)?;
 		transaction.commit()?;
@@ -1397,13 +1384,12 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
-	fn delete_worktree_and_review_markers(&mut self, issue_id: &str) -> Result<()> {
+	fn delete_worktree_and_review_lifecycle(&mut self, issue_id: &str) -> Result<()> {
 		let transaction = self.connection.transaction()?;
 
 		transaction.execute("DELETE FROM worktrees WHERE issue_id = ?1", params![issue_id])?;
-		transaction.execute("DELETE FROM review_handoffs WHERE issue_id = ?1", params![issue_id])?;
 		transaction.execute(
-			"DELETE FROM review_orchestrations WHERE issue_id = ?1",
+			"DELETE FROM review_lifecycle_records WHERE issue_id = ?1",
 			params![issue_id],
 		)?;
 		transaction.execute(
@@ -1430,12 +1416,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let transaction = self.connection.transaction()?;
 
 		transaction.execute(
-			"DELETE FROM review_handoffs
-			 WHERE project_id = ?1 AND issue_id = ?2 AND branch_name = ?3",
-			params![project_id, issue_id, branch_name],
-		)?;
-		transaction.execute(
-			"DELETE FROM review_orchestrations
+			"DELETE FROM review_lifecycle_records
 			 WHERE project_id = ?1 AND issue_id = ?2 AND branch_name = ?3
 			   AND run_id = ?4 AND attempt_number = ?5",
 			params![project_id, issue_id, branch_name, run_id, attempt_number],
@@ -2452,55 +2433,15 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(records)
 	}
 
-	fn load_review_handoffs(&self, state: &mut StateData) -> Result<()> {
+	fn load_review_lifecycle_records(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, branch_name, run_id, attempt_number, pr_url, \
-			 target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at, updated_at_unix \
-			 FROM review_handoffs",
-		)?;
-		let rows = statement.query_map([], |row| {
-			let project_id: String = row.get(0)?;
-			let issue_id: String = row.get(1)?;
-			let branch_name: String = row.get(2)?;
-			let marker = ReviewHandoffMarker {
-				run_id: row.get(3)?,
-				attempt_number: row.get(4)?,
-				branch_name: branch_name.clone(),
-				pr_url: row.get(5)?,
-				target_base_ref_name: row.get(6)?,
-				pr_head_ref_name: row.get(7)?,
-				pr_head_oid: row.get(8)?,
-			};
-
-			Ok((
-				ReviewMarkerKey::new(&project_id, &issue_id, &branch_name),
-				ReviewHandoffRuntimeRecord {
-					project_id,
-					issue_id,
-					branch_name,
-					marker,
-					updated_at: row.get(9)?,
-					updated_at_unix: row.get(10)?,
-				},
-			))
-		})?;
-
-		for row in rows {
-			let (key, record) = row?;
-
-			state.review_handoffs.insert(key, record);
-		}
-
-		Ok(())
-	}
-
-	fn load_review_orchestrations(&self, state: &mut StateData) -> Result<()> {
-		let mut statement = self.connection.prepare(
-			"SELECT project_id, issue_id, branch_name, run_id, attempt_number, pr_url, head_sha, \
-			 phase, request_comment_database_id, request_created_at_unix_epoch, \
+			 target_base_ref_name, pr_head_ref_name, pr_head_oid, head_sha, phase, \
+			 request_comment_database_id, request_created_at_unix_epoch, \
 			 request_description_thumbs_up_count, request_retry_count, external_round_count, \
-			 auto_merge_enabled_at_unix_epoch, updated_at, updated_at_unix \
-			 FROM review_orchestrations",
+			 auto_merge_enabled_at_unix_epoch, landing_state, closeout_state, \
+			 repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix \
+			 FROM review_lifecycle_records",
 		)?;
 		let rows = statement.query_map([], |row| {
 			let project_id: String = row.get(0)?;
@@ -2509,40 +2450,36 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			let run_id: String = row.get(3)?;
 			let attempt_number: i64 = row.get(4)?;
 			let request_description_thumbs_up_count = row
-				.get::<_, Option<i64>>(10)?
+				.get::<_, Option<i64>>(13)?
 				.and_then(|count| usize::try_from(count).ok());
-			let marker = ReviewOrchestrationMarker::new(
-				run_id.clone(),
-				attempt_number,
-				branch_name.clone(),
-				row.get::<_, String>(5)?,
-				row.get::<_, String>(6)?,
-				row.get::<_, String>(7)?,
-				row.get(8)?,
-				row.get(9)?,
-				request_description_thumbs_up_count,
-				row.get(11)?,
-				row.get(12)?,
-				row.get(13)?,
-			);
 
 			Ok((
-				ReviewOrchestrationKey::new(
-					&project_id,
-					&issue_id,
-					&branch_name,
-					&run_id,
-					attempt_number,
-				),
-				ReviewOrchestrationRuntimeRecord {
+				ReviewLifecycleKey::new(&project_id, &issue_id, &branch_name),
+				ReviewLifecycleRuntimeRecord {
 					project_id,
 					issue_id,
 					branch_name,
 					run_id,
 					attempt_number,
-					marker,
-					updated_at: row.get(14)?,
-					updated_at_unix: row.get(15)?,
+					pr_url: row.get(5)?,
+					target_base_ref_name: row.get(6)?,
+					pr_head_ref_name: row.get(7)?,
+					pr_head_oid: row.get(8)?,
+					head_sha: row.get(9)?,
+					phase: row.get(10)?,
+					request_comment_database_id: row.get(11)?,
+					request_created_at_unix_epoch: row.get(12)?,
+					request_description_thumbs_up_count,
+					request_retry_count: row.get(14)?,
+					external_round_count: row.get(15)?,
+					auto_merge_enabled_at_unix_epoch: row.get(16)?,
+					landing_state: row.get(17)?,
+					closeout_state: row.get(18)?,
+					repair_attempt_count: row.get(19)?,
+					evidence_json: row.get(20)?,
+					next_action: row.get(21)?,
+					updated_at: row.get(22)?,
+					updated_at_unix: row.get(23)?,
 				},
 			))
 		})?;
@@ -2550,7 +2487,71 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		for row in rows {
 			let (key, record) = row?;
 
-			state.review_orchestrations.insert(key, record);
+			state.review_lifecycle_records.insert(key, record);
+		}
+
+		Ok(())
+	}
+
+	fn load_review_lifecycle_records_for_project(
+		&self,
+		state: &mut StateData,
+		project_id: &str,
+	) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, issue_id, branch_name, run_id, attempt_number, pr_url, \
+			 target_base_ref_name, pr_head_ref_name, pr_head_oid, head_sha, phase, \
+			 request_comment_database_id, request_created_at_unix_epoch, \
+			 request_description_thumbs_up_count, request_retry_count, external_round_count, \
+			 auto_merge_enabled_at_unix_epoch, landing_state, closeout_state, \
+			 repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix \
+			 FROM review_lifecycle_records WHERE project_id = ?1",
+		)?;
+		let rows = statement.query_map(params![project_id], |row| {
+			let project_id: String = row.get(0)?;
+			let issue_id: String = row.get(1)?;
+			let branch_name: String = row.get(2)?;
+			let run_id: String = row.get(3)?;
+			let attempt_number: i64 = row.get(4)?;
+			let request_description_thumbs_up_count = row
+				.get::<_, Option<i64>>(13)?
+				.and_then(|count| usize::try_from(count).ok());
+
+			Ok((
+				ReviewLifecycleKey::new(&project_id, &issue_id, &branch_name),
+				ReviewLifecycleRuntimeRecord {
+					project_id,
+					issue_id,
+					branch_name,
+					run_id,
+					attempt_number,
+					pr_url: row.get(5)?,
+					target_base_ref_name: row.get(6)?,
+					pr_head_ref_name: row.get(7)?,
+					pr_head_oid: row.get(8)?,
+					head_sha: row.get(9)?,
+					phase: row.get(10)?,
+					request_comment_database_id: row.get(11)?,
+					request_created_at_unix_epoch: row.get(12)?,
+					request_description_thumbs_up_count,
+					request_retry_count: row.get(14)?,
+					external_round_count: row.get(15)?,
+					auto_merge_enabled_at_unix_epoch: row.get(16)?,
+					landing_state: row.get(17)?,
+					closeout_state: row.get(18)?,
+					repair_attempt_count: row.get(19)?,
+					evidence_json: row.get(20)?,
+					next_action: row.get(21)?,
+					updated_at: row.get(22)?,
+					updated_at_unix: row.get(23)?,
+				},
+			))
+		})?;
+
+		for row in rows {
+			let (key, record) = row?;
+
+			state.review_lifecycle_records.insert(key, record);
 		}
 
 		Ok(())
@@ -2994,43 +2995,17 @@ impl WorktreeMappingRecord {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-struct ReviewMarkerKey {
+struct ReviewLifecycleKey {
 	project_id: String,
 	issue_id: String,
 	branch_name: String,
 }
-impl ReviewMarkerKey {
+impl ReviewLifecycleKey {
 	fn new(project_id: &str, issue_id: &str, branch_name: &str) -> Self {
 		Self {
 			project_id: project_id.to_owned(),
 			issue_id: issue_id.to_owned(),
 			branch_name: branch_name.to_owned(),
-		}
-	}
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-struct ReviewOrchestrationKey {
-	project_id: String,
-	issue_id: String,
-	branch_name: String,
-	run_id: String,
-	attempt_number: i64,
-}
-impl ReviewOrchestrationKey {
-	fn new(
-		project_id: &str,
-		issue_id: &str,
-		branch_name: &str,
-		run_id: &str,
-		attempt_number: i64,
-	) -> Self {
-		Self {
-			project_id: project_id.to_owned(),
-			issue_id: issue_id.to_owned(),
-			branch_name: branch_name.to_owned(),
-			run_id: run_id.to_owned(),
-			attempt_number,
 		}
 	}
 }
@@ -3062,25 +3037,68 @@ impl ReviewPolicyKey {
 }
 
 #[derive(Clone, Debug)]
-struct ReviewHandoffRuntimeRecord {
-	project_id: String,
-	issue_id: String,
-	branch_name: String,
-	marker: ReviewHandoffMarker,
-	updated_at: String,
-	updated_at_unix: i64,
-}
-
-#[derive(Clone, Debug)]
-struct ReviewOrchestrationRuntimeRecord {
+struct ReviewLifecycleRuntimeRecord {
 	project_id: String,
 	issue_id: String,
 	branch_name: String,
 	run_id: String,
 	attempt_number: i64,
-	marker: ReviewOrchestrationMarker,
+	pr_url: String,
+	target_base_ref_name: Option<String>,
+	pr_head_ref_name: String,
+	pr_head_oid: String,
+	head_sha: String,
+	phase: String,
+	request_comment_database_id: Option<i64>,
+	request_created_at_unix_epoch: Option<i64>,
+	request_description_thumbs_up_count: Option<usize>,
+	request_retry_count: i64,
+	external_round_count: i64,
+	auto_merge_enabled_at_unix_epoch: Option<i64>,
+	landing_state: String,
+	closeout_state: String,
+	repair_attempt_count: i64,
+	evidence_json: String,
+	next_action: String,
 	updated_at: String,
 	updated_at_unix: i64,
+}
+impl ReviewLifecycleRuntimeRecord {
+	fn as_public(&self) -> ReviewLifecycleRecord {
+		ReviewLifecycleRecord {
+			project_id: self.project_id.clone(),
+			issue_id: self.issue_id.clone(),
+			branch_name: self.branch_name.clone(),
+			run_id: self.run_id.clone(),
+			attempt_number: self.attempt_number,
+			pr_url: self.pr_url.clone(),
+			target_base_ref_name: self.target_base_ref_name.clone(),
+			pr_head_ref_name: self.pr_head_ref_name.clone(),
+			pr_head_oid: self.pr_head_oid.clone(),
+			head_sha: self.head_sha.clone(),
+			phase: self.phase.clone(),
+			request_comment_database_id: self.request_comment_database_id,
+			request_created_at_unix_epoch: self.request_created_at_unix_epoch,
+			request_description_thumbs_up_count: self.request_description_thumbs_up_count,
+			request_retry_count: self.request_retry_count,
+			external_round_count: self.external_round_count,
+			auto_merge_enabled_at_unix_epoch: self.auto_merge_enabled_at_unix_epoch,
+			landing_state: self.landing_state.clone(),
+			closeout_state: self.closeout_state.clone(),
+			repair_attempt_count: self.repair_attempt_count,
+			evidence_json: self.evidence_json.clone(),
+			next_action: self.next_action.clone(),
+			updated_at: self.updated_at.clone(),
+			updated_at_unix: self.updated_at_unix,
+		}
+	}
+
+	fn matches_handoff_identity(&self, handoff: &ReviewHandoffMarker) -> bool {
+		self.run_id == handoff.run_id()
+			&& self.attempt_number == handoff.attempt_number()
+			&& self.branch_name == handoff.branch_name()
+			&& self.pr_url == handoff.pr_url()
+	}
 }
 
 #[derive(Clone, Debug)]
@@ -4307,59 +4325,48 @@ fn insert_program_intake_state(
 	Ok(())
 }
 
-fn persist_review_handoffs(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
-	for record in state.review_handoffs.values() {
+fn persist_review_lifecycle_records(
+	transaction: &Transaction<'_>,
+	state: &StateData,
+) -> Result<()> {
+	for record in state.review_lifecycle_records.values() {
 		transaction.execute(
-			"INSERT OR REPLACE INTO review_handoffs (
+			"INSERT OR REPLACE INTO review_lifecycle_records (
 					project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
-					target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at, updated_at_unix
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-			params![
-				record.project_id,
-				record.issue_id,
-				record.branch_name,
-				record.marker.run_id,
-				record.marker.attempt_number,
-				record.marker.pr_url,
-				record.marker.target_base_ref_name,
-				record.marker.pr_head_ref_name,
-				record.marker.pr_head_oid,
-				record.updated_at,
-				record.updated_at_unix,
-			],
-		)?;
-	}
-
-	Ok(())
-}
-
-fn persist_review_orchestrations(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
-	for record in state.review_orchestrations.values() {
-		transaction.execute(
-			"INSERT OR REPLACE INTO review_orchestrations (
-					project_id, issue_id, branch_name, run_id, attempt_number, pr_url, head_sha,
+					target_base_ref_name, pr_head_ref_name, pr_head_oid, head_sha,
 					phase, request_comment_database_id, request_created_at_unix_epoch,
 					request_description_thumbs_up_count, request_retry_count, external_round_count,
-					auto_merge_enabled_at_unix_epoch, updated_at, updated_at_unix
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+					auto_merge_enabled_at_unix_epoch, landing_state, closeout_state,
+					repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix
+				) VALUES (
+					?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+					?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
+				)",
 			params![
 				record.project_id,
 				record.issue_id,
 				record.branch_name,
 				record.run_id,
 				record.attempt_number,
-				record.marker.pr_url,
-				record.marker.head_sha,
-				record.marker.phase,
-				record.marker.request_comment_database_id,
-				record.marker.request_created_at_unix_epoch,
+				record.pr_url,
+				record.target_base_ref_name,
+				record.pr_head_ref_name,
+				record.pr_head_oid,
+				record.head_sha,
+				record.phase,
+				record.request_comment_database_id,
+				record.request_created_at_unix_epoch,
 				record
-					.marker
 					.request_description_thumbs_up_count
 					.and_then(|count| i64::try_from(count).ok()),
-				record.marker.request_retry_count,
-				record.marker.external_round_count,
-				record.marker.auto_merge_enabled_at_unix_epoch,
+				record.request_retry_count,
+				record.external_round_count,
+				record.auto_merge_enabled_at_unix_epoch,
+				record.landing_state,
+				record.closeout_state,
+				record.repair_attempt_count,
+				record.evidence_json,
+				record.next_action,
 				record.updated_at,
 				record.updated_at_unix,
 			],

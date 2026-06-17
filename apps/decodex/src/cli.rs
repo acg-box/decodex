@@ -317,7 +317,7 @@ struct LandCommand {
 	#[arg(long, conflicts_with = "authority", requires = "pr")]
 	manual_authority: bool,
 	/// Pull request URL to land. Required with `--manual-authority`; otherwise defaults to the
-	/// current review handoff marker.
+	/// current review lifecycle record.
 	#[arg(long, value_name = "URL")]
 	pr: Option<String>,
 	/// Additional related issues for the landed change record.
@@ -1009,7 +1009,7 @@ struct ReviewHandoffRebindCommand {
 	/// Pull request URL to bind after validation.
 	#[arg(long, value_name = "URL")]
 	pr: String,
-	/// Validate only; do not write runtime markers or tracker audit comments.
+	/// Validate only; do not write runtime lifecycle state or tracker audit comments.
 	#[arg(long)]
 	dry_run: bool,
 }
@@ -1022,7 +1022,7 @@ struct ReviewHandoffAdoptCommand {
 	/// Pull request URL to adopt after validation.
 	#[arg(long, value_name = "URL")]
 	pr: String,
-	/// Validate only; do not write runtime markers or tracker audit comments.
+	/// Validate only; do not write runtime lifecycle state or tracker audit comments.
 	#[arg(long)]
 	dry_run: bool,
 }
@@ -1833,7 +1833,7 @@ enum ResearchOutcomeArg {
 
 #[derive(Debug, Subcommand)]
 enum RecoverSubcommand {
-	/// Recover retained review lanes whose handoff marker is missing.
+	/// Recover retained review lanes whose lifecycle record is missing.
 	ReviewHandoff(ReviewHandoffRecoveryCommand),
 	/// Record an audited fallback closeout for a legacy cleanup-only worktree.
 	LegacyCloseout(LegacyCloseoutRecoveryCommand),
