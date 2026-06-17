@@ -1184,8 +1184,23 @@ fn authority_boundary_infers_high_risk_diff_surface_policies() {
 			AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence,
 		),
 		(
+			"apps/decodex/src/billing/usage.rs",
+			AuthorityBoundarySurface::Billing,
+			AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence,
+		),
+		(
+			"apps/decodex/src/tracker/privacy_classifier.rs",
+			AuthorityBoundarySurface::Privacy,
+			AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence,
+		),
+		(
 			"apps/decodex/src/repo_gate.rs",
 			AuthorityBoundarySurface::Validation,
+			AuthorityBoundaryPolicyDecision::BlockLanding,
+		),
+		(
+			"apps/decodex/src/orchestrator/review_policy.rs",
+			AuthorityBoundarySurface::ReviewPolicy,
 			AuthorityBoundaryPolicyDecision::BlockLanding,
 		),
 	] {
