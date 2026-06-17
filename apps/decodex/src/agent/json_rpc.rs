@@ -36,13 +36,11 @@ impl AppServerProcessEnv {
 	pub(crate) fn with_github_credentials(
 		github_token_env_var: String,
 		github_token: String,
-		git_askpass_path: PathBuf,
 	) -> Self {
 		Self {
 			git: GitCredentialEnvironment::with_github_credentials(
 				github_token_env_var,
 				github_token,
-				git_askpass_path,
 			),
 			codex_home_policy: AppServerCodexHomePolicy::SharedDefault,
 		}
@@ -51,14 +49,12 @@ impl AppServerProcessEnv {
 	pub(crate) fn with_github_credentials_and_signing_config(
 		github_token_env_var: String,
 		github_token: String,
-		git_askpass_path: PathBuf,
 		signing_config: GitSigningConfig,
 	) -> Self {
 		Self {
 			git: GitCredentialEnvironment::with_github_credentials_and_signing_config(
 				github_token_env_var,
 				github_token,
-				git_askpass_path,
 				signing_config,
 			),
 			codex_home_policy: AppServerCodexHomePolicy::SharedDefault,
@@ -835,7 +831,6 @@ mod tests {
 		let process_env = AppServerProcessEnv::with_github_credentials(
 			String::from("GITHUB_PAT_Y"),
 			String::from("ghp_test_token"),
-			PathBuf::from("/tmp/decodex-askpass.sh"),
 		);
 		let mut command = Command::new("codex");
 
@@ -858,29 +853,35 @@ mod tests {
 		assert_eq!(envs.get("GH_PROMPT_DISABLED").map(String::as_str), Some("1"));
 		assert_eq!(envs.get("GIT_TERMINAL_PROMPT").map(String::as_str), Some("0"));
 		assert_eq!(envs.get("GCM_INTERACTIVE").map(String::as_str), Some("never"));
-		assert_eq!(envs.get("GIT_ASKPASS").map(String::as_str), Some("/tmp/decodex-askpass.sh"));
-		assert_eq!(envs.get("GIT_CONFIG_COUNT").map(String::as_str), Some("10"));
+		assert!(!envs.contains_key("GIT_ASKPASS"));
+		assert_eq!(envs.get("GIT_CONFIG_COUNT").map(String::as_str), Some("11"));
 		assert_eq!(envs.get("GIT_CONFIG_KEY_0").map(String::as_str), Some("credential.helper"));
 		assert_eq!(envs.get("GIT_CONFIG_VALUE_0").map(String::as_str), Some(""));
+		assert_eq!(envs.get("GIT_CONFIG_KEY_1").map(String::as_str), Some("credential.helper"));
+		assert!(
+			envs.get("GIT_CONFIG_VALUE_1").is_some_and(
+				|value| value.contains("github.com") && value.contains("x-access-token")
+			)
+		);
 		assert_eq!(
 			envs.get("GIT_CONFIG_KEY_2").map(String::as_str),
 			Some("url.https://github.com/.insteadOf")
 		);
-		assert_eq!(envs.get("GIT_CONFIG_VALUE_2").map(String::as_str), Some("git@github.com-x:"));
+		assert_eq!(envs.get("GIT_CONFIG_VALUE_2").map(String::as_str), Some("git@github.com:"));
 		assert_eq!(
-			envs.get("GIT_CONFIG_KEY_6").map(String::as_str),
+			envs.get("GIT_CONFIG_KEY_7").map(String::as_str),
 			Some("url.https://github.com/.insteadOf")
 		);
 		assert_eq!(
-			envs.get("GIT_CONFIG_VALUE_6").map(String::as_str),
+			envs.get("GIT_CONFIG_VALUE_7").map(String::as_str),
 			Some("ssh://git@github.com-y/")
 		);
-		assert_eq!(envs.get("GIT_CONFIG_KEY_7").map(String::as_str), Some("commit.gpgsign"));
-		assert_eq!(envs.get("GIT_CONFIG_VALUE_7").map(String::as_str), Some("false"));
-		assert_eq!(envs.get("GIT_CONFIG_KEY_8").map(String::as_str), Some("tag.gpgsign"));
+		assert_eq!(envs.get("GIT_CONFIG_KEY_8").map(String::as_str), Some("commit.gpgsign"));
 		assert_eq!(envs.get("GIT_CONFIG_VALUE_8").map(String::as_str), Some("false"));
-		assert_eq!(envs.get("GIT_CONFIG_KEY_9").map(String::as_str), Some("user.signingkey"));
-		assert_eq!(envs.get("GIT_CONFIG_VALUE_9").map(String::as_str), Some(""));
+		assert_eq!(envs.get("GIT_CONFIG_KEY_9").map(String::as_str), Some("tag.gpgsign"));
+		assert_eq!(envs.get("GIT_CONFIG_VALUE_9").map(String::as_str), Some("false"));
+		assert_eq!(envs.get("GIT_CONFIG_KEY_10").map(String::as_str), Some("user.signingkey"));
+		assert_eq!(envs.get("GIT_CONFIG_VALUE_10").map(String::as_str), Some(""));
 	}
 
 	#[test]
