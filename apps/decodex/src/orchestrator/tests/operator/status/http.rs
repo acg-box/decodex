@@ -1084,12 +1084,12 @@ fn operator_dashboard_run_activity_event_summarizes_current_lanes() {
 	assert_eq!(data["accountControl"]["mode"], "balanced");
 	assert_eq!(data["currentLanesComplete"], true);
 	assert_eq!(data["currentLaneScope"], "complete");
-	assert!(data["accounts"].is_array());
+	assert!(data.get("accounts").is_none());
 	assert!(fingerprint.get("emittedAtUnixEpoch").is_none());
 	assert_eq!(fingerprint["accountControl"]["mode"], "balanced");
 	assert_eq!(fingerprint["currentLanesComplete"], true);
 	assert_eq!(fingerprint["currentLaneScope"], "complete");
-	assert!(fingerprint["accounts"].is_array());
+	assert!(fingerprint.get("accounts").is_none());
 	assert_eq!(fingerprint["currentLanes"][0]["run_id"], "run-1");
 	assert_eq!(
 		fingerprint["currentLanes"][0]["project_display_name"],
