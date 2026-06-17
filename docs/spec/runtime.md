@@ -6,9 +6,9 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
-drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, decodex intake goal, program_issue_mappings]
-last_verified: 2026-06-17
+code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
+drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, protocol_events, decodex intake goal, program_issue_mappings]
+last_verified: 2026-06-18
 ---
 # Runtime Specification
 
@@ -57,6 +57,11 @@ state or this state machine.
 ## Source of truth boundaries
 
 - The Decodex runtime SQLite database is the single-machine source of truth for run leases, attempts, run-control channels, protocol events, private execution events, harness-outcome telemetry, latent and promoted Decision Contracts, internal Execution Programs, worktree mappings, retained PR state, review-policy checkpoints, loop-guardrail checkpoints, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
+- Protocol events are keyed by `(run_id, sequence_number)` and store a `payload_sha256`
+  digest for replay identity without storing raw protocol payloads. Exact replays of
+  the same event type and digest are idempotent and must not inflate event counts or
+  fail a continuation/recovery path. A different event type or different digest at the
+  same sequence remains a journal integrity error.
 - Linear remains the team-visible tracker surface for issue lifecycle, queue/active/manual-attention labels, and coarse lifecycle summaries such as start, PR-ready, blocked, failed, landed, and done.
 - Versioned Linear execution event comments use the schema in
   [`linear-execution-ledger.md`](./linear-execution-ledger.md), but fine-grained runtime truth must not be rebuilt from comments every tick.

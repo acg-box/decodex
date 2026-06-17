@@ -1640,40 +1640,59 @@ impl StateStore {
 		run_id: &str,
 		sequence_number: i64,
 		event_type: &str,
-		_payload: &str,
+		payload: &str,
 	) -> Result<()> {
 		let mut state = self.lock_without_refresh()?;
-		let insert_index = {
-			let events = state.events.entry(run_id.to_owned()).or_default();
-
-			match events.binary_search_by_key(&sequence_number, |event| event.sequence_number) {
-				Ok(_index) => {
-					eyre::bail!(
-						"Protocol event `{run_id}` sequence `{sequence_number}` already exists in the runtime journal."
-					);
-				},
-				Err(index) => index,
-			}
-		};
 		let now = timestamp_parts();
 		let event = ProtocolEventRecord {
 			sequence_number,
 			event_type: event_type.to_owned(),
+			payload_sha256: protocol_event_payload_sha256(payload),
 			created_at: now.text,
 			created_at_unix: now.unix,
 		};
+		let (insert_index, cached_existing) = {
+			let events = state.events.entry(run_id.to_owned()).or_default();
 
-		if !self.append_protocol_event_locked(run_id, &event)? {
-			eyre::bail!(
-				"Protocol event `{run_id}` sequence `{sequence_number}` already exists in the runtime journal."
-			);
+			match events.binary_search_by_key(&sequence_number, |event| event.sequence_number) {
+				Ok(index) => (index, Some(events[index].clone())),
+				Err(index) => (index, None),
+			}
+		};
+
+		if let Some(existing) = cached_existing {
+			ensure_protocol_event_replay_matches(run_id, &existing, &event)?;
+
+			self.refresh_protocol_event_summaries_for_runs_locked(&mut state, &[run_id.to_owned()])?;
+
+			return Ok(());
 		}
 
-		state
-			.event_summaries
-			.entry(run_id.to_owned())
-			.or_default()
-			.record_event(&event);
+		if !self.append_protocol_event_locked(run_id, &event)? {
+			let existing = self.protocol_event_locked(run_id, sequence_number)?.ok_or_else(|| {
+				eyre::eyre!(
+					"Protocol event `{run_id}` sequence `{sequence_number}` already exists in the runtime journal, but the existing row could not be read."
+				)
+			})?;
+
+			ensure_protocol_event_replay_matches(run_id, &existing, &event)?;
+
+			self.refresh_protocol_event_summaries_for_runs_locked(&mut state, &[run_id.to_owned()])?;
+
+			return Ok(());
+		}
+
+		let summary = state.event_summaries.entry(run_id.to_owned()).or_default();
+
+		if summary
+			.last_sequence_number
+			.is_none_or(|last_sequence_number| sequence_number == last_sequence_number.saturating_add(1))
+		{
+			summary.record_event(&event);
+		} else {
+			self.refresh_protocol_event_summaries_for_runs_locked(&mut state, &[run_id.to_owned()])?;
+		}
+
 		state.events.entry(run_id.to_owned()).or_default().insert(insert_index, event);
 
 		Ok(())
@@ -3116,6 +3135,21 @@ impl StateStore {
 		sqlite.append_protocol_event(run_id, event)
 	}
 
+	fn protocol_event_locked(
+		&self,
+		run_id: &str,
+		sequence_number: i64,
+	) -> Result<Option<ProtocolEventRecord>> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(None);
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.protocol_event(run_id, sequence_number)
+	}
+
 	fn insert_linear_execution_event_if_absent_locked(
 		&self,
 		record: &LinearExecutionEventRuntimeRecord,
@@ -4238,6 +4272,38 @@ fn validate_run_control_channel_status(status: &str) -> Result<()> {
 	}
 
 	Ok(())
+}
+
+fn protocol_event_payload_sha256(payload: &str) -> String {
+	let digest = Sha256::digest(payload.as_bytes());
+	let mut hash = String::with_capacity(64);
+
+	for byte in digest {
+		hash.push(char::from(b"0123456789abcdef"[(byte >> 4) as usize]));
+		hash.push(char::from(b"0123456789abcdef"[(byte & 0x0f) as usize]));
+	}
+
+	hash
+}
+
+fn ensure_protocol_event_replay_matches(
+	run_id: &str,
+	existing: &ProtocolEventRecord,
+	candidate: &ProtocolEventRecord,
+) -> Result<()> {
+	if existing.is_idempotent_replay_of(candidate) {
+		return Ok(());
+	}
+
+	eyre::bail!(
+		"Protocol event `{run_id}` sequence `{}` conflicts with an existing runtime journal event: \
+		 existing event_type=`{}` payload_sha256=`{}`, candidate event_type=`{}` payload_sha256=`{}`.",
+		candidate.sequence_number,
+		existing.event_type,
+		existing.payload_sha256,
+		candidate.event_type,
+		candidate.payload_sha256,
+	);
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
