@@ -38,7 +38,8 @@ Keep Decodex natural-language-first. Requests such as `research X` route through
 Research never queues work, mutates Linear, starts implementation, creates Codex
 goals, or dispatches Program nodes. Promotion preserves accepted objectives,
 non-goals, constraints, assumptions, objections, validation expectations, proposed
-issue summaries, and stop conditions. Program Intake dispatches ready mapped nodes directly from the persisted DAG; queue labels are not the Program scheduler.
+issues, and stop conditions. Program Intake dispatches ready mapped nodes directly
+from the persisted DAG; queue labels are not the Program scheduler.
 
 ## Program Versus Label Intake
 
