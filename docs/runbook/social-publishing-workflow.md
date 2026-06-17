@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "Social Publishing Workflow"
+description: "OKF concept for Social Publishing Workflow."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # Social Publishing Workflow
 
 Goal: Turn Radar evidence into low-frequency `@decodexspace` X posts or checked-in

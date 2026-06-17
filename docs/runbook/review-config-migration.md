@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "Review Config Migration"
+description: "One-time manual migration from the historical Decodex review config keys to the v0.2.0 review-level model. Use this when: An agent or operator is updating a registered Decodex project `project.toml` for the Loop Engineering release. Do not use this for: Changing review behavior in code, adding compatibility parsing, or mutating operator-local dogfood config before the release flip issue says to do so. Governing specs: [`../spec/review-orchestration.md`](../spec/review-orchestration.md) and [`../spec/runtime.md`](../spec/runtime.md)."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # Review Config Migration
 
 Purpose: One-time manual migration from the historical Decodex review config keys to

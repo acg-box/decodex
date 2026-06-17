@@ -161,9 +161,8 @@ SQLite. The Decodex research method frames the question first, records an eviden
 ledger, compares realistic options, forms a challenge-ready judgment, resolves skeptic
 objections, and then ends as `decision_ready`, `not_decision_ready`, `blocked`, or
 `needs_human_decision`. New Decodex research may use `docs/research/` only for
-JSON research artifacts, never the old `research-run/2` event-log shape; removed
-legacy JSON runs are consolidated in
-`docs/research/legacy-research-goal-audit.json`. A compiled contract is latent and
+Markdown OKF research concepts; checked-in research JSON event logs are no longer a
+valid docs shape. A compiled contract is latent and
 cannot queue work, mutate tracker state, set goals, or authorize implementation.
 `decodex research promote` records explicit acceptance for a stored contract; only
 promoted contracts may later feed issue shaping or internal Execution Program

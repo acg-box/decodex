@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "Research-To-Execution Loop"
+description: "Operate and inspect the natural-language research-to-execution loop without turning latent research into automatic execution."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # Research-To-Execution Loop
 
 Purpose: Operate and inspect the natural-language research-to-execution loop without

@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "Recover Review Handoff"
+description: "Diagnose and explicitly repair retained review lanes that are blocked by a missing or stale runtime DB review-handoff marker."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # Recover Review Handoff
 
 Purpose: Diagnose and explicitly repair retained review lanes that are blocked by a

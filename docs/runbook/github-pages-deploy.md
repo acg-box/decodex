@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "GitHub Pages Deploy"
+description: "OKF concept for GitHub Pages Deploy."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # GitHub Pages Deploy
 
 Goal: Define how Decodex is published as this repository's GitHub Pages project
