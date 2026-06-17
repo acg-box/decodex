@@ -7332,32 +7332,13 @@ fn operator_run_child_agent_activity(
 	stored_summary: Option<&ChildAgentActivitySummary>,
 	now_unix_epoch: i64,
 ) -> Option<ChildAgentActivitySummary> {
-	let mut summary = marker
-		.and_then(RunActivityMarker::child_agent_activity)
-		.or(stored_summary)
-		.cloned()?;
-
-	summary.current_elapsed_seconds =
-		summary.current_started_unix_epoch.and_then(|started_at| {
-			now_unix_epoch.checked_sub(started_at).filter(|elapsed| *elapsed >= 0)
-		});
-
-	if let (Some(current_bucket), Some(current_elapsed_seconds)) =
-		(summary.current_bucket.as_deref(), summary.current_elapsed_seconds)
-		&& current_elapsed_seconds > 0
+	if let Some(marker) = marker
+		&& let Some(summary) = marker.child_agent_activity()
 	{
-		if let Some(bucket) = summary.buckets.iter_mut().find(|bucket| bucket.name == current_bucket) {
-			bucket.wall_seconds = bucket.wall_seconds.saturating_add(current_elapsed_seconds);
-		} else {
-			summary.buckets.push(ChildAgentActivityBucket {
-				name: current_bucket.to_owned(),
-				wall_seconds: current_elapsed_seconds,
-				..ChildAgentActivityBucket::default()
-			});
-		}
+		return Some(summary.clone().live_projection(now_unix_epoch));
 	}
 
-	Some(summary)
+	stored_summary.cloned().map(ChildAgentActivitySummary::sealed_durable)
 }
 
 fn operator_run_protocol_activity(

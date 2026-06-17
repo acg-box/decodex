@@ -1597,7 +1597,7 @@ impl StateStore {
 		let summary = RunActivitySummaryRecord {
 			run_id: run_id.to_owned(),
 			attempt_number,
-			child_agent_activity: child_agent_activity.cloned(),
+			child_agent_activity: child_agent_activity.cloned().map(ChildAgentActivitySummary::sealed_durable),
 			protocol_activity: protocol_activity.cloned(),
 			updated_at: now.text,
 			updated_at_unix: now.unix,
