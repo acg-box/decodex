@@ -6,9 +6,9 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs]
-drift_watch: [issue_progress_checkpoint, issue_terminal_finalize, docs_impact, private_execution_events, linear_execution_event]
-last_verified: 2026-06-16
+code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs]
+drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, private_execution_events, linear_execution_event]
+last_verified: 2026-06-17
 ---
 # Tracker Tool Specification
 
@@ -147,6 +147,12 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - `issue_progress_checkpoint` must accept only the normalized execution phases `probing`, `implementing`, `verifying`, `blocked`, `ready_for_review`, `review_repair`, `ready_to_land`, and `closeout`, plus the docs-impact enum `none`, `update_required`, `research_required`, or `drift_required`.
 - `issue_progress_checkpoint` must not replace `issue_review_checkpoint`, `issue_review_handoff`, `issue_review_repair_complete`, `issue_closeout_complete`, or `issue_terminal_finalize`.
 - `decodex` treats `issue_progress_checkpoint` as execution memory only. Checkpoint phase, docs impact, focus, next action, blockers, or evidence do not by themselves authorize review handoff, repair completion, merge, closeout, or terminal success.
+- For implementation and repair phase-goal transitions, the latest current-HEAD
+  `issue_progress_checkpoint` is an input to Decodex's private
+  `phase_acceptance_check`. The checkpoint must demonstrate objective coverage,
+  parseable docs impact, and no blockers before Decodex may advance from
+  implementation or repair to `handoff_evidence`; repo-gate pass alone is not
+  transition authority.
 - Before `issue_terminal_finalize` can complete any terminal path, the latest private progress checkpoint for the run attempt must include parseable `docs_impact` and match the current lane `HEAD`.
 - `issue_progress_checkpoint` must persist the full normalized checkpoint payload to
   `private_execution_events` before attempting any Linear write.

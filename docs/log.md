@@ -13,6 +13,9 @@
 - Clarified that architecture recovery infers Authority Boundary surfaces from
   retained tracked diffs and that `requires_enhanced_evidence` and `block_landing`
   clear only after a clean review checkpoint for the current lane head.
+- Added private `phase_acceptance_check` handling so implementation and repair phases
+  require objective coverage, effective delta, non-goal cleanliness, docs readiness,
+  and repo-gate evidence before advancing to handoff.
 - Added `docs/spec/okf-knowledge-layer.md` to separate portable OKF engine behavior,
   LLM Wiki graph/retrieval behavior, repository-memory anchors, and the strict
   Decodex docs profile.

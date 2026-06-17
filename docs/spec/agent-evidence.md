@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/types.rs]
-drift_watch: [decodex evidence, authority_boundary_check, architecture_recovery_packet, private_execution_evidence_readback]
+drift_watch: [decodex evidence, phase_acceptance_check, authority_boundary_check, architecture_recovery_packet, private_execution_evidence_readback]
 last_verified: 2026-06-17
 ---
 # Agent Evidence
@@ -185,6 +185,12 @@ The readback includes:
   finding counts, and compact next action, but not raw reviewer finding bodies or
   checklist payloads unless `--include-payload` is explicitly requested for local
   repair.
+- Phase Acceptance Check summaries when `phase_acceptance_check` events are present.
+  Default readback may expose phase, decision, reason code, objective-coverage state,
+  effective-delta state, changed surfaces, non-goal result, validation result, and
+  compact next action. The default readback does not expose raw checkpoint payloads,
+  command output, retained diffs, transcripts, or credentials unless
+  `--include-payload` is explicitly requested for local repair.
 - Architecture Recovery Packet summaries when `architecture_recovery_packet`,
   `architecture_recovery_started`, or `architecture_recovery_terminal` events are
   present. Default readback may expose the recovery reason code, guardrail reason,

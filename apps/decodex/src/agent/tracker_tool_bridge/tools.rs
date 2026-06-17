@@ -1382,15 +1382,12 @@ impl<'a> TrackerToolBridge<'a> {
 			Ok(update) => update,
 			Err(error) => return DynamicToolCallResponse::failure(error),
 		};
+
 		checkpoint_payload.finding_policy = policy_update.finding_policy;
-		let details_json = match serde_json::to_string(&checkpoint_payload) {
+
+		let details_json = match self.review_checkpoint_details_json(&checkpoint_payload) {
 			Ok(details_json) => details_json,
-			Err(error) => {
-				return DynamicToolCallResponse::failure(format!(
-					"Failed to serialize the structured review checkpoint for issue `{}`: {error}",
-					self.issue.identifier
-				));
-			},
+			Err(error) => return DynamicToolCallResponse::failure(error),
 		};
 		let nonclean_rounds = policy_update.nonclean_rounds;
 
@@ -1427,22 +1424,54 @@ impl<'a> TrackerToolBridge<'a> {
 			},
 		);
 
-		if review_policy_status == ReviewPolicyStatus::Findings
-			&& nonclean_rounds >= REVIEW_POLICY_CONVERGENCE_BUDGET
-		{
-			let fingerprint = checkpoint_payload
-				.finding_policy
-				.stop_fingerprint
-				.as_ref()
-				.map_or_else(String::new, |fingerprint| {
-					format!(" Finding fingerprint `{fingerprint}` caused the stop.")
-				});
-			return DynamicToolCallResponse::failure(format!(
-				"{message} Review churn threshold exceeded.{fingerprint} Stop the current repair strategy now and route through architecture recovery or human attention before making further repair mutations."
-			));
+		if let Some(response) = self.review_checkpoint_churn_stop_response(
+			review_policy_status,
+			nonclean_rounds,
+			&checkpoint_payload,
+			&message,
+		) {
+			return response;
 		}
 
 		DynamicToolCallResponse::success(message)
+	}
+
+	fn review_checkpoint_details_json(
+		&self,
+		checkpoint_payload: &NormalizedReviewCheckpointPayload,
+	) -> Result<String, String> {
+		serde_json::to_string(checkpoint_payload).map_err(|error| {
+			format!(
+				"Failed to serialize the structured review checkpoint for issue `{}`: {error}",
+				self.issue.identifier
+			)
+		})
+	}
+
+	fn review_checkpoint_churn_stop_response(
+		&self,
+		review_policy_status: ReviewPolicyStatus,
+		nonclean_rounds: i64,
+		checkpoint_payload: &NormalizedReviewCheckpointPayload,
+		message: &str,
+	) -> Option<DynamicToolCallResponse> {
+		if review_policy_status != ReviewPolicyStatus::Findings
+			|| nonclean_rounds < REVIEW_POLICY_CONVERGENCE_BUDGET
+		{
+			return None;
+		}
+
+		let fingerprint = checkpoint_payload
+			.finding_policy
+			.stop_fingerprint
+			.as_ref()
+			.map_or_else(String::new, |fingerprint| {
+				format!(" Finding fingerprint `{fingerprint}` caused the stop.")
+			});
+
+		Some(DynamicToolCallResponse::failure(format!(
+			"{message} Review churn threshold exceeded.{fingerprint} Stop the current repair strategy now and route through architecture recovery or human attention before making further repair mutations."
+		)))
 	}
 
 	fn review_checkpoint_finding_policy_update(
@@ -1462,7 +1491,6 @@ impl<'a> TrackerToolBridge<'a> {
 				review_finding_policy_from_previous_state(previous_state, review_policy_phase)
 			})
 			.unwrap_or_default();
-
 		let previous_threshold_exceeded = previous_state.as_ref().is_some_and(|previous_state| {
 			previous_state.phase == review_policy_phase
 				&& previous_state.status == ReviewPolicyStatus::Findings
@@ -2424,6 +2452,7 @@ fn normalize_optional_review_line_range(
 			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `{field_name}.end` to be greater than or equal to `{field_name}.start`."
 		));
 	}
+
 	if let Some(line) = line
 		&& (line < line_range.start || line > line_range.end)
 	{
@@ -2512,16 +2541,16 @@ fn review_finding_policy_update(
 	head_sha: &str,
 	checkpoint_payload: &NormalizedReviewCheckpointPayload,
 ) -> ReviewFindingPolicyUpdate {
-	let mut records = previous
-		.findings
-		.into_iter()
-		.map(|record| (record.fingerprint.clone(), record))
-		.collect::<BTreeMap<_, _>>();
 	let active_fingerprints = checkpoint_payload
 		.accepted_findings
 		.iter()
 		.map(|finding| finding.fingerprint.clone())
 		.collect::<BTreeSet<_>>();
+	let mut records = previous
+		.findings
+		.into_iter()
+		.map(|record| (record.fingerprint.clone(), record))
+		.collect::<BTreeMap<_, _>>();
 
 	match status {
 		ReviewPolicyStatus::Findings => {
@@ -2533,6 +2562,7 @@ fn review_finding_policy_update(
 					&checkpoint_payload.evidence,
 				);
 			}
+
 			resolve_absent_review_findings(&mut records, &active_fingerprints);
 		},
 		ReviewPolicyStatus::Clean => {
@@ -2584,14 +2614,17 @@ fn upsert_open_review_finding_record(
 	record.body = finding.guidance.clone();
 	record.file = finding.file.clone();
 	record.line_range = finding.line_range.clone();
+
 	if existing_open {
 		record.repeat_count = record.repeat_count.saturating_add(1);
 	} else {
 		record.first_seen_head = head_sha.to_owned();
 		record.repeat_count = 1;
 	}
+
 	record.last_seen_head = head_sha.to_owned();
 	record.status = String::from("open");
+
 	append_review_finding_repair_evidence(&mut record, checkpoint_evidence);
 	append_review_finding_repair_evidence(&mut record, &finding.evidence);
 
@@ -2645,6 +2678,7 @@ fn resolve_all_review_findings(
 ) {
 	for record in records.values_mut().filter(|record| record.status == "open") {
 		record.status = String::from("resolved");
+
 		append_review_finding_repair_evidence(record, checkpoint_evidence);
 	}
 }
@@ -2656,6 +2690,7 @@ fn review_finding_policy_from_previous_state(
 	if previous_state.phase != review_policy_phase {
 		return None;
 	}
+
 	let details = serde_json::from_str::<Value>(&previous_state.details_json).ok()?;
 
 	details
@@ -2680,6 +2715,7 @@ fn migrate_legacy_review_finding_policy(
 	}
 
 	let findings = details.get("accepted_findings")?.as_array()?;
+
 	for finding_value in findings {
 		let finding = serde_json::from_value::<ReviewCheckpointFindingArgs>(finding_value.clone())
 			.ok()
@@ -2689,14 +2725,18 @@ fn migrate_legacy_review_finding_policy(
 		let mut record = review_finding_policy_record(&finding, &previous_state.head_sha);
 
 		record.repeat_count = previous_state.nonclean_rounds.max(1);
+
 		append_review_finding_repair_evidence(&mut record, &finding.evidence);
+
 		finding_policy.active_fingerprints.push(finding.fingerprint.clone());
 		finding_policy.findings.push(record);
 	}
 
 	finding_policy.nonclean_rounds = previous_state.nonclean_rounds;
+
 	finding_policy.active_fingerprints.sort();
 	finding_policy.active_fingerprints.dedup();
+
 	finding_policy.stop_fingerprint = (previous_state.nonclean_rounds
 		>= REVIEW_POLICY_CONVERGENCE_BUDGET)
 		.then(|| finding_policy.active_fingerprints.first().cloned())
