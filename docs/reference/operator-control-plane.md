@@ -7,7 +7,7 @@ authority: current_state
 owner: docs
 tags: [reference]
 code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/mcp.rs]
-drift_watch: [decodex serve, decodex status, decodex evidence, decodex mcp serve --transport stdio, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
+drift_watch: [decodex serve, decodex status, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
 last_verified: 2026-06-18
 ---
 # Operator Control Plane
@@ -80,16 +80,23 @@ Use `decodex app` to open the installed macOS app from the CLI; use
 the caller's environment, so `DECODEX_APP_SERVER_URL` remains an explicit App preview
 override when set.
 
-Local MCP hosts can use `decodex mcp serve --transport stdio` for core MCP protocol
-primitives. The stdio gateway lists and reads checked-in docs, checked-in JSON
+Local MCP hosts can use `decodex mcp serve --transport stdio` for local core MCP
+protocol primitives or `decodex mcp serve --transport streamable-http` for remote
+permitted clients that reach the daemon through an operator-chosen local listener,
+tunnel, or relay. Both transports list and read checked-in docs, checked-in JSON
 research reports, Decision Contract readback, status snapshots, and lane-control
-readback; it also advertises resource templates, reusable Decodex prompts, and a small
-schema-bound tool catalog. The stdio gateway defaults to `--capability-profile admin`
-for local clients and can be narrowed to `observe`, `plan`, or `operate`; `tools/list`
-filters by that active profile and above-profile calls return structured refusals.
-Observe and plan tools are read-oriented. Operate/admin lane-control entries return
-structured refusal states in this phase. Streamable HTTP endpoint, session, origin,
-and SSE behavior is deferred to separate transport work.
+readback; both also advertise resource templates, reusable Decodex prompts, and a
+small schema-bound tool catalog. The stdio gateway defaults to
+`--capability-profile admin` for local clients. Streamable HTTP binds to
+`127.0.0.1:8193` and defaults to `observe`; it serves JSON-RPC at `POST /mcp`,
+validates browser `Origin` headers against loopback or `--allow-origin`, issues
+`Mcp-Session-Id` on `initialize`, requires a known session after initialization, and
+uses SSE framing for progress or notifications when the client accepts
+`text/event-stream`. Both transports can be narrowed or explicitly elevated with
+`--capability-profile observe|plan|operate|admin`; `tools/list` filters by the active
+profile and above-profile calls return structured refusals. Observe and plan tools are
+read-oriented. Operate/admin lane-control entries return structured refusal states
+until later MCP lane-control work delegates mutation through existing authority gates.
 
 `decodex serve` has two hardcoded scheduler cadences:
 
