@@ -3724,6 +3724,73 @@ fn decision_contract_reload_rejects_row_key_payload_mismatch() {
 }
 
 #[test]
+fn decision_contract_reload_skips_legacy_flat_issue_summary_rows() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+
+	store
+		.upsert_decision_contract("decodex", Some("XY-852"), latent_decision_contract_fixture())
+		.expect("current decision contract should persist");
+
+	let mut legacy_payload = serde_json::to_value(latent_decision_contract_fixture())
+		.expect("fixture should encode as JSON");
+	legacy_payload["contract_id"] = serde_json::json!("legacy-flat-issue-contract");
+	let readiness = legacy_payload
+		.get_mut("execution_readiness")
+		.expect("readiness should exist")
+		.as_object_mut()
+		.expect("readiness should be an object");
+
+	readiness.remove("proposed_issues");
+	readiness.insert(
+		String::from("proposed_issue_summaries"),
+		serde_json::json!(["Legacy flat summary that must not be compiled."]),
+	);
+
+	let connection = Connection::open(&state_path).expect("sqlite should open");
+
+	connection
+		.execute(
+			"INSERT INTO decision_contracts (
+					project_id, contract_id, source_issue_id, status, payload_json, created_at,
+					created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+			rusqlite::params![
+				"decodex",
+				"legacy-flat-issue-contract",
+				"XY-OLD",
+				"draft_latent",
+				serde_json::to_string(&legacy_payload).expect("legacy payload should serialize"),
+				"2026-06-17T00:00:00Z",
+				1_i64,
+				"2026-06-17T00:00:00Z",
+				1_i64,
+			],
+		)
+		.expect("legacy decision contract row should insert");
+
+	let reopened = StateStore::open(&state_path)
+		.expect("legacy flat issue summary row should not block state reload");
+	let project_contracts = reopened
+		.list_decision_contracts_for_project("decodex")
+		.expect("project contracts should list");
+
+	assert_eq!(project_contracts.len(), 1);
+	assert_eq!(project_contracts[0].contract_id(), "research-x-loop-contract");
+	assert!(
+		reopened
+			.list_decision_contracts_for_issue("decodex", "XY-OLD")
+			.expect("legacy issue contracts should list as empty")
+			.is_empty()
+	);
+	assert!(
+		reopened.decision_contract("decodex", "legacy-flat-issue-contract").is_err(),
+		"direct legacy contract reads must still fail closed"
+	);
+}
+
+#[test]
 fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.db");
