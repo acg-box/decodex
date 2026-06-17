@@ -1,11 +1,13 @@
 mod program_reconciler {
-use std::collections::BTreeSet;
+use rusqlite::Connection;
+use std::{collections::BTreeSet, path::Path};
 
 use crate::execution_program::{
 	ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionLinearIssueMapping,
 	ExecutionProgram, ExecutionProgramDependency, ExecutionProgramNode, ExecutionProgramNodeStage,
 	ExecutionQueueIntent,
 };
+use crate::loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind};
 use crate::state::{ReviewHandoffMarker, StateStore};
 use crate::tracker::{self, TrackerIssue, TrackerLabel};
 use crate::worktree::WorktreeManager;
@@ -47,6 +49,79 @@ fn selects_ready_node_for_direct_program_dispatch_without_queue_label_mutation()
 	assert_eq!(selection.summary.dispatchable_nodes, 1);
 	assert_eq!(selected.issue.id, issue.id);
 	assert_eq!(selected.dispatch_mode, orchestrator::IssueDispatchMode::Program);
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.label_removals.borrow().is_empty());
+}
+
+#[test]
+fn legacy_flat_goal_contract_does_not_abort_direct_program_selection() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let legacy_issue = program_reconciler_issue("issue-legacy", "PUB-209", "Todo", &[]);
+	let ready_issue = program_reconciler_issue("issue-ready", "PUB-210", "Todo", &[]);
+	let contract = program_reconciler_accepted_contract();
+	let legacy_program = ExecutionProgram::from_accepted_contract(
+		"program-legacy-flat-contract",
+		config.service_id(),
+		&contract,
+		vec![program_reconciler_node(
+			"node-legacy",
+			&legacy_issue,
+			ExecutionQueueIntent::ReadyToQueue,
+		)],
+	)
+	.expect("legacy program should build");
+	let current_program = ExecutionProgram::from_issue_batch_intake(
+		"program-current-issue-batch",
+		config.service_id(),
+		"program-current-fingerprint",
+		"Current issue-batch intake.",
+		vec![program_reconciler_node(
+			"node-ready",
+			&ready_issue,
+			ExecutionQueueIntent::ReadyToQueue,
+		)],
+	)
+	.expect("current program should build");
+
+	store
+		.upsert_execution_program(config.service_id(), legacy_program)
+		.expect("legacy program should persist");
+
+	insert_legacy_flat_decision_contract(
+		&state_path,
+		config.service_id(),
+		Some(&legacy_issue.id),
+		&contract,
+	);
+
+	store
+		.upsert_execution_program(config.service_id(), current_program)
+		.expect("current program should persist");
+
+	assert!(
+		store
+			.decision_contract(config.service_id(), contract.contract_id())
+			.is_err(),
+		"strict execution contract reads must still reject legacy flat issue summaries",
+	);
+
+	let tracker = FakeTracker::new(vec![legacy_issue, ready_issue.clone()]);
+	let selection = orchestrator::select_execution_program_run_candidate_with_summary(
+		&tracker,
+		&config,
+		&workflow,
+		&store,
+		&[],
+	)
+	.expect("legacy flat contract should not abort program dispatch selection");
+	let selected = selection.selected.expect("current issue-batch node should be selected");
+
+	assert_eq!(selected.issue.id, ready_issue.id);
+	assert_eq!(selected.dispatch_mode, orchestrator::IssueDispatchMode::Program);
+	assert_eq!(selection.summary.programs_evaluated, 1);
+	assert_eq!(selection.summary.dispatchable_nodes, 1);
 	assert!(tracker.label_additions.borrow().is_empty());
 	assert!(tracker.label_removals.borrow().is_empty());
 }
@@ -458,5 +533,72 @@ fn program_reconciler_issue(
 
 fn program_reconciler_queue_label() -> String {
 	tracker::automation_queue_label("pubfi")
+}
+
+fn program_reconciler_accepted_contract() -> DecisionContract {
+	let mut contract: DecisionContract = serde_json::from_str(include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/fixtures/decision_contract/research_x_latent_contract.json"
+	)))
+	.expect("decision contract fixture should deserialize");
+
+	contract
+		.promote(
+			DecisionPromotion::new(
+				"operator",
+				DecisionPromotionActorKind::User,
+				"2026-06-17T00:00:00Z",
+				"program-reconciler-test",
+				Some(String::from("Accepted for program reconciler regression coverage.")),
+			)
+			.expect("promotion should build"),
+		)
+		.expect("contract should promote");
+
+	contract
+}
+
+fn insert_legacy_flat_decision_contract(
+	state_path: &Path,
+	service_id: &str,
+	source_issue_id: Option<&str>,
+	contract: &DecisionContract,
+) {
+	let mut legacy_payload =
+		serde_json::to_value(contract).expect("contract should encode as JSON");
+	let readiness = legacy_payload
+		.get_mut("execution_readiness")
+		.expect("readiness should exist")
+		.as_object_mut()
+		.expect("readiness should be an object");
+
+	readiness.remove("proposed_issues");
+	readiness.insert(
+		String::from("proposed_issue_summaries"),
+		serde_json::json!(["Legacy flat summary that must stay quarantined."]),
+	);
+
+	let connection = Connection::open(state_path).expect("sqlite should open");
+
+	connection
+		.execute(
+			"INSERT INTO decision_contracts (
+				project_id, contract_id, source_issue_id, status, payload_json, created_at,
+				created_at_unix, updated_at, updated_at_unix
+			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+			rusqlite::params![
+				service_id,
+				contract.contract_id(),
+				source_issue_id,
+				contract.status().as_str(),
+				serde_json::to_string(&legacy_payload)
+					.expect("legacy payload should serialize"),
+				"2026-06-17T00:00:00Z",
+				1_i64,
+				"2026-06-17T00:00:00Z",
+				1_i64,
+			],
+		)
+		.expect("legacy decision contract row should insert");
 }
 }
