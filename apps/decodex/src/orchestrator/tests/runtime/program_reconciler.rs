@@ -8,6 +8,7 @@ use crate::execution_program::{
 };
 use crate::state::StateStore;
 use crate::tracker::{self, TrackerIssue, TrackerLabel};
+use crate::worktree::WorktreeManager;
 use crate::orchestrator;
 
 use crate::orchestrator::tests::{
@@ -156,6 +157,84 @@ fn active_conflict_domain_holds_peer_node() {
 	assert!(selection.selected.is_none());
 	assert_eq!(selection.summary.dispatchable_nodes, 0);
 	assert!(tracker.label_additions.borrow().is_empty());
+}
+
+#[test]
+fn live_reconciliation_clears_missing_orphaned_mapping_before_program_selection() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let store = StateStore::open_in_memory().expect("state store should open");
+	let issue = program_reconciler_issue("issue-orphaned", "PUB-208", "Todo", &[]);
+	let missing_worktree_path = config.worktree_root().join(&issue.identifier);
+	let conflict = ExecutionConflictDomain::new(ExecutionConflictDomainKind::Module, "runtime")
+		.expect("conflict should build");
+
+	store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-208",
+			&missing_worktree_path.display().to_string(),
+		)
+		.expect("orphaned mapping should persist");
+	store
+		.upsert_execution_program(
+			config.service_id(),
+			program_reconciler_program(vec![
+				program_reconciler_node(
+					"node-orphaned",
+					&issue,
+					ExecutionQueueIntent::ReadyToQueue,
+				)
+				.with_conflict_domains([conflict])
+				.expect("conflict should attach"),
+			]),
+		)
+		.expect("program should persist");
+
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let blocked = orchestrator::select_execution_program_run_candidate_with_summary(
+		&tracker,
+		&config,
+		&workflow,
+		&store,
+		&[],
+	)
+	.expect("stale mapping should evaluate");
+
+	assert!(blocked.selected.is_none());
+	assert!(
+		store
+			.worktree_for_issue(&issue.id)
+			.expect("worktree lookup should succeed")
+			.is_some()
+	);
+
+	let worktree_manager =
+		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
+
+	orchestrator::reconcile_project_state(&tracker, &config, &workflow, &store, &worktree_manager)
+		.expect("project reconciliation should succeed");
+
+	assert!(
+		store
+			.worktree_for_issue(&issue.id)
+			.expect("worktree lookup should succeed")
+			.is_none()
+	);
+
+	let ready = orchestrator::select_execution_program_run_candidate_with_summary(
+		&tracker,
+		&config,
+		&workflow,
+		&store,
+		&[],
+	)
+	.expect("program dispatch selection should recover");
+	let selected = ready.selected.expect("node should be selected");
+
+	assert_eq!(ready.summary.dispatchable_nodes, 1);
+	assert_eq!(selected.issue.id, issue.id);
+	assert_eq!(selected.dispatch_mode, orchestrator::IssueDispatchMode::Program);
 }
 
 #[test]
