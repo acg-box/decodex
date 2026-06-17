@@ -98,7 +98,6 @@ impl GitCredentialEnvironment {
 
 		if self.github_token.is_some() {
 			command.env_remove("GIT_ASKPASS");
-
 			// Empty helper resets inherited helpers so routed credentials own GitHub auth.
 			git_config_entries.push((String::from("credential.helper"), String::new()));
 			git_config_entries
