@@ -14,6 +14,8 @@ processing where possible, and test questions.
 
 - Use `repo-memory-writer` for first-pass creation; use this skill for growth and
   repair after real usage exposes misses.
+- Use `repo-memory-evaluator` first when the task is to judge bundle quality, produce
+  a route benchmark report, or compare before/after curation.
 - Treat `docs check` or `okf check` as shape validation only. Prove usefulness with
   `graph`, `find`, and representative `route` probes.
 - Prefer metadata and link repairs before creating new concepts.
@@ -35,7 +37,8 @@ Growth loop:
 3. Repair in this order: owner `description`, `tags`, routing header, "Not this"
    boundary, Markdown links/`related`, lane index. Split, merge, or delete only after
    ownership is proven wrong.
-4. Re-run the failing probe plus a small regression set.
+4. Re-run the failing probe plus a small regression set. If the set is not already
+   defined, use `repo-memory-evaluator` to create one.
 5. Record material navigation changes in `log.md`.
 
 Route benchmark rules:

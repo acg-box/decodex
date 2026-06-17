@@ -9,6 +9,9 @@ Route Decodex work to the narrowest surface. Read `../../references/routing.md` 
 research, promotion, planning, labels, runtime, commit, or landing boundaries matter.
 
 - `research`: bounded investigation before execution.
+- `okf`, `okf-query`, `okf-maintain`, `repo-memory-writer`,
+  `repo-memory-evaluator`, `repo-memory-curator`: portable OKF/LLM Wiki and
+  repo-memory work.
 - `research-promote`: explicit acceptance of latent research.
 - `planning`: accepted work needs issues or Program readiness.
 - `manual-cli`: a human drives local commands.
