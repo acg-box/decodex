@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Build Test Run Entrypoints
-description: Helps a new agent understand repo setup, build, test, run, validation, automation resources, and command entrypoints.
+description: Helps a new agent understand repo setup, build, test, run, validation, automation resources, and Decodex command entrypoints.
 status: active
 authority: current_state
 owner: docs
@@ -10,7 +10,7 @@ source_refs: []
 code_refs: [Makefile.toml, Cargo.toml, apps/decodex/Cargo.toml, site/package.json, apps/decodex-app/Package.swift, README.md]
 related: [./workspace-layout.md, ./test-suite.md, ./docs-knowledge-map.md, ../policy.md, ../runbook/release-readiness.md, ../spec/okf-knowledge-layer.md]
 drift_watch: [Makefile.toml, Cargo.toml, site/package.json, apps/decodex-app/Package.swift, cargo make --list-all-steps, cargo make check, cargo nextest list --workspace --all-targets --all-features]
-last_verified: 2026-06-17
+last_verified: 2026-06-18
 ---
 
 # Build Test Run Entrypoints
@@ -19,9 +19,9 @@ Purpose: Map the current repository commands for setup, building, testing, runni
 and validating Decodex.
 
 Read this when: You need the smallest current entrypoint for repo setup, local
-validation, task-runner automation resources, or invoking the Decodex runtime from
-source. This is the first reference for a new agent that needs to understand how repo
-setup and command entrypoints fit together.
+validation, task-runner automation resources, or Decodex CLI usage. This is the first
+reference for a new agent that needs to understand how repo setup and command
+entrypoints fit together.
 
 Not this document: The full test inventory, repository directory ownership, release
 procedure, or runtime behavior contract.
@@ -55,7 +55,7 @@ explain why a narrower check is sufficient.
 | Task | Command surface | Owns |
 | --- | --- | --- |
 | `cargo make check` | composite root task | Aggregate build, docs, node, Rust, format, lint, and test validation |
-| `cargo make check-docs` | `cargo run -p decodex --bin decodex -- docs lint` | Decodex docs OKF/profile validation |
+| `cargo make check-docs` | `decodex docs check` | Decodex docs OKF/profile validation |
 | `cargo make check-rust` | `cargo check --all-features --all-targets --workspace` | Rust workspace type checking |
 | `cargo make check-node` | `npm run check` in `site/` | Astro and TypeScript site checks |
 | `cargo make fmt-check` | Rust nightly fmt plus Taplo check | Rust and TOML formatting |
@@ -72,9 +72,9 @@ native app surface.
 Use these commands when a change does not need the full aggregate gate:
 
 ```sh
-cargo run -p decodex --bin decodex -- docs check
-cargo run -p decodex --bin decodex -- docs graph
-cargo run -p decodex --bin decodex -- okf route docs "how do I validate this repo"
+decodex docs check
+decodex docs graph
+decodex okf route docs "how do I validate this repo"
 cargo check --all-features --all-targets --workspace
 cargo nextest run --workspace --all-targets --all-features
 cargo test -p decodex <filter>
@@ -82,15 +82,14 @@ npm --prefix site run check
 npm --prefix site run build
 ```
 
-Use these commands when invoking the runtime from source:
+Use these commands when invoking the runtime:
 
 ```sh
-cargo run -p decodex --bin decodex -- --help
-cargo run -p decodex --bin decodex -- status
-cargo run -p decodex --bin decodex -- diagnose --json
-cargo run -p decodex --bin decodex -- mcp serve --transport stdio
-cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8192
-cargo install --path apps/decodex --force
+decodex --help
+decodex status
+decodex diagnose --json
+decodex mcp serve --transport stdio
+decodex serve --listen-address 127.0.0.1:8192
 ```
 
 `README.md` remains the better source for the broad CLI usage list. This document owns
