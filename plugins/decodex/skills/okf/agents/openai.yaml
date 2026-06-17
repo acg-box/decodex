@@ -1,0 +1,5 @@
+interface:
+  display_name: "Portable OKF"
+  short_description: "Work with portable OKF bundles"
+policy:
+  allow_implicit_invocation: false

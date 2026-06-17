@@ -10,6 +10,8 @@
   not part of the user-facing model.
 - Added `decodex okf check/find/graph/route` and `decodex docs check/find/graph/route`
   command surfaces; `decodex docs lint` remains a compatibility alias.
+- Added portable `okf`, `okf-query`, and `okf-maintain` plugin skills and clarified
+  that existing `docs-*` skills are Decodex profile wrappers.
 - Adopted Docs-as-OKF as the Decodex repo-development documentation knowledge
   standard.
 - Defined `docs/` as a Markdown-only OKF bundle with no non-Markdown documentation
