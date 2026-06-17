@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Signal Entry"
+description: "Define the published Decodex signal-entry schema for the GitHub-first MVP."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Signal Entry
 
 Purpose: Define the published Decodex signal-entry schema for the GitHub-first MVP.

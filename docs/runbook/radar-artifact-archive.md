@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "Radar Artifact Archive"
+description: "OKF concept for Radar Artifact Archive."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # Radar Artifact Archive
 
 Goal: Move old raw Radar artifacts out of Git after the 21-day hot window while

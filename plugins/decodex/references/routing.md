@@ -1,12 +1,18 @@
 # Decodex Routing Reference
 
-Use this reference when a Decodex task crosses research, planning, manual CLI,
+Use this reference when a Decodex task crosses research, docs, planning, manual CLI,
 labels, retained automation, commit, or landing boundaries.
 
 ## Mode Map
 
 - Research/design: use `research` and the `research-*` phase skills. The result is a
   latent Decision Contract candidate only.
+- Docs knowledge base: use `docs` as the router. Use `docs-okf` for concept schema,
+  `docs-wiki` for LLM Wiki routing/indexing, and `docs-drift` for claim/evidence
+  drift audits.
+- Docs impact `research_required`: switch from `docs` to the `research*` skill
+  family; a checked-in `docs/research/` result is latent supporting evidence, not a
+  promotion target or execution authority.
 - Promotion: use `research-promote` only after explicit acceptance such as "arrange
   this", "push this forward", "推进", or "做".
 - Planning: use `planning` after promotion or another explicit execution instruction
@@ -23,6 +29,9 @@ labels, retained automation, commit, or landing boundaries.
 
 - In the Decodex repo, read `README.md`, `docs/index.md`, and `Makefile.toml` before
   repository validation.
+- For docs-impacting work, read `docs/policy.md` and the smallest owning concept
+  before editing, then run `cargo run -p decodex --bin decodex -- docs lint` while
+  developing this repository.
 - For registered projects, read `~/.codex/decodex/projects/<service-id>/project.toml`
   and `WORKFLOW.md`, or the project directory supplied by `--config`.
 - For runtime semantics, prefer `docs/spec/` and `docs/runbook/` over global host

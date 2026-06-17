@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Radar Ledger"
+description: "Define the local SQLite ledger that keeps every observed upstream Codex commit traceable without putting every raw or low-value artifact into Git."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Radar Ledger
 
 Purpose: Define the local SQLite ledger that keeps every observed upstream Codex commit

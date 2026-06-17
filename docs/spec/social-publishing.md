@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Social Publishing"
+description: "Define the checked-in publication record used when Decodex publishes from the `@decodexspace` X account or blocks a candidate that would exceed policy."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Social Publishing
 
 Purpose: Define the checked-in publication record used when Decodex publishes from the

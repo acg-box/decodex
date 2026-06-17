@@ -6,7 +6,8 @@ description: Use when accepted research becomes execution.
 # Decodex Research Promote
 
 Convert accepted latent research into execution authority without changing the
-approved boundary. Read `../../references/research-method.md` for promotion rules.
+approved boundary. Read `../../references/research-promotion.md` for promotion
+rules.
 
 - Identify the accepted contract or conversational contract.
 - Preserve objectives, non-goals, constraints, assumptions, objections, validation,

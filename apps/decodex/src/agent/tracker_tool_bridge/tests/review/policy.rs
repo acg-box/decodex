@@ -1564,6 +1564,15 @@ fn review_repair_apply_persists_updated_handoff_marker_without_tracker_transitio
 			"summary": "Addressed the requested review changes."
 		}),
 	);
+
+	seed_docs_impact_checkpoint(
+		bridge_state_store(&bridge),
+		&review_context,
+		&issue.id,
+		"review_repair",
+		"18a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+	);
+
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
@@ -1635,6 +1644,15 @@ fn review_repair_apply_does_not_reset_external_round_budget_after_fourth_round()
 			"summary": "Addressed the requested review changes."
 		}),
 	);
+
+	seed_docs_impact_checkpoint(
+		bridge_state_store(&bridge),
+		&review_context,
+		&issue.id,
+		"review_repair",
+		"18a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+	);
+
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
@@ -1670,7 +1688,7 @@ fn review_repair_apply_preserves_existing_markers_when_comment_write_fails() {
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -1692,6 +1710,15 @@ fn review_repair_apply_preserves_existing_markers_when_comment_write_fails() {
 			"summary": "Addressed the requested review changes."
 		}),
 	);
+
+	seed_docs_impact_checkpoint(
+		bridge_state_store(&bridge),
+		&review_context,
+		&issue.id,
+		"review_repair",
+		"18a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+	);
+
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
