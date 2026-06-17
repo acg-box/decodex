@@ -1,11 +1,13 @@
 ---
 name: docs-wiki
-description: Use when turning repo docs into agent-readable LLM Wiki knowledge pages.
+description: Use when maintaining this repository's docs/ lane indexes, links, and Decodex LLM Wiki routing.
 ---
 
 # Decodex Docs Wiki
 
-Maintain `docs/` as an agent-readable LLM Wiki.
+Maintain this repository's `docs/` as an agent-readable LLM Wiki under the Decodex
+profile. For portable OKF bundle lookup, use `okf-query`; for portable maintenance,
+use `okf-maintain`.
 
 Read `../../references/docs-wiki.md` for lane ownership, authoring, and indexing
 rules.
