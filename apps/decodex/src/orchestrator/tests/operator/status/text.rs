@@ -872,6 +872,10 @@ fn operator_status_json_and_text_surface_loop_review_and_recovery_state() {
 		blocked["loop_status"]["boundary"]["disposition"],
 		"requires_human"
 	);
+	assert_eq!(
+		blocked["loop_status"]["boundary"]["policy_decision"],
+		"requires_human_decision"
+	);
 	assert_eq!(blocked["loop_status"]["autonomy"], "human_required");
 	assert_eq!(
 		blocked["loop_status"]["decision_request"]["decision_request_id"],
@@ -889,7 +893,7 @@ fn operator_status_json_and_text_surface_loop_review_and_recovery_state() {
 		"loop_status: human-required boundary stop: contract_boundary_required on accepted_behavior; review_level=strict; autonomy=human_required"
 	));
 	assert!(rendered.contains(
-		"loop_boundary: disposition=requires_human reason=accepted behavior would change attempted_recovery=review_churn"
+		"loop_boundary: disposition=requires_human policy=requires_human_decision enhanced_evidence=false blocks_landing=false reason=accepted behavior would change attempted_recovery=review_churn"
 	));
 }
 

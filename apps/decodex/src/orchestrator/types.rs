@@ -148,6 +148,123 @@ impl AuthorityBoundaryDisposition {
 	}
 }
 
+/// Typed surface considered by an authority boundary check.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AuthorityBoundarySurface {
+	ImplementationStrategy,
+	Runtime,
+	Tests,
+	Docs,
+	PublicApi,
+	Config,
+	Security,
+	Data,
+	Billing,
+	Privacy,
+	Validation,
+	ReviewPolicy,
+	Objective,
+	NonGoal,
+	ExternalDependency,
+	RetainedOwnership,
+	AuthorityEvidence,
+}
+impl AuthorityBoundarySurface {
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::ImplementationStrategy => "implementation_strategy",
+			Self::Runtime => "runtime",
+			Self::Tests => "tests",
+			Self::Docs => "docs",
+			Self::PublicApi => "public_api",
+			Self::Config => "config",
+			Self::Security => "security",
+			Self::Data => "data",
+			Self::Billing => "billing",
+			Self::Privacy => "privacy",
+			Self::Validation => "validation",
+			Self::ReviewPolicy => "review_policy",
+			Self::Objective => "objective",
+			Self::NonGoal => "non_goal",
+			Self::ExternalDependency => "external_dependency",
+			Self::RetainedOwnership => "retained_ownership",
+			Self::AuthorityEvidence => "authority_evidence",
+		}
+	}
+
+	pub(crate) fn policy_decision(self) -> AuthorityBoundaryPolicyDecision {
+		match self {
+			Self::ImplementationStrategy | Self::Runtime | Self::Tests | Self::Docs => {
+				AuthorityBoundaryPolicyDecision::AutoContinue
+			},
+			Self::PublicApi | Self::Config | Self::Security | Self::Data | Self::Billing
+			| Self::Privacy => AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence,
+			Self::Validation | Self::ReviewPolicy => AuthorityBoundaryPolicyDecision::BlockLanding,
+			Self::Objective | Self::NonGoal | Self::ExternalDependency | Self::RetainedOwnership
+			| Self::AuthorityEvidence => AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
+		}
+	}
+}
+
+/// Automation policy decision derived from the changed authority surfaces.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AuthorityBoundaryPolicyDecision {
+	AutoContinue,
+	RequiresEnhancedEvidence,
+	BlockLanding,
+	RequiresHumanDecision,
+}
+impl AuthorityBoundaryPolicyDecision {
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::AutoContinue => "auto_continue",
+			Self::RequiresEnhancedEvidence => "requires_enhanced_evidence",
+			Self::BlockLanding => "block_landing",
+			Self::RequiresHumanDecision => "requires_human_decision",
+		}
+	}
+
+	pub(crate) fn disposition(self) -> AuthorityBoundaryDisposition {
+		match self {
+			Self::AutoContinue | Self::RequiresEnhancedEvidence | Self::BlockLanding => {
+				AuthorityBoundaryDisposition::WithinAuthority
+			},
+			Self::RequiresHumanDecision => AuthorityBoundaryDisposition::RequiresHuman,
+		}
+	}
+
+	pub(crate) fn allows_autonomous_recovery(self) -> bool {
+		self != Self::RequiresHumanDecision
+	}
+
+	pub(crate) fn requires_enhanced_evidence(self) -> bool {
+		matches!(self, Self::RequiresEnhancedEvidence | Self::BlockLanding)
+	}
+
+	pub(crate) fn blocks_landing(self) -> bool {
+		self == Self::BlockLanding
+	}
+
+	fn rank(self) -> u8 {
+		match self {
+			Self::AutoContinue => 0,
+			Self::RequiresEnhancedEvidence => 1,
+			Self::BlockLanding => 2,
+			Self::RequiresHumanDecision => 3,
+		}
+	}
+
+	pub(crate) fn max(left: Self, right: Self) -> Self {
+		if left.rank() >= right.rank() {
+			left
+		} else {
+			right
+		}
+	}
+}
+
 pub(crate) enum RetryDispatchDecision {
 	Blocked { excluded_issue_ids: Vec<String> },
 	Dispatch(Box<RunSummary>),
@@ -323,9 +440,10 @@ impl LoopGuardrailReason {
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct AuthorityBoundaryChangedSurface<'a> {
-	pub(crate) surface: &'a str,
+	pub(crate) surface: AuthorityBoundarySurface,
 	pub(crate) change_summary: &'a str,
-	pub(crate) classification: AuthorityBoundaryDisposition,
+	pub(crate) policy_decision: AuthorityBoundaryPolicyDecision,
+	pub(crate) legacy_disposition: AuthorityBoundaryDisposition,
 }
 
 /// Sanitized harness feedback emitted from an authority boundary check.
@@ -350,6 +468,7 @@ pub(crate) struct AuthorityBoundaryCheckInput<'a> {
 	pub(crate) decision_contract_ids: Vec<&'a str>,
 	pub(crate) attempted_recovery_reason: &'a str,
 	pub(crate) changed_surfaces: Vec<AuthorityBoundaryChangedSurface<'a>>,
+	pub(crate) policy_decision: AuthorityBoundaryPolicyDecision,
 	pub(crate) disposition: AuthorityBoundaryDisposition,
 	pub(crate) final_disposition_reason: &'a str,
 	pub(crate) improvement_signals: Vec<AuthorityBoundaryImprovementSignal<'a>>,
@@ -1762,6 +1881,9 @@ struct OperatorArchitectureRecoveryStatus {
 	reason_code: String,
 	guardrail_reason: Option<String>,
 	boundary_disposition: Option<String>,
+	boundary_policy_decision: Option<String>,
+	requires_enhanced_evidence: bool,
+	blocks_landing: bool,
 	round: Option<u64>,
 	budget: Option<OperatorRecoveryBudgetStatus>,
 	next_action: String,
@@ -1776,10 +1898,13 @@ struct OperatorRecoveryBudgetStatus {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorBoundaryStatus {
 	disposition: String,
+	policy_decision: String,
 	reason: Option<String>,
 	attempted_recovery_reason: Option<String>,
 	changed_surface_count: usize,
 	improvement_signal_count: usize,
+	requires_enhanced_evidence: bool,
+	blocks_landing: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2254,9 +2379,10 @@ pub(crate) fn record_authority_boundary_check_private_event(
 		.iter()
 		.map(|surface| {
 			json!({
-				"surface": surface.surface,
+				"surface": surface.surface.as_str(),
 				"change_summary": surface.change_summary,
-				"classification": surface.classification.as_str(),
+				"policy_decision": surface.policy_decision.as_str(),
+				"legacy_disposition": surface.legacy_disposition.as_str(),
 			})
 		})
 		.collect::<Vec<_>>();
@@ -2286,6 +2412,13 @@ pub(crate) fn record_authority_boundary_check_private_event(
 		"decision_contract_ids": input.decision_contract_ids,
 		"attempted_recovery_reason": input.attempted_recovery_reason,
 		"changed_surfaces": changed_surfaces,
+		"policy_decision": input.policy_decision.as_str(),
+		"policy": {
+			"decision": input.policy_decision.as_str(),
+			"allows_autonomous_recovery": input.policy_decision.allows_autonomous_recovery(),
+			"requires_enhanced_evidence": input.policy_decision.requires_enhanced_evidence(),
+			"blocks_landing": input.policy_decision.blocks_landing(),
+		},
 		"disposition": input.disposition.as_str(),
 		"final_disposition": {
 			"disposition": input.disposition.as_str(),
@@ -2627,12 +2760,52 @@ fn validate_authority_boundary_check_input(
 	if input.attempt_number < 1 {
 		eyre::bail!("Authority boundary attempt_number must be positive.");
 	}
+	if input.changed_surfaces.is_empty() {
+		eyre::bail!("Authority boundary changed_surfaces must not be empty.");
+	}
+
+	let mut expected_policy_decision = AuthorityBoundaryPolicyDecision::AutoContinue;
+
+	for surface in &input.changed_surfaces {
+		let surface_policy_decision = surface.surface.policy_decision();
+
+		if surface.policy_decision != surface_policy_decision {
+			eyre::bail!(
+				"Authority boundary surface `{}` must use policy decision `{}`.",
+				surface.surface.as_str(),
+				surface_policy_decision.as_str()
+			);
+		}
+		if surface.legacy_disposition != surface_policy_decision.disposition() {
+			eyre::bail!(
+				"Authority boundary surface `{}` must use legacy disposition `{}`.",
+				surface.surface.as_str(),
+				surface_policy_decision.disposition().as_str()
+			);
+		}
+
+		expected_policy_decision =
+			AuthorityBoundaryPolicyDecision::max(expected_policy_decision, surface_policy_decision);
+	}
+
+	if input.policy_decision != expected_policy_decision {
+		eyre::bail!(
+			"Authority boundary policy_decision must be `{}` for the changed surfaces.",
+			expected_policy_decision.as_str()
+		);
+	}
+	if input.disposition != input.policy_decision.disposition() {
+		eyre::bail!(
+			"Authority boundary disposition must be `{}` for policy decision `{}`.",
+			input.policy_decision.disposition().as_str(),
+			input.policy_decision.as_str()
+		);
+	}
 
 	for contract_id in &input.decision_contract_ids {
 		authority_boundary_required("authority boundary decision_contract_id", contract_id)?;
 	}
 	for surface in &input.changed_surfaces {
-		authority_boundary_required("authority boundary changed surface", surface.surface)?;
 		authority_boundary_required(
 			"authority boundary changed surface summary",
 			surface.change_summary,
