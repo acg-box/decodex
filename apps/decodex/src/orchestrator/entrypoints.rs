@@ -19,6 +19,7 @@ struct ConnectorBackoffStatusParts<'a> {
 	reset_unix_epoch: i64,
 	reset_source: &'a str,
 	warning: &'a str,
+	next_action: &'a str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -43,10 +44,11 @@ impl TrackerConnectorBackoff {
 				project_id,
 				connector: "linear",
 				sync_phase: self.sync_phase,
-				quota_class: "linear_graphql_api",
+				quota_class: self.quota_class,
 				reset_unix_epoch: self.reset_unix_epoch,
 				reset_source: self.reset_source,
-				warning: TRACKER_RATE_LIMIT_WARNING,
+				warning: self.warning,
+				next_action: self.next_action,
 			},
 			now_unix_epoch,
 		)
@@ -116,7 +118,7 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 		}) {
 		Ok(summary) => summary,
 		Err(error) => {
-			let Some(backoff) = tracker_rate_limit_backoff(&error, Instant::now(), "run_cycle")
+			let Some(backoff) = tracker_connector_backoff(&error, Instant::now(), "run_cycle")
 			else {
 				return Err(error);
 			};
@@ -775,7 +777,7 @@ fn build_live_status_command_snapshot(
 			hydrate_status_snapshot_state(config, state_store, recovered_state)?,
 		Err(error) => {
 			if let Some(backoff) =
-				tracker_rate_limit_backoff(&error, Instant::now(), "runtime_recovery")
+				tracker_connector_backoff(&error, Instant::now(), "runtime_recovery")
 			{
 				let status = backoff.to_operator_status(
 					config.service_id(),
@@ -813,7 +815,7 @@ fn build_live_status_command_snapshot(
 		Ok(snapshot) => snapshot,
 		Err(error) => {
 			let Some(backoff) =
-				tracker_rate_limit_backoff(&error, Instant::now(), "operator_status_refresh")
+				tracker_connector_backoff(&error, Instant::now(), "operator_status_refresh")
 			else {
 				return Err(error);
 			};
@@ -868,7 +870,7 @@ fn run_queue_explain(
 			Ok(queued_candidates) => queued_candidates,
 			Err(error) => {
 				let Some(backoff) =
-					tracker_rate_limit_backoff(&error, Instant::now(), "queue_explain")
+					tracker_connector_backoff(&error, Instant::now(), "queue_explain")
 				else {
 					return Err(error);
 				};
@@ -928,9 +930,7 @@ fn operator_connector_backoff_status(
 		reset_unix_epoch: parts.reset_unix_epoch,
 		reset_source: parts.reset_source.to_owned(),
 		retry_after_seconds: parts.reset_unix_epoch.saturating_sub(now_unix_epoch).max(0),
-		next_action: String::from(
-			"Wait for the reset window; keep monitoring local running lanes.",
-		),
+		next_action: parts.next_action.to_owned(),
 		warning: parts.warning.to_owned(),
 	}
 }
@@ -948,9 +948,49 @@ fn connector_backoff_record_to_operator_status(
 			reset_unix_epoch: backoff.reset_unix_epoch(),
 			reset_source: backoff.reset_source(),
 			warning: backoff.warning(),
+			next_action: connector_backoff_next_action(backoff.warning()),
 		},
 		now_unix_epoch,
 	)
+}
+
+fn connector_backoff_next_action(warning: &str) -> &'static str {
+	match warning {
+		TRACKER_TRANSIENT_TIMEOUT_WARNING =>
+			"Wait for the transient tracker timeout backoff; Decodex will retry tracker reads without changing lane ownership.",
+		_ => "Wait for the reset window; keep monitoring local running lanes.",
+	}
+}
+
+fn tracker_backoff_warning_label(warning: &str) -> Option<&'static str> {
+	match warning {
+		TRACKER_RATE_LIMIT_WARNING => Some(TRACKER_RATE_LIMIT_WARNING),
+		TRACKER_TRANSIENT_TIMEOUT_WARNING => Some(TRACKER_TRANSIENT_TIMEOUT_WARNING),
+		_ => None,
+	}
+}
+
+fn warnings_include_tracker_backoff(warnings: &[&str]) -> bool {
+	warnings
+		.iter()
+		.any(|warning| tracker_backoff_warning_label(warning).is_some())
+}
+
+fn snapshot_warnings_include_tracker_backoff(snapshot: &OperatorStatusSnapshot) -> bool {
+	snapshot
+		.warnings
+		.iter()
+		.any(|warning| tracker_backoff_warning_label(warning).is_some())
+}
+
+fn push_connector_backoff_warning(
+	snapshot_warnings: &mut Vec<&'static str>,
+	backoff: &OperatorConnectorBackoffStatus,
+) {
+	if let Some(warning) = tracker_backoff_warning_label(&backoff.warning)
+		&& !snapshot_warnings.contains(&warning) {
+			snapshot_warnings.push(warning);
+		}
 }
 
 fn active_stored_tracker_backoff_status(
@@ -999,10 +1039,10 @@ fn persist_tracker_backoff_state(
 		project_id,
 		connector: "linear",
 		sync_phase: backoff.sync_phase,
-		quota_class: "linear_graphql_api",
+		quota_class: backoff.quota_class,
 		reset_unix_epoch: backoff.reset_unix_epoch,
 		reset_source: backoff.reset_source,
-		warning: TRACKER_RATE_LIMIT_WARNING,
+		warning: backoff.warning,
 	}) {
 		let _ = error;
 
@@ -1060,7 +1100,7 @@ fn build_operator_status_snapshot_for_tracker_backoff(
 	snapshot.post_review_lanes =
 		build_degraded_post_review_lane_statuses(project, state_store, &review_state_inspector)?;
 
-	add_operator_snapshot_warning(&mut snapshot, TRACKER_RATE_LIMIT_WARNING);
+	add_operator_snapshot_warning(&mut snapshot, &status.warning);
 
 	snapshot.connector_backoffs.push(status.clone());
 
@@ -1511,9 +1551,11 @@ fn run_control_plane_project_tick(
 	now: Instant,
 ) -> ControlPlaneProjectTick {
 	if tracker_backoff_active(runtime, now) {
-		snapshot_warnings.push(TRACKER_RATE_LIMIT_WARNING);
-
 		let connector_backoffs = active_connector_backoff_statuses(project.service_id(), runtime);
+
+		for connector_backoff in &connector_backoffs {
+			push_connector_backoff_warning(snapshot_warnings, connector_backoff);
+		}
 
 		return control_plane_project_local_snapshot(
 			project,
@@ -1527,7 +1569,7 @@ fn run_control_plane_project_tick(
 	if let Some(connector_backoff) =
 		active_stored_tracker_backoff_status_best_effort(state_store, project.service_id())
 	{
-		snapshot_warnings.push(TRACKER_RATE_LIMIT_WARNING);
+		push_connector_backoff_warning(snapshot_warnings, &connector_backoff);
 
 		return control_plane_project_local_snapshot(
 			project,
@@ -1611,7 +1653,7 @@ fn remember_tracker_backoff(
 	now: Instant,
 	sync_phase: &'static str,
 ) -> Option<OperatorConnectorBackoffStatus> {
-	let backoff = tracker_rate_limit_backoff(error, now, sync_phase)?;
+	let backoff = tracker_connector_backoff(error, now, sync_phase)?;
 	let status =
 		backoff.to_operator_status(project_id, OffsetDateTime::now_utc().unix_timestamp());
 
@@ -1622,22 +1664,33 @@ fn remember_tracker_backoff(
 	Some(status)
 }
 
-fn tracker_rate_limit_backoff(
+fn tracker_connector_backoff(
 	error: &Report,
 	now: Instant,
 	sync_phase: &'static str,
 ) -> Option<TrackerConnectorBackoff> {
 	let message = format!("{error:#}");
 
-	if !message.contains("Linear connector is rate limited") {
-		return None;
+	if message.contains("Linear connector is rate limited") {
+		return tracker_connector_backoff_from_message(&message, now, sync_phase);
+	}
+	if message.contains("Linear connector timed out") {
+		return tracker_timeout_backoff(now, sync_phase);
 	}
 
+	None
+}
+
+fn tracker_connector_backoff_from_message(
+	message: &str,
+	now: Instant,
+	sync_phase: &'static str,
+) -> Option<TrackerConnectorBackoff> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 	let fallback_reset_unix_epoch =
 		now_unix_epoch.saturating_add(TRACKER_RATE_LIMIT_BACKOFF_SECS as i64);
 	let (reset_unix_epoch, reset_source) =
-		match parse_linear_rate_limit_reset_unix_epoch(&message) {
+		match parse_linear_rate_limit_reset_unix_epoch(message) {
 			Some(reset_unix_epoch) if reset_unix_epoch > now_unix_epoch =>
 				(reset_unix_epoch, "linear"),
 			_ => (fallback_reset_unix_epoch, "local_default"),
@@ -1647,9 +1700,31 @@ fn tracker_rate_limit_backoff(
 
 	Some(TrackerConnectorBackoff {
 		until: now + Duration::from_secs(retry_after_seconds),
+		quota_class: "linear_graphql_rate_limit",
 		reset_unix_epoch,
 		reset_source,
 		sync_phase,
+		warning: TRACKER_RATE_LIMIT_WARNING,
+		next_action: "Wait for the reset window; keep monitoring local running lanes.",
+	})
+}
+
+fn tracker_timeout_backoff(
+	now: Instant,
+	sync_phase: &'static str,
+) -> Option<TrackerConnectorBackoff> {
+	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
+	let reset_unix_epoch =
+		now_unix_epoch.saturating_add(TRACKER_TRANSIENT_TIMEOUT_BACKOFF_SECS as i64);
+
+	Some(TrackerConnectorBackoff {
+		until: now + Duration::from_secs(TRACKER_TRANSIENT_TIMEOUT_BACKOFF_SECS),
+		quota_class: "linear_graphql_timeout",
+		reset_unix_epoch,
+		reset_source: "local_transient_timeout",
+		sync_phase,
+		warning: TRACKER_TRANSIENT_TIMEOUT_WARNING,
+		next_action: "Wait for the transient tracker timeout backoff; Decodex will retry tracker reads without changing lane ownership.",
 	})
 }
 
@@ -1842,7 +1917,7 @@ fn control_plane_project_snapshot(
 			Instant::now(),
 			"control_plane_tick",
 		) {
-			snapshot_warnings.push(TRACKER_RATE_LIMIT_WARNING);
+			push_connector_backoff_warning(snapshot_warnings, &connector_backoff);
 
 			return control_plane_project_local_snapshot(
 				project,
@@ -1898,8 +1973,8 @@ fn control_plane_project_snapshot(
 				&error,
 				Instant::now(),
 				"operator_snapshot_refresh",
-			) {
-				snapshot_warnings.push(TRACKER_RATE_LIMIT_WARNING);
+		) {
+				push_connector_backoff_warning(snapshot_warnings, &connector_backoff);
 
 				return control_plane_project_local_snapshot(
 					project,
