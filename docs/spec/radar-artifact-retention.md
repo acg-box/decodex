@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Radar Artifact Retention"
+description: "Define which Decodex Radar and Publisher artifacts stay in Git, which raw artifacts are kept only in a short hot window, and how cold archives remain recoverable."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Radar Artifact Retention
 
 Purpose: Define which Decodex Radar and Publisher artifacts stay in Git, which raw

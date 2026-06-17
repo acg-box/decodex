@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Lane-Control Specification"
+description: "Define Decodex operator lane-control capabilities and the boundary between bottom-layer protocol support and higher-level policy guardrails. Status: normative Read this when: You are implementing, validating, or using CLI/API controls for active or retained Decodex lanes. Not this document: The full runtime state machine, the low-level app-server method schema, dashboard layout, tracker-tool payload schema, or the step-by-step recovery sequence after a control action. Use [`../runbook/lane-control-recovery.md`](../runbook/lane-control-recovery.md) for post-control recovery decisions. Defines: The lane-control capability matrix, supported and deferred controls, audit requirements, and policy boundary for inspect, pause/resume, scan, interrupt, steer, retained retry/resume, and manual-attention controls."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Lane-Control Specification
 
 Purpose: Define Decodex operator lane-control capabilities and the boundary between

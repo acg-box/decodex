@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Release Delta"
+description: "Define the published Decodex release-delta schema that compares the latest stable release to the latest prerelease for a tracked GitHub lane."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Release Delta
 
 Purpose: Define the published Decodex release-delta schema that compares the latest stable release to the latest prerelease for a tracked GitHub lane.

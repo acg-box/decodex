@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Post-Review Lifecycle"
+description: "Define the normative lifecycle for a Decodex-owned lane after a PR-backed `In Review` handoff, through review follow-up, landing, closeout, and cleanup. Status: normative Read this when: You need the authoritative post-`In Review` state model, transition rules, retry/manual-intervention boundaries, or follow-on implementation split for autonomous review follow-up and landing. Not this document: The low-level app-server protocol, the pre-review runtime handoff contract, the broader owned-lane fallback matrix, or local skill instructions. Defines: Post-`In Review` lane phases, phase-to-action-class mapping, authoritative signals, retry and cancellation rules, ownership boundaries, and the minimum follow-on implementation split."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Post-Review Lifecycle
 
 Purpose: Define the normative lifecycle for a Decodex-owned lane after a PR-backed `In Review` handoff, through review follow-up, landing, closeout, and cleanup.
@@ -274,6 +284,10 @@ human intervention. If the checkpoint reports `needs_architecture_review` /
 `"off"` or `"basic"`, retained repair completion skips that Decodex Review checkpoint
 requirement but still requires the repaired head to be pushed and the configured
 repository validation gate to pass.
+Every retained repair completion, regardless of review level, also requires the latest
+private `issue_progress_checkpoint` for the current run attempt to include parseable
+`docs_impact` and a `head_sha` matching the repaired lane `HEAD`; `review_repair`
+terminal finalization is invalid without that current-head docs-impact checkpoint.
 The same completion also requires that the PR still belongs to the retained lane, points
 at the repaired lane HEAD, and remains open and ready for fresh review.
 
@@ -331,6 +345,10 @@ While in `closeout`:
 - the retained lane may continue even after the issue is already in the resolved `tracker.completed_state` when deterministic closeout tail work or cleanup eligibility still remains pending
 - a merged PR remains eligible for deterministic closeout when the local lane HEAD is the exact PR head, the GitHub merge commit, or a later local HEAD that contains the GitHub merge commit; that landed lineage must not be downgraded into generic manual attention while closeout or cleanup is still deterministic
 - when deterministic closeout follows the same successful review handoff without any failed or interrupted closeout retry, the closeout record, run summary, and local run ledger reuse the review handoff `run_id` and `attempt_number`; later real closeout retries keep incrementing attempt numbers
+- `issue_closeout_complete` and `closeout` terminal finalization require the latest
+  private `issue_progress_checkpoint` for the current run attempt to include parseable
+  `docs_impact` and a `head_sha` matching the current lane `HEAD`; review or closeout
+  records do not substitute for that docs-impact checkpoint
 - an issue that reaches the resolved `tracker.completed_state` before the PR is actually merged is contradictory state and must block automation instead of being treated as ready-to-land
 - for manual land closeout, once merge and tracker closeout are authoritative, cleanup treats already-absent transient Decodex labels (`decodex:active:<service-id>`, `decodex:queued:<service-id>`, and the configured needs-attention label) as idempotent; this does not relax the requirement that active ownership must be present before landing starts
 - for explicit `decodex land --manual-authority --pr <URL>` reruns from the repo-root default branch, recovery is allowed only after GitHub reports the PR as `MERGED`, the local default branch is current with `origin/<default>`, that default branch contains the PR merge commit, the landed lane branch/worktree cleanup is already complete, and no merged worktree cleanup debt remains; unmerged PRs still require the normal managed-lane readiness path

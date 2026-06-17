@@ -1,3 +1,13 @@
+---
+type: "Decision"
+title: "Static Public Site"
+description: "Should the public Decodex site become a dynamic app now that the runtime and"
+status: active
+authority: rationale
+owner: docs
+tags: [decision]
+last_verified: 2026-06-16
+---
 # Static Public Site
 
 Status: accepted

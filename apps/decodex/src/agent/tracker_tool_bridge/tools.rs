@@ -2,7 +2,7 @@ use serde_json::{self, Value};
 
 use crate::{
 	agent::tracker_tool_bridge::{
-		self, AuthorityDecisionOptionArgs, AuthorityDecisionRequestArgs, CommentArgs,
+		self, AuthorityDecisionOptionArgs, AuthorityDecisionRequestArgs, CommentArgs, DocsImpact,
 		DynamicToolCallResponse, DynamicToolSpec, ExecutionProgressPhase, ISSUE_COMMENT_TOOL_NAME,
 		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
@@ -232,42 +232,51 @@ impl<'a> TrackerToolBridge<'a> {
 			ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 			"Record the current execution-state snapshot for the leased issue as private runtime evidence, then publish only a low-frequency public Linear projection when the public lifecycle signal changes. On retained lanes, omit `head_sha` to capture the exact current lane HEAD automatically, or pass a matching current-lane HEAD SHA.",
 			serde_json::json!({
-				"type": "object",
-				"properties": {
-					"issue_id": { "type": "string" },
-					"issue_identifier": { "type": "string" },
+			"type": "object",
+			"properties": {
+				"issue_id": { "type": "string" },
+				"issue_identifier": { "type": "string" },
 					"phase": {
 						"type": "string",
 						"enum": [
 							"probing",
-							"implementing",
-							"verifying",
-							"blocked",
-							"ready_for_review",
-							"review_repair",
-							"ready_to_land",
+						"implementing",
+						"verifying",
+						"blocked",
+						"ready_for_review",
+						"review_repair",
+						"ready_to_land",
 							"closeout"
+						]
+					},
+					"docs_impact": {
+						"type": "string",
+						"enum": [
+							"none",
+							"update_required",
+							"research_required",
+							"drift_required"
 						]
 					},
 					"focus": { "type": "string" },
 					"next_action": { "type": "string" },
-					"blockers": {
-						"type": "array",
-						"items": { "type": "string" }
-					},
-					"evidence": {
-						"type": "array",
-						"items": { "type": "string" }
-					},
-					"verification": {
-						"type": "array",
-						"items": { "type": "string" }
-					},
-					"head_sha": { "type": "string" },
-					"branch": { "type": "string" },
-					"pr_url": { "type": "string" }
+				"blockers": {
+					"type": "array",
+					"items": { "type": "string" }
 				},
-				"required": ["phase", "focus", "next_action", "blockers", "evidence"],
+				"evidence": {
+					"type": "array",
+					"items": { "type": "string" }
+				},
+				"verification": {
+					"type": "array",
+					"items": { "type": "string" }
+				},
+				"head_sha": { "type": "string" },
+				"branch": { "type": "string" },
+				"pr_url": { "type": "string" }
+			},
+				"required": ["phase", "docs_impact", "focus", "next_action", "blockers", "evidence"],
 				"additionalProperties": false
 			}),
 		)]
@@ -616,6 +625,7 @@ impl<'a> TrackerToolBridge<'a> {
 		parsed: ProgressCheckpointArgs,
 	) -> Result<NormalizedProgressCheckpoint, String> {
 		let phase = ExecutionProgressPhase::parse(&parsed.phase)?;
+		let docs_impact = DocsImpact::parse(&parsed.docs_impact)?;
 		let focus = tracker_tool_bridge::normalize_summary(&parsed.focus);
 		let next_action = tracker_tool_bridge::normalize_summary(&parsed.next_action);
 		let blockers = tracker_tool_bridge::normalize_progress_list(parsed.blockers);
@@ -641,6 +651,7 @@ impl<'a> TrackerToolBridge<'a> {
 
 		Ok(NormalizedProgressCheckpoint {
 			phase,
+			docs_impact,
 			focus,
 			next_action,
 			blockers,
@@ -674,8 +685,9 @@ impl<'a> TrackerToolBridge<'a> {
 	) -> Result<(), String> {
 		let branch = checkpoint.public_branch(review_context);
 		let private_payload = serde_json::json!({
-			"phase": checkpoint.phase.as_str(),
-			"focus": checkpoint.focus.as_str(),
+				"phase": checkpoint.phase.as_str(),
+				"docs_impact": checkpoint.docs_impact.as_str(),
+				"focus": checkpoint.focus.as_str(),
 			"next_action": checkpoint.next_action.as_str(),
 			"blockers": &checkpoint.blockers,
 			"evidence": &checkpoint.evidence,
@@ -1567,6 +1579,62 @@ impl<'a> TrackerToolBridge<'a> {
 			})
 	}
 
+	fn ensure_docs_impact_checkpoint(
+		&self,
+		review_context: &ReviewHandoffContext,
+		path: RunCompletionDisposition,
+	) -> Result<(), String> {
+		let state_store = self.state_store.ok_or_else(|| {
+			format!(
+				"`{ISSUE_TERMINAL_FINALIZE_TOOL_NAME}` requires the Decodex runtime state store for issue `{}`.",
+				self.issue.identifier
+			)
+		})?;
+		let local_repo = self.current_local_repo_details(review_context)?;
+		let events = state_store
+			.list_private_execution_events(
+				&review_context.service_id,
+				&self.issue.id,
+				&review_context.run_id,
+				review_context.attempt_number,
+			)
+			.map_err(|error| {
+				format!(
+					"Failed to inspect docs-impact checkpoints for issue `{}`: {error}",
+					self.issue.identifier
+				)
+			})?;
+		let Some(checkpoint) =
+			events.iter().rev().find(|event| event.event_type() == "progress_checkpoint")
+		else {
+			return Err(format!(
+				"`{ISSUE_TERMINAL_FINALIZE_TOOL_NAME}` path `{}` requires a prior `{ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME}` with `docs_impact` for the current lane HEAD `{}`.",
+				path.as_str(),
+				local_repo.head_oid
+			));
+		};
+		let has_docs_impact = checkpoint
+			.payload()
+			.get("docs_impact")
+			.and_then(Value::as_str)
+			.is_some_and(|value| DocsImpact::parse(value).is_ok());
+		let matches_current_head = checkpoint
+			.payload()
+			.get("head_sha")
+			.and_then(Value::as_str)
+			.is_some_and(|head_sha| head_sha == local_repo.head_oid);
+
+		if has_docs_impact && matches_current_head {
+			return Ok(());
+		}
+
+		Err(format!(
+			"`{ISSUE_TERMINAL_FINALIZE_TOOL_NAME}` path `{}` requires the latest `{ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME}` to record `docs_impact` for the current lane HEAD `{}`.",
+			path.as_str(),
+			local_repo.head_oid
+		))
+	}
+
 	fn clear_review_policy_state_after_completion(
 		&self,
 		review_context: &ReviewHandoffContext,
@@ -1970,6 +2038,9 @@ impl<'a> TrackerToolBridge<'a> {
 			));
 		};
 
+		if let Err(error) = self.ensure_docs_impact_checkpoint(review_context, actual_path) {
+			return DynamicToolCallResponse::failure(error);
+		}
 		if let Err(error) = self.append_terminal_finalize_event(review_context, actual_path) {
 			return DynamicToolCallResponse::failure(error);
 		}

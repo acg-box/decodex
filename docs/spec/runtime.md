@@ -1,3 +1,15 @@
+---
+type: "Spec"
+title: "Runtime Specification"
+description: "Define the authoritative runtime model for the `decodex` MVP. Status: normative Read this when: You need the authoritative model for issue eligibility, leases, lane ownership, runtime states, tracker-write ownership, or Linear writeback behavior. Not this document: The low-level `app-server` protocol contract, the downstream `WORKFLOW.md` schema, or the operator pilot procedure. Defines: The runtime scope, source-of-truth boundaries, eligibility rules, lane model, local state machine, tracker-write ownership, and writeback semantics."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs]
+drift_watch: [issue_progress_checkpoint, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal]
+last_verified: 2026-06-16
+---
 # Runtime Specification
 
 Purpose: Define the authoritative runtime model for the `decodex` MVP.
@@ -96,7 +108,7 @@ mirror:
 | Surface | Boundary |
 | --- | --- |
 | Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, recovery detail, and `decodex.harness_outcome/1` feedback records belong. |
-| Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by research/design and later promoted into execution authority. The row status is indexed for local runtime lookup, but the JSON payload remains the contract authority. |
+| Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by research/design and later promoted into execution authority. The row status is indexed for local runtime lookup, and the structured runtime payload remains the local machine authority. Checked-in research documentation belongs in Markdown OKF concepts under `docs/research/`, not JSON docs artifacts. |
 | Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads with embedded or linked `decodex.program_intake_plan/1` planning data. They hold internal node lifecycle/readiness, dependency, conflict-domain, dispatch intent, drift, and normal-issue mapping; Linear issue descriptions and ledger comments are only coarse projections. |
 | Runtime SQLite `program_intake_plans` | Queryable local projection of `decodex.program_intake_plan/1` metadata, including intake kind, source contract when present, authority fingerprint, and public-safe summary. |
 | Runtime SQLite `program_issue_mappings` | Queryable local projection of each internal program node's mapped Linear issue, tracker state, dispatch intent, active/manual/attention facts, and dispatch-briefing fact. |
@@ -288,7 +300,10 @@ uses it only as a phase signal:
   `issue_terminal_finalize(path = "review_handoff")`, or the manual-attention pair,
   the turn is invalid and must fail rather than treating goal completion as success.
 
-The active phase goal is the authoritative current contract. When an implementation
+The active phase goal is the authoritative current contract. Before an implementation,
+repair, handoff, closeout, or manual-attention path claims completion, the agent must
+record a current-HEAD `issue_progress_checkpoint` with `docs_impact` set to `none`,
+`update_required`, `research_required`, or `drift_required`. When an implementation
 or repair phase has satisfied its local validation-ready objective, the agent must
 complete that phase goal with the Codex goal completion mechanism so Decodex can run
 the repo gate and select the next phase. An `issue_progress_checkpoint`, final chat
@@ -378,8 +393,8 @@ Before applying success or failure writeback, `decodex` must classify the finish
 
 | Disposition | Required agent signal | Forbidden co-signal | Runtime effect |
 | --- | --- | --- | --- |
-| `review_handoff` | `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")` | `decodex:needs-attention` | Run the repo-native gate, revalidate PR state, post completion comment, transition to `In Review`. |
-| `manual_attention` | `issue_label_add` with `decodex:needs-attention` intent, a validated explanatory public issue summary that applies that label, then `issue_terminal_finalize(path = "manual_attention")` | `issue_review_handoff` | Skip PR-backed success writeback and the repo-native gate, then treat the run as a human-required failure immediately. |
+| `review_handoff` | current-HEAD `issue_progress_checkpoint` with `docs_impact`, then `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")` | `decodex:needs-attention` | Run the repo-native gate, revalidate PR state, post completion comment, transition to `In Review`. |
+| `manual_attention` | current-HEAD `issue_progress_checkpoint` with `docs_impact`, `issue_label_add` with `decodex:needs-attention` intent, a validated explanatory public issue summary that applies that label, then `issue_terminal_finalize(path = "manual_attention")` | `issue_review_handoff` | Skip PR-backed success writeback and the repo-native gate, then treat the run as a human-required failure immediately. |
 
 If neither signal exists, or both signals exist, `decodex` must fail the attempt instead of inferring operator intent.
 If the label intent is recorded without the required explanatory comment, `decodex` must also fail the attempt instead of treating it as a valid `manual_attention` exit.

@@ -1,3 +1,13 @@
+---
+type: "Decision"
+title: "Radar, Control Plane, and Publisher"
+description: "How should the integrated Decodex repository describe the two merged"
+status: active
+authority: rationale
+owner: docs
+tags: [decision]
+last_verified: 2026-06-16
+---
 # Radar, Control Plane, and Publisher
 
 Status: accepted
