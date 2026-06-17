@@ -40,8 +40,9 @@ mod operator_status_output_tests {
 }
 
 use crate::execution_program::{
-	ExecutionLinearIssueMapping, ExecutionProgram, ExecutionProgramDependency,
-	ExecutionProgramNode, ExecutionProgramNodeStage, ExecutionQueueIntent,
+	ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionLinearIssueMapping,
+	ExecutionProgram, ExecutionProgramDependency, ExecutionProgramNode, ExecutionProgramNodeStage,
+	ExecutionQueueIntent,
 };
 use crate::loop_contract::{DecisionPromotion, DecisionPromotionActorKind};
 
@@ -363,6 +364,70 @@ fn operator_status_snapshot_surfaces_program_intake_and_node_readbacks() {
 	assert_program_readback_summary(program);
 	assert_program_readback_json(&program_json);
 	assert_program_node_readbacks(program, &program_json);
+}
+
+#[test]
+fn operator_status_program_readback_prefers_post_review_owner_over_stale_active_label() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_id = "issue-post-review";
+	let issue_identifier = "PUB-946";
+	let branch_name = "x/pubfi-pub-946";
+	let conflict = ExecutionConflictDomain::new(ExecutionConflictDomainKind::Module, "runtime")
+		.expect("conflict domain should build");
+	let node = status_program_active_node("node-post-review", issue_id, issue_identifier, "In Review")
+		.with_conflict_domains([conflict])
+		.expect("conflict domain should attach");
+	let program = ExecutionProgram::from_issue_batch_intake(
+		"program-post-review-owner",
+		config.service_id(),
+		"program-post-review-owner-fingerprint",
+		"Track post-review owner readback.",
+		vec![node],
+	)
+	.expect("program should build");
+
+	state_store
+		.upsert_execution_program(config.service_id(), program)
+		.expect("program should persist");
+	state_store
+		.upsert_review_handoff_marker(
+			config.service_id(),
+			issue_id,
+			&ReviewHandoffMarker::new(
+				"pub-946-attempt-1",
+				1,
+				branch_name,
+				"https://github.com/hack-ink/pubfi/pull/946",
+				"main",
+				branch_name,
+				"1111111111111111111111111111111111111111",
+			),
+		)
+		.expect("review lifecycle should persist");
+
+	let snapshot = build_program_readback_snapshot(&config, &workflow, &state_store);
+	let program = snapshot.execution_programs.first().expect("program should surface");
+	let node = program.node_readbacks.first().expect("post-review node should surface");
+
+	assert_eq!(program.status, "active");
+	assert_eq!(program.active_count, 1);
+	assert_eq!(program.blocked_count, 0);
+	assert_eq!(node.lifecycle_state, "post_review");
+	assert_eq!(node.readiness_state, "blocked");
+	assert!(node.reason_codes.contains(&String::from("mapped_issue_post_review_owner")));
+	assert!(!node.reason_codes.contains(&String::from("mapped_issue_active_label_present")));
+	assert!(!node.reason_codes.contains(&String::from("conflict_domain_occupied")));
+	assert_eq!(
+		node.reasons,
+		vec![String::from(
+			"Review & Landing owns this issue until post-review landing or closeout finishes",
+		)]
+	);
+	assert_eq!(
+		node.next_action,
+		"Continue the retained post-review lifecycle before dispatching this program node."
+	);
 }
 
 fn seed_program_readback_status(state_store: &StateStore, config: &ServiceConfig) {
