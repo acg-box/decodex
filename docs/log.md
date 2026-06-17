@@ -21,6 +21,9 @@
 - Added private `phase_acceptance_check` handling so implementation and repair phases
   require objective coverage, effective delta, non-goal cleanliness, docs readiness,
   and repo-gate evidence before advancing to handoff.
+- Recorded XY-978 dogfood coverage: direct Program scheduling now quarantines legacy
+  Decision Contract rows with removed flat issue summaries so fresh issue-batch
+  Programs and status readback are not blocked by old model fields.
 - Added `docs/spec/okf-knowledge-layer.md` to separate portable OKF engine behavior,
   LLM Wiki graph/retrieval behavior, repository-memory anchors, and the strict
   Decodex docs profile.
