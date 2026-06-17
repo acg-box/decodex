@@ -1417,6 +1417,15 @@ impl<'a> TrackerToolBridge<'a> {
 			previous_state.as_ref().map_or(0, |previous_state| previous_state.nonclean_rounds)
 		};
 
+		if review_policy_status == ReviewPolicyStatus::Findings
+			&& previous_nonclean_rounds >= REVIEW_POLICY_CONVERGENCE_BUDGET
+		{
+			return Err(format!(
+				"Review churn threshold already exceeded for issue `{}`; do not record another findings checkpoint. Route through architecture recovery or human attention before making further repair mutations.",
+				self.issue.identifier
+			));
+		}
+
 		Ok(match review_policy_status {
 			ReviewPolicyStatus::Findings => previous_nonclean_rounds.saturating_add(1),
 			ReviewPolicyStatus::Clean

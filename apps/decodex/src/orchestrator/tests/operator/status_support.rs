@@ -388,7 +388,7 @@ fn operator_status_text_current_lane() -> OperatorRunStatus {
 			source: String::from("runtime_sqlite"),
 			default_view: String::from("summarized_payloads"),
 			read_command: String::from(
-				"decodex evidence PUB-101 --run-id run-1 --attempt 1 --json",
+				"decodex evidence --config project.toml PUB-101 --run-id run-1 --attempt 1 --json",
 			),
 		},
 		loop_status: None,

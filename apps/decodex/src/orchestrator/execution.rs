@@ -4079,11 +4079,24 @@ where
 		context.issue_run,
 		HarnessOutcomeKind::RetryableFailure,
 		Some(retry_error_class),
-		Some("failed"),
+		retryable_failure_validation_result(error, retry_error_class),
 		None,
 	);
 
 	Ok(())
+}
+
+fn retryable_failure_validation_result(
+	error: &Report,
+	retry_error_class: &str,
+) -> Option<&'static str> {
+	if retry_error_class.starts_with("repo_gate_")
+		|| error.downcast_ref::<RepoGateFailure>().is_some()
+	{
+		Some("failed")
+	} else {
+		None
+	}
 }
 
 fn apply_architecture_recovery_retry_writeback<T>(

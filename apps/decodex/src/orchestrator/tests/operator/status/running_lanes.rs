@@ -363,9 +363,15 @@ fn live_operator_status_snapshot_hydrates_current_lane_issue_display_metadata() 
 	assert_eq!(current_lane.issue_identifier.as_deref(), Some("XY-392"));
 	assert_eq!(current_lane.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
 	assert_eq!(current_lane.author.as_deref(), Some("Yvette"));
+
+	let expected_private_evidence_command = format!(
+		"decodex evidence --config {} XY-392 --run-id {run_id} --attempt 1 --json",
+		config.config_path().display()
+	);
+
 	assert_eq!(
 		current_lane.private_evidence.read_command,
-		format!("decodex evidence XY-392 --run-id {run_id} --attempt 1 --json")
+		expected_private_evidence_command
 	);
 	assert_eq!(recent_run.issue_identifier.as_deref(), Some("XY-392"));
 	assert_eq!(recent_run.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
@@ -383,7 +389,7 @@ fn live_operator_status_snapshot_hydrates_current_lane_issue_display_metadata() 
 	assert_eq!(snapshot_json["current_lanes"][0]["author"], "Yvette");
 	assert_eq!(
 		snapshot_json["current_lanes"][0]["private_evidence"]["read_command"],
-		format!("decodex evidence XY-392 --run-id {run_id} --attempt 1 --json")
+		expected_private_evidence_command
 	);
 	assert_eq!(snapshot_json["current_lanes"][0]["control_capability"]["status"], "active");
 	assert_eq!(
