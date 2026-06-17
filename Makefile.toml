@@ -1,15 +1,15 @@
 # Decodex workspace tasks.
 
 # Check
-# | task                | type      | cwd  |
-# | ------------------- | --------- | ---- |
-# | check               | composite |      |
-# | check-rust          | command   |      |
-# | check-site          | composite |      |
-# | check-site-content  | command   |      |
-# | check-site-types    | command   | site |
-# | check-vstyle        | composite |      |
-# | check-vstyle-rust   | command   |      |
+# | task              | type      | cwd  |
+# | ----------------- | --------- | ---- |
+# | check             | composite |      |
+# | check-node        | composite |      |
+# | check-node-build  | command   | site |
+# | check-node-types  | command   | site |
+# | check-rust        | command   |      |
+# | check-vstyle      | composite |      |
+# | check-vstyle-rust | command   |      |
 
 [tasks.check]
 clear = true
@@ -18,7 +18,7 @@ dependencies = [
 	"fmt-check",
 	"docs-check",
 	"check-rust",
-	"check-site",
+	"check-node",
 	"check-vstyle",
 	"test",
 ]
@@ -64,29 +64,23 @@ args = [
 	"warnings",
 ]
 
-[tasks.check-site]
+[tasks.check-node]
 workspace = false
 dependencies = [
-	"check-site-content",
-	"build-site",
-	"check-site-types",
+	"check-node-build",
+	"check-node-types",
 ]
 
-[tasks.check-site-content]
+[tasks.check-node-build]
 workspace = false
-command = "cargo"
+cwd = "site"
+command = "npm"
 args = [
 	"run",
-	"-p",
-	"decodex",
-	"--bin",
-	"decodex",
-	"--",
-	"radar",
-	"validate",
+	"build",
 ]
 
-[tasks.check-site-types]
+[tasks.check-node-types]
 workspace = false
 cwd = "site"
 command = "npm"
@@ -246,7 +240,6 @@ args = [
 # | ----------------------- | --------- | --- |
 # | test                    | composite |     |
 # | test-rust               | command   |     |
-# | test-decodex-app-stage  | command   |     |
 
 [tasks.test]
 clear = true
@@ -264,41 +257,4 @@ args = [
 	"--workspace",
 	"--all-targets",
 	"--all-features",
-]
-
-[tasks.test-decodex-app-stage]
-workspace = false
-command = "scripts/macos/test_decodex_app_stage.sh"
-
-# Build
-# | task       | type    | cwd  |
-# | ---------- | ------- | ---- |
-# | build-site | command | site |
-
-[tasks.build-site]
-workspace = false
-cwd = "site"
-command = "npm"
-args = [
-	"run",
-	"build",
-]
-
-# Meta
-# | task                 | type      | cwd |
-# | -------------------- | --------- | --- |
-# | checks               | composite |     |
-# | decodex-checks       | composite |     |
-
-[tasks.checks]
-workspace = false
-dependencies = [
-	"check",
-]
-
-[tasks.decodex-checks]
-workspace = false
-dependencies = [
-	"fmt-check",
-	"check-site",
 ]

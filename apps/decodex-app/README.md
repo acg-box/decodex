@@ -56,12 +56,12 @@ apps/decodex-app/script/build_and_run.sh
 Stage a signed bundle without launching it:
 
 ```sh
-apps/decodex-app/script/build_and_run.sh stage
-cargo make test-decodex-app-stage
+scripts/macos/test_decodex_app_stage.sh
 ```
 
-The staging script builds the Swift app, the Rust `decodex` server binary, and
-`decodex-app-helper`, then copies both Rust executables into `Contents/Helpers/`.
+The stage test script builds the Swift app, the Rust `decodex` server binary, and
+`decodex-app-helper`, copies both Rust executables into `Contents/Helpers/`, then
+verifies the staged bundle layout and signature.
 Direct SwiftPM launches are development-only; when needed, point them at workspace-built
 executables:
 
@@ -84,14 +84,14 @@ The staging script follows the local Rsnap-style signing path: it writes
 identity, enables hardened runtime, and verifies the signature before launch. Override
 the signing identity with `DECODEX_APP_SIGN_IDENTITY`; override the staging directory
 with `DECODEX_APP_STAGE_DIR`. Override the Rust profile with
-`DECODEX_APP_RUST_PROFILE`; release CI uses `final-release`.
+`DECODEX_APP_RUST_PROFILE`; external release automation should use `final-release`.
 
-Release tags package the app through `.github/workflows/release.yml`. The workflow
-imports `APPLE_CERTIFICATE_P12_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, and
+Release packaging is owned by external Codex automation. That automation supplies
+`APPLE_CERTIFICATE_P12_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, and
 `APPLE_SIGNING_IDENTITY`, builds the Swift app in release mode, bundles the
 `final-release` Rust `decodex` and `decodex-app-helper` executables, then publishes
 `decodex-app-aarch64-apple-darwin.zip` beside the CLI archives. If
-`APPLE_NOTARY_KEY_ID` and `APPLE_NOTARY_KEY_P8` are set, the workflow notarizes and
+`APPLE_NOTARY_KEY_ID` and `APPLE_NOTARY_KEY_P8` are set, the automation notarizes and
 staples the staged app before packaging; `APPLE_NOTARY_ISSUER` is used when present.
 
 The "Use in Codex" action overwrites Codex's `auth.json` from one stored

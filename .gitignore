@@ -44,6 +44,8 @@ next-env.d.ts
 node_modules
 npm-debug.log*
 out/
+site/.astro/
+site/dist/
 yarn-debug.log*
 yarn-error.log*
 
