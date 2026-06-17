@@ -208,31 +208,34 @@ Within authority:
 - stricter local validation or review evidence that preserves or narrows the
   accepted contract
 
-Human-required:
+The Authority Boundary is a typed policy matrix, not a broad approval gate:
 
-- product goal changes or replacement of the issue objective
-- accepted behavior changes, even when the code delta is small
-- public API, CLI, configuration, workflow, or compatibility-contract changes not
-  authorized by the accepted contract
-- security, credential, billing, privacy, destructive data-loss, or live-operation
-  risk that was not already accepted
-- validation, review, or repo-gate weakening
-- ownership conflicts with another active, retained, review, landing, or cleanup lane
-- changes to accepted Decision Contract objectives, non-goals, constraints,
-  acceptance criteria, validation expectations, or stop conditions
+| Changed surface | Policy decision | Recovery consequence |
+| --- | --- | --- |
+| `implementation_strategy`, `runtime`, `tests`, or `docs` implementation details that preserve the accepted objective | `auto_continue` | Continue autonomous recovery while budget remains. |
+| `public_api`, `config`, `security`, `data`, `billing`, or `privacy` | `requires_enhanced_evidence` | Continue recovery, but preserve stronger review, test, migration, or operator evidence before review handoff or landing. |
+| `validation` or `review_policy` | `block_landing` | Continue recovery only to restore or strengthen the gate; review handoff or landing remains blocked until the evidence standard is restored. |
+| `objective`, `non_goal`, `external_dependency`, `retained_ownership`, or `authority_evidence` | `requires_human_decision` | Stop automatic recovery and preserve a durable authority decision request. |
 
-`insufficient_evidence` is also a stop disposition. Use it when the runtime cannot
-prove whether a recovery is inside or outside the envelope from the current Decision
-Contract, issue, project policy, lane ownership, and private evidence.
+The legacy disposition remains as a compatibility summary. New recovery decisions are
+driven by `policy_decision`: `requires_human_decision` stops automation;
+`auto_continue`, `requires_enhanced_evidence`, and `block_landing` keep internal
+implementation recovery automatic within the bounded budget.
+
+During architecture recovery, the runtime derives the top-level policy from both the
+guardrail reason and the retained worktree's tracked diff paths. Diff-path inference
+adds typed surfaces for docs, tests, config, public API/CLI/protocol, security, data,
+billing, privacy, validation, review policy, and ordinary runtime implementation
+files, then applies the highest-risk policy across all observed surfaces.
 
 ## Authority Boundary Check
 
 Before autonomous loop recovery continues a detached or guardrail-pressured lane, the
 runtime must record a private Authority Boundary Check when the attempted recovery
 could change the Authority Envelope or when evidence is too weak to prove that it does
-not. Guardrail recovery may continue only when this check returns
-`within_authority` and the recovery budget still has room. `requires_human` and
-`insufficient_evidence` are hard stops for the current autonomous lane.
+not. Guardrail recovery may continue only when the check's `policy_decision` allows
+autonomous recovery and the recovery budget still has room. `requires_human_decision`
+is a hard stop for the current autonomous lane.
 
 The private payload is versioned as `decodex.authority_boundary_check/1` with
 `event_type = "authority_boundary_check"` in `private_execution_events`. It records:
@@ -242,9 +245,14 @@ The private payload is versioned as `decodex.authority_boundary_check/1` with
 - referenced Decision Contract ids when known
 - attempted recovery reason, such as `uncovered_direction`,
   `ambiguous_retained_progress`, `review_churn`, or `hard_interrupt_fallback`
-- changed surfaces, each with a surface kind, compact change summary, and local
-  classification
-- final disposition: `within_authority`, `requires_human`, or `insufficient_evidence`
+- changed surfaces, each with a typed surface kind, compact change summary, per-surface
+  `policy_decision`, and legacy disposition
+- top-level `policy_decision`: `auto_continue`, `requires_enhanced_evidence`,
+  `block_landing`, or `requires_human_decision`
+- policy flags: whether autonomous recovery is allowed, enhanced evidence is required,
+  or landing is blocked
+- final legacy disposition: `within_authority`, `requires_human`, or
+  `insufficient_evidence`
 - final disposition reason
 - sanitized harness improvement signals when the check reveals an underspecified
   contract field, incomplete issue template, weak prompt, weak validator, or stale
@@ -255,9 +263,9 @@ briefs, and ordinary operator summaries may expose only coarse reason codes or n
 actions rendered by allowlisted lifecycle paths. They must not mirror raw changed
 surfaces, graph ids, transcript text, or private recovery payloads.
 
-When the final disposition is `requires_human`, detached lanes must create a durable
-decision request instead of asking a transient Codex chat. The private payload is
-versioned as `decodex.authority_decision_request/1` with
+When the policy decision is `requires_human_decision`, detached lanes must create a
+durable decision request instead of asking a transient Codex chat. The private payload
+is versioned as `decodex.authority_decision_request/1` with
 `event_type = "authority_decision_request"` in `private_execution_events`. It links
 the issue id, issue identifier, run id, attempt number, Authority Boundary Check
 record id, retained worktree or diff evidence, and recovery-attempt context. It also
@@ -305,19 +313,24 @@ records:
 - prior architecture recovery attempts for the issue
 - recovery budget attempt and maximum
 - loop-guardrail reason, threshold, consecutive count, fingerprint, and source class
-- linked Authority Boundary Check record id, disposition, and final reason
+- linked Authority Boundary Check record id, legacy disposition, policy decision,
+  enhanced-evidence flag, landing-block flag, and final reason
 
-If the boundary check is `within_authority` and budget remains, Decodex records
+If the boundary policy allows autonomous recovery and budget remains, Decodex records
 `event_type = "architecture_recovery_started"` with reason code
 `architecture_recovery_started`, clears the stopped guardrail reason, and starts a
 materially different implementation strategy. This recovery may change internal
 architecture, plumbing, tests, and docs needed to satisfy the same accepted objective.
-It must not weaken validation or review gates.
+It must not weaken validation or review gates. `requires_enhanced_evidence` and
+`block_landing` remain visible in private evidence and operator status so handoff or
+landing cannot proceed without the stronger evidence the surface requires. Both
+policies remain unresolved for post-review landing classification until a later clean
+review checkpoint for the current lane head records that the enhanced or blocked
+surface evidence has been restored.
 
-If recovery would exceed the Authority Envelope, lacks enough evidence to prove that
-it stays inside the envelope, depends on external/manual state, or exhausts its
-bounded recovery budget, Decodex records `event_type =
-"architecture_recovery_terminal"` with a reason code such as
+If recovery would change the objective or non-goals, lacks authority evidence, depends
+on external/manual state, or exhausts its bounded recovery budget, Decodex records
+`event_type = "architecture_recovery_terminal"` with a reason code such as
 `contract_boundary_required`, `external_dependency_required`, or
 `architecture_recovery_exhausted`, then routes through the human-required failure
 path. Boundary stops should also record an `authority_decision_request` private event
@@ -637,16 +650,19 @@ whether autonomous architecture recovery is allowed:
 
 - Engineering implementation problems such as repeated repo-gate validation failures
   or no-effective-diff repair loops may continue only after an Authority Boundary
-  Check records `within_authority` and recovery budget remains.
-- Product goal, accepted behavior, public API/config/workflow contract, security,
-  credential, billing, privacy, destructive data-loss, validation-weakening, review
-  weakening, lane-ownership, or accepted Decision Contract changes must stop with a
-  human-required reason.
+  Check records `auto_continue` and recovery budget remains.
+- Public API/config/security/data/billing/privacy surfaces may continue only with
+  `requires_enhanced_evidence`; handoff or landing must carry the stronger evidence
+  required by that surface.
+- Validation or review-policy weakening is `block_landing`; recovery may continue only
+  to restore or strengthen the gate before handoff or landing.
+- Product goal, accepted behavior, lane-ownership, authority-evidence, objective, or
+  non-goal changes must stop with a human-required reason.
 - Dependency or Execution Program staleness that requires external/manual state must
   stop with `external_dependency_required` or an equivalent typed reason.
-- Missing or contradictory evidence must stop with `contract_boundary_required`,
-  `insufficient_evidence`, or an equivalent typed reason until accepted authority is
-  recorded.
+- Missing or contradictory authority evidence must stop with
+  `contract_boundary_required` or an equivalent typed human-decision reason until
+  accepted authority is recorded.
 
 Allowed recovery attempts are bounded and recorded. Exhausting the recovery budget is
 itself a terminal recovery outcome, not a reason to silently fall back to the same
