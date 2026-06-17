@@ -68,27 +68,8 @@ Then keep the body explicit:
 - [`lane-control-state.md`](./lane-control-state.md) defines the authoritative lane
   control state axes, invariants, guard semantics, terminal barrier, and projection
   rules used by scheduler decisions and operator status.
-- [`github-change-bundle.md`](./github-change-bundle.md) defines the normalized GitHub
-  input model for PR-first public signal analysis.
-- [`signal-entry.md`](./signal-entry.md) defines the published signal-entry schema used
-  by the static site.
-- [`release-delta.md`](./release-delta.md) defines the stable-versus-prerelease summary
-  artifact used by the homepage release-delta module.
-- [`radar-ledger.md`](./radar-ledger.md) defines the local SQLite ledger that keeps
-  every observed upstream Codex commit traceable without storing all raw history in Git.
-- [`upstream-review.md`](./upstream-review.md) defines the deterministic upstream review
-  queue and AI review boundary for every observed upstream Codex commit or PR.
-- [`radar-artifact-retention.md`](./radar-artifact-retention.md) defines the 21-day Git
-  hot window for raw Radar artifacts, the warm curated artifacts that stay in Git, and
-  the GitHub Release archive manifest contract.
-- [`upstream-impact.md`](./upstream-impact.md) defines how Radar classifies upstream
-  Codex changes for public signals, Control Plane follow-up, and Publisher angles.
-- [`social-candidate.md`](./social-candidate.md) defines source-backed public Publisher
-  handoff artifacts that are not publication records.
-- [`social-publishing.md`](./social-publishing.md) defines the checked-in social
-  publication, block, skip, and failure records for `@decodexspace`.
 - [`site-contract.md`](./site-contract.md) defines the static-site page budget,
-  homepage obligations, and card rendering contract.
+  homepage obligations, and static dependency boundary.
 - [`linear-execution-ledger.md`](./linear-execution-ledger.md) defines the versioned
   Linear comment event-ledger schema for low-frequency Decodex lane transitions.
 - [`agent-evidence.md`](./agent-evidence.md) defines the local agent-readable evidence

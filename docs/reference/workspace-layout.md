@@ -14,7 +14,7 @@ Purpose: Describe the current top-level repository surfaces and which concerns e
 owns.
 
 Read this when: You need to know where runtime code, static-site code, workflow policy,
-GitHub signal tooling, and documentation topics currently live.
+and documentation topics currently live.
 
 Not this document: The normative behavior contract, operator procedures, or durable
 design rationale.
@@ -28,22 +28,17 @@ should not be treated as repository source.
 | --- | --- |
 | `apps/decodex/` | Rust package that builds the `decodex` CLI and runtime. Runtime, orchestration, tracker integration, app-server integration, operator HTTP, and local control-plane behavior live under `apps/decodex/src/`. |
 | `apps/decodex-app/` | SwiftPM macOS app for local Decodex Codex account-pool management. It talks to the bundled `decodex-app-helper`, which links the Rust account service directly, and does not own runtime scheduling or operator dashboard state. |
-| `site/` | Astro static site for the public Decodex signal surface. It renders checked-in content and generated JSON from `site/src/content/`; it is not backed by a live Decodex daemon. |
-| `scripts/github/` | Automation-only Codex AI analysis helper and shared schema support for that helper. Deterministic Radar commands live in the Rust CLI. |
-| `scripts/config/` | Repository automation scripts for config-derived artifacts. |
-| `artifacts/github/` | Checked-in GitHub change bundles and editorial analysis drafts used by the public signal pipeline. |
-| `artifacts/archive/` | Checked-in manifests for cold Radar archive batches stored as GitHub Release assets. |
-| `artifacts/social/` | Checked-in Publisher social publication records, blocked-cap records, and generated-media evidence. |
-| `dev/skills/` | Repository-development skills for Radar upstream triage, code analysis, release analysis, GitHub signal drafting, and X publishing. These are not part of installable plugin distribution. |
+| `site/` | Astro static site for the public Decodex product surface and app download entry. It is not backed by a live Decodex daemon and does not own upstream monitoring or public publishing automation. |
+| `scripts/assets/` | Asset-generation helpers for checked-in app and tray icon assets. |
+| `scripts/macos/` | macOS-only app packaging and local bundle verification helpers. |
 | `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including issue briefing, planning, manual CLI, automation, commit, land, and labels. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
 | `docs/reference/` | Current repository and artifact surface maps. |
 | `docs/decisions/` | Durable rationale for repository-level design choices. |
 | `docs/research/` | Markdown OKF research concepts and supporting evidence. It does not own runtime authority, policy, current-state reference, or durable rationale until promoted into the matching primary docs lane. |
-| `dev/` | Local development helpers outside `dev/skills/`, such as the operator dashboard mock server. |
+| `dev/` | Local development helpers, such as the operator dashboard mock server. |
 | `assets/` | Shared static assets that are not owned by the Astro app's generated output. Decodex App icons live under `assets/app-icon/{source,composer,generated}/`; menu bar template assets live under `assets/tray-icon/{source,generated}/`; `scripts/assets/render_decodex_app_icons.swift` regenerates the icon set. |
-| `.github/` | CI, release, Pages deployment, and content-refresh workflows. |
 | `Makefile.toml` | Repo-native task names and automation entrypoints. |
 | `decodex.example.toml` | Redacted template for a project `project.toml`; live project contracts live under `~/.codex/decodex/projects/<service-id>/`. |
 
@@ -68,9 +63,9 @@ reference document and the root workspace manifest.
 
 `site/` remains the public, static Decodex surface. It owns:
 
-- homepage and feed rendering
-- signal cards and release-delta presentation
-- checked-in content collections under `site/src/content/`
+- homepage rendering
+- public static assets
+- appcast download widget
 - Astro build and type-check behavior
 
 The site does not own:
@@ -80,36 +75,10 @@ The site does not own:
 - tracker writes
 - app-server orchestration
 - live operator dashboard behavior
+- upstream monitoring
+- public publishing automation
 
 Those runtime and operator surfaces stay in `apps/decodex/` and `docs/spec/`.
-
-## GitHub signal tooling
-
-`apps/decodex/src/radar.rs` owns deterministic Radar commands. `decodex radar
-refresh-upstream-queue` is the continuous Radar entrypoint: it scans recent upstream
-commits, resolves them back to PRs when possible, records local ledger state, and
-writes an `upstream_review_queue/v1` artifact for Codex automation. It does not run
-Codex or render public signals. `decodex radar refresh-release-delta` refreshes the
-current homepage release-delta artifact from release compare metadata and published
-signal entries. `decodex radar render-signal` renders published signals from
-Codex-owned analysis drafts, and `decodex radar backfill-release-range` fills gaps for
-release-window summaries when an operator or automation chooses to generate signal
-content. Generated GitHub bundles and analysis drafts live under `artifacts/github/`
-and must stay explicit and checked into the repository when promoted into Publisher
-content.
-
-Raw bundles and analysis drafts are hot artifacts with a 21-day Git retention window.
-Older raw batches move to dedicated GitHub Release assets, with recovery manifests kept
-under `artifacts/archive/index/`.
-
-`artifacts/github/impact/` may hold `upstream_impact/v1` classifications when an
-upstream Codex change has public-signal, Control Plane, or Publisher implications.
-`artifacts/github/review-queue/` may hold the latest deterministic review queue.
-`artifacts/github/social-candidates/` may hold `social_candidate/v1` pre-publication
-handoffs. `artifacts/social/` holds `social_post/v1` published, blocked, failed, or
-skipped records for external publication. Generated media files are not checked-in by
-default; records should point to X status/media URLs or optional content hashes instead.
-These remain checked-in artifacts; none turns the public site into a live service.
 
 ## Installable Codex surface
 
@@ -147,14 +116,9 @@ Runtime state that belongs to the local operator, not to this repository, lives 
 - Project discovery comes from explicit registration, not from scanning Codex history
   or repo-local config files.
 
-Repo-local Radar history that belongs to the current checkout, not to Git, lives under
-`.decodex/`:
-
-- `radar.sqlite3` is the default SQLite ledger for observed upstream Codex commits,
-  skipped candidates, PR mappings, review status, and artifact links.
-
-`.decodex/` is ignored by Git. Public curated artifacts and archive manifests remain in
-the checked-in tree.
+`.decodex/` is ignored by Git and reserved for local-only runtime or agent state. Do
+not introduce checked-in repository behavior that depends on repo-local `.decodex/`
+files.
 
 This local control-plane state chooses registered projects. Once a checkout is selected,
 the matching project directory's `WORKFLOW.md` remains the execution contract for gates,
@@ -165,8 +129,7 @@ tracker routing, and policy.
 - Runtime authority stays in `apps/decodex/src/`, the registered project contract under
   `~/.codex/decodex/projects/<service-id>/`, and the governing specs under
   `docs/spec/`.
-- Public site authority stays in `site/`, `apps/decodex/src/radar.rs`,
-  `artifacts/github/`, and the site/content specs.
+- Public site authority stays in `site/` and the site spec.
 - Reusable agent-facing Decodex usage instructions live under `plugins/decodex/`.
 - `docs/runbook/`, `docs/reference/`, and `docs/decisions/` must not override runtime or
   workflow authority.

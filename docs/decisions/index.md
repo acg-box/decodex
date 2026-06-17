@@ -29,15 +29,6 @@ Question this index answers: "why was it designed this way?"
 - [`mcp-capability-gateway-and-skill-slimming.md`](./mcp-capability-gateway-and-skill-slimming.md)
   records why Decodex should introduce an MCP capability gateway while slimming
   skills into static routing, authority, and safety entrypoints.
-- [`radar-control-plane-publisher.md`](./radar-control-plane-publisher.md) records the
-  stable capability names for upstream Codex intelligence, retained-lane orchestration,
-  and public publishing after the repository integration.
-- [`codex-upstream-radar-redesign.md`](./codex-upstream-radar-redesign.md) records why
-  continuous upstream Codex tracking now starts from deterministic review queues and
-  keeps AI judgment in Codex automation rather than GitHub Actions.
-- [`radar-artifact-release-archives.md`](./radar-artifact-release-archives.md) records
-  why old raw Radar bundles and analysis drafts leave Git after 21 days and move to
-  dedicated GitHub Release assets with checked-in manifests.
 - [`static-public-site.md`](./static-public-site.md) records why the public Decodex site
   remains static while runtime/operator behavior stays in the CLI and local control
   plane.
