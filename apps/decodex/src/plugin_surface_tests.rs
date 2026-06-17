@@ -307,6 +307,7 @@ fn packaged_docs_skills_encode_okf_wiki_and_drift_boundaries() {
 	assert_contains(&docs_surface, "one authoritative concept per claim");
 	assert_contains(&docs_surface, "pass`, `fail`, or `needs-human");
 	assert_contains(&docs_surface, "Do not create a parallel `wiki/` or `okf/` root");
+	assert_not_contains(&docs_surface, "Okf");
 }
 
 #[test]

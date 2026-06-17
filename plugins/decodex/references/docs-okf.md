@@ -10,6 +10,7 @@ concepts.
 - `docs/index.md`, `docs/policy.md`, and `docs/log.md` must exist.
 - Non-index, non-log Markdown documents are OKF concepts.
 - Concepts start with YAML frontmatter delimited by `---`.
+- Prose spells the acronym `OKF`; lowercase `okf` is slug-only.
 
 ## Required Frontmatter
 
