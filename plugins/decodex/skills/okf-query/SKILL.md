@@ -16,4 +16,6 @@ bundle graph findings.
 - Use `decodex okf graph <root> --json` when relationship shape, orphans, or broken
   bundle-internal links matter.
 - Return the smallest concept set that can answer the task.
+- If query evidence shows repeated misses, noisy top results, or unexplained orphans,
+  switch to `repo-memory-curator` before editing the bundle.
 - Do not require Decodex lanes or Linear workflow for portable OKF consumption.
