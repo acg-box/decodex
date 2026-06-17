@@ -420,6 +420,7 @@ pub(crate) struct DiagnoseRequest<'a> {
 /// Local private execution evidence readback request.
 pub(crate) struct EvidenceRequest<'a> {
 	pub(crate) config_path: Option<&'a Path>,
+	pub(crate) project_id: Option<&'a str>,
 	pub(crate) issue: &'a str,
 	pub(crate) run_id: Option<&'a str>,
 	pub(crate) attempt_number: Option<i64>,

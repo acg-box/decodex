@@ -70,6 +70,35 @@ fn loop_guardrail_issue_run(
 	}
 }
 
+fn harness_outcome_payload_for_retryable_failure(error: Report) -> Value {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let tracker = FakeTracker::new(Vec::new());
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+	let issue_run = loop_guardrail_issue_run(&config, &issue, 1);
+
+	state_store
+		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.expect("run attempt should record");
+
+	orchestrator::handle_failure(&tracker, &config, &workflow, &state_store, &issue_run, &error)
+		.expect("retryable failure writeback should succeed");
+
+	state_store
+		.list_private_execution_events(
+			config.service_id(),
+			&issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+		)
+		.expect("private evidence should list")
+		.into_iter()
+		.find(|event| event.event_type() == "harness_outcome")
+		.expect("harness outcome should record")
+		.payload()
+		.clone()
+}
+
 #[test]
 fn terminal_failure_comments_surface_actionable_error_classes() {
 	for (error_class, next_action, expected_snippets) in [
@@ -605,6 +634,36 @@ fn retry_failure_comments_withhold_raw_error_text() {
 	assert!(comment.contains("- error_class: `retryable_execution_failure`"));
 	assert!(comment.contains("Sensitive runtime details were withheld"));
 	assert!(!comment.contains("error:"));
+}
+
+#[test]
+fn retryable_failure_writeback_does_not_mark_non_validation_harness_outcome_failed() {
+	let payload =
+		harness_outcome_payload_for_retryable_failure(Report::msg("transient runtime failure"));
+
+	assert_eq!(payload["validation"]["result"], "not_recorded");
+	assert_eq!(payload["validation"]["failure_count"], 0);
+	assert_eq!(payload["validation"]["failure_classes"], serde_json::json!([]));
+}
+
+#[test]
+fn retryable_repo_gate_writeback_marks_harness_outcome_validation_failed() {
+	let payload = harness_outcome_payload_for_retryable_failure(Report::new(
+		orchestrator::RepoGateFailure::new(
+			RepoGateFailureKind::VerifyCommandFailed,
+			String::from("verify command failed"),
+		),
+	));
+
+	assert_eq!(payload["validation"]["result"], "failed");
+	assert!(payload["validation"]["failure_count"].as_i64().is_some_and(|count| count >= 1));
+	assert!(
+		payload["validation"]["failure_classes"]
+			.as_array()
+			.expect("failure classes should be an array")
+			.iter()
+			.any(|class| class == "repo_gate_verify_failed")
+	);
 }
 
 #[test]

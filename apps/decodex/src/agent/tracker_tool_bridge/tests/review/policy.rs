@@ -74,6 +74,24 @@ fn accepted_review_findings_for_status_json(status: &str) -> Value {
 	}
 }
 
+fn submit_findings_review_checkpoint(
+	bridge: &TrackerToolBridge<'_>,
+	evidence: &str,
+) -> DynamicToolCallResponse {
+	DynamicToolHandler::handle_call(
+		bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "findings",
+			"head_sha": sample_local_repo().head_oid,
+			"checks": review_checks_json(),
+			"evidence": [evidence],
+			"accepted_findings": accepted_review_findings_json()
+		}),
+	)
+}
+
 fn seed_review_repair_apply_state(
 	state_store: &StateStore,
 	review_context: &ReviewHandoffContext,
@@ -502,6 +520,7 @@ fn independent_review_checkpoint_requires_structured_fresh_context_payload() {
 		Ok(sample_local_repo()),
 		Ok(sample_local_repo()),
 		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
 	]);
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
@@ -777,6 +796,7 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 		Ok(sample_local_repo()),
 		Ok(sample_local_repo()),
 		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
 	]);
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
@@ -788,18 +808,7 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 	);
 
 	for expected_round in [1_i64, 2_i64] {
-		let response = DynamicToolHandler::handle_call(
-			&bridge,
-			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
-			serde_json::json!({
-				"reviewer": "independent_fresh_context",
-				"status": "findings",
-				"head_sha": sample_local_repo().head_oid,
-				"checks": review_checks_json(),
-				"evidence": ["owned fix still pending"],
-				"accepted_findings": accepted_review_findings_json()
-			}),
-		);
+		let response = submit_findings_review_checkpoint(&bridge, "owned fix still pending");
 
 		assert!(response.success);
 		assert_eq!(
@@ -815,18 +824,7 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 		assert_eq!(checkpoint.nonclean_rounds(), expected_round);
 	}
 
-	let response = DynamicToolHandler::handle_call(
-		&bridge,
-		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
-		serde_json::json!({
-			"reviewer": "independent_fresh_context",
-			"status": "findings",
-			"head_sha": sample_local_repo().head_oid,
-			"checks": review_checks_json(),
-			"evidence": ["still not converged"],
-			"accepted_findings": accepted_review_findings_json()
-		}),
-	);
+	let response = submit_findings_review_checkpoint(&bridge, "still not converged");
 
 	assert!(!response.success);
 	assert!(
@@ -846,6 +844,24 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 
 	assert_eq!(stop.reason, ReviewPolicyStopReason::Exhausted);
 	assert_eq!(stop.nonclean_rounds, Some(3));
+
+	let fourth_response =
+		submit_findings_review_checkpoint(&bridge, "attempted fourth findings checkpoint");
+
+	assert!(!fourth_response.success);
+	assert!(
+		matches!(
+			fourth_response.content_items.first(),
+			Some(DynamicToolContentItem::InputText { text })
+				if text.contains("Review churn threshold already exceeded")
+		),
+		"fourth consecutive findings checkpoint should be rejected before persistence: {fourth_response:?}"
+	);
+
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
+
+	assert_eq!(checkpoint.status(), "findings");
+	assert_eq!(checkpoint.nonclean_rounds(), 3);
 
 	let fenced_response = DynamicToolHandler::handle_call(
 		&bridge,

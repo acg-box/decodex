@@ -576,6 +576,7 @@ fn agent_private_evidence_ref(run: &OperatorRunStatus) -> AgentPrivateEvidenceRe
 
 fn private_evidence_ref_for_run_fields(
 	project_id: &str,
+	project_config_path: &Path,
 	issue_id: &str,
 	issue_identifier: Option<&str>,
 	run_id: &str,
@@ -586,6 +587,7 @@ fn private_evidence_ref_for_run_fields(
 		source: String::from("runtime_sqlite"),
 		default_view: String::from("summarized_payloads"),
 		read_command: private_evidence_read_command(
+			project_config_path,
 			issue_identifier.unwrap_or(issue_id),
 			Some(run_id),
 			Some(attempt_number),
@@ -596,13 +598,18 @@ fn private_evidence_ref_for_run_fields(
 }
 
 fn private_evidence_read_command(
+	project_config_path: &Path,
 	issue_selector: &str,
 	run_id: Option<&str>,
 	attempt_number: Option<i64>,
 	json: bool,
 	include_payload: bool,
 ) -> String {
-	let mut command = format!("decodex evidence {}", shell_quote(issue_selector));
+	let mut command = format!(
+		"decodex evidence --config {} {}",
+		shell_quote(&project_config_path.display().to_string()),
+		shell_quote(issue_selector)
+	);
 
 	if let Some(run_id) = run_id {
 		command.push_str(&format!(" --run-id {}", shell_quote(run_id)));
@@ -672,6 +679,7 @@ fn build_private_evidence_readback(
 		.unwrap_or(&target.issue_id)
 		.to_owned();
 	let read_command = private_evidence_read_command(
+		project.config_path(),
 		&issue_selector,
 		Some(&target.run_id),
 		Some(target.attempt_number),
