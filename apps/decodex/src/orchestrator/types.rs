@@ -1465,6 +1465,9 @@ struct OperatorHistoryLaneStatus {
 struct OperatorLaneLifecycleMetrics {
 	attempt_count: usize,
 	run_count: usize,
+	recorded_attempt_count: usize,
+	recovered_attempt_count: usize,
+	current_snapshot_attempt_count: usize,
 	captured_attempt_count: usize,
 	missing_attempt_count: usize,
 	protocol_event_count: i64,
@@ -1480,6 +1483,8 @@ struct OperatorLaneLifecycleMetrics {
 	large_output_warnings: Vec<String>,
 	buckets: Vec<ChildAgentActivityBucket>,
 	phases: Vec<OperatorLaneLifecyclePhaseMetrics>,
+	attempt_evidence: Vec<OperatorLaneLifecycleAttemptEvidence>,
+	recovery_gaps: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -1488,6 +1493,9 @@ struct OperatorLaneLifecyclePhaseMetrics {
 	label: String,
 	attempt_count: usize,
 	run_count: usize,
+	recorded_attempt_count: usize,
+	recovered_attempt_count: usize,
+	current_snapshot_attempt_count: usize,
 	captured_attempt_count: usize,
 	missing_attempt_count: usize,
 	protocol_event_count: i64,
@@ -1502,6 +1510,23 @@ struct OperatorLaneLifecyclePhaseMetrics {
 	largest_tool_output_tool: Option<String>,
 	large_output_warnings: Vec<String>,
 	buckets: Vec<ChildAgentActivityBucket>,
+	attempt_evidence: Vec<OperatorLaneLifecycleAttemptEvidence>,
+	recovery_gaps: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorLaneLifecycleAttemptEvidence {
+	run_id: String,
+	issue_id: String,
+	attempt_number: i64,
+	status: String,
+	phase: String,
+	source: String,
+	evidence: Vec<String>,
+	gaps: Vec<String>,
+	protocol_event_count: i64,
+	child_event_count: i64,
+	updated_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1601,6 +1626,9 @@ struct OperatorRunStatus {
 		effective_sandbox_mode: Option<String>,
 		child_agent_activity: Option<ChildAgentActivitySummary>,
 		protocol_activity: Option<ProtocolActivitySummary>,
+		lifecycle_source: String,
+		lifecycle_evidence: Vec<String>,
+		lifecycle_gaps: Vec<String>,
 		#[serde(default)]
 		lifecycle_metrics: OperatorLaneLifecycleMetrics,
 		account: Option<CodexAccountActivitySummary>,
