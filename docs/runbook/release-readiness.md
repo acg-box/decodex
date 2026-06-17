@@ -15,10 +15,10 @@ tagging or publishing before real dogfood and validation evidence exists.
 Read this when: You are closing the v0.2.0 release gate, preparing tag readiness, or
 checking whether the Loop Engineering candidate has enough evidence to publish.
 Inputs: Current `main`, registered Decodex project config, registered project
-`WORKFLOW.md`, release workflow, runtime evidence, PR handoff state, and dogfood lane
-run id.
-Depends on: `README.md`, `Makefile.toml`, `.github/workflows/release.yml`,
-`docs/spec/loop-runtime.md`, `docs/spec/review-orchestration.md`,
+`WORKFLOW.md`, external release automation, runtime evidence, PR handoff state, and
+dogfood lane run id.
+Depends on: `README.md`, `Makefile.toml`, `docs/spec/loop-runtime.md`,
+`docs/spec/review-orchestration.md`,
 `docs/reference/operator-control-plane.md`, and
 `docs/runbook/review-config-migration.md`.
 Outputs: A release-ready evidence packet, tag/version match for `v0.2.0`, and a final
@@ -27,11 +27,12 @@ release note that names shipped capabilities and deferred items.
 ## Tag Contract
 
 - `Cargo.toml` `[workspace.package].version` must be `0.2.0`.
-- The release workflow accepts only tags shaped as `vX.Y.Z`.
-- The release workflow fails when the pushed tag does not equal
+- The external release automation accepts only tags shaped as `vX.Y.Z`.
+- The external release automation must fail when the requested tag does not equal
   `v${workspace.package.version}`.
 - For this candidate, the only valid release tag is `v0.2.0`.
-- Do not tag or publish if the workflow, workspace version, or intended tag disagree.
+- Do not tag or publish if the release automation, workspace version, or intended tag
+  disagree.
 
 ## Required Evidence
 

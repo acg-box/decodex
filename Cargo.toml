@@ -5,7 +5,7 @@ resolver = "3"
 
 [workspace.package]
 authors     = ["Xavier Lau <x@acg.box>"]
-description = "Decodex runtime, static signal site, and repository-native automation tooling."
+description = "Decodex runtime, static site, and local operator tooling."
 edition     = "2024"
 homepage    = "https://decodex.space"
 license     = "GPL-3.0"

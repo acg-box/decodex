@@ -1,431 +1,95 @@
 ---
-import { getCollection } from "astro:content";
 import AppcastDownloadWidget from "@/components/AppcastDownloadWidget.astro";
-import EmptyFeedState from "@/components/EmptyFeedState.astro";
-import FilterBar from "@/components/FilterBar.astro";
-import SignalCard from "@/components/SignalCard.astro";
-import SignalSymphony from "@/components/SignalSymphony.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
-import {
-  defaultComparison,
-  releaseLabel,
-  type ReleaseDeltaData,
-} from "@/lib/release-delta";
-import { renderMarkdownInline } from "@/lib/render-markdown";
-import {
-  FILTERS,
-  formatPublishedAt,
-  groupSignalsByMonth,
-  homepageSignals,
-  impactLabel,
-  isFilterId,
-  kindLabel,
-  sortSignals,
-  type FilterId,
-  type SignalCardData,
-} from "@/lib/signal-feed";
 
-const rawFilter = Astro.url.searchParams.get("filter");
-const activeFilter: FilterId = isFilterId(rawFilter) ? rawFilter : "all";
 const decodexGitHubUrl = "https://github.com/hack-ink/decodex";
-const primaryXUrl = "https://x.com/hackink";
-const signalBotXUrl = "https://x.com/decodexspace";
-const collectionEntries = await getCollection("signals");
-const releaseDeltaEntries = await getCollection("releaseDeltas");
-const allSignals: SignalCardData[] = sortSignals(
-  collectionEntries.map((entry) => ({
-    id: entry.id,
-    ...entry.data,
-  })),
-);
-const signals: SignalCardData[] = homepageSignals(allSignals);
-const releaseDelta: ReleaseDeltaData | null =
-  releaseDeltaEntries
-    .map((entry) => entry.data as ReleaseDeltaData)
-    .find((entry) => entry.repo === "openai/codex") ?? null;
-
-const previewSignal: SignalCardData = {
-  id: "preview-shell",
-  schema: "signal_entry/v1",
-  slug: "preview-shell",
-  lane: "github",
-  kind: "capability",
-  title: "GitHub-first signal cards are ready for the first PR-backed entry",
-  published_at: "2026-03-20T00:00:00Z",
-  summary:
-    "The site scaffold now has the one-page feed shell, filter bar, utility slot, and signal-card anatomy needed for the GitHub lane.",
-  why_it_matters:
-    "This keeps the MVP focused on one strong page while making the next step obvious: publish real bundle-backed signal entries instead of layering more navigation.",
-  confidence: "likely",
-  impact: "medium",
-  config_flags: [],
-  caveats: [],
-  how_to_try:
-    "Add the first validated signal entry under `site/src/content/signals/` once the PR bundle tooling lands.",
-  expected_effect:
-    "The homepage feed will render real GitHub signals without another route-level refactor.",
-  proof_points: [
-    "The homepage already exposes title, published date, impact, confidence, summary, and why it matters on each card.",
-    "The filter bar is constrained to all signals, upstream signals, try paths, and high impact.",
-    "The utility slot is visually present but intentionally subordinate to the feed.",
-  ],
-  source_refs: {
-    repo: "openai/codex",
-    commit_urls: ["https://docs.astro.build/en/guides/content-collections/"],
-    pr_url: "https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages",
-  },
-  previewLabel: "Scaffold preview",
-};
-
-const visibleSignals = signals.length > 0 ? signals : [previewSignal];
-const hasPublishedSignals = signals.length > 0;
-const groupedSignals = groupSignalsByMonth(signals);
-const showGroupLabels = groupedSignals.length > 1;
-const clientFilterIds = FILTERS.map((filter) => filter.id);
-
-function hasConcreteTryPath(signal: SignalCardData): boolean {
-  return Boolean(signal.how_to_try && signal.expected_effect);
-}
-
-function primarySourceLabel(signal: SignalCardData): string {
-  const pullRequest = signal.source_refs.items?.find((item) => item.kind === "pull_request");
-  if (pullRequest?.meta) return pullRequest.meta;
-  if (signal.source_refs.pr_url) {
-    const match = signal.source_refs.pr_url.match(/\/pull\/(\d+)$/);
-    if (match) return `#${match[1]}`;
-  }
-  return signal.source_refs.repo;
-}
-
-const tryPathSignals = visibleSignals.filter(hasConcreteTryPath);
-const prioritySignals = [
-  ...tryPathSignals,
-  ...visibleSignals.filter((signal) => !hasConcreteTryPath(signal)),
-].slice(0, 3);
-const leadSignal =
-  visibleSignals.find((signal) => signal.impact === "high") ??
-  tryPathSignals[0] ??
-  visibleSignals[0];
-const watchSignals = visibleSignals
-  .filter((signal) => signal.watch_state || signal.caveats.length > 0)
-  .slice(0, 3);
-const highImpactCount = visibleSignals.filter((signal) => signal.impact === "high").length;
-const tryPathCount = visibleSignals.filter(hasConcreteTryPath).length;
-const latestSignalAt = visibleSignals.reduce<string | null>((latest, signal) => {
-  if (!latest || signal.published_at > latest) return signal.published_at;
-  return latest;
-}, null);
-
-const activeComparison = releaseDelta ? defaultComparison(releaseDelta) : null;
-const stableByTag = releaseDelta
-  ? new Map(releaseDelta.release_options.stable.map((release) => [release.tag_name, release]))
-  : new Map();
-const previewByTag = releaseDelta
-  ? new Map(releaseDelta.release_options.preview.map((release) => [release.tag_name, release]))
-  : new Map();
-const activeStable =
-  releaseDelta && activeComparison
-    ? stableByTag.get(activeComparison.stable_tag_name) ?? releaseDelta.stable_release
-    : null;
-const activePreview =
-  releaseDelta && activeComparison
-    ? previewByTag.get(activeComparison.prerelease_tag_name) ?? releaseDelta.prerelease
-    : null;
-const releaseWindow =
-  releaseDelta && activeComparison && activeStable && activePreview
-    ? {
-        stable: releaseLabel(activeStable, releaseDelta.tag_prefix),
-        preview: releaseLabel(activePreview, releaseDelta.tag_prefix),
-        compareUrl: activeComparison.compare.url,
-        commits: activeComparison.compare.total_commits,
-        status: activeComparison.compare.status,
-        updatedAt: formatPublishedAt(releaseDelta.generated_at),
-      }
-    : null;
 
 const productLoops = [
   {
-    title: "Control plane",
-    body: "Project registry, identity routing, signing policy, review handoff, and landing rules.",
+    title: "Project registry",
+    body: "Explicit service configs, workflow policy, identity routing, and queue eligibility.",
   },
   {
-    title: "Retained execution",
-    body: "Issue intake, context preservation, progress checkpoints, and verified handoff.",
+    title: "Retained lanes",
+    body: "Issue intake, attempt state, progress evidence, and recovery paths for long-running work.",
   },
   {
-    title: "Upstream radar",
-    body: "Commit and PR analysis translated into product follow-up.",
+    title: "Operator surface",
+    body: "Local status, account-pool controls, lane inspection, interrupts, and steer requests.",
   },
   {
-    title: "Publisher",
-    body: "X posts, release rollups, and migration notes with source links intact.",
+    title: "Delivery policy",
+    body: "Commit, review handoff, landing, closeout, and cleanup stay tied to repository authority.",
   },
 ];
 
-const filterRuntimeScript = `(function () {
-  var validFilters = ${JSON.stringify(clientFilterIds)};
-  var defaultFilter = "all";
+const commands = [
+  "decodex serve --listen-address 127.0.0.1:8192",
+  "decodex status --live",
+  "decodex diagnose --json",
+  "decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>",
+];
 
-  function isFilter(value) {
-    return validFilters.indexOf(value) !== -1;
-  }
-
-  function readFilter() {
-    var params = new URLSearchParams(window.location.search);
-    var value = params.get("filter");
-    return isFilter(value) ? value : defaultFilter;
-  }
-
-  function matchCard(card, filter) {
-    if (filter === "all") return true;
-    if (filter === "github") return card.dataset.filterLane === "github";
-    if (filter === "try-now") return card.dataset.filterTry === "true";
-    if (filter === "high-impact") return card.dataset.filterImpact === "high";
-    return true;
-  }
-
-  function updateEmptyState(filter, visibleCount) {
-    var empty = document.querySelector("[data-empty-state]");
-    if (!empty) return;
-    if (visibleCount > 0) {
-      empty.hidden = true;
-      return;
-    }
-    var title = empty.querySelector("[data-empty-title]");
-    var body = empty.querySelector("[data-empty-body]");
-    var payload = empty.getAttribute("data-empty-messages");
-    if (payload && title && body) {
-      try {
-        var messages = JSON.parse(payload);
-        var message = messages[filter] || messages.all;
-        title.textContent = message.title;
-        body.textContent = message.body;
-      } catch (_) {}
-    }
-    empty.hidden = false;
-  }
-
-  function updateGroups() {
-    document.querySelectorAll("[data-feed-group]").forEach(function (group) {
-      var anyVisible = group.querySelector("[data-signal-card]:not([hidden])");
-      group.hidden = !anyVisible;
-    });
-  }
-
-  function syncActiveFilter(filter) {
-    document.querySelectorAll("[data-filter-option]").forEach(function (link) {
-      var active = link.getAttribute("data-filter-option") === filter;
-      link.setAttribute("data-active", active ? "true" : "false");
-      if (active) link.setAttribute("aria-current", "page");
-      else link.removeAttribute("aria-current");
-    });
-  }
-
-  function animateRegion() {
-    var region = document.querySelector("[data-feed-region]");
-    if (!region) return;
-    region.classList.remove("feed-region--filtering");
-    void region.offsetWidth;
-    region.classList.add("feed-region--filtering");
-  }
-
-  function applyFilter(filter, options) {
-    var opts = options || {};
-    var visibleCount = 0;
-    document.querySelectorAll("[data-signal-card]").forEach(function (card) {
-      var visible = matchCard(card, filter);
-      card.hidden = !visible;
-      if (visible) visibleCount += 1;
-    });
-    updateGroups();
-    updateEmptyState(filter, visibleCount);
-    syncActiveFilter(filter);
-
-    if (opts.animate) {
-      animateRegion();
-    }
-
-    if (opts.updateHistory) {
-      var url = new URL(window.location.href);
-      if (filter === "all") url.searchParams.delete("filter");
-      else url.searchParams.set("filter", filter);
-      history.pushState({ filter: filter }, "", url);
-    }
-  }
-
-  function bind() {
-    document.querySelectorAll("[data-filter-option]").forEach(function (link) {
-      if (link.dataset.filterBound === "true") return;
-      link.dataset.filterBound = "true";
-      link.addEventListener("click", function (event) {
-        var filter = link.getAttribute("data-filter-option");
-        if (!isFilter(filter)) return;
-        event.preventDefault();
-        applyFilter(filter, { updateHistory: true, animate: true });
-      });
-    });
-
-    applyFilter(readFilter(), { updateHistory: false, animate: false });
-  }
-
-  document.addEventListener("astro:page-load", bind);
-  document.addEventListener("DOMContentLoaded", bind);
-  window.addEventListener("popstate", function () {
-    applyFilter(readFilter(), { updateHistory: false, animate: false });
-  });
-})();`;
+const docs = [
+  {
+    title: "Runtime contract",
+    href: `${decodexGitHubUrl}/blob/main/docs/spec/loop-runtime.md`,
+  },
+  {
+    title: "Operator control",
+    href: `${decodexGitHubUrl}/blob/main/docs/reference/operator-control-plane.md`,
+  },
+  {
+    title: "Project workflow",
+    href: `${decodexGitHubUrl}/blob/main/docs/spec/workflow-file.md`,
+  },
+  {
+    title: "Decodex plugin",
+    href: `${decodexGitHubUrl}/tree/main/plugins/decodex`,
+  },
+];
 
 const interactionRuntimeScript = `(function () {
   var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  var revealSelector = [
-    ".utility-strip",
-    ".site-section",
-    ".system-loop li",
-    ".lead-brief",
-    ".brief-list",
-    ".watch-list",
-    ".publisher-note",
-    ".publisher-flow span",
-    ".signal-card",
-    ".hero-bottom div"
-  ].join(",");
-  var pressSelector = [
-    ".hero-actions a",
-    ".lead-brief__link",
-    ".filter-chip",
-    ".appcast-download__primary",
-    ".appcast-download__version",
-    ".brief-list a",
-    ".utility-row--window a",
-    ".signal-card__index a",
-    ".signal-source-list a"
-  ].join(",");
-  var revealObserver = null;
-  var navObserver = null;
-  var revealGeometryBound = false;
-  var revealFrame = 0;
 
   function all(selector) {
     return Array.prototype.slice.call(document.querySelectorAll(selector));
   }
 
-  function revealByGeometry() {
-    revealFrame = 0;
-    all(".reveal-ready:not(.is-visible)").forEach(function (node) {
-      if (!(node instanceof HTMLElement) || node.hidden) return;
-      var rect = node.getBoundingClientRect();
-      if (rect.top < window.innerHeight * 0.96 && rect.bottom > window.innerHeight * -0.1) {
-        node.classList.add("is-visible");
-      }
-    });
-  }
-
-  function revealAllReady() {
-    all(".reveal-ready:not(.is-visible)").forEach(function (node) {
-      if (node instanceof HTMLElement && !node.hidden) node.classList.add("is-visible");
-    });
-  }
-
-  function scheduleGeometryReveal() {
-    if (revealFrame) return;
-    revealFrame = window.requestAnimationFrame(revealByGeometry);
-  }
-
-  function bindGeometryReveal() {
-    if (revealGeometryBound || reduceMotion.matches) return;
-    revealGeometryBound = true;
-    window.addEventListener("scroll", scheduleGeometryReveal, { passive: true });
-    window.addEventListener("resize", scheduleGeometryReveal);
-  }
-
   function bindReveals() {
-    var nodes = all(revealSelector).filter(function (node) {
-      return node instanceof HTMLElement && node.dataset.revealBound !== "true";
-    });
-    if (nodes.length === 0) return;
-
-    nodes.forEach(function (node, index) {
-      node.dataset.revealBound = "true";
-      node.style.setProperty("--reveal-delay", String(Math.min(index % 7, 6) * 36) + "ms");
-      node.classList.add("reveal-ready");
-    });
+    var targets = all("[data-reveal]");
+    if (targets.length === 0) return;
 
     if (reduceMotion.matches || !("IntersectionObserver" in window)) {
-      nodes.forEach(function (node) {
-        node.classList.add("is-visible");
+      targets.forEach(function (target) {
+        target.classList.add("is-visible");
       });
       return;
     }
 
-    if (!revealObserver) {
-      revealObserver = new IntersectionObserver(function (entries) {
+    var observer = new IntersectionObserver(
+      function (entries) {
         entries.forEach(function (entry) {
           if (!entry.isIntersecting) return;
           entry.target.classList.add("is-visible");
-          revealObserver.unobserve(entry.target);
+          observer.unobserve(entry.target);
         });
-      }, { rootMargin: "0px 0px -8% 0px", threshold: 0.12 });
-    }
+      },
+      { threshold: 0.18 }
+    );
 
-    nodes.forEach(function (node) {
-      revealObserver.observe(node);
-    });
-    bindGeometryReveal();
-    scheduleGeometryReveal();
-    window.setTimeout(scheduleGeometryReveal, 360);
-    window.setTimeout(revealAllReady, 520);
-  }
-
-  function syncNav(id) {
-    all(".site-nav a[href^='#']").forEach(function (link) {
-      var active = link.hash === "#" + id;
-      link.dataset.current = active ? "true" : "false";
-      if (active) link.setAttribute("aria-current", "location");
-      else if (link.getAttribute("aria-current") === "location") link.removeAttribute("aria-current");
-    });
-  }
-
-  function bindNav() {
-    var links = all(".site-nav a[href^='#']");
-    if (links.length === 0 || navObserver || !("IntersectionObserver" in window)) return;
-    var sections = links
-      .map(function (link) {
-        return document.getElementById(link.hash.slice(1));
-      })
-      .filter(function (section) {
-        return section instanceof HTMLElement;
-      });
-    if (sections.length === 0) return;
-
-    navObserver = new IntersectionObserver(function (entries) {
-      var visible = entries
-        .filter(function (entry) { return entry.isIntersecting; })
-        .sort(function (left, right) { return right.intersectionRatio - left.intersectionRatio; })[0];
-      if (visible && visible.target.id) syncNav(visible.target.id);
-    }, { rootMargin: "-22% 0px -55% 0px", threshold: [0.18, 0.35, 0.58] });
-
-    sections.forEach(function (section) {
-      navObserver.observe(section);
-    });
-    if (window.location.hash) syncNav(window.location.hash.slice(1));
-  }
-
-  function bindDetails() {
-    all(".signal-card__evidence").forEach(function (details) {
-      if (!(details instanceof HTMLDetailsElement) || details.dataset.evidenceBound === "true") return;
-      details.dataset.evidenceBound = "true";
-      details.addEventListener("toggle", function () {
-        var card = details.closest("[data-signal-card]");
-        if (card instanceof HTMLElement) {
-          card.dataset.evidenceOpen = details.open ? "true" : "false";
-        }
-      });
+    targets.forEach(function (target, index) {
+      if (target.dataset.revealBound === "true") return;
+      target.dataset.revealBound = "true";
+      target.classList.add("reveal-ready");
+      target.style.setProperty("--reveal-delay", String(Math.min(index * 55, 220)) + "ms");
+      observer.observe(target);
     });
   }
 
   function bindPressStates() {
-    all(pressSelector).forEach(function (target) {
+    all("a, button").forEach(function (target) {
       if (!(target instanceof HTMLElement) || target.dataset.pressBound === "true") return;
       target.dataset.pressBound = "true";
       var clear = function () {
@@ -460,8 +124,8 @@ const interactionRuntimeScript = `(function () {
     hero.addEventListener("pointermove", function (event) {
       var rect = hero.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
-      nextX = ((event.clientX - rect.left) / rect.width - 0.5) * -12;
-      nextY = ((event.clientY - rect.top) / rect.height - 0.5) * -10;
+      nextX = ((event.clientX - rect.left) / rect.width - 0.5) * -10;
+      nextY = ((event.clientY - rect.top) / rect.height - 0.5) * -8;
       if (!frame) frame = window.requestAnimationFrame(applyShift);
     });
     hero.addEventListener("pointerleave", function () {
@@ -471,32 +135,24 @@ const interactionRuntimeScript = `(function () {
     });
   }
 
-  function bindInteractions() {
+  function bind() {
     bindReveals();
-    bindNav();
-    bindDetails();
     bindPressStates();
     bindHeroPointer();
   }
 
-  document.addEventListener("astro:page-load", bindInteractions);
-  document.addEventListener("DOMContentLoaded", bindInteractions);
-  bindInteractions();
+  document.addEventListener("astro:page-load", bind);
+  document.addEventListener("DOMContentLoaded", bind);
+  bind();
 })();`;
 ---
 
 <BaseLayout
   title="Decodex"
-  description="Autonomous software for Codex work, upstream radar, and public updates."
+  description="Repo-native control plane for Codex work, retained lanes, and local operator delivery."
 >
   <main class="official-site">
-    <section class="official-hero" aria-label="Decodex official homepage">
-      <SignalSymphony
-        totalSignals={visibleSignals.length}
-        tryPathCount={tryPathCount}
-        highImpactCount={highImpactCount}
-      />
-
+    <section class="official-hero" aria-label="Decodex homepage">
       <header class="site-header">
         <a class="site-logo" href="/" aria-label="Decodex home">
           <img
@@ -508,85 +164,71 @@ const interactionRuntimeScript = `(function () {
           />
         </a>
         <nav class="site-nav" aria-label="Site navigation">
-          <a href="#system">Software</a>
-          <a href="#radar">Radar</a>
-          <a href="#publisher">Publisher</a>
-          <a href="#evidence">Evidence</a>
+          <a href="#runtime">Runtime</a>
+          <a href="#app">App</a>
+          <a href="#docs">Docs</a>
         </nav>
         <ThemeToggle />
       </header>
 
       <div class="hero-grid">
-        <div class="hero-copy">
+        <div class="hero-copy" data-reveal>
           <h1>Decodex</h1>
           <p>
-            One control loop for projects, retained lanes, signed delivery, upstream radar, and public updates.
+            Repo-native control software for Codex lanes: project registration, retained
+            execution, operator status, account pools, review handoff, and delivery policy.
           </p>
           <div class="hero-actions" aria-label="Primary actions">
-            <a href="#radar">Open Decodex radar</a>
             <a href={decodexGitHubUrl} target="_blank" rel="noreferrer">GitHub</a>
-            <a href={primaryXUrl} target="_blank" rel="noreferrer">
-              Follow @hackink
-            </a>
+            <a href="#runtime">Runtime map</a>
+            <a href="#docs">Documentation</a>
           </div>
         </div>
 
-        <section class="utility-strip" aria-label="Decodex live status">
-          <div class="utility-strip__items">
-            <div class="utility-row utility-row--download">
-              <AppcastDownloadWidget />
-            </div>
-            {
-              releaseWindow ? (
-              <div class="utility-row utility-row--window">
-                <span class="utility-row__label">
-                  Upstream
-                  <span class="utility-separator">·</span>
-                  <span class="utility-row__label-meta">{releaseWindow.commits} commits</span>
-                </span>
-                <a href={releaseWindow.compareUrl} target="_blank" rel="noreferrer">
-                  <strong>
-                    {releaseWindow.stable} <span class="release-arrow">→</span> {releaseWindow.preview}
-                  </strong>
-                </a>
-              </div>
-              ) : null
-            }
+        <aside class="hero-panel" aria-label="Decodex application" data-reveal>
+          <div class="hero-panel__logo">
+            <img src="/assets/icon.png" alt="" width="256" height="256" />
           </div>
-        </section>
+          <div class="hero-panel__copy">
+            <span>Native companion</span>
+            <strong>Local account-pool management for Codex runs.</strong>
+          </div>
+          <AppcastDownloadWidget />
+        </aside>
       </div>
 
-      <div class="hero-bottom" aria-label="Current Decodex signal state">
+      <div class="hero-bottom" aria-label="Decodex product surfaces">
         <div>
-          <strong>{visibleSignals.length}</strong>
-          <span>curated signals</span>
+          <strong>Rust CLI</strong>
+          <span>Runtime</span>
         </div>
         <div>
-          <strong>{tryPathCount}</strong>
-          <span>try paths</span>
+          <strong>macOS App</strong>
+          <span>Accounts</span>
         </div>
         <div>
-          <strong>{highImpactCount}</strong>
-          <span>high impact</span>
+          <strong>Local HTTP</strong>
+          <span>Operator</span>
         </div>
         <div>
-          <strong>{formatPublishedAt(latestSignalAt ?? leadSignal.published_at)}</strong>
-          <span>latest analysis</span>
+          <strong>Plugin</strong>
+          <span>Agent skills</span>
         </div>
       </div>
     </section>
 
-    <section class="site-section system-section" id="system">
+    <section class="site-section runtime-section" id="runtime" data-reveal>
       <div class="section-heading">
-        <h2>Automation map</h2>
+        <h2>Runtime Map</h2>
         <p>
-          Four loops behind the product surface.
+          Decodex keeps repository authority explicit while the local control plane
+          coordinates long-running coding work.
         </p>
       </div>
       <div class="system-panel">
         <div class="system-panel__lead">
-          <span>Decodex software</span>
-          <strong>Operate work, track impact, and keep delivery policy explicit.</strong>
+          <span>Core loop</span>
+          <strong>One local runtime owns scheduling, evidence, recovery, and delivery state.</strong>
         </div>
         <ol class="system-loop">
           {productLoops.map((item, index) => (
@@ -602,121 +244,44 @@ const interactionRuntimeScript = `(function () {
       </div>
     </section>
 
-    <section class="site-section radar-section" id="radar">
+    <section class="site-section app-section" id="app" data-reveal>
       <div class="section-heading">
-        <h2>Decodex radar</h2>
+        <h2>Operator Tools</h2>
         <p>
-          Prioritized changes with an action path or watch note attached.
+          The CLI, local dashboard, and native app all talk to local Decodex state instead
+          of a hosted backend.
         </p>
       </div>
-
-      <div class="radar-layout">
-        <article class="lead-brief">
-          <div class="lead-brief__meta">
-            <span>{primarySourceLabel(leadSignal)}</span>
-            <span>{kindLabel(leadSignal.kind)}</span>
-            <span>{impactLabel(leadSignal.impact)}</span>
-          </div>
-          <h3
-            class="signal-markdown signal-markdown--title"
-            set:html={renderMarkdownInline(leadSignal.title)}
-          />
-          <p
-            class="signal-markdown lead-brief__summary"
-            set:html={renderMarkdownInline(leadSignal.why_it_matters)}
-          />
-          <div class="lead-brief__action">
-            <span>{leadSignal.how_to_try ? "Try path" : "Watch note"}</span>
-            <p
-              class="signal-markdown signal-markdown--inline"
-              set:html={renderMarkdownInline(leadSignal.how_to_try ?? leadSignal.watch_state ?? leadSignal.summary)}
-            />
-          </div>
-          <a class="lead-brief__link" href={`#${leadSignal.slug}`}>Open evidence</a>
-        </article>
-
-        <div class="radar-stack">
-          <section class="brief-list" aria-label="Next useful signals">
-            <h3>Next useful reads</h3>
-            <ol>
-              {prioritySignals.map((signal) => (
-                <li>
-                  <a href={`#${signal.slug}`}>
-                    <span>{primarySourceLabel(signal)}</span>
-                    <strong set:html={renderMarkdownInline(signal.title)} />
-                  </a>
-                </li>
-              ))}
-            </ol>
-          </section>
-
-          <section class="watch-list" aria-label="Watch notes">
-            <h3>Watch notes</h3>
-            <ul>
-              {(watchSignals.length > 0 ? watchSignals : prioritySignals).map((signal) => (
-                <li>
-                  <span>{primarySourceLabel(signal)}</span>
-                  <p
-                    class="signal-markdown signal-markdown--inline"
-                    set:html={renderMarkdownInline(signal.watch_state ?? signal.caveats[0] ?? signal.summary)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
+      <div class="command-panel">
+        <div class="command-panel__copy">
+          <span>Common commands</span>
+          <p>Start the local control plane, inspect live state, and hand evidence to repair agents.</p>
         </div>
+        <ul class="command-list" aria-label="Common Decodex commands">
+          {commands.map((command) => (
+            <li><code>{command}</code></li>
+          ))}
+        </ul>
       </div>
     </section>
 
-    <section class="site-section publisher-section" id="publisher">
+    <section class="site-section docs-section" id="docs" data-reveal>
       <div class="section-heading">
-        <h2>Publisher output</h2>
+        <h2>Documentation</h2>
         <p>
-          Source-backed updates for the community channel.
+          Runtime truth lives in checked-in specs, project contracts, and the installable
+          Decodex plugin.
         </p>
       </div>
-      <div class="publisher-board">
-        <div class="publisher-note">
-          <span>Output path</span>
-          <p>
-            Commit evidence becomes low-frequency X posts, release rollups, and follow-up notes. Bot channel: <a href={signalBotXUrl} target="_blank" rel="noreferrer">@decodexspace</a>.
-          </p>
-        </div>
-        <div class="publisher-flow">
-          <span>Commit evidence</span>
-          <span>Human-grade analysis</span>
-          <span>X post</span>
-          <span>Release rollup</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="site-section feed-section" id="evidence">
-      <div class="feed-toolbar">
-        <div class="feed-toolbar__copy">
-          <h2>Evidence feed</h2>
-          <p>
-            Source-backed cards. Filter for try paths or high-impact shifts.
-          </p>
-        </div>
-        <FilterBar activeFilter={activeFilter} />
-      </div>
-
-      <section class="feed-region" data-feed-region>
-        {!hasPublishedSignals ? <SignalCard signal={previewSignal} /> : null}
-        {hasPublishedSignals ? <EmptyFeedState activeFilter={activeFilter} /> : null}
-
-        {groupedSignals.map((group) => (
-          <section class="feed-group" data-feed-group>
-            {showGroupLabels ? <p class="feed-group__label">{group.label}</p> : null}
-            <div class="feed-group__items">
-              {group.items.map((signal) => <SignalCard signal={signal} />)}
-            </div>
-          </section>
+      <div class="docs-grid">
+        {docs.map((item) => (
+          <a class="doc-link" href={item.href} target="_blank" rel="noreferrer">
+            <span>{item.title}</span>
+            <strong>Open source</strong>
+          </a>
         ))}
-      </section>
+      </div>
     </section>
   </main>
-  {hasPublishedSignals ? <script is:inline set:html={filterRuntimeScript}></script> : null}
   <script is:inline set:html={interactionRuntimeScript}></script>
 </BaseLayout>
