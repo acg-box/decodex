@@ -9,6 +9,8 @@ The split below is by question type, not by human-versus-agent audience.
 
 - Read `README.md` first when you need the repository scope, top-level layout, or
   current source-of-truth boundaries.
+- Read `docs/reference/build-test-run.md` when the question is how to set up, build,
+  test, run, or validate this repository.
 - Use `cargo make` whenever an equivalent repo task exists. When task details matter,
   inspect `Makefile.toml` directly or run `cargo make --list-all-steps`.
 - Read `docs/policy.md` for document contracts, placement rules, and naming rules.
@@ -51,6 +53,8 @@ The split below is by question type, not by human-versus-agent audience.
   sequences -> `docs/runbook/`
 - Need current repository layout, ownership boundaries, static-site/runtime split, or
   implementation surface maps -> `docs/reference/`
+- Need repo setup, build, test, run, validation, task names, automation entrypoints, or
+  local source commands -> `docs/reference/build-test-run.md` and `Makefile.toml`
 - Need durable design rationale, packaging choices, or static-site tradeoffs ->
   `docs/decisions/`
 - Need rationale for keeping execution-graph semantics internal behind a
@@ -84,7 +88,8 @@ The split below is by question type, not by human-versus-agent audience.
 - Need reusable agent-facing Decodex usage instructions -> `plugins/decodex/`
 - Need repository execution defaults or tracker-state policy -> registered project
   `WORKFLOW.md`
-- Need repo task names or automation entrypoints -> `Makefile.toml`
+- Need repo task names or automation entrypoints -> `docs/reference/build-test-run.md`
+  and `Makefile.toml`
 
 ## Retrieval rules
 

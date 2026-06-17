@@ -2,6 +2,11 @@
 
 ## 2026-06-17
 
+- Dogfooded the portable `repo-memory-writer` plugin skill on this repository and
+  added `docs/reference/build-test-run.md` as the source-backed build/test/run/setup
+  route that the first routing probes showed was missing.
+- Refreshed the high-level `docs/reference/test-suite.md` snapshot to the current
+  1213 default-runnable `nextest` tests plus the one skipped live app-server test.
 - Added the portable `repo-memory-writer` plugin skill so Codex can bootstrap or
   improve source-backed repository memory through AI authoring plus OKF route, graph,
   and profile validation.
