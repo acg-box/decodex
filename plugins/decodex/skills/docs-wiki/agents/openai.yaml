@@ -1,2 +1,5 @@
+interface:
+  display_name: "Docs Wiki"
+  short_description: "Maintain Decodex LLM Wiki"
 policy:
   allow_implicit_invocation: false
