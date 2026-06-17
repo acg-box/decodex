@@ -2,7 +2,7 @@ use records::CLOSEOUT_RECORD_TYPE;
 use records::CloseoutRecord;
 
 use crate::tracker::{self, public_text};
-use crate::orchestrator;
+use crate::orchestrator::{self, AuthorityBoundaryPolicyDecision};
 use crate::orchestrator::AuthorityBoundaryCheckInput;
 use crate::orchestrator::AuthorityBoundaryDisposition;
 
@@ -898,10 +898,15 @@ fn accepts_authority_boundary_decision_request_without_public_private_evidence_l
 			decision_contract_ids: vec!["contract-dec-1"],
 			attempted_recovery_reason: "uncovered_direction",
 			changed_surfaces: vec![crate::orchestrator::AuthorityBoundaryChangedSurface {
-				surface: "accepted_behavior",
+				surface: crate::orchestrator::AuthorityBoundarySurface::Objective,
 				change_summary: "Public CLI behavior would change.",
-				classification: crate::orchestrator::AuthorityBoundaryDisposition::RequiresHuman,
+				policy_decision:
+					crate::orchestrator::AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
+				legacy_disposition:
+					crate::orchestrator::AuthorityBoundaryDisposition::RequiresHuman,
 			}],
+			policy_decision:
+				AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
 			disposition: AuthorityBoundaryDisposition::RequiresHuman,
 			final_disposition_reason: "Accepted behavior needs explicit authority.",
 			improvement_signals: Vec::new(),
