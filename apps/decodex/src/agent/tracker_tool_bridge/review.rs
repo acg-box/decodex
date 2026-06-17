@@ -947,6 +947,7 @@ impl<'a> TrackerToolBridge<'a> {
 			status,
 			head_sha: checkpoint.head_sha().to_owned(),
 			nonclean_rounds: checkpoint.nonclean_rounds(),
+			details_json: checkpoint.details_json().to_owned(),
 		})
 	}
 
@@ -1022,6 +1023,7 @@ impl<'a> TrackerToolBridge<'a> {
 			status,
 			head_sha: head_sha.to_owned(),
 			nonclean_rounds,
+			details_json: String::from("{}"),
 		}))
 	}
 
@@ -1125,6 +1127,7 @@ impl<'a> TrackerToolBridge<'a> {
 		Some(ReviewPolicyStopRequested {
 			head_sha: checkpoint.head_sha,
 			issue_identifier: self.issue.identifier.clone(),
+			fingerprint: review_policy_stop_fingerprint(&checkpoint.details_json),
 			nonclean_rounds: Some(checkpoint.nonclean_rounds),
 			reason: stop_reason,
 			run_id: review_context.run_id.clone(),
@@ -1139,6 +1142,15 @@ impl<'a> TrackerToolBridge<'a> {
 			None => ISSUE_REVIEW_HANDOFF_TOOL_NAME,
 		}
 	}
+}
+
+fn review_policy_stop_fingerprint(details_json: &str) -> Option<String> {
+	serde_json::from_str::<serde_json::Value>(details_json)
+		.ok()?
+		.get("finding_policy")?
+		.get("stop_fingerprint")?
+		.as_str()
+		.map(str::to_owned)
 }
 
 fn linear_execution_identity<'a>(
