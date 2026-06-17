@@ -348,6 +348,7 @@ fn build_operator_status_snapshot_with_account_mode(
 		.collect::<crate::prelude::Result<Vec<_>>>()?;
 	let current_lanes = operator_current_lane_statuses(
 		project,
+		state_store,
 		&loop_evidence,
 		&project_display_name,
 		leased_runs,
@@ -457,6 +458,7 @@ fn project_run_status_issue_matches(run: &ProjectRunStatus, issue: &str) -> bool
 
 fn operator_current_lane_statuses(
 	project: &ServiceConfig,
+	state_store: &StateStore,
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	project_display_name: &str,
 	leased_runs: Vec<ProjectRunStatus>,
@@ -500,7 +502,15 @@ fn operator_current_lane_statuses(
 		current_lanes.push(run.clone());
 	}
 
-	hydrate_current_lane_lifecycle_metrics(&mut current_lanes, recent_runs);
+	hydrate_current_lane_lifecycle_metrics(
+		project,
+		state_store,
+		loop_evidence,
+		project_display_name,
+		&mut current_lanes,
+		recent_runs,
+		now_unix_epoch,
+	)?;
 
 	Ok(current_lanes)
 }
@@ -5974,6 +5984,9 @@ fn operator_run_status_from_parts(
 		effective_sandbox_mode: app_server_state.effective_sandbox_mode,
 		child_agent_activity,
 		protocol_activity,
+		lifecycle_source: run.recovery_source().to_owned(),
+		lifecycle_evidence: run.recovery_evidence().to_vec(),
+		lifecycle_gaps: run.recovery_gaps().to_vec(),
 		lifecycle_metrics: OperatorLaneLifecycleMetrics::default(),
 		account,
 		accounts,
@@ -8127,35 +8140,87 @@ fn hydrate_history_lane_from_run(lane: &mut OperatorHistoryLaneStatus, run: &Ope
 }
 
 fn hydrate_current_lane_lifecycle_metrics(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+	project_display_name: &str,
 	current_lanes: &mut [OperatorRunStatus],
 	recent_runs: &[OperatorRunStatus],
-) {
+	now_unix_epoch: i64,
+) -> crate::prelude::Result<()> {
 	for current_lane in current_lanes {
-		let group_key = operator_run_group_key(current_lane);
-		let current_lane_run_id = current_lane.run_id.clone();
-		let current_lane_snapshot = current_lane.clone();
-		let mut attempts = Vec::new();
-		let mut captured_current_lane_snapshot = false;
-
-		for run in recent_runs
-			.iter()
-			.filter(|run| operator_run_group_key(run) == group_key)
-		{
-			if run.run_id == current_lane_run_id {
-				captured_current_lane_snapshot = true;
-
-				attempts.push(current_lane_snapshot.clone());
-			} else {
-				attempts.push(run.clone());
-			}
-		}
-
-		if !captured_current_lane_snapshot {
-			attempts.push(current_lane_snapshot);
-		}
+		let attempts = current_lane_lifecycle_attempts(
+			project,
+			state_store,
+			loop_evidence,
+			project_display_name,
+			current_lane,
+			recent_runs,
+			now_unix_epoch,
+		)?;
 
 		current_lane.lifecycle_metrics = operator_lane_lifecycle_metrics(&attempts);
 	}
+
+	Ok(())
+}
+
+fn current_lane_lifecycle_attempts(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+	project_display_name: &str,
+	current_lane: &OperatorRunStatus,
+	recent_runs: &[OperatorRunStatus],
+	now_unix_epoch: i64,
+) -> crate::prelude::Result<Vec<OperatorRunStatus>> {
+	let issue_runs = state_store.list_project_issue_runs(project.service_id(), &current_lane.issue_id)?;
+	let mut attempts = issue_runs
+		.into_iter()
+		.map(|run| {
+			operator_run_status(
+				project,
+				loop_evidence,
+				project_display_name,
+				run,
+				now_unix_epoch,
+			)
+		})
+		.collect::<crate::prelude::Result<Vec<_>>>()?;
+
+	if attempts.is_empty() {
+		let group_key = operator_run_group_key(current_lane);
+
+		attempts.extend(
+			recent_runs
+				.iter()
+				.filter(|run| operator_run_group_key(run) == group_key)
+				.cloned(),
+		);
+	}
+
+	let current_lane_snapshot = operator_run_current_lane_snapshot_attempt(current_lane);
+
+	if let Some(attempt) = attempts.iter_mut().find(|run| run.run_id == current_lane.run_id) {
+		*attempt = current_lane_snapshot;
+	} else {
+		attempts.push(current_lane_snapshot);
+	}
+
+	Ok(attempts)
+}
+
+fn operator_run_current_lane_snapshot_attempt(run: &OperatorRunStatus) -> OperatorRunStatus {
+	let mut snapshot = run.clone();
+	let mut evidence = std::collections::BTreeSet::<String>::new();
+
+	evidence.insert(String::from("current_lane_snapshot"));
+	evidence.extend(snapshot.lifecycle_evidence.iter().cloned());
+
+	snapshot.lifecycle_source = String::from("current_snapshot");
+	snapshot.lifecycle_evidence = evidence.into_iter().collect();
+
+	snapshot
 }
 
 fn operator_lane_lifecycle_metrics(
@@ -8180,6 +8245,18 @@ fn operator_lane_lifecycle_totals<'a>(
 		metrics.attempt_count += 1;
 
 		run_ids.insert(run.run_id.clone());
+		match run.lifecycle_source.as_str() {
+			"recorded" => metrics.recorded_attempt_count += 1,
+			"recovered" => metrics.recovered_attempt_count += 1,
+			"current_snapshot" => metrics.current_snapshot_attempt_count += 1,
+			_ => {},
+		}
+		metrics
+			.recovery_gaps
+			.extend(run.lifecycle_gaps.iter().cloned());
+		metrics
+			.attempt_evidence
+			.push(operator_lane_lifecycle_attempt_evidence(run));
 
 		metrics.protocol_event_count = metrics
 			.protocol_event_count
@@ -8244,6 +8321,13 @@ fn operator_lane_lifecycle_totals<'a>(
 		.saturating_sub(metrics.captured_attempt_count);
 	metrics.run_count = run_ids.len();
 	metrics.large_output_warnings = warning_set.into_iter().collect();
+	metrics.recovery_gaps.sort();
+	metrics.recovery_gaps.dedup();
+	metrics.attempt_evidence.sort_by(|left, right| {
+		left.attempt_number
+			.cmp(&right.attempt_number)
+			.then_with(|| left.run_id.cmp(&right.run_id))
+	});
 
 	metrics.large_output_warnings.sort();
 
@@ -8286,6 +8370,9 @@ fn operator_lane_lifecycle_phase_metrics(
 					label,
 					attempt_count: totals.attempt_count,
 					run_count: totals.run_count,
+					recorded_attempt_count: totals.recorded_attempt_count,
+					recovered_attempt_count: totals.recovered_attempt_count,
+					current_snapshot_attempt_count: totals.current_snapshot_attempt_count,
 					captured_attempt_count: totals.captured_attempt_count,
 					missing_attempt_count: totals.missing_attempt_count,
 					protocol_event_count: totals.protocol_event_count,
@@ -8300,6 +8387,8 @@ fn operator_lane_lifecycle_phase_metrics(
 					largest_tool_output_tool: totals.largest_tool_output_tool,
 					large_output_warnings: totals.large_output_warnings,
 					buckets: totals.buckets,
+					attempt_evidence: totals.attempt_evidence,
+					recovery_gaps: totals.recovery_gaps,
 				},
 			)
 		})
@@ -8329,13 +8418,13 @@ fn operator_run_lifecycle_metric_phase(run: &OperatorRunStatus) -> OperatorLifec
 		return operator_lifecycle_metric_phase("manual_attention", "Manual attention", 40);
 	}
 
-	if let Some(review_phase) = run
+	if let Some(review) = run
 		.loop_status
 		.as_ref()
 		.and_then(|status| status.review.as_ref())
-		.map(|review| review.phase.as_str())
+		.filter(|review| review.checkpoint.is_some() || review.status != "pending")
 	{
-		return match review_phase {
+		return match review.phase.as_str() {
 			"repair" => operator_lifecycle_metric_phase("review_repair", "Review repair", 20),
 			_ => operator_lifecycle_metric_phase("review", "Review", 10),
 		};
@@ -8351,6 +8440,31 @@ fn operator_run_lifecycle_metric_phase(run: &OperatorRunStatus) -> OperatorLifec
 	}
 
 	operator_lifecycle_metric_phase("development", "Development", 0)
+}
+
+fn operator_lane_lifecycle_attempt_evidence(
+	run: &OperatorRunStatus,
+) -> OperatorLaneLifecycleAttemptEvidence {
+	let phase = operator_run_lifecycle_metric_phase(run);
+	let child_event_count = run
+		.child_agent_activity
+		.as_ref()
+		.map(|summary| summary.event_count.max(0))
+		.unwrap_or(0);
+
+	OperatorLaneLifecycleAttemptEvidence {
+		run_id: run.run_id.clone(),
+		issue_id: run.issue_id.clone(),
+		attempt_number: run.attempt_number,
+		status: run.status.clone(),
+		phase: phase.key.to_owned(),
+		source: run.lifecycle_source.clone(),
+		evidence: run.lifecycle_evidence.clone(),
+		gaps: run.lifecycle_gaps.clone(),
+		protocol_event_count: run.event_count.max(0),
+		child_event_count,
+		updated_at: run.updated_at.clone(),
+	}
 }
 
 fn operator_lifecycle_metric_phase(
@@ -8935,10 +9049,13 @@ fn append_rendered_history_lane(output: &mut String, lane: &OperatorHistoryLaneS
 
 	for phase in &lane.lifecycle_metrics.phases {
 		output.push_str(&format!(
-			"    - lifecycle_bucket: {} lifecycle_bucket_key: {} attempts: {} captured: {}/{} protocol_events: {} child_events: {} wall: {} tool_calls: {} input_tokens: {} output_tokens: {}\n",
+			"    - lifecycle_bucket: {} lifecycle_bucket_key: {} attempts: {} sources: recorded={} recovered={} current_snapshot={} captured: {}/{} protocol_events: {} child_events: {} wall: {} tool_calls: {} input_tokens: {} output_tokens: {}\n",
 			phase.label,
 			phase.phase,
 			phase.attempt_count,
+			phase.recorded_attempt_count,
+			phase.recovered_attempt_count,
+			phase.current_snapshot_attempt_count,
 			phase.captured_attempt_count,
 			phase.attempt_count,
 			phase.protocol_event_count,
@@ -8953,8 +9070,11 @@ fn append_rendered_history_lane(output: &mut String, lane: &OperatorHistoryLaneS
 
 fn render_lane_lifecycle_metrics(metrics: &OperatorLaneLifecycleMetrics) -> String {
 	format!(
-		"attempts={}; captured={}/{}; missing={}; protocol_events={}; child_events={}; wall={}; tool_calls={}; input_tokens={}; output_tokens={}",
+		"attempts={}; sources=recorded:{},recovered:{},current_snapshot:{}; captured={}/{}; missing={}; protocol_events={}; child_events={}; wall={}; tool_calls={}; input_tokens={}; output_tokens={}",
 		metrics.attempt_count,
+		metrics.recorded_attempt_count,
+		metrics.recovered_attempt_count,
+		metrics.current_snapshot_attempt_count,
 		metrics.captured_attempt_count,
 		metrics.attempt_count,
 		metrics.missing_attempt_count,
@@ -8965,6 +9085,48 @@ fn render_lane_lifecycle_metrics(metrics: &OperatorLaneLifecycleMetrics) -> Stri
 		metrics.input_tokens_cumulative,
 		metrics.output_tokens_cumulative,
 	)
+}
+
+fn render_lane_lifecycle_evidence(metrics: &OperatorLaneLifecycleMetrics) -> String {
+	if metrics.attempt_evidence.is_empty() && metrics.recovery_gaps.is_empty() {
+		return String::from("none");
+	}
+
+	let mut lines = metrics
+		.attempt_evidence
+		.iter()
+		.map(|attempt| {
+			let evidence = if attempt.evidence.is_empty() {
+				String::from("none")
+			} else {
+				attempt.evidence.join(",")
+			};
+			let gaps = if attempt.gaps.is_empty() {
+				String::from("none")
+			} else {
+				attempt.gaps.join(",")
+			};
+
+			format!(
+				"run={} attempt={} phase={} source={} evidence={} gaps={} protocol_events={} child_events={} updated_at={}",
+				attempt.run_id,
+				attempt.attempt_number,
+				attempt.phase,
+				attempt.source,
+				evidence,
+				gaps,
+				attempt.protocol_event_count,
+				attempt.child_event_count,
+				attempt.updated_at
+			)
+		})
+		.collect::<Vec<_>>();
+
+	if !metrics.recovery_gaps.is_empty() {
+		lines.push(format!("aggregate_gaps={}", metrics.recovery_gaps.join(",")));
+	}
+
+	lines.join(" | ")
 }
 
 fn append_rendered_history_ledger_outcome(
@@ -9041,6 +9203,8 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let child_agent_activity =
 		render_child_agent_activity_summary(run.child_agent_activity.as_ref());
 	let context_pressure = render_child_agent_context_pressure(run.child_agent_activity.as_ref());
+	let lifecycle_metrics = render_lane_lifecycle_metrics(&run.lifecycle_metrics);
+	let lifecycle_evidence = render_lane_lifecycle_evidence(&run.lifecycle_metrics);
 	let protocol_activity = render_protocol_activity_summary(run.protocol_activity.as_ref());
 	let account = render_account_summary(run.account.as_ref());
 	let accounts = render_accounts_summary(&run.accounts);
@@ -9056,7 +9220,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		render_continuation_recovery_summary(run.continuation_recovery.as_ref());
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  run_phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_goal_phase: {}\n  public_progress_phase: {}\n  run_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  continuation_recovery: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  run_phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_goal_phase: {}\n  public_progress_phase: {}\n  run_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  lifecycle_metrics: {}\n  lifecycle_evidence: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  continuation_recovery: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -9096,6 +9260,8 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		child_agent_activity,
 		protocol_activity,
 		context_pressure,
+		lifecycle_metrics,
+		lifecycle_evidence,
 		private_evidence,
 		loop_status,
 		loop_review,
