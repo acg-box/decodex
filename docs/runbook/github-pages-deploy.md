@@ -59,6 +59,7 @@ Before publication, validate the site from the repository root:
 
 ```bash
 cargo make check-node
+cargo make build-node
 ```
 
 The external Codex automation under `/Users/x/Documents/automations/decodex` owns

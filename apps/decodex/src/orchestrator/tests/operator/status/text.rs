@@ -691,7 +691,7 @@ fn operator_status_readback_quarantines_legacy_flat_decision_contracts() {
 	);
 
 	{
-		let connection = rusqlite::Connection::open(&state_path).expect("sqlite should open");
+		let connection = Connection::open(&state_path).expect("sqlite should open");
 
 		connection
 			.execute(
