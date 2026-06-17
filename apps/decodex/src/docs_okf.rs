@@ -8,6 +8,7 @@ use std::{
 
 use regex::Regex;
 use reqwest::Url;
+use serde::Serialize;
 use serde_yaml::{Mapping, Value};
 use time::{Date, Month};
 
@@ -85,6 +86,29 @@ impl DocsCheckScope {
 	}
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum OkfCheckProfile {
+	/// Validate only the portable OKF v0.1 conformance surface.
+	Core,
+	/// Validate OKF plus agent navigation and graph quality.
+	Wiki,
+	/// Validate wiki quality plus repository-memory anchors.
+	RepoMemory,
+	/// Validate the strict Decodex docs profile.
+	Decodex,
+}
+impl OkfCheckProfile {
+	/// Return the CLI/report label for this profile.
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::Core => "core",
+			Self::Wiki => "wiki",
+			Self::RepoMemory => "repo-memory",
+			Self::Decodex => "decodex",
+		}
+	}
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct DocsCheckReport {
 	scope: DocsCheckScope,
@@ -98,6 +122,108 @@ impl DocsCheckReport {
 	pub(crate) fn has_issues(&self) -> bool {
 		!self.issues.is_empty()
 	}
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct OkfCheckReport {
+	profile: OkfCheckProfile,
+	bundle_root: PathBuf,
+	concept_count: usize,
+	link_count: usize,
+	issues: Vec<DocsCheckIssue>,
+}
+impl OkfCheckReport {
+	/// Return whether the check found at least one OKF issue.
+	pub(crate) fn has_issues(&self) -> bool {
+		!self.issues.is_empty()
+	}
+
+	/// Return the profile used for this OKF check.
+	pub(crate) fn profile(&self) -> OkfCheckProfile {
+		self.profile
+	}
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct OkfQuery {
+	/// Match a concept `type` value.
+	pub(crate) concept_type: Option<String>,
+	/// Match one or more exact tag values.
+	pub(crate) tags: Vec<String>,
+	/// Match a substring in the `resource` field.
+	pub(crate) resource: Option<String>,
+	/// Match a substring in `source_refs`.
+	pub(crate) source_ref: Option<String>,
+	/// Match a substring in `code_refs`.
+	pub(crate) code_ref: Option<String>,
+	/// Match a substring in `related`.
+	pub(crate) related: Option<String>,
+	/// Match a substring in concept path, title, or description.
+	pub(crate) text: Option<String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct OkfConceptSummary {
+	/// Concept id, derived from the bundle-relative file path without `.md`.
+	pub(crate) id: String,
+	/// Bundle-relative Markdown file path.
+	pub(crate) path: String,
+	/// Concept type from frontmatter.
+	pub(crate) concept_type: String,
+	/// Human-readable title, derived from frontmatter or path.
+	pub(crate) title: String,
+	/// Retrieval summary from frontmatter.
+	pub(crate) description: Option<String>,
+	/// Resource URI from frontmatter.
+	pub(crate) resource: Option<String>,
+	/// Tags from frontmatter.
+	pub(crate) tags: Vec<String>,
+	/// External source references from frontmatter.
+	pub(crate) source_refs: Vec<String>,
+	/// Repository file references from frontmatter.
+	pub(crate) code_refs: Vec<String>,
+	/// Related concept references from frontmatter.
+	pub(crate) related: Vec<String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct OkfGraphEdge {
+	/// Source concept id.
+	pub(crate) source: String,
+	/// Target concept id.
+	pub(crate) target: String,
+	/// Relationship source, such as `markdown` or `related`.
+	pub(crate) kind: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct OkfBrokenLink {
+	/// Source concept id.
+	pub(crate) source: String,
+	/// Unresolved link target.
+	pub(crate) target: String,
+	/// Relationship source, such as `markdown` or `related`.
+	pub(crate) kind: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct OkfGraph {
+	/// Concepts in the bundle.
+	pub(crate) concepts: Vec<OkfConceptSummary>,
+	/// Resolved graph edges between concepts.
+	pub(crate) edges: Vec<OkfGraphEdge>,
+	/// Unresolved graph edges.
+	pub(crate) broken_links: Vec<OkfBrokenLink>,
+	/// Concepts with no inbound or outbound resolved edges.
+	pub(crate) orphan_concepts: Vec<String>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct OkfRouteMatch {
+	/// Matching concept summary.
+	pub(crate) concept: OkfConceptSummary,
+	/// Simple lexical relevance score.
+	pub(crate) score: usize,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -180,6 +306,190 @@ pub(crate) fn render_docs_check_report(report: &DocsCheckReport) -> String {
 	output
 }
 
+/// Validate any OKF bundle with the selected profile.
+pub(crate) fn run_okf_check(root: &Path, profile: OkfCheckProfile) -> Result<OkfCheckReport> {
+	if profile == OkfCheckProfile::Decodex {
+		return Ok(decodex_docs_report_as_okf(run_docs_check(root, DocsCheckScope::All)?));
+	}
+
+	let bundle_root = root.to_path_buf();
+
+	if !bundle_root.is_dir() {
+		color_eyre::eyre::bail!("OKF bundle root `{}` does not exist.", bundle_root.display());
+	}
+
+	let mut files = Vec::new();
+
+	collect_files(&bundle_root, &bundle_root, &mut files)?;
+
+	let mut report = OkfCheckReport {
+		profile,
+		bundle_root,
+		concept_count: 0,
+		link_count: 0,
+		issues: Vec::new(),
+	};
+
+	check_okf_markdown_readability(&files, &mut report);
+	check_okf_core_concepts(&files, &mut report);
+
+	if matches!(profile, OkfCheckProfile::Wiki | OkfCheckProfile::RepoMemory) {
+		check_okf_wiki_surface(&files, &mut report)?;
+	}
+	if profile == OkfCheckProfile::RepoMemory {
+		check_okf_repo_memory_surface(&files, &mut report);
+	}
+
+	Ok(report)
+}
+
+/// Render a stable human-readable OKF check report.
+pub(crate) fn render_okf_check_report(report: &OkfCheckReport) -> String {
+	let mut output = String::new();
+
+	output.push_str(&format!(
+		"okf {} check: concepts={} links={} root={}\n",
+		report.profile.as_str(),
+		report.concept_count,
+		report.link_count,
+		report.bundle_root.display()
+	));
+
+	if report.issues.is_empty() {
+		output.push_str("status: pass\n");
+
+		return output;
+	}
+
+	output.push_str("status: fail\n");
+
+	for issue in &report.issues {
+		match &issue.path {
+			Some(path) => output.push_str(&format!("- {}: {}\n", path.display(), issue.message)),
+			None => output.push_str(&format!("- {}\n", issue.message)),
+		}
+	}
+
+	output
+}
+
+/// Return the concept summaries matching an OKF query.
+pub(crate) fn query_okf_bundle(root: &Path, query: &OkfQuery) -> Result<Vec<OkfConceptSummary>> {
+	let files = read_okf_files(root)?;
+	let mut concepts = Vec::new();
+
+	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
+		let Some(concept) = concept_summary(file) else {
+			continue;
+		};
+
+		if okf_query_matches(&concept, query) {
+			concepts.push(concept);
+		}
+	}
+
+	concepts.sort_by(|left, right| left.path.cmp(&right.path));
+
+	Ok(concepts)
+}
+
+/// Build an OKF concept graph from Markdown links and `related` frontmatter.
+pub(crate) fn build_okf_graph(root: &Path) -> Result<OkfGraph> {
+	let files = read_okf_files(root)?;
+	let concept_paths = okf_concept_path_set(&files);
+	let mut concepts = Vec::new();
+	let mut edges = Vec::new();
+	let mut broken_links = Vec::new();
+
+	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
+		let Some(concept) = concept_summary(file) else {
+			continue;
+		};
+		let source = concept.id.clone();
+
+		collect_markdown_graph_edges(
+			file,
+			root,
+			&concept_paths,
+			&source,
+			&mut edges,
+			&mut broken_links,
+		)?;
+		collect_related_graph_edges(
+			file,
+			root,
+			&concept_paths,
+			&source,
+			&mut edges,
+			&mut broken_links,
+		);
+
+		concepts.push(concept);
+	}
+
+	let orphan_concepts = okf_orphan_concepts(&concepts, &edges);
+
+	concepts.sort_by(|left, right| left.id.cmp(&right.id));
+	edges.sort_by(|left, right| {
+		(&left.source, &left.target, &left.kind).cmp(&(&right.source, &right.target, &right.kind))
+	});
+	broken_links.sort_by(|left, right| {
+		(&left.source, &left.target, &left.kind).cmp(&(&right.source, &right.target, &right.kind))
+	});
+
+	Ok(OkfGraph { concepts, edges, broken_links, orphan_concepts })
+}
+
+/// Render an OKF graph as JSON.
+pub(crate) fn render_okf_graph_json(graph: &OkfGraph) -> Result<String> {
+	Ok(format!("{}\n", serde_json::to_string_pretty(graph)?))
+}
+
+/// Render a compact text graph summary.
+pub(crate) fn render_okf_graph_summary(root: &Path, graph: &OkfGraph) -> String {
+	format!(
+		"okf graph: concepts={} edges={} broken_links={} orphans={} root={}\n",
+		graph.concepts.len(),
+		graph.edges.len(),
+		graph.broken_links.len(),
+		graph.orphan_concepts.len(),
+		root.display()
+	)
+}
+
+/// Route an intent to the highest scoring OKF concepts.
+pub(crate) fn route_okf_bundle(
+	root: &Path,
+	intent: &str,
+	limit: usize,
+) -> Result<Vec<OkfRouteMatch>> {
+	let files = read_okf_files(root)?;
+	let tokens = route_tokens(intent);
+	let mut matches = Vec::new();
+
+	if tokens.is_empty() {
+		return Ok(matches);
+	}
+
+	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
+		let Some(concept) = concept_summary(file) else {
+			continue;
+		};
+		let score = route_score(file, &concept, &tokens);
+
+		if score > 0 {
+			matches.push(OkfRouteMatch { concept, score });
+		}
+	}
+
+	matches.sort_by(|left, right| {
+		right.score.cmp(&left.score).then_with(|| left.concept.path.cmp(&right.concept.path))
+	});
+	matches.truncate(limit);
+
+	Ok(matches)
+}
+
 fn collect_files(root: &Path, dir: &Path, files: &mut Vec<DocsFile>) -> Result<()> {
 	for entry in fs::read_dir(dir)? {
 		let entry = entry?;
@@ -205,6 +515,154 @@ fn collect_files(root: &Path, dir: &Path, files: &mut Vec<DocsFile>) -> Result<(
 	}
 
 	Ok(())
+}
+
+fn read_okf_files(root: &Path) -> Result<Vec<DocsFile>> {
+	if !root.is_dir() {
+		color_eyre::eyre::bail!("OKF bundle root `{}` does not exist.", root.display());
+	}
+
+	let mut files = Vec::new();
+
+	collect_files(root, root, &mut files)?;
+
+	Ok(files)
+}
+
+fn decodex_docs_report_as_okf(report: DocsCheckReport) -> OkfCheckReport {
+	OkfCheckReport {
+		profile: OkfCheckProfile::Decodex,
+		bundle_root: report.docs_root,
+		concept_count: report.concept_count,
+		link_count: report.link_count,
+		issues: report.issues,
+	}
+}
+
+fn check_okf_markdown_readability(files: &[DocsFile], report: &mut OkfCheckReport) {
+	for file in files {
+		if let Some(read_error) = &file.read_error {
+			report.issues.push(issue(
+				Some(file.relative_path.clone()),
+				format!("Markdown file must be UTF-8 readable: {read_error}"),
+			));
+		}
+	}
+}
+
+fn check_okf_core_concepts(files: &[DocsFile], report: &mut OkfCheckReport) {
+	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
+		report.concept_count += 1;
+
+		let Some(content) = file.content.as_deref() else {
+			continue;
+		};
+		let Some((frontmatter, _)) = split_yaml_frontmatter(content) else {
+			report.issues.push(issue(
+				Some(file.relative_path.clone()),
+				String::from("concept must start with YAML frontmatter delimited by ---"),
+			));
+
+			continue;
+		};
+		let Some(fields) = parse_okf_frontmatter_mapping(frontmatter, &file.relative_path, report)
+		else {
+			continue;
+		};
+
+		read_required_okf_frontmatter_string(&fields, "type", &file.relative_path, report);
+	}
+}
+
+fn check_okf_wiki_surface(files: &[DocsFile], report: &mut OkfCheckReport) -> Result<()> {
+	check_okf_indexes(files, report);
+	check_okf_wiki_frontmatter(files, report);
+	check_okf_links(files, report)?;
+
+	Ok(())
+}
+
+fn check_okf_indexes(files: &[DocsFile], report: &mut OkfCheckReport) {
+	let paths = file_path_set(files);
+
+	if !paths.contains(Path::new("index.md")) {
+		report.issues.push(issue(
+			Some(PathBuf::from("index.md")),
+			String::from("wiki profile expects a root progressive-disclosure index.md"),
+		));
+	}
+
+	for dir in docs_dirs_with_content(files) {
+		let index_path = dir.join("index.md");
+
+		if !paths.contains(&index_path) {
+			report.issues.push(issue(
+				Some(index_path),
+				String::from("wiki profile expects each populated directory to have index.md"),
+			));
+		}
+	}
+}
+
+fn check_okf_wiki_frontmatter(files: &[DocsFile], report: &mut OkfCheckReport) {
+	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
+		let Some(fields) = okf_frontmatter_fields(file, report) else {
+			continue;
+		};
+
+		read_required_okf_frontmatter_string(&fields, "title", &file.relative_path, report);
+		read_required_okf_frontmatter_string(&fields, "description", &file.relative_path, report);
+		okf_frontmatter_string_list(&fields, "tags", &file.relative_path, report);
+	}
+}
+
+fn check_okf_links(files: &[DocsFile], report: &mut OkfCheckReport) -> Result<()> {
+	let link_pattern = Regex::new(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+[^)]*)?\)")?;
+
+	for file in files.iter().filter(|file| is_markdown(&file.relative_path)) {
+		let Some(content) = file.content.as_deref() else {
+			continue;
+		};
+
+		for captures in link_pattern.captures_iter(content) {
+			let Some(target_match) = captures.get(1) else {
+				continue;
+			};
+			let target = target_match.as_str();
+
+			if should_skip_link_target(target) {
+				continue;
+			}
+
+			report.link_count += 1;
+
+			if let Some(link_path) = resolve_link_target(&file.path, &report.bundle_root, target)
+				&& !link_path.exists()
+			{
+				report.issues.push(issue(
+					Some(file.relative_path.clone()),
+					format!("link target `{target}` does not exist"),
+				));
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn check_okf_repo_memory_surface(files: &[DocsFile], report: &mut OkfCheckReport) {
+	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
+		let Some(fields) = okf_frontmatter_fields(file, report) else {
+			continue;
+		};
+
+		validate_repo_memory_frontmatter_fields(
+			&fields,
+			&file.relative_path,
+			&report.bundle_root.clone(),
+			report,
+		);
+	}
 }
 
 fn check_required_docs_layout(files: &[DocsFile], report: &mut DocsCheckReport) {
@@ -451,6 +909,105 @@ fn parse_frontmatter_mapping(
 	}
 }
 
+fn okf_frontmatter_fields(file: &DocsFile, report: &mut OkfCheckReport) -> Option<Mapping> {
+	let content = file.content.as_deref()?;
+	let Some((frontmatter, _)) = split_yaml_frontmatter(content) else {
+		report.issues.push(issue(
+			Some(file.relative_path.clone()),
+			String::from("concept must start with YAML frontmatter delimited by ---"),
+		));
+
+		return None;
+	};
+
+	parse_okf_frontmatter_mapping(frontmatter, &file.relative_path, report)
+}
+
+fn parse_okf_frontmatter_mapping(
+	frontmatter: &str,
+	path: &Path,
+	report: &mut OkfCheckReport,
+) -> Option<Mapping> {
+	match serde_yaml::from_str::<Value>(frontmatter) {
+		Ok(Value::Mapping(mapping)) => Some(mapping),
+		Ok(_) => {
+			report.issues.push(issue(
+				Some(path.to_path_buf()),
+				String::from("frontmatter must be a YAML mapping"),
+			));
+
+			None
+		},
+		Err(error) => {
+			report.issues.push(issue(
+				Some(path.to_path_buf()),
+				format!("frontmatter must parse as YAML: {error}"),
+			));
+
+			None
+		},
+	}
+}
+
+fn read_required_okf_frontmatter_string(
+	fields: &Mapping,
+	key: &str,
+	path: &Path,
+	report: &mut OkfCheckReport,
+) {
+	match frontmatter_value(fields, key) {
+		Some(Value::String(value)) if !value.trim().is_empty() => {},
+		Some(Value::String(_)) | None => report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("frontmatter key `{key}` is required and must be non-empty"),
+		)),
+		Some(_) => report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("frontmatter key `{key}` must be a string"),
+		)),
+	}
+}
+
+fn okf_frontmatter_string_list(
+	fields: &Mapping,
+	key: &str,
+	path: &Path,
+	report: &mut OkfCheckReport,
+) -> Option<Vec<String>> {
+	match frontmatter_value(fields, key) {
+		None => None,
+		Some(Value::Sequence(items)) => {
+			let mut values = Vec::new();
+
+			for item in items {
+				match item {
+					Value::String(value) if !value.trim().is_empty() => {
+						values.push(value.trim().to_owned());
+					},
+					Value::String(_) => report.issues.push(issue(
+						Some(path.to_path_buf()),
+						format!("frontmatter list `{key}` must not contain empty strings"),
+					)),
+					_ => report.issues.push(issue(
+						Some(path.to_path_buf()),
+						format!("frontmatter list `{key}` must contain only strings"),
+					)),
+				}
+			}
+
+			Some(values)
+		},
+		Some(_) => {
+			report.issues.push(issue(
+				Some(path.to_path_buf()),
+				format!("frontmatter key `{key}` must be a list of strings"),
+			));
+
+			None
+		},
+	}
+}
+
 fn frontmatter_value<'a>(fields: &'a Mapping, key: &str) -> Option<&'a Value> {
 	fields.get(Value::String(key.to_owned()))
 }
@@ -567,6 +1124,159 @@ fn validate_structured_frontmatter_fields(
 	validate_code_refs(fields, path, docs_root, report);
 	validate_related_refs(fields, path, docs_root, report);
 	validate_promotes_to(fields, path, report);
+}
+
+fn validate_repo_memory_frontmatter_fields(
+	fields: &Mapping,
+	path: &Path,
+	bundle_root: &Path,
+	report: &mut OkfCheckReport,
+) {
+	for key in ["tags", "drift_watch"] {
+		okf_frontmatter_string_list(fields, key, path, report);
+	}
+
+	validate_okf_source_refs(fields, path, report);
+	validate_okf_code_refs(fields, path, bundle_root, report);
+	validate_okf_related_refs(fields, path, bundle_root, report);
+}
+
+fn validate_okf_source_refs(fields: &Mapping, path: &Path, report: &mut OkfCheckReport) {
+	let Some(values) = okf_frontmatter_string_list(fields, "source_refs", path, report) else {
+		return;
+	};
+
+	for value in values {
+		if !is_http_url(&value) {
+			report.issues.push(issue(
+				Some(path.to_path_buf()),
+				format!("source_refs entry `{value}` must be an http(s) URL"),
+			));
+		}
+	}
+}
+
+fn validate_okf_code_refs(
+	fields: &Mapping,
+	path: &Path,
+	bundle_root: &Path,
+	report: &mut OkfCheckReport,
+) {
+	let Some(values) = okf_frontmatter_string_list(fields, "code_refs", path, report) else {
+		return;
+	};
+	let repo_root = bundle_root.parent().unwrap_or(bundle_root);
+
+	for value in values {
+		validate_okf_code_ref_value(path, repo_root, &value, report);
+	}
+}
+
+fn validate_okf_code_ref_value(
+	path: &Path,
+	repo_root: &Path,
+	value: &str,
+	report: &mut OkfCheckReport,
+) {
+	let value_path = Path::new(value);
+
+	if value.contains('#') || value.contains('?') {
+		report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("code_refs entry `{value}` must be a file path without fragments"),
+		));
+
+		return;
+	}
+	if !is_normalized_relative_path(value_path) {
+		report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("code_refs entry `{value}` must be a normalized repository-relative file path"),
+		));
+
+		return;
+	}
+
+	let target_path = normalize_path(&repo_root.join(value_path));
+
+	if !target_path.exists() {
+		report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("code_refs entry `{value}` does not exist"),
+		));
+	} else if !target_path.is_file() {
+		report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("code_refs entry `{value}` must reference a file"),
+		));
+	}
+}
+
+fn validate_okf_related_refs(
+	fields: &Mapping,
+	path: &Path,
+	bundle_root: &Path,
+	report: &mut OkfCheckReport,
+) {
+	let Some(values) = okf_frontmatter_string_list(fields, "related", path, report) else {
+		return;
+	};
+
+	for value in values {
+		validate_okf_related_ref_value(path, bundle_root, &value, report);
+	}
+}
+
+fn validate_okf_related_ref_value(
+	path: &Path,
+	bundle_root: &Path,
+	value: &str,
+	report: &mut OkfCheckReport,
+) {
+	let target = strip_fragment(value);
+
+	if target.is_empty() {
+		report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("related entry `{value}` must include a bundle file path"),
+		));
+
+		return;
+	}
+
+	let target_value_path = Path::new(target);
+
+	if target_value_path.is_absolute() {
+		report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("related entry `{value}` must be a bundle-relative file path"),
+		));
+
+		return;
+	}
+
+	let parent = path.parent().unwrap_or_else(|| Path::new(""));
+	let target_path = normalize_path(&bundle_root.join(parent).join(target_value_path));
+
+	if !target_path.starts_with(bundle_root) {
+		report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("related entry `{value}` must stay under the OKF bundle"),
+		));
+
+		return;
+	}
+	if !target_path.exists() {
+		report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("related entry `{value}` does not exist"),
+		));
+	} else if !target_path.is_file() || !is_markdown(&target_path) {
+		report.issues.push(issue(
+			Some(path.to_path_buf()),
+			format!("related entry `{value}` must reference a Markdown file"),
+		));
+	}
 }
 
 fn validate_source_refs(fields: &Mapping, path: &Path, report: &mut DocsCheckReport) {
@@ -795,6 +1505,252 @@ fn markdown_heading_texts(body: &str) -> BTreeSet<String> {
 		.collect()
 }
 
+fn concept_summary(file: &DocsFile) -> Option<OkfConceptSummary> {
+	let content = file.content.as_deref()?;
+	let (frontmatter, _) = split_yaml_frontmatter(content)?;
+	let Value::Mapping(fields) = serde_yaml::from_str::<Value>(frontmatter).ok()? else {
+		return None;
+	};
+	let concept_type = frontmatter_string(&fields, "type")?.to_owned();
+	let path = path_to_string(&file.relative_path);
+	let title = frontmatter_string(&fields, "title")
+		.filter(|title| !title.is_empty())
+		.map_or_else(|| concept_id(&file.relative_path), str::to_owned);
+	let description = frontmatter_string(&fields, "description")
+		.filter(|description| !description.is_empty())
+		.map(str::to_owned);
+	let resource = frontmatter_string(&fields, "resource")
+		.filter(|resource| !resource.is_empty())
+		.map(str::to_owned);
+	let tags = frontmatter_string_list_lossy(&fields, "tags");
+	let source_refs = frontmatter_string_list_lossy(&fields, "source_refs");
+	let code_refs = frontmatter_string_list_lossy(&fields, "code_refs");
+	let related = frontmatter_string_list_lossy(&fields, "related");
+
+	Some(OkfConceptSummary {
+		id: concept_id(&file.relative_path),
+		path,
+		concept_type,
+		title,
+		description,
+		resource,
+		tags,
+		source_refs,
+		code_refs,
+		related,
+	})
+}
+
+fn concept_id(path: &Path) -> String {
+	let mut id = path.to_path_buf();
+
+	id.set_extension("");
+
+	path_to_string(&id)
+}
+
+fn path_to_string(path: &Path) -> String {
+	path.to_string_lossy().replace('\\', "/")
+}
+
+fn frontmatter_string_list_lossy(fields: &Mapping, key: &str) -> Vec<String> {
+	match frontmatter_value(fields, key) {
+		Some(Value::Sequence(items)) => items
+			.iter()
+			.filter_map(|item| match item {
+				Value::String(value) if !value.trim().is_empty() => Some(value.trim().to_owned()),
+				_ => None,
+			})
+			.collect(),
+		_ => Vec::new(),
+	}
+}
+
+fn okf_query_matches(concept: &OkfConceptSummary, query: &OkfQuery) -> bool {
+	query
+		.concept_type
+		.as_deref()
+		.is_none_or(|value| concept.concept_type.eq_ignore_ascii_case(value))
+		&& query
+			.tags
+			.iter()
+			.all(|tag| concept.tags.iter().any(|candidate| candidate.eq_ignore_ascii_case(tag)))
+		&& query.resource.as_deref().is_none_or(|value| {
+			concept.resource.as_deref().is_some_and(|resource| contains_ci(resource, value))
+		}) && query.source_ref.as_deref().is_none_or(|value| {
+		concept.source_refs.iter().any(|source_ref| contains_ci(source_ref, value))
+	}) && query
+		.code_ref
+		.as_deref()
+		.is_none_or(|value| concept.code_refs.iter().any(|code_ref| contains_ci(code_ref, value)))
+		&& query
+			.related
+			.as_deref()
+			.is_none_or(|value| concept.related.iter().any(|related| contains_ci(related, value)))
+		&& query.text.as_deref().is_none_or(|value| concept_text_matches(concept, value))
+}
+
+fn concept_text_matches(concept: &OkfConceptSummary, value: &str) -> bool {
+	contains_ci(&concept.path, value)
+		|| contains_ci(&concept.title, value)
+		|| concept.description.as_deref().is_some_and(|description| contains_ci(description, value))
+}
+
+fn contains_ci(haystack: &str, needle: &str) -> bool {
+	haystack.to_lowercase().contains(&needle.to_lowercase())
+}
+
+fn okf_concept_path_set(files: &[DocsFile]) -> BTreeSet<PathBuf> {
+	files
+		.iter()
+		.filter(|file| is_concept_markdown(&file.relative_path))
+		.map(|file| file.relative_path.clone())
+		.collect()
+}
+
+fn collect_markdown_graph_edges(
+	file: &DocsFile,
+	bundle_root: &Path,
+	concept_paths: &BTreeSet<PathBuf>,
+	source: &str,
+	edges: &mut Vec<OkfGraphEdge>,
+	broken_links: &mut Vec<OkfBrokenLink>,
+) -> Result<()> {
+	let Some(content) = file.content.as_deref() else {
+		return Ok(());
+	};
+	let link_pattern = Regex::new(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+[^)]*)?\)")?;
+
+	for captures in link_pattern.captures_iter(content) {
+		let Some(target_match) = captures.get(1) else {
+			continue;
+		};
+		let target = target_match.as_str();
+
+		if should_skip_link_target(target) {
+			continue;
+		}
+
+		push_graph_target(
+			file,
+			bundle_root,
+			concept_paths,
+			source,
+			target,
+			"markdown",
+			edges,
+			broken_links,
+		);
+	}
+
+	Ok(())
+}
+
+fn collect_related_graph_edges(
+	file: &DocsFile,
+	bundle_root: &Path,
+	concept_paths: &BTreeSet<PathBuf>,
+	source: &str,
+	edges: &mut Vec<OkfGraphEdge>,
+	broken_links: &mut Vec<OkfBrokenLink>,
+) {
+	let Some(content) = file.content.as_deref() else {
+		return;
+	};
+	let Some((frontmatter, _)) = split_yaml_frontmatter(content) else {
+		return;
+	};
+	let Ok(Value::Mapping(fields)) = serde_yaml::from_str::<Value>(frontmatter) else {
+		return;
+	};
+
+	for target in frontmatter_string_list_lossy(&fields, "related") {
+		push_graph_target(
+			file,
+			bundle_root,
+			concept_paths,
+			source,
+			&target,
+			"related",
+			edges,
+			broken_links,
+		);
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_graph_target(
+	file: &DocsFile,
+	bundle_root: &Path,
+	concept_paths: &BTreeSet<PathBuf>,
+	source: &str,
+	target: &str,
+	kind: &str,
+	edges: &mut Vec<OkfGraphEdge>,
+	broken_links: &mut Vec<OkfBrokenLink>,
+) {
+	let Some(target_path) = resolve_link_target(&file.path, bundle_root, target) else {
+		return;
+	};
+	let Ok(relative_target) = target_path.strip_prefix(bundle_root) else {
+		return;
+	};
+	let relative_target = relative_target.to_path_buf();
+
+	if concept_paths.contains(&relative_target) {
+		edges.push(OkfGraphEdge {
+			source: source.to_owned(),
+			target: concept_id(&relative_target),
+			kind: kind.to_owned(),
+		});
+	} else if !target_path.exists() {
+		broken_links.push(broken_link(source, target, kind));
+	}
+}
+
+fn broken_link(source: &str, target: &str, kind: &str) -> OkfBrokenLink {
+	OkfBrokenLink { source: source.to_owned(), target: target.to_owned(), kind: kind.to_owned() }
+}
+
+fn okf_orphan_concepts(concepts: &[OkfConceptSummary], edges: &[OkfGraphEdge]) -> Vec<String> {
+	let connected: BTreeSet<&str> =
+		edges.iter().flat_map(|edge| [edge.source.as_str(), edge.target.as_str()]).collect();
+
+	concepts
+		.iter()
+		.filter(|concept| !connected.contains(concept.id.as_str()))
+		.map(|concept| concept.id.clone())
+		.collect()
+}
+
+fn route_tokens(intent: &str) -> Vec<String> {
+	intent
+		.split(|character: char| !character.is_alphanumeric())
+		.map(str::trim)
+		.filter(|token| token.chars().count() >= 3)
+		.map(str::to_lowercase)
+		.collect()
+}
+
+fn route_score(file: &DocsFile, concept: &OkfConceptSummary, tokens: &[String]) -> usize {
+	let strong_text = format!(
+		"{} {} {} {}",
+		concept.path,
+		concept.title,
+		concept.description.as_deref().unwrap_or_default(),
+		concept.tags.join(" ")
+	)
+	.to_lowercase();
+	let body = file.content.as_deref().unwrap_or_default().to_lowercase();
+
+	tokens
+		.iter()
+		.map(|token| {
+			usize::from(strong_text.contains(token)) * 3 + usize::from(body.contains(token))
+		})
+		.sum()
+}
+
 fn should_skip_link_target(target: &str) -> bool {
 	target.starts_with('#')
 		|| target.starts_with("http://")
@@ -846,7 +1802,7 @@ mod tests {
 
 	use tempfile::TempDir;
 
-	use crate::docs_okf::{self, DocsCheckScope};
+	use crate::docs_okf::{self, DocsCheckScope, OkfCheckProfile, OkfQuery};
 
 	#[test]
 	fn docs_check_rejects_json_artifacts() {
@@ -942,6 +1898,100 @@ mod tests {
 		assert!(report.issues.iter().any(|issue| issue.message.contains("related entry")));
 		assert!(report.issues.iter().any(|issue| issue.message.contains("promotes_to entry")));
 		assert!(report.issues.iter().any(|issue| issue.message.contains("drift_watch")));
+	}
+
+	#[test]
+	fn okf_core_check_allows_unknown_types_and_missing_decodex_fields() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let bundle = temp_dir.path().join("bundle");
+
+		fs::create_dir_all(&bundle).expect("bundle");
+
+		write(&bundle.join("index.md"), "# Bundle\n");
+		write(
+			&bundle.join("metric.md"),
+			"---\ntype: Business Metric\n---\n\nWeekly active users.\n",
+		);
+
+		let report = docs_okf::run_okf_check(&bundle, OkfCheckProfile::Core).expect("core check");
+
+		assert!(!report.has_issues(), "{report:#?}");
+	}
+
+	#[test]
+	fn okf_graph_skips_links_outside_the_bundle() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let bundle = temp_dir.path().join("bundle");
+
+		fs::create_dir_all(&bundle).expect("bundle");
+
+		write(&temp_dir.path().join("README.md"), "# External repo doc\n");
+		write(&bundle.join("index.md"), "# Bundle\n");
+		write(
+			&bundle.join("alpha.md"),
+			"---\ntype: Concept\ntitle: Alpha\ndescription: Alpha concept.\n---\n\nSee [Beta](beta.md) and [repo readme](../README.md).\n",
+		);
+		write(
+			&bundle.join("beta.md"),
+			"---\ntype: Concept\ntitle: Beta\ndescription: Beta concept.\n---\n\nBeta.\n",
+		);
+
+		let graph = docs_okf::build_okf_graph(&bundle).expect("graph");
+
+		assert_eq!(graph.broken_links, Vec::new());
+		assert_eq!(graph.edges.len(), 1);
+		assert_eq!(graph.edges[0].target, "beta");
+	}
+
+	#[test]
+	fn okf_query_matches_structured_frontmatter_refs() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let bundle = temp_dir.path().join("docs");
+
+		fs::create_dir_all(&bundle).expect("bundle");
+
+		write(&temp_dir.path().join("src.rs"), "fn main() {}\n");
+		write(&bundle.join("index.md"), "# Bundle\n");
+		write(
+			&bundle.join("alpha.md"),
+			"---\ntype: Concept\ntitle: Alpha\ndescription: Alpha concept.\ntags: [runtime]\nsource_refs: [https://example.com/spec]\ncode_refs: [src.rs]\nrelated: [beta.md]\n---\n\nAlpha.\n",
+		);
+		write(
+			&bundle.join("beta.md"),
+			"---\ntype: Concept\ntitle: Beta\ndescription: Beta concept.\n---\n\nBeta.\n",
+		);
+
+		let query = OkfQuery {
+			code_ref: Some(String::from("src.rs")),
+			tags: Vec::new(),
+			..OkfQuery::default()
+		};
+		let matches = docs_okf::query_okf_bundle(&bundle, &query).expect("query");
+
+		assert_eq!(matches.len(), 1);
+		assert_eq!(matches[0].id, "alpha");
+	}
+
+	#[test]
+	fn okf_route_prefers_matching_concepts() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let bundle = temp_dir.path().join("bundle");
+
+		fs::create_dir_all(&bundle).expect("bundle");
+
+		write(&bundle.join("index.md"), "# Bundle\n");
+		write(
+			&bundle.join("okf.md"),
+			"---\ntype: Spec\ntitle: OKF Knowledge Layer\ndescription: Command design for portable OKF bundles.\ntags: [okf]\n---\n\nOKF command design.\n",
+		);
+		write(
+			&bundle.join("runtime.md"),
+			"---\ntype: Spec\ntitle: Runtime\ndescription: Runtime scheduler.\n---\n\nScheduler.\n",
+		);
+
+		let matches = docs_okf::route_okf_bundle(&bundle, "okf command design", 2).expect("route");
+
+		assert_eq!(matches.first().map(|matched| matched.concept.id.as_str()), Some("okf"));
 	}
 
 	fn write_minimal_okf_bundle(docs: &std::path::Path) {

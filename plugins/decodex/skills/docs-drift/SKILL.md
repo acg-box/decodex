@@ -1,11 +1,13 @@
 ---
 name: docs-drift
-description: Use when auditing docs claims against code, evidence, and runtime behavior.
+description: Use when auditing this repository's docs claims against code, evidence, and runtime behavior.
 ---
 
 # Decodex Docs Drift
 
-Audit docs claims against source evidence.
+Audit Decodex docs claims against source evidence. For portable OKF graph or
+frontmatter quality checks, use `okf` or `okf-query`; this skill owns Decodex
+semantic drift and completion blocking.
 
 Read `../../references/docs-drift.md` before judging docs/code alignment.
 

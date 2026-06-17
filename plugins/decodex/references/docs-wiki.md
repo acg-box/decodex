@@ -1,27 +1,18 @@
 # Decodex Docs Wiki Reference
 
-Use this reference when routing, indexing, linking, or deduplicating repository
-knowledge.
+Use this for Decodex `docs/` routing, indexing, linking, and deduplication. Use
+`okf-layer.md` for portable OKF/LLM Wiki bundles.
 
 ## Reading Order
 
-1. `README.md`
-2. `docs/index.md`
-3. `docs/policy.md`
-4. The smallest lane index and owning concept for the task
-
-Do not read a broad docs lane when one concept owns the changed claim.
+Read `README.md`, `docs/index.md`, `docs/policy.md`, then the smallest lane index and
+owning concept. Do not read a broad lane when one concept owns the changed claim.
 
 ## Lane Ownership
 
-| Lane | Owns |
-| --- | --- |
-| `docs/spec/` | Required behavior, schemas, invariants, states, validation contracts. |
-| `docs/runbook/` | Operator procedures and execution sequences. |
-| `docs/reference/` | Current structure, implementation maps, concept explanations. |
-| `docs/decisions/` | Durable rationale, rejected alternatives, tradeoffs. |
-| `docs/research/` | Latent research concepts and supporting evidence candidates. |
-| `docs/evidence/` | Reusable public-safe proof concepts, including durable drift audits. |
+Use `spec` for requirements, `runbook` for procedures, `reference` for current
+structure, `decisions` for rationale, `research` for latent candidates, and
+`evidence` for public-safe proof or drift audits.
 
 ## Authoring Rules
 
@@ -29,13 +20,9 @@ Do not read a broad docs lane when one concept owns the changed claim.
 - Link instead of copying repeated claims.
 - Update lane indexes when concepts are added, renamed, moved, deprecated, or
   superseded.
-- Use `related` frontmatter when cross-links materially help retrieval.
+- Use `related` when cross-links materially help retrieval.
 - Start each concept with a short routing purpose and boundary.
-- Put implementation truth in `docs/spec/` or code references, not in narrative
-  summaries.
 - Keep `docs/research/` non-authoritative until promotion.
 
-## Maintenance Log
-
-Update `docs/log.md` when a lane changes routing, promotion, naming, docs policy, or
-knowledge maintenance behavior.
+Update `docs/log.md` when routing, promotion, naming, docs policy, or maintenance
+behavior changes.

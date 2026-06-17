@@ -7,8 +7,8 @@ authority: normative
 owner: docs
 tags: [docs, okf, llm-wiki, semantic-drift]
 source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md]
-code_refs: [apps/decodex/src/docs_okf.rs]
-related: [index.md, log.md, evidence/docs-self-iteration.md]
+code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/cli.rs]
+related: [index.md, log.md, spec/okf-knowledge-layer.md, evidence/docs-self-iteration.md]
 last_verified: 2026-06-17
 ---
 
@@ -18,11 +18,14 @@ last_verified: 2026-06-17
 
 `docs/` is the Decodex repo-development knowledge base. It uses a Markdown-only
 Open Knowledge Format profile so agents can route, read, update, verify, and improve
-repository knowledge during normal lane execution.
+repository knowledge during normal lane execution. OKF itself is the portable
+knowledge-bundle protocol; `docs/` is this repository's default bundle location and
+`decodex docs` is the local convenience surface for that bundle.
 
 This policy owns the docs taxonomy, OKF concept shape, promotion rules, and
 self-iteration loop for documentation. It does not own runtime state, tracker state,
-or private execution evidence.
+private execution evidence, or the portable OKF core contract. The portable command
+and profile boundary is defined by [`spec/okf-knowledge-layer.md`](spec/okf-knowledge-layer.md).
 
 ## Authority
 
@@ -43,6 +46,24 @@ research, drift audit, decisions, references, runbooks, and specs is Markdown.
 Write `OKF` as an all-caps acronym in prose, matching the repository convention for
 `CLI`. Lowercase `okf` is allowed only in machine identifiers such as filenames,
 paths, skill IDs, tags, and URLs.
+
+## Command Boundary
+
+Use `decodex okf` for portable OKF operations against any bundle path. Use
+`decodex docs` for this repository's default `docs/` bundle with the strict Decodex
+profile.
+
+Do not add `decodex docs okf ...` command nesting. OKF is not a docs subfeature;
+`docs/` is one bundle location that happens to use OKF.
+
+Profile ownership:
+
+- `core` follows the portable OKF conformance surface.
+- `wiki` adds graph and agent-retrieval quality checks.
+- `repo-memory` adds repository anchors such as `code_refs`, `source_refs`, and
+  drift hints.
+- `decodex` adds this repository's lanes, authority enums, research contracts, drift
+  audits, and completion gates.
 
 ## Concept Frontmatter
 
@@ -153,8 +174,8 @@ Every docs-changing lane follows this loop:
 3. If the change affects behavior, update the owning concept's `code_refs` and
    `drift_watch`, or update/create a linked drift audit.
 4. Update lane indexes and `docs/log.md` when routing changes.
-5. Run `cargo run -p decodex --bin decodex -- docs lint`.
-6. Treat docs lint or drift failure as a completion blocker. Research uncertainty uses
+5. Run `cargo run -p decodex --bin decodex -- docs check`.
+6. Treat docs check or drift failure as a completion blocker. Research uncertainty uses
    the research-contract `needs_human_decision` status; implementation-lane blockers
    use the runtime `manual_attention` terminal path.
 
@@ -190,11 +211,12 @@ gate fails for touched documentation or touched behavior with docs impact.
 Run:
 
 ```sh
-decodex docs lint
+decodex docs check
 ```
 
 In this repository, `cargo make check` includes the same docs gate through
-`cargo run -p decodex --bin decodex -- docs lint`.
+`cargo run -p decodex --bin decodex -- docs check`. `decodex docs lint` remains an
+alias for compatibility.
 
 The check fails when:
 
