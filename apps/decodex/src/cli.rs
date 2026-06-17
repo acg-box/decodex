@@ -18,7 +18,7 @@ use crate::{
 	accounts::{self, AccountImportRequest, AccountLoginRequest, AccountUseRequest},
 	agent,
 	archive_hygiene::{self, ArchiveHygieneRequest},
-	docs_okf::{self, DocsCheckScope},
+	docs_okf::{self, DocsCheckScope, OkfCheckProfile, OkfQuery},
 	maintenance::{self, MaintenanceMode, MaintenancePruneRequest, MaintenanceScope},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
 	mcp::{self, McpServeRequest, McpTransport},
@@ -75,6 +75,7 @@ impl Cli {
 			Command::Diagnose(args) => args.run(),
 			Command::Evidence(args) => args.run(),
 			Command::Docs(args) => args.run(),
+			Command::Okf(args) => args.run(),
 			Command::Research(args) => args.run(),
 			Command::Intake(args) => args.run(),
 			Command::Recover(args) => args.run(),
@@ -129,12 +130,18 @@ struct DocsCommand {
 }
 impl DocsCommand {
 	fn run(&self) -> Result<()> {
-		let scope = match self.command {
-			DocsSubcommand::Lint => DocsCheckScope::All,
-			DocsSubcommand::Index => DocsCheckScope::Index,
-			DocsSubcommand::Links => DocsCheckScope::Links,
-			DocsSubcommand::Drift => DocsCheckScope::Drift,
-		};
+		match &self.command {
+			DocsSubcommand::Check => self.run_check(DocsCheckScope::All),
+			DocsSubcommand::Index => self.run_check(DocsCheckScope::Index),
+			DocsSubcommand::Links => self.run_check(DocsCheckScope::Links),
+			DocsSubcommand::Drift => self.run_check(DocsCheckScope::Drift),
+			DocsSubcommand::Find(args) => run_okf_find(&self.root, &args.filters),
+			DocsSubcommand::Graph(args) => run_okf_graph(&self.root, args.json),
+			DocsSubcommand::Route(args) => run_okf_route(&self.root, &args.intent, args.limit),
+		}
+	}
+
+	fn run_check(&self, scope: DocsCheckScope) -> Result<()> {
 		let report = docs_okf::run_docs_check(&self.root, scope)?;
 
 		print!("{}", docs_okf::render_docs_check_report(&report));
@@ -144,6 +151,137 @@ impl DocsCommand {
 		}
 
 		Ok(())
+	}
+}
+
+#[derive(Debug, Args)]
+struct OkfCommand {
+	#[command(subcommand)]
+	command: OkfSubcommand,
+}
+impl OkfCommand {
+	fn run(&self) -> Result<()> {
+		match &self.command {
+			OkfSubcommand::Check(args) => args.run(),
+			OkfSubcommand::Find(args) => run_okf_find(&args.root, &args.filters),
+			OkfSubcommand::Graph(args) => run_okf_graph(&args.root, args.json),
+			OkfSubcommand::Route(args) => run_okf_route(&args.root, &args.intent, args.limit),
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct OkfCheckCommand {
+	/// OKF bundle root.
+	#[arg(value_name = "ROOT", default_value = "docs")]
+	root: PathBuf,
+	/// Validation profile to apply.
+	#[arg(long, value_enum, default_value_t = OkfProfileArg::Core)]
+	profile: OkfProfileArg,
+}
+impl OkfCheckCommand {
+	fn run(&self) -> Result<()> {
+		let profile = OkfCheckProfile::from(self.profile);
+		let report = docs_okf::run_okf_check(&self.root, profile)?;
+
+		print!("{}", docs_okf::render_okf_check_report(&report));
+
+		if report.has_issues() {
+			eyre::bail!("okf {} check failed.", report.profile().as_str());
+		}
+
+		Ok(())
+	}
+}
+
+#[derive(Debug, Args)]
+struct OkfFindCommand {
+	/// OKF bundle root.
+	#[arg(value_name = "ROOT", default_value = "docs")]
+	root: PathBuf,
+	#[command(flatten)]
+	filters: OkfFindFilters,
+}
+
+#[derive(Debug, Args)]
+struct OkfGraphCommand {
+	/// OKF bundle root.
+	#[arg(value_name = "ROOT", default_value = "docs")]
+	root: PathBuf,
+	/// Emit graph JSON instead of a text summary.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct OkfRouteCommand {
+	/// OKF bundle root.
+	#[arg(value_name = "ROOT", default_value = "docs")]
+	root: PathBuf,
+	/// Task or question to route into the bundle.
+	intent: String,
+	/// Maximum number of concepts to print.
+	#[arg(long, default_value_t = 5)]
+	limit: usize,
+}
+
+#[derive(Debug, Args)]
+struct DocsFindCommand {
+	#[command(flatten)]
+	filters: OkfFindFilters,
+}
+
+#[derive(Debug, Args)]
+struct DocsGraphCommand {
+	/// Emit graph JSON instead of a text summary.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct DocsRouteCommand {
+	/// Task or question to route into the bundle.
+	intent: String,
+	/// Maximum number of concepts to print.
+	#[arg(long, default_value_t = 5)]
+	limit: usize,
+}
+
+#[derive(Debug, Args)]
+struct OkfFindFilters {
+	/// Match concept type.
+	#[arg(long = "type")]
+	concept_type: Option<String>,
+	/// Match exact tag. May be repeated.
+	#[arg(long)]
+	tag: Vec<String>,
+	/// Match resource URI substring.
+	#[arg(long)]
+	resource: Option<String>,
+	/// Match source_refs substring.
+	#[arg(long)]
+	source_ref: Option<String>,
+	/// Match code_refs substring.
+	#[arg(long)]
+	code_ref: Option<String>,
+	/// Match related refs substring.
+	#[arg(long)]
+	related: Option<String>,
+	/// Match path, title, or description substring.
+	#[arg(long)]
+	text: Option<String>,
+}
+impl From<&OkfFindFilters> for OkfQuery {
+	fn from(value: &OkfFindFilters) -> Self {
+		Self {
+			concept_type: value.concept_type.clone(),
+			tags: value.tag.clone(),
+			resource: value.resource.clone(),
+			source_ref: value.source_ref.clone(),
+			code_ref: value.code_ref.clone(),
+			related: value.related.clone(),
+			text: value.text.clone(),
+		}
 	}
 }
 
@@ -1224,14 +1362,33 @@ impl From<IssueDispatchMode> for AttemptDispatchMode {
 
 #[derive(Debug, Subcommand)]
 enum DocsSubcommand {
-	/// Validate the complete Markdown-only OKF docs bundle.
-	Lint,
+	/// Validate the complete Markdown-only Decodex docs bundle.
+	#[command(alias = "lint")]
+	Check,
 	/// Validate OKF routing files and concept frontmatter.
 	Index,
 	/// Validate local Markdown links.
 	Links,
 	/// Validate semantic-drift audit routing.
 	Drift,
+	/// Find concepts in the default docs bundle.
+	Find(DocsFindCommand),
+	/// Print the default docs bundle graph.
+	Graph(DocsGraphCommand),
+	/// Route a task to relevant docs concepts.
+	Route(DocsRouteCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum OkfSubcommand {
+	/// Validate an OKF bundle with a selected profile.
+	Check(OkfCheckCommand),
+	/// Find concepts by frontmatter fields.
+	Find(OkfFindCommand),
+	/// Print an OKF concept graph.
+	Graph(OkfGraphCommand),
+	/// Route a task to relevant concepts.
+	Route(OkfRouteCommand),
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -1261,6 +1418,8 @@ enum Command {
 	Evidence(EvidenceCommand),
 	/// Validate the repo docs as a Markdown-only OKF knowledge bundle.
 	Docs(DocsCommand),
+	/// Inspect portable OKF bundles.
+	Okf(OkfCommand),
 	/// Compile or promote Decodex-native research/design contracts.
 	Research(ResearchCommand),
 	/// Operator issue-batch intake into internal Execution Programs, not a graph editor.
@@ -1346,6 +1505,25 @@ enum IntakeSubcommand {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 #[value(rename_all = "kebab-case")]
+enum OkfProfileArg {
+	Core,
+	Wiki,
+	RepoMemory,
+	Decodex,
+}
+impl From<OkfProfileArg> for OkfCheckProfile {
+	fn from(value: OkfProfileArg) -> Self {
+		match value {
+			OkfProfileArg::Core => Self::Core,
+			OkfProfileArg::Wiki => Self::Wiki,
+			OkfProfileArg::RepoMemory => Self::RepoMemory,
+			OkfProfileArg::Decodex => Self::Decodex,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[value(rename_all = "kebab-case")]
 enum ResearchOutcomeArg {
 	DecisionReady,
 	NotDecisionReady,
@@ -1381,6 +1559,64 @@ enum MaintenanceSubcommand {
 
 fn default_lane_steer_wait_timeout_ms() -> u64 {
 	u64::try_from(DEFAULT_STEER_RESULT_WAIT_TIMEOUT.as_millis()).unwrap_or(10_000)
+}
+
+fn run_okf_find(root: &Path, filters: &OkfFindFilters) -> Result<()> {
+	let query = OkfQuery::from(filters);
+	let concepts = docs_okf::query_okf_bundle(root, &query)?;
+
+	println!("okf find: concepts={} root={}", concepts.len(), root.display());
+
+	for concept in concepts {
+		println!(
+			"{} | {} | {}{}",
+			concept.path,
+			concept.concept_type,
+			concept.title,
+			concept
+				.description
+				.as_deref()
+				.map_or(String::new(), |description| format!(" | {description}"))
+		);
+	}
+
+	Ok(())
+}
+
+fn run_okf_graph(root: &Path, json: bool) -> Result<()> {
+	let graph = docs_okf::build_okf_graph(root)?;
+
+	if json {
+		print!("{}", docs_okf::render_okf_graph_json(&graph)?);
+	} else {
+		print!("{}", docs_okf::render_okf_graph_summary(root, &graph));
+	}
+
+	Ok(())
+}
+
+fn run_okf_route(root: &Path, intent: &str, limit: usize) -> Result<()> {
+	let matches = docs_okf::route_okf_bundle(root, intent, limit)?;
+
+	println!(
+		"okf route: matches={} limit={} root={} intent={}",
+		matches.len(),
+		limit,
+		root.display(),
+		intent
+	);
+
+	for route_match in matches {
+		println!(
+			"{} | score={} | {} | {}",
+			route_match.concept.path,
+			route_match.score,
+			route_match.concept.concept_type,
+			route_match.concept.title
+		);
+	}
+
+	Ok(())
 }
 
 fn lane_steer_report_is_failure(report: &LaneSteerReport) -> bool {

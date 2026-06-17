@@ -8,6 +8,8 @@
 - Clarified that `decodex okf` is the cross-repository command surface while
   `decodex docs` is the local `docs/` alias, and that `docs okf` command nesting is
   not part of the user-facing model.
+- Added `decodex okf check/find/graph/route` and `decodex docs check/find/graph/route`
+  command surfaces; `decodex docs lint` remains a compatibility alias.
 - Adopted Docs-as-OKF as the Decodex repo-development documentation knowledge
   standard.
 - Defined `docs/` as a Markdown-only OKF bundle with no non-Markdown documentation
