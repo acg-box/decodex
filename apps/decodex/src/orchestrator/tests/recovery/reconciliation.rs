@@ -7,6 +7,7 @@ struct StalledPhaseGoalOutcome {
 	comments: Vec<String>,
 	label_additions_empty: bool,
 	event_types: Vec<String>,
+	phase_acceptance_reason: Option<String>,
 	handoff_next_recorded: bool,
 }
 
@@ -982,11 +983,14 @@ fn exited_child_reconciliation_defers_dirty_worktree_with_retry_marker() {
 
 fn record_active_validation_ready_phase_goal_progress(
 	state_store: &StateStore,
+	worktree_path: &Path,
 	issue_id: &str,
 	run_id: &str,
 	progress_phase: &str,
 	blockers: impl Serialize,
 ) {
+	let head_sha = git_output(worktree_path, &["rev-parse", "HEAD"]);
+
 	state_store
 		.append_private_execution_event(
 			TEST_SERVICE_ID,
@@ -1013,8 +1017,10 @@ fn record_active_validation_ready_phase_goal_progress(
 			"progress_checkpoint",
 			serde_json::json!({
 				"phase": progress_phase,
+				"docs_impact": "none",
 				"blockers": blockers,
 				"verification": ["cargo make check"],
+				"head_sha": head_sha,
 			}),
 		)
 		.expect("progress checkpoint should record");
@@ -1065,6 +1071,7 @@ fn apply_stalled_phase_goal_reconciliation(
 
 	record_active_validation_ready_phase_goal_progress(
 		&state_store,
+		&worktree_path,
 		&issue.id,
 		run_id,
 		progress_phase,
@@ -1122,6 +1129,11 @@ fn apply_stalled_phase_goal_reconciliation(
 		comments: tracker.comments.borrow().clone(),
 		label_additions_empty: tracker.label_additions.borrow().is_empty(),
 		event_types: events.iter().map(|event| event.event_type().to_owned()).collect(),
+		phase_acceptance_reason: events
+			.iter()
+			.rev()
+			.find(|event| event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE)
+			.and_then(|event| event.payload()["reason_code"].as_str().map(str::to_owned)),
 		handoff_next_recorded: events.iter().any(|event| {
 			event.event_type() == "phase_goal_next"
 				&& event.payload()["phase"] == "handoff_evidence"
@@ -1139,6 +1151,7 @@ fn stalled_retained_phase_goal_reconciliation_schedules_continuation_without_att
 	assert!(outcome.comments.is_empty());
 	assert!(outcome.label_additions_empty);
 	assert!(outcome.event_types.iter().any(|event| event == "phase_goal_recovery"));
+	assert_eq!(outcome.phase_acceptance_reason.as_deref(), Some("accepted"));
 	assert!(outcome.handoff_next_recorded);
 }
 
