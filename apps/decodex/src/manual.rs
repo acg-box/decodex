@@ -86,11 +86,7 @@ struct ManualLandContext {
 }
 impl ManualLandContext {
 	fn default_branch_git_credentials(&self) -> GitCredentialSource<'_> {
-		GitCredentialSource::new(
-			&self.github_token_env_var,
-			&self.github_token,
-			&self.worktree_root,
-		)
+		GitCredentialSource::new(&self.github_token_env_var, &self.github_token)
 	}
 }
 

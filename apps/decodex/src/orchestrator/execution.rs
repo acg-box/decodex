@@ -61,25 +61,10 @@ impl Error for AppServerZeroEvidenceStartFailure {}
 
 struct AgentGitCredentialEnvironment {
 	process_env: AppServerProcessEnv,
-	askpass_path: PathBuf,
 }
 impl AgentGitCredentialEnvironment {
 	fn process_env(&self) -> &AppServerProcessEnv {
 		&self.process_env
-	}
-}
-
-impl Drop for AgentGitCredentialEnvironment {
-	fn drop(&mut self) {
-		if let Err(error) = fs::remove_file(&self.askpass_path)
-			&& error.kind() != ErrorKind::NotFound
-		{
-			tracing::warn!(
-				?error,
-				askpass_path = %self.askpass_path.display(),
-				"Failed to remove agent Git askpass helper."
-			);
-		}
 	}
 }
 
@@ -773,41 +758,15 @@ fn prepare_agent_git_credentials(
 		})
 		.wrap_err(error)
 	})?;
-	let askpass_path = agent_git_askpass_path(project.worktree_root(), run_id);
 	let signing_config = GitSigningConfig::from_local_git_config(worktree_path)?;
-
-	git_credentials::write_github_askpass_helper(&askpass_path)?;
 
 	Ok(AgentGitCredentialEnvironment {
 		process_env: AppServerProcessEnv::with_github_credentials_and_signing_config(
 			project.github().token_env_var().to_owned(),
 			github_token,
-			askpass_path.clone(),
 			signing_config,
 		),
-		askpass_path,
 	})
-}
-
-fn agent_git_askpass_path(worktree_root: &Path, run_id: &str) -> PathBuf {
-	let safe_run_id = sanitize_run_id_for_path(run_id);
-
-	worktree_root.join(format!("{AGENT_GIT_ASKPASS_PREFIX}{safe_run_id}.sh"))
-}
-
-fn sanitize_run_id_for_path(run_id: &str) -> String {
-	let sanitized = run_id
-		.chars()
-		.map(|character| {
-			if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
-				character
-			} else {
-				'_'
-			}
-		})
-		.collect::<String>();
-
-	if sanitized.is_empty() { String::from("run") } else { sanitized }
 }
 
 fn configured_public_projection_privacy_classifier(
