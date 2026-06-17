@@ -1,11 +1,4 @@
-#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
-use std::{
-	env, fs,
-	io::ErrorKind,
-	path::{Path, PathBuf},
-	process::{self, Command},
-	sync::atomic::{AtomicU64, Ordering},
-};
+use std::{env, path::Path, process::Command};
 
 use crate::prelude::{Result, eyre};
 
@@ -19,33 +12,39 @@ const GITHUB_SSH_URL_PREFIXES: &[&str] = &[
 	"ssh://git@github.com-y/",
 ];
 const GIT_CONFIG_ENV_REMOVE_FLOOR: usize = 64;
-
-static NEXT_ASKPASS_ID: AtomicU64 = AtomicU64::new(0);
+const GITHUB_CREDENTIAL_HELPER: &str = concat!(
+	"!f() { ",
+	"test \"$1\" = get || exit 0; ",
+	"protocol=; host=; ",
+	"while IFS= read -r line; do ",
+	"test -n \"$line\" || break; ",
+	"case \"$line\" in ",
+	"protocol=*) protocol=${line#protocol=} ;; ",
+	"host=*) host=${line#host=} ;; ",
+	"esac; ",
+	"done; ",
+	"test \"$protocol\" = https || exit 0; ",
+	"test \"$host\" = github.com || exit 0; ",
+	"test -n \"$GH_TOKEN\" || exit 0; ",
+	"printf '%s\\n' username=x-access-token password=\"$GH_TOKEN\"; ",
+	"}; f",
+);
 
 #[derive(Clone, Copy)]
 pub(crate) struct GitCredentialSource<'a> {
 	token_env_var: &'a str,
 	token: &'a str,
-	askpass_root: &'a Path,
 }
 impl<'a> GitCredentialSource<'a> {
-	pub(crate) fn new(token_env_var: &'a str, token: &'a str, askpass_root: &'a Path) -> Self {
-		Self { token_env_var, token, askpass_root }
+	pub(crate) fn new(token_env_var: &'a str, token: &'a str) -> Self {
+		Self { token_env_var, token }
 	}
 
-	pub(crate) fn materialize_github_askpass(
-		self,
-		label: &str,
-	) -> Result<(GitCredentialEnvironment, GitAskpassGuard)> {
-		let askpass_path = scoped_github_askpass_path(self.askpass_root, label);
-		let askpass_guard = GitAskpassGuard::create(askpass_path.clone())?;
-		let git_env = GitCredentialEnvironment::with_github_credentials(
+	pub(crate) fn materialize_github_credentials(self) -> GitCredentialEnvironment {
+		GitCredentialEnvironment::with_github_credentials(
 			self.token_env_var.to_owned(),
 			self.token.to_owned(),
-			askpass_path,
-		);
-
-		Ok((git_env, askpass_guard))
+		)
 	}
 }
 
@@ -53,19 +52,16 @@ impl<'a> GitCredentialSource<'a> {
 pub(crate) struct GitCredentialEnvironment {
 	github_token_env_var: Option<String>,
 	github_token: Option<String>,
-	git_askpass_path: Option<PathBuf>,
 	signing_config: GitSigningConfig,
 }
 impl GitCredentialEnvironment {
 	pub(crate) fn with_github_credentials(
 		github_token_env_var: String,
 		github_token: String,
-		git_askpass_path: PathBuf,
 	) -> Self {
 		Self {
 			github_token_env_var: Some(github_token_env_var),
 			github_token: Some(github_token),
-			git_askpass_path: Some(git_askpass_path),
 			signing_config: GitSigningConfig::DisableInherited,
 		}
 	}
@@ -73,13 +69,11 @@ impl GitCredentialEnvironment {
 	pub(crate) fn with_github_credentials_and_signing_config(
 		github_token_env_var: String,
 		github_token: String,
-		git_askpass_path: PathBuf,
 		signing_config: GitSigningConfig,
 	) -> Self {
 		Self {
 			github_token_env_var: Some(github_token_env_var),
 			github_token: Some(github_token),
-			git_askpass_path: Some(git_askpass_path),
 			signing_config,
 		}
 	}
@@ -99,15 +93,16 @@ impl GitCredentialEnvironment {
 				command.env(github_token_env_var, github_token);
 			}
 		}
-		if let Some(git_askpass_path) = self.git_askpass_path.as_deref() {
-			command.env("GIT_ASKPASS", git_askpass_path);
-		}
 
 		let mut git_config_entries = Vec::new();
 
-		if self.github_token.is_some() && self.git_askpass_path.is_some() {
-			// Empty helper resets inherited helpers so routed askpass owns GitHub auth.
+		if self.github_token.is_some() {
+			command.env_remove("GIT_ASKPASS");
+
+			// Empty helper resets inherited helpers so routed credentials own GitHub auth.
 			git_config_entries.push((String::from("credential.helper"), String::new()));
+			git_config_entries
+				.push((String::from("credential.helper"), String::from(GITHUB_CREDENTIAL_HELPER)));
 
 			for ssh_prefix in GITHUB_SSH_URL_PREFIXES {
 				git_config_entries.push((
@@ -138,31 +133,6 @@ impl GitCredentialEnvironment {
 			}
 
 			command.env("GIT_CONFIG_COUNT", git_config_count.to_string());
-		}
-	}
-}
-
-pub(crate) struct GitAskpassGuard {
-	path: PathBuf,
-}
-impl GitAskpassGuard {
-	pub(crate) fn create(path: PathBuf) -> Result<Self> {
-		write_github_askpass_helper(&path)?;
-
-		Ok(Self { path })
-	}
-}
-
-impl Drop for GitAskpassGuard {
-	fn drop(&mut self) {
-		if let Err(error) = fs::remove_file(&self.path)
-			&& error.kind() != ErrorKind::NotFound
-		{
-			tracing::warn!(
-				?error,
-				askpass_path = %self.path.display(),
-				"Failed to remove Git askpass helper."
-			);
 		}
 	}
 }
@@ -220,53 +190,13 @@ pub(crate) fn clear_injected_git_config(command: &mut Command) {
 	}
 }
 
-pub(crate) fn scoped_github_askpass_path(root: &Path, label: &str) -> PathBuf {
-	let safe_label = sanitize_path_component(label);
-	let id = NEXT_ASKPASS_ID.fetch_add(1, Ordering::Relaxed);
-
-	root.join(format!(".decodex-git-askpass-{safe_label}-{}-{id}.sh", process::id()))
-}
-
-pub(crate) fn write_github_askpass_helper(path: &Path) -> Result<()> {
-	if let Some(parent) = path.parent() {
-		fs::create_dir_all(parent)?;
-	}
-
-	fs::write(
-		path,
-		"#!/bin/sh\ncase \"$1\" in\n  *https://github.com:*|*https://github.com/*|*https://github.com\\'*|*https://*@github.com:*|*https://*@github.com/*|*https://*@github.com\\'*) ;;\n  *) exit 1 ;;\nesac\ncase \"$1\" in\n  *Username*|*username*) printf '%s\\n' 'x-access-token' ;;\n  *Password*|*password*) printf '%s\\n' \"$GH_TOKEN\" ;;\n  *) exit 1 ;;\nesac\n",
-	)?;
-
-	#[cfg(unix)]
-	{
-		let mut permissions = fs::metadata(path)?.permissions();
-
-		permissions.set_mode(0o700);
-
-		fs::set_permissions(path, permissions)?;
-	}
-
-	Ok(())
-}
-
-fn sanitize_path_component(value: &str) -> String {
-	let sanitized = value
-		.chars()
-		.map(|character| {
-			if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
-				character
-			} else {
-				'_'
-			}
-		})
-		.collect::<String>();
-
-	if sanitized.is_empty() { String::from("git") } else { sanitized }
-}
-
 #[cfg(test)]
 mod tests {
-	use std::{ffi::OsStr, process::Command};
+	use std::{
+		ffi::OsStr,
+		io::Write as _,
+		process::{Command, Stdio},
+	};
 
 	use crate::git_credentials::GitCredentialEnvironment;
 
@@ -286,6 +216,51 @@ mod tests {
 		assert_env_removed(&command, "GIT_CONFIG_COUNT");
 		assert_env_removed(&command, "GIT_CONFIG_KEY_0");
 		assert_env_removed(&command, "GIT_CONFIG_VALUE_0");
+	}
+
+	#[test]
+	fn inline_github_credentials_supply_only_github_https_credentials() {
+		let github = credential_fill_stdout("github.com")
+			.expect("github credential helper should return credentials");
+
+		assert!(github.contains("username=x-access-token"));
+		assert!(github.contains("password=secret-token-value"));
+
+		let foreign = credential_fill_stdout("github.com.evil")
+			.expect_err("foreign host should not receive credentials");
+
+		assert!(!foreign.contains("secret-token-value"));
+	}
+
+	fn credential_fill_stdout(host: &str) -> std::result::Result<String, String> {
+		let mut command = Command::new("git");
+
+		GitCredentialEnvironment::with_github_credentials(
+			String::from("GITHUB_PAT_Y"),
+			String::from("secret-token-value"),
+		)
+		.apply_to(&mut command);
+
+		let mut child = command
+			.args(["credential", "fill"])
+			.stdin(Stdio::piped())
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.spawn()
+			.expect("git credential fill should spawn");
+
+		child
+			.stdin
+			.as_mut()
+			.expect("stdin should be piped")
+			.write_all(format!("protocol=https\nhost={host}\n\n").as_bytes())
+			.expect("credential input should write");
+
+		let output = child.wait_with_output().expect("credential fill should exit");
+		let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+		let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+		if output.status.success() { Ok(stdout) } else { Err(format!("{stdout}{stderr}")) }
 	}
 
 	fn assert_env_removed(command: &Command, name: &str) {

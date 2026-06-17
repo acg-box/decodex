@@ -44,6 +44,21 @@ fn injected_git_config_keys(credentials: &AgentGitCredentialEnvironment) -> Vec<
 		.collect()
 }
 
+fn injected_git_config_values(credentials: &AgentGitCredentialEnvironment) -> Vec<String> {
+	let mut probe = Command::new("git");
+
+	credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
+
+	probe
+		.get_envs()
+		.filter_map(|(key, value)| {
+			Some((key.to_string_lossy().into_owned(), value?.to_string_lossy().into_owned()))
+		})
+		.filter(|(key, _)| key.starts_with("GIT_CONFIG_VALUE_"))
+		.map(|(_, value)| value)
+		.collect()
+}
+
 fn loop_guardrail_issue_run(
 	config: &ServiceConfig,
 	issue: &TrackerIssue,
@@ -2148,16 +2163,17 @@ fn agent_git_credentials_use_runtime_env_without_persisting_the_token() {
 	let env_var = format!("DECODEX_TEST_AGENT_GITHUB_TOKEN_ENV_{}", process::id());
 	let _env_guard = TestEnvVarGuard::set(&env_var, "secret-token-value");
 	let config = service_config_with_github_token_env_var(&config, &env_var);
-	let askpass_path =
-		orchestrator::agent_git_askpass_path(config.worktree_root(), "run/with spaces");
 	let credentials =
 		orchestrator::prepare_agent_git_credentials(&config, "run/with spaces", config.repo_root())
 			.expect("agent Git credentials should prepare");
-	let script = fs::read_to_string(&askpass_path).expect("askpass script should exist");
 
-	assert!(askpass_path.exists());
-	assert!(script.contains("GH_TOKEN"));
-	assert!(!script.contains("secret-token-value"));
+	assert!(
+		fs::read_dir(config.worktree_root())
+			.expect("worktree root should list")
+			.filter_map(std::result::Result::ok)
+			.all(|entry| !entry.file_name().to_string_lossy().starts_with(".decodex-git-askpass-")),
+		"agent Git credentials should not materialize askpass helper files"
+	);
 
 	let inherited_signing_key = git_config_value(config.repo_root(), "user.signingkey", None);
 	let agent_signing_key =
@@ -2187,69 +2203,17 @@ fn agent_git_credentials_use_runtime_env_without_persisting_the_token() {
 		"agent git environment should not mask inherited signing keys"
 	);
 
-	#[cfg(unix)]
-	{
-		assert_eq!(
-			std::os::unix::fs::PermissionsExt::mode(
-				&fs::metadata(&askpass_path).expect("askpass metadata should load").permissions(),
-			) & 0o777,
-			0o700
-		);
-
-		let github_username = Command::new(&askpass_path)
-			.arg("Username for 'https://github.com/hack-ink/decodex.git'")
-			.env("GH_TOKEN", "secret-token-value")
-			.output()
-			.expect("askpass helper should execute");
-
-		assert!(github_username.status.success());
-		assert_eq!(String::from_utf8_lossy(&github_username.stdout).trim(), "x-access-token");
-
-		let github_password = Command::new(&askpass_path)
-			.arg("Password for 'https://x-access-token@github.com/hack-ink/decodex.git'")
-			.env("GH_TOKEN", "secret-token-value")
-			.output()
-			.expect("askpass helper should execute");
-
-		assert!(github_password.status.success());
-		assert_eq!(String::from_utf8_lossy(&github_password.stdout).trim(), "secret-token-value");
-
-		let foreign_password = Command::new(&askpass_path)
-			.arg("Password for 'https://example.com/repo.git'")
-			.env("GH_TOKEN", "secret-token-value")
-			.output()
-			.expect("askpass helper should execute");
-
-		assert!(
-			!foreign_password.status.success(),
-			"askpass helper should reject non-GitHub prompts"
-		);
-		assert!(
-			!String::from_utf8_lossy(&foreign_password.stdout).contains("secret-token-value"),
-			"askpass helper should not leak the GitHub token to non-GitHub prompts"
-		);
-
-		let lookalike_password = Command::new(&askpass_path)
-			.arg("Password for 'https://x-access-token@github.com.evil/repo.git'")
-			.env("GH_TOKEN", "secret-token-value")
-			.output()
-			.expect("askpass helper should execute");
-
-		assert!(
-			!lookalike_password.status.success(),
-			"askpass helper should reject GitHub lookalike hosts"
-		);
-		assert!(
-			!String::from_utf8_lossy(&lookalike_password.stdout).contains("secret-token-value"),
-			"askpass helper should not leak the GitHub token to lookalike hosts"
-		);
-	}
-
-	drop(credentials);
+	let injected_git_config_values = injected_git_config_values(&credentials);
 
 	assert!(
-		!askpass_path.exists(),
-		"runtime askpass helper should be removed after the run environment drops"
+		injected_git_config_values
+			.iter()
+			.any(|value| value.contains("github.com") && value.contains("x-access-token")),
+		"agent git environment should inject an inline GitHub credential helper"
+	);
+	assert!(
+		!injected_git_config_values.iter().any(|value| value.contains("secret-token-value")),
+		"agent git config should not persist the GitHub token"
 	);
 }
 

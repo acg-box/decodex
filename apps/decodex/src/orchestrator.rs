@@ -92,7 +92,6 @@ pub(crate) const EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS: i64 = 15 * 60;
 const CONTINUATION_RETRY_DELAY_MS: u64 = 1_000;
 const FAILURE_RETRY_BASE_DELAY_MS: u64 = 10_000;
 const RECOVERABLE_WORKTREE_SKIP_TTL: Duration = Duration::from_secs(10 * 60);
-const AGENT_GIT_ASKPASS_PREFIX: &str = ".decodex-git-askpass-";
 const CONTINUATION_PENDING_RUN_STATUS: &str = "continuation_pending";
 const TERMINAL_GUARDED_RUN_STATUS: &str = "terminal_guarded";
 const TERMINAL_GUARD_MARKER_FILE: &str = ".decodex-terminal-guarded";
