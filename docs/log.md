@@ -2,6 +2,16 @@
 
 ## 2026-06-17
 
+- Added `docs/spec/okf-knowledge-layer.md` to separate portable OKF engine behavior,
+  LLM Wiki graph/retrieval behavior, repository-memory anchors, and the strict
+  Decodex docs profile.
+- Clarified that `decodex okf` is the cross-repository command surface while
+  `decodex docs` is the local `docs/` alias, and that `docs okf` command nesting is
+  not part of the user-facing model.
+- Added `decodex okf check/find/graph/route` and `decodex docs check/find/graph/route`
+  command surfaces; `decodex docs lint` remains a compatibility alias.
+- Added portable `okf`, `okf-query`, and `okf-maintain` plugin skills and clarified
+  that existing `docs-*` skills are Decodex profile wrappers.
 - Adopted Docs-as-OKF as the Decodex repo-development documentation knowledge
   standard.
 - Defined `docs/` as a Markdown-only OKF bundle with no non-Markdown documentation
