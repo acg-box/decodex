@@ -556,7 +556,7 @@ fn maintain_runtime_protocol_events(
 			event_count: candidate.event_count,
 			last_event_at: candidate.last_event_at.clone(),
 			reason: format!(
-				"terminal run has no run lease, retained worktree, or review marker and its latest protocol event is older than {} days",
+				"terminal run has no run lease, retained worktree, or review lifecycle record and its latest protocol event is older than {} days",
 				policy.protocol_event_retention_days
 			),
 		});
@@ -633,9 +633,8 @@ fn protocol_event_compaction_candidates(
 			AND last.sequence_number = totals.last_sequence_number
 		 LEFT JOIN leases run_lease ON run_lease.issue_id = attempts.issue_id
 		 LEFT JOIN worktrees retained_worktree ON retained_worktree.issue_id = attempts.issue_id
-		 LEFT JOIN review_handoffs review_handoff ON review_handoff.issue_id = attempts.issue_id
-		 LEFT JOIN review_orchestrations review_orchestration
-			ON review_orchestration.issue_id = attempts.issue_id
+		 LEFT JOIN review_lifecycle_records review_lifecycle
+			ON review_lifecycle.issue_id = attempts.issue_id
 		 LEFT JOIN (
 			SELECT
 				issue_id,
@@ -650,8 +649,7 @@ fn protocol_event_compaction_candidates(
 			AND totals.last_created_at_unix < ?1
 			AND run_lease.issue_id IS NULL
 			AND retained_worktree.issue_id IS NULL
-			AND review_handoff.issue_id IS NULL
-			AND review_orchestration.issue_id IS NULL
+			AND review_lifecycle.issue_id IS NULL
 			AND human_stop_event.run_id IS NULL
 		 ORDER BY totals.last_created_at_unix ASC, attempts.run_id ASC",
 	)?;
@@ -683,9 +681,8 @@ fn protected_protocol_run_count(connection: &Connection) -> Result<usize> {
 		 JOIN protocol_events events ON events.run_id = attempts.run_id
 		 LEFT JOIN leases run_lease ON run_lease.issue_id = attempts.issue_id
 		 LEFT JOIN worktrees retained_worktree ON retained_worktree.issue_id = attempts.issue_id
-		 LEFT JOIN review_handoffs review_handoff ON review_handoff.issue_id = attempts.issue_id
-		 LEFT JOIN review_orchestrations review_orchestration
-			ON review_orchestration.issue_id = attempts.issue_id
+		 LEFT JOIN review_lifecycle_records review_lifecycle
+			ON review_lifecycle.issue_id = attempts.issue_id
 		 LEFT JOIN (
 			SELECT
 				issue_id,
@@ -698,8 +695,7 @@ fn protected_protocol_run_count(connection: &Connection) -> Result<usize> {
 			AND human_stop_event.run_id = attempts.run_id
 		 WHERE run_lease.issue_id IS NOT NULL
 			OR retained_worktree.issue_id IS NOT NULL
-			OR review_handoff.issue_id IS NOT NULL
-			OR review_orchestration.issue_id IS NOT NULL
+			OR review_lifecycle.issue_id IS NOT NULL
 			OR human_stop_event.run_id IS NOT NULL
 			OR attempts.status NOT IN ('succeeded', 'failed', 'interrupted', 'terminated')",
 		[],
@@ -996,7 +992,7 @@ mod tests {
 			recorded_at TEXT NOT NULL,
 			recorded_at_unix INTEGER NOT NULL
 		);
-		CREATE TABLE review_handoffs (
+		CREATE TABLE review_lifecycle_records (
 			project_id TEXT NOT NULL,
 			issue_id TEXT NOT NULL,
 			branch_name TEXT NOT NULL,
@@ -1006,17 +1002,6 @@ mod tests {
 			target_base_ref_name TEXT,
 			pr_head_ref_name TEXT NOT NULL,
 			pr_head_oid TEXT NOT NULL,
-			updated_at TEXT NOT NULL,
-			updated_at_unix INTEGER NOT NULL,
-			PRIMARY KEY (project_id, issue_id, branch_name)
-		);
-		CREATE TABLE review_orchestrations (
-			project_id TEXT NOT NULL,
-			issue_id TEXT NOT NULL,
-			branch_name TEXT NOT NULL,
-			run_id TEXT NOT NULL,
-			attempt_number INTEGER NOT NULL,
-			pr_url TEXT NOT NULL,
 			head_sha TEXT NOT NULL,
 			phase TEXT NOT NULL,
 			request_comment_database_id INTEGER,
@@ -1025,9 +1010,14 @@ mod tests {
 			request_retry_count INTEGER NOT NULL,
 			external_round_count INTEGER NOT NULL,
 			auto_merge_enabled_at_unix_epoch INTEGER,
+			landing_state TEXT NOT NULL DEFAULT 'not_started',
+			closeout_state TEXT NOT NULL DEFAULT 'not_started',
+			repair_attempt_count INTEGER NOT NULL DEFAULT 0,
+			evidence_json TEXT NOT NULL DEFAULT '{}',
+			next_action TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL,
 			updated_at_unix INTEGER NOT NULL,
-			PRIMARY KEY (project_id, issue_id, branch_name, run_id, attempt_number)
+			PRIMARY KEY (project_id, issue_id, branch_name)
 		);";
 
 	#[test]
@@ -1069,10 +1059,20 @@ mod tests {
 
 		insert_attempt(&connection, "review-handoff-run", "review-issue", "succeeded");
 		insert_event(&connection, "review-handoff-run", 1, old);
-		insert_review_handoff(&connection, "review-issue", "review-handoff-run");
+		insert_review_lifecycle(
+			&connection,
+			"review-issue",
+			"review-handoff-run",
+			"request_pending",
+		);
 		insert_attempt(&connection, "cleanup-blocked-run", "cleanup-issue", "succeeded");
 		insert_event(&connection, "cleanup-blocked-run", 1, old);
-		insert_review_orchestration(&connection, "cleanup-issue", "cleanup-blocked-run");
+		insert_review_lifecycle(
+			&connection,
+			"cleanup-issue",
+			"cleanup-blocked-run",
+			"cleanup_blocked",
+		);
 		insert_attempt(&connection, "attention-run", "attention-issue", "failed");
 		insert_event(&connection, "attention-run", 1, old);
 		insert_linear_execution_event(
@@ -1342,41 +1342,28 @@ mod tests {
 			.expect("event should insert");
 	}
 
-	fn insert_review_handoff(connection: &Connection, issue_id: &str, run_id: &str) {
+	fn insert_review_lifecycle(connection: &Connection, issue_id: &str, run_id: &str, phase: &str) {
 		connection
 			.execute(
-				"INSERT INTO review_handoffs (
+				"INSERT INTO review_lifecycle_records (
 					project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
-					target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at,
-					updated_at_unix
-				) VALUES (
-					'decodex', ?1, 'y/decodex-test', ?2, 1,
-					'https://github.com/hack-ink/decodex/pull/1', 'main',
-					'y/decodex-test', 'abc123', '2026-05-01T00:00:00Z', 0
-				)",
-				rusqlite::params![issue_id, run_id],
-			)
-			.expect("review handoff should insert");
-	}
-
-	fn insert_review_orchestration(connection: &Connection, issue_id: &str, run_id: &str) {
-		connection
-			.execute(
-				"INSERT INTO review_orchestrations (
-					project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
-					head_sha, phase, request_comment_database_id,
+					target_base_ref_name, pr_head_ref_name, pr_head_oid, head_sha, phase,
+					request_comment_database_id,
 					request_created_at_unix_epoch, request_description_thumbs_up_count,
 					request_retry_count, external_round_count, auto_merge_enabled_at_unix_epoch,
+					landing_state, closeout_state, repair_attempt_count, evidence_json,
+					next_action,
 					updated_at, updated_at_unix
 				) VALUES (
 					'decodex', ?1, 'y/decodex-test', ?2, 1,
-					'https://github.com/hack-ink/decodex/pull/1', 'abc123',
-					'cleanup_blocked', NULL, NULL, NULL, 0, 0, NULL,
+					'https://github.com/hack-ink/decodex/pull/1', 'main',
+					'y/decodex-test', 'abc123', 'abc123', ?3, NULL, NULL, NULL, 0, 0, NULL,
+					'not_started', 'not_started', 0, '{}', '',
 					'2026-05-01T00:00:00Z', 0
 				)",
-				rusqlite::params![issue_id, run_id],
+				rusqlite::params![issue_id, run_id, phase],
 			)
-			.expect("review orchestration should insert");
+			.expect("review lifecycle should insert");
 	}
 
 	fn insert_linear_execution_event(
