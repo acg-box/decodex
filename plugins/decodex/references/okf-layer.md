@@ -1,8 +1,8 @@
 # Portable OKF Layer
 
 Use this for portable OKF bundles, LLM Wiki retrieval, and cross-repository memory.
-Use `repo-memory-writer` when the task is to create repository knowledge from code
-evidence, not merely maintain an existing bundle.
+Use `repo-memory-writer` for first-pass repo knowledge and `repo-memory-curator` for
+route misses, orphans, noisy top results, duplicate claims, or graph decay.
 
 ## Boundary
 
@@ -32,10 +32,12 @@ overwrites, and validates. `decodex docs` defaults to root `docs/` and profile
 
 ## Rules
 
-Producers pick a profile first, keep concepts one-topic, use frontmatter for
-routing, link real relationships, update `index.md` or `log.md` for navigation
-changes, and preserve unknown fields.
+Producers pick a profile first, keep concepts one-topic, use frontmatter for routing,
+link real relationships, update indexes/logs, and preserve unknown fields.
 
 Consumers start with `decodex okf route` or `decodex okf find`, use graph output for
 relationships, tolerate unknown `type` values, and use Decodex `docs-*` skills only
 for this repository's strict `docs/` profile.
+
+Maintainers use route benchmarks and graph/orphan triage; shape checks prove only
+conformance.

@@ -7,7 +7,8 @@ description: Use when creating or updating OKF/LLM Wiki concepts, indexes, logs,
 
 Produce and maintain OKF bundles without coupling them to Decodex-specific policy.
 For bootstrapping high-quality repository memory from code evidence, use
-`repo-memory-writer` first.
+`repo-memory-writer` first. For route benchmark misses, orphan triage, noisy top
+results, or graph repair, use `repo-memory-curator`.
 
 Read `../../references/okf-layer.md` before creating concepts, moving files, or
 repairing graph quality.
