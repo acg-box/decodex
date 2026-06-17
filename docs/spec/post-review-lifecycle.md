@@ -237,7 +237,7 @@ At any phase, contradictory state or a non-self-healing merge failure must stop 
 | --- | --- | --- | --- |
 | `review_wait` | `wait_for_external_signal` | PR-backed `In Review` handoff succeeded for the current owned lane | Actionable review repair appears, landing becomes ready, human intervention becomes required, or cancellation is explicit |
 | `review_repair` | `resume_retained_lane` | Actionable review feedback exists and the retained lane still belongs to the same issue and PR lineage | A new repaired head is pushed and review is re-requested for that head, human intervention becomes required, or cancellation is explicit |
-| `ready_to_land` | `ready_to_land` | Required approvals are satisfied, blocking review work is absent, checks are green, the branch is up to date with base, and the PR is cleanly mergeable | Clean-path landing begins, signals fall back to wait or repair, or human intervention becomes required |
+| `ready_to_land` | `ready_to_land` | Required approvals are satisfied, blocking review work is absent, checks are green, the branch is up to date with base, the PR is cleanly mergeable, and no unresolved Authority Boundary `requires_enhanced_evidence` or `block_landing` policy remains for the current head | Clean-path landing begins, signals fall back to wait or repair, or human intervention becomes required |
 | `landing` | `continue` | The runtime has committed to executing the clean merge for the current lane | Merge is recorded, landing fails into a resumable deterministic tail step, or human intervention becomes required |
 | `closeout` | `continue` | Merge already happened for the lane's authoritative anchor and tracker closeout has not yet completed | Tracker closeout succeeds, the lane blocks on contradictory closeout state, or human intervention becomes required |
 | `cleanup` | `continue` | Either (a) merge and closeout are authoritative and only worktree or branch cleanup remains, or (b) explicit pre-merge cancellation is authoritative and only deterministic retained-lane cleanup remains | The retained worktree and lane branch state are clean, or cleanup blocks on conflicting local evidence |
@@ -322,6 +322,8 @@ already deterministic:
 - required checks are green
 - the branch is already up to date with the base branch
 - mergeability is affirmative and `mergeStateStatus` is `CLEAN`
+- any earlier Authority Boundary `requires_enhanced_evidence` or `block_landing`
+  policy has been cleared by a clean review checkpoint for the current lane head
 
 If any of those signals becomes false again before landing starts, the lane must return to
 `review_wait` or `review_repair` instead of forcing a merge. Cases that are not deterministic

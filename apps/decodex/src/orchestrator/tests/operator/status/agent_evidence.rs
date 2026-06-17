@@ -280,12 +280,14 @@ fn agent_evidence_authority_boundary_readback_recommends_candidates_without_payl
 			attempt_number: 1,
 			decision_contract_ids: vec!["contract-boundary"],
 			attempted_recovery_reason: "ambiguous_retained_progress",
-			changed_surfaces: vec![orchestrator::AuthorityBoundaryChangedSurface {
-				surface: "validation_review_gate",
+			changed_surfaces: vec![AuthorityBoundaryChangedSurface {
+				surface: AuthorityBoundarySurface::RetainedOwnership,
 				change_summary: private_marker,
-				classification: orchestrator::AuthorityBoundaryDisposition::InsufficientEvidence,
+				policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
+				legacy_disposition: AuthorityBoundaryDisposition::RequiresHuman,
 			}],
-			disposition: AuthorityBoundaryDisposition::InsufficientEvidence,
+			policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
+			disposition: AuthorityBoundaryDisposition::RequiresHuman,
 			final_disposition_reason: "Authority evidence is underspecified for recovery.",
 			improvement_signals: vec![
 				orchestrator::AuthorityBoundaryImprovementSignal {
@@ -370,11 +372,13 @@ fn agent_evidence_private_readback_summarizes_authority_decision_request_without
 			attempt_number: 1,
 			decision_contract_ids: vec!["contract-decision-request"],
 			attempted_recovery_reason: "uncovered_direction",
-			changed_surfaces: vec![orchestrator::AuthorityBoundaryChangedSurface {
-				surface: "accepted_behavior",
+			changed_surfaces: vec![AuthorityBoundaryChangedSurface {
+				surface: AuthorityBoundarySurface::Objective,
 				change_summary: "Public behavior would change.",
-				classification: orchestrator::AuthorityBoundaryDisposition::RequiresHuman,
+				policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
+				legacy_disposition: AuthorityBoundaryDisposition::RequiresHuman,
 			}],
+			policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
 			disposition: AuthorityBoundaryDisposition::RequiresHuman,
 			final_disposition_reason: "Accepted behavior needs explicit authority.",
 			improvement_signals: Vec::new(),
@@ -914,11 +918,13 @@ fn record_harness_signal_fixture_events(state_store: &StateStore) {
 			attempt_number: 2,
 			decision_contract_ids: vec!["contract-harness"],
 			attempted_recovery_reason: "uncovered_direction",
-			changed_surfaces: vec![orchestrator::AuthorityBoundaryChangedSurface {
-				surface: "accepted_behavior",
+			changed_surfaces: vec![AuthorityBoundaryChangedSurface {
+				surface: AuthorityBoundarySurface::Objective,
 				change_summary: "Public behavior would change.",
-				classification: orchestrator::AuthorityBoundaryDisposition::RequiresHuman,
+				policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
+				legacy_disposition: AuthorityBoundaryDisposition::RequiresHuman,
 			}],
+			policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
 			disposition: AuthorityBoundaryDisposition::RequiresHuman,
 			final_disposition_reason: "Accepted behavior needs explicit authority.",
 			improvement_signals: vec![orchestrator::AuthorityBoundaryImprovementSignal {

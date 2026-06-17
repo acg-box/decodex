@@ -300,11 +300,14 @@ struct PrivateEvidenceReviewCheckpointSummary {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct PrivateEvidenceBoundaryCheckSummary {
 	disposition: String,
+	policy_decision: String,
 	reason: Option<String>,
 	attempted_recovery_reason: Option<String>,
 	decision_contract_count: usize,
 	changed_surface_count: usize,
 	improvement_signal_count: usize,
+	requires_enhanced_evidence: bool,
+	blocks_landing: bool,
 	next_action: String,
 }
 
@@ -313,6 +316,9 @@ struct PrivateEvidenceArchitectureRecoverySummary {
 	reason_code: String,
 	guardrail_reason: Option<String>,
 	boundary_disposition: Option<String>,
+	boundary_policy_decision: Option<String>,
+	requires_enhanced_evidence: bool,
+	blocks_landing: bool,
 	recovery_budget_attempt: Option<u64>,
 	recovery_budget_max_attempts: Option<u64>,
 	next_action: String,
@@ -911,6 +917,17 @@ fn boundary_check_from_private_event(
 ) -> Option<PrivateEvidenceBoundaryCheckSummary> {
 	let payload = event.payload();
 	let disposition = payload.get("disposition")?.as_str()?.to_owned();
+	let policy_decision = payload
+		.get("policy_decision")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			payload
+				.get("policy")
+				.and_then(|policy| policy.get("decision"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned)
+		.unwrap_or_else(|| boundary_policy_decision_from_disposition(&disposition).to_owned());
 	let reason = payload
 		.get("final_disposition")
 		.and_then(|final_disposition| final_disposition.get("reason"))
@@ -932,28 +949,64 @@ fn boundary_check_from_private_event(
 		.get("improvement_signals")
 		.and_then(Value::as_array)
 		.map_or(0, Vec::len);
-	let next_action = boundary_check_next_action(&disposition);
+	let requires_enhanced_evidence = payload
+		.get("policy")
+		.and_then(|policy| policy.get("requires_enhanced_evidence"))
+		.and_then(Value::as_bool)
+		.unwrap_or_else(|| boundary_policy_requires_enhanced_evidence(&policy_decision));
+	let blocks_landing = payload
+		.get("policy")
+		.and_then(|policy| policy.get("blocks_landing"))
+		.and_then(Value::as_bool)
+		.unwrap_or_else(|| boundary_policy_blocks_landing(&policy_decision));
+	let next_action = boundary_check_next_action(&policy_decision);
 
 	Some(PrivateEvidenceBoundaryCheckSummary {
 		disposition,
+		policy_decision,
 		reason,
 		attempted_recovery_reason,
 		decision_contract_count,
 		changed_surface_count,
 		improvement_signal_count,
+		requires_enhanced_evidence,
+		blocks_landing,
 		next_action,
 	})
 }
 
-fn boundary_check_next_action(disposition: &str) -> String {
+fn boundary_policy_decision_from_disposition(disposition: &str) -> &'static str {
 	match disposition {
-		"within_authority" => {
+		"requires_human" | "insufficient_evidence" => "requires_human_decision",
+		_ => "auto_continue",
+	}
+}
+
+fn boundary_policy_requires_enhanced_evidence(policy_decision: &str) -> bool {
+	matches!(
+		policy_decision,
+		"requires_enhanced_evidence" | "block_landing"
+	)
+}
+
+fn boundary_policy_blocks_landing(policy_decision: &str) -> bool {
+	policy_decision == "block_landing"
+}
+
+fn boundary_check_next_action(policy_decision: &str) -> String {
+	match policy_decision {
+		"auto_continue" => {
 			String::from("Continue autonomous architecture recovery inside the accepted boundary.")
 		},
-		"requires_human" => String::from("Stop for a human boundary decision before continuing."),
-		"insufficient_evidence" => {
-			String::from("Provide boundary evidence or a Decision Contract before retrying.")
-		},
+		"requires_enhanced_evidence" => String::from(
+			"Continue recovery and preserve enhanced evidence before review handoff or landing.",
+		),
+		"block_landing" => String::from(
+			"Continue recovery, but block landing until review or validation policy evidence is restored.",
+		),
+		"requires_human_decision" => String::from(
+			"Stop for a human boundary decision before continuing.",
+		),
 		_ => String::from("Inspect the authority boundary summary before continuing."),
 	}
 }
@@ -1047,6 +1100,50 @@ fn architecture_recovery_from_private_event(
 				.and_then(Value::as_str)
 		})
 		.map(str::to_owned);
+	let boundary_policy_decision = payload
+		.get("boundary_policy_decision")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			payload
+				.get("authority_boundary_check")
+				.and_then(|boundary| boundary.get("policy_decision"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned)
+		.or_else(|| {
+			boundary_disposition
+				.as_deref()
+				.map(boundary_policy_decision_from_disposition)
+				.map(str::to_owned)
+		});
+	let requires_enhanced_evidence = payload
+		.get("requires_enhanced_evidence")
+		.and_then(Value::as_bool)
+		.or_else(|| {
+			payload
+				.get("authority_boundary_check")
+				.and_then(|boundary| boundary.get("requires_enhanced_evidence"))
+				.and_then(Value::as_bool)
+		})
+		.unwrap_or_else(|| {
+			boundary_policy_decision
+				.as_deref()
+				.is_some_and(boundary_policy_requires_enhanced_evidence)
+		});
+	let blocks_landing = payload
+		.get("blocks_landing")
+		.and_then(Value::as_bool)
+		.or_else(|| {
+			payload
+				.get("authority_boundary_check")
+				.and_then(|boundary| boundary.get("blocks_landing"))
+				.and_then(Value::as_bool)
+		})
+		.unwrap_or_else(|| {
+			boundary_policy_decision
+				.as_deref()
+				.is_some_and(boundary_policy_blocks_landing)
+		});
 	let recovery_budget_attempt = payload
 		.get("recovery_budget")
 		.and_then(|budget| budget.get("attempt"))
@@ -1061,6 +1158,9 @@ fn architecture_recovery_from_private_event(
 		reason_code,
 		guardrail_reason,
 		boundary_disposition,
+		boundary_policy_decision,
+		requires_enhanced_evidence,
+		blocks_landing,
 		recovery_budget_attempt,
 		recovery_budget_max_attempts,
 		next_action,
@@ -1329,6 +1429,7 @@ fn append_private_evidence_review_checkpoints(
 			} else {
 				checkpoint.active_fingerprints.join(", ")
 			};
+
 			output.push_str(&format!(
 				"- phase: {}\n  status: {}\n  head_sha: {}\n  round: {}\n  active_fingerprints: {}\n  stop_fingerprint: {}\n  accepted_findings: {}\n  rejected_findings: {}\n  next_action: {}\n",
 				checkpoint.phase,
@@ -1358,10 +1459,16 @@ fn append_private_evidence_architecture_recoveries(
 	} else {
 		for recovery in architecture_recoveries {
 			output.push_str(&format!(
-				"- reason_code: {}\n  guardrail_reason: {}\n  boundary_disposition: {}\n  budget: {}/{}\n  next_action: {}\n",
+				"- reason_code: {}\n  guardrail_reason: {}\n  boundary_disposition: {}\n  boundary_policy: {}\n  enhanced_evidence: {}\n  blocks_landing: {}\n  budget: {}/{}\n  next_action: {}\n",
 				recovery.reason_code,
 				recovery.guardrail_reason.as_deref().unwrap_or("none"),
 				recovery.boundary_disposition.as_deref().unwrap_or("none"),
+				recovery
+					.boundary_policy_decision
+					.as_deref()
+					.unwrap_or("none"),
+				recovery.requires_enhanced_evidence,
+				recovery.blocks_landing,
 				recovery
 					.recovery_budget_attempt
 					.map_or_else(|| String::from("none"), |attempt| attempt.to_string()),
@@ -1385,8 +1492,11 @@ fn append_private_evidence_boundary_checks(
 	} else {
 		for boundary in boundary_checks {
 			output.push_str(&format!(
-				"- disposition: {}\n  reason: {}\n  attempted_recovery: {}\n  decision_contracts: {}\n  changed_surfaces: {}\n  improvement_signals: {}\n  next_action: {}\n",
+				"- disposition: {}\n  policy: {}\n  enhanced_evidence: {}\n  blocks_landing: {}\n  reason: {}\n  attempted_recovery: {}\n  decision_contracts: {}\n  changed_surfaces: {}\n  improvement_signals: {}\n  next_action: {}\n",
 				boundary.disposition,
+				boundary.policy_decision,
+				boundary.requires_enhanced_evidence,
+				boundary.blocks_landing,
 				boundary.reason.as_deref().unwrap_or("none"),
 				boundary
 					.attempted_recovery_reason
