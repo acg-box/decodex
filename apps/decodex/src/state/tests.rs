@@ -35,7 +35,7 @@ use crate::{
 };
 
 const IN_PROGRESS_STATE: &str = "In Progress";
-const REVIEW_LIFECYCLE_MIGRATION_FIXTURE: &str = r#"
+const DROPPED_REVIEW_MARKER_TABLES_FIXTURE: &str = r#"
 CREATE TABLE review_handoffs (
 	project_id TEXT NOT NULL,
 	issue_id TEXT NOT NULL,
@@ -217,12 +217,12 @@ fn assert_decision_contract_retargeted(reopened: &StateStore) {
 	);
 }
 
-fn seed_review_lifecycle_migration_fixture(state_path: &Path) {
+fn seed_dropped_review_marker_tables(state_path: &Path) {
 	let connection = Connection::open(state_path).expect("fixture db should open");
 
 	connection
-		.execute_batch(REVIEW_LIFECYCLE_MIGRATION_FIXTURE)
-		.expect("review lifecycle migration fixture should seed");
+		.execute_batch(DROPPED_REVIEW_MARKER_TABLES_FIXTURE)
+		.expect("dropped review marker tables should seed");
 }
 
 fn upsert_handoff_review_policy_checkpoint(
@@ -516,74 +516,39 @@ fn changed_review_handoff_projection_resets_lifecycle_phase_fields() {
 }
 
 #[test]
-fn historical_review_marker_tables_migrate_into_lifecycle_record() {
+fn historical_review_marker_tables_drop_without_lifecycle_migration() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 
-	seed_review_lifecycle_migration_fixture(&state_path);
+	seed_dropped_review_marker_tables(&state_path);
 
-	let store =
-		StateStore::open(&state_path).expect("state store should migrate historical markers");
-	let handoff = store
-		.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
-		.expect("migrated handoff projection should read")
-		.expect("migrated handoff projection should exist");
+	let store = StateStore::open(&state_path).expect("state store should drop historical markers");
 
-	assert_eq!(handoff.run_id(), "run-1");
-	assert_eq!(handoff.attempt_number(), 2);
-	assert_eq!(handoff.pr_head_oid(), "08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
-
-	let lifecycle = store
-		.review_lifecycle_record("pubfi", "PUB-101", "x/decodex-pub-101")
-		.expect("migrated lifecycle record should read")
-		.expect("migrated lifecycle record should exist");
-
-	assert_eq!(lifecycle.pr_head_oid(), "08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
-	assert_eq!(lifecycle.head_sha(), "19b20f7dfb9526e7421a5f095b1c6adec84e52d7");
-	assert_eq!(lifecycle.phase(), "waiting_for_ack");
-	assert_eq!(lifecycle.request_comment_database_id(), Some(1_234));
-	assert_eq!(lifecycle.request_created_at_unix_epoch(), Some(1_771_290_030));
-	assert_eq!(lifecycle.request_description_thumbs_up_count(), Some(4));
-	assert_eq!(lifecycle.request_retry_count(), 1);
-	assert_eq!(lifecycle.external_round_count(), 3);
-	assert_eq!(lifecycle.auto_merge_enabled_at_unix_epoch(), Some(1_771_290_060));
-
-	let orphan_lifecycle = store
-		.review_lifecycle_record("pubfi", "PUB-202", "x/decodex-pub-202")
-		.expect("orphan historical orchestration should read")
-		.expect("orphan historical orchestration should migrate");
-
-	assert_eq!(orphan_lifecycle.target_base_ref_name(), None);
-	assert_eq!(orphan_lifecycle.pr_head_ref_name(), "x/decodex-pub-202");
-	assert_eq!(orphan_lifecycle.pr_head_oid(), "28c20f7dfb9526e7421a5f095b1c6adec84e52d8");
-	assert_eq!(orphan_lifecycle.head_sha(), "28c20f7dfb9526e7421a5f095b1c6adec84e52d8");
-
-	let stale_orchestration_lifecycle = store
-		.review_lifecycle_record("pubfi", "PUB-303", "x/decodex-pub-303")
-		.expect("stale historical orchestration should read")
-		.expect("current historical handoff should migrate");
-
-	assert_eq!(stale_orchestration_lifecycle.run_id(), "run-2");
-	assert_eq!(stale_orchestration_lifecycle.attempt_number(), 1);
-	assert_eq!(
-		stale_orchestration_lifecycle.pr_head_oid(),
-		"38c20f7dfb9526e7421a5f095b1c6adec84e52d8"
+	assert!(
+		store
+			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+			.expect("handoff projection should read")
+			.is_none(),
+		"historical review_handoffs rows must not become lifecycle records"
 	);
-	assert_eq!(
-		stale_orchestration_lifecycle.head_sha(),
-		"38c20f7dfb9526e7421a5f095b1c6adec84e52d8"
+	assert!(
+		store
+			.review_lifecycle_record("pubfi", "PUB-202", "x/decodex-pub-202")
+			.expect("orchestration-only lifecycle should read")
+			.is_none(),
+		"historical review_orchestrations rows must not become lifecycle records"
 	);
-	assert_eq!(stale_orchestration_lifecycle.phase(), "request_pending");
-	assert_eq!(stale_orchestration_lifecycle.request_comment_database_id(), None);
-	assert_eq!(stale_orchestration_lifecycle.request_created_at_unix_epoch(), None);
-	assert_eq!(stale_orchestration_lifecycle.request_description_thumbs_up_count(), None);
-	assert_eq!(stale_orchestration_lifecycle.request_retry_count(), 0);
-	assert_eq!(stale_orchestration_lifecycle.external_round_count(), 0);
-	assert_eq!(stale_orchestration_lifecycle.auto_merge_enabled_at_unix_epoch(), None);
+	assert!(
+		store
+			.review_lifecycle_record("pubfi", "PUB-303", "x/decodex-pub-303")
+			.expect("stale historical lifecycle should read")
+			.is_none(),
+		"historical mixed review rows must not become lifecycle records"
+	);
 
 	drop(store);
 
-	let connection = Connection::open(&state_path).expect("migrated db should open");
+	let connection = Connection::open(&state_path).expect("bootstrapped db should open");
 	let legacy_table_count: i64 = connection
 		.query_row(
 			"SELECT COUNT(*) FROM sqlite_master \
@@ -599,7 +564,7 @@ fn historical_review_marker_tables_migrate_into_lifecycle_record() {
 		.query_row("SELECT COUNT(*) FROM review_lifecycle_records", [], |row| row.get(0))
 		.expect("review lifecycle rows should query");
 
-	assert_eq!(lifecycle_count, 3);
+	assert_eq!(lifecycle_count, 0);
 }
 
 #[test]
