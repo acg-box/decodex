@@ -2166,9 +2166,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let rows = statement.query_map([], decision_contract_runtime_row_parts)?;
 
 		for row in rows {
-			let record = decision_contract_record_from_row_parts(row?)?;
-
-			state.decision_contracts.insert(record.key(), record);
+			if let Some(record) = maybe_decision_contract_record_from_row_parts(row?)? {
+				state.decision_contracts.insert(record.key(), record);
+			}
 		}
 
 		Ok(())
@@ -2215,7 +2215,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let mut records = Vec::new();
 
 		for row in rows {
-			records.push(decision_contract_record_from_row_parts(row?)?);
+			if let Some(record) = maybe_decision_contract_record_from_row_parts(row?)? {
+				records.push(record);
+			}
 		}
 
 		Ok(records)
@@ -2236,7 +2238,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let mut records = Vec::new();
 
 		for row in rows {
-			records.push(decision_contract_record_from_row_parts(row?)?);
+			if let Some(record) = maybe_decision_contract_record_from_row_parts(row?)? {
+				records.push(record);
+			}
 		}
 
 		Ok(records)
@@ -5220,6 +5224,42 @@ fn decision_contract_record_from_row_parts(
 		updated_at: parts.updated_at,
 		updated_at_unix: parts.updated_at_unix,
 	})
+}
+
+fn maybe_decision_contract_record_from_row_parts(
+	parts: DecisionContractRuntimeRowParts,
+) -> Result<Option<DecisionContractRuntimeRecord>> {
+	let has_removed_flat_issue_summaries =
+		decision_contract_payload_has_removed_flat_issue_summaries(&parts.payload_json);
+	let project_id = parts.project_id.clone();
+	let contract_id = parts.contract_id.clone();
+
+	match decision_contract_record_from_row_parts(parts) {
+		Ok(record) => Ok(Some(record)),
+		Err(error) if has_removed_flat_issue_summaries => {
+			tracing::warn!(
+				project_id = %project_id,
+				contract_id = %contract_id,
+				error = %error,
+				"skipping legacy Decision Contract row with removed proposed_issue_summaries field"
+			);
+
+			Ok(None)
+		},
+		Err(error) => Err(error),
+	}
+}
+
+fn decision_contract_payload_has_removed_flat_issue_summaries(payload_json: &str) -> bool {
+	serde_json::from_str::<Value>(payload_json)
+		.ok()
+		.and_then(|payload| {
+			payload
+				.get("execution_readiness")
+				.and_then(|readiness| readiness.get("proposed_issue_summaries"))
+				.map(|_| ())
+		})
+		.is_some()
 }
 
 fn execution_program_runtime_row_parts(
