@@ -38,7 +38,7 @@ fn live_operator_status_snapshot_preserves_retained_handoff_during_linear_backof
 	let issue = sample_issue("In Review", &[]);
 	let tracker = FakeTracker::with_refresh_error(
 		vec![issue.clone()],
-		"Linear connector is rate limited: Rate limit exceeded. Only 2500 requests are allowed per 1 hour.",
+		"Linear connector timed out during GraphQL request: deadline elapsed",
 	);
 	let branch_name = "x/pubfi-pub-101";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/101";
@@ -75,10 +75,19 @@ fn live_operator_status_snapshot_preserves_retained_handoff_during_linear_backof
 	)
 	.expect("snapshot should degrade instead of failing");
 
-	assert!(snapshot.warnings.contains(&String::from(orchestrator::TRACKER_RATE_LIMIT_WARNING)));
+	assert!(
+		snapshot
+			.warnings
+			.contains(&String::from(orchestrator::TRACKER_TRANSIENT_TIMEOUT_WARNING))
+	);
 	assert!(snapshot.warnings.contains(&String::from("external_observer_status_skipped")));
 	assert_eq!(snapshot.connector_backoffs.len(), 1);
 	assert_eq!(snapshot.connector_backoffs[0].sync_phase, "post_review_lane_status");
+	assert_eq!(snapshot.connector_backoffs[0].quota_class, "linear_graphql_timeout");
+	assert_eq!(
+		snapshot.connector_backoffs[0].warning,
+		orchestrator::TRACKER_TRANSIENT_TIMEOUT_WARNING
+	);
 	assert_eq!(snapshot.post_review_lanes.len(), 1);
 	assert_eq!(snapshot.post_review_lanes[0].issue_identifier, "PUB-101");
 	assert_eq!(snapshot.post_review_lanes[0].issue_state, "tracker_readback_degraded");
@@ -146,7 +155,7 @@ fn operator_state_snapshot_reports_tracker_rate_limit_as_backoff() {
 	let error = eyre::eyre!(
 		"Linear connector is rate limited until `{reset_unix_epoch}`: API rate limit exceeded"
 	);
-	let connector_backoff = orchestrator::tracker_rate_limit_backoff(
+	let connector_backoff = orchestrator::tracker_connector_backoff(
 		&error,
 		Instant::now(),
 		"operator_snapshot_refresh",
@@ -201,7 +210,7 @@ fn operator_state_snapshot_reports_tracker_rate_limit_as_backoff() {
 	assert_eq!(snapshot.connector_backoffs[0].project_id, config.service_id());
 	assert_eq!(snapshot.connector_backoffs[0].connector, "linear");
 	assert_eq!(snapshot.connector_backoffs[0].sync_phase, "operator_snapshot_refresh");
-	assert_eq!(snapshot.connector_backoffs[0].quota_class, "linear_graphql_api");
+	assert_eq!(snapshot.connector_backoffs[0].quota_class, "linear_graphql_rate_limit");
 	assert_eq!(snapshot.connector_backoffs[0].reset_unix_epoch, reset_unix_epoch);
 	assert_eq!(snapshot.connector_backoffs[0].reset_source, "linear");
 	assert_eq!(snapshot.connector_backoffs[0].retry_after_seconds, 15);
@@ -236,6 +245,57 @@ fn operator_state_snapshot_reports_tracker_rate_limit_as_backoff() {
 }
 
 #[test]
+fn operator_state_snapshot_reports_tracker_timeout_as_transient_backoff() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(vec![sample_issue("Todo", &[])]);
+	let now = Instant::now();
+	let error = eyre::eyre!("Linear connector timed out during GraphQL request: deadline elapsed");
+	let connector_backoff = orchestrator::tracker_connector_backoff(
+		&error,
+		now,
+		"operator_snapshot_refresh",
+	)
+	.expect("timeout should create transient backoff")
+	.to_operator_status(
+		config.service_id(),
+		OffsetDateTime::now_utc().unix_timestamp(),
+	);
+	let snapshot = orchestrator::build_operator_state_snapshot_for_publish(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+		&[TRACKER_TRANSIENT_TIMEOUT_WARNING],
+		slice::from_ref(&connector_backoff),
+	)
+	.expect("snapshot should build from local state");
+
+	assert_eq!(
+		snapshot.warnings,
+		vec![
+			String::from(orchestrator::TRACKER_TRANSIENT_TIMEOUT_WARNING),
+			String::from("external_observer_status_skipped"),
+		]
+	);
+	assert_eq!(snapshot.connector_backoffs, vec![connector_backoff]);
+	assert_eq!(snapshot.connector_backoffs[0].connector, "linear");
+	assert_eq!(snapshot.connector_backoffs[0].sync_phase, "operator_snapshot_refresh");
+	assert_eq!(snapshot.connector_backoffs[0].quota_class, "linear_graphql_timeout");
+	assert_eq!(snapshot.connector_backoffs[0].reset_source, "local_transient_timeout");
+	assert_eq!(
+		snapshot.connector_backoffs[0].warning,
+		orchestrator::TRACKER_TRANSIENT_TIMEOUT_WARNING
+	);
+	assert_eq!(snapshot.projects[0].connector_state, "backoff");
+	assert!(
+		tracker.label_queries.borrow().is_empty(),
+		"timeout publish should not query queued labels during backoff"
+	);
+}
+
+#[test]
 fn live_operator_status_snapshot_honors_persisted_tracker_backoff_without_linear_reads() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -247,7 +307,7 @@ fn live_operator_status_snapshot_honors_persisted_tracker_backoff_without_linear
 			project_id: config.service_id(),
 			connector: "linear",
 			sync_phase: "run_cycle",
-			quota_class: "linear_graphql_api",
+			quota_class: "linear_graphql_rate_limit",
 			reset_unix_epoch,
 			reset_source: "local_default",
 			warning: TRACKER_RATE_LIMIT_WARNING,
@@ -537,10 +597,25 @@ fn tracker_rate_limit_error_enters_control_plane_backoff() {
 	let error = eyre::eyre!(
 		"Linear connector is rate limited: Rate limit exceeded. Only 2500 requests are allowed per 1 hour."
 	);
-	let backoff_until = orchestrator::tracker_rate_limit_backoff(&error, now, "control_plane_tick")
+	let backoff_until = orchestrator::tracker_connector_backoff(&error, now, "control_plane_tick")
 		.expect("rate limit should create backoff");
 
 	assert!(backoff_until.until > now);
+}
+
+#[test]
+fn tracker_timeout_error_enters_transient_control_plane_backoff() {
+	let now = Instant::now();
+	let error = eyre::eyre!("Linear connector timed out during GraphQL request: deadline elapsed");
+	let backoff = orchestrator::tracker_connector_backoff(&error, now, "control_plane_tick")
+		.expect("timeout should create transient tracker backoff");
+
+	assert!(backoff.until >= now + Duration::from_secs(59));
+	assert!(backoff.until <= now + Duration::from_secs(61));
+	assert_eq!(backoff.quota_class, "linear_graphql_timeout");
+	assert_eq!(backoff.reset_source, "local_transient_timeout");
+	assert_eq!(backoff.sync_phase, "control_plane_tick");
+	assert_eq!(backoff.warning, orchestrator::TRACKER_TRANSIENT_TIMEOUT_WARNING);
 }
 
 #[test]
@@ -550,12 +625,14 @@ fn tracker_rate_limit_error_uses_reset_timestamp_when_available() {
 	let error = eyre::eyre!(
 		"Linear connector is rate limited until `{reset_unix_epoch}`: API rate limit exceeded"
 	);
-	let backoff_until = orchestrator::tracker_rate_limit_backoff(&error, now, "control_plane_tick")
+	let backoff_until = orchestrator::tracker_connector_backoff(&error, now, "control_plane_tick")
 		.expect("rate limit reset should create backoff");
 
 	assert!(backoff_until.until >= now + Duration::from_secs(29));
 	assert!(backoff_until.until <= now + Duration::from_secs(31));
+	assert_eq!(backoff_until.quota_class, "linear_graphql_rate_limit");
 	assert_eq!(backoff_until.reset_unix_epoch, reset_unix_epoch);
 	assert_eq!(backoff_until.reset_source, "linear");
 	assert_eq!(backoff_until.sync_phase, "control_plane_tick");
+	assert_eq!(backoff_until.warning, orchestrator::TRACKER_RATE_LIMIT_WARNING);
 }

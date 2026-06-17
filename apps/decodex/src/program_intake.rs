@@ -1549,7 +1549,8 @@ fn classify_issue(
 			IssueBatchIntakeClassification::Ready,
 		ExecutionProgramNodeLifecycleState::Planned
 		| ExecutionProgramNodeLifecycleState::Mapped
-		| ExecutionProgramNodeLifecycleState::Active => IssueBatchIntakeClassification::Held,
+		| ExecutionProgramNodeLifecycleState::Active
+		| ExecutionProgramNodeLifecycleState::PostReview => IssueBatchIntakeClassification::Held,
 		ExecutionProgramNodeLifecycleState::Blocked
 		| ExecutionProgramNodeLifecycleState::NeedsAttention => IssueBatchIntakeClassification::Blocked,
 		ExecutionProgramNodeLifecycleState::Completed

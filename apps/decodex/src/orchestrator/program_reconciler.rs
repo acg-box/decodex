@@ -19,6 +19,7 @@ struct ProgramIssueSnapshot {
 	has_needs_attention_label: bool,
 	has_open_tracker_blockers: bool,
 	has_generic_dispatch_briefing: bool,
+	has_post_review_lifecycle: bool,
 }
 impl ProgramIssueSnapshot {
 	fn linear_mapping(&self) -> Result<ExecutionLinearIssueMapping> {
@@ -31,7 +32,8 @@ impl ProgramIssueSnapshot {
 			.with_opt_out_label(self.has_opt_out_label)
 			.with_needs_attention_label(self.has_needs_attention_label)
 			.with_open_tracker_blockers(self.has_open_tracker_blockers)
-			.with_generic_dispatch_briefing(self.has_generic_dispatch_briefing))
+			.with_generic_dispatch_briefing(self.has_generic_dispatch_briefing)
+			.with_post_review_lifecycle(self.has_post_review_lifecycle))
 	}
 }
 
@@ -40,6 +42,7 @@ where
 	T: IssueTracker + ?Sized,
 {
 	tracker: &'a T,
+	state_store: &'a StateStore,
 	service_id: &'a str,
 	workflow: &'a WorkflowDocument,
 	issue: &'a TrackerIssue,
@@ -115,6 +118,7 @@ where
 		.map(|record| {
 			refresh_execution_program_tracker_facts(
 				tracker,
+				state_store,
 				project.service_id(),
 				workflow,
 				record,
@@ -214,6 +218,7 @@ where
 
 fn refresh_execution_program_tracker_facts<T>(
 	tracker: &T,
+	state_store: &StateStore,
 	service_id: &str,
 	workflow: &WorkflowDocument,
 	record: ExecutionProgramRecord,
@@ -238,6 +243,7 @@ where
 		};
 		let snapshot = program_issue_snapshot(ProgramIssueSnapshotInput {
 			tracker,
+			state_store,
 			service_id,
 			workflow,
 			issue,
@@ -259,6 +265,7 @@ where
 {
 	let ProgramIssueSnapshotInput {
 		tracker,
+		state_store,
 		service_id,
 		workflow,
 		issue,
@@ -278,6 +285,8 @@ where
 	)?;
 	let has_open_tracker_blockers =
 		issue.blockers.iter().any(|blocker| !state_name_is_terminal(&blocker.state.name, workflow));
+	let has_post_review_lifecycle =
+		state_store.issue_has_review_lifecycle_record(service_id, &issue.id)?;
 
 	Ok(ProgramIssueSnapshot {
 		issue: issue.clone(),
@@ -286,6 +295,7 @@ where
 		has_needs_attention_label,
 		has_open_tracker_blockers,
 		has_generic_dispatch_briefing: issue_has_generic_dispatch_briefing(issue),
+		has_post_review_lifecycle,
 	})
 }
 
@@ -404,6 +414,7 @@ fn program_issue_occupies_conflict_domain(
 
 	Ok(snapshot.has_active_label
 		|| snapshot.has_needs_attention_label
+		|| snapshot.has_post_review_lifecycle
 		|| retained_nonterminal
 		|| state_store.issue_has_active_shared_claim(service_id, &issue.id)?)
 }

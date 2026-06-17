@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use reqwest::blocking::Client;
+use color_eyre::Report;
+use reqwest::{Error, blocking::Client};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -468,9 +469,10 @@ impl LinearClient {
 			.post(LINEAR_GRAPHQL_URL)
 			.header("Authorization", &self.api_token)
 			.json(&GraphqlRequest { query, variables })
-			.send()?;
+			.send()
+			.map_err(linear_transport_error)?;
 		let status = response.status();
-		let body = response.text()?;
+		let body = response.text().map_err(linear_transport_error)?;
 		let payload = serde_json::from_str::<GraphqlResponse<T>>(&body).map_err(|error| {
 			if status.is_success() {
 				eyre::eyre!("Failed to parse Linear GraphQL response: {error}")
@@ -1110,6 +1112,14 @@ struct CommentCreateInput {
 struct CommentCreateData {
 	#[serde(rename = "commentCreate")]
 	comment_create: MutationSuccess,
+}
+
+fn linear_transport_error(error: Error) -> Report {
+	if error.is_timeout() {
+		eyre::eyre!("Linear connector timed out during GraphQL request: {error}")
+	} else {
+		Report::new(error)
+	}
 }
 
 fn rate_limited_error_message(errors: &[GraphqlError]) -> Option<String> {
