@@ -429,6 +429,8 @@ fn assert_child_lifecycle_contract(response: &str) {
 		&[
 			"function renderChildLifecycleOverview(lifecycle, contextFacts)",
 			"function renderChildLifecyclePhaseTable(phases)",
+			"function lifecycleRecoveryDebugSummary(metrics)",
+			"function lifecycleEvidenceDebugSummary(metrics)",
 			"<div class=\"child-total-overview\" aria-label=\"Lifecycle total metrics\">",
 			"<span class=\"child-total-segment\">",
 			"repeat(4, max-content max-content);",
@@ -1790,6 +1792,10 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(response.contains("facts.push([\"current operation\", displayToken(run.current_operation)]);"));
 	assert!(response.contains("facts.push([\"active goal phase\", displayToken(run.active_goal_phase)]);"));
 	assert!(response.contains("facts.push([\"public progress phase\", displayToken(run.public_progress_phase)]);"));
+	assert!(response.contains("function lifecycleRecoveryDebugSummary(metrics)"));
+	assert!(response.contains("function lifecycleEvidenceDebugSummary(metrics)"));
+	assert!(response.contains("${field(\"Lifecycle recovery\", lifecycleRecoveryDebugSummary(currentLaneLifecycleMetrics(run)))}"));
+	assert!(response.contains("${field(\"Lifecycle evidence\", lifecycleEvidenceDebugSummary(currentLaneLifecycleMetrics(run)))}"));
 	assert!(response.contains("facts.push([\"tokens\", tokenSummary]);"));
 	assert!(response.contains("facts.push([\"tools\", formatCompactCount(metrics.tool_call_count)]);"));
 	assert!(response.contains("\"max output\","));

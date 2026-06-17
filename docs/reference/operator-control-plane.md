@@ -451,6 +451,16 @@ Worktree visibility follows the owning dashboard section:
   or passive status traffic but stale work progress, status JSON exposes
   `progress_diagnostic = "protocol_only_activity"` so operators can separate
   process-alive and protocol-active from work-progressing.
+- Running lane lifecycle metrics preserve where each attempt came from. Recorded
+  runtime attempts count as `recorded`, recovered local evidence counts as
+  `recovered`, and the live row's current projection counts as `current_snapshot`.
+  The JSON snapshot and dashboard debug details expose per-attempt evidence and
+  recovery gaps so an operator or agent can see whether a lifecycle phase came from a
+  run attempt row, run lease, run-control channel, protocol summary, private execution
+  event, review checkpoint, activity summary, or worktree marker. Those details are
+  local/operator-only diagnostics: weak private or review evidence may explain an
+  issue's lifecycle history, but it does not by itself make that issue visible as a
+  current running lane.
 - Status JSON and the dashboard share a `loop_status` object when a row can be tied
   to a runtime run/attempt. It carries `review_level`, `autonomy`, concise `summary`
   and `next_action`, plus optional `review`, `architecture_recovery`, `boundary`, and
