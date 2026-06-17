@@ -20,6 +20,7 @@ pub(crate) const PHASE_GOAL_RECOVERY_EVENT_TYPE: &str = "phase_goal_recovery";
 pub(crate) const PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE: &str =
 	"phase_goal_recovery_blocked";
 pub(crate) const PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT: i64 = 1;
+pub(crate) const PHASE_ACCEPTANCE_CHECK_EVENT_TYPE: &str = "phase_acceptance_check";
 
 #[allow(dead_code)]
 const AUTHORITY_BOUNDARY_CHECK_SCHEMA: &str = "decodex.authority_boundary_check/1";
@@ -1714,6 +1715,8 @@ struct OperatorRunStatus {
 	continuation_pending: bool,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	continuation_recovery: Option<OperatorContinuationRecoveryStatus>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	phase_acceptance: Option<OperatorPhaseAcceptanceStatus>,
 	run_lease: bool,
 	queue_lease_state: String,
 	execution_liveness: String,
@@ -1774,6 +1777,22 @@ struct OperatorContinuationRecoveryStatus {
 	recovery_count: i64,
 	automatic_continuation_limit: i64,
 	budget_exceeded: bool,
+	next_action: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorPhaseAcceptanceStatus {
+	phase: String,
+	decision: String,
+	reason_code: String,
+	objective_covered: bool,
+	effective_delta_present: bool,
+	changed_surfaces: Vec<String>,
+	non_goal_passed: bool,
+	validation_passed: bool,
+	recorded_at: String,
+	run_id: String,
+	attempt_number: i64,
 	next_action: String,
 }
 

@@ -245,6 +245,15 @@ impl RepoGatePhaseGoalController<'_> {
 			&self.issue_run.worktree.path,
 		) {
 			Ok(()) => {
+				let acceptance_check =
+					self.evaluate_phase_acceptance(phase, &selected_repo_gate)?;
+
+				self.record_phase_acceptance_check(&acceptance_check)?;
+
+				if acceptance_check.decision == PhaseAcceptanceDecision::Fail {
+					return self.continue_after_phase_acceptance_failure(phase, &acceptance_check);
+				}
+
 				self.state_store.clear_loop_guardrail_checkpoints_for_issue(
 					self.project.service_id(),
 					&self.issue_run.issue.id,
@@ -392,6 +401,181 @@ impl RepoGatePhaseGoalController<'_> {
 
 		Ok(())
 	}
+
+	fn evaluate_phase_acceptance(
+		&self,
+		phase: PhaseGoalKind,
+		repo_gate: &ResolvedRepoGate<'_>,
+	) -> Result<PhaseAcceptanceCheck> {
+		let fingerprint = loop_guardrail_worktree_fingerprint(&self.issue_run.worktree.path)?;
+		let head_sha = fingerprint.as_ref().map(|value| value.head_sha.clone());
+		let effective_delta_present =
+			fingerprint.as_ref().is_some_and(|value| value.effective_delta_present);
+		let changed_surfaces = phase_acceptance_changed_surfaces(&self.issue_run.worktree.path);
+		let checkpoint = self.latest_progress_checkpoint()?;
+		let checkpoint_payload = checkpoint.as_ref().map(state::PrivateExecutionEvent::payload);
+		let checkpoint_head_sha = checkpoint_payload
+			.and_then(|payload| payload.get("head_sha"))
+			.and_then(Value::as_str)
+			.map(str::to_owned);
+		let checkpoint_matches_head = head_sha
+			.as_deref()
+			.zip(checkpoint_head_sha.as_deref())
+			.is_some_and(|(head, checkpoint_head)| head == checkpoint_head);
+		let docs_impact_valid = checkpoint_payload
+			.and_then(|payload| payload.get("docs_impact"))
+			.and_then(Value::as_str)
+			.is_some_and(phase_acceptance_docs_impact_valid);
+		let blocker_count = checkpoint_payload.map_or(0, phase_acceptance_blocker_count);
+		let non_goal_violation = checkpoint_payload.is_some_and(phase_acceptance_has_non_goal_violation);
+		let objective_covered =
+			checkpoint.is_some() && checkpoint_matches_head && docs_impact_valid && blocker_count == 0;
+		let non_goal_passed = !non_goal_violation;
+		let validation_passed = true;
+		let reason_code = phase_acceptance_reason_code(
+			checkpoint.is_some(),
+			checkpoint_matches_head,
+			docs_impact_valid,
+			effective_delta_present,
+			non_goal_passed,
+			blocker_count,
+		);
+		let decision = if reason_code == "accepted" {
+			PhaseAcceptanceDecision::Pass
+		} else {
+			PhaseAcceptanceDecision::Fail
+		};
+
+		Ok(PhaseAcceptanceCheck {
+			phase,
+			decision,
+			reason_code,
+			objective_covered,
+			effective_delta_present,
+			changed_surfaces,
+			non_goal_passed,
+			validation_passed,
+			repo_gate_profile: repo_gate.profile_name().map(str::to_owned),
+			canonicalize_commands: repo_gate.canonicalize_commands().to_vec(),
+			verify_commands: repo_gate.verify_commands().to_vec(),
+			checkpoint_record_id: checkpoint.as_ref().map(state::PrivateExecutionEvent::record_id),
+			checkpoint_head_sha,
+			worktree_head_sha: head_sha,
+			blocker_count,
+		})
+	}
+
+	fn latest_progress_checkpoint(&self) -> Result<Option<state::PrivateExecutionEvent>> {
+		let events = self.state_store.list_private_execution_events(
+			self.project.service_id(),
+			&self.issue_run.issue.id,
+			&self.issue_run.run_id,
+			self.issue_run.attempt_number,
+		)?;
+
+		Ok(events
+			.into_iter()
+				.rev()
+				.find(|event| event.event_type() == "progress_checkpoint"))
+	}
+
+	fn continue_after_phase_acceptance_failure(
+		&self,
+		phase: PhaseGoalKind,
+		acceptance_check: &PhaseAcceptanceCheck,
+	) -> Result<PhaseGoalTransition> {
+		let failure = PhaseAcceptanceCheckFailure::new(acceptance_check.reason_code);
+		let error_class = failure.error_class();
+		let error = Report::new(failure);
+
+		self.record_phase_goal_transition(
+			phase,
+			"validation_fail",
+			json!({
+				"errorClass": error_class,
+				"disposition": RepoGateFailureDisposition::ContinueRepair.as_str(),
+				"acceptanceDecision": acceptance_check.decision.as_str(),
+				"acceptanceReason": acceptance_check.reason_code,
+			}),
+		)?;
+
+		if let Some(loop_guardrail_stop) =
+			retryable_failure_loop_guardrail_stop(self.project, self.state_store, self.issue_run, &error)?
+		{
+			match loop_guardrail_architecture_recovery_decision(
+				self.project,
+				self.state_store,
+				self.issue_run,
+				loop_guardrail_stop,
+				&error,
+			)? {
+				LoopGuardrailRecoveryDecision::Start(recovery) => {
+					let next_goal = self.phase_goal_spec(
+						PhaseGoalKind::RepairValidationFailures,
+						Some(&recovery.detail),
+					);
+
+					self.persist_next_phase_goal(&next_goal, "architecture_recovery_started")?;
+
+					return Ok(PhaseGoalTransition::Continue(next_goal));
+				},
+				LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) => {
+					return Err(Report::new(loop_guardrail_stop).wrap_err(error));
+				},
+			}
+		}
+
+		let next_phase = phase_acceptance_repair_phase(phase);
+		let detail = format!(
+			"Phase acceptance check failed after repo gate pass with `{}`. {}",
+			acceptance_check.reason_code,
+			acceptance_check.next_action()
+		);
+		let next_goal = self.phase_goal_spec(next_phase, Some(&detail));
+
+		self.persist_next_phase_goal(&next_goal, "phase_acceptance_fail")?;
+
+		Ok(PhaseGoalTransition::Continue(next_goal))
+	}
+
+	fn record_phase_acceptance_check(&self, check: &PhaseAcceptanceCheck) -> Result<()> {
+		self.state_store.append_private_execution_event(
+			self.project.service_id(),
+			&self.issue_run.issue.id,
+			&self.issue_run.run_id,
+			self.issue_run.attempt_number,
+			PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
+			json!({
+				"schema": "decodex.phase_acceptance_check/1",
+				"phase": check.phase.as_str(),
+				"decision": check.decision.as_str(),
+				"reason_code": check.reason_code,
+				"objective_coverage": {
+					"covered": check.objective_covered,
+					"checkpoint_record_id": check.checkpoint_record_id,
+					"checkpoint_head_sha": check.checkpoint_head_sha.as_deref(),
+					"worktree_head_sha": check.worktree_head_sha.as_deref(),
+				},
+				"effective_delta": {
+					"present": check.effective_delta_present,
+					"changed_surfaces": &check.changed_surfaces,
+				},
+				"non_goal_check": {
+					"passed": check.non_goal_passed,
+					"blocker_count": check.blocker_count,
+				},
+				"validation_evidence": {
+					"repo_gate_passed": check.validation_passed,
+					"repo_gate_profile": check.repo_gate_profile.as_deref(),
+					"canonicalize_commands": &check.canonicalize_commands,
+					"verify_commands": &check.verify_commands,
+				},
+				"next_action": check.next_action(),
+			}),
+		)?;
+
+		Ok(())
+	}
 }
 
 impl PhaseGoalController for RepoGatePhaseGoalController<'_> {
@@ -420,6 +604,72 @@ impl PhaseGoalController for RepoGatePhaseGoalController<'_> {
 			PhaseGoalKind::ImplementToValidationReady
 			| PhaseGoalKind::RepairValidationFailures
 			| PhaseGoalKind::RepairAcceptedReviewFindings => self.validate_phase_goal_output(phase),
+		}
+	}
+}
+
+#[derive(Debug)]
+struct PhaseAcceptanceCheckFailure {
+	reason_code: String,
+}
+impl PhaseAcceptanceCheckFailure {
+	fn new(reason_code: impl Into<String>) -> Self {
+		Self { reason_code: reason_code.into() }
+	}
+
+	fn error_class(&self) -> &'static str {
+		"phase_acceptance_check_failed"
+	}
+}
+
+impl Display for PhaseAcceptanceCheckFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(formatter, "Phase acceptance check failed: {}", self.reason_code)
+	}
+}
+
+impl Error for PhaseAcceptanceCheckFailure {}
+
+struct PhaseAcceptanceCheck {
+	phase: PhaseGoalKind,
+	decision: PhaseAcceptanceDecision,
+	reason_code: &'static str,
+	objective_covered: bool,
+	effective_delta_present: bool,
+	changed_surfaces: Vec<String>,
+	non_goal_passed: bool,
+	validation_passed: bool,
+	repo_gate_profile: Option<String>,
+	canonicalize_commands: Vec<String>,
+	verify_commands: Vec<String>,
+	checkpoint_record_id: Option<i64>,
+	checkpoint_head_sha: Option<String>,
+	worktree_head_sha: Option<String>,
+	blocker_count: usize,
+}
+impl PhaseAcceptanceCheck {
+	fn next_action(&self) -> &'static str {
+		match self.reason_code {
+			"accepted" => "continue to handoff evidence",
+			"missing_progress_checkpoint" => {
+				"record a current-HEAD issue_progress_checkpoint with docs_impact before completing the phase goal again"
+			},
+			"stale_progress_checkpoint" => {
+				"record a fresh issue_progress_checkpoint for the current worktree HEAD before completing the phase goal again"
+			},
+			"docs_impact_missing" => {
+				"record parseable docs_impact in the current-HEAD issue_progress_checkpoint"
+			},
+			"no_effective_delta" => {
+				"produce an issue-scoped effective delta before completing the phase goal again"
+			},
+			"non_goal_violation" => {
+				"remove or explicitly resolve the non-goal or scope violation before handoff"
+			},
+			"progress_blockers_present" => {
+				"clear recorded progress blockers or route to manual attention before handoff"
+			},
+			_ => "inspect phase_acceptance_check evidence before selecting the next phase",
 		}
 	}
 }
@@ -537,6 +787,20 @@ impl RunFailureWritebackDisposition {
 	}
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PhaseAcceptanceDecision {
+	Pass,
+	Fail,
+}
+impl PhaseAcceptanceDecision {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::Pass => "pass",
+			Self::Fail => "fail",
+		}
+	}
+}
+
 enum IssueAppServerRunOutcome {
 	Completed(AppServerRunResult),
 	Finalized(RunSummary),
@@ -639,6 +903,110 @@ pub(crate) fn run_failure_writeback_disposition(
 	} else {
 		RunFailureWritebackDisposition::RetryableGeneric
 	}
+}
+
+fn phase_acceptance_reason_code(
+	checkpoint_present: bool,
+	checkpoint_matches_head: bool,
+	docs_impact_valid: bool,
+	effective_delta_present: bool,
+	non_goal_passed: bool,
+	blocker_count: usize,
+) -> &'static str {
+	if !checkpoint_present {
+		return "missing_progress_checkpoint";
+	}
+	if !checkpoint_matches_head {
+		return "stale_progress_checkpoint";
+	}
+	if !docs_impact_valid {
+		return "docs_impact_missing";
+	}
+	if !effective_delta_present {
+		return "no_effective_delta";
+	}
+	if !non_goal_passed {
+		return "non_goal_violation";
+	}
+	if blocker_count > 0 {
+		return "progress_blockers_present";
+	}
+
+	"accepted"
+}
+
+fn phase_acceptance_repair_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
+	match phase {
+		PhaseGoalKind::RepairAcceptedReviewFindings => PhaseGoalKind::RepairAcceptedReviewFindings,
+		PhaseGoalKind::ImplementToValidationReady
+		| PhaseGoalKind::RepairValidationFailures
+		| PhaseGoalKind::HandoffEvidence => PhaseGoalKind::RepairValidationFailures,
+	}
+}
+
+fn phase_acceptance_changed_surfaces(worktree_path: &Path) -> Vec<String> {
+	let mut surfaces = BTreeSet::new();
+
+	if let Ok(changed_files) = repo_gate_changed_tracked_files(worktree_path) {
+		surfaces.extend(changed_files);
+	}
+	if let Ok(Some(diff_paths)) =
+		git_guardrail_output(worktree_path, &["diff", "--name-only", "--diff-filter=ACDMRTUXB", "HEAD", "--"])
+	{
+		for path in diff_paths.lines().map(str::trim).filter(|path| !path.is_empty()) {
+			surfaces.insert(path.to_owned());
+		}
+	}
+	if let Ok(Some(status)) =
+		git_guardrail_output(worktree_path, &["status", "--porcelain"])
+	{
+		for surface in status.lines().filter_map(phase_acceptance_status_surface) {
+			surfaces.insert(surface);
+		}
+	}
+
+	surfaces.into_iter().collect()
+}
+
+fn phase_acceptance_status_surface(line: &str) -> Option<String> {
+	let line = line.trim_end();
+
+	if line.is_empty() || state::is_untracked_decodex_runtime_artifact_status_line(line) {
+		return None;
+	}
+
+	let path = line.get(3..)?.trim();
+	let path = path.rsplit_once(" -> ").map_or(path, |(_, renamed_path)| renamed_path.trim());
+
+	(!path.is_empty()).then(|| path.to_owned())
+}
+
+fn phase_acceptance_blocker_count(payload: &Value) -> usize {
+	payload
+		.get("blockers")
+		.and_then(Value::as_array)
+		.map_or(0, Vec::len)
+}
+
+fn phase_acceptance_docs_impact_valid(value: &str) -> bool {
+	matches!(value, "none" | "update_required" | "research_required" | "drift_required")
+}
+
+fn phase_acceptance_has_non_goal_violation(payload: &Value) -> bool {
+	payload
+		.get("blockers")
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(Value::as_str)
+		.any(|blocker| {
+			let normalized = blocker.to_ascii_lowercase();
+
+			normalized.contains("non-goal")
+				|| normalized.contains("non_goal")
+				|| normalized.contains("out of scope")
+				|| normalized.contains("scope violation")
+		})
 }
 
 fn execute_issue_run<T>(
@@ -4614,6 +4982,10 @@ fn retained_progress_source_error_class(error: &Report) -> Option<&'static str> 
 		Some(app_server_failure.error_class())
 	} else if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
 		Some(repo_gate_failure.error_class())
+	} else if let Some(acceptance_failure) =
+		error.downcast_ref::<PhaseAcceptanceCheckFailure>()
+	{
+		Some(acceptance_failure.error_class())
 	} else {
 		None
 	}

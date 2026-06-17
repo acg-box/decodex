@@ -149,6 +149,72 @@ fn operator_status_snapshot_surfaces_repeated_continuation_recovery_lineage() {
 }
 
 #[test]
+fn operator_status_snapshot_surfaces_phase_acceptance_check() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"run-1",
+			1,
+			PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
+			serde_json::json!({
+				"schema": "decodex.phase_acceptance_check/1",
+				"phase": "implement_to_validation_ready",
+				"decision": "fail",
+				"reason_code": "no_effective_delta",
+				"objective_coverage": { "covered": true },
+				"effective_delta": {
+					"present": false,
+					"changed_surfaces": ["runtime"],
+				},
+				"non_goal_check": {
+					"passed": true,
+					"blocker_count": 0,
+				},
+				"validation_evidence": {
+					"repo_gate_passed": true,
+				},
+				"next_action": "produce an issue-scoped effective delta before completing the phase goal again",
+			}),
+		)
+		.expect("phase acceptance check should record");
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("current run attempt should record");
+	state_store
+		.upsert_lease(TEST_SERVICE_ID, &issue.id, "run-1", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
+	let acceptance = run
+		.phase_acceptance
+		.as_ref()
+		.expect("phase acceptance should project onto current lane");
+	let rendered = orchestrator::render_operator_status(&snapshot);
+
+	assert_eq!(acceptance.decision, "fail");
+	assert_eq!(acceptance.reason_code, "no_effective_delta");
+	assert_eq!(acceptance.changed_surfaces, vec![String::from("runtime")]);
+	assert!(rendered.contains("phase_acceptance: phase=implement_to_validation_ready"));
+	assert!(rendered.contains("reason=no_effective_delta"));
+}
+
+#[test]
 fn operator_status_snapshot_surfaces_merged_dirty_ad_hoc_worktree() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");

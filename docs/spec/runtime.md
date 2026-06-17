@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
-drift_watch: [issue_progress_checkpoint, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, decodex intake goal, program_issue_mappings]
+drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, decodex intake goal, program_issue_mappings]
 last_verified: 2026-06-17
 ---
 # Runtime Specification
@@ -293,10 +293,15 @@ After a turn completes with an active phase goal, Decodex reads the goal status 
 uses it only as a phase signal:
 
 - `complete` on implementation or repair phases triggers Decodex-owned repository
-  validation. Validation pass records `validation_pass` and may set the
-  `handoff_evidence` goal; validation failure records `validation_fail` and either
-  sets `repair_validation_failures` for continued repair or follows the existing
-  repo-gate human-attention classification.
+  validation, then a private `phase_acceptance_check`. Validation pass alone is not
+  enough to leave implementation or repair: the acceptance check must prove a current
+  objective-covering progress checkpoint, a real effective delta, no non-goal
+  violation, docs-impact readiness, and repo-gate evidence. A passing acceptance check
+  records `validation_pass` and may set the `handoff_evidence` goal. A failing
+  acceptance check records a `phase_acceptance_check` failure reason, emits
+  `validation_fail` with acceptance metadata, keeps accepted-review repair in that
+  phase, or sends implementation and validation repair to `repair_validation_failures`
+  for continued repair.
 - `active`, `paused`, `blocked`, `usageLimited`, or `budgetLimited` do not bypass
   `execution.max_turns`, continuation guard checks, retry backoff, or manual-attention
   policy. If the bounded turn budget is exhausted, the run exits at a continuation
@@ -309,12 +314,16 @@ uses it only as a phase signal:
 The active phase goal is the authoritative current contract. Before an implementation,
 repair, handoff, closeout, or manual-attention path claims completion, the agent must
 record a current-HEAD `issue_progress_checkpoint` with `docs_impact` set to `none`,
-`update_required`, `research_required`, or `drift_required`. When an implementation
-or repair phase has satisfied its local validation-ready objective, the agent must
-complete that phase goal with the Codex goal completion mechanism so Decodex can run
-the repo gate and select the next phase. An `issue_progress_checkpoint`, final chat
-text, or "await next phase" statement is evidence only; it is not a phase exit and
-must not be treated as a substitute for goal completion.
+`update_required`, `research_required`, or `drift_required`. For implementation and
+repair phase transitions, Decodex treats that checkpoint as one input to
+`phase_acceptance_check`, not as authority by itself. The check records objective
+coverage, effective delta, changed surfaces, non-goal status, validation evidence,
+decision, reason code, and next action. When an implementation or repair phase has
+satisfied its local validation-ready objective, the agent must complete that phase
+goal with the Codex goal completion mechanism so Decodex can run the repo gate,
+evaluate phase acceptance, and select the next phase. An `issue_progress_checkpoint`,
+final chat text, or "await next phase" statement is evidence only; it is not a phase
+exit and must not be treated as a substitute for goal completion.
 
 If an app-server run fails, a supervised child exits unsuccessfully, or current-lane
 reconciliation finds a stalled retained lane while the latest private phase-goal signal
@@ -348,9 +357,11 @@ human-required attention stop.
 Phase-goal telemetry is local runtime evidence. It must distinguish
 `goal_complete`, `validation_pass`, `validation_fail`, `active_goal_recovered`,
 review `clean`, review `findings`, terminal `review_handoff`, and terminal
-`manual_attention`. These signals may appear in private execution events and operator
-protocol activity, but Linear receives only the existing low-frequency lifecycle
-projections.
+`manual_attention`. Private status and evidence readback may expose the latest
+`phase_acceptance_check` summary so an operator can distinguish a repo-gate failure
+from a post-gate acceptance failure and see why a phase advanced or stayed in repair.
+These signals may appear in private execution events and operator protocol activity,
+but Linear receives only the existing low-frequency lifecycle projections.
 
 ## Tracker write ownership
 

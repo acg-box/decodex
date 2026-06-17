@@ -840,6 +840,12 @@ fn assert_harness_private_readback(readback: &PrivateEvidenceReadback) {
 			&& checkpoint.round == Some(1)
 			&& checkpoint.accepted_finding_count == 1
 	}));
+	assert!(readback.phase_acceptance_checks.iter().any(|check| {
+		check.phase == "implement_to_validation_ready"
+			&& check.decision == "fail"
+			&& check.reason_code == "no_effective_delta"
+			&& !check.effective_delta_present
+	}));
 	assert!(readback.boundary_checks.iter().any(|boundary| {
 		boundary.disposition == "requires_human"
 			&& boundary.attempted_recovery_reason.as_deref() == Some("uncovered_direction")
@@ -850,9 +856,11 @@ fn assert_harness_private_readback(readback: &PrivateEvidenceReadback) {
 	let rendered = orchestrator::render_private_evidence_readback(readback);
 
 	assert!(rendered.contains("Review Checkpoints"));
+	assert!(rendered.contains("Phase Acceptance Checks"));
 	assert!(rendered.contains("Architecture Recoveries"));
 	assert!(rendered.contains("Boundary Checks"));
 	assert!(rendered.contains("status: findings"));
+	assert!(rendered.contains("reason_code: no_effective_delta"));
 	assert!(rendered.contains("disposition: requires_human"));
 	assert!(readback.events.iter().all(|event| event.payload.is_none()));
 }
@@ -908,6 +916,8 @@ fn record_harness_signal_fixture_events(state_store: &StateStore) {
 		)
 		.expect("progress evidence should append");
 
+	record_harness_phase_acceptance_event(state_store);
+
 	orchestrator::record_authority_boundary_check_private_event(
 		state_store,
 		AuthorityBoundaryCheckInput {
@@ -957,6 +967,37 @@ fn record_harness_signal_fixture_events(state_store: &StateStore) {
 			}),
 		)
 		.expect("architecture recovery evidence should append");
+}
+
+fn record_harness_phase_acceptance_event(state_store: &StateStore) {
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			"issue-harness",
+			"run-harness",
+			2,
+			PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
+			serde_json::json!({
+				"schema": "decodex.phase_acceptance_check/1",
+				"phase": "implement_to_validation_ready",
+				"decision": "fail",
+				"reason_code": "no_effective_delta",
+				"objective_coverage": { "covered": true },
+				"effective_delta": {
+					"present": false,
+					"changed_surfaces": ["runtime"],
+				},
+				"non_goal_check": {
+					"passed": true,
+					"blocker_count": 0,
+				},
+				"validation_evidence": {
+					"repo_gate_passed": true,
+				},
+				"next_action": "produce an issue-scoped effective delta before completing the phase goal again",
+			}),
+		)
+		.expect("phase acceptance evidence should append");
 }
 
 #[test]
