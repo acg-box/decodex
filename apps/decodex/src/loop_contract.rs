@@ -1,5 +1,7 @@
 //! Versioned Loop/Decision Contract model for research-to-execution handoff.
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::{Result, eyre};
@@ -423,6 +425,7 @@ impl DecisionAcceptedAuthority {
 
 /// Natural-language readiness summary for later issue shaping.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct DecisionExecutionReadiness {
 	summary: String,
 	ready_for_issue_shaping: bool,
@@ -432,14 +435,11 @@ pub(crate) struct DecisionExecutionReadiness {
 	validation_expectations: Vec<String>,
 	#[serde(default)]
 	risk_notes: Vec<String>,
-	#[serde(default)]
-	proposed_issue_summaries: Vec<String>,
+	proposed_issues: Vec<DecisionProposedIssue>,
 	#[serde(default)]
 	promotion_targets: Vec<String>,
 	#[serde(default)]
 	conflict_domains: Vec<String>,
-	#[serde(default)]
-	queue_intent: Vec<String>,
 }
 #[allow(dead_code)]
 impl DecisionExecutionReadiness {
@@ -455,8 +455,8 @@ impl DecisionExecutionReadiness {
 		&self.missing_decisions
 	}
 
-	pub(crate) fn proposed_issue_summaries(&self) -> &[String] {
-		&self.proposed_issue_summaries
+	pub(crate) fn proposed_issues(&self) -> &[DecisionProposedIssue] {
+		&self.proposed_issues
 	}
 
 	pub(crate) fn promotion_targets(&self) -> &[String] {
@@ -475,10 +475,6 @@ impl DecisionExecutionReadiness {
 		&self.risk_notes
 	}
 
-	pub(crate) fn queue_intent(&self) -> &[String] {
-		&self.queue_intent
-	}
-
 	fn validate(&self, status: DecisionContractStatus) -> Result<()> {
 		validate_required("decision contract execution_readiness.summary", &self.summary)?;
 		validate_string_list("decision contract missing_decisions", &self.missing_decisions)?;
@@ -487,18 +483,19 @@ impl DecisionExecutionReadiness {
 			&self.validation_expectations,
 		)?;
 		validate_string_list("decision contract risk_notes", &self.risk_notes)?;
-		validate_string_list(
-			"decision contract proposed_issue_summaries",
-			&self.proposed_issue_summaries,
-		)?;
+		validate_proposed_issues(&self.proposed_issues)?;
 		validate_string_list("decision contract promotion_targets", &self.promotion_targets)?;
 		validate_string_list("decision contract conflict_domains", &self.conflict_domains)?;
-		validate_string_list("decision contract queue_intent", &self.queue_intent)?;
 
 		match status {
 			DecisionContractStatus::AcceptedPromoted => {
 				if !self.ready_for_issue_shaping {
 					eyre::bail!("Accepted decision contracts must be ready for issue shaping.");
+				}
+				if self.proposed_issues.is_empty() {
+					eyre::bail!(
+						"Accepted decision contracts must include structured proposed_issues."
+					);
 				}
 				if !self.missing_decisions.is_empty() {
 					eyre::bail!(
@@ -516,6 +513,97 @@ impl DecisionExecutionReadiness {
 		}
 
 		Ok(())
+	}
+}
+
+/// Structured issue-shaping input retained inside Decision Contract readiness.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DecisionProposedIssue {
+	key: String,
+	title: String,
+	objective: String,
+	stage: String,
+	dependencies: Vec<String>,
+	conflict_domains: Vec<String>,
+	acceptance: Vec<String>,
+	validation: Vec<String>,
+	risk: Vec<String>,
+	queue_intent: String,
+}
+#[allow(dead_code)]
+impl DecisionProposedIssue {
+	pub(crate) fn key(&self) -> &str {
+		&self.key
+	}
+
+	pub(crate) fn title(&self) -> &str {
+		&self.title
+	}
+
+	pub(crate) fn objective(&self) -> &str {
+		&self.objective
+	}
+
+	pub(crate) fn stage(&self) -> &str {
+		&self.stage
+	}
+
+	pub(crate) fn dependencies(&self) -> &[String] {
+		&self.dependencies
+	}
+
+	pub(crate) fn conflict_domains(&self) -> &[String] {
+		&self.conflict_domains
+	}
+
+	pub(crate) fn acceptance(&self) -> &[String] {
+		&self.acceptance
+	}
+
+	pub(crate) fn validation(&self) -> &[String] {
+		&self.validation
+	}
+
+	pub(crate) fn risk(&self) -> &[String] {
+		&self.risk
+	}
+
+	pub(crate) fn queue_intent(&self) -> &str {
+		&self.queue_intent
+	}
+
+	fn validate(&self) -> Result<()> {
+		validate_required("decision contract proposed_issues.key", &self.key)?;
+		validate_required("decision contract proposed_issues.title", &self.title)?;
+		validate_required("decision contract proposed_issues.objective", &self.objective)?;
+		validate_required("decision contract proposed_issues.stage", &self.stage)?;
+		validate_string_list("decision contract proposed_issues.dependencies", &self.dependencies)?;
+		validate_string_list(
+			"decision contract proposed_issues.conflict_domains",
+			&self.conflict_domains,
+		)?;
+		validate_string_list("decision contract proposed_issues.acceptance", &self.acceptance)?;
+		validate_string_list("decision contract proposed_issues.validation", &self.validation)?;
+		validate_string_list("decision contract proposed_issues.risk", &self.risk)?;
+		validate_required("decision contract proposed_issues.queue_intent", &self.queue_intent)?;
+
+		if self.acceptance.is_empty() {
+			eyre::bail!(
+				"Decision Contract proposed issue `{}` must include acceptance criteria.",
+				self.key
+			);
+		}
+		if self.validation.is_empty() {
+			eyre::bail!(
+				"Decision Contract proposed issue `{}` must include validation expectations.",
+				self.key
+			);
+		}
+
+		validate_proposed_issue_stage(&self.key, &self.stage)?;
+
+		validate_proposed_issue_queue_intent(&self.key, &self.queue_intent)
 	}
 }
 
@@ -747,6 +835,39 @@ fn validate_string_list(name: &str, values: &[String]) -> Result<()> {
 	Ok(())
 }
 
+fn validate_proposed_issues(issues: &[DecisionProposedIssue]) -> Result<()> {
+	let mut keys = BTreeSet::new();
+
+	for issue in issues {
+		issue.validate()?;
+
+		if !keys.insert(issue.key()) {
+			eyre::bail!("Decision Contract proposed issue key `{}` is duplicated.", issue.key());
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
+	match stage {
+		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" =>
+			Ok(()),
+		_ =>
+			eyre::bail!("Decision Contract proposed issue `{key}` has unsupported stage `{stage}`."),
+	}
+}
+
+fn validate_proposed_issue_queue_intent(key: &str, queue_intent: &str) -> Result<()> {
+	match queue_intent {
+		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" =>
+			Ok(()),
+		_ => eyre::bail!(
+			"Decision Contract proposed issue `{key}` has unsupported queue_intent `{queue_intent}`."
+		),
+	}
+}
+
 fn normalized_link_values(
 	values: impl IntoIterator<Item = impl Into<String>>,
 ) -> Result<Vec<String>> {
@@ -869,6 +990,40 @@ mod tests {
 			contract, before_failed_promotion,
 			"failed promotion must not mutate the contract"
 		);
+
+		let mut contract = latent_research_contract_fixture();
+
+		contract.execution_readiness.proposed_issues.clear();
+
+		let before_failed_promotion = contract.clone();
+
+		assert!(contract.promote(sample_promotion()).is_err());
+		assert_eq!(
+			contract, before_failed_promotion,
+			"failed promotion must not mutate the contract"
+		);
+	}
+
+	#[test]
+	fn legacy_flat_proposed_issue_summaries_are_rejected() {
+		let mut payload = serde_json::to_value(latent_research_contract_fixture())
+			.expect("fixture should encode");
+		let readiness = payload
+			.get_mut("execution_readiness")
+			.expect("readiness should exist")
+			.as_object_mut()
+			.expect("readiness should be an object");
+
+		readiness.remove("proposed_issues");
+		readiness.insert(
+			String::from("proposed_issue_summaries"),
+			serde_json::json!(["Legacy flat summary."]),
+		);
+
+		let error = serde_json::from_value::<DecisionContract>(payload)
+			.expect_err("legacy flat summaries must not deserialize");
+
+		assert!(error.to_string().contains("proposed_issue_summaries"));
 	}
 
 	#[test]

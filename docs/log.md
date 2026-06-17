@@ -47,5 +47,7 @@
 - Clarified the Program Intake public/private boundary so generated Linear issue
   descriptions omit internal Program and node identifiers while SQLite/operator
   readback keeps private mappings.
+- Replaced Decision Contract flat issue summaries with structured
+  `execution_readiness.proposed_issues[]` as the only issue-shaping input.
 - Standardized `OKF` as the all-caps prose form while preserving lowercase `okf` for
   filenames, paths, skill IDs, tags, and URLs.

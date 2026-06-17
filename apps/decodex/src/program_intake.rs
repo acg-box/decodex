@@ -18,7 +18,7 @@ use crate::{
 		ExecutionProgramNode, ExecutionProgramNodeLifecycleState, ExecutionProgramNodeStage,
 		ExecutionProgramReadinessContext, ExecutionQueueIntent, ExecutionWorkflowPolicy,
 	},
-	loop_contract::{DecisionContract, DecisionContractStatus},
+	loop_contract::{DecisionContract, DecisionContractStatus, DecisionProposedIssue},
 	orchestrator,
 	prelude::{Result, eyre},
 	runtime,
@@ -194,14 +194,19 @@ struct IssueFacts {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct GoalIssuePlan {
+	key: String,
 	node_id: String,
 	title: String,
 	objective: String,
+	stage: ExecutionProgramNodeStage,
+	queue_intent: ExecutionQueueIntent,
 	description: String,
 	dependencies: Vec<String>,
+	dependency_node_ids: Vec<String>,
 	conflict_domains: Vec<ExecutionConflictDomain>,
 	acceptance: Vec<String>,
 	validation: Vec<String>,
+	risk: Vec<String>,
 }
 
 struct GoalIntakeAnchor {
@@ -216,6 +221,7 @@ struct GoalIssueBriefInput<'a> {
 	conflict_domains: &'a [ExecutionConflictDomain],
 	acceptance: &'a [String],
 	validation: &'a [String],
+	risk: &'a [String],
 }
 
 struct ApplyGoalIssuesInput<'a, T>
@@ -628,9 +634,9 @@ fn ensure_goal_intake_authority(contract: &DecisionContract) -> Result<()> {
 			contract.contract_id()
 		);
 	}
-	if contract.execution_readiness().proposed_issue_summaries().is_empty() {
+	if contract.execution_readiness().proposed_issues().is_empty() {
 		eyre::bail!(
-			"Decision Contract `{}` has no proposed issue summaries to materialize.",
+			"Decision Contract `{}` has no structured proposed issues to materialize.",
 			contract.contract_id()
 		);
 	}
@@ -639,41 +645,66 @@ fn ensure_goal_intake_authority(contract: &DecisionContract) -> Result<()> {
 }
 
 fn goal_issue_plans(contract: &DecisionContract, program_id: &str) -> Result<Vec<GoalIssuePlan>> {
-	let conflict_domains = goal_conflict_domains(contract)?;
 	let mut plans = Vec::new();
 
-	for (index, objective) in
-		contract.execution_readiness().proposed_issue_summaries().iter().enumerate()
-	{
-		let node_id = goal_node_id(contract.contract_id(), index, objective);
-		let title = goal_issue_title(objective);
-		let acceptance = goal_acceptance(contract, objective);
-		let validation = goal_validation(contract);
-		let dependencies = Vec::new();
+	for (index, issue) in contract.execution_readiness().proposed_issues().iter().enumerate() {
+		let node_id = goal_node_id(contract.contract_id(), index, issue.key());
+		let title = issue.title().to_owned();
+		let objective = issue.objective().to_owned();
+		let acceptance = issue.acceptance().to_vec();
+		let validation = issue.validation().to_vec();
+		let risk = issue.risk().to_vec();
+		let dependencies = issue.dependencies().to_vec();
+		let conflict_domains = goal_proposed_issue_conflict_domains(issue)?;
 		let description = render_goal_issue_brief(GoalIssueBriefInput {
 			contract,
-			objective,
+			objective: &objective,
 			dependencies: &dependencies,
 			conflict_domains: &conflict_domains,
 			acceptance: &acceptance,
 			validation: &validation,
+			risk: &risk,
 		})?;
 
 		validate_generated_issue_text(&title, &description, &[program_id, &node_id])?;
 
 		plans.push(GoalIssuePlan {
+			key: issue.key().to_owned(),
 			node_id,
 			title,
-			objective: objective.clone(),
+			objective,
+			stage: parse_goal_stage(issue.stage())?,
+			queue_intent: parse_goal_queue_intent(issue.queue_intent())?,
 			description,
 			dependencies,
-			conflict_domains: conflict_domains.clone(),
+			dependency_node_ids: Vec::new(),
+			conflict_domains,
 			acceptance,
 			validation,
+			risk,
 		});
 	}
 
+	bind_goal_dependency_node_ids(&mut plans);
+
 	Ok(plans)
+}
+
+fn bind_goal_dependency_node_ids(plans: &mut [GoalIssuePlan]) {
+	let node_ids_by_key = plans
+		.iter()
+		.map(|plan| (plan.key.clone(), plan.node_id.clone()))
+		.collect::<BTreeMap<_, _>>();
+
+	for plan in plans {
+		plan.dependency_node_ids = plan
+			.dependencies
+			.iter()
+			.map(|dependency| {
+				node_ids_by_key.get(dependency).cloned().unwrap_or_else(|| dependency.to_owned())
+			})
+			.collect();
+	}
 }
 
 fn linked_goal_issues<T>(
@@ -855,7 +886,7 @@ fn goal_program_node(
 	workflow: &WorkflowDocument,
 ) -> Result<ExecutionProgramNode> {
 	let dependencies = plan
-		.dependencies
+		.dependency_node_ids
 		.iter()
 		.map(ExecutionProgramDependency::new)
 		.collect::<Result<Vec<_>>>()?;
@@ -863,9 +894,9 @@ fn goal_program_node(
 
 	ExecutionProgramNode::new(
 		plan.node_id.clone(),
-		ExecutionProgramNodeStage::Runtime,
+		plan.stage,
 		plan.objective.clone(),
-		ExecutionQueueIntent::ReadyToQueue,
+		plan.queue_intent,
 	)?
 	.with_objective_lineage(goal_objective_lineage(contract))?
 	.with_dependencies(dependencies)?
@@ -959,7 +990,7 @@ fn goal_issue_report_row(
 		issue_id: issue.map(|issue| issue.id.clone()),
 		issue_identifier: issue.map(|issue| issue.identifier.clone()),
 		action,
-		queue_intent: ExecutionQueueIntent::ReadyToQueue.as_str().to_owned(),
+		queue_intent: plan.queue_intent.as_str().to_owned(),
 		dispatch_action: dispatch_action.map(dispatch_action_name),
 		dependencies: plan.dependencies.clone(),
 		conflict_domains: conflict_domain_labels(&plan.conflict_domains),
@@ -1002,6 +1033,8 @@ fn render_goal_issue_brief(input: GoalIssueBriefInput<'_>) -> Result<String> {
 	append_items(&mut output, input.acceptance);
 	append_heading(&mut output, "Validation");
 	append_items(&mut output, input.validation);
+	append_heading(&mut output, "Risk");
+	append_items_or_none(&mut output, input.risk);
 	append_heading(&mut output, "Stop Conditions");
 	append_items_or_none(&mut output, input.contract.accepted_authority().stop_conditions());
 	validate_public_issue_description(&output)?;
@@ -1086,22 +1119,6 @@ fn ensure_no_generated_issue_private_identifier(
 	Ok(())
 }
 
-fn goal_acceptance(contract: &DecisionContract, objective: &str) -> Vec<String> {
-	let mut acceptance = vec![format!("Deliver this generated issue objective: {objective}")];
-
-	acceptance.extend(contract.accepted_authority().accepted_objectives().iter().cloned());
-
-	acceptance
-}
-
-fn goal_validation(contract: &DecisionContract) -> Vec<String> {
-	if contract.execution_readiness().validation_expectations().is_empty() {
-		return vec![String::from("Run the registered project validation before review handoff.")];
-	}
-
-	contract.execution_readiness().validation_expectations().to_vec()
-}
-
 fn goal_objective_lineage(contract: &DecisionContract) -> Vec<String> {
 	let mut lineage = vec![
 		format!("Accepted Decision Contract `{}`.", contract.contract_id()),
@@ -1113,13 +1130,10 @@ fn goal_objective_lineage(contract: &DecisionContract) -> Vec<String> {
 	lineage
 }
 
-fn goal_conflict_domains(contract: &DecisionContract) -> Result<Vec<ExecutionConflictDomain>> {
-	contract
-		.execution_readiness()
-		.conflict_domains()
-		.iter()
-		.map(|domain| parse_goal_conflict_domain(domain))
-		.collect()
+fn goal_proposed_issue_conflict_domains(
+	issue: &DecisionProposedIssue,
+) -> Result<Vec<ExecutionConflictDomain>> {
+	issue.conflict_domains().iter().map(|domain| parse_goal_conflict_domain(domain)).collect()
 }
 
 fn parse_goal_conflict_domain(domain: &str) -> Result<ExecutionConflictDomain> {
@@ -1136,6 +1150,33 @@ fn parse_goal_conflict_domain(domain: &str) -> Result<ExecutionConflictDomain> {
 	};
 
 	ExecutionConflictDomain::new(kind, key)
+}
+
+fn parse_goal_stage(stage: &str) -> Result<ExecutionProgramNodeStage> {
+	match stage {
+		"research" => Ok(ExecutionProgramNodeStage::Research),
+		"design" => Ok(ExecutionProgramNodeStage::Design),
+		"spec" => Ok(ExecutionProgramNodeStage::Spec),
+		"schema" => Ok(ExecutionProgramNodeStage::Schema),
+		"runtime" => Ok(ExecutionProgramNodeStage::Runtime),
+		"plugin" => Ok(ExecutionProgramNodeStage::Plugin),
+		"eval" => Ok(ExecutionProgramNodeStage::Eval),
+		"handoff" => Ok(ExecutionProgramNodeStage::Handoff),
+		_ => eyre::bail!("Unsupported proposed issue stage `{stage}`."),
+	}
+}
+
+fn parse_goal_queue_intent(queue_intent: &str) -> Result<ExecutionQueueIntent> {
+	match queue_intent {
+		"not_ready" => Ok(ExecutionQueueIntent::NotReady),
+		"ready_to_queue" => Ok(ExecutionQueueIntent::ReadyToQueue),
+		"queued" => Ok(ExecutionQueueIntent::Queued),
+		"active" => Ok(ExecutionQueueIntent::Active),
+		"paused" => Ok(ExecutionQueueIntent::Paused),
+		"done" => Ok(ExecutionQueueIntent::Done),
+		"canceled" => Ok(ExecutionQueueIntent::Canceled),
+		_ => eyre::bail!("Unsupported proposed issue queue_intent `{queue_intent}`."),
+	}
 }
 
 fn conflict_domain_labels(domains: &[ExecutionConflictDomain]) -> Vec<String> {
@@ -1156,20 +1197,6 @@ fn goal_program_id(service_id: &str, contract_id: &str) -> String {
 
 fn goal_node_id(contract_id: &str, index: usize, objective: &str) -> String {
 	format!("goal:{}:{:02}-{}", stable_slug(contract_id, 32), index + 1, stable_slug(objective, 32))
-}
-
-fn goal_issue_title(objective: &str) -> String {
-	let objective = objective.trim();
-
-	if objective.chars().count() <= 120 {
-		return objective.to_owned();
-	}
-
-	let mut title = objective.chars().take(117).collect::<String>();
-
-	title.push_str("...");
-
-	title
 }
 
 fn stable_slug(value: &str, max_len: usize) -> String {
@@ -1969,19 +1996,16 @@ mod tests {
 		assert_eq!(report.issues.len(), 2);
 		assert_eq!(report.issues[0].action, GoalIntakeIssueAction::WouldCreate);
 		assert_eq!(report.issues[0].dependencies, Vec::<String>::new());
-		assert_eq!(
-			report.issues[0].conflict_domains,
-			vec![String::from("file:docs/spec/loop-runtime.md"), String::from("module:runtime"),]
-		);
+		assert_eq!(report.issues[0].conflict_domains, vec![String::from("module:runtime")]);
+		assert_eq!(report.issues[1].dependencies, vec![String::from("goal-intake-runtime")]);
 		assert_eq!(tracker.created_issue_count(), 0);
 		assert!(store.list_execution_programs("decodex").expect("programs").is_empty());
 
 		let rendered = program_intake::render_goal_intake_report(&report);
 
 		assert!(rendered.contains("dependencies=none"));
-		assert!(
-			rendered.contains("conflict_domains=file:docs/spec/loop-runtime.md, module:runtime")
-		);
+		assert!(rendered.contains("conflict_domains=module:runtime"));
+		assert!(rendered.contains("dependencies=goal-intake-runtime"));
 	}
 
 	#[test]
@@ -2071,7 +2095,13 @@ mod tests {
 		assert_eq!(report.issues[0].action, GoalIntakeIssueAction::Updated);
 		assert_eq!(report.issues[1].action, GoalIntakeIssueAction::Created);
 		assert_eq!(report.issues[0].dispatch_action.as_deref(), Some("dispatch"));
-		assert_eq!(report.issues[1].dispatch_action.as_deref(), Some("dispatch"));
+		assert_eq!(report.issues[1].dispatch_action.as_deref(), None);
+		assert!(
+			report.issues[1]
+				.reasons
+				.iter()
+				.any(|reason| reason.contains("has not reached a required terminal state"))
+		);
 
 		let linked_contract = store
 			.decision_contract("decodex", "goal-intake-contract")
@@ -2118,11 +2148,19 @@ mod tests {
 		assert!(updated.description.contains("Source issue: `XY-852`"));
 		assert!(updated.description.contains("## Dependencies"));
 		assert!(updated.description.contains("## Acceptance"));
-		assert!(updated.description.contains(
-			"Deliver this generated issue objective: Implement goal intake CLI/API behavior."
-		));
+		assert!(
+			updated
+				.description
+				.contains("Goal intake dry-run renders generated issue briefs without mutation.")
+		);
 		assert!(updated.description.contains("## Validation"));
 		assert!(updated.description.contains("Run cargo make test before handoff."));
+		assert!(updated.description.contains("## Risk"));
+		assert!(
+			updated
+				.description
+				.contains("Generated issue descriptions must stay natural-language.")
+		);
 		assert!(updated.description.contains("## Stop Conditions"));
 		assert!(
 			updated
@@ -2358,16 +2396,54 @@ mod tests {
 				"risk_notes": [
 					"Generated issue descriptions must stay natural-language."
 				],
-				"proposed_issue_summaries": [
-					"Implement goal intake CLI/API behavior.",
-					"Persist Execution Program links for generated issues."
+				"proposed_issues": [
+					{
+						"key": "goal-intake-runtime",
+						"title": "Implement goal intake CLI/API behavior.",
+						"objective": "Implement goal intake CLI/API behavior.",
+						"stage": "runtime",
+						"dependencies": [],
+						"conflict_domains": [
+							"module:runtime"
+						],
+						"acceptance": [
+							"Goal intake dry-run renders generated issue briefs without mutation."
+						],
+						"validation": [
+							"Run cargo make test before handoff."
+						],
+						"risk": [
+							"Generated issue descriptions must stay natural-language."
+						],
+						"queue_intent": "ready_to_queue"
+					},
+					{
+						"key": "goal-intake-links",
+						"title": "Persist Execution Program links for generated issues.",
+						"objective": "Persist Execution Program links for generated issues.",
+						"stage": "runtime",
+						"dependencies": [
+							"goal-intake-runtime"
+						],
+						"conflict_domains": [
+							"module:runtime",
+							"file:docs/spec/loop-runtime.md"
+						],
+						"acceptance": [
+							"Apply links generated issue identifiers and execution nodes back to the accepted contract."
+						],
+						"validation": [
+							"Run cargo make test before handoff."
+						],
+						"risk": [
+							"Generated issue descriptions must stay natural-language."
+						],
+						"queue_intent": "ready_to_queue"
+					}
 				],
 				"conflict_domains": [
 					"module:runtime",
 					"file:docs/spec/loop-runtime.md"
-				],
-				"queue_intent": [
-					"ready_to_queue_after_apply"
 				]
 			},
 			"links": {
