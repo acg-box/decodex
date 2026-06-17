@@ -340,7 +340,10 @@ projections.
   - terminal fallback when the agent never reached the point of writing the tracker
 - The service must never grant the coding agent broad tracker write access outside the currently leased issue.
 - `decodex` must treat the routed Linear `description` as a generic dispatch briefing surface, not as a plugin-private authority contract. If that surface contains only a machine-readable fenced block with no surrounding briefing text, generic normal dispatch is ineligible until another explicit briefing surface exists.
-- Before starting a live run, the service must reconcile stale local leases and any terminal worktree mappings against current tracker state.
+- Before starting a live run, the service must reconcile stale local leases,
+  terminal worktree mappings, and runtime-provenance worktree mappings whose checkout
+  path no longer exists and has no active lease, active service label,
+  needs-attention label, shared claim, running attempt, or review-handoff marker.
 - Generic live dispatch must not require GitHub CLI authority before the lane actually attempts PR-backed review handoff.
 - Generic live dispatch must resolve `github.token_env_var` before launching the agent app-server so lane-owned `git push` and `gh pr create` commands inherit noninteractive GitHub credentials. Missing or blank GitHub credentials must fail the run through the human-required path instead of retrying or leaving a promptable lane running.
 - Project configs may set `[github].command_path` to make one expected GitHub CLI binary authoritative for project-scoped GitHub operations. When it is configured, review handoff validation, retained review readback, landing inspection, GitHub comments, admin merge, merge readback, and remote branch cleanup must invoke that path instead of silently rediscovering another `gh` binary.
@@ -777,6 +780,12 @@ After a process restart, recent-run history, run lease ownership, retained post-
   "legacy_unknown"` instead of being silently treated as a fully proven runtime-owned
   lane.
 - Terminal issue cleanup: once the issue reaches a terminal tracker state and no authoritative post-merge tail remains pending, remove the worktree during reconciliation or startup cleanup.
+- Missing orphan cleanup: when a runtime-recorded or runtime-recovered mapping points
+  at a checkout path that no longer exists and no lane ownership signal remains,
+  reconciliation must clear the mapping before issue selection so stale local state
+  does not occupy Program conflict domains. `legacy_unknown` mappings are excluded
+  from this automatic cleanup and remain subject to the explicit legacy closeout audit
+  path.
 - If an issue becomes non-terminal but no longer eligible while `decodex` is still preparing the lane, keep the worktree and skip execution for that pass.
 
 ## Recovery rules
