@@ -1447,10 +1447,12 @@ mod tests {
 		let fresh_time = SystemTime::now();
 
 		insert_project(&connection, &worktree_root);
+
 		fs::create_dir_all(&worktree_root).expect("worktree root should create");
 		fs::write(&old_helper, b"#!/bin/sh\n").expect("old helper should write");
 		fs::write(&fresh_helper, b"#!/bin/sh\n").expect("fresh helper should write");
 		fs::write(&unrelated, b"#!/bin/sh\n").expect("unrelated file should write");
+
 		set_file_modified(&old_helper, old_time);
 		set_file_modified(&fresh_helper, fresh_time);
 		set_file_modified(&unrelated, old_time);
