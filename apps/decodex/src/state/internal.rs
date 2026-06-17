@@ -398,6 +398,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.bootstrap_program_intake_state_schema()?;
 		self.bootstrap_loop_guardrail_schema()?;
 		self.record_schema_version()?;
+		self.seal_run_activity_summary_records()?;
 
 		Ok(())
 	}
@@ -775,6 +776,42 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn seal_run_activity_summary_records(&self) -> Result<()> {
+		let updates = {
+			let mut statement = self.connection.prepare(
+				"SELECT run_id, child_agent_activity_json FROM run_activity_summaries \
+				 WHERE child_agent_activity_json IS NOT NULL",
+			)?;
+			let rows = statement.query_map([], |row| {
+				Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+			})?;
+			let mut updates = Vec::new();
+
+			for row in rows {
+				let (run_id, child_agent_activity_json) = row?;
+					let sealed_json = serde_json::to_string(
+						&serde_json::from_str::<ChildAgentActivitySummary>(&child_agent_activity_json)?
+							.sealed_durable(),
+					)?;
+
+					if sealed_json != child_agent_activity_json {
+						updates.push((run_id, sealed_json));
+					}
+			}
+
+			updates
+		};
+
+		for (run_id, child_agent_activity_json) in updates {
+			self.connection.execute(
+				"UPDATE run_activity_summaries SET child_agent_activity_json = ?2 WHERE run_id = ?1",
+				params![run_id, child_agent_activity_json],
+			)?;
+		}
+
+		Ok(())
+	}
+
 	fn load_state(&self) -> Result<StateData> {
 		let mut state = StateData::default();
 
@@ -992,7 +1029,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let child_agent_activity_json = summary
 			.child_agent_activity
 			.as_ref()
-			.map(serde_json::to_string)
+			.cloned()
+			.map(ChildAgentActivitySummary::sealed_durable)
+			.map(|summary| serde_json::to_string(&summary))
 			.transpose()?;
 		let protocol_activity_json = summary
 			.protocol_activity
@@ -3957,7 +3996,9 @@ fn persist_run_activity_summaries(
 		let child_agent_activity_json = summary
 			.child_agent_activity
 			.as_ref()
-			.map(serde_json::to_string)
+			.cloned()
+			.map(ChildAgentActivitySummary::sealed_durable)
+			.map(|summary| serde_json::to_string(&summary))
 			.transpose()?;
 		let protocol_activity_json = summary
 			.protocol_activity
@@ -5045,7 +5086,8 @@ fn run_activity_summary_record_from_row(
 	Ok(RunActivitySummaryRecord {
 		run_id: row.get(0)?,
 		attempt_number: row.get(1)?,
-		child_agent_activity: optional_json_from_row(row, 2)?,
+		child_agent_activity: optional_json_from_row::<ChildAgentActivitySummary>(row, 2)?
+			.map(ChildAgentActivitySummary::sealed_durable),
 		protocol_activity: optional_json_from_row(row, 3)?,
 		updated_at: row.get(4)?,
 		updated_at_unix: row.get(5)?,
