@@ -683,6 +683,7 @@ fn review_policy_exhausted_failures_start_architecture_recovery_pre_pr() {
 	let error = Report::new(ReviewPolicyStopRequested {
 		head_sha: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
 		issue_identifier: issue.identifier.clone(),
+		fingerprint: Some(String::from("review_finding:test")),
 		nonclean_rounds: Some(3),
 		reason: ReviewPolicyStopReason::Exhausted,
 		run_id: issue_run.run_id.clone(),
@@ -755,6 +756,7 @@ fn review_policy_blocked_failures_skip_retry_and_require_attention_in_review() {
 	let error = Report::new(ReviewPolicyStopRequested {
 		head_sha: String::from("18a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
 		issue_identifier: issue.identifier.clone(),
+		fingerprint: None,
 		nonclean_rounds: Some(1),
 		reason: ReviewPolicyStopReason::Blocked,
 		run_id: issue_run.run_id.clone(),
