@@ -174,8 +174,8 @@ Every docs-changing lane follows this loop:
 3. If the change affects behavior, update the owning concept's `code_refs` and
    `drift_watch`, or update/create a linked drift audit.
 4. Update lane indexes and `docs/log.md` when routing changes.
-5. Run `cargo run -p decodex --bin decodex -- docs lint`.
-6. Treat docs lint or drift failure as a completion blocker. Research uncertainty uses
+5. Run `cargo run -p decodex --bin decodex -- docs check`.
+6. Treat docs check or drift failure as a completion blocker. Research uncertainty uses
    the research-contract `needs_human_decision` status; implementation-lane blockers
    use the runtime `manual_attention` terminal path.
 
@@ -211,11 +211,12 @@ gate fails for touched documentation or touched behavior with docs impact.
 Run:
 
 ```sh
-decodex docs lint
+decodex docs check
 ```
 
 In this repository, `cargo make check` includes the same docs gate through
-`cargo run -p decodex --bin decodex -- docs lint`.
+`cargo run -p decodex --bin decodex -- docs check`. `decodex docs lint` remains an
+alias for compatibility.
 
 The check fails when:
 
