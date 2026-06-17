@@ -63,7 +63,7 @@ pub(crate) struct ReviewHandoffRebindRequest {
 	pub(crate) issue: String,
 	/// Pull request URL to bind.
 	pub(crate) pr_url: String,
-	/// Validate without writing markers or tracker audit comments.
+	/// Validate without writing a lifecycle record or tracker audit comments.
 	pub(crate) dry_run: bool,
 }
 
@@ -74,7 +74,7 @@ pub(crate) struct ReviewHandoffAdoptRequest {
 	pub(crate) issue: String,
 	/// Pull request URL to adopt.
 	pub(crate) pr_url: String,
-	/// Validate without writing runtime markers or tracker audit comments.
+	/// Validate without writing runtime lifecycle state or tracker audit comments.
 	pub(crate) dry_run: bool,
 }
 
@@ -124,8 +124,8 @@ struct ReviewHandoffDiagnostic {
 	local_head_oid: Option<String>,
 	worktree_clean: Option<bool>,
 	existing_pr_url: Option<String>,
-	existing_marker_head_oid: Option<String>,
-	existing_orchestration_head_oid: Option<String>,
+	existing_lifecycle_handoff_head_oid: Option<String>,
+	existing_lifecycle_phase_head_oid: Option<String>,
 	pr_base_ref: Option<String>,
 	pr_head_oid: Option<String>,
 	mismatched_field: Option<String>,
@@ -279,8 +279,8 @@ impl RebindMode {
 
 	fn summary_action(self) -> &'static str {
 		match self {
-			Self::RestoreMissingHandoff => "restored retained review handoff marker",
-			Self::RefreshExistingHandoff => "refreshed retained review handoff marker",
+			Self::RestoreMissingHandoff => "restored retained review lifecycle record",
+			Self::RefreshExistingHandoff => "refreshed retained review lifecycle record",
 			Self::CompleteExistingHandoffState => "completed retained review handoff state",
 		}
 	}
@@ -744,10 +744,10 @@ fn diagnose_issue_worktree(
 		local_head_oid,
 		worktree_clean,
 		existing_pr_url: existing_handoff.as_ref().map(|handoff| handoff.pr_url().to_owned()),
-		existing_marker_head_oid: existing_handoff
+		existing_lifecycle_handoff_head_oid: existing_handoff
 			.as_ref()
 			.map(|handoff| handoff.pr_head_oid().to_owned()),
-		existing_orchestration_head_oid: existing_orchestration
+		existing_lifecycle_phase_head_oid: existing_orchestration
 			.as_ref()
 			.map(|orchestration| orchestration.head_sha().to_owned()),
 		pr_base_ref: binding.pr_base_ref,
@@ -1060,7 +1060,7 @@ fn inspect_handoff_next_action(issue_identifier: &str, pr_url: &str) -> String {
 
 fn rebind_refresh_next_action(issue_identifier: &str, pr_url: &str) -> String {
 	format!(
-		"Run `decodex recover review-handoff rebind {issue_identifier} --pr {pr_url} --dry-run`, then rerun without `--dry-run` to refresh the retained marker if validation passes."
+		"Run `decodex recover review-handoff rebind {issue_identifier} --pr {pr_url} --dry-run`, then rerun without `--dry-run` to refresh the retained lifecycle record if validation passes."
 	)
 }
 
@@ -1088,7 +1088,7 @@ fn render_review_handoff_recovery_report(report: &ReviewHandoffRecoveryReport) -
 
 	for diagnostic in &report.diagnostics {
 		output.push_str(&format!(
-			"- issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  local_branch: {}\n  local_head: {}\n  worktree_clean: {}\n  existing_pr_url: {}\n  existing_marker_head: {}\n  existing_orchestration_head: {}\n  pr_base_ref: {}\n  pr_head: {}\n  mismatched_field: {}\n  active_label_present: {}\n  next_action: {}\n",
+			"- issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  local_branch: {}\n  local_head: {}\n  worktree_clean: {}\n  existing_pr_url: {}\n  existing_lifecycle_handoff_head: {}\n  existing_lifecycle_phase_head: {}\n  pr_base_ref: {}\n  pr_head: {}\n  mismatched_field: {}\n  active_label_present: {}\n  next_action: {}\n",
 			diagnostic.issue_identifier,
 			diagnostic.issue_state,
 			diagnostic.classification,
@@ -1099,8 +1099,8 @@ fn render_review_handoff_recovery_report(report: &ReviewHandoffRecoveryReport) -
 			optional_text(diagnostic.local_head_oid.as_deref()),
 			diagnostic.worktree_clean.map_or_else(|| String::from("unknown"), |clean| clean.to_string()),
 			optional_text(diagnostic.existing_pr_url.as_deref()),
-			optional_text(diagnostic.existing_marker_head_oid.as_deref()),
-			optional_text(diagnostic.existing_orchestration_head_oid.as_deref()),
+			optional_text(diagnostic.existing_lifecycle_handoff_head_oid.as_deref()),
+			optional_text(diagnostic.existing_lifecycle_phase_head_oid.as_deref()),
 			optional_text(diagnostic.pr_base_ref.as_deref()),
 			optional_text(diagnostic.pr_head_oid.as_deref()),
 			optional_text(diagnostic.mismatched_field.as_deref()),
@@ -1615,7 +1615,7 @@ fn validate_existing_handoff_refresh(
 ) -> Result<(String, i64, RebindMode)> {
 	if existing_handoff.pr_url() != landing_url(landing_state) {
 		eyre::bail!(
-			"Issue `{}` already has review handoff marker for branch `{}` and PR `{}`; refusing to rebind it to `{}`.",
+			"Issue `{}` already has a review lifecycle record for branch `{}` and PR `{}`; refusing to rebind it to `{}`.",
 			issue.identifier,
 			worktree.branch_name(),
 			existing_handoff.pr_url(),
@@ -1641,7 +1641,7 @@ fn validate_existing_handoff_refresh(
 		}
 
 		eyre::bail!(
-			"Issue `{}` already has a review handoff marker for branch `{}` and PR `{}` at head `{local_head_oid}`; no rebind is needed.",
+			"Issue `{}` already has a review lifecycle record for branch `{}` and PR `{}` at head `{local_head_oid}`; no rebind is needed.",
 			issue.identifier,
 			worktree.branch_name(),
 			existing_handoff.pr_url()
@@ -2275,7 +2275,7 @@ fn validate_adopt_absent_handoff_marker(
 			.is_some()
 		{
 			eyre::bail!(
-				"Issue `{}` already has a retained review handoff marker for branch `{branch}`; use `decodex land` or `decodex recover review-handoff rebind` instead.",
+				"Issue `{}` already has a retained review lifecycle record for branch `{branch}`; use `decodex land` or `decodex recover review-handoff rebind` instead.",
 				issue.identifier
 			);
 		}
@@ -2327,7 +2327,7 @@ fn apply_review_handoff_rebind(
 	if let Err(error) = write_rebind_audit(context, validation, &event)
 		.and_then(|()| context.state_store.record_linear_execution_event(&event))
 	{
-		context.state_store.clear_review_markers_for_handoff(
+		context.state_store.clear_review_lifecycle_for_handoff(
 			context.config.service_id(),
 			&validation.issue.id,
 			&handoff_marker,
@@ -2393,7 +2393,7 @@ fn apply_review_handoff_adopt(
 	if let Err(error) = local_state_write {
 		mark_adopt_attempt_failed(context, validation);
 
-		context.state_store.clear_review_markers_for_handoff(
+		context.state_store.clear_review_lifecycle_for_handoff(
 			context.config.service_id(),
 			&validation.issue.id,
 			&handoff_marker,
@@ -2410,7 +2410,7 @@ fn apply_review_handoff_adopt(
 		Err(error) => {
 			mark_adopt_attempt_failed(context, validation);
 
-			context.state_store.clear_review_markers_for_handoff(
+			context.state_store.clear_review_lifecycle_for_handoff(
 				context.config.service_id(),
 				&validation.issue.id,
 				&handoff_marker,
@@ -2429,7 +2429,7 @@ fn apply_review_handoff_adopt(
 	{
 		mark_adopt_attempt_failed(context, validation);
 
-		context.state_store.clear_review_markers_for_handoff(
+		context.state_store.clear_review_lifecycle_for_handoff(
 			context.config.service_id(),
 			&validation.issue.id,
 			&handoff_marker,
@@ -2667,7 +2667,7 @@ fn review_handoff_rebind_event(
 		format!("branch={}", validation.worktree.branch_name()),
 		format!("pr_url={pr_url}"),
 		format!("pr_head_sha={}", validation.local_head_oid),
-		format!("existing_review_handoff_marker={}", validation.mode.evidence_value()),
+		format!("existing_review_lifecycle_record={}", validation.mode.evidence_value()),
 		format!("needs_attention_label_repair={}", validation.clear_needs_attention_label),
 	]);
 	event.next_action = Some(String::from("continue retained post-review lifecycle"));
@@ -2722,7 +2722,7 @@ fn review_handoff_adopt_event(
 			"existing_retained_worktree_mapping={}",
 			validation.previous_worktree_mapping.is_some()
 		),
-		String::from("existing_review_handoff_marker=false"),
+		String::from("existing_review_lifecycle_record=false"),
 	]);
 	event.next_action = Some(String::from("continue retained post-review lifecycle"));
 
@@ -4252,8 +4252,8 @@ Test workflow.
 		record.pr_base_ref = Some(String::from("main"));
 		record.commit_sha = Some(String::from("0123456789abcdef0123456789abcdef01234567"));
 		record.validation_result = Some(String::from("passed"));
-		record.summary = Some(String::from("Explicit operator rebind restored marker."));
-		record.evidence = Some(vec![String::from("existing_review_handoff_marker=absent")]);
+		record.summary = Some(String::from("Explicit operator rebind restored lifecycle record."));
+		record.evidence = Some(vec![String::from("existing_review_lifecycle_record=absent")]);
 
 		records::validate_linear_execution_event_record(&record)
 			.expect("rebind event should validate");
@@ -4365,7 +4365,7 @@ Test workflow.
 		record.pr_base_ref = Some(String::from("main"));
 		record.commit_sha = Some(String::from("0123456789abcdef0123456789abcdef01234567"));
 		record.validation_result = Some(String::from("passed"));
-		record.summary = Some(String::from("Explicit operator rebind restored marker."));
+		record.summary = Some(String::from("Explicit operator rebind restored lifecycle record."));
 
 		let error = records::validate_linear_execution_event_record(&record)
 			.expect_err("rebind event without evidence should fail");

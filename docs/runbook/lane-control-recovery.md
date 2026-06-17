@@ -6,7 +6,7 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook]
-last_verified: 2026-06-16
+last_verified: 2026-06-17
 ---
 # Lane-Control Recovery
 
@@ -96,7 +96,7 @@ or clean labels.
 | Forced interrupt after `run_lease_missing` reports no signalable process. | Treat force as non-mutating for the child process. | Inspect retained worktree and private evidence; do not claim the interrupt succeeded or clear attention labels. |
 | Hard fallback reports `hard_interrupt_fallback`. | Treat it as an interrupted runtime event, not a graceful completion. | Inspect retained worktree and evidence; resume only if lineage is exact. |
 | Retained worktree has useful local changes and lineage matches issue, branch, runtime evidence, and PR when present. | Resume or repair the same lane. | Use `decodex run <ISSUE>` when the registered workflow makes it eligible, or use the specific retained recovery runbook. |
-| Review handoff marker is missing or stale but the retained PR lane appears recoverable. | Diagnose before rebind. | Run `decodex recover review-handoff diagnose <ISSUE>` and follow [`recover-review-handoff.md`](./recover-review-handoff.md). |
+| Review lifecycle record is missing or stale but the retained PR lane appears recoverable. | Diagnose before rebind. | Run `decodex recover review-handoff diagnose <ISSUE>` and follow [`recover-review-handoff.md`](./recover-review-handoff.md). |
 | Queue label or tracker state was changed and the scheduler should observe it before the next poll. | Request a refresh, not a retry. | `POST /api/linear-scan` with `projectId`, or no body for all enabled projects. |
 | Queue label should be added, removed, or interpreted. | Use service-scoped label policy. | Follow the `labels` skill; do not guess `<service-id>` or clear `needs-attention` before fixing the blocker. |
 | Broad steer materially changes the objective or acceptance contract. | Preserve audit and resolve lifecycle explicitly. | Update and requeue the same issue, create a new issue/lane, or route the owned run to manual attention. |
