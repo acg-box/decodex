@@ -46,8 +46,7 @@ The split below is by question type, not by human-versus-agent audience.
 - Need the post-control recovery sequence after lane interrupt, hard fallback, broad
   steer, task replacement, or ambiguous retained evidence ->
   `docs/runbook/lane-control-recovery.md`
-- Need public static-site contracts, GitHub bundle schemas, signal-entry schemas, or
-  release-delta schemas -> `docs/spec/`
+- Need public static-site contracts -> `docs/spec/site-contract.md`
 - Need runbooks, migrations, validation steps, troubleshooting, or operational
   sequences -> `docs/runbook/`
 - Need current repository layout, ownership boundaries, static-site/runtime split, or
@@ -59,13 +58,6 @@ The split below is by question type, not by human-versus-agent audience.
   `docs/decisions/natural-language-loop-runtime.md`
 - Need rationale for Decodex MCP integration, MCP/skills/docs/runtime boundaries, or
   skill slimming -> `docs/decisions/mcp-capability-gateway-and-skill-slimming.md`
-- Need the current Radar, Control Plane, and Publisher capability boundary ->
-  `docs/decisions/radar-control-plane-publisher.md`
-- Need Radar raw-artifact retention, archive manifests, or GitHub Release archive
-  procedure -> `docs/spec/radar-artifact-retention.md` and
-  `docs/runbook/radar-artifact-archive.md`
-- Need historical upstream commit trace, skipped-candidate state, or local Radar ledger
-  behavior -> `docs/spec/radar-ledger.md`
 - Need research concepts, supporting research evidence, or the implemented/superseded
   status of candidate research targets ->
   `docs/reference/research-concepts.md`
@@ -87,14 +79,6 @@ The split below is by question type, not by human-versus-agent audience.
   `plugins/decodex/skills/docs-wiki/SKILL.md`, and
   `plugins/decodex/skills/docs-drift/SKILL.md`
 - Need reusable agent-facing Decodex usage instructions -> `plugins/decodex/`
-- Need repo-local Radar skills for upstream Codex triage, code analysis, release
-  analysis, GitHub signal drafting, or X publishing -> `dev/skills/` plus
-  `docs/runbook/local-github-signal-workflow.md`
-- Need upstream Codex impact classification or social publishing contracts ->
-  `docs/spec/upstream-impact.md`, `docs/spec/social-candidate.md`, and
-  `docs/spec/social-publishing.md`
-- Need the `@decodexspace` social publishing procedure ->
-  `docs/runbook/social-publishing-workflow.md`
 - Need repository execution defaults or tracker-state policy -> registered project
   `WORKFLOW.md`
 - Need repo task names or automation entrypoints -> `Makefile.toml`
@@ -109,12 +93,8 @@ The split below is by question type, not by human-versus-agent audience.
 - Keep runtime authority explicit: `apps/decodex/src/`, registered project contracts
   under `~/.codex/decodex/projects/<service-id>/`, and `docs/spec/` outrank runbook,
   reference, and decision material.
-- Keep the public site static by default. `site/` consumes checked-in content and
-  generated JSON; it must not depend on a live Decodex daemon unless a later decision
-  changes that boundary.
-- Keep social publishing static-first as well. Candidate handoffs must be checked-in
-  `social_candidate/v1` records, and publication, block, skip, and failure outcomes
-  must be checked-in `social_post/v1` records.
+- Keep the public site static by default. `site/` must not depend on a live Decodex
+  daemon unless a later decision changes that boundary.
 - Start each document with a short routing header that says what the document is for,
   when to read it, and what it does not cover.
 - Keep links explicit and stable.
