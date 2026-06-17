@@ -6,9 +6,9 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs]
-drift_watch: [issue_progress_checkpoint, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal]
-last_verified: 2026-06-16
+code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
+drift_watch: [issue_progress_checkpoint, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, decodex intake goal, program_issue_mappings]
+last_verified: 2026-06-17
 ---
 # Runtime Specification
 
@@ -85,10 +85,12 @@ state or this state machine.
   proposed normal Linear issue split, dependencies, conflict domains, and dispatch plan
   without mutating Linear or persisting Program Intake rows. `--apply` creates or
   updates generated normal Linear issue briefs, links generated issue ids and internal
-  node ids back into the Decision Contract and Execution Program records, and persists
-  the local Program Intake Plan plus Execution Program state. It must not start
-  implementation inline and must not apply queue labels; direct Program dispatch is
-  performed by the scheduler after the Program is persisted.
+  node ids back into private runtime records, and persists the local Program Intake
+  Plan plus Execution Program state. The Linear description stays a natural-language
+  issue brief with objective, public authority summary, acceptance, validation, and
+  stop conditions; it must not include Execution Program ids or node ids. It must not
+  start implementation inline and must not apply queue labels; direct Program dispatch
+  is performed by the scheduler after the Program is persisted.
 - `decodex intake issues <ISSUE>... --dry-run` is a tracker-read-only operator
   surface for existing Linear issues. It classifies the supplied batch as ready,
   held, blocked, stale, or unmapped and builds the same internal program model used

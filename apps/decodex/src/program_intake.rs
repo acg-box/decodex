@@ -211,8 +211,6 @@ struct GoalIntakeAnchor {
 
 struct GoalIssueBriefInput<'a> {
 	contract: &'a DecisionContract,
-	program_id: &'a str,
-	node_id: &'a str,
 	objective: &'a str,
 	dependencies: &'a [String],
 	conflict_domains: &'a [ExecutionConflictDomain],
@@ -654,8 +652,6 @@ fn goal_issue_plans(contract: &DecisionContract, program_id: &str) -> Result<Vec
 		let dependencies = Vec::new();
 		let description = render_goal_issue_brief(GoalIssueBriefInput {
 			contract,
-			program_id,
-			node_id: &node_id,
 			objective,
 			dependencies: &dependencies,
 			conflict_domains: &conflict_domains,
@@ -663,7 +659,7 @@ fn goal_issue_plans(contract: &DecisionContract, program_id: &str) -> Result<Vec
 			validation: &validation,
 		})?;
 
-		validate_generated_issue_text(&title, &description)?;
+		validate_generated_issue_text(&title, &description, &[program_id, &node_id])?;
 
 		plans.push(GoalIssuePlan {
 			node_id,
@@ -986,8 +982,6 @@ fn render_goal_issue_brief(input: GoalIssueBriefInput<'_>) -> Result<String> {
 		&mut output,
 		&format!("Accepted Decision Contract: `{}`", input.contract.contract_id()),
 	);
-	append_item(&mut output, &format!("Execution Program: `{}`", input.program_id));
-	append_item(&mut output, &format!("Execution Program node: `{}`", input.node_id));
 	append_optional_item(
 		&mut output,
 		"Source issue",
@@ -1051,16 +1045,45 @@ fn append_items_or_none(output: &mut String, items: &[String]) {
 	}
 }
 
-fn validate_generated_issue_text(title: &str, description: &str) -> Result<()> {
+fn validate_generated_issue_text(
+	title: &str,
+	description: &str,
+	private_identifiers: &[&str],
+) -> Result<()> {
 	public_text::validate_public_text_field("generated issue title", title)
 		.map_err(|error| eyre::eyre!(error))?;
 
-	validate_public_issue_description(description)
+	ensure_no_generated_issue_private_identifier(
+		"generated issue title",
+		title,
+		private_identifiers,
+	)?;
+	validate_public_issue_description(description)?;
+
+	ensure_no_generated_issue_private_identifier(
+		"generated issue description",
+		description,
+		private_identifiers,
+	)
 }
 
 fn validate_public_issue_description(description: &str) -> Result<()> {
 	public_text::validate_public_text_field("generated issue description", description)
 		.map_err(|error| eyre::eyre!(error))
+}
+
+fn ensure_no_generated_issue_private_identifier(
+	field: &str,
+	text: &str,
+	private_identifiers: &[&str],
+) -> Result<()> {
+	for identifier in private_identifiers {
+		if !identifier.is_empty() && text.contains(identifier) {
+			eyre::bail!("{field} contains a private Program Intake identifier.");
+		}
+	}
+
+	Ok(())
 }
 
 fn goal_acceptance(contract: &DecisionContract, objective: &str) -> Vec<String> {
@@ -2089,11 +2112,61 @@ mod tests {
 			.expect("updated issue should exist");
 
 		assert!(updated.description.contains("## Objective"));
+		assert!(updated.description.contains("## Authority"));
 		assert!(updated.description.contains("Accepted Decision Contract: `goal-intake-contract`"));
-		assert!(updated.description.contains("Execution Program node:"));
+		assert!(updated.description.contains("Source issue: `XY-852`"));
 		assert!(updated.description.contains("## Dependencies"));
+		assert!(updated.description.contains("## Acceptance"));
+		assert!(updated.description.contains(
+			"Deliver this generated issue objective: Implement goal intake CLI/API behavior."
+		));
+		assert!(updated.description.contains("## Validation"));
+		assert!(updated.description.contains("Run cargo make test before handoff."));
+		assert!(updated.description.contains("## Stop Conditions"));
+		assert!(
+			updated
+				.description
+				.contains("Stop when promotion authority or required decisions are missing.")
+		);
+		assert!(!updated.description.contains("Execution Program: `"));
+		assert!(!updated.description.contains("Execution Program node:"));
+		assert!(!updated.description.contains(&report.program_id));
+
+		for issue in &report.issues {
+			assert!(!updated.description.contains(&issue.node_id));
+		}
+
 		assert!(!updated.description.contains("```"));
 		assert!(!updated.description.contains("private_evidence_refs"));
+	}
+
+	#[test]
+	fn generated_issue_text_validation_rejects_private_program_identifiers() {
+		let title_error = program_intake::validate_generated_issue_text(
+			"Expose goal-decodex-contract-private",
+			"## Objective\nUse normal public text.",
+			&["goal-decodex-contract-private"],
+		)
+		.expect_err("title must reject private program id");
+
+		assert!(
+			title_error
+				.to_string()
+				.contains("generated issue title contains a private Program Intake identifier")
+		);
+
+		let description_error = program_intake::validate_generated_issue_text(
+			"Use normal public text.",
+			"## Objective\nExpose goal:contract:01-private-node.",
+			&["goal:contract:01-private-node"],
+		)
+		.expect_err("description must reject private node id");
+
+		assert!(
+			description_error.to_string().contains(
+				"generated issue description contains a private Program Intake identifier"
+			)
+		);
 	}
 
 	#[test]
