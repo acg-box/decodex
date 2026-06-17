@@ -37,6 +37,6 @@ Recommended structured fields: `tags`, `source_refs`, `code_refs`, `related`,
 
 ## Validation
 
-Run `cargo run -p decodex --bin decodex -- docs check`.
+Run `decodex docs check`.
 
-`cargo run -p decodex --bin decodex -- docs lint` remains a compatibility alias.
+`decodex docs lint` remains a compatibility alias.
