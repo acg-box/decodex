@@ -265,6 +265,7 @@ struct PrivateEvidenceReadback {
 	latest_event_type: Option<String>,
 	latest_event_at: Option<String>,
 	review_checkpoints: Vec<PrivateEvidenceReviewCheckpointSummary>,
+	phase_acceptance_checks: Vec<PrivateEvidencePhaseAcceptanceSummary>,
 	boundary_checks: Vec<PrivateEvidenceBoundaryCheckSummary>,
 	decision_requests: Vec<PrivateEvidenceDecisionRequestSummary>,
 	architecture_recoveries: Vec<PrivateEvidenceArchitectureRecoverySummary>,
@@ -294,6 +295,19 @@ struct PrivateEvidenceReviewCheckpointSummary {
 	stop_fingerprint: Option<String>,
 	accepted_finding_count: usize,
 	rejected_finding_count: usize,
+	next_action: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PrivateEvidencePhaseAcceptanceSummary {
+	phase: String,
+	decision: String,
+	reason_code: String,
+	objective_covered: bool,
+	effective_delta_present: bool,
+	changed_surfaces: Vec<String>,
+	non_goal_passed: bool,
+	validation_passed: bool,
 	next_action: String,
 }
 
@@ -716,6 +730,7 @@ fn build_private_evidence_readback(
 		latest_event_type: latest_event.map(|event| event.event_type().to_owned()),
 		latest_event_at: latest_event.map(|event| event.recorded_at().to_owned()),
 		review_checkpoints: review_checkpoints_from_private_events(&events),
+		phase_acceptance_checks: phase_acceptance_checks_from_private_events(&events),
 		boundary_checks: boundary_checks_from_private_events(&events),
 		decision_requests: authority_decision_requests_from_private_events(&events),
 		architecture_recoveries: architecture_recoveries_from_private_events(&events),
@@ -900,6 +915,70 @@ fn review_checkpoint_next_action(status: &str) -> String {
 		},
 		_ => String::from("Inspect the Decodex Review checkpoint summary before continuing."),
 	}
+}
+
+fn phase_acceptance_checks_from_private_events(
+	events: &[state::PrivateExecutionEvent],
+) -> Vec<PrivateEvidencePhaseAcceptanceSummary> {
+	events
+		.iter()
+		.filter(|event| event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE)
+		.filter_map(phase_acceptance_check_from_private_event)
+		.collect()
+}
+
+fn phase_acceptance_check_from_private_event(
+	event: &state::PrivateExecutionEvent,
+) -> Option<PrivateEvidencePhaseAcceptanceSummary> {
+	let payload = event.payload();
+	let phase = payload.get("phase")?.as_str()?.to_owned();
+	let decision = payload.get("decision")?.as_str()?.to_owned();
+	let reason_code = payload.get("reason_code")?.as_str()?.to_owned();
+	let objective_covered = payload
+		.get("objective_coverage")
+		.and_then(|objective| objective.get("covered"))
+		.and_then(Value::as_bool)
+		.unwrap_or(false);
+	let effective_delta_present = payload
+		.get("effective_delta")
+		.and_then(|delta| delta.get("present"))
+		.and_then(Value::as_bool)
+		.unwrap_or(false);
+	let changed_surfaces = payload
+		.get("effective_delta")
+		.and_then(|delta| delta.get("changed_surfaces"))
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(Value::as_str)
+		.map(str::to_owned)
+		.collect();
+	let non_goal_passed = payload
+		.get("non_goal_check")
+		.and_then(|check| check.get("passed"))
+		.and_then(Value::as_bool)
+		.unwrap_or(false);
+	let validation_passed = payload
+		.get("validation_evidence")
+		.and_then(|evidence| evidence.get("repo_gate_passed"))
+		.and_then(Value::as_bool)
+		.unwrap_or(false);
+
+	Some(PrivateEvidencePhaseAcceptanceSummary {
+		phase,
+		decision,
+		reason_code,
+		objective_covered,
+		effective_delta_present,
+		changed_surfaces,
+		non_goal_passed,
+		validation_passed,
+		next_action: payload
+			.get("next_action")
+			.and_then(Value::as_str)
+			.unwrap_or("inspect_phase_acceptance_check")
+			.to_owned(),
+	})
 }
 
 fn boundary_checks_from_private_events(
@@ -1326,6 +1405,10 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 	append_private_evidence_readback_header(&mut output, readback);
 	append_private_evidence_decision_requests(&mut output, &readback.decision_requests);
 	append_private_evidence_review_checkpoints(&mut output, &readback.review_checkpoints);
+	append_private_evidence_phase_acceptance_checks(
+		&mut output,
+		&readback.phase_acceptance_checks,
+	);
 	append_private_evidence_architecture_recoveries(
 		&mut output,
 		&readback.architecture_recoveries,
@@ -1445,6 +1528,38 @@ fn append_private_evidence_review_checkpoints(
 				checkpoint.next_action
 			));
 		}
+	}
+}
+
+fn append_private_evidence_phase_acceptance_checks(
+	output: &mut String,
+	checks: &[PrivateEvidencePhaseAcceptanceSummary],
+) {
+	if checks.is_empty() {
+		return;
+	}
+
+	output.push_str("Phase Acceptance Checks\n");
+
+	for check in checks {
+		let surfaces = if check.changed_surfaces.is_empty() {
+			String::from("none")
+		} else {
+			check.changed_surfaces.join(",")
+		};
+
+		output.push_str(&format!(
+			"- phase: {}\n  decision: {}\n  reason_code: {}\n  objective_covered: {}\n  effective_delta: {}\n  changed_surfaces: {}\n  non_goal_passed: {}\n  validation_passed: {}\n  next_action: {}\n",
+			check.phase,
+			check.decision,
+			check.reason_code,
+			check.objective_covered,
+			check.effective_delta_present,
+			surfaces,
+			check.non_goal_passed,
+			check.validation_passed,
+			check.next_action
+		));
 	}
 }
 

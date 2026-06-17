@@ -366,6 +366,7 @@ fn operator_status_text_current_lane() -> OperatorRunStatus {
 		interactive_requested: true,
 		continuation_pending: false,
 		continuation_recovery: None,
+		phase_acceptance: None,
 		run_lease: true,
 		queue_lease_state: String::from("held"),
 		execution_liveness: String::from("process_alive"),

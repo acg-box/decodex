@@ -6,8 +6,8 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs]
-drift_watch: [decodex serve, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
+code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs]
+drift_watch: [decodex serve, decodex status, decodex evidence, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
 last_verified: 2026-06-17
 ---
 # Operator Control Plane
@@ -192,20 +192,27 @@ candidate improvements by kind, reason code, target, source-event count, and
 recommendation. These summaries are local operator guidance; they are not Linear
 ledger records and do not automatically edit prompts, skills, validators, issue
 templates, or loop policy.
-The same private-evidence readback exposes compact review checkpoint, architecture
-recovery, and authority-boundary summaries for the selected run/attempt: review phase,
-status, head, compatibility round, active/stop finding fingerprints, finding counts;
-recovery reason, boundary disposition, budget;
-and boundary disposition, reason, attempted recovery, changed-surface count, and
-improvement-signal count. These summaries are safe operator readback; raw reviewer
-finding bodies, changed-surface payloads, retained diffs, logs, and transcripts remain
-hidden unless `--include-payload` is explicitly requested for local repair.
+The same private-evidence readback exposes compact review checkpoint, phase
+acceptance, architecture recovery, and authority-boundary summaries for the selected
+run/attempt: review phase, status, head, compatibility round, active/stop finding
+fingerprints, finding counts; phase acceptance decision, reason, objective coverage,
+effective delta, changed surfaces, non-goal result, validation result, and next
+action; recovery reason, boundary disposition, budget; and boundary disposition,
+reason, attempted recovery, changed-surface count, and improvement-signal count. These
+summaries are safe operator readback; raw reviewer finding bodies, checkpoint payloads,
+changed-surface payloads, retained diffs, logs, and transcripts remain hidden unless
+`--include-payload` is explicitly requested for local repair.
 Private phase-goal evidence may also include `phase_goal_recovery`. That event means
 Decodex found a still-active implementation or repair phase goal after an app-server
 failure or child exit, ran the registered repo gate itself, persisted the next phase,
 and scheduled continuation instead of writing `decodex:needs-attention`. It is a
 runtime recovery handoff, not final issue success; the later `handoff_evidence` phase
 still owns review, push, PR creation, and terminal finalize.
+Private phase-goal evidence may also include `phase_acceptance_check`. That event
+records why Decodex allowed an implementation or repair goal to advance after repo
+gate validation, or why it kept the lane in repair even though validation passed. The
+operator status summary may show the latest acceptance decision and next action; the
+runtime SQLite row remains the authoritative local evidence.
 Retry comments with `phase_goal_terminal_path_missing` mean a phase goal reached
 `complete` before the required Decodex terminal tool path was recorded. The lane is
 still runtime-owned while retry budget remains; the next attempt re-enters the
