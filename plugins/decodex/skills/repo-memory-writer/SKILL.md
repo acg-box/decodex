@@ -7,7 +7,8 @@ description: Use when bootstrapping or improving source-backed repo-memory OKF/L
 
 Build source-backed repository knowledge. The AI writes the concepts; `decodex okf`
 only scaffolds, checks, routes, and graphs them. Use `repo-memory-curator` after
-real route, graph, or orphan evidence shows an existing bundle needs repair.
+real route, graph, or orphan evidence shows an existing bundle needs repair. Use
+`repo-memory-evaluator` when the question is whether the bundle is useful enough.
 
 Operating rules:
 
@@ -47,7 +48,7 @@ Workflow:
    ```
 
    Pick route probes from likely user intents and revise until the owning concept is
-   a top result.
+   a top result. For a fuller quality report, switch to `repo-memory-evaluator`.
 
 Quality bar:
 
