@@ -2,6 +2,11 @@
 
 ## 2026-06-17
 
+- Added the portable `repo-memory-writer` plugin skill so Codex can bootstrap or
+  improve source-backed repository memory through AI authoring plus OKF route, graph,
+  and profile validation.
+- Added `docs/reference/docs-knowledge-map.md` to evaluate the practical OKF/LLM Wiki
+  value in this repository and connect specialized concepts back into the docs graph.
 - Added `docs/spec/okf-knowledge-layer.md` to separate portable OKF engine behavior,
   LLM Wiki graph/retrieval behavior, repository-memory anchors, and the strict
   Decodex docs profile.
@@ -43,7 +48,8 @@
   than a promotion target.
 - Added `docs/evidence/index.md` for reusable public-safe proof concepts and durable
   semantic-drift audit evidence.
-- Recorded plugin-eval evidence for the Decodex plugin and new docs skill family.
+- Recorded plugin-eval evidence for the Decodex plugin, repo-memory writer, and new
+  docs skill family.
 - Clarified the Program Intake public/private boundary so generated Linear issue
   descriptions omit internal Program and node identifiers while SQLite/operator
   readback keeps private mappings.

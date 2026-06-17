@@ -1,26 +1,24 @@
 # Decodex Issue Briefing Reference
 
-Use this reference when accepted Decodex work needs normal Linear issue briefs,
-existing issue-batch intake, or Program Intake readiness.
+Use this when accepted Decodex work needs Linear issue briefs, issue-batch intake, or
+Program Intake readiness.
 
 ## Authority
 
-Issue briefing is part of Decodex planning. It starts only after one of these
-authority sources exists:
+Issue briefing is part of planning. It starts only after one authority source exists:
 
 - an accepted and promoted Decision Contract
 - an explicit execution instruction whose scope is already bounded
 - a supplied batch of executable issue briefs for Program Intake
 
-The briefing is not a separate delivery workflow. Do not route Decodex issue
-briefing through an external delivery plugin, delivery handoff, or progress skill.
-Runtime progress, review handoff, landing, closeout, and recovery remain
-Decodex runtime surfaces.
+The briefing is not a delivery workflow. Do not route Decodex issue briefing through
+an external delivery plugin, delivery handoff, or progress skill. Runtime progress,
+review handoff, landing, closeout, and recovery stay Decodex runtime surfaces.
 
 ## Generic Dispatch Briefing
 
 Every Decodex-planned issue must be understandable by a generic implementation lane
-without replaying the originating chat or reading private runtime state.
+without replaying chat or private runtime state.
 
 Include:
 
@@ -35,16 +33,13 @@ Include:
 9. real dependencies, blockers, or conflict domains
 10. dispatch notes needed for a cold-start agent
 
-Use concrete repository paths, commands, specs, runbooks, and project policy only
-when they exist. Do not invent modules, validation flows, tracker state, or runtime
-authority to make an issue sound complete.
+Use real paths, commands, specs, runbooks, and policy. Do not invent modules,
+validation, tracker state, or runtime authority.
 
 ## Splitting Rules
 
-Split accepted work only when one issue would be too broad for one retained lane.
-Split by real ownership boundary, validation surface, dependency, or conflict
-domain. Keep the issue set small enough that each issue can be started, reviewed,
-and validated independently.
+Split accepted work only when one issue is too broad for one lane. Split by real
+ownership boundary, validation surface, dependency, or conflict domain.
 
 Each child issue must carry its own generic dispatch briefing. Name ordering only
 when it is blocking. Do not expose internal graph ids, DAG edge editing, hidden goal
@@ -52,10 +47,9 @@ ids, or Program scheduler mechanics in the issue text.
 
 ## Existing Issue Intake
 
-For `decodex intake issues`, treat the supplied issue descriptions as the public
-briefing surface. If an issue is only a machine-readable block, private pointer, or
-thin title, it is missing the generic dispatch briefing and should remain held until
-the briefing is repaired.
+For `decodex intake issues`, issue descriptions are the public briefing surface. A
+machine-readable block, private pointer, or thin title is missing the generic
+dispatch briefing and should remain held until repaired.
 
 Do not use a progress checkpoint, review summary, PR body, or runtime event as a
 substitute for the issue briefing. Those surfaces can support evidence, but the
