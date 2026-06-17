@@ -413,6 +413,7 @@ CREATE TABLE IF NOT EXISTS protocol_events (
 	run_id TEXT NOT NULL,
 	sequence_number INTEGER NOT NULL,
 	event_type TEXT NOT NULL,
+	payload_sha256 TEXT NOT NULL,
 	created_at TEXT NOT NULL,
 	created_at_unix INTEGER NOT NULL,
 	PRIMARY KEY (run_id, sequence_number)
@@ -1129,18 +1130,35 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	fn append_protocol_event(&self, run_id: &str, event: &ProtocolEventRecord) -> Result<bool> {
 		let changed = self.connection.execute(
 			"INSERT OR IGNORE INTO protocol_events (
-					run_id, sequence_number, event_type, created_at, created_at_unix
-				) VALUES (?1, ?2, ?3, ?4, ?5)",
+					run_id, sequence_number, event_type, payload_sha256, created_at, created_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
 			params![
 				run_id,
 				event.sequence_number,
 				&event.event_type,
+				&event.payload_sha256,
 				&event.created_at,
 				event.created_at_unix,
 			],
 		)?;
 
 		Ok(changed == 1)
+	}
+
+	fn protocol_event(
+		&self,
+		run_id: &str,
+		sequence_number: i64,
+	) -> Result<Option<ProtocolEventRecord>> {
+		Ok(self
+			.connection
+			.query_row(
+				"SELECT sequence_number, event_type, payload_sha256, created_at, created_at_unix \
+				 FROM protocol_events WHERE run_id = ?1 AND sequence_number = ?2",
+				params![run_id, sequence_number],
+				protocol_event_record_from_row,
+			)
+			.optional()?)
 	}
 
 	fn insert_linear_execution_event_if_absent(
@@ -1808,22 +1826,24 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		run_id: &str,
 	) -> Result<()> {
 		let mut statement = self.connection.prepare(
-			"SELECT sequence_number, event_type, created_at, created_at_unix \
-			 FROM protocol_events \
-			 WHERE run_id = ?1 \
-			 ORDER BY sequence_number DESC \
-			 LIMIT 1",
+			"SELECT totals.event_count, totals.last_sequence_number, last.event_type, \
+			 last.created_at, last.created_at_unix \
+			 FROM (
+			 SELECT COUNT(*) AS event_count, MAX(sequence_number) AS last_sequence_number \
+			 FROM protocol_events WHERE run_id = ?1
+			 ) totals \
+			 JOIN protocol_events last \
+			 ON last.run_id = ?1 \
+			 AND last.sequence_number = totals.last_sequence_number",
 		)?;
 		let summary = statement
 			.query_row(params![run_id], |row| {
-				let last_sequence_number = row.get(0)?;
-
 				Ok(ProtocolEventSummaryRecord {
-					event_count: last_sequence_number,
-					last_sequence_number: Some(last_sequence_number),
-					last_event_type: Some(row.get(1)?),
-					last_event_at: Some(row.get(2)?),
-					last_event_at_unix: Some(row.get(3)?),
+					event_count: row.get(0)?,
+					last_sequence_number: Some(row.get(1)?),
+					last_event_type: Some(row.get(2)?),
+					last_event_at: Some(row.get(3)?),
+					last_event_at_unix: Some(row.get(4)?),
 				})
 			})
 			.optional()?;
@@ -2806,8 +2826,14 @@ impl RunControlChannelRecord {
 struct ProtocolEventRecord {
 	sequence_number: i64,
 	event_type: String,
+	payload_sha256: String,
 	created_at: String,
 	created_at_unix: i64,
+}
+impl ProtocolEventRecord {
+	fn is_idempotent_replay_of(&self, candidate: &Self) -> bool {
+		self.event_type == candidate.event_type && self.payload_sha256 == candidate.payload_sha256
+	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -4052,12 +4078,14 @@ fn persist_protocol_events(
 		for event in events {
 			transaction.execute(
 				"INSERT OR REPLACE INTO protocol_events (
-						run_id, sequence_number, event_type, created_at, created_at_unix
-					) VALUES (?1, ?2, ?3, ?4, ?5)",
+						run_id, sequence_number, event_type, payload_sha256, created_at,
+						created_at_unix
+					) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
 				params![
 					run_id,
 					event.sequence_number,
 					&event.event_type,
+					&event.payload_sha256,
 					&event.created_at,
 					event.created_at_unix,
 				],
@@ -5124,6 +5152,16 @@ fn protocol_event_summary_from_events(events: &[ProtocolEventRecord]) -> Protoco
 	}
 
 	summary
+}
+
+fn protocol_event_record_from_row(row: &Row<'_>) -> std::result::Result<ProtocolEventRecord, rusqlite::Error> {
+	Ok(ProtocolEventRecord {
+		sequence_number: row.get(0)?,
+		event_type: row.get(1)?,
+		payload_sha256: row.get(2)?,
+		created_at: row.get(3)?,
+		created_at_unix: row.get(4)?,
+	})
 }
 
 fn compare_attempt_records(left: &RunAttemptRecord, right: &RunAttemptRecord) -> cmp::Ordering {
