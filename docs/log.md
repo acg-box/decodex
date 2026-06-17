@@ -2,6 +2,10 @@
 
 ## 2026-06-18
 
+- Added Streamable HTTP to the Decodex MCP gateway: the transport now defaults to
+  loopback binding and the `observe` profile, validates browser origins, issues MCP
+  sessions, supports JSON and SSE responses, and keeps operate/admin calls behind
+  profile-gated structured refusals.
 - Added the stdio Decodex MCP primitive surface: initialize now advertises resources,
   resource templates, prompts, tools, logging, and progress compatibility; stdio smoke
   coverage now exercises resources/templates/list, prompts/list, prompts/get,
