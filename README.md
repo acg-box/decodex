@@ -2,11 +2,9 @@
 
 # Decodex
 
-Repo-native agent orchestration, upstream Codex radar, and public publishing.
+Repo-native agent orchestration, retained lanes, and local operator control.
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Language Checks](https://github.com/hack-ink/decodex/actions/workflows/language.yml/badge.svg?branch=main)](https://github.com/hack-ink/decodex/actions/workflows/language.yml)
-[![Release](https://github.com/hack-ink/decodex/actions/workflows/release.yml/badge.svg)](https://github.com/hack-ink/decodex/actions/workflows/release.yml)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/hack-ink/decodex)](https://github.com/hack-ink/decodex/tags)
 [![GitHub last commit](https://img.shields.io/github/last-commit/hack-ink/decodex?color=red&style=plastic)](https://github.com/hack-ink/decodex)
 [![GitHub code lines](https://tokei.rs/b1/github/hack-ink/decodex)](https://github.com/hack-ink/decodex)
@@ -23,14 +21,7 @@ Repo-native agent orchestration, upstream Codex radar, and public publishing.
 - Local operator listener with a dashboard at `/` and `/dashboard`, WebSocket
   snapshot/control traffic at `/dashboard/control`, Decodex App snapshot/account
   APIs under `/api/`, and `GET /livez` for liveness.
-- Static Astro site that publishes curated Decodex Radar and Publisher output.
-- Deterministic GitHub upstream Radar pipeline for review queues, change bundles,
-  release deltas, rendered signal entries, and content validation.
-- Repo-local Radar skills for upstream Codex triage, code analysis, release analysis,
-  signal drafting, and X publishing.
-- Publisher workflow for checked-in upstream reviews, impact classification, curated
-  public signals, and automated low-frequency X publication records for
-  `@decodexspace`.
+- Static Astro site for the public Decodex product surface and app download entry.
 - Installable Decodex plugin with reusable agent-facing skills for issue briefing,
   planning, manual CLI, automation, commit, land, and labels.
 - Repository documentation split by question type into spec, runbook, reference, and
@@ -40,10 +31,9 @@ Repo-native agent orchestration, upstream Codex radar, and public publishing.
 
 Prototype / in active development.
 
-This repository now integrates the former runtime repository and the static signal site
-into one Decodex workspace. The static site remains the public surface by default.
-Runtime and operator behavior does not become a public site backend just because both
-surfaces live in one workspace.
+This repository owns the Decodex runtime, native app, static site, and installable
+plugin. Upstream monitoring and public publishing automation are intentionally outside
+this repository.
 
 Supported runtime host targets are macOS and Linux. Windows remains unsupported for the
 runtime.
@@ -62,32 +52,14 @@ runtime.
 - `apps/decodex/` owns the Rust package that builds the `decodex` CLI and runtime.
 - `apps/decodex-app/` owns the native macOS app that manages Decodex
   Codex accounts through the bundled Rust app helper.
-- `site/` owns the Astro static site and checked-in public content.
-- `apps/decodex/src/radar.rs` owns Rust Radar queue, release-delta, bundle, render,
-  validation, backfill, and ledger commands.
-- `scripts/github/` owns the automation-only Codex AI analysis helper and shared
-  schema support for that helper.
-- `artifacts/github/` owns checked-in review queues, upstream reviews, GitHub bundles,
-  impact records, and editorial analysis drafts.
-- `artifacts/archive/` owns checked-in recovery manifests for cold Radar batches stored
-  as GitHub Release assets.
-- `artifacts/social/` owns checked-in Publisher publication records and generated-media
-  evidence.
+- `site/` owns the Astro static product site and app download entry.
 - `plugins/decodex/` owns the installable Decodex plugin and reusable agent-facing
   skills.
-- `dev/skills/` owns repository-development skills for Radar analysis and Publisher
-  publishing. They are not packaged with the installable Decodex plugin.
 - `docs/` remains the authoritative documentation surface.
 
 Runtime authority stays in `apps/decodex/src/`, the registered project contracts under
 `~/.codex/decodex/projects/<service-id>/`, and the governing specs under `docs/spec/`.
-Public site authority stays in `site/`, `apps/decodex/src/radar.rs`,
-`artifacts/github/`, and the site/content specs.
-
-Historical Radar trace is local by default. `decodex radar refresh-upstream-queue`
-writes `.decodex/radar.sqlite3` and refreshes `upstream_review_queue/v1` so every
-inspected upstream commit can be tracked before AI review decides whether it deserves
-Decodex follow-up, public content, or only ledger trace.
+Public site authority stays in `site/` and the site specs.
 
 ## Runtime platform support
 
@@ -126,9 +98,6 @@ cargo run -p decodex --bin decodex -- intake goal --project decodex <CONTRACT_ID
 cargo run -p decodex --bin decodex -- intake issues --project decodex XY-1 XY-2 --dry-run
 cargo run -p decodex --bin decodex -- intake issues --project decodex XY-1 XY-2 --apply
 cargo run -p decodex --bin decodex -- mcp serve --transport stdio
-cargo run -p decodex --bin decodex -- radar refresh-upstream-queue
-cargo run -p decodex --bin decodex -- radar refresh-release-delta
-cargo run -p decodex --bin decodex -- radar validate
 cargo run -p decodex --bin decodex -- run --dry-run
 cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8192
 ```
@@ -162,8 +131,8 @@ ledger, compares realistic options, forms a challenge-ready judgment, resolves s
 objections, and then ends as `decision_ready`, `not_decision_ready`, `blocked`, or
 `needs_human_decision`. New Decodex research may use `docs/research/` only for
 Markdown OKF research concepts; checked-in research JSON event logs are no longer a
-valid docs shape. A compiled contract is latent and
-cannot queue work, mutate tracker state, set goals, or authorize implementation.
+valid docs shape. A compiled contract is latent and cannot queue work, mutate tracker
+state, set goals, or authorize implementation.
 `decodex research promote` records explicit acceptance for a stored contract; only
 promoted contracts may later feed issue shaping or internal Execution Program
 readiness.
@@ -253,15 +222,16 @@ detection fails, serve logs a warning and continues polling.
 
 ## Static Site
 
-The public site is an Astro static site under `site/`. It renders checked-in content and
-generated JSON artifacts, then deploys through GitHub Pages.
+The public site is an Astro static site under `site/`. It renders the public Decodex
+product surface and app download entry. External Codex automation owns publication to
+GitHub Pages.
 
 The public site owns:
 
-- Codex signal cards
-- release-delta presentation
-- continuous Radar status presentation
-- static assets and public page rendering
+- homepage rendering
+- public static assets
+- appcast download widget
+- Astro build and type-check behavior
 
 The public site does not own:
 
@@ -270,47 +240,11 @@ The public site does not own:
 - local operator state
 - app-server orchestration
 - the operator dashboard served by `decodex serve`
+- upstream monitoring or public publishing automation
 
 The static-site boundary is recorded in `docs/decisions/static-public-site.md`. GitHub
-Pages setup for `https://decodex.space` lives in `docs/runbook/github-pages-deploy.md`.
-
-## Upstream Radar Pipeline
-
-The upstream Codex Radar path starts deterministic and becomes editorial only after
-Codex automation reviews source evidence:
-
-- `decodex radar refresh-upstream-queue` records every observed recent upstream
-  commit, resolves PRs when possible, and refreshes
-  `artifacts/github/review-queue/openai-codex-latest.json`.
-- `dev/skills/README.md` routes the repo-local Radar and editorial instructions. They
-  are not part of the installable Decodex plugin distribution.
-- `decodex radar bundle build` builds normalized GitHub bundles under
-  `artifacts/github/bundles/` when a queued subject needs full source context.
-- `decodex radar backfill-release-range` fills release-window gaps before a release
-  or prerelease summary, but daily Radar still starts from the commit stream.
-- `docs/spec/upstream-review.md` records the queue and AI review boundary.
-- `docs/spec/upstream-impact.md` records how upstream Codex changes are classified for
-  public signals and Control Plane follow-up work.
-- `decodex radar render-signal` renders reviewed analysis drafts into site content.
-- `decodex radar validate` validates the published signal collection and checked Radar
-  artifact contracts.
-- `decodex radar refresh-upstream-queue`, `decodex radar refresh-release-delta`,
-  `decodex radar bundle validate`, `decodex radar ledger ...`, `decodex radar
-  render-signal`, `decodex radar backfill-release-range`, and `decodex radar
-  validate` provide the Rust-owned command surface for deterministic queue refresh,
-  release-delta refresh, bundle validation, local ledger maintenance, signal
-  rendering, release-window backfill, and checked Radar artifact validation.
-- `docs/spec/social-publishing.md` and
-  `docs/runbook/social-publishing-workflow.md` govern automated low-frequency X
-  publication for `@decodexspace`.
-- `.github/workflows/refresh-upstream-radar.yml` refreshes deterministic upstream
-  queue metadata every six hours.
-- `.github/workflows/refresh-release-delta.yml` refreshes release and prerelease
-  checkpoint metadata every hour.
-- `.github/workflows/deploy-pages.yml` publishes the Astro site to GitHub Pages on
-  pushes to `main`.
-
-The governing workflow lives at `docs/runbook/local-github-signal-workflow.md`.
+Pages setup for `https://decodex.space`, including the external automation boundary,
+lives in `docs/runbook/github-pages-deploy.md`.
 
 ## Operator Dashboard
 
@@ -371,16 +305,10 @@ cargo make lint
 cargo make test
 ```
 
-Whole-workspace checks include runtime, static-site, and content validation:
+Node package checks are available separately:
 
 ```sh
-cargo make checks
-```
-
-Static-site/content checks are available separately:
-
-```sh
-cargo make decodex-checks
+cargo make check-node
 ```
 
 ## Workspace Layout
@@ -388,24 +316,18 @@ cargo make decodex-checks
 The tracked workspace currently keeps:
 
 - `apps/decodex/` as the Rust package that builds the `decodex` CLI and runtime
-- `site/` as the Astro static site for the public Decodex signal surface
-- `scripts/github/` as the deterministic GitHub collection, normalization, render, and
-  validation script surface
-- `artifacts/github/` as checked-in GitHub bundle and analysis artifacts
+- `site/` as the Astro static site for the public Decodex product surface
 - `plugins/decodex/` as the canonical installable Decodex plugin source
-- `dev/skills/` as repo-development Radar analysis and Publisher publishing skills that
-  are not packaged with the installable Decodex plugin
 - `docs/spec/` as the normative runtime, workflow, site, and content contract lane
 - `docs/runbook/` as the operator procedures, validation sequences, deployment steps,
-  and content workflow lane
+  and maintenance workflow lane
 - `docs/reference/` as the current repository and artifact surface map lane
 - `docs/decisions/` as the durable design-rationale lane
-- `docs/research/` as supporting JSON research reports and evidence, not runtime authority
-- `dev/` as local development helpers outside `dev/skills/`, such as the operator
-  dashboard mock server
+- `docs/research/` as Markdown OKF research concepts and supporting evidence, not
+  runtime authority
+- `dev/` as local development helpers, such as the operator dashboard mock server
 - `assets/` as generated Decodex App icon source notes, Icon Composer foreground,
   generated `.icns`, and menu bar template assets
-- `.github/` as CI, release, Pages deployment, and content-refresh workflows
 
 Generated or local-only directories such as `target/`, `site/dist/`, `site/.astro/`,
 `.worktrees/`, `.workspaces/`, and `.codex/` are not part of the tracked repository

@@ -10,93 +10,60 @@ last_verified: 2026-06-16
 ---
 # Site Contract
 
-Purpose: Define the page and route contract for the GitHub-first Decodex MVP.
+Purpose: Define the static public-site contract for Decodex.
 
 Status: normative
 
 Read this when:
-- You are scaffolding the static site.
-- You are implementing routes, homepage sections, or feed filters.
-- You need to know what the MVP page count is allowed to be.
+- You are changing the Astro public site.
+- You are implementing homepage sections or public assets.
+- You need to know what the site is allowed to depend on.
 
 Not this document:
-- The GitHub change-bundle schema.
-- The published signal-entry schema.
-- The local editorial workflow.
+- The local operator dashboard served by `decodex serve`.
+- The Decodex runtime contract.
+- Upstream monitoring or public publishing automation.
 
 Defines:
 - Allowed public routes.
-- Required homepage sections.
-- Required filter set.
-- The minimum information that a signal card must expose.
+- Required homepage obligations.
+- Static-site dependency boundaries.
 
-## Route budget
+## Route Budget
 
-The MVP route budget is:
+The required public route is `/`.
 
-- Required: `/`
-- Optional: exactly one secondary public route
+The site may add small secondary static routes only when they support the public Decodex
+product surface. The site must not add workflow dashboards, live runtime pages, hosted
+operator controls, monitoring feeds, or publishing queues.
 
-The secondary route may be either:
+## Homepage Obligations
 
-- an archive route, or
-- a per-signal detail route
+The homepage must present Decodex as repo-native control software for Codex work. It
+must include:
 
-The MVP must not introduce multiple parallel content sections such as separate public `signals`, `shiplog`, `notes`, and `tools` pages.
+- a primary Decodex brand signal in the first viewport
+- a short positioning line for the runtime and retained-lane control plane
+- a path to the GitHub repository
+- a path to the runtime or documentation surface
+- a static app download entry for the Codex beta appcast when that widget remains
+  available
 
-## Homepage obligations
+The homepage may explain product surfaces such as the Rust CLI, macOS app, local
+operator HTTP surface, and installable plugin. It must not present legacy
+upstream-monitoring feeds or external-publication workflows as repository-owned
+Decodex site content.
 
-The homepage is the primary product surface. It must contain:
+## Static Boundary
 
-- a short positioning line that defines Decodex as a signal layer
-- a compact brand treatment that outweighs the supporting copy
-- a compact release-delta module when a valid release-delta artifact exists
-- a lightweight filter bar
-- the primary signal feed
-- an optional compact utility slot that does not dominate the page
+The public site is static. It must not depend on a live Decodex daemon, runtime SQLite
+state, tracker credentials, ChatGPT account-pool state, or local operator evidence.
 
-The homepage must remain scan-first. Large marketing hero sections, dashboard-style multi-column panels, and documentation-style navigation trees are out of scope for the MVP.
+The local operator dashboard remains owned by `decodex serve`; the public site must not
+reuse dashboard routes or imply hosted operator access.
 
-The release-delta module must summarize the latest stable release, the latest prerelease, and the tracked signal differences unlocked by the prerelease without displacing the primary feed.
+## Asset Boundary
 
-The primary feed is curated for community-ready signals, not every analyzed upstream
-commit. Low-impact internal changes without a try path, capability value, or
-deprecated/migration cue may stay in the signal collection, Radar ledger, or release
-rollup inputs without appearing in the homepage feed.
-
-When the latest stable-to-prerelease pair has no matching published public signals, the
-homepage may default the comparator to the most recent signal-bearing pair while keeping
-the latest pair visible in the comparator options.
-
-## Allowed filters
-
-The MVP filter set is:
-
-- `all`
-- `github`
-- `try-now`
-- `high-impact`
-
-Additional filters require a plan update.
-
-## Signal-card rendering contract
-
-Every rendered signal card must surface these fields without requiring a click:
-
-- `title`
-- `published_at`
-- `impact`
-- `confidence`
-- `summary`
-- `why_it_matters`
-
-Every rendered signal card must also expose one of these action states:
-
-- `how_to_try`, or
-- an explicit watch-only state when no safe try path exists
-
-Source references must be reachable from the card or its immediate expansion state.
-
-## Secondary route rule
-
-If the MVP includes a secondary route, the homepage remains the primary entry point and the secondary route must add depth without becoming a parallel information architecture.
+The site may use checked-in public assets under `site/public/` and source files under
+`site/src/`. Generated local build outputs such as `site/dist/` and `site/.astro/` are
+not source authority and must not be treated as tracked content.

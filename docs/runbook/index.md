@@ -34,14 +34,6 @@ Question this index answers: "which sequence should I execute?"
   inspect, resume, scan, keep or remove queue labels, or route manual attention after
   interrupt, hard fallback, broad steer, task replacement, or ambiguous recovery
   evidence.
-- [`local-github-signal-workflow.md`](./local-github-signal-workflow.md) for collecting
-  GitHub change bundles, running Codex editorial analysis, validating signal entries,
-  and publishing static site content.
-- [`radar-artifact-archive.md`](./radar-artifact-archive.md) for moving raw Radar
-  bundles and analysis drafts out of Git after the 21-day hot window while keeping
-  release-asset recovery manifests checked in.
-- [`social-publishing-workflow.md`](./social-publishing-workflow.md) for turning Radar
-  evidence into low-frequency `@decodexspace` X posts or blocked publication records.
 - [`recover-review-handoff.md`](./recover-review-handoff.md) for diagnosing retained
   review lanes, explicitly rebinding missing or stale runtime DB lifecycle records, and
   adopting verified human-owned PRs into the normal Decodex landing lifecycle.
