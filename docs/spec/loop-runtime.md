@@ -1,3 +1,15 @@
+---
+type: "Spec"
+title: "Loop Runtime Specification"
+description: "Define the natural-language-first Decodex loop-runtime contract that sits above individual issue lanes. Status: normative Read this when: You are implementing or reviewing Decodex-native research method gates, decision promotion, internal execution planning, phase-scoped Codex goals, unattended loop behavior, or loop guardrails. Not this document: The issue-lane state machine, low-level `app-server` protocol, post-`In Review` phases, operator lane-control commands, or the concrete research run artifact format. Defines: The user surface, Research/Decision stage, latent Loop/Decision Contract, research method gates, internal Execution Program, promotion boundary, phase-scoped goal rules, validation and review boundary, unattended execution behavior, loop stop conditions, and harness improvement loop."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/research_design.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
+drift_watch: [phase_goal, docs_impact, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
+last_verified: 2026-06-16
+---
 # Loop Runtime Specification
 
 Purpose: Define the natural-language-first Decodex loop-runtime contract that sits
@@ -43,7 +55,7 @@ The loop runtime has three authority layers:
 | Loop runtime | Research/Decision records, accepted Loop/Decision Contracts, internal Execution Programs, ready-node selection, drift handling, stop attribution, and harness telemetry. |
 | Lane runtime | Normal Decodex issue lanes, app-server attempts, validation gates, review handoff, retained repair, landing, closeout, and cleanup. |
 
-Research output is latent until accepted or promoted. A research artifact, plan draft,
+Research output is latent until accepted or promoted. A research concept, plan draft,
 or proposed issue split must not by itself enqueue work, create authoritative
 dependencies, set goals, mutate tracker state, or start implementation.
 
@@ -58,12 +70,11 @@ Decodex owns a native Research/Decision compiler for Decodex work. That stage ac
 natural-language intent such as `research X` plus bounded research/design evidence
 when available, then stores a local Decision Contract candidate. It supersedes the
 external research skill for Decodex runtime authority: Decodex plugin `research*`
-skills are the current agent-facing method, and the old external `docs/research/`
-`research-run/2` event-log shape is no longer the current research format. New
-Decodex research must not use an old `research-run/2` event tail as the authority
-surface for loop state. Supporting JSON research reports may live under
-`docs/research/` when they are explicit reports, but runtime authority still comes
-from the runtime-local Decision Contract until accepted and promoted.
+skills are the current agent-facing method, `docs/research/` is the Markdown OKF
+research concept lane, and checked-in research JSON event logs are not a valid docs
+shape. Checked-in research evidence belongs in Markdown OKF concepts; runtime
+authority still comes from the runtime-local Decision Contract until accepted and
+promoted.
 
 The native research method has these ordered gates:
 

@@ -1,3 +1,13 @@
+---
+type: "Decision"
+title: "Natural-Language Loop Runtime"
+description: "Should Decodex expose execution graphs as the user workflow, or keep graph"
+status: active
+authority: rationale
+owner: docs
+tags: [decision]
+last_verified: 2026-06-16
+---
 # Natural-Language Loop Runtime
 
 Status: accepted

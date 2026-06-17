@@ -695,6 +695,9 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains("Workflow policy\nFollow the repository policy.\n"));
 	assert!(instructions.contains("Keep pre-edit discovery bounded"));
 	assert!(instructions.contains("Do not browse upstream references"));
+	assert!(instructions.contains("Docs impact contract"));
+	assert!(instructions.contains("classify docs impact as `none`, `update_required`, `research_required`, or `drift_required`"));
+	assert!(instructions.contains("record it in a current-HEAD `issue_progress_checkpoint` as `docs_impact`"));
 	assert!(instructions.contains("Tracker tool contract"));
 	assert!(instructions.contains("Linear tracker text is public/team-visible"));
 	assert!(instructions.contains("You own issue-scoped tracker writes for `PUB-101`."));

@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "Self-Dogfood Pilot"
+description: "OKF concept for Self-Dogfood Pilot."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # Self-Dogfood Pilot
 
 Goal: Run the `decodex` MVP against one target repository and a bounded set of queued Linear issues, with `decodex` itself as the default first pilot target.
