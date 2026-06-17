@@ -21,6 +21,5 @@ research, or documentation.
 - If docs impact is `research_required`, switch to the Decodex `research*` skill
   family.
 - Record routing, promotion, rename, or maintenance changes in `docs/log.md`.
-- Run `cargo run -p decodex --bin decodex -- docs check` before claiming docs
-  readiness.
+- Run `decodex docs check` before claiming docs readiness.
 - Treat docs check or drift failure as a completion blocker.

@@ -14,7 +14,7 @@ Goal: Run the `decodex` MVP against one target repository and a bounded set of q
 Read this when: You are preparing a dry run or live self-dogfood pilot and need the bounded operator procedure for config, target-repo requirements, and expected run behavior.
 Preconditions: `codex app-server` is available locally; `gh` is available locally for live PR-backed handoff validation, merge inspection, and retained branch cleanup; the target repository exists on disk; the project contract exists under `~/.codex/decodex/projects/<service-id>/`; referenced `WORKFLOW.md [context.read_first]` files exist in `[paths].repo_root`; the Linear team exposes the required workflow states; and the tracker and GitHub token env-var names are configured through `tracker.api_key_env_var` and `github.token_env_var` in the centralized project config.
 Depends on: `docs/spec/runtime.md`, `docs/spec/workflow-file.md`, `docs/spec/app-server.md`, the registered project `WORKFLOW.md`, and `Makefile.toml` for repo-native verification tasks.
-Verification: `cargo run -p decodex --bin decodex -- probe`; `cargo run -p decodex --bin decodex -- project add ~/.codex/decodex/projects/decodex`; `cargo run -p decodex --bin decodex -- project list`; `cargo run -p decodex --bin decodex -- run --dry-run`; and, when the environment is ready, `cargo run -p decodex --bin decodex -- run`.
+Verification: `decodex probe`; `decodex project add ~/.codex/decodex/projects/decodex`; `decodex project list`; `decodex run --dry-run`; and, when the environment is ready, `decodex run`.
 
 ## Alignment note
 
@@ -37,7 +37,7 @@ Verification: `cargo run -p decodex --bin decodex -- probe`; `cargo run -p decod
 Recommended first-run check:
 
 ```sh
-cargo run -p decodex --bin decodex -- probe
+decodex probe
 ```
 
 If `decodex probe` does not return `PROBE_OK`, stop there. The orchestrator loop depends on the same direct `app-server` contract.
@@ -200,9 +200,9 @@ Use `decodex` itself as the first target repo and keep intake bounded by applyin
 Use dry run first to validate config loading, issue discovery, and worktree planning without mutating Linear or creating worktree directories.
 
 ```sh
-cargo run -p decodex --bin decodex -- project add ~/.codex/decodex/projects/decodex
-cargo run -p decodex --bin decodex -- project list
-cargo run -p decodex --bin decodex -- run --dry-run
+decodex project add ~/.codex/decodex/projects/decodex
+decodex project list
+decodex run --dry-run
 ```
 
 Expected behavior:
@@ -221,7 +221,7 @@ dry run: no Decodex project config supplied or registered; nothing to execute.
 ### Live run
 
 ```sh
-cargo run -p decodex --bin decodex -- run
+decodex run
 ```
 
 On a normal successful run, `decodex` will:
@@ -306,22 +306,15 @@ is still unmerged, use the normal reviewed lane checkout instead.
 After `probe`, `project add`, `run --dry-run`, and `run` all behave as expected, use `serve` for the long-running pilot loop:
 
 ```sh
-cargo run -p decodex --bin decodex -- serve
+decodex serve
 ```
 
-### Installed-binary observer loop
+### CLI observer loop
 
 Use this path when the demo operator is starting from a clean `decodex` checkout and
 wants to observe the self-bootstrap loop without reading source code.
 
-1. Install or refresh the current checkout as the local `decodex` binary:
-
-   ```sh
-   cargo install --path apps/decodex --locked --force
-   export PATH="$HOME/.cargo/bin:$PATH"
-   ```
-
-2. Before queueing a self-bootstrap batch, confirm the installed binary matches a
+1. Before queueing a self-bootstrap batch, confirm the active `decodex` CLI matches a
    checkout synced to the current landed `main`:
 
    ```sh
@@ -330,17 +323,10 @@ wants to observe the self-bootstrap loop without reading source code.
    ```
 
    If `decodex --version` does not report the same short revision as the current
-   landed `HEAD`, or after landing Decodex runtime changes, reinstall before starting
-   the next batch:
-
-   ```sh
-   cargo install --path apps/decodex --force
-   decodex --version
-   ```
-
-   Stale installed binaries keep running pre-fix runtime behavior against new
-   self-bootstrap issues, which can make dashboard or Linear evidence look like a new
-   runtime regression.
+   landed `HEAD`, or after landing Decodex runtime changes, refresh the active CLI
+   through the normal release path before starting the next batch. Stale CLI processes
+   keep running pre-fix runtime behavior against new self-bootstrap issues, which can
+   make dashboard or Linear evidence look like a new runtime regression.
 
    Before-batch stale-process check, after starting or restarting `decodex serve`:
 
@@ -356,17 +342,17 @@ wants to observe the self-bootstrap loop without reading source code.
    Use the port from the active `--listen-address` if it is not `127.0.0.1:8192`.
    Treat a missing listener, a binary revision that does not match the current landed
    `HEAD`, or a `decodex serve` start time older than the latest runtime or dashboard
-   landing as stale evidence. Restart `decodex serve` after reinstalling or after any
-   runtime/UI land, then rerun `/livez` on the same port and reload the dashboard
-   before applying new queue labels. A browser tab left open on an old port is not
-   evidence for the current serve process.
+   landing as stale evidence. Restart `decodex serve` after refreshing the CLI or
+   after any runtime/UI land, then rerun `/livez` on the same port and reload the
+   dashboard before applying new queue labels. A browser tab left open on an old port
+   is not evidence for the current serve process.
 
-   Installed-dashboard smoke checklist: after `decodex --version` matches the short
-   `HEAD`, restart `decodex serve` from that installed binary. Verify `GET /livez`
-   passes, then confirm `decodex status --json` and the browser dashboard agree on
-   project registration and visible lane counts before queueing work.
+   Dashboard smoke checklist: after `decodex --version` matches the short `HEAD`,
+   restart `decodex serve`. Verify `GET /livez` passes, then confirm
+   `decodex status --json` and the browser dashboard agree on project registration and
+   visible lane counts before queueing work.
 
-3. Confirm the installed binary can reach the Codex app-server boundary:
+2. Confirm the active CLI can reach the Codex app-server boundary:
 
    ```sh
    decodex probe
@@ -662,7 +648,7 @@ ordinary `decodex serve` and leaves scheduler cadence to CLI-owned defaults. Dev
 not a scheduler and must not be used for this runbook's automation, queue intake,
 project registration, or retained-lane recovery steps.
 
-The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `cargo run -p decodex --bin decodex -- status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as claimed queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
+The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `decodex status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as claimed queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
 
 - `GET /` or `GET /dashboard`: the same single-page operator console
 - `GET /dashboard/control`: WebSocket transport for snapshots, live run activity, and local dashboard control acknowledgements
@@ -710,8 +696,8 @@ After running manual commands from a lane, check `decodex project list` or the o
 Start with local runtime readback:
 
 ```sh
-cargo run -p decodex --bin decodex -- status
-cargo run -p decodex --bin decodex -- status --json
+decodex status
+decodex status --json
 ```
 
 Use the human-readable view when you need the current leased run, lane worktree
@@ -723,7 +709,7 @@ If the status row or run capsule points to private evidence, inspect it before t
 the Linear summary as complete:
 
 ```sh
-cargo run -p decodex --bin decodex -- evidence XY-123 --run-id <RUN_ID> --attempt <N> --json
+decodex evidence XY-123 --run-id <RUN_ID> --attempt <N> --json
 ```
 
 Then inspect Linear for the public collaboration state:
@@ -841,9 +827,9 @@ repo gate commands. Linear should carry only the coarse team-visible failure sum
 When changing `decodex` itself, keep the pilot path healthy with:
 
 ```sh
-cargo run -p decodex --bin decodex -- probe
-cargo run -p decodex --bin decodex -- project add ~/.codex/decodex/projects/decodex
-cargo run -p decodex --bin decodex -- run --dry-run
+decodex probe
+decodex project add ~/.codex/decodex/projects/decodex
+decodex run --dry-run
 cargo make fmt
 cargo make lint-fix
 cargo make check
