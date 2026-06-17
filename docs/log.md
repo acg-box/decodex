@@ -32,3 +32,6 @@
 - Added `docs/evidence/index.md` for reusable public-safe proof concepts and durable
   semantic-drift audit evidence.
 - Recorded plugin-eval evidence for the Decodex plugin and new docs skill family.
+- Clarified the Program Intake public/private boundary so generated Linear issue
+  descriptions omit internal Program and node identifiers while SQLite/operator
+  readback keeps private mappings.
