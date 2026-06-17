@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/research_design.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
-drift_watch: [phase_goal, docs_impact, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
+drift_watch: [phase_goal, phase_acceptance_check, docs_impact, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
 last_verified: 2026-06-17
 ---
 # Loop Runtime Specification
@@ -565,6 +565,14 @@ the only valid way to exit a satisfied phase and hand control back to Decodex's
 repo-gate transition. A progress checkpoint or final message that says the lane is
 validation-ready and waiting for the next phase is only evidence; it must not replace
 the Codex goal-complete signal.
+After goal-complete, the repo gate is necessary but not sufficient for those phases:
+Decodex must also record a private `phase_acceptance_check` that proves current-head
+objective coverage, effective delta, changed surfaces, no non-goal violation,
+docs-impact readiness, validation evidence, and a pass/fail decision. Only a passing
+acceptance check may advance to `handoff_evidence`; a failing check keeps the lane in
+the appropriate repair phase with the reason and next action available in private
+status/evidence readback. Retained phase-goal recovery uses the same repo-gate plus
+acceptance check before scheduling automatic continuation.
 When Decodex has already recorded a valid phase-goal continuation or active phase in
 the immediately previous attempt and must create a retry or automatic continuation
 attempt, the new attempt resumes that unterminated phase state instead of restarting
@@ -687,8 +695,8 @@ versioned payload is `decodex.harness_outcome/1` with `event_type =
 
 - source intent, Decision Contract ids, generated issue identifiers, generated node
   ids, and conflict domains
-- phase-goal signals, validation results, validation failure classes, and repair
-  attempts
+- phase-goal signals, phase acceptance decisions, validation results, validation
+  failure classes, and repair attempts
 - independent review checkpoint status, accepted findings, rejected findings,
   active/stop finding fingerprints, and max active finding repeat count
 - manual-attention or guardrail reason codes such as `uncovered_direction`,
