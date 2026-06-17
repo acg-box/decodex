@@ -162,11 +162,40 @@ struct OkfCommand {
 impl OkfCommand {
 	fn run(&self) -> Result<()> {
 		match &self.command {
+			OkfSubcommand::Init(args) => args.run(),
 			OkfSubcommand::Check(args) => args.run(),
 			OkfSubcommand::Find(args) => run_okf_find(&args.root, &args.filters),
 			OkfSubcommand::Graph(args) => run_okf_graph(&args.root, args.json),
 			OkfSubcommand::Route(args) => run_okf_route(&args.root, &args.intent, args.limit),
 		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct OkfInitCommand {
+	/// OKF bundle root to scaffold.
+	#[arg(value_name = "ROOT", default_value = "docs")]
+	root: PathBuf,
+	/// Portable profile scaffold to create.
+	#[arg(long, value_enum, default_value_t = OkfInitProfileArg::RepoMemory)]
+	profile: OkfInitProfileArg,
+}
+impl OkfInitCommand {
+	fn run(&self) -> Result<()> {
+		let profile = OkfCheckProfile::from(self.profile);
+		let init_report = docs_okf::init_okf_bundle(&self.root, profile)?;
+
+		print!("{}", docs_okf::render_okf_init_report(&init_report));
+
+		let check_report = docs_okf::run_okf_check(&self.root, profile)?;
+
+		print!("{}", docs_okf::render_okf_check_report(&check_report));
+
+		if check_report.has_issues() {
+			eyre::bail!("okf {} scaffold validation failed.", check_report.profile().as_str());
+		}
+
+		Ok(())
 	}
 }
 
@@ -1381,6 +1410,8 @@ enum DocsSubcommand {
 
 #[derive(Debug, Subcommand)]
 enum OkfSubcommand {
+	/// Initialize a portable OKF bundle scaffold.
+	Init(OkfInitCommand),
 	/// Validate an OKF bundle with a selected profile.
 	Check(OkfCheckCommand),
 	/// Find concepts by frontmatter fields.
@@ -1511,6 +1542,15 @@ enum OkfProfileArg {
 	RepoMemory,
 	Decodex,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum OkfInitProfileArg {
+	Core,
+	Wiki,
+	RepoMemory,
+}
+
 impl From<OkfProfileArg> for OkfCheckProfile {
 	fn from(value: OkfProfileArg) -> Self {
 		match value {
@@ -1518,6 +1558,16 @@ impl From<OkfProfileArg> for OkfCheckProfile {
 			OkfProfileArg::Wiki => Self::Wiki,
 			OkfProfileArg::RepoMemory => Self::RepoMemory,
 			OkfProfileArg::Decodex => Self::Decodex,
+		}
+	}
+}
+
+impl From<OkfInitProfileArg> for OkfCheckProfile {
+	fn from(value: OkfInitProfileArg) -> Self {
+		match value {
+			OkfInitProfileArg::Core => Self::Core,
+			OkfInitProfileArg::Wiki => Self::Wiki,
+			OkfInitProfileArg::RepoMemory => Self::RepoMemory,
 		}
 	}
 }
@@ -1742,12 +1792,12 @@ mod tests {
 			IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand, LaneInterruptCommand,
 			LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand, McpCommand,
 			McpServeCommand, McpSubcommand, MergedCloseoutRecoveryCommand, OkfCommand,
-			OkfRouteCommand, OkfSubcommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
-			ProjectSubcommand, RecoverCommand, RecoverSubcommand, ResearchCommand,
-			ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
-			ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
-			ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand,
-			ServeCommand, StatusCommand,
+			OkfInitCommand, OkfInitProfileArg, OkfRouteCommand, OkfSubcommand, ProbeCommand,
+			ProjectCommand, ProjectConfigArgs, ProjectSubcommand, RecoverCommand,
+			RecoverSubcommand, ResearchCommand, ResearchCompileCommand, ResearchOutcomeArg,
+			ResearchPromoteCommand, ResearchSubcommand, ReviewHandoffAdoptCommand,
+			ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
+			ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
 		},
 		mcp::McpTransport,
 	};
@@ -1856,6 +1906,21 @@ mod tests {
 				}),
 			}) if root == Path::new("docs")
 				&& intent == "change okf docs command design"
+		));
+	}
+
+	#[test]
+	fn parses_okf_init_command() {
+		let cli = Cli::parse_from(["decodex", "okf", "init", "knowledge", "--profile", "wiki"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Okf(OkfCommand {
+				command: OkfSubcommand::Init(OkfInitCommand {
+					root,
+					profile: OkfInitProfileArg::Wiki,
+				}),
+			}) if root == Path::new("knowledge")
 		));
 	}
 
