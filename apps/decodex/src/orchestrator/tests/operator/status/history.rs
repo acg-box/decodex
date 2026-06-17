@@ -256,13 +256,15 @@ fn operator_status_history_lanes_group_attempts_by_issue() {
 	assert!(rendered.contains("Run ledger shown: 2 issue lanes from 3 history attempts"));
 	assert!(rendered.contains("issue: XY-323"));
 	assert!(rendered.contains("attempts: 2"));
-	assert!(rendered.contains("lifecycle_metrics: attempts=2; captured=2/2; missing=0; protocol_events=2"));
+	assert!(rendered.contains(
+		"lifecycle_metrics: attempts=2; sources=recorded:2,recovered:0,current_snapshot:0; captured=2/2; missing=0; protocol_events=2"
+	));
 	assert!(rendered.contains("lifecycle_bucket_breakdown"));
 	assert!(rendered.contains(
-		"lifecycle_bucket: Development lifecycle_bucket_key: development attempts: 1"
+		"lifecycle_bucket: Development lifecycle_bucket_key: development attempts: 1 sources: recorded=1 recovered=0 current_snapshot=0"
 	));
 	assert!(rendered.contains(
-		"lifecycle_bucket: Review lifecycle_bucket_key: review attempts: 1"
+		"lifecycle_bucket: Review lifecycle_bucket_key: review attempts: 1 sources: recorded=1 recovered=0 current_snapshot=0"
 	));
 }
 
