@@ -10,6 +10,7 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 
 	current_lane.suspected_stall = true;
 	current_lane.phase = String::from("stalled");
+	current_lane.run_phase = String::from("stalled");
 	current_lane.counts_as_running = false;
 	current_lane.needs_attention = true;
 
