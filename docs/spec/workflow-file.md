@@ -327,7 +327,7 @@ max_retry_backoff_ms = 300000
 max_concurrent_agents = 0
 canonicalize_commands = [
   "cargo make fmt",
-  "cargo make lint",
+  "cargo make lint-fix",
 ]
 verify_commands = [
   "cargo make check",

@@ -4,26 +4,25 @@
 # | task              | type      | cwd  |
 # | ----------------- | --------- | ---- |
 # | check             | composite |      |
+# | check-docs        | command   |      |
 # | check-node        | composite |      |
-# | check-node-build  | command   | site |
 # | check-node-types  | command   | site |
 # | check-rust        | command   |      |
-# | check-vstyle      | composite |      |
-# | check-vstyle-rust | command   |      |
 
 [tasks.check]
 clear = true
 workspace = false
 dependencies = [
-	"fmt-check",
-	"docs-check",
-	"check-rust",
+	"build",
+	"check-docs",
 	"check-node",
-	"check-vstyle",
+	"check-rust",
+	"fmt-check",
+	"lint",
 	"test",
 ]
 
-[tasks.docs-check]
+[tasks.check-docs]
 workspace = false
 command = "cargo"
 args = [
@@ -37,47 +36,10 @@ args = [
 	"lint",
 ]
 
-[tasks.check-rust]
-workspace = false
-command = "cargo"
-args = [
-	"clippy",
-	"--all-features",
-	"--all-targets",
-	"--workspace",
-	"--",
-	"-D",
-	"clippy::all",
-	"-D",
-	"clippy::too_many_lines",
-	"-D",
-	"clippy::unwrap_used",
-	"-D",
-	"clippy::use_self",
-	"-D",
-	"clippy::wildcard_imports",
-	"-D",
-	"missing-docs",
-	"-D",
-	"unused-crate-dependencies",
-	"-D",
-	"warnings",
-]
-
 [tasks.check-node]
 workspace = false
 dependencies = [
-	"check-node-build",
 	"check-node-types",
-]
-
-[tasks.check-node-build]
-workspace = false
-cwd = "site"
-command = "npm"
-args = [
-	"run",
-	"build",
 ]
 
 [tasks.check-node-types]
@@ -89,22 +51,36 @@ args = [
 	"check",
 ]
 
-[tasks.check-vstyle]
-workspace = false
-dependencies = [
-	"check-vstyle-rust",
-]
-
-[tasks.check-vstyle-rust]
+[tasks.check-rust]
 workspace = false
 command = "cargo"
 args = [
-	"vstyle",
-	"curate",
-	"--language",
-	"rust",
-	"--workspace",
+	"check",
 	"--all-features",
+	"--all-targets",
+	"--workspace",
+]
+
+# Build
+# | task       | type      | cwd  |
+# | ---------- | --------- | ---- |
+# | build      | composite |      |
+# | build-node | command   | site |
+
+[tasks.build]
+clear = true
+workspace = false
+dependencies = [
+	"build-node",
+]
+
+[tasks.build-node]
+workspace = false
+cwd = "site"
+command = "npm"
+args = [
+	"run",
+	"build",
 ]
 
 # Format
@@ -169,25 +145,73 @@ args = [
 ]
 
 # Lint
-# | task             | type      | cwd |
-# | ---------------- | --------- | --- |
-# | lint             | composite |     |
-# | lint-fix         | extend    |     |
-# | lint-rust        | command   |     |
-# | lint-vstyle      | composite |     |
-# | lint-vstyle-rust | command   |     |
+# | task              | type      | cwd |
+# | ----------------- | --------- | --- |
+# | lint              | composite |     |
+# | lint-rust         | command   |     |
+# | lint-vstyle-rust  | command   |     |
 
 [tasks.lint]
 workspace = false
 dependencies = [
 	"lint-rust",
-	"lint-vstyle",
+	"lint-vstyle-rust",
 ]
 
-[tasks.lint-fix]
-extend = "lint"
-
 [tasks.lint-rust]
+workspace = false
+command = "cargo"
+args = [
+	"clippy",
+	"--all-features",
+	"--all-targets",
+	"--workspace",
+	"--",
+	"-D",
+	"clippy::all",
+	"-D",
+	"clippy::too_many_lines",
+	"-D",
+	"clippy::unwrap_used",
+	"-D",
+	"clippy::use_self",
+	"-D",
+	"clippy::wildcard_imports",
+	"-D",
+	"missing-docs",
+	"-D",
+	"unused-crate-dependencies",
+	"-D",
+	"warnings",
+]
+
+[tasks.lint-vstyle-rust]
+workspace = false
+command = "cargo"
+args = [
+	"vstyle",
+	"curate",
+	"--language",
+	"rust",
+	"--workspace",
+	"--all-features",
+]
+
+# Fix
+# | task             | type      | cwd |
+# | ---------------- | --------- | --- |
+# | lint-fix         | composite |     |
+# | lint-rust-fix    | command   |     |
+# | lint-vstyle-fix  | command   |     |
+
+[tasks.lint-fix]
+workspace = false
+dependencies = [
+	"lint-rust-fix",
+	"lint-vstyle-fix",
+]
+
+[tasks.lint-rust-fix]
 workspace = false
 command = "cargo"
 args = [
@@ -216,13 +240,7 @@ args = [
 	"warnings",
 ]
 
-[tasks.lint-vstyle]
-workspace = false
-dependencies = [
-	"lint-vstyle-rust",
-]
-
-[tasks.lint-vstyle-rust]
+[tasks.lint-vstyle-fix]
 workspace = false
 command = "cargo"
 args = [
