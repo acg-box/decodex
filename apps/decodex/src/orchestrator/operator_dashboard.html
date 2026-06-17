@@ -5381,11 +5381,15 @@
 			}
 
 			function runDetailKey(run) {
-				return `run:${run.run_id}:more-fields`;
+				return `${currentLaneRenderKey(run)}:more-fields`;
 			}
 
 			function currentLaneRenderKey(run) {
-				return `current-lane:${run.run_id || issueDisplayKey(run)}`;
+				const projectKey = run?.project_id || "unknown-project";
+				const issueKey =
+					canonicalIssueIdentityKey(run?.issue_id) ||
+					canonicalIssueIdentityKey(issueDisplayKey(run));
+				return `current-lane:${projectKey}:${issueKey || run?.run_id || "unknown"}`;
 			}
 
 			function detailsOpenAttribute(detailKey) {
@@ -5616,10 +5620,10 @@
 				}
 
 				syncElementAttributes(current, next);
-				patchChildNodes(current, next);
+				patchChildNodes(current, next, false);
 			}
 
-			function patchChildNodes(current, next) {
+			function patchChildNodes(current, next, animateInsertions = false) {
 				const currentChildren = [...current.childNodes];
 				const nextChildren = [...next.childNodes];
 				const keyedCurrent = new Map();
@@ -5656,7 +5660,9 @@
 					} else {
 						const clone = nextChild.cloneNode(true);
 						current.insertBefore(clone, cursor);
-						markStableListEnter(clone);
+						if (animateInsertions) {
+							markStableListEnter(clone);
+						}
 						used.add(clone);
 					}
 				}
@@ -5732,7 +5738,7 @@
 					? 0
 					: container.getBoundingClientRect().height;
 
-				patchChildNodes(container, template.content);
+				patchChildNodes(container, template.content, true);
 				animateStableListSize(container, startHeight);
 			}
 
