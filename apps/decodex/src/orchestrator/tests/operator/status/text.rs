@@ -653,6 +653,84 @@ fn operator_status_json_surfaces_missing_contract_program_recovery() {
 	assert!(program_json.get("decision_contract").is_none());
 }
 
+#[test]
+fn operator_status_readback_quarantines_legacy_flat_decision_contracts() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let state_store = StateStore::open(&state_path).expect("state store should open");
+	let contract = accepted_status_decision_contract_fixture();
+	let program = ExecutionProgram::from_accepted_contract(
+		"program-legacy-flat-contract",
+		config.service_id(),
+		&contract,
+		vec![status_program_node(
+			"node-legacy-flat",
+			"issue-legacy-flat",
+			"PUB-947",
+			"Todo",
+			ExecutionQueueIntent::ReadyToQueue,
+		)],
+	)
+	.expect("program should build");
+
+	state_store
+		.upsert_execution_program(config.service_id(), program)
+		.expect("program should persist");
+
+	let mut legacy_payload = serde_json::to_value(&contract).expect("contract should encode as JSON");
+	let readiness = legacy_payload
+		.get_mut("execution_readiness")
+		.expect("readiness should exist")
+		.as_object_mut()
+		.expect("readiness should be an object");
+
+	readiness.remove("proposed_issues");
+	readiness.insert(
+		String::from("proposed_issue_summaries"),
+		serde_json::json!(["Legacy flat summary that must not be re-admitted."]),
+	);
+
+	{
+		let connection = rusqlite::Connection::open(&state_path).expect("sqlite should open");
+
+		connection
+			.execute(
+				"INSERT INTO decision_contracts (
+						project_id, contract_id, source_issue_id, status, payload_json, created_at,
+						created_at_unix, updated_at, updated_at_unix
+					) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+				rusqlite::params![
+					config.service_id(),
+					contract.contract_id(),
+					"PUB-947",
+					contract.status().as_str(),
+					serde_json::to_string(&legacy_payload).expect("legacy payload should serialize"),
+					"2026-06-17T00:00:00Z",
+					1_i64,
+					"2026-06-17T00:00:00Z",
+					1_i64,
+				],
+			)
+			.expect("legacy decision contract row should insert");
+	}
+
+	assert!(
+		state_store
+			.decision_contract(config.service_id(), contract.contract_id())
+			.is_err(),
+		"execution-facing legacy contract reads must still fail closed"
+	);
+
+	let snapshot = build_program_readback_snapshot(&config, &workflow, &state_store);
+	let program = snapshot.execution_programs.first().expect("program should surface");
+
+	assert_eq!(program.program_id, "program-legacy-flat-contract");
+	assert_eq!(program.status, "stale");
+	assert_eq!(program.readback_warning.as_deref(), Some("source_decision_contract_missing"));
+	assert_eq!(program.stale_count, 1);
+	assert_eq!(program.mapped_issue_identifiers, vec![String::from("PUB-947")]);
+}
+
 fn status_program_node(
 	node_id: &str,
 	issue_id: &str,

@@ -780,7 +780,8 @@ fn operator_execution_program_statuses(
 
 		let program = record.program().clone().with_nodes(nodes)?;
 		let evaluation = if let Some(source_contract_id) = record.source_contract_id() {
-			let Some(contract) = state_store.decision_contract(project.service_id(), source_contract_id)?
+			let Some(contract) =
+				state_store.decision_contract_for_readback(project.service_id(), source_contract_id)?
 			else {
 				statuses.push(OperatorExecutionProgramStatus::missing_contract(&record));
 
