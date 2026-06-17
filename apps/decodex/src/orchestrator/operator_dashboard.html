@@ -3915,6 +3915,7 @@
 			];
 			const DASHBOARD_WEBSOCKET_ENDPOINT = "/dashboard/control";
 			const DASHBOARD_LOCAL_CLOCK_INTERVAL_MS = 5_000;
+			const ACCOUNT_API_REFRESH_INTERVAL_MS = 15_000;
 			const RUN_ATTENTION_IDLE_SECONDS = 60;
 			const RUN_STALE_NO_PROCESS_SECONDS = 300;
 
@@ -3976,7 +3977,6 @@
 			let dashboardLiveCurrentLanes = [];
 			let dashboardLiveRunActivitySeen = false;
 			let dashboardLiveCurrentLanesComplete = true;
-			let dashboardLiveAccounts = null;
 			let dashboardLiveAccountControl = null;
 			let dashboardStreamState = {
 				supported: typeof window.WebSocket === "function",
@@ -4880,12 +4880,6 @@
 					: [];
 			}
 
-			function configuredDashboardAccounts(snapshot) {
-				return Array.isArray(snapshot?.accounts)
-					? [...accountApiAccounts(), ...snapshot.accounts.filter(Boolean)]
-					: accountApiAccounts();
-			}
-
 			function noteAccountApiSnapshot(response) {
 				if (!response || !Array.isArray(response.accounts)) {
 					return false;
@@ -4901,14 +4895,16 @@
 				const now = Date.now();
 				if (
 					accountApiRefreshInFlight ||
-					(!force && accountApiSnapshot && now - accountApiRefreshedAt < 15_000)
+					(!force &&
+						accountApiSnapshot &&
+						now - accountApiRefreshedAt < ACCOUNT_API_REFRESH_INTERVAL_MS)
 				) {
 					return;
 				}
 
 				accountApiRefreshInFlight = true;
 				try {
-					const response = await fetch("/api/accounts", {
+					const response = await fetch("/api/accounts?refresh=1", {
 						headers: { Accept: "application/json" },
 					});
 					if (!response.ok) {
@@ -6590,7 +6586,7 @@
 					return null;
 				}
 
-				const accounts = configuredDashboardAccounts(snapshot);
+				const accounts = accountApiAccounts();
 				if (!accounts.length) {
 					return null;
 				}
@@ -6686,7 +6682,7 @@
 					}
 
 					return (
-						configuredDashboardAccounts(snapshot).find(
+						accountApiAccounts().find(
 							(candidate) =>
 								(identity && codexAccountIdentity(candidate) === identity) ||
 								(email && codexAccountEmail(candidate) === email) ||
@@ -7197,8 +7193,8 @@
 						)[0] || null;
 				}
 
-				function accountPoolUsageEstimate(snapshot) {
-					return accountApiSnapshot?.usage_estimate || snapshot?.usage_estimate || null;
+				function accountPoolUsageEstimate() {
+					return accountApiSnapshot?.usage_estimate || null;
 				}
 
 				function accountPoolDayDeltaPercentagePoints(accounts, estimate) {
@@ -7952,8 +7948,8 @@
 					nodes.accountModeMeta.title = title;
 				}
 
-				function renderCodexAccountPoolUsageSummary(accounts, snapshot) {
-					const estimate = accountPoolUsageEstimate(snapshot);
+				function renderCodexAccountPoolUsageSummary(accounts) {
+					const estimate = accountPoolUsageEstimate();
 					if (!estimate) {
 						return "";
 					}
@@ -8032,13 +8028,13 @@
 					`;
 				}
 
-			function renderCodexAccountPool(accounts, snapshot) {
-				if (!accounts.length) {
-					return "";
-				}
+				function renderCodexAccountPool(accounts, snapshot) {
+					if (!accounts.length) {
+						return "";
+					}
 
 					return `
-						${renderCodexAccountPoolUsageSummary(accounts, snapshot)}
+						${renderCodexAccountPoolUsageSummary(accounts)}
 						<div class="account-pool-list" data-render-key="account-pool-list" aria-label="Accounts">
 							<div class="account-pool-guide">
 								${ACCOUNT_POOL_SORT_COLUMNS.map(renderCodexAccountPoolGuideCell).join("")}
@@ -8103,62 +8099,10 @@
 					return renderRunMetaLine(run);
 				}
 
-				function codexAccountPoolAccounts(snapshot) {
-					const accountsByIdentity = new Map();
-					const configuredAccounts = configuredDashboardAccounts(snapshot);
-					const runs = [
-						...(snapshot?.current_lanes ?? []).map((run) => [run, true]),
-						...(snapshot?.recent_runs ?? []).map((run) => [run, false]),
-					];
-
-					for (const account of configuredAccounts) {
-						const identity = codexAccountIdentity(account);
-						if (!identity) {
-							continue;
-						}
-
-						const existing = accountsByIdentity.get(identity);
-						accountsByIdentity.set(identity, existing ? { ...existing, ...account } : account);
-					}
-
-					for (const [run, isCurrentLane] of runs) {
-						const selected = codexAccount(run);
-						for (const account of codexAccounts(run)) {
-							const identity = codexAccountIdentity(account);
-							if (!account?.account_fingerprint) {
-								continue;
-							}
-
-							const selectedForRun =
-								selected && codexAccountIdentity(account) === codexAccountIdentity(selected);
-							const accountStatus = String(account.status || "").toLowerCase();
-							const existing = accountsByIdentity.get(identity);
-							const candidate = {
-								...existing,
-								...account,
-								status:
-									isCurrentLane && selectedForRun
-										? "selected"
-										: accountStatus === "selected"
-											? "available"
-											: account.status,
-							};
-							if (
-								!existing ||
-								codexAccountPoolMergeRank(candidate) >= codexAccountPoolMergeRank(existing)
-							) {
-								accountsByIdentity.set(identity, candidate);
-							}
-						}
-					}
-
-					return sortCodexAccountPoolAccounts([...accountsByIdentity.values()]);
-				}
-
-				function codexAccountPoolMergeRank(account) {
-					const status = String(account?.status || "").toLowerCase();
-
-					return status === "selected" ? 1 : 0;
+				function codexAccountPoolAccounts() {
+					return sortCodexAccountPoolAccounts(
+						accountApiAccounts().map((account) => ({ ...account })),
+					);
 				}
 
 				function codexAccountCreditsSortValue(account) {
@@ -11191,6 +11135,7 @@
 					return;
 				}
 
+				refreshAccountApiSnapshot();
 				renderDashboardState(lastDashboardRender, { refreshAccounts: false });
 			}
 
@@ -11398,9 +11343,6 @@
 						};
 					})
 					: snapshot.projects;
-				const accounts = Array.isArray(activityPayload.accounts)
-					? activityPayload.accounts.filter(Boolean).map((account) => ({ ...account }))
-					: snapshot.accounts;
 				const accountControl =
 					activityPayload.accountControl && typeof activityPayload.accountControl === "object"
 						? { ...(snapshot.account_control || {}), ...activityPayload.accountControl }
@@ -11409,7 +11351,6 @@
 				return {
 					...snapshot,
 					account_control: accountControl,
-					accounts,
 					current_lanes: mergedCurrentLanes,
 					recent_runs: recentRuns,
 					projects,
@@ -11436,7 +11377,6 @@
 					dashboardLiveRunActivitySeen = false;
 					dashboardLiveCurrentLanes = [];
 					dashboardLiveCurrentLanesComplete = true;
-					dashboardLiveAccounts = null;
 					dashboardLiveAccountControl = null;
 				}
 			}
@@ -11452,7 +11392,6 @@
 
 				return mergeDashboardRunActivity(snapshot, dashboardLiveCurrentLanes, {
 					accountControl: dashboardLiveAccountControl,
-					accounts: dashboardLiveAccounts,
 					currentLanesComplete: dashboardLiveCurrentLanesComplete,
 				});
 			}
@@ -11474,9 +11413,6 @@
 				dashboardLiveRunActivitySeen = true;
 				dashboardLiveCurrentLanesComplete =
 					payload.currentLanesComplete !== false && payload.currentLaneScope !== "filtered";
-				dashboardLiveAccounts = Array.isArray(payload.accounts) && payload.accounts.length
-					? payload.accounts.filter(Boolean).map((account) => ({ ...account }))
-					: null;
 				dashboardLiveAccountControl =
 					payload.accountControl && typeof payload.accountControl === "object"
 						? { ...payload.accountControl }
@@ -11640,7 +11576,6 @@
 					dashboardLiveCurrentLanes = [];
 					dashboardLiveRunActivitySeen = false;
 					dashboardLiveCurrentLanesComplete = true;
-					dashboardLiveAccounts = null;
 					dashboardLiveAccountControl = null;
 					updateDashboardStreamState({
 						connected: false,
@@ -11652,7 +11587,6 @@
 					dashboardLiveCurrentLanes = [];
 					dashboardLiveRunActivitySeen = false;
 					dashboardLiveCurrentLanesComplete = true;
-					dashboardLiveAccounts = null;
 					dashboardLiveAccountControl = null;
 					updateDashboardStreamState({
 						connected: false,

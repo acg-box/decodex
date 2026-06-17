@@ -3,6 +3,7 @@ import Foundation
 import OSLog
 
 private let accountStoreLog = Logger(subsystem: "ink.hack.DecodexApp", category: "AccountStore")
+private let accountUsageRefreshIntervalNanoseconds: UInt64 = 15_000_000_000
 private let operatorSnapshotReconnectInitialDelay: UInt64 = 1_000_000_000
 private let operatorSnapshotReconnectMaxDelay: UInt64 = 30_000_000_000
 
@@ -102,7 +103,7 @@ final class AccountStore: ObservableObject {
 			return
 		}
 
-		await refresh()
+		await refresh(force: true)
 	}
 
 	func openWebUI() async {
@@ -133,7 +134,7 @@ final class AccountStore: ObservableObject {
 		automaticRefreshTask = Task { [weak self] in
 			while Task.isCancelled == false {
 				do {
-					try await Task.sleep(nanoseconds: 60_000_000_000)
+					try await Task.sleep(nanoseconds: accountUsageRefreshIntervalNanoseconds)
 				} catch {
 					return
 				}

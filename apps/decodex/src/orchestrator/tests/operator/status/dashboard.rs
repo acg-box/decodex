@@ -654,9 +654,10 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("function codexAccountTokenLabel(refreshStatus)"));
 	assert!(response.contains("function codexAccountWindowLabel(seconds)"));
 	assert!(response.contains("function codexAccountStatusTone(account)"));
-	assert!(response.contains("function renderCodexAccountPoolUsageSummary(accounts, snapshot)"));
+	assert!(response.contains("function renderCodexAccountPoolUsageSummary(accounts)"));
 	assert!(response.contains("function accountPoolDayDeltaPercentagePoints(accounts, estimate)"));
 	assert!(response.contains("accountApiSnapshot?.usage_estimate"));
+	assert!(!response.contains("snapshot?.usage_estimate"));
 	assert!(response.contains("Pool used"));
 	assert!(response.contains("Day Δ"));
 	assert!(response.contains("Daily avg"));
@@ -668,8 +669,10 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("function renderAccountModeControl(snapshot)"));
 	assert!(response.contains("nodes.accountModeMeta.innerHTML = `<span class=\"account-mode-head\">${escapeHtml(title)}</span>`;"));
 	assert!(response.contains("nodes.accountModeMeta.title = title;"));
-	assert!(response.contains("function codexAccountPoolAccounts(snapshot)"));
-	assert!(response.contains("function codexAccountPoolMergeRank(account)"));
+	assert!(response.contains("function codexAccountPoolAccounts()"));
+	assert!(response.contains("accountApiAccounts().map((account) => ({ ...account }))"));
+	assert!(!response.contains("function configuredDashboardAccounts(snapshot)"));
+	assert!(!response.contains("function codexAccountPoolMergeRank(account)"));
 	assert!(response.contains("function renderCodexAccountPool(accounts, snapshot)"));
 	assert!(!response.contains("function renderCodexAccountPoolHeader(accounts)"));
 	assert!(response.contains(
@@ -697,7 +700,7 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(!response.contains("function codexAccountPoolDebugSummary(accounts)"));
 	assert!(response.contains("return \"not captured\";"));
 	assert!(response.contains("function codexAccountHistorySummary(account)"));
-	assert!(response.contains("snapshot?.accounts"));
+	assert!(!response.contains("snapshot?.accounts"));
 	assert!(response.contains("account?.account_email || account?.email"));
 	assert!(response.contains("run?.account || run?.codex_account || null"));
 	assert!(response.contains("run?.accounts"));
@@ -771,7 +774,7 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(!response.contains("function loadAccountNameOffsets()"));
 	assert!(response.contains("function persistAccountPrivacy(hidden)"));
 	assert!(!response.contains("function persistAccountNameOffsets()"));
-	assert!(response.contains("function configuredDashboardAccounts(snapshot)"));
+	assert!(!response.contains("function configuredDashboardAccounts(snapshot)"));
 	assert!(response.contains("function renderAccountPrivacyToggle()"));
 	assert!(response.contains("function codexAccountRandomNameKey(account)"));
 	assert!(response.contains("function codexAccountRandomNameOffset(account)"));
@@ -806,7 +809,6 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(response.contains("\"Alex\""));
 	assert!(response.contains("return `${local.slice(0, 3)}...${local.slice(-3)}${domain}`;"));
 	assert!(response.contains("return ACCOUNT_RANDOM_NAMES[index];"));
-	assert!(response.contains("return status === \"selected\" ? 1 : 0;"));
 	assert!(response.contains("return accounts;"));
 	assert!(!response.contains("function codexAccountPoolSortKey(account)"));
 	assert!(!response.contains("return codexAccountPoolSortKey(left).localeCompare(codexAccountPoolSortKey(right));"));
@@ -1865,7 +1867,7 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("let dashboardLiveCurrentLanes = [];"));
 	assert!(response.contains("let dashboardLiveRunActivitySeen = false;"));
 	assert!(response.contains("let dashboardLiveCurrentLanesComplete = true;"));
-	assert!(response.contains("let dashboardLiveAccounts = null;"));
+	assert!(!response.contains("let dashboardLiveAccounts = null;"));
 	assert!(response.contains("let dashboardLiveAccountControl = null;"));
 	assert!(response
 		.contains("function dashboardLiveRunActivityHasOverlay({ includeCompletedEmpty = false } = {})"));
@@ -1878,7 +1880,9 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(!response.contains("field(\"Author\","));
 	assert!(!response.contains("\"author\",\n"));
 	assert!(response.contains("activityPayload.accountControl"));
-	assert!(response.contains("dashboardLiveAccounts = Array.isArray(payload.accounts)"));
+	assert!(!response.contains("activityPayload.accounts"));
+	assert!(!response.contains("payload.accounts"));
+	assert!(!response.contains("dashboardLiveAccounts"));
 	assert!(response.contains("dashboardLiveAccountControl ="));
 	assert!(response.contains("\"child_agent_activity\""));
 	assert!(response.contains("\"protocol_activity\""));
@@ -1901,7 +1905,7 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	));
 	assert!(response.contains("clearDashboardLiveRunActivityOverlayIfCompleteEmpty();"));
 	assert!(response.contains("account_control: accountControl,"));
-	assert!(response.contains("accounts,"));
+	assert!(!response.contains("accounts: dashboardLiveAccounts"));
 	assert!(response.contains("current_lanes: mergedCurrentLanes,"));
 	assert!(!response.contains("current_lanes: currentLaneRows,"));
 }
@@ -1917,6 +1921,10 @@ fn operator_dashboard_uses_websocket_without_http_state_fallback() {
 	assert!(response.contains("if (document.hidden) {\n\t\t\t\t\treturn;\n\t\t\t\t}"));
 	assert!(response.contains("if (!dashboardSocketIsOpen()) {\n\t\t\t\t\tconnectDashboardSocket();"));
 	assert!(response.contains("function renderDashboardLocalClockTick()"));
+	assert!(response.contains("const ACCOUNT_API_REFRESH_INTERVAL_MS = 15_000;"));
+	assert!(response.contains("now - accountApiRefreshedAt < ACCOUNT_API_REFRESH_INTERVAL_MS"));
+	assert!(response.contains("const response = await fetch(\"/api/accounts?refresh=1\""));
+	assert!(response.contains("refreshAccountApiSnapshot();"));
 	assert!(response.contains("renderDashboardState(lastDashboardRender, { refreshAccounts: false });"));
 	assert!(response.contains("const shouldRefreshAccounts = options.refreshAccounts !== false;"));
 	assert!(!response.contains("function scheduleDashboardHttpFallback"));
