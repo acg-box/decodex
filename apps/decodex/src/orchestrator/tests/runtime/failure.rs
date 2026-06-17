@@ -436,6 +436,8 @@ fn review_policy_terminal_failure_details_include_research_boundaries() {
 		let error = Report::new(ReviewPolicyStopRequested {
 			head_sha: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
 			issue_identifier: String::from("PUB-101"),
+			fingerprint: (reason == ReviewPolicyStopReason::Exhausted)
+				.then(|| String::from("review_finding:test")),
 			nonclean_rounds: Some(3),
 			reason,
 			run_id: String::from("pub-101-attempt-1-123"),

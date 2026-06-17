@@ -300,7 +300,8 @@ records:
 - Execution Program ids linked to those contracts when known
 - retained worktree HEAD, tracked status, diff/status hashes, and compact diff stat
 - validation failure or loop-guardrail source class and private error summary
-- latest review checkpoint status and accepted/rejected finding counts when present
+- latest review checkpoint status, active/stop finding fingerprints, and
+  accepted/rejected finding counts when present
 - prior architecture recovery attempts for the issue
 - recovery budget attempt and maximum
 - loop-guardrail reason, threshold, consecutive count, fingerprint, and source class
@@ -672,8 +673,8 @@ versioned payload is `decodex.harness_outcome/1` with `event_type =
   ids, and conflict domains
 - phase-goal signals, validation results, validation failure classes, and repair
   attempts
-- independent review checkpoint status, accepted findings, rejected findings, and
-  non-clean review rounds
+- independent review checkpoint status, accepted findings, rejected findings,
+  active/stop finding fingerprints, and max active finding repeat count
 - manual-attention or guardrail reason codes such as `uncovered_direction`,
   `dependency_program_stale`, `validation_repeat`, or `no_effective_diff`
 - PR handoff, retained repair, closeout, cleanup, and terminal failure outcomes as

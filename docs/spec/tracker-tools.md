@@ -186,9 +186,16 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - A `findings` checkpoint must carry at least one accepted finding. A `clean`
   checkpoint may carry rejected findings, but must not carry accepted findings.
 - Top-level checkpoint evidence is required. Accepted findings must include severity,
-  non-empty evidence, file and line references when possible, and concrete repair
-  guidance. Rejected findings must include severity, non-empty evidence, and the
-  rejection reason.
+  non-empty evidence, file and line or line-range references when possible, and
+  concrete repair guidance. Rejected findings must include severity, non-empty
+  evidence, and the rejection reason. Accepted and rejected findings may include a
+  public snake_case `kind`; omitted kinds normalize to `accepted_finding` or
+  `rejected_finding`.
+- Each accepted finding is normalized to a stable `review_finding:<sha256>`
+  fingerprint from the review phase, finding kind, summary, guidance, file, and
+  line range. The persisted review payload includes a `finding_policy` summary with
+  active fingerprints, per-fingerprint repeat counts, and an optional
+  `stop_fingerprint`.
 - When `[codex].review` is `"standard"` or `"strict"`, `decodex` treats
   `issue_review_checkpoint` as the only authoritative structured review-policy
   signal. Skill prose or wrapper-local result words must not replace it.
@@ -284,10 +291,12 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - If a tracker tool call fails transiently, the failure should be surfaced to the run journal so retry logic can reason about it.
 - If a tracker tool call fails because it targeted the wrong issue or an unsupported operation, treat that as a policy violation, not as a retryable transport error.
 - When `[codex].review` is `"standard"` or `"strict"`, if the latest
-  `issue_review_checkpoint` reports `findings` for the third consecutive non-clean
-  round on the same phase, `decodex` must stop the current repair strategy and apply
-  the loop-runtime architecture recovery boundary before any further autonomous
-  repair. If the checkpoint reports `needs_architecture_review` / `blocked`,
+  `issue_review_checkpoint` reports the same active accepted-finding fingerprint for
+  the third time in the same phase, `decodex` must stop the current repair strategy
+  and apply the loop-runtime architecture recovery boundary before any further
+  autonomous repair. Different accepted-finding fingerprints start their own repeat
+  counts, so a newly discovered issue does not inherit old churn. If the checkpoint
+  reports `needs_architecture_review` / `blocked`,
   `decodex` must stop the lane through the human-required failure path instead of
   retrying automatically.
 - Review-policy stops do not dispatch research directly. `decodex` may surface

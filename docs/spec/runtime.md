@@ -493,8 +493,13 @@ state for the current phase and current lane head from the owned lane:
 
 - no checkpoint and no terminal path: allow a clean continuation boundary
 - latest checkpoint `clean` and no terminal path: allow continuation so the agent can finish handoff or repair completion
-- latest checkpoint `findings` with fewer than three consecutive non-clean rounds in the same phase: allow continuation
-- latest checkpoint `findings` with three or more consecutive non-clean rounds in the same phase: treat this as `review_churn`, stop the current repair strategy, and run the architecture recovery boundary check before either retrying with a materially different implementation strategy or routing to the human-required path
+- latest checkpoint `findings` where every active accepted-finding fingerprint has
+  been seen fewer than three times in the same phase: allow continuation
+- latest checkpoint `findings` where any active accepted-finding fingerprint has
+  reached three repeats in the same phase: treat this as `review_churn`, stop the
+  current repair strategy, and run the architecture recovery boundary check before
+  either retrying with a materially different implementation strategy or routing to
+  the human-required path
 - latest checkpoint `needs_architecture_review` or `blocked`: fail the turn through the human-required failure path
 
 `decodex` persists this review-policy state in the runtime SQLite
@@ -502,8 +507,12 @@ state for the current phase and current lane head from the owned lane:
 The stored row contains `phase`, `status`, `head_sha`, `nonclean_rounds`, and
 `details_json`, and it is the only authority used to require a current clean
 checkpoint before `issue_review_handoff` or `issue_review_repair_complete`.
+`nonclean_rounds` is the compatibility column for the current phase's max active
+accepted-finding repeat count; new findings with different fingerprints do not
+inherit earlier repeats.
 `details_json` holds the structured independent fresh-context review payload,
-including checklist notes, accepted findings, rejected findings, and repair guidance.
+including checklist notes, accepted findings, rejected findings, repair guidance,
+and the `finding_policy` fingerprint ledger.
 Each accepted checkpoint also appends a private `review_checkpoint` execution event
 with the same structured payload for local operator and repair readback. Linear
 receives only coarse lifecycle projections; raw reviewer findings stay in local
