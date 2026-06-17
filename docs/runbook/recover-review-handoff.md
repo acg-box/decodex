@@ -1,21 +1,22 @@
 ---
 type: "Runbook"
 title: "Recover Review Handoff"
-description: "Diagnose and explicitly repair retained review lanes that are blocked by a missing or stale runtime DB review-handoff marker."
+description: "Diagnose and explicitly repair retained review lanes that are blocked by a missing or stale runtime DB review lifecycle record."
 status: active
 authority: procedural
 owner: automation
 tags: [runbook]
-last_verified: 2026-06-16
+last_verified: 2026-06-17
 ---
 # Recover Review Handoff
 
 Purpose: Diagnose and explicitly repair retained review lanes that are blocked by a
-missing or stale runtime DB review-handoff marker.
+missing or stale runtime DB review lifecycle record.
 
 Use this when: `decodex status` or the dashboard shows a `Review & Landing` lane
-blocked with `missing_review_handoff_record`, a review handoff/orchestration head
-mismatch, or a similar retained review marker mismatch after manual repair or rebase.
+blocked with `missing_review_handoff_record`, a review lifecycle head or phase
+mismatch, or a similar retained review lifecycle mismatch after manual repair or
+rebase.
 
 Do not use this for: healthy PR handoffs, review repair, landing, closeout, cleanup-only
 worktrees, or manual PR landing.
@@ -36,9 +37,9 @@ Use `--json` for a structured report.
 
 The diagnostic is read-only. It reports the issue, tracker state, branch, worktree,
 local branch, local head, worktree cleanliness, existing PR URL when one is already
-bound, stored handoff head, stored orchestration head, PR base/head when readable,
-the mismatched field when one is known, active automation label presence, and the
-suggested next command.
+bound, stored lifecycle handoff head, stored lifecycle phase head, PR base/head when
+readable, the mismatched field when one is known, active automation label presence,
+and the suggested next command.
 
 ## Explicit Rebind
 
@@ -47,8 +48,8 @@ This is a break-glass path. Healthy lanes should keep using
 operators should not use rebind just because a normal review handoff is still in
 progress.
 
-Only rebind when the diagnosis says the review handoff marker is absent, says the
-existing same-branch same-PR marker must be refreshed after the retained worktree and
+Only rebind when the diagnosis says the review lifecycle record is absent, says the
+existing same-branch same-PR record must be refreshed after the retained worktree and
 PR head have been checked, or reports `review_handoff_state_transition_pending`.
 
 ```sh
@@ -56,28 +57,28 @@ decodex recover review-handoff rebind <ISSUE> --pr <PR_URL> --dry-run
 decodex recover review-handoff rebind <ISSUE> --pr <PR_URL>
 ```
 
-The non-dry-run command writes runtime DB handoff/orchestration markers and records a
-`review_handoff_rebind` audit event on the tracker issue. For a stale existing marker,
+The non-dry-run command writes the runtime DB review lifecycle record and records a
+`review_handoff_rebind` audit event on the tracker issue. For a stale existing record,
 it refreshes only the same branch and same PR after validating the clean retained
-worktree head matches the PR head. For a partial normal handoff where the marker is
-missing, or where an already-current marker exists but the issue state was not
+worktree head matches the PR head. For a partial normal handoff where the record is
+missing, or where an already-current record exists but the issue state was not
 advanced, the command may also move the issue from the workflow
 `tracker.in_progress_state` to `tracker.success_state` after the rebind audit
-succeeds. If stale failure writeback already moved an already-current marker lane to
+succeeds. If stale failure writeback already moved an already-current record lane to
 `tracker.failure_state` and added `tracker.needs_attention_label`, rebind may clear that
 label and move the issue to `tracker.success_state`; this is only for current same-PR
-same-head markers, not for missing or stale marker recovery. It does not merge the PR,
+same-head records, not for missing or stale record recovery. It does not merge the PR,
 queue follow-up issues, or clean worktrees.
 
 The command rejects the rebind unless all of these are true:
 
 - the issue is in the workflow `tracker.success_state`, still in
   `tracker.in_progress_state` from a partial normal handoff with a missing or
-  already-current marker, or in `tracker.failure_state` only when an already-current
-  marker proves that stale failure writeback caused tracker state drift
+  already-current lifecycle record, or in `tracker.failure_state` only when an
+  already-current record proves that stale failure writeback caused tracker state drift
 - the issue does not have the opt-out label
 - the issue does not have the needs-attention label, except for the already-current
-  marker plus `tracker.failure_state` drift case where rebind clears it after recording
+  record plus `tracker.failure_state` drift case where rebind clears it after recording
   the audit
 - the issue still has `decodex:active:<service-id>` ownership
 - the retained worktree branch matches the runtime DB worktree mapping
@@ -87,8 +88,8 @@ The command rejects the rebind unless all of these are true:
 - the PR targets the configured default branch
 - the PR is open and non-draft
 - the PR head branch and head SHA match the retained worktree
-- no review handoff marker already exists for the issue/branch, or the existing marker
-  is for the same branch and PR and needs a head/orchestration refresh or pending issue
+- no review lifecycle record already exists for the issue/branch, or the existing
+  record is for the same branch and PR and needs a head/phase refresh or pending issue
   state transition
 
 After a successful rebind, run:
@@ -110,8 +111,8 @@ closeout path. If that issue already has a worktree mapping, adopt accepts it on
 the mapping points at the current managed checkout; a mapping for a different checkout
 is a fail-closed mismatch. Adopt rewrites that mapping to the current PR branch only
 after every dry-run/live validation passes. Do not use adopt for lanes that already
-have a review handoff marker; those belong to `rebind`, normal `decodex land`, or the
-retained post-review scheduler.
+have a review lifecycle record; those belong to `rebind`, normal `decodex land`, or
+the retained post-review scheduler.
 
 Run it from the lane worktree, not from the repo root:
 
@@ -129,8 +130,8 @@ The command rejects the adopt unless all of these are true:
   `tracker.success_state`
 - no conflicting retained worktree mapping exists; an existing mapping is allowed only
   when it points at the current managed checkout
-- no review handoff marker already exists for the issue's current branch or previously
-  mapped branch
+- no review lifecycle record already exists for the issue's current branch or
+  previously mapped branch
 - the current checkout is a managed worktree under the configured `worktree_root`
 - the current worktree is clean except top-level Decodex runtime artifacts such as
   `.decodex-run-activity` and `.decodex-run-control/`
@@ -140,7 +141,7 @@ The command rejects the adopt unless all of these are true:
 - the PR head branch and head SHA exactly match the current worktree branch and `HEAD`
 
 The non-dry-run command writes a runtime worktree mapping, a local takeover run
-attempt, review handoff/orchestration markers, and a `review_handoff_adopt` audit
+attempt, a review lifecycle record, and a `review_handoff_adopt` audit
 event. If the active service label was missing, live adopt restores it after local
 handoff state is written and before the audit event is recorded; if the audit write
 fails, the label restoration is rolled back. If the issue was still in the workflow
@@ -183,12 +184,12 @@ plus explicit rebind before any manual cleanup.
 
 If diagnosis reports `classification: review_handoff_ownership_drift`,
 `reason: active_ownership_label_missing`, and `active_label_present: false`, do not run
-rebind just to restore ownership. If the lane has no retained handoff marker because a
-human PR needs manual takeover, run `recover review-handoff adopt --dry-run`; the dry
-run reports `would_restore_active_label=true` when live adopt can restore the active
-service label after validating the issue, managed worktree, PR branch, PR head, and
-landability gates. If the lane already has a retained handoff marker, use the ordinary
-diagnosis/rebind or post-review path instead of hand-adding labels. If the issue still
+rebind just to restore ownership. If the lane has no retained lifecycle record because
+a human PR needs manual takeover, run `recover review-handoff adopt --dry-run`; the
+dry run reports `would_restore_active_label=true` when live adopt can restore the
+active service label after validating the issue, managed worktree, PR branch, PR head,
+and landability gates. If the lane already has a retained lifecycle record, use the
+ordinary diagnosis/rebind or post-review path instead of hand-adding labels. If the issue still
 has `decodex:needs-attention`, clear that label only after the recorded blocker has
 been repaired or an explicit recovery command says it will clear the label itself.
 

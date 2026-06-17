@@ -35,6 +35,92 @@ use crate::{
 };
 
 const IN_PROGRESS_STATE: &str = "In Progress";
+const REVIEW_LIFECYCLE_MIGRATION_FIXTURE: &str = r#"
+CREATE TABLE review_handoffs (
+	project_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	branch_name TEXT NOT NULL,
+	run_id TEXT NOT NULL,
+	attempt_number INTEGER NOT NULL,
+	pr_url TEXT NOT NULL,
+	target_base_ref_name TEXT,
+	pr_head_ref_name TEXT NOT NULL,
+	pr_head_oid TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, issue_id, branch_name)
+);
+CREATE TABLE review_orchestrations (
+	project_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	branch_name TEXT NOT NULL,
+	run_id TEXT NOT NULL,
+	attempt_number INTEGER NOT NULL,
+	pr_url TEXT NOT NULL,
+	head_sha TEXT NOT NULL,
+	phase TEXT NOT NULL,
+	request_comment_database_id INTEGER,
+	request_created_at_unix_epoch INTEGER,
+	request_description_thumbs_up_count INTEGER,
+	request_retry_count INTEGER NOT NULL,
+	external_round_count INTEGER NOT NULL,
+	auto_merge_enabled_at_unix_epoch INTEGER,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, issue_id, branch_name, run_id, attempt_number)
+);
+INSERT INTO review_handoffs (
+	project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
+	target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at, updated_at_unix
+) VALUES (
+	'pubfi', 'PUB-101', 'x/decodex-pub-101', 'run-1', 2,
+	'https://github.com/hack-ink/decodex/pull/101', 'main', 'x/decodex-pub-101',
+	'08a20f7dfb9526e7421a5f095b1c6adec84e52d6', '2026-06-17T01:00:00Z',
+	1771290000
+);
+INSERT INTO review_orchestrations (
+	project_id, issue_id, branch_name, run_id, attempt_number, pr_url, head_sha,
+	phase, request_comment_database_id, request_created_at_unix_epoch,
+	request_description_thumbs_up_count, request_retry_count, external_round_count,
+	auto_merge_enabled_at_unix_epoch, updated_at, updated_at_unix
+) VALUES (
+	'pubfi', 'PUB-101', 'x/decodex-pub-101', 'run-1', 2,
+	'https://github.com/hack-ink/decodex/pull/101',
+	'19b20f7dfb9526e7421a5f095b1c6adec84e52d7', 'waiting_for_ack', 1234,
+	1771290030, 4, 1, 3, 1771290060, '2026-06-17T01:01:00Z', 1771290060
+);
+INSERT INTO review_orchestrations (
+	project_id, issue_id, branch_name, run_id, attempt_number, pr_url, head_sha,
+	phase, request_comment_database_id, request_created_at_unix_epoch,
+	request_description_thumbs_up_count, request_retry_count, external_round_count,
+	auto_merge_enabled_at_unix_epoch, updated_at, updated_at_unix
+) VALUES (
+	'pubfi', 'PUB-202', 'x/decodex-pub-202', 'run-2', 1,
+	'https://github.com/hack-ink/decodex/pull/202',
+	'28c20f7dfb9526e7421a5f095b1c6adec84e52d8', 'request_pending', NULL,
+	NULL, NULL, 0, 1, NULL, '2026-06-17T01:02:00Z', 1771290120
+);
+INSERT INTO review_handoffs (
+	project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
+	target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at, updated_at_unix
+) VALUES (
+	'pubfi', 'PUB-303', 'x/decodex-pub-303', 'run-2', 1,
+	'https://github.com/hack-ink/decodex/pull/303', 'main', 'x/decodex-pub-303',
+	'38c20f7dfb9526e7421a5f095b1c6adec84e52d8', '2026-06-17T01:03:00Z',
+	1771290180
+);
+INSERT INTO review_orchestrations (
+	project_id, issue_id, branch_name, run_id, attempt_number, pr_url, head_sha,
+	phase, request_comment_database_id, request_created_at_unix_epoch,
+	request_description_thumbs_up_count, request_retry_count, external_round_count,
+	auto_merge_enabled_at_unix_epoch, updated_at, updated_at_unix
+) VALUES (
+	'pubfi', 'PUB-303', 'x/decodex-pub-303', 'run-1', 1,
+	'https://github.com/hack-ink/decodex/pull/303',
+	'39c20f7dfb9526e7421a5f095b1c6adec84e52d9', 'waiting_for_ack', 4321,
+	1771290240, 5, 2, 4, 1771290300, '2026-06-17T01:04:00Z', 1771290240
+);
+"#;
 
 #[cfg(unix)]
 fn fd_has_close_on_exec(fd: i32) -> bool {
@@ -129,6 +215,14 @@ fn assert_decision_contract_retargeted(reopened: &StateStore) {
 			.expect("old decision contracts should list")
 			.is_empty()
 	);
+}
+
+fn seed_review_lifecycle_migration_fixture(state_path: &Path) {
+	let connection = Connection::open(state_path).expect("fixture db should open");
+
+	connection
+		.execute_batch(REVIEW_LIFECYCLE_MIGRATION_FIXTURE)
+		.expect("review lifecycle migration fixture should seed");
 }
 
 fn upsert_handoff_review_policy_checkpoint(
@@ -241,7 +335,7 @@ fn loop_guardrail_checkpoints_track_fingerprints_and_retarget_issue() {
 }
 
 #[test]
-fn review_markers_roundtrip_preserve_required_fields() {
+fn review_lifecycle_record_roundtrip_preserves_required_fields_and_projection() {
 	let store = StateStore::open_in_memory().expect("state store should open");
 	let handoff = ReviewHandoffMarker::new(
 		"run-1",
@@ -255,12 +349,12 @@ fn review_markers_roundtrip_preserve_required_fields() {
 
 	store
 		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
-		.expect("review handoff marker should persist");
+		.expect("review handoff projection should persist");
 
 	let restored_handoff = store
 		.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
-		.expect("review handoff marker should read")
-		.expect("review handoff marker should exist");
+		.expect("review handoff projection should read")
+		.expect("review handoff projection should exist");
 
 	assert_eq!(restored_handoff, handoff);
 
@@ -281,14 +375,231 @@ fn review_markers_roundtrip_preserve_required_fields() {
 
 	store
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &orchestration)
-		.expect("review orchestration marker should persist");
+		.expect("review orchestration projection should persist");
+
+	let lifecycle = store
+		.review_lifecycle_record("pubfi", "PUB-101", "x/decodex-pub-101")
+		.expect("review lifecycle record should read")
+		.expect("review lifecycle record should exist");
+
+	assert_eq!(lifecycle.project_id(), "pubfi");
+	assert_eq!(lifecycle.issue_id(), "PUB-101");
+	assert_eq!(lifecycle.branch_name(), "x/decodex-pub-101");
+	assert_eq!(lifecycle.run_id(), "run-1");
+	assert_eq!(lifecycle.attempt_number(), 2);
+	assert_eq!(lifecycle.pr_url(), "https://github.com/hack-ink/decodex/pull/101");
+	assert_eq!(lifecycle.target_base_ref_name(), Some("main"));
+	assert_eq!(lifecycle.pr_head_ref_name(), "x/decodex-pub-101");
+	assert_eq!(lifecycle.pr_head_oid(), "08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
+	assert_eq!(lifecycle.head_sha(), "08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
+	assert_eq!(lifecycle.phase(), "waiting_for_ack");
+	assert_eq!(lifecycle.request_comment_database_id(), Some(1_234));
+	assert_eq!(lifecycle.request_created_at_unix_epoch(), Some(1_775_200_000));
+	assert_eq!(lifecycle.request_description_thumbs_up_count(), Some(3));
+	assert_eq!(lifecycle.request_retry_count(), 1);
+	assert_eq!(lifecycle.external_round_count(), 2);
+	assert_eq!(lifecycle.auto_merge_enabled_at_unix_epoch(), Some(1_775_200_900));
+	assert_eq!(lifecycle.landing_state(), "not_started");
+	assert_eq!(lifecycle.closeout_state(), "not_started");
+	assert_eq!(lifecycle.repair_attempt_count(), 0);
+	assert_eq!(lifecycle.evidence_json(), "{}");
+	assert_eq!(lifecycle.next_action(), "");
+	assert!(!lifecycle.updated_at().is_empty());
+	assert!(lifecycle.updated_at_unix() > 0);
+
+	store
+		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
+		.expect("same handoff projection should persist without resetting lifecycle state");
+
+	let lifecycle = store
+		.review_lifecycle_record("pubfi", "PUB-101", "x/decodex-pub-101")
+		.expect("review lifecycle record should read after same handoff")
+		.expect("review lifecycle record should exist after same handoff");
+
+	assert_eq!(lifecycle.phase(), "waiting_for_ack");
+	assert_eq!(lifecycle.request_comment_database_id(), Some(1_234));
 
 	let restored_orchestration = store
 		.review_orchestration_marker("pubfi", "PUB-101", &handoff)
-		.expect("review orchestration marker should read")
-		.expect("review orchestration marker should exist");
+		.expect("review orchestration projection should read")
+		.expect("review orchestration projection should exist");
 
 	assert_eq!(restored_orchestration, orchestration);
+
+	let snapshot = store
+		.project_loop_evidence_snapshot("pubfi")
+		.expect("project loop evidence snapshot should read");
+	let snapshot_lifecycle = snapshot
+		.review_lifecycle_record("PUB-101", "x/decodex-pub-101")
+		.expect("snapshot review lifecycle should exist");
+
+	assert_eq!(snapshot_lifecycle, &lifecycle);
+}
+
+#[test]
+fn changed_review_handoff_projection_resets_lifecycle_phase_fields() {
+	let store = StateStore::open_in_memory().expect("state store should open");
+	let old_handoff = ReviewHandoffMarker::new(
+		"run-1",
+		1,
+		"x/decodex-pub-101",
+		"https://github.com/hack-ink/decodex/pull/101",
+		"main",
+		"x/decodex-pub-101",
+		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+	);
+	let old_orchestration = ReviewOrchestrationMarker::new(
+		"run-1",
+		1,
+		"x/decodex-pub-101",
+		"https://github.com/hack-ink/decodex/pull/101",
+		"19b20f7dfb9526e7421a5f095b1c6adec84e52d7",
+		"waiting_for_ack",
+		Some(1_234),
+		Some(1_775_200_000),
+		Some(3),
+		2,
+		4,
+		Some(1_775_200_900),
+	);
+	let new_handoff = ReviewHandoffMarker::new(
+		"run-2",
+		1,
+		"x/decodex-pub-101",
+		"https://github.com/hack-ink/decodex/pull/101",
+		"main",
+		"x/decodex-pub-101",
+		"28c20f7dfb9526e7421a5f095b1c6adec84e52d8",
+	);
+
+	store
+		.upsert_review_handoff_marker("pubfi", "PUB-101", &old_handoff)
+		.expect("old handoff projection should persist");
+	store
+		.upsert_review_orchestration_marker("pubfi", "PUB-101", &old_orchestration)
+		.expect("old orchestration projection should persist");
+	store
+		.upsert_review_handoff_marker("pubfi", "PUB-101", &new_handoff)
+		.expect("changed handoff projection should persist");
+
+	let lifecycle = store
+		.review_lifecycle_record("pubfi", "PUB-101", "x/decodex-pub-101")
+		.expect("review lifecycle record should read")
+		.expect("review lifecycle record should exist");
+
+	assert_eq!(lifecycle.run_id(), "run-2");
+	assert_eq!(lifecycle.pr_head_oid(), "28c20f7dfb9526e7421a5f095b1c6adec84e52d8");
+	assert_eq!(lifecycle.head_sha(), "28c20f7dfb9526e7421a5f095b1c6adec84e52d8");
+	assert_eq!(lifecycle.phase(), "request_pending");
+	assert_eq!(lifecycle.request_comment_database_id(), None);
+	assert_eq!(lifecycle.request_created_at_unix_epoch(), None);
+	assert_eq!(lifecycle.request_description_thumbs_up_count(), None);
+	assert_eq!(lifecycle.request_retry_count(), 0);
+	assert_eq!(lifecycle.external_round_count(), 0);
+	assert_eq!(lifecycle.auto_merge_enabled_at_unix_epoch(), None);
+	assert_eq!(lifecycle.landing_state(), "not_started");
+	assert_eq!(lifecycle.closeout_state(), "not_started");
+	assert_eq!(lifecycle.repair_attempt_count(), 0);
+	assert_eq!(lifecycle.evidence_json(), "{}");
+	assert_eq!(lifecycle.next_action(), "");
+
+	let orchestration = store
+		.review_orchestration_marker("pubfi", "PUB-101", &new_handoff)
+		.expect("new orchestration projection should read")
+		.expect("new orchestration projection should exist");
+
+	assert_eq!(orchestration.run_id(), "run-2");
+	assert_eq!(orchestration.head_sha(), "28c20f7dfb9526e7421a5f095b1c6adec84e52d8");
+	assert_eq!(orchestration.phase(), "request_pending");
+	assert_eq!(orchestration.request_retry_count(), 0);
+	assert_eq!(orchestration.external_round_count(), 0);
+}
+
+#[test]
+fn historical_review_marker_tables_migrate_into_lifecycle_record() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+
+	seed_review_lifecycle_migration_fixture(&state_path);
+
+	let store =
+		StateStore::open(&state_path).expect("state store should migrate historical markers");
+	let handoff = store
+		.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+		.expect("migrated handoff projection should read")
+		.expect("migrated handoff projection should exist");
+
+	assert_eq!(handoff.run_id(), "run-1");
+	assert_eq!(handoff.attempt_number(), 2);
+	assert_eq!(handoff.pr_head_oid(), "08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
+
+	let lifecycle = store
+		.review_lifecycle_record("pubfi", "PUB-101", "x/decodex-pub-101")
+		.expect("migrated lifecycle record should read")
+		.expect("migrated lifecycle record should exist");
+
+	assert_eq!(lifecycle.pr_head_oid(), "08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
+	assert_eq!(lifecycle.head_sha(), "19b20f7dfb9526e7421a5f095b1c6adec84e52d7");
+	assert_eq!(lifecycle.phase(), "waiting_for_ack");
+	assert_eq!(lifecycle.request_comment_database_id(), Some(1_234));
+	assert_eq!(lifecycle.request_created_at_unix_epoch(), Some(1_771_290_030));
+	assert_eq!(lifecycle.request_description_thumbs_up_count(), Some(4));
+	assert_eq!(lifecycle.request_retry_count(), 1);
+	assert_eq!(lifecycle.external_round_count(), 3);
+	assert_eq!(lifecycle.auto_merge_enabled_at_unix_epoch(), Some(1_771_290_060));
+
+	let orphan_lifecycle = store
+		.review_lifecycle_record("pubfi", "PUB-202", "x/decodex-pub-202")
+		.expect("orphan historical orchestration should read")
+		.expect("orphan historical orchestration should migrate");
+
+	assert_eq!(orphan_lifecycle.target_base_ref_name(), None);
+	assert_eq!(orphan_lifecycle.pr_head_ref_name(), "x/decodex-pub-202");
+	assert_eq!(orphan_lifecycle.pr_head_oid(), "28c20f7dfb9526e7421a5f095b1c6adec84e52d8");
+	assert_eq!(orphan_lifecycle.head_sha(), "28c20f7dfb9526e7421a5f095b1c6adec84e52d8");
+
+	let stale_orchestration_lifecycle = store
+		.review_lifecycle_record("pubfi", "PUB-303", "x/decodex-pub-303")
+		.expect("stale historical orchestration should read")
+		.expect("current historical handoff should migrate");
+
+	assert_eq!(stale_orchestration_lifecycle.run_id(), "run-2");
+	assert_eq!(stale_orchestration_lifecycle.attempt_number(), 1);
+	assert_eq!(
+		stale_orchestration_lifecycle.pr_head_oid(),
+		"38c20f7dfb9526e7421a5f095b1c6adec84e52d8"
+	);
+	assert_eq!(
+		stale_orchestration_lifecycle.head_sha(),
+		"38c20f7dfb9526e7421a5f095b1c6adec84e52d8"
+	);
+	assert_eq!(stale_orchestration_lifecycle.phase(), "request_pending");
+	assert_eq!(stale_orchestration_lifecycle.request_comment_database_id(), None);
+	assert_eq!(stale_orchestration_lifecycle.request_created_at_unix_epoch(), None);
+	assert_eq!(stale_orchestration_lifecycle.request_description_thumbs_up_count(), None);
+	assert_eq!(stale_orchestration_lifecycle.request_retry_count(), 0);
+	assert_eq!(stale_orchestration_lifecycle.external_round_count(), 0);
+	assert_eq!(stale_orchestration_lifecycle.auto_merge_enabled_at_unix_epoch(), None);
+
+	drop(store);
+
+	let connection = Connection::open(&state_path).expect("migrated db should open");
+	let legacy_table_count: i64 = connection
+		.query_row(
+			"SELECT COUNT(*) FROM sqlite_master \
+			 WHERE type = 'table' AND name IN ('review_handoffs', 'review_orchestrations')",
+			[],
+			|row| row.get(0),
+		)
+		.expect("legacy marker tables should query");
+
+	assert_eq!(legacy_table_count, 0);
+
+	let lifecycle_count: i64 = connection
+		.query_row("SELECT COUNT(*) FROM review_lifecycle_records", [], |row| row.get(0))
+		.expect("review lifecycle rows should query");
+
+	assert_eq!(lifecycle_count, 3);
 }
 
 #[test]
@@ -336,7 +647,7 @@ fn connector_backoff_roundtrip_and_clear_from_runtime_store() {
 }
 
 #[test]
-fn clear_review_markers_for_handoff_preserves_other_branches() {
+fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let store = StateStore::open(&state_path).expect("state store should open");
@@ -368,10 +679,10 @@ fn clear_review_markers_for_handoff_preserves_other_branches() {
 
 	store
 		.upsert_review_handoff_marker("pubfi", "PUB-101", &removed_handoff)
-		.expect("removed handoff marker should persist");
+		.expect("removed handoff projection should persist");
 	store
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &removed_orchestration)
-		.expect("removed orchestration marker should persist");
+		.expect("removed orchestration projection should persist");
 
 	upsert_handoff_review_policy_checkpoint(
 		&store,
@@ -384,10 +695,10 @@ fn clear_review_markers_for_handoff_preserves_other_branches() {
 
 	store
 		.upsert_review_handoff_marker("pubfi", "PUB-101", &kept_handoff)
-		.expect("kept handoff marker should persist");
+		.expect("kept handoff projection should persist");
 	store
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &kept_orchestration)
-		.expect("kept orchestration marker should persist");
+		.expect("kept orchestration projection should persist");
 
 	upsert_handoff_review_policy_checkpoint(
 		&store,
@@ -399,32 +710,32 @@ fn clear_review_markers_for_handoff_preserves_other_branches() {
 	);
 
 	store
-		.clear_review_markers_for_handoff(
+		.clear_review_lifecycle_for_handoff(
 			"pubfi",
 			"PUB-101",
 			&removed_handoff,
 			&removed_orchestration,
 		)
-		.expect("exact review markers should clear");
+		.expect("exact review lifecycle should clear");
 
 	let reopened = StateStore::open(&state_path).expect("reopened state store should open");
 
 	assert!(
 		reopened
 			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
-			.expect("removed handoff marker should read")
+			.expect("removed handoff projection should read")
 			.is_none()
 	);
 	assert_eq!(
 		reopened
 			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101-review")
-			.expect("kept handoff marker should read"),
+			.expect("kept handoff projection should read"),
 		Some(kept_handoff.clone())
 	);
 	assert_eq!(
 		reopened
 			.review_orchestration_marker("pubfi", "PUB-101", &kept_handoff)
-			.expect("kept orchestration marker should read"),
+			.expect("kept orchestration projection should read"),
 		Some(kept_orchestration)
 	);
 	assert!(
@@ -444,7 +755,7 @@ fn clear_review_markers_for_handoff_preserves_other_branches() {
 }
 
 #[test]
-fn missing_review_markers_return_absent() {
+fn missing_review_lifecycle_projections_return_absent() {
 	let store = StateStore::open_in_memory().expect("state store should open");
 	let handoff = ReviewHandoffMarker::new(
 		"run-1",
@@ -459,13 +770,13 @@ fn missing_review_markers_return_absent() {
 	assert!(
 		store
 			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
-			.expect("review handoff marker should read")
+			.expect("review handoff projection should read")
 			.is_none()
 	);
 	assert!(
 		store
 			.review_orchestration_marker("pubfi", "PUB-101", &handoff)
-			.expect("review orchestration marker should read")
+			.expect("review orchestration projection should read")
 			.is_none()
 	);
 }
@@ -524,7 +835,7 @@ fn review_policy_checkpoints_persist_reload_and_clear_for_run_attempt() {
 }
 
 #[test]
-fn persistent_review_markers_survive_stale_store_persist_and_are_visible() {
+fn persistent_review_lifecycle_survives_stale_store_persist_and_is_visible() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let observer = StateStore::open(&state_path).expect("observer state store should open");
@@ -555,15 +866,15 @@ fn persistent_review_markers_survive_stale_store_persist_and_are_visible() {
 
 	writer
 		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
-		.expect("handoff marker should persist");
+		.expect("handoff projection should persist");
 	writer
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &orchestration)
-		.expect("orchestration marker should persist");
+		.expect("orchestration projection should persist");
 
 	let observed_handoff = observer
 		.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
-		.expect("observer should read handoff marker")
-		.expect("observer should see marker written by another store");
+		.expect("observer should read handoff projection")
+		.expect("observer should see lifecycle written by another store");
 
 	assert_eq!(observed_handoff, handoff);
 
@@ -576,13 +887,13 @@ fn persistent_review_markers_survive_stale_store_persist_and_are_visible() {
 	assert_eq!(
 		reopened
 			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
-			.expect("reopened store should read handoff marker"),
+			.expect("reopened store should read handoff projection"),
 		Some(handoff.clone())
 	);
 	assert_eq!(
 		reopened
 			.review_orchestration_marker("pubfi", "PUB-101", &handoff)
-			.expect("reopened store should read orchestration marker"),
+			.expect("reopened store should read orchestration projection"),
 		Some(orchestration)
 	);
 	assert!(
@@ -2564,7 +2875,7 @@ fn opens_legacy_worktree_rows_with_unknown_provenance() {
 }
 
 #[test]
-fn persistent_clear_worktree_deletes_review_markers() {
+fn persistent_clear_worktree_deletes_review_lifecycle() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let store = StateStore::open(&state_path).expect("state store should open");
@@ -2597,10 +2908,10 @@ fn persistent_clear_worktree_deletes_review_markers() {
 		.expect("worktree mapping should be recorded");
 	store
 		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
-		.expect("handoff marker should persist");
+		.expect("handoff projection should persist");
 	store
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &orchestration)
-		.expect("orchestration marker should persist");
+		.expect("orchestration projection should persist");
 	store.clear_worktree("PUB-101").expect("worktree cleanup should persist");
 
 	let reopened = StateStore::open(&state_path).expect("reopened store should open");
@@ -2655,10 +2966,10 @@ fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh()
 		.expect("decision contract should persist");
 	writer
 		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
-		.expect("handoff marker should persist");
+		.expect("handoff projection should persist");
 	writer
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &orchestration)
-		.expect("orchestration marker should persist");
+		.expect("orchestration projection should persist");
 
 	upsert_handoff_review_policy_checkpoint(
 		&writer,

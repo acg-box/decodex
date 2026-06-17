@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-last_verified: 2026-06-16
+last_verified: 2026-06-17
 ---
 # Post-Review Lifecycle
 
@@ -75,7 +75,20 @@ Post-`In Review` classification may use only these signal groups:
   - whether closeout already ran
   - whether deterministic local cleanup remains pending
 
-In the current runtime, the retained lane persists its validated review handoff in the Decodex runtime database and uses that row as the authoritative post-review lineage record for repair, landing, closeout, and cleanup. When that exact database handoff is missing, post-review ownership must block as unresolved instead of rebinding from branch-name, current-head-only heuristics, or Linear comments.
+In the current runtime, the retained lane persists one `review_lifecycle_records` row
+in the Decodex runtime database and uses that row as the authoritative post-review
+lineage record for repair, landing, closeout, and cleanup. The record stores the PR
+URL, base/head branch, validated PR head OID, run id, attempt number, current
+post-review phase, review-request metadata, landing/closeout/repair state, evidence,
+and next action. Handoff and orchestration tool-boundary shapes are projections of this
+record; they are not separate durable authority. When that exact lifecycle record is
+missing, post-review ownership must
+block as unresolved instead of rebinding from branch-name, current-head-only
+heuristics, or Linear comments.
+Historical `review_handoffs` and `review_orchestrations` tables are one-time runtime
+bootstrap migration input into `review_lifecycle_records`; after that migration, they
+are dropped and must not be used as readback authority. Operators must use explicit
+diagnose, rebind, or adopt recovery to create or refresh a current lifecycle record.
 
 If these signals disagree and the disagreement cannot be resolved without guessing operator intent, the runtime must use `manual_intervention_required`.
 
@@ -86,47 +99,49 @@ not infer a PR lineage from branch names, current heads, PR titles, or Linear co
 and `decodex run` must not repair this state automatically.
 
 Failure writeback must also respect this post-review boundary. If an execution failure
-arrives after a retained review handoff marker already binds the current issue,
-branch, and local HEAD lineage, Decodex may self-heal state drift by rebuilding the
-review orchestration marker, clearing loop guardrail checkpoints for the issue, and
-moving the tracker issue back to `tracker.success_state` when the issue had drifted to
-`tracker.in_progress_state` or `tracker.failure_state`. This is not implementation
-repair and must happen before retry/no-diff loop guardrails run. If the retained marker
-is absent, unverified, or diverged, Decodex must stop with
+arrives after a retained review lifecycle record already binds the current issue,
+branch, PR, and local HEAD lineage, Decodex may self-heal state drift by rebinding the
+phase fields in that lifecycle record, clearing loop guardrail checkpoints for the
+issue, and moving the tracker issue back to `tracker.success_state` when the issue had
+drifted to `tracker.in_progress_state` or `tracker.failure_state`. This is not
+implementation repair and must happen before retry/no-diff loop guardrails run. If the
+retained lifecycle record is absent, unverified, or diverged, Decodex must stop with
 `review_handoff_state_drift` or the existing `missing_review_handoff_record` posture
 and require explicit recovery evidence rather than guessing a PR lineage.
 
-When the retained review handoff marker exists but a direct PR-state read or local
+When the retained review lifecycle record exists but a direct PR-state read or local
 worktree branch/head read fails, operator status must degrade the readback instead of
 replacing the bound lane with a null-PR blocked state. The status row must keep the
-issue identifier, retained branch, marker PR URL, and marker head SHA, and it may expose
-warnings such as `readback_warning = "pull_request_state_read_failed"`,
+issue identifier, retained branch, lifecycle PR URL, and lifecycle head SHA, and it may
+expose warnings such as `readback_warning = "pull_request_state_read_failed"`,
 `worktree_checkout_branch_read_failed`, or `worktree_head_read_failed` until the next
 successful readback.
-Retained orchestration must preserve degraded readback as a wait state. It must not
+Retained orchestration must preserve degraded readback as a wait state in the
+lifecycle record. It must not
 convert `pull_request_state_read_failed`, `worktree_checkout_branch_read_failed`,
 `worktree_head_read_failed`, or other `WaitForReview` classifications into passive
 manual attention; only classifications whose decision is `Block` may add
 `decodex:needs-attention`.
 
 When Linear issue metadata readback is degraded by connector backoff, operator status
-must still keep locally retained handoff rows visible with the marker PR URL and head
-SHA and must mark the row as tracker-readback degraded instead of presenting the PR or
-code state as failed. If the handoff is bound but `decodex:active:<service-id>` is
+must still keep locally retained lifecycle rows visible with the lifecycle PR URL and
+head SHA and must mark the row as tracker-readback degraded instead of presenting the
+PR or code state as failed. If the lifecycle record is bound but
+`decodex:active:<service-id>` is
 missing, recovery diagnosis must classify the state as ownership drift and give the
 single label repair action instead of recommending rebind.
 
 The supported operator recovery surface is `decodex recover review-handoff`. This is a
-break-glass recovery path for orphaned retained review lanes and stale retained marker
+break-glass recovery path for orphaned retained review lanes and stale lifecycle
 heads after explicit manual repair or rebase. It is not part of the normal automation
 success path.
 
 - `diagnose` is read-only. It reports the project, issue, branch, worktree, local head,
-  active automation label, existing PR URL when present, stored handoff head, stored
-  orchestration head, PR base/head when readable, and the missing or mismatched marker
-  reason. A diagnostic may report a bound marker, active ownership drift, a missing
-  marker, a pending issue-state transition, an unverified PR read, or a concrete field
-  mismatch that requires explicit rebind.
+  active automation label, existing PR URL when present, lifecycle handoff head,
+  lifecycle phase head, PR base/head when readable, and the missing or mismatched
+  lifecycle reason. A diagnostic may report a bound lifecycle record, active ownership
+  drift, a missing lifecycle record, a pending issue-state transition, an unverified PR
+  read, or a concrete field mismatch that requires explicit rebind.
 - `adopt` is mutating and requires an explicit issue identifier plus PR URL. It is the
   supported manual takeover path for a human-owned PR that was created outside a
   runtime-retained lane but should now enter Decodex's normal retained review/landing
@@ -138,50 +153,51 @@ success path.
   be open, non-draft, mergeable, green, free of pending review requests, and free of
   unresolved review threads. It may reuse an existing worktree mapping only when that
   mapping points at the current managed checkout; it must reject mappings to a
-  different checkout and must reject any existing review handoff marker for the current
-  or previously mapped branch. Adopt rewrites the mapping to the current PR branch
-  only after validation succeeds. Those already-bound marker lanes belong to `rebind`
+  different checkout and must reject any existing review lifecycle record for the
+  current or previously mapped branch. Adopt rewrites the mapping to the current PR
+  branch only after validation succeeds. Those already-bound lifecycle lanes belong to `rebind`
   or normal landing.
 - `rebind` is mutating and requires an explicit issue identifier plus PR URL. It must
   validate the configured project, tracker issue state, active automation ownership,
   retained worktree branch, clean worktree, PR repository, PR base, PR head branch, PR
-  head SHA, and open non-draft PR state before writing markers. Existing-marker refresh
+  head SHA, and open non-draft PR state before writing the lifecycle record.
+  Existing-record refresh
   requires the workflow `tracker.success_state`. Partial normal handoff recovery may
-  also accept the workflow `tracker.in_progress_state` when the marker is missing, or
-  when an already-current marker exists but the issue state was not advanced, and the
-  validated PR plus retained worktree prove the handoff lineage. If stale failure
-  writeback already moved that already-current marker lane back to
+  also accept the workflow `tracker.in_progress_state` when the lifecycle record is
+  missing, or when an already-current lifecycle record exists but the issue state was
+  not advanced, and the validated PR plus retained worktree prove the handoff lineage.
+  If stale failure writeback already moved that already-current lifecycle lane back to
   `tracker.failure_state` and applied `tracker.needs_attention_label`, explicit rebind
   may clear that label and move the issue to `tracker.success_state` after the rebind
   audit succeeds. Decodex must reject this failure-state recovery for missing or stale
-  markers because those still need explicit PR-lineage repair before tracker state can
-  be trusted.
-- If no review handoff marker exists, `rebind` restores the missing handoff and
-  orchestration markers from the validated PR and retained worktree. If a marker already
-  exists for the same branch and PR but its stored handoff or orchestration head is
-  stale, `rebind` may refresh that marker to the validated PR head. It must reject an
-  existing marker for a different PR, and it must reject a current same-branch same-PR
-  marker as a no-op unless the issue is still in `tracker.in_progress_state` and only
-  the success-state transition remains.
+  lifecycle records because those still need explicit PR-lineage repair before tracker
+  state can be trusted.
+- If no review lifecycle record exists, `rebind` restores the missing lifecycle record
+  from the validated PR and retained worktree. If a record already exists for the same
+  branch and PR but its stored handoff head or phase head is stale, `rebind` may
+  refresh that record to the validated PR head. It must reject an existing record for a
+  different PR, and it must reject a current same-branch same-PR record as a no-op
+  unless the issue is still in `tracker.in_progress_state` and only the success-state
+  transition remains.
 - A successful adopt writes a runtime worktree mapping for the current managed checkout,
   creates a local run attempt identity for the takeover, writes the same runtime DB
-  handoff and orchestration marker shapes as normal `issue_review_handoff` needs,
+  review lifecycle record as normal `issue_review_handoff` needs,
   records a `review_handoff_adopt` audit event, and may move the issue from
   `tracker.in_progress_state` to `tracker.success_state` after the audit succeeds. It
   does not land the PR, queue follow-up work, or clear needs-attention. A subsequent
   `decodex land --authority <ISSUE> --pr <URL>` owns merge, tracker closeout, and
   cleanup through the normal issue-authority path.
-- A successful rebind writes the same runtime DB handoff and orchestration marker shapes
-  as normal `issue_review_handoff` needs, and records a `review_handoff_rebind` audit
+- A successful rebind writes the same runtime DB review lifecycle record as normal
+  `issue_review_handoff` needs, and records a `review_handoff_rebind` audit
   event. It does not land the PR, queue follow-up work, or substitute for healthy lanes'
   normal `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")`
-  path. If any audit write fails after marker creation, the command must clear the new
-  markers and report failure instead of leaving a silently rebound lane.
-- Once a rebind or equivalent current handoff marker exists for a retained lane, stale
+  path. If any audit write fails after lifecycle record creation, the command must
+  clear the new record and report failure instead of leaving a silently rebound lane.
+- Once a rebind or equivalent current lifecycle record exists for a retained lane, stale
   passive failure handling for the earlier `missing_review_handoff_record` observation
   must not move the issue back to the failure state or add `decodex:needs-attention`.
-  The next scheduler/status pass must reclassify from the current marker instead of
-  applying the obsolete missing-marker writeback.
+  The next scheduler/status pass must reclassify from the current lifecycle record
+  instead of applying the obsolete missing-record writeback.
 
 `cleanup_only` rows are outside this rebind surface. When operator status reports a
 cleanup-only worktree with `provenance_source = "legacy_unknown"`, Decodex has only an
@@ -191,10 +207,10 @@ checkout for local-only changes, run
 `decodex recover legacy-closeout <ISSUE> --pr <MERGED_PR> --dry-run`, rerun with
 `--manual-authority` only after validation passes, and only then remove the worktree.
 That fallback must stay rarer than normal closeout, explicit rebind, or deterministic
-legacy reconstruction from authoritative markers. Runtime recovery may classify a
-retained worktree as `runtime_recovered` only after tracker, retained marker, or
-closeout evidence proves a current owner; it must not silently upgrade a terminal
-cleanup-only `legacy_unknown` row.
+legacy reconstruction from authoritative lifecycle records. Runtime recovery may
+classify a retained worktree as `runtime_recovered` only after tracker, retained
+lifecycle record, or closeout evidence proves a current owner; it must not silently
+upgrade a terminal cleanup-only `legacy_unknown` row.
 
 ## Phase model
 
