@@ -1057,12 +1057,15 @@ struct ProjectDaemonRuntime {
 	recoverable_worktree_skip_cache: RecoverableWorktreeSkipCache,
 }
 
-	#[derive(Clone, Debug)]
-	struct TrackerConnectorBackoff {
+#[derive(Clone, Debug)]
+struct TrackerConnectorBackoff {
 	until: Instant,
+	quota_class: &'static str,
 	reset_unix_epoch: i64,
 	reset_source: &'static str,
 	sync_phase: &'static str,
+	warning: &'static str,
+	next_action: &'static str,
 }
 
 struct OperatorStateEndpoint {
@@ -2395,6 +2398,7 @@ fn operator_execution_program_node_should_render(
 				| crate::execution_program::ExecutionProgramNodeLifecycleState::Blocked
 				| crate::execution_program::ExecutionProgramNodeLifecycleState::Mapped
 				| crate::execution_program::ExecutionProgramNodeLifecycleState::NeedsAttention
+				| crate::execution_program::ExecutionProgramNodeLifecycleState::PostReview
 				| crate::execution_program::ExecutionProgramNodeLifecycleState::Planned
 				| crate::execution_program::ExecutionProgramNodeLifecycleState::Stale
 				| crate::execution_program::ExecutionProgramNodeLifecycleState::Superseded
@@ -2507,6 +2511,8 @@ fn operator_execution_program_reason_code(reason: &str) -> &'static str {
 		"mapped_issue_not_startable"
 	} else if reason.contains(" already carries `") {
 		"mapped_issue_active_label_present"
+	} else if reason.contains(" is owned by the retained post-review lifecycle") {
+		"mapped_issue_post_review_owner"
 	} else if reason.contains(" carries `decodex:manual-only`") {
 		"mapped_issue_manual_only"
 	} else if reason.contains(" carries `decodex:needs-attention`") {
@@ -2523,6 +2529,8 @@ fn operator_execution_program_reason_code(reason: &str) -> &'static str {
 fn operator_execution_program_public_reason(reason: &str) -> String {
 	if reason.starts_with("conflict domain `") {
 		String::from("another active or retained program node occupies this conflict domain")
+	} else if reason.contains(" is owned by the retained post-review lifecycle") {
+		String::from("Review & Landing owns this issue until post-review landing or closeout finishes")
 	} else if reason.starts_with("dependency `") {
 		String::from("a dependency has not reached a required terminal state")
 	} else {
@@ -2564,6 +2572,16 @@ fn operator_execution_program_node_next_action(
 	) {
 		return String::from(
 			"Wait for the current lane or recover its retained state before dispatching this node.",
+		);
+	}
+	if matches!(
+		node.lifecycle_state(),
+		crate::execution_program::ExecutionProgramNodeLifecycleState::PostReview
+	)
+		|| reason_codes.iter().any(|code| code == "mapped_issue_post_review_owner")
+	{
+		return String::from(
+			"Continue the retained post-review lifecycle before dispatching this program node.",
 		);
 	}
 	if node.dispatch_action().is_some() {
