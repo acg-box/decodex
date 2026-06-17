@@ -2,6 +2,11 @@
 
 ## 2026-06-18
 
+- Added the stdio Decodex MCP primitive surface: initialize now advertises resources,
+  resource templates, prompts, tools, logging, and progress compatibility; stdio smoke
+  coverage now exercises resources/templates/list, prompts/list, prompts/get,
+  tools/list, tools/call, active capability-profile filtering, and stdout cleanliness
+  while Streamable HTTP and live operate/admin lane-control remain deferred.
 - Added `repo-memory-evaluator` so repo-memory OKF/LLM Wiki bundles have a
   plugin-eval-style quality workflow for static checks, route top-1/top-3 benchmarks,
   graph health, owner coverage, and before/after curation evidence.
