@@ -6,7 +6,7 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-last_verified: 2026-06-16
+last_verified: 2026-06-17
 ---
 # Workspace Layout
 
@@ -21,6 +21,9 @@ design rationale.
 
 Covers: The repository surface map, ownership boundaries, and local directories that
 should not be treated as repository source.
+
+For build, test, run, setup, validation, and task-runner command entrypoints, read
+[`./build-test-run.md`](./build-test-run.md).
 
 ## Top-level surfaces
 
@@ -54,6 +57,9 @@ cargo run -p decodex --bin decodex -- --help
 cargo build -p decodex
 cargo install --path apps/decodex --force
 ```
+
+For the current aggregate validation gates, use [`./build-test-run.md`](./build-test-run.md)
+instead of treating this layout reference as command authority.
 
 Do not add new runtime behavior to a root `src/` directory. If Decodex later needs
 shared crates, add them under `packages/` and make the boundary explicit in this
