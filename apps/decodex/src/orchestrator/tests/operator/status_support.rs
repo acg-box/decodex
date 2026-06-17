@@ -143,7 +143,7 @@ fn retained_partial_progress_linear_execution_history_comments(
 					"lane stopped before review handoff and terminal finalize",
 				)]);
 				record.evidence = Some(vec![
-					String::from("cargo make checks passed"),
+					String::from("cargo make check passed"),
 					String::from("retained worktree has tracked changes"),
 				]);
 				record.terminal_path = Some(String::from("retained_partial_progress"));
