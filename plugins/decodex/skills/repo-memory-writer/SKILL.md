@@ -6,7 +6,8 @@ description: Use when bootstrapping or improving source-backed repo-memory OKF/L
 # Repo Memory Writer
 
 Build source-backed repository knowledge. The AI writes the concepts; `decodex okf`
-only scaffolds, checks, routes, and graphs them.
+only scaffolds, checks, routes, and graphs them. Use `repo-memory-curator` after
+real route, graph, or orphan evidence shows an existing bundle needs repair.
 
 Operating rules:
 
@@ -34,7 +35,7 @@ Workflow:
    decisions.
 5. Keep each concept one-topic. Add `description`, useful `tags`, `source_refs`,
    `code_refs`, `related`, and `drift_watch` only when they improve retrieval or
-   maintenance.
+   maintenance; leave later graph/route tuning to `repo-memory-curator`.
 6. Update `index.md` and `log.md`; link neighboring concepts instead of repeating
    broad summaries.
 7. Validate with:

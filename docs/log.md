@@ -2,6 +2,9 @@
 
 ## 2026-06-18
 
+- Added `repo-memory-curator` so existing OKF/LLM Wiki bundles have a dedicated
+  growth and maintenance skill for top-1/top-3 route benchmark misses,
+  metadata-only owner tuning, orphan triage, graph repair, and link tuning.
 - Added protocol journal replay idempotency to the runtime contract: protocol events
   now retain payload SHA-256 identity so app-server continuation/recovery can replay
   the same event without failing the lane, while conflicting same-sequence events still
