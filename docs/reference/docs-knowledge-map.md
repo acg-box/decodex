@@ -7,7 +7,7 @@ authority: current_state
 owner: docs
 tags: [docs, okf, llm-wiki, repo-memory, reference]
 source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md, https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing, https://llmstxt.org/, https://diataxis.fr/, https://developers.openai.com/codex/guides/agents-md, https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions]
-code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/cli.rs, docs/index.md, docs/policy.md, docs/spec/okf-knowledge-layer.md, plugins/decodex/skills/repo-memory-writer/SKILL.md]
+code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/cli.rs, docs/index.md, docs/policy.md, docs/spec/okf-knowledge-layer.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md]
 related: [../policy.md, ../spec/okf-knowledge-layer.md, ../evidence/docs-self-iteration.md, ./build-test-run.md, ./workspace-layout.md]
 drift_watch: [decodex docs check, decodex okf graph docs, decodex okf route docs, docs index, docs lane index, okf orphan concepts]
 last_verified: 2026-06-17
@@ -132,6 +132,8 @@ In another repository, the Decodex plugin can now provide three distinct layers:
 - `decodex okf init <root> --profile repo-memory` creates the portable scaffold.
 - `repo-memory-writer` guides Codex to read repository evidence and write canonical
   concepts instead of generated summaries.
+- `repo-memory-curator` guides later graph repair, orphan triage, route benchmarks,
+  and metadata/link tuning after real usage exposes misses.
 - `decodex okf check/graph/route` verifies shape, graph health, and task routing.
 
 The expected first useful output is not a complete encyclopedia. It is a small,
