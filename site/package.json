@@ -14,17 +14,12 @@
     "@astrojs/check": "^0.9.9",
     "@tailwindcss/vite": "4.3.1",
     "astro": "^6.4.7",
-    "marked": "^18.0.5",
     "tailwindcss": "4.3.1",
-    "three": "^0.184.0",
     "typescript": "^6.0.3"
   },
   "overrides": {
     "esbuild": "0.28.1",
     "yaml": "2.9.0",
     "vite": "8.0.16"
-  },
-  "devDependencies": {
-    "@types/three": "^0.184.1"
   }
 }

@@ -6,30 +6,33 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook]
-last_verified: 2026-06-16
+last_verified: 2026-06-17
 ---
 # GitHub Pages Deploy
 
-Goal: Define how Decodex is published as this repository's GitHub Pages project
-site from Actions and what still must be configured manually for the
-`decodex.space` custom domain.
+Goal: Define how Decodex is published as a static GitHub Pages project site for
+`decodex.space` without repository-owned GitHub Actions.
 
 Read this when:
 - You need to enable or verify GitHub Pages deployment for Decodex.
 - You are configuring the `decodex.space` custom domain.
-- You need to know which settings live in GitHub/DNS versus which ones are committed in the repo.
+- You need to know which settings live in GitHub/DNS versus which source files are
+  committed in this repository.
 
 Inputs:
 - GitHub admin access for the `hack-ink/decodex` repository
 - DNS control for `decodex.space`
-- The deployed Astro site under `site/`
+- The Astro site source under `site/`
+- The external Decodex automation operations directory under
+  `/Users/x/Documents/automations/decodex`
 
 Depends on:
-- `.github/workflows/deploy-pages.yml`
 - `site/astro.config.mjs`
+- `site/package.json`
+- External Codex automation, not `.github/workflows/`
 
 Outputs:
-- A Pages deployment driven by Actions on pushes to `main`
+- A static Pages publication driven by external Codex automation
 - A GitHub Pages custom-domain configuration for `decodex.space`
 - DNS records that point the domain at GitHub Pages
 
@@ -46,34 +49,40 @@ The custom domain is configured in this repository's `Settings -> Pages`. That
 means the site remains repo-scoped even though GitHub Pages still uses the
 standard GitHub Pages DNS infrastructure underneath.
 
-## Repository-side deployment
+## Repository-side contract
 
-The repository publishes the static site with:
+This repository owns the source and local validation for the static site. It does not
+own GitHub Actions workflow files, Dependabot automation, upstream monitoring, or
+public publishing automation.
 
-- `.github/workflows/deploy-pages.yml`
+Before publication, validate the site from the repository root:
 
-This workflow:
+```bash
+cargo make check-node
+```
 
-1. Checks out `main`
-2. Installs Node dependencies for `site/`
-3. Builds the Astro site into `site/dist`
-4. Uploads `site/dist` as the Pages artifact
-5. Deploys the artifact with `actions/deploy-pages`
+The external Codex automation under `/Users/x/Documents/automations/decodex` owns
+the publication procedure. It may rebuild the site from a clean checkout or consume a
+fresh `site/dist` generated from the current source, then publish through the
+configured GitHub Pages mechanism. Do not reintroduce `.github/workflows/` for this
+repository.
 
 ## GitHub repository settings
 
-After the workflow exists, the repo still needs manual GitHub configuration:
+The repo still needs manual GitHub configuration:
 
 1. Open `Settings -> Pages`
-2. Set the source to `GitHub Actions`
+2. Configure the publishing source expected by the external Codex automation, such
+   as a Pages branch if the automation publishes one
 3. Under `Custom domain`, set `decodex.space`
 4. After DNS is live, enable `Enforce HTTPS`
 
 Important:
 
-- When publishing from a custom GitHub Actions workflow, GitHub does **not** create
-  or require a checked-in `CNAME` file.
-- Any existing `CNAME` file is ignored for this publishing mode.
+- Do not add a repo-main `CNAME` file unless the chosen Pages source explicitly reads
+  from the main branch.
+- If the automation publishes a Pages branch or artifact, that automation owns the
+  deployed `CNAME` placement required by that publishing mode.
 
 ## DNS for `decodex.space`
 
@@ -103,11 +112,17 @@ serve only `https://decodex.space`.
 
 ## Verification
 
-After the workflow runs and DNS propagates:
+After external automation publishes and DNS propagates:
 
-1. Confirm the Pages workflow succeeds in Actions
-2. Open the Pages environment URL in the deploy job output
-3. Verify the custom domain is accepted in `Settings -> Pages`
+1. Confirm the external Codex automation run completed and recorded its output under
+   `/Users/x/Documents/automations/decodex`
+2. Verify the custom domain is accepted in `Settings -> Pages`
+3. Check that this repository still has no GitHub Actions workflows:
+
+```bash
+test ! -d .github/workflows
+```
+
 4. Check DNS:
 
 ```bash
@@ -126,7 +141,7 @@ curl -I https://decodex.space
 
 These steps cannot be finished purely by editing repo files:
 
-- Switching this repository's Pages source to `GitHub Actions`
+- Selecting the Pages publishing source expected by the external Codex automation
 - Setting `decodex.space` in this repository's `Settings -> Pages`
 - Verifying the domain in GitHub if needed
-- Creating/updating the DNS records at the domain provider
+- Creating or updating the DNS records at the domain provider
