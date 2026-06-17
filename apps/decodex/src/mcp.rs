@@ -222,9 +222,24 @@ impl McpServer {
 				"Read-only local runtime status snapshot.",
 			));
 			resources.push(McpResource::json(
+				format!("decodex://projects/{project_id}/status_live"),
+				format!("Project {project_id} live status"),
+				"Remote-safe status, activity, progress, and lane-control summary.",
+			));
+			resources.push(McpResource::json(
+				format!("decodex://projects/{project_id}/activity_tail"),
+				format!("Project {project_id} activity tail"),
+				"Remote-safe current/recent run activity summary.",
+			));
+			resources.push(McpResource::json(
 				format!("decodex://projects/{project_id}/lane-control"),
 				format!("Project {project_id} lane-control readback"),
 				"Read-only lane-control state for current and recent local lanes.",
+			));
+			resources.push(McpResource::json(
+				format!("decodex://projects/{project_id}/pr_review_state"),
+				format!("Project {project_id} PR/review state"),
+				"Remote-safe PR and review-state readback.",
 			));
 		}
 
@@ -277,9 +292,57 @@ impl McpServer {
 					"mimeType": "application/json"
 				},
 				{
+					"uriTemplate": "decodex://projects/{project_id}/status_live",
+					"name": "Project live status",
+					"description": "Remote-safe current operation, phase, event counts, progress diagnostics, and validation status.",
+					"mimeType": "application/json"
+				},
+				{
+					"uriTemplate": "decodex://projects/{project_id}/activity_tail",
+					"name": "Project activity tail",
+					"description": "Remote-safe activity readback for current and recent runs.",
+					"mimeType": "application/json"
+				},
+				{
+					"uriTemplate": "decodex://projects/{project_id}/lane_inspect/{issue}",
+					"name": "Lane inspect readback",
+					"description": "Read-only lane inspect alias for remote-safe current-lane state.",
+					"mimeType": "application/json"
+				},
+				{
 					"uriTemplate": "decodex://projects/{project_id}/lane-control/{issue}",
 					"name": "Lane-control readback",
 					"description": "Inspect one local lane before requesting guarded lane-control actions.",
+					"mimeType": "application/json"
+				},
+				{
+					"uriTemplate": "decodex://projects/{project_id}/runs/{run_id}/events",
+					"name": "Run event readback",
+					"description": "Remote-safe event counts for a run visible in the current/recent status snapshot.",
+					"mimeType": "application/json"
+				},
+				{
+					"uriTemplate": "decodex://projects/{project_id}/runs/{run_id}/protocol_activity",
+					"name": "Run protocol activity",
+					"description": "Remote-safe protocol activity for a run visible in the current/recent status snapshot, without hidden reasoning or raw payloads.",
+					"mimeType": "application/json"
+				},
+				{
+					"uriTemplate": "decodex://projects/{project_id}/runs/{run_id}/child_agent_activity",
+					"name": "Run child-agent activity",
+					"description": "Remote-safe child-agent activity for a run visible in the current/recent status snapshot.",
+					"mimeType": "application/json"
+				},
+				{
+					"uriTemplate": "decodex://projects/{project_id}/runs/{run_id}/progress_diagnostics",
+					"name": "Run progress diagnostics",
+					"description": "Remote-safe progress and suspected-stall diagnostics for a run visible in the current/recent status snapshot.",
+					"mimeType": "application/json"
+				},
+				{
+					"uriTemplate": "decodex://projects/{project_id}/pr_review_state",
+					"name": "PR/review state",
+					"description": "Remote-safe PR and review-state readback.",
 					"mimeType": "application/json"
 				}
 			]
@@ -381,8 +444,10 @@ impl McpServer {
 				params.run_id.as_deref(),
 				limit,
 			)
+			.map(mcp_public_lane_inspect_resource)
 		} else {
 			orchestrator::build_mcp_status_resource(self.context.config_path.as_deref(), limit)
+				.map(mcp_status_live_resource)
 		};
 		let mut value = match observability_result {
 			Ok(value) => value,
@@ -611,23 +676,72 @@ impl McpContext {
 		};
 		let value = match (resource_kind.as_str(), rest) {
 			("status", []) =>
-				orchestrator::build_mcp_status_resource(Some(config_path), DEFAULT_MCP_STATUS_LIMIT),
+				orchestrator::build_mcp_status_resource(Some(config_path), DEFAULT_MCP_STATUS_LIMIT)
+					.map_err(McpError::internal),
+			("status_live", []) =>
+				orchestrator::build_mcp_status_resource(Some(config_path), DEFAULT_MCP_STATUS_LIMIT)
+					.map(mcp_status_live_resource)
+					.map_err(McpError::internal),
+			("activity_tail", []) =>
+				orchestrator::build_mcp_status_resource(Some(config_path), DEFAULT_MCP_STATUS_LIMIT)
+					.map(mcp_activity_tail_resource)
+					.map_err(McpError::internal),
 			("lane-control", []) => orchestrator::build_mcp_lane_control_resource(
 				Some(config_path),
 				None,
 				None,
 				DEFAULT_MCP_STATUS_LIMIT,
-			),
+			)
+			.map(mcp_public_lane_control_readback_resource)
+			.map_err(McpError::internal),
 			("lane-control", [issue]) if safe_runtime_identifier(issue) =>
 				orchestrator::build_mcp_lane_control_resource(
 					Some(config_path),
 					Some(issue),
 					None,
 					DEFAULT_MCP_STATUS_LIMIT,
-				),
+				)
+				.map(mcp_public_lane_inspect_resource)
+				.map_err(McpError::internal),
+			("lane_inspect", [issue]) if safe_runtime_identifier(issue) =>
+				orchestrator::build_mcp_lane_control_resource(
+					Some(config_path),
+					Some(issue),
+					None,
+					DEFAULT_MCP_STATUS_LIMIT,
+				)
+				.map(mcp_public_lane_inspect_resource)
+				.map_err(McpError::internal),
+			("runs", [run_id, resource])
+				if resource == "events" && safe_runtime_identifier(run_id) =>
+				orchestrator::build_mcp_status_resource(Some(config_path), DEFAULT_MCP_STATUS_LIMIT)
+					.map_err(McpError::internal)
+					.and_then(|snapshot| mcp_run_resource(&snapshot, run_id, "events")),
+			("runs", [run_id, resource])
+				if resource == "protocol_activity" && safe_runtime_identifier(run_id) =>
+				orchestrator::build_mcp_status_resource(Some(config_path), DEFAULT_MCP_STATUS_LIMIT)
+					.map_err(McpError::internal)
+					.and_then(|snapshot| mcp_run_resource(&snapshot, run_id, "protocol_activity")),
+			("runs", [run_id, resource])
+				if resource == "child_agent_activity" && safe_runtime_identifier(run_id) =>
+				orchestrator::build_mcp_status_resource(Some(config_path), DEFAULT_MCP_STATUS_LIMIT)
+					.map_err(McpError::internal)
+					.and_then(|snapshot| {
+						mcp_run_resource(&snapshot, run_id, "child_agent_activity")
+					}),
+			("runs", [run_id, resource])
+				if resource == "progress_diagnostics" && safe_runtime_identifier(run_id) =>
+				orchestrator::build_mcp_status_resource(Some(config_path), DEFAULT_MCP_STATUS_LIMIT)
+					.map_err(McpError::internal)
+					.and_then(|snapshot| {
+						mcp_run_resource(&snapshot, run_id, "progress_diagnostics")
+					}),
+			("pr_review_state", []) =>
+				orchestrator::build_mcp_status_resource(Some(config_path), DEFAULT_MCP_STATUS_LIMIT)
+					.map(mcp_pr_review_state_resource)
+					.map_err(McpError::internal),
 			_ => return Err(McpError::resource_not_found()),
-		}
-		.map_err(McpError::internal)?;
+		}?;
 
 		ResourceContent::mcp_observability_json(&uri.raw, value)
 	}
@@ -1883,6 +1997,347 @@ fn plan_tool_result(params: &PlanToolArgs) -> Value {
 	})
 }
 
+fn mcp_status_live_resource(snapshot: Value) -> Value {
+	serde_json::json!({
+		"schema": "decodex.mcp.status_live/1",
+		"project_id": snapshot.get("project_id").cloned().unwrap_or(Value::Null),
+		"status_source": snapshot.get("status_source").cloned().unwrap_or(Value::Null),
+		"run_limit": snapshot.get("run_limit").cloned().unwrap_or(Value::Null),
+		"current_lanes": mcp_run_activity_summaries(snapshot.get("current_lanes")),
+		"recent_runs": mcp_run_activity_summaries(snapshot.get("recent_runs")),
+		"post_review_lanes": mcp_public_post_review_lanes(snapshot.get("post_review_lanes"))
+	})
+}
+
+fn mcp_activity_tail_resource(snapshot: Value) -> Value {
+	let mut activity = Vec::new();
+
+	for run in mcp_all_runs(&snapshot) {
+		activity.push(mcp_run_activity_summary(run));
+	}
+
+	serde_json::json!({
+		"schema": "decodex.mcp.activity_tail/1",
+		"project_id": snapshot.get("project_id").cloned().unwrap_or(Value::Null),
+		"activity": activity
+	})
+}
+
+fn mcp_public_lane_control_readback_resource(readback: Value) -> Value {
+	serde_json::json!({
+		"schema": "decodex.mcp.lane_control_readback/1",
+		"project_id": readback.get("project_id").cloned().unwrap_or(Value::Null),
+		"read_only": readback.get("read_only").cloned().unwrap_or(Value::Null),
+		"mutating_tools": readback.get("mutating_tools").cloned().unwrap_or_else(|| serde_json::json!([])),
+		"current_lanes": mcp_run_activity_summaries(readback.get("current_lanes")),
+		"recent_runs": mcp_run_activity_summaries(readback.get("recent_runs")),
+		"post_review_lanes": mcp_public_post_review_lanes(readback.get("post_review_lanes"))
+	})
+}
+
+fn mcp_public_lane_inspect_resource(report: Value) -> Value {
+	serde_json::json!({
+		"schema": "decodex.mcp.lane_inspect/1",
+		"projectId": report.get("projectId").cloned().unwrap_or(Value::Null),
+		"issue": report.get("issue").cloned().unwrap_or(Value::Null),
+		"runId": report.get("runId").cloned().unwrap_or(Value::Null),
+		"matchedRunCount": report.get("matchedRunCount").cloned().unwrap_or(Value::Null),
+		"runs": mcp_public_lane_inspect_runs(report.get("runs"))
+	})
+}
+
+fn mcp_public_lane_inspect_runs(runs: Option<&Value>) -> Vec<Value> {
+	runs.and_then(Value::as_array).into_iter().flatten().map(mcp_public_lane_inspect_run).collect()
+}
+
+fn mcp_public_lane_inspect_run(run: &Value) -> Value {
+	serde_json::json!({
+		"projectId": run.get("projectId").cloned().unwrap_or(Value::Null),
+		"issueId": run.get("issueId").cloned().unwrap_or(Value::Null),
+		"issueIdentifier": run.get("issueIdentifier").cloned().unwrap_or(Value::Null),
+		"runId": run.get("runId").cloned().unwrap_or(Value::Null),
+		"attemptNumber": run.get("attemptNumber").cloned().unwrap_or(Value::Null),
+		"status": run.get("status").cloned().unwrap_or(Value::Null),
+		"attemptStatus": run.get("attemptStatus").cloned().unwrap_or(Value::Null),
+		"phase": run.get("phase").cloned().unwrap_or(Value::Null),
+		"waitReason": run.get("waitReason").cloned().unwrap_or(Value::Null),
+		"currentOperation": run.get("currentOperation").cloned().unwrap_or(Value::Null),
+		"laneControlNextAction": run
+			.get("laneControlNextAction")
+			.cloned()
+			.unwrap_or(Value::Null),
+		"laneControlConditions": run
+			.get("laneControlConditions")
+			.cloned()
+			.unwrap_or_else(|| serde_json::json!([])),
+		"lastEventType": run.get("lastEventType").cloned().unwrap_or(Value::Null),
+		"lastEventAt": run.get("lastEventAt").cloned().unwrap_or(Value::Null),
+		"eventCount": run.get("eventCount").cloned().unwrap_or(Value::Null)
+	})
+}
+
+fn mcp_run_resource(snapshot: &Value, run_id: &str, kind: &str) -> Result<Value, McpError> {
+	let Some(run) = mcp_find_run(snapshot, run_id) else {
+		return Err(McpError::resource_not_found());
+	};
+	let value = match kind {
+		"events" => serde_json::json!({
+			"schema": "decodex.mcp.run_events/1",
+			"project_id": snapshot.get("project_id").cloned().unwrap_or(Value::Null),
+			"run_id": run.get("run_id").cloned().unwrap_or(Value::Null),
+			"issue_id": run.get("issue_id").cloned().unwrap_or(Value::Null),
+			"issue_identifier": run.get("issue_identifier").cloned().unwrap_or(Value::Null),
+			"event_count": run.get("event_count").cloned().unwrap_or(Value::Null),
+			"last_event_type": run.get("last_event_type").cloned().unwrap_or(Value::Null),
+			"last_event_at": run.get("last_event_at").cloned().unwrap_or(Value::Null),
+			"last_protocol_activity_at": run
+				.get("last_protocol_activity_at")
+				.cloned()
+				.unwrap_or(Value::Null)
+		}),
+		"protocol_activity" => serde_json::json!({
+			"schema": "decodex.mcp.protocol_activity/1",
+			"project_id": snapshot.get("project_id").cloned().unwrap_or(Value::Null),
+			"run_id": run.get("run_id").cloned().unwrap_or(Value::Null),
+			"protocol_activity": mcp_public_protocol_activity(run),
+			"event_count": run.get("event_count").cloned().unwrap_or(Value::Null),
+			"last_event_type": run.get("last_event_type").cloned().unwrap_or(Value::Null)
+		}),
+		"child_agent_activity" => serde_json::json!({
+			"schema": "decodex.mcp.child_agent_activity/1",
+			"project_id": snapshot.get("project_id").cloned().unwrap_or(Value::Null),
+			"run_id": run.get("run_id").cloned().unwrap_or(Value::Null),
+			"child_agent_activity": run.get("child_agent_activity").cloned().unwrap_or(Value::Null)
+		}),
+		"progress_diagnostics" => serde_json::json!({
+			"schema": "decodex.mcp.progress_diagnostics/1",
+			"project_id": snapshot.get("project_id").cloned().unwrap_or(Value::Null),
+			"run_id": run.get("run_id").cloned().unwrap_or(Value::Null),
+			"phase": run.get("phase").cloned().unwrap_or(Value::Null),
+			"run_phase": run.get("run_phase").cloned().unwrap_or(Value::Null),
+			"current_operation": run.get("current_operation").cloned().unwrap_or(Value::Null),
+			"last_progress_at": run.get("last_progress_at").cloned().unwrap_or(Value::Null),
+			"progress_diagnostic": run.get("progress_diagnostic").cloned().unwrap_or(Value::Null),
+			"suspected_stall": run.get("suspected_stall").cloned().unwrap_or(Value::Null)
+		}),
+		_ => unreachable!("MCP run resource kind is selected by static match arms"),
+	};
+
+	Ok(value)
+}
+
+fn mcp_pr_review_state_resource(snapshot: Value) -> Value {
+	let review_lanes = mcp_public_post_review_lanes(snapshot.get("post_review_lanes"));
+	let current_lane_reviews = mcp_current_lane_runs(&snapshot)
+		.into_iter()
+		.filter_map(|run| {
+			let review = run.get("loop_status")?.get("review")?;
+
+			Some(serde_json::json!({
+				"run_id": run.get("run_id").cloned().unwrap_or(Value::Null),
+				"issue_id": run.get("issue_id").cloned().unwrap_or(Value::Null),
+				"issue_identifier": run.get("issue_identifier").cloned().unwrap_or(Value::Null),
+				"review": mcp_public_review_status(review)
+			}))
+		})
+		.collect::<Vec<_>>();
+
+	serde_json::json!({
+		"schema": "decodex.mcp.pr_review_state/1",
+		"project_id": snapshot.get("project_id").cloned().unwrap_or(Value::Null),
+		"post_review_lanes": review_lanes,
+		"current_lane_reviews": current_lane_reviews
+	})
+}
+
+fn mcp_run_activity_summaries(runs: Option<&Value>) -> Vec<Value> {
+	runs.and_then(Value::as_array).into_iter().flatten().map(mcp_run_activity_summary).collect()
+}
+
+fn mcp_public_post_review_lanes(lanes: Option<&Value>) -> Vec<Value> {
+	lanes.and_then(Value::as_array).into_iter().flatten().map(mcp_public_post_review_lane).collect()
+}
+
+fn mcp_public_post_review_lane(lane: &Value) -> Value {
+	serde_json::json!({
+		"project_id": lane.get("project_id").cloned().unwrap_or(Value::Null),
+		"issue_id": lane.get("issue_id").cloned().unwrap_or(Value::Null),
+		"issue_identifier": lane.get("issue_identifier").cloned().unwrap_or(Value::Null),
+		"issue_state": lane.get("issue_state").cloned().unwrap_or(Value::Null),
+		"classification": lane.get("classification").cloned().unwrap_or(Value::Null),
+		"reason": lane.get("reason").cloned().unwrap_or(Value::Null),
+		"pr_url": lane.get("pr_url").cloned().unwrap_or(Value::Null),
+		"pr_state": lane.get("pr_state").cloned().unwrap_or(Value::Null),
+		"review_decision": lane.get("review_decision").cloned().unwrap_or(Value::Null),
+		"mergeable": lane.get("mergeable").cloned().unwrap_or(Value::Null),
+		"check_state": lane.get("check_state").cloned().unwrap_or(Value::Null),
+		"unresolved_review_threads": lane
+			.get("unresolved_review_threads")
+			.cloned()
+			.unwrap_or(Value::Null),
+		"shadowed_by_current_lane": lane
+			.get("shadowed_by_current_lane")
+			.cloned()
+			.unwrap_or(Value::Null),
+		"readback_warning": lane.get("readback_warning").cloned().unwrap_or(Value::Null),
+		"readback_root_cause": lane.get("readback_root_cause").cloned().unwrap_or(Value::Null),
+		"loop_review": lane
+			.get("loop_status")
+			.and_then(|status| status.get("review"))
+			.map(mcp_public_review_status)
+			.unwrap_or(Value::Null)
+	})
+}
+
+fn mcp_all_runs(snapshot: &Value) -> Vec<&Value> {
+	let mut runs = Vec::new();
+	let mut seen_run_ids = BTreeSet::new();
+
+	for key in ["current_lanes", "recent_runs"] {
+		if let Some(items) = snapshot.get(key).and_then(Value::as_array) {
+			for (index, run) in items.iter().enumerate() {
+				let run_key = run
+					.get("run_id")
+					.and_then(Value::as_str)
+					.map(str::to_owned)
+					.unwrap_or_else(|| format!("{key}:{index}"));
+
+				if seen_run_ids.insert(run_key) {
+					runs.push(run);
+				}
+			}
+		}
+	}
+
+	runs
+}
+
+fn mcp_current_lane_runs(snapshot: &Value) -> Vec<&Value> {
+	snapshot.get("current_lanes").and_then(Value::as_array).into_iter().flatten().collect()
+}
+
+fn mcp_find_run<'a>(snapshot: &'a Value, run_id: &str) -> Option<&'a Value> {
+	mcp_all_runs(snapshot)
+		.into_iter()
+		.find(|run| run.get("run_id").and_then(Value::as_str) == Some(run_id))
+}
+
+fn mcp_run_activity_summary(run: &Value) -> Value {
+	serde_json::json!({
+		"run_id": run.get("run_id").cloned().unwrap_or(Value::Null),
+		"issue_id": run.get("issue_id").cloned().unwrap_or(Value::Null),
+		"issue_identifier": run.get("issue_identifier").cloned().unwrap_or(Value::Null),
+		"attempt_number": run.get("attempt_number").cloned().unwrap_or(Value::Null),
+		"status": run.get("status").cloned().unwrap_or(Value::Null),
+		"attempt_status": run.get("attempt_status").cloned().unwrap_or(Value::Null),
+		"phase": run.get("phase").cloned().unwrap_or(Value::Null),
+		"run_phase": run.get("run_phase").cloned().unwrap_or(Value::Null),
+		"wait_reason": run.get("wait_reason").cloned().unwrap_or(Value::Null),
+		"current_operation": run.get("current_operation").cloned().unwrap_or(Value::Null),
+		"lane_control_next_action": run
+			.get("lane_control_next_action")
+			.cloned()
+			.unwrap_or(Value::Null),
+		"event_count": run.get("event_count").cloned().unwrap_or(Value::Null),
+		"last_event_type": run.get("last_event_type").cloned().unwrap_or(Value::Null),
+		"last_event_at": run.get("last_event_at").cloned().unwrap_or(Value::Null),
+		"last_protocol_activity_at": run
+			.get("last_protocol_activity_at")
+			.cloned()
+			.unwrap_or(Value::Null),
+		"last_progress_at": run.get("last_progress_at").cloned().unwrap_or(Value::Null),
+		"protocol_activity": mcp_public_protocol_activity(run),
+		"child_agent_activity": run.get("child_agent_activity").cloned().unwrap_or(Value::Null),
+		"progress_diagnostic": run.get("progress_diagnostic").cloned().unwrap_or(Value::Null),
+		"phase_acceptance": run
+			.get("phase_acceptance")
+			.map(mcp_public_phase_acceptance_status)
+			.unwrap_or(Value::Null),
+		"loop_review": run
+			.get("loop_status")
+			.and_then(|status| status.get("review"))
+			.map(mcp_public_review_status)
+			.unwrap_or(Value::Null)
+	})
+}
+
+fn mcp_public_phase_acceptance_status(acceptance: &Value) -> Value {
+	serde_json::json!({
+		"phase": acceptance.get("phase").cloned().unwrap_or(Value::Null),
+		"decision": acceptance.get("decision").cloned().unwrap_or(Value::Null),
+		"reason_code": acceptance.get("reason_code").cloned().unwrap_or(Value::Null),
+		"objective_covered": acceptance.get("objective_covered").cloned().unwrap_or(Value::Null),
+		"effective_delta_present": acceptance
+			.get("effective_delta_present")
+			.cloned()
+			.unwrap_or(Value::Null),
+		"non_goal_passed": acceptance.get("non_goal_passed").cloned().unwrap_or(Value::Null),
+		"validation_passed": acceptance.get("validation_passed").cloned().unwrap_or(Value::Null),
+		"next_action": acceptance.get("next_action").cloned().unwrap_or(Value::Null)
+	})
+}
+
+fn mcp_public_review_status(review: &Value) -> Value {
+	serde_json::json!({
+		"phase": review.get("phase").cloned().unwrap_or(Value::Null),
+		"status": review.get("status").cloned().unwrap_or(Value::Null),
+		"checkpoint": review
+			.get("checkpoint")
+			.map(mcp_public_review_checkpoint_status)
+			.unwrap_or(Value::Null)
+	})
+}
+
+fn mcp_public_review_checkpoint_status(checkpoint: &Value) -> Value {
+	serde_json::json!({
+		"round": checkpoint.get("round").cloned().unwrap_or(Value::Null),
+		"nonclean_rounds": checkpoint.get("nonclean_rounds").cloned().unwrap_or(Value::Null),
+		"updated_at": checkpoint.get("updated_at").cloned().unwrap_or(Value::Null)
+	})
+}
+
+fn mcp_public_protocol_activity(run: &Value) -> Value {
+	let mut activity = run.get("protocol_activity").cloned().unwrap_or(Value::Null);
+
+	redact_reasoning_protocol_activity(&mut activity);
+
+	activity
+}
+
+fn redact_reasoning_protocol_activity(value: &mut Value) {
+	match value {
+		Value::Object(object) => {
+			let is_reasoning_event = object
+				.get("category")
+				.and_then(Value::as_str)
+				.is_some_and(|category| category.eq_ignore_ascii_case("reasoning"))
+				|| object.get("event_type").and_then(Value::as_str).is_some_and(|event_type| {
+					event_type.to_ascii_lowercase().contains("reasoning")
+				});
+
+			if is_reasoning_event {
+				object.insert(
+					String::from("detail"),
+					Value::String(String::from("redacted_reasoning")),
+				);
+				object.remove("text");
+				object.remove("summary");
+				object.remove("content");
+				object.remove("body");
+			}
+
+			for child in object.values_mut() {
+				redact_reasoning_protocol_activity(child);
+			}
+		},
+		Value::Array(items) =>
+			for item in items {
+				redact_reasoning_protocol_activity(item);
+			},
+		_ => {},
+	}
+}
+
 fn lane_control_stub_result(arguments: Value, profile: McpCapabilityProfile) -> Value {
 	let params = match serde_json::from_value::<LaneControlToolArgs>(arguments) {
 		Ok(params) => params,
@@ -2382,12 +2837,158 @@ fn sanitize_mcp_observability_value(value: &mut Value) {
 				sanitize_mcp_observability_value(child);
 			}
 		},
+		Value::String(text) =>
+			if observability_string_contains_sensitive_text(text) {
+				*text = String::from("redacted_sensitive_detail");
+			},
 		Value::Array(items) =>
 			for item in items {
 				sanitize_mcp_observability_value(item);
 			},
 		_ => {},
 	}
+}
+
+fn observability_string_contains_sensitive_text(value: &str) -> bool {
+	let lower = value.to_ascii_lowercase();
+	let upper = value.to_ascii_uppercase();
+
+	lower.contains("/private")
+		|| lower.contains("/users/")
+		|| lower.contains("/var/folders/")
+		|| lower.contains("/tmp/")
+		|| lower.contains("file://")
+		|| observability_string_contains_absolute_path(value)
+		|| observability_string_contains_windows_path(value)
+		|| observability_string_contains_secret_like_token(value)
+		|| upper.contains("GITHUB_PAT_")
+		|| upper.contains("LINEAR_API_KEY")
+		|| upper.contains("OPENAI_API_KEY")
+		|| lower.contains("authorization:")
+		|| lower.contains("bearer ")
+		|| lower.contains("token=")
+		|| lower.contains("api_key")
+}
+
+fn observability_string_contains_absolute_path(value: &str) -> bool {
+	let mut previous = None;
+	let mut chars = value.char_indices().peekable();
+
+	while let Some((index, character)) = chars.next() {
+		if character != '/' {
+			previous = Some(character);
+
+			continue;
+		}
+		if previous == Some(':') || previous == Some('/') {
+			previous = Some(character);
+
+			continue;
+		}
+
+		let path_boundary = index == 0
+			|| previous.is_some_and(|previous| {
+				previous.is_whitespace()
+					|| matches!(previous, '"' | '\'' | '`' | '(' | '[' | '{' | '=')
+			});
+		let path_component = chars
+			.peek()
+			.map(|(_, next)| next.is_ascii_alphanumeric() || matches!(next, '.' | '_' | '-'))
+			.unwrap_or(false);
+
+		if path_boundary && path_component {
+			return true;
+		}
+
+		previous = Some(character);
+	}
+
+	false
+}
+
+fn observability_string_contains_windows_path(value: &str) -> bool {
+	let bytes = value.as_bytes();
+
+	bytes.windows(3).enumerate().any(|(index, window)| {
+		let boundary = index == 0 || {
+			let previous = bytes[index - 1];
+
+			previous.is_ascii_whitespace()
+				|| matches!(previous, b'"' | b'\'' | b'`' | b'(' | b'[' | b'{' | b'=')
+		};
+
+		boundary
+			&& window[0].is_ascii_alphabetic()
+			&& window[1] == b':'
+			&& matches!(window[2], b'\\' | b'/')
+	})
+}
+
+fn observability_string_contains_secret_like_token(value: &str) -> bool {
+	value
+		.split(|character: char| {
+			!(character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.' | ':' | '/'))
+		})
+		.any(|token| {
+			let lower = token.to_ascii_lowercase();
+
+			(lower.starts_with("ghp_") && token.len() >= 20)
+				|| (lower.starts_with("github_pat_") && token.len() >= 20)
+				|| (lower.starts_with("sk-") && token.len() >= 20)
+				|| (lower.starts_with("sk-proj-") && token.len() >= 20)
+				|| (lower.starts_with("xoxb-") && token.len() >= 20)
+				|| (lower.starts_with("xoxp-") && token.len() >= 20)
+				|| observability_token_looks_high_entropy_secret(token)
+				|| observability_token_looks_like_jwt(token)
+		})
+}
+
+fn observability_token_looks_high_entropy_secret(token: &str) -> bool {
+	if token.len() < 32 || token.len() > 256 {
+		return false;
+	}
+	if !token.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')) {
+		return false;
+	}
+
+	let mut has_lower = false;
+	let mut has_upper = false;
+	let mut digit_count = 0_usize;
+	let mut seen = [false; 128];
+	let mut unique_count = 0_usize;
+
+	for byte in token.bytes() {
+		has_lower |= byte.is_ascii_lowercase();
+		has_upper |= byte.is_ascii_uppercase();
+
+		if byte.is_ascii_digit() {
+			digit_count += 1;
+		}
+		if byte.is_ascii() && !seen[byte as usize] {
+			seen[byte as usize] = true;
+			unique_count += 1;
+		}
+	}
+
+	has_lower && has_upper && digit_count >= 4 && unique_count >= 16
+}
+
+fn observability_token_looks_like_jwt(token: &str) -> bool {
+	let mut segments = token.split('.');
+	let Some(header) = segments.next() else {
+		return false;
+	};
+	let Some(payload) = segments.next() else {
+		return false;
+	};
+	let Some(signature) = segments.next() else {
+		return false;
+	};
+
+	segments.next().is_none()
+		&& header.starts_with("eyJ")
+		&& payload.len() >= 16
+		&& signature.len() >= 16
 }
 
 fn push_file_resource(
@@ -2473,7 +3074,7 @@ fn safe_runtime_identifier(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use std::{fs, io::Cursor, path::Path, str};
+	use std::{fs, io::Cursor, path::Path, process, str};
 
 	use serde_json::Value;
 	use tempfile::TempDir;
@@ -2484,7 +3085,9 @@ mod tests {
 			self, DEFAULT_MCP_HTTP_LISTEN_ADDRESS, McpCapabilityProfile, McpContext,
 			McpHttpHandler, McpHttpSessions, McpServer, McpTransport, ResourceContent,
 		},
-		state::StateStore,
+		runtime,
+		state::{self, ProtocolActivityEventSummary, ProtocolActivitySummary, StateStore},
+		test_support::TestEnvVarGuard,
 	};
 
 	struct ParsedHttpResponse {
@@ -2690,6 +3293,426 @@ mod tests {
 
 		assert!(uri_templates.contains(&"decodex://docs/spec/{topic}"));
 		assert!(uri_templates.contains(&"decodex://projects/{project_id}/lane-control/{issue}"));
+		assert!(uri_templates.contains(&"decodex://projects/{project_id}/status_live"));
+		assert!(uri_templates.contains(&"decodex://projects/{project_id}/activity_tail"));
+		assert!(uri_templates.contains(&"decodex://projects/{project_id}/lane_inspect/{issue}"));
+		assert!(uri_templates.contains(&"decodex://projects/{project_id}/runs/{run_id}/events"));
+		assert!(
+			uri_templates
+				.contains(&"decodex://projects/{project_id}/runs/{run_id}/protocol_activity")
+		);
+		assert!(
+			uri_templates
+				.contains(&"decodex://projects/{project_id}/runs/{run_id}/child_agent_activity")
+		);
+		assert!(
+			uri_templates
+				.contains(&"decodex://projects/{project_id}/runs/{run_id}/progress_diagnostics")
+		);
+		assert!(uri_templates.contains(&"decodex://projects/{project_id}/pr_review_state"));
+
+		for uri_template in [
+			"decodex://projects/{project_id}/runs/{run_id}/events",
+			"decodex://projects/{project_id}/runs/{run_id}/protocol_activity",
+			"decodex://projects/{project_id}/runs/{run_id}/child_agent_activity",
+			"decodex://projects/{project_id}/runs/{run_id}/progress_diagnostics",
+		] {
+			let template = templates
+				.iter()
+				.find(|template| {
+					template.get("uriTemplate").and_then(Value::as_str) == Some(uri_template)
+				})
+				.expect("run-scoped resource template should exist");
+			let description = template["description"].as_str().expect("description should exist");
+
+			assert!(description.contains("current/recent status snapshot"));
+		}
+	}
+
+	#[test]
+	fn observability_projection_resources_expose_activity_without_private_payloads() {
+		let snapshot = observability_snapshot_fixture();
+		let live = super::mcp_status_live_resource(snapshot.clone());
+		let activity = super::mcp_activity_tail_resource(snapshot.clone());
+		let events = super::mcp_run_resource(&snapshot, "run-1", "events")
+			.expect("run events should project");
+		let protocol = super::mcp_run_resource(&snapshot, "run-1", "protocol_activity")
+			.expect("protocol activity should project");
+		let child = super::mcp_run_resource(&snapshot, "run-1", "child_agent_activity")
+			.expect("child-agent activity should project");
+		let progress = super::mcp_run_resource(&snapshot, "run-1", "progress_diagnostics")
+			.expect("progress diagnostics should project");
+		let review = super::mcp_pr_review_state_resource(snapshot);
+		let mut combined = serde_json::json!({
+			"live": live,
+			"activity": activity,
+			"events": events,
+			"protocol": protocol,
+			"child": child,
+			"progress": progress,
+			"review": review
+		});
+
+		mcp::sanitize_mcp_observability_value(&mut combined);
+
+		assert_eq!(combined["live"]["schema"], "decodex.mcp.status_live/1");
+		assert_eq!(combined["live"]["current_lanes"][0]["run_id"], "run-1");
+		assert_eq!(combined["live"]["current_lanes"][0]["status"], "running");
+		assert_eq!(combined["live"]["current_lanes"][0]["current_operation"], "model_execution");
+		assert_eq!(combined["live"]["current_lanes"][0]["event_count"], 6);
+		assert_eq!(
+			combined["live"]["current_lanes"][0]["lane_control_next_action"],
+			"inspect_or_interrupt_orphaned_live_thread"
+		);
+		assert_eq!(combined["activity"]["activity"][0]["run_id"], "run-1");
+		assert_eq!(combined["activity"]["activity"].as_array().expect("activity array").len(), 1);
+		assert_eq!(combined["events"]["event_count"], 6);
+		assert_eq!(combined["protocol"]["protocol_activity"]["waiting_reason"], "model_execution");
+		assert_eq!(
+			combined["protocol"]["protocol_activity"]["recent_events"][1]["detail"],
+			"redacted_reasoning"
+		);
+		assert_eq!(
+			combined["protocol"]["protocol_activity"]["recent_events"][2]["detail"],
+			"redacted_sensitive_detail"
+		);
+		assert_eq!(
+			combined["protocol"]["protocol_activity"]["recent_events"][3]["detail"],
+			"redacted_sensitive_detail"
+		);
+		assert_eq!(
+			combined["protocol"]["protocol_activity"]["recent_events"][4]["detail"],
+			"redacted_sensitive_detail"
+		);
+		assert_eq!(
+			combined["protocol"]["protocol_activity"]["recent_events"][5]["detail"],
+			"redacted_sensitive_detail"
+		);
+		assert_eq!(
+			combined["protocol"]["protocol_activity"]["recent_events"][6]["detail"],
+			"redacted_sensitive_detail"
+		);
+		assert_eq!(combined["child"]["child_agent_activity"]["event_count"], 2);
+		assert_eq!(combined["progress"]["progress_diagnostic"], "protocol_only_activity");
+		assert_eq!(
+			combined["live"]["current_lanes"][0]["phase_acceptance"]["decision"],
+			"accepted"
+		);
+		assert!(
+			combined["live"]["current_lanes"][0]["phase_acceptance"]["changed_surfaces"].is_null()
+		);
+		assert_eq!(combined["live"]["current_lanes"][0]["loop_review"]["status"], "pending");
+		assert_eq!(combined["live"]["current_lanes"][0]["loop_review"]["checkpoint"]["round"], 3);
+		assert!(
+			combined["live"]["current_lanes"][0]["loop_review"]["checkpoint"]["head_sha"].is_null()
+		);
+		assert_eq!(combined["review"]["post_review_lanes"][0]["pr_url"], "https://example/pr/1");
+		assert!(combined["review"]["post_review_lanes"][0]["branch_name"].is_null());
+		assert!(combined["review"]["post_review_lanes"][0]["loop_status"].is_null());
+		assert_eq!(
+			combined["review"]["current_lane_reviews"].as_array().expect("review array").len(),
+			1
+		);
+		assert_eq!(combined["review"]["current_lane_reviews"][0]["review"]["status"], "pending");
+		assert_eq!(
+			combined["review"]["current_lane_reviews"][0]["review"]["checkpoint"]["round"],
+			3
+		);
+		assert!(
+			combined["review"]["current_lane_reviews"][0]["review"]["checkpoint"]["active_fingerprints"]
+				.is_null()
+		);
+
+		assert_no_sensitive_observability_content(&combined);
+	}
+
+	#[test]
+	fn pr_review_state_ignores_recent_run_reviews_without_current_lane() {
+		let snapshot = serde_json::json!({
+			"schema": "decodex.mcp.status_resource/1",
+			"project_id": "decodex",
+			"current_lanes": [],
+			"recent_runs": [
+				{
+					"run_id": "run-stale",
+					"issue_id": "issue-stale",
+					"issue_identifier": "XY-995",
+					"loop_status": {
+						"review": {
+							"status": "stale_recent_finding"
+						}
+					}
+				}
+			],
+			"post_review_lanes": []
+		});
+		let review = super::mcp_pr_review_state_resource(snapshot);
+		let serialized = serde_json::to_string(&review).expect("review should serialize");
+
+		assert_eq!(review["schema"], "decodex.mcp.pr_review_state/1");
+		assert_eq!(review["current_lane_reviews"].as_array().expect("review array").len(), 0);
+		assert!(!serialized.contains("stale_recent_finding"));
+	}
+
+	#[test]
+	fn resources_read_exposes_bounded_live_activity_and_recent_run_readback() {
+		let repo = test_repo();
+		let codex_home = repo.path().join("codex-home");
+		let codex_home = codex_home.to_string_lossy().into_owned();
+		let _codex_home_guard = TestEnvVarGuard::set("CODEX_HOME", &codex_home);
+		let config_path = repo.path().join("project.toml");
+
+		seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+
+		let context = McpContext {
+			repo_root: repo.path().to_path_buf(),
+			config_path: Some(config_path.clone()),
+			project_id: Some(String::from("pubfi")),
+			state_store: None,
+		};
+		let responses = run_stdio_with_context(
+			context,
+			&[
+				r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/status_live"}}"#,
+				r#"{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/activity_tail"}}"#,
+				r#"{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/runs/run-12/events"}}"#,
+				r#"{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/runs/run-01/events"}}"#,
+				r#"{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/lane_inspect/PUB-012"}}"#,
+				r#"{"jsonrpc":"2.0","id":6,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/lane-control/PUB-012"}}"#,
+				r#"{"jsonrpc":"2.0","id":7,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/lane-control"}}"#,
+				r#"{"jsonrpc":"2.0","id":8,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/pr_review_state"}}"#,
+				r#"{"jsonrpc":"2.0","id":9,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/runs/run-12/protocol_activity"}}"#,
+			]
+			.join("\n"),
+		);
+		let status_live = resource_response_json(&responses, 0);
+		let activity_tail = resource_response_json(&responses, 1);
+		let run_events = resource_response_json(&responses, 2);
+		let hidden_run_error = response_error(&responses, 3);
+		let lane_inspect = resource_response_json(&responses, 4);
+		let lane_control_issue = resource_response_json(&responses, 5);
+		let lane_control = resource_response_json(&responses, 6);
+		let pr_review_state = resource_response_json(&responses, 7);
+		let protocol_activity = resource_response_json(&responses, 8);
+
+		assert_eq!(status_live["schema"], "decodex.mcp.status_live/1");
+		assert_eq!(activity_tail["schema"], "decodex.mcp.activity_tail/1");
+		assert_eq!(
+			activity_tail["activity"].as_array().expect("activity array").len(),
+			super::DEFAULT_MCP_STATUS_LIMIT
+		);
+		assert_eq!(run_events["schema"], "decodex.mcp.run_events/1");
+		assert_eq!(run_events["run_id"], "run-12");
+		assert_eq!(run_events["event_count"], 6);
+		assert_eq!(hidden_run_error["code"], super::RESOURCE_NOT_FOUND_CODE);
+
+		assert_public_lane_inspect_resource(&lane_inspect);
+		assert_public_lane_inspect_resource(&lane_control_issue);
+		assert_public_lane_control_readback(&lane_control);
+
+		assert_eq!(pr_review_state["schema"], "decodex.mcp.pr_review_state/1");
+		assert_eq!(
+			pr_review_state["current_lane_reviews"].as_array().expect("review array").len(),
+			0
+		);
+		assert_eq!(protocol_activity["schema"], "decodex.mcp.protocol_activity/1");
+		assert_eq!(protocol_activity["run_id"], "run-12");
+		assert!(
+			serde_json::to_string(&protocol_activity)
+				.expect("protocol activity should serialize")
+				.contains("redacted_sensitive_detail")
+		);
+
+		assert_no_sensitive_observability_content(&serde_json::json!({
+			"status_live": status_live,
+			"activity_tail": activity_tail,
+			"lane_inspect": lane_inspect,
+			"lane_control_issue": lane_control_issue,
+			"lane_control": lane_control,
+			"pr_review_state": pr_review_state,
+			"protocol_activity": protocol_activity
+		}));
+	}
+
+	#[test]
+	fn streamable_http_resources_read_exposes_observability_resources() {
+		let repo = test_repo();
+		let codex_home = repo.path().join("codex-home");
+		let codex_home = codex_home.to_string_lossy().into_owned();
+		let _codex_home_guard = TestEnvVarGuard::set("CODEX_HOME", &codex_home);
+		let config_path = repo.path().join("project.toml");
+
+		seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+
+		let context = McpContext {
+			repo_root: repo.path().to_path_buf(),
+			config_path: Some(config_path),
+			project_id: Some(String::from("pubfi")),
+			state_store: None,
+		};
+		let mut handler =
+			http_handler_with_context(context, McpCapabilityProfile::Observe, Vec::new());
+		let initialize = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193")],
+				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+		let session_id = initialize.header("mcp-session-id").expect("session id").to_owned();
+		let status_live = http_resource_read_json(
+			&mut handler,
+			&session_id,
+			2,
+			"decodex://projects/pubfi/status_live",
+		);
+		let activity_tail = http_resource_read_json(
+			&mut handler,
+			&session_id,
+			3,
+			"decodex://projects/pubfi/activity_tail",
+		);
+		let pr_review_state = http_resource_read_json(
+			&mut handler,
+			&session_id,
+			4,
+			"decodex://projects/pubfi/pr_review_state",
+		);
+		let lane_inspect = http_resource_read_json(
+			&mut handler,
+			&session_id,
+			5,
+			"decodex://projects/pubfi/lane_inspect/PUB-012",
+		);
+		let lane_control_issue = http_resource_read_json(
+			&mut handler,
+			&session_id,
+			6,
+			"decodex://projects/pubfi/lane-control/PUB-012",
+		);
+		let lane_control = http_resource_read_json(
+			&mut handler,
+			&session_id,
+			7,
+			"decodex://projects/pubfi/lane-control",
+		);
+		let protocol_activity = http_resource_read_json(
+			&mut handler,
+			&session_id,
+			8,
+			"decodex://projects/pubfi/runs/run-12/protocol_activity",
+		);
+		let hidden_run = http_json_rpc(
+			&mut handler,
+			&session_id,
+			r#"{"jsonrpc":"2.0","id":9,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/runs/run-01/events"}}"#,
+		);
+
+		assert_eq!(status_live["schema"], "decodex.mcp.status_live/1");
+		assert_eq!(activity_tail["schema"], "decodex.mcp.activity_tail/1");
+		assert_eq!(
+			activity_tail["activity"].as_array().expect("activity array").len(),
+			super::DEFAULT_MCP_STATUS_LIMIT
+		);
+		assert_eq!(pr_review_state["schema"], "decodex.mcp.pr_review_state/1");
+
+		assert_public_lane_inspect_resource(&lane_inspect);
+		assert_public_lane_inspect_resource(&lane_control_issue);
+		assert_public_lane_control_readback(&lane_control);
+
+		assert_eq!(protocol_activity["schema"], "decodex.mcp.protocol_activity/1");
+		assert!(
+			serde_json::to_string(&protocol_activity)
+				.expect("protocol activity should serialize")
+				.contains("redacted_sensitive_detail")
+		);
+		assert_eq!(hidden_run["error"]["code"], super::RESOURCE_NOT_FOUND_CODE);
+
+		assert_no_sensitive_observability_content(&serde_json::json!({
+			"status_live": status_live,
+			"activity_tail": activity_tail,
+			"pr_review_state": pr_review_state,
+			"lane_inspect": lane_inspect,
+			"lane_control_issue": lane_control_issue,
+			"lane_control": lane_control,
+			"protocol_activity": protocol_activity
+		}));
+	}
+
+	fn assert_public_lane_inspect_resource(value: &Value) {
+		assert_eq!(value["schema"], "decodex.mcp.lane_inspect/1");
+		assert_eq!(value["projectId"], "pubfi");
+		assert_eq!(value["issue"], "PUB-012");
+		assert_eq!(value["matchedRunCount"], 1);
+
+		let run = &value["runs"][0];
+
+		assert_eq!(run["runId"], "run-12");
+		assert!(run["status"].as_str().is_some());
+		assert!(run["phase"].as_str().is_some());
+		assert!(run["currentOperation"].as_str().is_some());
+		assert!(run["laneControlNextAction"].as_str().is_some());
+		assert!(run["eventCount"].as_i64().is_some());
+
+		assert_no_lane_runtime_identifiers(value);
+	}
+
+	fn assert_public_lane_control_readback(value: &Value) {
+		assert_eq!(value["schema"], "decodex.mcp.lane_control_readback/1");
+		assert_eq!(value["project_id"], "pubfi");
+		assert_eq!(value["read_only"], true);
+
+		let run = find_public_lane_control_run(value, "run-12");
+
+		assert_eq!(run["run_id"], "run-12");
+		assert!(run["status"].as_str().is_some());
+		assert!(run["phase"].as_str().is_some());
+		assert!(run["current_operation"].as_str().is_some());
+		assert!(run["lane_control_next_action"].as_str().is_some());
+		assert!(run["event_count"].as_i64().is_some());
+
+		assert_no_lane_runtime_identifiers(value);
+	}
+
+	fn find_public_lane_control_run<'a>(value: &'a Value, run_id: &str) -> &'a Value {
+		for key in ["current_lanes", "recent_runs"] {
+			if let Some(run) = value[key]
+				.as_array()
+				.into_iter()
+				.flatten()
+				.find(|run| run.get("run_id").and_then(Value::as_str) == Some(run_id))
+			{
+				return run;
+			}
+		}
+
+		panic!("public lane-control readback should include run {run_id}");
+	}
+
+	fn assert_no_lane_runtime_identifiers(value: &Value) {
+		let serialized = serde_json::to_string(value).expect("value should serialize");
+
+		for sensitive in [
+			"threadId",
+			"turnId",
+			"threadStatus",
+			"processId",
+			"processAlive",
+			"processLivenessReason",
+			"thread_id",
+			"turn_id",
+			"thread_status",
+			"process_id",
+			"process_alive",
+			"process_liveness_reason",
+			"worktreePath",
+			"worktree_path",
+			"thread-12",
+			"turn-12",
+		] {
+			assert!(!serialized.contains(sensitive), "lane inspect leaked {sensitive}");
+		}
 	}
 
 	#[test]
@@ -3409,6 +4432,19 @@ mod tests {
 		responses.get(index).expect("response should exist")
 	}
 
+	fn response_error(responses: &[Value], index: usize) -> &Value {
+		response_at(responses, index).get("error").expect("error response")
+	}
+
+	fn resource_response_json(responses: &[Value], index: usize) -> Value {
+		let contents = response_at(responses, index)["result"]["contents"]
+			.as_array()
+			.expect("resource contents array");
+		let text = contents[0]["text"].as_str().expect("resource text should exist");
+
+		serde_json::from_str(text).expect("resource text should be JSON")
+	}
+
 	fn assert_tool_output_schema_variant(tool: &Value, schema: &str, required_field: Option<&str>) {
 		let variants = tool["outputSchema"]["oneOf"].as_array().expect("oneOf variants");
 		let variant = variants
@@ -3462,6 +4498,193 @@ mod tests {
 		})
 	}
 
+	fn observability_snapshot_fixture() -> Value {
+		serde_json::json!({
+			"schema": "decodex.mcp.status_resource/1",
+			"project_id": "decodex",
+			"status_source": "live",
+			"run_limit": 10,
+			"current_lanes": [observability_current_lane_fixture()],
+			"recent_runs": [observability_recent_run_fixture()],
+			"post_review_lanes": [observability_post_review_lane_fixture()]
+		})
+	}
+
+	fn observability_current_lane_fixture() -> Value {
+		serde_json::json!({
+			"run_id": "run-1",
+			"issue_id": "issue-1",
+			"issue_identifier": "XY-996",
+			"attempt_number": 2,
+			"status": "running",
+			"attempt_status": "starting",
+			"phase": "implementing",
+			"run_phase": "implement_to_validation_ready",
+			"wait_reason": "model_execution",
+			"current_operation": "model_execution",
+			"lane_control_next_action": "inspect_or_interrupt_orphaned_live_thread",
+			"event_count": 6,
+			"last_event_type": "turn/delta",
+			"last_event_at": "2026-06-18T00:00:00Z",
+			"last_protocol_activity_at": "2026-06-18T00:00:01Z",
+			"last_progress_at": "2026-06-18T00:00:02Z",
+			"progress_diagnostic": "protocol_only_activity",
+			"suspected_stall": false,
+			"protocol_activity": observability_protocol_activity_fixture(),
+			"child_agent_activity": {
+				"event_count": 2,
+				"current_bucket": "protocol_activity",
+				"path": "/private/activity-marker"
+			},
+			"phase_acceptance": observability_phase_acceptance_fixture(),
+			"loop_status": {
+				"review": observability_review_status_fixture(
+					"private-head-sha",
+					"fingerprint-private",
+					"stop-fingerprint-private",
+					3
+				)
+			},
+			"private_evidence": {
+				"raw": "hidden"
+			},
+			"worktree_path": "/private/worktree"
+		})
+	}
+
+	fn observability_protocol_activity_fixture() -> Value {
+		serde_json::json!({
+			"turn_status": "running",
+			"waiting_reason": "model_execution",
+			"recent_events": [
+				{
+					"event_type": "turn/delta",
+					"category": "work_progress",
+					"detail": "diff updated",
+					"private_evidence": "private-ref"
+				},
+				{
+					"event_type": "response/reasoning/summary",
+					"category": "reasoning",
+					"detail": "hidden chain of thought",
+					"text": "private reasoning text",
+					"summary": "private reasoning summary",
+					"body": "private reasoning body"
+				},
+				{
+					"event_type": "configWarning",
+					"category": "warning",
+					"detail": "config at /private/worktree using GITHUB_PAT_Y"
+				},
+				{
+					"event_type": "error",
+					"category": "protocol_error",
+					"detail": "failed under /Users/x/worktree with LINEAR_API_KEY_HACKINK"
+				},
+				{
+					"event_type": "configWarning",
+					"category": "warning",
+					"detail": "state marker under /srv/decodex/runtime"
+				},
+				{
+					"event_type": "error",
+					"category": "protocol_error",
+					"detail": "upstream auth failed for ghp_abcdefghijklmnopqrstuvwxyz123456"
+				},
+				{
+					"event_type": "error",
+					"category": "protocol_error",
+					"detail": "upstream auth failed for 8Nf4Qz7Lb2Rc9Vx5Tm3Pq6Wy1Hs8Ka0U"
+				}
+			]
+		})
+	}
+
+	fn observability_phase_acceptance_fixture() -> Value {
+		serde_json::json!({
+			"phase": "handoff_evidence",
+			"decision": "accepted",
+			"reason_code": "phase_goal_satisfied",
+			"objective_covered": true,
+			"effective_delta_present": true,
+			"changed_surfaces": ["phase-private-surface"],
+			"non_goal_passed": true,
+			"validation_passed": true,
+			"recorded_at": "2026-06-18T00:00:03Z",
+			"run_id": "phase-private-run",
+			"attempt_number": 2,
+			"next_action": "request_review"
+		})
+	}
+
+	fn observability_review_status_fixture(
+		head_sha: &str,
+		active_fingerprint: &str,
+		stop_fingerprint: &str,
+		round: i64,
+	) -> Value {
+		serde_json::json!({
+			"phase": "handoff",
+			"status": "pending",
+			"checkpoint": {
+				"head_sha": head_sha,
+				"round": round,
+				"nonclean_rounds": 2,
+				"active_fingerprints": [active_fingerprint],
+				"stop_fingerprint": stop_fingerprint,
+				"updated_at": "2026-06-18T00:00:04Z"
+			},
+			"privateEvidenceRef": "private-review-ref"
+		})
+	}
+
+	fn observability_recent_run_fixture() -> Value {
+		serde_json::json!({
+			"run_id": "run-1",
+			"issue_id": "issue-1",
+			"issue_identifier": "XY-996",
+			"status": "running",
+			"loop_status": {
+				"review": {
+					"status": "duplicate_recent"
+				}
+			}
+		})
+	}
+
+	fn observability_post_review_lane_fixture() -> Value {
+		serde_json::json!({
+			"project_id": "decodex",
+			"issue_id": "issue-1",
+			"issue_identifier": "XY-996",
+			"issue_state": "In Review",
+			"branch_name": "private-branch-name",
+			"worktree_path": "/private/review-worktree",
+			"classification": "review_pending",
+			"reason": "external_review_pending",
+			"pr_url": "https://example/pr/1",
+			"pr_head_sha": "private-pr-head",
+			"pr_state": "OPEN",
+			"review_state": "pending",
+			"review_decision": "REVIEW_REQUIRED",
+			"mergeable": "MERGEABLE",
+			"check_state": "PENDING",
+			"unresolved_review_threads": 1,
+			"shadowed_by_current_lane": false,
+			"readback_warning": "none",
+			"readback_root_cause": "none",
+			"loop_status": {
+				"review": observability_review_status_fixture(
+					"private-lane-head-sha",
+					"lane-fingerprint-private",
+					"lane-stop-fingerprint-private",
+					4
+				)
+			},
+			"private_evidence_ref": "private-pr-ref"
+		})
+	}
+
 	fn assert_observability_is_sanitized(value: &Value) {
 		let serialized = serde_json::to_string(value).expect("value should serialize");
 
@@ -3485,6 +4708,50 @@ mod tests {
 		assert!(serialized.contains("kept"));
 	}
 
+	fn assert_no_sensitive_observability_content(value: &Value) {
+		let serialized = serde_json::to_string(value).expect("value should serialize");
+
+		for sensitive in [
+			"/private",
+			"/Users/x",
+			"private_evidence",
+			"privateEvidenceRef",
+			"private_evidence_ref",
+			"private-ref",
+			"private-review-ref",
+			"private-pr-ref",
+			"worktree_path",
+			"worktreePath",
+			"raw",
+			"hidden chain of thought",
+			"private reasoning text",
+			"private reasoning summary",
+			"private reasoning body",
+			"GITHUB_PAT_Y",
+			"LINEAR_API_KEY_HACKINK",
+			"/srv/decodex/runtime",
+			"ghp_abcdefghijklmnopqrstuvwxyz123456",
+			"8Nf4Qz7Lb2Rc9Vx5Tm3Pq6Wy1Hs8Ka0U",
+			"active_fingerprints",
+			"stop_fingerprint",
+			"head_sha",
+			"changed_surfaces",
+			"recorded_at",
+			"phase-private-surface",
+			"phase-private-run",
+			"private-head-sha",
+			"fingerprint-private",
+			"stop-fingerprint-private",
+			"private-branch-name",
+			"private-pr-head",
+			"private-lane-head-sha",
+			"lane-fingerprint-private",
+			"lane-stop-fingerprint-private",
+		] {
+			assert!(!serialized.contains(sensitive), "sanitized value leaked {sensitive}");
+		}
+	}
+
 	fn http_handler(repo_root: &Path, capability_profile: McpCapabilityProfile) -> McpHttpHandler {
 		http_handler_with_allowed_origins(repo_root, capability_profile, Vec::new())
 	}
@@ -3494,14 +4761,24 @@ mod tests {
 		capability_profile: McpCapabilityProfile,
 		allowed_origins: Vec<String>,
 	) -> McpHttpHandler {
+		let context = McpContext {
+			repo_root: repo_root.to_path_buf(),
+			config_path: None,
+			project_id: None,
+			state_store: None,
+		};
+
+		http_handler_with_context(context, capability_profile, allowed_origins)
+	}
+
+	fn http_handler_with_context(
+		context: McpContext,
+		capability_profile: McpCapabilityProfile,
+		allowed_origins: Vec<String>,
+	) -> McpHttpHandler {
 		McpHttpHandler {
 			server: McpServer {
-				context: McpContext {
-					repo_root: repo_root.to_path_buf(),
-					config_path: None,
-					project_id: None,
-					state_store: None,
-				},
+				context,
 				capability_profile,
 				transport: McpTransport::StreamableHttp,
 			},
@@ -3516,6 +4793,45 @@ mod tests {
 			handler.handle_request_bytes(&request).expect("HTTP handler should return response");
 
 		ParsedHttpResponse::parse(&response)
+	}
+
+	fn http_json_rpc(handler: &mut McpHttpHandler, session_id: &str, body: &str) -> Value {
+		let response = run_http(
+			handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193"), ("Mcp-Session-Id", session_id)],
+				body,
+			),
+		);
+
+		assert_eq!(response.status, "HTTP/1.1 200 OK");
+		assert_eq!(response.header("content-type"), Some("application/json"));
+		assert_eq!(response.header("access-control-allow-origin"), Some("http://127.0.0.1:8193"));
+
+		response.json_body()
+	}
+
+	fn http_resource_read_json(
+		handler: &mut McpHttpHandler,
+		session_id: &str,
+		id: u64,
+		uri: &str,
+	) -> Value {
+		let request = serde_json::json!({
+			"jsonrpc": "2.0",
+			"id": id,
+			"method": "resources/read",
+			"params": {
+				"uri": uri
+			}
+		})
+		.to_string();
+		let response = http_json_rpc(handler, session_id, &request);
+		let contents = response["result"]["contents"].as_array().expect("resource contents array");
+		let text = contents[0]["text"].as_str().expect("resource text should exist");
+
+		serde_json::from_str(text).expect("resource text should be JSON")
 	}
 
 	fn http_post<'a>(
@@ -3590,6 +4906,189 @@ mod tests {
 		write_file(repo.path().join("docs/research/sample-report.json"), "{}\n");
 
 		repo
+	}
+
+	fn seed_project_runtime_for_mcp_resources(repo_root: &Path, config_path: &Path) {
+		let state_store = runtime::open_runtime_store().expect("runtime store should open");
+
+		write_project_config(config_path, repo_root);
+		write_project_workflow(repo_root);
+
+		runtime::register_project_config(&state_store, config_path, true)
+			.expect("project should register");
+
+		for index in 1..=12 {
+			let issue_id = format!("PUB-{index:03}");
+			let run_id = format!("run-{index:02}");
+			let worktree_path = repo_root.join(format!("worktrees/{issue_id}"));
+
+			state_store
+				.upsert_worktree(
+					"pubfi",
+					&issue_id,
+					&format!("x/pubfi-{index:03}"),
+					&worktree_path.display().to_string(),
+				)
+				.expect("worktree should record");
+			state_store
+				.record_run_attempt(&run_id, &issue_id, 1, "succeeded")
+				.expect("run attempt should record");
+			state_store
+				.append_event(&run_id, 1, "turn/completed", r#"{"status":"completed"}"#)
+				.expect("event should record");
+
+			if index == 12 {
+				seed_mcp_lane_runtime_markers(&state_store, &worktree_path, &run_id);
+
+				state_store
+					.append_event(
+						&run_id,
+						2,
+						"configWarning",
+						r#"{"summary":"config at /private/worktree using GITHUB_PAT_Y"}"#,
+					)
+					.expect("warning event should record");
+				state_store
+					.append_event(
+						&run_id,
+						3,
+						"error",
+						r#"{"error":{"codexErrorInfo":"failed under /Users/x/worktree with LINEAR_API_KEY_HACKINK"}}"#,
+					)
+					.expect("error event should record");
+				state_store
+					.append_event(
+						&run_id,
+						4,
+						"configWarning",
+						r#"{"summary":"state marker under /srv/decodex/runtime"}"#,
+					)
+					.expect("generic path warning event should record");
+				state_store
+					.append_event(
+						&run_id,
+						5,
+						"error",
+						r#"{"error":{"codexErrorInfo":"upstream auth failed for ghp_abcdefghijklmnopqrstuvwxyz123456"}}"#,
+					)
+					.expect("token-shaped error event should record");
+				state_store
+					.append_event(
+						&run_id,
+						6,
+						"error",
+						r#"{"error":{"codexErrorInfo":"upstream auth failed for 8Nf4Qz7Lb2Rc9Vx5Tm3Pq6Wy1Hs8Ka0U"}}"#,
+					)
+					.expect("bare token-shaped error event should record");
+
+				let protocol_activity = ProtocolActivitySummary {
+					turn_status: Some(String::from("completed")),
+					waiting_reason: Some(String::from("turn_completed")),
+					rate_limit_status: None,
+					recent_events: vec![
+						ProtocolActivityEventSummary {
+							event_type: String::from("configWarning"),
+							category: String::from("warning"),
+							detail: Some(String::from(
+								"config at /private/worktree using GITHUB_PAT_Y",
+							)),
+						},
+						ProtocolActivityEventSummary {
+							event_type: String::from("error"),
+							category: String::from("protocol_error"),
+							detail: Some(String::from(
+								"failed under /Users/x/worktree with LINEAR_API_KEY_HACKINK",
+							)),
+						},
+						ProtocolActivityEventSummary {
+							event_type: String::from("configWarning"),
+							category: String::from("warning"),
+							detail: Some(String::from("state marker under /srv/decodex/runtime")),
+						},
+						ProtocolActivityEventSummary {
+							event_type: String::from("error"),
+							category: String::from("protocol_error"),
+							detail: Some(String::from(
+								"upstream auth failed for ghp_abcdefghijklmnopqrstuvwxyz123456",
+							)),
+						},
+						ProtocolActivityEventSummary {
+							event_type: String::from("error"),
+							category: String::from("protocol_error"),
+							detail: Some(String::from(
+								"upstream auth failed for 8Nf4Qz7Lb2Rc9Vx5Tm3Pq6Wy1Hs8Ka0U",
+							)),
+						},
+					],
+				};
+
+				state_store
+					.record_run_activity_summary(&run_id, 1, None, Some(&protocol_activity))
+					.expect("activity summary should record");
+			}
+		}
+	}
+
+	fn seed_mcp_lane_runtime_markers(state_store: &StateStore, worktree_path: &Path, run_id: &str) {
+		fs::create_dir_all(worktree_path).expect("worktree path should exist");
+
+		state_store.update_run_thread(run_id, "thread-12").expect("thread should record");
+		state_store.update_run_turn(run_id, "turn-12").expect("turn should record");
+
+		state::write_run_activity_marker_for_process(worktree_path, run_id, 1, process::id())
+			.expect("activity marker should record process");
+		state::write_run_thread_marker(worktree_path, run_id, 1, "thread-12")
+			.expect("thread marker should record");
+		state::write_run_turn_marker(worktree_path, run_id, 1, "turn-12")
+			.expect("turn marker should record");
+	}
+
+	fn write_project_config(config_path: &Path, repo_root: &Path) {
+		write_file(
+			config_path.to_path_buf(),
+			&format!(
+				r#"
+service_id = "pubfi"
+
+[tracker]
+api_key_env_var = "HOME"
+
+[github]
+token_env_var = "PATH"
+
+[paths]
+repo_root = "{}"
+"#,
+				repo_root.display()
+			),
+		);
+	}
+
+	fn write_project_workflow(repo_root: &Path) {
+		write_file(
+			repo_root.join("WORKFLOW.md"),
+			r#"
++++
+version = 1
+max_turns = 1
+
+[tracker]
+queued_state = "Todo"
+in_progress_state = "In Progress"
+success_state = "Done"
+terminal_states = ["Done", "Canceled"]
+
+[tools]
+comment = "issue_comment"
+transition = "issue_transition"
+label = "issue_label"
+progress_checkpoint = "issue_progress_checkpoint"
+review_checkpoint = "issue_review_checkpoint"
+review_handoff = "issue_review_handoff"
+terminal_finalize = "issue_terminal_finalize"
++++
+"#,
+		);
 	}
 
 	fn write_file(path: std::path::PathBuf, contents: &str) {
