@@ -1,131 +1,67 @@
 # Decodex Routing Reference
 
-Use this reference when a Decodex task crosses research, docs, planning, manual CLI,
+Use this when a Decodex task crosses docs, research, promotion, planning, manual CLI,
 labels, retained automation, commit, or landing boundaries.
 
 ## Mode Map
 
-- Research/design: use `research` and the `research-*` phase skills. The result is a
-  latent Decision Contract candidate only.
-- Docs knowledge base: use `docs` as the router. Use `docs-okf` for concept schema,
-  `docs-wiki` for LLM Wiki routing/indexing, and `docs-drift` for claim/evidence
-  drift audits.
-- Docs impact `research_required`: switch from `docs` to the `research*` skill
-  family; a checked-in `docs/research/` result is latent supporting evidence, not a
-  promotion target or execution authority.
+- Docs: use `docs` as the router. Use `docs-okf` for OKF shape, `docs-wiki` for LLM
+  Wiki routing, and `docs-drift` for claim/evidence audits. Docs impact
+  `research_required` switches to `research*`; checked-in `docs/research/` output is
+  latent supporting evidence, not execution authority.
+- Research/design: use `research` and phase skills. The compact loop is probe,
+  evidence, options, judgment, challenge, decision. A result is a latent Decision Contract candidate only.
 - Promotion: use `research-promote` only after explicit acceptance such as "arrange
   this", "push this forward", "推进", or "做".
-- Planning: use `planning` after promotion or another explicit execution instruction
-  to create Decodex-native issue briefs and Program readiness.
-- Manual CLI: use `manual-cli` when a human is driving local commands, status,
-  project registration, dry-run checks, recovery inspection, commit, or land.
-- Retained automation: use `automation` when Decodex owns issue intake, Program
-  Intake, retained lanes, review handoff, repair, landing, closeout, cleanup, or
-  operator recovery.
+- Planning: use `planning` after promotion or another explicit execution instruction.
+  Planning owns Decodex-native issue briefing and Program readiness.
+- Automation: use `automation` for Decodex-owned intake, retained lanes, review
+  handoff, repair, landing, closeout, cleanup, and operator recovery.
+- Manual CLI: use `manual-cli` when a human drives status, registration, dry-run,
+  recovery inspection, commit, or land.
 - Labels: use `labels` only for ordinary non-Program tracker intake and retained-lane
   ownership signals.
 
 ## First Reads
 
-- In the Decodex repo, read `README.md`, `docs/index.md`, and `Makefile.toml` before
-  repository validation.
-- For docs-impacting work, read `docs/policy.md` and the smallest owning concept
-  before editing, then run `cargo run -p decodex --bin decodex -- docs lint` while
-  developing this repository.
-- For registered projects, read `~/.codex/decodex/projects/<service-id>/project.toml`
-  and `WORKFLOW.md`, or the project directory supplied by `--config`.
-- For runtime semantics, prefer `docs/spec/` and `docs/runbook/` over global host
-  policy.
+- In this repo, read `README.md`, `docs/index.md`, `docs/policy.md`, and
+  `Makefile.toml` before docs or validation work.
+- For registered projects, read the project `project.toml` and `WORKFLOW.md`.
+- For runtime semantics, prefer `docs/spec/` and `docs/runbook/` over host policy.
 
 ## Natural-Language Research Routing
 
 Keep Decodex natural-language-first. Requests such as `research X` route through
 `research`, `research-probe`, `research-evidence`, `research-options`,
-`research-judgment`, `research-challenge`, and `research-decision` before any
-promotion.
+`research-judgment`, `research-challenge`, and `research-decision` before promotion.
 
-1. A natural-language research request never queues work, mutates Linear, starts
-   implementation, creates Codex goals, or dispatches Program nodes.
-2. A decision-ready result remains latent until promotion.
-3. Promotion preserves the accepted objectives, non-goals, constraints, assumptions,
-   objections, validation expectations, proposed issue summaries, and stop conditions.
-4. Planning turns accepted work into user-readable Linear issue briefs with generic
-   dispatch briefing quality and, when appropriate, persisted Execution Program
-   readiness.
-5. Program Intake dispatches ready mapped nodes directly. Queue labels are not the
-   Program DAG scheduler.
+Research never queues work, mutates Linear, starts implementation, creates Codex
+goals, or dispatches Program nodes. Promotion preserves accepted objectives,
+non-goals, constraints, assumptions, objections, validation expectations, proposed
+issue summaries, and stop conditions. Program Intake dispatches ready mapped nodes directly from the persisted DAG; queue labels are not the Program scheduler.
 
 ## Program Versus Label Intake
 
 - Program Intake starts from a persisted Execution Program and dispatches ready mapped
   nodes with `program` dispatch mode.
-- Ordinary issue intake starts from `decodex:queued:<service-id>` and must still pass
+- Ordinary issue intake starts from `decodex:queued:<service-id>` and still must pass
   `WORKFLOW.md` eligibility, terminal-state, dependency, opt-out, and active-lease
   checks.
 - `decodex:active:<service-id>` is runtime ownership, not "please start work".
 - `decodex:manual-only` opts out of automation.
-- `decodex:needs-attention` is a human-required stop. Clear it only after resolving
-  the recorded blocker or through a runbook-approved recovery path.
-
-## Manual Commands
-
-Use installed `decodex` when operating an installed runtime. Use
-`cargo run -p decodex --bin decodex -- ...` when developing this repository.
-
-Common probes:
-
-```sh
-decodex probe stdio://
-decodex project add "$HOME/.codex/decodex/projects/<service-id>"
-decodex project list
-decodex status
-decodex status --live
-decodex run --dry-run
-```
-
-Repo-development equivalents:
-
-```sh
-cargo run -p decodex --bin decodex -- probe stdio://
-cargo run -p decodex --bin decodex -- status
-cargo run -p decodex --bin decodex -- run --dry-run
-```
+- `decodex:needs-attention` is a human-required stop.
 
 ## Commit And Land
 
-For human-driven commit:
+For human-driven commits, inspect the diff, stage only intended files, run touched
+surface validation, then use `decodex commit "<summary>"` or
+`decodex commit --manual-authority "<summary>"` for deliberate non-issue work.
 
-1. Inspect the diff and stage only intended files.
-2. Run the validation required for the touched surface.
-3. Use `decodex commit "<summary>"`, or
-   `decodex commit --manual-authority "<summary>"` for a deliberate non-issue lane.
-4. Stop unless the user separately asks to push, open/update a PR, request review, or
-   land.
-
-For human-driven PR landing:
-
-1. Confirm the PR, base, head, mergeability, and required checks.
-2. Use `decodex land "<summary>"`, or
-   `decodex land --manual-authority --pr <URL> "<summary>"` for a deliberate
-   non-issue lane.
-3. If issue-authority land reports missing retained handoff state for a human-owned PR
-   created from a managed worktree, dry-run `decodex recover review-handoff adopt`
-   before any live adopt.
-4. Remove merged linked worktrees and lane branches only after Decodex landing
-   succeeds and the repo-root default branch is current.
-
-## Recovery Boundaries
-
-- Use lane-control specs and runbooks before interrupting, steering, retrying,
-  resuming, relabeling, or escalating a lane.
-- Use `recover review-handoff diagnose` and then `recover review-handoff rebind` for
-  retained PR handoff state drift.
-- Use `recover review-handoff adopt` only for a verified human-owned PR created from
-  a managed Decodex worktree that should enter normal `decodex land --authority`
-  closeout.
-- Use `recover merged-closeout` only when Decodex still reports stale retained
-  attention after a PR was already merged and the tracker issue is completed.
-- Run recovery dry-runs first unless the referenced runbook says otherwise.
+For human-driven PR landing, confirm PR/base/head/mergeability/checks, then use
+`decodex land "<summary>"` or
+`decodex land --manual-authority --pr <URL> "<summary>"` for deliberate non-issue
+work. If issue-authority land reports missing retained handoff state, dry-run
+`decodex recover review-handoff adopt` before any live adopt.
 
 ## Hard Boundaries
 
