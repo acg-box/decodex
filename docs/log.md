@@ -2,6 +2,9 @@
 
 ## 2026-06-18
 
+- Added remote-safe MCP observability projections for live status, activity tail, run
+  events, protocol activity, child-agent activity, progress diagnostics, lane inspect,
+  and PR/review state without exposing private evidence or raw steer text.
 - Added Streamable HTTP to the Decodex MCP gateway: the transport now defaults to
   loopback binding and the `observe` profile, validates browser origins, issues MCP
   sessions, supports JSON and SSE responses, and keeps operate/admin calls behind

@@ -85,8 +85,14 @@ protocol primitives or `decodex mcp serve --transport streamable-http` for remot
 permitted clients that reach the daemon through an operator-chosen local listener,
 tunnel, or relay. Both transports list and read checked-in docs, checked-in JSON
 research reports, Decision Contract readback, status snapshots, and lane-control
-readback; both also advertise resource templates, reusable Decodex prompts, and a
-small schema-bound tool catalog. The stdio gateway defaults to
+readback; both also advertise resource templates for `status_live`, `activity_tail`,
+`lane_inspect`, current/recent status-window run events, protocol activity,
+child-agent activity, progress diagnostics, and PR/review state. These projections
+reuse local operator snapshot summaries and exclude hidden reasoning, raw steer text,
+private evidence, and local path payloads. Run-scoped resource reads return
+`resource_not_found` for run ids outside the current/recent status snapshot rather
+than constructing an unbounded historical snapshot. Both transports advertise reusable Decodex prompts and a small
+schema-bound tool catalog. The stdio gateway defaults to
 `--capability-profile admin` for local clients. Streamable HTTP binds to
 `127.0.0.1:8193` and defaults to `observe`; it serves JSON-RPC at `POST /mcp`,
 validates browser `Origin` headers against loopback or `--allow-origin`, issues
@@ -459,7 +465,11 @@ Worktree visibility follows the owning dashboard section:
   `running_lane_count`, so stopped, stale, or attention lanes can stay visible as
   active work without being counted as currently running.
 - Running lanes derive CLI and dashboard text from the same `OperatorRunStatus`
-  object. `protocol_activity`, when present, summarizes app-server structured
+  object. MCP observability resources expose the same public subset as JSON
+  projections for remote-safe clients: current operation, phase, event counts,
+  protocol activity, child-agent activity, progress diagnostics, lane-control next
+  action, and PR/review state for lanes in the current/recent status snapshot.
+  `protocol_activity`, when present, summarizes app-server structured
   notifications for turn status, waiting reason, and recent protocol events. The
   dashboard uses that shared summary to explain whether active time is going to model
   execution, tools, approval/user input, or protocol idleness. Account usage details
