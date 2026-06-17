@@ -3735,7 +3735,9 @@ fn decision_contract_reload_skips_legacy_flat_issue_summary_rows() {
 
 	let mut legacy_payload = serde_json::to_value(latent_decision_contract_fixture())
 		.expect("fixture should encode as JSON");
+
 	legacy_payload["contract_id"] = serde_json::json!("legacy-flat-issue-contract");
+
 	let readiness = legacy_payload
 		.get_mut("execution_readiness")
 		.expect("readiness should exist")

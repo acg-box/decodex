@@ -845,6 +845,6 @@ cargo run -p decodex --bin decodex -- probe
 cargo run -p decodex --bin decodex -- project add ~/.codex/decodex/projects/decodex
 cargo run -p decodex --bin decodex -- run --dry-run
 cargo make fmt
-cargo make lint
+cargo make lint-fix
 cargo make check
 ```
