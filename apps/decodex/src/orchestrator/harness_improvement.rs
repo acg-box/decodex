@@ -32,7 +32,7 @@ impl HarnessOutcomeKind {
 			return result.to_owned();
 		}
 
-		if signals.validation_failure_count > 0 || matches!(self, Self::RetryableFailure) {
+		if signals.validation_failure_count > 0 {
 			return String::from("failed");
 		}
 		if matches!(self, Self::ReviewHandoff | Self::ReviewRepair | Self::Closeout) {
@@ -218,7 +218,7 @@ pub(crate) fn record_harness_outcome_for_issue_run(
 	let contracts = harness_contracts_for_issue(state_store, &input)?;
 	let programs = harness_programs_for_contracts(state_store, input.project_id, &contracts)?;
 	let linear_records = state_store.list_linear_execution_events(input.project_id, input.issue_id)?;
-	let signals = harness_outcome_signals(&events, input.error_class);
+	let signals = harness_outcome_signals(&events, input.outcome, input.error_class);
 	let payload = harness_outcome_payload(&input, &contracts, &programs, &linear_records, &signals)?;
 
 	state_store.append_private_execution_event(
@@ -247,7 +247,7 @@ pub(crate) fn harness_improvement_candidates_from_private_events(
 		return Vec::new();
 	}
 
-	let signals = harness_outcome_signals(events, None);
+	let signals = harness_outcome_signals(events, HarnessOutcomeKind::TerminalFailure, None);
 
 	if signals.validation_failure_count == 0
 		&& signals.accepted_finding_count == 0
@@ -509,11 +509,14 @@ fn harness_conflict_domain_label(domain: &ExecutionConflictDomain) -> String {
 
 fn harness_outcome_signals(
 	events: &[PrivateExecutionEvent],
+	_outcome: HarnessOutcomeKind,
 	error_class: Option<&str>,
 ) -> HarnessOutcomeSignals {
 	let mut signals = HarnessOutcomeSignals::default();
 
-	if let Some(error_class) = error_class.filter(|class| class.starts_with("repo_gate_")) {
+	if let Some(error_class) =
+		error_class.filter(|class| harness_error_class_is_validation_failure(class))
+	{
 		signals.validation_failure_count += 1;
 
 		signals.validation_failure_classes.insert(error_class.to_owned());
@@ -534,6 +537,11 @@ fn harness_outcome_signals(
 	}
 
 	signals
+}
+
+fn harness_error_class_is_validation_failure(error_class: &str) -> bool {
+	error_class.starts_with("repo_gate_")
+		|| matches!(error_class, "validation_repeat" | "validation_failure_repeated")
 }
 
 fn push_phase_goal_signal(signals: &mut HarnessOutcomeSignals, event: &PrivateExecutionEvent) {
@@ -579,7 +587,7 @@ fn push_guardrail_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
 		signals.guardrail_reasons.insert(reason);
 	}
 	if let Some(error_class) = json_string(payload.get("source_error_class"))
-		&& error_class.starts_with("repo_gate_")
+		&& harness_error_class_is_validation_failure(&error_class)
 	{
 		signals.validation_failure_count += 1;
 
@@ -799,6 +807,18 @@ fn push_signal_candidates(
 			&format!("issue:{}", input.issue_identifier),
 			signals.accepted_finding_count,
 			"Convert accepted reviewer findings into prompt, skill, or validator hardening.",
+		);
+	}
+	if signals.accepted_finding_count > 0
+		&& signals.guardrail_reasons.contains("no_effective_diff")
+	{
+		insert_candidate(
+			candidates,
+			"state_machine_gap",
+			"review_repair_no_effective_diff_after_findings",
+			&format!("issue:{}", input.issue_identifier),
+			signals.accepted_finding_count,
+			"Runtime should either record a fresh clean review checkpoint, continue review repair with a concrete diff, or stop with needs-attention instead of generic retryable failure.",
 		);
 	}
 

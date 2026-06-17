@@ -253,6 +253,14 @@ enum RebindMode {
 	CompleteExistingHandoffState,
 }
 impl RebindMode {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::RestoreMissingHandoff => "restore_missing_handoff",
+			Self::RefreshExistingHandoff => "refresh_existing_handoff",
+			Self::CompleteExistingHandoffState => "complete_existing_handoff_state",
+		}
+	}
+
 	fn allows_failure_state_drift_repair(self) -> bool {
 		self == Self::CompleteExistingHandoffState
 	}
@@ -2342,6 +2350,13 @@ fn apply_review_handoff_rebind(
 		context.tracker.update_issue_state(&validation.issue.id, &transition.state_id)?;
 	}
 
+	append_review_handoff_rebind_private_event(
+		&context.state_store,
+		context.config.service_id(),
+		validation,
+		"local_markers_written",
+	)?;
+
 	Ok(())
 }
 
@@ -2372,37 +2387,8 @@ fn apply_review_handoff_adopt(
 		0,
 		None,
 	);
-	let worktree_path = validation.worktree_path.to_string_lossy().to_string();
-	let local_state_write = context
-		.state_store
-		.upsert_worktree(
-			context.config.service_id(),
-			&validation.issue.id,
-			&validation.branch_name,
-			&worktree_path,
-		)
-		.and_then(|()| {
-			context.state_store.record_run_attempt(
-				&validation.run_id,
-				&validation.issue.id,
-				validation.attempt_number,
-				"starting",
-			)
-		})
-		.and_then(|()| {
-			context.state_store.upsert_review_handoff_marker(
-				context.config.service_id(),
-				&validation.issue.id,
-				&handoff_marker,
-			)
-		})
-		.and_then(|()| {
-			context.state_store.upsert_review_orchestration_marker(
-				context.config.service_id(),
-				&validation.issue.id,
-				&orchestration_marker,
-			)
-		});
+	let local_state_write =
+		write_adopt_local_state(context, validation, &handoff_marker, &orchestration_marker);
 
 	if let Err(error) = local_state_write {
 		mark_adopt_attempt_failed(context, validation);
@@ -2459,7 +2445,55 @@ fn apply_review_handoff_adopt(
 		context.tracker.update_issue_state(&validation.issue.id, &transition.state_id)?;
 	}
 
+	append_review_handoff_adopt_private_event(
+		&context.state_store,
+		context.config.service_id(),
+		validation,
+		"active_label_checked",
+		active_label_restored,
+	)?;
+
 	Ok(())
+}
+
+fn write_adopt_local_state(
+	context: &RecoveryContext,
+	validation: &AdoptValidation,
+	handoff_marker: &ReviewHandoffMarker,
+	orchestration_marker: &ReviewOrchestrationMarker,
+) -> Result<()> {
+	let worktree_path = validation.worktree_path.to_string_lossy().to_string();
+
+	context
+		.state_store
+		.upsert_worktree(
+			context.config.service_id(),
+			&validation.issue.id,
+			&validation.branch_name,
+			&worktree_path,
+		)
+		.and_then(|()| {
+			context.state_store.record_run_attempt(
+				&validation.run_id,
+				&validation.issue.id,
+				validation.attempt_number,
+				"starting",
+			)
+		})
+		.and_then(|()| {
+			context.state_store.upsert_review_handoff_marker(
+				context.config.service_id(),
+				&validation.issue.id,
+				handoff_marker,
+			)
+		})
+		.and_then(|()| {
+			context.state_store.upsert_review_orchestration_marker(
+				context.config.service_id(),
+				&validation.issue.id,
+				orchestration_marker,
+			)
+		})
 }
 
 fn restore_adopt_active_label(
@@ -2517,6 +2551,80 @@ fn mark_adopt_attempt_failed(context: &RecoveryContext, validation: &AdoptValida
 			"Failed to mark manual takeover adopt attempt failed."
 		);
 	}
+}
+
+fn append_review_handoff_rebind_private_event(
+	state_store: &StateStore,
+	service_id: &str,
+	validation: &RebindValidation,
+	writeback_stage: &str,
+) -> Result<()> {
+	state_store
+		.append_private_execution_event(
+			service_id,
+			&validation.issue.id,
+			&validation.run_id,
+			validation.attempt_number,
+			REVIEW_HANDOFF_REBIND_EVENT,
+			serde_json::json!({
+				"schema": "decodex.review_handoff_recovery_private_event/1",
+				"event": REVIEW_HANDOFF_REBIND_EVENT,
+				"writeback_stage": writeback_stage,
+				"issue_identifier": &validation.issue.identifier,
+				"branch": validation.worktree.branch_name(),
+				"worktree_path": &validation.worktree_path_for_event,
+				"pr_url": landing_url(&validation.landing_state),
+				"pr_head_sha": &validation.local_head_oid,
+				"pr_base_ref": &validation.landing_state.base_ref_name,
+				"pr_state": &validation.landing_state.state,
+				"mergeable": &validation.landing_state.mergeable,
+				"merge_state_status": &validation.landing_state.merge_state_status,
+				"status_check_rollup_state": &validation.landing_state.status_check_rollup_state,
+				"mode": validation.mode.as_str(),
+				"clear_needs_attention_label": validation.clear_needs_attention_label,
+				"next_action": "continue retained post-review lifecycle",
+			}),
+		)
+		.map(|_| ())
+}
+
+fn append_review_handoff_adopt_private_event(
+	state_store: &StateStore,
+	service_id: &str,
+	validation: &AdoptValidation,
+	writeback_stage: &str,
+	active_label_restored: bool,
+) -> Result<()> {
+	state_store
+		.append_private_execution_event(
+			service_id,
+			&validation.issue.id,
+			&validation.run_id,
+			validation.attempt_number,
+			REVIEW_HANDOFF_ADOPT_EVENT,
+			serde_json::json!({
+				"schema": "decodex.review_handoff_recovery_private_event/1",
+				"event": REVIEW_HANDOFF_ADOPT_EVENT,
+				"writeback_stage": writeback_stage,
+				"issue_identifier": &validation.issue.identifier,
+				"branch": &validation.branch_name,
+				"worktree_path": &validation.worktree_path_for_event,
+				"pr_url": landing_url(&validation.landing_state),
+				"pr_head_sha": &validation.local_head_oid,
+				"pr_base_ref": &validation.landing_state.base_ref_name,
+				"pr_state": &validation.landing_state.state,
+				"mergeable": &validation.landing_state.mergeable,
+				"merge_state_status": &validation.landing_state.merge_state_status,
+				"status_check_rollup_state": &validation.landing_state.status_check_rollup_state,
+				"active_label_present": validation.active_label_present,
+				"active_label_restored": active_label_restored,
+				"existing_retained_worktree_mapping": validation.previous_worktree_mapping.is_some(),
+				"existing_review_handoff_marker": false,
+				"manual_takeover_adopt": true,
+				"next_action": "continue retained post-review lifecycle",
+			}),
+		)
+		.map(|_| ())
 }
 
 fn review_handoff_rebind_event(
@@ -3554,6 +3662,121 @@ Test workflow.
 
 		assert_eq!(run_id, "xy-944-manual-adopt-2-0123456789ab");
 		assert_eq!(run_id, super::manual_adopt_run_id("XY-944", 2, head_oid));
+	}
+
+	#[test]
+	fn adopt_private_event_records_manual_takeover_lifecycle_evidence() {
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let branch_name = "x/pubfi-pub-718";
+		let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
+		let head_oid = "1123456789abcdef0123456789abcdef01234567";
+		let validation = super::AdoptValidation {
+			issue: sample_issue("In Review"),
+			branch_name: branch_name.to_owned(),
+			worktree_path: Path::new("/tmp/PUB-718").to_path_buf(),
+			run_id: String::from("pub-718-manual-adopt-2-1123456789ab"),
+			attempt_number: 2,
+			landing_state: sample_landing_state(pr_url, branch_name, head_oid),
+			local_head_oid: head_oid.to_owned(),
+			worktree_path_for_event: Some(String::from(".worktrees/PUB-718")),
+			active_label_present: false,
+			success_state_transition: None,
+			previous_worktree_mapping: None,
+		};
+
+		super::append_review_handoff_adopt_private_event(
+			&state_store,
+			"pubfi",
+			&validation,
+			"local_markers_written",
+			false,
+		)
+		.expect("adopt private event should append");
+		super::append_review_handoff_adopt_private_event(
+			&state_store,
+			"pubfi",
+			&validation,
+			"active_label_checked",
+			true,
+		)
+		.expect("adopt active-label private event should append");
+
+		let events = state_store
+			.list_private_execution_events(
+				"pubfi",
+				&validation.issue.id,
+				&validation.run_id,
+				validation.attempt_number,
+			)
+			.expect("private events should read");
+		let event = events.first().expect("adopt event should exist");
+		let payload = event.payload();
+		let second_event = events.get(1).expect("active-label adopt event should exist");
+		let second_payload = second_event.payload();
+
+		assert_eq!(events.len(), 2);
+		assert_eq!(event.event_type(), REVIEW_HANDOFF_ADOPT_EVENT);
+		assert_eq!(payload["schema"], "decodex.review_handoff_recovery_private_event/1");
+		assert_eq!(payload["event"], REVIEW_HANDOFF_ADOPT_EVENT);
+		assert_eq!(payload["writeback_stage"], "local_markers_written");
+		assert_eq!(payload["manual_takeover_adopt"], true);
+		assert_eq!(payload["active_label_restored"], false);
+		assert_eq!(payload["pr_url"], pr_url);
+		assert_eq!(payload["pr_head_sha"], head_oid);
+		assert_eq!(payload["next_action"], "continue retained post-review lifecycle");
+		assert_eq!(second_event.event_type(), REVIEW_HANDOFF_ADOPT_EVENT);
+		assert_eq!(second_payload["writeback_stage"], "active_label_checked");
+		assert_eq!(second_payload["active_label_restored"], true);
+	}
+
+	#[test]
+	fn rebind_private_event_records_retained_lifecycle_evidence() {
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let branch_name = "x/pubfi-pub-718";
+		let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
+		let head_oid = "1123456789abcdef0123456789abcdef01234567";
+		let validation = super::RebindValidation {
+			issue: sample_issue("In Review"),
+			worktree: sample_worktree(branch_name),
+			run_id: String::from("pub-718-attempt-2-1123456789ab"),
+			attempt_number: 2,
+			landing_state: sample_landing_state(pr_url, branch_name, head_oid),
+			local_head_oid: head_oid.to_owned(),
+			worktree_path_for_event: Some(String::from(".worktrees/PUB-718")),
+			active_label_present: true,
+			mode: super::RebindMode::RefreshExistingHandoff,
+			success_state_transition: None,
+			clear_needs_attention_label: false,
+		};
+
+		super::append_review_handoff_rebind_private_event(
+			&state_store,
+			"pubfi",
+			&validation,
+			"local_markers_written",
+		)
+		.expect("rebind private event should append");
+
+		let events = state_store
+			.list_private_execution_events(
+				"pubfi",
+				&validation.issue.id,
+				&validation.run_id,
+				validation.attempt_number,
+			)
+			.expect("private events should read");
+		let event = events.first().expect("rebind event should exist");
+		let payload = event.payload();
+
+		assert_eq!(events.len(), 1);
+		assert_eq!(event.event_type(), REVIEW_HANDOFF_REBIND_EVENT);
+		assert_eq!(payload["schema"], "decodex.review_handoff_recovery_private_event/1");
+		assert_eq!(payload["event"], REVIEW_HANDOFF_REBIND_EVENT);
+		assert_eq!(payload["writeback_stage"], "local_markers_written");
+		assert_eq!(payload["mode"], "refresh_existing_handoff");
+		assert_eq!(payload["pr_url"], pr_url);
+		assert_eq!(payload["pr_head_sha"], head_oid);
+		assert_eq!(payload["next_action"], "continue retained post-review lifecycle");
 	}
 
 	#[test]
