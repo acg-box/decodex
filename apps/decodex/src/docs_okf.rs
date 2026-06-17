@@ -1906,6 +1906,7 @@ mod tests {
 		let bundle = temp_dir.path().join("bundle");
 
 		fs::create_dir_all(&bundle).expect("bundle");
+
 		write(&bundle.join("index.md"), "# Bundle\n");
 		write(
 			&bundle.join("metric.md"),
@@ -1923,6 +1924,7 @@ mod tests {
 		let bundle = temp_dir.path().join("bundle");
 
 		fs::create_dir_all(&bundle).expect("bundle");
+
 		write(&temp_dir.path().join("README.md"), "# External repo doc\n");
 		write(&bundle.join("index.md"), "# Bundle\n");
 		write(
@@ -1947,6 +1949,7 @@ mod tests {
 		let bundle = temp_dir.path().join("docs");
 
 		fs::create_dir_all(&bundle).expect("bundle");
+
 		write(&temp_dir.path().join("src.rs"), "fn main() {}\n");
 		write(&bundle.join("index.md"), "# Bundle\n");
 		write(
@@ -1975,6 +1978,7 @@ mod tests {
 		let bundle = temp_dir.path().join("bundle");
 
 		fs::create_dir_all(&bundle).expect("bundle");
+
 		write(&bundle.join("index.md"), "# Bundle\n");
 		write(
 			&bundle.join("okf.md"),
