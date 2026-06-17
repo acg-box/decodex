@@ -2,6 +2,9 @@
 
 ## 2026-06-18
 
+- Added `repo-memory-evaluator` so repo-memory OKF/LLM Wiki bundles have a
+  plugin-eval-style quality workflow for static checks, route top-1/top-3 benchmarks,
+  graph health, owner coverage, and before/after curation evidence.
 - Added `repo-memory-curator` so existing OKF/LLM Wiki bundles have a dedicated
   growth and maintenance skill for top-1/top-3 route benchmark misses,
   metadata-only owner tuning, orphan triage, graph repair, and link tuning.
