@@ -8,7 +8,7 @@ owner: docs
 tags: [docs, okf, llm-wiki, repo-memory, reference]
 source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md, https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing, https://llmstxt.org/, https://diataxis.fr/, https://developers.openai.com/codex/guides/agents-md, https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions]
 code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/cli.rs, docs/index.md, docs/policy.md, docs/spec/okf-knowledge-layer.md, plugins/decodex/skills/repo-memory-writer/SKILL.md]
-related: [../policy.md, ../spec/okf-knowledge-layer.md, ../evidence/docs-self-iteration.md, ./workspace-layout.md]
+related: [../policy.md, ../spec/okf-knowledge-layer.md, ../evidence/docs-self-iteration.md, ./build-test-run.md, ./workspace-layout.md]
 drift_watch: [decodex docs check, decodex okf graph docs, decodex okf route docs, docs index, docs lane index, okf orphan concepts]
 last_verified: 2026-06-17
 ---
@@ -91,6 +91,7 @@ plain index scan. This map keeps them connected to the repository-memory graph:
   [`../runbook/linear-archive-hygiene.md`](../runbook/linear-archive-hygiene.md), and
   [`./github-operations.md`](./github-operations.md).
 - Repository quality inventory:
+  [`./build-test-run.md`](./build-test-run.md) and
   [`./test-suite.md`](./test-suite.md).
 - Plugin source ownership:
   [`../decisions/decodex-plugin-source.md`](../decisions/decodex-plugin-source.md).
@@ -101,7 +102,7 @@ Those concepts should stay in their owning lanes. This map only provides a retri
 edge so graph-based readers can discover them without treating lane indexes as concept
 authority.
 
-Current readback: `decodex okf graph docs` reports 37 concepts, 105 edges, 0 broken
+Current readback: `decodex okf graph docs` reports 38 concepts, 117 edges, 0 broken
 links, and 0 orphan concepts.
 
 ## Evaluation
