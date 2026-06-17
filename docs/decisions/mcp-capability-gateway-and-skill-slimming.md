@@ -7,7 +7,7 @@ authority: rationale
 owner: docs
 tags: [decision]
 code_refs: [apps/decodex/src/mcp.rs, README.md, docs/spec/runtime.md, docs/reference/operator-control-plane.md]
-drift_watch: [decodex mcp serve --transport stdio, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call]
+drift_watch: [decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call]
 last_verified: 2026-06-18
 ---
 # MCP Capability Gateway And Skill Slimming
@@ -112,9 +112,12 @@ implementation slice, XY-994, owns the stdio primitive gateway: `initialize`,
 `resources/list`, `resources/read`, `resources/templates/list`, `prompts/list`,
 `prompts/get`, `tools/list`, `tools/call`, `logging/setLevel`, progress notifications,
 profile-tagged tool discovery, and structured refusal behavior for deferred
-operate/admin entries. Streamable HTTP, richer observability, live research/intake
-planning tools, live lane-control/admin tools, and skill slimming remain separate
-follow-up lanes from the accepted Decision Contract.
+operate/admin entries. The follow-up transport slice adds Streamable HTTP for the same
+gateway at `POST /mcp`, with loopback default binding, browser-origin validation,
+session headers, JSON responses, SSE framing for progress/notifications, and an
+`observe` default profile for remote-safe access. Richer live research/intake planning
+tools, live lane-control/admin mutation, and skill slimming remain separate follow-up
+lanes from the accepted Decision Contract.
 
 Resources:
 
@@ -193,15 +196,18 @@ Target shape:
 - `git diff --check` should pass.
 - The stdio MCP primitive implementation should pass initialize, resources/list,
   resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, progress
-  notification, and stdout-cleanliness smoke coverage. Streamable HTTP transport and
-  live operate/admin lane-control behavior should remain separate follow-up work.
+  notification, and stdout-cleanliness smoke coverage. Streamable HTTP should pass
+  JSON POST, SSE response, origin rejection, session handling, observe-profile access,
+  and operate/admin profile-refusal coverage. Live operate/admin lane-control behavior
+  should remain separate follow-up work.
 
 ## Open Follow-Up
 
-The first promoted implementation is the stdio gateway exposed as
-`decodex mcp serve --transport stdio`. It advertises resources, resource templates,
-prompts, and a schema-bound tool catalog while keeping mutating operate/admin behavior
-behind structured refusal states. Later promoted work should stay split across
-Streamable HTTP transport, research compile/promote tools, live lane-control tools,
+The promoted implementation now has the stdio gateway exposed as
+`decodex mcp serve --transport stdio` and the remote-capable Streamable HTTP gateway
+exposed as `decodex mcp serve --transport streamable-http`. It advertises resources,
+resource templates, prompts, and a schema-bound tool catalog while keeping mutating
+operate/admin behavior behind structured refusal states. Later promoted work should
+stay split across research compile/promote tools, live lane-control tools,
 skill-slimming eval, and docs/resource validation lanes so mutating MCP tools do not
 bypass Decision Contract or lane-control authority.
