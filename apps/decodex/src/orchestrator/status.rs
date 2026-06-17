@@ -57,7 +57,7 @@ enum RunIssueMetadataHydration {
 enum TrackerObserverOutcome {
 	Ok,
 	Unavailable,
-	RateLimited(TrackerConnectorBackoff),
+	Backoff(TrackerConnectorBackoff),
 }
 
 #[derive(Clone, Copy)]
@@ -763,6 +763,22 @@ fn operator_execution_program_statuses(
 	let mut statuses = Vec::new();
 
 	for record in records {
+		let mut nodes = Vec::with_capacity(record.program().nodes().len());
+
+		for node in record.program().nodes() {
+			let Some(issue) = node.linear_issue() else {
+				nodes.push(node.clone());
+
+				continue;
+			};
+			let has_post_review_lifecycle =
+				state_store.issue_has_review_lifecycle_record(project.service_id(), issue.issue_id())?;
+			let issue = issue.clone().with_post_review_lifecycle(has_post_review_lifecycle);
+
+			nodes.push(node.clone().with_linear_issue(issue)?);
+		}
+
+		let program = record.program().clone().with_nodes(nodes)?;
 		let evaluation = if let Some(source_contract_id) = record.source_contract_id() {
 			let Some(contract) = state_store.decision_contract(project.service_id(), source_contract_id)?
 			else {
@@ -771,9 +787,9 @@ fn operator_execution_program_statuses(
 				continue;
 			};
 
-			record.program().evaluate(contract.contract(), &policy, &context)?
+			program.evaluate(contract.contract(), &policy, &context)?
 		} else {
-			record.program().evaluate_issue_batch(&policy, &context)?
+			program.evaluate_issue_batch(&policy, &context)?
 		};
 
 		statuses.push(OperatorExecutionProgramStatus::from_summary(
@@ -844,8 +860,11 @@ fn operator_execution_program_occupied_conflict_domains(
 			let retained_nonterminal =
 				retained_issue_ids.contains(issue.issue_id())
 					&& !state_name_is_terminal(issue.issue_state(), workflow);
+			let has_post_review_lifecycle =
+				state_store.issue_has_review_lifecycle_record(service_id, issue.issue_id())?;
 			let issue_occupies_domain = issue.has_active_label()
 				|| issue.has_needs_attention_label()
+				|| has_post_review_lifecycle
 				|| retained_nonterminal
 				|| state_store.issue_has_active_shared_claim(service_id, issue.issue_id())?;
 
@@ -950,15 +969,15 @@ fn apply_tracker_observer_outcome(
 
 			false
 		},
-		TrackerObserverOutcome::RateLimited(backoff) => {
-			pause_operator_snapshot_for_rate_limit(snapshot, state_store, project, &backoff);
+		TrackerObserverOutcome::Backoff(backoff) => {
+			pause_operator_snapshot_for_tracker_backoff(snapshot, state_store, project, &backoff);
 
 			true
 		},
 	}
 }
 
-fn pause_operator_snapshot_for_rate_limit(
+fn pause_operator_snapshot_for_tracker_backoff(
 	snapshot: &mut OperatorStatusSnapshot,
 	state_store: &StateStore,
 	project: &ServiceConfig,
@@ -994,7 +1013,7 @@ where
 		},
 		Err(error) => {
 			let Some(backoff) =
-				tracker_rate_limit_backoff(&error, Instant::now(), "queued_candidate_status")
+				tracker_connector_backoff(&error, Instant::now(), "queued_candidate_status")
 			else {
 				let _ = error;
 
@@ -1007,7 +1026,7 @@ where
 				return false;
 			};
 
-			pause_operator_snapshot_for_rate_limit(
+			pause_operator_snapshot_for_tracker_backoff(
 				snapshot,
 				context.state_store,
 				context.project,
@@ -1041,7 +1060,7 @@ where
 		},
 		Err(error) => {
 			let Some(backoff) =
-				tracker_rate_limit_backoff(&error, Instant::now(), "post_review_lane_status")
+				tracker_connector_backoff(&error, Instant::now(), "post_review_lane_status")
 			else {
 				let _ = error;
 
@@ -1054,7 +1073,7 @@ where
 				return Ok(false);
 			};
 
-			pause_operator_snapshot_for_rate_limit(
+			pause_operator_snapshot_for_tracker_backoff(
 				snapshot,
 				context.state_store,
 				context.project,
@@ -1076,7 +1095,7 @@ fn add_tracker_backoff_to_operator_snapshot(
 	snapshot: &mut OperatorStatusSnapshot,
 	backoff: &OperatorConnectorBackoffStatus,
 ) {
-	add_operator_snapshot_warning(snapshot, TRACKER_RATE_LIMIT_WARNING);
+	add_operator_snapshot_warning(snapshot, &backoff.warning);
 
 	if !snapshot.connector_backoffs.iter().any(|existing| {
 		existing.project_id == backoff.project_id && existing.connector == backoff.connector
@@ -2055,7 +2074,7 @@ fn operator_run_has_stale_execution_without_known_process(run: &OperatorRunStatu
 
 fn project_connector_state(snapshot: &OperatorStatusSnapshot) -> String {
 	if !snapshot.connector_backoffs.is_empty()
-		|| snapshot.warnings.iter().any(|warning| warning == TRACKER_RATE_LIMIT_WARNING)
+		|| snapshot_warnings_include_tracker_backoff(snapshot)
 	{
 		return String::from("backoff");
 	}
@@ -2439,9 +2458,9 @@ where
 		},
 		Err(error) => {
 			if let Some(backoff) =
-				tracker_rate_limit_backoff(&error, Instant::now(), "run_issue_metadata")
+				tracker_connector_backoff(&error, Instant::now(), "run_issue_metadata")
 			{
-				return TrackerObserverOutcome::RateLimited(backoff);
+				return TrackerObserverOutcome::Backoff(backoff);
 			}
 
 			let _ = error;
@@ -2673,11 +2692,11 @@ where
 			},
 			Err(error) => {
 				if let Some(backoff) =
-					tracker_rate_limit_backoff(&error, Instant::now(), "execution_ledger_status")
+					tracker_connector_backoff(&error, Instant::now(), "execution_ledger_status")
 				{
 					lane.ledger_outcome = unavailable_history_ledger_outcome();
 
-					return TrackerObserverOutcome::RateLimited(backoff);
+					return TrackerObserverOutcome::Backoff(backoff);
 				}
 
 				let _ = error;

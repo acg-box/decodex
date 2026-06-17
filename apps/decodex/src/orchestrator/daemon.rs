@@ -228,7 +228,7 @@ where
 
 	apply_terminal_history_ledger_outcomes(&mut snapshot);
 
-	if warnings.contains(&TRACKER_RATE_LIMIT_WARNING) {
+	if warnings_include_tracker_backoff(warnings) {
 		let review_state_inspector = GhPullRequestReviewStateInspector {
 			github_token_env_var: Some(project.github().token_env_var().to_owned()),
 			github_command_path: project.github().command_path().map(Path::to_path_buf),

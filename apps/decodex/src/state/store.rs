@@ -2517,6 +2517,20 @@ impl StateStore {
 		Ok(state.review_lifecycle_records.get(&key).map(ReviewLifecycleRuntimeRecord::as_public))
 	}
 
+	/// Return whether any retained review lifecycle row owns this issue.
+	pub(crate) fn issue_has_review_lifecycle_record(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+	) -> Result<bool> {
+		let state = self.lock()?;
+
+		Ok(state
+			.review_lifecycle_records
+			.values()
+			.any(|record| record.project_id == project_id && record.issue_id == issue_id))
+	}
+
 	/// Create or replace the retained review orchestration projection for one issue lane.
 	pub(crate) fn upsert_review_orchestration_marker(
 		&self,
