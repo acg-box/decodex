@@ -38,6 +38,12 @@ or private execution evidence.
 Runtime state may still use internal structured storage. The docs source of truth for
 research, drift audit, decisions, references, runbooks, and specs is Markdown.
 
+## Naming
+
+Write `OKF` as an all-caps acronym in prose, matching the repository convention for
+`CLI`. Lowercase `okf` is allowed only in machine identifiers such as filenames,
+paths, skill IDs, tags, and URLs.
+
 ## Concept Frontmatter
 
 Every concept must start with YAML frontmatter delimited by `---`.

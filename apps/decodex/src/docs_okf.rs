@@ -137,6 +137,7 @@ pub(crate) fn run_docs_check(root: &Path, scope: DocsCheckScope) -> Result<DocsC
 
 	if matches!(scope, DocsCheckScope::All | DocsCheckScope::Index) {
 		check_markdown_only(&files, &mut report);
+		check_acronym_capitalization(&files, &mut report);
 		check_concept_contracts(&files, &mut report);
 	}
 	if matches!(scope, DocsCheckScope::All | DocsCheckScope::Links) {
@@ -250,6 +251,23 @@ fn check_markdown_only(files: &[DocsFile], report: &mut DocsCheckReport) {
 			};
 
 			report.issues.push(issue(Some(file.relative_path.clone()), String::from(message)));
+		}
+	}
+}
+
+fn check_acronym_capitalization(files: &[DocsFile], report: &mut DocsCheckReport) {
+	for file in files.iter().filter(|file| is_markdown(&file.relative_path)) {
+		let Some(content) = file.content.as_deref() else {
+			continue;
+		};
+
+		if content.contains("Okf") {
+			report.issues.push(issue(
+				Some(file.relative_path.clone()),
+				String::from(
+					"use `OKF` in prose; lowercase `okf` is reserved for paths, slugs, tags, and URLs",
+				),
+			));
 		}
 	}
 }
@@ -842,6 +860,23 @@ mod tests {
 
 		assert!(report.has_issues());
 		assert!(report.issues.iter().any(|issue| issue.message.contains("JSON artifacts")));
+	}
+
+	#[test]
+	fn docs_check_rejects_mis_capitalized_okf_acronym() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let docs = temp_dir.path().join("docs");
+
+		write_minimal_okf_bundle(&docs);
+		write(
+			&docs.join("policy.md"),
+			"---\ntype: Policy\ntitle: Okf policy\ndescription: Test concept.\nstatus: active\nauthority: non_authoritative\nowner: docs\nlast_verified: 2026-06-16\n---\n\n# Purpose\nOkf should be uppercase.\n",
+		);
+
+		let report = docs_okf::run_docs_check(&docs, DocsCheckScope::All).expect("check");
+
+		assert!(report.has_issues());
+		assert!(report.issues.iter().any(|issue| issue.message.contains("use `OKF`")));
 	}
 
 	#[test]
