@@ -6,6 +6,8 @@ description: Use when creating or updating OKF/LLM Wiki concepts, indexes, logs,
 # OKF Maintain
 
 Produce and maintain OKF bundles without coupling them to Decodex-specific policy.
+For bootstrapping high-quality repository memory from code evidence, use
+`repo-memory-writer` first.
 
 Read `../../references/okf-layer.md` before creating concepts, moving files, or
 repairing graph quality.

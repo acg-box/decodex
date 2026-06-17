@@ -2,6 +2,9 @@
 
 ## 2026-06-17
 
+- Added the portable `repo-memory-writer` plugin skill so Codex can bootstrap or
+  improve source-backed repository memory through AI authoring plus OKF route, graph,
+  and profile validation.
 - Added `docs/reference/docs-knowledge-map.md` to evaluate the practical OKF/LLM Wiki
   value in this repository and connect specialized concepts back into the docs graph.
 - Added `docs/spec/okf-knowledge-layer.md` to separate portable OKF engine behavior,
