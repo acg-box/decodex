@@ -1,6 +1,8 @@
 # Portable OKF Layer
 
 Use this for portable OKF bundles, LLM Wiki retrieval, and cross-repository memory.
+Use `repo-memory-writer` when the task is to create repository knowledge from code
+evidence, not merely maintain an existing bundle.
 
 ## Boundary
 
