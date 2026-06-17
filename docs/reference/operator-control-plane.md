@@ -6,9 +6,9 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs]
-drift_watch: [decodex serve, decodex status, decodex evidence, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
-last_verified: 2026-06-17
+code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/mcp.rs]
+drift_watch: [decodex serve, decodex status, decodex evidence, decodex mcp serve --transport stdio, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
+last_verified: 2026-06-18
 ---
 # Operator Control Plane
 
@@ -80,10 +80,16 @@ Use `decodex app` to open the installed macOS app from the CLI; use
 the caller's environment, so `DECODEX_APP_SERVER_URL` remains an explicit App preview
 override when set.
 
-Local MCP hosts can use `decodex mcp serve --transport stdio` for read-only resource
-access. The stdio gateway lists and reads checked-in docs, checked-in JSON research
-reports, Decision Contract readback, status snapshots, and lane-control readback. It
-does not serve Streamable HTTP and does not expose mutating MCP tools in this phase.
+Local MCP hosts can use `decodex mcp serve --transport stdio` for core MCP protocol
+primitives. The stdio gateway lists and reads checked-in docs, checked-in JSON
+research reports, Decision Contract readback, status snapshots, and lane-control
+readback; it also advertises resource templates, reusable Decodex prompts, and a small
+schema-bound tool catalog. The stdio gateway defaults to `--capability-profile admin`
+for local clients and can be narrowed to `observe`, `plan`, or `operate`; `tools/list`
+filters by that active profile and above-profile calls return structured refusals.
+Observe and plan tools are read-oriented. Operate/admin lane-control entries return
+structured refusal states in this phase. Streamable HTTP endpoint, session, origin,
+and SSE behavior is deferred to separate transport work.
 
 `decodex serve` has two hardcoded scheduler cadences:
 
