@@ -8,7 +8,7 @@ owner: docs
 tags: [reference]
 code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs]
 drift_watch: [decodex serve, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
-last_verified: 2026-06-16
+last_verified: 2026-06-17
 ---
 # Operator Control Plane
 
@@ -489,21 +489,21 @@ Worktree visibility follows the owning dashboard section:
 - `Review & Landing` means a retained PR lane still owns the path for review repair,
   landing, closeout, or retained-lane cleanup.
 - `missing_review_handoff_record` in `Review & Landing` means Decodex found a retained
-  review worktree but cannot find the authoritative runtime DB handoff marker. Treat
-  this as an orphaned retained review lane: inspect it with
+  review worktree but cannot find the authoritative runtime DB review lifecycle
+  record. Treat this as an orphaned retained review lane: inspect it with
   `decodex recover review-handoff diagnose <ISSUE>`, then use the explicit rebind path
   only after the PR URL and retained worktree lineage match exactly.
-- Review handoff or orchestration head mismatch reasons mean Decodex found a retained
-  marker but one stored field no longer matches the clean retained worktree and PR
-  head. `decodex status` keeps the bound PR URL visible when it can identify the
-  marker, and `decodex recover review-handoff diagnose <ISSUE>` reports the stored
-  marker head, orchestration head, PR head, and mismatched field before any explicit
-  rebind refresh.
+- Review lifecycle handoff or phase head mismatch reasons mean Decodex found a
+  retained lifecycle record but one stored field no longer matches the clean retained
+  worktree and PR head. `decodex status` keeps the bound PR URL visible when it can
+  identify the lifecycle record, and `decodex recover review-handoff diagnose <ISSUE>`
+  reports the stored handoff head, phase head, PR head, and mismatched field before
+  any explicit rebind refresh.
 - `pull_request_state_read_failed` in `Review & Landing` is a degraded PR readback
-  warning when the retained review handoff marker still exists. `decodex status`
-  must keep the issue identifier, branch, marker PR URL, and marker PR head SHA visible
-  so operators can retry status, inspect the PR directly, or run the explicit recovery
-  path without losing the bound PR identity. Local status JSON, text output, and
+  warning when the retained review lifecycle record still exists. `decodex status`
+  must keep the issue identifier, branch, lifecycle PR URL, and lifecycle PR head SHA
+  visible so operators can retry status, inspect the PR directly, or run the explicit
+  recovery path without losing the bound PR identity. Local status JSON, text output, and
   dashboard readback also carry `readback_root_cause` when Decodex can classify the
   local diagnostic safely, for example `missing_github_cli`, `missing_github_token`,
   `github_auth_failed`, `github_api_read_failed`, `github_response_parse_failed`,
@@ -532,8 +532,9 @@ Worktree visibility follows the owning dashboard section:
 - `linear_active_label_present` in `Intake Queue` means the issue still carries
   service active ownership while it is also queued, but local status could not prove a
   matching run lease. Treat it as a recovery/attention row, not ready work. If its
-  attention cause is `evidence_missing`, use the retained marker, worktree, and public
-  Linear state as the available recovery evidence before retrying or cleaning labels.
+  attention cause is `evidence_missing`, use the retained runtime records, worktree,
+  and public Linear state as the available recovery evidence before retrying or
+  cleaning labels.
 - `Recovery Worktrees` means the path is retained local state after the authoritative
   runtime owner is gone or cannot explain it as active, review/landing, or queued
   work.
@@ -563,7 +564,7 @@ cleanup, and cleanup-only local retention. Runtime-recorded mappings report
 `provenance.source =
 "runtime_recorded"` with created and refreshed Unix timestamps. Deterministically
 rebuilt mappings report `provenance.source = "runtime_recovered"` when tracker,
-retained marker, or closeout evidence proves a current owner after local state was
+retained lifecycle record, or closeout evidence proves a current owner after local state was
 missing. Filesystem-only scans use scan-specific provenance such as `filesystem_scan`
 or `git_hygiene_scan`. Rows migrated from older runtime stores that had no provenance
 report `provenance.source = "legacy_unknown"` and may set

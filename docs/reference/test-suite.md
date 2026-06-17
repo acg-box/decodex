@@ -6,7 +6,7 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-last_verified: 2026-06-16
+last_verified: 2026-06-17
 ---
 # Test Suite
 
@@ -103,7 +103,7 @@ large catch-all test file unless the behavior crosses several of these stages.
 | `apps/decodex/src/orchestrator/tests/review_landing/status_support.rs` | 0 | Shared Review & Landing status fixtures |
 | `apps/decodex/src/orchestrator/tests/review_landing/status_rows.rs` | 18 | Review & Landing status rows and handoff lineage |
 | `apps/decodex/src/orchestrator/tests/review_landing/orchestration.rs` | 17 | Review orchestration, admin merge, and repair routing |
-| `apps/decodex/src/orchestrator/tests/review_landing/status_markers.rs` | 1 | Review orchestration marker handling and recovered targeted visibility |
+| `apps/decodex/src/orchestrator/tests/review_landing/status_markers.rs` | 1 | Review lifecycle readback handling and recovered targeted visibility |
 | `apps/decodex/src/orchestrator/tests/review_landing/classification_review.rs` | 12 | Review repair, request-pending, stale handoff, merged PR classification |
 | `apps/decodex/src/orchestrator/tests/review_landing/classification_checks.rs` | 16 | Required checks, GitHub token gates, GraphQL pagination/query shape |
 | `apps/decodex/src/orchestrator/tests/review_landing/review_state.rs` | 2 | Pull-request review-state conversion from GitHub GraphQL nodes |
@@ -126,8 +126,8 @@ Keep separate tests when the case protects a different observable contract:
   Git commands, runtime database state, or app-server protocol payloads.
 - Different state-machine outcome, especially blocked versus ineligible, retryable versus
   terminal, repair versus closeout, or queued versus retained.
-- Different persisted marker semantics, such as review handoff lineage, retry schedule
-  marker, cleanup handoff marker, or closeout identity reuse.
+- Different persisted lifecycle semantics, such as review handoff lineage, retry
+  schedule state, cleanup handoff state, or closeout identity reuse.
 - Different authority boundary, such as GitHub token routing, Linear tracker writes,
   repo-local Git config, or runtime-only state.
 - Different process or concurrency boundary, such as active child reconciliation, lock
