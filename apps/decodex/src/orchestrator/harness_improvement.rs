@@ -125,7 +125,7 @@ struct HarnessOutcomeProgram {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct HarnessOutcomeProgramNode {
 	node_id: String,
-	stage: String,
+	program_stage: String,
 	queue_intent: String,
 	linear_issue_id: Option<String>,
 	linear_issue_identifier: Option<String>,
@@ -481,7 +481,7 @@ fn harness_outcome_program(record: &ExecutionProgramRecord) -> HarnessOutcomePro
 
 			HarnessOutcomeProgramNode {
 				node_id: node.node_id().to_owned(),
-				stage: node.stage().as_str().to_owned(),
+				program_stage: node.stage().as_str().to_owned(),
 				queue_intent: node.queue_intent().as_str().to_owned(),
 				linear_issue_id: linear_issue.map(|issue| issue.issue_id().to_owned()),
 				linear_issue_identifier: linear_issue

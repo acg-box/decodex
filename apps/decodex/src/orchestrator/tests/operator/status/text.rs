@@ -129,6 +129,8 @@ fn operator_status_text_renders_human_readable_sections() {
 		post_review_lanes: operator_status_text_post_review_lanes(),
 	};
 	let rendered = orchestrator::render_operator_status(&snapshot);
+	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
+	let current_lane_json = &snapshot_json["current_lanes"][0];
 
 	assert!(rendered.contains("Project: pubfi"));
 	assert!(rendered.contains("Warnings: 0"));
@@ -141,8 +143,13 @@ fn operator_status_text_renders_human_readable_sections() {
 	assert!(rendered.contains("run_id: run-1"));
 	assert_eq!(rendered.matches("run_id: run-1").count(), 1);
 	assert!(rendered.contains("attempt_status: running"));
-	assert!(rendered.contains("phase: executing"));
+	assert!(rendered.contains("run_phase: executing"));
 	assert!(rendered.contains("current_operation: agent_run"));
+	assert!(rendered.contains("active_goal_phase: implement_to_validation_ready"));
+	assert!(rendered.contains("public_progress_phase: implementing"));
+	assert_eq!(current_lane_json["run_phase"], "executing");
+	assert_eq!(current_lane_json["active_goal_phase"], "implement_to_validation_ready");
+	assert_eq!(current_lane_json["public_progress_phase"], "implementing");
 	assert!(rendered.contains("queue_lease_state: held"));
 	assert!(rendered.contains("queue_lease: held"));
 	assert!(rendered.contains("execution_liveness: process_alive"));
@@ -248,6 +255,7 @@ fn operator_status_text_surfaces_execution_program_summary() {
 			dispatchable_count: 0,
 			mapped_issue_identifiers: vec![String::from("XY-853")],
 			node_readbacks: vec![OperatorExecutionProgramNodeStatus {
+				program_stage: String::from("runtime"),
 				lifecycle_state: String::from("blocked"),
 				readiness_state: String::from("blocked"),
 				issue_identifier: Some(String::from("XY-853")),
@@ -274,7 +282,7 @@ fn operator_status_text_surfaces_execution_program_summary() {
 		"program_id: program-853 status=blocked source_contract_id: contract-852 intake_kind=goal_intake summary=\"Resolve promoted program work.\" nodes=3 planned=0 mapped=0 ready=1 queued=0 blocked=1 held=0 active=0 attention=0 completed=1 stale=0 superseded=0 dispatchable=0 mapped_issues=XY-853"
 	));
 	assert!(rendered.contains(
-		"node: issue=XY-853 issue_state=Todo lifecycle=blocked readiness=blocked dispatch_action=none reason_codes=dependency_not_terminal reasons=\"a dependency has not reached a required terminal state\" next_action=\"Complete the dependency issue or refresh the Execution Program dependency plan if this remains stale.\""
+		"node: issue=XY-853 issue_state=Todo program_stage=runtime lifecycle=blocked readiness=blocked dispatch_action=none reason_codes=dependency_not_terminal reasons=\"a dependency has not reached a required terminal state\" next_action=\"Complete the dependency issue or refresh the Execution Program dependency plan if this remains stale.\""
 	));
 }
 
@@ -507,6 +515,7 @@ fn assert_program_node_readbacks(
 
 	assert_eq!(node_json["lifecycle_state"], "active");
 	assert_eq!(node_json["readiness_state"], "blocked");
+	assert_eq!(node_json["program_stage"], "runtime");
 	assert_eq!(node_json["dispatch_action"], serde_json::Value::Null);
 }
 
@@ -569,6 +578,7 @@ fn operator_status_json_surfaces_missing_contract_program_recovery() {
 
 	assert_eq!(program_json["status"], "stale");
 	assert_eq!(program_json["readback_warning"], "source_decision_contract_missing");
+	assert_eq!(program_json["node_readbacks"][0]["program_stage"], "runtime");
 	assert_eq!(program_json["node_readbacks"][0]["reason_codes"][0], "source_decision_contract_missing");
 	assert_eq!(
 		program_json["node_readbacks"][0]["next_action"],
@@ -1031,6 +1041,7 @@ fn operator_status_text_terminal_run_freshness_uses_terminal_update() {
 
 	terminal_run.status = String::from("succeeded");
 	terminal_run.phase = String::from("completed");
+	terminal_run.run_phase = String::from("completed");
 	terminal_run.run_lease = true;
 	terminal_run.updated_at = String::from("2026-03-14 10:05:00");
 	terminal_run.last_run_activity_at = Some(String::from("2026-03-14 10:10:00Z"));
@@ -1061,7 +1072,7 @@ fn operator_status_text_terminal_run_freshness_uses_terminal_update() {
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
 	assert!(rendered.contains("run_id: run-1"));
-	assert!(rendered.contains("phase: completed"));
+	assert!(rendered.contains("run_phase: completed"));
 	assert!(rendered.contains("run_lease: yes"));
 	assert!(rendered.contains("freshness_at: 2026-03-14 10:05:00"));
 	assert!(rendered.contains("freshness_source: updated_at"));

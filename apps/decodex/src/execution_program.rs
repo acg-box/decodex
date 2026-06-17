@@ -1253,6 +1253,7 @@ impl ExecutionProgramReadinessContext {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ExecutionNodeEvaluation {
 	node_id: String,
+	stage: ExecutionProgramNodeStage,
 	state: ExecutionReadinessState,
 	lifecycle_state: ExecutionProgramNodeLifecycleState,
 	reasons: Vec<String>,
@@ -1263,6 +1264,11 @@ impl ExecutionNodeEvaluation {
 	/// Node id.
 	pub(crate) fn node_id(&self) -> &str {
 		&self.node_id
+	}
+
+	/// Program node stage.
+	pub(crate) fn stage(&self) -> ExecutionProgramNodeStage {
+		self.stage
 	}
 
 	/// Normalized readiness state.
@@ -1524,6 +1530,7 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 
 	Ok(ExecutionNodeEvaluation {
 		node_id: node.node_id.clone(),
+		stage: node.stage,
 		state,
 		lifecycle_state,
 		reasons,
