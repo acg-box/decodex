@@ -85,10 +85,10 @@ record; they are not separate durable authority. When that exact lifecycle recor
 missing, post-review ownership must
 block as unresolved instead of rebinding from branch-name, current-head-only
 heuristics, or Linear comments.
-Historical `review_handoffs` and `review_orchestrations` tables are one-time runtime
-bootstrap migration input into `review_lifecycle_records`; after that migration, they
-are dropped and must not be used as readback authority. Operators must use explicit
-diagnose, rebind, or adopt recovery to create or refresh a current lifecycle record.
+Historical `review_handoffs` and `review_orchestrations` tables are dropped during
+runtime bootstrap without copying their rows, and must not be used as readback
+authority. Operators must use explicit diagnose, rebind, or adopt recovery to create or
+refresh a current lifecycle record.
 
 If these signals disagree and the disagreement cannot be resolved without guessing operator intent, the runtime must use `manual_intervention_required`.
 
