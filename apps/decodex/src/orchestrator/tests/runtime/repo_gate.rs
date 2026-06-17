@@ -171,6 +171,13 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 		run_id: String::from("pub-101-attempt-1"),
 		retry_budget_base: 0,
 	};
+
+	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
+
+	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
+
+	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+
 	let controller = RepoGatePhaseGoalController {
 		project: &config,
 		workflow: &workflow,
@@ -204,6 +211,124 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 }
 
 #[test]
+fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.repo_root().to_path_buf(),
+			reused_existing: false,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1"),
+		retry_budget_base: 0,
+	};
+
+	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+
+	let transition = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &issue_run,
+	}
+	.phase_goal_completed(PhaseGoalKind::ImplementToValidationReady)
+	.expect("repo gate pass should still record acceptance failure");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
+		.expect("private phase goal events should load");
+
+	assert!(matches!(
+		transition,
+		PhaseGoalTransition::Continue(PhaseGoalSpec {
+			phase: PhaseGoalKind::RepairValidationFailures,
+			..
+		})
+	));
+	assert!(events.iter().any(|event| {
+		event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE
+			&& event.payload()["decision"] == "fail"
+			&& event.payload()["reason_code"] == "no_effective_delta"
+	}));
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_transition"
+			&& event.payload()["signal"] == "validation_fail"
+			&& event.payload()["payload"]["errorClass"] == "phase_acceptance_check_failed"
+	}));
+	assert!(events.iter().all(|event| {
+		event.event_type() != "phase_goal_next" || event.payload()["phase"] != "handoff_evidence"
+	}));
+}
+
+#[test]
+fn phase_goal_acceptance_rejects_non_goal_violation_checkpoint() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.repo_root().to_path_buf(),
+			reused_existing: false,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1"),
+		retry_budget_base: 0,
+	};
+
+	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
+
+	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
+
+	record_phase_acceptance_progress_checkpoint(
+		&config,
+		&state_store,
+		&issue_run,
+		&["non-goal violation: changed retained ownership policy"],
+	);
+
+	let transition = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &issue_run,
+	}
+	.phase_goal_completed(PhaseGoalKind::ImplementToValidationReady)
+	.expect("repo gate pass should still record non-goal acceptance failure");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
+		.expect("private phase goal events should load");
+
+	assert!(matches!(
+		transition,
+		PhaseGoalTransition::Continue(PhaseGoalSpec {
+			phase: PhaseGoalKind::RepairValidationFailures,
+			..
+		})
+	));
+	assert!(events.iter().any(|event| {
+		event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE
+			&& event.payload()["decision"] == "fail"
+			&& event.payload()["reason_code"] == "non_goal_violation"
+			&& event.payload()["non_goal_check"]["passed"] == false
+	}));
+}
+
+#[test]
 fn retry_phase_goal_resumes_cross_attempt_handoff_after_recovered_validation_pass() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
@@ -224,6 +349,12 @@ fn retry_phase_goal_resumes_cross_attempt_handoff_after_recovered_validation_pas
 		run_id: String::from("pub-101-attempt-1"),
 		retry_budget_base: 0,
 	};
+
+	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
+
+	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
+
+	record_phase_acceptance_progress_checkpoint(&config, &state_store, &first_issue_run, &[]);
 
 	RepoGatePhaseGoalController {
 		project: &config,
@@ -796,4 +927,36 @@ fn repo_gate_shell_keeps_login_mode_for_other_configured_shells() {
 
 	assert_eq!(Path::new(&shell), Path::new("/bin/bash"));
 	assert_eq!(shell_flag, "-lc");
+}
+
+fn record_phase_acceptance_progress_checkpoint(
+	config: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	blockers: &[&str],
+) {
+	let head_sha = git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	let blockers = blockers.iter().map(|blocker| (*blocker).to_owned()).collect::<Vec<_>>();
+
+	state_store
+		.append_private_execution_event(
+			config.service_id(),
+			&issue_run.issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+			"progress_checkpoint",
+			serde_json::json!({
+				"phase": "verifying",
+				"docs_impact": "none",
+				"focus": "Validate phase-specific work before handoff.",
+				"next_action": "Complete the active phase goal.",
+				"blockers": blockers,
+				"evidence": ["current worktree inspected"],
+				"verification": ["repo gate will run after phase goal completion"],
+				"head_sha": head_sha,
+				"branch": issue_run.worktree.branch_name.as_str(),
+				"worktree_path": issue_run.worktree.path.display().to_string(),
+			}),
+		)
+		.expect("phase acceptance progress checkpoint should record");
 }
