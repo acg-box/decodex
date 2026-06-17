@@ -6,7 +6,10 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook]
-last_verified: 2026-06-16
+code_refs: [apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
+related: [../spec/loop-runtime.md]
+drift_watch: [decodex intake goal, program_issue_mappings]
+last_verified: 2026-06-17
 ---
 # Research-To-Execution Loop
 
@@ -94,7 +97,10 @@ evidence.
 
    Review improvement candidates in the summarized evidence. Use raw payload
    readback only for local debugging, and do not paste private execution payloads into
-   public tracker comments or PR descriptions.
+   public tracker comments or PR descriptions. Generated Linear issue descriptions
+   should already omit internal Program and node identifiers; use SQLite-backed
+   Program Intake and issue-mapping readback when an operator needs to correlate a
+   public issue with its private runtime node.
 
 ## Dogfood Assessment
 
