@@ -216,7 +216,7 @@ struct OkfGraphCommand {
 #[derive(Debug, Args)]
 struct OkfRouteCommand {
 	/// OKF bundle root.
-	#[arg(value_name = "ROOT", default_value = "docs")]
+	#[arg(value_name = "ROOT")]
 	root: PathBuf,
 	/// Task or question to route into the bundle.
 	intent: String,
@@ -1737,11 +1737,12 @@ mod tests {
 	use crate::{
 		cli::{
 			AccountCommand, AccountSubcommand, AccountUseCommand, AppCommand, AttemptCommand, Cli,
-			Command, CommitCommand, DiagnoseCommand, EvidenceCommand, IntakeCommand,
-			IntakeGoalCommand, IntakeIssuesCommand, IntakeSubcommand, LandCommand, LaneCommand,
-			LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand, LaneSubcommand,
-			LegacyCloseoutRecoveryCommand, McpCommand, McpServeCommand, McpSubcommand,
-			MergedCloseoutRecoveryCommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
+			Command, CommitCommand, DiagnoseCommand, DocsCommand, DocsRouteCommand, DocsSubcommand,
+			EvidenceCommand, IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand,
+			IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand, LaneInterruptCommand,
+			LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand, McpCommand,
+			McpServeCommand, McpSubcommand, MergedCloseoutRecoveryCommand, OkfCommand,
+			OkfRouteCommand, OkfSubcommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
 			ProjectSubcommand, RecoverCommand, RecoverSubcommand, ResearchCommand,
 			ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
 			ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
@@ -1815,6 +1816,46 @@ mod tests {
 				breaking: true,
 				..
 			})
+		));
+	}
+
+	#[test]
+	fn parses_okf_and_docs_route_commands() {
+		let okf_cli = Cli::parse_from([
+			"decodex",
+			"okf",
+			"route",
+			"docs",
+			"change okf docs command design",
+			"--limit",
+			"3",
+		]);
+
+		assert!(matches!(
+			okf_cli.command,
+			Command::Okf(OkfCommand {
+				command: OkfSubcommand::Route(OkfRouteCommand {
+					root,
+					intent,
+					limit: 3,
+				}),
+			}) if root == Path::new("docs")
+				&& intent == "change okf docs command design"
+		));
+
+		let docs_cli =
+			Cli::parse_from(["decodex", "docs", "route", "change okf docs command design"]);
+
+		assert!(matches!(
+			docs_cli.command,
+			Command::Docs(DocsCommand {
+				root,
+				command: DocsSubcommand::Route(DocsRouteCommand {
+					intent,
+					limit: 5,
+				}),
+			}) if root == Path::new("docs")
+				&& intent == "change okf docs command design"
 		));
 	}
 
