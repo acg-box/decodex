@@ -1,0 +1,5 @@
+interface:
+  display_name: "Repo Memory Writer"
+  short_description: "Write source-backed repo-memory OKF"
+policy:
+  allow_implicit_invocation: false

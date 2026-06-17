@@ -1,24 +1,24 @@
 # Decodex Routing Reference
 
-Use this when a Decodex task crosses docs, research, promotion, planning, manual CLI,
-labels, retained automation, commit, or landing boundaries.
+Use this when a Decodex task crosses docs, research, promotion, planning, CLI,
+labels, automation, commit, or landing boundaries.
 
 ## Mode Map
 
-- Docs: use `docs` as the router. Use `docs-okf` for OKF shape, `docs-wiki` for LLM
-  Wiki routing, and `docs-drift` for claim/evidence audits. Docs impact
-  `research_required` switches to `research*`; checked-in `docs/research/` output is
-  latent supporting evidence, not execution authority.
+- Docs: use `docs` as the router. Use `docs-okf`, `docs-wiki`, and `docs-drift`
+  for shape, routing, and audits. Docs impact `research_required` switches to
+  `research*`; checked-in `docs/research/` is latent evidence.
 - Research/design: use `research` and phase skills. The compact loop is probe,
-  evidence, options, judgment, challenge, decision. A result is a latent Decision Contract candidate only.
+  evidence, options, judgment, challenge, decision. Results are latent Decision
+  Contract candidates only.
 - Promotion: use `research-promote` only after explicit acceptance such as "arrange
   this", "push this forward", "推进", or "做".
 - Planning: use `planning` after promotion or another explicit execution instruction.
-  Planning owns Decodex-native issue briefing and Program readiness.
-- Automation: use `automation` for Decodex-owned intake, retained lanes, review
-  handoff, repair, landing, closeout, cleanup, and operator recovery.
+  Planning owns issue briefing and Program readiness.
+- Automation: use `automation` for Decodex-owned intake, lanes, review handoff,
+  repair, landing, closeout, cleanup, and recovery.
 - Manual CLI: use `manual-cli` when a human drives status, registration, dry-run,
-  recovery inspection, commit, or land.
+  recovery inspection, commit, or landing.
 - Labels: use `labels` only for ordinary non-Program tracker intake and retained-lane
   ownership signals.
 
@@ -38,8 +38,9 @@ Keep Decodex natural-language-first. Requests such as `research X` route through
 Research never queues work, mutates Linear, starts implementation, creates Codex
 goals, or dispatches Program nodes. Promotion preserves accepted objectives,
 non-goals, constraints, assumptions, objections, validation expectations, proposed
-issues, and stop conditions. Program Intake dispatches ready mapped nodes directly
-from the persisted DAG; queue labels are not the Program scheduler.
+issues, and stop conditions. A result is a latent Decision Contract
+candidate only. Program Intake dispatches ready mapped nodes directly from the
+persisted DAG; queue labels are not the Program scheduler.
 
 ## Program Versus Label Intake
 
@@ -54,8 +55,8 @@ from the persisted DAG; queue labels are not the Program scheduler.
 
 ## Commit And Land
 
-For human-driven commits, inspect the diff, stage only intended files, run touched
-surface validation, then use `decodex commit "<summary>"` or
+For human-driven commits, inspect the diff, stage intended files, run touched-surface
+validation, then use `decodex commit "<summary>"` or
 `decodex commit --manual-authority "<summary>"` for deliberate non-issue work.
 
 For human-driven PR landing, confirm PR/base/head/mergeability/checks, then use
