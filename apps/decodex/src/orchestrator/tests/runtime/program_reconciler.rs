@@ -6,7 +6,7 @@ use crate::execution_program::{
 	ExecutionProgram, ExecutionProgramDependency, ExecutionProgramNode, ExecutionProgramNodeStage,
 	ExecutionQueueIntent,
 };
-use crate::state::StateStore;
+use crate::state::{ReviewHandoffMarker, StateStore};
 use crate::tracker::{self, TrackerIssue, TrackerLabel};
 use crate::worktree::WorktreeManager;
 use crate::orchestrator;
@@ -153,6 +153,73 @@ fn active_conflict_domain_holds_peer_node() {
 		&[],
 	)
 	.expect("conflict program dispatch selection should succeed");
+
+	assert!(selection.selected.is_none());
+	assert_eq!(selection.summary.dispatchable_nodes, 0);
+	assert!(tracker.label_additions.borrow().is_empty());
+}
+
+#[test]
+fn post_review_lifecycle_holds_program_node_and_peer_conflict_domain() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let store = StateStore::open_in_memory().expect("state store should open");
+	let active_label = tracker::automation_active_label(config.service_id());
+	let post_review_issue = program_reconciler_issue(
+		"issue-post-review",
+		"PUB-206",
+		"In Review",
+		&[active_label.as_str()],
+	);
+	let peer_issue = program_reconciler_issue("issue-peer", "PUB-207", "Todo", &[]);
+	let conflict = ExecutionConflictDomain::new(ExecutionConflictDomainKind::Module, "runtime")
+		.expect("conflict should build");
+
+	store
+		.upsert_execution_program(
+			config.service_id(),
+			program_reconciler_program(vec![
+				program_reconciler_node(
+					"node-post-review",
+					&post_review_issue,
+					ExecutionQueueIntent::ReadyToQueue,
+				)
+				.with_conflict_domains([conflict.clone()])
+				.expect("post-review conflict should attach"),
+				program_reconciler_node(
+					"node-peer",
+					&peer_issue,
+					ExecutionQueueIntent::ReadyToQueue,
+				)
+				.with_conflict_domains([conflict])
+				.expect("peer conflict should attach"),
+			]),
+		)
+		.expect("program should persist");
+	store
+		.upsert_review_handoff_marker(
+			config.service_id(),
+			&post_review_issue.id,
+			&ReviewHandoffMarker::new(
+				"pub-206-attempt-1",
+				1,
+				"x/pubfi-pub-206",
+				"https://github.com/hack-ink/pubfi/pull/206",
+				"main",
+				"x/pubfi-pub-206",
+				"1111111111111111111111111111111111111111",
+			),
+		)
+		.expect("review lifecycle should persist");
+
+	let tracker = FakeTracker::new(vec![post_review_issue, peer_issue]);
+	let selection = orchestrator::select_execution_program_run_candidate_with_summary(
+		&tracker,
+		&config,
+		&workflow,
+		&store,
+		&[],
+	)
+	.expect("post-review lifecycle should hold program dispatch");
 
 	assert!(selection.selected.is_none());
 	assert_eq!(selection.summary.dispatchable_nodes, 0);
@@ -392,5 +459,4 @@ fn program_reconciler_issue(
 fn program_reconciler_queue_label() -> String {
 	tracker::automation_queue_label("pubfi")
 }
-
 }

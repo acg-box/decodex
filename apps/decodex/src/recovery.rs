@@ -44,8 +44,10 @@ const LEGACY_MANUAL_CLOSEOUT_ANCHOR: &str = "legacy_manual_closeout";
 const MERGED_CLOSEOUT_CLOSEOUT_ANCHOR: &str = "merged_closeout";
 const MERGED_CLOSEOUT_CLEANUP_ANCHOR: &str = "merged_closeout_cleanup";
 const REBOUND_ORCHESTRATION_PHASE: &str = "request_pending";
-const LINEAR_CONNECTOR_BACKOFF_WARNING: &str = "tracker_rate_limited";
-const LINEAR_CONNECTOR_BACKOFF_SECS: i64 = 15 * 60;
+const LINEAR_RATE_LIMIT_BACKOFF_WARNING: &str = "tracker_rate_limited";
+const LINEAR_RATE_LIMIT_BACKOFF_SECS: i64 = 15 * 60;
+const LINEAR_TRANSIENT_TIMEOUT_BACKOFF_WARNING: &str = "tracker_transient_timeout";
+const LINEAR_TRANSIENT_TIMEOUT_BACKOFF_SECS: i64 = 60;
 
 /// Read-only retained review handoff diagnostic request.
 #[derive(Debug)]
@@ -565,26 +567,42 @@ fn remember_recovery_tracker_backoff_message(
 	sync_phase: &str,
 ) -> Option<String> {
 	let message = format!("{error:#}");
-
-	if !message.contains("Linear connector is rate limited") {
-		return None;
-	}
-
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
-	let (reset_unix_epoch, reset_source) =
-		match parse_recovery_rate_limit_reset_unix_epoch(&message) {
-			Some(reset) if reset > now_unix_epoch => (reset, "linear"),
-			_ => (now_unix_epoch.saturating_add(LINEAR_CONNECTOR_BACKOFF_SECS), "local_default"),
-		};
+	let (quota_class, reset_unix_epoch, reset_source, warning) = if message
+		.contains("Linear connector is rate limited")
+	{
+		let (reset_unix_epoch, reset_source) =
+			match parse_recovery_rate_limit_reset_unix_epoch(&message) {
+				Some(reset) if reset > now_unix_epoch => (reset, "linear"),
+				_ =>
+					(now_unix_epoch.saturating_add(LINEAR_RATE_LIMIT_BACKOFF_SECS), "local_default"),
+			};
+
+		(
+			"linear_graphql_rate_limit",
+			reset_unix_epoch,
+			reset_source,
+			LINEAR_RATE_LIMIT_BACKOFF_WARNING,
+		)
+	} else if message.contains("Linear connector timed out") {
+		(
+			"linear_graphql_timeout",
+			now_unix_epoch.saturating_add(LINEAR_TRANSIENT_TIMEOUT_BACKOFF_SECS),
+			"local_transient_timeout",
+			LINEAR_TRANSIENT_TIMEOUT_BACKOFF_WARNING,
+		)
+	} else {
+		return None;
+	};
 
 	if let Err(store_error) = context.state_store.upsert_connector_backoff(ConnectorBackoffInput {
 		project_id: context.config.service_id(),
 		connector: "linear",
 		sync_phase,
-		quota_class: "linear_graphql_api",
+		quota_class,
 		reset_unix_epoch,
 		reset_source,
-		warning: LINEAR_CONNECTOR_BACKOFF_WARNING,
+		warning,
 	}) {
 		let _ = store_error;
 
