@@ -1,53 +1,38 @@
 # Decodex Docs Method
 
-Use this reference when a Decodex task changes repository documentation, behavior
-that documentation describes, or the agent-facing docs workflow.
+Use this when Decodex work changes repository documentation, documented behavior, or
+agent-facing docs workflow.
 
 ## Contract
 
-`docs/` is the Decodex repo-development knowledge base:
+`docs/` is this repository's Decodex profile OKF bundle. `docs/index.md` routes,
+`docs/policy.md` owns shape/lanes/gates, `docs/log.md` records maintenance, and
+non-index, non-log Markdown files are typed concepts. Research is latent until
+promoted; drift audits can block completion.
 
-- `docs/index.md` is the routing entrypoint.
-- `docs/policy.md` owns OKF shape, lane authority, and completion gates.
-- `docs/log.md` records docs maintenance events.
-- All durable docs artifacts are Markdown.
-- Non-index, non-log Markdown files are OKF concepts with typed frontmatter.
-- Research concepts are latent until promoted.
-- Drift audits are evidence concepts that can block completion.
-
-Do not create a parallel `wiki/` or `okf/` root. OKF is the `docs/` protocol. LLM
-Wiki is the authoring and retrieval style.
+Do not create a parallel `wiki/` or `okf/` root for this repo. Portable OKF bundles
+use `decodex okf` and the `okf*` skills; they do not inherit Decodex lanes, Linear
+workflow, or docs-impact gates.
 
 ## Lifecycle
 
-1. Read `docs/index.md` and `docs/policy.md`.
-2. Identify the smallest owning concept for the changed claim.
-3. Update that concept instead of duplicating the claim.
-4. Add or update frontmatter evidence fields when behavior, commands, schema,
-   status, config, validation, tracker labels, or runtime semantics changed.
-5. Update lane indexes and `docs/log.md` when routing, names, promotion, or
-   maintenance state changes.
-6. Run `cargo run -p decodex --bin decodex -- docs lint`.
-7. Treat lint or drift failure as a completion blocker.
+1. Read `docs/index.md`, `docs/policy.md`, and the owning concept.
+2. Update the owner; do not duplicate claims.
+3. Add `code_refs`, `drift_watch`, or drift audit evidence for behavior changes.
+4. Update indexes and `docs/log.md` for routing, naming, or promotion changes.
+5. Run `cargo run -p decodex --bin decodex -- docs check`.
 
 ## Docs Impact
 
-Every lane must classify docs impact before completion:
+- `none`: no docs, command, behavior, config, status, or workflow claim changed.
+- `update_required`: update a durable concept in the lane.
+- `research_required`: switch to Decodex research.
+- `drift_required`: create or update drift audit evidence.
 
-| Value | Meaning |
-| --- | --- |
-| `none` | No docs, command, behavior, config, status, or workflow claim changed. |
-| `update_required` | A durable docs concept must be updated in the lane. |
-| `research_required` | Missing or contradictory authority needs Decodex research. |
-| `drift_required` | A changed claim needs a drift audit before completion. |
-
-`validation-ready` includes docs readiness. Do not claim ready while a required docs
-update, research result, or drift audit is missing.
+`validation-ready` includes docs readiness.
 
 ## Routing
 
-- Use `docs-okf.md` for concept layout, frontmatter, and Markdown-only checks.
-- Use `docs-wiki.md` for placement, indexing, linking, and deduplication.
-- Use `docs-drift.md` for claim/evidence audits.
-- Use the research skill family when impact is `research_required`.
-
+- `docs-okf.md`: Decodex frontmatter/Markdown checks.
+- `docs-wiki.md`: placement, indexes, links, deduplication.
+- `docs-drift.md`: docs/code/evidence audits.
