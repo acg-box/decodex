@@ -4179,13 +4179,13 @@ where
 	) {
 		return Ok(classification);
 	}
-		if !github_review_enabled {
-			let orchestration_marker = load_post_review_orchestration_marker(
-				snapshot,
-				&review_state,
-				&mut classification,
-				runtime_state,
-			)?;
+	if !github_review_enabled {
+		let orchestration_marker = load_post_review_orchestration_marker(
+			snapshot,
+			&review_state,
+			&mut classification,
+			runtime_state,
+		)?;
 
 		if classification.decision == PostReviewLaneDecision::Block {
 			return Ok(classification);
@@ -4196,6 +4196,11 @@ where
 			&review_state,
 			orchestration_marker.as_ref(),
 			OffsetDateTime::now_utc().unix_timestamp(),
+		)?;
+		apply_authority_boundary_landing_policy(
+			snapshot,
+			&mut classification,
+			runtime_state,
 		)?;
 
 		return Ok(classification);
@@ -4221,8 +4226,128 @@ where
 		&orchestration_status,
 		OffsetDateTime::now_utc().unix_timestamp(),
 	);
+	apply_authority_boundary_landing_policy(snapshot, &mut classification, runtime_state)?;
 
 	Ok(classification)
+}
+
+fn apply_authority_boundary_landing_policy(
+	snapshot: &PostReviewLaneSnapshot,
+	classification: &mut PostReviewLaneClassification,
+	runtime_state: Option<(&StateStore, &str)>,
+) -> crate::prelude::Result<()> {
+	if classification.decision != PostReviewLaneDecision::ReadyToLand {
+		return Ok(());
+	}
+
+	let Some(reason) = authority_boundary_landing_requirement(snapshot, runtime_state)? else {
+		return Ok(());
+	};
+
+	classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
+	classification.reason = reason.to_owned();
+
+	Ok(())
+}
+
+fn authority_boundary_landing_requirement(
+	snapshot: &PostReviewLaneSnapshot,
+	runtime_state: Option<(&StateStore, &str)>,
+) -> crate::prelude::Result<Option<&'static str>> {
+	let Some((state_store, project_id)) = runtime_state else {
+		return Ok(None);
+	};
+	let events = state_store.list_private_execution_events_for_issue(
+		project_id,
+		&snapshot.issue.id,
+	)?;
+	let latest_clean_review_record_id = events
+		.iter()
+		.rev()
+		.find(|event| authority_boundary_clearance_review_checkpoint(event, snapshot))
+		.map_or(0, PrivateExecutionEvent::record_id);
+
+	for event in events.iter().rev() {
+		if event.record_id() <= latest_clean_review_record_id
+			|| event.event_type() != AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE
+		{
+			continue;
+		}
+
+		if let Some(reason) = authority_boundary_event_landing_requirement(event.payload()) {
+			return Ok(Some(reason));
+		}
+	}
+
+	Ok(None)
+}
+
+fn authority_boundary_clearance_review_checkpoint(
+	event: &PrivateExecutionEvent,
+	snapshot: &PostReviewLaneSnapshot,
+) -> bool {
+	if event.event_type() != "review_checkpoint"
+		|| event.payload().get("status").and_then(Value::as_str) != Some("clean")
+	{
+		return false;
+	}
+
+	let Some(checkpoint_head) = event.payload().get("head_sha").and_then(Value::as_str) else {
+		return false;
+	};
+	let expected_head = snapshot
+		.local_head_oid
+		.as_deref()
+		.or_else(|| snapshot.review_handoff.as_ref().map(ReviewHandoffMarker::pr_head_oid));
+
+	expected_head == Some(checkpoint_head)
+}
+
+fn authority_boundary_event_blocks_landing(payload: &Value) -> bool {
+	payload
+		.get("policy")
+		.and_then(|policy| policy.get("blocks_landing"))
+		.and_then(Value::as_bool)
+		.or_else(|| payload.get("blocks_landing").and_then(Value::as_bool))
+		.unwrap_or_else(|| {
+			authority_boundary_event_policy_decision(payload)
+				.is_some_and(operator_boundary_policy_blocks_landing)
+		})
+}
+
+fn authority_boundary_event_requires_enhanced_evidence(payload: &Value) -> bool {
+	payload
+		.get("policy")
+		.and_then(|policy| policy.get("requires_enhanced_evidence"))
+		.and_then(Value::as_bool)
+		.or_else(|| payload.get("requires_enhanced_evidence").and_then(Value::as_bool))
+		.unwrap_or_else(|| {
+			authority_boundary_event_policy_decision(payload)
+				.is_some_and(operator_boundary_policy_requires_enhanced_evidence)
+		})
+}
+
+fn authority_boundary_event_landing_requirement(payload: &Value) -> Option<&'static str> {
+	if authority_boundary_event_blocks_landing(payload) {
+		return Some("authority_boundary_blocks_landing");
+	}
+	if authority_boundary_event_requires_enhanced_evidence(payload) {
+		return Some("authority_boundary_requires_enhanced_evidence");
+	}
+
+	None
+}
+
+fn authority_boundary_event_policy_decision(payload: &Value) -> Option<&str> {
+	payload
+		.get("policy_decision")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			payload
+				.get("policy")
+				.and_then(|policy| policy.get("decision"))
+				.and_then(Value::as_str)
+		})
 }
 
 fn retry_budget_exhausted_post_review_lane_classification<I>(
@@ -6721,6 +6846,50 @@ fn operator_architecture_recovery_status_from_event(
 				.and_then(Value::as_str)
 		})
 		.map(str::to_owned);
+	let boundary_policy_decision = payload
+		.get("boundary_policy_decision")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			payload
+				.get("authority_boundary_check")
+				.and_then(|boundary| boundary.get("policy_decision"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned)
+		.or_else(|| {
+			boundary_disposition
+				.as_deref()
+				.map(operator_boundary_policy_decision_from_disposition)
+				.map(str::to_owned)
+		});
+	let requires_enhanced_evidence = payload
+		.get("requires_enhanced_evidence")
+		.and_then(Value::as_bool)
+		.or_else(|| {
+			payload
+				.get("authority_boundary_check")
+				.and_then(|boundary| boundary.get("requires_enhanced_evidence"))
+				.and_then(Value::as_bool)
+		})
+		.unwrap_or_else(|| {
+			boundary_policy_decision
+				.as_deref()
+				.is_some_and(operator_boundary_policy_requires_enhanced_evidence)
+		});
+	let blocks_landing = payload
+		.get("blocks_landing")
+		.and_then(Value::as_bool)
+		.or_else(|| {
+			payload
+				.get("authority_boundary_check")
+				.and_then(|boundary| boundary.get("blocks_landing"))
+				.and_then(Value::as_bool)
+		})
+		.unwrap_or_else(|| {
+			boundary_policy_decision
+				.as_deref()
+				.is_some_and(operator_boundary_policy_blocks_landing)
+		});
 	let recovery_budget_attempt = payload
 		.get("recovery_budget")
 		.and_then(|budget| budget.get("attempt"))
@@ -6732,13 +6901,21 @@ fn operator_architecture_recovery_status_from_event(
 	let budget = recovery_budget_attempt
 		.zip(recovery_budget_max_attempts)
 		.map(|(attempt, max_attempts)| OperatorRecoveryBudgetStatus { attempt, max_attempts });
-	let next_action = operator_architecture_recovery_next_action(&reason_code);
+	let next_action = operator_architecture_recovery_next_action(
+		&reason_code,
+		boundary_policy_decision.as_deref(),
+		requires_enhanced_evidence,
+		blocks_landing,
+	);
 
 	Some(OperatorArchitectureRecoveryStatus {
 		status: operator_architecture_recovery_status_for_reason(&reason_code).to_owned(),
 		reason_code,
 		guardrail_reason,
 		boundary_disposition,
+		boundary_policy_decision,
+		requires_enhanced_evidence,
+		blocks_landing,
 		round: recovery_budget_attempt,
 		budget,
 		next_action,
@@ -6754,10 +6931,32 @@ fn operator_architecture_recovery_status_for_reason(reason_code: &str) -> &'stat
 	}
 }
 
-fn operator_architecture_recovery_next_action(reason_code: &str) -> String {
+fn operator_architecture_recovery_next_action(
+	reason_code: &str,
+	policy_decision: Option<&str>,
+	requires_enhanced_evidence: bool,
+	blocks_landing: bool,
+) -> String {
 	match reason_code {
-		"architecture_recovery_started" => {
-			String::from("Retry with a materially different implementation strategy inside authority.")
+		"architecture_recovery_started" => match (policy_decision, blocks_landing, requires_enhanced_evidence) {
+			(Some(policy), true, _) => format!(
+				"Retry with a materially different implementation strategy under authority policy `{policy}`; keep landing blocked until validation or review-policy evidence is restored."
+			),
+			(Some(policy), false, true) => format!(
+				"Retry with a materially different implementation strategy under authority policy `{policy}`; preserve enhanced evidence before review handoff or landing."
+			),
+			(Some(policy), false, false) => format!(
+				"Retry with a materially different implementation strategy under authority policy `{policy}`."
+			),
+			(None, true, _) => {
+				String::from("Retry with a materially different implementation strategy; keep landing blocked until validation or review-policy evidence is restored.")
+			},
+			(None, false, true) => {
+				String::from("Retry with a materially different implementation strategy; preserve enhanced evidence before review handoff or landing.")
+			},
+			(None, false, false) => {
+				String::from("Retry with a materially different implementation strategy inside authority.")
+			},
 		},
 		"architecture_recovery_exhausted" => {
 			String::from("Require a new accepted recovery strategy or architecture decision before retrying.")
@@ -6770,6 +6969,24 @@ fn operator_architecture_recovery_next_action(reason_code: &str) -> String {
 		},
 		_ => String::from("Inspect the Architecture Recovery Packet before retrying."),
 	}
+}
+
+fn operator_boundary_policy_decision_from_disposition(disposition: &str) -> &'static str {
+	match disposition {
+		"requires_human" | "insufficient_evidence" => "requires_human_decision",
+		_ => "auto_continue",
+	}
+}
+
+fn operator_boundary_policy_requires_enhanced_evidence(policy_decision: &str) -> bool {
+	matches!(
+		policy_decision,
+		"requires_enhanced_evidence" | "block_landing"
+	)
+}
+
+fn operator_boundary_policy_blocks_landing(policy_decision: &str) -> bool {
+	policy_decision == "block_landing"
 }
 
 fn operator_boundary_status_from_event(
@@ -6791,6 +7008,19 @@ fn operator_boundary_status_from_event(
 		.and_then(|final_disposition| final_disposition.get("reason"))
 		.and_then(Value::as_str)
 		.map(str::to_owned);
+	let policy_decision = payload
+		.get("policy_decision")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			payload
+				.get("policy")
+				.and_then(|policy| policy.get("decision"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned)
+		.unwrap_or_else(|| {
+			operator_boundary_policy_decision_from_disposition(&disposition).to_owned()
+		});
 	let attempted_recovery_reason = payload
 		.get("attempted_recovery_reason")
 		.and_then(Value::as_str)
@@ -6803,13 +7033,26 @@ fn operator_boundary_status_from_event(
 		.get("improvement_signals")
 		.and_then(Value::as_array)
 		.map_or(0, Vec::len);
+	let requires_enhanced_evidence = payload
+		.get("policy")
+		.and_then(|policy| policy.get("requires_enhanced_evidence"))
+		.and_then(Value::as_bool)
+		.unwrap_or_else(|| operator_boundary_policy_requires_enhanced_evidence(&policy_decision));
+	let blocks_landing = payload
+		.get("policy")
+		.and_then(|policy| policy.get("blocks_landing"))
+		.and_then(Value::as_bool)
+		.unwrap_or_else(|| operator_boundary_policy_blocks_landing(&policy_decision));
 
 	Some(OperatorBoundaryStatus {
 		disposition,
+		policy_decision,
 		reason,
 		attempted_recovery_reason,
 		changed_surface_count,
 		improvement_signal_count,
+		requires_enhanced_evidence,
+		blocks_landing,
 	})
 }
 
@@ -6821,9 +7064,7 @@ fn operator_loop_autonomy(
 	if decision_request.is_some() {
 		return "human_required";
 	}
-	if boundary.is_some_and(|boundary| {
-		matches!(boundary.disposition.as_str(), "requires_human" | "insufficient_evidence")
-	}) {
+	if boundary.is_some_and(|boundary| boundary.policy_decision == "requires_human_decision") {
 		return "human_required";
 	}
 	if architecture_recovery.is_some_and(|recovery| recovery.status != "active") {
@@ -6887,12 +7128,19 @@ fn operator_loop_status_next_action(
 	if let Some(recovery) = architecture_recovery {
 		return Some(recovery.next_action.clone());
 	}
-	if let Some(boundary) = boundary
-		&& matches!(boundary.disposition.as_str(), "requires_human" | "insufficient_evidence")
-	{
-		return Some(String::from(
-			"Resolve the Authority Boundary Check before retrying the lane.",
-		));
+	if let Some(boundary) = boundary {
+		return match boundary.policy_decision.as_str() {
+			"requires_human_decision" => Some(String::from(
+				"Resolve the Authority Boundary Check before retrying the lane.",
+			)),
+			"block_landing" => Some(String::from(
+				"Continue recovery, but block landing until review or validation policy evidence is restored.",
+			)),
+			"requires_enhanced_evidence" => Some(String::from(
+				"Continue recovery and preserve enhanced evidence before review handoff or landing.",
+			)),
+			_ => None,
+		};
 	}
 
 	review.and_then(|review| match review.status.as_str() {
@@ -8865,11 +9113,17 @@ fn render_loop_architecture_recovery_summary(status: Option<&OperatorLoopStatus>
 	);
 
 	format!(
-		"status={} reason={} guardrail={} boundary={} budget={} next_action={}",
+		"status={} reason={} guardrail={} boundary={} policy={} enhanced_evidence={} blocks_landing={} budget={} next_action={}",
 		recovery.status,
 		recovery.reason_code,
 		recovery.guardrail_reason.as_deref().unwrap_or("none"),
 		recovery.boundary_disposition.as_deref().unwrap_or("none"),
+		recovery
+			.boundary_policy_decision
+			.as_deref()
+			.unwrap_or("none"),
+		recovery.requires_enhanced_evidence,
+		recovery.blocks_landing,
 		budget,
 		recovery.next_action
 	)
@@ -8881,8 +9135,11 @@ fn render_loop_boundary_summary(status: Option<&OperatorLoopStatus>) -> String {
 	};
 
 	format!(
-		"disposition={} reason={} attempted_recovery={} changed_surfaces={} improvement_signals={}",
+		"disposition={} policy={} enhanced_evidence={} blocks_landing={} reason={} attempted_recovery={} changed_surfaces={} improvement_signals={}",
 		boundary.disposition,
+		boundary.policy_decision,
+		boundary.requires_enhanced_evidence,
+		boundary.blocks_landing,
 		boundary.reason.as_deref().unwrap_or("none"),
 		boundary.attempted_recovery_reason.as_deref().unwrap_or("none"),
 		boundary.changed_surface_count,
