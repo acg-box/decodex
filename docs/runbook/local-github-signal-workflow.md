@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "Local GitHub Signal Workflow"
+description: "OKF concept for Local GitHub Signal Workflow."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # Local GitHub Signal Workflow
 
 Goal: Define the repeatable workflow for collecting upstream Codex evidence, running

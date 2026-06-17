@@ -1,7 +1,7 @@
 {
   "name": "decodex",
   "version": "0.2.0",
-  "description": "Decodex agent workflows.",
+  "description": "Decodex agent workflows for docs, research, issue planning, automation, commit, and landing.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -20,8 +20,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Decodex",
-    "shortDescription": "Research, plan, and operate Decodex.",
-    "longDescription": "Routes Decodex research, promotion, issue briefing and planning, CLI, labels, commit, landing, and automation.",
+    "shortDescription": "Maintain docs, research, plan, and operate Decodex.",
+    "longDescription": "Routes Decodex OKF docs maintenance, docs drift audits, bounded research, promotion, issue briefing and planning, CLI, labels, commit, landing, and automation.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -32,9 +32,9 @@
     "privacyPolicyURL": "https://github.com/hack-ink/decodex",
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
+      "Maintain Decodex docs.",
       "Research this with Decodex.",
-      "Arrange accepted Decodex work.",
-      "Inspect this Decodex lane."
+      "Arrange accepted Decodex work."
     ],
     "brandColor": "#0F766E"
   }

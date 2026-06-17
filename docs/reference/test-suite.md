@@ -1,3 +1,13 @@
+---
+type: "Reference"
+title: "Test Suite"
+description: "Map the current test suite by behavior surface so pruning, additions, and debugging start from a shared inventory."
+status: active
+authority: current_state
+owner: docs
+tags: [reference]
+last_verified: 2026-06-16
+---
 # Test Suite
 
 Purpose: Map the current test suite by behavior surface so pruning, additions, and

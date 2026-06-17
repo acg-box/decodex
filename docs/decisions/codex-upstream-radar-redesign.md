@@ -1,3 +1,13 @@
+---
+type: "Decision"
+title: "Codex Upstream Radar Redesign"
+description: "How should Decodex rebuild upstream Codex tracking so it can support both"
+status: active
+authority: rationale
+owner: docs
+tags: [decision]
+last_verified: 2026-06-16
+---
 # Codex Upstream Radar Redesign
 
 Status: accepted

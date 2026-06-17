@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Upstream Review"
+description: "Define how Decodex Radar turns every observed upstream Codex commit into a reviewable evidence unit before public publishing or Control Plane follow-up."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Upstream Review
 
 Purpose: Define how Decodex Radar turns every observed upstream Codex commit into a

@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Review Orchestration"
+description: "Define the normative review orchestration contract that sits above runtime-native review handoff, retained review repair, and landing. Status: normative Read this when: You are implementing or reviewing how a Decodex-owned lane requests Self Check, Decodex Review, or GitHub Review, counts review rounds, reacts to review results, or transitions from review pass into handoff or landing. Not this document: The low-level app-server protocol, the post-`In Review` lane phase model, the tracker tool schema, or local skill payloads. Defines: Shared review-loop semantics, reviewer-source-specific rules, strict GitHub Review adapter signals, review-round accounting, architecture-escalation rules, landing entry requirements, and manual-intervention boundaries."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Review Orchestration
 
 Purpose: Define the normative review orchestration contract that sits above runtime-native review handoff, retained review repair, and landing.
@@ -69,6 +79,9 @@ After any review arrives:
   result for the exact current `HEAD` through `issue_review_checkpoint`, including
   the explicit independent reviewer source, checklist notes, accepted findings,
   rejected findings, non-empty evidence, and repair guidance
+- before any handoff, retained repair completion, or terminal finalization, record the
+  separate current-head docs-impact checkpoint through `issue_progress_checkpoint`;
+  review checkpoints do not satisfy the `docs_impact` requirement
 
 The current repository's bounded review method is defined in the registered project `WORKFLOW.md`. This spec does not replace that method; it defines how review requests and review outcomes are orchestrated around it. When review reveals missing direction rather than a repairable finding, route the gap through Decodex-native research and Decision Contract update, not the legacy external research artifact lane.
 
@@ -107,7 +120,9 @@ Rules:
   `issue_review_checkpoint`, requires a current `clean` checkpoint before
   `issue_review_handoff` or `issue_review_repair_complete`, stores structured
   accepted/rejected finding evidence, and applies the review-policy stop rules to
-  stale or non-clean checkpoint state. It does not use GitHub Review.
+  stale or non-clean checkpoint state. That review checkpoint is separate from the
+  current-head `issue_progress_checkpoint` with `docs_impact` required before
+  terminal finalization. It does not use GitHub Review.
 - `[codex].review = "strict"` uses the standard requirements and then participates
   in the GitHub Review loop.
 - Omitted `[codex].review` defaults to `"strict"`.

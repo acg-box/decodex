@@ -1,3 +1,13 @@
+---
+type: "Decision"
+title: "Radar Artifact Release Archives"
+description: "Where should Decodex keep old raw Radar artifacts after the short Git hot"
+status: active
+authority: rationale
+owner: docs
+tags: [decision]
+last_verified: 2026-06-16
+---
 # Radar Artifact Release Archives
 
 Status: accepted

@@ -1,3 +1,13 @@
+---
+type: "Decision"
+title: "MCP Capability Gateway And Skill Slimming"
+description: "Should Decodex introduce MCP, and if so how should MCP, skills, docs, and"
+status: active
+authority: rationale
+owner: docs
+tags: [decision]
+last_verified: 2026-06-16
+---
 # MCP Capability Gateway And Skill Slimming
 
 Status: decision_ready
@@ -52,7 +62,7 @@ Non-goals:
 | `external_source` | MCP standard transports are stdio and Streamable HTTP. Local Decodex should start with stdio for desktop/CLI use and add Streamable HTTP only when the local daemon or app needs multi-client access. | [MCP transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) |
 | `external_source` | MCP authorization is optional, but HTTP transports that support authorization should follow the spec; stdio should retrieve credentials from environment rather than the HTTP auth flow. | [MCP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) |
 | `repo_source` | Decodex already treats runtime-local `decodex.decision_contract/1` payloads as research authority and keeps research latent until promotion. | [`docs/spec/loop-runtime.md`](../spec/loop-runtime.md) |
-| `repo_source` | The repository documentation policy requires durable guidance to live in `docs/spec`, `docs/runbook`, `docs/reference`, or `docs/decisions`; `docs/research/` is JSON supporting evidence, not governing authority. | [`docs/policy.md`](../policy.md) |
+| `repo_source` | The repository documentation policy requires durable guidance to live in `docs/spec`, `docs/runbook`, `docs/reference`, or `docs/decisions`; `docs/research/` contains Markdown OKF research concepts and remains non-authoritative until promoted. | [`docs/policy.md`](../policy.md) |
 | `inference` | Because MCP resources can expose docs/current state on demand, skills should not duplicate long reference bodies. Because MCP tools can mutate external state, skills must still carry authority routing and safety triggers. | Derived from MCP resource/tool controls plus Decodex authority model. |
 
 ## Options
