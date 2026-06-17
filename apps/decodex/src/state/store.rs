@@ -1977,6 +1977,34 @@ impl StateStore {
 			.map(DecisionContractRuntimeRecord::as_public))
 	}
 
+	/// Read one local Loop/Decision Contract for operator readback only.
+	///
+	/// Readback treats quarantined legacy contract payloads as absent so status surfaces can
+	/// report stale Program recovery without re-admitting removed contract shapes into execution.
+	pub(crate) fn decision_contract_for_readback(
+		&self,
+		project_id: &str,
+		contract_id: &str,
+	) -> Result<Option<DecisionContractRecord>> {
+		validate_required_decision_contract_field("project_id", project_id)?;
+		validate_required_decision_contract_field("contract_id", contract_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.decision_contract_for_readback(project_id, contract_id)
+				.map(|record| record.map(|record| record.as_public()));
+		}
+
+		let state = self.lock()?;
+
+		Ok(state
+			.decision_contracts
+			.get(&DecisionContractKey::new(project_id, contract_id))
+			.map(DecisionContractRuntimeRecord::as_public))
+	}
+
 	/// List local Loop/Decision Contracts sourced from one tracker issue.
 	#[allow(dead_code)]
 	pub(crate) fn list_decision_contracts_for_issue(
