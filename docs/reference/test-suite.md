@@ -26,12 +26,14 @@ standards for keeping, merging, or deleting tests.
 
 ## Current Snapshot
 
-This snapshot lists 1239 default-runnable `nextest` tests. One additional ignored
-live app-server test is listed only with verbose or JSON inventory output. Regenerate
-the runnable inventory with:
+This snapshot groups 1255 runnable `nextest` tests across all targets. The main
+`decodex` binary accounts for 1254 of them; one additional skipped live app-server
+test is listed only with verbose or JSON inventory output. Regenerate the runnable
+inventory with:
 
 ```sh
-cargo nextest list --workspace --all-targets --all-features
+cargo nextest list --workspace --all-targets --all-features --verbose \
+  | rg -v "\\(skipped\\)"
 ```
 
 Regenerate the ignored/live-test inventory with:
@@ -62,7 +64,7 @@ cargo nextest list --workspace --all-targets --all-features 2>/dev/null \
 | Runtime state, locks, and maintenance | 86 | `state::tests`, `runtime::tests`, `maintenance::tests` | Persistent local state, lock ownership, runtime database contracts, local retention |
 | Workflow, config, and docs parsing | 62 | `workflow::tests`, `config::tests`, `codex_config::tests`, `docs_okf::tests` | `WORKFLOW.md`, project config, Codex config edits, removed-field rejection, default policy, OKF docs parsing |
 | Git, worktree, landing, and recovery helpers | 137 | `worktree::tests`, `manual::tests`, `commit_message::tests`, `github::tests`, `default_branch_sync::tests`, `pull_request::tests`, `recovery::tests`, `git_credentials::tests` | Git/worktree behavior, manual landing, GitHub/PR helpers, recovery commands, commit-message policy |
-| Account, CLI, archive, tracker, and MCP integration | 116 | `accounts::tests`, `agent::codex_accounts::tests`, `agent::decodex_tool_bridge::tests`, `app_bridge::tests`, `cli::tests`, `archive_hygiene::tests`, `tracker::*::tests`, `mcp::tests`, `apps/decodex/tests/mcp_stdio.rs` | User-facing commands, account pools, app bridge parsing, archive hygiene, direct tracker adapter, MCP resources, and public-text behavior |
+| Account, CLI, archive, tracker, and MCP integration | 132 | `accounts::tests`, `agent::codex_accounts::tests`, `agent::decodex_tool_bridge::tests`, `app_bridge::tests`, `cli::tests`, `archive_hygiene::tests`, `tracker::*::tests`, `mcp::tests`, `apps/decodex/tests/mcp_stdio.rs` | User-facing commands, account pools, app bridge parsing, archive hygiene, direct tracker adapter, MCP resources, HTTP transport, and public-text behavior |
 | Program intake | 10 | `program_intake::tests` | Decision Contract materialization, Linear issue shaping, and internal Execution Program persistence |
 | Loop contract and research surfaces | 29 | `loop_contract::tests`, `execution_program::tests`, `research_design::tests`, `plugin_surface_tests` | Decision Contract schema, Execution Program readiness, research compile/promote, and plugin trigger behavior |
 
