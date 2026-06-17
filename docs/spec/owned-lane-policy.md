@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Owned-Lane Policy"
+description: "Define the authoritative fallback policy for Decodex-owned lanes, including when automation may continue, wait, retry, resume a retained lane, or must stop for human intervention. Status: normative Read this when: You need the decision matrix for manual intervention, automatic recovery, post-review waiting, retained-lane repair re-entry, or ready-to-land determination. Not this document: The low-level app-server contract, the full runtime state machine, the downstream `WORKFLOW.md` schema, or the operator step-by-step pilot procedure. Defines: The stable decision classes, authoritative signals, human-handoff boundaries, automatic-recovery prerequisites, and the ownership boundary between the runtime model and local workflow implementation."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Owned-Lane Policy
 
 Purpose: Define the authoritative fallback policy for Decodex-owned lanes, including when automation may continue, wait, retry, resume a retained lane, or must stop for human intervention.

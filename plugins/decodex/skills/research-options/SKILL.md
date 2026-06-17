@@ -5,8 +5,8 @@ description: Use when research needs option comparison.
 
 # Decodex Research Options
 
-Force a real choice. Read `../../references/research-method.md` for the full option
-checklist.
+Force a real choice. Read `../../references/research-contract.md` for option and
+judgment rules.
 
 - Compare realistic options such as status quo, minimal patch, redesign, migration,
   or no-go/defer.

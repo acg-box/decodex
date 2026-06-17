@@ -1,3 +1,15 @@
+---
+type: "Reference"
+title: "Operator Control Plane"
+description: "Describe the current single-machine Decodex control plane, operator dashboard sections, and state ownership boundaries."
+status: active
+authority: current_state
+owner: docs
+tags: [reference]
+code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs]
+drift_watch: [decodex serve, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
+last_verified: 2026-06-16
+---
 # Operator Control Plane
 
 Purpose: Describe the current single-machine Decodex control plane, operator

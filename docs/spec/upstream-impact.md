@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Upstream Impact"
+description: "Define how Decodex classifies upstream Codex changes before they become public signals, Control Plane follow-up work, or social publishing records."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Upstream Impact
 
 Purpose: Define how Decodex classifies upstream Codex changes before they become public

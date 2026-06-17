@@ -1,3 +1,13 @@
+---
+type: "Decision"
+title: "Decodex Plugin Source"
+description: "Where should reusable agent-facing Decodex usage instructions live?"
+status: active
+authority: rationale
+owner: docs
+tags: [decision]
+last_verified: 2026-06-16
+---
 # Decodex Plugin Source
 
 Status: accepted

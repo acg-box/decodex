@@ -5,8 +5,8 @@ description: Use when research needs evidence tracking.
 
 # Decodex Research Evidence
 
-Make every research claim traceable. Read `../../references/research-method.md` for
-evidence rules, evidence ledger classes, and Decision Contract mapping.
+Make every research claim traceable. Read `../../references/research-evidence.md`
+for evidence rules and ledger classes.
 
 - Separate observations, contradictions, inferences, gaps, source/code refs, private
   proof, and public-safe provenance.

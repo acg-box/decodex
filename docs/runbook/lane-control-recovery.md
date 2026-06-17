@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "Lane-Control Recovery"
+description: "OKF concept for Lane-Control Recovery."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # Lane-Control Recovery
 
 Goal: Give agents and operators a bounded recovery sequence after Decodex lane

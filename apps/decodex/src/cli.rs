@@ -18,6 +18,7 @@ use crate::{
 	accounts::{self, AccountImportRequest, AccountLoginRequest, AccountUseRequest},
 	agent,
 	archive_hygiene::{self, ArchiveHygieneRequest},
+	docs_okf::{self, DocsCheckScope},
 	maintenance::{self, MaintenanceMode, MaintenancePruneRequest, MaintenanceScope},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
 	mcp::{self, McpServeRequest, McpTransport},
@@ -80,6 +81,7 @@ impl Cli {
 			Command::Status(args) => args.run(),
 			Command::Diagnose(args) => args.run(),
 			Command::Evidence(args) => args.run(),
+			Command::Docs(args) => args.run(),
 			Command::Research(args) => args.run(),
 			Command::Intake(args) => args.run(),
 			Command::Recover(args) => args.run(),
@@ -122,6 +124,34 @@ struct ProjectConfigArgs {
 impl ProjectConfigArgs {
 	fn as_path(&self) -> Option<&Path> {
 		self.config.as_deref()
+	}
+}
+
+#[derive(Debug, Args)]
+struct DocsCommand {
+	/// Documentation root to validate.
+	#[arg(long, value_name = "DIR", default_value = "docs")]
+	root: PathBuf,
+	#[command(subcommand)]
+	command: DocsSubcommand,
+}
+impl DocsCommand {
+	fn run(&self) -> Result<()> {
+		let scope = match self.command {
+			DocsSubcommand::Lint => DocsCheckScope::All,
+			DocsSubcommand::Index => DocsCheckScope::Index,
+			DocsSubcommand::Links => DocsCheckScope::Links,
+			DocsSubcommand::Drift => DocsCheckScope::Drift,
+		};
+		let report = docs_okf::run_docs_check(&self.root, scope)?;
+
+		print!("{}", docs_okf::render_docs_check_report(&report));
+
+		if report.has_issues() {
+			eyre::bail!("docs {} check failed.", scope.as_str());
+		}
+
+		Ok(())
 	}
 }
 
@@ -1632,6 +1662,17 @@ impl From<AttemptDispatchMode> for IssueDispatchMode {
 	}
 }
 
+impl From<ResearchOutcomeArg> for ResearchDesignOutcome {
+	fn from(value: ResearchOutcomeArg) -> Self {
+		match value {
+			ResearchOutcomeArg::DecisionReady => Self::DecisionReady,
+			ResearchOutcomeArg::NotDecisionReady => Self::NotDecisionReady,
+			ResearchOutcomeArg::Blocked => Self::Blocked,
+			ResearchOutcomeArg::NeedsHumanDecision => Self::NeedsHumanDecision,
+		}
+	}
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum AttemptDispatchMode {
@@ -1651,6 +1692,18 @@ impl From<IssueDispatchMode> for AttemptDispatchMode {
 			IssueDispatchMode::Closeout => Self::Closeout,
 		}
 	}
+}
+
+#[derive(Debug, Subcommand)]
+enum DocsSubcommand {
+	/// Validate the complete Markdown-only OKF docs bundle.
+	Lint,
+	/// Validate OKF routing files and concept frontmatter.
+	Index,
+	/// Validate local Markdown links.
+	Links,
+	/// Validate semantic-drift audit routing.
+	Drift,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -1678,6 +1731,8 @@ enum Command {
 	Diagnose(DiagnoseCommand),
 	/// Inspect local-only private execution evidence for one issue or run.
 	Evidence(EvidenceCommand),
+	/// Validate the repo docs as a Markdown-only OKF knowledge bundle.
+	Docs(DocsCommand),
 	/// Compile or promote Decodex-native research/design contracts.
 	Research(ResearchCommand),
 	/// Operator issue-batch intake into internal Execution Programs, not a graph editor.
@@ -1770,16 +1825,6 @@ enum ResearchOutcomeArg {
 	NotDecisionReady,
 	Blocked,
 	NeedsHumanDecision,
-}
-impl From<ResearchOutcomeArg> for ResearchDesignOutcome {
-	fn from(value: ResearchOutcomeArg) -> Self {
-		match value {
-			ResearchOutcomeArg::DecisionReady => Self::DecisionReady,
-			ResearchOutcomeArg::NotDecisionReady => Self::NotDecisionReady,
-			ResearchOutcomeArg::Blocked => Self::Blocked,
-			ResearchOutcomeArg::NeedsHumanDecision => Self::NeedsHumanDecision,
-		}
-	}
 }
 
 #[derive(Debug, Subcommand)]

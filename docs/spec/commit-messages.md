@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Commit Message Specification"
+description: "Define the minimal machine-readable `decodex/commit/1` contract for Decodex-managed local commits and Decodex-directed manual landing change records. Status: normative Read this when: You are authoring, validating, or consuming `decodex/commit/1` records intended to describe repository changes in machine-managed history or manual landing receipts. Not this document: Landing policy, PR merge rules, CI policy, or post-merge closeout state. Defines: The `decodex/commit/1` schema, required fields, optional fields, and forbidden process-state content."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Commit Message Specification
 
 Purpose: Define the minimal machine-readable `decodex/commit/1` contract for Decodex-managed local commits and Decodex-directed manual landing change records.

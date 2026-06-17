@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Installable Agent Policy Boundary"
+description: "Define the boundary between installable Codex `AGENTS.md` guidance and Decodex-owned repository, runtime, workflow, identity, and lifecycle policy. Status: normative Read this when: You are editing an installable or global `AGENTS.md` surface, moving agent-facing policy into Decodex, or deciding whether a rule belongs in a project `WORKFLOW.md`, a Decodex spec, a runbook, or a skill. Not this document: The runtime state machine, the `WORKFLOW.md` schema, the tracker tool schema, or local operator procedures. Defines: The copy-to-unrelated-repository standard, allowed global-agent rule shapes, forbidden Decodex-specific global content, and the Decodex destination for moved policy."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Installable Agent Policy Boundary
 
 Purpose: Define the boundary between installable Codex `AGENTS.md` guidance and
