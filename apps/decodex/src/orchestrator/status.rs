@@ -6005,6 +6005,7 @@ fn operator_run_status(
 		loop_evidence.private_events(run.issue_id(), run.run_id(), run.attempt_number());
 	let active_goal_phase = operator_run_active_goal_phase(private_events);
 	let public_progress_phase = operator_run_public_progress_phase(private_events);
+	let phase_acceptance = operator_run_phase_acceptance_status(private_events);
 	let loop_status =
 		operator_run_loop_status(
 			project,
@@ -6034,6 +6035,7 @@ fn operator_run_status(
 		issue_identifier,
 		private_evidence,
 		continuation_recovery,
+		phase_acceptance,
 		active_goal_phase,
 		public_progress_phase,
 		loop_status,
@@ -6060,6 +6062,7 @@ fn operator_run_status_from_parts(
 	issue_identifier: Option<String>,
 	private_evidence: AgentPrivateEvidenceRef,
 	continuation_recovery: Option<OperatorContinuationRecoveryStatus>,
+	phase_acceptance: Option<OperatorPhaseAcceptanceStatus>,
 	active_goal_phase: Option<String>,
 	public_progress_phase: Option<String>,
 	loop_status: OperatorLoopStatus,
@@ -6101,6 +6104,7 @@ fn operator_run_status_from_parts(
 		interactive_requested: app_server_state.interactive_requested,
 		continuation_pending: app_server_state.continuation_pending,
 		continuation_recovery,
+		phase_acceptance,
 		run_lease: lifecycle.run_lease,
 		queue_lease_state: operator_run_queue_lease_state(lifecycle.run_lease),
 		execution_liveness: lifecycle.execution_liveness,
@@ -6183,6 +6187,67 @@ fn operator_run_public_progress_phase(events: &[PrivateExecutionEvent]) -> Optio
 			.and_then(|payload| payload.get("phase"))
 			.and_then(Value::as_str)
 			.map(str::to_owned)
+	})
+}
+
+fn operator_run_phase_acceptance_status(
+	events: &[PrivateExecutionEvent],
+) -> Option<OperatorPhaseAcceptanceStatus> {
+	let event = events
+		.iter()
+		.rev()
+		.find(|event| event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE)?;
+	let payload = event.payload();
+	let phase = payload.get("phase")?.as_str()?.to_owned();
+	let decision = payload.get("decision")?.as_str()?.to_owned();
+	let reason_code = payload.get("reason_code")?.as_str()?.to_owned();
+	let objective_covered = payload
+		.get("objective_coverage")
+		.and_then(|objective| objective.get("covered"))
+		.and_then(Value::as_bool)
+		.unwrap_or(false);
+	let effective_delta_present = payload
+		.get("effective_delta")
+		.and_then(|delta| delta.get("present"))
+		.and_then(Value::as_bool)
+		.unwrap_or(false);
+	let changed_surfaces = payload
+		.get("effective_delta")
+		.and_then(|delta| delta.get("changed_surfaces"))
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(Value::as_str)
+		.map(str::to_owned)
+		.collect();
+	let non_goal_passed = payload
+		.get("non_goal_check")
+		.and_then(|check| check.get("passed"))
+		.and_then(Value::as_bool)
+		.unwrap_or(false);
+	let validation_passed = payload
+		.get("validation_evidence")
+		.and_then(|evidence| evidence.get("repo_gate_passed"))
+		.and_then(Value::as_bool)
+		.unwrap_or(false);
+
+	Some(OperatorPhaseAcceptanceStatus {
+		phase,
+		decision,
+		reason_code,
+		objective_covered,
+		effective_delta_present,
+		changed_surfaces,
+		non_goal_passed,
+		validation_passed,
+		recorded_at: event.recorded_at().to_owned(),
+		run_id: event.run_id().to_owned(),
+		attempt_number: event.attempt_number(),
+		next_action: payload
+			.get("next_action")
+			.and_then(Value::as_str)
+			.unwrap_or("inspect_phase_acceptance_check")
+			.to_owned(),
 	})
 }
 
@@ -9509,11 +9574,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let thread_id = run.thread_id.as_deref().unwrap_or("none");
 	let turn_id = run.turn_id.as_deref().unwrap_or("none");
 	let thread_status = run.thread_status.as_deref().unwrap_or("none");
-	let thread_active_flags = if run.thread_active_flags.is_empty() {
-		String::from("none")
-	} else {
-		run.thread_active_flags.join(",")
-	};
+	let thread_active_flags = render_run_thread_active_flags(run);
 	let idle_for_seconds =
 		run.idle_for_seconds.map_or_else(|| String::from("none"), |value| value.to_string());
 	let protocol_idle_for_seconds = run
@@ -9537,9 +9598,10 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let control_capability = render_control_capability_summary(run.control_capability.as_ref());
 	let continuation_recovery =
 		render_continuation_recovery_summary(run.continuation_recovery.as_ref());
+	let phase_acceptance = render_phase_acceptance_summary(run.phase_acceptance.as_ref());
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  run_phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_goal_phase: {}\n  public_progress_phase: {}\n  run_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  lifecycle_metrics: {}\n  lifecycle_evidence: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  continuation_recovery: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  run_phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_goal_phase: {}\n  public_progress_phase: {}\n  run_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  lifecycle_metrics: {}\n  lifecycle_evidence: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  continuation_recovery: {}\n  phase_acceptance: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -9594,6 +9656,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		if run.interactive_requested { "yes" } else { "no" },
 		if run.continuation_pending { "yes" } else { "no" },
 		continuation_recovery,
+		phase_acceptance,
 		branch_name,
 		worktree_path,
 		run.updated_at,
@@ -9632,6 +9695,14 @@ fn render_run_protocol_event(run: &OperatorRunStatus) -> String {
 	}
 }
 
+fn render_run_thread_active_flags(run: &OperatorRunStatus) -> String {
+	if run.thread_active_flags.is_empty() {
+		String::from("none")
+	} else {
+		run.thread_active_flags.join(",")
+	}
+}
+
 fn render_lane_control_conditions(run: &OperatorRunStatus) -> String {
 	if run.lane_control_conditions.is_empty() {
 		String::from("none")
@@ -9666,6 +9737,35 @@ fn render_continuation_recovery_summary(
 		recovery.run_id,
 		recovery.attempt_number,
 		recovery.next_action,
+	)
+}
+
+fn render_phase_acceptance_summary(
+	acceptance: Option<&OperatorPhaseAcceptanceStatus>,
+) -> String {
+	let Some(acceptance) = acceptance else {
+		return String::from("none");
+	};
+	let surfaces = if acceptance.changed_surfaces.is_empty() {
+		String::from("none")
+	} else {
+		acceptance.changed_surfaces.join(",")
+	};
+
+	format!(
+		"phase={} decision={} reason={} objective_covered={} effective_delta={} surfaces={} non_goal_passed={} validation_passed={} recorded_at={} run_id={} attempt={} next_action={}",
+		acceptance.phase,
+		acceptance.decision,
+		acceptance.reason_code,
+		if acceptance.objective_covered { "yes" } else { "no" },
+		if acceptance.effective_delta_present { "yes" } else { "no" },
+		surfaces,
+		if acceptance.non_goal_passed { "yes" } else { "no" },
+		if acceptance.validation_passed { "yes" } else { "no" },
+		acceptance.recorded_at,
+		acceptance.run_id,
+		acceptance.attempt_number,
+		acceptance.next_action
 	)
 }
 

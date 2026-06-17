@@ -921,7 +921,7 @@ struct NormalizedRejectedReviewCheckpointFinding {
 	line_range: Option<ReviewCheckpointLineRangeArgs>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 struct ReviewFindingPolicyState {
 	schema: String,
 	phase: String,
@@ -933,7 +933,7 @@ struct ReviewFindingPolicyState {
 	findings: Vec<ReviewFindingPolicyRecord>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 struct ReviewFindingPolicyRecord {
 	fingerprint: String,
 	kind: String,

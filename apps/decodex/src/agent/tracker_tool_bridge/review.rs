@@ -1,4 +1,5 @@
 use color_eyre::Report;
+use serde_json::Value;
 
 use crate::{
 	agent::tracker_tool_bridge::{
@@ -1145,7 +1146,7 @@ impl<'a> TrackerToolBridge<'a> {
 }
 
 fn review_policy_stop_fingerprint(details_json: &str) -> Option<String> {
-	serde_json::from_str::<serde_json::Value>(details_json)
+	serde_json::from_str::<Value>(details_json)
 		.ok()?
 		.get("finding_policy")?
 		.get("stop_fingerprint")?
