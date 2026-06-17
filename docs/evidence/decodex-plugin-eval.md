@@ -53,21 +53,21 @@ invocation while keeping plugin active-context cost bounded.
 
 Implicit skills:
 
-- `automation`
-- `commit`
 - `decodex`
 - `docs`
-- `labels`
-- `land`
-- `manual-cli`
 - `planning`
 - `research`
 
 Explicit-only skills:
 
+- `automation`
+- `commit`
 - `docs-drift`
 - `docs-okf`
 - `docs-wiki`
+- `labels`
+- `land`
+- `manual-cli`
 - `research-challenge`
 - `research-decision`
 - `research-evidence`
