@@ -321,6 +321,9 @@ pub struct ProjectRunStatus {
 	control_channel: Option<RunControlChannel>,
 	child_agent_activity: Option<ChildAgentActivitySummary>,
 	protocol_activity: Option<ProtocolActivitySummary>,
+	recovery_source: String,
+	recovery_evidence: Vec<String>,
+	recovery_gaps: Vec<String>,
 }
 impl ProjectRunStatus {
 	/// Stable run identifier.
@@ -399,6 +402,18 @@ impl ProjectRunStatus {
 
 	pub(crate) fn protocol_activity(&self) -> Option<&ProtocolActivitySummary> {
 		self.protocol_activity.as_ref()
+	}
+
+	pub(crate) fn recovery_source(&self) -> &str {
+		&self.recovery_source
+	}
+
+	pub(crate) fn recovery_evidence(&self) -> &[String] {
+		&self.recovery_evidence
+	}
+
+	pub(crate) fn recovery_gaps(&self) -> &[String] {
+		&self.recovery_gaps
 	}
 
 	/// Unix timestamp of the latest recorded protocol event, when one exists.

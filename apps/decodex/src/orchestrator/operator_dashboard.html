@@ -6279,6 +6279,9 @@
 					phase: phase?.phase || "unknown",
 					label: phase?.label || displayToken(phase?.phase || "unknown"),
 					attempt_count: lifecycleNumber(phase?.attempt_count),
+					recorded_attempt_count: lifecycleNumber(phase?.recorded_attempt_count),
+					recovered_attempt_count: lifecycleNumber(phase?.recovered_attempt_count),
+					current_snapshot_attempt_count: lifecycleNumber(phase?.current_snapshot_attempt_count),
 					captured_attempt_count: lifecycleNumber(phase?.captured_attempt_count),
 					missing_attempt_count: lifecycleNumber(phase?.missing_attempt_count),
 					protocol_event_count: lifecycleNumber(phase?.protocol_event_count),
@@ -6424,6 +6427,9 @@
 						...provided,
 						attempt_count: attemptCount,
 						run_count: lifecycleNumber(provided.run_count ?? attemptCount),
+						recorded_attempt_count: lifecycleNumber(provided.recorded_attempt_count),
+						recovered_attempt_count: lifecycleNumber(provided.recovered_attempt_count),
+						current_snapshot_attempt_count: lifecycleNumber(provided.current_snapshot_attempt_count),
 						captured_attempt_count: capturedAttemptCount,
 						missing_attempt_count: lifecycleNumber(
 							provided.missing_attempt_count ??
@@ -6561,6 +6567,53 @@
 					}
 
 					return facts;
+				}
+
+				function lifecycleRecoveryDebugSummary(metrics) {
+					if (!metrics) {
+						return "none";
+					}
+
+					const recorded = lifecycleNumber(metrics.recorded_attempt_count);
+					const recovered = lifecycleNumber(metrics.recovered_attempt_count);
+					const currentSnapshot = lifecycleNumber(metrics.current_snapshot_attempt_count);
+					const gaps = Array.isArray(metrics.recovery_gaps)
+						? metrics.recovery_gaps.filter(Boolean)
+						: [];
+					const parts = [
+						`recorded ${formatCompactCount(recorded)}`,
+						`recovered ${formatCompactCount(recovered)}`,
+						`current snapshot ${formatCompactCount(currentSnapshot)}`,
+					];
+
+					if (gaps.length) {
+						parts.push(`gaps ${gaps.join(", ")}`);
+					}
+
+					return parts.join("; ");
+				}
+
+				function lifecycleEvidenceDebugSummary(metrics) {
+					const attempts = Array.isArray(metrics?.attempt_evidence)
+						? metrics.attempt_evidence.filter(Boolean)
+						: [];
+
+					if (!attempts.length) {
+						return "none";
+					}
+
+					return attempts
+						.map((attempt) => {
+							const evidence = Array.isArray(attempt.evidence) && attempt.evidence.length
+								? attempt.evidence.join(",")
+								: "none";
+							const gaps = Array.isArray(attempt.gaps) && attempt.gaps.length
+								? attempt.gaps.join(",")
+								: "none";
+
+							return `${attempt.run_id || "unknown"}#${attempt.attempt_number || "?"} ${attempt.phase || "unknown"} ${attempt.source || "unknown"} evidence=${evidence} gaps=${gaps}`;
+						})
+						.join("; ");
 				}
 
 			function codexAccount(run, snapshot = null) {
@@ -10678,6 +10731,8 @@
 										${field("Model", runModelSummary(run))}
 										${field("Child agent", childAgentDebugSummary(childAgentActivity(run)))}
 										${field("Context pressure", childAgentContextSummary(childAgentActivity(run)))}
+										${field("Lifecycle recovery", lifecycleRecoveryDebugSummary(currentLaneLifecycleMetrics(run)))}
+										${field("Lifecycle evidence", lifecycleEvidenceDebugSummary(currentLaneLifecycleMetrics(run)))}
 										${field("Large outputs", childAgentLargeOutputSummary(childAgentActivity(run)))}
 										${field("Next retry", formatTimestamp(run.next_retry_at))}
 										${field("Turn", run.turn_id || "none")}
