@@ -4021,7 +4021,8 @@ fn post_review_lane_status_from_classification(
 	snapshot: &PostReviewLaneSnapshot,
 	classification: PostReviewLaneClassification,
 ) -> crate::prelude::Result<OperatorPostReviewLaneStatus> {
-	let loop_status = operator_post_review_loop_status(project, state_store, snapshot)?;
+	let loop_status =
+		operator_post_review_loop_status(project, state_store, snapshot, classification.decision)?;
 
 	Ok(OperatorPostReviewLaneStatus {
 		project_id: project.service_id().to_owned(),
@@ -4053,9 +4054,14 @@ fn operator_post_review_loop_status(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	snapshot: &PostReviewLaneSnapshot,
+	decision: PostReviewLaneDecision,
 ) -> crate::prelude::Result<Option<OperatorLoopStatus>> {
 	let Some(review_handoff) = snapshot.review_handoff.as_ref() else {
 		return Ok(None);
+	};
+	let default_review_phase = match decision {
+		PostReviewLaneDecision::ReadyToLand | PostReviewLaneDecision::WaitForReview => None,
+		_ => Some("repair"),
 	};
 
 	operator_loop_status_for_run(
@@ -4064,7 +4070,7 @@ fn operator_post_review_loop_status(
 		&snapshot.issue.id,
 		review_handoff.run_id(),
 		review_handoff.attempt_number(),
-		Some("repair"),
+		default_review_phase,
 		None,
 	)
 	.map(Some)
@@ -6431,6 +6437,7 @@ fn operator_run_private_evidence(
 ) -> AgentPrivateEvidenceRef {
 	private_evidence_ref_for_run_fields(
 		project.service_id(),
+		project.config_path(),
 		run.issue_id(),
 		issue_identifier,
 		run.run_id(),

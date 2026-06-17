@@ -64,6 +64,14 @@ fn build_post_review_lane_statuses_reports_ready_to_land() {
 	assert_eq!(lanes[0].classification, "ready_to_land");
 	assert_eq!(lanes[0].reason, "external_review_passed_strict");
 	assert_eq!(lanes[0].pr_url.as_deref(), Some(pr_url));
+	assert!(
+		lanes[0]
+			.loop_status
+			.as_ref()
+			.and_then(|status| status.review.as_ref())
+			.is_none(),
+		"ready_to_land must not project a pending review checkpoint"
+	);
 	assert_eq!(
 		lanes[0].readback_warning.as_deref(),
 		Some("active_ownership_label_missing")
@@ -189,6 +197,14 @@ fn build_post_review_lane_statuses_skips_external_review_when_disabled() {
 	assert_eq!(lanes[0].classification, "ready_to_land");
 	assert_eq!(lanes[0].reason, "non_github_review_ready_to_land");
 	assert_eq!(lanes[0].pr_url.as_deref(), Some(pr_url));
+	assert!(
+		lanes[0]
+			.loop_status
+			.as_ref()
+			.and_then(|status| status.review.as_ref())
+			.is_none(),
+		"ready_to_land must not project a pending review checkpoint"
+	);
 }
 
 #[test]
@@ -349,6 +365,14 @@ fn build_post_review_lane_statuses_ignores_non_external_review_signals() {
 		assert_eq!(lanes.len(), 1);
 		assert_eq!(lanes[0].classification, "wait_for_review");
 		assert_eq!(lanes[0].reason, expected_reason);
+		assert!(
+			lanes[0]
+				.loop_status
+				.as_ref()
+				.and_then(|status| status.review.as_ref())
+				.is_none(),
+			"wait_for_review must not project a repair review checkpoint"
+		);
 	}
 }
 

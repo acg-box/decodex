@@ -447,9 +447,9 @@ pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
 
 pub(crate) fn print_private_evidence(request: EvidenceRequest<'_>) -> Result<()> {
 	let state_store = runtime::open_runtime_store()?;
-	let Some(config_path) = resolve_config_path(request.config_path, &state_store)? else {
+	let Some(config_path) = resolve_private_evidence_config_path(&request, &state_store)? else {
 		eyre::bail!(
-			"No Decodex project config found. Pass this command's --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
+			"No Decodex project config found. Pass this command's --config <PROJECT_DIR>, pass --project <SERVICE_ID>, or register one with `decodex project add <PROJECT_DIR>`."
 		);
 	};
 	let config = ServiceConfig::from_path(&config_path)?;
@@ -465,6 +465,23 @@ pub(crate) fn print_private_evidence(request: EvidenceRequest<'_>) -> Result<()>
 	}
 
 	Ok(())
+}
+
+fn resolve_private_evidence_config_path(
+	request: &EvidenceRequest<'_>,
+	state_store: &StateStore,
+) -> Result<Option<PathBuf>> {
+	if request.config_path.is_some() && request.project_id.is_some() {
+		eyre::bail!(
+			"Pass either --config <PROJECT_DIR> or --project <SERVICE_ID> for evidence readback, not both."
+		);
+	}
+
+	if let Some(project_id) = request.project_id {
+		return runtime::registered_config_path_for_project_id(state_store, project_id).map(Some);
+	}
+
+	resolve_config_path(request.config_path, state_store)
 }
 
 fn status_should_attempt_operator_snapshot_cache(live: bool) -> bool {
