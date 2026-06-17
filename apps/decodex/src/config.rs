@@ -22,6 +22,7 @@ const PROJECT_CONFIG_FILE_NAME: &str = "project.toml";
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServiceConfig {
 	service_id: String,
+	config_path: PathBuf,
 	repo_root: PathBuf,
 	worktree_root: PathBuf,
 	workflow_path: PathBuf,
@@ -35,8 +36,9 @@ impl ServiceConfig {
 	pub fn parse_toml(input: &str) -> Result<Self> {
 		let config_dir = canonicalize_path_best_effort(&env::current_dir()?);
 		let document = toml::from_str::<ServiceConfigDocument>(input)?;
+		let config_path = config_dir.join(PROJECT_CONFIG_FILE_NAME);
 
-		Self::from_document(document, &config_dir)
+		Self::from_document(document, &config_dir, config_path)
 	}
 
 	/// Resolve the canonical `project.toml` path for a Decodex project directory.
@@ -51,12 +53,17 @@ impl ServiceConfig {
 		let input = fs::read_to_string(&path)?;
 		let document = toml::from_str::<ServiceConfigDocument>(&input)?;
 
-		Self::from_document(document, &config_dir)
+		Self::from_document(document, &config_dir, path)
 	}
 
 	/// Stable identifier for this target service config.
 	pub fn service_id(&self) -> &str {
 		&self.service_id
+	}
+
+	/// Absolute path to this project's `project.toml`.
+	pub fn config_path(&self) -> &Path {
+		&self.config_path
 	}
 
 	/// Absolute repository root used for the target checkout.
@@ -94,7 +101,11 @@ impl ServiceConfig {
 		&self.privacy_classifier
 	}
 
-	fn from_document(document: ServiceConfigDocument, config_dir: &Path) -> Result<Self> {
+	fn from_document(
+		document: ServiceConfigDocument,
+		config_dir: &Path,
+		config_path: PathBuf,
+	) -> Result<Self> {
 		document.validate()?;
 
 		let repo_root = document.paths.resolve_repo_root(config_dir)?;
@@ -103,6 +114,7 @@ impl ServiceConfig {
 
 		Ok(Self {
 			service_id: document.service_id,
+			config_path: canonicalize_path_best_effort(&config_path),
 			repo_root: repo_root.to_path_buf(),
 			worktree_root: document.paths.resolve_worktree_root(&repo_root)?,
 			workflow_path: config_dir.join(WORKFLOW_FILE_NAME),

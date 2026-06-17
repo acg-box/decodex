@@ -63,7 +63,7 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	);
 	assert_eq!(
 		index_json["run_capsules"][0]["private_evidence"]["read_command"],
-		"decodex evidence PUB-101 --run-id run-1 --attempt 1 --json"
+		"decodex evidence --config project.toml PUB-101 --run-id run-1 --attempt 1 --json"
 	);
 	assert_eq!(
 		index_json["blockers"][0]["blocker_snapshot_path"],
@@ -213,6 +213,7 @@ fn private_evidence_readback_summarizes_payloads_without_connector() {
 
 	let request = EvidenceRequest {
 		config_path: None,
+		project_id: None,
 		issue: "PUB-101",
 		run_id: Some("run-1"),
 		attempt_number: Some(1),
@@ -306,6 +307,7 @@ fn agent_evidence_authority_boundary_readback_recommends_candidates_without_payl
 
 	let request = EvidenceRequest {
 		config_path: None,
+		project_id: None,
 		issue: "PUB-111",
 		run_id: Some("run-boundary"),
 		attempt_number: Some(1),
@@ -409,6 +411,7 @@ fn agent_evidence_private_readback_summarizes_authority_decision_request_without
 
 	let request = EvidenceRequest {
 		config_path: None,
+		project_id: None,
 		issue: "PUB-112",
 		run_id: Some("run-decision-request"),
 		attempt_number: Some(1),
@@ -455,6 +458,7 @@ fn private_evidence_readback_reports_missing_events_for_known_run() {
 
 	let request = EvidenceRequest {
 		config_path: None,
+		project_id: None,
 		issue: "PUB-102",
 		run_id: Some("run-empty"),
 		attempt_number: Some(1),
@@ -499,6 +503,7 @@ fn private_evidence_readback_direct_lookup_uses_stored_issue_id() {
 
 	let request = EvidenceRequest {
 		config_path: None,
+		project_id: None,
 		issue: "PUB-101",
 		run_id: Some("run-detached"),
 		attempt_number: Some(3),
@@ -517,6 +522,129 @@ fn private_evidence_readback_direct_lookup_uses_stored_issue_id() {
 	assert_eq!(readback.issue_identifier.as_deref(), Some("PUB-101"));
 	assert_eq!(readback.latest_event_type.as_deref(), Some("progress_checkpoint"));
 	assert!(readback.warnings.is_empty());
+}
+
+#[test]
+fn private_evidence_readback_returns_manual_adopt_events_and_stable_command() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let run_id = "pub-1579-manual-adopt-2-de5a4c6bf98a";
+
+	state_store
+		.record_run_attempt(run_id, "issue-pub-1579", 2, "succeeded")
+		.expect("manual adopt run should persist");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			"issue-pub-1579",
+			run_id,
+			2,
+			"review_handoff_adopt",
+			serde_json::json!({
+				"schema": "decodex.review_handoff_recovery_private_event/1",
+				"event": "review_handoff_adopt",
+				"writeback_stage": "active_label_checked",
+				"issue_identifier": "PUB-1579",
+				"branch": "x/pubfi-mono-pub-1579",
+				"worktree_path": ".worktrees/PUB-1579",
+				"pr_url": "https://github.com/helixbox/pubfi-mono/pull/340",
+				"pr_head_sha": "4080f5e000000000000000000000000000000000",
+				"pr_base_ref": "main",
+				"pr_state": "OPEN",
+				"mergeable": "MERGEABLE",
+				"merge_state_status": "CLEAN",
+				"status_check_rollup_state": "SUCCESS",
+				"active_label_present": false,
+				"active_label_restored": true,
+				"existing_retained_worktree_mapping": true,
+				"existing_review_handoff_marker": false,
+				"manual_takeover_adopt": true,
+				"next_action": "continue retained post-review lifecycle"
+			}),
+		)
+		.expect("manual adopt private evidence should append");
+
+	let request = EvidenceRequest {
+		config_path: None,
+		project_id: None,
+		issue: "PUB-1579",
+		run_id: Some(run_id),
+		attempt_number: Some(2),
+		json: true,
+		include_payload: false,
+	};
+	let readback = orchestrator::build_private_evidence_readback(
+		&state_store,
+		&config,
+		&request,
+	)
+	.expect("manual adopt evidence should read");
+	let expected_command = format!(
+		"decodex evidence --config {} PUB-1579 --run-id {run_id} --attempt 2 --json",
+		config.config_path().display()
+	);
+
+	assert_eq!(readback.event_count, 1);
+	assert_eq!(readback.issue_id, "issue-pub-1579");
+	assert_eq!(readback.issue_identifier.as_deref(), Some("PUB-1579"));
+	assert_eq!(readback.latest_event_type.as_deref(), Some("review_handoff_adopt"));
+	assert_eq!(readback.read_command, expected_command);
+	assert!(readback.warnings.is_empty());
+}
+
+#[test]
+fn private_evidence_readback_shell_quotes_config_paths_with_spaces() {
+	let temp_dir = TempDir::new().expect("temp dir should create");
+	let repo_root = temp_dir.path().join("parent space/target-repo");
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let run_id = "pub-space-attempt-1";
+
+	fs::create_dir_all(&repo_root).expect("repo root should exist");
+
+	write_service_config(
+		&repo_root,
+		&sample_service_config_toml("pubfi", "HOME", "HOME", None, ReviewLevel::Strict),
+	);
+
+	let config = load_service_config(&repo_root);
+
+	state_store
+		.record_run_attempt(run_id, "issue-space", 1, "failed")
+		.expect("run should persist");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			"issue-space",
+			run_id,
+			1,
+			"harness_outcome",
+			serde_json::json!({"schema": "decodex.harness_outcome/1"}),
+		)
+		.expect("private evidence should append");
+
+	let request = EvidenceRequest {
+		config_path: None,
+		project_id: None,
+		issue: "issue-space",
+		run_id: Some(run_id),
+		attempt_number: Some(1),
+		json: true,
+		include_payload: false,
+	};
+	let readback = orchestrator::build_private_evidence_readback(
+		&state_store,
+		&config,
+		&request,
+	)
+	.expect("private evidence should read");
+
+	assert_eq!(
+		readback.read_command,
+		format!(
+			"decodex evidence --config '{}' issue-space --run-id {run_id} --attempt 1 --json",
+			config.config_path().display()
+		)
+	);
 }
 
 #[test]
@@ -553,6 +681,7 @@ fn agent_evidence_harness_outcome_records_validation_review_and_repair_signals()
 
 	let request = EvidenceRequest {
 		config_path: None,
+		project_id: None,
 		issue: "issue-harness",
 		run_id: Some("run-harness"),
 		attempt_number: Some(2),
@@ -567,6 +696,81 @@ fn agent_evidence_harness_outcome_records_validation_review_and_repair_signals()
 	.expect("private evidence should read");
 
 	assert_harness_private_readback(&readback);
+}
+
+#[test]
+fn harness_outcome_does_not_report_validation_failed_for_review_no_effective_diff() {
+	let (_temp_dir, _config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+
+	state_store
+		.record_run_attempt("run-review-stalled", "issue-review-stalled", 1, "failed")
+		.expect("run should persist");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			"issue-review-stalled",
+			"run-review-stalled",
+			1,
+			"review_checkpoint",
+			serde_json::json!({
+				"phase": "handoff",
+				"status": "findings",
+				"head_sha": "abc123",
+				"nonclean_rounds": 2,
+				"review": {
+					"accepted_findings": [
+						{"summary": "remove stale storage docs"},
+						{"summary": "update runbook handoff evidence"}
+					],
+					"rejected_findings": []
+				}
+			}),
+		)
+		.expect("review checkpoint should append");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			"issue-review-stalled",
+			"run-review-stalled",
+			1,
+			"loop_guardrail_checkpoint",
+			serde_json::json!({
+				"schema": "decodex.loop_guardrail_checkpoint/1",
+				"reason": "no_effective_diff",
+				"consecutive_count": 1,
+				"threshold": 3,
+				"source_error_class": null,
+				"details": {
+					"effective_delta_present": false
+				}
+			}),
+		)
+		.expect("guardrail checkpoint should append");
+
+	let recorded = orchestrator::record_harness_outcome_for_issue_run(
+		&state_store,
+		HarnessOutcomeRecordInput {
+			project_id: TEST_SERVICE_ID,
+			issue_id: "issue-review-stalled",
+			issue_identifier: "PUB-1579",
+			run_id: "run-review-stalled",
+			attempt_number: 1,
+			outcome: HarnessOutcomeKind::RetryableFailure,
+			error_class: Some("retryable_execution_failure"),
+			validation_result: None,
+			pr_url: None,
+		},
+	)
+	.expect("harness outcome should record");
+	let payload = recorded.payload();
+
+	assert_eq!(payload["validation"]["result"], "not_recorded");
+	assert_eq!(payload["validation"]["failure_count"], 0);
+	assert_eq!(payload["validation"]["failure_classes"], serde_json::json!([]));
+	assert_eq!(payload["manual_attention"], Value::Null);
+
+	assert_harness_payload_candidate(payload, "review_repair_no_effective_diff_after_findings");
 }
 
 fn assert_harness_outcome_payload(payload: &Value) {
@@ -807,6 +1011,7 @@ fn harness_eval_fixture_recommends_contract_improvement_without_payload_leakage(
 
 	let request = EvidenceRequest {
 		config_path: None,
+		project_id: None,
 		issue: issue_identifier,
 		run_id: Some(run_id),
 		attempt_number: Some(attempt_number),

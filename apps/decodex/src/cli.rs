@@ -670,6 +670,9 @@ impl DiagnoseCommand {
 struct EvidenceCommand {
 	#[command(flatten)]
 	project_config: ProjectConfigArgs,
+	/// Resolve this evidence readback through a registered Decodex project id.
+	#[arg(long, value_name = "SERVICE_ID")]
+	project: Option<String>,
 	/// Issue identifier or local issue id to inspect.
 	issue: String,
 	/// Restrict readback to one run id. Defaults to the latest local run for the issue.
@@ -689,6 +692,7 @@ impl EvidenceCommand {
 	fn run(&self) -> Result<()> {
 		orchestrator::print_private_evidence(EvidenceRequest {
 			config_path: self.project_config.as_path(),
+			project_id: self.project.as_deref(),
 			issue: &self.issue,
 			run_id: self.run_id.as_deref(),
 			attempt_number: self.attempt,
@@ -3029,12 +3033,38 @@ mod tests {
 			cli.command,
 			Command::Evidence(EvidenceCommand {
 				project_config: ProjectConfigArgs { config: Some(config) },
+				project: None,
 				issue,
 				run_id: Some(_),
 				attempt: Some(2),
 				json: true,
 				include_payload: true,
 			}) if config == Path::new("./project.toml") && issue == "PUB-101"
+		));
+	}
+
+	#[test]
+	fn parses_evidence_with_registered_project_id() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"evidence",
+			"--project",
+			"pubfi-mono",
+			"PUB-101",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Evidence(EvidenceCommand {
+				project_config: ProjectConfigArgs { config: None },
+				project: Some(project),
+				issue,
+				run_id: None,
+				attempt: None,
+				json: true,
+				include_payload: false,
+			}) if project == "pubfi-mono" && issue == "PUB-101"
 		));
 	}
 
