@@ -7,6 +7,12 @@
   and profile validation.
 - Added `docs/reference/docs-knowledge-map.md` to evaluate the practical OKF/LLM Wiki
   value in this repository and connect specialized concepts back into the docs graph.
+- Added typed Authority Boundary surfaces and policy decisions so internal
+  implementation recovery can continue automatically while high-risk surfaces require
+  enhanced evidence, landing blocks, or human decisions.
+- Clarified that architecture recovery infers Authority Boundary surfaces from
+  retained tracked diffs and that `requires_enhanced_evidence` and `block_landing`
+  clear only after a clean review checkpoint for the current lane head.
 - Added `docs/spec/okf-knowledge-layer.md` to separate portable OKF engine behavior,
   LLM Wiki graph/retrieval behavior, repository-memory anchors, and the strict
   Decodex docs profile.

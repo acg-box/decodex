@@ -6,7 +6,9 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-last_verified: 2026-06-16
+code_refs: [apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/types.rs]
+drift_watch: [decodex evidence, authority_boundary_check, architecture_recovery_packet, private_execution_evidence_readback]
+last_verified: 2026-06-17
 ---
 # Agent Evidence
 
@@ -169,8 +171,9 @@ The readback includes:
   summaries
 - Authority Boundary Check summaries when `authority_boundary_check` events are
   present. Default readback may expose the event type, payload keys, disposition
-  previews, and sanitized improvement candidates, but not raw changed-surface payloads
-  unless `--include-payload` is explicitly requested.
+  previews, policy decision, enhanced-evidence and landing-block flags, and sanitized
+  improvement candidates, but not raw changed-surface payloads unless
+  `--include-payload` is explicitly requested.
 - Authority decision request summaries when `authority_decision_request` events are
   present. Default readback may expose the decision request id, phase, reason,
   boundary, recommendation, resume condition, and next action, but not retained
@@ -185,9 +188,10 @@ The readback includes:
 - Architecture Recovery Packet summaries when `architecture_recovery_packet`,
   `architecture_recovery_started`, or `architecture_recovery_terminal` events are
   present. Default readback may expose the recovery reason code, guardrail reason,
-  boundary disposition, recovery budget state, and compact next action, but not raw
-  retained diffs, transcript text, logs, credentials, or full private packet payloads
-  unless `--include-payload` is explicitly requested for local repair.
+  boundary disposition, boundary policy decision, enhanced-evidence and landing-block
+  flags, recovery budget state, and compact next action, but not raw retained diffs,
+  transcript text, logs, credentials, or full private packet payloads unless
+  `--include-payload` is explicitly requested for local repair.
 - harness improvement candidates derived from `decodex.harness_outcome/1` events or,
   when no harness outcome has been recorded yet, directly from private validation,
   review, guardrail, authority-boundary, and architecture-recovery signals

@@ -79,9 +79,12 @@ evidence.
    rounds stop the current repair strategy instead of continuing patch churn.
    Repeated validation failures do the same. Engineering convergence failures may
    continue only through autonomous architecture recovery after the Authority
-   Boundary Check is `within_authority` and recovery budget remains; `blocked`,
-   `needs_architecture_review`, external blockers, insufficient evidence, or exhausted
-   recovery budget become human-required stops.
+   Boundary Check policy allows autonomous recovery and recovery budget remains.
+   `requires_human_decision`, `blocked`, `needs_architecture_review`, external
+   blockers, unresolved authority evidence, or exhausted recovery budget become
+   human-required stops. `requires_enhanced_evidence` and `block_landing` preserve
+   their evidence or landing restrictions while keeping implementation recovery
+   automatic when the policy allows it.
 
 6. Preserve uncovered direction as research feedback.
 

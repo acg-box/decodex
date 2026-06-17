@@ -92,9 +92,35 @@ fn build_architecture_recovery_context(
 		.and_then(|budget| budget.get("max_attempts"))
 		.and_then(Value::as_u64)
 		.unwrap_or(1);
+	let policy_decision = payload
+		.get("boundary_policy_decision")
+		.and_then(Value::as_str)
+		.unwrap_or("auto_continue");
+	let requires_enhanced_evidence = payload
+		.get("requires_enhanced_evidence")
+		.and_then(Value::as_bool)
+		.unwrap_or(matches!(
+			policy_decision,
+			"requires_enhanced_evidence" | "block_landing"
+		));
+	let blocks_landing = payload
+		.get("blocks_landing")
+		.and_then(Value::as_bool)
+		.unwrap_or(policy_decision == "block_landing");
+	let mut policy_guidance = format!("Authority policy `{policy_decision}` applies");
+
+	if requires_enhanced_evidence {
+		policy_guidance.push_str("; preserve enhanced evidence before review handoff or landing");
+	}
+	if blocks_landing {
+		policy_guidance
+			.push_str("; keep landing blocked until validation or review-policy evidence is restored");
+	}
+
+	policy_guidance.push('.');
 
 	Some(format!(
-		"Architecture recovery context\n- Decodex recorded `architecture_recovery_started` for guardrail `{guardrail_reason}` after an Authority Boundary Check returned `within_authority`.\n- This is autonomous architecture recovery attempt {recovery_attempt} of {recovery_max}; start a materially different implementation strategy instead of repeating the ineffective repair.\n- Preserve the accepted Decision Contract, public API/config behavior, and validation/review gates. Do not ask the user through chat while detached; use manual attention only if the next viable action crosses authority."
+		"Architecture recovery context\n- Decodex recorded `architecture_recovery_started` for guardrail `{guardrail_reason}` after an Authority Boundary Check returned policy `{policy_decision}`.\n- This is autonomous architecture recovery attempt {recovery_attempt} of {recovery_max}; start a materially different implementation strategy instead of repeating the ineffective repair.\n- {policy_guidance}\n- Preserve the accepted Decision Contract, public API/config behavior, and validation/review gates. Do not ask the user through chat while detached; use manual attention only if the next viable action crosses authority."
 	))
 }
 
