@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/research_design.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
 drift_watch: [phase_goal, docs_impact, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
-last_verified: 2026-06-16
+last_verified: 2026-06-17
 ---
 # Loop Runtime Specification
 
@@ -349,9 +349,11 @@ The durable intake-planning payload is versioned as
 runtime SQLite as part of, or directly adjacent to, the internal
 `decodex.execution_program/1` record. The adjacent runtime readback rows are
 `program_intake_plans` and `program_issue_mappings`; they are derived from the
-versioned program payload and exist so operator status, scheduling, and tests can query intake state without
-copying private graph payloads into Linear. Linear issue descriptions, Linear comments,
-and operator summaries may expose only sparse public projections.
+versioned program payload and exist so operator status, scheduling, and tests can query
+intake state without copying private graph payloads into Linear. Linear issue
+descriptions and comments must not expose Execution Program ids, Program node ids, or
+raw graph mechanics; public operator summaries may expose only sparse projections such
+as counts, public issue identifiers, and coarse readiness reason codes.
 
 The payload carries:
 
@@ -375,12 +377,15 @@ states, validation expectations, and Decodex lifecycle writeback.
 
 Every mapped normal issue must carry a generic dispatch briefing that a cold-start
 implementation lane can execute without replaying chat or reading private runtime
-state. A complete Decodex-planned briefing names one outcome, required reading,
-in-scope work, explicit non-goals, current-tree landing zone, ownership boundary,
-acceptance criteria, validation expectations, and any real dependencies, blockers, or
-conflict domains. At minimum, runtime eligibility rejects a machine-only fenced block
-as the issue description; private pointers, progress checkpoints, review summaries,
-PR bodies, or runtime events do not substitute for the issue briefing.
+state. A complete Decodex-planned briefing names one outcome, public authority
+summary, required reading, in-scope work, explicit non-goals, current-tree landing
+zone, ownership boundary, acceptance criteria, validation expectations, stop
+conditions, and any real dependencies, blockers, or conflict domains. The public
+authority summary may cite the accepted Decision Contract or source issue, but it must
+not render the internal Execution Program id or node id. At minimum, runtime
+eligibility rejects a machine-only fenced block as the issue description; private
+pointers, progress checkpoints, review summaries, PR bodies, or runtime events do not
+substitute for the issue briefing.
 
 The operator CLI surface for promoted goals is
 `decodex intake goal --project <service-id> <CONTRACT_ID> --dry-run`, or the same
@@ -389,8 +394,10 @@ and existing generated-issue links, then prints the proposed normal issue briefs
 dependencies, conflict domains, and dispatch plan without mutating Linear and without
 persisting local runtime rows. `--apply` is the explicit mutation boundary: it creates
 or updates generated normal Linear issue descriptions, links generated issue ids and
-node ids back to the Decision Contract, and stores the paired Program Intake Plan and
-Execution Program in runtime SQLite. Apply must not run implementation inline and
+internal node ids in runtime state, and stores the paired Program Intake Plan and
+Execution Program in runtime SQLite. The generated Linear description remains a
+natural-language issue brief and does not include those internal ids. Apply must not
+run implementation inline and
 must not apply or remove `decodex:queued:<service-id>`; the persisted Program is then
 eligible for direct scheduler dispatch. If the contract is latent, rejected, still needs a human
 decision, carries unresolved missing decisions, or lacks proposed issue summaries,
