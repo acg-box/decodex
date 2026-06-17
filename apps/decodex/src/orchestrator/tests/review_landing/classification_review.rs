@@ -603,6 +603,276 @@ fn classify_post_review_lane_ready_to_land_allows_zero_required_review_repos() {
 }
 
 #[test]
+fn classify_post_review_lane_blocks_landing_for_unresolved_authority_boundary() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Review", &[]);
+	let head_oid = String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
+	let worktree_path = temp_dir.path().join("lane");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.upsert_worktree(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	let worktree = state_store
+		.list_worktrees(TEST_SERVICE_ID)
+		.expect("worktree list should succeed")
+		.into_iter()
+		.next()
+		.expect("worktree should exist");
+	let snapshot = PostReviewLaneSnapshot {
+		issue,
+		worktree,
+		review_handoff: Some(sample_review_handoff_marker(
+			"x/pubfi-pub-101",
+			"https://github.com/hack-ink/decodex/pull/174",
+			&head_oid,
+		)),
+		local_branch_name: Some(String::from("x/pubfi-pub-101")),
+		local_head_oid: Some(head_oid.clone()),
+	};
+
+	seed_review_orchestration_marker(
+		&state_store,
+		TEST_SERVICE_ID,
+		&snapshot.issue.id,
+		&sample_review_orchestration_marker(
+			"x/pubfi-pub-101",
+			"https://github.com/hack-ink/decodex/pull/174",
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
+	);
+	record_block_landing_authority_boundary(&state_store, &snapshot.issue);
+
+	let mut review_state = sample_pull_request_review_state(
+		"https://github.com/hack-ink/decodex/pull/174",
+		"x/pubfi-pub-101",
+		&head_oid,
+		None,
+		"MERGEABLE",
+		"CLEAN",
+		Some("SUCCESS"),
+		0,
+	);
+
+	add_external_review_ack(&mut review_state);
+	add_external_review_pass(&mut review_state);
+
+	let classification = orchestrator::classify_post_review_lane(
+		&snapshot,
+		&state_store,
+		&sample_workflow(),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state.clone())]),
+	)
+	.expect("classification should succeed");
+
+	assert_eq!(classification.decision, PostReviewLaneDecision::NeedsReviewRepair);
+	assert_eq!(classification.reason, "authority_boundary_blocks_landing");
+
+	record_clean_review_checkpoint_for_head(&state_store, &snapshot.issue.id, &head_oid);
+
+	let classification = orchestrator::classify_post_review_lane(
+		&snapshot,
+		&state_store,
+		&sample_workflow(),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
+	)
+	.expect("classification should succeed");
+
+	assert_eq!(classification.decision, PostReviewLaneDecision::ReadyToLand);
+	assert_eq!(classification.reason, "external_review_passed_strict");
+}
+
+#[test]
+fn classify_post_review_lane_requires_enhanced_evidence_for_authority_boundary() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Review", &[]);
+	let head_oid = String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
+	let worktree_path = temp_dir.path().join("lane");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.upsert_worktree(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	let worktree = state_store
+		.list_worktrees(TEST_SERVICE_ID)
+		.expect("worktree list should succeed")
+		.into_iter()
+		.next()
+		.expect("worktree should exist");
+	let snapshot = PostReviewLaneSnapshot {
+		issue,
+		worktree,
+		review_handoff: Some(sample_review_handoff_marker(
+			"x/pubfi-pub-101",
+			"https://github.com/hack-ink/decodex/pull/174",
+			&head_oid,
+		)),
+		local_branch_name: Some(String::from("x/pubfi-pub-101")),
+		local_head_oid: Some(head_oid.clone()),
+	};
+
+	seed_review_orchestration_marker(
+		&state_store,
+		TEST_SERVICE_ID,
+		&snapshot.issue.id,
+		&sample_review_orchestration_marker(
+			"x/pubfi-pub-101",
+			"https://github.com/hack-ink/decodex/pull/174",
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
+	);
+	record_requires_enhanced_evidence_authority_boundary(&state_store, &snapshot.issue);
+
+	let mut review_state = sample_pull_request_review_state(
+		"https://github.com/hack-ink/decodex/pull/174",
+		"x/pubfi-pub-101",
+		&head_oid,
+		None,
+		"MERGEABLE",
+		"CLEAN",
+		Some("SUCCESS"),
+		0,
+	);
+
+	add_external_review_ack(&mut review_state);
+	add_external_review_pass(&mut review_state);
+
+	let classification = orchestrator::classify_post_review_lane(
+		&snapshot,
+		&state_store,
+		&sample_workflow(),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state.clone())]),
+	)
+	.expect("classification should succeed");
+
+	assert_eq!(classification.decision, PostReviewLaneDecision::NeedsReviewRepair);
+	assert_eq!(
+		classification.reason,
+		"authority_boundary_requires_enhanced_evidence"
+	);
+
+	record_clean_review_checkpoint_for_head(&state_store, &snapshot.issue.id, &head_oid);
+
+	let classification = orchestrator::classify_post_review_lane(
+		&snapshot,
+		&state_store,
+		&sample_workflow(),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
+	)
+	.expect("classification should succeed");
+
+	assert_eq!(classification.decision, PostReviewLaneDecision::ReadyToLand);
+	assert_eq!(classification.reason, "external_review_passed_strict");
+}
+
+fn record_block_landing_authority_boundary(state_store: &StateStore, issue: &TrackerIssue) {
+	record_policy_authority_boundary(
+		state_store,
+		issue,
+		AuthorityBoundarySurface::ReviewPolicy,
+		AuthorityBoundaryPolicyDecision::BlockLanding,
+		"review_churn",
+		"Review policy changed during recovery.",
+		"Review policy evidence must be restored before landing.",
+	);
+}
+
+fn record_requires_enhanced_evidence_authority_boundary(
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+) {
+	record_policy_authority_boundary(
+		state_store,
+		issue,
+		AuthorityBoundarySurface::PublicApi,
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence,
+		"validation_repeat",
+		"Public API changed during recovery.",
+		"Public API changes require enhanced evidence before landing.",
+	);
+}
+
+fn record_policy_authority_boundary(
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+	surface: AuthorityBoundarySurface,
+	policy_decision: AuthorityBoundaryPolicyDecision,
+	attempted_recovery_reason: &str,
+	change_summary: &str,
+	final_disposition_reason: &str,
+) {
+	orchestrator::record_authority_boundary_check_private_event(
+		state_store,
+		AuthorityBoundaryCheckInput {
+			project_id: TEST_SERVICE_ID,
+			issue_id: &issue.id,
+			issue_identifier: &issue.identifier,
+			run_id: "run-boundary",
+			attempt_number: 1,
+			decision_contract_ids: Vec::new(),
+			attempted_recovery_reason,
+			changed_surfaces: vec![AuthorityBoundaryChangedSurface {
+				surface,
+				change_summary,
+				policy_decision,
+				legacy_disposition: policy_decision.disposition(),
+			}],
+			policy_decision,
+			disposition: policy_decision.disposition(),
+			final_disposition_reason,
+			improvement_signals: Vec::new(),
+		},
+	)
+	.expect("authority boundary check should persist");
+}
+
+fn record_clean_review_checkpoint_for_head(
+	state_store: &StateStore,
+	issue_id: &str,
+	head_oid: &str,
+) {
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			issue_id,
+			"run-review",
+			2,
+			"review_checkpoint",
+			serde_json::json!({
+				"phase": "handoff",
+				"status": "clean",
+				"head_sha": head_oid,
+				"nonclean_rounds": 0,
+				"review": {
+					"accepted_findings": [],
+					"rejected_findings": [],
+				}
+			}),
+		)
+		.expect("clean review checkpoint should persist");
+}
+
+#[test]
 fn classify_post_review_lane_blocks_stale_review_handoff_head_without_lineage_proof() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");

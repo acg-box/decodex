@@ -189,15 +189,17 @@ This boundary does not create a project-local runtime database contract. The run
 - Authority Envelope: The accepted boundary from the Decision Contract, project
   policy, issue briefing, and explicit user direction. Lane recovery may change
   implementation details inside this envelope, but product goals, accepted behavior,
-  public API/config contracts, security/credential/billing/data-loss risk, validation
-  or review-gate strength, lane ownership, and accepted contract fields require human
-  authority when they would change.
+  lane ownership, objective/non-goal scope, and accepted contract fields require human
+  authority when they would change. Public API, config, security, data, billing, and
+  privacy surfaces require enhanced evidence before handoff or landing. Validation or
+  review-policy weakening blocks landing until the gate is restored.
 - Authority Boundary Check: A private execution event with schema
   `decodex.authority_boundary_check/1` and event type `authority_boundary_check`.
   It records issue id, issue identifier, run id, attempt number, Decision Contract ids,
-  attempted recovery reason, changed surfaces, final disposition
-  (`within_authority`, `requires_human`, or `insufficient_evidence`), final reason, and
-  sanitized harness improvement signals.
+  attempted recovery reason, typed changed surfaces, per-surface and top-level policy
+  decisions (`auto_continue`, `requires_enhanced_evidence`, `block_landing`, or
+  `requires_human_decision`), policy evidence flags, final legacy disposition, final
+  reason, and sanitized harness improvement signals.
 - Terminal tracker state: A state that should not be auto-started by `decodex`. The default set is `Done`, `Canceled`, and `Duplicate`.
 
 ## Eligibility
@@ -457,10 +459,11 @@ Decodex records local `loop_guardrail_checkpoint` evidence and updates the
 `loop_guardrail_checkpoints` row for any matching convergence reason. Three
 consecutive observations with the same fingerprint stop the current ineffective
 strategy. Before terminalizing the lane, Decodex records an Architecture Recovery
-Packet and an Authority Boundary Check. If the disposition is `within_authority` and
-the bounded recovery budget remains, Decodex records `architecture_recovery_started`
-and schedules a materially different recovery strategy. Otherwise it records a
-terminal recovery reason such as `contract_boundary_required`,
+Packet and an Authority Boundary Check. If the policy decision allows autonomous
+recovery and the bounded recovery budget remains, Decodex records
+`architecture_recovery_started` and schedules a materially different recovery
+strategy. Otherwise it records a terminal recovery reason such as
+`contract_boundary_required`,
 `external_dependency_required`, or `architecture_recovery_exhausted` and routes the
 lane through the human-required failure path. Retryable repo-gate command failures
 record both `validation_repeat` and `remaining_delta_unchanged` observations.
@@ -531,9 +534,10 @@ turn boundaries.
 
 The review-policy human-required failure path is also the boundary for any later
 runtime-owned research escalation. The current runtime must not dispatch research from
-a review stop. Exhausted review findings may enter architecture recovery only as an
-implementation-strategy change after the Authority Boundary Check returns
-`within_authority`; `needs_architecture_review` and `blocked` review stops remain
+a review stop. Exhausted review findings may enter architecture recovery only as a
+review-policy surface with `block_landing`, which permits a materially different
+implementation strategy but keeps handoff or landing blocked until review evidence is
+restored; `needs_architecture_review` and `blocked` review stops remain
 human-required. Future research escalation may only consume structured review-stop
 evidence through the adapter contract defined by
 [`review-orchestration.md`](./review-orchestration.md).
@@ -622,10 +626,10 @@ must expose the compact request fields (`phase = human_required`, reason, bounda
 SQLite directly.
 Operator status JSON and dashboard snapshots also expose compact loop readback for
 the same owned run/attempt when available: review level, review phase/status/round,
-architecture recovery reason and budget, boundary-check disposition, and whether the
-lane is still autonomous or has crossed into human-required handling. These fields are
-readback only and do not replace the runtime review-policy, recovery, or boundary
-decisions.
+architecture recovery reason and budget, boundary-check disposition, boundary policy
+decision, enhanced-evidence and landing-block flags, and whether the lane is still
+autonomous or has crossed into human-required handling. These fields are readback only
+and do not replace the runtime review-policy, recovery, or boundary decisions.
 Runtime-owned review-policy stops use either bounded architecture recovery or the same
 human-required failure path, with dedicated `error_class` values:
 
@@ -664,10 +668,12 @@ the next strategy is explicit.
 
 When a stopped lane is eligible for future autonomous recovery, the recovery worker
 must consume the latest Authority Boundary Check or record a fresh one before changing
-implementation direction. `requires_human` and `insufficient_evidence` dispositions,
-external/manual blockers, validation/review weakening, and exhausted recovery budgets
-must route through the human-required path or a later accepted recovery contract; they
-must not be treated as retryable repo-gate failures.
+implementation direction. `requires_human_decision` policy decisions, external/manual
+blockers, objective/non-goal changes, unresolved authority evidence, and exhausted
+recovery budgets must route through the human-required path or a later accepted
+recovery contract. `requires_enhanced_evidence` and `block_landing` decisions are not
+ordinary human gates, but they must preserve the evidence or landing block they name
+and must not be treated as retryable repo-gate failures.
 The supported resume path is deliberate: accept, reject, or revise the requested
 authority change in the issue, Decision Contract, or project policy; then clear
 `decodex:needs-attention` and requeue or resume through Decodex controls. Direct

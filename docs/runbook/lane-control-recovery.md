@@ -6,6 +6,8 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook]
+code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/status.rs]
+drift_watch: [authority_boundary_check, architecture_recovery_packet, architecture_recovery_started, architecture_recovery_terminal, loop_status]
 last_verified: 2026-06-17
 ---
 # Lane-Control Recovery
@@ -102,9 +104,10 @@ or clean labels.
 | Broad steer materially changes the objective or acceptance contract. | Preserve audit and resolve lifecycle explicitly. | Update and requeue the same issue, create a new issue/lane, or route the owned run to manual attention. |
 | Operator wants a different issue or replacement task. | Treat as task replacement, not steer. | Stop or pause through supported controls as needed, then create/update/requeue through the supported lifecycle. |
 | Status or Linear failure summary reports a loop guardrail reason. | Inspect the reason-specific evidence, Architecture Recovery Packet, and Authority Boundary Check. | Follow the loop guardrail recovery table below before clearing `decodex:needs-attention` or requeueing. |
-| Authority Boundary Check reports `within_authority`. | Continue only if lane identity, ownership, and validation evidence still match. | Resume through the supported retained-lane path; keep the boundary-check event as private evidence. |
-| Authority Boundary Check reports `requires_human`. | Stop automatic recovery and preserve the durable decision request. | Keep or apply `decodex:needs-attention`, inspect the Linear decision request and private `authority_decision_request` evidence, then continue only after the issue, Decision Contract, or policy accepts, rejects, or revises the requested authority change. |
-| Authority Boundary Check reports `insufficient_evidence`. | Stop automatic recovery unless later evidence proves the change is inside authority. | Keep or apply `decodex:needs-attention`, capture the missing evidence, and continue only after the Decision Contract, issue, policy, or human direction explicitly authorizes the change. |
+| Authority Boundary Check policy is `auto_continue`. | Continue only if lane identity, ownership, and validation evidence still match. | Resume through the supported retained-lane path; keep the boundary-check event as private evidence. |
+| Authority Boundary Check policy is `requires_enhanced_evidence`. | Continue recovery, but require stronger tests, review, migration, or operator evidence before handoff or landing. | Keep the evidence requirement visible in private evidence and status; do not treat it as a human approval gate by itself. |
+| Authority Boundary Check policy is `block_landing`. | Continue only to restore or strengthen validation/review policy evidence. | Do not hand off or land until the blocked evidence standard is restored and recorded. |
+| Authority Boundary Check policy is `requires_human_decision`. | Stop automatic recovery and preserve the durable decision request. | Keep or apply `decodex:needs-attention`, inspect the Linear decision request and private `authority_decision_request` evidence, then continue only after the issue, Decision Contract, or policy accepts, rejects, or revises the requested authority change. |
 | Evidence is missing, contradictory, or would require guessing whether local work is safe to overwrite. | Stop automatic recovery. | Use manual attention with structured public blockers and keep private evidence local. |
 
 ## Loop Guardrail Recovery
@@ -120,22 +123,23 @@ Current runtime guardrail handling is two-stage:
 2. record or consume an Authority Boundary Check to decide whether autonomous
    architecture recovery may continue
 
-If the boundary check is `within_authority` and recovery budget remains, Decodex may
-record `architecture_recovery_started` and retry with a materially different
-implementation strategy. If the check is `requires_human` or `insufficient_evidence`,
-or if recovery budget is exhausted, Decodex must keep or apply manual attention with a
-typed reason such as `contract_boundary_required`, `external_dependency_required`, or
-`architecture_recovery_exhausted`.
+If the boundary check policy allows autonomous recovery and recovery budget remains,
+Decodex may record `architecture_recovery_started` and retry with a materially
+different implementation strategy. `requires_enhanced_evidence` and `block_landing`
+continue recovery only with their evidence restrictions preserved. If the policy is
+`requires_human_decision`, or if recovery budget is exhausted, Decodex must keep or
+apply manual attention with a typed reason such as `contract_boundary_required`,
+`external_dependency_required`, or `architecture_recovery_exhausted`.
 
 | Guardrail reason | Inspect first | Resume only after |
 | --- | --- | --- |
-| `validation_repeat` | The repeated validation failure, repo-gate output, retained worktree, prior repair attempts, Architecture Recovery Packet, and boundary disposition. | Autonomous recovery may continue only when the boundary is `within_authority` and budget remains; otherwise a human fixes the cause or records new authority. |
-| `no_effective_diff` | The retained worktree status, private retry evidence, whether any useful tracked delta exists, Architecture Recovery Packet, and boundary disposition. | Autonomous recovery may continue only when evidence proves the next strategy is an engineering implementation change inside authority; otherwise a human identifies the next diff, resets intentionally, or updates authority. |
-| `remaining_delta_unchanged` | The unchanged tracked delta, latest validation evidence, Architecture Recovery Packet, and boundary disposition. | The next repair must be bounded, materially different, and inside authority; otherwise a human accepts/resets the patch or updates authority. |
-| `review_churn` or `review_policy_exhausted` | Fresh-context review checkpoints, active/stop finding fingerprints, accepted findings, rejected findings, current head, Architecture Recovery Packet, and boundary disposition. | A materially different implementation strategy may continue only inside authority; architecture/product direction changes require human authority. |
+| `validation_repeat` | The repeated validation failure, repo-gate output, retained worktree, prior repair attempts, Architecture Recovery Packet, and boundary policy. | Autonomous recovery may continue only when the policy is `auto_continue` and budget remains; otherwise a human fixes the cause or records new authority. |
+| `no_effective_diff` | The retained worktree status, private retry evidence, whether any useful tracked delta exists, Architecture Recovery Packet, and boundary policy. | Autonomous recovery may continue only when evidence proves the next strategy is an engineering implementation change inside authority; otherwise a human identifies the next diff, resets intentionally, or updates authority. |
+| `remaining_delta_unchanged` | The unchanged tracked delta, latest validation evidence, Architecture Recovery Packet, and boundary policy. | The next repair must be bounded, materially different, and inside authority; otherwise a human accepts/resets the patch or updates authority. |
+| `review_churn` or `review_policy_exhausted` | Fresh-context review checkpoints, active/stop finding fingerprints, accepted findings, rejected findings, current head, Architecture Recovery Packet, and boundary policy. | A materially different implementation strategy may continue with `block_landing`; architecture/product direction changes require human authority. |
 | `dependency_program_stale` | The open blocker issue, Execution Program readiness, and whether the dependency split is still correct. | Resolve the dependency, refresh/split the program, or update the research/Decision Contract; do not auto-recover as ordinary implementation work. |
 | `uncovered_direction` | The missing requirement, decision, or research gap named in public/private evidence. | A research or Decision Contract captures the missing direction and the issue is updated or requeued from that authority. |
-| `ambiguous_retained_progress` | Retained worktree diff, ownership markers, PR lineage if present, private evidence, and boundary disposition. | A human chooses one path: resume same lane, finish manual repair, or reset/discard the retained patch explicitly. |
+| `ambiguous_retained_progress` | Retained worktree diff, ownership markers, PR lineage if present, private evidence, and boundary policy. | A human chooses one path: resume same lane, finish manual repair, or reset/discard the retained patch explicitly. |
 
 Before treating retained progress as human-owned, check the current run activity
 marker. A `retry_kind` marker means retry scheduling still owns the run. A live
