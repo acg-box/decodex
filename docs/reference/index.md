@@ -19,6 +19,8 @@ Question this index answers: "how is it currently organized or implemented?"
 
 ## Current reference docs
 
+- [`build-test-run.md`](./build-test-run.md) for repo-native setup, build, test, run,
+  validation, task-runner automation, and source-entrypoint commands.
 - [`docs-knowledge-map.md`](./docs-knowledge-map.md) for the current OKF/LLM Wiki
   knowledge-map shape, value evaluation, graph maintenance anchors, and retrieval
   quality observations.
