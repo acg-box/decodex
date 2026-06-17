@@ -1,9 +1,13 @@
 use std::{
+	collections::BTreeSet,
 	env,
 	fmt::Display,
 	fs,
 	io::{self, BufRead as _, BufReader, ErrorKind, Read, Write},
+	net::{IpAddr, TcpListener, TcpStream},
 	path::{Path, PathBuf},
+	str,
+	time::Duration,
 };
 
 use clap::ValueEnum;
@@ -11,13 +15,10 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
 
-use crate::{
-	config::ServiceConfig,
-	orchestrator,
-	prelude::{Result, eyre},
-	runtime,
-	state::StateStore,
-};
+use crate::{config::ServiceConfig, orchestrator, prelude::eyre, runtime, state::StateStore};
+
+/// Safe default listen address for Streamable HTTP MCP.
+pub(crate) const DEFAULT_MCP_HTTP_LISTEN_ADDRESS: &str = "127.0.0.1:8193";
 
 const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 const SERVER_NAME: &str = "decodex";
@@ -31,6 +32,12 @@ const TOOL_OBSERVE: &str = "decodex_observe";
 const TOOL_PLAN: &str = "decodex_plan";
 const TOOL_LANE_CONTROL: &str = "decodex_lane_control";
 const TOOL_ADMIN: &str = "decodex_admin";
+const MCP_HTTP_ENDPOINT_PATH: &str = "/mcp";
+const MCP_HTTP_READ_TIMEOUT: Duration = Duration::from_secs(2);
+const MCP_HTTP_MAX_REQUEST_BYTES: usize = 1_024 * 1_024;
+const MCP_SESSION_HEADER: &str = "Mcp-Session-Id";
+const MCP_CORS_ALLOW_METHODS: &str = "POST, DELETE, OPTIONS";
+const MCP_CORS_ALLOW_HEADERS: &str = "Content-Type, Accept, Mcp-Session-Id";
 
 /// MCP transport supported by the native Decodex gateway.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -38,6 +45,23 @@ const TOOL_ADMIN: &str = "decodex_admin";
 pub(crate) enum McpTransport {
 	/// JSON-RPC messages over stdin/stdout.
 	Stdio,
+	/// MCP Streamable HTTP endpoint for remote-capable clients.
+	StreamableHttp,
+}
+impl McpTransport {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::Stdio => "stdio",
+			Self::StreamableHttp => "streamable-http",
+		}
+	}
+
+	pub(crate) fn default_capability_profile(self) -> McpCapabilityProfile {
+		match self {
+			Self::Stdio => McpCapabilityProfile::Admin,
+			Self::StreamableHttp => McpCapabilityProfile::Observe,
+		}
+	}
 }
 
 /// Capability profile exposed by the Decodex MCP gateway.
@@ -76,11 +100,14 @@ pub(crate) struct McpServeRequest<'a> {
 	pub(crate) transport: McpTransport,
 	pub(crate) config_path: Option<&'a Path>,
 	pub(crate) capability_profile: McpCapabilityProfile,
+	pub(crate) listen_address: &'a str,
+	pub(crate) allowed_origins: &'a [String],
 }
 
 struct McpServer {
 	context: McpContext,
 	capability_profile: McpCapabilityProfile,
+	transport: McpTransport,
 }
 impl McpServer {
 	fn handle_line(&self, line: &str, emit_progress: bool) -> Vec<Value> {
@@ -161,10 +188,14 @@ impl McpServer {
 							.into_iter()
 							.map(McpCapabilityProfile::as_str)
 							.collect::<Vec<_>>(),
-						"transport": "stdio",
+						"transport": self.transport.as_str(),
 						"remoteControl": {
 							"safeDefaultProfile": "observe",
-							"httpTransport": "deferred_to_XY-995",
+							"httpTransport": "streamable-http",
+							"httpEndpoint": MCP_HTTP_ENDPOINT_PATH,
+							"sessionHeader": MCP_SESSION_HEADER,
+							"sseResponses": true,
+							"originValidation": true,
 							"operateAdminTools": "deferred_to_XY-998",
 							"mutatingToolsRequireAuthority": true,
 							"privateEvidencePayloadsExposed": false
@@ -179,7 +210,7 @@ impl McpServer {
 		})
 	}
 
-	fn list_resources(&self) -> Result<Value, McpError> {
+	fn list_resources(&self) -> crate::prelude::Result<Value, McpError> {
 		let mut resources = self.context.docs_resources()?;
 
 		resources.extend(self.context.decision_contract_resources()?);
@@ -255,7 +286,7 @@ impl McpServer {
 		})
 	}
 
-	fn read_resource(&self, params: Option<Value>) -> Result<Value, McpError> {
+	fn read_resource(&self, params: Option<Value>) -> crate::prelude::Result<Value, McpError> {
 		let params = params.ok_or_else(McpError::invalid_params)?;
 		let params = serde_json::from_value::<ReadResourceParams>(params)
 			.map_err(|_| McpError::invalid_params())?;
@@ -276,7 +307,7 @@ impl McpServer {
 		serde_json::json!({ "prompts": mcp_prompts() })
 	}
 
-	fn get_prompt(&self, params: Option<Value>) -> Result<Value, McpError> {
+	fn get_prompt(&self, params: Option<Value>) -> crate::prelude::Result<Value, McpError> {
 		let params = params.ok_or_else(McpError::invalid_params)?;
 		let params = serde_json::from_value::<GetPromptParams>(params)
 			.map_err(|_| McpError::invalid_params())?;
@@ -299,7 +330,7 @@ impl McpServer {
 		serde_json::json!({ "tools": tools })
 	}
 
-	fn call_tool(&self, params: Option<Value>) -> Result<Value, McpError> {
+	fn call_tool(&self, params: Option<Value>) -> crate::prelude::Result<Value, McpError> {
 		let params = params.ok_or_else(McpError::invalid_params)?;
 		let params = serde_json::from_value::<CallToolParams>(params)
 			.map_err(|_| McpError::invalid_params())?;
@@ -380,7 +411,7 @@ struct McpContext {
 	state_store: Option<StateStore>,
 }
 impl McpContext {
-	fn for_process(config_path: Option<&Path>) -> Result<Self> {
+	fn for_process(config_path: Option<&Path>) -> crate::prelude::Result<Self> {
 		let state_store = runtime::open_runtime_store_lazy().ok();
 		let config_path = resolve_context_config_path(config_path, state_store.as_ref())?;
 		let config = config_path.as_ref().map(ServiceConfig::from_path).transpose()?;
@@ -402,7 +433,7 @@ impl McpContext {
 		self.project_id.as_deref()
 	}
 
-	fn docs_resources(&self) -> Result<Vec<McpResource>, McpError> {
+	fn docs_resources(&self) -> crate::prelude::Result<Vec<McpResource>, McpError> {
 		let mut resources = Vec::new();
 
 		push_file_resource(
@@ -450,7 +481,7 @@ impl McpContext {
 		Ok(resources)
 	}
 
-	fn decision_contract_resources(&self) -> Result<Vec<McpResource>, McpError> {
+	fn decision_contract_resources(&self) -> crate::prelude::Result<Vec<McpResource>, McpError> {
 		let Some(project_id) = self.project_id.as_deref() else {
 			return Ok(Vec::new());
 		};
@@ -473,7 +504,7 @@ impl McpContext {
 			.collect())
 	}
 
-	fn read_resource(&self, uri: &str) -> Result<ResourceContent, McpError> {
+	fn read_resource(&self, uri: &str) -> crate::prelude::Result<ResourceContent, McpError> {
 		let resource_uri = ResourceUri::parse(uri)?;
 
 		match resource_uri.host.as_str() {
@@ -485,7 +516,10 @@ impl McpContext {
 		}
 	}
 
-	fn read_docs_resource(&self, uri: &ResourceUri) -> Result<ResourceContent, McpError> {
+	fn read_docs_resource(
+		&self,
+		uri: &ResourceUri,
+	) -> crate::prelude::Result<ResourceContent, McpError> {
 		let path = match uri.segments.as_slice() {
 			[segment] if segment == "index" => self.repo_root.join("docs/index.md"),
 			[segment] if segment == "policy" => self.repo_root.join("docs/policy.md"),
@@ -497,7 +531,10 @@ impl McpContext {
 		read_file_resource(&uri.raw, path, "text/markdown")
 	}
 
-	fn read_research_resource(&self, uri: &ResourceUri) -> Result<ResourceContent, McpError> {
+	fn read_research_resource(
+		&self,
+		uri: &ResourceUri,
+	) -> crate::prelude::Result<ResourceContent, McpError> {
 		let [artifact] = uri.segments.as_slice() else {
 			return Err(McpError::resource_not_found());
 		};
@@ -522,7 +559,7 @@ impl McpContext {
 	fn read_decision_contract_resource(
 		&self,
 		uri: &ResourceUri,
-	) -> Result<ResourceContent, McpError> {
+	) -> crate::prelude::Result<ResourceContent, McpError> {
 		let [contract_id] = uri.segments.as_slice() else {
 			return Err(McpError::resource_not_found());
 		};
@@ -542,7 +579,7 @@ impl McpContext {
 		else {
 			return Err(McpError::resource_not_found());
 		};
-		let value = serde_json::json!({
+		let mut value = serde_json::json!({
 			"schema": "decodex.mcp.decision_contract_resource/1",
 			"project_id": record.project_id(),
 			"source_issue_id": record.source_issue_id(),
@@ -552,10 +589,15 @@ impl McpContext {
 			"decision_contract": record.contract()
 		});
 
+		sanitize_mcp_observability_value(&mut value);
+
 		ResourceContent::json(&uri.raw, value)
 	}
 
-	fn read_project_resource(&self, uri: &ResourceUri) -> Result<ResourceContent, McpError> {
+	fn read_project_resource(
+		&self,
+		uri: &ResourceUri,
+	) -> crate::prelude::Result<ResourceContent, McpError> {
 		let [project_id, resource_kind, rest @ ..] = uri.segments.as_slice() else {
 			return Err(McpError::resource_not_found());
 		};
@@ -707,13 +749,16 @@ struct ResourceContent {
 	text: String,
 }
 impl ResourceContent {
-	fn json(uri: &str, value: Value) -> Result<Self, McpError> {
+	fn json(uri: &str, value: Value) -> crate::prelude::Result<Self, McpError> {
 		let text = serde_json::to_string_pretty(&value).map_err(McpError::internal)?;
 
 		Ok(Self { uri: uri.to_owned(), mime_type: String::from("application/json"), text })
 	}
 
-	fn mcp_observability_json(uri: &str, mut value: Value) -> Result<Self, McpError> {
+	fn mcp_observability_json(
+		uri: &str,
+		mut value: Value,
+	) -> crate::prelude::Result<Self, McpError> {
 		sanitize_mcp_observability_value(&mut value);
 
 		Self::json(uri, value)
@@ -727,7 +772,7 @@ struct ResourceUri {
 	segments: Vec<String>,
 }
 impl ResourceUri {
-	fn parse(uri: &str) -> Result<Self, McpError> {
+	fn parse(uri: &str) -> crate::prelude::Result<Self, McpError> {
 		let parsed = Url::parse(uri).map_err(|_| McpError::invalid_params())?;
 
 		if parsed.scheme() != "decodex" {
@@ -774,8 +819,380 @@ impl McpError {
 	}
 }
 
+struct McpHttpHandler {
+	server: McpServer,
+	sessions: McpHttpSessions,
+	allowed_origins: Vec<String>,
+	listen_address: Option<String>,
+}
+impl McpHttpHandler {
+	fn handle_request_bytes(&mut self, request: &[u8]) -> crate::prelude::Result<Vec<u8>> {
+		let request = match McpHttpRequest::parse(request) {
+			Ok(request) => request,
+			Err(response) => return response.into_bytes(),
+		};
+		let response = self.handle_request(request)?;
+
+		response.into_bytes()
+	}
+
+	fn handle_request(
+		&mut self,
+		request: McpHttpRequest,
+	) -> crate::prelude::Result<McpHttpResponse> {
+		let cors_origin = match self.allowed_cors_origin(&request) {
+			Ok(origin) => origin,
+			Err(()) =>
+				return Ok(McpHttpResponse::json_error(
+					"403 Forbidden",
+					json_rpc_error(Value::Null, -32_000, "Forbidden origin"),
+				)),
+		};
+		let mut response = if request.path != MCP_HTTP_ENDPOINT_PATH {
+			McpHttpResponse::empty("404 Not Found")
+		} else {
+			match request.method.as_str() {
+				"OPTIONS" => self.handle_options(&request),
+				"POST" => self.handle_post(request)?,
+				"DELETE" => self.handle_delete(&request),
+				_ => McpHttpResponse::empty("405 Method Not Allowed"),
+			}
+		};
+
+		response.add_cors_headers(cors_origin);
+
+		Ok(response)
+	}
+
+	fn handle_options(&self, request: &McpHttpRequest) -> McpHttpResponse {
+		let Some(method) = request.header("Access-Control-Request-Method") else {
+			return McpHttpResponse::empty("204 No Content");
+		};
+
+		if matches!(method.to_ascii_uppercase().as_str(), "POST" | "DELETE") {
+			McpHttpResponse::empty("204 No Content")
+		} else {
+			McpHttpResponse::empty("405 Method Not Allowed")
+		}
+	}
+
+	fn handle_post(&mut self, request: McpHttpRequest) -> crate::prelude::Result<McpHttpResponse> {
+		if !request.content_type_is_json() {
+			return Ok(McpHttpResponse::json_error(
+				"415 Unsupported Media Type",
+				json_rpc_error(Value::Null, -32_600, "Invalid Request"),
+			));
+		}
+
+		let body = match str::from_utf8(&request.body) {
+			Ok(body) => body,
+			Err(_) =>
+				return Ok(McpHttpResponse::json_error(
+					"400 Bad Request",
+					json_rpc_error(Value::Null, -32_700, "Parse error"),
+				)),
+		};
+		let method = json_rpc_method_name(body);
+		let is_initialize = method.as_deref() == Some("initialize");
+		let session_id = request.header(MCP_SESSION_HEADER).map(str::to_owned);
+
+		if method.is_none() && serde_json::from_str::<Value>(body).is_err() {
+			return McpHttpResponse::json(
+				self.server
+					.handle_line(body, false)
+					.into_iter()
+					.next()
+					.unwrap_or_else(|| json_rpc_error(Value::Null, -32_700, "Parse error")),
+				None,
+			);
+		}
+
+		let wants_sse = request.accepts_sse();
+
+		if is_initialize {
+			let responses = self.server.handle_line(body, wants_sse);
+			let response_session_id =
+				initialize_response_succeeded(&responses).then(|| self.sessions.create());
+
+			return mcp_http_response_for_server_responses(
+				responses,
+				wants_sse,
+				response_session_id,
+			);
+		}
+
+		let Some(session_id) = session_id.as_deref() else {
+			return Ok(McpHttpResponse::json_error(
+				"428 Precondition Required",
+				json_rpc_error(Value::Null, -32_000, "Missing MCP session"),
+			));
+		};
+
+		if !self.sessions.contains(session_id) {
+			return Ok(McpHttpResponse::json_error(
+				"404 Not Found",
+				json_rpc_error(Value::Null, -32_001, "Unknown MCP session"),
+			));
+		}
+
+		let responses = self.server.handle_line(body, wants_sse);
+
+		mcp_http_response_for_server_responses(responses, wants_sse, Some(session_id.to_owned()))
+	}
+
+	fn handle_delete(&mut self, request: &McpHttpRequest) -> McpHttpResponse {
+		let Some(session_id) = request.header(MCP_SESSION_HEADER) else {
+			return McpHttpResponse::json_error(
+				"428 Precondition Required",
+				json_rpc_error(Value::Null, -32_000, "Missing MCP session"),
+			);
+		};
+
+		if !self.sessions.remove(session_id) {
+			return McpHttpResponse::json_error(
+				"404 Not Found",
+				json_rpc_error(Value::Null, -32_001, "Unknown MCP session"),
+			);
+		}
+
+		McpHttpResponse::empty("202 Accepted")
+	}
+
+	fn allowed_cors_origin(
+		&self,
+		request: &McpHttpRequest,
+	) -> std::result::Result<Option<String>, ()> {
+		let Some(origin) = request.header("Origin") else {
+			return Ok(None);
+		};
+
+		if mcp_http_origin_is_allowed(
+			origin,
+			self.listen_address.as_deref(),
+			self.allowed_origins.as_slice(),
+		) {
+			Ok(Some(origin.to_owned()))
+		} else {
+			Err(())
+		}
+	}
+}
+
+#[derive(Default)]
+struct McpHttpSessions {
+	active: BTreeSet<String>,
+	next_id: u64,
+}
+impl McpHttpSessions {
+	fn create(&mut self) -> String {
+		self.next_id = self.next_id.saturating_add(1);
+
+		let session_id = format!("decodex-mcp-session-{:016x}", self.next_id);
+
+		self.active.insert(session_id.clone());
+
+		session_id
+	}
+
+	fn contains(&self, session_id: &str) -> bool {
+		self.active.contains(session_id)
+	}
+
+	fn remove(&mut self, session_id: &str) -> bool {
+		self.active.remove(session_id)
+	}
+}
+
+struct McpHttpRequest {
+	method: String,
+	path: String,
+	headers: Vec<(String, String)>,
+	body: Vec<u8>,
+}
+impl McpHttpRequest {
+	fn parse(request: &[u8]) -> std::result::Result<Self, McpHttpResponse> {
+		let Some(header_end) = http_header_end(request) else {
+			return Err(McpHttpResponse::empty("400 Bad Request"));
+		};
+		let header_text = str::from_utf8(&request[..header_end])
+			.map_err(|_| McpHttpResponse::empty("400 Bad Request"))?;
+		let mut lines = header_text.split("\r\n");
+		let request_line = lines.next().ok_or_else(|| McpHttpResponse::empty("400 Bad Request"))?;
+		let mut request_parts = request_line.split_whitespace();
+		let method = request_parts
+			.next()
+			.ok_or_else(|| McpHttpResponse::empty("400 Bad Request"))?
+			.to_owned();
+		let path = request_parts
+			.next()
+			.ok_or_else(|| McpHttpResponse::empty("400 Bad Request"))?
+			.to_owned();
+		let version =
+			request_parts.next().ok_or_else(|| McpHttpResponse::empty("400 Bad Request"))?;
+
+		if !version.starts_with("HTTP/1.") {
+			return Err(McpHttpResponse::empty("505 HTTP Version Not Supported"));
+		}
+
+		let mut headers = Vec::new();
+
+		for line in lines {
+			if line.is_empty() {
+				continue;
+			}
+
+			let Some((name, value)) = line.split_once(':') else {
+				return Err(McpHttpResponse::empty("400 Bad Request"));
+			};
+
+			headers.push((name.trim().to_owned(), value.trim().to_owned()));
+		}
+
+		let content_length = http_content_length(&request[..header_end])
+			.map_err(|_| McpHttpResponse::empty("400 Bad Request"))?;
+		let body_start = header_end + 4;
+		let body_end = body_start.saturating_add(content_length);
+
+		if request.len() < body_end {
+			return Err(McpHttpResponse::empty("400 Bad Request"));
+		}
+
+		Ok(Self { method, path, headers, body: request[body_start..body_end].to_vec() })
+	}
+
+	fn header(&self, name: &str) -> Option<&str> {
+		self.headers
+			.iter()
+			.find(|(header, _)| header.eq_ignore_ascii_case(name))
+			.map(|(_, value)| value.as_str())
+	}
+
+	fn accepts_sse(&self) -> bool {
+		header_contains(self.header("Accept"), "text/event-stream")
+	}
+
+	fn content_type_is_json(&self) -> bool {
+		header_contains(self.header("Content-Type"), "application/json")
+	}
+}
+
+struct McpHttpResponse {
+	status: &'static str,
+	content_type: Option<&'static str>,
+	headers: Vec<(&'static str, String)>,
+	body: Vec<u8>,
+}
+impl McpHttpResponse {
+	fn empty(status: &'static str) -> Self {
+		Self { status, content_type: None, headers: Vec::new(), body: Vec::new() }
+	}
+
+	fn empty_with_session(status: &'static str, session_id: Option<String>) -> Self {
+		let mut response = Self::empty(status);
+
+		response.add_session_header(session_id);
+
+		response
+	}
+
+	fn json(value: Value, session_id: Option<String>) -> crate::prelude::Result<Self> {
+		let body = serde_json::to_vec(&value)?;
+		let mut response = Self {
+			status: "200 OK",
+			content_type: Some("application/json"),
+			headers: vec![("Cache-Control", String::from("no-store"))],
+			body,
+		};
+
+		response.add_session_header(session_id);
+
+		Ok(response)
+	}
+
+	fn json_error(status: &'static str, value: Value) -> Self {
+		let body =
+			serde_json::to_vec(&value)
+				.unwrap_or_else(|_| {
+					br#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error"}}"#.to_vec()
+				});
+
+		Self {
+			status,
+			content_type: Some("application/json"),
+			headers: vec![("Cache-Control", String::from("no-store"))],
+			body,
+		}
+	}
+
+	fn sse(responses: Vec<Value>, session_id: Option<String>) -> crate::prelude::Result<Self> {
+		let mut body = Vec::new();
+
+		for response in responses {
+			let line = serde_json::to_string(&response)?;
+
+			body.extend_from_slice(b"event: message\n");
+			body.extend_from_slice(b"data: ");
+			body.extend_from_slice(line.as_bytes());
+			body.extend_from_slice(b"\n\n");
+		}
+
+		let mut response = Self {
+			status: "200 OK",
+			content_type: Some("text/event-stream"),
+			headers: vec![
+				("Cache-Control", String::from("no-store")),
+				("X-Accel-Buffering", String::from("no")),
+			],
+			body,
+		};
+
+		response.add_session_header(session_id);
+
+		Ok(response)
+	}
+
+	fn add_session_header(&mut self, session_id: Option<String>) {
+		if let Some(session_id) = session_id {
+			self.headers.push((MCP_SESSION_HEADER, session_id));
+		}
+	}
+
+	fn add_cors_headers(&mut self, origin: Option<String>) {
+		let Some(origin) = origin else {
+			return;
+		};
+
+		self.headers.push(("Access-Control-Allow-Origin", origin));
+		self.headers.push(("Vary", String::from("Origin")));
+		self.headers.push(("Access-Control-Allow-Methods", String::from(MCP_CORS_ALLOW_METHODS)));
+		self.headers.push(("Access-Control-Allow-Headers", String::from(MCP_CORS_ALLOW_HEADERS)));
+		self.headers.push(("Access-Control-Expose-Headers", String::from(MCP_SESSION_HEADER)));
+	}
+
+	fn into_bytes(self) -> crate::prelude::Result<Vec<u8>> {
+		let mut response = Vec::new();
+
+		response.extend_from_slice(format!("HTTP/1.1 {}\r\n", self.status).as_bytes());
+		response.extend_from_slice(b"Connection: close\r\n");
+		response.extend_from_slice(format!("Content-Length: {}\r\n", self.body.len()).as_bytes());
+
+		if let Some(content_type) = self.content_type {
+			response.extend_from_slice(format!("Content-Type: {content_type}\r\n").as_bytes());
+		}
+
+		for (name, value) in self.headers {
+			response.extend_from_slice(format!("{name}: {value}\r\n").as_bytes());
+		}
+
+		response.extend_from_slice(b"\r\n");
+		response.extend_from_slice(&self.body);
+
+		Ok(response)
+	}
+}
+
 /// Start the Decodex MCP gateway.
-pub(crate) fn serve(request: McpServeRequest<'_>) -> Result<()> {
+pub(crate) fn serve(request: McpServeRequest<'_>) -> crate::prelude::Result<()> {
 	match request.transport {
 		McpTransport::Stdio => {
 			let context = McpContext::for_process(request.config_path)?;
@@ -789,7 +1206,43 @@ pub(crate) fn serve(request: McpServeRequest<'_>) -> Result<()> {
 				request.capability_profile,
 			)
 		},
+		McpTransport::StreamableHttp => {
+			validate_mcp_http_listen_address(request.listen_address, request.allowed_origins)?;
+
+			let context = McpContext::for_process(request.config_path)?;
+			let listener = TcpListener::bind(request.listen_address).map_err(|error| {
+				eyre::eyre!(
+					"Failed to bind Decodex MCP Streamable HTTP endpoint at {}: {error}",
+					request.listen_address
+				)
+			})?;
+
+			serve_streamable_http_with_profile(
+				listener,
+				context,
+				request.capability_profile,
+				request.allowed_origins.to_vec(),
+			)
+		},
 	}
+}
+
+fn mcp_http_response_for_server_responses(
+	responses: Vec<Value>,
+	wants_sse: bool,
+	session_id: Option<String>,
+) -> crate::prelude::Result<McpHttpResponse> {
+	if responses.is_empty() {
+		return Ok(McpHttpResponse::empty_with_session("202 Accepted", session_id));
+	}
+	if wants_sse {
+		return McpHttpResponse::sse(responses, session_id);
+	}
+
+	McpHttpResponse::json(
+		responses.into_iter().next().unwrap_or_else(|| serde_json::json!({})),
+		session_id,
+	)
 }
 
 fn mcp_prompts() -> Vec<Value> {
@@ -1451,7 +1904,7 @@ fn lane_control_stub_result(arguments: Value, profile: McpCapabilityProfile) -> 
 		"schema": "decodex.mcp.lane_control_result/1",
 		"status": "refused",
 		"reason": "deferred_to_XY-998",
-		"message": "MCP lane-control mutation is intentionally deferred; this lane only exposes core stdio protocol primitives.",
+		"message": "MCP lane-control mutation is intentionally deferred; this gateway currently exposes discovery, observability, and structured refusal surfaces.",
 		"capability_profile": profile.as_str(),
 		"action": params.action.as_str(),
 		"preconditions": lane_control_preconditions(&params)
@@ -1500,7 +1953,7 @@ fn admin_stub_result(arguments: Value, profile: McpCapabilityProfile) -> Value {
 		"schema": "decodex.mcp.admin_result/1",
 		"status": "refused",
 		"reason": "deferred_admin_control",
-		"message": "Admin MCP behavior is not implemented in this stdio core-primitives lane.",
+		"message": "Admin MCP behavior is not implemented in this gateway lane.",
 		"capability_profile": profile.as_str(),
 		"action": params.action.as_str(),
 		"supported_admin_actions": []
@@ -1579,12 +2032,12 @@ fn serve_stdio_with_profile<R, W>(
 	mut writer: W,
 	context: McpContext,
 	capability_profile: McpCapabilityProfile,
-) -> Result<()>
+) -> crate::prelude::Result<()>
 where
 	R: Read,
 	W: Write,
 {
-	let server = McpServer { context, capability_profile };
+	let server = McpServer { context, capability_profile, transport: McpTransport::Stdio };
 	let reader = BufReader::new(reader);
 
 	for line in reader.lines() {
@@ -1602,7 +2055,194 @@ where
 	Ok(())
 }
 
-fn write_json_line<W>(writer: &mut W, value: &Value) -> Result<()>
+fn serve_streamable_http_with_profile(
+	listener: TcpListener,
+	context: McpContext,
+	capability_profile: McpCapabilityProfile,
+	allowed_origins: Vec<String>,
+) -> crate::prelude::Result<()> {
+	let mut handler = McpHttpHandler {
+		server: McpServer { context, capability_profile, transport: McpTransport::StreamableHttp },
+		sessions: McpHttpSessions::default(),
+		allowed_origins,
+		listen_address: listener.local_addr().map(|address| address.to_string()).ok(),
+	};
+
+	for stream in listener.incoming() {
+		match stream {
+			Ok(mut stream) =>
+				if let Err(error) = handle_mcp_http_stream(&mut stream, &mut handler) {
+					tracing::warn!(?error, "Decodex MCP Streamable HTTP request failed.");
+				},
+			Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+			Err(error) => return Err(error.into()),
+		}
+	}
+
+	Ok(())
+}
+
+fn handle_mcp_http_stream(
+	stream: &mut TcpStream,
+	handler: &mut McpHttpHandler,
+) -> crate::prelude::Result<()> {
+	stream.set_read_timeout(Some(MCP_HTTP_READ_TIMEOUT))?;
+
+	let request = read_mcp_http_request(stream)?;
+	let response = handler.handle_request_bytes(&request)?;
+
+	stream.write_all(&response)?;
+	stream.flush()?;
+
+	Ok(())
+}
+
+fn read_mcp_http_request(stream: &mut TcpStream) -> crate::prelude::Result<Vec<u8>> {
+	let mut buffer = Vec::new();
+	let mut scratch = [0_u8; 1_024];
+	let mut expected_len = None;
+
+	loop {
+		let read = stream.read(&mut scratch)?;
+
+		if read == 0 {
+			break;
+		}
+
+		buffer.extend_from_slice(&scratch[..read]);
+
+		if buffer.len() > MCP_HTTP_MAX_REQUEST_BYTES {
+			eyre::bail!("MCP HTTP request exceeded {MCP_HTTP_MAX_REQUEST_BYTES} bytes.");
+		}
+		if expected_len.is_none()
+			&& let Some(header_end) = http_header_end(&buffer)
+		{
+			let content_length = http_content_length(&buffer[..header_end])?;
+
+			expected_len = Some(header_end + 4 + content_length);
+		}
+		if expected_len.is_some_and(|length| buffer.len() >= length) {
+			break;
+		}
+	}
+
+	Ok(buffer)
+}
+
+fn validate_mcp_http_listen_address(
+	address: &str,
+	allowed_origins: &[String],
+) -> crate::prelude::Result<()> {
+	if listen_address_host_is_loopback(address) || !allowed_origins.is_empty() {
+		return Ok(());
+	}
+
+	eyre::bail!(
+		"Refusing to bind Decodex MCP Streamable HTTP to `{address}` without --allow-origin; use the loopback default or set explicit trusted origins."
+	)
+}
+
+fn listen_address_host_is_loopback(address: &str) -> bool {
+	let host = listen_address_host(address);
+
+	host.as_deref().is_some_and(host_is_loopback)
+}
+
+fn mcp_http_origin_is_allowed(
+	origin: &str,
+	listen_address: Option<&str>,
+	allowed_origins: &[String],
+) -> bool {
+	if allowed_origins.iter().any(|allowed| allowed == origin) {
+		return true;
+	}
+
+	let Ok(parsed) = Url::parse(origin) else {
+		return false;
+	};
+	let Some(host) = parsed.host_str() else {
+		return false;
+	};
+
+	if !matches!(parsed.scheme(), "http" | "https") || !host_is_loopback(host) {
+		return false;
+	}
+
+	let Some(listen_port) = listen_address.and_then(listen_address_port) else {
+		return true;
+	};
+
+	parsed.port_or_known_default() == Some(listen_port)
+}
+
+fn host_is_loopback(host: &str) -> bool {
+	host.eq_ignore_ascii_case("localhost")
+		|| host
+			.trim_matches(['[', ']'])
+			.parse::<IpAddr>()
+			.is_ok_and(|address| address.is_loopback())
+}
+
+fn listen_address_host(address: &str) -> Option<String> {
+	let (host, _) = address.rsplit_once(':')?;
+
+	Some(host.trim_matches(['[', ']']).to_owned())
+}
+
+fn listen_address_port(address: &str) -> Option<u16> {
+	let (_, port) = address.rsplit_once(':')?;
+
+	port.parse().ok()
+}
+
+fn http_header_end(bytes: &[u8]) -> Option<usize> {
+	bytes.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
+fn http_content_length(header_bytes: &[u8]) -> crate::prelude::Result<usize> {
+	let header_text = str::from_utf8(header_bytes)?;
+
+	for line in header_text.split("\r\n").skip(1) {
+		let Some((name, value)) = line.split_once(':') else {
+			continue;
+		};
+
+		if name.trim().eq_ignore_ascii_case("Content-Length") {
+			return Ok(value.trim().parse()?);
+		}
+	}
+
+	Ok(0)
+}
+
+fn header_contains(header: Option<&str>, value: &str) -> bool {
+	header
+		.map(|header| {
+			header.split(',').any(|item| {
+				item.trim().split(';').next().is_some_and(|item| item.eq_ignore_ascii_case(value))
+			})
+		})
+		.unwrap_or(false)
+}
+
+fn json_rpc_method_name(body: &str) -> Option<String> {
+	serde_json::from_str::<Value>(body)
+		.ok()
+		.and_then(|value| value.get("method").and_then(Value::as_str).map(str::to_owned))
+}
+
+fn initialize_response_succeeded(responses: &[Value]) -> bool {
+	responses.iter().any(|response| {
+		response.get("error").is_none()
+			&& response
+				.get("result")
+				.and_then(|result| result.get("protocolVersion"))
+				.and_then(Value::as_str)
+				== Some(MCP_PROTOCOL_VERSION)
+	})
+}
+
+fn write_json_line<W>(writer: &mut W, value: &Value) -> crate::prelude::Result<()>
 where
 	W: Write,
 {
@@ -1622,7 +2262,7 @@ where
 fn resolve_context_config_path(
 	explicit_path: Option<&Path>,
 	state_store: Option<&StateStore>,
-) -> Result<Option<PathBuf>> {
+) -> crate::prelude::Result<Option<PathBuf>> {
 	if let Some(path) = explicit_path {
 		return Ok(Some(path.to_path_buf()));
 	}
@@ -1634,7 +2274,7 @@ fn resolve_context_config_path(
 	runtime::registered_config_path_for_cwd(state_store, &env::current_dir()?)
 }
 
-fn discover_repo_root_from_current_dir() -> Result<Option<PathBuf>> {
+fn discover_repo_root_from_current_dir() -> crate::prelude::Result<Option<PathBuf>> {
 	let mut candidate = env::current_dir()?;
 
 	loop {
@@ -1714,6 +2354,16 @@ fn sanitize_mcp_observability_value(value: &mut Value) {
 				"private_evidence_ref",
 				"privateEvidenceRefs",
 				"private_evidence_refs",
+				"executionProgramId",
+				"execution_program_id",
+				"executionProgramNodeIds",
+				"execution_program_node_ids",
+				"graphId",
+				"graph_id",
+				"nodeId",
+				"node_id",
+				"programId",
+				"program_id",
 				"readCommand",
 				"read_command",
 				"githubCliAuthority",
@@ -1752,7 +2402,7 @@ fn push_file_resource(
 	}
 }
 
-fn read_sorted_dir(path: &Path) -> Result<Vec<PathBuf>, McpError> {
+fn read_sorted_dir(path: &Path) -> crate::prelude::Result<Vec<PathBuf>, McpError> {
 	let entries = match fs::read_dir(path) {
 		Ok(entries) => entries,
 		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
@@ -1760,7 +2410,7 @@ fn read_sorted_dir(path: &Path) -> Result<Vec<PathBuf>, McpError> {
 	};
 	let mut paths = entries
 		.map(|entry| entry.map(|entry| entry.path()).map_err(McpError::internal))
-		.collect::<Result<Vec<_>, _>>()?;
+		.collect::<crate::prelude::Result<Vec<_>, _>>()?;
 
 	paths.sort();
 
@@ -1787,7 +2437,7 @@ fn read_file_resource(
 	uri: &str,
 	path: PathBuf,
 	mime_type: &str,
-) -> Result<ResourceContent, McpError> {
+) -> crate::prelude::Result<ResourceContent, McpError> {
 	let text = fs::read_to_string(path).map_err(|error| match error.kind() {
 		ErrorKind::NotFound => McpError::resource_not_found(),
 		_ => McpError::internal(error),
@@ -1823,16 +2473,59 @@ fn safe_runtime_identifier(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use std::{fs, io::Cursor, path::Path};
+	use std::{fs, io::Cursor, path::Path, str};
 
 	use serde_json::Value;
 	use tempfile::TempDir;
 
 	use crate::{
 		loop_contract::DecisionContract,
-		mcp::{self, McpCapabilityProfile, McpContext, ResourceContent},
+		mcp::{
+			self, DEFAULT_MCP_HTTP_LISTEN_ADDRESS, McpCapabilityProfile, McpContext,
+			McpHttpHandler, McpHttpSessions, McpServer, McpTransport, ResourceContent,
+		},
 		state::StateStore,
 	};
+
+	struct ParsedHttpResponse {
+		status: String,
+		headers: Vec<(String, String)>,
+		body: Vec<u8>,
+	}
+
+	impl ParsedHttpResponse {
+		fn parse(response: &[u8]) -> Self {
+			let header_end =
+				mcp::http_header_end(response).expect("response should include headers");
+			let headers = str::from_utf8(&response[..header_end]).expect("headers should be utf-8");
+			let mut lines = headers.split("\r\n");
+			let status = lines.next().expect("status line should exist").to_owned();
+			let headers = lines
+				.filter_map(|line| {
+					let (name, value) = line.split_once(':')?;
+
+					Some((name.trim().to_ascii_lowercase(), value.trim().to_owned()))
+				})
+				.collect();
+
+			Self { status, headers, body: response[(header_end + 4)..].to_vec() }
+		}
+
+		fn header(&self, name: &str) -> Option<&str> {
+			self.headers
+				.iter()
+				.find(|(header, _)| header == &name.to_ascii_lowercase())
+				.map(|(_, value)| value.as_str())
+		}
+
+		fn json_body(&self) -> Value {
+			serde_json::from_slice(&self.body).expect("HTTP body should be JSON")
+		}
+
+		fn body_text(&self) -> &str {
+			str::from_utf8(&self.body).expect("HTTP body should be utf-8")
+		}
+	}
 
 	#[test]
 	fn initialize_exposes_protocol_primitive_capabilities() {
@@ -1936,6 +2629,11 @@ mod tests {
 
 		assert_eq!(content["project_id"], "decodex");
 		assert_eq!(content["decision_contract"]["contract_id"], "research-x-loop-contract");
+		assert!(
+			content["decision_contract"]["evidence_boundary"]["private_evidence_refs"].is_null()
+		);
+		assert!(content["decision_contract"]["links"]["execution_program_node_ids"].is_null());
+		assert!(!text.contains("research-x-run"));
 	}
 
 	#[test]
@@ -2133,6 +2831,12 @@ mod tests {
 		assert_eq!(result["isError"], true);
 		assert_eq!(result["structuredContent"]["status"], "refused");
 		assert_eq!(result["structuredContent"]["reason"], "deferred_to_XY-998");
+		assert!(
+			!result["structuredContent"]["message"]
+				.as_str()
+				.expect("message should be text")
+				.contains("stdio")
+		);
 	}
 
 	#[test]
@@ -2163,6 +2867,12 @@ mod tests {
 		assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.admin_result/1");
 		assert_eq!(result["structuredContent"]["status"], "refused");
 		assert_eq!(result["structuredContent"]["reason"], "deferred_admin_control");
+		assert!(
+			!result["structuredContent"]["message"]
+				.as_str()
+				.expect("message should be text")
+				.contains("stdio")
+		);
 	}
 
 	#[test]
@@ -2248,6 +2958,348 @@ mod tests {
 		assert_eq!(result["isError"], true);
 		assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.refusal/1");
 		assert_eq!(result["structuredContent"]["reason"], "insufficient_capability_profile");
+	}
+
+	#[test]
+	fn streamable_http_json_post_initializes_session() {
+		let repo = test_repo();
+		let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
+		let response = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193"), ("Accept", "application/json")],
+				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+		let body = response.json_body();
+
+		assert_eq!(response.status, "HTTP/1.1 200 OK");
+		assert_eq!(response.header("content-type"), Some("application/json"));
+		assert!(response.header("mcp-session-id").is_some());
+		assert_eq!(response.header("access-control-allow-origin"), Some("http://127.0.0.1:8193"));
+		assert_eq!(response.header("access-control-expose-headers"), Some("Mcp-Session-Id"));
+		assert_eq!(
+			body["result"]["capabilities"]["experimental"]["decodex"]["transport"],
+			"streamable-http"
+		);
+		assert_eq!(
+			body["result"]["capabilities"]["experimental"]["decodex"]["remoteControl"]["httpTransport"],
+			"streamable-http"
+		);
+	}
+
+	#[test]
+	fn streamable_http_allows_cors_preflight_for_trusted_origin() {
+		let repo = test_repo();
+		let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
+		let response = run_http(
+			&mut handler,
+			http_options(
+				"/mcp",
+				[
+					("Origin", "http://127.0.0.1:8193"),
+					("Access-Control-Request-Method", "POST"),
+					("Access-Control-Request-Headers", "Content-Type, Mcp-Session-Id"),
+				],
+			),
+		);
+
+		assert_eq!(response.status, "HTTP/1.1 204 No Content");
+		assert_eq!(response.header("access-control-allow-origin"), Some("http://127.0.0.1:8193"));
+		assert_eq!(response.header("access-control-allow-methods"), Some("POST, DELETE, OPTIONS"));
+		assert_eq!(
+			response.header("access-control-allow-headers"),
+			Some("Content-Type, Accept, Mcp-Session-Id")
+		);
+	}
+
+	#[test]
+	fn streamable_http_allows_configured_origin() {
+		let repo = test_repo();
+		let mut handler = http_handler_with_allowed_origins(
+			repo.path(),
+			McpCapabilityProfile::Admin,
+			vec![String::from("https://relay.example")],
+		);
+		let preflight = run_http(
+			&mut handler,
+			http_options(
+				"/mcp",
+				[("Origin", "https://relay.example"), ("Access-Control-Request-Method", "POST")],
+			),
+		);
+		let initialize = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "https://relay.example")],
+				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+
+		assert_eq!(preflight.status, "HTTP/1.1 204 No Content");
+		assert_eq!(preflight.header("access-control-allow-origin"), Some("https://relay.example"));
+		assert_eq!(initialize.status, "HTTP/1.1 200 OK");
+		assert!(initialize.header("mcp-session-id").is_some());
+		assert_eq!(initialize.header("access-control-allow-origin"), Some("https://relay.example"));
+	}
+
+	#[test]
+	fn streamable_http_sse_response_includes_progress_notification() {
+		let repo = test_repo();
+		let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
+		let initialize = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193")],
+				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+		let session_id = initialize.header("mcp-session-id").expect("session id").to_owned();
+		let response = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[
+					("Origin", "http://127.0.0.1:8193"),
+					("Accept", "text/event-stream"),
+					("Mcp-Session-Id", session_id.as_str()),
+				],
+				r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"_meta":{"progressToken":"progress-1"},"name":"decodex_plan","arguments":{"intent":"validation_ready"}}}"#,
+			),
+		);
+		let body = response.body_text();
+
+		assert_eq!(response.status, "HTTP/1.1 200 OK");
+		assert_eq!(response.header("content-type"), Some("text/event-stream"));
+		assert_eq!(response.header("access-control-allow-origin"), Some("http://127.0.0.1:8193"));
+		assert_eq!(response.header("access-control-expose-headers"), Some("Mcp-Session-Id"));
+		assert!(body.contains("event: message"));
+		assert!(body.contains("\"method\":\"notifications/progress\""));
+		assert!(body.contains("\"id\":2"));
+	}
+
+	#[test]
+	fn streamable_http_initialize_notification_does_not_create_session() {
+		let repo = test_repo();
+		let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
+		let response = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193")],
+				r#"{"jsonrpc":"2.0","method":"initialize","params":{}}"#,
+			),
+		);
+
+		assert_eq!(response.status, "HTTP/1.1 202 Accepted");
+		assert_eq!(response.header("mcp-session-id"), None);
+
+		let response = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[
+					("Origin", "http://127.0.0.1:8193"),
+					("Mcp-Session-Id", "decodex-mcp-session-0000000000000001"),
+				],
+				r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+			),
+		);
+		let body = response.json_body();
+
+		assert_eq!(response.status, "HTTP/1.1 404 Not Found");
+		assert_eq!(body["error"]["message"], "Unknown MCP session");
+	}
+
+	#[test]
+	fn streamable_http_invalid_initialize_does_not_create_session() {
+		let repo = test_repo();
+		let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
+		let response = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193")],
+				r#"{"jsonrpc":"1.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+		let body = response.json_body();
+
+		assert_eq!(response.status, "HTTP/1.1 200 OK");
+		assert_eq!(response.header("mcp-session-id"), None);
+		assert_eq!(body["error"]["message"], "Invalid Request");
+	}
+
+	#[test]
+	fn streamable_http_rejects_disallowed_origin() {
+		let repo = test_repo();
+		let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
+		let response = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "https://example.invalid")],
+				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+		let body = response.json_body();
+
+		assert_eq!(response.status, "HTTP/1.1 403 Forbidden");
+		assert_eq!(body["error"]["message"], "Forbidden origin");
+	}
+
+	#[test]
+	fn streamable_http_delete_invalidates_session() {
+		let repo = test_repo();
+		let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
+		let initialize = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193")],
+				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+		let session_id = initialize.header("mcp-session-id").expect("session id").to_owned();
+		let delete = run_http(
+			&mut handler,
+			http_delete(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193"), ("Mcp-Session-Id", session_id.as_str())],
+			),
+		);
+
+		assert_eq!(delete.status, "HTTP/1.1 202 Accepted");
+		assert_eq!(delete.header("access-control-allow-origin"), Some("http://127.0.0.1:8193"));
+
+		let response = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193"), ("Mcp-Session-Id", session_id.as_str())],
+				r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+			),
+		);
+		let body = response.json_body();
+
+		assert_eq!(response.status, "HTTP/1.1 404 Not Found");
+		assert_eq!(body["error"]["message"], "Unknown MCP session");
+	}
+
+	#[test]
+	fn streamable_http_bind_guard_requires_loopback_or_allowed_origin() {
+		assert!(
+			mcp::validate_mcp_http_listen_address(DEFAULT_MCP_HTTP_LISTEN_ADDRESS, &[]).is_ok()
+		);
+		assert!(mcp::validate_mcp_http_listen_address("0.0.0.0:8193", &[]).is_err());
+		assert!(
+			mcp::validate_mcp_http_listen_address(
+				"0.0.0.0:8193",
+				&[String::from("https://relay.example")]
+			)
+			.is_ok()
+		);
+	}
+
+	#[test]
+	fn streamable_http_requires_known_session_after_initialize() {
+		let repo = test_repo();
+		let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
+
+		run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193")],
+				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+
+		let response = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193")],
+				r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+			),
+		);
+		let body = response.json_body();
+
+		assert_eq!(response.status, "HTTP/1.1 428 Precondition Required");
+		assert_eq!(body["error"]["message"], "Missing MCP session");
+	}
+
+	#[test]
+	fn streamable_http_observe_profile_exposes_only_observe_tool() {
+		let repo = test_repo();
+		let mut handler = http_handler(repo.path(), McpCapabilityProfile::Observe);
+		let initialize = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193")],
+				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+		let session_id = initialize.header("mcp-session-id").expect("session id").to_owned();
+		let response = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193"), ("Mcp-Session-Id", session_id.as_str())],
+				r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+			),
+		);
+		let body = response.json_body();
+		let tool_names = body["result"]["tools"]
+			.as_array()
+			.expect("tools array")
+			.iter()
+			.filter_map(|tool| tool.get("name").and_then(Value::as_str))
+			.collect::<Vec<_>>();
+
+		assert_eq!(tool_names, vec!["decodex_observe"]);
+	}
+
+	#[test]
+	fn streamable_http_observe_profile_refuses_operate_and_admin_calls() {
+		let repo = test_repo();
+		let mut handler = http_handler(repo.path(), McpCapabilityProfile::Observe);
+		let initialize = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193")],
+				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+		let session_id = initialize.header("mcp-session-id").expect("session id").to_owned();
+
+		for (tool, required_profile, arguments) in [
+			("decodex_lane_control", "operate", r#"{"action":"inspect"}"#),
+			("decodex_admin", "admin", r#"{"action":"capabilities"}"#),
+		] {
+			let response = run_http(
+				&mut handler,
+				http_post(
+					"/mcp",
+					[("Origin", "http://127.0.0.1:8193"), ("Mcp-Session-Id", session_id.as_str())],
+					&format!(
+						r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"{tool}","arguments":{arguments}}}}}"#
+					),
+				),
+			);
+			let body = response.json_body();
+			let structured = &body["result"]["structuredContent"];
+
+			assert_eq!(structured["schema"], "decodex.mcp.refusal/1");
+			assert_eq!(structured["reason"], "insufficient_capability_profile");
+			assert_eq!(structured["capability_profile"], "observe");
+			assert_eq!(structured["required_capability_profile"], required_profile);
+		}
 	}
 
 	#[test]
@@ -2431,6 +3483,100 @@ mod tests {
 		}
 
 		assert!(serialized.contains("kept"));
+	}
+
+	fn http_handler(repo_root: &Path, capability_profile: McpCapabilityProfile) -> McpHttpHandler {
+		http_handler_with_allowed_origins(repo_root, capability_profile, Vec::new())
+	}
+
+	fn http_handler_with_allowed_origins(
+		repo_root: &Path,
+		capability_profile: McpCapabilityProfile,
+		allowed_origins: Vec<String>,
+	) -> McpHttpHandler {
+		McpHttpHandler {
+			server: McpServer {
+				context: McpContext {
+					repo_root: repo_root.to_path_buf(),
+					config_path: None,
+					project_id: None,
+					state_store: None,
+				},
+				capability_profile,
+				transport: McpTransport::StreamableHttp,
+			},
+			sessions: McpHttpSessions::default(),
+			allowed_origins,
+			listen_address: Some(String::from(DEFAULT_MCP_HTTP_LISTEN_ADDRESS)),
+		}
+	}
+
+	fn run_http(handler: &mut McpHttpHandler, request: Vec<u8>) -> ParsedHttpResponse {
+		let response =
+			handler.handle_request_bytes(&request).expect("HTTP handler should return response");
+
+		ParsedHttpResponse::parse(&response)
+	}
+
+	fn http_post<'a>(
+		path: &str,
+		headers: impl IntoIterator<Item = (&'a str, &'a str)>,
+		body: &str,
+	) -> Vec<u8> {
+		let mut request = format!(
+			"POST {path} HTTP/1.1\r\nHost: 127.0.0.1:8193\r\nContent-Type: application/json\r\nContent-Length: {}\r\n",
+			body.len()
+		);
+
+		for (name, value) in headers {
+			request.push_str(name);
+			request.push_str(": ");
+			request.push_str(value);
+			request.push_str("\r\n");
+		}
+
+		request.push_str("\r\n");
+		request.push_str(body);
+
+		request.into_bytes()
+	}
+
+	fn http_delete<'a>(
+		path: &str,
+		headers: impl IntoIterator<Item = (&'a str, &'a str)>,
+	) -> Vec<u8> {
+		let mut request =
+			format!("DELETE {path} HTTP/1.1\r\nHost: 127.0.0.1:8193\r\nContent-Length: 0\r\n");
+
+		for (name, value) in headers {
+			request.push_str(name);
+			request.push_str(": ");
+			request.push_str(value);
+			request.push_str("\r\n");
+		}
+
+		request.push_str("\r\n");
+
+		request.into_bytes()
+	}
+
+	fn http_options<'a>(
+		path: &str,
+		headers: impl IntoIterator<Item = (&'a str, &'a str)>,
+	) -> Vec<u8> {
+		let mut request =
+			format!("OPTIONS {path} HTTP/1.1\r\nHost: 127.0.0.1:8193\r\nContent-Length: 0\r\n");
+
+		for (name, value) in headers {
+			request.push_str(name);
+			request.push_str(": ");
+			request.push_str(value);
+			request.push_str("\r\n");
+		}
+
+		request.push_str("\r\n");
+
+		request.into_bytes()
 	}
 
 	fn test_repo() -> TempDir {

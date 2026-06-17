@@ -98,6 +98,7 @@ decodex intake goal --project decodex <CONTRACT_ID> --apply
 decodex intake issues --project decodex XY-1 XY-2 --dry-run
 decodex intake issues --project decodex XY-1 XY-2 --apply
 decodex mcp serve --transport stdio
+decodex mcp serve --transport streamable-http --listen-address 127.0.0.1:8193
 decodex run --dry-run
 decodex serve --listen-address 127.0.0.1:8192
 ```
@@ -155,16 +156,24 @@ mapped nodes are dispatched directly by the Program scheduler instead of being
 converted into queued-label work.
 
 `decodex mcp serve --transport stdio` starts the local MCP gateway for desktop and
-CLI clients. The gateway advertises resources, resource templates, prompts, tools,
-logging compatibility, and progress notifications over stdio. Resources expose
-checked-in documentation, checked-in JSON research reports, runtime Decision Contract
-readback, local status snapshots, and lane-control readback. The initial tool catalog
-is schema-bound and deliberately small. Local stdio defaults to the `admin` capability
-profile and can be narrowed with `--capability-profile observe|plan|operate|admin`;
-`tools/list` filters by the active profile and `tools/call` returns structured
-refusals for tools above it. Observe and plan are read-oriented, while operate/admin
-lane-control entries return structured refusal states until the later lane-control MCP
-work lands. Stdout is reserved for MCP JSON-RPC messages; diagnostics and logs stay
+CLI clients. `decodex mcp serve --transport streamable-http` serves the same gateway
+over the Streamable HTTP `POST /mcp` endpoint, bound to `127.0.0.1:8193` by default
+for operator-chosen local, tunnel, or relay access. Streamable HTTP validates browser
+`Origin` headers against loopback or repeated `--allow-origin <ORIGIN>` values, issues
+`Mcp-Session-Id` response headers on `initialize`, requires a known session for later
+requests, returns ordinary JSON-RPC JSON responses, and switches to
+`text/event-stream` framing when the client sends `Accept: text/event-stream`.
+The gateway advertises resources, resource templates, prompts, tools, logging
+compatibility, and progress notifications. Resources expose checked-in documentation,
+checked-in JSON research reports, runtime Decision Contract readback, local status
+snapshots, and lane-control readback. The tool catalog is schema-bound and
+deliberately small. Local stdio defaults to the `admin` capability profile; Streamable
+HTTP defaults to `observe`. Both can be set with
+`--capability-profile observe|plan|operate|admin`; `tools/list` filters by the active
+profile and `tools/call` returns structured refusals for tools above it. Observe and
+plan are read-oriented, while operate/admin lane-control entries return structured
+refusal states until later lane-control MCP work delegates through existing authority
+guards. Stdio stdout is reserved for MCP JSON-RPC messages; diagnostics and logs stay
 off stdout.
 
 ### Project contracts
