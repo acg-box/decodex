@@ -1429,6 +1429,7 @@ fn append_private_evidence_review_checkpoints(
 			} else {
 				checkpoint.active_fingerprints.join(", ")
 			};
+
 			output.push_str(&format!(
 				"- phase: {}\n  status: {}\n  head_sha: {}\n  round: {}\n  active_fingerprints: {}\n  stop_fingerprint: {}\n  accepted_findings: {}\n  rejected_findings: {}\n  next_action: {}\n",
 				checkpoint.phase,
