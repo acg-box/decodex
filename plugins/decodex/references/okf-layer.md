@@ -23,10 +23,10 @@ Use the lowest profile that proves the claim.
 
 ## Commands
 
-Use `decodex okf check`, `decodex okf find`, `decodex okf graph`, and
-`decodex okf route` for portable bundles. `decodex docs` defaults to root `docs/`
-and profile `decodex`. Do not create or recommend `decodex docs okf ...`; OKF is
-the engine, not a docs subcommand.
+Use `decodex okf init/check/find/graph/route` for portable bundles. `init` writes
+`index.md`, `log.md`, and `overview.md` for `core`, `wiki`, or `repo-memory`, refuses
+overwrites, and validates. `decodex docs` defaults to root `docs/` and profile
+`decodex`. Do not create or recommend `decodex docs okf ...`.
 
 ## Rules
 

@@ -49,9 +49,10 @@ paths, skill IDs, tags, and URLs.
 
 ## Command Boundary
 
-Use `decodex okf` for portable OKF operations against any bundle path. Use
-`decodex docs` for this repository's default `docs/` bundle with the strict Decodex
-profile.
+Use `decodex okf` for portable OKF operations against any bundle path, including
+`decodex okf init <root> --profile repo-memory` for new repository-memory bundles.
+Use `decodex docs` for this repository's default `docs/` bundle with the strict
+Decodex profile.
 
 Do not add `decodex docs okf ...` command nesting. OKF is not a docs subfeature;
 `docs/` is one bundle location that happens to use OKF.
