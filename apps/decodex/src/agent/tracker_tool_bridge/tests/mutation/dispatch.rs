@@ -6,6 +6,29 @@ use crate::orchestrator;
 use crate::orchestrator::AuthorityBoundaryCheckInput;
 use crate::orchestrator::AuthorityBoundaryDisposition;
 
+fn seed_docs_impact_checkpoint(
+	state_store: &StateStore,
+	review_context: &ReviewHandoffContext,
+	issue_id: &str,
+	phase: &str,
+	head_sha: &str,
+) {
+	state_store
+		.append_private_execution_event(
+			&review_context.service_id,
+			issue_id,
+			&review_context.run_id,
+			review_context.attempt_number,
+			"progress_checkpoint",
+			serde_json::json!({
+				"phase": phase,
+				"docs_impact": "none",
+				"head_sha": head_sha
+			}),
+		)
+		.expect("docs impact checkpoint should seed");
+}
+
 #[test]
 fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
@@ -32,11 +55,12 @@ fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
 	]);
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let review_context = sample_closeout_context_in(temp_dir.path(), pr_url);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_closeout_context_in(temp_dir.path(), pr_url),
+		review_context.clone(),
 		Some(TrackerToolBridge::leaked_test_state_store()),
 		&inspector,
 		&local_repo_inspector,
@@ -47,8 +71,17 @@ fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
 		serde_json::json!({
 			"pr_url": pr_url,
 			"summary": "Merged the approved lane and finished closeout."
-		}),
+			}),
+		);
+
+	seed_docs_impact_checkpoint(
+		bridge_state_store(&bridge),
+		&review_context,
+		&issue.id,
+		"closeout",
+		&sample_local_repo().head_oid,
 	);
+
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
@@ -124,11 +157,12 @@ fn closeout_apply_writes_coarse_comment_without_replaying_existing_records() {
 	]);
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let review_context = sample_closeout_context_in(temp_dir.path(), pr_url);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_closeout_context_in(temp_dir.path(), pr_url),
+		review_context.clone(),
 		Some(TrackerToolBridge::leaked_test_state_store()),
 		&inspector,
 		&local_repo_inspector,
@@ -139,8 +173,17 @@ fn closeout_apply_writes_coarse_comment_without_replaying_existing_records() {
 		serde_json::json!({
 			"pr_url": pr_url,
 			"summary": "Merged the approved lane and finished closeout."
-		}),
+			}),
+		);
+
+	seed_docs_impact_checkpoint(
+		bridge_state_store(&bridge),
+		&review_context,
+		&issue.id,
+		"closeout",
+		&sample_local_repo().head_oid,
 	);
+
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
@@ -197,11 +240,12 @@ fn closeout_clear_uses_server_team_label_lookup_for_active_label_removal() {
 	]);
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let review_context = sample_closeout_context_in(temp_dir.path(), pr_url);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_closeout_context_in(temp_dir.path(), pr_url),
+		review_context.clone(),
 		Some(TrackerToolBridge::leaked_test_state_store()),
 		&inspector,
 		&local_repo_inspector,
@@ -212,8 +256,17 @@ fn closeout_clear_uses_server_team_label_lookup_for_active_label_removal() {
 		serde_json::json!({
 			"pr_url": pr_url,
 			"summary": "Merged the approved lane and finished closeout."
-		}),
+			}),
+		);
+
+	seed_docs_impact_checkpoint(
+		bridge_state_store(&bridge),
+		&review_context,
+		&issue.id,
+		"closeout",
+		&sample_local_repo().head_oid,
 	);
+
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
@@ -265,11 +318,12 @@ fn closeout_apply_keeps_active_label_until_cleanup() {
 	]);
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let review_context = sample_closeout_context_in(temp_dir.path(), pr_url);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_closeout_context_in(temp_dir.path(), pr_url),
+		review_context.clone(),
 		Some(TrackerToolBridge::leaked_test_state_store()),
 		&inspector,
 		&local_repo_inspector,
@@ -280,8 +334,17 @@ fn closeout_apply_keeps_active_label_until_cleanup() {
 		serde_json::json!({
 			"pr_url": pr_url,
 			"summary": "Merged the approved lane and finished closeout."
-		}),
+			}),
+		);
+
+	seed_docs_impact_checkpoint(
+		bridge_state_store(&bridge),
+		&review_context,
+		&issue.id,
+		"closeout",
+		&sample_local_repo().head_oid,
 	);
+
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,

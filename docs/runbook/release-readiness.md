@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "Release Readiness"
+description: "OKF concept for Release Readiness."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # Release Readiness
 
 Goal: Execute the final Decodex v0.2.0 Loop Engineering release-candidate gate without

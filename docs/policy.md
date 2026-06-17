@@ -1,140 +1,202 @@
+---
+type: Policy
+title: Documentation Policy
+description: Defines Decodex docs as a Markdown-only OKF knowledge bundle for agent development workflow.
+status: active
+authority: normative
+owner: docs
+tags: [docs, okf, llm-wiki, semantic-drift]
+source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md]
+code_refs: [apps/decodex/src/docs_okf.rs]
+related: [index.md, log.md, evidence/docs-self-iteration.md]
+last_verified: 2026-06-17
+---
+
 # Documentation Policy
 
-Purpose: Define the repository-wide documentation taxonomy, naming rules, and placement
-rules for durable agent-facing content.
+## Purpose
 
-Audience: All documentation under `docs/` is written for AI agents and LLM workflows.
-The split below is by question type, not by reader type.
+`docs/` is the Decodex repo-development knowledge base. It uses a Markdown-only
+Open Knowledge Format profile so agents can route, read, update, verify, and improve
+repository knowledge during normal lane execution.
 
-## Primary taxonomy
+This policy owns the docs taxonomy, OKF concept shape, promotion rules, and
+self-iteration loop for documentation. It does not own runtime state, tracker state,
+or private execution evidence.
 
-This repository standardizes on four primary documentation lanes:
+## Authority
 
-| Lane | Location | Answers | Holds |
-| --- | --- | --- | --- |
-| Spec | `docs/spec/` | What must be true? | Contracts, schemas, invariants, required behavior |
-| Runbook | `docs/runbook/` | Which sequence should I execute? | Operational procedures, rollout steps, validation flows, recovery steps |
-| Reference | `docs/reference/` | How is it currently organized or implemented? | Repository layout, surface maps, current implementation boundaries |
-| Decisions | `docs/decisions/` | Why is it shaped this way? | Durable design choices, tradeoffs, and consequences |
+`docs/` is an OKF bundle:
 
-## Lane ownership
+- every durable knowledge artifact is Markdown
+- `docs/index.md` is the progressive-disclosure entrypoint
+- `docs/log.md` records knowledge maintenance events
+- every non-index, non-log Markdown document is an OKF concept with YAML
+  frontmatter
+- non-Markdown artifacts, including JSON, are not allowed under `docs/`
 
-- Each documentation lane owns exactly one question type.
-- A lane may link to another lane's authority, but it must not restate that lane's
-  authoritative content.
-- `spec` defines truth, not procedure, current state, or rationale.
-- `runbook` defines procedure, not truth, current state, or rationale.
-- `reference` defines current state, not truth, procedure, or rationale.
-- `decisions` defines rationale, not truth, procedure, or current state.
-- `docs/research/` is a JSON-only supporting research-report and evidence artifact
-  lane. It does not own repository truth, procedure, current state, rationale, or
-  runtime authority.
-- If a document starts answering a second question type, split it and link to the
-  authoritative lane instead of stretching one document across lanes.
+Runtime state may still use internal structured storage. The docs source of truth for
+research, drift audit, decisions, references, runbooks, and specs is Markdown.
 
-## Artifact lanes
+## Concept Frontmatter
 
-- `docs/research/` may hold supporting JSON research reports and extracted evidence.
-- Keep `docs/research/` internally uniform: tracked files under that directory must
-  be JSON research artifacts, not Markdown prose documents.
-- Do not add new old-shape `research-run/2` event-log JSON files under
-  `docs/research/`.
-- Removed legacy machine-authored JSON event logs are consolidated in
-  `docs/research/legacy-research-goal-audit.json`; use Git history only for raw event
-  log provenance.
-- `docs/research/` is not a primary documentation lane and is not authoritative for
-  runtime behavior, repository policy, or operator procedures.
-- New Decodex bounded research belongs in runtime-local
-  `decodex.decision_contract/1` records until accepted and promoted.
-- If a research result becomes durable repository guidance, promote it into `spec`,
-  `runbook`, `reference`, or `decisions` and cite source provenance only as supporting
-  evidence.
+Every concept must start with YAML frontmatter delimited by `---`.
 
-## Placement rules
+Required keys:
 
-- If a document defines correctness, it belongs in `docs/spec/`.
-- If a document defines operator actions, it belongs in `docs/runbook/`.
-- If a document describes current structure, ownership, or implementation boundaries, it
-  belongs in `docs/reference/`.
-- If a document records durable rationale or tradeoffs, it belongs in `docs/decisions/`.
-- Do not duplicate authoritative content across lanes. Link to the source of truth.
+| Key | Meaning |
+| --- | --- |
+| `type` | Concept class used for routing. |
+| `title` | Human-readable and agent-readable concept title. |
+| `description` | One-sentence retrieval summary. |
+| `status` | `draft`, `active`, `deprecated`, or `superseded`. |
+| `authority` | `normative`, `procedural`, `current_state`, `rationale`, `evidence`, or `non_authoritative`. |
+| `owner` | Owning surface such as `docs`, `runtime`, `research`, `automation`, or `site`. |
+| `last_verified` | ISO date when the claim surface was last checked. |
 
-## Authoring rules
+Recommended keys:
 
-- Write for AI agents and LLM execution, not for narrative human reading flow.
-- Optimize for retrieval, routing, and exact execution over prose style or rhetorical
-  smoothness.
-- Use stable terms for the same concept. Do not drift between synonyms for important
-  state names, commands, files, roles, or surfaces.
-- Prefer short declarative bullets, tables, and headers over long mixed-purpose prose.
-- Put authority, scope, inputs, outputs, and non-goals near the top of the document when
-  they matter.
-- Keep commands, paths, state names, labels, and config keys explicit and literal.
-- Keep one authoritative document per topic. Other documents should link to it rather
-  than paraphrasing it.
-- If human readability and machine routing conflict, prefer the machine-readable form.
+| Key | Meaning |
+| --- | --- |
+| `tags` | Retrieval labels. |
+| `source_refs` | External or public source references. |
+| `code_refs` | Repository-relative code, test, script, or config file paths. |
+| `related` | Related concepts inside the OKF bundle. |
+| `promotes_to` | Target lane when a research concept becomes durable authority. |
+| `drift_watch` | Commands, paths, labels, statuses, config keys, or schemas watched for semantic drift. |
 
-## Naming rules
+## Primary Lanes
 
-- Directory names express document type.
-- File names express stable topic.
-- Use lowercase kebab-case for document file names.
-- Do not encode temporary versions such as `v0`, `v1`, or `draft2` into stable file
-  names.
-- Do not repeat the directory class in the file name when the topic is already clear.
-  Prefer `runtime.md` under `docs/spec/` over `runtime-spec.md`.
+| Lane | Location | Type | Authority | Answers |
+| --- | --- | --- | --- | --- |
+| Spec | `docs/spec/` | `Spec` | `normative` | What must be true? |
+| Runbook | `docs/runbook/` | `Runbook` | `procedural` | Which sequence should I execute? |
+| Reference | `docs/reference/` | `Reference` | `current_state` | How is it currently organized or implemented? |
+| Decisions | `docs/decisions/` | `Decision` | `rationale` | Why is it shaped this way? |
+| Research | `docs/research/` | `Research Contract` | `non_authoritative` | What candidate conclusion has evidence but no execution authority yet? |
+| Evidence | `docs/evidence/` | `Evidence` or `Drift Audit` | `evidence` | Which public-safe proof supports claims and drift audits? |
 
-## Document headers
+## Research Contracts
 
-Every document should start with a short routing header.
+New research output is a Markdown concept under `docs/research/`. A research concept
+is never execution authority by itself.
 
-Spec header:
+Research concepts must expose headings with these names. The heading level is not
+semantic; concepts may use a top-level title followed by lower-level contract
+headings.
 
-- `Purpose`
-- `Status: normative`
-- `Read this when`
-- `Not this document`
-- `Defines`
-
-Runbook header:
-
-- `Goal`
-- `Read this when`
-- `Preconditions` or `Inputs`
-- `Depends on`
-- `Verification` or `Outputs`
-
-Reference header:
-
-- `Purpose`
-- `Read this when`
-- `Not this document`
-- `Covers`
-
-Decision header:
-
-- `Status`
-- `Date`
 - `Question`
+- `Scope`
+- `Evidence`
+- `Options`
+- `Judgment`
+- `Challenge`
 - `Decision`
-- `Consequences`
+- `Promotion`
+- `Drift Impact`
+- `Citations`
 
-## Canonical entry points
+`Decision` must state exactly one terminal status:
 
-- Unified router: `docs/index.md`
-- Normative router: `docs/spec/index.md`
-- Procedural router: `docs/runbook/index.md`
-- Current-state router: `docs/reference/index.md`
-- Rationale router: `docs/decisions/index.md`
-- Repo task and automation entrypoints: `Makefile.toml`
+- `decision_ready`
+- `not_decision_ready`
+- `blocked`
+- `needs_human_decision`
 
-## Update workflow
+Promotion means updating the target `spec`, `runbook`, `reference`, or `decisions`
+concept and logging the event in `docs/log.md`. When accepted research changes
+agent-facing workflow instructions, update the matching `plugins/decodex/skills/`
+surface alongside the selected docs concept; plugin skills are companion execution
+surfaces, not `promotes_to` lanes. Promotion must preserve evidence, constraints,
+rejected alternatives, validation expectations, and drift impacts.
 
-- Behavior or schema change: update the relevant spec.
-- Procedure change: update the relevant runbook.
-- Structural or ownership change: update the relevant reference doc.
-- Durable design or packaging change: update the relevant decision doc.
-- If a document drifts across lanes, split it instead of stretching one document to do
-  several jobs.
-- If a document repeats another lane's authority, remove the duplicate text and replace
-  it with a link to the source of truth.
+## Semantic Drift
+
+Semantic drift is part of docs maintenance, not a separate optional workflow.
+
+When a lane creates or materially changes a concept claim about commands, flags,
+config, status fields, schemas, validation gates, runtime behavior, tracker labels,
+telemetry, generated artifacts, or operator procedures, that changed claim must
+either:
+
+- include direct `code_refs` and `drift_watch`, or
+- link to a `docs/evidence/` drift audit concept that audits those claims.
+
+Existing concepts without those fields are not automatically compliant for changed
+behavior. The next lane that touches a behavior claim must add the direct evidence
+fields or a linked drift audit before claiming docs readiness.
+
+Drift audit evidence concepts must expose headings with these names:
+
+- `Watched Claims`
+- `Evidence Anchors`
+- `Reverse Checks`
+- `Verdict`
+- `Required Updates`
+- `Citations`
+
+`Verdict` must be `pass`, `fail`, or `needs-human`.
+
+## Self-Iteration Loop
+
+Every docs-changing lane follows this loop:
+
+1. Read `docs/index.md`, then the smallest linked concepts needed for the task.
+2. Update the concept that owns the changed knowledge instead of duplicating the
+   claim elsewhere.
+3. If the change affects behavior, update the owning concept's `code_refs` and
+   `drift_watch`, or update/create a linked drift audit.
+4. Update lane indexes and `docs/log.md` when routing changes.
+5. Run `cargo run -p decodex --bin decodex -- docs lint`.
+6. Treat docs lint or drift failure as a completion blocker. Research uncertainty uses
+   the research-contract `needs_human_decision` status; implementation-lane blockers
+   use the runtime `manual_attention` terminal path.
+
+The agent-facing entrypoint for this loop is
+[`plugins/decodex/skills/docs/SKILL.md`](../plugins/decodex/skills/docs/SKILL.md),
+which routes to the narrower `docs-okf`, `docs-wiki`, and `docs-drift` skills. If
+the docs impact is `research_required`, switch to the Decodex `research*` skill
+family and persist any checked-in result under `docs/research/` only as a latent,
+non-authoritative Markdown OKF research concept until explicitly promoted.
+
+Detailed Decodex docs rules live in `plugins/decodex/references/docs-method.md`,
+`docs-okf.md`, `docs-wiki.md`, and `docs-drift.md`. Detailed research rules live in
+`plugins/decodex/references/research-lifecycle.md`, `research-evidence.md`,
+`research-contract.md`, and `research-promotion.md`.
+
+## Decodex Lane Integration
+
+Each automated lane must classify docs impact before completion. Decodex records the
+classification as the private `docs_impact` field on `issue_progress_checkpoint`.
+
+| Value | Meaning |
+| --- | --- |
+| `none` | No docs, command, behavior, config, status, or workflow claim changed. |
+| `update_required` | A durable concept must be updated in the same lane. |
+| `research_required` | Missing or contradictory authority requires a research concept. |
+| `drift_required` | A changed claim needs a drift audit before completion. |
+
+`validation-ready` includes docs readiness. A lane cannot claim ready when the docs
+gate fails for touched documentation or touched behavior with docs impact.
+
+## Validation
+
+Run:
+
+```sh
+decodex docs lint
+```
+
+In this repository, `cargo make check` includes the same docs gate through
+`cargo run -p decodex --bin decodex -- docs lint`.
+
+The check fails when:
+
+- `docs/log.md` or required lane indexes are missing
+- non-Markdown artifacts appear under `docs/`
+- concepts lack required frontmatter or use unsupported OKF enum/date values
+- structured frontmatter refs are malformed, point outside their authority boundary,
+  or reference missing repository/docs paths
+- research contracts or drift audit evidence concepts lack their required headings
+- local Markdown links are broken
+- `docs/evidence/` lacks a drift audit anchor

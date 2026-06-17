@@ -1,3 +1,13 @@
+---
+type: "Reference"
+title: "GitHub Operations"
+description: "Map Decodex's current GitHub-facing execution surface and the decision for each area to use `gh`, keep a custom model, or avoid GitHub ownership."
+status: active
+authority: current_state
+owner: docs
+tags: [reference]
+last_verified: 2026-06-16
+---
 # GitHub Operations
 
 Purpose: Map Decodex's current GitHub-facing execution surface and the decision for

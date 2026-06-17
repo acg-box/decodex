@@ -768,6 +768,7 @@ struct ProgressCheckpointArgs {
 	#[serde(flatten)]
 	scope: ScopeArgs,
 	phase: String,
+	docs_impact: String,
 	focus: String,
 	next_action: String,
 	#[serde(default)]
@@ -784,6 +785,7 @@ struct ProgressCheckpointArgs {
 #[derive(Debug)]
 struct NormalizedProgressCheckpoint {
 	phase: ExecutionProgressPhase,
+	docs_impact: DocsImpact,
 	focus: String,
 	next_action: String,
 	blockers: Vec<String>,
@@ -1023,6 +1025,36 @@ impl ExecutionProgressPhase {
 			"closeout" => Ok(Self::Closeout),
 			other => Err(format!(
 				"`issue_progress_checkpoint` phase must be `probing`, `implementing`, `verifying`, `blocked`, `ready_for_review`, `review_repair`, `ready_to_land`, or `closeout`, not `{other}`."
+			)),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DocsImpact {
+	None,
+	UpdateRequired,
+	ResearchRequired,
+	DriftRequired,
+}
+impl DocsImpact {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::None => "none",
+			Self::UpdateRequired => "update_required",
+			Self::ResearchRequired => "research_required",
+			Self::DriftRequired => "drift_required",
+		}
+	}
+
+	fn parse(value: &str) -> std::result::Result<Self, String> {
+		match value {
+			"none" => Ok(Self::None),
+			"update_required" => Ok(Self::UpdateRequired),
+			"research_required" => Ok(Self::ResearchRequired),
+			"drift_required" => Ok(Self::DriftRequired),
+			other => Err(format!(
+				"`issue_progress_checkpoint` docs_impact must be `none`, `update_required`, `research_required`, or `drift_required`, not `{other}`."
 			)),
 		}
 	}

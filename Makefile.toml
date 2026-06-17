@@ -16,10 +16,25 @@ clear = true
 workspace = false
 dependencies = [
 	"fmt-check",
+	"docs-check",
 	"check-rust",
 	"check-site",
 	"check-vstyle",
 	"test",
+]
+
+[tasks.docs-check]
+workspace = false
+command = "cargo"
+args = [
+	"run",
+	"-p",
+	"decodex",
+	"--bin",
+	"decodex",
+	"--",
+	"docs",
+	"lint",
 ]
 
 [tasks.check-rust]

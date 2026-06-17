@@ -1,3 +1,13 @@
+---
+type: "Runbook"
+title: "Linear Archive Hygiene"
+description: "OKF concept for Linear Archive Hygiene."
+status: active
+authority: procedural
+owner: automation
+tags: [runbook]
+last_verified: 2026-06-16
+---
 # Linear Archive Hygiene
 
 Goal: Archive old terminal Linear issues without touching active Decodex lanes,

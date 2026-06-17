@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Social Candidate"
+description: "Define the checked-in Publisher candidate artifact produced by upstream Radar source analysis before any social publication record is written."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Social Candidate
 
 Purpose: Define the checked-in Publisher candidate artifact produced by upstream Radar

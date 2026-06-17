@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "GitHub Change Bundle"
+description: "Define the normalized GitHub input bundle that feeds Decodex signal analysis."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # GitHub Change Bundle
 
 Purpose: Define the normalized GitHub input bundle that feeds Decodex signal analysis.

@@ -41,6 +41,7 @@ fn progress_checkpoint_preserves_private_payload_and_publishes_projection() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
+				"docs_impact": "none",
 			"focus": "Wire the new execution-state skill into tracker-driven flows.",
 			"next_action": "Add the issue_progress_checkpoint runtime tool.",
 			"blockers": [],
@@ -85,14 +86,15 @@ fn progress_checkpoint_preserves_private_payload_and_publishes_projection() {
 		private_events[0].payload()["focus"],
 		serde_json::json!("Wire the new execution-state skill into tracker-driven flows.")
 	);
-	assert_eq!(
-		private_events[0].payload()["next_action"],
-		serde_json::json!("Add the issue_progress_checkpoint runtime tool.")
-	);
-	assert_eq!(
-		private_events[0].payload()["evidence"],
-		serde_json::json!(["Research decision favors Linear-backed execution snapshots."])
-	);
+		assert_eq!(
+			private_events[0].payload()["next_action"],
+			serde_json::json!("Add the issue_progress_checkpoint runtime tool.")
+		);
+		assert_eq!(private_events[0].payload()["docs_impact"], serde_json::json!("none"));
+		assert_eq!(
+			private_events[0].payload()["evidence"],
+			serde_json::json!(["Research decision favors Linear-backed execution snapshots."])
+		);
 	assert_eq!(
 		private_events[0].payload()["verification"],
 		serde_json::json!(["Local inventory of active execution-state boundary references completed."])
@@ -125,6 +127,7 @@ fn progress_checkpoint_classifier_allows_public_projection() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
+				"docs_impact": "none",
 			"focus": "Private focus stays local.",
 			"next_action": "Continue implementation.",
 			"blockers": [],
@@ -172,6 +175,7 @@ fn progress_checkpoint_suspicious_classifier_replaces_public_summary() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
+				"docs_impact": "none",
 			"focus": "Private focus stays local.",
 			"next_action": "Continue implementation.",
 			"blockers": [],
@@ -215,6 +219,7 @@ fn progress_checkpoint_unavailable_classifier_preserves_private_event() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "verifying",
+				"docs_impact": "none",
 			"focus": "Private verification focus stays local.",
 			"next_action": "Continue verification.",
 			"blockers": [],
@@ -258,6 +263,7 @@ fn blocked_progress_checkpoint_requires_concrete_blocker() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "blocked",
+				"docs_impact": "none",
 			"focus": "Unblock closeout.",
 			"next_action": "Wait for a blocker to be clarified.",
 			"blockers": [],
@@ -296,6 +302,7 @@ fn progress_checkpoint_rejects_stale_head_sha() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
+				"docs_impact": "none",
 			"focus": "Keep execution state tied to the current lane head.",
 			"next_action": "Reject stale checkpoint writes.",
 			"blockers": [],
@@ -335,6 +342,7 @@ fn progress_checkpoint_normalizes_matching_short_head_sha_to_full_head() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "closeout",
+				"docs_impact": "none",
 			"focus": "Finish retained closeout bookkeeping.",
 			"next_action": "Record the closeout checkpoint with the live lane head.",
 			"blockers": [],
@@ -379,6 +387,7 @@ fn progress_checkpoint_retries_preserve_private_events_without_duplicate_public_
 	);
 	let arguments = serde_json::json!({
 		"phase": "implementing",
+				"docs_impact": "none",
 		"focus": "Keep duplicate checkpoint writes idempotent.",
 		"next_action": "Retry the same tracker write.",
 		"blockers": [],
@@ -425,6 +434,7 @@ fn progress_checkpoint_public_projection_changes_only_on_material_signal() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
+				"docs_impact": "none",
 			"focus": "First private implementation focus.",
 			"next_action": "Continue implementation.",
 			"blockers": [],
@@ -437,6 +447,7 @@ fn progress_checkpoint_public_projection_changes_only_on_material_signal() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
+				"docs_impact": "none",
 			"focus": "Changed private implementation focus.",
 			"next_action": "Changed private next action.",
 			"blockers": [],
@@ -449,6 +460,7 @@ fn progress_checkpoint_public_projection_changes_only_on_material_signal() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "verifying",
+				"docs_impact": "none",
 			"focus": "Verify the implementation.",
 			"next_action": "Run tests.",
 			"blockers": [],
@@ -494,6 +506,7 @@ fn progress_checkpoint_stores_private_text_but_redacts_public_projection() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
+				"docs_impact": "none",
 			"focus": "Inspected /Users/example/code/private checkout.",
 			"next_action": "Continue implementation.",
 			"blockers": [],

@@ -12,6 +12,7 @@ mod cli;
 mod codex_config;
 mod commit_message;
 mod default_branch_sync;
+mod docs_okf;
 mod execution_program;
 mod git_credentials;
 mod github;

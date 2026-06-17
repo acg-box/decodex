@@ -1,3 +1,13 @@
+---
+type: "Spec"
+title: "Site Contract"
+description: "Define the page and route contract for the GitHub-first Decodex MVP."
+status: active
+authority: normative
+owner: runtime
+tags: [spec]
+last_verified: 2026-06-16
+---
 # Site Contract
 
 Purpose: Define the page and route contract for the GitHub-first Decodex MVP.

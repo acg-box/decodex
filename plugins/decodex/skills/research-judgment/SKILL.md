@@ -6,7 +6,7 @@ description: Use when research needs judgment.
 # Decodex Research Judgment
 
 Turn evidence and options into a testable conclusion. Read
-`../../references/research-method.md` for the full judgment shape.
+`../../references/research-contract.md` for the judgment shape.
 
 - Name the recommendation or non-decision, criteria fit, evidence, assumptions,
   rejected alternatives, gaps, and validation.
