@@ -28,6 +28,7 @@ pub(crate) struct ReviewPolicyCheckpointInput<'a> {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ProjectLoopEvidenceSnapshot {
 	private_events: HashMap<(String, String, i64), Vec<PrivateExecutionEvent>>,
+	review_lifecycle_records: HashMap<(String, String), ReviewLifecycleRecord>,
 	review_checkpoints: HashMap<(String, String, i64, String), ReviewPolicyCheckpoint>,
 }
 impl ProjectLoopEvidenceSnapshot {
@@ -40,6 +41,13 @@ impl ProjectLoopEvidenceSnapshot {
 			))
 			.or_default()
 			.push(event);
+	}
+
+	fn insert_review_lifecycle_record(&mut self, record: ReviewLifecycleRecord) {
+		self.review_lifecycle_records.insert(
+			(record.issue_id().to_owned(), record.branch_name().to_owned()),
+			record,
+		);
 	}
 
 	fn insert_review_checkpoint(&mut self, checkpoint: ReviewPolicyCheckpoint) {
@@ -74,6 +82,15 @@ impl ProjectLoopEvidenceSnapshot {
 			.get(&(issue_id.to_owned(), run_id.to_owned(), attempt_number))
 			.map(Vec::as_slice)
 			.unwrap_or(&[])
+	}
+
+	#[cfg_attr(not(test), allow(dead_code))]
+	pub(crate) fn review_lifecycle_record(
+		&self,
+		issue_id: &str,
+		branch_name: &str,
+	) -> Option<&ReviewLifecycleRecord> {
+		self.review_lifecycle_records.get(&(issue_id.to_owned(), branch_name.to_owned()))
 	}
 
 	pub(crate) fn private_events_for_issue(&self, issue_id: &str) -> Vec<&PrivateExecutionEvent> {
@@ -324,13 +341,8 @@ impl StateStore {
 			state.worktrees.entry(canonical_issue_id.to_owned()).or_insert(mapping);
 		}
 
-		retarget_review_handoff_issue(
-			&mut state.review_handoffs,
-			previous_issue_id,
-			canonical_issue_id,
-		);
-		retarget_review_orchestration_issue(
-			&mut state.review_orchestrations,
+		retarget_review_lifecycle_issue(
+			&mut state.review_lifecycle_records,
 			previous_issue_id,
 			canonical_issue_id,
 		);
@@ -1884,6 +1896,13 @@ impl StateStore {
 			snapshot.insert_private_event(record.as_public());
 		}
 		for record in state
+			.review_lifecycle_records
+			.values()
+			.filter(|record| record.project_id == project_id)
+		{
+			snapshot.insert_review_lifecycle_record(record.as_public());
+		}
+		for record in state
 			.review_policy_checkpoints
 			.values()
 			.filter(|record| record.project_id == project_id)
@@ -2389,7 +2408,7 @@ impl StateStore {
 		self.upsert_worktree_and_remember_run_project_locked(&mapping)
 	}
 
-	/// Create or replace the retained review handoff marker for one issue lane.
+	/// Create or replace the retained review handoff projection for one issue lane.
 	pub(crate) fn upsert_review_handoff_marker(
 		&self,
 		project_id: &str,
@@ -2397,38 +2416,108 @@ impl StateStore {
 		marker: &ReviewHandoffMarker,
 	) -> Result<()> {
 		let now = timestamp_parts();
-		let key = ReviewMarkerKey::new(project_id, issue_id, marker.branch_name());
+		let key = ReviewLifecycleKey::new(project_id, issue_id, marker.branch_name());
 		let mut state = self.lock()?;
+		let record =
+			state.review_lifecycle_records.entry(key).or_insert_with(|| {
+				ReviewLifecycleRuntimeRecord {
+					project_id: project_id.to_owned(),
+					issue_id: issue_id.to_owned(),
+					branch_name: marker.branch_name().to_owned(),
+					run_id: marker.run_id().to_owned(),
+					attempt_number: marker.attempt_number(),
+					pr_url: marker.pr_url().to_owned(),
+					target_base_ref_name: marker.target_base_ref_name().map(str::to_owned),
+					pr_head_ref_name: marker.pr_head_ref_name().to_owned(),
+					pr_head_oid: marker.pr_head_oid().to_owned(),
+					head_sha: marker.pr_head_oid().to_owned(),
+					phase: String::from("request_pending"),
+					request_comment_database_id: None,
+					request_created_at_unix_epoch: None,
+					request_description_thumbs_up_count: None,
+					request_retry_count: 0,
+					external_round_count: 0,
+					auto_merge_enabled_at_unix_epoch: None,
+					landing_state: String::from("not_started"),
+					closeout_state: String::from("not_started"),
+					repair_attempt_count: 0,
+					evidence_json: String::from("{}"),
+					next_action: String::new(),
+					updated_at: now.text.clone(),
+					updated_at_unix: now.unix,
+				}
+			});
+		let same_handoff_projection = record.run_id == marker.run_id()
+			&& record.attempt_number == marker.attempt_number()
+			&& record.pr_url == marker.pr_url()
+			&& record.target_base_ref_name.as_deref() == marker.target_base_ref_name()
+			&& record.pr_head_ref_name == marker.pr_head_ref_name()
+			&& record.pr_head_oid == marker.pr_head_oid();
 
-		state.review_handoffs.insert(
-			key,
-			ReviewHandoffRuntimeRecord {
-				project_id: project_id.to_owned(),
-				issue_id: issue_id.to_owned(),
-				branch_name: marker.branch_name().to_owned(),
-				marker: marker.clone(),
-				updated_at: now.text,
-				updated_at_unix: now.unix,
-			},
-		);
+		record.run_id = marker.run_id().to_owned();
+		record.attempt_number = marker.attempt_number();
+		record.pr_url = marker.pr_url().to_owned();
+		record.target_base_ref_name = marker.target_base_ref_name().map(str::to_owned);
+		record.pr_head_ref_name = marker.pr_head_ref_name().to_owned();
+		record.pr_head_oid = marker.pr_head_oid().to_owned();
+
+		if !same_handoff_projection {
+			record.head_sha = marker.pr_head_oid().to_owned();
+			record.phase = String::from("request_pending");
+			record.request_comment_database_id = None;
+			record.request_created_at_unix_epoch = None;
+			record.request_description_thumbs_up_count = None;
+			record.request_retry_count = 0;
+			record.external_round_count = 0;
+			record.auto_merge_enabled_at_unix_epoch = None;
+			record.landing_state = String::from("not_started");
+			record.closeout_state = String::from("not_started");
+			record.repair_attempt_count = 0;
+			record.evidence_json = String::from("{}");
+
+			record.next_action.clear();
+		}
+
+		record.updated_at = now.text;
+		record.updated_at_unix = now.unix;
 
 		self.persist_runtime_state_locked(&state)
 	}
 
-	/// Read the retained review handoff marker for one issue branch from the runtime DB.
+	/// Read the retained review handoff projection for one issue branch.
 	pub(crate) fn review_handoff_marker(
 		&self,
 		project_id: &str,
 		issue_id: &str,
 		branch_name: &str,
 	) -> Result<Option<ReviewHandoffMarker>> {
-		let state = self.lock()?;
-		let key = ReviewMarkerKey::new(project_id, issue_id, branch_name);
-
-		Ok(state.review_handoffs.get(&key).map(|record| record.marker.clone()))
+		Ok(self
+			.review_lifecycle_record(project_id, issue_id, branch_name)?
+			.map(|record| ReviewHandoffMarker {
+				run_id: record.run_id().to_owned(),
+				attempt_number: record.attempt_number(),
+				branch_name: record.branch_name().to_owned(),
+				pr_url: record.pr_url().to_owned(),
+				target_base_ref_name: record.target_base_ref_name().map(str::to_owned),
+				pr_head_ref_name: record.pr_head_ref_name().to_owned(),
+				pr_head_oid: record.pr_head_oid().to_owned(),
+			}))
 	}
 
-	/// Create or replace the retained review orchestration marker for one issue lane.
+	/// Read the runtime-owned review lifecycle record for one retained issue branch.
+	pub(crate) fn review_lifecycle_record(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		branch_name: &str,
+	) -> Result<Option<ReviewLifecycleRecord>> {
+		let state = self.lock()?;
+		let key = ReviewLifecycleKey::new(project_id, issue_id, branch_name);
+
+		Ok(state.review_lifecycle_records.get(&key).map(ReviewLifecycleRuntimeRecord::as_public))
+	}
+
+	/// Create or replace the retained review orchestration projection for one issue lane.
 	pub(crate) fn upsert_review_orchestration_marker(
 		&self,
 		project_id: &str,
@@ -2436,28 +2525,52 @@ impl StateStore {
 		marker: &ReviewOrchestrationMarker,
 	) -> Result<()> {
 		let now = timestamp_parts();
-		let key = ReviewOrchestrationKey::new(
-			project_id,
-			issue_id,
-			marker.branch_name(),
-			marker.run_id(),
-			marker.attempt_number(),
-		);
+		let key = ReviewLifecycleKey::new(project_id, issue_id, marker.branch_name());
 		let mut state = self.lock()?;
+		let record =
+			state.review_lifecycle_records.entry(key).or_insert_with(|| {
+				ReviewLifecycleRuntimeRecord {
+					project_id: project_id.to_owned(),
+					issue_id: issue_id.to_owned(),
+					branch_name: marker.branch_name().to_owned(),
+					run_id: marker.run_id().to_owned(),
+					attempt_number: marker.attempt_number(),
+					pr_url: marker.pr_url().to_owned(),
+					target_base_ref_name: None,
+					pr_head_ref_name: marker.branch_name().to_owned(),
+					pr_head_oid: marker.head_sha().to_owned(),
+					head_sha: marker.head_sha().to_owned(),
+					phase: marker.phase().to_owned(),
+					request_comment_database_id: None,
+					request_created_at_unix_epoch: None,
+					request_description_thumbs_up_count: None,
+					request_retry_count: 0,
+					external_round_count: 0,
+					auto_merge_enabled_at_unix_epoch: None,
+					landing_state: String::from("not_started"),
+					closeout_state: String::from("not_started"),
+					repair_attempt_count: 0,
+					evidence_json: String::from("{}"),
+					next_action: String::new(),
+					updated_at: now.text.clone(),
+					updated_at_unix: now.unix,
+				}
+			});
 
-		state.review_orchestrations.insert(
-			key,
-			ReviewOrchestrationRuntimeRecord {
-				project_id: project_id.to_owned(),
-				issue_id: issue_id.to_owned(),
-				branch_name: marker.branch_name().to_owned(),
-				run_id: marker.run_id().to_owned(),
-				attempt_number: marker.attempt_number(),
-				marker: marker.clone(),
-				updated_at: now.text,
-				updated_at_unix: now.unix,
-			},
-		);
+		record.run_id = marker.run_id().to_owned();
+		record.attempt_number = marker.attempt_number();
+		record.pr_url = marker.pr_url().to_owned();
+		record.head_sha = marker.head_sha().to_owned();
+		record.phase = marker.phase().to_owned();
+		record.request_comment_database_id = marker.request_comment_database_id();
+		record.request_created_at_unix_epoch = marker.request_created_at_unix_epoch();
+		record.request_description_thumbs_up_count =
+			marker.request_description_thumbs_up_count();
+		record.request_retry_count = marker.request_retry_count();
+		record.external_round_count = marker.external_round_count();
+		record.auto_merge_enabled_at_unix_epoch = marker.auto_merge_enabled_at_unix_epoch();
+		record.updated_at = now.text;
+		record.updated_at_unix = now.unix;
 
 		self.persist_runtime_state_locked(&state)
 	}
@@ -2469,16 +2582,34 @@ impl StateStore {
 		issue_id: &str,
 		review_handoff: &ReviewHandoffMarker,
 	) -> Result<Option<ReviewOrchestrationMarker>> {
-		let state = self.lock()?;
-		let key = ReviewOrchestrationKey::new(
-			project_id,
-			issue_id,
-			review_handoff.branch_name(),
-			review_handoff.run_id(),
-			review_handoff.attempt_number(),
-		);
+		let Some(record) =
+			self.review_lifecycle_record(project_id, issue_id, review_handoff.branch_name())?
+		else {
+			return Ok(None);
+		};
 
-		Ok(state.review_orchestrations.get(&key).map(|record| record.marker.clone()))
+		if record.run_id() != review_handoff.run_id()
+			|| record.attempt_number() != review_handoff.attempt_number()
+			|| record.branch_name() != review_handoff.branch_name()
+			|| record.pr_url() != review_handoff.pr_url()
+		{
+			return Ok(None);
+		}
+
+		Ok(Some(ReviewOrchestrationMarker::new(
+			record.run_id().to_owned(),
+			record.attempt_number(),
+			record.branch_name().to_owned(),
+			record.pr_url().to_owned(),
+			record.head_sha().to_owned(),
+			record.phase().to_owned(),
+			record.request_comment_database_id(),
+			record.request_created_at_unix_epoch(),
+			record.request_description_thumbs_up_count(),
+			record.request_retry_count(),
+			record.external_round_count(),
+			record.auto_merge_enabled_at_unix_epoch(),
+		)))
 	}
 
 	/// Create or replace the latest review-policy checkpoint for one run phase.
@@ -2634,26 +2765,25 @@ impl StateStore {
 		self.delete_loop_guardrail_checkpoint_locked(project_id, issue_id, reason)
 	}
 
-	/// Remove the exact retained review markers created for one handoff identity.
-	pub(crate) fn clear_review_markers_for_handoff(
+	/// Remove the exact review lifecycle record created for one handoff identity.
+	pub(crate) fn clear_review_lifecycle_for_handoff(
 		&self,
 		project_id: &str,
 		issue_id: &str,
 		handoff_marker: &ReviewHandoffMarker,
 		orchestration_marker: &ReviewOrchestrationMarker,
 	) -> Result<()> {
-		let handoff_key = ReviewMarkerKey::new(project_id, issue_id, handoff_marker.branch_name());
-		let orchestration_key = ReviewOrchestrationKey::new(
-			project_id,
-			issue_id,
-			orchestration_marker.branch_name(),
-			orchestration_marker.run_id(),
-			orchestration_marker.attempt_number(),
-		);
+		let lifecycle_key = ReviewLifecycleKey::new(project_id, issue_id, handoff_marker.branch_name());
 		let mut state = self.lock()?;
 
-		state.review_handoffs.remove(&handoff_key);
-		state.review_orchestrations.remove(&orchestration_key);
+		if state
+			.review_lifecycle_records
+			.get(&lifecycle_key)
+			.is_some_and(|record| record.matches_handoff_identity(handoff_marker))
+		{
+			state.review_lifecycle_records.remove(&lifecycle_key);
+		}
+
 		state.review_policy_checkpoints.retain(|key, _record| {
 			key.project_id != project_id
 				|| key.issue_id != issue_id
@@ -2709,16 +2839,15 @@ impl StateStore {
 		let mut state = self.lock()?;
 
 		state.worktrees.remove(issue_id);
-		state.review_handoffs.retain(|key, _record| key.issue_id != issue_id);
 		state
-			.review_orchestrations
+			.review_lifecycle_records
 			.retain(|key, _record| key.issue_id != issue_id);
 		state
 			.review_policy_checkpoints
 			.retain(|key, _record| key.issue_id != issue_id);
 		self.persist_runtime_state_locked(&state)?;
 
-		self.delete_worktree_and_review_markers_locked(issue_id)
+		self.delete_worktree_and_review_lifecycle_locked(issue_id)
 	}
 
 	fn lock_without_refresh(&self) -> Result<MutexGuard<'_, StateData>> {
@@ -3054,7 +3183,7 @@ impl StateStore {
 		sqlite.retarget_issue_identity(previous_issue_id, canonical_issue_id)
 	}
 
-	fn delete_worktree_and_review_markers_locked(&self, issue_id: &str) -> Result<()> {
+	fn delete_worktree_and_review_lifecycle_locked(&self, issue_id: &str) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -3062,7 +3191,7 @@ impl StateStore {
 			.lock()
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
-		sqlite.delete_worktree_and_review_markers(issue_id)
+		sqlite.delete_worktree_and_review_lifecycle(issue_id)
 	}
 
 	fn delete_review_marker_identity_locked(
@@ -3728,8 +3857,8 @@ fn timestamp_text_from_unix(unix_epoch: i64) -> String {
 		.unwrap_or_else(|| timestamp_parts().text)
 }
 
-fn retarget_review_handoff_issue(
-	records: &mut HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
+fn retarget_review_lifecycle_issue(
+	records: &mut HashMap<ReviewLifecycleKey, ReviewLifecycleRuntimeRecord>,
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
 ) {
@@ -3747,7 +3876,7 @@ fn retarget_review_handoff_issue(
 		record.issue_id = canonical_issue_id.to_owned();
 
 		records
-			.entry(ReviewMarkerKey::new(&key.project_id, canonical_issue_id, &key.branch_name))
+			.entry(ReviewLifecycleKey::new(&key.project_id, canonical_issue_id, &key.branch_name))
 			.or_insert(record);
 	}
 }
@@ -4110,34 +4239,4 @@ fn run_control_action_failure_class(
 	}
 
 	Some("run_control_action_failed")
-}
-
-fn retarget_review_orchestration_issue(
-	records: &mut HashMap<ReviewOrchestrationKey, ReviewOrchestrationRuntimeRecord>,
-	previous_issue_id: &str,
-	canonical_issue_id: &str,
-) {
-	let previous_keys = records
-		.keys()
-		.filter(|key| key.issue_id == previous_issue_id)
-		.cloned()
-		.collect::<Vec<_>>();
-
-	for key in previous_keys {
-		let Some(mut record) = records.remove(&key) else {
-			continue;
-		};
-
-		record.issue_id = canonical_issue_id.to_owned();
-
-		records
-			.entry(ReviewOrchestrationKey::new(
-				&key.project_id,
-				canonical_issue_id,
-				&key.branch_name,
-				&key.run_id,
-				key.attempt_number,
-			))
-			.or_insert(record);
-	}
 }
