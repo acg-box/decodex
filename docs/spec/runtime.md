@@ -364,7 +364,15 @@ projections.
   path no longer exists and has no active lease, active service label,
   needs-attention label, shared claim, running attempt, or review lifecycle record.
 - Generic live dispatch must not require GitHub CLI authority before the lane actually attempts PR-backed review handoff.
-- Generic live dispatch must resolve `github.token_env_var` before launching the agent app-server so lane-owned `git push` and `gh pr create` commands inherit noninteractive GitHub credentials. Missing or blank GitHub credentials must fail the run through the human-required path instead of retrying or leaving a promptable lane running.
+- Generic live dispatch must resolve `github.token_env_var` before launching the agent
+  app-server so lane-owned `git push` and `gh pr create` commands inherit
+  noninteractive GitHub credentials. Git operations must receive routed credentials
+  through process-local environment and inline `credential.helper` configuration, not
+  per-run askpass helper files under `.worktrees/`. The inline helper must return
+  credentials only for HTTPS `github.com` requests and must read the token from the
+  routed environment rather than embedding it in Git config. Missing or blank GitHub
+  credentials must fail the run through the human-required path instead of retrying or
+  leaving a promptable lane running.
 - Project configs may set `[github].command_path` to make one expected GitHub CLI binary authoritative for project-scoped GitHub operations. When it is configured, review handoff validation, retained review readback, landing inspection, GitHub comments, admin merge, merge readback, and remote branch cleanup must invoke that path instead of silently rediscovering another `gh` binary.
 - The service must fail fast on missing `gh` CLI authority only at the GitHub-dependent review boundary:
   - when a normal lane is about to validate and persist PR-backed review handoff
@@ -836,16 +844,19 @@ After a process restart, recent-run history, run lease ownership, retained post-
   state-aware protocol-event
   compaction, old backup pruning, local log and agent-evidence event-stream rotation,
   deletion of rotated local logs and agent-evidence event streams older than 14 days,
-  and SQLite WAL checkpointing. Operators must not delete `runtime.sqlite3-wal`
-  directly.
+  deletion of legacy `.decodex-git-askpass-*.sh` helper files older than one day from
+  registered project worktree roots, and SQLite WAL checkpointing. Operators must not
+  delete `runtime.sqlite3-wal` directly.
 - `decodex serve` runs the auto-safe maintenance subset at startup and periodically
   while polling. That subset may rotate oversized local files, prune old backups,
   delete rotated local logs and agent-evidence event streams older than 14 days,
-  compact only safe terminal protocol-event rows behind the 14-day boundary, and run
-  a passive WAL checkpoint. Current local log files and current `events.jsonl` streams
-  are rotation inputs, not age-deletion candidates. If SQLite is busy or
-  protocol-event candidate detection fails, the auto-safe path must record a warning
-  and continue without blocking scheduler health.
+  delete legacy Git askpass helpers older than one day from registered project
+  worktree roots, compact only safe terminal protocol-event rows behind the 14-day
+  boundary, and run a passive WAL checkpoint. Current local log files, current
+  `events.jsonl` streams, and newer legacy askpass helpers are inputs or protected
+  candidates, not age-deletion candidates. If SQLite is busy or protocol-event
+  candidate detection fails, the auto-safe path must record a warning and continue
+  without blocking scheduler health.
 - Worktrees: retain while the issue is non-terminal, and also retain terminal owned lanes while authoritative post-merge closeout or deterministic cleanup is still incomplete.
 - Worktree mappings must carry durable local provenance. New runtime-recorded mappings
   use `provenance_source = "runtime_recorded"` with created and updated Unix
