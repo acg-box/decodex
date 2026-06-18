@@ -11338,9 +11338,7 @@
 				const currentLaneRows = currentLanes
 					.filter((run) => run && typeof run === "object")
 					.map((run) => ({ ...run }));
-				const currentLanesComplete =
-					activityPayload.currentLanesComplete !== false &&
-					activityPayload.currentLaneScope !== "filtered";
+				const currentLanesComplete = activityPayload.currentLanesComplete !== false;
 				const mergedCurrentLanes = mergeDashboardCurrentLanes(
 					snapshot,
 					currentLaneRows,
@@ -11472,8 +11470,7 @@
 					.filter((run) => run && typeof run === "object")
 					.map((run) => ({ ...run }));
 				dashboardLiveRunActivitySeen = true;
-				dashboardLiveCurrentLanesComplete =
-					payload.currentLanesComplete !== false && payload.currentLaneScope !== "filtered";
+				dashboardLiveCurrentLanesComplete = payload.currentLanesComplete !== false;
 				dashboardLiveAccountControl =
 					payload.accountControl && typeof payload.accountControl === "object"
 						? { ...payload.accountControl }
