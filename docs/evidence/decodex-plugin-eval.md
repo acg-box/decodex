@@ -15,8 +15,8 @@ last_verified: 2026-06-18
 # Decodex Plugin Eval
 
 Purpose: Preserve public-safe evidence that the Decodex plugin, routing reference,
-portable OKF init and skill family, repo-memory skill family, and docs skill family
-passed local plugin evaluation.
+portable OKF init and skill family, repo-memory skill family, docs skill family, and
+research skill family passed local plugin evaluation without failures.
 
 Read this when: You need proof that the OKF init/split, repo-memory skills, docs skill
 split, research skill split, and plugin invocation policy were evaluated before
@@ -37,19 +37,9 @@ node ~/.codex/plugins/cache/openai-curated/plugin-eval/015c0dff/scripts/plugin-e
 
 ## Results
 
-| Target | Score | Grade | Risk | Fix First |
-| --- | --- | --- | --- | --- |
-| `plugins/decodex` | 100 | A | low | none |
-| `plugins/decodex/skills/okf` | 100 | A | low | none |
-| `plugins/decodex/skills/okf-query` | 100 | A | low | none |
-| `plugins/decodex/skills/okf-maintain` | 100 | A | low | none |
-| `plugins/decodex/skills/repo-memory-writer` | 100 | A | low | none |
-| `plugins/decodex/skills/repo-memory-evaluator` | 100 | A | low | none |
-| `plugins/decodex/skills/repo-memory-curator` | 100 | A | low | none |
-| `plugins/decodex/skills/docs` | 100 | A | low | none |
-| `plugins/decodex/skills/docs-okf` | 100 | A | low | none |
-| `plugins/decodex/skills/docs-wiki` | 100 | A | low | none |
-| `plugins/decodex/skills/docs-drift` | 100 | A | low | none |
+| Target | Score | Grade | Risk | Checks | Fix First |
+| --- | ---: | --- | --- | --- | --- |
+| `plugins/decodex` | 95 | A | medium | 0 fail, 1 warn, 2 info | Reduce repeated deferred instruction text when doing a future token-budget pass. |
 
 ## Invocation Policy
 
@@ -91,7 +81,7 @@ Explicit-only skills:
 ## Limits
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
-2026-06-18 full-plugin rerun reported score 100/100, grade A, low risk, zero failing
-checks, zero warnings, and two informational notes. The context-intake update stays
-inside `routing.md` so OKF/LLM Wiki context intake remains Decodex-owned without
-creating a heavy deferred-reference warning.
+2026-06-18 full-plugin rerun reported score 95/100, grade A, medium risk, zero
+failing checks, one warning, and two informational notes. The warning is
+`deferred_cost_tokens-budget-high`, which is a known static token-budget cleanup item
+for a future slimming pass, not a routing, safety, or progressive-disclosure failure.

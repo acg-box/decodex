@@ -34,6 +34,9 @@ Question this index answers: "which sequence should I execute?"
   inspect, resume, scan, keep or remove queue labels, or route manual attention after
   interrupt, hard fallback, broad steer, task replacement, or ambiguous recovery
   evidence.
+- [`mcp-remote-control.md`](./mcp-remote-control.md) for running Streamable HTTP MCP
+  with loopback defaults, CORS trust, capability profiles, public-safe observation,
+  canonical refusal paths, and the current auth/process-smoke gaps.
 - [`recover-review-handoff.md`](./recover-review-handoff.md) for diagnosing retained
   review lanes, explicitly rebinding missing or stale runtime DB lifecycle records, and
   adopting verified human-owned PRs into the normal Decodex landing lifecycle.
