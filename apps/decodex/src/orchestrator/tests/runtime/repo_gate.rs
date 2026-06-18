@@ -241,6 +241,7 @@ fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
 		"implementation complete\n",
 		"implement issue scope",
 	);
+
 	assert_eq!(git_output(config.repo_root(), &["status", "--porcelain"]), "");
 
 	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
