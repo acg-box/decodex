@@ -1,13 +1,13 @@
 ---
 type: Evidence
 title: Decodex Plugin Eval
-description: Records plugin-eval results for the Decodex plugin, routing reference, portable OKF, repo-memory, docs, and research skills.
+description: Records plugin-eval results for the Decodex plugin, routing reference, portable OKF, repo-memory, docs drift, debugging, and research skills.
 status: active
 authority: evidence
 owner: docs
-tags: [plugin-eval, skills, docs, research, okf, repo-memory]
+tags: [plugin-eval, skills, docs, research, okf, repo-memory, semantic-drift, debugging]
 source_refs: []
-code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/okf-layer.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-evaluator/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md, plugins/decodex/skills/docs/SKILL.md, plugins/decodex/skills/docs-okf/SKILL.md, plugins/decodex/skills/docs-wiki/SKILL.md, plugins/decodex/skills/docs-drift/SKILL.md, plugins/decodex/skills/research/SKILL.md]
+code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/okf-layer.md, plugins/decodex/references/docs-drift.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-evaluator/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md, plugins/decodex/skills/docs/SKILL.md, plugins/decodex/skills/docs-okf/SKILL.md, plugins/decodex/skills/docs-wiki/SKILL.md, plugins/decodex/skills/docs-drift/SKILL.md, plugins/decodex/skills/debugging/SKILL.md, plugins/decodex/skills/research/SKILL.md, plugins/decodex/skills/research-challenge/SKILL.md, plugins/decodex/scripts/semantic_drift_audit.py]
 related: [../policy.md, ./docs-self-iteration.md]
 last_verified: 2026-06-18
 ---
@@ -15,12 +15,13 @@ last_verified: 2026-06-18
 # Decodex Plugin Eval
 
 Purpose: Preserve public-safe evidence that the Decodex plugin, routing reference,
-portable OKF init and skill family, repo-memory skill family, docs skill family, and
-research skill family passed local plugin evaluation without failures.
+portable OKF init and skill family, repo-memory skill family, docs drift skill,
+debugging skill, and research skill family passed local plugin evaluation without
+failures.
 
-Read this when: You need proof that the OKF init/split, repo-memory skills, docs skill
-split, research skill split, and plugin invocation policy were evaluated before
-landing.
+Read this when: You need proof that the OKF init/split, repo-memory skills, docs
+drift, debugging, research skill split, and plugin invocation policy were evaluated
+before landing.
 
 Not this document: A runtime benchmark, coverage report, or replacement for
 `plugin-eval` output.
@@ -32,14 +33,14 @@ Covers: Static plugin-eval commands, score results, and the invocation-policy de
 Current full-plugin gate:
 
 ```sh
-node ~/.codex/plugins/cache/openai-curated/plugin-eval/015c0dff/scripts/plugin-eval.js analyze plugins/decodex --format markdown
+node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plugin-eval.js analyze plugins/decodex --format markdown
 ```
 
 ## Results
 
 | Target | Score | Grade | Risk | Checks | Fix First |
 | --- | ---: | --- | --- | --- | --- |
-| `plugins/decodex` | 95 | A | medium | 0 fail, 1 warn, 2 info | Reduce repeated deferred instruction text when doing a future token-budget pass. |
+| `plugins/decodex` | 91 | B | medium | 0 fail, 2 warn, 2 info | Reduce invoke and deferred token budget in a future slimming pass. |
 
 ## Invocation Policy
 
@@ -59,6 +60,7 @@ Explicit-only skills:
 
 - `automation`
 - `commit`
+- `debugging`
 - `docs-drift`
 - `docs-okf`
 - `docs-wiki`
@@ -81,7 +83,9 @@ Explicit-only skills:
 ## Limits
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
-2026-06-18 full-plugin rerun reported score 95/100, grade A, medium risk, zero
-failing checks, one warning, and two informational notes. The warning is
-`deferred_cost_tokens-budget-high`, which is a known static token-budget cleanup item
-for a future slimming pass, not a routing, safety, or progressive-disclosure failure.
+2026-06-18 full-plugin rerun reported score 91/100, grade B, medium risk, zero
+failing checks, two warnings, and two informational notes. The warnings are
+`invoke_cost_tokens-budget-high` and `deferred_cost_tokens-budget-high`, which are
+known static token-budget cleanup items for a future slimming pass, not routing,
+safety, or progressive-disclosure failures. The manifest default prompt count is back
+within the three-prompt Codex limit.

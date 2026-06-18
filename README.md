@@ -22,8 +22,9 @@ Repo-native agent orchestration, retained lanes, and local operator control.
   snapshot/control traffic at `/dashboard/control`, Decodex App snapshot/account
   APIs under `/api/`, and `GET /livez` for liveness.
 - Static Astro site for the public Decodex product surface and app download entry.
-- Installable Decodex plugin with reusable agent-facing skills for issue briefing,
-  planning, manual CLI, automation, commit, land, and labels.
+- Installable Decodex plugin with reusable agent-facing skills for docs drift,
+  debugging, research challenge, issue briefing, planning, manual CLI, automation,
+  commit, land, and labels.
 - Repository documentation split by question type into spec, runbook, reference, and
   decision lanes.
 
@@ -54,7 +55,7 @@ runtime.
   Codex accounts through the bundled Rust app helper.
 - `site/` owns the Astro static product site and app download entry.
 - `plugins/decodex/` owns the installable Decodex plugin and reusable agent-facing
-  skills.
+  skills, including semantic drift, debugging, and research challenge methods.
 - `docs/` remains the authoritative documentation surface.
 
 Runtime authority stays in `apps/decodex/src/`, the registered project contracts under

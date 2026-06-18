@@ -22,3 +22,12 @@ behavior, or promoted research.
 
 `fail` blocks ready/review handoff. `needs-human` blocks unless the lane records a
 public-safe manual-attention path.
+
+## Helper
+
+Use `plugins/decodex/scripts/semantic_drift_audit.py` from the repository root when a
+git diff packet can reduce manual scanning. It reports changed docs, changed
+executable surfaces, added claim-like lines, removed executable terms, stale phrase
+hits, and whether agent review is required. The helper is not a verdict; compare the
+candidate packet against direct evidence before reporting `pass`, `fail`, or
+`needs-human`.

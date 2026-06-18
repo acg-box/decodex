@@ -13,6 +13,12 @@ automation, commit, or landing boundaries.
 - Docs: use `docs` as the router. Use `docs-okf`, `docs-wiki`, and `docs-drift`
   for shape, navigation, and audits. Docs impact `research_required` switches to
   `research*`; checked-in `docs/research/` is latent evidence.
+- Semantic drift: use `docs-drift` for docs/code/help/status/config/runtime claim
+  alignment. It owns drift verdicts even when the trigger is a command, config key,
+  status phrase, generated artifact, or runtime readback rather than a prose doc.
+- Debugging: use `debugging` for root-cause investigation, original-symptom checks,
+  runtime diagnostics, and repeated failed fixes. Debugging may feed research only
+  when the result becomes a decision-ready comparison.
 - Research/design: use `research` and phase skills. The compact loop is probe,
   evidence, options, judgment, challenge, decision. Results are latent Decision
   Contract candidates only.
