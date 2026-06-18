@@ -2,6 +2,8 @@
 
 ## 2026-06-18
 
+- Corrected MCP operator-control docs to describe checked-in research as Markdown
+  research concepts, matching the current OKF research contract.
 - Added the OKF research knowledge-lifecycle decision and updated research policy,
   reference, index, checker, and plugin guidance so promotion now routes rationale to
   decisions, truth to owner lanes, reusable proof to evidence, and superseded
