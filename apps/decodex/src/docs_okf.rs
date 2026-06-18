@@ -24,14 +24,10 @@ const REQUIRED_DOCS_FILES: &[&str] = &[
 	"decisions/index.md",
 	"evidence/index.md",
 	"reference/index.md",
-	"research/index.json",
+	"research/index.md",
 	"runbook/index.md",
 	"spec/index.md",
 ];
-const RESEARCH_INDEX_SCHEMA: &str = "decodex.research_index/1";
-const RESEARCH_REPORT_SCHEMA: &str = "decodex.research_report/1";
-const REQUIRED_RESEARCH_REPORT_KEYS: &[&str] =
-	&["schema", "title", "purpose", "scope", "status_summary", "evidence_ledger"];
 const ALLOWED_CONCEPT_TYPES: &[&str] = &[
 	"Decision",
 	"Drift Audit",
@@ -72,7 +68,7 @@ const DRIFT_AUDIT_HEADINGS: &[&str] = &[
 pub(crate) enum DocsCheckScope {
 	/// Run every OKF docs check.
 	All,
-	/// Validate routing/index files, artifact placement, and concept frontmatter.
+	/// Validate routing/index files, JSON absence, and concept frontmatter.
 	Index,
 	/// Validate local Markdown links.
 	Links,
@@ -320,7 +316,7 @@ pub(crate) fn render_okf_init_report(report: &OkfInitReport) -> String {
 	output
 }
 
-/// Validate the Decodex docs bundle.
+/// Validate a docs directory as a Markdown-only OKF bundle.
 pub(crate) fn run_docs_check(root: &Path, scope: DocsCheckScope) -> Result<DocsCheckReport> {
 	let docs_root = root.to_path_buf();
 
@@ -342,8 +338,7 @@ pub(crate) fn run_docs_check(root: &Path, scope: DocsCheckScope) -> Result<DocsC
 	check_markdown_readability(&files, &mut report);
 
 	if matches!(scope, DocsCheckScope::All | DocsCheckScope::Index) {
-		check_docs_artifact_types(&files, &mut report);
-		check_research_json_artifacts(&files, &mut report);
+		check_markdown_only(&files, &mut report);
 		check_acronym_capitalization(&files, &mut report);
 		check_concept_contracts(&files, &mut report);
 	}
@@ -838,22 +833,14 @@ fn check_required_docs_layout(files: &[DocsFile], report: &mut DocsCheckReport) 
 	let dirs = docs_dirs_with_content(files);
 
 	for dir in dirs {
-		let index_path = docs_dir_index_path(&dir);
+		let index_path = dir.join("index.md");
 
 		if !paths.contains(&index_path) {
 			report.issues.push(issue(
 				Some(index_path),
-				String::from("directory must have an OKF progressive-disclosure index file"),
+				String::from("directory must have an OKF progressive-disclosure index.md"),
 			));
 		}
-	}
-}
-
-fn docs_dir_index_path(dir: &Path) -> PathBuf {
-	if dir == Path::new("research") {
-		PathBuf::from("research/index.json")
-	} else {
-		dir.join("index.md")
 	}
 }
 
@@ -868,93 +855,16 @@ fn check_markdown_readability(files: &[DocsFile], report: &mut DocsCheckReport) 
 	}
 }
 
-fn check_docs_artifact_types(files: &[DocsFile], report: &mut DocsCheckReport) {
+fn check_markdown_only(files: &[DocsFile], report: &mut DocsCheckReport) {
 	for file in files {
-		if is_research_json(&file.relative_path) {
-			continue;
-		}
-		if is_under_research(&file.relative_path) {
-			report.issues.push(issue(
-				Some(file.relative_path.clone()),
-				String::from("docs/research/ accepts only JSON research artifacts"),
-			));
-		} else if !is_markdown(&file.relative_path) {
+		if !is_markdown(&file.relative_path) {
 			let message = if file.path.extension().is_some_and(|extension| extension == "json") {
-				"docs/ JSON artifacts are allowed only under docs/research/"
+				"docs/ must be OKF Markdown-only; JSON artifacts are not allowed"
 			} else {
-				"docs/ accepts Markdown concepts plus JSON research artifacts only"
+				"docs/ must be OKF Markdown-only; only .md files are allowed"
 			};
 
 			report.issues.push(issue(Some(file.relative_path.clone()), String::from(message)));
-		}
-	}
-}
-
-fn check_research_json_artifacts(files: &[DocsFile], report: &mut DocsCheckReport) {
-	for file in files.iter().filter(|file| is_research_json(&file.relative_path)) {
-		let raw = match fs::read_to_string(&file.path) {
-			Ok(raw) => raw,
-			Err(error) => {
-				report.issues.push(issue(
-					Some(file.relative_path.clone()),
-					format!("research JSON must be UTF-8 readable: {error}"),
-				));
-
-				continue;
-			},
-		};
-		let parsed = match serde_json::from_str::<serde_json::Value>(&raw) {
-			Ok(parsed) => parsed,
-			Err(error) => {
-				report.issues.push(issue(
-					Some(file.relative_path.clone()),
-					format!("research JSON must parse: {error}"),
-				));
-
-				continue;
-			},
-		};
-
-		validate_research_json_schema(file, &parsed, report);
-	}
-}
-
-fn validate_research_json_schema(
-	file: &DocsFile,
-	parsed: &serde_json::Value,
-	report: &mut DocsCheckReport,
-) {
-	let schema = parsed.get("schema").and_then(serde_json::Value::as_str);
-
-	if file.relative_path == Path::new("research/index.json") {
-		if schema != Some(RESEARCH_INDEX_SCHEMA) {
-			report.issues.push(issue(
-				Some(file.relative_path.clone()),
-				format!("research index JSON must use schema `{RESEARCH_INDEX_SCHEMA}`"),
-			));
-		}
-		if !parsed.get("reports").is_some_and(serde_json::Value::is_array) {
-			report.issues.push(issue(
-				Some(file.relative_path.clone()),
-				String::from("research index JSON must include a `reports` array"),
-			));
-		}
-
-		return;
-	}
-	if schema != Some(RESEARCH_REPORT_SCHEMA) {
-		report.issues.push(issue(
-			Some(file.relative_path.clone()),
-			format!("research report JSON must use schema `{RESEARCH_REPORT_SCHEMA}`"),
-		));
-	}
-
-	for key in REQUIRED_RESEARCH_REPORT_KEYS {
-		if parsed.get(*key).is_none() {
-			report.issues.push(issue(
-				Some(file.relative_path.clone()),
-				format!("research report JSON is missing required key `{key}`"),
-			));
 		}
 	}
 }
@@ -1100,15 +1010,6 @@ fn docs_dirs_with_content(files: &[DocsFile]) -> BTreeSet<PathBuf> {
 
 fn is_markdown(path: &Path) -> bool {
 	path.extension().is_some_and(|extension| extension == "md")
-}
-
-fn is_under_research(path: &Path) -> bool {
-	path.starts_with("research")
-}
-
-fn is_research_json(path: &Path) -> bool {
-	path.parent() == Some(Path::new("research"))
-		&& path.extension().is_some_and(|extension| extension == "json")
 }
 
 fn is_concept_markdown(path: &Path) -> bool {
@@ -2067,7 +1968,7 @@ mod tests {
 	use crate::docs_okf::{self, DocsCheckScope, OkfCheckProfile, OkfQuery};
 
 	#[test]
-	fn docs_check_rejects_json_artifacts_outside_research() {
+	fn docs_check_rejects_json_artifacts() {
 		let temp_dir = TempDir::new().expect("tempdir");
 		let docs = temp_dir.path().join("docs");
 
@@ -2077,37 +1978,23 @@ mod tests {
 		let report = docs_okf::run_docs_check(&docs, DocsCheckScope::All).expect("check");
 
 		assert!(report.has_issues());
-		assert!(report.issues.iter().any(|issue| {
-			issue.message.contains("JSON artifacts are allowed only under docs/research")
-		}));
+		assert!(report.issues.iter().any(|issue| issue.message.contains("JSON artifacts")));
 	}
 
 	#[test]
-	fn docs_check_accepts_research_json_artifacts() {
+	fn docs_check_rejects_json_artifacts_inside_research() {
 		let temp_dir = TempDir::new().expect("tempdir");
 		let docs = temp_dir.path().join("docs");
 
 		write_minimal_okf_bundle(&docs);
-		write(&docs.join("research/sample-report.json"), research_report_json("Sample Research"));
-
-		let report = docs_okf::run_docs_check(&docs, DocsCheckScope::All).expect("check");
-
-		assert!(!report.has_issues(), "{report:#?}");
-	}
-
-	#[test]
-	fn docs_check_rejects_markdown_inside_research() {
-		let temp_dir = TempDir::new().expect("tempdir");
-		let docs = temp_dir.path().join("docs");
-
-		write_minimal_okf_bundle(&docs);
-		write(&docs.join("research/sample.md"), "# Research\n");
+		write(&docs.join("research/sample-report.json"), "{}\n");
 
 		let report = docs_okf::run_docs_check(&docs, DocsCheckScope::All).expect("check");
 
 		assert!(report.has_issues());
 		assert!(report.issues.iter().any(|issue| {
-			issue.message.contains("docs/research/ accepts only JSON research artifacts")
+			issue.path.as_deref() == Some(std::path::Path::new("research/sample-report.json"))
+				&& issue.message.contains("JSON artifacts")
 		}));
 	}
 
@@ -2151,12 +2038,7 @@ mod tests {
 		let report = docs_okf::run_docs_check(&docs, DocsCheckScope::All).expect("check");
 
 		assert!(report.has_issues());
-		assert!(
-			report
-				.issues
-				.iter()
-				.any(|issue| issue.message.contains("Markdown concepts plus JSON research"))
-		);
+		assert!(report.issues.iter().any(|issue| issue.message.contains("only .md files")));
 	}
 
 	#[test]
@@ -2385,19 +2267,9 @@ mod tests {
 		write(&docs.join("evidence/index.md"), "# Evidence\n\n* [Docs drift](docs-drift.md)\n");
 		write(&docs.join("evidence/docs-drift.md"), drift_concept("Docs drift"));
 		write(&docs.join("reference/index.md"), "# Reference\n");
-		write(&docs.join("research/index.json"), research_index_json());
+		write(&docs.join("research/index.md"), "# Research\n");
 		write(&docs.join("runbook/index.md"), "# Runbooks\n");
 		write(&docs.join("spec/index.md"), "# Specs\n");
-	}
-
-	fn research_index_json() -> &'static str {
-		"{\n  \"schema\": \"decodex.research_index/1\",\n  \"reports\": []\n}\n"
-	}
-
-	fn research_report_json(title: &str) -> String {
-		format!(
-			"{{\n  \"schema\": \"decodex.research_report/1\",\n  \"title\": \"{title}\",\n  \"purpose\": \"Test research report.\",\n  \"scope\": {{}},\n  \"status_summary\": [],\n  \"evidence_ledger\": []\n}}\n"
-		)
 	}
 
 	fn concept(concept_type: &str, title: &str) -> String {

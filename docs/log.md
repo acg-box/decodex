@@ -2,15 +2,14 @@
 
 ## 2026-06-18
 
-- Reconciled `docs/research/` as the checked-in JSON research artifact lane, restored
-  `legacy-research-goal-audit.json`, replaced `docs/research/index.md` with
-  `docs/research/index.json`, and updated docs check, docs policy, references, and
-  Decodex skills to reject Markdown research concepts under that lane.
 - Updated the MCP decision record, operator-control reference, resource-template
   readback, and Decodex plugin routing so complete remote MCP now points agents toward
   capability-profiled observe/plan/operate/admin resources, prompts, and tools.
-- Preserved the existing `decodex://research/{artifact}` checked-in JSON research
-  artifact resource contract for MCP and aligned the docs/research policy to it.
+- Corrected the MCP research resource alias to expose checked-in Markdown Research
+  Contract concepts and removed the stale JSON docs resource contract.
+- Replaced the research cleanup audit with `research-runtime-boundary.md`, a current
+  Research Contract that states the Markdown docs, runtime Decision Contract, MCP
+  resource, and future-research boundaries without carrying a cleanup-audit shape.
 - Promoted MCP operate/admin docs from deferred stubs to the implemented
   inspect-first `decodex_lane_control` and future-dispatch-only
   `decodex_project_control` authority model.
