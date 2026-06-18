@@ -5,6 +5,12 @@
 - Added schema-bound MCP planning tools for `research_compile`, `research_promote`,
   and `intake_goal`; dry-run paths stay read-only while apply/promote paths require
   explicit authority and return structured refusals when authority is missing.
+- Added structured app-server schema drift checks for Decodex-owned
+  `ClientRequest`, `ServerRequest`, `ClientNotification`, and `ServerNotification`
+  method unions so protocol probes catch owned-method removal or params-schema drift.
+- Synced Decodex's app-server dynamic tool contract to the Codex 0.141 preview
+  schema by documenting tagged `type:function` and `type:namespace` declarations
+  instead of the legacy flat `dynamicTools[].namespace` shape.
 - Added remote-safe MCP observability projections for live status, activity tail, run
   events, protocol activity, child-agent activity, progress diagnostics, lane inspect,
   and PR/review state without exposing private evidence or raw steer text.
