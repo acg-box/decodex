@@ -35,4 +35,5 @@ Question this index answers: "how is it currently organized or implemented?"
 - [`workspace-layout.md`](./workspace-layout.md) for the repository surface map and
   directory ownership boundaries, including the canonical Decodex plugin source.
 - [`research-concepts.md`](./research-concepts.md) for Markdown OKF research
-  concepts, runtime Decision Contract boundaries, and promotion rules.
+  concepts, runtime Decision Contract boundaries, promotion owners, disposition, and
+  LLM Wiki routing hygiene.
