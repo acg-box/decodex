@@ -583,16 +583,17 @@ fn review_handoff_inspection_uses_configured_github_token() {
 
 	review_context.github_token_env_var = Some(String::from(token_env_var));
 
-	write_clean_review_checkpoint(&review_context);
-
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
+
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
@@ -618,17 +619,18 @@ fn review_handoff_inspection_rejects_missing_or_blank_github_token() {
 
 		review_context.github_token_env_var = None;
 
-		write_clean_review_checkpoint(&review_context);
-
 		let bridge = TrackerToolBridge::with_review_handoff_for_test(
 			&tracker,
 			&issue,
 			&workflow,
-			review_context,
-			&pull_request_inspector,
-			&local_repo_inspector,
-		);
-		let response = DynamicToolHandler::handle_call(
+			review_context.clone(),
+				&pull_request_inspector,
+				&local_repo_inspector,
+			);
+
+			write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
+			let response = DynamicToolHandler::handle_call(
 			&bridge,
 			ISSUE_REVIEW_HANDOFF_TOOL_NAME,
 			serde_json::json!({
@@ -661,17 +663,18 @@ fn review_handoff_inspection_rejects_missing_or_blank_github_token() {
 
 		review_context.github_token_env_var = Some(env_var.clone());
 
-		write_clean_review_checkpoint(&review_context);
-
 		let bridge = TrackerToolBridge::with_review_handoff_for_test(
 			&tracker,
 			&issue,
 			&workflow,
-			review_context,
-			&pull_request_inspector,
-			&local_repo_inspector,
-		);
-		let response = DynamicToolHandler::handle_call(
+			review_context.clone(),
+				&pull_request_inspector,
+				&local_repo_inspector,
+			);
+
+			write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
+			let response = DynamicToolHandler::handle_call(
 			&bridge,
 			ISSUE_REVIEW_HANDOFF_TOOL_NAME,
 			serde_json::json!({
@@ -1095,6 +1098,11 @@ fn rejects_manual_attention_comment_with_runtime_owned_error_class() {
 	for error_class in [
 		"retryable_execution_failure",
 		"repo_gate_verify_failed",
+		"repo_gate_baseline_failed",
+		"repo_gate_preexisting_baseline_failed",
+		"repo_gate_global_baseline_failed",
+		"repository_wide_docs_okf_check_failed",
+		"pre_existing_docs_gate_failed",
 		"repo_gate_git_lock_contention",
 		"stalled_run_detected",
 		"app_server_plugin_list_timeout",

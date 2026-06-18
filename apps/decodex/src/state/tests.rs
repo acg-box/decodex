@@ -27,9 +27,9 @@ use crate::{
 		LoopGuardrailCheckpointInput, PreacquiredLeaseGuards, ProjectRegistration,
 		ProtocolActivityMarker, ProtocolActivitySummary, RUN_ACTIVITY_MARKER_FILE,
 		RUN_CONTROL_ACTION_COMPLETED, RUN_CONTROL_ACTION_FAILED, RUN_CONTROL_ACTION_FALLBACK,
-		RUN_CONTROL_ACTION_TIMED_OUT, RUN_OPERATION_REPO_GATE, Result, ReviewHandoffMarker,
-		ReviewOrchestrationMarker, ReviewPolicyCheckpointInput, RunControlActionRequest,
-		StateStore,
+		RUN_CONTROL_ACTION_TIMED_OUT, RUN_OPERATION_REPO_GATE, Result,
+		ReviewCheckpointArtifactLookup, ReviewHandoffMarker, ReviewOrchestrationMarker,
+		ReviewPolicyCheckpointInput, RunControlActionRequest, StateStore,
 	},
 	tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
 };
@@ -240,6 +240,7 @@ fn upsert_handoff_review_policy_checkpoint(
 			run_id,
 			attempt_number: 1,
 			phase: "handoff",
+			review_level: "standard",
 			status,
 			head_sha,
 			nonclean_rounds,
@@ -758,6 +759,7 @@ fn review_policy_checkpoints_persist_reload_and_clear_for_run_attempt() {
 			run_id: "run-1",
 			attempt_number: 2,
 			phase: "handoff",
+			review_level: "standard",
 			status: "findings",
 			head_sha: "abc123",
 			nonclean_rounds: 2,
@@ -797,6 +799,109 @@ fn review_policy_checkpoints_persist_reload_and_clear_for_run_attempt() {
 			.expect("cleared review policy checkpoint should read")
 			.is_none()
 	);
+}
+
+#[test]
+fn review_checkpoint_artifact_reuses_only_matching_evidence_key() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+
+	store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: "pubfi",
+			issue_id: "PUB-101",
+			run_id: "run-1",
+			attempt_number: 2,
+			phase: "handoff",
+			review_level: "standard",
+			status: "clean",
+			head_sha: "abc123",
+			nonclean_rounds: 0,
+			details_json: r#"{"reviewer":"independent_fresh_context"}"#,
+		})
+		.expect("review policy checkpoint should persist");
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+	let reused = reopened
+		.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
+			project_id: "pubfi",
+			issue_id: "PUB-101",
+			phase: "handoff",
+			review_level: "standard",
+			head_sha: "abc123",
+		})
+		.expect("review checkpoint artifact should read")
+		.expect("matching artifact should exist");
+
+	assert_eq!(reused.run_id(), "run-1");
+	assert_eq!(reused.attempt_number(), 2);
+	assert_eq!(reused.status(), "clean");
+	assert_eq!(reused.details_json(), r#"{"reviewer":"independent_fresh_context"}"#);
+	assert!(
+		reopened
+			.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
+				project_id: "pubfi",
+				issue_id: "PUB-101",
+				phase: "handoff",
+				review_level: "standard",
+				head_sha: "def456",
+			})
+			.expect("wrong head lookup should read")
+			.is_none()
+	);
+	assert!(
+		reopened
+			.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
+				project_id: "pubfi",
+				issue_id: "PUB-101",
+				phase: "handoff",
+				review_level: "strict",
+				head_sha: "abc123",
+			})
+			.expect("wrong review-level lookup should read")
+			.is_none()
+	);
+}
+
+#[test]
+fn corrupted_review_checkpoint_artifact_payload_fails_closed() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+
+	store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: "pubfi",
+			issue_id: "PUB-101",
+			run_id: "run-1",
+			attempt_number: 2,
+			phase: "handoff",
+			review_level: "standard",
+			status: "clean",
+			head_sha: "abc123",
+			nonclean_rounds: 0,
+			details_json: r#"{"reviewer":"independent_fresh_context"}"#,
+		})
+		.expect("review policy checkpoint should persist");
+
+	Connection::open(&state_path)
+		.expect("state sqlite should open")
+		.execute("UPDATE evidence_artifacts SET payload_json = 'not-json'", [])
+		.expect("artifact payload should corrupt");
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+	let error = reopened
+		.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
+			project_id: "pubfi",
+			issue_id: "PUB-101",
+			phase: "handoff",
+			review_level: "standard",
+			head_sha: "abc123",
+		})
+		.expect_err("corrupted artifact payload should fail closed");
+
+	assert!(error.to_string().contains("Invalid review checkpoint artifact payload"));
 }
 
 #[test]
@@ -2234,16 +2339,6 @@ fn assert_run_activity_marker_round_trips_clearable_auxiliary_fields() {
 		.expect("activity marker should write");
 	state::write_run_retry_schedule(temp_dir.path(), "run-1", 1, "failure", 12_345)
 		.expect("retry schedule should write");
-	state::write_run_review_policy_state(
-		temp_dir.path(),
-		"run-1",
-		1,
-		"handoff",
-		"findings",
-		"abc123",
-		2,
-	)
-	.expect("review policy state should write");
 
 	let marker = state::read_run_activity_marker_snapshot(temp_dir.path())
 		.expect("marker snapshot should load")
@@ -2273,10 +2368,6 @@ fn assert_run_activity_marker_round_trips_clearable_auxiliary_fields() {
 
 	assert_eq!(marker.retry_kind(), Some("failure"));
 	assert_eq!(marker.retry_ready_at_unix_epoch(), Some(12_345));
-	assert_eq!(marker.review_policy_phase(), Some("handoff"));
-	assert_eq!(marker.review_policy_status(), Some("findings"));
-	assert_eq!(marker.review_policy_head_sha(), Some("abc123"));
-	assert_eq!(marker.review_policy_nonclean_rounds(), Some(2));
 
 	state::clear_run_retry_schedule(temp_dir.path()).expect("retry schedule should clear");
 
@@ -2286,19 +2377,6 @@ fn assert_run_activity_marker_round_trips_clearable_auxiliary_fields() {
 
 	assert_eq!(retry_cleared.retry_kind(), None);
 	assert_eq!(retry_cleared.retry_ready_at_unix_epoch(), None);
-	assert_eq!(retry_cleared.review_policy_phase(), Some("handoff"));
-
-	state::clear_run_review_policy_state(temp_dir.path())
-		.expect("review policy state should clear");
-
-	let policy_cleared = state::read_run_activity_marker_snapshot(temp_dir.path())
-		.expect("marker snapshot should reload")
-		.expect("marker snapshot should still exist");
-
-	assert_eq!(policy_cleared.review_policy_phase(), None);
-	assert_eq!(policy_cleared.review_policy_status(), None);
-	assert_eq!(policy_cleared.review_policy_head_sha(), None);
-	assert_eq!(policy_cleared.review_policy_nonclean_rounds(), None);
 }
 
 fn assert_run_activity_marker_round_trips_thread_and_protocol_summary_fields() {
@@ -2762,16 +2840,6 @@ fn run_operation_marker_resets_stale_per_attempt_fields_on_new_attempt() {
 		.expect("retry schedule should write");
 	state::write_run_retry_budget_attempt_count(temp_dir.path(), "run-1", 1, 2)
 		.expect("retry budget should write");
-	state::write_run_review_policy_state(
-		temp_dir.path(),
-		"run-1",
-		1,
-		"repair",
-		"findings",
-		"def456",
-		2,
-	)
-	.expect("review policy should write");
 	state::write_run_operation_marker(temp_dir.path(), "run-2", 2, RUN_OPERATION_REPO_GATE)
 		.expect("next attempt operation marker should write");
 
@@ -2804,10 +2872,6 @@ fn run_operation_marker_resets_stale_per_attempt_fields_on_new_attempt() {
 			.expect("retry budget count should load"),
 		Some(2)
 	);
-	assert_eq!(marker.review_policy_phase(), Some("repair"));
-	assert_eq!(marker.review_policy_status(), Some("findings"));
-	assert_eq!(marker.review_policy_head_sha(), Some("def456"));
-	assert_eq!(marker.review_policy_nonclean_rounds(), Some(2));
 }
 
 #[test]
@@ -3433,6 +3497,7 @@ fn project_loop_evidence_snapshot_filters_project_evidence_once() {
 			run_id: "run-1",
 			attempt_number: 2,
 			phase: "handoff",
+			review_level: "standard",
 			status: "clean",
 			head_sha: "abc123",
 			nonclean_rounds: 0,
@@ -3446,6 +3511,7 @@ fn project_loop_evidence_snapshot_filters_project_evidence_once() {
 			run_id: "run-1",
 			attempt_number: 2,
 			phase: "handoff",
+			review_level: "standard",
 			status: "findings",
 			head_sha: "def456",
 			nonclean_rounds: 1,
