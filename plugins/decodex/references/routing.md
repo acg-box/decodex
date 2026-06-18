@@ -6,8 +6,8 @@ labels, automation, commit, or landing boundaries.
 ## Mode Map
 
 - Context gates: for non-trivial Decodex repo work, run
-  `decodex okf route docs "<task intent>" --limit 5`, read the relevant owner, and
-  record short `Context anchors` when routing changes the plan. Skip tiny work,
+  `decodex docs route "<task intent>"`, read the relevant owner, and record short
+  `Context anchors` when routing changes the plan. Skip tiny work,
   explicit file targets, missing bundles, or noisy results. Use `docs` before
   completion when work touches docs, documented behavior, CLI/status/config/workflow
   text, research, semantic names, or repo-memory metadata; late discovery runs the
