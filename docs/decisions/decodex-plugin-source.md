@@ -49,8 +49,8 @@ The plugin should own reusable agent-facing procedures and mode routing:
   dependencies, and concurrency
 - `manual-cli` for operator CLI use
 - `automation` for retained-lane control-plane use
-- `context-gates` for OKF/LLM Wiki route intake, docs completion gates, and late
-  docs-skill recovery
+- `routing` for OKF/LLM Wiki route intake, docs completion gates, and late docs-skill
+  recovery
 - `commit` for human-driven `decodex commit`
 - `land` for explicit human-driven `decodex land`
 - `labels` for Decodex Linear labels
