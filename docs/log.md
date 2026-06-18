@@ -2,6 +2,10 @@
 
 ## 2026-06-18
 
+- Added missing-issue ghost-lane recovery docs for `decodex recover ghost-lane`,
+  including the live/cached status readback states `ghost_lane`,
+  `runtime_recovery_required`, and `runtime_recovery_blocked`, plus the fail-closed
+  cleanup boundary.
 - Closed the MCP remote-control productization drift: Streamable HTTP now documents
   `--bearer-token-env` as the direct-listener boundary for non-loopback and elevated
   profiles, records the process-level HTTP smoke evidence, refreshes test-suite

@@ -3216,6 +3216,65 @@ fn lists_recent_project_runs_with_protocol_summary() {
 }
 
 #[test]
+fn read_only_project_run_listing_does_not_persist_marker_identities() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let worktree_path = temp_dir.path().join("worktrees/PUB-101");
+	let store = StateStore::open(&state_path).expect("state store should open");
+
+	fs::create_dir_all(&worktree_path).expect("worktree should exist");
+
+	store.record_run_attempt("run-1", "PUB-101", 1, "running").expect("run attempt should persist");
+	store
+		.upsert_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+		.expect("lease should persist");
+	store
+		.upsert_worktree(
+			"pubfi",
+			"PUB-101",
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should persist");
+
+	state::write_run_thread_marker(&worktree_path, "run-1", 1, "thread-marker")
+		.expect("thread marker should write");
+	state::write_run_turn_marker(&worktree_path, "run-1", 1, "turn-marker")
+		.expect("turn marker should write");
+
+	let (leased_runs, _) =
+		store.list_project_runs_read_only("pubfi", 0).expect("read-only runs should load");
+
+	assert_eq!(leased_runs.len(), 1);
+	assert_eq!(leased_runs[0].thread_id(), None);
+	assert_eq!(leased_runs[0].turn_id(), None);
+
+	assert_sqlite_run_attempt_identity(&state_path, None, None);
+
+	store.list_project_runs("pubfi", 0).expect("ordinary runs should load");
+
+	assert_sqlite_run_attempt_identity(&state_path, Some("thread-marker"), Some("turn-marker"));
+}
+
+fn assert_sqlite_run_attempt_identity(
+	state_path: &Path,
+	expected_thread_id: Option<&str>,
+	expected_turn_id: Option<&str>,
+) {
+	let connection = Connection::open(state_path).expect("sqlite should open");
+	let (thread_id, turn_id): (Option<String>, Option<String>) = connection
+		.query_row(
+			"SELECT thread_id, turn_id FROM run_attempts WHERE run_id = 'run-1'",
+			[],
+			|row| Ok((row.get(0)?, row.get(1)?)),
+		)
+		.expect("run attempt row should exist");
+
+	assert_eq!(thread_id.as_deref(), expected_thread_id);
+	assert_eq!(turn_id.as_deref(), expected_turn_id);
+}
+
+#[test]
 fn lists_project_issue_runs_recovered_from_local_evidence() {
 	let store = StateStore::open_in_memory().expect("in-memory state store should open");
 	let activity = ChildAgentActivitySummary {

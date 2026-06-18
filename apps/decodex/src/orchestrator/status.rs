@@ -18,15 +18,21 @@ use state::WORKTREE_PROVENANCE_FILESYSTEM_SCAN;
 use state::WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN;
 use state::WORKTREE_PROVENANCE_LEGACY_UNKNOWN;
 use state::ProjectLoopEvidenceSnapshot;
+use state::ProtocolActivityEventSummary;
 
 use crate::agent::REVIEW_POLICY_CONVERGENCE_BUDGET;
 use crate::pull_request::{self, PullRequestLandingGateView};
+use crate::tracker::public_text;
 use crate::worktree;
 use crate::worktree::MergedWorktreeCleanupDebt;
 
 const QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT: &str = "linear_active_label_present";
 const ATTENTION_ERROR_EVIDENCE_MISSING: &str = "evidence_missing";
 const EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH: &str = "process_identity_mismatch";
+const GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING: &str = "tracker_issue_missing";
+const GHOST_LANE_OWNERSHIP_STATE: &str = "ghost_lane";
+const GHOST_LANE_POLICY_STATE: &str = "runtime_recovery_required";
+const GHOST_LANE_NEXT_ACTION: &str = "run_ghost_lane_recovery";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RetainedCloseoutPrMergeGate {
@@ -65,6 +71,7 @@ struct LiveOperatorStatusSnapshotOptions {
 	hydrate_history_ledger: bool,
 	run_issue_metadata_hydration: RunIssueMetadataHydration,
 	account_activity_mode: AccountActivityMode,
+	configure_dispatch_slots: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -309,6 +316,166 @@ pub(crate) fn ensure_project_has_no_merged_worktree_cleanup_debt(
 		project.service_id(),
 		format_merged_worktree_cleanup_debts(&debts)
 	);
+}
+
+pub(crate) fn ghost_lane_cleanup_status_blockers<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	_workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue_id: &str,
+	run_id: &str,
+) -> crate::prelude::Result<Vec<String>>
+where
+	T: IssueTracker,
+{
+	let Some(mut run) =
+		ghost_lane_cleanup_status_run(project, state_store, issue_id, run_id)?
+	else {
+		return Ok(vec![String::from("status_current_lane_missing")]);
+	};
+
+	if let Some(issue) = ghost_lane_tracker_issue(tracker, &run)? {
+		return Ok(vec![
+			String::from("tracker_issue_present"),
+			format!("issue_state:{}", issue.state.name),
+		]);
+	}
+
+	append_lane_control_condition(&mut run, GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING);
+	apply_missing_issue_ghost_lane_status_projection(project, state_store, &mut run)?;
+
+	if run.ownership_state == GHOST_LANE_OWNERSHIP_STATE
+		&& run.policy_state == GHOST_LANE_POLICY_STATE
+		&& run.lane_control_next_action == GHOST_LANE_NEXT_ACTION
+	{
+		return Ok(Vec::new());
+	}
+
+	let mut blockers = vec![
+		format!("ownership_state:{}", run.ownership_state),
+		format!("policy_state:{}", run.policy_state),
+		format!("lane_control_next_action:{}", run.lane_control_next_action),
+	];
+
+	blockers.extend(run.lane_control_conditions.iter().cloned());
+	blockers.sort();
+	blockers.dedup();
+
+	Ok(blockers)
+}
+
+fn ghost_lane_cleanup_status_run(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_id: &str,
+	run_id: &str,
+) -> crate::prelude::Result<Option<OperatorRunStatus>> {
+	let (leased_runs, _) = state_store.list_project_runs_read_only(project.service_id(), 0)?;
+	let Some(run) = leased_runs
+		.into_iter()
+		.find(|run| run.issue_id() == issue_id && run.run_id() == run_id)
+	else {
+		return Ok(None);
+	};
+	let loop_evidence = state_store.project_loop_evidence_snapshot(project.service_id())?;
+	let project_display_name = operator_project_display_name(project);
+	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
+
+	Ok(Some(operator_run_status(
+		project,
+		&loop_evidence,
+		&project_display_name,
+		run,
+		now_unix_epoch,
+	)?))
+}
+
+fn ghost_lane_tracker_issue<T>(
+	tracker: &T,
+	run: &OperatorRunStatus,
+) -> crate::prelude::Result<Option<TrackerIssue>>
+where
+	T: IssueTracker,
+{
+	if !run.issue_id.trim().is_empty() && !run.issue_id.eq_ignore_ascii_case("unknown") {
+		match tracker.refresh_issues(slice::from_ref(&run.issue_id)) {
+			Ok(issues) =>
+				if let Some(issue) = issues.into_iter().next() {
+					return Ok(Some(issue));
+				},
+			Err(error)
+				if tracker::issue_lookup_missing_error_for_candidate(&error, &run.issue_id) => {},
+			Err(error) => return Err(error),
+		}
+	}
+
+	let Some(selector) = operator_run_tracker_issue_identifier_selector(run) else {
+		return Ok(None);
+	};
+
+	match tracker.get_issue_by_identifier(&selector) {
+		Ok(issue) => Ok(issue),
+		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, &selector) => {
+			Ok(None)
+		},
+		Err(error) => Err(error),
+	}
+}
+
+fn apply_missing_issue_ghost_lane_status_projection(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	run: &mut OperatorRunStatus,
+) -> crate::prelude::Result<()> {
+	let current_worktree_keys = ghost_lane_current_worktree_keys(project, state_store)?;
+	let (cleanup_safe, conditions) =
+		missing_issue_ghost_lane_local_conditions(project, state_store, run, &current_worktree_keys)?;
+
+	for condition in conditions {
+		append_lane_control_condition(run, &condition);
+	}
+
+	if cleanup_safe {
+		run.ownership_state = String::from(GHOST_LANE_OWNERSHIP_STATE);
+		run.policy_state = String::from(GHOST_LANE_POLICY_STATE);
+		run.lane_control_next_action = String::from(GHOST_LANE_NEXT_ACTION);
+	} else {
+		run.ownership_state = String::from("retained_attention");
+		run.policy_state = String::from("runtime_recovery_blocked");
+		run.lane_control_next_action =
+			String::from("inspect_missing_issue_runtime_recovery_blockers");
+	}
+
+	Ok(())
+}
+
+fn ghost_lane_current_worktree_keys(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+) -> crate::prelude::Result<std::collections::BTreeSet<String>> {
+	let mut keys = std::collections::BTreeSet::new();
+
+	for mapping in state_store.list_worktrees(project.service_id())? {
+		if !mapping.worktree_path().exists() {
+			continue;
+		}
+
+		let issue_identifier = issue_identifier_in_text(mapping.branch_name())
+			.or_else(|| issue_identifier_in_text(&mapping.worktree_path().display().to_string()));
+
+		keys.insert(operator_issue_attention_key(
+			mapping.issue_id(),
+			issue_identifier.as_deref(),
+		));
+	}
+	for issue_identifier in recoverable_worktree_identifiers(project.worktree_root())? {
+		if project.worktree_root().join(&issue_identifier).exists() {
+			keys.insert(operator_issue_attention_key(&issue_identifier, Some(&issue_identifier)));
+		}
+	}
+
+	Ok(keys)
 }
 
 fn build_operator_status_snapshot(
@@ -624,12 +791,13 @@ where
 		workflow,
 		state_store,
 		limit,
-		LiveOperatorStatusSnapshotOptions {
-			hydrate_history_ledger: true,
-			run_issue_metadata_hydration: RunIssueMetadataHydration::AllRows,
-			account_activity_mode: AccountActivityMode::Probe,
-		},
-	)
+			LiveOperatorStatusSnapshotOptions {
+				hydrate_history_ledger: true,
+				run_issue_metadata_hydration: RunIssueMetadataHydration::AllRows,
+				account_activity_mode: AccountActivityMode::Probe,
+				configure_dispatch_slots: true,
+			},
+		)
 }
 
 fn build_status_command_operator_status_snapshot<T>(
@@ -648,12 +816,13 @@ where
 		workflow,
 		state_store,
 		limit,
-		LiveOperatorStatusSnapshotOptions {
-			hydrate_history_ledger: true,
-			run_issue_metadata_hydration: RunIssueMetadataHydration::AllRows,
-			account_activity_mode: AccountActivityMode::Snapshot,
-		},
-	)
+			LiveOperatorStatusSnapshotOptions {
+				hydrate_history_ledger: true,
+				run_issue_metadata_hydration: RunIssueMetadataHydration::AllRows,
+				account_activity_mode: AccountActivityMode::Snapshot,
+				configure_dispatch_slots: true,
+			},
+		)
 }
 
 fn build_control_plane_operator_status_snapshot<T>(
@@ -672,12 +841,13 @@ where
 		workflow,
 		state_store,
 		limit,
-		LiveOperatorStatusSnapshotOptions {
-			hydrate_history_ledger: false,
-			run_issue_metadata_hydration: RunIssueMetadataHydration::CurrentLaneRowsOnly,
-			account_activity_mode: AccountActivityMode::Snapshot,
-		},
-	)
+			LiveOperatorStatusSnapshotOptions {
+				hydrate_history_ledger: false,
+				run_issue_metadata_hydration: RunIssueMetadataHydration::CurrentLaneRowsOnly,
+				account_activity_mode: AccountActivityMode::Snapshot,
+				configure_dispatch_slots: true,
+			},
+		)
 }
 
 fn build_live_operator_status_snapshot_with_history_ledger<T>(
@@ -691,11 +861,13 @@ fn build_live_operator_status_snapshot_with_history_ledger<T>(
 where
 	T: IssueTracker,
 {
-	state_store.configure_dispatch_slot_root(
-		project.service_id(),
-		project.worktree_root(),
-		workflow.frontmatter().execution().max_concurrent_agents(),
-	)?;
+	if options.configure_dispatch_slots {
+		state_store.configure_dispatch_slot_root(
+			project.service_id(),
+			project.worktree_root(),
+			workflow.frontmatter().execution().max_concurrent_agents(),
+		)?;
+	}
 
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
@@ -724,6 +896,7 @@ where
 		},
 		&mut snapshot,
 	)?;
+	apply_missing_issue_ghost_lane_projection(project, state_store, &mut snapshot)?;
 
 	let terminal_projection =
 		current_lane_terminal_projection_from_local_ledger(project, state_store, &snapshot)?;
@@ -2455,6 +2628,61 @@ where
 
 			hydrate_operator_snapshot_run_rows(snapshot, &metadata_by_issue_id);
 
+			if let Err(error) = hydrate_missing_current_lane_tracker_metadata(
+				tracker,
+				snapshot,
+				&active_label,
+				&needs_attention_label,
+			) {
+				if let Some(backoff) =
+					tracker_connector_backoff(&error, Instant::now(), "run_issue_identifier_metadata")
+				{
+					return TrackerObserverOutcome::Backoff(backoff);
+				}
+
+				let _ = error;
+
+				tracing::warn!(
+					project_id = project.service_id(),
+					"Skipped missing-issue current lane classification; sensitive tracker details were withheld."
+				);
+
+				return TrackerObserverOutcome::Unavailable;
+			}
+
+			TrackerObserverOutcome::Ok
+		},
+		Err(error)
+			if issue_ids
+				.iter()
+				.any(|issue_id| tracker::issue_lookup_missing_error_for_candidate(&error, issue_id)) =>
+		{
+			let active_label = crate::tracker::automation_active_label(project.service_id());
+			let needs_attention_label =
+				workflow.frontmatter().tracker().needs_attention_label().to_owned();
+
+			if let Err(error) = hydrate_missing_current_lane_tracker_metadata(
+				tracker,
+				snapshot,
+				&active_label,
+				&needs_attention_label,
+			) {
+				if let Some(backoff) =
+					tracker_connector_backoff(&error, Instant::now(), "run_issue_identifier_metadata")
+				{
+					return TrackerObserverOutcome::Backoff(backoff);
+				}
+
+				let _ = error;
+
+				tracing::warn!(
+					project_id = project.service_id(),
+					"Skipped missing-issue current lane classification; sensitive tracker details were withheld."
+				);
+
+				return TrackerObserverOutcome::Unavailable;
+			}
+
 			TrackerObserverOutcome::Ok
 		},
 		Err(error) => {
@@ -2519,6 +2747,428 @@ fn hydrate_operator_snapshot_run_rows(
 	}
 	for lane in &mut snapshot.history_lanes {
 		hydrate_history_lane_from_issue_metadata(lane, metadata_by_issue_id);
+	}
+}
+
+fn hydrate_missing_current_lane_tracker_metadata<T>(
+	tracker: &T,
+	snapshot: &mut OperatorStatusSnapshot,
+	active_label: &str,
+	needs_attention_label: &str,
+) -> crate::prelude::Result<()>
+where
+	T: IssueTracker,
+{
+	let mut metadata_by_issue_id = HashMap::new();
+	let mut missing_rows = Vec::new();
+
+	for run in &snapshot.current_lanes {
+		if run.issue_state.is_some() {
+			continue;
+		}
+
+		let Some(selector) = operator_run_tracker_issue_identifier_selector(run) else {
+			continue;
+		};
+
+		match tracker.get_issue_by_identifier(&selector) {
+			Ok(Some(issue)) => {
+				metadata_by_issue_id.insert(
+					run.issue_id.clone(),
+					operator_issue_display_metadata(&issue, active_label, needs_attention_label),
+				);
+			},
+			Ok(None) => missing_rows.push((run.run_id.clone(), run.issue_id.clone(), selector)),
+			Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, &selector) => {
+				missing_rows.push((run.run_id.clone(), run.issue_id.clone(), selector));
+			},
+			Err(error) => return Err(error),
+		}
+	}
+
+	if !metadata_by_issue_id.is_empty() {
+		hydrate_operator_snapshot_run_rows(snapshot, &metadata_by_issue_id);
+	}
+
+	for (run_id, issue_id, selector) in missing_rows {
+		mark_operator_run_tracker_issue_missing(snapshot, &run_id, &issue_id, &selector);
+	}
+
+	Ok(())
+}
+
+fn operator_issue_display_metadata(
+	issue: &TrackerIssue,
+	active_label: &str,
+	needs_attention_label: &str,
+) -> OperatorIssueDisplayMetadata {
+	OperatorIssueDisplayMetadata {
+		issue_identifier: issue.identifier.clone(),
+		title: Some(issue.title.clone()),
+		author: issue.author.clone(),
+		issue_state: Some(issue.state.name.clone()),
+		active_label_present: Some(issue.has_label(active_label)),
+		needs_attention_label_present: Some(issue.has_label(needs_attention_label)),
+	}
+}
+
+fn operator_run_tracker_issue_identifier_selector(run: &OperatorRunStatus) -> Option<String> {
+	run.issue_identifier
+		.as_ref()
+		.filter(|identifier| commit_message::looks_like_issue_identifier(identifier))
+		.map(|identifier| identifier.to_ascii_uppercase())
+		.or_else(|| {
+			operator_run_issue_identifier_from_fields(
+				&run.run_id,
+				run.branch_name.as_deref(),
+				run.worktree_path.as_deref(),
+			)
+		})
+		.or_else(|| {
+			commit_message::looks_like_issue_identifier(&run.issue_id)
+				.then(|| run.issue_id.to_ascii_uppercase())
+		})
+}
+
+fn mark_operator_run_tracker_issue_missing(
+	snapshot: &mut OperatorStatusSnapshot,
+	run_id: &str,
+	issue_id: &str,
+	selector: &str,
+) {
+	for run in snapshot.current_lanes.iter_mut().chain(snapshot.recent_runs.iter_mut()) {
+		if run.run_id == run_id || run.issue_id == issue_id {
+			if run.issue_identifier.is_none() {
+				run.issue_identifier = Some(selector.to_owned());
+			}
+
+			append_lane_control_condition(run, GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING);
+		}
+	}
+}
+
+fn apply_missing_issue_ghost_lane_projection(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	snapshot: &mut OperatorStatusSnapshot,
+) -> crate::prelude::Result<()> {
+	let current_worktree_keys = snapshot
+		.worktrees
+		.iter()
+		.filter(|worktree| operator_worktree_status_path_exists(project, worktree))
+		.map(|worktree| {
+			operator_issue_attention_key(
+				&worktree.issue_id,
+				worktree.issue_identifier.as_deref(),
+			)
+		})
+		.collect::<std::collections::BTreeSet<_>>();
+
+	for run in &mut snapshot.current_lanes {
+		if !run
+			.lane_control_conditions
+			.iter()
+			.any(|condition| condition == GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING)
+		{
+			continue;
+		}
+
+		let (cleanup_safe, conditions) =
+			missing_issue_ghost_lane_local_conditions(project, state_store, run, &current_worktree_keys)?;
+
+		for condition in conditions {
+			append_lane_control_condition(run, &condition);
+		}
+
+		if cleanup_safe {
+			run.ownership_state = String::from(GHOST_LANE_OWNERSHIP_STATE);
+			run.policy_state = String::from(GHOST_LANE_POLICY_STATE);
+			run.lane_control_next_action = String::from(GHOST_LANE_NEXT_ACTION);
+		} else {
+			run.ownership_state = String::from("retained_attention");
+			run.policy_state = String::from("runtime_recovery_blocked");
+			run.lane_control_next_action =
+				String::from("inspect_missing_issue_runtime_recovery_blockers");
+		}
+
+		if let Some(loop_status) = run.loop_status.as_mut() {
+			loop_status.next_action = Some(run.lane_control_next_action.clone());
+		}
+
+		run.needs_attention = true;
+		run.counts_as_running = false;
+	}
+
+	Ok(())
+}
+
+fn operator_worktree_status_path_exists(
+	project: &ServiceConfig,
+	worktree: &OperatorWorktreeStatus,
+) -> bool {
+	let path = Path::new(&worktree.worktree_path);
+
+	if path.is_absolute() { path.exists() } else { project.repo_root().join(path).exists() }
+}
+
+fn missing_issue_ghost_lane_local_conditions(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	run: &OperatorRunStatus,
+	current_worktree_keys: &std::collections::BTreeSet<String>,
+) -> crate::prelude::Result<(bool, Vec<String>)> {
+	let mut conditions = Vec::new();
+	let mut blockers = Vec::new();
+
+	if !run.run_lease {
+		blockers.push(String::from("run_lease_missing"));
+	}
+
+	inspect_status_ghost_lane_worktree(
+		project,
+		state_store,
+		run,
+		current_worktree_keys,
+		&mut conditions,
+		&mut blockers,
+	)?;
+	inspect_status_ghost_lane_control_channel(run, &mut conditions, &mut blockers);
+	inspect_status_ghost_lane_live_evidence(run, &mut conditions, &mut blockers);
+	inspect_status_ghost_lane_private_evidence(project, state_store, run, &mut conditions, &mut blockers)?;
+	inspect_status_ghost_lane_review_lineage(project, state_store, run, &mut conditions, &mut blockers)?;
+
+	conditions.extend(blockers.iter().cloned());
+
+	Ok((blockers.is_empty(), conditions))
+}
+
+fn inspect_status_ghost_lane_worktree(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	run: &OperatorRunStatus,
+	current_worktree_keys: &std::collections::BTreeSet<String>,
+	conditions: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> crate::prelude::Result<()> {
+	let mut retained_worktree_present = false;
+	let mut mapping_checked = false;
+
+	if let Some(worktree_path) = run.worktree_path.as_ref() {
+		mapping_checked = true;
+
+		if project.repo_root().join(worktree_path).exists() {
+			retained_worktree_present = true;
+		} else {
+			conditions.push(String::from("worktree_mapping_path_missing"));
+		}
+	}
+	if let Some(mapping) = state_store.worktree_for_issue(&run.issue_id)? {
+		mapping_checked = true;
+
+		if mapping.worktree_path().exists() {
+			retained_worktree_present = true;
+		} else {
+			conditions.push(String::from("worktree_mapping_path_missing"));
+		}
+	}
+
+	let selector = operator_run_tracker_issue_identifier_selector(run);
+
+	for candidate in [selector.as_deref(), Some(run.issue_id.as_str())].into_iter().flatten() {
+		if commit_message::looks_like_issue_identifier(candidate)
+			&& project.worktree_root().join(candidate).exists()
+		{
+			retained_worktree_present = true;
+		}
+	}
+
+	let run_issue_key = operator_issue_attention_key(&run.issue_id, run.issue_identifier.as_deref());
+
+	if current_worktree_keys.contains(&run_issue_key) {
+		retained_worktree_present = true;
+	}
+	if retained_worktree_present {
+		blockers.push(String::from("retained_worktree_present"));
+	} else {
+		if !mapping_checked {
+			conditions.push(String::from("worktree_mapping_missing"));
+		}
+
+		conditions.push(String::from("worktree_missing"));
+	}
+
+	Ok(())
+}
+
+fn inspect_status_ghost_lane_control_channel(
+	run: &OperatorRunStatus,
+	conditions: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) {
+	let Some(control_capability) = run.control_capability.as_ref() else {
+		conditions.push(String::from("control_channel_missing"));
+
+		return;
+	};
+
+	if Path::new(&control_capability.channel_path).exists() {
+		conditions.push(String::from("control_channel_file_present"));
+	} else {
+		conditions.push(String::from("control_channel_file_missing"));
+	}
+
+	blockers.push(String::from("control_channel_present"));
+}
+
+fn inspect_status_ghost_lane_live_evidence(
+	run: &OperatorRunStatus,
+	conditions: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) {
+	if run.process_alive == Some(true) {
+		blockers.push(String::from("process_alive"));
+	}
+	if matches!(run.thread_status.as_deref(), Some("active")) || !run.thread_active_flags.is_empty() {
+		blockers.push(String::from("thread_active"));
+	}
+	if operator_run_has_recent_app_server_execution(run) {
+		blockers.push(String::from("protocol_recent"));
+	}
+	if run.event_count > 0 || run.last_event_type.is_some() || run.last_event_at.is_some() {
+		blockers.push(String::from("protocol_event_evidence_present"));
+	}
+	if run.child_agent_activity.is_some() {
+		blockers.push(String::from("child_agent_activity_present"));
+	}
+	if run.protocol_activity.is_some() {
+		blockers.push(String::from("protocol_activity_present"));
+	}
+	if run.thread_id.is_some() || run.turn_id.is_some() {
+		blockers.push(String::from("thread_reference_present"));
+	}
+	if blockers.iter().any(|blocker| {
+		matches!(
+			blocker.as_str(),
+			"process_alive"
+				| "thread_active"
+				| "protocol_recent"
+				| "protocol_event_evidence_present"
+				| "child_agent_activity_present"
+				| "protocol_activity_present"
+				| "thread_reference_present"
+		)
+	}) {
+		return;
+	}
+
+	conditions.push(String::from("no_live_execution_evidence"));
+}
+
+fn inspect_status_ghost_lane_private_evidence(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	run: &OperatorRunStatus,
+	conditions: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> crate::prelude::Result<()> {
+	let events = state_store.list_private_execution_events(
+		project.service_id(),
+		&run.issue_id,
+		&run.run_id,
+		run.attempt_number,
+	)?;
+
+	if events.is_empty() {
+		conditions.push(String::from("private_evidence_missing"));
+	} else {
+		blockers.push(String::from("private_evidence_present"));
+	}
+
+	Ok(())
+}
+
+fn inspect_status_ghost_lane_review_lineage(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	run: &OperatorRunStatus,
+	conditions: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> crate::prelude::Result<()> {
+	if state_store.issue_has_review_lifecycle_record(project.service_id(), &run.issue_id)? {
+		blockers.push(String::from("review_lifecycle_present"));
+
+		return Ok(());
+	}
+	if status_run_has_review_policy_checkpoint(project, state_store, run)? {
+		blockers.push(String::from("review_policy_checkpoint_present"));
+
+		return Ok(());
+	}
+
+	let mut records = state_store.list_linear_execution_events(project.service_id(), &run.issue_id)?;
+
+	if let Some(issue_identifier) = run
+		.issue_identifier
+		.as_deref()
+		.filter(|identifier| !identifier.eq_ignore_ascii_case(&run.issue_id))
+	{
+		records.extend(state_store.list_linear_execution_events(project.service_id(), issue_identifier)?);
+	}
+
+	if records.iter().any(operator_linear_execution_event_has_pr_or_review_lineage) {
+		blockers.push(String::from("pr_or_review_lineage_present"));
+	} else {
+		conditions.push(String::from("review_lineage_missing"));
+	}
+
+	Ok(())
+}
+
+fn status_run_has_review_policy_checkpoint(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	run: &OperatorRunStatus,
+) -> crate::prelude::Result<bool> {
+	for phase in ["handoff", "repair"] {
+		if state_store
+			.review_policy_checkpoint(
+				project.service_id(),
+				&run.issue_id,
+				&run.run_id,
+				run.attempt_number,
+				phase,
+			)?
+			.is_some()
+		{
+			return Ok(true);
+		}
+	}
+
+	Ok(false)
+}
+
+fn operator_linear_execution_event_has_pr_or_review_lineage(
+	record: &LinearExecutionEventRecord,
+) -> bool {
+	record.pr_url.as_ref().is_some_and(|value| !value.trim().is_empty())
+		|| record.pr_head_sha.as_ref().is_some_and(|value| !value.trim().is_empty())
+		|| record.pr_base_ref.as_ref().is_some_and(|value| !value.trim().is_empty())
+		|| matches!(
+			record.event_type.as_str(),
+			"review_handoff"
+				| "review_handoff_rebind"
+				| "review_handoff_adopt"
+				| "review_repair"
+				| "landed"
+				| "closeout"
+				| "cleanup_complete"
+		)
+		|| record.terminal_path.as_deref() == Some("review_handoff")
+}
+
+fn append_lane_control_condition(run: &mut OperatorRunStatus, condition: &str) {
+	if !run.lane_control_conditions.iter().any(|value| value == condition) {
+		run.lane_control_conditions.push(condition.to_owned());
 	}
 }
 
@@ -5471,7 +6121,7 @@ where
 	let mut issues = if issue_ids.is_empty() && recoverable_worktree_skip_cache.is_some() {
 		Vec::new()
 	} else {
-		tracker.refresh_issues(&issue_ids)?
+		refresh_recoverable_runtime_issues(tracker, &issue_ids)?
 	};
 	let mut known_identifiers =
 		issues.iter().map(|issue| issue.identifier.to_ascii_uppercase()).collect::<BTreeSet<_>>();
@@ -5507,6 +6157,37 @@ where
 	recoverable_issues.sort_by(compare_issue_candidates);
 
 	Ok(RecoveredRuntimeState { recoverable_issues })
+}
+
+fn refresh_recoverable_runtime_issues<T>(
+	tracker: &T,
+	issue_ids: &[String],
+) -> crate::prelude::Result<Vec<TrackerIssue>>
+where
+	T: IssueTracker,
+{
+	match tracker.refresh_issues(issue_ids) {
+		Ok(issues) => Ok(issues),
+		Err(error)
+			if issue_ids
+				.iter()
+				.any(|issue_id| tracker::issue_lookup_missing_error_for_candidate(&error, issue_id)) =>
+		{
+			let mut issues = Vec::new();
+
+			for issue_id in issue_ids {
+				match tracker.refresh_issues(slice::from_ref(issue_id)) {
+					Ok(mut refreshed) => issues.append(&mut refreshed),
+					Err(error)
+						if tracker::issue_lookup_missing_error_for_candidate(&error, issue_id) => {},
+					Err(error) => return Err(error),
+				}
+			}
+
+			Ok(issues)
+		},
+		Err(error) => Err(error),
+	}
 }
 
 fn recover_issue_runtime_state<T>(
@@ -5719,7 +6400,13 @@ where
 		return Ok(());
 	}
 
-	let Some(issue) = tracker.get_issue_by_identifier(issue_identifier)? else {
+	let issue = match tracker.get_issue_by_identifier(issue_identifier) {
+		Ok(issue) => issue,
+		Err(error)
+			if tracker::issue_lookup_missing_error_for_candidate(&error, issue_identifier) => None,
+		Err(error) => return Err(error),
+	};
+	let Some(issue) = issue else {
 		if let Some(cache) = recoverable_worktree_skip_cache {
 			cache.remember(&canonical_identifier, now);
 		}
@@ -7769,7 +8456,98 @@ fn operator_run_protocol_activity(
 		return None;
 	}
 
+	sanitize_operator_protocol_activity_summary(&mut summary);
+
 	Some(summary)
+}
+
+fn sanitize_operator_protocol_activity_summary(summary: &mut ProtocolActivitySummary) {
+	for event in &mut summary.recent_events {
+		if let Some(detail) = event.detail.as_deref()
+			&& !operator_protocol_activity_detail_is_public(detail)
+		{
+			event.detail = Some(String::from("redacted_sensitive_detail"));
+		}
+	}
+}
+
+fn operator_protocol_activity_detail_is_public(detail: &str) -> bool {
+	public_text::validate_public_text_field("protocol_activity.detail", detail).is_ok()
+		&& !contains_protocol_activity_host_path_shape(detail)
+		&& !contains_protocol_activity_secret_shape(detail)
+}
+
+fn contains_protocol_activity_host_path_shape(detail: &str) -> bool {
+	let mut previous = None;
+	let mut chars = detail.char_indices().peekable();
+
+	while let Some((index, character)) = chars.next() {
+		if character != '/' {
+			previous = Some(character);
+
+			continue;
+		}
+		if previous == Some(':') || previous == Some('/') {
+			previous = Some(character);
+
+			continue;
+		}
+
+		let path_boundary = index == 0
+			|| previous.is_some_and(|previous| {
+				previous.is_whitespace() || matches!(previous, '"' | '\'' | '`' | '(' | '[' | '{' | '=')
+			});
+		let path_component = chars
+			.peek()
+			.map(|(_, next)| next.is_ascii_alphanumeric() || matches!(next, '.' | '_' | '-'))
+			.unwrap_or(false);
+
+		if path_boundary && path_component {
+			return true;
+		}
+
+		previous = Some(character);
+	}
+
+	false
+}
+
+fn contains_protocol_activity_secret_shape(detail: &str) -> bool {
+	detail.split(protocol_activity_token_separator).any(|token| {
+		let normalized = token.to_ascii_lowercase();
+
+		normalized.starts_with("ghp_")
+			|| normalized.starts_with("github_pat_")
+			|| is_high_entropy_protocol_activity_token(token)
+	})
+}
+
+fn protocol_activity_token_separator(character: char) -> bool {
+	!(character.is_ascii_alphanumeric() || character == '_' || character == '-')
+}
+
+fn is_high_entropy_protocol_activity_token(token: &str) -> bool {
+	if token.len() < 24 {
+		return false;
+	}
+
+	let mut has_uppercase = false;
+	let mut has_lowercase = false;
+	let mut has_digit = false;
+	let mut alphanumeric_count = 0;
+
+	for character in token.chars() {
+		if !character.is_ascii_alphanumeric() {
+			continue;
+		}
+
+		alphanumeric_count += 1;
+		has_uppercase |= character.is_ascii_uppercase();
+		has_lowercase |= character.is_ascii_lowercase();
+		has_digit |= character.is_ascii_digit();
+	}
+
+	alphanumeric_count >= 24 && has_uppercase && has_lowercase && has_digit
 }
 
 fn protocol_wait_reason_from_child_bucket(current_bucket: &str) -> String {
@@ -9124,19 +9902,27 @@ fn render_protocol_activity_summary(summary: Option<&ProtocolActivitySummary>) -
 			.iter()
 			.rev()
 			.take(5)
-			.map(|event| {
-				event
-					.detail
-					.as_ref()
-					.map_or_else(|| event.event_type.clone(), |detail| {
-						format!("{}:{detail}", event.event_type)
-					})
-			})
+			.map(render_protocol_activity_event_summary)
 			.collect::<Vec<_>>()
 			.join(", ")
 	};
 
 	format!("turn={turn}; waiting={wait}; rate_limit={rate_limit}; recent={recent}")
+}
+
+fn render_protocol_activity_event_summary(event: &ProtocolActivityEventSummary) -> String {
+	event.detail.as_ref().map_or_else(
+		|| event.event_type.clone(),
+		|detail| format!("{}:{}", event.event_type, render_protocol_activity_detail(detail)),
+	)
+}
+
+fn render_protocol_activity_detail(detail: &str) -> &str {
+	if operator_protocol_activity_detail_is_public(detail) {
+		detail
+	} else {
+		"redacted_sensitive_detail"
+	}
 }
 
 fn render_loop_status_summary(status: Option<&OperatorLoopStatus>) -> String {

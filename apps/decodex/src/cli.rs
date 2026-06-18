@@ -30,8 +30,9 @@ use crate::{
 	prelude::{Result, eyre},
 	program_intake::{self, GoalIntakeCommandRequest, IssueBatchIntakeCommandRequest},
 	recovery::{
-		self, LegacyCloseoutRecoveryRequest, MergedCloseoutRecoveryRequest,
-		ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest,
+		self, GhostLaneCleanupRequest, GhostLaneDiagnoseRequest, LegacyCloseoutRecoveryRequest,
+		MergedCloseoutRecoveryRequest, ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest,
+		ReviewHandoffRebindRequest,
 	},
 	research_design::{
 		self, ResearchDesignCompileRequest, ResearchDesignOutcome, ResearchDesignPromoteRequest,
@@ -1093,6 +1094,7 @@ impl RecoverCommand {
 	fn run(&self) -> Result<()> {
 		match &self.command {
 			RecoverSubcommand::ReviewHandoff(args) => args.run(self.project_config.as_path()),
+			RecoverSubcommand::GhostLane(args) => args.run(self.project_config.as_path()),
 			RecoverSubcommand::LegacyCloseout(args) => recovery::run_legacy_closeout(
 				self.project_config.as_path(),
 				&LegacyCloseoutRecoveryRequest {
@@ -1113,6 +1115,46 @@ impl RecoverCommand {
 			),
 		}
 	}
+}
+
+#[derive(Debug, Args)]
+struct GhostLaneRecoveryCommand {
+	#[command(subcommand)]
+	command: GhostLaneRecoverySubcommand,
+}
+impl GhostLaneRecoveryCommand {
+	fn run(&self, config_path: Option<&Path>) -> Result<()> {
+		match &self.command {
+			GhostLaneRecoverySubcommand::Diagnose(args) => recovery::run_ghost_lane_diagnose(
+				config_path,
+				&GhostLaneDiagnoseRequest { issue: args.issue.clone(), json: args.json },
+			),
+			GhostLaneRecoverySubcommand::Cleanup(args) => recovery::run_ghost_lane_cleanup(
+				config_path,
+				&GhostLaneCleanupRequest { issue: args.issue.clone(), dry_run: args.dry_run },
+			),
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct GhostLaneDiagnoseCommand {
+	/// Issue identifier or local issue id to inspect. Omit to inspect leased lanes.
+	#[arg(value_name = "ISSUE")]
+	issue: Option<String>,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct GhostLaneCleanupCommand {
+	/// Issue identifier or local issue id for the ghost lane.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Validate only; do not terminalize the run lease or write private audit evidence.
+	#[arg(long)]
+	dry_run: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1579,10 +1621,20 @@ enum ResearchOutcomeArg {
 enum RecoverSubcommand {
 	/// Recover retained review lanes whose lifecycle record is missing.
 	ReviewHandoff(ReviewHandoffRecoveryCommand),
+	/// Diagnose or clear missing-issue ghost lanes after fail-closed safety checks.
+	GhostLane(GhostLaneRecoveryCommand),
 	/// Record an audited fallback closeout for a legacy cleanup-only worktree.
 	LegacyCloseout(LegacyCloseoutRecoveryCommand),
 	/// Reconcile stale retained attention after a PR is already merged and cleaned up.
 	MergedCloseout(MergedCloseoutRecoveryCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum GhostLaneRecoverySubcommand {
+	/// Read-only diagnosis for local leases whose tracker issue is missing.
+	Diagnose(GhostLaneDiagnoseCommand),
+	/// Terminalize a proven ghost lane and clear its local run lease.
+	Cleanup(GhostLaneCleanupCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1758,9 +1810,10 @@ mod tests {
 		cli::{
 			AccountCommand, AccountSubcommand, AccountUseCommand, AppCommand, AttemptCommand, Cli,
 			Command, CommitCommand, DiagnoseCommand, DocsCommand, DocsSubcommand, EvidenceCommand,
-			IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand, IntakeSubcommand, LandCommand,
-			LaneCommand, LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand,
-			LaneSubcommand, LegacyCloseoutRecoveryCommand, McpSubcommand,
+			GhostLaneCleanupCommand, GhostLaneDiagnoseCommand, GhostLaneRecoveryCommand,
+			GhostLaneRecoverySubcommand, IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand,
+			IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand, LaneInterruptCommand,
+			LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand, McpSubcommand,
 			MergedCloseoutRecoveryCommand, OkfCommand, OkfInitCommand, OkfInitProfileArg,
 			OkfSubcommand, ProbeCommand, ProjectCommand, ProjectConfigArgs, ProjectSubcommand,
 			RecoverCommand, RecoverSubcommand, ResearchCommand, ResearchCompileCommand,
@@ -2645,6 +2698,56 @@ mod tests {
 					)
 				})
 			}) if config == Path::new("./project.toml")
+		));
+	}
+
+	#[test]
+	fn parses_ghost_lane_diagnose_with_issue_and_json() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"recover",
+			"--config",
+			"./project.toml",
+			"ghost-lane",
+			"diagnose",
+			"PUBFI-012",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Recover(RecoverCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				command: RecoverSubcommand::GhostLane(GhostLaneRecoveryCommand {
+					command: GhostLaneRecoverySubcommand::Diagnose(
+						GhostLaneDiagnoseCommand { issue: Some(_), json: true }
+					)
+				})
+			}) if config == Path::new("./project.toml")
+		));
+	}
+
+	#[test]
+	fn parses_ghost_lane_cleanup_dry_run() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"recover",
+			"ghost-lane",
+			"cleanup",
+			"PUBFI-012",
+			"--dry-run",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Recover(RecoverCommand {
+				command: RecoverSubcommand::GhostLane(GhostLaneRecoveryCommand {
+					command: GhostLaneRecoverySubcommand::Cleanup(
+						GhostLaneCleanupCommand { issue, dry_run: true }
+					)
+				}),
+				..
+			}) if issue == "PUBFI-012"
 		));
 	}
 

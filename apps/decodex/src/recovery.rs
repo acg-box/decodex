@@ -1,7 +1,7 @@
 //! Explicit operator recovery surfaces for retained Decodex lanes.
 
 use std::{
-	collections::HashMap,
+	collections::{BTreeSet, HashMap},
 	env, fs,
 	path::{Path, PathBuf},
 	process::Command,
@@ -12,14 +12,15 @@ use serde::Serialize;
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
+	commit_message,
 	config::ServiceConfig,
-	github,
+	github, orchestrator,
 	prelude::{Result, eyre},
 	pull_request::{self, PullRequestLandingState},
 	runtime,
 	state::{
-		self, ConnectorBackoffInput, ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore,
-		WorktreeMapping,
+		self, ConnectorBackoffInput, ProjectRunStatus, RUN_CONTROL_CHANNEL_STATUS_FAILED,
+		ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore, WorktreeMapping,
 	},
 	tracker::{
 		self, IssueTracker, TrackerIssue,
@@ -43,6 +44,10 @@ const LEGACY_MANUAL_CLOSEOUT_EVENT: &str = "closeout";
 const LEGACY_MANUAL_CLOSEOUT_ANCHOR: &str = "legacy_manual_closeout";
 const MERGED_CLOSEOUT_CLOSEOUT_ANCHOR: &str = "merged_closeout";
 const MERGED_CLOSEOUT_CLEANUP_ANCHOR: &str = "merged_closeout_cleanup";
+const GHOST_LANE_CLASSIFICATION: &str = "missing_issue_ghost_lane";
+const GHOST_LANE_BLOCKED_CLASSIFICATION: &str = "ghost_lane_recovery_blocked";
+const GHOST_LANE_CLEANUP_EVENT: &str = "ghost_lane_cleanup";
+const GHOST_LANE_TERMINAL_STATUS: &str = "terminal_guarded";
 const REBOUND_ORCHESTRATION_PHASE: &str = "request_pending";
 const LINEAR_RATE_LIMIT_BACKOFF_WARNING: &str = "tracker_rate_limited";
 const LINEAR_RATE_LIMIT_BACKOFF_SECS: i64 = 15 * 60;
@@ -77,6 +82,24 @@ pub(crate) struct ReviewHandoffAdoptRequest {
 	/// Pull request URL to adopt.
 	pub(crate) pr_url: String,
 	/// Validate without writing runtime lifecycle state or tracker audit comments.
+	pub(crate) dry_run: bool,
+}
+
+/// Read-only ghost-lane diagnostic request.
+#[derive(Debug)]
+pub(crate) struct GhostLaneDiagnoseRequest {
+	/// Optional issue identifier or local issue id to inspect.
+	pub(crate) issue: Option<String>,
+	/// Emit JSON instead of text.
+	pub(crate) json: bool,
+}
+
+/// Explicit missing-issue ghost-lane cleanup request.
+#[derive(Debug)]
+pub(crate) struct GhostLaneCleanupRequest {
+	/// Issue identifier or local issue id to terminalize.
+	pub(crate) issue: String,
+	/// Validate without writing runtime state.
 	pub(crate) dry_run: bool,
 }
 
@@ -135,6 +158,34 @@ struct ReviewHandoffDiagnostic {
 	next_action: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct GhostLaneRecoveryReport {
+	project_id: String,
+	diagnostics: Vec<GhostLaneDiagnostic>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct GhostLaneDiagnostic {
+	project_id: String,
+	issue_id: String,
+	issue_identifier: Option<String>,
+	run_id: String,
+	attempt_number: i64,
+	attempt_status: String,
+	classification: String,
+	reason: String,
+	run_lease: bool,
+	control_channel: String,
+	evidence: Vec<String>,
+	blockers: Vec<String>,
+	next_action: String,
+}
+impl GhostLaneDiagnostic {
+	fn recoverable(&self) -> bool {
+		self.classification == GHOST_LANE_CLASSIFICATION && self.blockers.is_empty()
+	}
+}
+
 struct HandoffBindingDiagnostic {
 	classification: String,
 	reason: String,
@@ -175,6 +226,18 @@ struct RecoveryContext {
 	workflow: WorkflowDocument,
 	state_store: StateStore,
 	tracker: LinearClient,
+	runtime_mutation_policy: RecoveryRuntimeMutationPolicy,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RecoveryRuntimeMutationPolicy {
+	AllowRuntimeWrites,
+	ReadOnly,
+}
+impl RecoveryRuntimeMutationPolicy {
+	const fn allows_runtime_writes(self) -> bool {
+		matches!(self, Self::AllowRuntimeWrites)
+	}
 }
 
 struct RebindValidation {
@@ -299,7 +362,7 @@ pub(crate) fn run_review_handoff_diagnose(
 	config_path: Option<&Path>,
 	request: &ReviewHandoffDiagnoseRequest,
 ) -> Result<()> {
-	let context = load_recovery_context(config_path)?;
+	let context = load_recovery_context_read_only(config_path)?;
 
 	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
 		println!("{message}");
@@ -346,7 +409,7 @@ pub(crate) fn run_review_handoff_rebind(
 	config_path: Option<&Path>,
 	request: &ReviewHandoffRebindRequest,
 ) -> Result<()> {
-	let context = load_recovery_context(config_path)?;
+	let context = load_recovery_context_for_dry_run(config_path, request.dry_run)?;
 	let validation = validate_rebind_request(&context, request)?;
 
 	if request.dry_run {
@@ -390,7 +453,7 @@ pub(crate) fn run_review_handoff_adopt(
 	config_path: Option<&Path>,
 	request: &ReviewHandoffAdoptRequest,
 ) -> Result<()> {
-	let context = load_recovery_context(config_path)?;
+	let context = load_recovery_context_for_dry_run(config_path, request.dry_run)?;
 	let validation = validate_adopt_request(&context, request)?;
 
 	if request.dry_run {
@@ -434,12 +497,164 @@ pub(crate) fn run_review_handoff_adopt(
 	Ok(())
 }
 
+/// Run a read-only missing-issue ghost-lane diagnostic.
+pub(crate) fn run_ghost_lane_diagnose(
+	config_path: Option<&Path>,
+	request: &GhostLaneDiagnoseRequest,
+) -> Result<()> {
+	let context = load_recovery_context_read_only(config_path)?;
+
+	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
+		println!("{message}");
+
+		return Ok(());
+	}
+
+	let mut diagnostics = match diagnose_ghost_lanes_read_only(
+		context.config.service_id(),
+		context.config.worktree_root(),
+		&context.state_store,
+		&context.tracker,
+		request.issue.as_deref(),
+	) {
+		Ok(diagnostics) => diagnostics,
+		Err(error) => {
+			if let Some(message) =
+				remember_recovery_tracker_backoff_message(&context, &error, "ghost_lane_recovery")
+			{
+				println!("{message}");
+
+				return Ok(());
+			}
+
+			return Err(error);
+		},
+	};
+
+	if let Err(error) = apply_ghost_lane_live_status_blockers(&context, &mut diagnostics) {
+		if let Some(message) =
+			remember_recovery_tracker_backoff_message(&context, &error, "ghost_lane_recovery")
+		{
+			println!("{message}");
+
+			return Ok(());
+		}
+
+		return Err(error);
+	}
+
+	let report =
+		GhostLaneRecoveryReport { project_id: context.config.service_id().to_owned(), diagnostics };
+
+	if request.json {
+		println!("{}", serde_json::to_string_pretty(&report)?);
+	} else {
+		print!("{}", render_ghost_lane_recovery_report(&report));
+	}
+
+	Ok(())
+}
+
+/// Terminalize a proven missing-issue ghost lane and clear its local run lease.
+pub(crate) fn run_ghost_lane_cleanup(
+	config_path: Option<&Path>,
+	request: &GhostLaneCleanupRequest,
+) -> Result<()> {
+	let context = load_recovery_context_for_dry_run(config_path, request.dry_run)?;
+
+	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
+		println!("{message}");
+
+		return Ok(());
+	}
+
+	let mut diagnostics = match if context.runtime_mutation_policy.allows_runtime_writes() {
+		diagnose_ghost_lanes(
+			context.config.service_id(),
+			context.config.worktree_root(),
+			&context.state_store,
+			&context.tracker,
+			Some(&request.issue),
+		)
+	} else {
+		diagnose_ghost_lanes_read_only(
+			context.config.service_id(),
+			context.config.worktree_root(),
+			&context.state_store,
+			&context.tracker,
+			Some(&request.issue),
+		)
+	} {
+		Ok(diagnostics) => diagnostics,
+		Err(error) => {
+			if let Some(message) =
+				remember_recovery_tracker_backoff_message(&context, &error, "ghost_lane_recovery")
+			{
+				println!("{message}");
+
+				return Ok(());
+			}
+
+			return Err(error);
+		},
+	};
+	let diagnostic = diagnostics
+		.pop()
+		.ok_or_else(|| eyre::eyre!("No leased lane matched `{}`.", request.issue))?;
+
+	if !diagnostic.recoverable() {
+		eyre::bail!(
+			"`recover ghost-lane cleanup` refused `{}` because safety inspection reported blockers: {}",
+			request.issue,
+			diagnostic.blockers.join(", ")
+		);
+	}
+
+	if let Err(error) = ensure_ghost_lane_live_status_allows_cleanup(&context, &diagnostic) {
+		if let Some(message) =
+			remember_recovery_tracker_backoff_message(&context, &error, "ghost_lane_recovery")
+		{
+			println!("{message}");
+
+			return Ok(());
+		}
+
+		return Err(error);
+	}
+
+	if request.dry_run {
+		println!(
+			"dry run: ghost lane cleanup validated for project={} issue={} run_id={} attempt={} classification={}",
+			diagnostic.project_id,
+			render_ghost_lane_issue(&diagnostic),
+			diagnostic.run_id,
+			diagnostic.attempt_number,
+			diagnostic.classification
+		);
+
+		return Ok(());
+	}
+
+	apply_ghost_lane_cleanup(&context.state_store, &diagnostic)?;
+
+	println!(
+		"ghost lane cleanup ok: project={} issue={} run_id={} attempt={} status={} lease_cleared=yes",
+		diagnostic.project_id,
+		render_ghost_lane_issue(&diagnostic),
+		diagnostic.run_id,
+		diagnostic.attempt_number,
+		GHOST_LANE_TERMINAL_STATUS
+	);
+
+	Ok(())
+}
+
 /// Run an explicit audited legacy closeout fallback.
 pub(crate) fn run_legacy_closeout(
 	config_path: Option<&Path>,
 	request: &LegacyCloseoutRecoveryRequest,
 ) -> Result<()> {
-	let context = load_recovery_context(config_path)?;
+	let context = load_recovery_context_for_dry_run(config_path, request.dry_run)?;
 	let validation = validate_legacy_closeout_request(&context, request)?;
 
 	if request.dry_run {
@@ -483,7 +698,7 @@ pub(crate) fn run_merged_closeout(
 	config_path: Option<&Path>,
 	request: &MergedCloseoutRecoveryRequest,
 ) -> Result<()> {
-	let context = load_recovery_context(config_path)?;
+	let context = load_recovery_context_for_dry_run(config_path, request.dry_run)?;
 	let validation = validate_merged_closeout_request(&context, request)?;
 
 	if request.dry_run {
@@ -527,16 +742,38 @@ pub(crate) fn run_merged_closeout(
 	Ok(())
 }
 
-fn load_recovery_context(config_path: Option<&Path>) -> Result<RecoveryContext> {
+fn load_recovery_context_read_only(config_path: Option<&Path>) -> Result<RecoveryContext> {
+	load_recovery_context_with_policy(config_path, RecoveryRuntimeMutationPolicy::ReadOnly)
+}
+
+fn load_recovery_context_for_dry_run(
+	config_path: Option<&Path>,
+	dry_run: bool,
+) -> Result<RecoveryContext> {
+	let runtime_mutation_policy = if dry_run {
+		RecoveryRuntimeMutationPolicy::ReadOnly
+	} else {
+		RecoveryRuntimeMutationPolicy::AllowRuntimeWrites
+	};
+
+	load_recovery_context_with_policy(config_path, runtime_mutation_policy)
+}
+
+fn load_recovery_context_with_policy(
+	config_path: Option<&Path>,
+	runtime_mutation_policy: RecoveryRuntimeMutationPolicy,
+) -> Result<RecoveryContext> {
 	let state_store = runtime::open_runtime_store()?;
 	let config_path = resolve_recovery_config_path(config_path, &state_store)?;
 	let config = ServiceConfig::from_path(&config_path)?;
 	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
 	let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
 
-	runtime::register_project_config(&state_store, &config_path, true)?;
+	if runtime_mutation_policy.allows_runtime_writes() {
+		runtime::register_project_config(&state_store, &config_path, true)?;
+	}
 
-	Ok(RecoveryContext { config, workflow, state_store, tracker })
+	Ok(RecoveryContext { config, workflow, state_store, tracker, runtime_mutation_policy })
 }
 
 fn active_recovery_tracker_backoff_message(context: &RecoveryContext) -> Result<Option<String>> {
@@ -548,7 +785,9 @@ fn active_recovery_tracker_backoff_message(context: &RecoveryContext) -> Result<
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 
 	if backoff.reset_unix_epoch() <= now_unix_epoch {
-		context.state_store.clear_connector_backoff(context.config.service_id(), "linear")?;
+		if context.runtime_mutation_policy.allows_runtime_writes() {
+			context.state_store.clear_connector_backoff(context.config.service_id(), "linear")?;
+		}
 
 		return Ok(None);
 	}
@@ -594,6 +833,15 @@ fn remember_recovery_tracker_backoff_message(
 	} else {
 		return None;
 	};
+
+	if !context.runtime_mutation_policy.allows_runtime_writes() {
+		return Some(recovery_tracker_backoff_message(
+			context.config.service_id(),
+			sync_phase,
+			reset_unix_epoch,
+			reset_unix_epoch.saturating_sub(now_unix_epoch),
+		));
+	}
 
 	if let Err(store_error) = context.state_store.upsert_connector_backoff(ConnectorBackoffInput {
 		project_id: context.config.service_id(),
@@ -1132,6 +1380,772 @@ fn render_review_handoff_recovery_report(report: &ReviewHandoffRecoveryReport) -
 
 fn optional_text(value: Option<&str>) -> &str {
 	value.unwrap_or("none")
+}
+
+fn diagnose_ghost_lanes<T>(
+	project_id: &str,
+	worktree_root: &Path,
+	state_store: &StateStore,
+	tracker: &T,
+	selector: Option<&str>,
+) -> Result<Vec<GhostLaneDiagnostic>>
+where
+	T: IssueTracker + ?Sized,
+{
+	diagnose_ghost_lanes_with_listing_mode(
+		project_id,
+		worktree_root,
+		state_store,
+		tracker,
+		selector,
+		RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+	)
+}
+
+fn diagnose_ghost_lanes_read_only<T>(
+	project_id: &str,
+	worktree_root: &Path,
+	state_store: &StateStore,
+	tracker: &T,
+	selector: Option<&str>,
+) -> Result<Vec<GhostLaneDiagnostic>>
+where
+	T: IssueTracker + ?Sized,
+{
+	diagnose_ghost_lanes_with_listing_mode(
+		project_id,
+		worktree_root,
+		state_store,
+		tracker,
+		selector,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
+	)
+}
+
+fn diagnose_ghost_lanes_with_listing_mode<T>(
+	project_id: &str,
+	worktree_root: &Path,
+	state_store: &StateStore,
+	tracker: &T,
+	selector: Option<&str>,
+	listing_mode: RecoveryRuntimeMutationPolicy,
+) -> Result<Vec<GhostLaneDiagnostic>>
+where
+	T: IssueTracker + ?Sized,
+{
+	let (mut runs, _) = if listing_mode.allows_runtime_writes() {
+		state_store.list_project_runs(project_id, 0)?
+	} else {
+		state_store.list_project_runs_read_only(project_id, 0)?
+	};
+
+	if let Some(selector) = selector {
+		let selector = selector.trim();
+
+		runs.retain(|run| ghost_lane_run_matches_selector(run, selector));
+
+		if runs.is_empty() {
+			eyre::bail!("No leased lane matched `{selector}`.");
+		}
+		if runs.len() > 1 {
+			eyre::bail!(
+				"`{selector}` matched multiple leased lanes; pass the exact local issue id."
+			);
+		}
+	}
+
+	runs.into_iter()
+		.map(|run| {
+			inspect_ghost_lane(project_id, worktree_root, state_store, tracker, &run, selector)
+		})
+		.collect()
+}
+
+fn inspect_ghost_lane<T>(
+	project_id: &str,
+	worktree_root: &Path,
+	state_store: &StateStore,
+	tracker: &T,
+	run: &ProjectRunStatus,
+	requested_selector: Option<&str>,
+) -> Result<GhostLaneDiagnostic>
+where
+	T: IssueTracker + ?Sized,
+{
+	let issue_identifier = ghost_lane_issue_identifier(run, requested_selector);
+	let mut evidence = Vec::new();
+	let mut blockers = Vec::new();
+
+	if run.run_lease() {
+		evidence.push(String::from("run_lease_present"));
+	} else {
+		blockers.push(String::from("run_lease_missing"));
+	}
+
+	inspect_ghost_lane_tracker_issue(
+		tracker,
+		run,
+		issue_identifier.as_deref(),
+		requested_selector,
+		&mut evidence,
+		&mut blockers,
+	)?;
+	inspect_ghost_lane_worktree(
+		worktree_root,
+		state_store,
+		run,
+		issue_identifier.as_deref(),
+		requested_selector,
+		&mut evidence,
+		&mut blockers,
+	)?;
+
+	let control_channel = inspect_ghost_lane_control_channel(run, &mut evidence, &mut blockers);
+
+	inspect_ghost_lane_live_evidence(run, &mut evidence, &mut blockers);
+	inspect_ghost_lane_private_evidence(
+		project_id,
+		state_store,
+		run,
+		&mut evidence,
+		&mut blockers,
+	)?;
+	inspect_ghost_lane_review_lineage(
+		project_id,
+		state_store,
+		run,
+		issue_identifier.as_deref(),
+		&mut evidence,
+		&mut blockers,
+	)?;
+
+	let (classification, reason, next_action) = if blockers.is_empty() {
+		(
+			String::from(GHOST_LANE_CLASSIFICATION),
+			String::from("tracker_issue_missing_and_no_live_or_retained_lane_evidence"),
+			format!(
+				"Run `decodex recover ghost-lane cleanup {} --dry-run`, then rerun without `--dry-run` if the report stays safe.",
+				issue_identifier.as_deref().unwrap_or(run.issue_id())
+			),
+		)
+	} else {
+		(
+			String::from(GHOST_LANE_BLOCKED_CLASSIFICATION),
+			String::from("safety_check_blocked"),
+			String::from(
+				"Preserve attention and inspect the listed blockers before using a recovery command.",
+			),
+		)
+	};
+
+	Ok(GhostLaneDiagnostic {
+		project_id: project_id.to_owned(),
+		issue_id: run.issue_id().to_owned(),
+		issue_identifier,
+		run_id: run.run_id().to_owned(),
+		attempt_number: run.attempt_number(),
+		attempt_status: run.status().to_owned(),
+		classification,
+		reason,
+		run_lease: run.run_lease(),
+		control_channel,
+		evidence: sorted_unique(evidence),
+		blockers: sorted_unique(blockers),
+		next_action,
+	})
+}
+
+fn inspect_ghost_lane_tracker_issue<T>(
+	tracker: &T,
+	run: &ProjectRunStatus,
+	issue_identifier: Option<&str>,
+	requested_selector: Option<&str>,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let refreshed = match tracker.refresh_issues(&[run.issue_id().to_owned()]) {
+		Ok(refreshed) => refreshed,
+		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, run.issue_id()) =>
+			Vec::new(),
+		Err(error) => return Err(error),
+	};
+
+	if !refreshed.is_empty() {
+		blockers.push(String::from("tracker_issue_present"));
+
+		return Ok(());
+	}
+
+	for selector in ghost_lane_tracker_issue_selectors(run, issue_identifier, requested_selector) {
+		match tracker.get_issue_by_identifier(&selector) {
+			Ok(Some(_)) => {
+				blockers.push(String::from("tracker_issue_present"));
+
+				return Ok(());
+			},
+			Ok(None) => {},
+			Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, &selector) => {
+			},
+			Err(error) => return Err(error),
+		}
+	}
+
+	evidence.push(String::from("tracker_issue_missing"));
+
+	Ok(())
+}
+
+fn inspect_ghost_lane_worktree(
+	worktree_root: &Path,
+	state_store: &StateStore,
+	run: &ProjectRunStatus,
+	issue_identifier: Option<&str>,
+	requested_selector: Option<&str>,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> Result<()> {
+	let mut retained_worktree_present = false;
+	let mut mapping_checked = false;
+
+	if let Some(worktree_path) = run.worktree_path() {
+		mapping_checked = true;
+
+		if worktree_path.exists() {
+			retained_worktree_present = true;
+		} else {
+			evidence.push(String::from("worktree_mapping_path_missing"));
+		}
+	}
+	if let Some(mapping) = state_store.worktree_for_issue(run.issue_id())? {
+		mapping_checked = true;
+
+		if mapping.worktree_path().exists() {
+			retained_worktree_present = true;
+		} else {
+			evidence.push(String::from("worktree_mapping_path_missing"));
+		}
+	}
+
+	for selector in ghost_lane_worktree_selectors(run, issue_identifier, requested_selector) {
+		if worktree_root.join(&selector).exists() {
+			retained_worktree_present = true;
+		}
+	}
+
+	if retained_worktree_present {
+		blockers.push(String::from("retained_worktree_present"));
+	} else {
+		if !mapping_checked {
+			evidence.push(String::from("worktree_mapping_missing"));
+		}
+
+		evidence.push(String::from("worktree_missing"));
+	}
+
+	Ok(())
+}
+
+fn inspect_ghost_lane_control_channel(
+	run: &ProjectRunStatus,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> String {
+	let Some(channel) = run.control_channel() else {
+		evidence.push(String::from("control_channel_missing"));
+
+		return String::from("missing");
+	};
+
+	if channel.channel_path().exists() {
+		evidence.push(String::from("control_channel_file_present"));
+	} else {
+		evidence.push(String::from("control_channel_file_missing"));
+	}
+
+	blockers.push(String::from("control_channel_present"));
+
+	format!("{}:present", channel.status())
+}
+
+fn inspect_ghost_lane_live_evidence(
+	run: &ProjectRunStatus,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) {
+	if run.event_count() > 0 || run.last_event_type().is_some() || run.last_event_at().is_some() {
+		blockers.push(String::from("protocol_event_evidence_present"));
+	}
+	if run.child_agent_activity().is_some() {
+		blockers.push(String::from("child_agent_activity_present"));
+	}
+	if run.protocol_activity().is_some() {
+		blockers.push(String::from("protocol_activity_present"));
+	}
+	if run.thread_id().is_some() || run.turn_id().is_some() {
+		blockers.push(String::from("thread_reference_present"));
+	}
+	if blockers.iter().any(|blocker| {
+		matches!(
+			blocker.as_str(),
+			"protocol_event_evidence_present"
+				| "child_agent_activity_present"
+				| "protocol_activity_present"
+				| "thread_reference_present"
+		)
+	}) {
+		return;
+	}
+
+	evidence.push(String::from("no_live_execution_evidence"));
+}
+
+fn inspect_ghost_lane_private_evidence(
+	project_id: &str,
+	state_store: &StateStore,
+	run: &ProjectRunStatus,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> Result<()> {
+	let events = state_store.list_private_execution_events(
+		project_id,
+		run.issue_id(),
+		run.run_id(),
+		run.attempt_number(),
+	)?;
+
+	if events.is_empty() {
+		evidence.push(String::from("private_evidence_missing"));
+	} else {
+		blockers.push(String::from("private_evidence_present"));
+	}
+
+	Ok(())
+}
+
+fn inspect_ghost_lane_review_lineage(
+	project_id: &str,
+	state_store: &StateStore,
+	run: &ProjectRunStatus,
+	issue_identifier: Option<&str>,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> Result<()> {
+	if state_store.issue_has_review_lifecycle_record(project_id, run.issue_id())? {
+		blockers.push(String::from("review_lifecycle_present"));
+
+		return Ok(());
+	}
+	if ghost_lane_run_has_review_policy_checkpoint(project_id, state_store, run)? {
+		blockers.push(String::from("review_policy_checkpoint_present"));
+
+		return Ok(());
+	}
+
+	let mut records = state_store.list_linear_execution_events(project_id, run.issue_id())?;
+
+	if let Some(issue_identifier) = issue_identifier
+		.filter(|issue_identifier| !issue_identifier.eq_ignore_ascii_case(run.issue_id()))
+	{
+		records.extend(state_store.list_linear_execution_events(project_id, issue_identifier)?);
+	}
+
+	if records.iter().any(ghost_lane_record_has_pr_or_review_lineage) {
+		blockers.push(String::from("pr_or_review_lineage_present"));
+	} else {
+		evidence.push(String::from("review_lineage_missing"));
+	}
+
+	Ok(())
+}
+
+fn ghost_lane_run_has_review_policy_checkpoint(
+	project_id: &str,
+	state_store: &StateStore,
+	run: &ProjectRunStatus,
+) -> Result<bool> {
+	for phase in ["handoff", "repair"] {
+		if state_store
+			.review_policy_checkpoint(
+				project_id,
+				run.issue_id(),
+				run.run_id(),
+				run.attempt_number(),
+				phase,
+			)?
+			.is_some()
+		{
+			return Ok(true);
+		}
+	}
+
+	Ok(false)
+}
+
+fn ghost_lane_record_has_pr_or_review_lineage(record: &LinearExecutionEventRecord) -> bool {
+	record.pr_url.as_ref().is_some_and(|value| !value.trim().is_empty())
+		|| record.pr_head_sha.as_ref().is_some_and(|value| !value.trim().is_empty())
+		|| record.pr_base_ref.as_ref().is_some_and(|value| !value.trim().is_empty())
+		|| matches!(
+			record.event_type.as_str(),
+			"review_handoff"
+				| "review_handoff_rebind"
+				| "review_handoff_adopt"
+				| "review_repair"
+				| "landed" | "closeout"
+				| "cleanup_complete"
+		) || record.terminal_path.as_deref() == Some("review_handoff")
+}
+
+fn apply_ghost_lane_cleanup(
+	state_store: &StateStore,
+	diagnostic: &GhostLaneDiagnostic,
+) -> Result<()> {
+	state_store
+		.append_private_execution_event(
+			&diagnostic.project_id,
+			&diagnostic.issue_id,
+			&diagnostic.run_id,
+			diagnostic.attempt_number,
+			GHOST_LANE_CLEANUP_EVENT,
+			serde_json::json!({
+				"schema": "decodex.ghost_lane_recovery_private_event/1",
+				"event": GHOST_LANE_CLEANUP_EVENT,
+				"classification": &diagnostic.classification,
+				"reason": &diagnostic.reason,
+				"issue_identifier": &diagnostic.issue_identifier,
+				"terminal_status": GHOST_LANE_TERMINAL_STATUS,
+				"cleared_run_lease": true,
+				"evidence": &diagnostic.evidence,
+				"blockers": &diagnostic.blockers,
+				"next_action": "ordinary automation may continue after status readback confirms no current attention lane",
+			}),
+		)
+		.map(|_| ())?;
+	state_store.update_run_status(&diagnostic.run_id, GHOST_LANE_TERMINAL_STATUS)?;
+	state_store.retire_run_control_channel_for_attempt(
+		&diagnostic.run_id,
+		diagnostic.attempt_number,
+		RUN_CONTROL_CHANNEL_STATUS_FAILED,
+	)?;
+
+	if let Some(mapping) = state_store.worktree_for_issue(&diagnostic.issue_id)?
+		&& !mapping.worktree_path().exists()
+	{
+		state_store.clear_worktree(&diagnostic.issue_id)?;
+	}
+
+	state_store.clear_lease(&diagnostic.issue_id)
+}
+
+fn ensure_ghost_lane_live_status_allows_cleanup(
+	context: &RecoveryContext,
+	diagnostic: &GhostLaneDiagnostic,
+) -> Result<()> {
+	ensure_ghost_lane_live_status_allows_cleanup_with_tracker(
+		&context.tracker,
+		&context.config,
+		&context.workflow,
+		&context.state_store,
+		diagnostic,
+	)
+}
+
+fn ensure_ghost_lane_live_status_allows_cleanup_with_tracker<T>(
+	tracker: &T,
+	config: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	diagnostic: &GhostLaneDiagnostic,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
+		tracker,
+		config,
+		workflow,
+		state_store,
+		&diagnostic.issue_id,
+		&diagnostic.run_id,
+	)?;
+
+	if blockers.is_empty() {
+		return Ok(());
+	}
+
+	eyre::bail!(
+		"`recover ghost-lane cleanup` refused `{}` because live status reported blockers: {}",
+		render_ghost_lane_issue(diagnostic),
+		blockers.join(", ")
+	)
+}
+
+fn apply_ghost_lane_live_status_blockers(
+	context: &RecoveryContext,
+	diagnostics: &mut [GhostLaneDiagnostic],
+) -> Result<()> {
+	apply_ghost_lane_live_status_blockers_with_tracker(
+		&context.tracker,
+		&context.config,
+		&context.workflow,
+		&context.state_store,
+		diagnostics,
+	)
+}
+
+fn apply_ghost_lane_live_status_blockers_with_tracker<T>(
+	tracker: &T,
+	config: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	diagnostics: &mut [GhostLaneDiagnostic],
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	for diagnostic in diagnostics {
+		let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
+			tracker,
+			config,
+			workflow,
+			state_store,
+			&diagnostic.issue_id,
+			&diagnostic.run_id,
+		)?;
+
+		if blockers.is_empty() {
+			continue;
+		}
+
+		diagnostic.classification = String::from(GHOST_LANE_BLOCKED_CLASSIFICATION);
+		diagnostic.reason = String::from("status_safety_check_blocked");
+		diagnostic.next_action = String::from(
+			"Preserve attention and inspect the listed blockers before using a recovery command.",
+		);
+		diagnostic.blockers = sorted_unique(
+			diagnostic
+				.blockers
+				.iter()
+				.cloned()
+				.chain(blockers.into_iter().map(|blocker| format!("status:{blocker}")))
+				.collect(),
+		);
+	}
+
+	Ok(())
+}
+
+fn render_ghost_lane_recovery_report(report: &GhostLaneRecoveryReport) -> String {
+	let mut output = format!("Ghost lane recovery diagnostics for project {}\n", report.project_id);
+
+	if report.diagnostics.is_empty() {
+		output.push_str("- none\n");
+
+		return output;
+	}
+
+	for diagnostic in &report.diagnostics {
+		output.push_str(&format!(
+			"- issue: {}\n  local_issue_id: {}\n  run_id: {}\n  attempt: {}\n  attempt_status: {}\n  classification: {}\n  reason: {}\n  run_lease: {}\n  control_channel: {}\n  evidence: {}\n  blockers: {}\n  next_action: {}\n",
+			render_ghost_lane_issue(diagnostic),
+			diagnostic.issue_id,
+			diagnostic.run_id,
+			diagnostic.attempt_number,
+			diagnostic.attempt_status,
+			diagnostic.classification,
+			diagnostic.reason,
+			diagnostic.run_lease,
+			diagnostic.control_channel,
+			render_string_list(&diagnostic.evidence),
+			render_string_list(&diagnostic.blockers),
+			diagnostic.next_action,
+		));
+	}
+
+	output
+}
+
+fn render_ghost_lane_issue(diagnostic: &GhostLaneDiagnostic) -> &str {
+	diagnostic.issue_identifier.as_deref().unwrap_or(diagnostic.issue_id.as_str())
+}
+
+fn render_string_list(values: &[String]) -> String {
+	if values.is_empty() { String::from("none") } else { values.join(",") }
+}
+
+fn ghost_lane_issue_identifier(
+	run: &ProjectRunStatus,
+	requested_selector: Option<&str>,
+) -> Option<String> {
+	requested_selector
+		.filter(|selector| commit_message::looks_like_issue_identifier(selector))
+		.map(str::to_ascii_uppercase)
+		.or_else(|| ghost_lane_issue_identifier_from_run_id(run.run_id()))
+		.or_else(|| run.branch_name().and_then(ghost_lane_issue_identifier_in_text))
+		.or_else(|| {
+			run.worktree_path()
+				.and_then(|path| ghost_lane_issue_identifier_in_text(&path.display().to_string()))
+		})
+		.or_else(|| {
+			commit_message::looks_like_issue_identifier(run.issue_id())
+				.then(|| run.issue_id().to_ascii_uppercase())
+		})
+}
+
+fn ghost_lane_inferred_issue_identifier(run: &ProjectRunStatus) -> Option<String> {
+	ghost_lane_issue_identifier_from_run_id(run.run_id())
+		.or_else(|| run.branch_name().and_then(ghost_lane_issue_identifier_in_text))
+		.or_else(|| {
+			run.worktree_path()
+				.and_then(|path| ghost_lane_issue_identifier_in_text(&path.display().to_string()))
+		})
+		.or_else(|| {
+			commit_message::looks_like_issue_identifier(run.issue_id())
+				.then(|| run.issue_id().to_ascii_uppercase())
+		})
+}
+
+fn ghost_lane_issue_identifier_from_run_id(run_id: &str) -> Option<String> {
+	if let Some((candidate, _attempt_suffix)) = run_id.split_once("-attempt-") {
+		return ghost_lane_issue_identifier_in_text(candidate);
+	}
+	if let Some(candidate) = run_id.strip_prefix("recovered-") {
+		return ghost_lane_issue_identifier_in_text(candidate);
+	}
+
+	None
+}
+
+fn ghost_lane_issue_identifier_in_text(value: &str) -> Option<String> {
+	let bytes = value.as_bytes();
+
+	for index in 0..bytes.len() {
+		if !bytes[index].is_ascii_alphabetic() {
+			continue;
+		}
+
+		let mut prefix_end = index + 1;
+
+		while prefix_end < bytes.len() && bytes[prefix_end].is_ascii_alphanumeric() {
+			prefix_end += 1;
+		}
+
+		if prefix_end >= bytes.len() || bytes[prefix_end] != b'-' {
+			continue;
+		}
+
+		let mut digit_end = prefix_end + 1;
+
+		while digit_end < bytes.len() && bytes[digit_end].is_ascii_digit() {
+			digit_end += 1;
+		}
+
+		if digit_end > prefix_end + 1 {
+			return Some(value[index..digit_end].to_ascii_uppercase());
+		}
+	}
+
+	None
+}
+
+fn ghost_lane_tracker_issue_selectors(
+	run: &ProjectRunStatus,
+	issue_identifier: Option<&str>,
+	requested_selector: Option<&str>,
+) -> Vec<String> {
+	let mut selectors = Vec::new();
+
+	if let Some(selector) =
+		requested_selector.filter(|selector| commit_message::looks_like_issue_identifier(selector))
+	{
+		selectors.push(selector.to_ascii_uppercase());
+	}
+	if let Some(issue_identifier) = issue_identifier {
+		selectors.push(issue_identifier.to_ascii_uppercase());
+	}
+	if let Some(inferred) = ghost_lane_inferred_issue_identifier(run) {
+		selectors.push(inferred);
+	}
+
+	if commit_message::looks_like_issue_identifier(run.issue_id()) {
+		selectors.push(run.issue_id().to_ascii_uppercase());
+	}
+
+	sorted_unique(selectors)
+}
+
+fn ghost_lane_worktree_selectors(
+	run: &ProjectRunStatus,
+	issue_identifier: Option<&str>,
+	requested_selector: Option<&str>,
+) -> Vec<String> {
+	let mut selectors = Vec::new();
+
+	if let Some(selector) =
+		requested_selector.filter(|selector| commit_message::looks_like_issue_identifier(selector))
+	{
+		selectors.push(selector.to_ascii_uppercase());
+	}
+	if let Some(issue_identifier) = issue_identifier {
+		selectors.push(issue_identifier.to_ascii_uppercase());
+	}
+	if let Some(inferred) = ghost_lane_inferred_issue_identifier(run) {
+		selectors.push(inferred);
+	}
+
+	if commit_message::looks_like_issue_identifier(run.issue_id()) {
+		selectors.push(run.issue_id().to_ascii_uppercase());
+	}
+
+	sorted_unique(selectors)
+}
+
+fn ghost_lane_run_matches_selector(run: &ProjectRunStatus, selector: &str) -> bool {
+	if selector.eq_ignore_ascii_case(run.issue_id()) || selector.eq_ignore_ascii_case(run.run_id())
+	{
+		return true;
+	}
+
+	ghost_lane_worktree_selectors(run, ghost_lane_inferred_issue_identifier(run).as_deref(), None)
+		.iter()
+		.any(|candidate| {
+			selector.eq_ignore_ascii_case(candidate)
+				|| ghost_lane_identifier_suffix_matches(selector, candidate)
+		})
+}
+
+fn ghost_lane_identifier_suffix_matches(left: &str, right: &str) -> bool {
+	let Some((left_prefix, left_suffix)) = ghost_lane_identifier_parts(left) else {
+		return false;
+	};
+	let Some((right_prefix, right_suffix)) = ghost_lane_identifier_parts(right) else {
+		return false;
+	};
+
+	left_suffix == right_suffix
+		&& (left_prefix.eq_ignore_ascii_case(right_prefix)
+			|| left_prefix.to_ascii_uppercase().starts_with(&right_prefix.to_ascii_uppercase())
+			|| right_prefix.to_ascii_uppercase().starts_with(&left_prefix.to_ascii_uppercase()))
+}
+
+fn ghost_lane_identifier_parts(value: &str) -> Option<(&str, &str)> {
+	let (prefix, suffix) = value.rsplit_once('-')?;
+
+	(!prefix.is_empty() && suffix.chars().all(|character| character.is_ascii_digit()))
+		.then_some((prefix, suffix))
+}
+
+fn sorted_unique(values: Vec<String>) -> Vec<String> {
+	let mut set = BTreeSet::new();
+
+	for value in values {
+		set.insert(value);
+	}
+
+	set.into_iter().collect()
 }
 
 fn validate_rebind_request(
@@ -3230,19 +4244,131 @@ mod tests {
 	use tempfile::TempDir;
 
 	use crate::{
+		config::ServiceConfig,
 		pull_request::PullRequestLandingState,
 		recovery::{
-			REVIEW_HANDOFF_ADOPT_EVENT, REVIEW_HANDOFF_BOUND_CLASSIFICATION,
-			REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION, REVIEW_HANDOFF_REBIND_EVENT,
-			REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION,
+			GHOST_LANE_BLOCKED_CLASSIFICATION, GHOST_LANE_CLASSIFICATION, GHOST_LANE_CLEANUP_EVENT,
+			GHOST_LANE_TERMINAL_STATUS, REVIEW_HANDOFF_ADOPT_EVENT,
+			REVIEW_HANDOFF_BOUND_CLASSIFICATION, REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION,
+			REVIEW_HANDOFF_REBIND_EVENT, REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION,
 		},
-		state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore, WorktreeMapping},
+		state::{
+			self, ChildAgentActivitySummary, ConnectorBackoffInput, ReviewHandoffMarker,
+			ReviewOrchestrationMarker, ReviewPolicyCheckpointInput, StateStore, WorktreeMapping,
+		},
 		tracker::{
-			TrackerIssue, TrackerState, TrackerTeam,
+			IssueTracker, TrackerComment, TrackerIssue, TrackerState, TrackerTeam,
+			linear::LinearClient,
 			records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
 		},
 		workflow::WorkflowDocument,
 	};
+
+	struct GhostLaneTestTracker {
+		issues: Vec<TrackerIssue>,
+		refresh_error: Option<String>,
+		identifier_error: Option<String>,
+	}
+	impl GhostLaneTestTracker {
+		fn missing() -> Self {
+			Self { issues: Vec::new(), refresh_error: None, identifier_error: None }
+		}
+
+		fn refresh_error(message: &str) -> Self {
+			Self {
+				issues: Vec::new(),
+				refresh_error: Some(message.to_owned()),
+				identifier_error: None,
+			}
+		}
+
+		fn identifier_error(message: &str) -> Self {
+			Self {
+				issues: Vec::new(),
+				refresh_error: None,
+				identifier_error: Some(message.to_owned()),
+			}
+		}
+	}
+	impl IssueTracker for GhostLaneTestTracker {
+		fn list_issues_with_label(
+			&self,
+			_label_name: &str,
+		) -> crate::prelude::Result<Vec<TrackerIssue>> {
+			Ok(Vec::new())
+		}
+
+		fn find_team_label_id(
+			&self,
+			_team_id: &str,
+			_label_name: &str,
+		) -> crate::prelude::Result<Option<String>> {
+			Ok(None)
+		}
+
+		fn get_issue_by_identifier(
+			&self,
+			issue_identifier: &str,
+		) -> crate::prelude::Result<Option<TrackerIssue>> {
+			if let Some(message) = &self.identifier_error {
+				return Err(crate::prelude::eyre::eyre!(message.clone()));
+			}
+
+			Ok(self
+				.issues
+				.iter()
+				.find(|issue| issue.identifier.eq_ignore_ascii_case(issue_identifier))
+				.cloned())
+		}
+
+		fn refresh_issues(
+			&self,
+			issue_ids: &[String],
+		) -> crate::prelude::Result<Vec<TrackerIssue>> {
+			if let Some(message) = &self.refresh_error {
+				return Err(crate::prelude::eyre::eyre!(message.clone()));
+			}
+
+			Ok(self
+				.issues
+				.iter()
+				.filter(|issue| issue_ids.iter().any(|issue_id| issue_id == &issue.id))
+				.cloned()
+				.collect())
+		}
+
+		fn list_comments(&self, _issue_id: &str) -> crate::prelude::Result<Vec<TrackerComment>> {
+			Ok(Vec::new())
+		}
+
+		fn update_issue_state(
+			&self,
+			_issue_id: &str,
+			_state_id: &str,
+		) -> crate::prelude::Result<()> {
+			Ok(())
+		}
+
+		fn add_issue_labels(
+			&self,
+			_issue_id: &str,
+			_label_ids: &[String],
+		) -> crate::prelude::Result<()> {
+			Ok(())
+		}
+
+		fn remove_issue_labels(
+			&self,
+			_issue_id: &str,
+			_label_ids: &[String],
+		) -> crate::prelude::Result<()> {
+			Ok(())
+		}
+
+		fn create_comment(&self, _issue_id: &str, _body: &str) -> crate::prelude::Result<()> {
+			Ok(())
+		}
+	}
 
 	fn sample_worktree(branch_name: &str) -> WorktreeMapping {
 		sample_worktree_at(branch_name, Path::new("/tmp/PUB-718"))
@@ -3327,6 +4453,41 @@ Test workflow.
 		.expect("sample workflow should parse")
 	}
 
+	fn sample_recovery_context(
+		temp_dir: &TempDir,
+		runtime_mutation_policy: super::RecoveryRuntimeMutationPolicy,
+	) -> super::RecoveryContext {
+		let repo_root = temp_dir.path().join("repo");
+		let config_path = temp_dir.path().join("project.toml");
+
+		fs::create_dir_all(&repo_root).expect("repo root should exist");
+		fs::write(
+			&config_path,
+			r#"
+service_id = "pubfi"
+
+[paths]
+repo_root = "repo"
+
+[tracker]
+api_key_env_var = "HOME"
+
+[github]
+token_env_var = "HOME"
+"#,
+		)
+		.expect("config should write");
+
+		super::RecoveryContext {
+			config: ServiceConfig::from_path(&config_path).expect("config should load"),
+			workflow: sample_workflow(),
+			state_store: StateStore::open_in_memory().expect("state store should open"),
+			tracker: LinearClient::new(String::from("test-token"))
+				.expect("linear client should build"),
+			runtime_mutation_policy,
+		}
+	}
+
 	fn sample_issue(state_name: &str) -> TrackerIssue {
 		let states = vec![
 			TrackerState { id: String::from("state-todo"), name: String::from("Todo") },
@@ -3362,6 +4523,838 @@ Test workflow.
 			labels: Vec::new(),
 			blockers: Vec::new(),
 		}
+	}
+
+	#[test]
+	fn recovery_read_only_backoff_observer_does_not_clear_expired_backoff() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context =
+			sample_recovery_context(&temp_dir, super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		let expired_unix_epoch = time::OffsetDateTime::now_utc().unix_timestamp() - 1;
+
+		context
+			.state_store
+			.upsert_connector_backoff(ConnectorBackoffInput {
+				project_id: context.config.service_id(),
+				connector: "linear",
+				sync_phase: "ghost_lane_recovery",
+				quota_class: "linear_graphql_rate_limit",
+				reset_unix_epoch: expired_unix_epoch,
+				reset_source: "test",
+				warning: super::LINEAR_RATE_LIMIT_BACKOFF_WARNING,
+			})
+			.expect("backoff should persist");
+
+		let message = super::active_recovery_tracker_backoff_message(&context)
+			.expect("backoff observer should run");
+
+		assert_eq!(message, None);
+		assert!(
+			context
+				.state_store
+				.connector_backoff(context.config.service_id(), "linear")
+				.expect("backoff should read")
+				.is_some(),
+			"read-only recovery diagnostics must not clear stored connector backoff"
+		);
+	}
+
+	#[test]
+	fn recovery_read_only_backoff_recorder_does_not_persist_new_backoff() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context =
+			sample_recovery_context(&temp_dir, super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		let error = crate::prelude::eyre::eyre!("Linear connector timed out while testing");
+		let message = super::remember_recovery_tracker_backoff_message(
+			&context,
+			&error,
+			"ghost_lane_recovery",
+		)
+		.expect("timeout should produce backoff message");
+
+		assert!(message.contains("Linear connector is in backoff"));
+		assert!(
+			context
+				.state_store
+				.connector_backoff(context.config.service_id(), "linear")
+				.expect("backoff should read")
+				.is_none(),
+			"read-only recovery diagnostics must not persist new connector backoff"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_live_status_overlay_tracker_backoff_stays_read_only() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context =
+			sample_recovery_context(&temp_dir, super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		let missing_tracker = GhostLaneTestTracker::missing();
+		let error_tracker =
+			GhostLaneTestTracker::refresh_error("Linear connector timed out while testing");
+
+		context
+			.state_store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+
+		let mut diagnostics = super::diagnose_ghost_lanes_read_only(
+			context.config.service_id(),
+			context.config.worktree_root(),
+			&context.state_store,
+			&missing_tracker,
+			Some("PUB-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let error = super::apply_ghost_lane_live_status_blockers_with_tracker(
+			&error_tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&mut diagnostics,
+		)
+		.expect_err("overlay tracker error should surface for recovery backoff wrapping");
+		let message = super::remember_recovery_tracker_backoff_message(
+			&context,
+			&error,
+			"ghost_lane_recovery",
+		)
+		.expect("timeout should become a recovery backoff message");
+
+		assert!(message.contains("ghost_lane_recovery"));
+		assert!(
+			context
+				.state_store
+				.connector_backoff(context.config.service_id(), "linear")
+				.expect("backoff should read")
+				.is_none(),
+			"read-only live-status overlay must not persist connector backoff"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnose_live_status_overlay_blocks_active_thread_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context =
+			sample_recovery_context(&temp_dir, super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		let tracker = GhostLaneTestTracker::missing();
+		let worktree_path = context.config.worktree_root().join("PUB-012");
+		let mut diagnostics = vec![super::GhostLaneDiagnostic {
+			project_id: String::from("pubfi"),
+			issue_id: String::from("PUB-012"),
+			issue_identifier: Some(String::from("PUBFI-012")),
+			run_id: String::from("run-12"),
+			attempt_number: 1,
+			attempt_status: String::from("running"),
+			classification: String::from(GHOST_LANE_CLASSIFICATION),
+			reason: String::from("test"),
+			run_lease: true,
+			control_channel: String::from("missing"),
+			evidence: Vec::new(),
+			blockers: Vec::new(),
+			next_action: String::from("test"),
+		}];
+
+		fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+		context
+			.state_store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+		context
+			.state_store
+			.upsert_worktree(
+				"pubfi",
+				"PUB-012",
+				"x/pubfi-pub-012",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree should record");
+
+		state::write_run_thread_status_marker(
+			&worktree_path,
+			"run-12",
+			1,
+			Some("thread-12"),
+			Some("turn-12"),
+			"active",
+			&[String::from("waitingOnApproval")],
+		)
+		.expect("active thread marker should write");
+		super::apply_ghost_lane_live_status_blockers_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&mut diagnostics,
+		)
+		.expect("status overlay should run");
+
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("status:thread_active")));
+		assert!(diagnostic.blockers.contains(&String::from("status:retained_worktree_present")));
+	}
+
+	#[test]
+	fn ghost_lane_cleanup_live_status_gate_rejects_active_thread_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context =
+			sample_recovery_context(&temp_dir, super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		let tracker = GhostLaneTestTracker::missing();
+		let worktree_path = context.config.worktree_root().join("PUB-012");
+		let diagnostic = super::GhostLaneDiagnostic {
+			project_id: String::from("pubfi"),
+			issue_id: String::from("PUB-012"),
+			issue_identifier: Some(String::from("PUBFI-012")),
+			run_id: String::from("run-12"),
+			attempt_number: 1,
+			attempt_status: String::from("running"),
+			classification: String::from(GHOST_LANE_CLASSIFICATION),
+			reason: String::from("test"),
+			run_lease: true,
+			control_channel: String::from("missing"),
+			evidence: Vec::new(),
+			blockers: Vec::new(),
+			next_action: String::from("test"),
+		};
+
+		fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+		context
+			.state_store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+		context
+			.state_store
+			.upsert_worktree(
+				"pubfi",
+				"PUB-012",
+				"x/pubfi-pub-012",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree should record");
+
+		state::write_run_thread_status_marker(
+			&worktree_path,
+			"run-12",
+			1,
+			Some("thread-12"),
+			Some("turn-12"),
+			"active",
+			&[String::from("waitingOnApproval")],
+		)
+		.expect("active thread marker should write");
+
+		let error = super::ensure_ghost_lane_live_status_allows_cleanup_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect_err("live status should reject cleanup");
+		let message = format!("{error:#}");
+
+		assert!(message.contains("live status reported blockers"));
+		assert!(message.contains("thread_active"));
+		assert!(message.contains("retained_worktree_present"));
+	}
+
+	#[test]
+	fn ghost_lane_cleanup_terminalizes_missing_issue_lease_and_records_private_audit() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::missing();
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+
+		let mut diagnostics = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUBFI-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_CLASSIFICATION);
+		assert!(diagnostic.recoverable());
+		assert_eq!(diagnostic.issue_id, "PUB-012");
+		assert_eq!(diagnostic.issue_identifier.as_deref(), Some("PUBFI-012"));
+		assert!(diagnostic.evidence.contains(&String::from("tracker_issue_missing")));
+		assert!(diagnostic.evidence.contains(&String::from("worktree_missing")));
+		assert!(diagnostic.evidence.contains(&String::from("control_channel_missing")));
+		assert!(diagnostic.evidence.contains(&String::from("private_evidence_missing")));
+		assert!(diagnostic.evidence.contains(&String::from("review_lineage_missing")));
+
+		super::apply_ghost_lane_cleanup(&store, &diagnostic).expect("cleanup should apply");
+
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").is_empty(),
+			"cleanup should clear the local run lease"
+		);
+
+		let runs =
+			store.list_project_issue_runs("pubfi", "PUB-012").expect("issue runs should load");
+
+		assert_eq!(runs.len(), 1);
+		assert_eq!(runs[0].status(), GHOST_LANE_TERMINAL_STATUS);
+
+		let events = store
+			.list_private_execution_events("pubfi", "PUB-012", "run-12", 1)
+			.expect("private events should load");
+
+		assert_eq!(events.len(), 1);
+		assert_eq!(events[0].event_type(), GHOST_LANE_CLEANUP_EVENT);
+		assert_eq!(
+			events[0].payload()["schema"].as_str(),
+			Some("decodex.ghost_lane_recovery_private_event/1")
+		);
+		assert_eq!(events[0].payload()["cleared_run_lease"].as_bool(), Some(true));
+	}
+
+	#[test]
+	fn ghost_lane_cleanup_dry_run_validation_keeps_runtime_state_untouched() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context =
+			sample_recovery_context(&temp_dir, super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		let tracker = GhostLaneTestTracker::missing();
+
+		context
+			.state_store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+
+		let diagnostics = super::diagnose_ghost_lanes_read_only(
+			context.config.service_id(),
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert!(diagnostic.recoverable());
+
+		super::ensure_ghost_lane_live_status_allows_cleanup_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			diagnostic,
+		)
+		.expect("dry-run validation should allow cleanup");
+
+		let runs = context
+			.state_store
+			.list_project_issue_runs("pubfi", "PUB-012")
+			.expect("issue runs should load");
+		let events = context
+			.state_store
+			.list_private_execution_events("pubfi", "PUB-012", "run-12", 1)
+			.expect("private events should load");
+
+		assert_eq!(runs.len(), 1);
+		assert_eq!(runs[0].status(), "running");
+		assert!(
+			!context
+				.state_store
+				.list_leased_runs("pubfi")
+				.expect("leased runs should load")
+				.is_empty(),
+			"dry-run validation must not clear the run lease"
+		);
+		assert!(events.is_empty(), "dry-run validation must not write cleanup audit events");
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_treats_invalid_local_issue_id_refresh_as_missing_issue() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::refresh_error(
+			"Linear GraphQL request failed: Argument Validation Error",
+		);
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+
+		let diagnostics = super::diagnose_ghost_lanes_read_only(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-012"),
+		)
+		.expect("missing local issue id should not abort ghost-lane diagnosis");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_CLASSIFICATION);
+		assert!(diagnostic.recoverable());
+		assert!(diagnostic.evidence.contains(&String::from("tracker_issue_missing")));
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_treats_missing_identifier_lookup_as_missing_issue() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::identifier_error(
+			"Linear GraphQL request failed: Entity not found: Issue",
+		);
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+
+		let diagnostics = super::diagnose_ghost_lanes_read_only(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-012"),
+		)
+		.expect("missing issue identifier should not abort ghost-lane diagnosis");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_CLASSIFICATION);
+		assert!(diagnostic.recoverable());
+		assert!(diagnostic.evidence.contains(&String::from("tracker_issue_missing")));
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_fails_closed_when_requested_issue_identifier_exists() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let mut issue = sample_issue("In Progress");
+
+		issue.id = String::from("linear-pubfi-012");
+		issue.identifier = String::from("PUBFI-012");
+
+		let tracker = GhostLaneTestTracker {
+			issues: vec![issue],
+			refresh_error: None,
+			identifier_error: None,
+		};
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+
+		let diagnostics = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUBFI-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
+		assert!(!diagnostic.recoverable());
+		assert_eq!(diagnostic.issue_identifier.as_deref(), Some("PUBFI-012"));
+		assert!(diagnostic.blockers.contains(&String::from("tracker_issue_present")));
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").len() == 1,
+			"fail-closed diagnostics must preserve attention"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_rejects_unrelated_requested_identifier() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::missing();
+
+		store
+			.record_run_attempt("run-12", "ABC-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "ABC-012", "run-12", "In Progress")
+			.expect("lease should record");
+
+		let error = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUBFI-012"),
+		)
+		.expect_err("unrelated issue prefixes should not match by numeric suffix alone");
+
+		assert!(
+			format!("{error:#}").contains("No leased lane matched"),
+			"unexpected error: {error:#}"
+		);
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").len() == 1,
+			"failed selector matches must preserve attention"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_fails_closed_when_requested_worktree_exists() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::missing();
+		let worktree_path = temp_dir.path().join("PUBFI-012");
+
+		fs::create_dir_all(&worktree_path).expect("retained worktree should exist");
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+
+		let diagnostics = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUBFI-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
+		assert!(!diagnostic.recoverable());
+		assert!(diagnostic.blockers.contains(&String::from("retained_worktree_present")));
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").len() == 1,
+			"fail-closed diagnostics must preserve attention"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_fails_closed_when_control_channel_row_exists() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::missing();
+		let channel_path = temp_dir.path().join("missing-control-channel.json");
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+		store
+			.publish_run_control_channel_for_active_attempt(
+				"run-12",
+				1,
+				&channel_path,
+				"local_file",
+			)
+			.expect("control channel row should publish");
+
+		let diagnostics = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
+		assert!(!diagnostic.recoverable());
+		assert!(diagnostic.evidence.contains(&String::from("control_channel_file_missing")));
+		assert!(diagnostic.blockers.contains(&String::from("control_channel_present")));
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").len() == 1,
+			"fail-closed diagnostics must preserve attention"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_fails_closed_when_private_evidence_exists() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::missing();
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+		store
+			.append_private_execution_event(
+				"pubfi",
+				"PUB-012",
+				"run-12",
+				1,
+				"diagnostic",
+				serde_json::json!({"schema": "test.private/1"}),
+			)
+			.expect("private evidence should record");
+
+		let diagnostics = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
+		assert!(!diagnostic.recoverable());
+		assert!(diagnostic.blockers.contains(&String::from("private_evidence_present")));
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").len() == 1,
+			"fail-closed diagnostics must preserve attention"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_fails_closed_when_review_lifecycle_exists() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::missing();
+		let marker = ReviewHandoffMarker::new(
+			"run-12",
+			1,
+			"x/pubfi-pub-012",
+			"https://github.com/hack-ink/decodex/pull/12",
+			"main",
+			"x/pubfi-pub-012",
+			"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+		);
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+		store
+			.upsert_review_handoff_marker("pubfi", "PUB-012", &marker)
+			.expect("review lifecycle should record");
+
+		let diagnostics = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
+		assert!(!diagnostic.recoverable());
+		assert!(diagnostic.blockers.contains(&String::from("review_lifecycle_present")));
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").len() == 1,
+			"fail-closed diagnostics must preserve attention"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_fails_closed_when_review_checkpoint_exists() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::missing();
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+		store
+			.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+				project_id: "pubfi",
+				issue_id: "PUB-012",
+				run_id: "run-12",
+				attempt_number: 1,
+				phase: "handoff",
+				review_level: "standard",
+				status: "clean",
+				head_sha: "2222222222222222222222222222222222222222",
+				nonclean_rounds: 0,
+				details_json: "{}",
+			})
+			.expect("review checkpoint should record");
+
+		let diagnostics = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
+		assert!(!diagnostic.recoverable());
+		assert!(diagnostic.blockers.contains(&String::from("review_policy_checkpoint_present")));
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").len() == 1,
+			"fail-closed diagnostics must preserve attention"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_fails_closed_when_pr_lineage_exists() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::missing();
+		let mut event = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: "pubfi",
+				issue_id: "PUB-012",
+				issue_identifier: "PUB-012",
+				run_id: "run-12",
+				attempt_number: 1,
+			},
+			"closeout",
+			String::from("2026-06-18T00:00:00Z"),
+			"closeout",
+		);
+
+		event.branch = Some(String::from("x/pubfi-pub-012"));
+		event.pr_url = Some(String::from("https://github.com/hack-ink/decodex/pull/12"));
+		event.pr_head_sha = Some(String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"));
+		event.pr_base_ref = Some(String::from("main"));
+		event.commit_sha = Some(String::from("18a20f7dfb9526e7421a5f095b1c6adec84e52d7"));
+		event.summary = Some(String::from("Recorded retained closeout."));
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+		store.record_linear_execution_event(&event).expect("linear event should record");
+
+		let diagnostics = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
+		assert!(!diagnostic.recoverable());
+		assert!(diagnostic.blockers.contains(&String::from("pr_or_review_lineage_present")));
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").len() == 1,
+			"fail-closed diagnostics must preserve attention"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_fails_closed_when_retained_worktree_exists() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::missing();
+		let worktree_path = temp_dir.path().join("PUB-012");
+
+		fs::create_dir_all(&worktree_path).expect("retained worktree should exist");
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+
+		let diagnostics = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
+		assert!(!diagnostic.recoverable());
+		assert!(diagnostic.blockers.contains(&String::from("retained_worktree_present")));
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").len() == 1,
+			"fail-closed diagnostics must preserve attention"
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_fails_closed_when_activity_summary_exists() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = GhostLaneTestTracker::missing();
+		let activity = ChildAgentActivitySummary { event_count: 1, ..Default::default() };
+
+		store
+			.record_run_attempt("run-12", "PUB-012", 1, "running")
+			.expect("run attempt should record");
+		store
+			.record_run_activity_summary("run-12", 1, Some(&activity), None)
+			.expect("activity summary should record");
+		store
+			.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+			.expect("lease should record");
+
+		let diagnostics = super::diagnose_ghost_lanes(
+			"pubfi",
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-012"),
+		)
+		.expect("ghost lane diagnostic should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
+		assert!(!diagnostic.recoverable());
+		assert!(diagnostic.blockers.contains(&String::from("child_agent_activity_present")));
+		assert!(
+			store.list_leased_runs("pubfi").expect("leased runs should load").len() == 1,
+			"fail-closed diagnostics must preserve attention"
+		);
 	}
 
 	fn run_git(repo: &Path, args: &[&str]) -> String {

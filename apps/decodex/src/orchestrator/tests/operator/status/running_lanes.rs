@@ -1,3 +1,5 @@
+use records::LinearExecutionEventRecord;
+
 #[test]
 fn failure_comments_use_repo_relative_worktree_paths() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
@@ -73,6 +75,712 @@ fn operator_status_snapshot_includes_current_lanes_and_repo_relative_paths() {
 	);
 	assert_eq!(project.connector_state, "ok");
 	assert!(project.last_activity_at.is_some());
+}
+
+#[test]
+fn live_operator_status_classifies_missing_issue_ghost_lane_for_runtime_recovery() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("ghost current lane should be visible");
+	let rendered = orchestrator::render_operator_status(&snapshot);
+	let project = snapshot.projects.first().expect("project summary should exist");
+
+	assert_eq!(snapshot.current_lanes.len(), 1);
+	assert_eq!(run.run_id, "run-12");
+	assert_eq!(run.issue_id, "PUB-012");
+	assert_eq!(run.issue_identifier.as_deref(), Some("PUB-012"));
+	assert_eq!(run.ownership_state, "ghost_lane");
+	assert_eq!(run.policy_state, "runtime_recovery_required");
+	assert_eq!(run.lane_control_next_action, "run_ghost_lane_recovery");
+	assert!(!run.counts_as_running);
+	assert!(run.needs_attention);
+	assert!(run.lane_control_conditions.contains(&String::from("tracker_issue_missing")));
+	assert!(run.lane_control_conditions.contains(&String::from("worktree_missing")));
+	assert!(run.lane_control_conditions.contains(&String::from("control_channel_missing")));
+	assert!(run.lane_control_conditions.contains(&String::from("private_evidence_missing")));
+	assert!(run.lane_control_conditions.contains(&String::from("review_lineage_missing")));
+	assert_eq!(project.attention_count, 1);
+	assert!(!rendered.contains("Record the independent Decodex Review checkpoint"));
+	assert!(!rendered.contains("review-handoff"));
+}
+
+#[test]
+fn live_operator_status_classifies_invalid_local_issue_id_as_ghost_lane() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::with_refresh_error(
+		Vec::new(),
+		"Linear GraphQL request failed: Argument Validation Error",
+	);
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("ghost current lane should be visible");
+
+	assert_eq!(run.issue_id, "PUB-012");
+	assert_eq!(run.ownership_state, "ghost_lane");
+	assert_eq!(run.policy_state, "runtime_recovery_required");
+	assert_eq!(run.lane_control_next_action, "run_ghost_lane_recovery");
+	assert!(!run.counts_as_running);
+	assert!(run.needs_attention);
+	assert!(run.lane_control_conditions.contains(&String::from("tracker_issue_missing")));
+	assert!(!snapshot.warnings.iter().any(|warning| warning.contains("runtime_recovery_unavailable")));
+}
+
+#[test]
+fn live_operator_status_allows_ghost_recovery_when_worktree_mapping_path_is_missing() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+	let missing_worktree_path = config.worktree_root().join("PUB-012");
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			"PUB-012",
+			"x/pubfi-pub-012",
+			&missing_worktree_path.display().to_string(),
+		)
+		.expect("stale worktree mapping should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("ghost current lane should be visible");
+
+	assert_eq!(run.ownership_state, "ghost_lane");
+	assert_eq!(run.policy_state, "runtime_recovery_required");
+	assert_eq!(run.lane_control_next_action, "run_ghost_lane_recovery");
+	assert!(run.lane_control_conditions.contains(&String::from("worktree_mapping_path_missing")));
+	assert!(run.lane_control_conditions.contains(&String::from("worktree_missing")));
+	assert!(!run.lane_control_conditions.contains(&String::from("retained_worktree_present")));
+}
+
+#[test]
+fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_retained_worktree_exists() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+
+	fs::create_dir_all(config.worktree_root().join("PUB-012"))
+		.expect("retained worktree directory should exist");
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should be visible");
+
+	assert_eq!(run.ownership_state, "retained_attention");
+	assert_eq!(run.policy_state, "runtime_recovery_blocked");
+	assert_eq!(
+		run.lane_control_next_action,
+		"inspect_missing_issue_runtime_recovery_blockers"
+	);
+	assert!(run.needs_attention);
+	assert!(!run.counts_as_running);
+	assert!(run.lane_control_conditions.contains(&String::from("retained_worktree_present")));
+}
+
+#[test]
+fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_control_channel_row_exists() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+	let channel_path = temp_dir.path().join("missing-control-channel.json");
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store
+		.publish_run_control_channel_for_active_attempt(
+			"run-12",
+			1,
+			&channel_path,
+			"local_file",
+		)
+		.expect("control channel row should publish");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should be visible");
+
+	assert_eq!(run.ownership_state, "retained_attention");
+	assert_eq!(run.policy_state, "runtime_recovery_blocked");
+	assert_eq!(
+		run.lane_control_next_action,
+		"inspect_missing_issue_runtime_recovery_blockers"
+	);
+	assert!(run.needs_attention);
+	assert!(!run.counts_as_running);
+	assert!(run.lane_control_conditions.contains(&String::from("control_channel_file_missing")));
+	assert!(run.lane_control_conditions.contains(&String::from("control_channel_present")));
+}
+
+#[test]
+fn ghost_lane_cleanup_status_blockers_treat_invalid_local_issue_id_as_missing_issue() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::with_refresh_error(
+		Vec::new(),
+		"Linear GraphQL request failed: Argument Validation Error",
+	);
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+
+	let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		"PUB-012",
+		"run-12",
+	)
+	.expect("invalid local issue id should be classified as a missing tracker issue");
+
+	assert!(blockers.is_empty(), "missing issue with no live evidence should allow cleanup");
+}
+
+#[test]
+fn ghost_lane_cleanup_status_blockers_preserve_live_blockers_after_invalid_issue_id_lookup() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::with_refresh_error(
+		Vec::new(),
+		"Linear GraphQL request failed: Argument Validation Error",
+	);
+	let channel_path = temp_dir.path().join("missing-control-channel.json");
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store
+		.publish_run_control_channel_for_active_attempt(
+			"run-12",
+			1,
+			&channel_path,
+			"local_file",
+		)
+		.expect("control channel row should publish");
+
+	let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		"PUB-012",
+		"run-12",
+	)
+	.expect("invalid local issue id should still run local safety checks");
+
+	assert!(blockers.contains(&String::from("control_channel_present")));
+	assert!(blockers.contains(&String::from("control_channel_file_missing")));
+}
+
+#[test]
+fn ghost_lane_cleanup_status_blockers_do_not_hide_validation_error_for_server_issue_id() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::with_refresh_error(
+		Vec::new(),
+		"Linear GraphQL request failed: Argument Validation Error",
+	);
+	let issue_id = "00000000-0000-0000-0000-000000000012";
+
+	state_store
+		.record_run_attempt("run-12", issue_id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", issue_id, "run-12", "In Progress")
+		.expect("lease should record");
+
+	let error = orchestrator::ghost_lane_cleanup_status_blockers(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		issue_id,
+		"run-12",
+	)
+	.expect_err("server issue id validation errors must remain tracker failures");
+
+	assert!(error.to_string().contains("Argument Validation Error"));
+}
+
+#[test]
+fn ghost_lane_cleanup_status_blockers_reject_live_process_evidence() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+	let worktree_path = config.worktree_root().join("PUB-012");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			"PUB-012",
+			"x/pubfi-pub-012",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_activity_marker_for_process(&worktree_path, "run-12", 1, process::id())
+		.expect("live process marker should write");
+
+	let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		"PUB-012",
+		"run-12",
+	)
+	.expect("cleanup status blockers should load");
+
+	assert!(blockers.contains(&String::from("process_alive")));
+	assert!(blockers.contains(&String::from("retained_worktree_present")));
+}
+
+#[test]
+fn ghost_lane_cleanup_status_blockers_reject_active_thread_evidence() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+	let worktree_path = config.worktree_root().join("PUB-012");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			"PUB-012",
+			"x/pubfi-pub-012",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_thread_status_marker(
+		&worktree_path,
+		"run-12",
+		1,
+		Some("thread-12"),
+		Some("turn-12"),
+		"active",
+		&[String::from("waitingOnApproval")],
+	)
+	.expect("active thread marker should write");
+
+	let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		"PUB-012",
+		"run-12",
+	)
+	.expect("cleanup status blockers should load");
+
+	assert!(blockers.contains(&String::from("thread_active")));
+	assert!(blockers.contains(&String::from("retained_worktree_present")));
+}
+
+#[test]
+fn ghost_lane_cleanup_status_blockers_do_not_persist_marker_thread_identity() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let state_store = StateStore::open(&state_path).expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+	let worktree_path = config.worktree_root().join("PUB-012");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			"PUB-012",
+			"x/pubfi-pub-012",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_thread_status_marker(
+		&worktree_path,
+		"run-12",
+		1,
+		Some("thread-12"),
+		Some("turn-12"),
+		"active",
+		&[String::from("waitingOnApproval")],
+	)
+	.expect("active thread marker should write");
+
+	let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		"PUB-012",
+		"run-12",
+	)
+	.expect("cleanup status blockers should load");
+	let connection = Connection::open(&state_path).expect("sqlite should open");
+	let (thread_id, turn_id): (Option<String>, Option<String>) = connection
+		.query_row(
+			"SELECT thread_id, turn_id FROM run_attempts WHERE run_id = 'run-12'",
+			[],
+			|row| Ok((row.get(0)?, row.get(1)?)),
+		)
+		.expect("run attempt should exist");
+
+	assert!(blockers.contains(&String::from("thread_active")));
+	assert_eq!(thread_id, None);
+	assert_eq!(turn_id, None);
+}
+
+#[test]
+fn ghost_lane_cleanup_status_blockers_reject_existing_tracker_issue() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut issue = sample_issue("In Progress", &[]);
+
+	issue.id = String::from("PUB-012");
+	issue.identifier = String::from("PUB-012");
+
+	let tracker = FakeTracker::new(vec![issue]);
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+
+	let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		"PUB-012",
+		"run-12",
+	)
+	.expect("cleanup status blockers should load");
+
+	assert!(blockers.contains(&String::from("tracker_issue_present")));
+	assert!(blockers.contains(&String::from("issue_state:In Progress")));
+}
+
+#[test]
+fn ghost_lane_cleanup_status_blockers_reject_recent_protocol_evidence() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+	let worktree_path = config.worktree_root().join("PUB-012");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			"PUB-012",
+			"x/pubfi-pub-012",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_protocol_activity_marker(
+		&worktree_path,
+		&ProtocolActivityMarker {
+			run_id: "run-12",
+			attempt_number: 1,
+			thread_id: None,
+			turn_id: None,
+			event_count: 1,
+			last_event_type: "thread/status/changed",
+			child_agent_activity: None,
+			protocol_activity: None,
+		},
+	)
+	.expect("recent protocol marker should write");
+
+	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
+
+	let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		"PUB-012",
+		"run-12",
+	)
+	.expect("cleanup status blockers should load");
+
+	assert!(blockers.contains(&String::from("protocol_recent")));
+	assert!(blockers.contains(&String::from("retained_worktree_present")));
+}
+
+#[test]
+fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_review_lifecycle_exists() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+	let marker = ReviewHandoffMarker::new(
+		"run-12",
+		1,
+		"x/pubfi-pub-012",
+		"https://github.com/hack-ink/decodex/pull/12",
+		"main",
+		"x/pubfi-pub-012",
+		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+	);
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_review_handoff_marker(TEST_SERVICE_ID, "PUB-012", &marker)
+		.expect("review lifecycle should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should be visible");
+
+	assert_eq!(run.ownership_state, "retained_attention");
+	assert_eq!(run.policy_state, "runtime_recovery_blocked");
+	assert!(run.lane_control_conditions.contains(&String::from("review_lifecycle_present")));
+}
+
+#[test]
+fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_private_evidence_exists() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store
+		.append_private_execution_event(
+			"pubfi",
+			"PUB-012",
+			"run-12",
+			1,
+			"diagnostic",
+			serde_json::json!({"schema": "test.private/1"}),
+		)
+		.expect("private evidence should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should be visible");
+
+	assert_eq!(run.ownership_state, "retained_attention");
+	assert_eq!(run.policy_state, "runtime_recovery_blocked");
+	assert!(run.lane_control_conditions.contains(&String::from("private_evidence_present")));
+}
+
+#[test]
+fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_review_checkpoint_exists() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: TEST_SERVICE_ID,
+			issue_id: "PUB-012",
+			run_id: "run-12",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: config.codex().review_level().as_str(),
+			status: "clean",
+			head_sha: "2222222222222222222222222222222222222222",
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("review checkpoint should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should be visible");
+
+	assert_eq!(run.ownership_state, "retained_attention");
+	assert_eq!(run.policy_state, "runtime_recovery_blocked");
+	assert!(
+		run.lane_control_conditions
+			.contains(&String::from("review_policy_checkpoint_present"))
+	);
+}
+
+#[test]
+fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_pr_lineage_exists() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+	let mut event = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: "pubfi",
+			issue_id: "PUB-012",
+			issue_identifier: "PUB-012",
+			run_id: "run-12",
+			attempt_number: 1,
+		},
+		"closeout",
+		String::from("2026-06-18T00:00:00Z"),
+		"closeout",
+	);
+
+	event.branch = Some(String::from("x/pubfi-pub-012"));
+	event.pr_url = Some(String::from("https://github.com/hack-ink/decodex/pull/12"));
+	event.pr_head_sha = Some(String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"));
+	event.pr_base_ref = Some(String::from("main"));
+	event.commit_sha = Some(String::from("18a20f7dfb9526e7421a5f095b1c6adec84e52d7"));
+	event.summary = Some(String::from("Recorded retained closeout."));
+
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("lease should record");
+	state_store.record_linear_execution_event(&event).expect("linear event should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should be visible");
+
+	assert_eq!(run.ownership_state, "retained_attention");
+	assert_eq!(run.policy_state, "runtime_recovery_blocked");
+	assert!(run.lane_control_conditions.contains(&String::from("pr_or_review_lineage_present")));
 }
 
 #[test]
@@ -948,6 +1656,64 @@ fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
 	assert_eq!(mapping.provenance().created_at_unix(), Some(observed_at_unix));
 	assert_eq!(mapping.provenance().updated_at_unix(), Some(observed_at_unix));
 	assert_eq!(lease.run_id(), "run-1");
+}
+
+#[test]
+fn runtime_recovery_splits_invalid_local_id_batch_without_losing_valid_issue() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let mut issue = sample_active_issue("In Progress");
+
+	issue.id = String::from("00000000-0000-0000-0000-000000000101");
+
+	let tracker = FakeTracker::with_refresh_error(
+		vec![issue.clone()],
+		"Linear GraphQL request failed: Argument Validation Error",
+	);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_path = config.worktree_root().join(&issue.identifier);
+
+	fs::create_dir_all(&worktree_path).expect("active worktree path should exist");
+	state::write_run_activity_marker(&worktree_path, "run-101", 1)
+		.expect("activity marker should write");
+
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("valid worktree mapping should record");
+	state_store
+		.record_run_attempt("run-12", "PUB-012", 1, "running")
+		.expect("invalid local run attempt should record");
+	state_store
+		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
+		.expect("invalid local lease should record");
+
+	let recovered_state = orchestrator::recover_runtime_state_from_tracker_and_worktrees(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+	)
+	.expect("runtime recovery should split invalid local ids from valid server ids");
+	let recovered_mapping = state_store
+		.worktree_for_issue(&issue.id)
+		.expect("mapping lookup should succeed")
+		.expect("valid issue mapping should remain");
+	let lease = state_store
+		.lease_for_issue(&issue.id)
+		.expect("lease lookup should succeed")
+		.expect("valid issue lease should recover");
+
+	assert!(
+		recovered_state.recoverable_issues.is_empty(),
+		"fresh valid issue should recover as active lease rather than disappear"
+	);
+	assert_eq!(recovered_mapping.issue_id(), issue.id);
+	assert_eq!(lease.issue_id(), issue.id);
+	assert_eq!(lease.run_id(), "run-101");
 }
 
 #[test]
@@ -2736,6 +3502,77 @@ fn operator_status_snapshot_uses_structured_protocol_activity_summary() {
 	assert_eq!(run.wait_reason.as_deref(), Some("approval_or_user_input"));
 	assert_eq!(run.protocol_activity.as_ref(), Some(&protocol_activity));
 	assert!(rendered.contains("protocol_activity: turn=running; waiting=approval_or_user_input; rate_limit=primary; recent=item/tool/requestUserInput, plan/update:verify"));
+}
+
+#[test]
+fn operator_status_snapshot_sanitizes_private_protocol_activity_details() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+	let protocol_activity = ProtocolActivitySummary {
+		turn_status: Some(String::from("running")),
+		waiting_reason: Some(String::from("tool_execution")),
+		rate_limit_status: None,
+		recent_events: vec![
+			state::ProtocolActivityEventSummary {
+				event_type: String::from("configWarning"),
+				category: String::from("warning"),
+				detail: Some(String::from("state marker path=/srv/decodex/runtime")),
+			},
+			state::ProtocolActivityEventSummary {
+				event_type: String::from("configWarning"),
+				category: String::from("warning"),
+				detail: Some(String::from("state marker (/srv/decodex/runtime)")),
+			},
+		],
+	};
+
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_protocol_activity_marker(
+		&worktree_path,
+		&ProtocolActivityMarker {
+			run_id: "run-1",
+			attempt_number: 1,
+			thread_id: Some("thread-1"),
+			turn_id: Some("turn-1"),
+			event_count: 2,
+			last_event_type: "configWarning",
+			child_agent_activity: None,
+			protocol_activity: Some(&protocol_activity),
+		},
+	)
+	.expect("protocol activity marker should write");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
+	let rendered = orchestrator::render_operator_status(&snapshot);
+	let summary = run.protocol_activity.as_ref().expect("protocol summary should render");
+
+	assert!(
+		summary
+			.recent_events
+			.iter()
+			.all(|event| event.detail.as_deref() == Some("redacted_sensitive_detail"))
+	);
+	assert!(rendered.contains("configWarning:redacted_sensitive_detail"));
+	assert!(!rendered.contains("path=/srv"));
+	assert!(!rendered.contains("(/srv"));
 }
 
 #[test]
