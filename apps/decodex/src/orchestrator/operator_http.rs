@@ -1172,12 +1172,12 @@ fn dashboard_event_for_subscription(
 			.cloned()
 			.collect::<Vec<_>>()
 	})?;
-	let mut payload = event.payload.clone();
 	let current_lanes_complete = event
 		.payload
 		.get("currentLanesComplete")
 		.and_then(Value::as_bool)
 		.unwrap_or(true);
+	let mut payload = event.payload.clone();
 
 	payload["currentLanes"] = Value::Array(current_lanes);
 	payload["currentLanesComplete"] = Value::Bool(current_lanes_complete);
