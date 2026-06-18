@@ -6,7 +6,10 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-last_verified: 2026-06-16
+code_refs: [apps/decodex/src/agent/app_server.rs, apps/decodex/src/agent/app_server/protocol.rs, apps/decodex/src/agent/app_server/tests.rs, apps/decodex/src/agent/tracker_tool_bridge.rs]
+related: [./tracker-tools.md, ./lane-control.md, ./runtime.md]
+drift_watch: ["codex app-server generate-json-schema --experimental", "decodex probe stdio://", ThreadStartParams.dynamicTools, dynamicTools, "type:function", "type:namespace", ClientRequest, ServerRequest, ClientNotification, ServerNotification, "account/rateLimitResetCredit/consume", "externalAgentConfig/import/readHistories", "thread/realtime/appendSpeech", "externalAgentConfig/import/progress"]
+last_verified: 2026-06-18
 ---
 # App-Server Specification
 
@@ -55,8 +58,9 @@ are true:
 - The generated schema contains the Decodex-owned request and notification contract in
   this spec, including `initialize`, `thread/start`, `thread/resume`, `turn/start`,
   `thread/archive`, `command/exec`, the bounded preflight methods, `item/tool/call`,
-  dynamic tool `namespace`, dynamic tool `deferLoading`, `inputText` tool responses,
-  and `PluginListParams.marketplaceKinds`.
+  dynamic tool `type:function`, dynamic tool `type:namespace`, namespace
+  `tools[]`, dynamic tool `deferLoading`, `inputText` tool responses, and
+  `PluginListParams.marketplaceKinds`.
 - `decodex probe stdio://` completes the app-server capability preflight,
   standalone `command/exec` health check, and dynamic-tool round trip with
   `PROBE_OK`.
@@ -68,11 +72,34 @@ Support evidence has two distinct layers:
   Any required capability failure is a pre-dispatch app-server preflight blocker
   rather than a promptable agent turn.
 - Schema evidence: `decodex probe stdio://` regenerates the local schema cache and
-  checks the required markers in this spec before completing the dynamic-tool round
-  trip. Normal retained dispatch does not regenerate the schema cache.
+  checks the required markers, the Decodex-owned JSON-RPC method unions, and the
+  dynamic-tool declaration shape in this spec before completing the dynamic-tool
+  round trip. Normal retained dispatch does not regenerate the schema cache.
 
 `decodex probe stdio://` reports the probe result with `preflight_checks`, `thread`,
 `turn`, `events`, and `output`. A passing probe must include `output=PROBE_OK`.
+
+### 0.141 preview drift audit
+
+The 2026-06-18 audit compared Codex app-server `0.140.0` with
+`0.141.0-alpha.7`.
+
+- No JSON-RPC method was removed.
+- Added client requests were `account/rateLimitResetCredit/consume`,
+  `externalAgentConfig/import/readHistories`, and
+  `thread/realtime/appendSpeech`.
+- Added server notification was `externalAgentConfig/import/progress`.
+- Decodex's owned orchestration schemas kept the same top-level required fields.
+- `ThreadStartParams.dynamicTools` changed from the legacy flat
+  `dynamicTools[].namespace` shape to the tagged `type:function` /
+  `type:namespace` union below. That shape is Decodex-owned because retained runs
+  expose issue-scoped dynamic tools.
+
+The newly added account-credit, external-import, and realtime-speech surfaces are
+Codex product APIs, not Decodex retained-run orchestration APIs. Decodex must not
+add no-op wrappers for them merely to mirror the full app-server surface. If a
+future Decodex feature depends on one, promote it into the owned-method union and
+add an explicit runtime preflight or live probe for that feature.
 
 Phase-scoped goal support is mandatory and capability-gated for retained lane
 execution. App-server surfaces must expose `thread/goal/set`, `thread/goal/get`,
@@ -98,10 +125,14 @@ To validate an upstream app-server protocol change:
    `initialize`, `thread/start`, `thread/resume`, `turn/start`, `thread/archive`,
    `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`,
    `thread/goal/updated`, `command/exec`, bounded preflight methods,
-   `item/tool/call`, dynamic tool `namespace`, dynamic tool `deferLoading`, `inputText`, and
+   `item/tool/call`, dynamic tool `type:function`, dynamic tool `type:namespace`,
+   namespace `tools[]`, dynamic tool `deferLoading`, `inputText`, and
    `PluginListParams.marketplaceKinds`.
-4. Run `decodex probe stdio://` and require `PROBE_OK`.
-5. Update this spec or the runtime preflight only when the protocol shape or required
+4. Confirm the generated `ClientRequest`, `ServerRequest`, `ClientNotification`, and
+   `ServerNotification` method unions still contain Decodex-owned methods with their
+   expected params schema names.
+5. Run `decodex probe stdio://` and require `PROBE_OK`.
+6. Update this spec or the runtime preflight only when the protocol shape or required
    capability set changes.
 
 ## Implementation guidance
@@ -225,10 +256,14 @@ implementation failure.
 
 When dynamic tools are enabled, `decodex` must also:
 
-1. Register the tool surface in `thread/start.dynamicTools`.
+1. Register the tool surface in `thread/start.dynamicTools` using the 0.141 tagged
+   schema: unnamespaced tools are `type:function` specs, and Decodex namespaced
+   tools are grouped into `type:namespace` specs whose `tools[]` entries are
+   nested `type:function` specs.
 2. Answer `item/tool/call` requests with `DynamicToolCallResponse`.
 3. Serialize dynamic tool output items with schema-approved `type` values such as `inputText`.
-4. Keep every `dynamicTools[].name` and populated `dynamicTools[].namespace` within the app-server identifier pattern `^[a-zA-Z0-9_-]+$`.
+4. Keep every dynamic tool name and namespace name within the app-server identifier
+   pattern `^[a-zA-Z0-9_-]+$`.
 5. Validate incoming `item/tool/call` thread, tool-name, namespace, and response shape before treating the request as handled. Dynamic tool request `turnId` is diagnostic context only: the app-server may emit a request-scoped turn id that differs from the active `turn/start` id, so Decodex records mismatches but keeps the authorization boundary on the active thread and declared tool surface.
 
 The client-side dynamic bridge may expose narrow Decodex-owned tools that are local to one run attempt, such as the deferred `decodex.decodex_run_context` tool. These tools must stay small and side-effect-bounded so they can move to a process-local MCP server if the surface expands. Broader stateful or cross-service tool families remain MCP candidates rather than reasons to grow the client bridge indefinitely.
@@ -310,6 +345,15 @@ The MVP thread start request owns these fields:
 - `dynamicTools` when the run exposes issue-scoped tracker tools
 - `developerInstructions`
 - `ephemeral` only for synthetic Decodex probe threads
+
+For app-server 0.141 and newer, `dynamicTools` is a tagged union. Decodex keeps its
+internal logical tool declaration flat so callback authorization can still match
+`item/tool/call.namespace`, but the request wire shape is:
+
+- unnamespaced tool: `{ "type": "function", "name": ..., "description": ..., "inputSchema": ... }`
+- namespaced tools: `{ "type": "namespace", "name": ..., "description": ..., "tools": [...] }`,
+  where each nested tool is a `type:function` entry with its own description and
+  input schema.
 
 Decodex must not inject project-owned config, model, personality, service-tier, sandbox, or approval-policy overrides into `thread/start`. Child runs inherit runtime defaults from the active Codex runtime.
 
