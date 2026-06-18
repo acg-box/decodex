@@ -6,7 +6,7 @@ status: active
 authority: non_authoritative
 owner: research
 tags: [research, mcp, remote-control, security, operator]
-source_refs: [https://modelcontextprotocol.io/specification/2025-11-25/basic/transports, https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization, https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices, https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/, https://www.nsa.gov/Portals/75/documents/Cybersecurity/CSI_MCP_SECURITY.pdf?ver=bmgiSbNQLP6Z_GiWtRt6bg%3D%3D]
+source_refs: [https://modelcontextprotocol.io/specification/2025-11-25/basic/transports, https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization, https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices, https://modelcontextprotocol.io/specification/draft/changelog, https://www.nsa.gov/Portals/75/documents/Cybersecurity/CSI_MCP_SECURITY.pdf?ver=bmgiSbNQLP6Z_GiWtRt6bg%3D%3D]
 code_refs: [apps/decodex/src/mcp.rs, apps/decodex/tests/mcp_stdio.rs, README.md, docs/spec/runtime.md, docs/reference/operator-control-plane.md, docs/runbook/mcp-remote-control.md, docs/evidence/mcp-remote-control-productization.md, docs/decisions/mcp-capability-gateway-and-skill-slimming.md]
 related: [index.md, ../decisions/mcp-capability-gateway-and-skill-slimming.md, ../reference/operator-control-plane.md, ../spec/runtime.md, ../runbook/mcp-remote-control.md, ../evidence/mcp-remote-control-productization.md]
 promotes_to: [docs/decisions, docs/spec, docs/runbook, docs/reference, docs/evidence]
@@ -19,7 +19,9 @@ Purpose: Decide the best next Decodex MCP work after the complete local and
 Streamable HTTP gateway landed.
 
 Read this when: Planning MCP remote access, operator observation, auth, smoke tests,
-or follow-on control tools.
+or follow-on control tools. Bearer direct-listener auth and process-level HTTP smoke
+have already been promoted; this concept remains active for OAuth Protected Resource
+Metadata, operator-loop-hosted scan, and future protocol compatibility.
 
 Not this document: Current runtime authority or permission to implement. This
 research is latent until promoted.
@@ -39,8 +41,8 @@ In scope:
 - Whether to expand `decodex_project_control.scan`, `manual_attention`, or
   `retained_resume`.
 - End-to-end smoke coverage for real MCP HTTP process behavior.
-- Compatibility with the current stable MCP specification and the announced
-  2026-07-28 release candidate direction.
+- Compatibility with the current stable MCP specification and the MCP draft stateless
+  protocol direction.
 
 Out of scope:
 
@@ -58,13 +60,13 @@ Out of scope:
 | E2 | external_source | MCP 2025-11-25 authorization | Protected MCP servers are OAuth 2.1 resource servers. MCP servers must expose OAuth Protected Resource Metadata and clients must use that metadata to discover authorization servers. |
 | E3 | external_source | MCP security best practices | MCP security guidance calls out confused deputy, token passthrough, SSRF, session hijacking, local server compromise, and scope minimization risks. Token passthrough is not an acceptable auth model for protected servers. |
 | E4 | external_source | NSA MCP Security Design Considerations, May 2026 | MCP adoption has reached production AI automation, but its security model requires implementation rigor, validation, and secure-by-default behavior because agentic tool execution changes the trust pattern. |
-| E5 | external_source | MCP 2026-07-28 release candidate blog, published 2026-05-21 | The release candidate moves remote MCP toward a stateless protocol core and removes the protocol-level session handshake in the future final spec. |
-| E6 | repo_source | `README.md`, `docs/spec/runtime.md`, `docs/reference/operator-control-plane.md` | Decodex already exposes stdio and Streamable HTTP, defaults Streamable HTTP to loopback `observe`, validates Origin, uses sessions for MCP 2025-11-25, filters tools by capability profile, and keeps remote control inspect-first. |
+| E5 | external_source | MCP draft changelog | The draft direction moves remote MCP toward a stateless protocol core and protocol authorization hardening, but draft behavior is not Decodex's current runtime contract. |
+| E6 | repo_source | `README.md`, `docs/spec/runtime.md`, `docs/reference/operator-control-plane.md` | Decodex already exposes stdio and Streamable HTTP, defaults Streamable HTTP to loopback `observe`, validates Origin, uses sessions for MCP 2025-11-25, requires bearer authorization for non-loopback or elevated Streamable HTTP, filters tools by capability profile, and keeps remote control inspect-first. |
 | E7 | repo_source | `apps/decodex/src/mcp.rs` | Current tools are deliberately small: observe, plan, research compile/promote, intake goal, lane control, and project control. `scan` refuses because standalone MCP serve cannot enqueue the operator loop request. |
-| E8 | repo_source | `apps/decodex/src/mcp.rs`, `apps/decodex/tests/mcp_stdio.rs`, `docs/reference/test-suite.md` | Existing tests cover resources, templates, prompts, tool schemas, profile refusals, Streamable HTTP CORS/session/SSE behavior, lane steer/interrupt preconditions, project pause, scan refusal, and stdio stdout cleanliness. |
-| E9 | inference | E1, E2, E3, E5, E6 | The current loopback Streamable HTTP design is correct for local/tunneled development, but non-loopback remote operation needs an explicit auth/relay design and should avoid entrenching session semantics that the RC may remove. |
-| E10 | repo_source | `apps/decodex/src/cli.rs`, `apps/decodex/tests/mcp_stdio.rs`, `docs/evidence/mcp-remote-control-productization.md` | Current Decodex exposes `--allow-origin` and capability profiles, but no Decodex-owned HTTP protected-resource auth flag; process-level Streamable HTTP child-process smoke coverage is still a gap. |
-| E11 | inference | E1, E2, E3, E4, E10 | The best next implementation should not treat CORS or session ids as auth. It should either rely on an operator-managed relay/auth boundary or implement MCP protected-resource discovery and scoped authorization before direct non-loopback or elevated HTTP profiles are considered complete. |
+| E8 | repo_source | `apps/decodex/src/mcp.rs`, `apps/decodex/tests/mcp_stdio.rs`, `docs/reference/test-suite.md` | Existing tests cover resources, templates, prompts, tool schemas, profile refusals, Streamable HTTP CORS/session/SSE behavior, bearer challenge/validation, non-loopback/elevated startup guards, process-level Streamable HTTP smoke, lane steer/interrupt preconditions, project pause, scan refusal, and stdio/stdout cleanliness. |
+| E9 | inference | E1, E2, E3, E5, E6 | The current Streamable HTTP design is correct for loopback and bearer-protected direct listeners, but it should still avoid entrenching session semantics that the draft protocol may remove. |
+| E10 | repo_source | `apps/decodex/src/cli.rs`, `apps/decodex/tests/mcp_stdio.rs`, `docs/evidence/mcp-remote-control-productization.md` | Current Decodex exposes `--allow-origin`, `--bearer-token-env`, and capability profiles, and has process-level Streamable HTTP child-process smoke coverage. It does not expose OAuth Protected Resource Metadata. |
+| E11 | inference | E1, E2, E3, E4, E10 | The current built-in bearer guard is the right minimum direct-listener boundary, but first-class OAuth MCP client discovery should use OAuth Protected Resource Metadata or an operator-managed relay rather than token passthrough. |
 
 ## Options
 
@@ -79,13 +81,13 @@ Out of scope:
    that should not be bypassed by standalone MCP.
 
 3. Productize remote MCP in stages while keeping the tool catalog small.
-   Add operator-facing remote connection docs, end-to-end Streamable HTTP process
-   smoke coverage, an auth/relay contract before non-loopback operate/admin usage, a
-   public-safe observation guide, and an explicit future-compatibility layer for the
-   2026-07-28 stateless MCP direction. Keep risky controls refused unless they are
-   backed by their canonical runtime path.
+   The first promoted stages now exist: operator-facing remote connection docs,
+   end-to-end Streamable HTTP process smoke coverage, a static bearer direct-listener
+   boundary before non-loopback or elevated usage, and a public-safe observation
+   guide. Keep risky controls refused unless they are backed by their canonical
+   runtime path.
 
-4. Wait for MCP 2026-07-28 before doing more.
+4. Wait for the MCP draft stateless protocol before doing more.
    This avoids rework around sessions, but it delays useful operator documentation,
    observation, and security hardening that remain valid under either protocol.
 
@@ -95,7 +97,7 @@ Selected option: Productize remote MCP in stages while keeping the tool catalog 
 
 Recommended sequence:
 
-1. Promote remote MCP docs first.
+1. Promote remote MCP docs first. Done.
    Keep README, runtime spec, operator reference, decision record, runbook, evidence,
    research, and plugin routing aligned. The promoted docs must state that
    `--allow-origin` is CORS trust, not authentication; that `Mcp-Session-Id` is
@@ -103,16 +105,14 @@ Recommended sequence:
    operator authorization boundary until Decodex owns protected-resource auth.
 
 2. Add a remote-auth decision/spec before any direct non-loopback or elevated
-   Streamable HTTP guidance.
-   The best default is still loopback plus operator-chosen tunnel, relay, network ACL,
-   or reverse proxy. For direct remote serve, require an explicit protected-resource
-   design: OAuth Protected Resource Metadata or a documented operator-managed relay
-   auth boundary, no token passthrough, scoped capabilities, revocable access, and
-   audit-friendly authority fields. A simple static bearer check can be an MVP guard
-   only if the docs label it as incomplete relative to full MCP authorization
-   discovery.
+   Streamable HTTP guidance. Done for Decodex direct listeners.
+   Direct listeners now require `--bearer-token-env` for non-loopback and for
+   Streamable HTTP profiles above `observe`. The docs label this as a static bearer
+   guard, not OAuth Protected Resource Metadata. Future OAuth discovery should add
+   Protected Resource Metadata or use a documented operator-managed relay, with no
+   token passthrough.
 
-3. Add process-level Streamable HTTP smoke coverage.
+3. Add process-level Streamable HTTP smoke coverage. Done.
    Mirror the existing stdio smoke with a real `decodex mcp serve --transport
    streamable-http` child process, initialize a session, call `tools/list` under
    `observe`, verify an above-profile refusal, and verify SSE progress on an allowed
@@ -132,18 +132,20 @@ Recommended sequence:
    lifecycle unless a later design proves the same terminal-state and audit
    guarantees through MCP.
 
-6. Add a protocol-compatibility seam for MCP 2026-07-28.
-   Do not implement the release candidate as current behavior before finalization.
+6. Add a protocol-compatibility seam for the MCP draft stateless direction.
+   Do not implement draft behavior as current behavior before finalization.
    Instead, isolate session handling, protocol version negotiation, and capability
    discovery so the future stateless request model can be added without changing
    Decodex authority rules or tool schemas.
 
-Gap status after 2026-06-18 docs promotion:
+Gap status after 2026-06-18 MCP bearer/smoke promotion:
 
 - Remote runbook, runtime/reference docs, decision rationale, evidence audit, and
   plugin routing are promoted as documentation authority.
-- Built-in protected-resource auth and process-level Streamable HTTP smoke remain
-  unimplemented gaps.
+- Built-in bearer auth and process-level Streamable HTTP smoke are implemented and
+  validated.
+- Full OAuth Protected Resource Metadata remains future interoperability work, not a
+  current Decodex runtime claim.
 - `scan`, `manual_attention`, and `retained_resume` remain intentionally refused in
   standalone MCP unless a later design proves the same canonical runtime/tracker
   guarantees.
@@ -169,12 +171,12 @@ Resolution: Decodex should expose public-safe progress and protocol activity, no
 hidden reasoning. The best next UX is better resource composition and watch recipes,
 not private transcript exposure.
 
-Resolved objection: The 2026-07-28 release candidate may invalidate current
+Resolved objection: The MCP draft stateless direction may invalidate current
 Streamable HTTP sessions.
 
 Resolution: The current implementation targets stable 2025-11-25 correctly. The
 right hedge is a compatibility seam and smoke coverage around session behavior, not
-waiting or prematurely replacing the stable transport with a release candidate.
+waiting or prematurely replacing the stable transport with draft behavior.
 
 ## Decision
 
@@ -183,16 +185,17 @@ Terminal status: `decision_ready`.
 Decision: The next MCP work should be a staged productization plan:
 
 - document remote use first
-- require an auth/relay/protected-resource contract before non-loopback or elevated
-  Streamable HTTP recommendations
+- require bearer auth before non-loopback or elevated Streamable HTTP
+  recommendations
 - add process-level Streamable HTTP smoke coverage
 - improve public-safe observation recipes
 - keep high-risk shortcuts refused until they can route through canonical operator,
   tracker, or runtime authority
 - isolate protocol-session handling for the upcoming stateless MCP direction
 
-This is a research conclusion only. It does not authorize implementation until
-promoted.
+The bearer and smoke portions were promoted and implemented. The remaining research
+continues only for OAuth Protected Resource Metadata, operator-loop-hosted scan, and
+future protocol compatibility.
 
 ## Promotion
 
@@ -207,17 +210,18 @@ If accepted, promote as:
 - `docs/runbook/`: remote MCP connection and observation recipe.
 - `docs/reference/test-suite.md` and/or `docs/evidence/`: process-level Streamable
   HTTP smoke evidence after implementation.
-- `apps/decodex/src/mcp.rs` and tests: only after explicit implementation authority.
+- `apps/decodex/src/mcp.rs` and tests: bearer guard and process smoke after explicit
+  implementation authority.
 
 OKF disposition: `continue`.
 
 ## Drift Impact
 
 - MCP docs that mention remote access, Streamable HTTP, sessions, or capability
-  profiles should distinguish stable 2025-11-25 behavior from the 2026-07-28 release
-  candidate.
-- Any future auth implementation must update README, runtime spec, operator-control
-  reference, tests, and plugin guidance together.
+  profiles should distinguish stable 2025-11-25 behavior from draft stateless MCP
+  behavior.
+- Any future OAuth Protected Resource Metadata implementation must update README,
+  runtime spec, operator-control reference, tests, and plugin guidance together.
 - Any future tool expansion must be checked against the "small catalog" rule and
   existing Decodex authority gates.
 - Any future observation UX must preserve public-safe redaction guarantees.
@@ -227,7 +231,7 @@ OKF disposition: `continue`.
 - [MCP 2025-11-25 Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
 - [MCP 2025-11-25 authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)
 - [MCP security best practices](https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices)
-- [MCP 2026-07-28 release candidate announcement](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/)
+- [MCP draft changelog](https://modelcontextprotocol.io/specification/draft/changelog)
 - [NSA MCP Security Design Considerations, May 2026](https://www.nsa.gov/Portals/75/documents/Cybersecurity/CSI_MCP_SECURITY.pdf?ver=bmgiSbNQLP6Z_GiWtRt6bg%3D%3D)
 - [`README.md`](../../README.md)
 - [`../spec/runtime.md`](../spec/runtime.md)

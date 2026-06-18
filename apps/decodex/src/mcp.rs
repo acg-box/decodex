@@ -59,7 +59,9 @@ const MCP_HTTP_READ_TIMEOUT: Duration = Duration::from_secs(2);
 const MCP_HTTP_MAX_REQUEST_BYTES: usize = 1_024 * 1_024;
 const MCP_SESSION_HEADER: &str = "Mcp-Session-Id";
 const MCP_CORS_ALLOW_METHODS: &str = "POST, DELETE, OPTIONS";
-const MCP_CORS_ALLOW_HEADERS: &str = "Content-Type, Accept, Mcp-Session-Id";
+const MCP_CORS_ALLOW_HEADERS: &str = "Content-Type, Accept, Mcp-Session-Id, Authorization";
+const MCP_AUTHORIZATION_HEADER: &str = "Authorization";
+const MCP_WWW_AUTHENTICATE_HEADER: &str = "Bearer realm=\"decodex-mcp\"";
 
 /// MCP transport supported by the native Decodex gateway.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -124,6 +126,7 @@ pub(crate) struct McpServeRequest<'a> {
 	pub(crate) capability_profile: McpCapabilityProfile,
 	pub(crate) listen_address: &'a str,
 	pub(crate) allowed_origins: &'a [String],
+	pub(crate) bearer_token_env: Option<&'a str>,
 }
 
 struct McpServer {
@@ -1735,11 +1738,74 @@ impl McpError {
 	}
 }
 
+#[derive(Clone, Default)]
+struct McpHttpAuthorization {
+	token: Option<String>,
+}
+impl McpHttpAuthorization {
+	fn disabled() -> Self {
+		Self { token: None }
+	}
+
+	fn from_env_var_name(env_var: Option<&str>) -> crate::prelude::Result<Self> {
+		let Some(env_var) = env_var else {
+			return Ok(Self::disabled());
+		};
+
+		validate_mcp_bearer_token_env_var_name(env_var)?;
+
+		let token = env::var(env_var).map_err(|_| {
+			eyre::eyre!(
+				"Streamable HTTP bearer token env var `{env_var}` is not set; set it or remove --bearer-token-env."
+			)
+		})?;
+
+		validate_mcp_bearer_token(&token, env_var)?;
+
+		Ok(Self { token: Some(token) })
+	}
+
+	fn is_required(&self) -> bool {
+		self.token.is_some()
+	}
+
+	fn request_is_authorized(&self, request: &McpHttpRequest) -> bool {
+		let Some(expected) = self.token.as_deref() else {
+			return true;
+		};
+		let Some(header) = request.header(MCP_AUTHORIZATION_HEADER) else {
+			return false;
+		};
+		let Some((scheme, supplied)) = header.trim().split_once(' ') else {
+			return false;
+		};
+
+		scheme.eq_ignore_ascii_case("Bearer") && supplied == expected
+	}
+
+	fn unauthorized_response() -> McpHttpResponse {
+		let mut response = McpHttpResponse::json_error(
+			"401 Unauthorized",
+			json_rpc_error(Value::Null, -32_000, "Unauthorized"),
+		);
+
+		response.headers.push(("WWW-Authenticate", String::from(MCP_WWW_AUTHENTICATE_HEADER)));
+
+		response
+	}
+
+	#[cfg(test)]
+	fn from_token_for_test(token: &str) -> Self {
+		Self { token: Some(token.to_owned()) }
+	}
+}
+
 struct McpHttpHandler {
 	server: McpServer,
 	sessions: McpHttpSessions,
 	allowed_origins: Vec<String>,
 	listen_address: Option<String>,
+	authorization: McpHttpAuthorization,
 }
 impl McpHttpHandler {
 	fn handle_request_bytes(&mut self, request: &[u8]) -> crate::prelude::Result<Vec<u8>> {
@@ -1766,6 +1832,9 @@ impl McpHttpHandler {
 		};
 		let mut response = if request.path != MCP_HTTP_ENDPOINT_PATH {
 			McpHttpResponse::empty("404 Not Found")
+		} else if request.method != "OPTIONS" && !self.authorization.request_is_authorized(&request)
+		{
+			McpHttpAuthorization::unauthorized_response()
 		} else {
 			match request.method.as_str() {
 				"OPTIONS" => self.handle_options(&request),
@@ -2144,7 +2213,14 @@ pub(crate) fn serve(request: McpServeRequest<'_>) -> crate::prelude::Result<()> 
 			)
 		},
 		McpTransport::StreamableHttp => {
-			validate_mcp_http_listen_address(request.listen_address, request.allowed_origins)?;
+			let authorization = McpHttpAuthorization::from_env_var_name(request.bearer_token_env)?;
+
+			validate_mcp_http_listen_address(
+				request.listen_address,
+				request.allowed_origins,
+				&authorization,
+			)?;
+			validate_mcp_http_capability_profile(request.capability_profile, &authorization)?;
 
 			let context = McpContext::for_process(request.config_path)?;
 			let listener = TcpListener::bind(request.listen_address).map_err(|error| {
@@ -2159,9 +2235,44 @@ pub(crate) fn serve(request: McpServeRequest<'_>) -> crate::prelude::Result<()> 
 				context,
 				request.capability_profile,
 				request.allowed_origins.to_vec(),
+				authorization,
 			)
 		},
 	}
+}
+
+fn validate_mcp_bearer_token_env_var_name(env_var: &str) -> crate::prelude::Result<()> {
+	if env_var.is_empty() || env_var.trim() != env_var {
+		eyre::bail!("--bearer-token-env must name a non-empty environment variable.");
+	}
+
+	let mut chars = env_var.chars();
+	let Some(first) = chars.next() else {
+		eyre::bail!("--bearer-token-env must name a non-empty environment variable.");
+	};
+
+	if !(first.is_ascii_alphabetic() || first == '_')
+		|| !chars.all(|char| char.is_ascii_alphanumeric() || char == '_')
+	{
+		eyre::bail!(
+			"--bearer-token-env must start with an ASCII letter or underscore and contain only ASCII letters, digits, or underscores."
+		);
+	}
+
+	Ok(())
+}
+
+fn validate_mcp_bearer_token(token: &str, env_var: &str) -> crate::prelude::Result<()> {
+	if token.is_empty() || token.trim().is_empty() {
+		eyre::bail!("Streamable HTTP bearer token env var `{env_var}` is empty.");
+	}
+	if token.chars().any(char::is_whitespace) {
+		eyre::bail!(
+			"Streamable HTTP bearer token env var `{env_var}` must not contain whitespace."
+		);
+	}
+
+	Ok(())
 }
 
 fn mcp_http_response_for_server_responses(
@@ -4181,12 +4292,14 @@ fn serve_streamable_http_with_profile(
 	context: McpContext,
 	capability_profile: McpCapabilityProfile,
 	allowed_origins: Vec<String>,
+	authorization: McpHttpAuthorization,
 ) -> crate::prelude::Result<()> {
 	let mut handler = McpHttpHandler {
 		server: McpServer { context, capability_profile, transport: McpTransport::StreamableHttp },
 		sessions: McpHttpSessions::default(),
 		allowed_origins,
 		listen_address: listener.local_addr().map(|address| address.to_string()).ok(),
+		authorization,
 	};
 
 	for stream in listener.incoming() {
@@ -4253,13 +4366,36 @@ fn read_mcp_http_request(stream: &mut TcpStream) -> crate::prelude::Result<Vec<u
 fn validate_mcp_http_listen_address(
 	address: &str,
 	allowed_origins: &[String],
+	authorization: &McpHttpAuthorization,
 ) -> crate::prelude::Result<()> {
-	if listen_address_host_is_loopback(address) || !allowed_origins.is_empty() {
+	if listen_address_host_is_loopback(address) {
+		return Ok(());
+	}
+	if allowed_origins.is_empty() {
+		eyre::bail!(
+			"Refusing to bind Decodex MCP Streamable HTTP to `{address}` without --allow-origin; use the loopback default or set explicit trusted origins."
+		)
+	}
+	if !authorization.is_required() {
+		eyre::bail!(
+			"Refusing to bind Decodex MCP Streamable HTTP to `{address}` without --bearer-token-env; direct non-loopback listeners require bearer authorization."
+		)
+	}
+
+	Ok(())
+}
+
+fn validate_mcp_http_capability_profile(
+	capability_profile: McpCapabilityProfile,
+	authorization: &McpHttpAuthorization,
+) -> crate::prelude::Result<()> {
+	if capability_profile == McpCapabilityProfile::Observe || authorization.is_required() {
 		return Ok(());
 	}
 
 	eyre::bail!(
-		"Refusing to bind Decodex MCP Streamable HTTP to `{address}` without --allow-origin; use the loopback default or set explicit trusted origins."
+		"Refusing to expose Decodex MCP Streamable HTTP profile `{}` without --bearer-token-env; elevated HTTP profiles require bearer authorization.",
+		capability_profile.as_str()
 	)
 }
 
@@ -4733,7 +4869,8 @@ mod tests {
 		loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
 		mcp::{
 			self, DEFAULT_MCP_HTTP_LISTEN_ADDRESS, McpCapabilityProfile, McpContext,
-			McpHttpHandler, McpHttpSessions, McpServer, McpTransport, ResourceContent,
+			McpHttpAuthorization, McpHttpHandler, McpHttpSessions, McpServer, McpTransport,
+			ResourceContent,
 		},
 		runtime,
 		state::{self, ProtocolActivityEventSummary, ProtocolActivitySummary, StateStore},
@@ -6072,8 +6209,81 @@ mod tests {
 		assert_eq!(response.header("access-control-allow-methods"), Some("POST, DELETE, OPTIONS"));
 		assert_eq!(
 			response.header("access-control-allow-headers"),
-			Some("Content-Type, Accept, Mcp-Session-Id")
+			Some("Content-Type, Accept, Mcp-Session-Id, Authorization")
 		);
+	}
+
+	#[test]
+	fn streamable_http_bearer_auth_challenges_missing_or_invalid_authorization() {
+		let repo = test_repo();
+		let mut handler = http_handler_with_authorization(
+			repo.path(),
+			McpCapabilityProfile::Observe,
+			McpHttpAuthorization::from_token_for_test("secret-token"),
+		);
+
+		for headers in [
+			vec![("Origin", "http://127.0.0.1:8193")],
+			vec![("Origin", "http://127.0.0.1:8193"), ("Authorization", "Bearer wrong-token")],
+		] {
+			let response = run_http(
+				&mut handler,
+				http_post(
+					"/mcp",
+					headers,
+					r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+				),
+			);
+			let body = response.json_body();
+
+			assert_eq!(response.status, "HTTP/1.1 401 Unauthorized");
+			assert_eq!(response.header("www-authenticate"), Some("Bearer realm=\"decodex-mcp\""));
+			assert_eq!(body["error"]["message"], "Unauthorized");
+			assert!(!response.body_text().contains("secret-token"));
+		}
+	}
+
+	#[test]
+	fn streamable_http_bearer_auth_accepts_valid_authorization() {
+		let repo = test_repo();
+		let mut handler = http_handler_with_authorization(
+			repo.path(),
+			McpCapabilityProfile::Observe,
+			McpHttpAuthorization::from_token_for_test("secret-token"),
+		);
+		let preflight = run_http(
+			&mut handler,
+			http_options(
+				"/mcp",
+				[
+					("Origin", "http://127.0.0.1:8193"),
+					("Access-Control-Request-Method", "POST"),
+					("Access-Control-Request-Headers", "Authorization, Content-Type"),
+				],
+			),
+		);
+		let response = run_http(
+			&mut handler,
+			http_post(
+				"/mcp",
+				[("Origin", "http://127.0.0.1:8193"), ("Authorization", "Bearer secret-token")],
+				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+			),
+		);
+		let body = response.json_body();
+
+		assert_eq!(preflight.status, "HTTP/1.1 204 No Content");
+		assert_eq!(
+			preflight.header("access-control-allow-headers"),
+			Some("Content-Type, Accept, Mcp-Session-Id, Authorization")
+		);
+		assert_eq!(response.status, "HTTP/1.1 200 OK");
+		assert!(response.header("mcp-session-id").is_some());
+		assert_eq!(
+			body["result"]["capabilities"]["experimental"]["decodex"]["capabilityProfile"],
+			"observe"
+		);
+		assert!(!response.body_text().contains("secret-token"));
 	}
 
 	#[test]
@@ -6254,16 +6464,67 @@ mod tests {
 	#[test]
 	fn streamable_http_bind_guard_requires_loopback_or_allowed_origin() {
 		assert!(
-			mcp::validate_mcp_http_listen_address(DEFAULT_MCP_HTTP_LISTEN_ADDRESS, &[]).is_ok()
-		);
-		assert!(mcp::validate_mcp_http_listen_address("0.0.0.0:8193", &[]).is_err());
-		assert!(
 			mcp::validate_mcp_http_listen_address(
-				"0.0.0.0:8193",
-				&[String::from("https://relay.example")]
+				DEFAULT_MCP_HTTP_LISTEN_ADDRESS,
+				&[],
+				&McpHttpAuthorization::disabled()
 			)
 			.is_ok()
 		);
+		assert!(
+			mcp::validate_mcp_http_listen_address(
+				"0.0.0.0:8193",
+				&[],
+				&McpHttpAuthorization::disabled()
+			)
+			.is_err()
+		);
+		assert!(
+			mcp::validate_mcp_http_listen_address(
+				"0.0.0.0:8193",
+				&[String::from("https://relay.example")],
+				&McpHttpAuthorization::disabled()
+			)
+			.is_err()
+		);
+		assert!(
+			mcp::validate_mcp_http_listen_address(
+				"0.0.0.0:8193",
+				&[String::from("https://relay.example")],
+				&McpHttpAuthorization::from_token_for_test("secret-token")
+			)
+			.is_ok()
+		);
+	}
+
+	#[test]
+	fn streamable_http_elevated_profile_requires_bearer_authorization() {
+		assert!(
+			mcp::validate_mcp_http_capability_profile(
+				McpCapabilityProfile::Observe,
+				&McpHttpAuthorization::disabled()
+			)
+			.is_ok()
+		);
+
+		for profile in
+			[McpCapabilityProfile::Plan, McpCapabilityProfile::Operate, McpCapabilityProfile::Admin]
+		{
+			assert!(
+				mcp::validate_mcp_http_capability_profile(
+					profile,
+					&McpHttpAuthorization::disabled()
+				)
+				.is_err()
+			);
+			assert!(
+				mcp::validate_mcp_http_capability_profile(
+					profile,
+					&McpHttpAuthorization::from_token_for_test("secret-token")
+				)
+				.is_ok()
+			);
+		}
 	}
 
 	#[test]
@@ -6804,6 +7065,26 @@ mod tests {
 		http_handler_with_allowed_origins(repo_root, capability_profile, Vec::new())
 	}
 
+	fn http_handler_with_authorization(
+		repo_root: &Path,
+		capability_profile: McpCapabilityProfile,
+		authorization: McpHttpAuthorization,
+	) -> McpHttpHandler {
+		let context = McpContext {
+			repo_root: repo_root.to_path_buf(),
+			config_path: None,
+			project_id: None,
+			state_store: None,
+		};
+
+		http_handler_with_context_and_authorization(
+			context,
+			capability_profile,
+			Vec::new(),
+			authorization,
+		)
+	}
+
 	fn http_handler_with_allowed_origins(
 		repo_root: &Path,
 		capability_profile: McpCapabilityProfile,
@@ -6824,6 +7105,20 @@ mod tests {
 		capability_profile: McpCapabilityProfile,
 		allowed_origins: Vec<String>,
 	) -> McpHttpHandler {
+		http_handler_with_context_and_authorization(
+			context,
+			capability_profile,
+			allowed_origins,
+			McpHttpAuthorization::disabled(),
+		)
+	}
+
+	fn http_handler_with_context_and_authorization(
+		context: McpContext,
+		capability_profile: McpCapabilityProfile,
+		allowed_origins: Vec<String>,
+		authorization: McpHttpAuthorization,
+	) -> McpHttpHandler {
 		McpHttpHandler {
 			server: McpServer {
 				context,
@@ -6833,6 +7128,7 @@ mod tests {
 			sessions: McpHttpSessions::default(),
 			allowed_origins,
 			listen_address: Some(String::from(DEFAULT_MCP_HTTP_LISTEN_ADDRESS)),
+			authorization,
 		}
 	}
 

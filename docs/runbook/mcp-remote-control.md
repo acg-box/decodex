@@ -6,10 +6,10 @@ status: active
 authority: procedural
 owner: runtime
 tags: [mcp, remote-control, operator, runbook]
-source_refs: [https://modelcontextprotocol.io/specification/2025-11-25/basic/transports, https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization, https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices, https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/]
+source_refs: [https://modelcontextprotocol.io/specification/2025-11-25/basic/transports, https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization, https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices, https://modelcontextprotocol.io/specification/draft/changelog]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/mcp.rs, apps/decodex/tests/mcp_stdio.rs]
 related: [../spec/runtime.md, ../reference/operator-control-plane.md, ../decisions/mcp-capability-gateway-and-skill-slimming.md, ../evidence/mcp-remote-control-productization.md, ../research/mcp-remote-control-productization.md]
-drift_watch: [decodex mcp serve --transport streamable-http, --capability-profile, --allow-origin, Mcp-Session-Id, decodex_observe, decodex_lane_control, decodex_project_control]
+drift_watch: [decodex mcp serve --transport streamable-http, --capability-profile, --allow-origin, --bearer-token-env, Authorization, Mcp-Session-Id, decodex_observe, decodex_lane_control, decodex_project_control]
 last_verified: 2026-06-18
 ---
 
@@ -48,15 +48,27 @@ MCP `2025-11-25` Streamable HTTP transport, not Decodex authorization.
 
 ## Remote Boundary
 
-Use Streamable HTTP beyond loopback only when an operator-owned boundary protects the
-listener before traffic reaches Decodex. Acceptable boundaries are a local tunnel, a
-relay, network ACLs on a private network, or a future Decodex MCP protected-resource
-authorization surface.
+Use Streamable HTTP beyond loopback only with both an explicit trusted origin and a
+bearer token read from an environment variable:
 
-Do not expose `decodex mcp serve --transport streamable-http` directly on an
-untrusted network with only `--allow-origin`. Treat `operate` and `admin` profiles as
-remote-control profiles: they require the same external authorization boundary when
-used through Streamable HTTP.
+```sh
+export DECODEX_MCP_TOKEN="$(openssl rand -base64 32 | tr -d '\n')"
+
+decodex mcp serve --transport streamable-http \
+  --listen-address 0.0.0.0:8193 \
+  --allow-origin https://relay.example \
+  --bearer-token-env DECODEX_MCP_TOKEN
+```
+
+Clients must send `Authorization: Bearer <token>` on `POST` and `DELETE` requests.
+Decodex still allows unauthenticated `OPTIONS` preflight so browser clients can
+complete CORS negotiation.
+
+Do not expose Streamable HTTP directly on an untrusted network with only
+`--allow-origin`. The built-in bearer guard is the minimum direct-listener boundary;
+it is not OAuth Protected Resource Metadata. Operators that need OAuth discovery,
+central revocation, per-user policy, or broader MCP client interoperability should
+put an OAuth-capable relay, tunnel, reverse proxy, or network ACL in front.
 
 ## Capability Profiles
 
@@ -65,9 +77,9 @@ Use the narrowest profile that fits the task:
 | Profile | Use | Boundary |
 | --- | --- | --- |
 | `observe` | Read public-safe status and activity. | Default for Streamable HTTP. |
-| `plan` | Use schema-bound research and intake planning tools. | Apply/promote modes still require explicit authority fields. |
-| `operate` | Inspect, steer, or interrupt a current lane. | Requires external HTTP authorization when remote, plus inspect-first run/turn authority. |
-| `admin` | Read project status or pause/resume future dispatch. | Requires external HTTP authorization when remote and explicit authority; active lanes are not killed. |
+| `plan` | Use schema-bound research and intake planning tools. | Streamable HTTP requires `--bearer-token-env`; apply/promote modes still require explicit authority fields. |
+| `operate` | Inspect, steer, or interrupt a current lane. | Streamable HTTP requires `--bearer-token-env`, plus inspect-first run/turn authority. |
+| `admin` | Read project status or pause/resume future dispatch. | Streamable HTTP requires `--bearer-token-env` and explicit authority; active lanes are not killed. |
 
 `tools/list` filters by the active profile. Calling a tool above the active profile
 returns a structured `insufficient_capability_profile` refusal.
@@ -104,22 +116,21 @@ Standalone MCP keeps high-risk shortcuts refused:
 Use the canonical Decodex runtime, tracker, review, landing, and lane-control paths
 for those operations.
 
-## Remaining Gaps
+## Future Work
 
-The current Streamable HTTP gateway still needs two productization gaps before direct
-remote/elevated operation can be treated as complete:
+The direct-listener productization gaps are now closed by the bearer boundary and the
+process-level Streamable HTTP smoke test. Remaining future work is intentionally
+narrower:
 
-- a Decodex-owned MCP protected-resource authorization surface or an explicitly
-  documented relay-auth contract that satisfies the MCP authorization direction
-  without token passthrough
-- process-level Streamable HTTP smoke coverage that starts the real binary,
-  initializes a session, lists observe-profile tools, verifies an above-profile
-  refusal, and verifies SSE framing for an allowed call
+- Add OAuth Protected Resource Metadata only if Decodex needs first-class OAuth MCP
+  client discovery instead of a static operator bearer token or external relay.
+- Add an operator-loop-hosted `scan` request only if it can preserve the same
+  scheduler, tracker, and audit guarantees as `POST /api/linear-scan`.
 
 ## Compatibility Note
 
 Decodex currently targets stable MCP `2025-11-25` Streamable HTTP sessions. The
-2026-07-28 release candidate moves toward a stateless protocol core and authorization
-hardening, but it is not the current Decodex runtime contract. Keep session handling
-isolated from tool schemas and lane-control authority so a final stateless protocol
-can be added later without widening Decodex authority.
+MCP draft changelog moves toward a stateless protocol core and authorization
+hardening, but draft behavior is not the current Decodex runtime contract. Keep
+session handling isolated from tool schemas and lane-control authority so a final
+stateless protocol can be added later without widening Decodex authority.

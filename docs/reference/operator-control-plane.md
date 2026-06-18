@@ -99,9 +99,13 @@ validates browser `Origin` headers against loopback or `--allow-origin`, issues
 `Mcp-Session-Id` on `initialize`, requires a known session after initialization, and
 uses SSE framing for progress or notifications when the client accepts
 `text/event-stream`. The MCP session is not authorization, and `--allow-origin` is
-not authentication. Remote Streamable HTTP beyond loopback, or any Streamable HTTP
-profile above `observe`, must sit behind an operator-owned tunnel, relay, network ACL,
-or future Decodex protected-resource authorization boundary. Both transports can be
+not authentication. Remote Streamable HTTP beyond loopback requires both a trusted
+origin and `--bearer-token-env`; any Streamable HTTP profile above `observe` also
+requires `--bearer-token-env`. Decodex validates the HTTP `Authorization: Bearer`
+header for non-preflight requests when that boundary is configured. This bearer guard
+is a direct-listener boundary, not OAuth Protected Resource Metadata, so operators may
+still prefer an OAuth-capable relay, tunnel, reverse proxy, or network ACL. Both
+transports can be
 narrowed or explicitly elevated with
 `--capability-profile observe|plan|operate|admin`; `tools/list` filters by the active
 profile and above-profile calls return structured refusals. Observe and plan tools are

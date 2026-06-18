@@ -3084,9 +3084,7 @@ impl StateStore {
 					Ok(None) => return None,
 					Err(error) => return Some(Err(error)),
 				};
-				let Some(attempt) = state.run_attempts.get(marker.run_id()) else {
-					return None;
-				};
+				let attempt = state.run_attempts.get(marker.run_id())?;
 
 				if attempt.issue_id != mapping.issue_id
 					|| attempt.attempt_number != marker.attempt_number()
