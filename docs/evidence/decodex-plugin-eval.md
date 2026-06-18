@@ -1,24 +1,24 @@
 ---
 type: Evidence
 title: Decodex Plugin Eval
-description: Records plugin-eval results for the Decodex plugin, routing skill, portable OKF, repo-memory, docs, and research skills.
+description: Records plugin-eval results for the Decodex plugin, routing reference, portable OKF, repo-memory, docs, and research skills.
 status: active
 authority: evidence
 owner: docs
 tags: [plugin-eval, skills, docs, research, okf, repo-memory]
 source_refs: []
-code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/okf-layer.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/docs/SKILL.md, plugins/decodex/skills/docs-okf/SKILL.md, plugins/decodex/skills/docs-wiki/SKILL.md, plugins/decodex/skills/docs-drift/SKILL.md, plugins/decodex/skills/research/SKILL.md]
+code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/okf-layer.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-evaluator/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md, plugins/decodex/skills/docs/SKILL.md, plugins/decodex/skills/docs-okf/SKILL.md, plugins/decodex/skills/docs-wiki/SKILL.md, plugins/decodex/skills/docs-drift/SKILL.md, plugins/decodex/skills/research/SKILL.md]
 related: [../policy.md, ./docs-self-iteration.md]
 last_verified: 2026-06-18
 ---
 
 # Decodex Plugin Eval
 
-Purpose: Preserve public-safe evidence that the Decodex plugin, routing skill,
-portable OKF init and skill family, repo-memory writer skill, and docs skill family
+Purpose: Preserve public-safe evidence that the Decodex plugin, routing reference,
+portable OKF init and skill family, repo-memory skill family, and docs skill family
 passed local plugin evaluation.
 
-Read this when: You need proof that the OKF init/split, repo-memory writer, docs skill
+Read this when: You need proof that the OKF init/split, repo-memory skills, docs skill
 split, research skill split, and plugin invocation policy were evaluated before
 landing.
 
@@ -44,6 +44,8 @@ node ~/.codex/plugins/cache/openai-curated/plugin-eval/015c0dff/scripts/plugin-e
 | `plugins/decodex/skills/okf-query` | 100 | A | low | none |
 | `plugins/decodex/skills/okf-maintain` | 100 | A | low | none |
 | `plugins/decodex/skills/repo-memory-writer` | 100 | A | low | none |
+| `plugins/decodex/skills/repo-memory-evaluator` | 100 | A | low | none |
+| `plugins/decodex/skills/repo-memory-curator` | 100 | A | low | none |
 | `plugins/decodex/skills/docs` | 100 | A | low | none |
 | `plugins/decodex/skills/docs-okf` | 100 | A | low | none |
 | `plugins/decodex/skills/docs-wiki` | 100 | A | low | none |
@@ -90,6 +92,6 @@ Explicit-only skills:
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
 2026-06-18 full-plugin rerun reported score 100/100, grade A, low risk, zero failing
-checks, zero warning checks, and two informational notes. That is sufficient for the
-MCP routing skill change because the remaining notes are coverage and observed-usage
-availability, not safety, routing, authority, or progressive-disclosure failures.
+checks, zero warnings, and two informational notes. The context-intake update stays
+inside `routing.md` so OKF/LLM Wiki context intake remains Decodex-owned without
+creating a heavy deferred-reference warning.
