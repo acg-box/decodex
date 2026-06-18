@@ -1654,6 +1654,48 @@ fn loop_guardrail_stops_no_effective_diff_for_retryable_errors_without_delta() {
 }
 
 #[test]
+fn loop_guardrail_does_not_classify_committed_branch_delta_as_no_effective_diff() {
+	let (temp_dir, config, _workflow) = temp_project_layout();
+	let remote_root = temp_dir.path().join("origin.git");
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+
+	add_origin_remote(config.repo_root(), &remote_root);
+	checkout_new_branch(config.repo_root(), "x/pubfi-pub-101");
+	commit_worktree_change(
+		config.repo_root(),
+		"ready.txt",
+		"implementation complete\n",
+		"implement issue scope",
+	);
+	assert_eq!(git_output(config.repo_root(), &["status", "--porcelain"]), "");
+
+	for attempt_number in 1..=3 {
+		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let error = Report::msg("child exited after committed issue-scoped work");
+		let stop = orchestrator::retryable_failure_loop_guardrail_stop(
+			&config,
+			&state_store,
+			&issue_run,
+			&error,
+		)
+		.expect("guardrail observation should evaluate");
+
+		assert!(
+			stop.is_none(),
+			"committed branch delta must not be reported as no_effective_diff"
+		);
+	}
+
+	assert!(
+		state_store
+			.loop_guardrail_checkpoint(config.service_id(), &issue.id, "no_effective_diff")
+			.expect("checkpoint lookup should succeed")
+			.is_none()
+	);
+}
+
+#[test]
 fn handle_failure_recovers_review_handoff_state_drift_before_no_effective_diff_terminalization() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
