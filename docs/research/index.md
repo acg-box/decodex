@@ -9,8 +9,9 @@ and disposition. They do not authorize implementation or own current truth.
 ## Concepts
 
 - [`mcp-remote-control-productization.md`](mcp-remote-control-productization.md) is
-  active research on the best next steps for MCP remote access, observation,
-  authorization, process smoke coverage, and future protocol compatibility.
+  active research on the remaining MCP remote-access questions after bearer auth and
+  process smoke promotion: OAuth Protected Resource Metadata, operator-loop-hosted
+  scan, and future protocol compatibility.
 - [`research-runtime-boundary.md`](research-runtime-boundary.md) is superseded
   provenance for the research runtime-boundary investigation. Current guidance lives
   in [`../decisions/okf-research-knowledge-lifecycle.md`](../decisions/okf-research-knowledge-lifecycle.md)
