@@ -27,10 +27,13 @@ automation, commit, or landing boundaries.
 - Labels: use `labels` only for ordinary non-Program tracker intake and retained-lane
   ownership signals.
 - MCP gateway: use stdio locally and Streamable HTTP only behind the operator's chosen
-  listener, tunnel, or relay. MCP is a typed facade, not a bypass around Decision
-  Contract, lane-control, tracker, review, landing, or closeout gates. Plan tools are
-  `research_compile`, `research_promote`, and `intake_goal`; operate/admin remains
-  inspect-first with current run/turn preconditions.
+  listener, tunnel, relay, network ACL, or protected-resource auth boundary. Treat
+  `--allow-origin` as CORS trust, not authentication; direct non-loopback or elevated
+  HTTP profiles are not production-safe without authorization. MCP is a typed facade,
+  not a bypass around Decision Contract, lane-control, tracker, review, landing, or
+  closeout gates. Plan tools are `research_compile`, `research_promote`, and
+  `intake_goal`; operate/admin remains inspect-first with current run/turn
+  preconditions.
 
 ## First Reads
 
@@ -52,8 +55,8 @@ conditions. A result is a latent Decision Contract candidate only.
 
 ## Program Versus Label Intake
 
-- Program Intake starts from a persisted Execution Program and dispatches ready mapped
-  nodes; queue labels are not the Program scheduler.
+- Program Intake dispatches ready mapped nodes directly from the persisted Execution
+  Program; queue labels are not the Program scheduler.
 - Ordinary issue intake starts from `decodex:queued:<service-id>` and must still pass
   `WORKFLOW.md` eligibility, terminal-state, dependency, opt-out, and active-lease
   checks.
