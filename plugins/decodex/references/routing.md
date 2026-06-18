@@ -27,11 +27,14 @@ automation, commit, or landing boundaries.
 - Labels: use `labels` only for ordinary non-Program tracker intake and retained-lane
   ownership signals.
 - MCP gateway: use stdio locally and Streamable HTTP only behind the operator's chosen
-  listener, tunnel, relay, network ACL, or protected-resource auth boundary. Treat
-  `--allow-origin` as CORS trust, not authentication; direct non-loopback or elevated
-  HTTP profiles are not production-safe without authorization. MCP is a typed facade,
-  not a bypass around Decision Contract, lane-control, tracker, review, landing, or
-  closeout gates. Plan tools are `research_compile`, `research_promote`, and
+  listener with `--bearer-token-env`, tunnel, relay, network ACL, reverse proxy, or
+  protected-resource auth boundary. Treat `--allow-origin` as CORS trust, not
+  authentication; direct non-loopback listeners require both `--allow-origin` and
+  `--bearer-token-env`, and Streamable HTTP profiles above `observe` require
+  `--bearer-token-env`. The built-in bearer guard is not OAuth Protected Resource
+  Metadata. MCP is a typed facade, not a bypass around Decision Contract,
+  lane-control, tracker, review, landing, or closeout gates. Plan tools are
+  `research_compile`, `research_promote`, and
   `intake_goal`; operate/admin remains inspect-first with current run/turn
   preconditions.
 

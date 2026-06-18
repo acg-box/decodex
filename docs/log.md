@@ -2,12 +2,17 @@
 
 ## 2026-06-18
 
+- Closed the MCP remote-control productization drift: Streamable HTTP now documents
+  `--bearer-token-env` as the direct-listener boundary for non-loopback and elevated
+  profiles, records the process-level HTTP smoke evidence, refreshes test-suite
+  counts to 1282 runnable tests, and narrows remaining research to OAuth Protected
+  Resource Metadata, operator-loop-hosted scan, and future protocol compatibility.
 - Promoted MCP remote-control docs drift into the runtime spec, operator reference,
   remote MCP runbook, decision record, evidence index, and Decodex plugin routing;
   documented that `--allow-origin` is not authentication, loopback `observe` is the
   safe default, direct remote/elevated Streamable HTTP needs an operator auth
   boundary, and built-in MCP protected-resource auth plus process-level HTTP smoke
-  remain active research-backed gaps.
+  were active research-backed gaps at that point.
 - Added active research for MCP remote-control productization, covering remote
   access docs, authorization or relay boundaries, public-safe observation, process
   smoke coverage, high-risk control refusals, and protocol compatibility.
