@@ -15,7 +15,7 @@ Date: 2026-05-09
 Question: Where should reusable agent-facing Decodex usage instructions live?
 Decision: Maintain the canonical Decodex plugin in this repository under
 `plugins/decodex/`. Decodex also owns reusable repo-work guidance, including command
-authority, task-runner structure, language and dependency policy, review repair,
+authority, task-runner structure, engineering defaults, dependency policy, review repair,
 verification, debugging, semantic drift, research, and dynamic support-agent
 boundaries.
 Consequences: Decodex runtime and usage guidance can now change in the same repository
@@ -48,8 +48,8 @@ The plugin should own reusable agent-facing procedures and mode routing:
 
 - `decodex` for choosing manual CLI mode versus automation mode
 - `repo-work` for checked-in command authority, task-runner structure, configuration
-  contracts, language and dependency policy, review repair, verification, and dynamic
-  support-agent boundaries
+  contracts, engineering defaults, dependency policy, review repair, verification, and
+  dynamic support-agent boundaries
 - `planning` for Decodex-native issue briefing, issue splitting, dispatch readiness,
   dependencies, and concurrency
 - `manual-cli` for operator CLI use
