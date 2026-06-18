@@ -1,6 +1,6 @@
 # Decodex Docs Wiki Reference
 
-Use this for Decodex `docs/` routing, indexing, linking, and deduplication. Use
+Use this for Decodex `docs/` navigation, indexing, linking, and deduplication. Use
 `okf-layer.md` for portable OKF/LLM Wiki bundles.
 
 ## Reading Order
@@ -20,11 +20,11 @@ structure, `decisions` for rationale, `research` for latent candidates, and
 - Link instead of copying repeated claims.
 - Update lane indexes when concepts are added, renamed, moved, deprecated, or
   superseded.
-- Use `related` when cross-links materially help retrieval.
-- Start each concept with a short routing purpose and boundary.
+- Use `related` when cross-links materially help navigation.
+- Start each concept with a short purpose and boundary.
 - Keep `docs/research/` non-authoritative until promotion.
 - After promotion, update indexes, links, descriptions, and statuses so superseded
   research routes as provenance instead of competing with owner concepts.
 
-Update `docs/log.md` when routing, promotion, naming, docs policy, or maintenance
+Update `docs/log.md` when navigation, promotion, naming, docs policy, or maintenance
 behavior changes.
