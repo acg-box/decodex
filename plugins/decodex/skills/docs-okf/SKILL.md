@@ -5,14 +5,15 @@ description: Use when creating or migrating docs/ to the strict Decodex OKF prof
 
 # Decodex Docs OKF
 
-Maintain this repository's `docs/` bundle as Markdown-only Decodex profile concepts.
+Maintain this repository's `docs/` bundle as Decodex profile concepts plus JSON
+research artifacts.
 For portable OKF bundles, use `okf-maintain`.
 
 Read `../../references/docs-okf.md` before creating, moving, or repairing concepts.
 
-- Keep durable docs artifacts Markdown-only.
+- Keep durable non-research docs artifacts Markdown-only.
+- Keep `docs/research/` as flat JSON research artifacts only.
 - Use typed Decodex profile frontmatter from `docs/policy.md`.
-- Keep research contracts and drift audit evidence concepts in their required section
-  shape.
-- Do not add JSON or generated state under `docs/`.
+- Keep research artifacts and drift audit evidence concepts in their required shape.
+- Do not add JSON or generated state under `docs/` outside `docs/research/`.
 - Run `decodex docs check` before claiming docs readiness.
