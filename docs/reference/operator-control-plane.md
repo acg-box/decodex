@@ -7,8 +7,8 @@ authority: current_state
 owner: docs
 tags: [reference]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/mcp.rs]
-drift_watch: [decodex serve, decodex status, decodex recover ghost-lane, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
-last_verified: 2026-06-18
+drift_watch: [decodex serve, decodex status, decodex recover ghost-lane, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
+last_verified: 2026-06-19
 ---
 # Operator Control Plane
 
@@ -567,6 +567,17 @@ Worktree visibility follows the owning dashboard section:
   This classification explains why stale control-channel row, thread/protocol
   summary, and private evidence conditions can still be cleanup-safe for that
   fixture. It is not a general private-evidence bypass.
+- `ghost_lane_cleanup_audit_present` means a prior supported cleanup wrote a local
+  `ghost_lane_cleanup` private audit with `cleared_run_lease = true`, no blockers,
+  and evidence for missing tracker issue, missing worktree, and missing review
+  lineage. Status and diagnose treat that audit as idempotent recovery evidence:
+  when no retained worktree, live process, PR lineage, review lifecycle, or mixed
+  private evidence remains, the row is history-only and must not inflate current lane
+  or retained-attention counts.
+- Retained worktree and post-review scans isolate stale local issue identifiers when
+  tracker refresh reports a missing or invalid issue. Status and dry-run candidate
+  selection may drop that stale local row, but the stale row must not hide unrelated
+  valid retained project issues or fail the registered project readback.
 - `policy_state = runtime_recovery_blocked` on the same tracker-backed status surfaces
   means the issue is missing from tracker readback but at least one fail-closed
   blocker exists, such as retained worktree, control-channel file, live execution

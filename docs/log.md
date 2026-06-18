@@ -2,6 +2,11 @@
 
 ## 2026-06-19
 
+- Documented idempotent `ghost_lane_cleanup` audit readback for missing-issue ghost
+  lanes so stale PubFi fixture cleanup evidence no longer projects as current or
+  retained attention when no retained work, live execution, or review lineage remains.
+- Documented stale local issue-id isolation during retained worktree refresh so ghost
+  rows cannot abort registered project status or dry-run candidate selection.
 - Added the terminal app-server archive barrier contract: late non-terminal protocol
   events after `thread/archive` or `thread/archive/discarded` are recorded as
   discarded post-archive diagnostics in a non-conflicting runtime journal namespace,
