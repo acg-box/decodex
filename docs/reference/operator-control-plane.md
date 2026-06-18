@@ -84,7 +84,7 @@ Local MCP hosts can use `decodex mcp serve --transport stdio` for local core MCP
 protocol primitives or `decodex mcp serve --transport streamable-http` for remote
 permitted clients that reach the daemon through an operator-chosen local listener,
 tunnel, or relay. Both transports list and read checked-in docs, checked-in JSON
-research reports, Decision Contract readback, status snapshots, and lane-control
+research artifacts, Decision Contract readback, status snapshots, and lane-control
 readback; both also advertise resource templates for `status_live`, `activity_tail`,
 `lane_inspect`, current/recent status-window run events, protocol activity,
 child-agent activity, progress diagnostics, and PR/review state. These projections
