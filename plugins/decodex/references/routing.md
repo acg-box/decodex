@@ -26,7 +26,9 @@ labels, automation, commit, or landing boundaries.
   behind the operator's chosen local listener, tunnel, or relay. Treat MCP resources,
   prompts, and tools as a typed facade over existing Decodex docs/runtime authority,
   not as a replacement for Decision Contract, lane-control, tracker, review, landing,
-  or closeout gates.
+  or closeout gates. Planning tools are deliberately small: `research_compile`,
+  `research_promote`, and `intake_goal` expose dry-run/apply boundaries with explicit
+  authority requirements for apply/promote calls.
 
 ## First Reads
 
