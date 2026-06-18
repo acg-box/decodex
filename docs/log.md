@@ -6,6 +6,10 @@
   reference, index, checker, and plugin guidance so promotion now routes rationale to
   decisions, truth to owner lanes, reusable proof to evidence, and superseded
   research out of active LLM Wiki routing.
+- Moved Decodex OKF/LLM Wiki context intake, `Context anchors`, docs completion gate,
+  and late docs-skill recovery ownership into `plugins/decodex/references/routing.md`
+  so generic repo-work plugins can remain Decodex-agnostic while host instructions
+  compose installed plugins.
 - Updated the MCP decision record, operator-control reference, resource-template
   readback, and Decodex plugin routing so complete remote MCP now points agents toward
   capability-profiled observe/plan/operate/admin resources, prompts, and tools.
