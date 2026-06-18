@@ -11,11 +11,11 @@ CLI, automation, commit, or landing boundaries.
   file targets only when the owner is unambiguous. If docs impact appears late, run
   the same docs gate and report recovery evidence.
 - Repo work: use `repo-work` for checked-in command authority, task-runner structure,
-  configuration contracts, architecture/cutover defaults, language or dependency
-  policy, review repair, validation evidence, completion claims, and dynamic
-  support-agent boundaries. Route from there to the narrower language, dependency,
-  review, verification, debugging, drift, or research skill when the touched surface
-  calls for it.
+  configuration contracts, architecture/cutover defaults, language/tooling defaults,
+  dependency policy, review repair, validation evidence, completion claims, and
+  dynamic support-agent boundaries. Route from there to dependency, review,
+  verification, debugging, drift, or research skills when the touched surface calls
+  for them.
 - Docs: use `docs` as the router. Use `docs-okf`, `docs-wiki`, and `docs-drift`
   for shape, navigation, and audits. Docs impact `research_required` switches to
   `research*`; checked-in `docs/research/` is latent evidence.
