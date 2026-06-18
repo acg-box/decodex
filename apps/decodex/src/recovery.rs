@@ -1764,6 +1764,12 @@ fn inspect_ghost_lane_private_evidence(
 		evidence.push(String::from("private_evidence_missing"));
 	} else if mcp_test_fixture {
 		evidence.push(String::from("mcp_test_fixture_private_control_evidence_present"));
+
+		if events.iter().any(ghost_lane_private_event_is_cleanup_audit) {
+			evidence.push(String::from("ghost_lane_cleanup_audit_present"));
+		}
+	} else if ghost_lane_private_events_are_cleanup_audit_evidence(&events) {
+		evidence.push(String::from("ghost_lane_cleanup_audit_present"));
 	} else {
 		blockers.push(String::from("private_evidence_present"));
 	}
@@ -1788,7 +1794,7 @@ fn ghost_lane_mcp_test_fixture_control_evidence(
 		run.attempt_number(),
 	)?;
 
-	Ok(ghost_lane_private_events_are_mcp_test_control_evidence(&events))
+	Ok(ghost_lane_private_events_are_mcp_test_recovery_evidence(&events))
 }
 
 fn ghost_lane_has_mcp_test_fixture_identity(
@@ -1820,10 +1826,14 @@ fn ghost_lane_optional_fixture_value(value: Option<&str>, expected: &str) -> boo
 	}
 }
 
-fn ghost_lane_private_events_are_mcp_test_control_evidence(
+fn ghost_lane_private_events_are_mcp_test_recovery_evidence(
 	events: &[PrivateExecutionEvent],
 ) -> bool {
-	!events.is_empty() && events.iter().all(ghost_lane_private_event_is_mcp_test_control_evidence)
+	!events.is_empty()
+		&& events.iter().all(|event| {
+			ghost_lane_private_event_is_mcp_test_control_evidence(event)
+				|| ghost_lane_private_event_is_cleanup_audit(event)
+		})
 }
 
 fn ghost_lane_private_event_is_mcp_test_control_evidence(event: &PrivateExecutionEvent) -> bool {
@@ -1857,6 +1867,43 @@ fn ghost_lane_cli_control_action_matches_mcp_test_fixture(payload: &serde_json::
 			== Some(MCP_TEST_FIXTURE_RUN_ID)
 		&& payload.pointer("/requested/attempt_number").and_then(serde_json::Value::as_i64)
 			== Some(1)
+}
+
+fn ghost_lane_private_events_are_cleanup_audit_evidence(events: &[PrivateExecutionEvent]) -> bool {
+	!events.is_empty() && events.iter().all(ghost_lane_private_event_is_cleanup_audit)
+}
+
+fn ghost_lane_private_event_is_cleanup_audit(event: &PrivateExecutionEvent) -> bool {
+	if event.event_type() != GHOST_LANE_CLEANUP_EVENT {
+		return false;
+	}
+
+	let payload = event.payload();
+
+	payload.get("schema").and_then(serde_json::Value::as_str)
+		== Some("decodex.ghost_lane_recovery_private_event/1")
+		&& payload.get("event").and_then(serde_json::Value::as_str)
+			== Some(GHOST_LANE_CLEANUP_EVENT)
+		&& matches!(
+			payload.get("classification").and_then(serde_json::Value::as_str),
+			Some(GHOST_LANE_CLASSIFICATION | MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION)
+		) && payload.get("terminal_status").and_then(serde_json::Value::as_str)
+		== Some(GHOST_LANE_TERMINAL_STATUS)
+		&& payload.get("cleared_run_lease").and_then(serde_json::Value::as_bool) == Some(true)
+		&& payload
+			.get("blockers")
+			.and_then(serde_json::Value::as_array)
+			.is_some_and(|blockers| blockers.is_empty())
+		&& ghost_lane_cleanup_audit_evidence_contains(payload, "tracker_issue_missing")
+		&& ghost_lane_cleanup_audit_evidence_contains(payload, "worktree_missing")
+		&& ghost_lane_cleanup_audit_evidence_contains(payload, "review_lineage_missing")
+}
+
+fn ghost_lane_cleanup_audit_evidence_contains(payload: &serde_json::Value, expected: &str) -> bool {
+	payload
+		.get("evidence")
+		.and_then(serde_json::Value::as_array)
+		.is_some_and(|evidence| evidence.iter().any(|entry| entry.as_str() == Some(expected)))
 }
 
 fn ghost_lane_mcp_test_fixture_allowed_live_blocker(blocker: &str) -> bool {
@@ -4717,6 +4764,38 @@ token_env_var = "HOME"
 		}
 	}
 
+	fn append_mcp_test_fixture_ghost_lane_cleanup_audit(store: &StateStore) {
+		store
+			.append_private_execution_event(
+				"pubfi",
+				"PUB-012",
+				"run-12",
+				1,
+				GHOST_LANE_CLEANUP_EVENT,
+				serde_json::json!({
+					"schema": "decodex.ghost_lane_recovery_private_event/1",
+					"event": GHOST_LANE_CLEANUP_EVENT,
+					"classification": MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION,
+					"reason": "tracker_issue_missing_and_only_mcp_test_control_fixture_evidence",
+					"issue_identifier": "PUBFI-012",
+					"terminal_status": GHOST_LANE_TERMINAL_STATUS,
+					"cleared_run_lease": true,
+					"evidence": [
+						"tracker_issue_missing",
+						"worktree_mapping_path_missing",
+						"worktree_missing",
+						"control_channel_file_missing",
+						"mcp_test_fixture_control_channel_row_present",
+						"mcp_test_fixture_private_control_evidence_present",
+						"review_lineage_missing"
+					],
+					"blockers": [],
+					"next_action": "ordinary automation may continue after status readback confirms no current attention lane"
+				}),
+			)
+			.expect("cleanup audit should record");
+	}
+
 	fn sample_issue(state_name: &str) -> TrackerIssue {
 		let states = vec![
 			TrackerState { id: String::from("state-todo"), name: String::from("Todo") },
@@ -5151,6 +5230,36 @@ token_env_var = "HOME"
 			diagnostic
 				.evidence
 				.contains(&String::from("mcp_test_fixture_protocol_or_thread_evidence_present"))
+		);
+	}
+
+	#[test]
+	fn ghost_lane_diagnostic_allows_prior_mcp_test_fixture_cleanup_audit() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context =
+			sample_recovery_context(&temp_dir, super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		let tracker = GhostLaneTestTracker::missing();
+
+		seed_mcp_test_fixture_ghost_lane(&context.state_store, context.config.worktree_root());
+		append_mcp_test_fixture_ghost_lane_cleanup_audit(&context.state_store);
+
+		let diagnostics = super::diagnose_ghost_lanes_read_only(
+			context.config.service_id(),
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUBFI-012"),
+		)
+		.expect("prior cleanup audit should not block an idempotent diagnosis");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION);
+		assert!(diagnostic.recoverable());
+		assert!(diagnostic.blockers.is_empty());
+		assert!(
+			diagnostic
+				.evidence
+				.contains(&String::from("mcp_test_fixture_private_control_evidence_present"))
 		);
 	}
 
