@@ -986,10 +986,55 @@ fn read_websocket_json_until(
 			frame.extend_from_slice(&buffer[..event_bytes]);
 		}
 	}
-}
+	}
 
-#[test]
-fn operator_dashboard_run_activity_event_summarizes_current_lanes() {
+	fn assert_protocol_activity_detail_redacted(protocol_activity: &Value) {
+		assert_eq!(
+			protocol_activity["recent_events"][0]["detail"],
+			"redacted_sensitive_detail"
+		);
+		assert!(!protocol_activity.to_string().contains("path=/srv"));
+	}
+
+	fn assert_run_activity_protocol_activity_redacted(data_lane: &Value, fingerprint_lane: &Value) {
+		assert_eq!(data_lane["protocol_activity"]["waiting_reason"], "model");
+
+		assert_protocol_activity_detail_redacted(&data_lane["protocol_activity"]);
+		assert_protocol_activity_detail_redacted(&fingerprint_lane["protocol_activity"]);
+	}
+
+	fn assert_run_activity_envelope(payload: &Value, data: &Value, fingerprint: &Value) {
+		assert_eq!(payload["type"], "runActivity");
+		assert_eq!(data["accountControl"]["mode"], "balanced");
+		assert_eq!(data["currentLanesComplete"], true);
+		assert_eq!(data["currentLaneScope"], "complete");
+		assert!(data.get("accounts").is_none());
+		assert!(fingerprint.get("emittedAtUnixEpoch").is_none());
+		assert_eq!(fingerprint["accountControl"]["mode"], "balanced");
+		assert_eq!(fingerprint["currentLanesComplete"], true);
+		assert_eq!(fingerprint["currentLaneScope"], "complete");
+		assert!(fingerprint.get("accounts").is_none());
+	}
+
+	fn assert_run_activity_current_lane(data_lane: &Value, fingerprint_lane: &Value) {
+		assert_eq!(fingerprint_lane["run_id"], "run-1");
+		assert_eq!(fingerprint_lane["project_display_name"], "hack-ink/pubfi-mono-v2");
+		assert_eq!(data_lane["run_id"], "run-1");
+		assert_eq!(data_lane["project_id"], "pubfi");
+		assert_eq!(data_lane["project_display_name"], "hack-ink/pubfi-mono-v2");
+
+		assert_run_activity_protocol_activity_redacted(data_lane, fingerprint_lane);
+
+		assert_eq!(data_lane["account"]["account_fingerprint"], "acct-1");
+		assert_eq!(data_lane["accounts"][0]["account_fingerprint"], "acct-1");
+		assert!(data_lane.get("idle_for_seconds").is_some());
+		assert!(data_lane.get("protocol_idle_for_seconds").is_some());
+		assert!(fingerprint_lane.get("idle_for_seconds").is_none());
+		assert!(fingerprint_lane.get("protocol_idle_for_seconds").is_none());
+	}
+
+	#[test]
+	fn operator_dashboard_run_activity_event_summarizes_current_lanes() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
@@ -1011,7 +1056,7 @@ fn operator_dashboard_run_activity_event_summarizes_current_lanes() {
 		recent_events: vec![state::ProtocolActivityEventSummary {
 			event_type: String::from("item/model/delta"),
 			category: String::from("model"),
-			detail: Some(String::from("received model delta")),
+			detail: Some(String::from("state marker path=/srv/decodex/runtime")),
 		}],
 	};
 	let account = CodexAccountActivitySummary {
@@ -1080,31 +1125,8 @@ fn operator_dashboard_run_activity_event_summarizes_current_lanes() {
 	let fingerprint: Value =
 		serde_json::from_slice(&event.fingerprint).expect("fingerprint should be json");
 
-	assert_eq!(payload["type"], "runActivity");
-	assert_eq!(data["accountControl"]["mode"], "balanced");
-	assert_eq!(data["currentLanesComplete"], true);
-	assert_eq!(data["currentLaneScope"], "complete");
-	assert!(data.get("accounts").is_none());
-	assert!(fingerprint.get("emittedAtUnixEpoch").is_none());
-	assert_eq!(fingerprint["accountControl"]["mode"], "balanced");
-	assert_eq!(fingerprint["currentLanesComplete"], true);
-	assert_eq!(fingerprint["currentLaneScope"], "complete");
-	assert!(fingerprint.get("accounts").is_none());
-	assert_eq!(fingerprint["currentLanes"][0]["run_id"], "run-1");
-	assert_eq!(
-		fingerprint["currentLanes"][0]["project_display_name"],
-		"hack-ink/pubfi-mono-v2"
-	);
-	assert_eq!(data["currentLanes"][0]["run_id"], "run-1");
-	assert_eq!(data["currentLanes"][0]["project_id"], "pubfi");
-	assert_eq!(data["currentLanes"][0]["project_display_name"], "hack-ink/pubfi-mono-v2");
-	assert_eq!(data["currentLanes"][0]["protocol_activity"]["waiting_reason"], "model");
-	assert_eq!(data["currentLanes"][0]["account"]["account_fingerprint"], "acct-1");
-	assert_eq!(data["currentLanes"][0]["accounts"][0]["account_fingerprint"], "acct-1");
-	assert!(data["currentLanes"][0].get("idle_for_seconds").is_some());
-	assert!(data["currentLanes"][0].get("protocol_idle_for_seconds").is_some());
-	assert!(fingerprint["currentLanes"][0].get("idle_for_seconds").is_none());
-	assert!(fingerprint["currentLanes"][0].get("protocol_idle_for_seconds").is_none());
+	assert_run_activity_envelope(&payload, data, &fingerprint);
+	assert_run_activity_current_lane(&data["currentLanes"][0], &fingerprint["currentLanes"][0]);
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
