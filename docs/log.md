@@ -2,6 +2,11 @@
 
 ## 2026-06-18
 
+- Promoted MCP operate/admin docs from deferred stubs to the implemented
+  inspect-first `decodex_lane_control` and future-dispatch-only
+  `decodex_project_control` authority model.
+- Refreshed the test-suite inventory to 1270 runnable `nextest` tests after adding
+  MCP operate/admin coverage.
 - Added schema-bound MCP planning tools for `research_compile`, `research_promote`,
   and `intake_goal`; dry-run paths stay read-only while apply/promote paths require
   explicit authority and return structured refusals when authority is missing.
