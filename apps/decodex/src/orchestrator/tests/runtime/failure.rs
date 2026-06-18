@@ -1668,6 +1668,7 @@ fn loop_guardrail_does_not_classify_committed_branch_delta_as_no_effective_diff(
 		"implementation complete\n",
 		"implement issue scope",
 	);
+
 	assert_eq!(git_output(config.repo_root(), &["status", "--porcelain"]), "");
 
 	for attempt_number in 1..=3 {
