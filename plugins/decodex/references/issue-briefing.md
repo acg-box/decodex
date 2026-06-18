@@ -5,20 +5,20 @@ Program Intake readiness.
 
 ## Authority
 
-Issue briefing is part of planning. It starts only after one authority source exists:
+Issue briefing is planning-only and starts after one authority source:
 
 - an accepted and promoted Decision Contract
 - an explicit execution instruction whose scope is already bounded
 - a supplied batch of executable issue briefs for Program Intake
 
-The briefing is not a delivery workflow. Do not route Decodex issue briefing through
-an external delivery plugin, delivery handoff, or progress skill. Runtime progress,
-review handoff, landing, closeout, and recovery stay Decodex runtime surfaces.
+The briefing is not delivery workflow. Do not route Decodex issue briefing through
+an external delivery plugin, delivery handoff, or progress skill; runtime progress,
+review handoff, landing, closeout, and recovery stay Decodex surfaces.
 
 ## Generic Dispatch Briefing
 
-Every Decodex-planned issue must be understandable by a generic implementation lane
-without replaying chat or private runtime state.
+Every planned issue must work for a generic implementation lane without replaying chat
+or private runtime state.
 
 Include:
 
@@ -38,8 +38,8 @@ validation, tracker state, or runtime authority.
 
 ## Splitting Rules
 
-Split accepted work only when one issue is too broad for one lane. Split by real
-ownership boundary, validation surface, dependency, or conflict domain.
+Split accepted work only when one issue is too broad for one lane, using real
+ownership, validation, dependency, or conflict boundaries.
 
 Each child issue must carry its own generic dispatch briefing. Name ordering only
 when it is blocking. Do not expose internal graph ids, DAG edge editing, hidden goal
@@ -48,12 +48,8 @@ ids, or Program scheduler mechanics in the issue text.
 ## Existing Issue Intake
 
 For `decodex intake issues`, issue descriptions are the public briefing surface. A
-machine-readable block, private pointer, or thin title is missing the generic
+thin title, private pointer, runtime event, PR body, or checkpoint is not a generic
 dispatch briefing and should remain held until repaired.
-
-Do not use a progress checkpoint, review summary, PR body, or runtime event as a
-substitute for the issue briefing. Those surfaces can support evidence, but the
-normal issue remains the executable lane boundary.
 
 ## Non-Goals
 

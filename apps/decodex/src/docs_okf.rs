@@ -42,7 +42,7 @@ const ALLOWED_STATUSES: &[&str] = &["draft", "active", "deprecated", "superseded
 const ALLOWED_AUTHORITIES: &[&str] =
 	&["normative", "procedural", "current_state", "rationale", "evidence", "non_authoritative"];
 const ALLOWED_PROMOTION_TARGETS: &[&str] =
-	&["docs/spec", "docs/runbook", "docs/reference", "docs/decisions"];
+	&["docs/spec", "docs/runbook", "docs/reference", "docs/decisions", "docs/evidence"];
 const RESEARCH_CONTRACT_HEADINGS: &[&str] = &[
 	"Question",
 	"Scope",

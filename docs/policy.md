@@ -90,7 +90,7 @@ Recommended keys:
 | `source_refs` | External or public source references. |
 | `code_refs` | Repository-relative code, test, script, or config file paths. |
 | `related` | Related concepts inside the OKF bundle. |
-| `promotes_to` | Target lane when a research concept becomes durable authority. |
+| `promotes_to` | Target lane when a research concept becomes durable knowledge. |
 | `drift_watch` | Commands, paths, labels, statuses, config keys, or schemas watched for semantic drift. |
 
 ## Primary Lanes
@@ -107,7 +107,7 @@ Recommended keys:
 ## Research Contracts
 
 New research output is a Markdown concept under `docs/research/`. A research concept
-is never execution authority by itself.
+is never execution authority or current repository truth by itself.
 
 Research concepts must expose headings with these names. The heading level is not
 semantic; concepts may use a top-level title followed by lower-level contract
@@ -131,12 +131,30 @@ headings.
 - `blocked`
 - `needs_human_decision`
 
-Promotion means updating the target `spec`, `runbook`, `reference`, or `decisions`
-concept and logging the event in `docs/log.md`. When accepted research changes
+Promotion is an OKF knowledge operation. It consumes a research concept by moving
+durable rationale to `docs/decisions/`, normative truth to `docs/spec/`, current
+state to `docs/reference/`, procedures to `docs/runbook/`, and reusable proof or
+drift-audit material to `docs/evidence/`. When accepted research changes
 agent-facing workflow instructions, update the matching `plugins/decodex/skills/`
 surface alongside the selected docs concept; plugin skills are companion execution
-surfaces, not `promotes_to` lanes. Promotion must preserve evidence, constraints,
-rejected alternatives, validation expectations, and drift impacts.
+surfaces, not `promotes_to` lanes.
+
+Each promoted research concept must end with one disposition:
+
+- `continue`: unresolved research remains active.
+- `promote_and_supersede`: durable knowledge moved to owners, but a compact
+  provenance concept remains in `docs/research/` with `status: superseded`.
+- `promote_and_retire`: durable owners fully absorb the knowledge, so the concept is
+  removed from active LLM Wiki routing and indexes.
+- `reject_or_deprecate`: rejected or stale research is represented as a decision,
+  evidence concept, or `status: deprecated` research concept only when it remains
+  useful to retrieval.
+
+Promotion must preserve evidence, constraints, rejected alternatives, validation
+expectations, and drift impacts in the correct OKF owners. Knowledge retention must be
+explicit in OKF concepts, indexes, and links rather than relying on out-of-band
+history. After promotion, `docs/research/` must not compete with the
+authoritative owner in LLM Wiki routing.
 
 ## Semantic Drift
 

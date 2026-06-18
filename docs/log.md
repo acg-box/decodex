@@ -2,6 +2,10 @@
 
 ## 2026-06-18
 
+- Added the OKF research knowledge-lifecycle decision and updated research policy,
+  reference, index, checker, and plugin guidance so promotion now routes rationale to
+  decisions, truth to owner lanes, reusable proof to evidence, and superseded
+  research out of active LLM Wiki routing.
 - Updated the MCP decision record, operator-control reference, resource-template
   readback, and Decodex plugin routing so complete remote MCP now points agents toward
   capability-profiled observe/plan/operate/admin resources, prompts, and tools.

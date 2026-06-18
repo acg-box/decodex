@@ -20,5 +20,7 @@ Follow phase skills in order. Use `research-promote` only after explicit accepta
   target visible from the top-level contract.
 - Split research-only evidence from durable knowledge candidates; accepted facts,
   policy/spec/runbook/structure/workflow instructions need non-research targets.
+- Name the OKF disposition: `continue`, `promote_and_supersede`,
+  `promote_and_retire`, or `reject_or_deprecate`.
 - Do not queue work, mutate Linear, set Codex goals, implement, or dispatch Program
   nodes from research alone.
