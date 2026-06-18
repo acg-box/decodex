@@ -2,6 +2,9 @@
 
 ## 2026-06-18
 
+- Added active research for MCP remote-control productization, covering remote
+  access docs, authorization or relay boundaries, public-safe observation, process
+  smoke coverage, high-risk control refusals, and protocol compatibility.
 - Corrected MCP operator-control docs to describe checked-in research as Markdown
   research concepts, matching the current OKF research contract.
 - Added the OKF research knowledge-lifecycle decision and updated research policy,
