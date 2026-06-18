@@ -2,6 +2,12 @@
 
 ## 2026-06-18
 
+- Updated the MCP decision record, operator-control reference, resource-template
+  readback, and Decodex plugin routing so complete remote MCP now points agents toward
+  capability-profiled observe/plan/operate/admin resources, prompts, and tools.
+- Preserved the existing `decodex://research/{artifact}` checked-in JSON research
+  report resource contract for MCP while leaving the known docs/research format policy
+  conflict for a separate accepted decision.
 - Promoted MCP operate/admin docs from deferred stubs to the implemented
   inspect-first `decodex_lane_control` and future-dispatch-only
   `decodex_project_control` authority model.
@@ -27,7 +33,8 @@
   resource templates, prompts, tools, logging, and progress compatibility; stdio smoke
   coverage now exercises resources/templates/list, prompts/list, prompts/get,
   tools/list, tools/call, active capability-profile filtering, and stdout cleanliness
-  while Streamable HTTP and live operate/admin lane-control remain deferred.
+  as the first MCP slice before the later Streamable HTTP and operate/admin
+  promotions.
 - Added `repo-memory-evaluator` so repo-memory OKF/LLM Wiki bundles have a
   plugin-eval-style quality workflow for static checks, route top-1/top-3 benchmarks,
   graph health, owner coverage, and before/after curation evidence.
