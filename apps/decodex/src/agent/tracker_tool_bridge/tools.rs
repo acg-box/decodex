@@ -25,7 +25,7 @@ use crate::{
 		self, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AuthorityDecisionOption,
 		AuthorityDecisionRequestInput,
 	},
-	state::{self, StateStore},
+	state::StateStore,
 	tracker::{
 		self, public_text, records,
 		records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
@@ -590,7 +590,7 @@ impl<'a> TrackerToolBridge<'a> {
 
 		let review_context = self.review_context.as_ref()?;
 
-		match self.review_policy_stop_requested_for_current_phase(review_context) {
+		match self.review_policy_stop_requested(review_context) {
 			Ok(Some(stop)) => Some(DynamicToolCallResponse::failure(format!(
 				"Review policy stop `{}` is active for issue `{}` after `{}` non-clean rounds; `{tool_name}` is fenced until architecture recovery or human attention resolves the lane.",
 				stop.reason.error_class(),
@@ -1483,7 +1483,7 @@ impl<'a> TrackerToolBridge<'a> {
 		checkpoint_payload: &NormalizedReviewCheckpointPayload,
 	) -> Result<ReviewFindingPolicyUpdate, String> {
 		let previous_state = self
-			.review_policy_state_for_current_phase(review_context)
+			.review_policy_artifact_for_head(review_context, review_policy_phase, head_sha)
 			.map_err(|error| error.to_string())?;
 		let previous_finding_policy = previous_state
 			.as_ref()
@@ -1751,16 +1751,6 @@ impl<'a> TrackerToolBridge<'a> {
 				"Runtime state store is required to clear review policy state for issue `{}` after recording `{tool_name}`.",
 				self.issue.identifier
 			));
-		}
-		if let Err(error) = state::clear_run_review_policy_state(&review_context.cwd) {
-			tracing::warn!(
-				?error,
-				issue = self.issue.identifier,
-				run_id = review_context.run_id,
-				tool_name,
-				worktree_path = %review_context.cwd.display(),
-				"Legacy review policy marker clear failed; continuing after runtime state clear."
-			);
 		}
 
 		Ok(())
@@ -2779,6 +2769,9 @@ fn is_runtime_owned_manual_attention_error_class(error_class: &str) -> bool {
 		"retryable_execution_failure"
 			| "repo_gate_canonicalize_failed"
 			| "repo_gate_verify_failed"
+			| "repo_gate_baseline_failed"
+			| "repo_gate_preexisting_baseline_failed"
+			| "repo_gate_global_baseline_failed"
 			| "repo_gate_tracked_rewrites_left"
 			| "repo_gate_git_lock_contention"
 			| "stalled_run_detected"
@@ -2791,7 +2784,21 @@ fn is_runtime_owned_manual_attention_error_class(error_class: &str) -> bool {
 			| "app_server_dynamic_tool_failed"
 			| "app_server_turn_failed"
 			| "app_server_usage_limit_exceeded"
-	)
+	) || runtime_owned_baseline_error_class(error_class)
+}
+
+fn runtime_owned_baseline_error_class(error_class: &str) -> bool {
+	[
+		"baseline",
+		"preexisting",
+		"pre_existing",
+		"repo_wide",
+		"repository_wide",
+		"global_baseline",
+		"docs_okf",
+	]
+	.iter()
+	.any(|pattern| error_class.contains(pattern))
 }
 
 fn format_manual_attention_comment(

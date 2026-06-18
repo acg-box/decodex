@@ -139,7 +139,8 @@ mirror:
 | Runtime SQLite `program_issue_mappings` | Queryable local projection of each internal program node's mapped Linear issue, tracker state, dispatch intent, active/manual/attention facts, and dispatch-briefing fact. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing run lease ownership. |
 | Runtime SQLite `review_lifecycle_records` | Single authoritative post-review record for one retained PR-backed lane. It stores handoff identity, PR URL, base/head branch, validated head OID, current post-review phase, review-request metadata, landing/closeout/repair state, evidence, and next action. Handoff and orchestration tool-boundary shapes are projections of this record, not separate durable authority. Historical `review_handoffs` and `review_orchestrations` tables are dropped during bootstrap, not migrated or used as readback authority. |
-| Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating before a post-review lifecycle record exists. |
+| Runtime SQLite `review_policy_checkpoints` | Current run-attempt projection of bounded-review checkpoint state for one project, issue, run, attempt, and phase. The row supports immediate operator/status readback and remains cleared after review handoff or retained repair completion. |
+| Runtime SQLite `evidence_artifacts` | Canonical evidence-keyed artifact store for reusable runtime proofs. Review checkpoints are keyed by artifact kind, phase, current `HEAD`, review level, and review prompt version; matching artifacts are the only review-policy proof accepted by completion and mutation-fence checks, and mismatched keys fail closed. |
 | Runtime SQLite `loop_guardrail_checkpoints` | Latest convergence checkpoint for one project, issue, and guardrail reason. It stores the fingerprint, consecutive count, run id, attempt number, and structured detail used to stop non-converging loops without replaying Linear comments. |
 | Agent evidence under `~/.codex/decodex/agent-evidence/<service-id>/` | Derived local handoff view for repair agents. It may reference private evidence readback commands and compact run capsules, but it is not scheduling authority and is not a public mirror. |
 | Logs under `~/.codex/decodex/logs/` and `.decodex-run-activity` | Diagnostic process and liveness signals. They may explain what a local process did, but they are not the structured execution ledger and must not be replayed as tracker state. |
@@ -451,6 +452,11 @@ If neither signal exists, or both signals exist, `decodex` must fail the attempt
 If the label intent is recorded without the required explanatory comment, `decodex` must also fail the attempt instead of treating it as a valid `manual_attention` exit.
 If the resolved terminal path is not explicitly finalized through `issue_terminal_finalize`, the app-server wrapper must fail the turn before `decodex` records the attempt as successful.
 The explanatory public summary for `manual_attention` must describe the exact observed blocker and should include the failed command plus raw error text only when those values are public-safe, instead of speculating about unverified capability limits. It must not reuse runtime-owned retry or continued-repair `error_class` values such as app-server timeout/turn failures, stalled-run detection, or repo-gate validation failure classes; those remain Decodex-owned retry, continuation, or architecture-recovery signals until the runtime itself reaches a human-required terminal boundary.
+Pre-existing, repo-wide, or global-baseline repo-gate failures are also runtime-owned
+signals. Agents must not wrap them in manual-attention comments with alternate
+human-looking classes. The valid path is to preserve private blocker evidence and let
+Decodex retain, retry, or isolate the baseline lane using evidence-keyed runtime
+state.
 Execution-state checkpoints are durable progress overlays only. Their phase, focus, next action, blockers, evidence, or verification fields are never a substitute for the explicit terminal-finalization call.
 After successful completion writeback, Decodex must best-effort archive every locally recorded terminal Codex thread for the issue, including earlier failed retry attempts, so old attempts do not keep the issue visible in the Codex conversation list. If Codex reports that a recorded terminal thread is already absent, already archived, or has no rollout to archive, Decodex must record a terminal archive-discard outcome instead of treating the attempt as an indefinitely retryable archive failure.
 
@@ -547,14 +553,17 @@ state for the current phase and current lane head from the owned lane:
   the human-required path
 - latest checkpoint `needs_architecture_review` or `blocked`: fail the turn through the human-required failure path
 
-`decodex` persists this review-policy state in the runtime SQLite
-`review_policy_checkpoints` table keyed by project, issue, run, attempt, and phase.
-The stored row contains `phase`, `status`, `head_sha`, `nonclean_rounds`, and
-`details_json`, and it is the only authority used to require a current clean
-checkpoint before `issue_review_handoff` or `issue_review_repair_complete`.
-`nonclean_rounds` is the compatibility column for the current phase's max active
-accepted-finding repeat count; new findings with different fingerprints do not
-inherit earlier repeats.
+`decodex` persists current-run review-policy state in the runtime SQLite
+`review_policy_checkpoints` table keyed by project, issue, run, attempt, and phase,
+and persists the reusable proof in `evidence_artifacts`. The artifact key includes
+artifact kind `issue_review_checkpoint`, phase, current `HEAD`, `[codex].review`
+level, and review prompt version. `issue_review_handoff`,
+`issue_review_repair_complete`, and review-policy mutation fences require the
+matching evidence artifact to be `clean`; a missing or mismatched key fails closed.
+The stored checkpoint contains `phase`, `status`, `head_sha`, `nonclean_rounds`, and
+`details_json`.
+`nonclean_rounds` is the current phase's max active accepted-finding repeat count;
+new findings with different fingerprints do not inherit earlier repeats.
 `details_json` holds the structured independent fresh-context review payload,
 including checklist notes, accepted findings, rejected findings, repair guidance,
 and the `finding_policy` fingerprint ledger.
@@ -563,12 +572,7 @@ with the same structured payload for local operator and repair readback. Linear
 receives only coarse lifecycle projections; raw reviewer findings stay in local
 runtime evidence unless another allowlisted lifecycle summary renders a public-safe
 summary.
-Legacy `.decodex-run-activity` marker fields with the same names may be parsed to seed
-a missing runtime row during compatibility recovery, but a runtime-store checkpoint
-always wins over stale marker values. Legacy marker recovery seeds an empty
-`details_json` payload because old markers did not carry structured finding evidence.
-Recording `issue_review_handoff` or `issue_review_repair_complete` clears the runtime
-checkpoint for that run attempt and only best-effort clears any legacy marker fields.
+Recording `issue_review_handoff` or `issue_review_repair_complete` clears the current
 When `[codex].review` is `"off"` or `"basic"`, Decodex does not expose
 `issue_review_checkpoint`, does not require a clean checkpoint before review handoff
 or repair completion, and ignores stale review-policy state while classifying clean
