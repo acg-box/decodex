@@ -353,10 +353,12 @@ command surface.
 After a steer request is handled, current lane protocol activity may show a compact
 `turn/steer` entry with outcome, failure class, and response turn id. It does not
 include the operator message.
-MCP lane-control resources are readback only and mirror the local status/inspect
-projection. Operators must still use `decodex lane inspect`, `decodex lane interrupt`,
-`decodex lane steer`, or the local `/api/lane/*` endpoints for supported CLI/API
-controls.
+MCP lane-control resources remain readback only and mirror the local status/inspect
+projection. Remote-control-capable MCP clients request lane-control actions through the
+profile-gated `decodex_lane_control` tool, which uses the same inspect-first
+preconditions, run/turn authority, local audit records, and structured refusals as the
+supported `decodex lane inspect`, `decodex lane interrupt`, `decodex lane steer`, and
+local `/api/lane/*` endpoints.
 Snapshot `warnings` remain stable machine-readable tokens. When a warning needs
 operator action, snapshots may also include `warning_details` entries with the
 affected `project_id`, `repo_root`, reason, and next action; for example, a stale
