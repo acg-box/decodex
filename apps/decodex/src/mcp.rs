@@ -296,10 +296,10 @@ impl McpServer {
 					"mimeType": "text/markdown"
 				},
 				{
-					"uriTemplate": "decodex://research/{artifact}",
-					"name": "Decodex research artifacts",
-					"description": "Checked-in JSON research artifacts.",
-					"mimeType": "application/json"
+					"uriTemplate": "decodex://research/{concept}",
+					"name": "Decodex research concepts",
+					"description": "Checked-in Markdown Research Contract concepts.",
+					"mimeType": "text/markdown"
 				},
 				{
 					"uriTemplate": "decodex://decision-contracts/{contract_id}",
@@ -1217,14 +1217,14 @@ impl McpContext {
 			}
 		}
 		for entry in read_sorted_dir(&self.repo_root.join("docs/research"))? {
-			let Some(stem) = json_stem(&entry) else {
+			let Some(stem) = markdown_stem(&entry) else {
 				continue;
 			};
 
-			resources.push(McpResource::json(
+			resources.push(McpResource::markdown(
 				format!("decodex://research/{stem}"),
-				format!("docs/research/{stem}.json"),
-				"Checked-in JSON research artifact.",
+				format!("docs/research/{stem}.md"),
+				"Checked-in Markdown Research Contract concept.",
 			));
 		}
 
@@ -1285,24 +1285,18 @@ impl McpContext {
 		&self,
 		uri: &ResourceUri,
 	) -> crate::prelude::Result<ResourceContent, McpError> {
-		let [artifact] = uri.segments.as_slice() else {
+		let [concept] = uri.segments.as_slice() else {
 			return Err(McpError::resource_not_found());
 		};
 
-		if !safe_research_artifact(artifact) {
+		if !safe_resource_stem(concept) {
 			return Err(McpError::resource_not_found());
 		}
 
-		let file_name = if artifact.ends_with(".json") {
-			artifact.to_owned()
-		} else {
-			format!("{artifact}.json")
-		};
-
 		read_file_resource(
 			&uri.raw,
-			self.repo_root.join("docs/research").join(file_name),
-			"application/json",
+			self.repo_root.join("docs/research").join(format!("{concept}.md")),
+			"text/markdown",
 		)
 	}
 
@@ -4698,14 +4692,6 @@ fn markdown_stem(path: &Path) -> Option<String> {
 	path.file_stem().and_then(|stem| stem.to_str()).map(str::to_owned)
 }
 
-fn json_stem(path: &Path) -> Option<String> {
-	if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
-		return None;
-	}
-
-	path.file_stem().and_then(|stem| stem.to_str()).map(str::to_owned)
-}
-
 fn read_file_resource(
 	uri: &str,
 	path: PathBuf,
@@ -4726,14 +4712,6 @@ fn docs_lane_allowed(lane: &str) -> bool {
 fn safe_resource_stem(value: &str) -> bool {
 	!value.is_empty()
 		&& value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-}
-
-fn safe_research_artifact(value: &str) -> bool {
-	!value.is_empty()
-		&& value
-			.bytes()
-			.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-		&& !value.contains("..")
 }
 
 fn safe_runtime_identifier(value: &str) -> bool {
@@ -4832,7 +4810,7 @@ mod tests {
 	}
 
 	#[test]
-	fn resources_list_includes_docs_decisions_and_research_json() {
+	fn resources_list_includes_docs_decisions_and_research_concepts() {
 		let repo = test_repo();
 		let responses = run_stdio(
 			repo.path(),
@@ -4926,6 +4904,21 @@ mod tests {
 	}
 
 	#[test]
+	fn resources_read_returns_checked_in_research_markdown() {
+		let repo = test_repo();
+		let responses = run_stdio(
+			repo.path(),
+			r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://research/sample-report"}}"#,
+		);
+		let contents =
+			response_at(&responses, 0)["result"]["contents"].as_array().expect("contents array");
+		let text = contents[0]["text"].as_str().expect("text content");
+
+		assert_eq!(contents[0]["mimeType"], "text/markdown");
+		assert_eq!(text, "# Sample Research\n");
+	}
+
+	#[test]
 	fn observability_sanitizer_strips_private_operator_fields() {
 		let mut value = sensitive_observability_fixture();
 
@@ -4964,7 +4957,7 @@ mod tests {
 			.collect::<Vec<_>>();
 
 		assert!(uri_templates.contains(&"decodex://docs/spec/{topic}"));
-		assert!(uri_templates.contains(&"decodex://research/{artifact}"));
+		assert!(uri_templates.contains(&"decodex://research/{concept}"));
 		assert!(uri_templates.contains(&"decodex://projects/{project_id}/lane-control/{issue}"));
 		assert!(uri_templates.contains(&"decodex://projects/{project_id}/status_live"));
 		assert!(uri_templates.contains(&"decodex://projects/{project_id}/activity_tail"));
@@ -6958,7 +6951,7 @@ mod tests {
 		write_file(repo.path().join("docs/policy.md"), "# Policy\n");
 		write_file(repo.path().join("docs/spec/runtime.md"), "# Runtime\n\nSpec body.\n");
 		write_file(repo.path().join("docs/decisions/mcp-gateway.md"), "# MCP\n");
-		write_file(repo.path().join("docs/research/sample-report.json"), "{}\n");
+		write_file(repo.path().join("docs/research/sample-report.md"), "# Sample Research\n");
 
 		repo
 	}
