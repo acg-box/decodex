@@ -22,7 +22,10 @@ When an MCP client is available, use the Decodex MCP gateway as a typed facade f
 resources, prompts, and the deliberately small tool catalog. Prefer stdio for local
 clients and Streamable HTTP only for remote permitted clients behind the operator's
 chosen local listener, tunnel, or relay. MCP tools do not bypass Decision Contract,
-lane-control, review, landing, tracker, or runtime authority gates.
+lane-control, review, landing, tracker, or runtime authority gates. Route MCP planning
+through `research_compile`, `research_promote`, and `intake_goal`; dry-run modes stay
+non-mutating, and apply/promote modes require explicit authority fields and structured
+refusal when authority is missing.
 
 Research is latent until promoted. Program Intake is not queue-label polling.
 Decodex-owned landing uses `decodex land`, not raw GitHub merge paths.

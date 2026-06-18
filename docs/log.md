@@ -2,6 +2,9 @@
 
 ## 2026-06-18
 
+- Added schema-bound MCP planning tools for `research_compile`, `research_promote`,
+  and `intake_goal`; dry-run paths stay read-only while apply/promote paths require
+  explicit authority and return structured refusals when authority is missing.
 - Added remote-safe MCP observability projections for live status, activity tail, run
   events, protocol activity, child-agent activity, progress diagnostics, lane inspect,
   and PR/review state without exposing private evidence or raw steer text.

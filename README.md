@@ -172,11 +172,14 @@ lane-inspect aliases, and lane-control readback. The tool catalog is schema-boun
 deliberately small. Local stdio defaults to the `admin` capability profile; Streamable
 HTTP defaults to `observe`. Both can be set with
 `--capability-profile observe|plan|operate|admin`; `tools/list` filters by the active
-profile and `tools/call` returns structured refusals for tools above it. Observe and
-plan are read-oriented, while operate/admin lane-control entries return structured
-refusal states until later lane-control MCP work delegates through existing authority
-guards. Stdio stdout is reserved for MCP JSON-RPC messages; diagnostics and logs stay
-off stdout.
+profile and `tools/call` returns structured refusals for tools above it. Observe is
+read-only. Plan exposes `research_compile`, `research_promote`, and `intake_goal`:
+dry-run modes validate or preview without tracker or Program Intake mutation, while
+apply/promote modes require explicit authority fields and return structured refusals
+when authority or project context is missing. Operate/admin lane-control entries
+return structured refusal states until later lane-control MCP work delegates through
+existing authority guards. Stdio stdout is reserved for MCP JSON-RPC messages;
+diagnostics and logs stay off stdout.
 
 ### Project contracts
 
