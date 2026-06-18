@@ -1801,8 +1801,8 @@ mod tests {
 
 	use clap::Parser;
 
-	use crate::mcp;
-	use crate::{cli::{
+	use crate::{
+		cli::{
 			AccountCommand, AccountSubcommand, AccountUseCommand, AppCommand, AttemptCommand, Cli,
 			Command, CommitCommand, DiagnoseCommand, DocsCommand, DocsRouteCommand, DocsSubcommand,
 			EvidenceCommand, IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand,
@@ -1815,7 +1815,10 @@ mod tests {
 			ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
 			ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand,
 			ServeCommand, StatusCommand,
-		}, mcp::{McpCapabilityProfile, McpTransport}};
+		},
+		mcp,
+		mcp::{McpCapabilityProfile, McpTransport},
+	};
 
 	#[test]
 	fn parses_app_command() {
