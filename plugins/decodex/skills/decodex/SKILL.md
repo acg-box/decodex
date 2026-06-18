@@ -7,11 +7,15 @@ description: Use when routing Decodex work.
 
 Route Decodex work to the narrowest surface. Read `../../references/routing.md` when
 research, promotion, planning, labels, runtime, commit, or landing boundaries matter.
+Read `../../references/context-gates.md` when Decodex repository work needs OKF/LLM
+Wiki context intake, docs completion recovery, or repo-memory gate handling.
 
 - `research`: bounded investigation before execution.
 - `okf`, `okf-query`, `okf-maintain`, `repo-memory-writer`,
   `repo-memory-evaluator`, `repo-memory-curator`: portable OKF/LLM Wiki and
   repo-memory work.
+- `context-gates`: Decodex-owned OKF route intake, Context anchors, docs completion
+  gates, and late docs-skill recovery.
 - `research-promote`: explicit acceptance of latent research.
 - `planning`: accepted work needs issues or Program readiness.
 - `manual-cli`: a human drives local commands.
