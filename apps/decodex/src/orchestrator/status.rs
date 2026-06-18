@@ -4366,31 +4366,26 @@ fn operator_queued_issue_attention_summary(
 	worktree_has_tracked_changes: bool,
 	attention_error_class: Option<&str>,
 ) -> String {
-	if reason == QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT {
-		if worktree_has_tracked_changes {
-			return String::from(
-				"Linear active ownership is still present with retained worktree changes; inspect the patch and reconcile the lane before dispatch.",
-			);
-		}
-		if attention_error_class == Some(ATTENTION_ERROR_EVIDENCE_MISSING) {
-			return if marker.is_some() {
-				String::from(
-					"Linear active ownership is still present but private execution evidence is missing; inspect the retained marker and reconcile before dispatch.",
-				)
-			} else {
-				String::from(
-					"Linear active ownership is still present but the retained marker or private execution evidence is missing; reconcile before dispatch.",
-				)
-			};
-		}
-		if marker.is_some() {
-			return String::from(
-				"Linear active ownership is still present alongside queue intake; inspect the retained marker before dispatch.",
-			);
-		}
+	if let Some(summary) = operator_active_label_attention_summary(
+		reason,
+		marker,
+		worktree_has_tracked_changes,
+		attention_error_class,
+	) {
+		return summary;
+	}
 
-		return String::from(
-			"Linear active ownership is still present without a matching local run lease; reconcile before dispatch.",
+	if attempt_status == Some("failed")
+		&& marker
+			.and_then(RunActivityMarker::last_event_type)
+			.is_some_and(|event_type| {
+				matches!(event_type, "thread/archive" | "thread/archive/discarded")
+			})
+	{
+		let operation = operator_recovery_operation_label(marker);
+
+		return format!(
+			"Child implementation attempt failed during {operation}; retained status is preserved separately from parent journal or closeout handling."
 		);
 	}
 	if worktree_has_tracked_changes {
@@ -4446,7 +4441,7 @@ fn operator_queued_issue_attention_summary(
 				),
 			"failed" =>
 				return format!(
-					"Previous attempt failed during {operation}; operator recovery required."
+					"Child implementation attempt failed during {operation}; retained status is preserved separately from parent journal or closeout handling."
 				),
 			"terminal_guarded" =>
 				return format!(
@@ -4480,6 +4475,42 @@ fn operator_queued_issue_attention_summary(
 			format!("Stopped during `{operation}`; operator recovery required."),
 		None => String::from("Needs operator recovery; no local run marker was found."),
 	}
+}
+
+fn operator_active_label_attention_summary(
+	reason: &str,
+	marker: Option<&RunActivityMarker>,
+	worktree_has_tracked_changes: bool,
+	attention_error_class: Option<&str>,
+) -> Option<String> {
+	if reason != QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT {
+		return None;
+	}
+	if worktree_has_tracked_changes {
+		return Some(String::from(
+			"Linear active ownership is still present with retained worktree changes; inspect the patch and reconcile the lane before dispatch.",
+		));
+	}
+	if attention_error_class == Some(ATTENTION_ERROR_EVIDENCE_MISSING) {
+		return Some(if marker.is_some() {
+			String::from(
+				"Linear active ownership is still present but private execution evidence is missing; inspect the retained marker and reconcile before dispatch.",
+			)
+		} else {
+			String::from(
+				"Linear active ownership is still present but the retained marker or private execution evidence is missing; reconcile before dispatch.",
+			)
+		});
+	}
+	if marker.is_some() {
+		return Some(String::from(
+			"Linear active ownership is still present alongside queue intake; inspect the retained marker before dispatch.",
+		));
+	}
+
+	Some(String::from(
+		"Linear active ownership is still present without a matching local run lease; reconcile before dispatch.",
+	))
 }
 
 fn operator_recovery_operation_label(marker: Option<&RunActivityMarker>) -> String {
