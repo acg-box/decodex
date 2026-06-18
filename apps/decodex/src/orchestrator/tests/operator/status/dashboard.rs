@@ -1903,7 +1903,7 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("dashboardRunTitleIsOperationFallback(activityRun)"));
 	assert!(response.contains("merged.title = snapshotRun.title;"));
 	assert!(
-		response.contains("const currentLanesComplete =\n\t\t\t\t\tactivityPayload.currentLanesComplete !== false")
+		response.contains("const currentLanesComplete = activityPayload.currentLanesComplete !== false;")
 	);
 	assert!(
 		response.contains("const mergedCurrentLanes = mergeDashboardCurrentLanes(\n\t\t\t\t\tsnapshot,\n\t\t\t\t\tcurrentLaneRows,\n\t\t\t\t\tcurrentLanesComplete,\n\t\t\t\t);")
