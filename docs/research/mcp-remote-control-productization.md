@@ -7,8 +7,8 @@ authority: non_authoritative
 owner: research
 tags: [research, mcp, remote-control, security, operator]
 source_refs: [https://modelcontextprotocol.io/specification/2025-11-25/basic/transports, https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization, https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices, https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/, https://www.nsa.gov/Portals/75/documents/Cybersecurity/CSI_MCP_SECURITY.pdf?ver=bmgiSbNQLP6Z_GiWtRt6bg%3D%3D]
-code_refs: [apps/decodex/src/mcp.rs, apps/decodex/tests/mcp_stdio.rs, README.md, docs/spec/runtime.md, docs/reference/operator-control-plane.md, docs/decisions/mcp-capability-gateway-and-skill-slimming.md]
-related: [index.md, ../decisions/mcp-capability-gateway-and-skill-slimming.md, ../reference/operator-control-plane.md, ../spec/runtime.md, ../runbook/index.md, ../evidence/index.md]
+code_refs: [apps/decodex/src/mcp.rs, apps/decodex/tests/mcp_stdio.rs, README.md, docs/spec/runtime.md, docs/reference/operator-control-plane.md, docs/runbook/mcp-remote-control.md, docs/evidence/mcp-remote-control-productization.md, docs/decisions/mcp-capability-gateway-and-skill-slimming.md]
+related: [index.md, ../decisions/mcp-capability-gateway-and-skill-slimming.md, ../reference/operator-control-plane.md, ../spec/runtime.md, ../runbook/mcp-remote-control.md, ../evidence/mcp-remote-control-productization.md]
 promotes_to: [docs/decisions, docs/spec, docs/runbook, docs/reference, docs/evidence]
 last_verified: 2026-06-18
 ---
@@ -63,6 +63,8 @@ Out of scope:
 | E7 | repo_source | `apps/decodex/src/mcp.rs` | Current tools are deliberately small: observe, plan, research compile/promote, intake goal, lane control, and project control. `scan` refuses because standalone MCP serve cannot enqueue the operator loop request. |
 | E8 | repo_source | `apps/decodex/src/mcp.rs`, `apps/decodex/tests/mcp_stdio.rs`, `docs/reference/test-suite.md` | Existing tests cover resources, templates, prompts, tool schemas, profile refusals, Streamable HTTP CORS/session/SSE behavior, lane steer/interrupt preconditions, project pause, scan refusal, and stdio stdout cleanliness. |
 | E9 | inference | E1, E2, E3, E5, E6 | The current loopback Streamable HTTP design is correct for local/tunneled development, but non-loopback remote operation needs an explicit auth/relay design and should avoid entrenching session semantics that the RC may remove. |
+| E10 | repo_source | `apps/decodex/src/cli.rs`, `apps/decodex/tests/mcp_stdio.rs`, `docs/evidence/mcp-remote-control-productization.md` | Current Decodex exposes `--allow-origin` and capability profiles, but no Decodex-owned HTTP protected-resource auth flag; process-level Streamable HTTP child-process smoke coverage is still a gap. |
+| E11 | inference | E1, E2, E3, E4, E10 | The best next implementation should not treat CORS or session ids as auth. It should either rely on an operator-managed relay/auth boundary or implement MCP protected-resource discovery and scoped authorization before direct non-loopback or elevated HTTP profiles are considered complete. |
 
 ## Options
 
@@ -93,18 +95,22 @@ Selected option: Productize remote MCP in stages while keeping the tool catalog 
 
 Recommended sequence:
 
-1. Add a remote MCP runbook.
-   Cover stdio versus Streamable HTTP, loopback default, tunnel/relay assumptions,
-   `--allow-origin`, capability profile selection, expected refusal behavior, and
-   examples for observe, plan, operate inspect, steer, interrupt, project status, and
-   future-dispatch pause/resume.
+1. Promote remote MCP docs first.
+   Keep README, runtime spec, operator reference, decision record, runbook, evidence,
+   research, and plugin routing aligned. The promoted docs must state that
+   `--allow-origin` is CORS trust, not authentication; that `Mcp-Session-Id` is
+   protocol state; and that direct remote/elevated Streamable HTTP requires an
+   operator authorization boundary until Decodex owns protected-resource auth.
 
-2. Add a remote-auth decision/spec before any non-loopback operate/admin guidance.
-   The best default is still loopback plus operator-chosen tunnel/relay. For direct
-   remote serve, require an explicit protected-resource design: bearer token
-   validation, OAuth Protected Resource Metadata or a documented operator-managed
-   relay token boundary, no token passthrough, scoped capabilities, short-lived or
-   revocable credentials, and audit-friendly authority fields.
+2. Add a remote-auth decision/spec before any direct non-loopback or elevated
+   Streamable HTTP guidance.
+   The best default is still loopback plus operator-chosen tunnel, relay, network ACL,
+   or reverse proxy. For direct remote serve, require an explicit protected-resource
+   design: OAuth Protected Resource Metadata or a documented operator-managed relay
+   auth boundary, no token passthrough, scoped capabilities, revocable access, and
+   audit-friendly authority fields. A simple static bearer check can be an MVP guard
+   only if the docs label it as incomplete relative to full MCP authorization
+   discovery.
 
 3. Add process-level Streamable HTTP smoke coverage.
    Mirror the existing stdio smoke with a real `decodex mcp serve --transport
@@ -131,6 +137,16 @@ Recommended sequence:
    Instead, isolate session handling, protocol version negotiation, and capability
    discovery so the future stateless request model can be added without changing
    Decodex authority rules or tool schemas.
+
+Gap status after 2026-06-18 docs promotion:
+
+- Remote runbook, runtime/reference docs, decision rationale, evidence audit, and
+  plugin routing are promoted as documentation authority.
+- Built-in protected-resource auth and process-level Streamable HTTP smoke remain
+  unimplemented gaps.
+- `scan`, `manual_attention`, and `retained_resume` remain intentionally refused in
+  standalone MCP unless a later design proves the same canonical runtime/tracker
+  guarantees.
 
 ## Challenge
 
@@ -167,7 +183,8 @@ Terminal status: `decision_ready`.
 Decision: The next MCP work should be a staged productization plan:
 
 - document remote use first
-- require an auth/relay contract before non-loopback operate/admin recommendations
+- require an auth/relay/protected-resource contract before non-loopback or elevated
+  Streamable HTTP recommendations
 - add process-level Streamable HTTP smoke coverage
 - improve public-safe observation recipes
 - keep high-risk shortcuts refused until they can route through canonical operator,

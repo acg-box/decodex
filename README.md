@@ -163,6 +163,11 @@ for operator-chosen local, tunnel, or relay access. Streamable HTTP validates br
 `Mcp-Session-Id` response headers on `initialize`, requires a known session for later
 requests, returns ordinary JSON-RPC JSON responses, and switches to
 `text/event-stream` framing when the client sends `Accept: text/event-stream`.
+The session header is protocol state, not authorization. `--allow-origin` is CORS
+trust, not authentication. Use Streamable HTTP remote control over loopback or behind
+an operator-owned tunnel, relay, network ACL, or MCP authorization boundary; direct
+non-loopback exposure and elevated `operate`/`admin` profiles are unsupported without
+that external boundary until Decodex implements a protected-resource auth surface.
 The gateway advertises resources, resource templates, prompts, tools, logging
 compatibility, and progress notifications. Resources expose checked-in documentation,
 checked-in Markdown research concepts, runtime Decision Contract readback, local status
