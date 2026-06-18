@@ -6,7 +6,7 @@ status: active
 authority: rationale
 owner: docs
 tags: [decision]
-last_verified: 2026-06-18
+last_verified: 2026-06-19
 ---
 # Decodex Plugin Source
 
@@ -14,13 +14,13 @@ Status: accepted
 Date: 2026-05-09
 Question: Where should reusable agent-facing Decodex usage instructions live?
 Decision: Maintain the canonical Decodex plugin in this repository under
-`plugins/decodex/`. Generic Codex or repo-work plugins may keep host-level
-composition or portable repository rules, but they should not own Decodex-specific
-CLI, docs, OKF/LLM Wiki context intake, automation, tracker, label, review, landing,
-closeout, or project-contract details.
+`plugins/decodex/`. Decodex also owns reusable repo-work guidance, including command
+authority, task-runner structure, language and dependency policy, review repair,
+verification, debugging, semantic drift, research, and dynamic support-agent
+boundaries.
 Consequences: Decodex runtime and usage guidance can now change in the same repository
-lane. Generic repo-work plugins should stay generic; host bootstrap instructions may
-route into Decodex without copying Decodex procedures.
+lane. Host bootstrap instructions may route into Decodex without copying Decodex
+procedures or carrying a separate workflow plugin dependency.
 
 ## Context
 
@@ -33,9 +33,11 @@ Decodex has two supported use modes:
   cleanup
 
 Earlier Decodex instructions lived in generic repo-work skills while the CLI and
-lifecycle were still settling. The Decodex-specific authority now lives in this
-repository because generic repo-work plugins do not own Decodex runtime code,
-registered project contracts, or operator docs.
+lifecycle were still settling. That split created coupling between host config,
+repo-work skill text, and Decodex workflow details. The Decodex-specific authority and
+the reusable repo-work method now live together in this repository because Decodex owns
+the runtime code, registered project contracts, operator docs, and installable
+agent-facing guidance.
 
 ## Decision
 
@@ -45,6 +47,9 @@ instructions.
 The plugin should own reusable agent-facing procedures and mode routing:
 
 - `decodex` for choosing manual CLI mode versus automation mode
+- `repo-work` for checked-in command authority, task-runner structure, configuration
+  contracts, language and dependency policy, review repair, verification, and dynamic
+  support-agent boundaries
 - `planning` for Decodex-native issue briefing, issue splitting, dispatch readiness,
   dependencies, and concurrency
 - `manual-cli` for operator CLI use
@@ -63,8 +68,8 @@ copying their full contracts.
 
 - Decodex-specific skill updates can land with matching runtime, spec, and runbook
   updates.
-- Generic repo-work skills can shrink to repo discipline and avoid Decodex-specific
-  names, commands, labels, or lifecycle gates.
+- Host bootstrap files can shrink to short Decodex skill routing and avoid carrying
+  repo-work, debugging, drift, research, review, or verification rules.
 - Decodex issue briefing belongs to the Decodex plugin instead of a separate delivery
   workflow. Generic progress, handoff, review, landing, and closeout state remains
   runtime-owned rather than skill-owned.

@@ -22,9 +22,9 @@ Repo-native agent orchestration, retained lanes, and local operator control.
   snapshot/control traffic at `/dashboard/control`, Decodex App snapshot/account
   APIs under `/api/`, and `GET /livez` for liveness.
 - Static Astro site for the public Decodex product surface and app download entry.
-- Installable Decodex plugin with reusable agent-facing skills for docs drift,
-  debugging, research challenge, issue briefing, planning, manual CLI, automation,
-  commit, land, and labels.
+- Installable Decodex plugin with reusable agent-facing skills for repo-work rules,
+  docs drift, debugging, research challenge, review repair, verification, issue
+  briefing, planning, manual CLI, automation, commit, land, and labels.
 - Repository documentation split by question type into spec, runbook, reference, and
   decision lanes.
 
@@ -55,7 +55,8 @@ runtime.
   Codex accounts through the bundled Rust app helper.
 - `site/` owns the Astro static product site and app download entry.
 - `plugins/decodex/` owns the installable Decodex plugin and reusable agent-facing
-  skills, including semantic drift, debugging, and research challenge methods.
+  skills, including repo-work rules, semantic drift, debugging, research challenge,
+  review repair, and verification methods.
 - `docs/` remains the authoritative documentation surface.
 
 Runtime authority stays in `apps/decodex/src/`, the registered project contracts under
@@ -129,8 +130,9 @@ dispatches ready DAG nodes with `program` dispatch mode.
 accepts minimal natural-language intake or a structured research/design JSON packet,
 then persists a contract-first `decodex.decision_contract/1` payload in local runtime
 SQLite. The Decodex research method frames the question first, records an evidence
-ledger, compares realistic options, forms a challenge-ready judgment, resolves skeptic
-objections, and then ends as `decision_ready`, `not_decision_ready`, `blocked`, or
+ledger, compares realistic options, forms a challenge-ready judgment, resolves
+challenge objections, and then ends as `decision_ready`, `not_decision_ready`,
+`blocked`, or
 `needs_human_decision`. New Decodex research may use `docs/research/` only for
 Markdown OKF research concepts; checked-in research JSON event logs are no longer a
 valid docs shape. A compiled contract is latent and cannot queue work, mutate tracker

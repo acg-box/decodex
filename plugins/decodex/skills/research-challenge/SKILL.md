@@ -1,6 +1,6 @@
 ---
 name: research-challenge
-description: Use when research needs skeptic challenge.
+description: Use when research needs adversarial challenge of a judgment, recommendation, option framing, evidence sufficiency, or decision-ready claim.
 ---
 
 # Decodex Research Challenge
@@ -16,5 +16,5 @@ Make the recommendation survive adversarial review. Read
   blockers.
 - Do not finalize `decision_ready` while material objections remain unresolved.
 - Do not let challenge create execution authority.
-- Keep skeptic output machine-mergeable: objection id, target claim, evidence or
+- Keep challenge output machine-mergeable: objection id, target claim, evidence or
   missing evidence, severity, and the smallest next check.

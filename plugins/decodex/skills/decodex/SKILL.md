@@ -6,9 +6,16 @@ description: Use when routing Decodex work.
 # Decodex
 
 Route Decodex work to the narrowest surface. Read `../../references/routing.md` when
-research, promotion, planning, context intake, labels, runtime, commit, or landing
-boundaries matter.
+repo-work, research, promotion, planning, context intake, labels, runtime, commit, or
+landing boundaries matter.
 
+- `repo-work`: checked-in repository authority, task-runner structure, configuration
+  contracts, architecture/cutover defaults, language and dependency policy, review
+  repair, validation evidence, and dynamic support-agent boundaries.
+- `rust`, `python`, `dep-roll`, `dep-style`: language and dependency policy beneath
+  repo-work.
+- `review-feedback`, `verification`: review repair and evidence before done/fixed/
+  ready claims.
 - `research`: bounded investigation before execution.
 - `debugging`: root-cause investigation for bugs, failures, runtime regressions, and
   repeated failed fixes.

@@ -46,7 +46,7 @@ policy.
 | Concern | Allowed installable shape | Decodex-specific details that must move out |
 | --- | --- | --- |
 | Acting posture | Prefer a short local probe before asking when the probe is cheap and low-risk. | Decodex retry budgets, Linear writeback sequence, or retained-lane state names. |
-| Implementation ownership | Keep implementation on the main thread by default; use child agents for bounded read-only support. | Runtime child-role TOML, denylist payloads, or child-run execution overrides. |
+| Implementation ownership | Keep implementation on the main thread by default; dynamically spawn support agents only for bounded read-only support. | Static support-agent profile TOML, denylist payloads, or child-run execution overrides. |
 | Task decomposition | Keep decomposition in-agent unless the user asks for a separate planning artifact. | Durable execution-state checkpoints or Linear ledger mechanics. |
 | Skills and capabilities | Use available repository or plugin capability routing when it exists. | A fixed Decodex workflow expressed through local skill names such as retired review, repair, landing, or closeout helpers. |
 | Working context | Use an isolated task context when the repository or toolchain declares one. | Hardcoded `.worktrees/<ISSUE>` layouts or Decodex lane cleanup rules. |
