@@ -266,10 +266,10 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 	assert_contains(&skill_surface, "Promotion is a separate authority step");
 	assert_contains(&skill_surface, "after execution authority exists");
 	assert_contains(&skill_surface, "non-research targets");
-	assert_contains_normalized(
-		&skill_surface,
-		"current facts and contracts stand without reading research",
-	);
+	assert_contains(&skill_surface, "OKF owner");
+	assert_contains(&skill_surface, "docs/evidence");
+	assert_contains(&skill_surface, "LLM Wiki indexes");
+	assert_contains_normalized(&skill_surface, "current truth stands without reading research");
 	assert_contains(&skill_surface, "current truth independently");
 	assert_contains_normalized(&skill_surface, "does not queue work, mutate Linear");
 	assert_contains(&skill_surface, "ordinary non-Program issue intake");
@@ -332,10 +332,14 @@ fn packaged_research_skills_encode_decodex_methodology() {
 		&research_surface,
 		"research-only evidence versus durable knowledge candidates",
 	);
+	assert_contains(&research_surface, "OKF disposition");
+	assert_contains(&research_surface, "promote_and_supersede");
+	assert_contains(&research_surface, "promote_and_retire");
+	assert_contains(&research_surface, "reject_or_deprecate");
 	assert_contains(&research_surface, "target repo");
-	assert_contains(&research_surface, "Durable knowledge candidates are accepted facts");
-	assert_contains(&research_surface, "facts, policies, specs, runbooks");
-	assert_contains(&research_surface, "Research is provenance, not source of truth");
+	assert_contains(&research_surface, "docs/decisions");
+	assert_contains(&research_surface, "docs/evidence");
+	assert_contains_normalized(&research_surface, "out-of-band history");
 	assert_contains(&research_surface, "Use `no_promotion` only when");
 	assert_contains(&research_surface, "Program Intake");
 }
@@ -356,6 +360,8 @@ fn packaged_docs_skills_encode_okf_wiki_and_drift_boundaries() {
 	assert_contains(&docs_surface, "docs impact");
 	assert_contains(&docs_surface, "research_required");
 	assert_contains(&docs_surface, "one authoritative concept per claim");
+	assert_contains_normalized(&docs_surface, "superseded research routes as provenance");
+	assert_contains(&docs_surface, "`docs/evidence`");
 	assert_contains(&docs_surface, "pass`, `fail`, or `needs-human");
 	assert_contains(&docs_surface, "Do not create a parallel `wiki/` or `okf/` root");
 	assert_not_contains(&docs_surface, "Okf");
