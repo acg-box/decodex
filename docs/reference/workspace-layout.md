@@ -39,7 +39,7 @@ For build, test, run, setup, validation, and task-runner command entrypoints, re
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
 | `docs/reference/` | Current repository and artifact surface maps. |
 | `docs/decisions/` | Durable rationale for repository-level design choices. |
-| `docs/research/` | JSON research artifacts and supporting evidence. It does not own runtime authority, policy, current-state reference, or durable rationale until promoted into the matching primary docs lane. |
+| `docs/research/` | Markdown OKF research concepts and supporting evidence. It does not own runtime authority, policy, current-state reference, or durable rationale until promoted into the matching primary docs lane. |
 | `dev/` | Local development helpers, such as the operator dashboard mock server. |
 | `assets/` | Shared static assets that are not owned by the Astro app's generated output. Decodex App icons live under `assets/app-icon/{source,composer,generated}/`; menu bar template assets live under `assets/tray-icon/{source,generated}/`; `scripts/assets/render_decodex_app_icons.swift` regenerates the icon set. |
 | `Makefile.toml` | Repo-native task names and automation entrypoints. |
@@ -140,9 +140,9 @@ tracker routing, and policy.
 - Reusable agent-facing Decodex usage instructions live under `plugins/decodex/`.
 - `docs/runbook/`, `docs/reference/`, and `docs/decisions/` must not override runtime or
   workflow authority.
-- `docs/research/` is a JSON research artifact lane. Current Decodex runtime research
-  authority still flows through runtime-local Decision Contracts until accepted and
-  promoted.
+- `docs/research/` is a Markdown OKF research concept lane. Current Decodex runtime
+  research authority still flows through runtime-local Decision Contracts until
+  accepted and promoted.
 
 ## Local-only and generated directories
 
