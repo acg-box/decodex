@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Build Test Run Entrypoints
-description: Helps a new agent understand repo setup, build, test, run, validation, automation resources, and Decodex command entrypoints.
+description: Answers how to validate this repo, run checks, and find setup, build, test, run, automation, and Decodex command entrypoints.
 status: active
 authority: current_state
 owner: docs
@@ -19,9 +19,9 @@ Purpose: Map the current repository commands for setup, building, testing, runni
 and validating Decodex.
 
 Read this when: You need the smallest current entrypoint for repo setup, local
-validation, task-runner automation resources, or Decodex CLI usage. This is the first
-reference for a new agent that needs to understand how repo setup and command
-entrypoints fit together.
+validation, running checks, task-runner automation resources, or Decodex CLI usage.
+This is the first reference for a new agent that needs to understand how repo setup
+and command entrypoints fit together.
 
 Not this document: The full test inventory, repository directory ownership, release
 procedure, or runtime behavior contract.
@@ -74,7 +74,7 @@ Use these commands when a change does not need the full aggregate gate:
 ```sh
 decodex docs check
 decodex docs graph
-decodex okf route docs "how do I validate this repo"
+decodex docs route "how do I validate this repo"
 cargo check --all-features --all-targets --workspace
 cargo nextest run --workspace --all-targets --all-features
 cargo test -p decodex <filter>
@@ -128,7 +128,7 @@ automation entrypoints questions. Use [`./test-suite.md`](./test-suite.md) for t
 inventory and placement standards, and [`./workspace-layout.md`](./workspace-layout.md)
 for directory ownership boundaries.
 
-When `decodex okf route docs "<intent>"` sends validation or setup questions to a
+When `decodex docs route "<intent>"` sends validation or setup questions to a
 generic map instead of this concept, treat that as a retrieval-quality issue and add a
 more specific routing phrase or link rather than duplicating this command list in
 another document.

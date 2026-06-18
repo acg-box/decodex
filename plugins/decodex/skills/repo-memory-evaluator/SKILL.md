@@ -24,7 +24,8 @@ Workflow:
 2. Build a benchmark from representative task questions, not keyword searches.
 3. For each question, write the expected owner concept or acceptable owner set before
    looking at route output.
-4. Run `decodex okf route <root> "<question>" --limit 5` for every question.
+4. Run `decodex okf route <root> "<question>"` for every question. Use `--limit <n>`
+   only when the benchmark intentionally changes the candidate count.
 5. Score top-1/top-3. Classify misses as missing concept, weak metadata, noisy owner,
    missing link/index, duplicate owner, stale claim, or acceptable leaf.
 6. Report `At a Glance`, `Why It Matters`, `Fix First`, benchmark table, graph health,

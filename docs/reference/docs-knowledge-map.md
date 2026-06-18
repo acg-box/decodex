@@ -9,7 +9,7 @@ tags: [docs, okf, llm-wiki, repo-memory, evaluation, route-benchmark, owner-cove
 source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md, https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing, https://llmstxt.org/, https://diataxis.fr/, https://developers.openai.com/codex/guides/agents-md, https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions]
 code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/cli.rs, docs/index.md, docs/policy.md, docs/spec/okf-knowledge-layer.md, plugins/decodex/references/routing.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-evaluator/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md]
 related: [../policy.md, ../spec/okf-knowledge-layer.md, ../evidence/docs-self-iteration.md, ./build-test-run.md, ./workspace-layout.md]
-drift_watch: [decodex docs check, decodex okf graph docs, decodex okf route docs, docs index, docs lane index, okf orphan concepts]
+drift_watch: [decodex docs check, decodex docs graph, decodex docs route, docs index, docs lane index, okf orphan concepts]
 last_verified: 2026-06-18
 ---
 
@@ -66,7 +66,7 @@ The LLM Wiki layer is the retrieval and maintenance behavior on top of OKF:
 
 - `docs/index.md` and lane indexes answer "where should I look first?"
 - Markdown links and `related` frontmatter form a navigable concept graph.
-- `decodex okf route docs "<intent>"` gives a quick routing sanity check before a
+- `decodex docs route "<intent>"` gives a quick routing sanity check before a
   broad read.
 - `plugins/decodex/references/routing.md` makes that route probe an explicit
   Decodex-owned agent workflow gate instead of a rule copied into generic repo-work
@@ -127,8 +127,8 @@ The combined value appears when both layers are used together:
 - Drift audit says whether the concept is still true against code and command output.
 
 The remaining maintenance risk is graph decay: a concept can pass shape checks while
-still being hard to discover. Periodic `decodex okf graph docs` and targeted
-`decodex okf route docs "<intent>"` probes catch that class of issue.
+still being hard to discover. Periodic `decodex docs graph` and targeted
+`decodex docs route "<intent>"` probes catch that class of issue.
 
 ## Cross-Repository Use
 
