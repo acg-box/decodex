@@ -8,41 +8,22 @@ Decodex is the default research surface for bounded Decodex technical investigat
 Decodex research produces a latent `decodex.decision_contract/1` candidate. It does
 not queue work, mutate Linear, set Codex goals, implement, or dispatch Program nodes.
 
-The phase order is:
+Phase order: `research-probe`, `research-evidence`, `research-options`,
+`research-judgment`, `research-challenge`, `research-decision`; after explicit
+acceptance, `research-promote`.
 
-1. `research-probe`
-2. `research-evidence`
-3. `research-options`
-4. `research-judgment`
-5. `research-challenge`
-6. `research-decision`
-7. `research-promote` after explicit acceptance
-
-The compact loop is: probe, evidence, options, judgment, challenge, decision.
+Compact loop: probe, evidence, options, judgment, challenge, decision.
 
 ## Probe
 
-Record:
-
-- decision question
-- in-scope and out-of-scope surfaces
-- success criteria and acceptance threshold
-- constraints and non-goals
-- stop rule or budget
-- primary hypothesis
-- rival hypotheses
-- falsifiers
-- first evidence plan
-- expected promotion target or `no_promotion`
-
-Do not gather broad evidence until the question and falsifiers can guide collection.
+Record decision question, scope, criteria, constraints, non-goals, stop rule, primary
+hypothesis, rival hypotheses, falsifiers, first evidence plan, and promotion target or
+`no_promotion`. Do not gather broad evidence until falsifiers can guide collection.
 
 ## Authority Boundary
 
 Research remains latent until explicit acceptance such as "arrange this", "push this
 forward", "推进", or "做". Promotion is a separate authority step.
 
-Checked-in research belongs in `docs/research/` only as a Markdown OKF research
-concept. It is supporting knowledge, not implementation authority.
-runtime state may keep structured Decision Contracts for machine use; checked-in
-docs remain Markdown OKF concepts.
+Checked-in research belongs in `docs/research/` only as Markdown OKF research.
+Runtime state may keep structured Decision Contracts; checked-in docs stay Markdown.
