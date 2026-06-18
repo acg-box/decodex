@@ -40,7 +40,7 @@ node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plug
 
 | Target | Score | Grade | Risk | Checks | Fix First |
 | --- | ---: | --- | --- | --- | --- |
-| `plugins/decodex` | 91 | B | medium | 0 fail, 2 warn, 2 info | Reduce invoke and deferred token budget in a future slimming pass. |
+| `plugins/decodex` | 95 | A | medium | 0 fail, 1 warn, 2 info | Reduce deferred token budget in a future slimming pass. |
 
 ## Invocation Policy
 
@@ -51,10 +51,6 @@ invocation while keeping plugin active-context cost bounded.
 Implicit skills:
 
 - `decodex`
-- `docs`
-- `planning`
-- `repo-memory-curator`
-- `research`
 
 Explicit-only skills:
 
@@ -63,6 +59,7 @@ Explicit-only skills:
 - `debugging`
 - `dep-roll`
 - `dep-style`
+- `docs`
 - `docs-drift`
 - `docs-okf`
 - `docs-wiki`
@@ -72,12 +69,15 @@ Explicit-only skills:
 - `okf`
 - `okf-maintain`
 - `okf-query`
+- `planning`
 - `python`
+- `repo-memory-curator`
 - `repo-memory-evaluator`
 - `repo-memory-writer`
 - `repo-work`
 - `review-feedback`
 - `rust`
+- `research`
 - `research-challenge`
 - `research-decision`
 - `research-evidence`
@@ -90,11 +90,11 @@ Explicit-only skills:
 ## Limits
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
-2026-06-19 full-plugin rerun reported score 91/100, grade B, medium risk, zero
-failing checks, two warnings, and two informational notes. The warnings are
-`invoke_cost_tokens-budget-high` and `deferred_cost_tokens-budget-high`, which are
-known static token-budget cleanup items for a future slimming pass after the repo-work
-migration, not routing, safety, or progressive-disclosure failures. The manifest
-default prompt count remains within the three-prompt Codex limit. `repo-work` is
-explicit-only because host `AGENTS.md` names it directly instead of relying on passive
-implicit triggering.
+2026-06-19 full-plugin rerun reported score 95/100, grade A, medium risk, zero
+failing checks, one warning, and two informational notes. The remaining warning is
+`deferred_cost_tokens-budget-high`, a known static token-budget cleanup item after the
+repo-work migration, not a routing, safety, or progressive-disclosure failure. The
+manifest default prompt count remains within the three-prompt Codex limit. Only the
+top-level `decodex` router remains implicit; repo-work, docs, planning, repo-memory,
+research, and specialist skills are explicit-only because the top-level router and
+host `AGENTS.md` name the narrower owner skills directly.
