@@ -6,8 +6,8 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/mcp.rs]
-drift_watch: [decodex serve, decodex status, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/mcp.rs]
+drift_watch: [decodex serve, decodex status, decodex recover ghost-lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
 last_verified: 2026-06-18
 ---
 # Operator Control Plane
@@ -545,6 +545,26 @@ Worktree visibility follows the owning dashboard section:
   identify the lifecycle record, and `decodex recover review-handoff diagnose <ISSUE>`
   reports the stored handoff head, phase head, PR head, and mismatched field before
   any explicit rebind refresh.
+- `ownership_state = ghost_lane` with
+  `policy_state = runtime_recovery_required` in live observer status or a fresh
+  daemon-cached status means a local current lane still has a run lease, but tracker
+  readback proves the issue entity is missing and local inspection found no retained
+  worktree, control-channel row or file, private evidence, live
+  process/thread/protocol signal, PR lineage, or review lifecycle row. The supported
+  next action is `decodex recover ghost-lane diagnose <ISSUE> --json`, followed by
+  `decodex recover ghost-lane cleanup <ISSUE> --dry-run` and then the non-dry-run
+  cleanup only if the diagnostic remains safe. This path writes local private audit
+  evidence, marks the attempt `terminal_guarded`, and clears the local lease; it does
+  not mutate Linear when the issue is missing. The no-cache local-runtime status
+  fallback does not prove tracker absence by itself; use `--live` or the recovery
+  diagnostic when that proof matters.
+- `policy_state = runtime_recovery_blocked` on the same tracker-backed status surfaces
+  means the issue is missing from tracker readback but at least one fail-closed
+  blocker exists, such as retained worktree, control-channel row or file, live
+  execution evidence, private evidence, PR lineage, or review lifecycle state.
+  Preserve attention and inspect the named blocker. Do not use review-handoff
+  recovery, review-checkpoint writeback, label cleanup, or raw SQLite edits for this
+  state.
 - `pull_request_state_read_failed` in `Review & Landing` is a degraded PR readback
   warning when the retained review lifecycle record still exists. `decodex status`
   must keep the issue identifier, branch, lifecycle PR URL, and lifecycle PR head SHA
