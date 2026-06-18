@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs]
-drift_watch: [decodex recover ghost-lane, runtime_recovery_required, runtime_recovery_blocked, run_control_channels]
+drift_watch: [decodex recover ghost-lane, mcp_test_fixture_ghost_lane, runtime_recovery_required, runtime_recovery_blocked, run_control_channels]
 last_verified: 2026-06-18
 ---
 # Lane-Control Specification
@@ -62,7 +62,7 @@ agent-facing skills must guide responsible use.
 | Hard interrupt fallback | Explicit fallback only | `decodex lane interrupt <ISSUE> --run-id <RUN_ID> --force` and `POST /api/lane/interrupt` with `"force": true` classify process signaling as `hard_interrupt_fallback` | Use only when soft interrupt is unavailable, timed out, or impossible because the process, app-server boundary, or run lease cannot be reached. A forced interrupt may signal the recorded child process after `run_lease_missing` only when inspection still identifies the same issue, run id, attempt, channel, and live process. Preserve retained worktree evidence and runtime classification. |
 | Steer active lane | Supported CLI/API control; bottom-layer method stays broad | `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>`, canonical `POST /api/lane/steer`, legacy alias `POST /api/lane-steer`, local run-control steer request/response files, app-server `turn/steer`, private `control_action` audit events, and protocol activity `turn/steer` summaries | Pass operator-supplied steer text through CLI/API to the current active turn. Require `expectedTurnId`; stale turn ids fail closed. Do not narrow the protocol to a fixed set of task-content categories. Apply policy, audit, privacy, and lifecycle guardrails above the protocol. |
 | Retained resume/retry | Supported through runtime lifecycle | `decodex run <ISSUE>`, retry scheduling, retained worktree recovery, and `thread/resume` for same-thread app-server continuation | Resume only when retained worktree, issue, branch, PR, and runtime evidence still prove the same lane. Treat ambiguous lineage as manual attention. |
-| Missing-issue ghost-lane recovery | Supported explicit recovery | `decodex status --live` and fresh daemon-cached `decodex status` project `ownership_state = ghost_lane`, `policy_state = runtime_recovery_required`, and `lane_control_next_action = run_ghost_lane_recovery`; `decodex recover ghost-lane diagnose [ISSUE]` and `decodex recover ghost-lane cleanup <ISSUE>` perform the read-only and mutating recovery paths | Only terminalize and clear a local run lease when tracker issue lookup proves the issue is missing and local inspection proves no worktree, control-channel row or file, live process/thread/protocol evidence, private evidence payload, PR lineage, or review lifecycle record. Any live, retained, tracker, PR, control-channel, or ambiguous evidence must fail closed and preserve attention. |
+| Missing-issue ghost-lane recovery | Supported explicit recovery | `decodex status --live` and fresh daemon-cached `decodex status` project `ownership_state = ghost_lane`, `policy_state = runtime_recovery_required`, and `lane_control_next_action = run_ghost_lane_recovery`; `decodex recover ghost-lane diagnose [ISSUE]` and `decodex recover ghost-lane cleanup <ISSUE>` perform the read-only and mutating recovery paths | Only terminalize and clear a local run lease when tracker issue lookup proves the issue is missing and local inspection proves no worktree, live process, PR lineage, or review lifecycle record. Ordinary control-channel, thread/protocol, or private evidence still fails closed. The only exception is the narrow `mcp_test_fixture_ghost_lane` diagnosis for the historical PubFi MCP fixture: exact `PUB-012` / `run-12` attempt 1 with optional `thread-12` / `turn-12`, a missing control-channel file, and private evidence made only of `source = mcp-test` lane-control request events plus `control_action` audit rows whose `source` is `mcp-test` or fixture-matching `cli`. Any mixed private evidence, retained worktree, tracker issue, control-channel file, child-agent activity, live process, PR lineage, or review lifecycle record must fail closed and preserve attention. |
 | Manual attention | Supported terminal control path | `issue_label_add` intent for `decodex:needs-attention`, `issue_comment(kind = "manual_attention")`, and `issue_terminal_finalize(path = "manual_attention")` | Stop automation when policy requires a human decision. Explain the blocker through structured public fields and keep private evidence local. |
 | Task replacement | Deferred lifecycle work | No supported active-lane replacement command | Do not use steer or raw injection to replace the task silently. Treat replacement as explicit lifecycle work: pause/stop if needed, update or requeue the issue, or create a new issue/lane. |
 | Raw thread item injection | Unsupported as an operator feature | No Decodex operator path for `thread/inject_items` | Do not expose raw `thread/inject_items` to operators in this rollout. Use `turn/steer` for operator steer. |
@@ -230,12 +230,23 @@ signals disagree.
 
 A missing-issue ghost lane is a local runtime lease that still appears in current
 live or fresh daemon-cached status but no longer has a tracker issue entity,
-retained worktree, control-channel row or file, private evidence payload, live
-process/thread/protocol evidence, or PR/review lineage. Tracker-backed status must
-not point this class at review-checkpoint recording or review-handoff rebind,
+retained worktree, ordinary control-channel evidence, ordinary private evidence,
+live process/thread/protocol evidence, or PR/review lineage. Tracker-backed status
+must not point this class at review-checkpoint recording or review-handoff rebind,
 because those paths require a tracker issue or retained PR lane. The no-cache
 local-runtime status fallback is intentionally not tracker-backed and does not prove
 issue absence by itself.
+
+The `mcp_test_fixture_ghost_lane` recovery classification is narrower than ordinary
+ghost-lane recovery. It exists only to clear the historical PubFi MCP fixture lane
+whose private evidence is entirely lane-control audit records: request rows with
+`source = mcp-test` and `control_action` rows with either `source = mcp-test` or a
+fixture-matching `source = cli` request for `pubfi` / `PUB-012` / `run-12` attempt 1.
+That classification may tolerate the fixture's stale control-channel row,
+thread/turn references, protocol event count, and protocol activity summary when the
+control-channel file, tracker issue, worktree, PR lineage, review lifecycle, child
+activity, and live process are absent. Any other private event or runtime progress
+evidence returns the lane to `runtime_recovery_blocked`.
 
 `decodex recover ghost-lane diagnose [ISSUE]` is read-only. It reports public-safe
 condition names such as `tracker_issue_missing`, `worktree_missing`,
@@ -246,10 +257,10 @@ attempt `terminal_guarded`, removes only an already-missing worktree mapping, an
 clears the local lease. It must not mutate Linear when the tracker issue is missing.
 
 If inspection finds a tracker issue, retained worktree, live execution signal,
-control-channel row or file, private evidence, review lifecycle row, or PR lineage,
-tracker-backed status uses `policy_state = runtime_recovery_blocked` and the recovery
-command refuses to clean the lane. Operators then inspect the blocker instead of
-deleting runtime rows.
+ordinary control-channel row or file, ordinary private evidence, review lifecycle row,
+or PR lineage, tracker-backed status uses `policy_state = runtime_recovery_blocked`
+and the recovery command refuses to clean the lane. Operators then inspect the blocker
+instead of deleting runtime rows.
 
 ## Manual Attention
 
