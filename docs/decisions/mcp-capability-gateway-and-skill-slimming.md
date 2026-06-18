@@ -157,10 +157,14 @@ Tools:
   generated issue rows without tracker or Program Intake mutation; `apply` mutates
   only after accepted contract authority and explicit MCP authority exist.
 - `decodex_lane_control(action, issue, runId, expectedTurnId, authority)`: advertises
-  the operate-profile lane-control surface and returns structured refusal states until
-  later lane-control MCP work delegates through existing policy.
-- `decodex_admin(action)`: advertises the admin-profile policy surface without
-  exposing raw tracker, hosting-service, process, or runtime mutation.
+  the operate-profile lane-control surface. `inspect` returns public-safe
+  preconditions, `steer` and `interrupt` delegate through existing lane-control guards
+  only with current inspected run/turn authority, and unsupported shortcut paths
+  return structured refusals.
+- `decodex_project_control(action, projectId, authority)`: advertises the
+  admin-profile project-control surface. `status` reads project enablement,
+  `pause`/`resume` affect future dispatch only with explicit authority, and `scan`
+  refuses to the operator control loop instead of enqueueing from standalone MCP.
 
 Tool rules:
 
@@ -219,9 +223,9 @@ The promoted implementation now has the stdio gateway exposed as
 `decodex mcp serve --transport stdio` and the remote-capable Streamable HTTP gateway
 exposed as `decodex mcp serve --transport streamable-http`. It advertises resources,
 resource templates, prompts, and a schema-bound tool catalog while keeping mutating
-operate/admin behavior behind structured refusal states. XY-996 adds the
-remote-safe observability templates and projections on top of that transport; later
-promoted work should keep the schema-bound `research_compile`, `research_promote`,
-and `intake_goal` planning tools separate from live lane-control tools,
-skill-slimming eval, and docs/resource validation lanes so mutating MCP tools do not
-bypass Decision Contract or lane-control authority.
+operate/admin behavior behind inspect-first authority checks and structured refusal
+states. XY-996 adds the remote-safe observability templates and projections on top of
+that transport; promoted work keeps the schema-bound `research_compile`,
+`research_promote`, and `intake_goal` planning tools separate from live
+lane-control/project-control tools, skill-slimming eval, and docs/resource validation
+lanes so mutating MCP tools do not bypass Decision Contract or lane-control authority.
