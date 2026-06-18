@@ -1482,13 +1482,39 @@ impl StateStore {
 		project_id: &str,
 		base_recent_limit: usize,
 	) -> Result<(Vec<ProjectRunStatus>, Vec<ProjectRunStatus>)> {
+		self.list_project_runs_with_mode(
+			project_id,
+			base_recent_limit,
+			ProjectRunListingMode::AllowMarkerIdentityPersistence,
+		)
+	}
+
+	/// List active and recent project runs without persisting marker-derived identities.
+	pub(crate) fn list_project_runs_read_only(
+		&self,
+		project_id: &str,
+		base_recent_limit: usize,
+	) -> Result<(Vec<ProjectRunStatus>, Vec<ProjectRunStatus>)> {
+		self.list_project_runs_with_mode(project_id, base_recent_limit, ProjectRunListingMode::ReadOnly)
+	}
+
+	fn list_project_runs_with_mode(
+		&self,
+		project_id: &str,
+		base_recent_limit: usize,
+		mode: ProjectRunListingMode,
+	) -> Result<(Vec<ProjectRunStatus>, Vec<ProjectRunStatus>)> {
 		let mut state = self.lock_without_refresh()?;
 
 		self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
-		self.refresh_run_attempt_identities_from_worktree_markers_locked(
-			&mut state,
-			project_id,
-		)?;
+
+		if matches!(mode, ProjectRunListingMode::AllowMarkerIdentityPersistence) {
+			self.refresh_run_attempt_identities_from_worktree_markers_locked(
+				&mut state,
+				project_id,
+			)?;
+		}
+
 		self.refresh_project_loop_evidence_state_locked(&mut state, project_id)?;
 
 		let lease_run_ids = project_lease_run_ids(&state, project_id, None);
@@ -3654,6 +3680,12 @@ impl From<WorkflowConcurrencyLimit> for DispatchSlotLimit {
 	fn from(value: WorkflowConcurrencyLimit) -> Self {
 		Self::from(value.dispatch_slot_limit())
 	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProjectRunListingMode {
+	AllowMarkerIdentityPersistence,
+	ReadOnly,
 }
 
 fn project_run_recovery_status_rank(status: &str) -> u8 {
