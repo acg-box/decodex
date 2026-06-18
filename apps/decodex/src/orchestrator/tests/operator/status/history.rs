@@ -139,6 +139,7 @@ fn seed_grouped_history_lane_lifecycle_metrics(state_store: &StateStore, issue_i
 			run_id: "xy-323-attempt-2-1777361550",
 			attempt_number: 2,
 			phase: "handoff",
+			review_level: "standard",
 			status: "clean",
 			head_sha: "2222222222222222222222222222222222222222",
 			nonclean_rounds: 0,

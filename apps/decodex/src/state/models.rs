@@ -1281,10 +1281,6 @@ pub(crate) struct RunActivityMarker {
 	retry_budget_attempt_count: Option<i64>,
 	retry_kind: Option<String>,
 	retry_ready_at_unix_epoch: Option<i64>,
-	review_policy_phase: Option<String>,
-	review_policy_status: Option<String>,
-	review_policy_head_sha: Option<String>,
-	review_policy_nonclean_rounds: Option<i64>,
 }
 impl RunActivityMarker {
 	pub(crate) fn run_id(&self) -> &str {
@@ -1397,22 +1393,6 @@ impl RunActivityMarker {
 
 	pub(crate) fn retry_budget_attempt_count(&self) -> Option<i64> {
 		self.retry_budget_attempt_count
-	}
-
-	pub(crate) fn review_policy_phase(&self) -> Option<&str> {
-		self.review_policy_phase.as_deref()
-	}
-
-	pub(crate) fn review_policy_status(&self) -> Option<&str> {
-		self.review_policy_status.as_deref()
-	}
-
-	pub(crate) fn review_policy_head_sha(&self) -> Option<&str> {
-		self.review_policy_head_sha.as_deref()
-	}
-
-	pub(crate) fn review_policy_nonclean_rounds(&self) -> Option<i64> {
-		self.review_policy_nonclean_rounds
 	}
 }
 
