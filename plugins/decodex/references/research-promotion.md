@@ -19,16 +19,27 @@ Choose the narrowest durable lane:
 | `docs/runbook/` | operator sequence |
 | `docs/reference/` | current implementation or repository structure |
 | `docs/decisions/` | durable rationale, rejected alternatives, tradeoff |
+| `docs/evidence/` | reusable proof, public-safe evidence, or drift audit |
 | runtime code/tests | behavior not representable by docs or skills |
 
 `docs/research/` is not a promotion target. It is the latent research lane.
 
-Promotion splits by authority: research-only evidence and provenance stay in
-research; accepted durable knowledge (facts, policies, specs, runbooks, repository
-structure, workflow instructions, implementation contracts) moves to durable owners.
-Use `no_promotion` only when no durable fact, contract, instruction, code, or test
-expectation changes. Durable owners state current truth independently and may link
-back for rationale.
+Promotion is an OKF knowledge operation:
+
+- move durable rationale to `docs/decisions/`
+- move current truth to `docs/spec/`, `docs/reference/`, `docs/runbook/`, skills,
+  code, or tests
+- move reusable proof to `docs/evidence/`
+- leave only unresolved inquiry or superseded provenance in `docs/research/`
+
+End the research concept as `continue`, `promote_and_supersede`,
+`promote_and_retire`, or `reject_or_deprecate`. Use `no_promotion` only when no
+durable rationale, fact, proof, instruction, code, or test expectation changes.
+Durable owners state current truth independently and may link back for rationale.
+
+Update LLM Wiki indexes, `related`, `promotes_to`, descriptions, and status fields so
+research does not compete with authoritative owners. Do not rely on out-of-band
+history for knowledge retention.
 
 When accepted research changes agent-facing workflow instructions, update matching
 `plugins/decodex/skills/` files beside the promoted docs concept. Skills are
