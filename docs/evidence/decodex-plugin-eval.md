@@ -44,7 +44,7 @@ node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plug
 
 Static budget snapshot:
 
-- Active invocation budget: 1013 tokens.
+- Active invocation budget: 1037 tokens.
 - Deferred skill budget: 10844 tokens.
 - Explicit-only invocation budget: 10317 tokens.
 - Plugin skill count: 31 skills, with one implicit router and 30 explicit-only skills.
@@ -95,16 +95,17 @@ Explicit-only skills:
 ## Limits
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
-2026-06-19 full-plugin rerun after skill slimming reported score 95/100, grade A,
-medium risk, zero failing checks, one warning, and two informational notes. Active
-invocation cost dropped to 1013 tokens; deferred skill cost dropped to 10844 tokens.
-The remaining warning is `deferred_cost_tokens-budget-high`, a known static
-token-budget cleanup item after the repo-work migration, not a routing, safety, or
-progressive-disclosure failure. The manifest default prompt count remains within the
-three-prompt Codex limit. Only the top-level `decodex` router remains implicit;
-repo-work, docs, planning, repo-memory, research, and specialist skills are
-explicit-only because the top-level router and host `AGENTS.md` name the narrower
-owner skills directly.
+2026-06-19 full-plugin rerun after the XY-1009 packaged-surface repair reported
+score 95/100, grade A, medium risk, zero failing checks, one warning, and two
+informational notes. Active invocation cost was 1037 tokens; deferred skill cost
+remained 10844 tokens. The remaining warning is
+`deferred_cost_tokens-budget-high`, a known static token-budget cleanup item after
+the repo-work migration, not a routing, safety, or progressive-disclosure failure.
+The manifest default prompt count is 3, which keeps repo-work, docs/OKF, research,
+and debugging starters inside the first-three prompt surface used by Codex. Only the
+top-level `decodex` router remains implicit; repo-work, docs, planning, repo-memory,
+research, and specialist skills are explicit-only because the top-level router and
+host `AGENTS.md` name the narrower owner skills directly.
 
 Directly evaluating the installed cache path
 `~/.codex/plugins/cache/hack-ink/decodex/0.2.0` reports an additional

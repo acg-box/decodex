@@ -1,5 +1,15 @@
 # Documentation Log
 
+## 2026-06-19
+
+- Added the terminal app-server archive barrier contract: late non-terminal protocol
+  events after `thread/archive` or `thread/archive/discarded` are recorded as
+  discarded post-archive diagnostics in a non-conflicting runtime journal namespace,
+  while operator status preserves failed child-run recovery context separately from
+  parent journal or closeout handling.
+- Refreshed Decodex plugin-eval evidence after the packaged plugin manifest prompt
+  surface was consolidated back to the first-three prompt limit.
+
 ## 2026-06-18
 
 - Documented the narrow `mcp_test_fixture_ghost_lane` recovery classification for the

@@ -9,7 +9,7 @@ tags: [spec]
 code_refs: [apps/decodex/src/agent/app_server.rs, apps/decodex/src/agent/app_server/protocol.rs, apps/decodex/src/agent/app_server/tests.rs, apps/decodex/src/agent/tracker_tool_bridge.rs]
 related: [./tracker-tools.md, ./lane-control.md, ./runtime.md]
 drift_watch: ["codex app-server generate-json-schema --experimental", "decodex probe stdio://", ThreadStartParams.dynamicTools, dynamicTools, "type:function", "type:namespace", ClientRequest, ServerRequest, ClientNotification, ServerNotification, "account/rateLimitResetCredit/consume", "externalAgentConfig/import/readHistories", "thread/realtime/appendSpeech", "externalAgentConfig/import/progress"]
-last_verified: 2026-06-18
+last_verified: 2026-06-19
 ---
 # App-Server Specification
 
@@ -178,6 +178,12 @@ To validate an upstream app-server protocol change:
 Additional notifications may be recorded opportunistically for diagnostics.
 `thread/goal/updated` is recorded as local protocol activity and may summarize the
 active phase and status for operator readback. It is not a public tracker signal.
+After `thread/archive` or `thread/archive/discarded` is recorded for a run, Decodex
+treats later non-terminal app-server events for that run as late diagnostics rather
+than authoritative progress. Those events are discarded into the runtime journal's
+post-archive namespace so they cannot collide with the archive sequence, cannot
+replace the archive as the terminal protocol marker, and cannot make parent
+journal/closeout recovery consume the child retry budget.
 
 The follow-up alignment phase should also record tool-related requests and notifications needed for issue-scoped tracker writes.
 
