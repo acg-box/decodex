@@ -10,8 +10,7 @@ use std::{
 use regex::Regex;
 use reqwest::Url;
 use serde::Serialize;
-use serde_json::Value as JsonValue;
-use serde_yaml::{Mapping, Value};
+use serde_yaml::{self, Mapping};
 use time::{Date, Month};
 
 use crate::prelude::Result;
@@ -904,7 +903,7 @@ fn check_research_json_artifacts(files: &[DocsFile], report: &mut DocsCheckRepor
 				continue;
 			},
 		};
-		let parsed = match serde_json::from_str::<JsonValue>(&raw) {
+		let parsed = match serde_json::from_str::<serde_json::Value>(&raw) {
 			Ok(parsed) => parsed,
 			Err(error) => {
 				report.issues.push(issue(
@@ -922,10 +921,10 @@ fn check_research_json_artifacts(files: &[DocsFile], report: &mut DocsCheckRepor
 
 fn validate_research_json_schema(
 	file: &DocsFile,
-	parsed: &JsonValue,
+	parsed: &serde_json::Value,
 	report: &mut DocsCheckReport,
 ) {
-	let schema = parsed.get("schema").and_then(JsonValue::as_str);
+	let schema = parsed.get("schema").and_then(serde_json::Value::as_str);
 
 	if file.relative_path == Path::new("research/index.json") {
 		if schema != Some(RESEARCH_INDEX_SCHEMA) {
@@ -934,7 +933,7 @@ fn validate_research_json_schema(
 				format!("research index JSON must use schema `{RESEARCH_INDEX_SCHEMA}`"),
 			));
 		}
-		if !parsed.get("reports").is_some_and(JsonValue::is_array) {
+		if !parsed.get("reports").is_some_and(serde_json::Value::is_array) {
 			report.issues.push(issue(
 				Some(file.relative_path.clone()),
 				String::from("research index JSON must include a `reports` array"),
@@ -943,7 +942,6 @@ fn validate_research_json_schema(
 
 		return;
 	}
-
 	if schema != Some(RESEARCH_REPORT_SCHEMA) {
 		report.issues.push(issue(
 			Some(file.relative_path.clone()),
@@ -1120,7 +1118,9 @@ fn is_concept_markdown(path: &Path) -> bool {
 fn concept_type(file: &DocsFile) -> Option<String> {
 	let content = file.content.as_deref()?;
 	let (frontmatter, _) = split_yaml_frontmatter(content)?;
-	let Value::Mapping(fields) = serde_yaml::from_str::<Value>(frontmatter).ok()? else {
+	let serde_yaml::Value::Mapping(fields) =
+		serde_yaml::from_str::<serde_yaml::Value>(frontmatter).ok()?
+	else {
 		return None;
 	};
 
@@ -1145,8 +1145,8 @@ fn parse_frontmatter_mapping(
 	path: &Path,
 	report: &mut DocsCheckReport,
 ) -> Option<Mapping> {
-	match serde_yaml::from_str::<Value>(frontmatter) {
-		Ok(Value::Mapping(mapping)) => Some(mapping),
+	match serde_yaml::from_str::<serde_yaml::Value>(frontmatter) {
+		Ok(serde_yaml::Value::Mapping(mapping)) => Some(mapping),
 		Ok(_) => {
 			report.issues.push(issue(
 				Some(path.to_path_buf()),
@@ -1185,8 +1185,8 @@ fn parse_okf_frontmatter_mapping(
 	path: &Path,
 	report: &mut OkfCheckReport,
 ) -> Option<Mapping> {
-	match serde_yaml::from_str::<Value>(frontmatter) {
-		Ok(Value::Mapping(mapping)) => Some(mapping),
+	match serde_yaml::from_str::<serde_yaml::Value>(frontmatter) {
+		Ok(serde_yaml::Value::Mapping(mapping)) => Some(mapping),
 		Ok(_) => {
 			report.issues.push(issue(
 				Some(path.to_path_buf()),
@@ -1213,8 +1213,8 @@ fn read_required_okf_frontmatter_string(
 	report: &mut OkfCheckReport,
 ) {
 	match frontmatter_value(fields, key) {
-		Some(Value::String(value)) if !value.trim().is_empty() => {},
-		Some(Value::String(_)) | None => report.issues.push(issue(
+		Some(serde_yaml::Value::String(value)) if !value.trim().is_empty() => {},
+		Some(serde_yaml::Value::String(_)) | None => report.issues.push(issue(
 			Some(path.to_path_buf()),
 			format!("frontmatter key `{key}` is required and must be non-empty"),
 		)),
@@ -1233,15 +1233,15 @@ fn okf_frontmatter_string_list(
 ) -> Option<Vec<String>> {
 	match frontmatter_value(fields, key) {
 		None => None,
-		Some(Value::Sequence(items)) => {
+		Some(serde_yaml::Value::Sequence(items)) => {
 			let mut values = Vec::new();
 
 			for item in items {
 				match item {
-					Value::String(value) if !value.trim().is_empty() => {
+					serde_yaml::Value::String(value) if !value.trim().is_empty() => {
 						values.push(value.trim().to_owned());
 					},
-					Value::String(_) => report.issues.push(issue(
+					serde_yaml::Value::String(_) => report.issues.push(issue(
 						Some(path.to_path_buf()),
 						format!("frontmatter list `{key}` must not contain empty strings"),
 					)),
@@ -1265,13 +1265,13 @@ fn okf_frontmatter_string_list(
 	}
 }
 
-fn frontmatter_value<'a>(fields: &'a Mapping, key: &str) -> Option<&'a Value> {
-	fields.get(Value::String(key.to_owned()))
+fn frontmatter_value<'a>(fields: &'a Mapping, key: &str) -> Option<&'a serde_yaml::Value> {
+	fields.get(serde_yaml::Value::String(key.to_owned()))
 }
 
 fn frontmatter_string<'a>(fields: &'a Mapping, key: &str) -> Option<&'a str> {
 	match frontmatter_value(fields, key) {
-		Some(Value::String(value)) => Some(value.trim()),
+		Some(serde_yaml::Value::String(value)) => Some(value.trim()),
 		_ => None,
 	}
 }
@@ -1284,15 +1284,15 @@ fn frontmatter_string_list(
 ) -> Option<Vec<String>> {
 	match frontmatter_value(fields, key) {
 		None => None,
-		Some(Value::Sequence(items)) => {
+		Some(serde_yaml::Value::Sequence(items)) => {
 			let mut values = Vec::new();
 
 			for item in items {
 				match item {
-					Value::String(value) if !value.trim().is_empty() => {
+					serde_yaml::Value::String(value) if !value.trim().is_empty() => {
 						values.push(value.trim().to_owned());
 					},
-					Value::String(_) => report.issues.push(issue(
+					serde_yaml::Value::String(_) => report.issues.push(issue(
 						Some(path.to_path_buf()),
 						format!("frontmatter list `{key}` must not contain empty strings"),
 					)),
@@ -1323,8 +1323,8 @@ fn read_required_frontmatter_string(
 	report: &mut DocsCheckReport,
 ) {
 	match frontmatter_value(fields, key) {
-		Some(Value::String(value)) if !value.trim().is_empty() => {},
-		Some(Value::String(_)) | None => report.issues.push(issue(
+		Some(serde_yaml::Value::String(value)) if !value.trim().is_empty() => {},
+		Some(serde_yaml::Value::String(_)) | None => report.issues.push(issue(
 			Some(path.to_path_buf()),
 			format!("frontmatter key `{key}` is required and must be non-empty"),
 		)),
@@ -1765,7 +1765,9 @@ fn markdown_heading_texts(body: &str) -> BTreeSet<String> {
 fn concept_summary(file: &DocsFile) -> Option<OkfConceptSummary> {
 	let content = file.content.as_deref()?;
 	let (frontmatter, _) = split_yaml_frontmatter(content)?;
-	let Value::Mapping(fields) = serde_yaml::from_str::<Value>(frontmatter).ok()? else {
+	let serde_yaml::Value::Mapping(fields) =
+		serde_yaml::from_str::<serde_yaml::Value>(frontmatter).ok()?
+	else {
 		return None;
 	};
 	let concept_type = frontmatter_string(&fields, "type")?.to_owned();
@@ -1812,10 +1814,11 @@ fn path_to_string(path: &Path) -> String {
 
 fn frontmatter_string_list_lossy(fields: &Mapping, key: &str) -> Vec<String> {
 	match frontmatter_value(fields, key) {
-		Some(Value::Sequence(items)) => items
+		Some(serde_yaml::Value::Sequence(items)) => items
 			.iter()
 			.filter_map(|item| match item {
-				Value::String(value) if !value.trim().is_empty() => Some(value.trim().to_owned()),
+				serde_yaml::Value::String(value) if !value.trim().is_empty() =>
+					Some(value.trim().to_owned()),
 				_ => None,
 			})
 			.collect(),
@@ -1917,7 +1920,9 @@ fn collect_related_graph_edges(
 	let Some((frontmatter, _)) = split_yaml_frontmatter(content) else {
 		return;
 	};
-	let Ok(Value::Mapping(fields)) = serde_yaml::from_str::<Value>(frontmatter) else {
+	let Ok(serde_yaml::Value::Mapping(fields)) =
+		serde_yaml::from_str::<serde_yaml::Value>(frontmatter)
+	else {
 		return;
 	};
 

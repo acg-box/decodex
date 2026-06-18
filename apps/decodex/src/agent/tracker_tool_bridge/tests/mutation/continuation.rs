@@ -427,16 +427,17 @@ fn completion_disposition_rejects_conflicting_review_handoff_and_manual_attentio
 		url: String::from("https://github.com/hack-ink/decodex/pull/48"),
 	})]);
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&sample_review_context_in(temp_dir.path()));
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let review_response = DynamicToolHandler::handle_call(
 		&bridge,

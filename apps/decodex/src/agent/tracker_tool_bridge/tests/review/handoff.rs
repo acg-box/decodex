@@ -1,6 +1,5 @@
 use records::REVIEW_HANDOFF_RECORD_TYPE;
 use records::ReviewHandoffRecord;
-use state::RUN_ACTIVITY_MARKER_FILE;
 
 #[test]
 fn turn_completion_requires_explicit_terminal_finalize_after_review_handoff() {
@@ -20,17 +19,17 @@ fn turn_completion_requires_explicit_terminal_finalize_after_review_handoff() {
 	})]);
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
 	let review_context = sample_review_context_in(temp_dir.path());
-
-	write_clean_review_checkpoint(&review_context);
-
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
+
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
@@ -47,6 +46,88 @@ fn turn_completion_requires_explicit_terminal_finalize_after_review_handoff() {
 
 	assert!(error.to_string().contains(ISSUE_TERMINAL_FINALIZE_TOOL_NAME));
 	assert!(error.to_string().contains("review_handoff"));
+}
+
+#[test]
+fn review_handoff_reuses_same_head_clean_checkpoint_artifact_across_attempts() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let first_pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let first_local_repo = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let first_context = sample_review_context_in(temp_dir.path());
+	let first_bridge = TrackerToolBridge::with_review_handoff_inspectors(
+		&tracker,
+		&issue,
+		&workflow,
+		first_context,
+		Some(&state_store),
+		&first_pull_request_inspector,
+		&first_local_repo,
+	);
+	let checkpoint_response = DynamicToolHandler::handle_call(
+		&first_bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer read the issue contract, current diff, and HEAD"]
+		}),
+	);
+
+	assert!(checkpoint_response.success);
+
+	let mut second_context = sample_review_context_in(temp_dir.path());
+
+	second_context.run_id = String::from("pub-618-attempt-3-456");
+	second_context.attempt_number = 3;
+
+	let pull_request_inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
+		head_ref_name: String::from("x/decodex-pub-618"),
+		head_ref_oid: sample_local_repo().head_oid,
+		head_repository_name: String::from("decodex"),
+		head_repository_owner: String::from("hack-ink"),
+		is_draft: false,
+		state: String::from("OPEN"),
+		base_ref_name: String::from("main"),
+		url: String::from("https://github.com/hack-ink/decodex/pull/54"),
+	})]);
+	let second_local_repo = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let second_bridge = TrackerToolBridge::with_review_handoff_inspectors(
+		&tracker,
+		&issue,
+		&workflow,
+		second_context.clone(),
+		Some(&state_store),
+		&pull_request_inspector,
+		&second_local_repo,
+	);
+	let handoff_response = DynamicToolHandler::handle_call(
+		&second_bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/54",
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(handoff_response.success);
+	assert!(
+		state_store
+			.review_policy_checkpoint(
+				&second_context.service_id,
+				&issue.id,
+				&second_context.run_id,
+				second_context.attempt_number,
+				"handoff",
+			)
+			.expect("second attempt checkpoint projection should read")
+			.is_none()
+	);
 }
 
 #[test]
@@ -67,48 +148,48 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 	})]);
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
 	let review_context = sample_review_context_in(temp_dir.path());
-	let run_id = review_context.run_id.clone();
-	let attempt_number = review_context.attempt_number;
-
-	write_clean_review_checkpoint(&review_context);
-
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
-		let review_response = DynamicToolHandler::handle_call(
-			&bridge,
-			ISSUE_REVIEW_HANDOFF_TOOL_NAME,
-			serde_json::json!({
-				"pr_url": "https://github.com/hack-ink/decodex/pull/53",
-				"summary": "Ready for review."
-			}),
-		);
-		let checkpoint_response = DynamicToolHandler::handle_call(
-			&bridge,
-			ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
-			serde_json::json!({
-				"phase": "ready_for_review",
-				"docs_impact": "none",
-				"focus": "Finalize review handoff.",
-				"next_action": "Record terminal finalize.",
-				"blockers": [],
-				"evidence": ["Review handoff recorded."]
-			}),
-		);
-		let finalize_response = DynamicToolHandler::handle_call(
-			&bridge,
-			ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
-			serde_json::json!({ "path": "review_handoff" }),
-		);
+	let run_id = review_context.run_id.clone();
+	let attempt_number = review_context.attempt_number;
 
-		assert!(review_response.success);
-		assert!(checkpoint_response.success);
-		assert!(finalize_response.success);
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
+	let review_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/53",
+			"summary": "Ready for review."
+		}),
+	);
+	let checkpoint_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"phase": "ready_for_review",
+			"docs_impact": "none",
+			"focus": "Finalize review handoff.",
+			"next_action": "Record terminal finalize.",
+			"blockers": [],
+			"evidence": ["Review handoff recorded."]
+		}),
+	);
+	let finalize_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		serde_json::json!({ "path": "review_handoff" }),
+	);
+
+	assert!(review_response.success);
+	assert!(checkpoint_response.success);
+	assert!(finalize_response.success);
 	assert_eq!(
 		bridge
 			.finalized_completion_disposition()
@@ -152,17 +233,17 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_success_paths() {
 	})]);
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
 	let review_context = sample_review_context_in(temp_dir.path());
-
-	write_clean_review_checkpoint(&review_context);
-
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
+
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
 	let review_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
@@ -213,17 +294,17 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_current_head() {
 		Ok(updated_local_repo),
 	]);
 	let review_context = sample_review_context_in(temp_dir.path());
-
-	write_clean_review_checkpoint(&review_context);
-
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
+
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
 	let checkpoint_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
@@ -278,17 +359,17 @@ fn terminal_finalize_rejects_mismatched_path() {
 	})]);
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
 	let review_context = sample_review_context_in(temp_dir.path());
-
-	write_clean_review_checkpoint(&review_context);
-
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
+
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
 	let review_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
@@ -404,17 +485,17 @@ fn rejects_review_handoff_apply_when_lane_head_changes_after_recording() {
 		Ok(updated_local_repo),
 	]);
 	let review_context = sample_review_context_in(temp_dir.path());
-
-	write_clean_review_checkpoint(&review_context);
-
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
+
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
@@ -450,9 +531,6 @@ fn review_handoff_apply_writes_coarse_comment_without_replaying_existing_records
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
 	let review_context = sample_review_context_in(temp_dir.path());
-
-	write_clean_review_checkpoint(&review_context);
-
 	let existing_record = records::append_structured_comment_record(
 		"Review handoff already persisted.",
 		&ReviewHandoffRecord {
@@ -482,10 +560,13 @@ fn review_handoff_apply_writes_coarse_comment_without_replaying_existing_records
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
+
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
@@ -527,8 +608,6 @@ fn review_handoff_apply_does_not_duplicate_existing_ledger_event() {
 	let review_context = sample_review_context_in(temp_dir.path());
 
 	for _ in 0..2 {
-		write_clean_review_checkpoint(&review_context);
-
 		let bridge = TrackerToolBridge::with_review_handoff_for_test(
 			&tracker,
 			&issue,
@@ -537,6 +616,9 @@ fn review_handoff_apply_does_not_duplicate_existing_ledger_event() {
 			&inspector,
 			&local_repo_inspector,
 		);
+
+		write_clean_review_checkpoint(&bridge, &issue, &review_context);
+
 		let response = DynamicToolHandler::handle_call(
 			&bridge,
 			ISSUE_REVIEW_HANDOFF_TOOL_NAME,
@@ -590,16 +672,17 @@ fn keeps_review_handoff_marker_when_state_transition_fails_after_tracker_record_
 	]);
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&sample_review_context_in(temp_dir.path()));
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -659,16 +742,17 @@ fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
 	]);
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&sample_review_context_in(temp_dir.path()));
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -735,7 +819,7 @@ fn review_handoff_writeback_replaces_private_summary_with_public_fallback() {
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&review_context);
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -806,7 +890,7 @@ fn review_handoff_validation_failure_reports_recoverable_writeback_with_pr_url()
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&review_context);
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -878,16 +962,17 @@ fn review_handoff_persists_runtime_state_without_local_marker_cache() {
 	]);
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		review_context.clone(),
 		&inspector,
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&sample_review_context_in(temp_dir.path()));
+	write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -914,48 +999,6 @@ fn review_handoff_persists_runtime_state_without_local_marker_cache() {
 		)
 		.pr_url(),
 		"https://github.com/hack-ink/decodex/pull/150"
-	);
-}
-
-#[test]
-fn review_handoff_does_not_record_completion_when_review_policy_clear_fails() {
-	let temp_dir = TempDir::new().expect("tempdir should create");
-	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
-	let review_context = sample_review_context_in(temp_dir.path());
-
-	write_clean_review_checkpoint(&review_context);
-
-	let marker_path = temp_dir.path().join(RUN_ACTIVITY_MARKER_FILE);
-
-	fs::remove_file(&marker_path).expect("existing run activity marker should be removable");
-	fs::create_dir_all(&marker_path).expect("run activity marker path directory should write");
-
-	let inspector = FakePullRequestInspector::new(vec![Ok(sample_pull_request())]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let bridge = TrackerToolBridge::with_review_handoff_for_test(
-		&tracker,
-		&issue,
-		&workflow,
-		review_context,
-		&inspector,
-		&local_repo_inspector,
-	);
-	let response = DynamicToolHandler::handle_call(
-		&bridge,
-		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
-		serde_json::json!({
-			"pr_url": "https://github.com/hack-ink/decodex/pull/48",
-			"summary": "Ready for review."
-		}),
-	);
-
-	assert!(!response.success);
-	assert!(
-		bridge.completion_disposition().is_err(),
-		"a failed review-policy clear must not leave a pending review completion behind"
 	);
 }
 

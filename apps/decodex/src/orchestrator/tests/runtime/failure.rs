@@ -1774,6 +1774,7 @@ fn handle_failure_requires_rebind_when_clean_handoff_checkpoint_has_no_marker() 
 			run_id: &issue_run.run_id,
 			attempt_number: issue_run.attempt_number,
 			phase: "handoff",
+			review_level: config.codex().review_level().as_str(),
 			status: "clean",
 			head_sha: &head_oid,
 			nonclean_rounds: 0,
