@@ -7,6 +7,7 @@ claims without becoming implementation authority by themselves.
 
 - [Decodex Plugin Eval](./decodex-plugin-eval.md)
 - [Docs Self-Iteration](./docs-self-iteration.md)
+- [MCP Remote Control Productization](./mcp-remote-control-productization.md)
 
 ## Maintenance
 

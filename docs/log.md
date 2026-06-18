@@ -2,6 +2,12 @@
 
 ## 2026-06-18
 
+- Promoted MCP remote-control docs drift into the runtime spec, operator reference,
+  remote MCP runbook, decision record, evidence index, and Decodex plugin routing;
+  documented that `--allow-origin` is not authentication, loopback `observe` is the
+  safe default, direct remote/elevated Streamable HTTP needs an operator auth
+  boundary, and built-in MCP protected-resource auth plus process-level HTTP smoke
+  remain active research-backed gaps.
 - Added active research for MCP remote-control productization, covering remote
   access docs, authorization or relay boundaries, public-safe observation, process
   smoke coverage, high-risk control refusals, and protocol compatibility.
