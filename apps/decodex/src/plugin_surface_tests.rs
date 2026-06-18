@@ -246,7 +246,7 @@ fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
 #[test]
 fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 	let skill_surface = format!(
-		"{DECODEX_SKILL}\n{PLANNING_SKILL}\n{AUTOMATION_SKILL}\n{LABELS_SKILL}\n{RESEARCH_SKILL}\n{ROUTING_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_PROMOTION_REF}"
+		"{DECODEX_SKILL}\n{PLANNING_SKILL}\n{AUTOMATION_SKILL}\n{LABELS_SKILL}\n{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{ROUTING_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
 	let planning_surface = format!("{PLANNING_SKILL}\n{ISSUE_BRIEFING_REF}\n{ROUTING_REF}");
 
@@ -265,6 +265,12 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 	assert_contains_normalized(&skill_surface, "Program Intake dispatches ready mapped nodes");
 	assert_contains(&skill_surface, "Promotion is a separate authority step");
 	assert_contains(&skill_surface, "after execution authority exists");
+	assert_contains(&skill_surface, "non-research targets");
+	assert_contains_normalized(
+		&skill_surface,
+		"current facts and contracts stand without reading research",
+	);
+	assert_contains(&skill_surface, "current truth independently");
 	assert_contains_normalized(&skill_surface, "does not queue work, mutate Linear");
 	assert_contains(&skill_surface, "ordinary non-Program issue intake");
 	assert_contains(&skill_surface, "not queue-label polling");
@@ -291,13 +297,13 @@ fn packaged_research_skills_encode_decodex_methodology() {
 	assert_contains(&research_surface, "default research surface");
 	assert_contains(&research_surface, "probe, evidence, options, judgment, challenge, decision");
 	assert_contains_normalized(&research_surface, "No evidence, no claim");
-	assert_contains_normalized(&research_surface, "runtime state");
+	assert_contains_normalized(&research_surface, "Runtime state");
 	assert_contains(
 		&research_surface,
 		"Do not route Decodex research through external research skills",
 	);
-	assert_contains(&research_surface, "primary hypothesis");
-	assert_contains(&research_surface, "rival hypotheses");
+	assert_contains_normalized(&research_surface, "primary hypothesis");
+	assert_contains_normalized(&research_surface, "rival hypotheses");
 	assert_contains(&research_surface, "falsifiers");
 	assert_contains(&research_surface, "No evidence, no claim");
 	assert_contains(&research_surface, "observations");
@@ -318,10 +324,19 @@ fn packaged_research_skills_encode_decodex_methodology() {
 		"Unresolved material objections block `decision_ready`",
 	);
 	assert_contains(&research_surface, "Use exactly one");
-	assert_contains(&research_surface, "refuse promotion while unresolved decisions");
+	assert_contains(&research_surface, "refuse unresolved decisions");
 	assert_contains(&research_surface, "Promotion is a separate authority step");
 	assert_contains(&research_surface, "Promotion requires explicit acceptance");
 	assert_contains(&research_surface, "Do not infer acceptance");
+	assert_contains(
+		&research_surface,
+		"research-only evidence versus durable knowledge candidates",
+	);
+	assert_contains(&research_surface, "target repo");
+	assert_contains(&research_surface, "Durable knowledge candidates are accepted facts");
+	assert_contains(&research_surface, "facts, policies, specs, runbooks");
+	assert_contains(&research_surface, "Research is provenance, not source of truth");
+	assert_contains(&research_surface, "Use `no_promotion` only when");
 	assert_contains(&research_surface, "Program Intake");
 }
 
