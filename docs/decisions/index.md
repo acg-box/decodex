@@ -24,8 +24,7 @@ Question this index answers: "why was it designed this way?"
   Decodex keeps execution-graph semantics internal behind a natural-language research
   and promotion surface.
 - [`decodex-plugin-source.md`](./decodex-plugin-source.md) records why this repository
-  owns the canonical Decodex plugin and why generic Playbook guidance should only keep
-  portable routing.
+  owns the canonical Decodex plugin, including reusable repo-work guidance.
 - [`mcp-capability-gateway-and-skill-slimming.md`](./mcp-capability-gateway-and-skill-slimming.md)
   records why Decodex should introduce an MCP capability gateway while slimming
   skills into static routing, authority, and safety entrypoints.

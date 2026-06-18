@@ -31,8 +31,8 @@
   agent navigation, owner concepts, indexes, links, and graph maintenance.
 - Moved Decodex OKF/LLM Wiki context intake, `Context anchors`, docs completion gate,
   and late docs-skill recovery ownership into `plugins/decodex/references/routing.md`
-  so generic repo-work plugins can remain Decodex-agnostic while host instructions
-  compose installed plugins.
+  so host instructions can compose installed plugins without copying Decodex-specific
+  procedures.
 - Updated the MCP decision record, operator-control reference, resource-template
   readback, and Decodex plugin routing so complete remote MCP now points agents toward
   capability-profiled observe/plan/operate/admin resources, prompts, and tools.

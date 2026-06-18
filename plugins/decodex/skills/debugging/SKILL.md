@@ -53,10 +53,10 @@ Use the shortest loop that answers the case:
 
 ## Challenge
 
-When material uncertainty remains, a read-only scout or skeptic pass can gather one
-missing evidence slice or attack one hypothesis. Child agents stay read-only and
-return machine-mergeable findings; the main thread owns the diagnosis, repair, and
-final claim.
+When material uncertainty remains, dynamically spawn one read-only support agent for a
+single missing evidence slice or hypothesis challenge. The prompt must name the
+objective, read-only boundary, and expected finding shape. The main thread owns the
+diagnosis, repair, and final claim.
 
 ## Outputs
 
