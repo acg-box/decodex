@@ -7,7 +7,7 @@ authority: normative
 owner: docs
 tags: [okf, llm-wiki, docs, repo-memory]
 source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md, https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing, https://developers.openai.com/codex/guides/agents-md, https://code.claude.com/docs/en/memory, https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/docs_okf.rs, plugins/decodex/references/context-gates.md, plugins/decodex/references/okf-layer.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-evaluator/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md, plugins/decodex/skills/docs/SKILL.md]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/docs_okf.rs, plugins/decodex/references/routing.md, plugins/decodex/references/okf-layer.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-evaluator/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md, plugins/decodex/skills/docs/SKILL.md]
 related: [../policy.md, ../reference/docs-knowledge-map.md, ../reference/research-concepts.md, ../evidence/decodex-plugin-eval.md]
 drift_watch: [decodex okf, decodex docs, docs check, docs lint, okf profile, docs alias, okf skill]
 last_verified: 2026-06-18
@@ -138,10 +138,10 @@ humans still judge owner correctness, classify misses, and author durable claims
 commands make those judgments repeatable by supplying profile checks, graph counts,
 query output, and routing evidence.
 
-Decodex-owned context gates live in `plugins/decodex/references/context-gates.md`.
-They define when agents should run route probes before implementation, carry
-`Context anchors`, and recover a missed docs completion gate. Generic repo-work
-plugins should not copy those Decodex-specific procedures.
+Decodex-owned context gates live in `plugins/decodex/references/routing.md`. They
+define when agents should run route probes before implementation, carry `Context
+anchors`, and recover a missed docs completion gate. Generic repo-work plugins should
+not copy those Decodex-specific procedures.
 
 Decodex docs skills are wrappers around those behaviors for this repository. They may
 apply Decodex profile constraints, but the portable OKF skill family must not depend

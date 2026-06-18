@@ -5,8 +5,13 @@ labels, automation, commit, or landing boundaries.
 
 ## Mode Map
 
-- Context gates: read `context-gates.md` for Decodex-owned OKF/LLM Wiki route intake,
-  `Context anchors`, docs completion gates, and late docs-skill recovery.
+- Context gates: for non-trivial Decodex repo work, run
+  `decodex okf route docs "<task intent>" --limit 5`, read the relevant owner, and
+  record short `Context anchors` when routing changes the plan. Skip tiny work,
+  explicit file targets, missing bundles, or noisy results. Use `docs` before
+  completion when work touches docs, documented behavior, CLI/status/config/workflow
+  text, research, semantic names, or repo-memory metadata; late discovery runs the
+  same docs gate and reports recovery evidence.
 - Docs: use `docs` as the router. Use `docs-okf`, `docs-wiki`, and `docs-drift`
   for shape, routing, and audits. Docs impact `research_required` switches to
   `research*`; checked-in `docs/research/` is latent evidence.

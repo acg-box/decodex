@@ -7,7 +7,7 @@ authority: evidence
 owner: docs
 tags: [plugin-eval, skills, docs, research, okf, repo-memory]
 source_refs: []
-code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/context-gates.md, plugins/decodex/references/routing.md, plugins/decodex/references/okf-layer.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/docs/SKILL.md, plugins/decodex/skills/docs-okf/SKILL.md, plugins/decodex/skills/docs-wiki/SKILL.md, plugins/decodex/skills/docs-drift/SKILL.md, plugins/decodex/skills/research/SKILL.md]
+code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/okf-layer.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/docs/SKILL.md, plugins/decodex/skills/docs-okf/SKILL.md, plugins/decodex/skills/docs-wiki/SKILL.md, plugins/decodex/skills/docs-drift/SKILL.md, plugins/decodex/skills/research/SKILL.md]
 related: [../policy.md, ./docs-self-iteration.md]
 last_verified: 2026-06-18
 ---
@@ -39,7 +39,7 @@ node ~/.codex/plugins/cache/openai-curated/plugin-eval/015c0dff/scripts/plugin-e
 
 | Target | Score | Grade | Risk | Fix First |
 | --- | --- | --- | --- | --- |
-| `plugins/decodex` | 95 | A | medium | deferred reference budget warning |
+| `plugins/decodex` | 100 | A | low | none |
 | `plugins/decodex/skills/okf` | 100 | A | low | none |
 | `plugins/decodex/skills/okf-query` | 100 | A | low | none |
 | `plugins/decodex/skills/okf-maintain` | 100 | A | low | none |
@@ -89,8 +89,7 @@ Explicit-only skills:
 ## Limits
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
-2026-06-18 full-plugin rerun reported score 95/100, grade A, medium risk, zero
-failing checks, one deferred reference budget warning, and two informational notes.
-The directly touched router skills still report 100/100, grade A, low risk. The
-remaining full-plugin warning is about aggregate deferred reference cost, not safety,
-routing, authority, or progressive-disclosure failure in the changed skills.
+2026-06-18 full-plugin rerun reported score 100/100, grade A, low risk, zero failing
+checks, zero warnings, and two informational notes. The context-gate update stays
+inside `routing.md` so OKF/LLM Wiki intake remains Decodex-owned without creating a
+heavy deferred-reference warning.
