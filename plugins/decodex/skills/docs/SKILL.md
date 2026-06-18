@@ -1,6 +1,6 @@
 ---
 name: docs
-description: Use when Decodex work touches this repository's docs/ OKF profile, LLM Wiki routing, or drift audits.
+description: Use when Decodex work touches this repository's docs/ OKF profile, LLM Wiki navigation, or drift audits.
 ---
 
 # Decodex Docs
@@ -13,7 +13,7 @@ Read `../../references/docs-method.md`, `docs/index.md`, `docs/policy.md`, and t
 smallest owning concepts before changing behavior, workflow, CLI, status, config,
 research, or documentation.
 Use `../../references/routing.md` when a docs gate was skipped, recovered late, or
-tied to OKF/LLM Wiki route intake.
+tied to OKF/LLM Wiki context intake.
 
 - Use `docs-okf` for Decodex profile concept shape.
 - Use `docs-wiki` for placement, indexes, links, and duplicate claims.

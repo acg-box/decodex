@@ -71,7 +71,7 @@ The split below is by question type, not by human-versus-agent audience.
 - Need new Decodex bounded research, design investigation, evidence ledger, or
   research-to-execution promotion -> `plugins/decodex/skills/research*/` and
   `docs/spec/loop-runtime.md`
-- Need docs-impact classification `research_required` -> switch from the docs router
+- Need docs-impact classification `research_required` -> switch from the docs skill
   to `plugins/decodex/skills/research*/`; checked-in output under `docs/research/`
   stays latent and non-authoritative until promoted into `spec`, `runbook`,
   `reference`, `decisions`, or `evidence`
@@ -80,13 +80,13 @@ The split below is by question type, not by human-versus-agent audience.
   `plugins/decodex/skills/docs-drift/SKILL.md`
 - Need docs maintenance, OKF concepts, docs impact classification, or drift gate
   handling -> `plugins/decodex/skills/docs/SKILL.md` and `docs/policy.md`
-- Need autonomous Decodex context intake, OKF/LLM Wiki route probes, `Context
-  anchors`, or late docs-skill recovery ->
+- Need autonomous Decodex context intake, OKF/LLM Wiki owner reads, context anchors,
+  or late docs-skill recovery ->
   `plugins/decodex/references/routing.md`
 - Need the current docs knowledge map, OKF/LLM Wiki value evaluation, graph
-  maintenance anchors, or retrieval-quality observations ->
+  maintenance anchors, or owner-coverage observations ->
   `docs/reference/docs-knowledge-map.md`
-- Need OKF concept schema, LLM Wiki routing, or drift audit details ->
+- Need OKF concept schema, LLM Wiki navigation, or drift audit details ->
   `plugins/decodex/skills/docs-okf/SKILL.md`,
   `plugins/decodex/skills/docs-wiki/SKILL.md`, and
   `plugins/decodex/skills/docs-drift/SKILL.md`
@@ -98,7 +98,7 @@ The split below is by question type, not by human-versus-agent audience.
 
 ## Retrieval rules
 
-- Optimize for agent routing and execution, not narrative flow.
+- Optimize for agent navigation and execution, not narrative flow.
 - Read `docs/policy.md` for lane ownership and authoring rules.
 - Use `plugins/decodex/skills/docs/SKILL.md` when a Decodex lane touches docs or
   changes behavior that may require docs impact classification.
@@ -108,7 +108,7 @@ The split below is by question type, not by human-versus-agent audience.
   reference, and decision material.
 - Keep the public site static by default. `site/` must not depend on a live Decodex
   daemon unless a later decision changes that boundary.
-- Start each document with a short routing header that says what the document is for,
+- Start each document with a short purpose header that says what the document is for,
   when to read it, and what it does not cover.
 - Keep links explicit and stable.
 - Treat `docs/research/` as a Markdown OKF research concept lane, not as a primary

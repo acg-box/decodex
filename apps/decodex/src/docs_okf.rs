@@ -187,7 +187,7 @@ pub(crate) struct OkfConceptSummary {
 	pub(crate) concept_type: String,
 	/// Human-readable title, derived from frontmatter or path.
 	pub(crate) title: String,
-	/// Retrieval summary from frontmatter.
+	/// One-line concept summary from frontmatter.
 	pub(crate) description: Option<String>,
 	/// Resource URI from frontmatter.
 	pub(crate) resource: Option<String>,
@@ -231,14 +231,6 @@ pub(crate) struct OkfGraph {
 	pub(crate) broken_links: Vec<OkfBrokenLink>,
 	/// Concepts with no inbound or outbound resolved edges.
 	pub(crate) orphan_concepts: Vec<String>,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct OkfRouteMatch {
-	/// Matching concept summary.
-	pub(crate) concept: OkfConceptSummary,
-	/// Simple lexical relevance score.
-	pub(crate) score: usize,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -533,44 +525,11 @@ pub(crate) fn render_okf_graph_summary(root: &Path, graph: &OkfGraph) -> String 
 	)
 }
 
-/// Route an intent to the highest scoring OKF concepts.
-pub(crate) fn route_okf_bundle(
-	root: &Path,
-	intent: &str,
-	limit: usize,
-) -> Result<Vec<OkfRouteMatch>> {
-	let files = read_okf_files(root)?;
-	let tokens = route_tokens(intent);
-	let mut matches = Vec::new();
-
-	if tokens.is_empty() {
-		return Ok(matches);
-	}
-
-	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
-		let Some(concept) = concept_summary(file) else {
-			continue;
-		};
-		let score = route_score(file, &concept, &tokens);
-
-		if score > 0 {
-			matches.push(OkfRouteMatch { concept, score });
-		}
-	}
-
-	matches.sort_by(|left, right| {
-		right.score.cmp(&left.score).then_with(|| left.concept.path.cmp(&right.concept.path))
-	});
-	matches.truncate(limit);
-
-	Ok(matches)
-}
-
 fn okf_scaffold_files(profile: OkfCheckProfile) -> Vec<OkfScaffoldFile> {
 	vec![
 		OkfScaffoldFile {
 			relative_path: "index.md",
-			content: "# OKF Bundle\n\n- [Overview](overview.md)\n\nUse this index to route agents and humans to the smallest relevant concept.\n",
+			content: "# OKF Bundle\n\n- [Overview](overview.md)\n\nUse this index to guide agents and humans to the smallest relevant concept.\n",
 		},
 		OkfScaffoldFile {
 			relative_path: "log.md",
@@ -606,7 +565,7 @@ fn overview_concept(profile: OkfCheckProfile) -> &'static str {
 		OkfCheckProfile::Wiki =>
 			"---\ntype: Knowledge Bundle\ntitle: OKF Bundle Overview\ndescription: Entry concept for the repository knowledge bundle.\ntags: [okf]\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n",
 		OkfCheckProfile::RepoMemory =>
-			"---\ntype: Knowledge Bundle\ntitle: OKF Bundle Overview\ndescription: Entry concept for the repository knowledge bundle.\ntags: [okf, repo-memory]\nsource_refs: []\ncode_refs: []\nrelated: []\ndrift_watch: [decodex okf check, decodex okf route]\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n",
+			"---\ntype: Knowledge Bundle\ntitle: OKF Bundle Overview\ndescription: Entry concept for the repository knowledge bundle.\ntags: [okf, repo-memory]\nsource_refs: []\ncode_refs: []\nrelated: []\ndrift_watch: [decodex okf check, decodex okf graph]\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n",
 		OkfCheckProfile::Decodex => unreachable!("decodex profile is rejected before scaffold"),
 	}
 }
@@ -1886,34 +1845,6 @@ fn okf_orphan_concepts(concepts: &[OkfConceptSummary], edges: &[OkfGraphEdge]) -
 		.collect()
 }
 
-fn route_tokens(intent: &str) -> Vec<String> {
-	intent
-		.split(|character: char| !character.is_alphanumeric())
-		.map(str::trim)
-		.filter(|token| token.chars().count() >= 3)
-		.map(str::to_lowercase)
-		.collect()
-}
-
-fn route_score(file: &DocsFile, concept: &OkfConceptSummary, tokens: &[String]) -> usize {
-	let strong_text = format!(
-		"{} {} {} {}",
-		concept.path,
-		concept.title,
-		concept.description.as_deref().unwrap_or_default(),
-		concept.tags.join(" ")
-	)
-	.to_lowercase();
-	let body = file.content.as_deref().unwrap_or_default().to_lowercase();
-
-	tokens
-		.iter()
-		.map(|token| {
-			usize::from(strong_text.contains(token)) * 3 + usize::from(body.contains(token))
-		})
-		.sum()
-}
-
 fn should_skip_link_target(target: &str) -> bool {
 	target.starts_with('#')
 		|| target.starts_with("http://")
@@ -2153,28 +2084,6 @@ mod tests {
 	}
 
 	#[test]
-	fn okf_route_prefers_matching_concepts() {
-		let temp_dir = TempDir::new().expect("tempdir");
-		let bundle = temp_dir.path().join("bundle");
-
-		fs::create_dir_all(&bundle).expect("bundle");
-
-		write(&bundle.join("index.md"), "# Bundle\n");
-		write(
-			&bundle.join("okf.md"),
-			"---\ntype: Spec\ntitle: OKF Knowledge Layer\ndescription: Command design for portable OKF bundles.\ntags: [okf]\n---\n\nOKF command design.\n",
-		);
-		write(
-			&bundle.join("runtime.md"),
-			"---\ntype: Spec\ntitle: Runtime\ndescription: Runtime scheduler.\n---\n\nScheduler.\n",
-		);
-
-		let matches = docs_okf::route_okf_bundle(&bundle, "okf command design", 2).expect("route");
-
-		assert_eq!(matches.first().map(|matched| matched.concept.id.as_str()), Some("okf"));
-	}
-
-	#[test]
 	fn okf_init_scaffolds_repo_memory_bundle_that_passes_check() {
 		let temp_dir = TempDir::new().expect("tempdir");
 		let bundle = temp_dir.path().join("knowledge");
@@ -2182,17 +2091,13 @@ mod tests {
 			docs_okf::init_okf_bundle(&bundle, OkfCheckProfile::RepoMemory).expect("init");
 		let check_report =
 			docs_okf::run_okf_check(&bundle, OkfCheckProfile::RepoMemory).expect("check");
-		let route_matches = docs_okf::route_okf_bundle(&bundle, "repository knowledge", 3)
-			.expect("route initialized bundle");
+		let graph = docs_okf::build_okf_graph(&bundle).expect("graph initialized bundle");
 
 		assert_eq!(init_report.profile(), OkfCheckProfile::RepoMemory);
 		assert_eq!(init_report.created.len(), 3);
 		assert!(init_report.unchanged.is_empty());
 		assert!(!check_report.has_issues(), "{check_report:#?}");
-		assert_eq!(
-			route_matches.first().map(|matched| matched.concept.id.as_str()),
-			Some("overview")
-		);
+		assert!(graph.concepts.iter().any(|concept| concept.id == "overview"));
 	}
 
 	#[test]
