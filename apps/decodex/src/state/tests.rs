@@ -4200,6 +4200,7 @@ fn run_control_accepts_marker_hydrated_active_attempt_identity() {
 		.upsert_worktree("pubfi", "issue-1", "x/pubfi-issue-1", &worktree_path_text)
 		.expect("worktree should record");
 	store.record_run_attempt("run-1", "issue-1", 1, "running").expect("attempt should record");
+
 	state::write_run_effective_runtime_marker(
 		&worktree_path,
 		"run-1",
@@ -4216,6 +4217,7 @@ fn run_control_accepts_marker_hydrated_active_attempt_identity() {
 		},
 	)
 	.expect("runtime marker should write");
+
 	store
 		.publish_run_control_channel_for_active_attempt("run-1", 1, &channel_path, "local_file")
 		.expect("control channel should publish")

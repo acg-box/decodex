@@ -164,10 +164,13 @@ for operator-chosen local, tunnel, or relay access. Streamable HTTP validates br
 requests, returns ordinary JSON-RPC JSON responses, and switches to
 `text/event-stream` framing when the client sends `Accept: text/event-stream`.
 The session header is protocol state, not authorization. `--allow-origin` is CORS
-trust, not authentication. Use Streamable HTTP remote control over loopback or behind
-an operator-owned tunnel, relay, network ACL, or MCP authorization boundary; direct
-non-loopback exposure and elevated `operate`/`admin` profiles are unsupported without
-that external boundary until Decodex implements a protected-resource auth surface.
+trust, not authentication. Use `--bearer-token-env <ENV_VAR>` when a Streamable HTTP
+listener is reachable beyond loopback or when exposing any profile above `observe`;
+Decodex validates `Authorization: Bearer <token>` for `POST` and `DELETE` while still
+allowing unauthenticated CORS preflight. Direct non-loopback listeners require both
+`--allow-origin` and `--bearer-token-env`. The built-in bearer guard is Decodex's
+minimum direct-listener boundary, not OAuth Protected Resource Metadata; OAuth or a
+managed relay can still sit in front for broader MCP client interoperability.
 The gateway advertises resources, resource templates, prompts, tools, logging
 compatibility, and progress notifications. Resources expose checked-in documentation,
 checked-in Markdown research concepts, runtime Decision Contract readback, local status

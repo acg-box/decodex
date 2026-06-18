@@ -566,6 +566,9 @@ struct McpServeCommand {
 	/// Trusted browser Origin for Streamable HTTP. Repeat for multiple origins.
 	#[arg(long = "allow-origin", value_name = "ORIGIN")]
 	allowed_origins: Vec<String>,
+	/// Environment variable containing the Streamable HTTP bearer token.
+	#[arg(long = "bearer-token-env", value_name = "ENV_VAR")]
+	bearer_token_env: Option<String>,
 }
 impl McpServeCommand {
 	fn run(&self) -> Result<()> {
@@ -575,6 +578,7 @@ impl McpServeCommand {
 			capability_profile: self.effective_capability_profile(),
 			listen_address: &self.listen_address,
 			allowed_origins: &self.allowed_origins,
+			bearer_token_env: self.bearer_token_env.as_deref(),
 		})
 	}
 
@@ -1847,7 +1851,6 @@ mod tests {
 			"--text",
 			"command design",
 		]);
-
 		let Command::Okf(OkfCommand {
 			command:
 				OkfSubcommand::Find(super::OkfFindCommand {
@@ -2089,6 +2092,7 @@ mod tests {
 		assert_eq!(serve.effective_capability_profile(), McpCapabilityProfile::Admin);
 		assert_eq!(serve.listen_address, crate::mcp::DEFAULT_MCP_HTTP_LISTEN_ADDRESS);
 		assert!(serve.allowed_origins.is_empty());
+		assert_eq!(serve.bearer_token_env, None);
 	}
 
 	#[test]
@@ -2103,6 +2107,8 @@ mod tests {
 			"127.0.0.1:8194",
 			"--allow-origin",
 			"http://127.0.0.1:8194",
+			"--bearer-token-env",
+			"DECODEX_MCP_TOKEN",
 		]);
 		let Command::Mcp(command) = cli.command else {
 			panic!("expected mcp command");
@@ -2113,6 +2119,7 @@ mod tests {
 		assert_eq!(serve.effective_capability_profile(), McpCapabilityProfile::Observe);
 		assert_eq!(serve.listen_address, "127.0.0.1:8194");
 		assert_eq!(serve.allowed_origins, vec!["http://127.0.0.1:8194"]);
+		assert_eq!(serve.bearer_token_env.as_deref(), Some("DECODEX_MCP_TOKEN"));
 	}
 
 	#[test]

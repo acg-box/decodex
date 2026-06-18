@@ -116,8 +116,11 @@ uses SSE framing for progress or notifications when the client accepts
 `text/event-stream`. Loopback `observe` is the safe default. MCP sessions are protocol
 state rather than authorization, and `--allow-origin` is CORS trust rather than an
 authentication boundary. Direct non-loopback operation and elevated Streamable HTTP
-profiles require an operator-owned tunnel, relay, network ACL, or future Decodex
-protected-resource authorization boundary before they are production-safe.
+profiles require a Decodex bearer boundary with `--bearer-token-env`, or a stronger
+operator-owned tunnel, relay, network ACL, reverse proxy, or OAuth-capable protected
+resource boundary before they are production-safe. The built-in bearer guard protects
+direct Decodex listeners but does not claim OAuth Protected Resource Metadata
+interoperability.
 
 The gateway advertises resources, resource templates, prompts, tools, logging
 compatibility, progress notifications, active capability-profile metadata, and
@@ -234,10 +237,11 @@ Target shape:
   operate/admin profile-refusal coverage, and remote-safe observability template
   coverage for live status, activity tail, current/recent status-window run
   event/protocol/child/progress readback, lane inspect, and PR/review state. The
-  remaining remote productization gap is process-level Streamable HTTP smoke coverage
-  with a real `decodex mcp serve --transport streamable-http` child process plus a
-  protected-resource or relay-auth boundary before any direct non-loopback or elevated
-  HTTP profile is advertised as production-ready. Operate and admin tools should pass
+  Streamable HTTP process smoke should start a real
+  `decodex mcp serve --transport streamable-http` child process, initialize a session,
+  list observe-profile tools, verify an above-profile refusal, and verify SSE progress
+  for an allowed call. Direct non-loopback or elevated HTTP profiles should also pass
+  bearer-boundary startup and request tests. Operate and admin tools should pass
   inspect-first authority, current run/turn precondition, explicit-authority refusal,
   and unsupported-shortcut refusal coverage.
 
@@ -248,9 +252,9 @@ The promoted implementation has the stdio gateway exposed as
 exposed as `decodex mcp serve --transport streamable-http`. It advertises resources,
 resource templates, prompts, and a schema-bound tool catalog while keeping mutating
 planning, operate, and admin behavior behind explicit capability profiles, authority
-fields, inspect-first preconditions, and structured refusal states. Remote operation
-beyond loopback still depends on an operator-managed authorization boundary until the
-Decodex listener itself implements a protected-resource auth surface. Further
-expansion must keep the catalog deliberately small and route new mutating behavior
-through Decodex's existing runtime, tracker, review, landing, and lane-control
-authority surfaces instead of adding one tool per CLI command.
+fields, inspect-first preconditions, transport bearer authorization when required, and
+structured refusal states. The current direct-listener auth boundary is static bearer,
+not full OAuth Protected Resource Metadata. Further expansion must keep the catalog
+deliberately small and route new mutating behavior through Decodex's existing runtime,
+tracker, review, landing, and lane-control authority surfaces instead of adding one
+tool per CLI command.
