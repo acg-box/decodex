@@ -28,7 +28,9 @@ fn assert_manual_attention_prompt_guidance(prompt: &str, expects_handoff_guard: 
 	assert!(prompt.contains("app-server timeout, transport, turn, dynamic-tool, or usage-limit"));
 	assert!(prompt.contains("stalled-run detection"));
 	assert!(prompt.contains("phase-goal terminal-path misses"));
-	assert!(prompt.contains("repo-gate canonicalize, verify, tracked-rewrite, or git-lock failures"));
+	assert!(prompt.contains(
+		"repo-gate canonicalize, verify, baseline, tracked-rewrite, or git-lock failures"
+	));
 	assert!(prompt.contains("generic retryable execution failures"));
 	assert!(!prompt.contains("add label `decodex:needs-attention`"));
 	assert!(!prompt.contains("add the needs-attention label"));
