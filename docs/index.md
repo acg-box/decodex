@@ -60,6 +60,8 @@ The split below is by question type, not by human-versus-agent audience.
 - Need rationale for keeping execution-graph semantics internal behind a
   natural-language user surface ->
   `docs/decisions/natural-language-loop-runtime.md`
+- Need rationale for OKF research promotion, research concept disposition, or LLM Wiki
+  retrieval hygiene -> `docs/decisions/okf-research-knowledge-lifecycle.md`
 - Need rationale for Decodex MCP integration, MCP/skills/docs/runtime boundaries, or
   skill slimming -> `docs/decisions/mcp-capability-gateway-and-skill-slimming.md`
 - Need research concepts, supporting research evidence, or the implemented/superseded
@@ -72,7 +74,7 @@ The split below is by question type, not by human-versus-agent audience.
 - Need docs-impact classification `research_required` -> switch from the docs router
   to `plugins/decodex/skills/research*/`; checked-in output under `docs/research/`
   stays latent and non-authoritative until promoted into `spec`, `runbook`,
-  `reference`, or `decisions`
+  `reference`, `decisions`, or `evidence`
 - Need a semantic-drift audit concept, stale-claim evidence, or docs/code alignment
   verdict -> `docs/evidence/index.md` and
   `plugins/decodex/skills/docs-drift/SKILL.md`
@@ -108,5 +110,7 @@ The split below is by question type, not by human-versus-agent audience.
 - Keep links explicit and stable.
 - Treat `docs/research/` as a Markdown OKF research concept lane, not as a primary
   authority lane or JSON event-log write target.
+- Treat promotion as an OKF/LLM Wiki maintenance event: update owner concepts,
+  statuses, indexes, and links so superseded research does not outrank authority.
 - Treat Decodex research output as latent until accepted or promoted through the
   loop-runtime contract in `docs/spec/loop-runtime.md`.

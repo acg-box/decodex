@@ -23,8 +23,8 @@ Allowed `type`: `Decision`, `Drift Audit`, `Evidence`, `Policy`, `Reference`,
 Recommended structured fields: `tags`, `source_refs`, `code_refs`, `related`,
 `promotes_to`, and `drift_watch`.
 
-`promotes_to` may point only at `docs/spec`, `docs/runbook`, `docs/reference`, or
-`docs/decisions`.
+`promotes_to` may point only at `docs/spec`, `docs/runbook`, `docs/reference`,
+`docs/decisions`, or `docs/evidence`.
 
 ## Required Sections
 
