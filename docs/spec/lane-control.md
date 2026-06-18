@@ -97,6 +97,13 @@ operator `control_capability` metadata. `decodex status`, JSON operator snapshot
 private evidence readback may show this local capability, but Linear must not receive
 host-local channel paths or raw control payloads.
 
+When a worktree activity marker for the same run id and attempt number carries a
+thread id or turn id missing from the run attempt row, Decodex may hydrate the missing
+attempt identity before resolving local control. Marker identity must not override an
+already recorded attempt thread id or turn id. Inspect/status/control resolution must
+therefore compare against one canonical current-attempt identity instead of letting UI
+readback and control matching use different sources.
+
 A control request is valid only when all of the following hold:
 
 - the requested run exists
