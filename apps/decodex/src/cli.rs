@@ -1816,7 +1816,6 @@ mod tests {
 			ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand,
 			ServeCommand, StatusCommand,
 		},
-		mcp,
 		mcp::{McpCapabilityProfile, McpTransport},
 	};
 
@@ -2138,7 +2137,7 @@ mod tests {
 		assert_eq!(serve.project_config.config.as_deref(), Some(Path::new("./project.toml")));
 		assert_eq!(serve.transport, McpTransport::Stdio);
 		assert_eq!(serve.effective_capability_profile(), McpCapabilityProfile::Admin);
-		assert_eq!(serve.listen_address, mcp::DEFAULT_MCP_HTTP_LISTEN_ADDRESS);
+		assert_eq!(serve.listen_address, crate::mcp::DEFAULT_MCP_HTTP_LISTEN_ADDRESS);
 		assert!(serve.allowed_origins.is_empty());
 	}
 

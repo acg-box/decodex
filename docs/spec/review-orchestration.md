@@ -6,7 +6,9 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-last_verified: 2026-06-16
+code_refs: [apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs]
+drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_policy_checkpoints, evidence_artifacts]
+last_verified: 2026-06-18
 ---
 # Review Orchestration
 
@@ -117,10 +119,10 @@ Rules:
   or require the checkpoint tool. It does not use GitHub Review.
 - `[codex].review = "standard"` uses Self Check plus the runtime-owned independent
   fresh-context read-only Decodex Review checkpoint loop. Decodex exposes
-  `issue_review_checkpoint`, requires a current `clean` checkpoint before
+  `issue_review_checkpoint`, requires a current-HEAD `clean` evidence artifact before
   `issue_review_handoff` or `issue_review_repair_complete`, stores structured
   accepted/rejected finding evidence, and applies the review-policy stop rules to
-  stale or non-clean checkpoint state. That review checkpoint is separate from the
+  stale or non-clean keyed artifact state. That review checkpoint is separate from the
   current-head `issue_progress_checkpoint` with `docs_impact` required before
   terminal finalization. It does not use GitHub Review.
 - `[codex].review = "strict"` uses the standard requirements and then participates
@@ -131,6 +133,13 @@ Rules:
   read-only review request. The reviewer must not edit files, push, land, or mutate
   tracker state.
 - In `"standard"` and `"strict"` levels, Decodex Review must use the same bounded review method and normalized review outcomes as any other review pass.
+- In `"standard"` and `"strict"` levels, a Decodex Review checkpoint is persisted as
+  an evidence-keyed artifact. The key must include artifact kind
+  `issue_review_checkpoint`, review phase, current `HEAD`, review level, and review
+  prompt version. A later attempt may reuse that artifact only when every key
+  dimension still matches; completion and mutation-fence checks read this artifact
+  rather than the run-local projection. A new `HEAD`, changed review level, or changed
+  prompt version invalidates the proof.
 - In `"standard"` and `"strict"` levels, a `findings` checkpoint requires at least one accepted finding;
   rejected or non-actionable reviewer comments may be recorded with a `clean`
   checkpoint and must not become repair input.
