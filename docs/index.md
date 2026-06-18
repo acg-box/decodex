@@ -80,6 +80,9 @@ The split below is by question type, not by human-versus-agent audience.
   `plugins/decodex/skills/docs-drift/SKILL.md`
 - Need docs maintenance, OKF concepts, docs impact classification, or drift gate
   handling -> `plugins/decodex/skills/docs/SKILL.md` and `docs/policy.md`
+- Need autonomous Decodex context intake, OKF/LLM Wiki route probes, `Context
+  anchors`, or late docs-skill recovery ->
+  `plugins/decodex/references/context-gates.md`
 - Need the current docs knowledge map, OKF/LLM Wiki value evaluation, graph
   maintenance anchors, or retrieval-quality observations ->
   `docs/reference/docs-knowledge-map.md`

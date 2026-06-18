@@ -12,6 +12,8 @@ For portable OKF bundles in other repositories, use `okf`, `okf-query`, or
 Read `../../references/docs-method.md`, `docs/index.md`, `docs/policy.md`, and the
 smallest owning concepts before changing behavior, workflow, CLI, status, config,
 research, or documentation.
+Read `../../references/context-gates.md` when a docs gate was skipped, recovered late,
+or tied to OKF/LLM Wiki route intake.
 
 - Use `docs-okf` for Decodex profile concept shape.
 - Use `docs-wiki` for placement, indexes, links, and duplicate claims.
