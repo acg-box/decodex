@@ -86,10 +86,15 @@ state or this state machine.
   checked-in JSON research reports, runtime Decision Contracts, local status
   snapshots, remote-safe live status/activity projections, current/recent status-window
   run event/protocol/child activity/progress diagnostics, PR/review state,
-  lane-inspect aliases, and lane-control readback. Tools are schema-bound and deliberately small:
-  observe and plan provide read-oriented structured results, while operate/admin
-  lane-control entries return structured refusal states until the dedicated
-  lane-control MCP work delegates through existing authority gates. Local stdio
+  lane-inspect aliases, and lane-control readback. Tools are schema-bound and
+  deliberately small: `decodex_observe` is read-only, `decodex_plan` returns static
+  workflow routing, and the plan-profile `research_compile`, `research_promote`, and
+  `intake_goal` tools expose dry-run/apply boundaries over existing Decodex research,
+  promotion, and Program Intake authority checks. Dry-run planning calls do not mutate
+  tracker state or Program Intake rows. Apply/promote calls require explicit authority
+  fields and return structured refusals when authority or project context is missing.
+  Operate/admin lane-control entries return structured refusal states until the
+  dedicated lane-control MCP work delegates through existing authority gates. Local stdio
   defaults to the `admin` capability profile and can be narrowed with
   `--capability-profile observe|plan|operate|admin`; tool discovery is filtered by the
   active profile and above-profile calls return structured refusals. Stdout must
@@ -1023,12 +1028,14 @@ After a process restart, recent-run history, run lease ownership, retained post-
   `initialize`, requires a known session on later requests, returns JSON-RPC JSON by
   default, and uses SSE framing for remote progress or notifications when the client
   accepts `text/event-stream`. MCP tools must not replace the app-server dynamic tool
-  bridge or become a lane-control mutation path before a later authority design
-  delegates through existing lane-control guards. MCP observability projections must
-  stay public-safe: no hidden reasoning, raw steer text, private evidence payloads, or
-  local path fields. Run-scoped MCP observability resources are bounded to runs visible
-  in the current/recent status snapshot and must not construct an unbounded historical
-  operator snapshot for a single remote resource read.
+  bridge, create execution authority from latent research without promotion, expose
+  Program graph identifiers in ordinary tool output, or become a lane-control mutation
+  path before a later authority design delegates through existing lane-control guards.
+  MCP observability projections must stay public-safe: no hidden reasoning, raw steer
+  text, private evidence payloads, or local path fields. Run-scoped MCP observability
+  resources are bounded to runs visible in the current/recent status snapshot and must
+  not construct an unbounded historical operator snapshot for a single remote resource
+  read.
 - `GET /livez` is only a process- and listener-level liveness probe. It must not claim control-plane tick freshness or forward progress by itself.
 - The dashboard must not depend on a separate HTTP snapshot or readiness endpoint; snapshot freshness belongs to the WebSocket-delivered snapshot payload and the browser connection state.
 - Reconciliation must mark locally active run attempts as `interrupted` when their

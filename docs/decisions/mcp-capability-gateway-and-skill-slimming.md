@@ -141,16 +141,26 @@ Prompts:
 
 Tools:
 
-- `research_compile(input)`: validates evidence kinds, options, objections,
-  promotion targets, validation expectations, and writes a latent Decision Contract.
-- `research_promote(contract_id, acceptance_source)`: records explicit acceptance and
-  refuses unresolved gaps.
-- `status_live(service_id, limit)`: performs fresh runtime/tracker readback.
-- `intake_goal_dry_run(contract_id)`: previews generated issues and Program nodes.
-- `intake_goal_apply(contract_id)`: mutates only after accepted authority exists.
-- `lane_control(action, issue_id, reason)`: pause, resume, scan, interrupt, or steer
-  inside existing lane-control policy.
-- `docs_validate(paths)`: runs repo-native docs or surface checks when available.
+- `decodex_observe(issue, runId, limit)`: performs remote-safe runtime/tracker
+  readback without exposing hidden reasoning, private evidence payloads, or local path
+  fields.
+- `decodex_plan(intent, issue, contractId)`: returns static Decodex workflow routing
+  for research, validation-ready, handoff, and lane-control intents.
+- `research_compile(mode, input|intent)`: validates evidence kinds, options,
+  objections, promotion targets, and validation expectations. `dry_run` validates
+  without persistence; `apply` persists a latent Decision Contract only with explicit
+  authority.
+- `research_promote(mode, contractId, authority)`: `dry_run` inspects promotion
+  readiness; `apply` records explicit acceptance only with authority fields such as
+  accepted actor and acceptance source, and refuses unresolved gaps.
+- `intake_goal(mode, contractId, authority)`: `dry_run` previews public-safe
+  generated issue rows without tracker or Program Intake mutation; `apply` mutates
+  only after accepted contract authority and explicit MCP authority exist.
+- `decodex_lane_control(action, issue, runId, expectedTurnId, authority)`: advertises
+  the operate-profile lane-control surface and returns structured refusal states until
+  later lane-control MCP work delegates through existing policy.
+- `decodex_admin(action)`: advertises the admin-profile policy surface without
+  exposing raw tracker, hosting-service, process, or runtime mutation.
 
 Tool rules:
 
@@ -211,6 +221,7 @@ exposed as `decodex mcp serve --transport streamable-http`. It advertises resour
 resource templates, prompts, and a schema-bound tool catalog while keeping mutating
 operate/admin behavior behind structured refusal states. XY-996 adds the
 remote-safe observability templates and projections on top of that transport; later
-promoted work should stay split across research compile/promote tools, live
-lane-control tools, skill-slimming eval, and docs/resource validation lanes so
-mutating MCP tools do not bypass Decision Contract or lane-control authority.
+promoted work should keep the schema-bound `research_compile`, `research_promote`,
+and `intake_goal` planning tools separate from live lane-control tools,
+skill-slimming eval, and docs/resource validation lanes so mutating MCP tools do not
+bypass Decision Contract or lane-control authority.
