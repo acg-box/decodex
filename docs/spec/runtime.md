@@ -1037,11 +1037,14 @@ After a process restart, recent-run history, run lease ownership, retained post-
   default, and uses SSE framing for remote progress or notifications when the client
   accepts `text/event-stream`. `Mcp-Session-Id` is protocol state, not Decodex
   authorization. `--allow-origin` is a browser CORS trust list, not an authentication
-  mechanism. Until Decodex implements an MCP protected-resource or equivalent bearer
-  boundary, Streamable HTTP is supported for loopback use and for operator-managed
-  tunnels, relays, network ACLs, or reverse proxies that enforce authorization before
-  traffic reaches the Decodex listener. Direct non-loopback exposure and remote
-  `operate`/`admin` profiles without that boundary are outside the runtime contract.
+  mechanism. Streamable HTTP listeners reachable beyond loopback require both an
+  explicit trusted origin and `--bearer-token-env`; Streamable HTTP profiles above
+  `observe` require `--bearer-token-env` even on loopback. Decodex validates
+  `Authorization: Bearer <token>` for `POST` and `DELETE` requests when this boundary
+  is configured, while CORS preflight remains unauthenticated. The built-in bearer
+  guard is an equivalent Decodex listener boundary, not OAuth Protected Resource
+  Metadata; operators may still place OAuth, relay auth, network ACLs, or reverse
+  proxies in front when that boundary is stronger or required by the client.
   Session issuance, session preconditions, and advertised protocol metadata must stay
   isolated from Decodex authority checks so a future final stateless MCP protocol can
   be added without changing tool schemas or lane-control semantics.
