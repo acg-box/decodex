@@ -1,6 +1,6 @@
 ---
 name: docs-wiki
-description: Use when maintaining this repository's docs/ lane indexes, links, and Decodex LLM Wiki routing.
+description: Use when maintaining this repository's docs/ lane indexes, links, and Decodex LLM Wiki navigation.
 ---
 
 # Decodex Docs Wiki

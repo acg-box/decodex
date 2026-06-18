@@ -6,7 +6,8 @@ description: Use when routing Decodex work.
 # Decodex
 
 Route Decodex work to the narrowest surface. Read `../../references/routing.md` when
-research, promotion, planning, labels, runtime, commit, or landing boundaries matter.
+research, promotion, planning, context intake, labels, runtime, commit, or landing
+boundaries matter.
 
 - `research`: bounded investigation before execution.
 - `okf`, `okf-query`, `okf-maintain`, `repo-memory-writer`,

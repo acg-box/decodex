@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Build Test Run Entrypoints
-description: Helps a new agent understand repo setup, build, test, run, validation, automation resources, and Decodex command entrypoints.
+description: Answers how to validate this repo, run checks, and find setup, build, test, run, automation, and Decodex command entrypoints.
 status: active
 authority: current_state
 owner: docs
@@ -19,15 +19,15 @@ Purpose: Map the current repository commands for setup, building, testing, runni
 and validating Decodex.
 
 Read this when: You need the smallest current entrypoint for repo setup, local
-validation, task-runner automation resources, or Decodex CLI usage. This is the first
-reference for a new agent that needs to understand how repo setup and command
-entrypoints fit together.
+validation, running checks, task-runner automation resources, or Decodex CLI usage.
+This is the first reference for a new agent that needs to understand how repo setup
+and command entrypoints fit together.
 
 Not this document: The full test inventory, repository directory ownership, release
 procedure, or runtime behavior contract.
 
 Covers: Task-runner authority, primary validation gates, targeted command entrypoints,
-source entrypoints, local prerequisites, and route-quality boundaries.
+source entrypoints, local prerequisites, and owner boundaries.
 
 ## Task Runner Authority
 
@@ -74,7 +74,7 @@ Use these commands when a change does not need the full aggregate gate:
 ```sh
 decodex docs check
 decodex docs graph
-decodex okf route docs "how do I validate this repo"
+decodex docs find --tag validation
 cargo check --all-features --all-targets --workspace
 cargo nextest run --workspace --all-targets --all-features
 cargo test -p decodex <filter>
@@ -93,7 +93,7 @@ decodex serve --listen-address 127.0.0.1:8192
 ```
 
 `README.md` remains the better source for the broad CLI usage list. This document owns
-the repository-memory route for validation and entrypoint selection.
+the repository-memory owner for validation and entrypoint selection.
 
 ## Source Entrypoints
 
@@ -121,14 +121,14 @@ The following paths are generated or local-only and are not source entrypoints:
 - `.worktrees/`
 - `.decodex/`
 
-## Route Quality Boundary
+## Owner Boundary
 
 This concept owns build, test, run, validation, setup, automation resources, and
 automation entrypoints questions. Use [`./test-suite.md`](./test-suite.md) for test
 inventory and placement standards, and [`./workspace-layout.md`](./workspace-layout.md)
 for directory ownership boundaries.
 
-When `decodex okf route docs "<intent>"` sends validation or setup questions to a
-generic map instead of this concept, treat that as a retrieval-quality issue and add a
-more specific routing phrase or link rather than duplicating this command list in
+When validation or setup questions are not discoverable from `docs/index.md`, lane
+indexes, or nearby related links, treat that as an owner-navigation issue and add a
+specific index entry or relationship link rather than duplicating this command list in
 another document.
