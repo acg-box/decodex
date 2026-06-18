@@ -28,6 +28,9 @@ Expose these from the top-level contract or Markdown research concept:
 - validation expectations
 - promotion target
 - docs impact
+- OKF disposition: `continue`, `promote_and_supersede`, `promote_and_retire`, or
+  `reject_or_deprecate`
+- research-only evidence versus durable knowledge candidates
 - unresolved decisions, evidence gaps, or blockers
 
 ## Option And Judgment Rules
@@ -52,3 +55,14 @@ material objections block `decision_ready`.
 
 If persisted under `docs/research/`, use a Markdown OKF `Research Contract` concept.
 Do not write JSON research event logs.
+
+## Research Versus Durable Knowledge
+
+Research keeps active evidence, options, objections, falsifiers, and gaps in the
+target repo research lane, normally `docs/research/`.
+
+Durable knowledge candidates are accepted facts, contracts, and workflow
+instructions. They must name OKF owner targets and move to decisions, specs,
+references, runbooks, evidence, skills, code, or tests after acceptance. Research can
+remain only as unresolved inquiry or explicitly superseded non-authoritative
+provenance.
