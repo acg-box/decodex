@@ -27,9 +27,9 @@ use crate::{
 		LoopGuardrailCheckpointInput, PreacquiredLeaseGuards, ProjectRegistration,
 		ProtocolActivityMarker, ProtocolActivitySummary, RUN_ACTIVITY_MARKER_FILE,
 		RUN_CONTROL_ACTION_COMPLETED, RUN_CONTROL_ACTION_FAILED, RUN_CONTROL_ACTION_FALLBACK,
-		RUN_CONTROL_ACTION_TIMED_OUT, RUN_OPERATION_REPO_GATE, Result,
-		ReviewCheckpointArtifactLookup, ReviewHandoffMarker, ReviewOrchestrationMarker,
-		ReviewPolicyCheckpointInput, RunControlActionRequest, StateStore,
+		RUN_CONTROL_ACTION_TIMED_OUT, RUN_OPERATION_REPO_GATE, ReviewCheckpointArtifactLookup,
+		ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpointInput,
+		RunControlActionRequest, StateStore,
 	},
 	tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
 };
@@ -1117,6 +1117,117 @@ fn protocol_event_sequence_conflict_rejects_changed_payload() {
 		"unexpected error: {error:?}",
 	);
 	assert_eq!(store.event_count("run-1").expect("event count should load"), 1);
+}
+
+#[test]
+fn late_protocol_events_after_thread_archive_use_discarded_sequence_namespace() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+
+	store.record_run_attempt("run-1", "PUB-101", 1, "failed").expect("run attempt should record");
+	store
+		.upsert_worktree("pubfi", "PUB-101", "x/pubfi-pub-101", "/tmp/worktrees/pub-101")
+		.expect("worktree should record");
+	store
+		.append_event("run-1", 32, "thread/archive", r#"{"threadId":"thread-1"}"#)
+		.expect("archive event should append");
+	store
+		.append_event("run-1", 32, "item/started", r#"{"itemId":"item-1"}"#)
+		.expect("late item start should be discarded without conflict");
+	store
+		.append_event("run-1", 33, "item/completed", r#"{"itemId":"item-1"}"#)
+		.expect("later item completion should also be discarded");
+
+	let runs = store.list_recent_runs("pubfi", 10).expect("recent runs should load");
+
+	assert_eq!(runs.len(), 1);
+	assert_eq!(runs[0].event_count(), 3);
+	assert_eq!(runs[0].last_event_type(), Some("thread/archive"));
+	assert_eq!(store.event_count("run-1").expect("event count should load"), 3);
+
+	let connection = Connection::open(&state_path).expect("sqlite should open");
+	let mut statement = connection
+		.prepare(
+			"SELECT sequence_number, event_type FROM protocol_events \
+			 WHERE run_id = 'run-1' ORDER BY sequence_number",
+		)
+		.expect("protocol rows should prepare");
+	let rows = statement
+		.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+		.expect("protocol rows should query")
+		.collect::<rusqlite::Result<Vec<_>>>()
+		.expect("protocol rows should collect");
+	let discarded_rows = rows
+		.iter()
+		.filter(|(_sequence, event_type)| {
+			event_type.as_str() == "protocol/post_archive_event/discarded"
+		})
+		.collect::<Vec<_>>();
+
+	assert!(rows.iter().any(|row| row == &(32, String::from("thread/archive"))));
+	assert_eq!(discarded_rows.len(), 2);
+	assert!(discarded_rows.iter().all(|(sequence, _event_type)| *sequence < 0));
+	assert!(!rows.iter().any(|(_sequence, event_type)| event_type == "item/started"));
+	assert!(!rows.iter().any(|(_sequence, event_type)| event_type == "item/completed"));
+}
+
+#[test]
+fn pre_archive_protocol_replays_remain_idempotent_after_archive() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+
+	store.record_run_attempt("run-1", "PUB-101", 1, "failed").expect("run attempt should record");
+	store
+		.upsert_worktree("pubfi", "PUB-101", "x/pubfi-pub-101", "/tmp/worktrees/pub-101")
+		.expect("worktree should record");
+	store
+		.append_event("run-1", 31, "item/started", r#"{"itemId":"item-1"}"#)
+		.expect("pre-archive item start should append");
+	store
+		.append_event("run-1", 32, "thread/archive", r#"{"threadId":"thread-1"}"#)
+		.expect("archive event should append");
+	store
+		.append_event("run-1", 31, "item/started", r#"{"itemId":"item-1"}"#)
+		.expect("pre-archive replay should stay idempotent after archive");
+
+	let runs = store.list_recent_runs("pubfi", 10).expect("recent runs should load");
+
+	assert_eq!(runs.len(), 1);
+	assert_eq!(runs[0].event_count(), 2);
+	assert_eq!(runs[0].last_event_type(), Some("thread/archive"));
+	assert_eq!(store.event_count("run-1").expect("event count should load"), 2);
+}
+
+#[test]
+fn late_protocol_events_after_archive_discard_are_restart_safe() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+
+	store.record_run_attempt("run-1", "PUB-101", 1, "failed").expect("run attempt should record");
+	store
+		.upsert_worktree("pubfi", "PUB-101", "x/pubfi-pub-101", "/tmp/worktrees/pub-101")
+		.expect("worktree should record");
+	store
+		.append_event("run-1", 7, "thread/archive/discarded", r#"{"threadId":"thread-1"}"#)
+		.expect("discarded archive event should append");
+
+	drop(store);
+
+	let restarted = StateStore::open_lazy(&state_path).expect("lazy store should open");
+
+	restarted
+		.append_event("run-1", 8, "item/commandExecution/outputDelta", r#"{"delta":"late output"}"#)
+		.expect("late output after restart should be discarded without conflict");
+
+	let runs = restarted.list_recent_runs("pubfi", 10).expect("recent runs should load");
+
+	assert_eq!(runs.len(), 1);
+	assert_eq!(runs[0].event_count(), 2);
+	assert_eq!(runs[0].last_event_type(), Some("thread/archive/discarded"));
+	assert_eq!(restarted.event_count("run-1").expect("event count should load"), 2);
 }
 
 #[test]
@@ -2643,7 +2754,7 @@ fn write_test_protocol_activity_marker(
 	event_count: i64,
 	last_event_type: &str,
 	protocol_activity: Option<&ProtocolActivitySummary>,
-) -> Result<()> {
+) -> crate::state::Result<()> {
 	state::write_run_protocol_activity_marker(
 		worktree_path,
 		&ProtocolActivityMarker {

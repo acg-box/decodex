@@ -37,8 +37,8 @@
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
       "Apply Decodex repo-work rules.",
-      "Debug or audit Decodex drift.",
-      "Research this with Decodex."
+      "Maintain Decodex docs. Work with an OKF bundle.",
+      "Research this with Decodex. Debug or audit Decodex drift."
     ],
     "brandColor": "#0F766E"
   }
