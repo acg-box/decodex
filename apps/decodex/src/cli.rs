@@ -1408,7 +1408,7 @@ impl From<IssueDispatchMode> for AttemptDispatchMode {
 
 #[derive(Debug, Subcommand)]
 enum DocsSubcommand {
-	/// Validate the complete Markdown-only Decodex docs bundle.
+	/// Validate the complete Decodex docs bundle.
 	#[command(alias = "lint")]
 	Check,
 	/// Validate OKF routing files and concept frontmatter.
@@ -1464,7 +1464,7 @@ enum Command {
 	Diagnose(DiagnoseCommand),
 	/// Inspect local-only private execution evidence for one issue or run.
 	Evidence(EvidenceCommand),
-	/// Validate the repo docs as a Markdown-only OKF knowledge bundle.
+	/// Validate the repo docs as a Decodex OKF knowledge bundle.
 	Docs(DocsCommand),
 	/// Inspect portable OKF bundles.
 	Okf(OkfCommand),

@@ -297,8 +297,8 @@ impl McpServer {
 				},
 				{
 					"uriTemplate": "decodex://research/{artifact}",
-					"name": "Decodex research reports",
-					"description": "Checked-in JSON research reports.",
+					"name": "Decodex research artifacts",
+					"description": "Checked-in JSON research artifacts.",
 					"mimeType": "application/json"
 				},
 				{
@@ -1224,7 +1224,7 @@ impl McpContext {
 			resources.push(McpResource::json(
 				format!("decodex://research/{stem}"),
 				format!("docs/research/{stem}.json"),
-				"Checked-in JSON research report.",
+				"Checked-in JSON research artifact.",
 			));
 		}
 

@@ -42,7 +42,7 @@ Do not gather broad evidence until the question and falsifiers can guide collect
 Research remains latent until explicit acceptance such as "arrange this", "push this
 forward", "推进", or "做". Promotion is a separate authority step.
 
-Checked-in research belongs in `docs/research/` only as a Markdown OKF research
-concept. It is supporting knowledge, not implementation authority.
-runtime state may keep structured Decision Contracts for machine use; checked-in
-docs remain Markdown OKF concepts.
+Checked-in research belongs in `docs/research/` only as a flat JSON research artifact.
+It is supporting knowledge, not implementation authority; runtime state may keep
+structured Decision Contracts for machine use; checked-in research remains JSON and
+non-authoritative until promoted.
