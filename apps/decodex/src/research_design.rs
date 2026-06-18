@@ -654,7 +654,14 @@ pub(crate) fn run_promote(
 	})
 }
 
-fn persist_research_design_run(
+pub(crate) fn dry_run_research_design_compile(
+	input: ResearchDesignRunInput,
+	project_id: &str,
+) -> Result<ResearchDesignRunReport> {
+	Ok(compile_research_design_run(input, project_id)?.report)
+}
+
+pub(crate) fn persist_research_design_run(
 	store: &StateStore,
 	project_id: &str,
 	input: ResearchDesignRunInput,
@@ -670,7 +677,7 @@ fn persist_research_design_run(
 	Ok(ResearchDesignRunReport { source_issue_id, ..compilation.report.with_record(&record) })
 }
 
-fn promote_research_design_contract(
+pub(crate) fn promote_research_design_contract(
 	store: &StateStore,
 	project_id: &str,
 	contract_id: &str,
