@@ -9,7 +9,7 @@ Question this index answers: "how is it currently organized or implemented?"
 
 - You need the current repository layout, ownership boundaries, or where a topic lives.
 - You need to know which directory or file surface is authoritative for a class of work.
-- You need to understand where research reports and supporting evidence fit.
+- You need to understand where research concepts and supporting evidence fit.
 
 ## Do not use this index when
 
