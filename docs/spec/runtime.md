@@ -84,7 +84,9 @@ state or this state machine.
   clients. The stdio gateway advertises resources, resource templates, prompts, tools,
   logging compatibility, and progress notifications. Resources read checked-in docs,
   checked-in JSON research reports, runtime Decision Contracts, local status
-  snapshots, and lane-control readback. Tools are schema-bound and deliberately small:
+  snapshots, remote-safe live status/activity projections, current/recent status-window
+  run event/protocol/child activity/progress diagnostics, PR/review state,
+  lane-inspect aliases, and lane-control readback. Tools are schema-bound and deliberately small:
   observe and plan provide read-oriented structured results, while operate/admin
   lane-control entries return structured refusal states until the dedicated
   lane-control MCP work delegates through existing authority gates. Local stdio
@@ -1022,7 +1024,11 @@ After a process restart, recent-run history, run lease ownership, retained post-
   default, and uses SSE framing for remote progress or notifications when the client
   accepts `text/event-stream`. MCP tools must not replace the app-server dynamic tool
   bridge or become a lane-control mutation path before a later authority design
-  delegates through existing lane-control guards.
+  delegates through existing lane-control guards. MCP observability projections must
+  stay public-safe: no hidden reasoning, raw steer text, private evidence payloads, or
+  local path fields. Run-scoped MCP observability resources are bounded to runs visible
+  in the current/recent status snapshot and must not construct an unbounded historical
+  operator snapshot for a single remote resource read.
 - `GET /livez` is only a process- and listener-level liveness probe. It must not claim control-plane tick freshness or forward progress by itself.
 - The dashboard must not depend on a separate HTTP snapshot or readiness endpoint; snapshot freshness belongs to the WebSocket-delivered snapshot payload and the browser connection state.
 - Reconciliation must mark locally active run attempts as `interrupted` when their
