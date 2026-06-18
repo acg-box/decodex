@@ -33,6 +33,8 @@ const GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING: &str = "tracker_issue_missing"
 const GHOST_LANE_OWNERSHIP_STATE: &str = "ghost_lane";
 const GHOST_LANE_POLICY_STATE: &str = "runtime_recovery_required";
 const GHOST_LANE_NEXT_ACTION: &str = "run_ghost_lane_recovery";
+const GHOST_LANE_CLEANUP_EVENT: &str = "ghost_lane_cleanup";
+const GHOST_LANE_TERMINAL_STATUS: &str = "terminal_guarded";
 const MCP_TEST_FIXTURE_SOURCE: &str = "mcp-test";
 const MCP_TEST_FIXTURE_PROJECT_ID: &str = "pubfi";
 const MCP_TEST_FIXTURE_ISSUE_ID: &str = "PUB-012";
@@ -352,9 +354,8 @@ where
 	append_lane_control_condition(&mut run, GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING);
 	apply_missing_issue_ghost_lane_status_projection(project, state_store, &mut run)?;
 
-	if run.ownership_state == GHOST_LANE_OWNERSHIP_STATE
-		&& run.policy_state == GHOST_LANE_POLICY_STATE
-		&& run.lane_control_next_action == GHOST_LANE_NEXT_ACTION
+	if missing_issue_ghost_lane_status_allows_cleanup(&run)
+		|| missing_issue_ghost_lane_status_is_cleanup_complete(&run)
 	{
 		return Ok(Vec::new());
 	}
@@ -443,7 +444,9 @@ fn apply_missing_issue_ghost_lane_status_projection(
 		append_lane_control_condition(run, &condition);
 	}
 
-	if cleanup_safe {
+	if cleanup_safe && missing_issue_ghost_lane_cleanup_audit_present(run) {
+		apply_missing_issue_ghost_lane_cleanup_complete_run_projection(run);
+	} else if cleanup_safe {
 		run.ownership_state = String::from(GHOST_LANE_OWNERSHIP_STATE);
 		run.policy_state = String::from(GHOST_LANE_POLICY_STATE);
 		run.lane_control_next_action = String::from(GHOST_LANE_NEXT_ACTION);
@@ -455,6 +458,57 @@ fn apply_missing_issue_ghost_lane_status_projection(
 	}
 
 	Ok(())
+}
+
+fn missing_issue_ghost_lane_status_allows_cleanup(run: &OperatorRunStatus) -> bool {
+	run.ownership_state == GHOST_LANE_OWNERSHIP_STATE
+		&& run.policy_state == GHOST_LANE_POLICY_STATE
+		&& run.lane_control_next_action == GHOST_LANE_NEXT_ACTION
+}
+
+fn missing_issue_ghost_lane_status_is_cleanup_complete(run: &OperatorRunStatus) -> bool {
+	run.ownership_state == "closed"
+		&& run.policy_state == "allowed"
+		&& run.lane_control_next_action == "no_action"
+		&& missing_issue_ghost_lane_cleanup_audit_present(run)
+}
+
+fn missing_issue_ghost_lane_cleanup_audit_present(run: &OperatorRunStatus) -> bool {
+	run.lane_control_conditions
+		.iter()
+		.any(|condition| condition == "ghost_lane_cleanup_audit_present")
+}
+
+fn apply_missing_issue_ghost_lane_cleanup_complete_run_projection(run: &mut OperatorRunStatus) {
+	run.status = String::from(GHOST_LANE_TERMINAL_STATUS);
+	run.attempt_status = String::from(GHOST_LANE_TERMINAL_STATUS);
+	run.status_projection_reason = None;
+	run.ownership_state = String::from("closed");
+	run.liveness_state = String::from("not_running");
+	run.policy_state = String::from("allowed");
+	run.terminalization_state = String::from("cleanup_complete");
+	run.lane_control_next_action = String::from("no_action");
+	run.phase = String::from("completed");
+	run.run_phase = String::from("completed");
+	run.wait_reason = None;
+	run.current_operation = String::from("ghost_lane_cleanup_audit");
+	run.control_capability = None;
+	run.continuation_pending = false;
+	run.run_lease = false;
+	run.queue_lease_state = String::from("not_held");
+	run.execution_liveness = String::from("not_running");
+	run.has_fresh_execution = false;
+	run.counts_as_running = false;
+	run.needs_attention = false;
+	run.suspected_stall = false;
+	run.retry_kind = None;
+	run.next_retry_at = None;
+
+	if let Some(loop_status) = run.loop_status.as_mut() {
+		loop_status.summary = String::from("missing-issue ghost cleanup audit recorded");
+		loop_status.next_action = None;
+		loop_status.review = None;
+	}
 }
 
 fn ghost_lane_current_worktree_keys(
@@ -2870,6 +2924,7 @@ fn apply_missing_issue_ghost_lane_projection(
 			)
 		})
 		.collect::<std::collections::BTreeSet<_>>();
+	let mut cleanup_complete_run_ids = HashSet::new();
 
 	for run in &mut snapshot.current_lanes {
 		if !run
@@ -2887,24 +2942,39 @@ fn apply_missing_issue_ghost_lane_projection(
 			append_lane_control_condition(run, &condition);
 		}
 
-		if cleanup_safe {
+		if cleanup_safe && missing_issue_ghost_lane_cleanup_audit_present(run) {
+			apply_missing_issue_ghost_lane_cleanup_complete_run_projection(run);
+
+			cleanup_complete_run_ids.insert(run.run_id.clone());
+		} else if cleanup_safe {
 			run.ownership_state = String::from(GHOST_LANE_OWNERSHIP_STATE);
 			run.policy_state = String::from(GHOST_LANE_POLICY_STATE);
 			run.lane_control_next_action = String::from(GHOST_LANE_NEXT_ACTION);
+			run.needs_attention = true;
 		} else {
 			run.ownership_state = String::from("retained_attention");
 			run.policy_state = String::from("runtime_recovery_blocked");
 			run.lane_control_next_action =
 				String::from("inspect_missing_issue_runtime_recovery_blockers");
+			run.needs_attention = true;
 		}
 
 		if let Some(loop_status) = run.loop_status.as_mut() {
 			loop_status.next_action = Some(run.lane_control_next_action.clone());
 		}
 
-		run.needs_attention = true;
 		run.counts_as_running = false;
 	}
+	for run in &mut snapshot.recent_runs {
+		if cleanup_complete_run_ids.contains(&run.run_id) {
+			append_lane_control_condition(run, "ghost_lane_cleanup_audit_present");
+			apply_missing_issue_ghost_lane_cleanup_complete_run_projection(run);
+		}
+	}
+
+	snapshot
+		.current_lanes
+		.retain(|run| !missing_issue_ghost_lane_status_is_cleanup_complete(run));
 
 	Ok(())
 }
@@ -3119,6 +3189,15 @@ fn inspect_status_ghost_lane_private_evidence(
 		conditions.push(String::from("private_evidence_missing"));
 	} else if mcp_test_fixture {
 		conditions.push(String::from("mcp_test_fixture_private_control_evidence_present"));
+
+		if events
+			.iter()
+			.any(status_ghost_lane_private_event_is_cleanup_audit)
+		{
+			conditions.push(String::from("ghost_lane_cleanup_audit_present"));
+		}
+	} else if status_ghost_lane_private_events_are_cleanup_audit_evidence(&events) {
+		conditions.push(String::from("ghost_lane_cleanup_audit_present"));
 	} else {
 		blockers.push(String::from("private_evidence_present"));
 	}
@@ -3142,7 +3221,7 @@ fn status_ghost_lane_mcp_test_fixture_control_evidence(
 		run.attempt_number,
 	)?;
 
-	Ok(status_ghost_lane_private_events_are_mcp_test_control_evidence(&events))
+	Ok(status_ghost_lane_private_events_are_mcp_test_recovery_evidence(&events))
 }
 
 fn status_ghost_lane_has_mcp_test_fixture_identity(
@@ -3184,13 +3263,16 @@ fn status_ghost_lane_optional_fixture_value(value: Option<&str>, expected: &str)
 	}
 }
 
-fn status_ghost_lane_private_events_are_mcp_test_control_evidence(
+fn status_ghost_lane_private_events_are_mcp_test_recovery_evidence(
 	events: &[PrivateExecutionEvent],
 ) -> bool {
 	!events.is_empty()
 		&& events
 			.iter()
-			.all(status_ghost_lane_private_event_is_mcp_test_control_evidence)
+			.all(|event| {
+				status_ghost_lane_private_event_is_mcp_test_control_evidence(event)
+					|| status_ghost_lane_private_event_is_cleanup_audit(event)
+			})
 }
 
 fn status_ghost_lane_private_event_is_mcp_test_control_evidence(
@@ -3229,6 +3311,57 @@ fn status_ghost_lane_cli_control_action_matches_mcp_test_fixture(
 			== Some(MCP_TEST_FIXTURE_RUN_ID)
 		&& payload.pointer("/requested/attempt_number").and_then(serde_json::Value::as_i64)
 			== Some(1)
+}
+
+fn status_ghost_lane_private_events_are_cleanup_audit_evidence(
+	events: &[PrivateExecutionEvent],
+) -> bool {
+	!events.is_empty()
+		&& events
+			.iter()
+			.all(status_ghost_lane_private_event_is_cleanup_audit)
+}
+
+fn status_ghost_lane_private_event_is_cleanup_audit(event: &PrivateExecutionEvent) -> bool {
+	if event.event_type() != GHOST_LANE_CLEANUP_EVENT {
+		return false;
+	}
+
+	let payload = event.payload();
+
+	payload.get("schema").and_then(serde_json::Value::as_str)
+		== Some("decodex.ghost_lane_recovery_private_event/1")
+		&& payload.get("event").and_then(serde_json::Value::as_str)
+			== Some(GHOST_LANE_CLEANUP_EVENT)
+		&& matches!(
+			payload.get("classification").and_then(serde_json::Value::as_str),
+			Some("missing_issue_ghost_lane" | "mcp_test_fixture_ghost_lane")
+		)
+		&& payload.get("terminal_status").and_then(serde_json::Value::as_str)
+			== Some(GHOST_LANE_TERMINAL_STATUS)
+		&& payload.get("cleared_run_lease").and_then(serde_json::Value::as_bool)
+			== Some(true)
+		&& payload
+			.get("blockers")
+			.and_then(serde_json::Value::as_array)
+			.is_some_and(|blockers| blockers.is_empty())
+		&& status_ghost_lane_cleanup_audit_evidence_contains(payload, "tracker_issue_missing")
+		&& status_ghost_lane_cleanup_audit_evidence_contains(payload, "worktree_missing")
+		&& status_ghost_lane_cleanup_audit_evidence_contains(payload, "review_lineage_missing")
+}
+
+fn status_ghost_lane_cleanup_audit_evidence_contains(
+	payload: &serde_json::Value,
+	expected: &str,
+) -> bool {
+	payload
+		.get("evidence")
+		.and_then(serde_json::Value::as_array)
+		.is_some_and(|evidence| {
+			evidence
+				.iter()
+				.any(|entry| entry.as_str() == Some(expected))
+		})
 }
 
 fn status_ghost_lane_mcp_test_fixture_allowed_live_blocker(blocker: &str) -> bool {
@@ -4591,7 +4724,7 @@ where
 
 	let issue_ids =
 		worktrees.iter().map(|mapping| mapping.issue_id().to_owned()).collect::<Vec<_>>();
-	let issues = tracker.refresh_issues(&issue_ids)?;
+	let issues = refresh_recoverable_runtime_issues(tracker, &issue_ids)?;
 	let issues_by_id =
 		issues.into_iter().map(|issue| (issue.id.clone(), issue)).collect::<HashMap<_, _>>();
 
