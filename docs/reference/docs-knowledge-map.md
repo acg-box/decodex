@@ -52,7 +52,8 @@ OKF provides the data contract for repository knowledge:
 - Profile checks separate portable knowledge-bundle validity from this repository's
   stricter Decodex workflow policy.
 - `decodex docs check` blocks broken links, malformed references, missing required
-  concept fields, stale drift-audit structure, and non-Markdown docs artifacts.
+  concept fields, stale drift-audit structure, invalid research JSON, and docs
+  artifacts outside their allowed lanes.
 - `decodex okf init <root> --profile repo-memory` makes the same framework reusable in
   another repository without inheriting Decodex-specific lane rules.
 

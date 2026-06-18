@@ -6,9 +6,10 @@ agent-facing docs workflow.
 ## Contract
 
 `docs/` is this repository's Decodex profile OKF bundle. `docs/index.md` routes,
-`docs/policy.md` owns shape/lanes/gates, `docs/log.md` records maintenance, and
-non-index, non-log Markdown files are typed concepts. Research is latent until
-promoted; drift audits can block completion.
+`docs/policy.md` owns shape/lanes/gates, `docs/log.md` records maintenance,
+non-index, non-log Markdown files are typed concepts, and `docs/research/` stores
+flat JSON research artifacts. Research is latent until promoted; drift audits can
+block completion.
 
 Do not create a parallel `wiki/` or `okf/` root for this repo. Portable OKF bundles
 use `decodex okf` and the `okf*` skills; they do not inherit Decodex lanes, Linear
@@ -33,6 +34,6 @@ workflow, or docs-impact gates.
 
 ## Routing
 
-- `docs-okf.md`: Decodex frontmatter/Markdown checks.
+- `docs-okf.md`: Decodex frontmatter, Markdown concept, and research JSON checks.
 - `docs-wiki.md`: placement, indexes, links, deduplication.
 - `docs-drift.md`: docs/code/evidence audits.
