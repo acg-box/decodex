@@ -22,9 +22,12 @@ boundaries matter.
 When an MCP client is available, use the Decodex MCP gateway as a typed facade for
 resources, prompts, and the deliberately small tool catalog. Prefer stdio for local
 clients and Streamable HTTP only for remote permitted clients behind the operator's
-chosen local listener, tunnel, or relay. MCP tools do not bypass Decision Contract,
-lane-control, review, landing, tracker, or runtime authority gates. Route MCP planning
-through `research_compile`, `research_promote`, and `intake_goal`; dry-run modes stay
+chosen local listener, tunnel, relay, network ACL, or protected-resource auth
+boundary. Treat `--allow-origin` as CORS trust, not authentication; do not recommend
+direct non-loopback or elevated Streamable HTTP profiles without an authorization
+boundary. MCP tools do not bypass Decision Contract, lane-control, review, landing,
+tracker, or runtime authority gates. Route MCP planning through `research_compile`,
+`research_promote`, and `intake_goal`; dry-run modes stay
 non-mutating, and apply/promote modes require explicit authority fields and structured
 refusal when authority is missing. Route MCP remote control through `decodex_observe`,
 `decodex_lane_control`, and `decodex_project_control`: observe is public-safe
