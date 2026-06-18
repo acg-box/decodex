@@ -22,4 +22,7 @@ quality.
 - For existing issue-batch intake, hold issues that lack a generic dispatch briefing
   instead of treating machine-only blocks, private pointers, progress checkpoints, or
   review summaries as executable issue text.
+- When an MCP client is available, prefer `research_promote` and `intake_goal` for
+  typed readiness/apply boundaries; dry-run stays non-mutating and apply requires
+  explicit authority.
 - Do not replace `WORKFLOW.md`, mutate active state, or queue latent research.

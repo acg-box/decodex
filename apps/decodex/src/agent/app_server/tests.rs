@@ -14,6 +14,8 @@ use tempfile::TempDir;
 use crate::{
 	agent::{
 		app_server::{
+			APP_SERVER_REQUIRED_CLIENT_NOTIFICATIONS, APP_SERVER_REQUIRED_CLIENT_REQUESTS,
+			APP_SERVER_REQUIRED_SERVER_NOTIFICATIONS, APP_SERVER_REQUIRED_SERVER_REQUESTS,
 			APP_SERVER_SCHEMA_REQUIRED_MARKERS, AppServerCapabilityPreflightFailure,
 			AppServerCapabilityPreflightReport, AppServerDynamicToolFailure,
 			AppServerPhaseGoalFailure, AppServerRunResult, AppServerThreadArchiveOutcome,
@@ -596,6 +598,7 @@ fn generated_schema_marker_validation_accepts_required_markers() {
 		.to_string(),
 	)
 	.expect("schema fixture should write");
+
 	write_app_server_method_union_fixtures(temp_dir.path(), None);
 
 	super::validate_generated_app_server_schema(temp_dir.path())
@@ -604,10 +607,10 @@ fn generated_schema_marker_validation_accepts_required_markers() {
 
 fn write_app_server_method_union_fixtures(root: &Path, omitted: Option<(&str, &str)>) {
 	for (title, required_methods) in [
-		("ClientRequest", super::APP_SERVER_REQUIRED_CLIENT_REQUESTS),
-		("ServerRequest", super::APP_SERVER_REQUIRED_SERVER_REQUESTS),
-		("ClientNotification", super::APP_SERVER_REQUIRED_CLIENT_NOTIFICATIONS),
-		("ServerNotification", super::APP_SERVER_REQUIRED_SERVER_NOTIFICATIONS),
+		("ClientRequest", APP_SERVER_REQUIRED_CLIENT_REQUESTS),
+		("ServerRequest", APP_SERVER_REQUIRED_SERVER_REQUESTS),
+		("ClientNotification", APP_SERVER_REQUIRED_CLIENT_NOTIFICATIONS),
+		("ServerNotification", APP_SERVER_REQUIRED_SERVER_NOTIFICATIONS),
 	] {
 		let branches = required_methods
 			.iter()
@@ -750,6 +753,7 @@ fn generated_schema_marker_validation_rejects_missing_owned_method() {
 		.to_string(),
 	)
 	.expect("schema fixture should write");
+
 	write_app_server_method_union_fixtures(temp_dir.path(), Some(("ClientRequest", "turn/start")));
 
 	let error = super::validate_generated_app_server_schema(temp_dir.path())
@@ -864,6 +868,7 @@ fn thread_start_and_resume_requests_inherit_runtime_config() {
 #[test]
 fn thread_start_serializes_dynamic_tools_with_app_server_141_shape() {
 	struct MixedDynamicToolHandler;
+
 	impl DynamicToolHandler for MixedDynamicToolHandler {
 		fn tool_specs(&self) -> Vec<DynamicToolSpec> {
 			let local_tool = DynamicToolSpec::new(
@@ -909,7 +914,6 @@ fn thread_start_serializes_dynamic_tools_with_app_server_141_shape() {
 	assert_eq!(dynamic_tools[0]["name"], "local_tool");
 	assert_eq!(dynamic_tools[0]["description"], "Test local tool.");
 	assert!(dynamic_tools[0].get("namespace").is_none());
-
 	assert_eq!(dynamic_tools[1]["type"], "namespace");
 	assert_eq!(dynamic_tools[1]["name"], "tracker");
 	assert_eq!(dynamic_tools[1]["description"], "Dynamic tools in the tracker namespace.");
