@@ -358,6 +358,85 @@ pub(super) struct InitializeResponse {
 	pub(super) platform_os: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(tag = "type")]
+pub(super) enum AppServerDynamicToolSpec {
+	#[serde(rename = "function")]
+	Function {
+		description: String,
+		#[serde(rename = "deferLoading", default, skip_serializing_if = "std::ops::Not::not")]
+		defer_loading: bool,
+		#[serde(rename = "inputSchema")]
+		input_schema: Value,
+		name: String,
+	},
+	#[serde(rename = "namespace")]
+	Namespace { description: String, name: String, tools: Vec<AppServerDynamicToolNamespaceTool> },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub(super) struct AppServerDynamicToolNamespaceTool {
+	#[serde(rename = "type")]
+	kind: &'static str,
+	description: String,
+	#[serde(rename = "deferLoading", default, skip_serializing_if = "std::ops::Not::not")]
+	defer_loading: bool,
+	#[serde(rename = "inputSchema")]
+	input_schema: Value,
+	name: String,
+}
+
+impl AppServerDynamicToolSpec {
+	fn function_from_spec(spec: &DynamicToolSpec) -> Self {
+		Self::Function {
+			description: spec.description.clone(),
+			defer_loading: spec.defer_loading,
+			input_schema: spec.input_schema.clone(),
+			name: spec.name.clone(),
+		}
+	}
+}
+
+impl AppServerDynamicToolNamespaceTool {
+	fn from_spec(spec: &DynamicToolSpec) -> Self {
+		Self {
+			kind: "function",
+			description: spec.description.clone(),
+			defer_loading: spec.defer_loading,
+			input_schema: spec.input_schema.clone(),
+			name: spec.name.clone(),
+		}
+	}
+}
+
+pub(super) fn app_server_dynamic_tool_specs(
+	tool_specs: &[DynamicToolSpec],
+) -> Vec<AppServerDynamicToolSpec> {
+	let mut app_server_specs = Vec::new();
+	let mut namespace_tools = BTreeMap::<String, Vec<AppServerDynamicToolNamespaceTool>>::new();
+
+	for spec in tool_specs {
+		if let Some(namespace) = spec.namespace.as_deref() {
+			namespace_tools
+				.entry(namespace.to_owned())
+				.or_default()
+				.push(AppServerDynamicToolNamespaceTool::from_spec(spec));
+		} else {
+			app_server_specs.push(AppServerDynamicToolSpec::function_from_spec(spec));
+		}
+	}
+
+	for (namespace, tools) in namespace_tools {
+		app_server_specs.push(AppServerDynamicToolSpec::Namespace {
+			description: format!("Dynamic tools in the {namespace} namespace."),
+			name: namespace,
+			tools,
+		});
+	}
+
+	app_server_specs
+}
+
 #[derive(Debug, Default, Serialize)]
 pub(super) struct ThreadStartRequest {
 	#[serde(rename = "baseInstructions", skip_serializing_if = "Option::is_none")]
@@ -367,7 +446,7 @@ pub(super) struct ThreadStartRequest {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(super) cwd: Option<String>,
 	#[serde(rename = "dynamicTools", skip_serializing_if = "Option::is_none")]
-	pub(super) dynamic_tools: Option<Vec<DynamicToolSpec>>,
+	pub(super) dynamic_tools: Option<Vec<AppServerDynamicToolSpec>>,
 	#[serde(rename = "developerInstructions", skip_serializing_if = "Option::is_none")]
 	pub(super) developer_instructions: Option<String>,
 	#[serde(skip_serializing_if = "Option::is_none")]

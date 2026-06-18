@@ -3,7 +3,7 @@ use std::{
 	collections::BTreeMap,
 	env, fs,
 	os::unix::fs::PermissionsExt,
-	path::PathBuf,
+	path::{Path, PathBuf},
 	time::{Duration, Instant},
 };
 
@@ -538,22 +538,225 @@ fn generated_schema_marker_validation_accepts_required_markers() {
 		serde_json::json!({
 			"description": "Decodex app-server compatibility fixture.",
 			"requiredMarkers": super::APP_SERVER_SCHEMA_REQUIRED_MARKERS,
+			"title": "ThreadStartParams",
 			"properties": {
 				"dynamicTools": {
-					"properties": {
-						"namespace": { "type": "string" },
-						"deferLoading": { "type": "boolean" }
+					"items": {
+						"$ref": "#/definitions/DynamicToolSpec"
 					}
 				},
 				"marketplaceKinds": { "type": "array" },
 				"type": { "const": "inputText" }
+			},
+			"definitions": {
+				"DynamicToolNamespaceTool": {
+					"oneOf": [{
+						"title": "FunctionDynamicToolNamespaceTool",
+						"required": ["description", "inputSchema", "name", "type"],
+						"properties": {
+							"deferLoading": { "type": "boolean" },
+							"description": { "type": "string" },
+							"inputSchema": true,
+							"name": { "type": "string" },
+							"type": { "enum": ["function"] }
+						}
+					}]
+				},
+				"DynamicToolSpec": {
+					"oneOf": [
+						{
+							"title": "FunctionDynamicToolSpec",
+							"required": ["description", "inputSchema", "name", "type"],
+							"properties": {
+								"deferLoading": { "type": "boolean" },
+								"description": { "type": "string" },
+								"inputSchema": true,
+								"name": { "type": "string" },
+								"type": { "enum": ["function"] }
+							}
+						},
+						{
+							"title": "NamespaceDynamicToolSpec",
+							"required": ["description", "name", "tools", "type"],
+							"properties": {
+								"description": { "type": "string" },
+								"name": { "type": "string" },
+								"tools": {
+									"items": {
+										"$ref": "#/definitions/DynamicToolNamespaceTool"
+									}
+								},
+								"type": { "enum": ["namespace"] }
+							}
+						}
+					]
+				}
 			}
 		})
 		.to_string(),
 	)
 	.expect("schema fixture should write");
+	write_app_server_method_union_fixtures(temp_dir.path(), None);
+
 	super::validate_generated_app_server_schema(temp_dir.path())
 		.expect("required markers should pass schema validation");
+}
+
+fn write_app_server_method_union_fixtures(root: &Path, omitted: Option<(&str, &str)>) {
+	for (title, required_methods) in [
+		("ClientRequest", super::APP_SERVER_REQUIRED_CLIENT_REQUESTS),
+		("ServerRequest", super::APP_SERVER_REQUIRED_SERVER_REQUESTS),
+		("ClientNotification", super::APP_SERVER_REQUIRED_CLIENT_NOTIFICATIONS),
+		("ServerNotification", super::APP_SERVER_REQUIRED_SERVER_NOTIFICATIONS),
+	] {
+		let branches = required_methods
+			.iter()
+			.filter(|(method, _schema)| omitted != Some((title, *method)))
+			.map(|(method, schema)| {
+				let mut properties = serde_json::json!({
+					"method": {
+						"type": "string",
+						"enum": [method]
+					}
+				});
+
+				if !schema.is_empty() {
+					properties["params"] = serde_json::json!({
+						"$ref": format!("#/definitions/{schema}")
+					});
+				}
+
+				serde_json::json!({
+					"title": format!("{method}Fixture"),
+					"type": "object",
+					"properties": properties
+				})
+			})
+			.collect::<Vec<_>>();
+
+		fs::write(
+			root.join(format!("{title}.json")),
+			serde_json::json!({
+				"title": title,
+				"oneOf": branches
+			})
+			.to_string(),
+		)
+		.expect("schema union fixture should write");
+	}
+}
+
+#[test]
+fn generated_schema_marker_validation_rejects_legacy_flat_dynamic_tools() {
+	let temp_dir = TempDir::new().expect("temp dir should create");
+	let schema_path = temp_dir.path().join("app-server.schema.json");
+
+	fs::write(
+		&schema_path,
+		serde_json::json!({
+			"requiredMarkers": super::APP_SERVER_SCHEMA_REQUIRED_MARKERS,
+			"title": "ThreadStartParams",
+			"properties": {
+				"dynamicTools": {
+					"items": {
+						"$ref": "#/definitions/DynamicToolSpec"
+					}
+				}
+			},
+			"definitions": {
+				"DynamicToolSpec": {
+					"type": "object",
+					"required": ["description", "inputSchema", "name"],
+					"properties": {
+						"deferLoading": { "type": "boolean" },
+						"description": { "type": "string" },
+						"inputSchema": true,
+						"name": { "type": "string" },
+						"namespace": { "type": ["string", "null"] }
+					}
+				}
+			}
+		})
+		.to_string(),
+	)
+	.expect("schema fixture should write");
+
+	let error = super::validate_generated_app_server_schema(temp_dir.path())
+		.expect_err("legacy flat dynamicTools should fail schema validation");
+
+	assert!(error.to_string().contains("0.141 dynamicTools tagged union"));
+}
+
+#[test]
+fn generated_schema_marker_validation_rejects_missing_owned_method() {
+	let temp_dir = TempDir::new().expect("temp dir should create");
+	let schema_path = temp_dir.path().join("app-server.schema.json");
+
+	fs::write(
+		&schema_path,
+		serde_json::json!({
+			"requiredMarkers": super::APP_SERVER_SCHEMA_REQUIRED_MARKERS,
+			"title": "ThreadStartParams",
+			"properties": {
+				"dynamicTools": {
+					"items": {
+						"$ref": "#/definitions/DynamicToolSpec"
+					}
+				}
+			},
+			"definitions": {
+				"DynamicToolNamespaceTool": {
+					"oneOf": [{
+						"title": "FunctionDynamicToolNamespaceTool",
+						"required": ["description", "inputSchema", "name", "type"],
+						"properties": {
+							"description": { "type": "string" },
+							"inputSchema": true,
+							"name": { "type": "string" },
+							"type": { "enum": ["function"] }
+						}
+					}]
+				},
+				"DynamicToolSpec": {
+					"oneOf": [
+						{
+							"title": "FunctionDynamicToolSpec",
+							"required": ["description", "inputSchema", "name", "type"],
+							"properties": {
+								"description": { "type": "string" },
+								"inputSchema": true,
+								"name": { "type": "string" },
+								"type": { "enum": ["function"] }
+							}
+						},
+						{
+							"title": "NamespaceDynamicToolSpec",
+							"required": ["description", "name", "tools", "type"],
+							"properties": {
+								"description": { "type": "string" },
+								"name": { "type": "string" },
+								"tools": {
+									"items": {
+										"$ref": "#/definitions/DynamicToolNamespaceTool"
+									}
+								},
+								"type": { "enum": ["namespace"] }
+							}
+						}
+					]
+				}
+			}
+		})
+		.to_string(),
+	)
+	.expect("schema fixture should write");
+	write_app_server_method_union_fixtures(temp_dir.path(), Some(("ClientRequest", "turn/start")));
+
+	let error = super::validate_generated_app_server_schema(temp_dir.path())
+		.expect_err("missing Decodex-owned method should fail schema validation");
+
+	assert!(error.to_string().contains("ClientRequest"));
+	assert!(error.to_string().contains("turn/start missing"));
 }
 
 #[test]
@@ -656,6 +859,72 @@ fn thread_start_and_resume_requests_inherit_runtime_config() {
 	assert_runtime_config(&resume_value);
 
 	assert_eq!(resume_value["threadId"], "thread-1");
+}
+
+#[test]
+fn thread_start_serializes_dynamic_tools_with_app_server_141_shape() {
+	struct MixedDynamicToolHandler;
+	impl DynamicToolHandler for MixedDynamicToolHandler {
+		fn tool_specs(&self) -> Vec<DynamicToolSpec> {
+			let local_tool = DynamicToolSpec::new(
+				"local_tool",
+				"Test local tool.",
+				serde_json::json!({
+					"type": "object",
+					"additionalProperties": false
+				}),
+			);
+			let mut tracker_tool = DynamicToolSpec::new(
+				"tracker_tool",
+				"Test namespaced tool.",
+				serde_json::json!({
+					"type": "object",
+					"additionalProperties": false
+				}),
+			)
+			.deferred();
+
+			tracker_tool.namespace = Some(String::from("tracker"));
+
+			vec![local_tool, tracker_tool]
+		}
+
+		fn handle_call(&self, _tool_name: &str, _arguments: Value) -> DynamicToolCallResponse {
+			DynamicToolCallResponse::success(String::from("unused"))
+		}
+	}
+
+	let handler = MixedDynamicToolHandler;
+	let mut request = minimal_run_request();
+
+	request.dynamic_tool_handler = Some(&handler);
+
+	let start = super::build_thread_start_request(&request).expect("request should build");
+	let start_value = serde_json::to_value(&start).expect("thread start request should serialize");
+	let dynamic_tools =
+		start_value["dynamicTools"].as_array().expect("dynamicTools should serialize as an array");
+
+	assert_eq!(dynamic_tools.len(), 2);
+	assert_eq!(dynamic_tools[0]["type"], "function");
+	assert_eq!(dynamic_tools[0]["name"], "local_tool");
+	assert_eq!(dynamic_tools[0]["description"], "Test local tool.");
+	assert!(dynamic_tools[0].get("namespace").is_none());
+
+	assert_eq!(dynamic_tools[1]["type"], "namespace");
+	assert_eq!(dynamic_tools[1]["name"], "tracker");
+	assert_eq!(dynamic_tools[1]["description"], "Dynamic tools in the tracker namespace.");
+	assert!(dynamic_tools[1].get("inputSchema").is_none());
+	assert!(dynamic_tools[1].get("namespace").is_none());
+
+	let namespace_tools =
+		dynamic_tools[1]["tools"].as_array().expect("namespace tool should contain tools array");
+
+	assert_eq!(namespace_tools.len(), 1);
+	assert_eq!(namespace_tools[0]["type"], "function");
+	assert_eq!(namespace_tools[0]["name"], "tracker_tool");
+	assert_eq!(namespace_tools[0]["description"], "Test namespaced tool.");
+	assert_eq!(namespace_tools[0]["deferLoading"], true);
+	assert!(namespace_tools[0].get("namespace").is_none());
 }
 
 #[test]
