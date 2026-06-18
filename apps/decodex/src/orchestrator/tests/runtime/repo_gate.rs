@@ -211,6 +211,73 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 }
 
 #[test]
+fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let remote_root = temp_dir.path().join("origin.git");
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.repo_root().to_path_buf(),
+			reused_existing: false,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1"),
+		retry_budget_base: 0,
+	};
+
+	add_origin_remote(config.repo_root(), &remote_root);
+	checkout_new_branch(config.repo_root(), &issue_run.worktree.branch_name);
+	commit_worktree_change(
+		config.repo_root(),
+		"ready.txt",
+		"implementation complete\n",
+		"implement issue scope",
+	);
+	assert_eq!(git_output(config.repo_root(), &["status", "--porcelain"]), "");
+
+	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+
+	let transition = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &issue_run,
+	}
+	.phase_goal_completed(PhaseGoalKind::ImplementToValidationReady)
+	.expect("clean committed branch delta should satisfy phase acceptance");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
+		.expect("private phase goal events should load");
+
+	assert!(matches!(
+		transition,
+		PhaseGoalTransition::Continue(PhaseGoalSpec {
+			phase: PhaseGoalKind::HandoffEvidence,
+			..
+		})
+	));
+	assert!(events.iter().any(|event| {
+		event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE
+			&& event.payload()["decision"] == "pass"
+			&& event.payload()["reason_code"] == "accepted"
+			&& event.payload()["effective_delta"]["present"] == true
+			&& event.payload()["effective_delta"]["changed_surfaces"]
+				.as_array()
+				.is_some_and(|surfaces| {
+					surfaces.iter().any(|surface| surface.as_str() == Some("ready.txt"))
+				})
+	}));
+}
+
+#[test]
 fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
