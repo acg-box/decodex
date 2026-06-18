@@ -35,6 +35,7 @@ use self::protocol::{
 	ThreadResumeRequest, ThreadSessionResponse, ThreadStartRequest,
 	ThreadStatusChangedNotification, ToolRequestUserInputResponse, TurnCompletedNotification,
 	TurnError, TurnInterruptRequest, TurnStartRequest, TurnSteerRequest, UserInput,
+	app_server_dynamic_tool_specs,
 };
 use crate::{
 	agent::{
@@ -118,10 +119,61 @@ const APP_SERVER_SCHEMA_REQUIRED_MARKERS: &[&str] = &[
 	"thread/status/changed",
 	"turn/completed",
 	"dynamicTools",
+	"function",
 	"namespace",
+	"tools",
+	"type",
 	"deferLoading",
 	"inputText",
 	"marketplaceKinds",
+];
+const APP_SERVER_REQUIRED_CLIENT_REQUESTS: &[(&str, &str)] = &[
+	("initialize", "InitializeParams"),
+	("account/login/start", "LoginAccountParams"),
+	("thread/start", "ThreadStartParams"),
+	("thread/resume", "ThreadResumeParams"),
+	("thread/archive", "ThreadArchiveParams"),
+	("thread/goal/set", "ThreadGoalSetParams"),
+	("thread/goal/get", "ThreadGoalGetParams"),
+	("thread/goal/clear", "ThreadGoalClearParams"),
+	("turn/start", "TurnStartParams"),
+	("turn/interrupt", "TurnInterruptParams"),
+	("turn/steer", "TurnSteerParams"),
+	("command/exec", "CommandExecParams"),
+	("config/read", "ConfigReadParams"),
+	("model/list", "ModelListParams"),
+	("modelProvider/capabilities/read", "ModelProviderCapabilitiesReadParams"),
+	("skills/list", "SkillsListParams"),
+	("plugin/list", "PluginListParams"),
+	("mcpServerStatus/list", "ListMcpServerStatusParams"),
+];
+const APP_SERVER_REQUIRED_SERVER_REQUESTS: &[(&str, &str)] = &[
+	("item/commandExecution/requestApproval", "CommandExecutionRequestApprovalParams"),
+	("item/fileChange/requestApproval", "FileChangeRequestApprovalParams"),
+	("item/tool/requestUserInput", "ToolRequestUserInputParams"),
+	("mcpServer/elicitation/request", "McpServerElicitationRequestParams"),
+	("item/permissions/requestApproval", "PermissionsRequestApprovalParams"),
+	("item/tool/call", "DynamicToolCallParams"),
+	("account/chatgptAuthTokens/refresh", "ChatgptAuthTokensRefreshParams"),
+];
+const APP_SERVER_REQUIRED_CLIENT_NOTIFICATIONS: &[(&str, &str)] = &[("initialized", "")];
+const APP_SERVER_REQUIRED_SERVER_NOTIFICATIONS: &[(&str, &str)] = &[
+	("error", "ErrorNotification"),
+	("thread/started", "ThreadStartedNotification"),
+	("thread/status/changed", "ThreadStatusChangedNotification"),
+	("thread/archived", "ThreadArchivedNotification"),
+	("thread/goal/updated", "ThreadGoalUpdatedNotification"),
+	("thread/goal/cleared", "ThreadGoalClearedNotification"),
+	("thread/tokenUsage/updated", "ThreadTokenUsageUpdatedNotification"),
+	("turn/started", "TurnStartedNotification"),
+	("turn/completed", "TurnCompletedNotification"),
+	("item/started", "ItemStartedNotification"),
+	("item/completed", "ItemCompletedNotification"),
+	("item/agentMessage/delta", "AgentMessageDeltaNotification"),
+	("account/updated", "AccountUpdatedNotification"),
+	("account/rateLimits/updated", "AccountRateLimitsUpdatedNotification"),
+	("model/rerouted", "ModelReroutedNotification"),
+	("model/verification", "ModelVerificationNotification"),
 ];
 const APP_SERVER_SCHEMA_PROSE_KEYS: &[&str] =
 	&["$comment", "comment", "description", "examples", "markdownDescription", "title"];
@@ -3213,7 +3265,252 @@ fn validate_generated_app_server_schema(out_dir: &Path) -> crate::prelude::Resul
 		);
 	}
 
+	validate_generated_dynamic_tool_schema(out_dir)?;
+	validate_generated_app_server_method_unions(out_dir)?;
+
 	Ok(())
+}
+
+fn validate_generated_app_server_method_unions(out_dir: &Path) -> crate::prelude::Result<()> {
+	validate_generated_method_union(out_dir, "ClientRequest", APP_SERVER_REQUIRED_CLIENT_REQUESTS)?;
+	validate_generated_method_union(out_dir, "ServerRequest", APP_SERVER_REQUIRED_SERVER_REQUESTS)?;
+	validate_generated_method_union(
+		out_dir,
+		"ClientNotification",
+		APP_SERVER_REQUIRED_CLIENT_NOTIFICATIONS,
+	)?;
+	validate_generated_method_union(
+		out_dir,
+		"ServerNotification",
+		APP_SERVER_REQUIRED_SERVER_NOTIFICATIONS,
+	)?;
+
+	Ok(())
+}
+
+fn validate_generated_method_union(
+	out_dir: &Path,
+	title: &'static str,
+	required_methods: &[(&'static str, &'static str)],
+) -> crate::prelude::Result<()> {
+	let Some(schema) = find_schema_by_title(out_dir, title)? else {
+		eyre::bail!("Generated app-server schema was missing `{title}` method union.");
+	};
+	let method_refs = method_schema_refs(&schema);
+	let missing_or_mismatched = required_methods
+		.iter()
+		.filter_map(|(method, expected_ref)| match method_refs.get(*method) {
+			Some(actual_ref) if actual_ref.as_deref() == expected_ref_to_option(*expected_ref) =>
+				None,
+			Some(actual_ref) => Some(format!(
+				"{method} expected {} got {}",
+				expected_ref_display(*expected_ref),
+				actual_ref.as_deref().unwrap_or("<no params>")
+			)),
+			None => Some(format!("{method} missing")),
+		})
+		.collect::<Vec<_>>();
+
+	if !missing_or_mismatched.is_empty() {
+		eyre::bail!(
+			"Generated app-server `{title}` schema was missing or changed Decodex-owned methods: {}",
+			missing_or_mismatched.join(", ")
+		);
+	}
+
+	Ok(())
+}
+
+fn find_schema_by_title(out_dir: &Path, title: &str) -> crate::prelude::Result<Option<Value>> {
+	let direct_path = out_dir.join(format!("{title}.json"));
+
+	if direct_path.is_file() {
+		let schema = fs::read_to_string(&direct_path)?;
+
+		return Ok(Some(serde_json::from_str(&schema)?));
+	}
+
+	let mut schema = None;
+
+	collect_schema_by_title(out_dir, title, &mut schema)?;
+
+	Ok(schema)
+}
+
+fn collect_schema_by_title(
+	path: &Path,
+	title: &str,
+	matching_schema: &mut Option<Value>,
+) -> crate::prelude::Result<()> {
+	for entry in fs::read_dir(path)? {
+		let entry = entry?;
+		let path = entry.path();
+
+		if path.is_dir() {
+			collect_schema_by_title(&path, title, matching_schema)?;
+		} else if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+			let schema = fs::read_to_string(&path)?;
+			let value: Value = serde_json::from_str(&schema)?;
+
+			if value.get("title").and_then(Value::as_str) == Some(title) {
+				*matching_schema = Some(value);
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn method_schema_refs(schema: &Value) -> BTreeMap<String, Option<String>> {
+	let Some(branches) = schema.get("oneOf").and_then(Value::as_array) else {
+		return BTreeMap::new();
+	};
+
+	branches
+		.iter()
+		.filter_map(|branch| {
+			let properties = branch.get("properties")?.as_object()?;
+			let method =
+				properties.get("method")?.get("enum")?.as_array()?.first()?.as_str()?.to_owned();
+			let params_ref = properties
+				.get("params")
+				.and_then(|params| params.get("$ref"))
+				.and_then(Value::as_str)
+				.map(schema_ref_title);
+
+			Some((method, params_ref))
+		})
+		.collect()
+}
+
+fn schema_ref_title(schema_ref: &str) -> String {
+	schema_ref.rsplit('/').next().unwrap_or(schema_ref).to_owned()
+}
+
+fn expected_ref_to_option(expected_ref: &str) -> Option<&str> {
+	(!expected_ref.is_empty()).then_some(expected_ref)
+}
+
+fn expected_ref_display(expected_ref: &str) -> &str {
+	expected_ref_to_option(expected_ref).unwrap_or("<no params>")
+}
+
+fn validate_generated_dynamic_tool_schema(out_dir: &Path) -> crate::prelude::Result<()> {
+	let mut found_thread_start_schema = false;
+	let mut found_supported_dynamic_tool_schema = false;
+
+	collect_dynamic_tool_schema_state(
+		out_dir,
+		&mut found_thread_start_schema,
+		&mut found_supported_dynamic_tool_schema,
+	)?;
+
+	if !found_thread_start_schema {
+		eyre::bail!(
+			"Generated app-server schema was missing ThreadStartParams dynamicTools schema."
+		);
+	}
+
+	if !found_supported_dynamic_tool_schema {
+		eyre::bail!(
+			"Generated app-server schema does not expose the Decodex-supported 0.141 dynamicTools tagged union."
+		);
+	}
+
+	Ok(())
+}
+
+fn collect_dynamic_tool_schema_state(
+	path: &Path,
+	found_thread_start_schema: &mut bool,
+	found_supported_dynamic_tool_schema: &mut bool,
+) -> crate::prelude::Result<()> {
+	for entry in fs::read_dir(path)? {
+		let entry = entry?;
+		let path = entry.path();
+
+		if path.is_dir() {
+			collect_dynamic_tool_schema_state(
+				&path,
+				found_thread_start_schema,
+				found_supported_dynamic_tool_schema,
+			)?;
+		} else if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+			let schema = fs::read_to_string(&path)?;
+			let value: Value = serde_json::from_str(&schema)?;
+
+			if value.get("title").and_then(Value::as_str) == Some("ThreadStartParams")
+				&& value.pointer("/properties/dynamicTools").is_some()
+			{
+				*found_thread_start_schema = true;
+				*found_supported_dynamic_tool_schema |=
+					thread_start_schema_has_app_server_dynamic_tool_union(&value);
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn thread_start_schema_has_app_server_dynamic_tool_union(schema: &Value) -> bool {
+	let Some(definitions) = schema.get("definitions").and_then(Value::as_object) else {
+		return false;
+	};
+	let Some(dynamic_tool_spec) = definitions.get("DynamicToolSpec") else {
+		return false;
+	};
+	let Some(namespace_tool) = definitions.get("DynamicToolNamespaceTool") else {
+		return false;
+	};
+	let Some(function_branch) =
+		one_of_branch_with_title(dynamic_tool_spec, "FunctionDynamicToolSpec")
+	else {
+		return false;
+	};
+	let Some(namespace_branch) =
+		one_of_branch_with_title(dynamic_tool_spec, "NamespaceDynamicToolSpec")
+	else {
+		return false;
+	};
+	let Some(namespace_tool_branch) =
+		one_of_branch_with_title(namespace_tool, "FunctionDynamicToolNamespaceTool")
+	else {
+		return false;
+	};
+
+	schema_required_contains_all(function_branch, &["description", "inputSchema", "name", "type"])
+		&& schema_type_enum_contains(function_branch, "function")
+		&& schema_required_contains_all(namespace_branch, &["description", "name", "tools", "type"])
+		&& schema_type_enum_contains(namespace_branch, "namespace")
+		&& schema_required_contains_all(
+			namespace_tool_branch,
+			&["description", "inputSchema", "name", "type"],
+		) && schema_type_enum_contains(namespace_tool_branch, "function")
+}
+
+fn one_of_branch_with_title<'a>(schema: &'a Value, title: &str) -> Option<&'a Value> {
+	schema
+		.get("oneOf")?
+		.as_array()?
+		.iter()
+		.find(|branch| branch.get("title").and_then(Value::as_str) == Some(title))
+}
+
+fn schema_required_contains_all(schema: &Value, names: &[&str]) -> bool {
+	let Some(required) = schema.get("required").and_then(Value::as_array) else {
+		return false;
+	};
+
+	names.iter().all(|name| required.iter().any(|value| value.as_str() == Some(*name)))
+}
+
+fn schema_type_enum_contains(schema: &Value, type_value: &str) -> bool {
+	let Some(enum_values) = schema.pointer("/properties/type/enum").and_then(Value::as_array)
+	else {
+		return false;
+	};
+
+	enum_values.iter().any(|value| value.as_str() == Some(type_value))
 }
 
 fn collect_schema_markers(
@@ -3936,8 +4233,11 @@ fn app_server_method_not_found(error: &Report) -> bool {
 fn build_thread_start_request(
 	request: &AppServerRunRequest<'_>,
 ) -> crate::prelude::Result<ThreadStartRequest> {
-	let dynamic_tools =
-		request.dynamic_tool_handler.map(validated_dynamic_tool_specs).transpose()?;
+	let dynamic_tools = request
+		.dynamic_tool_handler
+		.map(validated_dynamic_tool_specs)
+		.transpose()?
+		.map(|tool_specs| app_server_dynamic_tool_specs(&tool_specs));
 
 	Ok(ThreadStartRequest {
 		cwd: Some(request.cwd.clone()),
