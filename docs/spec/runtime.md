@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
 drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, protocol_events, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings]
-last_verified: 2026-06-18
+last_verified: 2026-06-19
 ---
 # Runtime Specification
 
@@ -62,6 +62,15 @@ state or this state machine.
   the same event type and digest are idempotent and must not inflate event counts or
   fail a continuation/recovery path. A different event type or different digest at the
   same sequence remains a journal integrity error.
+- `thread/archive` and `thread/archive/discarded` are terminal protocol barriers for
+  one run. After either barrier is recorded, later non-terminal app-server events for
+  the same run must not compete for the normal positive protocol sequence namespace.
+  The runtime records them as `protocol/post_archive_event/discarded` in a negative,
+  replay-stable sequence namespace derived from the original sequence, event type, and
+  payload digest. These discarded rows are local recovery evidence only: they may
+  increase protocol event counts, but they must not replace the terminal archive event
+  as the run's latest event and must not turn a parent journal/closeout race into a
+  child retry failure.
 - Linear remains the team-visible tracker surface for issue lifecycle, queue/active/manual-attention labels, and coarse lifecycle summaries such as start, PR-ready, blocked, failed, landed, and done.
 - Versioned Linear execution event comments use the schema in
   [`linear-execution-ledger.md`](./linear-execution-ledger.md), but fine-grained runtime truth must not be rebuilt from comments every tick.
@@ -778,6 +787,12 @@ or `stalled` while current marker, active thread, or active work-protocol eviden
 still identifies the same `run_id` and `attempt_number` as live, operator status must
 keep the lane visible with the process/protocol liveness details instead of hiding it
 as only terminal history or cleanup work.
+For needs-attention recovery, operator status must preserve failed child-run context
+separately from parent journal or closeout handling. A dirty retained worktree for the
+same issue remains associated with queue-attention or live-thread recovery state when
+the tracker has the configured needs-attention label; it must not collapse into a
+cleanup-only worktree row with no run id, attempt status, branch, or recovery
+explanation.
 Operator status lifecycle reconstruction may use recorded run attempts plus local
 evidence that is already scoped to the same project, issue, run id, and attempt:
 runtime run leases, run-control channels, protocol activity summaries, private
