@@ -166,7 +166,9 @@ requests, returns ordinary JSON-RPC JSON responses, and switches to
 The gateway advertises resources, resource templates, prompts, tools, logging
 compatibility, and progress notifications. Resources expose checked-in documentation,
 checked-in JSON research reports, runtime Decision Contract readback, local status
-snapshots, and lane-control readback. The tool catalog is schema-bound and
+snapshots, remote-safe live status/activity projections, current/recent status-window
+run event/protocol/child-agent activity/progress diagnostics, PR/review-state readback,
+lane-inspect aliases, and lane-control readback. The tool catalog is schema-bound and
 deliberately small. Local stdio defaults to the `admin` capability profile; Streamable
 HTTP defaults to `observe`. Both can be set with
 `--capability-profile observe|plan|operate|admin`; `tools/list` filters by the active

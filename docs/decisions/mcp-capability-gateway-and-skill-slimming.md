@@ -198,8 +198,10 @@ Target shape:
   resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, progress
   notification, and stdout-cleanliness smoke coverage. Streamable HTTP should pass
   JSON POST, SSE response, origin rejection, session handling, observe-profile access,
-  and operate/admin profile-refusal coverage. Live operate/admin lane-control behavior
-  should remain separate follow-up work.
+  operate/admin profile-refusal coverage, and remote-safe observability template
+  coverage for live status, activity tail, current/recent status-window run
+  event/protocol/child/progress readback, lane inspect, and PR/review state. Live
+  operate/admin lane-control behavior should remain separate follow-up work.
 
 ## Open Follow-Up
 
@@ -207,7 +209,8 @@ The promoted implementation now has the stdio gateway exposed as
 `decodex mcp serve --transport stdio` and the remote-capable Streamable HTTP gateway
 exposed as `decodex mcp serve --transport streamable-http`. It advertises resources,
 resource templates, prompts, and a schema-bound tool catalog while keeping mutating
-operate/admin behavior behind structured refusal states. Later promoted work should
-stay split across research compile/promote tools, live lane-control tools,
-skill-slimming eval, and docs/resource validation lanes so mutating MCP tools do not
-bypass Decision Contract or lane-control authority.
+operate/admin behavior behind structured refusal states. XY-996 adds the
+remote-safe observability templates and projections on top of that transport; later
+promoted work should stay split across research compile/promote tools, live
+lane-control tools, skill-slimming eval, and docs/resource validation lanes so
+mutating MCP tools do not bypass Decision Contract or lane-control authority.
