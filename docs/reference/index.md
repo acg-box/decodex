@@ -34,5 +34,5 @@ Question this index answers: "how is it currently organized or implemented?"
   and keep/merge/delete standards.
 - [`workspace-layout.md`](./workspace-layout.md) for the repository surface map and
   directory ownership boundaries, including the canonical Decodex plugin source.
-- [`research-concepts.md`](./research-concepts.md) for Markdown OKF research
-  concepts, runtime Decision Contract boundaries, and promotion rules.
+- [`research-concepts.md`](./research-concepts.md) for JSON research artifacts,
+  runtime Decision Contract boundaries, and promotion rules.

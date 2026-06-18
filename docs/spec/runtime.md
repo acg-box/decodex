@@ -83,7 +83,7 @@ state or this state machine.
 - `decodex mcp serve --transport stdio` is the local MCP gateway for desktop and CLI
   clients. The stdio gateway advertises resources, resource templates, prompts, tools,
   logging compatibility, and progress notifications. Resources read checked-in docs,
-  checked-in JSON research reports, runtime Decision Contracts, local status
+  checked-in JSON research artifacts, runtime Decision Contracts, local status
   snapshots, remote-safe live status/activity projections, current/recent status-window
   run event/protocol/child activity/progress diagnostics, PR/review state,
   lane-inspect aliases, and lane-control readback. Tools are schema-bound and
