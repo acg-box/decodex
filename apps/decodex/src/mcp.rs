@@ -14,8 +14,27 @@ use clap::ValueEnum;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::{config::ServiceConfig, orchestrator, prelude::eyre, runtime, state::StateStore};
+use crate::{
+	config::ServiceConfig,
+	loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
+	orchestrator,
+	prelude::eyre,
+	program_intake::{
+		self, GoalIntakeCommandRequest, GoalIntakeIssueReport, GoalIntakeReport,
+		GoalIntakeRunRequest,
+	},
+	research_design::{
+		self, ResearchDesignOutcome, ResearchDesignRunInput, ResearchDesignRunReport,
+	},
+	runtime,
+	state::StateStore,
+	tracker::{
+		IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBriefUpdate, TrackerIssueCreate,
+	},
+	workflow::WorkflowDocument,
+};
 
 /// Safe default listen address for Streamable HTTP MCP.
 pub(crate) const DEFAULT_MCP_HTTP_LISTEN_ADDRESS: &str = "127.0.0.1:8193";
@@ -30,6 +49,9 @@ const RESOURCE_NOT_FOUND_CODE: i64 = -32_002;
 const DEFAULT_MCP_STATUS_LIMIT: usize = 10;
 const TOOL_OBSERVE: &str = "decodex_observe";
 const TOOL_PLAN: &str = "decodex_plan";
+const TOOL_RESEARCH_COMPILE: &str = "research_compile";
+const TOOL_RESEARCH_PROMOTE: &str = "research_promote";
+const TOOL_INTAKE_GOAL: &str = "intake_goal";
 const TOOL_LANE_CONTROL: &str = "decodex_lane_control";
 const TOOL_ADMIN: &str = "decodex_admin";
 const MCP_HTTP_ENDPOINT_PATH: &str = "/mcp";
@@ -416,6 +438,9 @@ impl McpServer {
 		match params.name.as_str() {
 			TOOL_OBSERVE => Ok(self.call_observe_tool(arguments)),
 			TOOL_PLAN => Ok(call_plan_tool(arguments)),
+			TOOL_RESEARCH_COMPILE => Ok(self.call_research_compile_tool(arguments)),
+			TOOL_RESEARCH_PROMOTE => Ok(self.call_research_promote_tool(arguments)),
+			TOOL_INTAKE_GOAL => Ok(self.call_intake_goal_tool(arguments)),
 			TOOL_LANE_CONTROL => Ok(lane_control_stub_result(arguments, required_profile)),
 			TOOL_ADMIN => Ok(admin_stub_result(arguments, required_profile)),
 			_ => Ok(tool_refusal("unknown_tool", "Decodex MCP tool is not registered.")),
@@ -466,6 +491,279 @@ impl McpServer {
 			"capability_profile": "observe",
 			"observability": value
 		}))
+	}
+
+	fn call_research_compile_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<ResearchCompileToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_RESEARCH_COMPILE,
+					"`mode` must be dry_run or apply, with either `input` or `intent`.",
+				),
+		};
+		let mode = match planning_mode(params.mode.as_deref(), "dry_run", TOOL_RESEARCH_COMPILE) {
+			Ok(mode) => mode,
+			Err(result) => return result,
+		};
+		let project_id = match planning_project_id(
+			&self.context,
+			params.project_id.as_deref(),
+			TOOL_RESEARCH_COMPILE,
+		) {
+			Ok(project_id) => project_id,
+			Err(result) => return result,
+		};
+
+		if mode == "apply" && !planning_authority_present(params.authority.as_ref()) {
+			return missing_authority_refusal(
+				TOOL_RESEARCH_COMPILE,
+				"research_compile apply requires authority.source and authority.reason.",
+			);
+		}
+
+		let input = match research_compile_input(params) {
+			Ok(input) => input,
+			Err(result) => return result,
+		};
+		let report = if mode == "apply" {
+			let store = match planning_state_store(&self.context, TOOL_RESEARCH_COMPILE) {
+				Ok(store) => store,
+				Err(result) => return result,
+			};
+
+			research_design::persist_research_design_run(store, &project_id, input)
+		} else {
+			research_design::dry_run_research_design_compile(input, &project_id)
+		};
+
+		match report {
+			Ok(report) => tool_success(research_compile_result(&report, mode == "apply", mode)),
+			Err(_) => tool_refusal(
+				"research_compile_refused",
+				"Research compile input did not satisfy Decodex Decision Contract requirements.",
+			),
+		}
+	}
+
+	fn call_research_promote_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<ResearchPromoteToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_RESEARCH_PROMOTE,
+					"`contractId` is required and `mode` must be dry_run or apply.",
+				),
+		};
+		let Some(contract_id) = non_empty_string(Some(params.contract_id.as_str())) else {
+			return invalid_tool_arguments(TOOL_RESEARCH_PROMOTE, "`contractId` is required.");
+		};
+
+		if !safe_runtime_identifier(contract_id) {
+			return invalid_tool_arguments(
+				TOOL_RESEARCH_PROMOTE,
+				"`contractId` must be a safe Decodex runtime identifier.",
+			);
+		}
+
+		let mode = match planning_mode(params.mode.as_deref(), "dry_run", TOOL_RESEARCH_PROMOTE) {
+			Ok(mode) => mode,
+			Err(result) => return result,
+		};
+		let project_id = match planning_project_id(
+			&self.context,
+			params.project_id.as_deref(),
+			TOOL_RESEARCH_PROMOTE,
+		) {
+			Ok(project_id) => project_id,
+			Err(result) => return result,
+		};
+		let store = match planning_state_store(&self.context, TOOL_RESEARCH_PROMOTE) {
+			Ok(store) => store,
+			Err(result) => return result,
+		};
+
+		if mode == "dry_run" {
+			return match store.decision_contract(&project_id, contract_id) {
+				Ok(Some(record)) => tool_success(research_promote_readiness_result(
+					record.contract_id(),
+					record.status().as_str(),
+					record.contract().execution_readiness().ready_for_issue_shaping(),
+					false,
+					mode,
+				)),
+				Ok(None) => tool_refusal(
+					"contract_not_found",
+					"Decision Contract was not found in the current Decodex project.",
+				),
+				Err(_) => tool_refusal(
+					"research_promote_refused",
+					"Decision Contract readback failed before promotion.",
+				),
+			};
+		}
+
+		let authority = match promotion_authority(params.authority.as_ref()) {
+			Ok(authority) => authority,
+			Err(result) => return result,
+		};
+		let accepted_at = match authority.accepted_at {
+			Some(accepted_at) => accepted_at.to_owned(),
+			None => match OffsetDateTime::now_utc().format(&Rfc3339) {
+				Ok(value) => value,
+				Err(_) =>
+					return tool_refusal(
+						"research_promote_refused",
+						"Promotion timestamp could not be prepared.",
+					),
+			},
+		};
+		let promotion = match DecisionPromotion::new(
+			authority.accepted_by,
+			DecisionPromotionActorKind::User,
+			accepted_at,
+			authority.acceptance_source,
+			authority.reason.cloned(),
+		) {
+			Ok(promotion) => promotion,
+			Err(_) =>
+				return tool_refusal(
+					"research_promote_refused",
+					"Promotion authority did not satisfy Decodex Decision Contract requirements.",
+				),
+		};
+
+		match research_design::promote_research_design_contract(
+			store,
+			&project_id,
+			contract_id,
+			promotion,
+		) {
+			Ok(record) => tool_success(research_promote_readiness_result(
+				record.contract_id(),
+				record.status().as_str(),
+				record.contract().execution_readiness().ready_for_issue_shaping(),
+				true,
+				mode,
+			)),
+			Err(_) => tool_refusal(
+				"research_promote_refused",
+				"Decision Contract promotion was refused by Decodex authority checks.",
+			),
+		}
+	}
+
+	fn call_intake_goal_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<IntakeGoalToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_INTAKE_GOAL,
+					"`contractId` is required and `mode` must be dry_run or apply.",
+				),
+		};
+		let Some(contract_id) = non_empty_string(Some(params.contract_id.as_str())) else {
+			return invalid_tool_arguments(TOOL_INTAKE_GOAL, "`contractId` is required.");
+		};
+
+		if !safe_runtime_identifier(contract_id) {
+			return invalid_tool_arguments(
+				TOOL_INTAKE_GOAL,
+				"`contractId` must be a safe Decodex runtime identifier.",
+			);
+		}
+
+		let mode = match planning_mode(params.mode.as_deref(), "dry_run", TOOL_INTAKE_GOAL) {
+			Ok(mode) => mode,
+			Err(result) => return result,
+		};
+
+		if mode == "apply" {
+			if !planning_authority_present(params.authority.as_ref()) {
+				return missing_authority_refusal(
+					TOOL_INTAKE_GOAL,
+					"intake_goal apply requires authority.source and authority.reason.",
+				);
+			}
+
+			return self
+				.apply_intake_goal_tool(contract_id, params.team_issue_identifier.as_deref());
+		}
+
+		let store = match planning_state_store(&self.context, TOOL_INTAKE_GOAL) {
+			Ok(store) => store,
+			Err(result) => return result,
+		};
+		let config_path = match self.context.config_path.as_deref() {
+			Some(path) => path,
+			None =>
+				return tool_refusal(
+					"missing_project_context",
+					"intake_goal dry-run requires a registered Decodex project config or --config.",
+				),
+		};
+		let config = match ServiceConfig::from_path(config_path) {
+			Ok(config) => config,
+			Err(_) =>
+				return tool_refusal(
+					"missing_project_context",
+					"intake_goal dry-run could not load the Decodex project config.",
+				),
+		};
+		let workflow = match WorkflowDocument::from_path(config.workflow_path()) {
+			Ok(workflow) => workflow,
+			Err(_) =>
+				return tool_refusal(
+					"missing_project_context",
+					"intake_goal dry-run could not load the Decodex workflow contract.",
+				),
+		};
+		let tracker = McpDryRunTracker;
+
+		match program_intake::run_goal_intake(GoalIntakeRunRequest {
+			state_store: store,
+			tracker: &tracker,
+			config: &config,
+			workflow: &workflow,
+			contract_id,
+			team_issue_identifier: params.team_issue_identifier,
+			dry_run: true,
+			apply: false,
+		}) {
+			Ok(report) => tool_success(intake_goal_result(&report, mode)),
+			Err(_) => tool_refusal(
+				"intake_goal_refused",
+				"Goal intake dry-run was refused by Decodex authority checks.",
+			),
+		}
+	}
+
+	fn apply_intake_goal_tool(
+		&self,
+		contract_id: &str,
+		team_issue_identifier: Option<&str>,
+	) -> Value {
+		let Some(config_path) = self.context.config_path.as_deref() else {
+			return tool_refusal(
+				"missing_project_context",
+				"intake_goal apply requires a registered Decodex project config or --config.",
+			);
+		};
+
+		match program_intake::run_goal_intake_command(GoalIntakeCommandRequest {
+			config_path: Some(config_path),
+			project_id: self.context.project_id.as_deref(),
+			contract_id,
+			team_issue_identifier,
+			dry_run: false,
+			apply: true,
+		}) {
+			Ok(report) => tool_success(intake_goal_result(&report, "apply")),
+			Err(_) => tool_refusal(
+				"intake_goal_refused",
+				"Goal intake apply was refused by Decodex authority or tracker checks.",
+			),
+		}
 	}
 }
 
@@ -790,6 +1088,48 @@ struct PlanToolArgs {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ResearchCompileToolArgs {
+	mode: Option<String>,
+	project_id: Option<String>,
+	input: Option<ResearchDesignRunInput>,
+	intent: Option<String>,
+	source_issue: Option<String>,
+	outcome: Option<ResearchDesignOutcome>,
+	authority: Option<PlanningAuthorityArgs>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ResearchPromoteToolArgs {
+	mode: Option<String>,
+	project_id: Option<String>,
+	contract_id: String,
+	authority: Option<PlanningAuthorityArgs>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct IntakeGoalToolArgs {
+	mode: Option<String>,
+	contract_id: String,
+	team_issue_identifier: Option<String>,
+	authority: Option<PlanningAuthorityArgs>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PlanningAuthorityArgs {
+	source: Option<String>,
+	reason: Option<String>,
+	accepted_by: Option<String>,
+	accepted_at: Option<String>,
+	acceptance_source: Option<String>,
+	run_id: Option<String>,
+	expected_turn_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LaneControlToolArgs {
 	action: String,
 	issue: Option<String>,
@@ -818,6 +1158,75 @@ struct AdminToolArgs {
 struct McpTool {
 	required_profile: McpCapabilityProfile,
 	value: Value,
+}
+
+struct McpDryRunTracker;
+impl IssueTracker for McpDryRunTracker {
+	fn list_issues_with_label(
+		&self,
+		_label_name: &str,
+	) -> crate::prelude::Result<Vec<TrackerIssue>> {
+		Ok(Vec::new())
+	}
+
+	fn find_team_label_id(
+		&self,
+		_team_id: &str,
+		_label_name: &str,
+	) -> crate::prelude::Result<Option<String>> {
+		Ok(None)
+	}
+
+	fn get_issue_by_identifier(
+		&self,
+		_issue_identifier: &str,
+	) -> crate::prelude::Result<Option<TrackerIssue>> {
+		Ok(None)
+	}
+
+	fn refresh_issues(&self, _issue_ids: &[String]) -> crate::prelude::Result<Vec<TrackerIssue>> {
+		Ok(Vec::new())
+	}
+
+	fn list_comments(&self, _issue_id: &str) -> crate::prelude::Result<Vec<TrackerComment>> {
+		Ok(Vec::new())
+	}
+
+	fn update_issue_state(&self, _issue_id: &str, _state_id: &str) -> crate::prelude::Result<()> {
+		eyre::bail!("MCP dry-run tracker does not mutate issue state.")
+	}
+
+	fn add_issue_labels(
+		&self,
+		_issue_id: &str,
+		_label_ids: &[String],
+	) -> crate::prelude::Result<()> {
+		eyre::bail!("MCP dry-run tracker does not mutate labels.")
+	}
+
+	fn remove_issue_labels(
+		&self,
+		_issue_id: &str,
+		_label_ids: &[String],
+	) -> crate::prelude::Result<()> {
+		eyre::bail!("MCP dry-run tracker does not mutate labels.")
+	}
+
+	fn create_comment(&self, _issue_id: &str, _body: &str) -> crate::prelude::Result<()> {
+		eyre::bail!("MCP dry-run tracker does not create comments.")
+	}
+
+	fn create_issue(&self, _request: &TrackerIssueCreate) -> crate::prelude::Result<TrackerIssue> {
+		eyre::bail!("MCP dry-run tracker does not create issues.")
+	}
+
+	fn update_issue_brief(
+		&self,
+		_issue_id: &str,
+		_request: &TrackerIssueBriefUpdate,
+	) -> crate::prelude::Result<TrackerIssue> {
+		eyre::bail!("MCP dry-run tracker does not update issue briefs.")
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1305,6 +1714,13 @@ impl McpHttpResponse {
 	}
 }
 
+struct PromotionAuthority<'a> {
+	accepted_by: &'a str,
+	accepted_at: Option<&'a String>,
+	acceptance_source: &'a str,
+	reason: Option<&'a String>,
+}
+
 /// Start the Decodex MCP gateway.
 pub(crate) fn serve(request: McpServeRequest<'_>) -> crate::prelude::Result<()> {
 	match request.transport {
@@ -1509,6 +1925,42 @@ fn mcp_tools() -> Vec<McpTool> {
 			),
 		},
 		McpTool {
+			required_profile: McpCapabilityProfile::Plan,
+			value: mcp_tool_value(
+				TOOL_RESEARCH_COMPILE,
+				"Decodex Research Compile",
+				"Validate or persist a latent Decodex Decision Contract from bounded research input.",
+				McpCapabilityProfile::Plan,
+				research_compile_tool_input_schema(),
+				research_compile_tool_output_schema(),
+				false,
+			),
+		},
+		McpTool {
+			required_profile: McpCapabilityProfile::Plan,
+			value: mcp_tool_value(
+				TOOL_RESEARCH_PROMOTE,
+				"Decodex Research Promote",
+				"Inspect or explicitly promote a latent Decision Contract through Decodex authority checks.",
+				McpCapabilityProfile::Plan,
+				research_promote_tool_input_schema(),
+				research_promote_tool_output_schema(),
+				false,
+			),
+		},
+		McpTool {
+			required_profile: McpCapabilityProfile::Plan,
+			value: mcp_tool_value(
+				TOOL_INTAKE_GOAL,
+				"Decodex Goal Intake",
+				"Dry-run or explicitly apply promoted-goal Program Intake through Decodex authority gates.",
+				McpCapabilityProfile::Plan,
+				intake_goal_tool_input_schema(),
+				intake_goal_tool_output_schema(),
+				false,
+			),
+		},
+		McpTool {
 			required_profile: McpCapabilityProfile::Operate,
 			value: mcp_tool_value(
 				TOOL_LANE_CONTROL,
@@ -1566,6 +2018,8 @@ fn tool_required_profile(name: &str) -> Option<McpCapabilityProfile> {
 	match name {
 		TOOL_OBSERVE => Some(McpCapabilityProfile::Observe),
 		TOOL_PLAN => Some(McpCapabilityProfile::Plan),
+		TOOL_RESEARCH_COMPILE | TOOL_RESEARCH_PROMOTE | TOOL_INTAKE_GOAL =>
+			Some(McpCapabilityProfile::Plan),
 		TOOL_LANE_CONTROL => Some(McpCapabilityProfile::Operate),
 		TOOL_ADMIN => Some(McpCapabilityProfile::Admin),
 		_ => None,
@@ -1614,6 +2068,127 @@ fn plan_tool_input_schema() -> Value {
 			}
 		},
 		"required": ["intent"]
+	})
+}
+
+fn research_compile_tool_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run validates without persistence; apply persists a latent Decision Contract."
+			},
+			"projectId": {
+				"type": "string",
+				"description": "Optional Decodex service id when the MCP context is not project-scoped."
+			},
+			"input": {
+				"type": "object",
+				"additionalProperties": true,
+				"description": "Structured Decodex research/design input."
+			},
+			"intent": {
+				"type": "string",
+				"description": "Minimal natural-language research/design intent."
+			},
+			"sourceIssue": {
+				"type": "string",
+				"description": "Optional source tracker issue identifier for minimal intent intake."
+			},
+			"outcome": {
+				"type": "string",
+				"enum": ["decision_ready", "not_decision_ready", "blocked", "needs_human_decision"]
+			},
+			"authority": planning_authority_input_schema()
+		}
+	})
+}
+
+fn research_promote_tool_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run inspects readiness; apply records explicit acceptance."
+			},
+			"projectId": {
+				"type": "string",
+				"description": "Optional Decodex service id when the MCP context is not project-scoped."
+			},
+			"contractId": {
+				"type": "string",
+				"description": "Decision Contract identifier to inspect or promote."
+			},
+			"authority": planning_authority_input_schema()
+		},
+		"required": ["contractId"]
+	})
+}
+
+fn intake_goal_tool_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run previews generated issues; apply materializes only with explicit authority."
+			},
+			"contractId": {
+				"type": "string",
+				"description": "Promoted Decision Contract identifier to materialize."
+			},
+			"teamIssueIdentifier": {
+				"type": "string",
+				"description": "Optional source issue used to anchor generated issue team/state on apply."
+			},
+			"authority": planning_authority_input_schema()
+		},
+		"required": ["contractId"]
+	})
+}
+
+fn planning_authority_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"source": {
+				"type": "string",
+				"description": "Explicit remote client or operator source for an apply-style call."
+			},
+			"reason": {
+				"type": "string",
+				"description": "Explicit reason authorizing an apply-style call."
+			},
+			"acceptedBy": {
+				"type": "string",
+				"description": "Actor accepting a Decision Contract promotion."
+			},
+			"acceptedAt": {
+				"type": "string",
+				"description": "Optional RFC3339 acceptance timestamp."
+			},
+			"acceptanceSource": {
+				"type": "string",
+				"description": "Conversation, issue, or policy source for explicit promotion authority."
+			},
+			"runId": {
+				"type": "string",
+				"description": "Current lane run id when a future planning mutation is lane-scoped."
+			},
+			"expectedTurnId": {
+				"type": "string",
+				"description": "Current lane turn id when a future planning mutation is lane-scoped."
+			}
+		}
 	})
 }
 
@@ -1748,6 +2323,139 @@ fn plan_tool_output_schema() -> Value {
 			}
 		},
 		"required": ["schema", "status", "intent", "prompt", "resource", "next_action"]
+	}))
+}
+
+fn research_compile_tool_output_schema() -> Value {
+	tool_output_schema(serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"schema": { "type": "string", "enum": ["decodex.mcp.research_compile_result/1"] },
+			"status": { "type": "string", "enum": ["ok"] },
+			"mode": { "type": "string", "enum": ["dry_run", "apply"] },
+			"persisted": { "type": "boolean" },
+			"contract_id": { "type": "string" },
+			"contract_status": {
+				"type": "string",
+				"enum": ["draft_latent", "accepted_promoted", "rejected_superseded", "needs_human_decision"]
+			},
+			"ready_for_issue_shaping": { "type": "boolean" },
+			"issue_generation_ready_after_promotion": { "type": "boolean" },
+			"execution_authority_granted": { "type": "boolean" },
+			"proposed_issue_count": { "type": "integer", "minimum": 0 },
+			"promotion_targets": { "type": "array", "items": { "type": "string" } },
+			"conflict_domains": { "type": "array", "items": { "type": "string" } },
+			"next_action": { "type": "string" }
+		},
+		"required": [
+			"schema",
+			"status",
+			"mode",
+			"persisted",
+			"contract_id",
+			"contract_status",
+			"ready_for_issue_shaping",
+			"issue_generation_ready_after_promotion",
+			"execution_authority_granted",
+			"proposed_issue_count",
+			"promotion_targets",
+			"conflict_domains",
+			"next_action"
+		]
+	}))
+}
+
+fn research_promote_tool_output_schema() -> Value {
+	tool_output_schema(serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"schema": { "type": "string", "enum": ["decodex.mcp.research_promote_result/1"] },
+			"status": { "type": "string", "enum": ["ok"] },
+			"mode": { "type": "string", "enum": ["dry_run", "apply"] },
+			"persisted": { "type": "boolean" },
+			"contract_id": { "type": "string" },
+			"contract_status": {
+				"type": "string",
+				"enum": ["draft_latent", "accepted_promoted", "rejected_superseded", "needs_human_decision"]
+			},
+			"execution_authority_granted": { "type": "boolean" },
+			"ready_for_issue_shaping": { "type": "boolean" },
+			"next_action": { "type": "string" }
+		},
+		"required": [
+			"schema",
+			"status",
+			"mode",
+			"persisted",
+			"contract_id",
+			"contract_status",
+			"execution_authority_granted",
+			"ready_for_issue_shaping",
+			"next_action"
+		]
+	}))
+}
+
+fn intake_goal_tool_output_schema() -> Value {
+	tool_output_schema(serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"schema": { "type": "string", "enum": ["decodex.mcp.intake_goal_result/1"] },
+			"status": { "type": "string", "enum": ["ok"] },
+			"mode": { "type": "string", "enum": ["dry_run", "apply"] },
+			"service_id": { "type": "string" },
+			"contract_id": { "type": "string" },
+			"dry_run": { "type": "boolean" },
+			"applied": { "type": "boolean" },
+			"persisted": { "type": "boolean" },
+			"issue_count": { "type": "integer", "minimum": 0 },
+			"issues": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"title": { "type": "string" },
+						"objective": { "type": "string" },
+						"issue_identifier": { "type": ["string", "null"] },
+						"action": { "type": "string" },
+						"dependencies": { "type": "array", "items": { "type": "string" } },
+						"conflict_domains": { "type": "array", "items": { "type": "string" } },
+						"acceptance": { "type": "array", "items": { "type": "string" } },
+						"validation": { "type": "array", "items": { "type": "string" } },
+						"reasons": { "type": "array", "items": { "type": "string" } }
+					},
+					"required": [
+						"title",
+						"objective",
+						"issue_identifier",
+						"action",
+						"dependencies",
+						"conflict_domains",
+						"acceptance",
+						"validation",
+						"reasons"
+					]
+				}
+			},
+			"next_action": { "type": "string" }
+		},
+		"required": [
+			"schema",
+			"status",
+			"mode",
+			"service_id",
+			"contract_id",
+			"dry_run",
+			"applied",
+			"persisted",
+			"issue_count",
+			"issues",
+			"next_action"
+		]
 	}))
 }
 
@@ -1995,6 +2703,217 @@ fn plan_tool_result(params: &PlanToolArgs) -> Value {
 		"issue": params.issue.as_deref(),
 		"contract_id": params.contract_id.as_deref()
 	})
+}
+
+fn research_compile_input(
+	params: ResearchCompileToolArgs,
+) -> Result<ResearchDesignRunInput, Value> {
+	match (params.input, params.intent) {
+		(Some(input), None) => Ok(input),
+		(None, Some(intent)) => Ok(ResearchDesignRunInput::from_intent(
+			intent,
+			params.source_issue,
+			params.outcome.unwrap_or(ResearchDesignOutcome::NotDecisionReady),
+		)),
+		(None, None) => Err(invalid_tool_arguments(
+			TOOL_RESEARCH_COMPILE,
+			"research_compile requires either `input` or `intent`.",
+		)),
+		(Some(_), Some(_)) => Err(invalid_tool_arguments(
+			TOOL_RESEARCH_COMPILE,
+			"research_compile accepts `input` or `intent`, not both.",
+		)),
+	}
+}
+
+fn research_compile_result(report: &ResearchDesignRunReport, persisted: bool, mode: &str) -> Value {
+	serde_json::json!({
+		"schema": "decodex.mcp.research_compile_result/1",
+		"status": "ok",
+		"mode": mode,
+		"persisted": persisted,
+		"contract_id": report.contract_id,
+		"contract_status": report.contract_status.as_str(),
+		"ready_for_issue_shaping": report.ready_for_issue_shaping,
+		"issue_generation_ready_after_promotion": report.issue_generation_ready_after_promotion,
+		"execution_authority_granted": report.execution_authority_granted,
+		"proposed_issue_count": report.proposed_issues.len(),
+		"promotion_targets": report.promotion_targets,
+		"conflict_domains": report.conflict_domains,
+		"next_action": if persisted {
+			"Promote the Decision Contract only after explicit acceptance."
+		} else {
+			"Re-run with mode=apply and explicit authority to persist a latent Decision Contract."
+		}
+	})
+}
+
+fn research_promote_readiness_result(
+	contract_id: &str,
+	contract_status: &str,
+	ready_for_issue_shaping: bool,
+	persisted: bool,
+	mode: &str,
+) -> Value {
+	serde_json::json!({
+		"schema": "decodex.mcp.research_promote_result/1",
+		"status": "ok",
+		"mode": mode,
+		"persisted": persisted,
+		"contract_id": contract_id,
+		"contract_status": contract_status,
+		"execution_authority_granted": persisted && contract_status == "accepted_promoted",
+		"ready_for_issue_shaping": ready_for_issue_shaping,
+		"next_action": if persisted {
+			"Use intake_goal dry_run to inspect issue shaping before apply."
+		} else {
+			"Re-run with mode=apply and explicit acceptance authority to promote."
+		}
+	})
+}
+
+fn intake_goal_result(report: &GoalIntakeReport, mode: &str) -> Value {
+	let issues = report.issues.iter().map(intake_goal_issue_result).collect::<Vec<_>>();
+
+	serde_json::json!({
+		"schema": "decodex.mcp.intake_goal_result/1",
+		"status": "ok",
+		"mode": mode,
+		"service_id": report.service_id,
+		"contract_id": report.contract_id,
+		"dry_run": report.dry_run,
+		"applied": report.applied,
+		"persisted": report.persisted,
+		"issue_count": issues.len(),
+		"issues": issues,
+		"next_action": if report.persisted {
+			"Let the Program scheduler dispatch ready mapped issues; do not add queue labels manually."
+		} else {
+			"Review the public issue split, then re-run with mode=apply and explicit authority if accepted."
+		}
+	})
+}
+
+fn intake_goal_issue_result(row: &GoalIntakeIssueReport) -> Value {
+	serde_json::json!({
+		"title": row.title,
+		"objective": row.objective,
+		"issue_identifier": row.issue_identifier,
+		"action": goal_intake_action_name(row.action),
+		"dependencies": row.dependencies,
+		"conflict_domains": row.conflict_domains,
+		"acceptance": row.acceptance,
+		"validation": row.validation,
+		"reasons": row.reasons
+	})
+}
+
+fn goal_intake_action_name(action: program_intake::GoalIntakeIssueAction) -> &'static str {
+	match action {
+		program_intake::GoalIntakeIssueAction::WouldCreate => "would_create",
+		program_intake::GoalIntakeIssueAction::WouldUpdate => "would_update",
+		program_intake::GoalIntakeIssueAction::Created => "created",
+		program_intake::GoalIntakeIssueAction::Updated => "updated",
+	}
+}
+
+fn planning_mode(
+	mode: Option<&str>,
+	default_mode: &'static str,
+	tool: &str,
+) -> Result<&'static str, Value> {
+	let mode = mode.map(str::trim).filter(|mode| !mode.is_empty()).unwrap_or(default_mode);
+
+	match mode {
+		"dry_run" => Ok("dry_run"),
+		"apply" => Ok("apply"),
+		_ => Err(invalid_tool_arguments(tool, "`mode` must be dry_run or apply.")),
+	}
+}
+
+fn planning_project_id(
+	context: &McpContext,
+	explicit_project_id: Option<&str>,
+	tool: &str,
+) -> Result<String, Value> {
+	let project_id = explicit_project_id
+		.and_then(|value| non_empty_string(Some(value)))
+		.or_else(|| context.project_id())
+		.ok_or_else(|| {
+			tool_refusal(
+				"missing_project_context",
+				"Planning tools require a project-scoped MCP context or explicit projectId.",
+			)
+		})?;
+
+	if safe_runtime_identifier(project_id) {
+		Ok(project_id.to_owned())
+	} else {
+		Err(invalid_tool_arguments(tool, "`projectId` must be a safe Decodex runtime identifier."))
+	}
+}
+
+fn planning_state_store<'a>(context: &'a McpContext, _tool: &str) -> Result<&'a StateStore, Value> {
+	context.state_store.as_ref().ok_or_else(|| {
+		tool_refusal(
+			"missing_runtime_store",
+			"Planning apply/readback requires the Decodex runtime store.",
+		)
+	})
+}
+
+fn planning_authority_present(authority: Option<&PlanningAuthorityArgs>) -> bool {
+	let Some(authority) = authority else {
+		return false;
+	};
+	let _lane_preconditions = (
+		non_empty_string(authority.run_id.as_deref()),
+		non_empty_string(authority.expected_turn_id.as_deref()),
+	);
+
+	non_empty_string(authority.source.as_deref()).is_some()
+		&& non_empty_string(authority.reason.as_deref()).is_some()
+}
+
+fn promotion_authority(
+	authority: Option<&PlanningAuthorityArgs>,
+) -> Result<PromotionAuthority<'_>, Value> {
+	let Some(authority) = authority else {
+		return Err(missing_authority_refusal(
+			TOOL_RESEARCH_PROMOTE,
+			"research_promote apply requires authority.acceptedBy and authority.acceptanceSource.",
+		));
+	};
+	let accepted_by = non_empty_string(authority.accepted_by.as_deref()).ok_or_else(|| {
+		missing_authority_refusal(
+			TOOL_RESEARCH_PROMOTE,
+			"research_promote apply requires authority.acceptedBy.",
+		)
+	})?;
+	let acceptance_source =
+		non_empty_string(authority.acceptance_source.as_deref()).ok_or_else(|| {
+			missing_authority_refusal(
+				TOOL_RESEARCH_PROMOTE,
+				"research_promote apply requires authority.acceptanceSource.",
+			)
+		})?;
+
+	Ok(PromotionAuthority {
+		accepted_by,
+		accepted_at: authority.accepted_at.as_ref(),
+		acceptance_source,
+		reason: authority.reason.as_ref(),
+	})
+}
+
+fn missing_authority_refusal(tool: &str, message: &str) -> Value {
+	tool_refusal_value(serde_json::json!({
+		"schema": "decodex.mcp.refusal/1",
+		"status": "refused",
+		"reason": "missing_authority",
+		"tool": tool,
+		"message": message
+	}))
 }
 
 fn mcp_status_live_resource(snapshot: Value) -> Value {
@@ -3080,7 +3999,7 @@ mod tests {
 	use tempfile::TempDir;
 
 	use crate::{
-		loop_contract::DecisionContract,
+		loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
 		mcp::{
 			self, DEFAULT_MCP_HTTP_LISTEN_ADDRESS, McpCapabilityProfile, McpContext,
 			McpHttpHandler, McpHttpSessions, McpServer, McpTransport, ResourceContent,
@@ -3762,10 +4681,27 @@ mod tests {
 		let responses =
 			run_stdio(repo.path(), r#"{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}"#);
 		let tools = response_at(&responses, 0)["result"]["tools"].as_array().expect("tools array");
+		let tool_names = tools
+			.iter()
+			.filter_map(|tool| tool.get("name").and_then(Value::as_str))
+			.collect::<Vec<_>>();
 		let plan = tools
 			.iter()
 			.find(|tool| tool.get("name").and_then(Value::as_str) == Some("decodex_plan"))
 			.expect("plan tool should be listed");
+
+		for tool_name in ["research_compile", "research_promote", "intake_goal"] {
+			assert!(tool_names.contains(&tool_name), "{tool_name} should be listed");
+
+			let tool = tools
+				.iter()
+				.find(|tool| tool.get("name").and_then(Value::as_str) == Some(tool_name))
+				.expect("planning tool should exist");
+
+			assert!(tool.get("inputSchema").is_some());
+			assert!(tool.get("outputSchema").is_some());
+			assert_eq!(tool["_meta"]["decodex/capabilityProfile"], "plan");
+		}
 
 		assert!(plan.get("inputSchema").is_some());
 		assert!(plan.get("outputSchema").is_some());
@@ -3777,6 +4713,30 @@ mod tests {
 			plan,
 			"decodex.mcp.tool_validation_error/1",
 			Some("tool"),
+		);
+		assert_tool_output_schema_variant(
+			tools
+				.iter()
+				.find(|tool| tool.get("name").and_then(Value::as_str) == Some("research_compile"))
+				.expect("research_compile tool should exist"),
+			"decodex.mcp.research_compile_result/1",
+			Some("contract_id"),
+		);
+		assert_tool_output_schema_variant(
+			tools
+				.iter()
+				.find(|tool| tool.get("name").and_then(Value::as_str) == Some("research_promote"))
+				.expect("research_promote tool should exist"),
+			"decodex.mcp.research_promote_result/1",
+			Some("contract_id"),
+		);
+		assert_tool_output_schema_variant(
+			tools
+				.iter()
+				.find(|tool| tool.get("name").and_then(Value::as_str) == Some("intake_goal"))
+				.expect("intake_goal tool should exist"),
+			"decodex.mcp.intake_goal_result/1",
+			Some("issues"),
 		);
 	}
 
@@ -3825,6 +4785,164 @@ mod tests {
 		assert_eq!(structured["schema"], "decodex.mcp.plan_result/1");
 		assert_eq!(structured["status"], "ok");
 		assert_eq!(structured["issue"], "XY-994");
+	}
+
+	#[test]
+	fn tools_call_research_compile_dry_run_returns_structured_contract() {
+		let repo = test_repo();
+		let context = McpContext {
+			repo_root: repo.path().to_path_buf(),
+			config_path: None,
+			project_id: Some(String::from("decodex")),
+			state_store: None,
+		};
+		let responses = run_stdio_with_context(
+			context,
+			r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"research_compile","arguments":{"mode":"dry_run","intent":"research schema-bound MCP planning","outcome":"not_decision_ready"}}}"#,
+		);
+		let result = &response_at(&responses, 0)["result"];
+		let structured = &result["structuredContent"];
+
+		assert_eq!(result["isError"], false);
+		assert_eq!(structured["schema"], "decodex.mcp.research_compile_result/1");
+		assert_eq!(structured["status"], "ok");
+		assert_eq!(structured["mode"], "dry_run");
+		assert_eq!(structured["persisted"], false);
+		assert_eq!(structured["contract_status"], "draft_latent");
+		assert_eq!(structured["execution_authority_granted"], false);
+	}
+
+	#[test]
+	fn tools_call_research_compile_apply_requires_authority() {
+		let repo = test_repo();
+		let context = McpContext {
+			repo_root: repo.path().to_path_buf(),
+			config_path: None,
+			project_id: Some(String::from("decodex")),
+			state_store: None,
+		};
+		let responses = run_stdio_with_context(
+			context,
+			r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"research_compile","arguments":{"mode":"apply","intent":"research schema-bound MCP planning","outcome":"not_decision_ready"}}}"#,
+		);
+		let result = &response_at(&responses, 0)["result"];
+
+		assert_eq!(result["isError"], true);
+		assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.refusal/1");
+		assert_eq!(result["structuredContent"]["reason"], "missing_authority");
+		assert_eq!(result["structuredContent"]["tool"], "research_compile");
+	}
+
+	#[test]
+	fn tools_call_research_promote_defaults_to_dry_run() {
+		let repo = test_repo();
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+
+		state_store
+			.upsert_decision_contract("decodex", Some("XY-852"), latent_decision_contract_fixture())
+			.expect("decision contract should persist");
+
+		let context = McpContext {
+			repo_root: repo.path().to_path_buf(),
+			config_path: None,
+			project_id: Some(String::from("decodex")),
+			state_store: Some(state_store),
+		};
+		let responses = run_stdio_with_context(
+			context,
+			r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"research_promote","arguments":{"contractId":"research-x-loop-contract"}}}"#,
+		);
+		let result = &response_at(&responses, 0)["result"];
+		let structured = &result["structuredContent"];
+
+		assert_eq!(result["isError"], false);
+		assert_eq!(structured["schema"], "decodex.mcp.research_promote_result/1");
+		assert_eq!(structured["mode"], "dry_run");
+		assert_eq!(structured["persisted"], false);
+		assert_eq!(structured["contract_id"], "research-x-loop-contract");
+	}
+
+	#[test]
+	fn tools_call_research_promote_apply_requires_authority() {
+		let repo = test_repo();
+		let context = McpContext {
+			repo_root: repo.path().to_path_buf(),
+			config_path: None,
+			project_id: Some(String::from("decodex")),
+			state_store: Some(StateStore::open_in_memory().expect("state store should open")),
+		};
+		let responses = run_stdio_with_context(
+			context,
+			r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"research_promote","arguments":{"mode":"apply","contractId":"research-design-contract"}}}"#,
+		);
+		let result = &response_at(&responses, 0)["result"];
+
+		assert_eq!(result["isError"], true);
+		assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.refusal/1");
+		assert_eq!(result["structuredContent"]["reason"], "missing_authority");
+		assert_eq!(result["structuredContent"]["tool"], "research_promote");
+	}
+
+	#[test]
+	fn tools_call_intake_goal_dry_run_does_not_persist_program_intake() {
+		let repo = test_repo();
+		let db_path = repo.path().join("runtime.sqlite3");
+		let seed_store = StateStore::open(&db_path).expect("state store should open");
+
+		seed_store
+			.upsert_decision_contract("decodex", Some("XY-852"), accepted_mcp_goal_contract())
+			.expect("contract should persist");
+
+		let config_path = repo.path().join("project.toml");
+
+		write_decodex_project_config(&config_path, repo.path());
+		write_decodex_workflow(repo.path());
+
+		let context = McpContext {
+			repo_root: repo.path().to_path_buf(),
+			config_path: Some(config_path),
+			project_id: Some(String::from("decodex")),
+			state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
+		};
+		let responses = run_stdio_with_context(
+			context,
+			r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"intake_goal","arguments":{"mode":"dry_run","contractId":"mcp-goal-contract"}}}"#,
+		);
+		let result = &response_at(&responses, 0)["result"];
+		let structured = &result["structuredContent"];
+
+		assert_eq!(result["isError"], false);
+		assert_eq!(structured["schema"], "decodex.mcp.intake_goal_result/1");
+		assert_eq!(structured["mode"], "dry_run");
+		assert_eq!(structured["persisted"], false);
+		assert_eq!(structured["issue_count"], 1);
+		assert_eq!(structured["issues"][0]["action"], "would_create");
+		assert!(structured["issues"][0].get("node_id").is_none());
+		assert!(structured.get("program_id").is_none());
+
+		let readback = StateStore::open(&db_path).expect("state store should reopen");
+
+		assert!(
+			readback
+				.list_program_intake_plans("decodex")
+				.expect("program intake plans should list")
+				.is_empty()
+		);
+	}
+
+	#[test]
+	fn tools_call_intake_goal_apply_requires_authority() {
+		let repo = test_repo();
+		let responses = run_stdio(
+			repo.path(),
+			r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"intake_goal","arguments":{"mode":"apply","contractId":"mcp-goal-contract"}}}"#,
+		);
+		let result = &response_at(&responses, 0)["result"];
+
+		assert_eq!(result["isError"], true);
+		assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.refusal/1");
+		assert_eq!(result["structuredContent"]["reason"], "missing_authority");
+		assert_eq!(result["structuredContent"]["tool"], "intake_goal");
 	}
 
 	#[test]
@@ -5089,6 +6207,163 @@ terminal_finalize = "issue_terminal_finalize"
 +++
 "#,
 		);
+	}
+
+	fn write_decodex_project_config(config_path: &Path, repo_root: &Path) {
+		write_file(
+			config_path.to_path_buf(),
+			&format!(
+				r#"
+service_id = "decodex"
+
+[tracker]
+api_key_env_var = "HOME"
+
+[github]
+token_env_var = "PATH"
+
+[codex]
+review = "standard"
+
+[paths]
+repo_root = "{}"
+worktree_root = ".worktrees"
+"#,
+				repo_root.display()
+			),
+		);
+	}
+
+	fn write_decodex_workflow(repo_root: &Path) {
+		write_file(
+			repo_root.join("WORKFLOW.md"),
+			r#"+++
+version = 1
+
+[tracker]
+provider = "linear"
+startable_states = ["Todo"]
+terminal_states = ["Done", "Canceled", "Duplicate"]
+in_progress_state = "In Progress"
+success_state = "In Review"
+completed_state = "Done"
+failure_state = "Todo"
+opt_out_label = "decodex:manual-only"
+needs_attention_label = "decodex:needs-attention"
+
+[agent]
+transport = "stdio://"
+
+[execution]
+max_attempts = 3
+max_turns = 3
+max_retry_backoff_ms = 300000
+max_concurrent_agents = 0
+gate_profiles = {}
+canonicalize_commands = ["cargo make fmt"]
+verify_commands = ["cargo make test"]
+
+[execution.workspace_hooks]
+after_create_commands = []
+before_remove_commands = []
+timeout_seconds = 60
+
+[context]
+read_first = []
++++
+"#,
+		);
+	}
+
+	fn accepted_mcp_goal_contract() -> DecisionContract {
+		let mut contract: DecisionContract = serde_json::from_value(serde_json::json!({
+			"schema": crate::loop_contract::DECISION_CONTRACT_SCHEMA,
+			"record_version": crate::loop_contract::DECISION_CONTRACT_RECORD_VERSION,
+			"contract_id": "mcp-goal-contract",
+			"status": "draft_latent",
+			"source_intent": {
+				"summary": "Expose MCP planning tools.",
+				"user_utterance": "arrange MCP planning tools",
+				"source_issue_identifier": "XY-852"
+			},
+			"research_provenance": [
+				{
+					"kind": "spec",
+					"reference": "docs/spec/runtime.md",
+					"summary": "MCP planning tools are schema-bound."
+				}
+			],
+			"research_evidence": [
+				{
+					"claim": "Goal intake can preview generated issue briefs.",
+					"support": "Program Intake dry-run renders public-safe issue plans.",
+					"source_ref": "docs/spec/loop-runtime.md"
+				}
+			],
+			"research_options": [
+				{
+					"option": "Expose a small schema-bound planning facade.",
+					"status": "selected",
+					"tradeoffs": ["Keeps internal graph mechanics out of tool output."]
+				}
+			],
+			"accepted_authority": {
+				"accepted_objectives": ["Expose schema-bound MCP planning tools."],
+				"non_goals": ["Do not expose raw Program graph mutation."],
+				"constraints": ["Dry-run must not persist Program Intake rows."],
+				"assumptions": ["The promoted contract owns issue shaping."],
+				"objections": ["Apply must require explicit authority."],
+				"stop_conditions": ["Stop when authority is missing."]
+			},
+			"execution_readiness": {
+				"summary": "Ready for issue shaping.",
+				"ready_for_issue_shaping": true,
+				"missing_decisions": [],
+				"validation_expectations": ["MCP intake dry-run returns public-safe issue rows."],
+				"risk_notes": ["Do not expose internal Program node ids."],
+				"proposed_issues": [
+					{
+						"key": "mcp-planning-tools",
+						"title": "Expose schema-bound MCP planning tools.",
+						"objective": "Expose schema-bound MCP planning tools.",
+						"stage": "runtime",
+						"dependencies": [],
+						"conflict_domains": ["module:decodex-research-intake-tools"],
+						"acceptance": ["Planning tools are listed through tools/list."],
+						"validation": ["cargo test -p decodex mcp::tests -- --nocapture"],
+						"risk": ["Do not expose internal graph mechanics."],
+						"queue_intent": "ready_to_queue"
+					}
+				],
+				"conflict_domains": ["module:decodex-research-intake-tools"]
+			},
+			"links": {
+				"generated_issue_ids": [],
+				"generated_issue_identifiers": [],
+				"execution_program_node_ids": []
+			},
+			"evidence_boundary": {
+				"private_evidence_refs": [],
+				"public_projection_refs": [],
+				"public_summary": "MCP planning tools are ready for issue shaping."
+			}
+		}))
+		.expect("contract should deserialize");
+
+		contract
+			.promote(
+				DecisionPromotion::new(
+					"operator",
+					DecisionPromotionActorKind::User,
+					"2026-06-18T00:00:00Z",
+					"test",
+					Some(String::from("Accepted for MCP intake dry-run testing.")),
+				)
+				.expect("promotion should build"),
+			)
+			.expect("contract should promote");
+
+		contract
 	}
 
 	fn write_file(path: std::path::PathBuf, contents: &str) {
