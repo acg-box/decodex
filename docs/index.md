@@ -27,8 +27,8 @@ The split below is by question type, not by human-versus-agent audience.
   - `docs/decisions/index.md` when the question is "why was it designed this way?"
   - `docs/evidence/index.md` when the question is "which reusable public-safe proof
     supports this claim?"
-  - `docs/research/index.json` when the question is "which latent JSON research
-    artifact or supporting evidence exists but is not repository authority yet?"
+  - `docs/research/index.md` when the question is "which latent research concept or
+    supporting evidence exists but is not repository authority yet?"
   - `docs/evidence/index.md` plus `plugins/decodex/skills/docs-drift/SKILL.md` when
     the question is "which semantic-drift audit checks docs, code, commands, status,
     and examples against each other?"
@@ -62,7 +62,7 @@ The split below is by question type, not by human-versus-agent audience.
   `docs/decisions/natural-language-loop-runtime.md`
 - Need rationale for Decodex MCP integration, MCP/skills/docs/runtime boundaries, or
   skill slimming -> `docs/decisions/mcp-capability-gateway-and-skill-slimming.md`
-- Need JSON research artifacts, supporting research evidence, or the implemented/superseded
+- Need research concepts, supporting research evidence, or the implemented/superseded
   status of candidate research targets ->
   `docs/reference/research-concepts.md`
 - Need reusable public-safe evidence concepts -> `docs/evidence/index.md`
@@ -106,7 +106,7 @@ The split below is by question type, not by human-versus-agent audience.
 - Start each document with a short routing header that says what the document is for,
   when to read it, and what it does not cover.
 - Keep links explicit and stable.
-- Treat `docs/research/` as a JSON research artifact lane, not as a primary authority
-  lane or old nested event-log write target.
+- Treat `docs/research/` as a Markdown OKF research concept lane, not as a primary
+  authority lane or JSON event-log write target.
 - Treat Decodex research output as latent until accepted or promoted through the
   loop-runtime contract in `docs/spec/loop-runtime.md`.
