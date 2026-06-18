@@ -573,6 +573,11 @@ acceptance check may advance to `handoff_evidence`; a failing check keeps the la
 the appropriate repair phase with the reason and next action available in private
 status/evidence readback. Retained phase-goal recovery uses the same repo-gate plus
 acceptance check before scheduling automatic continuation.
+Effective delta is the canonical lane delta, not merely worktree dirtiness. It
+includes issue-branch changes from the repo-gate base merge-base through current
+`HEAD`, plus tracked or non-runtime untracked worktree changes. A clean worktree at
+an issue-branch `HEAD` with committed lane changes is therefore effective progress,
+not `no_effective_delta`.
 When Decodex has already recorded a valid phase-goal continuation or active phase in
 the immediately previous attempt and must create a retry or automatic continuation
 attempt, the new attempt resumes that unterminated phase state instead of restarting
@@ -637,6 +642,11 @@ Stop conditions include:
 - uncovered contract questions that affect accepted direction or acceptance criteria
 - contradictory tracker, PR, branch, or runtime ownership evidence that cannot be
   resolved without guessing
+
+For `no_effective_diff`, the repeated-observation fingerprint must be stable for the
+absence of progress. It may record current `HEAD` in details for forensics, but `HEAD`
+alone must not reset the consecutive counter when the canonical lane delta, validation
+evidence, and decision state did not change.
 
 Stop attribution must preserve the reason instead of collapsing failures into a
 generic retry bucket. Normalized outcomes include:
