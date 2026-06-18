@@ -16,14 +16,25 @@ use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::{config::ServiceConfig, loop_contract::{DecisionPromotion, DecisionPromotionActorKind}, orchestrator::{self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, McpLaneSteerRequest}, prelude::eyre, program_intake::{
+use crate::{
+	config::ServiceConfig,
+	loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
+	orchestrator::{self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, McpLaneSteerRequest},
+	prelude::eyre,
+	program_intake::{
 		self, GoalIntakeCommandRequest, GoalIntakeIssueReport, GoalIntakeReport,
 		GoalIntakeRunRequest,
-	}, research_design::{
+	},
+	research_design::{
 		self, ResearchDesignOutcome, ResearchDesignRunInput, ResearchDesignRunReport,
-	}, runtime, state::StateStore, tracker::{
+	},
+	runtime,
+	state::StateStore,
+	tracker::{
 		IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBriefUpdate, TrackerIssueCreate,
-	}, workflow::WorkflowDocument};
+	},
+	workflow::WorkflowDocument,
+};
 
 /// Safe default listen address for Streamable HTTP MCP.
 pub(crate) const DEFAULT_MCP_HTTP_LISTEN_ADDRESS: &str = "127.0.0.1:8193";
@@ -285,10 +296,10 @@ impl McpServer {
 					"mimeType": "text/markdown"
 				},
 				{
-					"uriTemplate": "decodex://docs/research/{topic}",
-					"name": "Decodex research concepts",
-					"description": "Checked-in latent Markdown research concepts.",
-					"mimeType": "text/markdown"
+					"uriTemplate": "decodex://research/{artifact}",
+					"name": "Decodex research reports",
+					"description": "Checked-in JSON research reports.",
+					"mimeType": "application/json"
 				},
 				{
 					"uriTemplate": "decodex://decision-contracts/{contract_id}",
@@ -4953,6 +4964,7 @@ mod tests {
 			.collect::<Vec<_>>();
 
 		assert!(uri_templates.contains(&"decodex://docs/spec/{topic}"));
+		assert!(uri_templates.contains(&"decodex://research/{artifact}"));
 		assert!(uri_templates.contains(&"decodex://projects/{project_id}/lane-control/{issue}"));
 		assert!(uri_templates.contains(&"decodex://projects/{project_id}/status_live"));
 		assert!(uri_templates.contains(&"decodex://projects/{project_id}/activity_tail"));
