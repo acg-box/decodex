@@ -15,6 +15,7 @@ rules.
 - Promote into the correct durable lane: `docs/spec`, `docs/runbook`,
   `docs/reference`, `docs/decisions`, `plugins/decodex/skills`, runtime code, tests,
   or explicit `no_promotion`.
+- Update durable owners so current facts and contracts stand without reading research.
 - Refuse promotion while unresolved decisions, evidence gaps, or blockers remain.
 - Route accepted work to `planning`.
 - Do not infer acceptance from a research question, summary, or old artifact.
