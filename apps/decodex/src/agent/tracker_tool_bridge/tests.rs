@@ -26,7 +26,8 @@ use crate::{
 	config::ReviewLevel,
 	prelude::eyre,
 	state::{
-		self, ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpoint, StateStore,
+		ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpoint,
+		ReviewPolicyCheckpointInput, StateStore,
 	},
 	tracker::{
 		IssueTracker, TrackerComment, TrackerIssue, TrackerLabel, TrackerState, TrackerTeam,
@@ -536,26 +537,35 @@ fn sample_local_repo() -> LocalRepoDetails {
 }
 
 fn write_review_policy_checkpoint(
+	bridge: &TrackerToolBridge<'_>,
+	issue: &TrackerIssue,
 	review_context: &ReviewHandoffContext,
 	phase: &str,
 	status: &str,
 	head_sha: &str,
 	nonclean_rounds: i64,
 ) {
-	fs::create_dir_all(&review_context.cwd).expect("review policy worktree should exist");
-	state::write_run_review_policy_state(
-		&review_context.cwd,
-		&review_context.run_id,
-		review_context.attempt_number,
-		phase,
-		status,
-		head_sha,
-		nonclean_rounds,
-	)
-	.expect("review policy state should write");
+	bridge_state_store(bridge)
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: &review_context.service_id,
+			issue_id: &issue.id,
+			run_id: &review_context.run_id,
+			attempt_number: review_context.attempt_number,
+			phase,
+			review_level: review_context.review_level.as_str(),
+			status,
+			head_sha,
+			nonclean_rounds,
+			details_json: "{}",
+		})
+		.expect("review policy state should write");
 }
 
-fn write_clean_review_checkpoint(review_context: &ReviewHandoffContext) {
+fn write_clean_review_checkpoint(
+	bridge: &TrackerToolBridge<'_>,
+	issue: &TrackerIssue,
+	review_context: &ReviewHandoffContext,
+) {
 	let phase = match review_context.mode {
 		ReviewExecutionMode::Handoff => "handoff",
 		ReviewExecutionMode::Repair => "repair",
@@ -565,6 +575,8 @@ fn write_clean_review_checkpoint(review_context: &ReviewHandoffContext) {
 	};
 
 	write_review_policy_checkpoint(
+		bridge,
+		issue,
 		review_context,
 		phase,
 		"clean",

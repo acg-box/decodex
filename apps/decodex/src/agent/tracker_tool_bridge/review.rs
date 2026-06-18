@@ -15,8 +15,8 @@ use crate::{
 	},
 	prelude::eyre,
 	state::{
-		self, ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpoint,
-		ReviewPolicyCheckpointInput, StateStore,
+		ReviewCheckpointArtifactLookup, ReviewHandoffMarker, ReviewOrchestrationMarker,
+		ReviewPolicyCheckpoint, ReviewPolicyCheckpointInput,
 	},
 	tracker::{
 		self, TrackerIssue,
@@ -98,6 +98,7 @@ impl<'a> TrackerToolBridge<'a> {
 				run_id: &review_context.run_id,
 				attempt_number: review_context.attempt_number,
 				phase: review_policy_phase.as_str(),
+				review_level: review_context.review_level.as_str(),
 				status: review_policy_status.as_str(),
 				head_sha,
 				nonclean_rounds,
@@ -910,30 +911,6 @@ impl<'a> TrackerToolBridge<'a> {
 		Ok(())
 	}
 
-	pub(super) fn review_policy_state_for_current_phase(
-		&self,
-		review_context: &ReviewHandoffContext,
-	) -> crate::prelude::Result<Option<ReviewPolicyState>> {
-		let Some(current_phase) = ReviewPolicyPhase::for_mode(review_context.mode) else {
-			return Ok(None);
-		};
-		let Some(state_store) = self.state_store else {
-			return Ok(None);
-		};
-
-		if let Some(checkpoint) = state_store.review_policy_checkpoint(
-			&review_context.service_id,
-			&self.issue.id,
-			&review_context.run_id,
-			review_context.attempt_number,
-			current_phase.as_str(),
-		)? {
-			return self.review_policy_state_from_checkpoint(checkpoint).map(Some);
-		}
-
-		self.migrate_legacy_review_policy_marker(review_context, state_store, current_phase)
-	}
-
 	fn review_policy_state_from_checkpoint(
 		&self,
 		checkpoint: ReviewPolicyCheckpoint,
@@ -952,97 +929,41 @@ impl<'a> TrackerToolBridge<'a> {
 		})
 	}
 
-	fn migrate_legacy_review_policy_marker(
-		&self,
-		review_context: &ReviewHandoffContext,
-		state_store: &StateStore,
-		current_phase: ReviewPolicyPhase,
-	) -> crate::prelude::Result<Option<ReviewPolicyState>> {
-		let Some(marker) = state::read_run_activity_marker_snapshot(&review_context.cwd)? else {
-			return Ok(None);
-		};
-
-		if marker.run_id() != review_context.run_id
-			|| marker.attempt_number() != review_context.attempt_number
-		{
-			return Ok(None);
-		}
-
-		let Some(phase) = marker.review_policy_phase() else {
-			return Ok(None);
-		};
-		let (Some(status), Some(head_sha), Some(nonclean_rounds)) = (
-			marker.review_policy_status(),
-			marker.review_policy_head_sha(),
-			marker.review_policy_nonclean_rounds(),
-		) else {
-			tracing::warn!(
-				issue = self.issue.identifier,
-				run_id = review_context.run_id,
-				"Legacy review policy marker is incomplete; ignoring marker policy fields."
-			);
-
-			return Ok(None);
-		};
-		let Ok(phase) = ReviewPolicyPhase::parse(phase) else {
-			tracing::warn!(
-				issue = self.issue.identifier,
-				run_id = review_context.run_id,
-				"Legacy review policy marker has an invalid phase; ignoring marker policy fields."
-			);
-
-			return Ok(None);
-		};
-		let Ok(status) = ReviewPolicyStatus::parse(status) else {
-			tracing::warn!(
-				issue = self.issue.identifier,
-				run_id = review_context.run_id,
-				"Legacy review policy marker has an invalid status; ignoring marker policy fields."
-			);
-
-			return Ok(None);
-		};
-
-		if phase != current_phase {
-			return Ok(None);
-		}
-
-		state_store.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
-			project_id: &review_context.service_id,
-			issue_id: &self.issue.id,
-			run_id: &review_context.run_id,
-			attempt_number: review_context.attempt_number,
-			phase: phase.as_str(),
-			status: status.as_str(),
-			head_sha,
-			nonclean_rounds,
-			details_json: "{}",
-		})?;
-
-		Ok(Some(ReviewPolicyState {
-			phase,
-			status,
-			head_sha: head_sha.to_owned(),
-			nonclean_rounds,
-			details_json: String::from("{}"),
-		}))
-	}
-
 	pub(super) fn review_policy_state_for_current_head(
 		&self,
 		review_context: &ReviewHandoffContext,
 	) -> crate::prelude::Result<Option<ReviewPolicyState>> {
-		let Some(checkpoint) = self.review_policy_state_for_current_phase(review_context)? else {
+		let Some(current_phase) = ReviewPolicyPhase::for_mode(review_context.mode) else {
 			return Ok(None);
 		};
 		let local_repo =
 			self.current_local_repo_details(review_context).map_err(|error| eyre::eyre!(error))?;
 
-		if checkpoint.head_sha != local_repo.head_oid {
-			return Ok(None);
-		}
+		self.review_policy_artifact_for_head(review_context, current_phase, &local_repo.head_oid)
+	}
 
-		Ok(Some(checkpoint))
+	pub(super) fn review_policy_artifact_for_head(
+		&self,
+		review_context: &ReviewHandoffContext,
+		review_policy_phase: ReviewPolicyPhase,
+		head_sha: &str,
+	) -> crate::prelude::Result<Option<ReviewPolicyState>> {
+		let Some(state_store) = self.state_store else {
+			return Ok(None);
+		};
+		let Some(checkpoint) =
+			state_store.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
+				project_id: &review_context.service_id,
+				issue_id: &self.issue.id,
+				phase: review_policy_phase.as_str(),
+				review_level: review_context.review_level.as_str(),
+				head_sha,
+			})?
+		else {
+			return Ok(None);
+		};
+
+		self.review_policy_state_from_checkpoint(checkpoint).map(Some)
 	}
 
 	pub(super) fn require_clean_review_checkpoint(
@@ -1085,22 +1006,22 @@ impl<'a> TrackerToolBridge<'a> {
 			return Ok(None);
 		}
 
-		let Some(checkpoint) = self.review_policy_state_for_current_head(review_context)? else {
+		let Some(current_phase) = ReviewPolicyPhase::for_mode(review_context.mode) else {
+			return Ok(None);
+		};
+		let Some(state_store) = self.state_store else {
 			return Ok(None);
 		};
 
-		Ok(self.review_policy_stop_from_checkpoint(review_context, checkpoint))
-	}
-
-	pub(super) fn review_policy_stop_requested_for_current_phase(
-		&self,
-		review_context: &ReviewHandoffContext,
-	) -> crate::prelude::Result<Option<ReviewPolicyStopRequested>> {
-		if !review_context.decodex_review_checkpoint_enabled() {
+		if !state_store.has_nonclean_review_checkpoint_artifact(
+			&review_context.service_id,
+			&self.issue.id,
+			current_phase.as_str(),
+		)? {
 			return Ok(None);
 		}
 
-		let Some(checkpoint) = self.review_policy_state_for_current_phase(review_context)? else {
+		let Some(checkpoint) = self.review_policy_state_for_current_head(review_context)? else {
 			return Ok(None);
 		};
 
