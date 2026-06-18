@@ -1,7 +1,7 @@
 ---
 type: Policy
 title: Documentation Policy
-description: Defines Decodex docs as a Markdown-only OKF knowledge bundle for agent development workflow.
+description: Defines Decodex docs as an OKF knowledge bundle with a JSON research artifact lane.
 status: active
 authority: normative
 owner: docs
@@ -9,18 +9,21 @@ tags: [docs, okf, llm-wiki, semantic-drift]
 source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md]
 code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/cli.rs]
 related: [index.md, log.md, spec/okf-knowledge-layer.md, evidence/docs-self-iteration.md]
-last_verified: 2026-06-17
+last_verified: 2026-06-18
 ---
 
 # Documentation Policy
 
 ## Purpose
 
-`docs/` is the Decodex repo-development knowledge base. It uses a Markdown-only
-Open Knowledge Format profile so agents can route, read, update, verify, and improve
-repository knowledge during normal lane execution. OKF itself is the portable
-knowledge-bundle protocol; `docs/` is this repository's default bundle location and
-`decodex docs` is the local convenience surface for that bundle.
+`docs/` is the Decodex repo-development knowledge base. It uses an Open Knowledge
+Format profile so agents can route, read, update, verify, and improve repository
+knowledge during normal lane execution. The primary knowledge lanes are Markdown OKF
+concepts. `docs/research/` is the deliberate exception: it stores checked-in JSON
+research artifacts so latent research remains structured and readable by MCP.
+OKF itself is the portable knowledge-bundle protocol; `docs/` is this repository's
+default bundle location and `decodex docs` is the local convenience surface for that
+bundle.
 
 This policy owns the docs taxonomy, OKF concept shape, promotion rules, and
 self-iteration loop for documentation. It does not own runtime state, tracker state,
@@ -31,15 +34,19 @@ and profile boundary is defined by [`spec/okf-knowledge-layer.md`](spec/okf-know
 
 `docs/` is an OKF bundle:
 
-- every durable knowledge artifact is Markdown
+- every durable non-research knowledge artifact is Markdown
 - `docs/index.md` is the progressive-disclosure entrypoint
 - `docs/log.md` records knowledge maintenance events
 - every non-index, non-log Markdown document is an OKF concept with YAML
   frontmatter
-- non-Markdown artifacts, including JSON, are not allowed under `docs/`
+- JSON artifacts are allowed only under `docs/research/`
+- `docs/research/` contains flat `*.json` research artifacts plus
+  `docs/research/index.json`; it must not contain Markdown concepts or old nested
+  research event-log runs
 
 Runtime state may still use internal structured storage. The docs source of truth for
-research, drift audit, decisions, references, runbooks, and specs is Markdown.
+drift audit, decisions, references, runbooks, and specs is Markdown. Checked-in
+research artifacts are JSON and remain non-authoritative until promoted.
 
 ## Naming
 
@@ -90,7 +97,7 @@ Recommended keys:
 | `source_refs` | External or public source references. |
 | `code_refs` | Repository-relative code, test, script, or config file paths. |
 | `related` | Related concepts inside the OKF bundle. |
-| `promotes_to` | Target lane when a research concept becomes durable authority. |
+| `promotes_to` | Target lane when a research artifact becomes durable authority. |
 | `drift_watch` | Commands, paths, labels, statuses, config keys, or schemas watched for semantic drift. |
 
 ## Primary Lanes
@@ -101,30 +108,21 @@ Recommended keys:
 | Runbook | `docs/runbook/` | `Runbook` | `procedural` | Which sequence should I execute? |
 | Reference | `docs/reference/` | `Reference` | `current_state` | How is it currently organized or implemented? |
 | Decisions | `docs/decisions/` | `Decision` | `rationale` | Why is it shaped this way? |
-| Research | `docs/research/` | `Research Contract` | `non_authoritative` | What candidate conclusion has evidence but no execution authority yet? |
+| Research | `docs/research/` | JSON research artifact | `non_authoritative` | What candidate conclusion has evidence but no execution authority yet? |
 | Evidence | `docs/evidence/` | `Evidence` or `Drift Audit` | `evidence` | Which public-safe proof supports claims and drift audits? |
 
-## Research Contracts
+## Research Artifacts
 
-New research output is a Markdown concept under `docs/research/`. A research concept
-is never execution authority by itself.
+Checked-in research output is a JSON artifact under `docs/research/`. A research
+artifact is never execution authority by itself.
 
-Research concepts must expose headings with these names. The heading level is not
-semantic; concepts may use a top-level title followed by lower-level contract
-headings.
+Research reports use `schema: "decodex.research_report/1"`. The lane index uses
+`schema: "decodex.research_index/1"`. Reports must keep the decision contract visible
+from top-level fields, including source intent or purpose, scope, evidence ledger,
+options or status summary, selected decision or non-decision, promotion target,
+validation expectations, drift impact, and unresolved gaps.
 
-- `Question`
-- `Scope`
-- `Evidence`
-- `Options`
-- `Judgment`
-- `Challenge`
-- `Decision`
-- `Promotion`
-- `Drift Impact`
-- `Citations`
-
-`Decision` must state exactly one terminal status:
+Every research report must state exactly one terminal status:
 
 - `decision_ready`
 - `not_decision_ready`
@@ -185,7 +183,7 @@ The agent-facing entrypoint for this loop is
 which routes to the narrower `docs-okf`, `docs-wiki`, and `docs-drift` skills. If
 the docs impact is `research_required`, switch to the Decodex `research*` skill
 family and persist any checked-in result under `docs/research/` only as a latent,
-non-authoritative Markdown OKF research concept until explicitly promoted.
+non-authoritative JSON research artifact until explicitly promoted.
 
 Detailed Decodex docs rules live in `plugins/decodex/references/docs-method.md`,
 `docs-okf.md`, `docs-wiki.md`, and `docs-drift.md`. Detailed research rules live in
@@ -201,7 +199,7 @@ classification as the private `docs_impact` field on `issue_progress_checkpoint`
 | --- | --- |
 | `none` | No docs, command, behavior, config, status, or workflow claim changed. |
 | `update_required` | A durable concept must be updated in the same lane. |
-| `research_required` | Missing or contradictory authority requires a research concept. |
+| `research_required` | Missing or contradictory authority requires a research artifact. |
 | `drift_required` | A changed claim needs a drift audit before completion. |
 
 `validation-ready` includes docs readiness. A lane cannot claim ready when the docs
@@ -221,10 +219,12 @@ remains an alias for compatibility.
 The check fails when:
 
 - `docs/log.md` or required lane indexes are missing
-- non-Markdown artifacts appear under `docs/`
+- JSON artifacts appear outside `docs/research/`
+- Markdown or nested event-log artifacts appear under `docs/research/`
 - concepts lack required frontmatter or use unsupported OKF enum/date values
 - structured frontmatter refs are malformed, point outside their authority boundary,
   or reference missing repository/docs paths
-- research contracts or drift audit evidence concepts lack their required headings
+- research JSON artifacts fail schema or required-key checks
+- drift audit evidence concepts lack their required headings
 - local Markdown links are broken
 - `docs/evidence/` lacks a drift audit anchor

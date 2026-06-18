@@ -15,8 +15,8 @@ Use `research-probe`, `research-evidence`, `research-options`, `research-judgmen
 after explicit acceptance.
 
 - Do not route Decodex research through external research skills.
-- Do not write new Decodex research as `docs/research/` event logs or JSON.
-- Use `docs/research/` only for Markdown OKF research concepts or evidence extraction
+- Do not write new Decodex research as old nested `docs/research/` event logs.
+- Use `docs/research/` only for flat JSON research artifacts or evidence extraction
   that remains non-authoritative until promoted.
 - Do keep terminal status, evidence classes, selected option, gaps, and promotion
   target visible from the top-level contract.

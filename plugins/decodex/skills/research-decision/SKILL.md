@@ -14,6 +14,6 @@ End every bounded research run with one terminal status. Read
 - `needs_human_decision`: remaining uncertainty is human/product/authority choice.
 - Include the promotion target and evidence ledger summary in the terminal contract.
 - Do not use multiple statuses, choose readiness because budget ended, promote here,
-  or write a new Decodex run as a `docs/research/` event log or JSON.
-- If the research is persisted under `docs/research/`, persist it as a Markdown OKF
-  research concept, never as JSON.
+  or write a new Decodex run as an old nested `docs/research/` event log.
+- If the research is persisted under `docs/research/`, persist it as a flat JSON
+  research artifact, never as a Markdown research concept.
