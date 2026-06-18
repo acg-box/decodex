@@ -23,6 +23,8 @@ structure, `decisions` for rationale, `research` for latent candidates, and
 - Use `related` when cross-links materially help retrieval.
 - Start each concept with a short routing purpose and boundary.
 - Keep `docs/research/` non-authoritative until promotion.
+- After promotion, update indexes, links, descriptions, and statuses so superseded
+  research routes as provenance instead of competing with owner concepts.
 
 Update `docs/log.md` when routing, promotion, naming, docs policy, or maintenance
 behavior changes.

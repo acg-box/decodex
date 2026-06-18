@@ -1,7 +1,7 @@
 ---
 type: "Reference"
 title: "Research Concepts"
-description: "Explain how Markdown OKF research concepts relate to runtime Decision Contracts and promoted docs authority."
+description: "Explain how Markdown OKF research concepts relate to runtime Decision Contracts, promotion owners, and LLM Wiki routing."
 status: active
 authority: current_state
 owner: docs
@@ -21,8 +21,8 @@ durable docs lane.
 Not this document: The research method itself, the runtime contract, or a durable
 design decision record.
 
-Covers: Concept placement, authority boundaries, required research sections, and
-promotion rules.
+Covers: Concept placement, authority boundaries, required research sections,
+promotion owners, research disposition, and LLM Wiki routing hygiene.
 
 ## Status of `docs/research/`
 
@@ -34,9 +34,9 @@ promotion rules.
 - New Decodex bounded research must not create checked-in JSON event logs.
 - A research concept may contain useful evidence, alternatives, objections, and a
   candidate decision, but it does not by itself define repository truth.
-- A promoted conclusion must update `docs/spec/`, `docs/runbook/`,
-  `docs/reference/`, or `docs/decisions/`; `docs/research/` remains latent and
-  non-authoritative.
+- A promoted conclusion must update the owning concept in `docs/spec/`,
+  `docs/runbook/`, `docs/reference/`, `docs/decisions/`, or `docs/evidence/`;
+  `docs/research/` remains latent or explicitly superseded and non-authoritative.
 - For Decodex-specific loop-runtime work, the Decodex `research*` skills plus
   `decodex research compile` produce a runtime-local `decodex.decision_contract/1`
   candidate. Runtime storage may stay structured for machine use, but checked-in docs
@@ -75,9 +75,32 @@ The `Decision` section must state exactly one terminal status:
   `docs/reference/`.
 - If a research result records a durable tradeoff or design choice, promote the
   conclusion into `docs/decisions/`.
+- If a research result produces reusable proof, public-safe evidence, or drift-audit
+  material, promote that material into `docs/evidence/`.
+- If accepted research changes future agent behavior, update the matching
+  `plugins/decodex/skills/` files alongside the docs owner.
 - If a Decodex-native research/design result should feed issue shaping or unattended
   execution, promote the stored Decision Contract first. Do not infer acceptance from
   a research summary or Markdown concept.
+
+## Research Disposition
+
+- `continue`: unresolved research stays active.
+- `promote_and_supersede`: owner concepts receive the accepted knowledge; a compact
+  `status: superseded` research concept remains only for provenance.
+- `promote_and_retire`: owner concepts fully absorb the knowledge; remove the concept
+  from active LLM Wiki routing and indexes.
+- `reject_or_deprecate`: rejected or stale research remains only when it has retrieval
+  value as a decision, evidence concept, or deprecated research concept.
+
+Research retention is an OKF knowledge decision. Do not rely on out-of-band history
+for knowledge retention.
+
+## LLM Wiki Hygiene
+
+After promotion, update lane indexes, `related`, `promotes_to`, descriptions, and
+status fields so authoritative owners outrank superseded research. A superseded
+research concept may point to owners, but it must not repeat current truth.
 
 ## Practical Reading Rule
 

@@ -21,17 +21,15 @@ labels, automation, commit, or landing boundaries.
   recovery inspection, commit, or landing.
 - Labels: use `labels` only for ordinary non-Program tracker intake and retained-lane
   ownership signals.
-- MCP gateway: use `decodex mcp serve --transport stdio` for local MCP clients and
-  `decodex mcp serve --transport streamable-http` only for remote permitted clients
-  behind the operator's chosen local listener, tunnel, or relay. Treat MCP resources,
-  prompts, and tools as a typed facade over existing Decodex docs/runtime authority,
-  not as a replacement for Decision Contract, lane-control, tracker, review, landing,
-  or closeout gates. Planning tools are deliberately small: `research_compile`,
-  `research_promote`, and `intake_goal` expose dry-run/apply boundaries with explicit
-  authority requirements for apply/promote calls. Operate/admin tools stay
-  inspect-first: `decodex_lane_control` requires lane identity plus current run/turn
-  preconditions for steer or interrupt, and `decodex_project_control` limits
-  pause/resume to future dispatch while refusing standalone scan shortcuts.
+- MCP gateway: use `decodex mcp serve --transport stdio` locally and
+  `decodex mcp serve --transport streamable-http` only behind the operator's listener,
+  tunnel, or relay. MCP is a typed facade, not a bypass around Decision Contract,
+  lane-control, tracker, review, landing, or closeout gates. Plan tools are
+  `research_compile`, `research_promote`, and `intake_goal`; dry-run stays
+  non-mutating, while apply/promote requires explicit authority. Operate/admin stays
+  inspect-first: `decodex_lane_control` requires current run/turn preconditions for
+  steer or interrupt, and `decodex_project_control` limits pause/resume to future
+  dispatch while refusing standalone scan shortcuts.
 
 ## First Reads
 
@@ -48,10 +46,10 @@ Keep Decodex natural-language-first. Requests such as `research X` route through
 
 Research never queues work, mutates Linear, starts implementation, creates Codex
 goals, or dispatches Program nodes. Promotion preserves accepted objectives,
-non-goals, constraints, assumptions, objections, validation expectations, proposed
-issues, and stop conditions. A result is a latent Decision Contract
-candidate only. Program Intake dispatches ready mapped nodes directly from the
-persisted DAG; queue labels are not the Program scheduler.
+constraints, objections, validation expectations, proposed issues, non-goals, and
+stop conditions. A result is a latent Decision Contract candidate only. Program
+Intake dispatches ready mapped nodes directly from the persisted DAG; queue labels
+are not the Program scheduler.
 
 ## Program Versus Label Intake
 
@@ -67,13 +65,12 @@ persisted DAG; queue labels are not the Program scheduler.
 ## Commit And Land
 
 For human-driven commits, inspect the diff, stage intended files, run touched-surface
-validation, then use `decodex commit "<summary>"` or
-`decodex commit --manual-authority "<summary>"` for deliberate non-issue work.
+validation, then use `decodex commit "<summary>"` or `decodex commit
+--manual-authority "<summary>"`.
 
 For human-driven PR landing, confirm PR/base/head/mergeability/checks, then use
-`decodex land "<summary>"` or
-`decodex land --manual-authority --pr <URL> "<summary>"` for deliberate non-issue
-work. If issue-authority land reports missing retained handoff state, dry-run
+`decodex land "<summary>"` or `decodex land --manual-authority --pr <URL>
+"<summary>"`. If issue-authority landing lacks retained handoff state, dry-run
 `decodex recover review-handoff adopt` before any live adopt.
 
 ## Hard Boundaries
