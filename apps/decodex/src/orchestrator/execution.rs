@@ -409,9 +409,11 @@ impl RepoGatePhaseGoalController<'_> {
 	) -> Result<PhaseAcceptanceCheck> {
 		let fingerprint = loop_guardrail_worktree_fingerprint(&self.issue_run.worktree.path)?;
 		let head_sha = fingerprint.as_ref().map(|value| value.head_sha.clone());
-		let effective_delta_present =
-			fingerprint.as_ref().is_some_and(|value| value.effective_delta_present);
 		let changed_surfaces = phase_acceptance_changed_surfaces(&self.issue_run.worktree.path);
+		let effective_delta_present = fingerprint
+			.as_ref()
+			.is_some_and(|value| value.effective_delta_present)
+			|| !changed_surfaces.is_empty();
 		let checkpoint = self.latest_progress_checkpoint()?;
 		let checkpoint_payload = checkpoint.as_ref().map(state::PrivateExecutionEvent::payload);
 		let checkpoint_head_sha = checkpoint_payload
@@ -710,6 +712,7 @@ struct LoopGuardrailWorktreeFingerprint {
 	tracked_status_hash: String,
 	tracked_diff_hash: String,
 	effective_status_hash: String,
+	branch_delta_present: bool,
 	effective_delta_present: bool,
 }
 
@@ -3339,8 +3342,7 @@ fn retryable_failure_loop_guardrail_stop(
 		observations.push((
 			LoopGuardrailReason::NoEffectiveDiff,
 			format!(
-				"{}:{}:{}",
-				worktree_fingerprint.head_sha.as_str(),
+				"{}:{}",
 				worktree_fingerprint.effective_status_hash.as_str(),
 				worktree_fingerprint.tracked_diff_hash.as_str()
 			),
@@ -3365,6 +3367,7 @@ fn retryable_failure_loop_guardrail_stop(
 					"tracked_status_hash": worktree_fingerprint.tracked_status_hash.as_str(),
 					"tracked_diff_hash": worktree_fingerprint.tracked_diff_hash.as_str(),
 					"effective_status_hash": worktree_fingerprint.effective_status_hash.as_str(),
+					"branch_delta_present": worktree_fingerprint.branch_delta_present,
 					"effective_delta_present": worktree_fingerprint.effective_delta_present,
 					"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
 				})
@@ -3416,13 +3419,17 @@ fn loop_guardrail_worktree_fingerprint(
 		return Ok(None);
 	};
 	let effective_status = loop_guardrail_effective_status(&raw_status);
+	let branch_delta_present =
+		repo_gate_changed_tracked_files(worktree_path).is_ok_and(|changed_files| !changed_files.is_empty());
 
 	Ok(Some(LoopGuardrailWorktreeFingerprint {
 		head_sha,
 		tracked_status_hash: loop_guardrail_text_hash(&tracked_status),
 		tracked_diff_hash: loop_guardrail_text_hash(&tracked_diff),
 		effective_status_hash: loop_guardrail_text_hash(&effective_status),
-		effective_delta_present: !effective_status.trim().is_empty()
+		branch_delta_present,
+		effective_delta_present: branch_delta_present
+			|| !effective_status.trim().is_empty()
 			|| !tracked_diff.trim().is_empty(),
 	}))
 }
