@@ -25,7 +25,10 @@ chosen local listener, tunnel, or relay. MCP tools do not bypass Decision Contra
 lane-control, review, landing, tracker, or runtime authority gates. Route MCP planning
 through `research_compile`, `research_promote`, and `intake_goal`; dry-run modes stay
 non-mutating, and apply/promote modes require explicit authority fields and structured
-refusal when authority is missing.
+refusal when authority is missing. Route MCP remote control through `decodex_observe`,
+`decodex_lane_control`, and `decodex_project_control`: observe is public-safe
+readback, lane control is inspect-first with current run/turn preconditions, and
+project control is future-dispatch-only for pause/resume.
 
 Research is latent until promoted. Program Intake is not queue-label polling.
 Decodex-owned landing uses `decodex land`, not raw GitHub merge paths.
