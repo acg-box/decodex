@@ -147,7 +147,7 @@ decodex research promote <CONTRACT_ID>
 `research compile` writes a local Decision Contract candidate into runtime SQLite and
 returns a bounded outcome: `decision_ready`, `not_decision_ready`, `blocked`, or
 `needs_human_decision`. Decodex research first probes the decision, records evidence,
-compares options, forms a challenge-ready judgment, resolves or preserves skeptic
+compares options, forms a challenge-ready judgment, resolves or preserves challenge
 objections, and only then chooses the outcome. It may retain private evidence
 references, option comparisons, structured proposed issues, conflict domains, and
 dispatch intent for later issue shaping, but it does not enqueue issues, mutate Linear

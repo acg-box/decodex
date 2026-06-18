@@ -143,8 +143,8 @@ and query output.
 
 Decodex-owned context intake lives in `plugins/decodex/references/routing.md`. It
 defines when agents should read docs indexes and owner concepts before implementation
-and how to recover a missed docs completion gate. Generic repo-work plugins should not
-copy those Decodex-specific procedures.
+and how to recover a missed docs completion gate. Host bootstrap instructions should
+route to Decodex rather than copying those procedures.
 
 Decodex docs skills are wrappers around those behaviors for this repository. They may
 apply Decodex profile constraints, but the portable OKF skill family must not depend

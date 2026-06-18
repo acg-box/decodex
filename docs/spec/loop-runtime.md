@@ -87,7 +87,7 @@ The native research method has these ordered gates:
    relevant, with evidence-grounded tradeoffs.
 4. Judgment creates a challenge-ready recommendation or explicitly states that the run
    is not decision-ready.
-5. Challenge attacks the judgment with skeptic objections. Material unresolved
+5. Challenge attacks the judgment with adversarial objections. Material unresolved
    objections become missing decisions, evidence gaps, risk notes, or blockers.
 6. Decision ends the run with exactly one outcome and preserves the latent promotion
    boundary.
