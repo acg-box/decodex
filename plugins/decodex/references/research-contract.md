@@ -17,7 +17,7 @@ Never use `decision_ready` because budget ended.
 
 ## Required Sections
 
-Expose these from the top-level contract or Markdown research concept:
+Expose these from the top-level contract or checked-in JSON research artifact:
 
 - source intent and decision question
 - terminal decision status
@@ -50,6 +50,5 @@ material objections block `decision_ready`.
 
 ## Docs Form
 
-If persisted under `docs/research/`, use a Markdown OKF `Research Contract` concept.
-Do not write JSON research event logs.
-
+If persisted under `docs/research/`, use a flat JSON research artifact with
+`schema: "decodex.research_report/1"`. Do not write old nested research event logs.
