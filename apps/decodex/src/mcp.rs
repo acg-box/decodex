@@ -5260,9 +5260,7 @@ mod tests {
 	#[test]
 	fn resources_read_exposes_bounded_live_activity_and_recent_run_readback() {
 		let repo = test_repo();
-		let codex_home = repo.path().join("codex-home");
-		let codex_home = codex_home.to_string_lossy().into_owned();
-		let _codex_home_guard = TestEnvVarGuard::set("CODEX_HOME", &codex_home);
+		let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
 		let config_path = repo.path().join("project.toml");
 
 		seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
@@ -5343,9 +5341,7 @@ mod tests {
 	#[test]
 	fn streamable_http_resources_read_exposes_observability_resources() {
 		let repo = test_repo();
-		let codex_home = repo.path().join("codex-home");
-		let codex_home = codex_home.to_string_lossy().into_owned();
-		let _codex_home_guard = TestEnvVarGuard::set("CODEX_HOME", &codex_home);
+		let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
 		let config_path = repo.path().join("project.toml");
 
 		seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
@@ -5857,9 +5853,7 @@ mod tests {
 	#[test]
 	fn tools_call_lane_control_inspect_returns_mutating_preconditions() {
 		let repo = test_repo();
-		let codex_home = repo.path().join("codex-home");
-		let codex_home = codex_home.to_string_lossy().into_owned();
-		let _codex_home_guard = TestEnvVarGuard::set("CODEX_HOME", &codex_home);
+		let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
 		let config_path = repo.path().join("project.toml");
 
 		seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
@@ -5921,9 +5915,7 @@ mod tests {
 	#[test]
 	fn tools_call_lane_control_refuses_stale_expected_turn_id() {
 		let repo = test_repo();
-		let codex_home = repo.path().join("codex-home");
-		let codex_home = codex_home.to_string_lossy().into_owned();
-		let _codex_home_guard = TestEnvVarGuard::set("CODEX_HOME", &codex_home);
+		let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
 		let config_path = repo.path().join("project.toml");
 
 		seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
@@ -5947,9 +5939,7 @@ mod tests {
 	#[test]
 	fn tools_call_lane_control_steer_audits_and_queues_without_raw_message() {
 		let repo = test_repo();
-		let codex_home = repo.path().join("codex-home");
-		let codex_home = codex_home.to_string_lossy().into_owned();
-		let _codex_home_guard = TestEnvVarGuard::set("CODEX_HOME", &codex_home);
+		let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
 		let config_path = repo.path().join("project.toml");
 
 		seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
@@ -5982,9 +5972,7 @@ mod tests {
 	#[test]
 	fn tools_call_lane_control_soft_interrupt_accepts_and_force_requires_ack() {
 		let repo = test_repo();
-		let codex_home = repo.path().join("codex-home");
-		let codex_home = codex_home.to_string_lossy().into_owned();
-		let _codex_home_guard = TestEnvVarGuard::set("CODEX_HOME", &codex_home);
+		let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
 		let config_path = repo.path().join("project.toml");
 
 		seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
@@ -6019,12 +6007,11 @@ mod tests {
 	#[test]
 	fn tools_call_project_control_pauses_future_dispatch_only() {
 		let repo = test_repo();
-		let codex_home = repo.path().join("codex-home");
-		let codex_home = codex_home.to_string_lossy().into_owned();
-		let _codex_home_guard = TestEnvVarGuard::set("CODEX_HOME", &codex_home);
+		let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
 		let config_path = repo.path().join("project.toml");
 
 		seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+		seed_mcp_test_private_control_evidence();
 
 		let responses = run_stdio_with_context(
 			project_mcp_context(repo.path(), &config_path),
@@ -7252,6 +7239,49 @@ mod tests {
 		repo
 	}
 
+	fn isolated_mcp_runtime_home(repo: &TempDir) -> TestEnvVarGuard {
+		let runtime_home = repo.path().join("operator-home");
+		let runtime_home = runtime_home.to_string_lossy().into_owned();
+
+		TestEnvVarGuard::set_many([
+			("CODEX_HOME".to_owned(), runtime_home.clone()),
+			("HOME".to_owned(), runtime_home),
+		])
+	}
+
+	#[test]
+	fn mcp_project_fixture_runtime_store_stays_under_isolated_home() {
+		let operator_runtime_db =
+			runtime::runtime_db_path().expect("operator runtime path should resolve");
+		let repo = test_repo();
+		let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
+		let config_path = repo.path().join("project.toml");
+
+		seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+		run_stdio_with_context(
+			project_mcp_context(repo.path(), &config_path),
+			r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_lane_control","arguments":{"action":"steer","projectId":"pubfi","issue":"PUB-012","runId":"run-12","expectedTurnId":"turn-12","message":"Please stop after the current safe point.","authority":{"reason":"operator requested steer","source":"mcp-test","inspectedRunId":"run-12","expectedTurnId":"turn-12"}}}}"#,
+		);
+
+		let fixture_runtime_db =
+			runtime::runtime_db_path().expect("fixture runtime path should resolve");
+		let state_store = runtime::open_runtime_store().expect("fixture runtime store should open");
+		let events = state_store
+			.list_private_execution_events("pubfi", "PUB-012", "run-12", 1)
+			.expect("fixture private evidence should read");
+
+		assert_ne!(fixture_runtime_db, operator_runtime_db);
+		assert!(fixture_runtime_db.starts_with(repo.path()));
+		assert!(!events.is_empty());
+		assert!(
+			events
+				.iter()
+				.all(|event| event.payload().get("source").and_then(Value::as_str)
+					== Some("mcp-test")),
+			"mcp fixture private evidence should stay in isolated runtime store"
+		);
+	}
+
 	fn seed_project_runtime_for_mcp_resources(repo_root: &Path, config_path: &Path) {
 		let state_store = runtime::open_runtime_store().expect("runtime store should open");
 
@@ -7287,6 +7317,25 @@ mod tests {
 				seed_mcp_lane_runtime_activity(&state_store, &run_id);
 			}
 		}
+	}
+
+	fn seed_mcp_test_private_control_evidence() {
+		let state_store = runtime::open_runtime_store().expect("runtime store should open");
+
+		state_store
+			.append_private_execution_event(
+				"pubfi",
+				"PUB-012",
+				"run-12",
+				1,
+				"control_action",
+				serde_json::json!({
+					"schema": "decodex.run_control_action/v1",
+					"source": "mcp-test",
+					"action": "project_control_fixture"
+				}),
+			)
+			.expect("mcp-test private evidence should record");
 	}
 
 	fn seed_mcp_lane_runtime_activity(state_store: &StateStore, run_id: &str) {

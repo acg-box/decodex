@@ -2,6 +2,9 @@
 
 ## 2026-06-18
 
+- Documented the narrow `mcp_test_fixture_ghost_lane` recovery classification for the
+  historical PubFi MCP fixture lane and preserved the fail-closed boundary for real
+  private/control/protocol evidence.
 - Added missing-issue ghost-lane recovery docs for `decodex recover ghost-lane`,
   including the live/cached status readback states `ghost_lane`,
   `runtime_recovery_required`, and `runtime_recovery_blocked`, plus the fail-closed
