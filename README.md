@@ -176,10 +176,14 @@ profile and `tools/call` returns structured refusals for tools above it. Observe
 read-only. Plan exposes `research_compile`, `research_promote`, and `intake_goal`:
 dry-run modes validate or preview without tracker or Program Intake mutation, while
 apply/promote modes require explicit authority fields and return structured refusals
-when authority or project context is missing. Operate/admin lane-control entries
-return structured refusal states until later lane-control MCP work delegates through
-existing authority guards. Stdio stdout is reserved for MCP JSON-RPC messages;
-diagnostics and logs stay off stdout.
+when authority or project context is missing. Operate exposes `decodex_lane_control`
+as an inspect-first lane-control facade: `inspect` returns current preconditions,
+`steer` and `interrupt` delegate through existing lane-control guards only with
+current run/turn authority, and `manual_attention` or `retained_resume` refuse back to
+their canonical tracker/runtime paths. Admin exposes `decodex_project_control` for
+project status plus future-dispatch-only pause/resume with explicit authority; `scan`
+refuses to the operator control loop. Stdio stdout is reserved for MCP JSON-RPC
+messages; diagnostics and logs stay off stdout.
 
 ### Project contracts
 
