@@ -6,8 +6,8 @@ description: Use when bootstrapping or improving source-backed repo-memory OKF/L
 # Repo Memory Writer
 
 Build source-backed repository knowledge. The AI writes the concepts; `decodex okf`
-only scaffolds, checks, routes, and graphs them. Use `repo-memory-curator` after
-real route, graph, or orphan evidence shows an existing bundle needs repair. Use
+only scaffolds, checks, finds, and graphs them. Use `repo-memory-curator` after
+real graph, owner, or orphan evidence shows an existing bundle needs repair. Use
 `repo-memory-evaluator` when the question is whether the bundle is useful enough.
 
 Operating rules:
@@ -15,7 +15,7 @@ Operating rules:
 - Treat repository memory like persistent project guidance: concise, specific,
   broadly reusable, and scoped close to the work.
 - Treat OKF as a portable Markdown/YAML exchange format, not a platform runtime.
-- Treat LLM Wiki routing as progressive disclosure: small entrypoints point to
+- Treat LLM Wiki navigation as progressive disclosure: small entrypoints point to
   detailed canonical concepts.
 - For this repository's strict `docs/` profile, use the Decodex `docs-*` skills
   after this skill identifies the repo-memory shape.
@@ -35,8 +35,8 @@ Workflow:
    `runbook/` files for executable procedures, and `decisions/` only for recorded
    decisions.
 5. Keep each concept one-topic. Add `description`, useful `tags`, `source_refs`,
-   `code_refs`, `related`, and `drift_watch` only when they improve retrieval or
-   maintenance; leave later graph/route tuning to `repo-memory-curator`.
+   `code_refs`, `related`, and `drift_watch` only when they improve navigation or
+   maintenance; leave later graph and owner tuning to `repo-memory-curator`.
 6. Update `index.md` and `log.md`; link neighboring concepts instead of repeating
    broad summaries.
 7. Validate with:
@@ -44,15 +44,16 @@ Workflow:
    ```sh
    decodex okf check <root> --profile repo-memory
    decodex okf graph <root>
-   decodex okf route <root> "<representative task>"
+   decodex okf find <root> --text "<known owner phrase>"
    ```
 
-   Pick route probes from likely user intents and revise until the owning concept is
-   a top result. For a fuller quality report, switch to `repo-memory-evaluator`.
+   Use `find` only for concrete field/text lookups; do not turn it into a ranking
+   benchmark. For a fuller quality report, switch to `repo-memory-evaluator`.
 
 Quality bar:
 
 - Good: a new agent can find setup, tests, architecture boundaries, automation
   resources, and high-risk drift points without broad repo reading.
 - Bad: generated summaries, README duplication, unverified architecture claims,
-  orphan concepts, or knowledge that cannot answer a task intent.
+  orphan concepts, or knowledge whose owner cannot be discovered from indexes, links,
+  or concrete field lookup.

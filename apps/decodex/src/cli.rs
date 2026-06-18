@@ -137,7 +137,6 @@ impl DocsCommand {
 			DocsSubcommand::Drift => self.run_check(DocsCheckScope::Drift),
 			DocsSubcommand::Find(args) => run_okf_find(&self.root, &args.filters),
 			DocsSubcommand::Graph(args) => run_okf_graph(&self.root, args.json),
-			DocsSubcommand::Route(args) => run_okf_route(&self.root, &args.intent, args.limit),
 		}
 	}
 
@@ -166,7 +165,6 @@ impl OkfCommand {
 			OkfSubcommand::Check(args) => args.run(),
 			OkfSubcommand::Find(args) => run_okf_find(&args.root, &args.filters),
 			OkfSubcommand::Graph(args) => run_okf_graph(&args.root, args.json),
-			OkfSubcommand::Route(args) => run_okf_route(&args.root, &args.intent, args.limit),
 		}
 	}
 }
@@ -243,18 +241,6 @@ struct OkfGraphCommand {
 }
 
 #[derive(Debug, Args)]
-struct OkfRouteCommand {
-	/// OKF bundle root.
-	#[arg(value_name = "ROOT")]
-	root: PathBuf,
-	/// Task or question to route into the bundle.
-	intent: String,
-	/// Maximum number of concepts to print.
-	#[arg(long, default_value_t = 5)]
-	limit: usize,
-}
-
-#[derive(Debug, Args)]
 struct DocsFindCommand {
 	#[command(flatten)]
 	filters: OkfFindFilters,
@@ -265,15 +251,6 @@ struct DocsGraphCommand {
 	/// Emit graph JSON instead of a text summary.
 	#[arg(long)]
 	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct DocsRouteCommand {
-	/// Task or question to route into the bundle.
-	intent: String,
-	/// Maximum number of concepts to print.
-	#[arg(long, default_value_t = 5)]
-	limit: usize,
 }
 
 #[derive(Debug, Args)]
@@ -1411,18 +1388,16 @@ enum DocsSubcommand {
 	/// Validate the complete Markdown-only Decodex docs bundle.
 	#[command(alias = "lint")]
 	Check,
-	/// Validate OKF routing files and concept frontmatter.
+	/// Validate OKF index files and concept frontmatter.
 	Index,
 	/// Validate local Markdown links.
 	Links,
-	/// Validate semantic-drift audit routing.
+	/// Validate semantic-drift audit structure.
 	Drift,
 	/// Find concepts in the default docs bundle.
 	Find(DocsFindCommand),
 	/// Print the default docs bundle graph.
 	Graph(DocsGraphCommand),
-	/// Route a task to relevant docs concepts.
-	Route(DocsRouteCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1435,8 +1410,6 @@ enum OkfSubcommand {
 	Find(OkfFindCommand),
 	/// Print an OKF concept graph.
 	Graph(OkfGraphCommand),
-	/// Route a task to relevant concepts.
-	Route(OkfRouteCommand),
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -1662,30 +1635,6 @@ fn run_okf_graph(root: &Path, json: bool) -> Result<()> {
 	Ok(())
 }
 
-fn run_okf_route(root: &Path, intent: &str, limit: usize) -> Result<()> {
-	let matches = docs_okf::route_okf_bundle(root, intent, limit)?;
-
-	println!(
-		"okf route: matches={} limit={} root={} intent={}",
-		matches.len(),
-		limit,
-		root.display(),
-		intent
-	);
-
-	for route_match in matches {
-		println!(
-			"{} | score={} | {} | {}",
-			route_match.concept.path,
-			route_match.score,
-			route_match.concept.concept_type,
-			route_match.concept.title
-		);
-	}
-
-	Ok(())
-}
-
 fn lane_steer_report_is_failure(report: &LaneSteerReport) -> bool {
 	matches!(report.outcome.as_str(), "rejected" | "failed" | "timed_out" | "fallback")
 }
@@ -1804,14 +1753,14 @@ mod tests {
 	use crate::{
 		cli::{
 			AccountCommand, AccountSubcommand, AccountUseCommand, AppCommand, AttemptCommand, Cli,
-			Command, CommitCommand, DiagnoseCommand, DocsCommand, DocsRouteCommand, DocsSubcommand,
-			EvidenceCommand, IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand,
-			IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand, LaneInterruptCommand,
-			LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand, McpSubcommand,
+			Command, CommitCommand, DiagnoseCommand, DocsCommand, DocsSubcommand, EvidenceCommand,
+			IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand, IntakeSubcommand, LandCommand,
+			LaneCommand, LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand,
+			LaneSubcommand, LegacyCloseoutRecoveryCommand, McpSubcommand,
 			MergedCloseoutRecoveryCommand, OkfCommand, OkfInitCommand, OkfInitProfileArg,
-			OkfRouteCommand, OkfSubcommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
-			ProjectSubcommand, RecoverCommand, RecoverSubcommand, ResearchCommand,
-			ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
+			OkfSubcommand, ProbeCommand, ProjectCommand, ProjectConfigArgs, ProjectSubcommand,
+			RecoverCommand, RecoverSubcommand, ResearchCommand, ResearchCompileCommand,
+			ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
 			ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
 			ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand,
 			ServeCommand, StatusCommand,
@@ -1887,42 +1836,43 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_okf_and_docs_route_commands() {
+	fn parses_okf_and_docs_find_graph_commands() {
 		let okf_cli = Cli::parse_from([
 			"decodex",
 			"okf",
-			"route",
+			"find",
 			"docs",
-			"change okf docs command design",
-			"--limit",
-			"3",
+			"--tag",
+			"okf",
+			"--text",
+			"command design",
 		]);
 
-		assert!(matches!(
-			okf_cli.command,
-			Command::Okf(OkfCommand {
-				command: OkfSubcommand::Route(OkfRouteCommand {
+		let Command::Okf(OkfCommand {
+			command:
+				OkfSubcommand::Find(super::OkfFindCommand {
 					root,
-					intent,
-					limit: 3,
+					filters: super::OkfFindFilters { tag, text: Some(text), .. },
 				}),
-			}) if root == Path::new("docs")
-				&& intent == "change okf docs command design"
-		));
+		}) = okf_cli.command
+		else {
+			panic!("expected okf find command");
+		};
 
-		let docs_cli =
-			Cli::parse_from(["decodex", "docs", "route", "change okf docs command design"]);
+		assert_eq!(root, Path::new("docs"));
+		assert_eq!(tag, vec![String::from("okf")]);
+		assert_eq!(text, "command design");
+
+		let docs_cli = Cli::parse_from(["decodex", "docs", "graph", "--json"]);
 
 		assert!(matches!(
 			docs_cli.command,
 			Command::Docs(DocsCommand {
 				root,
-				command: DocsSubcommand::Route(DocsRouteCommand {
-					intent,
-					limit: 5,
+				command: DocsSubcommand::Graph(super::DocsGraphCommand {
+					json: true,
 				}),
 			}) if root == Path::new("docs")
-				&& intent == "change okf docs command design"
 		));
 	}
 

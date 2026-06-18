@@ -28,7 +28,7 @@ Question this index answers: "what must remain true?"
 
 ## Spec document contract
 
-Start each spec with a compact routing header:
+Start each spec with a compact purpose header:
 
 - `Purpose`
 - `Status: normative`
@@ -49,7 +49,7 @@ Then keep the body explicit:
 - Prefer shallow paths while the spec set is small.
 - Add subfolders only when they mirror stable system boundaries or materially reduce
   ambiguity.
-- Choose names for topic clarity and retrieval quality, not visual uniformity.
+- Choose names for topic clarity and discoverability, not visual uniformity.
 - If a runbook depends on a spec, the runbook links back to the governing spec.
 
 ## Current governing specs
