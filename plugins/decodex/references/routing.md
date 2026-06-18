@@ -1,19 +1,17 @@
 # Decodex Routing Reference
 
 Use this when a Decodex task crosses docs, research, promotion, planning, CLI,
-labels, automation, commit, or landing boundaries.
+automation, commit, or landing boundaries.
 
 ## Mode Map
 
-- Context gates: for non-trivial Decodex repo work, run
-  `decodex docs route "<task intent>"`, read the relevant owner, and record short
-  `Context anchors` when routing changes the plan. Skip tiny work,
-  explicit file targets, missing bundles, or noisy results. Use `docs` before
-  completion when work touches docs, documented behavior, CLI/status/config/workflow
-  text, research, semantic names, or repo-memory metadata; late discovery runs the
-  same docs gate and reports recovery evidence.
+- Context intake: for non-trivial repo work, read the smallest owner from
+  `docs/index.md`, `docs/policy.md`, lane indexes, or explicit concept links. Record
+  context anchors only when those reads shape the plan. Skip tiny work and explicit
+  file targets only when the owner is unambiguous. If docs impact appears late, run
+  the same docs gate and report recovery evidence.
 - Docs: use `docs` as the router. Use `docs-okf`, `docs-wiki`, and `docs-drift`
-  for shape, routing, and audits. Docs impact `research_required` switches to
+  for shape, navigation, and audits. Docs impact `research_required` switches to
   `research*`; checked-in `docs/research/` is latent evidence.
 - Research/design: use `research` and phase skills. The compact loop is probe,
   evidence, options, judgment, challenge, decision. Results are latent Decision
@@ -28,15 +26,11 @@ labels, automation, commit, or landing boundaries.
   recovery inspection, commit, or landing.
 - Labels: use `labels` only for ordinary non-Program tracker intake and retained-lane
   ownership signals.
-- MCP gateway: use `decodex mcp serve --transport stdio` locally and
-  `decodex mcp serve --transport streamable-http` only behind the operator's listener,
-  tunnel, or relay. MCP is a typed facade, not a bypass around Decision Contract,
-  lane-control, tracker, review, landing, or closeout gates. Plan tools are
-  `research_compile`, `research_promote`, and `intake_goal`; dry-run stays
-  non-mutating, while apply/promote requires explicit authority. Operate/admin stays
-  inspect-first: `decodex_lane_control` requires current run/turn preconditions for
-  steer or interrupt, and `decodex_project_control` limits pause/resume to future
-  dispatch while refusing standalone scan shortcuts.
+- MCP gateway: use stdio locally and Streamable HTTP only behind the operator's chosen
+  listener, tunnel, or relay. MCP is a typed facade, not a bypass around Decision
+  Contract, lane-control, tracker, review, landing, or closeout gates. Plan tools are
+  `research_compile`, `research_promote`, and `intake_goal`; operate/admin remains
+  inspect-first with current run/turn preconditions.
 
 ## First Reads
 
@@ -53,16 +47,14 @@ Keep Decodex natural-language-first. Requests such as `research X` route through
 
 Research never queues work, mutates Linear, starts implementation, creates Codex
 goals, or dispatches Program nodes. Promotion preserves accepted objectives,
-constraints, objections, validation expectations, proposed issues, non-goals, and
-stop conditions. A result is a latent Decision Contract candidate only. Program
-Intake dispatches ready mapped nodes directly from the persisted DAG; queue labels
-are not the Program scheduler.
+constraints, validation expectations, proposed issues, non-goals, and stop
+conditions. A result is a latent Decision Contract candidate only.
 
 ## Program Versus Label Intake
 
 - Program Intake starts from a persisted Execution Program and dispatches ready mapped
-  nodes with `program` dispatch mode.
-- Ordinary issue intake starts from `decodex:queued:<service-id>` and still must pass
+  nodes; queue labels are not the Program scheduler.
+- Ordinary issue intake starts from `decodex:queued:<service-id>` and must still pass
   `WORKFLOW.md` eligibility, terminal-state, dependency, opt-out, and active-lease
   checks.
 - `decodex:active:<service-id>` is runtime ownership, not "please start work".
@@ -72,12 +64,12 @@ are not the Program scheduler.
 ## Commit And Land
 
 For human-driven commits, inspect the diff, stage intended files, run touched-surface
-validation, then use `decodex commit "<summary>"` or `decodex commit
---manual-authority "<summary>"`.
+validation, then use `decodex commit`, adding `--manual-authority` for deliberate
+non-issue work.
 
 For human-driven PR landing, confirm PR/base/head/mergeability/checks, then use
-`decodex land "<summary>"` or `decodex land --manual-authority --pr <URL>
-"<summary>"`. If issue-authority landing lacks retained handoff state, dry-run
+`decodex land`; add `--manual-authority --pr <URL>` for non-issue work. If
+issue-authority landing lacks retained handoff state, dry-run
 `decodex recover review-handoff adopt` before any live adopt.
 
 ## Hard Boundaries
@@ -89,8 +81,8 @@ For human-driven PR landing, confirm PR/base/head/mergeability/checks, then use
 - Do not hand-edit runtime DB rows, kill hidden `_attempt` children, or mutate Linear
   state to simulate lane controls.
 - Do not use MCP tools to bypass Decision Contract promotion, lane-control
-  preconditions, tracker-tool boundaries, review handoff, landing, closeout, or
-  existing runtime authority.
+  preconditions, tracker tools, review handoff, landing, closeout, or runtime
+  authority.
 - Do not substitute raw GitHub merge, merge queue, `gh pr merge`, direct API mutation,
   or hand-assembled merge commits for `decodex land` when Decodex owns landing.
 - Do not expose graph ids, DAG edge editing, hidden goal ids, or Program dispatch

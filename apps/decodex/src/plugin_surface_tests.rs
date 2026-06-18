@@ -384,7 +384,6 @@ fn packaged_okf_skills_preserve_portable_profile_boundary() {
 	assert_contains(&okf_surface, "decodex okf check");
 	assert_contains(&okf_surface, "decodex okf find");
 	assert_contains(&okf_surface, "decodex okf graph");
-	assert_contains(&okf_surface, "decodex okf route");
 	assert_contains(&okf_surface, "core");
 	assert_contains(&okf_surface, "wiki");
 	assert_contains(&okf_surface, "repo-memory");

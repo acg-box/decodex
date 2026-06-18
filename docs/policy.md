@@ -17,8 +17,8 @@ last_verified: 2026-06-17
 ## Purpose
 
 `docs/` is the Decodex repo-development knowledge base. It uses a Markdown-only
-Open Knowledge Format profile so agents can route, read, update, verify, and improve
-repository knowledge during normal lane execution. OKF itself is the portable
+Open Knowledge Format profile so agents can navigate, read, update, verify, and
+improve repository knowledge during normal lane execution. OKF itself is the portable
 knowledge-bundle protocol; `docs/` is this repository's default bundle location and
 `decodex docs` is the local convenience surface for that bundle.
 
@@ -60,7 +60,7 @@ Do not add `decodex docs okf ...` command nesting. OKF is not a docs subfeature;
 Profile ownership:
 
 - `core` follows the portable OKF conformance surface.
-- `wiki` adds graph and agent-retrieval quality checks.
+- `wiki` adds graph and agent-navigation checks.
 - `repo-memory` adds repository anchors such as `code_refs`, `source_refs`, and
   drift hints.
 - `decodex` adds this repository's lanes, authority enums, research contracts, drift
@@ -74,9 +74,9 @@ Required keys:
 
 | Key | Meaning |
 | --- | --- |
-| `type` | Concept class used for routing. |
+| `type` | Concept class used for navigation and filtering. |
 | `title` | Human-readable and agent-readable concept title. |
-| `description` | One-sentence retrieval summary. |
+| `description` | One-sentence concept summary for indexes and lookup. |
 | `status` | `draft`, `active`, `deprecated`, or `superseded`. |
 | `authority` | `normative`, `procedural`, `current_state`, `rationale`, `evidence`, or `non_authoritative`. |
 | `owner` | Owning surface such as `docs`, `runtime`, `research`, `automation`, or `site`. |
@@ -192,7 +192,7 @@ Every docs-changing lane follows this loop:
    claim elsewhere.
 3. If the change affects behavior, update the owning concept's `code_refs` and
    `drift_watch`, or update/create a linked drift audit.
-4. Update lane indexes and `docs/log.md` when routing changes.
+4. Update lane indexes and `docs/log.md` when navigation changes.
 5. Run `decodex docs check`.
 6. Treat docs check or drift failure as a completion blocker. Research uncertainty uses
    the research-contract `needs_human_decision` status; implementation-lane blockers
@@ -200,7 +200,7 @@ Every docs-changing lane follows this loop:
 
 The agent-facing entrypoint for this loop is
 [`plugins/decodex/skills/docs/SKILL.md`](../plugins/decodex/skills/docs/SKILL.md),
-which routes to the narrower `docs-okf`, `docs-wiki`, and `docs-drift` skills. If
+which delegates to the narrower `docs-okf`, `docs-wiki`, and `docs-drift` skills. If
 the docs impact is `research_required`, switch to the Decodex `research*` skill
 family and persist any checked-in result under `docs/research/` only as a latent,
 non-authoritative Markdown OKF research concept until explicitly promoted.

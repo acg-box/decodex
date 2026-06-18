@@ -6,6 +6,9 @@
   reference, index, checker, and plugin guidance so promotion now routes rationale to
   decisions, truth to owner lanes, reusable proof to evidence, and superseded
   research out of active LLM Wiki routing.
+- Removed the public OKF/LLM Wiki lexical route scorer from Decodex docs/OKF commands
+  and clarified that OKF owns the Markdown/frontmatter contract while LLM Wiki owns
+  agent navigation, owner concepts, indexes, links, and graph maintenance.
 - Moved Decodex OKF/LLM Wiki context intake, `Context anchors`, docs completion gate,
   and late docs-skill recovery ownership into `plugins/decodex/references/routing.md`
   so generic repo-work plugins can remain Decodex-agnostic while host instructions
@@ -46,11 +49,11 @@
   as the first MCP slice before the later Streamable HTTP and operate/admin
   promotions.
 - Added `repo-memory-evaluator` so repo-memory OKF/LLM Wiki bundles have a
-  plugin-eval-style quality workflow for static checks, route top-1/top-3 benchmarks,
-  graph health, owner coverage, and before/after curation evidence.
+  plugin-eval-style quality workflow for static checks, graph health, owner coverage,
+  source/code evidence, and before/after curation evidence.
 - Added `repo-memory-curator` so existing OKF/LLM Wiki bundles have a dedicated
-  growth and maintenance skill for top-1/top-3 route benchmark misses,
-  metadata-only owner tuning, orphan triage, graph repair, and link tuning.
+  growth and maintenance skill for weak owner concepts, metadata-only owner tuning,
+  orphan triage, graph repair, and link tuning.
 - Added protocol journal replay idempotency to the runtime contract: protocol events
   now retain payload SHA-256 identity so app-server continuation/recovery can replay
   the same event without failing the lane, while conflicting same-sequence events still
@@ -89,8 +92,8 @@
 - Clarified that `decodex okf` is the cross-repository command surface while
   `decodex docs` is the local `docs/` alias, and that `docs okf` command nesting is
   not part of the user-facing model.
-- Added `decodex okf check/find/graph/route` and `decodex docs check/find/graph/route`
-  command surfaces; `decodex docs lint` remains a compatibility alias.
+- Added the initial OKF/docs check, find, and graph command surfaces; `decodex docs
+  lint` remains a compatibility alias.
 - Added `decodex okf init` as a turnkey scaffold for portable `core`, `wiki`, and
   `repo-memory` bundles in other repositories.
 - Added portable `okf`, `okf-query`, and `okf-maintain` plugin skills and clarified
