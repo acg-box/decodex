@@ -1,23 +1,36 @@
 use std::{
 	env,
-	ffi::OsString,
+	ffi::{OsStr, OsString},
 	sync::{Mutex, MutexGuard, OnceLock},
 };
 
 pub(crate) struct TestEnvVarGuard {
 	_lock: MutexGuard<'static, ()>,
-	key: String,
-	previous: Option<OsString>,
+	previous: Vec<(String, Option<OsString>)>,
 }
 impl TestEnvVarGuard {
 	pub(crate) fn set(key: impl Into<String>, value: &str) -> Self {
+		Self::set_many([(key.into(), value.to_owned())])
+	}
+
+	pub(crate) fn set_many<K, V, I>(vars: I) -> Self
+	where
+		K: Into<String>,
+		V: AsRef<OsStr>,
+		I: IntoIterator<Item = (K, V)>,
+	{
 		let lock = test_env_mutex().lock().expect("test env mutex should not be poisoned");
-		let key = key.into();
-		let previous = env::var_os(&key);
+		let mut previous = Vec::new();
 
-		unsafe { env::set_var(&key, value) };
+		for (key, value) in vars {
+			let key = key.into();
 
-		Self { _lock: lock, key, previous }
+			previous.push((key.clone(), env::var_os(&key)));
+
+			unsafe { env::set_var(&key, value) };
+		}
+
+		Self { _lock: lock, previous }
 	}
 
 	pub(crate) fn lock() -> TestEnvLockGuard {
@@ -29,9 +42,11 @@ impl TestEnvVarGuard {
 
 impl Drop for TestEnvVarGuard {
 	fn drop(&mut self) {
-		match self.previous.take() {
-			Some(previous) => unsafe { env::set_var(&self.key, previous) },
-			None => unsafe { env::remove_var(&self.key) },
+		while let Some((key, previous)) = self.previous.pop() {
+			match previous {
+				Some(previous) => unsafe { env::set_var(&key, previous) },
+				None => unsafe { env::remove_var(&key) },
+			}
 		}
 	}
 }
