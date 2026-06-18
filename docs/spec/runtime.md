@@ -93,9 +93,13 @@ state or this state machine.
   promotion, and Program Intake authority checks. Dry-run planning calls do not mutate
   tracker state or Program Intake rows. Apply/promote calls require explicit authority
   fields and return structured refusals when authority or project context is missing.
-  Operate/admin lane-control entries return structured refusal states until the
-  dedicated lane-control MCP work delegates through existing authority gates. Local stdio
-  defaults to the `admin` capability profile and can be narrowed with
+  Operate exposes `decodex_lane_control` as an inspect-first facade over existing
+  lane-control authority: `inspect` returns current preconditions, mutating `steer`
+  and `interrupt` require matching inspected run/turn authority, and unsupported
+  shortcut paths refuse to the canonical tracker or runtime lifecycle. Admin exposes
+  `decodex_project_control` for project status and future-dispatch-only pause/resume;
+  standalone scan requests refuse to the operator control loop. Local stdio defaults
+  to the `admin` capability profile and can be narrowed with
   `--capability-profile observe|plan|operate|admin`; tool discovery is filtered by the
   active profile and above-profile calls return structured refusals. Stdout must
   contain only valid MCP JSON-RPC messages.
@@ -1029,8 +1033,8 @@ After a process restart, recent-run history, run lease ownership, retained post-
   default, and uses SSE framing for remote progress or notifications when the client
   accepts `text/event-stream`. MCP tools must not replace the app-server dynamic tool
   bridge, create execution authority from latent research without promotion, expose
-  Program graph identifiers in ordinary tool output, or become a lane-control mutation
-  path before a later authority design delegates through existing lane-control guards.
+  Program graph identifiers in ordinary tool output, or mutate lanes without the
+  inspect-first run/turn authority already enforced by existing lane-control guards.
   MCP observability projections must stay public-safe: no hidden reasoning, raw steer
   text, private evidence payloads, or local path fields. Run-scoped MCP observability
   resources are bounded to runs visible in the current/recent status snapshot and must

@@ -101,8 +101,12 @@ uses SSE framing for progress or notifications when the client accepts
 `text/event-stream`. Both transports can be narrowed or explicitly elevated with
 `--capability-profile observe|plan|operate|admin`; `tools/list` filters by the active
 profile and above-profile calls return structured refusals. Observe and plan tools are
-read-oriented. Operate/admin lane-control entries return structured refusal states
-until later MCP lane-control work delegates mutation through existing authority gates.
+read-oriented. Operate exposes `decodex_lane_control` as an inspect-first facade:
+`inspect` returns current lane-control preconditions, `steer` and `interrupt` require
+matching inspected run/turn authority, and unsupported shortcut paths refuse to the
+canonical tracker/runtime lifecycle. Admin exposes `decodex_project_control` for
+project status plus future-dispatch-only pause/resume with explicit authority; scan
+requests refuse to the operator control loop.
 
 `decodex serve` has two hardcoded scheduler cadences:
 

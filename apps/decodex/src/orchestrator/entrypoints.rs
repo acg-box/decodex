@@ -6,6 +6,17 @@ use crate::runtime;
 
 const CONTROL_PLANE_TICK_CONTEXT_FAILED_WARNING: &str = "control_plane_tick_context_failed";
 
+pub(crate) struct McpLaneSteerRequest<'a> {
+	pub(crate) config_path: Option<&'a Path>,
+	pub(crate) project_id: Option<&'a str>,
+	pub(crate) issue: &'a str,
+	pub(crate) run_id: &'a str,
+	pub(crate) expected_turn_id: &'a str,
+	pub(crate) message: &'a str,
+	pub(crate) source: &'a str,
+	pub(crate) wait_timeout: Duration,
+}
+
 struct ControlPlaneProjectTick {
 	snapshot: Option<OperatorStatusSnapshot>,
 	project_status: Option<OperatorProjectStatus>,
@@ -373,6 +384,57 @@ pub(crate) fn build_mcp_lane_control_resource(
 		"recent_runs": snapshot.recent_runs,
 		"post_review_lanes": snapshot.post_review_lanes
 	}))
+}
+
+pub(crate) fn run_mcp_lane_interrupt(
+	config_path: Option<&Path>,
+	issue: &str,
+	run_id: &str,
+	force: bool,
+	reason: Option<&str>,
+	source: &str,
+) -> Result<Value> {
+	let state_store = runtime::open_runtime_store_lazy()?;
+	let Some(config_path) = resolve_config_path(config_path, &state_store)? else {
+		eyre::bail!(
+			"No Decodex project config found. Start MCP from a registered checkout or pass --config."
+		);
+	};
+	let config = ServiceConfig::from_path(&config_path)?;
+	let report = lane_control::interrupt_lane_with_state(
+		&state_store,
+		&config,
+		issue,
+		run_id,
+		force,
+		reason,
+		source,
+	)?;
+
+	serde_json::to_value(report).map_err(Into::into)
+}
+
+pub(crate) fn run_mcp_lane_steer(request: McpLaneSteerRequest<'_>) -> Result<Value> {
+	let state_store = runtime::open_runtime_store_lazy()?;
+	let Some(config_path) = resolve_config_path(request.config_path, &state_store)? else {
+		eyre::bail!(
+			"No Decodex project config found. Start MCP from a registered checkout or pass --config."
+		);
+	};
+	let config = ServiceConfig::from_path(&config_path)?;
+	let lane_request = LaneSteerRequest {
+		config_path: Some(&config_path),
+		project_id: request.project_id,
+		issue: request.issue,
+		run_id: request.run_id,
+		expected_turn_id: request.expected_turn_id,
+		message: request.message,
+		source: request.source,
+		wait_timeout: request.wait_timeout,
+	};
+	let report = lane_control::steer_lane_with_state(&state_store, &config, &lane_request)?;
+
+	serde_json::to_value(report).map_err(Into::into)
 }
 
 pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
