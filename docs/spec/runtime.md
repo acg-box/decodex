@@ -1035,15 +1035,24 @@ After a process restart, recent-run history, run lease ownership, retained post-
   against loopback or explicit trusted origins, issues `Mcp-Session-Id` on
   `initialize`, requires a known session on later requests, returns JSON-RPC JSON by
   default, and uses SSE framing for remote progress or notifications when the client
-  accepts `text/event-stream`. MCP tools must not replace the app-server dynamic tool
-  bridge, create execution authority from latent research without promotion, expose
-  Program graph identifiers in ordinary tool output, or mutate lanes without the
-  inspect-first run/turn authority already enforced by existing lane-control guards.
-  MCP observability projections must stay public-safe: no hidden reasoning, raw steer
-  text, private evidence payloads, or local path fields. Run-scoped MCP observability
-  resources are bounded to runs visible in the current/recent status snapshot and must
-  not construct an unbounded historical operator snapshot for a single remote resource
-  read.
+  accepts `text/event-stream`. `Mcp-Session-Id` is protocol state, not Decodex
+  authorization. `--allow-origin` is a browser CORS trust list, not an authentication
+  mechanism. Until Decodex implements an MCP protected-resource or equivalent bearer
+  boundary, Streamable HTTP is supported for loopback use and for operator-managed
+  tunnels, relays, network ACLs, or reverse proxies that enforce authorization before
+  traffic reaches the Decodex listener. Direct non-loopback exposure and remote
+  `operate`/`admin` profiles without that boundary are outside the runtime contract.
+  Session issuance, session preconditions, and advertised protocol metadata must stay
+  isolated from Decodex authority checks so a future final stateless MCP protocol can
+  be added without changing tool schemas or lane-control semantics.
+- MCP tools must not replace the app-server dynamic tool bridge, create execution
+  authority from latent research without promotion, expose Program graph identifiers
+  in ordinary tool output, or mutate lanes without the inspect-first run/turn
+  authority already enforced by existing lane-control guards. MCP observability
+  projections must stay public-safe: no hidden reasoning, raw steer text, private
+  evidence payloads, or local path fields. Run-scoped MCP observability resources are
+  bounded to runs visible in the current/recent status snapshot and must not construct
+  an unbounded historical operator snapshot for a single remote resource read.
 - `GET /livez` is only a process- and listener-level liveness probe. It must not claim control-plane tick freshness or forward progress by itself.
 - The dashboard must not depend on a separate HTTP snapshot or readiness endpoint; snapshot freshness belongs to the WebSocket-delivered snapshot payload and the browser connection state.
 - Reconciliation must mark locally active run attempts as `interrupted` when their
