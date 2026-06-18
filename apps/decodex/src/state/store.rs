@@ -1006,7 +1006,13 @@ impl StateStore {
 		validate_run_control_action_request(&request)?;
 
 		let resolution = {
-			let state = self.lock()?;
+			let mut state = self.lock_without_refresh()?;
+
+			self.refresh_project_run_metadata_state_locked(&mut state, request.project_id)?;
+			self.refresh_run_attempt_identities_from_worktree_markers_locked(
+				&mut state,
+				request.project_id,
+			)?;
 
 			resolve_run_control_action_locked(&state, &request)
 		};
@@ -1479,6 +1485,10 @@ impl StateStore {
 		let mut state = self.lock_without_refresh()?;
 
 		self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
+		self.refresh_run_attempt_identities_from_worktree_markers_locked(
+			&mut state,
+			project_id,
+		)?;
 		self.refresh_project_loop_evidence_state_locked(&mut state, project_id)?;
 
 		let lease_run_ids = project_lease_run_ids(&state, project_id, None);
@@ -1569,6 +1579,10 @@ impl StateStore {
 		let mut state = self.lock_without_refresh()?;
 
 		self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
+		self.refresh_run_attempt_identities_from_worktree_markers_locked(
+			&mut state,
+			project_id,
+		)?;
 		self.refresh_project_loop_evidence_state_locked(&mut state, project_id)?;
 
 		let lease_run_ids = project_lease_run_ids(&state, project_id, Some(issue_id));
@@ -3053,6 +3067,70 @@ impl StateStore {
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.load_run_activity_summaries_for_runs(state, run_ids)
+	}
+
+	fn refresh_run_attempt_identities_from_worktree_markers_locked(
+		&self,
+		state: &mut StateData,
+		project_id: &str,
+	) -> Result<()> {
+		let updates = state
+			.worktrees
+			.values()
+			.filter(|mapping| mapping.project_id == project_id)
+			.filter_map(|mapping| {
+				let marker = match read_run_activity_marker_snapshot(&mapping.worktree_path) {
+					Ok(Some(marker)) => marker,
+					Ok(None) => return None,
+					Err(error) => return Some(Err(error)),
+				};
+				let Some(attempt) = state.run_attempts.get(marker.run_id()) else {
+					return None;
+				};
+
+				if attempt.issue_id != mapping.issue_id
+					|| attempt.attempt_number != marker.attempt_number()
+				{
+					return None;
+				}
+
+				let thread_id = marker.thread_id().map(str::to_owned);
+				let turn_id = marker.turn_id().map(str::to_owned);
+
+				if thread_id.is_none() && turn_id.is_none() {
+					return None;
+				}
+
+				Some(Ok((marker.run_id().to_owned(), thread_id, turn_id)))
+			})
+			.collect::<Result<Vec<_>>>()?;
+
+		for (run_id, thread_id, turn_id) in updates {
+			let Some(attempt) = state.run_attempts.get_mut(&run_id) else {
+				continue;
+			};
+			let mut changed = false;
+
+			if attempt.thread_id.is_none()
+				&& let Some(thread_id) = thread_id
+			{
+				attempt.thread_id = Some(thread_id);
+				changed = true;
+			}
+			if attempt.turn_id.is_none()
+				&& let Some(turn_id) = turn_id
+			{
+				attempt.turn_id = Some(turn_id);
+				changed = true;
+			}
+			if changed {
+				let attempt = attempt.clone();
+
+				self.upsert_run_attempt_locked(&attempt)?;
+			}
+		}
+
+		Ok(())
 	}
 
 	fn refresh_project_loop_evidence_state_locked(
