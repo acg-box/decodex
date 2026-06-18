@@ -55,9 +55,9 @@ The loop runtime has three authority layers:
 | Loop runtime | Research/Decision records, accepted Loop/Decision Contracts, internal Execution Programs, ready-node selection, drift handling, stop attribution, and harness telemetry. |
 | Lane runtime | Normal Decodex issue lanes, app-server attempts, validation gates, review handoff, retained repair, landing, closeout, and cleanup. |
 
-Research output is latent until accepted or promoted. A checked-in research artifact,
-plan draft, or proposed issue split must not by itself enqueue work, create
-authoritative dependencies, set goals, mutate tracker state, or start implementation.
+Research output is latent until accepted or promoted. A research concept, plan draft,
+or proposed issue split must not by itself enqueue work, create authoritative
+dependencies, set goals, mutate tracker state, or start implementation.
 
 After acceptance or promotion, the accepted Loop/Decision Contract, shortened to
 Decision Contract in this spec, becomes loop-runtime authority. The runtime may then
@@ -70,9 +70,9 @@ Decodex owns a native Research/Decision compiler for Decodex work. That stage ac
 natural-language intent such as `research X` plus bounded research/design evidence
 when available, then stores a local Decision Contract candidate. It supersedes the
 external research skill for Decodex runtime authority: Decodex plugin `research*`
-skills are the current agent-facing method, `docs/research/` is the checked-in JSON
-research artifact lane, and old nested research event logs are not a valid docs
-shape. Checked-in research evidence belongs in JSON research artifacts; runtime
+skills are the current agent-facing method, `docs/research/` is the Markdown OKF
+research concept lane, and checked-in research JSON event logs are not a valid docs
+shape. Checked-in research evidence belongs in Markdown OKF concepts; runtime
 authority still comes from the runtime-local Decision Contract until accepted and
 promoted.
 

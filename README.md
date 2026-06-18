@@ -130,10 +130,10 @@ then persists a contract-first `decodex.decision_contract/1` payload in local ru
 SQLite. The Decodex research method frames the question first, records an evidence
 ledger, compares realistic options, forms a challenge-ready judgment, resolves skeptic
 objections, and then ends as `decision_ready`, `not_decision_ready`, `blocked`, or
-`needs_human_decision`. New checked-in Decodex research uses `docs/research/` only for
-JSON research artifacts; old nested research event logs are no longer a valid docs
-shape. A compiled contract is latent and cannot queue work, mutate tracker state, set
-goals, or authorize implementation.
+`needs_human_decision`. New Decodex research may use `docs/research/` only for
+Markdown OKF research concepts; checked-in research JSON event logs are no longer a
+valid docs shape. A compiled contract is latent and cannot queue work, mutate tracker
+state, set goals, or authorize implementation.
 `decodex research promote` records explicit acceptance for a stored contract; only
 promoted contracts may later feed issue shaping or internal Execution Program
 readiness.
@@ -165,7 +165,7 @@ requests, returns ordinary JSON-RPC JSON responses, and switches to
 `text/event-stream` framing when the client sends `Accept: text/event-stream`.
 The gateway advertises resources, resource templates, prompts, tools, logging
 compatibility, and progress notifications. Resources expose checked-in documentation,
-checked-in JSON research artifacts, runtime Decision Contract readback, local status
+checked-in Markdown research concepts, runtime Decision Contract readback, local status
 snapshots, remote-safe live status/activity projections, current/recent status-window
 run event/protocol/child-agent activity/progress diagnostics, PR/review-state readback,
 lane-inspect aliases, and lane-control readback. The tool catalog is schema-bound and
@@ -344,8 +344,8 @@ The tracked workspace currently keeps:
   and maintenance workflow lane
 - `docs/reference/` as the current repository and artifact surface map lane
 - `docs/decisions/` as the durable design-rationale lane
-- `docs/research/` as JSON research artifacts and supporting evidence, not runtime
-  authority
+- `docs/research/` as Markdown OKF research concepts and supporting evidence, not
+  runtime authority
 - `dev/` as local development helpers, such as the operator dashboard mock server
 - `assets/` as generated Decodex App icon source notes, Icon Composer foreground,
   generated `.icns`, and menu bar template assets
