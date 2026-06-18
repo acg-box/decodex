@@ -126,3 +126,10 @@
   `execution_readiness.proposed_issues[]` as the only issue-shaping input.
 - Standardized `OKF` as the all-caps prose form while preserving lowercase `okf` for
   filenames, paths, skill IDs, tags, and URLs.
+- Promoted review checkpoints into canonical evidence-keyed runtime artifacts so
+  same-HEAD review evidence can be reused across attempts only when the review phase,
+  `HEAD`, review level, and prompt-version key all match; completion and mutation-fence
+  checks now read that keyed artifact instead of the run-local projection.
+- Clarified that pre-existing, repo-wide, or global-baseline repo-gate failures are
+  runtime-owned signals and must not be routed through agent-requested
+  `manual_attention`.

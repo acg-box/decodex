@@ -60,6 +60,26 @@ CREATE TABLE IF NOT EXISTS review_policy_checkpoints (
 	PRIMARY KEY (project_id, issue_id, run_id, attempt_number, phase)
 );
 "#;
+const EVIDENCE_ARTIFACT_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS evidence_artifacts (
+	project_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	artifact_kind TEXT NOT NULL,
+	key_hash TEXT NOT NULL,
+	phase TEXT NOT NULL,
+	status TEXT NOT NULL,
+	head_sha TEXT,
+	key_json TEXT NOT NULL,
+	payload_json TEXT NOT NULL,
+	source_run_id TEXT NOT NULL,
+	source_attempt_number INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, issue_id, artifact_kind, key_hash)
+);
+CREATE INDEX IF NOT EXISTS evidence_artifacts_lookup_idx
+ON evidence_artifacts (project_id, issue_id, artifact_kind, phase, head_sha, status);
+"#;
 const DROP_LEGACY_REVIEW_MARKER_TABLES_SQL: &str = r#"
 DROP TABLE IF EXISTS review_handoffs;
 DROP TABLE IF EXISTS review_orchestrations;
@@ -183,6 +203,7 @@ struct StateData {
 	program_issue_mappings: HashMap<ProgramIssueMappingKey, ProgramIssueMappingRecord>,
 	review_lifecycle_records: HashMap<ReviewLifecycleKey, ReviewLifecycleRuntimeRecord>,
 	review_policy_checkpoints: HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
+	evidence_artifacts: HashMap<EvidenceArtifactKey, EvidenceArtifactRuntimeRecord>,
 	loop_guardrail_checkpoints: HashMap<LoopGuardrailKey, LoopGuardrailRuntimeRecord>,
 	connector_backoffs: HashMap<(String, String), ConnectorBackoff>,
 	dispatch_slot_configs: HashMap<String, DispatchSlotConfig>,
@@ -207,6 +228,7 @@ impl StateData {
 		self.program_issue_mappings = loaded.program_issue_mappings;
 		self.review_lifecycle_records = loaded.review_lifecycle_records;
 		self.review_policy_checkpoints = loaded.review_policy_checkpoints;
+		self.evidence_artifacts = loaded.evidence_artifacts;
 		self.loop_guardrail_checkpoints = loaded.loop_guardrail_checkpoints;
 		self.connector_backoffs = loaded.connector_backoffs;
 	}
@@ -226,6 +248,8 @@ impl StateData {
 		self.review_lifecycle_records.extend(loaded.review_lifecycle_records);
 		self.review_policy_checkpoints.retain(|key, _record| key.project_id != project_id);
 		self.review_policy_checkpoints.extend(loaded.review_policy_checkpoints);
+		self.evidence_artifacts.retain(|key, _record| key.project_id != project_id);
+		self.evidence_artifacts.extend(loaded.evidence_artifacts);
 	}
 
 	fn replace_project_registry_state(&mut self, loaded: Self) {
@@ -464,6 +488,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		)?;
 		self.bootstrap_worktree_schema()?;
 		self.bootstrap_review_schema()?;
+		self.bootstrap_evidence_artifact_schema()?;
 		self.bootstrap_run_control_channels_schema()?;
 		self.bootstrap_connector_backoffs_schema()?;
 		self.bootstrap_private_execution_events_schema()?;
@@ -505,6 +530,12 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 			"details_json",
 			"ALTER TABLE review_policy_checkpoints ADD COLUMN details_json TEXT NOT NULL DEFAULT '{}'",
 		)?;
+
+		Ok(())
+	}
+
+	fn bootstrap_evidence_artifact_schema(&self) -> Result<()> {
+		self.connection.execute_batch(EVIDENCE_ARTIFACT_SCHEMA_SQL)?;
 
 		Ok(())
 	}
@@ -854,6 +885,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_program_intake_state(&mut state)?;
 		self.load_review_lifecycle_records(&mut state)?;
 		self.load_review_policy_checkpoints(&mut state)?;
+		self.load_evidence_artifacts(&mut state)?;
 		self.load_loop_guardrail_checkpoints(&mut state)?;
 		self.load_connector_backoffs(&mut state)?;
 
@@ -878,6 +910,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_private_execution_events_for_project(&mut state, project_id)?;
 		self.load_review_lifecycle_records_for_project(&mut state, project_id)?;
 		self.load_review_policy_checkpoints_for_project(&mut state, project_id)?;
+		self.load_evidence_artifacts_for_project(&mut state, project_id)?;
 
 		Ok(state)
 	}
@@ -907,6 +940,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_program_intake_state(&transaction, state)?;
 		persist_review_lifecycle_records(&transaction, state)?;
 		persist_review_policy_checkpoints(&transaction, state)?;
+		persist_evidence_artifacts(&transaction, state)?;
 		persist_loop_guardrail_checkpoints(&transaction, state)?;
 		persist_connector_backoffs(&transaction, state)?;
 
@@ -941,6 +975,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"DELETE FROM program_issue_mappings WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM evidence_artifacts WHERE project_id = ?1",
 			params![service_id],
 		)?;
 		transaction.execute(
@@ -1376,6 +1414,22 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			params![previous_issue_id],
 		)?;
 		transaction.execute(
+			"INSERT OR IGNORE INTO evidence_artifacts (
+					project_id, issue_id, artifact_kind, key_hash, phase, status, head_sha,
+					key_json, payload_json, source_run_id, source_attempt_number, updated_at,
+					updated_at_unix
+				)
+			 SELECT project_id, ?2, artifact_kind, key_hash, phase, status, head_sha,
+					key_json, payload_json, source_run_id, source_attempt_number, updated_at,
+					updated_at_unix
+			 FROM evidence_artifacts WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM evidence_artifacts WHERE issue_id = ?1",
+			params![previous_issue_id],
+		)?;
+		transaction.execute(
 			"INSERT OR IGNORE INTO review_lifecycle_records (
 					project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
 					target_base_ref_name, pr_head_ref_name, pr_head_oid, head_sha, phase,
@@ -1412,6 +1466,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"DELETE FROM review_policy_checkpoints WHERE issue_id = ?1",
+			params![issue_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM evidence_artifacts WHERE issue_id = ?1",
 			params![issue_id],
 		)?;
 		transaction.execute(
@@ -2688,6 +2746,72 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn load_evidence_artifacts(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, issue_id, artifact_kind, key_hash, phase, status, head_sha, \
+			 key_json, payload_json, source_run_id, source_attempt_number, updated_at, \
+			 updated_at_unix FROM evidence_artifacts",
+		)?;
+		let rows = statement.query_map([], Self::evidence_artifact_from_row)?;
+
+		for row in rows {
+			let (key, record) = row?;
+
+			state.evidence_artifacts.insert(key, record);
+		}
+
+		Ok(())
+	}
+
+	fn load_evidence_artifacts_for_project(
+		&self,
+		state: &mut StateData,
+		project_id: &str,
+	) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, issue_id, artifact_kind, key_hash, phase, status, head_sha, \
+			 key_json, payload_json, source_run_id, source_attempt_number, updated_at, \
+			 updated_at_unix FROM evidence_artifacts WHERE project_id = ?1",
+		)?;
+		let rows = statement.query_map(params![project_id], Self::evidence_artifact_from_row)?;
+
+		for row in rows {
+			let (key, record) = row?;
+
+			state.evidence_artifacts.insert(key, record);
+		}
+
+		Ok(())
+	}
+
+	fn evidence_artifact_from_row(
+		row: &Row<'_>,
+	) -> rusqlite::Result<(EvidenceArtifactKey, EvidenceArtifactRuntimeRecord)> {
+		let project_id: String = row.get(0)?;
+		let issue_id: String = row.get(1)?;
+		let artifact_kind: String = row.get(2)?;
+		let key_hash: String = row.get(3)?;
+
+		Ok((
+			EvidenceArtifactKey::new(&project_id, &issue_id, &artifact_kind, &key_hash),
+			EvidenceArtifactRuntimeRecord {
+				project_id,
+				issue_id,
+				artifact_kind,
+				key_hash,
+				phase: row.get(4)?,
+				status: row.get(5)?,
+				head_sha: row.get(6)?,
+				key_json: row.get(7)?,
+				payload_json: row.get(8)?,
+				source_run_id: row.get(9)?,
+				source_attempt_number: row.get(10)?,
+				updated_at: row.get(11)?,
+				updated_at_unix: row.get(12)?,
+			},
+		))
+	}
+
 	fn load_loop_guardrail_checkpoints(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, reason, fingerprint, run_id, attempt_number, \
@@ -3090,6 +3214,24 @@ impl ReviewPolicyKey {
 	}
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct EvidenceArtifactKey {
+	project_id: String,
+	issue_id: String,
+	artifact_kind: String,
+	key_hash: String,
+}
+impl EvidenceArtifactKey {
+	fn new(project_id: &str, issue_id: &str, artifact_kind: &str, key_hash: &str) -> Self {
+		Self {
+			project_id: project_id.to_owned(),
+			issue_id: issue_id.to_owned(),
+			artifact_kind: artifact_kind.to_owned(),
+			key_hash: key_hash.to_owned(),
+		}
+	}
+}
+
 #[derive(Clone, Debug)]
 struct ReviewLifecycleRuntimeRecord {
 	project_id: String,
@@ -3152,6 +3294,58 @@ impl ReviewLifecycleRuntimeRecord {
 			&& self.attempt_number == handoff.attempt_number()
 			&& self.branch_name == handoff.branch_name()
 			&& self.pr_url == handoff.pr_url()
+	}
+}
+
+#[derive(Clone, Debug)]
+struct EvidenceArtifactRuntimeRecord {
+	project_id: String,
+	issue_id: String,
+	artifact_kind: String,
+	key_hash: String,
+	phase: String,
+	status: String,
+	head_sha: Option<String>,
+	key_json: String,
+	payload_json: String,
+	source_run_id: String,
+	source_attempt_number: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl EvidenceArtifactRuntimeRecord {
+	fn as_review_policy_checkpoint(&self) -> Result<ReviewPolicyCheckpoint> {
+		let payload = serde_json::from_str::<Value>(&self.payload_json).map_err(|error| {
+			eyre::eyre!(
+				"Invalid review checkpoint artifact payload for issue `{}` phase `{}` head `{:?}`: {error}",
+				self.issue_id,
+				self.phase,
+				self.head_sha
+			)
+		})?;
+		let nonclean_rounds = payload
+			.get("nonclean_rounds")
+			.and_then(Value::as_i64)
+			.unwrap_or_default();
+		let details_json = payload
+			.get("details_json")
+			.and_then(Value::as_str)
+			.unwrap_or("{}")
+			.to_owned();
+
+		Ok(ReviewPolicyCheckpoint {
+			project_id: self.project_id.clone(),
+			issue_id: self.issue_id.clone(),
+			run_id: self.source_run_id.clone(),
+			attempt_number: self.source_attempt_number,
+			phase: self.phase.clone(),
+			status: self.status.clone(),
+			head_sha: self.head_sha.clone().unwrap_or_default(),
+			nonclean_rounds,
+			details_json,
+			updated_at: self.updated_at.clone(),
+			updated_at_unix: self.updated_at_unix,
+		})
 	}
 }
 
@@ -3263,10 +3457,6 @@ struct RunActivityMarkerRecord {
 	retry_budget_attempt_count: Option<i64>,
 	retry_kind: Option<String>,
 	retry_ready_at_unix_epoch: Option<i64>,
-	review_policy_phase: Option<String>,
-	review_policy_status: Option<String>,
-	review_policy_head_sha: Option<String>,
-	review_policy_nonclean_rounds: Option<i64>,
 }
 
 struct DecisionContractRuntimeRowParts {
@@ -3644,50 +3834,6 @@ pub(crate) fn clear_run_retry_schedule(worktree_path: &Path) -> Result<()> {
 	Ok(())
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn write_run_review_policy_state(
-	worktree_path: &Path,
-	run_id: &str,
-	attempt_number: i64,
-	review_policy_phase: &str,
-	review_policy_status: &str,
-	review_policy_head_sha: &str,
-	review_policy_nonclean_rounds: i64,
-) -> Result<()> {
-	fs::create_dir_all(worktree_path)?;
-
-	let mut marker = read_run_activity_marker_record(worktree_path)?.unwrap_or_default();
-
-	marker.run_id = Some(run_id.to_owned());
-	marker.attempt_number = Some(attempt_number);
-
-	ensure_run_activity_marker_current_process_identity(&mut marker);
-
-	marker.review_policy_phase = Some(review_policy_phase.to_owned());
-	marker.review_policy_status = Some(review_policy_status.to_owned());
-	marker.review_policy_head_sha = Some(review_policy_head_sha.to_owned());
-	marker.review_policy_nonclean_rounds = Some(review_policy_nonclean_rounds);
-
-	write_run_activity_marker_record(worktree_path, &marker)?;
-
-	Ok(())
-}
-
-pub(crate) fn clear_run_review_policy_state(worktree_path: &Path) -> Result<()> {
-	let Some(mut marker) = read_run_activity_marker_record(worktree_path)? else {
-		return Ok(());
-	};
-
-	marker.review_policy_phase = None;
-	marker.review_policy_status = None;
-	marker.review_policy_head_sha = None;
-	marker.review_policy_nonclean_rounds = None;
-
-	write_run_activity_marker_record(worktree_path, &marker)?;
-
-	Ok(())
-}
-
 pub(crate) fn read_run_retry_budget_attempt_count(worktree_path: &Path) -> Result<Option<i64>> {
 	Ok(read_run_activity_marker_record(worktree_path)?
 		.and_then(|marker| marker.retry_budget_attempt_count))
@@ -3728,10 +3874,6 @@ pub(crate) fn read_run_activity_marker_snapshot(
 			retry_budget_attempt_count: marker.retry_budget_attempt_count,
 			retry_kind: marker.retry_kind,
 			retry_ready_at_unix_epoch: marker.retry_ready_at_unix_epoch,
-			review_policy_phase: marker.review_policy_phase,
-			review_policy_status: marker.review_policy_status,
-			review_policy_head_sha: marker.review_policy_head_sha,
-			review_policy_nonclean_rounds: marker.review_policy_nonclean_rounds,
 		})
 	}))
 }
@@ -4461,6 +4603,35 @@ fn persist_review_policy_checkpoints(
 	Ok(())
 }
 
+fn persist_evidence_artifacts(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
+	for record in state.evidence_artifacts.values() {
+		transaction.execute(
+			"INSERT OR REPLACE INTO evidence_artifacts (
+					project_id, issue_id, artifact_kind, key_hash, phase, status, head_sha,
+					key_json, payload_json, source_run_id, source_attempt_number, updated_at,
+					updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+			params![
+				record.project_id,
+				record.issue_id,
+				record.artifact_kind,
+				record.key_hash,
+				record.phase,
+				record.status,
+				record.head_sha,
+				record.key_json,
+				record.payload_json,
+				record.source_run_id,
+				record.source_attempt_number,
+				record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
 fn persist_loop_guardrail_checkpoints(
 	transaction: &Transaction<'_>,
 	state: &StateData,
@@ -4768,16 +4939,12 @@ fn run_activity_marker_record_for_attempt(
 		protocol_activity: same_run_marker.and_then(|marker| marker.protocol_activity.clone()),
 		account: same_run_marker.and_then(|marker| marker.account.clone()),
 		accounts: same_run_marker.map(|marker| marker.accounts.clone()).unwrap_or_default(),
-		retry_budget_attempt_count: existing_marker
-			.and_then(|marker| marker.retry_budget_attempt_count),
-		retry_kind: same_run_marker.and_then(|marker| marker.retry_kind.clone()),
-		retry_ready_at_unix_epoch: same_run_marker.and_then(|marker| marker.retry_ready_at_unix_epoch),
-		review_policy_phase: existing_marker.and_then(|marker| marker.review_policy_phase.clone()),
-		review_policy_status: existing_marker.and_then(|marker| marker.review_policy_status.clone()),
-		review_policy_head_sha: existing_marker.and_then(|marker| marker.review_policy_head_sha.clone()),
-		review_policy_nonclean_rounds: existing_marker.and_then(|marker| marker.review_policy_nonclean_rounds),
+			retry_budget_attempt_count: existing_marker
+				.and_then(|marker| marker.retry_budget_attempt_count),
+			retry_kind: same_run_marker.and_then(|marker| marker.retry_kind.clone()),
+			retry_ready_at_unix_epoch: same_run_marker.and_then(|marker| marker.retry_ready_at_unix_epoch),
+		}
 	}
-}
 
 fn read_run_activity_marker_record(
 	worktree_path: &Path,
@@ -4834,17 +5001,12 @@ fn read_run_activity_marker_record(
 			},
 			"retry_budget_attempt_count" =>
 				marker.retry_budget_attempt_count = value.parse::<i64>().ok(),
-			"retry_kind" => marker.retry_kind = Some(value.to_owned()),
-			"retry_ready_at_unix_epoch" =>
-				marker.retry_ready_at_unix_epoch = value.parse::<i64>().ok(),
-			"review_policy_phase" => marker.review_policy_phase = Some(value.to_owned()),
-			"review_policy_status" => marker.review_policy_status = Some(value.to_owned()),
-			"review_policy_head_sha" => marker.review_policy_head_sha = Some(value.to_owned()),
-			"review_policy_nonclean_rounds" =>
-				marker.review_policy_nonclean_rounds = value.parse::<i64>().ok(),
-			_ => {},
+				"retry_kind" => marker.retry_kind = Some(value.to_owned()),
+				"retry_ready_at_unix_epoch" =>
+					marker.retry_ready_at_unix_epoch = value.parse::<i64>().ok(),
+				_ => {},
+			}
 		}
-	}
 
 	Ok(Some(marker))
 }
@@ -5043,7 +5205,6 @@ fn serialize_run_activity_marker_record(marker: &RunActivityMarkerRecord) -> Str
 
 	append_run_activity_marker_account_fields(&mut body, marker);
 	append_run_activity_marker_retry_fields(&mut body, marker);
-	append_run_activity_marker_review_policy_fields(&mut body, marker);
 
 	body
 }
@@ -5074,24 +5235,6 @@ fn append_run_activity_marker_retry_fields(body: &mut String, marker: &RunActivi
 	}
 	if let Some(retry_ready_at_unix_epoch) = marker.retry_ready_at_unix_epoch {
 		body.push_str(&format!("retry_ready_at_unix_epoch={retry_ready_at_unix_epoch}\n"));
-	}
-}
-
-fn append_run_activity_marker_review_policy_fields(
-	body: &mut String,
-	marker: &RunActivityMarkerRecord,
-) {
-	if let Some(review_policy_phase) = &marker.review_policy_phase {
-		body.push_str(&format!("review_policy_phase={review_policy_phase}\n"));
-	}
-	if let Some(review_policy_status) = &marker.review_policy_status {
-		body.push_str(&format!("review_policy_status={review_policy_status}\n"));
-	}
-	if let Some(review_policy_head_sha) = &marker.review_policy_head_sha {
-		body.push_str(&format!("review_policy_head_sha={review_policy_head_sha}\n"));
-	}
-	if let Some(review_policy_nonclean_rounds) = marker.review_policy_nonclean_rounds {
-		body.push_str(&format!("review_policy_nonclean_rounds={review_policy_nonclean_rounds}\n"));
 	}
 }
 
