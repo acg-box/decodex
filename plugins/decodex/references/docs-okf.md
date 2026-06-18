@@ -5,8 +5,10 @@ Use this for this repository's strict Decodex profile `docs/` concepts. Use
 
 ## Bundle Rules
 
-- `docs/` is Markdown-only; JSON and other docs artifacts are invalid.
-- Every populated directory has `index.md`.
+- `docs/` uses Markdown OKF concepts, with `docs/research/*.json` as the only JSON
+  artifact lane.
+- Every populated directory has `index.md`, except `docs/research/` has
+  `index.json`.
 - `docs/index.md`, `docs/policy.md`, and `docs/log.md` must exist.
 - Non-index, non-log Markdown documents are OKF concepts.
 - Concepts start with YAML frontmatter delimited by `---`.
@@ -28,8 +30,8 @@ Recommended structured fields: `tags`, `source_refs`, `code_refs`, `related`,
 
 ## Required Sections
 
-`Research Contract` concepts include `Question`, `Scope`, `Evidence`, `Options`,
-`Judgment`, `Challenge`, `Decision`, `Promotion`, `Drift Impact`, and `Citations`.
+Checked-in research artifacts use `schema: "decodex.research_report/1"` and keep
+terminal status, evidence, validation, and promotion targets in top-level JSON fields.
 
 `Drift Audit` concepts include `Watched Claims`, `Evidence Anchors`,
 `Reverse Checks`, `Verdict`, `Required Updates`, and `Citations`. `Verdict` is
