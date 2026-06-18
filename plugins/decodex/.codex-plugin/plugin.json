@@ -1,7 +1,7 @@
 {
   "name": "decodex",
   "version": "0.2.0",
-  "description": "Decodex agent workflows for portable OKF bundles, repo memory writing, evaluation, and curation, docs, research, issue planning, automation, commit, and landing.",
+  "description": "Decodex agent workflows for portable OKF bundles, repo memory writing, evaluation, and curation, docs, semantic drift, debugging, research, issue planning, automation, commit, and landing.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -15,13 +15,16 @@
     "automation",
     "codex",
     "decodex",
+    "debugging",
+    "diagnostics",
+    "semantic-drift",
     "orchestration"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Decodex",
-    "shortDescription": "Maintain docs, research, plan, and operate Decodex.",
-    "longDescription": "Routes portable OKF/LLM Wiki bundle work, source-backed repo-memory writing, evaluation, and curation, Decodex OKF docs maintenance, docs drift audits, bounded research, promotion, issue briefing and planning, CLI, labels, commit, landing, and automation.",
+    "shortDescription": "Maintain docs, drift, debugging, research, planning, and operations for Decodex.",
+    "longDescription": "Routes portable OKF/LLM Wiki bundle work, source-backed repo-memory writing, evaluation, and curation, Decodex OKF docs maintenance, semantic drift audits, root-cause debugging, bounded research with skeptic challenge, promotion, issue briefing and planning, CLI, labels, commit, landing, and automation.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -32,8 +35,8 @@
     "privacyPolicyURL": "https://github.com/hack-ink/decodex",
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
-      "Work with an OKF bundle.",
-      "Maintain Decodex docs.",
+      "Maintain Decodex docs and semantic drift.",
+      "Debug a Decodex failure.",
       "Research this with Decodex."
     ],
     "brandColor": "#0F766E"

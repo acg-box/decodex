@@ -34,7 +34,7 @@ For build, test, run, setup, validation, and task-runner command entrypoints, re
 | `site/` | Astro static site for the public Decodex product surface and app download entry. It is not backed by a live Decodex daemon and does not own upstream monitoring or public publishing automation. |
 | `scripts/assets/` | Asset-generation helpers for checked-in app and tray icon assets. |
 | `scripts/macos/` | macOS-only app packaging and local bundle verification helpers. |
-| `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including issue briefing, planning, manual CLI, automation, commit, land, and labels. |
+| `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including docs drift, debugging, research challenge, issue briefing, planning, manual CLI, automation, commit, land, and labels. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
 | `docs/reference/` | Current repository and artifact surface maps. |

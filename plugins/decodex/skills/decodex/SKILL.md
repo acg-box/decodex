@@ -10,6 +10,10 @@ research, promotion, planning, context intake, labels, runtime, commit, or landi
 boundaries matter.
 
 - `research`: bounded investigation before execution.
+- `debugging`: root-cause investigation for bugs, failures, runtime regressions, and
+  repeated failed fixes.
+- `docs-drift`: Decodex semantic-drift audits for docs, code, commands, config,
+  runtime readback, and evidence alignment.
 - `okf`, `okf-query`, `okf-maintain`, `repo-memory-writer`,
   `repo-memory-evaluator`, `repo-memory-curator`: portable OKF/LLM Wiki and
   repo-memory work.
