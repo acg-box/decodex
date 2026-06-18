@@ -4182,6 +4182,79 @@ fn run_control_accepts_active_attempt_and_persists_audit() {
 }
 
 #[test]
+fn run_control_accepts_marker_hydrated_active_attempt_identity() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let channel_path = temp_dir.path().join("control.channel");
+	let worktree_path = temp_dir.path().join("worktree");
+	let worktree_path_text = worktree_path.to_string_lossy().to_string();
+
+	fs::create_dir_all(&worktree_path).expect("worktree should create");
+	fs::write(&channel_path, "ready\n").expect("control channel should write");
+
+	let store = StateStore::open_in_memory().expect("state store should open");
+
+	store
+		.upsert_lease("pubfi", "issue-1", "run-1", IN_PROGRESS_STATE)
+		.expect("lease should record");
+	store
+		.upsert_worktree("pubfi", "issue-1", "x/pubfi-issue-1", &worktree_path_text)
+		.expect("worktree should record");
+	store.record_run_attempt("run-1", "issue-1", 1, "running").expect("attempt should record");
+	state::write_run_effective_runtime_marker(
+		&worktree_path,
+		"run-1",
+		1,
+		&EffectiveRuntimeMarker {
+			thread_id: Some("thread-marker"),
+			turn_id: Some("turn-marker"),
+			effective_model: "gpt-5.4",
+			effective_model_provider: "openai",
+			effective_cwd: worktree_path_text.as_str(),
+			effective_approval_policy: "never",
+			effective_approvals_reviewer: "human",
+			effective_sandbox_mode: "dangerFullAccess",
+		},
+	)
+	.expect("runtime marker should write");
+	store
+		.publish_run_control_channel_for_active_attempt("run-1", 1, &channel_path, "local_file")
+		.expect("control channel should publish")
+		.expect("active control channel should exist");
+
+	let receipt = store
+		.resolve_run_control_action(RunControlActionRequest {
+			project_id: "pubfi",
+			issue_id: "issue-1",
+			run_id: "run-1",
+			attempt_number: 1,
+			thread_id: Some("thread-marker"),
+			turn_id: Some("turn-marker"),
+			source: "test_hook",
+			action: "interrupt",
+			timeout_ms: Some(500),
+			metadata: None,
+			context: None,
+		})
+		.expect("marker-hydrated control request should resolve");
+
+	assert_eq!(receipt.outcome(), "accepted");
+	assert_eq!(receipt.reason(), "run_lease_control_channel_resolved");
+	assert_eq!(receipt.current_thread_id(), Some("thread-marker"));
+	assert_eq!(receipt.current_turn_id(), Some("turn-marker"));
+
+	let events = store
+		.list_private_execution_events("pubfi", "issue-1", "run-1", 1)
+		.expect("private control audit should read");
+	let event = events
+		.iter()
+		.find(|event| event.record_id() == receipt.audit_record_id())
+		.expect("control audit event should exist");
+
+	assert_eq!(event.payload()["observed"]["thread_id"].as_str(), Some("thread-marker"));
+	assert_eq!(event.payload()["observed"]["turn_id"].as_str(), Some("turn-marker"));
+}
+
+#[test]
 fn run_control_rejects_stale_turn_and_run_mismatch() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let channel_path = temp_dir.path().join("control.channel");
