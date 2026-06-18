@@ -28,7 +28,10 @@ labels, automation, commit, or landing boundaries.
   not as a replacement for Decision Contract, lane-control, tracker, review, landing,
   or closeout gates. Planning tools are deliberately small: `research_compile`,
   `research_promote`, and `intake_goal` expose dry-run/apply boundaries with explicit
-  authority requirements for apply/promote calls.
+  authority requirements for apply/promote calls. Operate/admin tools stay
+  inspect-first: `decodex_lane_control` requires lane identity plus current run/turn
+  preconditions for steer or interrupt, and `decodex_project_control` limits
+  pause/resume to future dispatch while refusing standalone scan shortcuts.
 
 ## First Reads
 

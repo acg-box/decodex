@@ -35,7 +35,6 @@ use self::protocol::{
 	ThreadResumeRequest, ThreadSessionResponse, ThreadStartRequest,
 	ThreadStatusChangedNotification, ToolRequestUserInputResponse, TurnCompletedNotification,
 	TurnError, TurnInterruptRequest, TurnStartRequest, TurnSteerRequest, UserInput,
-	app_server_dynamic_tool_specs,
 };
 use crate::{
 	agent::{
@@ -3300,11 +3299,11 @@ fn validate_generated_method_union(
 	let missing_or_mismatched = required_methods
 		.iter()
 		.filter_map(|(method, expected_ref)| match method_refs.get(*method) {
-			Some(actual_ref) if actual_ref.as_deref() == expected_ref_to_option(*expected_ref) =>
+			Some(actual_ref) if actual_ref.as_deref() == expected_ref_to_option(expected_ref) =>
 				None,
 			Some(actual_ref) => Some(format!(
 				"{method} expected {} got {}",
-				expected_ref_display(*expected_ref),
+				expected_ref_display(expected_ref),
 				actual_ref.as_deref().unwrap_or("<no params>")
 			)),
 			None => Some(format!("{method} missing")),
@@ -3410,7 +3409,6 @@ fn validate_generated_dynamic_tool_schema(out_dir: &Path) -> crate::prelude::Res
 			"Generated app-server schema was missing ThreadStartParams dynamicTools schema."
 		);
 	}
-
 	if !found_supported_dynamic_tool_schema {
 		eyre::bail!(
 			"Generated app-server schema does not expose the Decodex-supported 0.141 dynamicTools tagged union."
@@ -4237,7 +4235,7 @@ fn build_thread_start_request(
 		.dynamic_tool_handler
 		.map(validated_dynamic_tool_specs)
 		.transpose()?
-		.map(|tool_specs| app_server_dynamic_tool_specs(&tool_specs));
+		.map(|tool_specs| self::protocol::app_server_dynamic_tool_specs(&tool_specs));
 
 	Ok(ThreadStartRequest {
 		cwd: Some(request.cwd.clone()),

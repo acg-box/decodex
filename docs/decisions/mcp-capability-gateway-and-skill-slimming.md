@@ -74,7 +74,7 @@ Non-goals:
 | Keep skills-only architecture | Rejected | Skills are good at static routing but poor at fresh state, structured readback, typed mutation, and external source freshness. Large skills also increase token load and drift. |
 | Replace skills with MCP-only architecture | Rejected | MCP can expose capabilities, but it does not by itself teach the agent when a Decodex authority boundary applies. A small skill layer is still the right installable policy surface. |
 | Build a hybrid MCP gateway and slim skills | Selected | MCP owns dynamic resources, prompts, and tools; skills own trigger routing, safety boundaries, and progressive disclosure. This uses each surface for the behavior it is best at. |
-| Remote HTTP MCP first | Deferred | Streamable HTTP is useful for app/server integration, but local stdio is simpler for first implementation and avoids premature auth and multi-client complexity. |
+| Remote HTTP MCP first | Rejected for the first slice; implemented as follow-up transport | Local stdio was simpler for the core protocol slice. Streamable HTTP is now the remote-control-capable transport, with loopback binding, origin validation, session handling, SSE framing, and an `observe` default profile. |
 
 ## Architecture
 
@@ -106,18 +106,22 @@ Layer responsibilities:
 
 ## MCP Surface Target
 
-This section describes the complete promoted MCP direction across the generated issue
-set, not the surface delivered by the first core-protocol lane alone. The first
-implementation slice, XY-994, owns the stdio primitive gateway: `initialize`,
-`resources/list`, `resources/read`, `resources/templates/list`, `prompts/list`,
-`prompts/get`, `tools/list`, `tools/call`, `logging/setLevel`, progress notifications,
-profile-tagged tool discovery, and structured refusal behavior for deferred
-operate/admin entries. The follow-up transport slice adds Streamable HTTP for the same
-gateway at `POST /mcp`, with loopback default binding, browser-origin validation,
-session headers, JSON responses, SSE framing for progress/notifications, and an
-`observe` default profile for remote-safe access. Richer live research/intake planning
-tools, live lane-control/admin mutation, and skill slimming remain separate follow-up
-lanes from the accepted Decision Contract.
+This section describes the promoted complete MCP gateway. Decodex serves the same
+gateway through local stdio and remote-control-capable Streamable HTTP. Stdio is for
+desktop and CLI clients, defaults to the `admin` capability profile, and keeps stdout
+valid JSON-RPC only. Streamable HTTP is available at `POST /mcp`, binds to loopback by
+default, defaults to `observe`, validates browser origins, issues MCP session headers,
+requires a known session after initialization, returns JSON-RPC JSON by default, and
+uses SSE framing for progress or notifications when the client accepts
+`text/event-stream`.
+
+The gateway advertises resources, resource templates, prompts, tools, logging
+compatibility, progress notifications, active capability-profile metadata, and
+structured refusal behavior. Remote control means a permitted MCP client can observe
+and request lane-control or project-control actions against this Decodex server through
+capability profiles and Decodex authority checks. It does not mean arbitrary public
+internet clients can reach the daemon or that MCP tools can bypass Decision Contract,
+lane-control, review, landing, tracker, or runtime semantics.
 
 Resources:
 
@@ -126,10 +130,18 @@ Resources:
 - `decodex://docs/runbook/{topic}`
 - `decodex://docs/reference/{topic}`
 - `decodex://docs/decisions/{topic}`
-- `decodex://skills/{skill_name}`
+- `decodex://research/{artifact}`
 - `decodex://decision-contracts/{contract_id}`
 - `decodex://projects/{service_id}/status`
-- `decodex://projects/{service_id}/agent-evidence/{issue_id}`
+- `decodex://projects/{service_id}/status_live`
+- `decodex://projects/{service_id}/activity_tail`
+- `decodex://projects/{service_id}/lane-control`
+- `decodex://projects/{service_id}/lane_inspect/{issue}`
+- `decodex://projects/{service_id}/runs/{run_id}/events`
+- `decodex://projects/{service_id}/runs/{run_id}/protocol_activity`
+- `decodex://projects/{service_id}/runs/{run_id}/child_agent_activity`
+- `decodex://projects/{service_id}/runs/{run_id}/progress_diagnostics`
+- `decodex://projects/{service_id}/pr_review_state`
 
 Prompts:
 
@@ -170,6 +182,9 @@ Tool rules:
 
 - Read-only tools may run without promotion when they only expose public-safe state.
 - Mutating tools must require explicit authority and return structured results.
+- Mutating tools are inspect-first and must require current-lane preconditions such as
+  run id, inspected run id, and expected turn id when the requested action depends on
+  a live turn.
 - Tools must not expose raw private evidence, credentials, transcript text, hidden
   graph ids, or local paths unless the governing Decodex surface allows it.
 - Every mutating result should include `status`, `authority_source`, `changed_surfaces`,
@@ -203,10 +218,10 @@ Target shape:
 
 ## Validation Expectations
 
-- `plugin-eval analyze` on changed research skills should find no critical routing,
-  safety, or progressive-disclosure issue.
-- `cargo test -p decodex plugin_surface_tests research_design` should pass after
-  schema and packaged-skill changes.
+- `plugin-eval analyze` on changed Decodex plugin skills should find no critical
+  routing, safety, or progressive-disclosure issue.
+- `cargo test -p decodex plugin_surface_tests -- --nocapture` should pass after
+  packaged-skill changes.
 - `git diff --check` should pass.
 - The stdio MCP primitive implementation should pass initialize, resources/list,
   resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, progress
@@ -214,18 +229,18 @@ Target shape:
   JSON POST, SSE response, origin rejection, session handling, observe-profile access,
   operate/admin profile-refusal coverage, and remote-safe observability template
   coverage for live status, activity tail, current/recent status-window run
-  event/protocol/child/progress readback, lane inspect, and PR/review state. Live
-  operate/admin lane-control behavior should remain separate follow-up work.
+  event/protocol/child/progress readback, lane inspect, and PR/review state. Operate
+  and admin tools should pass inspect-first authority, current run/turn precondition,
+  explicit-authority refusal, and unsupported-shortcut refusal coverage.
 
-## Open Follow-Up
+## Remaining Boundaries
 
-The promoted implementation now has the stdio gateway exposed as
+The promoted implementation has the stdio gateway exposed as
 `decodex mcp serve --transport stdio` and the remote-capable Streamable HTTP gateway
 exposed as `decodex mcp serve --transport streamable-http`. It advertises resources,
 resource templates, prompts, and a schema-bound tool catalog while keeping mutating
-operate/admin behavior behind inspect-first authority checks and structured refusal
-states. XY-996 adds the remote-safe observability templates and projections on top of
-that transport; promoted work keeps the schema-bound `research_compile`,
-`research_promote`, and `intake_goal` planning tools separate from live
-lane-control/project-control tools, skill-slimming eval, and docs/resource validation
-lanes so mutating MCP tools do not bypass Decision Contract or lane-control authority.
+planning, operate, and admin behavior behind explicit capability profiles, authority
+fields, inspect-first preconditions, and structured refusal states. Further expansion
+must keep the catalog deliberately small and route new mutating behavior through
+Decodex's existing runtime, tracker, review, landing, and lane-control authority
+surfaces instead of adding one tool per CLI command.
