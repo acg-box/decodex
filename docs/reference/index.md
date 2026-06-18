@@ -22,8 +22,8 @@ Question this index answers: "how is it currently organized or implemented?"
 - [`build-test-run.md`](./build-test-run.md) for repo-native setup, build, test, run,
   validation, task-runner automation, and source-entrypoint commands.
 - [`docs-knowledge-map.md`](./docs-knowledge-map.md) for the current OKF/LLM Wiki
-  knowledge-map shape, value evaluation, graph maintenance anchors, and retrieval
-  quality observations.
+  knowledge-map shape, value evaluation, graph maintenance anchors, and owner-coverage
+  observations.
 - [`operator-control-plane.md`](./operator-control-plane.md) for the current
   single-machine control-plane shape, operator dashboard sections, local-vs-external
   state boundary, and deferred operator directions.

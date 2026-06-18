@@ -27,7 +27,7 @@ Not this document: The full test inventory, repository directory ownership, rele
 procedure, or runtime behavior contract.
 
 Covers: Task-runner authority, primary validation gates, targeted command entrypoints,
-source entrypoints, local prerequisites, and route-quality boundaries.
+source entrypoints, local prerequisites, and owner boundaries.
 
 ## Task Runner Authority
 
@@ -74,7 +74,7 @@ Use these commands when a change does not need the full aggregate gate:
 ```sh
 decodex docs check
 decodex docs graph
-decodex docs route "how do I validate this repo"
+decodex docs find --tag validation
 cargo check --all-features --all-targets --workspace
 cargo nextest run --workspace --all-targets --all-features
 cargo test -p decodex <filter>
@@ -93,7 +93,7 @@ decodex serve --listen-address 127.0.0.1:8192
 ```
 
 `README.md` remains the better source for the broad CLI usage list. This document owns
-the repository-memory route for validation and entrypoint selection.
+the repository-memory owner for validation and entrypoint selection.
 
 ## Source Entrypoints
 
@@ -121,14 +121,14 @@ The following paths are generated or local-only and are not source entrypoints:
 - `.worktrees/`
 - `.decodex/`
 
-## Route Quality Boundary
+## Owner Boundary
 
 This concept owns build, test, run, validation, setup, automation resources, and
 automation entrypoints questions. Use [`./test-suite.md`](./test-suite.md) for test
 inventory and placement standards, and [`./workspace-layout.md`](./workspace-layout.md)
 for directory ownership boundaries.
 
-When `decodex docs route "<intent>"` sends validation or setup questions to a
-generic map instead of this concept, treat that as a retrieval-quality issue and add a
-more specific routing phrase or link rather than duplicating this command list in
+When validation or setup questions are not discoverable from `docs/index.md`, lane
+indexes, or nearby related links, treat that as an owner-navigation issue and add a
+specific index entry or relationship link rather than duplicating this command list in
 another document.

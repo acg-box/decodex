@@ -35,10 +35,14 @@ Defines: The command naming model, profile stack, and boundary between `okf`,
 renders Open Knowledge Format bundles regardless of whether the bundle lives under
 `docs/`, `wiki/`, a generated catalog export, or another repository path.
 
-`llm-wiki` is the agent retrieval and maintenance method layered on top of OKF. It
+`llm-wiki` is the agent navigation and maintenance method layered on top of OKF. It
 uses progressive indexes, Markdown links, backlinks, tags, source references, code
-references, and update logs so agents can find the smallest relevant concept and keep
-the graph current.
+references, and update logs so agents can start from small entrypoints, reach the
+owning concept, and keep the graph current.
+
+Retrieval systems are outside this contract. Ranking, reranking, embeddings, lexical
+scorers, route benchmarks, and top-N hit rates may consume an OKF/LLM Wiki bundle,
+but they are not the OKF format and are not required LLM Wiki behavior.
 
 `docs` is this repository's default OKF bundle location and convenience command
 surface. In this repository, `decodex docs` is an alias for operating on `docs/` with
@@ -57,7 +61,6 @@ decodex okf init docs/ --profile repo-memory
 decodex okf check docs/ --profile core
 decodex okf graph docs/ --json
 decodex okf find docs/ --tag runtime
-decodex okf route docs/ "change lane control behavior"
 ```
 
 Repository-local convenience commands use the `docs` noun:
@@ -66,7 +69,6 @@ Repository-local convenience commands use the `docs` noun:
 decodex docs check
 decodex docs graph
 decodex docs find --tag runtime
-decodex docs route "change lane control behavior"
 ```
 
 The `docs` commands default to:
@@ -87,8 +89,8 @@ can consume.
 | Profile | Scope | Purpose |
 | --- | --- | --- |
 | `core` | OKF v0.1 conformance | Verify portable Markdown/frontmatter interoperability. |
-| `wiki` | Core plus graph hygiene | Verify agent navigation, indexes, links, backlinks, logs, and retrieval fields. |
-| `repo-memory` | Wiki plus repository anchors | Verify code references, source references, task routing hints, and drift watch fields without Decodex lane semantics. |
+| `wiki` | Core plus graph hygiene | Verify agent navigation, indexes, links, backlinks, logs, and lookup fields. |
+| `repo-memory` | Wiki plus repository anchors | Verify code references, source references, task-navigation hints, and drift watch fields without Decodex lane semantics. |
 | `decodex` | Repo memory plus Decodex docs policy | Verify Decodex lanes, authority enums, research contracts, drift audits, docs impact, and completion gates. |
 
 Core OKF consumption must remain permissive. Unknown concept types, unknown
@@ -111,8 +113,9 @@ keys, ordinary Markdown body content, and existing links unless the task explici
 changes them.
 
 Consumer behavior reads concepts. It should tolerate unknown concept types and
-producer-specific fields. Query, graph, and route commands must return useful partial
-results even when a bundle is not clean enough to pass the strictest profile.
+producer-specific fields. Query and graph commands must return useful partial results
+even when a bundle is not clean enough to pass the strictest profile. Retrieval
+systems that rank concepts are separate consumers and must not define OKF conformance.
 
 ## Skill Boundary
 
@@ -123,25 +126,25 @@ Portable OKF skills own cross-repository behavior:
 - query frontmatter and Markdown links
 - build graph/backlink views
 - maintain indexes and logs
-- route a task to the smallest relevant concepts
 
 The Decodex plugin exposes these portable skills as `okf`, `okf-query`,
 `okf-maintain`, `repo-memory-writer`, `repo-memory-evaluator`, and
 `repo-memory-curator`. The first three operate the bundle surface;
 `repo-memory-writer` is the AI authoring workflow that reads repository evidence and
 writes canonical concepts. `repo-memory-evaluator` turns static checks, graph output,
-and route probes into a quality report. `repo-memory-curator` uses that evidence to
-repair misses, noisy owners, orphan concepts, duplicate claims, and graph decay.
+owner-coverage review, and precise lookup evidence into a quality report.
+`repo-memory-curator` uses that evidence to repair weak owners, missing links,
+orphan concepts, duplicate claims, stale references, and graph decay.
 
 The CLI does not independently generate high-quality repository knowledge. Agents or
 humans still judge owner correctness, classify misses, and author durable claims. OKF
 commands make those judgments repeatable by supplying profile checks, graph counts,
-query output, and routing evidence.
+and query output.
 
-Decodex-owned context gates live in `plugins/decodex/references/routing.md`. They
-define when agents should run route probes before implementation, carry `Context
-anchors`, and recover a missed docs completion gate. Generic repo-work plugins should
-not copy those Decodex-specific procedures.
+Decodex-owned context intake lives in `plugins/decodex/references/routing.md`. It
+defines when agents should read docs indexes and owner concepts before implementation
+and how to recover a missed docs completion gate. Generic repo-work plugins should not
+copy those Decodex-specific procedures.
 
 Decodex docs skills are wrappers around those behaviors for this repository. They may
 apply Decodex profile constraints, but the portable OKF skill family must not depend

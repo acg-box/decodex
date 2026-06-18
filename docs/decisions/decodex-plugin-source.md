@@ -16,7 +16,7 @@ Question: Where should reusable agent-facing Decodex usage instructions live?
 Decision: Maintain the canonical Decodex plugin in this repository under
 `plugins/decodex/`. Generic Codex or repo-work plugins may keep host-level
 composition or portable repository rules, but they should not own Decodex-specific
-CLI, docs, OKF/LLM Wiki gates, automation, tracker, label, review, landing,
+CLI, docs, OKF/LLM Wiki context intake, automation, tracker, label, review, landing,
 closeout, or project-contract details.
 Consequences: Decodex runtime and usage guidance can now change in the same repository
 lane. Generic repo-work plugins should stay generic; host bootstrap instructions may
@@ -49,7 +49,7 @@ The plugin should own reusable agent-facing procedures and mode routing:
   dependencies, and concurrency
 - `manual-cli` for operator CLI use
 - `automation` for retained-lane control-plane use
-- `routing` for OKF/LLM Wiki route intake, docs completion gates, and late docs-skill
+- `routing` for OKF/LLM Wiki context intake, docs completion gates, and late docs-skill
   recovery
 - `commit` for human-driven `decodex commit`
 - `land` for explicit human-driven `decodex land`
