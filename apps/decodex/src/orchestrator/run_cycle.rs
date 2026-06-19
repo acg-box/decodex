@@ -1,5 +1,6 @@
 use state::IssueLease;
 use state::PreacquiredLeaseGuards;
+use state::WORKTREE_PROVENANCE_RUNTIME_RECORDED;
 
 use crate::commit_message;
 
@@ -31,6 +32,7 @@ impl<T> Clone for PassiveRetainedAttentionRuntime<'_, T> {
 		*self
 	}
 }
+
 impl<T> Copy for PassiveRetainedAttentionRuntime<'_, T> {}
 
 struct ProjectStateReconciliationContext<'a, T> {
@@ -71,6 +73,37 @@ enum RetainedReviewLaneReviewLoad {
 	Skip,
 	Blocked(String),
 	ReviewState(Box<PullRequestReviewState>),
+}
+
+pub(crate) fn worktree_mapping_is_stale_terminal_local_residue(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	mapping: &WorktreeMapping,
+	active_issue_ids: &HashSet<String>,
+) -> Result<bool> {
+	if active_issue_ids.contains(mapping.issue_id())
+		|| !looks_like_tracker_issue_identifier_key(mapping.issue_id())
+		|| mapping.provenance().source() != WORKTREE_PROVENANCE_RUNTIME_RECORDED
+	{
+		return Ok(false);
+	}
+	if state_store.issue_has_active_shared_claim(project.service_id(), mapping.issue_id())? {
+		return Ok(false);
+	}
+	if state_store.issue_has_review_lifecycle_record(project.service_id(), mapping.issue_id())?
+		|| state_store.issue_has_review_policy_checkpoint(project.service_id(), mapping.issue_id())?
+	{
+		return Ok(false);
+	}
+	if mapping.worktree_path().try_exists()? {
+		return Ok(false);
+	}
+
+	let Some(attempt) = state_store.latest_run_attempt_for_issue(mapping.issue_id())? else {
+		return Ok(false);
+	};
+
+	Ok(local_run_attempt_status_is_terminal(attempt.status()))
 }
 
 fn run_configured_cycle(
@@ -198,7 +231,27 @@ where
 	T: IssueTracker,
 	I: PullRequestReviewStateInspector,
 {
-	let worktrees = state_store.list_worktrees(project.service_id())?;
+	let active_issue_ids = state_store
+		.list_active_shared_leases(project.service_id())?
+		.into_iter()
+		.map(|lease| lease.issue_id().to_owned())
+		.collect::<HashSet<_>>();
+	let worktrees = state_store
+		.list_worktrees(project.service_id())?
+		.into_iter()
+		.filter_map(|mapping| {
+			match worktree_mapping_is_stale_terminal_local_residue(
+				project,
+				state_store,
+				&mapping,
+				&active_issue_ids,
+			) {
+				Ok(true) => None,
+				Ok(false) => Some(Ok(mapping)),
+				Err(error) => Some(Err(error)),
+			}
+		})
+		.collect::<Result<Vec<_>>>()?;
 
 	if worktrees.is_empty() {
 		return Ok(());
@@ -2636,7 +2689,13 @@ where
 	T: IssueTracker,
 {
 	let leases = state_store.list_leases(project.service_id())?;
-	let worktrees = state_store.list_worktrees(project.service_id())?;
+	let mut worktrees = state_store.list_worktrees(project.service_id())?;
+
+	if leases.is_empty() && worktrees.is_empty() {
+		return Ok(());
+	}
+
+	clear_stale_terminal_local_worktree_mappings(project, state_store, &leases, &mut worktrees)?;
 
 	if leases.is_empty() && worktrees.is_empty() {
 		return Ok(());
@@ -2694,6 +2753,67 @@ where
 	)?;
 
 	Ok(())
+}
+
+fn clear_stale_terminal_local_worktree_mappings(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	leases: &[IssueLease],
+	worktrees: &mut Vec<WorktreeMapping>,
+) -> Result<()> {
+	let active_issue_ids = leases
+		.iter()
+		.map(|lease| lease.issue_id().to_owned())
+		.collect::<HashSet<_>>();
+	let mut cleared_issue_ids = Vec::new();
+
+	for mapping in worktrees.iter() {
+		if !worktree_mapping_is_stale_terminal_local_residue(
+			project,
+			state_store,
+			mapping,
+			&active_issue_ids,
+		)? {
+			continue;
+		}
+
+		state_store.clear_worktree(mapping.issue_id())?;
+
+		tracing::info!(
+			project_id = project.service_id(),
+			issue_id = mapping.issue_id(),
+			provenance_source = mapping.provenance().source(),
+			"Cleared stale terminal local worktree mapping before tracker refresh."
+		);
+
+		cleared_issue_ids.push(mapping.issue_id().to_owned());
+	}
+
+	if !cleared_issue_ids.is_empty() {
+		worktrees.retain(|mapping| !cleared_issue_ids.iter().any(|issue_id| issue_id == mapping.issue_id()));
+	}
+
+	Ok(())
+}
+
+fn looks_like_tracker_issue_identifier_key(value: &str) -> bool {
+	let Some((prefix, number)) = value.rsplit_once('-') else {
+		return false;
+	};
+
+	!prefix.is_empty()
+		&& !number.is_empty()
+		&& prefix
+			.chars()
+			.all(|character| character.is_ascii_uppercase() || character.is_ascii_digit())
+		&& number.chars().all(|character| character.is_ascii_digit())
+}
+
+fn local_run_attempt_status_is_terminal(status: &str) -> bool {
+	matches!(
+		status,
+		"succeeded" | "failed" | "interrupted" | "terminated" | TERMINAL_GUARDED_RUN_STATUS
+	)
 }
 
 fn reconcile_active_project_leases<T>(

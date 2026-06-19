@@ -1271,6 +1271,8 @@ fn hydrate_live_operator_external_observers<T>(
 where
 	T: IssueTracker,
 {
+	let stale_terminal_local_issue_ids =
+		stale_terminal_local_issue_ids(context.project, context.state_store)?;
 	let mut paused =
 		pause_operator_snapshot_for_stored_tracker_backoff(&context, snapshot)?;
 
@@ -1282,6 +1284,7 @@ where
 				context.workflow,
 				snapshot,
 				context.run_issue_metadata_hydration,
+				&stale_terminal_local_issue_ids,
 			),
 			snapshot,
 			context.state_store,
@@ -1291,7 +1294,12 @@ where
 	}
 	if !paused && context.hydrate_history_ledger {
 		paused = apply_tracker_observer_outcome(
-			hydrate_history_lanes_from_linear_ledger(context.tracker, context.project, snapshot),
+			hydrate_history_lanes_from_linear_ledger(
+				context.tracker,
+				context.project,
+				snapshot,
+				&stale_terminal_local_issue_ids,
+			),
 			snapshot,
 			context.state_store,
 			context.project,
@@ -2498,10 +2506,15 @@ fn operator_status_worktrees(
 	Vec<String>,
 	Vec<OperatorSnapshotWarningDetail>,
 )> {
-	let mut worktrees = state_store
-		.list_worktrees(project.service_id())?
-		.into_iter()
-		.map(|mapping| OperatorWorktreeStatus {
+	let skipped_terminal_local_issue_ids = stale_terminal_local_issue_ids(project, state_store)?;
+	let mut worktrees = Vec::new();
+
+	for mapping in state_store.list_worktrees(project.service_id())? {
+		if skipped_terminal_local_issue_ids.contains(mapping.issue_id()) {
+			continue;
+		}
+
+		worktrees.push(OperatorWorktreeStatus {
 			project_id: project.service_id().to_owned(),
 			issue_id: mapping.issue_id().to_owned(),
 			issue_identifier: issue_identifier_in_text(mapping.branch_name())
@@ -2516,12 +2529,24 @@ fn operator_status_worktrees(
 			provenance: operator_worktree_provenance_from_mapping(&mapping),
 			recovery_next_action: None,
 			hygiene: None,
-		})
-		.collect::<Vec<_>>();
+		});
+	}
+
 	let mut seen_paths =
 		worktrees.iter().map(|worktree| worktree.worktree_path.clone()).collect::<HashSet<_>>();
 	let mut warnings = Vec::new();
 	let mut warning_details = Vec::new();
+	let mut skipped_terminal_local_issue_ids =
+		skipped_terminal_local_issue_ids.into_iter().collect::<Vec<_>>();
+
+	skipped_terminal_local_issue_ids.sort();
+
+	append_stale_terminal_local_mapping_warning(
+		project,
+		&skipped_terminal_local_issue_ids,
+		&mut warnings,
+		&mut warning_details,
+	);
 
 	for issue_identifier in recoverable_worktree_identifiers(project.worktree_root())? {
 		let worktree_path = project.worktree_root().join(&issue_identifier);
@@ -2573,6 +2598,66 @@ fn operator_status_worktrees(
 	});
 
 	Ok((worktrees, warnings, warning_details))
+}
+
+fn active_shared_issue_ids(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+) -> crate::prelude::Result<HashSet<String>> {
+	Ok(state_store
+		.list_active_shared_leases(project.service_id())?
+		.into_iter()
+		.map(|lease| lease.issue_id().to_owned())
+		.collect())
+}
+
+fn stale_terminal_local_issue_ids(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+) -> crate::prelude::Result<HashSet<String>> {
+	let active_issue_ids = active_shared_issue_ids(project, state_store)?;
+	let mut issue_ids = HashSet::new();
+
+	for mapping in state_store.list_worktrees(project.service_id())? {
+		if worktree_mapping_is_stale_terminal_local_residue(
+			project,
+			state_store,
+			&mapping,
+			&active_issue_ids,
+		)? {
+			issue_ids.insert(mapping.issue_id().to_owned());
+		}
+	}
+
+	Ok(issue_ids)
+}
+
+fn append_stale_terminal_local_mapping_warning(
+	project: &ServiceConfig,
+	issue_ids: &[String],
+	warnings: &mut Vec<String>,
+	warning_details: &mut Vec<OperatorSnapshotWarningDetail>,
+) {
+	if issue_ids.is_empty() {
+		return;
+	}
+
+	let warning = String::from("stale_terminal_local_worktree_mapping_ignored");
+
+	warnings.push(warning.clone());
+	warning_details.push(OperatorSnapshotWarningDetail {
+		warning,
+		project_id: Some(project.service_id().to_owned()),
+		repo_root: None,
+		reason: format!(
+			"ignored {} terminal unleased runtime-recorded worktree mapping(s) with identifier-style issue ids and missing paths: {}",
+			issue_ids.len(),
+			issue_ids.join(", ")
+		),
+		next_action: Some(String::from(
+			"no recovery worktree action is required; project reconciliation clears this stale local mapping before tracker refresh",
+		)),
+	});
 }
 
 fn append_merged_worktree_cleanup_debts(
@@ -2796,11 +2881,16 @@ fn hydrate_operator_run_rows_from_tracker<T>(
 	workflow: &WorkflowDocument,
 	snapshot: &mut OperatorStatusSnapshot,
 	hydration: RunIssueMetadataHydration,
+	stale_terminal_local_issue_ids: &HashSet<String>,
 ) -> TrackerObserverOutcome
 where
 	T: IssueTracker,
 {
-	let issue_ids = operator_snapshot_run_issue_ids(snapshot, hydration);
+	let issue_ids = operator_snapshot_run_issue_ids(
+		snapshot,
+		hydration,
+		stale_terminal_local_issue_ids,
+	);
 
 	if issue_ids.is_empty() {
 		return TrackerObserverOutcome::Ok;
@@ -2912,22 +3002,31 @@ where
 fn operator_snapshot_run_issue_ids(
 	snapshot: &OperatorStatusSnapshot,
 	hydration: RunIssueMetadataHydration,
+	stale_terminal_local_issue_ids: &HashSet<String>,
 ) -> Vec<String> {
 	let mut issue_ids = BTreeSet::new();
 
 	for run in &snapshot.current_lanes {
-		append_operator_run_issue_id(&mut issue_ids, run);
+		append_operator_run_issue_id(&mut issue_ids, run, stale_terminal_local_issue_ids);
 	}
 
 	if matches!(hydration, RunIssueMetadataHydration::AllRows) {
 		for run in &snapshot.recent_runs {
-			append_operator_run_issue_id(&mut issue_ids, run);
+			append_operator_run_issue_id(&mut issue_ids, run, stale_terminal_local_issue_ids);
 		}
 		for lane in &snapshot.history_lanes {
-			append_operator_run_issue_id(&mut issue_ids, &lane.latest_run);
+			append_operator_run_issue_id(
+				&mut issue_ids,
+				&lane.latest_run,
+				stale_terminal_local_issue_ids,
+			);
 
 			for attempt in &lane.attempts {
-				append_operator_run_issue_id(&mut issue_ids, attempt);
+				append_operator_run_issue_id(
+					&mut issue_ids,
+					attempt,
+					stale_terminal_local_issue_ids,
+				);
 			}
 		}
 	}
@@ -2935,12 +3034,34 @@ fn operator_snapshot_run_issue_ids(
 	issue_ids.into_iter().collect()
 }
 
-fn append_operator_run_issue_id(issue_ids: &mut BTreeSet<String>, run: &OperatorRunStatus) {
+fn append_operator_run_issue_id(
+	issue_ids: &mut BTreeSet<String>,
+	run: &OperatorRunStatus,
+	stale_terminal_local_issue_ids: &HashSet<String>,
+) {
+	if operator_run_is_stale_terminal_local_residue(run, stale_terminal_local_issue_ids) {
+		return;
+	}
+
 	let issue_id = run.issue_id.trim();
 
 	if !issue_id.is_empty() && !issue_id.eq_ignore_ascii_case("unknown") {
 		issue_ids.insert(issue_id.to_owned());
 	}
+}
+
+fn operator_run_is_terminal_unleased_identifier(run: &OperatorRunStatus) -> bool {
+	!run.run_lease
+		&& looks_like_tracker_issue_identifier_key(&run.issue_id)
+		&& local_run_attempt_status_is_terminal(&run.attempt_status)
+}
+
+fn operator_run_is_stale_terminal_local_residue(
+	run: &OperatorRunStatus,
+	stale_terminal_local_issue_ids: &HashSet<String>,
+) -> bool {
+	operator_run_is_terminal_unleased_identifier(run)
+		&& stale_terminal_local_issue_ids.contains(run.issue_id.trim())
 }
 
 fn hydrate_operator_snapshot_run_rows(
@@ -3754,6 +3875,7 @@ fn hydrate_history_lanes_from_linear_ledger<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	snapshot: &mut OperatorStatusSnapshot,
+	stale_terminal_local_issue_ids: &HashSet<String>,
 ) -> TrackerObserverOutcome
 where
 	T: IssueTracker,
@@ -3761,6 +3883,15 @@ where
 	let mut unavailable = false;
 
 	for lane in &mut snapshot.history_lanes {
+		if operator_run_is_stale_terminal_local_residue(
+			&lane.latest_run,
+			stale_terminal_local_issue_ids,
+		) {
+			lane.ledger_outcome = stale_terminal_local_history_ledger_outcome();
+
+			continue;
+		}
+
 		match tracker.list_comments(&lane.issue_id) {
 			Ok(comments) => {
 				let records =
@@ -4081,6 +4212,27 @@ fn unavailable_history_ledger_outcome() -> OperatorHistoryLedgerOutcome {
 		final_event_at: None,
 		summary: Some(String::from(
 			"Linear execution ledger records could not be loaded for this issue.",
+		)),
+		pr_url: None,
+		commit_sha: None,
+		branch: None,
+		closeout_status: None,
+		needs_attention_reason: None,
+		lifecycle_started_at: None,
+		lifecycle_finished_at: None,
+		lifecycle_elapsed_seconds: None,
+		record_count: 0,
+	}
+}
+
+fn stale_terminal_local_history_ledger_outcome() -> OperatorHistoryLedgerOutcome {
+	OperatorHistoryLedgerOutcome {
+		ledger_status: String::from("local_terminal_residue"),
+		final_outcome: String::from("local_terminal_residue"),
+		final_event_type: None,
+		final_event_at: None,
+		summary: Some(String::from(
+			"Linear ledger lookup skipped for terminal unleased local residue with an identifier-style issue id.",
 		)),
 		pr_url: None,
 		commit_sha: None,
@@ -4867,7 +5019,23 @@ fn load_post_review_worktree_issues<T>(
 where
 	T: IssueTracker,
 {
-	let worktrees = state_store.list_worktrees(project.service_id())?;
+	let active_issue_ids = active_shared_issue_ids(project, state_store)?;
+	let worktrees = state_store
+		.list_worktrees(project.service_id())?
+		.into_iter()
+		.filter_map(|mapping| {
+			match worktree_mapping_is_stale_terminal_local_residue(
+				project,
+				state_store,
+				&mapping,
+				&active_issue_ids,
+			) {
+				Ok(true) => None,
+				Ok(false) => Some(Ok(mapping)),
+				Err(error) => Some(Err(error)),
+			}
+		})
+		.collect::<crate::prelude::Result<Vec<_>>>()?;
 
 	if worktrees.is_empty() {
 		return Ok(Vec::new());
@@ -6573,12 +6741,21 @@ where
 {
 	let worktree_manager =
 		WorktreeManager::new(project.service_id(), project.repo_root(), project.worktree_root());
-	let mut issue_ids = state_store
-		.list_worktrees(project.service_id())?
-		.into_iter()
-		.map(|mapping| mapping.issue_id().to_owned())
-		.collect::<Vec<_>>();
+	let active_issue_ids = active_shared_issue_ids(project, state_store)?;
+	let mut issue_ids = Vec::new();
 
+	for mapping in state_store.list_worktrees(project.service_id())? {
+		if worktree_mapping_is_stale_terminal_local_residue(
+			project,
+			state_store,
+			&mapping,
+			&active_issue_ids,
+		)? {
+			continue;
+		}
+
+		issue_ids.push(mapping.issue_id().to_owned());
+	}
 	for lease in state_store.list_active_shared_leases(project.service_id())? {
 		if !issue_ids.iter().any(|issue_id| issue_id == lease.issue_id()) {
 			issue_ids.push(lease.issue_id().to_owned());
