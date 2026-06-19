@@ -8,11 +8,10 @@ Decodex is the default research surface for bounded Decodex technical investigat
 Decodex research produces a latent `decodex.decision_contract/1` candidate. It does
 not queue work, mutate Linear, set Codex goals, implement, or dispatch Program nodes.
 
-Phase order: `research-probe`, `research-evidence`, `research-options`,
-`research-judgment`, `research-challenge`, `research-decision`; after explicit
-acceptance, `research-promote`.
-
-Compact loop: probe, evidence, options, judgment, challenge, decision.
+Compact loop: probe, evidence, options, judgment, challenge, decision; after explicit
+acceptance, `research-promote`. Use the generic `challenge` skill for the skeptic
+pass when material assumptions, evidence, option framing, or decision readiness need
+adversarial review.
 
 ## Probe
 
