@@ -941,6 +941,16 @@ After a process restart, recent-run history, run lease ownership, retained post-
   does not occupy Program conflict domains. `legacy_unknown` mappings are excluded
   from this automatic cleanup and remain subject to the explicit legacy closeout audit
   path.
+- Terminal identifier residue: when a runtime-recorded mapping uses an identifier-style
+  issue id such as `PUB-001`, has no active lease or shared claim, has no retained
+  review lifecycle or review checkpoint authority, points at a checkout path that is
+  confirmed missing, and its latest local run attempt is terminal, Decodex must
+  classify it as local terminal residue before any Linear issue refresh. Reconciliation
+  clears the mapping; live status, recovery, post-review readback, and Run Ledger
+  hydration skip Linear refresh/comment calls for that identifier and may surface
+  `stale_terminal_local_worktree_mapping_ignored`, `stale_terminal_local_residue`, or
+  `local_terminal_residue` evidence. Filesystem stat errors are not missing-path
+  evidence and must fail closed rather than clear retained runtime authority.
 - If an issue becomes non-terminal but no longer eligible while `decodex` is still preparing the lane, keep the worktree and skip execution for that pass.
 
 ## Recovery rules
