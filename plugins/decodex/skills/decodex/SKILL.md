@@ -17,6 +17,8 @@ landing boundaries matter.
 - `review-feedback`, `verification`: review repair and evidence before done/fixed/
   ready claims.
 - `research`: bounded investigation before execution.
+- `challenge`: generic skeptic pass for plans, claims, recommendations, evidence
+  sufficiency, and ready/decision-ready assertions.
 - `debugging`: root-cause investigation for bugs, failures, runtime regressions, and
   repeated failed fixes.
 - `docs-drift`: Decodex semantic-drift audits for docs, code, commands, config,

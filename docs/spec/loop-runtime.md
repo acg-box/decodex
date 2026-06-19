@@ -69,8 +69,9 @@ through the lane runtime contract.
 Decodex owns a native Research/Decision compiler for Decodex work. That stage accepts
 natural-language intent such as `research X` plus bounded research/design evidence
 when available, then stores a local Decision Contract candidate. It supersedes the
-external research skill for Decodex runtime authority: Decodex plugin `research*`
-skills are the current agent-facing method, `docs/research/` is the Markdown OKF
+external research skill for Decodex runtime authority: Decodex plugin `research`,
+`challenge`, and `research-promote` skills are the current agent-facing method,
+`docs/research/` is the Markdown OKF
 research concept lane, and checked-in research JSON event logs are not a valid docs
 shape. Checked-in research evidence belongs in Markdown OKF concepts; runtime
 authority still comes from the runtime-local Decision Contract until accepted and

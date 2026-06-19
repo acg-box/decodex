@@ -69,12 +69,13 @@ The split below is by question type, not by human-versus-agent audience.
   `docs/reference/research-concepts.md`
 - Need reusable public-safe evidence concepts -> `docs/evidence/index.md`
 - Need new Decodex bounded research, design investigation, evidence ledger, or
-  research-to-execution promotion -> `plugins/decodex/skills/research*/` and
-  `docs/spec/loop-runtime.md`
+  research-to-execution promotion -> `plugins/decodex/skills/research/`,
+  `plugins/decodex/skills/challenge/`, `plugins/decodex/skills/research-promote/`,
+  and `docs/spec/loop-runtime.md`
 - Need docs-impact classification `research_required` -> switch from the docs skill
-  to `plugins/decodex/skills/research*/`; checked-in output under `docs/research/`
-  stays latent and non-authoritative until promoted into `spec`, `runbook`,
-  `reference`, `decisions`, or `evidence`
+  to `plugins/decodex/skills/research/` and `plugins/decodex/skills/challenge/`;
+  checked-in output under `docs/research/` stays latent and non-authoritative until
+  promoted into `spec`, `runbook`, `reference`, `decisions`, or `evidence`
 - Need a semantic-drift audit concept, stale-claim evidence, or docs/code alignment
   verdict -> `docs/evidence/index.md` and
   `plugins/decodex/skills/docs-drift/SKILL.md`

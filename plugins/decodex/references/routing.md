@@ -14,20 +14,22 @@ runtime ops, commit, or landing boundaries.
   configuration contracts, architecture/cutover defaults, language/tooling defaults,
   dependency policy, review repair, validation evidence, completion claims, and
   dynamic support-agent boundaries. Route from there to dependency, review,
-  verification, debugging, drift, or research skills when the touched surface calls
-  for them.
+  verification, debugging, challenge, drift, or research skills when the touched
+  surface calls for them.
 - Docs: use `docs` as the router. Use `docs-okf`, `docs-wiki`, and `docs-drift`
   for shape, navigation, and audits. Docs impact `research_required` switches to
-  `research*`; checked-in `docs/research/` is latent evidence.
+  `research` plus `challenge`; checked-in `docs/research/` is latent evidence.
 - Semantic drift: use `docs-drift` for docs/code/help/status/config/runtime claim
   alignment. It owns drift verdicts even when the trigger is a command, config key,
   status phrase, generated artifact, or runtime readback rather than a prose doc.
 - Debugging: use `debugging` for root-cause investigation, original-symptom checks,
   runtime diagnostics, and repeated failed fixes. Debugging may feed research only
   when the result becomes a decision-ready comparison.
-- Research/design: use `research` and phase skills. The compact loop is probe,
-  evidence, options, judgment, challenge, decision. Results are latent Decision
-  Contract candidates only.
+- Research/design: use `research`. The compact loop is probe, evidence, options,
+  judgment, challenge, decision. Results are latent Decision Contract candidates only.
+- Challenge: use `challenge` for generic skeptic review of plans, claims, evidence
+  sufficiency, option framing, and ready/decision-ready assertions. Challenge does
+  not create execution authority.
 - Promotion: use `research-promote` only after explicit acceptance such as "arrange
   this", "push this forward", "推进", or "做".
 - Planning: use `planning` after promotion or another explicit execution instruction.
@@ -58,9 +60,9 @@ runtime ops, commit, or landing boundaries.
 
 ## Natural-Language Research Routing
 
-Keep Decodex natural-language-first. Requests such as `research X` route through
-`research`, `research-probe`, `research-evidence`, `research-options`,
-`research-judgment`, `research-challenge`, and `research-decision` before promotion.
+Keep Decodex natural-language-first. Requests such as `research X` route through the
+`research` compact loop, including a `challenge` pass before terminal decision, before
+promotion.
 
 Research never queues work, mutates Linear, starts implementation, creates Codex
 goals, or dispatches Program nodes. Promotion preserves accepted objectives,
