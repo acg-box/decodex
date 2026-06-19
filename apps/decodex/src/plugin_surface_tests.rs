@@ -1,112 +1,144 @@
 use serde_json::Value;
 
-const PLUGIN_JSON: &str = include_str!(concat!(
+const AGENT_METHOD_PLUGIN_JSON: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/agent-method/.codex-plugin/plugin.json"
+));
+const DECODEX_PLUGIN_JSON: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/.codex-plugin/plugin.json"
+));
+const KNOWLEDGE_PLUGIN_JSON: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/.codex-plugin/plugin.json"
+));
+const REPO_WORK_PLUGIN_JSON: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/.codex-plugin/plugin.json"
 ));
 const DECODEX_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/decodex/SKILL.md"
 ));
-const PLANNING_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/planning/SKILL.md"
-));
-const PLANNING_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/planning/agents/openai.yaml"
-));
 const DECODEX_OPS_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/decodex-ops/SKILL.md"
 ));
-const DECODEX_OPS_AGENT_POLICY: &str = include_str!(concat!(
+const PLANNING_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/decodex-ops/agents/openai.yaml"
-));
-const COMMIT_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/commit/agents/openai.yaml"
-));
-const LAND_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/land/agents/openai.yaml"
+	"/../../plugins/decodex/skills/planning/SKILL.md"
 ));
 const RESEARCH_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research/SKILL.md"
 ));
-const RESEARCH_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research/agents/openai.yaml"
-));
 const RESEARCH_PROMOTE_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-promote/SKILL.md"
+));
+const AGENT_CHALLENGE_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/agent-method/skills/challenge/SKILL.md"
+));
+const KNOWLEDGE_DOCS_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/docs/SKILL.md"
+));
+const KNOWLEDGE_DOCS_DRIFT_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/docs-drift/SKILL.md"
+));
+const KNOWLEDGE_OKF_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/okf/SKILL.md"
+));
+const KNOWLEDGE_REPO_MEMORY_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/repo-memory/SKILL.md"
+));
+const REPO_WORK_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/repo-work/SKILL.md"
+));
+const REPO_DEBUGGING_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/debugging/SKILL.md"
+));
+const REPO_VERIFICATION_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/verification/SKILL.md"
+));
+const REPO_REVIEW_FEEDBACK_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/review-feedback/SKILL.md"
+));
+const REPO_DEPENDENCY_POLICY_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/dependency-policy/SKILL.md"
+));
+const AGENT_CHALLENGE_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/agent-method/skills/challenge/agents/openai.yaml"
+));
+const COMMIT_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/commit/agents/openai.yaml"
+));
+const DECODEX_OPS_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/decodex-ops/agents/openai.yaml"
+));
+const LAND_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/land/agents/openai.yaml"
+));
+const PLANNING_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/planning/agents/openai.yaml"
+));
+const RESEARCH_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/research/agents/openai.yaml"
 ));
 const RESEARCH_PROMOTE_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-promote/agents/openai.yaml"
 ));
-const CHALLENGE_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/agent-method/skills/challenge/SKILL.md"
-));
-const CHALLENGE_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/agent-method/skills/challenge/agents/openai.yaml"
-));
-const DOCS_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/knowledge/skills/docs/SKILL.md"
-));
-const DOCS_AGENT_POLICY: &str = include_str!(concat!(
+const KNOWLEDGE_DOCS_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/knowledge/skills/docs/agents/openai.yaml"
 ));
-const DOCS_DRIFT_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/knowledge/skills/docs-drift/SKILL.md"
-));
-const DOCS_DRIFT_AGENT_POLICY: &str = include_str!(concat!(
+const KNOWLEDGE_DOCS_DRIFT_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/knowledge/skills/docs-drift/agents/openai.yaml"
 ));
-const OKF_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/knowledge/skills/okf/SKILL.md"
-));
-const OKF_AGENT_POLICY: &str = include_str!(concat!(
+const KNOWLEDGE_OKF_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/knowledge/skills/okf/agents/openai.yaml"
 ));
-const REPO_MEMORY_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/knowledge/skills/repo-memory/SKILL.md"
-));
-const REPO_MEMORY_AGENT_POLICY: &str = include_str!(concat!(
+const KNOWLEDGE_REPO_MEMORY_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/knowledge/skills/repo-memory/agents/openai.yaml"
+));
+const REPO_DEBUGGING_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/debugging/agents/openai.yaml"
+));
+const REPO_DEPENDENCY_POLICY_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/dependency-policy/agents/openai.yaml"
+));
+const REPO_REVIEW_FEEDBACK_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/review-feedback/agents/openai.yaml"
+));
+const REPO_VERIFICATION_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/verification/agents/openai.yaml"
 ));
 const REPO_WORK_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/repo-work/skills/repo-work/agents/openai.yaml"
-));
-const DEBUGGING_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/repo-work/skills/debugging/agents/openai.yaml"
-));
-const DEPENDENCY_POLICY_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/repo-work/skills/dependency-policy/agents/openai.yaml"
-));
-const REVIEW_FEEDBACK_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/repo-work/skills/review-feedback/agents/openai.yaml"
-));
-const VERIFICATION_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/repo-work/skills/verification/agents/openai.yaml"
 ));
 const ROUTING_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
@@ -115,26 +147,6 @@ const ROUTING_REF: &str = include_str!(concat!(
 const ISSUE_BRIEFING_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/references/issue-briefing.md"
-));
-const DOCS_METHOD_REF: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/knowledge/references/docs-method.md"
-));
-const DOCS_OKF_REF: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/knowledge/references/docs-okf.md"
-));
-const DOCS_WIKI_REF: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/knowledge/references/docs-wiki.md"
-));
-const DOCS_DRIFT_REF: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/knowledge/references/docs-drift.md"
-));
-const OKF_LAYER_REF: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/knowledge/references/okf-layer.md"
 ));
 const RESEARCH_LIFECYCLE_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
@@ -152,66 +164,105 @@ const RESEARCH_PROMOTION_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/references/research-promotion.md"
 ));
+const KNOWLEDGE_DOCS_METHOD_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/references/docs-method.md"
+));
+const KNOWLEDGE_DOCS_OKF_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/references/docs-okf.md"
+));
+const KNOWLEDGE_DOCS_WIKI_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/references/docs-wiki.md"
+));
+const KNOWLEDGE_DOCS_DRIFT_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/references/docs-drift.md"
+));
+const KNOWLEDGE_OKF_LAYER_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/references/okf-layer.md"
+));
+const REPO_WORK_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/references/repo-work.md"
+));
+const REPO_DEPENDENCY_POLICY_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/references/dependency-policy.md"
+));
 
 #[test]
-fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
-	let manifest: Value = serde_json::from_str(PLUGIN_JSON).expect("plugin manifest should parse");
-	let interface = manifest
-		.get("interface")
-		.and_then(Value::as_object)
-		.expect("plugin interface should be an object");
-	let long_description = interface
-		.get("longDescription")
-		.and_then(Value::as_str)
-		.expect("longDescription should be a string");
-	let default_prompts = interface
-		.get("defaultPrompt")
-		.and_then(Value::as_array)
-		.expect("defaultPrompt should be an array")
-		.iter()
-		.filter_map(Value::as_str)
-		.collect::<Vec<_>>()
-		.join("\n");
-	let manifest_surface = format!(
-		"{long_description}\n{default_prompts}\n{ROUTING_REF}\n{ISSUE_BRIEFING_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_CONTRACT_REF}"
-	);
+fn packaged_plugin_manifests_route_split_surface_owners() {
+	let decodex_surface = manifest_interface_surface(DECODEX_PLUGIN_JSON);
+	let knowledge_surface = manifest_interface_surface(KNOWLEDGE_PLUGIN_JSON);
+	let repo_work_surface = manifest_interface_surface(REPO_WORK_PLUGIN_JSON);
+	let agent_method_surface = manifest_interface_surface(AGENT_METHOD_PLUGIN_JSON);
+	let routing_surface = format!("{ROUTING_REF}\n{KNOWLEDGE_OKF_LAYER_REF}\n{REPO_WORK_REF}");
 
-	assert_contains(&manifest_surface, "natural-language-first");
-	assert_contains(&manifest_surface, "portable OKF");
-	assert_contains(&manifest_surface, "knowledge/docs");
-	assert_contains(&manifest_surface, "bounded research");
-	assert_contains(&manifest_surface, "probe, evidence, options, judgment, challenge, decision");
-	assert_contains(&manifest_surface, "`research X`");
-	assert_contains(&manifest_surface, "latent Decision Contract");
-	assert_contains(&manifest_surface, "\"arrange this\"");
-	assert_contains(&manifest_surface, "\"推进\"");
-	assert_contains(&manifest_surface, "ready mapped nodes directly");
-	assert_contains(&manifest_surface, "DAG");
-	assert_contains(&manifest_surface, "issue briefing");
-	assert_contains(&default_prompts, "Research this with Decodex.");
-	assert_contains(&default_prompts, "Plan accepted Decodex work.");
-	assert_contains(&default_prompts, "Operate Decodex.");
+	assert_contains(&decodex_surface, "bounded research");
+	assert_contains(&decodex_surface, "runtime ops");
+	assert_contains(&decodex_surface, "companion plugins");
+	assert_contains(&decodex_surface, "Research this with Decodex.");
+	assert_contains(&decodex_surface, "Plan accepted Decodex work.");
+	assert_contains(&decodex_surface, "Operate Decodex.");
+	assert_not_contains(&decodex_surface, "Maintain Decodex docs.");
+	assert_not_contains(&decodex_surface, "Work with an OKF bundle.");
+	assert_contains(&knowledge_surface, "OKF and LLM Wiki");
+	assert_contains(&knowledge_surface, "semantic drift audits");
+	assert_contains(&knowledge_surface, "source-backed repository memory");
+	assert_contains(&knowledge_surface, "Maintain these docs.");
+	assert_contains(&knowledge_surface, "Work with an OKF bundle.");
+	assert_contains(&knowledge_surface, "Audit semantic drift.");
+	assert_contains(&repo_work_surface, "task-runner structure");
+	assert_contains(&repo_work_surface, "verification evidence");
+	assert_contains(&repo_work_surface, "root-cause debugging");
+	assert_contains(&repo_work_surface, "Apply repo-work rules.");
+	assert_contains(&repo_work_surface, "Verify this change.");
+	assert_contains(&repo_work_surface, "Debug this failure.");
+	assert_contains(&agent_method_surface, "challenge skill");
+	assert_contains(&agent_method_surface, "evidence sufficiency");
+	assert_contains(&agent_method_surface, "Challenge this plan.");
+	assert_contains(&routing_surface, "$knowledge:docs");
+	assert_contains(&routing_surface, "$knowledge:okf");
+	assert_contains(&routing_surface, "$knowledge:repo-memory");
+	assert_contains(&routing_surface, "$repo-work:repo-work");
+	assert_contains(&routing_surface, "$agent-method:challenge");
+	assert_contains(&routing_surface, "natural-language-first");
+	assert_contains(&routing_surface, "portable OKF");
+	assert_contains(&routing_surface, "checked-in command authority");
 }
 
 #[test]
-fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
+fn packaged_decodex_skills_preserve_research_promotion_and_program_boundaries() {
 	let skill_surface = format!(
-		"{DECODEX_SKILL}\n{PLANNING_SKILL}\n{DECODEX_OPS_SKILL}\n{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{ROUTING_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_PROMOTION_REF}"
+		"{DECODEX_SKILL}\n{DECODEX_OPS_SKILL}\n{PLANNING_SKILL}\n{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{ROUTING_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
 	let planning_surface = format!("{PLANNING_SKILL}\n{ISSUE_BRIEFING_REF}\n{ROUTING_REF}");
 
 	assert_contains(&skill_surface, "## Natural-Language Research Routing");
 	assert_contains(&skill_surface, "`research X`");
+	assert_contains(&skill_surface, "$agent-method:challenge");
 	assert_contains(&skill_surface, "`research-promote`");
-	assert_contains(&skill_surface, "external research skills");
+	assert_contains(
+		&skill_surface,
+		"Do not route Decodex research through external research skills",
+	);
 	assert_contains(&skill_surface, "latent Decision Contract");
 	assert_contains(&skill_surface, "\"arrange this\"");
 	assert_contains(&skill_surface, "\"推进\"");
-	assert_contains_normalized(&skill_surface, "never queues work");
-	assert_contains(&skill_surface, "dispatches ready mapped nodes directly");
-	assert_contains(&skill_surface, "accepted Decision Contract");
-	assert_contains(&skill_surface, "Do not replace `WORKFLOW.md`");
-	assert_contains_normalized(&skill_surface, "Program Intake dispatches ready mapped nodes");
+	assert_contains_normalized(&skill_surface, "Research never queues work");
+	assert_contains_normalized(
+		&skill_surface,
+		"Program Intake dispatches ready mapped nodes directly",
+	);
+	assert_contains(&skill_surface, "queue labels are not the Program scheduler");
+	assert_contains(&skill_surface, "non-Program issue intake");
+	assert_contains(&skill_surface, "not queue-label polling");
+	assert_contains(&skill_surface, "decodex:needs-attention");
+	assert_contains(&skill_surface, "terminal_pending");
+	assert_contains(&skill_surface, "Require promoted research");
 	assert_contains(&skill_surface, "Promotion is a separate authority step");
 	assert_contains(&skill_surface, "after execution authority exists");
 	assert_contains(&skill_surface, "runtime operations");
@@ -221,16 +272,15 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 	assert_contains(&skill_surface, "LLM Wiki indexes");
 	assert_contains_normalized(&skill_surface, "current truth stands without reading research");
 	assert_contains(&skill_surface, "current truth independently");
-	assert_contains_normalized(&skill_surface, "does not queue work, mutate Linear");
-	assert_contains(&skill_surface, "ordinary non-Program tracker intake");
-	assert_contains(&skill_surface, "not queue-label polling");
-	assert_contains(&skill_surface, "Require promoted research");
+	assert_contains_normalized(&skill_surface, "Do not queue work, mutate Linear");
+	assert_contains(&skill_surface, "Program Intake");
 	assert_contains(&planning_surface, "Decodex-native issue briefs");
 	assert_contains(&planning_surface, "generic dispatch briefing");
 	assert_contains(&planning_surface, "one outcome");
 	assert_contains(&planning_surface, "explicit non-goals");
 	assert_contains(&planning_surface, "current-tree landing zone");
 	assert_contains(&planning_surface, "validation expectations");
+	assert_contains(&planning_surface, "Do not replace `WORKFLOW.md`");
 	assert_contains(
 		&planning_surface,
 		"Do not route Decodex issue briefing through an external delivery workflow",
@@ -239,13 +289,14 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 }
 
 #[test]
-fn packaged_research_skills_encode_decodex_methodology() {
+fn packaged_research_and_challenge_skills_encode_decodex_methodology() {
 	let research_surface = format!(
-		"{RESEARCH_SKILL}\n{CHALLENGE_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_EVIDENCE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
+		"{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{AGENT_CHALLENGE_SKILL}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_EVIDENCE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
 
 	assert_contains(&research_surface, "default research surface");
 	assert_contains(&research_surface, "probe, evidence, options, judgment, challenge, decision");
+	assert_contains(&research_surface, "$agent-method:challenge");
 	assert_contains_normalized(&research_surface, "No evidence, no claim");
 	assert_contains_normalized(&research_surface, "Runtime state");
 	assert_contains(
@@ -255,14 +306,12 @@ fn packaged_research_skills_encode_decodex_methodology() {
 	assert_contains_normalized(&research_surface, "primary hypothesis");
 	assert_contains_normalized(&research_surface, "rival hypotheses");
 	assert_contains(&research_surface, "falsifiers");
-	assert_contains(&research_surface, "No evidence, no claim");
 	assert_contains(&research_surface, "observations");
 	assert_contains(&research_surface, "contradictions");
 	assert_contains(&research_surface, "external_source");
 	assert_contains(&research_surface, "repo_source");
 	assert_contains(&research_surface, "live_readback");
 	assert_contains(&research_surface, "status quo");
-	assert_contains(&research_surface, "evidence");
 	assert_contains(&research_surface, "challenge-ready");
 	assert_contains(&research_surface, "not_decision_ready");
 	assert_contains_normalized(
@@ -288,12 +337,14 @@ fn packaged_research_skills_encode_decodex_methodology() {
 	assert_contains_normalized(&research_surface, "out-of-band history");
 	assert_contains(&research_surface, "Use `no_promotion` only when");
 	assert_contains(&research_surface, "Program Intake");
+	assert_contains(&research_surface, "missing evidence");
+	assert_contains(&research_surface, "premature success claims");
 }
 
 #[test]
-fn packaged_docs_skills_encode_okf_wiki_and_drift_boundaries() {
+fn packaged_knowledge_skills_encode_okf_wiki_and_drift_boundaries() {
 	let docs_surface = format!(
-		"{DOCS_SKILL}\n{DOCS_DRIFT_SKILL}\n{DOCS_METHOD_REF}\n{DOCS_OKF_REF}\n{DOCS_WIKI_REF}\n{DOCS_DRIFT_REF}\n{ROUTING_REF}"
+		"{KNOWLEDGE_DOCS_SKILL}\n{KNOWLEDGE_DOCS_DRIFT_SKILL}\n{KNOWLEDGE_OKF_SKILL}\n{KNOWLEDGE_REPO_MEMORY_SKILL}\n{KNOWLEDGE_DOCS_METHOD_REF}\n{KNOWLEDGE_DOCS_OKF_REF}\n{KNOWLEDGE_DOCS_WIKI_REF}\n{KNOWLEDGE_DOCS_DRIFT_REF}\n{KNOWLEDGE_OKF_LAYER_REF}\n{ROUTING_REF}"
 	);
 
 	assert_contains(&docs_surface, "OKF");
@@ -312,18 +363,19 @@ fn packaged_docs_skills_encode_okf_wiki_and_drift_boundaries() {
 	assert_contains(&docs_surface, "Do not create a parallel `wiki/` or `okf/` root");
 	assert_not_contains(&docs_surface, "Okf");
 	assert_contains(&docs_surface, "portable OKF");
-	assert_contains(&docs_surface, "strict OKF bundle");
+	assert_contains(&docs_surface, "Decodex docs profile");
 }
 
 #[test]
 fn packaged_okf_skills_preserve_portable_profile_boundary() {
-	let okf_surface = format!("{OKF_SKILL}\n{REPO_MEMORY_SKILL}\n{OKF_LAYER_REF}");
+	let okf_surface =
+		format!("{KNOWLEDGE_OKF_SKILL}\n{KNOWLEDGE_REPO_MEMORY_SKILL}\n{KNOWLEDGE_OKF_LAYER_REF}");
 
 	assert_contains(&okf_surface, "portable OKF");
 	assert_contains(&okf_surface, "LLM Wiki");
-	assert_contains(&okf_surface, "$knowledge:repo-memory");
+	assert_contains(&okf_surface, "repo-memory");
 	assert_contains(&okf_surface, "source-backed repository memory");
-	assert_contains(&okf_surface, "query/maintain OKF bundles");
+	assert_contains(&okf_surface, "The CLI does not replace the LLM");
 	assert_contains(&okf_surface, "decodex okf init");
 	assert_contains(&okf_surface, "decodex okf check");
 	assert_contains(&okf_surface, "decodex okf find");
@@ -337,31 +389,77 @@ fn packaged_okf_skills_preserve_portable_profile_boundary() {
 	assert_contains(&okf_surface, "related");
 	assert_contains(&okf_surface, "drift_watch");
 	assert_contains_normalized(&okf_surface, "Do not create or recommend `decodex docs okf ...`");
-	assert_contains_normalized(&okf_surface, "do not inherit runtime lanes, tracker workflow");
+	assert_contains_normalized(&okf_surface, "do not inherit runtime lanes");
+	assert_contains(&okf_surface, "docs-impact checkpoints");
+}
+
+#[test]
+fn packaged_repo_work_skills_preserve_command_and_verification_authority() {
+	let repo_surface = format!(
+		"{REPO_WORK_SKILL}\n{REPO_DEBUGGING_SKILL}\n{REPO_VERIFICATION_SKILL}\n{REPO_REVIEW_FEEDBACK_SKILL}\n{REPO_DEPENDENCY_POLICY_SKILL}\n{REPO_WORK_REF}\n{REPO_DEPENDENCY_POLICY_REF}"
+	);
+
+	assert_contains(&repo_surface, "checked-in command authority");
+	assert_contains(&repo_surface, "Task Runner Structure");
+	assert_contains(&repo_surface, "Prefer repo-native commands");
+	assert_contains(&repo_surface, "Makefile.toml");
+	assert_contains(&repo_surface, "Root-cause investigation");
+	assert_contains_normalized(&repo_surface, "symptom -> owner boundary -> fresh baseline");
+	assert_contains(&repo_surface, "Every positive claim must have evidence");
+	assert_contains(&repo_surface, "Implemented, not fully verified");
+	assert_contains(&repo_surface, "verified_actionable");
+	assert_contains(&repo_surface, "Run `plugin-eval analyze <plugin-root> --format markdown`");
+	assert_contains(&repo_surface, "Task-runner review checklist");
+	assert_contains(&repo_surface, "External `uses: owner/action@ref`");
+	assert_contains(&repo_surface, "requires-follow-up-migration");
+	assert_contains(&repo_surface, "Do not duplicate this routing in host bootstrap files");
 }
 
 #[test]
 fn narrow_lifecycle_and_specialist_skills_are_explicit_only() {
 	for policy in [
-		PLANNING_AGENT_POLICY,
-		DECODEX_OPS_AGENT_POLICY,
+		AGENT_CHALLENGE_AGENT_POLICY,
 		COMMIT_AGENT_POLICY,
+		DECODEX_OPS_AGENT_POLICY,
 		LAND_AGENT_POLICY,
+		PLANNING_AGENT_POLICY,
 		RESEARCH_AGENT_POLICY,
 		RESEARCH_PROMOTE_AGENT_POLICY,
-		CHALLENGE_AGENT_POLICY,
-		DOCS_AGENT_POLICY,
-		DOCS_DRIFT_AGENT_POLICY,
-		OKF_AGENT_POLICY,
-		REPO_MEMORY_AGENT_POLICY,
+		KNOWLEDGE_DOCS_AGENT_POLICY,
+		KNOWLEDGE_DOCS_DRIFT_AGENT_POLICY,
+		KNOWLEDGE_OKF_AGENT_POLICY,
+		KNOWLEDGE_REPO_MEMORY_AGENT_POLICY,
+		REPO_DEBUGGING_AGENT_POLICY,
+		REPO_DEPENDENCY_POLICY_AGENT_POLICY,
+		REPO_REVIEW_FEEDBACK_AGENT_POLICY,
+		REPO_VERIFICATION_AGENT_POLICY,
 		REPO_WORK_AGENT_POLICY,
-		DEBUGGING_AGENT_POLICY,
-		DEPENDENCY_POLICY_AGENT_POLICY,
-		REVIEW_FEEDBACK_AGENT_POLICY,
-		VERIFICATION_AGENT_POLICY,
 	] {
 		assert_contains(policy, "allow_implicit_invocation: false");
 	}
+}
+
+fn manifest_interface_surface(manifest_json: &str) -> String {
+	let manifest: Value =
+		serde_json::from_str(manifest_json).expect("plugin manifest should parse");
+	let interface = manifest
+		.get("interface")
+		.and_then(Value::as_object)
+		.expect("plugin interface should be an object");
+	let long_description = interface
+		.get("longDescription")
+		.and_then(Value::as_str)
+		.expect("longDescription should be a string");
+	let default_prompts = interface
+		.get("defaultPrompt")
+		.and_then(Value::as_array)
+		.expect("defaultPrompt should be an array")
+		.iter()
+		.filter_map(Value::as_str)
+		.collect::<Vec<_>>()
+		.join("\n");
+
+	format!("{long_description}\n{default_prompts}")
 }
 
 fn assert_contains(haystack: &str, needle: &str) {
