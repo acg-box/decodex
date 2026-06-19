@@ -1,8 +1,8 @@
-# Decodex Docs Drift Reference
+# Docs Drift Reference
 
-Use this when Decodex docs claims may diverge from code, commands, config, runtime
-state, tracker behavior, validation, or evidence. Portable OKF graph and frontmatter
-quality checks use `okf-layer.md` and `decodex okf`.
+Use this when docs claims may diverge from code, commands, config, runtime state,
+tracker behavior, validation, or evidence. Portable OKF graph and frontmatter quality
+checks use `okf-layer.md`.
 
 ## Trigger
 
@@ -25,7 +25,7 @@ public-safe manual-attention path.
 
 ## Helper
 
-Use `plugins/decodex/scripts/semantic_drift_audit.py` from the repository root when a
+Use `plugins/knowledge/scripts/semantic_drift_audit.py` from the repository root when a
 git diff packet can reduce manual scanning. It reports changed docs, changed
 executable surfaces, added claim-like lines, removed executable terms, stale phrase
 hits, and whether agent review is required. The helper is not a verdict; compare the

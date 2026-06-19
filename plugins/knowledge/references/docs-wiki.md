@@ -1,6 +1,6 @@
-# Decodex Docs Wiki Reference
+# Docs Wiki Reference
 
-Use this for Decodex `docs/` navigation, indexing, linking, and deduplication. Use
+Use this for repository `docs/` navigation, indexing, linking, and deduplication. Use
 `okf-layer.md` for portable OKF/LLM Wiki bundles.
 
 ## Reading Order

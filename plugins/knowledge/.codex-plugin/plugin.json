@@ -1,0 +1,41 @@
+{
+  "name": "knowledge",
+  "version": "0.1.0",
+  "description": "Knowledge and documentation workflows for OKF, LLM Wiki navigation, semantic drift, and source-backed repo memory.",
+  "author": {
+    "name": "hack-ink",
+    "email": "hi@hack.ink",
+    "url": "https://github.com/hack-ink"
+  },
+  "homepage": "https://github.com/hack-ink/decodex",
+  "repository": "https://github.com/hack-ink/decodex",
+  "license": "GPL-3.0",
+  "keywords": [
+    "docs",
+    "knowledge",
+    "okf",
+    "repo-memory",
+    "semantic-drift"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Knowledge",
+    "shortDescription": "Maintain OKF docs, drift audits, and repo memory.",
+    "longDescription": "Routes documentation maintenance, OKF and LLM Wiki bundles, semantic drift audits, and source-backed repository memory writing, evaluation, and curation.",
+    "developerName": "hack-ink",
+    "category": "Development",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "websiteURL": "https://github.com/hack-ink/decodex",
+    "privacyPolicyURL": "https://github.com/hack-ink/decodex",
+    "termsOfServiceURL": "https://github.com/hack-ink/decodex",
+    "defaultPrompt": [
+      "Maintain these docs.",
+      "Work with an OKF bundle.",
+      "Audit semantic drift."
+    ],
+    "brandColor": "#7C3AED"
+  }
+}

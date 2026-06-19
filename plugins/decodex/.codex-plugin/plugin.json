@@ -1,7 +1,7 @@
 {
   "name": "decodex",
   "version": "0.2.0",
-  "description": "Decodex lifecycle workflows for docs/OKF, semantic drift, research, promotion, issue planning, ops, commit, and landing.",
+  "description": "Decodex lifecycle workflows for research, promotion, issue planning, ops, commit, and landing.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -16,14 +16,13 @@
     "codex",
     "decodex",
     "diagnostics",
-    "semantic-drift",
     "orchestration"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Decodex",
-    "shortDescription": "Maintain Decodex docs, drift, research, planning, operations, commit, and landing.",
-    "longDescription": "Routes Decodex docs and OKF work, semantic drift audits, bounded research, promotion, issue briefing and planning, runtime ops, commit, and landing. Repository execution policy and generic challenge live in companion plugins.",
+    "shortDescription": "Maintain Decodex research, planning, operations, commit, and landing.",
+    "longDescription": "Routes Decodex bounded research, promotion, issue briefing and planning, runtime ops, commit, and landing. Repository execution policy, knowledge/docs, and generic challenge live in companion plugins.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -34,9 +33,9 @@
     "privacyPolicyURL": "https://github.com/hack-ink/decodex",
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
-      "Maintain Decodex docs. Work with an OKF bundle.",
       "Research this with Decodex.",
-      "Audit Decodex drift or operate Decodex."
+      "Plan accepted Decodex work.",
+      "Operate Decodex."
     ],
     "brandColor": "#0F766E"
   }

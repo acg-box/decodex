@@ -14,9 +14,8 @@ Status: accepted
 Date: 2026-05-09
 Question: Where should reusable agent-facing Decodex and companion plugin instructions live?
 Decision: Maintain the canonical Decodex lifecycle plugin in this repository under
-`plugins/decodex/`, and maintain companion plugin sources under `plugins/repo-work/`
-and `plugins/agent-method/`. Decodex keeps docs/OKF and repo-memory skills only until
-their CLI surfaces migrate.
+`plugins/decodex/`, and maintain companion plugin sources under `plugins/knowledge/`,
+`plugins/repo-work/`, and `plugins/agent-method/`.
 Consequences: Decodex runtime guidance can change with the runtime, while reusable
 repository execution policy and generic challenge methods stop being Decodex-owned.
 Host bootstrap instructions compose the installed plugins without copying their
@@ -55,12 +54,12 @@ The Decodex plugin should own Decodex-specific procedures and mode routing:
 
 Companion plugins:
 
+- `plugins/knowledge/` owns docs, OKF/LLM Wiki, semantic drift, and source-backed
+  repo-memory skills.
 - `plugins/repo-work/` owns checked-in command authority, task-runner structure,
   dependency policy, review repair, verification, debugging, and dynamic support-agent
   boundaries.
 - `plugins/agent-method/` owns generic challenge/skeptic review.
-- Docs/OKF and repo-memory remain in `plugins/decodex/` for now because their Decodex
-  CLI subcommands have not migrated; they are expected to move as one unit later.
 
 The plugin must route to `apps/decodex/src/`, `docs/spec/`, `docs/runbook/`, `docs/reference/`,
 registered project `WORKFLOW.md`, and registered project `project.toml` instead of

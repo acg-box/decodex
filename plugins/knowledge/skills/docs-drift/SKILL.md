@@ -1,13 +1,13 @@
 ---
 name: docs-drift
-description: Use when auditing Decodex semantic drift across docs claims, code, commands, config, evidence, generated artifacts, status text, and runtime behavior.
+description: Use when auditing semantic drift across docs claims, code, commands, config, evidence, generated artifacts, status text, runtime behavior, or public agent-facing instructions.
 ---
 
-# Decodex Docs Drift
+# Docs Drift
 
-Audit Decodex docs and public claims against source evidence. For portable OKF graph
-or frontmatter quality checks, use `okf` or `okf-query`; this skill owns Decodex
-semantic drift and completion blocking.
+Audit docs and public claims against source evidence. For portable OKF graph or
+frontmatter quality checks, use `$knowledge:okf`; this skill owns semantic drift
+verdicts and completion blocking.
 
 Read `../../references/docs-drift.md` before judging docs/code alignment.
 

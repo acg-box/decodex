@@ -29,7 +29,7 @@ The split below is by question type, not by human-versus-agent audience.
     supports this claim?"
   - `docs/research/index.md` when the question is "which latent research concept or
     supporting evidence exists but is not repository authority yet?"
-  - `docs/evidence/index.md` plus `plugins/decodex/skills/docs-drift/SKILL.md` when
+  - `docs/evidence/index.md` plus `plugins/knowledge/skills/docs-drift/SKILL.md` when
     the question is "which semantic-drift audit checks docs, code, commands, status,
     and examples against each other?"
 
@@ -78,10 +78,9 @@ The split below is by question type, not by human-versus-agent audience.
   checked-in output under `docs/research/` stays latent and non-authoritative until
   promoted into `spec`, `runbook`, `reference`, `decisions`, or `evidence`
 - Need a semantic-drift audit concept, stale-claim evidence, or docs/code alignment
-  verdict -> `docs/evidence/index.md` and
-  `plugins/decodex/skills/docs-drift/SKILL.md`
+  verdict -> `docs/evidence/index.md` and `plugins/knowledge/skills/docs-drift/SKILL.md`
 - Need docs maintenance, OKF concepts, docs impact classification, or drift gate
-  handling -> `plugins/decodex/skills/docs/SKILL.md` and `docs/policy.md`
+  handling -> `plugins/knowledge/skills/docs/SKILL.md` and `docs/policy.md`
 - Need autonomous Decodex context intake, OKF/LLM Wiki owner reads, context anchors,
   or late docs-skill recovery ->
   `plugins/decodex/references/routing.md`
@@ -89,9 +88,9 @@ The split below is by question type, not by human-versus-agent audience.
   maintenance anchors, or owner-coverage observations ->
   `docs/reference/docs-knowledge-map.md`
 - Need OKF concept schema, LLM Wiki navigation, or drift audit details ->
-  `plugins/decodex/skills/docs-okf/SKILL.md`,
-  `plugins/decodex/skills/docs-wiki/SKILL.md`, and
-  `plugins/decodex/skills/docs-drift/SKILL.md`
+  `plugins/knowledge/references/docs-okf.md`,
+  `plugins/knowledge/references/docs-wiki.md`, and
+  `plugins/knowledge/skills/docs-drift/SKILL.md`
 - Need reusable agent-facing Decodex usage instructions -> `plugins/decodex/`
 - Need repository execution defaults or tracker-state policy -> registered project
   `WORKFLOW.md`
@@ -102,7 +101,7 @@ The split below is by question type, not by human-versus-agent audience.
 
 - Optimize for agent navigation and execution, not narrative flow.
 - Read `docs/policy.md` for lane ownership and authoring rules.
-- Use `plugins/decodex/skills/docs/SKILL.md` when a Decodex lane touches docs or
+- Use `plugins/knowledge/skills/docs/SKILL.md` when a Decodex lane touches docs or
   changes behavior that may require docs impact classification.
 - Keep one authoritative document per topic. Link instead of copying.
 - Keep runtime authority explicit: `apps/decodex/src/`, registered project contracts

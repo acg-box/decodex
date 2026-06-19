@@ -15,8 +15,8 @@ dependency policy, validation, landing authority, or final evidence reporting ma
 
 - Repository docs, knowledge, or semantic drift: follow the checked-in docs or
   knowledge owner.
-- Dependency upgrades, Dependabot, manifest style, or GitHub Actions SHA pinning:
-  read `../../references/dependency-policy.md`.
+- Dependency upgrades, Dependabot, manifest style, lockfile/generated dependency
+  artifacts, or GitHub Actions SHA pinning: `$repo-work:dependency-policy`.
 - Incoming review feedback or review repair: `$repo-work:review-feedback`.
 - Done/fixed/ready/landed/verified claims: `$repo-work:verification`.
 - Root-cause investigation or repeated failed fixes: `$repo-work:debugging`.

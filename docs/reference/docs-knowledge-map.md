@@ -7,7 +7,7 @@ authority: current_state
 owner: docs
 tags: [docs, okf, llm-wiki, repo-memory, evaluation, owner-coverage, reference]
 source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md, https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing, https://llmstxt.org/, https://diataxis.fr/, https://developers.openai.com/codex/guides/agents-md, https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions]
-code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/cli.rs, docs/index.md, docs/policy.md, docs/spec/okf-knowledge-layer.md, plugins/decodex/references/routing.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-evaluator/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md]
+code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/cli.rs, docs/index.md, docs/policy.md, docs/spec/okf-knowledge-layer.md, plugins/decodex/references/routing.md, plugins/knowledge/skills/repo-memory/SKILL.md]
 related: [../policy.md, ../spec/okf-knowledge-layer.md, ../evidence/docs-self-iteration.md, ./build-test-run.md, ./workspace-layout.md]
 drift_watch: [decodex docs check, decodex docs graph, docs index, docs lane index, okf orphan concepts]
 last_verified: 2026-06-18
@@ -131,16 +131,12 @@ measure retrieval quality.
 
 ## Cross-Repository Use
 
-In another repository, the Decodex plugin can now provide distinct layers:
+In another repository, the Knowledge plugin can now provide distinct layers:
 
 - `decodex okf init <root> --profile repo-memory` creates the portable scaffold.
-- `repo-memory-writer` guides Codex to read repository evidence and write canonical
-  concepts instead of generated summaries.
-- `repo-memory-evaluator` guides Codex to review static quality, graph health, owner
-  coverage, source/code evidence, and before/after curation impact. The LLM judges
-  owner correctness; the CLI supplies repeatable check, graph, and find evidence.
-- `repo-memory-curator` guides later graph repair, orphan triage, owner boundary
-  repair, and metadata/link tuning after real usage exposes misses.
+- `$knowledge:repo-memory` guides `write`, `evaluate`, and `curate` modes for
+  source-backed concepts, static quality, graph health, owner coverage, orphan
+  triage, owner-boundary repair, and metadata/link tuning.
 - `decodex okf check/graph/find` verifies shape, graph health, and precise lookup.
 
 The expected first useful output is not a complete encyclopedia. It is a small,
