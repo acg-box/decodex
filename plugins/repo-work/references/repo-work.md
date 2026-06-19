@@ -17,6 +17,13 @@ validation, configuration, landing, or evidence-reporting rules.
   defaults.
 - Treat language/library preferences as local policy only when checked-in docs,
   manifests, or user instructions establish them.
+- Before adding substantial implementation code, inspect existing package, module,
+  and ownership boundaries. Put behavior in the owning module instead of growing a
+  multi-responsibility file.
+- Do not leave generated monoliths as final implementation. If one file accumulates
+  unrelated concerns such as parsing, state, I/O, rendering, persistence, CLI wiring,
+  or tests, split it along existing domain and adapter boundaries before claiming
+  ready.
 
 ## Task Runner Structure
 

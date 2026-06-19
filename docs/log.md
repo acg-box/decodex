@@ -1,5 +1,11 @@
 # Documentation Log
 
+## 2026-06-20
+
+- Added repo-work implementation-structure guardrails so substantial or generated
+  implementation code must follow existing module ownership and cannot be claimed
+  ready while unrelated responsibilities remain in one file.
+
 ## 2026-06-19
 
 - Split the knowledge/docs surface into `plugins/knowledge` with four public skills:

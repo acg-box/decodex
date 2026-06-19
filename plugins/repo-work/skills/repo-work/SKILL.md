@@ -32,7 +32,8 @@ owner skill; the plugin owns the fanout.
 - Intake: classify review feedback, bugs, failures, regressions, drift, or research
   before editing.
 - Implementation: follow checked-in language/tooling authority, dependency policy,
-  docs policy, and owning design workflow for the touched surface.
+  docs policy, implementation-structure defaults, and owning design workflow for the
+  touched surface.
 - Pre-claim: use drift when docs/help/status/config/runtime claims can diverge, then
   verification before any positive status claim.
 - Commit/landing: use the repository's owning authority.
@@ -50,8 +51,9 @@ thread keeps implementation ownership, checks their evidence, and owns final cla
   defaults.
 - Keep scope to the minimal affected surface and use the lightest workflow that
   satisfies checked-in expectations.
-- Use `../../references/repo-work.md` for task-runner rules, semantic naming, config
-  contracts, plugin-eval gates, and evidence reporting.
+- Use `../../references/repo-work.md` for task-runner rules, implementation
+  structure, semantic naming, config contracts, plugin-eval gates, and evidence
+  reporting.
 - Stop when configured merge, landing, identity, or tool authority is unavailable or
   ambiguous.
 

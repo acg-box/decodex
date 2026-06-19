@@ -46,6 +46,9 @@ Use the smallest repo-native evidence that supports the claim. Broaden for share
 behavior, user-visible flows, security-sensitive behavior, generated outputs,
 release/landing/signing/closeout, or failures pointing wider than the touched file.
 For high-risk claims, the main thread must read back the key evidence itself.
+Before a `ready` claim on substantial or generated implementation code, review whether
+the final shape still leaves unrelated responsibilities in one file. If it does,
+downgrade to implemented and split along existing module boundaries first.
 
 ## Output
 
