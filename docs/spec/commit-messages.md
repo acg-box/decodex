@@ -84,3 +84,8 @@ Those values are runtime or integration-event concerns, not tree-change semantic
 - `decodex commit --manual-authority ...` and `decodex land --manual-authority ...` are the only supported ways to produce `authority = "manual"`.
 - `--authority manual` is not a supported synonym; the reserved literal exists so downstream consumers can distinguish an intentional manual lane from a malformed issue identifier.
 - `related` entries remain issue identifiers even when `authority = "manual"`.
+- `decodex commit` is an operator helper, not an active child-run writer. When the
+  current checkout matches a runtime-recorded Decodex lane worktree and that issue has a
+  live runtime claim, the helper must refuse the commit, including
+  `--manual-authority` commits. The operator should steer or interrupt the owning run,
+  wait for it to finish, or clear retained ownership before using the helper.

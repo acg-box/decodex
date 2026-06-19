@@ -19,7 +19,7 @@ use crate::{
 	prelude::{Result, eyre},
 	pull_request::{self, PullRequestLandingState},
 	runtime,
-	state::{self, ReviewHandoffMarker, StateStore},
+	state::{self, ReviewHandoffMarker, StateStore, WorktreeMapping},
 	tracker::{
 		self, IssueTracker, TrackerIssue,
 		linear::LinearClient,
@@ -147,6 +147,13 @@ impl ManualAuthority {
 	}
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ManualCommitActiveLaneBlocker {
+	issue_id: String,
+	branch_name: String,
+	worktree_path: PathBuf,
+}
+
 pub(crate) fn run_commit(config_path: Option<&Path>, request: &ManualCommitRequest) -> Result<()> {
 	let cwd = env::current_dir()?;
 	let worktree_root = current_worktree_root(&cwd)?;
@@ -156,6 +163,9 @@ pub(crate) fn run_commit(config_path: Option<&Path>, request: &ManualCommitReque
 		request.manual_authority,
 		&worktree_root,
 	)?;
+
+	ensure_manual_commit_not_claimed_by_active_lane(config_path, &cwd, &worktree_root)?;
+
 	let message = commit_message::build_commit_message(
 		&request.summary,
 		authority.commit_message_value(),
@@ -705,6 +715,115 @@ fn resolve_authority(
 	)
 }
 
+fn ensure_manual_commit_not_claimed_by_active_lane(
+	config_path: Option<&Path>,
+	cwd: &Path,
+	worktree_root: &Path,
+) -> Result<()> {
+	let Some(blocker) =
+		manual_commit_active_lane_blocker_from_runtime(config_path, cwd, worktree_root)?
+	else {
+		return Ok(());
+	};
+
+	eyre::bail!(
+		"`decodex commit` refused to write inside active Decodex-owned lane worktree `{}` on branch `{}` for issue `{}` because the issue has a live runtime claim. Wait for the lane to finish, steer or interrupt the owning run, or clear retained ownership before using the manual commit helper.",
+		blocker.worktree_path.display(),
+		blocker.branch_name,
+		blocker.issue_id,
+	)
+}
+
+fn manual_commit_active_lane_blocker_from_runtime(
+	config_path: Option<&Path>,
+	cwd: &Path,
+	worktree_root: &Path,
+) -> Result<Option<ManualCommitActiveLaneBlocker>> {
+	let state_store = match runtime::open_runtime_store() {
+		Ok(state_store) => state_store,
+		Err(_error) if config_path.is_none() => return Ok(None),
+		Err(error) => return Err(error),
+	};
+	let Some(config_path) = manual_commit_project_config_path(config_path, cwd, &state_store)?
+	else {
+		return Ok(None);
+	};
+	let config = ServiceConfig::from_path(&config_path)?;
+
+	if !manual_commit_checkout_matches_project(worktree_root, &config)? {
+		return Ok(None);
+	}
+
+	let current_branch = current_branch_name_if_attached(cwd)?;
+
+	manual_commit_active_lane_blocker(
+		&state_store,
+		config.service_id(),
+		worktree_root,
+		current_branch.as_deref(),
+	)
+}
+
+fn manual_commit_project_config_path(
+	config_path: Option<&Path>,
+	cwd: &Path,
+	state_store: &StateStore,
+) -> Result<Option<PathBuf>> {
+	if let Some(config_path) = config_path {
+		return Ok(Some(ServiceConfig::resolve_project_config_path(config_path)?));
+	}
+
+	runtime::registered_config_path_for_cwd(state_store, cwd)
+}
+
+fn manual_commit_checkout_matches_project(
+	worktree_root: &Path,
+	config: &ServiceConfig,
+) -> Result<bool> {
+	Ok(worktree_root == config.repo_root()
+		|| config::checkouts_share_repository(worktree_root, config.repo_root())?)
+}
+
+fn manual_commit_active_lane_blocker(
+	state_store: &StateStore,
+	service_id: &str,
+	worktree_root: &Path,
+	current_branch: Option<&str>,
+) -> Result<Option<ManualCommitActiveLaneBlocker>> {
+	for mapping in state_store.list_worktrees(service_id)? {
+		if !manual_commit_matches_worktree_mapping(&mapping, worktree_root, current_branch) {
+			continue;
+		}
+		if !state_store.issue_has_active_shared_claim(service_id, mapping.issue_id())? {
+			continue;
+		}
+
+		return Ok(Some(ManualCommitActiveLaneBlocker {
+			issue_id: mapping.issue_id().to_owned(),
+			branch_name: mapping.branch_name().to_owned(),
+			worktree_path: mapping.worktree_path().to_path_buf(),
+		}));
+	}
+
+	Ok(None)
+}
+
+fn manual_commit_matches_worktree_mapping(
+	mapping: &WorktreeMapping,
+	worktree_root: &Path,
+	current_branch: Option<&str>,
+) -> bool {
+	paths_match_for_manual_commit_guard(worktree_root, mapping.worktree_path())
+		&& current_branch.is_none_or(|branch| branch == mapping.branch_name())
+}
+
+fn paths_match_for_manual_commit_guard(left: &Path, right: &Path) -> bool {
+	let left = fs::canonicalize(left).unwrap_or_else(|_| left.to_path_buf());
+	let right = fs::canonicalize(right).unwrap_or_else(|_| right.to_path_buf());
+
+	left == right
+}
+
 fn resolve_land_authority(
 	config_path: Option<&Path>,
 	explicit: Option<&str>,
@@ -789,6 +908,12 @@ fn current_branch_name(cwd: &Path) -> Result<String> {
 	}
 
 	Ok(branch)
+}
+
+fn current_branch_name_if_attached(cwd: &Path) -> Result<Option<String>> {
+	let branch = run_git_capture(cwd, &["branch", "--show-current"])?;
+
+	Ok((!branch.is_empty()).then_some(branch))
 }
 
 fn current_head_oid(cwd: &Path) -> Result<String> {
@@ -2662,6 +2787,86 @@ exit 1\n",
 		.expect("manual authority should resolve");
 
 		assert_eq!(authority, ManualAuthority::Manual);
+	}
+
+	#[test]
+	fn manual_commit_blocker_rejects_active_claimed_managed_worktree() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let state_store = state::StateStore::open_in_memory().expect("state store should open");
+		let worktree_path = temp_dir.path().join("XY-225");
+
+		fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+		state_store
+			.upsert_worktree(
+				"decodex",
+				"issue-1",
+				"y/decodex-xy-225",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should persist");
+		state_store
+			.upsert_lease("decodex", "issue-1", "run-1", "In Progress")
+			.expect("active lease should persist");
+
+		let blocker = manual::manual_commit_active_lane_blocker(
+			&state_store,
+			"decodex",
+			&worktree_path,
+			Some("y/decodex-xy-225"),
+		)
+		.expect("manual commit blocker should evaluate")
+		.expect("active managed worktree should block");
+
+		assert_eq!(blocker.issue_id, "issue-1");
+		assert_eq!(blocker.branch_name, "y/decodex-xy-225");
+		assert_eq!(blocker.worktree_path, worktree_path);
+	}
+
+	#[test]
+	fn manual_commit_blocker_allows_unclaimed_or_unmapped_worktree() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let state_store = state::StateStore::open_in_memory().expect("state store should open");
+		let worktree_path = temp_dir.path().join("XY-225");
+		let other_path = temp_dir.path().join("XY-226");
+
+		fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+		fs::create_dir_all(&other_path).expect("other worktree path should exist");
+
+		state_store
+			.upsert_worktree(
+				"decodex",
+				"issue-1",
+				"y/decodex-xy-225",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should persist");
+
+		assert!(
+			manual::manual_commit_active_lane_blocker(
+				&state_store,
+				"decodex",
+				&worktree_path,
+				Some("y/decodex-xy-225"),
+			)
+			.expect("unclaimed worktree should evaluate")
+			.is_none()
+		);
+
+		state_store
+			.upsert_lease("decodex", "issue-1", "run-1", "In Progress")
+			.expect("active lease should persist");
+
+		assert!(
+			manual::manual_commit_active_lane_blocker(
+				&state_store,
+				"decodex",
+				&other_path,
+				Some("y/decodex-xy-226"),
+			)
+			.expect("unmapped worktree should evaluate")
+			.is_none()
+		);
 	}
 
 	#[test]
