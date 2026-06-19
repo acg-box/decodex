@@ -1818,6 +1818,10 @@ fn post_review_lane_is_closeout_candidate(
 	lane.classification == "continue" && lane.reason == "pull_request_merged_closeout_pending"
 }
 
+fn post_review_lane_is_repair_candidate(lane: &OperatorPostReviewLaneStatus) -> bool {
+	lane.classification == "needs_review_repair"
+}
+
 fn run_target_issue_once<T>(
 	context: TargetIssueRunContext<'_, T>,
 ) -> Result<Option<RunSummary>>
@@ -2003,6 +2007,9 @@ fn run_target_issue_once_with_inferred_dispatch<T>(
 where
 	T: IssueTracker,
 {
+	if target_issue_has_status_visible_review_repair(&context)? {
+		return run_target_status_visible_review_repair_once(context);
+	}
 	if target_issue_has_status_visible_closeout(&context)? {
 		return run_target_status_visible_closeout_once(context);
 	}
@@ -2019,8 +2026,65 @@ where
 	))? {
 		return Ok(Some(summary));
 	}
+	if let Some(summary) = run_target_status_visible_review_repair_once(
+		target_issue_run_context_with_dispatch_mode(&context, IssueDispatchMode::ReviewRepair),
+	)? {
+		return Ok(Some(summary));
+	}
 
 	run_target_status_visible_closeout_once(context)
+}
+
+fn target_issue_has_status_visible_review_repair<T>(
+	context: &TargetIssueRunContext<'_, T>,
+) -> Result<bool>
+where
+	T: IssueTracker,
+{
+	let target_issue_id = resolve_target_issue_id(context.tracker, context.issue_id)?;
+	let review_state_inspector = GhPullRequestReviewStateInspector {
+		github_token_env_var: Some(context.project.github().token_env_var().to_owned()),
+		github_command_path: context.project.github().command_path().map(Path::to_path_buf),
+	};
+
+	Ok(build_post_review_lane_statuses(
+		context.tracker,
+		context.project,
+		context.workflow,
+		context.state_store,
+		&review_state_inspector,
+	)?
+	.into_iter()
+	.any(|lane| lane.issue_id == target_issue_id && post_review_lane_is_repair_candidate(&lane)))
+}
+
+fn run_target_status_visible_review_repair_once<T>(
+	context: TargetIssueRunContext<'_, T>,
+) -> Result<Option<RunSummary>>
+where
+	T: IssueTracker,
+{
+	let target_issue_id = resolve_target_issue_id(context.tracker, context.issue_id)?;
+	let review_state_inspector = GhPullRequestReviewStateInspector {
+		github_token_env_var: Some(context.project.github().token_env_var().to_owned()),
+		github_command_path: context.project.github().command_path().map(Path::to_path_buf),
+	};
+	let Some(_issue) = select_target_post_review_repair_issue_candidate_with_inspector(
+		context.tracker,
+		context.project,
+		context.workflow,
+		context.state_store,
+		&target_issue_id,
+		context.issue_id,
+		&review_state_inspector,
+	)? else {
+		return Ok(None);
+	};
+
+	run_target_issue_once(target_issue_run_context_with_dispatch_mode(
+		&context,
+		IssueDispatchMode::ReviewRepair,
+	))
 }
 
 fn target_issue_has_status_visible_closeout<T>(
@@ -2044,10 +2108,69 @@ where
 		&review_state_inspector,
 	)?
 	.into_iter()
-	.any(|lane| {
-		lane.issue_id == target_issue_id
-			&& post_review_lane_is_closeout_candidate(&lane, completed_state)
-	}))
+		.any(|lane| {
+			lane.issue_id == target_issue_id
+				&& post_review_lane_is_closeout_candidate(&lane, completed_state)
+		}))
+}
+
+fn select_target_post_review_repair_issue_candidate_with_inspector<T, I>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	target_issue_id: &str,
+	target_issue_reference: &str,
+	review_state_inspector: &I,
+) -> Result<Option<TrackerIssue>>
+where
+	T: IssueTracker,
+	I: PullRequestReviewStateInspector,
+{
+	let lanes = build_post_review_lane_statuses(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		review_state_inspector,
+	)?;
+	let repair_lanes = lanes
+		.into_iter()
+		.filter(post_review_lane_is_repair_candidate)
+		.collect::<Vec<_>>();
+
+	if repair_lanes.is_empty() {
+		return Ok(None);
+	}
+
+	let Some(target_lane) = repair_lanes
+		.iter()
+		.find(|lane| lane.issue_id == target_issue_id)
+	else {
+		let visible_lanes = repair_lanes
+			.iter()
+			.map(|lane| lane.issue_identifier.as_str())
+			.collect::<Vec<_>>()
+			.join(", ");
+
+		eyre::bail!(
+			"targeted retained review repair mismatch: requested issue `{}` does not match status-visible retained review repair lane(s) `{}`",
+			target_issue_reference,
+			visible_lanes,
+		);
+	};
+	let issue_ids = [target_lane.issue_id.clone()];
+	let mut issues = tracker.refresh_issues(&issue_ids)?;
+	let Some(issue_index) = issues.iter().position(|issue| issue.id == target_lane.issue_id) else {
+		return Ok(None);
+	};
+	let issue = issues.swap_remove(issue_index);
+
+	if state_store.issue_has_active_shared_claim(project.service_id(), &issue.id)? {
+		return Ok(None);
+	}
+
+	Ok(Some(issue))
 }
 
 fn run_target_status_visible_closeout_once<T>(
