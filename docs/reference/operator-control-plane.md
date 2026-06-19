@@ -329,7 +329,10 @@ Operator JSON snapshots include `execution_programs[]` for Program Intake and
 Execution Program readback. Each program row carries public intake kind/summary,
 source contract id when present, the compact summary counts, mapped issue
 identifiers, dispatchable count, and sparse `node_readbacks[]` for direct dispatch
-decisions or nodes that need operator context. Dependency
+decisions or nodes that need operator context. Live status refreshes mapped issue
+state, service labels, needs-attention labels, dependency blockers, and post-review
+lifecycle ownership before it evaluates those program counts, so terminal Linear
+states and cleared labels supersede older persisted Program mappings. Dependency
 diagnostics use `dependency_not_terminal` with a next action to complete the
 dependency issue or refresh the Execution Program dependency plan when a stale
 dependency program is the real blocker.

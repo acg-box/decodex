@@ -1,6 +1,6 @@
 use crate::execution_program::{
 	ExecutionDependencySnapshot, ExecutionLinearIssueMapping, ExecutionProgram,
-	ExecutionReadinessState,
+	ExecutionProgramNode, ExecutionReadinessState,
 };
 use crate::execution_program::ExecutionConflictDomain;
 
@@ -237,7 +237,11 @@ where
 			continue;
 		};
 		let Some(issue) = refreshed_issues.get(mapping.issue_id()) else {
-			refreshed_nodes.push(node.clone());
+			refreshed_nodes.push(refresh_execution_program_local_lifecycle_facts(
+				state_store,
+				service_id,
+				node,
+			)?);
 
 			continue;
 		};
@@ -257,6 +261,24 @@ where
 	let program = record.program().clone().with_nodes(refreshed_nodes)?;
 
 	Ok(RefreshedExecutionProgram { record, program, issues_by_node })
+}
+
+fn refresh_execution_program_local_lifecycle_facts(
+	state_store: &StateStore,
+	service_id: &str,
+	node: &ExecutionProgramNode,
+) -> Result<ExecutionProgramNode> {
+	let Some(issue) = node.linear_issue() else {
+		return Ok(node.clone());
+	};
+	let has_post_review_lifecycle =
+		state_store.issue_has_review_lifecycle_record(service_id, issue.issue_id())?;
+
+	if issue.has_post_review_lifecycle() == has_post_review_lifecycle {
+		return Ok(node.clone());
+	}
+
+	node.clone().with_linear_issue(issue.clone().with_post_review_lifecycle(has_post_review_lifecycle))
 }
 
 fn program_issue_snapshot<T>(input: ProgramIssueSnapshotInput<'_, T>) -> Result<ProgramIssueSnapshot>

@@ -857,13 +857,13 @@ where
 		workflow,
 		state_store,
 		limit,
-			LiveOperatorStatusSnapshotOptions {
-				hydrate_history_ledger: true,
-				run_issue_metadata_hydration: RunIssueMetadataHydration::AllRows,
-				account_activity_mode: AccountActivityMode::Probe,
-				configure_dispatch_slots: true,
-			},
-		)
+		LiveOperatorStatusSnapshotOptions {
+			hydrate_history_ledger: true,
+			run_issue_metadata_hydration: RunIssueMetadataHydration::AllRows,
+			account_activity_mode: AccountActivityMode::Probe,
+			configure_dispatch_slots: true,
+		},
+	)
 }
 
 fn build_status_command_operator_status_snapshot<T>(
@@ -882,13 +882,13 @@ where
 		workflow,
 		state_store,
 		limit,
-			LiveOperatorStatusSnapshotOptions {
-				hydrate_history_ledger: true,
-				run_issue_metadata_hydration: RunIssueMetadataHydration::AllRows,
-				account_activity_mode: AccountActivityMode::Snapshot,
-				configure_dispatch_slots: true,
-			},
-		)
+		LiveOperatorStatusSnapshotOptions {
+			hydrate_history_ledger: true,
+			run_issue_metadata_hydration: RunIssueMetadataHydration::AllRows,
+			account_activity_mode: AccountActivityMode::Snapshot,
+			configure_dispatch_slots: true,
+		},
+	)
 }
 
 fn build_control_plane_operator_status_snapshot<T>(
@@ -907,13 +907,13 @@ where
 		workflow,
 		state_store,
 		limit,
-			LiveOperatorStatusSnapshotOptions {
-				hydrate_history_ledger: false,
-				run_issue_metadata_hydration: RunIssueMetadataHydration::CurrentLaneRowsOnly,
-				account_activity_mode: AccountActivityMode::Snapshot,
-				configure_dispatch_slots: true,
-			},
-		)
+		LiveOperatorStatusSnapshotOptions {
+			hydrate_history_ledger: false,
+			run_issue_metadata_hydration: RunIssueMetadataHydration::CurrentLaneRowsOnly,
+			account_activity_mode: AccountActivityMode::Snapshot,
+			configure_dispatch_slots: true,
+		},
+	)
 }
 
 fn build_live_operator_status_snapshot_with_history_ledger<T>(
@@ -1104,6 +1104,10 @@ where
 			program.evaluate_issue_batch(&policy, &context)?
 		};
 
+		if program != record.program() {
+			state_store.upsert_execution_program(project.service_id(), (*program).clone())?;
+		}
+
 		statuses.push(OperatorExecutionProgramStatus::from_summary(
 			record,
 			evaluation.operator_summary(),
@@ -1145,16 +1149,11 @@ fn operator_execution_program_statuses_from_persisted(
 		let mut nodes = Vec::with_capacity(record.program().nodes().len());
 
 		for node in record.program().nodes() {
-			let Some(issue) = node.linear_issue() else {
-				nodes.push(node.clone());
-
-				continue;
-			};
-			let has_post_review_lifecycle =
-				state_store.issue_has_review_lifecycle_record(project.service_id(), issue.issue_id())?;
-			let issue = issue.clone().with_post_review_lifecycle(has_post_review_lifecycle);
-
-			nodes.push(node.clone().with_linear_issue(issue)?);
+			nodes.push(refresh_execution_program_local_lifecycle_facts(
+				state_store,
+				project.service_id(),
+				node,
+			)?);
 		}
 
 		let program = record.program().clone().with_nodes(nodes)?;
