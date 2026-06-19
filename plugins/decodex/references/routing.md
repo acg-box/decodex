@@ -1,7 +1,7 @@
 # Decodex Routing Reference
 
 Use this when a Decodex task crosses repo-work, docs, research, promotion, planning,
-CLI, automation, commit, or landing boundaries.
+runtime ops, commit, or landing boundaries.
 
 ## Mode Map
 
@@ -32,12 +32,11 @@ CLI, automation, commit, or landing boundaries.
   this", "push this forward", "推进", or "做".
 - Planning: use `planning` after promotion or another explicit execution instruction.
   Planning owns issue briefing and Program readiness.
-- Automation: use `automation` for Decodex-owned intake, lanes, review handoff,
-  repair, landing, closeout, cleanup, and recovery.
-- Manual CLI: use `manual-cli` when a human drives status, registration, dry-run,
-  recovery inspection, commit, or landing.
-- Labels: use `labels` only for ordinary non-Program tracker intake and retained-lane
-  ownership signals.
+- Decodex ops: use `decodex-ops` for retained automation, human-driven CLI commands,
+  ordinary non-Program tracker intake, service labels, lane control, recovery
+  inspection, and operator readback.
+- Commit and land: use `commit` or `land` for human-driven Git history creation or PR
+  landing; keep these high-risk authority surfaces narrower than general ops.
 - MCP gateway: use stdio locally and Streamable HTTP only behind the operator's chosen
   listener with `--bearer-token-env`, tunnel, relay, network ACL, reverse proxy, or
   protected-resource auth boundary. Treat `--allow-origin` as CORS trust, not

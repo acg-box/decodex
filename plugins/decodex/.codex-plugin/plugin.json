@@ -1,7 +1,7 @@
 {
   "name": "decodex",
   "version": "0.2.0",
-  "description": "Decodex agent workflows for repo-work rules, portable OKF bundles, repo memory writing, evaluation, and curation, docs, semantic drift, debugging, research, review repair, verification, issue planning, automation, commit, and landing.",
+  "description": "Decodex agent workflows for repo-work rules, portable OKF bundles, repo memory writing, evaluation, and curation, docs, semantic drift, debugging, research, review repair, verification, issue planning, ops, commit, and landing.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -25,7 +25,7 @@
   "interface": {
     "displayName": "Decodex",
     "shortDescription": "Maintain repo-work, docs, drift, debugging, research, planning, and operations for Decodex.",
-    "longDescription": "Routes checked-in repository authority, task-runner structure, language and dependency policy, review repair, verification, portable OKF/LLM Wiki bundle work, source-backed repo-memory writing, evaluation, curation, Decodex OKF docs maintenance, semantic drift audits, root-cause debugging, bounded research with challenge, promotion, issue briefing and planning, CLI, labels, commit, landing, and automation.",
+    "longDescription": "Routes checked-in repository authority, task-runner structure, engineering defaults, dependency policy, review repair, verification, portable OKF/LLM Wiki bundle work, source-backed repo-memory writing, evaluation, curation, Decodex OKF docs maintenance, semantic drift audits, root-cause debugging, bounded research with challenge, promotion, issue briefing and planning, runtime ops, commit, and landing.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [

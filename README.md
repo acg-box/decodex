@@ -24,7 +24,7 @@ Repo-native agent orchestration, retained lanes, and local operator control.
 - Static Astro site for the public Decodex product surface and app download entry.
 - Installable Decodex plugin with reusable agent-facing skills for repo-work rules,
   docs drift, debugging, research challenge, review repair, verification, issue
-  briefing, planning, manual CLI, automation, commit, land, and labels.
+  briefing, planning, runtime ops, commit, and land.
 - Repository documentation split by question type into spec, runbook, reference, and
   decision lanes.
 
