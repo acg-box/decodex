@@ -103,6 +103,21 @@ The lane should leave `missing_review_handoff_record` and return to the existing
 post-review lifecycle classification such as waiting for review, ready to land, review
 repair required, or blocked for a different concrete reason.
 
+If status reports that same target issue as `needs_review_repair`, including concrete
+reasons such as `pull_request_merge_conflict` or `pull_request_branch_behind_base`, a
+targeted dry run should exercise the retained repair path:
+
+```sh
+decodex run <ISSUE> --dry-run
+```
+
+That command should plan `ReviewRepair` for the retained lane. If it instead reports no
+eligible queued issue while status still shows `needs_review_repair`, treat that as a
+runtime dispatch bug rather than adding queue labels or re-running review-handoff
+recovery. If status shows a retained repair lane for a different issue, a targeted dry
+run for the wrong identifier should fail with a retained review repair mismatch; do not
+use that mismatch as permission to reuse or relabel the retained worktree.
+
 ## Manual PR Takeover
 
 Use `adopt` when a human-owned PR was created from a managed Decodex worktree and the
