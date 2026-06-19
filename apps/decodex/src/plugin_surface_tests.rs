@@ -12,143 +12,33 @@ const PLANNING_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/planning/SKILL.md"
 ));
-const AUTOMATION_SKILL: &str = include_str!(concat!(
+const PLANNING_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/automation/SKILL.md"
+	"/../../plugins/decodex/skills/planning/agents/openai.yaml"
 ));
-const AUTOMATION_AGENT_POLICY: &str = include_str!(concat!(
+const DECODEX_OPS_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/automation/agents/openai.yaml"
+	"/../../plugins/decodex/skills/decodex-ops/SKILL.md"
+));
+const DECODEX_OPS_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/decodex-ops/agents/openai.yaml"
 ));
 const COMMIT_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/commit/agents/openai.yaml"
 ));
-const LABELS_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/labels/SKILL.md"
-));
-const LABELS_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/labels/agents/openai.yaml"
-));
 const LAND_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/land/agents/openai.yaml"
-));
-const MANUAL_CLI_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/manual-cli/agents/openai.yaml"
 ));
 const RESEARCH_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research/SKILL.md"
 ));
-const OKF_SKILL: &str =
-	include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../plugins/decodex/skills/okf/SKILL.md"));
-const OKF_AGENT_POLICY: &str = include_str!(concat!(
+const RESEARCH_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/okf/agents/openai.yaml"
-));
-const OKF_QUERY_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/okf-query/SKILL.md"
-));
-const OKF_QUERY_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/okf-query/agents/openai.yaml"
-));
-const OKF_MAINTAIN_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/okf-maintain/SKILL.md"
-));
-const OKF_MAINTAIN_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/okf-maintain/agents/openai.yaml"
-));
-const REPO_MEMORY_WRITER_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/repo-memory-writer/SKILL.md"
-));
-const REPO_MEMORY_WRITER_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/repo-memory-writer/agents/openai.yaml"
-));
-const DOCS_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/docs/SKILL.md"
-));
-const DOCS_OKF_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/docs-okf/SKILL.md"
-));
-const DOCS_OKF_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/docs-okf/agents/openai.yaml"
-));
-const DOCS_WIKI_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/docs-wiki/SKILL.md"
-));
-const DOCS_WIKI_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/docs-wiki/agents/openai.yaml"
-));
-const DOCS_DRIFT_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/docs-drift/SKILL.md"
-));
-const DOCS_DRIFT_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/docs-drift/agents/openai.yaml"
-));
-const RESEARCH_PROBE_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-probe/SKILL.md"
-));
-const RESEARCH_PROBE_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-probe/agents/openai.yaml"
-));
-const RESEARCH_EVIDENCE_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-evidence/SKILL.md"
-));
-const RESEARCH_EVIDENCE_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-evidence/agents/openai.yaml"
-));
-const RESEARCH_OPTIONS_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-options/SKILL.md"
-));
-const RESEARCH_OPTIONS_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-options/agents/openai.yaml"
-));
-const RESEARCH_JUDGMENT_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-judgment/SKILL.md"
-));
-const RESEARCH_JUDGMENT_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-judgment/agents/openai.yaml"
-));
-const RESEARCH_CHALLENGE_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-challenge/SKILL.md"
-));
-const RESEARCH_CHALLENGE_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-challenge/agents/openai.yaml"
-));
-const RESEARCH_DECISION_SKILL: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-decision/SKILL.md"
-));
-const RESEARCH_DECISION_AGENT_POLICY: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/skills/research-decision/agents/openai.yaml"
+	"/../../plugins/decodex/skills/research/agents/openai.yaml"
 ));
 const RESEARCH_PROMOTE_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
@@ -157,6 +47,66 @@ const RESEARCH_PROMOTE_SKILL: &str = include_str!(concat!(
 const RESEARCH_PROMOTE_AGENT_POLICY: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-promote/agents/openai.yaml"
+));
+const CHALLENGE_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/agent-method/skills/challenge/SKILL.md"
+));
+const CHALLENGE_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/agent-method/skills/challenge/agents/openai.yaml"
+));
+const DOCS_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/docs/SKILL.md"
+));
+const DOCS_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/docs/agents/openai.yaml"
+));
+const DOCS_DRIFT_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/docs-drift/SKILL.md"
+));
+const DOCS_DRIFT_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/docs-drift/agents/openai.yaml"
+));
+const OKF_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/okf/SKILL.md"
+));
+const OKF_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/okf/agents/openai.yaml"
+));
+const REPO_MEMORY_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/repo-memory/SKILL.md"
+));
+const REPO_MEMORY_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/knowledge/skills/repo-memory/agents/openai.yaml"
+));
+const REPO_WORK_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/repo-work/agents/openai.yaml"
+));
+const DEBUGGING_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/debugging/agents/openai.yaml"
+));
+const DEPENDENCY_POLICY_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/dependency-policy/agents/openai.yaml"
+));
+const REVIEW_FEEDBACK_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/review-feedback/agents/openai.yaml"
+));
+const VERIFICATION_AGENT_POLICY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/repo-work/skills/verification/agents/openai.yaml"
 ));
 const ROUTING_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
@@ -168,23 +118,23 @@ const ISSUE_BRIEFING_REF: &str = include_str!(concat!(
 ));
 const DOCS_METHOD_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/references/docs-method.md"
+	"/../../plugins/knowledge/references/docs-method.md"
 ));
 const DOCS_OKF_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/references/docs-okf.md"
+	"/../../plugins/knowledge/references/docs-okf.md"
 ));
 const DOCS_WIKI_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/references/docs-wiki.md"
+	"/../../plugins/knowledge/references/docs-wiki.md"
 ));
 const DOCS_DRIFT_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/references/docs-drift.md"
+	"/../../plugins/knowledge/references/docs-drift.md"
 ));
 const OKF_LAYER_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/references/okf-layer.md"
+	"/../../plugins/knowledge/references/okf-layer.md"
 ));
 const RESEARCH_LIFECYCLE_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
@@ -228,7 +178,7 @@ fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
 
 	assert_contains(&manifest_surface, "natural-language-first");
 	assert_contains(&manifest_surface, "portable OKF");
-	assert_contains(&manifest_surface, "OKF docs");
+	assert_contains(&manifest_surface, "knowledge/docs");
 	assert_contains(&manifest_surface, "bounded research");
 	assert_contains(&manifest_surface, "probe, evidence, options, judgment, challenge, decision");
 	assert_contains(&manifest_surface, "`research X`");
@@ -238,21 +188,20 @@ fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
 	assert_contains(&manifest_surface, "ready mapped nodes directly");
 	assert_contains(&manifest_surface, "DAG");
 	assert_contains(&manifest_surface, "issue briefing");
-	assert_contains(&default_prompts, "Maintain Decodex docs.");
-	assert_contains(&default_prompts, "Work with an OKF bundle.");
 	assert_contains(&default_prompts, "Research this with Decodex.");
+	assert_contains(&default_prompts, "Plan accepted Decodex work.");
+	assert_contains(&default_prompts, "Operate Decodex.");
 }
 
 #[test]
 fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 	let skill_surface = format!(
-		"{DECODEX_SKILL}\n{PLANNING_SKILL}\n{AUTOMATION_SKILL}\n{LABELS_SKILL}\n{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{ROUTING_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_PROMOTION_REF}"
+		"{DECODEX_SKILL}\n{PLANNING_SKILL}\n{DECODEX_OPS_SKILL}\n{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{ROUTING_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
 	let planning_surface = format!("{PLANNING_SKILL}\n{ISSUE_BRIEFING_REF}\n{ROUTING_REF}");
 
 	assert_contains(&skill_surface, "## Natural-Language Research Routing");
 	assert_contains(&skill_surface, "`research X`");
-	assert_contains(&skill_surface, "`research-probe`");
 	assert_contains(&skill_surface, "`research-promote`");
 	assert_contains(&skill_surface, "external research skills");
 	assert_contains(&skill_surface, "latent Decision Contract");
@@ -265,14 +214,15 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 	assert_contains_normalized(&skill_surface, "Program Intake dispatches ready mapped nodes");
 	assert_contains(&skill_surface, "Promotion is a separate authority step");
 	assert_contains(&skill_surface, "after execution authority exists");
-	assert_contains(&skill_surface, "non-research targets");
-	assert_contains(&skill_surface, "OKF owner");
+	assert_contains(&skill_surface, "runtime operations");
+	assert_contains(&skill_surface, "service labels");
+	assert_contains(&skill_surface, "knowledge owner");
 	assert_contains(&skill_surface, "docs/evidence");
 	assert_contains(&skill_surface, "LLM Wiki indexes");
 	assert_contains_normalized(&skill_surface, "current truth stands without reading research");
 	assert_contains(&skill_surface, "current truth independently");
 	assert_contains_normalized(&skill_surface, "does not queue work, mutate Linear");
-	assert_contains(&skill_surface, "ordinary non-Program issue intake");
+	assert_contains(&skill_surface, "ordinary non-Program tracker intake");
 	assert_contains(&skill_surface, "not queue-label polling");
 	assert_contains(&skill_surface, "Require promoted research");
 	assert_contains(&planning_surface, "Decodex-native issue briefs");
@@ -291,7 +241,7 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 #[test]
 fn packaged_research_skills_encode_decodex_methodology() {
 	let research_surface = format!(
-		"{RESEARCH_SKILL}\n{RESEARCH_PROBE_SKILL}\n{RESEARCH_EVIDENCE_SKILL}\n{RESEARCH_OPTIONS_SKILL}\n{RESEARCH_JUDGMENT_SKILL}\n{RESEARCH_CHALLENGE_SKILL}\n{RESEARCH_DECISION_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_EVIDENCE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
+		"{RESEARCH_SKILL}\n{CHALLENGE_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_EVIDENCE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
 
 	assert_contains(&research_surface, "default research surface");
@@ -315,10 +265,6 @@ fn packaged_research_skills_encode_decodex_methodology() {
 	assert_contains(&research_surface, "evidence");
 	assert_contains(&research_surface, "challenge-ready");
 	assert_contains(&research_surface, "not_decision_ready");
-	assert_contains(
-		&research_surface,
-		"Do not finalize `decision_ready` while material objections remain unresolved",
-	);
 	assert_contains_normalized(
 		&research_surface,
 		"Unresolved material objections block `decision_ready`",
@@ -347,7 +293,7 @@ fn packaged_research_skills_encode_decodex_methodology() {
 #[test]
 fn packaged_docs_skills_encode_okf_wiki_and_drift_boundaries() {
 	let docs_surface = format!(
-		"{DOCS_SKILL}\n{DOCS_OKF_SKILL}\n{DOCS_WIKI_SKILL}\n{DOCS_DRIFT_SKILL}\n{DOCS_METHOD_REF}\n{DOCS_OKF_REF}\n{DOCS_WIKI_REF}\n{DOCS_DRIFT_REF}\n{ROUTING_REF}"
+		"{DOCS_SKILL}\n{DOCS_DRIFT_SKILL}\n{DOCS_METHOD_REF}\n{DOCS_OKF_REF}\n{DOCS_WIKI_REF}\n{DOCS_DRIFT_REF}\n{ROUTING_REF}"
 	);
 
 	assert_contains(&docs_surface, "OKF");
@@ -366,20 +312,18 @@ fn packaged_docs_skills_encode_okf_wiki_and_drift_boundaries() {
 	assert_contains(&docs_surface, "Do not create a parallel `wiki/` or `okf/` root");
 	assert_not_contains(&docs_surface, "Okf");
 	assert_contains(&docs_surface, "portable OKF");
-	assert_contains(&docs_surface, "Decodex profile");
+	assert_contains(&docs_surface, "strict OKF bundle");
 }
 
 #[test]
 fn packaged_okf_skills_preserve_portable_profile_boundary() {
-	let okf_surface = format!(
-		"{OKF_SKILL}\n{OKF_QUERY_SKILL}\n{OKF_MAINTAIN_SKILL}\n{REPO_MEMORY_WRITER_SKILL}\n{OKF_LAYER_REF}"
-	);
+	let okf_surface = format!("{OKF_SKILL}\n{REPO_MEMORY_SKILL}\n{OKF_LAYER_REF}");
 
 	assert_contains(&okf_surface, "portable OKF");
 	assert_contains(&okf_surface, "LLM Wiki");
-	assert_contains(&okf_surface, "repo-memory-writer");
-	assert_contains(&okf_surface, "source-backed repository knowledge");
-	assert_contains(&okf_surface, "The AI writes the concepts");
+	assert_contains(&okf_surface, "$knowledge:repo-memory");
+	assert_contains(&okf_surface, "source-backed repository memory");
+	assert_contains(&okf_surface, "query/maintain OKF bundles");
 	assert_contains(&okf_surface, "decodex okf init");
 	assert_contains(&okf_surface, "decodex okf check");
 	assert_contains(&okf_surface, "decodex okf find");
@@ -393,32 +337,28 @@ fn packaged_okf_skills_preserve_portable_profile_boundary() {
 	assert_contains(&okf_surface, "related");
 	assert_contains(&okf_surface, "drift_watch");
 	assert_contains_normalized(&okf_surface, "Do not create or recommend `decodex docs okf ...`");
-	assert_contains_normalized(&okf_surface, "do not inherit Decodex lanes");
-	assert_contains(&okf_surface, "Do not require Decodex lanes or Linear workflow");
+	assert_contains_normalized(&okf_surface, "do not inherit runtime lanes, tracker workflow");
 }
 
 #[test]
 fn narrow_lifecycle_and_specialist_skills_are_explicit_only() {
 	for policy in [
-		AUTOMATION_AGENT_POLICY,
+		PLANNING_AGENT_POLICY,
+		DECODEX_OPS_AGENT_POLICY,
 		COMMIT_AGENT_POLICY,
-		LABELS_AGENT_POLICY,
 		LAND_AGENT_POLICY,
-		MANUAL_CLI_AGENT_POLICY,
-		OKF_AGENT_POLICY,
-		OKF_QUERY_AGENT_POLICY,
-		OKF_MAINTAIN_AGENT_POLICY,
-		REPO_MEMORY_WRITER_AGENT_POLICY,
-		DOCS_OKF_AGENT_POLICY,
-		DOCS_WIKI_AGENT_POLICY,
-		DOCS_DRIFT_AGENT_POLICY,
-		RESEARCH_PROBE_AGENT_POLICY,
-		RESEARCH_EVIDENCE_AGENT_POLICY,
-		RESEARCH_OPTIONS_AGENT_POLICY,
-		RESEARCH_JUDGMENT_AGENT_POLICY,
-		RESEARCH_CHALLENGE_AGENT_POLICY,
-		RESEARCH_DECISION_AGENT_POLICY,
+		RESEARCH_AGENT_POLICY,
 		RESEARCH_PROMOTE_AGENT_POLICY,
+		CHALLENGE_AGENT_POLICY,
+		DOCS_AGENT_POLICY,
+		DOCS_DRIFT_AGENT_POLICY,
+		OKF_AGENT_POLICY,
+		REPO_MEMORY_AGENT_POLICY,
+		REPO_WORK_AGENT_POLICY,
+		DEBUGGING_AGENT_POLICY,
+		DEPENDENCY_POLICY_AGENT_POLICY,
+		REVIEW_FEEDBACK_AGENT_POLICY,
+		VERIFICATION_AGENT_POLICY,
 	] {
 		assert_contains(policy, "allow_implicit_invocation: false");
 	}
