@@ -23,6 +23,9 @@
   discarded post-archive diagnostics in a non-conflicting runtime journal namespace,
   while operator status preserves failed child-run recovery context separately from
   parent journal or closeout handling.
+- Documented Program retryable failed-start cleanup: clean no-diff failed starts now
+  release stale active ownership and status names remaining clean active ownership as
+  cleanup debt rather than retained partial progress.
 - Refreshed Decodex plugin-eval evidence after the packaged plugin manifest prompt
   surface was consolidated back to the first-three prompt limit.
 

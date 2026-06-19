@@ -649,6 +649,13 @@ Retryable failures with remaining budget:
 - Clean worker exits after a nonterminal continuation boundary schedule a short continuation retry.
 - Abnormal worker exits schedule exponential backoff capped by `execution.max_retry_backoff_ms`.
 - When the queued issue disappears, reaches a terminal state, or otherwise becomes non-active before the retry fires, release the queued claim instead of redispatching it.
+- Exception: a Program-dispatched run that fails before effective agent execution,
+  has no live lease, has no retained review lifecycle, and leaves no effective
+  worktree delta must clear stale active ownership instead of retaining the Program
+  conflict domain. The runtime records private cleanup evidence, clears the worktree
+  mapping, removes the service active label, and resets the issue to the configured
+  failure state when that state is startable so the next Program scheduler pass can
+  retry the ready node.
 
 Terminal child-exit preservation:
 
@@ -990,6 +997,9 @@ After a process restart, recent-run history, run lease ownership, retained post-
 - Operator status snapshots may expose an additive `child_agent_activity` object when app-server protocol events have produced one for the current run. The object must stay machine-readable and dashboard/CLI shared, and should describe dynamic observed buckets rather than a fixed workflow: current child bucket and elapsed time, bucket wall/event/tool counts, current/max/cumulative input tokens, cumulative output tokens, largest tool output, and warnings for repeated large outputs. Lifecycle metrics that group attempts by run phase must be presented in operator UI/readback as lifecycle buckets, not as generic stages. Missing `child_agent_activity` means no child breakdown was captured; existing JSON consumers must continue to work without it.
 - If the agent Git credential preflight fails, operator status must report the retained lane as a credential failure requiring operator recovery, not as a still-running lane.
 - If retry budget or needs-attention recovery finds tracked changes in the retained worktree after active phase-goal recovery has no applicable continuation path, operator status must report retained partial progress rather than only a generic retry-budget hold. Retained progress is the recovery disposition; later runtime, app-server, credential, transport, or repo-gate failure classes must be preserved as source evidence instead of overriding the retained-progress lifecycle path. The failure class may be `partial_progress_retained` when no more specific runtime error class is available. Operators should then inspect the patch, finish validation and PR handoff if it is useful, or reset the retained worktree explicitly.
+- If active ownership remains after retryable failed-start cleanup but the retained
+  worktree has no tracked changes, operator status must identify the condition as
+  failed-start cleanup debt, not retained partial progress.
 - A retryable runtime or app-server failure that leaves tracked worktree changes must
   keep the owned lane in automatic recovery while retry budget or loop-guardrail
   recovery remains. The retained patch is retry context for the same worktree, not by
