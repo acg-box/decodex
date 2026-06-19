@@ -941,8 +941,15 @@ where
 		options.account_activity_mode,
 	)?;
 
-	snapshot.execution_programs =
-		operator_execution_program_statuses(project, workflow, state_store)?;
+	let execution_program_readback =
+		operator_execution_program_statuses(tracker, project, workflow, state_store)?;
+	snapshot.execution_programs = execution_program_readback.statuses;
+	if execution_program_readback.issue_metadata_unavailable {
+		add_operator_snapshot_warning(
+			&mut snapshot,
+			"execution_program_issue_metadata_unavailable",
+		);
+	}
 
 	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
 	hydrate_live_operator_external_observers(
@@ -981,18 +988,153 @@ where
 	Ok(snapshot)
 }
 
-fn operator_execution_program_statuses(
+struct OperatorExecutionProgramReadback {
+	statuses: Vec<OperatorExecutionProgramStatus>,
+	issue_metadata_unavailable: bool,
+}
+
+fn operator_execution_program_statuses<T>(
+	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
+) -> crate::prelude::Result<OperatorExecutionProgramReadback>
+where
+	T: IssueTracker + ?Sized,
+{
+	let records = state_store.list_execution_programs(project.service_id())?;
+
+	if records.is_empty() {
+		return Ok(OperatorExecutionProgramReadback {
+			statuses: Vec::new(),
+			issue_metadata_unavailable: false,
+		});
+	}
+
+	match operator_execution_program_statuses_with_live_tracker(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		&records,
+	) {
+		Ok(statuses) => Ok(OperatorExecutionProgramReadback {
+			statuses,
+			issue_metadata_unavailable: false,
+		}),
+		Err(error) => {
+			let _ = error;
+
+			tracing::warn!(
+				project_id = project.service_id(),
+				"Skipped live tracker metadata hydration for Execution Program status; sensitive tracker details were withheld."
+			);
+
+			Ok(OperatorExecutionProgramReadback {
+				statuses: operator_execution_program_statuses_from_persisted(
+					project,
+					workflow,
+					state_store,
+					&records,
+				)?,
+				issue_metadata_unavailable: true,
+			})
+		},
+	}
+}
+
+fn operator_execution_program_statuses_with_live_tracker<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	records: &[ExecutionProgramRecord],
+) -> crate::prelude::Result<Vec<OperatorExecutionProgramStatus>>
+where
+	T: IssueTracker + ?Sized,
+{
+	let policy = ExecutionWorkflowPolicy::from_workflow(project.service_id(), workflow)?;
+	let mapped_issue_ids = operator_execution_program_mapped_issue_ids(records);
+	let refreshed_issues = refresh_execution_program_issues(tracker, records)?;
+	if mapped_issue_ids
+		.iter()
+		.any(|issue_id| !refreshed_issues.contains_key(issue_id))
+	{
+		eyre::bail!("Execution Program tracker metadata was incomplete.");
+	}
+	let refreshed_programs = records
+		.iter()
+		.cloned()
+		.map(|record| {
+			refresh_execution_program_tracker_facts(
+				tracker,
+				state_store,
+				project.service_id(),
+				workflow,
+				record,
+				&refreshed_issues,
+			)
+		})
+		.collect::<Result<Vec<_>>>()?;
+	let context = execution_program_readiness_context(
+		project.service_id(),
+		workflow,
+		state_store,
+		&refreshed_programs,
+	)?;
+	let mut statuses = Vec::new();
+
+	for refreshed in refreshed_programs {
+		let record = &refreshed.record;
+		let program = &refreshed.program;
+		let evaluation = if let Some(source_contract_id) = record.source_contract_id() {
+			let Some(contract) =
+				state_store.decision_contract_for_readback(project.service_id(), source_contract_id)?
+			else {
+				statuses.push(OperatorExecutionProgramStatus::missing_contract(record));
+
+				continue;
+			};
+
+			program.evaluate(contract.contract(), &policy, &context)?
+		} else {
+			program.evaluate_issue_batch(&policy, &context)?
+		};
+
+		statuses.push(OperatorExecutionProgramStatus::from_summary(
+			record,
+			evaluation.operator_summary(),
+			&evaluation,
+		));
+	}
+
+	statuses.sort_by(|left, right| left.program_id.cmp(&right.program_id));
+
+	Ok(statuses)
+}
+
+fn operator_execution_program_mapped_issue_ids(records: &[ExecutionProgramRecord]) -> Vec<String> {
+	records
+		.iter()
+		.flat_map(|record| record.program().nodes())
+		.filter_map(|node| node.linear_issue().map(|issue| issue.issue_id().to_owned()))
+		.collect::<BTreeSet<_>>()
+		.into_iter()
+		.collect()
+}
+
+fn operator_execution_program_statuses_from_persisted(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	records: &[ExecutionProgramRecord],
 ) -> crate::prelude::Result<Vec<OperatorExecutionProgramStatus>> {
 	let policy = ExecutionWorkflowPolicy::from_workflow(project.service_id(), workflow)?;
-	let records = state_store.list_execution_programs(project.service_id())?;
 	let context = operator_execution_program_readiness_context(
 		project.service_id(),
 		workflow,
 		state_store,
-		&records,
+		records,
 	)?;
 	let mut statuses = Vec::new();
 
