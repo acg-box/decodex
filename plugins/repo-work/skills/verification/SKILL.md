@@ -6,7 +6,7 @@ description: Use when a done, fixed, passing, ready, landed, closed-out, or veri
 # Verification
 
 Use this as the claim-to-evidence gate before any positive status claim. Command
-authority still comes from `$decodex:repo-work`, checked-in docs, task runners,
+authority still comes from `$repo-work:repo-work`, checked-in docs, task runners,
 package scripts, CI, or the touched workflow.
 
 ## Core Rule

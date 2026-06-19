@@ -219,8 +219,8 @@ Move out of skills:
 Target shape:
 
 - One router skill for Decodex.
-- Thin phase skills for research, generic challenge, planning, Decodex ops, commit,
-  and land.
+- Thin phase skills for research, planning, Decodex ops, commit, and land; generic
+  challenge lives in the companion `agent-method` plugin.
 - Shared method references either checked into docs or exposed as MCP resources.
 - Eval gate for every slimming pass to catch broken trigger coverage, missing safety
   boundaries, stale links, and token bloat.

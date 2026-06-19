@@ -1,26 +1,25 @@
 ---
 type: Evidence
 title: Decodex Plugin Eval
-description: Records plugin-eval results for the Decodex plugin, routing reference, repo-work, portable OKF, repo-memory, docs drift, debugging, and research skills.
+description: Records plugin-eval results for the Decodex, repo-work, and agent-method plugins after splitting companion workflow surfaces out of Decodex core.
 status: active
 authority: evidence
 owner: docs
-tags: [plugin-eval, skills, repo-work, docs, research, okf, repo-memory, semantic-drift, debugging]
+tags: [plugin-eval, skills, repo-work, docs, research, okf, repo-memory, semantic-drift, debugging, challenge]
 source_refs: []
-code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/repo-workflow.md, plugins/decodex/references/dep-roll-policy.md, plugins/decodex/references/okf-layer.md, plugins/decodex/references/docs-drift.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/repo-work/SKILL.md, plugins/decodex/skills/decodex-ops/SKILL.md, plugins/decodex/skills/challenge/SKILL.md, plugins/decodex/skills/dep-roll/SKILL.md, plugins/decodex/skills/dep-style/SKILL.md, plugins/decodex/skills/review-feedback/SKILL.md, plugins/decodex/skills/verification/SKILL.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-evaluator/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md, plugins/decodex/skills/docs/SKILL.md, plugins/decodex/skills/docs-okf/SKILL.md, plugins/decodex/skills/docs-wiki/SKILL.md, plugins/decodex/skills/docs-drift/SKILL.md, plugins/decodex/skills/debugging/SKILL.md, plugins/decodex/skills/research/SKILL.md, plugins/decodex/scripts/semantic_drift_audit.py]
+code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/okf-layer.md, plugins/decodex/references/docs-drift.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/decodex-ops/SKILL.md, plugins/decodex/skills/okf/SKILL.md, plugins/decodex/skills/okf-query/SKILL.md, plugins/decodex/skills/okf-maintain/SKILL.md, plugins/decodex/skills/repo-memory-writer/SKILL.md, plugins/decodex/skills/repo-memory-evaluator/SKILL.md, plugins/decodex/skills/repo-memory-curator/SKILL.md, plugins/decodex/skills/docs/SKILL.md, plugins/decodex/skills/docs-okf/SKILL.md, plugins/decodex/skills/docs-wiki/SKILL.md, plugins/decodex/skills/docs-drift/SKILL.md, plugins/decodex/skills/research/SKILL.md, plugins/repo-work/.codex-plugin/plugin.json, plugins/repo-work/references/repo-work.md, plugins/repo-work/references/dependency-policy.md, plugins/repo-work/skills/repo-work/SKILL.md, plugins/repo-work/skills/review-feedback/SKILL.md, plugins/repo-work/skills/verification/SKILL.md, plugins/repo-work/skills/debugging/SKILL.md, plugins/agent-method/.codex-plugin/plugin.json, plugins/agent-method/skills/challenge/SKILL.md, plugins/decodex/scripts/semantic_drift_audit.py]
 related: [../policy.md, ./docs-self-iteration.md]
 last_verified: 2026-06-19
 ---
 
 # Decodex Plugin Eval
 
-Purpose: Preserve public-safe evidence that the Decodex plugin, routing reference,
-portable OKF init and skill family, repo-work skill family, repo-memory skill family,
-docs drift skill, debugging skill, and research skill family passed local plugin
-evaluation without failures.
+Purpose: Preserve public-safe evidence that Decodex core, repo-work, and agent-method
+plugin surfaces passed local plugin evaluation after repo-work and generic challenge
+moved out of Decodex core.
 
-Read this when: You need proof that the OKF init/split, repo-memory skills, docs
-drift, debugging, repo-work migration, research consolidation, generic challenge, and plugin invocation
+Read this when: You need proof that Decodex lifecycle skills, temporary docs/OKF and
+repo-memory skills, repo-work contracts, generic challenge, and plugin invocation
 policy were evaluated before landing.
 
 Not this document: A runtime benchmark, coverage report, or replacement for
@@ -30,24 +29,33 @@ Covers: Static plugin-eval commands, score results, and the invocation-policy de
 
 ## Commands
 
-Current full-plugin gate:
+Current plugin gates:
 
 ```sh
 node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plugin-eval.js analyze plugins/decodex --format markdown
+node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plugin-eval.js analyze plugins/repo-work --format markdown
+node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plugin-eval.js analyze plugins/agent-method --format markdown
 ```
 
 ## Results
 
 | Target | Score | Grade | Risk | Checks | Fix First |
 | --- | ---: | --- | --- | --- | --- |
-| `plugins/decodex` | 95 | A | medium | 0 fail, 1 warn, 2 info | Reduce deferred token budget in a future slimming pass. |
+| `plugins/decodex` | 95 | A | medium | 0 fail, 1 warn, 2 info | Deferred token budget remains heavy while docs/OKF and repo-memory stay here. |
+| `plugins/repo-work` | 100 | A | low | 0 fail, 0 warn, 2 info | No urgent fixes. |
+| `plugins/agent-method` | 100 | A | low | 0 fail, 0 warn, 2 info | No urgent fixes. |
 
 Static budget snapshot:
 
-- Active invocation budget: 1079 tokens.
-- Deferred skill budget: 10809 tokens.
-- Explicit-only invocation budget: 9738 tokens.
-- Plugin skill count: 24 skills, with one implicit router and 23 explicit-only skills.
+- Decodex active invocation budget: 865 tokens.
+- Decodex deferred skill budget: 8433 tokens.
+- Decodex explicit-only invocation budget: 6165 tokens.
+- Decodex plugin skill count: 17 skills, with one implicit router and 16
+  explicit-only skills.
+- Repo-work active invocation budget: 392 tokens; deferred budget: 2471 tokens; four
+  explicit-only skills.
+- Agent-method active invocation budget: 318 tokens; deferred budget: 11 tokens; one
+  explicit-only skill.
 
 ## Invocation Policy
 
@@ -62,11 +70,7 @@ Implicit skills:
 Explicit-only skills:
 
 - `commit`
-- `challenge`
-- `debugging`
 - `decodex-ops`
-- `dep-roll`
-- `dep-style`
 - `docs`
 - `docs-drift`
 - `docs-okf`
@@ -79,27 +83,30 @@ Explicit-only skills:
 - `repo-memory-curator`
 - `repo-memory-evaluator`
 - `repo-memory-writer`
-- `repo-work`
-- `review-feedback`
 - `research`
 - `research-promote`
-- `verification`
+
+Companion plugin skills:
+
+- `$repo-work:repo-work`
+- `$repo-work:review-feedback`
+- `$repo-work:verification`
+- `$repo-work:debugging`
+- `$agent-method:challenge`
 
 ## Limits
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
-2026-06-19 full-plugin rerun after research consolidation and generic challenge
-routing reported score 95/100, grade A, medium risk, zero failing checks, one
-warning, and two informational notes. Active invocation cost was 1079 tokens; deferred
-skill cost was 10809 tokens; explicit-only invocation cost was 9738 tokens. The
-remaining warning is
-`deferred_cost_tokens-budget-high`, a known static token-budget cleanup item after
-the repo-work migration, not a routing, safety, or progressive-disclosure failure.
-The manifest default prompt count is 3, which keeps repo-work, docs/OKF, research,
-and debugging starters inside the first-three prompt surface used by Codex. Only the
-top-level `decodex` router remains implicit; repo-work, docs, planning, Decodex ops,
-repo-memory, research, challenge, and specialist skills are explicit-only because the
-top-level router and host `AGENTS.md` name the narrower owner skills directly.
+2026-06-19 rerun after splitting repo-work and agent-method out of Decodex reported
+Decodex at 95/100, grade A, medium risk, zero failing checks, one warning, and two
+informational notes. Active invocation cost dropped to 865 tokens; deferred skill cost
+dropped to 8433 tokens; explicit-only invocation cost dropped to 6165 tokens. The
+remaining Decodex warning is `deferred_cost_tokens-budget-high`, expected while
+docs/OKF and repo-memory remain temporarily inside Decodex pending CLI migration.
+Repo-work and agent-method both evaluated at 100/100, grade A, low risk.
+
+Only the top-level `decodex` router remains implicit. Repo-work and agent-method
+specialist skills are explicit-only and routed by host `AGENTS.md`.
 
 Directly evaluating the installed cache path
 `~/.codex/plugins/cache/hack-ink/decodex/0.2.0` reports an additional

@@ -1,0 +1,38 @@
+{
+  "name": "agent-method",
+  "version": "0.1.0",
+  "description": "Portable agent reasoning methods for challenge and skeptic review.",
+  "author": {
+    "name": "hack-ink",
+    "email": "hi@hack.ink",
+    "url": "https://github.com/hack-ink"
+  },
+  "homepage": "https://github.com/hack-ink/decodex",
+  "repository": "https://github.com/hack-ink/decodex",
+  "license": "GPL-3.0",
+  "keywords": [
+    "agents",
+    "challenge",
+    "review",
+    "skeptic"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Method",
+    "shortDescription": "Run portable challenge and skeptic passes.",
+    "longDescription": "Provides a small generic challenge skill for adversarial review of claims, plans, evidence sufficiency, and ready or decision-ready assertions.",
+    "developerName": "hack-ink",
+    "category": "Development",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "websiteURL": "https://github.com/hack-ink/decodex",
+    "privacyPolicyURL": "https://github.com/hack-ink/decodex",
+    "termsOfServiceURL": "https://github.com/hack-ink/decodex",
+    "defaultPrompt": [
+      "Challenge this plan."
+    ],
+    "brandColor": "#334155"
+  }
+}

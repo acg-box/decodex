@@ -9,8 +9,8 @@ Decodex research produces a latent `decodex.decision_contract/1` candidate. It d
 not queue work, mutate Linear, set Codex goals, implement, or dispatch Program nodes.
 
 Compact loop: probe, evidence, options, judgment, challenge, decision; after explicit
-acceptance, `research-promote`. Use the generic `challenge` skill for the skeptic
-pass when material assumptions, evidence, option framing, or decision readiness need
+acceptance, `research-promote`. Use `$agent-method:challenge` for the skeptic pass
+when material assumptions, evidence, option framing, or decision readiness need
 adversarial review.
 
 ## Probe

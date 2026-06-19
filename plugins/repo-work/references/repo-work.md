@@ -1,6 +1,6 @@
 # Repo Workflow Policy
 
-Read when `$decodex:repo-work` needs exact command authority, task-runner structure,
+Read when `$repo-work:repo-work` needs exact command authority, task-runner structure,
 validation, configuration, landing, or evidence-reporting rules.
 
 ## Tool Authority
@@ -13,14 +13,10 @@ validation, configuration, landing, or evidence-reporting rules.
 
 ## Engineering Defaults
 
-- Follow checked-in language, runtime, and bootstrap authority before personal defaults.
-- Prefer maintained, explicit, modern libraries over legacy defaults.
-- Avoid panic/unwrap-style shortcuts in production code; tests may use them when the
-  intent is clear.
-- Rust defaults for this repo: prefer `time`, `rustls`, and
-  `color_eyre::eyre::Result` unless local checked-in policy overrides them.
-- Python defaults: assume no universal venv, Poetry, or bootstrap path; use the
-  checked-in runtime/tooling selection for the touched project.
+- Follow checked-in language, runtime, and bootstrap authority before personal
+  defaults.
+- Treat language/library preferences as local policy only when checked-in docs,
+  manifests, or user instructions establish them.
 
 ## Task Runner Structure
 
@@ -108,7 +104,8 @@ validation, configuration, landing, or evidence-reporting rules.
 
 - Treat Codex skill and plugin edits as executable workflow changes.
 - Run `plugin-eval analyze <plugin-root> --format markdown` before done/fixed/ready
-  claims for plugin changes; report the score, highest-priority finding, and limits.
+  claims for plugin changes when plugin-eval is available; report the score,
+  highest-priority finding, and limits.
 
 ## Evidence To Report
 

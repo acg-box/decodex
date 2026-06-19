@@ -1,7 +1,7 @@
 {
   "name": "decodex",
   "version": "0.2.0",
-  "description": "Decodex agent workflows for repo-work rules, portable OKF bundles, repo memory writing, evaluation, and curation, docs, semantic drift, debugging, research, challenge, review repair, verification, issue planning, ops, commit, and landing.",
+  "description": "Decodex lifecycle workflows for docs/OKF, semantic drift, research, promotion, issue planning, ops, commit, and landing.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -15,17 +15,15 @@
     "automation",
     "codex",
     "decodex",
-    "debugging",
     "diagnostics",
-    "repo-work",
     "semantic-drift",
     "orchestration"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Decodex",
-    "shortDescription": "Maintain repo-work, docs, drift, debugging, research, planning, and operations for Decodex.",
-    "longDescription": "Routes checked-in repository authority, task-runner structure, engineering defaults, dependency policy, review repair, verification, portable OKF/LLM Wiki bundle work, source-backed repo-memory writing, evaluation, curation, Decodex OKF docs maintenance, semantic drift audits, root-cause debugging, bounded research, generic challenge/skeptic review, promotion, issue briefing and planning, runtime ops, commit, and landing.",
+    "shortDescription": "Maintain Decodex docs, drift, research, planning, operations, commit, and landing.",
+    "longDescription": "Routes Decodex docs and OKF work, semantic drift audits, bounded research, promotion, issue briefing and planning, runtime ops, commit, and landing. Repository execution policy and generic challenge live in companion plugins.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -36,9 +34,9 @@
     "privacyPolicyURL": "https://github.com/hack-ink/decodex",
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
-      "Apply Decodex repo-work rules.",
       "Maintain Decodex docs. Work with an OKF bundle.",
-      "Research this with Decodex. Debug or audit Decodex drift."
+      "Research this with Decodex.",
+      "Audit Decodex drift or operate Decodex."
     ],
     "brandColor": "#0F766E"
   }
