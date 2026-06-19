@@ -2,6 +2,10 @@
 
 ## 2026-06-19
 
+- Consolidated Decodex research phase skills into the `research` compact loop and
+  promoted the research-specific challenge entry into a generic `challenge` skeptic
+  skill; scout-style evidence gathering remains dynamic read-only support-agent work
+  rather than a configured static role.
 - Documented idempotent `ghost_lane_cleanup` audit readback for missing-issue ghost
   lanes so stale PubFi fixture cleanup evidence no longer projects as current or
   retained attention when no retained work, live execution, or review lineage remains.
@@ -160,7 +164,7 @@
   `docs_impact`.
 - Added structured OKF frontmatter validation for `source_refs`, `code_refs`,
   `related`, `promotes_to`, `drift_watch`, and `tags`.
-- Clarified that docs impact `research_required` routes into the Decodex `research*`
+- Clarified that docs impact `research_required` routes into the Decodex research
   skill family, and that `docs/research/` remains latent supporting evidence rather
   than a promotion target.
 - Added `docs/evidence/index.md` for reusable public-safe proof concepts and durable

@@ -38,7 +38,8 @@ Promotion targets:
 
 - `docs/decisions`: this rationale record.
 - `docs/spec/loop-runtime.md`: research method and Decision Contract authority rules.
-- `plugins/decodex/skills/research*/`: slim, contract-first research routing.
+- `plugins/decodex/skills/research/`, `challenge/`, and `research-promote/`: slim,
+  contract-first research routing, generic skeptic review, and promotion.
 - Future runtime issue: MCP server implementation, only after explicit promotion.
 
 Selected option: Hybrid Decodex MCP capability gateway plus thin skills.
@@ -218,7 +219,8 @@ Move out of skills:
 Target shape:
 
 - One router skill for Decodex.
-- Thin phase skills for research, planning, Decodex ops, commit, and land.
+- Thin phase skills for research, generic challenge, planning, Decodex ops, commit,
+  and land.
 - Shared method references either checked into docs or exposed as MCP resources.
 - Eval gate for every slimming pass to catch broken trigger coverage, missing safety
   boundaries, stale links, and token bloat.

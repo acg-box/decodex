@@ -20,7 +20,7 @@ final evidence reporting matters.
   `$decodex:dep-style`.
 - Incoming review feedback or review repair: `$decodex:review-feedback`.
 - Done/fixed/ready/landed/verified claims: `$decodex:verification`.
-- Research and challenge: `$decodex:research` and `$decodex:research-challenge`.
+- Research and challenge: `$decodex:research` and `$decodex:challenge`.
 - Semantic drift audits: `$decodex:docs-drift`.
 - Root-cause investigation or repeated failed fixes: `$decodex:debugging`.
 - Runtime ops, tracker state, labels, commit, or landing: use the repository's owning

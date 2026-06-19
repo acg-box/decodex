@@ -201,9 +201,9 @@ Every docs-changing lane follows this loop:
 The agent-facing entrypoint for this loop is
 [`plugins/decodex/skills/docs/SKILL.md`](../plugins/decodex/skills/docs/SKILL.md),
 which delegates to the narrower `docs-okf`, `docs-wiki`, and `docs-drift` skills. If
-the docs impact is `research_required`, switch to the Decodex `research*` skill
-family and persist any checked-in result under `docs/research/` only as a latent,
-non-authoritative Markdown OKF research concept until explicitly promoted.
+the docs impact is `research_required`, switch to the Decodex `research` and
+`challenge` skills and persist any checked-in result under `docs/research/` only as a
+latent, non-authoritative Markdown OKF research concept until explicitly promoted.
 
 Detailed Decodex docs rules live in `plugins/decodex/references/docs-method.md`,
 `docs-okf.md`, `docs-wiki.md`, and `docs-drift.md`. Detailed research rules live in
