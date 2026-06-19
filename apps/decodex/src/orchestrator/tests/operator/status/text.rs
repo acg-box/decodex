@@ -504,6 +504,73 @@ fn operator_status_program_readback_prefers_post_review_owner_over_stale_active_
 	);
 }
 
+#[test]
+fn operator_status_program_readback_refreshes_live_tracker_issue_mapping() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let stale_mapping = status_program_issue_mapping("issue-live-refresh", "PUB-1597", "Todo")
+		.with_needs_attention_label(true);
+	let node = ExecutionProgramNode::new(
+		"node-live-refresh",
+		ExecutionProgramNodeStage::Runtime,
+		"Close stale Program attention after the mapped issue is terminal.",
+		ExecutionQueueIntent::ReadyToQueue,
+	)
+	.expect("node should build")
+	.with_acceptance_expectations(["The mapped issue reflects live tracker state."])
+	.expect("acceptance should attach")
+	.with_validation_expectations(["Build operator status."])
+	.expect("validation should attach")
+	.with_linear_issue(stale_mapping)
+	.expect("stale mapping should attach");
+	let program = ExecutionProgram::from_issue_batch_intake(
+		"program-live-refresh",
+		config.service_id(),
+		"program-live-refresh-fingerprint",
+		"Refresh live Program issue metadata.",
+		vec![node],
+	)
+	.expect("program should build");
+
+	state_store
+		.upsert_execution_program(config.service_id(), program)
+		.expect("program should persist");
+
+	let live_issue = sample_issue_with_sort_fields(
+		"issue-live-refresh",
+		"PUB-1597",
+		"Done",
+		&[],
+		Some(1),
+		"2026-06-19T00:00:00.000Z",
+	);
+	let tracker = FakeTracker::new(vec![live_issue]);
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("status snapshot should build");
+	let program = snapshot.execution_programs.first().expect("program should surface");
+
+	assert_eq!(program.status, "completed");
+	assert_eq!(program.completed_count, 1);
+	assert_eq!(program.needs_attention_count, 0);
+	assert_eq!(program.blocked_count, 0);
+	assert_eq!(program.dispatchable_count, 0);
+	assert!(
+		program.node_readbacks.is_empty(),
+		"terminal refreshed Program nodes should not render stale attention readbacks"
+	);
+	assert_eq!(tracker.refresh_queries.borrow().len(), 1);
+	assert_eq!(
+		tracker.refresh_queries.borrow()[0],
+		vec![String::from("issue-live-refresh")]
+	);
+}
+
 fn seed_program_readback_status(state_store: &StateStore, config: &ServiceConfig) {
 	let program = ExecutionProgram::from_issue_batch_intake(
 		"program-status-readback",
