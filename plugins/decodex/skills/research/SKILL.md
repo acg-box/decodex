@@ -11,8 +11,8 @@ Read `../../references/research-lifecycle.md` first, then load
 `../../references/research-promotion.md` only when the run needs that detail.
 
 Follow the compact loop: probe, evidence, options, judgment, challenge, decision. Use
-`challenge` for the skeptic pass before `decision_ready` or any high-risk
-recommendation. Use `research-promote` only after explicit acceptance.
+`$agent-method:challenge` for the skeptic pass before `decision_ready` or any
+high-risk recommendation. Use `research-promote` only after explicit acceptance.
 
 - Do not route Decodex research through external research skills.
 - Do not write new Decodex research as `docs/research/` event logs or JSON.

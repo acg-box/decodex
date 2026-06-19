@@ -2,6 +2,11 @@
 
 ## 2026-06-19
 
+- Split generic agent-facing method and repository execution policy out of Decodex
+  core: `plugins/agent-method` now owns challenge/skeptic review and
+  `plugins/repo-work` owns repo command, task-runner, review, verification, debugging,
+  and dependency-policy contracts. Decodex keeps docs/OKF and repo-memory skills
+  temporarily until the related CLI surfaces migrate.
 - Consolidated Decodex research phase skills into the `research` compact loop and
   promoted the research-specific challenge entry into a generic `challenge` skeptic
   skill; scout-style evidence gathering remains dynamic read-only support-agent work

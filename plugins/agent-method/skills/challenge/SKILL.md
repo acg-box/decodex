@@ -3,12 +3,11 @@ name: challenge
 description: Use when a plan, claim, recommendation, fix, research judgment, evidence sufficiency, or done/ready/decision-ready claim needs adversarial critique, skeptic review, gap finding, assumption testing, or option-framing challenge.
 ---
 
-# Decodex Challenge
+# Challenge
 
 Apply a skeptic pass to make the target claim survive adversarial review. This skill
-is generic: research uses it before terminal decisions, but repo-work, debugging,
-review repair, planning, and ordinary design discussion may use it when uncertainty or
-risk is material.
+is generic: research, repo-work, debugging, review repair, planning, and ordinary
+design discussion may use it when uncertainty or risk is material.
 
 ## Rules
 

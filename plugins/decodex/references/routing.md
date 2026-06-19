@@ -1,7 +1,8 @@
 # Decodex Routing Reference
 
-Use this when a Decodex task crosses repo-work, docs, research, promotion, planning,
-runtime ops, commit, or landing boundaries.
+Use this when a Decodex task crosses docs, research, promotion, planning, runtime
+ops, commit, or landing boundaries. Repository execution policy and generic challenge
+live in companion plugins.
 
 ## Mode Map
 
@@ -10,26 +11,24 @@ runtime ops, commit, or landing boundaries.
   context anchors only when those reads shape the plan. Skip tiny work and explicit
   file targets only when the owner is unambiguous. If docs impact appears late, run
   the same docs gate and report recovery evidence.
-- Repo work: use `repo-work` for checked-in command authority, task-runner structure,
-  configuration contracts, architecture/cutover defaults, language/tooling defaults,
-  dependency policy, review repair, validation evidence, completion claims, and
-  dynamic support-agent boundaries. Route from there to dependency, review,
-  verification, debugging, challenge, drift, or research skills when the touched
-  surface calls for them.
+- Repo work: use `$repo-work:repo-work` for checked-in command authority, task-runner
+  structure, configuration contracts, dependency policy, review repair, validation
+  evidence, completion claims, debugging, and dynamic support-agent boundaries.
 - Docs: use `docs` as the router. Use `docs-okf`, `docs-wiki`, and `docs-drift`
   for shape, navigation, and audits. Docs impact `research_required` switches to
   `research` plus `challenge`; checked-in `docs/research/` is latent evidence.
 - Semantic drift: use `docs-drift` for docs/code/help/status/config/runtime claim
   alignment. It owns drift verdicts even when the trigger is a command, config key,
   status phrase, generated artifact, or runtime readback rather than a prose doc.
-- Debugging: use `debugging` for root-cause investigation, original-symptom checks,
-  runtime diagnostics, and repeated failed fixes. Debugging may feed research only
+- Debugging: use `$repo-work:debugging` for repository bugs, original-symptom checks,
+  and repeated failed fixes. Use `decodex-ops` for Decodex runtime readback,
+  retained-lane control, or operator diagnostics. Debugging may feed research only
   when the result becomes a decision-ready comparison.
 - Research/design: use `research`. The compact loop is probe, evidence, options,
   judgment, challenge, decision. Results are latent Decision Contract candidates only.
-- Challenge: use `challenge` for generic skeptic review of plans, claims, evidence
-  sufficiency, option framing, and ready/decision-ready assertions. Challenge does
-  not create execution authority.
+- Challenge: use `$agent-method:challenge` for generic skeptic review of plans,
+  claims, evidence sufficiency, option framing, and ready/decision-ready assertions.
+  Challenge does not create execution authority.
 - Promotion: use `research-promote` only after explicit acceptance such as "arrange
   this", "push this forward", "推进", or "做".
 - Planning: use `planning` after promotion or another explicit execution instruction.
@@ -61,8 +60,8 @@ runtime ops, commit, or landing boundaries.
 ## Natural-Language Research Routing
 
 Keep Decodex natural-language-first. Requests such as `research X` route through the
-`research` compact loop, including a `challenge` pass before terminal decision, before
-promotion.
+`research` compact loop, including an `$agent-method:challenge` pass before terminal
+decision, before promotion.
 
 Research never queues work, mutates Linear, starts implementation, creates Codex
 goals, or dispatches Program nodes. Promotion preserves accepted objectives,

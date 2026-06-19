@@ -1,9 +1,9 @@
 ---
 name: debugging
-description: Use when Decodex or repository work needs root-cause investigation for bugs, test/build failures, runtime regressions, performance issues, unexpected behavior, visible symptoms, or repeated failed fixes.
+description: Use when repository work needs root-cause investigation for bugs, test/build failures, runtime regressions, performance issues, unexpected behavior, visible symptoms, or repeated failed fixes.
 ---
 
-# Decodex Debugging
+# Debugging
 
 Find the smallest evidence-backed root cause before repair. Debugging does not create
 execution authority, land changes, close tracker state, or replace final verification.
@@ -12,17 +12,14 @@ execution authority, land changes, close tracker state, or replace final verific
 
 - Bugs, test/build failures, runtime regressions, visible symptoms, green checks with
   wrong behavior, or repeated failed fixes.
-- Retained lane, review repair, recovery path, runtime readback, or tracker/source
-  conflicts.
-- Decodex runtime cases involving lanes, runtime state, handoff records, app-server
-  protocol, or operator readback. Use `decodex status`, `decodex diagnose --json`,
-  `decodex evidence`, or documented recovery diagnostics there.
+- Review repair, recovery path, runtime readback, or tracker/source conflicts.
 
 ## Boundaries
 
-- Use `docs-drift` for docs/code claim alignment.
-- Use Decodex research only when debugging produces a decision-ready comparison.
-- Use `$decodex:verification` before done/fixed/ready claims.
+- Use the checked-in docs or knowledge owner for docs/code claim alignment.
+- Use the owning research workflow only when debugging produces a decision-ready
+  comparison.
+- Use `$repo-work:verification` before done/fixed/ready claims.
 
 ## Loop
 
