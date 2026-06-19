@@ -28,8 +28,8 @@ retained worktree state, and PR lineage when present.
 Depends on: [`../spec/lane-control.md`](../spec/lane-control.md),
 [`../spec/tracker-tools.md`](../spec/tracker-tools.md),
 [`../reference/operator-control-plane.md`](../reference/operator-control-plane.md),
-[`./recover-review-handoff.md`](./recover-review-handoff.md), the Decodex `automation`,
-`manual-cli`, and `labels` skills, plus the registered project `project.toml` and
+[`./recover-review-handoff.md`](./recover-review-handoff.md), the Decodex
+`decodex-ops` skill, plus the registered project `project.toml` and
 `WORKFLOW.md`.
 
 Verification: The chosen path should cite the inspection evidence, the control outcome,
@@ -103,7 +103,7 @@ or clean labels.
 | Retained worktree has useful local changes and lineage matches issue, branch, runtime evidence, and PR when present. | Resume or repair the same lane. | Use `decodex run <ISSUE>` when the registered workflow makes it eligible, or use the specific retained recovery runbook. |
 | Review lifecycle record is missing or stale but the retained PR lane appears recoverable. | Diagnose before rebind. | Run `decodex recover review-handoff diagnose <ISSUE>` and follow [`recover-review-handoff.md`](./recover-review-handoff.md). |
 | Queue label or tracker state was changed and the scheduler should observe it before the next poll. | Request a refresh, not a retry. | `POST /api/linear-scan` with `projectId`, or no body for all enabled projects. |
-| Queue label should be added, removed, or interpreted. | Use service-scoped label policy. | Follow the `labels` skill; do not guess `<service-id>` or clear `needs-attention` before fixing the blocker. |
+| Queue label should be added, removed, or interpreted. | Use service-scoped label policy. | Follow the `decodex-ops` skill; do not guess `<service-id>` or clear `needs-attention` before fixing the blocker. |
 | Broad steer materially changes the objective or acceptance contract. | Preserve audit and resolve lifecycle explicitly. | Update and requeue the same issue, create a new issue/lane, or route the owned run to manual attention. |
 | Operator wants a different issue or replacement task. | Treat as task replacement, not steer. | Stop or pause through supported controls as needed, then create/update/requeue through the supported lifecycle. |
 | Status or Linear failure summary reports a loop guardrail reason. | Inspect the reason-specific evidence, Architecture Recovery Packet, and Authority Boundary Check. | Follow the loop guardrail recovery table below before clearing `decodex:needs-attention` or requeueing. |
@@ -218,7 +218,7 @@ lane, or change labels.
 
 Keep `decodex:queued:<service-id>` when the issue is still intended for automation and
 the scheduler simply needs to observe a changed state. Remove it only through the
-labels skill when the issue should no longer be an intake candidate. Keep
+Decodex ops skill when the issue should no longer be an intake candidate. Keep
 `decodex:needs-attention` until the recorded blocker is resolved; clearing it is not a
 recovery shortcut.
 

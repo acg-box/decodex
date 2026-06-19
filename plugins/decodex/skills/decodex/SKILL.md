@@ -6,7 +6,7 @@ description: Use when routing Decodex work.
 # Decodex
 
 Route Decodex work to the narrowest surface. Read `../../references/routing.md` when
-repo-work, research, promotion, planning, context intake, labels, runtime, commit, or
+repo-work, research, promotion, planning, context intake, runtime ops, commit, or
 landing boundaries matter.
 
 - `repo-work`: checked-in repository authority, task-runner structure, configuration
@@ -26,9 +26,9 @@ landing boundaries matter.
   repo-memory work.
 - `research-promote`: explicit acceptance of latent research.
 - `planning`: accepted work needs issues or Program readiness.
-- `manual-cli`: a human drives local commands.
-- `automation`: retained lanes, Program Intake, recovery, closeout.
-- `labels`, `commit`, `land`: only their narrow surfaces.
+- `decodex-ops`: runtime operations, retained automation, human-driven CLI, labels,
+  intake, recovery, and lane control.
+- `commit`, `land`: only their narrow high-risk authority surfaces.
 
 For MCP gateway, runtime, tracker, or control-plane work, read
 `../../references/routing.md` before choosing tools. MCP is a typed facade; it does
