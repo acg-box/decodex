@@ -1,7 +1,7 @@
 //! Explicit operator recovery surfaces for retained Decodex lanes.
 
 use std::{
-	collections::{BTreeSet, HashMap},
+	collections::{BTreeSet, HashMap, HashSet},
 	env, fs,
 	path::{Path, PathBuf},
 	process::Command,
@@ -39,6 +39,7 @@ const REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION: &str = "review_handoff_owne
 const REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION: &str = "review_handoff_rebind_required";
 const REVIEW_HANDOFF_UNVERIFIED_CLASSIFICATION: &str = "review_handoff_unverified";
 const REVIEW_HANDOFF_MISMATCH_CLASSIFICATION: &str = "review_handoff_mismatch";
+const REVIEW_HANDOFF_STALE_TERMINAL_RESIDUE_CLASSIFICATION: &str = "stale_terminal_local_residue";
 const REVIEW_HANDOFF_REBIND_EVENT: &str = "review_handoff_rebind";
 const REVIEW_HANDOFF_ADOPT_EVENT: &str = "review_handoff_adopt";
 const LEGACY_MANUAL_CLOSEOUT_EVENT: &str = "closeout";
@@ -914,21 +915,31 @@ fn resolve_recovery_config_path(
 fn diagnose_all_retained_review_worktrees(
 	context: &RecoveryContext,
 ) -> Result<Vec<ReviewHandoffDiagnostic>> {
-	let worktrees = context.state_store.list_worktrees(context.config.service_id())?;
+	diagnose_all_retained_review_worktrees_with_tracker(context, &context.tracker)
+}
 
-	if worktrees.is_empty() {
-		return Ok(Vec::new());
+fn diagnose_all_retained_review_worktrees_with_tracker<T>(
+	context: &RecoveryContext,
+	tracker: &T,
+) -> Result<Vec<ReviewHandoffDiagnostic>>
+where
+	T: IssueTracker,
+{
+	let mut worktrees = Vec::new();
+	let mut diagnostics = Vec::new();
+
+	for worktree in context.state_store.list_worktrees(context.config.service_id())? {
+		if retained_review_worktree_is_stale_terminal_residue(context, &worktree)? {
+			diagnostics.push(stale_terminal_residue_review_handoff_diagnostic(context, &worktree));
+		} else {
+			worktrees.push(worktree);
+		}
 	}
 
-	let issue_ids =
-		worktrees.iter().map(|worktree| worktree.issue_id().to_owned()).collect::<Vec<_>>();
-	let issues = context.tracker.refresh_issues(&issue_ids)?;
-	let issues_by_id =
-		issues.into_iter().map(|issue| (issue.id.clone(), issue)).collect::<HashMap<_, _>>();
+	let issues_by_id = refresh_retained_review_worktree_issues(tracker, &worktrees)?;
 	let tracker_policy = context.workflow.frontmatter().tracker();
 	let success_state = tracker_policy.success_state();
 	let in_progress_state = tracker_policy.in_progress_state();
-	let mut diagnostics = Vec::new();
 
 	for worktree in worktrees {
 		let Some(issue) = issues_by_id.get(worktree.issue_id()).cloned() else {
@@ -945,16 +956,117 @@ fn diagnose_all_retained_review_worktrees(
 	Ok(diagnostics)
 }
 
+fn retained_review_worktree_is_stale_terminal_residue(
+	context: &RecoveryContext,
+	worktree: &WorktreeMapping,
+) -> Result<bool> {
+	let active_issue_ids = context
+		.state_store
+		.list_active_shared_leases(context.config.service_id())?
+		.into_iter()
+		.map(|lease| lease.issue_id().to_owned())
+		.collect::<HashSet<_>>();
+
+	orchestrator::worktree_mapping_is_stale_terminal_local_residue(
+		&context.config,
+		&context.state_store,
+		worktree,
+		&active_issue_ids,
+	)
+}
+
+fn stale_terminal_residue_review_handoff_diagnostic(
+	context: &RecoveryContext,
+	worktree: &WorktreeMapping,
+) -> ReviewHandoffDiagnostic {
+	ReviewHandoffDiagnostic {
+		project_id: context.config.service_id().to_owned(),
+		issue_id: worktree.issue_id().to_owned(),
+		issue_identifier: worktree.issue_id().to_owned(),
+		issue_state: String::from("local_terminal_residue"),
+		classification: String::from(REVIEW_HANDOFF_STALE_TERMINAL_RESIDUE_CLASSIFICATION),
+		reason: String::from(
+			"terminal_unleased_runtime_recorded_identifier_mapping_with_missing_path",
+		),
+		branch_name: worktree.branch_name().to_owned(),
+		worktree_path: worktree.worktree_path().display().to_string(),
+		local_branch_name: None,
+		local_head_oid: None,
+		worktree_clean: None,
+		existing_pr_url: None,
+		existing_lifecycle_handoff_head_oid: None,
+		existing_lifecycle_phase_head_oid: None,
+		pr_base_ref: None,
+		pr_head_oid: None,
+		mismatched_field: None,
+		active_label_present: None,
+		next_action: String::from(
+			"No review-handoff recovery action is required; project reconciliation clears this stale local mapping before tracker refresh.",
+		),
+	}
+}
+
+fn refresh_retained_review_worktree_issues<T>(
+	tracker: &T,
+	worktrees: &[WorktreeMapping],
+) -> Result<HashMap<String, TrackerIssue>>
+where
+	T: IssueTracker,
+{
+	if worktrees.is_empty() {
+		return Ok(HashMap::new());
+	}
+
+	let issue_ids =
+		worktrees.iter().map(|worktree| worktree.issue_id().to_owned()).collect::<Vec<_>>();
+
+	Ok(tracker
+		.refresh_issues(&issue_ids)?
+		.into_iter()
+		.map(|issue| (issue.id.clone(), issue))
+		.collect())
+}
+
 fn diagnose_issue(
 	context: &RecoveryContext,
 	issue_identifier: &str,
 ) -> Result<ReviewHandoffDiagnostic> {
-	let issue = load_issue_by_identifier(&context.tracker, issue_identifier)?;
+	diagnose_issue_with_tracker(context, &context.tracker, issue_identifier)
+}
+
+fn diagnose_issue_with_tracker<T>(
+	context: &RecoveryContext,
+	tracker: &T,
+	issue_identifier: &str,
+) -> Result<ReviewHandoffDiagnostic>
+where
+	T: IssueTracker,
+{
+	if let Some(worktree) = stale_terminal_residue_worktree_for_issue(context, issue_identifier)? {
+		return Ok(stale_terminal_residue_review_handoff_diagnostic(context, &worktree));
+	}
+
+	let issue = load_issue_by_identifier(tracker, issue_identifier)?;
 	let worktree = context.state_store.worktree_for_issue(&issue.id)?.ok_or_else(|| {
 		eyre::eyre!("Issue `{}` has no retained worktree mapping.", issue.identifier)
 	})?;
 
 	diagnose_issue_worktree(context, issue, worktree)
+}
+
+fn stale_terminal_residue_worktree_for_issue(
+	context: &RecoveryContext,
+	issue_identifier: &str,
+) -> Result<Option<WorktreeMapping>> {
+	let Some(worktree) = context.state_store.worktree_for_issue(issue_identifier)? else {
+		return Ok(None);
+	};
+
+	if retained_review_worktree_is_stale_terminal_residue(context, &worktree)? {
+		Ok(Some(worktree))
+	} else {
+		Ok(None)
+	}
 }
 
 fn diagnose_issue_worktree(
@@ -4429,7 +4541,7 @@ fn relative_worktree_path_for_recovery(
 
 #[cfg(test)]
 mod tests {
-	use std::{fs, path::Path};
+	use std::{cell::RefCell, fs, path::Path};
 
 	use tempfile::TempDir;
 
@@ -4460,10 +4572,16 @@ mod tests {
 		issues: Vec<TrackerIssue>,
 		refresh_error: Option<String>,
 		identifier_error: Option<String>,
+		refresh_queries: RefCell<Vec<Vec<String>>>,
 	}
 	impl GhostLaneTestTracker {
 		fn missing() -> Self {
-			Self { issues: Vec::new(), refresh_error: None, identifier_error: None }
+			Self {
+				issues: Vec::new(),
+				refresh_error: None,
+				identifier_error: None,
+				refresh_queries: RefCell::new(Vec::new()),
+			}
 		}
 
 		fn refresh_error(message: &str) -> Self {
@@ -4471,6 +4589,7 @@ mod tests {
 				issues: Vec::new(),
 				refresh_error: Some(message.to_owned()),
 				identifier_error: None,
+				refresh_queries: RefCell::new(Vec::new()),
 			}
 		}
 
@@ -4479,6 +4598,7 @@ mod tests {
 				issues: Vec::new(),
 				refresh_error: None,
 				identifier_error: Some(message.to_owned()),
+				refresh_queries: RefCell::new(Vec::new()),
 			}
 		}
 	}
@@ -4517,6 +4637,8 @@ mod tests {
 			&self,
 			issue_ids: &[String],
 		) -> crate::prelude::Result<Vec<TrackerIssue>> {
+			self.refresh_queries.borrow_mut().push(issue_ids.to_vec());
+
 			if let Some(message) = &self.refresh_error {
 				return Err(crate::prelude::eyre::eyre!(message.clone()));
 			}
@@ -4888,6 +5010,87 @@ token_env_var = "HOME"
 				.expect("backoff should read")
 				.is_none(),
 			"read-only recovery diagnostics must not persist new connector backoff"
+		);
+	}
+
+	#[test]
+	fn review_handoff_diagnose_skips_terminal_identifier_worktree_before_tracker_refresh() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context =
+			sample_recovery_context(&temp_dir, super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		let tracker = GhostLaneTestTracker::missing();
+		let stale_issue_id = "PUB-001";
+		let stale_worktree_path = context.config.worktree_root().join(stale_issue_id);
+
+		context
+			.state_store
+			.record_run_attempt("run-01", stale_issue_id, 1, super::GHOST_LANE_TERMINAL_STATUS)
+			.expect("terminal attempt should record");
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				stale_issue_id,
+				"x/pubfi-pub-001",
+				&stale_worktree_path.display().to_string(),
+			)
+			.expect("stale worktree mapping should record");
+
+		let diagnostics =
+			super::diagnose_all_retained_review_worktrees_with_tracker(&context, &tracker)
+				.expect("retained review diagnostics should build");
+		let diagnostic = diagnostics.first().expect("local residue diagnostic should render");
+
+		assert_eq!(diagnostics.len(), 1);
+		assert_eq!(
+			diagnostic.classification,
+			super::REVIEW_HANDOFF_STALE_TERMINAL_RESIDUE_CLASSIFICATION
+		);
+		assert_eq!(diagnostic.issue_id, stale_issue_id);
+		assert_eq!(diagnostic.issue_state, "local_terminal_residue");
+		assert!(
+			tracker.refresh_queries.borrow().is_empty(),
+			"terminal local identifier residue must not be sent to tracker refresh"
+		);
+	}
+
+	#[test]
+	fn review_handoff_diagnose_targeted_terminal_identifier_worktree_before_tracker_lookup() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context =
+			sample_recovery_context(&temp_dir, super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		let tracker = GhostLaneTestTracker::identifier_error(
+			"Linear GraphQL request failed: Argument Validation Error",
+		);
+		let stale_issue_id = "PUB-001";
+		let stale_worktree_path = context.config.worktree_root().join(stale_issue_id);
+
+		context
+			.state_store
+			.record_run_attempt("run-01", stale_issue_id, 1, super::GHOST_LANE_TERMINAL_STATUS)
+			.expect("terminal attempt should record");
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				stale_issue_id,
+				"x/pubfi-pub-001",
+				&stale_worktree_path.display().to_string(),
+			)
+			.expect("stale worktree mapping should record");
+
+		let diagnostic = super::diagnose_issue_with_tracker(&context, &tracker, stale_issue_id)
+			.expect("targeted retained review diagnostic should classify local residue");
+
+		assert_eq!(
+			diagnostic.classification,
+			super::REVIEW_HANDOFF_STALE_TERMINAL_RESIDUE_CLASSIFICATION
+		);
+		assert_eq!(diagnostic.issue_id, stale_issue_id);
+		assert_eq!(diagnostic.issue_state, "local_terminal_residue");
+		assert!(
+			tracker.refresh_queries.borrow().is_empty(),
+			"targeted terminal local residue must not be sent to tracker refresh"
 		);
 	}
 
@@ -5372,6 +5575,7 @@ token_env_var = "HOME"
 			issues: vec![issue],
 			refresh_error: None,
 			identifier_error: None,
+			refresh_queries: RefCell::new(Vec::new()),
 		};
 
 		store

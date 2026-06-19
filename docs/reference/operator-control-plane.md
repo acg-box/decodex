@@ -384,8 +384,8 @@ protocol activity durable outside the local operator surface.
 | `Program Intake` | Read-only Program Intake and Execution Program progress. It shows each active program's public intake summary, status, mapped issue identifiers, summary counts, dispatchable counts, and sparse node diagnostics for dispatch decisions or held/blocked/stale/attention nodes. It does not expose graph editing, raw node-edge mutation controls, Decision Contract payloads, or private runtime evidence. |
 | `Intake Queue` | Queued tracker issues before execution. Candidates are classified as `ready`, capacity-waiting, claimed without a matching local lane, blocked, or closed/stale. Repeated identical open dependency blockers surface as `dependency_program_stale` after the guardrail threshold so operators can distinguish a stale Execution Program/dependency plan from a newly blocked queue item. A blocked queued candidate can still show an attached `.worktrees/XY-*` path when the queue owns the attention state; if that worktree has tracked changes after stalled reconciliation, failure writeback, or retries, the candidate is partial retained progress and not just a generic stalled or retry-budget hold. If the worktree is clean but stale active ownership remains after failed-start retry accounting, the candidate is failed-start cleanup debt rather than retained partial progress. Human-required authority stops expose their compact decision request fields here: `phase = human_required`, reason, boundary, `decision_request_id`, and `next_action`. When queued attention still maps to a run/attempt, it also carries the same compact loop status used by running lanes. Running lanes are not repeated as normal intake work. |
 | `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. Retained lanes expose compact loop status for their bound handoff run/attempt so operators can see review repair checkpoint state, architecture recovery stops, and boundary/human-required disposition without direct SQLite inspection. |
-| `Recovery Worktrees` | Retained local worktrees that are not currently owned by `Running Lanes`, `Review & Landing`, or queued attention in `Intake Queue`. This is the cleanup or recovery inbox for recovered paths, retained PR leftovers, and cleanup-only local worktrees. Empty is the normal healthy state. |
-| `Run Ledger` | Completed or non-running issue history, grouped by issue/lane. Decodex Linear execution ledger comments provide the durable completed outcome when available. If no `decodex.linear_execution_event` record exists, the row reports `missing` / `execution_ledger_missing`; the control plane does not derive a completed or landed outcome from tracker state, local attempts, or non-ledger comments. Terminal attention rows are history unless a current attention signal still exists. Raw local attempts and heartbeat details stay in debug expansion. |
+| `Recovery Worktrees` | Retained local worktrees that are not currently owned by `Running Lanes`, `Review & Landing`, or queued attention in `Intake Queue`. This is the cleanup or recovery inbox for recovered paths, retained PR leftovers, and cleanup-only local worktrees. Empty is the normal healthy state. Terminal unleased runtime-recorded mappings with identifier-style ids and missing checkout paths are local terminal residue, not recovery worktrees; snapshots omit them from this count and emit `stale_terminal_local_worktree_mapping_ignored` warning detail instead of refreshing those ids through Linear. |
+| `Run Ledger` | Completed or non-running issue history, grouped by issue/lane. Decodex Linear execution ledger comments provide the durable completed outcome when available. If no `decodex.linear_execution_event` record exists, the row reports `missing` / `execution_ledger_missing`; the control plane does not derive a completed or landed outcome from tracker state, local attempts, or non-ledger comments. Terminal unleased local residue with identifier-style ids reports `local_terminal_residue` because Linear ledger lookup is intentionally skipped for ids that are not proven Linear issue ids. Terminal attention rows are history unless a current attention signal still exists. Raw local attempts and heartbeat details stay in debug expansion. |
 
 ## Private Evidence Readback
 
@@ -655,6 +655,18 @@ missing. Filesystem-only scans use scan-specific provenance such as `filesystem_
 or `git_hygiene_scan`. Rows migrated from older runtime stores that had no provenance
 report `provenance.source = "legacy_unknown"` and may set
 `provenance.audit_required = true`.
+
+A runtime-recorded mapping with an identifier-style `issue_id`, no active lease or
+shared claim, no retained review lifecycle or review checkpoint authority, a checkout
+path that is confirmed missing, and a latest terminal run attempt is classified as
+stale terminal local residue. Live status and post-review readback skip Linear refresh
+and ledger calls for that row, omit it from `Recovery Worktrees`, and surface
+`stale_terminal_local_worktree_mapping_ignored`; review-handoff recovery diagnose
+surfaces `stale_terminal_local_residue` for the skipped local row without refreshing
+the identifier through Linear. Project reconciliation clears the mapping before issue
+selection so it cannot poison targeted dispatch. Filesystem uncertainty is not treated
+as a missing checkout path; Decodex fails closed instead of clearing local runtime
+authority.
 
 A `Recovery Worktrees` row tells the operator to inspect the local path and either
 clean it up or recover local-only changes; it is not, by itself, evidence that the

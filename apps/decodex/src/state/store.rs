@@ -2957,6 +2957,20 @@ impl StateStore {
 		Ok(state.review_policy_checkpoints.get(&key).map(ReviewPolicyRuntimeRecord::as_public))
 	}
 
+	/// Return whether any bounded-review checkpoint row owns this issue.
+	pub(crate) fn issue_has_review_policy_checkpoint(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+	) -> Result<bool> {
+		let state = self.lock()?;
+
+		Ok(state
+			.review_policy_checkpoints
+			.values()
+			.any(|record| record.project_id == project_id && record.issue_id == issue_id))
+	}
+
 	/// Read the latest review checkpoint by its canonical reusable evidence key.
 	pub(crate) fn review_checkpoint_artifact(
 		&self,
