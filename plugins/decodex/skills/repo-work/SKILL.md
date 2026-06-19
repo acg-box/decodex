@@ -23,8 +23,8 @@ final evidence reporting matters.
 - Research and challenge: `$decodex:research` and `$decodex:research-challenge`.
 - Semantic drift audits: `$decodex:docs-drift`.
 - Root-cause investigation or repeated failed fixes: `$decodex:debugging`.
-- Commit, landing, labels, tracker state, or runtime automation: use the repository's
-  owning workflow; repo-work does not own those lifecycle surfaces.
+- Runtime ops, tracker state, labels, commit, or landing: use the repository's owning
+  workflow; repo-work does not own those lifecycle surfaces.
 
 Do not duplicate this routing in host bootstrap files. `AGENTS.md` should point to the
 owner skill; the plugin owns the fanout.

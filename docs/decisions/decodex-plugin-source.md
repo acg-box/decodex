@@ -26,11 +26,10 @@ procedures or carrying a separate workflow plugin dependency.
 
 Decodex has two supported use modes:
 
-- manual CLI use for human-driven development, status inspection, commit creation,
-  PR landing, dry runs, project registration, and local operator checks
-- runtime-owned automation for registered projects, retained lanes, service-scoped
-  Linear labels, issue-scoped tracker tools, review handoff, landing, closeout, and
-  cleanup
+- runtime operations for human-driven CLI use, registered projects, retained lanes,
+  service-scoped Linear labels, issue-scoped tracker tools, review handoff, recovery,
+  closeout, and cleanup
+- commit creation and PR landing as separate high-risk authority surfaces
 
 Earlier Decodex instructions lived in generic repo-work skills while the CLI and
 lifecycle were still settling. That split created coupling between host config,
@@ -46,19 +45,18 @@ instructions.
 
 The plugin should own reusable agent-facing procedures and mode routing:
 
-- `decodex` for choosing manual CLI mode versus automation mode
+- `decodex` for routing repo-work, docs, research, ops, commit, and landing surfaces
 - `repo-work` for checked-in command authority, task-runner structure, configuration
   contracts, engineering defaults, dependency policy, review repair, verification, and
   dynamic support-agent boundaries
 - `planning` for Decodex-native issue briefing, issue splitting, dispatch readiness,
   dependencies, and concurrency
-- `manual-cli` for operator CLI use
-- `automation` for retained-lane control-plane use
+- `decodex-ops` for operator CLI use, retained-lane control-plane use, and Decodex
+  service labels
 - `routing` for OKF/LLM Wiki context intake, docs completion gates, and late docs-skill
   recovery
 - `commit` for human-driven `decodex commit`
 - `land` for explicit human-driven `decodex land`
-- `labels` for Decodex Linear labels
 
 The plugin must route to `apps/decodex/src/`, `docs/spec/`, `docs/runbook/`, `docs/reference/`,
 registered project `WORKFLOW.md`, and registered project `project.toml` instead of
