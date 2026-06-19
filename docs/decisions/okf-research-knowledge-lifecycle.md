@@ -6,7 +6,7 @@ status: active
 authority: rationale
 owner: docs
 tags: [decision, okf, research, llm-wiki]
-code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/plugin_surface_tests.rs, plugins/decodex/references/research-promotion.md, plugins/decodex/references/docs-wiki.md]
+code_refs: [apps/decodex/src/docs_okf.rs, apps/decodex/src/plugin_surface_tests.rs, plugins/decodex/references/research-promotion.md, plugins/knowledge/references/docs-wiki.md]
 related: [../policy.md, ../reference/research-concepts.md, ../research/index.md, ../evidence/index.md, ../spec/okf-knowledge-layer.md]
 last_verified: 2026-06-18
 ---

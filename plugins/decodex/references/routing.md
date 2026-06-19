@@ -1,25 +1,24 @@
 # Decodex Routing Reference
 
-Use this when a Decodex task crosses docs, research, promotion, planning, runtime
-ops, commit, or landing boundaries. Repository execution policy and generic challenge
-live in companion plugins.
+Use this when a Decodex task crosses research, promotion, planning, runtime ops,
+commit, or landing boundaries. Repository execution policy, knowledge/docs, and
+generic challenge live in companion plugins.
 
 ## Mode Map
 
-- Context intake: for non-trivial repo work, read the smallest owner from
-  `docs/index.md`, `docs/policy.md`, lane indexes, or explicit concept links. Record
-  context anchors only when those reads shape the plan. Skip tiny work and explicit
-  file targets only when the owner is unambiguous. If docs impact appears late, run
-  the same docs gate and report recovery evidence.
+- Context intake: for non-trivial repo work, use `$knowledge:docs` to read the
+  smallest owner from `docs/index.md`, `docs/policy.md`, lane indexes, or explicit
+  concept links when docs/knowledge shape the plan.
 - Repo work: use `$repo-work:repo-work` for checked-in command authority, task-runner
   structure, configuration contracts, dependency policy, review repair, validation
   evidence, completion claims, debugging, and dynamic support-agent boundaries.
-- Docs: use `docs` as the router. Use `docs-okf`, `docs-wiki`, and `docs-drift`
-  for shape, navigation, and audits. Docs impact `research_required` switches to
-  `research` plus `challenge`; checked-in `docs/research/` is latent evidence.
-- Semantic drift: use `docs-drift` for docs/code/help/status/config/runtime claim
-  alignment. It owns drift verdicts even when the trigger is a command, config key,
-  status phrase, generated artifact, or runtime readback rather than a prose doc.
+- Docs and OKF: use `$knowledge:docs` for checked-in docs workflows,
+  `$knowledge:okf` for portable OKF/LLM Wiki bundles, and
+  `$knowledge:repo-memory` for source-backed repository memory.
+- Semantic drift: use `$knowledge:docs-drift` for docs/code/help/status/config/
+  runtime claim alignment. It owns drift verdicts even when the trigger is a command,
+  config key, status phrase, generated artifact, or runtime readback rather than a
+  prose doc.
 - Debugging: use `$repo-work:debugging` for repository bugs, original-symptom checks,
   and repeated failed fixes. Use `decodex-ops` for Decodex runtime readback,
   retained-lane control, or operator diagnostics. Debugging may feed research only

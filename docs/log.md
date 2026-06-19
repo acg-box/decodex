@@ -2,11 +2,13 @@
 
 ## 2026-06-19
 
+- Split the knowledge/docs surface into `plugins/knowledge` with four public skills:
+  `docs`, `docs-drift`, `okf`, and `repo-memory`. Decodex now owns only lifecycle
+  routing, research, planning, ops, commit, and land.
 - Split generic agent-facing method and repository execution policy out of Decodex
   core: `plugins/agent-method` now owns challenge/skeptic review and
   `plugins/repo-work` owns repo command, task-runner, review, verification, debugging,
-  and dependency-policy contracts. Decodex keeps docs/OKF and repo-memory skills
-  temporarily until the related CLI surfaces migrate.
+  and the direct `dependency-policy` skill for dependency roll/style contracts.
 - Consolidated Decodex research phase skills into the `research` compact loop and
   promoted the research-specific challenge entry into a generic `challenge` skeptic
   skill; scout-style evidence gathering remains dynamic read-only support-agent work

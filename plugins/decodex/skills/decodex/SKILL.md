@@ -6,15 +6,10 @@ description: Use when routing Decodex work.
 # Decodex
 
 Route Decodex work to the narrowest Decodex-owned surface. Read
-`../../references/routing.md` when research, promotion, planning, context intake,
-runtime ops, commit, or landing boundaries matter.
+`../../references/routing.md` when research, promotion, planning, runtime ops,
+commit, or landing boundaries matter.
 
 - `research`: bounded investigation before execution.
-- `docs-drift`: Decodex semantic-drift audits for docs, code, commands, config,
-  runtime readback, and evidence alignment.
-- `okf`, `okf-query`, `okf-maintain`, `repo-memory-writer`,
-  `repo-memory-evaluator`, `repo-memory-curator`: portable OKF/LLM Wiki and
-  repo-memory work.
 - `research-promote`: explicit acceptance of latent research.
 - `planning`: accepted work needs issues or Program readiness.
 - `decodex-ops`: runtime operations, retained automation, human-driven CLI, labels,
@@ -26,8 +21,7 @@ Companion plugin routing:
 - Repository command authority, task-runner structure, review repair, verification,
   dependency policy, and debugging belong to `$repo-work:*`.
 - Skeptic/challenge passes belong to `$agent-method:challenge`.
-- Docs/OKF/repo-memory still live in this Decodex plugin until the Decodex docs/OKF
-  CLI surfaces migrate.
+- Docs, OKF/LLM Wiki, semantic drift, and repo-memory belong to `$knowledge:*`.
 
 For MCP gateway, runtime, tracker, or control-plane work, read
 `../../references/routing.md` before choosing tools. MCP is a typed facade; it does

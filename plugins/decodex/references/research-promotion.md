@@ -24,7 +24,7 @@ Choose the narrowest durable lane:
 
 `docs/research/` is not a promotion target. It is the latent research lane.
 
-Promotion is an OKF knowledge operation:
+Promotion is a knowledge operation owned with `$knowledge:docs`/`$knowledge:okf`:
 
 - move durable rationale to `docs/decisions/`
 - move current truth to `docs/spec/`, `docs/reference/`, `docs/runbook/`, skills,
@@ -41,9 +41,9 @@ Update LLM Wiki indexes, `related`, `promotes_to`, descriptions, and status fiel
 research does not compete with authoritative owners. Do not rely on out-of-band
 history for knowledge retention.
 
-When accepted research changes agent-facing workflow instructions, update matching
-`plugins/decodex/skills/` files beside the promoted docs concept. Skills are
-companion execution surfaces, not `promotes_to` lanes.
+When accepted research changes agent-facing workflow instructions, update the owning
+plugin skills beside the promoted docs concept. Skills are companion execution
+surfaces, not `promotes_to` lanes.
 
 ## Next Step
 

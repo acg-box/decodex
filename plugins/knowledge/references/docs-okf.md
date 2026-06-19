@@ -1,7 +1,7 @@
-# Decodex Docs OKF Reference
+# Docs OKF Reference
 
-Use this for this repository's strict Decodex profile `docs/` concepts. Use
-`okf-layer.md` for portable OKF bundles.
+Use this for strict repository `docs/` concepts. Use `okf-layer.md` for portable OKF
+bundles.
 
 ## Bundle Rules
 

@@ -1,5 +1,0 @@
-interface:
-  display_name: "Repo Memory Evaluator"
-  short_description: "Evaluate OKF repo-memory quality"
-policy:
-  allow_implicit_invocation: false

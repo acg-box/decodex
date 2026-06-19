@@ -1,5 +1,0 @@
-interface:
-  display_name: "OKF Maintain"
-  short_description: "Maintain OKF bundle memory"
-policy:
-  allow_implicit_invocation: false
