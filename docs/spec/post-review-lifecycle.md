@@ -309,6 +309,17 @@ at the repaired lane HEAD, and remains open and ready for fresh review.
 
 If the retained lane is missing or no longer provably belongs to the same issue and PR lineage, the runtime must not invent a fresh lane silently. It must require human intervention or a separately defined recovery path.
 
+Targeted issue dispatch must use the same post-review ownership classification as the
+ordinary scheduler. When `decodex run <ISSUE>` resolves to a retained lane currently
+classified as `needs_review_repair`, the runtime should enter retained review repair for
+that issue rather than treating the request as ordinary queued intake or generic retry.
+This targeted path is gated by the status-visible retained lane classification; an
+ordinary `In Review` issue without a `needs_review_repair` post-review lane is not
+promoted into repair only because it is service-owned. If the status-visible retained
+repair lane belongs to a different issue than the targeted identifier, the runtime must
+fail closed with a targeted retained repair mismatch instead of borrowing that lane or
+falling through to generic retry.
+
 ### `ready_to_land`
 
 `ready_to_land` is a decision boundary, not a merge event.
