@@ -1,8 +1,9 @@
-# Dep Roll Policy
+# Dependency Policy
 
-Use after `dep-roll/SKILL.md` when a real dependency roll starts.
+Use when dependency upgrades, Dependabot reconciliation, dependency style, manifest
+entry shape, or GitHub Actions action pinning affect repository work.
 
-## Scope
+## Roll Scope
 
 Roll to the latest supported compatible set for JavaScript/TypeScript, Python, Rust,
 GitHub Actions, and any smaller ecosystem slice the repo contains. "Supported" means
@@ -28,6 +29,20 @@ platform, API, and explicit compatibility constraints.
 - Classify Dependabot by author, changed files, package ecosystem, dependency/action
   refs, verification, and upstream compatibility evidence; never by GitHub labels.
 
+## Style Scope
+
+Use style mode only for dependency specifier cleanup, manifest entry shape, GitHub
+Actions external `uses:` full-SHA pinning, or existing tag/branch/channel to commit
+SHA conversion. Preserve the selected dependency graph.
+
+- Do not silently upgrade to a newer release in style mode; version selection belongs
+  to roll mode.
+- Normalize only the in-scope manifest or workflow lines.
+- If no clear policy exists, preserve touched-area consistency instead of inventing a
+  repo-wide style.
+- Stop and split work if style cleanup would force large lockfile churn or source
+  migration.
+
 ## GitHub Actions
 
 - Include `.github/workflows/*.yml` and `.github/workflows/*.yaml`.
@@ -35,6 +50,8 @@ platform, API, and explicit compatibility constraints.
   refs. Local action/workflow paths are repo code.
 - For a roll, choose the latest verified compatible release/tag first, then pin the
   full commit SHA it resolves to. For annotated tags, pin the peeled commit SHA.
+- For style-only work, convert the existing selected ref to the full commit SHA
+  without selecting a newer release.
 - Do not weaken full-SHA pins to tags or branches.
 - There is no lockfile step for workflow `uses:` refs.
 - Validate workflows with repo-native tooling or `actionlint` when available.

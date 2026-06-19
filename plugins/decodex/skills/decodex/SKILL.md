@@ -5,22 +5,11 @@ description: Use when routing Decodex work.
 
 # Decodex
 
-Route Decodex work to the narrowest surface. Read `../../references/routing.md` when
-repo-work, research, promotion, planning, context intake, runtime ops, commit, or
-landing boundaries matter.
+Route Decodex work to the narrowest Decodex-owned surface. Read
+`../../references/routing.md` when research, promotion, planning, context intake,
+runtime ops, commit, or landing boundaries matter.
 
-- `repo-work`: checked-in repository authority, task-runner structure, configuration
-  contracts, architecture/cutover defaults, engineering defaults, dependency policy,
-  review repair, validation evidence, and dynamic support-agent boundaries.
-- `dep-roll`, `dep-style`: dependency upgrade and manifest-style policy beneath
-  repo-work.
-- `review-feedback`, `verification`: review repair and evidence before done/fixed/
-  ready claims.
 - `research`: bounded investigation before execution.
-- `challenge`: generic skeptic pass for plans, claims, recommendations, evidence
-  sufficiency, and ready/decision-ready assertions.
-- `debugging`: root-cause investigation for bugs, failures, runtime regressions, and
-  repeated failed fixes.
 - `docs-drift`: Decodex semantic-drift audits for docs, code, commands, config,
   runtime readback, and evidence alignment.
 - `okf`, `okf-query`, `okf-maintain`, `repo-memory-writer`,
@@ -31,6 +20,14 @@ landing boundaries matter.
 - `decodex-ops`: runtime operations, retained automation, human-driven CLI, labels,
   intake, recovery, and lane control.
 - `commit`, `land`: only their narrow high-risk authority surfaces.
+
+Companion plugin routing:
+
+- Repository command authority, task-runner structure, review repair, verification,
+  dependency policy, and debugging belong to `$repo-work:*`.
+- Skeptic/challenge passes belong to `$agent-method:challenge`.
+- Docs/OKF/repo-memory still live in this Decodex plugin until the Decodex docs/OKF
+  CLI surfaces migrate.
 
 For MCP gateway, runtime, tracker, or control-plane work, read
 `../../references/routing.md` before choosing tools. MCP is a typed facade; it does

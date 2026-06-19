@@ -22,9 +22,9 @@ Repo-native agent orchestration, retained lanes, and local operator control.
   snapshot/control traffic at `/dashboard/control`, Decodex App snapshot/account
   APIs under `/api/`, and `GET /livez` for liveness.
 - Static Astro site for the public Decodex product surface and app download entry.
-- Installable Decodex plugin with reusable agent-facing skills for repo-work rules,
-  docs drift, debugging, research, generic challenge, review repair, verification, issue
-  briefing, planning, runtime ops, commit, and land.
+- Installable agent plugins for Decodex lifecycle work, repo-work contracts, and
+  generic challenge/skeptic review. Docs/OKF and repo-memory remain in the Decodex
+  plugin until their CLI surfaces migrate.
 - Repository documentation split by question type into spec, runbook, reference, and
   decision lanes.
 
@@ -54,9 +54,11 @@ runtime.
 - `apps/decodex-app/` owns the native macOS app that manages Decodex
   Codex accounts through the bundled Rust app helper.
 - `site/` owns the Astro static product site and app download entry.
-- `plugins/decodex/` owns the installable Decodex plugin and reusable agent-facing
-  skills, including repo-work rules, semantic drift, debugging, research, challenge,
-  review repair, and verification methods.
+- `plugins/decodex/` owns Decodex lifecycle skills and the temporary docs/OKF and
+  repo-memory skill surface.
+- `plugins/repo-work/` owns reusable repository command, task-runner, review,
+  verification, debugging, and dependency-policy skills.
+- `plugins/agent-method/` owns generic challenge/skeptic review.
 - `docs/` remains the authoritative documentation surface.
 
 Runtime authority stays in `apps/decodex/src/`, the registered project contracts under
