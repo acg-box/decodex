@@ -311,6 +311,11 @@ struct OperatorLaneTerminalProjection {
 	outcomes_by_issue_key: HashMap<String, OperatorHistoryLedgerOutcome>,
 }
 
+struct OperatorExecutionProgramReadback {
+	statuses: Vec<OperatorExecutionProgramStatus>,
+	issue_metadata_unavailable: bool,
+}
+
 pub(crate) fn ensure_project_has_no_merged_worktree_cleanup_debt(
 	project: &ServiceConfig,
 ) -> crate::prelude::Result<()> {
@@ -934,6 +939,8 @@ where
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
 		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
+	let execution_program_readback =
+		operator_execution_program_statuses(tracker, project, workflow, state_store)?;
 	let mut snapshot = build_operator_status_snapshot_with_account_mode(
 		project,
 		state_store,
@@ -941,9 +948,8 @@ where
 		options.account_activity_mode,
 	)?;
 
-	let execution_program_readback =
-		operator_execution_program_statuses(tracker, project, workflow, state_store)?;
 	snapshot.execution_programs = execution_program_readback.statuses;
+
 	if execution_program_readback.issue_metadata_unavailable {
 		add_operator_snapshot_warning(
 			&mut snapshot,
@@ -986,11 +992,6 @@ where
 	);
 
 	Ok(snapshot)
-}
-
-struct OperatorExecutionProgramReadback {
-	statuses: Vec<OperatorExecutionProgramStatus>,
-	issue_metadata_unavailable: bool,
 }
 
 fn operator_execution_program_statuses<T>(
@@ -1056,12 +1057,14 @@ where
 	let policy = ExecutionWorkflowPolicy::from_workflow(project.service_id(), workflow)?;
 	let mapped_issue_ids = operator_execution_program_mapped_issue_ids(records);
 	let refreshed_issues = refresh_execution_program_issues(tracker, records)?;
+
 	if mapped_issue_ids
 		.iter()
 		.any(|issue_id| !refreshed_issues.contains_key(issue_id))
 	{
 		eyre::bail!("Execution Program tracker metadata was incomplete.");
 	}
+
 	let refreshed_programs = records
 		.iter()
 		.cloned()
@@ -1159,7 +1162,7 @@ fn operator_execution_program_statuses_from_persisted(
 			let Some(contract) =
 				state_store.decision_contract_for_readback(project.service_id(), source_contract_id)?
 			else {
-				statuses.push(OperatorExecutionProgramStatus::missing_contract(&record));
+				statuses.push(OperatorExecutionProgramStatus::missing_contract(record));
 
 				continue;
 			};
@@ -1170,7 +1173,7 @@ fn operator_execution_program_statuses_from_persisted(
 		};
 
 		statuses.push(OperatorExecutionProgramStatus::from_summary(
-			&record,
+			record,
 			evaluation.operator_summary(),
 			&evaluation,
 		));
@@ -4644,6 +4647,7 @@ fn operator_queued_issue_attention_summary(
 	if let Some(summary) = operator_active_label_attention_summary(
 		reason,
 		marker,
+		retry_budget_attempts,
 		worktree_has_tracked_changes,
 		attention_error_class,
 	) {
@@ -4755,6 +4759,7 @@ fn operator_queued_issue_attention_summary(
 fn operator_active_label_attention_summary(
 	reason: &str,
 	marker: Option<&RunActivityMarker>,
+	retry_budget_attempts: i64,
 	worktree_has_tracked_changes: bool,
 	attention_error_class: Option<&str>,
 ) -> Option<String> {
@@ -4764,6 +4769,11 @@ fn operator_active_label_attention_summary(
 	if worktree_has_tracked_changes {
 		return Some(String::from(
 			"Linear active ownership is still present with retained worktree changes; inspect the patch and reconcile the lane before dispatch.",
+		));
+	}
+	if retry_budget_attempts > 0 {
+		return Some(format!(
+			"Retryable failed-start cleanup is still pending after {retry_budget_attempts} failed attempts; no retained worktree changes were found, so clear stale active ownership before dispatch."
 		));
 	}
 	if attention_error_class == Some(ATTENTION_ERROR_EVIDENCE_MISSING) {
