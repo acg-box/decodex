@@ -199,14 +199,14 @@ Every docs-changing lane follows this loop:
    use the runtime `manual_attention` terminal path.
 
 The agent-facing entrypoint for this loop is
-[`plugins/decodex/skills/docs/SKILL.md`](../plugins/decodex/skills/docs/SKILL.md),
-which delegates to the narrower `docs-okf`, `docs-wiki`, and `docs-drift` skills. If
+[`plugins/knowledge/skills/docs/SKILL.md`](../plugins/knowledge/skills/docs/SKILL.md),
+which delegates to knowledge references and the `docs-drift` skill. If
 the docs impact is `research_required`, switch to Decodex `research` and
 `$agent-method:challenge`, and persist any checked-in result under `docs/research/`
 only as a latent, non-authoritative Markdown OKF research concept until explicitly
 promoted.
 
-Detailed Decodex docs rules live in `plugins/decodex/references/docs-method.md`,
+Detailed docs rules live in `plugins/knowledge/references/docs-method.md`,
 `docs-okf.md`, `docs-wiki.md`, and `docs-drift.md`. Detailed research rules live in
 `plugins/decodex/references/research-lifecycle.md`, `research-evidence.md`,
 `research-contract.md`, and `research-promotion.md`.

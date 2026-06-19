@@ -1,7 +1,7 @@
 {
   "name": "repo-work",
   "version": "0.1.0",
-  "description": "Repository work contracts for command authority, task runners, review repair, verification, and debugging.",
+  "description": "Repository work contracts for command authority, task runners, dependency policy, review repair, verification, and debugging.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -13,6 +13,7 @@
   "keywords": [
     "agents",
     "debugging",
+    "dependencies",
     "repo-work",
     "review",
     "verification"

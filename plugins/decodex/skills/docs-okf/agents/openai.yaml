@@ -1,5 +1,0 @@
-interface:
-  display_name: "Docs OKF"
-  short_description: "Maintain Decodex OKF docs"
-policy:
-  allow_implicit_invocation: false

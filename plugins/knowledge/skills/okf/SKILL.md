@@ -1,6 +1,6 @@
 ---
 name: okf
-description: Use when creating, checking, querying, graphing, or maintaining portable OKF/LLM Wiki bundles across repositories.
+description: Use when creating, checking, querying, graphing, or maintaining OKF/LLM Wiki bundles across repositories, including init/check/find/graph, profile selection, frontmatter fields, indexes, links, logs, graph health, or precise context lookup.
 ---
 
 # Portable OKF
@@ -17,6 +17,9 @@ profile, or using OKF commands.
 - Use `decodex okf find` and `decodex okf graph` for consumer workflows.
 - Pick the lowest profile that proves the current claim.
 - Preserve producer-specific fields and unknown concept types.
-- Use Decodex `docs-*` skills only for this repository's strict `docs/` profile.
+- Use `$knowledge:docs` for checked-in repository docs workflows.
 - Do not treat OKF as a retrieval scorer, embedding system, reranker, or automatic
   high-quality knowledge generator.
+
+For source-backed repository memory authoring, evaluation, or curation, use
+`$knowledge:repo-memory`.
