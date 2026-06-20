@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/orchestrator/execution.rs]
 drift_watch: [issue_progress_checkpoint, issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, phase_acceptance_check, issue_terminal_finalize, docs_impact, private_execution_events, linear_execution_event]
-last_verified: 2026-06-20
+last_verified: 2026-06-21
 ---
 # Tracker Tool Specification
 
@@ -198,23 +198,52 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - Every new checkpoint payload must include checklist notes for intended behavior,
   regression risk, missing tests, docs/config drift, migration fallout,
   operator-facing fallout, and Loop/Decision Contract mismatch.
-- Review payload findings are split into accepted findings and rejected findings.
-  Accepted findings are the only repair input. Rejected findings record the
-  rejection reason for non-actionable, stale, out-of-scope, or unvalidated reviewer
-  comments.
-- A `findings` checkpoint must carry at least one accepted finding. A `clean`
-  checkpoint may carry rejected findings, but must not carry accepted findings.
+- Review payload findings are split into accepted findings, rejected findings, and
+  route evidence. Accepted and rejected finding arrays remain compatible with earlier
+  callers, but new adjudication uses `finding_routes` to decide where each review
+  signal belongs before repair. When `finding_routes` is omitted, accepted findings
+  default to `current_blocker` and rejected findings default to
+  `reviewer_rubric_gap`.
+- `finding_routes.route` supports this taxonomy: `current_blocker`,
+  `landing_blocker`, `contract_or_authority_decision_required`, `needs_evidence`,
+  `follow_up`, `deterministic_gate_candidate`, `architecture_signal`,
+  `issue_contract_gap`, `reviewer_rubric_gap`, `risk_note`, and
+  `invalid_or_unsubstantiated`.
+- Only accepted findings routed as `current_blocker` are current repair input. Only
+  those current-blocker fingerprints drive `repair_accepted_review_findings`,
+  `nonclean_rounds`, and review churn repeat counting. Non-current routes remain
+  durable in local evidence and status readback but must not start repair churn.
+  Rejected findings record the rejection reason for non-actionable, stale,
+  out-of-scope, or unvalidated reviewer comments.
+- A `findings` checkpoint must carry at least one accepted finding routed as
+  `current_blocker`. A `clean` checkpoint may carry rejected findings and
+  non-blocking routes such as
+  `follow_up`, `risk_note`, `reviewer_rubric_gap`, or
+  `invalid_or_unsubstantiated`, but must not carry accepted findings, current
+  blockers, or landing-blocking routes.
 - Top-level checkpoint evidence is required. Accepted findings must include severity,
   non-empty evidence, file and line or line-range references when possible, and
   concrete repair guidance. Rejected findings must include severity, non-empty
   evidence, and the rejection reason. Accepted and rejected findings may include a
   public snake_case `kind`; omitted kinds normalize to `accepted_finding` or
   `rejected_finding`.
+- Each explicit `finding_routes` item must include route, severity, non-empty
+  evidence, resolver, and machine-actionable `next_action`. A route may bind to an
+  accepted or rejected finding by `finding_source` plus zero-based `finding_index`,
+  or stand alone as `route_only`. `current_blocker` must bind to an accepted finding.
+  `blocked` and `needs_architecture_review` checkpoints must include at least one
+  landing-blocking route such as `landing_blocker`,
+  `contract_or_authority_decision_required`, `needs_evidence`,
+  `deterministic_gate_candidate`, `architecture_signal`, or `issue_contract_gap`.
+  High-severity (`critical` or `high`) or explicitly high-risk routes must not use
+  `invalid_or_unsubstantiated`; they must use `needs_evidence` or a
+  landing-blocking route.
 - Each accepted finding is normalized to a stable `review_finding:<sha256>`
   fingerprint from the review phase, finding kind, summary, guidance, file, and
   line range. The persisted review payload includes a `finding_policy` summary with
-  active fingerprints, per-fingerprint repeat counts, and an optional
-  `stop_fingerprint`.
+  active current-blocker fingerprints, per-fingerprint repeat counts, and an
+  optional `stop_fingerprint`. The persisted payload also includes a compact route
+  summary with route counts and one route-derived next action for local readback.
 - When `[codex].review` is `"standard"` or `"strict"`, `decodex` treats
   `issue_review_checkpoint` as the only authoritative structured review-policy
   signal. Skill prose or wrapper-local result words must not replace it.
