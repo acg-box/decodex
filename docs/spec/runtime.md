@@ -589,6 +589,8 @@ route-derived next action, but not raw reviewer finding bodies. Linear receives 
 coarse lifecycle projections; raw reviewer findings stay in local runtime evidence
 unless another allowlisted lifecycle summary renders a public-safe summary.
 Recording `issue_review_handoff` or `issue_review_repair_complete` clears the current
+run-attempt `review_policy_checkpoints` row for that phase after the reusable clean
+evidence artifact has been consumed.
 When `[codex].review` is `"off"` or `"basic"`, Decodex does not expose
 `issue_review_checkpoint`, does not require a clean checkpoint before review handoff
 or repair completion, and ignores stale review-policy state while classifying clean
