@@ -291,6 +291,10 @@ struct PrivateEvidenceReviewCheckpointSummary {
 	status: String,
 	head_sha: Option<String>,
 	round: Option<u64>,
+	review_class: Option<String>,
+	risk_class: Option<String>,
+	compact_eligible: Option<bool>,
+	fallback_reason: Option<String>,
 	active_fingerprints: Vec<String>,
 	stop_fingerprint: Option<String>,
 	accepted_finding_count: usize,
@@ -861,6 +865,8 @@ fn review_checkpoint_from_private_event(
 		.get("nonclean_rounds")
 		.or_else(|| payload.get("round"))
 		.and_then(Value::as_u64);
+	let (review_class, risk_class, compact_eligible, fallback_reason) =
+		review_checkpoint_cost_control_summary(payload);
 	let accepted_finding_count = payload
 		.get("review")
 		.and_then(|review| review.get("accepted_findings"))
@@ -883,6 +889,10 @@ fn review_checkpoint_from_private_event(
 		status,
 		head_sha,
 		round,
+		review_class,
+		risk_class,
+		compact_eligible,
+		fallback_reason,
 		active_fingerprints,
 		stop_fingerprint,
 		accepted_finding_count,
@@ -914,6 +924,51 @@ fn review_checkpoint_fingerprint_summary(payload: &Value) -> (Vec<String>, Optio
 		.map(str::to_owned);
 
 	(active_fingerprints, stop_fingerprint)
+}
+
+fn review_checkpoint_cost_control_summary(
+	payload: &Value,
+) -> (Option<String>, Option<String>, Option<bool>, Option<String>) {
+	let cost_control = payload
+		.get("review")
+		.and_then(|review| review.get("review_cost_control"));
+	let review_class = payload
+		.get("review_class")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			cost_control
+				.and_then(|cost_control| cost_control.get("review_class"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned);
+	let risk_class = payload
+		.get("risk_class")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			cost_control
+				.and_then(|cost_control| cost_control.get("risk_class"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned);
+	let compact_eligible = payload
+		.get("compact_eligible")
+		.and_then(Value::as_bool)
+		.or_else(|| {
+			cost_control
+				.and_then(|cost_control| cost_control.get("compact_eligible"))
+				.and_then(Value::as_bool)
+		});
+	let fallback_reason = payload
+		.get("review_fallback_reason")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			cost_control
+				.and_then(|cost_control| cost_control.get("fallback_reason"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned);
+
+	(review_class, risk_class, compact_eligible, fallback_reason)
 }
 
 fn review_checkpoint_route_summary(
@@ -1566,13 +1621,23 @@ fn append_private_evidence_review_checkpoints(
 			};
 
 			output.push_str(&format!(
-				"- phase: {}\n  status: {}\n  head_sha: {}\n  round: {}\n  active_fingerprints: {}\n  stop_fingerprint: {}\n  accepted_findings: {}\n  rejected_findings: {}\n  route_counts: {}\n  route_next_action: {}\n  next_action: {}\n",
+				"- phase: {}\n  status: {}\n  head_sha: {}\n  round: {}\n  review_class: {}\n  risk_class: {}\n  compact_eligible: {}\n  review_fallback_reason: {}\n  active_fingerprints: {}\n  stop_fingerprint: {}\n  accepted_findings: {}\n  rejected_findings: {}\n  route_counts: {}\n  route_next_action: {}\n  next_action: {}\n",
 				checkpoint.phase,
 				checkpoint.status,
 				checkpoint.head_sha.as_deref().unwrap_or("none"),
 				checkpoint
 					.round
 					.map_or_else(|| String::from("none"), |round| round.to_string()),
+				checkpoint.review_class.as_deref().unwrap_or("none"),
+				checkpoint.risk_class.as_deref().unwrap_or("none"),
+				checkpoint.compact_eligible.map_or("none", |eligible| {
+					if eligible {
+						"true"
+					} else {
+						"false"
+					}
+				}),
+				checkpoint.fallback_reason.as_deref().unwrap_or("none"),
 				active_fingerprints,
 				checkpoint.stop_fingerprint.as_deref().unwrap_or("none"),
 				checkpoint.accepted_finding_count,

@@ -7,8 +7,8 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs]
-drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_policy_checkpoints, evidence_artifacts]
-last_verified: 2026-06-20
+drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, review_policy_checkpoints, evidence_artifacts]
+last_verified: 2026-06-21
 ---
 # Review Orchestration
 
@@ -167,6 +167,20 @@ Rules:
   comments are rejected or non-current route candidates unless they match an allowed
   expansion trigger such as safety, authority-boundary, data-loss, security,
   live-mutation, public-API, migration, or operator-facing regression.
+- In `"standard"` and `"strict"` levels, each checkpoint records
+  `review_cost_control` beside the review contract. The default class is
+  `full_current_head_review`. A compact class is cost control only, not review
+  skipping: the reviewer remains independent and fresh-context, the checkpoint still
+  binds the committed current `HEAD`, and the reviewer must still perform both the
+  intended-behavior and adversarial checks from the registered workflow policy.
+  Compact review is valid only for a low-risk, small, validation-backed, clean
+  pre-handoff lane with current-head evidence, no high-risk surfaces, no accepted
+  findings, no blocking routes, and no prior non-clean review-policy state.
+  Full review is forced for repair verification, accepted findings, non-clean rounds,
+  missing or stale validation, weak evidence, architecture risk, high-risk changed
+  surfaces, or docs/config/API/security/data/privacy changes without sufficient
+  evidence. The classification combines structured signals with reviewer judgment;
+  changed-surface count alone is never sufficient.
 - In `"standard"` and `"strict"` levels, a Decodex Review checkpoint is persisted as
   an evidence-keyed artifact. The key must include artifact kind
   `issue_review_checkpoint`, review phase, current `HEAD`, review level, and review
