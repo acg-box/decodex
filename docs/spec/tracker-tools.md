@@ -199,7 +199,9 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   (`compact_current_head_review` or `full_current_head_review`), `risk_class`,
   changed-surface count and public-safe summary, high-risk surface summary,
   current-head evidence flag, validation-backed flag, reviewer judgment, and
-  fallback reason for full review. Omitted cost-control metadata normalizes to
+  fallback reason for full review. Compact review checkpoints keep the fallback
+  reason absent, while full-review checkpoints must record the reason compact
+  review was not selected. Omitted cost-control metadata normalizes to
   `full_current_head_review` with fallback reason
   `review_cost_control_not_provided`.
 - `compact_current_head_review` is accepted only for a clean handoff checkpoint with
