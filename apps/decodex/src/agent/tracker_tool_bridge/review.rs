@@ -974,8 +974,25 @@ impl<'a> TrackerToolBridge<'a> {
 			return Ok(());
 		}
 
+		let local_repo = self.current_local_repo_details(review_context)?;
+
+		if !local_repo.review_worktree_clean() {
+			return Err(format!(
+				"`{}` requires a clean committed lane HEAD before reusing a Decodex Review checkpoint. Commit or revert review-blocking local changes, rerun required validation, and record a fresh clean checkpoint. Review-blocking local changes: {}",
+				self.required_pr_completion_tool_name(),
+				tracker_tool_bridge::summarize_review_blocking_changes(
+					&local_repo.review_blocking_changes
+				)
+			));
+		}
+
 		let Some(checkpoint) = self
-			.review_policy_state_for_current_head(review_context)
+			.review_policy_artifact_for_head(
+				review_context,
+				ReviewPolicyPhase::for_mode(review_context.mode)
+					.expect("review completion should only be available during review phases"),
+				&local_repo.head_oid,
+			)
 			.map_err(|error| error.to_string())?
 		else {
 			return Err(format!(

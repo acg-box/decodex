@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde_json::{self, Value};
+use serde_json::{self, Map, Value};
 use sha2::{Digest as _, Sha256};
 
 use crate::{
@@ -10,12 +10,13 @@ use crate::{
 		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
-		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LabelArgs,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LabelArgs, LocalRepoDetails,
 		NormalizedProgressCheckpoint, NormalizedRejectedReviewCheckpointFinding,
-		NormalizedReviewCheckpointFinding, NormalizedReviewCheckpointPayload, PendingReviewAction,
-		PendingReviewCompletion, ProgressCheckpointArgs, PullRequestDetails,
-		REVIEW_POLICY_CONVERGENCE_BUDGET, ReviewCheckpointArgs, ReviewCheckpointChecksArgs,
-		ReviewCheckpointFindingArgs, ReviewCheckpointLineRangeArgs,
+		NormalizedReviewCheckpointContract, NormalizedReviewCheckpointFinding,
+		NormalizedReviewCheckpointPayload, PendingReviewAction, PendingReviewCompletion,
+		ProgressCheckpointArgs, PullRequestDetails, REVIEW_POLICY_CONVERGENCE_BUDGET,
+		ReviewCheckpointArgs, ReviewCheckpointChecksArgs, ReviewCheckpointContractArgs,
+		ReviewCheckpointFindingArgs, ReviewCheckpointHeadBinding, ReviewCheckpointLineRangeArgs,
 		ReviewCheckpointRejectedFindingArgs, ReviewExecutionMode, ReviewFindingPolicyRecord,
 		ReviewFindingPolicyState, ReviewHandoffArgs, ReviewHandoffContext, ReviewPolicyPhase,
 		ReviewPolicyState, ReviewPolicyStatus, RunCompletionDisposition, TerminalFinalizeArgs,
@@ -81,6 +82,14 @@ struct ReviewCheckpointPayloadCounts {
 struct ReviewFindingPolicyUpdate {
 	nonclean_rounds: i64,
 	finding_policy: ReviewFindingPolicyState,
+}
+
+struct PreparedReviewCheckpoint {
+	review_policy_phase: ReviewPolicyPhase,
+	review_policy_status: ReviewPolicyStatus,
+	head_sha: String,
+	checkpoint_payload: NormalizedReviewCheckpointPayload,
+	nonclean_rounds: i64,
 }
 
 impl<'a> TrackerToolBridge<'a> {
@@ -356,110 +365,16 @@ impl<'a> TrackerToolBridge<'a> {
 				"properties": {
 					"issue_id": { "type": "string" },
 					"issue_identifier": { "type": "string" },
-					"reviewer": {
-						"type": "string",
-						"enum": ["independent_fresh_context"]
-					},
-					"status": {
-						"type": "string",
-						"enum": ["clean", "findings", "needs_architecture_review", "blocked"]
-					},
+					"reviewer": review_checkpoint_reviewer_schema(),
+					"status": review_checkpoint_status_schema(),
 					"head_sha": { "type": "string" },
-					"checks": {
-						"type": "object",
-						"properties": {
-							"intended_behavior": { "type": "string" },
-							"regression_risk": { "type": "string" },
-							"missing_tests": { "type": "string" },
-							"docs_config_drift": { "type": "string" },
-							"migration_fallout": { "type": "string" },
-							"operator_facing_fallout": { "type": "string" },
-							"loop_decision_contract": { "type": "string" }
-						},
-						"required": [
-							"intended_behavior",
-							"regression_risk",
-							"missing_tests",
-							"docs_config_drift",
-							"migration_fallout",
-							"operator_facing_fallout",
-							"loop_decision_contract"
-						],
-						"additionalProperties": false
-					},
-					"evidence": {
-						"type": "array",
-						"items": { "type": "string" },
-						"minItems": 1
-					},
-					"accepted_findings": {
-						"type": "array",
-						"items": {
-							"type": "object",
-							"properties": {
-								"severity": {
-									"type": "string",
-									"enum": ["critical", "high", "medium", "low", "info"]
-								},
-								"summary": { "type": "string" },
-								"evidence": {
-									"type": "array",
-									"items": { "type": "string" },
-									"minItems": 1
-								},
-								"kind": { "type": "string" },
-								"file": { "type": "string" },
-								"line": { "type": "integer", "minimum": 1 },
-								"line_range": {
-									"type": "object",
-									"properties": {
-										"start": { "type": "integer", "minimum": 1 },
-										"end": { "type": "integer", "minimum": 1 }
-									},
-									"required": ["start", "end"],
-									"additionalProperties": false
-								},
-								"guidance": { "type": "string" }
-							},
-							"required": ["severity", "summary", "evidence", "guidance"],
-							"additionalProperties": false
-						}
-					},
-					"rejected_findings": {
-						"type": "array",
-						"items": {
-							"type": "object",
-							"properties": {
-								"severity": {
-									"type": "string",
-									"enum": ["critical", "high", "medium", "low", "info"]
-								},
-								"summary": { "type": "string" },
-								"rejection_reason": { "type": "string" },
-								"evidence": {
-									"type": "array",
-									"items": { "type": "string" },
-									"minItems": 1
-								},
-								"kind": { "type": "string" },
-								"file": { "type": "string" },
-								"line": { "type": "integer", "minimum": 1 },
-								"line_range": {
-									"type": "object",
-									"properties": {
-										"start": { "type": "integer", "minimum": 1 },
-										"end": { "type": "integer", "minimum": 1 }
-									},
-									"required": ["start", "end"],
-									"additionalProperties": false
-								}
-							},
-							"required": ["severity", "summary", "rejection_reason", "evidence"],
-							"additionalProperties": false
-						}
-					}
+					"review_contract": review_checkpoint_contract_schema(),
+					"checks": review_checkpoint_checks_schema(),
+					"evidence": non_empty_string_array_schema(),
+					"accepted_findings": review_checkpoint_findings_array_schema(false),
+					"rejected_findings": review_checkpoint_findings_array_schema(true)
 				},
-				"required": ["reviewer", "status", "head_sha", "checks", "evidence"],
+				"required": ["reviewer", "status", "head_sha", "review_contract", "checks", "evidence"],
 				"additionalProperties": false
 			}),
 		)]
@@ -1342,98 +1257,104 @@ impl<'a> TrackerToolBridge<'a> {
 			));
 		}
 
-		let Some(review_policy_phase) = ReviewPolicyPhase::for_mode(review_context.mode) else {
-			return DynamicToolCallResponse::failure(String::from(
-				"`issue_review_checkpoint` is unavailable for retained closeout runs.",
-			));
-		};
-		let review_policy_status = match ReviewPolicyStatus::parse(&parsed.status) {
-			Ok(status) => status,
+		let prepared = match self.prepare_review_checkpoint(parsed, review_context) {
+			Ok(prepared) => prepared,
 			Err(error) => return DynamicToolCallResponse::failure(error),
 		};
-		let local_repo = match self.current_local_repo_details(review_context) {
-			Ok(local_repo) => local_repo,
-			Err(error) => return DynamicToolCallResponse::failure(error),
-		};
-		let head_sha = match self.canonicalize_current_lane_head_sha(
-			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
-			parsed.head_sha.as_str(),
-			&local_repo.head_oid,
-		) {
-			Ok(head_sha) => head_sha,
-			Err(error) => return DynamicToolCallResponse::failure(error),
-		};
-		let mut checkpoint_payload = match normalize_review_checkpoint_payload(
-			parsed,
-			review_policy_phase,
-			review_policy_status,
-			&head_sha,
-		) {
-			Ok(payload) => payload,
-			Err(error) => return DynamicToolCallResponse::failure(error),
-		};
-		let policy_update = match self.review_checkpoint_finding_policy_update(
-			review_context,
-			review_policy_phase,
-			review_policy_status,
-			&head_sha,
-			&checkpoint_payload,
-		) {
-			Ok(update) => update,
-			Err(error) => return DynamicToolCallResponse::failure(error),
-		};
-
-		checkpoint_payload.finding_policy = policy_update.finding_policy;
-
-		let details_json = match self.review_checkpoint_details_json(&checkpoint_payload) {
+		let details_json = match self.review_checkpoint_details_json(&prepared.checkpoint_payload) {
 			Ok(details_json) => details_json,
 			Err(error) => return DynamicToolCallResponse::failure(error),
 		};
-		let nonclean_rounds = policy_update.nonclean_rounds;
 
 		if let Err(error) = self.persist_review_policy_state(
 			review_context,
-			review_policy_phase,
-			review_policy_status,
-			&head_sha,
-			nonclean_rounds,
+			prepared.review_policy_phase,
+			prepared.review_policy_status,
+			&prepared.head_sha,
+			prepared.nonclean_rounds,
 			&details_json,
 		) {
 			return DynamicToolCallResponse::failure(error);
 		}
 		if let Err(error) = self.append_private_review_checkpoint(
 			review_context,
-			review_policy_phase,
-			review_policy_status,
-			&head_sha,
-			nonclean_rounds,
-			&checkpoint_payload,
+			prepared.review_policy_phase,
+			prepared.review_policy_status,
+			&prepared.head_sha,
+			prepared.nonclean_rounds,
+			&prepared.checkpoint_payload,
 		) {
 			return DynamicToolCallResponse::failure(error);
 		}
 
 		let message = self.review_checkpoint_success_message(
-			review_policy_phase,
-			review_policy_status,
-			&head_sha,
-			nonclean_rounds,
+			prepared.review_policy_phase,
+			prepared.review_policy_status,
+			&prepared.head_sha,
+			prepared.nonclean_rounds,
 			ReviewCheckpointPayloadCounts {
-				evidence: checkpoint_payload.evidence.len(),
-				accepted_findings: checkpoint_payload.accepted_findings.len(),
-				rejected_findings: checkpoint_payload.rejected_findings.len(),
+				evidence: prepared.checkpoint_payload.evidence.len(),
+				accepted_findings: prepared.checkpoint_payload.accepted_findings.len(),
+				rejected_findings: prepared.checkpoint_payload.rejected_findings.len(),
 			},
 		);
 
 		if let Some(response) = self.review_checkpoint_churn_stop_response(
-			review_policy_status,
-			nonclean_rounds,
-			&checkpoint_payload,
+			prepared.review_policy_status,
+			prepared.nonclean_rounds,
+			&prepared.checkpoint_payload,
 			&message,
 		) {
 			return response;
 		}
 
 		DynamicToolCallResponse::success(message)
+	}
+
+	fn prepare_review_checkpoint(
+		&self,
+		parsed: ReviewCheckpointArgs,
+		review_context: &ReviewHandoffContext,
+	) -> Result<PreparedReviewCheckpoint, String> {
+		let Some(review_policy_phase) = ReviewPolicyPhase::for_mode(review_context.mode) else {
+			return Err(String::from(
+				"`issue_review_checkpoint` is unavailable for retained closeout runs.",
+			));
+		};
+		let review_policy_status = ReviewPolicyStatus::parse(&parsed.status)?;
+		let local_repo = self.current_local_repo_details(review_context)?;
+		let head_sha = self.canonicalize_current_lane_head_sha(
+			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+			parsed.head_sha.as_str(),
+			&local_repo.head_oid,
+		)?;
+
+		self.ensure_review_checkpoint_committed_head(&local_repo)?;
+
+		let mut checkpoint_payload = normalize_review_checkpoint_payload(
+			parsed,
+			review_policy_phase,
+			review_policy_status,
+			&head_sha,
+			&local_repo,
+		)?;
+		let policy_update = self.review_checkpoint_finding_policy_update(
+			review_context,
+			review_policy_phase,
+			review_policy_status,
+			&head_sha,
+			&checkpoint_payload,
+		)?;
+
+		checkpoint_payload.finding_policy = policy_update.finding_policy;
+
+		Ok(PreparedReviewCheckpoint {
+			review_policy_phase,
+			review_policy_status,
+			head_sha,
+			checkpoint_payload,
+			nonclean_rounds: policy_update.nonclean_rounds,
+		})
 	}
 
 	fn review_checkpoint_details_json(
@@ -1591,6 +1512,22 @@ impl<'a> TrackerToolBridge<'a> {
 					self.issue.identifier
 				)
 			})
+	}
+
+	fn ensure_review_checkpoint_committed_head(
+		&self,
+		local_repo: &LocalRepoDetails,
+	) -> Result<(), String> {
+		if local_repo.review_worktree_clean() {
+			return Ok(());
+		}
+
+		Err(format!(
+			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires a clean committed lane HEAD before recording formal Decodex Review evidence. Commit or revert review-blocking local changes, rerun required validation, then request review for the committed HEAD. Review-blocking local changes: {}",
+			tracker_tool_bridge::summarize_review_blocking_changes(
+				&local_repo.review_blocking_changes
+			)
+		))
 	}
 
 	fn append_review_completion_intent(
@@ -2137,6 +2074,146 @@ impl<'a> TrackerToolBridge<'a> {
 	}
 }
 
+fn review_checkpoint_reviewer_schema() -> Value {
+	serde_json::json!({
+		"type": "string",
+		"enum": ["independent_fresh_context"]
+	})
+}
+
+fn review_checkpoint_status_schema() -> Value {
+	serde_json::json!({
+		"type": "string",
+		"enum": ["clean", "findings", "needs_architecture_review", "blocked"]
+	})
+}
+
+fn review_checkpoint_contract_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"properties": {
+			"workflow_policy_source": {
+				"type": "string",
+				"enum": ["registered_project_workflow"]
+			},
+			"review_type": {
+				"type": "string",
+				"enum": ["full_current_head_review", "repair_verification"]
+			},
+			"risk_tier": {
+				"type": "string",
+				"enum": ["low", "localized", "high"]
+			},
+			"objective": { "type": "string" },
+			"scope": non_empty_string_array_schema(),
+			"non_goals": non_empty_string_array_schema(),
+			"required_checks": non_empty_string_array_schema(),
+			"allowed_expansion_triggers": non_empty_string_array_schema(),
+			"validation_evidence": non_empty_string_array_schema()
+		},
+		"required": [
+			"workflow_policy_source",
+			"review_type",
+			"risk_tier",
+			"objective",
+			"scope",
+			"non_goals",
+			"required_checks",
+			"allowed_expansion_triggers",
+			"validation_evidence"
+		],
+		"additionalProperties": false
+	})
+}
+
+fn review_checkpoint_checks_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"properties": {
+			"intended_behavior": { "type": "string" },
+			"regression_risk": { "type": "string" },
+			"missing_tests": { "type": "string" },
+			"docs_config_drift": { "type": "string" },
+			"migration_fallout": { "type": "string" },
+			"operator_facing_fallout": { "type": "string" },
+			"loop_decision_contract": { "type": "string" }
+		},
+		"required": [
+			"intended_behavior",
+			"regression_risk",
+			"missing_tests",
+			"docs_config_drift",
+			"migration_fallout",
+			"operator_facing_fallout",
+			"loop_decision_contract"
+		],
+		"additionalProperties": false
+	})
+}
+
+fn review_checkpoint_findings_array_schema(rejected: bool) -> Value {
+	serde_json::json!({
+		"type": "array",
+		"items": review_checkpoint_finding_schema(rejected)
+	})
+}
+
+fn review_checkpoint_finding_schema(rejected: bool) -> Value {
+	let mut properties = Map::from_iter([
+		(String::from("severity"), review_checkpoint_severity_schema()),
+		(String::from("summary"), serde_json::json!({ "type": "string" })),
+		(String::from("evidence"), non_empty_string_array_schema()),
+		(String::from("kind"), serde_json::json!({ "type": "string" })),
+		(String::from("file"), serde_json::json!({ "type": "string" })),
+		(String::from("line"), serde_json::json!({ "type": "integer", "minimum": 1 })),
+		(String::from("line_range"), review_checkpoint_line_range_schema()),
+	]);
+	let required = if rejected {
+		properties
+			.insert(String::from("rejection_reason"), serde_json::json!({ "type": "string" }));
+
+		serde_json::json!(["severity", "summary", "rejection_reason", "evidence"])
+	} else {
+		properties.insert(String::from("guidance"), serde_json::json!({ "type": "string" }));
+
+		serde_json::json!(["severity", "summary", "evidence", "guidance"])
+	};
+
+	serde_json::json!({
+		"type": "object",
+		"properties": properties,
+		"required": required,
+		"additionalProperties": false
+	})
+}
+
+fn review_checkpoint_severity_schema() -> Value {
+	serde_json::json!({
+		"type": "string",
+		"enum": ["critical", "high", "medium", "low", "info"]
+	})
+}
+
+fn review_checkpoint_line_range_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"properties": {
+			"start": { "type": "integer", "minimum": 1 },
+			"end": { "type": "integer", "minimum": 1 }
+		},
+		"required": ["start", "end"],
+		"additionalProperties": false
+	})
+}
+
+fn non_empty_string_array_schema() -> Value {
+	serde_json::json!({
+		"type": "array",
+		"items": { "type": "string" },
+		"minItems": 1
+	})
+}
+
 fn normalize_required_comment_field(
 	value: Option<String>,
 	field_name: &str,
@@ -2198,6 +2275,7 @@ fn normalize_review_checkpoint_payload(
 	review_policy_phase: ReviewPolicyPhase,
 	status: ReviewPolicyStatus,
 	head_sha: &str,
+	local_repo: &LocalRepoDetails,
 ) -> Result<NormalizedReviewCheckpointPayload, String> {
 	let reviewer = parsed
 		.reviewer
@@ -2215,6 +2293,13 @@ fn normalize_review_checkpoint_payload(
 		));
 	}
 
+	let review_contract = normalize_review_checkpoint_contract(
+		parsed.review_contract.ok_or_else(|| {
+			format!("`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `review_contract`.")
+		})?,
+		review_policy_phase,
+	)?;
+	let review_contract_hash = review_checkpoint_contract_hash(&review_contract)?;
 	let checks = normalize_review_checkpoint_checks(
 		parsed
 			.checks
@@ -2245,12 +2330,125 @@ fn normalize_review_checkpoint_payload(
 
 	Ok(NormalizedReviewCheckpointPayload {
 		reviewer,
+		review_contract,
+		review_contract_hash,
+		reviewed_head: ReviewCheckpointHeadBinding {
+			head_sha: head_sha.to_owned(),
+			head_tree_oid: local_repo.head_tree_oid.clone(),
+			review_worktree_clean: local_repo.review_worktree_clean(),
+		},
 		checks,
 		evidence,
 		accepted_findings,
 		rejected_findings,
 		finding_policy: empty_review_finding_policy(review_policy_phase, status, head_sha),
 	})
+}
+
+fn normalize_review_checkpoint_contract(
+	contract: ReviewCheckpointContractArgs,
+	review_policy_phase: ReviewPolicyPhase,
+) -> Result<NormalizedReviewCheckpointContract, String> {
+	let workflow_policy_source = normalize_required_review_text(
+		contract.workflow_policy_source,
+		"review_contract.workflow_policy_source",
+	)?;
+
+	if workflow_policy_source != "registered_project_workflow" {
+		return Err(format!(
+			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `review_contract.workflow_policy_source` to be `registered_project_workflow`, not `{workflow_policy_source}`."
+		));
+	}
+
+	let review_type = normalize_review_type(contract.review_type, review_policy_phase)?;
+	let risk_tier = normalize_review_risk_tier(contract.risk_tier)?;
+	let objective =
+		normalize_required_review_text(contract.objective, "review_contract.objective")?;
+	let scope = normalize_required_review_contract_list(contract.scope, "review_contract.scope")?;
+	let non_goals =
+		normalize_required_review_contract_list(contract.non_goals, "review_contract.non_goals")?;
+	let required_checks = normalize_required_review_contract_list(
+		contract.required_checks,
+		"review_contract.required_checks",
+	)?;
+	let allowed_expansion_triggers = normalize_required_review_contract_list(
+		contract.allowed_expansion_triggers,
+		"review_contract.allowed_expansion_triggers",
+	)?;
+	let validation_evidence = normalize_required_review_contract_list(
+		contract.validation_evidence,
+		"review_contract.validation_evidence",
+	)?;
+
+	Ok(NormalizedReviewCheckpointContract {
+		workflow_policy_source,
+		review_type,
+		risk_tier,
+		objective,
+		scope,
+		non_goals,
+		required_checks,
+		allowed_expansion_triggers,
+		validation_evidence,
+	})
+}
+
+fn normalize_review_type(
+	review_type: String,
+	review_policy_phase: ReviewPolicyPhase,
+) -> Result<String, String> {
+	let review_type = review_type.trim().to_ascii_lowercase().replace([' ', '-'], "_");
+	let expected = match review_policy_phase {
+		ReviewPolicyPhase::Handoff => "full_current_head_review",
+		ReviewPolicyPhase::Repair => "repair_verification",
+	};
+
+	if review_type != expected {
+		return Err(format!(
+			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `review_contract.review_type` to be `{expected}` for `{}` review checkpoints, not `{review_type}`.",
+			review_policy_phase.as_str()
+		));
+	}
+
+	Ok(review_type)
+}
+
+fn normalize_review_risk_tier(risk_tier: String) -> Result<String, String> {
+	let risk_tier = risk_tier.trim().to_ascii_lowercase().replace([' ', '-'], "_");
+
+	match risk_tier.as_str() {
+		"low" | "localized" | "high" => Ok(risk_tier),
+		other => Err(format!(
+			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `review_contract.risk_tier` to be `low`, `localized`, or `high`, not `{other}`."
+		)),
+	}
+}
+
+fn normalize_required_review_contract_list(
+	values: Vec<String>,
+	field_name: &str,
+) -> Result<Vec<String>, String> {
+	let values = tracker_tool_bridge::normalize_progress_list(values);
+
+	if values.is_empty() {
+		return Err(format!("`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `{field_name}`."));
+	}
+
+	Ok(values)
+}
+
+fn review_checkpoint_contract_hash(
+	contract: &NormalizedReviewCheckpointContract,
+) -> Result<String, String> {
+	let serialized = serde_json::to_vec(contract).map_err(|error| {
+		format!(
+			"Failed to serialize `review_contract` for `{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}`: {error}"
+		)
+	})?;
+	let digest = Sha256::digest(serialized);
+	let hash = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+
+	Ok(format!("review_contract:{hash}"))
 }
 
 fn normalize_review_checkpoint_checks(
