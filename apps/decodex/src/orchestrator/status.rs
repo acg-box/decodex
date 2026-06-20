@@ -316,6 +316,13 @@ struct OperatorExecutionProgramReadback {
 	issue_metadata_unavailable: bool,
 }
 
+struct OperatorReviewCheckpointSummaryFields {
+	active_fingerprints: Vec<String>,
+	stop_fingerprint: Option<String>,
+	route_counts: Vec<OperatorReviewRouteCount>,
+	route_next_action: Option<String>,
+}
+
 pub(crate) fn ensure_project_has_no_merged_worktree_cleanup_debt(
 	project: &ServiceConfig,
 ) -> crate::prelude::Result<()> {
@@ -8155,8 +8162,7 @@ fn operator_review_loop_status(
 
 	if let Some(checkpoint) = latest_checkpoint {
 		let nonclean_rounds = checkpoint.nonclean_rounds();
-		let (active_fingerprints, stop_fingerprint) =
-			operator_review_finding_policy_fields(checkpoint.details_json());
+		let summary = operator_review_checkpoint_summary_fields(checkpoint.details_json());
 
 		return Ok(Some(OperatorReviewLoopStatus {
 			phase: checkpoint.phase().to_owned(),
@@ -8165,8 +8171,10 @@ fn operator_review_loop_status(
 				head_sha: checkpoint.head_sha().to_owned(),
 				round: nonclean_rounds,
 				nonclean_rounds,
-				active_fingerprints,
-				stop_fingerprint,
+				active_fingerprints: summary.active_fingerprints,
+				stop_fingerprint: summary.stop_fingerprint,
+				route_counts: summary.route_counts,
+				route_next_action: summary.route_next_action,
 				updated_at: checkpoint.updated_at().to_owned(),
 			}),
 		}));
@@ -8185,15 +8193,20 @@ fn operator_review_loop_status(
 	Ok(None)
 }
 
-fn operator_review_finding_policy_fields(details_json: &str) -> (Vec<String>, Option<String>) {
+fn operator_review_checkpoint_summary_fields(
+	details_json: &str,
+) -> OperatorReviewCheckpointSummaryFields {
 	let Ok(details) = serde_json::from_str::<Value>(details_json) else {
-		return (Vec::new(), None);
+		return OperatorReviewCheckpointSummaryFields {
+			active_fingerprints: Vec::new(),
+			stop_fingerprint: None,
+			route_counts: Vec::new(),
+			route_next_action: None,
+		};
 	};
-	let Some(policy) = details.get("finding_policy") else {
-		return (Vec::new(), None);
-	};
+	let policy = details.get("finding_policy");
 	let active_fingerprints = policy
-		.get("active_fingerprints")
+		.and_then(|policy| policy.get("active_fingerprints"))
 		.and_then(Value::as_array)
 		.into_iter()
 		.flatten()
@@ -8201,11 +8214,33 @@ fn operator_review_finding_policy_fields(details_json: &str) -> (Vec<String>, Op
 		.map(str::to_owned)
 		.collect();
 	let stop_fingerprint = policy
-		.get("stop_fingerprint")
+		.and_then(|policy| policy.get("stop_fingerprint"))
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let route_summary = details.get("finding_route_summary");
+	let route_counts = route_summary
+		.and_then(|summary| summary.get("route_counts"))
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(|count| {
+			Some(OperatorReviewRouteCount {
+				route: count.get("route")?.as_str()?.to_owned(),
+				count: usize::try_from(count.get("count")?.as_u64()?).ok()?,
+			})
+		})
+		.collect();
+	let route_next_action = route_summary
+		.and_then(|summary| summary.get("next_action"))
 		.and_then(Value::as_str)
 		.map(str::to_owned);
 
-	(active_fingerprints, stop_fingerprint)
+	OperatorReviewCheckpointSummaryFields {
+		active_fingerprints,
+		stop_fingerprint,
+		route_counts,
+		route_next_action,
+	}
 }
 
 fn operator_architecture_recovery_status_from_event(
@@ -8539,20 +8574,31 @@ fn operator_loop_status_next_action(
 		};
 	}
 
-	review.and_then(|review| match review.status.as_str() {
-		"pending" => Some(String::from(
-			"Record the independent Decodex Review checkpoint for the current lane head.",
-		)),
-		"findings" => Some(String::from(
-			"Repair validated review findings and record a fresh checkpoint.",
-		)),
-		"blocked" => Some(String::from(
-			"Resolve the blocked Decodex Review before continuing.",
-		)),
-		"needs_architecture_review" => Some(String::from(
-			"Get architecture direction before continuing review repair.",
-		)),
-		_ => None,
+	review.and_then(|review| {
+		if review.status != "clean"
+			&& let Some(route_next_action) = review
+				.checkpoint
+				.as_ref()
+				.and_then(|checkpoint| checkpoint.route_next_action.clone())
+		{
+			return Some(route_next_action);
+		}
+
+		match review.status.as_str() {
+			"pending" => Some(String::from(
+				"Record the independent Decodex Review checkpoint for the current lane head.",
+			)),
+			"findings" => Some(String::from(
+				"Repair validated review findings and record a fresh checkpoint.",
+			)),
+			"blocked" => Some(String::from(
+				"Resolve the blocked Decodex Review before continuing.",
+			)),
+			"needs_architecture_review" => Some(String::from(
+				"Get architecture direction before continuing review repair.",
+			)),
+			_ => None,
+		}
 	})
 }
 

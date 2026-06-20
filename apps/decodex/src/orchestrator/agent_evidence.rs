@@ -295,7 +295,15 @@ struct PrivateEvidenceReviewCheckpointSummary {
 	stop_fingerprint: Option<String>,
 	accepted_finding_count: usize,
 	rejected_finding_count: usize,
+	route_counts: Vec<PrivateEvidenceReviewRouteCount>,
+	route_next_action: Option<String>,
 	next_action: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PrivateEvidenceReviewRouteCount {
+	route: String,
+	count: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -867,6 +875,7 @@ fn review_checkpoint_from_private_event(
 		.map_or(0, Vec::len);
 	let (active_fingerprints, stop_fingerprint) =
 		review_checkpoint_fingerprint_summary(payload);
+	let (route_counts, route_next_action) = review_checkpoint_route_summary(payload);
 	let next_action = review_checkpoint_next_action(&status);
 
 	Some(PrivateEvidenceReviewCheckpointSummary {
@@ -878,6 +887,8 @@ fn review_checkpoint_from_private_event(
 		stop_fingerprint,
 		accepted_finding_count,
 		rejected_finding_count,
+		route_counts,
+		route_next_action,
 		next_action,
 	})
 }
@@ -903,6 +914,37 @@ fn review_checkpoint_fingerprint_summary(payload: &Value) -> (Vec<String>, Optio
 		.map(str::to_owned);
 
 	(active_fingerprints, stop_fingerprint)
+}
+
+fn review_checkpoint_route_summary(
+	payload: &Value,
+) -> (Vec<PrivateEvidenceReviewRouteCount>, Option<String>) {
+	let review = payload.get("review").unwrap_or(payload);
+	let route_summary = review.get("finding_route_summary");
+	let route_counts = payload
+		.get("route_counts")
+		.or_else(|| route_summary.and_then(|summary| summary.get("route_counts")))
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(|count| {
+			Some(PrivateEvidenceReviewRouteCount {
+				route: count.get("route")?.as_str()?.to_owned(),
+				count: usize::try_from(count.get("count")?.as_u64()?).ok()?,
+			})
+		})
+		.collect();
+	let route_next_action = payload
+		.get("route_next_action")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			route_summary
+				.and_then(|summary| summary.get("next_action"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned);
+
+	(route_counts, route_next_action)
 }
 
 fn review_checkpoint_next_action(status: &str) -> String {
@@ -1512,9 +1554,19 @@ fn append_private_evidence_review_checkpoints(
 			} else {
 				checkpoint.active_fingerprints.join(", ")
 			};
+			let route_counts = if checkpoint.route_counts.is_empty() {
+				String::from("none")
+			} else {
+				checkpoint
+					.route_counts
+					.iter()
+					.map(|count| format!("{}={}", count.route, count.count))
+					.collect::<Vec<_>>()
+					.join(", ")
+			};
 
 			output.push_str(&format!(
-				"- phase: {}\n  status: {}\n  head_sha: {}\n  round: {}\n  active_fingerprints: {}\n  stop_fingerprint: {}\n  accepted_findings: {}\n  rejected_findings: {}\n  next_action: {}\n",
+				"- phase: {}\n  status: {}\n  head_sha: {}\n  round: {}\n  active_fingerprints: {}\n  stop_fingerprint: {}\n  accepted_findings: {}\n  rejected_findings: {}\n  route_counts: {}\n  route_next_action: {}\n  next_action: {}\n",
 				checkpoint.phase,
 				checkpoint.status,
 				checkpoint.head_sha.as_deref().unwrap_or("none"),
@@ -1525,6 +1577,8 @@ fn append_private_evidence_review_checkpoints(
 				checkpoint.stop_fingerprint.as_deref().unwrap_or("none"),
 				checkpoint.accepted_finding_count,
 				checkpoint.rejected_finding_count,
+				route_counts,
+				checkpoint.route_next_action.as_deref().unwrap_or("none"),
 				checkpoint.next_action
 			));
 		}

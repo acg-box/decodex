@@ -839,6 +839,10 @@ fn assert_harness_private_readback(readback: &PrivateEvidenceReadback) {
 			&& checkpoint.head_sha.as_deref() == Some("abc123")
 			&& checkpoint.round == Some(1)
 			&& checkpoint.accepted_finding_count == 1
+			&& checkpoint.route_counts.iter().any(|count| {
+				count.route == "current_blocker" && count.count == 1
+			})
+			&& checkpoint.route_next_action.as_deref() == Some("Repair the accepted finding.")
 	}));
 	assert!(readback.phase_acceptance_checks.iter().any(|check| {
 		check.phase == "implement_to_validation_ready"
@@ -856,6 +860,8 @@ fn assert_harness_private_readback(readback: &PrivateEvidenceReadback) {
 	let rendered = orchestrator::render_private_evidence_readback(readback);
 
 	assert!(rendered.contains("Review Checkpoints"));
+	assert!(rendered.contains("route_counts: current_blocker=1"));
+	assert!(rendered.contains("route_next_action: Repair the accepted finding."));
 	assert!(rendered.contains("Phase Acceptance Checks"));
 	assert!(rendered.contains("Architecture Recoveries"));
 	assert!(rendered.contains("Boundary Checks"));
@@ -895,9 +901,15 @@ fn record_harness_signal_fixture_events(state_store: &StateStore) {
 				"status": "findings",
 				"head_sha": "abc123",
 				"nonclean_rounds": 1,
+				"route_counts": [{"route": "current_blocker", "count": 1}],
+				"route_next_action": "Repair the accepted finding.",
 				"review": {
 					"accepted_findings": [{"summary": "cover the missing edge case"}],
-					"rejected_findings": []
+					"rejected_findings": [],
+					"finding_route_summary": {
+						"route_counts": [{"route": "current_blocker", "count": 1}],
+						"next_action": "Repair the accepted finding."
+					}
 				}
 			}),
 		)
