@@ -857,6 +857,8 @@ struct ReviewCheckpointArgs {
 	accepted_findings: Vec<ReviewCheckpointFindingArgs>,
 	#[serde(default)]
 	rejected_findings: Vec<ReviewCheckpointRejectedFindingArgs>,
+	#[serde(default)]
+	finding_routes: Vec<ReviewCheckpointFindingRouteArgs>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -920,6 +922,21 @@ struct ReviewCheckpointRejectedFindingArgs {
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+struct ReviewCheckpointFindingRouteArgs {
+	route: String,
+	severity: String,
+	summary: String,
+	#[serde(default)]
+	evidence: Vec<String>,
+	resolver: String,
+	next_action: String,
+	risk_tier: Option<String>,
+	finding_source: Option<String>,
+	finding_index: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct ReviewCheckpointLineRangeArgs {
 	start: u64,
 	end: u64,
@@ -935,6 +952,8 @@ struct NormalizedReviewCheckpointPayload {
 	evidence: Vec<String>,
 	accepted_findings: Vec<NormalizedReviewCheckpointFinding>,
 	rejected_findings: Vec<NormalizedRejectedReviewCheckpointFinding>,
+	finding_routes: Vec<NormalizedReviewCheckpointFindingRoute>,
+	finding_route_summary: ReviewCheckpointFindingRouteSummary,
 	finding_policy: ReviewFindingPolicyState,
 }
 
@@ -983,6 +1002,33 @@ struct NormalizedRejectedReviewCheckpointFinding {
 	file: Option<String>,
 	line: Option<u64>,
 	line_range: Option<ReviewCheckpointLineRangeArgs>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct NormalizedReviewCheckpointFindingRoute {
+	route: String,
+	severity: String,
+	risk_tier: String,
+	summary: String,
+	#[serde(default)]
+	evidence: Vec<String>,
+	resolver: String,
+	next_action: String,
+	finding_source: String,
+	finding_index: Option<u64>,
+	finding_fingerprint: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ReviewCheckpointFindingRouteSummary {
+	route_counts: Vec<ReviewCheckpointFindingRouteCount>,
+	next_action: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ReviewCheckpointFindingRouteCount {
+	route: String,
+	count: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
