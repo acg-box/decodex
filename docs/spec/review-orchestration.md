@@ -7,8 +7,8 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs]
-drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_policy_checkpoints, evidence_artifacts]
-last_verified: 2026-06-18
+drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_policy_checkpoints, evidence_artifacts]
+last_verified: 2026-06-20
 ---
 # Review Orchestration
 
@@ -30,7 +30,11 @@ This document defines the target orchestration contract for review behavior. The
   loop guardrails.
 - [`post-review-lifecycle.md`](./post-review-lifecycle.md) defines the post-`In Review` lane phases and downstream ownership after review handoff succeeds.
 - [`tracker-tools.md`](./tracker-tools.md) defines the issue-scoped tracker tool surface that records bounded review results and completion signals.
-- The registered project `WORKFLOW.md` defines the repo-native bounded review method that each review pass must use when evaluating the current lane head.
+- The registered project `WORKFLOW.md` defines the repo-native bounded review method
+  that each review pass must use when evaluating the current lane head. Review
+  instructions use the registered workflow policy already injected by Decodex; agents
+  must not reinterpret `WORKFLOW.md` as a required repo-root file unless it was
+  explicitly listed in `context.read_first`.
 
 ## Core model
 
@@ -63,7 +67,8 @@ deterministic clean merge path.
 
 ## Shared invariants
 
-1. Review always applies to the current lane head, not an older remembered implementation state.
+1. Review always applies to a clean committed current lane head, not an older
+   remembered implementation state or a dirty worktree snapshot.
 2. While a review request is outstanding, the lane itself must not push unrelated new commits.
 3. If PR state, branch lineage, or retained-lane ownership changes externally while review is pending, the lane must stop for `manual_intervention_required` instead of trying to recover automatically.
 4. Decodex Review and GitHub Review rounds are counted independently.
@@ -78,14 +83,23 @@ After any review arrives:
 - keep the repair batch scoped to the smallest coherent owned change set
 - rerun the repository validation required for the current head before the next review request
 - when `[codex].review` is `"standard"` or `"strict"`, record the normalized Decodex Review
-  result for the exact current `HEAD` through `issue_review_checkpoint`, including
-  the explicit independent reviewer source, checklist notes, accepted findings,
+  result for the exact clean committed current `HEAD` through
+  `issue_review_checkpoint`, including the explicit independent reviewer source,
+  review contract, reviewed head/tree binding, checklist notes, accepted findings,
   rejected findings, non-empty evidence, and repair guidance
 - before any handoff, retained repair completion, or terminal finalization, record the
   separate current-head docs-impact checkpoint through `issue_progress_checkpoint`;
   review checkpoints do not satisfy the `docs_impact` requirement
 
-The current repository's bounded review method is defined in the registered project `WORKFLOW.md`. This spec does not replace that method; it defines how review requests and review outcomes are orchestrated around it. When review reveals missing direction rather than a repairable finding, route the gap through Decodex-native research and Decision Contract update, not the legacy external research artifact lane.
+The current repository's bounded review method is defined in the registered project
+`WORKFLOW.md`. This spec does not replace that method; it defines how review
+requests and review outcomes are orchestrated around it. Each Decodex Review
+checkpoint must include an explicit `review_contract` whose
+`workflow_policy_source` is `registered_project_workflow`. The contract scopes the
+review objective, changed surface, non-goals, validation evidence, risk tier, required
+checks, and allowed expansion triggers. When review reveals missing direction rather
+than a repairable finding, route the gap through Decodex-native research and Decision
+Contract update, not the legacy external research artifact lane.
 
 ## Review round accounting
 
@@ -119,12 +133,15 @@ Rules:
   or require the checkpoint tool. It does not use GitHub Review.
 - `[codex].review = "standard"` uses Self Check plus the runtime-owned independent
   fresh-context read-only Decodex Review checkpoint loop. Decodex exposes
-  `issue_review_checkpoint`, requires a current-HEAD `clean` evidence artifact before
-  `issue_review_handoff` or `issue_review_repair_complete`, stores structured
-  accepted/rejected finding evidence, and applies the review-policy stop rules to
-  stale or non-clean keyed artifact state. That review checkpoint is separate from the
-  current-head `issue_progress_checkpoint` with `docs_impact` required before
-  terminal finalization. It does not use GitHub Review.
+  `issue_review_checkpoint`, requires a clean committed current-HEAD `clean`
+  evidence artifact before `issue_review_handoff` or
+  `issue_review_repair_complete`, re-checks that review-blocking local changes are
+  absent before reusing that artifact, stores structured accepted/rejected finding
+  evidence, and applies the review-policy stop rules to stale or non-clean keyed
+  artifact state.
+  That review checkpoint is separate from the current-head `issue_progress_checkpoint`
+  with `docs_impact` required before terminal finalization. It does not use GitHub
+  Review.
 - `[codex].review = "strict"` uses the standard requirements and then participates
   in the GitHub Review loop.
 - Omitted `[codex].review` defaults to `"strict"`.
@@ -133,6 +150,13 @@ Rules:
   read-only review request. The reviewer must not edit files, push, land, or mutate
   tracker state.
 - In `"standard"` and `"strict"` levels, Decodex Review must use the same bounded review method and normalized review outcomes as any other review pass.
+- In `"standard"` and `"strict"` levels, pre-handoff Decodex Review uses
+  `review_type = "full_current_head_review"`. Retained repair Decodex Review uses
+  `review_type = "repair_verification"` and is limited to the accepted findings from
+  the previous review plus contract regressions. New unrelated comments are rejected
+  or follow-up candidates unless they match an allowed expansion trigger such as
+  safety, authority-boundary, data-loss, security, live-mutation, public-API,
+  migration, or operator-facing regression.
 - In `"standard"` and `"strict"` levels, a Decodex Review checkpoint is persisted as
   an evidence-keyed artifact. The key must include artifact kind
   `issue_review_checkpoint`, review phase, current `HEAD`, review level, and review

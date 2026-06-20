@@ -6,6 +6,7 @@ const TERMINAL_THREAD_ARCHIVE_EVENT_TYPES: [&str; 2] = [
 ];
 const DISCARDED_POST_ARCHIVE_PROTOCOL_EVENT_TYPE: &str =
 	"protocol/post_archive_event/discarded";
+const REVIEW_CHECKPOINT_PROMPT_VERSION: &str = "decodex-review-checkpoint/2";
 
 /// Input fields for recording a project-scoped external connector backoff.
 pub(crate) struct ConnectorBackoffInput<'a> {
@@ -4723,7 +4724,7 @@ fn review_checkpoint_evidence_key_json(
 		phase,
 		head_sha,
 		review_level,
-		review_prompt_version: "decodex-review-checkpoint/1",
+		review_prompt_version: REVIEW_CHECKPOINT_PROMPT_VERSION,
 	})
 	.map_err(|error| eyre::eyre!("failed to serialize review checkpoint evidence key: {error}"))
 }

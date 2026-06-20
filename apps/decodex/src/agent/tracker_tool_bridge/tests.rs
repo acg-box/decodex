@@ -26,8 +26,8 @@ use crate::{
 	config::ReviewLevel,
 	prelude::eyre,
 	state::{
-		ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpoint,
-		ReviewPolicyCheckpointInput, StateStore,
+		ReviewCheckpointArtifactLookup, ReviewHandoffMarker, ReviewOrchestrationMarker,
+		ReviewPolicyCheckpoint, ReviewPolicyCheckpointInput, StateStore,
 	},
 	tracker::{
 		IssueTracker, TrackerComment, TrackerIssue, TrackerLabel, TrackerState, TrackerTeam,
@@ -527,12 +527,30 @@ fn sample_pull_request() -> PullRequestDetails {
 	}
 }
 
+#[test]
+fn review_blocking_status_keeps_source_changes_and_ignores_runtime_markers() {
+	assert_eq!(
+		super::review_blocking_status_lines(
+			" M apps/decodex/src/agent/tracker_tool_bridge.rs\n\
+			 ?? apps/decodex/src/agent/new_file.rs\n\
+			 ?? .decodex-run-activity\n\
+			 ?? .decodex-run-control/run-1.channel\n"
+		),
+		vec![
+			String::from("M apps/decodex/src/agent/tracker_tool_bridge.rs"),
+			String::from("?? apps/decodex/src/agent/new_file.rs"),
+		]
+	);
+}
+
 fn sample_local_repo() -> LocalRepoDetails {
 	LocalRepoDetails {
 		default_branch: String::from("main"),
 		head_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+		head_tree_oid: String::from("f8a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
 		repository_name: String::from("decodex"),
 		repository_owner: String::from("hack-ink"),
+		review_blocking_changes: Vec::new(),
 	}
 }
 
