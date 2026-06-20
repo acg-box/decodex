@@ -27,14 +27,18 @@ fn sample_review_repair_apply_inspectors(
 		Ok(LocalRepoDetails {
 			default_branch: String::from("main"),
 			head_oid: String::from("18a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			head_tree_oid: String::from("f8a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
 			repository_name: String::from("decodex"),
 			repository_owner: String::from("hack-ink"),
+			review_blocking_changes: Vec::new(),
 		}),
 		Ok(LocalRepoDetails {
 			default_branch: String::from("main"),
 			head_oid: String::from("18a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			head_tree_oid: String::from("f8a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
 			repository_name: String::from("decodex"),
 			repository_owner: String::from("hack-ink"),
+			review_blocking_changes: Vec::new(),
 		}),
 	]);
 
@@ -50,6 +54,28 @@ fn review_checks_json() -> Value {
 		"migration_fallout": "Checked additive runtime-store migration fallout.",
 		"operator_facing_fallout": "Checked Linear and operator-facing fallout.",
 		"loop_decision_contract": "Compared the change against the accepted Loop/Decision Contract and found no mismatch."
+	})
+}
+
+fn handoff_review_contract_json() -> Value {
+	review_contract_json("full_current_head_review")
+}
+
+fn repair_review_contract_json() -> Value {
+	review_contract_json("repair_verification")
+}
+
+fn review_contract_json(review_type: &str) -> Value {
+	serde_json::json!({
+		"workflow_policy_source": "registered_project_workflow",
+		"review_type": review_type,
+		"risk_tier": "localized",
+		"objective": "Review the current committed lane head against the accepted issue contract.",
+		"scope": ["Current committed lane diff and directly owned behavior."],
+		"non_goals": ["Do not widen into unrelated cleanup or unowned product direction."],
+		"required_checks": ["Intended behavior, regression risk, tests, docs/config drift, migration fallout, operator-facing fallout, and Loop/Decision Contract alignment."],
+		"allowed_expansion_triggers": ["Safety, authority-boundary, data-loss, security, live-mutation, public-API, migration, or operator-facing regression."],
+		"validation_evidence": ["Repo-native validation was rerun for the committed lane head before review."]
 	})
 }
 
@@ -84,6 +110,17 @@ fn accepted_review_findings_for_status_json(status: &str) -> Value {
 	}
 }
 
+fn sample_dirty_local_repo() -> LocalRepoDetails {
+	let mut local_repo = sample_local_repo();
+
+	local_repo.review_blocking_changes = vec![
+		String::from("M apps/decodex/src/agent/tracker_tool_bridge/tools.rs"),
+		String::from("?? apps/decodex/src/agent/new_review_surface.rs"),
+	];
+
+	local_repo
+}
+
 fn submit_findings_review_checkpoint(
 	bridge: &TrackerToolBridge<'_>,
 	evidence: &str,
@@ -107,6 +144,7 @@ fn submit_findings_review_checkpoint_with_findings(
 			"reviewer": "independent_fresh_context",
 			"status": "findings",
 			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
 			"checks": review_checks_json(),
 			"evidence": [evidence],
 			"accepted_findings": accepted_findings
@@ -519,6 +557,7 @@ fn review_checkpoint_normalizes_matching_short_head_sha_to_full_head() {
 			"reviewer": "independent_fresh_context",
 			"status": "clean",
 			"head_sha": &sample_local_repo().head_oid[..7],
+			"review_contract": handoff_review_contract_json(),
 			"checks": review_checks_json(),
 			"evidence": ["Closeout and review policy both point at the current lane head."]
 		}),
@@ -583,6 +622,7 @@ fn independent_review_checkpoint_requires_structured_fresh_context_payload() {
 				"reviewer": "independent_fresh_context",
 				"status": "clean",
 				"head_sha": sample_local_repo().head_oid,
+				"review_contract": handoff_review_contract_json(),
 				"evidence": ["review evidence"]
 			}),
 			"requires `checks`",
@@ -592,6 +632,7 @@ fn independent_review_checkpoint_requires_structured_fresh_context_payload() {
 				"reviewer": "independent_fresh_context",
 				"status": "clean",
 				"head_sha": sample_local_repo().head_oid,
+				"review_contract": handoff_review_contract_json(),
 				"checks": review_checks_json(),
 				"evidence": []
 			}),
@@ -602,6 +643,7 @@ fn independent_review_checkpoint_requires_structured_fresh_context_payload() {
 				"reviewer": "independent_fresh_context",
 				"status": "findings",
 				"head_sha": sample_local_repo().head_oid,
+				"review_contract": handoff_review_contract_json(),
 				"checks": review_checks_json(),
 				"evidence": ["review evidence"],
 				"accepted_findings": [{
@@ -618,6 +660,7 @@ fn independent_review_checkpoint_requires_structured_fresh_context_payload() {
 				"reviewer": "independent_fresh_context",
 				"status": "clean",
 				"head_sha": sample_local_repo().head_oid,
+				"review_contract": handoff_review_contract_json(),
 				"checks": review_checks_json(),
 				"evidence": ["review evidence"],
 				"rejected_findings": [{
@@ -639,6 +682,42 @@ fn independent_review_checkpoint_requires_structured_fresh_context_payload() {
 			[DynamicToolContentItem::InputText { text }] if text.contains(expected_error)
 		));
 	}
+}
+
+#[test]
+fn independent_review_checkpoint_requires_review_contract() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"checks": review_checks_json(),
+			"evidence": ["review evidence"]
+		}),
+	);
+
+	assert!(!response.success);
+	assert!(matches!(
+		response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText { text }] if text.contains("requires `review_contract`")
+	));
 }
 
 #[test]
@@ -665,6 +744,7 @@ fn independent_review_checkpoint_clean_persists_structured_payload() {
 			"reviewer": "independent_fresh_context",
 			"status": "clean",
 			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
 			"checks": review_checks_json(),
 			"evidence": ["fresh reviewer read the issue contract, current diff, and HEAD"],
 			"rejected_findings": [{
@@ -687,6 +767,19 @@ fn independent_review_checkpoint_clean_persists_structured_payload() {
 	assert_eq!(checkpoint.status(), "clean");
 	assert_eq!(details["reviewer"], "independent_fresh_context");
 	assert_eq!(
+		details["review_contract"]["workflow_policy_source"],
+		"registered_project_workflow"
+	);
+	assert_eq!(details["review_contract"]["review_type"], "full_current_head_review");
+	assert_eq!(details["reviewed_head"]["head_sha"], sample_local_repo().head_oid);
+	assert_eq!(details["reviewed_head"]["head_tree_oid"], sample_local_repo().head_tree_oid);
+	assert_eq!(details["reviewed_head"]["review_worktree_clean"], true);
+	assert!(
+		details["review_contract_hash"]
+			.as_str()
+			.is_some_and(|hash| hash.starts_with("review_contract:"))
+	);
+	assert_eq!(
 		details["checks"]["loop_decision_contract"],
 		"Compared the change against the accepted Loop/Decision Contract and found no mismatch."
 	);
@@ -704,6 +797,59 @@ fn independent_review_checkpoint_clean_persists_structured_payload() {
 	assert_eq!(events.len(), 1);
 	assert_eq!(events[0].event_type(), "review_checkpoint");
 	assert_eq!(events[0].payload()["review"]["reviewer"], "independent_fresh_context");
+}
+
+#[test]
+fn review_checkpoint_rejects_review_blocking_local_changes() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_dirty_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context.clone(),
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
+			"checks": review_checks_json(),
+			"evidence": ["review tried to bind a dirty worktree"]
+		}),
+	);
+
+	assert!(!response.success);
+	assert!(matches!(
+		response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText { text }]
+			if text.contains("requires a clean committed lane HEAD")
+				&& text.contains("M apps/decodex/src/agent/tracker_tool_bridge/tools.rs")
+				&& text.contains("?? apps/decodex/src/agent/new_review_surface.rs")
+	));
+	assert!(
+		bridge_state_store(&bridge)
+			.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
+				project_id: &review_context.service_id,
+				issue_id: &issue.id,
+				phase: "handoff",
+				review_level: review_context.review_level.as_str(),
+				head_sha: &sample_local_repo().head_oid,
+			})
+			.expect("artifact lookup should succeed")
+			.is_none(),
+		"dirty checkpoint attempts must not persist reusable review evidence"
+	);
 }
 
 #[test]
@@ -731,6 +877,7 @@ fn independent_review_checkpoint_findings_store_accepted_repair_guidance() {
 			"reviewer": "independent_fresh_context",
 			"status": "findings",
 			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
 			"checks": review_checks_json(),
 			"evidence": ["fresh reviewer found one accepted repair item"],
 			"accepted_findings": accepted_review_findings_json()
@@ -789,6 +936,7 @@ fn review_checkpoint_rejected_finding_is_non_actionable_and_can_handoff_cleanly(
 			"reviewer": "independent_fresh_context",
 			"status": "clean",
 			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
 			"checks": review_checks_json(),
 			"evidence": ["only rejected non-actionable feedback remained"],
 			"rejected_findings": [{
@@ -1028,6 +1176,7 @@ fn review_checkpoint_clean_resets_nonclean_rounds_before_next_findings() {
 				"reviewer": "independent_fresh_context",
 				"status": status,
 				"head_sha": sample_local_repo().head_oid,
+				"review_contract": handoff_review_contract_json(),
 				"checks": review_checks_json(),
 				"evidence": ["review evidence"],
 				"accepted_findings": accepted_review_findings_for_status_json(status)
@@ -1073,6 +1222,7 @@ fn review_checkpoint_does_not_depend_on_tracker_comment_write() {
 			"reviewer": "independent_fresh_context",
 			"status": "findings",
 			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
 			"checks": review_checks_json(),
 			"evidence": ["tracker write failed before checkpoint persisted"],
 			"accepted_findings": accepted_review_findings_json()
@@ -1114,6 +1264,7 @@ fn review_checkpoint_architecture_and_blocked_statuses_stop_immediately() {
 				"reviewer": "independent_fresh_context",
 				"status": status,
 				"head_sha": sample_local_repo().head_oid,
+				"review_contract": handoff_review_contract_json(),
 				"checks": review_checks_json(),
 				"evidence": ["requires human follow-up"]
 			}),
@@ -1169,6 +1320,7 @@ fn review_checkpoint_phase_switch_resets_nonclean_rounds() {
 			"reviewer": "independent_fresh_context",
 			"status": "findings",
 			"head_sha": sample_local_repo().head_oid,
+			"review_contract": repair_review_contract_json(),
 			"checks": review_checks_json(),
 			"evidence": ["fresh repair-phase review found accepted work"],
 			"accepted_findings": accepted_review_findings_json()
@@ -1210,6 +1362,7 @@ fn repair_review_checkpoint_stores_accepted_findings_for_repair_loop() {
 			"reviewer": "independent_fresh_context",
 			"status": "findings",
 			"head_sha": sample_local_repo().head_oid,
+			"review_contract": repair_review_contract_json(),
 			"checks": review_checks_json(),
 			"evidence": ["fresh-context retained repair review accepted one finding"],
 			"accepted_findings": accepted_review_findings_json(),
@@ -1229,6 +1382,7 @@ fn repair_review_checkpoint_stores_accepted_findings_for_repair_loop() {
 		serde_json::from_str::<Value>(checkpoint.details_json()).expect("details should be json");
 
 	assert_eq!(checkpoint.phase(), "repair");
+	assert_eq!(details["review_contract"]["review_type"], "repair_verification");
 	assert_eq!(details["accepted_findings"][0]["summary"], "Accepted reviewer finding");
 	assert_eq!(details["rejected_findings"][0]["rejection_reason"], "Outside this retained repair batch.");
 }
@@ -1460,6 +1614,54 @@ fn review_handoff_rejects_stale_clean_checkpoint_for_previous_head() {
 }
 
 #[test]
+fn review_handoff_rejects_dirty_worktree_after_clean_checkpoint() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(vec![Ok(sample_pull_request())]);
+	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_dirty_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context.clone(),
+		&inspector,
+		&local_repo_inspector,
+	);
+
+	write_review_policy_checkpoint(
+		&bridge,
+		&issue,
+		&review_context,
+		"handoff",
+		"clean",
+		&sample_local_repo().head_oid,
+		0,
+	);
+
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/48",
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(!response.success);
+	assert!(matches!(
+		response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText{ text }]
+			if text.contains("requires a clean committed lane HEAD")
+				&& text.contains("record a fresh clean checkpoint")
+				&& text.contains("M apps/decodex/src/agent/tracker_tool_bridge/tools.rs")
+	));
+}
+
+#[test]
 fn review_repair_complete_requires_a_clean_checkpoint() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
@@ -1479,8 +1681,10 @@ fn review_repair_complete_requires_a_clean_checkpoint() {
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(LocalRepoDetails {
 		default_branch: String::from("main"),
 		head_oid: String::from("18a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+		head_tree_oid: String::from("f8a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
 		repository_name: String::from("decodex"),
 		repository_owner: String::from("hack-ink"),
+		review_blocking_changes: Vec::new(),
 	})]);
 	let review_context = sample_review_repair_context_in(temp_dir.path(), pr_url);
 	let bridge = TrackerToolBridge::with_review_repair_for_test(

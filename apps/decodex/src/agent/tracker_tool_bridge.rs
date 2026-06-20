@@ -544,8 +544,15 @@ pub(crate) struct PullRequestDetails {
 pub(crate) struct LocalRepoDetails {
 	default_branch: String,
 	head_oid: String,
+	head_tree_oid: String,
 	repository_name: String,
 	repository_owner: String,
+	review_blocking_changes: Vec<String>,
+}
+impl LocalRepoDetails {
+	fn review_worktree_clean(&self) -> bool {
+		self.review_blocking_changes.is_empty()
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -676,6 +683,18 @@ impl LocalRepoInspector for LocalGitRepoInspector {
 	fn inspect_local_repo(&self, cwd: &Path) -> std::result::Result<LocalRepoDetails, String> {
 		let head_oid =
 			run_command_for_stdout("git", &["rev-parse", "HEAD"], cwd, "inspect lane HEAD")?;
+		let head_tree_oid = run_command_for_stdout(
+			"git",
+			&["rev-parse", "HEAD^{tree}"],
+			cwd,
+			"inspect lane HEAD tree",
+		)?;
+		let worktree_status = run_command_for_stdout_allow_empty(
+			"git",
+			&["status", "--porcelain=v1", "--untracked-files=all"],
+			cwd,
+			"inspect review-blocking worktree status",
+		)?;
 		let default_branch = resolve_lane_default_branch(cwd)?;
 		let origin_url = run_command_for_stdout(
 			"git",
@@ -691,8 +710,10 @@ impl LocalRepoInspector for LocalGitRepoInspector {
 				.unwrap_or(default_branch.as_str())
 				.to_owned(),
 			head_oid,
+			head_tree_oid,
 			repository_name: repository.name,
 			repository_owner: repository.owner,
+			review_blocking_changes: review_blocking_status_lines(&worktree_status),
 		})
 	}
 }
@@ -828,6 +849,7 @@ struct ReviewCheckpointArgs {
 	reviewer: Option<String>,
 	status: String,
 	head_sha: String,
+	review_contract: Option<ReviewCheckpointContractArgs>,
 	checks: Option<ReviewCheckpointChecksArgs>,
 	#[serde(default)]
 	evidence: Vec<String>,
@@ -835,6 +857,25 @@ struct ReviewCheckpointArgs {
 	accepted_findings: Vec<ReviewCheckpointFindingArgs>,
 	#[serde(default)]
 	rejected_findings: Vec<ReviewCheckpointRejectedFindingArgs>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewCheckpointContractArgs {
+	workflow_policy_source: String,
+	review_type: String,
+	risk_tier: String,
+	objective: String,
+	#[serde(default)]
+	scope: Vec<String>,
+	#[serde(default)]
+	non_goals: Vec<String>,
+	#[serde(default)]
+	required_checks: Vec<String>,
+	#[serde(default)]
+	allowed_expansion_triggers: Vec<String>,
+	#[serde(default)]
+	validation_evidence: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -887,11 +928,34 @@ struct ReviewCheckpointLineRangeArgs {
 #[derive(Debug, Serialize)]
 struct NormalizedReviewCheckpointPayload {
 	reviewer: String,
+	review_contract: NormalizedReviewCheckpointContract,
+	review_contract_hash: String,
+	reviewed_head: ReviewCheckpointHeadBinding,
 	checks: ReviewCheckpointChecksArgs,
 	evidence: Vec<String>,
 	accepted_findings: Vec<NormalizedReviewCheckpointFinding>,
 	rejected_findings: Vec<NormalizedRejectedReviewCheckpointFinding>,
 	finding_policy: ReviewFindingPolicyState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct NormalizedReviewCheckpointContract {
+	workflow_policy_source: String,
+	review_type: String,
+	risk_tier: String,
+	objective: String,
+	scope: Vec<String>,
+	non_goals: Vec<String>,
+	required_checks: Vec<String>,
+	allowed_expansion_triggers: Vec<String>,
+	validation_evidence: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ReviewCheckpointHeadBinding {
+	head_sha: String,
+	head_tree_oid: String,
+	review_worktree_clean: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1200,6 +1264,25 @@ enum PendingReviewCompletion {
 	Closeout(PendingReviewAction),
 }
 
+pub(super) fn summarize_review_blocking_changes(review_blocking_changes: &[String]) -> String {
+	const MAX_REVIEW_BLOCKING_CHANGES: usize = 5;
+
+	let mut summary = review_blocking_changes
+		.iter()
+		.take(MAX_REVIEW_BLOCKING_CHANGES)
+		.cloned()
+		.collect::<Vec<_>>();
+
+	if review_blocking_changes.len() > MAX_REVIEW_BLOCKING_CHANGES {
+		summary.push(format!(
+			"and {} more",
+			review_blocking_changes.len() - MAX_REVIEW_BLOCKING_CHANGES
+		));
+	}
+
+	if summary.is_empty() { String::from("(none)") } else { summary.join("; ") }
+}
+
 pub(crate) fn dynamic_tool_identifier_is_valid(identifier: &str) -> bool {
 	!identifier.is_empty()
 		&& identifier.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
@@ -1207,6 +1290,27 @@ pub(crate) fn dynamic_tool_identifier_is_valid(identifier: &str) -> bool {
 
 pub(crate) fn current_timestamp() -> String {
 	OffsetDateTime::now_utc().format(&Rfc3339).expect("timestamp formatting should succeed")
+}
+
+fn review_blocking_status_lines(status: &str) -> Vec<String> {
+	status
+		.lines()
+		.map(str::trim)
+		.filter(|line| !line.is_empty())
+		.filter(|line| !is_ignorable_runtime_status_line(line))
+		.map(ToOwned::to_owned)
+		.collect()
+}
+
+fn is_ignorable_runtime_status_line(line: &str) -> bool {
+	let Some(path) = line.strip_prefix("?? ") else {
+		return false;
+	};
+
+	path == ".decodex-run-activity"
+		|| path.starts_with(".decodex-run-activity/")
+		|| path == ".decodex-run-control"
+		|| path.starts_with(".decodex-run-control/")
 }
 
 fn resolve_review_handoff_github_token(
@@ -1238,6 +1342,31 @@ fn run_command_for_stdout(
 	cwd: &Path,
 	purpose: &str,
 ) -> std::result::Result<String, String> {
+	let stdout = run_command_stdout(command, args, cwd, purpose)?;
+	let value = stdout.trim();
+
+	if value.is_empty() {
+		return Err(format!("Failed to {purpose} with `{command}`: command returned no output."));
+	}
+
+	Ok(value.to_owned())
+}
+
+fn run_command_for_stdout_allow_empty(
+	command: &str,
+	args: &[&str],
+	cwd: &Path,
+	purpose: &str,
+) -> std::result::Result<String, String> {
+	run_command_stdout(command, args, cwd, purpose)
+}
+
+fn run_command_stdout(
+	command: &str,
+	args: &[&str],
+	cwd: &Path,
+	purpose: &str,
+) -> std::result::Result<String, String> {
 	let output = Command::new(command)
 		.args(args)
 		.current_dir(cwd)
@@ -1257,13 +1386,8 @@ fn run_command_for_stdout(
 	}
 
 	let stdout = String::from_utf8_lossy(&output.stdout);
-	let value = stdout.trim();
 
-	if value.is_empty() {
-		return Err(format!("Failed to {purpose} with `{command}`: command returned no output."));
-	}
-
-	Ok(value.to_owned())
+	Ok(stdout.into_owned())
 }
 
 fn resolve_lane_default_branch(cwd: &Path) -> std::result::Result<String, String> {

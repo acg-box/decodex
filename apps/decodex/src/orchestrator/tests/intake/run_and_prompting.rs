@@ -1313,7 +1313,9 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 	assert!(developer_instructions.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
 	assert!(developer_instructions.contains("Do not move the issue back to `In Progress`"));
 	assert!(developer_instructions.contains("do not call `issue_review_handoff`"));
-	assert!(developer_instructions.contains("Decodex Review: request an independent fresh-context read-only review pass"));
+	assert!(developer_instructions.contains("Decodex Review: request an independent fresh-context read-only verification pass"));
+	assert!(developer_instructions.contains("review_type = \"repair_verification\""));
+	assert!(developer_instructions.contains("registered project workflow policy"));
 	assert!(developer_instructions.contains("structured accepted/rejected findings"));
 	assert!(developer_instructions.contains(
 		"including non-thread review summaries, validate the claim against the codebase, tests, and requirements"
@@ -1325,7 +1327,8 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 	assert!(developer_instructions.contains("Do not merge or land the PR yourself"));
 	assert!(user_input.contains(pr_url));
 	assert!(user_input.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
-	assert!(user_input.contains("Decodex Review: request an independent fresh-context read-only review pass"));
+	assert!(user_input.contains("Decodex Review: request an independent fresh-context read-only verification pass"));
+	assert!(user_input.contains("review_contract"));
 	assert!(user_input.contains("structured accepted/rejected findings"));
 	assert!(user_input.contains(
 		"Read the current review feedback on `https://github.com/hack-ink/decodex/pull/77`, including non-thread review summaries"
@@ -1342,7 +1345,8 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 		"resolve only the GitHub review threads whose fixes landed and verified on the repaired head"
 	));
 	assert!(continuation_input.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
-	assert!(continuation_input.contains("Resume by requesting a Decodex Review pass"));
+	assert!(continuation_input.contains("Resume by committing any review-blocking repair edits"));
+	assert!(continuation_input.contains("review_type = \"repair_verification\""));
 	assert!(continuation_input.contains("structured accepted/rejected findings"));
 	assert!(continuation_input.contains(
 		"Validate each actionable review claim against the codebase, tests, and requirements before changing code"
