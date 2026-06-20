@@ -850,6 +850,7 @@ struct ReviewCheckpointArgs {
 	status: String,
 	head_sha: String,
 	review_contract: Option<ReviewCheckpointContractArgs>,
+	review_cost_control: Option<ReviewCostControlArgs>,
 	checks: Option<ReviewCheckpointChecksArgs>,
 	#[serde(default)]
 	evidence: Vec<String>,
@@ -859,6 +860,22 @@ struct ReviewCheckpointArgs {
 	rejected_findings: Vec<ReviewCheckpointRejectedFindingArgs>,
 	#[serde(default)]
 	finding_routes: Vec<ReviewCheckpointFindingRouteArgs>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewCostControlArgs {
+	review_class: String,
+	risk_class: String,
+	changed_surface_count: u64,
+	#[serde(default)]
+	changed_surface_summary: Vec<String>,
+	#[serde(default)]
+	high_risk_surfaces: Vec<String>,
+	current_head_evidence: bool,
+	validation_backed: bool,
+	reviewer_judgment: String,
+	fallback_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -947,6 +964,7 @@ struct NormalizedReviewCheckpointPayload {
 	reviewer: String,
 	review_contract: NormalizedReviewCheckpointContract,
 	review_contract_hash: String,
+	review_cost_control: NormalizedReviewCostControl,
 	reviewed_head: ReviewCheckpointHeadBinding,
 	checks: ReviewCheckpointChecksArgs,
 	evidence: Vec<String>,
@@ -968,6 +986,20 @@ struct NormalizedReviewCheckpointContract {
 	required_checks: Vec<String>,
 	allowed_expansion_triggers: Vec<String>,
 	validation_evidence: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct NormalizedReviewCostControl {
+	review_class: String,
+	risk_class: String,
+	compact_eligible: bool,
+	changed_surface_count: u64,
+	changed_surface_summary: Vec<String>,
+	high_risk_surfaces: Vec<String>,
+	current_head_evidence: bool,
+	validation_backed: bool,
+	reviewer_judgment: String,
+	fallback_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
