@@ -28,5 +28,8 @@ high-risk recommendation. Use `research-promote` only after explicit acceptance.
   `promote_and_retire`, or `reject_or_deprecate`.
 - Do not queue work, mutate Linear, set Codex goals, implement, or dispatch Program
   nodes from research alone.
-- A scout pass is dynamic read-only evidence gathering, not a configured static role;
-  use it only for one bounded evidence objective when the main thread needs support.
+- Scout and skeptic passes are dynamic fresh-context support-agent work, not
+  configured static roles. For non-trivial evidence gathering or `decision_ready`
+  challenge, dispatch a bounded read-only scout or skeptic support agent when tool
+  support exists; inline only for small/local checks or unavailable support-agent
+  tools, and keep the fallback visible.

@@ -1,5 +1,11 @@
 # Documentation Log
 
+## 2026-06-21
+
+- Required non-trivial scout/search and skeptic/challenge work to use fresh dynamic
+  read-only support-agent context when tool support exists, while keeping static
+  `scout.toml`/`skeptic.toml` role config out of the plugin contract.
+
 ## 2026-06-20
 
 - Tightened Decodex Review orchestration so `issue_review_checkpoint` records only
