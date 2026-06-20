@@ -3819,7 +3819,16 @@ fn operator_status_current_lane_lifecycle_reconstructs_all_issue_attempts() {
 			status: "clean",
 			head_sha: "2222222222222222222222222222222222222222",
 			nonclean_rounds: 0,
-			details_json: "{}",
+			details_json: r#"{
+				"finding_route_summary": {
+					"route_counts": [{"route": "risk_note", "count": 1}],
+					"next_action": "Carry the routed risk note into follow-up planning."
+				},
+				"finding_policy": {
+					"active_fingerprints": [],
+					"stop_fingerprint": null
+				}
+			}"#,
 		})
 		.expect("review checkpoint should record");
 
@@ -3841,6 +3850,20 @@ fn operator_status_current_lane_lifecycle_reconstructs_all_issue_attempts() {
 	assert_eq!(run.lifecycle_metrics.phases[1].phase, "review");
 	assert_eq!(run.lifecycle_metrics.phases[1].attempt_count, 1);
 	assert_eq!(run.lifecycle_metrics.phases[1].wall_seconds, 300);
+
+	let review_checkpoint = run
+		.loop_status
+		.as_ref()
+		.and_then(|loop_status| loop_status.review.as_ref())
+		.and_then(|review| review.checkpoint.as_ref())
+		.expect("review checkpoint should render in loop status");
+
+	assert_eq!(review_checkpoint.route_counts[0].route, "risk_note");
+	assert_eq!(review_checkpoint.route_counts[0].count, 1);
+	assert_eq!(
+		review_checkpoint.route_next_action.as_deref(),
+		Some("Carry the routed risk note into follow-up planning.")
+	);
 }
 
 fn sample_lifecycle_activity(

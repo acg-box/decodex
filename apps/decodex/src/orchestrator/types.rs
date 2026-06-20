@@ -1891,7 +1891,15 @@ struct OperatorReviewCheckpointStatus {
 	nonclean_rounds: i64,
 	active_fingerprints: Vec<String>,
 	stop_fingerprint: Option<String>,
+	route_counts: Vec<OperatorReviewRouteCount>,
+	route_next_action: Option<String>,
 	updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorReviewRouteCount {
+	route: String,
+	count: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

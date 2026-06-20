@@ -4195,6 +4195,7 @@ fn architecture_recovery_review_findings(
 		}));
 	};
 	let review = payload.get("review").unwrap_or(payload);
+	let route_summary = review.get("finding_route_summary");
 
 	Ok(json!({
 		"latest_status": payload.get("status").and_then(Value::as_str),
@@ -4206,6 +4207,13 @@ fn architecture_recovery_review_findings(
 			.get("rejected_findings")
 			.and_then(Value::as_array)
 			.map_or(0, Vec::len),
+		"route_counts": route_summary
+			.and_then(|summary| summary.get("route_counts"))
+			.cloned()
+			.unwrap_or_else(|| json!([])),
+		"route_next_action": route_summary
+			.and_then(|summary| summary.get("next_action"))
+			.and_then(Value::as_str),
 		"nonclean_rounds": payload.get("nonclean_rounds").and_then(Value::as_i64).unwrap_or(0),
 	}))
 }
