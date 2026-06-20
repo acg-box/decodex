@@ -40,10 +40,13 @@ owner skill; the plugin owns the fanout.
 
 ## Dynamic Support Agents
 
-Do not rely on configured static support-agent roles. Dynamically spawn read-only
-support agents only for one explicit evidence, analysis, or challenge objective.
-Provide task-local context, read-only boundary, and expected output shape. The main
-thread keeps implementation ownership, checks their evidence, and owns final claims.
+Do not rely on configured static support-agent roles. For non-trivial review,
+ready-claim, generated or large implementation, debugging, evidence search, or
+challenge work, treat a fresh bounded support-agent pass as materially useful when
+tool support exists. Dynamically spawn read-only support agents for one explicit
+evidence, analysis, scout/search, or skeptic/challenge objective. Provide task-local
+context, read-only boundary, and expected output shape. The main thread keeps
+implementation ownership, checks their evidence, and owns final claims.
 
 ## Core Rules
 
