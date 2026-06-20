@@ -6,9 +6,9 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/research_design.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
-drift_watch: [phase_goal, phase_acceptance_check, docs_impact, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
-last_verified: 2026-06-17
+code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/research_design.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
+drift_watch: [phase_goal, phase_acceptance_check, docs_impact, review_contract, issue_review_checkpoint, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
+last_verified: 2026-06-20
 ---
 # Loop Runtime Specification
 
@@ -597,13 +597,24 @@ project `WORKFLOW.md` defines the canonicalize and verify commands, and
 When risk warrants review beyond self-review, use an independent fresh-context
 read-only review pass. This pass is distinct from in-thread self-review:
 
-- it reads the current `HEAD`, diff, requirements, and relevant specs from scratch
+- it reads the clean committed current `HEAD`, diff, requirements, and relevant specs
+  from scratch
 - it does not rely on the implementer's memory of the change
 - it stays read-only while producing findings
+- it uses the registered project workflow policy already injected by Decodex as the
+  workflow-policy source, not an inferred repo-root `WORKFLOW.md`
+- it records an explicit review contract covering objective, scope, non-goals, risk
+  tier, required checks, allowed expansion triggers, and validation evidence
 - it checks intended behavior, regression risk, tests, docs/config drift, migration
   fallout, operator-facing fallout, and mismatch with the accepted Loop/Decision
   Contract
 - candidate findings must be validated before repair work changes the lane
+
+For retained review repair, the independent pass is a repair verification pass: it
+checks accepted findings from the previous review and regressions against the same
+contract. New unrelated comments do not reset the review scope unless they match an
+allowed expansion trigger such as safety, authority-boundary, data-loss, security,
+live-mutation, public API, migration, or operator-facing regression.
 
 The review orchestration contract, including review levels and review-stop classes,
 is defined by [`review-orchestration.md`](./review-orchestration.md).

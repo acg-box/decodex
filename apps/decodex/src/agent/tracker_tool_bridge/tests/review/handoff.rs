@@ -74,6 +74,7 @@ fn review_handoff_reuses_same_head_clean_checkpoint_artifact_across_attempts() {
 			"reviewer": "independent_fresh_context",
 			"status": "clean",
 			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
 			"checks": review_checks_json(),
 			"evidence": ["fresh reviewer read the issue contract, current diff, and HEAD"]
 		}),
