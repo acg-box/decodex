@@ -1060,6 +1060,38 @@ fn loop_guardrail_review_churn_blocks_landing_but_continues_recovery() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("In Progress", &[]);
 	let issue_run = loop_guardrail_issue_run(&config, &issue, 1);
+
+	state_store
+		.append_private_execution_event(
+			config.service_id(),
+			&issue.id,
+			&issue_run.run_id,
+			1,
+			"review_checkpoint",
+			serde_json::json!({
+				"phase": "handoff",
+				"status": "findings",
+				"head_sha": "review-head",
+				"nonclean_rounds": 3,
+				"review": {
+					"accepted_findings": [{
+						"summary": "Accepted reviewer finding that exhausted review churn."
+					}],
+					"rejected_findings": [{
+						"summary": "Rejected non-current reviewer comment."
+					}],
+					"finding_route_summary": {
+						"route_counts": [
+							{"route": "current_blocker", "count": 1},
+							{"route": "risk_note", "count": 1}
+						],
+						"next_action": "Stop repair churn and run architecture recovery."
+					}
+				}
+			}),
+		)
+		.expect("review checkpoint evidence should record");
+
 	let stop = LoopGuardrailStopRequested {
 		issue_identifier: issue.identifier.clone(),
 		run_id: issue_run.run_id.clone(),
@@ -1107,6 +1139,11 @@ fn loop_guardrail_review_churn_blocks_landing_but_continues_recovery() {
 			&& event.payload()["reason_code"] == "architecture_recovery_started"
 			&& event.payload()["authority_boundary_check"]["policy_decision"] == "block_landing"
 			&& event.payload()["authority_boundary_check"]["blocks_landing"] == true
+			&& event.payload()["review_findings"]["route_counts"][0]["route"] == "current_blocker"
+			&& event.payload()["review_findings"]["route_counts"][0]["count"] == 1
+			&& event.payload()["review_findings"]["route_counts"][1]["route"] == "risk_note"
+			&& event.payload()["review_findings"]["route_next_action"]
+				== "Stop repair churn and run architecture recovery."
 	}));
 }
 
