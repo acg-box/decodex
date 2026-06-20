@@ -3820,6 +3820,12 @@ fn operator_status_current_lane_lifecycle_reconstructs_all_issue_attempts() {
 			head_sha: "2222222222222222222222222222222222222222",
 			nonclean_rounds: 0,
 			details_json: r#"{
+				"review_cost_control": {
+					"review_class": "compact_current_head_review",
+					"risk_class": "low",
+					"compact_eligible": true,
+					"fallback_reason": null
+				},
 				"finding_route_summary": {
 					"route_counts": [{"route": "risk_note", "count": 1}],
 					"next_action": "Carry the routed risk note into follow-up planning."
@@ -3851,6 +3857,10 @@ fn operator_status_current_lane_lifecycle_reconstructs_all_issue_attempts() {
 	assert_eq!(run.lifecycle_metrics.phases[1].attempt_count, 1);
 	assert_eq!(run.lifecycle_metrics.phases[1].wall_seconds, 300);
 
+	assert_compact_review_checkpoint_status(run);
+}
+
+fn assert_compact_review_checkpoint_status(run: &OperatorRunStatus) {
 	let review_checkpoint = run
 		.loop_status
 		.as_ref()
@@ -3860,6 +3870,13 @@ fn operator_status_current_lane_lifecycle_reconstructs_all_issue_attempts() {
 
 	assert_eq!(review_checkpoint.route_counts[0].route, "risk_note");
 	assert_eq!(review_checkpoint.route_counts[0].count, 1);
+	assert_eq!(
+		review_checkpoint.review_class.as_deref(),
+		Some("compact_current_head_review")
+	);
+	assert_eq!(review_checkpoint.risk_class.as_deref(), Some("low"));
+	assert_eq!(review_checkpoint.compact_eligible, Some(true));
+	assert_eq!(review_checkpoint.fallback_reason, None);
 	assert_eq!(
 		review_checkpoint.route_next_action.as_deref(),
 		Some("Carry the routed risk note into follow-up planning.")

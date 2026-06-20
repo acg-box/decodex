@@ -61,21 +61,62 @@ fn handoff_review_contract_json() -> Value {
 	review_contract_json("full_current_head_review")
 }
 
+fn low_risk_handoff_review_contract_json() -> Value {
+	review_contract_with_risk_json("full_current_head_review", "low")
+}
+
 fn repair_review_contract_json() -> Value {
 	review_contract_json("repair_verification")
 }
 
 fn review_contract_json(review_type: &str) -> Value {
+	review_contract_with_risk_json(review_type, "localized")
+}
+
+fn review_contract_with_risk_json(review_type: &str, risk_tier: &str) -> Value {
 	serde_json::json!({
 		"workflow_policy_source": "registered_project_workflow",
 		"review_type": review_type,
-		"risk_tier": "localized",
+		"risk_tier": risk_tier,
 		"objective": "Review the current committed lane head against the accepted issue contract.",
 		"scope": ["Current committed lane diff and directly owned behavior."],
 		"non_goals": ["Do not widen into unrelated cleanup or unowned product direction."],
 		"required_checks": ["Intended behavior, regression risk, tests, docs/config drift, migration fallout, operator-facing fallout, and Loop/Decision Contract alignment."],
 		"allowed_expansion_triggers": ["Safety, authority-boundary, data-loss, security, live-mutation, public-API, migration, or operator-facing regression."],
 		"validation_evidence": ["Repo-native validation was rerun for the committed lane head before review."]
+	})
+}
+
+fn compact_review_cost_control_json() -> Value {
+	serde_json::json!({
+		"review_class": "compact_current_head_review",
+		"risk_class": "low",
+		"changed_surface_count": 2,
+		"changed_surface_summary": [
+			"Review checkpoint prompt guidance changed.",
+			"Review checkpoint readback metadata changed."
+		],
+		"high_risk_surfaces": [],
+		"current_head_evidence": true,
+		"validation_backed": true,
+		"reviewer_judgment": "The reviewer independently checked intended behavior and adversarial risk and found a low-risk small current-head lane."
+	})
+}
+
+fn full_review_cost_control_json(fallback_reason: &str) -> Value {
+	serde_json::json!({
+		"review_class": "full_current_head_review",
+		"risk_class": "localized",
+		"changed_surface_count": 6,
+		"changed_surface_summary": [
+			"Runtime review checkpoint behavior changed.",
+			"Operator readback behavior changed."
+		],
+		"high_risk_surfaces": ["operator-facing runtime review behavior"],
+		"current_head_evidence": true,
+		"validation_backed": true,
+		"reviewer_judgment": "The reviewer used full independent review because compact-review guardrails did not all pass.",
+		"fallback_reason": fallback_reason
 	})
 }
 
@@ -783,6 +824,11 @@ fn independent_review_checkpoint_clean_persists_structured_payload() {
 		"registered_project_workflow"
 	);
 	assert_eq!(details["review_contract"]["review_type"], "full_current_head_review");
+	assert_eq!(details["review_cost_control"]["review_class"], "full_current_head_review");
+	assert_eq!(
+		details["review_cost_control"]["fallback_reason"],
+		"review_cost_control_not_provided"
+	);
 	assert_eq!(details["reviewed_head"]["head_sha"], sample_local_repo().head_oid);
 	assert_eq!(details["reviewed_head"]["head_tree_oid"], sample_local_repo().head_tree_oid);
 	assert_eq!(details["reviewed_head"]["review_worktree_clean"], true);
@@ -813,6 +859,202 @@ fn independent_review_checkpoint_clean_persists_structured_payload() {
 	assert_eq!(events[0].event_type(), "review_checkpoint");
 	assert_eq!(events[0].payload()["review"]["reviewer"], "independent_fresh_context");
 	assert_eq!(events[0].payload()["route_counts"][0]["route"], "reviewer_rubric_gap");
+}
+
+#[test]
+fn compact_review_checkpoint_persists_low_risk_cost_control() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context.clone(),
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": low_risk_handoff_review_contract_json(),
+			"review_cost_control": compact_review_cost_control_json(),
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer checked compact eligibility against current HEAD and validation evidence"]
+		}),
+	);
+
+	assert!(response.success);
+
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
+	let details =
+		serde_json::from_str::<Value>(checkpoint.details_json()).expect("details should be json");
+
+	assert_eq!(details["review_cost_control"]["review_class"], "compact_current_head_review");
+	assert_eq!(details["review_cost_control"]["risk_class"], "low");
+	assert_eq!(details["review_cost_control"]["compact_eligible"], true);
+	assert!(details["review_cost_control"]["fallback_reason"].is_null());
+
+	let events = bridge_state_store(&bridge)
+		.list_private_execution_events_for_run_attempt(
+			&review_context.service_id,
+			&review_context.run_id,
+			review_context.attempt_number,
+		)
+		.expect("private review evidence should read");
+
+	assert_eq!(events[0].payload()["review_class"], "compact_current_head_review");
+	assert_eq!(events[0].payload()["risk_class"], "low");
+	assert_eq!(events[0].payload()["compact_eligible"], true);
+}
+
+#[test]
+fn full_review_checkpoint_persists_cost_control_fallback_reason() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context.clone(),
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
+			"review_cost_control": full_review_cost_control_json("operator_facing_runtime_review_behavior_changed"),
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer kept standard full review because runtime review behavior changed"]
+		}),
+	);
+
+	assert!(response.success);
+
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
+	let details =
+		serde_json::from_str::<Value>(checkpoint.details_json()).expect("details should be json");
+
+	assert_eq!(details["review_cost_control"]["review_class"], "full_current_head_review");
+	assert_eq!(
+		details["review_cost_control"]["fallback_reason"],
+		"operator_facing_runtime_review_behavior_changed"
+	);
+	assert_eq!(details["review_cost_control"]["compact_eligible"], false);
+}
+
+#[test]
+fn compact_review_checkpoint_fails_closed_without_validation_or_with_high_risk_surface() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let mut cost_control = compact_review_cost_control_json();
+
+	cost_control["validation_backed"] = serde_json::json!(false);
+	cost_control["high_risk_surfaces"] =
+		serde_json::json!(["security-sensitive runtime configuration"]);
+
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": low_risk_handoff_review_contract_json(),
+			"review_cost_control": cost_control,
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer tried to claim compact review without sufficient validation"]
+		}),
+	);
+
+	assert!(!response.success);
+
+	match &response.content_items[..] {
+		[DynamicToolContentItem::InputText { text }] => {
+			assert!(text.contains("full review is required"));
+			assert!(text.contains("high_risk_surfaces_present"));
+			assert!(text.contains("missing_validation_evidence"));
+		},
+		other => panic!("unexpected response content: {other:?}"),
+	}
+}
+
+#[test]
+fn compact_review_checkpoint_fails_closed_after_prior_nonclean_round() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let findings_response =
+		submit_findings_review_checkpoint(&bridge, "first full review found a current blocker");
+
+	assert!(findings_response.success);
+
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": low_risk_handoff_review_contract_json(),
+			"review_cost_control": compact_review_cost_control_json(),
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer confirmed the accepted finding was repaired"]
+		}),
+	);
+
+	assert!(!response.success);
+
+	match &response.content_items[..] {
+		[DynamicToolContentItem::InputText { text }] => {
+			assert!(text.contains("prior_nonclean_review_rounds_present"));
+		},
+		other => panic!("unexpected response content: {other:?}"),
+	}
 }
 
 #[test]

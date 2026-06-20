@@ -317,6 +317,10 @@ struct OperatorExecutionProgramReadback {
 }
 
 struct OperatorReviewCheckpointSummaryFields {
+	review_class: Option<String>,
+	risk_class: Option<String>,
+	compact_eligible: Option<bool>,
+	fallback_reason: Option<String>,
 	active_fingerprints: Vec<String>,
 	stop_fingerprint: Option<String>,
 	route_counts: Vec<OperatorReviewRouteCount>,
@@ -8171,6 +8175,10 @@ fn operator_review_loop_status(
 				head_sha: checkpoint.head_sha().to_owned(),
 				round: nonclean_rounds,
 				nonclean_rounds,
+				review_class: summary.review_class,
+				risk_class: summary.risk_class,
+				compact_eligible: summary.compact_eligible,
+				fallback_reason: summary.fallback_reason,
 				active_fingerprints: summary.active_fingerprints,
 				stop_fingerprint: summary.stop_fingerprint,
 				route_counts: summary.route_counts,
@@ -8198,6 +8206,10 @@ fn operator_review_checkpoint_summary_fields(
 ) -> OperatorReviewCheckpointSummaryFields {
 	let Ok(details) = serde_json::from_str::<Value>(details_json) else {
 		return OperatorReviewCheckpointSummaryFields {
+			review_class: None,
+			risk_class: None,
+			compact_eligible: None,
+			fallback_reason: None,
 			active_fingerprints: Vec::new(),
 			stop_fingerprint: None,
 			route_counts: Vec::new(),
@@ -8205,6 +8217,22 @@ fn operator_review_checkpoint_summary_fields(
 		};
 	};
 	let policy = details.get("finding_policy");
+	let cost_control = details.get("review_cost_control");
+	let review_class = cost_control
+		.and_then(|cost_control| cost_control.get("review_class"))
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let risk_class = cost_control
+		.and_then(|cost_control| cost_control.get("risk_class"))
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let compact_eligible = cost_control
+		.and_then(|cost_control| cost_control.get("compact_eligible"))
+		.and_then(Value::as_bool);
+	let fallback_reason = cost_control
+		.and_then(|cost_control| cost_control.get("fallback_reason"))
+		.and_then(Value::as_str)
+		.map(str::to_owned);
 	let active_fingerprints = policy
 		.and_then(|policy| policy.get("active_fingerprints"))
 		.and_then(Value::as_array)
@@ -8236,6 +8264,10 @@ fn operator_review_checkpoint_summary_fields(
 		.map(str::to_owned);
 
 	OperatorReviewCheckpointSummaryFields {
+		review_class,
+		risk_class,
+		compact_eligible,
+		fallback_reason,
 		active_fingerprints,
 		stop_fingerprint,
 		route_counts,
@@ -10635,8 +10667,16 @@ fn render_loop_review_summary(status: Option<&OperatorLoopStatus>) -> String {
 		|| String::from("checkpoint=none"),
 		|checkpoint| {
 			format!(
-				"checkpoint=head:{} round:{} updated:{}",
-				checkpoint.head_sha, checkpoint.round, checkpoint.updated_at
+				"checkpoint=head:{} round:{} review_class:{} risk_class:{} compact_eligible:{} fallback:{} updated:{}",
+				checkpoint.head_sha,
+				checkpoint.round,
+				checkpoint.review_class.as_deref().unwrap_or("none"),
+				checkpoint.risk_class.as_deref().unwrap_or("none"),
+				checkpoint
+					.compact_eligible
+					.map_or("none", |eligible| if eligible { "true" } else { "false" }),
+				checkpoint.fallback_reason.as_deref().unwrap_or("none"),
+				checkpoint.updated_at
 			)
 		},
 	);
