@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs]
-drift_watch: [decodex evidence, issue_review_checkpoint, phase_acceptance_check, authority_boundary_check, architecture_recovery_packet, private_execution_evidence_readback]
+drift_watch: [decodex evidence, issue_review_checkpoint, review_cost_control, phase_acceptance_check, authority_boundary_check, architecture_recovery_packet, private_execution_evidence_readback]
 last_verified: 2026-06-21
 ---
 # Agent Evidence
@@ -42,6 +42,13 @@ project, issue, run, and attempt. They are the local-only ledger for full execut
 evidence that should not be mirrored to Linear. Agent evidence files may point agents
 toward the current runtime context, but they do not replace the private execution
 event store.
+
+Review checkpoint readbacks include the compact review cost-control summary when it
+is present: review class, risk class, compact eligibility, and fallback reason. These
+fields distinguish a clean compact independent review from a normal full-review
+fallback, but they do not change the authority boundary. The raw review payload,
+reviewer notes, changed-surface details, and finding bodies remain private unless a
+local operator explicitly asks for full payloads.
 
 Boundary summary:
 

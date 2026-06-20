@@ -225,14 +225,16 @@ ledger records and do not automatically edit prompts, skills, validators, issue
 templates, or loop policy.
 The same private-evidence readback exposes compact review checkpoint, phase
 acceptance, architecture recovery, and authority-boundary summaries for the selected
-run/attempt: review phase, status, head, compatibility round, active/stop finding
-fingerprints, finding counts; phase acceptance decision, reason, objective coverage,
-effective delta, changed surfaces, non-goal result, validation result, and next
-action; recovery reason, boundary disposition, budget; and boundary disposition,
-reason, attempted recovery, changed-surface count, and improvement-signal count. These
-summaries are safe operator readback; raw reviewer finding bodies, checkpoint payloads,
-changed-surface payloads, retained diffs, logs, and transcripts remain hidden unless
-`--include-payload` is explicitly requested for local repair.
+run/attempt: review phase, status, head, compatibility round, review cost class, risk
+class, compact eligibility, fallback reason, active/stop finding fingerprints,
+finding counts; phase acceptance decision, reason, objective coverage, effective
+delta, changed surfaces, non-goal result, validation result, and next action;
+recovery reason, boundary disposition, budget; and boundary disposition, reason,
+attempted recovery, changed-surface count, and improvement-signal count. These
+summaries are safe operator readback; compact review is not skipped review, and raw
+reviewer finding bodies, checkpoint payloads, changed-surface payloads, retained
+diffs, logs, and transcripts remain hidden unless `--include-payload` is explicitly
+requested for local repair.
 Private phase-goal evidence may also include `phase_goal_recovery`. That event means
 Decodex found a still-active implementation or repair phase goal after an app-server
 failure or child exit, ran the registered repo gate itself, persisted the next phase,

@@ -838,6 +838,10 @@ fn assert_harness_private_readback(readback: &PrivateEvidenceReadback) {
 			&& checkpoint.status == "findings"
 			&& checkpoint.head_sha.as_deref() == Some("abc123")
 			&& checkpoint.round == Some(1)
+			&& checkpoint.review_class.as_deref() == Some("full_current_head_review")
+			&& checkpoint.risk_class.as_deref() == Some("localized")
+			&& checkpoint.compact_eligible == Some(false)
+			&& checkpoint.fallback_reason.as_deref() == Some("accepted_findings_present")
 			&& checkpoint.accepted_finding_count == 1
 			&& checkpoint.route_counts.iter().any(|count| {
 				count.route == "current_blocker" && count.count == 1
@@ -860,6 +864,9 @@ fn assert_harness_private_readback(readback: &PrivateEvidenceReadback) {
 	let rendered = orchestrator::render_private_evidence_readback(readback);
 
 	assert!(rendered.contains("Review Checkpoints"));
+	assert!(rendered.contains("review_class: full_current_head_review"));
+	assert!(rendered.contains("compact_eligible: false"));
+	assert!(rendered.contains("review_fallback_reason: accepted_findings_present"));
 	assert!(rendered.contains("route_counts: current_blocker=1"));
 	assert!(rendered.contains("route_next_action: Repair the accepted finding."));
 	assert!(rendered.contains("Phase Acceptance Checks"));
@@ -903,7 +910,17 @@ fn record_harness_signal_fixture_events(state_store: &StateStore) {
 				"nonclean_rounds": 1,
 				"route_counts": [{"route": "current_blocker", "count": 1}],
 				"route_next_action": "Repair the accepted finding.",
+				"review_class": "full_current_head_review",
+				"risk_class": "localized",
+				"compact_eligible": false,
+				"review_fallback_reason": "accepted_findings_present",
 				"review": {
+					"review_cost_control": {
+						"review_class": "full_current_head_review",
+						"risk_class": "localized",
+						"compact_eligible": false,
+						"fallback_reason": "accepted_findings_present"
+					},
 					"accepted_findings": [{"summary": "cover the missing edge case"}],
 					"rejected_findings": [],
 					"finding_route_summary": {
