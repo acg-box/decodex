@@ -86,7 +86,12 @@ After any review arrives:
   result for the exact clean committed current `HEAD` through
   `issue_review_checkpoint`, including the explicit independent reviewer source,
   review contract, reviewed head/tree binding, checklist notes, accepted findings,
-  rejected findings, non-empty evidence, and repair guidance
+  rejected findings, non-empty evidence, repair guidance, and `finding_routes`
+  adjudication for every reviewer signal
+- before a repair loop uses any review signal, route it through `finding_routes`:
+  accepted current repair work must be bound to an accepted finding and routed as
+  `current_blocker`; non-current or non-repair signals must use their matching
+  durable evidence route and must not become repair input
 - before any handoff, retained repair completion, or terminal finalization, record the
   separate current-head docs-impact checkpoint through `issue_progress_checkpoint`;
   review checkpoints do not satisfy the `docs_impact` requirement
@@ -107,15 +112,20 @@ A review round is:
 
 1. request review
 2. receive review
-3. validate and repair findings
+3. validate review signals, route them, and repair accepted `current_blocker`
+   findings
 4. request review again
 
 Rules:
 
 - A resend caused by missing acknowledgement is a retry of the current request, not a new review round.
 - A review round does not complete until the lane either requests the next review or stops for escalation.
-- Each `findings` result from the same review source consumes the normal convergence budget for the current review phase.
-- The third consecutive non-clean result for the same phase stops the current repair strategy as review churn. Further autonomous work requires an Architecture Recovery Packet plus Authority Boundary Check for the current lane head.
+- Each `findings` checkpoint with an active `current_blocker` fingerprint consumes
+  the normal convergence budget for the current review phase.
+- The third repeat of the same active `current_blocker` fingerprint for the same
+  phase stops the current repair strategy as review churn. Further autonomous work
+  requires an Architecture Recovery Packet plus Authority Boundary Check for the
+  current lane head.
 - Recovery may continue only when the Authority Boundary Check policy allows autonomous recovery and recovery budget remains. Review churn uses `block_landing` to preserve the landing block while automatic implementation recovery continues; otherwise the lane stops for `manual_intervention_required`.
 - There is no fourth-result reset path; `clean` is the only review result that clears the non-clean round count.
 
@@ -137,8 +147,8 @@ Rules:
   evidence artifact before `issue_review_handoff` or
   `issue_review_repair_complete`, re-checks that review-blocking local changes are
   absent before reusing that artifact, stores structured accepted/rejected finding
-  evidence, and applies the review-policy stop rules to stale or non-clean keyed
-  artifact state.
+  evidence plus `finding_routes`, and applies the review-policy stop rules to stale
+  or non-clean keyed artifact state.
   That review checkpoint is separate from the current-head `issue_progress_checkpoint`
   with `docs_impact` required before terminal finalization. It does not use GitHub
   Review.
@@ -152,11 +162,11 @@ Rules:
 - In `"standard"` and `"strict"` levels, Decodex Review must use the same bounded review method and normalized review outcomes as any other review pass.
 - In `"standard"` and `"strict"` levels, pre-handoff Decodex Review uses
   `review_type = "full_current_head_review"`. Retained repair Decodex Review uses
-  `review_type = "repair_verification"` and is limited to the accepted findings from
-  the previous review plus contract regressions. New unrelated comments are rejected
-  or follow-up candidates unless they match an allowed expansion trigger such as
-  safety, authority-boundary, data-loss, security, live-mutation, public-API,
-  migration, or operator-facing regression.
+  `review_type = "repair_verification"` and is limited to accepted findings routed as
+  `current_blocker` from the previous review plus contract regressions. New unrelated
+  comments are rejected or non-current route candidates unless they match an allowed
+  expansion trigger such as safety, authority-boundary, data-loss, security,
+  live-mutation, public-API, migration, or operator-facing regression.
 - In `"standard"` and `"strict"` levels, a Decodex Review checkpoint is persisted as
   an evidence-keyed artifact. The key must include artifact kind
   `issue_review_checkpoint`, review phase, current `HEAD`, review level, and review
@@ -164,9 +174,10 @@ Rules:
   dimension still matches; completion and mutation-fence checks read this artifact
   rather than the run-local projection. A new `HEAD`, changed review level, or changed
   prompt version invalidates the proof.
-- In `"standard"` and `"strict"` levels, a `findings` checkpoint requires at least one accepted finding;
-  rejected or non-actionable reviewer comments may be recorded with a `clean`
-  checkpoint and must not become repair input.
+- In `"standard"` and `"strict"` levels, a `findings` checkpoint requires at least
+  one accepted finding routed as `current_blocker`; rejected, non-current, or
+  non-actionable reviewer comments may be recorded with a `clean` checkpoint and must
+  not become repair input.
 - If Decodex Review returns an ambiguous or contradictory result that the runtime
   cannot classify without guessing, stop for `manual_intervention_required`.
 - Decodex Review pass transitions into the normal PR-backed review handoff flow, not
@@ -174,6 +185,46 @@ Rules:
 - Self Check is not sufficient when the loop-runtime risk policy
   requires independent review. Use the Decodex Review checkpoint boundary
   before treating the lane as ready for handoff or landing.
+
+## Decodex Review signal routing
+
+`issue_review_checkpoint` separates reviewer disposition from repair scheduling. The
+reviewer and implementing agent still decide whether a signal is accepted, rejected,
+needs more evidence, belongs to follow-up, exposes a risk or reviewer-rubric gap, or
+identifies architecture, issue-contract, landing, or authority blockers. That
+judgment must be serialized as `finding_routes` before the runtime lets any signal
+enter a repair loop.
+
+The route taxonomy is:
+
+- `current_blocker`: accepted finding that is repair input for the current lane head
+- `landing_blocker`: validated signal that blocks handoff or landing but is not a
+  normal current repair item
+- `contract_or_authority_decision_required`: repair would cross the accepted
+  Decision Contract or lane authority
+- `needs_evidence`: the signal needs stronger source evidence before it can be
+  accepted or rejected
+- `follow_up`: valid non-current follow-up work
+- `deterministic_gate_candidate`: candidate validation/gate hardening rather than
+  immediate implementation repair
+- `architecture_signal`: signal that may require a materially different strategy or
+  architecture recovery
+- `issue_contract_gap`: the issue contract is missing required direction
+- `reviewer_rubric_gap`: rejected or non-actionable reviewer expectation mismatch
+- `risk_note`: durable risk evidence that does not require current repair
+- `invalid_or_unsubstantiated`: reviewed and rejected as unsupported; high-severity
+  or high-risk signals must use `needs_evidence` or a landing-blocking route instead
+
+Only accepted findings routed as `current_blocker` populate the active review-policy
+fingerprint ledger, `repair_accepted_review_findings`, `nonclean_rounds`, and review
+churn repeat counting. Non-current routes remain durable evidence in the checkpoint,
+private evidence, and operator readback without driving repair churn. `current_blocker`
+must bind to an accepted finding by `finding_source = "accepted_findings"` and
+zero-based `finding_index`; out-of-range accepted or rejected bindings are rejected.
+A missing `finding_routes` field keeps backward compatibility by defaulting accepted
+findings to `current_blocker` and rejected findings to `reviewer_rubric_gap`, but new
+prompts must instruct agents to populate explicit route evidence so non-current
+signals do not accidentally become repair input.
 
 ## GitHub Review
 
@@ -318,12 +369,12 @@ Current required behavior:
 
 - `needs_architecture_review` and `blocked` terminate through
   `manual_intervention_required`.
-- Convergence-budget exhaustion for repeated accepted findings is normalized as
-  `review_churn`. It stops the current repair strategy and may continue only through
-  autonomous architecture recovery when the Authority Boundary Check policy allows
-  autonomous recovery and recovery budget remains. Review churn uses `block_landing`
-  to preserve the landing block while recovery continues; otherwise it terminates
-  through `manual_intervention_required`.
+- Convergence-budget exhaustion for repeated active `current_blocker` fingerprints is
+  normalized as `review_churn`. It stops the current repair strategy and may continue
+  only through autonomous architecture recovery when the Authority Boundary Check
+  policy allows autonomous recovery and recovery budget remains. Review churn uses
+  `block_landing` to preserve the landing block while recovery continues; otherwise
+  it terminates through `manual_intervention_required`.
 - The terminal failure path must preserve the normalized review-stop class instead of
   collapsing it into a generic retry failure:
   - `architecture_review_required`
@@ -347,7 +398,8 @@ inputs before dispatch:
   `review_policy_exhausted`
 - non-clean round count for `convergence_stop`
 - concise evidence from the latest bounded review pass, including the validated
-  findings or architecture concern
+  route summary, current-blocker fingerprints, validated findings, or architecture
+  concern
 - PR URL when the stop happens during retained review repair
 - explicit research question, non-goals, and expected decision shape
 

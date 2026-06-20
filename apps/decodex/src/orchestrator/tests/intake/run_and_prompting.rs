@@ -42,6 +42,80 @@ fn assert_manual_attention_prompt_guidance(prompt: &str, expects_handoff_guard: 
 	}
 }
 
+fn assert_review_route_prompt_guidance(prompt: &str) {
+	assert!(prompt.contains("Adjudicate every reviewer signal into `finding_routes`"));
+	assert!(prompt.contains("must route to `current_blocker`"));
+	assert!(prompt.contains("structured route evidence before any repair loop uses the signal"));
+	assert!(prompt.contains("Non-current `finding_routes`"));
+	assert!(prompt.contains("must not drive repair churn"));
+}
+
+fn assert_review_repair_developer_prompt(prompt: &str) {
+	assert!(prompt.contains(ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME));
+	assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
+	assert!(prompt.contains("Do not move the issue back to `In Progress`"));
+	assert!(prompt.contains("do not call `issue_review_handoff`"));
+	assert!(prompt.contains("Decodex Review: request an independent fresh-context read-only verification pass"));
+	assert!(prompt.contains("review_type = \"repair_verification\""));
+	assert!(prompt.contains("registered project workflow policy"));
+	assert!(prompt.contains("structured accepted/rejected findings"));
+
+	assert_review_route_prompt_guidance(prompt);
+
+	assert!(prompt.contains(
+		"including non-thread review summaries, validate the claim against the codebase, tests, and requirements"
+	));
+	assert!(prompt.contains(
+		"After the repaired head is pushed, reply in-thread for every addressed comment"
+	));
+	assert!(prompt.contains("retained landing fallback"));
+	assert!(prompt.contains("Do not merge or land the PR yourself"));
+}
+
+fn assert_review_repair_user_prompt(prompt: &str, pr_url: &str) {
+	assert!(prompt.contains(pr_url));
+	assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
+	assert!(prompt.contains("Decodex Review: request an independent fresh-context read-only verification pass"));
+	assert!(prompt.contains("review_contract"));
+	assert!(prompt.contains("structured accepted/rejected findings"));
+
+	assert_review_route_prompt_guidance(prompt);
+
+	assert!(prompt.contains(
+		"Read the current review feedback on `https://github.com/hack-ink/decodex/pull/77`, including non-thread review summaries"
+	));
+	assert!(prompt.contains(
+		"validate each actionable claim against the codebase, tests, and requirements"
+	));
+	assert!(prompt.contains("Leave pushback or clarification threads open"));
+	assert!(prompt.contains("because retained landing was not a deterministic clean path"));
+	assert!(prompt.contains("Do not merge or land the PR yourself"));
+	assert!(prompt.contains(
+		"resolve only the GitHub review threads whose fixes landed and verified on the repaired head"
+	));
+}
+
+fn assert_review_repair_continuation_prompt(prompt: &str) {
+	assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
+	assert!(prompt.contains("Resume by committing any review-blocking repair edits"));
+	assert!(prompt.contains("review_type = \"repair_verification\""));
+	assert!(prompt.contains("structured accepted/rejected findings"));
+
+	assert_review_route_prompt_guidance(prompt);
+
+	assert!(prompt.contains(
+		"Validate each actionable review claim against the codebase, tests, and requirements before changing code"
+	));
+	assert!(prompt.contains(
+		"keep pushback or clarification threads open until the repaired head is ready"
+	));
+	assert!(prompt.contains("retained landing fallback"));
+	assert!(prompt.contains("do not merge or land the PR yourself"));
+	assert!(prompt.contains("Do not request GitHub Review yourself"));
+	assert!(prompt.contains("In Review"));
+	assert!(prompt.contains("review_repair"));
+}
+
 fn run_and_prompting_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
@@ -903,6 +977,18 @@ fn normal_prompts_record_manual_attention_label_intent_before_label_application(
 }
 
 #[test]
+fn normal_prompts_require_review_signal_routes_before_repair() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let surfaces = build_normal_prompt_surfaces(&config, &workflow);
+
+	for prompt in surfaces.all() {
+		assert_review_route_prompt_guidance(prompt);
+
+		assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
+	}
+}
+
+#[test]
 fn review_pull_request_title_normalizes_issue_prefix() {
 	for title in [
 		"Ensure Decodex-created PR titles include issue authority prefix",
@@ -1309,58 +1395,9 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 		config.codex().review_level(),
 	);
 
-	assert!(developer_instructions.contains(ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME));
-	assert!(developer_instructions.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
-	assert!(developer_instructions.contains("Do not move the issue back to `In Progress`"));
-	assert!(developer_instructions.contains("do not call `issue_review_handoff`"));
-	assert!(developer_instructions.contains("Decodex Review: request an independent fresh-context read-only verification pass"));
-	assert!(developer_instructions.contains("review_type = \"repair_verification\""));
-	assert!(developer_instructions.contains("registered project workflow policy"));
-	assert!(developer_instructions.contains("structured accepted/rejected findings"));
-	assert!(developer_instructions.contains(
-		"including non-thread review summaries, validate the claim against the codebase, tests, and requirements"
-	));
-	assert!(developer_instructions.contains(
-		"After the repaired head is pushed, reply in-thread for every addressed comment"
-	));
-	assert!(developer_instructions.contains("retained landing fallback"));
-	assert!(developer_instructions.contains("Do not merge or land the PR yourself"));
-	assert!(user_input.contains(pr_url));
-	assert!(user_input.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
-	assert!(user_input.contains("Decodex Review: request an independent fresh-context read-only verification pass"));
-	assert!(user_input.contains("review_contract"));
-	assert!(user_input.contains("structured accepted/rejected findings"));
-	assert!(user_input.contains(
-		"Read the current review feedback on `https://github.com/hack-ink/decodex/pull/77`, including non-thread review summaries"
-	));
-	assert!(
-		user_input.contains(
-			"validate each actionable claim against the codebase, tests, and requirements"
-		)
-	);
-	assert!(user_input.contains("Leave pushback or clarification threads open"));
-	assert!(user_input.contains("because retained landing was not a deterministic clean path"));
-	assert!(user_input.contains("Do not merge or land the PR yourself"));
-	assert!(user_input.contains(
-		"resolve only the GitHub review threads whose fixes landed and verified on the repaired head"
-	));
-	assert!(continuation_input.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
-	assert!(continuation_input.contains("Resume by committing any review-blocking repair edits"));
-	assert!(continuation_input.contains("review_type = \"repair_verification\""));
-	assert!(continuation_input.contains("structured accepted/rejected findings"));
-	assert!(continuation_input.contains(
-		"Validate each actionable review claim against the codebase, tests, and requirements before changing code"
-	));
-	assert!(
-		continuation_input.contains(
-			"keep pushback or clarification threads open until the repaired head is ready"
-		)
-	);
-	assert!(continuation_input.contains("retained landing fallback"));
-	assert!(continuation_input.contains("do not merge or land the PR yourself"));
-	assert!(continuation_input.contains("Do not request GitHub Review yourself"));
-	assert!(continuation_input.contains("In Review"));
-	assert!(continuation_input.contains("review_repair"));
+	assert_review_repair_developer_prompt(&developer_instructions);
+	assert_review_repair_user_prompt(&user_input, pr_url);
+	assert_review_repair_continuation_prompt(&continuation_input);
 
 	for prompt in [&developer_instructions, &user_input, &continuation_input] {
 		assert_manual_attention_prompt_guidance(prompt, false);
