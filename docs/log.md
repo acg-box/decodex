@@ -2,6 +2,10 @@
 
 ## 2026-06-20
 
+- Tightened Decodex Review orchestration so `issue_review_checkpoint` records only
+  clean committed lane heads, persists an explicit registered-workflow review
+  contract plus head-tree binding, and narrows retained repair review to verification
+  of accepted findings plus contract regressions.
 - Added repo-work implementation-structure guardrails so substantial or generated
   implementation code must follow existing module ownership and cannot be claimed
   ready while unrelated responsibilities remain in one file.
