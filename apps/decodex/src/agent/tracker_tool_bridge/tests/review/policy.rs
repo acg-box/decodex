@@ -110,6 +110,18 @@ fn accepted_review_findings_for_status_json(status: &str) -> Value {
 	}
 }
 
+fn route_only_review_route_json(route: &str) -> Value {
+	serde_json::json!([{
+		"route": route,
+		"severity": "medium",
+		"risk_tier": "medium",
+		"summary": "Review signal is routed outside current repair.",
+		"evidence": ["The reviewer signal was checked against the current lane head."],
+		"resolver": "architecture",
+		"next_action": "Record the routed review signal without mutating the current repair."
+	}])
+}
+
 fn sample_dirty_local_repo() -> LocalRepoDetails {
 	let mut local_repo = sample_local_repo();
 
@@ -785,6 +797,9 @@ fn independent_review_checkpoint_clean_persists_structured_payload() {
 	);
 	assert_eq!(details["accepted_findings"].as_array().expect("accepted findings array").len(), 0);
 	assert_eq!(details["rejected_findings"][0]["rejection_reason"], "Not actionable after checking the current diff and docs.");
+	assert_eq!(details["finding_routes"][0]["route"], "reviewer_rubric_gap");
+	assert_eq!(details["finding_route_summary"]["route_counts"][0]["route"], "reviewer_rubric_gap");
+	assert_eq!(details["finding_route_summary"]["route_counts"][0]["count"], 1);
 
 	let events = bridge_state_store(&bridge)
 		.list_private_execution_events_for_run_attempt(
@@ -797,6 +812,7 @@ fn independent_review_checkpoint_clean_persists_structured_payload() {
 	assert_eq!(events.len(), 1);
 	assert_eq!(events[0].event_type(), "review_checkpoint");
 	assert_eq!(events[0].payload()["review"]["reviewer"], "independent_fresh_context");
+	assert_eq!(events[0].payload()["route_counts"][0]["route"], "reviewer_rubric_gap");
 }
 
 #[test]
@@ -909,6 +925,12 @@ fn independent_review_checkpoint_findings_store_accepted_repair_guidance() {
 		details["accepted_findings"][0]["guidance"],
 		"Repair the accepted issue before requesting another review checkpoint."
 	);
+	assert_eq!(details["finding_routes"][0]["route"], "current_blocker");
+	assert_eq!(
+		details["finding_routes"][0]["finding_fingerprint"],
+		details["accepted_findings"][0]["fingerprint"]
+	);
+	assert_eq!(details["finding_route_summary"]["route_counts"][0]["route"], "current_blocker");
 }
 
 #[test]
@@ -964,6 +986,201 @@ fn review_checkpoint_rejected_finding_is_non_actionable_and_can_handoff_cleanly(
 	assert!(handoff_response.success);
 
 	assert_review_policy_checkpoint_cleared(&bridge, &issue, &review_context);
+}
+
+#[test]
+fn clean_review_checkpoint_records_non_current_routes_without_churn() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context.clone(),
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+
+	for _round in 0..2 {
+		let response = DynamicToolHandler::handle_call(
+			&bridge,
+			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+			serde_json::json!({
+				"reviewer": "independent_fresh_context",
+				"status": "clean",
+				"head_sha": sample_local_repo().head_oid,
+				"review_contract": handoff_review_contract_json(),
+				"checks": review_checks_json(),
+				"evidence": ["fresh reviewer found only non-current follow-up work"],
+				"finding_routes": route_only_review_route_json("follow_up")
+			}),
+		);
+
+		assert!(response.success);
+	}
+
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
+	let details =
+		serde_json::from_str::<Value>(checkpoint.details_json()).expect("details should be json");
+
+	assert_eq!(checkpoint.status(), "clean");
+	assert_eq!(checkpoint.nonclean_rounds(), 0);
+	assert_eq!(
+		details["finding_policy"]["active_fingerprints"]
+			.as_array()
+			.expect("active fingerprints should be an array")
+			.len(),
+		0
+	);
+	assert_eq!(details["finding_route_summary"]["route_counts"][0]["route"], "follow_up");
+}
+
+#[test]
+fn review_checkpoint_rejects_high_risk_invalid_route() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer disputed a severe live-mutation risk"],
+			"finding_routes": [{
+				"route": "invalid_or_unsubstantiated",
+				"severity": "high",
+				"risk_tier": "high",
+				"summary": "Reviewer alleged a high-risk live mutation.",
+				"evidence": ["The reviewer did not provide enough source evidence."],
+				"resolver": "agent",
+				"next_action": "Route to needs_evidence with source proof instead of invalidating it."
+			}]
+		}),
+	);
+
+	assert!(!response.success);
+	assert!(matches!(
+		response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText { text }]
+			if text.contains("cannot route high-severity or high-risk")
+	));
+}
+
+#[test]
+fn review_checkpoint_rejects_bound_high_severity_invalid_route() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "findings",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer disputed a severe accepted finding"],
+			"accepted_findings": [{
+				"severity": "high",
+				"summary": "Accepted reviewer finding reports a high severity regression.",
+				"evidence": ["The reviewer evidence points at the current lane head."],
+				"file": "apps/decodex/src/agent/tracker_tool_bridge/tools.rs",
+				"line": 1,
+				"guidance": "Repair the accepted high severity regression."
+			}],
+			"finding_routes": [{
+				"route": "invalid_or_unsubstantiated",
+				"severity": "low",
+				"risk_tier": "low",
+				"summary": "Route tries to downgrade the accepted finding.",
+				"evidence": ["The bound accepted finding is high severity."],
+				"resolver": "agent",
+				"next_action": "Route to needs_evidence or a landing blocker instead.",
+				"finding_source": "accepted_findings",
+				"finding_index": 0
+			}]
+		}),
+	);
+
+	assert!(!response.success);
+	assert!(matches!(
+		response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText { text }]
+			if text.contains("cannot route high-severity or high-risk")
+	));
+}
+
+#[test]
+fn blocked_review_checkpoint_requires_landing_blocking_route() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "blocked",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
+			"checks": review_checks_json(),
+			"evidence": ["review cannot continue without external evidence"]
+		}),
+	);
+
+	assert!(!response.success);
+	assert!(matches!(
+		response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText { text }]
+			if text.contains("requires at least one landing-blocking")
+	));
 }
 
 #[test]
@@ -1263,12 +1480,17 @@ fn review_checkpoint_architecture_and_blocked_statuses_stop_immediately() {
 			serde_json::json!({
 				"reviewer": "independent_fresh_context",
 				"status": status,
-				"head_sha": sample_local_repo().head_oid,
-				"review_contract": handoff_review_contract_json(),
-				"checks": review_checks_json(),
-				"evidence": ["requires human follow-up"]
-			}),
-		);
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
+			"checks": review_checks_json(),
+			"evidence": ["requires human follow-up"],
+			"finding_routes": route_only_review_route_json(if status == "blocked" {
+				"landing_blocker"
+			} else {
+				"architecture_signal"
+			})
+		}),
+	);
 
 		assert!(response.success);
 

@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
 drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, protocol_events, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings]
-last_verified: 2026-06-19
+last_verified: 2026-06-21
 ---
 # Runtime Specification
 
@@ -553,9 +553,9 @@ state for the current phase and current lane head from the owned lane:
 
 - no checkpoint and no terminal path: allow a clean continuation boundary
 - latest checkpoint `clean` and no terminal path: allow continuation so the agent can finish handoff or repair completion
-- latest checkpoint `findings` where every active accepted-finding fingerprint has
+- latest checkpoint `findings` where every active `current_blocker` fingerprint has
   been seen fewer than three times in the same phase: allow continuation
-- latest checkpoint `findings` where any active accepted-finding fingerprint has
+- latest checkpoint `findings` where any active `current_blocker` fingerprint has
   reached three repeats in the same phase: treat this as `review_churn`, stop the
   current repair strategy, and run the architecture recovery boundary check before
   either retrying with a materially different implementation strategy or routing to
@@ -571,16 +571,23 @@ level, and review prompt version. `issue_review_handoff`,
 matching evidence artifact to be `clean`; a missing or mismatched key fails closed.
 The stored checkpoint contains `phase`, `status`, `head_sha`, `nonclean_rounds`, and
 `details_json`.
-`nonclean_rounds` is the current phase's max active accepted-finding repeat count;
-new findings with different fingerprints do not inherit earlier repeats.
+`nonclean_rounds` is the current phase's max active `current_blocker` repeat count;
+new current-blocker findings with different fingerprints do not inherit earlier
+repeats.
 `details_json` holds the structured independent fresh-context review payload,
 including checklist notes, accepted findings, rejected findings, repair guidance,
-and the `finding_policy` fingerprint ledger.
+typed `finding_routes`, a compact `finding_route_summary`, and the `finding_policy`
+fingerprint ledger. Only accepted findings routed as `current_blocker` populate the
+active fingerprint ledger that can trigger review churn. Non-current routes such as
+`follow_up`, `risk_note`, `reviewer_rubric_gap`, and
+`invalid_or_unsubstantiated` remain durable in the checkpoint payload without driving
+repair.
 Each accepted checkpoint also appends a private `review_checkpoint` execution event
-with the same structured payload for local operator and repair readback. Linear
-receives only coarse lifecycle projections; raw reviewer findings stay in local
-runtime evidence unless another allowlisted lifecycle summary renders a public-safe
-summary.
+with the same structured payload for local operator and repair readback. The local
+operator status and private evidence readback may expose route counts and one
+route-derived next action, but not raw reviewer finding bodies. Linear receives only
+coarse lifecycle projections; raw reviewer findings stay in local runtime evidence
+unless another allowlisted lifecycle summary renders a public-safe summary.
 Recording `issue_review_handoff` or `issue_review_repair_complete` clears the current
 When `[codex].review` is `"off"` or `"basic"`, Decodex does not expose
 `issue_review_checkpoint`, does not require a clean checkpoint before review handoff
