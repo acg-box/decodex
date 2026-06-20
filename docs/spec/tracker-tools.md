@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/orchestrator/execution.rs]
-drift_watch: [issue_progress_checkpoint, issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, phase_acceptance_check, issue_terminal_finalize, docs_impact, private_execution_events, linear_execution_event]
+drift_watch: [issue_progress_checkpoint, issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, phase_acceptance_check, issue_terminal_finalize, docs_impact, private_execution_events, linear_execution_event]
 last_verified: 2026-06-21
 ---
 # Tracker Tool Specification
@@ -195,6 +195,22 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   triggers, and validation evidence. The persisted payload must also bind the
   reviewed `head_sha`, `head_tree_oid`, clean review-worktree fact, and stable
   `review_contract_hash`.
+- A checkpoint may include `review_cost_control` with `review_class`
+  (`compact_current_head_review` or `full_current_head_review`), `risk_class`,
+  changed-surface count and public-safe summary, high-risk surface summary,
+  current-head evidence flag, validation-backed flag, reviewer judgment, and
+  fallback reason for full review. Omitted cost-control metadata normalizes to
+  `full_current_head_review` with fallback reason
+  `review_cost_control_not_provided`.
+- `compact_current_head_review` is accepted only for a clean handoff checkpoint with
+  `risk_tier = "low"`, `risk_class = "low"`, current-head evidence, validation
+  evidence, a small changed-surface count, no high-risk surfaces, no accepted
+  findings, no current or landing-blocking routes, and no prior non-clean checkpoint
+  state for the same review phase. It is a compact independent review path, not a
+  skipped-review path. Full review is required for repair verification, accepted
+  findings, non-clean rounds, missing/stale validation, docs/config/API/security/
+  data/privacy surfaces without sufficient evidence, weak evidence, or architecture
+  risk.
 - Every new checkpoint payload must include checklist notes for intended behavior,
   regression risk, missing tests, docs/config drift, migration fallout,
   operator-facing fallout, and Loop/Decision Contract mismatch.
