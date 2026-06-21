@@ -1453,6 +1453,23 @@ impl<'a> TrackerToolBridge<'a> {
 			.as_ref()
 			.filter(|previous_state| previous_state.phase == review_policy_phase)
 			.map_or(0, |previous_state| previous_state.nonclean_rounds);
+		let prior_nonclean_rounds_present = self
+			.state_store
+			.map(|state_store| {
+				state_store.has_nonclean_review_checkpoint_artifact(
+					&review_context.service_id,
+					&self.issue.id,
+					review_policy_phase.as_str(),
+				)
+			})
+			.transpose()
+			.map_err(|error| error.to_string())?
+			.unwrap_or(false);
+		let previous_nonclean_rounds = if prior_nonclean_rounds_present {
+			previous_nonclean_rounds.max(1)
+		} else {
+			previous_nonclean_rounds
+		};
 		let previous_threshold_exceeded = previous_state.as_ref().is_some_and(|previous_state| {
 			previous_state.phase == review_policy_phase
 				&& previous_state.status == ReviewPolicyStatus::Findings
