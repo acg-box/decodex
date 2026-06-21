@@ -26,6 +26,20 @@ service labels, recovery, or lane-control details matter.
 - Treat `run --dry-run` as planning evidence, not proof of live writes or closeout.
 - Before live `decodex run`, inspect the project `WORKFLOW.md` and runtime state.
 
+## Review-Handoff Recovery
+
+- For `missing_review_handoff_record`, start with
+  `decodex recover review-handoff diagnose <ISSUE> --json`.
+- If diagnosis proves a Decodex-owned retained lane PR and matching retained
+  worktree, branch, and head lineage, dry-run
+  `decodex recover review-handoff rebind <ISSUE> --pr <URL> --dry-run` before any
+  live rebind.
+- If diagnosis shows a human-owned PR takeover from the current managed worktree,
+  dry-run `decodex recover review-handoff adopt <ISSUE> --pr <URL> --dry-run`
+  before any live adopt.
+- Do not infer PR lineage from branch names, PR titles, Linear comments, status
+  summaries, or stale snapshots.
+
 ## Labels
 
 - `decodex:queued:<service-id>`: ordinary issue intake candidate.
