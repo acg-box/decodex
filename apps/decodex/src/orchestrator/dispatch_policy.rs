@@ -1,3 +1,6 @@
+const ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON: &str =
+	"review_handoff_state_transition_pending";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CloseoutDispatchEligibility {
 	Eligible,
@@ -7,6 +10,28 @@ enum CloseoutDispatchEligibility {
 
 pub(crate) fn issue_has_generic_dispatch_briefing(issue: &TrackerIssue) -> bool {
 	!description_is_machine_only_fenced_block(&issue.description)
+}
+
+fn ordinary_dispatch_blocked_by_retained_review_handoff(
+	project_id: &str,
+	issue: &TrackerIssue,
+	state_store: &StateStore,
+) -> Result<bool> {
+	let Some(worktree) = state_store.worktree_for_issue(&issue.id)? else {
+		return Ok(false);
+	};
+
+	if worktree.project_id() != project_id || !worktree.worktree_path().try_exists()? {
+		return Ok(false);
+	}
+
+	let Some(review_handoff) =
+		state_store.review_handoff_marker(project_id, &issue.id, worktree.branch_name())?
+	else {
+		return Ok(false);
+	};
+
+	Ok(review_handoff.branch_name() == worktree.branch_name())
 }
 
 fn issue_passes_dispatch_policy<T>(
@@ -375,12 +400,21 @@ where
 		&& hint.preferred_initial_issue_state.is_some_and(|state| state == issue.state.name)
 		&& tracker_policy.startable_states().iter().any(|candidate| candidate == &issue.state.name);
 
-	Ok(issue_has_service_ownership(tracker, issue, project.service_id())?
-		&& (issue.state.name == tracker_policy.in_progress_state()
-			|| continuation_startable_snapshot)
-		&& !issue.has_label(tracker_policy.opt_out_label())
-		&& !issue.has_label(tracker_policy.needs_attention_label())
-		&& !issue_is_terminal_retry_guarded(issue, project, state_store)?)
+	if !issue_has_service_ownership(tracker, issue, project.service_id())?
+		|| (issue.state.name != tracker_policy.in_progress_state()
+			&& !continuation_startable_snapshot)
+		|| issue.has_label(tracker_policy.opt_out_label())
+		|| issue.has_label(tracker_policy.needs_attention_label())
+		|| issue_is_terminal_retry_guarded(issue, project, state_store)?
+	{
+		return Ok(false);
+	}
+
+	Ok(!ordinary_dispatch_blocked_by_retained_review_handoff(
+		project.service_id(),
+		issue,
+		state_store,
+	)?)
 }
 
 fn issue_has_service_ownership<T>(
@@ -544,6 +578,9 @@ where
 	let queue_label = tracker::automation_queue_label(project_id);
 
 	if !issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, true)? {
+		return Ok(false);
+	}
+	if ordinary_dispatch_blocked_by_retained_review_handoff(project_id, issue, state_store)? {
 		return Ok(false);
 	}
 
