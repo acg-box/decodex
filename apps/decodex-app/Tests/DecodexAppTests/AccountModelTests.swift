@@ -825,7 +825,7 @@ final class AccountModelTests: XCTestCase {
 	}
 
 	@MainActor
-	func testLiveRunActivitySurvivesNewerEmptySnapshot() throws {
+	func testFullSnapshotClearsStaleLiveRunActivityOverlay() throws {
 		let account = makeAccount(
 			status: "available",
 			email: "copy@example.com",
@@ -875,7 +875,7 @@ final class AccountModelTests: XCTestCase {
 			"""
 		))
 
-		XCTAssertEqual(store.operatorSnapshot?.currentLanes(for: account).map(\.runID), ["run-live"])
+		XCTAssertTrue(store.operatorSnapshot?.currentLanes(for: account).isEmpty ?? false)
 	}
 
 	@MainActor

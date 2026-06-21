@@ -11440,6 +11440,13 @@
 				}
 			}
 
+			function clearDashboardLiveRunActivityOverlay() {
+				dashboardLiveRunActivitySeen = false;
+				dashboardLiveCurrentLanes = [];
+				dashboardLiveCurrentLanesComplete = true;
+				dashboardLiveAccountControl = null;
+			}
+
 			function snapshotWithLiveRunActivity(snapshot, options = {}) {
 				if (!snapshot || !dashboardSocketIsOpen()) {
 					return snapshot;
@@ -11510,10 +11517,11 @@
 					return;
 				}
 
-					lastDashboardRender = {
-						snapshot: snapshotWithLiveRunActivity(payload.snapshot),
-						snapshotError: "",
-						snapshotPublishedAt:
+				clearDashboardLiveRunActivityOverlay();
+				lastDashboardRender = {
+					snapshot: payload.snapshot,
+					snapshotError: "",
+					snapshotPublishedAt:
 						unixEpochSecondsToIso(payload.snapshotPublishedAtUnixEpoch) ||
 						new Date().toISOString(),
 				};

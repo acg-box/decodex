@@ -220,7 +220,8 @@ final class AccountStore: ObservableObject {
 				return
 			}
 
-			operatorSnapshot = liveRunActivity?.merging(into: snapshot) ?? snapshot
+			liveRunActivity = nil
+			operatorSnapshot = snapshot
 			operatorSnapshotUpdatedAt = payload.snapshotPublishedAt ?? Date()
 		case "runActivity":
 			guard let currentLanes = payload.currentLanes else {
