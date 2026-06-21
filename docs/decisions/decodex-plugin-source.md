@@ -6,7 +6,7 @@ status: active
 authority: rationale
 owner: docs
 tags: [decision]
-last_verified: 2026-06-19
+last_verified: 2026-06-22
 ---
 # Decodex Plugin Source
 
@@ -64,6 +64,11 @@ Companion plugins:
 The plugin must route to `apps/decodex/src/`, `docs/spec/`, `docs/runbook/`, `docs/reference/`,
 registered project `WORKFLOW.md`, and registered project `project.toml` instead of
 copying their full contracts.
+
+For review handoff and compact review readback, plugin skills must point operators to
+runtime evidence surfaces such as `issue_review_checkpoint.review_cost_control`,
+`decodex evidence`, and `decodex recover review-handoff` diagnosis. They must not copy
+the review-cost, handoff-recovery, or tracker invariants out of the runtime specs.
 
 ## Consequences
 
