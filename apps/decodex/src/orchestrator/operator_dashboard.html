@@ -3974,9 +3974,8 @@
 			let dashboardSocket = null;
 			let dashboardSocketReconnectTimer = null;
 			let dashboardLocalClockTimer = null;
-			let dashboardLiveCurrentLanes = [];
+			let dashboardLivePresentation = null;
 			let dashboardLiveRunActivitySeen = false;
-			let dashboardLiveCurrentLanesComplete = true;
 			let dashboardLiveAccountControl = null;
 			let dashboardStreamState = {
 				supported: typeof window.WebSocket === "function",
@@ -5751,8 +5750,9 @@
 			}
 
 			function rawSessionHistoryRuns(snapshot) {
-				const currentLaneIds = new Set((snapshot?.current_lanes ?? []).map((run) => run.run_id));
-				const currentLaneIssueKeys = new Set((snapshot?.current_lanes ?? []).flatMap(issueIdentityKeys));
+				const currentLaneRuns = snapshotCurrentLaneRuns(snapshot);
+				const currentLaneIds = new Set(currentLaneRuns.map((run) => run.run_id));
+				const currentLaneIssueKeys = new Set(currentLaneRuns.flatMap(issueIdentityKeys));
 				return (snapshot?.recent_runs ?? []).filter(
 					(run) => !currentLaneIds.has(run.run_id) && !issueMatchesKeySet(run, currentLaneIssueKeys),
 				);
@@ -9184,7 +9184,7 @@
 				}
 
 				return (
-					(snapshot.current_lanes?.length ?? 0) === 0 &&
+					snapshotCurrentLaneCards(snapshot).length === 0 &&
 					(snapshot.recent_runs?.length ?? 0) === 0 &&
 					(snapshot.worktrees?.length ?? 0) === 0 &&
 					(snapshot.post_review_lanes?.length ?? 0) === 0
@@ -9470,7 +9470,8 @@
 			}
 
 			function buildDerivedState(snapshot) {
-				const currentLanes = snapshot?.current_lanes ?? [];
+				const currentLaneCards = snapshotCurrentLaneCards(snapshot);
+				const currentLanes = currentLaneRunsFromCards(currentLaneCards);
 				const recentRuns = snapshot?.recent_runs ?? [];
 				const historyRuns = sessionHistoryRuns(snapshot);
 				const executionPrograms = snapshot?.execution_programs ?? [];
@@ -9724,6 +9725,7 @@
 
 				return {
 					projects: snapshot?.projects ?? [],
+					currentLaneCards,
 					liveRuns,
 					currentLaneCount: currentLanes.length,
 					liveLeases: currentLanes.filter((run) => run.run_lease).length,
@@ -10301,17 +10303,16 @@
 					return;
 				}
 
-				const currentLaneCount = (snapshot.current_lanes ?? []).length;
 				const retainedCount = (snapshot.post_review_lanes ?? []).length;
 				setFlowCounts(
 					pluralize(derived.queueBacklogCandidates.length, "issue"),
-					pluralize(currentLaneCount, "lane"),
+					pluralize(derived.currentLaneCount, "lane"),
 					pluralize(retainedCount, "PR"),
 					pluralize(derived.readyCount, "PR"),
 				);
 				setFlowActivity({
 					queue: derived.queueBacklogCandidates.length > 0,
-					run: currentLaneCount > 0,
+					run: derived.currentLaneCount > 0,
 					review:
 						derived.reviewBlockerCount > 0 ||
 						derived.reviewWaitingCount > 0 ||
@@ -10627,29 +10628,30 @@
 			}
 
 			function renderCurrentLanes(snapshot, derived) {
-				const runs = snapshot?.current_lanes ?? [];
+				const cards = derived.currentLaneCards ?? snapshotCurrentLaneCards(snapshot);
 				setPanelMeta(
 					nodes.currentLanesMeta,
 					runningLaneMetaText(derived),
 					derived.runningAttentionCount ? "attention" : "",
 				);
 
-				if (!runs.length) {
+				if (!cards.length) {
 					renderRoutineEmptyList(nodes.currentLanes);
 					return;
 				}
 
 				renderStableList(
 					nodes.currentLanes,
-					runs
-						.map((run) => {
-							const tone = toneForRun(run);
+					cards
+						.map((card) => {
+							const run = card.run || {};
+							const tone = currentLaneCardToneClass(card, run);
 							const statusBits = [statusLabel(runPhaseLabel(run), tone)];
 							const detailKey = runDetailKey(run);
-							const renderKey = currentLaneRenderKey(run);
-							const issueKey = issueDisplayKey(run);
-							const issueTitle = runIssueTitle(run, derived);
-							const summary = currentLaneSummary(run);
+							const renderKey = card.id || card.run_id || currentLaneRenderKey(run);
+							const issueKey = card.issue_identifier || issueDisplayKey(run);
+							const issueTitle = card.title || runIssueTitle(run, derived);
+							const summary = currentLaneSummary(run) || card.detail || "";
 							if (run.ownership_state && run.ownership_state !== "leased_run") {
 								statusBits.push(inlineStatusFact("Owner", displayToken(run.ownership_state)));
 							}
@@ -10886,7 +10888,7 @@
 
 			function worktreeRoleMeta(worktree, snapshot) {
 				const hygiene = worktree.hygiene;
-				const currentLaneMatch = (snapshot?.current_lanes ?? []).find(
+				const currentLaneMatch = snapshotCurrentLaneRuns(snapshot).find(
 					(run) =>
 						(run.worktree_path === worktree.worktree_path ||
 							run.branch_name === worktree.branch_name ||
@@ -11211,216 +11213,63 @@
 				);
 			}
 
-			function dashboardRunFieldHasValue(value) {
-				if (Array.isArray(value)) {
-					return value.length > 0;
-				}
-				if (typeof value === "string") {
-					return value.trim() !== "";
-				}
-				if (value && typeof value === "object") {
-					return Object.keys(value).length > 0;
+				function presentationCurrentLaneCards(presentation) {
+					return Array.isArray(presentation?.current_lane_cards)
+						? presentation.current_lane_cards.filter((card) => card && typeof card === "object")
+						: [];
 				}
 
-				return value !== null && value !== undefined;
-			}
-
-			function mergeDashboardRunRecord(snapshotRun, activityRun) {
-				if (!snapshotRun) {
-					return { ...activityRun };
+			function snapshotCurrentLaneCards(snapshot) {
+				const cards = presentationCurrentLaneCards(snapshot?.presentation);
+				if (cards.length || snapshot?.presentation) {
+					return cards;
 				}
 
-				const merged = { ...snapshotRun, ...activityRun };
-
-				for (const key of [
-					"issue_identifier",
-					"title",
-					"account",
-					"accounts",
-					"codex_account",
-					"codex_accounts",
-					"child_agent_activity",
-					"protocol_activity",
-					"branch_name",
-					"worktree_path",
-				]) {
-					if (
-						!dashboardRunFieldHasValue(activityRun[key]) &&
-						dashboardRunFieldHasValue(snapshotRun[key])
-					) {
-						merged[key] = snapshotRun[key];
-					}
-				}
-				if (
-					dashboardRunTitleIsOperationFallback(activityRun) &&
-					dashboardRunFieldHasValue(snapshotRun.title)
-				) {
-					merged.title = snapshotRun.title;
-				}
-
-				return merged;
-			}
-
-			function dashboardRunTitleIsOperationFallback(run) {
-				const title = String(run?.title || "").trim();
-				if (!title || issueDisplayKey(run) === "unknown") {
-					return false;
-				}
-
-				return title === displayToken(run?.current_operation || run?.run_phase || run?.phase);
-			}
-
-			function dashboardRunIdentityKeys(run) {
-				const keys = run?.run_id ? [`run:${run.run_id}`] : [];
-
-				for (const key of issueIdentityKeys(run)) {
-					keys.push(`issue:${key}`);
-				}
-
-				return keys;
-			}
-
-			function dashboardRunLookup(runs) {
-				const lookup = new Map();
-
-				for (const run of runs) {
-					for (const key of dashboardRunIdentityKeys(run)) {
-						if (!lookup.has(key)) {
-							lookup.set(key, run);
-						}
-					}
-				}
-
-				return lookup;
-			}
-
-			function dashboardRunShouldRetainDuringPartialActivity(run) {
-				return (
-					run?.run_lease === true ||
-					run?.process_alive === true ||
-					runHasFreshExecution(run) ||
-					runCountsAsRunning(run)
-				);
-			}
-
-			function mergeDashboardCurrentLanes(snapshot, currentLaneRows, currentLanesComplete = true) {
-				const snapshotCurrentLanes = snapshot.current_lanes || [];
-				const snapshotRunLookup = dashboardRunLookup(snapshotCurrentLanes);
-				const seenSnapshotRuns = new Set();
-				const mergedRuns = [];
-
-				for (const activityRun of currentLaneRows) {
-					const snapshotRun = dashboardRunIdentityKeys(activityRun)
-						.map((key) => snapshotRunLookup.get(key))
-						.find(Boolean);
-
-					if (snapshotRun) {
-						seenSnapshotRuns.add(snapshotRun);
-					}
-
-					mergedRuns.push(mergeDashboardRunRecord(snapshotRun, activityRun));
-				}
-
-				for (const snapshotRun of snapshotCurrentLanes) {
-					if (
-						!currentLanesComplete &&
-						!seenSnapshotRuns.has(snapshotRun) &&
-						dashboardRunShouldRetainDuringPartialActivity(snapshotRun)
-					) {
-						mergedRuns.push(snapshotRun);
-					}
-				}
-
-				return mergedRuns;
-			}
-
-			function mergeDashboardRunActivity(snapshot, currentLanes, activityPayload = {}) {
-				const currentLaneRows = currentLanes
+				return (snapshot?.current_lanes ?? [])
 					.filter((run) => run && typeof run === "object")
-					.map((run) => ({ ...run }));
-				const currentLanesComplete = activityPayload.currentLanesComplete !== false;
-				const mergedCurrentLanes = mergeDashboardCurrentLanes(
-					snapshot,
-					currentLaneRows,
-					currentLanesComplete,
-				);
-				const activeById = new Map(
-					mergedCurrentLanes
-						.filter((run) => run.run_id)
-						.map((run) => [run.run_id, run]),
-				);
-				const seenRecentIds = new Set();
-				const recentRuns = (snapshot.recent_runs || []).map((run) => {
-					if (!run?.run_id) {
-						return run;
-					}
-
-					seenRecentIds.add(run.run_id);
-					const currentLane = activeById.get(run.run_id);
-
-					return currentLane ? mergeDashboardRunRecord(run, currentLane) : run;
-				});
-
-				for (const run of mergedCurrentLanes) {
-					if (run.run_id && !seenRecentIds.has(run.run_id)) {
-						recentRuns.unshift(run);
-						seenRecentIds.add(run.run_id);
-					}
+						.map((run) => ({
+							id: run.run_id || issueDisplayKey(run),
+							run_id: run.run_id,
+							issue_id: run.issue_id,
+							issue_identifier: run.issue_identifier,
+							project_id: run.project_id,
+							title: run.issue_identifier || run.title || "Run",
+							detail: run.current_operation || run.run_phase || run.phase || "Active",
+							tone: runNeedsAttention(run)
+								? "attention"
+								: runWaitReasonShowsExecutionProgress(run) || !run.wait_reason
+									? "running"
+									: "waiting",
+							run,
+						}));
 				}
 
-				const currentLaneCountsByProject = mergedCurrentLanes.reduce((counts, run) => {
-					const projectId = run.project_id || snapshot.project_id;
-					if (!projectId) {
-						return counts;
-					}
+			function currentLaneRunsFromCards(cards) {
+				return cards
+					.map((card) => card?.run)
+					.filter((run) => run && typeof run === "object");
+			}
 
-					counts.set(projectId, (counts.get(projectId) || 0) + 1);
+			function snapshotCurrentLaneRuns(snapshot) {
+				return currentLaneRunsFromCards(snapshotCurrentLaneCards(snapshot));
+			}
 
-					return counts;
-				}, new Map());
-				const runningCountsByProject = mergedCurrentLanes.reduce((counts, run) => {
-					const projectId = run.project_id || snapshot.project_id;
-					if (!projectId || !runCountsAsRunning(run)) {
-						return counts;
-					}
+			function currentLaneCardToneClass(card, run) {
+				if (card?.tone === "attention") {
+					return "tone-blocked";
+				}
+				if (card?.tone === "waiting") {
+					return "tone-wait";
+				}
 
-					counts.set(projectId, (counts.get(projectId) || 0) + 1);
-
-					return counts;
-				}, new Map());
-
-				const projects = Array.isArray(snapshot.projects)
-					? snapshot.projects.map((project) => {
-						if (!project?.project_id) {
-							return project;
-						}
-
-						return {
-							...project,
-							current_lane_count: currentLaneCountsByProject.get(project.project_id) || 0,
-							running_lane_count: runningCountsByProject.get(project.project_id) || 0,
-						};
-					})
-					: snapshot.projects;
-				const accountControl =
-					activityPayload.accountControl && typeof activityPayload.accountControl === "object"
-						? { ...(snapshot.account_control || {}), ...activityPayload.accountControl }
-						: snapshot.account_control;
-
-				return {
-					...snapshot,
-					account_control: accountControl,
-					current_lanes: mergedCurrentLanes,
-					recent_runs: recentRuns,
-					projects,
-				};
+				return toneForRun(run);
 			}
 
 			function dashboardLiveRunActivityHasOverlay({ includeCompletedEmpty = false } = {}) {
 				if (!dashboardLiveRunActivitySeen) {
 					return false;
 				}
-				if (dashboardLiveCurrentLanes.length || !dashboardLiveCurrentLanesComplete) {
+				if (presentationCurrentLaneCards(dashboardLivePresentation).length) {
 					return true;
 				}
 
@@ -11430,20 +11279,17 @@
 			function clearDashboardLiveRunActivityOverlayIfCompleteEmpty() {
 				if (
 					dashboardLiveRunActivitySeen &&
-					dashboardLiveCurrentLanesComplete &&
-					!dashboardLiveCurrentLanes.length
+					!presentationCurrentLaneCards(dashboardLivePresentation).length
 				) {
 					dashboardLiveRunActivitySeen = false;
-					dashboardLiveCurrentLanes = [];
-					dashboardLiveCurrentLanesComplete = true;
+					dashboardLivePresentation = null;
 					dashboardLiveAccountControl = null;
 				}
 			}
 
 			function clearDashboardLiveRunActivityOverlay() {
 				dashboardLiveRunActivitySeen = false;
-				dashboardLiveCurrentLanes = [];
-				dashboardLiveCurrentLanesComplete = true;
+				dashboardLivePresentation = null;
 				dashboardLiveAccountControl = null;
 			}
 
@@ -11456,14 +11302,22 @@
 					return snapshot;
 				}
 
-				return mergeDashboardRunActivity(snapshot, dashboardLiveCurrentLanes, {
-					accountControl: dashboardLiveAccountControl,
-					currentLanesComplete: dashboardLiveCurrentLanesComplete,
-				});
+				const liveRuns = currentLaneRunsFromCards(
+					presentationCurrentLaneCards(dashboardLivePresentation),
+				);
+				return {
+					...snapshot,
+					account_control:
+						dashboardLiveAccountControl && typeof dashboardLiveAccountControl === "object"
+							? { ...(snapshot.account_control || {}), ...dashboardLiveAccountControl }
+							: snapshot.account_control,
+					current_lanes: liveRuns,
+					presentation: dashboardLivePresentation,
+				};
 			}
 
 			function applyDashboardRunActivity(payload) {
-				if (!Array.isArray(payload?.currentLanes)) {
+				if (!payload?.presentation || typeof payload.presentation !== "object") {
 					updateDashboardStreamState({
 						connected: true,
 						error: false,
@@ -11473,11 +11327,11 @@
 					return;
 				}
 
-				dashboardLiveCurrentLanes = payload.currentLanes
-					.filter((run) => run && typeof run === "object")
-					.map((run) => ({ ...run }));
+				dashboardLivePresentation = {
+					...payload.presentation,
+					current_lane_cards: presentationCurrentLaneCards(payload.presentation),
+				};
 				dashboardLiveRunActivitySeen = true;
-				dashboardLiveCurrentLanesComplete = payload.currentLanesComplete !== false;
 				dashboardLiveAccountControl =
 					payload.accountControl && typeof payload.accountControl === "object"
 						? { ...payload.accountControl }
@@ -11637,24 +11491,22 @@
 						error: false,
 					});
 					syncDashboardSubscriptionToSocket();
-				};
-				dashboardSocket.onclose = () => {
-					dashboardLiveCurrentLanes = [];
-					dashboardLiveRunActivitySeen = false;
-					dashboardLiveCurrentLanesComplete = true;
-					dashboardLiveAccountControl = null;
-					updateDashboardStreamState({
+					};
+					dashboardSocket.onclose = () => {
+						dashboardLivePresentation = null;
+						dashboardLiveRunActivitySeen = false;
+						dashboardLiveAccountControl = null;
+						updateDashboardStreamState({
 						connected: false,
 						error: true,
 					});
 					scheduleDashboardSocketReconnect();
-				};
-				dashboardSocket.onerror = () => {
-					dashboardLiveCurrentLanes = [];
-					dashboardLiveRunActivitySeen = false;
-					dashboardLiveCurrentLanesComplete = true;
-					dashboardLiveAccountControl = null;
-					updateDashboardStreamState({
+					};
+					dashboardSocket.onerror = () => {
+						dashboardLivePresentation = null;
+						dashboardLiveRunActivitySeen = false;
+						dashboardLiveAccountControl = null;
+						updateDashboardStreamState({
 						connected: false,
 						error: true,
 					});

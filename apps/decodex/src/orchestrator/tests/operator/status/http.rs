@@ -724,17 +724,43 @@ fn operator_dashboard_websocket_filters_run_activity_by_subscription() {
 		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "sub-filter"
 	});
 
-	dashboard_events.broadcast(
-		"runActivity",
-		serde_json::json!({
-			"emittedAtUnixEpoch": 1_774_000_010_i64,
-			"currentLanes": [
-				{ "project_id": "pubfi", "issue_id": "PUB-101", "run_id": "run-1" },
-				{ "project_id": "pubfi", "issue_id": "PUB-102", "run_id": "run-2" },
-				{ "project_id": "rsnap", "issue_id": "RS-1", "run_id": "run-2" }
-			]
-		}),
-	);
+		dashboard_events.broadcast(
+			"runActivity",
+			serde_json::json!({
+				"emittedAtUnixEpoch": 1_774_000_010_i64,
+				"currentLanes": [
+					{ "project_id": "pubfi", "issue_id": "PUB-101", "run_id": "run-1" },
+					{ "project_id": "pubfi", "issue_id": "PUB-102", "run_id": "run-2" },
+					{ "project_id": "rsnap", "issue_id": "RS-1", "run_id": "run-2" }
+				],
+				"presentation": {
+					"schema": "decodex.operator.presentation/1",
+					"current_lane_cards": [
+						{
+							"id": "run-1",
+							"run_id": "run-1",
+							"issue_id": "PUB-101",
+							"project_id": "pubfi",
+							"run": { "project_id": "pubfi", "issue_id": "PUB-101", "run_id": "run-1" }
+						},
+						{
+							"id": "run-2",
+							"run_id": "run-2",
+							"issue_id": "PUB-102",
+							"project_id": "pubfi",
+							"run": { "project_id": "pubfi", "issue_id": "PUB-102", "run_id": "run-2" }
+						},
+						{
+							"id": "run-2-rsnap",
+							"run_id": "run-2",
+							"issue_id": "RS-1",
+							"project_id": "rsnap",
+							"run": { "project_id": "rsnap", "issue_id": "RS-1", "run_id": "run-2" }
+						}
+					]
+				}
+			}),
+		);
 
 	let activity = read_websocket_json_until(&mut client, &mut frame, |payload| {
 		payload["type"] == "runActivity"
@@ -749,6 +775,14 @@ fn operator_dashboard_websocket_filters_run_activity_by_subscription() {
 	assert_eq!(current_lanes[0]["run_id"], "run-2");
 	assert_eq!(activity["payload"]["currentLanesComplete"], true);
 	assert_eq!(activity["payload"]["currentLaneScope"], "filtered");
+
+	let current_lane_cards = activity["payload"]["presentation"]["current_lane_cards"]
+		.as_array()
+		.expect("filtered current lane cards should list");
+
+	assert_eq!(current_lane_cards.len(), 1);
+	assert_eq!(current_lane_cards[0]["issue_id"], "PUB-102");
+	assert_eq!(current_lane_cards[0]["run_id"], "run-2");
 
 	drop(client);
 
@@ -1014,6 +1048,24 @@ fn read_websocket_json_until(
 		assert_eq!(fingerprint["currentLanesComplete"], true);
 		assert_eq!(fingerprint["currentLaneScope"], "complete");
 		assert!(fingerprint.get("accounts").is_none());
+		assert_eq!(
+			data["presentation"]["schema"],
+			"decodex.operator.presentation/1"
+		);
+		assert_eq!(
+			fingerprint["presentation"]["schema"],
+			"decodex.operator.presentation/1"
+		);
+		assert_eq!(
+			data["presentation"]["current_lane_cards"].as_array().map(Vec::len),
+			data["currentLanes"].as_array().map(Vec::len)
+		);
+		assert_eq!(
+			fingerprint["presentation"]["current_lane_cards"]
+				.as_array()
+				.map(Vec::len),
+			fingerprint["currentLanes"].as_array().map(Vec::len)
+		);
 	}
 
 	fn assert_run_activity_current_lane(data_lane: &Value, fingerprint_lane: &Value) {
@@ -1127,6 +1179,20 @@ fn read_websocket_json_until(
 
 	assert_run_activity_envelope(&payload, data, &fingerprint);
 	assert_run_activity_current_lane(&data["currentLanes"][0], &fingerprint["currentLanes"][0]);
+
+	assert_eq!(data["presentation"]["current_lane_cards"][0]["run_id"], "run-1");
+	assert_eq!(
+		data["presentation"]["current_lane_cards"][0]["title"],
+		"PUB-101"
+	);
+	assert_eq!(
+		data["presentation"]["current_lane_cards"][0]["assigned_account_fingerprints"][0],
+		"acct-1"
+	);
+	assert_eq!(
+		fingerprint["presentation"]["current_lane_cards"][0]["run"]["run_id"],
+		"run-1"
+	);
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -1201,6 +1267,15 @@ fn operator_dashboard_run_activity_event_keeps_unleased_app_server_current_lane(
 	assert_eq!(current_lanes[0]["process_alive"], false);
 	assert_eq!(current_lanes[0]["process_liveness_reason"], "host_boot_id_mismatch");
 	assert_eq!(current_lanes[0]["thread_status"], "active");
+	assert_eq!(
+		data["presentation"]["current_lane_cards"].as_array().map(Vec::len),
+		Some(1)
+	);
+	assert_eq!(data["presentation"]["current_lane_cards"][0]["run_id"], "run-1");
+	assert_eq!(
+		data["presentation"]["current_lane_cards"][0]["run"]["thread_status"],
+		"active"
+	);
 }
 
 #[test]
@@ -1276,6 +1351,16 @@ fn operator_dashboard_run_activity_event_demotes_cleanup_complete_unleased_curre
 	assert_eq!(data["currentLaneScope"], "complete");
 	assert_eq!(data["currentLanes"].as_array().map(Vec::len), Some(0));
 	assert_eq!(fingerprint["currentLanes"].as_array().map(Vec::len), Some(0));
+	assert_eq!(
+		data["presentation"]["current_lane_cards"].as_array().map(Vec::len),
+		Some(0)
+	);
+	assert_eq!(
+		fingerprint["presentation"]["current_lane_cards"]
+			.as_array()
+			.map(Vec::len),
+		Some(0)
+	);
 	assert!(!data.to_string().contains("xy-952-attempt-2-1781598614"));
 }
 
@@ -1418,10 +1503,37 @@ fn dashboard_event_hub_caches_and_filters_last_run_activity_event() {
 				"issue_id": "issue-2",
 				"run_id": "run-2",
 			},
-		],
-		"currentLanesComplete": true,
-		"currentLaneScope": "complete",
-	});
+			],
+			"currentLanesComplete": true,
+			"currentLaneScope": "complete",
+			"presentation": {
+				"schema": "decodex.operator.presentation/1",
+				"current_lane_cards": [
+					{
+						"id": "run-1",
+						"run_id": "run-1",
+						"issue_id": "issue-1",
+						"project_id": "decodex",
+						"run": {
+							"project_id": "decodex",
+							"issue_id": "issue-1",
+							"run_id": "run-1"
+						}
+					},
+					{
+						"id": "run-2",
+						"run_id": "run-2",
+						"issue_id": "issue-2",
+						"project_id": "decodex",
+						"run": {
+							"project_id": "decodex",
+							"issue_id": "issue-2",
+							"run_id": "run-2"
+						}
+					}
+				]
+			},
+		});
 	let subscription = DashboardClientSubscription {
 		project_id: Some(String::from("decodex")),
 		issue_id: Some(String::from("issue-1")),
@@ -1443,6 +1555,14 @@ fn dashboard_event_hub_caches_and_filters_last_run_activity_event() {
 	assert_eq!(current_lanes[0]["issue_id"], "issue-1");
 	assert_eq!(event.payload["currentLanesComplete"], true);
 	assert_eq!(event.payload["currentLaneScope"], "filtered");
+
+	let current_lane_cards = event.payload["presentation"]["current_lane_cards"]
+		.as_array()
+		.expect("filtered current lane cards should be an array");
+
+	assert_eq!(current_lane_cards.len(), 1);
+	assert_eq!(current_lane_cards[0]["issue_id"], "issue-1");
+	assert_eq!(current_lane_cards[0]["run"]["run_id"], "run-1");
 }
 
 #[test]
@@ -1455,16 +1575,32 @@ fn dashboard_event_hub_filtered_empty_complete_event_clears_subscribed_overlay()
 			"account_selector": null,
 		},
 		"accounts": [],
-		"currentLanes": [
-			{
-				"project_id": "decodex",
-				"issue_id": "issue-2",
-				"run_id": "run-2",
+			"currentLanes": [
+				{
+					"project_id": "decodex",
+					"issue_id": "issue-2",
+					"run_id": "run-2",
+				},
+			],
+			"currentLanesComplete": true,
+			"currentLaneScope": "complete",
+			"presentation": {
+				"schema": "decodex.operator.presentation/1",
+				"current_lane_cards": [
+					{
+						"id": "run-2",
+						"run_id": "run-2",
+						"issue_id": "issue-2",
+						"project_id": "decodex",
+						"run": {
+							"project_id": "decodex",
+							"issue_id": "issue-2",
+							"run_id": "run-2"
+						}
+					}
+				]
 			},
-		],
-		"currentLanesComplete": true,
-		"currentLaneScope": "complete",
-	});
+		});
 	let subscription = DashboardClientSubscription {
 		project_id: Some(String::from("decodex")),
 		issue_id: Some(String::from("issue-1")),
@@ -1483,6 +1619,12 @@ fn dashboard_event_hub_filtered_empty_complete_event_clears_subscribed_overlay()
 	assert!(current_lanes.is_empty());
 	assert_eq!(event.payload["currentLanesComplete"], true);
 	assert_eq!(event.payload["currentLaneScope"], "filtered");
+	assert!(
+		event.payload["presentation"]["current_lane_cards"]
+			.as_array()
+			.expect("filtered current lane cards should be an array")
+			.is_empty()
+	);
 }
 
 #[test]
@@ -1544,6 +1686,14 @@ fn operator_dashboard_run_activity_event_includes_disabled_project_current_lanes
 	assert_eq!(current_lanes[0]["project_display_name"], "hack-ink/pubfi-mono-v2");
 	assert_eq!(data["currentLanesComplete"], true);
 	assert_eq!(data["currentLaneScope"], "complete");
+	assert_eq!(
+		data["presentation"]["current_lane_cards"].as_array().map(Vec::len),
+		Some(1)
+	);
+	assert_eq!(
+		data["presentation"]["current_lane_cards"][0]["run_id"],
+		"run-disabled-active"
+	);
 }
 
 #[test]
