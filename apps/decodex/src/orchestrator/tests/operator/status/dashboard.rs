@@ -1515,7 +1515,8 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("`${project.attention_count ?? 0} attention`"));
 	assert!(response.contains("`${cleanup} cleanup`"));
 	assert!(response.contains("run.process_alive !== false"));
-	assert!(response.contains("running_lane_count: runningCountsByProject.get(project.project_id) || 0"));
+	assert!(response.contains("return project.running_lane_count ?? project.current_lane_count ?? 0;"));
+	assert!(response.contains("run: derived.currentLaneCount > 0,"));
 	assert!(!response.contains("const running = project.current_lane_count ?? 0;"));
 	assert!(!response.contains("`${project.current_lane_count ?? 0} running`"));
 	assert!(response.contains("projectNumber(project.cleanup_blocked_count)"));
@@ -1863,22 +1864,15 @@ fn operator_dashboard_uses_shared_protocol_activity_summary() {
 }
 
 #[test]
-fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
+fn operator_dashboard_run_activity_consumes_server_presentation() {
 	let response = dashboard_response();
 
-	assert!(response.contains("function mergeDashboardRunRecord(snapshotRun, activityRun)"));
-	assert!(
-		response.contains("function mergeDashboardCurrentLanes(snapshot, currentLaneRows, currentLanesComplete = true)")
-	);
-	assert!(response.contains("function dashboardRunTitleIsOperationFallback(run)"));
-	assert!(
-		response.contains("const operationFallback = displayToken(run.current_operation || run.run_phase || run.phase);")
-	);
-	assert!(response.contains("!(fallback !== \"unknown\" && title === operationFallback)"));
-	assert!(response.contains("return fallback !== \"unknown\" ? fallback : operationFallback;"));
-	assert!(response.contains("let dashboardLiveCurrentLanes = [];"));
+	assert!(response.contains("function presentationCurrentLaneCards(presentation)"));
+	assert!(response.contains("function snapshotCurrentLaneCards(snapshot)"));
+	assert!(response.contains("function currentLaneRunsFromCards(cards)"));
+	assert!(response.contains("function currentLaneCardToneClass(card, run)"));
+	assert!(response.contains("let dashboardLivePresentation = null;"));
 	assert!(response.contains("let dashboardLiveRunActivitySeen = false;"));
-	assert!(response.contains("let dashboardLiveCurrentLanesComplete = true;"));
 	assert!(!response.contains("let dashboardLiveAccounts = null;"));
 	assert!(response.contains("let dashboardLiveAccountControl = null;"));
 	assert!(response
@@ -1888,40 +1882,29 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("function clearDashboardLiveRunActivityOverlay()"));
 	assert!(response.contains("function snapshotWithLiveRunActivity(snapshot, options = {})"));
 	assert!(response.contains("if (!dashboardLiveRunActivityHasOverlay(options))"));
-	assert!(response.contains("\"issue_identifier\""));
-	assert!(response.contains("\"title\""));
 	assert!(!response.contains("field(\"Author\","));
 	assert!(!response.contains("\"author\",\n"));
-	assert!(response.contains("activityPayload.accountControl"));
+	assert!(response.contains("payload.accountControl"));
 	assert!(!response.contains("activityPayload.accounts"));
 	assert!(!response.contains("payload.accounts"));
 	assert!(!response.contains("dashboardLiveAccounts"));
 	assert!(response.contains("dashboardLiveAccountControl ="));
-	assert!(response.contains("\"child_agent_activity\""));
-	assert!(response.contains("\"protocol_activity\""));
-	assert!(response.contains("!dashboardRunFieldHasValue(activityRun[key])"));
-	assert!(response.contains("merged[key] = snapshotRun[key];"));
-	assert!(response.contains("dashboardRunTitleIsOperationFallback(activityRun)"));
-	assert!(response.contains("merged.title = snapshotRun.title;"));
-	assert!(
-		response.contains("const currentLanesComplete = activityPayload.currentLanesComplete !== false;")
-	);
-	assert!(
-		response.contains("const mergedCurrentLanes = mergeDashboardCurrentLanes(\n\t\t\t\t\tsnapshot,\n\t\t\t\t\tcurrentLaneRows,\n\t\t\t\t\tcurrentLanesComplete,\n\t\t\t\t);")
-	);
-	assert!(response.contains("dashboardLiveCurrentLanes = payload.currentLanes"));
+	assert!(response.contains("dashboardLivePresentation = {"));
+	assert!(response.contains("current_lane_cards: presentationCurrentLaneCards(payload.presentation),"));
 	assert!(response.contains("dashboardLiveRunActivitySeen = true;"));
-	assert!(response.contains("dashboardLiveCurrentLanesComplete ="));
 	assert!(response.contains("clearDashboardLiveRunActivityOverlay();"));
 	assert!(response.contains("snapshot: payload.snapshot,"));
 	assert!(response.contains(
 		"snapshot: snapshotWithLiveRunActivity(lastDashboardRender.snapshot, {\n\t\t\t\t\t\tincludeCompletedEmpty: true,\n\t\t\t\t\t}),"
 	));
 	assert!(response.contains("clearDashboardLiveRunActivityOverlayIfCompleteEmpty();"));
-	assert!(response.contains("account_control: accountControl,"));
+	assert!(response.contains("account_control:"));
 	assert!(!response.contains("accounts: dashboardLiveAccounts"));
-	assert!(response.contains("current_lanes: mergedCurrentLanes,"));
-	assert!(!response.contains("current_lanes: currentLaneRows,"));
+	assert!(response.contains("current_lanes: liveRuns,"));
+	assert!(response.contains("presentation: dashboardLivePresentation,"));
+	assert!(!response.contains("function mergeDashboardRunRecord"));
+	assert!(!response.contains("function mergeDashboardCurrentLanes"));
+	assert!(!response.contains("function mergeDashboardRunActivity"));
 }
 
 #[test]
