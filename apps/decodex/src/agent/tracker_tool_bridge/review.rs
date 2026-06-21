@@ -11,7 +11,7 @@ use crate::{
 		REVIEW_REPAIR_PUBLIC_SUMMARY_FALLBACK, ReviewExecutionMode, ReviewHandoffContext,
 		ReviewHandoffWritebackFailed, ReviewPolicyPhase, ReviewPolicyState, ReviewPolicyStatus,
 		ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, ScopeArgs,
-		TrackerToolBridge,
+		TrackerToolBridge, tools::REVIEW_COMPLETION_INTENT_EVENT_TYPE,
 	},
 	prelude::eyre,
 	state::{
@@ -54,6 +54,38 @@ impl<'a> TrackerToolBridge<'a> {
 		})?;
 
 		state_store.upsert_review_handoff_marker(&review_context.service_id, &self.issue.id, marker)
+	}
+
+	fn persist_review_handoff_marker_for_handoff(
+		&self,
+		review_context: &ReviewHandoffContext,
+		marker: &ReviewHandoffMarker,
+	) -> crate::prelude::Result<()> {
+		let state_store = self.state_store.ok_or_else(|| {
+			eyre::eyre!(
+				"Runtime state store is required to persist review handoff for issue `{}`.",
+				self.issue.identifier
+			)
+		})?;
+
+		if let Some(existing) = state_store.review_handoff_marker(
+			&review_context.service_id,
+			&self.issue.id,
+			&review_context.branch_name,
+		)? && !review_handoff_marker_lineage_matches(&existing, marker)
+		{
+			eyre::bail!(
+				"Existing review lifecycle record for issue `{}` branch `{}` points at PR `{}` head `{}`, but the current review handoff intent points at PR `{}` head `{}`. Use explicit review-handoff recovery before rebinding this lane.",
+				self.issue.identifier,
+				review_context.branch_name,
+				existing.pr_url(),
+				existing.pr_head_oid(),
+				marker.pr_url(),
+				marker.pr_head_oid()
+			);
+		}
+
+		self.persist_review_handoff_marker(review_context, marker)
 	}
 
 	fn persist_review_orchestration_marker(
@@ -194,6 +226,12 @@ impl<'a> TrackerToolBridge<'a> {
 				pull_request.head_repository_name,
 				local_repo.repository_owner,
 				local_repo.repository_name
+			));
+		}
+		if pull_request.url != pr_url {
+			return Err(format!(
+				"Pull request readback returned `{}` while validating requested PR `{}`.",
+				pull_request.url, pr_url
 			));
 		}
 		if pull_request.base_ref_name != local_repo.default_branch {
@@ -361,6 +399,99 @@ impl<'a> TrackerToolBridge<'a> {
 			== self.workflow.frontmatter().tracker().in_progress_state()
 	}
 
+	pub(super) fn persist_terminal_review_handoff_marker(
+		&self,
+		review_context: &ReviewHandoffContext,
+	) -> Result<(), String> {
+		let pending_review_handoff = {
+			let pending_review_handoff = self.pending_review_completion.borrow();
+			let Some(PendingReviewCompletion::Handoff(pending_review_handoff)) =
+				pending_review_handoff.as_ref()
+			else {
+				return Err(format!(
+					"`issue_terminal_finalize` cannot persist review handoff lifecycle state for issue `{}` because no PR-backed review handoff is pending.",
+					self.issue.identifier
+				));
+			};
+
+			pending_review_handoff.clone()
+		};
+		let pull_request =
+			self.validate_review_action_pr(review_context, &pending_review_handoff.pr_url)?;
+
+		self.require_matching_review_completion_intent(
+			review_context,
+			RunCompletionDisposition::ReviewHandoff,
+			&pull_request,
+		)?;
+
+		let handoff_marker = review_handoff_marker_from_pull_request(review_context, &pull_request);
+
+		self.persist_review_handoff_marker_for_handoff(review_context, &handoff_marker).map_err(
+			|error| {
+				format!(
+					"Failed to persist durable review handoff lifecycle marker for issue `{}`: {error}",
+					self.issue.identifier
+				)
+			},
+		)
+	}
+
+	fn require_matching_review_completion_intent(
+		&self,
+		review_context: &ReviewHandoffContext,
+		path: RunCompletionDisposition,
+		pull_request: &PullRequestDetails,
+	) -> Result<(), String> {
+		let state_store = self.state_store.ok_or_else(|| {
+			format!(
+				"`{}` requires the Decodex runtime state store for issue `{}`.",
+				self.required_pr_completion_tool_name(),
+				self.issue.identifier
+			)
+		})?;
+		let events = state_store
+			.list_private_execution_events(
+				&review_context.service_id,
+				&self.issue.id,
+				&review_context.run_id,
+				review_context.attempt_number,
+			)
+			.map_err(|error| {
+				format!(
+					"Failed to read private review completion intent for issue `{}`: {error}",
+					self.issue.identifier
+				)
+			})?;
+		let exact_intent_exists = events.iter().rev().any(|event| {
+			let payload = event.payload();
+
+			event.event_type() == REVIEW_COMPLETION_INTENT_EVENT_TYPE
+				&& payload.get("path").and_then(Value::as_str) == Some(path.as_str())
+				&& payload.get("mode").and_then(Value::as_str) == Some(review_context.mode.as_str())
+				&& payload.get("branch").and_then(Value::as_str)
+					== Some(review_context.branch_name.as_str())
+				&& payload.get("worktree_path").and_then(Value::as_str)
+					== Some(review_context.worktree_path.as_str())
+				&& payload.get("pr_url").and_then(Value::as_str) == Some(pull_request.url.as_str())
+				&& payload.get("pr_base_ref").and_then(Value::as_str)
+					== Some(pull_request.base_ref_name.as_str())
+				&& payload.get("pr_head_ref").and_then(Value::as_str)
+					== Some(pull_request.head_ref_name.as_str())
+				&& payload.get("pr_head_oid").and_then(Value::as_str)
+					== Some(pull_request.head_ref_oid.as_str())
+		});
+
+		if exact_intent_exists {
+			return Ok(());
+		}
+
+		Err(format!(
+			"`issue_terminal_finalize` requires an exact private review completion intent for issue `{}` before writing local review handoff lifecycle state.",
+			self.issue.identifier
+		))
+	}
+
 	pub(crate) fn completion_disposition(
 		&self,
 	) -> crate::prelude::Result<RunCompletionDisposition> {
@@ -480,15 +611,7 @@ impl<'a> TrackerToolBridge<'a> {
 			&pull_request,
 			success_state,
 		)?;
-		let handoff_marker = ReviewHandoffMarker::new(
-			review_context.run_id.clone(),
-			review_context.attempt_number,
-			review_context.branch_name.clone(),
-			pull_request.url.clone(),
-			pull_request.base_ref_name.clone(),
-			pull_request.head_ref_name.clone(),
-			pull_request.head_ref_oid.clone(),
-		);
+		let handoff_marker = review_handoff_marker_from_pull_request(review_context, &pull_request);
 		let orchestration_marker = ReviewOrchestrationMarker::new(
 			review_context.run_id.clone(),
 			review_context.attempt_number,
@@ -503,6 +626,9 @@ impl<'a> TrackerToolBridge<'a> {
 			0,
 			None,
 		);
+
+		self.persist_review_handoff_marker_for_handoff(review_context, &handoff_marker)?;
+		self.persist_review_orchestration_marker(review_context, &orchestration_marker)?;
 
 		if let Err(error) = tracker::create_prepared_linear_execution_event_comment(
 			self.tracker,
@@ -519,8 +645,6 @@ impl<'a> TrackerToolBridge<'a> {
 		}
 
 		self.persist_linear_execution_event(&projection.record)?;
-		self.persist_review_handoff_marker(review_context, &handoff_marker)?;
-		self.persist_review_orchestration_marker(review_context, &orchestration_marker)?;
 
 		if let Err(error) = self.tracker.update_issue_state(&self.issue.id, success_state_id) {
 			return Err(Report::new(ReviewHandoffWritebackFailed {
@@ -1090,6 +1214,32 @@ fn review_policy_stop_fingerprint(details_json: &str) -> Option<String> {
 		.get("stop_fingerprint")?
 		.as_str()
 		.map(str::to_owned)
+}
+
+fn review_handoff_marker_from_pull_request(
+	review_context: &ReviewHandoffContext,
+	pull_request: &PullRequestDetails,
+) -> ReviewHandoffMarker {
+	ReviewHandoffMarker::new(
+		review_context.run_id.clone(),
+		review_context.attempt_number,
+		review_context.branch_name.clone(),
+		pull_request.url.clone(),
+		pull_request.base_ref_name.clone(),
+		pull_request.head_ref_name.clone(),
+		pull_request.head_ref_oid.clone(),
+	)
+}
+
+fn review_handoff_marker_lineage_matches(
+	existing: &ReviewHandoffMarker,
+	marker: &ReviewHandoffMarker,
+) -> bool {
+	existing.branch_name() == marker.branch_name()
+		&& existing.pr_url() == marker.pr_url()
+		&& existing.target_base_ref_name() == marker.target_base_ref_name()
+		&& existing.pr_head_ref_name() == marker.pr_head_ref_name()
+		&& existing.pr_head_oid() == marker.pr_head_oid()
 }
 
 fn linear_execution_identity<'a>(

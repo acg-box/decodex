@@ -8864,7 +8864,11 @@ fn operator_run_terminal_finalize_projection(
 		"review_handoff" => Some(OperatorTerminalFinalizeProjection {
 			status: "review_handoff_pending",
 			phase: "terminal_pending",
-			wait_reason: "review_handoff_writeback",
+			wait_reason: review_handoff_terminal_finalize_wait_reason(
+				loop_evidence,
+				run,
+				events,
+			),
 			current_operation: RUN_OPERATION_REVIEW_WRITEBACK,
 		}),
 		"review_repair" => Some(OperatorTerminalFinalizeProjection {
@@ -8887,6 +8891,34 @@ fn operator_run_terminal_finalize_projection(
 		}),
 		_ => None,
 	}
+}
+
+fn review_handoff_terminal_finalize_wait_reason(
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+	run: &ProjectRunStatus,
+	events: &[PrivateExecutionEvent],
+) -> &'static str {
+	let Some(intent) = events.iter().rev().find(|event| {
+		let payload = event.payload();
+
+		event.event_type() == "review_completion_intent"
+			&& payload.get("path").and_then(Value::as_str) == Some("review_handoff")
+			&& payload.get("mode").and_then(Value::as_str) == Some("handoff")
+			&& payload.get("pr_url").and_then(Value::as_str).is_some()
+			&& payload.get("pr_head_oid").and_then(Value::as_str).is_some()
+			&& payload.get("worktree_path").and_then(Value::as_str).is_some()
+	}) else {
+		return "review_handoff_writeback";
+	};
+	let Some(branch) = intent.payload().get("branch").and_then(Value::as_str) else {
+		return "review_handoff_writeback";
+	};
+
+	if loop_evidence.review_lifecycle_record(run.issue_id(), branch).is_none() {
+		return "review_handoff_writeback_missing_lifecycle_marker";
+	}
+
+	"review_handoff_writeback"
 }
 
 fn operator_run_continuation_recovery_status(
