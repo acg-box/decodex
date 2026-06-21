@@ -6,6 +6,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 	let warnings: [String]
 	let projects: [OperatorProjectStatus]
 	let currentLanes: [OperatorRunStatus]
+	let presentation: OperatorSnapshotPresentation?
 	let queuedCandidates: [OperatorQueuedIssueStatus]
 	let postReviewLanes: [OperatorPostReviewLaneStatus]
 
@@ -89,76 +90,18 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 		currentLanes(for: account).filter(\.countsAsRunning).count
 	}
 
-	func mergingRunActivity(
-		_ activityRuns: [OperatorRunStatus],
-		currentLanesComplete: Bool = true
-	) -> OperatorSnapshotResponse {
-		let activityRunsByID = activityRuns.reduce(into: [String: OperatorRunStatus]()) { runsByID, run in
-			runsByID[run.runID] = run
-		}
-		let snapshotRunsByID = currentLanes.reduce(into: [String: OperatorRunStatus]()) { runsByID, run in
-			runsByID[run.runID] = run
-		}
-		let mergedSnapshotRuns = currentLanes.compactMap { snapshotRun -> OperatorRunStatus? in
-			if let activityRun = activityRunsByID[snapshotRun.runID] {
-				return snapshotRun.mergingActivity(activityRun)
-			}
-			if currentLanesComplete {
-				return nil
-			}
-
-			return snapshotRun.shouldRetainDuringPartialRunActivity ? snapshotRun : nil
-		}
-		let newActivityRuns = activityRuns.filter { activityRun in
-			snapshotRunsByID[activityRun.runID] == nil
-		}
-		let mergedRuns = mergedSnapshotRuns + newActivityRuns
-		let currentLaneCountsByProject = Dictionary(grouping: mergedRuns.compactMap(\.projectID)) { $0 }
-			.mapValues(\.count)
-		let runningCountsByProject = Dictionary(
-			grouping: mergedRuns.filter(\.countsAsRunning).compactMap(\.projectID)
-		) { $0 }
-			.mapValues(\.count)
-		let mergedProjects = projects.map { project in
-			guard let projectID = project.projectID else {
-				return project
-			}
-
-			return project.withRunCounts(
-				currentLanes: currentLaneCountsByProject[projectID] ?? 0,
-				running: runningCountsByProject[projectID] ?? 0
-			)
-		}
-
-		return OperatorSnapshotResponse(
-			warnings: warnings,
-			projects: mergedProjects,
-			currentLanes: mergedRuns,
-			queuedCandidates: queuedCandidates,
-			postReviewLanes: postReviewLanes
-		)
-	}
-
-	static func currentLanesOnly(_ currentLanes: [OperatorRunStatus]) -> OperatorSnapshotResponse {
-		OperatorSnapshotResponse(
-			warnings: [],
-			projects: [],
-			currentLanes: currentLanes,
-			queuedCandidates: [],
-			postReviewLanes: []
-		)
-	}
-
 	private init(
 		warnings: [String],
 		projects: [OperatorProjectStatus],
 		currentLanes: [OperatorRunStatus],
+		presentation: OperatorSnapshotPresentation?,
 		queuedCandidates: [OperatorQueuedIssueStatus],
 		postReviewLanes: [OperatorPostReviewLaneStatus]
 	) {
 		self.warnings = warnings
 		self.projects = projects
 		self.currentLanes = currentLanes
+		self.presentation = presentation
 		self.queuedCandidates = queuedCandidates
 		self.postReviewLanes = postReviewLanes
 	}
@@ -172,6 +115,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 		case warnings
 		case projects
 		case currentLanes = "current_lanes"
+		case presentation
 		case queuedCandidates = "queued_candidates"
 		case postReviewLanes = "post_review_lanes"
 	}
@@ -182,6 +126,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 		warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
 		projects = try container.decodeIfPresent([OperatorProjectStatus].self, forKey: .projects) ?? []
 		currentLanes = try container.decodeIfPresent([OperatorRunStatus].self, forKey: .currentLanes) ?? []
+		presentation = try container.decodeIfPresent(OperatorSnapshotPresentation.self, forKey: .presentation)
 		queuedCandidates = try container.decodeIfPresent(
 			[OperatorQueuedIssueStatus].self,
 			forKey: .queuedCandidates
@@ -563,14 +508,6 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			|| accounts.contains { $0.isSelected && $0.matches(account) }
 	}
 
-	var shouldRetainDuringPartialRunActivity: Bool {
-		runLease == true
-			|| processAlive == true
-			|| hasRecentAppServerExecution
-			|| status == "running"
-			|| phase == "executing"
-	}
-
 	var countsAsRunning: Bool {
 		if let countsAsRunningSnapshot {
 			return countsAsRunningSnapshot
@@ -626,66 +563,6 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 
 				return idleForSeconds >= 300
 			}
-	}
-
-	func mergingActivity(_ activity: OperatorRunStatus) -> OperatorRunStatus {
-		OperatorRunStatus(
-			projectID: activity.projectID ?? projectID,
-			projectDisplayName: activity.projectDisplayName ?? projectDisplayName,
-			runID: activity.runID,
-			issueID: activity.issueID ?? issueID,
-			issueIdentifier: activity.issueIdentifier ?? issueIdentifier,
-			title: mergedTitle(from: activity),
-			status: activity.status ?? status,
-			attemptStatus: activity.attemptStatus ?? attemptStatus,
-			attemptNumber: activity.attemptNumber ?? attemptNumber,
-			phase: activity.phase ?? phase,
-			runPhase: activity.runPhase ?? runPhase,
-			waitReason: activity.waitReason ?? waitReason,
-			currentOperation: activity.currentOperation ?? currentOperation,
-			activeGoalPhase: activity.activeGoalPhase ?? activeGoalPhase,
-			publicProgressPhase: activity.publicProgressPhase ?? publicProgressPhase,
-			threadStatus: activity.threadStatus ?? threadStatus,
-			threadActiveFlags: activity.threadActiveFlags.isEmpty ? threadActiveFlags : activity.threadActiveFlags,
-			idleForSeconds: activity.idleForSeconds ?? idleForSeconds,
-			protocolIdleForSeconds: activity.protocolIdleForSeconds ?? protocolIdleForSeconds,
-			updatedAt: activity.updatedAt ?? updatedAt,
-			lastProgressAt: activity.lastProgressAt ?? lastProgressAt,
-			nextRetryAt: activity.nextRetryAt ?? nextRetryAt,
-			lastEventType: activity.lastEventType ?? lastEventType,
-			eventCount: activity.eventCount ?? eventCount,
-			executionLiveness: activity.executionLiveness ?? executionLiveness,
-			hasFreshExecutionSnapshot: activity.hasFreshExecutionSnapshot ?? hasFreshExecutionSnapshot,
-			countsAsRunningSnapshot: activity.countsAsRunningSnapshot ?? countsAsRunningSnapshot,
-			needsAttentionSnapshot: activity.needsAttentionSnapshot ?? needsAttentionSnapshot,
-			processAlive: activity.processAlive ?? processAlive,
-			processLivenessReason: activity.processLivenessReason ?? processLivenessReason,
-			runLease: activity.runLease ?? runLease,
-			branchName: activity.branchName ?? branchName,
-			worktreePath: activity.worktreePath ?? worktreePath,
-			suspectedStall: activity.suspectedStall || suspectedStall,
-			childAgentActivity: activity.childAgentActivity ?? childAgentActivity,
-			lifecycleMetrics: activity.lifecycleMetrics ?? lifecycleMetrics,
-			continuationRecovery: activity.continuationRecovery ?? continuationRecovery,
-			account: activity.account ?? account,
-			accounts: activity.accounts.isEmpty ? accounts : activity.accounts
-		)
-	}
-
-	private func mergedTitle(from activity: OperatorRunStatus) -> String? {
-		if let title = activity.title, title.isEmpty == false, activity.titleIsOperationFallback == false {
-			return title
-		}
-
-		return title ?? activity.title
-	}
-
-	private var titleIsOperationFallback: Bool {
-		guard let title, title.isEmpty == false else {
-			return false
-		}
-
-		return title == rawDisplayToken(currentOperation ?? phase ?? "")
 	}
 
 	enum CodingKeys: String, CodingKey {
@@ -917,8 +794,7 @@ struct OperatorDashboardSocketPayload: Decodable, Sendable {
 	let emittedAtUnixEpoch: Int64?
 	let snapshotPublishedAtUnixEpoch: Int64?
 	let snapshot: OperatorSnapshotResponse?
-	let currentLanes: [OperatorRunStatus]?
-	let currentLanesComplete: Bool?
+	let presentation: OperatorSnapshotPresentation?
 
 	var emittedAt: Date? {
 		date(fromUnixEpoch: emittedAtUnixEpoch)
@@ -932,22 +808,7 @@ struct OperatorDashboardSocketPayload: Decodable, Sendable {
 		case emittedAtUnixEpoch
 		case snapshotPublishedAtUnixEpoch
 		case snapshot
-		case currentLanes
-		case currentLanesComplete
-	}
-}
-
-struct OperatorRunActivitySnapshot: Sendable {
-	let currentLanes: [OperatorRunStatus]
-	let currentLanesComplete: Bool
-	let emittedAt: Date
-
-	var shouldPersistAsSnapshotOverlay: Bool {
-		currentLanes.isEmpty == false || currentLanesComplete == false
-	}
-
-	func merging(into snapshot: OperatorSnapshotResponse) -> OperatorSnapshotResponse {
-		snapshot.mergingRunActivity(currentLanes, currentLanesComplete: currentLanesComplete)
+		case presentation
 	}
 }
 
@@ -1111,6 +972,101 @@ struct OperatorRunAccountSummary: Decodable, Sendable {
 		email = try container.decodeIfPresent(String.self, forKey: .email)
 			?? container.decodeIfPresent(String.self, forKey: .accountEmail)
 		status = try container.decodeIfPresent(String.self, forKey: .status)
+	}
+}
+
+struct OperatorSnapshotPresentation: Decodable, Sendable {
+	let schema: String?
+	let currentLaneCards: [OperatorCurrentLaneCard]
+
+	enum CodingKeys: String, CodingKey {
+		case schema
+		case currentLaneCards = "current_lane_cards"
+	}
+
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+
+		schema = try container.decodeIfPresent(String.self, forKey: .schema)
+		currentLaneCards = try container.decodeIfPresent(
+			[OperatorCurrentLaneCard].self,
+			forKey: .currentLaneCards
+		) ?? []
+	}
+}
+
+struct OperatorCurrentLaneCard: Decodable, Identifiable, Sendable {
+	let id: String
+	let runID: String
+	let issueID: String?
+	let issueIdentifier: String?
+	let projectID: String?
+	let title: String
+	let detail: String
+	let tone: String
+	let countsAsRunning: Bool
+	let needsAttention: Bool
+	let isWaiting: Bool
+	let assignedAccountFingerprints: [String]
+	let assignedAccountEmails: [String]
+	let run: OperatorRunStatus
+
+	func isAssigned(to account: CodexAccount) -> Bool {
+		if assignedAccountFingerprints.contains(where: { $0 == account.accountFingerprint }) {
+			return true
+		}
+		guard let accountEmail = account.email else {
+			return false
+		}
+
+		return assignedAccountEmails.contains {
+			$0.caseInsensitiveCompare(accountEmail) == .orderedSame
+		}
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case id
+		case runID = "run_id"
+		case issueID = "issue_id"
+		case issueIdentifier = "issue_identifier"
+		case projectID = "project_id"
+		case title
+		case detail
+		case tone
+		case countsAsRunning = "counts_as_running"
+		case needsAttention = "needs_attention"
+		case isWaiting = "is_waiting"
+		case assignedAccountFingerprints = "assigned_account_fingerprints"
+		case assignedAccountEmails = "assigned_account_emails"
+		case run
+	}
+
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+
+		run = try container.decode(OperatorRunStatus.self, forKey: .run)
+		runID = try container.decodeIfPresent(String.self, forKey: .runID) ?? run.runID
+		id = try container.decodeIfPresent(String.self, forKey: .id) ?? runID
+		issueID = try container.decodeIfPresent(String.self, forKey: .issueID) ?? run.issueID
+		issueIdentifier = try container.decodeIfPresent(String.self, forKey: .issueIdentifier)
+			?? run.issueIdentifier
+		projectID = try container.decodeIfPresent(String.self, forKey: .projectID) ?? run.projectID
+		title = try container.decodeIfPresent(String.self, forKey: .title) ?? run.compactTitle
+		detail = try container.decodeIfPresent(String.self, forKey: .detail) ?? run.compactDetail
+		tone = try container.decodeIfPresent(String.self, forKey: .tone) ?? "running"
+		countsAsRunning = try container.decodeIfPresent(Bool.self, forKey: .countsAsRunning)
+			?? run.countsAsRunning
+		needsAttention = try container.decodeIfPresent(Bool.self, forKey: .needsAttention)
+			?? run.hasAttentionTone
+		isWaiting = try container.decodeIfPresent(Bool.self, forKey: .isWaiting) ?? run.isWaiting
+		assignedAccountFingerprints = try container.decodeIfPresent(
+			[String].self,
+			forKey: .assignedAccountFingerprints
+		) ?? []
+		assignedAccountEmails = try container.decodeIfPresent(
+			[String].self,
+			forKey: .assignedAccountEmails
+		) ?? []
 	}
 }
 

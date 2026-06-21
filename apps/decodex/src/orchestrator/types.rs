@@ -1258,8 +1258,8 @@ impl OperatorStateEndpoint {
 	}
 
 	fn publish_snapshot(&self, snapshot: &OperatorStatusSnapshot) -> crate::prelude::Result<()> {
-		let snapshot_json = serde_json::to_vec(snapshot)?;
-		let snapshot_value = serde_json::to_value(snapshot)?;
+		let snapshot_value = operator_snapshot_json_value(snapshot)?;
+		let snapshot_json = serde_json::to_vec(&snapshot_value)?;
 		let last_publish_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 		let mut guard = self
 			.snapshot

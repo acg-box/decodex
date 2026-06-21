@@ -520,470 +520,348 @@ final class AccountModelTests: XCTestCase {
 
 	@MainActor
 	func testOperatorRunActivityUsesStreamOrderOverSnapshotTimestamp() throws {
-		let account = makeAccount(
-			status: "available",
-			email: "copy@example.com",
-			accountFingerprint: "...123456"
-		)
 		let store = AccountStore()
 
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "snapshot",
 			payload: """
 			{
-			  "snapshotPublishedAtUnixEpoch": 20,
-			  "snapshot": {
-			    "current_lanes": [
-			      {
-			        "run_id": "run-new",
-			        "issue_identifier": "XY-672",
-			        "account": {
-			          "email": "copy@example.com",
-			          "account_fingerprint": "...123456"
-			        }
-			      }
-			    ]
-			  }
-			}
+				  "snapshotPublishedAtUnixEpoch": 20,
+				  "snapshot": {
+				    "current_lanes": [
+				      {
+				        "run_id": "run-new",
+				        "issue_identifier": "XY-672"
+				      }
+				    ],
+				    "presentation": {
+				      "current_lane_cards": [
+				        {
+				          "id": "run-new",
+				          "run_id": "run-new",
+				          "title": "XY-672",
+				          "detail": "agent_run",
+				          "tone": "running",
+				          "counts_as_running": true,
+				          "needs_attention": false,
+				          "is_waiting": false,
+				          "run": {
+				            "run_id": "run-new",
+				            "issue_identifier": "XY-672"
+				          }
+				        }
+				      ]
+				    }
+				  }
+				}
 			"""
 		))
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "runActivity",
-			payload: """
-			{
-			  "emittedAtUnixEpoch": 10,
-			  "currentLanesComplete": true,
-			  "currentLanes": [
-			    {
-			      "run_id": "run-old",
-			      "issue_identifier": "PUB-1147",
-			      "account": {
-			        "email": "copy@example.com",
-			        "account_fingerprint": "...123456"
-			      }
-			    }
-			  ]
-			}
+				payload: """
+				{
+				  "emittedAtUnixEpoch": 10,
+				  "presentation": {
+				    "current_lane_cards": [
+				      {
+				        "id": "run-old",
+				        "run_id": "run-old",
+				        "title": "PUB-1147",
+				        "detail": "agent_run",
+				        "tone": "running",
+				        "counts_as_running": true,
+				        "needs_attention": false,
+				        "is_waiting": false,
+				        "run": {
+				          "run_id": "run-old",
+				          "issue_identifier": "PUB-1147"
+				        }
+				      }
+				    ]
+				  }
+				}
 			"""
 		))
 
-		XCTAssertEqual(store.operatorSnapshot?.currentLanes(for: account).map(\.runID), ["run-old"])
+		XCTAssertEqual(store.operatorSnapshot?.currentLanes.map(\.runID), ["run-new"])
+		XCTAssertEqual(store.operatorPresentation?.currentLaneCards.map(\.runID), ["run-old"])
 	}
 
 	@MainActor
-	func testRunActivityBeforeSnapshotCreatesVisibleCurrentLanes() throws {
-		let account = makeAccount(
-			status: "available",
-			email: "copy@example.com",
-			accountFingerprint: "...123456"
-		)
+	func testRunActivityBeforeSnapshotCreatesVisiblePresentation() throws {
 		let store = AccountStore()
 
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "runActivity",
-			payload: """
-			{
-			  "emittedAtUnixEpoch": 30,
-			  "currentLanesComplete": true,
-			  "currentLanes": [
-			    {
-			      "run_id": "run-live",
-			      "issue_identifier": "XY-672",
-			      "account": {
-			        "email": "copy@example.com",
-			        "account_fingerprint": "...123456"
-			      }
-			    }
-			  ]
-			}
+				payload: """
+				{
+				  "emittedAtUnixEpoch": 30,
+				  "presentation": {
+				    "current_lane_cards": [
+				      {
+				        "id": "run-live",
+				        "run_id": "run-live",
+				        "title": "XY-672",
+				        "detail": "agent_run",
+				        "tone": "running",
+				        "counts_as_running": true,
+				        "needs_attention": false,
+				        "is_waiting": false,
+				        "assigned_account_fingerprints": ["...123456"],
+				        "assigned_account_emails": ["copy@example.com"],
+				        "run": {
+				          "run_id": "run-live",
+				          "issue_identifier": "XY-672"
+				        }
+				      }
+				    ]
+				  }
+				}
 			"""
 		))
 
-		XCTAssertEqual(store.operatorSnapshot?.currentLanes.map(\.runID), ["run-live"])
-		XCTAssertEqual(store.operatorSnapshot?.currentLanes(for: account).map(\.runID), ["run-live"])
+		XCTAssertNil(store.operatorSnapshot)
+		XCTAssertEqual(store.operatorPresentation?.currentLaneCards.map(\.runID), ["run-live"])
 	}
 
-	func testPartialRunActivityPreservesSnapshotCurrentLanes() throws {
+	func testPresentationCardsAssignAccountsFromServerFields() throws {
 		let account = makeAccount(
 			status: "available",
 			email: "copy@example.com",
 			accountFingerprint: "...123456"
 		)
-		let snapshotPayload = """
+		let payload = """
 		{
-		  "current_lanes": [
+		  "current_lane_cards": [
 		    {
-		      "run_id": "run-689",
-		      "issue_identifier": "XY-689",
-		      "run_lease": true,
-		      "account": {
-		        "email": "copy@example.com",
-		        "account_fingerprint": "...123456"
-		      }
-		    },
-		    {
+		      "id": "run-690",
 		      "run_id": "run-690",
-		      "issue_identifier": "XY-690",
-		      "run_lease": true,
-		      "account": {
-		        "email": "copy@example.com",
-		        "account_fingerprint": "...123456"
+		      "title": "XY-690",
+		      "detail": "agent_run",
+		      "tone": "running",
+		      "counts_as_running": true,
+		      "needs_attention": false,
+		      "is_waiting": false,
+		      "assigned_account_fingerprints": ["...123456"],
+		      "assigned_account_emails": ["copy@example.com"],
+		      "run": {
+		        "run_id": "run-690",
+		        "issue_identifier": "XY-690"
 		      }
 		    }
 		  ]
 		}
 		""".data(using: .utf8)!
-		let activityPayload = """
-		{
-		  "currentLanesComplete": false,
-		  "currentLanes": [
-		    {
-		      "run_id": "run-690",
-		      "issue_identifier": "XY-690",
-		      "account": {
-		        "email": "copy@example.com",
-		        "account_fingerprint": "...123456"
-		      }
-		    }
-		  ]
-		}
-		""".data(using: .utf8)!
+		let presentation = try JSONDecoder().decode(OperatorSnapshotPresentation.self, from: payload)
+		let card = try XCTUnwrap(presentation.currentLaneCards.first)
 
-		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
-		let event = try JSONDecoder()
-			.decode(OperatorDashboardSocketPayload.self, from: activityPayload)
-		let overlay = OperatorRunActivitySnapshot(
-			currentLanes: event.currentLanes ?? [],
-			currentLanesComplete: event.currentLanesComplete ?? true,
-			emittedAt: Date(timeIntervalSince1970: 30)
-		)
-		let merged = overlay.merging(into: snapshot)
-
-		XCTAssertEqual(merged.currentLanes.map(\.runID), ["run-689", "run-690"])
-		XCTAssertEqual(merged.currentLanes(for: account).map(\.runID), ["run-689", "run-690"])
-	}
-
-	func testPartialRunActivityRecomputesProjectRunningLaneCounts() throws {
-		let snapshotPayload = """
-		{
-		  "projects": [
-		    {
-		      "project_id": "pubfi-platform",
-		      "current_lane_count": 1,
-		      "running_lane_count": 1
-		    }
-		  ],
-		  "current_lanes": [
-		    {
-		      "run_id": "run-stopped",
-		      "project_id": "pubfi-platform",
-		      "status": "running",
-		      "phase": "executing",
-		      "process_alive": false
-		    }
-		  ]
-		}
-		""".data(using: .utf8)!
-		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
-		let overlay = OperatorRunActivitySnapshot(
-			currentLanes: [],
-			currentLanesComplete: false,
-			emittedAt: Date(timeIntervalSince1970: 30)
-		)
-		let merged = overlay.merging(into: snapshot)
-		let project = try XCTUnwrap(merged.projects.first)
-
-		XCTAssertEqual(merged.currentLanes.map(\.runID), ["run-stopped"])
-		XCTAssertEqual(project.currentLaneCount, 1)
-		XCTAssertEqual(project.runningLaneCount, 0)
-		XCTAssertEqual(merged.currentLaneCount, 1)
-		XCTAssertEqual(merged.runningLaneCount, 0)
-	}
-
-	func testEmptyPartialRunActivityPreservesSnapshotCurrentLanes() throws {
-		let account = makeAccount(
-			status: "available",
-			email: "copy@example.com",
-			accountFingerprint: "...123456"
-		)
-		let snapshotPayload = """
-		{
-		  "current_lanes": [
-		    {
-		      "run_id": "run-689",
-		      "issue_identifier": "XY-689",
-		      "run_lease": true,
-		      "account": {
-		        "email": "copy@example.com",
-		        "account_fingerprint": "...123456"
-		      }
-		    }
-		  ]
-		}
-		""".data(using: .utf8)!
-		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
-		let overlay = OperatorRunActivitySnapshot(
-			currentLanes: [],
-			currentLanesComplete: false,
-			emittedAt: Date(timeIntervalSince1970: 30)
-		)
-		let merged = overlay.merging(into: snapshot)
-
-		XCTAssertEqual(merged.currentLanes.map(\.runID), ["run-689"])
-		XCTAssertEqual(merged.currentLanes(for: account).map(\.runID), ["run-689"])
-	}
-
-	func testCompleteRunActivityReplacesSnapshotCurrentLanes() throws {
-		let account = makeAccount(
-			status: "available",
-			email: "copy@example.com",
-			accountFingerprint: "...123456"
-		)
-		let snapshotPayload = """
-		{
-		  "current_lanes": [
-		    {
-		      "run_id": "run-689",
-		      "issue_identifier": "XY-689",
-		      "run_lease": true,
-		      "account": {
-		        "email": "copy@example.com",
-		        "account_fingerprint": "...123456"
-		      }
-		    },
-		    {
-		      "run_id": "run-690",
-		      "issue_identifier": "XY-690",
-		      "run_lease": true,
-		      "account": {
-		        "email": "copy@example.com",
-		        "account_fingerprint": "...123456"
-		      }
-		    }
-		  ]
-		}
-		""".data(using: .utf8)!
-		let activityPayload = """
-		{
-		  "currentLanesComplete": true,
-		  "currentLanes": [
-		    {
-		      "run_id": "run-690",
-		      "issue_identifier": "XY-690",
-		      "account": {
-		        "email": "copy@example.com",
-		        "account_fingerprint": "...123456"
-		      }
-		    }
-		  ]
-		}
-		""".data(using: .utf8)!
-
-		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
-		let event = try JSONDecoder()
-			.decode(OperatorDashboardSocketPayload.self, from: activityPayload)
-		let overlay = OperatorRunActivitySnapshot(
-			currentLanes: event.currentLanes ?? [],
-			currentLanesComplete: event.currentLanesComplete ?? true,
-			emittedAt: Date(timeIntervalSince1970: 30)
-		)
-		let merged = overlay.merging(into: snapshot)
-
-		XCTAssertEqual(merged.currentLanes.map(\.runID), ["run-690"])
-		XCTAssertEqual(merged.currentLanes(for: account).map(\.runID), ["run-690"])
-	}
-
-	func testNewerEmptyRunActivityClearsSnapshotRuns() throws {
-		let account = makeAccount(
-			status: "available",
-			email: "copy@example.com",
-			accountFingerprint: "...123456"
-		)
-		let snapshotPayload = """
-		{
-		  "current_lanes": [
-		    {
-		      "run_id": "run-old",
-		      "issue_identifier": "XY-672",
-		      "account": {
-		        "email": "copy@example.com",
-		        "account_fingerprint": "...123456"
-		      }
-		    }
-		  ]
-		}
-		""".data(using: .utf8)!
-		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
-		let overlay = OperatorRunActivitySnapshot(
-			currentLanes: [],
-			currentLanesComplete: true,
-			emittedAt: Date(timeIntervalSince1970: 30)
-		)
-		let merged = overlay.merging(into: snapshot)
-
-		XCTAssertTrue(merged.currentLanes(for: account).isEmpty)
+		XCTAssertEqual(card.runID, "run-690")
+		XCTAssertTrue(card.isAssigned(to: account))
 	}
 
 	@MainActor
 	func testFullSnapshotClearsStaleLiveRunActivityOverlay() throws {
-		let account = makeAccount(
-			status: "available",
-			email: "copy@example.com",
-			accountFingerprint: "...123456"
-		)
 		let store = AccountStore()
 
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "snapshot",
 			payload: """
 			{
-			  "snapshotPublishedAtUnixEpoch": 20,
-			  "snapshot": {
-			    "current_lanes": []
-			  }
-			}
+				  "snapshotPublishedAtUnixEpoch": 20,
+				  "snapshot": {
+				    "current_lanes": [],
+				    "presentation": {
+				      "current_lane_cards": []
+				    }
+				  }
+				}
 			"""
 		))
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "runActivity",
-			payload: """
-			{
-			  "emittedAtUnixEpoch": 30,
-			  "currentLanesComplete": true,
-			  "currentLanes": [
-			    {
-			      "run_id": "run-live",
-			      "issue_identifier": "XY-672",
-			      "account": {
-			        "email": "copy@example.com",
-			        "account_fingerprint": "...123456"
-			      }
-			    }
-			  ]
-			}
+				payload: """
+				{
+				  "emittedAtUnixEpoch": 30,
+				  "presentation": {
+				    "current_lane_cards": [
+				      {
+				        "id": "run-live",
+				        "run_id": "run-live",
+				        "title": "XY-672",
+				        "detail": "agent_run",
+				        "tone": "running",
+				        "counts_as_running": true,
+				        "needs_attention": false,
+				        "is_waiting": false,
+				        "run": {
+				          "run_id": "run-live",
+				          "issue_identifier": "XY-672"
+				        }
+				      }
+				    ]
+				  }
+				}
 			"""
 		))
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "snapshot",
 			payload: """
 			{
-			  "snapshotPublishedAtUnixEpoch": 40,
-			  "snapshot": {
-			    "current_lanes": []
-			  }
-			}
+				  "snapshotPublishedAtUnixEpoch": 40,
+				  "snapshot": {
+				    "current_lanes": [],
+				    "presentation": {
+				      "current_lane_cards": []
+				    }
+				  }
+				}
 			"""
 		))
 
-		XCTAssertTrue(store.operatorSnapshot?.currentLanes(for: account).isEmpty ?? false)
+		XCTAssertTrue(store.operatorPresentation?.currentLaneCards.isEmpty ?? false)
 	}
 
 	@MainActor
 	func testCompleteEmptyRunActivityClearsLiveRuns() throws {
-		let account = makeAccount(
-			status: "available",
-			email: "copy@example.com",
-			accountFingerprint: "...123456"
-		)
 		let store = AccountStore()
 
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "snapshot",
 			payload: """
 			{
-			  "snapshotPublishedAtUnixEpoch": 20,
-			  "snapshot": {
-			    "current_lanes": [
-			      {
-			        "run_id": "run-live",
-			        "issue_identifier": "XY-672",
-			        "account": {
-			          "email": "copy@example.com",
-			          "account_fingerprint": "...123456"
-			        }
-			      }
-			    ]
-			  }
-			}
+				  "snapshotPublishedAtUnixEpoch": 20,
+				  "snapshot": {
+				    "current_lanes": [
+				      {
+				        "run_id": "run-live",
+				        "issue_identifier": "XY-672"
+				      }
+				    ],
+				    "presentation": {
+				      "current_lane_cards": [
+				        {
+				          "id": "run-live",
+				          "run_id": "run-live",
+				          "title": "XY-672",
+				          "detail": "agent_run",
+				          "tone": "running",
+				          "counts_as_running": true,
+				          "needs_attention": false,
+				          "is_waiting": false,
+				          "run": {
+				            "run_id": "run-live",
+				            "issue_identifier": "XY-672"
+				          }
+				        }
+				      ]
+				    }
+				  }
+				}
 			"""
 		))
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "runActivity",
-			payload: """
-			{
-			  "emittedAtUnixEpoch": 30,
-			  "currentLanesComplete": true,
-			  "currentLanes": []
-			}
+				payload: """
+				{
+				  "emittedAtUnixEpoch": 30,
+				  "presentation": {
+				    "current_lane_cards": []
+				  }
+				}
 			"""
 		))
 
-		XCTAssertTrue(store.operatorSnapshot?.currentLanes(for: account).isEmpty ?? false)
+		XCTAssertEqual(store.operatorSnapshot?.currentLanes.map(\.runID), ["run-live"])
+		XCTAssertTrue(store.operatorPresentation?.currentLaneCards.isEmpty ?? false)
 	}
 
 	@MainActor
 	func testCompleteEmptyRunActivityDoesNotKeepClearingNewSnapshots() throws {
-		let account = makeAccount(
-			status: "available",
-			email: "copy@example.com",
-			accountFingerprint: "...123456"
-		)
 		let store = AccountStore()
 
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "snapshot",
 			payload: """
 			{
-			  "snapshotPublishedAtUnixEpoch": 20,
-			  "snapshot": {
-			    "current_lanes": [
-			      {
-			        "run_id": "run-live",
-			        "issue_identifier": "XY-672",
-			        "account": {
-			          "email": "copy@example.com",
-			          "account_fingerprint": "...123456"
-			        }
-			      }
-			    ]
-			  }
-			}
+				  "snapshotPublishedAtUnixEpoch": 20,
+				  "snapshot": {
+				    "current_lanes": [
+				      {
+				        "run_id": "run-live",
+				        "issue_identifier": "XY-672"
+				      }
+				    ],
+				    "presentation": {
+				      "current_lane_cards": [
+				        {
+				          "id": "run-live",
+				          "run_id": "run-live",
+				          "title": "XY-672",
+				          "detail": "agent_run",
+				          "tone": "running",
+				          "counts_as_running": true,
+				          "needs_attention": false,
+				          "is_waiting": false,
+				          "run": {
+				            "run_id": "run-live",
+				            "issue_identifier": "XY-672"
+				          }
+				        }
+				      ]
+				    }
+				  }
+				}
 			"""
 		))
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "runActivity",
-			payload: """
-			{
-			  "emittedAtUnixEpoch": 30,
-			  "currentLanesComplete": true,
-			  "currentLanes": []
-			}
+				payload: """
+				{
+				  "emittedAtUnixEpoch": 30,
+				  "presentation": {
+				    "current_lane_cards": []
+				  }
+				}
 			"""
 		))
-		XCTAssertTrue(store.operatorSnapshot?.currentLanes(for: account).isEmpty ?? false)
+		XCTAssertTrue(store.operatorPresentation?.currentLaneCards.isEmpty ?? false)
 
 		try store.applyOperatorDashboardEvent(dashboardEvent(
 			type: "snapshot",
 			payload: """
 			{
-			  "snapshotPublishedAtUnixEpoch": 40,
-			  "snapshot": {
-			    "current_lanes": [
-			      {
-			        "run_id": "run-returned",
-			        "issue_identifier": "XY-934",
-			        "account": {
-			          "email": "copy@example.com",
-			          "account_fingerprint": "...123456"
-			        }
-			      }
-			    ]
-			  }
-			}
+				  "snapshotPublishedAtUnixEpoch": 40,
+				  "snapshot": {
+				    "current_lanes": [
+				      {
+				        "run_id": "run-returned",
+				        "issue_identifier": "XY-934"
+				      }
+				    ],
+				    "presentation": {
+				      "current_lane_cards": [
+				        {
+				          "id": "run-returned",
+				          "run_id": "run-returned",
+				          "title": "XY-934",
+				          "detail": "agent_run",
+				          "tone": "running",
+				          "counts_as_running": true,
+				          "needs_attention": false,
+				          "is_waiting": false,
+				          "run": {
+				            "run_id": "run-returned",
+				            "issue_identifier": "XY-934"
+				          }
+				        }
+				      ]
+				    }
+				  }
+				}
 			"""
 		))
 
-		XCTAssertEqual(store.operatorSnapshot?.currentLanes(for: account).map(\.runID), ["run-returned"])
+		XCTAssertEqual(store.operatorPresentation?.currentLaneCards.map(\.runID), ["run-returned"])
 	}
 
 	func testOperatorSnapshotWarningSummaryUsesRawWarningToken() throws {
