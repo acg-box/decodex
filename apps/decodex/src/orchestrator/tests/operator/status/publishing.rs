@@ -517,6 +517,23 @@ fn operator_state_snapshot_publish_still_refreshes_current_lane_metadata() {
 	assert_eq!(snapshot.current_lanes[0].issue_identifier.as_deref(), Some("XY-355"));
 	assert_eq!(snapshot.current_lanes[0].title.as_deref(), Some("Implement orchestration"));
 	assert_eq!(snapshot.current_lanes[0].author.as_deref(), Some("Yvette"));
+
+	let snapshot_json =
+		orchestrator::operator_snapshot_json_value(&snapshot).expect("snapshot should project");
+
+	assert_eq!(snapshot_json["presentation"]["schema"], "decodex.operator.presentation/1");
+	assert_eq!(
+		snapshot_json["presentation"]["current_lane_cards"][0]["run_id"],
+		"xy-355-attempt-1"
+	);
+	assert_eq!(
+		snapshot_json["presentation"]["current_lane_cards"][0]["title"],
+		"XY-355"
+	);
+	assert_eq!(
+		snapshot_json["presentation"]["current_lane_cards"][0]["run"]["title"],
+		"Implement orchestration"
+	);
 }
 
 #[test]
