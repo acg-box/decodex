@@ -545,6 +545,8 @@ final class AccountModelTests: XCTestCase {
 				          "counts_as_running": true,
 				          "needs_attention": false,
 				          "is_waiting": false,
+				          "assigned_account_fingerprints": [],
+				          "assigned_account_emails": [],
 				          "run": {
 				            "run_id": "run-new",
 				            "issue_identifier": "XY-672"
@@ -572,6 +574,8 @@ final class AccountModelTests: XCTestCase {
 				        "counts_as_running": true,
 				        "needs_attention": false,
 				        "is_waiting": false,
+				        "assigned_account_fingerprints": [],
+				        "assigned_account_emails": [],
 				        "run": {
 				          "run_id": "run-old",
 				          "issue_identifier": "PUB-1147"
@@ -625,12 +629,7 @@ final class AccountModelTests: XCTestCase {
 	}
 
 	@MainActor
-	func testLegacySnapshotCurrentLanesCreateVisiblePresentation() throws {
-		let account = makeAccount(
-			status: "available",
-			email: "copy@example.com",
-			accountFingerprint: "...123456"
-		)
+	func testSnapshotCurrentLanesWithoutPresentationDoNotCreateVisiblePresentation() throws {
 		let store = AccountStore()
 
 		try store.applyOperatorDashboardEvent(dashboardEvent(
@@ -655,21 +654,12 @@ final class AccountModelTests: XCTestCase {
 			"""
 		))
 
-		let card = try XCTUnwrap(store.operatorPresentation?.currentLaneCards.first)
-
-		XCTAssertEqual(card.runID, "run-live")
-		XCTAssertEqual(card.title, "XY-672")
-		XCTAssertEqual(card.tone, "waiting")
-		XCTAssertTrue(card.isAssigned(to: account))
+		XCTAssertEqual(store.operatorSnapshot?.currentLanes.map(\.runID), ["run-live"])
+		XCTAssertNil(store.operatorPresentation)
 	}
 
 	@MainActor
-	func testLegacyRunActivityCurrentLanesCreateVisiblePresentation() throws {
-		let account = makeAccount(
-			status: "available",
-			email: "copy@example.com",
-			accountFingerprint: "...123456"
-		)
+	func testRunActivityCurrentLanesWithoutPresentationAreIgnored() throws {
 		let store = AccountStore()
 
 		try store.applyOperatorDashboardEvent(dashboardEvent(
@@ -695,12 +685,35 @@ final class AccountModelTests: XCTestCase {
 			"""
 		))
 
-		let card = try XCTUnwrap(store.operatorPresentation?.currentLaneCards.first)
-
 		XCTAssertNil(store.operatorSnapshot)
-		XCTAssertEqual(card.runID, "run-live")
-		XCTAssertEqual(card.detail, "agent_run")
-		XCTAssertTrue(card.isAssigned(to: account))
+		XCTAssertNil(store.operatorPresentation)
+	}
+
+	func testPresentationCardsRequireServerOwnedFields() throws {
+		let payload = """
+		{
+		  "current_lane_cards": [
+		    {
+		      "id": "run-690",
+		      "run_id": "run-690",
+		      "detail": "agent_run",
+		      "tone": "running",
+		      "counts_as_running": true,
+		      "needs_attention": false,
+		      "is_waiting": false,
+		      "assigned_account_fingerprints": ["...123456"],
+		      "assigned_account_emails": ["copy@example.com"],
+		      "run": {
+		        "run_id": "run-690",
+		        "issue_identifier": "XY-690",
+		        "current_operation": "agent_run"
+		      }
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+
+		XCTAssertThrowsError(try JSONDecoder().decode(OperatorSnapshotPresentation.self, from: payload))
 	}
 
 	func testPresentationCardsAssignAccountsFromServerFields() throws {
@@ -772,6 +785,8 @@ final class AccountModelTests: XCTestCase {
 				        "counts_as_running": true,
 				        "needs_attention": false,
 				        "is_waiting": false,
+				        "assigned_account_fingerprints": [],
+				        "assigned_account_emails": [],
 				        "run": {
 				          "run_id": "run-live",
 				          "issue_identifier": "XY-672"
@@ -827,6 +842,8 @@ final class AccountModelTests: XCTestCase {
 				          "counts_as_running": true,
 				          "needs_attention": false,
 				          "is_waiting": false,
+				          "assigned_account_fingerprints": [],
+				          "assigned_account_emails": [],
 				          "run": {
 				            "run_id": "run-live",
 				            "issue_identifier": "XY-672"
@@ -881,6 +898,8 @@ final class AccountModelTests: XCTestCase {
 				          "counts_as_running": true,
 				          "needs_attention": false,
 				          "is_waiting": false,
+				          "assigned_account_fingerprints": [],
+				          "assigned_account_emails": [],
 				          "run": {
 				            "run_id": "run-live",
 				            "issue_identifier": "XY-672"
@@ -928,6 +947,8 @@ final class AccountModelTests: XCTestCase {
 				          "counts_as_running": true,
 				          "needs_attention": false,
 				          "is_waiting": false,
+				          "assigned_account_fingerprints": [],
+				          "assigned_account_emails": [],
 				          "run": {
 				            "run_id": "run-returned",
 				            "issue_identifier": "XY-934"
