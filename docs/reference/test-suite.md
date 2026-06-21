@@ -26,7 +26,7 @@ standards for keeping, merging, or deleting tests.
 
 ## Current Snapshot
 
-This snapshot groups 1348 runnable `nextest` tests across all targets. One additional
+This snapshot groups 1349 runnable `nextest` tests across all targets. One additional
 skipped live app-server test is listed only with verbose or JSON inventory output.
 Regenerate the runnable inventory with:
 
