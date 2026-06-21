@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-last_verified: 2026-06-17
+last_verified: 2026-06-22
 ---
 # Post-Review Lifecycle
 
@@ -97,6 +97,14 @@ If these signals disagree and the disagreement cannot be resolved without guessi
 `missing_review_handoff_record` is a fail-closed post-review state. The scheduler must
 not infer a PR lineage from branch names, current heads, PR titles, or Linear comments,
 and `decodex run` must not repair this state automatically.
+
+If operator status sees private `review_completion_intent` plus
+`issue_terminal_finalize(path = "review_handoff")` but no matching
+`review_lifecycle_records` row, it must expose a deterministic pending writeback
+reason such as `review_handoff_writeback_missing_lifecycle_marker`. That readback is
+only a fail-closed recovery contract: recovery may proceed automatically only when the
+exact private intent, PR URL, retained branch, local `HEAD`, and PR head still match.
+Otherwise operators must use explicit diagnose, rebind, or adopt recovery.
 
 Failure writeback must also respect this post-review boundary. If an execution failure
 arrives after a retained review lifecycle record already binds the current issue,

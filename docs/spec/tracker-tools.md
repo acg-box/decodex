@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/orchestrator/execution.rs]
 drift_watch: [issue_progress_checkpoint, issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, phase_acceptance_check, issue_terminal_finalize, docs_impact, private_execution_events, linear_execution_event]
-last_verified: 2026-06-21
+last_verified: 2026-06-22
 ---
 # Tracker Tool Specification
 
@@ -275,9 +275,17 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   `issue_review_repair_complete` must not require `issue_review_checkpoint`; they
   still must pass PR validation, branch/head checks, and the configured repository
   validation gate before writeback.
-- `issue_review_handoff` must validate that the supplied PR belongs to the current repository and lane branch, points at the validated lane HEAD, is open, and is ready for review before `decodex` accepts the handoff.
+- `issue_review_handoff` must validate that the supplied PR belongs to the current repository and lane branch, points at the validated lane HEAD, is open, is ready for review, and reads back as the same requested PR URL before `decodex` accepts the handoff.
 - `issue_review_repair_complete` must validate that the supplied PR belongs to the current repository and retained lane branch, points at the validated lane HEAD, is open, and is ready for fresh review before `decodex` accepts retained repair completion.
-- `issue_review_handoff` records the success metadata during the turn, but `decodex` owns the final completion comment and `In Review` transition after service-side validation succeeds.
+- `issue_review_handoff` records a private `review_completion_intent` during the
+  turn, but `decodex` owns the final completion comment and `In Review` transition
+  after service-side validation succeeds. `issue_terminal_finalize(path =
+  "review_handoff")` must revalidate the pending PR against that exact private
+  intent, the retained worktree branch, the current local HEAD, and the PR head, then
+  write the local `review_lifecycle_records` row before terminal finalize can
+  succeed. If an existing lifecycle row for the lane branch points at a different PR
+  URL, head ref, base ref, or head OID, the tool must fail closed and require explicit
+  review-handoff recovery instead of rebinding implicitly.
 - `issue_review_repair_complete` records retained repair completion metadata during the turn, but `decodex` owns the final completion comment and refreshed retained-lineage marker after service-side validation succeeds.
 - Agent-authored PR lifecycle summaries are public text inputs. If the summary recorded
   by `issue_review_handoff`, `issue_review_repair_complete`, or `issue_closeout_complete`
@@ -377,9 +385,10 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - If PR-backed success writeback partially succeeds, for example the issue reaches `In Review` but the completion comment fails to post, `decodex` must treat the lane as human-required and must not place it back on the automatic retry path.
 - If a remaining public writeback validation failure occurs after successful PR
   validation, Decodex must classify it as `review_handoff_writeback_failed`, preserve
-  the PR URL in the public recovery record when available, and stop in a recoverable
-  human-required state instead of downgrading the completed implementation work to a
-  generic coding failure.
+  the PR URL in the public recovery record when available, keep the already-written
+  local review lifecycle row when terminal finalization succeeded, and stop in a
+  recoverable human-required state instead of downgrading the completed
+  implementation work to a generic coding failure.
 
 ## Future expansion
 
