@@ -874,6 +874,10 @@ struct ReviewCostControlArgs {
 	high_risk_surfaces: Vec<String>,
 	current_head_evidence: bool,
 	validation_backed: bool,
+	#[serde(default)]
+	validation_current: bool,
+	#[serde(default)]
+	evidence_sufficient: bool,
 	reviewer_judgment: String,
 	fallback_reason: Option<String>,
 }
@@ -998,6 +1002,8 @@ struct NormalizedReviewCostControl {
 	high_risk_surfaces: Vec<String>,
 	current_head_evidence: bool,
 	validation_backed: bool,
+	validation_current: bool,
+	evidence_sufficient: bool,
 	reviewer_judgment: String,
 	fallback_reason: Option<String>,
 }

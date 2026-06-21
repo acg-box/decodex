@@ -99,6 +99,8 @@ fn compact_review_cost_control_json() -> Value {
 		"high_risk_surfaces": [],
 		"current_head_evidence": true,
 		"validation_backed": true,
+		"validation_current": true,
+		"evidence_sufficient": true,
 		"reviewer_judgment": "The reviewer independently checked intended behavior and adversarial risk and found a low-risk small current-head lane."
 	})
 }
@@ -115,6 +117,8 @@ fn full_review_cost_control_json(fallback_reason: &str) -> Value {
 		"high_risk_surfaces": ["operator-facing runtime review behavior"],
 		"current_head_evidence": true,
 		"validation_backed": true,
+		"validation_current": true,
+		"evidence_sufficient": true,
 		"reviewer_judgment": "The reviewer used full independent review because compact-review guardrails did not all pass.",
 		"fallback_reason": fallback_reason
 	})
@@ -901,6 +905,8 @@ fn compact_review_checkpoint_persists_low_risk_cost_control() {
 	assert_eq!(details["review_cost_control"]["review_class"], "compact_current_head_review");
 	assert_eq!(details["review_cost_control"]["risk_class"], "low");
 	assert_eq!(details["review_cost_control"]["compact_eligible"], true);
+	assert_eq!(details["review_cost_control"]["validation_current"], true);
+	assert_eq!(details["review_cost_control"]["evidence_sufficient"], true);
 	assert!(details["review_cost_control"]["fallback_reason"].is_null());
 
 	let events = bridge_state_store(&bridge)
@@ -962,7 +968,7 @@ fn full_review_checkpoint_persists_cost_control_fallback_reason() {
 }
 
 #[test]
-fn compact_review_checkpoint_fails_closed_without_validation_or_with_high_risk_surface() {
+fn compact_review_checkpoint_fails_closed_without_current_validation_or_with_high_risk_surface() {
 	let tracker = FakeTracker::new();
 	let issue = sample_issue();
 	let workflow = sample_workflow();
@@ -980,9 +986,17 @@ fn compact_review_checkpoint_fails_closed_without_validation_or_with_high_risk_s
 	);
 	let mut cost_control = compact_review_cost_control_json();
 
+	cost_control["current_head_evidence"] = serde_json::json!(false);
 	cost_control["validation_backed"] = serde_json::json!(false);
-	cost_control["high_risk_surfaces"] =
-		serde_json::json!(["security-sensitive runtime configuration"]);
+	cost_control["validation_current"] = serde_json::json!(false);
+	cost_control["evidence_sufficient"] = serde_json::json!(false);
+	cost_control["high_risk_surfaces"] = serde_json::json!([
+		"docs policy surface without matching validation evidence",
+		"configuration surface without matching validation evidence",
+		"public API surface without matching validation evidence",
+		"security surface without matching validation evidence",
+		"data/privacy surface without matching validation evidence"
+	]);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -1004,7 +1018,205 @@ fn compact_review_checkpoint_fails_closed_without_validation_or_with_high_risk_s
 		[DynamicToolContentItem::InputText { text }] => {
 			assert!(text.contains("full review is required"));
 			assert!(text.contains("high_risk_surfaces_present"));
+			assert!(text.contains("missing_current_head_evidence"));
 			assert!(text.contains("missing_validation_evidence"));
+			assert!(text.contains("stale_validation_evidence"));
+			assert!(text.contains("weak_evidence"));
+		},
+		other => panic!("unexpected response content: {other:?}"),
+	}
+}
+
+#[test]
+fn compact_review_checkpoint_fails_closed_with_stale_validation_evidence() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let mut cost_control = compact_review_cost_control_json();
+
+	cost_control["validation_current"] = serde_json::json!(false);
+
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": low_risk_handoff_review_contract_json(),
+			"review_cost_control": cost_control,
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer tried to claim compact review with validation from an older head"]
+		}),
+	);
+
+	assert!(!response.success);
+
+	match &response.content_items[..] {
+		[DynamicToolContentItem::InputText { text }] => {
+			assert!(text.contains("full review is required"));
+			assert!(text.contains("stale_validation_evidence"));
+		},
+		other => panic!("unexpected response content: {other:?}"),
+	}
+}
+
+#[test]
+fn compact_review_checkpoint_fails_closed_with_weak_evidence() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let mut cost_control = compact_review_cost_control_json();
+
+	cost_control["evidence_sufficient"] = serde_json::json!(false);
+
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": low_risk_handoff_review_contract_json(),
+			"review_cost_control": cost_control,
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer tried to claim compact review with weak current-head evidence"]
+		}),
+	);
+
+	assert!(!response.success);
+
+	match &response.content_items[..] {
+		[DynamicToolContentItem::InputText { text }] => {
+			assert!(text.contains("full review is required"));
+			assert!(text.contains("weak_evidence"));
+		},
+		other => panic!("unexpected response content: {other:?}"),
+	}
+}
+
+#[test]
+fn compact_review_checkpoint_fails_closed_for_non_low_risk_classification() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let mut cost_control = compact_review_cost_control_json();
+
+	cost_control["risk_class"] = serde_json::json!("localized");
+
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": handoff_review_contract_json(),
+			"review_cost_control": cost_control,
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer tried to claim compact review for a localized-risk lane"]
+		}),
+	);
+
+	assert!(!response.success);
+
+	match &response.content_items[..] {
+		[DynamicToolContentItem::InputText { text }] => {
+			assert!(text.contains("full review is required"));
+			assert!(text.contains("review_contract_risk_tier_not_low"));
+			assert!(text.contains("review_cost_risk_class_not_low"));
+		},
+		other => panic!("unexpected response content: {other:?}"),
+	}
+}
+
+#[test]
+fn compact_review_checkpoint_fails_closed_for_accepted_findings_and_blocking_routes() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "findings",
+			"head_sha": sample_local_repo().head_oid,
+			"review_contract": low_risk_handoff_review_contract_json(),
+			"review_cost_control": compact_review_cost_control_json(),
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer tried to keep compact review after accepting a current blocker"],
+			"accepted_findings": accepted_review_findings_json(),
+			"finding_routes": [{
+				"route": "current_blocker",
+				"severity": "medium",
+				"risk_tier": "medium",
+				"summary": "Accepted current repair blocker.",
+				"evidence": ["The accepted finding applies to the current lane head."],
+				"resolver": "agent",
+				"next_action": "Repair the accepted finding before handoff.",
+				"finding_source": "accepted_findings",
+				"finding_index": 0
+			}]
+		}),
+	);
+
+	assert!(!response.success);
+
+	match &response.content_items[..] {
+		[DynamicToolContentItem::InputText { text }] => {
+			assert!(text.contains("full review is required"));
+			assert!(text.contains("accepted_findings_present"));
+			assert!(text.contains("blocking_finding_routes_present"));
+			assert!(text.contains("nonclean_review_status"));
 		},
 		other => panic!("unexpected response content: {other:?}"),
 	}
@@ -1082,6 +1294,7 @@ fn review_checkpoint_rejects_review_blocking_local_changes() {
 			"status": "clean",
 			"head_sha": sample_local_repo().head_oid,
 			"review_contract": handoff_review_contract_json(),
+			"review_cost_control": compact_review_cost_control_json(),
 			"checks": review_checks_json(),
 			"evidence": ["review tried to bind a dirty worktree"]
 		}),
