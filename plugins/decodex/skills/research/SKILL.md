@@ -14,6 +14,12 @@ Follow the compact loop: probe, evidence, options, judgment, challenge, decision
 `$agent-method:challenge` for the skeptic pass before `decision_ready` or any
 high-risk recommendation. Use `research-promote` only after explicit acceptance.
 
+- The research compact loop is not runtime `compact_current_head_review`.
+- For runtime compact review quality, read the current `issue_review_checkpoint`
+  `review_cost_control` and `decodex evidence` instead of restating tracker or review
+  policy in research output.
+- Treat compact runtime review as independent current-head review evidence, not a
+  skipped-review signal.
 - Do not route Decodex research through external research skills.
 - Do not write new Decodex research as `docs/research/` event logs or JSON.
 - Use `docs/research/` only for Markdown OKF research concepts or evidence extraction
