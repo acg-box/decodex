@@ -19,7 +19,6 @@ const DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS: &[&str] = &[
 	"current_elapsed_seconds",
 	"wall_seconds",
 ];
-const OPERATOR_PRESENTATION_SCHEMA: &str = "decodex.operator.presentation/1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OperatorRequestRoute {
@@ -610,9 +609,9 @@ fn build_operator_run_activity_event(
 	}
 
 	let fingerprint_payload =
-		dashboard_run_activity_fingerprint_payload(&account_control, &current_lanes);
+		dashboard_run_activity_fingerprint_payload(&account_control, &current_lanes)?;
 	let fingerprint = serde_json::to_vec(&fingerprint_payload)?;
-	let presentation = operator_snapshot_presentation_value(&current_lanes);
+	let presentation = operator_snapshot_presentation_value(&current_lanes)?;
 	let payload = json!({
 		"emittedAtUnixEpoch": now_unix_epoch,
 		"accountControl": &account_control,
@@ -631,18 +630,18 @@ fn build_operator_run_activity_event(
 fn dashboard_run_activity_fingerprint_payload(
 	account_control: &OperatorCodexAccountControlStatus,
 	current_lanes: &[OperatorRunStatus],
-) -> Value {
+) -> Result<Value> {
 	let mut fingerprint_payload = json!({
 		"accountControl": account_control,
 		"currentLanes": current_lanes,
 		"currentLanesComplete": true,
 		"currentLaneScope": "complete",
-		"presentation": operator_snapshot_presentation_value(current_lanes),
+		"presentation": operator_snapshot_presentation_value(current_lanes)?,
 	});
 
 	strip_dashboard_run_activity_volatile_fields(&mut fingerprint_payload);
 
-	fingerprint_payload
+	Ok(fingerprint_payload)
 }
 
 fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
@@ -667,7 +666,7 @@ fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
 fn operator_snapshot_json_value(snapshot: &OperatorStatusSnapshot) -> Result<Value> {
 	let mut value = serde_json::to_value(snapshot)?;
 
-	attach_operator_snapshot_presentation(&mut value, &snapshot.current_lanes);
+	attach_operator_snapshot_presentation(&mut value, &snapshot.current_lanes)?;
 
 	Ok(value)
 }
@@ -675,134 +674,15 @@ fn operator_snapshot_json_value(snapshot: &OperatorStatusSnapshot) -> Result<Val
 fn attach_operator_snapshot_presentation(
 	snapshot: &mut Value,
 	current_lanes: &[OperatorRunStatus],
-) {
+) -> Result<()> {
 	if let Some(object) = snapshot.as_object_mut() {
 		object.insert(
 			String::from("presentation"),
-			operator_snapshot_presentation_value(current_lanes),
+			operator_snapshot_presentation_value(current_lanes)?,
 		);
 	}
-}
 
-fn operator_snapshot_presentation_value(current_lanes: &[OperatorRunStatus]) -> Value {
-	json!({
-		"schema": OPERATOR_PRESENTATION_SCHEMA,
-		"current_lane_cards": current_lanes
-			.iter()
-			.map(operator_current_lane_card_value)
-			.collect::<Vec<_>>(),
-	})
-}
-
-fn operator_current_lane_card_value(run: &OperatorRunStatus) -> Value {
-	json!({
-		"id": &run.run_id,
-		"run_id": &run.run_id,
-		"project_id": &run.project_id,
-		"issue_id": &run.issue_id,
-		"issue_identifier": &run.issue_identifier,
-		"title": operator_current_lane_card_title(run),
-		"detail": operator_current_lane_card_detail(run),
-		"tone": operator_current_lane_card_tone(run),
-		"counts_as_running": operator_run_counts_as_running(run),
-		"needs_attention": operator_run_counts_as_attention(run),
-		"is_waiting": operator_run_counts_as_waiting(run),
-		"assigned_account_fingerprints": operator_run_assigned_account_fingerprints(run),
-		"assigned_account_emails": operator_run_assigned_account_emails(run),
-		"run": run,
-	})
-}
-
-fn operator_current_lane_card_title(run: &OperatorRunStatus) -> String {
-	trimmed_operator_text(run.issue_identifier.as_deref())
-		.or_else(|| trimmed_operator_text(run.title.as_deref()))
-		.unwrap_or("Run")
-		.to_owned()
-}
-
-fn operator_current_lane_card_detail(run: &OperatorRunStatus) -> String {
-	trimmed_operator_text(
-		run.child_agent_activity
-			.as_ref()
-			.and_then(|activity| activity.current_detail.as_deref()),
-	)
-	.or_else(|| {
-		trimmed_operator_text(
-			run.child_agent_activity
-				.as_ref()
-				.and_then(|activity| activity.current_bucket.as_deref()),
-		)
-	})
-	.or_else(|| trimmed_operator_text(run.wait_reason.as_deref()))
-	.or_else(|| {
-		trimmed_operator_text(Some(run.current_operation.as_str()))
-			.filter(|operation| *operation != RUN_OPERATION_IDLE)
-	})
-	.or_else(|| trimmed_operator_text(Some(run.run_phase.as_str())))
-	.or_else(|| trimmed_operator_text(Some(run.phase.as_str())))
-	.or_else(|| trimmed_operator_text(run.thread_status.as_deref()))
-	.unwrap_or("Active")
-	.to_owned()
-}
-
-fn operator_current_lane_card_tone(run: &OperatorRunStatus) -> &'static str {
-	if operator_run_counts_as_attention(run) {
-		"attention"
-	} else if operator_run_counts_as_waiting(run) {
-		"waiting"
-	} else {
-		"running"
-	}
-}
-
-fn operator_run_assigned_account_fingerprints(run: &OperatorRunStatus) -> Vec<String> {
-	let mut fingerprints = BTreeSet::new();
-
-	if let Some(account) = run.account.as_ref() {
-		insert_non_empty_operator_text(&mut fingerprints, &account.account_fingerprint);
-	}
-
-	for account in run
-		.accounts
-		.iter()
-		.filter(|account| account.status.eq_ignore_ascii_case("selected"))
-	{
-		insert_non_empty_operator_text(&mut fingerprints, &account.account_fingerprint);
-	}
-
-	fingerprints.into_iter().collect()
-}
-
-fn operator_run_assigned_account_emails(run: &OperatorRunStatus) -> Vec<String> {
-	let mut emails = BTreeSet::new();
-
-	if let Some(account) = run.account.as_ref()
-		&& let Some(email) = account.email.as_deref()
-	{
-		insert_non_empty_operator_text(&mut emails, email);
-	}
-
-	for account in run
-		.accounts
-		.iter()
-		.filter(|account| account.status.eq_ignore_ascii_case("selected"))
-	{
-		if let Some(email) = account.email.as_deref() {
-			insert_non_empty_operator_text(&mut emails, email);
-		}
-	}
-
-	emails.into_iter().collect()
-}
-
-fn insert_non_empty_operator_text(values: &mut BTreeSet<String>, value: &str) {
-	if let Some(value) = trimmed_operator_text(Some(value)) {
-		values.insert(value.to_owned());
-	}
-}
-
-fn trimmed_operator_text(value: Option<&str>) -> Option<&str> {
-	value.map(str::trim).filter(|value| !value.is_empty())
+	Ok(())
 }
 
 fn dashboard_current_snapshot_event_payload(
