@@ -4434,6 +4434,16 @@ where
 	if state_store.issue_has_active_shared_claim(project.service_id(), &issue.id)? {
 		return Ok(("claimed", "shared_claim_present"));
 	}
+	if (issue.state.name == tracker_policy.in_progress_state()
+		|| tracker_policy.startable_states().iter().any(|state| state == &issue.state.name))
+		&& ordinary_dispatch_blocked_by_retained_review_handoff(
+			project.service_id(),
+			issue,
+			state_store,
+		)?
+	{
+		return Ok(("blocked", ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON));
+	}
 	if tracker::issue_has_label_with_server_confirmation(
 		tracker,
 		issue,
