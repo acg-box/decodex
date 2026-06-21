@@ -12,6 +12,7 @@ final class AccountStore: ObservableObject {
 	@Published private(set) var accountList: AccountListResponse?
 	@Published private(set) var fastMode: CodexFastModeResponse?
 	@Published private(set) var operatorSnapshot: OperatorSnapshotResponse?
+	@Published private(set) var operatorPresentation: OperatorSnapshotPresentation?
 	@Published private(set) var operatorSnapshotUpdatedAt: Date?
 	@Published private(set) var isRefreshing = false
 	@Published private(set) var isLoggingIn = false
@@ -22,7 +23,6 @@ final class AccountStore: ObservableObject {
 	private let bridge = DecodexAppBridge()
 	private var automaticRefreshTask: Task<Void, Never>?
 	private var operatorSnapshotStreamTask: Task<Void, Never>?
-	private var liveRunActivity: OperatorRunActivitySnapshot?
 
 	deinit {
 		automaticRefreshTask?.cancel()
@@ -220,26 +220,16 @@ final class AccountStore: ObservableObject {
 				return
 			}
 
-			liveRunActivity = nil
 			operatorSnapshot = snapshot
+			operatorPresentation = snapshot.presentation
 			operatorSnapshotUpdatedAt = payload.snapshotPublishedAt ?? Date()
 		case "runActivity":
-			guard let currentLanes = payload.currentLanes else {
+			guard let presentation = payload.presentation else {
 				return
 			}
 
-			let activity = OperatorRunActivitySnapshot(
-				currentLanes: currentLanes,
-				currentLanesComplete: payload.currentLanesComplete ?? true,
-				emittedAt: payload.emittedAt ?? Date()
-			)
-			if let operatorSnapshot {
-				self.operatorSnapshot = activity.merging(into: operatorSnapshot)
-			} else {
-				operatorSnapshot = OperatorSnapshotResponse.currentLanesOnly(currentLanes)
-			}
-			liveRunActivity = activity.shouldPersistAsSnapshotOverlay ? activity : nil
-			operatorSnapshotUpdatedAt = activity.emittedAt
+			operatorPresentation = presentation
+			operatorSnapshotUpdatedAt = payload.emittedAt ?? Date()
 		default:
 			break
 		}

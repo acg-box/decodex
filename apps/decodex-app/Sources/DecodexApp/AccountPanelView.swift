@@ -279,6 +279,10 @@ struct AccountPanelView: View {
 			header
 			accountSummary
 
+			if operatorCurrentLaneCards.isEmpty == false {
+				operatorCurrentLaneStrip
+			}
+
 			if telemetryMatrixIsVisible {
 				AccountTelemetryMatrixView(
 					aggregate: accountProfileAggregate,
@@ -486,7 +490,7 @@ struct AccountPanelView: View {
 	private var accountRows: some View {
 		VStack(spacing: 0) {
 			ForEach(Array(store.accounts.enumerated()), id: \.element.id) { index, account in
-				let runs = operatorRuns(for: account)
+				let runs = operatorCurrentLaneCards(for: account)
 
 				AccountRowView(
 					account: account,
@@ -596,6 +600,9 @@ struct AccountPanelView: View {
 			+ AccountPanelLayout.accountSummaryHeight
 			+ AccountPanelLayout.sectionSpacing
 
+		if operatorCurrentLaneCards.isEmpty == false {
+			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.operatorRunStripHeight
+		}
 		if telemetryMatrixIsVisible {
 			height += AccountPanelLayout.sectionSpacing + telemetryMatrixHeight
 		}
@@ -668,8 +675,30 @@ struct AccountPanelView: View {
 		return account.panelDisplayName(emailsHidden: false)
 	}
 
-	private func operatorRuns(for account: CodexAccount) -> [OperatorRunStatus] {
-		store.operatorSnapshot?.currentLanes(for: account) ?? []
+	private var operatorCurrentLaneCards: [OperatorCurrentLaneCard] {
+		store.operatorPresentation?.currentLaneCards
+			?? store.operatorSnapshot?.presentation?.currentLaneCards
+			?? []
+	}
+
+	private var operatorCurrentLaneStrip: some View {
+		HStack(spacing: 7) {
+			Image(systemName: "dot.radiowaves.left.and.right")
+				.font(.system(size: 13, weight: .semibold))
+				.foregroundStyle(PanelPalette.actionBlue(colorScheme))
+				.frame(width: 16, height: AccountRunChipLayout.height)
+				.accessibilityHidden(true)
+
+			AccountRunSummaryView(runs: operatorCurrentLaneCards, currentTime: currentTime)
+		}
+		.padding(.horizontal, 8)
+		.frame(height: AccountPanelLayout.operatorRunStripHeight)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.modernGlassSurface(cornerRadius: 9, depth: .row)
+	}
+
+	private func operatorCurrentLaneCards(for account: CodexAccount) -> [OperatorCurrentLaneCard] {
+		operatorCurrentLaneCards.filter { $0.isAssigned(to: account) }
 	}
 
 	private func accountRowHeight(for account: CodexAccount) -> CGFloat {
@@ -679,7 +708,7 @@ struct AccountPanelView: View {
 		} else {
 			base = 48
 		}
-		let runSignal: CGFloat = operatorRuns(for: account).isEmpty ? 0 : 22
+		let runSignal: CGFloat = operatorCurrentLaneCards(for: account).isEmpty ? 0 : 22
 		let profileSignal: CGFloat = account.hasProfileSummary
 			? (account.recentProfileDailyUsage.isEmpty ? 19 : 35)
 			: 0
@@ -734,7 +763,7 @@ struct AccountPanelView: View {
 
 struct AccountRowView: View {
 	let account: CodexAccount
-	let runs: [OperatorRunStatus]
+	let runs: [OperatorCurrentLaneCard]
 	let displayName: String
 	let showsDivider: Bool
 	let isLogoutArmed: Bool
@@ -886,7 +915,7 @@ struct AccountRowView: View {
 }
 
 struct AccountRunSummaryView: View {
-	let runs: [OperatorRunStatus]
+	let runs: [OperatorCurrentLaneCard]
 	let currentTime: Date
 	@State private var placementStore = AccountRunStripPlacementStore()
 	@State private var scrollProxy = AccountRunStripScrollProxy()
@@ -916,11 +945,11 @@ struct AccountRunSummaryView: View {
 				}
 			) {
 				HStack(spacing: 5) {
-					ForEach(runs) { run in
-						AccountRunChipView(run: run, currentTime: currentTime)
+					ForEach(runs) { card in
+						AccountRunChipView(card: card, currentTime: currentTime)
 							.modifier(
 								AccountRunChipPlacementReporter(
-									runID: run.id,
+									runID: card.id,
 									placementStore: placementStore
 								)
 							)
@@ -1775,6 +1804,7 @@ private enum AccountPanelLayout {
 	static let sectionSpacing: CGFloat = 6
 	static let headerHeight: CGFloat = 28
 	static let accountSummaryHeight: CGFloat = 31
+	static let operatorRunStripHeight: CGFloat = 29
 	static let telemetryHorizontalPadding: CGFloat = 7
 	static let telemetryTopPadding: CGFloat = 7
 	static let telemetryBottomPadding: CGFloat = 2
@@ -1850,7 +1880,7 @@ private enum AccountRunChipLayout {
 }
 
 struct AccountRunChipView: View {
-	let run: OperatorRunStatus
+	let card: OperatorCurrentLaneCard
 	let currentTime: Date
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var isHovered = false
@@ -1891,7 +1921,7 @@ struct AccountRunChipView: View {
 			cancelPopover()
 		}
 		.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
-			OperatorLanePopoverView(run: run, currentTime: currentTime)
+			OperatorLanePopoverView(run: card.run, currentTime: currentTime)
 				.fixedSize(horizontal: true, vertical: false)
 		}
 	}
@@ -1919,10 +1949,10 @@ struct AccountRunChipView: View {
 	}
 
 	private var symbol: String {
-		if run.hasAttentionTone {
+		if card.needsAttention || card.tone == "attention" {
 			return "exclamationmark.triangle.fill"
 		}
-		if run.isWaiting {
+		if card.isWaiting || card.tone == "waiting" {
 			return "clock"
 		}
 
@@ -1930,14 +1960,14 @@ struct AccountRunChipView: View {
 	}
 
 	private var chipTitle: String {
-		panelTrimmed(run.issueIdentifier) ?? "Run"
+		panelTrimmed(card.title) ?? panelTrimmed(card.issueIdentifier) ?? "Run"
 	}
 
 	private var tint: Color {
-		if run.hasAttentionTone {
+		if card.needsAttention || card.tone == "attention" {
 			return PanelPalette.warning(colorScheme)
 		}
-		if run.isWaiting {
+		if card.isWaiting || card.tone == "waiting" {
 			return PanelPalette.secondaryText(colorScheme)
 		}
 
