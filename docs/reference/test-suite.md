@@ -26,7 +26,7 @@ standards for keeping, merging, or deleting tests.
 
 ## Current Snapshot
 
-This snapshot groups 1348 runnable `nextest` tests across all targets. One additional
+This snapshot groups 1349 runnable `nextest` tests across all targets. One additional
 skipped live app-server test is listed only with verbose or JSON inventory output.
 Regenerate the runnable inventory with:
 
@@ -65,7 +65,7 @@ cargo nextest list --workspace --all-targets --all-features 2>/dev/null \
 | Git, worktree, landing, and recovery helpers | 161 | `worktree::tests`, `manual::tests`, `commit_message::tests`, `github::tests`, `default_branch_sync::tests`, `pull_request::tests`, `recovery::tests`, `git_credentials::tests` | Git/worktree behavior, manual landing, GitHub/PR helpers, recovery commands, commit-message policy |
 | Account, CLI, archive, tracker, and MCP integration | 155 | `accounts::tests`, `agent::codex_accounts::tests`, `agent::decodex_tool_bridge::tests`, `app_bridge::tests`, `cli::tests`, `archive_hygiene::tests`, `tracker::*::tests`, `mcp::tests`, `apps/decodex/tests/mcp_stdio.rs` | User-facing commands, account pools, app bridge parsing, archive hygiene, direct tracker adapter, MCP resources, HTTP transport, bearer auth, schema-bound planning tools, inspect-first operate/admin tools, remote-safe observability templates, process-level MCP smoke, and public-text behavior |
 | Program intake | 10 | `program_intake::tests` | Decision Contract materialization, Linear issue shaping, and internal Execution Program persistence |
-| Loop contract and research surfaces | 29 | `loop_contract::tests`, `execution_program::tests`, `research_design::tests`, `plugin_surface_tests` | Decision Contract schema, Execution Program readiness, research compile/promote, and plugin trigger behavior |
+| Loop contract and research surfaces | 30 | `loop_contract::tests`, `execution_program::tests`, `research_design::tests`, `plugin_surface_tests` | Decision Contract schema, Execution Program readiness, research compile/promote, and plugin trigger behavior |
 
 ## Orchestrator Inventory
 
