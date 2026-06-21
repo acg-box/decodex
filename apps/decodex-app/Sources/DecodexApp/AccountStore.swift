@@ -221,10 +221,15 @@ final class AccountStore: ObservableObject {
 			}
 
 			operatorSnapshot = snapshot
-			operatorPresentation = snapshot.presentation
+			operatorPresentation = snapshot.visiblePresentation
 			operatorSnapshotUpdatedAt = payload.snapshotPublishedAt ?? Date()
 		case "runActivity":
-			guard let presentation = payload.presentation else {
+			let presentation: OperatorSnapshotPresentation
+			if let payloadPresentation = payload.presentation {
+				presentation = payloadPresentation
+			} else if let currentLanes = payload.currentLanes {
+				presentation = OperatorSnapshotPresentation(legacyCurrentLanes: currentLanes)
+			} else {
 				return
 			}
 
