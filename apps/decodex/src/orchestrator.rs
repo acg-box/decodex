@@ -50,6 +50,8 @@ use harness_improvement::{HarnessOutcomeRecordInput, record_harness_outcome_for_
 
 include!("orchestrator/types.rs");
 
+include!("orchestrator/operator_presentation.rs");
+
 include!("orchestrator/entrypoints.rs");
 
 include!("orchestrator/operator_http.rs");

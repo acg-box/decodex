@@ -622,14 +622,16 @@ fn operator_dashboard_current_lane_status_copy_stays_concise() {
 	assert!(
 		response.contains("return run.current_operation || run.run_phase || run.phase || \"process_stopped\";")
 	);
-	assert!(response.contains("Operator input needed."));
-	assert!(response.contains("Protocol idle."));
 	assert!(response.contains("Stopped agent process"));
 	assert!(response.contains("attention stopped"));
 	assert!(response.contains("inlineStatusFact(\"Agent\", \"Done\")"));
 	assert!(response.contains("const waitReason = displayToken(run.wait_reason);"));
 	assert!(response.contains("if (!displayTextRepeats(summary, waitReason))"));
 	assert!(response.contains("displayTextRepeats(summary, \"operator input\")"));
+	assert!(response.contains("const issueTitle = card.title || \"Run\";"));
+	assert!(response.contains("const summary = card.detail || \"\";"));
+	assert!(!response.contains("Operator input needed."));
+	assert!(!response.contains("Protocol idle."));
 	assert!(response.contains("status: \"waiting\","));
 	assert!(!response.contains(
 		"status: run.wait_reason ? `wait ${displayToken(run.wait_reason)}`"
@@ -1869,8 +1871,9 @@ fn operator_dashboard_run_activity_consumes_server_presentation() {
 
 	assert!(response.contains("function presentationCurrentLaneCards(presentation)"));
 	assert!(response.contains("function snapshotCurrentLaneCards(snapshot)"));
+	assert!(response.contains("return presentationCurrentLaneCards(snapshot?.presentation);"));
 	assert!(response.contains("function currentLaneRunsFromCards(cards)"));
-	assert!(response.contains("function currentLaneCardToneClass(card, run)"));
+	assert!(response.contains("function currentLaneCardToneClass(card)"));
 	assert!(response.contains("let dashboardLivePresentation = null;"));
 	assert!(response.contains("let dashboardLiveRunActivitySeen = false;"));
 	assert!(!response.contains("let dashboardLiveAccounts = null;"));
@@ -1902,6 +1905,13 @@ fn operator_dashboard_run_activity_consumes_server_presentation() {
 	assert!(!response.contains("accounts: dashboardLiveAccounts"));
 	assert!(response.contains("current_lanes: liveRuns,"));
 	assert!(response.contains("presentation: dashboardLivePresentation,"));
+	assert!(!response.contains("snapshot?.current_lanes ?? []"));
+	assert!(!response.contains("issueDisplayKey(run),\n\t\t\t\t\t\t\trun_id: run.run_id"));
+	assert!(!response.contains("function currentLaneSummary"));
+	assert!(!response.contains("function runIssueTitle"));
+	assert!(!response.contains("card.title || runIssueTitle"));
+	assert!(!response.contains("currentLaneSummary(run) || card.detail"));
+	assert!(!response.contains("function currentLaneCardToneClass(card, run)"));
 	assert!(!response.contains("function mergeDashboardRunRecord"));
 	assert!(!response.contains("function mergeDashboardCurrentLanes"));
 	assert!(!response.contains("function mergeDashboardRunActivity"));
