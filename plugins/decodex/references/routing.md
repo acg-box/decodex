@@ -25,6 +25,9 @@ generic challenge live in companion plugins.
   when the result becomes a decision-ready comparison.
 - Research/design: use `research`. The compact loop is probe, evidence, options,
   judgment, challenge, decision. Results are latent Decision Contract candidates only.
+  This research compact loop is separate from runtime `compact_current_head_review`;
+  read runtime compact review quality from `issue_review_checkpoint.review_cost_control`
+  and `decodex evidence`, not from research output.
 - Challenge: use `$agent-method:challenge` for generic skeptic review of plans,
   claims, evidence sufficiency, option framing, and ready/decision-ready assertions.
   Challenge does not create execution authority.
@@ -34,7 +37,8 @@ generic challenge live in companion plugins.
   Planning owns issue briefing and Program readiness.
 - Decodex ops: use `decodex-ops` for retained automation, human-driven CLI commands,
   ordinary non-Program tracker intake, service labels, lane control, recovery
-  inspection, and operator readback.
+  inspection, operator readback, and `missing_review_handoff_record` diagnosis before
+  any dry-run rebind or adopt.
 - Commit and land: use `commit` or `land` for human-driven Git history creation or PR
   landing; keep these high-risk authority surfaces narrower than general ops.
 - MCP gateway: use stdio locally and Streamable HTTP only behind the operator's chosen
@@ -86,8 +90,11 @@ non-issue work.
 
 For human-driven PR landing, confirm PR/base/head/mergeability/checks, then use
 `decodex land`; add `--manual-authority --pr <URL>` for non-issue work. If
-issue-authority landing lacks retained handoff state, dry-run
-`decodex recover review-handoff adopt` before any live adopt.
+issue-authority landing lacks retained handoff state, run
+`decodex recover review-handoff diagnose <ISSUE> --json` first. Use dry-run `rebind`
+only for a Decodex-owned retained lane whose PR, retained worktree, branch, and head
+lineage match. Use dry-run `adopt` only for a human-owned PR takeover from the current
+managed worktree. Neither recovery command lands the PR.
 
 ## Hard Boundaries
 

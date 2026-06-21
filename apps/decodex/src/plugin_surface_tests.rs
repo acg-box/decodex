@@ -36,6 +36,10 @@ const RESEARCH_PROMOTE_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-promote/SKILL.md"
 ));
+const LAND_SKILL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/skills/land/SKILL.md"
+));
 const AGENT_CHALLENGE_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/agent-method/skills/challenge/SKILL.md"
@@ -339,6 +343,44 @@ fn packaged_research_and_challenge_skills_encode_decodex_methodology() {
 	assert_contains(&research_surface, "Program Intake");
 	assert_contains(&research_surface, "missing evidence");
 	assert_contains(&research_surface, "premature success claims");
+}
+
+#[test]
+fn packaged_decodex_skills_route_review_evidence_and_handoff_recovery_to_runtime_authority() {
+	let ops_surface = format!("{DECODEX_OPS_SKILL}\n{ROUTING_REF}");
+	let research_surface = format!("{RESEARCH_SKILL}\n{ROUTING_REF}");
+	let land_surface = format!("{LAND_SKILL}\n{ROUTING_REF}");
+
+	assert_contains(&ops_surface, "missing_review_handoff_record");
+	assert_contains(&ops_surface, "`decodex recover review-handoff diagnose <ISSUE> --json`");
+	assert_contains(
+		&ops_surface,
+		"`decodex recover review-handoff rebind <ISSUE> --pr <URL> --dry-run`",
+	);
+	assert_contains(
+		&ops_surface,
+		"`decodex recover review-handoff adopt <ISSUE> --pr <URL> --dry-run`",
+	);
+	assert_contains(&ops_surface, "Decodex-owned retained lane PR");
+	assert_contains(&ops_surface, "human-owned PR takeover");
+	assert_contains(&ops_surface, "Do not infer PR lineage");
+	assert_contains(
+		&research_surface,
+		"research compact loop is not runtime `compact_current_head_review`",
+	);
+	assert_contains(&research_surface, "issue_review_checkpoint.review_cost_control");
+	assert_contains(&research_surface, "`review_cost_control`");
+	assert_contains(&research_surface, "`decodex evidence`");
+	assert_contains_normalized(&research_surface, "not a skipped-review signal");
+	assert_contains(&land_surface, "`decodex land --authority <ISSUE> --pr <URL> \"<summary>\"`");
+	assert_contains(&land_surface, "Only `decodex land` lands a Decodex-owned PR");
+	assert_contains_normalized(
+		&land_surface,
+		"Rebind restores or refreshes a Decodex-owned retained lane",
+	);
+	assert_contains_normalized(&land_surface, "adopt is for a human-owned PR takeover");
+	assert_contains(&land_surface, "Neither recovery command lands the PR");
+	assert_contains(&land_surface, "Do not use global `AGENTS.md`");
 }
 
 #[test]
