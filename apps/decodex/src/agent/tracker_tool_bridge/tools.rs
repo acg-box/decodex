@@ -2208,6 +2208,8 @@ fn review_cost_control_schema() -> Value {
 			},
 			"current_head_evidence": { "type": "boolean" },
 			"validation_backed": { "type": "boolean" },
+			"validation_current": { "type": "boolean" },
+			"evidence_sufficient": { "type": "boolean" },
 			"reviewer_judgment": { "type": "string" },
 			"fallback_reason": { "type": "string" }
 		},
@@ -2655,6 +2657,8 @@ fn normalize_review_cost_control(
 			high_risk_surfaces: Vec::new(),
 			current_head_evidence: false,
 			validation_backed: false,
+			validation_current: false,
+			evidence_sufficient: false,
 			reviewer_judgment: String::from(
 				"No compact-review judgment was recorded; defaulting to full independent review.",
 			),
@@ -2698,6 +2702,8 @@ fn normalize_review_cost_control(
 		high_risk_surfaces,
 		current_head_evidence: cost_control.current_head_evidence,
 		validation_backed: cost_control.validation_backed,
+		validation_current: cost_control.validation_current,
+		evidence_sufficient: cost_control.evidence_sufficient,
 		reviewer_judgment,
 		fallback_reason,
 	})
@@ -2831,6 +2837,12 @@ fn compact_review_forced_full_reasons(
 	}
 	if !cost_control.validation_backed {
 		reasons.push("missing_validation_evidence");
+	}
+	if !cost_control.validation_current {
+		reasons.push("stale_validation_evidence");
+	}
+	if !cost_control.evidence_sufficient {
+		reasons.push("weak_evidence");
 	}
 	if !accepted_findings.is_empty() {
 		reasons.push("accepted_findings_present");
