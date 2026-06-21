@@ -1453,6 +1453,23 @@ impl<'a> TrackerToolBridge<'a> {
 			.as_ref()
 			.filter(|previous_state| previous_state.phase == review_policy_phase)
 			.map_or(0, |previous_state| previous_state.nonclean_rounds);
+		let prior_nonclean_rounds_present = self
+			.state_store
+			.map(|state_store| {
+				state_store.has_nonclean_review_checkpoint_artifact(
+					&review_context.service_id,
+					&self.issue.id,
+					review_policy_phase.as_str(),
+				)
+			})
+			.transpose()
+			.map_err(|error| error.to_string())?
+			.unwrap_or(false);
+		let previous_nonclean_rounds = if prior_nonclean_rounds_present {
+			previous_nonclean_rounds.max(1)
+		} else {
+			previous_nonclean_rounds
+		};
 		let previous_threshold_exceeded = previous_state.as_ref().is_some_and(|previous_state| {
 			previous_state.phase == review_policy_phase
 				&& previous_state.status == ReviewPolicyStatus::Findings
@@ -2208,6 +2225,8 @@ fn review_cost_control_schema() -> Value {
 			},
 			"current_head_evidence": { "type": "boolean" },
 			"validation_backed": { "type": "boolean" },
+			"validation_current": { "type": "boolean" },
+			"evidence_sufficient": { "type": "boolean" },
 			"reviewer_judgment": { "type": "string" },
 			"fallback_reason": { "type": "string" }
 		},
@@ -2655,6 +2674,8 @@ fn normalize_review_cost_control(
 			high_risk_surfaces: Vec::new(),
 			current_head_evidence: false,
 			validation_backed: false,
+			validation_current: false,
+			evidence_sufficient: false,
 			reviewer_judgment: String::from(
 				"No compact-review judgment was recorded; defaulting to full independent review.",
 			),
@@ -2698,6 +2719,8 @@ fn normalize_review_cost_control(
 		high_risk_surfaces,
 		current_head_evidence: cost_control.current_head_evidence,
 		validation_backed: cost_control.validation_backed,
+		validation_current: cost_control.validation_current,
+		evidence_sufficient: cost_control.evidence_sufficient,
 		reviewer_judgment,
 		fallback_reason,
 	})
@@ -2831,6 +2854,12 @@ fn compact_review_forced_full_reasons(
 	}
 	if !cost_control.validation_backed {
 		reasons.push("missing_validation_evidence");
+	}
+	if !cost_control.validation_current {
+		reasons.push("stale_validation_evidence");
+	}
+	if !cost_control.evidence_sufficient {
+		reasons.push("weak_evidence");
 	}
 	if !accepted_findings.is_empty() {
 		reasons.push("accepted_findings_present");
