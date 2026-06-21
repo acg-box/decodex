@@ -6,6 +6,21 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
+code_refs:
+  - apps/decodex/src/orchestrator/dispatch_policy.rs
+  - apps/decodex/src/orchestrator/run_cycle.rs
+  - apps/decodex/src/orchestrator/status.rs
+  - apps/decodex/src/recovery.rs
+drift_watch:
+  - review_handoff_state_transition_pending
+  - review_lifecycle_records
+  - issue_review_handoff
+  - issue_terminal_finalize
+  - IssueDispatchMode::Normal
+  - IssueDispatchMode::Program
+  - IssueDispatchMode::Retry
+  - IssueDispatchMode::ReviewRepair
+  - IssueDispatchMode::Closeout
 last_verified: 2026-06-22
 ---
 # Post-Review Lifecycle
@@ -116,6 +131,15 @@ implementation repair and must happen before retry/no-diff loop guardrails run. 
 retained lifecycle record is absent, unverified, or diverged, Decodex must stop with
 `review_handoff_state_drift` or the existing `missing_review_handoff_record` posture
 and require explicit recovery evidence rather than guessing a PR lineage.
+
+Once a retained worktree and matching review lifecycle record already bind the issue
+and branch, that lifecycle evidence is stronger than a queued/startable tracker state
+or an ordinary retry signal. `Normal`, `Program`, and `Retry` dispatch must fail closed
+for that issue while the tracker state is still startable or
+`tracker.in_progress_state`, and operator intake must surface the blocked reason
+`review_handoff_state_transition_pending`. Review repair dispatch, explicit
+`review-handoff rebind` or `adopt`, post-review orchestration, landing, and closeout
+remain the only owners of progress after the lifecycle record exists.
 
 When the retained review lifecycle record exists but a direct PR-state read or local
 worktree branch/head read fails, operator status must degrade the readback instead of
