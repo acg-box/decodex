@@ -17,6 +17,10 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 		)
 	}
 
+	var visiblePresentation: OperatorSnapshotPresentation {
+		presentation ?? OperatorSnapshotPresentation(legacyCurrentLanes: currentLanes)
+	}
+
 	var runningLaneCount: Int {
 		max(
 			currentLanes.filter(\.countsAsRunning).count,
@@ -795,6 +799,7 @@ struct OperatorDashboardSocketPayload: Decodable, Sendable {
 	let snapshotPublishedAtUnixEpoch: Int64?
 	let snapshot: OperatorSnapshotResponse?
 	let presentation: OperatorSnapshotPresentation?
+	let currentLanes: [OperatorRunStatus]?
 
 	var emittedAt: Date? {
 		date(fromUnixEpoch: emittedAtUnixEpoch)
@@ -809,6 +814,7 @@ struct OperatorDashboardSocketPayload: Decodable, Sendable {
 		case snapshotPublishedAtUnixEpoch
 		case snapshot
 		case presentation
+		case currentLanes
 	}
 }
 
@@ -979,6 +985,15 @@ struct OperatorSnapshotPresentation: Decodable, Sendable {
 	let schema: String?
 	let currentLaneCards: [OperatorCurrentLaneCard]
 
+	init(schema: String? = nil, currentLaneCards: [OperatorCurrentLaneCard]) {
+		self.schema = schema
+		self.currentLaneCards = currentLaneCards
+	}
+
+	init(legacyCurrentLanes: [OperatorRunStatus]) {
+		self.init(currentLaneCards: legacyCurrentLanes.map(OperatorCurrentLaneCard.init(legacyRun:)))
+	}
+
 	enum CodingKeys: String, CodingKey {
 		case schema
 		case currentLaneCards = "current_lane_cards"
@@ -1010,6 +1025,23 @@ struct OperatorCurrentLaneCard: Decodable, Identifiable, Sendable {
 	let assignedAccountFingerprints: [String]
 	let assignedAccountEmails: [String]
 	let run: OperatorRunStatus
+
+	init(legacyRun run: OperatorRunStatus) {
+		self.id = run.runID
+		self.runID = run.runID
+		self.issueID = run.issueID
+		self.issueIdentifier = run.issueIdentifier
+		self.projectID = run.projectID
+		self.title = run.compactTitle
+		self.detail = run.compactDetail
+		self.tone = run.hasAttentionTone ? "attention" : (run.isWaiting ? "waiting" : "running")
+		self.countsAsRunning = run.countsAsRunning
+		self.needsAttention = run.hasAttentionTone
+		self.isWaiting = run.isWaiting
+		self.assignedAccountFingerprints = run.presentationAccountFingerprints
+		self.assignedAccountEmails = run.presentationAccountEmails
+		self.run = run
+	}
 
 	func isAssigned(to account: CodexAccount) -> Bool {
 		if assignedAccountFingerprints.contains(where: { $0 == account.accountFingerprint }) {
@@ -1068,6 +1100,38 @@ struct OperatorCurrentLaneCard: Decodable, Identifiable, Sendable {
 			forKey: .assignedAccountEmails
 		) ?? []
 	}
+}
+
+private extension OperatorRunStatus {
+	var presentationAccountFingerprints: [String] {
+		var values = Set<String>()
+
+		insertNonEmptyPresentationText(account?.accountFingerprint, into: &values)
+		for account in accounts where account.isSelected {
+			insertNonEmptyPresentationText(account.accountFingerprint, into: &values)
+		}
+
+		return values.sorted()
+	}
+
+	var presentationAccountEmails: [String] {
+		var values = Set<String>()
+
+		insertNonEmptyPresentationText(account?.email, into: &values)
+		for account in accounts where account.isSelected {
+			insertNonEmptyPresentationText(account.email, into: &values)
+		}
+
+		return values.sorted()
+	}
+}
+
+private func insertNonEmptyPresentationText(_ value: String?, into values: inout Set<String>) {
+	guard let value = trimmed(value), value.isEmpty == false else {
+		return
+	}
+
+	values.insert(value)
 }
 
 private func trimmed(_ value: String?) -> String? {
