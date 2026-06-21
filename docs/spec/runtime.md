@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
 drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, protocol_events, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings]
-last_verified: 2026-06-21
+last_verified: 2026-06-22
 ---
 # Runtime Specification
 
@@ -617,11 +617,24 @@ During the run, the coding agent should prepare a PR-backed handoff by:
 3. calling the dedicated review handoff tool with the PR URL and a short summary
 4. calling `issue_terminal_finalize(path = "review_handoff")`
 
+The handoff tool first records private `review_completion_intent`. Terminal finalize
+for `review_handoff` is the local durability boundary: it must revalidate that the
+private intent, requested PR URL, retained worktree branch, current local `HEAD`, PR
+head ref, PR head OID, and repository/base readback all match, then persist the
+authoritative `review_lifecycle_records` row before the tool can return success. An
+existing lifecycle row for the same issue and branch must not be silently rebound to a
+different PR or head; that requires explicit review-handoff recovery.
+
 After agent execution and post-run validation succeed, `decodex` should:
 
 1. confirm that the recorded PR still belongs to the current repository and branch and that its head commit matches the validated lane HEAD
 2. transition the issue to `In Review`
 3. post the structured completion comment from the recorded handoff
+
+If a public tracker write fails after terminal finalize wrote the local lifecycle row,
+Decodex must leave that row intact for fail-closed recovery and classify the public
+writeback failure without guessing PR lineage from branch names, titles, comments, or
+stale snapshots.
 
 If the `In Review` transition succeeds but the completion comment fails, `decodex` must stop automatic retries for that attempt and converge the lane through the human-required failure path instead of treating it as retryable work.
 
