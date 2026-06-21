@@ -624,6 +624,85 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertEqual(store.operatorPresentation?.currentLaneCards.map(\.runID), ["run-live"])
 	}
 
+	@MainActor
+	func testLegacySnapshotCurrentLanesCreateVisiblePresentation() throws {
+		let account = makeAccount(
+			status: "available",
+			email: "copy@example.com",
+			accountFingerprint: "...123456"
+		)
+		let store = AccountStore()
+
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "snapshot",
+			payload: """
+			{
+			  "snapshotPublishedAtUnixEpoch": 20,
+			  "snapshot": {
+			    "current_lanes": [
+			      {
+			        "run_id": "run-live",
+			        "issue_identifier": "XY-672",
+			        "wait_reason": "model_execution",
+			        "account": {
+			          "email": "copy@example.com",
+			          "account_fingerprint": "...123456"
+			        }
+			      }
+			    ]
+			  }
+			}
+			"""
+		))
+
+		let card = try XCTUnwrap(store.operatorPresentation?.currentLaneCards.first)
+
+		XCTAssertEqual(card.runID, "run-live")
+		XCTAssertEqual(card.title, "XY-672")
+		XCTAssertEqual(card.tone, "waiting")
+		XCTAssertTrue(card.isAssigned(to: account))
+	}
+
+	@MainActor
+	func testLegacyRunActivityCurrentLanesCreateVisiblePresentation() throws {
+		let account = makeAccount(
+			status: "available",
+			email: "copy@example.com",
+			accountFingerprint: "...123456"
+		)
+		let store = AccountStore()
+
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "runActivity",
+			payload: """
+			{
+			  "emittedAtUnixEpoch": 30,
+			  "currentLanes": [
+			    {
+			      "run_id": "run-live",
+			      "issue_identifier": "XY-672",
+			      "current_operation": "agent_run",
+			      "accounts": [
+			        {
+			          "email": "copy@example.com",
+			          "account_fingerprint": "...123456",
+			          "status": "selected"
+			        }
+			      ]
+			    }
+			  ]
+			}
+			"""
+		))
+
+		let card = try XCTUnwrap(store.operatorPresentation?.currentLaneCards.first)
+
+		XCTAssertNil(store.operatorSnapshot)
+		XCTAssertEqual(card.runID, "run-live")
+		XCTAssertEqual(card.detail, "agent_run")
+		XCTAssertTrue(card.isAssigned(to: account))
+	}
+
 	func testPresentationCardsAssignAccountsFromServerFields() throws {
 		let account = makeAccount(
 			status: "available",
