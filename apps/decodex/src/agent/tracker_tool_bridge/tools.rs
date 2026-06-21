@@ -36,10 +36,11 @@ use crate::{
 	},
 };
 
+pub(super) const REVIEW_COMPLETION_INTENT_EVENT_TYPE: &str = "review_completion_intent";
+
 const COMMENT_KIND_MANUAL_ATTENTION: &str = "manual_attention";
 const MANUAL_ATTENTION_TERMINAL_PATH: &str = "manual_attention";
 const INDEPENDENT_FRESH_CONTEXT_REVIEWER: &str = "independent_fresh_context";
-const REVIEW_COMPLETION_INTENT_EVENT_TYPE: &str = "review_completion_intent";
 const TERMINAL_FINALIZE_EVENT_TYPE: &str = "terminal_finalize";
 const REVIEW_CLASS_COMPACT_CURRENT_HEAD: &str = "compact_current_head_review";
 const REVIEW_CLASS_FULL_CURRENT_HEAD: &str = "full_current_head_review";
@@ -2111,6 +2112,13 @@ impl<'a> TrackerToolBridge<'a> {
 		if let Err(error) = self.ensure_docs_impact_checkpoint(review_context, actual_path) {
 			return DynamicToolCallResponse::failure(error);
 		}
+
+		if actual_path == RunCompletionDisposition::ReviewHandoff
+			&& let Err(error) = self.persist_terminal_review_handoff_marker(review_context)
+		{
+			return DynamicToolCallResponse::failure(error);
+		}
+
 		if let Err(error) = self.append_terminal_finalize_event(review_context, actual_path) {
 			return DynamicToolCallResponse::failure(error);
 		}
