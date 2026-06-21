@@ -9067,74 +9067,6 @@
 				`;
 			}
 
-			function currentLaneSummary(run) {
-				if (runTelemetryMissingNeedsAttention(run)) {
-					if (runHasChildAgentActivity(run)) {
-						return `Metadata missing ${formatDuration(run.idle_for_seconds)}.`;
-					}
-					return `Telemetry missing ${formatDuration(run.idle_for_seconds)}.`;
-				}
-				if (runTelemetryMissing(run)) {
-					if (runHasChildAgentActivity(run)) {
-						return "Metadata pending.";
-					}
-					return "Telemetry pending.";
-				}
-				if (runStoppedProcessNeedsAttention(run)) {
-					return "";
-				}
-				if (runProcessStoppedWhileActive(run)) {
-					return `Agent done; finalizing ${displayToken(run.current_operation || run.run_phase || run.phase)}.`;
-				}
-				if (run.suspected_stall) {
-					return `No progress ${formatDuration(run.protocol_idle_for_seconds ?? run.idle_for_seconds)}.`;
-				}
-				if (run.interactive_requested) {
-					return "Operator input needed.";
-				}
-				if (run.continuation_pending) {
-					return "Continuation pending.";
-				}
-				if (runWaitReasonShowsExecutionProgress(run)) {
-					return "";
-				}
-				if (run.wait_reason) {
-					return `Waiting on ${displayToken(run.wait_reason)}.`;
-				}
-				if (!run.run_lease) {
-					return "No queue lease.";
-				}
-				const childCurrent = childAgentCurrentSummary(childAgentActivity(run));
-				if (childCurrent) {
-					return "";
-				}
-				const focus = protocolActivityFocus(run);
-				if (focus === "protocol idleness") {
-					return "Protocol idle.";
-				}
-				return "";
-			}
-
-			function runIssueRecord(run, derived) {
-				const candidates = derived?.queuedCandidates ?? [];
-				return candidates.find((candidate) => candidate.issue_id === run.issue_id);
-			}
-
-			function runIssueTitle(run, derived) {
-				const issueRecord = runIssueRecord(run, derived);
-				const operationFallback = displayToken(run.current_operation || run.run_phase || run.phase);
-				const fallback = issueDisplayKey(run);
-
-				for (const value of [run.title, run.issue_title, issueRecord?.title]) {
-					const title = String(value || "").trim();
-					if (title && !(fallback !== "unknown" && title === operationFallback)) {
-						return title;
-					}
-				}
-
-				return fallback !== "unknown" ? fallback : operationFallback;
-			}
-
 			function runHealthText(run) {
 				if (runTelemetryMissingNeedsAttention(run)) {
 					if (runHasChildAgentActivity(run)) {
@@ -10643,15 +10575,15 @@
 				renderStableList(
 					nodes.currentLanes,
 					cards
-						.map((card) => {
+						.map((card, index) => {
 							const run = card.run || {};
-							const tone = currentLaneCardToneClass(card, run);
+							const tone = currentLaneCardToneClass(card);
 							const statusBits = [statusLabel(runPhaseLabel(run), tone)];
 							const detailKey = runDetailKey(run);
-							const renderKey = card.id || card.run_id || currentLaneRenderKey(run);
-							const issueKey = card.issue_identifier || issueDisplayKey(run);
-							const issueTitle = card.title || runIssueTitle(run, derived);
-							const summary = currentLaneSummary(run) || card.detail || "";
+							const renderKey = card.id || card.run_id || `presentation-card:${index}`;
+							const issueKey = card.issue_identifier || "unknown";
+							const issueTitle = card.title || "Run";
+							const summary = card.detail || "";
 							if (run.ownership_state && run.ownership_state !== "leased_run") {
 								statusBits.push(inlineStatusFact("Owner", displayToken(run.ownership_state)));
 							}
@@ -11213,36 +11145,15 @@
 				);
 			}
 
-				function presentationCurrentLaneCards(presentation) {
-					return Array.isArray(presentation?.current_lane_cards)
-						? presentation.current_lane_cards.filter((card) => card && typeof card === "object")
-						: [];
-				}
+			function presentationCurrentLaneCards(presentation) {
+				return Array.isArray(presentation?.current_lane_cards)
+					? presentation.current_lane_cards.filter((card) => card && typeof card === "object")
+					: [];
+			}
 
 			function snapshotCurrentLaneCards(snapshot) {
-				const cards = presentationCurrentLaneCards(snapshot?.presentation);
-				if (cards.length || snapshot?.presentation) {
-					return cards;
-				}
-
-				return (snapshot?.current_lanes ?? [])
-					.filter((run) => run && typeof run === "object")
-						.map((run) => ({
-							id: run.run_id || issueDisplayKey(run),
-							run_id: run.run_id,
-							issue_id: run.issue_id,
-							issue_identifier: run.issue_identifier,
-							project_id: run.project_id,
-							title: run.issue_identifier || run.title || "Run",
-							detail: run.current_operation || run.run_phase || run.phase || "Active",
-							tone: runNeedsAttention(run)
-								? "attention"
-								: runWaitReasonShowsExecutionProgress(run) || !run.wait_reason
-									? "running"
-									: "waiting",
-							run,
-						}));
-				}
+				return presentationCurrentLaneCards(snapshot?.presentation);
+			}
 
 			function currentLaneRunsFromCards(cards) {
 				return cards
@@ -11254,7 +11165,7 @@
 				return currentLaneRunsFromCards(snapshotCurrentLaneCards(snapshot));
 			}
 
-			function currentLaneCardToneClass(card, run) {
+			function currentLaneCardToneClass(card) {
 				if (card?.tone === "attention") {
 					return "tone-blocked";
 				}
@@ -11262,7 +11173,7 @@
 					return "tone-wait";
 				}
 
-				return toneForRun(run);
+				return "tone-run";
 			}
 
 			function dashboardLiveRunActivityHasOverlay({ includeCompletedEmpty = false } = {}) {
