@@ -1,5 +1,12 @@
 # Documentation Log
 
+## 2026-06-22
+
+- Documented the ordinary dispatch guard for retained review handoff lanes:
+  matching retained worktree plus review lifecycle record blocks normal, Program, and
+  retry intake with `review_handoff_state_transition_pending` while post-review
+  recovery, review repair, landing, and closeout remain the progress owners.
+
 ## 2026-06-21
 
 - Required non-trivial scout/search and skeptic/challenge work to use fresh dynamic
