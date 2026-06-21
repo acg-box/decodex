@@ -174,13 +174,15 @@ Rules:
   binds the committed current `HEAD`, and the reviewer must still perform both the
   intended-behavior and adversarial checks from the registered workflow policy.
   Compact review is valid only for a low-risk, small, validation-backed, clean
-  pre-handoff lane with current-head evidence, no high-risk surfaces, no accepted
-  findings, no blocking routes, and no prior non-clean review-policy state.
-  Full review is forced for repair verification, accepted findings, non-clean rounds,
-  missing or stale validation, weak evidence, architecture risk, high-risk changed
-  surfaces, or docs/config/API/security/data/privacy changes without sufficient
-  evidence. The classification combines structured signals with reviewer judgment;
-  changed-surface count alone is never sufficient.
+  pre-handoff lane with current-head evidence, validation evidence that is current
+  for the reviewed `HEAD`, sufficient current-head evidence quality, no high-risk
+  surfaces, no accepted findings, no blocking routes, and no prior non-clean
+  review-policy state. Full review is forced for repair verification, accepted
+  findings, non-clean rounds, missing or stale validation, weak evidence,
+  architecture risk, high-risk changed surfaces, or docs/config/API/security/data/
+  privacy changes without sufficient evidence. The classification combines
+  structured signals with reviewer judgment; changed-surface count alone is never
+  sufficient.
 - In `"standard"` and `"strict"` levels, a Decodex Review checkpoint is persisted as
   an evidence-keyed artifact. The key must include artifact kind
   `issue_review_checkpoint`, review phase, current `HEAD`, review level, and review
