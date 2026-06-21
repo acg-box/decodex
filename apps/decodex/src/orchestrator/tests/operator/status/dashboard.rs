@@ -1885,6 +1885,7 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 		.contains("function dashboardLiveRunActivityHasOverlay({ includeCompletedEmpty = false } = {})"));
 	assert!(response.contains("function clearDashboardLiveRunActivityOverlayIfCompleteEmpty()"));
 	assert!(response.contains("return includeCompletedEmpty;"));
+	assert!(response.contains("function clearDashboardLiveRunActivityOverlay()"));
 	assert!(response.contains("function snapshotWithLiveRunActivity(snapshot, options = {})"));
 	assert!(response.contains("if (!dashboardLiveRunActivityHasOverlay(options))"));
 	assert!(response.contains("\"issue_identifier\""));
@@ -1911,7 +1912,8 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("dashboardLiveCurrentLanes = payload.currentLanes"));
 	assert!(response.contains("dashboardLiveRunActivitySeen = true;"));
 	assert!(response.contains("dashboardLiveCurrentLanesComplete ="));
-	assert!(response.contains("snapshot: snapshotWithLiveRunActivity(payload.snapshot),"));
+	assert!(response.contains("clearDashboardLiveRunActivityOverlay();"));
+	assert!(response.contains("snapshot: payload.snapshot,"));
 	assert!(response.contains(
 		"snapshot: snapshotWithLiveRunActivity(lastDashboardRender.snapshot, {\n\t\t\t\t\t\tincludeCompletedEmpty: true,\n\t\t\t\t\t}),"
 	));
