@@ -19,6 +19,7 @@ use state::WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN;
 use state::WORKTREE_PROVENANCE_LEGACY_UNKNOWN;
 use state::ProjectLoopEvidenceSnapshot;
 use state::ProtocolActivityEventSummary;
+use state::ReviewCheckpointArtifactLookup;
 
 use crate::agent::REVIEW_POLICY_CONVERGENCE_BUDGET;
 use crate::pull_request::{self, PullRequestLandingGateView};
@@ -81,6 +82,13 @@ struct LiveOperatorStatusSnapshotOptions {
 	run_issue_metadata_hydration: RunIssueMetadataHydration,
 	account_activity_mode: AccountActivityMode,
 	configure_dispatch_slots: bool,
+}
+
+#[derive(Clone, Copy)]
+struct PostReviewRuntimeState<'a> {
+	state_store: &'a StateStore,
+	project_id: &'a str,
+	review_level: ReviewLevel,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2114,7 +2122,7 @@ fn refresh_operator_project_summary(
 fn project_waiting_lane_count(snapshot: &OperatorStatusSnapshot) -> usize {
 	let waiting_run_count = project_summary_runs(snapshot)
 		.into_iter()
-		.filter(|run| operator_run_counts_as_waiting(run))
+		.filter(|run| operator_run_counts_as_project_waiting(run))
 		.map(|run| run.run_id.as_str())
 		.collect::<HashSet<_>>()
 		.len();
@@ -2142,6 +2150,23 @@ fn project_summary_runs(snapshot: &OperatorStatusSnapshot) -> Vec<&OperatorRunSt
 
 fn operator_run_counts_as_waiting(run: &OperatorRunStatus) -> bool {
 	run.phase == "retry_backoff" || run.phase == "waiting_continuation" || run.wait_reason.is_some()
+}
+
+fn operator_run_counts_as_project_waiting(run: &OperatorRunStatus) -> bool {
+	if operator_run_counts_as_attention(run) {
+		return false;
+	}
+	if matches!(run.phase.as_str(), "retry_backoff" | "waiting_continuation") {
+		return true;
+	}
+	if run.current_operation == RUN_OPERATION_WAITING_EXTERNAL {
+		return true;
+	}
+
+	matches!(
+		run.wait_reason.as_deref(),
+		Some("approval_or_user_input" | "protocol_idleness")
+	)
 }
 
 fn queued_candidate_counts_as_waiting_intake(candidate: &OperatorQueuedIssueStatus) -> bool {
@@ -5434,7 +5459,11 @@ where
 		workflow,
 		review_state_inspector,
 		true,
-		Some((state_store, "pubfi")),
+		Some(PostReviewRuntimeState {
+			state_store,
+			project_id: "pubfi",
+			review_level: ReviewLevel::Standard,
+		}),
 	)
 }
 
@@ -5453,7 +5482,11 @@ where
 		workflow,
 		review_state_inspector,
 		project.codex().review_level().uses_github_review(),
-		Some((state_store, project.service_id())),
+		Some(PostReviewRuntimeState {
+			state_store,
+			project_id: project.service_id(),
+			review_level: project.codex().review_level(),
+		}),
 	)?;
 
 	confirm_status_visible_merged_closeout(snapshot, project, &mut classification);
@@ -5466,7 +5499,7 @@ fn classify_post_review_lane_with_external_review<I>(
 	workflow: &WorkflowDocument,
 	review_state_inspector: &I,
 	github_review_enabled: bool,
-	runtime_state: Option<(&StateStore, &str)>,
+	runtime_state: Option<PostReviewRuntimeState<'_>>,
 ) -> crate::prelude::Result<PostReviewLaneClassification>
 where
 	I: PullRequestReviewStateInspector,
@@ -5540,7 +5573,7 @@ where
 fn apply_authority_boundary_landing_policy(
 	snapshot: &PostReviewLaneSnapshot,
 	classification: &mut PostReviewLaneClassification,
-	runtime_state: Option<(&StateStore, &str)>,
+	runtime_state: Option<PostReviewRuntimeState<'_>>,
 ) -> crate::prelude::Result<()> {
 	if classification.decision != PostReviewLaneDecision::ReadyToLand {
 		return Ok(());
@@ -5558,13 +5591,13 @@ fn apply_authority_boundary_landing_policy(
 
 fn authority_boundary_landing_requirement(
 	snapshot: &PostReviewLaneSnapshot,
-	runtime_state: Option<(&StateStore, &str)>,
+	runtime_state: Option<PostReviewRuntimeState<'_>>,
 ) -> crate::prelude::Result<Option<&'static str>> {
-	let Some((state_store, project_id)) = runtime_state else {
+	let Some(runtime_state) = runtime_state else {
 		return Ok(None);
 	};
-	let events = state_store.list_private_execution_events_for_issue(
-		project_id,
+	let events = runtime_state.state_store.list_private_execution_events_for_issue(
+		runtime_state.project_id,
 		&snapshot.issue.id,
 	)?;
 	let latest_clean_review_record_id = events
@@ -5980,18 +6013,35 @@ fn load_post_review_orchestration_marker(
 	snapshot: &PostReviewLaneSnapshot,
 	review_state: &PullRequestReviewState,
 	classification: &mut PostReviewLaneClassification,
-	runtime_state: Option<(&StateStore, &str)>,
+	runtime_state: Option<PostReviewRuntimeState<'_>>,
 ) -> crate::prelude::Result<Option<ReviewOrchestrationMarker>> {
 	let review_handoff = snapshot
 		.review_handoff
 		.as_ref()
 		.expect("review handoff should exist before orchestration classification");
-	let orchestration_marker = if let Some((state_store, project_id)) = runtime_state {
-		state_store.review_orchestration_marker(project_id, &snapshot.issue.id, review_handoff)?
+	let orchestration_marker = if let Some(runtime_state) = runtime_state {
+		runtime_state.state_store.review_orchestration_marker(
+			runtime_state.project_id,
+			&snapshot.issue.id,
+			review_handoff,
+		)?
 	} else {
 		None
 	};
 	let Some(orchestration_marker) = orchestration_marker else {
+		if clean_current_head_review_repair_writeback_pending(
+			snapshot,
+			review_state,
+			runtime_state,
+		)? {
+			classification.reason =
+				String::from("review_repair_writeback_missing_lifecycle_marker");
+			classification.readback_warning =
+				Some(String::from("review_repair_writeback_missing_lifecycle_marker"));
+
+			return Ok(None);
+		}
+
 		classification.reason = String::from("external_review_request_pending");
 
 		return Ok(None);
@@ -6000,12 +6050,130 @@ fn load_post_review_orchestration_marker(
 	if let Some(reason) =
 		validate_review_orchestration_marker(snapshot, review_state, &orchestration_marker)
 	{
+		if reason == "review_orchestration_head_mismatch"
+			&& clean_current_head_review_repair_writeback_pending(
+				snapshot,
+				review_state,
+				runtime_state,
+			)?
+		{
+			classification.reason =
+				String::from("review_repair_writeback_stale_lifecycle_marker");
+			classification.readback_warning =
+				Some(String::from("review_repair_writeback_stale_lifecycle_marker"));
+
+			return Ok(None);
+		}
+
 		*classification = blocked_post_review_lane_from_state(review_state, reason);
 
 		return Ok(None);
 	}
 
 	Ok(Some(orchestration_marker))
+}
+
+fn clean_current_head_review_repair_writeback_pending(
+	snapshot: &PostReviewLaneSnapshot,
+	review_state: &PullRequestReviewState,
+	runtime_state: Option<PostReviewRuntimeState<'_>>,
+) -> crate::prelude::Result<bool> {
+	let Some(runtime_state) = runtime_state else {
+		return Ok(false);
+	};
+	let Some(local_head_oid) = snapshot.local_head_oid.as_deref() else {
+		return Ok(false);
+	};
+
+	if review_state.head_ref_oid != local_head_oid
+		|| review_state.head_ref_name != snapshot.worktree.branch_name()
+	{
+		return Ok(false);
+	}
+
+	let events = runtime_state.state_store.list_private_execution_events_for_issue(
+		runtime_state.project_id,
+		&snapshot.issue.id,
+	)?;
+
+	for terminal_event in events.iter().rev() {
+		if !review_repair_terminal_finalize_event_matches_snapshot(terminal_event, snapshot) {
+			continue;
+		}
+
+		let Some(intent_event) = events.iter().rev().find(|event| {
+			event.run_id() == terminal_event.run_id()
+				&& event.attempt_number() == terminal_event.attempt_number()
+				&& review_repair_completion_intent_matches_current_head(
+					event,
+					snapshot,
+					review_state,
+					local_head_oid,
+				)
+		}) else {
+			continue;
+		};
+		let Some(checkpoint) = runtime_state
+			.state_store
+			.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
+				project_id: runtime_state.project_id,
+				issue_id: &snapshot.issue.id,
+				phase: "repair",
+				review_level: runtime_state.review_level.as_str(),
+				head_sha: local_head_oid,
+			})?
+		else {
+			continue;
+		};
+
+		if checkpoint.status() == "clean"
+			&& checkpoint.head_sha() == local_head_oid
+			&& checkpoint.run_id() == intent_event.run_id()
+			&& checkpoint.attempt_number() == intent_event.attempt_number()
+		{
+			return Ok(true);
+		}
+	}
+
+	Ok(false)
+}
+
+fn review_repair_terminal_finalize_event_matches_snapshot(
+	event: &PrivateExecutionEvent,
+	snapshot: &PostReviewLaneSnapshot,
+) -> bool {
+	let payload = event.payload();
+
+	event.event_type() == "terminal_finalize"
+		&& payload.get("path").and_then(Value::as_str) == Some("review_repair")
+		&& payload.get("mode").and_then(Value::as_str) == Some("repair")
+		&& payload.get("branch").and_then(Value::as_str) == Some(snapshot.worktree.branch_name())
+		&& payload
+			.get("worktree_path")
+			.and_then(Value::as_str)
+			== Some(snapshot.worktree.worktree_path().display().to_string().as_str())
+}
+
+fn review_repair_completion_intent_matches_current_head(
+	event: &PrivateExecutionEvent,
+	snapshot: &PostReviewLaneSnapshot,
+	review_state: &PullRequestReviewState,
+	local_head_oid: &str,
+) -> bool {
+	let payload = event.payload();
+
+	event.event_type() == "review_completion_intent"
+		&& payload.get("path").and_then(Value::as_str) == Some("review_repair")
+		&& payload.get("mode").and_then(Value::as_str) == Some("repair")
+		&& payload.get("branch").and_then(Value::as_str) == Some(snapshot.worktree.branch_name())
+		&& payload
+			.get("worktree_path")
+			.and_then(Value::as_str)
+			== Some(snapshot.worktree.worktree_path().display().to_string().as_str())
+		&& payload.get("pr_url").and_then(Value::as_str) == Some(review_state.url.as_str())
+		&& payload.get("pr_head_ref").and_then(Value::as_str)
+			== Some(review_state.head_ref_name.as_str())
+		&& payload.get("pr_head_oid").and_then(Value::as_str) == Some(local_head_oid)
 }
 
 fn apply_review_orchestration_phase_classification(
@@ -8034,8 +8202,11 @@ fn operator_run_default_review_phase(
 	if operator_run_has_terminal_lifecycle(status, phase, current_operation) {
 		return None;
 	}
+	if current_operation == RUN_OPERATION_REVIEW_WRITEBACK {
+		return Some("handoff");
+	}
 
-	Some("handoff")
+	None
 }
 
 fn operator_run_lifecycle_loop_summary(
@@ -8225,6 +8396,15 @@ fn operator_review_loop_status(
 	attempt_number: i64,
 	default_review_phase: Option<&str>,
 ) -> crate::prelude::Result<Option<OperatorReviewLoopStatus>> {
+	if let Some(checkpoint) = operator_latest_review_checkpoint_event_status(
+		loop_evidence,
+		issue_id,
+		run_id,
+		attempt_number,
+	) {
+		return Ok(Some(checkpoint));
+	}
+
 	let latest_checkpoint = ["handoff", "repair"]
 		.into_iter()
 		.filter_map(|phase| {
@@ -8271,6 +8451,64 @@ fn operator_review_loop_status(
 	}
 
 	Ok(None)
+}
+
+fn operator_latest_review_checkpoint_event_status(
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+	issue_id: &str,
+	run_id: &str,
+	attempt_number: i64,
+) -> Option<OperatorReviewLoopStatus> {
+	loop_evidence
+		.private_events(issue_id, run_id, attempt_number)
+		.iter()
+		.rev()
+		.find_map(|event| {
+			let payload = event.payload();
+
+			if event.event_type() != "review_checkpoint" {
+				return None;
+			}
+
+			let phase = payload.get("phase").and_then(Value::as_str)?;
+			let status = payload.get("status").and_then(Value::as_str)?;
+			let head_sha = payload.get("head_sha").and_then(Value::as_str)?;
+			let nonclean_rounds = payload
+				.get("nonclean_rounds")
+				.and_then(Value::as_i64)
+				.unwrap_or(0);
+			let checkpoint =
+				loop_evidence.review_policy_checkpoint(issue_id, run_id, attempt_number, phase)?;
+
+			if checkpoint.status() != status
+				|| checkpoint.head_sha() != head_sha
+				|| checkpoint.nonclean_rounds() != nonclean_rounds
+			{
+				return None;
+			}
+
+			let details_json = payload.get("review").unwrap_or(payload).to_string();
+			let summary = operator_review_checkpoint_summary_fields(&details_json);
+
+			Some(OperatorReviewLoopStatus {
+				phase: phase.to_owned(),
+				status: status.to_owned(),
+				checkpoint: Some(OperatorReviewCheckpointStatus {
+					head_sha: head_sha.to_owned(),
+					round: nonclean_rounds,
+					nonclean_rounds,
+					review_class: summary.review_class,
+					risk_class: summary.risk_class,
+					compact_eligible: summary.compact_eligible,
+					fallback_reason: summary.fallback_reason,
+					active_fingerprints: summary.active_fingerprints,
+					stop_fingerprint: summary.stop_fingerprint,
+					route_counts: summary.route_counts,
+					route_next_action: summary.route_next_action,
+					updated_at: checkpoint.updated_at().to_owned(),
+				}),
+			})
+		})
 }
 
 fn operator_review_checkpoint_summary_fields(
@@ -8689,6 +8927,12 @@ fn operator_loop_status_next_action(
 		}
 
 		match review.status.as_str() {
+			"clean" if review.phase == "handoff" => Some(String::from(
+				"Push or update the PR and record review handoff for the clean current lane head.",
+			)),
+			"clean" if review.phase == "repair" => Some(String::from(
+				"Record a fresh current-head handoff review checkpoint for the repaired lane head.",
+			)),
 			"pending" => Some(String::from(
 				"Record the independent Decodex Review checkpoint for the current lane head.",
 			)),
@@ -8901,7 +9145,8 @@ fn operator_run_protocol_summary(
 	marker: Option<&RunActivityMarker>,
 ) -> OperatorRunProtocolSummary {
 	let use_marker_protocol_summary =
-		run.event_count() == 0 && run.last_event_type().is_none() && run.last_event_at().is_none();
+		run.event_count() == 0 && run.last_event_type().is_none() && run.last_event_at().is_none()
+			|| marker_protocol_summary_supersedes_run(run, marker);
 
 	if use_marker_protocol_summary {
 		return OperatorRunProtocolSummary {
@@ -8918,6 +9163,28 @@ fn operator_run_protocol_summary(
 		last_event_at: run.last_event_at().map(str::to_owned),
 		event_count: run.event_count(),
 	}
+}
+
+fn marker_protocol_summary_supersedes_run(
+	run: &ProjectRunStatus,
+	marker: Option<&RunActivityMarker>,
+) -> bool {
+	let Some(marker) = marker else {
+		return false;
+	};
+
+	if marker.last_event_type().is_none() {
+		return false;
+	}
+
+	let Some(marker_event_at) = marker.last_protocol_activity_unix_epoch() else {
+		return false;
+	};
+
+	run.last_event_at_unix().is_none_or(|run_event_at| {
+		marker_event_at > run_event_at
+			|| marker_event_at == run_event_at && marker.event_count() > run.event_count()
+	})
 }
 
 fn operator_run_terminal_finalize_projection(
@@ -8946,7 +9213,11 @@ fn operator_run_terminal_finalize_projection(
 		"review_repair" => Some(OperatorTerminalFinalizeProjection {
 			status: "review_repair_pending",
 			phase: "terminal_pending",
-			wait_reason: "review_repair_writeback",
+			wait_reason: review_repair_terminal_finalize_wait_reason(
+				loop_evidence,
+				run,
+				events,
+			),
 			current_operation: RUN_OPERATION_REVIEW_WRITEBACK,
 		}),
 		"closeout" => Some(OperatorTerminalFinalizeProjection {
@@ -8991,6 +9262,53 @@ fn review_handoff_terminal_finalize_wait_reason(
 	}
 
 	"review_handoff_writeback"
+}
+
+fn review_repair_terminal_finalize_wait_reason(
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+	run: &ProjectRunStatus,
+	events: &[PrivateExecutionEvent],
+) -> &'static str {
+	let Some(intent) = events.iter().rev().find(|event| {
+		let payload = event.payload();
+
+		event.event_type() == "review_completion_intent"
+			&& payload.get("path").and_then(Value::as_str) == Some("review_repair")
+			&& payload.get("mode").and_then(Value::as_str) == Some("repair")
+			&& payload.get("pr_url").and_then(Value::as_str).is_some()
+			&& payload.get("pr_head_ref").and_then(Value::as_str).is_some()
+			&& payload.get("pr_head_oid").and_then(Value::as_str).is_some()
+			&& payload.get("worktree_path").and_then(Value::as_str).is_some()
+	}) else {
+		return "review_repair_writeback";
+	};
+	let payload = intent.payload();
+	let Some(branch) = payload.get("branch").and_then(Value::as_str) else {
+		return "review_repair_writeback";
+	};
+	let Some(pr_url) = payload.get("pr_url").and_then(Value::as_str) else {
+		return "review_repair_writeback";
+	};
+	let Some(pr_head_ref) = payload.get("pr_head_ref").and_then(Value::as_str) else {
+		return "review_repair_writeback";
+	};
+	let Some(pr_head_oid) = payload.get("pr_head_oid").and_then(Value::as_str) else {
+		return "review_repair_writeback";
+	};
+	let Some(lifecycle_record) = loop_evidence.review_lifecycle_record(run.issue_id(), branch)
+	else {
+		return "review_repair_writeback_missing_lifecycle_marker";
+	};
+
+	if lifecycle_record.pr_url() != pr_url
+		|| lifecycle_record.pr_head_ref_name() != pr_head_ref
+		|| lifecycle_record.pr_head_oid() != pr_head_oid
+		|| lifecycle_record.head_sha() != pr_head_oid
+	{
+		return "review_repair_writeback_stale_lifecycle_marker";
+	}
+
+	"review_repair_writeback"
 }
 
 fn operator_run_continuation_recovery_status(
