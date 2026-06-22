@@ -26,6 +26,10 @@ use crate::{
 		AutonomyObjectiveAcceptance, AutonomyObjectiveContract, AutonomyObjectiveRejection,
 		AutonomyObjectiveState, AutonomyObjectiveSupersession,
 	},
+	autonomy_signal::{
+		AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
+		AutonomySignalFreshness, AutonomySignalKind, AutonomySignalPrivacy,
+	},
 	config::ServiceConfig,
 	execution_program::ExecutionProgram,
 	loop_contract::{DecisionContract, DecisionContractStatus, DecisionPromotion},
