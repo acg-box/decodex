@@ -211,6 +211,86 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 }
 
 #[test]
+fn phase_goal_completion_continues_with_owned_tracked_rewrites_after_validation() {
+	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
+		&sample_workflow_markdown(
+			"pubfi",
+			&[],
+			"Phase goal validation policy.\n",
+			3,
+		)
+		.replace(
+			"canonicalize_commands = []",
+			"canonicalize_commands = [\"printf 'rewritten\\\\n' > ready.txt\"]",
+		)
+		.replace("verify_commands = []", "verify_commands = [\"grep -qx rewritten ready.txt\"]"),
+	);
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.repo_root().to_path_buf(),
+			reused_existing: false,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1"),
+		retry_budget_base: 0,
+	};
+
+	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
+
+	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
+
+	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+
+	let transition = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &issue_run,
+	}
+	.phase_goal_completed(PhaseGoalKind::ImplementToValidationReady)
+	.expect("owned tracked canonicalize rewrites should satisfy phase validation");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
+		.expect("private phase goal events should load");
+
+	match transition {
+		PhaseGoalTransition::Continue(PhaseGoalSpec {
+			phase: PhaseGoalKind::HandoffEvidence,
+			objective,
+			..
+		}) => {
+			assert!(objective.contains("ready.txt"));
+			assert!(objective.contains("Commit these issue-owned gate rewrites"));
+		},
+		_ => panic!("owned tracked rewrites should continue to handoff evidence"),
+	}
+
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_transition"
+			&& event.payload()["signal"] == "validation_pass"
+			&& event.payload()["payload"]["trackedRewrites"]["owned"] == true
+			&& event.payload()["payload"]["trackedRewrites"]["decision"]
+				== "continue_to_commit_capable_phase"
+	}));
+	assert!(events.iter().any(|event| {
+		event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE
+			&& event.payload()["decision"] == "pass"
+			&& event.payload()["validation_evidence"]["tracked_rewrites"]["files"]
+				.as_array()
+				.is_some_and(|files| files.iter().any(|file| file.as_str() == Some("ready.txt")))
+	}));
+}
+
+#[test]
 fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
 	let (temp_dir, config, workflow) = temp_project_layout();
 	let remote_root = temp_dir.path().join("origin.git");
@@ -789,7 +869,7 @@ fn program_phase_goal_skips_empty_failed_start_attempt_for_cross_attempt_resume(
 }
 
 #[test]
-fn open_phase_goal_tracked_rewrites_stop_instead_of_repair_continuation() {
+fn open_phase_goal_unowned_tracked_rewrites_stop_instead_of_repair_continuation() {
 	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
 		&sample_workflow_markdown(
 			"pubfi",
@@ -799,7 +879,7 @@ fn open_phase_goal_tracked_rewrites_stop_instead_of_repair_continuation() {
 		)
 		.replace(
 			"canonicalize_commands = []",
-			"canonicalize_commands = [\"printf 'rewritten\\\\n' > ready.txt\"]",
+			"canonicalize_commands = [\"printf 'rewritten\\\\n' > other.txt\"]",
 		),
 	);
 	let repo_root = config.repo_root();
@@ -823,8 +903,11 @@ fn open_phase_goal_tracked_rewrites_stop_instead_of_repair_continuation() {
 	};
 
 	commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
+	commit_worktree_change(repo_root, "other.txt", "before\n", "add other file");
 
 	fs::write(repo_root.join("ready.txt"), "after\n").expect("tracked diff should write");
+
+	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
 
 	state_store
 		.append_private_execution_event(
@@ -868,9 +951,107 @@ fn open_phase_goal_tracked_rewrites_stop_instead_of_repair_continuation() {
 		event.event_type() == "phase_goal_transition"
 			&& event.payload()["signal"] == "validation_fail"
 			&& event.payload()["payload"]["disposition"] == "needs_human_attention"
+			&& event.payload()["payload"]["trackedRewrites"]["owned"] == false
+			&& event.payload()["payload"]["trackedRewrites"]["files"]
+				.as_array()
+				.is_some_and(|files| files.iter().any(|file| file.as_str() == Some("other.txt")))
 	}));
 	assert!(events.iter().all(|event| event.event_type() != "phase_goal_next"));
 	assert!(events.iter().all(|event| event.event_type() != "phase_goal_recovery"));
+}
+
+#[test]
+fn open_phase_goal_owned_tracked_rewrites_continue_to_handoff_recovery() {
+	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
+		&sample_workflow_markdown(
+			"pubfi",
+			&[],
+			"Phase goal validation policy.\n",
+			1,
+		)
+		.replace(
+			"canonicalize_commands = []",
+			"canonicalize_commands = [\"printf 'rewritten\\\\n' > ready.txt\"]",
+		),
+	);
+	let repo_root = config.repo_root();
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: repo_root.to_path_buf(),
+			reused_existing: false,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1"),
+		retry_budget_base: 0,
+	};
+
+	commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
+
+	fs::write(repo_root.join("ready.txt"), "after\n").expect("tracked diff should write");
+
+	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			&issue_run.run_id,
+			1,
+			"phase_goal_set",
+			serde_json::json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": "implement_to_validation_ready",
+				"payload": {
+					"phase": "implement_to_validation_ready",
+					"status": "active",
+				},
+			}),
+		)
+		.expect("phase goal event should record");
+
+	let summary = orchestrator::maybe_continue_after_phase_goal_recovery(
+		&config,
+		&workflow,
+		&state_store,
+		&issue_run,
+		&Report::msg("app server transport closed after local verification"),
+	)
+	.expect("owned tracked repo-gate rewrites should keep phase-goal recovery automatic")
+	.expect("owned tracked repo-gate rewrites should schedule continuation");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
+		.expect("private events should load");
+
+	assert!(summary.continuation_pending);
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_transition"
+			&& event.payload()["signal"] == "validation_pass"
+			&& event.payload()["payload"]["nextPhase"] == "handoff_evidence"
+			&& event.payload()["payload"]["trackedRewrites"]["owned"] == true
+			&& event.payload()["payload"]["trackedRewrites"]["decision"]
+				== "continue_to_commit_capable_phase"
+			&& event.payload()["payload"]["trackedRewrites"]["files"]
+				.as_array()
+				.is_some_and(|files| files.iter().any(|file| file.as_str() == Some("ready.txt")))
+	}));
+	assert!(events.iter().any(|event| {
+		event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE
+			&& event.payload()["decision"] == "pass"
+			&& event.payload()["validation_evidence"]["tracked_rewrites"]["owned"] == true
+	}));
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_next" && event.payload()["phase"] == "handoff_evidence"
+	}));
+	assert!(events.iter().any(|event| event.event_type() == "phase_goal_recovery"));
 }
 
 #[test]
