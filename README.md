@@ -16,6 +16,8 @@ Repo-native agent orchestration, retained lanes, and local operator control.
 - Rust CLI and runtime for repo-native retained coding-agent lanes.
 - Natural-language-first loop-runtime contract with research/decision promotion,
   internal execution-program state, and normal Linear issue lanes.
+- Objective-driven project autonomy design with first-class Objective Contracts,
+  typed signals, non-executable proposals, and normal Program Intake execution.
 - Native macOS app for Decodex Codex account-pool management.
 - Explicit project registry under `~/.codex/decodex/projects/<service-id>/`.
 - Local operator listener with a dashboard at `/` and `/dashboard`, WebSocket
@@ -207,6 +209,14 @@ Project contracts are managed outside checkouts under
 - `WORKFLOW.md` for execution policy
 
 The redacted template for a project config lives at `decodex.example.toml`.
+Decodex autonomy is objective-driven project autonomy, not a hidden runtime repair
+loop. `[autonomy]` defaults to latent-only: objective drafts, signal audits, and
+proposal dry-runs may produce evidence, but unattended promotion or intake requires an
+accepted Objective Contract version plus accepted project-policy authority. Project
+config may reference those runtime authority records; it does not embed or replace
+allowed signal kinds, allowed surfaces, cooldown, write budget, validation gates, or
+review policy. Runtime-health checks are one signal adapter; they do not define the
+autonomy product.
 Phase-scoped app-server goals are mandatory for retained lane execution. Decodex
 rejects a connected Codex app-server that lacks required `thread/goal/*` methods
 instead of falling back to ordinary continuation.
