@@ -2,6 +2,12 @@
 
 ## 2026-06-22
 
+- Promoted the final autonomy architecture into authoritative docs: Decodex autonomy
+  is now specified as an objective-driven project control plane with first-class
+  Objective Contracts, typed signals, non-executable proposals, explicit
+  Decision-Contract promotion, normal Program Intake execution, an MCP action matrix,
+  memory-adapter limits, references-only project config, explicit draft/accepted
+  Objective Contract lifecycle state, and a staged implementation roadmap.
 - Added the workflow `context.read_first` dispatch preflight and agent-evidence
   live-wait projection boundary so stale workflow paths fail before lease/attempt
   ownership while normal running waits remain run capsules instead of blockers.

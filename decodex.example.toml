@@ -14,6 +14,27 @@ token_env_var = "GITHUB_TOKEN"
 [codex]
 review = "strict"
 
+# Optional Decodex autonomy references. Defaults are latent-only: objective drafts,
+# signal audits, and proposal dry-runs may produce evidence, but serve will not
+# promote proposals or create Program Intake without references to accepted runtime
+# Objective Contract and project-policy authority records.
+# [autonomy]
+# auto_promote = false
+# auto_intake  = false
+
+# Required only when `auto_promote = true`. This table is references-only: it names
+# accepted runtime authority records. The Objective Contract and project-policy bodies
+# live in Decodex runtime state, not in project.toml. Those accepted records carry
+# goals, non-goals, signal kinds, allowed surfaces, validation/review gates, and write
+# limits. A tracker or Program Intake anchor is also required when `auto_intake = true`.
+# [autonomy.runtime_policy]
+# accepted_objective_id = "quality-autonomy"
+# accepted_objective_version = "1"
+# accepted_policy_id = "your-service-autonomy-policy"
+# accepted_policy_version = "1"
+# policy_authority_ref = "decodex.runtime_policy:your-service-autonomy-policy@1"
+# team_issue_identifier = "XY-1000"
+
 # Optional shared Codex account pool.
 # Uncomment the block to use the global `~/.codex/decodex/accounts.jsonl` pool.
 # Fixed-account mode is global. To pin all account-pool runs, set
