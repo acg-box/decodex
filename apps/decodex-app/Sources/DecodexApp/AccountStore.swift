@@ -23,6 +23,7 @@ final class AccountStore: ObservableObject {
 	private let bridge = DecodexAppBridge()
 	private var automaticRefreshTask: Task<Void, Never>?
 	private var operatorSnapshotStreamTask: Task<Void, Never>?
+	private var operatorSnapshotPublishedAtUnixEpoch: Int64?
 
 	deinit {
 		automaticRefreshTask?.cancel()
@@ -222,9 +223,13 @@ final class AccountStore: ObservableObject {
 
 			operatorSnapshot = snapshot
 			operatorPresentation = snapshot.presentation
+			operatorSnapshotPublishedAtUnixEpoch = payload.snapshotPublishedAtUnixEpoch
 			operatorSnapshotUpdatedAt = payload.snapshotPublishedAt ?? Date()
 		case "runActivity":
 			guard let presentation = payload.presentation else {
+				return
+			}
+			guard isStaleRunActivity(payload) == false else {
 				return
 			}
 
@@ -233,6 +238,16 @@ final class AccountStore: ObservableObject {
 		default:
 			break
 		}
+	}
+
+	private func isStaleRunActivity(_ payload: OperatorDashboardSocketPayload) -> Bool {
+		guard let emittedAtUnixEpoch = payload.emittedAtUnixEpoch,
+			let snapshotPublishedAtUnixEpoch = operatorSnapshotPublishedAtUnixEpoch
+		else {
+			return false
+		}
+
+		return emittedAtUnixEpoch < snapshotPublishedAtUnixEpoch
 	}
 
 	func useInCodex(_ account: CodexAccount) async {
