@@ -3034,30 +3034,6 @@ struct OperatorLanePopoverView: View {
 				OperatorLaneReadoutItem(label: "run phase", value: rawPanelToken(runPhase))
 			)
 		}
-		if let currentOperation = panelTrimmed(run.currentOperation) {
-			items.append(
-				OperatorLaneReadoutItem(
-					label: "current operation",
-					value: rawPanelToken(currentOperation)
-				)
-			)
-		}
-		if let activeGoalPhase = panelTrimmed(run.activeGoalPhase) {
-			items.append(
-				OperatorLaneReadoutItem(
-					label: "active goal phase",
-					value: rawPanelToken(activeGoalPhase)
-				)
-			)
-		}
-		if let publicProgressPhase = panelTrimmed(run.publicProgressPhase) {
-			items.append(
-				OperatorLaneReadoutItem(
-					label: "public progress phase",
-					value: rawPanelToken(publicProgressPhase)
-				)
-			)
-		}
 
 		return items
 	}
