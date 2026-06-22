@@ -1874,6 +1874,11 @@ fn operator_dashboard_run_activity_consumes_server_presentation() {
 	assert!(response.contains("return presentationCurrentLaneCards(snapshot?.presentation);"));
 	assert!(response.contains("function currentLaneRunsFromCards(cards)"));
 	assert!(response.contains("function currentLaneCardToneClass(card)"));
+	assert!(response.contains("if (card?.is_waiting === true || card?.tone === \"waiting\")"));
+	assert!(response.contains("if (card?.counts_as_running === true || runCountsAsRunning(run))"));
+	assert!(response.contains("function dashboardRunActivityIsStale(payload)"));
+	assert!(response.contains("emittedAt < snapshotPublishedAt"));
+	assert!(response.contains("if (dashboardRunActivityIsStale(payload))"));
 	assert!(response.contains("let dashboardLivePresentation = null;"));
 	assert!(response.contains("let dashboardLiveRunActivitySeen = false;"));
 	assert!(!response.contains("let dashboardLiveAccounts = null;"));
