@@ -985,10 +985,10 @@ fn operator_status_json_and_text_surface_loop_review_and_recovery_state() {
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
 	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
-	let pending = current_lane_json(&snapshot_json, "run-pending");
-	let clean = current_lane_json(&snapshot_json, "run-clean");
-	let findings = current_lane_json(&snapshot_json, "run-findings");
-	let blocked = current_lane_json(&snapshot_json, "run-blocked");
+	let pending = status_run_json(&snapshot_json, "run-pending");
+	let clean = status_run_json(&snapshot_json, "run-clean");
+	let findings = status_run_json(&snapshot_json, "run-findings");
+	let blocked = status_run_json(&snapshot_json, "run-blocked");
 
 	assert_eq!(pending["loop_status"]["review_level"], "strict");
 	assert_eq!(pending["loop_status"]["review"]["status"], "pending");
@@ -1025,7 +1025,9 @@ fn operator_status_json_and_text_surface_loop_review_and_recovery_state() {
 
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
-	assert!(rendered.contains("loop_review: phase=handoff status=pending checkpoint=none"));
+	assert!(rendered.contains(
+		"loop_review: phase=handoff status=pending checkpoint=head:0000000000000000000000000000000000000000 round:0"
+	));
 	assert!(rendered.contains("loop_review: phase=handoff status=findings checkpoint=head:2222222222222222222222222222222222222222 round:2"));
 	assert!(rendered.contains(
 		"loop_architecture_recovery: status=active reason=architecture_recovery_started"
@@ -1055,6 +1057,20 @@ fn seed_loop_status_runs(state_store: &StateStore, config: &ServiceConfig) {
 }
 
 fn seed_loop_status_review_checkpoints(state_store: &StateStore, config: &ServiceConfig) {
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: "issue-pending",
+			run_id: "run-pending",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: config.codex().review_level().as_str(),
+			status: "pending",
+			head_sha: "0000000000000000000000000000000000000000",
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("pending checkpoint should record");
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: config.service_id(),
@@ -1166,13 +1182,19 @@ fn seed_loop_status_private_events(state_store: &StateStore, config: &ServiceCon
 		.expect("decision request should record");
 }
 
-fn current_lane_json<'a>(snapshot_json: &'a Value, run_id: &str) -> &'a Value {
-	snapshot_json["current_lanes"]
-		.as_array()
-		.expect("current lanes should be an array")
-		.iter()
-		.find(|run| run["run_id"] == run_id)
-		.unwrap_or_else(|| panic!("current lane `{run_id}` should exist"))
+fn status_run_json<'a>(snapshot_json: &'a Value, run_id: &str) -> &'a Value {
+	for collection in ["current_lanes", "recent_runs"] {
+		if let Some(run) = snapshot_json[collection]
+			.as_array()
+			.expect("status run collection should be an array")
+			.iter()
+			.find(|run| run["run_id"] == run_id)
+		{
+			return run;
+		}
+	}
+
+	panic!("status run `{run_id}` should exist")
 }
 
 #[test]
