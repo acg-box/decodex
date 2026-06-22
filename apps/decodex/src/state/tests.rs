@@ -9,11 +9,15 @@ use std::{
 
 #[cfg(unix)] use libc::{F_GETFD, FD_CLOEXEC};
 use rusqlite::{self, Connection};
-use serde_json::Value;
+use serde_json::{self, Value};
 use tempfile::TempDir;
 use time::OffsetDateTime;
 
 use crate::{
+	autonomy_objective::{
+		AutonomyObjectiveAcceptance, AutonomyObjectiveActorKind, AutonomyObjectiveContract,
+		AutonomyObjectiveRejection, AutonomyObjectiveState, AutonomyObjectiveSupersession,
+	},
 	execution_program::{
 		ExecutionLinearIssueMapping, ExecutionProgram, ExecutionProgramNode,
 		ExecutionProgramNodeStage, ExecutionQueueIntent,
@@ -177,6 +181,38 @@ fn sample_decision_promotion() -> DecisionPromotion {
 		Some(String::from("User asked Decodex to push this forward.")),
 	)
 	.expect("sample promotion should validate")
+}
+
+fn autonomy_objective_fixture(version: u64) -> AutonomyObjectiveContract {
+	serde_json::from_value(serde_json::json!({
+		"schema": "decodex.autonomy_objective/1",
+		"record_version": 1,
+		"project_id": "decodex",
+		"id": "quality-autonomy",
+		"version": version,
+		"state": "draft",
+		"summary": format!("Improve Decodex autonomy quality version {version}."),
+		"goals": ["Reduce repeated validation and review churn."],
+		"non_goals": ["Do not bypass Decision Contract authority."],
+		"metrics": ["Validation retry count stays below objective tolerance."],
+		"allowed_surfaces": ["apps/decodex/src", "docs/spec"],
+		"allowed_signal_kinds": ["validation_regression", "review_feedback_cluster"],
+		"validation_gates": ["cargo make check-docs"],
+		"review_policy": "independent current-head review required",
+		"memory_policy": "read-only source-linked memory only",
+		"report_policy": "public-safe summaries only"
+	}))
+	.expect("autonomy objective fixture should deserialize")
+}
+
+fn sample_objective_acceptance() -> AutonomyObjectiveAcceptance {
+	AutonomyObjectiveAcceptance::new(
+		"operator",
+		AutonomyObjectiveActorKind::User,
+		"2026-06-22T10:00:00Z",
+		"conversation",
+	)
+	.expect("sample objective acceptance should validate")
 }
 
 fn sample_execution_program(contract: &DecisionContract) -> ExecutionProgram {
@@ -3899,6 +3935,217 @@ fn decision_contracts_record_human_decision_and_rejection_transitions() {
 			)
 			.is_err(),
 		"rejected contracts cannot later become execution authority"
+	);
+}
+
+#[test]
+fn autonomy_objective_draft_accept_current_history_and_supersession_persist() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let draft_v1 = store
+		.upsert_autonomy_objective_draft("decodex", autonomy_objective_fixture(1))
+		.expect("objective draft v1 should persist");
+
+	assert_eq!(draft_v1.project_id(), "decodex");
+	assert_eq!(draft_v1.objective_id(), "quality-autonomy");
+	assert_eq!(draft_v1.version(), 1);
+	assert_eq!(draft_v1.state(), AutonomyObjectiveState::Draft);
+	assert_eq!(
+		store
+			.autonomy_objective("decodex", "quality-autonomy", 1)
+			.expect("draft objective should read")
+			.expect("draft objective should exist")
+			.state(),
+		AutonomyObjectiveState::Draft
+	);
+
+	let accepted_v1 = store
+		.accept_autonomy_objective_version(
+			"decodex",
+			"quality-autonomy",
+			1,
+			sample_objective_acceptance(),
+		)
+		.expect("objective v1 should accept");
+
+	assert_eq!(accepted_v1.state(), AutonomyObjectiveState::Accepted);
+	assert_eq!(
+		accepted_v1.objective().acceptance().expect("acceptance should be retained").accepted_by(),
+		"operator"
+	);
+	assert_eq!(
+		store
+			.autonomy_objective("decodex", "quality-autonomy", 1)
+			.expect("accepted objective should read")
+			.expect("accepted objective should exist")
+			.state(),
+		AutonomyObjectiveState::Accepted
+	);
+	assert!(
+		store.upsert_autonomy_objective_draft("decodex", autonomy_objective_fixture(1)).is_err(),
+		"accepted objective versions must not be overwritten as drafts"
+	);
+
+	store
+		.upsert_autonomy_objective_draft("decodex", autonomy_objective_fixture(2))
+		.expect("objective draft v2 should persist");
+
+	let accepted_v2 = store
+		.accept_autonomy_objective_version(
+			"decodex",
+			"quality-autonomy",
+			2,
+			sample_objective_acceptance(),
+		)
+		.expect("objective v2 should accept and supersede v1");
+
+	assert_eq!(accepted_v2.version(), 2);
+	assert_eq!(accepted_v2.state(), AutonomyObjectiveState::Accepted);
+
+	let current = store
+		.current_accepted_autonomy_objective("decodex", "quality-autonomy")
+		.expect("current accepted objective should read")
+		.expect("current accepted objective should exist");
+
+	assert_eq!(current.version(), 2);
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+	let history = reopened
+		.list_autonomy_objective_history("decodex", "quality-autonomy")
+		.expect("objective history should list");
+
+	assert_eq!(history.len(), 2);
+	assert_eq!(history[0].version(), 1);
+	assert_eq!(history[0].state(), AutonomyObjectiveState::Superseded);
+	assert_eq!(
+		history[0]
+			.objective()
+			.supersession()
+			.expect("supersession should be retained")
+			.superseded_by_version(),
+		2
+	);
+	assert_eq!(
+		history[0].objective().summary(),
+		"Improve Decodex autonomy quality version 1.",
+		"superseding an accepted version must preserve its objective body"
+	);
+	assert_eq!(history[1].version(), 2);
+	assert_eq!(history[1].state(), AutonomyObjectiveState::Accepted);
+}
+
+#[test]
+fn autonomy_objective_rejection_and_explicit_supersession_keep_provenance() {
+	let store = StateStore::open_in_memory().expect("in-memory state store should open");
+
+	store
+		.upsert_autonomy_objective_draft("decodex", autonomy_objective_fixture(1))
+		.expect("objective draft v1 should persist");
+
+	let rejected = store
+		.reject_autonomy_objective_version(
+			"decodex",
+			"quality-autonomy",
+			1,
+			AutonomyObjectiveRejection::new(
+				"operator",
+				"2026-06-22T10:05:00Z",
+				"conversation",
+				"Objective version needs narrower surfaces.",
+			)
+			.expect("rejection should validate"),
+		)
+		.expect("objective draft should reject");
+
+	assert_eq!(rejected.state(), AutonomyObjectiveState::Rejected);
+	assert_eq!(
+		rejected.objective().rejection().expect("rejection should exist").reason(),
+		"Objective version needs narrower surfaces."
+	);
+	assert_eq!(
+		store
+			.autonomy_objective("decodex", "quality-autonomy", 1)
+			.expect("rejected objective should read")
+			.expect("rejected objective should exist")
+			.state(),
+		AutonomyObjectiveState::Rejected
+	);
+	assert!(
+		store
+			.accept_autonomy_objective_version(
+				"decodex",
+				"quality-autonomy",
+				1,
+				sample_objective_acceptance()
+			)
+			.is_err(),
+		"rejected objective versions cannot later become accepted authority"
+	);
+
+	store
+		.upsert_autonomy_objective_draft("decodex", autonomy_objective_fixture(2))
+		.expect("objective draft v2 should persist");
+
+	let superseded = store
+		.supersede_autonomy_objective_version(
+			"decodex",
+			"quality-autonomy",
+			2,
+			AutonomyObjectiveSupersession::new(
+				"quality-autonomy",
+				3,
+				"operator",
+				"2026-06-22T10:10:00Z",
+				"conversation",
+				"Draft was replaced before acceptance.",
+			)
+			.expect("supersession should validate"),
+		)
+		.expect("objective draft should supersede");
+
+	assert_eq!(superseded.state(), AutonomyObjectiveState::Superseded);
+	assert_eq!(
+		superseded
+			.objective()
+			.supersession()
+			.expect("supersession should exist")
+			.superseded_by_version(),
+		3
+	);
+	assert_eq!(
+		store
+			.autonomy_objective("decodex", "quality-autonomy", 2)
+			.expect("superseded objective should read")
+			.expect("superseded objective should exist")
+			.state(),
+		AutonomyObjectiveState::Superseded
+	);
+	assert_eq!(
+		store
+			.upsert_autonomy_objective_draft("decodex", autonomy_objective_fixture(3))
+			.expect("objective draft v3 should persist")
+			.state(),
+		AutonomyObjectiveState::Draft
+	);
+	assert!(
+		store
+			.supersede_autonomy_objective_version(
+				"decodex",
+				"quality-autonomy",
+				3,
+				AutonomyObjectiveSupersession::new(
+					"quality-autonomy",
+					3,
+					"operator",
+					"2026-06-22T10:11:00Z",
+					"conversation",
+					"Invalid self-supersession.",
+				)
+				.expect("self-supersession payload should build"),
+			)
+			.is_err(),
+		"same objective version cannot supersede itself"
 	);
 }
 

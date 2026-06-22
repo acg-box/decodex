@@ -198,6 +198,7 @@ struct StateData {
 	linear_execution_events: HashMap<String, LinearExecutionEventRuntimeRecord>,
 	private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
 	decision_contracts: HashMap<DecisionContractKey, DecisionContractRuntimeRecord>,
+	autonomy_objectives: HashMap<AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord>,
 	execution_programs: HashMap<ExecutionProgramKey, ExecutionProgramRuntimeRecord>,
 	program_intake_plans: HashMap<ProgramIntakePlanKey, ProgramIntakePlanRecord>,
 	program_issue_mappings: HashMap<ProgramIssueMappingKey, ProgramIssueMappingRecord>,
@@ -223,6 +224,7 @@ impl StateData {
 		self.linear_execution_events = loaded.linear_execution_events;
 		self.private_execution_events = loaded.private_execution_events;
 		self.decision_contracts = loaded.decision_contracts;
+		self.autonomy_objectives = loaded.autonomy_objectives;
 		self.execution_programs = loaded.execution_programs;
 		self.program_intake_plans = loaded.program_intake_plans;
 		self.program_issue_mappings = loaded.program_issue_mappings;
@@ -493,6 +495,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.bootstrap_connector_backoffs_schema()?;
 		self.bootstrap_private_execution_events_schema()?;
 		self.bootstrap_decision_contracts_schema()?;
+		self.bootstrap_autonomy_objectives_schema()?;
 		self.bootstrap_execution_programs_schema()?;
 		self.bootstrap_program_intake_state_schema()?;
 		self.bootstrap_loop_guardrail_schema()?;
@@ -665,6 +668,31 @@ CREATE INDEX IF NOT EXISTS decision_contracts_source_issue_idx
 ON decision_contracts (project_id, source_issue_id, updated_at_unix);
 CREATE INDEX IF NOT EXISTS decision_contracts_status_idx
 ON decision_contracts (project_id, status, updated_at_unix);
+"#,
+		)?;
+
+		Ok(())
+	}
+
+	fn bootstrap_autonomy_objectives_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS autonomy_objectives (
+	project_id TEXT NOT NULL,
+	objective_id TEXT NOT NULL,
+	version INTEGER NOT NULL,
+	state TEXT NOT NULL,
+	payload_json TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	created_at_unix INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, objective_id, version)
+);
+CREATE INDEX IF NOT EXISTS autonomy_objectives_project_state_idx
+ON autonomy_objectives (project_id, state, updated_at_unix);
+CREATE INDEX IF NOT EXISTS autonomy_objectives_history_idx
+ON autonomy_objectives (project_id, objective_id, version);
 "#,
 		)?;
 
@@ -881,6 +909,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_linear_execution_events(&mut state)?;
 		self.load_private_execution_events(&mut state)?;
 		self.load_decision_contracts(&mut state)?;
+		self.load_autonomy_objectives(&mut state)?;
 		self.load_execution_programs(&mut state)?;
 		self.load_program_intake_state(&mut state)?;
 		self.load_review_lifecycle_records(&mut state)?;
@@ -936,6 +965,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_linear_execution_events(&transaction, state)?;
 		persist_private_execution_events(&transaction, state)?;
 		persist_decision_contracts(&transaction, state)?;
+		persist_autonomy_objectives(&transaction, state)?;
 		persist_execution_programs(&transaction, state)?;
 		persist_program_intake_state(&transaction, state)?;
 		persist_review_lifecycle_records(&transaction, state)?;
@@ -963,6 +993,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"DELETE FROM decision_contracts WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM autonomy_objectives WHERE project_id = ?1",
 			params![service_id],
 		)?;
 		transaction.execute(
@@ -1280,6 +1314,38 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				record.contract.contract_id(),
 				record.source_issue_id.as_deref(),
 				record.status.as_str(),
+				payload_json,
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+
+		Ok(())
+	}
+
+	#[allow(dead_code)]
+	fn upsert_autonomy_objective(&self, record: &AutonomyObjectiveRuntimeRecord) -> Result<()> {
+		let payload_json = serde_json::to_string(&record.objective)?;
+		let version = i64::try_from(record.objective.version())
+			.map_err(|_| eyre::eyre!("Autonomy objective version exceeds SQLite integer range."))?;
+
+		self.connection.execute(
+			"INSERT INTO autonomy_objectives (
+					project_id, objective_id, version, state, payload_json, created_at,
+					created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+			 ON CONFLICT(project_id, objective_id, version) DO UPDATE SET
+				 state = excluded.state,
+				 payload_json = excluded.payload_json,
+				 updated_at = excluded.updated_at,
+				 updated_at_unix = excluded.updated_at_unix",
+			params![
+				&record.project_id,
+				record.objective.id(),
+				version,
+				record.state.as_str(),
 				payload_json,
 				&record.created_at,
 				record.created_at_unix,
@@ -2348,6 +2414,97 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(records)
 	}
 
+	fn load_autonomy_objectives(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, objective_id, version, state, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM autonomy_objectives \
+			 ORDER BY project_id ASC, objective_id ASC, version ASC",
+		)?;
+		let rows = statement.query_map([], autonomy_objective_runtime_row_parts)?;
+
+		for row in rows {
+			let record = autonomy_objective_record_from_row_parts(row?)?;
+
+			state.autonomy_objectives.insert(record.key(), record);
+		}
+
+		Ok(())
+	}
+
+	fn autonomy_objective(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+		version: u64,
+	) -> Result<Option<AutonomyObjectiveRuntimeRecord>> {
+		let version = i64::try_from(version)
+			.map_err(|_| eyre::eyre!("Autonomy objective version exceeds SQLite integer range."))?;
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, objective_id, version, state, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM autonomy_objectives \
+			 WHERE project_id = ?1 AND objective_id = ?2 AND version = ?3 \
+			 LIMIT 1",
+		)?;
+		let mut rows = statement.query(params![project_id, objective_id, version])?;
+
+		rows
+			.next()?
+			.map(autonomy_objective_runtime_row_parts)
+			.transpose()?
+			.map(autonomy_objective_record_from_row_parts)
+			.transpose()
+	}
+
+	fn current_accepted_autonomy_objective(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+	) -> Result<Option<AutonomyObjectiveRuntimeRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, objective_id, version, state, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM autonomy_objectives \
+			 WHERE project_id = ?1 AND objective_id = ?2 AND state = 'accepted' \
+			 ORDER BY version DESC \
+			 LIMIT 1",
+		)?;
+		let mut rows = statement.query(params![project_id, objective_id])?;
+
+		rows
+			.next()?
+			.map(autonomy_objective_runtime_row_parts)
+			.transpose()?
+			.map(autonomy_objective_record_from_row_parts)
+			.transpose()
+	}
+
+	fn list_autonomy_objective_history(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+	) -> Result<Vec<AutonomyObjectiveRuntimeRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, objective_id, version, state, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM autonomy_objectives \
+			 WHERE project_id = ?1 AND objective_id = ?2 \
+			 ORDER BY version ASC",
+		)?;
+		let rows = statement.query_map(
+			params![project_id, objective_id],
+			autonomy_objective_runtime_row_parts,
+		)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(autonomy_objective_record_from_row_parts(row?)?);
+		}
+
+		Ok(records)
+	}
+
 	fn load_execution_programs(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, program_id, source_contract_id, payload_json, created_at, \
@@ -3074,6 +3231,56 @@ impl DecisionContractRuntimeRecord {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct AutonomyObjectiveKey {
+	project_id: String,
+	objective_id: String,
+	version: u64,
+}
+impl AutonomyObjectiveKey {
+	fn new(project_id: &str, objective_id: &str, version: u64) -> Self {
+		Self {
+			project_id: project_id.to_owned(),
+			objective_id: objective_id.to_owned(),
+			version,
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+struct AutonomyObjectiveRuntimeRecord {
+	project_id: String,
+	objective: AutonomyObjectiveContract,
+	state: AutonomyObjectiveState,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl AutonomyObjectiveRuntimeRecord {
+	#[allow(dead_code)]
+	fn key(&self) -> AutonomyObjectiveKey {
+		AutonomyObjectiveKey::new(
+			&self.project_id,
+			self.objective.id(),
+			self.objective.version(),
+		)
+	}
+
+	#[allow(dead_code)]
+	fn as_public(&self) -> AutonomyObjectiveRecord {
+		AutonomyObjectiveRecord {
+			project_id: self.project_id.clone(),
+			objective: self.objective.clone(),
+			state: self.state,
+			created_at: self.created_at.clone(),
+			created_at_unix: self.created_at_unix,
+			updated_at: self.updated_at.clone(),
+			updated_at_unix: self.updated_at_unix,
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct ExecutionProgramKey {
 	project_id: String,
 	program_id: String,
@@ -3464,6 +3671,18 @@ struct DecisionContractRuntimeRowParts {
 	contract_id: String,
 	source_issue_id: Option<String>,
 	status: String,
+	payload_json: String,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+
+struct AutonomyObjectiveRuntimeRowParts {
+	project_id: String,
+	objective_id: String,
+	version: i64,
+	state: String,
 	payload_json: String,
 	created_at: String,
 	created_at_unix: i64,
@@ -4372,6 +4591,37 @@ fn persist_decision_contracts(
 				record.contract.contract_id(),
 				record.source_issue_id.as_deref(),
 				record.status.as_str(),
+				payload_json,
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
+fn persist_autonomy_objectives(
+	transaction: &Transaction<'_>,
+	state: &StateData,
+) -> Result<()> {
+	for record in state.autonomy_objectives.values() {
+		let payload_json = serde_json::to_string(&record.objective)?;
+		let version = i64::try_from(record.objective.version())
+			.map_err(|_| eyre::eyre!("Autonomy objective version exceeds SQLite integer range."))?;
+
+		transaction.execute(
+			"INSERT OR REPLACE INTO autonomy_objectives (
+					project_id, objective_id, version, state, payload_json, created_at,
+					created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+			params![
+				&record.project_id,
+				record.objective.id(),
+				version,
+				record.state.as_str(),
 				payload_json,
 				&record.created_at,
 				record.created_at_unix,
@@ -5453,6 +5703,75 @@ fn maybe_decision_contract_record_from_row_parts(
 		},
 		Err(error) => Err(error),
 	}
+}
+
+fn autonomy_objective_runtime_row_parts(
+	row: &Row<'_>,
+) -> std::result::Result<AutonomyObjectiveRuntimeRowParts, rusqlite::Error> {
+	Ok(AutonomyObjectiveRuntimeRowParts {
+		project_id: row.get(0)?,
+		objective_id: row.get(1)?,
+		version: row.get(2)?,
+		state: row.get(3)?,
+		payload_json: row.get(4)?,
+		created_at: row.get(5)?,
+		created_at_unix: row.get(6)?,
+		updated_at: row.get(7)?,
+		updated_at_unix: row.get(8)?,
+	})
+}
+
+fn autonomy_objective_record_from_row_parts(
+	parts: AutonomyObjectiveRuntimeRowParts,
+) -> Result<AutonomyObjectiveRuntimeRecord> {
+	let objective = serde_json::from_str::<AutonomyObjectiveContract>(&parts.payload_json)?;
+	let objective_state = objective.state();
+	let version = u64::try_from(parts.version)
+		.map_err(|_| eyre::eyre!("Autonomy objective row version must be greater than zero."))?;
+
+	objective.validate()?;
+
+	if parts.project_id != objective.project_id() {
+		eyre::bail!(
+			"Autonomy objective row project `{}` contained payload project `{}`.",
+			parts.project_id,
+			objective.project_id()
+		);
+	}
+	if parts.objective_id != objective.id() {
+		eyre::bail!(
+			"Autonomy objective row `{}` contained payload `{}`.",
+			parts.objective_id,
+			objective.id()
+		);
+	}
+	if version != objective.version() {
+		eyre::bail!(
+			"Autonomy objective row `{}` version {} contained payload version {}.",
+			parts.objective_id,
+			version,
+			objective.version()
+		);
+	}
+	if parts.state != objective_state.as_str() {
+		eyre::bail!(
+			"Autonomy objective row `{}` version {} state `{}` differed from payload state `{}`.",
+			parts.objective_id,
+			version,
+			parts.state,
+			objective_state.as_str()
+		);
+	}
+
+	Ok(AutonomyObjectiveRuntimeRecord {
+		project_id: parts.project_id,
+		state: objective_state,
+		objective,
+		created_at: parts.created_at,
+		created_at_unix: parts.created_at_unix,
+		updated_at: parts.updated_at,
+		updated_at_unix: parts.updated_at_unix,
+	})
 }
 
 fn decision_contract_payload_has_removed_flat_issue_summaries(payload_json: &str) -> bool {
