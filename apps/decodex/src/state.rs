@@ -26,6 +26,10 @@ use crate::{
 		AutonomyObjectiveAcceptance, AutonomyObjectiveContract, AutonomyObjectiveRejection,
 		AutonomyObjectiveState, AutonomyObjectiveSupersession,
 	},
+	autonomy_proposal::{
+		AutonomyProposal, AutonomyProposalCompileInput, AutonomyProposalRefusalReason,
+		AutonomyProposalState,
+	},
 	autonomy_signal::{
 		AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
 		AutonomySignalFreshness, AutonomySignalKind, AutonomySignalPrivacy,
