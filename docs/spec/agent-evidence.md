@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs]
 drift_watch: [decodex evidence, issue_review_checkpoint, review_cost_control, phase_acceptance_check, authority_boundary_check, architecture_recovery_packet, private_execution_evidence_readback]
-last_verified: 2026-06-21
+last_verified: 2026-06-22
 ---
 # Agent Evidence
 
@@ -134,6 +134,10 @@ Each blocker carries:
 - `next_action`: a short agent-facing recovery hint
 - `related_run_capsule_path`: the run capsule path when the blocker belongs to a
   known run
+
+Running lanes that are leased, count as running, and do not require attention remain
+run capsules only, even when their `wait_reason` or retry metadata is populated.
+Agent evidence must not turn normal live execution waits into blocker snapshots.
 
 For `missing_review_handoff_record`, the recovery contract must point agents to
 `decodex recover review-handoff diagnose <ISSUE> --json`. Rebind remains an explicit
