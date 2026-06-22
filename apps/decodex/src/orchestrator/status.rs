@@ -9172,6 +9172,7 @@ fn marker_protocol_summary_supersedes_run(
 	let Some(marker) = marker else {
 		return false;
 	};
+
 	if marker.last_event_type().is_none() {
 		return false;
 	}

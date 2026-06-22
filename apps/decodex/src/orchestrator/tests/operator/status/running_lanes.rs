@@ -4603,6 +4603,7 @@ fn operator_status_snapshot_prefers_newer_protocol_marker_over_stale_archive_eve
 	state_store
 		.append_event("run-1", 1, "thread/archive/discarded", "{}")
 		.expect("archive event should record");
+
 	state::write_run_protocol_activity_marker(
 		&worktree_path,
 		&ProtocolActivityMarker {
