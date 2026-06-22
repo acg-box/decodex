@@ -2391,6 +2391,316 @@ impl StateStore {
 		Ok(record.as_public())
 	}
 
+	/// Create or replace one draft Objective Contract authority payload.
+	#[allow(dead_code)]
+	pub(crate) fn upsert_autonomy_objective_draft(
+		&self,
+		project_id: &str,
+		objective: AutonomyObjectiveContract,
+	) -> Result<AutonomyObjectiveRecord> {
+		validate_autonomy_objective_record_inputs(project_id, &objective)?;
+
+		if objective.state() != AutonomyObjectiveState::Draft {
+			eyre::bail!("Autonomy objective drafts must be stored with state `draft`.");
+		}
+
+		let now = timestamp_parts();
+		let key = AutonomyObjectiveKey::new(project_id, objective.id(), objective.version());
+		let mut state = self.lock()?;
+
+		if let Some(existing) = state.autonomy_objectives.get(&key)
+			&& existing.state != AutonomyObjectiveState::Draft {
+				eyre::bail!(
+					"Autonomy objective `{}` version {} is `{}` and cannot be replaced as a draft.",
+					objective.id(),
+					objective.version(),
+					existing.state.as_str()
+				);
+			}
+
+		let (created_at, created_at_unix) = state
+			.autonomy_objectives
+			.get(&key)
+			.map_or_else(|| (now.text.clone(), now.unix), |record| {
+				(record.created_at.clone(), record.created_at_unix)
+			});
+		let record = AutonomyObjectiveRuntimeRecord {
+			project_id: project_id.to_owned(),
+			state: objective.state(),
+			objective,
+			created_at,
+			created_at_unix,
+			updated_at: now.text,
+			updated_at_unix: now.unix,
+		};
+
+		state.autonomy_objectives.insert(record.key(), record.clone());
+		self.upsert_autonomy_objective_locked(&record)?;
+
+		Ok(record.as_public())
+	}
+
+	/// Read one Objective Contract version by project, objective id, and version.
+	#[allow(dead_code)]
+	pub(crate) fn autonomy_objective(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+		version: u64,
+	) -> Result<Option<AutonomyObjectiveRecord>> {
+		validate_required_autonomy_objective_field("project_id", project_id)?;
+		validate_required_autonomy_objective_field("objective_id", objective_id)?;
+		validate_autonomy_objective_version(version)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.autonomy_objective(project_id, objective_id, version)
+				.map(|record| record.map(|record| record.as_public()));
+		}
+
+		let state = self.lock()?;
+
+		Ok(state
+			.autonomy_objectives
+			.get(&AutonomyObjectiveKey::new(project_id, objective_id, version))
+			.map(AutonomyObjectiveRuntimeRecord::as_public))
+	}
+
+	/// Read the current accepted Objective Contract version for one objective id.
+	#[allow(dead_code)]
+	pub(crate) fn current_accepted_autonomy_objective(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+	) -> Result<Option<AutonomyObjectiveRecord>> {
+		validate_required_autonomy_objective_field("project_id", project_id)?;
+		validate_required_autonomy_objective_field("objective_id", objective_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.current_accepted_autonomy_objective(project_id, objective_id)
+				.map(|record| record.map(|record| record.as_public()));
+		}
+
+		let state = self.lock()?;
+
+		Ok(state
+			.autonomy_objectives
+			.values()
+			.filter(|record| {
+				record.project_id == project_id
+					&& record.objective.id() == objective_id
+					&& record.state == AutonomyObjectiveState::Accepted
+			})
+			.max_by_key(|record| record.objective.version())
+			.map(AutonomyObjectiveRuntimeRecord::as_public))
+	}
+
+	/// List all Objective Contract versions for one objective id.
+	#[allow(dead_code)]
+	pub(crate) fn list_autonomy_objective_history(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+	) -> Result<Vec<AutonomyObjectiveRecord>> {
+		validate_required_autonomy_objective_field("project_id", project_id)?;
+		validate_required_autonomy_objective_field("objective_id", objective_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let records = sqlite
+				.list_autonomy_objective_history(project_id, objective_id)?
+				.into_iter()
+				.map(|record| record.as_public())
+				.collect();
+
+			return Ok(records);
+		}
+
+		let state = self.lock()?;
+		let mut records = state
+			.autonomy_objectives
+			.values()
+			.filter(|record| record.project_id == project_id && record.objective.id() == objective_id)
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by_key(|record| record.objective.version());
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
+	/// Accept one draft Objective Contract version as immutable runtime authority.
+	#[allow(dead_code)]
+	pub(crate) fn accept_autonomy_objective_version(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+		version: u64,
+		acceptance: AutonomyObjectiveAcceptance,
+	) -> Result<AutonomyObjectiveRecord> {
+		validate_required_autonomy_objective_field("project_id", project_id)?;
+		validate_required_autonomy_objective_field("objective_id", objective_id)?;
+		validate_autonomy_objective_version(version)?;
+
+		let superseded_by = acceptance.accepted_by().to_owned();
+		let superseded_at = acceptance.accepted_at().to_owned();
+		let supersession_source = acceptance.acceptance_source().to_owned();
+		let now = timestamp_parts();
+		let key = AutonomyObjectiveKey::new(project_id, objective_id, version);
+		let mut state = self.lock()?;
+		let mut record = state
+			.autonomy_objectives
+			.get(&key)
+			.cloned()
+			.ok_or_else(|| {
+				eyre::eyre!(
+					"Autonomy objective `{objective_id}` version {version} does not exist."
+				)
+			})?;
+
+		if let Some(current_version) = state
+			.autonomy_objectives
+			.values()
+			.filter(|candidate| {
+				candidate.project_id == project_id
+					&& candidate.objective.id() == objective_id
+					&& candidate.state == AutonomyObjectiveState::Accepted
+			})
+			.map(|candidate| candidate.objective.version())
+			.max()
+			&& version <= current_version {
+				eyre::bail!(
+					"Autonomy objective `{objective_id}` version {version} must be greater than current accepted version {current_version}."
+				);
+			}
+
+		record.objective.accept(acceptance)?;
+
+		record.state = record.objective.state();
+		record.updated_at = now.text.clone();
+		record.updated_at_unix = now.unix;
+
+		let superseded_keys = state
+			.autonomy_objectives
+			.iter()
+			.filter(|(_, candidate)| {
+				candidate.project_id == project_id
+					&& candidate.objective.id() == objective_id
+					&& candidate.state == AutonomyObjectiveState::Accepted
+			})
+			.map(|(key, _)| key.clone())
+			.collect::<Vec<_>>();
+		let mut changed_records = Vec::new();
+
+		for superseded_key in superseded_keys {
+			let supersession = AutonomyObjectiveSupersession::new(
+				objective_id,
+				version,
+				superseded_by.clone(),
+				superseded_at.clone(),
+				supersession_source.clone(),
+				format!("Accepted objective version {version} superseded this version."),
+			)?;
+			let mut superseded = state
+				.autonomy_objectives
+				.get(&superseded_key)
+				.cloned()
+				.expect("superseded key should exist");
+
+			superseded.objective.supersede(supersession)?;
+
+			superseded.state = superseded.objective.state();
+			superseded.updated_at = now.text.clone();
+			superseded.updated_at_unix = now.unix;
+
+			state
+				.autonomy_objectives
+				.insert(superseded.key(), superseded.clone());
+			changed_records.push(superseded);
+		}
+
+		state.autonomy_objectives.insert(key, record.clone());
+		changed_records.push(record.clone());
+
+		for changed_record in &changed_records {
+			self.upsert_autonomy_objective_locked(changed_record)?;
+		}
+
+		Ok(record.as_public())
+	}
+
+	/// Reject one draft Objective Contract version with provenance.
+	#[allow(dead_code)]
+	pub(crate) fn reject_autonomy_objective_version(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+		version: u64,
+		rejection: AutonomyObjectiveRejection,
+	) -> Result<AutonomyObjectiveRecord> {
+		self.update_autonomy_objective(project_id, objective_id, version, |objective| {
+			objective.reject(rejection)
+		})
+	}
+
+	/// Supersede one draft or accepted Objective Contract version with provenance.
+	#[allow(dead_code)]
+	pub(crate) fn supersede_autonomy_objective_version(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+		version: u64,
+		supersession: AutonomyObjectiveSupersession,
+	) -> Result<AutonomyObjectiveRecord> {
+		self.update_autonomy_objective(project_id, objective_id, version, |objective| {
+			objective.supersede(supersession)
+		})
+	}
+
+	#[allow(dead_code)]
+	fn update_autonomy_objective(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+		version: u64,
+		update: impl FnOnce(&mut AutonomyObjectiveContract) -> Result<()>,
+	) -> Result<AutonomyObjectiveRecord> {
+		validate_required_autonomy_objective_field("project_id", project_id)?;
+		validate_required_autonomy_objective_field("objective_id", objective_id)?;
+		validate_autonomy_objective_version(version)?;
+
+		let now = timestamp_parts();
+		let key = AutonomyObjectiveKey::new(project_id, objective_id, version);
+		let mut state = self.lock()?;
+		let mut record = state
+			.autonomy_objectives
+			.get(&key)
+			.cloned()
+			.ok_or_else(|| {
+				eyre::eyre!(
+					"Autonomy objective `{objective_id}` version {version} does not exist."
+				)
+			})?;
+
+		update(&mut record.objective)?;
+
+		record.objective.validate()?;
+
+		record.state = record.objective.state();
+		record.updated_at = now.text;
+		record.updated_at_unix = now.unix;
+
+		state.autonomy_objectives.insert(key, record.clone());
+		self.upsert_autonomy_objective_locked(&record)?;
+
+		Ok(record.as_public())
+	}
+
 	/// Create or replace one local internal Execution Program payload.
 	#[allow(dead_code)]
 	pub(crate) fn upsert_execution_program(
@@ -3575,6 +3885,21 @@ impl StateStore {
 	}
 
 	#[allow(dead_code)]
+	fn upsert_autonomy_objective_locked(
+		&self,
+		record: &AutonomyObjectiveRuntimeRecord,
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_autonomy_objective(record)
+	}
+
+	#[allow(dead_code)]
 	fn upsert_execution_program_locked(
 		&self,
 		record: &ExecutionProgramRuntimeRecord,
@@ -4598,6 +4923,43 @@ fn validate_decision_contract_record_inputs(
 fn validate_required_decision_contract_field(name: &str, value: &str) -> Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("Decision contract {name} must not be empty.");
+	}
+
+	Ok(())
+}
+
+#[allow(dead_code)]
+fn validate_autonomy_objective_record_inputs(
+	project_id: &str,
+	objective: &AutonomyObjectiveContract,
+) -> Result<()> {
+	validate_required_autonomy_objective_field("project_id", project_id)?;
+
+	if objective.project_id() != project_id {
+		eyre::bail!(
+			"Autonomy objective `{}` belongs to project `{}` but was stored for `{}`.",
+			objective.id(),
+			objective.project_id(),
+			project_id
+		);
+	}
+
+	objective.validate()
+}
+
+#[allow(dead_code)]
+fn validate_required_autonomy_objective_field(name: &str, value: &str) -> Result<()> {
+	if value.trim().is_empty() {
+		eyre::bail!("Autonomy objective {name} must not be empty.");
+	}
+
+	Ok(())
+}
+
+#[allow(dead_code)]
+fn validate_autonomy_objective_version(version: u64) -> Result<()> {
+	if version == 0 {
+		eyre::bail!("Autonomy objective version must be greater than zero.");
 	}
 
 	Ok(())

@@ -29,6 +29,7 @@ pub struct ServiceConfig {
 	tracker: ProjectTrackerConfig,
 	github: ProjectGitHubConfig,
 	codex: ProjectCodexConfig,
+	autonomy: ProjectAutonomyConfig,
 	privacy_classifier: ProjectPrivacyClassifierConfig,
 }
 impl ServiceConfig {
@@ -96,6 +97,11 @@ impl ServiceConfig {
 		&self.codex
 	}
 
+	/// Objective-autonomy references scoped to this project.
+	pub fn autonomy(&self) -> &ProjectAutonomyConfig {
+		&self.autonomy
+	}
+
 	/// Optional local classifier for Linear public projection text.
 	pub fn privacy_classifier(&self) -> &ProjectPrivacyClassifierConfig {
 		&self.privacy_classifier
@@ -121,6 +127,7 @@ impl ServiceConfig {
 			tracker: document.tracker,
 			github: document.github.resolve_paths(config_dir)?,
 			codex: document.codex.resolve_paths(config_dir)?,
+			autonomy: document.autonomy,
 			privacy_classifier: document.privacy_classifier,
 		})
 	}
@@ -274,6 +281,127 @@ impl Default for ProjectPrivacyClassifierConfig {
 	}
 }
 
+/// Project-autonomy references from service configuration.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectAutonomyConfig {
+	#[serde(default)]
+	auto_promote: bool,
+	#[serde(default)]
+	auto_intake: bool,
+	runtime_policy: Option<ProjectAutonomyRuntimePolicyConfig>,
+}
+impl ProjectAutonomyConfig {
+	/// Whether accepted runtime policy may promote proposals without another chat turn.
+	pub fn auto_promote(&self) -> bool {
+		self.auto_promote
+	}
+
+	/// Whether accepted runtime policy may enter Program Intake after promotion.
+	pub fn auto_intake(&self) -> bool {
+		self.auto_intake
+	}
+
+	/// References to accepted runtime authority records, when configured.
+	pub fn runtime_policy(&self) -> Option<&ProjectAutonomyRuntimePolicyConfig> {
+		self.runtime_policy.as_ref()
+	}
+
+	fn validate(&self) -> Result<()> {
+		if self.auto_intake && !self.auto_promote {
+			eyre::bail!("`autonomy.auto_intake = true` requires `autonomy.auto_promote = true`.");
+		}
+		if self.auto_promote && self.runtime_policy.is_none() {
+			eyre::bail!(
+				"`autonomy.auto_promote = true` requires `[autonomy.runtime_policy]` references."
+			);
+		}
+
+		if let Some(runtime_policy) = &self.runtime_policy {
+			runtime_policy.validate()?;
+
+			if self.auto_intake && runtime_policy.team_issue_identifier().is_none() {
+				eyre::bail!(
+					"`autonomy.auto_intake = true` requires `autonomy.runtime_policy.team_issue_identifier`."
+				);
+			}
+		}
+
+		Ok(())
+	}
+}
+
+/// References to accepted Objective Contract and project-policy authority records.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectAutonomyRuntimePolicyConfig {
+	accepted_objective_id: String,
+	accepted_objective_version: String,
+	accepted_policy_id: String,
+	accepted_policy_version: String,
+	policy_authority_ref: String,
+	team_issue_identifier: Option<String>,
+}
+impl ProjectAutonomyRuntimePolicyConfig {
+	/// Accepted runtime Objective Contract id.
+	pub fn accepted_objective_id(&self) -> &str {
+		&self.accepted_objective_id
+	}
+
+	/// Accepted runtime Objective Contract version.
+	pub fn accepted_objective_version(&self) -> &str {
+		&self.accepted_objective_version
+	}
+
+	/// Accepted runtime project-policy id.
+	pub fn accepted_policy_id(&self) -> &str {
+		&self.accepted_policy_id
+	}
+
+	/// Accepted runtime project-policy version.
+	pub fn accepted_policy_version(&self) -> &str {
+		&self.accepted_policy_version
+	}
+
+	/// Runtime authority reference for the accepted project policy record.
+	pub fn policy_authority_ref(&self) -> &str {
+		&self.policy_authority_ref
+	}
+
+	/// Optional tracker anchor required before automatic intake may create issues.
+	pub fn team_issue_identifier(&self) -> Option<&str> {
+		self.team_issue_identifier.as_deref()
+	}
+
+	fn validate(&self) -> Result<()> {
+		validate_required_config_string(
+			"autonomy.runtime_policy.accepted_objective_id",
+			&self.accepted_objective_id,
+		)?;
+		validate_required_config_string(
+			"autonomy.runtime_policy.accepted_objective_version",
+			&self.accepted_objective_version,
+		)?;
+		validate_required_config_string(
+			"autonomy.runtime_policy.accepted_policy_id",
+			&self.accepted_policy_id,
+		)?;
+		validate_required_config_string(
+			"autonomy.runtime_policy.accepted_policy_version",
+			&self.accepted_policy_version,
+		)?;
+		validate_required_config_string(
+			"autonomy.runtime_policy.policy_authority_ref",
+			&self.policy_authority_ref,
+		)?;
+
+		validate_optional_nonempty_string(
+			"autonomy.runtime_policy.team_issue_identifier",
+			self.team_issue_identifier.as_deref(),
+		)
+	}
+}
+
 /// Optional JSONL ChatGPT accounts for Codex app-server runs.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -372,6 +500,8 @@ struct ServiceConfigDocument {
 	#[serde(default)]
 	codex: ProjectCodexConfig,
 	#[serde(default)]
+	autonomy: ProjectAutonomyConfig,
+	#[serde(default)]
 	privacy_classifier: ProjectPrivacyClassifierConfig,
 	#[serde(default)]
 	paths: ProjectPathsConfig,
@@ -383,6 +513,7 @@ impl ServiceConfigDocument {
 		self.tracker.validate()?;
 		self.github.validate()?;
 		self.codex.validate()?;
+		self.autonomy.validate()?;
 		self.privacy_classifier.validate()?;
 		self.paths.validate()?;
 
@@ -764,6 +895,14 @@ fn validate_optional_nonempty_string(field_name: &str, value: Option<&str>) -> R
 
 	if value.trim().is_empty() {
 		eyre::bail!("`{field_name}` must not be empty when configured.");
+	}
+
+	Ok(())
+}
+
+fn validate_required_config_string(field_name: &str, value: &str) -> Result<()> {
+	if value.trim().is_empty() {
+		eyre::bail!("`{field_name}` must not be empty.");
 	}
 
 	Ok(())
@@ -1204,6 +1343,184 @@ mod tests {
 			let config = ServiceConfig::from_path(&config_path).expect(case_name);
 
 			assert_eq!(config.codex().review_level(), expected_level);
+		}
+	}
+
+	#[test]
+	fn parses_autonomy_objective_and_policy_references() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let config_path = write_config_file(
+			temp_dir.path(),
+			r#"
+				service_id = "pubfi"
+
+				[tracker]
+				api_key_env_var = "HOME"
+
+				[github]
+				token_env_var = "HOME"
+
+				[autonomy]
+				auto_promote = true
+				auto_intake = true
+
+				[autonomy.runtime_policy]
+				accepted_objective_id = "quality-autonomy"
+				accepted_objective_version = "1"
+				accepted_policy_id = "pubfi-autonomy-policy"
+				accepted_policy_version = "7"
+				policy_authority_ref = "decodex.runtime_policy:pubfi-autonomy-policy@7"
+				team_issue_identifier = "PUB-1000"
+			"#,
+		);
+		let config =
+			ServiceConfig::from_path(&config_path).expect("service config should load from disk");
+		let autonomy = config.autonomy();
+		let runtime_policy =
+			autonomy.runtime_policy().expect("runtime policy references should parse");
+
+		assert!(autonomy.auto_promote());
+		assert!(autonomy.auto_intake());
+		assert_eq!(runtime_policy.accepted_objective_id(), "quality-autonomy");
+		assert_eq!(runtime_policy.accepted_objective_version(), "1");
+		assert_eq!(runtime_policy.accepted_policy_id(), "pubfi-autonomy-policy");
+		assert_eq!(runtime_policy.accepted_policy_version(), "7");
+		assert_eq!(
+			runtime_policy.policy_authority_ref(),
+			"decodex.runtime_policy:pubfi-autonomy-policy@7"
+		);
+		assert_eq!(runtime_policy.team_issue_identifier(), Some("PUB-1000"));
+	}
+
+	#[test]
+	fn autonomy_config_defaults_to_latent_only() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let config_path = write_config_file(
+			temp_dir.path(),
+			r#"
+				service_id = "pubfi"
+
+				[tracker]
+				api_key_env_var = "HOME"
+
+				[github]
+				token_env_var = "HOME"
+			"#,
+		);
+		let config =
+			ServiceConfig::from_path(&config_path).expect("service config should load from disk");
+
+		assert!(!config.autonomy().auto_promote());
+		assert!(!config.autonomy().auto_intake());
+		assert!(config.autonomy().runtime_policy().is_none());
+	}
+
+	#[test]
+	fn rejects_autonomy_execution_flags_without_required_authority_references() {
+		for (case_name, autonomy_body, expected_error) in [
+			(
+				"auto promote needs runtime policy refs",
+				r#"
+				[autonomy]
+				auto_promote = true
+				"#,
+				"runtime_policy",
+			),
+			(
+				"auto intake needs auto promote",
+				r#"
+				[autonomy]
+				auto_intake = true
+				"#,
+				"auto_promote",
+			),
+			(
+				"auto intake needs tracker anchor",
+				r#"
+				[autonomy]
+				auto_promote = true
+				auto_intake = true
+
+				[autonomy.runtime_policy]
+				accepted_objective_id = "quality-autonomy"
+				accepted_objective_version = "1"
+				accepted_policy_id = "pubfi-autonomy-policy"
+				accepted_policy_version = "7"
+				policy_authority_ref = "decodex.runtime_policy:pubfi-autonomy-policy@7"
+				"#,
+				"team_issue_identifier",
+			),
+		] {
+			let temp_dir = TempDir::new().expect("temp dir should exist");
+			let config_path = write_config_file(
+				temp_dir.path(),
+				&format!(
+					r#"
+				service_id = "pubfi"
+
+				[tracker]
+				api_key_env_var = "HOME"
+
+				[github]
+				token_env_var = "HOME"
+
+				{autonomy_body}
+			"#
+				),
+			);
+			let error = ServiceConfig::from_path(&config_path).expect_err(case_name);
+
+			assert!(
+				error.to_string().contains(expected_error),
+				"unexpected error for `{case_name}`: {error:?}"
+			);
+		}
+	}
+
+	#[test]
+	fn rejects_autonomy_embedded_policy_bodies_and_execution_budgets() {
+		for removed_field in [
+			"objective_body",
+			"policy_body",
+			"allowed_signal_kinds",
+			"allowed_surfaces",
+			"validation_gates",
+			"cooldown_seconds",
+			"write_budget",
+		] {
+			let temp_dir = TempDir::new().expect("temp dir should exist");
+			let config_path = write_config_file(
+				temp_dir.path(),
+				&format!(
+					r#"
+				service_id = "pubfi"
+
+				[tracker]
+				api_key_env_var = "HOME"
+
+				[github]
+				token_env_var = "HOME"
+
+				[autonomy]
+				auto_promote = false
+
+				[autonomy.runtime_policy]
+				accepted_objective_id = "quality-autonomy"
+				accepted_objective_version = "1"
+				accepted_policy_id = "pubfi-autonomy-policy"
+				accepted_policy_version = "7"
+				policy_authority_ref = "decodex.runtime_policy:pubfi-autonomy-policy@7"
+				{removed_field} = "must-live-in-runtime-authority"
+			"#
+				),
+			);
+			let error = ServiceConfig::from_path(&config_path)
+				.expect_err("embedded autonomy authority should be rejected");
+
+			assert!(
+				error.to_string().contains(removed_field),
+				"error should identify rejected field {removed_field}: {error:?}"
+			);
 		}
 	}
 
