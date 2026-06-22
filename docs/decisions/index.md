@@ -23,6 +23,9 @@ Question this index answers: "why was it designed this way?"
 - [`natural-language-loop-runtime.md`](./natural-language-loop-runtime.md) records why
   Decodex keeps execution-graph semantics internal behind a natural-language research
   and promotion surface.
+- [`project-autonomy-control-plane.md`](./project-autonomy-control-plane.md) records
+  why Decodex autonomy is objective-driven, project-general, Codex-first for human
+  authoring, and not a hidden runtime self-repair loop or standalone memory product.
 - [`decodex-plugin-source.md`](./decodex-plugin-source.md) records why this repository
   owns the canonical Decodex plugin plus knowledge, repo-work, and agent-method
   companion plugin sources.

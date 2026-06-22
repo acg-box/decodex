@@ -40,6 +40,10 @@ The split below is by question type, not by human-versus-agent audience.
 - Need the natural-language-first loop-runtime contract, Research/Decision stage,
   latent Loop/Decision Contract, internal Execution Program, phase-scoped goals,
   unattended execution behavior, or loop guardrails -> `docs/spec/loop-runtime.md`
+- Need objective-driven project autonomy, Objective Contracts, autonomy signals,
+  proposal compilation, autonomy MCP action boundaries, memory boundaries, or
+  self-dogfood limits -> `docs/spec/autonomy-control-plane.md`
+- Need the implementation order for objective-driven autonomy -> `docs/runbook/autonomy-implementation-roadmap.md`
 - Need current Decodex/Codex app-server protocol support
   evidence -> `docs/spec/app-server.md`
 - Need Decodex operator lane-control capability support, including inspect,
@@ -64,6 +68,10 @@ The split below is by question type, not by human-versus-agent audience.
   retrieval hygiene -> `docs/decisions/okf-research-knowledge-lifecycle.md`
 - Need rationale for Decodex MCP integration, MCP/skills/docs/runtime boundaries, or
   skill slimming -> `docs/decisions/mcp-capability-gateway-and-skill-slimming.md`
+- Need rationale for objective-driven project autonomy, Codex as the default
+  authoring UI, external-agent boundaries, or the rejection of anomaly-only autonomy,
+  Hermes, Codex-automation-only, or a full memory product ->
+  `docs/decisions/project-autonomy-control-plane.md`
 - Need research concepts, supporting research evidence, or the implemented/superseded
   status of candidate research targets ->
   `docs/reference/research-concepts.md`
