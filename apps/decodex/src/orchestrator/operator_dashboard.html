@@ -4488,12 +4488,6 @@
 					if (runStoppedProcessNeedsAttention(run)) {
 						return run.process_liveness_reason || "process_stopped";
 					}
-					if (runProcessStoppedWhileActive(run)) {
-						return run.current_operation || run.run_phase || run.phase || "process_stopped";
-					}
-					if ((run.run_phase || run.phase) === "executing") {
-						return displayToken(run.current_operation || run.run_phase || run.phase);
-					}
 
 					return displayToken(run.run_phase || run.phase || run.status);
 				}
@@ -6370,15 +6364,6 @@
 				const focus = protocolActivityFocus(run);
 
 				facts.push(["run phase", displayToken(run.run_phase || run.phase || run.status)]);
-				if (run.current_operation) {
-					facts.push(["current operation", displayToken(run.current_operation)]);
-				}
-				if (run.active_goal_phase) {
-					facts.push(["active goal phase", displayToken(run.active_goal_phase)]);
-				}
-				if (run.public_progress_phase) {
-					facts.push(["public progress phase", displayToken(run.public_progress_phase)]);
-				}
 				if (freshness.timestamp) {
 					facts.push([freshness.sourceLabel, formatRelativeTimestamp(freshness.timestamp)]);
 				}
@@ -6392,6 +6377,26 @@
 					facts.push(["agent idle", formatDuration(run.protocol_idle_for_seconds)]);
 				}
 				return facts;
+			}
+
+			function currentLaneReadbackValues(run) {
+				return [
+					run?.run_phase || run?.phase || run?.status,
+					run?.current_operation,
+					run?.active_goal_phase,
+					run?.public_progress_phase,
+				].filter(Boolean);
+			}
+
+			function currentLaneVisibleSummary(card, run) {
+				const summary = String(card?.detail || "").trim();
+				if (!summary) {
+					return "";
+				}
+
+				return currentLaneReadbackValues(run).some((value) => displayTextRepeats(summary, value))
+					? ""
+					: summary;
 			}
 
 			function renderRunMetaFact(label, value, valueClass = "", title = "") {
@@ -9471,7 +9476,7 @@
 							issue: issueKey,
 							title: runStoppedProcessNeedsAttention(run)
 								? "Stopped agent process"
-								: displayToken(run.current_operation || run.run_phase || run.phase),
+								: displayToken(run.run_phase || run.phase || run.status),
 							summary: runStoppedProcessNeedsAttention(run)
 								? `Agent process stopped while lane remains active. ${COPY.protocolEvent} ${run.last_event_type || "none"}.`
 								: runStaleWithoutKnownProcessNeedsAttention(run)
@@ -9505,7 +9510,7 @@
 							tone,
 							scope: "Running",
 							issue: issueKey,
-							title: displayToken(run.current_operation || run.run_phase || run.phase),
+							title: displayToken(run.run_phase || run.phase || run.status),
 							summary: run.next_retry_at
 								? `Retry scheduled for ${formatTimestamp(run.next_retry_at)}.`
 								: `Waiting on ${displayToken(run.wait_reason || run.run_phase || run.phase)}.`,
@@ -10583,7 +10588,7 @@
 							const renderKey = card.id || card.run_id || `presentation-card:${index}`;
 							const issueKey = card.issue_identifier || "unknown";
 							const issueTitle = card.title || "Run";
-							const summary = card.detail || "";
+							const summary = currentLaneVisibleSummary(card, run);
 							if (run.ownership_state && run.ownership_state !== "leased_run") {
 								statusBits.push(inlineStatusFact("Owner", displayToken(run.ownership_state)));
 							}
@@ -10650,6 +10655,10 @@
 									<div class="grid debug-grid">
 										${field("Run", run.run_id)}
 										${field("Attempt status", run.attempt_status || run.status)}
+										${field("Run phase", capturedValue(run.run_phase || run.phase))}
+										${field("Current operation", capturedValue(run.current_operation))}
+										${field("Active goal phase", capturedValue(run.active_goal_phase))}
+										${field("Public progress phase", capturedValue(run.public_progress_phase))}
 										${field("Updated", formatTimestamp(run.updated_at))}
 										${field("Codex thread", runThreadSummary(run))}
 										${field("Thread flags", runThreadFlagSummary(run))}
