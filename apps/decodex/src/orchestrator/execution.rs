@@ -210,14 +210,14 @@ impl RepoGatePhaseGoalController<'_> {
 			RUN_OPERATION_REPO_GATE,
 		);
 
-		match run_repo_gate_commands(
+		match run_repo_gate_commands_allow_owned_tracked_rewrites(
 			selected_repo_gate.canonicalize_commands(),
 			selected_repo_gate.verify_commands(),
 			&self.issue_run.worktree.path,
 		) {
-			Ok(()) => {
+			Ok(repo_gate_outcome) => {
 				let acceptance_check =
-					self.evaluate_phase_acceptance(phase, &selected_repo_gate)?;
+					self.evaluate_phase_acceptance(phase, &selected_repo_gate, &repo_gate_outcome)?;
 
 				self.record_phase_acceptance_check(&acceptance_check)?;
 
@@ -229,13 +229,25 @@ impl RepoGatePhaseGoalController<'_> {
 					self.project.service_id(),
 					&self.issue_run.issue.id,
 				)?;
-				self.record_phase_goal_transition(
-					phase,
-					"validation_pass",
-					json!({ "nextPhase": PhaseGoalKind::HandoffEvidence.as_str() }),
-				)?;
 
-				let next_goal = self.phase_goal_spec(PhaseGoalKind::HandoffEvidence, None);
+				let mut transition_payload =
+					json!({ "nextPhase": PhaseGoalKind::HandoffEvidence.as_str() });
+
+				if let Some(decision) = repo_gate_outcome.tracked_rewrite_decision() {
+					transition_payload["trackedRewrites"] = decision.to_json();
+				}
+
+				self.record_phase_goal_transition(phase, "validation_pass", transition_payload)?;
+
+				let handoff_detail =
+					repo_gate_outcome.tracked_rewrite_decision().map(|decision| {
+						format!(
+							"Repo gate validation passed after rewriting owned tracked files: {}. Commit these issue-owned gate rewrites with the lane changes before review handoff.",
+							decision.files_display()
+						)
+					});
+				let next_goal =
+					self.phase_goal_spec(PhaseGoalKind::HandoffEvidence, handoff_detail.as_deref());
 
 				self.persist_next_phase_goal(&next_goal, "validation_pass")?;
 
@@ -243,14 +255,16 @@ impl RepoGatePhaseGoalController<'_> {
 			},
 			Err(error) => {
 				if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
-					self.record_phase_goal_transition(
-						phase,
-						"validation_fail",
-						json!({
-							"errorClass": repo_gate_failure.error_class(),
-							"disposition": repo_gate_failure.disposition().as_str(),
-						}),
-					)?;
+					let mut transition_payload = json!({
+						"errorClass": repo_gate_failure.error_class(),
+						"disposition": repo_gate_failure.disposition().as_str(),
+					});
+
+					if let Some(decision) = repo_gate_failure.tracked_rewrite_decision() {
+						transition_payload["trackedRewrites"] = decision.to_json();
+					}
+
+					self.record_phase_goal_transition(phase, "validation_fail", transition_payload)?;
 
 					if repo_gate_failure.disposition() == RepoGateFailureDisposition::ContinueRepair {
 						if let Some(loop_guardrail_stop) = retryable_failure_loop_guardrail_stop(
@@ -324,9 +338,10 @@ impl RepoGatePhaseGoalController<'_> {
 				self.issue_run.issue.identifier
 			),
 			PhaseGoalKind::HandoffEvidence => format!(
-				"Decodex phase: {}\nAfter Decodex validation, prepare PR-backed handoff evidence for {}: record a current-HEAD `issue_progress_checkpoint` with `docs_impact`, run the bounded review policy as instructed, push the branch when ready, create or update the non-draft PR, then record the required Decodex terminal path. Goal completion alone is not issue success.",
+				"Decodex phase: {}\nAfter Decodex validation, prepare PR-backed handoff evidence for {}: record a current-HEAD `issue_progress_checkpoint` with `docs_impact`, run the bounded review policy as instructed, push the branch when ready, create or update the non-draft PR, then record the required Decodex terminal path. Goal completion alone is not issue success.{}",
 				phase.as_str(),
-				self.issue_run.issue.identifier
+				self.issue_run.issue.identifier,
+				detail.map_or_else(String::new, |detail| format!(" {detail}"))
 			),
 		};
 
@@ -377,6 +392,7 @@ impl RepoGatePhaseGoalController<'_> {
 		&self,
 		phase: PhaseGoalKind,
 		repo_gate: &ResolvedRepoGate<'_>,
+		repo_gate_outcome: &RepoGateCommandOutcome,
 	) -> Result<PhaseAcceptanceCheck> {
 		let fingerprint = loop_guardrail_worktree_fingerprint(&self.issue_run.worktree.path)?;
 		let head_sha = fingerprint.as_ref().map(|value| value.head_sha.clone());
@@ -431,6 +447,7 @@ impl RepoGatePhaseGoalController<'_> {
 			repo_gate_profile: repo_gate.profile_name().map(str::to_owned),
 			canonicalize_commands: repo_gate.canonicalize_commands().to_vec(),
 			verify_commands: repo_gate.verify_commands().to_vec(),
+			repo_gate_tracked_rewrites: repo_gate_outcome.tracked_rewrite_decision().cloned(),
 			checkpoint_record_id: checkpoint.as_ref().map(state::PrivateExecutionEvent::record_id),
 			checkpoint_head_sha,
 			worktree_head_sha: head_sha,
@@ -542,6 +559,10 @@ impl RepoGatePhaseGoalController<'_> {
 					"repo_gate_profile": check.repo_gate_profile.as_deref(),
 					"canonicalize_commands": &check.canonicalize_commands,
 					"verify_commands": &check.verify_commands,
+					"tracked_rewrites": check
+						.repo_gate_tracked_rewrites
+						.as_ref()
+						.map(RepoGateTrackedRewriteDecision::to_json),
 				},
 				"next_action": check.next_action(),
 			}),
@@ -615,6 +636,7 @@ struct PhaseAcceptanceCheck {
 	repo_gate_profile: Option<String>,
 	canonicalize_commands: Vec<String>,
 	verify_commands: Vec<String>,
+	repo_gate_tracked_rewrites: Option<RepoGateTrackedRewriteDecision>,
 	checkpoint_record_id: Option<i64>,
 	checkpoint_head_sha: Option<String>,
 	worktree_head_sha: Option<String>,
