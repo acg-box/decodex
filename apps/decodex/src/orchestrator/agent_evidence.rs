@@ -2052,12 +2052,6 @@ fn agent_run_blocker_reason(run: &OperatorRunStatus) -> Option<&'static str> {
 	if operator_run_has_stale_execution_without_known_process(run) {
 		return Some("stale_execution_without_known_process");
 	}
-	if run.wait_reason.is_some() {
-		return Some("run_waiting");
-	}
-	if run.next_retry_at.is_some() {
-		return Some("retry_backoff");
-	}
 
 	None
 }
@@ -2072,9 +2066,6 @@ fn agent_run_next_action(run: &OperatorRunStatus) -> Option<String> {
 			Some(String::from("Inspect the run capsule, retained worktree, protocol activity, and process state before retrying.")),
 		Some("process_exited_without_terminal_status") =>
 			Some(String::from("Inspect the retained worktree and runtime markers; reconcile or retry only after preserving useful local changes.")),
-		Some("run_waiting") =>
-			Some(String::from("Inspect wait_reason, thread status, and protocol activity before deciding whether the agent can continue.")),
-		Some("retry_backoff") => Some(String::from("Wait until next_retry_at or run an explicit operator retry after reviewing the retained state.")),
 		_ => None,
 	}
 }
