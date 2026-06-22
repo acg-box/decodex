@@ -22,6 +22,10 @@ use sha2::{Digest as _, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
+	autonomy_objective::{
+		AutonomyObjectiveAcceptance, AutonomyObjectiveContract, AutonomyObjectiveRejection,
+		AutonomyObjectiveState, AutonomyObjectiveSupersession,
+	},
 	config::ServiceConfig,
 	execution_program::ExecutionProgram,
 	loop_contract::{DecisionContract, DecisionContractStatus, DecisionPromotion},
