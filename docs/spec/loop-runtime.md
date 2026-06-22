@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/research_design.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
 drift_watch: [phase_goal, phase_acceptance_check, docs_impact, review_contract, issue_review_checkpoint, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
-last_verified: 2026-06-20
+last_verified: 2026-06-22
 ---
 # Loop Runtime Specification
 
@@ -579,11 +579,17 @@ includes issue-branch changes from the repo-gate base merge-base through current
 `HEAD`, plus tracked or non-runtime untracked worktree changes. A clean worktree at
 an issue-branch `HEAD` with committed lane changes is therefore effective progress,
 not `no_effective_delta`.
-When Decodex has already recorded a valid phase-goal continuation or active phase in
-the immediately previous attempt and must create a retry or automatic continuation
-attempt, the new attempt resumes that unterminated phase state instead of restarting
-implementation. This preserves the state-machine boundary between validated work and
-the later review/handoff contract.
+When Decodex has already recorded a valid phase-goal continuation or active phase for
+the same issue and must create a retry, Program, or automatic continuation attempt,
+the new attempt resumes that unterminated phase state instead of restarting
+implementation. Phase continuation is an issue-level cursor over private runtime
+evidence before the current attempt, not a single previous-attempt field. Empty or
+zero-evidence failed-start attempts do not reset an open phase such as
+`handoff_evidence`. Only terminal finalization, review completion intent, an
+authority-decision request, a blocked phase-goal recovery, an audited failed-start
+cleanup, or a blocker-bearing progress checkpoint can close or block inheritance.
+This preserves the state-machine boundary between validated work and the later
+review/handoff contract.
 
 ## Validation And Review
 
