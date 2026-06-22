@@ -11081,18 +11081,36 @@
 					.join("");
 			}
 
-			function unixEpochSecondsToIso(value) {
+			function unixEpochSeconds(value) {
 				const unixEpochSeconds = Number(value);
 				if (!Number.isFinite(unixEpochSeconds)) {
 					return null;
 				}
 
-				const parsed = new Date(unixEpochSeconds * 1000);
+				return unixEpochSeconds;
+			}
+
+			function unixEpochSecondsToIso(value) {
+				const seconds = unixEpochSeconds(value);
+				if (seconds == null) {
+					return null;
+				}
+
+				const parsed = new Date(seconds * 1000);
 				if (Number.isNaN(parsed.getTime())) {
 					return null;
 				}
 
 				return parsed.toISOString();
+			}
+
+			function isoTimestampUnixEpoch(value) {
+				const timestamp = Date.parse(value || "");
+				if (!Number.isFinite(timestamp)) {
+					return null;
+				}
+
+				return Math.floor(timestamp / 1000);
 			}
 
 			function parseDashboardSocketMessage(message) {
@@ -11166,14 +11184,25 @@
 			}
 
 			function currentLaneCardToneClass(card) {
-				if (card?.tone === "attention") {
+				const run = card?.run || {};
+				if (card?.needs_attention === true || card?.tone === "attention") {
 					return "tone-blocked";
 				}
-				if (card?.tone === "waiting") {
+				if (card?.is_waiting === true || card?.tone === "waiting") {
 					return "tone-wait";
+				}
+				if (card?.counts_as_running === true || runCountsAsRunning(run)) {
+					return "tone-run";
 				}
 
 				return "tone-run";
+			}
+
+			function dashboardRunActivityIsStale(payload) {
+				const emittedAt = unixEpochSeconds(payload?.emittedAtUnixEpoch);
+				const snapshotPublishedAt = isoTimestampUnixEpoch(lastDashboardRender?.snapshotPublishedAt);
+
+				return emittedAt != null && snapshotPublishedAt != null && emittedAt < snapshotPublishedAt;
 			}
 
 			function dashboardLiveRunActivityHasOverlay({ includeCompletedEmpty = false } = {}) {
@@ -11235,6 +11264,20 @@
 						lastEventAt: new Date().toISOString(),
 					});
 
+					return;
+				}
+
+				if (dashboardRunActivityIsStale(payload)) {
+					updateDashboardStreamState(
+						{
+							connected: true,
+							error: false,
+							lastEventAt:
+								unixEpochSecondsToIso(payload.emittedAtUnixEpoch) ||
+								new Date().toISOString(),
+						},
+						false,
+					);
 					return;
 				}
 
