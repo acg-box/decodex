@@ -440,7 +440,7 @@ fn install_fake_post_issue_comment_gh_response(
 	TestEnvVarGuard::set("PATH", &format!("{}:{path_env}", fake_gh_dir.display()))
 }
 
-fn install_fake_admin_merge_gh_response(temp_dir: &TempDir) -> (TestEnvVarGuard, PathBuf) {
+fn install_fake_admin_merge_gh_response(temp_dir: &TempDir) -> (PathBuf, PathBuf) {
 	install_fake_admin_merge_gh_response_with_merge_exit_code(temp_dir, "deadbeef", 0)
 }
 
@@ -448,7 +448,7 @@ fn install_fake_admin_merge_gh_response_with_merge_exit_code(
 	temp_dir: &TempDir,
 	pr_head_oid: &str,
 	merge_exit_code: i32,
-) -> (TestEnvVarGuard, PathBuf) {
+) -> (PathBuf, PathBuf) {
 	let fake_gh_dir = temp_dir.path().join("fake-bin");
 	let fake_gh_path = fake_gh_dir.join("gh");
 	let invocation_log_path = temp_dir.path().join("gh-invocation.log");
@@ -487,12 +487,7 @@ exit 1\n",
 	fs::set_permissions(&fake_gh_path, permissions)
 		.expect("fake gh script should become executable");
 
-	let path_env = env::var("PATH").unwrap_or_default();
-
-	(
-		TestEnvVarGuard::set("PATH", &format!("{}:{path_env}", fake_gh_dir.display())),
-		invocation_log_path,
-	)
+	(fake_gh_path, invocation_log_path)
 }
 
 fn sample_issue(state_name: &str, labels: &[&str]) -> TrackerIssue {
@@ -1117,6 +1112,24 @@ fn sample_service_config_toml(
 	worktree_root: Option<&Path>,
 	review_level: ReviewLevel,
 ) -> String {
+	sample_service_config_toml_with_github_command_path(
+		service_id,
+		tracker_api_key_env_var,
+		github_token_env_var,
+		worktree_root,
+		review_level,
+		None,
+	)
+}
+
+fn sample_service_config_toml_with_github_command_path(
+	service_id: &str,
+	tracker_api_key_env_var: &str,
+	github_token_env_var: &str,
+	worktree_root: Option<&Path>,
+	review_level: ReviewLevel,
+	github_command_path: Option<&Path>,
+) -> String {
 	let mut toml = format!(
 		r#"service_id = "{service_id}"
 
@@ -1127,6 +1140,10 @@ api_key_env_var = "{tracker_api_key_env_var}"
 token_env_var = "{github_token_env_var}"
 "#
 	);
+
+	if let Some(github_command_path) = github_command_path {
+		toml.push_str(&format!("command_path = \"{}\"\n", github_command_path.display()));
+	}
 
 	if review_level != ReviewLevel::Strict {
 		toml.push_str("\n\n[codex]\n");
@@ -1153,16 +1170,31 @@ fn service_config_toml_for_config(
 	github_token_env_var: &str,
 	review_level: ReviewLevel,
 ) -> String {
+	service_config_toml_for_config_with_github_command_path(
+		config,
+		github_token_env_var,
+		review_level,
+		config.github().command_path(),
+	)
+}
+
+fn service_config_toml_for_config_with_github_command_path(
+	config: &ServiceConfig,
+	github_token_env_var: &str,
+	review_level: ReviewLevel,
+	github_command_path: Option<&Path>,
+) -> String {
 	let default_worktree_root = config.repo_root().join(".worktrees");
 	let worktree_root =
 		(config.worktree_root() != default_worktree_root).then_some(config.worktree_root());
 
-	sample_service_config_toml(
+	sample_service_config_toml_with_github_command_path(
 		config.service_id(),
 		config.tracker().api_key_env_var(),
 		github_token_env_var,
 		worktree_root,
 		review_level,
+		github_command_path,
 	)
 }
 
@@ -1178,13 +1210,36 @@ fn service_config_with_github_token_env_var(
 	load_service_config(config.repo_root())
 }
 
+fn service_config_with_github_token_env_var_and_command_path(
+	config: &ServiceConfig,
+	token_env_var: &str,
+	github_command_path: &Path,
+) -> ServiceConfig {
+	write_service_config(
+		config.repo_root(),
+		&service_config_toml_for_config_with_github_command_path(
+			config,
+			token_env_var,
+			config.codex().review_level(),
+			Some(github_command_path),
+		),
+	);
+
+	load_service_config(config.repo_root())
+}
+
 fn service_config_with_review_level(
 	config: &ServiceConfig,
 	review_level: ReviewLevel,
 ) -> ServiceConfig {
 	write_service_config(
 		config.repo_root(),
-		&service_config_toml_for_config(config, config.github().token_env_var(), review_level),
+		&service_config_toml_for_config_with_github_command_path(
+			config,
+			config.github().token_env_var(),
+			review_level,
+			config.github().command_path(),
+		),
 	);
 
 	load_service_config(config.repo_root())

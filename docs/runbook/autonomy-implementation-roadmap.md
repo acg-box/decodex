@@ -8,6 +8,7 @@ owner: runtime
 tags: [runbook, autonomy, objective, roadmap]
 code_refs:
   - apps/decodex/src/autonomy_objective.rs
+  - apps/decodex/src/autonomy_signal.rs
   - apps/decodex/src/loop_contract.rs
   - apps/decodex/src/config.rs
   - apps/decodex/src/mcp.rs
@@ -147,6 +148,9 @@ Goal: Persist signals as evidence only.
 
 Implementation surfaces:
 
+- `apps/decodex/src/autonomy_signal.rs` owns the versioned
+  `decodex.autonomy_signal/1` payload, fingerprint, validation rules, and first
+  dogfood builders.
 - Runtime state store for `decodex.autonomy_signal/1`.
 - Signal builders for the first dogfood adapters:
   - `runtime_health`
@@ -158,6 +162,8 @@ Implementation surfaces:
   - `execution_friction`
   - `docs_skill_drift`
 - Operator/status readback for recent signals.
+- Store APIs that record one signal, read one signal, list signals by exact
+  Objective Contract id/version, and list recent project signals for status readback.
 
 Deliverables:
 
@@ -166,6 +172,8 @@ Deliverables:
 - Dedupe fingerprint that excludes volatile counts and timestamps.
 - Review signal ingestion uses `finding_routes` and current-head review evidence.
 - Memory-derived signal ingestion requires source refs and stays proposal-only.
+- Runtime/status readback exposes recent signal freshness, gaps, contradictions,
+  confidence, and privacy without treating signals as execution authority.
 
 Required tests:
 
