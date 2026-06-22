@@ -279,10 +279,6 @@ struct AccountPanelView: View {
 			header
 			accountSummary
 
-			if operatorCurrentLaneCards.isEmpty == false {
-				operatorCurrentLaneStrip
-			}
-
 			if telemetryMatrixIsVisible {
 				AccountTelemetryMatrixView(
 					aggregate: accountProfileAggregate,
@@ -600,9 +596,6 @@ struct AccountPanelView: View {
 			+ AccountPanelLayout.accountSummaryHeight
 			+ AccountPanelLayout.sectionSpacing
 
-		if operatorCurrentLaneCards.isEmpty == false {
-			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.operatorRunStripHeight
-		}
 		if telemetryMatrixIsVisible {
 			height += AccountPanelLayout.sectionSpacing + telemetryMatrixHeight
 		}
@@ -679,22 +672,6 @@ struct AccountPanelView: View {
 		store.operatorPresentation?.currentLaneCards
 			?? store.operatorSnapshot?.presentation?.currentLaneCards
 			?? []
-	}
-
-	private var operatorCurrentLaneStrip: some View {
-		HStack(spacing: 7) {
-			Image(systemName: "dot.radiowaves.left.and.right")
-				.font(.system(size: 13, weight: .semibold))
-				.foregroundStyle(PanelPalette.actionBlue(colorScheme))
-				.frame(width: 16, height: AccountRunChipLayout.height)
-				.accessibilityHidden(true)
-
-			AccountRunSummaryView(runs: operatorCurrentLaneCards, currentTime: currentTime)
-		}
-		.padding(.horizontal, 8)
-		.frame(height: AccountPanelLayout.operatorRunStripHeight)
-		.frame(maxWidth: .infinity, alignment: .leading)
-		.modernGlassSurface(cornerRadius: 9, depth: .row)
 	}
 
 	private func operatorCurrentLaneCards(for account: CodexAccount) -> [OperatorCurrentLaneCard] {
@@ -1804,7 +1781,6 @@ private enum AccountPanelLayout {
 	static let sectionSpacing: CGFloat = 6
 	static let headerHeight: CGFloat = 28
 	static let accountSummaryHeight: CGFloat = 31
-	static let operatorRunStripHeight: CGFloat = 29
 	static let telemetryHorizontalPadding: CGFloat = 7
 	static let telemetryTopPadding: CGFloat = 7
 	static let telemetryBottomPadding: CGFloat = 2

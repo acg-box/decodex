@@ -1190,6 +1190,18 @@ fn read_websocket_json_until(
 		"acct-1"
 	);
 	assert_eq!(
+		data["presentation"]["current_lane_cards"][0]["tone"],
+		"waiting"
+	);
+	assert_eq!(
+		data["presentation"]["current_lane_cards"][0]["counts_as_running"],
+		true
+	);
+	assert_eq!(
+		data["presentation"]["current_lane_cards"][0]["is_waiting"],
+		true
+	);
+	assert_eq!(
 		fingerprint["presentation"]["current_lane_cards"][0]["run"]["run_id"],
 		"run-1"
 	);
