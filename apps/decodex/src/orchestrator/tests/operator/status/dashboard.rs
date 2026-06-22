@@ -619,17 +619,20 @@ fn operator_dashboard_current_lane_status_copy_stays_concise() {
 	assert!(response.contains("runProcessStoppedWithoutAttention"));
 	assert!(response.contains("runPhaseLabel"));
 	assert!(response.contains("return run.process_liveness_reason || \"process_stopped\";"));
-	assert!(
-		response.contains("return run.current_operation || run.run_phase || run.phase || \"process_stopped\";")
-	);
+	assert!(response.contains("return displayToken(run.run_phase || run.phase || run.status);"));
+	assert!(!response.contains("return run.current_operation || run.run_phase || run.phase || \"process_stopped\";"));
+	assert!(!response.contains("displayToken(run.current_operation || run.run_phase || run.phase)"));
 	assert!(response.contains("Stopped agent process"));
 	assert!(response.contains("attention stopped"));
 	assert!(response.contains("inlineStatusFact(\"Agent\", \"Done\")"));
 	assert!(response.contains("const waitReason = displayToken(run.wait_reason);"));
 	assert!(response.contains("if (!displayTextRepeats(summary, waitReason))"));
 	assert!(response.contains("displayTextRepeats(summary, \"operator input\")"));
+	assert!(response.contains("function currentLaneVisibleSummary(card, run)"));
+	assert!(response.contains("currentLaneReadbackValues(run).some((value) => displayTextRepeats(summary, value))"));
 	assert!(response.contains("const issueTitle = card.title || \"Run\";"));
-	assert!(response.contains("const summary = card.detail || \"\";"));
+	assert!(response.contains("const summary = currentLaneVisibleSummary(card, run);"));
+	assert!(!response.contains("const summary = card.detail || \"\";"));
 	assert!(!response.contains("Operator input needed."));
 	assert!(!response.contains("Protocol idle."));
 	assert!(response.contains("status: \"waiting\","));
@@ -1798,13 +1801,17 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(response.contains("function currentLaneLifecycleMetrics(run, summary = childAgentActivity(run))"));
 	assert!(response.contains("function lifecycleMetricFacts(metrics, { includeAttempts = false } = {})"));
 	assert!(response.contains("facts.push([\"run phase\", displayToken(run.run_phase || run.phase || run.status)]);"));
-	assert!(response.contains("facts.push([\"current operation\", displayToken(run.current_operation)]);"));
-	assert!(response.contains("facts.push([\"active goal phase\", displayToken(run.active_goal_phase)]);"));
-	assert!(response.contains("facts.push([\"public progress phase\", displayToken(run.public_progress_phase)]);"));
+	assert!(!response.contains("facts.push([\"current operation\", displayToken(run.current_operation)]);"));
+	assert!(!response.contains("facts.push([\"active goal phase\", displayToken(run.active_goal_phase)]);"));
+	assert!(!response.contains("facts.push([\"public progress phase\", displayToken(run.public_progress_phase)]);"));
 	assert!(response.contains("function lifecycleRecoveryDebugSummary(metrics)"));
 	assert!(response.contains("function lifecycleEvidenceDebugSummary(metrics)"));
 	assert!(response.contains("${field(\"Lifecycle recovery\", lifecycleRecoveryDebugSummary(currentLaneLifecycleMetrics(run)))}"));
 	assert!(response.contains("${field(\"Lifecycle evidence\", lifecycleEvidenceDebugSummary(currentLaneLifecycleMetrics(run)))}"));
+	assert!(response.contains("${field(\"Run phase\", capturedValue(run.run_phase || run.phase))}"));
+	assert!(response.contains("${field(\"Current operation\", capturedValue(run.current_operation))}"));
+	assert!(response.contains("${field(\"Active goal phase\", capturedValue(run.active_goal_phase))}"));
+	assert!(response.contains("${field(\"Public progress phase\", capturedValue(run.public_progress_phase))}"));
 	assert!(response.contains("facts.push([\"tokens\", tokenSummary]);"));
 	assert!(response.contains("facts.push([\"tools\", formatCompactCount(metrics.tool_call_count)]);"));
 	assert!(response.contains("\"max output\","));
