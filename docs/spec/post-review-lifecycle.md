@@ -332,6 +332,17 @@ human intervention. If the checkpoint reports `needs_architecture_review` /
 `"off"` or `"basic"`, retained repair completion skips that Decodex Review checkpoint
 requirement but still requires the repaired head to be pushed and the configured
 repository validation gate to pass.
+During the narrow interval after `issue_review_repair_complete` and
+`issue_terminal_finalize(path = "review_repair")` are recorded but before the retained
+`review_lifecycle_records` row has been refreshed to the repaired PR head, operator
+status must treat the exact private completion intent plus current-head clean repair
+checkpoint artifact as transitional writeback evidence. That transition may surface
+`review_repair_writeback_missing_lifecycle_marker` or
+`review_repair_writeback_stale_lifecycle_marker`, but it must not revive stale repair
+findings, request a duplicate review checkpoint, or classify the repaired lane as a
+new ordinary implementation run. The transition is valid only when the issue, branch,
+run attempt, PR URL, PR head ref, PR head OID, local `HEAD`, and clean repair
+checkpoint artifact all match.
 Every retained repair completion, regardless of review level, also requires the latest
 private `issue_progress_checkpoint` for the current run attempt to include parseable
 `docs_impact` and a `head_sha` matching the repaired lane `HEAD`; `review_repair`
