@@ -7,6 +7,7 @@ authority: procedural
 owner: runtime
 tags: [runbook, autonomy, objective, roadmap]
 code_refs:
+  - apps/decodex/src/autonomy_objective.rs
   - apps/decodex/src/loop_contract.rs
   - apps/decodex/src/config.rs
   - apps/decodex/src/mcp.rs
@@ -103,8 +104,8 @@ Goal: Add Objective Contract storage and readback without automatic execution.
 
 Implementation surfaces:
 
-- `apps/decodex/src/loop_contract.rs` or a narrow sibling module for
-  `decodex.autonomy_objective/1`.
+- `apps/decodex/src/autonomy_objective.rs` for `decodex.autonomy_objective/1`.
+- `apps/decodex/src/loop_contract.rs` remains the separate Decision Contract model.
 - `apps/decodex/src/state/store.rs` and `apps/decodex/src/state/internal.rs` for
   persisted objective records.
 - `apps/decodex/src/config.rs` for project policy references.
@@ -115,8 +116,8 @@ Deliverables:
 - Versioned Objective Contract payload with immutable versions.
 - Explicit lifecycle state representation as row state, payload state, or both, with
   readback values for `draft`, `accepted`, `rejected`, and `superseded`.
-- Store APIs to create draft, accept version, read current accepted version, and list
-  objective history.
+- Store APIs to create draft, accept version, read current accepted version, record
+  rejection/supersession provenance, and list objective history.
 - Project config may reference accepted objective and policy record ids, but config
   presence alone does not grant unattended execution authority and must not embed
   policy bodies, allowed signal kinds, allowed surfaces, validation gates, cooldown,

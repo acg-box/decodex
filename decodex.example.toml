@@ -26,7 +26,7 @@ review = "strict"
 # accepted runtime authority records. The Objective Contract and project-policy bodies
 # live in Decodex runtime state, not in project.toml. Those accepted records carry
 # goals, non-goals, signal kinds, allowed surfaces, validation/review gates, and write
-# limits. A tracker or Program Intake anchor is also required when `auto_intake = true`.
+# limits. `team_issue_identifier` is also required when `auto_intake = true`.
 # [autonomy.runtime_policy]
 # accepted_objective_id = "quality-autonomy"
 # accepted_objective_version = "1"
