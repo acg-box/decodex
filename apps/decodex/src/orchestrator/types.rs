@@ -1,6 +1,6 @@
 use state::PrivateExecutionEvent;
 
-use crate::tracker;
+use crate::{autonomy_proposal::AutonomyProposal, tracker};
 
 type PullRequestReadbackResult =
 	std::result::Result<PullRequestReviewState, PullRequestReadbackFailure>;
@@ -1883,6 +1883,8 @@ struct OperatorLoopStatus {
 	next_action: Option<String>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	autonomy_signals: Vec<OperatorAutonomySignalStatus>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	autonomy_proposals: Vec<OperatorAutonomyProposalStatus>,
 	review: Option<OperatorReviewLoopStatus>,
 	architecture_recovery: Option<OperatorArchitectureRecoveryStatus>,
 	boundary: Option<OperatorBoundaryStatus>,
@@ -1902,6 +1904,23 @@ struct OperatorAutonomySignalStatus {
 	gaps: Vec<String>,
 	contradictions: Vec<String>,
 	updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorAutonomyProposalStatus {
+	proposal_id: String,
+	objective_id: String,
+	objective_version: u64,
+	state: String,
+	source_family: String,
+	intended_surface: String,
+	source_signal_ids: Vec<String>,
+	refusal_reasons: Vec<String>,
+	gaps: Vec<String>,
+	contradictions: Vec<String>,
+	challenge_evidence_count: usize,
+	updated_at: String,
+	dry_run_record: AutonomyProposal,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

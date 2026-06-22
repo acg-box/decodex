@@ -18,6 +18,7 @@ source_refs:
 code_refs:
   - apps/decodex/src/autonomy_objective.rs
   - apps/decodex/src/autonomy_signal.rs
+  - apps/decodex/src/autonomy_proposal.rs
   - apps/decodex/src/loop_contract.rs
   - apps/decodex/src/config.rs
   - apps/decodex/src/mcp.rs
