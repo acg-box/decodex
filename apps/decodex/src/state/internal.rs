@@ -199,6 +199,7 @@ struct StateData {
 	private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
 	decision_contracts: HashMap<DecisionContractKey, DecisionContractRuntimeRecord>,
 	autonomy_objectives: HashMap<AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord>,
+	autonomy_signals: HashMap<AutonomySignalKey, AutonomySignalRuntimeRecord>,
 	execution_programs: HashMap<ExecutionProgramKey, ExecutionProgramRuntimeRecord>,
 	program_intake_plans: HashMap<ProgramIntakePlanKey, ProgramIntakePlanRecord>,
 	program_issue_mappings: HashMap<ProgramIssueMappingKey, ProgramIssueMappingRecord>,
@@ -225,6 +226,7 @@ impl StateData {
 		self.private_execution_events = loaded.private_execution_events;
 		self.decision_contracts = loaded.decision_contracts;
 		self.autonomy_objectives = loaded.autonomy_objectives;
+		self.autonomy_signals = loaded.autonomy_signals;
 		self.execution_programs = loaded.execution_programs;
 		self.program_intake_plans = loaded.program_intake_plans;
 		self.program_issue_mappings = loaded.program_issue_mappings;
@@ -252,6 +254,8 @@ impl StateData {
 		self.review_policy_checkpoints.extend(loaded.review_policy_checkpoints);
 		self.evidence_artifacts.retain(|key, _record| key.project_id != project_id);
 		self.evidence_artifacts.extend(loaded.evidence_artifacts);
+		self.autonomy_signals.retain(|key, _record| key.project_id != project_id);
+		self.autonomy_signals.extend(loaded.autonomy_signals);
 	}
 
 	fn replace_project_registry_state(&mut self, loaded: Self) {
@@ -496,6 +500,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.bootstrap_private_execution_events_schema()?;
 		self.bootstrap_decision_contracts_schema()?;
 		self.bootstrap_autonomy_objectives_schema()?;
+		self.bootstrap_autonomy_signals_schema()?;
 		self.bootstrap_execution_programs_schema()?;
 		self.bootstrap_program_intake_state_schema()?;
 		self.bootstrap_loop_guardrail_schema()?;
@@ -693,6 +698,37 @@ CREATE INDEX IF NOT EXISTS autonomy_objectives_project_state_idx
 ON autonomy_objectives (project_id, state, updated_at_unix);
 CREATE INDEX IF NOT EXISTS autonomy_objectives_history_idx
 ON autonomy_objectives (project_id, objective_id, version);
+"#,
+		)?;
+
+		Ok(())
+	}
+
+	fn bootstrap_autonomy_signals_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS autonomy_signals (
+	project_id TEXT NOT NULL,
+	signal_id TEXT NOT NULL,
+	objective_id TEXT NOT NULL,
+	objective_version INTEGER NOT NULL,
+	kind TEXT NOT NULL,
+	fingerprint TEXT NOT NULL,
+	freshness TEXT NOT NULL,
+	evidence_class TEXT NOT NULL,
+	confidence TEXT NOT NULL,
+	privacy TEXT NOT NULL,
+	payload_json TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	created_at_unix INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, signal_id)
+);
+CREATE INDEX IF NOT EXISTS autonomy_signals_objective_idx
+ON autonomy_signals (project_id, objective_id, objective_version, updated_at_unix);
+CREATE INDEX IF NOT EXISTS autonomy_signals_recent_idx
+ON autonomy_signals (project_id, updated_at_unix);
 "#,
 		)?;
 
@@ -910,6 +946,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_private_execution_events(&mut state)?;
 		self.load_decision_contracts(&mut state)?;
 		self.load_autonomy_objectives(&mut state)?;
+		self.load_autonomy_signals(&mut state)?;
 		self.load_execution_programs(&mut state)?;
 		self.load_program_intake_state(&mut state)?;
 		self.load_review_lifecycle_records(&mut state)?;
@@ -940,6 +977,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_review_lifecycle_records_for_project(&mut state, project_id)?;
 		self.load_review_policy_checkpoints_for_project(&mut state, project_id)?;
 		self.load_evidence_artifacts_for_project(&mut state, project_id)?;
+		self.load_autonomy_signals_for_project(&mut state, project_id)?;
 
 		Ok(state)
 	}
@@ -966,6 +1004,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_private_execution_events(&transaction, state)?;
 		persist_decision_contracts(&transaction, state)?;
 		persist_autonomy_objectives(&transaction, state)?;
+		persist_autonomy_signals(&transaction, state)?;
 		persist_execution_programs(&transaction, state)?;
 		persist_program_intake_state(&transaction, state)?;
 		persist_review_lifecycle_records(&transaction, state)?;
@@ -997,6 +1036,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"DELETE FROM autonomy_objectives WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM autonomy_signals WHERE project_id = ?1",
 			params![service_id],
 		)?;
 		transaction.execute(
@@ -1346,6 +1389,51 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				record.objective.id(),
 				version,
 				record.state.as_str(),
+				payload_json,
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+
+		Ok(())
+	}
+
+	fn upsert_autonomy_signal(&self, record: &AutonomySignalRuntimeRecord) -> Result<()> {
+		let payload_json = serde_json::to_string(&record.signal)?;
+		let version = i64::try_from(record.signal.objective_version())
+			.map_err(|_| eyre::eyre!("Autonomy signal objective_version exceeds SQLite integer range."))?;
+
+		self.connection.execute(
+			"INSERT INTO autonomy_signals (
+					project_id, signal_id, objective_id, objective_version, kind, fingerprint,
+					freshness, evidence_class, confidence, privacy, payload_json, created_at,
+					created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+			 ON CONFLICT(project_id, signal_id) DO UPDATE SET
+				 objective_id = excluded.objective_id,
+				 objective_version = excluded.objective_version,
+				 kind = excluded.kind,
+				 fingerprint = excluded.fingerprint,
+				 freshness = excluded.freshness,
+				 evidence_class = excluded.evidence_class,
+				 confidence = excluded.confidence,
+				 privacy = excluded.privacy,
+				 payload_json = excluded.payload_json,
+				 updated_at = excluded.updated_at,
+				 updated_at_unix = excluded.updated_at_unix",
+			params![
+				&record.project_id,
+				record.signal.id(),
+				record.signal.objective_id(),
+				version,
+				record.signal.kind().as_str(),
+				record.signal.fingerprint(),
+				record.signal.freshness().as_str(),
+				record.signal.evidence_class().as_str(),
+				record.signal.confidence().as_str(),
+				record.signal.privacy().as_str(),
 				payload_json,
 				&record.created_at,
 				record.created_at_unix,
@@ -2505,6 +2593,130 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(records)
 	}
 
+	fn load_autonomy_signals(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, signal_id, objective_id, objective_version, kind, fingerprint, \
+			 freshness, evidence_class, confidence, privacy, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM autonomy_signals \
+			 ORDER BY project_id ASC, objective_id ASC, objective_version ASC, updated_at_unix ASC",
+		)?;
+		let rows = statement.query_map([], autonomy_signal_runtime_row_parts)?;
+
+		for row in rows {
+			let record = autonomy_signal_record_from_row_parts(row?)?;
+
+			state.autonomy_signals.insert(record.key(), record);
+		}
+
+		Ok(())
+	}
+
+	fn load_autonomy_signals_for_project(
+		&self,
+		state: &mut StateData,
+		project_id: &str,
+	) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, signal_id, objective_id, objective_version, kind, fingerprint, \
+			 freshness, evidence_class, confidence, privacy, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM autonomy_signals \
+			 WHERE project_id = ?1 \
+			 ORDER BY updated_at_unix DESC, signal_id ASC",
+		)?;
+		let rows = statement.query_map(params![project_id], autonomy_signal_runtime_row_parts)?;
+
+		for row in rows {
+			let record = autonomy_signal_record_from_row_parts(row?)?;
+
+			state.autonomy_signals.insert(record.key(), record);
+		}
+
+		Ok(())
+	}
+
+	fn autonomy_signal(
+		&self,
+		project_id: &str,
+		signal_id: &str,
+	) -> Result<Option<AutonomySignalRuntimeRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, signal_id, objective_id, objective_version, kind, fingerprint, \
+			 freshness, evidence_class, confidence, privacy, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM autonomy_signals \
+			 WHERE project_id = ?1 AND signal_id = ?2 \
+			 LIMIT 1",
+		)?;
+		let mut rows = statement.query(params![project_id, signal_id])?;
+
+		rows
+			.next()?
+			.map(autonomy_signal_runtime_row_parts)
+			.transpose()?
+			.map(autonomy_signal_record_from_row_parts)
+			.transpose()
+	}
+
+	fn list_autonomy_signals_for_objective(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+		objective_version: u64,
+	) -> Result<Vec<AutonomySignalRuntimeRecord>> {
+		let version = i64::try_from(objective_version)
+			.map_err(|_| eyre::eyre!("Autonomy signal objective_version exceeds SQLite integer range."))?;
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, signal_id, objective_id, objective_version, kind, fingerprint, \
+			 freshness, evidence_class, confidence, privacy, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM autonomy_signals \
+			 WHERE project_id = ?1 AND objective_id = ?2 AND objective_version = ?3 \
+			 ORDER BY updated_at_unix ASC, signal_id ASC",
+		)?;
+		let rows = statement.query_map(
+			params![project_id, objective_id, version],
+			autonomy_signal_runtime_row_parts,
+		)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(autonomy_signal_record_from_row_parts(row?)?);
+		}
+
+		Ok(records)
+	}
+
+	fn recent_autonomy_signals_for_project(
+		&self,
+		project_id: &str,
+		limit: usize,
+	) -> Result<Vec<AutonomySignalRuntimeRecord>> {
+		let limit = i64::try_from(limit)
+			.map_err(|_| eyre::eyre!("Autonomy signal readback limit exceeds SQLite integer range."))?;
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, signal_id, objective_id, objective_version, kind, fingerprint, \
+			 freshness, evidence_class, confidence, privacy, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM autonomy_signals \
+			 WHERE project_id = ?1 \
+			 ORDER BY updated_at_unix DESC, signal_id ASC \
+			 LIMIT ?2",
+		)?;
+		let rows = statement.query_map(
+			params![project_id, limit],
+			autonomy_signal_runtime_row_parts,
+		)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(autonomy_signal_record_from_row_parts(row?)?);
+		}
+
+		Ok(records)
+	}
+
 	fn load_execution_programs(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, program_id, source_contract_id, payload_json, created_at, \
@@ -3281,6 +3493,43 @@ impl AutonomyObjectiveRuntimeRecord {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct AutonomySignalKey {
+	project_id: String,
+	signal_id: String,
+}
+impl AutonomySignalKey {
+	fn new(project_id: &str, signal_id: &str) -> Self {
+		Self { project_id: project_id.to_owned(), signal_id: signal_id.to_owned() }
+	}
+}
+
+#[derive(Clone, Debug)]
+struct AutonomySignalRuntimeRecord {
+	project_id: String,
+	signal: AutonomySignal,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl AutonomySignalRuntimeRecord {
+	fn key(&self) -> AutonomySignalKey {
+		AutonomySignalKey::new(&self.project_id, self.signal.id())
+	}
+
+	fn as_public(&self) -> AutonomySignalRecord {
+		AutonomySignalRecord {
+			project_id: self.project_id.clone(),
+			signal: self.signal.clone(),
+			created_at: self.created_at.clone(),
+			created_at_unix: self.created_at_unix,
+			updated_at: self.updated_at.clone(),
+			updated_at_unix: self.updated_at_unix,
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct ExecutionProgramKey {
 	project_id: String,
 	program_id: String,
@@ -3683,6 +3932,24 @@ struct AutonomyObjectiveRuntimeRowParts {
 	objective_id: String,
 	version: i64,
 	state: String,
+	payload_json: String,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+
+struct AutonomySignalRuntimeRowParts {
+	project_id: String,
+	signal_id: String,
+	objective_id: String,
+	objective_version: i64,
+	kind: String,
+	fingerprint: String,
+	freshness: String,
+	evidence_class: String,
+	confidence: String,
+	privacy: String,
 	payload_json: String,
 	created_at: String,
 	created_at_unix: i64,
@@ -4622,6 +4889,44 @@ fn persist_autonomy_objectives(
 				record.objective.id(),
 				version,
 				record.state.as_str(),
+				payload_json,
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
+fn persist_autonomy_signals(
+	transaction: &Transaction<'_>,
+	state: &StateData,
+) -> Result<()> {
+	for record in state.autonomy_signals.values() {
+		let payload_json = serde_json::to_string(&record.signal)?;
+		let version = i64::try_from(record.signal.objective_version())
+			.map_err(|_| eyre::eyre!("Autonomy signal objective_version exceeds SQLite integer range."))?;
+
+		transaction.execute(
+			"INSERT OR REPLACE INTO autonomy_signals (
+					project_id, signal_id, objective_id, objective_version, kind, fingerprint,
+					freshness, evidence_class, confidence, privacy, payload_json, created_at,
+					created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+			params![
+				&record.project_id,
+				record.signal.id(),
+				record.signal.objective_id(),
+				version,
+				record.signal.kind().as_str(),
+				record.signal.fingerprint(),
+				record.signal.freshness().as_str(),
+				record.signal.evidence_class().as_str(),
+				record.signal.confidence().as_str(),
+				record.signal.privacy().as_str(),
 				payload_json,
 				&record.created_at,
 				record.created_at_unix,
@@ -5774,6 +6079,89 @@ fn autonomy_objective_record_from_row_parts(
 	})
 }
 
+fn autonomy_signal_runtime_row_parts(
+	row: &Row<'_>,
+) -> std::result::Result<AutonomySignalRuntimeRowParts, rusqlite::Error> {
+	Ok(AutonomySignalRuntimeRowParts {
+		project_id: row.get(0)?,
+		signal_id: row.get(1)?,
+		objective_id: row.get(2)?,
+		objective_version: row.get(3)?,
+		kind: row.get(4)?,
+		fingerprint: row.get(5)?,
+		freshness: row.get(6)?,
+		evidence_class: row.get(7)?,
+		confidence: row.get(8)?,
+		privacy: row.get(9)?,
+		payload_json: row.get(10)?,
+		created_at: row.get(11)?,
+		created_at_unix: row.get(12)?,
+		updated_at: row.get(13)?,
+		updated_at_unix: row.get(14)?,
+	})
+}
+
+fn autonomy_signal_record_from_row_parts(
+	parts: AutonomySignalRuntimeRowParts,
+) -> Result<AutonomySignalRuntimeRecord> {
+	let signal = serde_json::from_str::<AutonomySignal>(&parts.payload_json)?;
+	let version = u64::try_from(parts.objective_version)
+		.map_err(|_| eyre::eyre!("Autonomy signal row objective_version must be greater than zero."))?;
+
+	signal.validate()?;
+
+	if parts.project_id != signal.project_id() {
+		eyre::bail!(
+			"Autonomy signal row project `{}` contained payload project `{}`.",
+			parts.project_id,
+			signal.project_id()
+		);
+	}
+	if parts.signal_id != signal.id() {
+		eyre::bail!(
+			"Autonomy signal row `{}` contained payload `{}`.",
+			parts.signal_id,
+			signal.id()
+		);
+	}
+	if parts.objective_id != signal.objective_id() {
+		eyre::bail!(
+			"Autonomy signal row objective `{}` contained payload `{}`.",
+			parts.objective_id,
+			signal.objective_id()
+		);
+	}
+	if version != signal.objective_version() {
+		eyre::bail!(
+			"Autonomy signal row `{}` objective version {} contained payload version {}.",
+			parts.signal_id,
+			version,
+			signal.objective_version()
+		);
+	}
+	if parts.kind != signal.kind().as_str()
+		|| parts.fingerprint != signal.fingerprint()
+		|| parts.freshness != signal.freshness().as_str()
+		|| parts.evidence_class != signal.evidence_class().as_str()
+		|| parts.confidence != signal.confidence().as_str()
+		|| parts.privacy != signal.privacy().as_str()
+	{
+		eyre::bail!(
+			"Autonomy signal row `{}` readback columns differed from payload.",
+			parts.signal_id
+		);
+	}
+
+	Ok(AutonomySignalRuntimeRecord {
+		project_id: parts.project_id,
+		signal,
+		created_at: parts.created_at,
+		created_at_unix: parts.created_at_unix,
+		updated_at: parts.updated_at,
+		updated_at_unix: parts.updated_at_unix,
+	})
+}
+
 fn decision_contract_payload_has_removed_flat_issue_summaries(payload_json: &str) -> bool {
 	serde_json::from_str::<Value>(payload_json)
 		.ok()
@@ -5922,6 +6310,27 @@ fn compare_decision_contract_runtime_records(
 	left.updated_at_unix
 		.cmp(&right.updated_at_unix)
 		.then_with(|| left.contract.contract_id().cmp(right.contract.contract_id()))
+}
+
+#[allow(dead_code)]
+fn compare_autonomy_signal_runtime_records(
+	left: &AutonomySignalRuntimeRecord,
+	right: &AutonomySignalRuntimeRecord,
+) -> cmp::Ordering {
+	left.updated_at_unix
+		.cmp(&right.updated_at_unix)
+		.then_with(|| left.signal.id().cmp(right.signal.id()))
+}
+
+#[allow(dead_code)]
+fn compare_recent_autonomy_signal_runtime_records(
+	left: &AutonomySignalRuntimeRecord,
+	right: &AutonomySignalRuntimeRecord,
+) -> cmp::Ordering {
+	right
+		.updated_at_unix
+		.cmp(&left.updated_at_unix)
+		.then_with(|| left.signal.id().cmp(right.signal.id()))
 }
 
 #[allow(dead_code)]

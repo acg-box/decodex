@@ -901,8 +901,21 @@ fn retained_closeout_identity_reuse_respects_attempt_history() {
 fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visibility() {
 	for closeout_available in [true, false] {
 		let (temp_dir, config, workflow) = temp_project_layout();
+		let repo_root = config.repo_root().to_path_buf();
+		let pr_url = "https://github.com/hack-ink/decodex/pull/176";
+		let merge_subject =
+			r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
+		let landed_merge_subject =
+			r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
+		let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+		let (gh_command_path, invocation_log_path) =
+			install_fake_admin_merge_gh_response_with_merge_exit_code(&temp_dir, &head_oid, 0);
 		let config = service_config_with_review_level(
-			&service_config_with_github_token_env_var(&config, "PATH"),
+			&service_config_with_github_token_env_var_and_command_path(
+				&config,
+				"PATH",
+				&gh_command_path,
+			),
 			ReviewLevel::Standard,
 		);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -916,13 +929,6 @@ fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visi
 				vec![issue.clone()],
 			],
 		);
-		let repo_root = config.repo_root().to_path_buf();
-		let pr_url = "https://github.com/hack-ink/decodex/pull/176";
-		let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-		let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
-		let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
-		let (_path_guard, invocation_log_path) =
-			install_fake_admin_merge_gh_response_with_merge_exit_code(&temp_dir, &head_oid, 0);
 
 		state_store
 			.upsert_worktree(
@@ -985,18 +991,7 @@ fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visi
 		)
 		.expect("non-GitHub-review retained drain should succeed");
 
-		if closeout_available {
-			assert_eq!(
-				drained.expect("merged same-issue closeout should dispatch"),
-				closeout_summary
-			);
-		} else {
-			assert!(
-				drained.is_none(),
-				"retained drain should stop cleanly when closeout is unavailable"
-			);
-		}
-
+		assert_eq!(drained, closeout_available.then_some(closeout_summary.clone()));
 		assert_eq!(*closeout_dispatches.borrow(), vec![issue.id.clone()]);
 
 		let marker = persisted_review_orchestration_marker_for_path(
