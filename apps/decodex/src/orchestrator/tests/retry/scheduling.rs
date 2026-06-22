@@ -830,7 +830,7 @@ fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites
 		)
 		.replace(
 			"canonicalize_commands = []",
-			"canonicalize_commands = [\"printf 'rewritten\\\\n' > ready.txt\"]",
+			"canonicalize_commands = [\"printf 'rewritten\\\\n' > other.txt\"]",
 		),
 	);
 	let issue = sample_service_owned_issue("In Progress");
@@ -840,6 +840,7 @@ fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites
 	let run_id = "run-3";
 
 	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
+	commit_worktree_change(config.repo_root(), "other.txt", "before\n", "add other file");
 
 	fs::write(config.repo_root().join("ready.txt"), "after\n")
 		.expect("tracked diff should write");
@@ -911,6 +912,7 @@ fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites
 		event.event_type() == "phase_goal_transition"
 			&& event.payload()["signal"] == "validation_fail"
 			&& event.payload()["payload"]["disposition"] == "needs_human_attention"
+			&& event.payload()["payload"]["trackedRewrites"]["owned"] == false
 	}));
 	assert!(events.iter().all(|event| event.event_type() != "phase_goal_recovery"));
 	assert!(comments.iter().any(|comment| {

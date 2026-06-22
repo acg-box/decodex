@@ -1,5 +1,12 @@
 # Documentation Log
 
+## 2026-06-23
+
+- Narrowed repo-gate tracked-rewrite handling so validation-satisfied phase goals can
+  continue to a commit-capable handoff when canonicalize rewrites only pre-gate
+  implementation paths, while unsafe or strict-boundary rewrites still preserve
+  `repo_gate_tracked_rewrites_left`.
+
 ## 2026-06-22
 
 - Tightened operator review-control projection so ordinary running lanes no longer
