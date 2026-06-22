@@ -181,50 +181,20 @@ impl RepoGatePhaseGoalController<'_> {
 	}
 
 	fn latest_cross_attempt_phase_goal(&self) -> Result<Option<PhaseGoalKind>> {
-		if self.issue_run.dispatch_mode != IssueDispatchMode::Retry {
+		if !matches!(
+			self.issue_run.dispatch_mode,
+			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry
+		) {
 			return Ok(None);
 		}
 
-		// Retry attempts inherit only the immediately previous attempt's open phase
-		// boundary, so older validation passes cannot override newer work.
-		let events = self.state_store.list_private_execution_events_for_issue(
-			self.project.service_id(),
+		latest_open_issue_phase_goal_before_attempt(
+			self.project,
+			self.state_store,
 			&self.issue_run.issue.id,
-		)?;
-		let previous_attempt = self.issue_run.attempt_number - 1;
-
-		if previous_attempt < 1 {
-			return Ok(None);
-		}
-
-		for event in events.iter().rev().filter(|event| {
-			event.attempt_number() == previous_attempt
-				&& event.run_id() != self.issue_run.run_id
-		}) {
-			match event.event_type() {
-				"terminal_finalize"
-				| "review_completion_intent"
-				| AUTHORITY_DECISION_REQUEST_EVENT_TYPE
-				| PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE => return Ok(None),
-				"progress_checkpoint" if progress_checkpoint_has_blockers(event.payload()) =>
-					return Ok(None),
-				PHASE_GOAL_RECOVERY_EVENT_TYPE | "phase_goal_next" | "phase_goal_transition" => {
-					if let Some(phase) =
-						phase_goal_continuation_next_phase(event.event_type(), event.payload())
-					{
-						return Ok(Some(phase));
-					}
-				},
-				"phase_goal_set" | "phase_goal_status" => {
-					if let Some(phase) = phase_goal_active_phase(event.payload()) {
-						return Ok(Some(phase));
-					}
-				},
-				_ => {},
-			}
-		}
-
-		Ok(None)
+			&self.issue_run.run_id,
+			self.issue_run.attempt_number,
+		)
 	}
 
 	fn validate_phase_goal_output(&self, phase: PhaseGoalKind) -> Result<PhaseGoalTransition> {
@@ -1805,6 +1775,52 @@ fn latest_phase_goal_recovery_candidate(
 				};
 
 				return Ok(phase_goal_recovery_candidate_from_status(phase, status));
+			},
+			_ => {},
+		}
+	}
+
+	Ok(None)
+}
+
+fn latest_open_issue_phase_goal_before_attempt(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_id: &str,
+	current_run_id: &str,
+	current_attempt_number: i64,
+) -> Result<Option<PhaseGoalKind>> {
+	if current_attempt_number <= 1 {
+		return Ok(None);
+	}
+
+	let events = state_store.list_private_execution_events_for_issue(
+		project.service_id(),
+		issue_id,
+	)?;
+
+	for event in events.iter().rev().filter(|event| {
+		event.attempt_number() < current_attempt_number && event.run_id() != current_run_id
+	}) {
+		match event.event_type() {
+			"terminal_finalize"
+			| "review_completion_intent"
+			| AUTHORITY_DECISION_REQUEST_EVENT_TYPE
+			| PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE
+			| RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE => return Ok(None),
+			"progress_checkpoint" if progress_checkpoint_has_blockers(event.payload()) =>
+				return Ok(None),
+			PHASE_GOAL_RECOVERY_EVENT_TYPE | "phase_goal_next" | "phase_goal_transition" => {
+				if let Some(phase) =
+					phase_goal_continuation_next_phase(event.event_type(), event.payload())
+				{
+					return Ok(Some(phase));
+				}
+			},
+			"phase_goal_set" | "phase_goal_status" => {
+				if let Some(phase) = phase_goal_active_phase(event.payload()) {
+					return Ok(Some(phase));
+				}
 			},
 			_ => {},
 		}
@@ -4863,6 +4879,17 @@ where
 	if context
 		.state_store
 		.issue_has_review_lifecycle_record(context.project.service_id(), &context.issue_run.issue.id)?
+	{
+		return Ok(false);
+	}
+	if latest_open_issue_phase_goal_before_attempt(
+		context.project,
+		context.state_store,
+		&context.issue_run.issue.id,
+		&context.issue_run.run_id,
+		context.issue_run.attempt_number,
+	)?
+	.is_some()
 	{
 		return Ok(false);
 	}
