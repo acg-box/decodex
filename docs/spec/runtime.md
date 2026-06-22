@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/config.rs, decodex.example.toml]
+code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/config.rs, decodex.example.toml]
 drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, protocol_events, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings, "[autonomy]", auto_promote, auto_intake, "[autonomy.runtime_policy]", accepted_objective_id, accepted_objective_version, accepted_policy_id, accepted_policy_version, policy_authority_ref]
 last_verified: 2026-06-22
 ---
@@ -143,6 +143,7 @@ mirror:
 | --- | --- |
 | Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, recovery detail, and `decodex.harness_outcome/1` feedback records belong. |
 | Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by research/design and later promoted into execution authority. The row status is indexed for local runtime lookup, and the structured runtime payload remains the local machine authority. Checked-in research documentation belongs in Markdown OKF concepts under `docs/research/`, not JSON docs artifacts. |
+| Runtime SQLite `autonomy_signals` | Versioned `decodex.autonomy_signal/1` payloads scoped by project and exact Objective Contract id/version. Rows are read-only evidence for future proposal compilation, expose freshness, gaps, contradictions, confidence, and privacy in status readback, and do not mutate tracker state, runtime authority rows outside signal persistence, worktrees, GitHub, Program Intake, proposals, or execution state. |
 | Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads with embedded or linked `decodex.program_intake_plan/1` planning data. They hold internal node lifecycle/readiness, dependency, conflict-domain, dispatch intent, drift, and normal-issue mapping; Linear issue descriptions and ledger comments are only coarse projections. |
 | Runtime SQLite `program_intake_plans` | Queryable local projection of `decodex.program_intake_plan/1` metadata, including intake kind, source contract when present, authority fingerprint, and public-safe summary. |
 | Runtime SQLite `program_issue_mappings` | Queryable local projection of each internal program node's mapped Linear issue, tracker state, dispatch intent, active/manual/attention facts, and dispatch-briefing fact. |
@@ -798,6 +799,9 @@ The runtime database stores at least:
 - private execution events scoped by project, issue, run, and attempt
 - Objective Contracts scoped by project, objective id, and immutable version, with
   lifecycle state and acceptance, rejection, or supersession provenance
+- autonomy signals scoped by project, stable signal id, and exact Objective Contract
+  id/version, with freshness, evidence class, contradictions, gaps, confidence, and
+  privacy retained for operator readback
 - Decision Contracts scoped by project and contract id, with optional source issue
   linkage for later issue shaping
 - Program Intake Plans and internal Execution Programs scoped by project, with

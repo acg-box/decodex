@@ -8123,6 +8123,7 @@ fn operator_loop_status_for_run_with_evidence(
 		.rev()
 		.find(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE)
 		.and_then(operator_authority_decision_request_status_from_event);
+	let autonomy_signals = operator_autonomy_signal_statuses(loop_evidence);
 	let autonomy = operator_loop_autonomy(
 		boundary.as_ref(),
 		architecture_recovery.as_ref(),
@@ -8148,11 +8149,38 @@ fn operator_loop_status_for_run_with_evidence(
 		autonomy: autonomy.to_owned(),
 		summary,
 		next_action,
+		autonomy_signals,
 		review,
 		architecture_recovery,
 		boundary,
 		decision_request,
 	})
+}
+
+fn operator_autonomy_signal_statuses(
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+) -> Vec<OperatorAutonomySignalStatus> {
+	loop_evidence
+		.recent_autonomy_signals(5)
+		.into_iter()
+		.map(|record| {
+			let signal = record.signal();
+
+			OperatorAutonomySignalStatus {
+				signal_id: signal.id().to_owned(),
+				objective_id: signal.objective_id().to_owned(),
+				objective_version: signal.objective_version(),
+				kind: signal.kind().as_str().to_owned(),
+				freshness: signal.freshness().as_str().to_owned(),
+				evidence_class: signal.evidence_class().as_str().to_owned(),
+				confidence: signal.confidence().as_str().to_owned(),
+				privacy: signal.privacy().as_str().to_owned(),
+				gaps: signal.gaps().to_vec(),
+				contradictions: signal.contradictions().to_vec(),
+				updated_at: record.updated_at().to_owned(),
+			}
+		})
+		.collect()
 }
 
 fn operator_review_loop_status(
@@ -10696,9 +10724,41 @@ fn render_loop_status_summary(status: Option<&OperatorLoopStatus>) -> String {
 	let next_action = status.next_action.as_deref().unwrap_or("none");
 
 	format!(
-		"{}; review_level={}; autonomy={}; next_action={next_action}",
-		status.summary, status.review_level, status.autonomy
+		"{}; review_level={}; autonomy={}; autonomy_signals={}; next_action={next_action}",
+		status.summary,
+		status.review_level,
+		status.autonomy,
+		status.autonomy_signals.len()
 	)
+}
+
+fn render_loop_autonomy_signals_summary(status: Option<&OperatorLoopStatus>) -> String {
+	let Some(status) = status else {
+		return String::from("none");
+	};
+
+	if status.autonomy_signals.is_empty() {
+		return String::from("none");
+	}
+
+	status
+		.autonomy_signals
+		.iter()
+		.map(|signal| {
+			format!(
+				"{}:{}@v{} freshness={} confidence={} privacy={} gaps={} contradictions={}",
+				signal.kind,
+				signal.objective_id,
+				signal.objective_version,
+				signal.freshness,
+				signal.confidence,
+				signal.privacy,
+				signal.gaps.len(),
+				signal.contradictions.len()
+			)
+		})
+		.collect::<Vec<_>>()
+		.join(";")
 }
 
 fn render_loop_review_summary(status: Option<&OperatorLoopStatus>) -> String {
@@ -11149,6 +11209,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let accounts = render_accounts_summary(&run.accounts);
 	let private_evidence = render_private_evidence_reference(run);
 	let loop_status = render_loop_status_summary(run.loop_status.as_ref());
+	let loop_autonomy_signals = render_loop_autonomy_signals_summary(run.loop_status.as_ref());
 	let loop_review = render_loop_review_summary(run.loop_status.as_ref());
 	let loop_architecture_recovery =
 		render_loop_architecture_recovery_summary(run.loop_status.as_ref());
@@ -11159,7 +11220,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let phase_acceptance = render_phase_acceptance_summary(run.phase_acceptance.as_ref());
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  run_phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_goal_phase: {}\n  public_progress_phase: {}\n  run_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  lifecycle_metrics: {}\n  lifecycle_evidence: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  continuation_recovery: {}\n  phase_acceptance: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  status_projection_reason: {}\n  ownership_state: {}\n  liveness_state: {}\n  policy_state: {}\n  terminalization_state: {}\n  lane_control_next_action: {}\n  lane_control_conditions: {}\n  run_phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_goal_phase: {}\n  public_progress_phase: {}\n  run_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  has_fresh_execution: {}\n  counts_as_running: {}\n  needs_attention: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  lifecycle_metrics: {}\n  lifecycle_evidence: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_autonomy_signals: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  continuation_recovery: {}\n  phase_acceptance: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -11203,6 +11264,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		render_lane_lifecycle_evidence(&run.lifecycle_metrics),
 		private_evidence,
 		loop_status,
+		loop_autonomy_signals,
 		loop_review,
 		loop_architecture_recovery,
 		loop_boundary,

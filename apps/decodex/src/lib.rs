@@ -9,6 +9,7 @@ mod accounts;
 mod agent;
 mod archive_hygiene;
 mod autonomy_objective;
+mod autonomy_signal;
 mod cli;
 mod codex_config;
 mod commit_message;
