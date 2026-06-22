@@ -353,4 +353,5 @@ Use the issue-scoped tracker tools autonomously when tracker updates are require
 - The body should contain durable repo rules, not ephemeral run notes.
 - The body should instruct the coding agent to use the issue-scoped tracker tools autonomously when tracker writes are part of the repo workflow.
 - Use `context.read_first = []` when the repository has no extra context files beyond the primary `WORKFLOW.md` body.
+- Decodex must verify every configured `context.read_first` file exists and is readable before dispatch acquires a lane lease or records a run attempt. Prompt construction uses the same read path so stale paths report the project, workflow path, relative file path, and absolute file path instead of a generic filesystem error.
 - If the repository expects PR-backed review handoff, the body should state that the lane must produce a reviewable PR before the success state can be reached.
