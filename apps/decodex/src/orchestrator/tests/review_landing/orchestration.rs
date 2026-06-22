@@ -399,8 +399,9 @@ fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manua
 #[test]
 fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 	let (temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&config, "PATH");
-	let (_path_guard, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
+	let config =
+		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = post_review_sample_service_owned_issue("In Review");
 	let tracker =
@@ -485,8 +486,9 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 #[test]
 fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallback() {
 	let (temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&config, "PATH");
-	let (_path_guard, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
+	let config =
+		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = post_review_sample_service_owned_issue("In Review");
 	let tracker =
@@ -569,11 +571,15 @@ fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_
 	review_level: ReviewLevel,
 ) {
 	let (temp_dir, config, workflow) = temp_project_layout();
+	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
 	let config = service_config_with_review_level(
-		&service_config_with_github_token_env_var(&config, "PATH"),
+		&service_config_with_github_token_env_var_and_command_path(
+			&config,
+			"PATH",
+			&gh_command_path,
+		),
 		review_level,
 	);
-	let (_path_guard, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = post_review_sample_service_owned_issue("In Review");
 	let tracker =
@@ -654,11 +660,15 @@ fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_
 fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landing_to_agent_fallback(
 ) {
 	let (temp_dir, config, workflow) = temp_project_layout();
+	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
 	let config = service_config_with_review_level(
-		&service_config_with_github_token_env_var(&config, "PATH"),
+		&service_config_with_github_token_env_var_and_command_path(
+			&config,
+			"PATH",
+			&gh_command_path,
+		),
 		ReviewLevel::Standard,
 	);
-	let (_path_guard, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = post_review_sample_service_owned_issue("In Review");
 	let tracker =
@@ -717,7 +727,6 @@ fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landin
 #[test]
 fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 	let (temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&config, "PATH");
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = post_review_sample_service_owned_issue("In Review");
 	let tracker =
@@ -727,8 +736,10 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
 	let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
 	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
-	let (_path_guard, invocation_log_path) =
+	let (gh_command_path, invocation_log_path) =
 		install_fake_admin_merge_gh_response_with_merge_exit_code(&temp_dir, &head_oid, 1);
+	let config =
+		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())

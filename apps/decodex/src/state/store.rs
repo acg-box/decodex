@@ -48,6 +48,7 @@ pub(crate) struct ProjectLoopEvidenceSnapshot {
 	private_events: HashMap<(String, String, i64), Vec<PrivateExecutionEvent>>,
 	review_lifecycle_records: HashMap<(String, String), ReviewLifecycleRecord>,
 	review_checkpoints: HashMap<(String, String, i64, String), ReviewPolicyCheckpoint>,
+	autonomy_signals: Vec<AutonomySignalRecord>,
 }
 impl ProjectLoopEvidenceSnapshot {
 	fn insert_private_event(&mut self, event: PrivateExecutionEvent) {
@@ -80,6 +81,10 @@ impl ProjectLoopEvidenceSnapshot {
 		);
 	}
 
+	fn insert_autonomy_signal(&mut self, signal: AutonomySignalRecord) {
+		self.autonomy_signals.push(signal);
+	}
+
 	fn sort_private_events(&mut self) {
 		for events in self.private_events.values_mut() {
 			events.sort_by(|left, right| {
@@ -88,6 +93,15 @@ impl ProjectLoopEvidenceSnapshot {
 					.then_with(|| left.record_id().cmp(&right.record_id()))
 			});
 		}
+	}
+
+	fn sort_autonomy_signals(&mut self) {
+		self.autonomy_signals.sort_by(|left, right| {
+			right
+				.updated_at_unix()
+				.cmp(&left.updated_at_unix())
+				.then_with(|| left.signal_id().cmp(right.signal_id()))
+		});
 	}
 
 	pub(crate) fn private_events(
@@ -141,6 +155,10 @@ impl ProjectLoopEvidenceSnapshot {
 			attempt_number,
 			phase.to_owned(),
 		))
+	}
+
+	pub(crate) fn recent_autonomy_signals(&self, limit: usize) -> Vec<&AutonomySignalRecord> {
+		self.autonomy_signals.iter().take(limit).collect()
 	}
 }
 
@@ -2153,8 +2171,16 @@ impl StateStore {
 		{
 			snapshot.insert_review_checkpoint(record.as_public());
 		}
+		for record in state
+			.autonomy_signals
+			.values()
+			.filter(|record| record.project_id == project_id)
+		{
+			snapshot.insert_autonomy_signal(record.as_public());
+		}
 
 		snapshot.sort_private_events();
+		snapshot.sort_autonomy_signals();
 
 		Ok(snapshot)
 	}
@@ -2530,6 +2556,170 @@ impl StateStore {
 			.collect::<Vec<_>>();
 
 		records.sort_by_key(|record| record.objective.version());
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
+	/// Persist one read-only autonomy signal against the currently accepted objective version.
+	#[allow(dead_code)]
+	pub(crate) fn record_autonomy_signal(
+		&self,
+		project_id: &str,
+		signal: AutonomySignal,
+	) -> Result<AutonomySignalRecord> {
+		validate_autonomy_signal_record_inputs(project_id, &signal)?;
+
+		let now = timestamp_parts();
+		let mut state = self.lock()?;
+		let objective_key = AutonomyObjectiveKey::new(
+			project_id,
+			signal.objective_id(),
+			signal.objective_version(),
+		);
+		let objective = state
+			.autonomy_objectives
+			.get(&objective_key)
+			.ok_or_else(|| {
+				eyre::eyre!(
+					"Autonomy signal `{}` references missing objective `{}` version {}.",
+					signal.id(),
+					signal.objective_id(),
+					signal.objective_version()
+				)
+			})?;
+
+		if objective.state != AutonomyObjectiveState::Accepted {
+			eyre::bail!(
+				"Autonomy signal `{}` can only be recorded for an accepted objective version; `{}` version {} is `{}`.",
+				signal.id(),
+				signal.objective_id(),
+				signal.objective_version(),
+				objective.state.as_str()
+			);
+		}
+
+		let key = AutonomySignalKey::new(project_id, signal.id());
+		let (created_at, created_at_unix) = state
+			.autonomy_signals
+			.get(&key)
+			.map_or_else(|| (now.text.clone(), now.unix), |record| {
+				(record.created_at.clone(), record.created_at_unix)
+			});
+		let record = AutonomySignalRuntimeRecord {
+			project_id: project_id.to_owned(),
+			signal,
+			created_at,
+			created_at_unix,
+			updated_at: now.text,
+			updated_at_unix: now.unix,
+		};
+
+		state.autonomy_signals.insert(record.key(), record.clone());
+		self.upsert_autonomy_signal_locked(&record)?;
+
+		Ok(record.as_public())
+	}
+
+	/// Read one autonomy signal by stable signal id.
+	#[allow(dead_code)]
+	pub(crate) fn autonomy_signal(
+		&self,
+		project_id: &str,
+		signal_id: &str,
+	) -> Result<Option<AutonomySignalRecord>> {
+		validate_required_autonomy_signal_field("project_id", project_id)?;
+		validate_required_autonomy_signal_field("signal_id", signal_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.autonomy_signal(project_id, signal_id)
+				.map(|record| record.map(|record| record.as_public()));
+		}
+
+		let state = self.lock()?;
+
+		Ok(state
+			.autonomy_signals
+			.get(&AutonomySignalKey::new(project_id, signal_id))
+			.map(AutonomySignalRuntimeRecord::as_public))
+	}
+
+	/// List autonomy signals tied to one exact Objective Contract version.
+	#[allow(dead_code)]
+	pub(crate) fn list_autonomy_signals_for_objective(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+		objective_version: u64,
+	) -> Result<Vec<AutonomySignalRecord>> {
+		validate_required_autonomy_signal_field("project_id", project_id)?;
+		validate_required_autonomy_signal_field("objective_id", objective_id)?;
+		validate_autonomy_objective_version(objective_version)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let records = sqlite
+				.list_autonomy_signals_for_objective(project_id, objective_id, objective_version)?
+				.into_iter()
+				.map(|record| record.as_public())
+				.collect();
+
+			return Ok(records);
+		}
+
+		let state = self.lock()?;
+		let mut records = state
+			.autonomy_signals
+			.values()
+			.filter(|record| {
+				record.project_id == project_id
+					&& record.signal.objective_id() == objective_id
+					&& record.signal.objective_version() == objective_version
+			})
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_autonomy_signal_runtime_records);
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
+	/// List recent autonomy signals for one project for operator readback.
+	#[allow(dead_code)]
+	pub(crate) fn recent_autonomy_signals_for_project(
+		&self,
+		project_id: &str,
+		limit: usize,
+	) -> Result<Vec<AutonomySignalRecord>> {
+		validate_required_autonomy_signal_field("project_id", project_id)?;
+
+		if limit == 0 {
+			return Ok(Vec::new());
+		}
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let records = sqlite
+				.recent_autonomy_signals_for_project(project_id, limit)?
+				.into_iter()
+				.map(|record| record.as_public())
+				.collect();
+
+			return Ok(records);
+		}
+
+		let state = self.lock()?;
+		let mut records = state
+			.autonomy_signals
+			.values()
+			.filter(|record| record.project_id == project_id)
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_recent_autonomy_signal_runtime_records);
+		records.truncate(limit);
 
 		Ok(records.into_iter().map(|record| record.as_public()).collect())
 	}
@@ -3900,6 +4090,21 @@ impl StateStore {
 	}
 
 	#[allow(dead_code)]
+	fn upsert_autonomy_signal_locked(
+		&self,
+		record: &AutonomySignalRuntimeRecord,
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_autonomy_signal(record)
+	}
+
+	#[allow(dead_code)]
 	fn upsert_execution_program_locked(
 		&self,
 		record: &ExecutionProgramRuntimeRecord,
@@ -4960,6 +5165,34 @@ fn validate_required_autonomy_objective_field(name: &str, value: &str) -> Result
 fn validate_autonomy_objective_version(version: u64) -> Result<()> {
 	if version == 0 {
 		eyre::bail!("Autonomy objective version must be greater than zero.");
+	}
+
+	Ok(())
+}
+
+#[allow(dead_code)]
+fn validate_autonomy_signal_record_inputs(
+	project_id: &str,
+	signal: &AutonomySignal,
+) -> Result<()> {
+	validate_required_autonomy_signal_field("project_id", project_id)?;
+
+	if signal.project_id() != project_id {
+		eyre::bail!(
+			"Autonomy signal `{}` belongs to project `{}` but was stored for `{}`.",
+			signal.id(),
+			signal.project_id(),
+			project_id
+		);
+	}
+
+	signal.validate()
+}
+
+#[allow(dead_code)]
+fn validate_required_autonomy_signal_field(name: &str, value: &str) -> Result<()> {
+	if value.trim().is_empty() {
+		eyre::bail!("Autonomy signal {name} must not be empty.");
 	}
 
 	Ok(())
