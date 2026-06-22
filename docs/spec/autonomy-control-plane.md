@@ -16,12 +16,14 @@ source_refs:
   - https://modelcontextprotocol.io/specification/2025-11-25
   - https://developers.openai.com/codex/learn/best-practices
 code_refs:
+  - apps/decodex/src/autonomy_objective.rs
   - apps/decodex/src/loop_contract.rs
   - apps/decodex/src/config.rs
   - apps/decodex/src/mcp.rs
   - apps/decodex/src/program_intake.rs
   - apps/decodex/src/orchestrator/status.rs
   - apps/decodex/src/state/store.rs
+  - apps/decodex/src/state/internal.rs
 related:
   - ./loop-runtime.md
   - ./runtime.md
@@ -135,11 +137,13 @@ project config. It is a versioned Decodex authority record. Project config may
 reference the active objective version, but config presence alone does not grant
 unattended execution authority.
 
-The storage lifecycle must be explicit before implementation starts. Decodex may
-represent lifecycle as a row state, payload state, or both, but readback must expose
-the state. `draft` records may be edited or replaced before acceptance and have no
-execution authority. `accepted` records are immutable authority versions. `rejected`
-and `superseded` records remain provenance and must not authorize new proposals.
+The storage lifecycle is explicit in the runtime `autonomy_objectives` row and the
+versioned payload. Readback exposes the state. `draft` records may be edited or
+replaced before acceptance and have no execution authority. `accepted` records are
+immutable authority versions and cannot be overwritten through the draft path. When a
+newer version is accepted, the prior accepted version is marked `superseded` with
+provenance while preserving its objective body. `rejected` and `superseded` records
+remain provenance and must not authorize new proposals.
 
 Canonical payload:
 
@@ -160,12 +164,12 @@ Canonical payload:
 | `review_policy` | Human, independent-agent, GitHub, or policy-review requirement. |
 | `memory_policy` | Which ledger, docs, history, and external memory adapters may be used as context. |
 | `report_policy` | Redaction and completeness requirements for generated reports. |
-| `accepted_by` | Human or accepted policy actor. |
-| `acceptance_source` | Conversation, tracker issue, repo file, project policy, or runtime policy reference. |
-| `accepted_at` | UTC acceptance timestamp. |
+| `acceptance` | Present for accepted versions and retained when an accepted version becomes superseded. Records `accepted_by`, `accepted_by_kind`, `accepted_at`, and `acceptance_source`. |
+| `rejection` | Present only for rejected versions. Records rejecting actor, timestamp, source, and reason. |
+| `supersession` | Present only for superseded versions. Links to the replacing objective id/version with actor, timestamp, source, and reason. |
 
-Objective versions are immutable. A new objective version must not silently
-reinterpret earlier proposals, current lanes, accepted Decision Contracts, or
+Objective bodies are immutable after acceptance. A new objective version must not
+silently reinterpret earlier proposals, current lanes, accepted Decision Contracts, or
 Execution Programs.
 
 ## Project Policy
@@ -173,10 +177,12 @@ Execution Programs.
 Unattended autonomy requires an accepted project policy that references an accepted
 Objective Contract version. The policy lives in Decodex runtime authority state and
 may be referenced from project config; project config is not itself sufficient
-authority. A project config table may carry only reference identifiers or tracker /
-Program Intake anchors. It must not embed or replace the accepted Objective Contract
-body, project-policy body, allowed signal kinds, allowed surfaces, validation gates,
-review requirements, cooldown, or write budget.
+authority. A project config table may carry only reference identifiers or tracker
+anchors. It must not embed or replace the accepted Objective Contract body,
+project-policy body, allowed signal kinds, allowed surfaces, validation gates, review
+requirements, cooldown, or write budget. Unknown `[autonomy]` and
+`[autonomy.runtime_policy]` keys are rejected by the same config policy that rejects
+unknown project config keys elsewhere.
 
 The policy must name:
 

@@ -8,6 +8,7 @@ pub mod workflow;
 mod accounts;
 mod agent;
 mod archive_hygiene;
+mod autonomy_objective;
 mod cli;
 mod codex_config;
 mod commit_message;
