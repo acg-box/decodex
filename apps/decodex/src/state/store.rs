@@ -49,6 +49,7 @@ pub(crate) struct ProjectLoopEvidenceSnapshot {
 	review_lifecycle_records: HashMap<(String, String), ReviewLifecycleRecord>,
 	review_checkpoints: HashMap<(String, String, i64, String), ReviewPolicyCheckpoint>,
 	autonomy_signals: Vec<AutonomySignalRecord>,
+	autonomy_proposals: Vec<AutonomyProposalRecord>,
 }
 impl ProjectLoopEvidenceSnapshot {
 	fn insert_private_event(&mut self, event: PrivateExecutionEvent) {
@@ -85,6 +86,10 @@ impl ProjectLoopEvidenceSnapshot {
 		self.autonomy_signals.push(signal);
 	}
 
+	fn insert_autonomy_proposal(&mut self, proposal: AutonomyProposalRecord) {
+		self.autonomy_proposals.push(proposal);
+	}
+
 	fn sort_private_events(&mut self) {
 		for events in self.private_events.values_mut() {
 			events.sort_by(|left, right| {
@@ -101,6 +106,15 @@ impl ProjectLoopEvidenceSnapshot {
 				.updated_at_unix()
 				.cmp(&left.updated_at_unix())
 				.then_with(|| left.signal_id().cmp(right.signal_id()))
+		});
+	}
+
+	fn sort_autonomy_proposals(&mut self) {
+		self.autonomy_proposals.sort_by(|left, right| {
+			right
+				.updated_at_unix()
+				.cmp(&left.updated_at_unix())
+				.then_with(|| left.proposal_id().cmp(right.proposal_id()))
 		});
 	}
 
@@ -159,6 +173,10 @@ impl ProjectLoopEvidenceSnapshot {
 
 	pub(crate) fn recent_autonomy_signals(&self, limit: usize) -> Vec<&AutonomySignalRecord> {
 		self.autonomy_signals.iter().take(limit).collect()
+	}
+
+	pub(crate) fn recent_autonomy_proposals(&self, limit: usize) -> Vec<&AutonomyProposalRecord> {
+		self.autonomy_proposals.iter().take(limit).collect()
 	}
 }
 
@@ -2178,9 +2196,17 @@ impl StateStore {
 		{
 			snapshot.insert_autonomy_signal(record.as_public());
 		}
+		for record in state
+			.autonomy_proposals
+			.values()
+			.filter(|record| record.project_id == project_id)
+		{
+			snapshot.insert_autonomy_proposal(record.as_public());
+		}
 
 		snapshot.sort_private_events();
 		snapshot.sort_autonomy_signals();
+		snapshot.sort_autonomy_proposals();
 
 		Ok(snapshot)
 	}
@@ -2719,6 +2745,222 @@ impl StateStore {
 			.collect::<Vec<_>>();
 
 		records.sort_by(compare_recent_autonomy_signal_runtime_records);
+		records.truncate(limit);
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
+	/// Compile a non-mutating autonomy proposal dry-run from persisted objective and signal rows.
+	#[allow(dead_code)]
+	pub(crate) fn compile_autonomy_proposal_dry_run(
+		&self,
+		input: AutonomyProposalCompileInput,
+		signal_ids: &[String],
+	) -> Result<AutonomyProposal> {
+		let objective = self
+			.autonomy_objective(&input.project_id, &input.objective_id, input.objective_version)?
+			.map(|record| record.objective().clone());
+		let mut signals = Vec::new();
+
+		for signal_id in signal_ids {
+			validate_required_autonomy_proposal_field("signal_id", signal_id)?;
+
+			let signal = self
+				.autonomy_signal(&input.project_id, signal_id)?
+				.ok_or_else(|| eyre::eyre!("Autonomy proposal signal `{signal_id}` does not exist."))?;
+
+			signals.push(signal.signal().clone());
+		}
+
+		AutonomyProposal::compile_dry_run(objective.as_ref(), &signals, input)
+	}
+
+	/// Persist one autonomy proposal as non-executable dry-run evidence.
+	#[allow(dead_code)]
+	pub(crate) fn record_autonomy_proposal(
+		&self,
+		project_id: &str,
+		proposal: AutonomyProposal,
+	) -> Result<AutonomyProposalRecord> {
+		validate_autonomy_proposal_record_inputs(project_id, &proposal)?;
+
+		let now = timestamp_parts();
+		let mut state = self.lock()?;
+
+		if !proposal.has_refusal_reason(AutonomyProposalRefusalReason::MissingObjective) {
+			let objective_key = AutonomyObjectiveKey::new(
+				project_id,
+				proposal.objective_id(),
+				proposal.objective_version(),
+			);
+			let objective = state
+				.autonomy_objectives
+				.get(&objective_key)
+				.ok_or_else(|| {
+					eyre::eyre!(
+						"Autonomy proposal `{}` references missing objective `{}` version {}.",
+						proposal.id(),
+						proposal.objective_id(),
+						proposal.objective_version()
+					)
+				})?;
+
+			if objective.state != AutonomyObjectiveState::Accepted {
+				eyre::bail!(
+					"Autonomy proposal `{}` can only be recorded for an accepted objective version unless it carries missing_objective refusal; `{}` version {} is `{}`.",
+					proposal.id(),
+					proposal.objective_id(),
+					proposal.objective_version(),
+					objective.state.as_str()
+				);
+			}
+		}
+
+		for signal_id in proposal.source_signal_ids() {
+			let signal = state
+				.autonomy_signals
+				.get(&AutonomySignalKey::new(project_id, signal_id))
+				.ok_or_else(|| {
+					eyre::eyre!(
+						"Autonomy proposal `{}` references missing signal `{signal_id}`.",
+						proposal.id()
+					)
+				})?;
+
+			if signal.signal.objective_id() != proposal.objective_id()
+				|| signal.signal.objective_version() != proposal.objective_version()
+			{
+				eyre::bail!(
+					"Autonomy proposal `{}` signal `{signal_id}` is not tied to objective `{}` version {}.",
+					proposal.id(),
+					proposal.objective_id(),
+					proposal.objective_version()
+				);
+			}
+		}
+
+		let key = AutonomyProposalKey::new(project_id, proposal.id());
+		let (created_at, created_at_unix) = state
+			.autonomy_proposals
+			.get(&key)
+			.map_or_else(|| (now.text.clone(), now.unix), |record| {
+				(record.created_at.clone(), record.created_at_unix)
+			});
+		let record = AutonomyProposalRuntimeRecord {
+			project_id: project_id.to_owned(),
+			state: proposal.state(),
+			proposal,
+			created_at,
+			created_at_unix,
+			updated_at: now.text,
+			updated_at_unix: now.unix,
+		};
+
+		state.autonomy_proposals.insert(record.key(), record.clone());
+		self.upsert_autonomy_proposal_locked(&record)?;
+
+		Ok(record.as_public())
+	}
+
+	/// Read one autonomy proposal by stable proposal id.
+	#[allow(dead_code)]
+	pub(crate) fn autonomy_proposal(
+		&self,
+		project_id: &str,
+		proposal_id: &str,
+	) -> Result<Option<AutonomyProposalRecord>> {
+		validate_required_autonomy_proposal_field("project_id", project_id)?;
+		validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.autonomy_proposal(project_id, proposal_id)
+				.map(|record| record.map(|record| record.as_public()));
+		}
+
+		let state = self.lock()?;
+
+		Ok(state
+			.autonomy_proposals
+			.get(&AutonomyProposalKey::new(project_id, proposal_id))
+			.map(AutonomyProposalRuntimeRecord::as_public))
+	}
+
+	/// List autonomy proposals tied to one exact Objective Contract version.
+	#[allow(dead_code)]
+	pub(crate) fn list_autonomy_proposals_for_objective(
+		&self,
+		project_id: &str,
+		objective_id: &str,
+		objective_version: u64,
+	) -> Result<Vec<AutonomyProposalRecord>> {
+		validate_required_autonomy_proposal_field("project_id", project_id)?;
+		validate_required_autonomy_proposal_field("objective_id", objective_id)?;
+		validate_autonomy_objective_version(objective_version)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let records = sqlite
+				.list_autonomy_proposals_for_objective(project_id, objective_id, objective_version)?
+				.into_iter()
+				.map(|record| record.as_public())
+				.collect();
+
+			return Ok(records);
+		}
+
+		let state = self.lock()?;
+		let mut records = state
+			.autonomy_proposals
+			.values()
+			.filter(|record| {
+				record.project_id == project_id
+					&& record.proposal.objective_id() == objective_id
+					&& record.proposal.objective_version() == objective_version
+			})
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_autonomy_proposal_runtime_records);
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
+	/// List recent autonomy proposals for one project for operator readback.
+	#[allow(dead_code)]
+	pub(crate) fn recent_autonomy_proposals_for_project(
+		&self,
+		project_id: &str,
+		limit: usize,
+	) -> Result<Vec<AutonomyProposalRecord>> {
+		validate_required_autonomy_proposal_field("project_id", project_id)?;
+
+		if limit == 0 {
+			return Ok(Vec::new());
+		}
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let records = sqlite
+				.recent_autonomy_proposals_for_project(project_id, limit)?
+				.into_iter()
+				.map(|record| record.as_public())
+				.collect();
+
+			return Ok(records);
+		}
+
+		let state = self.lock()?;
+		let mut records = state
+			.autonomy_proposals
+			.values()
+			.filter(|record| record.project_id == project_id)
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_recent_autonomy_proposal_runtime_records);
 		records.truncate(limit);
 
 		Ok(records.into_iter().map(|record| record.as_public()).collect())
@@ -4105,6 +4347,21 @@ impl StateStore {
 	}
 
 	#[allow(dead_code)]
+	fn upsert_autonomy_proposal_locked(
+		&self,
+		record: &AutonomyProposalRuntimeRecord,
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_autonomy_proposal(record)
+	}
+
+	#[allow(dead_code)]
 	fn upsert_execution_program_locked(
 		&self,
 		record: &ExecutionProgramRuntimeRecord,
@@ -5193,6 +5450,34 @@ fn validate_autonomy_signal_record_inputs(
 fn validate_required_autonomy_signal_field(name: &str, value: &str) -> Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("Autonomy signal {name} must not be empty.");
+	}
+
+	Ok(())
+}
+
+#[allow(dead_code)]
+fn validate_autonomy_proposal_record_inputs(
+	project_id: &str,
+	proposal: &AutonomyProposal,
+) -> Result<()> {
+	validate_required_autonomy_proposal_field("project_id", project_id)?;
+
+	if proposal.project_id() != project_id {
+		eyre::bail!(
+			"Autonomy proposal `{}` belongs to project `{}` but was stored for `{}`.",
+			proposal.id(),
+			proposal.project_id(),
+			project_id
+		);
+	}
+
+	proposal.validate()
+}
+
+#[allow(dead_code)]
+fn validate_required_autonomy_proposal_field(name: &str, value: &str) -> Result<()> {
+	if value.trim().is_empty() {
+		eyre::bail!("Autonomy proposal {name} must not be empty.");
 	}
 
 	Ok(())

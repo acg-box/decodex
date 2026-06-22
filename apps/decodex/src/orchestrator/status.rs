@@ -8124,6 +8124,7 @@ fn operator_loop_status_for_run_with_evidence(
 		.find(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE)
 		.and_then(operator_authority_decision_request_status_from_event);
 	let autonomy_signals = operator_autonomy_signal_statuses(loop_evidence);
+	let autonomy_proposals = operator_autonomy_proposal_statuses(loop_evidence);
 	let autonomy = operator_loop_autonomy(
 		boundary.as_ref(),
 		architecture_recovery.as_ref(),
@@ -8150,6 +8151,7 @@ fn operator_loop_status_for_run_with_evidence(
 		summary,
 		next_action,
 		autonomy_signals,
+		autonomy_proposals,
 		review,
 		architecture_recovery,
 		boundary,
@@ -8178,6 +8180,38 @@ fn operator_autonomy_signal_statuses(
 				gaps: signal.gaps().to_vec(),
 				contradictions: signal.contradictions().to_vec(),
 				updated_at: record.updated_at().to_owned(),
+			}
+		})
+		.collect()
+}
+
+fn operator_autonomy_proposal_statuses(
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+) -> Vec<OperatorAutonomyProposalStatus> {
+	loop_evidence
+		.recent_autonomy_proposals(5)
+		.into_iter()
+		.map(|record| {
+			let proposal = record.proposal();
+
+			OperatorAutonomyProposalStatus {
+				proposal_id: proposal.id().to_owned(),
+				objective_id: proposal.objective_id().to_owned(),
+				objective_version: proposal.objective_version(),
+				state: proposal.state().as_str().to_owned(),
+				source_family: proposal.source_family().to_owned(),
+				intended_surface: proposal.intended_surface().to_owned(),
+				source_signal_ids: proposal.source_signal_ids().to_vec(),
+				refusal_reasons: proposal
+					.refusal_reasons()
+					.iter()
+					.map(|refusal| refusal.reason().as_str().to_owned())
+					.collect(),
+				gaps: proposal.gaps().to_vec(),
+				contradictions: proposal.contradictions().to_vec(),
+				challenge_evidence_count: proposal.challenge_evidence().len(),
+				updated_at: record.updated_at().to_owned(),
+				dry_run_record: proposal.clone(),
 			}
 		})
 		.collect()
@@ -10724,11 +10758,12 @@ fn render_loop_status_summary(status: Option<&OperatorLoopStatus>) -> String {
 	let next_action = status.next_action.as_deref().unwrap_or("none");
 
 	format!(
-		"{}; review_level={}; autonomy={}; autonomy_signals={}; next_action={next_action}",
+		"{}; review_level={}; autonomy={}; autonomy_signals={}; autonomy_proposals={}; next_action={next_action}",
 		status.summary,
 		status.review_level,
 		status.autonomy,
-		status.autonomy_signals.len()
+		status.autonomy_signals.len(),
+		status.autonomy_proposals.len()
 	)
 }
 
