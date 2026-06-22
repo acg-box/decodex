@@ -17,6 +17,7 @@ source_refs:
   - https://developers.openai.com/codex/learn/best-practices
 code_refs:
   - apps/decodex/src/autonomy_objective.rs
+  - apps/decodex/src/autonomy_signal.rs
   - apps/decodex/src/loop_contract.rs
   - apps/decodex/src/config.rs
   - apps/decodex/src/mcp.rs
@@ -224,12 +225,16 @@ Each signal must carry provenance:
 | Field | Meaning |
 | --- | --- |
 | `schema` | Versioned schema, initially `decodex.autonomy_signal/1`. |
+| `record_version` | Payload version for this schema, initially `1`. |
+| `id` | Stable signal id derived from the fingerprint. |
+| `fingerprint` | Stable dedupe fingerprint for objective-bound signal identity. It includes objective id/version, source refs, review route evidence, evidence class, gaps, contradictions, confidence, and privacy, but excludes volatile timestamps and observed counts. |
 | `project_id` | Registered service id. |
 | `objective_id` | Objective in force when the signal is interpreted. |
 | `objective_version` | Exact immutable objective version. |
 | `kind` | One accepted signal kind. |
-| `source_type` | User, review, CI, telemetry, runtime, docs, protocol, agent, tracker, or memory adapter. |
-| `source_ref` | Stable pointer to run, PR, issue, log, review, file, report, or external source. |
+| `source_type` | User, review, CI, telemetry, runtime, docs, protocol, agent, tracker, memory, or report. |
+| `source_refs` | Stable pointers to runs, PRs, issues, logs, reviews, files, reports, or external sources. |
+| `primary_source_refs` | Required source-of-truth pointers for memory/report-derived signals. |
 | `issue_id` | Issue identifier when issue-scoped. |
 | `run_id` | Runtime run identifier when run-scoped. |
 | `attempt_id` | Attempt identifier when attempt-scoped. |
@@ -243,11 +248,24 @@ Each signal must carry provenance:
 | `gaps` | Missing evidence or unresolved questions. |
 | `confidence` | Confidence category or score. |
 | `privacy` | Visibility boundary for reports and MCP resources. |
+| `observed_counts` | Optional counts for readback context. Counts are volatile and are not part of the dedupe fingerprint. |
+| `review_evidence` | Required for review-derived signals. Contains review phase/status, current-head SHA, checkpoint refs, and normalized `finding_routes`. |
+| `proposal_only` | Must be true. Signal persistence is evidence only and cannot grant execution authority. |
 | `created_at` | UTC signal creation timestamp. |
 
 Long runtime, high token use, expensive validation, or a hard task is not an
 autonomy problem by itself. Autonomy reacts to contradiction, repeated friction,
 objective drift, validation failure, review evidence, or measured regression.
+
+The runtime persists signals in its own `autonomy_signals` table keyed by
+`project_id` and stable signal id, with indexes for exact
+`objective_id`/`objective_version` readback and recent project readback. Storing a
+signal requires the referenced Objective Contract version to be the accepted version
+at write time; later objective versions do not reinterpret older signal rows.
+Operator status may show recent signal summaries, freshness, gaps, contradictions,
+confidence, and privacy as read-only evidence. Signal rows do not mutate tracker
+state, runtime authority rows outside signal persistence, worktrees, GitHub, Program
+Intake, proposals, or execution state.
 
 Review-derived signals must consume normalized review evidence, not raw comments.
 `review_feedback_cluster` may use only review checkpoint routes from

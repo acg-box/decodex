@@ -1881,10 +1881,27 @@ struct OperatorLoopStatus {
 	autonomy: String,
 	summary: String,
 	next_action: Option<String>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	autonomy_signals: Vec<OperatorAutonomySignalStatus>,
 	review: Option<OperatorReviewLoopStatus>,
 	architecture_recovery: Option<OperatorArchitectureRecoveryStatus>,
 	boundary: Option<OperatorBoundaryStatus>,
 	decision_request: Option<OperatorAuthorityDecisionRequestStatus>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorAutonomySignalStatus {
+	signal_id: String,
+	objective_id: String,
+	objective_version: u64,
+	kind: String,
+	freshness: String,
+	evidence_class: String,
+	confidence: String,
+	privacy: String,
+	gaps: Vec<String>,
+	contradictions: Vec<String>,
+	updated_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -6,9 +6,9 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs]
-drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, review_policy_checkpoints, evidence_artifacts]
-last_verified: 2026-06-21
+code_refs: [apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs]
+drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, review_policy_checkpoints, finding_routes, evidence_artifacts, decodex.autonomy_signal/1]
+last_verified: 2026-06-22
 ---
 # Review Orchestration
 
@@ -241,6 +241,12 @@ A missing `finding_routes` field keeps backward compatibility by defaulting acce
 findings to `current_blocker` and rejected findings to `reviewer_rubric_gap`, but new
 prompts must instruct agents to populate explicit route evidence so non-current
 signals do not accidentally become repair input.
+
+Autonomy review-feedback signals consume only this normalized route evidence plus
+current-head checkpoint references. Raw reviewer comments, GitHub thread text, or
+unrouted review summaries cannot be persisted as `review_feedback_cluster` signals
+unless they are first represented through `finding_routes` and bound to the reviewed
+head.
 
 ## GitHub Review
 
