@@ -252,6 +252,34 @@ impl AutonomyObjectiveContract {
 		&self.summary
 	}
 
+	pub(crate) fn goals(&self) -> &[String] {
+		&self.goals
+	}
+
+	pub(crate) fn non_goals(&self) -> &[String] {
+		&self.non_goals
+	}
+
+	pub(crate) fn metrics(&self) -> &[String] {
+		&self.metrics
+	}
+
+	pub(crate) fn allowed_surfaces(&self) -> &[String] {
+		&self.allowed_surfaces
+	}
+
+	pub(crate) fn allowed_signal_kinds(&self) -> &[String] {
+		&self.allowed_signal_kinds
+	}
+
+	pub(crate) fn validation_gates(&self) -> &[String] {
+		&self.validation_gates
+	}
+
+	pub(crate) fn review_policy(&self) -> &str {
+		&self.review_policy
+	}
+
 	pub(crate) fn acceptance(&self) -> Option<&AutonomyObjectiveAcceptance> {
 		self.acceptance.as_ref()
 	}
