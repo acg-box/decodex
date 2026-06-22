@@ -58,6 +58,10 @@ Then keep the body explicit:
   runtime, Decodex-native Research/Decision stage, latent Loop/Decision Contract,
   internal Execution Program, phase-scoped goals, unattended execution behavior, and
   loop guardrails.
+- [`autonomy-control-plane.md`](./autonomy-control-plane.md) defines the
+  objective-driven project autonomy control plane, Objective Contract boundary,
+  signal and proposal schemas, MCP action matrix, memory boundary, and self-dogfood
+  limits.
 - [`runtime.md`](./runtime.md) defines the runtime state model, reconciliation rules, and
   tracker writeback boundaries.
 - [`app-server.md`](./app-server.md) defines the direct Codex `app-server` interaction
