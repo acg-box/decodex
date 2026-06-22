@@ -1,5 +1,16 @@
 use records::LinearExecutionEventRecord;
 
+#[derive(Clone, Copy)]
+struct ReviewCheckpointSeed<'a> {
+	issue_id: &'a str,
+	run_id: &'a str,
+	phase: &'a str,
+	status: &'a str,
+	head_sha: &'a str,
+	nonclean_rounds: i64,
+	details_json: &'a str,
+}
+
 #[test]
 fn failure_comments_use_repo_relative_worktree_paths() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
@@ -55,6 +66,19 @@ fn operator_status_snapshot_includes_current_lanes_and_repo_relative_paths() {
 	assert_eq!(snapshot.current_lanes[0].run_id, "run-1");
 	assert_eq!(snapshot.current_lanes[0].phase, "executing");
 	assert_eq!(snapshot.current_lanes[0].current_operation, state::RUN_OPERATION_AGENT_RUN);
+	assert_eq!(snapshot.current_lanes[0].policy_state, "allowed");
+	assert_eq!(
+		snapshot.current_lanes[0].lane_control_next_action,
+		"continue_owned_attempt"
+	);
+	assert!(
+		snapshot.current_lanes[0]
+			.loop_status
+			.as_ref()
+			.and_then(|status| status.review.as_ref())
+			.is_none(),
+		"ordinary running lanes must not synthesize a pending review checkpoint"
+	);
 	assert_eq!(snapshot.current_lanes[0].thread_id.as_deref(), Some("thread-1"));
 	assert_eq!(snapshot.current_lanes[0].branch_name.as_deref(), Some("x/pubfi-pub-101"));
 	assert_eq!(snapshot.current_lanes[0].worktree_path.as_deref(), Some(".worktrees/PUB-101"));
@@ -75,6 +99,45 @@ fn operator_status_snapshot_includes_current_lanes_and_repo_relative_paths() {
 	);
 	assert_eq!(project.connector_state, "ok");
 	assert!(project.last_activity_at.is_some());
+
+	let rendered = orchestrator::render_operator_status(&snapshot);
+
+	assert!(!rendered.contains("Record the independent Decodex Review checkpoint"));
+}
+
+#[test]
+fn operator_status_does_not_synthesize_review_for_continuation_pending_attempt() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "continuation_pending")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let run = snapshot.recent_runs.first().expect("recent run should exist");
+	let loop_status = run.loop_status.as_ref().expect("loop status should render");
+	let rendered = orchestrator::render_operator_status(&snapshot);
+
+	assert!(snapshot.current_lanes.is_empty());
+	assert_eq!(run.status, "continuation_pending");
+	assert_eq!(run.phase, "waiting_continuation");
+	assert_eq!(run.current_operation, state::RUN_OPERATION_WAITING_EXTERNAL);
+	assert_eq!(run.policy_state, "allowed");
+	assert!(loop_status.review.is_none());
+	assert_eq!(snapshot.projects[0].waiting_lane_count, 1);
+	assert!(!rendered.contains("Record the independent Decodex Review checkpoint"));
 }
 
 #[test]
@@ -1792,10 +1855,7 @@ fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
 
 	assert!(snapshot.current_lanes.is_empty());
 	assert_eq!(snapshot_json["account_control"]["mode"], "balanced");
-	assert_eq!(
-		snapshot_json["account_control"]["account_selector"],
-		serde_json::Value::Null,
-	);
+	assert!(snapshot_json["account_control"]["account_selector"].is_null());
 	assert_eq!(accounts.len(), 2);
 	assert_eq!(accounts[0]["email"], "default@example.com");
 	assert_eq!(accounts[0]["status"], "available");
@@ -1858,7 +1918,7 @@ fn status_command_snapshot_does_not_probe_configured_codex_accounts() {
 	assert_eq!(accounts[0]["email"], "default@example.com");
 	assert_eq!(accounts[0]["status"], "available");
 	assert_eq!(accounts[0]["refresh_status"], "not_checked");
-	assert_eq!(accounts[0]["primary_remaining_percent"], serde_json::Value::Null);
+	assert!(accounts[0]["primary_remaining_percent"].is_null());
 	assert!(!snapshot.warnings.contains(&String::from("codex_accounts_unavailable")));
 }
 
@@ -3370,6 +3430,186 @@ fn operator_status_projects_terminal_finalized_handoff_missing_lifecycle_marker(
 	assert_eq!(run.current_operation, state::RUN_OPERATION_REVIEW_WRITEBACK);
 }
 
+#[test]
+fn operator_status_projects_terminal_finalized_repair_missing_lifecycle_marker() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+	let pr_head_oid = "08a20f7dfb9526e7421a5f095b1c6adec84e52d6";
+
+	state_store.upsert_project(&registration).expect("project should register");
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+	state_store
+		.append_private_execution_event(
+			"pubfi",
+			&issue.id,
+			"run-1",
+			1,
+			"review_completion_intent",
+			serde_json::json!({
+				"path": "review_repair",
+				"mode": "repair",
+				"branch": "x/pubfi-pub-101",
+				"worktree_path": worktree_path.display().to_string(),
+				"pr_url": "https://github.com/hack-ink/decodex/pull/101",
+				"pr_base_ref": "main",
+				"pr_head_ref": "x/pubfi-pub-101",
+				"pr_head_oid": pr_head_oid,
+				"summary": "Review repair is clean."
+			}),
+		)
+		.expect("repair intent should record");
+	state_store
+		.append_private_execution_event(
+			"pubfi",
+			&issue.id,
+			"run-1",
+			1,
+			"terminal_finalize",
+			serde_json::json!({
+				"path": "review_repair",
+				"mode": "repair",
+				"branch": "x/pubfi-pub-101",
+				"worktree_path": worktree_path.display().to_string(),
+			}),
+		)
+		.expect("terminal finalize event should record");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let run = snapshot
+		.recent_runs
+		.iter()
+		.find(|run| run.run_id == "run-1")
+		.expect("terminal-pending run should remain inspectable in recent runs");
+
+	assert_eq!(run.status, "review_repair_pending");
+	assert_eq!(run.phase, "terminal_pending");
+	assert_eq!(
+		run.wait_reason.as_deref(),
+		Some("review_repair_writeback_missing_lifecycle_marker")
+	);
+	assert_eq!(run.current_operation, state::RUN_OPERATION_REVIEW_WRITEBACK);
+}
+
+#[test]
+fn operator_status_projects_terminal_finalized_repair_stale_lifecycle_marker() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+	let old_head_oid = "1111111111111111111111111111111111111111";
+	let repaired_head_oid = "2222222222222222222222222222222222222222";
+
+	state_store.upsert_project(&registration).expect("project should register");
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+	state_store
+		.upsert_review_handoff_marker(
+			"pubfi",
+			&issue.id,
+			&ReviewHandoffMarker::new(
+				"run-old",
+				1,
+				"x/pubfi-pub-101",
+				"https://github.com/hack-ink/decodex/pull/101",
+				"main",
+				"x/pubfi-pub-101",
+				old_head_oid,
+			),
+		)
+		.expect("old review lifecycle should record");
+	state_store
+		.append_private_execution_event(
+			"pubfi",
+			&issue.id,
+			"run-1",
+			1,
+			"review_completion_intent",
+			serde_json::json!({
+				"path": "review_repair",
+				"mode": "repair",
+				"branch": "x/pubfi-pub-101",
+				"worktree_path": worktree_path.display().to_string(),
+				"pr_url": "https://github.com/hack-ink/decodex/pull/101",
+				"pr_base_ref": "main",
+				"pr_head_ref": "x/pubfi-pub-101",
+				"pr_head_oid": repaired_head_oid,
+				"summary": "Review repair is clean."
+			}),
+		)
+		.expect("repair intent should record");
+	state_store
+		.append_private_execution_event(
+			"pubfi",
+			&issue.id,
+			"run-1",
+			1,
+			"terminal_finalize",
+			serde_json::json!({
+				"path": "review_repair",
+				"mode": "repair",
+				"branch": "x/pubfi-pub-101",
+				"worktree_path": worktree_path.display().to_string(),
+			}),
+		)
+		.expect("terminal finalize event should record");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let run = snapshot
+		.recent_runs
+		.iter()
+		.find(|run| run.run_id == "run-1")
+		.expect("terminal-pending run should remain inspectable in recent runs");
+
+	assert_eq!(run.status, "review_repair_pending");
+	assert_eq!(run.phase, "terminal_pending");
+	assert_eq!(
+		run.wait_reason.as_deref(),
+		Some("review_repair_writeback_stale_lifecycle_marker")
+	);
+	assert_eq!(run.current_operation, state::RUN_OPERATION_REVIEW_WRITEBACK);
+}
+
 fn assert_terminal_pending_status_projection(snapshot: &OperatorStatusSnapshot) {
 	let project = snapshot.projects.first().expect("project summary should exist");
 	let run = snapshot
@@ -3410,18 +3650,18 @@ fn assert_terminal_pending_lane_inspect(state_store: &StateStore) {
 		.as_bytes(),
 	))
 	.expect("lane inspect response should be utf-8");
-	let data = operator_status_response_json_body(&response, "lane inspect");
+	let body = operator_status_response_body(&response, "lane inspect");
 
 	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
-	assert_eq!(data["matchedRunCount"], 1);
-	assert_eq!(data["runs"][0]["status"], "review_handoff_pending");
-	assert_eq!(data["runs"][0]["phase"], "terminal_pending");
-	assert_eq!(data["runs"][0]["waitReason"], "review_handoff_writeback");
-	assert_eq!(data["runs"][0]["currentOperation"], state::RUN_OPERATION_REVIEW_WRITEBACK);
-	assert_eq!(data["runs"][0]["runLease"], false);
-	assert_eq!(data["runs"][0]["executionLiveness"], "not_running");
-	assert_eq!(data["runs"][0]["softInterruptAvailable"], false);
-	assert_eq!(data["runs"][0]["hardInterruptAvailable"], false);
+	assert!(body.contains(r#""matchedRunCount":1"#));
+	assert!(body.contains(r#""status":"review_handoff_pending""#));
+	assert!(body.contains(r#""phase":"terminal_pending""#));
+	assert!(body.contains(r#""waitReason":"review_handoff_writeback""#));
+	assert!(body.contains(r#""currentOperation":"review_writeback""#));
+	assert!(body.contains(r#""runLease":false"#));
+	assert!(body.contains(r#""executionLiveness":"not_running""#));
+	assert!(body.contains(r#""softInterruptAvailable":false"#));
+	assert!(body.contains(r#""hardInterruptAvailable":false"#));
 }
 
 fn assert_terminal_pending_interrupt_rejects_force(state_store: &StateStore) {
@@ -3437,21 +3677,19 @@ fn assert_terminal_pending_interrupt_rejects_force(state_store: &StateStore) {
 		.as_bytes(),
 	))
 	.expect("lane interrupt response should be utf-8");
-	let data = operator_status_response_json_body(&response, "lane interrupt");
+	let body = operator_status_response_body(&response, "lane interrupt");
 
 	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
-	assert_eq!(data["classification"], "soft_interrupt_unavailable");
-	assert_eq!(data["softInterrupt"]["errorClass"], "lane_not_active");
-	assert_eq!(data["hardInterrupt"], Value::Null);
+	assert!(body.contains(r#""classification":"soft_interrupt_unavailable""#));
+	assert!(body.contains(r#""errorClass":"lane_not_active""#));
+	assert!(body.contains(r#""hardInterrupt":null"#));
 }
 
-fn operator_status_response_json_body(response: &str, context: &str) -> Value {
-	let body = response
+fn operator_status_response_body<'a>(response: &'a str, context: &str) -> &'a str {
+	response
 		.split_once("\r\n\r\n")
 		.map(|(_, body)| body)
-		.unwrap_or_else(|| panic!("{context} response should include body"));
-
-	serde_json::from_str(body).unwrap_or_else(|_| panic!("{context} response should be json"))
+		.unwrap_or_else(|| panic!("{context} response should include body"))
 }
 
 #[test]
@@ -3813,6 +4051,10 @@ fn operator_status_snapshot_rolls_current_child_bucket_elapsed_time_into_bucket(
 
 	assert_eq!(run.wait_reason.as_deref(), Some("tool_execution"));
 	assert_eq!(protocol_activity.waiting_reason.as_deref(), Some("tool_execution"));
+	assert_eq!(
+		snapshot.projects[0].waiting_lane_count, 0,
+		"normal active tool execution is running work, not project-level waiting"
+	);
 	assert_eq!(run.lifecycle_metrics.attempt_count, 1);
 	assert_eq!(run.lifecycle_metrics.captured_attempt_count, 1);
 	assert_eq!(run.lifecycle_metrics.tool_call_count, 1);
@@ -3939,6 +4181,176 @@ fn operator_status_current_lane_lifecycle_reconstructs_all_issue_attempts() {
 	assert_eq!(run.lifecycle_metrics.phases[1].wall_seconds, 300);
 
 	assert_compact_review_checkpoint_status(run);
+}
+
+#[test]
+fn operator_status_supersedes_stale_repair_findings_after_clean_handoff_checkpoint() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
+	let run_id = "run-review";
+	let repair_head = "1111111111111111111111111111111111111111";
+	let clean_head = "2222222222222222222222222222222222222222";
+
+	state_store
+		.record_run_attempt(run_id, &issue.id, 2, "running")
+		.expect("review attempt should record");
+	state_store
+		.upsert_lease(TEST_SERVICE_ID, &issue.id, run_id, "In Progress")
+		.expect("lease should record");
+
+	let stale_repair_next_action = seed_stale_repair_and_clean_handoff_checkpoints(
+		&state_store,
+		&config,
+		&issue.id,
+		run_id,
+		repair_head,
+		clean_head,
+	);
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 0)
+		.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
+	let loop_status = run.loop_status.as_ref().expect("loop status should render");
+	let review = loop_status.review.as_ref().expect("review status should render");
+	let checkpoint = review.checkpoint.as_ref().expect("review checkpoint should render");
+
+	assert_eq!(review.phase, "handoff");
+	assert_eq!(review.status, "clean");
+	assert_eq!(checkpoint.head_sha, clean_head);
+	assert!(checkpoint.active_fingerprints.is_empty());
+	assert_eq!(run.policy_state, "allowed");
+	assert_eq!(
+		run.lane_control_next_action,
+		"Push or update the PR and record review handoff for the clean current lane head."
+	);
+	assert_ne!(loop_status.next_action.as_deref(), Some(stale_repair_next_action));
+}
+
+fn seed_stale_repair_and_clean_handoff_checkpoints(
+	state_store: &StateStore,
+	config: &ServiceConfig,
+	issue_id: &str,
+	run_id: &str,
+	repair_head: &str,
+	clean_head: &str,
+) -> &'static str {
+	let stale_repair_next_action = "Repair the stale review finding.";
+	let repair_details_json = r#"{
+		"finding_route_summary": {
+			"route_counts": [{"route": "current_blocker", "count": 1}],
+			"next_action": "Repair the stale review finding."
+		},
+		"finding_policy": {
+			"active_fingerprints": ["stale-finding"],
+			"stop_fingerprint": null
+		}
+	}"#;
+	let clean_details_json = r#"{
+		"review_cost_control": {
+			"review_class": "full_current_head_review",
+			"risk_class": "localized",
+			"compact_eligible": false,
+			"fallback_reason": "repair_review"
+		},
+		"finding_route_summary": {
+			"route_counts": [],
+			"next_action": null
+		},
+		"finding_policy": {
+			"active_fingerprints": [],
+			"stop_fingerprint": null
+		}
+	}"#;
+
+	seed_review_policy_checkpoint_with_event(
+		state_store,
+		config,
+		ReviewCheckpointSeed {
+			issue_id,
+			run_id,
+			phase: "repair",
+			status: "findings",
+			head_sha: repair_head,
+			nonclean_rounds: 1,
+			details_json: repair_details_json,
+		},
+	);
+	seed_review_policy_checkpoint_with_event(
+		state_store,
+		config,
+		ReviewCheckpointSeed {
+			issue_id,
+			run_id,
+			phase: "handoff",
+			status: "clean",
+			head_sha: clean_head,
+			nonclean_rounds: 0,
+			details_json: clean_details_json,
+		},
+	);
+	seed_review_policy_checkpoint(
+		state_store,
+		config,
+		ReviewCheckpointSeed {
+			issue_id,
+			run_id,
+			phase: "repair",
+			status: "findings",
+			head_sha: repair_head,
+			nonclean_rounds: 1,
+			details_json: repair_details_json,
+		},
+	);
+
+	stale_repair_next_action
+}
+
+fn seed_review_policy_checkpoint_with_event(
+	state_store: &StateStore,
+	config: &ServiceConfig,
+	seed: ReviewCheckpointSeed<'_>,
+) {
+	seed_review_policy_checkpoint(state_store, config, seed);
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			seed.issue_id,
+			seed.run_id,
+			2,
+			"review_checkpoint",
+			serde_json::json!({
+				"phase": seed.phase,
+				"status": seed.status,
+				"head_sha": seed.head_sha,
+				"nonclean_rounds": seed.nonclean_rounds
+			}),
+		)
+		.expect("review checkpoint event should record");
+}
+
+fn seed_review_policy_checkpoint(
+	state_store: &StateStore,
+	config: &ServiceConfig,
+	seed: ReviewCheckpointSeed<'_>,
+) {
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: TEST_SERVICE_ID,
+			issue_id: seed.issue_id,
+			run_id: seed.run_id,
+			attempt_number: 2,
+			phase: seed.phase,
+			review_level: config.codex().review_level().as_str(),
+			status: seed.status,
+			head_sha: seed.head_sha,
+			nonclean_rounds: seed.nonclean_rounds,
+			details_json: seed.details_json,
+		})
+		.expect("review policy checkpoint should record");
 }
 
 fn assert_compact_review_checkpoint_status(run: &OperatorRunStatus) {
@@ -4160,7 +4572,58 @@ fn operator_status_snapshot_uses_structured_protocol_activity_summary() {
 
 	assert_eq!(run.wait_reason.as_deref(), Some("approval_or_user_input"));
 	assert_eq!(run.protocol_activity.as_ref(), Some(&protocol_activity));
+	assert_eq!(
+		snapshot.projects[0].waiting_lane_count, 1,
+		"approval or user-input waits should remain project-level waiting"
+	);
 	assert!(rendered.contains("protocol_activity: turn=running; waiting=approval_or_user_input; rate_limit=primary; recent=item/tool/requestUserInput, plan/update:verify"));
+}
+
+#[test]
+fn operator_status_snapshot_prefers_newer_protocol_marker_over_stale_archive_event() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+	state_store
+		.append_event("run-1", 1, "thread/archive/discarded", "{}")
+		.expect("archive event should record");
+	state::write_run_protocol_activity_marker(
+		&worktree_path,
+		&ProtocolActivityMarker {
+			run_id: "run-1",
+			attempt_number: 1,
+			thread_id: Some("thread-1"),
+			turn_id: Some("turn-1"),
+			event_count: 2,
+			last_event_type: "item/tool/call",
+			child_agent_activity: None,
+			protocol_activity: None,
+		},
+	)
+	.expect("protocol activity marker should write");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let run = snapshot.current_lanes.first().expect("current lane should exist");
+
+	assert_eq!(run.last_event_type.as_deref(), Some("item/tool/call"));
+	assert_eq!(run.event_count, 2);
 }
 
 #[test]

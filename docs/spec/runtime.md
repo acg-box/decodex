@@ -7,8 +7,8 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/config.rs, decodex.example.toml]
-drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, protocol_events, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings, autonomy_proposals, decodex.autonomy_proposal/1, "[autonomy]", auto_promote, auto_intake, "[autonomy.runtime_policy]", accepted_objective_id, accepted_objective_version, accepted_policy_id, accepted_policy_version, policy_authority_ref]
-last_verified: 2026-06-22
+drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, protocol_events, review_policy_checkpoints, review_checkpoint, review_lifecycle_records, lane_control_next_action, review_handoff_pending, review_repair_pending, review_repair_writeback_missing_lifecycle_marker, review_repair_writeback_stale_lifecycle_marker, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings, autonomy_proposals, decodex.autonomy_proposal/1, "[autonomy]", auto_promote, auto_intake, "[autonomy.runtime_policy]", accepted_objective_id, accepted_objective_version, accepted_policy_id, accepted_policy_version, policy_authority_ref]
+last_verified: 2026-06-23
 ---
 # Runtime Specification
 
@@ -590,6 +590,12 @@ operator status and private evidence readback may expose route counts and one
 route-derived next action, but not raw reviewer finding bodies. Linear receives only
 coarse lifecycle projections; raw reviewer findings stay in local runtime evidence
 unless another allowlisted lifecycle summary renders a public-safe summary.
+Operator status must treat the newest matching private `review_checkpoint` event for
+the same project, issue, run id, attempt, phase, status, head, and nonclean-round
+count as the active loop-review readback before falling back to the per-phase
+`review_policy_checkpoints` rows. Older per-phase rows remain repair history, but a
+stale `repair` row must not keep `lane_control_next_action` on old finding repair
+instructions after a newer current-head clean `handoff` checkpoint has been recorded.
 Recording `issue_review_handoff` or `issue_review_repair_complete` clears the current
 run-attempt `review_policy_checkpoints` row for that phase after the reusable clean
 evidence artifact has been consumed.
@@ -873,11 +879,21 @@ is still safe to preserve, operator-local status may expose a typed
 GitHub auth failure, API/read failure, parse/shape failure, or lineage validation
 failure while keeping public-safe warning reasons such as
 `pull_request_state_read_failed` stable. The retained lifecycle controller must
-preserve the post-review classification decision when it converts status readback into
-runtime action: only a non-shadowed `Block` classification may write passive retained
-manual attention or add `decodex:needs-attention`; degraded readback classified as
-`WaitForReview` must remain a wait/retry status row and must not be promoted to
-manual attention by the run-cycle path.
+distinguish clean review-repair writeback debt from unresolved review findings. When a
+terminalized `review_repair` attempt has a matching repair completion intent for the
+current retained worktree branch, PR URL, PR head ref, and local/PR head OID, and the
+runtime still has a clean reusable repair checkpoint artifact for that same head, a
+missing or stale review lifecycle marker is a typed pending writeback condition
+(`review_repair_writeback_missing_lifecycle_marker` or
+`review_repair_writeback_stale_lifecycle_marker`). Status may keep the retained lane
+in `wait_for_review` while that writeback catches up, but it must not re-project old
+review-finding repair instructions or request a new external review from stale
+lifecycle state. The retained lifecycle controller must preserve the post-review
+classification decision when it converts status readback into runtime action: only a
+non-shadowed `Block` classification may write passive retained manual attention or add
+`decodex:needs-attention`; degraded readback classified as `WaitForReview` must remain
+a wait/retry status row and must not be promoted to manual attention by the run-cycle
+path.
 The only source-tree runtime artifacts that clean-source checks may ignore are the untracked top-level `.decodex-run-activity` heartbeat marker and `.decodex-run-control/` local control-channel directory. Durable review lifecycle records, review-policy checkpoints, retry, phase timing, and retained PR state belong in the Decodex runtime database, not in root-level or worktree-local review marker files. If the heartbeat marker carries similarly named fields for compatibility or operator diagnostics, those breadcrumb values cannot override runtime-store rows.
 
 ### Dispatch-slot handoff invariant
@@ -1033,6 +1049,22 @@ After a process restart, recent-run history, run lease ownership, retained post-
 - If stalled reconciliation finds no tracked changes in the retained worktree, it must classify the lane as structured retryable recovery with `error_class = "stalled_run_detected"` while retry budget remains. The retry must keep active ownership, write a failure retry schedule for the same worktree, and must not add `decodex:needs-attention` until retry budget exhaustion or another terminal boundary applies.
 - If the supervised child already exited before the next control-plane tick, stalled reconciliation must still inspect the just-finished lane using recorded protocol activity and retained worktree state rather than skipping directly to generic failure handling.
 - Operator status snapshots must expose structured liveness and wait-state fields derived from runtime records plus marker breadcrumbs, including explicit `run_phase`, optional wait reason, `current_operation`, optional `active_goal_phase`, optional `public_progress_phase`, last run/protocol/progress times, idle age, a soft `suspected_stall` signal, optional progress diagnostics, and any queued retry kind plus due time, so operators can distinguish active execution from continuation waits, retry backoff, early stall suspicion, and genuine hard stalls without inferring progress from filesystem churn. The snapshot producer owns the derived operator booleans `has_fresh_execution`, `counts_as_running`, and `needs_attention`; dashboard, App, and other UI consumers must use those fields when present instead of reinterpreting raw `process_alive`, thread, protocol, or idle fields independently. The snapshot producer also owns `shadowed_by_current_lane` on retained post-review lanes, and current project review, waiting, attention, landing, and cleanup counts must exclude lanes shadowed by fresh active execution for the same issue. `process_alive = false` is only process-marker evidence and must not be displayed as stopped when `has_fresh_execution = true`. `last_progress_at` is meaningful-work progress only: tool calls, file or diff changes, plan/model output, repo validation, PR/review/terminal lifecycle, or other explicit work events may refresh it, but account, rate-limit, phase-goal, passive status, warning, token-usage, heartbeat, or similar non-work protocol traffic must only refresh protocol liveness. When a lane remains in `model_execution` with fresh protocol activity but stale or missing work progress and the recent protocol events are only non-work traffic, status should expose `progress_diagnostic = "protocol_only_activity"` while preserving process and protocol liveness separately.
+- Project-level `waiting_lane_count` is a fleet-summary count of blocked or deferred
+  work, not a duplicate of every lane card that has a local wait reason. It counts
+  retry backoff, continuation waits, explicit external waits, operator/user-input
+  waits, protocol idleness waits, queued waiting candidates, and unshadowed
+  wait-for-review lanes. It must not count ordinary fresh execution in
+  `model_execution`, `tool_execution`, or repo-gate execution as project-level waiting
+  just because the lane has a diagnostic wait reason; those lanes remain running work
+  while the lane row may still show the detailed operation and wait/tone fields.
+- Operator status must not synthesize a pending Decodex Review checkpoint for every
+  ordinary leased running lane. Pending review-checkpoint readback is reserved for
+  current checkpoint state bound to the same project, issue, run id, and attempt, or
+  for a non-terminal review-writeback operation. Terminal states such as
+  `review_handoff_pending` and `review_repair_pending` use terminal lifecycle
+  summaries and deterministic wait reasons instead. A normal running lane with no
+  review writeback or checkpoint evidence remains policy `allowed` with
+  `continue_owned_attempt`.
 - Operator status snapshots may expose an additive `child_agent_activity` object when app-server protocol events have produced one for the current run. The object must stay machine-readable and dashboard/CLI shared, and should describe dynamic observed buckets rather than a fixed workflow: current child bucket and elapsed time, bucket wall/event/tool counts, current/max/cumulative input tokens, cumulative output tokens, largest tool output, and warnings for repeated large outputs. Lifecycle metrics that group attempts by run phase must be presented in operator UI/readback as lifecycle buckets, not as generic stages. Missing `child_agent_activity` means no child breakdown was captured; existing JSON consumers must continue to work without it.
 - If the agent Git credential preflight fails, operator status must report the retained lane as a credential failure requiring operator recovery, not as a still-running lane.
 - If retry budget or needs-attention recovery finds tracked changes in the retained worktree after active phase-goal recovery has no applicable continuation path, operator status must report retained partial progress rather than only a generic retry-budget hold. Retained progress is the recovery disposition; later runtime, app-server, credential, transport, or repo-gate failure classes must be preserved as source evidence instead of overriding the retained-progress lifecycle path. The failure class may be `partial_progress_retained` when no more specific runtime error class is available. Operators should then inspect the patch, finish validation and PR handoff if it is useful, or reset the retained worktree explicitly.
@@ -1085,7 +1117,7 @@ After a process restart, recent-run history, run lease ownership, retained post-
   output. A cleanup-only worktree with `provenance_source = "legacy_unknown"` must set
   `audit_required = true` and provide a `decodex recover legacy-closeout` next action;
   this is a last-resort operator audit path, not an automatic rebind or cleanup signal.
-- During an active run, operator snapshots must expose `thread_id` as soon as the Codex thread exists, plus monotonically advancing `event_count`, `last_event_type`, and `last_event_at` once protocol events are recorded. These fields may be hydrated either from the current process journal or from the active lane's `.decodex-run-activity` marker when `status` is running in a separate process.
+- During an active run, operator snapshots must expose `thread_id` as soon as the Codex thread exists, plus monotonically advancing `event_count`, `last_event_type`, and `last_event_at` once protocol events are recorded. These fields may be hydrated either from the current process journal or from the active lane's `.decodex-run-activity` marker when `status` is running in a separate process. If both durable run rows and the marker carry protocol summaries for the same run/attempt, the snapshot must prefer the newer summary by protocol timestamp, breaking equal timestamps by larger event count. A stale durable maintenance event such as `thread/archive` must not mask newer current-attempt marker evidence such as model or tool activity.
 - `thread_id = null` is expected only before the worker creates the Codex thread for the current run. `event_count = 0`, `last_event_type = null`, and `last_event_at = null` are expected only before the first protocol event for that same run. After the thread exists and protocol activity has started, those empty values indicate missing hydration rather than normal progress.
 - Operator snapshots may expose an additive `protocol_activity` object derived from app-server structured messages for the current run. The object stays local/operator-only and should summarize turn status, waiting reason, rate-limit status, and a compact recent event list for high-value app-server activity such as `turn/started`, `turn/completed`, plan updates, diff updates, item start/completion, command output deltas, server request responses, account updates, and rate-limit updates. Missing `protocol_activity` means no structured summary was captured yet; consumers must continue to rely on the older `event_count`, `last_event_type`, `last_event_at`, thread fields, and `child_agent_activity` fields when it is absent. Presence in `protocol_activity` is not by itself meaningful progress; non-work account, rate-limit, phase-goal, passive status, warning, model-routing, and token-usage events must remain distinguishable from work-progress events through `last_progress_at` and `progress_diagnostic`.
 - The operator snapshot transport must stay local/operator-only. `decodex serve` exposes the human-facing operator console from the canonical HTTP `GET /` and `GET /dashboard` routes, serves only the necessary dashboard assets, `GET /livez` liveness probe, and local account-control API over HTTP, and delivers published snapshots, current-lane activity, and dashboard control acknowledgements through the local `GET /dashboard/control` WebSocket upgrade.

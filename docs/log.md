@@ -2,6 +2,16 @@
 
 ## 2026-06-22
 
+- Tightened operator review-control projection so ordinary running lanes no longer
+  synthesize pending Decodex Review checkpoints, stale repair checkpoint rows cannot
+  override newer clean checkpoint events, and clean review-repair terminal writeback
+  gaps surface deterministic missing/stale lifecycle-marker reasons instead of
+  reviving old repair control.
+- Tightened operator status project metrics and protocol readback after live-history
+  audit: ordinary fresh model/tool/repo-gate execution no longer inflates
+  project-level waiting counts, continuation-pending attempts no longer inherit
+  synthetic review prompts, and newer current-attempt marker events supersede stale
+  durable maintenance events such as archive readback.
 - Promoted the final autonomy architecture into authoritative docs: Decodex autonomy
   is now specified as an objective-driven project control plane with first-class
   Objective Contracts, typed signals, non-executable proposals, explicit
