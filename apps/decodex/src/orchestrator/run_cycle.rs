@@ -2461,6 +2461,8 @@ where
 		context.preferred_issue_state,
 	);
 
+	validate_workflow_read_first_files(context.project, context.workflow)?;
+
 	if !context.dry_run
 		&& !context.lease_preacquired
 		&& !context.state_store.try_acquire_lease(
