@@ -2088,12 +2088,9 @@ fn operator_lane_inspect_api_returns_lane_identity() {
 	assert_eq!(data["runs"][0]["runLease"], true);
 	assert_eq!(data["runs"][0]["ownershipState"], "leased_run");
 	assert_eq!(data["runs"][0]["livenessState"], "unknown");
-	assert_eq!(data["runs"][0]["policyState"], "review_pending");
+	assert_eq!(data["runs"][0]["policyState"], "allowed");
 	assert_eq!(data["runs"][0]["terminalizationState"], "none");
-	assert_eq!(
-		data["runs"][0]["laneControlNextAction"],
-		"Record the independent Decodex Review checkpoint for the current lane head."
-	);
+	assert_eq!(data["runs"][0]["laneControlNextAction"], "continue_owned_attempt");
 	assert_eq!(data["runs"][0]["threadId"], "thread-1");
 	assert_eq!(data["runs"][0]["turnId"], "turn-1");
 	assert_eq!(data["runs"][0]["softInterruptAvailable"], false);

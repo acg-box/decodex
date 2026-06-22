@@ -79,6 +79,204 @@ fn build_post_review_lane_statuses_reports_ready_to_land() {
 }
 
 #[test]
+fn build_post_review_lane_statuses_waits_when_clean_repair_head_outruns_lifecycle_marker() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Review", &[]);
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
+	let (worktree, repaired_head_oid) =
+		retained_worktree_with_stale_review_lifecycle_marker(
+			&config,
+			&state_store,
+			&issue,
+			pr_url,
+		);
+
+	seed_clean_repair_completion_writeback_gap(
+		&config,
+		&state_store,
+		&issue,
+		&worktree,
+		pr_url,
+		&repaired_head_oid,
+	);
+
+	let review_state = sample_pull_request_review_state(
+		pr_url,
+		&worktree.branch_name,
+		&repaired_head_oid,
+		Some("APPROVED"),
+		"MERGEABLE",
+		"CLEAN",
+		Some("SUCCESS"),
+		0,
+	);
+	let lanes = orchestrator::build_post_review_lane_statuses(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
+	)
+	.expect("post-review lane status build should succeed");
+
+	assert_eq!(lanes.len(), 1);
+	assert_eq!(lanes[0].classification, "wait_for_review");
+	assert_eq!(lanes[0].reason, "review_repair_writeback_stale_lifecycle_marker");
+	assert_eq!(
+		lanes[0].readback_warning.as_deref(),
+		Some("review_repair_writeback_stale_lifecycle_marker")
+	);
+}
+
+fn retained_worktree_with_stale_review_lifecycle_marker(
+	config: &ServiceConfig,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+	pr_url: &str,
+) -> (WorktreeSpec, String) {
+	let worktree_manager =
+		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
+	let worktree = worktree_manager
+		.ensure_worktree(&issue.identifier, false)
+		.expect("worktree should exist");
+	let old_head_oid = git_head_oid_for_worktree(&worktree);
+
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			&worktree.branch_name,
+			&worktree.path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	seed_review_orchestration_marker_for_path(
+		state_store,
+		config.service_id(),
+		&worktree.path,
+		&sample_review_orchestration_marker(
+			&worktree.branch_name,
+			pr_url,
+			&old_head_oid,
+			"waiting_for_result",
+			1,
+		),
+	);
+
+	let repaired_head_oid = commit_empty_repair_head_for_worktree(&worktree);
+
+	(worktree, repaired_head_oid)
+}
+
+fn git_head_oid_for_worktree(worktree: &WorktreeSpec) -> String {
+	String::from_utf8(
+		Command::new("git")
+			.arg("-C")
+			.arg(&worktree.path)
+			.args(["rev-parse", "HEAD"])
+			.output()
+			.expect("git rev-parse should run")
+			.stdout,
+	)
+	.expect("git output should be utf-8")
+	.trim()
+	.to_owned()
+}
+
+fn commit_empty_repair_head_for_worktree(worktree: &WorktreeSpec) -> String {
+	assert!(
+		Command::new("git")
+			.arg("-C")
+			.arg(&worktree.path)
+			.args([
+				"-c",
+				"user.name=Decodex Test",
+				"-c",
+				"user.email=decodex-test@example.invalid",
+				"commit",
+				"--allow-empty",
+				"-m",
+				"repair head",
+			])
+			.status()
+			.expect("git commit should run")
+			.success()
+	);
+
+	git_head_oid_for_worktree(worktree)
+}
+
+fn seed_clean_repair_completion_writeback_gap(
+	config: &ServiceConfig,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+	worktree: &WorktreeSpec,
+	pr_url: &str,
+	repaired_head_oid: &str,
+) {
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &issue.id,
+			run_id: "run-repair",
+			attempt_number: 2,
+			phase: "repair",
+			review_level: config.codex().review_level().as_str(),
+			status: "clean",
+			head_sha: repaired_head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("clean repair checkpoint should record");
+	state_store
+		.clear_review_policy_checkpoints_for_run_attempt(
+			config.service_id(),
+			&issue.id,
+			"run-repair",
+			2,
+		)
+		.expect("active repair checkpoint row should clear after completion");
+	state_store
+		.append_private_execution_event(
+			config.service_id(),
+			&issue.id,
+			"run-repair",
+			2,
+			"review_completion_intent",
+			serde_json::json!({
+				"path": "review_repair",
+				"mode": "repair",
+				"branch": &worktree.branch_name,
+				"worktree_path": worktree.path.display().to_string(),
+				"pr_url": pr_url,
+				"pr_base_ref": "main",
+				"pr_head_ref": &worktree.branch_name,
+				"pr_head_oid": repaired_head_oid,
+				"summary": "Review repair is clean."
+			}),
+		)
+		.expect("repair completion intent should record");
+	state_store
+		.append_private_execution_event(
+			config.service_id(),
+			&issue.id,
+			"run-repair",
+			2,
+			"terminal_finalize",
+			serde_json::json!({
+				"path": "review_repair",
+				"mode": "repair",
+				"branch": &worktree.branch_name,
+				"worktree_path": worktree.path.display().to_string(),
+			}),
+		)
+		.expect("repair terminal finalize should record");
+}
+
+#[test]
 fn build_post_review_lane_statuses_preserves_handoff_marker_when_pr_readback_fails() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();

@@ -305,6 +305,11 @@ no visible local work. Neither
 state is, by itself, evidence that the
 Linear tracker or GitHub connector failed; confirm the central project registry and
 service queue label before treating it as a connector problem.
+The `Work.waiting` project number is a blocked/deferred-work summary: retry backoff,
+continuation waits, explicit external waits, operator or user-input waits, protocol
+idleness, queued waiting candidates, and unshadowed wait-for-review lanes. Normal
+fresh model, tool, and repo-gate execution remains running work even when the lane row
+shows detailed wait/tone diagnostics.
 
 The browser dashboard and Decodex App read the complete published operator state from
 the local `GET /dashboard/control` WebSocket. That socket is the dashboard/App
@@ -384,8 +389,8 @@ protocol activity durable outside the local operator surface.
 | Section | Meaning |
 | --- | --- |
 | `Accounts` | Shared Codex account pool and usage table from `~/.codex/decodex/accounts.jsonl` when `[codex.accounts]` is enabled for a project. Account identity can be obscured from the `Account` column header eye without changing the underlying snapshot. The row weight column shows the capacity multiplier used for pool usage estimates: `pro` accounts count as `20x`, and all other plans count as `1x`. Usage probes read Codex `/wham/usage` for window capacity and `/wham/profiles/me` for profile token stats such as lifetime tokens, peak daily tokens, longest task, streaks, and daily token activity. Refresh authentication failures are persisted as `auth_failed` on the matching account, excluded from later selection, and surfaced with login recovery rather than retry-probe recovery. Selecting an account writes the global `[codex.accounts].fixed_account` selector in `~/.codex/decodex/config.toml`; clearing it returns all new account-pool runs to balanced account selection. Account display-name rerolls write `[codex.account_names.offsets]` in the same global config so Decodex App and the dashboard share the privacy-preserving names. Theme, sort, and identity-visibility preferences are client-local presentation state. The selector is global and does not pin a project to an account. |
-| `Projects` | Fleet-level project table. The section-level filter toggles between active project work and the full registry. Location is its own compact path column and can be obscured from the location header eye. `Activity` shows a relative timestamp or `-`; `Work` is `running/waiting/attention`. It should not duplicate per-lane details already shown below. |
-| `Running Lanes` | Active leased or live-executing issue lanes. A lane here is currently owned by this local control plane, or a live process/thread/protocol marker still explains active execution even when the queue lease is not held. It shows issue identity, phase, operation, attempt, queue lease state, execution liveness, thread/protocol status, child-agent activity when captured, phase-goal status when app-server reports it, timing, branch, and worktree. |
+| `Projects` | Fleet-level project table. The section-level filter toggles between active project work and the full registry. Location is its own compact path column and can be obscured from the location header eye. `Activity` shows a relative timestamp or `-`; `Work` is `running/waiting/attention`. Its waiting number summarizes blocked/deferred work and should not duplicate per-lane diagnostics already shown below. |
+| `Running Lanes` | Active leased or live-executing issue lanes. A lane here is currently owned by this local control plane, or a live process/thread/protocol marker still explains active execution even when the queue lease is not held. It shows issue identity, phase, operation, attempt, queue lease state, execution liveness, thread/protocol status, child-agent activity when captured, phase-goal status when app-server reports it, timing, branch, and worktree. For the same run/attempt, newer marker protocol summary supersedes stale durable event readback so current tool/model activity is not hidden behind older maintenance events. |
 | `Program Intake` | Read-only Program Intake and Execution Program progress. It shows each active program's public intake summary, status, mapped issue identifiers, summary counts, dispatchable counts, and sparse node diagnostics for dispatch decisions or held/blocked/stale/attention nodes. It does not expose graph editing, raw node-edge mutation controls, Decision Contract payloads, or private runtime evidence. |
 | `Intake Queue` | Queued tracker issues before execution. Candidates are classified as `ready`, capacity-waiting, claimed without a matching local lane, blocked, or closed/stale. Repeated identical open dependency blockers surface as `dependency_program_stale` after the guardrail threshold so operators can distinguish a stale Execution Program/dependency plan from a newly blocked queue item. A queued candidate whose retained worktree already has a matching review lifecycle record is blocked with `review_handoff_state_transition_pending`; post-review recovery, review repair, landing, or closeout owns the next step instead of ordinary intake. A blocked queued candidate can still show an attached `.worktrees/XY-*` path when the queue owns the attention state; if that worktree has tracked changes after stalled reconciliation, failure writeback, or retries, the candidate is partial retained progress and not just a generic stalled or retry-budget hold. If the worktree is clean but stale active ownership remains after failed-start retry accounting, the candidate is failed-start cleanup debt rather than retained partial progress only when private evidence has no open issue-level phase continuation such as `handoff_evidence`. Human-required authority stops expose their compact decision request fields here: `phase = human_required`, reason, boundary, `decision_request_id`, and `next_action`. When queued attention still maps to a run/attempt, it also carries the same compact loop status used by running lanes. Running lanes are not repeated as normal intake work. |
 | `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. Retained lanes expose compact loop status for their bound handoff run/attempt so operators can see review repair checkpoint state, architecture recovery stops, and boundary/human-required disposition without direct SQLite inspection. |
@@ -764,6 +769,11 @@ map to an operator decision.
   Decodex is finishing the terminal path. They are not active execution, do not hold a
   queue lease, do not count as suspected stalls, and should not expose hard-interrupt
   fallback as an available control.
+  Handoff and repair writeback gaps must use deterministic wait reasons such as
+  `review_handoff_writeback_missing_lifecycle_marker`,
+  `review_repair_writeback_missing_lifecycle_marker`, or
+  `review_repair_writeback_stale_lifecycle_marker` instead of projecting an ordinary
+  implementation lane as pending review work.
 - Child-agent activity comes from `.decodex-run-activity` when the app-server recorder
   captured model/tool/tracker/browser/image buckets.
 - The child-agent breakdown is diagnostic. It explains where observed wall time went;
@@ -773,6 +783,11 @@ map to an operator decision.
 - Review-policy checkpoint state comes from runtime SQLite, not marker files. Legacy
   marker fields such as `review_policy_status` may explain an old worktree, but they
   must not override the store-backed checkpoint row for handoff or repair gating.
+  Ordinary running implementation lanes with no current checkpoint must remain
+  `policy_state = allowed` with `lane_control_next_action = continue_owned_attempt`;
+  status may synthesize a pending review only for an in-progress review-writeback
+  operation or from current runtime checkpoint evidence. Terminal writeback gaps use
+  terminal lifecycle summaries and deterministic wait reasons instead.
 
 The dashboard should avoid pretending that every bucket has a fixed total budget.
 When a row is event-only or sub-second, the UI should present it as diagnostic event

@@ -3624,7 +3624,7 @@ fn mcp_pr_review_state_resource(snapshot: Value) -> Value {
 	let current_lane_reviews = mcp_current_lane_runs(&snapshot)
 		.into_iter()
 		.filter_map(|run| {
-			let review = run.get("loop_status")?.get("review")?;
+			let review = mcp_loop_review_status(run)?;
 
 			Some(serde_json::json!({
 				"run_id": run.get("run_id").cloned().unwrap_or(Value::Null),
@@ -3676,7 +3676,7 @@ fn mcp_public_post_review_lane(lane: &Value) -> Value {
 		"readback_root_cause": lane.get("readback_root_cause").cloned().unwrap_or(Value::Null),
 		"loop_review": lane
 			.get("loop_status")
-			.and_then(|status| status.get("review"))
+			.and_then(mcp_loop_review_status_from_loop_status)
 			.map(mcp_public_review_status)
 			.unwrap_or(Value::Null)
 	})
@@ -3748,7 +3748,7 @@ fn mcp_run_activity_summary(run: &Value) -> Value {
 			.unwrap_or(Value::Null),
 		"loop_review": run
 			.get("loop_status")
-			.and_then(|status| status.get("review"))
+			.and_then(mcp_loop_review_status_from_loop_status)
 			.map(mcp_public_review_status)
 			.unwrap_or(Value::Null)
 	})
@@ -3779,6 +3779,14 @@ fn mcp_public_review_status(review: &Value) -> Value {
 			.map(mcp_public_review_checkpoint_status)
 			.unwrap_or(Value::Null)
 	})
+}
+
+fn mcp_loop_review_status(run_or_lane: &Value) -> Option<&Value> {
+	run_or_lane.get("loop_status").and_then(mcp_loop_review_status_from_loop_status)
+}
+
+fn mcp_loop_review_status_from_loop_status(loop_status: &Value) -> Option<&Value> {
+	loop_status.get("review").filter(|review| review.is_object())
 }
 
 fn mcp_public_review_checkpoint_status(checkpoint: &Value) -> Value {
@@ -5204,26 +5212,13 @@ mod tests {
 		assert!(
 			combined["live"]["current_lanes"][0]["phase_acceptance"]["changed_surfaces"].is_null()
 		);
-		assert_eq!(combined["live"]["current_lanes"][0]["loop_review"]["status"], "pending");
-		assert_eq!(combined["live"]["current_lanes"][0]["loop_review"]["checkpoint"]["round"], 3);
-		assert!(
-			combined["live"]["current_lanes"][0]["loop_review"]["checkpoint"]["head_sha"].is_null()
-		);
+		assert!(combined["live"]["current_lanes"][0]["loop_review"].is_null());
 		assert_eq!(combined["review"]["post_review_lanes"][0]["pr_url"], "https://example/pr/1");
 		assert!(combined["review"]["post_review_lanes"][0]["branch_name"].is_null());
 		assert!(combined["review"]["post_review_lanes"][0]["loop_status"].is_null());
 		assert_eq!(
 			combined["review"]["current_lane_reviews"].as_array().expect("review array").len(),
-			1
-		);
-		assert_eq!(combined["review"]["current_lane_reviews"][0]["review"]["status"], "pending");
-		assert_eq!(
-			combined["review"]["current_lane_reviews"][0]["review"]["checkpoint"]["round"],
-			3
-		);
-		assert!(
-			combined["review"]["current_lane_reviews"][0]["review"]["checkpoint"]["active_fingerprints"]
-				.is_null()
+			0
 		);
 
 		assert_no_sensitive_observability_content(&combined);
@@ -5255,6 +5250,74 @@ mod tests {
 		assert_eq!(review["schema"], "decodex.mcp.pr_review_state/1");
 		assert_eq!(review["current_lane_reviews"].as_array().expect("review array").len(), 0);
 		assert!(!serialized.contains("stale_recent_finding"));
+	}
+
+	#[test]
+	fn pr_review_state_includes_object_current_lane_review() {
+		let snapshot = serde_json::json!({
+			"schema": "decodex.mcp.status_resource/1",
+			"project_id": "decodex",
+			"current_lanes": [
+				{
+					"run_id": "run-review",
+					"issue_id": "issue-review",
+					"issue_identifier": "XY-1095",
+					"loop_status": {
+						"review": observability_review_status_fixture(
+							"private-head-sha",
+							"fingerprint-private",
+							"stop-fingerprint-private",
+							3
+						)
+					}
+				}
+			],
+			"post_review_lanes": []
+		});
+		let review = super::mcp_pr_review_state_resource(snapshot);
+		let current_lane_reviews = review["current_lane_reviews"].as_array().expect("review array");
+
+		assert_eq!(current_lane_reviews.len(), 1);
+		assert_eq!(current_lane_reviews[0]["run_id"], "run-review");
+		assert_eq!(current_lane_reviews[0]["review"]["status"], "pending");
+		assert_eq!(current_lane_reviews[0]["review"]["checkpoint"]["round"], 3);
+		assert!(current_lane_reviews[0]["review"]["checkpoint"]["active_fingerprints"].is_null());
+	}
+
+	#[test]
+	fn mcp_review_surfaces_ignore_null_loop_review_status() {
+		let snapshot = serde_json::json!({
+			"schema": "decodex.mcp.status_resource/1",
+			"project_id": "decodex",
+			"current_lanes": [
+				{
+					"run_id": "run-null-review",
+					"issue_id": "issue-null-review",
+					"issue_identifier": "XY-1095",
+					"loop_status": {
+						"review": null
+					}
+				}
+			],
+			"post_review_lanes": [
+				{
+					"project_id": "decodex",
+					"issue_id": "issue-null-review",
+					"issue_identifier": "XY-1095",
+					"loop_status": {
+						"review": null
+					}
+				}
+			]
+		});
+		let review = super::mcp_pr_review_state_resource(snapshot.clone());
+		let activity = super::mcp_run_activity_summary(&snapshot["current_lanes"][0]);
+		let post_review_lane =
+			super::mcp_public_post_review_lane(&snapshot["post_review_lanes"][0]);
+
+		assert_eq!(review["current_lane_reviews"].as_array().expect("review array").len(), 0);
+		assert!(activity["loop_review"].is_null());
+		assert!(post_review_lane["loop_review"].is_null());
 	}
 
 	#[test]
@@ -5316,9 +5379,10 @@ mod tests {
 		let current_lane_reviews =
 			pr_review_state["current_lane_reviews"].as_array().expect("review array");
 
-		assert_eq!(current_lane_reviews.len(), 1);
-		assert_eq!(current_lane_reviews[0]["run_id"], "run-12");
-		assert_eq!(current_lane_reviews[0]["review"]["status"], "pending");
+		assert!(
+			current_lane_reviews.is_empty(),
+			"unexpected current lane reviews: {current_lane_reviews:?}"
+		);
 		assert_eq!(protocol_activity["schema"], "decodex.mcp.protocol_activity/1");
 		assert_eq!(protocol_activity["run_id"], "run-12");
 		assert!(
@@ -5428,9 +5492,10 @@ mod tests {
 		let current_lane_reviews =
 			pr_review_state["current_lane_reviews"].as_array().expect("review array");
 
-		assert_eq!(current_lane_reviews.len(), 1);
-		assert_eq!(current_lane_reviews[0]["run_id"], "run-12");
-		assert_eq!(current_lane_reviews[0]["review"]["status"], "pending");
+		assert!(
+			current_lane_reviews.is_empty(),
+			"unexpected current lane reviews: {current_lane_reviews:?}"
+		);
 		assert!(
 			serde_json::to_string(&protocol_activity)
 				.expect("protocol activity should serialize")
@@ -6833,14 +6898,6 @@ mod tests {
 				"path": "/private/activity-marker"
 			},
 			"phase_acceptance": observability_phase_acceptance_fixture(),
-			"loop_status": {
-				"review": observability_review_status_fixture(
-					"private-head-sha",
-					"fingerprint-private",
-					"stop-fingerprint-private",
-					3
-				)
-			},
 			"private_evidence": {
 				"raw": "hidden"
 			},
