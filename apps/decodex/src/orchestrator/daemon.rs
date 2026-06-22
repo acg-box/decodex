@@ -556,6 +556,8 @@ where
 				ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
 			}
 
+			validate_workflow_read_first_files(context.project, context.workflow)?;
+
 			state_store.configure_dispatch_slot_root(
 				context.project.service_id(),
 				context.project.worktree_root(),

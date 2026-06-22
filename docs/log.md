@@ -2,6 +2,9 @@
 
 ## 2026-06-22
 
+- Added the workflow `context.read_first` dispatch preflight and agent-evidence
+  live-wait projection boundary so stale workflow paths fail before lease/attempt
+  ownership while normal running waits remain run capsules instead of blockers.
 - Documented the ordinary dispatch guard for retained review handoff lanes:
   matching retained worktree plus review lifecycle record blocks normal, Program, and
   retry intake with `review_handoff_state_transition_pending` while post-review

@@ -116,6 +116,72 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	assert_eq!(event_json["blocker_count"], 3);
 }
 
+#[test]
+fn agent_evidence_snapshot_does_not_turn_waiting_running_lane_into_attention_blocker() {
+	let temp_dir = TempDir::new().expect("temp dir should create");
+	let _home_guard = TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be utf-8"));
+	let mut current_lane = operator_status_text_current_lane();
+
+	current_lane.wait_reason = Some(String::from("tool_execution"));
+	current_lane.lane_control_next_action = String::from("continue_owned_attempt");
+	current_lane.counts_as_running = true;
+	current_lane.needs_attention = false;
+	current_lane.suspected_stall = false;
+
+	let snapshot = OperatorStatusSnapshot {
+		project_id: String::from(TEST_SERVICE_ID),
+		run_limit: 10,
+		status_source: None,
+		snapshot_age_seconds: None,
+		warnings: Vec::new(),
+		warning_details: Vec::new(),
+		connector_backoffs: Vec::new(),
+		projects: vec![agent_evidence_project_status_with_configured_gh()],
+		account_control: OperatorCodexAccountControlStatus {
+			mode: String::from("balanced"),
+			account_selector: None,
+		},
+		accounts: Vec::new(),
+		current_lanes: vec![current_lane.clone()],
+		recent_runs: vec![current_lane],
+		history_lanes: Vec::new(),
+		execution_programs: Vec::new(),
+		queued_candidates: Vec::new(),
+		worktrees: operator_status_text_worktrees(),
+		post_review_lanes: Vec::new(),
+	};
+	let results = orchestrator::write_agent_evidence_snapshot(
+		&snapshot,
+		AgentEvidenceSource::ServeTick,
+	)
+	.expect("agent evidence should write");
+	let result = results.first().expect("project evidence should exist");
+	let index_path = temp_dir
+		.path()
+		.join(".codex/decodex/agent-evidence/pubfi/handoff-index.json");
+	let index_json = read_json_file(&index_path);
+
+	assert_eq!(result.handoff_index.summary.blocker_count, 0);
+	assert_eq!(index_json["summary"]["blocker_count"], 0);
+	assert_eq!(index_json["blockers"].as_array().expect("blockers should be array").len(), 0);
+
+	let capsule_path = index_json["run_capsules"][0]["path"]
+		.as_str()
+		.expect("run capsule path should be a string");
+	let capsule_json = read_json_file(Path::new(capsule_path));
+
+	assert_eq!(capsule_json["wait_reason"], "tool_execution");
+	assert_eq!(capsule_json["diagnosis"]["attention_required"], false);
+	assert!(capsule_json["diagnosis"]["reason_code"].is_null());
+	assert!(
+		!temp_dir
+			.path()
+			.join(".codex/decodex/agent-evidence/pubfi/blockers/pub-101.json")
+			.exists(),
+		"ordinary wait_reason must not create a stale attention blocker file"
+	);
+}
+
 fn assert_agent_evidence_github_cli_authority(index_json: &Value) {
 	assert_eq!(index_json["github_cli_authority"]["discovery_tier"], "configured");
 	assert_eq!(index_json["github_cli_authority"]["command_path"], "/opt/homebrew/bin/gh");
