@@ -8,7 +8,7 @@ owner: automation
 tags: [runbook]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/status.rs]
 drift_watch: [decodex recover ghost-lane, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, runtime_recovery_required, runtime_recovery_blocked, authority_boundary_check, architecture_recovery_packet, architecture_recovery_started, architecture_recovery_terminal, loop_status]
-last_verified: 2026-06-19
+last_verified: 2026-06-22
 ---
 # Lane-Control Recovery
 
@@ -80,6 +80,10 @@ Before mutating anything, confirm:
 - `run_lease_missing` rejections together with process, protocol, channel, branch,
   and retained worktree evidence when the lane still appears live
 - private evidence and public lifecycle signal
+- latest issue-level phase-goal evidence; an open phase such as `handoff_evidence`
+  survives later empty failed-start attempts until terminal finalization, review
+  completion, a decision request, blocked recovery, blocker checkpoint, or audited
+  failed-start cleanup closes it
 - latest `authority_boundary_check` private event when guardrail pressure, broad
   steer, hard fallback, ambiguous retained progress, or uncovered direction could
   change the accepted authority envelope
@@ -102,6 +106,7 @@ or clean labels.
 | Live or fresh cached status shows `runtime_recovery_blocked`, or `recover ghost-lane` reports blockers. | Preserve attention. | Inspect the blocker named by status or diagnose output; do not hand-edit runtime SQLite rows or clear the lane while a tracker issue, retained worktree, control-channel file, live execution signal, private evidence outside the allowed PubFi MCP fixture control rows, mixed private evidence, PR lineage, or review lifecycle record exists. |
 | Retained worktree has useful local changes and lineage matches issue, branch, runtime evidence, and PR when present. | Resume or repair the same lane. | Use `decodex run <ISSUE>` when the registered workflow makes it eligible, or use the specific retained recovery runbook. |
 | Review lifecycle record is missing or stale but the retained PR lane appears recoverable. | Diagnose before rebind. | Run `decodex recover review-handoff diagnose <ISSUE>` and follow [`recover-review-handoff.md`](./recover-review-handoff.md). |
+| A later failed-start attempt has little or no evidence, but an earlier issue-level phase-goal continuation is still open. | Preserve retained lifecycle ownership. | Resume the open phase or use the matching recovery runbook; do not classify the lane as failed-start cleanup debt or clear the worktree mapping. |
 | Queue label or tracker state was changed and the scheduler should observe it before the next poll. | Request a refresh, not a retry. | `POST /api/linear-scan` with `projectId`, or no body for all enabled projects. |
 | Queue label should be added, removed, or interpreted. | Use service-scoped label policy. | Follow the `decodex-ops` skill; do not guess `<service-id>` or clear `needs-attention` before fixing the blocker. |
 | Broad steer materially changes the objective or acceptance contract. | Preserve audit and resolve lifecycle explicitly. | Update and requeue the same issue, create a new issue/lane, or route the owned run to manual attention. |
