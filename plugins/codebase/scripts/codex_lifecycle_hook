@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""Small Codex lifecycle hints for hack-ink workflow plugins."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+STATE_DIR = Path.home() / ".codex" / "hack-ink-hooks"
+STATE_PATH = STATE_DIR / "events.jsonl"
+
+ROUTE_RULES = [
+    {
+        "requires_root": True,
+        "terms": [
+            "code",
+            "repo",
+            "bug",
+            "fix",
+            "test",
+            "review",
+            "refactor",
+            "build",
+            "lint",
+            "typecheck",
+            "makefile",
+            "dependency",
+            "plugin",
+            "skill",
+        ],
+        "hint": (
+            "For repository implementation or verification, load $codebase:work; "
+            "use $codebase:verification before ready/done/fixed claims."
+        ),
+    },
+    {
+        "terms": ["docs", "okf", "wiki", "knowledge", "semantic drift", "repo-memory"],
+        "hint": (
+            "For docs, OKF/LLM Wiki, semantic drift, repo-memory, or knowledge "
+            "updates, load the matching $knowledge:* owner, including "
+            "$knowledge:writeback after stable changes."
+        ),
+    },
+    {
+        "terms": ["unclear", "architecture", "design", "plan", "方案", "架构"],
+        "hint": (
+            "For unclear intent, architecture, option boundaries, or hidden "
+            "assumptions, use $deliberation:grill."
+        ),
+    },
+    {
+        "terms": ["evidence", "search", "current state", "现状", "查", "研究"],
+        "hint": (
+            "For non-trivial read-only evidence gathering, use "
+            "$deliberation:scout; keep implementation on the main thread."
+        ),
+    },
+    {
+        "terms": ["skeptic", "challenge", "ready", "decision", "质疑", "反证"],
+        "hint": (
+            "For skeptic review, assumption testing, or ready/decision-ready "
+            "critique, use $deliberation:challenge."
+        ),
+    },
+]
+
+
+def load_payload() -> dict[str, Any]:
+    raw = sys.stdin.read()
+    if not raw.strip():
+        return {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"raw": raw[:1000]}
+    return value if isinstance(value, dict) else {"value": value}
+
+
+def walk_strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        strings: list[str] = []
+        for item in value.values():
+            strings.extend(walk_strings(item))
+        return strings
+    if isinstance(value, list):
+        strings = []
+        for item in value:
+            strings.extend(walk_strings(item))
+        return strings
+    return []
+
+
+def git_root() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() or None
+
+
+def changed_file_stats() -> list[dict[str, Any]]:
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--numstat"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    stats = []
+    for line in result.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3:
+            continue
+        added, removed, path = parts
+        try:
+            total = int(added) + int(removed)
+        except ValueError:
+            total = 0
+        stats.append({"path": path, "added": added, "removed": removed, "changed": total})
+    return stats
+
+
+def route_hints(text: str, root: str | None) -> list[str]:
+    lowered = text.lower()
+    hints: list[str] = []
+    for rule in ROUTE_RULES:
+        if rule.get("requires_root") and not root:
+            continue
+        if any(term in lowered for term in rule["terms"]):
+            hints.append(rule["hint"])
+    return hints
+
+
+def record_event(event: str, payload: dict[str, Any], root: str | None, hints: list[str]) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    record = {
+        "time": datetime.now(timezone.utc).isoformat(),
+        "event": event,
+        "cwd": os.getcwd(),
+        "git_root": root,
+        "hints": hints,
+    }
+    if event == "PostToolUse":
+        large_changes = [item for item in changed_file_stats() if item["changed"] >= 800]
+        if large_changes:
+            record["large_changes"] = large_changes[:20]
+    strings = walk_strings(payload)
+    if strings:
+        record["sample"] = " ".join(strings)[:500]
+    with STATE_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--event", required=True)
+    args = parser.parse_args()
+    payload = load_payload()
+    root = git_root()
+    prompt_text = " ".join(walk_strings(payload))
+    hints = route_hints(prompt_text, root) if args.event == "UserPromptSubmit" else []
+    record_event(args.event, payload, root, hints)
+    if hints:
+        print(json.dumps({"hookSpecificOutput": {"additionalContext": "\n".join(hints)}}))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

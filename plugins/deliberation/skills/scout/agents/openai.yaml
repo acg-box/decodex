@@ -1,0 +1,3 @@
+interface:
+  display_name: "Scout"
+  short_description: "Gather bounded read-only evidence"
