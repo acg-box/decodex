@@ -280,3 +280,7 @@
 - Clarified that pre-existing, repo-wide, or global-baseline repo-gate failures are
   runtime-owned signals and must not be routed through agent-requested
   `manual_attention`.
+- Applied Authority Boundary landing requirements to retained admin-merge preflight,
+  so `requires_human_decision`, `requires_enhanced_evidence`, and `block_landing`
+  events block runtime auto-land through the same trusted state that operator status
+  uses.
