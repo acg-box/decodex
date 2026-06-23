@@ -24,6 +24,8 @@ code_refs:
   - apps/decodex/src/mcp.rs
   - apps/decodex/src/program_intake.rs
   - apps/decodex/src/orchestrator/status.rs
+  - apps/decodex/src/orchestrator/types.rs
+  - apps/decodex/src/orchestrator/operator_dashboard.html
   - apps/decodex/src/state/store.rs
   - apps/decodex/src/state/internal.rs
 related:
@@ -392,6 +394,14 @@ links. That lineage remains private runtime metadata; generated tracker issue te
 stays a natural-language brief and must not expose signal ids, proposal ids, Program
 ids, node ids, or graph mechanics.
 
+Operator, App, and MCP status readback may expose a public-safe projection of the same
+chain so autonomy is inspectable without SQLite. The projection must include the
+current accepted Objective Contract version, recent signal summaries with source refs,
+freshness, redaction level, completeness, and known gaps, proposal state and refusal
+reasons, and proposal -> Decision Contract -> Program Intake lineage. It must not
+include raw evidence payloads, hidden reasoning, local-only paths, credentials,
+unredacted private source refs, or generated issue graph mechanics.
+
 ## MCP And Skill Action Matrix
 
 MCP is the typed machine interface. Skills are the policy pack that tells agents
@@ -463,6 +473,9 @@ evidence.
 Generated reports must carry `generated_at`, `window_start`, `window_end`,
 `source_surfaces`, `source_refs`, `redaction_level`, `completeness`, and
 `known_gaps`.
+Operator and MCP report readback must label report output as a derived query view,
+not audit authority, and must expose source refs, redaction level, completeness, and
+known gaps before any dashboard or agent-facing surface claims freshness.
 
 ## Self-Dogfood Boundary
 

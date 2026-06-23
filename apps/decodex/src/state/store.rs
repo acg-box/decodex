@@ -48,8 +48,11 @@ pub(crate) struct ProjectLoopEvidenceSnapshot {
 	private_events: HashMap<(String, String, i64), Vec<PrivateExecutionEvent>>,
 	review_lifecycle_records: HashMap<(String, String), ReviewLifecycleRecord>,
 	review_checkpoints: HashMap<(String, String, i64, String), ReviewPolicyCheckpoint>,
+	decision_contracts: Vec<DecisionContractRecord>,
+	autonomy_objectives: Vec<AutonomyObjectiveRecord>,
 	autonomy_signals: Vec<AutonomySignalRecord>,
 	autonomy_proposals: Vec<AutonomyProposalRecord>,
+	program_intake_plans: Vec<ProgramIntakePlanRecord>,
 }
 impl ProjectLoopEvidenceSnapshot {
 	fn insert_private_event(&mut self, event: PrivateExecutionEvent) {
@@ -82,12 +85,24 @@ impl ProjectLoopEvidenceSnapshot {
 		);
 	}
 
+	fn insert_decision_contract(&mut self, contract: DecisionContractRecord) {
+		self.decision_contracts.push(contract);
+	}
+
+	fn insert_autonomy_objective(&mut self, objective: AutonomyObjectiveRecord) {
+		self.autonomy_objectives.push(objective);
+	}
+
 	fn insert_autonomy_signal(&mut self, signal: AutonomySignalRecord) {
 		self.autonomy_signals.push(signal);
 	}
 
 	fn insert_autonomy_proposal(&mut self, proposal: AutonomyProposalRecord) {
 		self.autonomy_proposals.push(proposal);
+	}
+
+	fn insert_program_intake_plan(&mut self, plan: ProgramIntakePlanRecord) {
+		self.program_intake_plans.push(plan);
 	}
 
 	fn sort_private_events(&mut self) {
@@ -98,6 +113,25 @@ impl ProjectLoopEvidenceSnapshot {
 					.then_with(|| left.record_id().cmp(&right.record_id()))
 			});
 		}
+	}
+
+	fn sort_decision_contracts(&mut self) {
+		self.decision_contracts.sort_by(|left, right| {
+			right
+				.updated_at_unix()
+				.cmp(&left.updated_at_unix())
+				.then_with(|| left.contract_id().cmp(right.contract_id()))
+		});
+	}
+
+	fn sort_autonomy_objectives(&mut self) {
+		self.autonomy_objectives.sort_by(|left, right| {
+			right
+				.updated_at_unix()
+				.cmp(&left.updated_at_unix())
+				.then_with(|| left.objective_id().cmp(right.objective_id()))
+				.then_with(|| left.version().cmp(&right.version()))
+		});
 	}
 
 	fn sort_autonomy_signals(&mut self) {
@@ -115,6 +149,16 @@ impl ProjectLoopEvidenceSnapshot {
 				.updated_at_unix()
 				.cmp(&left.updated_at_unix())
 				.then_with(|| left.proposal_id().cmp(right.proposal_id()))
+			});
+	}
+
+	fn sort_program_intake_plans(&mut self) {
+		self.program_intake_plans.sort_by(|left, right| {
+			right
+				.updated_at_unix()
+				.cmp(&left.updated_at_unix())
+				.then_with(|| left.program_id().cmp(right.program_id()))
+				.then_with(|| left.plan_id().cmp(right.plan_id()))
 		});
 	}
 
@@ -177,6 +221,48 @@ impl ProjectLoopEvidenceSnapshot {
 
 	pub(crate) fn recent_autonomy_proposals(&self, limit: usize) -> Vec<&AutonomyProposalRecord> {
 		self.autonomy_proposals.iter().take(limit).collect()
+	}
+
+	pub(crate) fn autonomy_objective(
+		&self,
+		objective_id: &str,
+		objective_version: u64,
+	) -> Option<&AutonomyObjectiveRecord> {
+		self.autonomy_objectives.iter().find(|record| {
+			record.objective_id() == objective_id && record.version() == objective_version
+		})
+	}
+
+	pub(crate) fn accepted_autonomy_objectives(&self) -> Vec<&AutonomyObjectiveRecord> {
+		self.autonomy_objectives
+			.iter()
+			.filter(|record| record.state() == AutonomyObjectiveState::Accepted)
+			.collect()
+	}
+
+	pub(crate) fn decision_contracts_for_autonomy_proposal(
+		&self,
+		proposal_id: &str,
+	) -> Vec<&DecisionContractRecord> {
+		self.decision_contracts
+			.iter()
+			.filter(|record| {
+				record.contract().research_provenance().iter().any(|provenance| {
+					provenance.kind() == "autonomy_proposal"
+						&& provenance.reference() == proposal_id
+				})
+			})
+			.collect()
+	}
+
+	pub(crate) fn program_intake_plans_for_contract(
+		&self,
+		contract_id: &str,
+	) -> Vec<&ProgramIntakePlanRecord> {
+		self.program_intake_plans
+			.iter()
+			.filter(|record| record.source_contract_id() == Some(contract_id))
+			.collect()
 	}
 }
 
@@ -2190,6 +2276,20 @@ impl StateStore {
 			snapshot.insert_review_checkpoint(record.as_public());
 		}
 		for record in state
+			.decision_contracts
+			.values()
+			.filter(|record| record.project_id == project_id)
+		{
+			snapshot.insert_decision_contract(record.as_public());
+		}
+		for record in state
+			.autonomy_objectives
+			.values()
+			.filter(|record| record.project_id == project_id)
+		{
+			snapshot.insert_autonomy_objective(record.as_public());
+		}
+		for record in state
 			.autonomy_signals
 			.values()
 			.filter(|record| record.project_id == project_id)
@@ -2203,10 +2303,20 @@ impl StateStore {
 		{
 			snapshot.insert_autonomy_proposal(record.as_public());
 		}
+		for record in state
+			.program_intake_plans
+			.values()
+			.filter(|record| record.project_id == project_id)
+		{
+			snapshot.insert_program_intake_plan(record.clone());
+		}
 
 		snapshot.sort_private_events();
+		snapshot.sort_decision_contracts();
+		snapshot.sort_autonomy_objectives();
 		snapshot.sort_autonomy_signals();
 		snapshot.sort_autonomy_proposals();
+		snapshot.sort_program_intake_plans();
 
 		Ok(snapshot)
 	}
