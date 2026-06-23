@@ -402,8 +402,9 @@ reasons, proposal -> Decision Contract -> Program Intake lineage, and replay evi
 from PR handoff, validation, and post-land or post-restart proof when the autonomy
 work has reached those lifecycle surfaces. PR replay evidence is derived from retained
 review lifecycle readback only when a matching private replay-evidence pointer ties
-the retained PR row back to the same proposal or Decision Contract. Validation and
-post-land replay evidence may be projected from private runtime events with schema
+the retained PR row back to the same proposal or Decision Contract, run, attempt, PR
+URL, PR head ref, and PR head oid. Validation and post-land replay evidence may be
+projected from private runtime events with schema
 `decodex.autonomy_replay_evidence/1`; `post_land` is the post-lifecycle umbrella for
 post-land, post-restart, installation, and plugin-sync proof. Those events are
 evidence pointers only and do not authorize review, landing, installation, restart,
