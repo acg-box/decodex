@@ -118,11 +118,16 @@ state or this state machine.
   without mutating Linear or persisting Program Intake rows. `--apply` creates or
   updates generated normal Linear issue briefs, links generated issue ids and internal
   node ids back into private runtime records, and persists the local Program Intake
-  Plan plus Execution Program state. The Linear description stays a natural-language
-  issue brief with objective, public authority summary, acceptance, validation, and
-  stop conditions; it must not include Execution Program ids or node ids. It must not
-  start implementation inline and must not apply queue labels; direct Program dispatch
-  is performed by the scheduler after the Program is persisted.
+  Plan plus Execution Program state. When the contract came from accepted autonomy
+  work, the Program Intake Plan preserves objective, signal, and proposal lineage
+  privately so the runtime can replay objective -> signal -> proposal -> Decision
+  Contract -> intake -> program -> generated issue links. The Linear description
+  stays a natural-language issue brief with objective, public authority summary,
+  ownership boundary, acceptance, validation, lifecycle gates, and stop conditions; it
+  must not include autonomy signal ids, autonomy proposal ids, Execution Program ids,
+  Program node ids, or graph mechanics. It must not start implementation inline and
+  must not apply queue labels; direct Program dispatch is performed by the scheduler
+  after the Program is persisted.
 - `decodex intake issues <ISSUE>... --dry-run` is a tracker-read-only operator
   surface for existing Linear issues. It classifies the supplied batch as ready,
   held, blocked, stale, or unmapped and builds the same internal program model used
@@ -146,7 +151,7 @@ mirror:
 | Runtime SQLite `autonomy_signals` | Versioned `decodex.autonomy_signal/1` payloads scoped by project and exact Objective Contract id/version. Rows are read-only evidence for future proposal compilation, expose freshness, gaps, contradictions, confidence, and privacy in status readback, and do not mutate tracker state, runtime authority rows outside signal persistence, worktrees, GitHub, Program Intake, proposals, or execution state. |
 | Runtime SQLite `autonomy_proposals` | Versioned `decodex.autonomy_proposal/1` dry-run records scoped by project, exact Objective Contract id/version, and referenced signal ids. Rows expose stable evidence-bound proposal identity, objective lineage, source signals, goals, metrics, non-goals, allowed surfaces, validation gates, review and challenge requirements, rejected alternatives, rollback path, contradictions, gaps, refusal reasons, and challenge evidence in readback. Proposal persistence remains non-executable and must not mutate tracker state, GitHub, worktrees, Program Intake, Decision Contracts, or execution state. |
 | Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads with embedded or linked `decodex.program_intake_plan/1` planning data. They hold internal node lifecycle/readiness, dependency, conflict-domain, dispatch intent, drift, and normal-issue mapping; Linear issue descriptions and ledger comments are only coarse projections. |
-| Runtime SQLite `program_intake_plans` | Queryable local projection of `decodex.program_intake_plan/1` metadata, including intake kind, source contract when present, authority fingerprint, and public-safe summary. |
+| Runtime SQLite `program_intake_plans` | Queryable local projection of `decodex.program_intake_plan/1` metadata, including intake kind, source contract when present, authority fingerprint, and public-safe summary. The paired versioned program payload retains optional private objective/signal/proposal lineage for accepted autonomy-derived intake. |
 | Runtime SQLite `program_issue_mappings` | Queryable local projection of each internal program node's mapped Linear issue, tracker state, dispatch intent, active/manual/attention facts, and dispatch-briefing fact. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing run lease ownership. |
 | Runtime SQLite `review_lifecycle_records` | Single authoritative post-review record for one retained PR-backed lane. It stores handoff identity, PR URL, base/head branch, validated head OID, current post-review phase, review-request metadata, landing/closeout/repair state, evidence, and next action. Handoff and orchestration tool-boundary shapes are projections of this record, not separate durable authority. Historical `review_handoffs` and `review_orchestrations` tables are dropped during bootstrap, not migrated or used as readback authority. |
