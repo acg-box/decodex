@@ -484,6 +484,222 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 }
 
 #[test]
+fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_boundary() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
+	let config =
+		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
+	let repo_root = config.repo_root().to_path_buf();
+	let issue = post_review_sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
+	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
+	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
+	state_store
+		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
+		.expect("worktree should record");
+
+	seed_review_handoff_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&sample_review_handoff_marker("main", pr_url, &head_oid),
+	);
+	seed_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+	);
+	record_block_landing_authority_boundary(&state_store, &issue);
+
+	let mut review_state = sample_pull_request_review_state(
+		pr_url,
+		"main",
+		&head_oid,
+		Some("APPROVED"),
+		"MERGEABLE",
+		"CLEAN",
+		Some("SUCCESS"),
+		0,
+	);
+
+	add_external_review_ack(&mut review_state);
+	add_external_review_pass(&mut review_state);
+
+	orchestrator::reconcile_post_review_orchestration_with_inspector(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
+	)
+	.expect("post-review orchestration should wait for authority-boundary clearance");
+
+	let marker = persisted_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+	);
+
+	assert_eq!(marker.phase(), "waiting_for_result");
+	assert!(marker.auto_merge_enabled_at_unix_epoch().is_none());
+	assert!(
+		!invocation_log_path.exists(),
+		"authority-boundary landing requirements must prevent runtime admin merge"
+	);
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+}
+
+#[test]
+fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_boundary() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
+	let config =
+		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
+	let repo_root = config.repo_root().to_path_buf();
+	let issue = post_review_sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
+	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
+	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
+	state_store
+		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
+		.expect("worktree should record");
+
+	seed_review_handoff_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&sample_review_handoff_marker("main", pr_url, &head_oid),
+	);
+	seed_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+	);
+	record_requires_human_authority_boundary(&state_store, &issue);
+
+	let mut review_state = sample_pull_request_review_state(
+		pr_url,
+		"main",
+		&head_oid,
+		Some("APPROVED"),
+		"MERGEABLE",
+		"CLEAN",
+		Some("SUCCESS"),
+		0,
+	);
+
+	add_external_review_ack(&mut review_state);
+	add_external_review_pass(&mut review_state);
+
+	orchestrator::reconcile_post_review_orchestration_with_inspector(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
+	)
+	.expect("post-review orchestration should wait for human authority decision");
+
+	let marker = persisted_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+	);
+
+	assert_eq!(marker.phase(), "waiting_for_result");
+	assert!(marker.auto_merge_enabled_at_unix_epoch().is_none());
+	assert!(
+		!invocation_log_path.exists(),
+		"human authority decisions must prevent runtime admin merge"
+	);
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+}
+
+#[test]
+fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision_request() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
+	let config =
+		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
+	let repo_root = config.repo_root().to_path_buf();
+	let issue = post_review_sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
+	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
+	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
+	state_store
+		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
+		.expect("worktree should record");
+
+	seed_review_handoff_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&sample_review_handoff_marker("main", pr_url, &head_oid),
+	);
+	seed_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+	);
+	record_authority_decision_request(&state_store, &issue);
+
+	let mut review_state = sample_pull_request_review_state(
+		pr_url,
+		"main",
+		&head_oid,
+		Some("APPROVED"),
+		"MERGEABLE",
+		"CLEAN",
+		Some("SUCCESS"),
+		0,
+	);
+
+	add_external_review_ack(&mut review_state);
+	add_external_review_pass(&mut review_state);
+
+	orchestrator::reconcile_post_review_orchestration_with_inspector(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
+	)
+	.expect("post-review orchestration should wait for authority decision request");
+
+	let marker = persisted_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+	);
+
+	assert_eq!(marker.phase(), "waiting_for_result");
+	assert!(marker.auto_merge_enabled_at_unix_epoch().is_none());
+	assert!(
+		!invocation_log_path.exists(),
+		"authority decision requests must prevent runtime admin merge"
+	);
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+}
+
+#[test]
 fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallback() {
 	let (temp_dir, config, workflow) = temp_project_layout();
 	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
