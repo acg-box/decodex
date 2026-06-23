@@ -53,7 +53,7 @@ Static budget snapshot from the 2026-06-23 source-root run:
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `plugins/decodex` | 735 | 50 | 685 | 3963 | 2322 | 4698 |
 | `plugins/knowledge` | 2108 | 227 | 1881 | 4340 | 0 | 6448 |
-| `plugins/codebase` | 3139 | 234 | 2905 | 3389 | 0 | 6528 |
+| `plugins/codebase` | 3139 | 234 | 2905 | 4363 | 0 | 7502 |
 | `plugins/deliberation` | 1634 | 195 | 1439 | 48 | 0 | 1682 |
 
 ## Invocation Policy
@@ -94,17 +94,22 @@ Decodex lifecycle:
 ## Hook Boundary
 
 `plugins/codebase/hooks/hooks.json` adds auxiliary Codex lifecycle hints for
-`UserPromptSubmit`, `PostToolUse`, and `PreCompact`. The hook is not the source of
-workflow authority: skill frontmatter and host `AGENTS.md` remain the primary routing
-mechanism. A Codex hook trust prompt may still be required before the hook executes in
-a live session.
+`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `PreCompact`. It reminds Codex
+about `decodex/commit/1` commit-message style before commit or push operations, warns
+about large implementation diffs before ready/commit claims, and keeps development
+coupled to source-backed docs, OKF/LLM Wiki, or durable knowledge before non-trivial
+repo work and when public code/config/command/status/plugin surfaces change. The hook
+is not the source of workflow authority: skill frontmatter and host `AGENTS.md`
+remain the primary routing mechanism. A Codex hook trust prompt may still be required
+before the hook executes in a live session.
 
 ## Limits
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
 2026-06-23 rerun after adding writeback, scout, grill, challenge, module-boundary
-guardrails, and auxiliary hooks reported all four local plugins at 100/100, grade A,
-low risk, with zero failing checks and zero warnings.
+guardrails, commit/push reminders, public-surface docs coupling, and auxiliary hooks
+reported all four local plugins at 100/100, grade A, low risk, with zero failing
+checks and zero warnings.
 
 Directly evaluating the installed cache path
 `~/.codex/plugins/cache/hack-ink/decodex/0.2.0` reports an additional

@@ -11,6 +11,18 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Shell|exec_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/hack-ink/codebase/0.1.0/scripts/codex_lifecycle_hook\" --event PreToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash|Edit|Write|apply_patch",
