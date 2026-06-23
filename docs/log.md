@@ -9,6 +9,10 @@
   proposal promotion without bypassing Decision Contract, Program Intake, review, or
   landing authority. The surface now fails closed on caller-supplied accepted-policy
   bodies and redacts local-private signal refs while preserving ref counts.
+- Added the retained review-repair terminalization contract: after local validation
+  passes, Decodex now owns pushing the repaired head to the retained PR branch,
+  records typed push failures before marker refresh, and only refreshes retained
+  review lineage after PR readback confirms the remote head matches local `HEAD`.
 - Tightened the Codebase Codex lifecycle hook so Codex-owned commit/push attempts
   receive the `decodex/commit/1` JSON message contract, large implementation diffs
   trigger module-boundary challenge guidance before ready claims, public
@@ -25,6 +29,11 @@
   continue to a commit-capable handoff when canonicalize rewrites only pre-gate
   implementation paths, while unsafe or strict-boundary rewrites still preserve
   `repo_gate_tracked_rewrites_left`.
+- Split accepted-review repair validation from ordinary handoff: after
+  `repair_accepted_review_findings` passes repo-gate acceptance, Decodex now advances
+  to `review_repair_evidence` so the retained PR repair head, PR readback,
+  `issue_review_repair_complete`, and `review_repair` terminal finalize stay on the
+  post-review lifecycle path.
 
 ## 2026-06-22
 

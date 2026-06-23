@@ -1,6 +1,7 @@
 mod repo_gate_failure {
 	use std::fmt::Formatter;
 	use std::fmt::Display;
+	use crate::orchestrator::RepoGateFailureDiagnostic;
 	use crate::orchestrator::RepoGateTrackedRewriteDecision;
 	#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 	pub(super) enum RepoGateFailureDisposition {
@@ -102,6 +103,7 @@ mod repo_gate_failure {
 	pub(super) struct RepoGateFailure {
 		kind: RepoGateFailureKind,
 		message: String,
+		diagnostic: Option<RepoGateFailureDiagnostic>,
 		tracked_rewrite_decision: Option<RepoGateTrackedRewriteDecision>,
 	}
 	impl RepoGateFailure {
@@ -109,8 +111,18 @@ mod repo_gate_failure {
 			Self {
 				kind,
 				message,
+				diagnostic: None,
 				tracked_rewrite_decision: None,
 			}
+		}
+
+		pub(super) fn with_diagnostic(
+			mut self,
+			diagnostic: RepoGateFailureDiagnostic,
+		) -> Self {
+			self.diagnostic = Some(diagnostic);
+
+			self
 		}
 
 		pub(super) fn with_tracked_rewrite_decision(
@@ -142,6 +154,17 @@ mod repo_gate_failure {
 			self.kind.terminal_next_action(recovery_gate)
 		}
 
+		pub(super) fn diagnostic(&self) -> Option<&RepoGateFailureDiagnostic> {
+			self.diagnostic.as_ref()
+		}
+
+		pub(super) fn repair_target_detail(&self) -> String {
+			self.diagnostic.as_ref().map_or_else(
+				|| format!("Repo gate failed with `{}`.", self.error_class()),
+				RepoGateFailureDiagnostic::repair_target_detail,
+			)
+		}
+
 		pub(super) fn tracked_rewrite_decision(&self) -> Option<&RepoGateTrackedRewriteDecision> {
 			self.tracked_rewrite_decision.as_ref()
 		}
@@ -162,6 +185,92 @@ use std::process::Output;
 
 use repo_gate_failure::{RepoGateFailure, RepoGateFailureDisposition, RepoGateFailureKind};
 use crate::workflow::ResolvedRepoGate;
+
+const REPO_GATE_DIAGNOSTIC_EXCERPT_LIMIT: usize = 4_000;
+const REPO_GATE_DIAGNOSTIC_LINE_LIMIT: usize = 16;
+const REPO_GATE_DIAGNOSTIC_LINE_WIDTH: usize = 320;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct RepoGateFailureDiagnostic {
+	stage: &'static str,
+	failed_command: String,
+	exit_status: Option<i32>,
+	summary: String,
+	problem_lines: Vec<String>,
+	output_excerpt: String,
+	output_truncated: bool,
+}
+impl RepoGateFailureDiagnostic {
+	fn from_output(
+		stage: &'static str,
+		failed_command: &str,
+		output: &Output,
+		output_text: &str,
+	) -> Self {
+		let (output_excerpt, output_truncated) =
+			repo_gate_bounded_output_excerpt(output_text, REPO_GATE_DIAGNOSTIC_EXCERPT_LIMIT);
+		let problem_lines = repo_gate_problem_lines(output_text);
+		let summary = repo_gate_diagnostic_summary(stage, failed_command, output, &problem_lines);
+
+		Self {
+			stage,
+			failed_command: failed_command.to_owned(),
+			exit_status: output.status.code(),
+			summary,
+			problem_lines,
+			output_excerpt,
+			output_truncated,
+		}
+	}
+
+	fn from_spawn_error(
+		stage: &'static str,
+		failed_command: &str,
+		error: &dyn Display,
+	) -> Self {
+		let output_text = error.to_string();
+		let (output_excerpt, output_truncated) =
+			repo_gate_bounded_output_excerpt(&output_text, REPO_GATE_DIAGNOSTIC_EXCERPT_LIMIT);
+		let problem_lines = repo_gate_problem_lines(&output_text);
+		let summary = format!("Repo gate {stage} command `{failed_command}` failed to spawn.");
+
+		Self {
+			stage,
+			failed_command: failed_command.to_owned(),
+			exit_status: None,
+			summary,
+			problem_lines,
+			output_excerpt,
+			output_truncated,
+		}
+	}
+
+	fn repair_target_detail(&self) -> String {
+		let key_lines = if self.problem_lines.is_empty() {
+			String::from("none")
+		} else {
+			self.problem_lines.join(" | ")
+		};
+
+		format!(
+			"Failed repo-gate command: `{}` during `{}`. Summary: {} Key diagnostic lines: {}.",
+			self.failed_command, self.stage, self.summary, key_lines
+		)
+	}
+
+	fn to_json(&self) -> Value {
+		json!({
+			"schema": "decodex.repo_gate_failure_diagnostic/1",
+			"stage": self.stage,
+			"failed_command": &self.failed_command,
+			"exit_status": self.exit_status,
+			"summary": &self.summary,
+			"problem_lines": &self.problem_lines,
+			"output_excerpt": &self.output_excerpt,
+			"output_truncated": self.output_truncated,
+		})
+	}
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RepoGateTrackedRewriteDecision {
@@ -368,6 +477,111 @@ fn repo_gate_output_text(output: &Output) -> String {
 	String::from("(command produced no output)")
 }
 
+fn repo_gate_bounded_output_excerpt(
+	output_text: &str,
+	limit: usize,
+) -> (String, bool) {
+	let mut excerpt = String::new();
+	let mut truncated = false;
+
+	for character in output_text.chars() {
+		if excerpt.len() + character.len_utf8() > limit {
+			truncated = true;
+
+			break;
+		}
+
+		excerpt.push(character);
+	}
+
+	(excerpt, truncated)
+}
+
+fn repo_gate_diagnostic_summary(
+	stage: &str,
+	failed_command: &str,
+	output: &Output,
+	problem_lines: &[String],
+) -> String {
+	let exit_status = output.status.code().map_or_else(
+		|| String::from("unknown"),
+		|code| code.to_string(),
+	);
+	let first_problem = problem_lines
+		.first()
+		.map_or_else(|| String::from("no diagnostic output"), ToOwned::to_owned);
+
+	format!(
+		"repo gate {stage} command `{failed_command}` exited with status {exit_status}: {first_problem}"
+	)
+}
+
+fn repo_gate_problem_lines(output_text: &str) -> Vec<String> {
+	let lines = output_text.lines().collect::<Vec<_>>();
+	let mut selected_indexes = BTreeSet::new();
+
+	for (index, line) in lines.iter().enumerate() {
+		if repo_gate_line_looks_diagnostic(line) {
+			selected_indexes.insert(index);
+
+			if index > 0 {
+				selected_indexes.insert(index - 1);
+			}
+
+			for follow_index in index.saturating_add(1)..=(index + 4).min(lines.len()) {
+				selected_indexes.insert(follow_index);
+			}
+		}
+	}
+
+	if selected_indexes.is_empty() {
+		selected_indexes.extend(
+			lines
+				.iter()
+				.enumerate()
+				.filter(|(_, line)| !line.trim().is_empty())
+				.take(4)
+				.map(|(index, _)| index),
+		);
+	}
+
+	selected_indexes
+		.into_iter()
+		.filter_map(|index| lines.get(index))
+		.map(|line| repo_gate_truncate_diagnostic_line(line.trim()))
+		.filter(|line| !line.is_empty())
+		.take(REPO_GATE_DIAGNOSTIC_LINE_LIMIT)
+		.collect()
+}
+
+fn repo_gate_line_looks_diagnostic(line: &str) -> bool {
+	let line = line.trim();
+	let lower = line.to_ascii_lowercase();
+
+	line.starts_with("-->")
+		|| lower.starts_with("error")
+		|| lower.starts_with("fatal")
+		|| lower.starts_with("failed")
+		|| lower.starts_with("warning")
+		|| lower.contains(" error:")
+		|| lower.contains(" fatal:")
+		|| lower.contains(" failed")
+		|| lower.contains("panicked at")
+		|| lower.contains("too many lines")
+		|| lower.contains("clippy")
+}
+
+fn repo_gate_truncate_diagnostic_line(line: &str) -> String {
+	let (mut line, truncated) =
+		repo_gate_bounded_output_excerpt(line, REPO_GATE_DIAGNOSTIC_LINE_WIDTH);
+
+	if truncated {
+		line.push_str("...");
+	}
+
+	line
+}
+
 fn repo_gate_git_output_lines(output: &Output) -> BTreeSet<String> {
 	let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -434,6 +648,9 @@ fn run_repo_gate_shell_command(command: &str, cwd: &Path) -> Result<Output> {
 		.current_dir(cwd)
 		.output()
 		.map_err(|error| {
+			let diagnostic =
+				RepoGateFailureDiagnostic::from_spawn_error("spawn", command, &error);
+
 			Report::new(RepoGateFailure::new(
 				RepoGateFailureKind::CommandSpawnFailed,
 				format!(
@@ -444,8 +661,9 @@ fn run_repo_gate_shell_command(command: &str, cwd: &Path) -> Result<Output> {
 					shell_flag,
 					error
 				),
-			))
-			})
+			)
+			.with_diagnostic(diagnostic))
+		})
 }
 
 fn run_repo_gate_cleanliness_check_with_git(
@@ -629,6 +847,12 @@ fn run_canonicalize_commands(commands: &[String], cwd: &Path) -> Result<()> {
 
 		if !output.status.success() {
 			let output_text = repo_gate_output_text(&output);
+			let diagnostic = RepoGateFailureDiagnostic::from_output(
+				"canonicalize",
+				command,
+				&output,
+				&output_text,
+			);
 
 			return Err(Report::new(RepoGateFailure::new(
 				repo_gate_failure_kind_for_output(
@@ -641,7 +865,8 @@ fn run_canonicalize_commands(commands: &[String], cwd: &Path) -> Result<()> {
 					cwd.display(),
 					output_text
 				),
-			)));
+			)
+			.with_diagnostic(diagnostic)));
 		}
 	}
 
@@ -654,6 +879,8 @@ fn run_verify_commands(commands: &[String], cwd: &Path) -> Result<()> {
 
 		if !output.status.success() {
 			let output_text = repo_gate_output_text(&output);
+			let diagnostic =
+				RepoGateFailureDiagnostic::from_output("verify", command, &output, &output_text);
 
 			return Err(Report::new(RepoGateFailure::new(
 				repo_gate_failure_kind_for_output(
@@ -666,7 +893,8 @@ fn run_verify_commands(commands: &[String], cwd: &Path) -> Result<()> {
 					cwd.display(),
 					output_text
 				),
-			)));
+			)
+			.with_diagnostic(diagnostic)));
 		}
 	}
 

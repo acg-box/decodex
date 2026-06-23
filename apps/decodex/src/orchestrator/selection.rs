@@ -218,7 +218,14 @@ fn format_terminal_failure_comment(
 }
 
 fn terminal_failure_pr_url(error: &Report) -> Option<&str> {
-	error.downcast_ref::<ReviewHandoffNeedsAttention>().map(|error| error.pr_url.as_str())
+	error
+		.downcast_ref::<ReviewHandoffNeedsAttention>()
+		.map(|error| error.pr_url.as_str())
+		.or_else(|| {
+			error
+				.downcast_ref::<RetainedReviewRepairPushFailed>()
+				.and_then(|error| error.pr_url.as_deref())
+		})
 }
 
 fn terminal_failure_comment_details(
@@ -268,6 +275,8 @@ fn terminal_failure_comment_details(
 				"inspect the tracker state, PR, and worktree, repair the incomplete review handoff manually, {recovery_gate}"
 			),
 		)
+	} else if let Some(push_failure) = error.downcast_ref::<RetainedReviewRepairPushFailed>() {
+		(push_failure.error_class(), push_failure.terminal_next_action(recovery_gate))
 	} else if let Some(partial_progress) = error.downcast_ref::<RetainedPartialProgress>() {
 		(
 			"partial_progress_retained",

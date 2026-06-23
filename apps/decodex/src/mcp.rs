@@ -389,11 +389,12 @@ impl McpServer {
 	fn call_observe_tool(&self, arguments: Value) -> Value {
 		let params = match serde_json::from_value::<ObserveToolArgs>(arguments) {
 			Ok(params) => params,
-			Err(_) =>
+			Err(_) => {
 				return invalid_tool_arguments(
 					TOOL_OBSERVE,
 					"`issue`, `runId`, and `limit` are the only supported observe arguments.",
-				),
+				);
+			},
 		};
 		let limit = params.limit.unwrap_or(DEFAULT_MCP_STATUS_LIMIT);
 
@@ -415,11 +416,12 @@ impl McpServer {
 		};
 		let mut value = match observability_result {
 			Ok(value) => value,
-			Err(_) =>
+			Err(_) => {
 				return tool_refusal(
 					"observability_unavailable",
 					"Decodex observability requires a registered project config or --config.",
-				),
+				);
+			},
 		};
 
 		sanitize_mcp_observability_value(&mut value);
@@ -435,11 +437,12 @@ impl McpServer {
 	fn call_research_compile_tool(&self, arguments: Value) -> Value {
 		let params = match serde_json::from_value::<ResearchCompileToolArgs>(arguments) {
 			Ok(params) => params,
-			Err(_) =>
+			Err(_) => {
 				return invalid_tool_arguments(
 					TOOL_RESEARCH_COMPILE,
 					"`mode` must be dry_run or apply, with either `input` or `intent`.",
-				),
+				);
+			},
 		};
 		let mode = match planning_mode(params.mode.as_deref(), "dry_run", TOOL_RESEARCH_COMPILE) {
 			Ok(mode) => mode,
@@ -488,11 +491,12 @@ impl McpServer {
 	fn call_research_promote_tool(&self, arguments: Value) -> Value {
 		let params = match serde_json::from_value::<ResearchPromoteToolArgs>(arguments) {
 			Ok(params) => params,
-			Err(_) =>
+			Err(_) => {
 				return invalid_tool_arguments(
 					TOOL_RESEARCH_PROMOTE,
 					"`contractId` is required and `mode` must be dry_run or apply.",
-				),
+				);
+			},
 		};
 		let Some(contract_id) = non_empty_string(Some(params.contract_id.as_str())) else {
 			return invalid_tool_arguments(TOOL_RESEARCH_PROMOTE, "`contractId` is required.");
@@ -550,11 +554,12 @@ impl McpServer {
 			Some(accepted_at) => accepted_at.to_owned(),
 			None => match OffsetDateTime::now_utc().format(&Rfc3339) {
 				Ok(value) => value,
-				Err(_) =>
+				Err(_) => {
 					return tool_refusal(
 						"research_promote_refused",
 						"Promotion timestamp could not be prepared.",
-					),
+					);
+				},
 			},
 		};
 		let promotion = match DecisionPromotion::new(
@@ -565,11 +570,12 @@ impl McpServer {
 			authority.reason.cloned(),
 		) {
 			Ok(promotion) => promotion,
-			Err(_) =>
+			Err(_) => {
 				return tool_refusal(
 					"research_promote_refused",
 					"Promotion authority did not satisfy Decodex Decision Contract requirements.",
-				),
+				);
+			},
 		};
 
 		match research_design::promote_research_design_contract(
@@ -595,11 +601,12 @@ impl McpServer {
 	fn call_intake_goal_tool(&self, arguments: Value) -> Value {
 		let params = match serde_json::from_value::<IntakeGoalToolArgs>(arguments) {
 			Ok(params) => params,
-			Err(_) =>
+			Err(_) => {
 				return invalid_tool_arguments(
 					TOOL_INTAKE_GOAL,
 					"`contractId` is required and `mode` must be dry_run or apply.",
-				),
+				);
+			},
 		};
 		let Some(contract_id) = non_empty_string(Some(params.contract_id.as_str())) else {
 			return invalid_tool_arguments(TOOL_INTAKE_GOAL, "`contractId` is required.");
@@ -635,27 +642,30 @@ impl McpServer {
 		};
 		let config_path = match self.context.config_path.as_deref() {
 			Some(path) => path,
-			None =>
+			None => {
 				return tool_refusal(
 					"missing_project_context",
 					"intake_goal dry-run requires a registered Decodex project config or --config.",
-				),
+				);
+			},
 		};
 		let config = match ServiceConfig::from_path(config_path) {
 			Ok(config) => config,
-			Err(_) =>
+			Err(_) => {
 				return tool_refusal(
 					"missing_project_context",
 					"intake_goal dry-run could not load the Decodex project config.",
-				),
+				);
+			},
 		};
 		let workflow = match WorkflowDocument::from_path(config.workflow_path()) {
 			Ok(workflow) => workflow,
-			Err(_) =>
+			Err(_) => {
 				return tool_refusal(
 					"missing_project_context",
 					"intake_goal dry-run could not load the Decodex workflow contract.",
-				),
+				);
+			},
 		};
 		let tracker = McpDryRunTracker;
 
@@ -1128,11 +1138,12 @@ impl McpServer {
 	fn call_lane_control_tool(&self, arguments: Value, profile: McpCapabilityProfile) -> Value {
 		let params = match serde_json::from_value::<LaneControlToolArgs>(arguments) {
 			Ok(params) => params,
-			Err(_) =>
+			Err(_) => {
 				return invalid_tool_arguments(
 					TOOL_LANE_CONTROL,
 					"`action` is required and must be one of inspect, interrupt, steer, manual_attention, or retained_resume.",
-				),
+				);
+			},
 		};
 
 		if !matches!(
@@ -1197,13 +1208,14 @@ impl McpServer {
 			DEFAULT_MCP_STATUS_LIMIT,
 		) {
 			Ok(report) => report,
-			Err(error) =>
+			Err(error) => {
 				return lane_control_refusal_result(
 					params,
 					profile,
 					"lane_inspect_unavailable",
 					format!("Lane inspect failed closed: {error}"),
-				),
+				);
+			},
 		};
 		let mut result = serde_json::json!({
 			"schema": "decodex.mcp.lane_control_result/1",
@@ -1283,13 +1295,14 @@ impl McpServer {
 			authority.source,
 		) {
 			Ok(report) => report,
-			Err(error) =>
+			Err(error) => {
 				return lane_control_refusal_result(
 					params,
 					profile,
 					"lane_interrupt_unavailable",
 					format!("Lane interrupt failed closed: {error}"),
-				),
+				);
+			},
 		};
 
 		lane_control_interrupt_result(params, profile, report)
@@ -1372,13 +1385,14 @@ impl McpServer {
 			wait_timeout: DEFAULT_STEER_RESULT_WAIT_TIMEOUT,
 		}) {
 			Ok(report) => report,
-			Err(error) =>
+			Err(error) => {
 				return lane_control_refusal_result(
 					params,
 					profile,
 					"lane_steer_unavailable",
 					format!("Lane steer failed closed: {error}"),
-				),
+				);
+			},
 		};
 
 		lane_control_steer_result(params, profile, report)
@@ -1387,11 +1401,12 @@ impl McpServer {
 	fn call_project_control_tool(&self, arguments: Value, profile: McpCapabilityProfile) -> Value {
 		let params = match serde_json::from_value::<ProjectControlToolArgs>(arguments) {
 			Ok(params) => params,
-			Err(_) =>
+			Err(_) => {
 				return invalid_tool_arguments(
 					TOOL_PROJECT_CONTROL,
 					"`action` is required and must be one of status, pause, resume, or scan.",
-				),
+				);
+			},
 		};
 
 		if !matches!(params.action.as_str(), "status" | "pause" | "resume" | "scan") {
@@ -1462,13 +1477,14 @@ impl McpServer {
 
 		let state_store = match runtime::open_runtime_store_lazy() {
 			Ok(state_store) => state_store,
-			Err(error) =>
+			Err(error) => {
 				return project_control_refusal_result(
 					params,
 					profile,
 					"project_control_unavailable",
 					format!("Project control failed closed: {error}"),
-				),
+				);
+			},
 		};
 
 		if let Some(config_path) = self.context.config_path.as_deref()
@@ -2457,11 +2473,12 @@ impl McpHttpHandler {
 	) -> crate::prelude::Result<McpHttpResponse> {
 		let cors_origin = match self.allowed_cors_origin(&request) {
 			Ok(origin) => origin,
-			Err(()) =>
+			Err(()) => {
 				return Ok(McpHttpResponse::json_error(
 					"403 Forbidden",
 					json_rpc_error(Value::Null, -32_000, "Forbidden origin"),
-				)),
+				));
+			},
 		};
 		let mut response = if request.path != MCP_HTTP_ENDPOINT_PATH {
 			McpHttpResponse::empty("404 Not Found")
@@ -2504,11 +2521,12 @@ impl McpHttpHandler {
 
 		let body = match str::from_utf8(&request.body) {
 			Ok(body) => body,
-			Err(_) =>
+			Err(_) => {
 				return Ok(McpHttpResponse::json_error(
 					"400 Bad Request",
 					json_rpc_error(Value::Null, -32_700, "Parse error"),
-				)),
+				));
+			},
 		};
 		let method = json_rpc_method_name(body);
 		let is_initialize = method.as_deref() == Some("initialize");
@@ -4388,11 +4406,12 @@ fn tool_validation_error_output_schema() -> Value {
 fn call_plan_tool(arguments: Value) -> Value {
 	let params = match serde_json::from_value::<PlanToolArgs>(arguments) {
 		Ok(params) => params,
-		Err(_) =>
+		Err(_) => {
 			return invalid_tool_arguments(
 				TOOL_PLAN,
 				"`intent` is required and must be one of research, validation_ready, handoff, or lane_control.",
-			),
+			);
+		},
 	};
 
 	if !matches!(
@@ -5882,23 +5901,25 @@ fn project_control_status_result(
 ) -> Value {
 	let state_store = match runtime::open_runtime_store_lazy() {
 		Ok(state_store) => state_store,
-		Err(error) =>
+		Err(error) => {
 			return project_control_refusal_result(
 				params,
 				profile,
 				"project_control_unavailable",
 				format!("Project status failed closed: {error}"),
-			),
+			);
+		},
 	};
 	let projects = match state_store.list_projects() {
 		Ok(projects) => projects,
-		Err(error) =>
+		Err(error) => {
 			return project_control_refusal_result(
 				params,
 				profile,
 				"project_registry_unavailable",
 				format!("Project registry read failed closed: {error}"),
-			),
+			);
+		},
 	};
 	let Some(project) = projects.iter().find(|project| project.service_id() == project_id) else {
 		return project_control_refusal_result(
@@ -6106,10 +6127,11 @@ fn serve_streamable_http_with_profile(
 
 	for stream in listener.incoming() {
 		match stream {
-			Ok(mut stream) =>
+			Ok(mut stream) => {
 				if let Err(error) = handle_mcp_http_stream(&mut stream, &mut handler) {
 					tracing::warn!(?error, "Decodex MCP Streamable HTTP request failed.");
-				},
+				}
+			},
 			Err(error) if error.kind() == ErrorKind::Interrupted => continue,
 			Err(error) => return Err(error.into()),
 		}
