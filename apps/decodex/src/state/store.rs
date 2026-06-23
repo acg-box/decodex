@@ -2862,6 +2862,48 @@ impl StateStore {
 		Ok(record.as_public())
 	}
 
+	/// Accept one proposal into a normal latent Decision Contract candidate.
+	#[allow(dead_code)]
+	pub(crate) fn accept_autonomy_proposal_as_decision_contract_candidate(
+		&self,
+		project_id: &str,
+		proposal_id: &str,
+		authority: AutonomyProposalDecisionBridgeAuthority,
+	) -> Result<DecisionContractRecord> {
+		validate_required_autonomy_proposal_field("project_id", project_id)?;
+		validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
+
+		let proposal_record = self
+			.autonomy_proposal(project_id, proposal_id)?
+			.ok_or_else(|| eyre::eyre!("Autonomy proposal `{proposal_id}` does not exist."))?;
+		let contract = proposal_record.proposal().to_decision_contract_candidate(authority)?;
+		let contract_id = contract.contract_id().to_owned();
+
+		if let Some(existing) = self.decision_contract(project_id, &contract_id)? {
+			let existing_contract = existing.contract();
+			let has_generated_execution_links =
+				!existing_contract.links().generated_issue_ids().is_empty()
+					|| !existing_contract.links().generated_issue_identifiers().is_empty()
+					|| !existing_contract.links().execution_program_node_ids().is_empty();
+
+			if existing.status() == DecisionContractStatus::DraftLatent
+				&& existing_contract.promotion().is_none()
+				&& !has_generated_execution_links
+			{
+				return Ok(existing);
+			}
+
+			eyre::bail!(
+				"Autonomy proposal `{proposal_id}` already has Decision Contract `{contract_id}` with status `{}`; acceptance will not replace promoted or generated execution authority.",
+				existing.status().as_str()
+			);
+		}
+
+		let source_issue_id = contract.source_intent().source_issue_identifier().map(str::to_owned);
+
+		self.upsert_decision_contract(project_id, source_issue_id.as_deref(), contract)
+	}
+
 	/// Read one autonomy proposal by stable proposal id.
 	#[allow(dead_code)]
 	pub(crate) fn autonomy_proposal(
