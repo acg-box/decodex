@@ -877,8 +877,9 @@ fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
 	match stage {
 		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" =>
 			Ok(()),
-		_ =>
-			eyre::bail!("Decision Contract proposed issue `{key}` has unsupported stage `{stage}`."),
+		_ => {
+			eyre::bail!("Decision Contract proposed issue `{key}` has unsupported stage `{stage}`.")
+		},
 	}
 }
 

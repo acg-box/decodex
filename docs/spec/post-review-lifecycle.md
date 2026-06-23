@@ -7,6 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs:
+  - apps/decodex/src/orchestrator/execution.rs
   - apps/decodex/src/orchestrator/dispatch_policy.rs
   - apps/decodex/src/orchestrator/run_cycle.rs
   - apps/decodex/src/orchestrator/status.rs
@@ -21,7 +22,7 @@ drift_watch:
   - IssueDispatchMode::Retry
   - IssueDispatchMode::ReviewRepair
   - IssueDispatchMode::Closeout
-last_verified: 2026-06-22
+last_verified: 2026-06-23
 ---
 # Post-Review Lifecycle
 
@@ -318,9 +319,15 @@ If the issue also uses `execution-state`, that overlay remains only durable exec
 
 In the current XY-174 slice, a retained repair run finishes by recording an explicit
 `issue_review_repair_complete` action for the same PR URL, then finalizing the run with
-the `review_repair` terminal path. Applying that completion refreshes the local
-runtime handoff row to the repaired PR head while keeping the tracker issue
-in `In Review`; it does not re-run the original `issue_review_handoff` state transition.
+the `review_repair` terminal path. After the local repository gate passes, Decodex
+must push the validated local `HEAD` to the retained PR branch before applying that
+completion. Push auth, refspec, and remote-rejection failures are structured
+retained-review-repair push failures; they must stop before refreshing the retained
+handoff row. After a successful push, applying completion must re-read the PR and
+verify that the remote PR head matches the validated local `HEAD`. Only then may it
+refresh the local runtime handoff row to the repaired PR head while keeping the
+tracker issue in `In Review`; it does not re-run the original
+`issue_review_handoff` state transition.
 When `[codex].review` is `"standard"` or `"strict"`,
 `issue_review_repair_complete` is valid only when the latest retained repair
 checkpoint is `clean` for the current repaired head. If repeated repair checkpoints
