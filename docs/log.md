@@ -2,6 +2,10 @@
 
 ## 2026-06-23
 
+- Added Phase 8 self-dogfood production-gate readback: autonomy lineage now projects
+  public-safe PR handoff, validation, and post-land replay evidence from retained
+  review lifecycle rows and scoped private evidence pointers without granting
+  landing, install, restart, plugin sync, or closeout authority.
 - Added the Phase 7 autonomy MCP and external-agent surface to the autonomy spec,
   MCP capability-gateway decision, and Decodex router skill: observe resources expose
   objective, signal, proposal, and evidence summaries, while plan tools can draft

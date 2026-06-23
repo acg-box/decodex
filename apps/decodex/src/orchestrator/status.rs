@@ -20,6 +20,7 @@ use state::WORKTREE_PROVENANCE_LEGACY_UNKNOWN;
 use state::ProjectLoopEvidenceSnapshot;
 use state::ProtocolActivityEventSummary;
 use state::ReviewCheckpointArtifactLookup;
+use state::ReviewLifecycleRecord;
 
 use crate::agent::REVIEW_POLICY_CONVERGENCE_BUDGET;
 use crate::pull_request::{self, PullRequestLandingGateView};
@@ -43,6 +44,7 @@ const MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER: &str = "PUBFI-012";
 const MCP_TEST_FIXTURE_RUN_ID: &str = "run-12";
 const MCP_TEST_FIXTURE_THREAD_ID: &str = "thread-12";
 const MCP_TEST_FIXTURE_TURN_ID: &str = "turn-12";
+const AUTONOMY_REPLAY_EVIDENCE_SCHEMA: &str = "decodex.autonomy_replay_evidence/1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RetainedCloseoutPrMergeGate {
@@ -8570,9 +8572,9 @@ fn operator_autonomy_lineage_statuses(
 		.into_iter()
 		.map(|record| {
 			let proposal = record.proposal();
-			let decision_contracts = loop_evidence
-				.decision_contracts_for_autonomy_proposal(proposal.id())
-				.into_iter()
+			let contract_records = loop_evidence.decision_contracts_for_autonomy_proposal(proposal.id());
+			let decision_contracts = contract_records
+				.iter()
 				.map(|record| OperatorAutonomyDecisionContractStatus {
 					contract_id: record.contract_id().to_owned(),
 					status: record.status().as_str().to_owned(),
@@ -8584,6 +8586,11 @@ fn operator_autonomy_lineage_statuses(
 						.to_vec(),
 				})
 				.collect::<Vec<_>>();
+			let execution_evidence = operator_autonomy_execution_evidence_statuses(
+				loop_evidence,
+				proposal.id(),
+				&contract_records,
+			);
 			let program_intake = decision_contracts
 				.iter()
 				.flat_map(|contract| {
@@ -8615,6 +8622,28 @@ fn operator_autonomy_lineage_statuses(
 			if program_intake.is_empty() {
 				known_gaps.push(String::from("program_intake_not_materialized"));
 			}
+			if !program_intake.is_empty() {
+				let evidence_kinds = execution_evidence
+					.iter()
+					.map(|evidence| evidence.kind.as_str())
+					.collect::<BTreeSet<_>>();
+
+				for (kind, gap) in [
+					("pr", "pr_evidence_missing"),
+					("validation", "validation_evidence_missing"),
+					("post_land", "post_land_evidence_missing"),
+				] {
+					if !evidence_kinds.contains(kind) {
+						known_gaps.push(String::from(gap));
+					}
+				}
+
+				known_gaps.extend(
+					execution_evidence
+						.iter()
+						.flat_map(|evidence| evidence.known_gaps.iter().cloned()),
+				);
+			}
 
 			let (proposal_gaps, proposal_gaps_redacted) = public_status_values(proposal.gaps());
 
@@ -8636,11 +8665,176 @@ fn operator_autonomy_lineage_statuses(
 				proposal_state: Some(proposal.state().as_str().to_owned()),
 				decision_contracts,
 				program_intake,
+				execution_evidence,
 				completeness: operator_autonomy_completeness(&known_gaps),
 				known_gaps,
 			}
 		})
 		.collect()
+}
+
+fn operator_autonomy_execution_evidence_statuses(
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+	proposal_id: &str,
+	contracts: &[&DecisionContractRecord],
+) -> Vec<OperatorAutonomyExecutionEvidenceStatus> {
+	let contract_ids = contracts.iter().map(|record| record.contract_id()).collect::<BTreeSet<_>>();
+	let mut evidence = Vec::new();
+
+	for (issue_id, issue_identifier) in operator_autonomy_generated_issue_pairs(contracts) {
+		for review in loop_evidence.review_lifecycle_records_for_issue(&issue_id) {
+			evidence.push(operator_autonomy_pr_evidence_status(
+				review,
+				issue_identifier.as_deref(),
+			));
+		}
+		for event in loop_evidence.private_events_for_issue(&issue_id) {
+			if let Some(status) = operator_autonomy_replay_evidence_status_from_event(
+				event,
+				proposal_id,
+				&contract_ids,
+				issue_identifier.as_deref(),
+			) {
+				evidence.push(status);
+			}
+		}
+	}
+
+	evidence.sort_by(|left, right| {
+		left.kind
+			.cmp(&right.kind)
+			.then_with(|| left.issue_identifier.cmp(&right.issue_identifier))
+			.then_with(|| left.source_refs.cmp(&right.source_refs))
+	});
+	evidence.dedup_by(|left, right| {
+		left.kind == right.kind
+			&& left.issue_identifier == right.issue_identifier
+			&& left.source_refs == right.source_refs
+	});
+
+	evidence
+}
+
+fn operator_autonomy_generated_issue_pairs(
+	contracts: &[&DecisionContractRecord],
+) -> Vec<(String, Option<String>)> {
+	let mut pairs = contracts
+		.iter()
+		.flat_map(|record| {
+			let links = record.contract().links();
+
+			links
+				.generated_issue_ids()
+				.iter()
+				.enumerate()
+				.map(|(index, issue_id)| {
+					(
+						issue_id.clone(),
+						links.generated_issue_identifiers().get(index).cloned(),
+					)
+				})
+				.collect::<Vec<_>>()
+		})
+		.collect::<Vec<_>>();
+
+	pairs.sort();
+	pairs.dedup();
+
+	pairs
+}
+
+fn operator_autonomy_pr_evidence_status(
+	review: &ReviewLifecycleRecord,
+	issue_identifier: Option<&str>,
+) -> OperatorAutonomyExecutionEvidenceStatus {
+	let (source_refs, refs_redacted) = public_autonomy_refs(&[review.pr_url().to_owned()]);
+	let mut known_gaps = Vec::new();
+
+	if source_refs.is_empty() {
+		known_gaps.push(String::from("source_refs_missing_or_redacted"));
+	}
+	if refs_redacted {
+		known_gaps.push(String::from("source_refs_redacted"));
+	}
+
+	OperatorAutonomyExecutionEvidenceStatus {
+		kind: String::from("pr"),
+		issue_identifier: issue_identifier.map(str::to_owned),
+		source_refs,
+		summary: String::from("PR-backed review handoff readback recorded."),
+		updated_at: review.updated_at().to_owned(),
+		completeness: operator_autonomy_completeness(&known_gaps),
+		known_gaps,
+	}
+}
+
+fn operator_autonomy_replay_evidence_status_from_event(
+	event: &PrivateExecutionEvent,
+	proposal_id: &str,
+	contract_ids: &BTreeSet<&str>,
+	issue_identifier: Option<&str>,
+) -> Option<OperatorAutonomyExecutionEvidenceStatus> {
+	let payload = event.payload();
+
+	if payload.get("schema").and_then(Value::as_str) != Some(AUTONOMY_REPLAY_EVIDENCE_SCHEMA) {
+		return None;
+	}
+	if !operator_autonomy_replay_evidence_matches(payload, proposal_id, contract_ids) {
+		return None;
+	}
+
+	let kind = match payload.get("kind").and_then(Value::as_str) {
+		Some(kind @ ("validation" | "post_land")) => kind.to_owned(),
+		_ => return None,
+	};
+	let raw_source_refs = payload
+		.get("source_refs")
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(Value::as_str)
+		.map(str::to_owned)
+		.collect::<Vec<_>>();
+	let (source_refs, refs_redacted) = public_autonomy_refs(&raw_source_refs);
+	let (summary, summary_redacted) = public_status_value(
+		payload
+			.get("summary")
+			.and_then(Value::as_str)
+			.unwrap_or("Dogfood replay evidence recorded."),
+	);
+	let mut known_gaps = Vec::new();
+
+	if source_refs.is_empty() {
+		known_gaps.push(String::from("source_refs_missing_or_redacted"));
+	}
+	if refs_redacted {
+		known_gaps.push(String::from("source_refs_redacted"));
+	}
+	if summary_redacted {
+		known_gaps.push(String::from("summary_redacted"));
+	}
+
+	Some(OperatorAutonomyExecutionEvidenceStatus {
+		kind,
+		issue_identifier: issue_identifier.map(str::to_owned),
+		source_refs,
+		summary,
+		updated_at: event.recorded_at().to_owned(),
+		completeness: operator_autonomy_completeness(&known_gaps),
+		known_gaps,
+	})
+}
+
+fn operator_autonomy_replay_evidence_matches(
+	payload: &Value,
+	proposal_id: &str,
+	contract_ids: &BTreeSet<&str>,
+) -> bool {
+	payload.get("proposal_id").and_then(Value::as_str) == Some(proposal_id)
+		|| payload
+			.get("contract_id")
+			.and_then(Value::as_str)
+			.is_some_and(|contract_id| contract_ids.contains(contract_id))
 }
 
 fn operator_autonomy_report_status(
@@ -8684,6 +8878,14 @@ fn operator_autonomy_report_status(
 		}
 	}
 	for item in lineage {
+		for evidence in &item.execution_evidence {
+			for source_ref in &evidence.source_refs {
+				source_refs.insert(source_ref.clone());
+			}
+			for gap in &evidence.known_gaps {
+				known_gaps.insert(gap.clone());
+			}
+		}
 		for gap in &item.known_gaps {
 			known_gaps.insert(gap.clone());
 		}

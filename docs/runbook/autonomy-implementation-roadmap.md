@@ -29,7 +29,7 @@ drift_watch:
   - allowed_signal_kinds
   - Program Intake
   - decodex mcp serve
-last_verified: 2026-06-22
+last_verified: 2026-06-23
 ---
 # Autonomy Implementation Roadmap
 
@@ -401,7 +401,9 @@ Production readiness requires:
 - Operator readback tested for freshness and privacy.
 - MCP surface tested for observe/plan refusal and mutation authority.
 - One Decodex self-dogfood loop produces a proposal, gets accepted, enters normal
-  execution, lands, installs or restarts when needed, and records post-land evidence.
+  execution, records PR handoff, validation, and post-land evidence under the same
+  replay chain, and only lands, installs, restarts, or syncs plugins through normal
+  lifecycle authority.
 
 Recommended full gate before broad enablement:
 
@@ -419,6 +421,8 @@ Stop conditions:
 - Any autonomy path weakens validation, review, or landing gates.
 - The first dogfood result cannot be replayed from objective, signal, proposal,
   Decision Contract, Program Intake, PR, validation, and post-land evidence.
+- Replay evidence is only a report artifact or raw private payload rather than a
+  public-safe operator/MCP readback projection tied back to generated issue links.
 
 ## Branch Strategy
 
