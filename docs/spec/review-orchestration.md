@@ -7,8 +7,8 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs]
-drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, review_policy_checkpoints, finding_routes, evidence_artifacts, decodex.autonomy_signal/1]
-last_verified: 2026-06-22
+drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, review_policy_checkpoints, finding_routes, evidence_artifacts, authority_boundary_check, decodex.autonomy_signal/1]
+last_verified: 2026-06-23
 ---
 # Review Orchestration
 
@@ -347,6 +347,11 @@ Before starting landing, require all of these:
 - required checks are green
 - the PR branch is up to date with base
 - the repository merge method preserves commit-level history and supports merge commits
+- no unresolved Authority Boundary `requires_human_decision`,
+  `requires_enhanced_evidence`, or `block_landing` policy remains for the current
+  lane head, and no unresolved `authority_decision_request` remains; operator status
+  readback and runtime admin-merge preflight must read the same authority-boundary
+  landing requirement
 - runtime calls GitHub admin merge explicitly; do not use auto-merge and do not fall back to rebase or squash merge
 
 If the repository does not support merge commits, stop for `manual_intervention_required` instead of improvising another merge path.

@@ -962,6 +962,25 @@ fn start_retained_admin_merge<T>(
 where
 	T: IssueTracker,
 {
+	if let Some(reason) = authority_boundary_landing_requirement(
+		&lane.snapshot,
+		Some(PostReviewRuntimeState {
+			state_store: runtime.state_store,
+			project_id: runtime.project.service_id(),
+			review_level: runtime.project.codex().review_level(),
+		}),
+	)? {
+		tracing::info!(
+			project_id = runtime.project.service_id(),
+			issue_id = lane.snapshot.issue.id,
+			issue = lane.snapshot.issue.identifier,
+			reason,
+			"Retained admin merge is waiting for authority-boundary landing clearance."
+		);
+
+		return Ok(());
+	}
+
 	if !lane.review_state.merge_commit_allowed {
 		return apply_passive_retained_manual_attention(
 			passive_attention_runtime(runtime),
