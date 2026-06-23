@@ -1966,6 +1966,7 @@ struct OperatorAutonomyLineageStatus {
 	proposal_state: Option<String>,
 	decision_contracts: Vec<OperatorAutonomyDecisionContractStatus>,
 	program_intake: Vec<OperatorAutonomyProgramIntakeStatus>,
+	execution_evidence: Vec<OperatorAutonomyExecutionEvidenceStatus>,
 	completeness: String,
 	known_gaps: Vec<String>,
 }
@@ -1986,6 +1987,17 @@ struct OperatorAutonomyProgramIntakeStatus {
 	source_contract_id: String,
 	public_summary: String,
 	updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorAutonomyExecutionEvidenceStatus {
+	kind: String,
+	issue_identifier: Option<String>,
+	source_refs: Vec<String>,
+	summary: String,
+	updated_at: String,
+	completeness: String,
+	known_gaps: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
