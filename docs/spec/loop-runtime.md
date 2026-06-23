@@ -6,8 +6,8 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/research_design.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
-drift_watch: [phase_goal, phase_acceptance_check, docs_impact, review_contract, issue_review_checkpoint, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
+code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/research_design.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
+drift_watch: [phase_goal, phase_acceptance_check, docs_impact, review_contract, issue_review_checkpoint, decodex.autonomy_proposal/1, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
 last_verified: 2026-06-22
 ---
 # Loop Runtime Specification
@@ -341,6 +341,15 @@ payloads.
 ## Promotion Boundary
 
 Promotion is the boundary between design and execution authority.
+
+Accepted autonomy proposals enter this boundary only as latent Decision Contract
+candidates. Proposal acceptance records explicit bridge authority and preserves the
+proposal lineage inside `decodex.decision_contract/1`, but the resulting contract
+remains `draft_latent`; it cannot create Program Intake rows, issues, or queue intent
+until normal Decision Contract promotion records accepted execution authority.
+The bridge is idempotent only for an unchanged unpromoted latent contract. It must
+refuse to overwrite any existing contract with promotion metadata, generated issue or
+execution-program links, or non-latent status.
 
 Promotion requires one of these accepted signals:
 
