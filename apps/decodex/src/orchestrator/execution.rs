@@ -230,8 +230,8 @@ impl RepoGatePhaseGoalController<'_> {
 					&self.issue_run.issue.id,
 				)?;
 
-				let mut transition_payload =
-					json!({ "nextPhase": PhaseGoalKind::HandoffEvidence.as_str() });
+				let next_phase = phase_validation_pass_next_phase(phase);
+				let mut transition_payload = json!({ "nextPhase": next_phase.as_str() });
 
 				if let Some(decision) = repo_gate_outcome.tracked_rewrite_decision() {
 					transition_payload["trackedRewrites"] = decision.to_json();
@@ -239,15 +239,10 @@ impl RepoGatePhaseGoalController<'_> {
 
 				self.record_phase_goal_transition(phase, "validation_pass", transition_payload)?;
 
-				let handoff_detail =
-					repo_gate_outcome.tracked_rewrite_decision().map(|decision| {
-						format!(
-							"Repo gate validation passed after rewriting owned tracked files: {}. Commit these issue-owned gate rewrites with the lane changes before review handoff.",
-							decision.files_display()
-						)
-					});
-				let next_goal =
-					self.phase_goal_spec(PhaseGoalKind::HandoffEvidence, handoff_detail.as_deref());
+				let handoff_detail = repo_gate_outcome
+					.tracked_rewrite_decision()
+					.map(|decision| phase_tracked_rewrite_handoff_detail(next_phase, decision));
+				let next_goal = self.phase_goal_spec(next_phase, handoff_detail.as_deref());
 
 				self.persist_next_phase_goal(&next_goal, "validation_pass")?;
 
@@ -260,6 +255,9 @@ impl RepoGatePhaseGoalController<'_> {
 						"disposition": repo_gate_failure.disposition().as_str(),
 					});
 
+					if let Some(diagnostic) = repo_gate_failure.diagnostic() {
+						transition_payload["repoGateFailure"] = diagnostic.to_json();
+					}
 					if let Some(decision) = repo_gate_failure.tracked_rewrite_decision() {
 						transition_payload["trackedRewrites"] = decision.to_json();
 					}
@@ -297,8 +295,8 @@ impl RepoGatePhaseGoalController<'_> {
 						}
 
 						let detail = format!(
-							"Repo gate failed with `{}`. Inspect the worktree, run the registered canonicalize and verify commands, and repair only the validation failure.",
-							repo_gate_failure.error_class()
+							"{} Inspect the worktree, run the registered canonicalize and verify commands, and repair only the validation failure.",
+							repo_gate_failure.repair_target_detail()
 						);
 						let next_goal =
 							self.phase_goal_spec(PhaseGoalKind::RepairValidationFailures, Some(&detail));
@@ -336,6 +334,12 @@ impl RepoGatePhaseGoalController<'_> {
 				"Decodex phase: {}\nRepair accepted review findings for {} on the retained PR head without widening issue scope, including any required docs impact update or drift evidence. Do not request GitHub Review before Decodex validation. {phase_exit_contract}",
 				phase.as_str(),
 				self.issue_run.issue.identifier
+			),
+			PhaseGoalKind::ReviewRepairEvidence => format!(
+				"Decodex phase: {}\nAfter Decodex validation, finish retained PR repair evidence for {}: record a current-HEAD `issue_progress_checkpoint` with `docs_impact`, push the current repaired branch to the retained PR branch, re-read the PR remote head and mergeability, record the required review-repair evidence, call `issue_review_repair_complete` for the same retained PR and pushed head, then call `issue_terminal_finalize` with path `review_repair`. Do not call `issue_review_handoff`, move the issue out of its retained review state, merge, or land the PR. Goal completion alone is not issue success.{}",
+				phase.as_str(),
+				self.issue_run.issue.identifier,
+				detail.map_or_else(String::new, |detail| format!(" {detail}"))
 			),
 			PhaseGoalKind::HandoffEvidence => format!(
 				"Decodex phase: {}\nAfter Decodex validation, prepare PR-backed handoff evidence for {}: record a current-HEAD `issue_progress_checkpoint` with `docs_impact`, run the bounded review policy as instructed, push the branch when ready, create or update the non-draft PR, then record the required Decodex terminal path. Goal completion alone is not issue success.{}",
@@ -586,10 +590,10 @@ impl PhaseGoalController for RepoGatePhaseGoalController<'_> {
 
 	fn phase_goal_completed(&self, phase: PhaseGoalKind) -> Result<PhaseGoalTransition> {
 		match phase {
-			PhaseGoalKind::HandoffEvidence => {
+			PhaseGoalKind::ReviewRepairEvidence | PhaseGoalKind::HandoffEvidence => {
 				self.record_phase_goal_transition(
 					phase,
-					"handoff_evidence_goal_complete",
+					phase_terminal_goal_complete_signal(phase),
 					json!({ "terminalPathRequired": true }),
 				)?;
 
@@ -936,8 +940,43 @@ fn phase_acceptance_repair_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
 		PhaseGoalKind::RepairAcceptedReviewFindings => PhaseGoalKind::RepairAcceptedReviewFindings,
 		PhaseGoalKind::ImplementToValidationReady
 		| PhaseGoalKind::RepairValidationFailures
+		| PhaseGoalKind::ReviewRepairEvidence
 		| PhaseGoalKind::HandoffEvidence => PhaseGoalKind::RepairValidationFailures,
 	}
+}
+
+fn phase_validation_pass_next_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
+	match phase {
+		PhaseGoalKind::RepairAcceptedReviewFindings => PhaseGoalKind::ReviewRepairEvidence,
+		PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures =>
+			PhaseGoalKind::HandoffEvidence,
+		PhaseGoalKind::ReviewRepairEvidence | PhaseGoalKind::HandoffEvidence => phase,
+	}
+}
+
+fn phase_terminal_goal_complete_signal(phase: PhaseGoalKind) -> &'static str {
+	match phase {
+		PhaseGoalKind::ReviewRepairEvidence => "review_repair_evidence_goal_complete",
+		PhaseGoalKind::HandoffEvidence => "handoff_evidence_goal_complete",
+		PhaseGoalKind::ImplementToValidationReady
+		| PhaseGoalKind::RepairValidationFailures
+		| PhaseGoalKind::RepairAcceptedReviewFindings => "phase_goal_complete",
+	}
+}
+
+fn phase_tracked_rewrite_handoff_detail(
+	next_phase: PhaseGoalKind,
+	decision: &RepoGateTrackedRewriteDecision,
+) -> String {
+	let terminal_context = match next_phase {
+		PhaseGoalKind::ReviewRepairEvidence => "review repair completion",
+		_ => "review handoff",
+	};
+
+	format!(
+		"Repo gate validation passed after rewriting owned tracked files: {}. Commit these issue-owned gate rewrites with the lane changes before {terminal_context}.",
+		decision.files_display()
+	)
 }
 
 fn phase_acceptance_changed_surfaces(worktree_path: &Path) -> Vec<String> {
@@ -2000,6 +2039,7 @@ fn phase_goal_kind_from_str(value: &str) -> Option<PhaseGoalKind> {
 		"implement_to_validation_ready" => Some(PhaseGoalKind::ImplementToValidationReady),
 		"repair_validation_failures" => Some(PhaseGoalKind::RepairValidationFailures),
 		"repair_accepted_review_findings" => Some(PhaseGoalKind::RepairAcceptedReviewFindings),
+		"review_repair_evidence" => Some(PhaseGoalKind::ReviewRepairEvidence),
 		"handoff_evidence" => Some(PhaseGoalKind::HandoffEvidence),
 		_ => None,
 	}
@@ -3349,6 +3389,10 @@ fn retryable_failure_loop_guardrail_stop(
 	else {
 		return Ok(None);
 	};
+	let repo_gate_diagnostic = error
+		.downcast_ref::<RepoGateFailure>()
+		.and_then(RepoGateFailure::diagnostic)
+		.map(RepoGateFailureDiagnostic::to_json);
 	let mut observations = Vec::new();
 
 	if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>()
@@ -3390,6 +3434,24 @@ fn retryable_failure_loop_guardrail_stop(
 	}
 
 	for (reason, fingerprint, source_error_class) in observations {
+		let mut details = json!({
+			"schema": "decodex.loop_guardrail_checkpoint/1",
+			"reason": reason.error_class(),
+			"source_error_class": source_error_class,
+			"head_sha": worktree_fingerprint.head_sha.as_str(),
+			"tracked_status_hash": worktree_fingerprint.tracked_status_hash.as_str(),
+			"tracked_diff_hash": worktree_fingerprint.tracked_diff_hash.as_str(),
+			"effective_status_hash": worktree_fingerprint.effective_status_hash.as_str(),
+			"branch_delta_present": worktree_fingerprint.branch_delta_present,
+			"effective_delta_present": worktree_fingerprint.effective_delta_present,
+			"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
+		});
+
+		if let Some(diagnostic) = &repo_gate_diagnostic {
+			details["repo_gate_failure"] = diagnostic.clone();
+		}
+
+		let details_json = details.to_string();
 		let checkpoint = state_store.observe_loop_guardrail_checkpoint(
 			LoopGuardrailCheckpointInput {
 				project_id: project.service_id(),
@@ -3398,19 +3460,7 @@ fn retryable_failure_loop_guardrail_stop(
 				fingerprint: &fingerprint,
 				run_id: &issue_run.run_id,
 				attempt_number: issue_run.attempt_number,
-				details_json: &json!({
-					"schema": "decodex.loop_guardrail_checkpoint/1",
-					"reason": reason.error_class(),
-					"source_error_class": source_error_class,
-					"head_sha": worktree_fingerprint.head_sha.as_str(),
-					"tracked_status_hash": worktree_fingerprint.tracked_status_hash.as_str(),
-					"tracked_diff_hash": worktree_fingerprint.tracked_diff_hash.as_str(),
-					"effective_status_hash": worktree_fingerprint.effective_status_hash.as_str(),
-					"branch_delta_present": worktree_fingerprint.branch_delta_present,
-					"effective_delta_present": worktree_fingerprint.effective_delta_present,
-					"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
-				})
-				.to_string(),
+				details_json: &details_json,
 			},
 		)?;
 
