@@ -35,6 +35,17 @@ mod autonomy_lineage_readback_tests {
 		generated_issue_identifier: String,
 	}
 
+	struct ReplayEvidenceSeed<'a> {
+		proposal_id: &'a str,
+		decision_contract_id: &'a str,
+		run_id: &'a str,
+		kind: &'a str,
+		source_ref: &'a str,
+		summary: &'a str,
+		pr_head_ref: Option<&'a str>,
+		pr_head_oid: Option<&'a str>,
+	}
+
 	#[test]
 	fn operator_status_surfaces_autonomy_lineage_without_raw_payloads() {
 		let (_temp_dir, config, workflow) = super::temp_project_layout();
@@ -47,7 +58,172 @@ mod autonomy_lineage_readback_tests {
 		assert_autonomy_readback(&snapshot, &seeded);
 	}
 
+	#[test]
+	fn autonomy_lineage_does_not_use_unlinked_review_lifecycle_as_pr_evidence() {
+		let (_temp_dir, config, workflow) = super::temp_project_layout();
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let issue = super::sample_issue("Todo", &[]);
+		let seeded =
+			seed_autonomy_lineage_without_execution_evidence(&state_store, &config, &workflow, &issue);
+		let (generated_issue_id, generated_issue_identifier) =
+			generated_issue_link(&state_store, &seeded.decision_contract_id);
+		let stale_review_marker = ReviewHandoffMarker::new(
+			"stale-review-run",
+			1,
+			"y/decodex-stale-review",
+			"https://github.com/hack-ink/decodex/pull/stale",
+			"main",
+			"y/decodex-stale-review",
+			"abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+		);
+
+		state_store
+			.upsert_review_handoff_marker(SERVICE_ID, &generated_issue_id, &stale_review_marker)
+			.expect("stale review marker should persist");
+
+		for (kind, source_ref, summary) in [
+			(
+				"validation",
+				"validation:cargo-make-check:passed",
+				"Repo validation gate passed before review handoff.",
+			),
+			(
+				"post_land",
+				"post_land:decodex-land:merge-install-restart-audit",
+				"Post-land evidence was recorded after normal lifecycle authority.",
+			),
+		] {
+			record_replay_evidence_event(
+				&state_store,
+				&generated_issue_id,
+				ReplayEvidenceSeed {
+					proposal_id: &seeded.accepted_proposal_id,
+					decision_contract_id: &seeded.decision_contract_id,
+					run_id: "run-dogfood-review",
+					kind,
+					source_ref,
+					summary,
+					pr_head_ref: None,
+					pr_head_oid: None,
+				},
+			);
+		}
+
+		let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+			.expect("snapshot should build");
+		let lineage = autonomy_lineage_for_seed(&snapshot, &seeded);
+		let evidence_kinds = lineage
+			.execution_evidence
+			.iter()
+			.map(|evidence| evidence.kind.as_str())
+			.collect::<BTreeSet<_>>();
+
+		assert_eq!(lineage.program_intake[0].intake_kind, "goal_intake");
+		assert_eq!(lineage.completeness, "partial");
+		assert!(
+			lineage
+				.known_gaps
+				.contains(&String::from("pr_evidence_missing"))
+		);
+		assert_eq!(evidence_kinds, BTreeSet::from(["post_land", "validation"]));
+		assert!(
+			lineage
+				.execution_evidence
+				.iter()
+				.all(|evidence| evidence.issue_identifier.as_deref()
+					== Some(generated_issue_identifier.as_str()))
+		);
+		assert!(
+			!lineage
+				.execution_evidence
+				.iter()
+				.any(|evidence| evidence.source_refs.iter().any(|source_ref| source_ref.contains("stale")))
+		);
+	}
+
+	#[test]
+	fn autonomy_lineage_marks_same_pr_stale_head_lifecycle_as_partial() {
+		let (_temp_dir, config, workflow) = super::temp_project_layout();
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let issue = super::sample_issue("Todo", &[]);
+		let seeded =
+			seed_autonomy_lineage_without_execution_evidence(&state_store, &config, &workflow, &issue);
+		let (generated_issue_id, _generated_issue_identifier) =
+			generated_issue_link(&state_store, &seeded.decision_contract_id);
+		let stale_head_oid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+		let fresh_head_oid = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+		let stale_review_marker = ReviewHandoffMarker::new(
+			"run-dogfood-review",
+			1,
+			"y/decodex-xy-1091",
+			"https://github.com/hack-ink/decodex/pull/1091",
+			"main",
+			"y/decodex-xy-1091",
+			stale_head_oid,
+		);
+
+		state_store
+			.upsert_review_handoff_marker(SERVICE_ID, &generated_issue_id, &stale_review_marker)
+			.expect("stale review marker should persist");
+
+		record_replay_evidence_event(
+			&state_store,
+			&generated_issue_id,
+			ReplayEvidenceSeed {
+				proposal_id: &seeded.accepted_proposal_id,
+				decision_contract_id: &seeded.decision_contract_id,
+				run_id: "run-dogfood-review",
+				kind: "pr",
+				source_ref: "https://github.com/hack-ink/decodex/pull/1091",
+				summary: "PR-backed review handoff readback recorded.",
+				pr_head_ref: Some("y/decodex-xy-1091"),
+				pr_head_oid: Some(fresh_head_oid),
+			},
+		);
+
+		let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+			.expect("snapshot should build");
+		let lineage = autonomy_lineage_for_seed(&snapshot, &seeded);
+		let pr_evidence = lineage
+			.execution_evidence
+			.iter()
+			.find(|evidence| evidence.kind == "pr")
+			.expect("partial PR replay evidence should render");
+
+		assert_eq!(lineage.completeness, "partial");
+		assert_eq!(pr_evidence.completeness, "partial");
+		assert!(
+			pr_evidence
+				.known_gaps
+				.contains(&String::from("review_lifecycle_stale_or_mismatched"))
+		);
+		assert!(
+			lineage
+				.known_gaps
+				.contains(&String::from("review_lifecycle_stale_or_mismatched"))
+		);
+	}
+
 	fn seed_autonomy_lineage(
+		state_store: &StateStore,
+		config: &ServiceConfig,
+		workflow: &WorkflowDocument,
+		issue: &TrackerIssue,
+	) -> SeededAutonomyLineage {
+		let seeded =
+			seed_autonomy_lineage_without_execution_evidence(state_store, config, workflow, issue);
+		let generated_issue_identifier = record_dogfood_execution_evidence(
+			state_store,
+			&seeded.accepted_proposal_id,
+			&seeded.decision_contract_id,
+		);
+
+		record_sensitive_autonomy_readback_fixture(state_store, issue);
+
+		SeededAutonomyLineage { generated_issue_identifier, ..seeded }
+	}
+
+	fn seed_autonomy_lineage_without_execution_evidence(
 		state_store: &StateStore,
 		config: &ServiceConfig,
 		workflow: &WorkflowDocument,
@@ -63,13 +239,8 @@ mod autonomy_lineage_readback_tests {
 
 		apply_goal_intake(state_store, config, workflow, issue, &decision_contract_id);
 
-		let generated_issue_identifier = record_dogfood_execution_evidence(
-			state_store,
-			&accepted_proposal_id,
-			&decision_contract_id,
-		);
-
-		record_sensitive_autonomy_readback_fixture(state_store, issue);
+		let (_generated_issue_id, generated_issue_identifier) =
+			generated_issue_link(state_store, &decision_contract_id);
 
 		SeededAutonomyLineage {
 			accepted_proposal_id,
@@ -310,13 +481,8 @@ mod autonomy_lineage_readback_tests {
 		proposal_id: &str,
 		decision_contract_id: &str,
 	) -> String {
-		let linked = state_store
-			.decision_contract(SERVICE_ID, decision_contract_id)
-			.expect("decision contract should read")
-			.expect("decision contract should exist");
-		let generated_issue_id = linked.contract().links().generated_issue_ids()[0].clone();
-		let generated_issue_identifier =
-			linked.contract().links().generated_issue_identifiers()[0].clone();
+		let (generated_issue_id, generated_issue_identifier) =
+			generated_issue_link(state_store, decision_contract_id);
 		let review_marker = ReviewHandoffMarker::new(
 			"run-dogfood-review",
 			1,
@@ -331,7 +497,27 @@ mod autonomy_lineage_readback_tests {
 			.upsert_review_handoff_marker(SERVICE_ID, &generated_issue_id, &review_marker)
 			.expect("review handoff marker should persist");
 
+		record_replay_evidence_event(
+			state_store,
+			&generated_issue_id,
+			ReplayEvidenceSeed {
+				proposal_id,
+				decision_contract_id,
+				run_id: "run-dogfood-review",
+				kind: "validation",
+				source_ref: "validation:cargo-make-check:passed",
+				summary: "Local validation summary referenced GITHUB_PAT_Y before clean replay evidence.",
+				pr_head_ref: None,
+				pr_head_oid: None,
+			},
+		);
+
 		for (kind, source_ref, summary) in [
+			(
+				"pr",
+				"https://github.com/hack-ink/decodex/pull/1091",
+				"PR-backed review handoff readback recorded.",
+			),
 			(
 				"validation",
 				"validation:cargo-make-check:passed",
@@ -343,26 +529,65 @@ mod autonomy_lineage_readback_tests {
 				"Post-land evidence was recorded after normal lifecycle authority.",
 			),
 		] {
-			state_store
-				.append_private_execution_event(
-					SERVICE_ID,
-					&generated_issue_id,
-					"run-dogfood-review",
-					1,
-					"autonomy/replay_evidence",
-					serde_json::json!({
-						"schema": "decodex.autonomy_replay_evidence/1",
-						"proposal_id": proposal_id,
-						"contract_id": decision_contract_id,
-						"kind": kind,
-						"source_refs": [source_ref],
-						"summary": summary,
-					}),
-				)
-				.expect("replay evidence should persist");
+			record_replay_evidence_event(
+				state_store,
+				&generated_issue_id,
+				ReplayEvidenceSeed {
+					proposal_id,
+					decision_contract_id,
+					run_id: "run-dogfood-review",
+					kind,
+					source_ref,
+					summary,
+					pr_head_ref: (kind == "pr").then_some("y/decodex-xy-1091"),
+					pr_head_oid: (kind == "pr")
+						.then_some("0123456789abcdef0123456789abcdef01234567"),
+				},
+			);
 		}
 
 		generated_issue_identifier
+	}
+
+	fn generated_issue_link(
+		state_store: &StateStore,
+		decision_contract_id: &str,
+	) -> (String, String) {
+		let linked = state_store
+			.decision_contract(SERVICE_ID, decision_contract_id)
+			.expect("decision contract should read")
+			.expect("decision contract should exist");
+
+		(
+			linked.contract().links().generated_issue_ids()[0].clone(),
+			linked.contract().links().generated_issue_identifiers()[0].clone(),
+		)
+	}
+
+	fn record_replay_evidence_event(
+		state_store: &StateStore,
+		generated_issue_id: &str,
+		seed: ReplayEvidenceSeed<'_>,
+	) {
+		state_store
+			.append_private_execution_event(
+				SERVICE_ID,
+				generated_issue_id,
+				seed.run_id,
+				1,
+				"autonomy/replay_evidence",
+				serde_json::json!({
+					"schema": "decodex.autonomy_replay_evidence/1",
+					"proposal_id": seed.proposal_id,
+					"contract_id": seed.decision_contract_id,
+					"kind": seed.kind,
+					"source_refs": [seed.source_ref],
+					"summary": seed.summary,
+					"pr_head_ref": seed.pr_head_ref,
+					"pr_head_oid": seed.pr_head_oid,
+				}),
+			)
+			.expect("replay evidence should persist");
 	}
 
 	fn assert_autonomy_readback(
@@ -375,11 +600,7 @@ mod autonomy_lineage_readback_tests {
 			.autonomy_objective
 			.as_ref()
 			.expect("objective readback should render");
-		let lineage = loop_status
-			.autonomy_lineage
-			.iter()
-			.find(|lineage| lineage.proposal_id.as_deref() == Some(&seeded.accepted_proposal_id))
-			.expect("accepted proposal lineage should render");
+		let lineage = autonomy_lineage_for_seed(snapshot, seeded);
 		let clean_signal = loop_status
 			.autonomy_signals
 			.iter()
@@ -445,6 +666,20 @@ mod autonomy_lineage_readback_tests {
 		assert!(!snapshot_json.contains("GITHUB_PAT_Y"));
 		assert!(!rendered.contains("/Users/x"));
 		assert!(!rendered.contains("GITHUB_PAT_Y"));
+	}
+
+	fn autonomy_lineage_for_seed<'a>(
+		snapshot: &'a OperatorStatusSnapshot,
+		seeded: &SeededAutonomyLineage,
+	) -> &'a OperatorAutonomyLineageStatus {
+		let run = snapshot.current_lanes.first().expect("current lane should exist");
+		let loop_status = run.loop_status.as_ref().expect("loop status should render");
+
+		loop_status
+			.autonomy_lineage
+			.iter()
+			.find(|lineage| lineage.proposal_id.as_deref() == Some(&seeded.accepted_proposal_id))
+			.expect("accepted proposal lineage should render")
 	}
 
 	fn assert_dogfood_execution_evidence(

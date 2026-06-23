@@ -2,6 +2,10 @@
 
 ## 2026-06-23
 
+- Tightened Phase 8 replay evidence after dogfood review: PR evidence now requires
+  a proposal/Decision Contract replay pointer corroborated by retained review
+  lifecycle readback with matching PR head identity, and duplicate replay refs prefer
+  complete fresh metadata.
 - Added Phase 8 self-dogfood production-gate readback: autonomy lineage now projects
   public-safe PR handoff, validation, and post-land replay evidence from retained
   review lifecycle rows and scoped private evidence pointers without granting

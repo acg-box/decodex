@@ -404,6 +404,10 @@ Production readiness requires:
   execution, records PR handoff, validation, and post-land evidence under the same
   replay chain, and only lands, installs, restarts, or syncs plugins through normal
   lifecycle authority.
+- PR handoff replay evidence must be corroborated by retained review lifecycle
+  readback and a matching replay-evidence pointer for the same proposal or Decision
+  Contract, run, attempt, PR URL, PR head ref, and PR head oid. A stale PR row for
+  the same generated issue or same PR URL must not satisfy the replay chain.
 
 Recommended full gate before broad enablement:
 
@@ -423,6 +427,8 @@ Stop conditions:
   Decision Contract, Program Intake, PR, validation, and post-land evidence.
 - Replay evidence is only a report artifact or raw private payload rather than a
   public-safe operator/MCP readback projection tied back to generated issue links.
+- PR replay evidence is inferred from issue-level lifecycle rows without a matching
+  proposal or Decision Contract pointer and matching PR head identity.
 
 ## Branch Strategy
 

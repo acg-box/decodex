@@ -401,12 +401,16 @@ freshness, redaction level, completeness, and known gaps, proposal state and ref
 reasons, proposal -> Decision Contract -> Program Intake lineage, and replay evidence
 from PR handoff, validation, and post-land or post-restart proof when the autonomy
 work has reached those lifecycle surfaces. PR replay evidence is derived from retained
-review lifecycle readback. Validation and post-land replay evidence may be projected
-from private runtime events with schema `decodex.autonomy_replay_evidence/1`; those
-events are evidence pointers only and do not authorize review, landing, installation,
-restart, plugin sync, or closeout. The projection must not include raw evidence
-payloads, hidden reasoning, local-only paths, credentials, unredacted private source
-refs, or generated issue graph mechanics.
+review lifecycle readback only when a matching private replay-evidence pointer ties
+the retained PR row back to the same proposal or Decision Contract, run, attempt, PR
+URL, PR head ref, and PR head oid. Validation and post-land replay evidence may be
+projected from private runtime events with schema
+`decodex.autonomy_replay_evidence/1`; `post_land` is the post-lifecycle umbrella for
+post-land, post-restart, installation, and plugin-sync proof. Those events are
+evidence pointers only and do not authorize review, landing, installation, restart,
+plugin sync, or closeout. The projection must not include raw evidence payloads,
+hidden reasoning, local-only paths, credentials, unredacted private source refs, or
+generated issue graph mechanics.
 
 ## MCP And Skill Action Matrix
 
