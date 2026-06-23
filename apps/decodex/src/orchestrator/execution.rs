@@ -60,6 +60,72 @@ impl Display for AppServerZeroEvidenceStartFailure {
 
 impl Error for AppServerZeroEvidenceStartFailure {}
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RetainedReviewRepairPushFailureKind {
+	Auth,
+	Refspec,
+	RemoteRejected,
+	Failed,
+}
+impl RetainedReviewRepairPushFailureKind {
+	fn error_class(self) -> &'static str {
+		match self {
+			Self::Auth => "retained_review_repair_push_auth_failed",
+			Self::Refspec => "retained_review_repair_push_refspec_failed",
+			Self::RemoteRejected => "retained_review_repair_push_remote_rejected",
+			Self::Failed => "retained_review_repair_push_failed",
+		}
+	}
+}
+
+#[derive(Debug)]
+pub(crate) struct RetainedReviewRepairPushFailed {
+	issue_identifier: String,
+	run_id: String,
+	branch_name: String,
+	pr_url: Option<String>,
+	kind: RetainedReviewRepairPushFailureKind,
+	detail: String,
+}
+impl RetainedReviewRepairPushFailed {
+	fn error_class(&self) -> &'static str {
+		self.kind.error_class()
+	}
+
+	fn terminal_next_action(&self, recovery_gate: &str) -> String {
+		match self.kind {
+			RetainedReviewRepairPushFailureKind::Auth => format!(
+				"repair GitHub authentication, then rerun retained review repair for branch `{}`, {recovery_gate}",
+				self.branch_name
+			),
+			RetainedReviewRepairPushFailureKind::Refspec => format!(
+				"inspect retained review-repair branch `{}` and push refspec, repair the branch/ref mismatch manually, {recovery_gate}",
+				self.branch_name
+			),
+			RetainedReviewRepairPushFailureKind::RemoteRejected => format!(
+				"inspect remote branch `{}` for non-fast-forward or protection drift, reconcile the retained PR branch, {recovery_gate}",
+				self.branch_name
+			),
+			RetainedReviewRepairPushFailureKind::Failed => format!(
+				"inspect the retained review-repair push failure for branch `{}`, repair the remote update blocker, {recovery_gate}",
+				self.branch_name
+			),
+		}
+	}
+}
+
+impl Display for RetainedReviewRepairPushFailed {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(
+			formatter,
+			"Run `{}` for issue `{}` could not push retained review-repair branch `{}` before handoff validation: {}",
+			self.run_id, self.issue_identifier, self.branch_name, self.detail
+		)
+	}
+}
+
+impl Error for RetainedReviewRepairPushFailed {}
+
 struct AgentGitCredentialEnvironment {
 	process_env: AppServerProcessEnv,
 }
@@ -854,6 +920,7 @@ pub(crate) fn run_failure_writeback_disposition(
 			.downcast_ref::<AppServerPhaseGoalFailure>()
 			.is_some_and(|failure| !failure.is_terminal_path_missing())
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
+		|| error.downcast_ref::<RetainedReviewRepairPushFailed>().is_some()
 		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
 		|| error
 			.downcast_ref::<AppServerCapabilityPreflightFailure>()
@@ -2617,6 +2684,97 @@ fn run_completion_repo_gate(workflow: &WorkflowDocument, issue_run: &IssueRunPla
 	Ok(())
 }
 
+fn push_retained_review_repair_head(
+	project: &ServiceConfig,
+	issue_run: &IssueRunPlan,
+	pr_url: Option<&str>,
+) -> Result<()> {
+	let token_env_var = project.github().token_env_var();
+	let github_token =
+		resolve_configured_env_var("github.token_env_var", Some(token_env_var)).map_err(
+			|error| {
+				Report::new(RetainedReviewRepairPushFailed {
+					issue_identifier: issue_run.issue.identifier.clone(),
+					run_id: issue_run.run_id.clone(),
+					branch_name: issue_run.worktree.branch_name.clone(),
+					pr_url: pr_url.map(ToOwned::to_owned),
+					kind: RetainedReviewRepairPushFailureKind::Auth,
+					detail: error.to_string(),
+				})
+			},
+		)?;
+	let git_credentials =
+		GitCredentialSource::new(token_env_var, &github_token).materialize_github_credentials();
+	let refspec = format!("HEAD:{}", issue_run.worktree.branch_name);
+	let mut command = Command::new("git");
+
+	command
+		.arg("-C")
+		.arg(&issue_run.worktree.path)
+		.arg("push")
+		.arg("origin")
+		.arg(&refspec);
+	git_credentials.apply_to(&mut command);
+
+	let output = command.output().map_err(|error| {
+		Report::new(RetainedReviewRepairPushFailed {
+			issue_identifier: issue_run.issue.identifier.clone(),
+			run_id: issue_run.run_id.clone(),
+			branch_name: issue_run.worktree.branch_name.clone(),
+			pr_url: pr_url.map(ToOwned::to_owned),
+			kind: RetainedReviewRepairPushFailureKind::Failed,
+			detail: error.to_string(),
+		})
+	})?;
+
+	if output.status.success() {
+		return Ok(());
+	}
+
+	let detail = repo_gate_output_text(&output);
+	let kind = classify_retained_review_repair_push_failure(&detail);
+
+	Err(Report::new(RetainedReviewRepairPushFailed {
+		issue_identifier: issue_run.issue.identifier.clone(),
+		run_id: issue_run.run_id.clone(),
+		branch_name: issue_run.worktree.branch_name.clone(),
+		pr_url: pr_url.map(ToOwned::to_owned),
+		kind,
+		detail,
+	}))
+}
+
+fn classify_retained_review_repair_push_failure(
+	detail: &str,
+) -> RetainedReviewRepairPushFailureKind {
+	let normalized = detail.to_ascii_lowercase();
+
+	if normalized.contains("authentication failed")
+		|| normalized.contains("could not read username")
+		|| normalized.contains("permission denied")
+		|| normalized.contains("repository not found")
+		|| normalized.contains("403")
+		|| normalized.contains("401")
+	{
+		return RetainedReviewRepairPushFailureKind::Auth;
+	}
+	if normalized.contains("src refspec")
+		|| normalized.contains("dst refspec")
+		|| normalized.contains("invalid refspec")
+	{
+		return RetainedReviewRepairPushFailureKind::Refspec;
+	}
+	if normalized.contains("rejected")
+		|| normalized.contains("non-fast-forward")
+		|| normalized.contains("fetch first")
+		|| normalized.contains("protected branch hook declined")
+	{
+		return RetainedReviewRepairPushFailureKind::RemoteRejected;
+	}
+
+	RetainedReviewRepairPushFailureKind::Failed
+}
+
 fn apply_run_completion_disposition<T>(
 	tracker: &T,
 	project: &ServiceConfig,
@@ -2668,7 +2826,15 @@ where
 			}));
 		},
 		RunCompletionDisposition::ReviewRepair => {
+			validate_review_repair_runtime(project, false)?;
 			run_completion_repo_gate(workflow, issue_run)?;
+			push_retained_review_repair_head(
+				project,
+				issue_run,
+				tracker_tool_bridge
+					.review_context()
+					.and_then(|context| context.recorded_pr_url.as_deref()),
+			)?;
 
 			tracker_tool_bridge.apply_review_repair()?;
 
@@ -5187,6 +5353,7 @@ fn retained_progress_should_defer_to_terminal_intent(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
+		|| error.downcast_ref::<RetainedReviewRepairPushFailed>().is_some()
 		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
 		|| error.downcast_ref::<RetainedReviewNeedsAttention>().is_some()
 		|| error.downcast_ref::<ReviewPolicyStopRequested>().is_some()
@@ -5200,6 +5367,8 @@ fn retained_progress_source_error_class(error: &Report) -> Option<&'static str> 
 		Some("stalled_run_detected")
 	} else if error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some() {
 		Some("github_credentials_unavailable")
+	} else if let Some(push_failure) = error.downcast_ref::<RetainedReviewRepairPushFailed>() {
+		Some(push_failure.error_class())
 	} else if let Some(app_server_failure) =
 		error.downcast_ref::<AppServerCapabilityPreflightFailure>()
 	{
