@@ -11,6 +11,11 @@
   continue to a commit-capable handoff when canonicalize rewrites only pre-gate
   implementation paths, while unsafe or strict-boundary rewrites still preserve
   `repo_gate_tracked_rewrites_left`.
+- Split accepted-review repair validation from ordinary handoff: after
+  `repair_accepted_review_findings` passes repo-gate acceptance, Decodex now advances
+  to `review_repair_evidence` so the retained PR repair head, PR readback,
+  `issue_review_repair_complete`, and `review_repair` terminal finalize stay on the
+  post-review lifecycle path.
 
 ## 2026-06-22
 

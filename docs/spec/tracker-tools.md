@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/orchestrator/execution.rs]
 drift_watch: [issue_progress_checkpoint, issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, phase_acceptance_check, issue_terminal_finalize, docs_impact, private_execution_events, linear_execution_event]
-last_verified: 2026-06-22
+last_verified: 2026-06-23
 ---
 # Tracker Tool Specification
 
@@ -151,7 +151,8 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   `issue_progress_checkpoint` is an input to Decodex's private
   `phase_acceptance_check`. The checkpoint must demonstrate objective coverage,
   parseable docs impact, and no blockers before Decodex may advance from
-  implementation or repair to `handoff_evidence`; repo-gate pass alone is not
+  implementation or repair to the appropriate terminal-evidence phase
+  (`handoff_evidence` or `review_repair_evidence`); repo-gate pass alone is not
   transition authority.
 - Before `issue_terminal_finalize` can complete any terminal path, the latest private progress checkpoint for the run attempt must include parseable `docs_impact` and match the current lane `HEAD`.
 - `issue_progress_checkpoint` must persist the full normalized checkpoint payload to
