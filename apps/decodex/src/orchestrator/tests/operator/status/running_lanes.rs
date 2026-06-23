@@ -35,6 +35,13 @@ mod autonomy_lineage_readback_tests {
 		generated_issue_identifier: String,
 	}
 
+	#[derive(Clone, Copy)]
+	struct DogfoodReplayEvidence<'a> {
+		kind: &'a str,
+		source_ref: &'a str,
+		summary: &'a str,
+	}
+
 	#[test]
 	fn operator_status_surfaces_autonomy_lineage_without_raw_payloads() {
 		let (_temp_dir, config, workflow) = super::temp_project_layout();
@@ -45,6 +52,75 @@ mod autonomy_lineage_readback_tests {
 			.expect("snapshot should build");
 
 		assert_autonomy_readback(&snapshot, &seeded);
+	}
+
+	#[test]
+	fn operator_status_does_not_count_stale_review_pr_as_autonomy_replay_evidence() {
+		let (_temp_dir, config, workflow) = super::temp_project_layout();
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let issue = super::sample_issue("Todo", &[]);
+
+		seed_autonomy_run(&state_store, &issue);
+		accept_autonomy_objective(&state_store);
+
+		let signal_id = record_autonomy_signal(&state_store, &issue);
+		let accepted_proposal_id = record_autonomy_proposals(&state_store, &issue, &signal_id);
+		let decision_contract_id = promote_autonomy_proposal(&state_store, &accepted_proposal_id);
+
+		apply_goal_intake(&state_store, &config, &workflow, &issue, &decision_contract_id);
+
+		let (generated_issue_id, generated_issue_identifier) =
+			generated_issue_link_for_contract(&state_store, &decision_contract_id);
+		let stale_review_marker = ReviewHandoffMarker::new(
+			"run-stale-review",
+			1,
+			"y/decodex-stale-review",
+			"https://github.com/hack-ink/decodex/pull/1090",
+			"main",
+			"y/decodex-stale-review",
+			"abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+		);
+
+		state_store
+			.upsert_review_handoff_marker(SERVICE_ID, &generated_issue_id, &stale_review_marker)
+			.expect("stale review marker should persist");
+
+		for evidence in dogfood_tail_replay_evidence() {
+			append_dogfood_replay_evidence_event(
+				&state_store,
+				&generated_issue_id,
+				"run-dogfood-validation",
+				&accepted_proposal_id,
+				&decision_contract_id,
+				evidence,
+			);
+		}
+
+		let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+			.expect("snapshot should build");
+		let run = snapshot.current_lanes.first().expect("current lane should exist");
+		let lineage = run
+			.loop_status
+			.as_ref()
+			.expect("loop status should render")
+			.autonomy_lineage
+			.iter()
+			.find(|lineage| lineage.proposal_id.as_deref() == Some(&accepted_proposal_id))
+			.expect("accepted proposal lineage should render");
+		let source_refs = lineage
+			.execution_evidence
+			.iter()
+			.flat_map(|evidence| evidence.source_refs.iter().map(String::as_str))
+			.collect::<BTreeSet<_>>();
+
+		assert_eq!(
+			lineage.decision_contracts[0].generated_issue_identifiers,
+			vec![generated_issue_identifier]
+		);
+		assert_eq!(lineage.completeness, "partial");
+		assert!(lineage.known_gaps.contains(&String::from("pr_evidence_missing")));
+		assert!(!lineage.execution_evidence.iter().any(|evidence| evidence.kind == "pr"));
+		assert!(!source_refs.contains("https://github.com/hack-ink/decodex/pull/1090"));
 	}
 
 	fn seed_autonomy_lineage(
@@ -331,38 +407,100 @@ mod autonomy_lineage_readback_tests {
 			.upsert_review_handoff_marker(SERVICE_ID, &generated_issue_id, &review_marker)
 			.expect("review handoff marker should persist");
 
-		for (kind, source_ref, summary) in [
-			(
-				"validation",
-				"validation:cargo-make-check:passed",
-				"Repo validation gate passed before review handoff.",
-			),
-			(
-				"post_land",
-				"post_land:decodex-land:merge-install-restart-audit",
-				"Post-land evidence was recorded after normal lifecycle authority.",
-			),
-		] {
-			state_store
-				.append_private_execution_event(
-					SERVICE_ID,
-					&generated_issue_id,
-					"run-dogfood-review",
-					1,
-					"autonomy/replay_evidence",
-					serde_json::json!({
-						"schema": "decodex.autonomy_replay_evidence/1",
-						"proposal_id": proposal_id,
-						"contract_id": decision_contract_id,
-						"kind": kind,
-						"source_refs": [source_ref],
-						"summary": summary,
-					}),
-				)
-				.expect("replay evidence should persist");
+		append_dogfood_replay_evidence_event(
+			state_store,
+			&generated_issue_id,
+			"run-dogfood-review",
+			proposal_id,
+			decision_contract_id,
+			DogfoodReplayEvidence {
+				kind: "validation",
+				source_ref: "validation:cargo-make-check:passed",
+				summary: "Local validation payload mentions /Users/x/private-validation.json.",
+			},
+		);
+		append_dogfood_replay_evidence_event(
+			state_store,
+			&generated_issue_id,
+			"run-dogfood-review",
+			proposal_id,
+			decision_contract_id,
+			DogfoodReplayEvidence {
+				kind: "pr",
+				source_ref: "https://github.com/hack-ink/decodex/pull/1091",
+				summary: "PR-backed review handoff was recorded for the accepted proposal.",
+			},
+		);
+
+		for evidence in dogfood_tail_replay_evidence() {
+			append_dogfood_replay_evidence_event(
+				state_store,
+				&generated_issue_id,
+				"run-dogfood-review",
+				proposal_id,
+				decision_contract_id,
+				evidence,
+			);
 		}
 
 		generated_issue_identifier
+	}
+
+	fn generated_issue_link_for_contract(
+		state_store: &StateStore,
+		decision_contract_id: &str,
+	) -> (String, String) {
+		let linked = state_store
+			.decision_contract(SERVICE_ID, decision_contract_id)
+			.expect("decision contract should read")
+			.expect("decision contract should exist");
+
+		(
+			linked.contract().links().generated_issue_ids()[0].clone(),
+			linked.contract().links().generated_issue_identifiers()[0].clone(),
+		)
+	}
+
+	fn dogfood_tail_replay_evidence() -> [DogfoodReplayEvidence<'static>; 2] {
+		[
+			DogfoodReplayEvidence {
+				kind: "validation",
+				source_ref: "validation:cargo-make-check:passed",
+				summary: "Repo validation gate passed before review handoff.",
+			},
+			DogfoodReplayEvidence {
+				kind: "post_land",
+				source_ref: "post_land:decodex-land:merge-install-restart-audit",
+				summary: "Post-land lifecycle-tail evidence was recorded after normal authority.",
+			},
+		]
+	}
+
+	fn append_dogfood_replay_evidence_event(
+		state_store: &StateStore,
+		generated_issue_id: &str,
+		run_id: &str,
+		proposal_id: &str,
+		decision_contract_id: &str,
+		evidence: DogfoodReplayEvidence<'_>,
+	) {
+		state_store
+			.append_private_execution_event(
+				SERVICE_ID,
+				generated_issue_id,
+				run_id,
+				1,
+				"autonomy/replay_evidence",
+				serde_json::json!({
+					"schema": "decodex.autonomy_replay_evidence/1",
+					"proposal_id": proposal_id,
+					"contract_id": decision_contract_id,
+					"kind": evidence.kind,
+					"source_refs": [evidence.source_ref],
+					"summary": evidence.summary,
+				}),
+			)
+			.expect("replay evidence should persist");
 	}
 
 	fn assert_autonomy_readback(

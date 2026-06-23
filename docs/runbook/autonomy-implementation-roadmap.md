@@ -404,6 +404,13 @@ Production readiness requires:
   execution, records PR handoff, validation, and post-land evidence under the same
   replay chain, and only lands, installs, restarts, or syncs plugins through normal
   lifecycle authority.
+- PR replay evidence is complete only when a chain-scoped private replay evidence
+  event for the proposal or Decision Contract matches the retained review lifecycle
+  row for the generated issue, run id, attempt number, and PR source ref. Stale PR
+  rows on the same generated issue remain incomplete with explicit known gaps.
+- `post_land` evidence means lifecycle-tail proof after normal landing authority,
+  including post-merge, install, restart, or plugin-sync readback when those steps are
+  part of the accepted work.
 
 Recommended full gate before broad enablement:
 
@@ -423,6 +430,8 @@ Stop conditions:
   Decision Contract, Program Intake, PR, validation, and post-land evidence.
 - Replay evidence is only a report artifact or raw private payload rather than a
   public-safe operator/MCP readback projection tied back to generated issue links.
+- A stale or unrelated PR/review lifecycle row on the same generated issue can satisfy
+  PR evidence for a different autonomy proposal or Decision Contract.
 
 ## Branch Strategy
 

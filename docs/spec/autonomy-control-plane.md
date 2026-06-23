@@ -400,13 +400,21 @@ current accepted Objective Contract version, recent signal summaries with source
 freshness, redaction level, completeness, and known gaps, proposal state and refusal
 reasons, proposal -> Decision Contract -> Program Intake lineage, and replay evidence
 from PR handoff, validation, and post-land or post-restart proof when the autonomy
-work has reached those lifecycle surfaces. PR replay evidence is derived from retained
-review lifecycle readback. Validation and post-land replay evidence may be projected
-from private runtime events with schema `decodex.autonomy_replay_evidence/1`; those
-events are evidence pointers only and do not authorize review, landing, installation,
-restart, plugin sync, or closeout. The projection must not include raw evidence
-payloads, hidden reasoning, local-only paths, credentials, unredacted private source
-refs, or generated issue graph mechanics.
+work has reached those lifecycle surfaces. Each replay evidence row must be tied to
+the same replay chain by matching the proposal id or Decision Contract id. PR replay
+evidence additionally requires a chain-scoped private runtime event with schema
+`decodex.autonomy_replay_evidence/1`, kind `pr`, and a matching retained review
+lifecycle row for the same generated issue, run id, attempt number, and PR source
+ref. Stale or unrelated retained review lifecycle rows for the generated issue must
+remain incomplete and surface an explicit known gap instead of satisfying PR evidence.
+Validation and `post_land` replay evidence may also be projected from chain-scoped
+private runtime events with schema `decodex.autonomy_replay_evidence/1`.
+`post_land` is the lifecycle-tail evidence bucket for post-merge, install, restart,
+and plugin-sync proof only after those actions happen through normal lifecycle
+authority. Replay events are evidence pointers only and do not authorize review,
+landing, installation, restart, plugin sync, or closeout. The projection must not
+include raw evidence payloads, hidden reasoning, local-only paths, credentials,
+unredacted private source refs, or generated issue graph mechanics.
 
 ## MCP And Skill Action Matrix
 
