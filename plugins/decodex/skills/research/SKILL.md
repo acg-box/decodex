@@ -11,7 +11,7 @@ Read `../../references/research-lifecycle.md` first, then load
 `../../references/research-promotion.md` only when the run needs that detail.
 
 Follow the compact loop: probe, evidence, options, judgment, challenge, decision. Use
-`$agent-method:challenge` for the skeptic pass before `decision_ready` or any
+`$deliberation:challenge` for the skeptic pass before `decision_ready` or any
 high-risk recommendation. Use `research-promote` only after explicit acceptance.
 
 - The research compact loop is not runtime `compact_current_head_review`.

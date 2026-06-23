@@ -1,6 +1,6 @@
 ---
 name: repo-memory
-description: Use when bootstrapping, evaluating, or curating source-backed repo-memory OKF/LLM Wiki knowledge for a code repository, including create repo knowledge, organize repo docs, make this repo an LLM wiki, assess owner coverage, repair orphans, fix weak owners, or curate graph links.
+description: Use when source-backed repo-memory/LLM Wiki work needs write, evaluate, curate, owner coverage, orphan repair, or graph link cleanup.
 ---
 
 # Repo Memory
