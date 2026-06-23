@@ -2,6 +2,10 @@
 
 ## 2026-06-23
 
+- Added the retained review-repair terminalization contract: after local validation
+  passes, Decodex now owns pushing the repaired head to the retained PR branch,
+  records typed push failures before marker refresh, and only refreshes retained
+  review lineage after PR readback confirms the remote head matches local `HEAD`.
 - Tightened the Codebase Codex lifecycle hook so Codex-owned commit/push attempts
   receive the `decodex/commit/1` JSON message contract, large implementation diffs
   trigger module-boundary challenge guidance before ready claims, public
