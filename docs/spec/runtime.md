@@ -331,6 +331,7 @@ active phase:
 - `implement_to_validation_ready`
 - `repair_validation_failures`
 - `repair_accepted_review_findings`
+- `review_repair_evidence`
 - `handoff_evidence`
 
 Missing required app-server goal methods fail fast through the human-required
@@ -346,19 +347,25 @@ uses it only as a phase signal:
   enough to leave implementation or repair: the acceptance check must prove a current
   objective-covering progress checkpoint, a real effective delta, no non-goal
   violation, docs-impact readiness, and repo-gate evidence. A passing acceptance check
-  records `validation_pass` and may set the `handoff_evidence` goal. A failing
-  acceptance check records a `phase_acceptance_check` failure reason, emits
-  `validation_fail` with acceptance metadata, keeps accepted-review repair in that
-  phase, or sends implementation and validation repair to `repair_validation_failures`
-  for continued repair.
+  records `validation_pass` and sets the terminal-evidence goal appropriate to the
+  lane: `handoff_evidence` for ordinary implementation or validation repair, and
+  `review_repair_evidence` for accepted-review repair. A failing acceptance check
+  records a `phase_acceptance_check` failure reason, emits `validation_fail` with
+  acceptance metadata, keeps accepted-review repair in that phase, or sends
+  implementation and validation repair to `repair_validation_failures` for continued
+  repair.
 - `active`, `paused`, `blocked`, `usageLimited`, or `budgetLimited` do not bypass
   `execution.max_turns`, continuation guard checks, retry backoff, or manual-attention
   policy. If the bounded turn budget is exhausted, the run exits at a continuation
   boundary and the control-plane retry path decides the next re-entry.
-- `complete` on `handoff_evidence` is valid only when the agent also recorded one
-  explicit Decodex terminal path. Without `issue_review_handoff` plus
-  `issue_terminal_finalize(path = "review_handoff")`, or the manual-attention pair,
-  the turn is invalid and must fail rather than treating goal completion as success.
+- `complete` on `handoff_evidence` or `review_repair_evidence` is valid only when
+  the agent also recorded one explicit Decodex terminal path. `handoff_evidence`
+  requires `issue_review_handoff` plus `issue_terminal_finalize(path =
+  "review_handoff")`, or the manual-attention pair. `review_repair_evidence`
+  requires `issue_review_repair_complete` for the retained PR plus
+  `issue_terminal_finalize(path = "review_repair")`, or the manual-attention pair.
+  Otherwise the turn is invalid and must fail rather than treating goal completion as
+  success.
 
 The active phase goal is the authoritative current contract. Before an implementation,
 repair, handoff, closeout, or manual-attention path claims completion, the agent must
@@ -379,10 +386,11 @@ reconciliation finds a stalled retained lane while the latest private phase-goal
 for that same run is still an `active` implementation or repair phase, Decodex must
 run the registered repo gate before converting retained tracked changes into human
 attention. When that runtime-owned gate returns a continuation transition, Decodex
-records `phase_goal_recovery`, persists the next phase goal (`handoff_evidence` after
-validation pass or `repair_validation_failures` after continued-repair validation
-failure), marks the attempt as `continuation_pending`, and schedules normal
-continuation re-entry. This recovery path does not apply to `handoff_evidence`,
+records `phase_goal_recovery`, persists the next phase goal (`handoff_evidence` or
+`review_repair_evidence` after validation pass, or `repair_validation_failures` after
+continued-repair validation failure), marks the attempt as `continuation_pending`,
+and schedules normal continuation re-entry. This recovery path does not apply to
+terminal-evidence phases such as `handoff_evidence` and `review_repair_evidence`,
 explicit manual-attention terminal intent, unsupported phase-goal app-server methods,
 repo-gate human-attention failures, runs with no current active phase-goal signal,
 authority decision requests, or newer progress checkpoints that record blockers.

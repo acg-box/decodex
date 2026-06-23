@@ -225,6 +225,7 @@ pub(crate) enum PhaseGoalKind {
 	ImplementToValidationReady,
 	RepairValidationFailures,
 	RepairAcceptedReviewFindings,
+	ReviewRepairEvidence,
 	HandoffEvidence,
 }
 impl PhaseGoalKind {
@@ -233,6 +234,7 @@ impl PhaseGoalKind {
 			Self::ImplementToValidationReady => "implement_to_validation_ready",
 			Self::RepairValidationFailures => "repair_validation_failures",
 			Self::RepairAcceptedReviewFindings => "repair_accepted_review_findings",
+			Self::ReviewRepairEvidence => "review_repair_evidence",
 			Self::HandoffEvidence => "handoff_evidence",
 		}
 	}
