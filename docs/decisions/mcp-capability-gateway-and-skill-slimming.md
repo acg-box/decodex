@@ -150,6 +150,14 @@ Resources:
 - `decodex://projects/{service_id}/runs/{run_id}/child_agent_activity`
 - `decodex://projects/{service_id}/runs/{run_id}/progress_diagnostics`
 - `decodex://projects/{service_id}/pr_review_state`
+- `decodex://projects/{service_id}/autonomy`
+- `decodex://projects/{service_id}/autonomy/objectives/{objective_id}/current`
+- `decodex://projects/{service_id}/autonomy/objectives/{objective_id}/{version}`
+- `decodex://projects/{service_id}/autonomy/signals`
+- `decodex://projects/{service_id}/autonomy/signals/{signal_id}`
+- `decodex://projects/{service_id}/autonomy/proposals`
+- `decodex://projects/{service_id}/autonomy/proposals/{proposal_id}`
+- `decodex://projects/{service_id}/autonomy/evidence`
 
 Prompts:
 
@@ -176,6 +184,23 @@ Tools:
 - `intake_goal(mode, contractId, authority)`: `dry_run` previews public-safe
   generated issue rows without tracker or Program Intake mutation; `apply` mutates
   only after accepted contract authority and explicit MCP authority exist.
+- `autonomy_draft_objective(mode, projectId, objective, authority)`: validates or
+  persists a draft Objective Contract only. It does not accept the objective or grant
+  execution authority.
+- `autonomy_submit_signal(mode, projectId, kind, signal, authority)`: validates or
+  persists proposal-only autonomy signal evidence against an accepted objective.
+- `autonomy_compile_proposal(mode, projectId, proposal, signalIds, authority)`:
+  compiles or persists non-executable autonomy proposal evidence from accepted
+  objective-bound signals.
+- `autonomy_challenge_proposal(mode, projectId, proposalId, challenge, authority)`:
+  previews or records challenge evidence. Challenge evidence is not acceptance
+  authority.
+- `autonomy_request_promotion(mode, projectId, proposalId, authority)`: inspects the
+  explicit proposal-acceptance surface, or with `apply` creates only a latent Decision
+  Contract candidate. Normal Decision Contract promotion and Program Intake are still
+  separate authority steps. External-agent self-acceptance is refused unless an
+  accepted project policy authorizes that actor, source, objective lineage, and
+  `autonomy_proposal_acceptance` scope.
 - `decodex_lane_control(action, issue, runId, expectedTurnId, authority)`: advertises
   the operate-profile lane-control surface. `inspect` returns public-safe
   preconditions, `steer` and `interrupt` delegate through existing lane-control guards
