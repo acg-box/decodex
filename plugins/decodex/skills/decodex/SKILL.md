@@ -28,5 +28,14 @@ For MCP gateway, runtime, tracker, or control-plane work, read
 not bypass Decision Contract, lane-control, review, landing, tracker, or runtime
 authority gates.
 
+For autonomy work, route to `decodex://docs/spec/autonomy-control-plane`,
+`decodex://docs/decisions/mcp-capability-gateway-and-skill-slimming`, and the
+capability-profiled MCP surface: observe reads `decodex://projects/{service_id}/autonomy`
+summaries, while plan may use `autonomy_draft_objective`,
+`autonomy_submit_signal`, `autonomy_compile_proposal`,
+`autonomy_challenge_proposal`, and `autonomy_request_promotion`. Auth and profile
+prove access only; proposal acceptance still requires explicit human or accepted
+project-policy authority.
+
 Research is latent until promoted. Program Intake is not queue-label polling.
 Decodex-owned landing uses `decodex land`, not raw GitHub merge paths.

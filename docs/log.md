@@ -2,6 +2,12 @@
 
 ## 2026-06-23
 
+- Added the Phase 7 autonomy MCP and external-agent surface to the autonomy spec,
+  MCP capability-gateway decision, and Decodex router skill: observe resources expose
+  objective, signal, proposal, and evidence summaries, while plan tools can draft
+  objectives, submit signals, compile/challenge proposals, and request explicit
+  proposal promotion without bypassing Decision Contract, Program Intake, review, or
+  landing authority.
 - Narrowed repo-gate tracked-rewrite handling so validation-satisfied phase goals can
   continue to a commit-capable handoff when canonicalize rewrites only pre-gate
   implementation paths, while unsafe or strict-boundary rewrites still preserve

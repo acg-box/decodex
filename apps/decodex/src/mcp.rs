@@ -1,5 +1,5 @@
 use std::{
-	collections::BTreeSet,
+	collections::{BTreeMap, BTreeSet},
 	env,
 	fmt::Display,
 	fs,
@@ -17,6 +17,18 @@ use serde_json::{self, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
+	autonomy_objective::{AutonomyObjectiveContract, AutonomyObjectiveState},
+	autonomy_proposal::{
+		AutonomyProposal, AutonomyProposalAcceptedProjectPolicy,
+		AutonomyProposalAuthorityActorKind, AutonomyProposalChallengeInput,
+		AutonomyProposalChallengeSource, AutonomyProposalCompileInput,
+		AutonomyProposalDecisionBridgeAuthority,
+	},
+	autonomy_signal::{
+		AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
+		AutonomySignalFreshness, AutonomySignalInput, AutonomySignalKind, AutonomySignalPrivacy,
+		AutonomySignalReviewEvidence, AutonomySignalSourceType,
+	},
 	config::ServiceConfig,
 	loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
 	orchestrator::{self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, McpLaneSteerRequest},
@@ -29,7 +41,7 @@ use crate::{
 		self, ResearchDesignOutcome, ResearchDesignRunInput, ResearchDesignRunReport,
 	},
 	runtime,
-	state::StateStore,
+	state::{AutonomyProposalRecord, AutonomySignalRecord, StateStore},
 	tracker::{
 		IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBriefUpdate, TrackerIssueCreate,
 	},
@@ -52,6 +64,11 @@ const TOOL_PLAN: &str = "decodex_plan";
 const TOOL_RESEARCH_COMPILE: &str = "research_compile";
 const TOOL_RESEARCH_PROMOTE: &str = "research_promote";
 const TOOL_INTAKE_GOAL: &str = "intake_goal";
+const TOOL_AUTONOMY_DRAFT_OBJECTIVE: &str = "autonomy_draft_objective";
+const TOOL_AUTONOMY_SUBMIT_SIGNAL: &str = "autonomy_submit_signal";
+const TOOL_AUTONOMY_COMPILE_PROPOSAL: &str = "autonomy_compile_proposal";
+const TOOL_AUTONOMY_CHALLENGE_PROPOSAL: &str = "autonomy_challenge_proposal";
+const TOOL_AUTONOMY_REQUEST_PROMOTION: &str = "autonomy_request_promotion";
 const TOOL_LANE_CONTROL: &str = "decodex_lane_control";
 const TOOL_PROJECT_CONTROL: &str = "decodex_project_control";
 const MCP_HTTP_ENDPOINT_PATH: &str = "/mcp";
@@ -266,111 +283,23 @@ impl McpServer {
 				format!("Project {project_id} PR/review state"),
 				"Remote-safe PR and review-state readback.",
 			));
+			resources.push(McpResource::json(
+				format!("decodex://projects/{project_id}/autonomy"),
+				format!("Project {project_id} autonomy summaries"),
+				"Read-only autonomy objective, signal, proposal, and evidence summaries.",
+			));
 		}
 
 		Ok(serde_json::json!({ "resources": resources }))
 	}
 
 	fn list_resource_templates(&self) -> Value {
+		let mut resource_templates = docs_resource_templates();
+
+		resource_templates.extend(runtime_resource_templates());
+
 		serde_json::json!({
-			"resourceTemplates": [
-				{
-					"uriTemplate": "decodex://docs/spec/{topic}",
-					"name": "Decodex specs",
-					"description": "Checked-in normative Decodex specification concepts.",
-					"mimeType": "text/markdown"
-				},
-				{
-					"uriTemplate": "decodex://docs/runbook/{topic}",
-					"name": "Decodex runbooks",
-					"description": "Checked-in Decodex operator procedures.",
-					"mimeType": "text/markdown"
-				},
-				{
-					"uriTemplate": "decodex://docs/reference/{topic}",
-					"name": "Decodex references",
-					"description": "Checked-in Decodex implementation and current-state references.",
-					"mimeType": "text/markdown"
-				},
-				{
-					"uriTemplate": "decodex://docs/decisions/{topic}",
-					"name": "Decodex decisions",
-					"description": "Checked-in Decodex design-rationale concepts.",
-					"mimeType": "text/markdown"
-				},
-				{
-					"uriTemplate": "decodex://research/{concept}",
-					"name": "Decodex research concepts",
-					"description": "Checked-in Markdown Research Contract concepts.",
-					"mimeType": "text/markdown"
-				},
-				{
-					"uriTemplate": "decodex://decision-contracts/{contract_id}",
-					"name": "Runtime Decision Contracts",
-					"description": "Local runtime Decision Contract readback by contract id.",
-					"mimeType": "application/json"
-				},
-				{
-					"uriTemplate": "decodex://projects/{project_id}/status",
-					"name": "Project status",
-					"description": "Local runtime project status readback.",
-					"mimeType": "application/json"
-				},
-				{
-					"uriTemplate": "decodex://projects/{project_id}/status_live",
-					"name": "Project live status",
-					"description": "Remote-safe current operation, phase, event counts, progress diagnostics, and validation status.",
-					"mimeType": "application/json"
-				},
-				{
-					"uriTemplate": "decodex://projects/{project_id}/activity_tail",
-					"name": "Project activity tail",
-					"description": "Remote-safe activity readback for current and recent runs.",
-					"mimeType": "application/json"
-				},
-				{
-					"uriTemplate": "decodex://projects/{project_id}/lane_inspect/{issue}",
-					"name": "Lane inspect readback",
-					"description": "Read-only lane inspect alias for remote-safe current-lane state.",
-					"mimeType": "application/json"
-				},
-				{
-					"uriTemplate": "decodex://projects/{project_id}/lane-control/{issue}",
-					"name": "Lane-control readback",
-					"description": "Inspect one local lane before requesting guarded lane-control actions.",
-					"mimeType": "application/json"
-				},
-				{
-					"uriTemplate": "decodex://projects/{project_id}/runs/{run_id}/events",
-					"name": "Run event readback",
-					"description": "Remote-safe event counts for a run visible in the current/recent status snapshot.",
-					"mimeType": "application/json"
-				},
-				{
-					"uriTemplate": "decodex://projects/{project_id}/runs/{run_id}/protocol_activity",
-					"name": "Run protocol activity",
-					"description": "Remote-safe protocol activity for a run visible in the current/recent status snapshot, without hidden reasoning or raw payloads.",
-					"mimeType": "application/json"
-				},
-				{
-					"uriTemplate": "decodex://projects/{project_id}/runs/{run_id}/child_agent_activity",
-					"name": "Run child-agent activity",
-					"description": "Remote-safe child-agent activity for a run visible in the current/recent status snapshot.",
-					"mimeType": "application/json"
-				},
-				{
-					"uriTemplate": "decodex://projects/{project_id}/runs/{run_id}/progress_diagnostics",
-					"name": "Run progress diagnostics",
-					"description": "Remote-safe progress and suspected-stall diagnostics for a run visible in the current/recent status snapshot.",
-					"mimeType": "application/json"
-				},
-				{
-					"uriTemplate": "decodex://projects/{project_id}/pr_review_state",
-					"name": "PR/review state",
-					"description": "Remote-safe PR and review-state readback.",
-					"mimeType": "application/json"
-				}
-			]
+			"resourceTemplates": resource_templates
 		})
 	}
 
@@ -444,6 +373,14 @@ impl McpServer {
 			TOOL_RESEARCH_COMPILE => Ok(self.call_research_compile_tool(arguments)),
 			TOOL_RESEARCH_PROMOTE => Ok(self.call_research_promote_tool(arguments)),
 			TOOL_INTAKE_GOAL => Ok(self.call_intake_goal_tool(arguments)),
+			TOOL_AUTONOMY_DRAFT_OBJECTIVE => Ok(self.call_autonomy_draft_objective_tool(arguments)),
+			TOOL_AUTONOMY_SUBMIT_SIGNAL => Ok(self.call_autonomy_submit_signal_tool(arguments)),
+			TOOL_AUTONOMY_COMPILE_PROPOSAL =>
+				Ok(self.call_autonomy_compile_proposal_tool(arguments)),
+			TOOL_AUTONOMY_CHALLENGE_PROPOSAL =>
+				Ok(self.call_autonomy_challenge_proposal_tool(arguments)),
+			TOOL_AUTONOMY_REQUEST_PROMOTION =>
+				Ok(self.call_autonomy_request_promotion_tool(arguments)),
 			TOOL_LANE_CONTROL => Ok(self.call_lane_control_tool(arguments, required_profile)),
 			TOOL_PROJECT_CONTROL => Ok(self.call_project_control_tool(arguments, required_profile)),
 			_ => Ok(tool_refusal("unknown_tool", "Decodex MCP tool is not registered.")),
@@ -765,6 +702,426 @@ impl McpServer {
 			Err(_) => tool_refusal(
 				"intake_goal_refused",
 				"Goal intake apply was refused by Decodex authority or tracker checks.",
+			),
+		}
+	}
+
+	fn call_autonomy_draft_objective_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<AutonomyDraftObjectiveToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_AUTONOMY_DRAFT_OBJECTIVE,
+					"`objective` is required and `mode` must be dry_run or apply.",
+				),
+		};
+		let mode =
+			match planning_mode(params.mode.as_deref(), "dry_run", TOOL_AUTONOMY_DRAFT_OBJECTIVE) {
+				Ok(mode) => mode,
+				Err(result) => return result,
+			};
+		let project_id = match planning_project_id(
+			&self.context,
+			params.project_id.as_deref(),
+			TOOL_AUTONOMY_DRAFT_OBJECTIVE,
+		) {
+			Ok(project_id) => project_id,
+			Err(result) => return result,
+		};
+
+		if params.objective.project_id() != project_id {
+			return invalid_tool_arguments(
+				TOOL_AUTONOMY_DRAFT_OBJECTIVE,
+				"`objective.project_id` must match the MCP project context.",
+			);
+		}
+		if params.objective.state() != AutonomyObjectiveState::Draft {
+			return tool_refusal(
+				"objective_draft_refused",
+				"autonomy_draft_objective only stores draft Objective Contracts; acceptance uses a separate explicit authority surface.",
+			);
+		}
+
+		if let Err(error) = params.objective.validate() {
+			return tool_refusal(
+				"objective_draft_refused",
+				format!("Objective Contract draft did not validate: {error}"),
+			);
+		}
+
+		if mode == "apply" && !planning_authority_present(params.authority.as_ref()) {
+			return missing_authority_refusal(
+				TOOL_AUTONOMY_DRAFT_OBJECTIVE,
+				"autonomy_draft_objective apply requires authority.source and authority.reason.",
+			);
+		}
+		if mode == "dry_run" {
+			return tool_success(autonomy_objective_tool_result(
+				&project_id,
+				&params.objective,
+				mode,
+				false,
+				None,
+			));
+		}
+
+		let store = match planning_state_store(&self.context, TOOL_AUTONOMY_DRAFT_OBJECTIVE) {
+			Ok(store) => store,
+			Err(result) => return result,
+		};
+
+		match store.upsert_autonomy_objective_draft(&project_id, params.objective) {
+			Ok(record) => tool_success(autonomy_objective_tool_result(
+				&project_id,
+				record.objective(),
+				mode,
+				true,
+				Some(record.updated_at()),
+			)),
+			Err(error) => tool_refusal(
+				"objective_draft_refused",
+				format!(
+					"Objective Contract draft was refused by Decodex authority checks: {error}"
+				),
+			),
+		}
+	}
+
+	fn call_autonomy_submit_signal_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<AutonomySubmitSignalToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_AUTONOMY_SUBMIT_SIGNAL,
+					"`kind`, `signal`, and optional `mode` are required.",
+				),
+		};
+		let mode =
+			match planning_mode(params.mode.as_deref(), "dry_run", TOOL_AUTONOMY_SUBMIT_SIGNAL) {
+				Ok(mode) => mode,
+				Err(result) => return result,
+			};
+		let project_id = match planning_project_id(
+			&self.context,
+			params.project_id.as_deref(),
+			TOOL_AUTONOMY_SUBMIT_SIGNAL,
+		) {
+			Ok(project_id) => project_id,
+			Err(result) => return result,
+		};
+		let signal = match autonomy_signal_from_tool_args(params.kind, params.signal, &project_id) {
+			Ok(signal) => signal,
+			Err(result) => return result,
+		};
+
+		if mode == "apply" && !planning_authority_present(params.authority.as_ref()) {
+			return missing_authority_refusal(
+				TOOL_AUTONOMY_SUBMIT_SIGNAL,
+				"autonomy_submit_signal apply requires authority.source and authority.reason.",
+			);
+		}
+		if mode == "dry_run" {
+			return tool_success(autonomy_signal_tool_result(
+				&project_id,
+				&signal,
+				mode,
+				false,
+				None,
+			));
+		}
+
+		let store = match planning_state_store(&self.context, TOOL_AUTONOMY_SUBMIT_SIGNAL) {
+			Ok(store) => store,
+			Err(result) => return result,
+		};
+
+		match store.record_autonomy_signal(&project_id, signal) {
+			Ok(record) => tool_success(autonomy_signal_tool_result(
+				&project_id,
+				record.signal(),
+				mode,
+				true,
+				Some(record.updated_at()),
+			)),
+			Err(error) => tool_refusal(
+				"autonomy_signal_refused",
+				format!("Autonomy signal was refused by Decodex authority checks: {error}"),
+			),
+		}
+	}
+
+	fn call_autonomy_compile_proposal_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<AutonomyCompileProposalToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_AUTONOMY_COMPILE_PROPOSAL,
+					"`proposal`, `signalIds`, and optional `mode` are required.",
+				),
+		};
+		let mode = match planning_mode(
+			params.mode.as_deref(),
+			"dry_run",
+			TOOL_AUTONOMY_COMPILE_PROPOSAL,
+		) {
+			Ok(mode) => mode,
+			Err(result) => return result,
+		};
+		let project_id = match planning_project_id(
+			&self.context,
+			params.project_id.as_deref(),
+			TOOL_AUTONOMY_COMPILE_PROPOSAL,
+		) {
+			Ok(project_id) => project_id,
+			Err(result) => return result,
+		};
+		let input = match params.proposal.into_compile_input(&project_id) {
+			Ok(input) => input,
+			Err(result) => return result,
+		};
+
+		if mode == "apply" && !planning_authority_present(params.authority.as_ref()) {
+			return missing_authority_refusal(
+				TOOL_AUTONOMY_COMPILE_PROPOSAL,
+				"autonomy_compile_proposal apply requires authority.source and authority.reason.",
+			);
+		}
+
+		let store = match planning_state_store(&self.context, TOOL_AUTONOMY_COMPILE_PROPOSAL) {
+			Ok(store) => store,
+			Err(result) => return result,
+		};
+		let proposal = match store.compile_autonomy_proposal_dry_run(input, &params.signal_ids) {
+			Ok(proposal) => proposal,
+			Err(error) =>
+				return tool_refusal(
+					"autonomy_proposal_refused",
+					format!("Autonomy proposal compile was refused: {error}"),
+				),
+		};
+
+		if mode == "dry_run" {
+			return tool_success(autonomy_proposal_tool_result(
+				&project_id,
+				&proposal,
+				mode,
+				false,
+				None,
+			));
+		}
+
+		match store.record_autonomy_proposal(&project_id, proposal) {
+			Ok(record) => tool_success(autonomy_proposal_tool_result(
+				&project_id,
+				record.proposal(),
+				mode,
+				true,
+				Some(record.updated_at()),
+			)),
+			Err(error) => tool_refusal(
+				"autonomy_proposal_refused",
+				format!(
+					"Autonomy proposal persistence was refused by Decodex authority checks: {error}"
+				),
+			),
+		}
+	}
+
+	fn call_autonomy_challenge_proposal_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<AutonomyChallengeProposalToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+					"`proposalId`, `challenge`, and optional `mode` are required.",
+				),
+		};
+		let Some(proposal_id) = non_empty_string(Some(params.proposal_id.as_str())) else {
+			return invalid_tool_arguments(
+				TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+				"`proposalId` is required.",
+			);
+		};
+
+		if !safe_autonomy_record_identifier(proposal_id) {
+			return invalid_tool_arguments(
+				TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+				"`proposalId` must be a safe Decodex autonomy identifier.",
+			);
+		}
+
+		let mode = match planning_mode(
+			params.mode.as_deref(),
+			"dry_run",
+			TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+		) {
+			Ok(mode) => mode,
+			Err(result) => return result,
+		};
+		let project_id = match planning_project_id(
+			&self.context,
+			params.project_id.as_deref(),
+			TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+		) {
+			Ok(project_id) => project_id,
+			Err(result) => return result,
+		};
+		let challenge = match params.challenge.into_challenge_input() {
+			Ok(challenge) => challenge,
+			Err(result) => return result,
+		};
+		let store = match planning_state_store(&self.context, TOOL_AUTONOMY_CHALLENGE_PROPOSAL) {
+			Ok(store) => store,
+			Err(result) => return result,
+		};
+
+		if mode == "apply" && !planning_authority_present(params.authority.as_ref()) {
+			return missing_authority_refusal(
+				TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+				"autonomy_challenge_proposal apply requires authority.source and authority.reason.",
+			);
+		}
+		if mode == "dry_run" {
+			let record = match store.autonomy_proposal(&project_id, proposal_id) {
+				Ok(Some(record)) => record,
+				Ok(None) =>
+					return tool_refusal(
+						"proposal_not_found",
+						"Autonomy proposal was not found in the current Decodex project.",
+					),
+				Err(error) =>
+					return tool_refusal(
+						"autonomy_challenge_refused",
+						format!("Autonomy proposal readback failed closed: {error}"),
+					),
+			};
+			let mut proposal = record.proposal().clone();
+
+			return match proposal.record_challenge(challenge) {
+				Ok(()) => tool_success(autonomy_challenge_tool_result(
+					&project_id,
+					&proposal,
+					mode,
+					false,
+					Some(record.updated_at()),
+				)),
+				Err(error) => tool_refusal(
+					"autonomy_challenge_refused",
+					format!("Autonomy proposal challenge was refused: {error}"),
+				),
+			};
+		}
+
+		match store.record_autonomy_proposal_challenge(&project_id, proposal_id, challenge) {
+			Ok(record) => tool_success(autonomy_challenge_tool_result(
+				&project_id,
+				record.proposal(),
+				mode,
+				true,
+				Some(record.updated_at()),
+			)),
+			Err(error) => tool_refusal(
+				"autonomy_challenge_refused",
+				format!(
+					"Autonomy proposal challenge was refused by Decodex authority checks: {error}"
+				),
+			),
+		}
+	}
+
+	fn call_autonomy_request_promotion_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<AutonomyRequestPromotionToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_AUTONOMY_REQUEST_PROMOTION,
+					"`proposalId` and optional `mode` are required.",
+				),
+		};
+		let Some(proposal_id) = non_empty_string(Some(params.proposal_id.as_str())) else {
+			return invalid_tool_arguments(
+				TOOL_AUTONOMY_REQUEST_PROMOTION,
+				"`proposalId` is required.",
+			);
+		};
+
+		if !safe_autonomy_record_identifier(proposal_id) {
+			return invalid_tool_arguments(
+				TOOL_AUTONOMY_REQUEST_PROMOTION,
+				"`proposalId` must be a safe Decodex autonomy identifier.",
+			);
+		}
+
+		let mode =
+			match planning_mode(params.mode.as_deref(), "dry_run", TOOL_AUTONOMY_REQUEST_PROMOTION)
+			{
+				Ok(mode) => mode,
+				Err(result) => return result,
+			};
+		let project_id = match planning_project_id(
+			&self.context,
+			params.project_id.as_deref(),
+			TOOL_AUTONOMY_REQUEST_PROMOTION,
+		) {
+			Ok(project_id) => project_id,
+			Err(result) => return result,
+		};
+		let store = match planning_state_store(&self.context, TOOL_AUTONOMY_REQUEST_PROMOTION) {
+			Ok(store) => store,
+			Err(result) => return result,
+		};
+		let record = match store.autonomy_proposal(&project_id, proposal_id) {
+			Ok(Some(record)) => record,
+			Ok(None) =>
+				return tool_refusal(
+					"proposal_not_found",
+					"Autonomy proposal was not found in the current Decodex project.",
+				),
+			Err(error) =>
+				return tool_refusal(
+					"autonomy_promotion_refused",
+					format!("Autonomy proposal readback failed closed: {error}"),
+				),
+		};
+
+		if mode == "dry_run" {
+			return tool_success(autonomy_promotion_request_result(
+				&project_id,
+				record.proposal(),
+				mode,
+				false,
+				None,
+			));
+		}
+
+		let Some(authority) = params.authority else {
+			return missing_authority_refusal(
+				TOOL_AUTONOMY_REQUEST_PROMOTION,
+				"autonomy_request_promotion apply requires explicit proposal acceptance authority.",
+			);
+		};
+		let authority = match authority.into_decision_bridge_authority() {
+			Ok(authority) => authority,
+			Err(result) => return result,
+		};
+
+		match store.accept_autonomy_proposal_as_decision_contract_candidate(
+			&project_id,
+			proposal_id,
+			authority,
+		) {
+			Ok(contract) => tool_success(autonomy_promotion_request_result(
+				&project_id,
+				record.proposal(),
+				mode,
+				true,
+				Some(contract.contract_id()),
+			)),
+			Err(error) => tool_refusal(
+				"autonomy_promotion_refused",
+				format!(
+					"Autonomy proposal promotion request was refused by Decodex authority checks: {error}"
+				),
 			),
 		}
 	}
@@ -1352,6 +1709,11 @@ impl McpContext {
 		if Some(project_id.as_str()) != self.project_id.as_deref() {
 			return Err(McpError::resource_not_found());
 		}
+		if resource_kind == "autonomy" {
+			let value = self.read_autonomy_project_resource(project_id, rest)?;
+
+			return ResourceContent::mcp_observability_json(&uri.raw, value);
+		}
 
 		let Some(config_path) = self.config_path.as_deref() else {
 			return Err(McpError::resource_not_found());
@@ -1427,6 +1789,46 @@ impl McpContext {
 
 		ResourceContent::mcp_observability_json(&uri.raw, value)
 	}
+
+	fn read_autonomy_project_resource(
+		&self,
+		project_id: &str,
+		rest: &[String],
+	) -> crate::prelude::Result<Value, McpError> {
+		let Some(state_store) = self.state_store.as_ref() else {
+			return Err(McpError::resource_not_found());
+		};
+
+		match rest {
+			[] => mcp_autonomy_project_resource(state_store, project_id),
+			[resource] if resource == "signals" =>
+				mcp_autonomy_signals_resource(state_store, project_id),
+			[resource, signal_id]
+				if resource == "signals" && safe_autonomy_record_identifier(signal_id) =>
+				mcp_autonomy_signal_resource(state_store, project_id, signal_id),
+			[resource] if resource == "proposals" =>
+				mcp_autonomy_proposals_resource(state_store, project_id),
+			[resource, proposal_id]
+				if resource == "proposals" && safe_autonomy_record_identifier(proposal_id) =>
+				mcp_autonomy_proposal_resource(state_store, project_id, proposal_id),
+			[resource] if resource == "evidence" =>
+				mcp_autonomy_evidence_resource(state_store, project_id),
+			[resource, objective_id, selector]
+				if resource == "objectives"
+					&& safe_runtime_identifier(objective_id)
+					&& selector == "current" =>
+				mcp_autonomy_current_objective_resource(state_store, project_id, objective_id),
+			[resource, objective_id, version]
+				if resource == "objectives" && safe_runtime_identifier(objective_id) =>
+				mcp_autonomy_objective_version_resource(
+					state_store,
+					project_id,
+					objective_id,
+					version,
+				),
+			_ => Err(McpError::resource_not_found()),
+		}
+	}
 }
 
 #[derive(Deserialize)]
@@ -1498,6 +1900,273 @@ struct IntakeGoalToolArgs {
 	contract_id: String,
 	team_issue_identifier: Option<String>,
 	authority: Option<PlanningAuthorityArgs>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutonomyDraftObjectiveToolArgs {
+	mode: Option<String>,
+	project_id: Option<String>,
+	objective: AutonomyObjectiveContract,
+	authority: Option<PlanningAuthorityArgs>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutonomySubmitSignalToolArgs {
+	mode: Option<String>,
+	project_id: Option<String>,
+	kind: AutonomySignalKind,
+	signal: AutonomySignalInputArgs,
+	authority: Option<PlanningAuthorityArgs>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutonomySignalInputArgs {
+	objective_id: String,
+	objective_version: u64,
+	source_type: AutonomySignalSourceType,
+	source_refs: Vec<String>,
+	#[serde(default)]
+	primary_source_refs: Vec<String>,
+	issue_id: Option<String>,
+	run_id: Option<String>,
+	attempt_id: Option<String>,
+	head_sha: Option<String>,
+	captured_at: Option<String>,
+	freshness: AutonomySignalFreshness,
+	summary: String,
+	evidence: Vec<String>,
+	evidence_class: AutonomySignalEvidenceClass,
+	#[serde(default)]
+	contradictions: Vec<String>,
+	#[serde(default)]
+	gaps: Vec<String>,
+	confidence: AutonomySignalConfidence,
+	privacy: AutonomySignalPrivacy,
+	#[serde(default)]
+	observed_counts: BTreeMap<String, u64>,
+	review_evidence: Option<AutonomySignalReviewEvidence>,
+	proposal_only: Option<bool>,
+	created_at: Option<String>,
+}
+impl AutonomySignalInputArgs {
+	fn into_signal_input(self, project_id: &str) -> AutonomySignalInput {
+		let now = mcp_now_rfc3339();
+
+		AutonomySignalInput {
+			project_id: project_id.to_owned(),
+			objective_id: self.objective_id,
+			objective_version: self.objective_version,
+			source_type: self.source_type,
+			source_refs: self.source_refs,
+			primary_source_refs: self.primary_source_refs,
+			issue_id: self.issue_id,
+			run_id: self.run_id,
+			attempt_id: self.attempt_id,
+			head_sha: self.head_sha,
+			captured_at: self.captured_at.unwrap_or_else(|| now.clone()),
+			freshness: self.freshness,
+			summary: self.summary,
+			evidence: self.evidence,
+			evidence_class: self.evidence_class,
+			contradictions: self.contradictions,
+			gaps: self.gaps,
+			confidence: self.confidence,
+			privacy: self.privacy,
+			observed_counts: self.observed_counts,
+			review_evidence: self.review_evidence,
+			proposal_only: self.proposal_only.unwrap_or(true),
+			created_at: self.created_at.unwrap_or(now),
+		}
+	}
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutonomyCompileProposalToolArgs {
+	mode: Option<String>,
+	project_id: Option<String>,
+	proposal: AutonomyProposalCompileArgs,
+	#[serde(default)]
+	signal_ids: Vec<String>,
+	authority: Option<PlanningAuthorityArgs>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutonomyProposalCompileArgs {
+	objective_id: String,
+	objective_version: u64,
+	source_family: String,
+	intended_surface: String,
+	#[serde(default)]
+	affected_identifiers: Vec<String>,
+	summary: String,
+	#[serde(default)]
+	challenge_requirements: Vec<String>,
+	#[serde(default)]
+	rejected_alternatives: Vec<String>,
+	rollback_path: String,
+	#[serde(default)]
+	weakened_validation_or_review: Vec<String>,
+	created_at: Option<String>,
+}
+impl AutonomyProposalCompileArgs {
+	fn into_compile_input(self, project_id: &str) -> Result<AutonomyProposalCompileInput, Value> {
+		if self.objective_version == 0 {
+			return Err(invalid_tool_arguments(
+				TOOL_AUTONOMY_COMPILE_PROPOSAL,
+				"`proposal.objectiveVersion` must be greater than zero.",
+			));
+		}
+
+		Ok(AutonomyProposalCompileInput {
+			project_id: project_id.to_owned(),
+			objective_id: self.objective_id,
+			objective_version: self.objective_version,
+			source_family: self.source_family,
+			intended_surface: self.intended_surface,
+			affected_identifiers: self.affected_identifiers,
+			summary: self.summary,
+			challenge_requirements: self.challenge_requirements,
+			rejected_alternatives: self.rejected_alternatives,
+			rollback_path: self.rollback_path,
+			weakened_validation_or_review: self.weakened_validation_or_review,
+			created_at: self.created_at.unwrap_or_else(mcp_now_rfc3339),
+		})
+	}
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutonomyChallengeProposalToolArgs {
+	mode: Option<String>,
+	project_id: Option<String>,
+	proposal_id: String,
+	challenge: AutonomyProposalChallengeArgs,
+	authority: Option<PlanningAuthorityArgs>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutonomyProposalChallengeArgs {
+	source: AutonomyProposalChallengeSource,
+	actor: String,
+	summary: String,
+	#[serde(default)]
+	objections: Vec<String>,
+	#[serde(default)]
+	evidence_refs: Vec<String>,
+	recorded_at: Option<String>,
+}
+impl AutonomyProposalChallengeArgs {
+	fn into_challenge_input(self) -> Result<AutonomyProposalChallengeInput, Value> {
+		if non_empty_string(Some(self.actor.as_str())).is_none()
+			|| non_empty_string(Some(self.summary.as_str())).is_none()
+		{
+			return Err(invalid_tool_arguments(
+				TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+				"`challenge.actor` and `challenge.summary` are required.",
+			));
+		}
+
+		Ok(AutonomyProposalChallengeInput {
+			source: self.source,
+			actor: self.actor,
+			summary: self.summary,
+			objections: self.objections,
+			evidence_refs: self.evidence_refs,
+			recorded_at: self.recorded_at.unwrap_or_else(mcp_now_rfc3339),
+		})
+	}
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutonomyRequestPromotionToolArgs {
+	mode: Option<String>,
+	project_id: Option<String>,
+	proposal_id: String,
+	authority: Option<AutonomyProposalAcceptanceArgs>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutonomyProposalAcceptanceArgs {
+	accepted_by: String,
+	accepted_by_kind: AutonomyProposalAuthorityActorKind,
+	accepted_at: Option<String>,
+	acceptance_source: String,
+	reason: String,
+	proposal_actor: String,
+	proposal_actor_kind: AutonomyProposalAuthorityActorKind,
+	accepted_project_policy: Option<AutonomyAcceptedProjectPolicyArgs>,
+}
+impl AutonomyProposalAcceptanceArgs {
+	fn into_decision_bridge_authority(
+		self,
+	) -> Result<AutonomyProposalDecisionBridgeAuthority, Value> {
+		let policy = match self.accepted_project_policy {
+			Some(policy) => Some(policy.into_policy()?),
+			None => None,
+		};
+
+		AutonomyProposalDecisionBridgeAuthority::new(
+			self.accepted_by,
+			self.accepted_by_kind,
+			self.accepted_at.unwrap_or_else(mcp_now_rfc3339),
+			self.acceptance_source,
+			self.reason,
+			self.proposal_actor,
+			self.proposal_actor_kind,
+			policy,
+		)
+		.map_err(|error| {
+			tool_refusal(
+				"autonomy_acceptance_authority_refused",
+				format!("Autonomy proposal acceptance authority was refused: {error}"),
+			)
+		})
+	}
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AutonomyAcceptedProjectPolicyArgs {
+	project_id: String,
+	objective_id: String,
+	objective_version: u64,
+	accepted_policy_id: String,
+	accepted_policy_version: String,
+	authority_ref: String,
+	authorized_actor: String,
+	authorized_actor_kind: AutonomyProposalAuthorityActorKind,
+	authorized_acceptance_sources: Vec<String>,
+	authorized_scopes: Vec<String>,
+}
+impl AutonomyAcceptedProjectPolicyArgs {
+	fn into_policy(self) -> Result<AutonomyProposalAcceptedProjectPolicy, Value> {
+		AutonomyProposalAcceptedProjectPolicy::new(
+			self.project_id,
+			self.objective_id,
+			self.objective_version,
+			self.accepted_policy_id,
+			self.accepted_policy_version,
+			self.authority_ref,
+			self.authorized_actor,
+			self.authorized_actor_kind,
+			self.authorized_acceptance_sources,
+			self.authorized_scopes,
+		)
+		.map_err(|error| {
+			tool_refusal(
+				"autonomy_policy_authority_refused",
+				format!("Accepted project policy authority was refused: {error}"),
+			)
+		})
+	}
 }
 
 #[derive(Deserialize)]
@@ -2241,6 +2910,174 @@ pub(crate) fn serve(request: McpServeRequest<'_>) -> crate::prelude::Result<()> 
 	}
 }
 
+fn docs_resource_templates() -> Vec<Value> {
+	resource_template_values(&[
+		(
+			"decodex://docs/spec/{topic}",
+			"Decodex specs",
+			"Checked-in normative Decodex specification concepts.",
+			"text/markdown",
+		),
+		(
+			"decodex://docs/runbook/{topic}",
+			"Decodex runbooks",
+			"Checked-in Decodex operator procedures.",
+			"text/markdown",
+		),
+		(
+			"decodex://docs/reference/{topic}",
+			"Decodex references",
+			"Checked-in Decodex implementation and current-state references.",
+			"text/markdown",
+		),
+		(
+			"decodex://docs/decisions/{topic}",
+			"Decodex decisions",
+			"Checked-in Decodex design-rationale concepts.",
+			"text/markdown",
+		),
+		(
+			"decodex://research/{concept}",
+			"Decodex research concepts",
+			"Checked-in Markdown Research Contract concepts.",
+			"text/markdown",
+		),
+	])
+}
+
+fn runtime_resource_templates() -> Vec<Value> {
+	resource_template_values(&[
+		(
+			"decodex://decision-contracts/{contract_id}",
+			"Runtime Decision Contracts",
+			"Local runtime Decision Contract readback by contract id.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/status",
+			"Project status",
+			"Local runtime project status readback.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/status_live",
+			"Project live status",
+			"Remote-safe current operation, phase, event counts, progress diagnostics, and validation status.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/activity_tail",
+			"Project activity tail",
+			"Remote-safe activity readback for current and recent runs.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/lane_inspect/{issue}",
+			"Lane inspect readback",
+			"Read-only lane inspect alias for remote-safe current-lane state.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/lane-control/{issue}",
+			"Lane-control readback",
+			"Inspect one local lane before requesting guarded lane-control actions.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/runs/{run_id}/events",
+			"Run event readback",
+			"Remote-safe event counts for a run visible in the current/recent status snapshot.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/runs/{run_id}/protocol_activity",
+			"Run protocol activity",
+			"Remote-safe protocol activity for a run visible in the current/recent status snapshot, without hidden reasoning or raw payloads.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/runs/{run_id}/child_agent_activity",
+			"Run child-agent activity",
+			"Remote-safe child-agent activity for a run visible in the current/recent status snapshot.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/runs/{run_id}/progress_diagnostics",
+			"Run progress diagnostics",
+			"Remote-safe progress and suspected-stall diagnostics for a run visible in the current/recent status snapshot.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/pr_review_state",
+			"PR/review state",
+			"Remote-safe PR and review-state readback.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/autonomy",
+			"Autonomy summaries",
+			"Read-only project autonomy objective, signal, proposal, and evidence summaries.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/autonomy/objectives/{objective_id}/current",
+			"Current autonomy objective",
+			"Read-only current accepted Objective Contract summary.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/autonomy/objectives/{objective_id}/{version}",
+			"Autonomy objective version",
+			"Read-only Objective Contract version summary.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/autonomy/signals",
+			"Autonomy signals",
+			"Read-only recent autonomy signal summaries.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/autonomy/signals/{signal_id}",
+			"Autonomy signal",
+			"Read-only autonomy signal summary.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/autonomy/proposals",
+			"Autonomy proposals",
+			"Read-only recent autonomy proposal summaries.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/autonomy/proposals/{proposal_id}",
+			"Autonomy proposal",
+			"Read-only autonomy proposal summary.",
+			"application/json",
+		),
+		(
+			"decodex://projects/{project_id}/autonomy/evidence",
+			"Autonomy evidence summaries",
+			"Read-only evidence summary counts and refs derived from recent signals and proposals.",
+			"application/json",
+		),
+	])
+}
+
+fn resource_template_values(templates: &[(&str, &str, &str, &str)]) -> Vec<Value> {
+	templates
+		.iter()
+		.map(|(uri_template, name, description, mime_type)| {
+			serde_json::json!({
+				"uriTemplate": uri_template,
+				"name": name,
+				"description": description,
+				"mimeType": mime_type
+			})
+		})
+		.collect()
+}
+
 fn validate_mcp_bearer_token_env_var_name(env_var: &str) -> crate::prelude::Result<()> {
 	if env_var.is_empty() || env_var.trim() != env_var {
 		eyre::bail!("--bearer-token-env must name a non-empty environment variable.");
@@ -2417,92 +3254,158 @@ fn prompt_required_arguments_are_present(name: &str, arguments: &Value) -> bool 
 }
 
 fn mcp_tools() -> Vec<McpTool> {
+	let mut tools = mcp_foundation_tools();
+
+	tools.extend(mcp_autonomy_tools());
+	tools.extend(mcp_operator_tools());
+
+	tools
+}
+
+fn mcp_foundation_tools() -> Vec<McpTool> {
 	vec![
-		McpTool {
-			required_profile: McpCapabilityProfile::Observe,
-			value: mcp_tool_value(
-				TOOL_OBSERVE,
-				"Decodex Observe",
-				"Read public-safe local Decodex runtime observability without private evidence payloads.",
-				McpCapabilityProfile::Observe,
-				observe_tool_input_schema(),
-				observe_tool_output_schema(),
-				true,
-			),
-		},
-		McpTool {
-			required_profile: McpCapabilityProfile::Plan,
-			value: mcp_tool_value(
-				TOOL_PLAN,
-				"Decodex Plan",
-				"Return the Decodex prompt/resource route for a requested workflow intent.",
-				McpCapabilityProfile::Plan,
-				plan_tool_input_schema(),
-				plan_tool_output_schema(),
-				true,
-			),
-		},
-		McpTool {
-			required_profile: McpCapabilityProfile::Plan,
-			value: mcp_tool_value(
-				TOOL_RESEARCH_COMPILE,
-				"Decodex Research Compile",
-				"Validate or persist a latent Decodex Decision Contract from bounded research input.",
-				McpCapabilityProfile::Plan,
-				research_compile_tool_input_schema(),
-				research_compile_tool_output_schema(),
-				false,
-			),
-		},
-		McpTool {
-			required_profile: McpCapabilityProfile::Plan,
-			value: mcp_tool_value(
-				TOOL_RESEARCH_PROMOTE,
-				"Decodex Research Promote",
-				"Inspect or explicitly promote a latent Decision Contract through Decodex authority checks.",
-				McpCapabilityProfile::Plan,
-				research_promote_tool_input_schema(),
-				research_promote_tool_output_schema(),
-				false,
-			),
-		},
-		McpTool {
-			required_profile: McpCapabilityProfile::Plan,
-			value: mcp_tool_value(
-				TOOL_INTAKE_GOAL,
-				"Decodex Goal Intake",
-				"Dry-run or explicitly apply promoted-goal Program Intake through Decodex authority gates.",
-				McpCapabilityProfile::Plan,
-				intake_goal_tool_input_schema(),
-				intake_goal_tool_output_schema(),
-				false,
-			),
-		},
-		McpTool {
-			required_profile: McpCapabilityProfile::Operate,
-			value: mcp_tool_value(
-				TOOL_LANE_CONTROL,
-				"Decodex Lane Control",
-				"Inspect a lane or request guarded soft lane-control actions with explicit authority.",
-				McpCapabilityProfile::Operate,
-				lane_control_tool_input_schema(),
-				lane_control_tool_output_schema(),
-				false,
-			),
-		},
-		McpTool {
-			required_profile: McpCapabilityProfile::Admin,
-			value: mcp_tool_value(
-				TOOL_PROJECT_CONTROL,
-				"Decodex Project Control",
-				"Pause or resume future project dispatch through the registered project enablement guard.",
-				McpCapabilityProfile::Admin,
-				project_control_tool_input_schema(),
-				project_control_tool_output_schema(),
-				false,
-			),
-		},
+		mcp_tool_entry(
+			McpCapabilityProfile::Observe,
+			TOOL_OBSERVE,
+			"Decodex Observe",
+			"Read public-safe local Decodex runtime observability without private evidence payloads.",
+			observe_tool_input_schema(),
+			observe_tool_output_schema(),
+			true,
+		),
+		mcp_tool_entry(
+			McpCapabilityProfile::Plan,
+			TOOL_PLAN,
+			"Decodex Plan",
+			"Return the Decodex prompt/resource route for a requested workflow intent.",
+			plan_tool_input_schema(),
+			plan_tool_output_schema(),
+			true,
+		),
+		mcp_tool_entry(
+			McpCapabilityProfile::Plan,
+			TOOL_RESEARCH_COMPILE,
+			"Decodex Research Compile",
+			"Validate or persist a latent Decodex Decision Contract from bounded research input.",
+			research_compile_tool_input_schema(),
+			research_compile_tool_output_schema(),
+			false,
+		),
+		mcp_tool_entry(
+			McpCapabilityProfile::Plan,
+			TOOL_RESEARCH_PROMOTE,
+			"Decodex Research Promote",
+			"Inspect or explicitly promote a latent Decision Contract through Decodex authority checks.",
+			research_promote_tool_input_schema(),
+			research_promote_tool_output_schema(),
+			false,
+		),
+		mcp_tool_entry(
+			McpCapabilityProfile::Plan,
+			TOOL_INTAKE_GOAL,
+			"Decodex Goal Intake",
+			"Dry-run or explicitly apply promoted-goal Program Intake through Decodex authority gates.",
+			intake_goal_tool_input_schema(),
+			intake_goal_tool_output_schema(),
+			false,
+		),
 	]
+}
+
+fn mcp_autonomy_tools() -> Vec<McpTool> {
+	vec![
+		mcp_tool_entry(
+			McpCapabilityProfile::Plan,
+			TOOL_AUTONOMY_DRAFT_OBJECTIVE,
+			"Decodex Autonomy Draft Objective",
+			"Validate or persist a draft Objective Contract without granting acceptance authority.",
+			autonomy_draft_objective_tool_input_schema(),
+			autonomy_objective_tool_output_schema(),
+			false,
+		),
+		mcp_tool_entry(
+			McpCapabilityProfile::Plan,
+			TOOL_AUTONOMY_SUBMIT_SIGNAL,
+			"Decodex Autonomy Submit Signal",
+			"Validate or persist proposal-only autonomy signal evidence under an accepted objective.",
+			autonomy_submit_signal_tool_input_schema(),
+			autonomy_signal_tool_output_schema(),
+			false,
+		),
+		mcp_tool_entry(
+			McpCapabilityProfile::Plan,
+			TOOL_AUTONOMY_COMPILE_PROPOSAL,
+			"Decodex Autonomy Compile Proposal",
+			"Compile or persist non-executable autonomy proposal evidence from accepted objective-bound signals.",
+			autonomy_compile_proposal_tool_input_schema(),
+			autonomy_proposal_tool_output_schema(),
+			false,
+		),
+		mcp_tool_entry(
+			McpCapabilityProfile::Plan,
+			TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+			"Decodex Autonomy Challenge Proposal",
+			"Dry-run or record challenge evidence for an autonomy proposal without making it acceptance authority.",
+			autonomy_challenge_proposal_tool_input_schema(),
+			autonomy_challenge_tool_output_schema(),
+			false,
+		),
+		mcp_tool_entry(
+			McpCapabilityProfile::Plan,
+			TOOL_AUTONOMY_REQUEST_PROMOTION,
+			"Decodex Autonomy Request Promotion",
+			"Inspect or explicitly accept an autonomy proposal into a latent Decision Contract candidate.",
+			autonomy_request_promotion_tool_input_schema(),
+			autonomy_promotion_request_tool_output_schema(),
+			false,
+		),
+	]
+}
+
+fn mcp_operator_tools() -> Vec<McpTool> {
+	vec![
+		mcp_tool_entry(
+			McpCapabilityProfile::Operate,
+			TOOL_LANE_CONTROL,
+			"Decodex Lane Control",
+			"Inspect a lane or request guarded soft lane-control actions with explicit authority.",
+			lane_control_tool_input_schema(),
+			lane_control_tool_output_schema(),
+			false,
+		),
+		mcp_tool_entry(
+			McpCapabilityProfile::Admin,
+			TOOL_PROJECT_CONTROL,
+			"Decodex Project Control",
+			"Pause or resume future project dispatch through the registered project enablement guard.",
+			project_control_tool_input_schema(),
+			project_control_tool_output_schema(),
+			false,
+		),
+	]
+}
+
+fn mcp_tool_entry(
+	profile: McpCapabilityProfile,
+	name: &str,
+	title: &str,
+	description: &str,
+	input_schema: Value,
+	output_schema: Value,
+	read_only: bool,
+) -> McpTool {
+	McpTool {
+		required_profile: profile,
+		value: mcp_tool_value(
+			name,
+			title,
+			description,
+			profile,
+			input_schema,
+			output_schema,
+			read_only,
+		),
+	}
 }
 
 fn mcp_tool_value(
@@ -2536,8 +3439,14 @@ fn tool_required_profile(name: &str) -> Option<McpCapabilityProfile> {
 	match name {
 		TOOL_OBSERVE => Some(McpCapabilityProfile::Observe),
 		TOOL_PLAN => Some(McpCapabilityProfile::Plan),
-		TOOL_RESEARCH_COMPILE | TOOL_RESEARCH_PROMOTE | TOOL_INTAKE_GOAL =>
-			Some(McpCapabilityProfile::Plan),
+		TOOL_RESEARCH_COMPILE
+		| TOOL_RESEARCH_PROMOTE
+		| TOOL_INTAKE_GOAL
+		| TOOL_AUTONOMY_DRAFT_OBJECTIVE
+		| TOOL_AUTONOMY_SUBMIT_SIGNAL
+		| TOOL_AUTONOMY_COMPILE_PROPOSAL
+		| TOOL_AUTONOMY_CHALLENGE_PROPOSAL
+		| TOOL_AUTONOMY_REQUEST_PROMOTION => Some(McpCapabilityProfile::Plan),
 		TOOL_LANE_CONTROL => Some(McpCapabilityProfile::Operate),
 		TOOL_PROJECT_CONTROL => Some(McpCapabilityProfile::Admin),
 		_ => None,
@@ -2670,6 +3579,157 @@ fn intake_goal_tool_input_schema() -> Value {
 			"authority": planning_authority_input_schema()
 		},
 		"required": ["contractId"]
+	})
+}
+
+fn autonomy_draft_objective_tool_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run validates the Objective Contract; apply persists a draft only."
+			},
+			"projectId": {
+				"type": "string",
+				"description": "Optional Decodex service id when the MCP context is not project-scoped."
+			},
+			"objective": {
+				"type": "object",
+				"additionalProperties": true,
+				"description": "decodex.autonomy_objective/1 payload with state=draft."
+			},
+			"authority": planning_authority_input_schema()
+		},
+		"required": ["objective"]
+	})
+}
+
+fn autonomy_submit_signal_tool_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run validates the signal; apply persists proposal-only signal evidence."
+			},
+			"projectId": {
+				"type": "string",
+				"description": "Optional Decodex service id when the MCP context is not project-scoped."
+			},
+			"kind": {
+				"type": "string",
+				"enum": [
+					"runtime_health",
+					"validation_regression",
+					"review_feedback_cluster",
+					"user_feedback_cluster",
+					"spec_drift",
+					"protocol_drift",
+					"metric_regression",
+					"execution_friction",
+					"docs_skill_drift"
+				]
+			},
+			"signal": {
+				"type": "object",
+				"additionalProperties": true,
+				"description": "Signal input without derived id/fingerprint; Decodex derives stable identity."
+			},
+			"authority": planning_authority_input_schema()
+		},
+		"required": ["kind", "signal"]
+	})
+}
+
+fn autonomy_compile_proposal_tool_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run compiles non-executable proposal evidence; apply persists it."
+			},
+			"projectId": {
+				"type": "string",
+				"description": "Optional Decodex service id when the MCP context is not project-scoped."
+			},
+			"proposal": {
+				"type": "object",
+				"additionalProperties": true,
+				"description": "Autonomy proposal compile input."
+			},
+			"signalIds": {
+				"type": "array",
+				"items": { "type": "string" },
+				"description": "Persisted autonomy signal ids to bind into the proposal."
+			},
+			"authority": planning_authority_input_schema()
+		},
+		"required": ["proposal"]
+	})
+}
+
+fn autonomy_challenge_proposal_tool_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run previews the challenge effect; apply records challenge evidence."
+			},
+			"projectId": {
+				"type": "string",
+				"description": "Optional Decodex service id when the MCP context is not project-scoped."
+			},
+			"proposalId": {
+				"type": "string",
+				"description": "Stable autonomy proposal id."
+			},
+			"challenge": {
+				"type": "object",
+				"additionalProperties": true,
+				"description": "Challenge evidence. It is not acceptance authority."
+			},
+			"authority": planning_authority_input_schema()
+		},
+		"required": ["proposalId", "challenge"]
+	})
+}
+
+fn autonomy_request_promotion_tool_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run explains required authority; apply creates a latent Decision Contract candidate only with explicit proposal acceptance authority."
+			},
+			"projectId": {
+				"type": "string",
+				"description": "Optional Decodex service id when the MCP context is not project-scoped."
+			},
+			"proposalId": {
+				"type": "string",
+				"description": "Stable autonomy proposal id."
+			},
+			"authority": {
+				"type": "object",
+				"additionalProperties": true,
+				"description": "Explicit proposal acceptance authority, including acceptedBy, acceptedByKind, acceptanceSource, reason, proposalActor, proposalActorKind, and optional acceptedProjectPolicy."
+			}
+		},
+		"required": ["proposalId"]
 	})
 }
 
@@ -3002,6 +4062,152 @@ fn intake_goal_tool_output_schema() -> Value {
 			"persisted",
 			"issue_count",
 			"issues",
+			"next_action"
+		]
+	}))
+}
+
+fn autonomy_objective_tool_output_schema() -> Value {
+	tool_output_schema(serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"schema": { "type": "string", "enum": ["decodex.mcp.autonomy_objective_result/1"] },
+			"status": { "type": "string", "enum": ["ok"] },
+			"mode": { "type": "string", "enum": ["dry_run", "apply"] },
+			"persisted": { "type": "boolean" },
+			"project_id": { "type": "string" },
+			"objective": { "type": "object", "additionalProperties": true },
+			"authority_effect": { "type": "string" },
+			"next_action": { "type": "string" },
+			"updated_at": { "type": ["string", "null"] }
+		},
+		"required": [
+			"schema",
+			"status",
+			"mode",
+			"persisted",
+			"project_id",
+			"objective",
+			"authority_effect",
+			"next_action"
+		]
+	}))
+}
+
+fn autonomy_signal_tool_output_schema() -> Value {
+	tool_output_schema(serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"schema": { "type": "string", "enum": ["decodex.mcp.autonomy_signal_result/1"] },
+			"status": { "type": "string", "enum": ["ok"] },
+			"mode": { "type": "string", "enum": ["dry_run", "apply"] },
+			"persisted": { "type": "boolean" },
+			"project_id": { "type": "string" },
+			"signal": { "type": "object", "additionalProperties": true },
+			"authority_effect": { "type": "string" },
+			"next_action": { "type": "string" },
+			"updated_at": { "type": ["string", "null"] }
+		},
+		"required": [
+			"schema",
+			"status",
+			"mode",
+			"persisted",
+			"project_id",
+			"signal",
+			"authority_effect",
+			"next_action"
+		]
+	}))
+}
+
+fn autonomy_proposal_tool_output_schema() -> Value {
+	tool_output_schema(serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"schema": { "type": "string", "enum": ["decodex.mcp.autonomy_proposal_result/1"] },
+			"status": { "type": "string", "enum": ["ok"] },
+			"mode": { "type": "string", "enum": ["dry_run", "apply"] },
+			"persisted": { "type": "boolean" },
+			"project_id": { "type": "string" },
+			"proposal": { "type": "object", "additionalProperties": true },
+			"authority_effect": { "type": "string" },
+			"next_action": { "type": "string" },
+			"updated_at": { "type": ["string", "null"] }
+		},
+		"required": [
+			"schema",
+			"status",
+			"mode",
+			"persisted",
+			"project_id",
+			"proposal",
+			"authority_effect",
+			"next_action"
+		]
+	}))
+}
+
+fn autonomy_challenge_tool_output_schema() -> Value {
+	tool_output_schema(serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"schema": { "type": "string", "enum": ["decodex.mcp.autonomy_challenge_result/1"] },
+			"status": { "type": "string", "enum": ["ok"] },
+			"mode": { "type": "string", "enum": ["dry_run", "apply"] },
+			"persisted": { "type": "boolean" },
+			"project_id": { "type": "string" },
+			"proposal": { "type": "object", "additionalProperties": true },
+			"challenge_evidence_count": { "type": "integer", "minimum": 0 },
+			"authority_effect": { "type": "string" },
+			"next_action": { "type": "string" },
+			"updated_at": { "type": ["string", "null"] }
+		},
+		"required": [
+			"schema",
+			"status",
+			"mode",
+			"persisted",
+			"project_id",
+			"proposal",
+			"challenge_evidence_count",
+			"authority_effect",
+			"next_action"
+		]
+	}))
+}
+
+fn autonomy_promotion_request_tool_output_schema() -> Value {
+	tool_output_schema(serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"schema": { "type": "string", "enum": ["decodex.mcp.autonomy_promotion_request_result/1"] },
+			"status": { "type": "string", "enum": ["ok"] },
+			"mode": { "type": "string", "enum": ["dry_run", "apply"] },
+			"persisted": { "type": "boolean" },
+			"project_id": { "type": "string" },
+			"proposal": { "type": "object", "additionalProperties": true },
+			"decision_contract_id": { "type": ["string", "null"] },
+			"execution_authority_granted": { "type": "boolean" },
+			"required_authority": { "type": "array", "items": { "type": "string" } },
+			"authority_effect": { "type": "string" },
+			"next_action": { "type": "string" }
+		},
+		"required": [
+			"schema",
+			"status",
+			"mode",
+			"persisted",
+			"project_id",
+			"proposal",
+			"execution_authority_granted",
+			"required_authority",
+			"authority_effect",
 			"next_action"
 		]
 	}))
@@ -3377,6 +4583,151 @@ fn intake_goal_issue_result(row: &GoalIntakeIssueReport) -> Value {
 	})
 }
 
+fn autonomy_signal_from_tool_args(
+	kind: AutonomySignalKind,
+	input: AutonomySignalInputArgs,
+	project_id: &str,
+) -> Result<AutonomySignal, Value> {
+	let input = input.into_signal_input(project_id);
+	let signal = match kind {
+		AutonomySignalKind::RuntimeHealth => AutonomySignal::runtime_health(input),
+		AutonomySignalKind::ValidationRegression => AutonomySignal::validation_regression(input),
+		AutonomySignalKind::ReviewFeedbackCluster => AutonomySignal::review_feedback_cluster(input),
+		AutonomySignalKind::UserFeedbackCluster => AutonomySignal::user_feedback_cluster(input),
+		AutonomySignalKind::SpecDrift => AutonomySignal::spec_drift(input),
+		AutonomySignalKind::ProtocolDrift => AutonomySignal::protocol_drift(input),
+		AutonomySignalKind::MetricRegression => AutonomySignal::metric_regression(input),
+		AutonomySignalKind::ExecutionFriction => AutonomySignal::execution_friction(input),
+		AutonomySignalKind::DocsSkillDrift => AutonomySignal::docs_skill_drift(input),
+	};
+
+	signal.map_err(|error| {
+		tool_refusal(
+			"autonomy_signal_refused",
+			format!("Autonomy signal did not satisfy Decodex signal requirements: {error}"),
+		)
+	})
+}
+
+fn autonomy_objective_tool_result(
+	project_id: &str,
+	objective: &AutonomyObjectiveContract,
+	mode: &str,
+	persisted: bool,
+	updated_at: Option<&str>,
+) -> Value {
+	mcp_sanitized_value(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_objective_result/1",
+		"status": "ok",
+		"mode": mode,
+		"persisted": persisted,
+		"project_id": project_id,
+		"objective": mcp_autonomy_objective_summary(objective, updated_at),
+		"authority_effect": "draft_only_no_execution_authority",
+		"next_action": "Accept an Objective Contract only through explicit human or accepted-policy authority; MCP profile access is not acceptance authority.",
+		"updated_at": updated_at
+	}))
+}
+
+fn autonomy_signal_tool_result(
+	project_id: &str,
+	signal: &AutonomySignal,
+	mode: &str,
+	persisted: bool,
+	updated_at: Option<&str>,
+) -> Value {
+	mcp_sanitized_value(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_signal_result/1",
+		"status": "ok",
+		"mode": mode,
+		"persisted": persisted,
+		"project_id": project_id,
+		"signal": mcp_autonomy_signal_summary(signal, updated_at),
+		"authority_effect": "proposal_only_evidence_no_execution_authority",
+		"next_action": "Cluster accepted-objective signals into a non-executable proposal before any Decision Contract promotion.",
+		"updated_at": updated_at
+	}))
+}
+
+fn autonomy_proposal_tool_result(
+	project_id: &str,
+	proposal: &AutonomyProposal,
+	mode: &str,
+	persisted: bool,
+	updated_at: Option<&str>,
+) -> Value {
+	mcp_sanitized_value(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_proposal_result/1",
+		"status": "ok",
+		"mode": mode,
+		"persisted": persisted,
+		"project_id": project_id,
+		"proposal": mcp_autonomy_proposal_summary(proposal, updated_at),
+		"authority_effect": "non_executable_proposal_evidence",
+		"next_action": "Challenge the proposal and request explicit promotion authority before creating a latent Decision Contract candidate.",
+		"updated_at": updated_at
+	}))
+}
+
+fn autonomy_challenge_tool_result(
+	project_id: &str,
+	proposal: &AutonomyProposal,
+	mode: &str,
+	persisted: bool,
+	updated_at: Option<&str>,
+) -> Value {
+	mcp_sanitized_value(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_challenge_result/1",
+		"status": "ok",
+		"mode": mode,
+		"persisted": persisted,
+		"project_id": project_id,
+		"proposal": mcp_autonomy_proposal_summary(proposal, updated_at),
+		"challenge_evidence_count": proposal.challenge_evidence().len(),
+		"authority_effect": "challenge_evidence_not_acceptance_authority",
+		"next_action": "Resolve material objections before requesting proposal promotion.",
+		"updated_at": updated_at
+	}))
+}
+
+fn autonomy_promotion_request_result(
+	project_id: &str,
+	proposal: &AutonomyProposal,
+	mode: &str,
+	persisted: bool,
+	decision_contract_id: Option<&str>,
+) -> Value {
+	mcp_sanitized_value(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_promotion_request_result/1",
+		"status": "ok",
+		"mode": mode,
+		"persisted": persisted,
+		"project_id": project_id,
+		"proposal": mcp_autonomy_proposal_summary(proposal, None),
+		"decision_contract_id": decision_contract_id,
+		"execution_authority_granted": false,
+		"required_authority": [
+			"acceptedBy",
+			"acceptedByKind",
+			"acceptanceSource",
+			"reason",
+			"proposalActor",
+			"proposalActorKind",
+			"acceptedProjectPolicy when runtime policy or external-agent self-acceptance is involved"
+		],
+		"authority_effect": if persisted {
+			"latent_decision_contract_candidate_only"
+		} else {
+			"promotion_requirements_readback_only"
+		},
+		"next_action": if persisted {
+			"Promote the resulting Decision Contract through research_promote before Program Intake or issue work."
+		} else {
+			"Re-run with mode=apply only after explicit proposal acceptance authority is available."
+		}
+	}))
+}
+
 fn goal_intake_action_name(action: program_intake::GoalIntakeIssueAction) -> &'static str {
 	match action {
 		program_intake::GoalIntakeIssueAction::WouldCreate => "would_create",
@@ -3483,6 +4834,302 @@ fn missing_authority_refusal(tool: &str, message: &str) -> Value {
 		"tool": tool,
 		"message": message
 	}))
+}
+
+fn mcp_autonomy_project_resource(
+	state_store: &StateStore,
+	project_id: &str,
+) -> crate::prelude::Result<Value, McpError> {
+	let objectives = state_store
+		.recent_autonomy_objectives_for_project(project_id, DEFAULT_MCP_STATUS_LIMIT)
+		.map_err(McpError::internal)?;
+	let signals = state_store
+		.recent_autonomy_signals_for_project(project_id, DEFAULT_MCP_STATUS_LIMIT)
+		.map_err(McpError::internal)?;
+	let proposals = state_store
+		.recent_autonomy_proposals_for_project(project_id, DEFAULT_MCP_STATUS_LIMIT)
+		.map_err(McpError::internal)?;
+
+	Ok(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_summary/1",
+		"project_id": project_id,
+		"read_only": true,
+		"authority_boundary": mcp_autonomy_authority_boundary(),
+		"objectives": objectives
+			.iter()
+			.map(|record| mcp_autonomy_objective_summary(record.objective(), Some(record.updated_at())))
+			.collect::<Vec<_>>(),
+		"signals": signals
+			.iter()
+			.map(|record| mcp_autonomy_signal_summary(record.signal(), Some(record.updated_at())))
+			.collect::<Vec<_>>(),
+		"proposals": proposals
+			.iter()
+			.map(|record| mcp_autonomy_proposal_summary(record.proposal(), Some(record.updated_at())))
+			.collect::<Vec<_>>(),
+		"evidence": mcp_autonomy_evidence_summary(&signals, &proposals)
+	}))
+}
+
+fn mcp_autonomy_current_objective_resource(
+	state_store: &StateStore,
+	project_id: &str,
+	objective_id: &str,
+) -> crate::prelude::Result<Value, McpError> {
+	let Some(record) = state_store
+		.current_accepted_autonomy_objective(project_id, objective_id)
+		.map_err(McpError::internal)?
+	else {
+		return Err(McpError::resource_not_found());
+	};
+
+	Ok(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_objective_resource/1",
+		"project_id": project_id,
+		"read_only": true,
+		"authority_boundary": mcp_autonomy_authority_boundary(),
+		"objective": mcp_autonomy_objective_summary(record.objective(), Some(record.updated_at()))
+	}))
+}
+
+fn mcp_autonomy_objective_version_resource(
+	state_store: &StateStore,
+	project_id: &str,
+	objective_id: &str,
+	version: &str,
+) -> crate::prelude::Result<Value, McpError> {
+	let version = version.parse::<u64>().map_err(|_| McpError::resource_not_found())?;
+	let Some(record) = state_store
+		.autonomy_objective(project_id, objective_id, version)
+		.map_err(McpError::internal)?
+	else {
+		return Err(McpError::resource_not_found());
+	};
+
+	Ok(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_objective_resource/1",
+		"project_id": project_id,
+		"read_only": true,
+		"authority_boundary": mcp_autonomy_authority_boundary(),
+		"objective": mcp_autonomy_objective_summary(record.objective(), Some(record.updated_at()))
+	}))
+}
+
+fn mcp_autonomy_signals_resource(
+	state_store: &StateStore,
+	project_id: &str,
+) -> crate::prelude::Result<Value, McpError> {
+	let signals = state_store
+		.recent_autonomy_signals_for_project(project_id, DEFAULT_MCP_STATUS_LIMIT)
+		.map_err(McpError::internal)?;
+
+	Ok(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_signals_resource/1",
+		"project_id": project_id,
+		"read_only": true,
+		"signals": signals
+			.iter()
+			.map(|record| mcp_autonomy_signal_summary(record.signal(), Some(record.updated_at())))
+			.collect::<Vec<_>>()
+	}))
+}
+
+fn mcp_autonomy_signal_resource(
+	state_store: &StateStore,
+	project_id: &str,
+	signal_id: &str,
+) -> crate::prelude::Result<Value, McpError> {
+	let Some(record) =
+		state_store.autonomy_signal(project_id, signal_id).map_err(McpError::internal)?
+	else {
+		return Err(McpError::resource_not_found());
+	};
+
+	Ok(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_signal_resource/1",
+		"project_id": project_id,
+		"read_only": true,
+		"signal": mcp_autonomy_signal_summary(record.signal(), Some(record.updated_at()))
+	}))
+}
+
+fn mcp_autonomy_proposals_resource(
+	state_store: &StateStore,
+	project_id: &str,
+) -> crate::prelude::Result<Value, McpError> {
+	let proposals = state_store
+		.recent_autonomy_proposals_for_project(project_id, DEFAULT_MCP_STATUS_LIMIT)
+		.map_err(McpError::internal)?;
+
+	Ok(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_proposals_resource/1",
+		"project_id": project_id,
+		"read_only": true,
+		"proposals": proposals
+			.iter()
+			.map(|record| mcp_autonomy_proposal_summary(record.proposal(), Some(record.updated_at())))
+			.collect::<Vec<_>>()
+	}))
+}
+
+fn mcp_autonomy_proposal_resource(
+	state_store: &StateStore,
+	project_id: &str,
+	proposal_id: &str,
+) -> crate::prelude::Result<Value, McpError> {
+	let Some(record) =
+		state_store.autonomy_proposal(project_id, proposal_id).map_err(McpError::internal)?
+	else {
+		return Err(McpError::resource_not_found());
+	};
+
+	Ok(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_proposal_resource/1",
+		"project_id": project_id,
+		"read_only": true,
+		"proposal": mcp_autonomy_proposal_summary(record.proposal(), Some(record.updated_at()))
+	}))
+}
+
+fn mcp_autonomy_evidence_resource(
+	state_store: &StateStore,
+	project_id: &str,
+) -> crate::prelude::Result<Value, McpError> {
+	let signals = state_store
+		.recent_autonomy_signals_for_project(project_id, DEFAULT_MCP_STATUS_LIMIT)
+		.map_err(McpError::internal)?;
+	let proposals = state_store
+		.recent_autonomy_proposals_for_project(project_id, DEFAULT_MCP_STATUS_LIMIT)
+		.map_err(McpError::internal)?;
+
+	Ok(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_evidence_resource/1",
+		"project_id": project_id,
+		"read_only": true,
+		"evidence": mcp_autonomy_evidence_summary(&signals, &proposals)
+	}))
+}
+
+fn mcp_autonomy_objective_summary(
+	objective: &AutonomyObjectiveContract,
+	updated_at: Option<&str>,
+) -> Value {
+	serde_json::json!({
+		"objective_id": objective.id(),
+		"objective_version": objective.version(),
+		"state": objective.state().as_str(),
+		"summary": objective.summary(),
+		"goals": objective.goals(),
+		"non_goals": objective.non_goals(),
+		"metrics": objective.metrics(),
+		"allowed_surfaces": objective.allowed_surfaces(),
+		"allowed_signal_kinds": objective.allowed_signal_kinds(),
+		"validation_gates": objective.validation_gates(),
+		"review_policy": objective.review_policy(),
+		"acceptance_present": objective.acceptance().is_some(),
+		"updated_at": updated_at
+	})
+}
+
+fn mcp_autonomy_signal_summary(signal: &AutonomySignal, updated_at: Option<&str>) -> Value {
+	serde_json::json!({
+		"signal_id": signal.id(),
+		"objective_id": signal.objective_id(),
+		"objective_version": signal.objective_version(),
+		"kind": signal.kind().as_str(),
+		"source_type": signal.source_type().as_str(),
+		"source_refs": signal.source_refs(),
+		"primary_source_refs": signal.primary_source_refs(),
+		"freshness": signal.freshness().as_str(),
+		"summary": signal.summary(),
+		"evidence_class": signal.evidence_class().as_str(),
+		"confidence": signal.confidence().as_str(),
+		"redaction_level": signal.privacy().as_str(),
+		"gaps": signal.gaps(),
+		"contradictions": signal.contradictions(),
+		"review_evidence_present": signal.review_evidence().is_some(),
+		"updated_at": updated_at
+	})
+}
+
+fn mcp_autonomy_proposal_summary(proposal: &AutonomyProposal, updated_at: Option<&str>) -> Value {
+	serde_json::json!({
+		"proposal_id": proposal.id(),
+		"objective_id": proposal.objective_id(),
+		"objective_version": proposal.objective_version(),
+		"state": proposal.state().as_str(),
+		"summary": proposal.summary(),
+		"source_family": proposal.source_family(),
+		"intended_surface": proposal.intended_surface(),
+		"affected_identifiers": proposal.affected_identifiers(),
+		"source_signal_ids": proposal.source_signal_ids(),
+		"allowed_surfaces": proposal.allowed_surfaces(),
+		"validation_gates": proposal.validation_gates(),
+		"refusal_reasons": proposal
+			.refusal_reasons()
+			.iter()
+			.map(|refusal| refusal.reason().as_str())
+			.collect::<Vec<_>>(),
+		"refusals": proposal
+			.refusal_reasons()
+			.iter()
+			.map(|refusal| {
+				serde_json::json!({
+					"reason": refusal.reason().as_str(),
+					"detail": refusal.detail(),
+					"evidence_refs": refusal.evidence_refs()
+				})
+			})
+			.collect::<Vec<_>>(),
+		"gaps": proposal.gaps(),
+		"contradictions": proposal.contradictions(),
+		"challenge_evidence_count": proposal.challenge_evidence().len(),
+		"updated_at": updated_at
+	})
+}
+
+fn mcp_autonomy_evidence_summary(
+	signals: &[AutonomySignalRecord],
+	proposals: &[AutonomyProposalRecord],
+) -> Value {
+	serde_json::json!({
+		"signal_count": signals.len(),
+		"proposal_count": proposals.len(),
+		"signal_refs": signals
+			.iter()
+			.map(|record| {
+				serde_json::json!({
+					"signal_id": record.signal_id(),
+					"kind": record.kind().as_str(),
+					"freshness": record.freshness().as_str(),
+					"evidence_class": record.evidence_class().as_str(),
+					"confidence": record.confidence().as_str(),
+					"redaction_level": record.privacy().as_str()
+				})
+			})
+			.collect::<Vec<_>>(),
+		"proposal_refs": proposals
+			.iter()
+			.map(|record| {
+				serde_json::json!({
+					"proposal_id": record.proposal_id(),
+					"state": record.state().as_str(),
+					"objective_id": record.objective_id(),
+					"objective_version": record.objective_version()
+				})
+			})
+			.collect::<Vec<_>>(),
+		"authority_effect": "evidence_summary_only_no_execution_authority"
+	})
+}
+
+fn mcp_autonomy_authority_boundary() -> Value {
+	serde_json::json!({
+		"mcp_authentication": "access_boundary_only",
+		"capability_profile": "tool_visibility_boundary_only",
+		"acceptance_authority": "explicit_human_or_accepted_project_policy_required",
+		"execution_authority": "Decision Contract promotion and Program Intake remain separate"
+	})
 }
 
 fn mcp_status_live_resource(snapshot: Value) -> Value {
@@ -4399,6 +6046,12 @@ fn non_empty_string(value: Option<&str>) -> Option<&str> {
 	value.map(str::trim).filter(|value| !value.is_empty())
 }
 
+fn mcp_now_rfc3339() -> String {
+	OffsetDateTime::now_utc()
+		.format(&Rfc3339)
+		.unwrap_or_else(|_| String::from("1970-01-01T00:00:00Z"))
+}
+
 fn serve_stdio_with_profile<R, W>(
 	reader: R,
 	mut writer: W,
@@ -4791,6 +6444,12 @@ fn sanitize_mcp_observability_value(value: &mut Value) {
 	}
 }
 
+fn mcp_sanitized_value(mut value: Value) -> Value {
+	sanitize_mcp_observability_value(&mut value);
+
+	value
+}
+
 fn observability_string_contains_sensitive_text(value: &str) -> bool {
 	let lower = value.to_ascii_lowercase();
 	let upper = value.to_ascii_uppercase();
@@ -4998,6 +6657,14 @@ fn safe_runtime_identifier(value: &str) -> bool {
 		&& !value.contains("..")
 }
 
+fn safe_autonomy_record_identifier(value: &str) -> bool {
+	!value.is_empty()
+		&& value
+			.bytes()
+			.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+		&& !value.contains("..")
+}
+
 #[cfg(test)]
 mod tests {
 	use std::{fs, io::Cursor, path::Path, process, str};
@@ -5006,6 +6673,15 @@ mod tests {
 	use tempfile::TempDir;
 
 	use crate::{
+		autonomy_objective::{
+			AutonomyObjectiveAcceptance, AutonomyObjectiveActorKind, AutonomyObjectiveContract,
+		},
+		autonomy_proposal::AutonomyProposalCompileInput,
+		autonomy_signal::{
+			AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
+			AutonomySignalFreshness, AutonomySignalInput, AutonomySignalPrivacy,
+			AutonomySignalSourceType,
+		},
 		loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
 		mcp::{
 			self, DEFAULT_MCP_HTTP_LISTEN_ADDRESS, McpCapabilityProfile, McpContext,
@@ -6030,6 +7706,194 @@ mod tests {
 		assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.refusal/1");
 		assert_eq!(result["structuredContent"]["reason"], "missing_authority");
 		assert_eq!(result["structuredContent"]["tool"], "intake_goal");
+	}
+
+	#[test]
+	fn autonomy_resources_expose_summaries_without_private_payloads() {
+		let repo = test_repo();
+		let db_path = repo.path().join("runtime.sqlite3");
+		let state_store = StateStore::open(&db_path).expect("state store should open");
+		let proposal_id = seed_autonomy_mcp_state(&state_store);
+		let signal_id = state_store
+			.recent_autonomy_signals_for_project("decodex", 1)
+			.expect("signals should list")[0]
+			.signal_id()
+			.to_owned();
+		let context = McpContext {
+			repo_root: repo.path().to_path_buf(),
+			config_path: None,
+			project_id: Some(String::from("decodex")),
+			state_store: Some(state_store),
+		};
+		let responses = run_stdio_with_context(
+			context,
+			&[
+				r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://projects/decodex/autonomy"}}"#,
+				r#"{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"decodex://projects/decodex/autonomy/objectives/quality-autonomy/current"}}"#,
+				&format!(
+					r#"{{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{{"uri":"decodex://projects/decodex/autonomy/signals/{signal_id}"}}}}"#
+				),
+				&format!(
+					r#"{{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{{"uri":"decodex://projects/decodex/autonomy/proposals/{proposal_id}"}}}}"#
+				),
+				r#"{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"decodex://projects/decodex/autonomy/evidence"}}"#,
+			]
+			.join("\n"),
+		);
+		let summary = resource_response_json(&responses, 0);
+		let objective = resource_response_json(&responses, 1);
+		let signal = resource_response_json(&responses, 2);
+		let proposal = resource_response_json(&responses, 3);
+		let evidence = resource_response_json(&responses, 4);
+		let combined = serde_json::json!({
+			"summary": summary,
+			"objective": objective,
+			"signal": signal,
+			"proposal": proposal,
+			"evidence": evidence
+		});
+		let serialized = serde_json::to_string(&combined).expect("resources should serialize");
+
+		assert_eq!(combined["summary"]["schema"], "decodex.mcp.autonomy_summary/1");
+		assert_eq!(combined["objective"]["objective"]["state"], "accepted");
+		assert_eq!(combined["signal"]["signal"]["kind"], "runtime_health");
+		assert_eq!(combined["proposal"]["proposal"]["state"], "decision_candidate");
+		assert_eq!(combined["evidence"]["evidence"]["signal_count"], 1);
+		assert!(serialized.contains("access_boundary_only"));
+		assert!(!serialized.contains("private evidence payload"));
+		assert!(!serialized.contains("raw_payload"));
+
+		assert_no_sensitive_observability_content(&combined);
+	}
+
+	#[test]
+	fn autonomy_tools_are_plan_profile_and_apply_requires_authority() {
+		let repo = test_repo();
+		let observe_responses = run_stdio_with_profile(
+			repo.path(),
+			McpCapabilityProfile::Observe,
+			r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"autonomy_submit_signal","arguments":{"kind":"runtime_health","signal":{}}}}"#,
+		);
+		let observe_structured = &response_at(&observe_responses, 0)["result"]["structuredContent"];
+
+		assert_eq!(observe_structured["reason"], "insufficient_capability_profile");
+		assert_eq!(observe_structured["required_capability_profile"], "plan");
+
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let context = McpContext {
+			repo_root: repo.path().to_path_buf(),
+			config_path: None,
+			project_id: Some(String::from("decodex")),
+			state_store: Some(state_store),
+		};
+		let responses = run_stdio_with_context(
+			context,
+			r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"autonomy_draft_objective","arguments":{"mode":"apply","objective":{"schema":"decodex.autonomy_objective/1","record_version":1,"project_id":"decodex","id":"quality-autonomy","version":1,"state":"draft","summary":"Improve quality.","goals":["Reduce churn."],"non_goals":["Do not bypass authority."],"metrics":["Validation retry count."],"allowed_surfaces":["apps/decodex/src"],"allowed_signal_kinds":["runtime_health"],"validation_gates":["cargo make check"],"review_policy":"review required","memory_policy":"source-linked only","report_policy":"public-safe only"}}}}"#,
+		);
+		let result = &response_at(&responses, 0)["result"];
+
+		assert_eq!(result["isError"], true);
+		assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.refusal/1");
+		assert_eq!(result["structuredContent"]["reason"], "missing_authority");
+		assert_eq!(result["structuredContent"]["tool"], "autonomy_draft_objective");
+	}
+
+	#[test]
+	fn autonomy_plan_tools_record_signal_compile_challenge_and_refuse_external_self_accept() {
+		let repo = test_repo();
+		let db_path = repo.path().join("runtime.sqlite3");
+		let state_store = StateStore::open(&db_path).expect("state store should open");
+
+		state_store
+			.upsert_autonomy_objective_draft("decodex", autonomy_objective_fixture())
+			.expect("objective draft should persist");
+		state_store
+			.accept_autonomy_objective_version(
+				"decodex",
+				"quality-autonomy",
+				1,
+				AutonomyObjectiveAcceptance::new(
+					"operator",
+					AutonomyObjectiveActorKind::User,
+					"2026-06-23T00:00:00Z",
+					"conversation",
+				)
+				.expect("acceptance should validate"),
+			)
+			.expect("objective should accept");
+
+		let signal_call = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"autonomy_submit_signal","arguments":{"mode":"apply","kind":"runtime_health","signal":{"objectiveId":"quality-autonomy","objectiveVersion":1,"sourceType":"runtime","sourceRefs":["status:XY-1090"],"freshness":"fresh","summary":"Runtime status is consistent.","evidence":["status readback summarized"],"evidenceClass":"live_readback","confidence":"high","privacy":"team"},"authority":{"source":"mcp-test","reason":"submit evidence"}}}}"#;
+		let signal_responses = run_stdio_with_context(
+			McpContext {
+				repo_root: repo.path().to_path_buf(),
+				config_path: None,
+				project_id: Some(String::from("decodex")),
+				state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
+			},
+			signal_call,
+		);
+		let signal_result = &response_at(&signal_responses, 0)["result"]["structuredContent"];
+		let signal_id = signal_result["signal"]["signal_id"].as_str().expect("signal id");
+		let proposal_call = format!(
+			r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"autonomy_compile_proposal","arguments":{{"mode":"apply","signalIds":["{signal_id}"],"proposal":{{"objectiveId":"quality-autonomy","objectiveVersion":1,"sourceFamily":"runtime_health","intendedSurface":"apps/decodex/src/mcp.rs","summary":"Expose autonomy MCP surface.","challengeRequirements":["independent challenge"],"rollbackPath":"Revert MCP autonomy surface."}},"authority":{{"source":"mcp-test","reason":"compile proposal evidence"}}}}}}}}"#
+		);
+		let proposal_responses = run_stdio_with_context(
+			McpContext {
+				repo_root: repo.path().to_path_buf(),
+				config_path: None,
+				project_id: Some(String::from("decodex")),
+				state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
+			},
+			&proposal_call,
+		);
+		let proposal_result = &response_at(&proposal_responses, 0)["result"]["structuredContent"];
+		let proposal_id = proposal_result["proposal"]["proposal_id"].as_str().expect("proposal id");
+		let challenge_call = format!(
+			r#"{{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{{"name":"autonomy_challenge_proposal","arguments":{{"mode":"apply","proposalId":"{proposal_id}","challenge":{{"source":"inline_skeptic","actor":"skeptic","summary":"Challenge recorded.","objections":[]}},"authority":{{"source":"mcp-test","reason":"record challenge"}}}}}}}}"#
+		);
+		let challenge_responses = run_stdio_with_context(
+			McpContext {
+				repo_root: repo.path().to_path_buf(),
+				config_path: None,
+				project_id: Some(String::from("decodex")),
+				state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
+			},
+			&challenge_call,
+		);
+		let challenge_result = &response_at(&challenge_responses, 0)["result"]["structuredContent"];
+
+		assert_eq!(signal_result["schema"], "decodex.mcp.autonomy_signal_result/1");
+		assert_eq!(signal_result["persisted"], true);
+		assert_eq!(proposal_result["schema"], "decodex.mcp.autonomy_proposal_result/1");
+		assert_eq!(proposal_result["proposal"]["state"], "decision_candidate");
+		assert_eq!(challenge_result["schema"], "decodex.mcp.autonomy_challenge_result/1");
+		assert_eq!(challenge_result["challenge_evidence_count"], 1);
+
+		let self_accept_call = format!(
+			r#"{{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{{"name":"autonomy_request_promotion","arguments":{{"mode":"apply","proposalId":"{proposal_id}","authority":{{"acceptedBy":"agent-a","acceptedByKind":"external_agent","acceptanceSource":"mcp-agent","reason":"self accept","proposalActor":"agent-a","proposalActorKind":"external_agent"}}}}}}}}"#
+		);
+		let self_accept = run_stdio_with_context(
+			McpContext {
+				repo_root: repo.path().to_path_buf(),
+				config_path: None,
+				project_id: Some(String::from("decodex")),
+				state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
+			},
+			&self_accept_call,
+		);
+		let self_accept_result = &response_at(&self_accept, 0)["result"];
+
+		assert_eq!(self_accept_result["isError"], true);
+		assert_eq!(
+			self_accept_result["structuredContent"]["reason"],
+			"autonomy_acceptance_authority_refused"
+		);
+		assert!(
+			self_accept_result["structuredContent"]["message"]
+				.as_str()
+				.expect("message")
+				.contains("accepted project policy authority")
+		);
 	}
 
 	#[test]
@@ -7235,6 +9099,103 @@ mod tests {
 		] {
 			assert!(!serialized.contains(sensitive), "sanitized value leaked {sensitive}");
 		}
+	}
+
+	fn autonomy_objective_fixture() -> AutonomyObjectiveContract {
+		serde_json::from_value(serde_json::json!({
+			"schema": "decodex.autonomy_objective/1",
+			"record_version": 1,
+			"project_id": "decodex",
+			"id": "quality-autonomy",
+			"version": 1,
+			"state": "draft",
+			"summary": "Improve Decodex autonomy quality under explicit authority.",
+			"goals": ["Reduce repeated validation and review churn."],
+			"non_goals": ["Do not bypass Decision Contract authority."],
+			"metrics": ["Validation retry count stays below objective tolerance."],
+			"allowed_surfaces": ["apps/decodex/src/mcp.rs", "docs/spec/autonomy-control-plane.md"],
+			"allowed_signal_kinds": ["runtime_health", "docs_skill_drift"],
+			"validation_gates": ["cargo test -p decodex mcp --lib"],
+			"review_policy": "independent current-head review required",
+			"memory_policy": "source-linked read-only memory only",
+			"report_policy": "public-safe summaries only"
+		}))
+		.expect("autonomy objective fixture should deserialize")
+	}
+
+	fn seed_autonomy_mcp_state(state_store: &StateStore) -> String {
+		state_store
+			.upsert_autonomy_objective_draft("decodex", autonomy_objective_fixture())
+			.expect("objective draft should persist");
+		state_store
+			.accept_autonomy_objective_version(
+				"decodex",
+				"quality-autonomy",
+				1,
+				AutonomyObjectiveAcceptance::new(
+					"operator",
+					AutonomyObjectiveActorKind::User,
+					"2026-06-23T00:00:00Z",
+					"conversation",
+				)
+				.expect("acceptance should validate"),
+			)
+			.expect("objective should accept");
+
+		let signal = AutonomySignal::runtime_health(AutonomySignalInput {
+			project_id: String::from("decodex"),
+			objective_id: String::from("quality-autonomy"),
+			objective_version: 1,
+			source_type: AutonomySignalSourceType::Runtime,
+			source_refs: vec![String::from("status:XY-1090")],
+			primary_source_refs: Vec::new(),
+			issue_id: Some(String::from("XY-1090")),
+			run_id: None,
+			attempt_id: None,
+			head_sha: None,
+			captured_at: String::from("2026-06-23T00:01:00Z"),
+			freshness: AutonomySignalFreshness::Fresh,
+			summary: String::from("Runtime status is consistent."),
+			evidence: vec![String::from("status readback summarized")],
+			evidence_class: AutonomySignalEvidenceClass::LiveReadback,
+			contradictions: Vec::new(),
+			gaps: Vec::new(),
+			confidence: AutonomySignalConfidence::High,
+			privacy: AutonomySignalPrivacy::Team,
+			observed_counts: std::collections::BTreeMap::new(),
+			review_evidence: None,
+			proposal_only: true,
+			created_at: String::from("2026-06-23T00:01:05Z"),
+		})
+		.expect("runtime signal should validate");
+		let signal_id = signal.id().to_owned();
+
+		state_store.record_autonomy_signal("decodex", signal).expect("signal should persist");
+
+		let proposal = state_store
+			.compile_autonomy_proposal_dry_run(
+				AutonomyProposalCompileInput {
+					project_id: String::from("decodex"),
+					objective_id: String::from("quality-autonomy"),
+					objective_version: 1,
+					source_family: String::from("runtime_health"),
+					intended_surface: String::from("apps/decodex/src/mcp.rs"),
+					affected_identifiers: vec![String::from("XY-1090")],
+					summary: String::from("Expose autonomy MCP surface."),
+					challenge_requirements: vec![String::from("independent challenge")],
+					rejected_alternatives: Vec::new(),
+					rollback_path: String::from("Revert MCP autonomy surface."),
+					weakened_validation_or_review: Vec::new(),
+					created_at: String::from("2026-06-23T00:02:00Z"),
+				},
+				&[signal_id],
+			)
+			.expect("proposal should compile");
+		let proposal_id = proposal.id().to_owned();
+
+		state_store.record_autonomy_proposal("decodex", proposal).expect("proposal should persist");
+
+		proposal_id
 	}
 
 	fn http_handler(repo_root: &Path, capability_profile: McpCapabilityProfile) -> McpHttpHandler {

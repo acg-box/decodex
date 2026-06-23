@@ -279,6 +279,11 @@ fn packaged_decodex_skills_preserve_research_promotion_and_program_boundaries() 
 	assert_contains_normalized(&skill_surface, "Do not queue work, mutate Linear");
 	assert_contains(&skill_surface, "Program Intake");
 	assert_contains(&planning_surface, "Decodex-native issue briefs");
+	assert_contains(&skill_surface, "decodex://docs/spec/autonomy-control-plane");
+	assert_contains(&skill_surface, "decodex://projects/{service_id}/autonomy");
+	assert_contains(&skill_surface, "autonomy_submit_signal");
+	assert_contains(&skill_surface, "autonomy_request_promotion");
+	assert_contains_normalized(&skill_surface, "Auth and profile prove access only");
 	assert_contains(&planning_surface, "generic dispatch briefing");
 	assert_contains(&planning_surface, "one outcome");
 	assert_contains(&planning_surface, "explicit non-goals");
