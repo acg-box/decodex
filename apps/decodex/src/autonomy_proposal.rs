@@ -6,17 +6,20 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
 	autonomy_objective::{AutonomyObjectiveContract, AutonomyObjectiveState},
 	autonomy_signal::{AutonomySignal, AutonomySignalFreshness},
+	loop_contract::{DecisionContract, DecisionContractStatus},
 	prelude::{Result, eyre},
 };
 
 pub(crate) const AUTONOMY_PROPOSAL_SCHEMA: &str = "decodex.autonomy_proposal/1";
 
 const AUTONOMY_PROPOSAL_RECORD_VERSION: u16 = 1;
+const AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE: &str = "autonomy_proposal_acceptance";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -71,6 +74,174 @@ pub(crate) enum AutonomyProposalChallengeSource {
 	InlineSkeptic,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum AutonomyProposalAuthorityActorKind {
+	User,
+	RuntimePolicy,
+	ExternalAgent,
+}
+impl AutonomyProposalAuthorityActorKind {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::User => "user",
+			Self::RuntimePolicy => "runtime_policy",
+			Self::ExternalAgent => "external_agent",
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AutonomyProposalAcceptedProjectPolicy {
+	pub(crate) project_id: String,
+	pub(crate) objective_id: String,
+	pub(crate) objective_version: u64,
+	pub(crate) accepted_policy_id: String,
+	pub(crate) accepted_policy_version: String,
+	pub(crate) authority_ref: String,
+	pub(crate) authorized_actor: String,
+	pub(crate) authorized_actor_kind: AutonomyProposalAuthorityActorKind,
+	pub(crate) authorized_acceptance_sources: Vec<String>,
+	pub(crate) authorized_scopes: Vec<String>,
+}
+impl AutonomyProposalAcceptedProjectPolicy {
+	#[allow(clippy::too_many_arguments)]
+	#[cfg_attr(not(test), allow(dead_code))]
+	pub(crate) fn new(
+		project_id: impl Into<String>,
+		objective_id: impl Into<String>,
+		objective_version: u64,
+		accepted_policy_id: impl Into<String>,
+		accepted_policy_version: impl Into<String>,
+		authority_ref: impl Into<String>,
+		authorized_actor: impl Into<String>,
+		authorized_actor_kind: AutonomyProposalAuthorityActorKind,
+		authorized_acceptance_sources: Vec<String>,
+		authorized_scopes: Vec<String>,
+	) -> Result<Self> {
+		let policy = Self {
+			project_id: project_id.into(),
+			objective_id: objective_id.into(),
+			objective_version,
+			accepted_policy_id: accepted_policy_id.into(),
+			accepted_policy_version: accepted_policy_version.into(),
+			authority_ref: authority_ref.into(),
+			authorized_actor: authorized_actor.into(),
+			authorized_actor_kind,
+			authorized_acceptance_sources,
+			authorized_scopes,
+		};
+
+		policy.validate()?;
+
+		Ok(policy)
+	}
+
+	fn validate(&self) -> Result<()> {
+		validate_required(
+			"autonomy proposal accepted project policy.project_id",
+			&self.project_id,
+		)?;
+		validate_required(
+			"autonomy proposal accepted project policy.objective_id",
+			&self.objective_id,
+		)?;
+		validate_required(
+			"autonomy proposal accepted project policy.accepted_policy_id",
+			&self.accepted_policy_id,
+		)?;
+		validate_required(
+			"autonomy proposal accepted project policy.accepted_policy_version",
+			&self.accepted_policy_version,
+		)?;
+		validate_required(
+			"autonomy proposal accepted project policy.authority_ref",
+			&self.authority_ref,
+		)?;
+		validate_required(
+			"autonomy proposal accepted project policy.authorized_actor",
+			&self.authorized_actor,
+		)?;
+		validate_string_list(
+			"autonomy proposal accepted project policy.authorized_acceptance_sources",
+			&self.authorized_acceptance_sources,
+		)?;
+		validate_string_list(
+			"autonomy proposal accepted project policy.authorized_scopes",
+			&self.authorized_scopes,
+		)?;
+
+		if self.objective_version == 0 {
+			eyre::bail!(
+				"Autonomy proposal accepted project policy objective_version must be greater than zero."
+			);
+		}
+		if !self.authorized_scopes.iter().any(|scope| scope == AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE) {
+			eyre::bail!(
+				"Autonomy proposal accepted project policy `{}` must authorize `{}` scope.",
+				self.authority_ref,
+				AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE
+			);
+		}
+
+		Ok(())
+	}
+
+	fn validate_for_authority(
+		&self,
+		authority: &AutonomyProposalDecisionBridgeAuthority,
+	) -> Result<()> {
+		self.validate()?;
+
+		if self.authorized_actor != authority.accepted_by
+			|| self.authorized_actor_kind != authority.accepted_by_kind
+		{
+			eyre::bail!(
+				"Autonomy proposal accepted project policy `{}` authorizes `{}` ({}) but acceptance is by `{}` ({}).",
+				self.authority_ref,
+				self.authorized_actor,
+				self.authorized_actor_kind.as_str(),
+				authority.accepted_by,
+				authority.accepted_by_kind.as_str()
+			);
+		}
+		if !self
+			.authorized_acceptance_sources
+			.iter()
+			.any(|source| source == &authority.acceptance_source)
+		{
+			eyre::bail!(
+				"Autonomy proposal accepted project policy `{}` does not authorize acceptance source `{}`.",
+				self.authority_ref,
+				authority.acceptance_source
+			);
+		}
+
+		Ok(())
+	}
+
+	fn validate_for_proposal(
+		&self,
+		proposal: &AutonomyProposal,
+		authority: &AutonomyProposalDecisionBridgeAuthority,
+	) -> Result<()> {
+		self.validate_for_authority(authority)?;
+
+		if self.project_id != proposal.project_id
+			|| self.objective_id != proposal.objective_id
+			|| self.objective_version != proposal.objective_version
+		{
+			eyre::bail!(
+				"Autonomy proposal accepted project policy `{}` does not match proposal `{}` objective lineage.",
+				self.authority_ref,
+				proposal.id
+			);
+		}
+
+		Ok(())
+	}
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AutonomyProposalCompileInput {
 	pub(crate) project_id: String,
@@ -95,6 +266,85 @@ pub(crate) struct AutonomyProposalChallengeInput {
 	pub(crate) objections: Vec<String>,
 	pub(crate) evidence_refs: Vec<String>,
 	pub(crate) recorded_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AutonomyProposalDecisionBridgeAuthority {
+	pub(crate) accepted_by: String,
+	pub(crate) accepted_by_kind: AutonomyProposalAuthorityActorKind,
+	pub(crate) accepted_at: String,
+	pub(crate) acceptance_source: String,
+	pub(crate) reason: String,
+	pub(crate) proposal_actor: String,
+	pub(crate) proposal_actor_kind: AutonomyProposalAuthorityActorKind,
+	pub(crate) accepted_project_policy: Option<AutonomyProposalAcceptedProjectPolicy>,
+}
+impl AutonomyProposalDecisionBridgeAuthority {
+	#[allow(clippy::too_many_arguments)]
+	#[cfg_attr(not(test), allow(dead_code))]
+	pub(crate) fn new(
+		accepted_by: impl Into<String>,
+		accepted_by_kind: AutonomyProposalAuthorityActorKind,
+		accepted_at: impl Into<String>,
+		acceptance_source: impl Into<String>,
+		reason: impl Into<String>,
+		proposal_actor: impl Into<String>,
+		proposal_actor_kind: AutonomyProposalAuthorityActorKind,
+		accepted_project_policy: Option<AutonomyProposalAcceptedProjectPolicy>,
+	) -> Result<Self> {
+		let authority = Self {
+			accepted_by: accepted_by.into(),
+			accepted_by_kind,
+			accepted_at: accepted_at.into(),
+			acceptance_source: acceptance_source.into(),
+			reason: reason.into(),
+			proposal_actor: proposal_actor.into(),
+			proposal_actor_kind,
+			accepted_project_policy,
+		};
+
+		authority.validate()?;
+
+		Ok(authority)
+	}
+
+	fn validate(&self) -> Result<()> {
+		validate_required("autonomy proposal acceptance.accepted_by", &self.accepted_by)?;
+		validate_required("autonomy proposal acceptance.accepted_at", &self.accepted_at)?;
+		validate_required(
+			"autonomy proposal acceptance.acceptance_source",
+			&self.acceptance_source,
+		)?;
+		validate_required("autonomy proposal acceptance.reason", &self.reason)?;
+		validate_required("autonomy proposal acceptance.proposal_actor", &self.proposal_actor)?;
+
+		if let Some(policy) = &self.accepted_project_policy {
+			policy.validate_for_authority(self)?;
+		}
+
+		if matches!(
+			self.accepted_by_kind,
+			AutonomyProposalAuthorityActorKind::RuntimePolicy
+				| AutonomyProposalAuthorityActorKind::ExternalAgent
+		) && self.accepted_project_policy.is_none()
+		{
+			eyre::bail!(
+				"Autonomy proposal acceptance by `{}` requires accepted project policy authority.",
+				self.accepted_by_kind.as_str()
+			);
+		}
+		if self.proposal_actor_kind == AutonomyProposalAuthorityActorKind::ExternalAgent
+			&& self.accepted_by == self.proposal_actor
+			&& self.accepted_project_policy.is_none()
+		{
+			eyre::bail!(
+				"External autonomy proposal actor `{}` cannot accept its own proposal without accepted project policy authority.",
+				self.accepted_by
+			);
+		}
+
+		Ok(())
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -463,6 +713,86 @@ impl AutonomyProposal {
 		Ok(())
 	}
 
+	pub(crate) fn to_decision_contract_candidate(
+		&self,
+		authority: AutonomyProposalDecisionBridgeAuthority,
+	) -> Result<DecisionContract> {
+		self.validate()?;
+		authority.validate()?;
+
+		if let Some(policy) = &authority.accepted_project_policy {
+			policy.validate_for_proposal(self, &authority)?;
+		}
+
+		if self.state != AutonomyProposalState::DecisionCandidate {
+			eyre::bail!(
+				"Autonomy proposal `{}` is `{}` and cannot become a Decision Contract candidate.",
+				self.id,
+				self.state.as_str()
+			);
+		}
+		if !self.refusal_reasons.is_empty() {
+			eyre::bail!(
+				"Autonomy proposal `{}` has refusal reasons and cannot become a Decision Contract candidate.",
+				self.id
+			);
+		}
+
+		let payload = serde_json::json!({
+			"schema": crate::loop_contract::DECISION_CONTRACT_SCHEMA,
+			"record_version": crate::loop_contract::DECISION_CONTRACT_RECORD_VERSION,
+			"contract_id": self.decision_contract_id(),
+			"status": DecisionContractStatus::DraftLatent.as_str(),
+			"source_intent": {
+				"summary": format!("Accepted autonomy proposal: {}", self.summary),
+				"user_utterance": authority.reason.clone(),
+				"source_issue_identifier": proposal_source_issue_identifier(&self.affected_identifiers),
+			},
+			"research_provenance": autonomy_decision_research_provenance(self, &authority),
+			"research_evidence": autonomy_decision_research_evidence(self),
+			"research_options": autonomy_decision_research_options(self),
+			"accepted_authority": {
+				"accepted_objectives": proposal_objectives(self),
+				"non_goals": self.non_goals.clone(),
+				"constraints": proposal_constraints(self),
+				"assumptions": proposal_assumptions(self, &authority),
+				"objections": proposal_objections(self),
+				"stop_conditions": proposal_stop_conditions(self),
+			},
+			"execution_readiness": {
+				"summary": "Accepted autonomy proposal is ready for normal Decision Contract promotion.",
+				"ready_for_issue_shaping": true,
+				"missing_decisions": [],
+				"validation_expectations": proposal_validation_expectations(self),
+				"risk_notes": proposal_risk_notes(self),
+				"proposed_issues": [proposal_issue_candidate(self)],
+				"promotion_targets": ["research_promote", "decision_contract"],
+				"conflict_domains": proposal_conflict_domains(self),
+			},
+			"links": {
+				"generated_issue_ids": [],
+				"generated_issue_identifiers": [],
+				"execution_program_node_ids": [],
+			},
+			"evidence_boundary": {
+				"private_evidence_refs": [],
+				"public_projection_refs": [
+					{
+						"surface": "autonomy_proposal",
+						"reference": self.id.clone(),
+						"summary": "Accepted autonomy proposal converted to latent Decision Contract candidate."
+					}
+				],
+				"public_summary": "Autonomy proposal preserved as a latent Decision Contract candidate."
+			},
+		});
+		let contract = serde_json::from_value::<DecisionContract>(payload)?;
+
+		contract.validate()?;
+
+		Ok(contract)
+	}
+
 	pub(crate) fn validate(&self) -> Result<()> {
 		validate_required("autonomy proposal schema", &self.schema)?;
 		validate_required("autonomy proposal id", &self.id)?;
@@ -582,6 +912,347 @@ impl AutonomyProposal {
 
 		Ok(())
 	}
+}
+
+impl AutonomyProposal {
+	fn decision_contract_id(&self) -> String {
+		format!("autonomy-decision-{}", &self.fingerprint[..32])
+	}
+}
+
+fn autonomy_decision_research_provenance(
+	proposal: &AutonomyProposal,
+	authority: &AutonomyProposalDecisionBridgeAuthority,
+) -> Vec<Value> {
+	let mut provenance = vec![
+		serde_json::json!({
+			"kind": "autonomy_proposal",
+			"reference": proposal.id.clone(),
+			"summary": proposal.summary.clone(),
+		}),
+		serde_json::json!({
+			"kind": "autonomy_objective",
+			"reference": format!(
+				"{}:{}@{}",
+				proposal.project_id, proposal.objective_id, proposal.objective_version
+			),
+			"summary": proposal.objective_lineage.objective_summary.as_deref().unwrap_or(
+				"Accepted autonomy objective version."
+			),
+		}),
+		serde_json::json!({
+			"kind": "proposal_acceptance",
+			"reference": authority.acceptance_source.clone(),
+			"summary": format!(
+				"Accepted by {} ({}) at {}.",
+				authority.accepted_by,
+				authority.accepted_by_kind.as_str(),
+				authority.accepted_at
+			),
+		}),
+	];
+
+	if let Some(policy) = &authority.accepted_project_policy {
+		provenance.push(serde_json::json!({
+			"kind": "project_policy",
+			"reference": policy.authority_ref.clone(),
+			"summary": format!(
+				"Accepted project policy {}@{} authorized `{}` ({}) for autonomy proposal acceptance.",
+				policy.accepted_policy_id,
+				policy.accepted_policy_version,
+				policy.authorized_actor,
+				policy.authorized_actor_kind.as_str()
+			)
+		}));
+	}
+
+	provenance
+}
+
+fn autonomy_decision_research_evidence(proposal: &AutonomyProposal) -> Vec<Value> {
+	let mut evidence = proposal
+		.source_signals
+		.iter()
+		.map(|signal| {
+			let mut support = vec![
+				format!("freshness={}", signal.freshness),
+				format!("evidence_class={}", signal.evidence_class),
+				format!("confidence={}", signal.confidence),
+			];
+
+			if !signal.gaps.is_empty() {
+				support.push(format!("gaps={}", signal.gaps.join("; ")));
+			}
+			if !signal.contradictions.is_empty() {
+				support.push(format!("contradictions={}", signal.contradictions.join("; ")));
+			}
+
+			serde_json::json!({
+				"kind": format!("autonomy_signal:{}", signal.kind),
+				"claim": format!("Autonomy signal `{}` contributed to accepted proposal `{}`.", signal.signal_id, proposal.id),
+				"support": support.join("; "),
+				"source_ref": signal.signal_id.clone(),
+			})
+		})
+		.collect::<Vec<_>>();
+
+	if !proposal.gaps.is_empty() {
+		evidence.push(serde_json::json!({
+			"kind": "autonomy_proposal_gap",
+			"claim": "Accepted proposal retained evidence gaps for downstream review.",
+			"support": proposal.gaps.join("; "),
+			"source_ref": proposal.id.clone(),
+		}));
+	}
+	if !proposal.contradictions.is_empty() {
+		evidence.push(serde_json::json!({
+			"kind": "autonomy_proposal_contradiction",
+			"claim": "Accepted proposal retained contradictions for downstream authority checks.",
+			"support": proposal.contradictions.join("; "),
+			"source_ref": proposal.id.clone(),
+		}));
+	}
+
+	for challenge in &proposal.challenge_evidence {
+		evidence.push(serde_json::json!({
+			"kind": "autonomy_proposal_challenge",
+			"claim": challenge.summary.clone(),
+			"support": challenge_support(challenge),
+			"source_ref": format!("challenge:{}", challenge.actor),
+		}));
+	}
+
+	evidence
+}
+
+fn challenge_support(challenge: &AutonomyProposalChallengeEvidence) -> String {
+	if !challenge.objections.is_empty() {
+		challenge.objections.join("; ")
+	} else if !challenge.evidence_refs.is_empty() {
+		format!("evidence_refs={}", challenge.evidence_refs.join("; "))
+	} else {
+		String::from("Challenge recorded no blocking objections.")
+	}
+}
+
+fn autonomy_decision_research_options(proposal: &AutonomyProposal) -> Vec<Value> {
+	let mut options = vec![serde_json::json!({
+		"option": proposal.summary.clone(),
+		"tradeoffs": option_tradeoffs(proposal),
+		"decision": "accepted_as_latent_decision_contract",
+		"rejected_reason": null,
+	})];
+
+	options.extend(proposal.rejected_alternatives.iter().map(|alternative| {
+		serde_json::json!({
+			"option": alternative.clone(),
+			"tradeoffs": [],
+			"decision": null,
+			"rejected_reason": "Rejected before autonomy proposal acceptance.",
+		})
+	}));
+
+	options
+}
+
+fn option_tradeoffs(proposal: &AutonomyProposal) -> Vec<String> {
+	let mut tradeoffs = Vec::new();
+
+	tradeoffs.push(format!("Rollback path: {}", proposal.rollback_path));
+	tradeoffs.extend(
+		proposal.review_requirements.iter().map(|item| format!("Review requirement: {item}")),
+	);
+	tradeoffs
+		.extend(proposal.validation_gates.iter().map(|item| format!("Validation gate: {item}")));
+
+	tradeoffs
+}
+
+fn proposal_objectives(proposal: &AutonomyProposal) -> Vec<String> {
+	if proposal.goals.is_empty() { vec![proposal.summary.clone()] } else { proposal.goals.clone() }
+}
+
+fn proposal_constraints(proposal: &AutonomyProposal) -> Vec<String> {
+	let mut constraints = proposal
+		.allowed_surfaces
+		.iter()
+		.map(|surface| format!("Allowed surface: {surface}"))
+		.collect::<Vec<_>>();
+
+	constraints.extend(
+		proposal
+			.review_requirements
+			.iter()
+			.map(|requirement| format!("Review requirement: {requirement}")),
+	);
+	constraints.push(String::from(
+		"Accepted autonomy proposal must remain latent until Decision Contract promotion.",
+	));
+
+	constraints
+}
+
+fn proposal_assumptions(
+	proposal: &AutonomyProposal,
+	authority: &AutonomyProposalDecisionBridgeAuthority,
+) -> Vec<String> {
+	let mut assumptions =
+		proposal.metrics.iter().map(|metric| format!("Metric: {metric}")).collect::<Vec<_>>();
+
+	assumptions.push(format!(
+		"Proposal actor `{}` ({}) is distinct from acceptance authority `{}` ({}) unless resolved accepted project policy is recorded.",
+		authority.proposal_actor,
+		authority.proposal_actor_kind.as_str(),
+		authority.accepted_by,
+		authority.accepted_by_kind.as_str()
+	));
+
+	assumptions
+}
+
+fn proposal_objections(proposal: &AutonomyProposal) -> Vec<String> {
+	let mut objections = proposal.contradictions.clone();
+
+	objections.extend(proposal.gaps.iter().map(|gap| format!("Evidence gap: {gap}")));
+
+	for challenge in &proposal.challenge_evidence {
+		objections.extend(challenge.objections.iter().cloned());
+	}
+
+	unique_sorted_strings(objections)
+}
+
+fn proposal_stop_conditions(proposal: &AutonomyProposal) -> Vec<String> {
+	let mut stop_conditions = vec![
+		String::from(
+			"Stop before Program Intake unless the Decision Contract is promoted with explicit authority.",
+		),
+		format!("Rollback path: {}", proposal.rollback_path),
+	];
+
+	stop_conditions.extend(
+		proposal
+			.challenge_requirements
+			.iter()
+			.map(|requirement| format!("Challenge requirement: {requirement}")),
+	);
+
+	stop_conditions
+}
+
+fn proposal_validation_expectations(proposal: &AutonomyProposal) -> Vec<String> {
+	if proposal.validation_gates.is_empty() {
+		vec![String::from("Run the accepted Decision Contract validation gate before promotion.")]
+	} else {
+		proposal.validation_gates.clone()
+	}
+}
+
+fn proposal_risk_notes(proposal: &AutonomyProposal) -> Vec<String> {
+	let mut risk_notes =
+		proposal.gaps.iter().map(|gap| format!("Evidence gap: {gap}")).collect::<Vec<_>>();
+
+	risk_notes.extend(
+		proposal
+			.review_requirements
+			.iter()
+			.map(|requirement| format!("Review requirement: {requirement}")),
+	);
+	risk_notes.extend(
+		proposal
+			.challenge_requirements
+			.iter()
+			.map(|requirement| format!("Challenge requirement: {requirement}")),
+	);
+
+	risk_notes
+}
+
+fn proposal_issue_candidate(proposal: &AutonomyProposal) -> Value {
+	serde_json::json!({
+		"key": format!("autonomy-{}", stable_slug(&proposal.source_family, 48)),
+		"title": proposal.summary.clone(),
+		"objective": proposal.summary.clone(),
+		"stage": proposal_issue_stage(&proposal.intended_surface),
+		"dependencies": [],
+		"conflict_domains": proposal_conflict_domains(proposal),
+		"acceptance": proposal_objectives(proposal),
+		"validation": proposal_validation_expectations(proposal),
+		"risk": proposal_risk_notes(proposal),
+		"queue_intent": "ready_to_queue",
+	})
+}
+
+fn proposal_conflict_domains(proposal: &AutonomyProposal) -> Vec<String> {
+	let mut domains = BTreeSet::new();
+
+	if let Some(surface) = normalize_repo_relative_path(&proposal.intended_surface) {
+		domains.insert(format!("file:{surface}"));
+	} else {
+		domains.insert(format!("surface:{}", proposal.intended_surface));
+	}
+
+	for identifier in &proposal.affected_identifiers {
+		domains.insert(format!("identifier:{identifier}"));
+	}
+
+	domains.into_iter().collect()
+}
+
+fn proposal_issue_stage(intended_surface: &str) -> &'static str {
+	if intended_surface.starts_with("docs/spec/") {
+		"spec"
+	} else if intended_surface.starts_with("docs/") {
+		"design"
+	} else if intended_surface.starts_with("apps/decodex/src/") {
+		"runtime"
+	} else {
+		"design"
+	}
+}
+
+fn proposal_source_issue_identifier(affected_identifiers: &[String]) -> Option<String> {
+	affected_identifiers
+		.iter()
+		.find(|identifier| looks_like_tracker_issue_identifier(identifier))
+		.cloned()
+}
+
+fn looks_like_tracker_issue_identifier(value: &str) -> bool {
+	let Some((prefix, number)) = value.split_once('-') else {
+		return false;
+	};
+
+	!prefix.is_empty()
+		&& prefix.bytes().all(|byte| byte.is_ascii_uppercase())
+		&& !number.is_empty()
+		&& number.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn stable_slug(value: &str, max_len: usize) -> String {
+	let mut slug = String::new();
+	let mut previous_dash = false;
+
+	for character in value.chars() {
+		if character.is_ascii_alphanumeric() {
+			slug.push(character.to_ascii_lowercase());
+
+			previous_dash = false;
+		} else if !previous_dash && !slug.is_empty() {
+			slug.push('-');
+
+			previous_dash = true;
+		}
+		if slug.len() >= max_len {
+			break;
+		}
+	}
+
+	while slug.ends_with('-') {
+		slug.pop();
+	}
+
+	if slug.is_empty() { String::from("proposal") } else { slug }
 }
 
 fn proposal_refusals(
@@ -889,15 +1560,19 @@ mod tests {
 			AutonomyObjectiveAcceptance, AutonomyObjectiveActorKind, AutonomyObjectiveContract,
 		},
 		autonomy_proposal::{
-			AutonomyProposal, AutonomyProposalChallengeInput, AutonomyProposalChallengeSource,
-			AutonomyProposalCompileInput, AutonomyProposalRefusalReason, AutonomyProposalState,
+			AutonomyProposal, AutonomyProposalAcceptedProjectPolicy,
+			AutonomyProposalAuthorityActorKind, AutonomyProposalChallengeInput,
+			AutonomyProposalChallengeSource, AutonomyProposalCompileInput,
+			AutonomyProposalDecisionBridgeAuthority, AutonomyProposalRefusalReason,
+			AutonomyProposalState,
 		},
 		autonomy_signal::{
 			AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
 			AutonomySignalFreshness, AutonomySignalInput, AutonomySignalPrivacy,
 			AutonomySignalSourceType,
 		},
-		state::StateStore,
+		loop_contract::{DecisionContractStatus, DecisionPromotion, DecisionPromotionActorKind},
+		state::{DecisionContractRecord, StateStore},
 	};
 
 	trait ExpectNone {
@@ -1027,6 +1702,136 @@ mod tests {
 		}
 	}
 
+	fn bridge_authority() -> AutonomyProposalDecisionBridgeAuthority {
+		AutonomyProposalDecisionBridgeAuthority::new(
+			"operator",
+			AutonomyProposalAuthorityActorKind::User,
+			"2026-06-22T00:03:00Z",
+			"conversation",
+			"Operator accepted the proposal for Decision Contract promotion.",
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			None,
+		)
+		.expect("bridge authority should validate")
+	}
+
+	fn accepted_project_policy(
+		authorized_actor: &str,
+		authorized_actor_kind: AutonomyProposalAuthorityActorKind,
+		acceptance_source: &str,
+	) -> AutonomyProposalAcceptedProjectPolicy {
+		AutonomyProposalAcceptedProjectPolicy::new(
+			"decodex",
+			"quality-autonomy",
+			1,
+			"quality-autonomy-policy",
+			"1",
+			"decodex.runtime_policy:quality-autonomy-policy@1",
+			authorized_actor,
+			authorized_actor_kind,
+			vec![String::from(acceptance_source)],
+			vec![String::from(super::AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE)],
+		)
+		.expect("accepted project policy should validate")
+	}
+
+	fn runtime_policy_bridge_authority() -> AutonomyProposalDecisionBridgeAuthority {
+		AutonomyProposalDecisionBridgeAuthority::new(
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			"2026-06-22T00:03:00Z",
+			"runtime-policy",
+			"Accepted project policy allows this agent to accept the proposal.",
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			Some(accepted_project_policy(
+				"support-agent",
+				AutonomyProposalAuthorityActorKind::ExternalAgent,
+				"runtime-policy",
+			)),
+		)
+		.expect("policy-backed bridge authority should validate")
+	}
+
+	fn store_challenged_autonomy_candidate() -> (StateStore, String, DecisionContractRecord) {
+		let store = StateStore::open_in_memory().expect("store should open");
+		let objective = store_accepted_objective(&store);
+		let signal = store
+			.record_autonomy_signal("decodex", runtime_signal())
+			.expect("signal should store")
+			.signal()
+			.clone();
+		let mut input = compile_input();
+
+		input.affected_identifiers.push(String::from("XY-1087"));
+
+		let mut proposal = AutonomyProposal::compile_dry_run(Some(&objective), &[signal], input)
+			.expect("proposal should compile");
+		let proposal_id = proposal.id().to_owned();
+
+		proposal
+			.record_challenge(AutonomyProposalChallengeInput {
+				source: AutonomyProposalChallengeSource::InlineSkeptic,
+				actor: String::from("inline"),
+				summary: String::from("Inline skeptic found no blocker to latent conversion."),
+				objections: Vec::new(),
+				evidence_refs: vec![String::from("challenge:inline")],
+				recorded_at: String::from("2026-06-22T00:02:00Z"),
+			})
+			.expect("no-objection challenge should preserve candidate state");
+
+		assert_eq!(proposal.state(), AutonomyProposalState::DecisionCandidate);
+
+		store.record_autonomy_proposal("decodex", proposal).expect("proposal should persist");
+
+		let candidate = store
+			.accept_autonomy_proposal_as_decision_contract_candidate(
+				"decodex",
+				&proposal_id,
+				bridge_authority(),
+			)
+			.expect("accepted proposal should become a latent Decision Contract");
+
+		(store, proposal_id, candidate)
+	}
+
+	fn assert_autonomy_candidate_shape(store: &StateStore, candidate: &DecisionContractRecord) {
+		assert_eq!(candidate.status(), DecisionContractStatus::DraftLatent);
+		assert!(candidate.contract().promotion().is_none());
+		assert_eq!(candidate.source_issue_id(), Some("XY-1087"));
+		assert_eq!(candidate.contract().source_intent().source_issue_identifier(), Some("XY-1087"));
+		assert!(
+			candidate
+				.contract()
+				.accepted_authority()
+				.accepted_objectives()
+				.contains(&String::from("Reduce repeated validation and review churn."))
+		);
+		assert!(candidate.contract().accepted_authority().constraints().contains(&String::from(
+			"Review requirement: independent current-head review required"
+		)));
+		assert_eq!(
+			candidate.contract().execution_readiness().validation_expectations(),
+			&[String::from("cargo test -p decodex autonomy_proposal --lib")]
+		);
+		assert!(
+			candidate
+				.contract()
+				.execution_readiness()
+				.risk_notes()
+				.contains(&String::from("Evidence gap: No dashboard comparison included."))
+		);
+		assert_eq!(candidate.contract().execution_readiness().proposed_issues().len(), 1);
+		assert!(
+			candidate.contract().execution_readiness().proposed_issues()[0]
+				.conflict_domains()
+				.contains(&String::from("file:apps/decodex/src/orchestrator/status.rs"))
+		);
+		assert!(store.list_execution_programs("decodex").expect("programs").is_empty());
+		assert!(store.list_program_intake_plans("decodex").expect("intake plans").is_empty());
+	}
+
 	#[test]
 	fn autonomy_proposal_dry_run_candidate_shows_lineage_signals_gates_and_gaps() {
 		let objective = objective_fixture();
@@ -1073,6 +1878,361 @@ mod tests {
 			"cargo test -p decodex autonomy_proposal --lib"
 		);
 		assert!(dry_run_json["refusal_reasons"].as_array().expect("refusals array").is_empty());
+	}
+
+	#[test]
+	fn autonomy_decision_bridge_accepts_candidate_as_latent_contract_with_lineage_readback() {
+		let (store, proposal_id, candidate) = store_challenged_autonomy_candidate();
+
+		assert_autonomy_candidate_shape(&store, &candidate);
+
+		let readback = store
+			.decision_contract("decodex", candidate.contract_id())
+			.expect("contract readback should work")
+			.expect("candidate should persist");
+
+		assert_eq!(readback.contract(), candidate.contract());
+
+		let idempotent = store
+			.accept_autonomy_proposal_as_decision_contract_candidate(
+				"decodex",
+				&proposal_id,
+				bridge_authority(),
+			)
+			.expect("re-accepting the same latent contract should be idempotent");
+
+		assert_eq!(idempotent.contract(), candidate.contract());
+
+		let missing_promotion_authority = DecisionPromotion::new(
+			"",
+			DecisionPromotionActorKind::User,
+			"2026-06-22T00:04:00Z",
+			"conversation",
+			Some(String::from("User asked Decodex to promote the accepted candidate.")),
+		);
+
+		assert!(missing_promotion_authority.is_err());
+		assert_eq!(
+			store
+				.decision_contract("decodex", candidate.contract_id())
+				.expect("contract should read")
+				.expect("contract should exist")
+				.status(),
+			DecisionContractStatus::DraftLatent
+		);
+
+		let promoted = store
+			.promote_decision_contract(
+				"decodex",
+				candidate.contract_id(),
+				DecisionPromotion::new(
+					"operator",
+					DecisionPromotionActorKind::User,
+					"2026-06-22T00:05:00Z",
+					"conversation",
+					Some(String::from("User asked Decodex to promote the accepted candidate.")),
+				)
+				.expect("promotion authority should validate"),
+			)
+			.expect("valid promotion should use existing Decision Contract semantics");
+
+		assert_eq!(promoted.status(), DecisionContractStatus::AcceptedPromoted);
+
+		let reaccept_after_promote = store
+			.accept_autonomy_proposal_as_decision_contract_candidate(
+				"decodex",
+				&proposal_id,
+				bridge_authority(),
+			)
+			.expect_err("accepted promoted contract must not be overwritten by proposal re-accept");
+
+		assert!(reaccept_after_promote.to_string().contains("will not replace"));
+		assert_eq!(
+			store
+				.decision_contract("decodex", candidate.contract_id())
+				.expect("contract should read")
+				.expect("contract should exist")
+				.status(),
+			DecisionContractStatus::AcceptedPromoted
+		);
+	}
+
+	#[test]
+	fn autonomy_decision_bridge_reaccept_refuses_generated_link_replacement() {
+		let store = StateStore::open_in_memory().expect("store should open");
+		let objective = store_accepted_objective(&store);
+		let signal = store
+			.record_autonomy_signal("decodex", runtime_signal())
+			.expect("signal should store")
+			.signal()
+			.clone();
+		let proposal =
+			AutonomyProposal::compile_dry_run(Some(&objective), &[signal], compile_input())
+				.expect("proposal should compile");
+		let proposal_id = proposal.id().to_owned();
+
+		store.record_autonomy_proposal("decodex", proposal).expect("proposal should persist");
+
+		let candidate = store
+			.accept_autonomy_proposal_as_decision_contract_candidate(
+				"decodex",
+				&proposal_id,
+				bridge_authority(),
+			)
+			.expect("accepted proposal should become a latent Decision Contract");
+		let mut linked_contract = candidate.contract().clone();
+
+		linked_contract
+			.link_generated_execution_surfaces(["id-XY-G1"], ["XY-G1"], ["node-1"])
+			.expect("test contract links should validate");
+		store
+			.upsert_decision_contract(
+				"decodex",
+				candidate.source_issue_id(),
+				linked_contract.clone(),
+			)
+			.expect("linked contract should persist");
+
+		let reaccept_after_links = store
+			.accept_autonomy_proposal_as_decision_contract_candidate(
+				"decodex",
+				&proposal_id,
+				bridge_authority(),
+			)
+			.expect_err("generated execution links must not be overwritten");
+
+		assert!(reaccept_after_links.to_string().contains("will not replace"));
+
+		let readback = store
+			.decision_contract("decodex", candidate.contract_id())
+			.expect("contract should read")
+			.expect("contract should exist");
+
+		assert_eq!(readback.contract().links().generated_issue_identifiers(), &["XY-G1"]);
+		assert_eq!(readback.contract(), &linked_contract);
+	}
+
+	#[test]
+	fn autonomy_decision_bridge_rejected_and_needs_human_proposals_remain_non_executable() {
+		let store = StateStore::open_in_memory().expect("store should open");
+		let objective = store_accepted_objective(&store);
+		let signal = store
+			.record_autonomy_signal("decodex", runtime_signal())
+			.expect("signal should store")
+			.signal()
+			.clone();
+		let mut rejected_input = compile_input();
+
+		rejected_input.intended_surface = String::from("scripts/unowned.rs");
+
+		let rejected = AutonomyProposal::compile_dry_run(
+			Some(&objective),
+			slice::from_ref(&signal),
+			rejected_input,
+		)
+		.expect("rejected proposal should compile");
+		let rejected_id = rejected.id().to_owned();
+
+		assert_eq!(rejected.state(), AutonomyProposalState::Rejected);
+
+		store
+			.record_autonomy_proposal("decodex", rejected)
+			.expect("rejected proposal should persist");
+
+		assert!(
+			store
+				.accept_autonomy_proposal_as_decision_contract_candidate(
+					"decodex",
+					&rejected_id,
+					bridge_authority(),
+				)
+				.is_err()
+		);
+
+		let mut contradiction_input = signal_input();
+
+		contradiction_input.contradictions =
+			vec![String::from("Runtime and tracker authority disagree.")];
+
+		let contradiction_signal = store
+			.record_autonomy_signal(
+				"decodex",
+				AutonomySignal::runtime_health(contradiction_input)
+					.expect("signal should validate"),
+			)
+			.expect("contradiction signal should store")
+			.signal()
+			.clone();
+		let needs_human = AutonomyProposal::compile_dry_run(
+			Some(&objective),
+			&[contradiction_signal],
+			compile_input(),
+		)
+		.expect("needs-human proposal should compile");
+		let needs_human_id = needs_human.id().to_owned();
+
+		assert_eq!(needs_human.state(), AutonomyProposalState::NeedsHumanDecision);
+
+		store
+			.record_autonomy_proposal("decodex", needs_human)
+			.expect("needs-human proposal should persist");
+
+		assert!(
+			store
+				.accept_autonomy_proposal_as_decision_contract_candidate(
+					"decodex",
+					&needs_human_id,
+					bridge_authority(),
+				)
+				.is_err()
+		);
+		assert!(
+			store
+				.list_decision_contracts_for_project("decodex")
+				.expect("contracts should list")
+				.is_empty()
+		);
+		assert!(store.list_execution_programs("decodex").expect("programs").is_empty());
+		assert!(store.list_program_intake_plans("decodex").expect("intake plans").is_empty());
+	}
+
+	fn assert_external_agent_policy_authority_validation() {
+		let self_accept_without_policy = AutonomyProposalDecisionBridgeAuthority::new(
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::User,
+			"2026-06-22T00:03:00Z",
+			"agent-output",
+			"Agent accepted its own proposal.",
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			None,
+		);
+
+		assert!(self_accept_without_policy.is_err());
+
+		let wrong_actor_policy = AutonomyProposalDecisionBridgeAuthority::new(
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			"2026-06-22T00:03:00Z",
+			"runtime-policy",
+			"Agent tried to rely on another actor's policy.",
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			Some(accepted_project_policy(
+				"other-agent",
+				AutonomyProposalAuthorityActorKind::ExternalAgent,
+				"runtime-policy",
+			)),
+		);
+
+		assert!(wrong_actor_policy.is_err());
+
+		let wrong_source_policy = AutonomyProposalDecisionBridgeAuthority::new(
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			"2026-06-22T00:03:00Z",
+			"runtime-policy",
+			"Agent tried to rely on a policy for a different source.",
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			Some(accepted_project_policy(
+				"support-agent",
+				AutonomyProposalAuthorityActorKind::ExternalAgent,
+				"manual-only",
+			)),
+		);
+
+		assert!(wrong_source_policy.is_err());
+
+		let missing_acceptance_scope = AutonomyProposalAcceptedProjectPolicy::new(
+			"decodex",
+			"quality-autonomy",
+			1,
+			"quality-autonomy-policy",
+			"1",
+			"decodex.runtime_policy:quality-autonomy-policy@1",
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			vec![String::from("runtime-policy")],
+			vec![String::from("other_scope")],
+		);
+
+		assert!(missing_acceptance_scope.is_err());
+	}
+
+	fn assert_policy_objective_lineage_required(store: &StateStore, proposal_id: &str) {
+		let wrong_objective_policy = AutonomyProposalAcceptedProjectPolicy::new(
+			"decodex",
+			"other-objective",
+			1,
+			"quality-autonomy-policy",
+			"1",
+			"decodex.runtime_policy:quality-autonomy-policy@1",
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			vec![String::from("runtime-policy")],
+			vec![String::from(super::AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE)],
+		)
+		.expect("wrong objective policy shape should still validate");
+		let wrong_objective_authority = AutonomyProposalDecisionBridgeAuthority::new(
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			"2026-06-22T00:03:00Z",
+			"runtime-policy",
+			"Accepted project policy references the wrong objective.",
+			"support-agent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			Some(wrong_objective_policy),
+		)
+		.expect("authority validates before proposal lineage is checked");
+		let wrong_objective_accept = store
+			.accept_autonomy_proposal_as_decision_contract_candidate(
+				"decodex",
+				proposal_id,
+				wrong_objective_authority,
+			)
+			.expect_err("policy must match proposal objective lineage");
+
+		assert!(wrong_objective_accept.to_string().contains("does not match proposal"));
+	}
+
+	#[test]
+	fn autonomy_decision_bridge_external_agent_self_accept_requires_project_policy() {
+		assert_external_agent_policy_authority_validation();
+
+		let store = StateStore::open_in_memory().expect("store should open");
+		let objective = store_accepted_objective(&store);
+		let mut input = signal_input();
+
+		input.source_type = AutonomySignalSourceType::Agent;
+
+		let signal = store
+			.record_autonomy_signal(
+				"decodex",
+				AutonomySignal::runtime_health(input).expect("agent signal should validate"),
+			)
+			.expect("agent signal should store")
+			.signal()
+			.clone();
+		let proposal =
+			AutonomyProposal::compile_dry_run(Some(&objective), &[signal], compile_input())
+				.expect("proposal should compile");
+		let proposal_id = proposal.id().to_owned();
+
+		store.record_autonomy_proposal("decodex", proposal).expect("proposal should persist");
+
+		assert_policy_objective_lineage_required(&store, &proposal_id);
+
+		let candidate = store
+			.accept_autonomy_proposal_as_decision_contract_candidate(
+				"decodex",
+				&proposal_id,
+				runtime_policy_bridge_authority(),
+			)
+			.expect("policy-backed external acceptance should bridge to latent contract");
+
+		assert_eq!(candidate.status(), DecisionContractStatus::DraftLatent);
+		assert!(candidate.contract().promotion().is_none());
 	}
 
 	#[test]

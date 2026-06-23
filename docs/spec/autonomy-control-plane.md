@@ -189,7 +189,8 @@ unknown project config keys elsewhere.
 The policy must name:
 
 - objective id and version
-- policy id, version, scope, actor, and acceptance source
+- policy id, version, authority reference, scope, actor, actor kind, and
+  acceptance source
 - allowed signal kinds
 - allowed surfaces
 - validation gates
@@ -319,6 +320,30 @@ Proposal states:
 | `decision_candidate` | Strong enough to compile a latent Decision Contract candidate. |
 | `accepted_promoted` | Accepted through normal Decision Contract promotion. |
 
+Accepting a `decision_candidate` proposal requires explicit proposal-acceptance
+authority: accepting actor, actor kind, timestamp, acceptance source, reason, proposal
+actor, and proposal actor kind. Runtime-policy or external-agent acceptance also
+requires a resolved accepted project-policy record, not only a reference string. That
+record must match the proposal project id, objective id/version, accepted policy
+id/version, authority reference, authorized actor, actor kind, acceptance source, and
+`autonomy_proposal_acceptance` scope. External-agent output cannot accept its own
+proposal unless that accepted policy authority is present.
+
+Proposal acceptance creates a normal `decodex.decision_contract/1` payload with
+`status = draft_latent`. The bridge must preserve objective lineage, source signal
+ids and summaries, contradictions, gaps, validation gates, review requirements,
+rejected alternatives, rollback path, and proposal acceptance provenance in the
+Decision Contract readback. It must not create tracker issues, Program Intake rows,
+queue labels, worktrees, or execution lanes. Later execution still requires the
+existing Decision Contract promotion path, such as `research_promote`, to record
+promotion authority and move the contract to `accepted_promoted`.
+
+Re-accepting the same proposal is idempotent only while the derived Decision Contract
+is still an unpromoted `draft_latent` candidate with no generated execution links. The
+acceptance bridge must not replace any existing contract that has promotion metadata,
+`accepted_promoted`, `needs_human_decision`, or `rejected_superseded` status, generated
+issue ids, generated issue identifiers, or execution program node ids.
+
 Refusal rules:
 
 - Missing Objective Contract -> refuse automatic proposal execution and offer an
@@ -347,7 +372,8 @@ Autonomy uses the existing loop-runtime authority boundary:
 4. Compile a proposal with goals, non-goals, metrics, validation gates, risk, and
    refusal state.
 5. Challenge the proposal when non-trivial.
-6. Convert a strong proposal into a latent Decision Contract candidate.
+6. Convert an accepted strong proposal into a latent Decision Contract candidate with
+   explicit proposal-acceptance authority.
 7. Promote only through explicit human acceptance, accepted Decision Contract
    authority, or accepted project policy that references the objective version.
 8. Materialize promoted work through Program Intake or normal issue work.
@@ -374,7 +400,7 @@ when and how to use it.
 | Accept objective | `plan` or higher | Human/operator or accepted policy actor | Creates immutable Objective Contract version. |
 | Compile proposal | `plan` | Accepted objective and allowed signal kinds | Creates proposal evidence only. |
 | Challenge proposal | `plan` | Review actor or support-agent evidence | Adds objections; no execution. |
-| Promote proposal to Decision Contract | `plan` or higher | Explicit acceptance or accepted project policy | Creates/promotes Decision Contract authority. |
+| Promote proposal to Decision Contract | `plan` or higher | Explicit acceptance or accepted project policy | Creates a latent Decision Contract candidate; accepted execution authority still requires normal Decision Contract promotion. |
 | Intake promoted work | `plan` or higher | Accepted Decision Contract and explicit intake authority | Creates Program Intake or issue materialization. |
 | Dispatch lane | Runtime scheduler | Program readiness plus workflow eligibility | Starts normal lane; not direct MCP authority. |
 | Lane control | `operate` | Inspect-first run/turn authority | Uses existing lane-control guards. |
