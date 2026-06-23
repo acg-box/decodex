@@ -1,3 +1,416 @@
+mod autonomy_lineage_readback_tests {
+	use crate::orchestrator::tests::FakeTracker;
+	use std::collections::BTreeMap;
+
+	use crate::{
+		autonomy_objective::{
+			AutonomyObjectiveAcceptance, AutonomyObjectiveActorKind, AutonomyObjectiveContract,
+		},
+		autonomy_proposal::{
+			AutonomyProposalAuthorityActorKind, AutonomyProposalDecisionBridgeAuthority,
+		},
+		autonomy_signal::{
+			AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
+			AutonomySignalFreshness, AutonomySignalInput, AutonomySignalPrivacy,
+			AutonomySignalSourceType,
+		},
+		config::ServiceConfig,
+		loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
+		orchestrator::{self, OperatorStatusSnapshot},
+		program_intake::{self, GoalIntakeRunRequest},
+		state::StateStore,
+		tracker::TrackerIssue,
+		workflow::WorkflowDocument,
+	};
+
+	const SERVICE_ID: &str = "pubfi";
+	const AUTONOMY_RUN_ID: &str = "run-autonomy";
+	const OBJECTIVE_ID: &str = "quality-autonomy";
+
+	struct SeededAutonomyLineage {
+		accepted_proposal_id: String,
+		decision_contract_id: String,
+	}
+
+	#[test]
+	fn operator_status_surfaces_autonomy_lineage_without_raw_payloads() {
+		let (_temp_dir, config, workflow) = super::temp_project_layout();
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let issue = super::sample_issue("Todo", &[]);
+		let seeded = seed_autonomy_lineage(&state_store, &config, &workflow, &issue);
+		let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+			.expect("snapshot should build");
+
+		assert_autonomy_readback(&snapshot, &seeded);
+	}
+
+	fn seed_autonomy_lineage(
+		state_store: &StateStore,
+		config: &ServiceConfig,
+		workflow: &WorkflowDocument,
+		issue: &TrackerIssue,
+	) -> SeededAutonomyLineage {
+		seed_autonomy_run(state_store, issue);
+		accept_autonomy_objective(state_store);
+
+		let signal_id = record_autonomy_signal(state_store, issue);
+		let accepted_proposal_id = record_autonomy_proposals(state_store, issue, &signal_id);
+		let decision_contract_id =
+			promote_autonomy_proposal(state_store, &accepted_proposal_id);
+
+		apply_goal_intake(state_store, config, workflow, issue, &decision_contract_id);
+		record_sensitive_autonomy_readback_fixture(state_store, issue);
+
+		SeededAutonomyLineage { accepted_proposal_id, decision_contract_id }
+	}
+
+	fn seed_autonomy_run(state_store: &StateStore, issue: &TrackerIssue) {
+		state_store
+			.record_run_attempt(AUTONOMY_RUN_ID, &issue.id, 1, "running")
+			.expect("run attempt should record");
+		state_store
+			.upsert_lease(SERVICE_ID, &issue.id, AUTONOMY_RUN_ID, "In Progress")
+			.expect("lease should record");
+		state_store
+			.append_event(AUTONOMY_RUN_ID, 1, "turn/completed", "{\"turn\":\"1\"}")
+			.expect("event should record");
+	}
+
+	fn accept_autonomy_objective(state_store: &StateStore) {
+		state_store
+			.upsert_autonomy_objective_draft(
+				SERVICE_ID,
+				autonomy_objective_fixture(SERVICE_ID),
+			)
+			.expect("objective draft should persist");
+		state_store
+			.accept_autonomy_objective_version(
+				SERVICE_ID,
+				OBJECTIVE_ID,
+				1,
+				AutonomyObjectiveAcceptance::new(
+					"operator",
+					AutonomyObjectiveActorKind::User,
+					"2026-06-23T00:00:00Z",
+					"linear:XY-1089",
+				)
+				.expect("acceptance should build"),
+			)
+			.expect("objective should accept");
+	}
+
+	fn record_autonomy_signal(state_store: &StateStore, issue: &TrackerIssue) -> String {
+		let signal = AutonomySignal::runtime_health(
+			AutonomySignalInput {
+				project_id: SERVICE_ID.to_owned(),
+				objective_id: String::from(OBJECTIVE_ID),
+				objective_version: 1,
+				source_type: AutonomySignalSourceType::Report,
+				source_refs: vec![String::from("status:operator:run-autonomy")],
+				primary_source_refs: vec![String::from("docs/spec/autonomy-control-plane.md")],
+				issue_id: Some(issue.id.clone()),
+				run_id: Some(String::from(AUTONOMY_RUN_ID)),
+				attempt_id: Some(String::from("1")),
+				head_sha: Some(String::from("0123456789abcdef0123456789abcdef01234567")),
+				captured_at: String::from("2026-06-23T00:01:00Z"),
+				freshness: AutonomySignalFreshness::Fresh,
+				summary: String::from("Operator status needs autonomy lineage readback."),
+				evidence: vec![String::from("Status readback carried source refs.")],
+				evidence_class: AutonomySignalEvidenceClass::LiveReadback,
+				contradictions: Vec::new(),
+				gaps: Vec::new(),
+				confidence: AutonomySignalConfidence::High,
+				privacy: AutonomySignalPrivacy::Public,
+				observed_counts: BTreeMap::new(),
+				review_evidence: None,
+				proposal_only: true,
+				created_at: String::from("2026-06-23T00:01:00Z"),
+			},
+		)
+		.expect("signal should build");
+		let signal_id = signal.id().to_owned();
+
+		state_store
+			.record_autonomy_signal(SERVICE_ID, signal)
+			.expect("signal should persist");
+
+		signal_id
+	}
+
+	fn record_autonomy_proposals(
+		state_store: &StateStore,
+		issue: &TrackerIssue,
+		signal_id: &str,
+	) -> String {
+		let signal_ids = vec![signal_id.to_owned()];
+		let accepted_proposal = state_store
+			.compile_autonomy_proposal_dry_run(
+				autonomy_proposal_input(
+					"apps/decodex/src/orchestrator/status.rs",
+					&issue.identifier,
+				),
+				&signal_ids,
+			)
+			.expect("proposal should compile");
+		let accepted_proposal_id = accepted_proposal.id().to_owned();
+
+		state_store
+			.record_autonomy_proposal(SERVICE_ID, accepted_proposal)
+			.expect("proposal should persist");
+
+		let refused_proposal = state_store
+			.compile_autonomy_proposal_dry_run(
+				autonomy_proposal_input("site/src/pages/index.astro", &issue.identifier),
+				&signal_ids,
+			)
+			.expect("refused proposal should compile");
+
+		state_store
+			.record_autonomy_proposal(SERVICE_ID, refused_proposal)
+			.expect("refused proposal should persist");
+
+		accepted_proposal_id
+	}
+
+	fn record_sensitive_autonomy_readback_fixture(
+		state_store: &StateStore,
+		issue: &TrackerIssue,
+	) {
+		let signal = AutonomySignal::runtime_health(
+			AutonomySignalInput {
+				project_id: SERVICE_ID.to_owned(),
+				objective_id: String::from(OBJECTIVE_ID),
+				objective_version: 1,
+				source_type: AutonomySignalSourceType::Report,
+				source_refs: vec![String::from("status:operator:sensitive-readback")],
+				primary_source_refs: vec![String::from("docs/spec/autonomy-control-plane.md")],
+				issue_id: Some(issue.id.clone()),
+				run_id: Some(String::from(AUTONOMY_RUN_ID)),
+				attempt_id: Some(String::from("1")),
+				head_sha: Some(String::from("0123456789abcdef0123456789abcdef01234567")),
+				captured_at: String::from("2026-06-23T00:04:00Z"),
+				freshness: AutonomySignalFreshness::Fresh,
+				summary: String::from("Operator status must redact raw autonomy gaps."),
+				evidence: vec![String::from("Sensitive fixture stays out of public readback.")],
+				evidence_class: AutonomySignalEvidenceClass::LiveReadback,
+				contradictions: vec![String::from(
+					"Local contradiction references /Users/x/.codex/private-evidence.json",
+				)],
+				gaps: vec![String::from(
+					"Local gap references GITHUB_PAT_Y from the developer environment.",
+				)],
+				confidence: AutonomySignalConfidence::Medium,
+				privacy: AutonomySignalPrivacy::Public,
+				observed_counts: BTreeMap::new(),
+				review_evidence: None,
+				proposal_only: true,
+				created_at: String::from("2026-06-23T00:04:00Z"),
+			},
+		)
+		.expect("sensitive signal fixture should build");
+		let signal_id = signal.id().to_owned();
+
+		state_store
+			.record_autonomy_signal(SERVICE_ID, signal)
+			.expect("sensitive signal should persist");
+
+		let sensitive_proposal = state_store
+			.compile_autonomy_proposal_dry_run(
+				autonomy_proposal_input(
+					"apps/decodex/src/orchestrator/status.rs",
+					&issue.identifier,
+				),
+				&[signal_id],
+			)
+			.expect("sensitive proposal should compile");
+
+		state_store
+			.record_autonomy_proposal(SERVICE_ID, sensitive_proposal)
+			.expect("sensitive proposal should persist");
+	}
+
+	fn promote_autonomy_proposal(state_store: &StateStore, proposal_id: &str) -> String {
+		let authority =
+			AutonomyProposalDecisionBridgeAuthority::new(
+				"operator",
+				AutonomyProposalAuthorityActorKind::User,
+				"2026-06-23T00:02:00Z",
+				"linear:XY-1089",
+				"Accept autonomy lineage proposal.",
+				"operator",
+				AutonomyProposalAuthorityActorKind::User,
+				None,
+			)
+			.expect("proposal authority should build");
+		let decision = state_store
+			.accept_autonomy_proposal_as_decision_contract_candidate(
+				SERVICE_ID,
+				proposal_id,
+				authority,
+			)
+			.expect("decision contract should persist");
+		let decision_contract_id = decision.contract_id().to_owned();
+
+		state_store
+			.promote_decision_contract(
+				SERVICE_ID,
+				&decision_contract_id,
+				DecisionPromotion::new(
+					"operator",
+					DecisionPromotionActorKind::User,
+					"2026-06-23T00:03:00Z",
+					"linear:XY-1089",
+					Some(String::from("Promote accepted autonomy proposal.")),
+				)
+				.expect("promotion should build"),
+			)
+			.expect("decision should promote");
+
+		decision_contract_id
+	}
+
+	fn apply_goal_intake(
+		state_store: &StateStore,
+		config: &ServiceConfig,
+		workflow: &WorkflowDocument,
+		issue: &TrackerIssue,
+		decision_contract_id: &str,
+	) {
+		let tracker = FakeTracker::new(vec![issue.clone()]);
+
+		program_intake::run_goal_intake(GoalIntakeRunRequest {
+			state_store,
+			tracker: &tracker,
+			config,
+			workflow,
+			contract_id: decision_contract_id,
+			team_issue_identifier: None,
+			dry_run: false,
+			apply: true,
+		})
+		.expect("goal intake should apply");
+	}
+
+	fn assert_autonomy_readback(
+		snapshot: &OperatorStatusSnapshot,
+		seeded: &SeededAutonomyLineage,
+	) {
+		let run = snapshot.current_lanes.first().expect("current lane should exist");
+		let loop_status = run.loop_status.as_ref().expect("loop status should render");
+		let objective = loop_status
+			.autonomy_objective
+			.as_ref()
+			.expect("objective readback should render");
+		let lineage = loop_status
+			.autonomy_lineage
+			.iter()
+			.find(|lineage| lineage.proposal_id.as_deref() == Some(&seeded.accepted_proposal_id))
+			.expect("accepted proposal lineage should render");
+		let clean_signal = loop_status
+			.autonomy_signals
+			.iter()
+			.find(|signal| signal.source_refs.contains(&String::from("status:operator:run-autonomy")))
+			.expect("clean autonomy signal should render");
+		let sensitive_signal = loop_status
+			.autonomy_signals
+			.iter()
+			.find(|signal| {
+				signal
+					.source_refs
+					.contains(&String::from("status:operator:sensitive-readback"))
+			})
+			.expect("sensitive autonomy signal should render");
+		let refused = loop_status
+			.autonomy_proposals
+			.iter()
+			.find(|proposal| proposal.refusal_reasons.contains(&String::from("disallowed_surface")))
+			.expect("refused proposal should render");
+		let sensitive_proposal = loop_status
+			.autonomy_proposals
+			.iter()
+			.find(|proposal| proposal.gaps.contains(&String::from("redacted_sensitive_detail")))
+			.expect("sensitive proposal should render");
+		let report = loop_status.autonomy_report.as_ref().expect("report readback should render");
+		let rendered = orchestrator::render_operator_status(snapshot);
+		let snapshot_json = serde_json::to_string(snapshot).expect("snapshot should serialize");
+
+		assert_eq!(objective.objective_id, OBJECTIVE_ID);
+		assert_eq!(objective.objective_version, 1);
+		assert_eq!(clean_signal.freshness, "fresh");
+		assert_eq!(sensitive_signal.gaps, ["redacted_sensitive_detail"]);
+		assert_eq!(sensitive_signal.contradictions, ["redacted_sensitive_detail"]);
+		assert!(
+			sensitive_signal
+				.known_gaps
+				.contains(&String::from("gap_or_contradiction_redacted"))
+		);
+		assert_eq!(lineage.decision_contracts[0].contract_id, seeded.decision_contract_id);
+		assert_eq!(lineage.program_intake[0].intake_kind, "goal_intake");
+		assert_eq!(refused.refusals[0].reason, "disallowed_surface");
+		assert_eq!(sensitive_proposal.gaps, ["redacted_sensitive_detail"]);
+		assert_eq!(sensitive_proposal.contradictions, ["redacted_sensitive_detail"]);
+		assert!(
+			report
+				.known_gaps
+				.iter()
+				.any(|gap| gap.contains("redacted") || gap == "proposal_public_fields_redacted")
+		);
+		assert_eq!(report.authority, "derived_query_view");
+		assert!(!report.audit_authority);
+		assert_eq!(report.completeness, "partial");
+		assert!(rendered.contains("loop_autonomy_signals: runtime_health:quality-autonomy@v1"));
+		assert!(rendered.contains("sources=1"));
+		assert!(rendered.contains("report=derived_query_view"));
+		assert!(!snapshot_json.contains("dry_run_record"));
+		assert!(!snapshot_json.contains("/Users/x"));
+		assert!(!snapshot_json.contains("GITHUB_PAT_Y"));
+		assert!(!rendered.contains("/Users/x"));
+		assert!(!rendered.contains("GITHUB_PAT_Y"));
+	}
+
+	fn autonomy_objective_fixture(service_id: &str) -> AutonomyObjectiveContract {
+		serde_json::from_value(serde_json::json!({
+			"schema": "decodex.autonomy_objective/1",
+			"record_version": 1,
+			"project_id": service_id,
+			"id": OBJECTIVE_ID,
+			"version": 1,
+			"state": "draft",
+			"summary": "Surface autonomy lineage in operator readback.",
+			"goals": ["Expose objective, signal, proposal, decision, and intake lineage."],
+			"non_goals": ["Do not expose raw private evidence payloads."],
+			"metrics": ["Operator can explain autonomy state without SQLite."],
+			"allowed_surfaces": ["apps/decodex/src/orchestrator", "docs/spec"],
+			"allowed_signal_kinds": ["runtime_health"],
+			"validation_gates": ["cargo test -p decodex operator --lib"],
+			"review_policy": "independent review before handoff",
+			"memory_policy": "runtime records only",
+			"report_policy": "public-safe derived query views only"
+		}))
+		.expect("objective fixture should parse")
+	}
+
+	fn autonomy_proposal_input(
+		intended_surface: &str,
+		issue_identifier: &str,
+	) -> crate::autonomy_proposal::AutonomyProposalCompileInput {
+		crate::autonomy_proposal::AutonomyProposalCompileInput {
+			project_id: SERVICE_ID.to_owned(),
+			objective_id: String::from(OBJECTIVE_ID),
+			objective_version: 1,
+			source_family: String::from("operator_status"),
+			intended_surface: intended_surface.to_owned(),
+			affected_identifiers: vec![issue_identifier.to_owned()],
+			summary: String::from("Surface autonomy lineage in operator readback."),
+			challenge_requirements: vec![String::from("Verify remote-safe projection.")],
+			rejected_alternatives: vec![String::from("Ask operators to inspect SQLite manually.")],
+			rollback_path: String::from("Remove the operator readback projection."),
+			weakened_validation_or_review: Vec::new(),
+			created_at: String::from("2026-06-23T00:02:00Z"),
+		}
+	}
+}
+
 use records::LinearExecutionEventRecord;
 
 #[derive(Clone, Copy)]

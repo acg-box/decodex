@@ -1,6 +1,6 @@
 use state::PrivateExecutionEvent;
 
-use crate::{autonomy_proposal::AutonomyProposal, tracker};
+use crate::tracker;
 
 type PullRequestReadbackResult =
 	std::result::Result<PullRequestReviewState, PullRequestReadbackFailure>;
@@ -1881,14 +1881,32 @@ struct OperatorLoopStatus {
 	autonomy: String,
 	summary: String,
 	next_action: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	autonomy_objective: Option<OperatorAutonomyObjectiveStatus>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	autonomy_signals: Vec<OperatorAutonomySignalStatus>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	autonomy_proposals: Vec<OperatorAutonomyProposalStatus>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	autonomy_lineage: Vec<OperatorAutonomyLineageStatus>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	autonomy_report: Option<OperatorAutonomyReportReadbackStatus>,
 	review: Option<OperatorReviewLoopStatus>,
 	architecture_recovery: Option<OperatorArchitectureRecoveryStatus>,
 	boundary: Option<OperatorBoundaryStatus>,
 	decision_request: Option<OperatorAuthorityDecisionRequestStatus>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorAutonomyObjectiveStatus {
+	objective_id: String,
+	objective_version: u64,
+	state: String,
+	summary: String,
+	source_ref: String,
+	updated_at: String,
+	completeness: String,
+	known_gaps: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1897,11 +1915,17 @@ struct OperatorAutonomySignalStatus {
 	objective_id: String,
 	objective_version: u64,
 	kind: String,
+	source_type: String,
+	source_refs: Vec<String>,
+	primary_source_refs: Vec<String>,
 	freshness: String,
 	evidence_class: String,
 	confidence: String,
 	privacy: String,
+	redaction_level: String,
+	completeness: String,
 	gaps: Vec<String>,
+	known_gaps: Vec<String>,
 	contradictions: Vec<String>,
 	updated_at: String,
 }
@@ -1912,15 +1936,67 @@ struct OperatorAutonomyProposalStatus {
 	objective_id: String,
 	objective_version: u64,
 	state: String,
+	summary: String,
 	source_family: String,
 	intended_surface: String,
+	affected_identifiers: Vec<String>,
 	source_signal_ids: Vec<String>,
 	refusal_reasons: Vec<String>,
+	refusals: Vec<OperatorAutonomyProposalRefusalStatus>,
+	completeness: String,
+	known_gaps: Vec<String>,
 	gaps: Vec<String>,
 	contradictions: Vec<String>,
 	challenge_evidence_count: usize,
 	updated_at: String,
-	dry_run_record: AutonomyProposal,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorAutonomyProposalRefusalStatus {
+	reason: String,
+	detail: String,
+	evidence_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorAutonomyLineageStatus {
+	objective_ref: String,
+	signal_ids: Vec<String>,
+	proposal_id: Option<String>,
+	proposal_state: Option<String>,
+	decision_contracts: Vec<OperatorAutonomyDecisionContractStatus>,
+	program_intake: Vec<OperatorAutonomyProgramIntakeStatus>,
+	completeness: String,
+	known_gaps: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorAutonomyDecisionContractStatus {
+	contract_id: String,
+	status: String,
+	updated_at: String,
+	generated_issue_identifiers: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorAutonomyProgramIntakeStatus {
+	program_id: String,
+	plan_id: String,
+	intake_kind: String,
+	source_contract_id: String,
+	public_summary: String,
+	updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorAutonomyReportReadbackStatus {
+	surface: String,
+	authority: String,
+	audit_authority: bool,
+	source_refs: Vec<String>,
+	redaction_level: String,
+	completeness: String,
+	known_gaps: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -56,7 +56,7 @@ pub(crate) enum AutonomySignalSourceType {
 	Report,
 }
 impl AutonomySignalSourceType {
-	fn as_str(self) -> &'static str {
+	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::User => "user",
 			Self::Review => "review",
@@ -336,6 +336,10 @@ impl AutonomySignal {
 
 	pub(crate) fn kind(&self) -> AutonomySignalKind {
 		self.kind
+	}
+
+	pub(crate) fn source_type(&self) -> AutonomySignalSourceType {
+		self.source_type
 	}
 
 	pub(crate) fn freshness(&self) -> AutonomySignalFreshness {
