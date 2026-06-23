@@ -2,6 +2,13 @@
 
 ## 2026-06-23
 
+- Added the Phase 7 autonomy MCP and external-agent surface to the autonomy spec,
+  MCP capability-gateway decision, and Decodex router skill: observe resources expose
+  objective, signal, proposal, and evidence summaries, while plan tools can draft
+  objectives, submit signals, compile/challenge proposals, and request explicit
+  proposal promotion without bypassing Decision Contract, Program Intake, review, or
+  landing authority. The surface now fails closed on caller-supplied accepted-policy
+  bodies and redacts local-private signal refs while preserving ref counts.
 - Added the retained review-repair terminalization contract: after local validation
   passes, Decodex now owns pushing the repaired head to the retained PR branch,
   records typed push failures before marker refresh, and only refreshes retained

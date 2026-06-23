@@ -2677,6 +2677,32 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(records)
 	}
 
+	fn recent_autonomy_objectives_for_project(
+		&self,
+		project_id: &str,
+		limit: usize,
+	) -> Result<Vec<AutonomyObjectiveRuntimeRecord>> {
+		let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, objective_id, version, state, payload_json, created_at, created_at_unix, updated_at, updated_at_unix \
+			 FROM autonomy_objectives \
+			 WHERE project_id = ?1 \
+			 ORDER BY updated_at_unix DESC, objective_id ASC, version ASC \
+			 LIMIT ?2",
+		)?;
+		let rows = statement.query_map(
+			params![project_id, limit],
+			autonomy_objective_runtime_row_parts,
+		)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(autonomy_objective_record_from_row_parts(row?)?);
+		}
+
+		Ok(records)
+	}
+
 	fn load_autonomy_signals(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, signal_id, objective_id, objective_version, kind, fingerprint, \
