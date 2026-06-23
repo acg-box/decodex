@@ -570,6 +570,7 @@ Supported goal scopes are examples of the required shape:
 | `implement_to_validation_ready` | Produce the smallest coherent implementation or docs change that is ready for the repo gate. |
 | `repair_validation_failures` | Fix concrete canonicalize or verify failures and rerun the same gate. |
 | `repair_accepted_review_findings` | Repair validated review findings for the current head without widening scope. |
+| `review_repair_evidence` | Push the retained PR repair head, confirm PR readback, record review-repair completion, and terminalize `review_repair` after accepted-review repair validation. |
 | `handoff_evidence` | Prepare the PR-backed handoff, evidence summary, and terminal tracker signal after validation and review are satisfied. |
 
 Goal completion is a trigger for the next validation or review step. It is not proof
@@ -585,10 +586,12 @@ After goal-complete, the repo gate is necessary but not sufficient for those pha
 Decodex must also record a private `phase_acceptance_check` that proves current-head
 objective coverage, effective delta, changed surfaces, no non-goal violation,
 docs-impact readiness, validation evidence, and a pass/fail decision. Only a passing
-acceptance check may advance to `handoff_evidence`; a failing check keeps the lane in
-the appropriate repair phase with the reason and next action available in private
-status/evidence readback. Retained phase-goal recovery uses the same repo-gate plus
-acceptance check before scheduling automatic continuation.
+acceptance check may advance to `handoff_evidence` for ordinary implementation or
+validation repair, or to `review_repair_evidence` for accepted-review repair. A
+failing check keeps the lane in the appropriate repair phase with the reason and next
+action available in private status/evidence readback. Retained phase-goal recovery
+uses the same repo-gate plus acceptance check before scheduling automatic
+continuation.
 Effective delta is the canonical lane delta, not merely worktree dirtiness. It
 includes issue-branch changes from the repo-gate base merge-base through current
 `HEAD`, plus tracked or non-runtime untracked worktree changes. A clean worktree at
@@ -599,10 +602,11 @@ the same issue and must create a retry, Program, or automatic continuation attem
 the new attempt resumes that unterminated phase state instead of restarting
 implementation. Phase continuation is an issue-level cursor over private runtime
 evidence before the current attempt, not a single previous-attempt field. Empty or
-zero-evidence failed-start attempts do not reset an open phase such as
-`handoff_evidence`. Only terminal finalization, review completion intent, an
-authority-decision request, a blocked phase-goal recovery, an audited failed-start
-cleanup, or a blocker-bearing progress checkpoint can close or block inheritance.
+zero-evidence failed-start attempts do not reset an open terminal-evidence phase such
+as `handoff_evidence` or `review_repair_evidence`. Only terminal finalization,
+review completion intent, an authority-decision request, a blocked phase-goal
+recovery, an audited failed-start cleanup, or a blocker-bearing progress checkpoint
+can close or block inheritance.
 This preserves the state-machine boundary between validated work and the later
 review/handoff contract.
 
