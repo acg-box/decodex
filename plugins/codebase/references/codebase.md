@@ -17,6 +17,13 @@ validation, configuration, landing, or evidence-reporting rules.
   defaults.
 - Treat language/library preferences as local policy only when checked-in docs,
   manifests, or user instructions establish them.
+- Do not treat non-trivial repository work as code-only. Before implementation,
+  inspect the nearest checked-in README, docs, AGENTS, OKF/LLM Wiki, or
+  repo-memory owner when present, and use that source-backed context to decide
+  command authority, current architecture, and durable claims.
+- After changing behavior, commands, config, status text, plugin/skill workflow,
+  public contracts, or architecture, classify whether docs drift or durable
+  knowledge writeback is required before claiming ready.
 - Before adding substantial implementation code, inspect existing package, module,
   and ownership boundaries. Put behavior in the owning module instead of growing a
   multi-responsibility file.

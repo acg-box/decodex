@@ -15,6 +15,9 @@ from typing import Any
 
 STATE_DIR = Path.home() / ".codex" / "hack-ink-hooks"
 STATE_PATH = STATE_DIR / "events.jsonl"
+COMMIT_SCHEMA = "decodex/commit/1"
+LARGE_CHANGE_THRESHOLD = 800
+LARGE_ADDITION_THRESHOLD = 500
 
 ROUTE_RULES = [
     {
@@ -36,8 +39,13 @@ ROUTE_RULES = [
             "skill",
         ],
         "hint": (
-            "For repository implementation or verification, load $codebase:work; "
-            "use $codebase:verification before ready/done/fixed claims."
+            "For repository implementation or verification, load $codebase:work. "
+            "Keep development source-backed: before non-trivial changes, inspect "
+            "the nearest checked-in README/docs/AGENTS, OKF/LLM Wiki, or "
+            "repo-memory owner when present. After edits, use $knowledge:docs-drift "
+            "or $knowledge:writeback when behavior, commands, config, status, "
+            "plugin, or skill surfaces changed. Use $codebase:verification before "
+            "ready/done/fixed claims."
         ),
     },
     {
@@ -71,6 +79,70 @@ ROUTE_RULES = [
     },
 ]
 
+COMMIT_STYLE_HINT = (
+    "When Codex creates or pushes commits in this checkout, use a single-line "
+    f"`{COMMIT_SCHEMA}` JSON commit message with required `schema`, `summary`, "
+    "and `authority` fields. Do not use prose commit subjects."
+)
+ANTI_MONOLITH_HINT = (
+    "Large or generated implementation changes are present. Before commit, push, "
+    "or ready/done claims, load $codebase:work and use $deliberation:challenge if "
+    "one file mixes unrelated concerns; split the implementation or state the "
+    "module-boundary reason."
+)
+PUBLIC_SURFACE_HINT = (
+    "Changed files include docs, plugin/skill, command/config, status/help, or "
+    "workflow-facing surfaces. Before ready/done/commit, read or update the "
+    "source-backed docs/OKF/LLM Wiki owner; use $knowledge:docs-drift or "
+    "$knowledge:writeback when a source-backed claim changed."
+)
+
+COMMIT_TERMS = [
+    "git commit",
+    "git push",
+    "force push",
+    "force-push",
+    "commit",
+    "push",
+    "提交",
+    "推送",
+]
+READY_TERMS = ["ready", "done", "fixed", "verified", "完成", "搞定", "修好了", "交付"]
+PUBLIC_SURFACE_PREFIXES = (
+    ".agents/",
+    ".codex/",
+    ".github/",
+    "docs/",
+    "plugins/",
+    "scripts/",
+)
+PUBLIC_SURFACE_NAMES = {
+    "AGENTS.md",
+    "Cargo.toml",
+    "Makefile.toml",
+    "README.md",
+    "package.json",
+    "pnpm-workspace.yaml",
+}
+PUBLIC_SURFACE_PARTS = (
+    "config",
+    "help",
+    "hook",
+    "skill",
+    "status",
+    "workflow",
+)
+EXCLUDED_LARGE_CHANGE_PARTS = (
+    "/dist/",
+    "/target/",
+    "/node_modules/",
+    "/vendor/",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "Cargo.lock",
+)
+
 
 def load_payload() -> dict[str, Any]:
     raw = sys.stdin.read()
@@ -99,35 +171,32 @@ def walk_strings(value: Any) -> list[str]:
     return []
 
 
-def git_root() -> str | None:
+def git_output(args: list[str], timeout: int = 3) -> str | None:
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
+            args,
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
-            timeout=2,
+            timeout=timeout,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return result.stdout.strip() or None
+    return result.stdout
+
+
+def git_root() -> str | None:
+    output = git_output(["git", "rev-parse", "--show-toplevel"], timeout=2)
+    return output.strip() if output else None
 
 
 def changed_file_stats() -> list[dict[str, Any]]:
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--numstat"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=3,
-        )
-    except (OSError, subprocess.SubprocessError):
+    output = git_output(["git", "diff", "HEAD", "--numstat"])
+    if output is None:
         return []
     stats = []
-    for line in result.stdout.splitlines():
+    for line in output.splitlines():
         parts = line.split("\t")
         if len(parts) != 3:
             continue
@@ -140,7 +209,100 @@ def changed_file_stats() -> list[dict[str, Any]]:
     return stats
 
 
-def route_hints(text: str, root: str | None) -> list[str]:
+def changed_paths() -> list[str]:
+    output = git_output(["git", "diff", "HEAD", "--name-only"])
+    if output is None:
+        return []
+    return sorted({line.strip() for line in output.splitlines() if line.strip()})
+
+
+def path_is_public_surface(path: str) -> bool:
+    if path in PUBLIC_SURFACE_NAMES or path.rsplit("/", maxsplit=1)[-1] in PUBLIC_SURFACE_NAMES:
+        return True
+    if path.startswith(PUBLIC_SURFACE_PREFIXES):
+        return True
+    lowered = path.lower()
+    return any(part in lowered for part in PUBLIC_SURFACE_PARTS)
+
+
+def public_surface_paths(paths: list[str] | None = None) -> list[str]:
+    paths = changed_paths() if paths is None else paths
+    return [path for path in paths if path_is_public_surface(path)]
+
+
+def path_excluded_from_large_change(path: str) -> bool:
+    normalized = f"/{path}"
+    return any(part in normalized for part in EXCLUDED_LARGE_CHANGE_PARTS)
+
+
+def large_change_paths(stats: list[dict[str, Any]] | None = None) -> list[str]:
+    stats = changed_file_stats() if stats is None else stats
+    large_paths = []
+    for item in stats:
+        path = str(item["path"])
+        if path_excluded_from_large_change(path):
+            continue
+        try:
+            added = int(item["added"])
+        except (TypeError, ValueError):
+            added = 0
+        changed = int(item.get("changed") or 0)
+        if changed >= LARGE_CHANGE_THRESHOLD or added >= LARGE_ADDITION_THRESHOLD:
+            large_paths.append(path)
+    return large_paths
+
+
+def commit_subject_is_valid(subject: str) -> bool:
+    if "\n" in subject:
+        return False
+    try:
+        value = json.loads(subject)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(value, dict):
+        return False
+    return (
+        value.get("schema") == COMMIT_SCHEMA
+        and isinstance(value.get("summary"), str)
+        and bool(value["summary"].strip())
+        and isinstance(value.get("authority"), str)
+        and bool(value["authority"].strip())
+    )
+
+
+def ahead_commit_subjects(limit: int = 20) -> list[str]:
+    output = git_output(["git", "rev-list", "--format=%s", "@{u}..HEAD"], timeout=4)
+    if output is None:
+        return []
+    subjects = [
+        line.strip()
+        for line in output.splitlines()
+        if line.strip() and not line.startswith("commit ")
+    ]
+    return subjects[:limit]
+
+
+def invalid_ahead_commit_subjects() -> list[str]:
+    return [subject for subject in ahead_commit_subjects() if not commit_subject_is_valid(subject)]
+
+
+def text_has_any(text: str, terms: list[str]) -> bool:
+    lowered = text.lower()
+    return any(term in lowered for term in terms)
+
+
+def dedupe_hints(hints: list[str]) -> list[str]:
+    seen = set()
+    unique = []
+    for hint in hints:
+        if hint in seen:
+            continue
+        seen.add(hint)
+        unique.append(hint)
+    return unique
+
+
+def route_hints(text: str, root: str | None, event: str = "UserPromptSubmit") -> list[str]:
     lowered = text.lower()
     hints: list[str] = []
     for rule in ROUTE_RULES:
@@ -148,7 +310,27 @@ def route_hints(text: str, root: str | None) -> list[str]:
             continue
         if any(term in lowered for term in rule["terms"]):
             hints.append(rule["hint"])
-    return hints
+
+    if root and text_has_any(text, COMMIT_TERMS):
+        hints.append(COMMIT_STYLE_HINT)
+
+    ready_or_commit = text_has_any(text, READY_TERMS + COMMIT_TERMS)
+    if root and ready_or_commit and large_change_paths():
+        hints.append(ANTI_MONOLITH_HINT)
+
+    if root and (ready_or_commit or event in {"PostToolUse", "PreToolUse"}) and public_surface_paths():
+        hints.append(PUBLIC_SURFACE_HINT)
+
+    if root and "git push" in lowered:
+        invalid_subjects = invalid_ahead_commit_subjects()
+        if invalid_subjects:
+            examples = "; ".join(subject[:120] for subject in invalid_subjects[:3])
+            hints.append(
+                "Before pushing, repair non-JSON ahead commit subjects to "
+                f"`{COMMIT_SCHEMA}` style. Current invalid subject sample: {examples}"
+            )
+
+    return dedupe_hints(hints)
 
 
 def record_event(event: str, payload: dict[str, Any], root: str | None, hints: list[str]) -> None:
@@ -164,9 +346,9 @@ def record_event(event: str, payload: dict[str, Any], root: str | None, hints: l
         large_changes = [item for item in changed_file_stats() if item["changed"] >= 800]
         if large_changes:
             record["large_changes"] = large_changes[:20]
-    strings = walk_strings(payload)
-    if strings:
-        record["sample"] = " ".join(strings)[:500]
+    surfaces = public_surface_paths()
+    if surfaces:
+        record["public_surface_paths"] = surfaces[:20]
     with STATE_PATH.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
@@ -178,7 +360,7 @@ def main() -> int:
     payload = load_payload()
     root = git_root()
     prompt_text = " ".join(walk_strings(payload))
-    hints = route_hints(prompt_text, root) if args.event == "UserPromptSubmit" else []
+    hints = route_hints(prompt_text, root, args.event)
     record_event(args.event, payload, root, hints)
     if hints:
         print(json.dumps({"hookSpecificOutput": {"additionalContext": "\n".join(hints)}}))
