@@ -1,6 +1,6 @@
 ---
 name: okf
-description: Use when creating, checking, querying, graphing, or maintaining OKF/LLM Wiki bundles across repositories, including init/check/find/graph, profile selection, frontmatter fields, indexes, links, logs, graph health, or precise context lookup.
+description: Use when creating, checking, querying, graphing, or maintaining portable OKF/LLM Wiki bundles, profiles, indexes, links, logs, or graph health.
 ---
 
 # Portable OKF

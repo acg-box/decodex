@@ -1,6 +1,6 @@
 ---
 name: docs-drift
-description: Use when auditing semantic drift across docs claims, code, commands, config, evidence, generated artifacts, status text, runtime behavior, or public agent-facing instructions.
+description: Use when docs claims may drift from code, commands, config, evidence, generated artifacts, status text, runtime behavior, or agent instructions.
 ---
 
 # Docs Drift

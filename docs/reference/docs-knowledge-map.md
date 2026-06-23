@@ -67,7 +67,7 @@ The LLM Wiki layer is the navigation and maintenance behavior on top of OKF:
 - `docs/index.md` and lane indexes answer "where should I look first?"
 - Markdown links and `related` frontmatter form a navigable concept graph.
 - `plugins/decodex/references/routing.md` makes context intake an explicit
-  Decodex-owned agent workflow gate instead of a rule copied into generic repo-work
+  Decodex-owned agent workflow gate instead of a rule copied into generic codebase
   plugins.
 - Duplicate claims are discouraged because each concept owns one topic and links to
   neighbors instead of copying their claims.

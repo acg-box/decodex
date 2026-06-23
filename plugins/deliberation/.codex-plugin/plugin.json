@@ -1,0 +1,42 @@
+{
+  "name": "deliberation",
+  "version": "0.1.0",
+  "description": "Portable agent deliberation methods for read-only scout, grill, challenge, and skeptic review.",
+  "author": {
+    "name": "hack-ink",
+    "email": "hi@hack.ink",
+    "url": "https://github.com/hack-ink"
+  },
+  "homepage": "https://github.com/hack-ink/decodex",
+  "repository": "https://github.com/hack-ink/decodex",
+  "license": "GPL-3.0",
+  "keywords": [
+    "agents",
+    "challenge",
+    "grill",
+    "scout",
+    "review",
+    "skeptic"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Deliberation",
+    "shortDescription": "Run scout, grill, challenge, and skeptic passes.",
+    "longDescription": "Provides small generic deliberation skills for read-only evidence scouting, decision grilling, adversarial review, evidence sufficiency checks, and ready or decision-ready assertions.",
+    "developerName": "hack-ink",
+    "category": "Development",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "websiteURL": "https://github.com/hack-ink/decodex",
+    "privacyPolicyURL": "https://github.com/hack-ink/decodex",
+    "termsOfServiceURL": "https://github.com/hack-ink/decodex",
+    "defaultPrompt": [
+      "Scout this evidence.",
+      "Grill this plan.",
+      "Challenge this claim."
+    ],
+    "brandColor": "#334155"
+  }
+}

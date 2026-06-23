@@ -1,41 +1,41 @@
 ---
 type: Evidence
 title: Decodex Plugin Eval
-description: Records plugin-eval results for the Decodex, Knowledge, repo-work, and agent-method plugins after splitting knowledge and companion workflow surfaces out of Decodex core.
+description: Records plugin-eval results for the Decodex, Knowledge, Codebase, and Deliberation plugins after splitting lifecycle, knowledge, codebase, and deliberation surfaces.
 status: active
 authority: evidence
 owner: docs
-tags: [plugin-eval, skills, repo-work, docs, research, okf, repo-memory, semantic-drift, debugging, challenge]
+tags: [plugin-eval, skills, codebase, docs, research, okf, repo-memory, semantic-drift, debugging, scout, grill, challenge]
 source_refs: []
-code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/research-promotion.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/decodex-ops/SKILL.md, plugins/decodex/skills/commit/SKILL.md, plugins/decodex/skills/land/SKILL.md, plugins/decodex/skills/planning/SKILL.md, plugins/decodex/skills/research/SKILL.md, plugins/decodex/skills/research-promote/SKILL.md, plugins/knowledge/.codex-plugin/plugin.json, plugins/knowledge/references/docs-drift.md, plugins/knowledge/references/docs-method.md, plugins/knowledge/references/docs-okf.md, plugins/knowledge/references/docs-wiki.md, plugins/knowledge/references/okf-layer.md, plugins/knowledge/skills/docs/SKILL.md, plugins/knowledge/skills/docs-drift/SKILL.md, plugins/knowledge/skills/okf/SKILL.md, plugins/knowledge/skills/repo-memory/SKILL.md, plugins/knowledge/scripts/semantic_drift_audit.py, plugins/repo-work/.codex-plugin/plugin.json, plugins/repo-work/references/repo-work.md, plugins/repo-work/references/dependency-policy.md, plugins/repo-work/skills/repo-work/SKILL.md, plugins/repo-work/skills/dependency-policy/SKILL.md, plugins/repo-work/skills/review-feedback/SKILL.md, plugins/repo-work/skills/verification/SKILL.md, plugins/repo-work/skills/debugging/SKILL.md, plugins/agent-method/.codex-plugin/plugin.json, plugins/agent-method/skills/challenge/SKILL.md]
+code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/research-promotion.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/decodex-ops/SKILL.md, plugins/decodex/skills/commit/SKILL.md, plugins/decodex/skills/land/SKILL.md, plugins/decodex/skills/planning/SKILL.md, plugins/decodex/skills/research/SKILL.md, plugins/decodex/skills/research-promote/SKILL.md, plugins/knowledge/.codex-plugin/plugin.json, plugins/knowledge/references/docs-drift.md, plugins/knowledge/references/docs-method.md, plugins/knowledge/references/docs-okf.md, plugins/knowledge/references/docs-wiki.md, plugins/knowledge/references/okf-layer.md, plugins/knowledge/skills/docs/SKILL.md, plugins/knowledge/skills/docs-drift/SKILL.md, plugins/knowledge/skills/okf/SKILL.md, plugins/knowledge/skills/repo-memory/SKILL.md, plugins/knowledge/skills/writeback/SKILL.md, plugins/knowledge/scripts/semantic_drift_audit.py, plugins/codebase/.codex-plugin/plugin.json, plugins/codebase/hooks/hooks.json, plugins/codebase/references/codebase.md, plugins/codebase/references/dependency-policy.md, plugins/codebase/scripts/codex_lifecycle_hook, plugins/codebase/scripts/test_codex_lifecycle_hook.py, plugins/codebase/skills/work/SKILL.md, plugins/codebase/skills/dependency-policy/SKILL.md, plugins/codebase/skills/review-feedback/SKILL.md, plugins/codebase/skills/verification/SKILL.md, plugins/codebase/skills/debugging/SKILL.md, plugins/deliberation/.codex-plugin/plugin.json, plugins/deliberation/skills/scout/SKILL.md, plugins/deliberation/skills/grill/SKILL.md, plugins/deliberation/skills/challenge/SKILL.md]
 related: [../policy.md, ./docs-self-iteration.md]
-last_verified: 2026-06-21
+last_verified: 2026-06-23
 ---
 
 # Decodex Plugin Eval
 
-Purpose: Preserve public-safe evidence that Decodex core, Knowledge, repo-work, and
-agent-method plugin surfaces passed local plugin evaluation after knowledge, repo-work,
-and generic challenge moved out of Decodex core.
+Purpose: Preserve public-safe evidence that Decodex, Knowledge, Codebase, and
+Deliberation plugin surfaces passed local plugin evaluation after the workflow split.
 
-Read this when: You need proof that Decodex lifecycle skills, Knowledge docs/OKF and
-repo-memory skills, repo-work contracts, generic challenge, and plugin invocation policy
-were evaluated before landing.
+Read this when: You need proof that Decodex lifecycle skills, Knowledge docs/OKF,
+repo-memory/writeback skills, Codebase contracts, Deliberation scout/grill/challenge
+skills, and plugin invocation policy were evaluated before landing.
 
 Not this document: A runtime benchmark, coverage report, or replacement for
 `plugin-eval` output.
 
-Covers: Static plugin-eval commands, score results, and the invocation-policy decision.
+Covers: Static plugin-eval commands, score results, token budgets, invocation policy,
+and the auxiliary hook boundary.
 
 ## Commands
 
 Current plugin gates:
 
 ```sh
-node ~/.codex/plugins/cache/openai-curated/plugin-eval/202e9242/scripts/plugin-eval.js analyze plugins/decodex --format markdown
-node ~/.codex/plugins/cache/openai-curated/plugin-eval/202e9242/scripts/plugin-eval.js analyze plugins/knowledge --format markdown
-node ~/.codex/plugins/cache/openai-curated/plugin-eval/202e9242/scripts/plugin-eval.js analyze plugins/repo-work --format markdown
-node ~/.codex/plugins/cache/openai-curated/plugin-eval/202e9242/scripts/plugin-eval.js analyze plugins/agent-method --format markdown
+node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plugin-eval.js analyze plugins/decodex --format markdown
+node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plugin-eval.js analyze plugins/knowledge --format markdown
+node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plugin-eval.js analyze plugins/codebase --format markdown
+node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plugin-eval.js analyze plugins/deliberation --format markdown
 ```
 
 ## Results
@@ -44,32 +44,41 @@ node ~/.codex/plugins/cache/openai-curated/plugin-eval/202e9242/scripts/plugin-e
 | --- | ---: | --- | --- | --- | --- |
 | `plugins/decodex` | 100 | A | low | 0 fail, 0 warn, 2 info | No urgent fixes. |
 | `plugins/knowledge` | 100 | A | low | 0 fail, 0 warn, 2 info | No urgent fixes. |
-| `plugins/repo-work` | 100 | A | low | 0 fail, 0 warn, 2 info | No urgent fixes. |
-| `plugins/agent-method` | 100 | A | low | 0 fail, 0 warn, 2 info | No urgent fixes. |
+| `plugins/codebase` | 100 | A | low | 0 fail, 0 warn, 2 info | No urgent fixes. |
+| `plugins/deliberation` | 100 | A | low | 0 fail, 0 warn, 2 info | No urgent fixes. |
 
-Static budget snapshot:
+Static budget snapshot from the 2026-06-23 source-root run:
 
-- Decodex active invocation budget: 735 tokens.
-- Decodex deferred skill budget: 3826 tokens.
-- Decodex explicit-only invocation budget: 1974 tokens.
-- Decodex plugin skill count: seven skills, with one implicit router and six
-  explicit-only skills.
-- Knowledge active invocation budget: 378 tokens; deferred budget: 4355 tokens;
-  explicit-only invocation budget: 1293 tokens; four explicit-only skills.
-- Repo-work active invocation budget: 407 tokens; deferred budget: 2596 tokens;
-  explicit-only invocation budget: 2631 tokens; five explicit-only skills.
-- Agent-method active invocation budget: 318 tokens; deferred budget: 11 tokens;
-  explicit-only invocation budget: 501 tokens; one explicit-only skill.
+| Target | Active | Trigger | Invoke | Deferred | Explicit-only | Total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `plugins/decodex` | 735 | 50 | 685 | 3963 | 2322 | 4698 |
+| `plugins/knowledge` | 2108 | 227 | 1881 | 4340 | 0 | 6448 |
+| `plugins/codebase` | 3139 | 234 | 2905 | 3389 | 0 | 6528 |
+| `plugins/deliberation` | 1634 | 195 | 1439 | 48 | 0 | 1682 |
 
 ## Invocation Policy
 
-The plugin keeps the top-level router skills implicit and marks specialist skills as
-explicit-only through local `agents/openai.yaml` files. This preserves direct
-invocation while keeping plugin active-context cost bounded.
+Decodex keeps lifecycle specialist skills explicit-only. Knowledge, Codebase, and
+Deliberation skills are intentionally available for implicit routing through concise
+frontmatter descriptions, while host `AGENTS.md` still names the owner skills at
+task start, review, commit, handoff, landing, or ready-claim gates.
 
 Implicit skills:
 
 - `decodex`
+- `$knowledge:docs`
+- `$knowledge:docs-drift`
+- `$knowledge:okf`
+- `$knowledge:repo-memory`
+- `$knowledge:writeback`
+- `$codebase:work`
+- `$codebase:dependency-policy`
+- `$codebase:review-feedback`
+- `$codebase:verification`
+- `$codebase:debugging`
+- `$deliberation:scout`
+- `$deliberation:grill`
+- `$deliberation:challenge`
 
 Explicit-only skills:
 
@@ -82,34 +91,20 @@ Decodex lifecycle:
 - `research`
 - `research-promote`
 
-Knowledge:
+## Hook Boundary
 
-- `$knowledge:docs`
-- `$knowledge:docs-drift`
-- `$knowledge:okf`
-- `$knowledge:repo-memory`
-
-Repo-work:
-
-- `$repo-work:repo-work`
-- `$repo-work:dependency-policy`
-- `$repo-work:review-feedback`
-- `$repo-work:verification`
-- `$repo-work:debugging`
-
-Agent-method:
-
-- `$agent-method:challenge`
+`plugins/codebase/hooks/hooks.json` adds auxiliary Codex lifecycle hints for
+`UserPromptSubmit`, `PostToolUse`, and `PreCompact`. The hook is not the source of
+workflow authority: skill frontmatter and host `AGENTS.md` remain the primary routing
+mechanism. A Codex hook trust prompt may still be required before the hook executes in
+a live session.
 
 ## Limits
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
-2026-06-21 rerun after adding dynamic fresh-context scout/skeptic support-agent
-routing still reported all four local plugins at 100/100, grade A, low risk, with
-zero failing checks and zero warnings.
-
-Only the top-level `decodex` router remains implicit. Knowledge, repo-work, and
-agent-method specialist skills are explicit-only and routed by host `AGENTS.md`.
+2026-06-23 rerun after adding writeback, scout, grill, challenge, module-boundary
+guardrails, and auxiliary hooks reported all four local plugins at 100/100, grade A,
+low risk, with zero failing checks and zero warnings.
 
 Directly evaluating the installed cache path
 `~/.codex/plugins/cache/hack-ink/decodex/0.2.0` reports an additional

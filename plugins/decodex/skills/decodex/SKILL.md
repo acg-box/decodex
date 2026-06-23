@@ -19,8 +19,8 @@ commit, or landing boundaries matter.
 Companion plugin routing:
 
 - Repository command authority, task-runner structure, review repair, verification,
-  dependency policy, and debugging belong to `$repo-work:*`.
-- Skeptic/challenge passes belong to `$agent-method:challenge`.
+  dependency policy, and debugging belong to `$codebase:*`.
+- Skeptic/challenge passes belong to `$deliberation:challenge`.
 - Docs, OKF/LLM Wiki, semantic drift, and repo-memory belong to `$knowledge:*`.
 
 For MCP gateway, runtime, tracker, or control-plane work, read

@@ -27,7 +27,7 @@ Question this index answers: "why was it designed this way?"
   why Decodex autonomy is objective-driven, project-general, Codex-first for human
   authoring, and not a hidden runtime self-repair loop or standalone memory product.
 - [`decodex-plugin-source.md`](./decodex-plugin-source.md) records why this repository
-  owns the canonical Decodex plugin plus knowledge, repo-work, and agent-method
+  owns the canonical Decodex plugin plus knowledge, codebase, and deliberation
   companion plugin sources.
 - [`mcp-capability-gateway-and-skill-slimming.md`](./mcp-capability-gateway-and-skill-slimming.md)
   records why Decodex should introduce an MCP capability gateway while slimming
