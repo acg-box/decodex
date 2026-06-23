@@ -265,6 +265,7 @@ struct PrivateEvidenceReadback {
 	latest_event_type: Option<String>,
 	latest_event_at: Option<String>,
 	review_checkpoints: Vec<PrivateEvidenceReviewCheckpointSummary>,
+	repo_gate_failures: Vec<PrivateEvidenceRepoGateFailureSummary>,
 	phase_acceptance_checks: Vec<PrivateEvidencePhaseAcceptanceSummary>,
 	boundary_checks: Vec<PrivateEvidenceBoundaryCheckSummary>,
 	decision_requests: Vec<PrivateEvidenceDecisionRequestSummary>,
@@ -308,6 +309,21 @@ struct PrivateEvidenceReviewCheckpointSummary {
 struct PrivateEvidenceReviewRouteCount {
 	route: String,
 	count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PrivateEvidenceRepoGateFailureSummary {
+	record_id: i64,
+	phase: String,
+	error_class: String,
+	disposition: String,
+	stage: Option<String>,
+	failed_command: Option<String>,
+	exit_status: Option<i64>,
+	summary: Option<String>,
+	problem_lines: Vec<String>,
+	output_excerpt: Option<String>,
+	output_truncated: Option<bool>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -742,6 +758,7 @@ fn build_private_evidence_readback(
 		latest_event_type: latest_event.map(|event| event.event_type().to_owned()),
 		latest_event_at: latest_event.map(|event| event.recorded_at().to_owned()),
 		review_checkpoints: review_checkpoints_from_private_events(&events),
+		repo_gate_failures: repo_gate_failures_from_private_events(&events),
 		phase_acceptance_checks: phase_acceptance_checks_from_private_events(&events),
 		boundary_checks: boundary_checks_from_private_events(&events),
 		decision_requests: authority_decision_requests_from_private_events(&events),
@@ -1012,6 +1029,70 @@ fn review_checkpoint_next_action(status: &str) -> String {
 		},
 		_ => String::from("Inspect the Decodex Review checkpoint summary before continuing."),
 	}
+}
+
+fn repo_gate_failures_from_private_events(
+	events: &[state::PrivateExecutionEvent],
+) -> Vec<PrivateEvidenceRepoGateFailureSummary> {
+	events
+		.iter()
+		.filter_map(repo_gate_failure_from_private_event)
+		.collect()
+}
+
+fn repo_gate_failure_from_private_event(
+	event: &state::PrivateExecutionEvent,
+) -> Option<PrivateEvidenceRepoGateFailureSummary> {
+	if event.event_type() != "phase_goal_transition" {
+		return None;
+	}
+
+	let payload = event.payload();
+	let transition_payload = payload.get("payload")?;
+	let error_class = transition_payload.get("errorClass")?.as_str()?.to_owned();
+
+	if !error_class.starts_with("repo_gate_") {
+		return None;
+	}
+
+	let diagnostic = transition_payload.get("repoGateFailure");
+
+	Some(PrivateEvidenceRepoGateFailureSummary {
+		record_id: event.record_id(),
+		phase: payload.get("phase")?.as_str()?.to_owned(),
+		error_class,
+		disposition: transition_payload.get("disposition")?.as_str()?.to_owned(),
+		stage: diagnostic
+			.and_then(|value| value.get("stage"))
+			.and_then(Value::as_str)
+			.map(str::to_owned),
+		failed_command: diagnostic
+			.and_then(|value| value.get("failed_command"))
+			.and_then(Value::as_str)
+			.map(str::to_owned),
+		exit_status: diagnostic
+			.and_then(|value| value.get("exit_status"))
+			.and_then(Value::as_i64),
+		summary: diagnostic
+			.and_then(|value| value.get("summary"))
+			.and_then(Value::as_str)
+			.map(str::to_owned),
+		problem_lines: diagnostic
+			.and_then(|value| value.get("problem_lines"))
+			.and_then(Value::as_array)
+			.into_iter()
+			.flatten()
+			.filter_map(Value::as_str)
+			.map(str::to_owned)
+			.collect(),
+		output_excerpt: diagnostic
+			.and_then(|value| value.get("output_excerpt"))
+			.and_then(Value::as_str)
+			.map(str::to_owned),
+		output_truncated: diagnostic
+			.and_then(|value| value.get("output_truncated"))
+			.and_then(Value::as_bool),
+	})
 }
 
 fn phase_acceptance_checks_from_private_events(
@@ -1502,6 +1583,7 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 	append_private_evidence_readback_header(&mut output, readback);
 	append_private_evidence_decision_requests(&mut output, &readback.decision_requests);
 	append_private_evidence_review_checkpoints(&mut output, &readback.review_checkpoints);
+	append_private_evidence_repo_gate_failures(&mut output, &readback.repo_gate_failures);
 	append_private_evidence_phase_acceptance_checks(
 		&mut output,
 		&readback.phase_acceptance_checks,
@@ -1647,6 +1729,40 @@ fn append_private_evidence_review_checkpoints(
 				checkpoint.next_action
 			));
 		}
+	}
+}
+
+fn append_private_evidence_repo_gate_failures(
+	output: &mut String,
+	failures: &[PrivateEvidenceRepoGateFailureSummary],
+) {
+	if failures.is_empty() {
+		return;
+	}
+
+	output.push_str("\nRepo Gate Failures\n");
+
+	for failure in failures {
+		let problem_lines = if failure.problem_lines.is_empty() {
+			String::from("none")
+		} else {
+			failure.problem_lines.join(" | ")
+		};
+
+		output.push_str(&format!(
+			"- record_id: {}\n  phase: {}\n  error_class: {}\n  disposition: {}\n  stage: {}\n  failed_command: {}\n  exit_status: {}\n  summary: {}\n  problem_lines: {}\n",
+			failure.record_id,
+			failure.phase,
+			failure.error_class,
+			failure.disposition,
+			failure.stage.as_deref().unwrap_or("none"),
+			failure.failed_command.as_deref().unwrap_or("none"),
+			failure
+				.exit_status
+				.map_or_else(|| String::from("none"), |status| status.to_string()),
+			failure.summary.as_deref().unwrap_or("none"),
+			problem_lines
+		));
 	}
 }
 
