@@ -15,7 +15,7 @@ Date: 2026-05-09
 Question: Where should reusable agent-facing Decodex and companion plugin instructions live?
 Decision: Maintain the canonical Decodex lifecycle plugin in this repository under
 `plugins/decodex/`, and maintain companion plugin sources under `plugins/knowledge/`,
-`plugins/repo-work/`, and `plugins/agent-method/`.
+`plugins/codebase/`, and `plugins/deliberation/`.
 Consequences: Decodex runtime guidance can change with the runtime, while reusable
 repository execution policy and generic challenge methods stop being Decodex-owned.
 Host bootstrap instructions compose the installed plugins without copying their
@@ -30,7 +30,7 @@ Decodex has two supported use modes:
   closeout, and cleanup
 - commit creation and PR landing as separate high-risk authority surfaces
 
-Earlier Decodex instructions combined runtime lifecycle, repo-work method, docs/OKF,
+Earlier Decodex instructions combined runtime lifecycle, codebase method, docs/OKF,
 semantic drift, and challenge rules in one plugin. That made Decodex look like the
 owner of generic repository execution policy and generic skeptic review. The repository
 still hosts the plugin sources, but ownership is split by authority.
@@ -54,12 +54,12 @@ The Decodex plugin should own Decodex-specific procedures and mode routing:
 
 Companion plugins:
 
-- `plugins/knowledge/` owns docs, OKF/LLM Wiki, semantic drift, and source-backed
-  repo-memory skills.
-- `plugins/repo-work/` owns checked-in command authority, task-runner structure,
+- `plugins/knowledge/` owns docs, OKF/LLM Wiki, semantic drift, source-backed
+  repo-memory, and knowledge writeback skills.
+- `plugins/codebase/` owns checked-in command authority, task-runner structure,
   dependency policy, review repair, verification, debugging, and dynamic support-agent
   boundaries.
-- `plugins/agent-method/` owns generic challenge/skeptic review.
+- `plugins/deliberation/` owns generic scout, grill, challenge, and skeptic review.
 
 The plugin must route to `apps/decodex/src/`, `docs/spec/`, `docs/runbook/`, `docs/reference/`,
 registered project `WORKFLOW.md`, and registered project `project.toml` instead of
@@ -75,7 +75,7 @@ the review-cost, handoff-recovery, or tracker invariants out of the runtime spec
 - Decodex-specific skill updates can land with matching runtime, spec, and runbook
   updates.
 - Host bootstrap files can shrink to short plugin routing and avoid carrying
-  repo-work, debugging, drift, research, review, challenge, or verification rules.
+  codebase, debugging, drift, research, review, challenge, or verification rules.
 - Decodex issue briefing belongs to the Decodex plugin instead of a separate delivery
   workflow. Generic progress, handoff, review, landing, and closeout state remains
   runtime-owned rather than skill-owned.

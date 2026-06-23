@@ -1628,7 +1628,7 @@ fn capability_preflight_report_accepts_available_runtime_state() {
 			errors: Vec::new(),
 			skills: vec![super::protocol::SkillMetadata {
 				enabled: true,
-				name: String::from("playbook:rust"),
+				name: String::from("codebase:work"),
 				scope: String::from("user"),
 			}],
 		}],
@@ -1687,7 +1687,7 @@ fn capability_preflight_report_allows_enabled_skills_with_scan_diagnostics() {
 			}],
 			skills: vec![super::protocol::SkillMetadata {
 				enabled: true,
-				name: String::from("playbook:rust"),
+				name: String::from("codebase:work"),
 				scope: String::from("user"),
 			}],
 		}],
