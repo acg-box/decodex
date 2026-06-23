@@ -2,6 +2,13 @@
 
 ## 2026-06-23
 
+- Tightened the Codebase Codex lifecycle hook so Codex-owned commit/push attempts
+  receive the `decodex/commit/1` JSON message contract, large implementation diffs
+  trigger module-boundary challenge guidance before ready claims, public
+  code/config/command/status/plugin surface changes stay coupled to docs or durable
+  knowledge checks, non-trivial repo work starts from nearby source-backed docs,
+  OKF/LLM Wiki, or repo-memory context when present, and future hook event logs no
+  longer persist prompt samples.
 - Finalized the four-plugin Codex workflow architecture: `decodex` owns Decodex
   lifecycle and runtime authority, `knowledge` owns docs/OKF/LLM Wiki/semantic
   drift/repo-memory/writeback, `codebase` owns repository engineering contracts and

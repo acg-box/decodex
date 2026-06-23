@@ -36,32 +36,101 @@ class CodexLifecycleHookTests(unittest.TestCase):
 
         joined = "\n".join(hints)
         self.assertIn("$codebase:work", joined)
+        self.assertIn("OKF/LLM Wiki", joined)
         self.assertIn("$knowledge:writeback", joined)
         self.assertIn("$deliberation:challenge", joined)
+
+    def test_repo_work_prompt_requires_source_backed_docs_context(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: []
+
+        hints = self.hook.route_hints("Fix the repo parser bug", "/tmp/repo")
+
+        joined = "\n".join(hints)
+        self.assertIn("Keep development source-backed", joined)
+        self.assertIn("README/docs/AGENTS", joined)
+        self.assertIn("repo-memory owner", joined)
 
     def test_route_hints_requires_git_root_for_codebase_prompt(self) -> None:
         hints = self.hook.route_hints("Fix this repo test", None)
 
         self.assertNotIn("$codebase:work", "\n".join(hints))
 
+    def test_commit_prompt_adds_json_commit_contract(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: []
+        self.hook.invalid_ahead_commit_subjects = lambda: []
+
+        hints = self.hook.route_hints("commit and push this change", "/tmp/repo")
+
+        joined = "\n".join(hints)
+        self.assertIn("decodex/commit/1", joined)
+        self.assertIn("single-line", joined)
+
+    def test_git_push_reports_invalid_ahead_subjects(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: []
+        self.hook.invalid_ahead_commit_subjects = lambda: ["plain prose subject"]
+
+        hints = self.hook.route_hints("git push origin main", "/tmp/repo", "PreToolUse")
+
+        joined = "\n".join(hints)
+        self.assertIn("repair non-JSON ahead commit subjects", joined)
+        self.assertIn("plain prose subject", joined)
+
+    def test_ready_with_large_change_adds_monolith_guard(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: ["src/large.rs"]
+        self.hook.public_surface_paths = lambda paths=None: []
+
+        hints = self.hook.route_hints("ready to commit", "/tmp/repo")
+
+        joined = "\n".join(hints)
+        self.assertIn("$deliberation:challenge", joined)
+        self.assertIn("module-boundary", joined)
+
+    def test_public_surface_change_adds_docs_coupling(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: ["plugins/codebase/skills/work/SKILL.md"]
+
+        hints = self.hook.route_hints("done", "/tmp/repo")
+
+        joined = "\n".join(hints)
+        self.assertIn("$knowledge:docs-drift", joined)
+        self.assertIn("$knowledge:writeback", joined)
+
+    def test_commit_subject_validation(self) -> None:
+        valid = '{"schema":"decodex/commit/1","summary":"ship guard","authority":"XY-1099"}'
+
+        self.assertTrue(self.hook.commit_subject_is_valid(valid))
+        self.assertFalse(self.hook.commit_subject_is_valid("ship guard"))
+        self.assertFalse(self.hook.commit_subject_is_valid('{"schema":"decodex/commit/1"}'))
+
     def test_walk_strings_collects_nested_payload_text(self) -> None:
         payload = {"prompt": ["hello", {"nested": "world"}], "count": 3}
 
         self.assertEqual(self.hook.walk_strings(payload), ["hello", "world"])
 
-    def test_record_event_writes_jsonl(self) -> None:
+    def test_record_event_writes_jsonl_without_prompt_sample(self) -> None:
+        self.hook.changed_file_stats = lambda: []
+        self.hook.public_surface_paths = lambda: []
         with tempfile.TemporaryDirectory() as tmp:
             state_dir = Path(tmp)
             self.hook.STATE_DIR = state_dir
             self.hook.STATE_PATH = state_dir / "events.jsonl"
 
-            self.hook.record_event("UserPromptSubmit", {"prompt": "Fix docs"}, "/tmp/repo", ["hint"])
+            self.hook.record_event(
+                "UserPromptSubmit",
+                {"prompt": "Fix docs with private context"},
+                "/tmp/repo",
+                ["hint"],
+            )
 
             line = self.hook.STATE_PATH.read_text(encoding="utf-8").strip()
             record = json.loads(line)
             self.assertEqual(record["event"], "UserPromptSubmit")
             self.assertEqual(record["git_root"], "/tmp/repo")
             self.assertEqual(record["hints"], ["hint"])
+            self.assertNotIn("sample", record)
 
 
 if __name__ == "__main__":
