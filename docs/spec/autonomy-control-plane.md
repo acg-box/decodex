@@ -434,6 +434,32 @@ An external agent cannot be its own acceptance authority. Authentication and
 capability profile prove access to the Decodex surface; they do not prove acceptance
 authority.
 
+The Phase 7 autonomy MCP surface is deliberately small and typed:
+
+- observe-profile resources:
+  `decodex://projects/{project_id}/autonomy`,
+  `decodex://projects/{project_id}/autonomy/objectives/{objective_id}/current`,
+  `decodex://projects/{project_id}/autonomy/objectives/{objective_id}/{version}`,
+  `decodex://projects/{project_id}/autonomy/signals`,
+  `decodex://projects/{project_id}/autonomy/signals/{signal_id}`,
+  `decodex://projects/{project_id}/autonomy/proposals`,
+  `decodex://projects/{project_id}/autonomy/proposals/{proposal_id}`, and
+  `decodex://projects/{project_id}/autonomy/evidence`
+- plan-profile tools:
+  `autonomy_draft_objective`, `autonomy_submit_signal`,
+  `autonomy_compile_proposal`, `autonomy_challenge_proposal`, and
+  `autonomy_request_promotion`
+
+The observe resources return summaries and authority-boundary metadata only. They are
+not raw runtime payload exports. The plan tools validate or persist draft/objective,
+signal, proposal, challenge, and latent Decision Contract candidate evidence through
+runtime model checks. Apply-style calls require explicit authority fields and still
+stop before normal Decision Contract promotion, Program Intake, review, PR handoff,
+landing, install, restart, closeout, or cleanup authority. `autonomy_request_promotion`
+may create only a latent Decision Contract candidate from an accepted proposal; the
+result still requires normal `research_promote` and later Program Intake before
+execution work exists.
+
 ## Telemetry And Memory Boundary
 
 Allowed inputs:
