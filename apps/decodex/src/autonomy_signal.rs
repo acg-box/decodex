@@ -358,6 +358,10 @@ impl AutonomySignal {
 		self.privacy
 	}
 
+	pub(crate) fn summary(&self) -> &str {
+		&self.summary
+	}
+
 	pub(crate) fn gaps(&self) -> &[String] {
 		&self.gaps
 	}

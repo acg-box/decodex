@@ -1,4 +1,5 @@
 use crate::workflow::WorkflowConcurrencyLimit;
+use crate::autonomy_proposal::AutonomyProposalChallengeInput;
 
 const TERMINAL_THREAD_ARCHIVE_EVENT_TYPES: [&str; 2] = [
 	"thread/archive",
@@ -2696,6 +2697,50 @@ impl StateStore {
 		Ok(records.into_iter().map(|record| record.as_public()).collect())
 	}
 
+	/// List recent Objective Contract versions for one project for MCP/operator readback.
+	#[allow(dead_code)]
+	pub(crate) fn recent_autonomy_objectives_for_project(
+		&self,
+		project_id: &str,
+		limit: usize,
+	) -> Result<Vec<AutonomyObjectiveRecord>> {
+		validate_required_autonomy_objective_field("project_id", project_id)?;
+
+		if limit == 0 {
+			return Ok(Vec::new());
+		}
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let records = sqlite
+				.recent_autonomy_objectives_for_project(project_id, limit)?
+				.into_iter()
+				.map(|record| record.as_public())
+				.collect();
+
+			return Ok(records);
+		}
+
+		let state = self.lock()?;
+		let mut records = state
+			.autonomy_objectives
+			.values()
+			.filter(|record| record.project_id == project_id)
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(|left, right| {
+			right
+				.updated_at_unix
+				.cmp(&left.updated_at_unix)
+				.then_with(|| left.objective.id().cmp(right.objective.id()))
+				.then_with(|| left.objective.version().cmp(&right.objective.version()))
+		});
+		records.truncate(limit);
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
 	/// Persist one read-only autonomy signal against the currently accepted objective version.
 	#[allow(dead_code)]
 	pub(crate) fn record_autonomy_signal(
@@ -2967,6 +3012,38 @@ impl StateStore {
 		};
 
 		state.autonomy_proposals.insert(record.key(), record.clone());
+		self.upsert_autonomy_proposal_locked(&record)?;
+
+		Ok(record.as_public())
+	}
+
+	/// Record challenge evidence against one persisted non-executable autonomy proposal.
+	#[allow(dead_code)]
+	pub(crate) fn record_autonomy_proposal_challenge(
+		&self,
+		project_id: &str,
+		proposal_id: &str,
+		challenge: AutonomyProposalChallengeInput,
+	) -> Result<AutonomyProposalRecord> {
+		validate_required_autonomy_proposal_field("project_id", project_id)?;
+		validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
+
+		let now = timestamp_parts();
+		let key = AutonomyProposalKey::new(project_id, proposal_id);
+		let mut state = self.lock()?;
+		let mut record = state
+			.autonomy_proposals
+			.get(&key)
+			.cloned()
+			.ok_or_else(|| eyre::eyre!("Autonomy proposal `{proposal_id}` does not exist."))?;
+
+		record.proposal.record_challenge(challenge)?;
+
+		record.state = record.proposal.state();
+		record.updated_at = now.text;
+		record.updated_at_unix = now.unix;
+
+		state.autonomy_proposals.insert(key, record.clone());
 		self.upsert_autonomy_proposal_locked(&record)?;
 
 		Ok(record.as_public())
