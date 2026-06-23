@@ -7514,10 +7514,13 @@ fn operator_run_status(
 		lifecycle.wait_reason.clone(),
 		protocol_activity.as_ref(),
 	);
+	let private_events =
+		loop_evidence.private_events(run.issue_id(), run.run_id(), run.attempt_number());
 	let progress_diagnostic = operator_run_progress_diagnostic(
 		&lifecycle.phase,
 		&timing,
 		protocol_activity.as_ref(),
+		private_events,
 		now_unix_epoch,
 		run_activity_idle_timeout(marker.as_ref()),
 	);
@@ -7531,8 +7534,6 @@ fn operator_run_status(
 	);
 	let private_evidence = operator_run_private_evidence(project, &run, issue_identifier.as_deref());
 	let continuation_recovery = operator_run_continuation_recovery_status(loop_evidence, &run);
-	let private_events =
-		loop_evidence.private_events(run.issue_id(), run.run_id(), run.attempt_number());
 	let active_goal_phase = operator_run_active_goal_phase(private_events);
 	let public_progress_phase = operator_run_public_progress_phase(private_events);
 	let phase_acceptance = operator_run_phase_acceptance_status(private_events);
@@ -10187,9 +10188,16 @@ fn operator_run_progress_diagnostic(
 	phase: &str,
 	timing: &OperatorRunTiming,
 	protocol_activity: Option<&ProtocolActivitySummary>,
+	private_events: &[PrivateExecutionEvent],
 	now_unix_epoch: i64,
 	idle_timeout: Duration,
 ) -> Option<String> {
+	if let Some(repo_gate_diagnostic) =
+		operator_latest_repo_gate_failure_progress_diagnostic(private_events)
+	{
+		return Some(repo_gate_diagnostic);
+	}
+
 	if phase != "executing" {
 		return None;
 	}
@@ -10218,6 +10226,41 @@ fn operator_run_progress_diagnostic(
 		});
 
 	progress_is_stale.then(|| String::from("protocol_only_activity"))
+}
+
+fn operator_latest_repo_gate_failure_progress_diagnostic(
+	private_events: &[PrivateExecutionEvent],
+) -> Option<String> {
+	private_events
+		.iter()
+		.rev()
+		.find(|event| event.event_type() == "phase_goal_transition")
+		.and_then(operator_repo_gate_failure_progress_diagnostic)
+}
+
+fn operator_repo_gate_failure_progress_diagnostic(
+	event: &PrivateExecutionEvent,
+) -> Option<String> {
+	if event.event_type() != "phase_goal_transition" {
+		return None;
+	}
+
+	let transition_payload = event.payload().get("payload")?;
+	let error_class = transition_payload.get("errorClass")?.as_str()?;
+
+	if !error_class.starts_with("repo_gate_") {
+		return None;
+	}
+
+	let failed_command = transition_payload
+		.get("repoGateFailure")
+		.and_then(|diagnostic| diagnostic.get("failed_command"))
+		.and_then(Value::as_str)
+		.unwrap_or("inspect_private_evidence");
+
+	Some(format!(
+		"repo_gate_failure:{error_class}; failed_command:{failed_command}"
+	))
 }
 
 fn protocol_activity_is_non_work_only(protocol_activity: &ProtocolActivitySummary) -> bool {

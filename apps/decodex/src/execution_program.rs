@@ -1810,12 +1810,13 @@ fn lifecycle_state_for(
 	}
 
 	match state {
-		ExecutionReadinessState::NotReady | ExecutionReadinessState::Paused =>
+		ExecutionReadinessState::NotReady | ExecutionReadinessState::Paused => {
 			if node.linear_issue().is_some() {
 				ExecutionProgramNodeLifecycleState::Mapped
 			} else {
 				ExecutionProgramNodeLifecycleState::Planned
-			},
+			}
+		},
 		ExecutionReadinessState::Ready => ExecutionProgramNodeLifecycleState::Ready,
 		ExecutionReadinessState::Blocked => ExecutionProgramNodeLifecycleState::Blocked,
 		ExecutionReadinessState::Active => ExecutionProgramNodeLifecycleState::Active,

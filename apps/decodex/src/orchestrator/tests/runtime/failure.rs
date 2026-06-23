@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use orchestrator::{
 	AgentGitCredentialEnvironment, AgentGitCredentialsUnavailable, RepoGateFailureKind,
+	RetainedReviewRepairPushFailed,
 };
 use orchestrator::AppServerZeroEvidenceStartFailure;
 use orchestrator::LoopGuardrailReason;
@@ -2655,6 +2656,81 @@ fn validate_review_handoff_runtime_requires_gh_and_github_token_authority() {
 
 	assert!(
 		error.to_string().contains("Required command `__decodex_missing_command__` is unavailable")
+	);
+}
+
+#[test]
+fn retained_review_repair_completion_pushes_repaired_head_to_pr_branch() {
+	let (temp_dir, base_config, _workflow) = temp_project_layout();
+	let env_var = format!("DECODEX_TEST_REPAIR_PUSH_GITHUB_TOKEN_ENV_{}", process::id());
+	let _env_guard = TestEnvVarGuard::set(&env_var, "secret-token-value");
+	let config = service_config_with_github_token_env_var(&base_config, &env_var);
+	let remote_root = temp_dir.path().join("origin.git");
+	let issue = sample_issue("In Review", &[]);
+	let issue_run = loop_guardrail_issue_run(&config, &issue, 2);
+
+	add_origin_remote(config.repo_root(), &remote_root);
+	checkout_new_branch(config.repo_root(), &issue_run.worktree.branch_name);
+
+	let local_head = commit_worktree_change(
+		config.repo_root(),
+		"repair.txt",
+		"repair\n",
+		"retained review repair",
+	);
+
+	orchestrator::push_retained_review_repair_head(
+		&config,
+		&issue_run,
+		Some("https://github.com/hack-ink/decodex/pull/502"),
+	)
+	.expect("retained review-repair completion should push the repaired head");
+
+	let output = Command::new("git")
+		.arg("--git-dir")
+		.arg(&remote_root)
+		.args(["rev-parse", &format!("refs/heads/{}", issue_run.worktree.branch_name)])
+		.output()
+		.expect("remote head probe should run");
+
+	assert!(
+		output.status.success(),
+		"remote retained repair branch should exist: {}",
+		String::from_utf8_lossy(&output.stderr)
+	);
+	assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), local_head);
+}
+
+#[test]
+fn retained_review_repair_push_failures_are_structured_terminal_attention() {
+	let _env_lock = TestEnvVarGuard::lock();
+	let (_temp_dir, base_config, _workflow) = temp_project_layout();
+	let missing_env_var = format!("DECODEX_TEST_MISSING_REPAIR_PUSH_TOKEN_ENV_{}", process::id());
+	let config = service_config_with_github_token_env_var(&base_config, &missing_env_var);
+	let issue = sample_issue("In Review", &[]);
+	let issue_run = loop_guardrail_issue_run(&config, &issue, 2);
+	let error = orchestrator::push_retained_review_repair_head(
+		&config,
+		&issue_run,
+		Some("https://github.com/hack-ink/decodex/pull/502"),
+	)
+	.expect_err("missing GitHub token should produce a typed push failure");
+	let push_failure = error
+		.downcast_ref::<RetainedReviewRepairPushFailed>()
+		.expect("missing push authority should preserve typed error");
+	let (error_class, next_action) = orchestrator::terminal_failure_comment_details(
+		false,
+		&error,
+		"clear label `decodex:needs-attention`",
+	);
+
+	assert_eq!(push_failure.error_class(), "retained_review_repair_push_auth_failed");
+	assert_eq!(error_class, "retained_review_repair_push_auth_failed");
+	assert!(next_action.contains("repair GitHub authentication"));
+	assert!(next_action.contains(&issue_run.worktree.branch_name));
+	assert_eq!(
+		orchestrator::run_failure_writeback_disposition(&error),
+		RunFailureWritebackDisposition::TerminalAttention
 	);
 }
 
