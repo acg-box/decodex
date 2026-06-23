@@ -184,6 +184,26 @@ impl ProjectLoopEvidenceSnapshot {
 		self.review_lifecycle_records.get(&(issue_id.to_owned(), branch_name.to_owned()))
 	}
 
+	pub(crate) fn review_lifecycle_records_for_issue(
+		&self,
+		issue_id: &str,
+	) -> Vec<&ReviewLifecycleRecord> {
+		let mut records = self
+			.review_lifecycle_records
+			.iter()
+			.filter(|((record_issue_id, _), _)| record_issue_id == issue_id)
+			.map(|(_, record)| record)
+			.collect::<Vec<_>>();
+
+		records.sort_by(|left, right| {
+			left.updated_at_unix()
+				.cmp(&right.updated_at_unix())
+				.then_with(|| left.branch_name().cmp(right.branch_name()))
+		});
+
+		records
+	}
+
 	pub(crate) fn private_events_for_issue(&self, issue_id: &str) -> Vec<&PrivateExecutionEvent> {
 		let mut events = self
 			.private_events
