@@ -27,8 +27,8 @@ use crate::{
 		AutonomyObjectiveState, AutonomyObjectiveSupersession,
 	},
 	autonomy_proposal::{
-		AutonomyProposal, AutonomyProposalCompileInput, AutonomyProposalRefusalReason,
-		AutonomyProposalState,
+		AutonomyProposal, AutonomyProposalCompileInput, AutonomyProposalDecisionBridgeAuthority,
+		AutonomyProposalRefusalReason, AutonomyProposalState,
 	},
 	autonomy_signal::{
 		AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
