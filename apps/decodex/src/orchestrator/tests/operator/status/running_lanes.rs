@@ -1,13 +1,15 @@
 mod autonomy_lineage_readback_tests {
 	use crate::orchestrator::tests::FakeTracker;
 	use std::collections::BTreeMap;
+	use std::collections::BTreeSet;
 
 	use crate::{
 		autonomy_objective::{
 			AutonomyObjectiveAcceptance, AutonomyObjectiveActorKind, AutonomyObjectiveContract,
 		},
 		autonomy_proposal::{
-			AutonomyProposalAuthorityActorKind, AutonomyProposalDecisionBridgeAuthority,
+			AutonomyProposalAuthorityActorKind, AutonomyProposalCompileInput,
+			AutonomyProposalDecisionBridgeAuthority,
 		},
 		autonomy_signal::{
 			AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
@@ -16,9 +18,9 @@ mod autonomy_lineage_readback_tests {
 		},
 		config::ServiceConfig,
 		loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
-		orchestrator::{self, OperatorStatusSnapshot},
+		orchestrator::{self, OperatorAutonomyLineageStatus, OperatorStatusSnapshot},
 		program_intake::{self, GoalIntakeRunRequest},
-		state::StateStore,
+		state::{ReviewHandoffMarker, StateStore},
 		tracker::TrackerIssue,
 		workflow::WorkflowDocument,
 	};
@@ -30,6 +32,7 @@ mod autonomy_lineage_readback_tests {
 	struct SeededAutonomyLineage {
 		accepted_proposal_id: String,
 		decision_contract_id: String,
+		generated_issue_identifier: String,
 	}
 
 	#[test]
@@ -59,9 +62,20 @@ mod autonomy_lineage_readback_tests {
 			promote_autonomy_proposal(state_store, &accepted_proposal_id);
 
 		apply_goal_intake(state_store, config, workflow, issue, &decision_contract_id);
+
+		let generated_issue_identifier = record_dogfood_execution_evidence(
+			state_store,
+			&accepted_proposal_id,
+			&decision_contract_id,
+		);
+
 		record_sensitive_autonomy_readback_fixture(state_store, issue);
 
-		SeededAutonomyLineage { accepted_proposal_id, decision_contract_id }
+		SeededAutonomyLineage {
+			accepted_proposal_id,
+			decision_contract_id,
+			generated_issue_identifier,
+		}
 	}
 
 	fn seed_autonomy_run(state_store: &StateStore, issue: &TrackerIssue) {
@@ -291,6 +305,66 @@ mod autonomy_lineage_readback_tests {
 		.expect("goal intake should apply");
 	}
 
+	fn record_dogfood_execution_evidence(
+		state_store: &StateStore,
+		proposal_id: &str,
+		decision_contract_id: &str,
+	) -> String {
+		let linked = state_store
+			.decision_contract(SERVICE_ID, decision_contract_id)
+			.expect("decision contract should read")
+			.expect("decision contract should exist");
+		let generated_issue_id = linked.contract().links().generated_issue_ids()[0].clone();
+		let generated_issue_identifier =
+			linked.contract().links().generated_issue_identifiers()[0].clone();
+		let review_marker = ReviewHandoffMarker::new(
+			"run-dogfood-review",
+			1,
+			"y/decodex-xy-1091",
+			"https://github.com/hack-ink/decodex/pull/1091",
+			"main",
+			"y/decodex-xy-1091",
+			"0123456789abcdef0123456789abcdef01234567",
+		);
+
+		state_store
+			.upsert_review_handoff_marker(SERVICE_ID, &generated_issue_id, &review_marker)
+			.expect("review handoff marker should persist");
+
+		for (kind, source_ref, summary) in [
+			(
+				"validation",
+				"validation:cargo-make-check:passed",
+				"Repo validation gate passed before review handoff.",
+			),
+			(
+				"post_land",
+				"post_land:decodex-land:merge-install-restart-audit",
+				"Post-land evidence was recorded after normal lifecycle authority.",
+			),
+		] {
+			state_store
+				.append_private_execution_event(
+					SERVICE_ID,
+					&generated_issue_id,
+					"run-dogfood-review",
+					1,
+					"autonomy/replay_evidence",
+					serde_json::json!({
+						"schema": "decodex.autonomy_replay_evidence/1",
+						"proposal_id": proposal_id,
+						"contract_id": decision_contract_id,
+						"kind": kind,
+						"source_refs": [source_ref],
+						"summary": summary,
+					}),
+				)
+				.expect("replay evidence should persist");
+		}
+
+		generated_issue_identifier
+	}
+
 	fn assert_autonomy_readback(
 		snapshot: &OperatorStatusSnapshot,
 		seeded: &SeededAutonomyLineage,
@@ -346,6 +420,11 @@ mod autonomy_lineage_readback_tests {
 		);
 		assert_eq!(lineage.decision_contracts[0].contract_id, seeded.decision_contract_id);
 		assert_eq!(lineage.program_intake[0].intake_kind, "goal_intake");
+		assert_eq!(lineage.completeness, "complete");
+		assert!(lineage.known_gaps.is_empty());
+
+		assert_dogfood_execution_evidence(lineage, seeded);
+
 		assert_eq!(refused.refusals[0].reason, "disallowed_surface");
 		assert_eq!(sensitive_proposal.gaps, ["redacted_sensitive_detail"]);
 		assert_eq!(sensitive_proposal.contradictions, ["redacted_sensitive_detail"]);
@@ -366,6 +445,39 @@ mod autonomy_lineage_readback_tests {
 		assert!(!snapshot_json.contains("GITHUB_PAT_Y"));
 		assert!(!rendered.contains("/Users/x"));
 		assert!(!rendered.contains("GITHUB_PAT_Y"));
+	}
+
+	fn assert_dogfood_execution_evidence(
+		lineage: &OperatorAutonomyLineageStatus,
+		seeded: &SeededAutonomyLineage,
+	) {
+		let evidence_kinds = lineage
+			.execution_evidence
+			.iter()
+			.map(|evidence| evidence.kind.as_str())
+			.collect::<BTreeSet<_>>();
+		let source_refs = lineage
+			.execution_evidence
+			.iter()
+			.flat_map(|evidence| evidence.source_refs.iter().map(String::as_str))
+			.collect::<BTreeSet<_>>();
+
+		assert_eq!(
+			evidence_kinds,
+			BTreeSet::from(["post_land", "pr", "validation"])
+		);
+		assert!(
+			lineage
+				.execution_evidence
+				.iter()
+				.all(|evidence| evidence.issue_identifier.as_deref()
+					== Some(&seeded.generated_issue_identifier)
+					&& evidence.completeness == "complete"
+					&& evidence.known_gaps.is_empty())
+		);
+		assert!(source_refs.contains("https://github.com/hack-ink/decodex/pull/1091"));
+		assert!(source_refs.contains("validation:cargo-make-check:passed"));
+		assert!(source_refs.contains("post_land:decodex-land:merge-install-restart-audit"));
 	}
 
 	fn autonomy_objective_fixture(service_id: &str) -> AutonomyObjectiveContract {
@@ -393,8 +505,8 @@ mod autonomy_lineage_readback_tests {
 	fn autonomy_proposal_input(
 		intended_surface: &str,
 		issue_identifier: &str,
-	) -> crate::autonomy_proposal::AutonomyProposalCompileInput {
-		crate::autonomy_proposal::AutonomyProposalCompileInput {
+	) -> AutonomyProposalCompileInput {
+		AutonomyProposalCompileInput {
 			project_id: SERVICE_ID.to_owned(),
 			objective_id: String::from(OBJECTIVE_ID),
 			objective_version: 1,
