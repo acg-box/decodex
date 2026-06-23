@@ -430,6 +430,14 @@ impl AutonomyProposalRefusal {
 		self.reason
 	}
 
+	pub(crate) fn detail(&self) -> &str {
+		&self.detail
+	}
+
+	pub(crate) fn evidence_refs(&self) -> &[String] {
+		&self.evidence_refs
+	}
+
 	fn new(
 		reason: AutonomyProposalRefusalReason,
 		detail: impl Into<String>,
@@ -661,6 +669,14 @@ impl AutonomyProposal {
 
 	pub(crate) fn intended_surface(&self) -> &str {
 		&self.intended_surface
+	}
+
+	pub(crate) fn affected_identifiers(&self) -> &[String] {
+		&self.affected_identifiers
+	}
+
+	pub(crate) fn summary(&self) -> &str {
+		&self.summary
 	}
 
 	pub(crate) fn source_signal_ids(&self) -> &[String] {
