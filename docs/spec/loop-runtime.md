@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/research_design.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
 drift_watch: [phase_goal, phase_acceptance_check, docs_impact, review_contract, issue_review_checkpoint, decodex.autonomy_proposal/1, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
-last_verified: 2026-06-22
+last_verified: 2026-06-23
 ---
 # Loop Runtime Specification
 
@@ -396,6 +396,9 @@ The payload carries:
 | `service_id` | Registered service that owns program scheduling for this plan. |
 | `intake_kind` | `goal_intake` for promoted natural-language goals, or `issue_batch_intake` for a supplied batch of executable issue briefs. |
 | `source_contract_id` | Accepted Decision Contract id for goal intake, when present. |
+| `source_objective_ref` | Optional private Objective Contract lineage for accepted autonomy-derived goal intake. |
+| `source_proposal_id` | Optional private autonomy proposal id for accepted autonomy-derived goal intake. |
+| `source_signal_refs` | Optional private autonomy signal ids that contributed to the accepted autonomy-derived proposal. |
 | `accepted_contract_fingerprint` | Fingerprint used to detect drift from the accepted contract or batch boundary. |
 | `public_summary` | Public-safe objective/readiness summary suitable for status readback. |
 | `node_projection` | Optional public-safe node summary or count metadata. The full internal nodes, dependencies, conflict domains, issue mapping, dispatch readiness, and lifecycle evaluation inputs live in the paired `decodex.execution_program/1` payload. |
@@ -415,10 +418,13 @@ summary, required reading, in-scope work, explicit non-goals, current-tree landi
 zone, ownership boundary, acceptance criteria, validation expectations, stop
 conditions, and any real dependencies, blockers, or conflict domains. The public
 authority summary may cite the accepted Decision Contract or source issue, but it must
-not render the internal Execution Program id or node id. At minimum, runtime
-eligibility rejects a machine-only fenced block as the issue description; private
-pointers, progress checkpoints, review summaries, PR bodies, or runtime events do not
-substitute for the issue briefing.
+not render autonomy signal ids, autonomy proposal ids, internal Execution Program ids,
+Program node ids, or graph mechanics. It must also preserve the normal lane lifecycle
+by naming validation, review, PR handoff, landing, install/restart when applicable,
+closeout, and cleanup as gates owned by the normal Decodex runtime rather than by
+Program Intake. At minimum, runtime eligibility rejects a machine-only fenced block as
+the issue description; private pointers, progress checkpoints, review summaries, PR
+bodies, or runtime events do not substitute for the issue briefing.
 
 The operator CLI surface for promoted goals is
 `decodex intake goal --project <service-id> <CONTRACT_ID> --dry-run`, or the same
