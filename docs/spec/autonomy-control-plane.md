@@ -44,7 +44,7 @@ drift_watch:
   - Program Intake
   - finding_routes
   - decodex mcp serve
-last_verified: 2026-06-22
+last_verified: 2026-06-23
 ---
 # Autonomy Control Plane
 
@@ -385,6 +385,12 @@ Every executable proposal must become a normal Decodex execution surface. For
 tracker-backed work this means a normal issue with a cold-start dispatch brief.
 Private pointers, proposal ids, report text, or graph ids do not substitute for the
 brief.
+When accepted autonomy work is materialized through Program Intake, runtime state must
+retain the replay chain from Objective Contract version to signal-derived proposal,
+Decision Contract, Program Intake Plan, Execution Program, and generated normal issue
+links. That lineage remains private runtime metadata; generated tracker issue text
+stays a natural-language brief and must not expose signal ids, proposal ids, Program
+ids, node ids, or graph mechanics.
 
 ## MCP And Skill Action Matrix
 

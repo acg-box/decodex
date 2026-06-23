@@ -83,6 +83,14 @@ impl DecisionContract {
 		&self.research_options
 	}
 
+	pub(crate) fn research_provenance(&self) -> &[DecisionResearchProvenance] {
+		&self.research_provenance
+	}
+
+	pub(crate) fn research_evidence(&self) -> &[DecisionResearchEvidence] {
+		&self.research_evidence
+	}
+
 	pub(crate) fn execution_readiness(&self) -> &DecisionExecutionReadiness {
 		&self.execution_readiness
 	}
@@ -305,6 +313,14 @@ pub(crate) struct DecisionResearchProvenance {
 	summary: String,
 }
 impl DecisionResearchProvenance {
+	pub(crate) fn kind(&self) -> &str {
+		&self.kind
+	}
+
+	pub(crate) fn reference(&self) -> &str {
+		&self.reference
+	}
+
 	fn validate(&self) -> Result<()> {
 		validate_required("decision contract research_provenance.kind", &self.kind)?;
 		validate_required("decision contract research_provenance.reference", &self.reference)?;
@@ -324,6 +340,14 @@ pub(crate) struct DecisionResearchEvidence {
 	source_ref: Option<String>,
 }
 impl DecisionResearchEvidence {
+	pub(crate) fn kind(&self) -> &str {
+		&self.kind
+	}
+
+	pub(crate) fn source_ref(&self) -> Option<&str> {
+		self.source_ref.as_deref()
+	}
+
 	fn validate(&self) -> Result<()> {
 		validate_required("decision contract research_evidence.kind", &self.kind)?;
 		validate_required("decision contract research_evidence.claim", &self.claim)?;
