@@ -8819,37 +8819,66 @@ fn operator_autonomy_replay_evidence_status_from_event(
 	let mut known_gaps = Vec::new();
 
 	if kind == "pr" {
-		return Some(match operator_autonomy_matching_pr_review(event, &raw_source_refs, review_lifecycle_records) {
-			Some(review) => operator_autonomy_pr_evidence_status_from_event(
-				event,
-				review,
-				issue_identifier,
-				summary,
-				summary_redacted,
-			),
-			None => {
-				if source_refs.is_empty() {
-					known_gaps.push(String::from("source_refs_missing_or_redacted"));
-				}
-				if refs_redacted {
-					known_gaps.push(String::from("source_refs_redacted"));
-				}
-				if summary_redacted {
-					known_gaps.push(String::from("summary_redacted"));
-				}
+		let pr_head_ref = payload
+			.get("pr_head_ref")
+			.and_then(Value::as_str)
+			.map(str::trim)
+			.filter(|value| !value.is_empty());
+		let pr_head_oid = payload
+			.get("pr_head_oid")
+			.and_then(Value::as_str)
+			.map(str::trim)
+			.filter(|value| !value.is_empty());
 
-				known_gaps.push(String::from("review_lifecycle_missing"));
-				OperatorAutonomyExecutionEvidenceStatus {
-					kind,
-					issue_identifier: issue_identifier.map(str::to_owned),
-					source_refs,
+		return Some(
+			match operator_autonomy_matching_pr_review(
+				event,
+				&raw_source_refs,
+				pr_head_ref,
+				pr_head_oid,
+				review_lifecycle_records,
+			) {
+				Some(review) => operator_autonomy_pr_evidence_status_from_event(
+					event,
+					review,
+					issue_identifier,
 					summary,
-					updated_at: event.recorded_at().to_owned(),
-					completeness: operator_autonomy_completeness(&known_gaps),
-					known_gaps,
+					summary_redacted,
+				),
+				None => {
+					if source_refs.is_empty() {
+						known_gaps.push(String::from("source_refs_missing_or_redacted"));
+					}
+					if refs_redacted {
+						known_gaps.push(String::from("source_refs_redacted"));
+					}
+					if summary_redacted {
+						known_gaps.push(String::from("summary_redacted"));
+					}
+					if pr_head_ref.is_none() || pr_head_oid.is_none() {
+						known_gaps.push(String::from("pr_head_identity_missing"));
+					} else if operator_autonomy_pr_review_candidate_exists(
+						event,
+						&raw_source_refs,
+						review_lifecycle_records,
+					) {
+						known_gaps.push(String::from("review_lifecycle_stale_or_mismatched"));
+					} else {
+						known_gaps.push(String::from("review_lifecycle_missing"));
+					}
+
+					OperatorAutonomyExecutionEvidenceStatus {
+						kind,
+						issue_identifier: issue_identifier.map(str::to_owned),
+						source_refs,
+						summary,
+						updated_at: event.recorded_at().to_owned(),
+						completeness: operator_autonomy_completeness(&known_gaps),
+						known_gaps,
+					}
 				}
-			}
-		});
+			},
+		);
 	}
 	if source_refs.is_empty() {
 		known_gaps.push(String::from("source_refs_missing_or_redacted"));
@@ -8875,8 +8904,12 @@ fn operator_autonomy_replay_evidence_status_from_event(
 fn operator_autonomy_matching_pr_review<'a>(
 	event: &PrivateExecutionEvent,
 	raw_source_refs: &[String],
+	pr_head_ref: Option<&str>,
+	pr_head_oid: Option<&str>,
 	review_lifecycle_records: &'a [&'a ReviewLifecycleRecord],
 ) -> Option<&'a ReviewLifecycleRecord> {
+	let pr_head_ref = pr_head_ref?;
+	let pr_head_oid = pr_head_oid?;
 	let raw_source_refs = raw_source_refs
 		.iter()
 		.map(|source_ref| source_ref.trim())
@@ -8889,12 +8922,33 @@ fn operator_autonomy_matching_pr_review<'a>(
 			review.run_id() == event.run_id()
 				&& review.attempt_number() == event.attempt_number()
 				&& raw_source_refs.contains(review.pr_url())
+				&& review.branch_name() == pr_head_ref
+				&& review.pr_head_ref_name() == pr_head_ref
+				&& review.pr_head_oid() == pr_head_oid
+				&& review.head_sha() == pr_head_oid
 		})
 		.max_by(|left, right| {
 			left.updated_at_unix()
 				.cmp(&right.updated_at_unix())
 				.then_with(|| left.branch_name().cmp(right.branch_name()))
 		})
+}
+
+fn operator_autonomy_pr_review_candidate_exists(
+	event: &PrivateExecutionEvent,
+	raw_source_refs: &[String],
+	review_lifecycle_records: &[&ReviewLifecycleRecord],
+) -> bool {
+	let raw_source_refs = raw_source_refs
+		.iter()
+		.map(|source_ref| source_ref.trim())
+		.collect::<BTreeSet<_>>();
+
+	review_lifecycle_records.iter().any(|review| {
+		review.run_id() == event.run_id()
+			&& review.attempt_number() == event.attempt_number()
+			&& raw_source_refs.contains(review.pr_url())
+	})
 }
 
 fn operator_autonomy_replay_evidence_matches(
