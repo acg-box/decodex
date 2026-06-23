@@ -260,6 +260,9 @@ impl RepoGatePhaseGoalController<'_> {
 						"disposition": repo_gate_failure.disposition().as_str(),
 					});
 
+					if let Some(diagnostic) = repo_gate_failure.diagnostic() {
+						transition_payload["repoGateFailure"] = diagnostic.to_json();
+					}
 					if let Some(decision) = repo_gate_failure.tracked_rewrite_decision() {
 						transition_payload["trackedRewrites"] = decision.to_json();
 					}
@@ -297,8 +300,8 @@ impl RepoGatePhaseGoalController<'_> {
 						}
 
 						let detail = format!(
-							"Repo gate failed with `{}`. Inspect the worktree, run the registered canonicalize and verify commands, and repair only the validation failure.",
-							repo_gate_failure.error_class()
+							"{} Inspect the worktree, run the registered canonicalize and verify commands, and repair only the validation failure.",
+							repo_gate_failure.repair_target_detail()
 						);
 						let next_goal =
 							self.phase_goal_spec(PhaseGoalKind::RepairValidationFailures, Some(&detail));
@@ -3349,6 +3352,10 @@ fn retryable_failure_loop_guardrail_stop(
 	else {
 		return Ok(None);
 	};
+	let repo_gate_diagnostic = error
+		.downcast_ref::<RepoGateFailure>()
+		.and_then(RepoGateFailure::diagnostic)
+		.map(RepoGateFailureDiagnostic::to_json);
 	let mut observations = Vec::new();
 
 	if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>()
@@ -3390,6 +3397,24 @@ fn retryable_failure_loop_guardrail_stop(
 	}
 
 	for (reason, fingerprint, source_error_class) in observations {
+		let mut details = json!({
+			"schema": "decodex.loop_guardrail_checkpoint/1",
+			"reason": reason.error_class(),
+			"source_error_class": source_error_class,
+			"head_sha": worktree_fingerprint.head_sha.as_str(),
+			"tracked_status_hash": worktree_fingerprint.tracked_status_hash.as_str(),
+			"tracked_diff_hash": worktree_fingerprint.tracked_diff_hash.as_str(),
+			"effective_status_hash": worktree_fingerprint.effective_status_hash.as_str(),
+			"branch_delta_present": worktree_fingerprint.branch_delta_present,
+			"effective_delta_present": worktree_fingerprint.effective_delta_present,
+			"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
+		});
+
+		if let Some(diagnostic) = &repo_gate_diagnostic {
+			details["repo_gate_failure"] = diagnostic.clone();
+		}
+
+		let details_json = details.to_string();
 		let checkpoint = state_store.observe_loop_guardrail_checkpoint(
 			LoopGuardrailCheckpointInput {
 				project_id: project.service_id(),
@@ -3398,19 +3423,7 @@ fn retryable_failure_loop_guardrail_stop(
 				fingerprint: &fingerprint,
 				run_id: &issue_run.run_id,
 				attempt_number: issue_run.attempt_number,
-				details_json: &json!({
-					"schema": "decodex.loop_guardrail_checkpoint/1",
-					"reason": reason.error_class(),
-					"source_error_class": source_error_class,
-					"head_sha": worktree_fingerprint.head_sha.as_str(),
-					"tracked_status_hash": worktree_fingerprint.tracked_status_hash.as_str(),
-					"tracked_diff_hash": worktree_fingerprint.tracked_diff_hash.as_str(),
-					"effective_status_hash": worktree_fingerprint.effective_status_hash.as_str(),
-					"branch_delta_present": worktree_fingerprint.branch_delta_present,
-					"effective_delta_present": worktree_fingerprint.effective_delta_present,
-					"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
-				})
-				.to_string(),
+				details_json: &details_json,
 			},
 		)?;
 
