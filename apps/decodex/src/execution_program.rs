@@ -50,6 +50,12 @@ pub(crate) struct ProgramIntakePlan {
 	intake_kind: ProgramIntakeKind,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	source_contract_id: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	source_objective_ref: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	source_proposal_id: Option<String>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	source_signal_refs: Vec<String>,
 	accepted_contract_fingerprint: String,
 	public_summary: String,
 }
@@ -74,6 +80,15 @@ impl ProgramIntakePlan {
 			service_id: service_id.into(),
 			intake_kind: ProgramIntakeKind::GoalIntake,
 			source_contract_id: Some(contract.contract_id().to_owned()),
+			source_objective_ref: decision_contract_provenance_reference(
+				contract,
+				"autonomy_objective",
+			),
+			source_proposal_id: decision_contract_provenance_reference(
+				contract,
+				"autonomy_proposal",
+			),
+			source_signal_refs: decision_contract_autonomy_signal_refs(contract),
 			accepted_contract_fingerprint: accepted_contract_fingerprint.into(),
 			public_summary,
 		};
@@ -98,6 +113,9 @@ impl ProgramIntakePlan {
 			service_id: service_id.into(),
 			intake_kind: ProgramIntakeKind::IssueBatchIntake,
 			source_contract_id: None,
+			source_objective_ref: None,
+			source_proposal_id: None,
+			source_signal_refs: Vec::new(),
 			accepted_contract_fingerprint: accepted_contract_fingerprint.into(),
 			public_summary: public_summary.into(),
 		};
@@ -125,6 +143,21 @@ impl ProgramIntakePlan {
 	/// Accepted Decision Contract id for goal intake.
 	pub(crate) fn source_contract_id(&self) -> Option<&str> {
 		self.source_contract_id.as_deref()
+	}
+
+	/// Accepted Objective Contract lineage, when this plan came from autonomy work.
+	pub(crate) fn source_objective_ref(&self) -> Option<&str> {
+		self.source_objective_ref.as_deref()
+	}
+
+	/// Accepted autonomy proposal lineage, when this plan came from autonomy work.
+	pub(crate) fn source_proposal_id(&self) -> Option<&str> {
+		self.source_proposal_id.as_deref()
+	}
+
+	/// Accepted autonomy signal lineage, when this plan came from autonomy work.
+	pub(crate) fn source_signal_refs(&self) -> &[String] {
+		&self.source_signal_refs
 	}
 
 	/// Stable authority fingerprint for this intake boundary.
@@ -174,6 +207,40 @@ impl ProgramIntakePlan {
 				self.plan_id
 			);
 		}
+		if self.intake_kind == ProgramIntakeKind::IssueBatchIntake
+			&& self.source_objective_ref.as_deref().is_some_and(|id| !id.is_empty())
+		{
+			eyre::bail!(
+				"Issue-batch intake plan `{}` must not reference autonomy objective lineage.",
+				self.plan_id
+			);
+		}
+		if self.intake_kind == ProgramIntakeKind::IssueBatchIntake
+			&& self.source_proposal_id.as_deref().is_some_and(|id| !id.is_empty())
+		{
+			eyre::bail!(
+				"Issue-batch intake plan `{}` must not reference autonomy proposal lineage.",
+				self.plan_id
+			);
+		}
+		if self.intake_kind == ProgramIntakeKind::IssueBatchIntake
+			&& !self.source_signal_refs.is_empty()
+		{
+			eyre::bail!(
+				"Issue-batch intake plan `{}` must not reference autonomy signal lineage.",
+				self.plan_id
+			);
+		}
+
+		validate_optional(
+			"program intake plan source_objective_ref",
+			self.source_objective_ref.as_deref(),
+		)?;
+		validate_optional(
+			"program intake plan source_proposal_id",
+			self.source_proposal_id.as_deref(),
+		)?;
+		validate_string_list("program intake plan source_signal_refs", &self.source_signal_refs)?;
 
 		Ok(())
 	}
@@ -1778,6 +1845,36 @@ fn decision_contract_fingerprint(contract: &DecisionContract) -> Result<String> 
 	let digest = Sha256::digest(payload);
 
 	Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>())
+}
+
+fn decision_contract_provenance_reference(
+	contract: &DecisionContract,
+	kind: &str,
+) -> Option<String> {
+	contract
+		.research_provenance()
+		.iter()
+		.find(|provenance| provenance.kind() == kind)
+		.map(|provenance| provenance.reference().to_owned())
+}
+
+fn decision_contract_autonomy_signal_refs(contract: &DecisionContract) -> Vec<String> {
+	let mut refs = contract
+		.research_evidence()
+		.iter()
+		.filter_map(|evidence| {
+			if evidence.kind().starts_with("autonomy_signal:") {
+				evidence.source_ref().map(str::to_owned)
+			} else {
+				None
+			}
+		})
+		.collect::<Vec<_>>();
+
+	refs.sort();
+	refs.dedup();
+
+	refs
 }
 
 fn execution_program_schema() -> String {

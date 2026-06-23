@@ -665,8 +665,12 @@ fn goal_issue_plans(contract: &DecisionContract, program_id: &str) -> Result<Vec
 			validation: &validation,
 			risk: &risk,
 		})?;
+		let private_identifiers =
+			generated_issue_private_identifiers(contract, program_id, &node_id);
+		let private_identifier_refs =
+			private_identifiers.iter().map(String::as_str).collect::<Vec<_>>();
 
-		validate_generated_issue_text(&title, &description, &[program_id, &node_id])?;
+		validate_generated_issue_text(&title, &description, &private_identifier_refs)?;
 
 		plans.push(GoalIssuePlan {
 			key: issue.key().to_owned(),
@@ -1011,11 +1015,18 @@ fn render_goal_issue_brief(input: GoalIssueBriefInput<'_>) -> Result<String> {
 	append_heading(&mut output, "Authority");
 	append_item(
 		&mut output,
-		&format!("Accepted Decision Contract: `{}`", input.contract.contract_id()),
+		"Accepted Decision Contract authority is recorded in Decodex runtime state.",
 	);
 	append_optional_item(
 		&mut output,
 		"Source issue",
+		input.contract.source_intent().source_issue_identifier(),
+	);
+	append_heading(&mut output, "Required Reading");
+	append_item(&mut output, "This issue brief.");
+	append_optional_item(
+		&mut output,
+		"Linked source issue",
 		input.contract.source_intent().source_issue_identifier(),
 	);
 	append_heading(&mut output, "Scope");
@@ -1023,16 +1034,37 @@ fn render_goal_issue_brief(input: GoalIssueBriefInput<'_>) -> Result<String> {
 	append_items(&mut output, input.contract.accepted_authority().accepted_objectives());
 	append_items(&mut output, input.contract.accepted_authority().constraints());
 	append_items(&mut output, input.contract.accepted_authority().assumptions());
+	append_heading(&mut output, "Ownership Boundary");
+	append_item(
+		&mut output,
+		"Work only on this generated issue's objective and avoid unrelated cleanup.",
+	);
+	append_item(
+		&mut output,
+		"Do not use Program graph ids, queue labels, or private runtime state as execution authority.",
+	);
 	append_heading(&mut output, "Non-goals");
 	append_items_or_none(&mut output, input.contract.accepted_authority().non_goals());
 	append_heading(&mut output, "Dependencies");
 	append_items_or_none(&mut output, input.dependencies);
 	append_heading(&mut output, "Conflict Domains");
 	append_items_or_none(&mut output, &conflict_domain_labels(input.conflict_domains));
+	append_heading(&mut output, "Current-tree Landing Zone");
+	append_items_or_none(&mut output, &conflict_domain_labels(input.conflict_domains));
 	append_heading(&mut output, "Acceptance");
 	append_items(&mut output, input.acceptance);
 	append_heading(&mut output, "Validation");
 	append_items(&mut output, input.validation);
+	append_heading(&mut output, "Lifecycle Gates");
+	append_item(&mut output, "Run the repo-native validation gate before review handoff.");
+	append_item(
+		&mut output,
+		"Use normal Decodex review, PR handoff, landing, closeout, and cleanup gates.",
+	);
+	append_item(
+		&mut output,
+		"Run install or restart steps only when the owning issue or workflow requires them.",
+	);
 	append_heading(&mut output, "Risk");
 	append_items_or_none(&mut output, input.risk);
 	append_heading(&mut output, "Stop Conditions");
@@ -1117,6 +1149,33 @@ fn ensure_no_generated_issue_private_identifier(
 	}
 
 	Ok(())
+}
+
+fn generated_issue_private_identifiers(
+	contract: &DecisionContract,
+	program_id: &str,
+	node_id: &str,
+) -> Vec<String> {
+	let mut identifiers = vec![program_id.to_owned(), node_id.to_owned()];
+
+	identifiers.extend(contract.research_provenance().iter().filter_map(|provenance| {
+		if matches!(provenance.kind(), "autonomy_objective" | "autonomy_proposal") {
+			Some(provenance.reference().to_owned())
+		} else {
+			None
+		}
+	}));
+	identifiers.extend(contract.research_evidence().iter().filter_map(|evidence| {
+		if evidence.kind().starts_with("autonomy_signal:") {
+			evidence.source_ref().map(str::to_owned)
+		} else {
+			None
+		}
+	}));
+	identifiers.sort();
+	identifiers.dedup();
+
+	identifiers
 }
 
 fn goal_objective_lineage(contract: &DecisionContract) -> Vec<String> {
@@ -1641,7 +1700,8 @@ mod tests {
 		loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
 		prelude::eyre,
 		program_intake::{
-			self, GoalIntakeIssueAction, GoalIntakeRunRequest, IssueBatchIntakeClassification,
+			self, GoalIntakeIssueAction, GoalIntakeReport, GoalIntakeRunRequest,
+			IssueBatchIntakeClassification,
 		},
 		state::StateStore,
 		tracker::{
@@ -2088,6 +2148,18 @@ mod tests {
 		})
 		.expect("apply should materialize issues and program");
 
+		assert_goal_intake_apply_report(&report, &tracker);
+		assert_goal_intake_runtime_links(&store, &report);
+
+		let updated = tracker
+			.get_issue_by_identifier("XY-G1")
+			.expect("issue lookup should work")
+			.expect("updated issue should exist");
+
+		assert_goal_issue_brief_is_public(&updated.description, &report);
+	}
+
+	fn assert_goal_intake_apply_report(report: &GoalIntakeReport, tracker: &FakeTracker) {
 		assert!(report.applied);
 		assert!(report.persisted);
 		assert_eq!(tracker.updated_issue_count(), 1);
@@ -2102,81 +2174,104 @@ mod tests {
 				.iter()
 				.any(|reason| reason.contains("has not reached a required terminal state"))
 		);
+	}
 
+	fn assert_goal_intake_runtime_links(store: &StateStore, report: &GoalIntakeReport) {
 		let linked_contract = store
 			.decision_contract("decodex", "goal-intake-contract")
 			.expect("contract lookup should read")
 			.expect("contract should exist");
+		let node_ids = report.issues.iter().map(|issue| issue.node_id.clone()).collect::<Vec<_>>();
 
 		assert_eq!(
 			linked_contract.contract().links().generated_issue_identifiers(),
 			&[String::from("XY-G1"), String::from("XY-G2")]
 		);
-		assert_eq!(
-			linked_contract.contract().links().execution_program_node_ids(),
-			&report.issues.iter().map(|issue| issue.node_id.clone()).collect::<Vec<_>>()
-		);
+		assert_eq!(linked_contract.contract().links().execution_program_node_ids(), &node_ids);
 
 		let programs = store
 			.list_execution_programs_for_contract("decodex", "goal-intake-contract")
 			.expect("programs should list");
-
-		assert_eq!(programs.len(), 1);
-		assert_eq!(programs[0].program_id(), report.program_id);
-
 		let intake_plans =
 			store.list_program_intake_plans("decodex").expect("intake plans should list");
 
+		assert_eq!(programs.len(), 1);
+		assert_eq!(programs[0].program_id(), report.program_id);
 		assert_eq!(intake_plans.len(), 1);
 		assert_eq!(intake_plans[0].intake_kind(), "goal_intake");
 		assert_eq!(intake_plans[0].source_contract_id(), Some("goal-intake-contract"));
 
-		let mappings = store
-			.list_program_issue_mappings("decodex", &report.program_id)
-			.expect("mappings should list");
+		assert_goal_intake_plan_lineage(&programs[0]);
 
-		assert_eq!(mappings.len(), 2);
-
-		let updated = tracker
-			.get_issue_by_identifier("XY-G1")
-			.expect("issue lookup should work")
-			.expect("updated issue should exist");
-
-		assert!(updated.description.contains("## Objective"));
-		assert!(updated.description.contains("## Authority"));
-		assert!(updated.description.contains("Accepted Decision Contract: `goal-intake-contract`"));
-		assert!(updated.description.contains("Source issue: `XY-852`"));
-		assert!(updated.description.contains("## Dependencies"));
-		assert!(updated.description.contains("## Acceptance"));
-		assert!(
-			updated
-				.description
-				.contains("Goal intake dry-run renders generated issue briefs without mutation.")
+		assert_eq!(
+			store
+				.list_program_issue_mappings("decodex", &report.program_id)
+				.expect("mappings should list")
+				.len(),
+			2
 		);
-		assert!(updated.description.contains("## Validation"));
-		assert!(updated.description.contains("Run cargo make test before handoff."));
-		assert!(updated.description.contains("## Risk"));
-		assert!(
-			updated
-				.description
-				.contains("Generated issue descriptions must stay natural-language.")
-		);
-		assert!(updated.description.contains("## Stop Conditions"));
-		assert!(
-			updated
-				.description
-				.contains("Stop when promotion authority or required decisions are missing.")
-		);
-		assert!(!updated.description.contains("Execution Program: `"));
-		assert!(!updated.description.contains("Execution Program node:"));
-		assert!(!updated.description.contains(&report.program_id));
+	}
 
-		for issue in &report.issues {
-			assert!(!updated.description.contains(&issue.node_id));
+	fn assert_goal_intake_plan_lineage(record: &crate::state::ExecutionProgramRecord) {
+		let intake_plan = record
+			.program()
+			.program_intake_plan()
+			.expect("program payload should retain intake plan lineage");
+
+		assert_eq!(intake_plan.source_objective_ref(), Some("decodex:quality-autonomy@1"));
+		assert_eq!(intake_plan.source_proposal_id(), Some("autonomy_proposal:test-proposal"));
+		assert_eq!(
+			intake_plan.source_signal_refs(),
+			&[String::from("autonomy_signal:test-signal")]
+		);
+	}
+
+	fn assert_goal_issue_brief_is_public(description: &str, report: &GoalIntakeReport) {
+		for heading in [
+			"## Objective",
+			"## Authority",
+			"## Required Reading",
+			"## Ownership Boundary",
+			"## Dependencies",
+			"## Current-tree Landing Zone",
+			"## Acceptance",
+			"## Validation",
+			"## Lifecycle Gates",
+			"## Risk",
+			"## Stop Conditions",
+		] {
+			assert!(description.contains(heading));
 		}
 
-		assert!(!updated.description.contains("```"));
-		assert!(!updated.description.contains("private_evidence_refs"));
+		assert!(description.contains(
+			"Accepted Decision Contract authority is recorded in Decodex runtime state."
+		));
+		assert!(description.contains("Source issue: `XY-852`"));
+		assert!(description.contains("Goal intake dry-run renders generated issue briefs"));
+		assert!(description.contains("Use normal Decodex review, PR handoff, landing"));
+		assert!(description.contains("Run install or restart steps only when"));
+		assert!(description.contains("Stop when promotion authority"));
+
+		assert_goal_issue_brief_hides_private_ids(description, report);
+	}
+
+	fn assert_goal_issue_brief_hides_private_ids(description: &str, report: &GoalIntakeReport) {
+		for private_id in [
+			"Execution Program: `",
+			"Execution Program node:",
+			"goal-intake-contract",
+			"autonomy_proposal:test-proposal",
+			"decodex:quality-autonomy@1",
+			"autonomy_signal:test-signal",
+			&report.program_id,
+			"```",
+			"private_evidence_refs",
+		] {
+			assert!(!description.contains(private_id));
+		}
+		for issue in &report.issues {
+			assert!(!description.contains(&issue.node_id));
+		}
 	}
 
 	#[test]
@@ -2206,6 +2301,50 @@ mod tests {
 				"generated issue description contains a private Program Intake identifier"
 			)
 		);
+	}
+
+	#[test]
+	fn goal_intake_apply_rejects_generated_briefs_that_leak_autonomy_lineage_ids() {
+		let store = StateStore::open_in_memory().expect("store should open");
+		let mut payload = serde_json::to_value(accepted_goal_contract())
+			.expect("accepted goal contract should serialize");
+
+		payload["accepted_authority"]["constraints"]
+			.as_array_mut()
+			.expect("constraints should be an array")
+			.push(serde_json::json!(
+				"Do not expose autonomy_signal:test-signal in generated issue text."
+			));
+
+		let leaking_contract: DecisionContract =
+			serde_json::from_value(payload).expect("leaking contract should deserialize");
+
+		store
+			.upsert_decision_contract("decodex", Some("XY-852"), leaking_contract)
+			.expect("contract should persist");
+
+		let tracker = FakeTracker::default().with_issues([issue("XY-852", "Todo")]);
+		let config = test_config();
+		let workflow = workflow();
+		let error = program_intake::run_goal_intake(GoalIntakeRunRequest {
+			state_store: &store,
+			tracker: &tracker,
+			config: &config,
+			workflow: &workflow,
+			contract_id: "goal-intake-contract",
+			team_issue_identifier: None,
+			dry_run: false,
+			apply: true,
+		})
+		.expect_err("private autonomy lineage ids must fail generated brief validation");
+
+		assert!(
+			error.to_string().contains(
+				"generated issue description contains a private Program Intake identifier"
+			)
+		);
+		assert_eq!(tracker.created_issue_count(), 0);
+		assert!(store.list_execution_programs("decodex").expect("programs").is_empty());
 	}
 
 	#[test]
@@ -2342,122 +2481,137 @@ mod tests {
 	}
 
 	fn latent_goal_contract() -> DecisionContract {
-		serde_json::from_value(serde_json::json!({
+		serde_json::from_value(latent_goal_contract_payload())
+			.expect("goal contract should deserialize")
+	}
+
+	fn latent_goal_contract_payload() -> serde_json::Value {
+		serde_json::json!({
 			"schema": crate::loop_contract::DECISION_CONTRACT_SCHEMA,
 			"record_version": crate::loop_contract::DECISION_CONTRACT_RECORD_VERSION,
 			"contract_id": "goal-intake-contract",
 			"status": "draft_latent",
-			"source_intent": {
-				"summary": "Ship promoted goal intake.",
-				"user_utterance": "arrange this goal",
-				"source_issue_identifier": "XY-852",
-			},
-			"research_provenance": [
-				{
-					"kind": "spec",
-					"reference": "docs/spec/loop-runtime.md",
-					"summary": "Promoted contracts can shape normal Linear issues."
-				}
-			],
-			"research_evidence": [
-				{
-					"claim": "Goal intake needs generated issues and an internal program.",
-					"support": "The loop-runtime spec defines Program Intake and Execution Program records.",
-					"source_ref": "docs/spec/loop-runtime.md"
-				}
-			],
+			"source_intent": latent_goal_source_intent(),
+			"research_provenance": latent_goal_research_provenance(),
+			"research_evidence": latent_goal_research_evidence(),
 			"research_options": [],
-			"accepted_authority": {
-				"accepted_objectives": [
-					"Materialize accepted goal intake into normal Linear issues.",
-					"Persist the internal Execution Program without exposing graph mechanics."
-				],
-				"non_goals": [
-					"Do not run implementation from goal intake."
-				],
-				"constraints": [
-					"Linear receives only public-safe issue briefs and sparse links."
-				],
-				"assumptions": [
-					"The source issue anchors the generated issue team."
-				],
-				"objections": [],
-				"stop_conditions": [
-					"Stop when promotion authority or required decisions are missing."
-				]
-			},
-			"execution_readiness": {
-				"summary": "Ready for issue shaping after promotion.",
-				"ready_for_issue_shaping": true,
-				"missing_decisions": [],
-				"validation_expectations": [
-					"Run cargo make test before handoff."
-				],
-				"risk_notes": [
-					"Generated issue descriptions must stay natural-language."
-				],
-				"proposed_issues": [
-					{
-						"key": "goal-intake-runtime",
-						"title": "Implement goal intake CLI/API behavior.",
-						"objective": "Implement goal intake CLI/API behavior.",
-						"stage": "runtime",
-						"dependencies": [],
-						"conflict_domains": [
-							"module:runtime"
-						],
-						"acceptance": [
-							"Goal intake dry-run renders generated issue briefs without mutation."
-						],
-						"validation": [
-							"Run cargo make test before handoff."
-						],
-						"risk": [
-							"Generated issue descriptions must stay natural-language."
-						],
-						"queue_intent": "ready_to_queue"
-					},
-					{
-						"key": "goal-intake-links",
-						"title": "Persist Execution Program links for generated issues.",
-						"objective": "Persist Execution Program links for generated issues.",
-						"stage": "runtime",
-						"dependencies": [
-							"goal-intake-runtime"
-						],
-						"conflict_domains": [
-							"module:runtime",
-							"file:docs/spec/loop-runtime.md"
-						],
-						"acceptance": [
-							"Apply links generated issue identifiers and execution nodes back to the accepted contract."
-						],
-						"validation": [
-							"Run cargo make test before handoff."
-						],
-						"risk": [
-							"Generated issue descriptions must stay natural-language."
-						],
-						"queue_intent": "ready_to_queue"
-					}
-				],
-				"conflict_domains": [
-					"module:runtime",
-					"file:docs/spec/loop-runtime.md"
-				]
-			},
+			"accepted_authority": latent_goal_accepted_authority(),
+			"execution_readiness": latent_goal_execution_readiness(),
 			"links": {
 				"generated_issue_ids": [],
 				"generated_issue_identifiers": [],
-				"execution_program_node_ids": []
-			},
-			"evidence_boundary": {
-				"private_evidence_refs": [],
-				"public_projection_refs": [],
+			"execution_program_node_ids": []
+		},
+		"evidence_boundary": {
+			"private_evidence_refs": [],
+			"public_projection_refs": [],
 				"public_summary": "Goal intake contract ready for issue shaping."
 			}
-		}))
-		.expect("goal contract should deserialize")
+		})
+	}
+
+	fn latent_goal_source_intent() -> serde_json::Value {
+		serde_json::json!({
+			"summary": "Ship promoted goal intake.",
+			"user_utterance": "arrange this goal",
+			"source_issue_identifier": "XY-852",
+		})
+	}
+
+	fn latent_goal_research_provenance() -> serde_json::Value {
+		serde_json::json!([
+			{
+				"kind": "autonomy_proposal",
+				"reference": "autonomy_proposal:test-proposal",
+				"summary": "Accepted autonomy proposal produced this Decision Contract candidate."
+			},
+			{
+				"kind": "autonomy_objective",
+				"reference": "decodex:quality-autonomy@1",
+				"summary": "Accepted autonomy objective version."
+			},
+			{
+				"kind": "spec",
+				"reference": "docs/spec/loop-runtime.md",
+				"summary": "Promoted contracts can shape normal Linear issues."
+			}
+		])
+	}
+
+	fn latent_goal_research_evidence() -> serde_json::Value {
+		serde_json::json!([
+			{
+				"kind": "autonomy_signal:runtime_health",
+				"claim": "Autonomy signal `autonomy_signal:test-signal` contributed.",
+				"support": "freshness=fresh; evidence_class=repo_source; confidence=high",
+				"source_ref": "autonomy_signal:test-signal"
+			},
+			{
+				"claim": "Goal intake needs generated issues and an internal program.",
+				"support": "The loop-runtime spec defines Program Intake records.",
+				"source_ref": "docs/spec/loop-runtime.md"
+			}
+		])
+	}
+
+	fn latent_goal_accepted_authority() -> serde_json::Value {
+		serde_json::json!({
+			"accepted_objectives": [
+				"Materialize accepted goal intake into normal Linear issues.",
+				"Persist the internal Execution Program without exposing graph mechanics."
+			],
+			"non_goals": ["Do not run implementation from goal intake."],
+			"constraints": ["Linear receives only public-safe issue briefs and sparse links."],
+			"assumptions": ["The source issue anchors the generated issue team."],
+			"objections": [],
+			"stop_conditions": [
+				"Stop when promotion authority or required decisions are missing."
+			]
+		})
+	}
+
+	fn latent_goal_execution_readiness() -> serde_json::Value {
+		serde_json::json!({
+			"summary": "Ready for issue shaping after promotion.",
+			"ready_for_issue_shaping": true,
+			"missing_decisions": [],
+			"validation_expectations": ["Run cargo make test before handoff."],
+			"risk_notes": ["Generated issue descriptions must stay natural-language."],
+			"proposed_issues": [goal_intake_runtime_issue(), goal_intake_links_issue()],
+			"conflict_domains": ["module:runtime", "file:docs/spec/loop-runtime.md"]
+		})
+	}
+
+	fn goal_intake_runtime_issue() -> serde_json::Value {
+		serde_json::json!({
+			"key": "goal-intake-runtime",
+			"title": "Implement goal intake CLI/API behavior.",
+			"objective": "Implement goal intake CLI/API behavior.",
+			"stage": "runtime",
+			"dependencies": [],
+			"conflict_domains": ["module:runtime"],
+			"acceptance": ["Goal intake dry-run renders generated issue briefs without mutation."],
+			"validation": ["Run cargo make test before handoff."],
+			"risk": ["Generated issue descriptions must stay natural-language."],
+			"queue_intent": "ready_to_queue"
+		})
+	}
+
+	fn goal_intake_links_issue() -> serde_json::Value {
+		serde_json::json!({
+			"key": "goal-intake-links",
+			"title": "Persist Execution Program links for generated issues.",
+			"objective": "Persist Execution Program links for generated issues.",
+			"stage": "runtime",
+			"dependencies": ["goal-intake-runtime"],
+			"conflict_domains": ["module:runtime", "file:docs/spec/loop-runtime.md"],
+			"acceptance": [
+				"Apply links generated issue identifiers and execution nodes back to the accepted contract."
+			],
+			"validation": ["Run cargo make test before handoff."],
+			"risk": ["Generated issue descriptions must stay natural-language."],
+			"queue_intent": "ready_to_queue"
+		})
 	}
 
 	fn accepted_goal_contract() -> DecisionContract {
