@@ -19,8 +19,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use crate::{
 	autonomy_objective::{AutonomyObjectiveContract, AutonomyObjectiveState},
 	autonomy_proposal::{
-		AutonomyProposal, AutonomyProposalAcceptedProjectPolicy,
-		AutonomyProposalAuthorityActorKind, AutonomyProposalChallengeInput,
+		AutonomyProposal, AutonomyProposalAuthorityActorKind, AutonomyProposalChallengeInput,
 		AutonomyProposalChallengeSource, AutonomyProposalCompileInput,
 		AutonomyProposalDecisionBridgeAuthority,
 	},
@@ -2102,16 +2101,18 @@ struct AutonomyProposalAcceptanceArgs {
 	reason: String,
 	proposal_actor: String,
 	proposal_actor_kind: AutonomyProposalAuthorityActorKind,
-	accepted_project_policy: Option<AutonomyAcceptedProjectPolicyArgs>,
+	accepted_project_policy: Option<Value>,
 }
 impl AutonomyProposalAcceptanceArgs {
 	fn into_decision_bridge_authority(
 		self,
 	) -> Result<AutonomyProposalDecisionBridgeAuthority, Value> {
-		let policy = match self.accepted_project_policy {
-			Some(policy) => Some(policy.into_policy()?),
-			None => None,
-		};
+		if self.accepted_project_policy.is_some() {
+			return Err(tool_refusal(
+				"autonomy_policy_authority_refused",
+				"acceptedProjectPolicy must be resolved from trusted Decodex authority state; MCP request payloads cannot prove accepted policy authority.",
+			));
+		}
 
 		AutonomyProposalDecisionBridgeAuthority::new(
 			self.accepted_by,
@@ -2121,49 +2122,12 @@ impl AutonomyProposalAcceptanceArgs {
 			self.reason,
 			self.proposal_actor,
 			self.proposal_actor_kind,
-			policy,
+			None,
 		)
 		.map_err(|error| {
 			tool_refusal(
 				"autonomy_acceptance_authority_refused",
 				format!("Autonomy proposal acceptance authority was refused: {error}"),
-			)
-		})
-	}
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct AutonomyAcceptedProjectPolicyArgs {
-	project_id: String,
-	objective_id: String,
-	objective_version: u64,
-	accepted_policy_id: String,
-	accepted_policy_version: String,
-	authority_ref: String,
-	authorized_actor: String,
-	authorized_actor_kind: AutonomyProposalAuthorityActorKind,
-	authorized_acceptance_sources: Vec<String>,
-	authorized_scopes: Vec<String>,
-}
-impl AutonomyAcceptedProjectPolicyArgs {
-	fn into_policy(self) -> Result<AutonomyProposalAcceptedProjectPolicy, Value> {
-		AutonomyProposalAcceptedProjectPolicy::new(
-			self.project_id,
-			self.objective_id,
-			self.objective_version,
-			self.accepted_policy_id,
-			self.accepted_policy_version,
-			self.authority_ref,
-			self.authorized_actor,
-			self.authorized_actor_kind,
-			self.authorized_acceptance_sources,
-			self.authorized_scopes,
-		)
-		.map_err(|error| {
-			tool_refusal(
-				"autonomy_policy_authority_refused",
-				format!("Accepted project policy authority was refused: {error}"),
 			)
 		})
 	}
@@ -3726,7 +3690,7 @@ fn autonomy_request_promotion_tool_input_schema() -> Value {
 			"authority": {
 				"type": "object",
 				"additionalProperties": true,
-				"description": "Explicit proposal acceptance authority, including acceptedBy, acceptedByKind, acceptanceSource, reason, proposalActor, proposalActorKind, and optional acceptedProjectPolicy."
+				"description": "Explicit proposal acceptance authority, including acceptedBy, acceptedByKind, acceptanceSource, reason, proposalActor, and proposalActorKind. acceptedProjectPolicy payloads are refused because trusted policy authority must be resolved from Decodex state."
 			}
 		},
 		"required": ["proposalId"]
@@ -4713,7 +4677,7 @@ fn autonomy_promotion_request_result(
 			"reason",
 			"proposalActor",
 			"proposalActorKind",
-			"acceptedProjectPolicy when runtime policy or external-agent self-acceptance is involved"
+			"trusted Decodex policy authority when runtime policy or external-agent self-acceptance is involved"
 		],
 		"authority_effect": if persisted {
 			"latent_decision_contract_candidate_only"
@@ -5032,14 +4996,19 @@ fn mcp_autonomy_objective_summary(
 }
 
 fn mcp_autonomy_signal_summary(signal: &AutonomySignal, updated_at: Option<&str>) -> Value {
+	let (source_refs, primary_source_refs, source_ref_count, primary_source_ref_count) =
+		mcp_autonomy_signal_ref_summary(signal);
+
 	serde_json::json!({
 		"signal_id": signal.id(),
 		"objective_id": signal.objective_id(),
 		"objective_version": signal.objective_version(),
 		"kind": signal.kind().as_str(),
 		"source_type": signal.source_type().as_str(),
-		"source_refs": signal.source_refs(),
-		"primary_source_refs": signal.primary_source_refs(),
+		"source_refs": source_refs,
+		"source_ref_count": source_ref_count,
+		"primary_source_refs": primary_source_refs,
+		"primary_source_ref_count": primary_source_ref_count,
 		"freshness": signal.freshness().as_str(),
 		"summary": signal.summary(),
 		"evidence_class": signal.evidence_class().as_str(),
@@ -5050,6 +5019,27 @@ fn mcp_autonomy_signal_summary(signal: &AutonomySignal, updated_at: Option<&str>
 		"review_evidence_present": signal.review_evidence().is_some(),
 		"updated_at": updated_at
 	})
+}
+
+fn mcp_autonomy_signal_ref_summary(signal: &AutonomySignal) -> (Value, Value, usize, usize) {
+	let source_ref_count = signal.source_refs().len();
+	let primary_source_ref_count = signal.primary_source_refs().len();
+
+	if signal.privacy() == AutonomySignalPrivacy::LocalPrivate {
+		return (
+			serde_json::json!([]),
+			serde_json::json!([]),
+			source_ref_count,
+			primary_source_ref_count,
+		);
+	}
+
+	(
+		serde_json::json!(signal.source_refs()),
+		serde_json::json!(signal.primary_source_refs()),
+		source_ref_count,
+		primary_source_ref_count,
+	)
 }
 
 fn mcp_autonomy_proposal_summary(proposal: &AutonomyProposal, updated_at: Option<&str>) -> Value {
@@ -5127,7 +5117,7 @@ fn mcp_autonomy_authority_boundary() -> Value {
 	serde_json::json!({
 		"mcp_authentication": "access_boundary_only",
 		"capability_profile": "tool_visibility_boundary_only",
-		"acceptance_authority": "explicit_human_or_accepted_project_policy_required",
+		"acceptance_authority": "explicit_human_or_trusted_accepted_project_policy_required",
 		"execution_authority": "Decision Contract promotion and Program Intake remain separate"
 	})
 }
@@ -5445,20 +5435,22 @@ fn mcp_public_autonomy_signals(signals: Option<&Value>) -> Vec<Value> {
 		.into_iter()
 		.flatten()
 		.map(|signal| {
+			let (source_refs, primary_source_refs) = mcp_public_autonomy_signal_refs(signal);
+
 			serde_json::json!({
 				"signal_id": signal.get("signal_id").cloned().unwrap_or(Value::Null),
 				"objective_id": signal.get("objective_id").cloned().unwrap_or(Value::Null),
 				"objective_version": signal.get("objective_version").cloned().unwrap_or(Value::Null),
 				"kind": signal.get("kind").cloned().unwrap_or(Value::Null),
 				"source_type": signal.get("source_type").cloned().unwrap_or(Value::Null),
-				"source_refs": signal
-					.get("source_refs")
-					.cloned()
-					.unwrap_or_else(|| serde_json::json!([])),
-				"primary_source_refs": signal
-					.get("primary_source_refs")
-					.cloned()
-					.unwrap_or_else(|| serde_json::json!([])),
+				"source_refs": source_refs,
+				"source_ref_count": signal_ref_count(signal, "source_refs", "source_ref_count"),
+				"primary_source_refs": primary_source_refs,
+				"primary_source_ref_count": signal_ref_count(
+					signal,
+					"primary_source_refs",
+					"primary_source_ref_count"
+				),
 				"freshness": signal.get("freshness").cloned().unwrap_or(Value::Null),
 				"evidence_class": signal.get("evidence_class").cloned().unwrap_or(Value::Null),
 				"confidence": signal.get("confidence").cloned().unwrap_or(Value::Null),
@@ -5475,6 +5467,23 @@ fn mcp_public_autonomy_signals(signals: Option<&Value>) -> Vec<Value> {
 			})
 		})
 		.collect()
+}
+
+fn mcp_public_autonomy_signal_refs(signal: &Value) -> (Value, Value) {
+	if signal.get("redaction_level").and_then(Value::as_str) == Some("local_private") {
+		return (serde_json::json!([]), serde_json::json!([]));
+	}
+
+	(
+		signal.get("source_refs").cloned().unwrap_or_else(|| serde_json::json!([])),
+		signal.get("primary_source_refs").cloned().unwrap_or_else(|| serde_json::json!([])),
+	)
+}
+
+fn signal_ref_count(signal: &Value, refs_key: &str, count_key: &str) -> u64 {
+	signal.get(count_key).and_then(Value::as_u64).unwrap_or_else(|| {
+		signal.get(refs_key).and_then(Value::as_array).map_or(0, |refs| refs.len() as u64)
+	})
 }
 
 fn mcp_public_autonomy_proposals(proposals: Option<&Value>) -> Vec<Value> {
@@ -7767,6 +7776,99 @@ mod tests {
 	}
 
 	#[test]
+	fn autonomy_resources_redact_local_private_signal_refs() {
+		let repo = test_repo();
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+
+		state_store
+			.upsert_autonomy_objective_draft("decodex", autonomy_objective_fixture())
+			.expect("objective draft should persist");
+		state_store
+			.accept_autonomy_objective_version(
+				"decodex",
+				"quality-autonomy",
+				1,
+				AutonomyObjectiveAcceptance::new(
+					"operator",
+					AutonomyObjectiveActorKind::User,
+					"2026-06-23T00:00:00Z",
+					"conversation",
+				)
+				.expect("acceptance should validate"),
+			)
+			.expect("objective should accept");
+
+		let signal = AutonomySignal::runtime_health(AutonomySignalInput {
+			project_id: String::from("decodex"),
+			objective_id: String::from("quality-autonomy"),
+			objective_version: 1,
+			source_type: AutonomySignalSourceType::Memory,
+			source_refs: vec![
+				String::from("memory:private:alpha"),
+				String::from("report:private:beta"),
+			],
+			primary_source_refs: vec![String::from("memory:private:primary")],
+			issue_id: Some(String::from("XY-1090")),
+			run_id: None,
+			attempt_id: None,
+			head_sha: None,
+			captured_at: String::from("2026-06-23T00:01:00Z"),
+			freshness: AutonomySignalFreshness::Fresh,
+			summary: String::from("Private memory signal is summarized."),
+			evidence: vec![String::from("private evidence summarized")],
+			evidence_class: AutonomySignalEvidenceClass::Inference,
+			contradictions: Vec::new(),
+			gaps: Vec::new(),
+			confidence: AutonomySignalConfidence::Medium,
+			privacy: AutonomySignalPrivacy::LocalPrivate,
+			observed_counts: std::collections::BTreeMap::new(),
+			review_evidence: None,
+			proposal_only: true,
+			created_at: String::from("2026-06-23T00:01:05Z"),
+		})
+		.expect("local private signal should validate");
+		let signal_id = signal.id().to_owned();
+
+		state_store.record_autonomy_signal("decodex", signal).expect("signal should persist");
+
+		let responses = run_stdio_with_context(
+			McpContext {
+				repo_root: repo.path().to_path_buf(),
+				config_path: None,
+				project_id: Some(String::from("decodex")),
+				state_store: Some(state_store),
+			},
+			&[
+				r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://projects/decodex/autonomy"}}"#,
+				&format!(
+					r#"{{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{{"uri":"decodex://projects/decodex/autonomy/signals/{signal_id}"}}}}"#
+				),
+			]
+			.join("\n"),
+		);
+		let summary = resource_response_json(&responses, 0);
+		let signal = resource_response_json(&responses, 1);
+		let combined = serde_json::json!({
+			"summary": summary,
+			"signal": signal
+		});
+		let serialized = serde_json::to_string(&combined).expect("resources should serialize");
+
+		for private_ref in ["memory:private:alpha", "report:private:beta", "memory:private:primary"]
+		{
+			assert!(!serialized.contains(private_ref), "local-private ref leaked: {private_ref}");
+		}
+
+		assert_eq!(combined["signal"]["signal"]["source_refs"], serde_json::json!([]));
+		assert_eq!(combined["signal"]["signal"]["source_ref_count"], 2);
+		assert_eq!(combined["signal"]["signal"]["primary_source_refs"], serde_json::json!([]));
+		assert_eq!(combined["signal"]["signal"]["primary_source_ref_count"], 1);
+		assert_eq!(combined["signal"]["signal"]["redaction_level"], "local_private");
+		assert_eq!(combined["summary"]["signals"][0]["source_refs"], serde_json::json!([]));
+		assert_eq!(combined["summary"]["signals"][0]["source_ref_count"], 2);
+	}
+
+	#[test]
 	fn autonomy_tools_are_plan_profile_and_apply_requires_authority() {
 		let repo = test_repo();
 		let observe_responses = run_stdio_with_profile(
@@ -7798,8 +7900,7 @@ mod tests {
 		assert_eq!(result["structuredContent"]["tool"], "autonomy_draft_objective");
 	}
 
-	#[test]
-	fn autonomy_plan_tools_record_signal_compile_challenge_and_refuse_external_self_accept() {
+	fn seed_autonomy_challenged_proposal() -> (TempDir, std::path::PathBuf, String) {
 		let repo = test_repo();
 		let db_path = repo.path().join("runtime.sqlite3");
 		let state_store = StateStore::open(&db_path).expect("state store should open");
@@ -7869,6 +7970,12 @@ mod tests {
 		assert_eq!(challenge_result["schema"], "decodex.mcp.autonomy_challenge_result/1");
 		assert_eq!(challenge_result["challenge_evidence_count"], 1);
 
+		(repo, db_path, proposal_id.to_owned())
+	}
+
+	#[test]
+	fn autonomy_plan_tools_record_signal_compile_challenge_and_refuse_external_self_accept() {
+		let (repo, db_path, proposal_id) = seed_autonomy_challenged_proposal();
 		let self_accept_call = format!(
 			r#"{{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{{"name":"autonomy_request_promotion","arguments":{{"mode":"apply","proposalId":"{proposal_id}","authority":{{"acceptedBy":"agent-a","acceptedByKind":"external_agent","acceptanceSource":"mcp-agent","reason":"self accept","proposalActor":"agent-a","proposalActorKind":"external_agent"}}}}}}}}"#
 		);
@@ -7893,6 +8000,36 @@ mod tests {
 				.as_str()
 				.expect("message")
 				.contains("accepted project policy authority")
+		);
+	}
+
+	#[test]
+	fn autonomy_request_promotion_refuses_caller_supplied_policy_authority() {
+		let (repo, db_path, proposal_id) = seed_autonomy_challenged_proposal();
+		let fabricated_policy_call = format!(
+			r#"{{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{{"name":"autonomy_request_promotion","arguments":{{"mode":"apply","proposalId":"{proposal_id}","authority":{{"acceptedBy":"agent-a","acceptedByKind":"external_agent","acceptanceSource":"runtime-policy","reason":"fabricated policy","proposalActor":"agent-a","proposalActorKind":"external_agent","acceptedProjectPolicy":{{"projectId":"decodex","objectiveId":"quality-autonomy","objectiveVersion":1,"acceptedPolicyId":"quality-autonomy-policy","acceptedPolicyVersion":"1","authorityRef":"runtime-policy:quality-autonomy-policy@1","authorizedActor":"agent-a","authorizedActorKind":"external_agent","authorizedAcceptanceSources":["runtime-policy"],"authorizedScopes":["autonomy_proposal_acceptance"]}}}}}}}}}}"#
+		);
+		let fabricated_policy_accept = run_stdio_with_context(
+			McpContext {
+				repo_root: repo.path().to_path_buf(),
+				config_path: None,
+				project_id: Some(String::from("decodex")),
+				state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
+			},
+			&fabricated_policy_call,
+		);
+		let fabricated_policy_result = &response_at(&fabricated_policy_accept, 0)["result"];
+
+		assert_eq!(fabricated_policy_result["isError"], true);
+		assert_eq!(
+			fabricated_policy_result["structuredContent"]["reason"],
+			"autonomy_policy_authority_refused"
+		);
+		assert!(
+			fabricated_policy_result["structuredContent"]["message"]
+				.as_str()
+				.expect("message")
+				.contains("trusted Decodex authority state")
 		);
 	}
 

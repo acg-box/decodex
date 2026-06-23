@@ -7,7 +7,8 @@
   objective, signal, proposal, and evidence summaries, while plan tools can draft
   objectives, submit signals, compile/challenge proposals, and request explicit
   proposal promotion without bypassing Decision Contract, Program Intake, review, or
-  landing authority.
+  landing authority. The surface now fails closed on caller-supplied accepted-policy
+  bodies and redacts local-private signal refs while preserving ref counts.
 - Narrowed repo-gate tracked-rewrite handling so validation-satisfied phase goals can
   continue to a commit-capable handoff when canonicalize rewrites only pre-gate
   implementation paths, while unsafe or strict-boundary rewrites still preserve

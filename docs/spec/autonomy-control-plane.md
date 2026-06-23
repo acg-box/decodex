@@ -458,7 +458,12 @@ stop before normal Decision Contract promotion, Program Intake, review, PR hando
 landing, install, restart, closeout, or cleanup authority. `autonomy_request_promotion`
 may create only a latent Decision Contract candidate from an accepted proposal; the
 result still requires normal `research_promote` and later Program Intake before
-execution work exists.
+execution work exists. MCP callers cannot prove accepted project policy authority by
+supplying an `acceptedProjectPolicy` body. Policy-backed runtime or external-agent
+acceptance must be resolved from trusted Decodex authority state; until that resolver
+exists, the MCP promotion request fails closed with a structured refusal. Local-private
+signals expose ref counts and redaction metadata only, not raw `source_refs` or
+`primary_source_refs`.
 
 ## Telemetry And Memory Boundary
 
