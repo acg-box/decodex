@@ -5595,7 +5595,11 @@ fn apply_authority_boundary_landing_policy(
 		return Ok(());
 	};
 
-	classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
+	classification.decision = if reason == "authority_boundary_requires_human_decision" {
+		PostReviewLaneDecision::Block
+	} else {
+		PostReviewLaneDecision::NeedsReviewRepair
+	};
 	classification.reason = reason.to_owned();
 
 	Ok(())
@@ -5612,6 +5616,20 @@ fn authority_boundary_landing_requirement(
 		runtime_state.project_id,
 		&snapshot.issue.id,
 	)?;
+
+	if events
+		.iter()
+		.any(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE)
+	{
+		return Ok(Some("authority_boundary_requires_human_decision"));
+	}
+	if events.iter().rev().any(|event| {
+		event.event_type() == AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE
+			&& authority_boundary_event_requires_human_decision(event.payload())
+	}) {
+		return Ok(Some("authority_boundary_requires_human_decision"));
+	}
+
 	let latest_clean_review_record_id = events
 		.iter()
 		.rev()
@@ -5687,6 +5705,28 @@ fn authority_boundary_event_landing_requirement(payload: &Value) -> Option<&'sta
 	}
 
 	None
+}
+
+fn authority_boundary_event_requires_human_decision(payload: &Value) -> bool {
+	authority_boundary_event_policy_decision(payload)
+		.is_some_and(|policy_decision| policy_decision == "requires_human_decision")
+		|| payload
+			.get("policy")
+			.and_then(|policy| policy.get("requires_human_decision"))
+			.and_then(Value::as_bool)
+			.unwrap_or(false)
+		|| matches!(
+			payload
+				.get("disposition")
+				.and_then(Value::as_str)
+				.or_else(|| {
+					payload
+						.get("final_disposition")
+						.and_then(|final_disposition| final_disposition.get("disposition"))
+						.and_then(Value::as_str)
+				}),
+			Some("requires_human" | "insufficient_evidence")
+		)
 }
 
 fn authority_boundary_event_policy_decision(payload: &Value) -> Option<&str> {
