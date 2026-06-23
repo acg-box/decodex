@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/orchestrator/execution.rs]
 drift_watch: [issue_progress_checkpoint, issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, phase_acceptance_check, issue_terminal_finalize, docs_impact, private_execution_events, linear_execution_event]
-last_verified: 2026-06-22
+last_verified: 2026-06-23
 ---
 # Tracker Tool Specification
 
@@ -288,7 +288,7 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   succeed. If an existing lifecycle row for the lane branch points at a different PR
   URL, head ref, base ref, or head OID, the tool must fail closed and require explicit
   review-handoff recovery instead of rebinding implicitly.
-- `issue_review_repair_complete` records retained repair completion metadata during the turn, but `decodex` owns the final completion comment and refreshed retained-lineage marker after service-side validation succeeds.
+- `issue_review_repair_complete` records retained repair completion metadata during the turn, but `decodex` owns the final completion comment and refreshed retained-lineage marker after service-side validation succeeds. For retained repair finalization, service-side validation includes pushing the validated local `HEAD` to the retained PR branch, surfacing typed push auth/refspec/remote-rejection failures before marker refresh, and then re-reading the PR so the refreshed retained-lineage marker is written only when the remote PR head matches the validated local `HEAD`.
 - Agent-authored PR lifecycle summaries are public text inputs. If the summary recorded
   by `issue_review_handoff`, `issue_review_repair_complete`, or `issue_closeout_complete`
   fails the public-text guard during Decodex-owned writeback, Decodex must use fixed
