@@ -199,8 +199,10 @@ Tools:
   explicit proposal-acceptance surface, or with `apply` creates only a latent Decision
   Contract candidate. Normal Decision Contract promotion and Program Intake are still
   separate authority steps. External-agent self-acceptance is refused unless an
-  accepted project policy authorizes that actor, source, objective lineage, and
-  `autonomy_proposal_acceptance` scope.
+  accepted project policy from trusted Decodex authority state authorizes that actor,
+  source, objective lineage, and `autonomy_proposal_acceptance` scope. Caller-supplied
+  `acceptedProjectPolicy` payloads are not policy proof and fail closed until a trusted
+  policy resolver exists.
 - `decodex_lane_control(action, issue, runId, expectedTurnId, authority)`: advertises
   the operate-profile lane-control surface. `inspect` returns public-safe
   preconditions, `steer` and `interrupt` delegate through existing lane-control guards

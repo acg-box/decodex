@@ -35,7 +35,8 @@ summaries, while plan may use `autonomy_draft_objective`,
 `autonomy_submit_signal`, `autonomy_compile_proposal`,
 `autonomy_challenge_proposal`, and `autonomy_request_promotion`. Auth and profile
 prove access only; proposal acceptance still requires explicit human or accepted
-project-policy authority.
+project-policy authority resolved from trusted Decodex state, not a caller-supplied
+policy body.
 
 Research is latent until promoted. Program Intake is not queue-label polling.
 Decodex-owned landing uses `decodex land`, not raw GitHub merge paths.
