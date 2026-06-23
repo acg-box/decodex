@@ -8682,18 +8682,15 @@ fn operator_autonomy_execution_evidence_statuses(
 	let mut evidence = Vec::new();
 
 	for (issue_id, issue_identifier) in operator_autonomy_generated_issue_pairs(contracts) {
-		for review in loop_evidence.review_lifecycle_records_for_issue(&issue_id) {
-			evidence.push(operator_autonomy_pr_evidence_status(
-				review,
-				issue_identifier.as_deref(),
-			));
-		}
+		let review_lifecycle_records = loop_evidence.review_lifecycle_records_for_issue(&issue_id);
+
 		for event in loop_evidence.private_events_for_issue(&issue_id) {
 			if let Some(status) = operator_autonomy_replay_evidence_status_from_event(
 				event,
 				proposal_id,
 				&contract_ids,
 				issue_identifier.as_deref(),
+				&review_lifecycle_records,
 			) {
 				evidence.push(status);
 			}
@@ -8705,6 +8702,12 @@ fn operator_autonomy_execution_evidence_statuses(
 			.cmp(&right.kind)
 			.then_with(|| left.issue_identifier.cmp(&right.issue_identifier))
 			.then_with(|| left.source_refs.cmp(&right.source_refs))
+			.then_with(|| {
+				operator_autonomy_evidence_completeness_rank(&right.completeness)
+					.cmp(&operator_autonomy_evidence_completeness_rank(&left.completeness))
+			})
+			.then_with(|| right.updated_at.cmp(&left.updated_at))
+			.then_with(|| left.summary.cmp(&right.summary))
 	});
 	evidence.dedup_by(|left, right| {
 		left.kind == right.kind
@@ -8743,9 +8746,12 @@ fn operator_autonomy_generated_issue_pairs(
 	pairs
 }
 
-fn operator_autonomy_pr_evidence_status(
+fn operator_autonomy_pr_evidence_status_from_event(
+	event: &PrivateExecutionEvent,
 	review: &ReviewLifecycleRecord,
 	issue_identifier: Option<&str>,
+	summary: String,
+	summary_redacted: bool,
 ) -> OperatorAutonomyExecutionEvidenceStatus {
 	let (source_refs, refs_redacted) = public_autonomy_refs(&[review.pr_url().to_owned()]);
 	let mut known_gaps = Vec::new();
@@ -8756,13 +8762,20 @@ fn operator_autonomy_pr_evidence_status(
 	if refs_redacted {
 		known_gaps.push(String::from("source_refs_redacted"));
 	}
+	if summary_redacted {
+		known_gaps.push(String::from("summary_redacted"));
+	}
 
 	OperatorAutonomyExecutionEvidenceStatus {
 		kind: String::from("pr"),
 		issue_identifier: issue_identifier.map(str::to_owned),
 		source_refs,
-		summary: String::from("PR-backed review handoff readback recorded."),
-		updated_at: review.updated_at().to_owned(),
+		summary,
+		updated_at: [review.updated_at(), event.recorded_at()]
+			.into_iter()
+			.max()
+			.unwrap_or_else(|| event.recorded_at())
+			.to_owned(),
 		completeness: operator_autonomy_completeness(&known_gaps),
 		known_gaps,
 	}
@@ -8773,6 +8786,7 @@ fn operator_autonomy_replay_evidence_status_from_event(
 	proposal_id: &str,
 	contract_ids: &BTreeSet<&str>,
 	issue_identifier: Option<&str>,
+	review_lifecycle_records: &[&ReviewLifecycleRecord],
 ) -> Option<OperatorAutonomyExecutionEvidenceStatus> {
 	let payload = event.payload();
 
@@ -8784,7 +8798,7 @@ fn operator_autonomy_replay_evidence_status_from_event(
 	}
 
 	let kind = match payload.get("kind").and_then(Value::as_str) {
-		Some(kind @ ("validation" | "post_land")) => kind.to_owned(),
+		Some(kind @ ("pr" | "validation" | "post_land")) => kind.to_owned(),
 		_ => return None,
 	};
 	let raw_source_refs = payload
@@ -8804,6 +8818,39 @@ fn operator_autonomy_replay_evidence_status_from_event(
 	);
 	let mut known_gaps = Vec::new();
 
+	if kind == "pr" {
+		return Some(match operator_autonomy_matching_pr_review(event, &raw_source_refs, review_lifecycle_records) {
+			Some(review) => operator_autonomy_pr_evidence_status_from_event(
+				event,
+				review,
+				issue_identifier,
+				summary,
+				summary_redacted,
+			),
+			None => {
+				if source_refs.is_empty() {
+					known_gaps.push(String::from("source_refs_missing_or_redacted"));
+				}
+				if refs_redacted {
+					known_gaps.push(String::from("source_refs_redacted"));
+				}
+				if summary_redacted {
+					known_gaps.push(String::from("summary_redacted"));
+				}
+
+				known_gaps.push(String::from("review_lifecycle_missing"));
+				OperatorAutonomyExecutionEvidenceStatus {
+					kind,
+					issue_identifier: issue_identifier.map(str::to_owned),
+					source_refs,
+					summary,
+					updated_at: event.recorded_at().to_owned(),
+					completeness: operator_autonomy_completeness(&known_gaps),
+					known_gaps,
+				}
+			}
+		});
+	}
 	if source_refs.is_empty() {
 		known_gaps.push(String::from("source_refs_missing_or_redacted"));
 	}
@@ -8823,6 +8870,31 @@ fn operator_autonomy_replay_evidence_status_from_event(
 		completeness: operator_autonomy_completeness(&known_gaps),
 		known_gaps,
 	})
+}
+
+fn operator_autonomy_matching_pr_review<'a>(
+	event: &PrivateExecutionEvent,
+	raw_source_refs: &[String],
+	review_lifecycle_records: &'a [&'a ReviewLifecycleRecord],
+) -> Option<&'a ReviewLifecycleRecord> {
+	let raw_source_refs = raw_source_refs
+		.iter()
+		.map(|source_ref| source_ref.trim())
+		.collect::<BTreeSet<_>>();
+
+	review_lifecycle_records
+		.iter()
+		.copied()
+		.filter(|review| {
+			review.run_id() == event.run_id()
+				&& review.attempt_number() == event.attempt_number()
+				&& raw_source_refs.contains(review.pr_url())
+		})
+		.max_by(|left, right| {
+			left.updated_at_unix()
+				.cmp(&right.updated_at_unix())
+				.then_with(|| left.branch_name().cmp(right.branch_name()))
+		})
 }
 
 fn operator_autonomy_replay_evidence_matches(
@@ -8914,6 +8986,13 @@ fn operator_autonomy_objective_ref(objective_id: &str, objective_version: u64) -
 
 fn operator_autonomy_completeness(known_gaps: &[String]) -> String {
 	if known_gaps.is_empty() { String::from("complete") } else { String::from("partial") }
+}
+
+fn operator_autonomy_evidence_completeness_rank(value: &str) -> u8 {
+	match value {
+		"complete" => 1,
+		_ => 0,
+	}
 }
 
 fn operator_autonomy_max_redaction_level(left: &str, right: &str) -> &'static str {
