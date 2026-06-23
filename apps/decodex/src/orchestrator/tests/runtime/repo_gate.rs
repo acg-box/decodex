@@ -340,6 +340,82 @@ fn phase_goal_repo_gate_issue_run(
 	}
 }
 
+fn review_repair_phase_goal_issue_run(
+	config: &ServiceConfig,
+	issue: &TrackerIssue,
+) -> IssueRunPlan {
+	IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Review"),
+		initial_issue_state: String::from("In Review"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.repo_root().to_path_buf(),
+			reused_existing: true,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::ReviewRepair,
+		attempt_number: 3,
+		run_id: String::from("pub-101-attempt-3"),
+		retry_budget_base: 0,
+	}
+}
+
+#[test]
+fn review_repair_phase_goal_validation_passes_to_review_repair_evidence() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Review", &[]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = review_repair_phase_goal_issue_run(&config, &issue);
+
+	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
+
+	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
+
+	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+
+	let transition = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &issue_run,
+	}
+	.phase_goal_completed(PhaseGoalKind::RepairAcceptedReviewFindings)
+	.expect("validated review repair should continue to review-repair evidence");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 3)
+		.expect("private phase goal events should load");
+
+	match transition {
+		PhaseGoalTransition::Continue(PhaseGoalSpec {
+			phase: PhaseGoalKind::ReviewRepairEvidence,
+			objective,
+			..
+		}) => {
+			assert!(objective.contains("push the current repaired branch"));
+			assert!(objective.contains("re-read the PR remote head and mergeability"));
+			assert!(objective.contains("issue_review_repair_complete"));
+			assert!(objective.contains("review_repair"));
+			assert!(objective.contains("Do not call `issue_review_handoff`"));
+		},
+		_ => panic!("validated review repair should continue to review-repair evidence"),
+	}
+
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_transition"
+			&& event.payload()["signal"] == "validation_pass"
+			&& event.payload()["payload"]["nextPhase"] == "review_repair_evidence"
+	}));
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_next"
+			&& event.payload()["phase"] == "review_repair_evidence"
+	}));
+	assert!(events.iter().all(|event| {
+		event.event_type() != "phase_goal_next" || event.payload()["phase"] != "handoff_evidence"
+	}));
+}
+
 #[test]
 fn phase_goal_completion_continues_with_owned_tracked_rewrites_after_validation() {
 	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(

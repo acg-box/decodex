@@ -249,7 +249,9 @@ Decodex found a still-active implementation or repair phase goal after an app-se
 failure or child exit, ran the registered repo gate itself, persisted the next phase,
 and scheduled continuation instead of writing `decodex:needs-attention`. It is a
 runtime recovery handoff, not final issue success; the later `handoff_evidence` phase
-still owns review, push, PR creation, and terminal finalize.
+still owns ordinary review, push, PR creation, and terminal finalize, while
+`review_repair_evidence` owns retained repaired-head push, PR readback, repair
+completion intent, and `review_repair` terminal finalize.
 Private phase-goal evidence may also include `phase_acceptance_check`. That event
 records why Decodex allowed an implementation or repair goal to advance after repo
 gate validation, or why it kept the lane in repair even though validation passed. The
@@ -487,10 +489,11 @@ Worktree visibility follows the owning dashboard section:
   the newer attempt releases its lease.
   Retry, Program, and automatic continuation attempts also read the issue's latest
   unterminated phase-goal state before the current attempt, so a lane already in
-  `handoff_evidence` resumes handoff instead of repeating implementation just because
-  the attempt identity changed. Empty failed-start attempts do not reset that phase
-  cursor; terminal finalization, review completion, decision requests, blocked
-  recovery, blocker checkpoints, or an audited failed-start cleanup do.
+  `handoff_evidence` or `review_repair_evidence` resumes the terminal evidence phase
+  instead of repeating implementation just because the attempt identity changed. Empty
+  failed-start attempts do not reset that phase cursor; terminal finalization, review
+  completion, decision requests, blocked recovery, blocker checkpoints, or an audited
+  failed-start cleanup do.
 - Lane steer and interrupt rejections such as `run_lease_missing` are private
   runtime evidence. They should preserve the queue lease state, branch, retained
   worktree path, current run id and attempt, active channel metadata, and observed
