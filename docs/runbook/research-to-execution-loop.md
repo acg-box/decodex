@@ -6,9 +6,9 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook]
-code_refs: [apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
+code_refs: [apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs]
 related: [../spec/loop-runtime.md]
-drift_watch: [decodex intake goal, program_issue_mappings]
+drift_watch: [decodex.autonomy_proposal/1, decodex.decision_contract/1, decodex intake goal, program_issue_mappings]
 last_verified: 2026-06-17
 ---
 # Research-To-Execution Loop
@@ -112,6 +112,9 @@ flow when the lane evidence shows all of the following:
 
 - research output stays latent until promotion;
 - promotion creates an internal source of truth for execution shape;
+- accepted autonomy-proposal lineage remains visible through Decision Contract
+  readback, accepted proposal re-acceptance cannot overwrite promoted or generated
+  execution authority, and promotion still refuses missing authority;
 - only ready mapped nodes become directly dispatchable by the Program scheduler;
 - child-goal completion triggers validation and review instead of terminal success;
 - repair churn has bounded guardrails;
