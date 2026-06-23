@@ -1906,6 +1906,12 @@ fn worktree_ownership(
 				next_action: Some(run.lane_control_next_action.clone()),
 				audit_required: true,
 			},
+			"continuation_pending" => WorktreeOwnership {
+				kind: "continuation_pending",
+				reason: format!("Lane `{}` is waiting for scheduled continuation re-entry.", run.run_id),
+				next_action: Some(run.lane_control_next_action.clone()),
+				audit_required: false,
+			},
 			_ => WorktreeOwnership {
 				kind: "orphaned_local_worktree",
 				reason: format!("Lane `{}` is not an active owner for this worktree.", run.run_id),
@@ -1990,7 +1996,11 @@ fn worktree_current_lane_owner<'a>(
 		.find(|run| {
 			matches!(
 				run.ownership_state.as_str(),
-				"leased_run" | "retained_attention" | "orphaned_live_thread" | "terminalizing"
+				"leased_run"
+					| "retained_attention"
+					| "orphaned_live_thread"
+					| "terminalizing"
+					| "continuation_pending"
 			) && (run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
 				|| run.branch_name.as_deref() == Some(worktree.branch_name.as_str())
 				|| run.issue_id == worktree.issue_id)
@@ -7847,6 +7857,9 @@ fn operator_run_ownership_state(
 	{
 		return String::from("retained_attention");
 	}
+	if operator_run_is_continuation_wait(run) {
+		return String::from("continuation_pending");
+	}
 	if !run.run_lease
 		&& matches!(liveness_state, "process_alive" | "thread_active" | "protocol_recent")
 	{
@@ -7860,6 +7873,13 @@ fn operator_run_ownership_state(
 	}
 
 	String::from("closed")
+}
+
+fn operator_run_is_continuation_wait(run: &OperatorRunStatus) -> bool {
+	run.attempt_status == CONTINUATION_PENDING_RUN_STATUS
+		|| run.phase == "waiting_continuation"
+		|| run.retry_kind.as_deref() == Some("continuation")
+		|| run.wait_reason.as_deref() == Some("continuation_retry")
 }
 
 fn operator_run_liveness_state(run: &OperatorRunStatus) -> String {
@@ -8032,6 +8052,9 @@ fn operator_run_lane_control_next_action(
 		}
 
 		return String::from("continue_owned_attempt");
+	}
+	if ownership_state == "continuation_pending" {
+		return String::from("wait_for_continuation_reentry");
 	}
 	if ownership_state == "closed" {
 		return String::from("no_action");
@@ -11004,7 +11027,11 @@ fn rendered_worktree_role<'a>(
 
 fn rendered_worktree_role_rank(role: &str) -> u8 {
 	match role {
-		"current_lane" | "running_lane" | "blocked_queue_issue" | "queued_attention" => 0,
+		"current_lane"
+		| "running_lane"
+		| "blocked_queue_issue"
+		| "queued_attention"
+		| "continuation_pending" => 0,
 		"post_review_lane" => 1,
 		_ => 2,
 	}
