@@ -8317,8 +8317,16 @@ fn operator_loop_status_for_run_with_evidence(
 		.rev()
 		.find(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE)
 		.and_then(operator_authority_decision_request_status_from_event);
+	let autonomy_objective = operator_autonomy_objective_status(project, loop_evidence);
 	let autonomy_signals = operator_autonomy_signal_statuses(loop_evidence);
 	let autonomy_proposals = operator_autonomy_proposal_statuses(loop_evidence);
+	let autonomy_lineage = operator_autonomy_lineage_statuses(loop_evidence);
+	let autonomy_report = operator_autonomy_report_status(
+		autonomy_objective.as_ref(),
+		&autonomy_signals,
+		&autonomy_proposals,
+		&autonomy_lineage,
+	);
 	let autonomy = operator_loop_autonomy(
 		boundary.as_ref(),
 		architecture_recovery.as_ref(),
@@ -8344,13 +8352,82 @@ fn operator_loop_status_for_run_with_evidence(
 		autonomy: autonomy.to_owned(),
 		summary,
 		next_action,
+		autonomy_objective,
 		autonomy_signals,
 		autonomy_proposals,
+		autonomy_lineage,
+		autonomy_report,
 		review,
 		architecture_recovery,
 		boundary,
 		decision_request,
 	})
+}
+
+fn operator_autonomy_objective_status(
+	project: &ServiceConfig,
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+) -> Option<OperatorAutonomyObjectiveStatus> {
+	if let Some(policy) = project.autonomy().runtime_policy() {
+		let version = policy.accepted_objective_version().parse::<u64>().unwrap_or_default();
+		let source_ref = operator_autonomy_objective_ref(policy.accepted_objective_id(), version);
+
+		if let Some(record) = loop_evidence.autonomy_objective(policy.accepted_objective_id(), version) {
+			let objective = record.objective();
+			let mut known_gaps = Vec::new();
+
+			if record.state().as_str() != "accepted" {
+				known_gaps.push(format!("objective_state_{}", record.state().as_str()));
+			}
+
+			return Some(OperatorAutonomyObjectiveStatus {
+				objective_id: objective.id().to_owned(),
+				objective_version: objective.version(),
+				state: objective.state().as_str().to_owned(),
+				summary: public_or_redacted_status_value(objective.summary()),
+				source_ref,
+				updated_at: record.updated_at().to_owned(),
+				completeness: operator_autonomy_completeness(&known_gaps),
+				known_gaps,
+			});
+		}
+
+		let mut known_gaps = vec![String::from("objective_runtime_record_missing")];
+
+		if version == 0 {
+			known_gaps.push(String::from("objective_version_unparseable"));
+		}
+
+		return Some(OperatorAutonomyObjectiveStatus {
+			objective_id: policy.accepted_objective_id().to_owned(),
+			objective_version: version,
+			state: String::from("missing_runtime_record"),
+			summary: String::from("Accepted runtime policy references an Objective Contract that is not in local readback."),
+			source_ref,
+			updated_at: String::from("none"),
+			completeness: String::from("partial"),
+			known_gaps,
+		});
+	}
+
+	loop_evidence
+		.accepted_autonomy_objectives()
+		.into_iter()
+		.next()
+		.map(|record| {
+			let objective = record.objective();
+
+			OperatorAutonomyObjectiveStatus {
+				objective_id: objective.id().to_owned(),
+				objective_version: objective.version(),
+				state: objective.state().as_str().to_owned(),
+				summary: public_or_redacted_status_value(objective.summary()),
+				source_ref: operator_autonomy_objective_ref(objective.id(), objective.version()),
+				updated_at: record.updated_at().to_owned(),
+				completeness: String::from("complete"),
+				known_gaps: Vec::new(),
+			}
+		})
 }
 
 fn operator_autonomy_signal_statuses(
@@ -8361,18 +8438,47 @@ fn operator_autonomy_signal_statuses(
 		.into_iter()
 		.map(|record| {
 			let signal = record.signal();
+			let (source_refs, source_refs_redacted) =
+				public_autonomy_refs(signal.source_refs());
+			let (primary_source_refs, primary_source_refs_redacted) =
+				public_autonomy_refs(signal.primary_source_refs());
+			let (gaps, gaps_redacted) = public_status_values(signal.gaps());
+			let (contradictions, contradictions_redacted) =
+				public_status_values(signal.contradictions());
+			let mut known_gaps = gaps.clone();
 
+			if source_refs.is_empty() {
+				known_gaps.push(String::from("source_refs_missing_or_redacted"));
+			}
+			if source_refs_redacted || primary_source_refs_redacted {
+				known_gaps.push(String::from("source_refs_redacted"));
+			}
+			if gaps_redacted || contradictions_redacted {
+				known_gaps.push(String::from("gap_or_contradiction_redacted"));
+			}
+			if signal.freshness().as_str() != "fresh" {
+				known_gaps.push(format!("freshness_{}", signal.freshness().as_str()));
+			}
+
+			known_gaps.sort();
+			known_gaps.dedup();
 			OperatorAutonomySignalStatus {
 				signal_id: signal.id().to_owned(),
 				objective_id: signal.objective_id().to_owned(),
 				objective_version: signal.objective_version(),
 				kind: signal.kind().as_str().to_owned(),
+				source_type: signal.source_type().as_str().to_owned(),
+				source_refs,
+				primary_source_refs,
 				freshness: signal.freshness().as_str().to_owned(),
 				evidence_class: signal.evidence_class().as_str().to_owned(),
 				confidence: signal.confidence().as_str().to_owned(),
 				privacy: signal.privacy().as_str().to_owned(),
-				gaps: signal.gaps().to_vec(),
-				contradictions: signal.contradictions().to_vec(),
+				redaction_level: signal.privacy().as_str().to_owned(),
+				completeness: operator_autonomy_completeness(&known_gaps),
+				gaps,
+				known_gaps,
+				contradictions,
 				updated_at: record.updated_at().to_owned(),
 			}
 		})
@@ -8387,28 +8493,311 @@ fn operator_autonomy_proposal_statuses(
 		.into_iter()
 		.map(|record| {
 			let proposal = record.proposal();
+			let (source_family, source_family_redacted) =
+				public_status_value(proposal.source_family());
+			let (intended_surface, intended_surface_redacted) =
+				public_status_value(proposal.intended_surface());
+			let (affected_identifiers, affected_identifiers_redacted) =
+				public_status_values(proposal.affected_identifiers());
+			let (gaps, gaps_redacted) = public_status_values(proposal.gaps());
+			let (contradictions, contradictions_redacted) =
+				public_status_values(proposal.contradictions());
+			let refusals = proposal
+				.refusal_reasons()
+				.iter()
+				.map(|refusal| {
+					let (evidence_refs, _) = public_autonomy_refs(refusal.evidence_refs());
 
+					OperatorAutonomyProposalRefusalStatus {
+						reason: refusal.reason().as_str().to_owned(),
+						detail: public_or_redacted_status_value(refusal.detail()),
+						evidence_refs,
+					}
+				})
+				.collect::<Vec<_>>();
+			let mut known_gaps = gaps.clone();
+
+			if proposal.source_signal_ids().is_empty() {
+				known_gaps.push(String::from("source_signal_ids_missing"));
+			}
+			if !proposal.refusal_reasons().is_empty() {
+				known_gaps.push(String::from("proposal_refused"));
+			}
+			if source_family_redacted
+				|| intended_surface_redacted
+				|| affected_identifiers_redacted
+				|| gaps_redacted
+				|| contradictions_redacted
+			{
+				known_gaps.push(String::from("proposal_public_fields_redacted"));
+			}
+
+			known_gaps.sort();
+			known_gaps.dedup();
 			OperatorAutonomyProposalStatus {
 				proposal_id: proposal.id().to_owned(),
 				objective_id: proposal.objective_id().to_owned(),
 				objective_version: proposal.objective_version(),
 				state: proposal.state().as_str().to_owned(),
-				source_family: proposal.source_family().to_owned(),
-				intended_surface: proposal.intended_surface().to_owned(),
+				summary: public_or_redacted_status_value(proposal.summary()),
+				source_family,
+				intended_surface,
+				affected_identifiers,
 				source_signal_ids: proposal.source_signal_ids().to_vec(),
 				refusal_reasons: proposal
 					.refusal_reasons()
 					.iter()
 					.map(|refusal| refusal.reason().as_str().to_owned())
 					.collect(),
-				gaps: proposal.gaps().to_vec(),
-				contradictions: proposal.contradictions().to_vec(),
+				refusals,
+				completeness: operator_autonomy_completeness(&known_gaps),
+				known_gaps,
+				gaps,
+				contradictions,
 				challenge_evidence_count: proposal.challenge_evidence().len(),
 				updated_at: record.updated_at().to_owned(),
-				dry_run_record: proposal.clone(),
 			}
 		})
 		.collect()
+}
+
+fn operator_autonomy_lineage_statuses(
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+) -> Vec<OperatorAutonomyLineageStatus> {
+	loop_evidence
+		.recent_autonomy_proposals(5)
+		.into_iter()
+		.map(|record| {
+			let proposal = record.proposal();
+			let decision_contracts = loop_evidence
+				.decision_contracts_for_autonomy_proposal(proposal.id())
+				.into_iter()
+				.map(|record| OperatorAutonomyDecisionContractStatus {
+					contract_id: record.contract_id().to_owned(),
+					status: record.status().as_str().to_owned(),
+					updated_at: record.updated_at().to_owned(),
+					generated_issue_identifiers: record
+						.contract()
+						.links()
+						.generated_issue_identifiers()
+						.to_vec(),
+				})
+				.collect::<Vec<_>>();
+			let program_intake = decision_contracts
+				.iter()
+				.flat_map(|contract| {
+					loop_evidence
+						.program_intake_plans_for_contract(&contract.contract_id)
+						.into_iter()
+						.map(|plan| OperatorAutonomyProgramIntakeStatus {
+							program_id: plan.program_id().to_owned(),
+							plan_id: plan.plan_id().to_owned(),
+							intake_kind: plan.intake_kind().to_owned(),
+							source_contract_id: plan
+								.source_contract_id()
+								.unwrap_or("none")
+								.to_owned(),
+							public_summary: public_or_redacted_status_value(plan.public_summary()),
+							updated_at: plan.updated_at().to_owned(),
+						})
+						.collect::<Vec<_>>()
+				})
+				.collect::<Vec<_>>();
+			let mut known_gaps = Vec::new();
+
+			if proposal.source_signal_ids().is_empty() {
+				known_gaps.push(String::from("signal_lineage_missing"));
+			}
+			if decision_contracts.is_empty() {
+				known_gaps.push(String::from("decision_contract_not_materialized"));
+			}
+			if program_intake.is_empty() {
+				known_gaps.push(String::from("program_intake_not_materialized"));
+			}
+
+			let (proposal_gaps, proposal_gaps_redacted) = public_status_values(proposal.gaps());
+
+			known_gaps.extend(proposal_gaps);
+
+			if proposal_gaps_redacted {
+				known_gaps.push(String::from("proposal_gaps_redacted"));
+			}
+
+			known_gaps.sort();
+			known_gaps.dedup();
+			OperatorAutonomyLineageStatus {
+				objective_ref: operator_autonomy_objective_ref(
+					proposal.objective_id(),
+					proposal.objective_version(),
+				),
+				signal_ids: proposal.source_signal_ids().to_vec(),
+				proposal_id: Some(proposal.id().to_owned()),
+				proposal_state: Some(proposal.state().as_str().to_owned()),
+				decision_contracts,
+				program_intake,
+				completeness: operator_autonomy_completeness(&known_gaps),
+				known_gaps,
+			}
+		})
+		.collect()
+}
+
+fn operator_autonomy_report_status(
+	objective: Option<&OperatorAutonomyObjectiveStatus>,
+	signals: &[OperatorAutonomySignalStatus],
+	proposals: &[OperatorAutonomyProposalStatus],
+	lineage: &[OperatorAutonomyLineageStatus],
+) -> Option<OperatorAutonomyReportReadbackStatus> {
+	if objective.is_none() && signals.is_empty() && proposals.is_empty() && lineage.is_empty() {
+		return None;
+	}
+
+	let mut source_refs = BTreeSet::new();
+	let mut known_gaps = BTreeSet::new();
+	let mut redaction_level = "public";
+
+	if let Some(objective) = objective {
+		source_refs.insert(objective.source_ref.clone());
+
+		for gap in &objective.known_gaps {
+			known_gaps.insert(gap.clone());
+		}
+	}
+
+	for signal in signals {
+		for source_ref in &signal.source_refs {
+			source_refs.insert(source_ref.clone());
+		}
+		for primary_source_ref in &signal.primary_source_refs {
+			source_refs.insert(primary_source_ref.clone());
+		}
+		for gap in &signal.known_gaps {
+			known_gaps.insert(gap.clone());
+		}
+
+		redaction_level = operator_autonomy_max_redaction_level(redaction_level, &signal.privacy);
+	}
+	for proposal in proposals {
+		for gap in &proposal.known_gaps {
+			known_gaps.insert(gap.clone());
+		}
+	}
+	for item in lineage {
+		for gap in &item.known_gaps {
+			known_gaps.insert(gap.clone());
+		}
+	}
+
+	if source_refs.is_empty() {
+		known_gaps.insert(String::from("source_refs_missing_or_redacted"));
+	}
+
+	let known_gaps = known_gaps.into_iter().collect::<Vec<_>>();
+
+	Some(OperatorAutonomyReportReadbackStatus {
+		surface: String::from("operator_status_autonomy"),
+		authority: String::from("derived_query_view"),
+		audit_authority: false,
+		source_refs: source_refs.into_iter().collect(),
+		redaction_level: redaction_level.to_owned(),
+		completeness: operator_autonomy_completeness(&known_gaps),
+		known_gaps,
+	})
+}
+
+fn operator_autonomy_objective_ref(objective_id: &str, objective_version: u64) -> String {
+	format!("{objective_id}@v{objective_version}")
+}
+
+fn operator_autonomy_completeness(known_gaps: &[String]) -> String {
+	if known_gaps.is_empty() { String::from("complete") } else { String::from("partial") }
+}
+
+fn operator_autonomy_max_redaction_level(left: &str, right: &str) -> &'static str {
+	match (operator_autonomy_redaction_rank(left), operator_autonomy_redaction_rank(right)) {
+		(left_rank, right_rank) if left_rank >= right_rank => operator_autonomy_redaction_label(left),
+		_ => operator_autonomy_redaction_label(right),
+	}
+}
+
+fn operator_autonomy_redaction_rank(value: &str) -> u8 {
+	match value {
+		"local_private" => 2,
+		"team" => 1,
+		_ => 0,
+	}
+}
+
+fn operator_autonomy_redaction_label(value: &str) -> &'static str {
+	match value {
+		"local_private" => "local_private",
+		"team" => "team",
+		_ => "public",
+	}
+}
+
+fn public_autonomy_refs(refs: &[String]) -> (Vec<String>, bool) {
+	let mut redacted = false;
+	let refs = refs
+		.iter()
+		.filter_map(|value| {
+			let Some(value) = public_autonomy_ref(value) else {
+				redacted = true;
+
+				return None;
+			};
+
+			Some(value)
+		})
+		.collect::<BTreeSet<_>>()
+		.into_iter()
+		.collect::<Vec<_>>();
+
+	(refs, redacted)
+}
+
+fn public_autonomy_ref(value: &str) -> Option<String> {
+	let value = value.trim();
+
+	if value.is_empty() || public_text::validate_public_text_field("autonomy source_ref", value).is_err()
+	{
+		return None;
+	}
+
+	Some(value.to_owned())
+}
+
+fn public_status_values(values: &[String]) -> (Vec<String>, bool) {
+	let mut redacted = false;
+	let values = values
+		.iter()
+		.map(|value| {
+			let (value, value_redacted) = public_status_value(value);
+
+			redacted |= value_redacted;
+
+			value
+		})
+		.collect();
+
+	(values, redacted)
+}
+
+fn public_or_redacted_status_value(value: &str) -> String {
+	public_status_value(value).0
+}
+
+fn public_status_value(value: &str) -> (String, bool) {
+	let value = value.trim();
+
+	if value.is_empty() {
+		return (String::from("none"), false);
+	}
+	if public_text::validate_public_text_field("autonomy status value", value).is_err() {
+		return (String::from("redacted_sensitive_detail"), true);
+	}
+
+	(value.to_owned(), false)
 }
 
 fn operator_review_loop_status(
@@ -11101,9 +11490,19 @@ fn render_loop_status_summary(status: Option<&OperatorLoopStatus>) -> String {
 		return String::from("none");
 	};
 	let next_action = status.next_action.as_deref().unwrap_or("none");
+	let autonomy_objective = status
+		.autonomy_objective
+		.as_ref()
+		.map(|objective| objective.source_ref.as_str())
+		.unwrap_or("none");
+	let autonomy_report = status
+		.autonomy_report
+		.as_ref()
+		.map(|report| report.authority.as_str())
+		.unwrap_or("none");
 
 	format!(
-		"{}; review_level={}; autonomy={}; autonomy_signals={}; autonomy_proposals={}; next_action={next_action}",
+		"{}; review_level={}; autonomy={}; autonomy_objective={autonomy_objective}; autonomy_signals={}; autonomy_proposals={}; report={autonomy_report}; next_action={next_action}",
 		status.summary,
 		status.review_level,
 		status.autonomy,
@@ -11126,13 +11525,15 @@ fn render_loop_autonomy_signals_summary(status: Option<&OperatorLoopStatus>) -> 
 		.iter()
 		.map(|signal| {
 			format!(
-				"{}:{}@v{} freshness={} confidence={} privacy={} gaps={} contradictions={}",
+				"{}:{}@v{} freshness={} confidence={} privacy={} sources={} completeness={} gaps={} contradictions={}",
 				signal.kind,
 				signal.objective_id,
 				signal.objective_version,
 				signal.freshness,
 				signal.confidence,
 				signal.privacy,
+				signal.source_refs.len(),
+				signal.completeness,
 				signal.gaps.len(),
 				signal.contradictions.len()
 			)

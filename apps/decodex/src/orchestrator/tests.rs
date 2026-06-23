@@ -20,7 +20,10 @@ use rusqlite::Connection;
 use tempfile::TempDir;
 use time::OffsetDateTime;
 
-use crate::{orchestrator::RepoGatePhaseGoalController, tracker::records};
+use crate::{
+	orchestrator::RepoGatePhaseGoalController,
+	tracker::{TrackerIssueCreate, records},
+};
 #[rustfmt::skip]
 	use crate::agent::{
 		RUN_LEASE_IDLE_TIMEOUT, MODEL_EXECUTION_IDLE_TIMEOUT,
@@ -158,6 +161,7 @@ struct FakeTracker {
 	label_updates: RefCell<Vec<(String, Vec<String>)>>,
 	label_additions: RefCell<Vec<(String, Vec<String>)>>,
 	label_removals: RefCell<Vec<(String, Vec<String>)>>,
+	next_created_issue_number: RefCell<usize>,
 }
 impl FakeTracker {
 	fn new(issues: Vec<TrackerIssue>) -> Self {
@@ -193,6 +197,7 @@ impl FakeTracker {
 			label_updates: RefCell::new(Vec::new()),
 			label_additions: RefCell::new(Vec::new()),
 			label_removals: RefCell::new(Vec::new()),
+			next_created_issue_number: RefCell::new(0),
 		}
 	}
 
@@ -341,6 +346,41 @@ impl IssueTracker for FakeTracker {
 		);
 
 		Ok(())
+	}
+
+	fn create_issue(&self, request: &TrackerIssueCreate) -> Result<TrackerIssue> {
+		let identifier = {
+			let mut next_issue_number = self.next_created_issue_number.borrow_mut();
+
+			*next_issue_number += 1;
+
+			format!("PUB-G{}", *next_issue_number)
+		};
+		let state_name = request
+			.state_id
+			.as_deref()
+			.and_then(|state_id| {
+				self.listed_issues
+					.iter()
+					.flat_map(|issue| issue.team.states.iter())
+					.find(|state| state.id == state_id)
+					.map(|state| state.name.as_str())
+			})
+			.unwrap_or("Todo");
+		let mut issue = sample_issue_with_sort_fields(
+			&format!("issue-{identifier}"),
+			&identifier,
+			state_name,
+			&[],
+			None,
+			"2026-06-23T00:00:00Z",
+		);
+
+		issue.team.id.clone_from(&request.team_id);
+		issue.title.clone_from(&request.title);
+		issue.description.clone_from(&request.description);
+
+		Ok(issue)
 	}
 }
 

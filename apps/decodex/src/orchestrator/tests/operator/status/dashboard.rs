@@ -41,6 +41,13 @@ fn operator_dashboard_surfaces_loop_status_fields() {
 	assert!(response.contains("loopStatusFacts(run.loop_status)"));
 	assert!(response.contains("loopStatusFacts(lane.loop_status)"));
 	assert!(response.contains("loopStatusFacts(attention.loop_status)"));
+	assert!(response.contains("function autonomyReadbackHasFreshSourceRefs(loopStatus)"));
+	assert!(response.contains(
+		"return sourceRefs.length > 0 && String(signal?.freshness || \"\") === \"fresh\";"
+	));
+	assert!(response.contains("function autonomyReadbackSummary(loopStatus)"));
+	assert!(response.contains("field(\"Autonomy readback\", autonomyReadbackSummary(run.loop_status))"));
+	assert!(!response.contains("facts.push([\"Autonomy\", displayToken(loopStatus.autonomy)]);"));
 }
 
 #[test]

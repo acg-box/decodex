@@ -6,9 +6,9 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/mcp.rs]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/mcp.rs]
 drift_watch: [decodex serve, decodex status, decodex recover ghost-lane, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
-last_verified: 2026-06-22
+last_verified: 2026-06-23
 ---
 # Operator Control Plane
 
@@ -58,6 +58,15 @@ Decodex currently runs as a local, single-machine control plane:
   public-safe reason codes, public-safe reasons, and a recovery next action. It must not expose
   Decision Contract payloads, raw graph edges, local paths, credentials, raw logs, or
   private runtime events.
+- Autonomy readback is status-derived, not SQLite-inspection-only. Running lane status
+  may include the accepted Objective Contract id/version, recent signals with public
+  source refs and freshness, proposal states and refusal reasons, public-safe proposal
+  -> Decision Contract -> Program Intake lineage, and report metadata with source
+  refs, redaction level, completeness, and known gaps. The browser dashboard and
+  Decodex App must display autonomy progress or freshness only when the published
+  runtime status includes fresh signal source refs; otherwise they show that source
+  refs are needed. Report rows are labeled as derived query views and are not audit
+  authority.
 - Persisted Execution Programs are evaluated by the Program scheduler before ordinary
   queued-label issue selection. Ready, startable mapped nodes can be dispatched
   directly with `program` dispatch mode; blocked, stale, paused, terminal,

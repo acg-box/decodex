@@ -196,6 +196,15 @@ hydration; detailed protocol event history stays in the runtime database. This k
 concurrent runs from amplifying snapshot size by copying full journals into every
 operator-state refresh.
 
+Operator snapshots may also expose autonomy readback derived from runtime rows for
+the current/recent status window. That readback is an inspectability projection over
+accepted Objective Contract versions, recent signals, proposal states and refusals,
+public-safe proposal -> Decision Contract -> Program Intake lineage, and report
+metadata. It must carry source refs, freshness, redaction level, completeness, and
+known gaps before dashboard, App, or MCP consumers claim autonomy progress. It is not
+an audit authority and must omit raw evidence payloads, hidden reasoning, credentials,
+and local-only path details.
+
 This boundary does not create a project-local runtime database contract. The runtime store remains the single-machine Decodex SQLite database under `~/.codex/decodex/`, scoped by `project_id`.
 
 ## Runtime tuning inputs
