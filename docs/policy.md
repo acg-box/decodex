@@ -202,7 +202,7 @@ The agent-facing entrypoint for this loop is
 [`plugins/knowledge/skills/docs/SKILL.md`](../plugins/knowledge/skills/docs/SKILL.md),
 which delegates to knowledge references and the `docs-drift` skill. If
 the docs impact is `research_required`, switch to Decodex `research` and
-`$agent-method:challenge`, and persist any checked-in result under `docs/research/`
+`$deliberation:challenge`, and persist any checked-in result under `docs/research/`
 only as a latent, non-authoritative Markdown OKF research concept until explicitly
 promoted.
 

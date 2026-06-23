@@ -1,0 +1,3 @@
+interface:
+  display_name: "Knowledge Writeback"
+  short_description: "Write stable repo knowledge back to owners"
