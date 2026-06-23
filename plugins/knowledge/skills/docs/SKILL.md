@@ -1,6 +1,6 @@
 ---
 name: docs
-description: Use when work touches repository docs, a docs/ OKF profile, LLM Wiki navigation, docs impact classification, or semantic drift audits.
+description: Use when repository docs, a docs/ OKF profile, LLM Wiki navigation, docs impact, or semantic drift is in scope.
 ---
 
 # Docs
@@ -21,7 +21,7 @@ execution authority.
 - Classify docs impact before completion: `none`, `update_required`,
   `research_required`, or `drift_required`.
 - If docs impact is `research_required`, switch to the repository's owning research
-  workflow plus `$agent-method:challenge`.
+  workflow plus `$deliberation:challenge`.
 - Record routing, promotion, rename, or maintenance changes in `docs/log.md`.
 - Run `decodex docs check` before claiming docs readiness.
 - Treat docs check or drift failure as a completion blocker.

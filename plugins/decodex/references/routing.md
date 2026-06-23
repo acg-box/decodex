@@ -9,7 +9,7 @@ generic challenge live in companion plugins.
 - Context intake: for non-trivial repo work, use `$knowledge:docs` to read the
   smallest owner from `docs/index.md`, `docs/policy.md`, lane indexes, or explicit
   concept links when docs/knowledge shape the plan.
-- Repo work: use `$repo-work:repo-work` for checked-in command authority, task-runner
+- Repo work: use `$codebase:work` for checked-in command authority, task-runner
   structure, configuration contracts, dependency policy, review repair, validation
   evidence, completion claims, debugging, and dynamic support-agent boundaries.
 - Docs and OKF: use `$knowledge:docs` for checked-in docs workflows,
@@ -19,7 +19,7 @@ generic challenge live in companion plugins.
   runtime claim alignment. It owns drift verdicts even when the trigger is a command,
   config key, status phrase, generated artifact, or runtime readback rather than a
   prose doc.
-- Debugging: use `$repo-work:debugging` for repository bugs, original-symptom checks,
+- Debugging: use `$codebase:debugging` for repository bugs, original-symptom checks,
   and repeated failed fixes. Use `decodex-ops` for Decodex runtime readback,
   retained-lane control, or operator diagnostics. Debugging may feed research only
   when the result becomes a decision-ready comparison.
@@ -28,7 +28,7 @@ generic challenge live in companion plugins.
   This research compact loop is separate from runtime `compact_current_head_review`;
   read runtime compact review quality from `issue_review_checkpoint.review_cost_control`
   and `decodex evidence`, not from research output.
-- Challenge: use `$agent-method:challenge` for generic skeptic review of plans,
+- Challenge: use `$deliberation:challenge` for generic skeptic review of plans,
   claims, evidence sufficiency, option framing, and ready/decision-ready assertions.
   Challenge does not create execution authority.
 - Promotion: use `research-promote` only after explicit acceptance such as "arrange
@@ -63,7 +63,7 @@ generic challenge live in companion plugins.
 ## Natural-Language Research Routing
 
 Keep Decodex natural-language-first. Requests such as `research X` route through the
-`research` compact loop, including an `$agent-method:challenge` pass before terminal
+`research` compact loop, including an `$deliberation:challenge` pass before terminal
 decision, before promotion.
 
 Research never queues work, mutates Linear, starts implementation, creates Codex

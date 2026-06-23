@@ -9,6 +9,18 @@
   proposal promotion without bypassing Decision Contract, Program Intake, review, or
   landing authority. The surface now fails closed on caller-supplied accepted-policy
   bodies and redacts local-private signal refs while preserving ref counts.
+- Tightened the Codebase Codex lifecycle hook so Codex-owned commit/push attempts
+  receive the `decodex/commit/1` JSON message contract, large implementation diffs
+  trigger module-boundary challenge guidance before ready claims, public
+  code/config/command/status/plugin surface changes stay coupled to docs or durable
+  knowledge checks, non-trivial repo work starts from nearby source-backed docs,
+  OKF/LLM Wiki, or repo-memory context when present, and future hook event logs no
+  longer persist prompt samples.
+- Finalized the four-plugin Codex workflow architecture: `decodex` owns Decodex
+  lifecycle and runtime authority, `knowledge` owns docs/OKF/LLM Wiki/semantic
+  drift/repo-memory/writeback, `codebase` owns repository engineering contracts and
+  verification/debugging/dependency policy, and `deliberation` owns portable
+  scout/grill/challenge fresh-context support-agent methods.
 - Narrowed repo-gate tracked-rewrite handling so validation-satisfied phase goals can
   continue to a commit-capable handoff when canonicalize rewrites only pre-gate
   implementation paths, while unsafe or strict-boundary rewrites still preserve
@@ -52,7 +64,7 @@
   clean committed lane heads, persists an explicit registered-workflow review
   contract plus head-tree binding, and narrows retained repair review to verification
   of accepted findings plus contract regressions.
-- Added repo-work implementation-structure guardrails so substantial or generated
+- Added codebase implementation-structure guardrails so substantial or generated
   implementation code must follow existing module ownership and cannot be claimed
   ready while unrelated responsibilities remain in one file.
 
@@ -62,8 +74,8 @@
   `docs`, `docs-drift`, `okf`, and `repo-memory`. Decodex now owns only lifecycle
   routing, research, planning, ops, commit, and land.
 - Split generic agent-facing method and repository execution policy out of Decodex
-  core: `plugins/agent-method` now owns challenge/skeptic review and
-  `plugins/repo-work` owns repo command, task-runner, review, verification, debugging,
+  core: `plugins/deliberation` now owns challenge/skeptic review and
+  `plugins/codebase` owns repo command, task-runner, review, verification, debugging,
   and the direct `dependency-policy` skill for dependency roll/style contracts.
 - Consolidated Decodex research phase skills into the `research` compact loop and
   promoted the research-specific challenge entry into a generic `challenge` skeptic
