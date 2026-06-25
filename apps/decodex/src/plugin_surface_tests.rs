@@ -124,17 +124,9 @@ const ROUTING_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/references/routing.md"
 ));
-const ISSUE_BRIEFING_REF: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/references/issue-briefing.md"
-));
 const RESEARCH_LIFECYCLE_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/references/research-lifecycle.md"
-));
-const RESEARCH_EVIDENCE_REF: &str = include_str!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/decodex/references/research-evidence.md"
 ));
 const RESEARCH_CONTRACT_REF: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
@@ -214,9 +206,9 @@ fn packaged_plugin_manifests_route_split_surface_owners() {
 	assert_contains(&routing_surface, "$knowledge:repo-memory");
 	assert_contains(&routing_surface, "$codebase:work");
 	assert_contains(&routing_surface, "$deliberation:challenge");
-	assert_contains(&routing_surface, "natural-language-first");
-	assert_contains(&routing_surface, "portable OKF");
-	assert_contains(&routing_surface, "checked-in command authority");
+	assert_contains(&routing_surface, "$knowledge:docs-drift");
+	assert_contains(&routing_surface, "$knowledge:writeback");
+	assert_contains(&routing_surface, "Runtime: `docs/spec/` and `docs/runbook/`");
 }
 
 #[test]
@@ -224,40 +216,34 @@ fn packaged_decodex_skills_preserve_research_promotion_and_program_boundaries() 
 	let skill_surface = format!(
 		"{DECODEX_SKILL}\n{DECODEX_OPS_SKILL}\n{PLANNING_SKILL}\n{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{ROUTING_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
-	let planning_surface = format!("{PLANNING_SKILL}\n{ISSUE_BRIEFING_REF}\n{ROUTING_REF}");
+	let planning_surface = format!("{PLANNING_SKILL}\n{ROUTING_REF}");
 
-	assert_contains(&skill_surface, "## Natural-Language Research Routing");
-	assert_contains(&skill_surface, "`research X`");
+	assert_contains(&skill_surface, "Research/design");
+	assert_contains(&skill_surface, "output is latent until promoted");
 	assert_contains(&skill_surface, "$deliberation:challenge");
 	assert_contains(&skill_surface, "`research-promote`");
 	assert_contains(
 		&skill_surface,
 		"Do not route Decodex research through external research skills",
 	);
-	assert_contains(&skill_surface, "latent Decision Contract");
-	assert_contains(&skill_surface, "\"arrange this\"");
-	assert_contains(&skill_surface, "\"proceed with this\"");
-	assert_contains(&skill_surface, "\"implement this\"");
+	assert_contains(&skill_surface, "contract-first Decision Contract");
+	assert_contains(&skill_surface, "explicit acceptance");
 	assert_contains_normalized(&skill_surface, "Research never queues work");
-	assert_contains_normalized(
-		&skill_surface,
-		"Program Intake dispatches ready mapped nodes directly",
-	);
-	assert_contains(&skill_surface, "queue labels are not the Program scheduler");
-	assert_contains(&skill_surface, "non-Program issue intake");
+	assert_contains_normalized(&skill_surface, "Program Intake dispatches persisted Program nodes");
+	assert_contains(&skill_surface, "queue labels are not scheduling");
+	assert_contains(&skill_surface, "Ordinary intake starts");
 	assert_contains(&skill_surface, "not queue-label polling");
 	assert_contains(&skill_surface, "decodex:needs-attention");
 	assert_contains(&skill_surface, "terminal_pending");
 	assert_contains(&skill_surface, "Require promoted research");
-	assert_contains_normalized(&skill_surface, "Promotion is a separate authority step");
-	assert_contains(&skill_surface, "after execution authority exists");
+	assert_contains_normalized(&skill_surface, "promotion is separate");
+	assert_contains(&skill_surface, "after promotion or explicit execution instruction");
 	assert_contains(&skill_surface, "runtime operations");
 	assert_contains(&skill_surface, "service labels");
-	assert_contains(&skill_surface, "knowledge owner");
+	assert_contains(&skill_surface, "$knowledge:docs");
 	assert_contains(&skill_surface, "docs/evidence");
 	assert_contains(&skill_surface, "LLM Wiki indexes");
-	assert_contains_normalized(&skill_surface, "current truth stands without reading research");
-	assert_contains(&skill_surface, "current truth independently");
+	assert_contains(&skill_surface, "current truth");
 	assert_contains_normalized(&skill_surface, "Do not queue work, mutate Linear");
 	assert_contains(&skill_surface, "Program Intake");
 	assert_contains(&planning_surface, "Decodex-native issue briefs");
@@ -266,26 +252,24 @@ fn packaged_decodex_skills_preserve_research_promotion_and_program_boundaries() 
 	assert_contains(&skill_surface, "autonomy_submit_signal");
 	assert_contains(&skill_surface, "autonomy_request_promotion");
 	assert_contains_normalized(&skill_surface, "Auth and profile prove access only");
-	assert_contains(&planning_surface, "generic dispatch briefing");
-	assert_contains(&planning_surface, "one outcome");
-	assert_contains(&planning_surface, "explicit non-goals");
-	assert_contains(&planning_surface, "current-tree landing zone");
+	assert_contains(&planning_surface, "cold-start lane");
+	assert_contains(&planning_surface, "outcome");
+	assert_contains(&planning_surface, "non-goals");
+	assert_contains(&planning_surface, "landing zone");
 	assert_contains(&planning_surface, "validation expectations");
+	assert_contains(&planning_surface, "Do not invent modules");
 	assert_contains(&planning_surface, "Do not replace `WORKFLOW.md`");
-	assert_contains(
-		&planning_surface,
-		"Do not route Decodex issue briefing through an external delivery workflow",
-	);
+	assert_contains(&planning_surface, "do not call external delivery");
 	assert_not_contains(&planning_surface, "Pair with delivery");
 }
 
 #[test]
 fn packaged_research_and_challenge_skills_encode_decodex_methodology() {
 	let research_surface = format!(
-		"{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{DELIBERATION_CHALLENGE_SKILL}\n{DELIBERATION_SCOUT_SKILL}\n{DELIBERATION_GRILL_SKILL}\n{DELIBERATION_GATE_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_EVIDENCE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
+		"{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{DELIBERATION_CHALLENGE_SKILL}\n{DELIBERATION_SCOUT_SKILL}\n{DELIBERATION_GRILL_SKILL}\n{DELIBERATION_GATE_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
 
-	assert_contains(&research_surface, "default research surface");
+	assert_contains(&research_surface, "bounded Decodex research");
 	assert_contains_normalized(
 		&research_surface,
 		"first-principles probe, scout evidence, options, judgment, challenge, decision",
@@ -294,31 +278,27 @@ fn packaged_research_and_challenge_skills_encode_decodex_methodology() {
 	assert_contains(&research_surface, "Inline exception");
 	assert_contains(&research_surface, "$deliberation:challenge");
 	assert_contains_normalized(&research_surface, "No evidence, no claim");
-	assert_contains_normalized(&research_surface, "Runtime state");
 	assert_contains(
 		&research_surface,
 		"Do not route Decodex research through external research skills",
 	);
-	assert_contains_normalized(&research_surface, "primary hypothesis");
-	assert_contains_normalized(&research_surface, "rival hypotheses");
+	assert_contains(&research_surface, "primary/rival hypotheses");
 	assert_contains(&research_surface, "falsifiers");
-	assert_contains(&research_surface, "observations");
 	assert_contains(&research_surface, "contradictions");
-	assert_contains(&research_surface, "external_source");
-	assert_contains(&research_surface, "repo_source");
-	assert_contains(&research_surface, "live_readback");
+	assert_contains(&research_surface, "external source");
+	assert_contains(&research_surface, "repo source");
+	assert_contains(&research_surface, "live readback");
 	assert_contains(&research_surface, "status quo");
-	assert_contains(&research_surface, "challenge-ready");
+	assert_contains(&research_surface, "Challenge-ready");
 	assert_contains(&research_surface, "not_decision_ready");
 	assert_contains_normalized(
 		&research_surface,
-		"Unresolved material objections block `decision_ready`",
+		"unresolved material objections block `decision_ready`",
 	);
 	assert_contains(&research_surface, "Use exactly one");
-	assert_contains(&research_surface, "refuse unresolved decisions");
-	assert_contains_normalized(&research_surface, "Promotion is a separate authority step");
+	assert_contains(&research_surface, "Refuse unresolved decisions");
+	assert_contains_normalized(&research_surface, "promotion is separate");
 	assert_contains(&research_surface, "Promotion requires explicit acceptance");
-	assert_contains(&research_surface, "Do not infer acceptance");
 	assert_contains(
 		&research_surface,
 		"research-only evidence versus durable knowledge candidates",
@@ -327,12 +307,10 @@ fn packaged_research_and_challenge_skills_encode_decodex_methodology() {
 	assert_contains(&research_surface, "promote_and_supersede");
 	assert_contains(&research_surface, "promote_and_retire");
 	assert_contains(&research_surface, "reject_or_deprecate");
-	assert_contains(&research_surface, "target repo");
 	assert_contains(&research_surface, "docs/decisions");
 	assert_contains(&research_surface, "docs/evidence");
-	assert_contains_normalized(&research_surface, "out-of-band history");
 	assert_contains(&research_surface, "Use `no_promotion` only when");
-	assert_contains(&research_surface, "Program Intake");
+	assert_contains(&research_surface, "route execution to `planning`");
 	assert_contains(&research_surface, "missing evidence");
 	assert_contains(&research_surface, "premature success claims");
 	assert_contains(&research_surface, "bounded read-only evidence gathering");
@@ -362,7 +340,7 @@ fn packaged_decodex_skills_route_review_evidence_and_handoff_recovery_to_runtime
 		&research_surface,
 		"research compact loop is not runtime `compact_current_head_review`",
 	);
-	assert_contains(&research_surface, "issue_review_checkpoint.review_cost_control");
+	assert_contains(&research_surface, "issue_review_checkpoint");
 	assert_contains(&research_surface, "`review_cost_control`");
 	assert_contains(&research_surface, "`decodex evidence`");
 	assert_contains_normalized(&research_surface, "not a skipped-review signal");
@@ -373,7 +351,7 @@ fn packaged_decodex_skills_route_review_evidence_and_handoff_recovery_to_runtime
 		"Rebind restores or refreshes a Decodex-owned retained lane",
 	);
 	assert_contains_normalized(&land_surface, "adopt is for a human-owned PR takeover");
-	assert_contains(&land_surface, "Neither recovery command lands the PR");
+	assert_contains(&land_surface, "do not land the PR");
 	assert_contains(&land_surface, "Do not use global `AGENTS.md`");
 }
 

@@ -28,6 +28,9 @@ important ready/done claims.
   the user.
 - Look for missing evidence, false certainty, untested alternatives, hidden authority
   changes, stale readbacks, incompatible constraints, and premature success claims.
+- Prefer concrete objections over generic caution. When relevant, name the blocker,
+  counterexample, missing evidence, falsifier, owner or control surface, and smallest
+  next check that would change the recommendation.
 - Classify objections as `resolved`, `unresolved`, or `out_of_scope`.
 - Convert unresolved material objections into evidence gaps, risks, blockers, or the
   smallest next check.
@@ -43,4 +46,6 @@ important ready/done claims.
 ## Output
 
 Return concise, machine-mergeable objections: objection id, target claim, evidence or
-missing evidence, severity, disposition, and smallest next check.
+missing evidence, severity, disposition, blocker or counterexample when present,
+owner or control surface when relevant, falsifier when one would change the decision,
+and smallest next check.

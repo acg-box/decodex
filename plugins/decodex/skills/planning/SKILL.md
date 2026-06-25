@@ -7,8 +7,7 @@ description: Use when accepted Decodex work needs slicing.
 
 Shape accepted work into Decodex-native issue briefs and Program Intake readiness.
 Read `../../references/routing.md` for project policy and Program-vs-label dispatch
-rules, and `../../references/issue-briefing.md` for generic dispatch briefing
-quality.
+rules.
 
 - Use this only after promotion or explicit execution instruction.
 - Own issue shaping here; do not call external delivery `issue`, `split`, `brief`,
@@ -17,6 +16,12 @@ quality.
   dependencies, conflict-domain notes, and dispatch-ready briefing.
 - Preserve accepted Decision Contract constraints, objections, stop conditions,
   validation, and conflict-domain notes.
+- Each issue must be executable by a cold-start lane without chat replay: outcome,
+  required reading, in-scope work, non-goals, landing zone, owner, acceptance,
+  validation expectations, dependencies, blockers, conflict domains, and dispatch
+  notes.
+- Use real paths, commands, specs, runbooks, and policy. Do not invent modules,
+  validation, tracker state, or runtime authority.
 - Split work only by real ownership boundary, validation surface, dependency, or
   conflict domain; each child issue must still be executable on its own.
 - For existing issue-batch intake, hold issues that lack a generic dispatch briefing

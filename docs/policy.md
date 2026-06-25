@@ -208,8 +208,8 @@ promoted.
 
 Detailed docs rules live in `plugins/knowledge/references/docs-method.md`,
 `docs-okf.md`, `docs-wiki.md`, and `docs-drift.md`. Detailed research rules live in
-`plugins/decodex/references/research-lifecycle.md`, `research-evidence.md`,
-`research-contract.md`, and `research-promotion.md`.
+`plugins/decodex/references/research-lifecycle.md`, `research-contract.md`, and
+`research-promotion.md`.
 
 ## Decodex Lane Integration
 
