@@ -9,6 +9,10 @@
   design, refactor, root-cause debugging, public-contract, and ready/done claims;
   Decodex research now composes first-principles probe, scout evidence, options,
   judgment, challenge, and decision without making skeptic research-only.
+- Compact Decodex research and planning plugin references into shorter execution
+  contracts, folded low-value briefing/evidence reference files into their owner
+  skills, and refreshed plugin-eval evidence to show current budget findings instead
+  of stale all-100 score claims.
 - Extended the Codebase Codex lifecycle hook with a non-blocking Deliberation Gate
   reminder for design, architecture, refactor, root-cause debugging, research,
   option comparison, and important ready/done prompts.
@@ -264,9 +268,9 @@
 - Retired checked-in JSON research event logs as an invalid docs shape.
 - Split Decodex docs guidance into `docs-method`, `docs-okf`, `docs-wiki`, and
   `docs-drift` references so docs skills stay thin.
-- Split Decodex research guidance into `research-lifecycle`, `research-evidence`,
-  `research-contract`, and `research-promotion` references and removed the old
-  monolithic `research-method` reference.
+- Split Decodex research guidance into `research-lifecycle`, `research-contract`,
+  and `research-promotion` references and removed the old monolithic
+  `research-method` reference.
 - Added `plugins/decodex/skills/docs/SKILL.md` as the agent-facing docs maintenance
   router and split detailed maintenance into `docs-okf`, `docs-wiki`, and
   `docs-drift`.
