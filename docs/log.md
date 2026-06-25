@@ -293,6 +293,10 @@
 - Clarified that pre-existing, repo-wide, or global-baseline repo-gate failures are
   runtime-owned signals and must not be routed through agent-requested
   `manual_attention`.
+- Added an English-only durable artifact policy to AGENTS/codebase guidance, removed
+  non-English natural-language hook trigger terms, and changed the codebase lifecycle
+  hook to use short conditional prompt reminders plus structural git/diff/public
+  surface defenses.
 - Applied Authority Boundary landing requirements to retained admin-merge preflight,
   so `requires_human_decision`, `requires_enhanced_evidence`, and `block_landing`
   events block runtime auto-land through the same trusted state that operator status

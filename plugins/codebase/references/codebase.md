@@ -15,6 +15,11 @@ validation, configuration, landing, or evidence-reporting rules.
 
 - Follow checked-in language, runtime, and bootstrap authority before personal
   defaults.
+- Use English for every durable or executable artifact by default. Direct
+  user-facing chat may mirror the user's language. Non-English durable content is
+  allowed only when the user explicitly requests it, when preserving external source
+  text, or when the artifact's purpose is language/locale handling such as i18n,
+  translation fixtures, tokenizer tests, or locale catalogs.
 - Treat language/library preferences as local policy only when checked-in docs,
   manifests, or user instructions establish them.
 - Do not treat non-trivial repository work as code-only. Before implementation,

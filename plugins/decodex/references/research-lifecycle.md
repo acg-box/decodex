@@ -22,7 +22,8 @@ hypothesis, rival hypotheses, falsifiers, first evidence plan, and promotion tar
 ## Authority Boundary
 
 Research remains latent until explicit acceptance such as "arrange this", "push this
-forward", "推进", or "做". Promotion is a separate authority step.
+forward", "proceed with this", or "implement this". Promotion is a separate
+authority step.
 
 Checked-in research belongs in `docs/research/` only as Markdown OKF research.
 Runtime state may keep structured Decision Contracts; checked-in docs stay Markdown.
