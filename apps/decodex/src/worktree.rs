@@ -125,7 +125,6 @@ impl WorktreeManager {
 		Ok(spec)
 	}
 
-	#[cfg(test)]
 	pub(crate) fn remove_worktree_path(&self, path: &Path) -> Result<bool> {
 		self.remove_worktree_path_internal(path, None)
 	}
