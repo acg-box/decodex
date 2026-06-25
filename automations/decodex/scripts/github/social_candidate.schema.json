@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Decodex social candidate record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "slug",
+    "repo",
+    "channel",
+    "target_account",
+    "mode",
+    "priority",
+    "audience",
+    "candidate_text",
+    "source_refs",
+    "evidence_notes",
+    "claims",
+    "decision"
+  ],
+  "properties": {
+    "schema": {
+      "const": "social_candidate/v1"
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repo": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "channel": {
+      "const": "x"
+    },
+    "target_account": {
+      "const": "decodexspace"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "release_pulse",
+        "release_rollup",
+        "practical_explainer",
+        "operator_impact",
+        "thread",
+        "watch_note"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["critical", "high", "normal", "low"]
+    },
+    "audience": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidate_text": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 280
+      }
+    },
+    "source_refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["upstream_reviews"]
+        },
+        {
+          "required": ["upstream_impacts"]
+        },
+        {
+          "required": ["signals"]
+        },
+        {
+          "required": ["release_deltas"]
+        },
+        {
+          "required": ["urls"]
+        }
+      ],
+      "properties": {
+        "upstream_reviews": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "upstream_impacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "signals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "release_deltas": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "urls": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^https://"
+          }
+        }
+      }
+    },
+    "evidence_notes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "evidence", "confidence"],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["confirmed", "likely", "weak"]
+          }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["worthiness", "reason", "idempotency_key"],
+      "properties": {
+        "worthiness": {
+          "type": "string",
+          "enum": ["publish", "defer", "skip"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "caveats": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}
