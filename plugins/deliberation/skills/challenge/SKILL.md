@@ -9,13 +9,21 @@ Apply a skeptic pass to make the target claim survive adversarial review. This s
 is generic: research, codebase, debugging, review repair, planning, and ordinary
 design discussion may use it when uncertainty or risk is material.
 
+Read `../../references/deliberation-gate.md` when challenge is part of design,
+research, refactor, root-cause debugging, review repair, option comparison, or
+important ready/done claims.
+
 ## Rules
 
-- For non-trivial plans, research judgments, review repair, generated or large
-  implementation, and ready/decision-ready claims, default to a fresh dynamic
-  read-only support agent for the skeptic pass when tool support exists. Inline
-  challenge is a fallback for small/local checks or unavailable support-agent tools;
-  name that fallback when it matters.
+- Default to a fresh dynamic read-only support agent for challenge when support-agent
+  tools are allowed and the target is a plan, recommendation, research judgment,
+  review repair, debugging conclusion, generated or large implementation,
+  architecture decision, option comparison, public-contract change, or
+  ready/done/decision-ready claim.
+- Inline challenge is allowed only when the full evidence is local and already read
+  by the main thread, and the outcome cannot affect architecture, review repair,
+  root-cause debugging, public contracts, docs drift, commit/land, or ready/done
+  claims. Name that fallback when it matters.
 - Challenge the claim, plan, option framing, evidence, and assumptions; do not attack
   the user.
 - Look for missing evidence, false certainty, untested alternatives, hidden authority

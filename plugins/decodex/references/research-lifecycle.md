@@ -8,10 +8,10 @@ Decodex is the default research surface for bounded Decodex technical investigat
 Decodex research produces a latent `decodex.decision_contract/1` candidate. It does
 not queue work, mutate Linear, set Codex goals, implement, or dispatch Program nodes.
 
-Compact loop: probe, evidence, options, judgment, challenge, decision; after explicit
-acceptance, `research-promote`. Use `$deliberation:challenge` for the skeptic pass
-when material assumptions, evidence, option framing, or decision readiness need
-adversarial review.
+Compact loop: first-principles probe, scout evidence, options, judgment, challenge,
+decision; after explicit acceptance, `research-promote`. Use `$deliberation:grill`
+for framing, `$deliberation:scout` for non-obvious evidence, and
+`$deliberation:challenge` before material recommendations or `decision_ready`.
 
 ## Probe
 

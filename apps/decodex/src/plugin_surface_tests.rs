@@ -52,6 +52,10 @@ const DELIBERATION_SCOUT_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/deliberation/skills/scout/SKILL.md"
 ));
+const DELIBERATION_GATE_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/deliberation/references/deliberation-gate.md"
+));
 const KNOWLEDGE_DOCS_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/knowledge/skills/docs/SKILL.md"
@@ -277,11 +281,16 @@ fn packaged_decodex_skills_preserve_research_promotion_and_program_boundaries() 
 #[test]
 fn packaged_research_and_challenge_skills_encode_decodex_methodology() {
 	let research_surface = format!(
-		"{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{DELIBERATION_CHALLENGE_SKILL}\n{DELIBERATION_SCOUT_SKILL}\n{DELIBERATION_GRILL_SKILL}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_EVIDENCE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
+		"{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{DELIBERATION_CHALLENGE_SKILL}\n{DELIBERATION_SCOUT_SKILL}\n{DELIBERATION_GRILL_SKILL}\n{DELIBERATION_GATE_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_EVIDENCE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
 
 	assert_contains(&research_surface, "default research surface");
-	assert_contains(&research_surface, "probe, evidence, options, judgment, challenge, decision");
+	assert_contains_normalized(
+		&research_surface,
+		"first-principles probe, scout evidence, options, judgment, challenge, decision",
+	);
+	assert_contains(&research_surface, "Deliberation Gate");
+	assert_contains(&research_surface, "Inline exception");
 	assert_contains(&research_surface, "$deliberation:challenge");
 	assert_contains_normalized(&research_surface, "No evidence, no claim");
 	assert_contains_normalized(&research_surface, "Runtime state");
