@@ -3416,74 +3416,89 @@ fn validate_adopt_landing_state(landing_state: &PullRequestLandingState) -> Resu
 	let pr_url = landing_url(landing_state);
 	let gate_view = landing_state.gate_view();
 
-	if pull_request::manual_landing_gates_satisfied(gate_view) {
-		return Ok(());
-	}
-	if gate_view.state != "OPEN" {
-		eyre::bail!("Pull request `{pr_url}` is `{}`; adopt requires `OPEN`.", gate_view.state);
-	}
-	if gate_view.is_draft {
-		eyre::bail!("Pull request `{pr_url}` is still draft.");
-	}
-	if gate_view.pending_review_requests > 0 {
-		eyre::bail!(
-			"Pull request `{pr_url}` still has {} pending review request(s).",
-			gate_view.pending_review_requests
-		);
-	}
-	if gate_view.unresolved_review_threads > 0 {
-		eyre::bail!(
-			"Pull request `{pr_url}` still has {} unresolved review thread(s).",
-			gate_view.unresolved_review_threads
-		);
-	}
-	if gate_view.review_decision == Some("CHANGES_REQUESTED") {
-		eyre::bail!("Pull request `{pr_url}` still has active change requests.");
-	}
+	let decision =
+		pull_request::classify_landing_gate(gate_view, pull_request::LandingGateMode::Adopt);
 
-	if let Some(reason) = pull_request::merge_state_requires_review_repair(
-		gate_view.mergeable,
-		gate_view.merge_state_status,
-	) {
-		eyre::bail!("Pull request `{pr_url}` requires review repair: {reason}.");
+	match decision {
+		pull_request::LandingGateDecision::Satisfied => Ok(()),
+		decision => adopt_landing_gate_error(decision, gate_view, pr_url),
 	}
+}
 
-	if pull_request::failed_checks_require_repair(
-		gate_view.status_check_rollup_state,
-		gate_view.merge_state_status,
-	) {
-		eyre::bail!("Pull request `{pr_url}` has failed required checks that need repair.");
-	}
+fn adopt_landing_gate_error(
+	decision: pull_request::LandingGateDecision,
+	gate_view: pull_request::PullRequestLandingGateView<'_>,
+	pr_url: &str,
+) -> Result<()> {
+	match decision {
+		pull_request::LandingGateDecision::Satisfied => Ok(()),
+		pull_request::LandingGateDecision::CloseoutOnly
+		| pull_request::LandingGateDecision::Block("pull_request_not_open") => {
+			eyre::bail!("Pull request `{pr_url}` is `{}`; adopt requires `OPEN`.", gate_view.state)
+		},
+		pull_request::LandingGateDecision::Block("pull_request_is_draft") => {
+			eyre::bail!("Pull request `{pr_url}` is still draft.")
+		},
+		pull_request::LandingGateDecision::Wait("pending_review_requests") => {
+			eyre::bail!(
+				"Pull request `{pr_url}` still has {} pending review request(s).",
+				gate_view.pending_review_requests
+			)
+		},
+		pull_request::LandingGateDecision::Repair("unresolved_review_threads") => {
+			eyre::bail!(
+				"Pull request `{pr_url}` still has {} unresolved review thread(s).",
+				gate_view.unresolved_review_threads
+			)
+		},
+		pull_request::LandingGateDecision::Repair("review_changes_requested") => {
+			eyre::bail!("Pull request `{pr_url}` still has active change requests.")
+		},
+		pull_request::LandingGateDecision::Repair(reason)
+			if matches!(
+				reason,
+				"pull_request_merge_conflict" | "pull_request_branch_behind_base"
+			) =>
+		{
+			eyre::bail!("Pull request `{pr_url}` requires review repair: {reason}.")
+		},
+		pull_request::LandingGateDecision::Repair("required_checks_failed") => {
+			eyre::bail!("Pull request `{pr_url}` has failed required checks that need repair.")
+		},
+		pull_request::LandingGateDecision::Wait("checks_waiting") => {
+			let check_state = gate_view.status_check_rollup_state.unwrap_or("unknown");
 
-	if let Some(other) = gate_view.status_check_rollup_state
-		&& pull_request::checks_require_wait(Some(other))
-	{
-		eyre::bail!(
-			"Pull request `{pr_url}` is still waiting on checks: statusCheckRollup=`{other}`."
-		);
-	}
+			eyre::bail!(
+				"Pull request `{pr_url}` is still waiting on checks: statusCheckRollup=`{check_state}`."
+			)
+		},
+		pull_request::LandingGateDecision::Wait("mergeability_unknown") => {
+			eyre::bail!("Pull request `{pr_url}` mergeability is still unknown.")
+		},
+		pull_request::LandingGateDecision::Block("merge_state_not_ready") => {
+			eyre::bail!(
+				"Pull request `{pr_url}` is not ready to adopt: mergeStateStatus=`{}`.",
+				gate_view.merge_state_status
+			)
+		},
+		pull_request::LandingGateDecision::Block("not_mergeable") => {
+			eyre::bail!(
+				"Pull request `{pr_url}` is not mergeable: mergeable=`{}`.",
+				gate_view.mergeable
+			)
+		},
+		pull_request::LandingGateDecision::Wait("checks_non_green") => {
+			let check_state = gate_view.status_check_rollup_state.unwrap_or("unknown");
 
-	if pull_request::mergeability_unknown(gate_view) {
-		eyre::bail!("Pull request `{pr_url}` mergeability is still unknown.");
-	}
-	if !pull_request::merge_state_allows_ready_to_land(gate_view.merge_state_status) {
-		eyre::bail!(
-			"Pull request `{pr_url}` is not ready to adopt: mergeStateStatus=`{}`.",
-			gate_view.merge_state_status
-		);
-	}
-	if gate_view.mergeable != "MERGEABLE" {
-		eyre::bail!(
-			"Pull request `{pr_url}` is not mergeable: mergeable=`{}`.",
-			gate_view.mergeable
-		);
-	}
-
-	match gate_view.status_check_rollup_state {
-		Some("SUCCESS") | None => Ok(()),
-		Some(other) => eyre::bail!(
-			"Pull request `{pr_url}` still has non-green checks: statusCheckRollup=`{other}`."
-		),
+			eyre::bail!(
+				"Pull request `{pr_url}` still has non-green checks: statusCheckRollup=`{check_state}`."
+			)
+		},
+		pull_request::LandingGateDecision::Wait(reason)
+		| pull_request::LandingGateDecision::Repair(reason)
+		| pull_request::LandingGateDecision::Block(reason) => {
+			eyre::bail!("Pull request `{pr_url}` is not ready to adopt: {reason}.")
+		},
 	}
 }
 
@@ -6176,6 +6191,23 @@ token_env_var = "HOME"
 			.expect_err("manual takeover must not adopt pending checks");
 
 		assert!(error.to_string().contains("still waiting on checks"));
+	}
+
+	#[test]
+	fn adopt_landing_state_rejects_blocked_merge_state_after_green_gates() {
+		let mut landing_state = sample_landing_state(
+			"https://github.com/hack-ink/decodex/pull/344",
+			"xy/xy-944-manual-takeover-adopt",
+			"1123456789abcdef0123456789abcdef01234567",
+		);
+
+		landing_state.merge_state_status = String::from("BLOCKED");
+
+		let error = super::validate_adopt_landing_state(&landing_state)
+			.expect_err("manual takeover should not bypass blocked merge state");
+
+		assert!(error.to_string().contains("not ready to adopt"));
+		assert!(error.to_string().contains("mergeStateStatus=`BLOCKED`"));
 	}
 
 	#[test]
