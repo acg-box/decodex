@@ -40,28 +40,103 @@ pub(crate) struct PullRequestLandingGateView<'a> {
 	pub(crate) unresolved_review_threads: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum LandingGateMode {
+	ManualLand,
+	Adopt,
+	Retained,
+}
+
+impl LandingGateMode {
+	fn allows_closeout_only(self) -> bool {
+		matches!(self, Self::ManualLand)
+	}
+
+	fn requires_review_requests_clear(self) -> bool {
+		matches!(self, Self::ManualLand | Self::Adopt)
+	}
+
+	fn requires_review_threads_clear(self) -> bool {
+		matches!(self, Self::ManualLand | Self::Adopt)
+	}
+
+	fn requires_green_status_rollup(self) -> bool {
+		matches!(self, Self::ManualLand | Self::Adopt)
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum LandingGateDecision {
+	Satisfied,
+	CloseoutOnly,
+	Wait(&'static str),
+	Repair(&'static str),
+	Block(&'static str),
+}
+
+pub(crate) fn classify_landing_gate(
+	view: PullRequestLandingGateView<'_>,
+	mode: LandingGateMode,
+) -> LandingGateDecision {
+	if view.state == "MERGED" {
+		return if mode.allows_closeout_only() {
+			LandingGateDecision::CloseoutOnly
+		} else {
+			LandingGateDecision::Block("pull_request_not_open")
+		};
+	}
+	if view.state != "OPEN" {
+		return LandingGateDecision::Block("pull_request_not_open");
+	}
+	if view.is_draft {
+		return LandingGateDecision::Block("pull_request_is_draft");
+	}
+	if mode.requires_review_requests_clear() && view.pending_review_requests > 0 {
+		return LandingGateDecision::Wait("pending_review_requests");
+	}
+	if mode.requires_review_threads_clear() && view.unresolved_review_threads > 0 {
+		return LandingGateDecision::Repair("unresolved_review_threads");
+	}
+	if view.review_decision == Some("CHANGES_REQUESTED") {
+		return LandingGateDecision::Repair("review_changes_requested");
+	}
+	if let Some(reason) =
+		merge_state_requires_review_repair(view.mergeable, view.merge_state_status)
+	{
+		return LandingGateDecision::Repair(reason);
+	}
+	if failed_checks_require_repair(view.status_check_rollup_state, view.merge_state_status) {
+		return LandingGateDecision::Repair("required_checks_failed");
+	}
+	if let Some(check_state) = view.status_check_rollup_state
+		&& checks_require_wait(Some(check_state))
+	{
+		return LandingGateDecision::Wait("checks_waiting");
+	}
+	if mergeability_unknown(view) {
+		return LandingGateDecision::Wait("mergeability_unknown");
+	}
+	if !merge_state_allows_ready_to_land(view.merge_state_status) {
+		return LandingGateDecision::Block("merge_state_not_ready");
+	}
+	if view.mergeable != "MERGEABLE" {
+		return LandingGateDecision::Block("not_mergeable");
+	}
+	if mode.requires_green_status_rollup()
+		&& !matches!(view.status_check_rollup_state, None | Some("SUCCESS"))
+	{
+		return LandingGateDecision::Wait("checks_non_green");
+	}
+
+	LandingGateDecision::Satisfied
+}
+
 pub(crate) fn manual_landing_gates_satisfied(view: PullRequestLandingGateView<'_>) -> bool {
-	view.state == "OPEN"
-		&& !view.is_draft
-		&& view.pending_review_requests == 0
-		&& view.unresolved_review_threads == 0
-		&& view.review_decision != Some("CHANGES_REQUESTED")
-		&& view.mergeable == "MERGEABLE"
-		&& merge_state_allows_ready_to_land(view.merge_state_status)
-		&& !checks_require_wait(view.status_check_rollup_state)
-		&& !failed_checks_require_repair(view.status_check_rollup_state, view.merge_state_status)
-		&& merge_state_requires_review_repair(view.mergeable, view.merge_state_status).is_none()
+	classify_landing_gate(view, LandingGateMode::ManualLand) == LandingGateDecision::Satisfied
 }
 
 pub(crate) fn retained_landing_gates_satisfied(view: PullRequestLandingGateView<'_>) -> bool {
-	view.state == "OPEN"
-		&& !view.is_draft
-		&& view.review_decision != Some("CHANGES_REQUESTED")
-		&& view.mergeable == "MERGEABLE"
-		&& merge_state_allows_ready_to_land(view.merge_state_status)
-		&& !checks_require_wait(view.status_check_rollup_state)
-		&& !failed_checks_require_repair(view.status_check_rollup_state, view.merge_state_status)
-		&& merge_state_requires_review_repair(view.mergeable, view.merge_state_status).is_none()
+	classify_landing_gate(view, LandingGateMode::Retained) == LandingGateDecision::Satisfied
 }
 
 pub(crate) fn retained_clean_path_landing_gates_satisfied(
@@ -155,6 +230,48 @@ mod tests {
 
 		assert!(pull_request::retained_landing_gates_satisfied(view));
 		assert!(!pull_request::manual_landing_gates_satisfied(view));
+	}
+
+	#[test]
+	fn landing_gate_classifier_keeps_raw_github_states_but_types_decisions() {
+		assert_eq!(
+			pull_request::classify_landing_gate(
+				sample_gate_view(),
+				pull_request::LandingGateMode::ManualLand,
+			),
+			pull_request::LandingGateDecision::Satisfied
+		);
+
+		let mut view = sample_gate_view();
+
+		view.state = "MERGED";
+
+		assert_eq!(
+			pull_request::classify_landing_gate(view, pull_request::LandingGateMode::ManualLand),
+			pull_request::LandingGateDecision::CloseoutOnly
+		);
+		assert_eq!(
+			pull_request::classify_landing_gate(view, pull_request::LandingGateMode::Adopt),
+			pull_request::LandingGateDecision::Block("pull_request_not_open")
+		);
+
+		let mut view = sample_gate_view();
+
+		view.merge_state_status = "BLOCKED";
+
+		assert_eq!(
+			pull_request::classify_landing_gate(view, pull_request::LandingGateMode::ManualLand),
+			pull_request::LandingGateDecision::Block("merge_state_not_ready")
+		);
+
+		let mut view = sample_gate_view();
+
+		view.status_check_rollup_state = Some("PENDING");
+
+		assert_eq!(
+			pull_request::classify_landing_gate(view, pull_request::LandingGateMode::ManualLand),
+			pull_request::LandingGateDecision::Wait("checks_waiting")
+		);
 	}
 
 	#[test]
