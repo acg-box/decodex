@@ -1,0 +1,133 @@
+version = 1
+
+[defaults]
+kind = "cron"
+status = "ACTIVE"
+execution_environment = "local"
+model = "gpt-5.5"
+reasoning_effort = "xhigh"
+cwd = "{repo_root}"
+source_root = "automations/decodex"
+cache_root = ".agent/automations/decodex/cache"
+forbidden_prompt_fragments = [
+  "/Users/x/Documents/automations",
+  "Documents/automations",
+  ".github/workflows",
+  "site/src/content",
+  "apps/decodex/src/radar.rs",
+  ".agent/decodex",
+  "~/.codex/decodex",
+  ".codex/decodex",
+  "accounts.jsonl",
+  "auth.json",
+  "runtime.sqlite3",
+  "DECODEX_AGENT_HOME",
+  "migrate-agent-home",
+]
+
+[[automations]]
+id = "codex-upstream-radar-review"
+name = "Decodex Radar Review"
+rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=0;BYSECOND=0"
+prompt_file = "automations/decodex/prompts/radar-review.md"
+required_paths = [
+  "automations/decodex/skills/codex-upstream-triage/SKILL.md",
+  "automations/decodex/skills/codex-code-analysis/SKILL.md",
+  "automations/decodex/skills/github-signal/SKILL.md",
+  "automations/decodex/scripts/github/run_codex_analysis.py",
+  "apps/decodex/src/radar.rs",
+  "docs/spec/upstream-review.md",
+  "docs/spec/github-change-bundle.md",
+  "docs/spec/signal-entry.md",
+  "docs/spec/upstream-impact.md",
+  "docs/spec/social-candidate.md",
+]
+required_cache_prefixes = [
+  ".agent/automations/decodex/cache/github/review-queue",
+  ".agent/automations/decodex/cache/github/bundles",
+  ".agent/automations/decodex/cache/github/reviews",
+  ".agent/automations/decodex/cache/github/impact",
+  ".agent/automations/decodex/cache/generated/analysis",
+  ".agent/automations/decodex/cache/site-content/signals",
+]
+
+[[automations]]
+id = "codex-release-checkpoint-publisher"
+name = "Decodex Release Curator"
+rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=20;BYSECOND=0"
+prompt_file = "automations/decodex/prompts/release-curator.md"
+required_paths = [
+  "automations/decodex/skills/codex-release-analysis/SKILL.md",
+  "automations/decodex/skills/x-post-quality-system/SKILL.md",
+  "automations/decodex/skills/references/social-release-publisher-gates.md",
+  "apps/decodex/src/radar.rs",
+  "docs/spec/release-delta.md",
+  "docs/spec/upstream-review.md",
+  "docs/spec/upstream-impact.md",
+  "docs/spec/social-candidate.md",
+  "docs/spec/social-publishing.md",
+]
+required_cache_prefixes = [
+  ".agent/automations/decodex/cache/site-content/release-deltas",
+  ".agent/automations/decodex/cache/site-content/signals",
+  ".agent/automations/decodex/cache/github/social-candidates",
+  ".agent/automations/decodex/cache/github/reviews",
+  ".agent/automations/decodex/cache/github/impact",
+]
+
+[[automations]]
+id = "decodex-x-publisher"
+name = "Decodex X Publisher"
+rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=50;BYSECOND=0"
+prompt_file = "automations/decodex/prompts/x-publisher.md"
+required_paths = [
+  "automations/decodex/skills/x-post-publisher/SKILL.md",
+  "automations/decodex/skills/x-post-quality-system/SKILL.md",
+  "automations/decodex/skills/references/social-release-publisher-gates.md",
+  "apps/decodex/src/radar.rs",
+  "docs/spec/social-candidate.md",
+  "docs/spec/social-publishing.md",
+  "docs/runbook/social-publishing-workflow.md",
+]
+required_cache_prefixes = [
+  ".agent/automations/decodex/cache/github/social-candidates",
+  ".agent/automations/decodex/cache/social/x/reservations",
+  ".agent/automations/decodex/cache/social/x/posts",
+]
+
+[[automations]]
+id = "decodex-radar-artifact-archive"
+name = "Decodex Automation Retention"
+rrule = "FREQ=DAILY;BYHOUR=3;BYMINUTE=30;BYSECOND=0"
+prompt_file = "automations/decodex/prompts/retention.md"
+required_paths = [
+  "apps/decodex/src/radar.rs",
+  "docs/spec/radar-artifact-retention.md",
+  "docs/runbook/radar-artifact-archive.md",
+]
+required_cache_prefixes = [
+  ".agent/automations/decodex/cache/github/bundles",
+  ".agent/automations/decodex/cache/github/reviews",
+  ".agent/automations/decodex/cache/github/impact",
+  ".agent/automations/decodex/cache/generated/analysis",
+  ".agent/automations/decodex/cache/archive/index",
+]
+
+[[automations]]
+id = "decodex-automation-health-audit"
+name = "Decodex Automation Evaluator"
+rrule = "FREQ=DAILY;BYHOUR=4;BYMINUTE=40;BYSECOND=0"
+prompt_file = "automations/decodex/prompts/automation-evaluator.md"
+required_paths = [
+  "automations/decodex/automations.toml",
+  "automations/decodex/scripts/config/evaluate_automations.py",
+  "apps/decodex/src/radar.rs",
+  "automations/decodex/README.md",
+  "docs/policy.md",
+]
+required_cache_prefixes = [
+  ".agent/automations/decodex/cache/github",
+  ".agent/automations/decodex/cache/social",
+  ".agent/automations/decodex/cache/archive",
+  ".agent/automations/decodex/cache/generated",
+]
