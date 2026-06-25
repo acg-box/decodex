@@ -19,65 +19,25 @@ COMMIT_SCHEMA = "decodex/commit/1"
 LARGE_CHANGE_THRESHOLD = 800
 LARGE_ADDITION_THRESHOLD = 500
 
-ROUTE_RULES = [
-    {
-        "requires_root": True,
-        "terms": [
-            "code",
-            "repo",
-            "bug",
-            "fix",
-            "test",
-            "review",
-            "refactor",
-            "build",
-            "lint",
-            "typecheck",
-            "makefile",
-            "dependency",
-            "plugin",
-            "skill",
-        ],
-        "hint": (
-            "For repository implementation or verification, load $codebase:work. "
-            "Keep development source-backed: before non-trivial changes, inspect "
-            "the nearest checked-in README/docs/AGENTS, OKF/LLM Wiki, or "
-            "repo-memory owner when present. After edits, use $knowledge:docs-drift "
-            "or $knowledge:writeback when behavior, commands, config, status, "
-            "plugin, or skill surfaces changed. Use $codebase:verification before "
-            "ready/done/fixed claims."
-        ),
-    },
-    {
-        "terms": ["docs", "okf", "wiki", "knowledge", "semantic drift", "repo-memory"],
-        "hint": (
-            "For docs, OKF/LLM Wiki, semantic drift, repo-memory, or knowledge "
-            "updates, load the matching $knowledge:* owner, including "
-            "$knowledge:writeback after stable changes."
-        ),
-    },
-    {
-        "terms": ["unclear", "architecture", "design", "plan", "方案", "架构"],
-        "hint": (
-            "For unclear intent, architecture, option boundaries, or hidden "
-            "assumptions, use $deliberation:grill."
-        ),
-    },
-    {
-        "terms": ["evidence", "search", "current state", "现状", "查", "研究"],
-        "hint": (
-            "For non-trivial read-only evidence gathering, use "
-            "$deliberation:scout; keep implementation on the main thread."
-        ),
-    },
-    {
-        "terms": ["skeptic", "challenge", "ready", "decision", "质疑", "反证"],
-        "hint": (
-            "For skeptic review, assumption testing, or ready/decision-ready "
-            "critique, use $deliberation:challenge."
-        ),
-    },
-]
+REPO_WORK_HINT = (
+    "For non-trivial repository implementation or verification, load $codebase:work. "
+    "Keep development source-backed: inspect the nearest checked-in README/docs/"
+    "AGENTS, OKF/LLM Wiki, or repo-memory owner when that context may shape command "
+    "authority, architecture, or durable claims. Use $codebase:verification before "
+    "ready/done/fixed claims."
+)
+KNOWLEDGE_HINT = (
+    "For docs, OKF/LLM Wiki, semantic drift, repo-memory, or knowledge updates, "
+    "load the matching $knowledge:* owner, including $knowledge:writeback after "
+    "stable changes."
+)
+ENGLISH_ONLY_HINT = (
+    "Use English for every durable or executable artifact by default. Direct "
+    "user-facing chat may mirror the user's language. Non-English durable content "
+    "requires an explicit user request, preserved external source text, or a "
+    "language/locale artifact such as i18n, translation fixtures, tokenizer tests, "
+    "or locale catalogs."
+)
 
 COMMIT_STYLE_HINT = (
     "When Codex creates or pushes commits in this checkout, use a single-line "
@@ -97,55 +57,20 @@ PUBLIC_SURFACE_HINT = (
     "$knowledge:writeback when a source-backed claim changed."
 )
 DELIBERATION_GATE_HINT = (
-    "This task matches the deliberation gate. Before implementation or material "
-    "claims, use compact first-principles framing with $deliberation:grill, "
-    "source-backed evidence with $deliberation:scout when facts are not local and "
-    "obvious, and skeptic review with $deliberation:challenge before the conclusion. "
-    "Inline only for one local question that fits in 1-2 files or one command and "
-    "cannot affect architecture, debugging, review repair, public contracts, docs "
-    "drift, commit/land, or ready/done decisions."
+    "When the task involves design, architecture, refactor, root-cause debugging, "
+    "research, option comparison, or important ready/done claims, use compact "
+    "first-principles framing with $deliberation:grill, source-backed evidence "
+    "with $deliberation:scout when facts are not local and obvious, and skeptic "
+    "review with $deliberation:challenge before material conclusions. Inline only "
+    "for one local question that fits in 1-2 files or one command and cannot affect "
+    "architecture, debugging, review repair, public contracts, docs drift, "
+    "commit/land, or ready/done decisions."
 )
 
-COMMIT_TERMS = [
+COMMIT_COMMAND_TERMS = [
     "git commit",
     "git push",
-    "force push",
-    "force-push",
-    "commit",
-    "push",
-    "提交",
-    "推送",
-]
-READY_TERMS = ["ready", "done", "fixed", "verified", "完成", "搞定", "修好了", "交付"]
-DELIBERATION_GATE_TERMS = [
-    "architecture",
-    "design",
-    "refactor",
-    "abstraction",
-    "module",
-    "root cause",
-    "root-cause",
-    "debugging",
-    "repeated failed",
-    "failed fix",
-    "best",
-    "option",
-    "tradeoff",
-    "reasonable",
-    "missing",
-    "research",
-    "方案",
-    "架构",
-    "重构",
-    "抽象",
-    "模块",
-    "根因",
-    "调研",
-    "研究",
-    "最佳",
-    "是否合理",
-    "有没有遗漏",
-    "还需要优化",
+    "gh pr merge",
 ]
 PUBLIC_SURFACE_PREFIXES = (
     ".agents/",
@@ -344,27 +269,31 @@ def dedupe_hints(hints: list[str]) -> list[str]:
 def route_hints(text: str, root: str | None, event: str = "UserPromptSubmit") -> list[str]:
     lowered = text.lower()
     hints: list[str] = []
-    for rule in ROUTE_RULES:
-        if rule.get("requires_root") and not root:
-            continue
-        if any(term in lowered for term in rule["terms"]):
-            hints.append(rule["hint"])
 
-    if root and text_has_any(text, COMMIT_TERMS):
+    if event == "UserPromptSubmit":
+        hints.append(ENGLISH_ONLY_HINT)
+        hints.append(DELIBERATION_GATE_HINT)
+        if root:
+            hints.append(REPO_WORK_HINT)
+
+    commit_command = text_has_any(text, COMMIT_COMMAND_TERMS)
+    if root and commit_command:
         hints.append(COMMIT_STYLE_HINT)
 
-    ready_or_commit = text_has_any(text, READY_TERMS + COMMIT_TERMS)
-    large_paths = large_change_paths() if root and ready_or_commit else []
-    surface_paths = (
-        public_surface_paths() if root and (ready_or_commit or event in {"PostToolUse", "PreToolUse"}) else []
-    )
-    if root and ready_or_commit and large_paths:
+    inspect_worktree = root and (event in {"PostToolUse", "PreToolUse"} or commit_command)
+    large_paths = large_change_paths() if inspect_worktree else []
+    surface_paths = public_surface_paths() if inspect_worktree else []
+    if large_paths or surface_paths:
+        hints.append(REPO_WORK_HINT)
+    if large_paths:
         hints.append(ANTI_MONOLITH_HINT)
 
-    if root and (ready_or_commit or event in {"PostToolUse", "PreToolUse"}) and surface_paths:
+    if surface_paths:
+        hints.append(ENGLISH_ONLY_HINT)
+        hints.append(KNOWLEDGE_HINT)
         hints.append(PUBLIC_SURFACE_HINT)
 
-    if text_has_any(text, DELIBERATION_GATE_TERMS) or large_paths or surface_paths:
+    if large_paths or surface_paths:
         hints.append(DELIBERATION_GATE_HINT)
 
     if root and "git push" in lowered:
@@ -396,7 +325,7 @@ def record_event(event: str, payload: dict[str, Any], root: str | None, hints: l
     if surfaces:
         record["public_surface_paths"] = surfaces[:20]
     with STATE_PATH.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        handle.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
 
 
 def main() -> int:

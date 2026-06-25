@@ -236,7 +236,8 @@ fn packaged_decodex_skills_preserve_research_promotion_and_program_boundaries() 
 	);
 	assert_contains(&skill_surface, "latent Decision Contract");
 	assert_contains(&skill_surface, "\"arrange this\"");
-	assert_contains(&skill_surface, "\"推进\"");
+	assert_contains(&skill_surface, "\"proceed with this\"");
+	assert_contains(&skill_surface, "\"implement this\"");
 	assert_contains_normalized(&skill_surface, "Research never queues work");
 	assert_contains_normalized(
 		&skill_surface,
@@ -248,7 +249,7 @@ fn packaged_decodex_skills_preserve_research_promotion_and_program_boundaries() 
 	assert_contains(&skill_surface, "decodex:needs-attention");
 	assert_contains(&skill_surface, "terminal_pending");
 	assert_contains(&skill_surface, "Require promoted research");
-	assert_contains(&skill_surface, "Promotion is a separate authority step");
+	assert_contains_normalized(&skill_surface, "Promotion is a separate authority step");
 	assert_contains(&skill_surface, "after execution authority exists");
 	assert_contains(&skill_surface, "runtime operations");
 	assert_contains(&skill_surface, "service labels");
@@ -315,7 +316,7 @@ fn packaged_research_and_challenge_skills_encode_decodex_methodology() {
 	);
 	assert_contains(&research_surface, "Use exactly one");
 	assert_contains(&research_surface, "refuse unresolved decisions");
-	assert_contains(&research_surface, "Promotion is a separate authority step");
+	assert_contains_normalized(&research_surface, "Promotion is a separate authority step");
 	assert_contains(&research_surface, "Promotion requires explicit acceptance");
 	assert_contains(&research_surface, "Do not infer acceptance");
 	assert_contains(
