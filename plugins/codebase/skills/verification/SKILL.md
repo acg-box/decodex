@@ -49,6 +49,9 @@ For high-risk claims, the main thread must read back the key evidence itself.
 Before a `ready` claim on substantial or generated implementation code, review whether
 the final shape still leaves unrelated responsibilities in one file. If it does,
 downgrade to implemented and split along existing module boundaries first.
+For design-heavy, architectural, root-cause, large/generated, public-contract, or
+review-repair claims, use `$deliberation:challenge` before a positive ready/done
+claim unless the inline exception is clearly satisfied.
 
 ## Output
 

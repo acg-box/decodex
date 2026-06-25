@@ -96,6 +96,15 @@ PUBLIC_SURFACE_HINT = (
     "source-backed docs/OKF/LLM Wiki owner; use $knowledge:docs-drift or "
     "$knowledge:writeback when a source-backed claim changed."
 )
+DELIBERATION_GATE_HINT = (
+    "This task matches the deliberation gate. Before implementation or material "
+    "claims, use compact first-principles framing with $deliberation:grill, "
+    "source-backed evidence with $deliberation:scout when facts are not local and "
+    "obvious, and skeptic review with $deliberation:challenge before the conclusion. "
+    "Inline only for one local question that fits in 1-2 files or one command and "
+    "cannot affect architecture, debugging, review repair, public contracts, docs "
+    "drift, commit/land, or ready/done decisions."
+)
 
 COMMIT_TERMS = [
     "git commit",
@@ -108,6 +117,36 @@ COMMIT_TERMS = [
     "推送",
 ]
 READY_TERMS = ["ready", "done", "fixed", "verified", "完成", "搞定", "修好了", "交付"]
+DELIBERATION_GATE_TERMS = [
+    "architecture",
+    "design",
+    "refactor",
+    "abstraction",
+    "module",
+    "root cause",
+    "root-cause",
+    "debugging",
+    "repeated failed",
+    "failed fix",
+    "best",
+    "option",
+    "tradeoff",
+    "reasonable",
+    "missing",
+    "research",
+    "方案",
+    "架构",
+    "重构",
+    "抽象",
+    "模块",
+    "根因",
+    "调研",
+    "研究",
+    "最佳",
+    "是否合理",
+    "有没有遗漏",
+    "还需要优化",
+]
 PUBLIC_SURFACE_PREFIXES = (
     ".agents/",
     ".codex/",
@@ -315,11 +354,18 @@ def route_hints(text: str, root: str | None, event: str = "UserPromptSubmit") ->
         hints.append(COMMIT_STYLE_HINT)
 
     ready_or_commit = text_has_any(text, READY_TERMS + COMMIT_TERMS)
-    if root and ready_or_commit and large_change_paths():
+    large_paths = large_change_paths() if root and ready_or_commit else []
+    surface_paths = (
+        public_surface_paths() if root and (ready_or_commit or event in {"PostToolUse", "PreToolUse"}) else []
+    )
+    if root and ready_or_commit and large_paths:
         hints.append(ANTI_MONOLITH_HINT)
 
-    if root and (ready_or_commit or event in {"PostToolUse", "PreToolUse"}) and public_surface_paths():
+    if root and (ready_or_commit or event in {"PostToolUse", "PreToolUse"}) and surface_paths:
         hints.append(PUBLIC_SURFACE_HINT)
+
+    if text_has_any(text, DELIBERATION_GATE_TERMS) or large_paths or surface_paths:
+        hints.append(DELIBERATION_GATE_HINT)
 
     if root and "git push" in lowered:
         invalid_subjects = invalid_ahead_commit_subjects()

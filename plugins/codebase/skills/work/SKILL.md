@@ -40,13 +40,20 @@ owner skill; the plugin owns the fanout.
 
 ## Dynamic Support Agents
 
-Do not rely on configured static support-agent roles. For non-trivial review,
-ready-claim, generated or large implementation, debugging, evidence search, or
-challenge work, treat a fresh bounded support-agent pass as materially useful when
-tool support exists. Dynamically spawn read-only support agents for one explicit
-evidence, analysis, scout/search, or skeptic/challenge objective. Provide task-local
-context, read-only boundary, and expected output shape. The main thread keeps
-implementation ownership, checks their evidence, and owns final claims.
+Do not rely on configured static support-agent roles. For design, architecture,
+refactor, root-cause debugging, repeated failed fixes, review repair, large/generated
+implementation, public-contract changes, option comparison, or important ready/done
+claims, use the deliberation gate: `$deliberation:grill` for first-principles
+framing, `$deliberation:scout` for non-obvious evidence, and
+`$deliberation:challenge` before material conclusions.
+
+Inline deliberation is allowed only for one explicit local question that fits in 1-2
+files or one command and cannot affect architecture, review repair, root-cause
+debugging, public contracts, docs drift, commit/land, or ready/done claims. When the
+inline exception does not apply and support-agent tools are allowed, dynamically spawn
+read-only support agents for one explicit evidence, analysis, scout/search, or
+skeptic/challenge objective. The main thread keeps implementation ownership, checks
+their evidence, and owns final claims.
 
 ## Core Rules
 

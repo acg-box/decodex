@@ -1,5 +1,18 @@
 # Documentation Log
 
+## 2026-06-25
+
+- Added the lightweight Deliberation Gate across the Codex workflow plugins:
+  `deliberation` now owns compact first-principles grill, source-backed scout, and
+  skeptic challenge guidance with a deterministic inline exception; `codebase`
+  debugging, review repair, verification, and work routing consume that gate for
+  design, refactor, root-cause debugging, public-contract, and ready/done claims;
+  Decodex research now composes first-principles probe, scout evidence, options,
+  judgment, challenge, and decision without making skeptic research-only.
+- Extended the Codebase Codex lifecycle hook with a non-blocking Deliberation Gate
+  reminder for design, architecture, refactor, root-cause debugging, research,
+  option comparison, and important ready/done prompts.
+
 ## 2026-06-23
 
 - Tightened Phase 8 replay evidence after dogfood review: PR evidence now requires

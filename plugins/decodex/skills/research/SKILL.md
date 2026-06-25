@@ -10,9 +10,11 @@ Read `../../references/research-lifecycle.md` first, then load
 `../../references/research-evidence.md`, `../../references/research-contract.md`, or
 `../../references/research-promotion.md` only when the run needs that detail.
 
-Follow the compact loop: probe, evidence, options, judgment, challenge, decision. Use
-`$deliberation:challenge` for the skeptic pass before `decision_ready` or any
-high-risk recommendation. Use `research-promote` only after explicit acceptance.
+Follow the compact loop: first-principles probe, scout evidence, options, judgment,
+challenge, decision. Use `$deliberation:grill` for framing when scope or constraints
+are unclear, `$deliberation:scout` for non-obvious evidence, and
+`$deliberation:challenge` before `decision_ready` or any material recommendation. Use
+`research-promote` only after explicit acceptance.
 
 - The research compact loop is not runtime `compact_current_head_review`.
 - For runtime compact review quality, read the current `issue_review_checkpoint`
@@ -35,7 +37,8 @@ high-risk recommendation. Use `research-promote` only after explicit acceptance.
 - Do not queue work, mutate Linear, set Codex goals, implement, or dispatch Program
   nodes from research alone.
 - Scout and skeptic passes are dynamic fresh-context support-agent work, not
-  configured static roles. For non-trivial evidence gathering or `decision_ready`
-  challenge, dispatch a bounded read-only scout or skeptic support agent when tool
-  support exists; inline only for small/local checks or unavailable support-agent
-  tools, and keep the fallback visible.
+  configured static roles. Use the `$deliberation:*` inline exception: inline only
+  when one local question fits in 1-2 files or one command and cannot affect
+  decision readiness, public contracts, docs drift, commit/land, or ready/done
+  claims. Otherwise dispatch a bounded read-only scout or skeptic support agent when
+  support-agent tools are allowed, and keep any fallback visible.
