@@ -73,7 +73,7 @@ struct ManualLandContext {
 	canonical_repo_root: PathBuf,
 	authority: ManualAuthority,
 	service_id: String,
-	workflow: WorkflowDocument,
+	workflow: Option<WorkflowDocument>,
 	github_token_env_var: String,
 	github_token: String,
 	github_command_path: Option<PathBuf>,
@@ -311,15 +311,42 @@ fn prepare_manual_land_context(
 	let cwd = env::current_dir()?;
 	let worktree_root = current_worktree_root(&cwd)?;
 	let current_branch = current_branch_name(&cwd)?;
+
+	if request.manual_authority && config_path.is_none() {
+		return prepare_unregistered_manual_land_context(
+			cwd,
+			worktree_root,
+			current_branch,
+			request,
+		);
+	}
+
 	let resolved_config_path = resolve_manual_config_path(config_path, &cwd)?;
-	let config = ServiceConfig::from_path(&resolved_config_path)?;
+
+	prepare_configured_manual_land_context(
+		cwd,
+		worktree_root,
+		current_branch,
+		&resolved_config_path,
+		request,
+	)
+}
+
+fn prepare_configured_manual_land_context(
+	cwd: PathBuf,
+	worktree_root: PathBuf,
+	current_branch: String,
+	resolved_config_path: &Path,
+	request: &ManualLandRequest,
+) -> Result<ManualLandContext> {
+	let config = ServiceConfig::from_path(resolved_config_path)?;
 	let canonical_repo_root = config::canonical_repo_root_for_checkout(&cwd)?
 		.unwrap_or_else(|| config.repo_root().to_path_buf());
 
 	ensure_cli_repo_context(&cwd, &config, &canonical_repo_root)?;
 
 	let authority = resolve_land_authority(
-		Some(&resolved_config_path),
+		Some(resolved_config_path),
 		request.authority.as_deref(),
 		request.manual_authority,
 		&worktree_root,
@@ -336,17 +363,19 @@ fn prepare_manual_land_context(
 		ConfiguredPublicProjectionPrivacyClassifier::from_config(config.privacy_classifier())?;
 	let prepared_closeout =
 		prepare_manual_land_closeout(&config, &canonical_repo_root, workflow.clone(), &authority)?;
-	let state_store = runtime::open_runtime_store()?;
-
-	runtime::register_project_config(&state_store, &resolved_config_path, true)?;
-
 	let handoff = match prepared_closeout.as_ref() {
-		Some(prepared_closeout) => read_manual_land_handoff(
-			&state_store,
-			config.service_id(),
-			&prepared_closeout.issue.id,
-			&current_branch,
-		)?,
+		Some(prepared_closeout) => {
+			let state_store = runtime::open_runtime_store()?;
+
+			runtime::register_project_config(&state_store, resolved_config_path, true)?;
+
+			read_manual_land_handoff(
+				&state_store,
+				config.service_id(),
+				&prepared_closeout.issue.id,
+				&current_branch,
+			)?
+		},
 		None => None,
 	};
 	let pr_url =
@@ -364,7 +393,7 @@ fn prepare_manual_land_context(
 		canonical_repo_root,
 		authority,
 		service_id: config.service_id().to_owned(),
-		workflow,
+		workflow: Some(workflow),
 		github_token_env_var: config.github().token_env_var().to_owned(),
 		github_token,
 		github_command_path,
@@ -375,6 +404,115 @@ fn prepare_manual_land_context(
 		review_branch,
 		public_projection_privacy_classifier,
 	})
+}
+
+fn prepare_unregistered_manual_land_context(
+	cwd: PathBuf,
+	worktree_root: PathBuf,
+	current_branch: String,
+	request: &ManualLandRequest,
+) -> Result<ManualLandContext> {
+	let authority = resolve_land_authority(
+		None,
+		request.authority.as_deref(),
+		request.manual_authority,
+		&worktree_root,
+	)?;
+	let canonical_repo_root =
+		config::canonical_repo_root_for_checkout(&cwd)?.unwrap_or_else(|| worktree_root.clone());
+	let (github_token_env_var, github_token) = resolve_unregistered_github_token(&cwd, None)?;
+	let repository = github::inspect_repository_context(&canonical_repo_root, &github_token, None)?;
+	let pr_url = resolve_pr_url(request.pr_url.as_deref(), None, authority.is_manual())?;
+	let project_worktree_root =
+		infer_unregistered_manual_land_worktree_root(&canonical_repo_root, &worktree_root);
+
+	Ok(ManualLandContext {
+		cwd,
+		current_branch: current_branch.clone(),
+		worktree_root,
+		project_worktree_root,
+		canonical_repo_root,
+		authority,
+		service_id: repository.name.clone(),
+		workflow: None,
+		github_token_env_var,
+		github_token,
+		github_command_path: None,
+		repository,
+		prepared_closeout: None,
+		review_handoff: None,
+		pr_url,
+		review_branch: current_branch,
+		public_projection_privacy_classifier: ConfiguredPublicProjectionPrivacyClassifier::Disabled,
+	})
+}
+
+fn resolve_unregistered_github_token(
+	cwd: &Path,
+	gh_command_path: Option<&Path>,
+) -> Result<(String, String)> {
+	for env_var in ["GH_TOKEN", "GITHUB_TOKEN"] {
+		if let Some(token) = nonempty_env_var(env_var) {
+			return Ok((env_var.to_owned(), token));
+		}
+	}
+
+	let mut command = github::gh_command_with_config(gh_command_path);
+
+	command.args(["auth", "token"]);
+	command.current_dir(cwd);
+	command
+		.env("GH_PROMPT_DISABLED", "1")
+		.env("GIT_TERMINAL_PROMPT", "0")
+		.env("GCM_INTERACTIVE", "never");
+
+	let output = command.output().wrap_err("Failed to run `gh auth token`.")?;
+
+	if output.status.success() {
+		let token = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+
+		if !token.is_empty() {
+			return Ok((String::from("GH_TOKEN"), token));
+		}
+	}
+
+	let stderr = String::from_utf8_lossy(&output.stderr);
+	let detail = stderr.trim();
+
+	eyre::bail!(
+		"`decodex land --manual-authority --pr` needs GitHub credentials when no Decodex project config is provided. Set `GH_TOKEN`/`GITHUB_TOKEN`, authenticate `gh auth token`, or pass `--config <PROJECT_DIR>`.{}",
+		if detail.is_empty() {
+			String::new()
+		} else {
+			format!(" `gh auth token` failed: {detail}")
+		}
+	);
+}
+
+fn nonempty_env_var(name: &str) -> Option<String> {
+	env::var(name).ok().map(|value| value.trim().to_owned()).filter(|value| !value.is_empty())
+}
+
+fn infer_unregistered_manual_land_worktree_root(
+	canonical_repo_root: &Path,
+	worktree_root: &Path,
+) -> PathBuf {
+	let conventional_worktree_root = canonical_repo_root.join(".worktrees");
+
+	if paths_match_for_manual_commit_guard(worktree_root, canonical_repo_root)
+		|| paths_match_for_manual_land_root(worktree_root, &conventional_worktree_root)
+	{
+		return conventional_worktree_root;
+	}
+
+	worktree_root.parent().map_or_else(|| worktree_root.to_path_buf(), Path::to_path_buf)
+}
+
+fn paths_match_for_manual_land_root(path: &Path, root: &Path) -> bool {
+	let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+	let root = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+
+	path.starts_with(&root) && path != root
 }
 
 fn prepare_manual_land_closeout(
@@ -616,12 +754,16 @@ fn cleanup_manual_land_lane_checkout(context: &ManualLandContext) -> Result<()> 
 		&context.current_branch,
 	)?;
 
-	worktree_manager.remove_worktree_path_with_hooks(
-		manual_land_cleanup_identifier(&context.authority, &context.current_branch),
-		&context.current_branch,
-		&context.worktree_root,
-		context.workflow.frontmatter().execution().workspace_hooks(),
-	)?;
+	if let Some(workflow) = context.workflow.as_ref() {
+		worktree_manager.remove_worktree_path_with_hooks(
+			manual_land_cleanup_identifier(&context.authority, &context.current_branch),
+			&context.current_branch,
+			&context.worktree_root,
+			workflow.frontmatter().execution().workspace_hooks(),
+		)?;
+	} else {
+		worktree_manager.remove_worktree_path(&context.worktree_root)?;
+	}
 
 	ensure_manual_land_left_no_merged_worktree_cleanup_debt(context)?;
 
@@ -1003,80 +1145,97 @@ fn validate_landing_state(
 			landing_state.head_ref_oid
 		);
 	}
-	if gate_view.state == "MERGED" {
-		return Ok(LandExecutionMode::CloseoutOnly);
-	}
-	if gate_view.state != "OPEN" {
-		eyre::bail!("Pull request `{pr_url}` is `{}` and cannot be landed.", gate_view.state);
-	}
-	if gate_view.is_draft {
-		eyre::bail!("Pull request `{pr_url}` is still draft.");
-	}
-	if gate_view.pending_review_requests > 0 {
-		eyre::bail!(
-			"Pull request `{pr_url}` still has {} pending review request(s).",
-			gate_view.pending_review_requests
-		);
-	}
-	if gate_view.unresolved_review_threads > 0 {
-		eyre::bail!(
-			"Pull request `{pr_url}` still has {} unresolved review thread(s).",
-			gate_view.unresolved_review_threads
-		);
-	}
-	if gate_view.review_decision == Some("CHANGES_REQUESTED") {
-		eyre::bail!("Pull request `{pr_url}` still has active change requests.");
-	}
 
-	if let Some(reason) = pull_request::merge_state_requires_review_repair(
-		gate_view.mergeable,
-		gate_view.merge_state_status,
-	) {
-		eyre::bail!("Pull request `{pr_url}` requires review repair: {reason}.");
-	}
+	let decision =
+		pull_request::classify_landing_gate(gate_view, pull_request::LandingGateMode::ManualLand);
 
-	if pull_request::failed_checks_require_repair(
-		gate_view.status_check_rollup_state,
-		gate_view.merge_state_status,
-	) {
-		eyre::bail!("Pull request `{pr_url}` has failed required checks that need repair.");
-	}
-
-	if let Some(other) = gate_view.status_check_rollup_state
-		&& pull_request::checks_require_wait(Some(other))
-	{
-		eyre::bail!(
-			"Pull request `{pr_url}` is still waiting on checks: statusCheckRollup=`{other}`."
-		);
-	}
-
-	if pull_request::mergeability_unknown(gate_view) {
-		eyre::bail!(
-			"Pull request `{pr_url}` mergeability is still unknown after retry; wait for GitHub to recompute mergeability and retry `decodex land`."
-		);
-	}
-	if !pull_request::merge_state_allows_ready_to_land(gate_view.merge_state_status) {
-		eyre::bail!(
-			"Pull request `{pr_url}` is not ready to land: mergeStateStatus=`{}`.",
-			gate_view.merge_state_status
-		);
-	}
-	if gate_view.mergeable != "MERGEABLE" {
-		eyre::bail!(
-			"Pull request `{pr_url}` is not mergeable: mergeable=`{}`.",
-			gate_view.mergeable
-		);
-	}
-
-	match gate_view.status_check_rollup_state {
-		Some("SUCCESS") | None => {
+	match decision {
+		pull_request::LandingGateDecision::Satisfied => {
 			debug_assert!(pull_request::manual_landing_gates_satisfied(gate_view));
 
 			Ok(LandExecutionMode::MergeAndCloseout)
 		},
-		Some(other) => eyre::bail!(
-			"Pull request `{pr_url}` still has non-green checks: statusCheckRollup=`{other}`."
-		),
+		pull_request::LandingGateDecision::CloseoutOnly => Ok(LandExecutionMode::CloseoutOnly),
+		decision => manual_landing_gate_error(decision, gate_view, pr_url),
+	}
+}
+
+fn manual_landing_gate_error(
+	decision: pull_request::LandingGateDecision,
+	gate_view: pull_request::PullRequestLandingGateView<'_>,
+	pr_url: &str,
+) -> Result<LandExecutionMode> {
+	match decision {
+		pull_request::LandingGateDecision::Satisfied => Ok(LandExecutionMode::MergeAndCloseout),
+		pull_request::LandingGateDecision::CloseoutOnly => Ok(LandExecutionMode::CloseoutOnly),
+		pull_request::LandingGateDecision::Block("pull_request_not_open") => {
+			eyre::bail!("Pull request `{pr_url}` is `{}` and cannot be landed.", gate_view.state)
+		},
+		pull_request::LandingGateDecision::Block("pull_request_is_draft") => {
+			eyre::bail!("Pull request `{pr_url}` is still draft.")
+		},
+		pull_request::LandingGateDecision::Wait("pending_review_requests") => {
+			eyre::bail!(
+				"Pull request `{pr_url}` still has {} pending review request(s).",
+				gate_view.pending_review_requests
+			)
+		},
+		pull_request::LandingGateDecision::Repair("unresolved_review_threads") => {
+			eyre::bail!(
+				"Pull request `{pr_url}` still has {} unresolved review thread(s).",
+				gate_view.unresolved_review_threads
+			)
+		},
+		pull_request::LandingGateDecision::Repair("review_changes_requested") => {
+			eyre::bail!("Pull request `{pr_url}` still has active change requests.")
+		},
+		pull_request::LandingGateDecision::Repair(reason)
+			if matches!(
+				reason,
+				"pull_request_merge_conflict" | "pull_request_branch_behind_base"
+			) =>
+		{
+			eyre::bail!("Pull request `{pr_url}` requires review repair: {reason}.")
+		},
+		pull_request::LandingGateDecision::Repair("required_checks_failed") => {
+			eyre::bail!("Pull request `{pr_url}` has failed required checks that need repair.")
+		},
+		pull_request::LandingGateDecision::Wait("checks_waiting") => {
+			let check_state = gate_view.status_check_rollup_state.unwrap_or("unknown");
+
+			eyre::bail!(
+				"Pull request `{pr_url}` is still waiting on checks: statusCheckRollup=`{check_state}`."
+			)
+		},
+		pull_request::LandingGateDecision::Wait("mergeability_unknown") => {
+			eyre::bail!(
+				"Pull request `{pr_url}` mergeability is still unknown after retry; wait for GitHub to recompute mergeability and retry `decodex land`."
+			)
+		},
+		pull_request::LandingGateDecision::Block("merge_state_not_ready") => {
+			eyre::bail!(
+				"Pull request `{pr_url}` is not ready to land: mergeStateStatus=`{}`.",
+				gate_view.merge_state_status
+			)
+		},
+		pull_request::LandingGateDecision::Block("not_mergeable") => {
+			eyre::bail!(
+				"Pull request `{pr_url}` is not mergeable: mergeable=`{}`.",
+				gate_view.mergeable
+			)
+		},
+		pull_request::LandingGateDecision::Wait("checks_non_green") => {
+			let check_state = gate_view.status_check_rollup_state.unwrap_or("unknown");
+
+			eyre::bail!(
+				"Pull request `{pr_url}` still has non-green checks: statusCheckRollup=`{check_state}`."
+			)
+		},
+		pull_request::LandingGateDecision::Wait(reason)
+		| pull_request::LandingGateDecision::Repair(reason)
+		| pull_request::LandingGateDecision::Block(reason) => {
+			eyre::bail!("Pull request `{pr_url}` is not ready to land: {reason}.")
+		},
 	}
 }
 
@@ -2139,7 +2298,7 @@ mod tests {
 			canonical_repo_root: repo_root.to_path_buf(),
 			authority: ManualAuthority::Manual,
 			service_id: String::from("decodex"),
-			workflow: sample_workflow(),
+			workflow: Some(sample_workflow()),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
 			github_command_path: None,
@@ -2309,6 +2468,49 @@ exit 1\n",
 		let path_env = env::var("PATH").unwrap_or_default();
 
 		TestEnvVarGuard::set("PATH", &format!("{}:{path_env}", fake_gh_dir.display()))
+	}
+
+	fn install_fake_repo_view_gh(temp_dir: &TempDir) -> PathBuf {
+		let fake_gh_dir = temp_dir.path().join("fake-repo-view-bin");
+		let fake_gh_path = fake_gh_dir.join("gh");
+
+		fs::create_dir_all(&fake_gh_dir).expect("fake gh directory should exist");
+		fs::write(
+			&fake_gh_path,
+			format!(
+				"#!/bin/sh\n\
+if [ \"$1\" = \"repo\" ] && [ \"$2\" = \"view\" ]; then\n\
+  printf '%s' '{}'\n\
+  exit 0\n\
+fi\n\
+if [ \"$1\" = \"auth\" ] && [ \"$2\" = \"token\" ]; then\n\
+  printf '%s\\n' 'ghp_fake_auth_token'\n\
+  exit 0\n\
+fi\n\
+echo \"unexpected gh invocation: $*\" >&2\n\
+exit 1\n",
+				serde_json::json!({
+					"name": "decodex",
+					"owner": { "login": "hack-ink" },
+					"defaultBranchRef": { "name": "main" },
+					"mergeCommitAllowed": true,
+				}),
+			),
+		)
+		.expect("fake gh script should write");
+
+		let mut permissions =
+			fs::metadata(&fake_gh_path).expect("fake gh metadata should read").permissions();
+
+		#[cfg(unix)]
+		{
+			PermissionsExt::set_mode(&mut permissions, 0o755);
+		}
+
+		fs::set_permissions(&fake_gh_path, permissions)
+			.expect("fake gh script should become executable");
+
+		fake_gh_dir
 	}
 
 	fn sample_workflow() -> WorkflowDocument {
@@ -2592,6 +2794,26 @@ exit 1\n",
 	}
 
 	#[test]
+	fn landing_state_validation_rejects_blocked_merge_state_after_green_gates() {
+		let mut landing_state = sample_landing_state();
+
+		landing_state.base_ref_name = String::from("main");
+		landing_state.merge_state_status = String::from("BLOCKED");
+
+		let error = manual::validate_landing_state(
+			&landing_state,
+			"https://github.com/hack-ink/decodex/pull/64",
+			"main",
+			"XY-225",
+			"deadbeef",
+		)
+		.expect_err("blocked merge state should not land without a policy change");
+
+		assert!(error.to_string().contains("not ready to land"));
+		assert!(error.to_string().contains("mergeStateStatus=`BLOCKED`"));
+	}
+
+	#[test]
 	fn execute_land_merge_uses_admin_merge() {
 		let temp_dir = TempDir::new().expect("temp dir should create");
 		let checkout = init_git_checkout(&temp_dir, "repo");
@@ -2604,7 +2826,7 @@ exit 1\n",
 			canonical_repo_root: checkout,
 			authority: ManualAuthority::Manual,
 			service_id: String::from("decodex"),
-			workflow: sample_workflow(),
+			workflow: Some(sample_workflow()),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
 			github_command_path: None,
@@ -2661,7 +2883,7 @@ exit 1\n",
 			canonical_repo_root: checkout,
 			authority: ManualAuthority::Manual,
 			service_id: String::from("decodex"),
-			workflow: sample_workflow(),
+			workflow: Some(sample_workflow()),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
 			github_command_path: None,
@@ -2719,7 +2941,7 @@ exit 1\n",
 			canonical_repo_root: checkout,
 			authority: ManualAuthority::Manual,
 			service_id: String::from("decodex"),
-			workflow: sample_workflow(),
+			workflow: Some(sample_workflow()),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
 			github_command_path: None,
@@ -2787,6 +3009,113 @@ exit 1\n",
 		.expect("manual authority should resolve");
 
 		assert_eq!(authority, ManualAuthority::Manual);
+	}
+
+	#[test]
+	fn manual_land_manual_authority_without_config_prepares_unregistered_context() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let repo_root = init_git_checkout(&temp_dir, "repo");
+		let fake_gh_dir = install_fake_repo_view_gh(&temp_dir);
+		let path_env = env::var("PATH").unwrap_or_default();
+		let _env_guard = TestEnvVarGuard::set_many([
+			("GH_TOKEN", String::from("ghp_test")),
+			("PATH", format!("{}:{path_env}", fake_gh_dir.display())),
+		]);
+		let request = ManualLandRequest {
+			summary: String::from("ship hotfix"),
+			authority: None,
+			manual_authority: true,
+			pr_url: Some(String::from("https://github.com/hack-ink/decodex/pull/64")),
+			related: Vec::new(),
+			breaking: false,
+		};
+
+		let context = manual::prepare_unregistered_manual_land_context(
+			repo_root.clone(),
+			repo_root.clone(),
+			String::from("main"),
+			&request,
+		)
+		.expect("manual land should prepare without project registry");
+
+		assert_eq!(context.authority, ManualAuthority::Manual);
+		assert_eq!(context.service_id, "decodex");
+		assert_eq!(
+			context.canonical_repo_root,
+			fs::canonicalize(&repo_root).expect("repo root should canonicalize")
+		);
+		assert_eq!(context.project_worktree_root, context.canonical_repo_root.join(".worktrees"));
+		assert!(context.workflow.is_none());
+		assert!(context.prepared_closeout.is_none());
+		assert!(context.review_handoff.is_none());
+		assert_eq!(context.github_token_env_var, "GH_TOKEN");
+		assert_eq!(context.github_token, "ghp_test");
+	}
+
+	#[test]
+	fn manual_land_manual_authority_with_config_does_not_refresh_project_registry() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let fake_gh_dir = install_fake_repo_view_gh(&temp_dir);
+		let path_env = env::var("PATH").unwrap_or_default();
+		let _home_guard = TestEnvVarGuard::set_many([
+			("HOME", temp_dir.path().to_str().expect("temp dir path should be utf-8").to_owned()),
+			("GH_TOKEN", String::from("ghp_test")),
+			("PATH", format!("{}:{path_env}", fake_gh_dir.display())),
+		]);
+		let repo_root = init_git_checkout(&temp_dir, "repo");
+		let config_dir = temp_dir.path().join(".codex/decodex/projects/decodex");
+		let config_path = config_dir.join("project.toml");
+		let request = ManualLandRequest {
+			summary: String::from("ship hotfix"),
+			authority: None,
+			manual_authority: true,
+			pr_url: Some(String::from("https://github.com/hack-ink/decodex/pull/64")),
+			related: Vec::new(),
+			breaking: false,
+		};
+
+		fs::create_dir_all(&config_dir).expect("config dir should exist");
+		fs::write(
+			&config_path,
+			format!(
+				r#"
+				service_id = "decodex"
+
+				[tracker]
+				api_key_env_var = "GH_TOKEN"
+
+				[github]
+				token_env_var = "GH_TOKEN"
+
+				[paths]
+				repo_root = "{}"
+				"#,
+				repo_root.display()
+			),
+		)
+		.expect("project config should write");
+		fs::write(
+			config_dir.join("WORKFLOW.md"),
+			sample_workflow().to_markdown().expect("sample workflow should render"),
+		)
+		.expect("workflow should write");
+
+		let context = manual::prepare_configured_manual_land_context(
+			repo_root,
+			temp_dir.path().join(".worktrees/XY-225"),
+			String::from("xy-225"),
+			&config_path,
+			&request,
+		)
+		.expect("manual land should prepare with config");
+		let state_store = runtime::open_runtime_store().expect("runtime store should open");
+
+		assert!(context.workflow.is_some());
+		assert!(context.prepared_closeout.is_none());
+		assert!(
+			state_store.list_projects().expect("project registry should list").is_empty(),
+			"manual-authority land should not refresh project registry unless issue closeout needs runtime state"
+		);
 	}
 
 	#[test]
@@ -3102,7 +3431,7 @@ exit 1\n",
 			canonical_repo_root: repo_root.clone(),
 			authority: ManualAuthority::Issue(String::from("XY-225")),
 			service_id: String::from("pubfi"),
-			workflow: sample_workflow(),
+			workflow: Some(sample_workflow()),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
 			github_command_path: None,
@@ -3164,7 +3493,7 @@ exit 1\n",
 			canonical_repo_root: repo_root.clone(),
 			authority: ManualAuthority::Manual,
 			service_id: String::from("decodex"),
-			workflow: sample_workflow(),
+			workflow: Some(sample_workflow()),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
 			github_command_path: None,

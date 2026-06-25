@@ -95,6 +95,10 @@ issue-authority landing lacks retained handoff state, run
 only for a Decodex-owned retained lane whose PR, retained worktree, branch, and head
 lineage match. Use dry-run `adopt` only for a human-owned PR takeover from the current
 managed worktree. Neither recovery command lands the PR.
+Non-issue `--manual-authority --pr` landing is not project-registry authority: without
+`--config`, it may use the current Git checkout plus `GH_TOKEN`, `GITHUB_TOKEN`, or
+`gh auth token` and must skip runtime/Linear closeout. Use `--config` when the operator
+wants configured GitHub credentials or workspace hooks.
 
 ## Hard Boundaries
 

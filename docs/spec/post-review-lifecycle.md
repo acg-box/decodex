@@ -7,12 +7,16 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs:
+  - apps/decodex/src/manual.rs
   - apps/decodex/src/orchestrator/execution.rs
   - apps/decodex/src/orchestrator/dispatch_policy.rs
   - apps/decodex/src/orchestrator/run_cycle.rs
   - apps/decodex/src/orchestrator/status.rs
+  - apps/decodex/src/pull_request.rs
   - apps/decodex/src/recovery.rs
+  - apps/decodex/src/worktree.rs
 drift_watch:
+  - decodex land --manual-authority --pr
   - review_handoff_state_transition_pending
   - review_lifecycle_records
   - issue_review_handoff
@@ -22,7 +26,7 @@ drift_watch:
   - IssueDispatchMode::Retry
   - IssueDispatchMode::ReviewRepair
   - IssueDispatchMode::Closeout
-last_verified: 2026-06-23
+last_verified: 2026-06-25
 ---
 # Post-Review Lifecycle
 
@@ -220,6 +224,13 @@ success path.
   does not land the PR, queue follow-up work, or clear needs-attention. A subsequent
   `decodex land --authority <ISSUE> --pr <URL>` owns merge, tracker closeout, and
   cleanup through the normal issue-authority path.
+- Explicit non-issue landing with `decodex land --manual-authority --pr <URL>` is not
+  a project-registry operation. When no `--config` is provided, it derives repository
+  context from the current Git checkout, uses `GH_TOKEN`, `GITHUB_TOKEN`, or
+  `gh auth token`, keeps the normal PR/base/head/check gates, writes only the local
+  manual land receipt, and skips runtime/Linear closeout. Passing `--config` may supply
+  GitHub credentials and workspace hooks, but pure manual-authority landing must not
+  refresh project registry state unless issue closeout is actually in scope.
 - A successful rebind writes the same runtime DB review lifecycle record as normal
   `issue_review_handoff` needs, and records a `review_handoff_rebind` audit
   event. It does not land the PR, queue follow-up work, or substitute for healthy lanes'
