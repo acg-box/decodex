@@ -36,6 +36,10 @@ validation, configuration, landing, or evidence-reporting rules.
   unrelated concerns such as parsing, state, I/O, rendering, persistence, CLI wiring,
   or tests, split it along existing domain and adapter boundaries before claiming
   ready.
+- Treat an explicit isolated checkout, benchmark checkout, eval checkout, or
+  prompt-scoped "provided checkout" as the working context. Do not create a nested
+  worktree inside it; benchmark and review harnesses must be able to see edits,
+  diffs, and artifacts from the provided checkout root.
 
 ## Task Runner Structure
 
