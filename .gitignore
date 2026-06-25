@@ -1,11 +1,14 @@
 # AI
+.agent
 .codex
-.decodex
-.decodex-run-activity
-.decodex-run-control
 !apps/decodex-app/.codex/
 !apps/decodex-app/.codex/environments/
 !apps/decodex-app/.codex/environments/environment.toml
+
+# Decodex Local Runtime
+.decodex
+.decodex-run-activity
+.decodex-run-control
 
 # Editor
 .vscode
