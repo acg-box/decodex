@@ -12,6 +12,11 @@
 - Extended the Codebase Codex lifecycle hook with a non-blocking Deliberation Gate
   reminder for design, architecture, refactor, root-cause debugging, research,
   option comparison, and important ready/done prompts.
+- Clarified the non-issue `decodex land --manual-authority --pr <URL>` boundary:
+  unconfigured manual landing may use the current Git checkout plus GitHub CLI
+  credentials without reading or refreshing the project registry, while issue-authority
+  landing remains project-config bound for retained handoff, Linear closeout, runtime
+  ledger, and cleanup policy.
 
 ## 2026-06-23
 

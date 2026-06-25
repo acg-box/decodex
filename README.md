@@ -112,6 +112,12 @@ decodex serve --listen-address 127.0.0.1:8192
 
 Project-scoped commands accept `--config <PROJECT_DIR>` after the subcommand when the
 operator wants to override registry-based project resolution for that command.
+`decodex land --manual-authority --pr <URL>` is the non-issue landing exception: when
+no `--config` is supplied, it uses the current Git checkout plus GitHub CLI credentials
+from `GH_TOKEN`, `GITHUB_TOKEN`, or `gh auth token` and does not read or refresh the
+project registry. Use `--config` when manual landing should use configured GitHub
+credentials or workspace hooks; issue-authority landing still requires project config
+for retained handoff, Linear closeout, runtime ledger, and cleanup policy.
 `decodex status` first tries to reuse the default local operator listener's published
 `GET /api/operator-snapshot` when the snapshot is recent, covers the requested project,
 and has at least the requested `--limit`. JSON output marks this as
