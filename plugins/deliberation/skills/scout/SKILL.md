@@ -9,10 +9,17 @@ Gather the smallest evidence slice that can change the next decision. Scout is
 read-only and does not implement, mutate tracker state, create authority, or claim
 verification.
 
+Read `../../references/deliberation-gate.md` when the task may need the compact
+grill/scout/challenge gate or when deciding whether inline scouting is enough.
+
 ## Rules
 
-- Use a fresh bounded read-only support agent when the evidence search is non-trivial
-  and tool support exists. Inline scouting is acceptable for small local probes.
+- Default to a fresh bounded read-only support agent when evidence gathering benefits
+  from independent context and support-agent tools are allowed.
+- Inline scouting is allowed only when one explicit local question can be answered
+  from 1-2 files or one command, and the answer cannot affect architecture, review
+  repair, root-cause debugging, public contracts, docs drift, commit/land, or
+  ready/done claims.
 - Name the objective, allowed roots or sources, excluded surfaces, and expected
   evidence shape before dispatching.
 - Prefer direct evidence: checked-in files, command output, official docs, runtime

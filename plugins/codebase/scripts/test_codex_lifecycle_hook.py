@@ -98,6 +98,19 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.assertIn("$knowledge:docs-drift", joined)
         self.assertIn("$knowledge:writeback", joined)
 
+    def test_design_refactor_prompt_adds_deliberation_gate(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: []
+
+        hints = self.hook.route_hints("Should we refactor this auth architecture?", "/tmp/repo")
+
+        joined = "\n".join(hints)
+        self.assertIn("deliberation gate", joined)
+        self.assertIn("$deliberation:grill", joined)
+        self.assertIn("$deliberation:scout", joined)
+        self.assertIn("$deliberation:challenge", joined)
+        self.assertIn("1-2 files or one command", joined)
+
     def test_commit_subject_validation(self) -> None:
         valid = '{"schema":"decodex/commit/1","summary":"ship guard","authority":"XY-1099"}'
 
