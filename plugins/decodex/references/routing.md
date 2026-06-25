@@ -32,7 +32,7 @@ generic challenge live in companion plugins.
   claims, evidence sufficiency, option framing, and ready/decision-ready assertions.
   Challenge does not create execution authority.
 - Promotion: use `research-promote` only after explicit acceptance such as "arrange
-  this", "push this forward", "推进", or "做".
+  this", "push this forward", "proceed with this", or "implement this".
 - Planning: use `planning` after promotion or another explicit execution instruction.
   Planning owns issue briefing and Program readiness.
 - Decodex ops: use `decodex-ops` for retained automation, human-driven CLI commands,

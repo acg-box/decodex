@@ -29,9 +29,13 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.hook = load_hook_module()
 
     def test_route_hints_selects_codebase_knowledge_and_deliberation(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: ["plugins/codebase/skills/work/SKILL.md"]
+
         hints = self.hook.route_hints(
             "Fix plugin docs after architecture decision and run skeptic review",
             "/tmp/repo",
+            "PostToolUse",
         )
 
         joined = "\n".join(hints)
@@ -61,7 +65,7 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.hook.public_surface_paths = lambda paths=None: []
         self.hook.invalid_ahead_commit_subjects = lambda: []
 
-        hints = self.hook.route_hints("commit and push this change", "/tmp/repo")
+        hints = self.hook.route_hints("git commit -m test && git push origin main", "/tmp/repo")
 
         joined = "\n".join(hints)
         self.assertIn("decodex/commit/1", joined)
@@ -82,7 +86,7 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.hook.large_change_paths = lambda stats=None: ["src/large.rs"]
         self.hook.public_surface_paths = lambda paths=None: []
 
-        hints = self.hook.route_hints("ready to commit", "/tmp/repo")
+        hints = self.hook.route_hints("git commit -m test", "/tmp/repo", "PreToolUse")
 
         joined = "\n".join(hints)
         self.assertIn("$deliberation:challenge", joined)
@@ -92,20 +96,22 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.hook.large_change_paths = lambda stats=None: []
         self.hook.public_surface_paths = lambda paths=None: ["plugins/codebase/skills/work/SKILL.md"]
 
-        hints = self.hook.route_hints("done", "/tmp/repo")
+        hints = self.hook.route_hints("", "/tmp/repo", "PostToolUse")
 
         joined = "\n".join(hints)
+        self.assertIn("Use English for every durable or executable artifact", joined)
         self.assertIn("$knowledge:docs-drift", joined)
         self.assertIn("$knowledge:writeback", joined)
 
-    def test_design_refactor_prompt_adds_deliberation_gate(self) -> None:
+    def test_user_prompt_adds_conditional_deliberation_gate(self) -> None:
         self.hook.large_change_paths = lambda stats=None: []
         self.hook.public_surface_paths = lambda paths=None: []
 
         hints = self.hook.route_hints("Should we refactor this auth architecture?", "/tmp/repo")
 
         joined = "\n".join(hints)
-        self.assertIn("deliberation gate", joined)
+        self.assertIn("Use English for every durable or executable artifact", joined)
+        self.assertIn("When the task involves design", joined)
         self.assertIn("$deliberation:grill", joined)
         self.assertIn("$deliberation:scout", joined)
         self.assertIn("$deliberation:challenge", joined)

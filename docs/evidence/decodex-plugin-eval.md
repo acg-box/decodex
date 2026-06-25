@@ -51,9 +51,9 @@ Static budget snapshot from the 2026-06-25 source-root run:
 
 | Target | Active | Trigger | Invoke | Deferred | Explicit-only | Total |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `plugins/decodex` | 889 | 50 | 839 | 3974 | 2379 | 4863 |
+| `plugins/decodex` | 889 | 50 | 839 | 3988 | 2379 | 4877 |
 | `plugins/knowledge` | 2108 | 227 | 1881 | 4340 | 0 | 6448 |
-| `plugins/codebase` | 3415 | 234 | 3181 | 4514 | 0 | 7929 |
+| `plugins/codebase` | 3415 | 234 | 3181 | 4714 | 0 | 8129 |
 | `plugins/deliberation` | 1945 | 195 | 1750 | 337 | 0 | 2282 |
 
 ## Invocation Policy
@@ -98,20 +98,23 @@ Decodex lifecycle:
 about `decodex/commit/1` commit-message style before commit or push operations, warns
 about large implementation diffs before ready/commit claims, and keeps development
 coupled to source-backed docs, OKF/LLM Wiki, or durable knowledge before non-trivial
-repo work and when public code/config/command/status/plugin surfaces change. It also
-adds a lightweight Deliberation Gate reminder for design, architecture, refactor,
-root-cause debugging, research, option comparison, and important ready/done claims.
-The hook is not the source of workflow authority: skill frontmatter and host
-`AGENTS.md` remain the primary routing mechanism. A Codex hook trust prompt may still
-be required before the hook executes in a live session.
+repo work and when public code/config/command/status/plugin surfaces change. The
+`UserPromptSubmit` hook now emits short conditional reminders for English-only
+durable artifacts and the Deliberation Gate without maintaining natural-language
+trigger word lists; `PreToolUse` and `PostToolUse` keep structural defenses for
+git commands, large diffs, and public workflow surfaces. The hook is not the source
+of workflow authority: skill frontmatter and host `AGENTS.md` remain the primary
+routing mechanism. A Codex hook trust prompt may still be required before the hook
+executes in a live session.
 
 ## Limits
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
 2026-06-25 rerun after adding the lightweight Deliberation Gate, deterministic inline
 exceptions, research/codebase integration, commit/push reminders, public-surface docs
-coupling, and auxiliary hooks reported all four local plugins at 100/100, grade A,
-low risk, with zero failing checks and zero warnings.
+coupling, English-only durable artifact policy, non-keyword prompt reminders, and
+auxiliary hooks reported all four local plugins at 100/100, grade A, low risk, with
+zero failing checks and zero warnings.
 
 Directly evaluating the installed cache path
 `~/.codex/plugins/cache/hack-ink/decodex/0.2.0` reports an additional
