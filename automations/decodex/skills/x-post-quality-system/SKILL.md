@@ -46,6 +46,20 @@ compatibility boundaries, and plugin/config/sandbox/tool/release-engineering cha
 Formatting is part of the quality bar. Reject dense paragraphs when bullets, blank
 lines, and direct PR URLs would make the evidence easier to scan.
 
+Reject post bodies that start with or repeat automation attribution such as
+`Automated by @hackink`. Attribution belongs in durable records and account metadata,
+not in the reader-facing post text. Also reject cramped post bodies longer than 260
+characters unless one unavoidable source URL forces the post toward X's limit; prefer
+a short thread over a single packed paragraph. A good post should leave room for X
+link rendering, quote metadata, and minor manual edits without hitting the hard
+platform limit.
+
+Prefer concrete evidence over generic release prose. A publishable post should name
+the release, PR, commit cluster, protocol surface, workflow, or operator action that
+matters. If the best available text is only "tracking", "watching", or "new release
+available" without a reader action or source-backed implication, keep the candidate as
+`defer` or `skip`.
+
 ## Media Gate
 
 Use media only when it is fresh, candidate-specific, and adds reader value beyond the

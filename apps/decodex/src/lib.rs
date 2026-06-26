@@ -95,7 +95,5 @@ fn install_panic_hook() {
 	}));
 }
 
-#[cfg(test)]
-mod plugin_surface_tests;
-#[cfg(test)]
-mod test_support;
+#[cfg(test)] mod plugin_surface_tests;
+#[cfg(test)] mod test_support;

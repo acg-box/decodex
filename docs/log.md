@@ -2,6 +2,18 @@
 
 ## 2026-06-27
 
+- Added the `autonomy_accept_objective` MCP plan tool to close the Objective Contract
+  lifecycle gap between draft creation and accepted project-autonomy authority, and
+  aligned the Decodex router skill, MCP capability decision, autonomy spec, roadmap,
+  and README with the draft-to-accept-to-proposal flow.
+- Refreshed the Codex compatibility matrix for local Decodex
+  `0.2.0-afb36056-aarch64-apple-darwin` against Codex stable `0.142.2` and preview
+  `0.143.0-alpha.25`, preserving runtime probes as the compatibility authority.
+- Clarified Decodex automation as a producer-consumer pipeline: Radar Review owns
+  upstream queue/source analysis, Release Curator consumes existing Radar artifacts and
+  refreshes only lightweight release-delta checkpoints when needed, and X Publisher
+  now hard-rejects attribution-prefixed, overpacked, or generic post bodies before
+  touching `@decodexspace`.
 - Added `control_plane_upgrade_candidate/v1` as the evidence-only bridge from
   upstream Codex Radar review into Decodex Control Plane upgrade work, including the
   governing spec, upgrade workflow runbook, compatibility matrix reference, Radar

@@ -1014,7 +1014,9 @@ impl GitHubError {
 			},
 			Self::Transport(error) => eyre::eyre!("GitHub API request failed for {url}: {error}"),
 			Self::Json { error, body } => {
-				eyre::eyre!("GitHub API response from {url} was not valid JSON: {error}; body: {body}")
+				eyre::eyre!(
+					"GitHub API response from {url} was not valid JSON: {error}; body: {body}"
+				)
 			},
 		}
 	}
@@ -1298,9 +1300,8 @@ pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> crate::prelude:
 			};
 
 			match promoted_pr {
-				Some(pr_number) => {
-					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?
-				},
+				Some(pr_number) =>
+					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?,
 				None => client.build_commit_bundle(&request.repo, commit_sha, &request.notes)?,
 			}
 		},
@@ -4576,9 +4577,8 @@ fn validate_artifact(payload: &Value) -> ArtifactValidation {
 		Some(SIGNAL_SCHEMA) => validate_signal(entry, &mut errors),
 		Some(SOCIAL_CANDIDATE_SCHEMA) => validate_social_candidate(entry, &mut errors),
 		Some(SOCIAL_POST_SCHEMA) => validate_social_post(entry, &mut errors),
-		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) => {
-			validate_social_publish_reservation(entry, &mut errors)
-		},
+		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) =>
+			validate_social_publish_reservation(entry, &mut errors),
 		Some(UPSTREAM_IMPACT_SCHEMA) => validate_upstream_impact(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_QUEUE_SCHEMA) => validate_upstream_review_queue(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_SCHEMA) => validate_upstream_review(entry, &mut errors),
@@ -4822,11 +4822,10 @@ fn collect_json_strings(value: &Value, text: &mut String) {
 			text.push(' ');
 			text.push_str(value);
 		},
-		Value::Array(values) => {
+		Value::Array(values) =>
 			for value in values {
 				collect_json_strings(value, text);
-			}
-		},
+			},
 		Value::Object(object) => collect_json_strings_from_map(object, text),
 		Value::Bool(_) | Value::Null | Value::Number(_) => {},
 	}
@@ -5126,31 +5125,25 @@ fn validate_release_comparison_tags(
 	errors: &mut Vec<String>,
 ) {
 	match string_field(comparison, "stable_tag_name") {
-		Some("") => {
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
-		},
+		Some("") =>
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
 		Some(tag_name)
 			if !option_tags.stable.is_empty() && !option_tags.stable.contains(tag_name) =>
-		{
 			errors.push(format!(
 				"comparisons[{index}].stable_tag_name must exist in release_options.stable"
-			))
-		},
+			)),
 		Some(_) => {},
-		None => {
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
-		},
+		None =>
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
 	}
 	match string_field(comparison, "prerelease_tag_name") {
 		Some("") => errors
 			.push(format!("comparisons[{index}].prerelease_tag_name must be a non-empty string")),
 		Some(tag_name)
 			if !option_tags.preview.is_empty() && !option_tags.preview.contains(tag_name) =>
-		{
 			errors.push(format!(
 				"comparisons[{index}].prerelease_tag_name must exist in release_options.preview"
-			))
-		},
+			)),
 		Some(_) => {},
 		None => errors
 			.push(format!("comparisons[{index}].prerelease_tag_name must be a non-empty string")),
@@ -5865,12 +5858,10 @@ fn validate_social_publish_reservation_status_payload(
 	errors: &mut Vec<String>,
 ) {
 	match string_field(entry, "status") {
-		Some("consumed") if !is_non_empty_string(entry.get("consumed_by_social_post")) => {
-			errors.push("consumed_by_social_post is required when status is consumed".into())
-		},
-		Some("canceled" | "expired") if !is_non_empty_string(entry.get("release_reason")) => {
-			errors.push("release_reason is required when status is canceled or expired".into())
-		},
+		Some("consumed") if !is_non_empty_string(entry.get("consumed_by_social_post")) =>
+			errors.push("consumed_by_social_post is required when status is consumed".into()),
+		Some("canceled" | "expired") if !is_non_empty_string(entry.get("release_reason")) =>
+			errors.push("release_reason is required when status is canceled or expired".into()),
 		_ => {},
 	}
 }
@@ -5921,13 +5912,44 @@ fn validate_social_post_constants(entry: &Map<String, Value>, errors: &mut Vec<S
 }
 
 fn validate_social_post_text(text: Option<&Value>, errors: &mut Vec<String>) {
-	let valid = non_empty_array(text).is_some_and(|text| {
-		text.iter()
-			.all(|item| item.as_str().is_some_and(|text| !text.is_empty() && text.len() <= 280))
-	});
-
-	if !valid {
+	let Some(items) = non_empty_array(text) else {
 		errors.push("text must be a non-empty list of X-sized strings".into());
+
+		return;
+	};
+
+	for (index, item) in items.iter().enumerate() {
+		let Some(text) = item.as_str() else {
+			errors.push(format!("text[{index}] must be a string"));
+
+			continue;
+		};
+		validate_social_post_text_item(text, index, errors);
+	}
+}
+
+fn validate_social_post_text_item(text: &str, index: usize, errors: &mut Vec<String>) {
+	if text.is_empty() || text.len() > 280 {
+		errors.push(format!("text[{index}] must be a non-empty X-sized string"));
+	}
+	if text.contains("Automated by @hackink") {
+		errors.push(format!("text[{index}] must not include automation attribution"));
+	}
+	if text.len() > 260 && !text.contains("https://") {
+		errors.push(format!(
+			"text[{index}] longer than 260 characters must include an unavoidable direct source URL"
+		));
+	}
+
+	let normalized = text.trim().to_ascii_lowercase();
+	if normalized == "watching this"
+		|| normalized.starts_with("watching this.")
+		|| normalized.starts_with("tracking this.")
+		|| normalized.contains("new release available")
+	{
+		errors.push(format!(
+			"text[{index}] must name a concrete source-backed release, PR, protocol surface, workflow impact, or operator action"
+		));
 	}
 }
 
@@ -6052,12 +6074,10 @@ fn validate_social_post_status_payload(entry: &Map<String, Value>, errors: &mut 
 	match string_field(entry, "status") {
 		Some("published") => validate_social_post_publication(entry.get("publication"), errors),
 		Some("blocked") => validate_social_post_block(entry, errors),
-		Some("failed") if entry.get("failure").and_then(Value::as_object).is_none() => {
-			errors.push("failure is required when status is failed".into())
-		},
-		Some("skipped") if entry.get("skip").and_then(Value::as_object).is_none() => {
-			errors.push("skip is required when status is skipped".into())
-		},
+		Some("failed") if entry.get("failure").and_then(Value::as_object).is_none() =>
+			errors.push("failure is required when status is failed".into()),
+		Some("skipped") if entry.get("skip").and_then(Value::as_object).is_none() =>
+			errors.push("skip is required when status is skipped".into()),
 		_ => {},
 	}
 }
@@ -6844,6 +6864,26 @@ mod tests {
 	}
 
 	#[test]
+	fn social_candidate_rejects_low_quality_public_text() {
+		let mut attribution = valid_social_candidate();
+		attribution["candidate_text"] =
+			serde_json::json!(["Automated by @hackink: new release available"]);
+
+		assert_errors(&attribution, ["text[0] must not include automation attribution"]);
+
+		let mut overpacked = valid_social_candidate();
+		overpacked["candidate_text"] =
+			serde_json::json!([format!("{}", "Codex checkpoint ".repeat(18))]);
+
+		assert_errors(&overpacked, ["longer than 260 characters"]);
+
+		let mut generic = valid_social_candidate();
+		generic["candidate_text"] = serde_json::json!(["Watching this."]);
+
+		assert_errors(&generic, ["must name a concrete source-backed"]);
+	}
+
+	#[test]
 	fn accepts_valid_upstream_impact_and_rejects_bad_angle() {
 		let mut impact = valid_upstream_impact();
 
@@ -6867,10 +6907,7 @@ mod tests {
 		let mut missing_contract = valid_control_plane_upgrade_candidate();
 		missing_contract["authority"]["decision_contract_required"] = serde_json::json!(false);
 
-		assert_errors(
-			&missing_contract,
-			["authority.decision_contract_required must be true"],
-		);
+		assert_errors(&missing_contract, ["authority.decision_contract_required must be true"]);
 
 		let mut missing_program = valid_control_plane_upgrade_candidate();
 		missing_program["authority"]
@@ -6878,10 +6915,7 @@ mod tests {
 			.expect("authority should be an object")
 			.remove("program_intake_required");
 
-		assert_errors(
-			&missing_program,
-			["authority.program_intake_required must be true"],
-		);
+		assert_errors(&missing_program, ["authority.program_intake_required must be true"]);
 	}
 
 	#[test]
@@ -6893,6 +6927,27 @@ mod tests {
 		social_post["decision"]["daily_limit"] = serde_json::json!(9);
 
 		assert_errors(&social_post, ["decision.daily_limit must be 8"]);
+	}
+
+	#[test]
+	fn social_post_rejects_low_quality_public_text() {
+		let mut attribution = valid_social_post();
+		attribution["text"] = serde_json::json!(["Automated by @hackink: tracking this."]);
+
+		assert_errors(&attribution, ["text[0] must not include automation attribution"]);
+
+		let mut overpacked = valid_social_post();
+		overpacked["text"] = serde_json::json!([format!("{}", "Codex checkpoint ".repeat(18))]);
+
+		assert_errors(&overpacked, ["longer than 260 characters"]);
+
+		let mut with_source_url = valid_social_post();
+		with_source_url["text"] = serde_json::json!([format!(
+			"{} https://github.com/openai/codex/pull/22414",
+			"Codex checkpoint ".repeat(13)
+		)]);
+
+		assert_errors(&with_source_url, []);
 	}
 
 	#[test]

@@ -46,7 +46,7 @@ drift_watch:
   - Program Intake
   - finding_routes
   - decodex mcp serve
-last_verified: 2026-06-23
+last_verified: 2026-06-27
 ---
 # Autonomy Control Plane
 
@@ -456,22 +456,26 @@ The Phase 7 autonomy MCP surface is deliberately small and typed:
   `decodex://projects/{project_id}/autonomy/proposals/{proposal_id}`, and
   `decodex://projects/{project_id}/autonomy/evidence`
 - plan-profile tools:
-  `autonomy_draft_objective`, `autonomy_submit_signal`,
-  `autonomy_compile_proposal`, `autonomy_challenge_proposal`, and
+  `autonomy_draft_objective`, `autonomy_accept_objective`,
+  `autonomy_submit_signal`, `autonomy_compile_proposal`,
+  `autonomy_challenge_proposal`, and
   `autonomy_request_promotion`
 
 The observe resources return summaries and authority-boundary metadata only. They are
-not raw runtime payload exports. The plan tools validate or persist draft/objective,
-signal, proposal, challenge, and latent Decision Contract candidate evidence through
-runtime model checks. Apply-style calls require explicit authority fields and still
-stop before normal Decision Contract promotion, Program Intake, review, PR handoff,
-landing, install, restart, closeout, or cleanup authority. `autonomy_request_promotion`
+not raw runtime payload exports. The plan tools validate or persist Objective Contract
+draft and acceptance records, signal, proposal, challenge, and latent Decision
+Contract candidate evidence through runtime model checks. Apply-style calls require
+explicit authority fields and still stop before normal Decision Contract promotion,
+Program Intake, review, PR handoff, landing, install, restart, closeout, or cleanup
+authority. `autonomy_request_promotion`
 may create only a latent Decision Contract candidate from an accepted proposal; the
 result still requires normal `research_promote` and later Program Intake before
 execution work exists. MCP callers cannot prove accepted project policy authority by
-supplying an `acceptedProjectPolicy` body. Policy-backed runtime or external-agent
-acceptance must be resolved from trusted Decodex authority state; until that resolver
-exists, the MCP promotion request fails closed with a structured refusal. Local-private
+supplying an `acceptedProjectPolicy` body or by self-asserting `runtime_policy`
+Objective Contract acceptance. Policy-backed runtime or external-agent acceptance must
+be resolved from trusted Decodex authority state; until that resolver exists, MCP
+policy-backed objective acceptance and proposal promotion requests fail closed with
+structured refusals. Local-private
 signals expose ref counts and redaction metadata only, not raw `source_refs` or
 `primary_source_refs`.
 
