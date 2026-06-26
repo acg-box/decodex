@@ -1624,7 +1624,7 @@ fn format_review_handoff_comment(
 	summary: &str,
 ) -> String {
 	format!(
-		"decodex run completed and is ready for review\n\n- run_id: `{run_id}`\n- attempt: `{attempt}`\n- finished_at: `{finished_at}`\n- branch: `{branch}`\n- pr_url: `{pr_url}`\n- worktree_path: `{worktree_path}`\n- validation_result: `passed`\n- summary: {summary}",
+		"decodex run completed and is ready for review\n\n- run_id: `{run_id}`\n- run_sequence_attempt: `{attempt}` (not retry-budget count)\n- finished_at: `{finished_at}`\n- branch: `{branch}`\n- pr_url: `{pr_url}`\n- worktree_path: `{worktree_path}`\n- validation_result: `passed`\n- summary: {summary}",
 		run_id = review_context.run_id,
 		attempt = review_context.attempt_number,
 		finished_at = current_timestamp(),
@@ -1641,7 +1641,7 @@ fn format_review_repair_comment(
 	summary: &str,
 ) -> String {
 	format!(
-		"decodex review repair completed and requested fresh review\n\n- run_id: `{run_id}`\n- attempt: `{attempt}`\n- finished_at: `{finished_at}`\n- branch: `{branch}`\n- pr_url: `{pr_url}`\n- worktree_path: `{worktree_path}`\n- validation_result: `passed`\n- summary: {summary}",
+		"decodex review repair completed and requested fresh review\n\n- run_id: `{run_id}`\n- run_sequence_attempt: `{attempt}` (not retry-budget count)\n- finished_at: `{finished_at}`\n- branch: `{branch}`\n- pr_url: `{pr_url}`\n- worktree_path: `{worktree_path}`\n- validation_result: `passed`\n- summary: {summary}",
 		run_id = review_context.run_id,
 		attempt = review_context.attempt_number,
 		finished_at = current_timestamp(),

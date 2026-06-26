@@ -177,6 +177,24 @@ pub(crate) struct LinearExecutionEventPublicProjection {
 	pub(crate) classifier_withheld_text: bool,
 }
 
+pub(crate) fn render_linear_execution_event_comment_body(
+	record: &LinearExecutionEventRecord,
+	retry_budget_attempt_count: Option<i64>,
+) -> String {
+	let mut body = format!(
+		"Decodex execution event: {}\n\n- run_sequence_attempt: `{}` (not retry-budget count)",
+		record.event_type, record.attempt_number
+	);
+
+	if let Some(retry_budget_attempt_count) = retry_budget_attempt_count {
+		body.push_str(&format!(
+			"\n- retry_budget_attempts_consumed: `{retry_budget_attempt_count}`"
+		));
+	}
+
+	body
+}
+
 pub(crate) fn linear_execution_event_public_projection(
 	body: &str,
 	record: &LinearExecutionEventRecord,
@@ -795,6 +813,28 @@ mod tests {
 			String::from("2026-05-25T00:00:00Z"),
 			"anchor",
 		)
+	}
+
+	#[test]
+	fn renders_attempt_number_as_run_sequence_in_comment_body() {
+		let record = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: "decodex",
+				issue_id: "issue-id",
+				issue_identifier: "XY-519",
+				run_id: "xy-519-attempt-4",
+				attempt_number: 4,
+			},
+			"closeout",
+			String::from("2026-05-25T00:00:00Z"),
+			"anchor",
+		);
+		let body = super::render_linear_execution_event_comment_body(&record, Some(1));
+
+		assert!(body.contains("Decodex execution event: closeout"));
+		assert!(body.contains("- run_sequence_attempt: `4` (not retry-budget count)"));
+		assert!(body.contains("- retry_budget_attempts_consumed: `1`"));
+		assert!(!body.contains("- attempt:"));
 	}
 
 	#[test]

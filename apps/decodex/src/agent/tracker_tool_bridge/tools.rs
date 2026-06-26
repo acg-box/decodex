@@ -3796,7 +3796,10 @@ fn format_manual_attention_comment(
 		String::from("decodex run needs manual attention"),
 		String::new(),
 		format!("- run_id: `{}`", review_context.run_id),
-		format!("- attempt: `{}`", review_context.attempt_number),
+		format!(
+			"- run_sequence_attempt: `{}` (not retry-budget count)",
+			review_context.attempt_number
+		),
 		format!("- reported_at: `{}`", tracker_tool_bridge::current_timestamp()),
 		format!("- branch: `{}`", review_context.branch_name),
 		format!("- worktree_path: `{}`", review_context.worktree_path),
