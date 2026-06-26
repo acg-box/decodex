@@ -2,6 +2,10 @@
 
 ## 2026-06-27
 
+- Made `upstream_impact/v1` the shared Radar handoff for Decodex-only release
+  publishing and Control Plane upgrade proposal work, and updated autonomy challenge
+  disposition so challenge objections are retained as promotion constraints rather
+  than automatic proposal blockers.
 - Added the `autonomy_accept_objective` MCP plan tool to close the Objective Contract
   lifecycle gap between draft creation and accepted project-autonomy authority, and
   aligned the Decodex router skill, MCP capability decision, autonomy spec, roadmap,

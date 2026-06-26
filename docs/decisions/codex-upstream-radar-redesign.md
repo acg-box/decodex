@@ -25,11 +25,13 @@ The new pipeline has four layers:
    possible, assigns routing hints, and writes an `upstream_review_queue/v1` artifact.
 2. Codex automation consumes that queue and performs AI source review for each queued
    subject.
-3. Source-backed reviews promote only valuable outcomes into `upstream_impact/v1`,
-   `signal_entry/v1`, `social_post/v1`, or
-   `control_plane_upgrade_candidate/v1`.
-4. Release and prerelease summaries roll up accumulated commit and PR analysis instead
-   of treating sparse release notes as enough evidence.
+3. Source-backed reviews promote valuable Publisher or Control Plane conclusions into
+   `upstream_impact/v1`, the shared downstream handoff artifact.
+4. Release and prerelease summaries, public candidates, and
+   `control_plane_upgrade_candidate/v1` records consume that shared impact artifact
+   plus release/version provenance instead of re-fetching or independently
+   reinterpreting upstream source. Sparse release notes remain insufficient by
+   themselves.
 
 GitHub Actions must stay deterministic. It may refresh GitHub metadata, release deltas,
 review queues, and validation results, but it must not install Codex, inject Codex auth,
@@ -43,6 +45,8 @@ Consequences:
   Publisher promotions from source-backed review.
 - Decodex compatibility risks and adoption opportunities can be tracked before they
   become public content.
+- Release Publisher and Control Plane upgrade analysis share the same
+  `upstream_impact/v1` conclusion for a Radar-reviewed upstream change.
 - Control Plane upgrade work enters execution only through the candidate artifact,
   Decision Contract, and Program Intake bridge; Radar review does not create Linear
   issues directly.

@@ -817,6 +817,7 @@ impl McpServer {
 				"`objectiveId` is required.",
 			);
 		};
+
 		if !safe_autonomy_record_identifier(objective_id) {
 			return invalid_tool_arguments(
 				TOOL_AUTONOMY_ACCEPT_OBJECTIVE,
@@ -871,7 +872,6 @@ impl McpServer {
 				"Only draft Objective Contract versions can be accepted through autonomy_accept_objective.",
 			);
 		}
-
 		if mode == "dry_run" {
 			return tool_success(autonomy_objective_accept_tool_result(
 				&project_id,
@@ -4912,7 +4912,7 @@ fn autonomy_challenge_tool_result(
 		"proposal": mcp_autonomy_proposal_summary(proposal, updated_at),
 		"challenge_evidence_count": proposal.challenge_evidence().len(),
 		"authority_effect": "challenge_evidence_not_acceptance_authority",
-		"next_action": "Resolve material objections before requesting proposal promotion.",
+		"next_action": "Carry challenge objections as promotion constraints and request explicit promotion authority before creating execution work.",
 		"updated_at": updated_at
 	}))
 }
@@ -8219,6 +8219,7 @@ mod tests {
 	fn autonomy_accept_objective_refuses_caller_supplied_runtime_policy_authority() {
 		let repo = test_repo();
 		let state_store = StateStore::open_in_memory().expect("state store should open");
+
 		state_store
 			.upsert_autonomy_objective_draft("decodex", autonomy_objective_fixture())
 			.expect("objective draft should persist");

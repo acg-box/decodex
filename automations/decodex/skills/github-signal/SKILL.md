@@ -96,11 +96,13 @@ Write a JSON analysis draft with these fields:
    code-analysis result.
 3. Decide whether the change is signal-worthy.
 4. Draft the `analysis_draft` JSON under `.agent/automations/decodex/cache/generated/analysis/`.
-5. Draft or update an `upstream_impact/v1` artifact when the change affects Control Plane or
-   Publisher follow-up.
+5. Draft or update an `upstream_impact/v1` artifact when the change affects Control
+   Plane or Publisher follow-up. This impact artifact is the shared handoff that
+   release publishing and Control Plane upgrade proposals should consume.
 6. Draft or update `control_plane_upgrade_candidate/v1` only when source-backed
    evidence shows Decodex may need adoption, compatibility mitigation, or discovery;
-   do not create Linear issues or mutate runtime state from this skill.
+   cite the shared `upstream_impact/v1` and do not create Linear issues or mutate
+   runtime state from this skill.
 7. Render the final signal entry with `decodex radar render-signal`.
 8. Validate the published signal collection and site build.
 
