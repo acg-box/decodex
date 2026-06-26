@@ -29,7 +29,13 @@ use crate::{
 	},
 	prelude::{Result, eyre},
 	program_intake::{self, GoalIntakeCommandRequest, IssueBatchIntakeCommandRequest},
-	radar,
+	radar::{
+		self, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
+		RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
+		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
+		RadarRefreshQueueRequest, RadarRefreshReleaseDeltaRequest, RadarRenderSignalRequest,
+		RadarSocialReservePublishRequest, RadarValidateRequest,
+	},
 	recovery::{
 		self, GhostLaneCleanupRequest, GhostLaneDiagnoseRequest, LegacyCloseoutRecoveryRequest,
 		MergedCloseoutRecoveryRequest, ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest,
@@ -1351,7 +1357,7 @@ struct RadarValidateCommand {
 }
 impl RadarValidateCommand {
 	fn run(&self) -> Result<()> {
-		let report = radar::validate(&radar::RadarValidateRequest { paths: self.paths.clone() })?;
+		let report = radar::validate(&RadarValidateRequest { paths: self.paths.clone() })?;
 
 		println!("{report:#?}");
 
@@ -1388,7 +1394,7 @@ struct RadarRefreshUpstreamQueueCommand {
 }
 impl RadarRefreshUpstreamQueueCommand {
 	fn run(&self) -> Result<()> {
-		let report = radar::refresh_queue(&radar::RadarRefreshQueueRequest {
+		let report = radar::refresh_queue(&RadarRefreshQueueRequest {
 			repo: self.repo.clone(),
 			search_limit: self.search_limit,
 			signals_dir: self.signals_dir.clone(),
@@ -1438,7 +1444,7 @@ struct RadarRefreshReleaseDeltaCommand {
 }
 impl RadarRefreshReleaseDeltaCommand {
 	fn run(&self) -> Result<()> {
-		let report = radar::refresh_release_delta(&radar::RadarRefreshReleaseDeltaRequest {
+		let report = radar::refresh_release_delta(&RadarRefreshReleaseDeltaRequest {
 			repo: self.repo.clone(),
 			signals_dir: self.signals_dir.clone(),
 			out: self.out.clone(),
@@ -1490,7 +1496,7 @@ struct RadarBundleBuildCommand {
 }
 impl RadarBundleBuildCommand {
 	fn run(&self) -> Result<()> {
-		let out = radar::build_bundle(&radar::RadarBundleBuildRequest {
+		let out = radar::build_bundle(&RadarBundleBuildRequest {
 			repo: self.repo.clone(),
 			pr: self.pr,
 			commit: self.commit.clone(),
@@ -1513,9 +1519,8 @@ struct RadarBundleValidateCommand {
 }
 impl RadarBundleValidateCommand {
 	fn run(&self) -> Result<()> {
-		let report = radar::validate_bundles(&radar::RadarBundleValidateRequest {
-			paths: self.paths.clone(),
-		})?;
+		let report =
+			radar::validate_bundles(&RadarBundleValidateRequest { paths: self.paths.clone() })?;
 
 		println!("{report:#?}");
 
@@ -1583,7 +1588,7 @@ struct RadarSocialReservePublishCommand {
 }
 impl RadarSocialReservePublishCommand {
 	fn run(&self) -> Result<()> {
-		let report = radar::reserve_social_publish(&radar::RadarSocialReservePublishRequest {
+		let report = radar::reserve_social_publish(&RadarSocialReservePublishRequest {
 			slug: self.slug.clone(),
 			mode: self.mode.clone(),
 			idempotency_key: self.idempotency_key.clone(),
@@ -1622,7 +1627,7 @@ struct RadarRenderSignalCommand {
 }
 impl RadarRenderSignalCommand {
 	fn run(&self) -> Result<()> {
-		let report = radar::render_signal(&radar::RadarRenderSignalRequest {
+		let report = radar::render_signal(&RadarRenderSignalRequest {
 			bundle: self.bundle.clone(),
 			analysis: self.analysis.clone(),
 			out: self.out.clone(),
@@ -1690,7 +1695,7 @@ struct RadarBackfillReleaseRangeCommand {
 }
 impl RadarBackfillReleaseRangeCommand {
 	fn run(&self) -> Result<()> {
-		let report = radar::backfill_release_range(&radar::RadarBackfillReleaseRangeRequest {
+		let report = radar::backfill_release_range(&RadarBackfillReleaseRangeRequest {
 			repo: self.repo.clone(),
 			release_delta: self.release_delta.clone(),
 			stable_tag: self.stable_tag.clone(),
@@ -1740,7 +1745,7 @@ struct RadarLedgerBootstrapCommand {
 }
 impl RadarLedgerBootstrapCommand {
 	fn run(&self) -> Result<()> {
-		radar::ledger_bootstrap(&radar::RadarLedgerBootstrapRequest {
+		radar::ledger_bootstrap(&RadarLedgerBootstrapRequest {
 			db_path: self.db_path.clone().unwrap_or_else(radar::default_ledger_path),
 		})?;
 
@@ -1761,7 +1766,7 @@ struct RadarLedgerIngestCommand {
 }
 impl RadarLedgerIngestCommand {
 	fn run(&self) -> Result<()> {
-		let summary = radar::ledger_ingest(&radar::RadarLedgerIngestRequest {
+		let summary = radar::ledger_ingest(&RadarLedgerIngestRequest {
 			db_path: self.db_path.clone().unwrap_or_else(radar::default_ledger_path),
 			bundle_path: self.bundle_path.clone(),
 			analysis_path: self.analysis_path.clone(),
@@ -1799,7 +1804,7 @@ struct RadarLedgerIngestExistingCommand {
 }
 impl RadarLedgerIngestExistingCommand {
 	fn run(&self) -> Result<()> {
-		let summary = radar::ledger_ingest_existing(&radar::RadarLedgerIngestExistingRequest {
+		let summary = radar::ledger_ingest_existing(&RadarLedgerIngestExistingRequest {
 			db_path: self.db_path.clone().unwrap_or_else(radar::default_ledger_path),
 			bundles_dir: self.bundles_dir.clone(),
 			analysis_dir: self.analysis_dir.clone(),
@@ -1829,7 +1834,7 @@ struct RadarLedgerArtifactLinkCommand {
 }
 impl RadarLedgerArtifactLinkCommand {
 	fn run(&self) -> Result<()> {
-		let summary = radar::ledger_artifact_link(&radar::RadarLedgerArtifactLinkRequest {
+		let summary = radar::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
 			db_path: self.db_path.clone().unwrap_or_else(radar::default_ledger_path),
 			repo: self.repo.clone(),
 			subject_kind: self.subject_kind.clone(),
@@ -1851,7 +1856,7 @@ struct RadarLedgerSummaryCommand {
 }
 impl RadarLedgerSummaryCommand {
 	fn run(&self) -> Result<()> {
-		let summary = radar::ledger_summary(&radar::RadarLedgerSummaryRequest {
+		let summary = radar::ledger_summary(&RadarLedgerSummaryRequest {
 			db_path: self.db_path.clone().unwrap_or_else(radar::default_ledger_path),
 		})?;
 
