@@ -130,11 +130,11 @@ decodex radar backfill-release-range \
 
 Codex app automation or an explicit local operator run may refresh upstream queues,
 release deltas, and validation through `decodex radar ...`. Codex automation owns AI
-review of queued subjects and may then
-promote source-backed conclusions into `upstream_impact/v1`,
-`control_plane_upgrade_candidate/v1`, `analysis_draft`, `decodex radar render-signal`
-output, or `social_candidate/v1`; Publisher automation writes terminal
-`social_post/v1` records.
+review of queued subjects and promotes Publisher or Control Plane conclusions into the
+shared `upstream_impact/v1` handoff artifact before downstream
+`control_plane_upgrade_candidate/v1`, `analysis_draft`,
+`decodex radar render-signal` output, or `social_candidate/v1` artifacts consume that
+same reviewed scan. Publisher automation writes terminal `social_post/v1` records.
 
 Do not wire `run_codex_analysis.py` into GitHub Actions. Actions must not pass
 `--allow-ai-analysis-boundary` or set `DECODEX_ALLOW_CODEX_ANALYSIS`; that

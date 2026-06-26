@@ -82,12 +82,22 @@ Optional fields:
 
 ## Source References
 
-`source_refs` must include at least one of:
+`source_refs` must include:
+
+- `upstream_impacts`
+
+`source_refs` may also include:
 
 - `upstream_reviews`
-- `upstream_impacts`
 - `release_deltas`
 - `urls`
+
+Treat `upstream_impacts` as the shared upstream scan artifact that release publishing
+and Control Plane proposal work reuse.
+`upstream_reviews`, `release_deltas`, and URLs may supply provenance, target-version
+context, or gap evidence, but they should not be the only source for a new Decodex
+Control Plane candidate when a reviewed `upstream_impact/v1` exists or can be produced
+by Radar Review.
 
 `urls` must use HTTPS. Local generated artifact references should use repository-relative
 paths under `.agent/automations/decodex/cache`.
@@ -134,6 +144,12 @@ it does not replace the accepted Decision Contract for execution.
 - `release_delta/v1`
 - official Codex release URLs
 - source-backed local validation evidence
+
+For normal upstream Codex Radar output, consume `upstream_impact/v1` as the
+Control Plane handoff and carry release/version evidence through `source_refs` and
+`target_codex`. This keeps release publishing and protocol-upgrade proposal analysis
+on one reviewed Radar artifact instead of duplicate upstream fetches or parallel
+interpretations.
 
 It may later support:
 
