@@ -196,10 +196,15 @@ deliberately small. Local stdio defaults to the `admin` capability profile; Stre
 HTTP defaults to `observe`. Both can be set with
 `--capability-profile observe|plan|operate|admin`; `tools/list` filters by the active
 profile and `tools/call` returns structured refusals for tools above it. Observe is
-read-only. Plan exposes `research_compile`, `research_promote`, and `intake_goal`:
+read-only. Plan exposes research, goal-intake, and objective-driven autonomy tools:
 dry-run modes validate or preview without tracker or Program Intake mutation, while
 apply/promote modes require explicit authority fields and return structured refusals
-when authority or project context is missing. Operate exposes `decodex_lane_control`
+when authority or project context is missing. Autonomy plan tools can draft and accept
+Objective Contracts, submit signals, compile or challenge proposals, and request
+proposal promotion without starting execution. Direct Objective Contract acceptance
+requires human/operator authority; policy-backed acceptance fails closed until it is
+resolved from trusted Decodex runtime authority state. Operate exposes
+`decodex_lane_control`
 as an inspect-first lane-control facade: `inspect` returns current preconditions,
 `steer` and `interrupt` delegate through existing lane-control guards only with
 current run/turn authority, and `manual_attention` or `retained_resume` refuse back to

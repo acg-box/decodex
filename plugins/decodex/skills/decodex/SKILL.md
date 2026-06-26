@@ -32,9 +32,10 @@ For autonomy work, route to `decodex://docs/spec/autonomy-control-plane`,
 `decodex://docs/decisions/mcp-capability-gateway-and-skill-slimming`, and the
 capability-profiled MCP surface: observe reads `decodex://projects/{service_id}/autonomy`
 summaries, while plan may use `autonomy_draft_objective`,
-`autonomy_submit_signal`, `autonomy_compile_proposal`,
-`autonomy_challenge_proposal`, and `autonomy_request_promotion`. Auth and profile
-prove access only; proposal acceptance still requires explicit human or accepted
+`autonomy_accept_objective`, `autonomy_submit_signal`,
+`autonomy_compile_proposal`, `autonomy_challenge_proposal`, and
+`autonomy_request_promotion`. Auth and profile prove access only; Objective Contract
+acceptance and proposal acceptance still require explicit human or accepted
 project-policy authority resolved from trusted Decodex state, not a caller-supplied
 policy body.
 
