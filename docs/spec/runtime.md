@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/git_ops.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/config.rs, decodex.example.toml]
 drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, repo_gate_tracked_rewrites_left, protocol_events, review_policy_checkpoints, review_checkpoint, review_lifecycle_records, lane_control_next_action, review_handoff_pending, review_repair_pending, review_repair_writeback_missing_lifecycle_marker, review_repair_writeback_stale_lifecycle_marker, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings, autonomy_proposals, decodex.autonomy_proposal/1, "[autonomy]", auto_promote, auto_intake, "[autonomy.runtime_policy]", accepted_objective_id, accepted_objective_version, accepted_policy_id, accepted_policy_version, policy_authority_ref]
-last_verified: 2026-06-23
+last_verified: 2026-06-27
 ---
 # Runtime Specification
 
@@ -135,11 +135,15 @@ state or this state machine.
   `--apply` writes only local runtime Program Intake and Execution Program state.
 - Each scheduler pass evaluates persisted Execution Programs before ordinary queued
   issue selection. The Program scheduler refreshes mapped Linear issue state,
-  dependency observations, local run leases, retained review/landing worktrees,
-  needs-attention labels, and occupied conflict domains; then it directly selects
+  dependency observations, local shared run claims, retained review/landing
+  worktrees, needs-attention labels, and occupied conflict domains; then it directly selects
   dispatchable ready nodes with `program` dispatch mode. It must not apply or remove
   service queue labels, and Program readiness must not wait for the ordinary
   Linear-backed queue scan interval.
+- When `decodex run <ISSUE>` targets a mapped Program node, inferred dispatch checks
+  the same persisted Program eligibility before ordinary queue-label dispatch. A
+  target whose node currently has `dispatch_action = dispatch` starts with `program`
+  dispatch mode without requiring `decodex:queued:<service-id>`.
 
 The evidence boundary is ordered from private runtime authority to public collaboration
 mirror:

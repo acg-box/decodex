@@ -4,8 +4,8 @@ use std::{
 	collections::{BTreeMap, BTreeSet, HashSet},
 	env,
 	fmt::{self, Display, Formatter},
-	fs,
-	io::Write,
+	fs::{self, OpenOptions},
+	io::Write as _,
 	iter,
 	path::{Path, PathBuf},
 	process::{self, Command},
@@ -986,6 +986,13 @@ impl GithubClient {
 	}
 }
 
+#[derive(Debug, Default)]
+struct SocialPublishStateScan {
+	published_count: usize,
+	active_reservation_count: usize,
+	idempotency_conflict: Option<PathBuf>,
+}
+
 #[derive(Debug)]
 enum RefreshKind {
 	Queue,
@@ -1165,13 +1172,13 @@ pub(crate) fn reserve_social_publish(
 
 	let payload = social_publish_reservation_payload(request, &root);
 	let validation = validate_artifact(&payload);
+
 	if !validation.errors.is_empty() {
 		return Err(eyre::eyre!(
 			"generated reservation failed validation: {}",
 			validation.errors.join("; ")
 		));
 	}
-
 	if !request.dry_run {
 		write_new_json(&reservation_path, &payload)?;
 	}
@@ -3343,9 +3350,11 @@ fn write_json(path: &Path, payload: &Value) -> crate::prelude::Result<()> {
 		.ok_or_else(|| eyre::eyre!("JSON output path must end in a valid file name"))?;
 	let temp_path = parent.join(format!(".{file_name}.tmp-{}", process::id()));
 	let write_result = (|| -> crate::prelude::Result<()> {
-		let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&temp_path)?;
+		let mut file = OpenOptions::new().write(true).create_new(true).open(&temp_path)?;
+
 		file.write_all(output.as_bytes())?;
 		file.sync_all()?;
+
 		fs::rename(&temp_path, path)?;
 
 		Ok(())
@@ -3354,6 +3363,7 @@ fn write_json(path: &Path, payload: &Value) -> crate::prelude::Result<()> {
 	if write_result.is_err() {
 		let _ = fs::remove_file(&temp_path);
 	}
+
 	write_result?;
 
 	Ok(())
@@ -3368,18 +3378,12 @@ fn write_new_json(path: &Path, payload: &Value) -> crate::prelude::Result<()> {
 
 	output.push('\n');
 
-	let mut file = fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+	let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+
 	file.write_all(output.as_bytes())?;
 	file.sync_all()?;
 
 	Ok(())
-}
-
-#[derive(Debug, Default)]
-struct SocialPublishStateScan {
-	published_count: usize,
-	active_reservation_count: usize,
-	idempotency_conflict: Option<PathBuf>,
 }
 
 fn scan_social_publish_state(
@@ -3392,6 +3396,7 @@ fn scan_social_publish_state(
 
 	for payload_path in existing_json_files(reservations_dir)? {
 		let payload = load_json(&payload_path)?;
+
 		if payload.get("schema").and_then(Value::as_str) != Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA)
 		{
 			continue;
@@ -3405,13 +3410,15 @@ fn scan_social_publish_state(
 			}
 		}
 	}
-
 	for payload_path in existing_json_files(posts_dir)? {
 		let payload = load_json(&payload_path)?;
+
 		if payload.get("schema").and_then(Value::as_str) != Some(SOCIAL_POST_SCHEMA) {
 			continue;
 		}
+
 		let status = payload.get("status").and_then(Value::as_str);
+
 		if status == Some("published")
 			&& payload
 				.get("decision")
@@ -3450,6 +3457,7 @@ fn social_publish_reservation_payload(
 	root: &Path,
 ) -> Value {
 	let mut refs = Map::new();
+
 	if !request.candidate_paths.is_empty() {
 		refs.insert(
 			"social_candidates".into(),
@@ -3470,6 +3478,7 @@ fn social_publish_reservation_payload(
 	}
 
 	let mut owner = Map::new();
+
 	if let Some(value) = request.automation_id.as_deref().filter(|value| !value.is_empty()) {
 		owner.insert("automation_id".into(), Value::String(value.to_owned()));
 	}
@@ -3496,6 +3505,7 @@ fn social_publish_reservation_payload(
 		"candidate_refs": refs,
 		"duplicate_keys": request.duplicate_keys,
 	});
+
 	if !owner.is_empty() {
 		payload["owner"] = Value::Object(owner);
 	}
@@ -5582,6 +5592,7 @@ fn validate_control_plane_upgrade_authority(authority: Option<&Value>, errors: &
 			errors.push(format!("authority.{field} must be true"));
 		}
 	}
+
 	if authority.get("mutation_allowed").and_then(Value::as_bool) != Some(false) {
 		errors.push("authority.mutation_allowed must be false".into());
 	}
@@ -5713,13 +5724,16 @@ fn validate_radar_archive_manifest(entry: &Map<String, Value>, errors: &mut Vec<
 			errors.push(format!("{field} must be a non-empty string"));
 		}
 	}
+
 	validate_rfc3339_field(entry, "created_at", errors);
+
 	if entry.get("retention_days").and_then(Value::as_u64) != Some(21) {
 		errors.push("retention_days must be 21".into());
 	}
 	if !is_https_string(entry.get("release_url")) {
 		errors.push("release_url must be an https URL".into());
 	}
+
 	validate_archive_asset(entry.get("archive_asset"), "archive_asset", true, errors);
 	validate_archive_asset(entry.get("checksum_asset"), "checksum_asset", false, errors);
 	validate_archive_files(entry.get("files"), errors);
@@ -5762,11 +5776,13 @@ fn validate_archive_files(value: Option<&Value>, errors: &mut Vec<String>) {
 
 			continue;
 		};
+
 		for field in ["path", "kind"] {
 			if !is_non_empty_string(file.get(field)) {
 				errors.push(format!("files[{index}].{field} must be a non-empty string"));
 			}
 		}
+
 		if !matches_one_of(
 			file.get("kind"),
 			&["analysis", "bundle", "ledger_export", "other", "source_cache"],
@@ -6687,7 +6703,9 @@ mod tests {
 	#[test]
 	fn rejects_radar_archive_manifest_without_external_assets() {
 		let mut manifest = valid_radar_archive_manifest();
+
 		manifest["retention_days"] = serde_json::json!(30);
+
 		manifest.as_object_mut().expect("manifest should be object").remove("archive_asset");
 
 		assert_errors(&manifest, ["retention_days must be 21", "archive_asset must be an object"]);
@@ -6697,7 +6715,6 @@ mod tests {
 	fn social_reserve_publish_dry_run_does_not_write() {
 		let temp_dir = tempfile::tempdir().expect("temp dir should create");
 		let request = social_reserve_request(temp_dir.path(), true);
-
 		let report =
 			radar::reserve_social_publish(&request).expect("dry-run reservation should pass");
 
@@ -6712,7 +6729,6 @@ mod tests {
 	fn social_reserve_publish_writes_active_reservation_once() {
 		let temp_dir = tempfile::tempdir().expect("temp dir should create");
 		let request = social_reserve_request(temp_dir.path(), false);
-
 		let report = radar::reserve_social_publish(&request).expect("reservation should pass");
 
 		assert_eq!(report.status, "reserved");
@@ -6720,9 +6736,11 @@ mod tests {
 			temp_dir.path().join("reservations/2026-06-02/openai-codex-pr-22414.json").exists(),
 			"reservation should be written"
 		);
+
 		let duplicate = radar::reserve_social_publish(&request)
 			.expect_err("duplicate reservation should fail closed")
 			.to_string();
+
 		assert!(duplicate.contains("idempotency_key already has an active reservation"));
 	}
 
@@ -6905,11 +6923,13 @@ mod tests {
 		assert_errors(&candidate, ["authority.mutation_allowed must be false"]);
 
 		let mut missing_contract = valid_control_plane_upgrade_candidate();
+
 		missing_contract["authority"]["decision_contract_required"] = serde_json::json!(false);
 
 		assert_errors(&missing_contract, ["authority.decision_contract_required must be true"]);
 
 		let mut missing_program = valid_control_plane_upgrade_candidate();
+
 		missing_program["authority"]
 			.as_object_mut()
 			.expect("authority should be an object")
@@ -7935,7 +7955,7 @@ mod tests {
 			"release_url": "https://github.com/hack-ink/decodex/releases/tag/radar-archive-2026-06-02",
 			"archive_asset": {
 				"name": "radar-archive-2026-06-02.tar.zst",
-				"size_bytes": 1024,
+				"size_bytes": 1_024,
 				"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 			},
 			"checksum_asset": {

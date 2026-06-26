@@ -8,7 +8,7 @@ owner: docs
 tags: [reference]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/mcp.rs]
 drift_watch: [decodex serve, decodex status, decodex recover ghost-lane, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
-last_verified: 2026-06-23
+last_verified: 2026-06-27
 ---
 # Operator Control Plane
 
@@ -208,9 +208,12 @@ issues manually with service-scoped queue labels, but persisted Execution Progra
 dispatch ready mapped nodes directly and do not mutate those labels.
 
 When `decodex run --dry-run` or the status output has no eligible intake candidate,
-the operator hint points to the short checklist: `Todo`, the service-scoped
+the operator hint points to the ordinary queue checklist: `Todo`, the service-scoped
 `decodex:queued:<service-id>` label, no opt-out or needs-attention labels, a
-non-terminal state, no open dependency blockers, and available local capacity.
+non-terminal state, no open dependency blockers, and available local capacity. Ready
+Program Intake nodes are not queue-label candidates; they appear under Execution
+Programs, and `decodex run <ISSUE>` can start a mapped dispatchable Program node with
+`program` dispatch mode.
 
 The runtime database is the local source of truth for active execution. Linear and
 GitHub remain external collaboration mirrors and validation surfaces.
@@ -350,7 +353,9 @@ identifiers, dispatchable count, and sparse `node_readbacks[]` for direct dispat
 decisions or nodes that need operator context. Live status refreshes mapped issue
 state, service labels, needs-attention labels, dependency blockers, and post-review
 lifecycle ownership before it evaluates those program counts, so terminal Linear
-states and cleared labels supersede older persisted Program mappings. Dependency
+states and cleared labels supersede older persisted Program mappings. It also reads
+local shared run claims; a mapped issue with a live lease is shown as an active
+Program node rather than a cleanup-only conflict-domain blocker. Dependency
 diagnostics use `dependency_not_terminal` with a next action to complete the
 dependency issue or refresh the Execution Program dependency plan when a stale
 dependency program is the real blocker.
