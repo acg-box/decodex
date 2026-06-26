@@ -38,20 +38,7 @@
     "source_refs": {
       "type": "object",
       "additionalProperties": false,
-      "anyOf": [
-        {
-          "required": ["upstream_reviews"]
-        },
-        {
-          "required": ["upstream_impacts"]
-        },
-        {
-          "required": ["release_deltas"]
-        },
-        {
-          "required": ["urls"]
-        }
-      ],
+      "required": ["upstream_impacts"],
       "properties": {
         "upstream_reviews": {
           "type": "array",

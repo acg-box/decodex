@@ -37,6 +37,10 @@ Consequences:
   Upstream Codex changes that touch app-server, plugins, browser automation, MCP,
   permission profiles, config, or sandbox behavior should be classified for Control
   Plane impact before they become engineering work.
+- `upstream_impact/v1` is the shared Radar handoff for downstream Publisher and
+  Control Plane self-iteration. Release deltas, compare metadata, reviews, and URLs
+  remain provenance and gap evidence, but new Radar-derived publication candidates and
+  Control Plane upgrade candidates should reuse the same impact conclusion.
 - Publisher remains static-first. Public pages and social publication records are
   generated from checked-in artifacts and reviewed content, not from a live Decodex
   daemon.
