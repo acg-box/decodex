@@ -16,7 +16,7 @@ use crate::{
 	config::ServiceConfig,
 	github, orchestrator,
 	prelude::{Result, eyre},
-	pull_request::{self, PullRequestLandingState},
+	pull_request::{self, LandingGateMode, PullRequestLandingGateView, PullRequestLandingState},
 	runtime,
 	state::{
 		self, ConnectorBackoffInput, PrivateExecutionEvent, ProjectRunStatus,
@@ -3415,9 +3415,7 @@ fn validate_adopt_issue_state_for_policy(
 fn validate_adopt_landing_state(landing_state: &PullRequestLandingState) -> Result<()> {
 	let pr_url = landing_url(landing_state);
 	let gate_view = landing_state.gate_view();
-
-	let decision =
-		pull_request::classify_landing_gate(gate_view, pull_request::LandingGateMode::Adopt);
+	let decision = pull_request::classify_landing_gate(gate_view, LandingGateMode::Adopt);
 
 	match decision {
 		pull_request::LandingGateDecision::Satisfied => Ok(()),
@@ -3427,7 +3425,7 @@ fn validate_adopt_landing_state(landing_state: &PullRequestLandingState) -> Resu
 
 fn adopt_landing_gate_error(
 	decision: pull_request::LandingGateDecision,
-	gate_view: pull_request::PullRequestLandingGateView<'_>,
+	gate_view: PullRequestLandingGateView<'_>,
 	pr_url: &str,
 ) -> Result<()> {
 	match decision {

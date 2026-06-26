@@ -17,7 +17,7 @@ use crate::{
 	github::{self, RepositoryContext},
 	orchestrator,
 	prelude::{Result, eyre},
-	pull_request::{self, PullRequestLandingState},
+	pull_request::{self, LandingGateMode, PullRequestLandingGateView, PullRequestLandingState},
 	runtime,
 	state::{self, ReviewHandoffMarker, StateStore, WorktreeMapping},
 	tracker::{
@@ -1146,8 +1146,7 @@ fn validate_landing_state(
 		);
 	}
 
-	let decision =
-		pull_request::classify_landing_gate(gate_view, pull_request::LandingGateMode::ManualLand);
+	let decision = pull_request::classify_landing_gate(gate_view, LandingGateMode::ManualLand);
 
 	match decision {
 		pull_request::LandingGateDecision::Satisfied => {
@@ -1162,7 +1161,7 @@ fn validate_landing_state(
 
 fn manual_landing_gate_error(
 	decision: pull_request::LandingGateDecision,
-	gate_view: pull_request::PullRequestLandingGateView<'_>,
+	gate_view: PullRequestLandingGateView<'_>,
 	pr_url: &str,
 ) -> Result<LandExecutionMode> {
 	match decision {
@@ -3039,7 +3038,6 @@ exit 1\n",
 			related: Vec::new(),
 			breaking: false,
 		};
-
 		let context = manual::prepare_unregistered_manual_land_context(
 			repo_root.clone(),
 			repo_root.clone(),
@@ -3712,6 +3710,7 @@ exit 1\n",
 			String::from("xy/pub-1161"),
 			String::from("3cf2d24033527a774340c7d70c5ce437c90afe55"),
 		);
+
 		state_store
 			.record_run_attempt(handoff.run_id(), &issue.id, handoff.attempt_number(), "failed")
 			.expect("failed handoff attempt should record");
