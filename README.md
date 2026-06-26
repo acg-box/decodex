@@ -33,9 +33,10 @@ Repo-native agent orchestration, retained lanes, and local operator control.
 
 Prototype / in active development.
 
-This repository owns the Decodex runtime, native app, static site, and installable
-plugin. Upstream monitoring and public publishing automation are intentionally outside
-this repository.
+This repository owns the Decodex runtime, native app, static site, installable plugins,
+and repo-local automation source under `automations/decodex`. Recurring Codex App
+automation execution and private generated state stay outside tracked source; generated
+Radar and publishing artifacts must stay under `.agent/automations/decodex/cache`.
 
 Supported runtime host targets are macOS and Linux. Windows remains unsupported for the
 runtime.

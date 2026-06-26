@@ -143,7 +143,13 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["none", "upstream_impact", "signal_entry", "social_candidate", "linear_followup"]
+            "enum": [
+              "none",
+              "upstream_impact",
+              "signal_entry",
+              "social_candidate",
+              "control_plane_upgrade_candidate"
+            ]
           },
           "reason": {
             "type": "string",
