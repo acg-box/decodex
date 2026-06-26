@@ -918,10 +918,24 @@ impl<'a> TrackerToolBridge<'a> {
 			&pull_request,
 			public_summary.as_ref(),
 		);
+		let retry_budget_line = self
+			.state_store
+			.map(|state_store| {
+				state_store.retry_budget_attempt_count(&self.issue.id).map(|count| {
+					if count > 0 {
+						format!("\n- retry_budget_attempts_consumed: `{count}`")
+					} else {
+						String::new()
+					}
+				})
+			})
+			.transpose()?
+			.unwrap_or_default();
 		let closeout_comment = format!(
-			"decodex closeout completed\n\n- run_id: `{}`\n- attempt: `{}`\n- finished_at: `{}`\n- branch: `{}`\n- pr_url: `{}`\n- worktree_path: `{}`\n- summary: {}",
+			"decodex closeout completed\n\n- run_id: `{}`\n- run_sequence_attempt: `{}` (not retry-budget count){}\n- finished_at: `{}`\n- branch: `{}`\n- pr_url: `{}`\n- worktree_path: `{}`\n- summary: {}",
 			review_context.run_id,
 			review_context.attempt_number,
+			retry_budget_line,
 			tracker_tool_bridge::current_timestamp(),
 			review_context.branch_name,
 			pull_request.url,
