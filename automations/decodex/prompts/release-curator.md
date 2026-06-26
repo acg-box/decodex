@@ -20,8 +20,8 @@ Required reads:
 - `docs/spec/social-publishing.md`
 
 Workflow:
-1. Refresh or read `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json`.
-2. Compare release/changelog claims against source-backed Radar evidence under `.agent/automations/decodex/cache/github/reviews`, `.agent/automations/decodex/cache/github/impact`, and `.agent/automations/decodex/cache/site-content/signals`.
+1. Read `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json` first. Run `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar refresh-release-delta` only when that checkpoint artifact is missing, stale, invalid, or explicitly needed for a newly observed release tag. Do not refresh the upstream review queue or perform deep source analysis here.
+2. Compare release/changelog claims against source-backed Radar evidence produced by Decodex Radar Review under `.agent/automations/decodex/cache/github/reviews`, `.agent/automations/decodex/cache/github/impact`, and `.agent/automations/decodex/cache/site-content/signals`.
 3. Do not perform deep upstream source analysis here. If claims need unreviewed PR or commit evidence, write a defer/no-op outcome with exact gaps for Radar Review.
 4. When publication is justified, write or update `social_candidate/v1` under `.agent/automations/decodex/cache/github/social-candidates`.
 5. Validate changed JSON with `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar validate`.

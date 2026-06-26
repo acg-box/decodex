@@ -318,19 +318,16 @@ impl AccountCommand {
 	fn run(&self) -> Result<()> {
 		match &self.command {
 			AccountSubcommand::List(args) => accounts::run_account_list(args.json),
-			AccountSubcommand::Select(args) => {
-				accounts::run_account_select(&args.selector, args.json)
-			},
+			AccountSubcommand::Select(args) =>
+				accounts::run_account_select(&args.selector, args.json),
 			AccountSubcommand::Clear(args) => accounts::run_account_clear(args.json),
-			AccountSubcommand::Logout(args) => {
-				accounts::run_account_logout(&args.selector, args.json)
-			},
-			AccountSubcommand::ImportAuth(args) => {
+			AccountSubcommand::Logout(args) =>
+				accounts::run_account_logout(&args.selector, args.json),
+			AccountSubcommand::ImportAuth(args) =>
 				accounts::run_account_import(&AccountImportRequest {
 					auth_json_path: args.auth_json.clone(),
 					json: args.json,
-				})
-			},
+				}),
 			AccountSubcommand::Use(args) => accounts::run_account_use(&AccountUseRequest {
 				selector: args.selector.clone(),
 				auth_json_path: args.auth_json.clone(),
@@ -1170,12 +1167,11 @@ struct ReviewHandoffRecoveryCommand {
 impl ReviewHandoffRecoveryCommand {
 	fn run(&self, config_path: Option<&Path>) -> Result<()> {
 		match &self.command {
-			ReviewHandoffRecoverySubcommand::Diagnose(args) => {
+			ReviewHandoffRecoverySubcommand::Diagnose(args) =>
 				recovery::run_review_handoff_diagnose(
 					config_path,
 					&ReviewHandoffDiagnoseRequest { issue: args.issue.clone(), json: args.json },
-				)
-			},
+				),
 			ReviewHandoffRecoverySubcommand::Rebind(args) => recovery::run_review_handoff_rebind(
 				config_path,
 				&ReviewHandoffRebindRequest {
@@ -2042,8 +2038,8 @@ enum Command {
 	ArchiveLinear(ArchiveLinearCommand),
 	/// Maintain local Decodex logs, evidence, backups, and runtime storage.
 	Maintenance(MaintenanceCommand),
-		/// Manage the user-local Decodex Codex account pool.
-		Account(AccountCommand),
+	/// Manage the user-local Decodex Codex account pool.
+	Account(AccountCommand),
 	/// Validate the local app-server integration boundary.
 	Probe(ProbeCommand),
 	/// Run one daemon-planned attempt from a structured request.

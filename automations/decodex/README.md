@@ -25,3 +25,16 @@ It is intentionally operations-shaped and repo-local:
 
 Product/runtime/app code remains under `apps/`, `site/`, and `plugins/`. This directory
 is for automation source. Generated state belongs under `.agent/automations/decodex/`.
+
+## Pipeline Boundary
+
+`codex-upstream-radar-review` is the shared upstream evidence producer. It refreshes
+the upstream review queue, creates source-backed review/impact artifacts, and may
+write Control Plane upgrade candidates or public social candidates as evidence.
+
+`codex-release-checkpoint-publisher` and `decodex-x-publisher` are downstream
+consumers. They should read existing `release_delta/v1`, `upstream_review/v1`,
+`upstream_impact/v1`, `signal_entry/v1`, and `social_candidate/v1` artifacts instead
+of repeating upstream source analysis. Release Curator may refresh only the lightweight
+release-delta checkpoint when that artifact is missing or stale. X Publisher may only
+publish from a validated candidate or explicit operator handoff.

@@ -8,7 +8,7 @@ owner: docs
 tags: [decision]
 code_refs: [apps/decodex/src/mcp.rs, README.md, docs/spec/runtime.md, docs/reference/operator-control-plane.md]
 drift_watch: [decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call]
-last_verified: 2026-06-18
+last_verified: 2026-06-27
 ---
 # MCP Capability Gateway And Skill Slimming
 
@@ -187,6 +187,11 @@ Tools:
 - `autonomy_draft_objective(mode, projectId, objective, authority)`: validates or
   persists a draft Objective Contract only. It does not accept the objective or grant
   execution authority.
+- `autonomy_accept_objective(mode, projectId, objectiveId, objectiveVersion,
+  authority)`: inspects or accepts a draft Objective Contract version. Apply requires
+  explicit human/operator Objective Contract acceptance authority and still grants no
+  execution authority. Runtime-policy acceptance is refused until it can be resolved
+  from trusted Decodex authority state instead of caller-supplied fields.
 - `autonomy_submit_signal(mode, projectId, kind, signal, authority)`: validates or
   persists proposal-only autonomy signal evidence against an accepted objective.
 - `autonomy_compile_proposal(mode, projectId, proposal, signalIds, authority)`:
