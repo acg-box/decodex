@@ -1822,7 +1822,7 @@ fn retryable_failures_ignore_prior_continuation_attempts_in_writeback() {
 	assert!(tracker.label_removals.borrow().is_empty());
 	assert!(tracker.comments.borrow().iter().any(|comment| {
 		comment.contains("retryable_execution_failure")
-			&& comment.contains("- attempt: `4`")
+			&& comment.contains("- run_sequence_attempt: `4` (not retry-budget count)")
 			&& comment.contains("- retry_budget_attempt: `1` / `3`")
 	}));
 	assert!(!tracker.comments.borrow().iter().any(|comment| {

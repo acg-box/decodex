@@ -4083,11 +4083,19 @@ fn write_rebind_audit(
 	validation: &RebindValidation,
 	event: &LinearExecutionEventRecord,
 ) -> Result<()> {
-	let body = format!(
+	let recovery_body = format!(
 		"Decodex operator recovery: {} for `{}` to `{}`. This does not land the pull request.",
 		validation.mode.summary_action(),
 		validation.issue.identifier,
 		landing_url(&validation.landing_state)
+	);
+	let retry_budget_attempt_count =
+		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
+	let retry_budget_attempt_count =
+		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
+	let body = format!(
+		"{recovery_body}\n\n{}",
+		records::render_linear_execution_event_comment_body(event, retry_budget_attempt_count)
 	);
 	let privacy_classifier = ConfiguredPublicProjectionPrivacyClassifier::from_config(
 		context.config.privacy_classifier(),
@@ -4109,10 +4117,18 @@ fn write_adopt_audit(
 	validation: &AdoptValidation,
 	event: &LinearExecutionEventRecord,
 ) -> Result<()> {
-	let body = format!(
+	let recovery_body = format!(
 		"Decodex operator recovery: adopted human-owned PR `{}` for `{}` into retained review handoff state. This does not land the pull request.",
 		landing_url(&validation.landing_state),
 		validation.issue.identifier,
+	);
+	let retry_budget_attempt_count =
+		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
+	let retry_budget_attempt_count =
+		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
+	let body = format!(
+		"{recovery_body}\n\n{}",
+		records::render_linear_execution_event_comment_body(event, retry_budget_attempt_count)
 	);
 	let privacy_classifier = ConfiguredPublicProjectionPrivacyClassifier::from_config(
 		context.config.privacy_classifier(),
@@ -4188,11 +4204,19 @@ fn write_legacy_closeout_audit(
 	validation: &LegacyCloseoutValidation,
 	event: &LinearExecutionEventRecord,
 ) -> Result<bool> {
-	let body = format!(
+	let audit_body = format!(
 		"Decodex legacy manual closeout audit: verified merged PR `{}` for `{}`. Runtime provenance was `{}`, so this records the manual fallback before local cleanup.",
 		landing_url(&validation.landing_state),
 		validation.issue.identifier,
 		validation.worktree.provenance().source()
+	);
+	let retry_budget_attempt_count =
+		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
+	let retry_budget_attempt_count =
+		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
+	let body = format!(
+		"{audit_body}\n\n{}",
+		records::render_linear_execution_event_comment_body(event, retry_budget_attempt_count)
 	);
 	let privacy_classifier = ConfiguredPublicProjectionPrivacyClassifier::from_config(
 		context.config.privacy_classifier(),
@@ -4256,6 +4280,8 @@ fn apply_merged_closeout_recovery(
 		}
 	}
 
+	context.state_store.update_run_status(&validation.run_id, "succeeded")?;
+
 	Ok((closeout_recorded, cleanup_recorded))
 }
 
@@ -4268,8 +4294,16 @@ fn write_merged_closeout_event(
 	let privacy_classifier = ConfiguredPublicProjectionPrivacyClassifier::from_config(
 		context.config.privacy_classifier(),
 	)?;
+	let retry_budget_attempt_count =
+		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
+	let retry_budget_attempt_count =
+		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
+	let body = format!(
+		"{body}\n\n{}",
+		records::render_linear_execution_event_comment_body(event, retry_budget_attempt_count)
+	);
 	let projection =
-		tracker::prepare_linear_execution_event_comment(body, event, &privacy_classifier)?;
+		tracker::prepare_linear_execution_event_comment(&body, event, &privacy_classifier)?;
 	let recorded = context.state_store.record_linear_execution_event(&projection.record)?;
 
 	if !recorded {
