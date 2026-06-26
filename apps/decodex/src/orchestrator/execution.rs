@@ -1270,7 +1270,11 @@ fn write_lifecycle_event<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let body = format!("Decodex execution event: {}", record.event_type);
+	let retry_budget_attempt_count = state_store.retry_budget_attempt_count(issue_id)?;
+	let retry_budget_attempt_count = (retry_budget_attempt_count > 0)
+		.then_some(retry_budget_attempt_count);
+	let body =
+		records::render_linear_execution_event_comment_body(record, retry_budget_attempt_count);
 	let projection =
 		tracker::prepare_linear_execution_event_comment(&body, record, privacy_classifier)?;
 
