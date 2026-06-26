@@ -6,7 +6,18 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-last_verified: 2026-06-17
+code_refs:
+  - apps/decodex/src/tracker/records.rs
+  - apps/decodex/src/orchestrator/selection.rs
+  - apps/decodex/src/orchestrator/execution.rs
+  - apps/decodex/src/manual.rs
+  - apps/decodex/src/recovery.rs
+drift_watch:
+  - attempt_number
+  - run_sequence_attempt
+  - retry_budget_attempt
+  - retry_budget_attempts_consumed
+last_verified: 2026-06-26
 ---
 # Linear Execution Ledger
 
@@ -55,6 +66,8 @@ Recommended shape:
 
 ````text
 Decodex execution event: review_handoff
+
+- run_sequence_attempt: `1` (not retry-budget count)
 
 ```json
 {
@@ -146,11 +159,17 @@ All field names are snake_case.
 | `issue_id` | yes | string | The tracker issue id used by Linear APIs and local leases. |
 | `issue_identifier` | yes | string | The human-visible Linear identifier such as `XY-352`. |
 | `run_id` | yes | string | The Decodex run id for this attempt. |
-| `attempt_number` | yes | integer | The 1-based attempt number for `run_id`. |
+| `attempt_number` | yes | integer | The 1-based run-sequence attempt number for `run_id`. This is not the retry-budget attempt count. |
 
 Ledger records are run-bound. If Decodex detects a candidate issue before it has a
 `run_id` and `attempt_number`, that pre-run observation is not a Linear execution
 ledger record.
+
+Human-readable ledger comment text must label this value as `run_sequence_attempt` so
+operators do not read continuation attempts as retry-budget failures. Retry comments
+may additionally include `retry_budget_attempt`, and generic lifecycle comments may
+include `retry_budget_attempts_consumed` when at least one retry-budget-consuming
+attempt is already recorded locally.
 
 ## Shared optional fields
 
