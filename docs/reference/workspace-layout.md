@@ -6,7 +6,7 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-last_verified: 2026-06-18
+last_verified: 2026-06-27
 ---
 # Workspace Layout
 
@@ -32,6 +32,7 @@ For build, test, run, setup, validation, and task-runner command entrypoints, re
 | `apps/decodex/` | Rust package that builds the `decodex` CLI and runtime. Runtime, orchestration, tracker integration, app-server integration, operator HTTP, and local control-plane behavior live under `apps/decodex/src/`. |
 | `apps/decodex-app/` | SwiftPM macOS app for local Decodex Codex account-pool management. It talks to the bundled `decodex-app-helper`, which links the Rust account service directly, and does not own runtime scheduling or operator dashboard state. |
 | `site/` | Astro static site for the public Decodex product surface and app download entry. It is not backed by a live Decodex daemon and does not own upstream monitoring or public publishing automation. |
+| `automations/decodex/` | Repo-local source for Codex App automations that monitor upstream Codex, curate Decodex Radar artifacts, and drive guarded public publishing candidates. Active recurring automation configs live under the operator's Codex home; generated artifacts stay under `.agent/automations/decodex/cache`. |
 | `scripts/assets/` | Asset-generation helpers for checked-in app and tray icon assets. |
 | `scripts/macos/` | macOS-only app packaging and local bundle verification helpers. |
 | `plugins/decodex/` | Canonical installable Decodex lifecycle plugin source. It owns research, issue briefing, planning, runtime ops, commit, and land. |
@@ -88,7 +89,8 @@ The site does not own:
 - upstream monitoring
 - public publishing automation
 
-Those runtime and operator surfaces stay in `apps/decodex/` and `docs/spec/`.
+Those runtime, automation, and operator surfaces stay in `apps/decodex/`,
+`automations/decodex/`, and `docs/spec/`.
 
 ## Installable Codex surface
 
