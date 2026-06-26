@@ -5532,6 +5532,12 @@ fn validate_control_plane_upgrade_source_refs(refs: Option<&Value>, errors: &mut
 				.into(),
 		);
 	}
+	if non_empty_array(refs.get("upstream_impacts")).is_none() {
+		errors.push(
+			"source_refs.upstream_impacts must include the shared upstream_impact/v1 handoff"
+				.into(),
+		);
+	}
 	if refs.get("urls").is_some_and(|urls| !is_https_string_array(urls)) {
 		errors.push("source_refs.urls must be a list of https URLs".into());
 	}
@@ -5678,8 +5684,23 @@ fn validate_social_candidate_source_refs(refs: Option<&Value>, errors: &mut Vec<
 				.into(),
 		);
 	}
+
+	let uses_radar_inputs = ["upstream_reviews", "release_deltas"]
+		.iter()
+		.any(|field| non_empty_array(refs.get(*field)).is_some());
+
+	if uses_radar_inputs && non_empty_array(refs.get("upstream_impacts")).is_none() {
+		errors.push(
+			"source_refs.upstream_impacts must include the shared upstream_impact/v1 handoff for Radar-derived social candidates"
+				.into(),
+		);
+	}
 	if refs.get("urls").is_some_and(|urls| !is_https_string_array(urls)) {
 		errors.push("source_refs.urls must be a list of https URLs".into());
+	}
+
+	for field in ["upstream_reviews", "upstream_impacts", "signals", "release_deltas"] {
+		validate_optional_string_list(refs.get(field), &format!("source_refs.{field}"), errors);
 	}
 }
 
@@ -5940,6 +5961,7 @@ fn validate_social_post_text(text: Option<&Value>, errors: &mut Vec<String>) {
 
 			continue;
 		};
+
 		validate_social_post_text_item(text, index, errors);
 	}
 }
@@ -5958,6 +5980,7 @@ fn validate_social_post_text_item(text: &str, index: usize, errors: &mut Vec<Str
 	}
 
 	let normalized = text.trim().to_ascii_lowercase();
+
 	if normalized == "watching this"
 		|| normalized.starts_with("watching this.")
 		|| normalized.starts_with("tracking this.")
@@ -6870,6 +6893,18 @@ mod tests {
 		candidate["source_refs"] = serde_json::json!({});
 
 		assert_errors(&candidate, ["source_refs must include upstream_reviews"]);
+
+		let mut missing_shared_handoff = valid_social_candidate();
+
+		missing_shared_handoff["source_refs"]
+			.as_object_mut()
+			.expect("source refs should be an object")
+			.remove("upstream_impacts");
+
+		assert_errors(
+			&missing_shared_handoff,
+			["source_refs.upstream_impacts must include the shared upstream_impact/v1 handoff"],
+		);
 	}
 
 	#[test]
@@ -6884,18 +6919,21 @@ mod tests {
 	#[test]
 	fn social_candidate_rejects_low_quality_public_text() {
 		let mut attribution = valid_social_candidate();
+
 		attribution["candidate_text"] =
 			serde_json::json!(["Automated by @hackink: new release available"]);
 
 		assert_errors(&attribution, ["text[0] must not include automation attribution"]);
 
 		let mut overpacked = valid_social_candidate();
+
 		overpacked["candidate_text"] =
 			serde_json::json!([format!("{}", "Codex checkpoint ".repeat(18))]);
 
 		assert_errors(&overpacked, ["longer than 260 characters"]);
 
 		let mut generic = valid_social_candidate();
+
 		generic["candidate_text"] = serde_json::json!(["Watching this."]);
 
 		assert_errors(&generic, ["must name a concrete source-backed"]);
@@ -6921,6 +6959,18 @@ mod tests {
 		candidate["authority"]["mutation_allowed"] = serde_json::json!(true);
 
 		assert_errors(&candidate, ["authority.mutation_allowed must be false"]);
+
+		let mut missing_shared_handoff = valid_control_plane_upgrade_candidate();
+
+		missing_shared_handoff["source_refs"]
+			.as_object_mut()
+			.expect("source refs should be an object")
+			.remove("upstream_impacts");
+
+		assert_errors(
+			&missing_shared_handoff,
+			["source_refs.upstream_impacts must include the shared upstream_impact/v1 handoff"],
+		);
 
 		let mut missing_contract = valid_control_plane_upgrade_candidate();
 
@@ -6952,16 +7002,19 @@ mod tests {
 	#[test]
 	fn social_post_rejects_low_quality_public_text() {
 		let mut attribution = valid_social_post();
+
 		attribution["text"] = serde_json::json!(["Automated by @hackink: tracking this."]);
 
 		assert_errors(&attribution, ["text[0] must not include automation attribution"]);
 
 		let mut overpacked = valid_social_post();
+
 		overpacked["text"] = serde_json::json!([format!("{}", "Codex checkpoint ".repeat(18))]);
 
 		assert_errors(&overpacked, ["longer than 260 characters"]);
 
 		let mut with_source_url = valid_social_post();
+
 		with_source_url["text"] = serde_json::json!([format!(
 			"{} https://github.com/openai/codex/pull/22414",
 			"Codex checkpoint ".repeat(13)

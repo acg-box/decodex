@@ -56,3 +56,6 @@ PR, or commit touches any of these surfaces:
 Candidate creation is still evidence-only. Promotion to executable work requires the
 authority bridge in
 [`../spec/control-plane-upgrade-candidate.md`](../spec/control-plane-upgrade-candidate.md).
+For Radar-derived Codex release or preview rows, the compatibility matrix should point
+Control Plane work at the shared `upstream_impact/v1` handoff and a
+`control_plane_upgrade_candidate/v1`, not at a version-string-only adoption path.
