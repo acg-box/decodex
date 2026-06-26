@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: automation
 tags: [spec, radar]
-last_verified: 2026-06-25
+last_verified: 2026-06-27
 ---
 # Radar Artifact Retention
 
@@ -41,7 +41,7 @@ Decodex uses three retention classes for Radar and Publisher data.
 | Class | Storage | Examples | Retention |
 | --- | --- | --- | --- |
 | Hot raw artifacts | Operations cache | `.agent/automations/decodex/cache/github/bundles/*.json`, `.agent/automations/decodex/cache/github/reviews/*.review.json`, `.agent/automations/decodex/cache/generated/analysis/*.analysis.json` | At most 21 days in hot cache after collection or publication. |
-| Warm curated artifacts | Operations cache | `.agent/automations/decodex/cache/site-content/signals/*.json`, `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json`, `.agent/automations/decodex/cache/github/impact/*.json`, `.agent/automations/decodex/cache/social/x/posts/*.json` | Retained while they are part of the public snapshot, Control Plane review trail, Publisher record, or cap analysis. |
+| Warm curated artifacts | Operations cache | `.agent/automations/decodex/cache/site-content/signals/*.json`, `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json`, `.agent/automations/decodex/cache/github/impact/*.json`, `.agent/automations/decodex/cache/github/control-plane-upgrades/*.json`, `.agent/automations/decodex/cache/social/x/posts/*.json` | Retained while they are part of the public snapshot, Control Plane review trail, Publisher record, or cap analysis. |
 | Cold raw archive | `.agent/automations/decodex/cache/archive` manifest plus optional external assets | Archived bundle and analysis batches, optional source snapshots, optional ledger exports | Retained outside hot cache. The manifest stays in `.agent/automations/decodex/cache/archive/index`. |
 
 The hot raw window is intentionally short. Continuous Radar should keep every upstream
@@ -71,6 +71,8 @@ Keep these artifacts in cache unless a separate content cleanup explicitly remov
 - the current homepage `release_delta/v1` artifact
 - the latest `upstream_review_queue/v1` artifact under `.agent/automations/decodex/cache/github/review-queue/`
 - `upstream_impact/v1` records that affect Decodex Control Plane or Publisher follow-up
+- `control_plane_upgrade_candidate/v1` records that preserve Control Plane upgrade
+  review, deferral, blocker, or supersession evidence
 - `social_candidate/v1` records that preserve `publish`, `defer`, or `skip` Publisher
   intake decisions
 - `social_post/v1` records, including daily-cap blocks

@@ -29,6 +29,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use crate::prelude::eyre::{self, Report};
 
 const BUNDLE_SCHEMA: &str = "github_change_bundle/v1";
+const CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA: &str = "control_plane_upgrade_candidate/v1";
 const DEFAULT_LEDGER_PATH: &str = ".agent/automations/decodex/cache/github/radar.sqlite3";
 const DEFAULT_MIN_STABLE_TAG: &str = "rust-v0.116.0";
 const DEFAULT_PAIR_LIMIT: usize = 24;
@@ -42,7 +43,7 @@ const DEFAULT_SIGNALS_DIR: &str = ".agent/automations/decodex/cache/site-content
 const DEFAULT_STABLE_LIMIT: usize = 0;
 const DEFAULT_TAG_PREFIX: &str = "rust-v";
 const RELEASE_DELTA_SCHEMA: &str = "release_delta/v1";
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 const SIGNAL_SCHEMA: &str = "signal_entry/v1";
 const SOCIAL_CANDIDATE_SCHEMA: &str = "social_candidate/v1";
 const SOCIAL_POST_SCHEMA: &str = "social_post/v1";
@@ -56,6 +57,7 @@ const DEFAULT_VALIDATION_PATHS: &[&str] = &[
 	".agent/automations/decodex/cache/github/review-queue",
 	".agent/automations/decodex/cache/github/reviews",
 	".agent/automations/decodex/cache/github/impact",
+	".agent/automations/decodex/cache/github/control-plane-upgrades",
 	".agent/automations/decodex/cache/github/social-candidates",
 	".agent/automations/decodex/cache/social/x",
 	".agent/automations/decodex/cache/site-content/signals",
@@ -89,10 +91,21 @@ const SOCIAL_POST_LIFECYCLE_STATES: &[&str] = &[
 ];
 const SOCIAL_PUBLISH_RESERVATION_STATUSES: &[&str] = &["active", "canceled", "consumed", "expired"];
 const SOURCE_ITEM_KINDS: &[&str] = &["commit", "pull_request"];
+const CONTROL_PLANE_UPGRADE_IMPACTS: &[&str] = &["adopt_now", "candidate", "compat_risk"];
+const CONTROL_PLANE_UPGRADE_PATHS: &[&str] = &["adopt_now", "compat_risk_mitigation", "discovery"];
+const CONTROL_PLANE_UPGRADE_STATUSES: &[&str] = &["blocked", "deferred", "proposed", "superseded"];
+const CODEX_COMPATIBILITY_STATUSES: &[&str] =
+	&["compatible", "incompatible", "needs_review", "not_tested", "unknown"];
+const CODEX_TARGET_CHANNELS: &[&str] = &["main", "preview", "stable"];
 const UPSTREAM_IMPACT_KINDS: &[&str] =
 	&["browser_observation", "changelog", "commit", "pull_request", "release", "signal"];
-const UPSTREAM_REVIEW_ACTION_TYPES: &[&str] =
-	&["linear_followup", "none", "signal_entry", "social_candidate", "upstream_impact"];
+const UPSTREAM_REVIEW_ACTION_TYPES: &[&str] = &[
+	"control_plane_upgrade_candidate",
+	"none",
+	"signal_entry",
+	"social_candidate",
+	"upstream_impact",
+];
 const UPSTREAM_REVIEW_NEXT_STEPS: &[&str] = &["ai_review_required"];
 const UPSTREAM_REVIEW_PRIORITIES: &[&str] = &["critical", "high", "low", "normal"];
 const UPSTREAM_SOURCE_STATES: &[&str] = &["closed", "commit_only", "merged", "open"];
@@ -161,6 +174,7 @@ const ARTIFACT_KINDS: &[&str] = &[
 	"analysis",
 	"archive_manifest",
 	"bundle",
+	"control_plane_upgrade_candidate",
 	"ledger_export",
 	"release_delta",
 	"signal",
@@ -3555,6 +3569,7 @@ fn initialize_ledger(connection: &Connection) -> crate::prelude::Result<()> {
 		      'analysis',
 		      'signal',
 		      'upstream_impact',
+		      'control_plane_upgrade_candidate',
 		      'social_candidate',
 		      'social_post',
 		      'release_delta',
@@ -3615,7 +3630,10 @@ fn migrate_artifact_link_kinds(connection: &Connection) -> crate::prelude::Resul
 		return Ok(());
 	};
 
-	if table_sql.contains("social_candidate") && !table_sql.contains("social_draft") {
+	if table_sql.contains("social_candidate")
+		&& table_sql.contains("control_plane_upgrade_candidate")
+		&& !table_sql.contains("social_draft")
+	{
 		return Ok(());
 	}
 
@@ -3633,6 +3651,7 @@ fn migrate_artifact_link_kinds(connection: &Connection) -> crate::prelude::Resul
 		      'analysis',
 		      'signal',
 		      'upstream_impact',
+		      'control_plane_upgrade_candidate',
 		      'social_candidate',
 		      'social_post',
 		      'release_delta',
@@ -4550,6 +4569,8 @@ fn validate_artifact(payload: &Value) -> ArtifactValidation {
 	match schema.as_deref() {
 		Some(BUNDLE_SCHEMA) => validate_bundle(entry, &mut errors),
 		Some(CONFIG_FEATURE_CATALOG_SCHEMA) => validate_config_feature_catalog(entry, &mut errors),
+		Some(CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA) =>
+			validate_control_plane_upgrade_candidate(entry, &mut errors),
 		Some(RADAR_ARCHIVE_MANIFEST_SCHEMA) => validate_radar_archive_manifest(entry, &mut errors),
 		Some(RELEASE_DELTA_SCHEMA) => validate_release_delta(entry, &mut errors),
 		Some(SIGNAL_SCHEMA) => validate_signal(entry, &mut errors),
@@ -5456,6 +5477,129 @@ fn validate_upstream_impact(entry: &Map<String, Value>, errors: &mut Vec<String>
 	}
 }
 
+fn validate_control_plane_upgrade_candidate(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	for field in ["slug", "repo", "observed_change", "reason"] {
+		if !is_non_empty_string(entry.get(field)) {
+			errors.push(format!("{field} must be a non-empty string"));
+		}
+	}
+
+	if string_field(entry, "repo").is_some_and(|repo| !repo.contains('/')) {
+		errors.push("repo must be owner/name".into());
+	}
+	if !matches_one_of(entry.get("status"), CONTROL_PLANE_UPGRADE_STATUSES) {
+		errors.push(format!("status must be one of {}", choices(CONTROL_PLANE_UPGRADE_STATUSES)));
+	}
+	if !matches_one_of(entry.get("control_plane_impact"), CONTROL_PLANE_UPGRADE_IMPACTS) {
+		errors.push(format!(
+			"control_plane_impact must be one of {}",
+			choices(CONTROL_PLANE_UPGRADE_IMPACTS)
+		));
+	}
+	if !matches_one_of(entry.get("upgrade_path"), CONTROL_PLANE_UPGRADE_PATHS) {
+		errors
+			.push(format!("upgrade_path must be one of {}", choices(CONTROL_PLANE_UPGRADE_PATHS)));
+	}
+
+	validate_control_plane_upgrade_source_refs(entry.get("source_refs"), errors);
+	validate_control_plane_upgrade_target_codex(entry.get("target_codex"), errors);
+	validate_control_plane_upgrade_authority(entry.get("authority"), errors);
+	validate_non_empty_string_list(entry.get("affected_surfaces"), "affected_surfaces", errors);
+	validate_non_empty_string_list(entry.get("validation_gates"), "validation_gates", errors);
+	validate_non_empty_string_list(entry.get("stop_conditions"), "stop_conditions", errors);
+
+	for field in ["acceptance_criteria", "caveats", "next_steps"] {
+		validate_optional_string_list(entry.get(field), field, errors);
+	}
+}
+
+fn validate_control_plane_upgrade_source_refs(refs: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(refs) = refs.and_then(Value::as_object) else {
+		errors.push("source_refs must be an object".into());
+
+		return;
+	};
+	let has_refs = ["upstream_reviews", "upstream_impacts", "release_deltas", "urls"]
+		.iter()
+		.any(|field| non_empty_array(refs.get(*field)).is_some());
+
+	if !has_refs {
+		errors.push(
+			"source_refs must include upstream_reviews, upstream_impacts, release_deltas, or urls"
+				.into(),
+		);
+	}
+	if refs.get("urls").is_some_and(|urls| !is_https_string_array(urls)) {
+		errors.push("source_refs.urls must be a list of https URLs".into());
+	}
+
+	for field in ["upstream_reviews", "upstream_impacts", "release_deltas"] {
+		validate_optional_string_list(refs.get(field), &format!("source_refs.{field}"), errors);
+	}
+}
+
+fn validate_control_plane_upgrade_target_codex(target: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(target) = target.and_then(Value::as_object) else {
+		errors.push("target_codex must be an object".into());
+
+		return;
+	};
+
+	if !matches_one_of(target.get("channel"), CODEX_TARGET_CHANNELS) {
+		errors.push(format!(
+			"target_codex.channel must be one of {}",
+			choices(CODEX_TARGET_CHANNELS)
+		));
+	}
+	if !["version", "tag", "commit_sha", "release_url"]
+		.iter()
+		.any(|field| is_non_empty_string(target.get(*field)))
+	{
+		errors.push("target_codex must include version, tag, commit_sha, or release_url".into());
+	}
+	if target.get("release_url").is_some_and(|url| !is_https_string(Some(url))) {
+		errors.push("target_codex.release_url must be an https URL when present".into());
+	}
+	if target
+		.get("compatibility_status")
+		.is_some_and(|status| !matches_one_of(Some(status), CODEX_COMPATIBILITY_STATUSES))
+	{
+		errors.push(format!(
+			"target_codex.compatibility_status must be one of {}",
+			choices(CODEX_COMPATIBILITY_STATUSES)
+		));
+	}
+
+	for field in ["version", "tag", "commit_sha", "matrix_ref", "probe_evidence"] {
+		if target.get(field).is_some_and(|value| !is_non_empty_string(Some(value))) {
+			errors.push(format!("target_codex.{field} must be non-empty when present"));
+		}
+	}
+}
+
+fn validate_control_plane_upgrade_authority(authority: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(authority) = authority.and_then(Value::as_object) else {
+		errors.push("authority must be an object".into());
+
+		return;
+	};
+
+	for field in ["decision_contract_required", "program_intake_required"] {
+		if authority.get(field).and_then(Value::as_bool) != Some(true) {
+			errors.push(format!("authority.{field} must be true"));
+		}
+	}
+	if authority.get("mutation_allowed").and_then(Value::as_bool) != Some(false) {
+		errors.push("authority.mutation_allowed must be false".into());
+	}
+
+	for field in ["objective_id", "objective_version", "policy_ref"] {
+		if authority.get(field).is_some_and(|value| !is_non_empty_string(Some(value))) {
+			errors.push(format!("authority.{field} must be non-empty when present"));
+		}
+	}
+}
+
 fn validate_upstream_impact_source_refs(refs: Option<&Value>, errors: &mut Vec<String>) {
 	let Some(refs) = refs.and_then(Value::as_object) else {
 		errors.push("source_refs must be an object".into());
@@ -6246,6 +6390,7 @@ fn known_schemas() -> String {
 	choices(&[
 		BUNDLE_SCHEMA,
 		CONFIG_FEATURE_CATALOG_SCHEMA,
+		CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA,
 		RADAR_ARCHIVE_MANIFEST_SCHEMA,
 		RELEASE_DELTA_SCHEMA,
 		SIGNAL_SCHEMA,
@@ -6660,10 +6805,18 @@ mod tests {
 	}
 
 	#[test]
-	fn accepts_valid_upstream_review_and_rejects_bad_action() {
+	fn accepts_valid_upstream_review_upgrade_action_and_rejects_stale_action() {
 		let mut review = valid_upstream_review();
 
 		assert_errors(&review, []);
+
+		review["next_actions"][0]["type"] = serde_json::json!("control_plane_upgrade_candidate");
+
+		assert_errors(&review, []);
+
+		review["next_actions"][0]["type"] = serde_json::json!("linear_followup");
+
+		assert_errors(&review, ["next_actions[0].type must be one of"]);
 
 		review["next_actions"][0]["type"] = serde_json::json!("publish_now");
 
@@ -6699,6 +6852,36 @@ mod tests {
 		impact["publisher_angle"] = serde_json::json!("viral_thread");
 
 		assert_errors(&impact, ["publisher_angle must be one of"]);
+	}
+
+	#[test]
+	fn accepts_valid_control_plane_upgrade_candidate_and_rejects_direct_mutation() {
+		let mut candidate = valid_control_plane_upgrade_candidate();
+
+		assert_errors(&candidate, []);
+
+		candidate["authority"]["mutation_allowed"] = serde_json::json!(true);
+
+		assert_errors(&candidate, ["authority.mutation_allowed must be false"]);
+
+		let mut missing_contract = valid_control_plane_upgrade_candidate();
+		missing_contract["authority"]["decision_contract_required"] = serde_json::json!(false);
+
+		assert_errors(
+			&missing_contract,
+			["authority.decision_contract_required must be true"],
+		);
+
+		let mut missing_program = valid_control_plane_upgrade_candidate();
+		missing_program["authority"]
+			.as_object_mut()
+			.expect("authority should be an object")
+			.remove("program_intake_required");
+
+		assert_errors(
+			&missing_program,
+			["authority.program_intake_required must be true"],
+		);
 	}
 
 	#[test]
@@ -6962,7 +7145,7 @@ mod tests {
 			.expect("schema version should be readable");
 
 		assert_eq!(artifact_kind, "social_post");
-		assert_eq!(schema_version, "3");
+		assert_eq!(schema_version, "4");
 	}
 
 	#[test]
@@ -7094,6 +7277,64 @@ mod tests {
 			path: social_candidate_path,
 		})
 		.expect("social candidate artifact link should be recorded");
+
+		assert_eq!(summary.get("artifact_links"), Some(&1));
+	}
+
+	#[test]
+	fn ledger_artifact_link_records_control_plane_upgrade_candidate_after_schema_migration() {
+		let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+		let db_path = temp_dir.path().join("radar.sqlite3");
+		let candidate_path = temp_dir.path().join("upgrade.json");
+		let connection =
+			rusqlite::Connection::open(&db_path).expect("temporary ledger should open");
+
+		connection
+			.execute_batch(
+				"
+				CREATE TABLE artifact_link (
+				  repo TEXT NOT NULL,
+				  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('commit', 'pr')),
+				  subject_id TEXT NOT NULL,
+				  artifact_kind TEXT NOT NULL CHECK (
+				    artifact_kind IN (
+				      'bundle',
+				      'analysis',
+				      'signal',
+				      'upstream_impact',
+				      'social_candidate',
+				      'social_post',
+				      'release_delta',
+				      'archive_manifest',
+				      'ledger_export'
+				    )
+				  ),
+				  path TEXT NOT NULL,
+				  sha256 TEXT NOT NULL,
+				  size_bytes INTEGER NOT NULL,
+				  created_at TEXT NOT NULL,
+				  PRIMARY KEY (repo, subject_kind, subject_id, artifact_kind, path)
+				);
+				",
+			)
+			.expect("legacy artifact link schema should be created");
+
+		drop(connection);
+
+		fs::write(&candidate_path, r#"{"schema":"control_plane_upgrade_candidate/v1"}"#)
+			.expect("upgrade candidate fixture should be written");
+		radar::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
+			.expect("ledger bootstrap should add control-plane upgrade artifact kind");
+
+		let summary = radar::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
+			db_path: db_path.clone(),
+			repo: "openai/codex".into(),
+			subject_kind: "pr".into(),
+			subject_id: "22414".into(),
+			artifact_kind: "control_plane_upgrade_candidate".into(),
+			path: candidate_path,
+		})
+		.expect("control-plane upgrade artifact link should be recorded");
 
 		assert_eq!(summary.get("artifact_links"), Some(&1));
 	}
@@ -7468,6 +7709,48 @@ mod tests {
 			"publisher_angle": "operator_impact",
 			"confidence": "confirmed",
 			"evidence": ["PR #22414 updates app-server endpoint handling."]
+		})
+	}
+
+	fn valid_control_plane_upgrade_candidate() -> Value {
+		serde_json::json!({
+			"schema": "control_plane_upgrade_candidate/v1",
+			"slug": "openai-codex-pr-22414-control-plane",
+			"repo": "openai/codex",
+			"status": "proposed",
+			"source_refs": {
+				"upstream_reviews": [
+					".agent/automations/decodex/cache/github/reviews/openai-codex-pr-22414.review.json"
+				],
+				"upstream_impacts": [
+					".agent/automations/decodex/cache/github/impact/openai-codex-pr-22414.json"
+				],
+				"urls": ["https://github.com/openai/codex/pull/22414"]
+			},
+			"observed_change": "Remote Codex can use Unix socket endpoints.",
+			"control_plane_impact": "compat_risk",
+			"upgrade_path": "compat_risk_mitigation",
+			"affected_surfaces": ["app-server protocol"],
+			"target_codex": {
+				"channel": "stable",
+				"version": "0.142.2",
+				"tag": "rust-v0.142.2",
+				"release_url": "https://github.com/openai/codex/releases/tag/rust-v0.142.2",
+				"compatibility_status": "needs_review",
+				"matrix_ref": "docs/reference/codex-compatibility-matrix.md#codex-01422"
+			},
+			"authority": {
+				"decision_contract_required": true,
+				"program_intake_required": true,
+				"mutation_allowed": false,
+				"objective_id": "decodex-self-iteration"
+			},
+			"reason": "The upstream app-server transport change may affect Decodex Control Plane compatibility.",
+			"validation_gates": ["decodex probe stdio://", "cargo test -p decodex app_server --lib"],
+			"stop_conditions": ["Missing accepted Decision Contract", "Probe failure against the target Codex build"],
+			"acceptance_criteria": [
+				"Compatibility impact is proven or dismissed with source-backed evidence."
+			]
 		})
 	}
 

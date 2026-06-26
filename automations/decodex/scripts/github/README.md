@@ -49,6 +49,8 @@ Current checked contracts:
 - `upstream_review/v1` artifacts are validated by `decodex radar validate`.
 - `release_delta/v1` artifacts are validated by `decodex radar validate`.
 - `upstream_impact/v1` artifacts are validated by `decodex radar validate`.
+- `control_plane_upgrade_candidate/v1` artifacts are validated by
+  `decodex radar validate`.
 - `social_candidate/v1` artifacts are validated by `decodex radar validate`.
 - `social_publish_reservation/v1` artifacts are validated by
   `decodex radar validate`.
@@ -60,6 +62,8 @@ Contract ownership:
 - upstream review queue and AI review boundary: `docs/spec/upstream-review.md`
 - output signal shape: `docs/spec/signal-entry.md`
 - upstream impact shape: `docs/spec/upstream-impact.md`
+- Control Plane upgrade candidate shape:
+  `docs/spec/control-plane-upgrade-candidate.md`
 - social candidate shape: `docs/spec/social-candidate.md`
 - social publication shape: `docs/spec/social-publishing.md`
 
@@ -127,9 +131,10 @@ decodex radar backfill-release-range \
 Codex app automation or an explicit local operator run may refresh upstream queues,
 release deltas, and validation through `decodex radar ...`. Codex automation owns AI
 review of queued subjects and may then
-promote source-backed conclusions into `upstream_impact/v1`, `analysis_draft`,
-`decodex radar render-signal` output, or `social_candidate/v1`; Publisher automation
-writes terminal `social_post/v1` records.
+promote source-backed conclusions into `upstream_impact/v1`,
+`control_plane_upgrade_candidate/v1`, `analysis_draft`, `decodex radar render-signal`
+output, or `social_candidate/v1`; Publisher automation writes terminal
+`social_post/v1` records.
 
 Do not wire `run_codex_analysis.py` into GitHub Actions. Actions must not pass
 `--allow-ai-analysis-boundary` or set `DECODEX_ALLOW_CODEX_ANALYSIS`; that

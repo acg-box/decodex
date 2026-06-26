@@ -49,8 +49,8 @@ those gaps belongs back in the upstream analysis stage.
 Default posture: track every upstream Codex commit as a possible evidence unit. Resolve
 commits back to PRs when possible, decide whether the change matters to Decodex Control
 Plane or the wider Codex community, and only then promote important, useful, or
-deprecated behavior into a signal, upstream-impact artifact, follow-up issue, or X
-post.
+deprecated behavior into a signal, upstream-impact artifact, Control Plane upgrade
+candidate, or X post.
 
 For upstream releases and prereleases, use `codex-release-analysis` as a rollup over
 the accumulated commit/PR analysis. Codex prerelease notes are often too sparse to
@@ -60,7 +60,7 @@ release metadata, compare metadata, and caveats create real reader value.
 
 Checked-in contracts for this workflow are `upstream_review_queue/v1`,
 `upstream_review/v1`, `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`,
-`upstream_impact/v1`, `release_delta/v1`, `social_candidate/v1`, `social_post/v1`, and
-their supporting generated artifacts. The triage, code-analysis, and release-analysis
-skills are reasoning passes unless their conclusions are promoted into one of those
-contracts.
+`upstream_impact/v1`, `control_plane_upgrade_candidate/v1`, `release_delta/v1`,
+`social_candidate/v1`, `social_post/v1`, and their supporting generated artifacts. The
+triage, code-analysis, and release-analysis skills are reasoning passes unless their
+conclusions are promoted into one of those contracts.

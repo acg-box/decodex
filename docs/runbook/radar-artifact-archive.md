@@ -6,7 +6,7 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook, radar]
-last_verified: 2026-06-25
+last_verified: 2026-06-27
 ---
 # Radar Artifact Archive
 
@@ -37,6 +37,8 @@ Do not archive these as part of raw cleanup:
 - `.agent/automations/decodex/cache/site-content/signals/*.json`
 - the current `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json`
 - `.agent/automations/decodex/cache/github/impact/*.json` with active Control Plane or Publisher relevance
+- `.agent/automations/decodex/cache/github/control-plane-upgrades/*.json` with active
+  Control Plane review relevance
 - `.agent/automations/decodex/cache/social/x/posts/*.json`
 - `.agent/automations/decodex/cache/archive/index/*.json`
 
