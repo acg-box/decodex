@@ -12,6 +12,11 @@
 - Corrected repository ownership docs so `automations/decodex` is the repo-owned
   source for upstream monitoring and guarded publishing automation, while recurring
   Codex App execution and private generated state remain outside tracked source.
+- Bridged Program Intake dispatchable nodes into the targeted run path and operator
+  readback: `decodex run <ISSUE>` can infer `program` dispatch for a mapped
+  dispatchable Program node without a service queue label, and live status treats
+  local shared run claims as active Program ownership instead of a self-conflicting
+  cleanup-only worktree.
 
 ## 2026-06-25
 

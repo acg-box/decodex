@@ -8,7 +8,7 @@ owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/research_design.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
 drift_watch: [phase_goal, phase_acceptance_check, docs_impact, review_contract, issue_review_checkpoint, decodex.autonomy_proposal/1, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
-last_verified: 2026-06-23
+last_verified: 2026-06-27
 ---
 # Loop Runtime Specification
 
@@ -527,7 +527,11 @@ The Program scheduler is event-driven from local runtime state:
   selection.
 - The scheduler refreshes only mapped Linear issue facts required for readiness:
   issue state, active/manual-only/needs-attention labels, open blockers, briefing
-  presence, dependency observations, and occupied conflict domains.
+  presence, dependency observations, local shared run claims, and occupied conflict
+  domains.
+- A local shared run claim for the mapped issue makes that Program node active for
+  scheduler and status readback, so startup worktree ownership does not self-block as
+  `conflict_domain_occupied` while the live lane is already leased.
 - When several nodes are dispatchable, normal issue candidate ordering chooses the
   first lane, and project/account concurrency still gates actual execution.
 - Service queue labels are not applied, retained, removed, or treated as Program

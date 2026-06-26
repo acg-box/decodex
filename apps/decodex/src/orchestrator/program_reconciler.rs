@@ -330,10 +330,16 @@ fn execution_program_readiness_context(
 	let dependency_snapshots = execution_program_dependency_snapshots(programs)?;
 	let occupied_conflict_domains =
 		execution_program_occupied_conflict_domains(service_id, workflow, state_store, programs)?;
+	let active_issue_ids = state_store
+		.list_active_shared_leases(service_id)?
+		.into_iter()
+		.map(|lease| lease.issue_id().to_owned())
+		.collect::<Vec<_>>();
 
 	Ok(ExecutionProgramReadinessContext::new()
 		.with_dependency_snapshots(dependency_snapshots)
-		.with_occupied_conflict_domains(occupied_conflict_domains))
+		.with_occupied_conflict_domains(occupied_conflict_domains)
+		.with_active_issue_ids(active_issue_ids))
 }
 
 fn execution_program_dependency_snapshots(
