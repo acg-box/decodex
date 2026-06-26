@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: automation
 tags: [spec, radar]
-last_verified: 2026-06-25
+last_verified: 2026-06-27
 ---
 # Upstream Review
 
@@ -25,6 +25,8 @@ Read this when:
 Not this document:
 - The normalized GitHub source bundle schema. Read [`github-change-bundle.md`](./github-change-bundle.md).
 - The Control Plane and Publisher impact shape. Read [`upstream-impact.md`](./upstream-impact.md).
+- The Control Plane upgrade candidate shape. Read
+  [`control-plane-upgrade-candidate.md`](./control-plane-upgrade-candidate.md).
 - The public signal schema. Read [`signal-entry.md`](./signal-entry.md).
 - The raw artifact archive policy. Read [`radar-artifact-retention.md`](./radar-artifact-retention.md).
 
@@ -33,7 +35,8 @@ Defines:
 - The AI-owned `upstream_review/v1` artifact.
 - The rule that release and prerelease tags are rollup checkpoints over commit and PR
   evidence, not first-class discovery roots.
-- The promotion boundary from upstream review into impact, site, social, or Linear work.
+- The promotion boundary from upstream review into impact, site, social, or Control
+  Plane upgrade candidate work.
 
 ## Core rule
 
@@ -69,8 +72,9 @@ Recommended checked-in location:
 - `.agent/automations/decodex/cache/github/reviews/<source-slug>.review.json`
 
 Review artifacts are hot Radar artifacts unless they are promoted into
-`upstream_impact/v1`, `signal_entry/v1`, `social_candidate/v1`, or a Linear follow-up.
-Apply the 21-day hot-window rule from [`radar-artifact-retention.md`](./radar-artifact-retention.md).
+`upstream_impact/v1`, `signal_entry/v1`, `social_candidate/v1`, or
+`control_plane_upgrade_candidate/v1`. Apply the 21-day hot-window rule from
+[`radar-artifact-retention.md`](./radar-artifact-retention.md).
 
 ## Queue requirements
 
@@ -122,7 +126,7 @@ or public value.
 - confidence: `confirmed`, `likely`, or `weak`
 - source-backed evidence notes
 - next actions, each mapped to `none`, `upstream_impact`, `signal_entry`,
-  `social_candidate`, or `linear_followup`
+  `social_candidate`, or `control_plane_upgrade_candidate`
 
 AI review must read enough source evidence to explain behavior. A PR title, release
 title, or deterministic queue hint is not enough for a confirmed claim.
@@ -145,7 +149,9 @@ Promote an upstream review into:
   behavior, try path, or migration value.
 - `social_candidate/v1` when there is a clear public angle and source links are
   available. Publisher later decides whether to write terminal `social_post/v1`.
-- a Linear issue when Decodex should adopt, guard, migrate, or investigate the change.
+- `control_plane_upgrade_candidate/v1` when Decodex should adopt, guard, migrate, or
+  investigate the change. The candidate remains evidence-only until Decision Contract
+  and Program Intake promotion.
 
 Do not promote low-value internal churn into public artifacts. Keep it traceable in the
 ledger and use it only as release-rollup background if later evidence makes it relevant.

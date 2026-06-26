@@ -17,6 +17,7 @@ Decodex plugin skill.
 - `docs/spec/github-change-bundle.md`
 - `docs/spec/upstream-review.md`
 - `docs/spec/upstream-impact.md`
+- `docs/spec/control-plane-upgrade-candidate.md`
 - `docs/runbook/local-github-signal-workflow.md`
 - `automations/decodex/skills/codex-code-analysis/SKILL.md`
 - `automations/decodex/skills/codex-release-analysis/SKILL.md`
@@ -96,7 +97,8 @@ Return a compact triage note with:
 - next skill to use
 - confidence limits
 
-Do not draft `signal_entry/v1`, `social_candidate/v1`, or `social_post/v1` directly
-from this skill. Do not treat deterministic queue hints as technical claims. The durable
-review layer is `upstream_review/v1`; public and Control Plane artifacts are promotions
-from that source-backed review.
+Do not draft `signal_entry/v1`, `control_plane_upgrade_candidate/v1`,
+`social_candidate/v1`, or `social_post/v1` directly from this skill. Do not treat
+deterministic queue hints as technical claims. The durable review layer is
+`upstream_review/v1`; public and Control Plane artifacts are promotions from that
+source-backed review.

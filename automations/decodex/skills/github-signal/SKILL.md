@@ -18,6 +18,7 @@ It consumes a reviewed bundle plus source-backed analysis and drafts the JSON th
 
 - `docs/spec/github-change-bundle.md`
 - `docs/spec/upstream-impact.md`
+- `docs/spec/control-plane-upgrade-candidate.md`
 - `docs/spec/signal-entry.md`
 - `docs/spec/social-publishing.md`
 - `docs/runbook/local-github-signal-workflow.md`
@@ -31,6 +32,8 @@ It consumes a reviewed bundle plus source-backed analysis and drafts the JSON th
   `automations/decodex/skills/codex-code-analysis/SKILL.md`
 - An output path under `.agent/automations/decodex/cache/generated/analysis/`
 - Optional upstream impact output under `.agent/automations/decodex/cache/github/impact/`
+- Optional Control Plane upgrade candidate output under
+  `.agent/automations/decodex/cache/github/control-plane-upgrades/`
 
 ## Companion Skill Routing
 
@@ -95,8 +98,11 @@ Write a JSON analysis draft with these fields:
 4. Draft the `analysis_draft` JSON under `.agent/automations/decodex/cache/generated/analysis/`.
 5. Draft or update an `upstream_impact/v1` artifact when the change affects Control Plane or
    Publisher follow-up.
-6. Render the final signal entry with `decodex radar render-signal`.
-7. Validate the published signal collection and site build.
+6. Draft or update `control_plane_upgrade_candidate/v1` only when source-backed
+   evidence shows Decodex may need adoption, compatibility mitigation, or discovery;
+   do not create Linear issues or mutate runtime state from this skill.
+7. Render the final signal entry with `decodex radar render-signal`.
+8. Validate the published signal collection and site build.
 
 ## Commands
 
