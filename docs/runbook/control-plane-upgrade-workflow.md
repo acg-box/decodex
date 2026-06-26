@@ -44,7 +44,9 @@ The current tested Codex versions are recorded in
    explicit operator-run Codex analysis pass.
 
 3. Persist source-backed `upstream_review/v1`. When a reviewed change affects Decodex
-   compatibility or adoption, also persist `upstream_impact/v1`.
+   compatibility or adoption, also persist `upstream_impact/v1`; this is the shared
+   upstream scan artifact that Control Plane upgrade candidates and release publishing
+   both reuse.
 
 4. If `control_plane_impact` is `candidate`, `compat_risk`, or `adopt_now`, write a
    `control_plane_upgrade_candidate/v1` artifact under:
@@ -52,6 +54,10 @@ The current tested Codex versions are recorded in
    ```text
    .agent/automations/decodex/cache/github/control-plane-upgrades/
    ```
+
+   Cite the matching `upstream_impact/v1` in `source_refs.upstream_impacts`. Use
+   `release_delta/v1`, release URLs, or `target_codex` fields for version context
+   rather than re-fetching or reinterpreting upstream Codex independently.
 
 5. Validate the changed artifacts:
 
@@ -81,6 +87,7 @@ The current tested Codex versions are recorded in
 Do not promote a candidate when any of these is true:
 
 - no source-backed `upstream_review/v1` exists
+- no matching `upstream_impact/v1` exists for a Radar-derived candidate
 - the candidate has no target Codex version, tag, commit, or release URL
 - `authority.mutation_allowed` is not `false`
 - `decision_contract_required` or `program_intake_required` is not `true`

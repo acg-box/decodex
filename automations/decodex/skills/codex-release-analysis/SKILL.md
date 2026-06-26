@@ -26,6 +26,10 @@ or prerelease decision.
   upstream evidence producer. Release Analysis may refresh only the lightweight
   `release_delta/v1` checkpoint when the existing release-delta artifact is missing,
   stale, invalid, or explicitly needed for a newly observed release tag.
+- For continuous Radar-derived release and prerelease candidates, consume
+  `upstream_impact/v1` as the shared handoff artifact. Use release deltas, compare
+  metadata, reviews, signals, and URLs as provenance or gap evidence, not as a second
+  source-analysis path.
 - Use compare metadata to identify PR/commit gaps; route behavior claims that need code
   review to `upstream_analysis_required`.
 - Treat official Codex app/mobile changelog entries as first-class sources when the post
@@ -43,8 +47,9 @@ or prerelease decision.
    - stable: current stable -> previous stable
    - prerelease: current prerelease -> previous prerelease in the same train
    - first prerelease after stable: stable -> first prerelease
-3. Read existing `release_delta/v1`, `signal_entry/v1`, `upstream_review/v1`, and
-   `upstream_impact/v1` artifacts that match the channel.
+3. Read existing `upstream_impact/v1` artifacts that match the channel first, then use
+   `release_delta/v1`, `signal_entry/v1`, and `upstream_review/v1` artifacts to check
+   lineage, evidence, and gaps.
 4. Use `decodex radar backfill-release-range --dry-run` when compare PR gaps may need
    later source review.
 5. Choose exactly one primary mode:
@@ -66,6 +71,6 @@ Return source/timestamp, chosen mode, release-body quality, compare/PR evidence,
 matching signal slugs, Control Plane impact if any, and `social_candidate/v1`
 `decision.worthiness`.
 
-Promote durable conclusions only through existing artifacts: `upstream_impact/v1`,
-Codex-owned `analysis_draft` plus `decodex radar render-signal`, refreshed
-`release_delta/v1`, `social_candidate/v1`, or terminal `social_post/v1`.
+Promote durable conclusions only through existing artifacts: shared
+`upstream_impact/v1`, Codex-owned `analysis_draft` plus `decodex radar render-signal`,
+refreshed `release_delta/v1`, `social_candidate/v1`, or terminal `social_post/v1`.
