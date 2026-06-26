@@ -29,7 +29,7 @@ drift_watch:
   - allowed_signal_kinds
   - Program Intake
   - decodex mcp serve
-last_verified: 2026-06-23
+last_verified: 2026-06-27
 ---
 # Autonomy Implementation Roadmap
 
@@ -348,8 +348,8 @@ Implementation surfaces:
 Deliverables:
 
 - Observe profile can read objective, signal, proposal, and evidence summaries.
-- Plan profile can submit signals, draft objectives, compile proposals, challenge
-  proposals, and request explicit promotion surfaces.
+- Plan profile can draft and accept objectives, submit signals, compile proposals,
+  challenge proposals, and request explicit promotion surfaces.
 - Operate/admin profiles do not gain new bypasses; lane control and project control
   keep existing guards.
 - External agents cannot accept their own proposals unless accepted policy authority

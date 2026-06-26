@@ -22,6 +22,10 @@ or prerelease decision.
 ## Hard Boundaries
 
 - Do not perform fresh upstream source analysis here.
+- Do not refresh the upstream review queue here. Treat Radar Review as the shared
+  upstream evidence producer. Release Analysis may refresh only the lightweight
+  `release_delta/v1` checkpoint when the existing release-delta artifact is missing,
+  stale, invalid, or explicitly needed for a newly observed release tag.
 - Use compare metadata to identify PR/commit gaps; route behavior claims that need code
   review to `upstream_analysis_required`.
 - Treat official Codex app/mobile changelog entries as first-class sources when the post
