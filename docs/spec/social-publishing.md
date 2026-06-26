@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: automation
 tags: [spec, publishing]
-last_verified: 2026-06-25
+last_verified: 2026-06-27
 ---
 # Social Publishing
 
@@ -160,6 +160,15 @@ Rules:
   publish as a quote of that previous post. This keeps the prerelease history visible
   before the stable release ships. Deleted, superseded, failed, or text-only test posts
   must not become quote targets for the next prerelease.
+- Do not put automation attribution such as `Automated by @hackink` in the public post
+  body. Attribution belongs in durable `social_post/v1` records and account metadata,
+  not reader-facing copy.
+- Keep each post body at or below 260 characters unless an unavoidable direct source
+  URL requires using more of X's limit. Prefer a short thread over a dense paragraph
+  that leaves no room for quote metadata, link rendering, or manual correction.
+- Do not publish generic "watching this" or "new release available" prose when the
+  source evidence can name a concrete release, PR, commit cluster, protocol surface,
+  workflow impact, or operator action.
 
 ## Decision Object
 

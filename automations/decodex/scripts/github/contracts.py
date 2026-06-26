@@ -770,6 +770,41 @@ def validate_control_plane_upgrade_candidate(entry: dict[str, Any]) -> Validatio
     return ValidationResult(ok=not errors, errors=errors)
 
 
+def validate_social_text_list(value: Any, field: str, errors: list[str]) -> None:
+    if not isinstance(value, list) or not value:
+        errors.append(f"{field} must be a non-empty list of X-sized strings")
+        return
+
+    for index, item in enumerate(value):
+        if not isinstance(item, str):
+            errors.append(f"{field}[{index}] must be a string")
+            continue
+        validate_social_text_item(item, f"{field}[{index}]", errors)
+
+
+def validate_social_text_item(text: str, label: str, errors: list[str]) -> None:
+    if not text or len(text) > 280:
+        errors.append(f"{label} must be a non-empty X-sized string")
+    if "Automated by @hackink" in text:
+        errors.append(f"{label} must not include automation attribution")
+    if len(text) > 260 and "https://" not in text:
+        errors.append(
+            f"{label} longer than 260 characters must include an unavoidable direct source URL"
+        )
+
+    normalized = text.strip().lower()
+    if (
+        normalized == "watching this"
+        or normalized.startswith("watching this.")
+        or normalized.startswith("tracking this.")
+        or "new release available" in normalized
+    ):
+        errors.append(
+            f"{label} must name a concrete source-backed release, PR, protocol surface, "
+            "workflow impact, or operator action"
+        )
+
+
 def validate_social_candidate(entry: dict[str, Any]) -> ValidationResult:
     errors: list[str] = []
 
@@ -791,13 +826,7 @@ def validate_social_candidate(entry: dict[str, Any]) -> ValidationResult:
     if entry.get("priority") not in SOCIAL_POST_PRIORITIES:
         errors.append(f"priority must be one of {sorted(SOCIAL_POST_PRIORITIES)}")
 
-    candidate_text = entry.get("candidate_text")
-    if (
-        not isinstance(candidate_text, list)
-        or not candidate_text
-        or not all(isinstance(item, str) and 0 < len(item) <= 280 for item in candidate_text)
-    ):
-        errors.append("candidate_text must be a non-empty list of X-sized strings")
+    validate_social_text_list(entry.get("candidate_text"), "candidate_text", errors)
 
     refs = entry.get("source_refs")
     if not isinstance(refs, dict):
@@ -976,12 +1005,7 @@ def validate_social_post(entry: dict[str, Any]) -> ValidationResult:
         errors.append(f"status must be one of {sorted(SOCIAL_POST_STATUSES)}")
 
     text = entry.get("text")
-    if (
-        not isinstance(text, list)
-        or not text
-        or not all(isinstance(item, str) and 0 < len(item) <= 280 for item in text)
-    ):
-        errors.append("text must be a non-empty list of X-sized strings")
+    validate_social_text_list(text, "text", errors)
 
     refs = entry.get("source_refs")
     if not isinstance(refs, dict):

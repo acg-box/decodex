@@ -24,6 +24,12 @@ content or follow-up work:
    Radar artifacts, then write a low-frequency
    `social_post/v1` publication, block, skip, or failure record for `@decodexspace`.
 
+The scheduled automation boundary is producer-consumer shaped: Radar Review owns
+upstream queue refresh and source-backed review/impact artifacts; Release Analysis and
+Publisher consume those artifacts. Release Analysis may refresh only the lightweight
+release-delta checkpoint when missing or stale. Publisher must not refresh upstream
+state or fill evidence gaps.
+
 Use only the skills needed for the current artifact. Do not publish a social post just
 because a signal exists.
 
