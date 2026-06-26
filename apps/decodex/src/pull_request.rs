@@ -46,7 +46,6 @@ pub(crate) enum LandingGateMode {
 	Adopt,
 	Retained,
 }
-
 impl LandingGateMode {
 	fn allows_closeout_only(self) -> bool {
 		matches!(self, Self::ManualLand)
@@ -100,19 +99,23 @@ pub(crate) fn classify_landing_gate(
 	if view.review_decision == Some("CHANGES_REQUESTED") {
 		return LandingGateDecision::Repair("review_changes_requested");
 	}
+
 	if let Some(reason) =
 		merge_state_requires_review_repair(view.mergeable, view.merge_state_status)
 	{
 		return LandingGateDecision::Repair(reason);
 	}
+
 	if failed_checks_require_repair(view.status_check_rollup_state, view.merge_state_status) {
 		return LandingGateDecision::Repair("required_checks_failed");
 	}
+
 	if let Some(check_state) = view.status_check_rollup_state
 		&& checks_require_wait(Some(check_state))
 	{
 		return LandingGateDecision::Wait("checks_waiting");
 	}
+
 	if mergeability_unknown(view) {
 		return LandingGateDecision::Wait("mergeability_unknown");
 	}
