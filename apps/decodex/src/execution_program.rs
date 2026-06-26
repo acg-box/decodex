@@ -1040,6 +1040,8 @@ impl ExecutionProgram {
 			self.nodes.iter().map(|node| (node.node_id.as_str(), node)).collect::<BTreeMap<_, _>>();
 		let dependency_lookup = context.dependency_lookup();
 		let occupied_conflicts = context.occupied_conflict_domains.iter().collect::<HashSet<_>>();
+		let active_issue_ids =
+			context.active_issue_ids.iter().map(String::as_str).collect::<HashSet<_>>();
 		let mut nodes = Vec::new();
 
 		for node in &self.nodes {
@@ -1052,6 +1054,7 @@ impl ExecutionProgram {
 				node_lookup: &node_lookup,
 				dependency_lookup: &dependency_lookup,
 				occupied_conflicts: &occupied_conflicts,
+				active_issue_ids: &active_issue_ids,
 			})?);
 		}
 
@@ -1299,6 +1302,7 @@ impl ExecutionDependencySnapshot {
 pub(crate) struct ExecutionProgramReadinessContext {
 	dependency_snapshots: Vec<ExecutionDependencySnapshot>,
 	occupied_conflict_domains: Vec<ExecutionConflictDomain>,
+	active_issue_ids: Vec<String>,
 }
 impl ExecutionProgramReadinessContext {
 	/// Build an empty readiness context.
@@ -1322,6 +1326,16 @@ impl ExecutionProgramReadinessContext {
 		domains: impl IntoIterator<Item = ExecutionConflictDomain>,
 	) -> Self {
 		self.occupied_conflict_domains = domains.into_iter().collect();
+
+		self
+	}
+
+	/// Add mapped Linear issues already owned by a live run claim.
+	pub(crate) fn with_active_issue_ids(
+		mut self,
+		issue_ids: impl IntoIterator<Item = impl Into<String>>,
+	) -> Self {
+		self.active_issue_ids = issue_ids.into_iter().map(Into::into).collect();
 
 		self
 	}
@@ -1523,6 +1537,7 @@ struct EvaluateNodeInput<'a> {
 	node_lookup: &'a BTreeMap<&'a str, &'a ExecutionProgramNode>,
 	dependency_lookup: &'a BTreeMap<&'a str, &'a ExecutionDependencySnapshot>,
 	occupied_conflicts: &'a HashSet<&'a ExecutionConflictDomain>,
+	active_issue_ids: &'a HashSet<&'a str>,
 }
 
 fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation> {
@@ -1535,6 +1550,7 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 		node_lookup,
 		dependency_lookup,
 		occupied_conflicts,
+		active_issue_ids,
 	} = input;
 	let authority_matches =
 		current_contract.map_or(program.source_contract_id.is_none(), |contract| {
@@ -1572,6 +1588,16 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 			issue.issue_identifier(),
 			issue.issue_state()
 		));
+	} else if let Some(issue) = node.linear_issue()
+		&& active_issue_ids.contains(issue.issue_id())
+		&& !issue.has_opt_out_label()
+		&& !issue.has_needs_attention_label()
+		&& !issue.has_post_review_lifecycle()
+	{
+		state = ExecutionReadinessState::Active;
+		lifecycle_state = Some(ExecutionProgramNodeLifecycleState::Active);
+
+		reasons.push(String::from("node already has a current lane"));
 	} else {
 		match node.queue_intent {
 			ExecutionQueueIntent::NotReady => {
