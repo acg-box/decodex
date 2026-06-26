@@ -62,6 +62,9 @@ Then keep the body explicit:
   objective-driven project autonomy control plane, Objective Contract boundary,
   signal and proposal schemas, MCP action matrix, memory boundary, and self-dogfood
   limits.
+- [`control-plane-upgrade-candidate.md`](./control-plane-upgrade-candidate.md) defines
+  the evidence-only Radar artifact that bridges upstream Codex changes into Decodex
+  Control Plane upgrade candidates.
 - [`runtime.md`](./runtime.md) defines the runtime state model, reconciliation rules, and
   tracker writeback boundaries.
 - [`app-server.md`](./app-server.md) defines the direct Codex `app-server` interaction
