@@ -60,7 +60,29 @@
       "items": {
         "type": "string",
         "minLength": 1,
-        "maxLength": 280
+        "maxLength": 280,
+        "allOf": [
+          {
+            "not": {
+              "pattern": "Automated by @hackink"
+            }
+          },
+          {
+            "not": {
+              "pattern": "^\\s*([Ww][Aa][Tt][Cc][Hh][Ii][Nn][Gg] [Tt][Hh][Ii][Ss]\\.?|[Tt][Rr][Aa][Cc][Kk][Ii][Nn][Gg] [Tt][Hh][Ii][Ss]\\.|.*[Nn][Ee][Ww] [Rr][Ee][Ll][Ee][Aa][Ss][Ee] [Aa][Vv][Aa][Ii][Ll][Aa][Bb][Ll][Ee].*)"
+            }
+          },
+          {
+            "anyOf": [
+              {
+                "maxLength": 260
+              },
+              {
+                "pattern": "https://"
+              }
+            ]
+          }
+        ]
       }
     },
     "source_refs": {
