@@ -715,12 +715,6 @@ impl AutonomyProposal {
 		let challenge = AutonomyProposalChallengeEvidence::from_input(input)?;
 		let mut candidate = self.clone();
 
-		if !challenge.objections.is_empty()
-			&& candidate.state == AutonomyProposalState::DecisionCandidate
-		{
-			candidate.state = AutonomyProposalState::NeedsHumanDecision;
-		}
-
 		candidate.challenge_evidence.push(challenge);
 		candidate.validate()?;
 
@@ -1047,7 +1041,7 @@ fn challenge_support(challenge: &AutonomyProposalChallengeEvidence) -> String {
 	} else if !challenge.evidence_refs.is_empty() {
 		format!("evidence_refs={}", challenge.evidence_refs.join("; "))
 	} else {
-		String::from("Challenge recorded no blocking objections.")
+		String::from("Challenge recorded no objections.")
 	}
 }
 
@@ -1101,6 +1095,22 @@ fn proposal_constraints(proposal: &AutonomyProposal) -> Vec<String> {
 			.iter()
 			.map(|requirement| format!("Review requirement: {requirement}")),
 	);
+	constraints.extend(
+		proposal
+			.challenge_requirements
+			.iter()
+			.map(|requirement| format!("Challenge requirement: {requirement}")),
+	);
+
+	for challenge in &proposal.challenge_evidence {
+		constraints.extend(
+			challenge
+				.objections
+				.iter()
+				.map(|objection| format!("Challenge promotion constraint: {objection}")),
+		);
+	}
+
 	constraints.push(String::from(
 		"Accepted autonomy proposal must remain latent until Decision Contract promotion.",
 	));
@@ -2446,7 +2456,7 @@ mod tests {
 			.expect("challenge should record");
 
 		assert_eq!(proposal.id(), proposal_id);
-		assert_eq!(proposal.state(), AutonomyProposalState::NeedsHumanDecision);
+		assert_eq!(proposal.state(), AutonomyProposalState::DecisionCandidate);
 		assert_eq!(proposal.challenge_evidence().len(), 1);
 		assert!(!proposal.challenge_evidence()[0].acceptance_authority);
 		assert_eq!(
@@ -2460,6 +2470,20 @@ mod tests {
 		assert_eq!(
 			dry_run_json["challenge_evidence"][0]["objections"][0],
 			"Needs a fresher operator status readback."
+		);
+
+		let candidate = proposal
+			.to_decision_contract_candidate(bridge_authority())
+			.expect("challenge objections should remain promotion constraints");
+
+		assert!(candidate.accepted_authority().constraints().contains(&String::from(
+			"Challenge promotion constraint: Needs a fresher operator status readback."
+		)));
+		assert!(
+			candidate
+				.accepted_authority()
+				.objections()
+				.contains(&String::from("Needs a fresher operator status readback."))
 		);
 	}
 
@@ -2545,7 +2569,7 @@ mod tests {
 			.expect("proposal should exist");
 
 		assert_eq!(readback.proposal(), &stored_proposal);
-		assert_eq!(readback.state(), AutonomyProposalState::NeedsHumanDecision);
+		assert_eq!(readback.state(), AutonomyProposalState::DecisionCandidate);
 		assert_eq!(
 			reopened
 				.recent_autonomy_proposals_for_project("decodex", 1)

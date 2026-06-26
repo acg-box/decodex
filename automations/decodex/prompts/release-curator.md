@@ -21,9 +21,18 @@ Required reads:
 
 Workflow:
 1. Read `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json` first. Run `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar refresh-release-delta` only when that checkpoint artifact is missing, stale, invalid, or explicitly needed for a newly observed release tag. Do not refresh the upstream review queue or perform deep source analysis here.
-2. Compare release/changelog claims against source-backed Radar evidence produced by Decodex Radar Review under `.agent/automations/decodex/cache/github/reviews`, `.agent/automations/decodex/cache/github/impact`, and `.agent/automations/decodex/cache/site-content/signals`.
-3. Do not perform deep upstream source analysis here. If claims need unreviewed PR or commit evidence, write a defer/no-op outcome with exact gaps for Radar Review.
-4. When publication is justified, write or update `social_candidate/v1` under `.agent/automations/decodex/cache/github/social-candidates`.
+2. Compare release/changelog claims against the shared `upstream_impact/v1` artifacts
+   produced by Decodex Radar Review under
+   `.agent/automations/decodex/cache/github/impact`. Use `release_delta/v1`,
+   `upstream_review/v1`, `signal_entry/v1`, release URLs, and compare metadata as
+   provenance or gap evidence, not as a parallel source-analysis path.
+3. Do not perform deep upstream source analysis here. If claims need unreviewed PR or
+   commit evidence, write a defer/no-op outcome with exact gaps for Radar Review so it
+   can produce or update the shared `upstream_impact/v1` artifact.
+4. When publication is justified, write or update `social_candidate/v1` under
+   `.agent/automations/decodex/cache/github/social-candidates`; for Radar-derived
+   candidates, include the consumed shared impact artifact in
+   `source_refs.upstream_impacts`.
 5. Validate changed JSON with `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar validate`.
 
 Terminal report:

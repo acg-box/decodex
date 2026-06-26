@@ -361,8 +361,11 @@ Non-trivial proposals use the generic challenge method. When tool support and ac
 workflow allow it, Decodex should request a fresh dynamic read-only support-agent
 challenge for architecture, review-repair, generated implementation, or
 ready/decision-ready claims. Inline challenge is a fallback for small local checks or
-when support-agent tooling is unavailable. Challenge output is objection evidence; it
-does not create authority.
+when support-agent tooling is unavailable. Challenge output is objection evidence and
+promotion constraints; it does not create acceptance authority and does not by itself
+turn a `decision_candidate` into `needs_human_decision`. Material contradictions,
+disallowed surfaces, weakened validation/review, or explicit authority gaps still use
+the normal refusal rules.
 
 ## Execution Flow
 
@@ -425,7 +428,7 @@ when and how to use it.
 | Draft objective | `plan` | Identified actor | Creates draft only. |
 | Accept objective | `plan` or higher | Human/operator or accepted policy actor | Creates immutable Objective Contract version. |
 | Compile proposal | `plan` | Accepted objective and allowed signal kinds | Creates proposal evidence only. |
-| Challenge proposal | `plan` | Review actor or support-agent evidence | Adds objections; no execution. |
+| Challenge proposal | `plan` | Review actor or support-agent evidence | Adds objections as promotion constraints; no execution or acceptance authority. |
 | Promote proposal to Decision Contract | `plan` or higher | Explicit acceptance or accepted project policy | Creates a latent Decision Contract candidate; accepted execution authority still requires normal Decision Contract promotion. |
 | Intake promoted work | `plan` or higher | Accepted Decision Contract and explicit intake authority | Creates Program Intake or issue materialization. |
 | Dispatch lane | Runtime scheduler | Program readiness plus workflow eligibility | Starts normal lane; not direct MCP authority. |

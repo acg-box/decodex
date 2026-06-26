@@ -6,6 +6,16 @@ status: active
 authority: normative
 owner: automation
 tags: [spec, radar]
+code_refs:
+  - apps/decodex/src/radar.rs
+  - automations/decodex/prompts/radar-review.md
+  - automations/decodex/prompts/release-curator.md
+drift_watch:
+  - upstream_impact/v1
+  - social_candidate/v1
+  - control_plane_upgrade_candidate/v1
+  - codex-upstream-radar-review
+  - codex-release-checkpoint-publisher
 last_verified: 2026-06-27
 ---
 # Upstream Impact
@@ -49,6 +59,20 @@ The canonical schema identifier is:
 Recommended checked-in location:
 
 - `.agent/automations/decodex/cache/github/impact/<source-slug>.json`
+
+## Shared Handoff Rule
+
+`upstream_impact/v1` is the shared Radar handoff artifact for downstream Decodex-only
+self-iteration consumers. Radar Review may read bundles and source-backed
+`upstream_review/v1` records, but release publishing and Control Plane upgrade
+proposal work should consume the reviewed `upstream_impact/v1` conclusion first.
+
+New Radar-derived `social_candidate/v1` and
+`control_plane_upgrade_candidate/v1` artifacts should cite the matching
+`upstream_impact/v1` under their `source_refs`. Raw `upstream_review/v1`,
+`release_delta/v1`, release URLs, and compare metadata remain evidence and gap-finding
+inputs; they do not replace the shared impact artifact when both Publisher and Control
+Plane reasoning depend on the same upstream scan.
 
 ## Required fields
 

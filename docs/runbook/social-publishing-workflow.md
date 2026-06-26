@@ -112,6 +112,10 @@ one exact compare URL intentionally carries the detailed PR list.
 1. Start from source evidence.
    - Prefer a source-backed `upstream_review/v1`, merged PR bundle, release-delta
      compare entry, already-rendered `signal_entry/v1`, or `upstream_impact/v1`.
+   - For continuous Radar-derived release or prerelease work, treat
+     `upstream_impact/v1` as the shared handoff from Radar Review into Publisher.
+     Use release-delta and compare metadata to identify checkpoints and gaps, but do
+     not duplicate upstream source analysis inside Publisher.
    - For Codex app and mobile updates, the official Codex changelog is source
      evidence. Use GitHub only for repository behavior claims.
    - Do not start from social engagement alone.
@@ -133,6 +137,9 @@ one exact compare URL intentionally carries the detailed PR list.
 3. Decide whether to create or consume a candidate.
    - Release checkpoint automation should write `social_candidate/v1` with
      `decision.worthiness = "publish"`, `"defer"`, or `"skip"`.
+   - New Radar-derived candidates should cite the shared `upstream_impact/v1` under
+     `source_refs.upstream_impacts` so Publisher and Control Plane use the same
+     upstream scan conclusion.
    - General Publisher automation should consume only candidates whose
      `decision.worthiness = "publish"`. It must not turn `defer` or `skip` decisions
      into posts.
