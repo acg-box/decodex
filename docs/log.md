@@ -1,5 +1,18 @@
 # Documentation Log
 
+## 2026-06-27
+
+- Added `control_plane_upgrade_candidate/v1` as the evidence-only bridge from
+  upstream Codex Radar review into Decodex Control Plane upgrade work, including the
+  governing spec, upgrade workflow runbook, compatibility matrix reference, Radar
+  validation surface, automation prompt routing, and retention policy updates.
+- Refreshed the Codex compatibility matrix for local Decodex `0.2.0-35fa270f` against
+  Codex stable `0.142.2` and preview `0.143.0-alpha.25`, keeping version rows as
+  planning evidence while preserving capability probes as runtime authority.
+- Corrected repository ownership docs so `automations/decodex` is the repo-owned
+  source for upstream monitoring and guarded publishing automation, while recurring
+  Codex App execution and private generated state remain outside tracked source.
+
 ## 2026-06-25
 
 - Added the lightweight Deliberation Gate across the Codex workflow plugins:

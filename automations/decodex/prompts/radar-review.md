@@ -17,6 +17,7 @@ Required reads:
 - `docs/spec/github-change-bundle.md`
 - `docs/spec/signal-entry.md`
 - `docs/spec/upstream-impact.md`
+- `docs/spec/control-plane-upgrade-candidate.md`
 - `docs/spec/social-candidate.md`
 
 Workflow:
@@ -24,7 +25,9 @@ Workflow:
 2. Read `.agent/automations/decodex/cache/github/review-queue/openai-codex-latest.json` and select the smallest high-value batch that can finish in this run.
 3. For each selected subject, build or validate its bundle under `.agent/automations/decodex/cache/github/bundles`.
 4. Run Codex source analysis only through the explicit AI boundary in `automations/decodex/scripts/github/run_codex_analysis.py` or the Rust `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar` command that wraps it.
-5. Persist source-backed `upstream_review/v1`, optional `upstream_impact/v1`, optional `analysis_draft`, optional rendered `signal_entry/v1`, and optional `social_candidate/v1` under `.agent/automations/decodex/cache`.
+5. Persist source-backed `upstream_review/v1`, optional `upstream_impact/v1`, optional `control_plane_upgrade_candidate/v1`, optional `analysis_draft`, optional rendered `signal_entry/v1`, and optional `social_candidate/v1` under `.agent/automations/decodex/cache`.
+   - Write Control Plane upgrade candidates only under `.agent/automations/decodex/cache/github/control-plane-upgrades`.
+   - A Control Plane upgrade candidate is evidence for later Decision Contract and Program Intake work; it must not mutate Linear, GitHub, worktrees, project config, Codex installs, or Decodex source.
 6. Validate changed JSON with `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar validate` before terminal completion.
 
 Terminal report:

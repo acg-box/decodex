@@ -30,6 +30,9 @@ Question this index answers: "which sequence should I execute?"
   implementing objective-driven Decodex autonomy from Objective Contracts through
   signals, proposal dry-runs, Decision Contract promotion, Program Intake, operator
   readback, MCP exposure, and self-dogfood.
+- [`control-plane-upgrade-workflow.md`](./control-plane-upgrade-workflow.md) for
+  operating the bridge from upstream Codex Radar evidence to Decodex Control Plane
+  upgrade candidates, Decision Contract promotion, and Program Intake.
 - [`github-pages-deploy.md`](./github-pages-deploy.md) for GitHub Pages deployment and
   `decodex.space` custom-domain setup for the static public site.
 - [`linear-archive-hygiene.md`](./linear-archive-hygiene.md) for dry-run-first

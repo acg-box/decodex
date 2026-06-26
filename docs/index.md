@@ -46,6 +46,11 @@ The split below is by question type, not by human-versus-agent audience.
 - Need the implementation order for objective-driven autonomy -> `docs/runbook/autonomy-implementation-roadmap.md`
 - Need current Decodex/Codex app-server protocol support
   evidence -> `docs/spec/app-server.md`
+- Need current Decodex-to-Codex version compatibility evidence ->
+  `docs/reference/codex-compatibility-matrix.md`
+- Need upstream Codex changes that may require Decodex Control Plane upgrade work ->
+  `docs/spec/control-plane-upgrade-candidate.md` and
+  `docs/runbook/control-plane-upgrade-workflow.md`
 - Need Decodex operator lane-control capability support, including inspect,
   pause/resume, scan, interrupt, steer, retained retry/resume, manual attention, or
   unsupported/deferred controls -> `docs/spec/lane-control.md`

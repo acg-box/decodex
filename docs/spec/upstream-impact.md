@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: automation
 tags: [spec, radar]
-last_verified: 2026-06-25
+last_verified: 2026-06-27
 ---
 # Upstream Impact
 
@@ -29,6 +29,8 @@ Not this document:
 - The social publishing schema. Read [`social-publishing.md`](./social-publishing.md).
 - The social candidate handoff schema. Read
   [`social-candidate.md`](./social-candidate.md).
+- The Control Plane upgrade candidate schema. Read
+  [`control-plane-upgrade-candidate.md`](./control-plane-upgrade-candidate.md).
 - The operator procedure for publishing. Read
   [`../runbook/social-publishing-workflow.md`](../runbook/social-publishing-workflow.md).
 
@@ -65,7 +67,8 @@ Recommended checked-in location:
 
 Optional fields:
 
-- `candidate_followups`: bounded engineering or research follow-up suggestions.
+- `candidate_followups`: bounded evidence-gathering suggestions for a later
+  `control_plane_upgrade_candidate/v1`; they are not executable work.
 - `social_notes`: notes useful to a later `social_candidate/v1` or terminal
   `social_post/v1`.
 - `caveats`: uncertainty, version gating, platform limits, or rollout limits.
@@ -122,6 +125,6 @@ summary.
   change came from continuous Radar.
 - It may support a `signal_entry/v1`.
 - It may support a `social_candidate/v1` or terminal `social_post/v1`.
-- It may justify a later Linear issue or implementation brief.
+- It may justify a later `control_plane_upgrade_candidate/v1`.
 
 It does not replace any of those artifacts.
