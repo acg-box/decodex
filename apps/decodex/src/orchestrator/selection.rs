@@ -120,7 +120,7 @@ fn format_retry_comment(comment: RetryComment<'_>) -> String {
 	} = comment;
 
 	format!(
-		"decodex run failed and will retry\n\n- run_id: `{run_id}`\n- attempt: `{attempt_number}`\n- retry_budget_attempt: `{retry_budget_attempt_number}` / `{max_attempts}`\n- failed_at: `{failed_at}`\n- branch: `{branch}`\n- worktree_path: `{worktree}`\n- error_class: `{error_class}`\n- next_action: `{next_action}`\n- error_summary: `Sensitive runtime details were withheld from the tracker comment; inspect the local lane for the full failure context.`",
+		"decodex run failed and will retry\n\n- run_id: `{run_id}`\n- run_sequence_attempt: `{attempt_number}` (not retry-budget count)\n- retry_budget_attempt: `{retry_budget_attempt_number}` / `{max_attempts}`\n- failed_at: `{failed_at}`\n- branch: `{branch}`\n- worktree_path: `{worktree}`\n- error_class: `{error_class}`\n- next_action: `{next_action}`\n- error_summary: `Sensitive runtime details were withheld from the tracker comment; inspect the local lane for the full failure context.`",
 		failed_at = current_timestamp(),
 		branch = branch_name,
 		worktree = worktree_path,
@@ -210,7 +210,7 @@ fn format_terminal_failure_comment(
 	};
 
 	format!(
-		"{heading}\n\n- run_id: `{run_id}`\n- attempt: `{attempt_number}`\n- {timestamp_label}: `{timestamp}`\n- branch: `{branch}`{pr_url_line}\n- worktree_path: `{worktree}`\n- error_class: `{error_class}`\n- next_action: `{next_action}`\n- error_summary: `{error_summary}`",
+		"{heading}\n\n- run_id: `{run_id}`\n- run_sequence_attempt: `{attempt_number}` (not retry-budget count)\n- {timestamp_label}: `{timestamp}`\n- branch: `{branch}`{pr_url_line}\n- worktree_path: `{worktree}`\n- error_class: `{error_class}`\n- next_action: `{next_action}`\n- error_summary: `{error_summary}`",
 		timestamp = current_timestamp(),
 		branch = branch_name,
 		worktree = worktree_path

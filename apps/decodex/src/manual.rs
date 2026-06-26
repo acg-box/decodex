@@ -1672,6 +1672,11 @@ where
 	}
 
 	write_manual_land_landed_and_closeout_events(tracker, ledger)?;
+	succeed_manual_land_handoff_attempt(
+		ledger.state_store,
+		&ledger.issue.id,
+		ledger.handoff.run_id(),
+	)?;
 
 	Ok(())
 }
@@ -1711,7 +1716,12 @@ fn write_manual_land_lifecycle_event<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let body = format!("Decodex execution event: {}", record.event_type);
+	let retry_budget_attempt_count =
+		ledger.state_store.retry_budget_attempt_count(&ledger.issue.id)?;
+	let retry_budget_attempt_count =
+		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
+	let body =
+		records::render_linear_execution_event_comment_body(record, retry_budget_attempt_count);
 	let projection =
 		tracker::prepare_linear_execution_event_comment(&body, record, ledger.privacy_classifier)?;
 
@@ -3702,6 +3712,10 @@ exit 1\n",
 			String::from("xy/pub-1161"),
 			String::from("3cf2d24033527a774340c7d70c5ce437c90afe55"),
 		);
+		state_store
+			.record_run_attempt(handoff.run_id(), &issue.id, handoff.attempt_number(), "failed")
+			.expect("failed handoff attempt should record");
+
 		let merge_commit = "81e90b530148a0be69afa5bd33ce6ab84d485a3a";
 		let landed_change_record =
 			r#"{"schema":"decodex/commit/1","summary":"Land PUB-1161","authority":"PUB-1161"}"#;
@@ -3751,6 +3765,10 @@ exit 1\n",
 			comments.iter().all(|comment| !comment.starts_with("decodex land completed")),
 			"matching legacy closeout marker should not replay the ordinary closeout comment"
 		);
+		assert!(comments.iter().all(|comment| {
+			comment.contains("- run_sequence_attempt: `1` (not retry-budget count)")
+				&& !comment.contains("- attempt:")
+		}));
 		assert!(records.iter().all(|record| record.run_id == "pub-1161-attempt-1"));
 		assert!(records.iter().all(|record| record.attempt_number == 1));
 		assert_eq!(records[0].pr_head_sha.as_deref(), Some(handoff.pr_head_oid()));
@@ -3765,6 +3783,14 @@ exit 1\n",
 			cached_records.iter().map(|record| record.event_type.as_str()).collect::<Vec<_>>();
 
 		assert_eq!(cached_event_types, vec!["landed", "closeout", "cleanup_complete"]);
+		assert_eq!(
+			state_store
+				.run_attempt(handoff.run_id())
+				.expect("run attempt lookup should succeed")
+				.expect("handoff attempt should exist")
+				.status(),
+			"succeeded"
+		);
 	}
 
 	#[test]

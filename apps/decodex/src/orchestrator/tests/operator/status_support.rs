@@ -193,7 +193,7 @@ where
 
 	TrackerComment {
 		body: records::append_structured_comment_record(
-			&format!("Decodex execution event: {event_type}"),
+			&records::render_linear_execution_event_comment_body(&record, None),
 			&record,
 		)
 		.expect("structured comment should serialize"),
