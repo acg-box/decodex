@@ -84,6 +84,11 @@ for future dispatch, uses the CLI-owned default cadences, and serves the dashboa
 account APIs, `GET /api/operator-snapshot`,
 `POST /api/linear-scan`, `GET /api/lane/inspect`, and `POST /api/lane/interrupt` from
 the single local listener.
+The default listener must have exactly one owner. When Decodex App has started its
+bundled helper on `127.0.0.1:8192`, do not also keep a standalone launchd job such as
+`space.decodex.serve` or another `decodex serve --listen-address 127.0.0.1:8192`
+process running; that duplicate owner will repeatedly fail with `Address already in use`
+and should be removed or pointed at a different explicit listen address.
 Use `decodex app` to open the installed macOS app from the CLI; use
 `decodex app --bundle <APP_BUNDLE> --new` for a staged app bundle. The launch preserves
 the caller's environment, so `DECODEX_APP_SERVER_URL` remains an explicit App preview
