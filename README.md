@@ -335,7 +335,10 @@ Linear, dispatch work, or accept `--config`. Decodex App's normal
 fallback server is ordinary `decodex serve --listen-address 127.0.0.1:8192`; the CLI
 owns the default scheduler cadences. App launch connects to an
 existing live default listener instead of starting a duplicate server only when
-`DECODEX_APP_SERVER_URL` is unset. `decodex app` opens the installed Decodex App by
+`DECODEX_APP_SERVER_URL` is unset. Keep exactly one owner for the default listener:
+if Decodex App's bundled helper is listening on `127.0.0.1:8192`, remove any
+standalone launchd job or extra `decodex serve --listen-address 127.0.0.1:8192`
+process that would collide with it. `decodex app` opens the installed Decodex App by
 default and preserves the caller's environment, including any explicit
 `DECODEX_APP_SERVER_URL` override. Use `--bundle <APP_BUNDLE>` and `--new` when
 previewing a staged app. For dashboard and App preview UI work, prefer the single mock
