@@ -2,6 +2,12 @@
 
 ## 2026-06-27
 
+- Refreshed docs/plugin drift after the latest local install readback: Codex stable
+  compatibility now points at `0.142.3` and Decodex `0.2.0-26dc90d3`, preview
+  planning now points at `0.143.0-alpha.26`, the docs gate reference names the
+  `decodex docs lint` compatibility alias used by `cargo make check-docs`, and
+  operator docs now forbid duplicate owners for the default `127.0.0.1:8192`
+  Decodex App/helper listener.
 - Made `decodex radar validate` path-aware for existing operations cache drift:
   generated analysis drafts are validated as helper outputs without a `schema` field,
   historical archive manifests may retain their original retention policy, and

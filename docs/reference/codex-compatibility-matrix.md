@@ -38,8 +38,8 @@ validation.
 
 | Decodex build | Codex channel | Codex version/tag | Evidence | Status | Caveat |
 | --- | --- | --- | --- | --- | --- |
-| `0.2.0-afb36056` | stable | `0.142.2`, `rust-v0.142.2` | Local `codex --version` reported `codex-cli 0.142.2`; `npm view @openai/codex version dist-tags --json` reported `latest = 0.142.2`; Decodex CLI and app helper reported `decodex 0.2.0-afb36056-aarch64-apple-darwin`; `decodex probe` returned `PROBE_OK` on 2026-06-27. | compatible | Probe evidence covers the local installed stable CLI/app-server path, not every upstream change since the prior reviewed release. |
-| `0.2.0-afb36056` | preview | `0.143.0-alpha.25`, `rust-v0.143.0-alpha.25` | `npm view @openai/codex dist-tags` reported `alpha = 0.143.0-alpha.25`; `decodex radar refresh-release-delta --dry-run` identified the preview tag and a stable-to-preview compare window. | needs_review | Preview was not installed or probe-tested in this checkout. Radar must review app-server, MCP, plugin, sandbox, auth, browser, and config changes before Decodex treats the preview as compatible. |
+| `0.2.0-26dc90d3` | stable | `0.142.3`, `rust-v0.142.3` | Local `codex --version` and `/opt/homebrew/bin/codex --version` reported `codex-cli 0.142.3`; `npm view @openai/codex version dist-tags --json` reported `latest = 0.142.3`; the GitHub `rust-v0.142.3` release was marked Latest; Decodex CLI and app helper reported `decodex 0.2.0-26dc90d3-aarch64-apple-darwin`; `decodex probe stdio://` returned `PROBE_OK` on 2026-06-27. | compatible | Probe evidence covers the local installed stable CLI/app-server path, not every upstream change since the prior reviewed release. |
+| `0.2.0-26dc90d3` | preview | `0.143.0-alpha.26`, `rust-v0.143.0-alpha.26` | `npm view @openai/codex dist-tags` reported `alpha = 0.143.0-alpha.26` and platform alpha tags ending in `0.143.0-alpha.26`. | needs_review | Preview was not installed or probe-tested in this checkout. Radar must review app-server, MCP, plugin, sandbox, auth, browser, and config changes before Decodex treats the preview as compatible. |
 
 ## Review Triggers
 
