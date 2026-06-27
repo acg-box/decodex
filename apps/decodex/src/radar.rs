@@ -52,6 +52,9 @@ const UPSTREAM_IMPACT_SCHEMA: &str = "upstream_impact/v1";
 const UPSTREAM_REVIEW_QUEUE_SCHEMA: &str = "upstream_review_queue/v1";
 const UPSTREAM_REVIEW_SCHEMA: &str = "upstream_review/v1";
 const CONFIG_FEATURE_CATALOG_SCHEMA: &str = "codex_config_feature_catalog/v1";
+const ANALYSIS_DRAFT_KIND: &str = "analysis_draft";
+const RADAR_ARCHIVE_HISTORICAL_RETENTION_CUTOFF: &str = "2026-06-07T00:00:00Z";
+const UPSTREAM_REVIEW_LINEAR_FOLLOWUP_CUTOFF: &str = "2026-06-12T00:00:00Z";
 const DEFAULT_VALIDATION_PATHS: &[&str] = &[
 	".agent/automations/decodex/cache/github/bundles",
 	".agent/automations/decodex/cache/github/review-queue",
@@ -516,6 +519,12 @@ pub(crate) struct RadarValidationReport {
 struct ArtifactValidation {
 	schema: Option<String>,
 	errors: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ArtifactValidationOptions {
+	allow_historical_archive_retention: bool,
+	allow_historical_upstream_review_linear_followup: bool,
 }
 
 #[derive(Debug)]
@@ -1093,7 +1102,7 @@ pub(crate) fn validate(
 
 	for path in &files {
 		let payload = load_json(path)?;
-		let validation = validate_artifact(&payload);
+		let validation = validate_artifact_for_path(path, &payload);
 
 		if validation.schema.as_deref() == Some(SIGNAL_SCHEMA) {
 			validate_signal_slug_uniqueness(path, &payload, &mut state, &mut errors);
@@ -4567,7 +4576,101 @@ fn routed_token_env() -> Option<String> {
 	}
 }
 
+fn is_analysis_draft_path(path: &Path) -> bool {
+	let normalized = normalized_path(path);
+
+	normalized.ends_with(".analysis.json")
+		&& (normalized.contains("/generated/analysis/")
+			|| normalized.starts_with("generated/analysis/"))
+}
+
+fn is_historical_archive_manifest_path(path: &Path, payload: &Value) -> bool {
+	let Some(entry) = payload.as_object() else {
+		return false;
+	};
+	let normalized = normalized_path(path);
+
+	string_field(entry, "schema") == Some(RADAR_ARCHIVE_MANIFEST_SCHEMA)
+		&& normalized.contains("/cache/archive/index/")
+		&& timestamp_field_before(
+			entry,
+			"created_at",
+			RADAR_ARCHIVE_HISTORICAL_RETENTION_CUTOFF,
+		)
+}
+
+fn is_historical_upstream_review_path(path: &Path, payload: &Value) -> bool {
+	let Some(entry) = payload.as_object() else {
+		return false;
+	};
+	let normalized = normalized_path(path);
+
+	string_field(entry, "schema") == Some(UPSTREAM_REVIEW_SCHEMA)
+		&& normalized.contains("/cache/github/reviews/")
+		&& timestamp_field_before(entry, "reviewed_at", UPSTREAM_REVIEW_LINEAR_FOLLOWUP_CUTOFF)
+}
+
+fn timestamp_field_before(entry: &Map<String, Value>, field: &str, cutoff: &str) -> bool {
+	let Some(value) = entry.get(field).and_then(Value::as_str) else {
+		return false;
+	};
+	let Ok(value) = OffsetDateTime::parse(value, &Rfc3339) else {
+		return false;
+	};
+	let Ok(cutoff) = OffsetDateTime::parse(cutoff, &Rfc3339) else {
+		return false;
+	};
+
+	value < cutoff
+}
+
+fn normalized_path(path: &Path) -> String {
+	path.to_string_lossy().replace('\\', "/")
+}
+
+fn analysis_draft_error_lines(error: Report) -> Vec<String> {
+	error
+		.to_string()
+		.lines()
+		.map(str::trim)
+		.filter(|line| !line.is_empty())
+		.map(|line| line.trim_start_matches("- ").to_owned())
+		.collect()
+}
+
 fn validate_artifact(payload: &Value) -> ArtifactValidation {
+	validate_artifact_with_options(payload, ArtifactValidationOptions::default())
+}
+
+fn validate_artifact_for_path(path: &Path, payload: &Value) -> ArtifactValidation {
+	if is_analysis_draft_path(path) && payload.get("schema").is_none() {
+		return match validate_analysis_draft(payload) {
+			Ok(()) => ArtifactValidation {
+				schema: Some(ANALYSIS_DRAFT_KIND.into()),
+				errors: Vec::new(),
+			},
+			Err(error) => ArtifactValidation {
+				schema: Some(ANALYSIS_DRAFT_KIND.into()),
+				errors: analysis_draft_error_lines(error),
+			},
+		};
+	}
+
+	validate_artifact_with_options(
+		payload,
+		ArtifactValidationOptions {
+			allow_historical_archive_retention: is_historical_archive_manifest_path(path, payload),
+			allow_historical_upstream_review_linear_followup: is_historical_upstream_review_path(
+				path, payload,
+			),
+		},
+	)
+}
+
+fn validate_artifact_with_options(
+	payload: &Value,
+	options: ArtifactValidationOptions,
+) -> ArtifactValidation {
 	let Some(entry) = payload.as_object() else {
 		return ArtifactValidation {
 			schema: None,
@@ -4582,7 +4685,8 @@ fn validate_artifact(payload: &Value) -> ArtifactValidation {
 		Some(CONFIG_FEATURE_CATALOG_SCHEMA) => validate_config_feature_catalog(entry, &mut errors),
 		Some(CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA) =>
 			validate_control_plane_upgrade_candidate(entry, &mut errors),
-		Some(RADAR_ARCHIVE_MANIFEST_SCHEMA) => validate_radar_archive_manifest(entry, &mut errors),
+		Some(RADAR_ARCHIVE_MANIFEST_SCHEMA) =>
+			validate_radar_archive_manifest(entry, options, &mut errors),
 		Some(RELEASE_DELTA_SCHEMA) => validate_release_delta(entry, &mut errors),
 		Some(SIGNAL_SCHEMA) => validate_signal(entry, &mut errors),
 		Some(SOCIAL_CANDIDATE_SCHEMA) => validate_social_candidate(entry, &mut errors),
@@ -4591,7 +4695,7 @@ fn validate_artifact(payload: &Value) -> ArtifactValidation {
 			validate_social_publish_reservation(entry, &mut errors),
 		Some(UPSTREAM_IMPACT_SCHEMA) => validate_upstream_impact(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_QUEUE_SCHEMA) => validate_upstream_review_queue(entry, &mut errors),
-		Some(UPSTREAM_REVIEW_SCHEMA) => validate_upstream_review(entry, &mut errors),
+		Some(UPSTREAM_REVIEW_SCHEMA) => validate_upstream_review(entry, options, &mut errors),
 		Some(_) | None => errors.push(format!("schema must be one of {}", known_schemas())),
 	}
 
@@ -5329,7 +5433,11 @@ fn validate_upstream_review_counts(
 	}
 }
 
-fn validate_upstream_review(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+fn validate_upstream_review(
+	entry: &Map<String, Value>,
+	options: ArtifactValidationOptions,
+	errors: &mut Vec<String>,
+) {
 	for field in ["slug", "repo", "reviewed_at", "observed_change"] {
 		if !is_non_empty_string(entry.get(field)) {
 			errors.push(format!("{field} must be a non-empty string"));
@@ -5353,7 +5461,7 @@ fn validate_upstream_review(entry: &Map<String, Value>, errors: &mut Vec<String>
 		errors.push(format!("confidence must be one of {}", choices(SIGNAL_CONFIDENCE)));
 	}
 
-	validate_upstream_review_actions(entry.get("next_actions"), errors);
+	validate_upstream_review_actions(entry.get("next_actions"), options, errors);
 }
 
 fn validate_upstream_review_subject_object(subject: Option<&Value>, errors: &mut Vec<String>) {
@@ -5415,7 +5523,11 @@ fn validate_upstream_review_optional_strings(entry: &Map<String, Value>, errors:
 	}
 }
 
-fn validate_upstream_review_actions(next_actions: Option<&Value>, errors: &mut Vec<String>) {
+fn validate_upstream_review_actions(
+	next_actions: Option<&Value>,
+	options: ArtifactValidationOptions,
+	errors: &mut Vec<String>,
+) {
 	let Some(next_actions) = non_empty_array(next_actions) else {
 		errors.push("next_actions must be a non-empty list".into());
 
@@ -5429,7 +5541,10 @@ fn validate_upstream_review_actions(next_actions: Option<&Value>, errors: &mut V
 			continue;
 		};
 
-		if !matches_one_of(action.get("type"), UPSTREAM_REVIEW_ACTION_TYPES) {
+		let legacy_linear_followup = options.allow_historical_upstream_review_linear_followup
+			&& string_field(action, "type") == Some("linear_followup");
+
+		if !legacy_linear_followup && !matches_one_of(action.get("type"), UPSTREAM_REVIEW_ACTION_TYPES) {
 			errors.push(format!(
 				"next_actions[{index}].type must be one of {}",
 				choices(UPSTREAM_REVIEW_ACTION_TYPES)
@@ -5739,7 +5854,11 @@ fn validate_social_publish_reservation(entry: &Map<String, Value>, errors: &mut 
 	validate_social_publish_reservation_status_payload(entry, errors);
 }
 
-fn validate_radar_archive_manifest(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+fn validate_radar_archive_manifest(
+	entry: &Map<String, Value>,
+	options: ArtifactValidationOptions,
+	errors: &mut Vec<String>,
+) {
 	for field in ["archive_id", "created_at", "source_commit", "release_tag", "release_url"] {
 		if !is_non_empty_string(entry.get(field)) {
 			errors.push(format!("{field} must be a non-empty string"));
@@ -5748,7 +5867,9 @@ fn validate_radar_archive_manifest(entry: &Map<String, Value>, errors: &mut Vec<
 
 	validate_rfc3339_field(entry, "created_at", errors);
 
-	if entry.get("retention_days").and_then(Value::as_u64) != Some(21) {
+	if entry.get("retention_days").and_then(Value::as_u64) != Some(21)
+		&& !options.allow_historical_archive_retention
+	{
 		errors.push("retention_days must be 21".into());
 	}
 	if !is_https_string(entry.get("release_url")) {
@@ -6540,6 +6661,40 @@ mod tests {
 	}
 
 	#[test]
+	fn path_validation_accepts_generated_analysis_drafts_without_schema() {
+		let mut draft = serde_json::json!({
+			"kind": "behavior_change",
+			"title": "Remote control avoids duplicate account headers",
+			"summary": "Merged PR centralizes remote-control HTTP auth header construction.",
+			"why_it_matters": "Remote-control requests avoid duplicate account headers.",
+			"confidence": "confirmed",
+			"impact": "low",
+			"proof_points": ["The source helper inserts the account header once."],
+			"slug": "remote-control-account-header-deduped",
+			"config_flags": [],
+			"how_to_try": null,
+			"expected_effect": null,
+			"caveats": null,
+			"watch_state": null
+		});
+
+		assert_errors(&draft, ["schema must be one of"]);
+		assert_path_errors(
+			".agent/automations/decodex/cache/generated/analysis/openai-codex-pr-29893.analysis.json",
+			&draft,
+			[],
+		);
+
+		draft["proof_points"] = serde_json::json!([]);
+
+		assert_path_errors(
+			".agent/automations/decodex/cache/generated/analysis/openai-codex-pr-29893.analysis.json",
+			&draft,
+			["proof_points must be a non-empty list"],
+		);
+	}
+
+	#[test]
 	fn rejects_current_multi_agent_v2_signal_assign_task_without_followup_context() {
 		let mut signal = valid_signal();
 
@@ -6735,6 +6890,21 @@ mod tests {
 	}
 
 	#[test]
+	fn path_validation_accepts_historical_archive_retention_policy() {
+		let mut manifest = valid_radar_archive_manifest();
+
+		manifest["created_at"] = serde_json::json!("2026-05-13T07:52:56Z");
+		manifest["retention_days"] = serde_json::json!(28);
+
+		assert_errors(&manifest, ["retention_days must be 21"]);
+		assert_path_errors(
+			".agent/automations/decodex/cache/archive/index/2026-05-13-pre-2026-04-13.json",
+			&manifest,
+			[],
+		);
+	}
+
+	#[test]
 	fn social_reserve_publish_dry_run_does_not_write() {
 		let temp_dir = tempfile::tempdir().expect("temp dir should create");
 		let request = social_reserve_request(temp_dir.path(), true);
@@ -6882,6 +7052,29 @@ mod tests {
 		review["next_actions"][0]["type"] = serde_json::json!("publish_now");
 
 		assert_errors(&review, ["next_actions[0].type must be one of"]);
+	}
+
+	#[test]
+	fn path_validation_accepts_historical_upstream_review_linear_followup_only_before_cutoff() {
+		let mut review = valid_upstream_review();
+
+		review["reviewed_at"] = serde_json::json!("2026-06-11T20:07:07Z");
+		review["next_actions"][0]["type"] = serde_json::json!("linear_followup");
+
+		assert_errors(&review, ["next_actions[0].type must be one of"]);
+		assert_path_errors(
+			".agent/automations/decodex/cache/github/reviews/openai-codex-pr-25018.review.json",
+			&review,
+			[],
+		);
+
+		review["reviewed_at"] = serde_json::json!("2026-06-12T00:00:00Z");
+
+		assert_path_errors(
+			".agent/automations/decodex/cache/github/reviews/openai-codex-pr-25018.review.json",
+			&review,
+			["next_actions[0].type must be one of"],
+		);
 	}
 
 	#[test]
@@ -7557,6 +7750,22 @@ mod tests {
 
 	fn assert_errors<const N: usize>(payload: &Value, expected: [&str; N]) {
 		let validation = radar::validate_artifact(payload);
+
+		for expected_error in expected {
+			assert!(
+				validation.errors.iter().any(|error| error.contains(expected_error)),
+				"expected error containing {expected_error:?}, got {:?}",
+				validation.errors
+			);
+		}
+
+		if expected.is_empty() {
+			assert_eq!(validation.errors, Vec::<String>::new());
+		}
+	}
+
+	fn assert_path_errors<const N: usize>(path: &str, payload: &Value, expected: [&str; N]) {
+		let validation = radar::validate_artifact_for_path(Path::new(path), payload);
 
 		for expected_error in expected {
 			assert!(

@@ -153,6 +153,11 @@ Promote an upstream review into:
   investigate the change. The candidate remains evidence-only until Decision Contract
   and Program Intake promotion.
 
+Historical raw `upstream_review/v1` records created before the shared handoff cutover
+may still contain `linear_followup` in `next_actions` so archive validation can read
+old cache state. New upstream review output must use `upstream_impact` or
+`control_plane_upgrade_candidate`; it must not emit `linear_followup`.
+
 Do not promote low-value internal churn into public artifacts. Keep it traceable in the
 ledger and use it only as release-rollup background if later evidence makes it relevant.
 

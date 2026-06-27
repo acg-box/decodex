@@ -2,6 +2,16 @@
 
 ## 2026-06-27
 
+- Made `decodex radar validate` path-aware for existing operations cache drift:
+  generated analysis drafts are validated as helper outputs without a `schema` field,
+  historical archive manifests may retain their original retention policy, and
+  pre-shared-handoff upstream reviews can still read old `linear_followup` actions
+  while new artifacts remain on `upstream_impact` or
+  `control_plane_upgrade_candidate`.
+- Aligned review-handoff recovery and lane-control docs with terminal Run Ledger
+  projection and ownership-drift rebind: old unowned run inspect now projects
+  cleanup/terminal outcomes, while current same-PR same-head failure-state drift can
+  restore active ownership through validated `review-handoff rebind`.
 - Made `upstream_impact/v1` the shared Radar handoff for Decodex-only release
   publishing and Control Plane upgrade proposal work, and updated autonomy challenge
   disposition so challenge objections are retained as promotion constraints rather

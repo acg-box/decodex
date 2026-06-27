@@ -1,22 +1,22 @@
 ---
 type: "Runbook"
 title: "Recover Review Handoff"
-description: "Diagnose and explicitly repair retained review lanes that are blocked by a missing or stale runtime DB review lifecycle record."
+description: "Diagnose and explicitly repair retained review lanes blocked by missing, stale, or ownership-drifted review lifecycle state."
 status: active
 authority: procedural
 owner: automation
 tags: [runbook]
-last_verified: 2026-06-17
+last_verified: 2026-06-27
 ---
 # Recover Review Handoff
 
 Purpose: Diagnose and explicitly repair retained review lanes that are blocked by a
-missing or stale runtime DB review lifecycle record.
+missing, stale, or ownership-drifted runtime DB review lifecycle record.
 
 Use this when: `decodex status` or the dashboard shows a `Review & Landing` lane
 blocked with `missing_review_handoff_record`, a review lifecycle head or phase
-mismatch, or a similar retained review lifecycle mismatch after manual repair or
-rebase.
+mismatch, `review_handoff_state_transition_pending`, or an ownership-drifted retained
+handoff after manual repair, stale failure writeback, or rebase.
 
 Do not use this for: healthy PR handoffs, review repair, landing, closeout, cleanup-only
 worktrees, or manual PR landing.
@@ -50,7 +50,9 @@ progress.
 
 Only rebind when the diagnosis says the review lifecycle record is absent, says the
 existing same-branch same-PR record must be refreshed after the retained worktree and
-PR head have been checked, or reports `review_handoff_state_transition_pending`.
+PR head have been checked, reports `review_handoff_state_transition_pending`, or
+reports `review_handoff_ownership_drift` for an already-current same-PR same-head lane
+that is in `tracker.in_progress_state` or `tracker.failure_state`.
 
 ```sh
 decodex recover review-handoff rebind <ISSUE> --pr <PR_URL> --dry-run
@@ -65,10 +67,11 @@ missing, or where an already-current record exists but the issue state was not
 advanced, the command may also move the issue from the workflow
 `tracker.in_progress_state` to `tracker.success_state` after the rebind audit
 succeeds. If stale failure writeback already moved an already-current record lane to
-`tracker.failure_state` and added `tracker.needs_attention_label`, rebind may clear that
-label and move the issue to `tracker.success_state`; this is only for current same-PR
-same-head records, not for missing or stale record recovery. It does not merge the PR,
-queue follow-up issues, or clean worktrees.
+`tracker.failure_state`, removed `decodex:active:<service-id>`, or added
+`tracker.needs_attention_label`, rebind may restore the active service label, clear the
+needs-attention label, and move the issue to `tracker.success_state`; this is only for
+current same-PR same-head records, not for missing or stale record recovery. It does
+not merge the PR, queue follow-up issues, or clean worktrees.
 
 The command rejects the rebind unless all of these are true:
 
@@ -80,7 +83,10 @@ The command rejects the rebind unless all of these are true:
 - the issue does not have the needs-attention label, except for the already-current
   record plus `tracker.failure_state` drift case where rebind clears it after recording
   the audit
-- the issue still has `decodex:active:<service-id>` ownership
+- the issue still has `decodex:active:<service-id>` ownership, except for the
+  already-current record plus `tracker.failure_state` drift case where rebind verifies
+  the active service label exists on the issue team and restores it after local
+  lifecycle state is written
 - the retained worktree branch matches the runtime DB worktree mapping
 - the retained worktree has no local source changes except top-level Decodex runtime
   artifacts such as `.decodex-run-activity` and `.decodex-run-control/`
@@ -198,15 +204,17 @@ plus explicit rebind before any manual cleanup.
 ## Active Ownership Recovery
 
 If diagnosis reports `classification: review_handoff_ownership_drift`,
-`reason: active_ownership_label_missing`, and `active_label_present: false`, do not run
-rebind just to restore ownership. If the lane has no retained lifecycle record because
-a human PR needs manual takeover, run `recover review-handoff adopt --dry-run`; the
-dry run reports `would_restore_active_label=true` when live adopt can restore the
-active service label after validating the issue, managed worktree, PR branch, PR head,
-and landability gates. If the lane already has a retained lifecycle record, use the
-ordinary diagnosis/rebind or post-review path instead of hand-adding labels. If the issue still
-has `decodex:needs-attention`, clear that label only after the recorded blocker has
-been repaired or an explicit recovery command says it will clear the label itself.
+`reason: active_ownership_label_missing`, and `active_label_present: false`, follow
+the diagnostic `next_action` instead of hand-adding labels. For an already-current
+same-PR same-head lane in `tracker.failure_state` or `tracker.in_progress_state`, that
+next action is `recover review-handoff rebind --dry-run`; the dry run reports
+`would_restore_active_label=true` when live rebind can restore the active service
+label after validating the retained worktree and PR lineage. If the lane has no
+retained lifecycle record because a human PR needs manual takeover, run
+`recover review-handoff adopt --dry-run`; adopt reports `would_restore_active_label`
+for its own takeover path. If the issue still has `decodex:needs-attention`, clear that
+label only after the recorded blocker has been repaired or an explicit recovery
+command says it will clear the label itself.
 
 After an explicit recovery restores or confirms ownership, rerun:
 

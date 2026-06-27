@@ -7,10 +7,10 @@ authority: normative
 owner: runtime
 tags: [lane-control, runtime, scheduler]
 source_refs: []
-code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs]
+code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs]
 related: [lane-control.md, runtime.md]
 drift_watch: [ownership_state, liveness_state, policy_state, terminalization_state, review_churn_exceeded]
-last_verified: 2026-06-17
+last_verified: 2026-06-27
 ---
 
 # Lane-Control State Specification
@@ -103,6 +103,12 @@ from protocol activity.
 - `run_lease=false` is incompatible with `ownership_state=leased_run`.
 - Terminal attempt statuses such as `failed`, `interrupted`, `stalled`, or `succeeded`
   must not be promoted to `running` by live process, thread, or protocol evidence.
+- Issue-scoped terminal Run Ledger outcomes are authoritative for old or unowned run
+  inspect/status projection. If no run lease or other authoritative live owner remains,
+  `decodex lane inspect` and operator status must project the final ledger outcome
+  into `status`, `attempt_status`, `phase`, `ownership_state`, `liveness_state`, and
+  `lane_control_next_action`. That projection must not overwrite a still-leased
+  current attempt for the same issue.
 - `policy_state=review_churn_exceeded` blocks further review-repair mutation for the
   same strategy until architecture recovery or human attention changes the policy
   state.
