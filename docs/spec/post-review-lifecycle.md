@@ -26,7 +26,7 @@ drift_watch:
   - IssueDispatchMode::Retry
   - IssueDispatchMode::ReviewRepair
   - IssueDispatchMode::Closeout
-last_verified: 2026-06-25
+last_verified: 2026-06-27
 ---
 # Post-Review Lifecycle
 
@@ -164,9 +164,14 @@ When Linear issue metadata readback is degraded by connector backoff, operator s
 must still keep locally retained lifecycle rows visible with the lifecycle PR URL and
 head SHA and must mark the row as tracker-readback degraded instead of presenting the
 PR or code state as failed. If the lifecycle record is bound but
-`decodex:active:<service-id>` is
-missing, recovery diagnosis must classify the state as ownership drift and give the
-single label repair action instead of recommending rebind.
+`decodex:active:<service-id>` is missing, recovery diagnosis must classify the state
+as ownership drift. A bound lane already in `tracker.success_state` may ask the
+operator to confirm or restore ownership before continuing the existing lifecycle. An
+already-current same-PR same-head lane that drifted back to `tracker.in_progress_state`
+or `tracker.failure_state` must instead point to the explicit
+`review-handoff rebind --dry-run` path, because that path can validate the retained
+worktree and PR lineage before restoring the active service label and completing the
+issue-state transition.
 
 The supported operator recovery surface is `decodex recover review-handoff`. This is a
 break-glass recovery path for orphaned retained review lanes and stale lifecycle
@@ -204,17 +209,19 @@ success path.
   missing, or when an already-current lifecycle record exists but the issue state was
   not advanced, and the validated PR plus retained worktree prove the handoff lineage.
   If stale failure writeback already moved that already-current lifecycle lane back to
-  `tracker.failure_state` and applied `tracker.needs_attention_label`, explicit rebind
-  may clear that label and move the issue to `tracker.success_state` after the rebind
-  audit succeeds. Decodex must reject this failure-state recovery for missing or stale
-  lifecycle records because those still need explicit PR-lineage repair before tracker
-  state can be trusted.
+  `tracker.failure_state`, removed `decodex:active:<service-id>`, or applied
+  `tracker.needs_attention_label`, explicit rebind may restore the active service
+  label, clear needs-attention, and move the issue to `tracker.success_state` after
+  the rebind audit succeeds. Decodex must reject this failure-state recovery for
+  missing or stale lifecycle records because those still need explicit PR-lineage
+  repair before tracker state can be trusted.
 - If no review lifecycle record exists, `rebind` restores the missing lifecycle record
   from the validated PR and retained worktree. If a record already exists for the same
   branch and PR but its stored handoff head or phase head is stale, `rebind` may
   refresh that record to the validated PR head. It must reject an existing record for a
   different PR, and it must reject a current same-branch same-PR record as a no-op
-  unless the issue is still in `tracker.in_progress_state` and only the success-state
+  unless the issue is still in `tracker.in_progress_state` or `tracker.failure_state`
+  and only the active-label repair, needs-attention repair, or success-state
   transition remains.
 - A successful adopt writes a runtime worktree mapping for the current managed checkout,
   creates a local run attempt identity for the takeover, writes the same runtime DB
@@ -232,11 +239,14 @@ success path.
   GitHub credentials and workspace hooks, but pure manual-authority landing must not
   refresh project registry state unless issue closeout is actually in scope.
 - A successful rebind writes the same runtime DB review lifecycle record as normal
-  `issue_review_handoff` needs, and records a `review_handoff_rebind` audit
-  event. It does not land the PR, queue follow-up work, or substitute for healthy lanes'
-  normal `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")`
-  path. If any audit write fails after lifecycle record creation, the command must
-  clear the new record and report failure instead of leaving a silently rebound lane.
+  `issue_review_handoff` needs, records a `review_handoff_rebind` audit event, and
+  records whether active ownership or needs-attention labels were repaired. It does
+  not land the PR, queue follow-up work, or substitute for healthy lanes' normal
+  `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")`
+  path. If either lifecycle marker write fails, the command must clear any partial
+  handoff record before reporting failure. If any audit write fails after lifecycle
+  record creation, the command must clear the new record and roll back any active
+  service label restored by that rebind before reporting failure.
 - Once a rebind or equivalent current lifecycle record exists for a retained lane, stale
   passive failure handling for the earlier `missing_review_handoff_record` observation
   must not move the issue back to the failure state or add `decodex:needs-attention`.
