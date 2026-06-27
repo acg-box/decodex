@@ -6,8 +6,8 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/mcp.rs]
-drift_watch: [decodex serve, decodex status, decodex recover ghost-lane, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/mcp.rs]
+drift_watch: [decodex serve, decodex status, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
 last_verified: 2026-06-27
 ---
 # Operator Control Plane
@@ -575,6 +575,13 @@ Worktree visibility follows the owning dashboard section:
   identify the lifecycle record, and `decodex recover review-handoff diagnose <ISSUE>`
   reports the stored handoff head, phase head, PR head, and mismatched field before
   any explicit rebind refresh.
+- `review_handoff_ownership_drift` means the retained lifecycle record is bound but
+  the active service label is missing. If the same-PR same-head lane is still in
+  progress state or has drifted back to the workflow failure state, diagnosis points to
+  `decodex recover review-handoff rebind --dry-run`; live rebind can restore the
+  active service label only after proving retained worktree and PR lineage. Bound
+  success-state lanes may still ask for ownership confirmation before the existing
+  post-review lifecycle continues.
 - `ownership_state = ghost_lane` with
   `policy_state = runtime_recovery_required` in live observer status or a fresh
   daemon-cached status means a local current lane still has a run lease, but tracker
@@ -666,6 +673,12 @@ Worktree visibility follows the owning dashboard section:
   `wait_for_review` or `ready_to_land`, that row controls the current action summary;
   stale active-label or worktree echoes from an older terminal ledger record stay in
   Run Ledger history instead of reappearing as current attention.
+- `decodex lane inspect` applies the same issue-scoped terminal Run Ledger projection
+  to old or unowned runs. Cleanup-complete history renders as
+  `status=cleanup_complete`, `ownership_state=closed`, `liveness_state=not_running`,
+  and `lane_control_next_action=no_action`; terminal failure history renders as
+  retained attention instead of stale `review_handoff_pending` or `running`. A still
+  leased current attempt is not overwritten by older terminal ledger history.
 - If private evidence shows `phase_goal_recovery` followed by a queued continuation,
   the lane is not a retained-attention worktree even when the preceding child failed
   or stalled reconciliation first found retained dirty progress. Treat it as
