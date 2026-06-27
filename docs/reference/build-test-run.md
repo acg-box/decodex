@@ -10,7 +10,7 @@ source_refs: []
 code_refs: [Makefile.toml, Cargo.toml, apps/decodex/Cargo.toml, site/package.json, apps/decodex-app/Package.swift, README.md]
 related: [./workspace-layout.md, ./test-suite.md, ./docs-knowledge-map.md, ../policy.md, ../runbook/release-readiness.md, ../spec/okf-knowledge-layer.md]
 drift_watch: [Makefile.toml, Cargo.toml, site/package.json, apps/decodex-app/Package.swift, cargo make --list-all-steps, cargo make check, cargo nextest list --workspace --all-targets --all-features]
-last_verified: 2026-06-18
+last_verified: 2026-06-27
 ---
 
 # Build Test Run Entrypoints
@@ -55,7 +55,7 @@ explain why a narrower check is sufficient.
 | Task | Command surface | Owns |
 | --- | --- | --- |
 | `cargo make check` | composite root task | Aggregate build, docs, node, Rust, format, lint, and test validation |
-| `cargo make check-docs` | `decodex docs check` | Decodex docs OKF/profile validation |
+| `cargo make check-docs` | `decodex docs lint` compatibility alias for `decodex docs check` | Decodex docs OKF/profile validation |
 | `cargo make check-rust` | `cargo check --all-features --all-targets --workspace` | Rust workspace type checking |
 | `cargo make check-node` | `npm run check` in `site/` | Astro and TypeScript site checks |
 | `cargo make fmt-check` | Rust nightly fmt plus Taplo check | Rust and TOML formatting |
