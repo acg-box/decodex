@@ -54,6 +54,11 @@ Raw GitHub bundles, upstream review artifacts, and local editorial analysis draf
 not remain in hot cache for more than 21 days after collection or publication unless a human
 explicitly marks the batch as still active.
 
+Analysis drafts under `.agent/automations/decodex/cache/generated/analysis/*.analysis.json`
+are Codex helper output, not first-class Radar artifacts, so they do not carry a
+`schema` field. `decodex radar validate` still checks them by path against the
+`analysis_draft` contract before they can feed `signal_entry/v1` rendering.
+
 For existing artifacts that do not carry their own collection timestamp, the retention
 clock should use the paired `signal_entry/v1.published_at` when available. If no paired
 signal exists, the archive batch must record the operator-selected evidence date in its

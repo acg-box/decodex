@@ -213,6 +213,7 @@ struct HandoffDiagnosticRequest<'a> {
 	issue_state_name: &'a str,
 	success_state: &'a str,
 	in_progress_state: &'a str,
+	failure_state: &'a str,
 	worktree: &'a WorktreeMapping,
 	existing_handoff: Option<&'a ReviewHandoffMarker>,
 	existing_orchestration: Option<&'a ReviewOrchestrationMarker>,
@@ -261,9 +262,15 @@ struct RebindValidation {
 	local_head_oid: String,
 	worktree_path_for_event: Option<String>,
 	active_label_present: bool,
+	restore_active_label: bool,
 	mode: RebindMode,
 	success_state_transition: Option<RebindSuccessStateTransition>,
 	clear_needs_attention_label: bool,
+}
+impl RebindValidation {
+	fn should_restore_active_label(&self) -> bool {
+		self.restore_active_label
+	}
 }
 
 struct AdoptValidation {
@@ -320,6 +327,7 @@ struct RebindSuccessStateTransition {
 
 struct RebindLabelValidation {
 	active_label_present: bool,
+	restore_active_label: bool,
 	clear_needs_attention_label: bool,
 }
 
@@ -431,7 +439,7 @@ pub(crate) fn run_review_handoff_rebind(
 			.map_or("none", |transition| transition.state_name.as_str());
 
 		println!(
-			"dry run: review handoff rebind validated for project={} issue={} branch={} pr={} head={} mode={} active_label_present={} state_transition={}",
+			"dry run: review handoff rebind validated for project={} issue={} branch={} pr={} head={} mode={} active_label_present={} would_restore_active_label={} state_transition={}",
 			context.config.service_id(),
 			validation.issue.identifier,
 			validation.worktree.branch_name(),
@@ -439,6 +447,7 @@ pub(crate) fn run_review_handoff_rebind(
 			validation.local_head_oid,
 			validation.mode.evidence_value(),
 			validation.active_label_present,
+			validation.should_restore_active_label(),
 			state_transition
 		);
 
@@ -1110,6 +1119,7 @@ fn diagnose_issue_worktree(
 		issue_state_name: &issue.state.name,
 		success_state: context.workflow.frontmatter().tracker().success_state(),
 		in_progress_state: context.workflow.frontmatter().tracker().in_progress_state(),
+		failure_state: context.workflow.frontmatter().tracker().failure_state(),
 		worktree: &worktree,
 		existing_handoff: existing_handoff.as_ref(),
 		existing_orchestration: existing_orchestration.as_ref(),
@@ -1209,22 +1219,42 @@ fn diagnostic_binding(request: HandoffDiagnosticRequest<'_>) -> HandoffBindingDi
 	}
 
 	if request.active_label_present == Some(false) {
+		let next_action = if request.issue_state_name == request.in_progress_state
+			|| request.issue_state_name == request.failure_state
+		{
+			rebind_state_transition_next_action(request.issue_identifier, existing_handoff.pr_url())
+		} else if request.issue_state_name == request.success_state {
+			bound_handoff_next_action(request.service_id, request.active_label_present)
+		} else {
+			issue_state_mismatch_next_action(request.success_state, request.in_progress_state)
+		};
+
 		return HandoffBindingDiagnostic {
 			classification: String::from(REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION),
 			reason: String::from("active_ownership_label_missing"),
 			pr_base_ref,
 			pr_head_oid,
 			mismatched_field: Some(String::from("issue.labels")),
-			next_action: bound_handoff_next_action(
-				request.service_id,
-				request.active_label_present,
-			),
+			next_action,
 		};
 	}
 	if request.issue_state_name == request.in_progress_state {
 		return HandoffBindingDiagnostic {
 			classification: String::from(REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION),
 			reason: String::from("review_handoff_state_transition_pending"),
+			pr_base_ref,
+			pr_head_oid,
+			mismatched_field: Some(String::from("issue.state")),
+			next_action: rebind_state_transition_next_action(
+				request.issue_identifier,
+				existing_handoff.pr_url(),
+			),
+		};
+	}
+	if request.issue_state_name == request.failure_state {
+		return HandoffBindingDiagnostic {
+			classification: String::from(REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION),
+			reason: String::from("review_handoff_failure_state_drift"),
 			pr_base_ref,
 			pr_head_oid,
 			mismatched_field: Some(String::from("issue.state")),
@@ -2497,6 +2527,7 @@ fn validate_rebind_request(
 		local_head_oid,
 		worktree_path_for_event,
 		active_label_present: label_validation.active_label_present,
+		restore_active_label: label_validation.restore_active_label,
 		mode,
 		success_state_transition,
 		clear_needs_attention_label: label_validation.clear_needs_attention_label,
@@ -3276,15 +3307,32 @@ fn validate_rebind_tracker_labels(
 	let active_label = tracker::automation_active_label(context.config.service_id());
 	let active_label_present =
 		tracker::issue_has_label_with_server_confirmation(&context.tracker, issue, &active_label)?;
+	let tracker_policy = context.workflow.frontmatter().tracker();
 
 	if !active_label_present {
-		eyre::bail!(
-			"Issue `{}` is missing active automation label `{active_label}`. Restore explicit lane ownership before rebind.",
-			issue.identifier
-		);
+		if !mode.allows_failure_state_drift_repair()
+			|| issue.state.name != tracker_policy.failure_state()
+		{
+			eyre::bail!(
+				"Issue `{}` is missing active automation label `{active_label}`. Restore explicit lane ownership before rebind.",
+				issue.identifier
+			);
+		}
+
+		if tracker::issue_team_label_id_with_server_confirmation(
+			&context.tracker,
+			issue,
+			&active_label,
+		)?
+		.is_none()
+		{
+			eyre::bail!(
+				"Issue `{}` is missing active automation label `{active_label}`, but that label was not found on the team.",
+				issue.identifier
+			);
+		}
 	}
 
-	let tracker_policy = context.workflow.frontmatter().tracker();
 	let needs_attention_label = tracker_policy.needs_attention_label();
 	let needs_attention_present = tracker::issue_has_label_with_server_confirmation(
 		&context.tracker,
@@ -3295,6 +3343,7 @@ fn validate_rebind_tracker_labels(
 	if !needs_attention_present {
 		return Ok(RebindLabelValidation {
 			active_label_present,
+			restore_active_label: !active_label_present,
 			clear_needs_attention_label: false,
 		});
 	}
@@ -3316,6 +3365,7 @@ fn validate_rebind_tracker_labels(
 
 		return Ok(RebindLabelValidation {
 			active_label_present,
+			restore_active_label: !active_label_present,
 			clear_needs_attention_label: true,
 		});
 	}
@@ -3373,7 +3423,11 @@ fn validate_adopt_issue_context(
 		);
 	}
 
-	Ok(RebindLabelValidation { active_label_present, clear_needs_attention_label: false })
+	Ok(RebindLabelValidation {
+		active_label_present,
+		restore_active_label: false,
+		clear_needs_attention_label: false,
+	})
 }
 
 fn validate_adopt_issue_state(
@@ -3658,18 +3712,36 @@ fn apply_review_handoff_rebind(
 		0,
 		None,
 	);
-	let event = review_handoff_rebind_event(context, validation);
 
-	context.state_store.upsert_review_handoff_marker(
+	write_review_lifecycle_markers_with_rollback(
+		&context.state_store,
 		context.config.service_id(),
 		&validation.issue.id,
 		&handoff_marker,
-	)?;
-	context.state_store.upsert_review_orchestration_marker(
-		context.config.service_id(),
-		&validation.issue.id,
 		&orchestration_marker,
+		|| {
+			context.state_store.upsert_review_orchestration_marker(
+				context.config.service_id(),
+				&validation.issue.id,
+				&orchestration_marker,
+			)
+		},
 	)?;
+
+	let active_label_restored = match restore_rebind_active_label(context, validation) {
+		Ok(active_label_restored) => active_label_restored,
+		Err(error) => {
+			context.state_store.clear_review_lifecycle_for_handoff(
+				context.config.service_id(),
+				&validation.issue.id,
+				&handoff_marker,
+				&orchestration_marker,
+			)?;
+
+			return Err(error);
+		},
+	};
+	let event = review_handoff_rebind_event(context, validation, active_label_restored);
 
 	if let Err(error) = write_rebind_audit(context, validation, &event)
 		.and_then(|()| context.state_store.record_linear_execution_event(&event))
@@ -3680,6 +3752,8 @@ fn apply_review_handoff_rebind(
 			&handoff_marker,
 			&orchestration_marker,
 		)?;
+
+		rollback_rebind_active_label_restoration(context, validation, active_label_restored)?;
 
 		return Err(error);
 	}
@@ -3702,7 +3776,36 @@ fn apply_review_handoff_rebind(
 		context.config.service_id(),
 		validation,
 		"local_markers_written",
+		active_label_restored,
 	)?;
+
+	Ok(())
+}
+
+fn write_review_lifecycle_markers_with_rollback<F>(
+	state_store: &StateStore,
+	project_id: &str,
+	issue_id: &str,
+	handoff_marker: &ReviewHandoffMarker,
+	orchestration_marker: &ReviewOrchestrationMarker,
+	write_orchestration_marker: F,
+) -> Result<()>
+where
+	F: FnOnce() -> Result<()>,
+{
+	if let Err(error) = state_store
+		.upsert_review_handoff_marker(project_id, issue_id, handoff_marker)
+		.and_then(|()| write_orchestration_marker())
+	{
+		state_store.clear_review_lifecycle_for_handoff(
+			project_id,
+			issue_id,
+			handoff_marker,
+			orchestration_marker,
+		)?;
+
+		return Err(error);
+	}
 
 	Ok(())
 }
@@ -3843,6 +3946,35 @@ fn write_adopt_local_state(
 		})
 }
 
+fn restore_rebind_active_label(
+	context: &RecoveryContext,
+	validation: &RebindValidation,
+) -> Result<bool> {
+	if !validation.should_restore_active_label() {
+		return Ok(false);
+	}
+
+	let active_label = tracker::automation_active_label(context.config.service_id());
+
+	tracker::set_issue_label_presence(&context.tracker, &validation.issue, &active_label, true)
+}
+
+fn rollback_rebind_active_label_restoration(
+	context: &RecoveryContext,
+	validation: &RebindValidation,
+	active_label_restored: bool,
+) -> Result<()> {
+	if !active_label_restored {
+		return Ok(());
+	}
+
+	let active_label = tracker::automation_active_label(context.config.service_id());
+
+	tracker::set_issue_label_presence(&context.tracker, &validation.issue, &active_label, false)?;
+
+	Ok(())
+}
+
 fn restore_adopt_active_label(
 	context: &RecoveryContext,
 	validation: &AdoptValidation,
@@ -3905,6 +4037,7 @@ fn append_review_handoff_rebind_private_event(
 	service_id: &str,
 	validation: &RebindValidation,
 	writeback_stage: &str,
+	active_label_restored: bool,
 ) -> Result<()> {
 	state_store
 		.append_private_execution_event(
@@ -3928,6 +4061,8 @@ fn append_review_handoff_rebind_private_event(
 				"merge_state_status": &validation.landing_state.merge_state_status,
 				"status_check_rollup_state": &validation.landing_state.status_check_rollup_state,
 				"mode": validation.mode.as_str(),
+				"active_label_present": validation.active_label_present,
+				"active_label_restored": active_label_restored,
 				"clear_needs_attention_label": validation.clear_needs_attention_label,
 				"next_action": "continue retained post-review lifecycle",
 			}),
@@ -3977,6 +4112,7 @@ fn append_review_handoff_adopt_private_event(
 fn review_handoff_rebind_event(
 	context: &RecoveryContext,
 	validation: &RebindValidation,
+	active_label_restored: bool,
 ) -> LinearExecutionEventRecord {
 	let pr_url = landing_url(&validation.landing_state);
 	let stable_anchor = records::stable_event_anchor(&[
@@ -4015,6 +4151,8 @@ fn review_handoff_rebind_event(
 		format!("pr_url={pr_url}"),
 		format!("pr_head_sha={}", validation.local_head_oid),
 		format!("existing_review_lifecycle_record={}", validation.mode.evidence_value()),
+		format!("active_label_present={}", validation.active_label_present),
+		format!("active_label_repair={active_label_restored}"),
 		format!("needs_attention_label_repair={}", validation.clear_needs_attention_label),
 	]);
 	event.next_action = Some(String::from("continue retained post-review lifecycle"));
@@ -6431,6 +6569,7 @@ token_env_var = "HOME"
 			local_head_oid: head_oid.to_owned(),
 			worktree_path_for_event: Some(String::from(".worktrees/PUB-718")),
 			active_label_present: true,
+			restore_active_label: false,
 			mode: super::RebindMode::RefreshExistingHandoff,
 			success_state_transition: None,
 			clear_needs_attention_label: false,
@@ -6441,6 +6580,7 @@ token_env_var = "HOME"
 			"pubfi",
 			&validation,
 			"local_markers_written",
+			false,
 		)
 		.expect("rebind private event should append");
 
@@ -6461,9 +6601,68 @@ token_env_var = "HOME"
 		assert_eq!(payload["event"], REVIEW_HANDOFF_REBIND_EVENT);
 		assert_eq!(payload["writeback_stage"], "local_markers_written");
 		assert_eq!(payload["mode"], "refresh_existing_handoff");
+		assert_eq!(payload["active_label_present"], true);
+		assert_eq!(payload["active_label_restored"], false);
 		assert_eq!(payload["pr_url"], pr_url);
 		assert_eq!(payload["pr_head_sha"], head_oid);
 		assert_eq!(payload["next_action"], "continue retained post-review lifecycle");
+	}
+
+	#[test]
+	fn rebind_lifecycle_marker_write_failure_clears_partial_handoff_marker() {
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let branch_name = "x/pubfi-pub-718";
+		let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
+		let head_oid = "1123456789abcdef0123456789abcdef01234567";
+		let handoff = ReviewHandoffMarker::new(
+			"pub-718-attempt-1",
+			1,
+			branch_name,
+			pr_url,
+			"main",
+			branch_name,
+			head_oid,
+		);
+		let orchestration = ReviewOrchestrationMarker::new(
+			"pub-718-attempt-1",
+			1,
+			branch_name,
+			pr_url,
+			head_oid,
+			"request_pending",
+			None,
+			None,
+			None,
+			0,
+			0,
+			None,
+		);
+
+		let error = super::write_review_lifecycle_markers_with_rollback(
+			&state_store,
+			"pubfi",
+			"issue-id",
+			&handoff,
+			&orchestration,
+			|| -> crate::prelude::Result<()> {
+				Err(crate::prelude::eyre::eyre!("orchestration marker write failed"))
+			},
+		)
+		.expect_err("orchestration write failure should be returned");
+
+		assert!(error.to_string().contains("orchestration marker write failed"));
+		assert!(
+			state_store
+				.review_lifecycle_record("pubfi", "issue-id", branch_name)
+				.expect("lifecycle read should succeed")
+				.is_none()
+		);
+		assert!(
+			state_store
+				.review_handoff_marker("pubfi", "issue-id", branch_name)
+				.expect("handoff read should succeed")
+				.is_none()
+		);
 	}
 
 	#[test]
@@ -6488,6 +6687,7 @@ token_env_var = "HOME"
 			issue_state_name: "In Review",
 			success_state: "In Review",
 			in_progress_state: "In Progress",
+			failure_state: "Todo",
 			worktree: &worktree,
 			existing_handoff: Some(&handoff),
 			existing_orchestration: None,
@@ -6539,6 +6739,7 @@ token_env_var = "HOME"
 			issue_state_name: "In Progress",
 			success_state: "In Review",
 			in_progress_state: "In Progress",
+			failure_state: "Todo",
 			worktree: &worktree,
 			existing_handoff: Some(&handoff),
 			existing_orchestration: Some(&orchestration),
@@ -6578,6 +6779,7 @@ token_env_var = "HOME"
 			issue_state_name: "In Review",
 			success_state: "In Review",
 			in_progress_state: "In Progress",
+			failure_state: "Todo",
 			worktree: &worktree,
 			existing_handoff: Some(&handoff),
 			existing_orchestration: None,
@@ -6632,6 +6834,7 @@ token_env_var = "HOME"
 			issue_state_name: "In Review",
 			success_state: "In Review",
 			in_progress_state: "In Progress",
+			failure_state: "Todo",
 			worktree: &worktree,
 			existing_handoff: Some(&handoff),
 			existing_orchestration: Some(&orchestration),
@@ -6683,6 +6886,7 @@ token_env_var = "HOME"
 			issue_state_name: "In Review",
 			success_state: "In Review",
 			in_progress_state: "In Progress",
+			failure_state: "Todo",
 			worktree: &worktree,
 			existing_handoff: Some(&handoff),
 			existing_orchestration: Some(&orchestration),
@@ -6698,6 +6902,115 @@ token_env_var = "HOME"
 		assert_eq!(diagnostic.mismatched_field.as_deref(), Some("issue.labels"));
 		assert!(diagnostic.next_action.contains("decodex:active:pubfi"));
 		assert!(diagnostic.next_action.contains("Restore explicit lane ownership"));
+	}
+
+	#[test]
+	fn diagnostic_reports_rebind_for_failure_state_ownership_drift() {
+		let branch_name = "x/pubfi-pub-718";
+		let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
+		let head_oid = "1123456789abcdef0123456789abcdef01234567";
+		let worktree = sample_worktree(branch_name);
+		let handoff = ReviewHandoffMarker::new(
+			"pub-718-attempt-1",
+			1,
+			branch_name,
+			pr_url,
+			"main",
+			branch_name,
+			head_oid,
+		);
+		let orchestration = ReviewOrchestrationMarker::new(
+			"pub-718-attempt-1",
+			1,
+			branch_name,
+			pr_url,
+			head_oid,
+			"request_pending",
+			None,
+			None,
+			None,
+			0,
+			0,
+			None,
+		);
+		let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
+		let diagnostic = super::diagnostic_binding(super::HandoffDiagnosticRequest {
+			service_id: "pubfi",
+			issue_identifier: "PUB-718",
+			issue_state_name: "Todo",
+			success_state: "In Review",
+			in_progress_state: "In Progress",
+			failure_state: "Todo",
+			worktree: &worktree,
+			existing_handoff: Some(&handoff),
+			existing_orchestration: Some(&orchestration),
+			local_branch_name: Some(branch_name),
+			local_head_oid: Some(head_oid),
+			worktree_clean: Some(true),
+			pr_inspection: Some(&landing_state),
+			active_label_present: Some(false),
+		});
+
+		assert_eq!(diagnostic.classification, REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION);
+		assert_eq!(diagnostic.reason, "active_ownership_label_missing");
+		assert_eq!(diagnostic.mismatched_field.as_deref(), Some("issue.labels"));
+		assert!(diagnostic.next_action.contains("rebind PUB-718"));
+		assert!(diagnostic.next_action.contains("--dry-run"));
+		assert!(!diagnostic.next_action.contains("Restore explicit lane ownership"));
+	}
+
+	#[test]
+	fn diagnostic_reports_rebind_for_failure_state_drift_with_active_label() {
+		let branch_name = "x/pubfi-pub-718";
+		let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
+		let head_oid = "1123456789abcdef0123456789abcdef01234567";
+		let worktree = sample_worktree(branch_name);
+		let handoff = ReviewHandoffMarker::new(
+			"pub-718-attempt-1",
+			1,
+			branch_name,
+			pr_url,
+			"main",
+			branch_name,
+			head_oid,
+		);
+		let orchestration = ReviewOrchestrationMarker::new(
+			"pub-718-attempt-1",
+			1,
+			branch_name,
+			pr_url,
+			head_oid,
+			"request_pending",
+			None,
+			None,
+			None,
+			0,
+			0,
+			None,
+		);
+		let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
+		let diagnostic = super::diagnostic_binding(super::HandoffDiagnosticRequest {
+			service_id: "pubfi",
+			issue_identifier: "PUB-718",
+			issue_state_name: "Todo",
+			success_state: "In Review",
+			in_progress_state: "In Progress",
+			failure_state: "Todo",
+			worktree: &worktree,
+			existing_handoff: Some(&handoff),
+			existing_orchestration: Some(&orchestration),
+			local_branch_name: Some(branch_name),
+			local_head_oid: Some(head_oid),
+			worktree_clean: Some(true),
+			pr_inspection: Some(&landing_state),
+			active_label_present: Some(true),
+		});
+
+		assert_eq!(diagnostic.classification, REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION);
+		assert_eq!(diagnostic.reason, "review_handoff_failure_state_drift");
+		assert_eq!(diagnostic.mismatched_field.as_deref(), Some("issue.state"));
+		assert!(diagnostic.next_action.contains("rebind PUB-718"));
+		assert!(diagnostic.next_action.contains("--dry-run"));
 	}
 
 	#[test]

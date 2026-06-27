@@ -682,16 +682,43 @@ fn build_lane_inspect_operator_runs(
 			continue;
 		}
 
-		runs.push(operator_run_status(
+		let mut run = operator_run_status(
 			project,
 			&loop_evidence,
 			&project_display_name,
 			run,
 			now_unix_epoch,
-		)?);
+		)?;
+
+		apply_terminal_ledger_projection_to_lane_inspect_run(project, state_store, &mut run)?;
+
+		runs.push(run);
 	}
 
 	Ok(runs)
+}
+
+fn apply_terminal_ledger_projection_to_lane_inspect_run(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	run: &mut OperatorRunStatus,
+) -> crate::prelude::Result<()> {
+	let records = state_store.list_linear_execution_events(project.service_id(), &run.issue_id)?;
+
+	if records.is_empty() {
+		return Ok(());
+	}
+
+	let records = local_history_ledger_records(records);
+	let outcome = operator_history_ledger_outcome(&records);
+
+	if history_ledger_outcome_is_terminal(&outcome)
+		&& !current_lane_has_authoritative_live_owner(run)
+	{
+		apply_terminal_history_ledger_outcome_to_run(run, &outcome);
+	}
+
+	Ok(())
 }
 
 fn project_run_status_issue_matches(run: &ProjectRunStatus, issue: &str) -> bool {
@@ -1806,34 +1833,51 @@ fn history_ledger_outcome_requires_attention(outcome: &OperatorHistoryLedgerOutc
 }
 
 fn apply_terminal_history_ledger_outcome_to_latest_run(lane: &mut OperatorHistoryLaneStatus) {
-	let final_outcome = lane.ledger_outcome.final_outcome.clone();
-	let final_event_at = lane.ledger_outcome.final_event_at.clone();
-	let requires_attention = history_ledger_outcome_requires_attention(&lane.ledger_outcome);
+	apply_terminal_history_ledger_outcome_to_run(&mut lane.latest_run, &lane.ledger_outcome);
+}
 
-	lane.latest_run.status = final_outcome.clone();
-	lane.latest_run.attempt_status = final_outcome;
-	lane.latest_run.status_projection_reason = None;
-	lane.latest_run.phase = String::from(if requires_attention { "needs_attention" } else { "completed" });
-	lane.latest_run.run_phase = lane.latest_run.phase.clone();
-	lane.latest_run.wait_reason = None;
-	lane.latest_run.current_operation = String::from("ledger_outcome");
-	lane.latest_run.continuation_pending = false;
-	lane.latest_run.run_lease = false;
-	lane.latest_run.queue_lease_state = String::from("not_held");
-	lane.latest_run.execution_liveness = String::from("not_running");
-	lane.latest_run.suspected_stall = false;
-	lane.latest_run.retry_kind = None;
-	lane.latest_run.next_retry_at = None;
+fn apply_terminal_history_ledger_outcome_to_run(
+	run: &mut OperatorRunStatus,
+	outcome: &OperatorHistoryLedgerOutcome,
+) {
+	let final_outcome = outcome.final_outcome.clone();
+	let final_event_at = outcome.final_event_at.clone();
+	let requires_attention = history_ledger_outcome_requires_attention(outcome);
 
-	if let Some(loop_status) = lane.latest_run.loop_status.as_mut() {
+	run.status = final_outcome.clone();
+	run.attempt_status = final_outcome;
+	run.status_projection_reason = None;
+	run.phase = String::from(if requires_attention { "needs_attention" } else { "completed" });
+	run.run_phase = run.phase.clone();
+	run.wait_reason = None;
+	run.current_operation = String::from("ledger_outcome");
+	run.continuation_pending = false;
+	run.run_lease = false;
+	run.queue_lease_state = String::from("not_held");
+	run.execution_liveness = String::from("not_running");
+	run.ownership_state =
+		String::from(if requires_attention { "retained_attention" } else { "closed" });
+	run.liveness_state = String::from("not_running");
+	run.policy_state = String::from("allowed");
+	run.terminalization_state =
+		String::from(if requires_attention { "none" } else { "cleanup_complete" });
+	run.lane_control_conditions.clear();
+	run.suspected_stall = false;
+	run.retry_kind = None;
+	run.next_retry_at = None;
+	run.has_fresh_execution = false;
+	run.counts_as_running = false;
+	run.needs_attention = requires_attention;
+	run.control_capability = None;
+
+	if let Some(loop_status) = run.loop_status.as_mut() {
 		loop_status.summary = format!(
 			"terminal {}: {}",
 			if requires_attention { "attention" } else { "lifecycle" },
-			lane.latest_run.status
+			run.status
 		);
-		loop_status.next_action = requires_attention
-			.then(|| lane.ledger_outcome.needs_attention_reason.clone())
-			.flatten();
+		loop_status.next_action =
+			requires_attention.then(|| outcome.needs_attention_reason.clone()).flatten();
 
 		if loop_status
 			.review
@@ -1843,9 +1887,17 @@ fn apply_terminal_history_ledger_outcome_to_latest_run(lane: &mut OperatorHistor
 			loop_status.review = None;
 		}
 	}
+	run.lane_control_next_action = if requires_attention {
+		run.loop_status
+			.as_ref()
+			.and_then(|loop_status| loop_status.next_action.clone())
+			.unwrap_or_else(|| String::from("inspect_lane_state"))
+	} else {
+		String::from("no_action")
+	};
 	if let Some(final_event_at) = final_event_at {
-		lane.latest_run.updated_at = final_event_at.clone();
-		lane.latest_run.last_run_activity_at = Some(final_event_at);
+		run.updated_at = final_event_at.clone();
+		run.last_run_activity_at = Some(final_event_at);
 	}
 }
 
