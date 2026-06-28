@@ -37,6 +37,9 @@
   in-progress state, the same recovery command may restore the issue to the first
   configured startable state only when the same run/attempt release audit and local
   cleanup evidence are present.
+- Restored backward-compatible reads for autonomy proposal challenge records written
+  with legacy `support_agent` source values; new serialization remains canonical
+  `subagent`.
 
 ## 2026-06-27
 
