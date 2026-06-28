@@ -6,9 +6,10 @@ goals, implement, or dispatch Program nodes.
 
 ## Loop
 
-Probe, evidence, options, judgment, challenge, decision. Use `$deliberation:grill`
-for unclear framing, `$deliberation:scout` for non-obvious evidence, and
-`$deliberation:challenge` before material recommendations or `decision_ready`.
+Probe, evidence, options, judgment, skeptic review, decision. Use
+`$deliberation:grill` for unclear framing, `$deliberation:scout` for non-obvious
+evidence, and `$deliberation:skeptic` before material recommendations or
+`decision_ready`.
 No evidence, no claim.
 
 ## Probe Contract
@@ -23,10 +24,10 @@ and smallest next check if evidence stays incomplete.
 - Light: local, low-ambiguity fact checks that end without a material recommendation;
   inline framing is acceptable.
 - Standard: material research must use at least one bounded read-only support-agent
-  scout or challenge pass before a recommendation or `decision_ready` claim when
+  scout or skeptic pass before a recommendation or `decision_ready` claim when
   support-agent tools are allowed.
 - Deep: architecture, product, cross-boundary, root-cause, or public-contract
-  research uses separate scout and challenge support agents unless the user
+  research uses separate scout and skeptic support agents unless the user
   explicitly opts out or support-agent tooling is unavailable.
 
 Scale controls cost; the Decision Contract controls readiness.

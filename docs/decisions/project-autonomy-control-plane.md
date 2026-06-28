@@ -134,7 +134,7 @@ through existing Decodex authority.
 | Memory | Core ledger stays in Decodex. External memory and vector systems are optional read-only adapters and cannot grant authority. |
 | Reports | Reports are disposable query views over primary evidence, with source refs, redaction, completeness, and known gaps. |
 | Review signals | Review-derived signals consume `finding_routes`, review-policy state, and current-head evidence. |
-| Challenge | Non-trivial proposal, architecture, repair, and decision-ready claims use fresh dynamic read-only support-agent challenge when tooling and workflow allow it. |
+| Skeptic | Non-trivial proposal, architecture, repair, and decision-ready claims use fresh dynamic read-only skeptic support agents when tooling and workflow allow it. |
 
 ## Skeptic Review
 

@@ -25,7 +25,7 @@ Repo-native agent orchestration, retained lanes, and local operator control.
   APIs under `/api/`, and `GET /livez` for liveness.
 - Static Astro site for the public Decodex product surface and app download entry.
 - Installable agent plugins for Decodex lifecycle work, knowledge/docs/writeback
-  workflows, codebase contracts, and scout/grill/challenge deliberation.
+  workflows, codebase contracts, and scout/grill/skeptic deliberation.
 - Repository documentation split by question type into spec, runbook, reference, and
   decision lanes.
 

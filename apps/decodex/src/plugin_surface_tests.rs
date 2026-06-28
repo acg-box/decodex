@@ -40,9 +40,9 @@ const LAND_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/land/SKILL.md"
 ));
-const DELIBERATION_CHALLENGE_SKILL: &str = include_str!(concat!(
+const DELIBERATION_SKEPTIC_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../plugins/deliberation/skills/challenge/SKILL.md"
+	"/../../plugins/deliberation/skills/skeptic/SKILL.md"
 ));
 const DELIBERATION_GRILL_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
@@ -200,12 +200,12 @@ fn packaged_plugin_manifests_route_split_surface_owners() {
 	assert_contains(&deliberation_surface, "evidence sufficiency");
 	assert_contains(&deliberation_surface, "Scout this evidence.");
 	assert_contains(&deliberation_surface, "Grill this plan.");
-	assert_contains(&deliberation_surface, "Challenge this claim.");
+	assert_contains(&deliberation_surface, "Skeptic-review this claim.");
 	assert_contains(&routing_surface, "$knowledge:docs");
 	assert_contains(&routing_surface, "$knowledge:okf");
 	assert_contains(&routing_surface, "$knowledge:repo-memory");
 	assert_contains(&routing_surface, "$codebase:work");
-	assert_contains(&routing_surface, "$deliberation:challenge");
+	assert_contains(&routing_surface, "$deliberation:skeptic");
 	assert_contains(&routing_surface, "$knowledge:docs-drift");
 	assert_contains(&routing_surface, "$knowledge:writeback");
 	assert_contains(&routing_surface, "Runtime: `docs/spec/` and `docs/runbook/`");
@@ -220,7 +220,7 @@ fn packaged_decodex_skills_preserve_research_promotion_and_program_boundaries() 
 
 	assert_contains(&skill_surface, "Research/design");
 	assert_contains(&skill_surface, "output is latent until promoted");
-	assert_contains(&skill_surface, "$deliberation:challenge");
+	assert_contains(&skill_surface, "$deliberation:skeptic");
 	assert_contains(&skill_surface, "`research-promote`");
 	assert_contains(
 		&skill_surface,
@@ -264,19 +264,19 @@ fn packaged_decodex_skills_preserve_research_promotion_and_program_boundaries() 
 }
 
 #[test]
-fn packaged_research_and_challenge_skills_encode_decodex_methodology() {
+fn packaged_research_and_skeptic_skills_encode_decodex_methodology() {
 	let research_surface = format!(
-		"{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{DELIBERATION_CHALLENGE_SKILL}\n{DELIBERATION_SCOUT_SKILL}\n{DELIBERATION_GRILL_SKILL}\n{DELIBERATION_GATE_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
+		"{RESEARCH_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{DELIBERATION_SKEPTIC_SKILL}\n{DELIBERATION_SCOUT_SKILL}\n{DELIBERATION_GRILL_SKILL}\n{DELIBERATION_GATE_REF}\n{RESEARCH_LIFECYCLE_REF}\n{RESEARCH_CONTRACT_REF}\n{RESEARCH_PROMOTION_REF}"
 	);
 
 	assert_contains(&research_surface, "bounded Decodex research");
 	assert_contains_normalized(
 		&research_surface,
-		"first-principles probe, scout evidence, options, judgment, challenge, decision",
+		"first-principles probe, scout evidence, options, judgment, skeptic review, decision",
 	);
 	assert_contains(&research_surface, "Deliberation Gate");
 	assert_contains(&research_surface, "Inline exception");
-	assert_contains(&research_surface, "$deliberation:challenge");
+	assert_contains(&research_surface, "$deliberation:skeptic");
 	assert_contains_normalized(&research_surface, "No evidence, no claim");
 	assert_contains(
 		&research_surface,
@@ -289,7 +289,7 @@ fn packaged_research_and_challenge_skills_encode_decodex_methodology() {
 	assert_contains(&research_surface, "repo source");
 	assert_contains(&research_surface, "live readback");
 	assert_contains(&research_surface, "status quo");
-	assert_contains(&research_surface, "Challenge-ready");
+	assert_contains(&research_surface, "skeptic pass");
 	assert_contains(&research_surface, "not_decision_ready");
 	assert_contains_normalized(
 		&research_surface,
@@ -448,7 +448,7 @@ fn decodex_lifecycle_specialist_skills_stay_explicit_only() {
 #[test]
 fn codebase_knowledge_and_deliberation_skills_allow_implicit_routing() {
 	let implicit_surface = format!(
-		"{CODEBASE_WORK_SKILL}\n{REPO_DEBUGGING_SKILL}\n{REPO_VERIFICATION_SKILL}\n{REPO_REVIEW_FEEDBACK_SKILL}\n{REPO_DEPENDENCY_POLICY_SKILL}\n{KNOWLEDGE_DOCS_SKILL}\n{KNOWLEDGE_DOCS_DRIFT_SKILL}\n{KNOWLEDGE_OKF_SKILL}\n{KNOWLEDGE_REPO_MEMORY_SKILL}\n{KNOWLEDGE_WRITEBACK_SKILL}\n{DELIBERATION_CHALLENGE_SKILL}\n{DELIBERATION_SCOUT_SKILL}\n{DELIBERATION_GRILL_SKILL}"
+		"{CODEBASE_WORK_SKILL}\n{REPO_DEBUGGING_SKILL}\n{REPO_VERIFICATION_SKILL}\n{REPO_REVIEW_FEEDBACK_SKILL}\n{REPO_DEPENDENCY_POLICY_SKILL}\n{KNOWLEDGE_DOCS_SKILL}\n{KNOWLEDGE_DOCS_DRIFT_SKILL}\n{KNOWLEDGE_OKF_SKILL}\n{KNOWLEDGE_REPO_MEMORY_SKILL}\n{KNOWLEDGE_WRITEBACK_SKILL}\n{DELIBERATION_SKEPTIC_SKILL}\n{DELIBERATION_SCOUT_SKILL}\n{DELIBERATION_GRILL_SKILL}"
 	);
 
 	assert_not_contains(&implicit_surface, "allow_implicit_invocation: false");

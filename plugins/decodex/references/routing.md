@@ -10,7 +10,7 @@ Use when Decodex work crosses research, planning, ops, commit, or landing.
   validation, completion claims, and support-agent boundaries.
 - Drift/writeback: use `$knowledge:docs-drift` or `$knowledge:writeback`.
 - Research/design: use `research`; output is latent until promoted.
-- Challenge: use `$deliberation:challenge`; it can block claims but creates no
+- Skeptic: use `$deliberation:skeptic`; it can block claims but creates no
   authority.
 - Promotion: use `research-promote` only after explicit acceptance.
 - Planning: use `planning` after promotion or explicit execution instruction.
@@ -27,7 +27,7 @@ Use when Decodex work crosses research, planning, ops, commit, or landing.
 ## Boundaries
 
 - Research never queues work, mutates Linear, implements, sets goals, or dispatches
-  runtime Program nodes; read-only scout/challenge support agents are allowed by the
+  runtime Program nodes; read-only scout/skeptic support agents are allowed by the
   research skill. Research is not runtime `compact_current_head_review`.
 - Program Intake dispatches persisted Program nodes; queue labels are not scheduling.
 - Ordinary intake starts from `decodex:queued:<service-id>` and still must pass
