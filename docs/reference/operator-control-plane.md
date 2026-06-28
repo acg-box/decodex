@@ -664,15 +664,16 @@ Worktree visibility follows the owning dashboard section:
   status sets `attention_next_action = run_stale_active_recovery` and points to
   `decodex recover stale-active diagnose <ISSUE>` followed by
   `decodex recover stale-active release <ISSUE> --dry-run`. The release command
-  preserves any queue label, treats bare stale thread/turn refs as recoverable only
-  after process/thread/protocol/private/worktree/lineage checks are clean, blocks on
-  review-policy checkpoints and issue-id or issue-identifier PR lineage, reads local
-  runtime evidence under both issue id keys, terminalizes stale local ownership as
+  preserves any queue label, treats dead-process runtime telemetry as recoverable
+  only after process identity proves the recorded child is gone and
+  worktree/branch/private/lineage checks are clean, blocks on review-policy
+  checkpoints and issue-id or issue-identifier PR lineage, reads local runtime
+  evidence under both issue id keys, terminalizes stale local ownership as
   `terminal_guarded`, writes a local private `stale_active_release` audit when a
   stale run attempt exists, repeats the run-lease/shared-claim guard, rechecks tracker
   labels, and removes only the service active label as the final mutation. If a
-  retained worktree has tracked changes, untracked non-runtime files, or cannot be
-  inspected, status uses
+  retained worktree has tracked changes, untracked non-runtime files, unmerged local
+  commits, unavailable default-branch proof, or cannot be inspected, status uses
   `inspect_retained_worktree_changes_before_stale_active_recovery` instead.
 - `Recovery Worktrees` means the path is retained local state after the authoritative
   runtime owner is gone or cannot explain it as active, review/landing, or queued

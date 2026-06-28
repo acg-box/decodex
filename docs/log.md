@@ -11,15 +11,18 @@
   `decodex recover stale-active diagnose [ISSUE]` and
   `decodex recover stale-active release <ISSUE>` now own the supported path for
   `linear_active_label_present` lanes with no run lease, no live process, no tracked
-  or untracked non-runtime worktree changes, no uninspectable worktree, no active
-  app-server thread marker, no protocol/activity-summary evidence, no private
-  progress evidence, and no PR/review lineage or review-policy checkpoint under
-  either issue id key. The release path revalidates before mutation, preflights local
-  cleanup, terminalizes local stale ownership, records `stale_active_release` when a
-  matching stale run exists, repeats the run-lease/shared-claim guard, rechecks
-  tracker labels, and removes only the service active label as the final mutation;
-  stale thread/turn refs alone are recoverable metadata only after all progress
-  checks are clean. Updated the
+  or untracked non-runtime worktree changes, no unmerged retained branch commits, no
+  unavailable retained default-branch proof, no uninspectable worktree, no private
+  source/review progress evidence, and no PR/review lineage or review-policy
+  checkpoint under either issue id key. Dead-process runtime telemetry such as stale
+  thread status, active local control-channel files,
+  protocol events, child/protocol summaries, failed control attempts, phase-goal rows,
+  and probing checkpoints is recoverable only after process identity proves the child
+  is gone and worktree/branch/lineage/progress guards are clean. The release path
+  revalidates before mutation, preflights local cleanup, terminalizes local stale
+  ownership, records `stale_active_release` when a matching stale run exists, repeats
+  the run-lease/shared-claim guard, rechecks tracker labels, and removes only the
+  service active label as the final mutation. Updated the
   lane-control spec, recovery runbook, and operator control-plane reference to
   distinguish this from missing-issue ghost-lane recovery and retained review-handoff
   recovery.
