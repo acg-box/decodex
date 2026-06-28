@@ -78,6 +78,8 @@ include!("orchestrator/git_ops.rs");
 
 include!("orchestrator/status.rs");
 
+include!("orchestrator/status_render.rs");
+
 include!("orchestrator/selection.rs");
 
 include!("orchestrator/agent_evidence.rs");
