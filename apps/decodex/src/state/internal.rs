@@ -118,7 +118,6 @@ pub(crate) struct CodexAccountMarker<'a> {
 #[derive(Clone)]
 struct DispatchSlotConfig {
 	root: PathBuf,
-	slot_limit: DispatchSlotLimit,
 }
 
 struct IssueClaimGuard {

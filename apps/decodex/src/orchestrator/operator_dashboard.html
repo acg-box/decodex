@@ -4696,8 +4696,6 @@
 					case "normal_dispatch":
 					case "eligible_for_dispatch":
 						return "";
-					case "global_concurrency_exhausted":
-						return "";
 					case "issue_needs_attention":
 						return "";
 					default:
@@ -4714,10 +4712,6 @@
 				if (candidate.display_classification === "leased_run") {
 					return COPY.runningInline;
 				}
-				if (candidate.reason === "global_concurrency_exhausted") {
-					return displayToken(candidate.reason);
-				}
-
 				return displayToken(candidate.classification);
 			}
 
@@ -4742,9 +4736,6 @@
 				}
 				if (candidate.attention?.retry_budget_attempt_count != null) {
 					return "retry_budget_attempt_count";
-				}
-				if (candidate.reason === "global_concurrency_exhausted") {
-					return "";
 				}
 				if (["normal_dispatch", "eligible_for_dispatch"].includes(candidate.reason)) {
 					return "";

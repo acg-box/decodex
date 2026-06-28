@@ -2,16 +2,12 @@
 
 use std::{
 	collections::{BTreeSet, HashMap},
-	fmt::{self, Formatter},
 	fs,
 	path::{Component, Path},
 };
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use serde::{
-	Deserialize, Deserializer, Serialize, Serializer,
-	de::{Error, Visitor},
-};
+use serde::{Deserialize, Serialize};
 
 use crate::prelude::eyre;
 
@@ -228,7 +224,6 @@ pub struct WorkflowExecution {
 	max_attempts: u32,
 	max_turns: u32,
 	max_retry_backoff_ms: u64,
-	max_concurrent_agents: WorkflowConcurrencyLimit,
 	canonicalize_commands: Vec<String>,
 	verify_commands: Vec<String>,
 	gate_profiles: HashMap<String, WorkflowGateProfile>,
@@ -268,11 +263,6 @@ impl WorkflowExecution {
 	/// Repo-owned workspace lifecycle hooks.
 	pub fn workspace_hooks(&self) -> &WorkflowWorkspaceHooks {
 		&self.workspace_hooks
-	}
-
-	/// Maximum concurrent agents allowed for this repository.
-	pub fn max_concurrent_agents(&self) -> WorkflowConcurrencyLimit {
-		self.max_concurrent_agents
 	}
 
 	/// Full default repo gate declared directly on `[execution]`.
@@ -315,8 +305,6 @@ impl WorkflowExecution {
 	}
 
 	fn validate(&self) -> crate::prelude::Result<()> {
-		self.max_concurrent_agents.validate()?;
-
 		validate_string_entries("execution.canonicalize_commands", &self.canonicalize_commands)?;
 		validate_string_entries("execution.verify_commands", &self.verify_commands)?;
 
@@ -514,112 +502,6 @@ impl WorkflowContext {
 	}
 }
 
-struct WorkflowConcurrencyLimitVisitor;
-impl<'de> Visitor<'de> for WorkflowConcurrencyLimitVisitor {
-	type Value = WorkflowConcurrencyLimit;
-
-	fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-		formatter.write_str("an integer greater than or equal to zero")
-	}
-
-	fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E>
-	where
-		E: Error,
-	{
-		if value < 0 {
-			return Err(E::custom(
-				"`execution.max_concurrent_agents` must be greater than or equal to zero.",
-			));
-		}
-		if value == 0 {
-			return Ok(WorkflowConcurrencyLimit::Unlimited);
-		}
-
-		u32::try_from(value)
-			.map(WorkflowConcurrencyLimit::Limited)
-			.map_err(|_error| E::custom("`execution.max_concurrent_agents` exceeds `u32::MAX`."))
-	}
-
-	fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
-	where
-		E: Error,
-	{
-		if value == 0 {
-			return Ok(WorkflowConcurrencyLimit::Unlimited);
-		}
-
-		u32::try_from(value)
-			.map(WorkflowConcurrencyLimit::Limited)
-			.map_err(|_error| E::custom("`execution.max_concurrent_agents` exceeds `u32::MAX`."))
-	}
-
-	fn visit_str<E>(self, _value: &str) -> std::result::Result<Self::Value, E>
-	where
-		E: Error,
-	{
-		Err(E::custom(
-			"`execution.max_concurrent_agents` must be an integer greater than or equal to zero.",
-		))
-	}
-}
-
-/// Project-level concurrent agent limit.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WorkflowConcurrencyLimit {
-	/// No project-level concurrent-agent cap.
-	Unlimited,
-	/// A positive project-level concurrent-agent cap.
-	Limited(u32),
-}
-impl WorkflowConcurrencyLimit {
-	/// Return whether `active_count` still leaves dispatch capacity.
-	pub fn has_capacity(self, active_count: usize) -> bool {
-		match self {
-			Self::Unlimited => true,
-			Self::Limited(limit) => active_count < limit as usize,
-		}
-	}
-
-	/// Return the finite dispatch-slot limit, or `None` when unlimited.
-	pub fn dispatch_slot_limit(self) -> Option<u32> {
-		match self {
-			Self::Unlimited => None,
-			Self::Limited(limit) => Some(limit),
-		}
-	}
-
-	fn validate(self) -> crate::prelude::Result<()> {
-		if matches!(self, Self::Limited(0)) {
-			eyre::bail!(
-				"`execution.max_concurrent_agents` finite limits must be greater than zero."
-			);
-		}
-
-		Ok(())
-	}
-}
-
-impl<'de> Deserialize<'de> for WorkflowConcurrencyLimit {
-	fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		deserializer.deserialize_any(WorkflowConcurrencyLimitVisitor)
-	}
-}
-
-impl Serialize for WorkflowConcurrencyLimit {
-	fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
-		match self {
-			Self::Unlimited => serializer.serialize_u32(0),
-			Self::Limited(limit) => serializer.serialize_u32(*limit),
-		}
-	}
-}
-
 /// Supported tracker providers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -739,9 +621,7 @@ mod tests {
 
 	use crate::{
 		prelude::Result,
-		workflow::{
-			TrackerProvider, WorkflowConcurrencyLimit, WorkflowDocument, WorkflowGateMatchMode,
-		},
+		workflow::{TrackerProvider, WorkflowDocument, WorkflowGateMatchMode},
 	};
 
 	enum Edit<'a> {
@@ -784,7 +664,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 4
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 2
 canonicalize_commands = ["cargo make fmt"]
 verify_commands = ["cargo make test"]
 gate_profiles = {}
@@ -810,10 +689,6 @@ Use `cargo make`.
 		assert_eq!(document.frontmatter().execution().max_attempts(), 3);
 		assert_eq!(document.frontmatter().execution().max_turns(), 4);
 		assert_eq!(document.frontmatter().execution().max_retry_backoff_ms(), 300_000);
-		assert_eq!(
-			document.frontmatter().execution().max_concurrent_agents(),
-			WorkflowConcurrencyLimit::Limited(2)
-		);
 		assert_eq!(document.frontmatter().execution().canonicalize_commands(), ["cargo make fmt"]);
 		assert_eq!(document.frontmatter().execution().verify_commands(), ["cargo make test"]);
 		assert_eq!(
@@ -847,7 +722,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 gate_profiles = {}
 canonicalize_commands = []
 verify_commands = []
@@ -923,7 +797,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 canonicalize_commands = ["cargo make fmt"]
 verify_commands = ["cargo make test"]
 
@@ -981,7 +854,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 canonicalize_commands = ["cargo make fmt"]
 verify_commands = ["cargo make test"]
 
@@ -1039,7 +911,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 canonicalize_commands = ["cargo make fmt"]
 verify_commands = ["cargo make test"]
 
@@ -1097,7 +968,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 canonicalize_commands = ["cargo make fmt"]
 verify_commands = ["cargo make test"]
 
@@ -1243,7 +1113,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 gate_profiles = {}
 canonicalize_commands = []
 verify_commands = []
@@ -1293,7 +1162,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 gate_profiles = {}
 canonicalize_commands = []
 verify_commands = []
@@ -1359,8 +1227,8 @@ completed_state = "Done""#,
 			(
 				"execution field",
 				Replace(
-					"max_concurrent_agents = 1",
-					"max_concurrent_agents = 1\nunexpected_execution_field = [\"cargo make test\"]",
+					"verify_commands = []",
+					"verify_commands = []\nunexpected_execution_field = [\"cargo make test\"]",
 				),
 				"unexpected_execution_field",
 			),
@@ -1401,11 +1269,6 @@ transport = "stdio://"
 				"agent",
 			),
 			("missing max_attempts", Remove("max_attempts = 3\n"), "max_attempts"),
-			(
-				"missing max_concurrent_agents",
-				Remove("max_concurrent_agents = 1\n"),
-				"max_concurrent_agents",
-			),
 			(
 				"empty terminal states",
 				Replace(
@@ -1504,7 +1367,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 gate_profiles = {{}}
 canonicalize_commands = []
 verify_commands = []
@@ -1558,7 +1420,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 gate_profiles = {{}}
 canonicalize_commands = []
 verify_commands = []
@@ -1716,7 +1577,6 @@ transport = "stdio://"
 max_attempts = 5
 max_turns = 6
 max_retry_backoff_ms = 120000
-max_concurrent_agents = 2
 canonicalize_commands = ["cargo make fmt"]
 verify_commands = ["cargo make test"]
 gate_profiles = {}
@@ -1741,51 +1601,6 @@ Then validate the lane.
 		.expect("rendered workflow should parse");
 
 		assert_eq!(reparsed, document);
-	}
-
-	#[test]
-	fn parses_zero_global_concurrency_limit_as_unlimited() {
-		let document = parse_valid_workflow_with(|markdown| {
-			*markdown = markdown.replace("max_concurrent_agents = 1", "max_concurrent_agents = 0");
-		})
-		.expect("zero global concurrency should parse");
-
-		assert_eq!(
-			document.frontmatter().execution().max_concurrent_agents(),
-			WorkflowConcurrencyLimit::Unlimited
-		);
-		assert!(
-			document
-				.to_markdown()
-				.expect("workflow markdown should render")
-				.contains("max_concurrent_agents = 0")
-		);
-	}
-
-	#[test]
-	fn rejects_invalid_global_concurrency_limits() {
-		for (case_name, replacement, expected) in [
-			(
-				"string global concurrency",
-				"max_concurrent_agents = \"unlimited\"",
-				"must be an integer greater than or equal to zero",
-			),
-			(
-				"negative global concurrency",
-				"max_concurrent_agents = -1",
-				"must be greater than or equal to zero",
-			),
-		] {
-			let result = parse_valid_workflow_with(|markdown| {
-				*markdown = markdown.replace("max_concurrent_agents = 1", replacement);
-			});
-			let error = result.expect_err(case_name);
-
-			assert!(
-				error.to_string().contains(expected),
-				"unexpected error for `{case_name}`: {error:?}"
-			);
-		}
 	}
 
 	fn parse_valid_workflow_with(rewrite: impl FnOnce(&mut String)) -> Result<WorkflowDocument> {
@@ -1819,7 +1634,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 gate_profiles = {}
 canonicalize_commands = []
 verify_commands = []

@@ -2652,7 +2652,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 3
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 0
 gate_profiles = {}
 canonicalize_commands = ["cargo make fmt"]
 verify_commands = ["cargo make test"]
