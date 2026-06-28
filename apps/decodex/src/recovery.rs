@@ -54,6 +54,7 @@ const GHOST_LANE_CLEANUP_EVENT: &str = "ghost_lane_cleanup";
 const GHOST_LANE_TERMINAL_STATUS: &str = "terminal_guarded";
 const STALE_ACTIVE_CLASSIFICATION: &str = "stale_active_ownership";
 const STALE_ACTIVE_BLOCKED_CLASSIFICATION: &str = "stale_active_recovery_blocked";
+const STALE_ACTIVE_STATE_RESTORE_CLASSIFICATION: &str = "stale_active_state_restore_pending";
 const STALE_ACTIVE_RELEASE_EVENT: &str = "stale_active_release";
 const STALE_ACTIVE_RECOVERY_SCHEMA: &str = "decodex.stale_active_recovery_private_event/1";
 const MCP_TEST_FIXTURE_SOURCE: &str = "mcp-test";
@@ -252,7 +253,10 @@ struct StaleActiveDiagnostic {
 }
 impl StaleActiveDiagnostic {
 	fn recoverable(&self) -> bool {
-		self.classification == STALE_ACTIVE_CLASSIFICATION && self.blockers.is_empty()
+		matches!(
+			self.classification.as_str(),
+			STALE_ACTIVE_CLASSIFICATION | STALE_ACTIVE_STATE_RESTORE_CLASSIFICATION
+		) && self.blockers.is_empty()
 	}
 }
 
@@ -449,8 +453,9 @@ pub(crate) fn run_review_handoff_diagnose(
 	}
 
 	let diagnostics = match match request.issue.as_deref() {
-		Some(issue_identifier) =>
-			diagnose_issue(&context, issue_identifier).map(|diagnostic| vec![diagnostic]),
+		Some(issue_identifier) => {
+			diagnose_issue(&context, issue_identifier).map(|diagnostic| vec![diagnostic])
+		},
 		None => diagnose_all_retained_review_worktrees(&context),
 	} {
 		Ok(diagnostics) => diagnostics,
@@ -1020,8 +1025,9 @@ fn remember_recovery_tracker_backoff_message(
 		let (reset_unix_epoch, reset_source) =
 			match parse_recovery_rate_limit_reset_unix_epoch(&message) {
 				Some(reset) if reset > now_unix_epoch => (reset, "linear"),
-				_ =>
-					(now_unix_epoch.saturating_add(LINEAR_RATE_LIMIT_BACKOFF_SECS), "local_default"),
+				_ => {
+					(now_unix_epoch.saturating_add(LINEAR_RATE_LIMIT_BACKOFF_SECS), "local_default")
+				},
 			};
 
 		(
@@ -1580,10 +1586,12 @@ fn marker_head_binding_mismatch(
 			local_head_oid,
 		) {
 			ReviewHandoffLineage::Descends => None,
-			ReviewHandoffLineage::Diverged =>
-				Some(("review_handoff_lineage_mismatch", "review_handoff.pr_head_oid")),
-			ReviewHandoffLineage::Unknown =>
-				Some(("review_handoff_lineage_check_failed", "review_handoff.pr_head_oid")),
+			ReviewHandoffLineage::Diverged => {
+				Some(("review_handoff_lineage_mismatch", "review_handoff.pr_head_oid"))
+			},
+			ReviewHandoffLineage::Unknown => {
+				Some(("review_handoff_lineage_check_failed", "review_handoff.pr_head_oid"))
+			},
 		}
 	} else if let Some(orchestration) = context.existing_orchestration {
 		orchestration_binding_mismatch(context, orchestration, local_head_oid)
@@ -2178,13 +2186,14 @@ where
 		&mut evidence,
 		&mut blockers,
 	)?;
-	apply_stale_active_local_cleanup_reentry(
-		StaleActiveLocalCleanupReentryInput {
+	apply_stale_active_release_reentries(
+		StaleActiveReleaseReentryInput {
 			run: latest_run,
 			run_lease,
 			active_shared_claim,
-			active_label_present: labels.active_label_present,
-			needs_attention_label_present: labels.needs_attention_label_present,
+			labels: &labels,
+			issue: &issue,
+			tracker_policy: workflow.frontmatter().tracker(),
 			worktree_state: &worktree_state,
 			control_channel: &control_channel,
 		},
@@ -2193,7 +2202,7 @@ where
 	);
 
 	let (classification, reason, next_action) =
-		stale_active_diagnostic_outcome(&issue.identifier, &blockers);
+		stale_active_diagnostic_outcome(&issue.identifier, &evidence, &blockers);
 
 	Ok(StaleActiveDiagnostic {
 		project_id: project_id.to_owned(),
@@ -2221,16 +2230,31 @@ where
 
 fn stale_active_diagnostic_outcome(
 	issue_identifier: &str,
+	evidence: &[String],
 	blockers: &[String],
 ) -> (String, String, String) {
 	if blockers.is_empty() {
-		(
-			String::from(STALE_ACTIVE_CLASSIFICATION),
-			String::from("tracker_issue_has_stale_active_label_without_live_or_retained_progress"),
-			format!(
-				"Run `decodex recover stale-active release {issue_identifier} --dry-run`, then rerun without `--dry-run` if the report stays safe.",
-			),
-		)
+		if evidence_contains(evidence, "stale_active_startable_state_restore_pending") {
+			(
+				String::from(STALE_ACTIVE_STATE_RESTORE_CLASSIFICATION),
+				String::from(
+					"queued_issue_needs_startable_state_restore_after_stale_active_release",
+				),
+				format!(
+					"Run `decodex recover stale-active release {issue_identifier} --dry-run`, then rerun without `--dry-run` if the report stays safe.",
+				),
+			)
+		} else {
+			(
+				String::from(STALE_ACTIVE_CLASSIFICATION),
+				String::from(
+					"tracker_issue_has_stale_active_label_without_live_or_retained_progress",
+				),
+				format!(
+					"Run `decodex recover stale-active release {issue_identifier} --dry-run`, then rerun without `--dry-run` if the report stays safe.",
+				),
+			)
+		}
 	} else {
 		(
 			String::from(STALE_ACTIVE_BLOCKED_CLASSIFICATION),
@@ -2242,6 +2266,31 @@ fn stale_active_diagnostic_outcome(
 	}
 }
 
+struct StaleActiveStartableStateRestoreReentryInput<'a> {
+	run: Option<&'a ProjectRunStatus>,
+	run_lease: bool,
+	active_shared_claim: bool,
+	queue_label_present: bool,
+	active_label_present: bool,
+	needs_attention_label_present: bool,
+	issue_state: &'a str,
+	in_progress_state: &'a str,
+	startable_state_id_present: bool,
+	worktree_state: &'a str,
+	control_channel: &'a str,
+}
+
+struct StaleActiveReleaseReentryInput<'a> {
+	run: Option<&'a ProjectRunStatus>,
+	run_lease: bool,
+	active_shared_claim: bool,
+	labels: &'a StaleActiveLabelSnapshot,
+	issue: &'a TrackerIssue,
+	tracker_policy: &'a WorkflowTracker,
+	worktree_state: &'a str,
+	control_channel: &'a str,
+}
+
 struct StaleActiveLocalCleanupReentryInput<'a> {
 	run: Option<&'a ProjectRunStatus>,
 	run_lease: bool,
@@ -2250,6 +2299,52 @@ struct StaleActiveLocalCleanupReentryInput<'a> {
 	needs_attention_label_present: bool,
 	worktree_state: &'a str,
 	control_channel: &'a str,
+}
+
+fn apply_stale_active_release_reentries(
+	input: StaleActiveReleaseReentryInput<'_>,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) {
+	apply_stale_active_local_cleanup_reentry(
+		StaleActiveLocalCleanupReentryInput {
+			run: input.run,
+			run_lease: input.run_lease,
+			active_shared_claim: input.active_shared_claim,
+			active_label_present: input.labels.active_label_present,
+			needs_attention_label_present: input.labels.needs_attention_label_present,
+			worktree_state: input.worktree_state,
+			control_channel: input.control_channel,
+		},
+		evidence,
+		blockers,
+	);
+	apply_stale_active_startable_state_restore_reentry(
+		StaleActiveStartableStateRestoreReentryInput {
+			run: input.run,
+			run_lease: input.run_lease,
+			active_shared_claim: input.active_shared_claim,
+			queue_label_present: input.labels.queue_label_present,
+			active_label_present: input.labels.active_label_present,
+			needs_attention_label_present: input.labels.needs_attention_label_present,
+			issue_state: &input.issue.state.name,
+			in_progress_state: input.tracker_policy.in_progress_state(),
+			startable_state_id_present: stale_active_startable_state_id_present(&input),
+			worktree_state: input.worktree_state,
+			control_channel: input.control_channel,
+		},
+		evidence,
+		blockers,
+	);
+}
+
+fn stale_active_startable_state_id_present(input: &StaleActiveReleaseReentryInput<'_>) -> bool {
+	input
+		.tracker_policy
+		.startable_states()
+		.first()
+		.and_then(|state_name| input.issue.state_id_for_name(state_name))
+		.is_some()
 }
 
 fn apply_stale_active_local_cleanup_reentry(
@@ -2263,14 +2358,72 @@ fn apply_stale_active_local_cleanup_reentry(
 	}
 }
 
+fn apply_stale_active_startable_state_restore_reentry(
+	input: StaleActiveStartableStateRestoreReentryInput<'_>,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) {
+	if stale_active_startable_state_restore_reentry_allowed(input, evidence, blockers) {
+		evidence.push(String::from("stale_active_startable_state_restore_pending"));
+		blockers.retain(|blocker| !stale_active_startable_state_restore_reentry_blocker(blocker));
+	}
+}
+
+fn stale_active_startable_state_restore_reentry_allowed(
+	input: StaleActiveStartableStateRestoreReentryInput<'_>,
+	evidence: &[String],
+	blockers: &[String],
+) -> bool {
+	if blockers.is_empty()
+		|| !blockers
+			.iter()
+			.all(|blocker| stale_active_startable_state_restore_reentry_blocker(blocker.as_str()))
+	{
+		return false;
+	}
+	let Some(run) = input.run else {
+		return false;
+	};
+
+	input.queue_label_present
+		&& !input.active_label_present
+		&& !input.needs_attention_label_present
+		&& !input.run_lease
+		&& !input.active_shared_claim
+		&& input.issue_state == input.in_progress_state
+		&& input.startable_state_id_present
+		&& run.status() == GHOST_LANE_TERMINAL_STATUS
+		&& input.worktree_state == "missing"
+		&& input.control_channel != "missing"
+		&& !input.control_channel.ends_with(":active")
+		&& evidence_contains(evidence, "control_channel_inactive_or_file_missing")
+		&& evidence_contains(evidence, "only_stale_active_or_failed_control_evidence_present")
+		&& evidence_contains(evidence, "review_lineage_missing")
+		&& evidence_contains(evidence, "stale_active_release_audit_present")
+		&& evidence_contains(evidence, "worktree_mapping_missing")
+		&& evidence_contains(evidence, "worktree_missing")
+}
+
+fn stale_active_startable_state_restore_reentry_blocker(blocker: &str) -> bool {
+	matches!(
+		blocker,
+		"active_label_missing"
+			| "child_agent_activity_present"
+			| "protocol_activity_present"
+			| "protocol_event_evidence_present"
+	)
+}
+
 fn stale_active_local_cleanup_reentry_allowed(
 	input: StaleActiveLocalCleanupReentryInput<'_>,
 	evidence: &[String],
 	blockers: &[String],
 ) -> bool {
-	if blockers.is_empty() || !blockers.iter().all(|blocker| {
-		stale_active_local_cleanup_reentry_blocker(blocker.as_str())
-	}) {
+	if blockers.is_empty()
+		|| !blockers
+			.iter()
+			.all(|blocker| stale_active_local_cleanup_reentry_blocker(blocker.as_str()))
+	{
 		return false;
 	}
 	let Some(run) = input.run else {
@@ -2837,8 +2990,9 @@ where
 {
 	let refreshed = match tracker.refresh_issues(&[run.issue_id().to_owned()]) {
 		Ok(refreshed) => refreshed,
-		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, run.issue_id()) =>
-			Vec::new(),
+		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, run.issue_id()) => {
+			Vec::new()
+		},
 		Err(error) => return Err(error),
 	};
 
@@ -3051,8 +3205,9 @@ fn ghost_lane_has_mcp_test_fixture_identity(
 
 fn ghost_lane_mcp_test_fixture_issue_identifier_matches(issue_identifier: Option<&str>) -> bool {
 	match issue_identifier {
-		Some(value) =>
-			value == MCP_TEST_FIXTURE_ISSUE_ID || value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER,
+		Some(value) => {
+			value == MCP_TEST_FIXTURE_ISSUE_ID || value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER
+		},
 		None => true,
 	}
 }
@@ -3076,11 +3231,13 @@ fn ghost_lane_private_events_are_mcp_test_recovery_evidence(
 
 fn ghost_lane_private_event_is_mcp_test_control_evidence(event: &PrivateExecutionEvent) -> bool {
 	match event.event_type() {
-		"control_action" =>
+		"control_action" => {
 			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE)
-				|| ghost_lane_cli_control_action_matches_mcp_test_fixture(event.payload()),
-		"lane_control/steer/requested" | "lane_control/interrupt/requested" =>
-			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE),
+				|| ghost_lane_cli_control_action_matches_mcp_test_fixture(event.payload())
+		},
+		"lane_control/steer/requested" | "lane_control/interrupt/requested" => {
+			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE)
+		},
 		_ => false,
 	}
 }
@@ -3371,10 +3528,51 @@ where
 	ensure_stale_active_review_authority_missing(tracker, state_store, &final_diagnostic)?;
 	ensure_stale_active_run_claim_guard(config, state_store, &final_diagnostic)?;
 	let issue = lookup_stale_active_issue(tracker, &diagnostic.issue_identifier)?;
+	restore_stale_active_startable_state_if_queued(tracker, workflow, &issue, &final_diagnostic)?;
 
 	tracker::set_issue_label_presence(tracker, &issue, &active_label, false)?;
 
 	Ok(())
+}
+
+fn restore_stale_active_startable_state_if_queued<T>(
+	tracker: &T,
+	workflow: &WorkflowDocument,
+	issue: &TrackerIssue,
+	diagnostic: &StaleActiveDiagnostic,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	if !diagnostic.queue_label_present {
+		return Ok(());
+	}
+
+	let tracker_policy = workflow.frontmatter().tracker();
+	if tracker_policy.startable_states().iter().any(|state| state == &issue.state.name) {
+		return Ok(());
+	}
+	if issue.state.name != tracker_policy.in_progress_state() {
+		eyre::bail!(
+			"`recover stale-active release` refused `{}` because queued issue state `{}` is not `{}` or a configured startable state.",
+			diagnostic.issue_identifier,
+			issue.state.name,
+			tracker_policy.in_progress_state()
+		);
+	}
+
+	let startable_state = tracker_policy.startable_states().first().ok_or_else(|| {
+		eyre::eyre!("Workflow tracker startable_states must contain at least one state.")
+	})?;
+	let state_id = issue.state_id_for_name(startable_state).ok_or_else(|| {
+		eyre::eyre!(
+			"Issue `{}` team does not expose configured startable state `{}`.",
+			issue.identifier,
+			startable_state
+		)
+	})?;
+
+	tracker.update_issue_state(&issue.id, state_id)
 }
 
 fn refreshed_stale_active_release_diagnostic<T>(
@@ -6404,6 +6602,7 @@ mod tests {
 		comments: Vec<TrackerComment>,
 		refresh_queries: RefCell<Vec<Vec<String>>>,
 		label_removals: RefCell<Vec<(String, Vec<String>)>>,
+		state_updates: RefCell<Vec<(String, String)>>,
 	}
 	impl GhostLaneTestTracker {
 		fn missing() -> Self {
@@ -6415,6 +6614,7 @@ mod tests {
 				comments: Vec::new(),
 				refresh_queries: RefCell::new(Vec::new()),
 				label_removals: RefCell::new(Vec::new()),
+				state_updates: RefCell::new(Vec::new()),
 			}
 		}
 
@@ -6427,6 +6627,7 @@ mod tests {
 				comments: Vec::new(),
 				refresh_queries: RefCell::new(Vec::new()),
 				label_removals: RefCell::new(Vec::new()),
+				state_updates: RefCell::new(Vec::new()),
 			}
 		}
 
@@ -6449,6 +6650,7 @@ mod tests {
 				comments: Vec::new(),
 				refresh_queries: RefCell::new(Vec::new()),
 				label_removals: RefCell::new(Vec::new()),
+				state_updates: RefCell::new(Vec::new()),
 			}
 		}
 
@@ -6461,6 +6663,7 @@ mod tests {
 				comments: Vec::new(),
 				refresh_queries: RefCell::new(Vec::new()),
 				label_removals: RefCell::new(Vec::new()),
+				state_updates: RefCell::new(Vec::new()),
 			}
 		}
 	}
@@ -6521,11 +6724,8 @@ mod tests {
 			Ok(self.comments.clone())
 		}
 
-		fn update_issue_state(
-			&self,
-			_issue_id: &str,
-			_state_id: &str,
-		) -> crate::prelude::Result<()> {
+		fn update_issue_state(&self, issue_id: &str, state_id: &str) -> crate::prelude::Result<()> {
+			self.state_updates.borrow_mut().push((issue_id.to_owned(), state_id.to_owned()));
 			Ok(())
 		}
 
@@ -7577,11 +7777,7 @@ token_env_var = "HOME"
 		let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 		assert_eq!(diagnostic.worktree_state, "default_branch_unavailable");
-		assert!(
-			diagnostic
-				.blockers
-				.contains(&String::from("worktree_default_branch_unavailable"))
-		);
+		assert!(diagnostic.blockers.contains(&String::from("worktree_default_branch_unavailable")));
 		assert!(!diagnostic.recoverable());
 	}
 
@@ -7594,7 +7790,8 @@ token_env_var = "HOME"
 		);
 		let active_label = tracker::automation_active_label(context.config.service_id());
 		let queue_label = tracker::automation_queue_label(context.config.service_id());
-		let mut issue = sample_issue_with_labels("In Progress", &[active_label.clone(), queue_label]);
+		let mut issue =
+			sample_issue_with_labels("In Progress", &[active_label.clone(), queue_label]);
 		let worktree_path = context.config.worktree_root().join("PUB-1626");
 
 		issue.identifier = String::from("PUB-1626");
@@ -7633,11 +7830,7 @@ token_env_var = "HOME"
 
 		assert_eq!(diagnostic.classification, STALE_ACTIVE_CLASSIFICATION);
 		assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
-		assert!(
-			diagnostic
-				.evidence
-				.contains(&String::from("stale_active_local_cleanup_complete"))
-		);
+		assert!(diagnostic.evidence.contains(&String::from("stale_active_local_cleanup_complete")));
 		super::apply_stale_active_release_with_tracker(
 			&tracker,
 			&context.config,
@@ -7649,6 +7842,77 @@ token_env_var = "HOME"
 		assert_eq!(
 			tracker.label_removals.borrow().as_slice(),
 			&[(issue.id.clone(), vec![format!("label-{}", active_label.replace(':', "-"))])]
+		);
+		assert_eq!(
+			tracker.state_updates.borrow().as_slice(),
+			&[(issue.id.clone(), String::from("state-todo"))]
+		);
+	}
+
+	#[test]
+	fn stale_active_release_reentry_restores_startable_state_after_active_label_release() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("In Progress", &[queue_label]);
+		let worktree_path = context.config.worktree_root().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		seed_dead_orphan_runtime_telemetry(&context.state_store, &issue, &worktree_path);
+		context
+			.state_store
+			.update_run_status("run-1626", GHOST_LANE_TERMINAL_STATUS)
+			.expect("run should terminalize");
+		context
+			.state_store
+			.retire_run_control_channel_for_attempt(
+				"run-1626",
+				1,
+				RUN_CONTROL_CHANNEL_STATUS_FAILED,
+			)
+			.expect("control channel should retire");
+		fs::remove_dir_all(&worktree_path).expect("worktree should be removed");
+		context
+			.state_store
+			.clear_worktree_mapping(&issue.id)
+			.expect("issue-id worktree mapping should clear");
+		append_stale_active_release_audit(&context.state_store, &issue.id);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_STATE_RESTORE_CLASSIFICATION);
+		assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
+		assert!(
+			diagnostic
+				.evidence
+				.contains(&String::from("stale_active_startable_state_restore_pending"))
+		);
+		super::apply_stale_active_release_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect("state-restore reentry should complete");
+		assert!(tracker.label_removals.borrow().is_empty());
+		assert_eq!(
+			tracker.state_updates.borrow().as_slice(),
+			&[(issue.id.clone(), String::from("state-todo"))]
 		);
 	}
 
@@ -7701,9 +7965,7 @@ token_env_var = "HOME"
 		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
 		assert!(!diagnostic.recoverable());
 		assert!(
-			!diagnostic
-				.evidence
-				.contains(&String::from("stale_active_local_cleanup_complete"))
+			!diagnostic.evidence.contains(&String::from("stale_active_local_cleanup_complete"))
 		);
 		assert!(diagnostic.blockers.contains(&String::from("protocol_activity_present")));
 	}
@@ -9647,6 +9909,7 @@ token_env_var = "HOME"
 			comments: Vec::new(),
 			refresh_queries: RefCell::new(Vec::new()),
 			label_removals: RefCell::new(Vec::new()),
+			state_updates: RefCell::new(Vec::new()),
 		};
 
 		store
