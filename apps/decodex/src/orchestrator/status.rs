@@ -1,32 +1,25 @@
-#[cfg(target_os = "macos")]
-use std::mem;
-#[cfg(target_os = "macos")]
-use std::mem::MaybeUninit;
+#[cfg(target_os = "macos")] use std::mem;
+#[cfg(target_os = "macos")] use std::mem::MaybeUninit;
 
+use github::{GhCommandResolution, PullRequestMergeViewResponse};
+#[cfg(target_os = "macos")] use libc::PROC_PIDTBSDINFO;
+#[cfg(target_os = "macos")] use libc::SZOMB;
+#[cfg(target_os = "macos")] use libc::c_void;
+#[cfg(target_os = "macos")] use libc::proc_bsdinfo;
 use records::LinearExecutionEventRecord;
-#[cfg(target_os = "macos")]
-use libc::PROC_PIDTBSDINFO;
-#[cfg(target_os = "macos")]
-use libc::SZOMB;
-#[cfg(target_os = "macos")]
-use libc::c_void;
-#[cfg(target_os = "macos")]
-use libc::proc_bsdinfo;
-use github::GhCommandResolution;
-use github::PullRequestMergeViewResponse;
-use state::WORKTREE_PROVENANCE_FILESYSTEM_SCAN;
-use state::WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN;
-use state::WORKTREE_PROVENANCE_LEGACY_UNKNOWN;
-use state::ProjectLoopEvidenceSnapshot;
-use state::ProtocolActivityEventSummary;
-use state::ReviewCheckpointArtifactLookup;
-use state::ReviewLifecycleRecord;
+use state::{
+	ProjectLoopEvidenceSnapshot, ProtocolActivityEventSummary, ReviewCheckpointArtifactLookup,
+	ReviewLifecycleRecord, WORKTREE_PROVENANCE_FILESYSTEM_SCAN,
+	WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN, WORKTREE_PROVENANCE_LEGACY_UNKNOWN,
+};
 
-use crate::agent::REVIEW_POLICY_CONVERGENCE_BUDGET;
-use crate::pull_request::{self, PullRequestLandingGateView};
-use crate::tracker::public_text;
-use crate::worktree;
-use crate::worktree::MergedWorktreeCleanupDebt;
+use crate::{
+	agent::REVIEW_POLICY_CONVERGENCE_BUDGET,
+	pull_request::{self, PullRequestLandingGateView},
+	tracker::public_text,
+	worktree,
+	worktree::MergedWorktreeCleanupDebt,
+};
 
 const QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT: &str = "linear_active_label_present";
 const ATTENTION_ERROR_EVIDENCE_MISSING: &str = "evidence_missing";
@@ -191,8 +184,9 @@ impl PostReviewOrchestrationStatus {
 				review_state,
 				orchestration_marker,
 			),
-			clean_path_landing_gates_satisfied:
-				review_state_clean_path_landing_gates_satisfied(review_state),
+			clean_path_landing_gates_satisfied: review_state_clean_path_landing_gates_satisfied(
+				review_state,
+			),
 			landing_requires_agent_fallback: review_state_landing_requires_agent_fallback(
 				review_state,
 			),
@@ -364,8 +358,7 @@ pub(crate) fn ghost_lane_cleanup_status_blockers<T>(
 where
 	T: IssueTracker,
 {
-	let Some(mut run) =
-		ghost_lane_cleanup_status_run(project, state_store, issue_id, run_id)?
+	let Some(mut run) = ghost_lane_cleanup_status_run(project, state_store, issue_id, run_id)?
 	else {
 		return Ok(vec![String::from("status_current_lane_missing")]);
 	};
@@ -406,9 +399,8 @@ fn ghost_lane_cleanup_status_run(
 	run_id: &str,
 ) -> crate::prelude::Result<Option<OperatorRunStatus>> {
 	let (leased_runs, _) = state_store.list_project_runs_read_only(project.service_id(), 0)?;
-	let Some(run) = leased_runs
-		.into_iter()
-		.find(|run| run.issue_id() == issue_id && run.run_id() == run_id)
+	let Some(run) =
+		leased_runs.into_iter().find(|run| run.issue_id() == issue_id && run.run_id() == run_id)
 	else {
 		return Ok(None);
 	};
@@ -450,9 +442,8 @@ where
 
 	match tracker.get_issue_by_identifier(&selector) {
 		Ok(issue) => Ok(issue),
-		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, &selector) => {
-			Ok(None)
-		},
+		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, &selector) =>
+			Ok(None),
 		Err(error) => Err(error),
 	}
 }
@@ -463,8 +454,12 @@ fn apply_missing_issue_ghost_lane_status_projection(
 	run: &mut OperatorRunStatus,
 ) -> crate::prelude::Result<()> {
 	let current_worktree_keys = ghost_lane_current_worktree_keys(project, state_store)?;
-	let (cleanup_safe, conditions) =
-		missing_issue_ghost_lane_local_conditions(project, state_store, run, &current_worktree_keys)?;
+	let (cleanup_safe, conditions) = missing_issue_ghost_lane_local_conditions(
+		project,
+		state_store,
+		run,
+		&current_worktree_keys,
+	)?;
 
 	for condition in conditions {
 		append_lane_control_condition(run, &condition);
@@ -551,10 +546,7 @@ fn ghost_lane_current_worktree_keys(
 		let issue_identifier = issue_identifier_in_text(mapping.branch_name())
 			.or_else(|| issue_identifier_in_text(&mapping.worktree_path().display().to_string()));
 
-		keys.insert(operator_issue_attention_key(
-			mapping.issue_id(),
-			issue_identifier.as_deref(),
-		));
+		keys.insert(operator_issue_attention_key(mapping.issue_id(), issue_identifier.as_deref()));
 	}
 	for issue_identifier in recoverable_worktree_identifiers(project.worktree_root())? {
 		if project.worktree_root().join(&issue_identifier).exists() {
@@ -591,13 +583,7 @@ fn build_operator_status_snapshot_with_account_mode(
 	let recent_runs = recent_runs
 		.into_iter()
 		.map(|run| {
-			operator_run_status(
-				project,
-				&loop_evidence,
-				&project_display_name,
-				run,
-				now_unix_epoch,
-			)
+			operator_run_status(project, &loop_evidence, &project_display_name, run, now_unix_epoch)
 		})
 		.collect::<crate::prelude::Result<Vec<_>>>()?;
 	let current_lanes = operator_current_lane_statuses(
@@ -665,7 +651,8 @@ fn build_lane_inspect_operator_runs(
 	limit: usize,
 ) -> crate::prelude::Result<Vec<OperatorRunStatus>> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
-	let (current_lanes, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
+	let (current_lanes, recent_runs) =
+		state_store.list_project_runs(project.service_id(), limit)?;
 	let loop_evidence = state_store.project_loop_evidence_snapshot(project.service_id())?;
 	let project_display_name = operator_project_display_name(project);
 	let mut seen_run_ids = HashSet::new();
@@ -749,13 +736,7 @@ fn operator_current_lane_statuses(
 	let mut current_lanes = leased_runs
 		.into_iter()
 		.map(|run| {
-			operator_run_status(
-				project,
-				loop_evidence,
-				project_display_name,
-				run,
-				now_unix_epoch,
-			)
+			operator_run_status(project, loop_evidence, project_display_name, run, now_unix_epoch)
 		})
 		.collect::<crate::prelude::Result<Vec<_>>>()?
 		.into_iter()
@@ -803,7 +784,8 @@ fn operator_latest_attempt_by_issue_key<'a>(
 
 	for run in runs {
 		let issue_key = operator_run_group_key(run);
-		let latest_attempt = latest_attempt_by_issue_key.entry(issue_key).or_insert(run.attempt_number);
+		let latest_attempt =
+			latest_attempt_by_issue_key.entry(issue_key).or_insert(run.attempt_number);
 
 		*latest_attempt = (*latest_attempt).max(run.attempt_number);
 	}
@@ -821,15 +803,10 @@ fn operator_run_is_superseded_by_newer_attempt(
 }
 
 fn global_codex_account_control_status() -> OperatorCodexAccountControlStatus {
-	let account_selector = runtime::global_fixed_account_selector()
-		.ok()
-		.flatten();
+	let account_selector = runtime::global_fixed_account_selector().ok().flatten();
 	let mode = if account_selector.is_some() { "fixed" } else { "balanced" };
 
-	OperatorCodexAccountControlStatus {
-		mode: String::from(mode),
-		account_selector,
-	}
+	OperatorCodexAccountControlStatus { mode: String::from(mode), account_selector }
 }
 
 fn operator_github_cli_authority(project: &ServiceConfig) -> OperatorGitHubCliAuthority {
@@ -976,10 +953,7 @@ where
 	T: IssueTracker,
 {
 	if options.configure_dispatch_slots {
-		state_store.configure_dispatch_slot_root(
-			project.service_id(),
-			project.worktree_root(),
-		)?;
+		state_store.configure_dispatch_slot_root(project.service_id(), project.worktree_root())?;
 	}
 
 	let review_state_inspector = GhPullRequestReviewStateInspector {
@@ -1066,10 +1040,8 @@ where
 		state_store,
 		&records,
 	) {
-		Ok(statuses) => Ok(OperatorExecutionProgramReadback {
-			statuses,
-			issue_metadata_unavailable: false,
-		}),
+		Ok(statuses) =>
+			Ok(OperatorExecutionProgramReadback { statuses, issue_metadata_unavailable: false }),
 		Err(error) => {
 			let _ = error;
 
@@ -1105,10 +1077,7 @@ where
 	let mapped_issue_ids = operator_execution_program_mapped_issue_ids(records);
 	let refreshed_issues = refresh_execution_program_issues(tracker, records)?;
 
-	if mapped_issue_ids
-		.iter()
-		.any(|issue_id| !refreshed_issues.contains_key(issue_id))
-	{
+	if mapped_issue_ids.iter().any(|issue_id| !refreshed_issues.contains_key(issue_id)) {
 		eyre::bail!("Execution Program tracker metadata was incomplete.");
 	}
 
@@ -1138,8 +1107,8 @@ where
 		let record = &refreshed.record;
 		let program = &refreshed.program;
 		let evaluation = if let Some(source_contract_id) = record.source_contract_id() {
-			let Some(contract) =
-				state_store.decision_contract_for_readback(project.service_id(), source_contract_id)?
+			let Some(contract) = state_store
+				.decision_contract_for_readback(project.service_id(), source_contract_id)?
 			else {
 				statuses.push(OperatorExecutionProgramStatus::missing_contract(record));
 
@@ -1205,8 +1174,8 @@ fn operator_execution_program_statuses_from_persisted(
 
 		let program = record.program().clone().with_nodes(nodes)?;
 		let evaluation = if let Some(source_contract_id) = record.source_contract_id() {
-			let Some(contract) =
-				state_store.decision_contract_for_readback(project.service_id(), source_contract_id)?
+			let Some(contract) = state_store
+				.decision_contract_for_readback(project.service_id(), source_contract_id)?
 			else {
 				statuses.push(OperatorExecutionProgramStatus::missing_contract(record));
 
@@ -1237,8 +1206,12 @@ fn operator_execution_program_readiness_context(
 	records: &[ExecutionProgramRecord],
 ) -> crate::prelude::Result<ExecutionProgramReadinessContext> {
 	let dependency_snapshots = operator_execution_program_dependency_snapshots(records)?;
-	let occupied_conflict_domains =
-		operator_execution_program_occupied_conflict_domains(service_id, workflow, state_store, records)?;
+	let occupied_conflict_domains = operator_execution_program_occupied_conflict_domains(
+		service_id,
+		workflow,
+		state_store,
+		records,
+	)?;
 	let active_issue_ids = state_store
 		.list_active_shared_leases(service_id)?
 		.into_iter()
@@ -1263,7 +1236,11 @@ fn operator_execution_program_dependency_snapshots(
 			};
 
 			insert_dependency_snapshot(&mut snapshots, node.node_id(), issue.issue_state())?;
-			insert_dependency_snapshot(&mut snapshots, issue.issue_identifier(), issue.issue_state())?;
+			insert_dependency_snapshot(
+				&mut snapshots,
+				issue.issue_identifier(),
+				issue.issue_state(),
+			)?;
 		}
 	}
 
@@ -1289,9 +1266,8 @@ fn operator_execution_program_occupied_conflict_domains(
 			let Some(issue) = node.linear_issue() else {
 				continue;
 			};
-			let retained_nonterminal =
-				retained_issue_ids.contains(issue.issue_id())
-					&& !state_name_is_terminal(issue.issue_state(), workflow);
+			let retained_nonterminal = retained_issue_ids.contains(issue.issue_id())
+				&& !state_name_is_terminal(issue.issue_state(), workflow);
 			let has_post_review_lifecycle =
 				state_store.issue_has_review_lifecycle_record(service_id, issue.issue_id())?;
 			let issue_occupies_domain = issue.has_active_label()
@@ -1326,8 +1302,7 @@ where
 {
 	let stale_terminal_local_issue_ids =
 		stale_terminal_local_issue_ids(context.project, context.state_store)?;
-	let mut paused =
-		pause_operator_snapshot_for_stored_tracker_backoff(&context, snapshot)?;
+	let mut paused = pause_operator_snapshot_for_stored_tracker_backoff(&context, snapshot)?;
 
 	if !paused {
 		paused = apply_tracker_observer_outcome(
@@ -1425,10 +1400,8 @@ fn pause_operator_snapshot_for_tracker_backoff(
 ) {
 	persist_tracker_backoff_state(state_store, project.service_id(), backoff);
 
-	let backoff = backoff.to_operator_status(
-		project.service_id(),
-		OffsetDateTime::now_utc().unix_timestamp(),
-	);
+	let backoff = backoff
+		.to_operator_status(project.service_id(), OffsetDateTime::now_utc().unix_timestamp());
 
 	add_tracker_backoff_to_operator_snapshot(snapshot, &backoff);
 }
@@ -1577,7 +1550,8 @@ fn current_lane_terminal_projection_from_local_ledger(
 	let mut projection = OperatorLaneTerminalProjection::default();
 
 	for run in &snapshot.current_lanes {
-		let records = state_store.list_linear_execution_events(project.service_id(), &run.issue_id)?;
+		let records =
+			state_store.list_linear_execution_events(project.service_id(), &run.issue_id)?;
 
 		if records.is_empty() {
 			continue;
@@ -1587,9 +1561,7 @@ fn current_lane_terminal_projection_from_local_ledger(
 		let outcome = operator_history_ledger_outcome(&records);
 
 		if history_ledger_outcome_is_terminal(&outcome) {
-			projection
-				.outcomes_by_issue_key
-				.insert(operator_run_group_key(run), outcome);
+			projection.outcomes_by_issue_key.insert(operator_run_group_key(run), outcome);
 		}
 	}
 
@@ -1610,7 +1582,9 @@ fn apply_operator_lane_terminal_projection(
 	let current_attention_worktree_keys = snapshot
 		.worktrees
 		.iter()
-		.map(|worktree| operator_issue_attention_key(&worktree.issue_id, worktree.issue_identifier.as_deref()))
+		.map(|worktree| {
+			operator_issue_attention_key(&worktree.issue_id, worktree.issue_identifier.as_deref())
+		})
 		.collect::<HashSet<_>>();
 	let mut retained_current_lanes = Vec::new();
 	let mut demoted_lanes = Vec::new();
@@ -1622,8 +1596,7 @@ fn apply_operator_lane_terminal_projection(
 				outcome,
 				completed_state,
 				&current_attention_worktree_keys,
-			)
-		{
+			) {
 			demoted_lanes.push((run, outcome.clone()));
 		} else {
 			retained_current_lanes.push(run);
@@ -1702,10 +1675,8 @@ fn append_current_lane_to_history(
 ) {
 	let group_key = operator_run_group_key(&run);
 
-	if let Some(lane) = snapshot
-		.history_lanes
-		.iter_mut()
-		.find(|lane| history_lane_group_key(lane) == group_key)
+	if let Some(lane) =
+		snapshot.history_lanes.iter_mut().find(|lane| history_lane_group_key(lane) == group_key)
 	{
 		if !lane.attempts.iter().any(|attempt| attempt.run_id == run.run_id) {
 			hydrate_history_lane_from_run(lane, &run);
@@ -1770,16 +1741,10 @@ fn apply_terminal_history_ledger_outcomes(snapshot: &mut OperatorStatusSnapshot)
 		return;
 	}
 
-	let current_lane_run_ids = snapshot
-		.current_lanes
-		.iter()
-		.map(|run| run.run_id.clone())
-		.collect::<HashSet<_>>();
-	let current_lane_issue_keys = snapshot
-		.current_lanes
-		.iter()
-		.map(operator_run_group_key)
-		.collect::<HashSet<_>>();
+	let current_lane_run_ids =
+		snapshot.current_lanes.iter().map(|run| run.run_id.clone()).collect::<HashSet<_>>();
+	let current_lane_issue_keys =
+		snapshot.current_lanes.iter().map(operator_run_group_key).collect::<HashSet<_>>();
 
 	snapshot.recent_runs.retain(|run| {
 		let run_group_key = operator_run_group_key(run);
@@ -1805,8 +1770,8 @@ fn suppress_terminal_attention_queue_echoes(snapshot: &mut OperatorStatusSnapsho
 	snapshot.queued_candidates.retain(|candidate| {
 		let candidate_key =
 			operator_issue_attention_key(&candidate.issue_id, Some(&candidate.issue_identifier));
-		let is_terminal_attention_echo =
-			candidate.reason == "issue_needs_attention" && terminal_attention_keys.contains(&candidate_key);
+		let is_terminal_attention_echo = candidate.reason == "issue_needs_attention"
+			&& terminal_attention_keys.contains(&candidate_key);
 
 		!is_terminal_attention_echo
 	});
@@ -1949,25 +1914,37 @@ fn worktree_ownership(
 			},
 			"retained_attention" => WorktreeOwnership {
 				kind: "retained_attention",
-				reason: format!("Lane `{}` requires operator attention before it can own this worktree.", run.run_id),
+				reason: format!(
+					"Lane `{}` requires operator attention before it can own this worktree.",
+					run.run_id
+				),
 				next_action: Some(run.lane_control_next_action.clone()),
 				audit_required: true,
 			},
 			"orphaned_live_thread" => WorktreeOwnership {
 				kind: "orphaned_live_thread",
-				reason: format!("Lane `{}` has live evidence but no active Decodex lease.", run.run_id),
+				reason: format!(
+					"Lane `{}` has live evidence but no active Decodex lease.",
+					run.run_id
+				),
 				next_action: Some(run.lane_control_next_action.clone()),
 				audit_required: true,
 			},
 			"terminalizing" => WorktreeOwnership {
 				kind: "terminalizing_lane",
-				reason: format!("Lane `{}` is inside terminalization and no longer counts as running.", run.run_id),
+				reason: format!(
+					"Lane `{}` is inside terminalization and no longer counts as running.",
+					run.run_id
+				),
 				next_action: Some(run.lane_control_next_action.clone()),
 				audit_required: true,
 			},
 			"continuation_pending" => WorktreeOwnership {
 				kind: "continuation_pending",
-				reason: format!("Lane `{}` is waiting for scheduled continuation re-entry.", run.run_id),
+				reason: format!(
+					"Lane `{}` is waiting for scheduled continuation re-entry.",
+					run.run_id
+				),
 				next_action: Some(run.lane_control_next_action.clone()),
 				audit_required: false,
 			},
@@ -1982,10 +1959,7 @@ fn worktree_ownership(
 	if let Some(lane) = worktree_post_review_owner(worktree, snapshot) {
 		return WorktreeOwnership {
 			kind: "post_review_lane",
-			reason: format!(
-				"Review & Landing owns this worktree as `{}`.",
-				lane.classification
-			),
+			reason: format!("Review & Landing owns this worktree as `{}`.", lane.classification),
 			next_action: None,
 			audit_required: false,
 		};
@@ -1997,17 +1971,13 @@ fn worktree_ownership(
 				"Run Ledger owns this worktree through terminal `{}` outcome.",
 				lane.ledger_outcome.final_outcome
 			),
-			next_action: Some(
-				lane
-					.ledger_outcome
-					.needs_attention_reason
-					.clone()
-					.unwrap_or_else(|| {
-						String::from(
-							"inspect the retained worktree diff and resolve the terminal attention outcome manually",
-						)
-					}),
-			),
+			next_action: Some(lane.ledger_outcome.needs_attention_reason.clone().unwrap_or_else(
+				|| {
+					String::from(
+						"inspect the retained worktree diff and resolve the terminal attention outcome manually",
+					)
+				},
+			)),
 			audit_required: false,
 		};
 	}
@@ -2048,22 +2018,18 @@ fn worktree_current_lane_owner<'a>(
 	worktree: &OperatorWorktreeStatus,
 	snapshot: &'a OperatorStatusSnapshot,
 ) -> Option<&'a OperatorRunStatus> {
-	snapshot
-		.current_lanes
-		.iter()
-		.chain(snapshot.recent_runs.iter())
-		.find(|run| {
-			matches!(
-				run.ownership_state.as_str(),
-				"leased_run"
-					| "retained_attention"
-					| "orphaned_live_thread"
-					| "terminalizing"
-					| "continuation_pending"
-			) && (run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
-				|| run.branch_name.as_deref() == Some(worktree.branch_name.as_str())
-				|| run.issue_id == worktree.issue_id)
-		})
+	snapshot.current_lanes.iter().chain(snapshot.recent_runs.iter()).find(|run| {
+		matches!(
+			run.ownership_state.as_str(),
+			"leased_run"
+				| "retained_attention"
+				| "orphaned_live_thread"
+				| "terminalizing"
+				| "continuation_pending"
+		) && (run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
+			|| run.branch_name.as_deref() == Some(worktree.branch_name.as_str())
+			|| run.issue_id == worktree.issue_id)
+	})
 }
 
 fn worktree_post_review_owner<'a>(
@@ -2087,15 +2053,11 @@ fn worktree_has_queued_attention_owner(
 		matches!(
 			candidate.reason.as_str(),
 			"issue_needs_attention" | QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT
-		)
-			&& (candidate
-				.attention
-				.as_ref()
-				.and_then(|attention| attention.worktree_path.as_deref())
-				== Some(worktree.worktree_path.as_str())
-				|| candidate.issue_id == worktree.issue_id
-				|| candidate.issue_identifier == worktree.issue_id
-				|| worktree.issue_identifier.as_deref() == Some(candidate.issue_identifier.as_str()))
+		) && (candidate.attention.as_ref().and_then(|attention| attention.worktree_path.as_deref())
+			== Some(worktree.worktree_path.as_str())
+			|| candidate.issue_id == worktree.issue_id
+			|| candidate.issue_identifier == worktree.issue_id
+			|| worktree.issue_identifier.as_deref() == Some(candidate.issue_identifier.as_str()))
 	})
 }
 
@@ -2109,7 +2071,8 @@ fn worktree_history_attention_owner<'a>(
 	snapshot.history_lanes.iter().find(|lane| {
 		history_ledger_outcome_requires_attention(&lane.ledger_outcome)
 			&& (history_lane_group_key(lane) == worktree_issue_key
-				|| lane.latest_run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
+				|| lane.latest_run.worktree_path.as_deref()
+					== Some(worktree.worktree_path.as_str())
 				|| lane.latest_run.branch_name.as_deref() == Some(worktree.branch_name.as_str()))
 	})
 }
@@ -2124,7 +2087,8 @@ fn worktree_cleanup_only_reason(
 		);
 	}
 
-	if let (Some(issue_state), Some(completed_state)) = (worktree.issue_state.as_deref(), completed_state)
+	if let (Some(issue_state), Some(completed_state)) =
+		(worktree.issue_state.as_deref(), completed_state)
 		&& issue_state == completed_state
 	{
 		return format!(
@@ -2158,11 +2122,8 @@ fn refresh_operator_project_summary(
 		.iter()
 		.filter(|candidate| queued_candidate_counts_as_waiting_intake(candidate))
 		.count();
-	let post_review_lane_count = snapshot
-		.post_review_lanes
-		.iter()
-		.filter(|lane| !lane.shadowed_by_current_lane)
-		.count();
+	let post_review_lane_count =
+		snapshot.post_review_lanes.iter().filter(|lane| !lane.shadowed_by_current_lane).count();
 	let retained_worktree_count = rendered_recovery_worktrees(snapshot).len();
 	let waiting_lane_count = project_waiting_lane_count(snapshot);
 	let attention_count = project_attention_count(snapshot, completed_state);
@@ -2232,10 +2193,7 @@ fn operator_run_counts_as_project_waiting(run: &OperatorRunStatus) -> bool {
 		return true;
 	}
 
-	matches!(
-		run.wait_reason.as_deref(),
-		Some("approval_or_user_input" | "protocol_idleness")
-	)
+	matches!(run.wait_reason.as_deref(), Some("approval_or_user_input" | "protocol_idleness"))
 }
 
 fn queued_candidate_counts_as_waiting_intake(candidate: &OperatorQueuedIssueStatus) -> bool {
@@ -2248,11 +2206,7 @@ fn project_attention_count(
 ) -> usize {
 	let mut attention_keys = HashSet::new();
 
-	for run in snapshot
-		.current_lanes
-		.iter()
-		.filter(|run| operator_run_counts_as_attention(run))
-	{
+	for run in snapshot.current_lanes.iter().filter(|run| operator_run_counts_as_attention(run)) {
 		attention_keys.insert(operator_run_group_key(run));
 	}
 	for candidate in snapshot
@@ -2265,12 +2219,11 @@ fn project_attention_count(
 			Some(&candidate.issue_identifier),
 		));
 	}
-	for lane in snapshot
-		.post_review_lanes
-		.iter()
-		.filter(|lane| post_review_lane_counts_as_attention(lane))
+	for lane in
+		snapshot.post_review_lanes.iter().filter(|lane| post_review_lane_counts_as_attention(lane))
 	{
-		attention_keys.insert(operator_issue_attention_key(&lane.issue_id, Some(&lane.issue_identifier)));
+		attention_keys
+			.insert(operator_issue_attention_key(&lane.issue_id, Some(&lane.issue_identifier)));
 	}
 	for lane in snapshot
 		.history_lanes
@@ -2303,10 +2256,7 @@ fn post_review_lane_counts_as_attention(lane: &OperatorPostReviewLaneStatus) -> 
 		return false;
 	}
 
-	matches!(
-		lane.classification.as_str(),
-		"blocked" | "needs_review_repair" | "closeout_blocked"
-	)
+	matches!(lane.classification.as_str(), "blocked" | "needs_review_repair" | "closeout_blocked")
 }
 
 fn history_lane_has_current_attention(
@@ -2382,8 +2332,7 @@ fn history_lane_attention_is_resolved_tracker_echo(
 	if lane.issue_state.as_deref() != Some(completed_state) {
 		return false;
 	}
-	if lane.active_label_present != Some(false)
-		|| lane.needs_attention_label_present != Some(false)
+	if lane.active_label_present != Some(false) || lane.needs_attention_label_present != Some(false)
 	{
 		return false;
 	}
@@ -2477,19 +2426,13 @@ fn hydrate_post_review_lane_current_lane_shadowing(snapshot: &mut OperatorStatus
 		.collect::<HashSet<_>>();
 
 	for lane in &mut snapshot.post_review_lanes {
-		lane.shadowed_by_current_lane =
-			current_lane_issue_keys.contains(&operator_issue_attention_key(
-				&lane.issue_id,
-				Some(&lane.issue_identifier),
-			));
+		lane.shadowed_by_current_lane = current_lane_issue_keys
+			.contains(&operator_issue_attention_key(&lane.issue_id, Some(&lane.issue_identifier)));
 	}
 }
 
 fn worktree_cleanup_key(worktree: &OperatorWorktreeStatus) -> String {
-	worktree
-		.issue_identifier
-		.clone()
-		.unwrap_or_else(|| worktree.issue_id.clone())
+	worktree.issue_identifier.clone().unwrap_or_else(|| worktree.issue_id.clone())
 }
 
 fn operator_run_counts_as_current_lane(run: &OperatorRunStatus) -> bool {
@@ -2559,7 +2502,8 @@ fn operator_run_has_stale_execution_without_known_process(run: &OperatorRunStatu
 		&& !run.has_fresh_execution
 		&& [run.idle_for_seconds, run.protocol_idle_for_seconds].iter().any(|idle_for| {
 			idle_for.is_some_and(|idle_for| {
-				u64::try_from(idle_for).is_ok_and(|idle_for| idle_for >= RUN_LEASE_IDLE_TIMEOUT.as_secs())
+				u64::try_from(idle_for)
+					.is_ok_and(|idle_for| idle_for >= RUN_LEASE_IDLE_TIMEOUT.as_secs())
 			})
 		})
 }
@@ -2622,8 +2566,9 @@ fn operator_status_worktrees(
 		worktrees.push(OperatorWorktreeStatus {
 			project_id: project.service_id().to_owned(),
 			issue_id: mapping.issue_id().to_owned(),
-			issue_identifier: issue_identifier_in_text(mapping.branch_name())
-				.or_else(|| issue_identifier_in_text(&mapping.worktree_path().display().to_string())),
+			issue_identifier: issue_identifier_in_text(mapping.branch_name()).or_else(|| {
+				issue_identifier_in_text(&mapping.worktree_path().display().to_string())
+			}),
 			issue_state: None,
 			branch_name: mapping.branch_name().to_owned(),
 			worktree_path: relative_worktree_path_for_path(project, mapping.worktree_path()),
@@ -2849,11 +2794,8 @@ fn operator_worktree_status_from_cleanup_debt(
 	relative_path: String,
 ) -> OperatorWorktreeStatus {
 	let dirty = debt.cleanliness.is_dirty();
-	let classification = if dirty {
-		"merged_dirty_worktree"
-	} else {
-		"merged_worktree_cleanup_pending"
-	};
+	let classification =
+		if dirty { "merged_dirty_worktree" } else { "merged_worktree_cleanup_pending" };
 	let default_branch = debt.default_branch.clone();
 	let reason = format!(
 		"Branch `{}` is already merged into `{}` but linked worktree `{}` still exists{}; remove or salvage it before continuing automation.",
@@ -2874,11 +2816,7 @@ fn operator_worktree_status_from_cleanup_debt(
 		worktree_path: relative_path,
 		ownership: String::from("post_land_cleanup"),
 		ownership_reason: reason.clone(),
-		provenance: operator_worktree_provenance(
-			WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN,
-			None,
-			None,
-		),
+		provenance: operator_worktree_provenance(WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN, None, None),
 		recovery_next_action: Some(String::from(
 			"inspect the merged worktree, preserve or discard local changes intentionally, then remove the linked worktree",
 		)),
@@ -2934,9 +2872,7 @@ fn project_merged_worktree_cleanup_debts(
 	)
 }
 
-fn format_merged_worktree_cleanup_debts(
-	debts: &[MergedWorktreeCleanupDebt],
-) -> String {
+fn format_merged_worktree_cleanup_debts(debts: &[MergedWorktreeCleanupDebt]) -> String {
 	debts
 		.iter()
 		.map(|debt| {
@@ -2991,11 +2927,8 @@ fn hydrate_operator_run_rows_from_tracker<T>(
 where
 	T: IssueTracker,
 {
-	let issue_ids = operator_snapshot_run_issue_ids(
-		snapshot,
-		hydration,
-		stale_terminal_local_issue_ids,
-	);
+	let issue_ids =
+		operator_snapshot_run_issue_ids(snapshot, hydration, stale_terminal_local_issue_ids);
 
 	if issue_ids.is_empty() {
 		return TrackerObserverOutcome::Ok;
@@ -3034,9 +2967,11 @@ where
 				&active_label,
 				&needs_attention_label,
 			) {
-				if let Some(backoff) =
-					tracker_connector_backoff(&error, Instant::now(), "run_issue_identifier_metadata")
-				{
+				if let Some(backoff) = tracker_connector_backoff(
+					&error,
+					Instant::now(),
+					"run_issue_identifier_metadata",
+				) {
 					return TrackerObserverOutcome::Backoff(backoff);
 				}
 
@@ -3053,9 +2988,9 @@ where
 			TrackerObserverOutcome::Ok
 		},
 		Err(error)
-			if issue_ids
-				.iter()
-				.any(|issue_id| tracker::issue_lookup_missing_error_for_candidate(&error, issue_id)) =>
+			if issue_ids.iter().any(|issue_id| {
+				tracker::issue_lookup_missing_error_for_candidate(&error, issue_id)
+			}) =>
 		{
 			let active_label = crate::tracker::automation_active_label(project.service_id());
 			let needs_attention_label =
@@ -3067,9 +3002,11 @@ where
 				&active_label,
 				&needs_attention_label,
 			) {
-				if let Some(backoff) =
-					tracker_connector_backoff(&error, Instant::now(), "run_issue_identifier_metadata")
-				{
+				if let Some(backoff) = tracker_connector_backoff(
+					&error,
+					Instant::now(),
+					"run_issue_identifier_metadata",
+				) {
 					return TrackerObserverOutcome::Backoff(backoff);
 				}
 
@@ -3288,10 +3225,7 @@ fn apply_missing_issue_ghost_lane_projection(
 		.iter()
 		.filter(|worktree| operator_worktree_status_path_exists(project, worktree))
 		.map(|worktree| {
-			operator_issue_attention_key(
-				&worktree.issue_id,
-				worktree.issue_identifier.as_deref(),
-			)
+			operator_issue_attention_key(&worktree.issue_id, worktree.issue_identifier.as_deref())
 		})
 		.collect::<std::collections::BTreeSet<_>>();
 	let mut cleanup_complete_run_ids = HashSet::new();
@@ -3305,8 +3239,12 @@ fn apply_missing_issue_ghost_lane_projection(
 			continue;
 		}
 
-		let (cleanup_safe, conditions) =
-			missing_issue_ghost_lane_local_conditions(project, state_store, run, &current_worktree_keys)?;
+		let (cleanup_safe, conditions) = missing_issue_ghost_lane_local_conditions(
+			project,
+			state_store,
+			run,
+			&current_worktree_keys,
+		)?;
 
 		for condition in conditions {
 			append_lane_control_condition(run, &condition);
@@ -3342,9 +3280,7 @@ fn apply_missing_issue_ghost_lane_projection(
 		}
 	}
 
-	snapshot
-		.current_lanes
-		.retain(|run| !missing_issue_ghost_lane_status_is_cleanup_complete(run));
+	snapshot.current_lanes.retain(|run| !missing_issue_ghost_lane_status_is_cleanup_complete(run));
 
 	Ok(())
 }
@@ -3388,12 +3324,7 @@ fn missing_issue_ghost_lane_local_conditions(
 		&mut conditions,
 		&mut blockers,
 	);
-	inspect_status_ghost_lane_live_evidence(
-		run,
-		mcp_test_fixture,
-		&mut conditions,
-		&mut blockers,
-	);
+	inspect_status_ghost_lane_live_evidence(run, mcp_test_fixture, &mut conditions, &mut blockers);
 	inspect_status_ghost_lane_private_evidence(
 		project,
 		state_store,
@@ -3402,7 +3333,13 @@ fn missing_issue_ghost_lane_local_conditions(
 		&mut conditions,
 		&mut blockers,
 	)?;
-	inspect_status_ghost_lane_review_lineage(project, state_store, run, &mut conditions, &mut blockers)?;
+	inspect_status_ghost_lane_review_lineage(
+		project,
+		state_store,
+		run,
+		&mut conditions,
+		&mut blockers,
+	)?;
 
 	conditions.extend(blockers.iter().cloned());
 
@@ -3449,7 +3386,8 @@ fn inspect_status_ghost_lane_worktree(
 		}
 	}
 
-	let run_issue_key = operator_issue_attention_key(&run.issue_id, run.issue_identifier.as_deref());
+	let run_issue_key =
+		operator_issue_attention_key(&run.issue_id, run.issue_identifier.as_deref());
 
 	if current_worktree_keys.contains(&run_issue_key) {
 		retained_worktree_present = true;
@@ -3504,7 +3442,8 @@ fn inspect_status_ghost_lane_live_evidence(
 	if run.process_alive == Some(true) {
 		live_blockers.push(String::from("process_alive"));
 	}
-	if matches!(run.thread_status.as_deref(), Some("active")) || !run.thread_active_flags.is_empty() {
+	if matches!(run.thread_status.as_deref(), Some("active")) || !run.thread_active_flags.is_empty()
+	{
 		live_blockers.push(String::from("thread_active"));
 	}
 	if operator_run_has_recent_app_server_execution(run) {
@@ -3560,10 +3499,7 @@ fn inspect_status_ghost_lane_private_evidence(
 	} else if mcp_test_fixture {
 		conditions.push(String::from("mcp_test_fixture_private_control_evidence_present"));
 
-		if events
-			.iter()
-			.any(status_ghost_lane_private_event_is_cleanup_audit)
-		{
+		if events.iter().any(status_ghost_lane_private_event_is_cleanup_audit) {
 			conditions.push(String::from("ghost_lane_cleanup_audit_present"));
 		}
 	} else if status_ghost_lane_private_events_are_cleanup_audit_evidence(&events) {
@@ -3604,15 +3540,10 @@ fn status_ghost_lane_has_mcp_test_fixture_identity(
 		&& run.attempt_number == 1
 		&& status_ghost_lane_mcp_test_fixture_issue_identifier_matches(
 			run.issue_identifier.as_deref(),
-		)
-		&& status_ghost_lane_optional_fixture_value(
-			run.thread_id.as_deref(),
-			MCP_TEST_FIXTURE_THREAD_ID,
-		)
-		&& status_ghost_lane_optional_fixture_value(
-			run.turn_id.as_deref(),
-			MCP_TEST_FIXTURE_TURN_ID,
-		)
+		) && status_ghost_lane_optional_fixture_value(
+		run.thread_id.as_deref(),
+		MCP_TEST_FIXTURE_THREAD_ID,
+	) && status_ghost_lane_optional_fixture_value(run.turn_id.as_deref(), MCP_TEST_FIXTURE_TURN_ID)
 }
 
 fn status_ghost_lane_mcp_test_fixture_issue_identifier_matches(
@@ -3620,8 +3551,7 @@ fn status_ghost_lane_mcp_test_fixture_issue_identifier_matches(
 ) -> bool {
 	match issue_identifier {
 		Some(value) =>
-			value == MCP_TEST_FIXTURE_ISSUE_ID
-				|| value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER,
+			value == MCP_TEST_FIXTURE_ISSUE_ID || value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER,
 		None => true,
 	}
 }
@@ -3637,12 +3567,10 @@ fn status_ghost_lane_private_events_are_mcp_test_recovery_evidence(
 	events: &[PrivateExecutionEvent],
 ) -> bool {
 	!events.is_empty()
-		&& events
-			.iter()
-			.all(|event| {
-				status_ghost_lane_private_event_is_mcp_test_control_evidence(event)
-					|| status_ghost_lane_private_event_is_cleanup_audit(event)
-			})
+		&& events.iter().all(|event| {
+			status_ghost_lane_private_event_is_mcp_test_control_evidence(event)
+				|| status_ghost_lane_private_event_is_cleanup_audit(event)
+		})
 }
 
 fn status_ghost_lane_private_event_is_mcp_test_control_evidence(
@@ -3672,9 +3600,8 @@ fn status_ghost_lane_cli_control_action_matches_mcp_test_fixture(
 		&& matches!(
 			payload.get("action").and_then(serde_json::Value::as_str),
 			Some("steer" | "interrupt")
-		)
-		&& payload.pointer("/requested/project_id").and_then(serde_json::Value::as_str)
-			== Some(MCP_TEST_FIXTURE_PROJECT_ID)
+		) && payload.pointer("/requested/project_id").and_then(serde_json::Value::as_str)
+		== Some(MCP_TEST_FIXTURE_PROJECT_ID)
 		&& payload.pointer("/requested/issue_id").and_then(serde_json::Value::as_str)
 			== Some(MCP_TEST_FIXTURE_ISSUE_ID)
 		&& payload.pointer("/requested/run_id").and_then(serde_json::Value::as_str)
@@ -3686,10 +3613,7 @@ fn status_ghost_lane_cli_control_action_matches_mcp_test_fixture(
 fn status_ghost_lane_private_events_are_cleanup_audit_evidence(
 	events: &[PrivateExecutionEvent],
 ) -> bool {
-	!events.is_empty()
-		&& events
-			.iter()
-			.all(status_ghost_lane_private_event_is_cleanup_audit)
+	!events.is_empty() && events.iter().all(status_ghost_lane_private_event_is_cleanup_audit)
 }
 
 fn status_ghost_lane_private_event_is_cleanup_audit(event: &PrivateExecutionEvent) -> bool {
@@ -3706,11 +3630,9 @@ fn status_ghost_lane_private_event_is_cleanup_audit(event: &PrivateExecutionEven
 		&& matches!(
 			payload.get("classification").and_then(serde_json::Value::as_str),
 			Some("missing_issue_ghost_lane" | "mcp_test_fixture_ghost_lane")
-		)
-		&& payload.get("terminal_status").and_then(serde_json::Value::as_str)
-			== Some(GHOST_LANE_TERMINAL_STATUS)
-		&& payload.get("cleared_run_lease").and_then(serde_json::Value::as_bool)
-			== Some(true)
+		) && payload.get("terminal_status").and_then(serde_json::Value::as_str)
+		== Some(GHOST_LANE_TERMINAL_STATUS)
+		&& payload.get("cleared_run_lease").and_then(serde_json::Value::as_bool) == Some(true)
 		&& payload
 			.get("blockers")
 			.and_then(serde_json::Value::as_array)
@@ -3727,18 +3649,15 @@ fn status_ghost_lane_cleanup_audit_evidence_contains(
 	payload
 		.get("evidence")
 		.and_then(serde_json::Value::as_array)
-		.is_some_and(|evidence| {
-			evidence
-				.iter()
-				.any(|entry| entry.as_str() == Some(expected))
-		})
+		.is_some_and(|evidence| evidence.iter().any(|entry| entry.as_str() == Some(expected)))
 }
 
 fn status_ghost_lane_mcp_test_fixture_allowed_live_blocker(blocker: &str) -> bool {
 	matches!(
 		blocker,
 		"protocol_event_evidence_present"
-			| "protocol_activity_present" | "thread_reference_present"
+			| "protocol_activity_present"
+			| "thread_reference_present"
 	)
 }
 
@@ -3760,14 +3679,17 @@ fn inspect_status_ghost_lane_review_lineage(
 		return Ok(());
 	}
 
-	let mut records = state_store.list_linear_execution_events(project.service_id(), &run.issue_id)?;
+	let mut records =
+		state_store.list_linear_execution_events(project.service_id(), &run.issue_id)?;
 
 	if let Some(issue_identifier) = run
 		.issue_identifier
 		.as_deref()
 		.filter(|identifier| !identifier.eq_ignore_ascii_case(&run.issue_id))
 	{
-		records.extend(state_store.list_linear_execution_events(project.service_id(), issue_identifier)?);
+		records.extend(
+			state_store.list_linear_execution_events(project.service_id(), issue_identifier)?,
+		);
 	}
 
 	if records.iter().any(operator_linear_execution_event_has_pr_or_review_lineage) {
@@ -3814,11 +3736,9 @@ fn operator_linear_execution_event_has_pr_or_review_lineage(
 				| "review_handoff_rebind"
 				| "review_handoff_adopt"
 				| "review_repair"
-				| "landed"
-				| "closeout"
+				| "landed" | "closeout"
 				| "cleanup_complete"
-		)
-		|| record.terminal_path.as_deref() == Some("review_handoff")
+		) || record.terminal_path.as_deref() == Some("review_handoff")
 }
 
 fn append_lane_control_condition(run: &mut OperatorRunStatus, condition: &str) {
@@ -3866,10 +3786,8 @@ fn apply_history_lane_issue_metadata(
 	if let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty()) {
 		lane.author = Some(author.clone());
 	}
-	if let Some(issue_state) = metadata
-		.issue_state
-		.as_ref()
-		.filter(|issue_state| !issue_state.trim().is_empty())
+	if let Some(issue_state) =
+		metadata.issue_state.as_ref().filter(|issue_state| !issue_state.trim().is_empty())
 	{
 		lane.issue_state = Some(issue_state.clone());
 	}
@@ -3881,10 +3799,7 @@ fn apply_history_lane_issue_metadata(
 	}
 }
 
-fn apply_run_issue_metadata(
-	run: &mut OperatorRunStatus,
-	metadata: &OperatorIssueDisplayMetadata,
-) {
+fn apply_run_issue_metadata(run: &mut OperatorRunStatus, metadata: &OperatorIssueDisplayMetadata) {
 	if !metadata.issue_identifier.trim().is_empty() {
 		run.issue_identifier = Some(metadata.issue_identifier.clone());
 	}
@@ -3895,10 +3810,8 @@ fn apply_run_issue_metadata(
 	if let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty()) {
 		run.author = Some(author.clone());
 	}
-	if let Some(issue_state) = metadata
-		.issue_state
-		.as_ref()
-		.filter(|issue_state| !issue_state.trim().is_empty())
+	if let Some(issue_state) =
+		metadata.issue_state.as_ref().filter(|issue_state| !issue_state.trim().is_empty())
 	{
 		run.issue_state = Some(issue_state.clone());
 	}
@@ -3914,10 +3827,7 @@ fn fill_missing_history_lane_issue_metadata(
 	lane: &mut OperatorHistoryLaneStatus,
 	metadata: &OperatorIssueDisplayMetadata,
 ) {
-	if lane
-		.issue_identifier
-		.as_ref()
-		.is_none_or(|identifier| identifier.trim().is_empty())
+	if lane.issue_identifier.as_ref().is_none_or(|identifier| identifier.trim().is_empty())
 		&& !metadata.issue_identifier.trim().is_empty()
 	{
 		lane.issue_identifier = Some(metadata.issue_identifier.clone());
@@ -3939,10 +3849,7 @@ fn fill_missing_run_issue_metadata(
 	run: &mut OperatorRunStatus,
 	metadata: &OperatorIssueDisplayMetadata,
 ) {
-	if run
-		.issue_identifier
-		.as_ref()
-		.is_none_or(|identifier| identifier.trim().is_empty())
+	if run.issue_identifier.as_ref().is_none_or(|identifier| identifier.trim().is_empty())
 		&& !metadata.issue_identifier.trim().is_empty()
 	{
 		run.issue_identifier = Some(metadata.issue_identifier.clone());
@@ -3957,14 +3864,9 @@ fn fill_missing_run_issue_metadata(
 	{
 		run.author = Some(author.clone());
 	}
-	if run
-		.issue_state
-		.as_ref()
-		.is_none_or(|issue_state| issue_state.trim().is_empty())
-		&& let Some(issue_state) = metadata
-			.issue_state
-			.as_ref()
-			.filter(|issue_state| !issue_state.trim().is_empty())
+	if run.issue_state.as_ref().is_none_or(|issue_state| issue_state.trim().is_empty())
+		&& let Some(issue_state) =
+			metadata.issue_state.as_ref().filter(|issue_state| !issue_state.trim().is_empty())
 	{
 		run.issue_state = Some(issue_state.clone());
 	}
@@ -4028,11 +3930,7 @@ where
 		}
 	}
 
-	if unavailable {
-		TrackerObserverOutcome::Unavailable
-	} else {
-		TrackerObserverOutcome::Ok
-	}
+	if unavailable { TrackerObserverOutcome::Unavailable } else { TrackerObserverOutcome::Ok }
 }
 
 fn hydrate_history_lane_from_ledger_records(
@@ -4158,9 +4056,9 @@ fn final_history_ledger_record(
 		.iter()
 		.filter(|entry| history_ledger_event_outcome_rank(&entry.record.event_type) > 1)
 		.max_by(|left, right| compare_history_ledger_record_position(left, right))
-		.or_else(|| records.iter().max_by(|left, right| {
-			compare_history_ledger_record_position(left, right)
-		}))
+		.or_else(|| {
+			records.iter().max_by(|left, right| compare_history_ledger_record_position(left, right))
+		})
 }
 
 fn compare_history_ledger_record_position(
@@ -4381,9 +4279,7 @@ where
 				&retained_post_review_issue_ids,
 			)
 		})
-		.map(|issue| {
-			operator_queued_issue_status(tracker, project, workflow, state_store, issue)
-		})
+		.map(|issue| operator_queued_issue_status(tracker, project, workflow, state_store, issue))
 		.collect()
 }
 
@@ -4459,8 +4355,8 @@ fn observe_dependency_program_stale_guardrail(
 	issue: &TrackerIssue,
 ) -> crate::prelude::Result<LoopGuardrailCheckpoint> {
 	let blocker_fingerprint = dependency_blocker_fingerprint(issue, workflow);
-	let checkpoint = state_store.observe_loop_guardrail_checkpoint(
-		LoopGuardrailCheckpointInput {
+	let checkpoint =
+		state_store.observe_loop_guardrail_checkpoint(LoopGuardrailCheckpointInput {
 			project_id: project.service_id(),
 			issue_id: &issue.id,
 			reason: LoopGuardrailReason::DependencyProgramStale.error_class(),
@@ -4478,8 +4374,7 @@ fn observe_dependency_program_stale_guardrail(
 				"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
 			})
 			.to_string(),
-		},
-	)?;
+		})?;
 
 	Ok(checkpoint)
 }
@@ -4524,8 +4419,7 @@ where
 			project.service_id(),
 			issue,
 			state_store,
-		)?
-	{
+		)? {
 		return Ok(("blocked", ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON));
 	}
 	if tracker::issue_has_label_with_server_confirmation(
@@ -4542,12 +4436,8 @@ where
 		return Ok(("blocked", "issue_opted_out"));
 	}
 	if !todo_blocker_rule_passes(issue, workflow) {
-		let checkpoint = observe_dependency_program_stale_guardrail(
-			project,
-			workflow,
-			state_store,
-			issue,
-		)?;
+		let checkpoint =
+			observe_dependency_program_stale_guardrail(project, workflow, state_store, issue)?;
 		let reason = if checkpoint.consecutive_count() >= LOOP_GUARDRAIL_CONVERGENCE_BUDGET {
 			LoopGuardrailReason::DependencyProgramStale.error_class()
 		} else {
@@ -4575,6 +4465,29 @@ where
 	Ok(("ready", "eligible_for_dispatch"))
 }
 
+struct OperatorQueuedIssueWorktreeContext {
+	path: std::path::PathBuf,
+	marker: Option<RunActivityMarker>,
+	marker_unreadable: bool,
+}
+
+fn operator_queued_issue_worktree_context(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+) -> crate::prelude::Result<OperatorQueuedIssueWorktreeContext> {
+	let worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
+	let path = worktree_mapping
+		.as_ref()
+		.map(|mapping| mapping.worktree_path().to_path_buf())
+		.unwrap_or_else(|| project.worktree_root().join(&issue.identifier));
+	let marker = state::read_run_activity_marker_snapshot(&path).unwrap_or_default();
+	let marker_unreadable = marker.is_none()
+		&& matches!(path.join(state::RUN_ACTIVITY_MARKER_FILE).try_exists(), Ok(true));
+
+	Ok(OperatorQueuedIssueWorktreeContext { path, marker, marker_unreadable })
+}
+
 fn operator_queued_issue_attention_status<T>(
 	tracker: &T,
 	project: &ServiceConfig,
@@ -4595,8 +4508,8 @@ where
 		return Ok(None);
 	}
 
-	let worktree_path = project.worktree_root().join(&issue.identifier);
-	let marker = state::read_run_activity_marker_snapshot(&worktree_path)?;
+	let OperatorQueuedIssueWorktreeContext { path: worktree_path, marker, marker_unreadable } =
+		operator_queued_issue_worktree_context(project, state_store, issue)?;
 	let state_retry_attempts = state_store.retry_budget_attempt_count(&issue.id)?;
 	let marker_retry_attempts =
 		marker.as_ref().and_then(RunActivityMarker::retry_budget_attempt_count).unwrap_or(0);
@@ -4605,9 +4518,8 @@ where
 	let retry_budget_max_attempts = i64::from(workflow.frontmatter().execution().max_attempts());
 	let auto_retry_blocked_reason = match reason {
 		"issue_needs_attention" => Some(String::from("needs_attention_label")),
-		QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT => {
-			Some(String::from(QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT))
-		},
+		QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT =>
+			Some(String::from(QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT)),
 		_ => None,
 	};
 	let attention_record =
@@ -4624,8 +4536,6 @@ where
 	} else {
 		attention_record.as_ref().and_then(|record| record.error_class.clone())
 	};
-	let attention_next_action =
-		attention_record.as_ref().and_then(|record| record.next_action.clone());
 	let decision_request = operator_queued_issue_decision_request_status(
 		project,
 		state_store,
@@ -4640,18 +4550,32 @@ where
 		attention_record.as_ref(),
 		marker.as_ref(),
 	)?;
-	let attempt_status = marker
-		.as_ref()
-		.and_then(|marker| state_store.run_attempt(marker.run_id()).transpose())
-		.transpose()?
-		.map(|run_attempt| run_attempt.status().to_owned());
-	let worktree_has_tracked_changes = worktree_has_tracked_changes(&worktree_path);
+	let attempt_status = operator_queued_issue_attempt_status(state_store, marker.as_ref())?;
+	let worktree_tracked_change_state = if marker_unreadable {
+		WorktreeTrackedChangeState::Unknown
+	} else {
+		worktree_tracked_change_state(&worktree_path)
+	};
+	let worktree_has_tracked_changes = worktree_tracked_change_state.has_tracked_changes();
+	let recorded_next_action =
+		attention_record.as_ref().and_then(|record| record.next_action.clone());
+	let stale_active_next_action = operator_active_label_attention_next_action(
+		reason,
+		&issue.identifier,
+		worktree_tracked_change_state,
+		attention_error_class.as_deref(),
+	);
+	let attention_next_action = operator_queued_issue_attention_next_action(
+		private_evidence_missing,
+		recorded_next_action,
+		stale_active_next_action,
+	);
 	let summary = operator_queued_issue_attention_summary(
 		reason,
 		marker.as_ref(),
 		attempt_status.as_deref(),
 		retry_budget_attempts,
-		worktree_has_tracked_changes,
+		worktree_tracked_change_state,
 		attention_error_class.as_deref(),
 	);
 	let process_liveness = marker.as_ref().and_then(marker_process_liveness_for_marker);
@@ -4691,11 +4615,32 @@ where
 		event_count: marker.as_ref().map_or(0, RunActivityMarker::event_count),
 		process_alive: process_liveness.map(|liveness| liveness.alive),
 		process_liveness_reason: process_liveness.map(|liveness| liveness.reason.to_owned()),
-		worktree_path: worktree_path
-			.exists()
+		worktree_path: matches!(worktree_path.try_exists(), Ok(true))
 			.then(|| relative_worktree_path_for_path(project, &worktree_path)),
 		worktree_has_tracked_changes,
 	}))
+}
+
+fn operator_queued_issue_attention_next_action(
+	private_evidence_missing: bool,
+	recorded_next_action: Option<String>,
+	stale_active_next_action: Option<String>,
+) -> Option<String> {
+	if private_evidence_missing || recorded_next_action.is_none() {
+		stale_active_next_action.or(recorded_next_action)
+	} else {
+		recorded_next_action.or(stale_active_next_action)
+	}
+}
+
+fn operator_queued_issue_attempt_status(
+	state_store: &StateStore,
+	marker: Option<&RunActivityMarker>,
+) -> crate::prelude::Result<Option<String>> {
+	Ok(marker
+		.and_then(|marker| state_store.run_attempt(marker.run_id()).transpose())
+		.transpose()?
+		.map(|run_attempt| run_attempt.status().to_owned()))
 }
 
 fn operator_queued_issue_loop_status(
@@ -4764,24 +4709,15 @@ fn operator_authority_decision_request_status_from_event(
 	let decision_request_id = payload.get("decision_request_id")?.as_str()?.to_owned();
 	let reason = payload.get("reason")?.as_str()?.to_owned();
 	let boundary = payload.get("boundary")?.as_str()?.to_owned();
-	let phase = payload
-		.get("phase")
-		.and_then(Value::as_str)
-		.unwrap_or("human_required")
-		.to_owned();
+	let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("human_required").to_owned();
 	let next_action = payload
 		.get("next_action")
 		.or_else(|| payload.get("resume_condition"))?
 		.as_str()?
 		.to_owned();
-	let recommendation = payload
-		.get("recommendation")
-		.and_then(Value::as_str)
-		.map(str::to_owned);
-	let resume_condition = payload
-		.get("resume_condition")
-		.and_then(Value::as_str)
-		.map(str::to_owned);
+	let recommendation = payload.get("recommendation").and_then(Value::as_str).map(str::to_owned);
+	let resume_condition =
+		payload.get("resume_condition").and_then(Value::as_str).map(str::to_owned);
 
 	Some(OperatorAuthorityDecisionRequestStatus {
 		phase,
@@ -4893,33 +4829,30 @@ fn operator_queued_issue_attention_summary(
 	marker: Option<&RunActivityMarker>,
 	attempt_status: Option<&str>,
 	retry_budget_attempts: i64,
-	worktree_has_tracked_changes: bool,
+	worktree_tracked_change_state: WorktreeTrackedChangeState,
 	attention_error_class: Option<&str>,
 ) -> String {
 	if let Some(summary) = operator_active_label_attention_summary(
 		reason,
 		marker,
 		retry_budget_attempts,
-		worktree_has_tracked_changes,
+		worktree_tracked_change_state,
 		attention_error_class,
 	) {
 		return summary;
 	}
 
 	if attempt_status == Some("failed")
-		&& marker
-			.and_then(RunActivityMarker::last_event_type)
-			.is_some_and(|event_type| {
-				matches!(event_type, "thread/archive" | "thread/archive/discarded")
-			})
-	{
+		&& marker.and_then(RunActivityMarker::last_event_type).is_some_and(|event_type| {
+			matches!(event_type, "thread/archive" | "thread/archive/discarded")
+		}) {
 		let operation = operator_recovery_operation_label(marker);
 
 		return format!(
 			"Child implementation attempt failed during {operation}; retained status is preserved separately from parent journal or closeout handling."
 		);
 	}
-	if worktree_has_tracked_changes {
+	if worktree_tracked_change_state.has_tracked_changes() {
 		if retry_budget_attempts > 0 {
 			return format!(
 				"Partial worktree changes are retained after {retry_budget_attempts} failed attempts; inspect the patch, finish validation, then land or reset manually."
@@ -4990,20 +4923,16 @@ fn operator_queued_issue_attention_summary(
 	}
 
 	match marker.and_then(RunActivityMarker::current_operation) {
-		Some(RUN_OPERATION_GIT_CREDENTIALS) => {
-			String::from("Git credential preflight failed; operator recovery required.")
-		},
-		Some(RUN_OPERATION_APP_SERVER_PREFLIGHT) => {
-			String::from("Codex app-server preflight failed; operator recovery required.")
-		},
-		Some(RUN_OPERATION_RECONCILIATION) => {
-			String::from("Stopped during reconciliation or tracker handoff; operator recovery required.")
-		},
-		Some(RUN_OPERATION_AGENT_RUN) => {
-			String::from("Stopped during agent execution; operator recovery required.")
-		},
-		Some(operation) =>
-			format!("Stopped during `{operation}`; operator recovery required."),
+		Some(RUN_OPERATION_GIT_CREDENTIALS) =>
+			String::from("Git credential preflight failed; operator recovery required."),
+		Some(RUN_OPERATION_APP_SERVER_PREFLIGHT) =>
+			String::from("Codex app-server preflight failed; operator recovery required."),
+		Some(RUN_OPERATION_RECONCILIATION) => String::from(
+			"Stopped during reconciliation or tracker handoff; operator recovery required.",
+		),
+		Some(RUN_OPERATION_AGENT_RUN) =>
+			String::from("Stopped during agent execution; operator recovery required."),
+		Some(operation) => format!("Stopped during `{operation}`; operator recovery required."),
 		None => String::from("Needs operator recovery; no local run marker was found."),
 	}
 }
@@ -5012,15 +4941,20 @@ fn operator_active_label_attention_summary(
 	reason: &str,
 	marker: Option<&RunActivityMarker>,
 	retry_budget_attempts: i64,
-	worktree_has_tracked_changes: bool,
+	worktree_tracked_change_state: WorktreeTrackedChangeState,
 	attention_error_class: Option<&str>,
 ) -> Option<String> {
 	if reason != QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT {
 		return None;
 	}
-	if worktree_has_tracked_changes {
+	if worktree_tracked_change_state.has_tracked_changes() {
 		return Some(String::from(
 			"Linear active ownership is still present with retained worktree changes; inspect the patch and reconcile the lane before dispatch.",
+		));
+	}
+	if worktree_tracked_change_state.is_unknown() {
+		return Some(String::from(
+			"Linear active ownership is still present and retained worktree cleanliness could not be verified; inspect the worktree before dispatch.",
 		));
 	}
 	if retry_budget_attempts > 0 {
@@ -5050,15 +4984,38 @@ fn operator_active_label_attention_summary(
 	))
 }
 
+fn operator_active_label_attention_next_action(
+	reason: &str,
+	issue_identifier: &str,
+	worktree_tracked_change_state: WorktreeTrackedChangeState,
+	attention_error_class: Option<&str>,
+) -> Option<String> {
+	if reason != QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT {
+		return None;
+	}
+	if worktree_tracked_change_state.has_tracked_changes()
+		|| worktree_tracked_change_state.is_unknown()
+	{
+		return Some(String::from(
+			"inspect_retained_worktree_changes_before_stale_active_recovery",
+		));
+	}
+	if attention_error_class == Some(ATTENTION_ERROR_EVIDENCE_MISSING) {
+		return Some(format!(
+			"run_stale_active_recovery: decodex recover stale-active diagnose {issue_identifier} --json; decodex recover stale-active release {issue_identifier} --dry-run"
+		));
+	}
+
+	Some(format!(
+		"run_stale_active_recovery: decodex recover stale-active diagnose {issue_identifier}; decodex recover stale-active release {issue_identifier} --dry-run"
+	))
+}
+
 fn operator_recovery_operation_label(marker: Option<&RunActivityMarker>) -> String {
 	match marker.and_then(RunActivityMarker::current_operation) {
 		Some(RUN_OPERATION_GIT_CREDENTIALS) => String::from("git credential preflight"),
-		Some(RUN_OPERATION_APP_SERVER_PREFLIGHT) => {
-			String::from("Codex app-server preflight")
-		},
-		Some(RUN_OPERATION_RECONCILIATION) => {
-			String::from("reconciliation or tracker handoff")
-		},
+		Some(RUN_OPERATION_APP_SERVER_PREFLIGHT) => String::from("Codex app-server preflight"),
+		Some(RUN_OPERATION_RECONCILIATION) => String::from("reconciliation or tracker handoff"),
 		Some(RUN_OPERATION_AGENT_RUN) => String::from("agent execution"),
 		Some(operation) => format!("`{operation}`"),
 		None => String::from("the lane"),
@@ -5151,10 +5108,7 @@ where
 	Ok(worktrees
 		.into_iter()
 		.filter_map(|worktree| {
-			issues_by_id
-				.get(worktree.issue_id())
-				.cloned()
-				.map(|issue| (worktree, issue))
+			issues_by_id.get(worktree.issue_id()).cloned().map(|issue| (worktree, issue))
 		})
 		.collect())
 }
@@ -5174,17 +5128,17 @@ where
 			project.service_id(),
 			worktree.issue_id(),
 			worktree.branch_name(),
-		)? else {
+		)?
+		else {
 			continue;
 		};
 		let issue_identifier = retained_issue_identifier_from_worktree(&worktree);
 		let review_state = review_state_inspector
 			.inspect_review_state(worktree.worktree_path(), review_handoff.pr_url())
 			.ok();
-		let classification = PostReviewReadbackDegradation::tracker_issue_from_handoff(
-			&review_handoff,
-		)
-		.wait_for_review_classification(review_state);
+		let classification =
+			PostReviewReadbackDegradation::tracker_issue_from_handoff(&review_handoff)
+				.wait_for_review_classification(review_state);
 
 		lanes.push(degraded_post_review_lane_status_from_classification(
 			project,
@@ -5293,8 +5247,10 @@ fn hydrate_worktree_issue_metadata(
 	snapshot: &mut OperatorStatusSnapshot,
 	worktree_issues: &[(WorktreeMapping, TrackerIssue)],
 ) {
-	let issues_by_id =
-		worktree_issues.iter().map(|(_, issue)| (issue.id.as_str(), issue)).collect::<HashMap<_, _>>();
+	let issues_by_id = worktree_issues
+		.iter()
+		.map(|(_, issue)| (issue.id.as_str(), issue))
+		.collect::<HashMap<_, _>>();
 
 	for worktree in &mut snapshot.worktrees {
 		let Some(issue) = issues_by_id.get(worktree.issue_id.as_str()) else {
@@ -5436,10 +5392,7 @@ fn post_review_lane_status_from_classification(
 		issue_identifier: snapshot.issue.identifier.clone(),
 		issue_state: snapshot.issue.state.name.clone(),
 		branch_name: snapshot.worktree.branch_name().to_owned(),
-		worktree_path: relative_worktree_path_for_path(
-			project,
-			snapshot.worktree.worktree_path(),
-		),
+		worktree_path: relative_worktree_path_for_path(project, snapshot.worktree.worktree_path()),
 		classification: classification.decision.as_str().to_owned(),
 		reason: classification.reason,
 		pr_url: classification.pr_url,
@@ -5591,22 +5544,17 @@ where
 			orchestration_marker.as_ref(),
 			OffsetDateTime::now_utc().unix_timestamp(),
 		)?;
-		apply_authority_boundary_landing_policy(
-			snapshot,
-			&mut classification,
-			runtime_state,
-		)?;
+		apply_authority_boundary_landing_policy(snapshot, &mut classification, runtime_state)?;
 
 		return Ok(classification);
 	}
 
-	let Some(orchestration_marker) =
-		load_post_review_orchestration_marker(
-			snapshot,
-			&review_state,
-			&mut classification,
-			runtime_state,
-		)?
+	let Some(orchestration_marker) = load_post_review_orchestration_marker(
+		snapshot,
+		&review_state,
+		&mut classification,
+		runtime_state,
+	)?
 	else {
 		return Ok(classification);
 	};
@@ -5655,15 +5603,11 @@ fn authority_boundary_landing_requirement(
 	let Some(runtime_state) = runtime_state else {
 		return Ok(None);
 	};
-	let events = runtime_state.state_store.list_private_execution_events_for_issue(
-		runtime_state.project_id,
-		&snapshot.issue.id,
-	)?;
+	let events = runtime_state
+		.state_store
+		.list_private_execution_events_for_issue(runtime_state.project_id, &snapshot.issue.id)?;
 
-	if events
-		.iter()
-		.any(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE)
-	{
+	if events.iter().any(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE) {
 		return Ok(Some("authority_boundary_requires_human_decision"));
 	}
 	if events.iter().rev().any(|event| {
@@ -5759,29 +5703,20 @@ fn authority_boundary_event_requires_human_decision(payload: &Value) -> bool {
 			.and_then(Value::as_bool)
 			.unwrap_or(false)
 		|| matches!(
-			payload
-				.get("disposition")
-				.and_then(Value::as_str)
-				.or_else(|| {
-					payload
-						.get("final_disposition")
-						.and_then(|final_disposition| final_disposition.get("disposition"))
-						.and_then(Value::as_str)
-				}),
+			payload.get("disposition").and_then(Value::as_str).or_else(|| {
+				payload
+					.get("final_disposition")
+					.and_then(|final_disposition| final_disposition.get("disposition"))
+					.and_then(Value::as_str)
+			}),
 			Some("requires_human" | "insufficient_evidence")
 		)
 }
 
 fn authority_boundary_event_policy_decision(payload: &Value) -> Option<&str> {
-	payload
-		.get("policy_decision")
-		.and_then(Value::as_str)
-		.or_else(|| {
-			payload
-				.get("policy")
-				.and_then(|policy| policy.get("decision"))
-				.and_then(Value::as_str)
-		})
+	payload.get("policy_decision").and_then(Value::as_str).or_else(|| {
+		payload.get("policy").and_then(|policy| policy.get("decision")).and_then(Value::as_str)
+	})
 }
 
 fn retry_budget_exhausted_post_review_lane_classification<I>(
@@ -5828,13 +5763,13 @@ where
 	if classification.pr_state.as_deref() == Some("MERGED")
 		&& worktree_has_no_tracked_changes(snapshot.worktree.worktree_path())
 	{
-		classification.decision =
-			if snapshot.issue.state.name == workflow.frontmatter().tracker().resolved_completed_state()
-			{
-				PostReviewLaneDecision::CleanupBlocked
-			} else {
-				PostReviewLaneDecision::CloseoutBlocked
-			};
+		classification.decision = if snapshot.issue.state.name
+			== workflow.frontmatter().tracker().resolved_completed_state()
+		{
+			PostReviewLaneDecision::CleanupBlocked
+		} else {
+			PostReviewLaneDecision::CloseoutBlocked
+		};
 		classification.reason = String::from("retry_budget_exhausted");
 
 		return classification;
@@ -5846,9 +5781,7 @@ where
 	classification
 }
 
-fn merged_closeout_pending_classification(
-	classification: &PostReviewLaneClassification,
-) -> bool {
+fn merged_closeout_pending_classification(classification: &PostReviewLaneClassification) -> bool {
 	classification.decision == PostReviewLaneDecision::Continue
 		&& classification.reason == "pull_request_merged_closeout_pending"
 		&& classification.pr_state.as_deref() == Some("MERGED")
@@ -5928,13 +5861,13 @@ fn mark_merged_closeout_confirmation_conflict(
 	classification.decision = PostReviewLaneDecision::Block;
 	classification.reason = String::from("pull_request_merge_state_conflict");
 	classification.readback_warning = Some(String::from("pull_request_merge_state_conflict"));
-	classification.readback_root_cause = root_cause.map(|root_cause| root_cause.as_str().to_owned());
+	classification.readback_root_cause =
+		root_cause.map(|root_cause| root_cause.as_str().to_owned());
 
 	if let Some(merge_readback) = merge_readback {
 		classification.pr_state = Some(merge_readback.state);
-		classification.pr_head_sha = merge_readback.head_ref_oid.or_else(|| {
-			classification.pr_head_sha.clone()
-		});
+		classification.pr_head_sha =
+			merge_readback.head_ref_oid.or_else(|| classification.pr_head_sha.clone());
 	}
 }
 
@@ -5971,17 +5904,66 @@ fn worktree_has_no_tracked_changes(worktree_path: &Path) -> bool {
 	output.status.success() && String::from_utf8_lossy(&output.stdout).trim().is_empty()
 }
 
-fn worktree_has_tracked_changes(worktree_path: &Path) -> bool {
-	let Ok(output) = Command::new("git")
-		.arg("-C")
-		.arg(worktree_path)
-		.args(["status", "--porcelain", "--untracked-files=no"])
-		.output()
-	else {
-		return false;
-	};
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WorktreeTrackedChangeState {
+	Clean,
+	TrackedChanges,
+	Unknown,
+}
 
-	output.status.success() && !String::from_utf8_lossy(&output.stdout).trim().is_empty()
+impl WorktreeTrackedChangeState {
+	fn has_tracked_changes(self) -> bool {
+		self == Self::TrackedChanges
+	}
+
+	fn is_unknown(self) -> bool {
+		self == Self::Unknown
+	}
+}
+
+fn worktree_tracked_change_state(worktree_path: &Path) -> WorktreeTrackedChangeState {
+	match worktree_path.try_exists() {
+		Ok(false) => WorktreeTrackedChangeState::Clean,
+		Ok(true) => match worktree_path.join(".git").try_exists() {
+			Ok(false) =>
+				match state::retained_path_contains_only_decodex_runtime_artifacts(worktree_path) {
+					Ok(true) => WorktreeTrackedChangeState::Clean,
+					Ok(false) => WorktreeTrackedChangeState::TrackedChanges,
+					Err(_) => WorktreeTrackedChangeState::Unknown,
+				},
+			Ok(true) => {
+				let Ok(output) = Command::new("git")
+					.arg("-C")
+					.arg(worktree_path)
+					.args(["status", "--porcelain"])
+					.output()
+				else {
+					return WorktreeTrackedChangeState::Unknown;
+				};
+
+				if !output.status.success() {
+					return WorktreeTrackedChangeState::Unknown;
+				}
+
+				let has_blocking_status = String::from_utf8_lossy(&output.stdout)
+					.lines()
+					.filter(|line| !line.trim_end().is_empty())
+					.any(|line| !state::is_untracked_decodex_runtime_artifact_status_line(line));
+
+				if has_blocking_status {
+					WorktreeTrackedChangeState::TrackedChanges
+				} else {
+					WorktreeTrackedChangeState::Clean
+				}
+			},
+			Err(_) => WorktreeTrackedChangeState::Unknown,
+		},
+		Err(_) => WorktreeTrackedChangeState::Unknown,
+	}
+}
+
+fn worktree_has_tracked_changes(worktree_path: &Path) -> bool {
+	worktree_tracked_change_state(worktree_path).has_tracked_changes()
 }
 
 fn apply_pre_orchestration_post_review_classification(
@@ -6150,10 +6132,8 @@ fn load_post_review_orchestration_marker(
 				snapshot,
 				review_state,
 				runtime_state,
-			)?
-		{
-			classification.reason =
-				String::from("review_repair_writeback_stale_lifecycle_marker");
+			)? {
+			classification.reason = String::from("review_repair_writeback_stale_lifecycle_marker");
 			classification.readback_warning =
 				Some(String::from("review_repair_writeback_stale_lifecycle_marker"));
 
@@ -6186,10 +6166,9 @@ fn clean_current_head_review_repair_writeback_pending(
 		return Ok(false);
 	}
 
-	let events = runtime_state.state_store.list_private_execution_events_for_issue(
-		runtime_state.project_id,
-		&snapshot.issue.id,
-	)?;
+	let events = runtime_state
+		.state_store
+		.list_private_execution_events_for_issue(runtime_state.project_id, &snapshot.issue.id)?;
 
 	for terminal_event in events.iter().rev() {
 		if !review_repair_terminal_finalize_event_matches_snapshot(terminal_event, snapshot) {
@@ -6208,15 +6187,15 @@ fn clean_current_head_review_repair_writeback_pending(
 		}) else {
 			continue;
 		};
-		let Some(checkpoint) = runtime_state
-			.state_store
-			.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
+		let Some(checkpoint) = runtime_state.state_store.review_checkpoint_artifact(
+			ReviewCheckpointArtifactLookup {
 				project_id: runtime_state.project_id,
 				issue_id: &snapshot.issue.id,
 				phase: "repair",
 				review_level: runtime_state.review_level.as_str(),
 				head_sha: local_head_oid,
-			})?
+			},
+		)?
 		else {
 			continue;
 		};
@@ -6243,9 +6222,7 @@ fn review_repair_terminal_finalize_event_matches_snapshot(
 		&& payload.get("path").and_then(Value::as_str) == Some("review_repair")
 		&& payload.get("mode").and_then(Value::as_str) == Some("repair")
 		&& payload.get("branch").and_then(Value::as_str) == Some(snapshot.worktree.branch_name())
-		&& payload
-			.get("worktree_path")
-			.and_then(Value::as_str)
+		&& payload.get("worktree_path").and_then(Value::as_str)
 			== Some(snapshot.worktree.worktree_path().display().to_string().as_str())
 }
 
@@ -6261,9 +6238,7 @@ fn review_repair_completion_intent_matches_current_head(
 		&& payload.get("path").and_then(Value::as_str) == Some("review_repair")
 		&& payload.get("mode").and_then(Value::as_str) == Some("repair")
 		&& payload.get("branch").and_then(Value::as_str) == Some(snapshot.worktree.branch_name())
-		&& payload
-			.get("worktree_path")
-			.and_then(Value::as_str)
+		&& payload.get("worktree_path").and_then(Value::as_str)
 			== Some(snapshot.worktree.worktree_path().display().to_string().as_str())
 		&& payload.get("pr_url").and_then(Value::as_str) == Some(review_state.url.as_str())
 		&& payload.get("pr_head_ref").and_then(Value::as_str)
@@ -6295,7 +6270,7 @@ fn apply_review_orchestration_phase_classification(
 				},
 			}
 		},
-		ReviewOrchestrationPhase::WaitingForAck => {
+		ReviewOrchestrationPhase::WaitingForAck =>
 			if orchestration_status.request_acknowledged {
 				classification.reason = String::from("external_review_result_pending");
 			} else if request_ack_timed_out(orchestration_marker, now_unix_epoch) {
@@ -6305,8 +6280,7 @@ fn apply_review_orchestration_phase_classification(
 				);
 			} else {
 				classification.reason = String::from("external_review_ack_pending");
-			}
-		},
+			},
 		ReviewOrchestrationPhase::WaitingForResult => {
 			if !orchestration_status.request_acknowledged {
 				classification.reason = String::from("external_review_ack_pending");
@@ -6398,9 +6372,10 @@ where
 				));
 			},
 		};
-		let review_state = match review_state_inspector
-			.inspect_review_state_readback(snapshot.worktree.worktree_path(), review_handoff.pr_url())
-		{
+		let review_state = match review_state_inspector.inspect_review_state_readback(
+			snapshot.worktree.worktree_path(),
+			review_handoff.pr_url(),
+		) {
 			Ok(review_state) => review_state,
 			Err(error) => {
 				return Ok(PostReviewLaneStateLoad::Classification(
@@ -6507,12 +6482,8 @@ fn merged_pr_local_head_matches_landed_lineage(
 		return Ok(true);
 	}
 
-	worktree_head_descends_from_review_handoff(
-		worktree_path,
-		merge_commit_oid,
-		local_head_oid,
-	)
-	.map_err(|()| "pull_request_merge_commit_lineage_check_failed")
+	worktree_head_descends_from_review_handoff(worktree_path, merge_commit_oid, local_head_oid)
+		.map_err(|()| "pull_request_merge_commit_lineage_check_failed")
 }
 
 fn validate_review_orchestration_marker(
@@ -6807,11 +6778,8 @@ fn readback_degraded_post_review_lane_from_handoff(
 	review_handoff: &ReviewHandoffMarker,
 	root_cause: PullRequestReadbackRootCause,
 ) -> PostReviewLaneClassification {
-	PostReviewReadbackDegradation::pull_request_state_from_handoff(
-		review_handoff,
-		root_cause,
-	)
-	.wait_for_review_classification(None)
+	PostReviewReadbackDegradation::pull_request_state_from_handoff(review_handoff, root_cause)
+		.wait_for_review_classification(None)
 }
 
 fn blocked_post_review_lane_status(
@@ -6848,9 +6816,8 @@ fn post_review_readback_root_cause_for_reason(
 	reason: &str,
 ) -> Option<PullRequestReadbackRootCause> {
 	match reason {
-		"pull_request_repository_parse_failed" => {
-			Some(PullRequestReadbackRootCause::PullRequestShapeReadFailed)
-		},
+		"pull_request_repository_parse_failed" =>
+			Some(PullRequestReadbackRootCause::PullRequestShapeReadFailed),
 		"pull_request_branch_mismatch"
 		| "pull_request_head_mismatch"
 		| "pull_request_head_repository_name_mismatch"
@@ -6860,9 +6827,8 @@ fn post_review_readback_root_cause_for_reason(
 		| "review_handoff_lineage_mismatch"
 		| "review_orchestration_branch_mismatch"
 		| "review_orchestration_head_mismatch"
-		| "review_orchestration_pr_mismatch" => {
-			Some(PullRequestReadbackRootCause::LineageValidationFailed)
-		},
+		| "review_orchestration_pr_mismatch" =>
+			Some(PullRequestReadbackRootCause::LineageValidationFailed),
 		_ => None,
 	}
 }
@@ -6966,9 +6932,7 @@ fn review_state_landing_gates_satisfied(review_state: &PullRequestReviewState) -
 	pull_request::retained_landing_gates_satisfied(review_state_landing_gate_view(review_state))
 }
 
-fn review_state_clean_path_landing_gates_satisfied(
-	review_state: &PullRequestReviewState,
-) -> bool {
+fn review_state_clean_path_landing_gates_satisfied(review_state: &PullRequestReviewState) -> bool {
 	pull_request::retained_clean_path_landing_gates_satisfied(review_state_landing_gate_view(
 		review_state,
 	))
@@ -7097,9 +7061,9 @@ where
 	match tracker.refresh_issues(issue_ids) {
 		Ok(issues) => Ok(issues),
 		Err(error)
-			if issue_ids
-				.iter()
-				.any(|issue_id| tracker::issue_lookup_missing_error_for_candidate(&error, issue_id)) =>
+			if issue_ids.iter().any(|issue_id| {
+				tracker::issue_lookup_missing_error_for_candidate(&error, issue_id)
+			}) =>
 		{
 			let mut issues = Vec::new();
 
@@ -7217,12 +7181,7 @@ where
 				)?;
 			},
 			None => {
-				clear_recovered_issue_lease(
-					project.service_id(),
-					&issue.id,
-					None,
-					state_store,
-				)?;
+				clear_recovered_issue_lease(project.service_id(), &issue.id, None, state_store)?;
 			},
 		}
 
@@ -7331,7 +7290,8 @@ where
 	let issue = match tracker.get_issue_by_identifier(issue_identifier) {
 		Ok(issue) => issue,
 		Err(error)
-			if tracker::issue_lookup_missing_error_for_candidate(&error, issue_identifier) => None,
+			if tracker::issue_lookup_missing_error_for_candidate(&error, issue_identifier) =>
+			None,
 		Err(error) => return Err(error),
 	};
 	let Some(issue) = issue else {
@@ -7405,9 +7365,7 @@ fn marker_process_is_alive(marker: &RunActivityMarker) -> bool {
 	marker_process_liveness(marker).alive
 }
 
-fn marker_process_liveness_for_marker(
-	marker: &RunActivityMarker,
-) -> Option<MarkerProcessLiveness> {
+fn marker_process_liveness_for_marker(marker: &RunActivityMarker) -> Option<MarkerProcessLiveness> {
 	marker.process_id().map(|_| marker_process_liveness(marker))
 }
 
@@ -7442,10 +7400,7 @@ fn marker_process_liveness(marker: &RunActivityMarker) -> MarkerProcessLiveness 
 	};
 
 	if marker_process_start_identity != current_process_start_identity.as_str() {
-		return MarkerProcessLiveness {
-			alive: false,
-			reason: "process_start_identity_mismatch",
-		};
+		return MarkerProcessLiveness { alive: false, reason: "process_start_identity_mismatch" };
 	}
 
 	MarkerProcessLiveness { alive: true, reason: "process_alive" }
@@ -7464,10 +7419,9 @@ fn process_is_alive(process_id: u32) -> bool {
 	// builtin or `kill` binary being present on PATH.
 	match unsafe { libc::kill(process_id, 0) } {
 		0 => !process_is_zombie_or_uninspectable_after_signalable_probe(process_id),
-		-1 => {
+		-1 =>
 			matches!(std::io::Error::last_os_error().raw_os_error(), Some(libc::EPERM))
-				&& !process_is_zombie(process_id)
-		},
+				&& !process_is_zombie(process_id),
 		_ => false,
 	}
 }
@@ -7584,8 +7538,11 @@ fn operator_run_status(
 		&protocol_summary,
 		now_unix_epoch,
 	);
-	let child_agent_activity =
-		operator_run_child_agent_activity(marker.as_ref(), run.child_agent_activity(), now_unix_epoch);
+	let child_agent_activity = operator_run_child_agent_activity(
+		marker.as_ref(),
+		run.child_agent_activity(),
+		now_unix_epoch,
+	);
 	let protocol_activity = operator_run_protocol_activity(
 		marker.as_ref(),
 		run.protocol_activity(),
@@ -7617,19 +7574,19 @@ fn operator_run_status(
 		branch_name.as_deref(),
 		worktree_path.as_deref(),
 	);
-	let private_evidence = operator_run_private_evidence(project, &run, issue_identifier.as_deref());
+	let private_evidence =
+		operator_run_private_evidence(project, &run, issue_identifier.as_deref());
 	let continuation_recovery = operator_run_continuation_recovery_status(loop_evidence, &run);
 	let active_goal_phase = operator_run_active_goal_phase(private_events);
 	let public_progress_phase = operator_run_public_progress_phase(private_events);
 	let phase_acceptance = operator_run_phase_acceptance_status(private_events);
-	let loop_status =
-		operator_run_loop_status(
-			project,
-			loop_evidence,
-			&run,
-			&lifecycle.status,
-			&lifecycle.phase,
-			&lifecycle.current_operation,
+	let loop_status = operator_run_loop_status(
+		project,
+		loop_evidence,
+		&run,
+		&lifecycle.status,
+		&lifecycle.phase,
+		&lifecycle.current_operation,
 	)?;
 
 	Ok(hydrate_operator_run_derived_status(operator_run_status_from_parts(
@@ -7777,10 +7734,7 @@ fn operator_run_active_goal_phase(events: &[PrivateExecutionEvent]) -> Option<St
 
 		let payload = event.payload();
 		let nested = payload.get("payload").unwrap_or(payload);
-		let status = nested
-			.get("status")
-			.or_else(|| payload.get("status"))
-			.and_then(Value::as_str);
+		let status = nested.get("status").or_else(|| payload.get("status")).and_then(Value::as_str);
 
 		if status.is_some_and(|value| matches!(value, "complete" | "completed" | "blocked")) {
 			return None;
@@ -7928,8 +7882,7 @@ fn operator_run_ownership_state(
 				| "continuation_recovery_churn_exceeded"
 				| "authority_boundary_required"
 				| "human_attention_required"
-		)
-	{
+		) {
 		return String::from("leased_run");
 	}
 	if matches!(
@@ -7975,17 +7928,15 @@ fn operator_run_liveness_state(run: &OperatorRunStatus) -> String {
 	if run.process_alive == Some(true) {
 		return String::from("process_alive");
 	}
-	if matches!(run.thread_status.as_deref(), Some("active")) || !run.thread_active_flags.is_empty() {
+	if matches!(run.thread_status.as_deref(), Some("active")) || !run.thread_active_flags.is_empty()
+	{
 		return String::from("thread_active");
 	}
 	if operator_run_has_recent_app_server_execution(run) {
 		return String::from("protocol_recent");
 	}
 	if run.process_alive == Some(false)
-		|| matches!(
-			run.execution_liveness.as_str(),
-			"not_running" | "process_identity_mismatch"
-		)
+		|| matches!(run.execution_liveness.as_str(), "not_running" | "process_identity_mismatch")
 	{
 		return String::from("not_running");
 	}
@@ -7994,11 +7945,7 @@ fn operator_run_liveness_state(run: &OperatorRunStatus) -> String {
 }
 
 fn operator_run_policy_state(run: &OperatorRunStatus) -> String {
-	if run
-		.continuation_recovery
-		.as_ref()
-		.is_some_and(|recovery| recovery.budget_exceeded)
-	{
+	if run.continuation_recovery.as_ref().is_some_and(|recovery| recovery.budget_exceeded) {
 		return String::from("continuation_recovery_churn_exceeded");
 	}
 
@@ -8024,11 +7971,9 @@ fn operator_run_policy_state(run: &OperatorRunStatus) -> String {
 		return match review.status.as_str() {
 			"pending" => String::from("review_pending"),
 			"findings" => {
-				if review
-					.checkpoint
-					.as_ref()
-					.is_some_and(|checkpoint| checkpoint.nonclean_rounds >= REVIEW_POLICY_CONVERGENCE_BUDGET)
-				{
+				if review.checkpoint.as_ref().is_some_and(|checkpoint| {
+					checkpoint.nonclean_rounds >= REVIEW_POLICY_CONVERGENCE_BUDGET
+				}) {
 					String::from("review_churn_exceeded")
 				} else {
 					String::from("review_findings")
@@ -8043,11 +7988,9 @@ fn operator_run_policy_state(run: &OperatorRunStatus) -> String {
 }
 
 fn operator_run_terminalization_state(run: &OperatorRunStatus, liveness_state: &str) -> String {
-	if matches!(
-		run.status.as_str(),
-		"cleanup_complete" | "merged_closeout_reconciled"
-	) || matches!(run.current_operation.as_str(), "ledger_outcome")
-		&& matches!(run.phase.as_str(), "completed")
+	if matches!(run.status.as_str(), "cleanup_complete" | "merged_closeout_reconciled")
+		|| matches!(run.current_operation.as_str(), "ledger_outcome")
+			&& matches!(run.phase.as_str(), "completed")
 	{
 		return String::from("cleanup_complete");
 	}
@@ -8076,10 +8019,8 @@ fn operator_run_lane_control_conditions(
 	{
 		conditions.push(String::from("run_lease_missing"));
 	}
-	if matches!(
-		run.attempt_status.as_str(),
-		"failed" | "interrupted" | "stalled" | "succeeded"
-	) && matches!(liveness_state, "process_alive" | "thread_active" | "protocol_recent")
+	if matches!(run.attempt_status.as_str(), "failed" | "interrupted" | "stalled" | "succeeded")
+		&& matches!(liveness_state, "process_alive" | "thread_active" | "protocol_recent")
 	{
 		conditions.push(String::from("terminal_attempt_has_live_evidence"));
 	}
@@ -8092,10 +8033,7 @@ fn operator_run_lane_control_conditions(
 	if policy_state == "continuation_recovery_churn_exceeded" {
 		conditions.push(String::from("continuation_recovery_budget_exceeded"));
 	}
-	if matches!(
-		policy_state,
-		"authority_boundary_required" | "human_attention_required"
-	) {
+	if matches!(policy_state, "authority_boundary_required" | "human_attention_required") {
 		conditions.push(String::from("policy_requires_human_attention"));
 	}
 
@@ -8115,10 +8053,7 @@ fn operator_run_lane_control_next_action(
 	if policy_state == "continuation_recovery_churn_exceeded" {
 		return String::from("stop_auto_continuation_and_request_architecture_recovery");
 	}
-	if matches!(
-		policy_state,
-		"authority_boundary_required" | "human_attention_required"
-	) {
+	if matches!(policy_state, "authority_boundary_required" | "human_attention_required") {
 		return String::from("resolve_policy_stop_before_mutating_lane");
 	}
 	if ownership_state == "orphaned_live_thread" {
@@ -8194,17 +8129,16 @@ fn operator_run_lifecycle_projection(
 		marker.and_then(RunActivityMarker::retry_ready_at_unix_epoch),
 		now_unix_epoch,
 	);
-	let (phase, wait_reason) =
-		if let Some(projection) = terminal_finalize_projection {
-			(String::from(projection.phase), Some(String::from(projection.wait_reason)))
-		} else {
-			classify_operator_run_phase(
-				&status,
-				retry_kind.as_deref(),
-				retry_ready_at_unix_epoch,
-				now_unix_epoch,
-			)
-		};
+	let (phase, wait_reason) = if let Some(projection) = terminal_finalize_projection {
+		(String::from(projection.phase), Some(String::from(projection.wait_reason)))
+	} else {
+		classify_operator_run_phase(
+			&status,
+			retry_kind.as_deref(),
+			retry_ready_at_unix_epoch,
+			now_unix_epoch,
+		)
+	};
 	let current_operation = terminal_finalize_projection
 		.map(|projection| projection.current_operation.to_owned())
 		.unwrap_or_else(|| classify_operator_run_operation(&phase, marker_current_operation));
@@ -8265,8 +8199,7 @@ fn operator_run_relative_worktree_path(
 	project: &ServiceConfig,
 	run: &ProjectRunStatus,
 ) -> Option<String> {
-	run.worktree_path()
-		.map(|path| relative_worktree_path_for_path(project, path))
+	run.worktree_path().map(|path| relative_worktree_path_for_path(project, path))
 }
 
 fn operator_run_private_evidence(
@@ -8327,26 +8260,20 @@ fn operator_run_lifecycle_loop_summary(
 		.then(|| format!("terminal lifecycle: {status}"))
 }
 
-fn operator_run_has_terminal_lifecycle(
-	status: &str,
-	phase: &str,
-	current_operation: &str,
-) -> bool {
+fn operator_run_has_terminal_lifecycle(status: &str, phase: &str, current_operation: &str) -> bool {
 	phase == "completed"
 		|| phase == "terminal_pending"
 		|| current_operation == "ledger_outcome"
 		|| matches!(
 			status,
 			"succeeded"
-				| "failed"
-				| "interrupted"
+				| "failed" | "interrupted"
 				| "review_handoff_pending"
 				| "review_repair_pending"
 				| "closeout_pending"
 				| "manual_attention_pending"
 				| "cleanup_complete"
-				| "closeout"
-				| "landed"
+				| "closeout" | "landed"
 				| "manual_attention"
 				| TERMINAL_GUARDED_RUN_STATUS
 		)
@@ -8393,10 +8320,8 @@ fn operator_loop_status_for_run_with_evidence(
 		default_review_phase,
 	)?;
 	let events = loop_evidence.private_events(issue_id, run_id, attempt_number);
-	let architecture_recovery = events
-		.iter()
-		.rev()
-		.find_map(operator_architecture_recovery_status_from_event);
+	let architecture_recovery =
+		events.iter().rev().find_map(operator_architecture_recovery_status_from_event);
 	let boundary = events.iter().rev().find_map(operator_boundary_status_from_event);
 	let decision_request = events
 		.iter()
@@ -8458,7 +8383,9 @@ fn operator_autonomy_objective_status(
 		let version = policy.accepted_objective_version().parse::<u64>().unwrap_or_default();
 		let source_ref = operator_autonomy_objective_ref(policy.accepted_objective_id(), version);
 
-		if let Some(record) = loop_evidence.autonomy_objective(policy.accepted_objective_id(), version) {
+		if let Some(record) =
+			loop_evidence.autonomy_objective(policy.accepted_objective_id(), version)
+		{
 			let objective = record.objective();
 			let mut known_gaps = Vec::new();
 
@@ -8488,7 +8415,9 @@ fn operator_autonomy_objective_status(
 			objective_id: policy.accepted_objective_id().to_owned(),
 			objective_version: version,
 			state: String::from("missing_runtime_record"),
-			summary: String::from("Accepted runtime policy references an Objective Contract that is not in local readback."),
+			summary: String::from(
+				"Accepted runtime policy references an Objective Contract that is not in local readback.",
+			),
 			source_ref,
 			updated_at: String::from("none"),
 			completeness: String::from("partial"),
@@ -8496,24 +8425,20 @@ fn operator_autonomy_objective_status(
 		});
 	}
 
-	loop_evidence
-		.accepted_autonomy_objectives()
-		.into_iter()
-		.next()
-		.map(|record| {
-			let objective = record.objective();
+	loop_evidence.accepted_autonomy_objectives().into_iter().next().map(|record| {
+		let objective = record.objective();
 
-			OperatorAutonomyObjectiveStatus {
-				objective_id: objective.id().to_owned(),
-				objective_version: objective.version(),
-				state: objective.state().as_str().to_owned(),
-				summary: public_or_redacted_status_value(objective.summary()),
-				source_ref: operator_autonomy_objective_ref(objective.id(), objective.version()),
-				updated_at: record.updated_at().to_owned(),
-				completeness: String::from("complete"),
-				known_gaps: Vec::new(),
-			}
-		})
+		OperatorAutonomyObjectiveStatus {
+			objective_id: objective.id().to_owned(),
+			objective_version: objective.version(),
+			state: objective.state().as_str().to_owned(),
+			summary: public_or_redacted_status_value(objective.summary()),
+			source_ref: operator_autonomy_objective_ref(objective.id(), objective.version()),
+			updated_at: record.updated_at().to_owned(),
+			completeness: String::from("complete"),
+			known_gaps: Vec::new(),
+		}
+	})
 }
 
 fn operator_autonomy_signal_statuses(
@@ -8524,8 +8449,7 @@ fn operator_autonomy_signal_statuses(
 		.into_iter()
 		.map(|record| {
 			let signal = record.signal();
-			let (source_refs, source_refs_redacted) =
-				public_autonomy_refs(signal.source_refs());
+			let (source_refs, source_refs_redacted) = public_autonomy_refs(signal.source_refs());
 			let (primary_source_refs, primary_source_refs_redacted) =
 				public_autonomy_refs(signal.primary_source_refs());
 			let (gaps, gaps_redacted) = public_status_values(signal.gaps());
@@ -8655,7 +8579,8 @@ fn operator_autonomy_lineage_statuses(
 		.into_iter()
 		.map(|record| {
 			let proposal = record.proposal();
-			let contract_records = loop_evidence.decision_contracts_for_autonomy_proposal(proposal.id());
+			let contract_records =
+				loop_evidence.decision_contracts_for_autonomy_proposal(proposal.id());
 			let decision_contracts = contract_records
 				.iter()
 				.map(|record| OperatorAutonomyDecisionContractStatus {
@@ -8814,10 +8739,7 @@ fn operator_autonomy_generated_issue_pairs(
 				.iter()
 				.enumerate()
 				.map(|(index, issue_id)| {
-					(
-						issue_id.clone(),
-						links.generated_issue_identifiers().get(index).cloned(),
-					)
+					(issue_id.clone(), links.generated_issue_identifiers().get(index).cloned())
 				})
 				.collect::<Vec<_>>()
 		})
@@ -8959,7 +8881,7 @@ fn operator_autonomy_replay_evidence_status_from_event(
 						completeness: operator_autonomy_completeness(&known_gaps),
 						known_gaps,
 					}
-				}
+				},
 			},
 		);
 	}
@@ -8993,10 +8915,8 @@ fn operator_autonomy_matching_pr_review<'a>(
 ) -> Option<&'a ReviewLifecycleRecord> {
 	let pr_head_ref = pr_head_ref?;
 	let pr_head_oid = pr_head_oid?;
-	let raw_source_refs = raw_source_refs
-		.iter()
-		.map(|source_ref| source_ref.trim())
-		.collect::<BTreeSet<_>>();
+	let raw_source_refs =
+		raw_source_refs.iter().map(|source_ref| source_ref.trim()).collect::<BTreeSet<_>>();
 
 	review_lifecycle_records
 		.iter()
@@ -9022,10 +8942,8 @@ fn operator_autonomy_pr_review_candidate_exists(
 	raw_source_refs: &[String],
 	review_lifecycle_records: &[&ReviewLifecycleRecord],
 ) -> bool {
-	let raw_source_refs = raw_source_refs
-		.iter()
-		.map(|source_ref| source_ref.trim())
-		.collect::<BTreeSet<_>>();
+	let raw_source_refs =
+		raw_source_refs.iter().map(|source_ref| source_ref.trim()).collect::<BTreeSet<_>>();
 
 	review_lifecycle_records.iter().any(|review| {
 		review.run_id() == event.run_id()
@@ -9134,7 +9052,8 @@ fn operator_autonomy_evidence_completeness_rank(value: &str) -> u8 {
 
 fn operator_autonomy_max_redaction_level(left: &str, right: &str) -> &'static str {
 	match (operator_autonomy_redaction_rank(left), operator_autonomy_redaction_rank(right)) {
-		(left_rank, right_rank) if left_rank >= right_rank => operator_autonomy_redaction_label(left),
+		(left_rank, right_rank) if left_rank >= right_rank =>
+			operator_autonomy_redaction_label(left),
 		_ => operator_autonomy_redaction_label(right),
 	}
 }
@@ -9178,7 +9097,8 @@ fn public_autonomy_refs(refs: &[String]) -> (Vec<String>, bool) {
 fn public_autonomy_ref(value: &str) -> Option<String> {
 	let value = value.trim();
 
-	if value.is_empty() || public_text::validate_public_text_field("autonomy source_ref", value).is_err()
+	if value.is_empty()
+		|| public_text::validate_public_text_field("autonomy source_ref", value).is_err()
 	{
 		return None;
 	}
@@ -9290,56 +9210,49 @@ fn operator_latest_review_checkpoint_event_status(
 	run_id: &str,
 	attempt_number: i64,
 ) -> Option<OperatorReviewLoopStatus> {
-	loop_evidence
-		.private_events(issue_id, run_id, attempt_number)
-		.iter()
-		.rev()
-		.find_map(|event| {
-			let payload = event.payload();
+	loop_evidence.private_events(issue_id, run_id, attempt_number).iter().rev().find_map(|event| {
+		let payload = event.payload();
 
-			if event.event_type() != "review_checkpoint" {
-				return None;
-			}
+		if event.event_type() != "review_checkpoint" {
+			return None;
+		}
 
-			let phase = payload.get("phase").and_then(Value::as_str)?;
-			let status = payload.get("status").and_then(Value::as_str)?;
-			let head_sha = payload.get("head_sha").and_then(Value::as_str)?;
-			let nonclean_rounds = payload
-				.get("nonclean_rounds")
-				.and_then(Value::as_i64)
-				.unwrap_or(0);
-			let checkpoint =
-				loop_evidence.review_policy_checkpoint(issue_id, run_id, attempt_number, phase)?;
+		let phase = payload.get("phase").and_then(Value::as_str)?;
+		let status = payload.get("status").and_then(Value::as_str)?;
+		let head_sha = payload.get("head_sha").and_then(Value::as_str)?;
+		let nonclean_rounds = payload.get("nonclean_rounds").and_then(Value::as_i64).unwrap_or(0);
+		let checkpoint =
+			loop_evidence.review_policy_checkpoint(issue_id, run_id, attempt_number, phase)?;
 
-			if checkpoint.status() != status
-				|| checkpoint.head_sha() != head_sha
-				|| checkpoint.nonclean_rounds() != nonclean_rounds
-			{
-				return None;
-			}
+		if checkpoint.status() != status
+			|| checkpoint.head_sha() != head_sha
+			|| checkpoint.nonclean_rounds() != nonclean_rounds
+		{
+			return None;
+		}
 
-			let details_json = payload.get("review").unwrap_or(payload).to_string();
-			let summary = operator_review_checkpoint_summary_fields(&details_json);
+		let details_json = payload.get("review").unwrap_or(payload).to_string();
+		let summary = operator_review_checkpoint_summary_fields(&details_json);
 
-			Some(OperatorReviewLoopStatus {
-				phase: phase.to_owned(),
-				status: status.to_owned(),
-				checkpoint: Some(OperatorReviewCheckpointStatus {
-					head_sha: head_sha.to_owned(),
-					round: nonclean_rounds,
-					nonclean_rounds,
-					review_class: summary.review_class,
-					risk_class: summary.risk_class,
-					compact_eligible: summary.compact_eligible,
-					fallback_reason: summary.fallback_reason,
-					active_fingerprints: summary.active_fingerprints,
-					stop_fingerprint: summary.stop_fingerprint,
-					route_counts: summary.route_counts,
-					route_next_action: summary.route_next_action,
-					updated_at: checkpoint.updated_at().to_owned(),
-				}),
-			})
+		Some(OperatorReviewLoopStatus {
+			phase: phase.to_owned(),
+			status: status.to_owned(),
+			checkpoint: Some(OperatorReviewCheckpointStatus {
+				head_sha: head_sha.to_owned(),
+				round: nonclean_rounds,
+				nonclean_rounds,
+				review_class: summary.review_class,
+				risk_class: summary.risk_class,
+				compact_eligible: summary.compact_eligible,
+				fallback_reason: summary.fallback_reason,
+				active_fingerprints: summary.active_fingerprints,
+				stop_fingerprint: summary.stop_fingerprint,
+				route_counts: summary.route_counts,
+				route_next_action: summary.route_next_action,
+				updated_at: checkpoint.updated_at().to_owned(),
+			}),
 		})
+	})
 }
 
 fn operator_review_checkpoint_summary_fields(
@@ -9490,9 +9403,7 @@ fn operator_architecture_recovery_status_from_event(
 				.and_then(Value::as_bool)
 		})
 		.unwrap_or_else(|| {
-			boundary_policy_decision
-				.as_deref()
-				.is_some_and(operator_boundary_policy_blocks_landing)
+			boundary_policy_decision.as_deref().is_some_and(operator_boundary_policy_blocks_landing)
 		});
 	let recovery_budget_attempt = payload
 		.get("recovery_budget")
@@ -9542,35 +9453,36 @@ fn operator_architecture_recovery_next_action(
 	blocks_landing: bool,
 ) -> String {
 	match reason_code {
-		"architecture_recovery_started" => match (policy_decision, blocks_landing, requires_enhanced_evidence) {
-			(Some(policy), true, _) => format!(
-				"Retry with a materially different implementation strategy under authority policy `{policy}`; keep landing blocked until validation or review-policy evidence is restored."
-			),
-			(Some(policy), false, true) => format!(
-				"Retry with a materially different implementation strategy under authority policy `{policy}`; preserve enhanced evidence before review handoff or landing."
-			),
-			(Some(policy), false, false) => format!(
-				"Retry with a materially different implementation strategy under authority policy `{policy}`."
-			),
-			(None, true, _) => {
-				String::from("Retry with a materially different implementation strategy; keep landing blocked until validation or review-policy evidence is restored.")
+		"architecture_recovery_started" =>
+			match (policy_decision, blocks_landing, requires_enhanced_evidence) {
+				(Some(policy), true, _) => format!(
+					"Retry with a materially different implementation strategy under authority policy `{policy}`; keep landing blocked until validation or review-policy evidence is restored."
+				),
+				(Some(policy), false, true) => format!(
+					"Retry with a materially different implementation strategy under authority policy `{policy}`; preserve enhanced evidence before review handoff or landing."
+				),
+				(Some(policy), false, false) => format!(
+					"Retry with a materially different implementation strategy under authority policy `{policy}`."
+				),
+				(None, true, _) => String::from(
+					"Retry with a materially different implementation strategy; keep landing blocked until validation or review-policy evidence is restored.",
+				),
+				(None, false, true) => String::from(
+					"Retry with a materially different implementation strategy; preserve enhanced evidence before review handoff or landing.",
+				),
+				(None, false, false) => String::from(
+					"Retry with a materially different implementation strategy inside authority.",
+				),
 			},
-			(None, false, true) => {
-				String::from("Retry with a materially different implementation strategy; preserve enhanced evidence before review handoff or landing.")
-			},
-			(None, false, false) => {
-				String::from("Retry with a materially different implementation strategy inside authority.")
-			},
-		},
-		"architecture_recovery_exhausted" => {
-			String::from("Require a new accepted recovery strategy or architecture decision before retrying.")
-		},
-		"external_dependency_required" => {
-			String::from("Resolve the dependency or Execution Program readiness blocker before retrying.")
-		},
-		"contract_boundary_required" => {
-			String::from("Resolve the Decision Contract or Authority Envelope boundary before retrying.")
-		},
+		"architecture_recovery_exhausted" => String::from(
+			"Require a new accepted recovery strategy or architecture decision before retrying.",
+		),
+		"external_dependency_required" => String::from(
+			"Resolve the dependency or Execution Program readiness blocker before retrying.",
+		),
+		"contract_boundary_required" => String::from(
+			"Resolve the Decision Contract or Authority Envelope boundary before retrying.",
+		),
 		_ => String::from("Inspect the Architecture Recovery Packet before retrying."),
 	}
 }
@@ -9583,10 +9495,7 @@ fn operator_boundary_policy_decision_from_disposition(disposition: &str) -> &'st
 }
 
 fn operator_boundary_policy_requires_enhanced_evidence(policy_decision: &str) -> bool {
-	matches!(
-		policy_decision,
-		"requires_enhanced_evidence" | "block_landing"
-	)
+	matches!(policy_decision, "requires_enhanced_evidence" | "block_landing")
 }
 
 fn operator_boundary_policy_blocks_landing(policy_decision: &str) -> bool {
@@ -9616,27 +9525,18 @@ fn operator_boundary_status_from_event(
 		.get("policy_decision")
 		.and_then(Value::as_str)
 		.or_else(|| {
-			payload
-				.get("policy")
-				.and_then(|policy| policy.get("decision"))
-				.and_then(Value::as_str)
+			payload.get("policy").and_then(|policy| policy.get("decision")).and_then(Value::as_str)
 		})
 		.map(str::to_owned)
 		.unwrap_or_else(|| {
 			operator_boundary_policy_decision_from_disposition(&disposition).to_owned()
 		});
-	let attempted_recovery_reason = payload
-		.get("attempted_recovery_reason")
-		.and_then(Value::as_str)
-		.map(str::to_owned);
-	let changed_surface_count = payload
-		.get("changed_surfaces")
-		.and_then(Value::as_array)
-		.map_or(0, Vec::len);
-	let improvement_signal_count = payload
-		.get("improvement_signals")
-		.and_then(Value::as_array)
-		.map_or(0, Vec::len);
+	let attempted_recovery_reason =
+		payload.get("attempted_recovery_reason").and_then(Value::as_str).map(str::to_owned);
+	let changed_surface_count =
+		payload.get("changed_surfaces").and_then(Value::as_array).map_or(0, Vec::len);
+	let improvement_signal_count =
+		payload.get("improvement_signals").and_then(Value::as_array).map_or(0, Vec::len);
 	let requires_enhanced_evidence = payload
 		.get("policy")
 		.and_then(|policy| policy.get("requires_enhanced_evidence"))
@@ -9687,16 +9587,10 @@ fn operator_loop_status_summary(
 	lifecycle_summary: Option<&str>,
 ) -> String {
 	if let Some(request) = decision_request {
-		return format!(
-			"human-required boundary stop: {} on {}",
-			request.reason, request.boundary
-		);
+		return format!("human-required boundary stop: {} on {}", request.reason, request.boundary);
 	}
 	if let Some(recovery) = architecture_recovery {
-		return format!(
-			"architecture recovery {}: {}",
-			recovery.status, recovery.reason_code
-		);
+		return format!("architecture recovery {}: {}", recovery.status, recovery.reason_code);
 	}
 	if let Some(review) = review {
 		if let Some(fingerprint) =
@@ -9734,9 +9628,8 @@ fn operator_loop_status_next_action(
 	}
 	if let Some(boundary) = boundary {
 		return match boundary.policy_decision.as_str() {
-			"requires_human_decision" => Some(String::from(
-				"Resolve the Authority Boundary Check before retrying the lane.",
-			)),
+			"requires_human_decision" =>
+				Some(String::from("Resolve the Authority Boundary Check before retrying the lane.")),
 			"block_landing" => Some(String::from(
 				"Continue recovery, but block landing until review or validation policy evidence is restored.",
 			)),
@@ -9770,12 +9663,10 @@ fn operator_loop_status_next_action(
 			"findings" => Some(String::from(
 				"Repair validated review findings and record a fresh checkpoint.",
 			)),
-			"blocked" => Some(String::from(
-				"Resolve the blocked Decodex Review before continuing.",
-			)),
-			"needs_architecture_review" => Some(String::from(
-				"Get architecture direction before continuing review repair.",
-			)),
+			"blocked" =>
+				Some(String::from("Resolve the blocked Decodex Review before continuing.")),
+			"needs_architecture_review" =>
+				Some(String::from("Get architecture direction before continuing review repair.")),
 			_ => None,
 		}
 	})
@@ -9883,14 +9774,13 @@ fn repo_root_path_display_name(repo_root: &Path) -> Option<String> {
 fn load_operator_run_marker(
 	run: &ProjectRunStatus,
 ) -> crate::prelude::Result<Option<RunActivityMarker>> {
-	Ok(run
-		.worktree_path()
-		.map(state::read_run_activity_marker_snapshot)
-		.transpose()?
-		.flatten()
-		.filter(|marker| {
-			marker.run_id() == run.run_id() && marker.attempt_number() == run.attempt_number()
-		}))
+	let marker = run.worktree_path().and_then(|worktree_path| {
+		state::read_run_activity_marker_snapshot(worktree_path).unwrap_or_default()
+	});
+
+	Ok(marker.filter(|marker| {
+		marker.run_id() == run.run_id() && marker.attempt_number() == run.attempt_number()
+	}))
 }
 
 fn operator_run_timing(
@@ -10034,21 +9924,13 @@ fn operator_run_terminal_finalize_projection(
 		"review_handoff" => Some(OperatorTerminalFinalizeProjection {
 			status: "review_handoff_pending",
 			phase: "terminal_pending",
-			wait_reason: review_handoff_terminal_finalize_wait_reason(
-				loop_evidence,
-				run,
-				events,
-			),
+			wait_reason: review_handoff_terminal_finalize_wait_reason(loop_evidence, run, events),
 			current_operation: RUN_OPERATION_REVIEW_WRITEBACK,
 		}),
 		"review_repair" => Some(OperatorTerminalFinalizeProjection {
 			status: "review_repair_pending",
 			phase: "terminal_pending",
-			wait_reason: review_repair_terminal_finalize_wait_reason(
-				loop_evidence,
-				run,
-				events,
-			),
+			wait_reason: review_repair_terminal_finalize_wait_reason(loop_evidence, run, events),
 			current_operation: RUN_OPERATION_REVIEW_WRITEBACK,
 		}),
 		"closeout" => Some(OperatorTerminalFinalizeProjection {
@@ -10201,10 +10083,8 @@ fn operator_continuation_recovery_event_status(
 		.to_owned();
 	let next_phase = event_payload.get("nextPhase")?.as_str()?.to_owned();
 	let source_error_class = event_payload.get("sourceErrorClass")?.as_str()?.to_owned();
-	let source_error_message = event_payload
-		.get("sourceErrorMessage")
-		.and_then(Value::as_str)
-		.map(str::to_owned);
+	let source_error_message =
+		event_payload.get("sourceErrorMessage").and_then(Value::as_str).map(str::to_owned);
 
 	Some(OperatorContinuationRecoveryStatus {
 		state: String::from(state),
@@ -10234,8 +10114,7 @@ fn operator_run_visible_status(
 			app_server_state,
 			protocol_summary,
 			timing,
-		)
-	{
+		) {
 		return String::from("running");
 	}
 
@@ -10312,10 +10191,7 @@ fn operator_protocol_event_counts_as_live_execution(event_type: Option<&str>) ->
 	};
 
 	state::protocol_event_counts_as_work_progress(event_type)
-		&& !matches!(
-			event_type.to_ascii_lowercase().as_str(),
-			"thread/archive" | "turn/completed"
-		)
+		&& !matches!(event_type.to_ascii_lowercase().as_str(), "thread/archive" | "turn/completed")
 }
 
 fn operator_run_has_app_server_execution_evidence(
@@ -10336,11 +10212,7 @@ fn operator_run_has_app_server_execution_evidence(
 }
 
 fn operator_run_queue_lease_state(run_lease: bool) -> String {
-	if run_lease {
-		String::from("held")
-	} else {
-		String::from("not_held")
-	}
+	if run_lease { String::from("held") } else { String::from("not_held") }
 }
 
 fn operator_run_execution_liveness(
@@ -10419,7 +10291,8 @@ fn operator_run_protocol_activity(
 	if is_running
 		&& summary.waiting_reason.is_none()
 		&& protocol_idle_for_seconds.is_some_and(|idle_for| {
-			u64::try_from(idle_for).is_ok_and(|idle_for| idle_for < RUN_LEASE_IDLE_TIMEOUT.as_secs())
+			u64::try_from(idle_for)
+				.is_ok_and(|idle_for| idle_for < RUN_LEASE_IDLE_TIMEOUT.as_secs())
 		}) {
 		summary.waiting_reason = Some(String::from("protocol_idleness"));
 	}
@@ -10470,7 +10343,8 @@ fn contains_protocol_activity_host_path_shape(detail: &str) -> bool {
 
 		let path_boundary = index == 0
 			|| previous.is_some_and(|previous| {
-				previous.is_whitespace() || matches!(previous, '"' | '\'' | '`' | '(' | '[' | '{' | '=')
+				previous.is_whitespace()
+					|| matches!(previous, '"' | '\'' | '`' | '(' | '[' | '{' | '=')
 			});
 		let path_component = chars
 			.peek()
@@ -10564,9 +10438,7 @@ fn format_optional_i64(value: Option<i64>) -> String {
 
 fn classify_operator_run_operation(phase: &str, marker_current_operation: Option<&str>) -> String {
 	match phase {
-		"retry_backoff" | "waiting_continuation" => {
-			String::from(RUN_OPERATION_WAITING_EXTERNAL)
-		},
+		"retry_backoff" | "waiting_continuation" => String::from(RUN_OPERATION_WAITING_EXTERNAL),
 		"completed" | "failed" => String::from(RUN_OPERATION_IDLE),
 		"stalled" => marker_current_operation
 			.map(str::to_owned)
@@ -10639,9 +10511,7 @@ fn operator_run_progress_diagnostic(
 	let progress_is_stale = timing
 		.last_progress_unix_epoch
 		.and_then(|last_progress| observed_idle_duration(last_progress, now_unix_epoch))
-		.is_none_or(|idle_for| {
-			idle_for >= suspected_operator_run_stall_threshold(idle_timeout)
-		});
+		.is_none_or(|idle_for| idle_for >= suspected_operator_run_stall_threshold(idle_timeout));
 
 	progress_is_stale.then(|| String::from("protocol_only_activity"))
 }
@@ -10656,9 +10526,7 @@ fn operator_latest_repo_gate_failure_progress_diagnostic(
 		.and_then(operator_repo_gate_failure_progress_diagnostic)
 }
 
-fn operator_repo_gate_failure_progress_diagnostic(
-	event: &PrivateExecutionEvent,
-) -> Option<String> {
+fn operator_repo_gate_failure_progress_diagnostic(event: &PrivateExecutionEvent) -> Option<String> {
 	if event.event_type() != "phase_goal_transition" {
 		return None;
 	}
@@ -10676,9 +10544,7 @@ fn operator_repo_gate_failure_progress_diagnostic(
 		.and_then(Value::as_str)
 		.unwrap_or("inspect_private_evidence");
 
-	Some(format!(
-		"repo_gate_failure:{error_class}; failed_command:{failed_command}"
-	))
+	Some(format!("repo_gate_failure:{error_class}; failed_command:{failed_command}"))
 }
 
 fn protocol_activity_is_non_work_only(protocol_activity: &ProtocolActivitySummary) -> bool {
@@ -10732,9 +10598,8 @@ fn classify_operator_run_phase(
 
 	match status {
 		"starting" | "running" => (String::from("executing"), None),
-		CONTINUATION_PENDING_RUN_STATUS => {
-			(String::from("waiting_continuation"), Some(String::from("turn_boundary")))
-		},
+		CONTINUATION_PENDING_RUN_STATUS =>
+			(String::from("waiting_continuation"), Some(String::from("turn_boundary"))),
 		"succeeded" => (String::from("completed"), None),
 		"failed" | "interrupted" | TERMINAL_GUARDED_RUN_STATUS => (String::from("failed"), None),
 		other => (other.to_owned(), None),
@@ -10742,11 +10607,8 @@ fn classify_operator_run_phase(
 }
 
 fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
-	let session_history_attempt_count = snapshot
-		.history_lanes
-		.iter()
-		.map(|lane| lane.attempt_count)
-		.sum::<usize>();
+	let session_history_attempt_count =
+		snapshot.history_lanes.iter().map(|lane| lane.attempt_count).sum::<usize>();
 	let hides_current_lanes = session_history_attempt_count < snapshot.recent_runs.len();
 	let (current_lane_claims, backlog_or_stale_queue_candidates): (Vec<_>, Vec<_>) = snapshot
 		.queued_candidates
@@ -10775,11 +10637,8 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 
 	append_rendered_github_cli_authority(&mut output, snapshot);
 
-	let running_lane_count = snapshot
-		.current_lanes
-		.iter()
-		.filter(|run| operator_run_counts_as_running(run))
-		.count();
+	let running_lane_count =
+		snapshot.current_lanes.iter().filter(|run| operator_run_counts_as_running(run)).count();
 
 	output.push_str(&format!("Current lanes: {}\n", snapshot.current_lanes.len()));
 	output.push_str(&format!("Running lanes: {running_lane_count}\n"));
@@ -10790,18 +10649,9 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 		if hides_current_lanes { " (current lanes inline)" } else { "" },
 	));
 	output.push_str(&format!("Backlog: {}\n", backlog_candidates.len()));
-	output.push_str(&format!(
-		"Claimed queue echoes: {}\n",
-		current_lane_claims.len()
-	));
-	output.push_str(&format!(
-		"Stale closed queue labels: {}\n",
-		stale_closed_queue_labels.len()
-	));
-	output.push_str(&format!(
-		"Execution programs: {}\n",
-		snapshot.execution_programs.len()
-	));
+	output.push_str(&format!("Claimed queue echoes: {}\n", current_lane_claims.len()));
+	output.push_str(&format!("Stale closed queue labels: {}\n", stale_closed_queue_labels.len()));
+	output.push_str(&format!("Execution programs: {}\n", snapshot.execution_programs.len()));
 	output.push_str(&format!("Recovery worktrees: {}\n", recovery_worktrees.len()));
 	output.push_str(&format!("Post-review lanes: {}\n", snapshot.post_review_lanes.len()));
 
@@ -10832,8 +10682,14 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 		}
 	}
 
-	append_rendered_queued_issue_section(&mut output, "Backlog", &backlog_candidates, snapshot, false);
-append_rendered_queued_issue_section(
+	append_rendered_queued_issue_section(
+		&mut output,
+		"Backlog",
+		&backlog_candidates,
+		snapshot,
+		false,
+	);
+	append_rendered_queued_issue_section(
 		&mut output,
 		"Claimed Queue Echoes",
 		&current_lane_claims,
@@ -10869,9 +10725,7 @@ fn append_rendered_attention_summary(output: &mut String, snapshot: &OperatorSta
 	let history_only_attention_count = project_history_only_attention_count(snapshot);
 
 	output.push_str(&format!("Current attention: {current_attention_count}\n"));
-	output.push_str(&format!(
-		"History-only terminal attention: {history_only_attention_count}\n"
-	));
+	output.push_str(&format!("History-only terminal attention: {history_only_attention_count}\n"));
 
 	if current_attention_count == 0 && history_only_attention_count > 0 {
 		output.push_str(
@@ -11076,44 +10930,32 @@ fn render_queue_explain(
 	output.push_str(&format!("Queued candidates: {}\n", queued_candidates.len()));
 	output.push_str(&format!(
 		"Ready: {}\n",
-		queued_candidates
-			.iter()
-			.filter(|candidate| candidate.classification == "ready")
-			.count()
+		queued_candidates.iter().filter(|candidate| candidate.classification == "ready").count()
 	));
 	output.push_str(&format!(
 		"Waiting: {}\n",
-		queued_candidates
-			.iter()
-			.filter(|candidate| candidate.classification == "waiting")
-			.count()
+		queued_candidates.iter().filter(|candidate| candidate.classification == "waiting").count()
 	));
 	output.push_str(&format!(
 		"Blocked: {}\n",
-		queued_candidates
-			.iter()
-			.filter(|candidate| candidate.classification == "blocked")
-			.count()
+		queued_candidates.iter().filter(|candidate| candidate.classification == "blocked").count()
 	));
 	output.push_str(&format!(
 		"Claimed: {}\n",
-		queued_candidates
-			.iter()
-			.filter(|candidate| candidate.classification == "claimed")
-			.count()
+		queued_candidates.iter().filter(|candidate| candidate.classification == "claimed").count()
 	));
 	output.push_str(&format!(
 		"Closed: {}\n",
-		queued_candidates
-			.iter()
-			.filter(|candidate| candidate.classification == "closed")
-			.count()
+		queued_candidates.iter().filter(|candidate| candidate.classification == "closed").count()
 	));
 	output.push_str("\nQueued Candidate Reasons\n");
 
 	if queued_candidates.is_empty() {
 		output.push_str("- none\n");
-		output.push_str(&format!("  {}\n", format_status_no_eligible_issue_hint(config.service_id())));
+		output.push_str(&format!(
+			"  {}\n",
+			format_status_no_eligible_issue_hint(config.service_id())
+		));
 
 		return output;
 	}
@@ -11129,7 +10971,9 @@ fn rendered_backlog_queue_groups(
 	queued_candidates: Vec<&OperatorQueuedIssueStatus>,
 ) -> (Vec<&OperatorQueuedIssueStatus>, Vec<&OperatorQueuedIssueStatus>) {
 	let (stale_closed_queue_labels, non_closed_queue_candidates): (Vec<_>, Vec<_>) =
-		queued_candidates.into_iter().partition(|queued_issue| queued_issue.classification == "closed");
+		queued_candidates
+			.into_iter()
+			.partition(|queued_issue| queued_issue.classification == "closed");
 	let backlog_candidates = non_closed_queue_candidates
 		.into_iter()
 		.filter(|queued_issue| queued_candidate_counts_as_waiting_intake(queued_issue))
@@ -11228,14 +11072,10 @@ fn operator_history_lanes(
 	current_lanes: &[OperatorRunStatus],
 	recent_runs: &[OperatorRunStatus],
 ) -> Vec<OperatorHistoryLaneStatus> {
-	let current_lane_run_ids = current_lanes
-		.iter()
-		.map(|run| run.run_id.as_str())
-		.collect::<HashSet<_>>();
-	let current_lane_issue_ids = current_lanes
-		.iter()
-		.map(|run| run.issue_id.as_str())
-		.collect::<HashSet<_>>();
+	let current_lane_run_ids =
+		current_lanes.iter().map(|run| run.run_id.as_str()).collect::<HashSet<_>>();
+	let current_lane_issue_ids =
+		current_lanes.iter().map(|run| run.issue_id.as_str()).collect::<HashSet<_>>();
 	let mut lane_indexes = HashMap::new();
 	let mut lanes = Vec::new();
 
@@ -11294,10 +11134,8 @@ fn operator_history_lanes(
 
 fn hydrate_history_lane_from_run(lane: &mut OperatorHistoryLaneStatus, run: &OperatorRunStatus) {
 	if lane.issue_identifier.is_none()
-		&& let Some(issue_identifier) = run
-			.issue_identifier
-			.as_ref()
-			.filter(|value| !value.trim().is_empty())
+		&& let Some(issue_identifier) =
+			run.issue_identifier.as_ref().filter(|value| !value.trim().is_empty())
 	{
 		lane.issue_identifier = Some(issue_identifier.clone());
 		lane.issue_key = issue_identifier.clone();
@@ -11345,17 +11183,12 @@ fn current_lane_lifecycle_attempts(
 	recent_runs: &[OperatorRunStatus],
 	now_unix_epoch: i64,
 ) -> crate::prelude::Result<Vec<OperatorRunStatus>> {
-	let issue_runs = state_store.list_project_issue_runs(project.service_id(), &current_lane.issue_id)?;
+	let issue_runs =
+		state_store.list_project_issue_runs(project.service_id(), &current_lane.issue_id)?;
 	let mut attempts = issue_runs
 		.into_iter()
 		.map(|run| {
-			operator_run_status(
-				project,
-				loop_evidence,
-				project_display_name,
-				run,
-				now_unix_epoch,
-			)
+			operator_run_status(project, loop_evidence, project_display_name, run, now_unix_epoch)
 		})
 		.collect::<crate::prelude::Result<Vec<_>>>()?;
 
@@ -11363,10 +11196,7 @@ fn current_lane_lifecycle_attempts(
 		let group_key = operator_run_group_key(current_lane);
 
 		attempts.extend(
-			recent_runs
-				.iter()
-				.filter(|run| operator_run_group_key(run) == group_key)
-				.cloned(),
+			recent_runs.iter().filter(|run| operator_run_group_key(run) == group_key).cloned(),
 		);
 	}
 
@@ -11394,9 +11224,7 @@ fn operator_run_current_lane_snapshot_attempt(run: &OperatorRunStatus) -> Operat
 	snapshot
 }
 
-fn operator_lane_lifecycle_metrics(
-	attempts: &[OperatorRunStatus],
-) -> OperatorLaneLifecycleMetrics {
+fn operator_lane_lifecycle_metrics(attempts: &[OperatorRunStatus]) -> OperatorLaneLifecycleMetrics {
 	let mut metrics = operator_lane_lifecycle_totals(attempts.iter());
 
 	metrics.phases = operator_lane_lifecycle_phase_metrics(attempts);
@@ -11424,43 +11252,35 @@ fn operator_lane_lifecycle_totals<'a>(
 			_ => {},
 		}
 
-		metrics
-			.recovery_gaps
-			.extend(run.lifecycle_gaps.iter().cloned());
-		metrics
-			.attempt_evidence
-			.push(operator_lane_lifecycle_attempt_evidence(run));
+		metrics.recovery_gaps.extend(run.lifecycle_gaps.iter().cloned());
+		metrics.attempt_evidence.push(operator_lane_lifecycle_attempt_evidence(run));
 
-		metrics.protocol_event_count = metrics
-			.protocol_event_count
-			.saturating_add(run.event_count.max(0));
+		metrics.protocol_event_count =
+			metrics.protocol_event_count.saturating_add(run.event_count.max(0));
 
 		let Some(summary) = run.child_agent_activity.as_ref() else {
 			continue;
 		};
 
 		metrics.captured_attempt_count += 1;
-		metrics.child_event_count = metrics
-			.child_event_count
-			.saturating_add(summary.event_count.max(0));
+		metrics.child_event_count =
+			metrics.child_event_count.saturating_add(summary.event_count.max(0));
 		metrics.wall_seconds = metrics.wall_seconds.saturating_add(summary.wall_seconds.max(0));
-		metrics.tool_call_count = metrics
-			.tool_call_count
-			.saturating_add(summary.tool_call_count.max(0));
+		metrics.tool_call_count =
+			metrics.tool_call_count.saturating_add(summary.tool_call_count.max(0));
 		metrics.input_tokens_current =
 			max_optional_i64(metrics.input_tokens_current, summary.input_tokens_current);
-		metrics.input_tokens_peak = max_optional_i64(metrics.input_tokens_peak, summary.input_tokens_max);
-		metrics.input_tokens_cumulative = metrics
-			.input_tokens_cumulative
-			.saturating_add(summary.input_tokens_cumulative.max(0));
+		metrics.input_tokens_peak =
+			max_optional_i64(metrics.input_tokens_peak, summary.input_tokens_max);
+		metrics.input_tokens_cumulative =
+			metrics.input_tokens_cumulative.saturating_add(summary.input_tokens_cumulative.max(0));
 		metrics.output_tokens_cumulative = metrics
 			.output_tokens_cumulative
 			.saturating_add(summary.output_tokens_cumulative.max(0));
 
-		if summary
-			.largest_tool_output_bytes
-			.is_some_and(|bytes| metrics.largest_tool_output_bytes.is_none_or(|current| bytes > current))
-		{
+		if summary.largest_tool_output_bytes.is_some_and(|bytes| {
+			metrics.largest_tool_output_bytes.is_none_or(|current| bytes > current)
+		}) {
 			metrics.largest_tool_output_bytes = summary.largest_tool_output_bytes;
 			metrics.largest_tool_output_tool = summary.largest_tool_output_tool.clone();
 		}
@@ -11471,36 +11291,32 @@ fn operator_lane_lifecycle_totals<'a>(
 			}
 		}
 		for bucket in &summary.buckets {
-			let total = bucket_totals
-				.entry(bucket.name.clone())
-				.or_insert_with(|| ChildAgentActivityBucket {
+			let total = bucket_totals.entry(bucket.name.clone()).or_insert_with(|| {
+				ChildAgentActivityBucket {
 					name: bucket.name.clone(),
 					..ChildAgentActivityBucket::default()
-				});
+				}
+			});
 
 			total.wall_seconds = total.wall_seconds.saturating_add(bucket.wall_seconds.max(0));
 			total.event_count = total.event_count.saturating_add(bucket.event_count.max(0));
-			total.tool_call_count = total
-				.tool_call_count
-				.saturating_add(bucket.tool_call_count.max(0));
+			total.tool_call_count =
+				total.tool_call_count.saturating_add(bucket.tool_call_count.max(0));
 			total.input_tokens = total.input_tokens.saturating_add(bucket.input_tokens.max(0));
 			total.output_tokens = total.output_tokens.saturating_add(bucket.output_tokens.max(0));
 			total.output_bytes = total.output_bytes.saturating_add(bucket.output_bytes.max(0));
 		}
 	}
 
-	metrics.missing_attempt_count = metrics
-		.attempt_count
-		.saturating_sub(metrics.captured_attempt_count);
+	metrics.missing_attempt_count =
+		metrics.attempt_count.saturating_sub(metrics.captured_attempt_count);
 	metrics.run_count = run_ids.len();
 	metrics.large_output_warnings = warning_set.into_iter().collect();
 
 	metrics.recovery_gaps.sort();
 	metrics.recovery_gaps.dedup();
 	metrics.attempt_evidence.sort_by(|left, right| {
-		left.attempt_number
-			.cmp(&right.attempt_number)
-			.then_with(|| left.run_id.cmp(&right.run_id))
+		left.attempt_number.cmp(&right.attempt_number).then_with(|| left.run_id.cmp(&right.run_id))
 	});
 	metrics.large_output_warnings.sort();
 
@@ -11524,9 +11340,9 @@ fn operator_lane_lifecycle_phase_metrics(
 
 	for run in attempts {
 		let phase = operator_run_lifecycle_metric_phase(run);
-		let entry = groups.entry(phase.key.to_owned()).or_insert_with(|| {
-			(phase.label.to_owned(), phase.rank, Vec::new())
-		});
+		let entry = groups
+			.entry(phase.key.to_owned())
+			.or_insert_with(|| (phase.label.to_owned(), phase.rank, Vec::new()));
 
 		entry.2.push(run);
 	}
@@ -11568,9 +11384,7 @@ fn operator_lane_lifecycle_phase_metrics(
 		.collect::<Vec<_>>();
 
 	phases.sort_by(|(left_rank, left), (right_rank, right)| {
-		left_rank
-			.cmp(right_rank)
-			.then_with(|| left.phase.cmp(&right.phase))
+		left_rank.cmp(right_rank).then_with(|| left.phase.cmp(&right.phase))
 	});
 
 	phases.into_iter().map(|(_rank, phase)| phase).collect()
@@ -11619,11 +11433,8 @@ fn operator_lane_lifecycle_attempt_evidence(
 	run: &OperatorRunStatus,
 ) -> OperatorLaneLifecycleAttemptEvidence {
 	let phase = operator_run_lifecycle_metric_phase(run);
-	let child_event_count = run
-		.child_agent_activity
-		.as_ref()
-		.map(|summary| summary.event_count.max(0))
-		.unwrap_or(0);
+	let child_event_count =
+		run.child_agent_activity.as_ref().map(|summary| summary.event_count.max(0)).unwrap_or(0);
 
 	OperatorLaneLifecycleAttemptEvidence {
 		run_id: run.run_id.clone(),
@@ -11659,9 +11470,11 @@ fn operator_run_group_key(run: &OperatorRunStatus) -> String {
 }
 
 fn operator_run_issue_key(run: &OperatorRunStatus) -> String {
-	if let Some(issue_identifier) = run.issue_identifier.as_ref().filter(|value| {
-		!value.trim().is_empty() && !value.eq_ignore_ascii_case("unknown")
-	}) {
+	if let Some(issue_identifier) = run
+		.issue_identifier
+		.as_ref()
+		.filter(|value| !value.trim().is_empty() && !value.eq_ignore_ascii_case("unknown"))
+	{
 		return issue_identifier.clone();
 	}
 	if let Some(issue_identifier) = operator_run_issue_identifier_from_fields(
@@ -11674,11 +11487,7 @@ fn operator_run_issue_key(run: &OperatorRunStatus) -> String {
 
 	let issue_id = run.issue_id.trim();
 
-	if issue_id.is_empty() {
-		String::from("unknown")
-	} else {
-		issue_id.to_owned()
-	}
+	if issue_id.is_empty() { String::from("unknown") } else { issue_id.to_owned() }
 }
 
 fn operator_run_issue_identifier_from_fields(
@@ -11766,9 +11575,8 @@ fn append_rendered_queued_issue(
 	queued_issue: &OperatorQueuedIssueStatus,
 	current_lane_run_id: Option<&str>,
 ) {
-	let priority = queued_issue
-		.priority
-		.map_or_else(|| String::from("none"), |value| value.to_string());
+	let priority =
+		queued_issue.priority.map_or_else(|| String::from("none"), |value| value.to_string());
 	let blockers = if queued_issue.blocker_identifiers.is_empty() {
 		String::from("none")
 	} else {
@@ -11860,14 +11668,10 @@ fn rendered_worktree_role<'a>(
 		matches!(
 			candidate.reason.as_str(),
 			"issue_needs_attention" | QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT
-		)
-			&& (candidate
-				.attention
-				.as_ref()
-				.and_then(|attention| attention.worktree_path.as_deref())
-				== Some(worktree.worktree_path.as_str())
-				|| candidate.issue_id == worktree.issue_id
-				|| candidate.issue_identifier == worktree.issue_id)
+		) && (candidate.attention.as_ref().and_then(|attention| attention.worktree_path.as_deref())
+			== Some(worktree.worktree_path.as_str())
+			|| candidate.issue_id == worktree.issue_id
+			|| candidate.issue_identifier == worktree.issue_id)
 	}) {
 		return "blocked_queue_issue";
 	}
@@ -11887,9 +11691,7 @@ fn rendered_worktree_role_rank(role: &str) -> u8 {
 	}
 }
 
-fn render_child_agent_activity_summary(
-	summary: Option<&ChildAgentActivitySummary>,
-) -> String {
+fn render_child_agent_activity_summary(summary: Option<&ChildAgentActivitySummary>) -> String {
 	let Some(summary) = summary else {
 		return String::from("none");
 	};
@@ -11956,11 +11758,8 @@ fn render_loop_status_summary(status: Option<&OperatorLoopStatus>) -> String {
 		.as_ref()
 		.map(|objective| objective.source_ref.as_str())
 		.unwrap_or("none");
-	let autonomy_report = status
-		.autonomy_report
-		.as_ref()
-		.map(|report| report.authority.as_str())
-		.unwrap_or("none");
+	let autonomy_report =
+		status.autonomy_report.as_ref().map(|report| report.authority.as_str()).unwrap_or("none");
 
 	format!(
 		"{}; review_level={}; autonomy={}; autonomy_objective={autonomy_objective}; autonomy_signals={}; autonomy_proposals={}; report={autonomy_report}; next_action={next_action}",
@@ -12043,10 +11842,7 @@ fn render_loop_architecture_recovery_summary(status: Option<&OperatorLoopStatus>
 		recovery.reason_code,
 		recovery.guardrail_reason.as_deref().unwrap_or("none"),
 		recovery.boundary_disposition.as_deref().unwrap_or("none"),
-		recovery
-			.boundary_policy_decision
-			.as_deref()
-			.unwrap_or("none"),
+		recovery.boundary_policy_decision.as_deref().unwrap_or("none"),
 		recovery.requires_enhanced_evidence,
 		recovery.blocks_landing,
 		budget,
@@ -12072,9 +11868,7 @@ fn render_loop_boundary_summary(status: Option<&OperatorLoopStatus>) -> String {
 	)
 }
 
-fn render_control_capability_summary(
-	capability: Option<&OperatorRunControlCapability>,
-) -> String {
+fn render_control_capability_summary(capability: Option<&OperatorRunControlCapability>) -> String {
 	let Some(capability) = capability else {
 		return String::from("none");
 	};
@@ -12108,8 +11902,7 @@ fn render_account_summary(summary: Option<&CodexAccountActivitySummary>) -> Stri
 
 	format!(
 		"account={}; plan={plan}; status={}; token={token_status}; primary={primary}; secondary={secondary}; credits={credits}; reached={reached}",
-		summary.account_fingerprint,
-		summary.status,
+		summary.account_fingerprint, summary.status,
 	)
 }
 
@@ -12131,8 +11924,10 @@ fn render_codex_account_window(
 	resets_at_unix_epoch: Option<i64>,
 ) -> String {
 	let label = window_seconds.map(codex_window_label).unwrap_or_else(|| String::from("window"));
-	let remaining = remaining_percent.map_or_else(|| String::from("unknown"), |value| format!("{value}%"));
-	let reset = format_optional_unix_timestamp(resets_at_unix_epoch).unwrap_or_else(|| String::from("unknown"));
+	let remaining =
+		remaining_percent.map_or_else(|| String::from("unknown"), |value| format!("{value}%"));
+	let reset = format_optional_unix_timestamp(resets_at_unix_epoch)
+		.unwrap_or_else(|| String::from("unknown"));
 
 	format!("{label} remaining={remaining} reset={reset}")
 }
@@ -12168,9 +11963,7 @@ fn codex_window_label(window_seconds: i64) -> String {
 	}
 }
 
-fn render_child_agent_context_pressure(
-	summary: Option<&ChildAgentActivitySummary>,
-) -> String {
+fn render_child_agent_context_pressure(summary: Option<&ChildAgentActivitySummary>) -> String {
 	let Some(summary) = summary else {
 		return String::from("none");
 	};
@@ -12202,9 +11995,7 @@ fn render_child_agent_context_pressure(
 	)
 }
 
-fn render_child_agent_bucket_distribution(
-	buckets: &[ChildAgentActivityBucket],
-) -> String {
+fn render_child_agent_bucket_distribution(buckets: &[ChildAgentActivityBucket]) -> String {
 	if buckets.is_empty() {
 		return String::from("none");
 	}
@@ -12421,11 +12212,7 @@ fn history_ledger_outcome_has_records(outcome: &OperatorHistoryLedgerOutcome) ->
 }
 
 fn operator_run_phase_readback(run: &OperatorRunStatus) -> &str {
-	if run.run_phase.trim().is_empty() {
-		&run.phase
-	} else {
-		&run.run_phase
-	}
+	if run.run_phase.trim().is_empty() { &run.phase } else { &run.run_phase }
 }
 
 fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
@@ -12602,9 +12389,7 @@ fn render_continuation_recovery_summary(
 	)
 }
 
-fn render_phase_acceptance_summary(
-	acceptance: Option<&OperatorPhaseAcceptanceStatus>,
-) -> String {
+fn render_phase_acceptance_summary(acceptance: Option<&OperatorPhaseAcceptanceStatus>) -> String {
 	let Some(acceptance) = acceptance else {
 		return String::from("none");
 	};
@@ -12645,12 +12430,11 @@ fn operator_run_queue_lease_summary(run: &OperatorRunStatus) -> String {
 		"thread_active" => String::from("not_held (thread_active keeps lane visible)"),
 		"protocol_observed" => String::from("not_held (protocol_observed keeps lane visible)"),
 		"process_stopped" => String::from("not_held (process_stopped needs attention)"),
-		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH if operator_run_has_recent_app_server_execution(run) => {
-			String::from("not_held (app_server_activity keeps lane visible)")
-		},
-		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH => {
-			String::from("not_held (process_identity_mismatch needs attention)")
-		},
+		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH
+			if operator_run_has_recent_app_server_execution(run) =>
+			String::from("not_held (app_server_activity keeps lane visible)"),
+		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH =>
+			String::from("not_held (process_identity_mismatch needs attention)"),
 		_ => String::from("not_held"),
 	}
 }

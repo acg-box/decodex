@@ -7,8 +7,8 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs]
-drift_watch: [decodex recover ghost-lane, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, runtime_recovery_required, runtime_recovery_blocked, run_control_channels]
-last_verified: 2026-06-19
+drift_watch: [decodex recover ghost-lane, decodex recover stale-active, stale_active_release, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, runtime_recovery_required, runtime_recovery_blocked, run_control_channels]
+last_verified: 2026-06-28
 ---
 # Lane-Control Specification
 
@@ -63,6 +63,7 @@ agent-facing skills must guide responsible use.
 | Steer active lane | Supported CLI/API control; bottom-layer method stays broad | `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>`, canonical `POST /api/lane/steer`, legacy alias `POST /api/lane-steer`, local run-control steer request/response files, app-server `turn/steer`, private `control_action` audit events, and protocol activity `turn/steer` summaries | Pass operator-supplied steer text through CLI/API to the current active turn. Require `expectedTurnId`; stale turn ids fail closed. Do not narrow the protocol to a fixed set of task-content categories. Apply policy, audit, privacy, and lifecycle guardrails above the protocol. |
 | Retained resume/retry | Supported through runtime lifecycle | `decodex run <ISSUE>`, retry scheduling, retained worktree recovery, and `thread/resume` for same-thread app-server continuation | Resume only when retained worktree, issue, branch, PR, and runtime evidence still prove the same lane. Treat ambiguous lineage as manual attention. |
 | Missing-issue ghost-lane recovery | Supported explicit recovery | `decodex status --live` and fresh daemon-cached `decodex status` project `ownership_state = ghost_lane`, `policy_state = runtime_recovery_required`, and `lane_control_next_action = run_ghost_lane_recovery`; `decodex recover ghost-lane diagnose [ISSUE]` and `decodex recover ghost-lane cleanup <ISSUE>` perform the read-only and mutating recovery paths | Only terminalize and clear a local run lease when tracker issue lookup proves the issue is missing and local inspection proves no worktree, live process, PR lineage, or review lifecycle record. Ordinary control-channel, thread/protocol, or private evidence still fails closed. The only exception is the narrow `mcp_test_fixture_ghost_lane` diagnosis for the historical PubFi MCP fixture: exact `PUB-012` / `run-12` attempt 1 with optional `thread-12` / `turn-12`, a missing control-channel file, and private evidence made only of `source = mcp-test` lane-control request events, fixture-matching `control_action` audit rows whose `source` is `mcp-test` or `cli`, and a prior validated `ghost_lane_cleanup` audit. A cleanup-audited missing-issue ghost with no retained worktree, live process, PR lineage, or review lifecycle must not remain a current or retained-attention lane. Any mixed private evidence, retained worktree, tracker issue, control-channel file, child-agent activity, live process, PR lineage, or review lifecycle record must fail closed and preserve attention. |
+| Tracker-present stale active recovery | Supported explicit recovery | `decodex recover stale-active diagnose [ISSUE]`, `decodex recover stale-active release <ISSUE>`, queue status `reason = linear_active_label_present`, and `attention_next_action = run_stale_active_recovery` | Release only the service active label when tracker readback proves the issue exists and still carries `decodex:active:<service-id>`, while local inspection proves no run lease, no active shared claim, no needs-attention label, no live process or active app-server thread marker, no active control-channel file, no tracked or untracked non-runtime worktree state, no uninspectable worktree state, no protocol event or activity-summary evidence, no private progress evidence outside failed control attempts or prior stale-active release audit, and no PR/review lineage or review-policy checkpoint. Local runtime evidence is checked under both the tracker issue id and visible issue identifier. Preserve the queue label if present. Bare stale thread/turn references are allowed only when every live/progress check is otherwise clean. On non-dry-run, re-read tracker/runtime safety evidence without persistent cleanup before mutation, preflight local cleanup without mutation, verify that no run lease or active shared claim has reappeared, terminalize the stale run attempt as `terminal_guarded`, retire the inactive control channel, clean only clean or marker-only retained worktree mappings, write a local private `stale_active_release` audit when a run attempt exists, repeat the run-lease/shared-claim guard, recheck tracker labels, and remove only the service active label as the final mutation. |
 | Manual attention | Supported terminal control path | `issue_label_add` intent for `decodex:needs-attention`, `issue_comment(kind = "manual_attention")`, and `issue_terminal_finalize(path = "manual_attention")` | Stop automation when policy requires a human decision. Explain the blocker through structured public fields and keep private evidence local. |
 | Task replacement | Deferred lifecycle work | No supported active-lane replacement command | Do not use steer or raw injection to replace the task silently. Treat replacement as explicit lifecycle work: pause/stop if needed, update or requeue the issue, or create a new issue/lane. |
 | Raw thread item injection | Unsupported as an operator feature | No Decodex operator path for `thread/inject_items` | Do not expose raw `thread/inject_items` to operators in this rollout. Use `turn/steer` for operator steer. |
@@ -271,6 +272,48 @@ ordinary control-channel row or file, ordinary private evidence, review lifecycl
 or PR lineage, tracker-backed status uses `policy_state = runtime_recovery_blocked`
 and the recovery command refuses to clean the lane. Operators then inspect the blocker
 instead of deleting runtime rows.
+
+## Tracker-Present Stale Active Ownership
+
+A tracker-present stale active lane is different from a missing-issue ghost lane. The
+tracker issue still exists and carries `decodex:active:<service-id>`, but local
+runtime ownership is no longer live: no run lease, no active shared claim, no
+signalable process, no active app-server thread marker, no active control-channel
+file, no protocol event or activity summary, and no source-progress, PR/review,
+dirty-worktree, or uninspectable-worktree evidence. Local runtime evidence is read
+under both the tracker issue id and the visible issue identifier so stale identifier
+rows cannot be hidden by tracker id canonicalization. A retained `thread_id` or
+`turn_id` alone is stale metadata, not proof of live work, but it is recoverable only
+when the process, thread marker, protocol, private evidence, worktree, and lineage
+checks are all clean. If the issue is also queued, ordinary dispatch must remain
+blocked with `linear_active_label_present` until an explicit recovery command releases
+that stale active ownership.
+
+`decodex recover stale-active diagnose [ISSUE]` is read-only. With an issue selector
+it inspects that tracker issue; without a selector it lists service active-label
+issues so active-only stale ownership remains discoverable even when the issue is not
+currently visible in queue status. `release <ISSUE>` is the only mutating path and
+should be run with `--dry-run` first. Diagnose and dry-run use non-mutating shared
+claim observation: an unlocked stale claim anchor may be observed as inactive, but it
+is not deleted by the read-only path. Release re-reads tracker/runtime safety evidence
+before any mutation, then preflights local cleanup without mutation; if that succeeds
+it preserves the queue label, verifies that no run lease or active shared claim has
+reappeared, marks the stale attempt `terminal_guarded`, retires the inactive
+run-control channel, removes only clean or marker-only retained worktree mappings,
+writes local private `stale_active_release` audit evidence when a matching stale run
+exists, repeats the run-lease/shared-claim guard, rechecks tracker labels, and removes
+only the service active label as the final mutation.
+
+Stale active recovery must fail closed when any blocker indicates possible live or
+useful work: run lease, active shared claim, `decodex:needs-attention`, active control
+channel file, live process, active app-server thread marker, tracked or untracked
+non-runtime worktree changes, failed worktree status inspection, activity marker
+source progress, protocol event evidence, child-agent or protocol activity summary,
+private progress evidence, review lifecycle, review-policy checkpoint, or PR/review
+lineage under either the tracker issue id or issue identifier. Failed lane control
+attempts such as `control_action` rows with
+`reason = run_lease_missing` are allowed recovery evidence because they prove
+supported controls were tried and made no source progress.
 
 ## Manual Attention
 

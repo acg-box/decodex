@@ -7,8 +7,8 @@ authority: current_state
 owner: docs
 tags: [reference]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/mcp.rs]
-drift_watch: [decodex serve, decodex status, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
-last_verified: 2026-06-27
+drift_watch: [decodex serve, decodex status, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, stale_active_release, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
+last_verified: 2026-06-28
 ---
 # Operator Control Plane
 
@@ -660,9 +660,20 @@ Worktree visibility follows the owning dashboard section:
 - `linear_active_label_present` in `Intake Queue` means the issue still carries
   service active ownership while it is also queued, but local status could not prove a
   matching run lease. Treat it as a recovery/attention row, not ready work. If its
-  attention cause is `evidence_missing`, use the retained runtime records, worktree,
-  and public Linear state as the available recovery evidence before retrying or
-  cleaning labels.
+  attention cause is `evidence_missing` and the worktree has no tracked changes,
+  status sets `attention_next_action = run_stale_active_recovery` and points to
+  `decodex recover stale-active diagnose <ISSUE>` followed by
+  `decodex recover stale-active release <ISSUE> --dry-run`. The release command
+  preserves any queue label, treats bare stale thread/turn refs as recoverable only
+  after process/thread/protocol/private/worktree/lineage checks are clean, blocks on
+  review-policy checkpoints and issue-id or issue-identifier PR lineage, reads local
+  runtime evidence under both issue id keys, terminalizes stale local ownership as
+  `terminal_guarded`, writes a local private `stale_active_release` audit when a
+  stale run attempt exists, repeats the run-lease/shared-claim guard, rechecks tracker
+  labels, and removes only the service active label as the final mutation. If a
+  retained worktree has tracked changes, untracked non-runtime files, or cannot be
+  inspected, status uses
+  `inspect_retained_worktree_changes_before_stale_active_recovery` instead.
 - `Recovery Worktrees` means the path is retained local state after the authoritative
   runtime owner is gone or cannot explain it as active, review/landing, or queued
   work.
