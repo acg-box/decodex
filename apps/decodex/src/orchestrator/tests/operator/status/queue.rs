@@ -153,10 +153,7 @@ fn live_operator_status_snapshot_routes_retained_success_state_lane_out_of_queue
 		.expect("retained success-state worktree should be owned by post-review status");
 
 	assert!(
-		snapshot
-			.queued_candidates
-			.iter()
-			.all(|candidate| candidate.issue_identifier != "PUB-106"),
+		snapshot.queued_candidates.iter().all(|candidate| candidate.issue_identifier != "PUB-106"),
 		"post-review retained lanes must not also appear as queue intake blockers"
 	);
 	assert_eq!(lane.reason, "missing_review_handoff_record");
@@ -181,9 +178,8 @@ fn live_operator_status_snapshot_blocks_ordinary_queue_for_retained_handoff_mark
 	);
 	let worktree_manager =
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
-	let worktree = worktree_manager
-		.ensure_worktree(&issue.identifier, false)
-		.expect("worktree should exist");
+	let worktree =
+		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
 
@@ -249,8 +245,7 @@ fn live_operator_status_snapshot_reports_only_open_tracker_blockers() {
 		10,
 	)
 	.expect("snapshot should build");
-	let candidate =
-		snapshot.queued_candidates.first().expect("blocked queued issue should exist");
+	let candidate = snapshot.queued_candidates.first().expect("blocked queued issue should exist");
 
 	assert_eq!(candidate.reason, "open_tracker_blockers");
 	assert_eq!(candidate.blocker_identifiers, vec![String::from("PUB-105")]);
@@ -271,11 +266,9 @@ fn live_operator_status_snapshot_marks_repeated_open_blockers_as_stale_program()
 
 	issue.blockers = vec![sample_blocker("issue-open", "PUB-105", "Todo")];
 
-	for expected_reason in [
-		"open_tracker_blockers",
-		"open_tracker_blockers",
-		"dependency_program_stale",
-	] {
+	for expected_reason in
+		["open_tracker_blockers", "open_tracker_blockers", "dependency_program_stale"]
+	{
 		let tracker = FakeTracker::new(vec![issue.clone()]);
 		let snapshot = orchestrator::build_live_operator_status_snapshot(
 			&tracker,
@@ -311,8 +304,7 @@ fn live_operator_status_snapshot_marks_repeated_open_blockers_as_stale_program()
 		10,
 	)
 	.expect("resolved blocker snapshot should build");
-	let candidate =
-		snapshot.queued_candidates.first().expect("ready queued issue should exist");
+	let candidate = snapshot.queued_candidates.first().expect("ready queued issue should exist");
 
 	assert_eq!(candidate.reason, "eligible_for_dispatch");
 	assert!(
@@ -333,8 +325,7 @@ fn live_operator_status_snapshot_marks_repeated_open_blockers_as_stale_program()
 		10,
 	)
 	.expect("recurring blocker snapshot should build");
-	let candidate =
-		snapshot.queued_candidates.first().expect("blocked queued issue should exist");
+	let candidate = snapshot.queued_candidates.first().expect("blocked queued issue should exist");
 
 	assert_eq!(candidate.reason, "open_tracker_blockers");
 	assert_eq!(candidate.blocker_identifiers, vec![String::from("PUB-105")]);
@@ -431,10 +422,7 @@ fn live_operator_status_snapshot_prioritizes_needs_attention_over_shared_claim()
 
 	assert_eq!(candidate.classification, "blocked");
 	assert_eq!(candidate.reason, "issue_needs_attention");
-	assert_eq!(
-		attention.auto_retry_blocked_reason.as_deref(),
-		Some("needs_attention_label")
-	);
+	assert_eq!(attention.auto_retry_blocked_reason.as_deref(), Some("needs_attention_label"));
 	assert_eq!(project.attention_count, 1);
 	assert_eq!(
 		project.queued_candidate_count, 1,
@@ -457,10 +445,7 @@ fn live_operator_status_snapshot_deduplicates_terminal_retained_attention_queue_
 	let local_comments = retained_partial_progress_linear_execution_history_comments(&issue);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 
-	tracker
-		.issue_comments
-		.borrow_mut()
-		.insert(issue.id.clone(), local_comments.clone());
+	tracker.issue_comments.borrow_mut().insert(issue.id.clone(), local_comments.clone());
 	state_store
 		.upsert_worktree(
 			TEST_SERVICE_ID,
@@ -537,7 +522,8 @@ fn live_operator_status_snapshot_blocks_active_plus_queued_label_without_local_c
 			"older-attention",
 			|record| {
 				record.error_class = Some(String::from("older_attention_record"));
-				record.summary = Some(String::from("Older attention record should not mask liveness."));
+				record.summary =
+					Some(String::from("Older attention record should not mask liveness."));
 				record.next_action = Some(String::from("Reconcile the retained lane."));
 				record.blockers = Some(Vec::new());
 				record.evidence = Some(vec![String::from("older attention event")]);
@@ -581,16 +567,106 @@ fn live_operator_status_snapshot_blocks_active_plus_queued_label_without_local_c
 
 	assert_eq!(candidate.classification, "blocked");
 	assert_eq!(candidate.reason, "linear_active_label_present");
-	assert_eq!(
-		attention.auto_retry_blocked_reason.as_deref(),
-		Some("linear_active_label_present")
-	);
+	assert_eq!(attention.auto_retry_blocked_reason.as_deref(), Some("linear_active_label_present"));
 	assert_eq!(attention.attention_error_class.as_deref(), Some("evidence_missing"));
+	assert!(
+		attention
+			.attention_next_action
+			.as_deref()
+			.is_some_and(|action| action.contains("run_stale_active_recovery")
+				&& action.contains("recover stale-active release PUB-111 --dry-run")),
+		"stale active blocker should point to supported recovery, got {:?}",
+		attention.attention_next_action
+	);
 	assert_eq!(attention.process_alive, Some(false));
 	assert_eq!(attention.process_liveness_reason.as_deref(), Some("process_stopped"));
 	assert_eq!(project.attention_count, 1);
 	assert!(rendered.contains("reason: linear_active_label_present"));
 	assert!(rendered.contains("attention_cause: evidence_missing"));
+	assert!(rendered.contains("attention_next_action: run_stale_active_recovery"));
+}
+
+#[test]
+fn live_operator_status_snapshot_preserves_recorded_active_label_attention_next_action() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue_with_sort_fields(
+		"issue-active-recorded-attention",
+		"PUB-113",
+		"Todo",
+		&[active_label.as_str()],
+		Some(1),
+		"2026-03-13T04:16:17.133Z",
+	);
+	let worktree_path = config.worktree_root().join(&issue.identifier);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	tracker.issue_comments.borrow_mut().insert(
+		issue.id.clone(),
+		vec![linear_execution_history_comment(
+			&issue,
+			"needs_attention",
+			"2026-03-13T04:20:00Z",
+			"recorded-attention",
+			|record| {
+				record.error_class = Some(String::from("review_policy_checkpoint_present"));
+				record.summary = Some(String::from("Retained review evidence is present."));
+				record.next_action = Some(String::from("resume_review_handoff_recovery"));
+				record.blockers = Some(vec![String::from("review_policy_checkpoint_present")]);
+				record.evidence = Some(vec![String::from("review checkpoint")]);
+				record.terminal_path = Some(String::from("manual_attention"));
+			},
+		)],
+	);
+
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-113",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+	state_store
+		.record_run_attempt("pub-113-attempt-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+	state::write_run_activity_marker_for_process(&worktree_path, "pub-113-attempt-1", 1, u32::MAX)
+		.expect("stopped process marker should write");
+	state_store
+		.append_private_execution_event(
+			config.service_id(),
+			&issue.id,
+			"pub-113-attempt-1",
+			1,
+			"review_policy_checkpoint",
+			serde_json::json!({"phase": "review"}),
+		)
+		.expect("private evidence should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let candidate = snapshot
+		.queued_candidates
+		.iter()
+		.find(|candidate| candidate.issue_identifier == "PUB-113")
+		.expect("active issue should remain visible");
+	let attention = candidate.attention.as_ref().expect("recovery details should render");
+
+	assert_eq!(candidate.classification, "blocked");
+	assert_eq!(candidate.reason, "linear_active_label_present");
+	assert_eq!(
+		attention.attention_error_class.as_deref(),
+		Some("review_policy_checkpoint_present")
+	);
+	assert_eq!(attention.attention_next_action.as_deref(), Some("resume_review_handoff_recovery"));
 }
 
 #[test]
@@ -702,6 +778,10 @@ fn live_operator_status_snapshot_surfaces_dirty_active_label_recovery_worktree()
 	assert_eq!(candidate.reason, "linear_active_label_present");
 	assert_eq!(attention.attention_error_class.as_deref(), Some("evidence_missing"));
 	assert!(attention.worktree_has_tracked_changes);
+	assert_eq!(
+		attention.attention_next_action.as_deref(),
+		Some("inspect_retained_worktree_changes_before_stale_active_recovery")
+	);
 	assert!(
 		attention.summary.contains("retained worktree changes"),
 		"summary should explain dirty retained recovery, got {:?}",
@@ -710,6 +790,231 @@ fn live_operator_status_snapshot_surfaces_dirty_active_label_recovery_worktree()
 	assert_eq!(worktree.ownership, "queued_attention");
 	assert_eq!(project.attention_count, 1);
 	assert_eq!(project.retained_worktree_count, 0);
+}
+
+#[test]
+fn live_operator_status_snapshot_inspects_untracked_active_label_worktree() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue_with_sort_fields(
+		"issue-untracked-active",
+		"PUB-114",
+		"In Progress",
+		&[active_label.as_str()],
+		Some(1),
+		"2026-03-13T04:16:17.133Z",
+	);
+	let worktree_path = config.worktree_root().join(&issue.identifier);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	git_status_success(
+		config.repo_root(),
+		&["worktree", "add", "-b", "x/pubfi-pub-114", ".worktrees/PUB-114", "main"],
+	);
+	fs::write(worktree_path.join("new_source.rs"), "fn retained_progress() {}\n")
+		.expect("untracked source file should write");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let candidate = snapshot
+		.queued_candidates
+		.iter()
+		.find(|candidate| candidate.issue_identifier == "PUB-114")
+		.expect("untracked active-label issue should remain visible");
+	let attention = candidate.attention.as_ref().expect("recovery details should render");
+
+	assert_eq!(candidate.classification, "blocked");
+	assert_eq!(candidate.reason, "linear_active_label_present");
+	assert!(attention.worktree_has_tracked_changes);
+	assert_eq!(
+		attention.attention_next_action.as_deref(),
+		Some("inspect_retained_worktree_changes_before_stale_active_recovery")
+	);
+	assert!(
+		attention.summary.contains("retained worktree changes"),
+		"summary should explain untracked retained worktree, got {:?}",
+		attention.summary
+	);
+}
+
+#[test]
+fn live_operator_status_snapshot_inspects_unreadable_active_label_worktree() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue_with_sort_fields(
+		"issue-unreadable-active",
+		"PUB-113",
+		"In Progress",
+		&[active_label.as_str()],
+		Some(1),
+		"2026-03-13T04:16:17.133Z",
+	);
+	let worktree_path = config.worktree_root().join(&issue.identifier);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+	fs::write(worktree_path.join(".git"), "gitdir: /does/not/exist\n")
+		.expect("invalid gitdir should write");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-113",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let candidate = snapshot
+		.queued_candidates
+		.iter()
+		.find(|candidate| candidate.issue_identifier == "PUB-113")
+		.expect("unreadable active-label issue should remain visible");
+	let attention = candidate.attention.as_ref().expect("recovery details should render");
+
+	assert_eq!(candidate.classification, "blocked");
+	assert_eq!(candidate.reason, "linear_active_label_present");
+	assert!(!attention.worktree_has_tracked_changes);
+	assert_eq!(
+		attention.attention_next_action.as_deref(),
+		Some("inspect_retained_worktree_changes_before_stale_active_recovery")
+	);
+	assert!(
+		attention.summary.contains("worktree cleanliness could not be verified"),
+		"summary should explain unreadable retained worktree, got {:?}",
+		attention.summary
+	);
+}
+
+#[test]
+fn live_operator_status_snapshot_inspects_unreadable_active_label_marker() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue_with_sort_fields(
+		"issue-unreadable-marker-active",
+		"PUB-116",
+		"In Progress",
+		&[active_label.as_str()],
+		Some(1),
+		"2026-03-13T04:16:17.133Z",
+	);
+	let worktree_path = config.worktree_root().join(&issue.identifier);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	fs::create_dir_all(worktree_path.join(state::RUN_ACTIVITY_MARKER_FILE))
+		.expect("directory marker should create");
+	state_store
+		.record_run_attempt("run-116", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-116",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let candidate = snapshot
+		.queued_candidates
+		.iter()
+		.find(|candidate| candidate.issue_identifier == "PUB-116")
+		.expect("unreadable marker active-label issue should remain visible");
+	let attention = candidate.attention.as_ref().expect("recovery details should render");
+
+	assert_eq!(candidate.classification, "blocked");
+	assert_eq!(candidate.reason, "linear_active_label_present");
+	assert!(!attention.worktree_has_tracked_changes);
+	assert_eq!(
+		attention.attention_next_action.as_deref(),
+		Some("inspect_retained_worktree_changes_before_stale_active_recovery")
+	);
+	assert!(
+		attention.summary.contains("worktree cleanliness could not be verified"),
+		"summary should explain unreadable marker, got {:?}",
+		attention.summary
+	);
+}
+
+#[test]
+fn live_operator_status_snapshot_inspects_non_git_active_label_files() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue_with_sort_fields(
+		"issue-non-git-active",
+		"PUB-115",
+		"In Progress",
+		&[active_label.as_str()],
+		Some(1),
+		"2026-03-13T04:16:17.133Z",
+	);
+	let worktree_path = config.worktree_root().join("mapped-retained-PUB-115");
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	fs::create_dir_all(&worktree_path).expect("retained path should exist");
+	fs::write(worktree_path.join("retained.txt"), "retained work\n")
+		.expect("retained file should write");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-115",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let candidate = snapshot
+		.queued_candidates
+		.iter()
+		.find(|candidate| candidate.issue_identifier == "PUB-115")
+		.expect("non-git active-label issue should remain visible");
+	let attention = candidate.attention.as_ref().expect("recovery details should render");
+
+	assert_eq!(candidate.classification, "blocked");
+	assert_eq!(candidate.reason, "linear_active_label_present");
+	assert!(attention.worktree_has_tracked_changes);
+	assert_eq!(
+		attention.attention_next_action.as_deref(),
+		Some("inspect_retained_worktree_changes_before_stale_active_recovery")
+	);
+	assert!(
+		attention.summary.contains("retained worktree changes"),
+		"summary should explain non-git retained files, got {:?}",
+		attention.summary
+	);
 }
 
 #[test]
@@ -1436,10 +1741,7 @@ fn live_operator_status_snapshot_recovers_shared_claims_for_fresh_status_store_i
 	let tracker = FakeTracker::new(vec![claimed_issue.clone(), ready_issue]);
 
 	remote_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("remote store should configure dispatch-slot root");
 
 	assert!(

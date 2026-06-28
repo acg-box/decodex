@@ -1653,6 +1653,64 @@ fn cleared_shared_lease_removes_lock_anchor_files() {
 }
 
 #[test]
+fn read_only_shared_claim_check_does_not_remove_unlocked_claim_anchor() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let issue_claim_path = temp_dir.path().join(".decodex-issue-claim.PUB-101.lock");
+	let store = StateStore::open_in_memory().expect("state store should open");
+
+	store
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
+		.expect("store should configure dispatch slot root");
+	fs::write(&issue_claim_path, "stale claim anchor\n").expect("stale claim anchor should write");
+
+	assert!(
+		!store
+			.issue_has_active_shared_claim_read_only("pubfi", "PUB-101")
+			.expect("read-only shared claim check should read")
+	);
+	assert!(
+		issue_claim_path.exists(),
+		"read-only shared claim check should not remove an unlocked claim anchor"
+	);
+
+	assert!(
+		!store
+			.issue_has_active_shared_claim("pubfi", "PUB-101")
+			.expect("normal shared claim check should read")
+	);
+	assert!(
+		!issue_claim_path.exists(),
+		"normal shared claim check should clean an unlocked claim anchor"
+	);
+}
+
+#[test]
+fn observe_dispatch_slot_root_does_not_prune_unlocked_claim_anchor() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let issue_claim_path = temp_dir.path().join(".decodex-issue-claim.PUB-101.lock");
+	let store = StateStore::open_in_memory().expect("state store should open");
+
+	fs::write(&issue_claim_path, "stale claim anchor\n").expect("stale claim anchor should write");
+	store
+		.observe_dispatch_slot_root("pubfi", temp_dir.path())
+		.expect("store should observe dispatch slot root");
+
+	assert!(
+		issue_claim_path.exists(),
+		"read-only dispatch-slot observation should not remove an unlocked claim anchor"
+	);
+	assert!(
+		!store
+			.issue_has_active_shared_claim_read_only("pubfi", "PUB-101")
+			.expect("read-only shared claim check should read")
+	);
+	assert!(
+		issue_claim_path.exists(),
+		"read-only shared claim check should still leave the anchor after observation"
+	);
+}
+
+#[test]
 fn configure_dispatch_slot_root_prunes_unlocked_shared_lock_files() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let stale_issue_claim_path = temp_dir.path().join(".decodex-issue-claim.PUB-999.lock");
@@ -3110,6 +3168,54 @@ fn persistent_clear_worktree_deletes_review_lifecycle() {
 			.review_orchestration_marker("pubfi", "PUB-101", &handoff)
 			.expect("orchestration lookup should succeed")
 			.is_none()
+	);
+}
+
+#[test]
+fn persistent_clear_worktree_mapping_preserves_review_lifecycle() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let handoff = sample_pub_101_review_handoff();
+
+	store
+		.upsert_worktree("pubfi", "PUB-101", "x/decodex-pub-101", "/tmp/worktrees/pub-101")
+		.expect("worktree mapping should be recorded");
+	store
+		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
+		.expect("handoff projection should persist");
+	store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: "pubfi",
+			issue_id: "PUB-101",
+			run_id: "run-1",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: "normal",
+			status: "clean",
+			head_sha: "08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("review checkpoint should persist");
+	store.clear_worktree_mapping("PUB-101").expect("worktree mapping cleanup should persist");
+
+	let reopened = StateStore::open(&state_path).expect("reopened store should open");
+
+	assert!(
+		reopened.worktree_for_issue("PUB-101").expect("worktree lookup should succeed").is_none()
+	);
+	assert!(
+		reopened
+			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+			.expect("handoff lookup should succeed")
+			.is_some()
+	);
+	assert!(
+		reopened
+			.review_policy_checkpoint("pubfi", "PUB-101", "run-1", 1, "handoff")
+			.expect("review checkpoint lookup should succeed")
+			.is_some()
 	);
 }
 

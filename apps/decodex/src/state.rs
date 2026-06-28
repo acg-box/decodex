@@ -82,9 +82,34 @@ pub(crate) fn is_untracked_decodex_runtime_artifact_status_line(line: &str) -> b
 		return false;
 	};
 
-	path == RUN_ACTIVITY_MARKER_FILE
-		|| path == RUN_CONTROL_CHANNEL_DIR
-		|| path.strip_prefix(RUN_CONTROL_CHANNEL_DIR).is_some_and(|suffix| suffix.starts_with('/'))
+	is_decodex_runtime_artifact_relative_path(Path::new(path))
+}
+
+pub(crate) fn retained_path_contains_only_decodex_runtime_artifacts(path: &Path) -> Result<bool> {
+	if !path.try_exists()? {
+		return Ok(true);
+	}
+	if !fs::metadata(path)?.is_dir() {
+		return Ok(false);
+	}
+
+	for entry in fs::read_dir(path)? {
+		let entry = entry?;
+		let entry_path = entry.path();
+		let relative = entry_path.strip_prefix(path).unwrap_or(entry_path.as_path());
+
+		if !is_decodex_runtime_artifact_relative_path(relative) {
+			return Ok(false);
+		}
+	}
+
+	Ok(true)
+}
+
+pub(crate) fn is_decodex_runtime_artifact_relative_path(path: &Path) -> bool {
+	path == Path::new(RUN_ACTIVITY_MARKER_FILE)
+		|| path == Path::new(RUN_CONTROL_CHANNEL_DIR)
+		|| path.starts_with(RUN_CONTROL_CHANNEL_DIR)
 }
 
 #[cfg(test)] mod tests;
