@@ -11,7 +11,9 @@ from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
 
 
-SCRIPT_PATH = Path(__file__).with_name("codex_lifecycle_hook")
+SCRIPT_PATH = (
+    Path(__file__).parents[3] / "plugins" / "codebase" / "scripts" / "codex_lifecycle_hook"
+)
 
 
 def load_hook_module():
@@ -27,6 +29,8 @@ def load_hook_module():
 class CodexLifecycleHookTests(unittest.TestCase):
     def setUp(self) -> None:
         self.hook = load_hook_module()
+        self.hook.dependency_surface_paths = lambda paths=None: []
+        self.hook.task_runner_paths = lambda paths=None: []
 
     def test_route_hints_selects_codebase_knowledge_and_deliberation(self) -> None:
         self.hook.large_change_paths = lambda stats=None: []
@@ -92,6 +96,20 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.assertIn("$deliberation:skeptic", joined)
         self.assertIn("module-boundary", joined)
 
+    def test_source_growth_adds_module_guard(self) -> None:
+        self.hook.git_root = lambda: "/tmp/repo"
+        self.hook.file_line_count = lambda path, root=None: 1200
+        stats = [{"path": "src/app.tsx", "added": "120", "removed": "0", "changed": 120}]
+
+        self.assertEqual(self.hook.large_change_paths(stats), ["src/app.tsx"])
+
+    def test_small_source_change_does_not_add_module_guard(self) -> None:
+        self.hook.git_root = lambda: "/tmp/repo"
+        self.hook.file_line_count = lambda path, root=None: 200
+        stats = [{"path": "src/app.tsx", "added": "20", "removed": "4", "changed": 24}]
+
+        self.assertEqual(self.hook.large_change_paths(stats), [])
+
     def test_public_surface_change_adds_docs_coupling(self) -> None:
         self.hook.large_change_paths = lambda stats=None: []
         self.hook.public_surface_paths = lambda paths=None: ["plugins/codebase/skills/work/SKILL.md"]
@@ -102,6 +120,34 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.assertIn("Use English for every durable or executable artifact", joined)
         self.assertIn("$knowledge:docs-drift", joined)
         self.assertIn("$knowledge:writeback", joined)
+
+    def test_dependency_surface_adds_dependency_policy_hint(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: []
+        self.hook.dependency_surface_paths = lambda paths=None: ["Cargo.toml"]
+
+        hints = self.hook.route_hints("", "/tmp/repo", "PostToolUse")
+
+        joined = "\n".join(hints)
+        self.assertIn("$codebase:dependency-policy", joined)
+        self.assertIn("roll or style-only", joined)
+
+    def test_task_runner_surface_adds_task_runner_hint(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: []
+        self.hook.task_runner_paths = lambda paths=None: ["Makefile.toml"]
+
+        hints = self.hook.route_hints("", "/tmp/repo", "PostToolUse")
+
+        joined = "\n".join(hints)
+        self.assertIn("task-runner checklist", joined)
+        self.assertIn("action-first public names", joined)
+
+    def test_public_surface_matching_avoids_substring_false_positive(self) -> None:
+        self.assertFalse(self.hook.path_is_public_surface("src/helpful.rs"))
+        self.assertFalse(self.hook.path_is_public_surface("tests/status_parser.rs"))
+        self.assertTrue(self.hook.path_is_public_surface("docs/reference/index.md"))
+        self.assertTrue(self.hook.path_is_public_surface("plugins/codebase/skills/work/SKILL.md"))
 
     def test_user_prompt_adds_conditional_deliberation_gate(self) -> None:
         self.hook.large_change_paths = lambda stats=None: []
@@ -117,7 +163,7 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.assertIn("$deliberation:skeptic", joined)
         self.assertIn("1-2 files or one command", joined)
         self.assertIn("Do not wait for the user", joined)
-        self.assertIn("bounded read-only scout/skeptic support agents", joined)
+        self.assertIn("bounded read-only scout/skeptic subagents", joined)
 
     def test_commit_subject_validation(self) -> None:
         valid = '{"schema":"decodex/commit/1","summary":"ship guard","authority":"XY-1099"}'

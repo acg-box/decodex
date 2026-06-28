@@ -7,7 +7,7 @@ Use when Decodex work crosses research, planning, ops, commit, or landing.
 - Context: use `$knowledge:docs`, `$knowledge:okf`, or `$knowledge:repo-memory`
   before non-trivial repo claims.
 - Repo work: use `$codebase:work` for commands, config, dependencies, debugging,
-  validation, completion claims, and support-agent boundaries.
+  validation, completion claims, and subagent boundaries.
 - Drift/writeback: use `$knowledge:docs-drift` or `$knowledge:writeback`.
 - Research/design: use `research`; output is latent until promoted.
 - Skeptic: use `$deliberation:skeptic`; it can block claims but creates no
@@ -27,7 +27,7 @@ Use when Decodex work crosses research, planning, ops, commit, or landing.
 ## Boundaries
 
 - Research never queues work, mutates Linear, implements, sets goals, or dispatches
-  runtime Program nodes; read-only scout/skeptic support agents are allowed by the
+  runtime Program nodes; read-only scout/skeptic subagents are allowed by the
   research skill. Research is not runtime `compact_current_head_review`.
 - Program Intake dispatches persisted Program nodes; queue labels are not scheduling.
 - Ordinary intake starts from `decodex:queued:<service-id>` and still must pass

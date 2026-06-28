@@ -57,7 +57,7 @@ Companion plugins:
 - `plugins/knowledge/` owns docs, OKF/LLM Wiki, semantic drift, source-backed
   repo-memory, and knowledge writeback skills.
 - `plugins/codebase/` owns checked-in command authority, task-runner structure,
-  dependency policy, review repair, verification, debugging, and dynamic support-agent
+  dependency policy, review repair, verification, debugging, and dynamic subagent
   boundaries.
 - `plugins/deliberation/` owns generic scout, grill, and skeptic review.
 

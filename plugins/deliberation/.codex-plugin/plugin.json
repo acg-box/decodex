@@ -15,14 +15,13 @@
     "skeptic",
     "grill",
     "scout",
-    "review",
-    "skeptic"
+    "review"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Deliberation",
     "shortDescription": "Run scout, grill, and skeptic passes.",
-    "longDescription": "Provides small generic deliberation skills for read-only evidence scouting, decision grilling, skeptical adversarial review, evidence sufficiency checks, and ready or decision-ready assertions.",
+    "longDescription": "Provides compact scout, grill, and skeptic methods for evidence, framing, critique, and ready or decision-ready claims.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [

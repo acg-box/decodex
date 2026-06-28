@@ -30,8 +30,8 @@ Keep the loop falsifiable:
 
 `symptom -> owner boundary -> fresh baseline -> hypothesis -> smallest falsifier -> repair surface -> original-symptom check`
 
-If uncertainty remains material and support-agent tools are allowed, dynamically
-spawn one read-only support agent for a single evidence slice or hypothesis critique.
+If uncertainty remains material and subagent tools are allowed, dynamically
+spawn one read-only subagent for a single evidence slice or hypothesis critique.
 The prompt must name the objective, read-only boundary, and expected finding shape.
 The main thread owns diagnosis, repair, and final claim.
 

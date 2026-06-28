@@ -5,51 +5,32 @@ description: Use when a plan, claim, recommendation, fix, research judgment, evi
 
 # Skeptic
 
-Apply a skeptic pass to make the target claim survive adversarial review. This skill
-is generic: research, codebase, debugging, review repair, planning, and ordinary
-design discussion may use it when uncertainty or risk is material.
-
-Read `../../references/deliberation-gate.md` when skeptic review is part of design,
-research, refactor, root-cause debugging, review repair, option comparison, or
-important ready/done claims.
+Make the target claim survive adversarial review. Use for research, codebase work,
+debugging, review repair, planning, and design when uncertainty or risk is material.
+Read `../../references/deliberation-gate.md` when the gate may apply.
 
 ## Rules
 
-- Default to a fresh dynamic read-only skeptic support agent when support-agent
-  tools are allowed and the target is a plan, recommendation, research judgment,
-  review repair, debugging conclusion, generated or large implementation,
-  architecture decision, option comparison, public-contract change, or
-  ready/done/decision-ready claim.
-- Do not require an explicit user request for a skeptic support agent when the
-  target claim is material and the inline exception is not satisfied.
-- Inline skeptic review is allowed only when the full evidence is local and already read
-  by the main thread, and the outcome cannot affect architecture, review repair,
-  root-cause debugging, public contracts, docs drift, commit/land, or ready/done
-  claims. Name that fallback when it matters.
-- Challenge the claim, plan, option framing, evidence, and assumptions; do not attack
-  the user.
-- Look for missing evidence, false certainty, untested alternatives, hidden authority
-  changes, stale readbacks, incompatible constraints, and premature success claims.
-- Prefer concrete objections over generic caution. When relevant, name the blocker,
-  counterexample, missing evidence, falsifier, owner or control surface, and smallest
-  next check that would change the recommendation.
-- Classify objections as `resolved`, `unresolved`, or `out_of_scope`.
-- Convert unresolved material objections into evidence gaps, risks, blockers, or the
-  smallest next check.
-- Do not create execution authority, mutate state, implement changes, commit, land,
-  or claim verification from skeptic review alone.
-- A scout pass is read-only evidence gathering; use dynamic support agents for that
-  when needed. Skeptic is the adversarial review of a claim, report, or plan after
-  evidence exists or a gap is suspected.
-- Give support agents only the bounded target, relevant read-only context, and output
-  schema. Do not feed them the preferred answer unless the task explicitly needs them
-  to audit it.
-- Skeptic support agents are read-only and must not spawn further support agents
-  unless the main thread explicitly delegates that.
+- Default to a fresh dynamic read-only skeptic subagent for material plans,
+  recommendations, research judgments, review repairs, debugging conclusions,
+  generated/large implementations, architecture decisions, option comparisons,
+  public contracts, or ready/done/decision-ready claims when subagent tools exist.
+- Inline skeptic review is only for fully read local evidence whose outcome cannot
+  affect architecture, review repair, root cause, public contracts, docs drift,
+  commit/land, or ready/done claims. Name the fallback when it matters.
+- Challenge claims, option framing, evidence, and assumptions; do not attack the user.
+- Look for missing evidence, false certainty, untested alternatives, hidden authority,
+  stale readbacks, incompatible constraints, and premature success claims.
+- Prefer concrete objections: blocker, counterexample, owner/control surface,
+  falsifier, or smallest next check.
+- Classify objections as `resolved`, `unresolved`, or `out_of_scope`; convert
+  unresolved material objections into gaps, risks, blockers, or next checks.
+- Do not mutate state, implement, commit, land, create execution authority, or claim
+  verification from skeptic review alone.
+- Give subagents only the bounded target, read-only context, and output schema; do not
+  feed them the preferred answer unless the task is to audit it.
 
 ## Output
 
-Return concise, machine-mergeable objections: objection id, target claim, evidence or
-missing evidence, severity, disposition, blocker or counterexample when present,
-owner or control surface when relevant, falsifier when one would change the decision,
-and smallest next check.
+Return objections with target claim, evidence gap, severity, disposition,
+blocker/counterexample, owner/control surface, falsifier, and smallest next check.
