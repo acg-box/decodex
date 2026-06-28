@@ -39,7 +39,7 @@ use crate::{
 	recovery::{
 		self, GhostLaneCleanupRequest, GhostLaneDiagnoseRequest, LegacyCloseoutRecoveryRequest,
 		MergedCloseoutRecoveryRequest, ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest,
-		ReviewHandoffRebindRequest,
+		ReviewHandoffRebindRequest, StaleActiveDiagnoseRequest, StaleActiveReleaseRequest,
 	},
 	research_design::{
 		self, ResearchDesignCompileRequest, ResearchDesignOutcome, ResearchDesignPromoteRequest,
@@ -1103,6 +1103,7 @@ impl RecoverCommand {
 		match &self.command {
 			RecoverSubcommand::ReviewHandoff(args) => args.run(self.project_config.as_path()),
 			RecoverSubcommand::GhostLane(args) => args.run(self.project_config.as_path()),
+			RecoverSubcommand::StaleActive(args) => args.run(self.project_config.as_path()),
 			RecoverSubcommand::LegacyCloseout(args) => recovery::run_legacy_closeout(
 				self.project_config.as_path(),
 				&LegacyCloseoutRecoveryRequest {
@@ -1123,6 +1124,46 @@ impl RecoverCommand {
 			),
 		}
 	}
+}
+
+#[derive(Debug, Args)]
+struct StaleActiveRecoveryCommand {
+	#[command(subcommand)]
+	command: StaleActiveRecoverySubcommand,
+}
+impl StaleActiveRecoveryCommand {
+	fn run(&self, config_path: Option<&Path>) -> Result<()> {
+		match &self.command {
+			StaleActiveRecoverySubcommand::Diagnose(args) => recovery::run_stale_active_diagnose(
+				config_path,
+				&StaleActiveDiagnoseRequest { issue: args.issue.clone(), json: args.json },
+			),
+			StaleActiveRecoverySubcommand::Release(args) => recovery::run_stale_active_release(
+				config_path,
+				&StaleActiveReleaseRequest { issue: args.issue.clone(), dry_run: args.dry_run },
+			),
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct StaleActiveDiagnoseCommand {
+	/// Issue identifier or tracker issue id to inspect. Omit to inspect active-label issues.
+	#[arg(value_name = "ISSUE")]
+	issue: Option<String>,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct StaleActiveReleaseCommand {
+	/// Issue identifier or tracker issue id for the stale active lane.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Validate only; do not clear labels, terminalize the run, or write private audit evidence.
+	#[arg(long)]
+	dry_run: bool,
 }
 
 #[derive(Debug, Args)]
@@ -2169,6 +2210,8 @@ enum RecoverSubcommand {
 	ReviewHandoff(ReviewHandoffRecoveryCommand),
 	/// Diagnose or clear missing-issue ghost lanes after fail-closed safety checks.
 	GhostLane(GhostLaneRecoveryCommand),
+	/// Diagnose or release tracker-present stale active ownership after fail-closed checks.
+	StaleActive(StaleActiveRecoveryCommand),
 	/// Record an audited fallback closeout for a legacy cleanup-only worktree.
 	LegacyCloseout(LegacyCloseoutRecoveryCommand),
 	/// Reconcile stale retained attention after a PR is already merged and cleaned up.
@@ -2181,6 +2224,14 @@ enum GhostLaneRecoverySubcommand {
 	Diagnose(GhostLaneDiagnoseCommand),
 	/// Terminalize a proven ghost lane and clear its local run lease.
 	Cleanup(GhostLaneCleanupCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum StaleActiveRecoverySubcommand {
+	/// Read-only diagnosis for tracker-present stale active ownership.
+	Diagnose(StaleActiveDiagnoseCommand),
+	/// Clear a proven stale active label and terminalize stale local ownership.
+	Release(StaleActiveReleaseCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -2414,7 +2465,8 @@ mod tests {
 			ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
 			ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
 			ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand,
-			ServeCommand, StatusCommand,
+			ServeCommand, StaleActiveDiagnoseCommand, StaleActiveRecoveryCommand,
+			StaleActiveRecoverySubcommand, StaleActiveReleaseCommand, StatusCommand,
 		},
 		mcp::{McpCapabilityProfile, McpTransport},
 	};
@@ -3342,6 +3394,56 @@ mod tests {
 				}),
 				..
 			}) if issue == "PUBFI-012"
+		));
+	}
+
+	#[test]
+	fn parses_stale_active_diagnose_with_issue_and_json() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"recover",
+			"--config",
+			"./project.toml",
+			"stale-active",
+			"diagnose",
+			"PUB-1626",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Recover(RecoverCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				command: RecoverSubcommand::StaleActive(StaleActiveRecoveryCommand {
+					command: StaleActiveRecoverySubcommand::Diagnose(
+						StaleActiveDiagnoseCommand { issue: Some(_), json: true }
+					)
+				})
+			}) if config == Path::new("./project.toml")
+		));
+	}
+
+	#[test]
+	fn parses_stale_active_release_dry_run() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"recover",
+			"stale-active",
+			"release",
+			"PUB-1626",
+			"--dry-run",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Recover(RecoverCommand {
+				command: RecoverSubcommand::StaleActive(StaleActiveRecoveryCommand {
+					command: StaleActiveRecoverySubcommand::Release(
+						StaleActiveReleaseCommand { issue, dry_run: true }
+					)
+				}),
+				..
+			}) if issue == "PUB-1626"
 		));
 	}
 
