@@ -20,6 +20,8 @@ important ready/done claims.
   review repair, debugging conclusion, generated or large implementation,
   architecture decision, option comparison, public-contract change, or
   ready/done/decision-ready claim.
+- Do not require an explicit user request for a challenge support agent when the
+  target claim is material and the inline exception is not satisfied.
 - Inline challenge is allowed only when the full evidence is local and already read
   by the main thread, and the outcome cannot affect architecture, review repair,
   root-cause debugging, public contracts, docs drift, commit/land, or ready/done
@@ -42,6 +44,8 @@ important ready/done claims.
 - Give support agents only the bounded target, relevant read-only context, and output
   schema. Do not feed them the preferred answer unless the task explicitly needs them
   to audit it.
+- Support-agent challengers are read-only and must not spawn further support agents
+  unless the main thread explicitly delegates that.
 
 ## Output
 

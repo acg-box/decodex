@@ -116,6 +116,8 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.assertIn("$deliberation:scout", joined)
         self.assertIn("$deliberation:challenge", joined)
         self.assertIn("1-2 files or one command", joined)
+        self.assertIn("Do not wait for the user", joined)
+        self.assertIn("bounded read-only scout/challenge support agents", joined)
 
     def test_commit_subject_validation(self) -> None:
         valid = '{"schema":"decodex/commit/1","summary":"ship guard","authority":"XY-1099"}'

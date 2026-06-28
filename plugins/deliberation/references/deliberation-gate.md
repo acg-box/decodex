@@ -20,4 +20,12 @@ commit/land, or ready/done claims.
 
 When the inline exception does not apply and support-agent tools are allowed, use a
 fresh bounded read-only support agent for scout or challenge work. The main thread
-keeps implementation ownership, checks evidence, and owns final claims.
+keeps implementation ownership, checks evidence, and owns final claims. Do not wait
+for the user to explicitly request support agents when the gate requires independent
+evidence or critique.
+
+Support agents receive one bounded objective, allowed roots or sources, excluded
+surfaces, and an expected output shape. They stay read-only and must not spawn further
+support agents unless the main thread explicitly delegates that. If support-agent
+tools are unavailable, name the inline fallback and do not describe it as independent
+fresh-context review.

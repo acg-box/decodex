@@ -13,17 +13,22 @@ only when the run needs that detail.
 Follow the compact loop: first-principles probe, scout evidence, options, judgment,
 challenge, decision. Use `$deliberation:grill` for framing when scope or constraints
 are unclear, `$deliberation:scout` for non-obvious evidence, and
-`$deliberation:challenge` before `decision_ready` or any material recommendation. Use
-`research-promote` only after explicit acceptance.
+`$deliberation:challenge` before `decision_ready` or any material recommendation.
+Do not wait for the user to explicitly request support agents: Decodex research that
+will produce a material recommendation, option judgment, or `decision_ready` claim
+must use at least one fresh bounded read-only scout or challenge support-agent pass
+when support-agent tools are allowed. Use `research-promote` only after explicit
+acceptance.
 
 - Before broad evidence gathering, establish the artifact contract: decision owner,
   decision question, non-goals, output shape, useful bounds, and what evidence would
   change the recommendation.
-- Keep research proportional. Small/local questions use inline framing plus a compact
-  challenge; ordinary research uses bounded scout when evidence is not already
-  obvious and still runs challenge before material recommendations; architecture,
-  product, cross-boundary, or root-cause decisions may use both as fresh-context
-  support-agent work.
+- Keep research bounded, not inline by default. Purely local fact checks may stay
+  inline only when they end without a material recommendation. Ordinary material
+  research uses at least one read-only support-agent scout or challenge pass.
+  Architecture, product, cross-boundary, root-cause, or public-contract research uses
+  separate scout and challenge support agents unless the user explicitly opts out or
+  support-agent tooling is unavailable.
 - For non-trivial repo research, use `$knowledge:docs`, `$knowledge:okf`, or
   `$knowledge:repo-memory` for source-backed context, and `$knowledge:docs-drift`
   when docs, code, config, help, or status claims may diverge.
@@ -59,4 +64,7 @@ are unclear, `$deliberation:scout` for non-obvious evidence, and
   when one local question fits in 1-2 files or one command and cannot affect
   decision readiness, public contracts, docs drift, commit/land, or ready/done
   claims. Otherwise dispatch a bounded read-only scout or skeptic support agent when
-  support-agent tools are allowed, and keep any fallback visible.
+  support-agent tools are allowed, and keep any fallback visible. Support agents must
+  receive one objective, allowed roots or sources, excluded surfaces, and expected
+  output shape; they must not mutate state or spawn further support agents unless the
+  main thread explicitly delegates that.
