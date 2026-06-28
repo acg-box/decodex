@@ -10,7 +10,7 @@ The gate is a method cue, not a ceremony:
    falsifier.
 2. Scout: use direct evidence from the repo, docs, OKF/LLM Wiki, code, commands, or
    runtime readback when facts are not local and obvious.
-3. Challenge: test the claim for objections, missing evidence, hidden assumptions,
+3. Skeptic: test the claim for objections, missing evidence, hidden assumptions,
    stale readbacks, and smaller alternatives before material conclusions.
 
 Inline exception: inline deliberation is allowed only when one explicit local
@@ -19,7 +19,7 @@ architecture, review repair, root-cause debugging, public contracts, docs drift,
 commit/land, or ready/done claims.
 
 When the inline exception does not apply and support-agent tools are allowed, use a
-fresh bounded read-only support agent for scout or challenge work. The main thread
+fresh bounded read-only support agent for scout or skeptic work. The main thread
 keeps implementation ownership, checks evidence, and owns final claims. Do not wait
 for the user to explicitly request support agents when the gate requires independent
 evidence or critique.

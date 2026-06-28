@@ -6,7 +6,7 @@ Use this for terminal Decision Contract shape.
 
 Use exactly one:
 
-- `decision_ready`: evidence, options, resolved challenge, objectives, validation,
+- `decision_ready`: evidence, options, resolved skeptic objections, objectives, validation,
   and promotion target are sufficient for post-promotion shaping.
 - `not_decision_ready`: useful evidence exists, but a decision would be unsafe.
 - `blocked`: a non-decision blocker prevents more research.
@@ -32,7 +32,7 @@ OKF disposition: `continue`, `promote_and_supersede`, `promote_and_retire`, or
 
 ## Judgment
 
-Challenge-ready judgment names criteria fit, evidence refs, impact, rejected
+Skeptic-ready judgment names criteria fit, evidence refs, impact, rejected
 alternatives, unresolved gaps, expected validation, and owner/control surface when
 execution would follow. Objections are `resolved`, `unresolved`, or `out_of_scope`;
 unresolved material objections block `decision_ready`.

@@ -38,7 +38,7 @@ For build, test, run, setup, validation, and task-runner command entrypoints, re
 | `plugins/decodex/` | Canonical installable Decodex lifecycle plugin source. It owns research, issue briefing, planning, runtime ops, commit, and land. |
 | `plugins/knowledge/` | Knowledge plugin for docs, OKF/LLM Wiki, semantic drift, source-backed repo memory, and knowledge writeback. |
 | `plugins/codebase/` | Reusable repository work plugin for command authority, task-runner structure, dependency policy, review repair, verification, debugging, and dynamic read-only support-agent boundaries. |
-| `plugins/deliberation/` | Portable deliberation plugin for read-only scout, grill, challenge, and skeptic review. |
+| `plugins/deliberation/` | Portable deliberation plugin for read-only scout, grill, and skeptic review. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
 | `docs/reference/` | Current repository and artifact surface maps. |

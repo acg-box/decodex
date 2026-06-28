@@ -21,7 +21,7 @@ execution authority.
 - Classify docs impact before completion: `none`, `update_required`,
   `research_required`, or `drift_required`.
 - If docs impact is `research_required`, switch to the repository's owning research
-  workflow plus `$deliberation:challenge`.
+  workflow plus `$deliberation:skeptic`.
 - Record routing, promotion, rename, or maintenance changes in `docs/log.md`.
 - Run `decodex docs check` before claiming docs readiness.
 - Treat docs check or drift failure as a completion blocker.

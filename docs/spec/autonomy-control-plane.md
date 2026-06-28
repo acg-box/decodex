@@ -357,11 +357,11 @@ Refusal rules:
 - Contradiction unresolved -> keep as `needs_human_decision` or `needs_evidence`.
 - Review/validation weakening -> block promotion.
 
-Non-trivial proposals use the generic challenge method. When tool support and active
+Non-trivial proposals use the generic skeptic method. When tool support and active
 workflow allow it, Decodex should request a fresh dynamic read-only support-agent
-challenge for architecture, review-repair, generated implementation, or
-ready/decision-ready claims. Inline challenge is a fallback for small local checks or
-when support-agent tooling is unavailable. Challenge output is objection evidence and
+skeptic pass for architecture, review-repair, generated implementation, or
+ready/decision-ready claims. Inline skeptic review is a fallback for small local checks or
+when support-agent tooling is unavailable. Skeptic output is objection evidence and
 promotion constraints; it does not create acceptance authority and does not by itself
 turn a `decision_candidate` into `needs_human_decision`. Material contradictions,
 disallowed surfaces, weakened validation/review, or explicit authority gaps still use
@@ -376,7 +376,7 @@ Autonomy uses the existing loop-runtime authority boundary:
 3. Cluster signals under the exact objective version.
 4. Compile a proposal with goals, non-goals, metrics, validation gates, risk, and
    refusal state.
-5. Challenge the proposal when non-trivial.
+5. Skeptic-review the proposal when non-trivial.
 6. Convert an accepted strong proposal into a latent Decision Contract candidate with
    explicit proposal-acceptance authority.
 7. Promote only through explicit human acceptance, accepted Decision Contract

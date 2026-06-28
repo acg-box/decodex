@@ -17,7 +17,7 @@ Decision: Maintain the canonical Decodex lifecycle plugin in this repository und
 `plugins/decodex/`, and maintain companion plugin sources under `plugins/knowledge/`,
 `plugins/codebase/`, and `plugins/deliberation/`.
 Consequences: Decodex runtime guidance can change with the runtime, while reusable
-repository execution policy and generic challenge methods stop being Decodex-owned.
+repository execution policy and generic skeptic methods stop being Decodex-owned.
 Host bootstrap instructions compose the installed plugins without copying their
 procedures.
 
@@ -59,7 +59,7 @@ Companion plugins:
 - `plugins/codebase/` owns checked-in command authority, task-runner structure,
   dependency policy, review repair, verification, debugging, and dynamic support-agent
   boundaries.
-- `plugins/deliberation/` owns generic scout, grill, challenge, and skeptic review.
+- `plugins/deliberation/` owns generic scout, grill, and skeptic review.
 
 The plugin must route to `apps/decodex/src/`, `docs/spec/`, `docs/runbook/`, `docs/reference/`,
 registered project `WORKFLOW.md`, and registered project `project.toml` instead of

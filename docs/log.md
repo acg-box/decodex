@@ -1,5 +1,13 @@
 # Documentation Log
 
+## 2026-06-28
+
+- Renamed the Deliberation adversarial-review role from `challenge` to `skeptic` so
+  `scout` and `skeptic` are peer role/method names while support agents remain only
+  the bounded read-only execution mechanism. Updated plugin skills, routing, tests,
+  hooks, and current docs to use `$deliberation:skeptic` and
+  `plugins/deliberation/skills/skeptic/`.
+
 ## 2026-06-27
 
 - Refreshed docs/plugin drift after the latest local install readback: Codex stable

@@ -227,7 +227,7 @@ Stop conditions:
 
 - Proposal persistence grants execution authority.
 - Proposal ids include timestamps or volatile runtime counts.
-- Challenge output is treated as acceptance authority.
+- Skeptic output is treated as acceptance authority.
 
 ## Phase 4: Explicit Acceptance And Decision Contract Bridge
 

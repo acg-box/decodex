@@ -1,6 +1,6 @@
 ---
 name: research
-description: Use when Decodex needs bounded research or design investigation before execution, including framing a decision question, collecting evidence, comparing options, forming a judgment, running a challenge pass, and producing a terminal Decision Contract status.
+description: Use when Decodex needs bounded research or design investigation before execution, including framing a decision question, collecting evidence, comparing options, forming a judgment, running a skeptic pass, and producing a terminal Decision Contract status.
 ---
 
 # Decodex Research
@@ -11,12 +11,12 @@ Read `../../references/research-lifecycle.md` first, then load
 only when the run needs that detail.
 
 Follow the compact loop: first-principles probe, scout evidence, options, judgment,
-challenge, decision. Use `$deliberation:grill` for framing when scope or constraints
-are unclear, `$deliberation:scout` for non-obvious evidence, and
-`$deliberation:challenge` before `decision_ready` or any material recommendation.
+skeptic review, decision. Use `$deliberation:grill` for framing when scope or
+constraints are unclear, `$deliberation:scout` for non-obvious evidence, and
+`$deliberation:skeptic` before `decision_ready` or any material recommendation.
 Do not wait for the user to explicitly request support agents: Decodex research that
 will produce a material recommendation, option judgment, or `decision_ready` claim
-must use at least one fresh bounded read-only scout or challenge support-agent pass
+must use at least one fresh bounded read-only scout or skeptic support-agent pass
 when support-agent tools are allowed. Use `research-promote` only after explicit
 acceptance.
 
@@ -25,9 +25,9 @@ acceptance.
   change the recommendation.
 - Keep research bounded, not inline by default. Purely local fact checks may stay
   inline only when they end without a material recommendation. Ordinary material
-  research uses at least one read-only support-agent scout or challenge pass.
+  research uses at least one read-only support-agent scout or skeptic pass.
   Architecture, product, cross-boundary, root-cause, or public-contract research uses
-  separate scout and challenge support agents unless the user explicitly opts out or
+  separate scout and skeptic support agents unless the user explicitly opts out or
   support-agent tooling is unavailable.
 - For non-trivial repo research, use `$knowledge:docs`, `$knowledge:okf`, or
   `$knowledge:repo-memory` for source-backed context, and `$knowledge:docs-drift`
