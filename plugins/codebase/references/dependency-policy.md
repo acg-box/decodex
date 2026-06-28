@@ -27,6 +27,8 @@ generated dependency artifacts, or GitHub Actions action pins affect repository 
 
 - `.github/workflows/*.yml` and `.github/workflows/*.yaml` external `uses:` refs are
   dependencies. Local actions/workflows are repo code.
+- External `uses: owner/action@ref` entries must resolve through the same dependency
+  policy as manifest dependencies.
 - For roll mode, choose the latest verified compatible release/tag first, then pin
   the full commit SHA it resolves to. For annotated tags, pin the peeled commit SHA.
 - For style mode, convert the existing selected ref to the full commit SHA without
