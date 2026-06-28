@@ -26,6 +26,12 @@
   lane-control spec, recovery runbook, and operator control-plane reference to
   distinguish this from missing-issue ghost-lane recovery and retained review-handoff
   recovery.
+- Tightened stale-active release reentry after local cleanup: if a previous release
+  attempt already terminalized the run, retired the control channel, removed the
+  retained worktree mapping/path, and wrote `stale_active_release` audit evidence but
+  stopped before removing the tracker active label, diagnose/release may continue
+  only when the remaining blockers are the stale protocol/activity summaries from the
+  already-terminal run.
 
 ## 2026-06-27
 
