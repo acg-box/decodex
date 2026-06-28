@@ -1,20 +1,9 @@
-#[cfg(target_os = "macos")]
-use std::mem::{self, MaybeUninit};
-use std::sync::atomic::AtomicU64;
-use std::env;
-#[cfg(target_os = "macos")]
-use std::ptr;
+#[cfg(target_os = "macos")] use std::mem::{self, MaybeUninit};
+#[cfg(target_os = "macos")] use std::ptr;
+use std::{env, sync::atomic::AtomicU64};
 
-use libc::FD_CLOEXEC;
-use libc::F_GETFD;
-use libc::F_SETFD;
-#[cfg(target_os = "macos")]
-use libc::{
-	c_char,
-	c_void,
-	proc_bsdinfo,
-	PROC_PIDTBSDINFO,
-};
+use libc::{F_GETFD, F_SETFD, FD_CLOEXEC};
+#[cfg(target_os = "macos")] use libc::{PROC_PIDTBSDINFO, c_char, c_void, proc_bsdinfo};
 use rusqlite::{self, Row, types::Type};
 
 const REVIEW_LIFECYCLE_SCHEMA_SQL: &str = r#"
@@ -165,13 +154,8 @@ impl DispatchSlotGuard {
 		match self.retention {
 			GuardRetention::ParentAfterHandoff => Ok(()),
 			GuardRetention::Local | GuardRetention::AdoptingChild => {
-				let Self {
-					project_id: _,
-					slot_index: _,
-					lock_path,
-					lock_file,
-					retention: _,
-				} = self;
+				let Self { project_id: _, slot_index: _, lock_path, lock_file, retention: _ } =
+					self;
 
 				lock_file.unlock()?;
 
@@ -276,10 +260,9 @@ impl StateData {
 			.get(&attempt.issue_id)
 			.is_some_and(|lease| lease.project_id == project_id && lease.run_id == attempt.run_id);
 		let remembered_project = attempt.project_id.as_deref() == Some(project_id);
-		let in_project =
-			remembered_project
-				|| worktree.is_some_and(|mapping| mapping.project_id == project_id)
-				|| run_lease;
+		let in_project = remembered_project
+			|| worktree.is_some_and(|mapping| mapping.project_id == project_id)
+			|| run_lease;
 
 		if !in_project {
 			return None;
@@ -307,16 +290,11 @@ impl StateData {
 		if event_summary.event_count > 0 {
 			recovery_evidence.push(format!("protocol_events:{}", event_summary.event_count));
 		}
-		if run_activity_summary
-			.and_then(|summary| summary.child_agent_activity.as_ref())
-			.is_some()
+		if run_activity_summary.and_then(|summary| summary.child_agent_activity.as_ref()).is_some()
 		{
 			recovery_evidence.push(String::from("child_agent_activity_summary"));
 		}
-		if run_activity_summary
-			.and_then(|summary| summary.protocol_activity.as_ref())
-			.is_some()
-		{
+		if run_activity_summary.and_then(|summary| summary.protocol_activity.as_ref()).is_some() {
 			recovery_evidence.push(String::from("protocol_activity_summary"));
 		}
 
@@ -351,7 +329,9 @@ impl StateData {
 		self.event_summaries
 			.get(run_id)
 			.cloned()
-			.or_else(|| self.events.get(run_id).map(|events| protocol_event_summary_from_events(events)))
+			.or_else(|| {
+				self.events.get(run_id).map(|events| protocol_event_summary_from_events(events))
+			})
 			.unwrap_or_default()
 	}
 
@@ -795,9 +775,8 @@ ON execution_programs (project_id, source_contract_id, updated_at_unix);
 
 	fn ensure_execution_program_source_contract_nullable(&self) -> Result<()> {
 		let mut statement = self.connection.prepare("PRAGMA table_info(execution_programs)")?;
-		let columns = statement.query_map([], |row| {
-			Ok((row.get::<_, String>(1)?, row.get::<_, i64>(3)?))
-		})?;
+		let columns =
+			statement.query_map([], |row| Ok((row.get::<_, String>(1)?, row.get::<_, i64>(3)?)))?;
 		let mut source_contract_not_null = false;
 
 		for column in columns {
@@ -937,21 +916,20 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				"SELECT run_id, child_agent_activity_json FROM run_activity_summaries \
 				 WHERE child_agent_activity_json IS NOT NULL",
 			)?;
-			let rows = statement.query_map([], |row| {
-				Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-			})?;
+			let rows = statement
+				.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
 			let mut updates = Vec::new();
 
 			for row in rows {
 				let (run_id, child_agent_activity_json) = row?;
-					let sealed_json = serde_json::to_string(
-						&serde_json::from_str::<ChildAgentActivitySummary>(&child_agent_activity_json)?
-							.sealed_durable(),
-					)?;
+				let sealed_json = serde_json::to_string(
+					&serde_json::from_str::<ChildAgentActivitySummary>(&child_agent_activity_json)?
+						.sealed_durable(),
+				)?;
 
-					if sealed_json != child_agent_activity_json {
-						updates.push((run_id, sealed_json));
-					}
+				if sealed_json != child_agent_activity_json {
+					updates.push((run_id, sealed_json));
+				}
 			}
 
 			updates
@@ -1060,34 +1038,24 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let transaction = self.connection.transaction()?;
 
 		transaction.execute("DELETE FROM projects WHERE service_id = ?1", params![service_id])?;
-		transaction.execute(
-			"DELETE FROM connector_backoffs WHERE project_id = ?1",
-			params![service_id],
-		)?;
+		transaction
+			.execute("DELETE FROM connector_backoffs WHERE project_id = ?1", params![service_id])?;
 		transaction.execute(
 			"DELETE FROM run_control_channels WHERE project_id = ?1",
 			params![service_id],
 		)?;
-		transaction.execute(
-			"DELETE FROM decision_contracts WHERE project_id = ?1",
-			params![service_id],
-		)?;
+		transaction
+			.execute("DELETE FROM decision_contracts WHERE project_id = ?1", params![service_id])?;
 		transaction.execute(
 			"DELETE FROM autonomy_objectives WHERE project_id = ?1",
 			params![service_id],
 		)?;
-		transaction.execute(
-			"DELETE FROM autonomy_signals WHERE project_id = ?1",
-			params![service_id],
-		)?;
-		transaction.execute(
-			"DELETE FROM autonomy_proposals WHERE project_id = ?1",
-			params![service_id],
-		)?;
-		transaction.execute(
-			"DELETE FROM execution_programs WHERE project_id = ?1",
-			params![service_id],
-		)?;
+		transaction
+			.execute("DELETE FROM autonomy_signals WHERE project_id = ?1", params![service_id])?;
+		transaction
+			.execute("DELETE FROM autonomy_proposals WHERE project_id = ?1", params![service_id])?;
+		transaction
+			.execute("DELETE FROM execution_programs WHERE project_id = ?1", params![service_id])?;
 		transaction.execute(
 			"DELETE FROM program_intake_plans WHERE project_id = ?1",
 			params![service_id],
@@ -1096,10 +1064,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			"DELETE FROM program_issue_mappings WHERE project_id = ?1",
 			params![service_id],
 		)?;
-		transaction.execute(
-			"DELETE FROM evidence_artifacts WHERE project_id = ?1",
-			params![service_id],
-		)?;
+		transaction
+			.execute("DELETE FROM evidence_artifacts WHERE project_id = ?1", params![service_id])?;
 		transaction.execute(
 			"DELETE FROM loop_guardrail_checkpoints WHERE project_id = ?1",
 			params![service_id],
@@ -1214,11 +1180,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			.map(ChildAgentActivitySummary::sealed_durable)
 			.map(|summary| serde_json::to_string(&summary))
 			.transpose()?;
-		let protocol_activity_json = summary
-			.protocol_activity
-			.as_ref()
-			.map(serde_json::to_string)
-			.transpose()?;
+		let protocol_activity_json =
+			summary.protocol_activity.as_ref().map(serde_json::to_string).transpose()?;
 
 		self.connection.execute(
 			"INSERT OR REPLACE INTO run_activity_summaries (
@@ -1247,7 +1210,12 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			params![lease.issue_id(), lease.project_id(), lease.run_id(), lease.issue_state()],
 		)?;
 
-		update_run_attempt_project(&transaction, lease.project_id(), lease.issue_id(), Some(lease.run_id()))?;
+		update_run_attempt_project(
+			&transaction,
+			lease.project_id(),
+			lease.issue_id(),
+			Some(lease.run_id()),
+		)?;
 
 		transaction.commit()?;
 
@@ -1444,8 +1412,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
 	fn upsert_autonomy_signal(&self, record: &AutonomySignalRuntimeRecord) -> Result<()> {
 		let payload_json = serde_json::to_string(&record.signal)?;
-		let version = i64::try_from(record.signal.objective_version())
-			.map_err(|_| eyre::eyre!("Autonomy signal objective_version exceeds SQLite integer range."))?;
+		let version = i64::try_from(record.signal.objective_version()).map_err(|_| {
+			eyre::eyre!("Autonomy signal objective_version exceeds SQLite integer range.")
+		})?;
 
 		self.connection.execute(
 			"INSERT INTO autonomy_signals (
@@ -1489,8 +1458,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
 	fn upsert_autonomy_proposal(&self, record: &AutonomyProposalRuntimeRecord) -> Result<()> {
 		let payload_json = serde_json::to_string(&record.proposal)?;
-		let version = i64::try_from(record.proposal.objective_version())
-			.map_err(|_| eyre::eyre!("Autonomy proposal objective_version exceeds SQLite integer range."))?;
+		let version = i64::try_from(record.proposal.objective_version()).map_err(|_| {
+			eyre::eyre!("Autonomy proposal objective_version exceeds SQLite integer range.")
+		})?;
 
 		self.connection.execute(
 			"INSERT INTO autonomy_proposals (
@@ -1572,8 +1542,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	}
 
 	fn delete_lease(&mut self, issue_id: &str) -> Result<()> {
-		self.connection
-			.execute("DELETE FROM leases WHERE issue_id = ?1", params![issue_id])?;
+		self.connection.execute("DELETE FROM leases WHERE issue_id = ?1", params![issue_id])?;
 
 		Ok(())
 	}
@@ -1590,7 +1559,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			 SELECT ?2, project_id, run_id, issue_state FROM leases WHERE issue_id = ?1",
 			params![previous_issue_id, canonical_issue_id],
 		)?;
-		transaction.execute("DELETE FROM leases WHERE issue_id = ?1", params![previous_issue_id])?;
+		transaction
+			.execute("DELETE FROM leases WHERE issue_id = ?1", params![previous_issue_id])?;
 		transaction.execute(
 			"INSERT OR IGNORE INTO worktrees (
 				issue_id, project_id, branch_name, worktree_path,
@@ -1601,7 +1571,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			 FROM worktrees WHERE issue_id = ?1",
 			params![previous_issue_id, canonical_issue_id],
 		)?;
-		transaction.execute("DELETE FROM worktrees WHERE issue_id = ?1", params![previous_issue_id])?;
+		transaction
+			.execute("DELETE FROM worktrees WHERE issue_id = ?1", params![previous_issue_id])?;
 		transaction.execute(
 			"UPDATE run_attempts SET issue_id = ?2 WHERE issue_id = ?1",
 			params![previous_issue_id, canonical_issue_id],
@@ -1705,15 +1676,19 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			"DELETE FROM review_policy_checkpoints WHERE issue_id = ?1",
 			params![issue_id],
 		)?;
-		transaction.execute(
-			"DELETE FROM evidence_artifacts WHERE issue_id = ?1",
-			params![issue_id],
-		)?;
+		transaction
+			.execute("DELETE FROM evidence_artifacts WHERE issue_id = ?1", params![issue_id])?;
 		transaction.execute(
 			"DELETE FROM loop_guardrail_checkpoints WHERE issue_id = ?1",
 			params![issue_id],
 		)?;
 		transaction.commit()?;
+
+		Ok(())
+	}
+
+	fn delete_worktree_mapping(&mut self, issue_id: &str) -> Result<()> {
+		self.connection.execute("DELETE FROM worktrees WHERE issue_id = ?1", params![issue_id])?;
 
 		Ok(())
 	}
@@ -2184,11 +2159,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
-	fn load_run_activity_summary_for_run(
-		&self,
-		state: &mut StateData,
-		run_id: &str,
-	) -> Result<()> {
+	fn load_run_activity_summary_for_run(&self, state: &mut StateData, run_id: &str) -> Result<()> {
 		state.run_activity_summaries.remove(run_id);
 
 		let mut statement = self.connection.prepare(
@@ -2262,13 +2233,11 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	}
 
 	fn load_worktrees(&self, state: &mut StateData) -> Result<()> {
-		let mut statement = self
-			.connection
-			.prepare(
-				"SELECT issue_id, project_id, branch_name, worktree_path,
+		let mut statement = self.connection.prepare(
+			"SELECT issue_id, project_id, branch_name, worktree_path,
 					provenance_source, created_at_unix, updated_at_unix
 				 FROM worktrees",
-			)?;
+		)?;
 		let rows = statement.query_map([], |row| {
 			let mapping = worktree_mapping_record_from_row(row)?;
 
@@ -2321,9 +2290,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				recorded_at_unix,
 			};
 
-			state
-				.linear_execution_events
-				.insert(record.record.idempotency_key.clone(), record);
+			state.linear_execution_events.insert(record.record.idempotency_key.clone(), record);
 		}
 
 		Ok(())
@@ -2503,8 +2470,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		let mut rows = statement.query(params![project_id, contract_id])?;
 
-		rows
-			.next()?
+		rows.next()?
 			.map(decision_contract_runtime_row_parts)
 			.transpose()?
 			.map(decision_contract_record_from_row_parts)
@@ -2524,11 +2490,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			 LIMIT 1",
 		)?;
 		let mut rows = statement.query(params![project_id, contract_id])?;
-		let Some(parts) = rows
-			.next()?
-			.map(decision_contract_runtime_row_parts)
-			.transpose()?
-		else {
+		let Some(parts) = rows.next()?.map(decision_contract_runtime_row_parts).transpose()? else {
 			return Ok(None);
 		};
 
@@ -2547,10 +2509,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			 WHERE project_id = ?1 AND source_issue_id = ?2 \
 			 ORDER BY created_at_unix ASC, contract_id ASC",
 		)?;
-		let rows = statement.query_map(
-			params![project_id, source_issue_id],
-			decision_contract_runtime_row_parts,
-		)?;
+		let rows = statement
+			.query_map(params![project_id, source_issue_id], decision_contract_runtime_row_parts)?;
 		let mut records = Vec::new();
 
 		for row in rows {
@@ -2620,8 +2580,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		let mut rows = statement.query(params![project_id, objective_id, version])?;
 
-		rows
-			.next()?
+		rows.next()?
 			.map(autonomy_objective_runtime_row_parts)
 			.transpose()?
 			.map(autonomy_objective_record_from_row_parts)
@@ -2643,8 +2602,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		let mut rows = statement.query(params![project_id, objective_id])?;
 
-		rows
-			.next()?
+		rows.next()?
 			.map(autonomy_objective_runtime_row_parts)
 			.transpose()?
 			.map(autonomy_objective_record_from_row_parts)
@@ -2663,10 +2621,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			 WHERE project_id = ?1 AND objective_id = ?2 \
 			 ORDER BY version ASC",
 		)?;
-		let rows = statement.query_map(
-			params![project_id, objective_id],
-			autonomy_objective_runtime_row_parts,
-		)?;
+		let rows = statement
+			.query_map(params![project_id, objective_id], autonomy_objective_runtime_row_parts)?;
 		let mut records = Vec::new();
 
 		for row in rows {
@@ -2689,10 +2645,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			 ORDER BY updated_at_unix DESC, objective_id ASC, version ASC \
 			 LIMIT ?2",
 		)?;
-		let rows = statement.query_map(
-			params![project_id, limit],
-			autonomy_objective_runtime_row_parts,
-		)?;
+		let rows = statement
+			.query_map(params![project_id, limit], autonomy_objective_runtime_row_parts)?;
 		let mut records = Vec::new();
 
 		for row in rows {
@@ -2760,8 +2714,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		let mut rows = statement.query(params![project_id, signal_id])?;
 
-		rows
-			.next()?
+		rows.next()?
 			.map(autonomy_signal_runtime_row_parts)
 			.transpose()?
 			.map(autonomy_signal_record_from_row_parts)
@@ -2774,8 +2727,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		objective_id: &str,
 		objective_version: u64,
 	) -> Result<Vec<AutonomySignalRuntimeRecord>> {
-		let version = i64::try_from(objective_version)
-			.map_err(|_| eyre::eyre!("Autonomy signal objective_version exceeds SQLite integer range."))?;
+		let version = i64::try_from(objective_version).map_err(|_| {
+			eyre::eyre!("Autonomy signal objective_version exceeds SQLite integer range.")
+		})?;
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, signal_id, objective_id, objective_version, kind, fingerprint, \
 			 freshness, evidence_class, confidence, privacy, payload_json, created_at, \
@@ -2802,8 +2756,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		project_id: &str,
 		limit: usize,
 	) -> Result<Vec<AutonomySignalRuntimeRecord>> {
-		let limit = i64::try_from(limit)
-			.map_err(|_| eyre::eyre!("Autonomy signal readback limit exceeds SQLite integer range."))?;
+		let limit = i64::try_from(limit).map_err(|_| {
+			eyre::eyre!("Autonomy signal readback limit exceeds SQLite integer range.")
+		})?;
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, signal_id, objective_id, objective_version, kind, fingerprint, \
 			 freshness, evidence_class, confidence, privacy, payload_json, created_at, \
@@ -2813,10 +2768,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			 ORDER BY updated_at_unix DESC, signal_id ASC \
 			 LIMIT ?2",
 		)?;
-		let rows = statement.query_map(
-			params![project_id, limit],
-			autonomy_signal_runtime_row_parts,
-		)?;
+		let rows =
+			statement.query_map(params![project_id, limit], autonomy_signal_runtime_row_parts)?;
 		let mut records = Vec::new();
 
 		for row in rows {
@@ -2884,8 +2837,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		let mut rows = statement.query(params![project_id, proposal_id])?;
 
-		rows
-			.next()?
+		rows.next()?
 			.map(autonomy_proposal_runtime_row_parts)
 			.transpose()?
 			.map(autonomy_proposal_record_from_row_parts)
@@ -2898,8 +2850,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		objective_id: &str,
 		objective_version: u64,
 	) -> Result<Vec<AutonomyProposalRuntimeRecord>> {
-		let version = i64::try_from(objective_version)
-			.map_err(|_| eyre::eyre!("Autonomy proposal objective_version exceeds SQLite integer range."))?;
+		let version = i64::try_from(objective_version).map_err(|_| {
+			eyre::eyre!("Autonomy proposal objective_version exceeds SQLite integer range.")
+		})?;
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, proposal_id, objective_id, objective_version, state, fingerprint, \
 			 source_family, intended_surface, payload_json, created_at, created_at_unix, \
@@ -2926,8 +2879,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		project_id: &str,
 		limit: usize,
 	) -> Result<Vec<AutonomyProposalRuntimeRecord>> {
-		let limit = i64::try_from(limit)
-			.map_err(|_| eyre::eyre!("Autonomy proposal readback limit exceeds SQLite integer range."))?;
+		let limit = i64::try_from(limit).map_err(|_| {
+			eyre::eyre!("Autonomy proposal readback limit exceeds SQLite integer range.")
+		})?;
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, proposal_id, objective_id, objective_version, state, fingerprint, \
 			 source_family, intended_surface, payload_json, created_at, created_at_unix, \
@@ -2937,10 +2891,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			 ORDER BY updated_at_unix DESC, proposal_id ASC \
 			 LIMIT ?2",
 		)?;
-		let rows = statement.query_map(
-			params![project_id, limit],
-			autonomy_proposal_runtime_row_parts,
-		)?;
+		let rows =
+			statement.query_map(params![project_id, limit], autonomy_proposal_runtime_row_parts)?;
 		let mut records = Vec::new();
 
 		for row in rows {
@@ -2982,8 +2934,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		let mut rows = statement.query(params![project_id, program_id])?;
 
-		rows
-			.next()?
+		rows.next()?
 			.map(execution_program_runtime_row_parts)
 			.transpose()?
 			.map(execution_program_record_from_row_parts)
@@ -3075,10 +3026,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(records)
 	}
 
-	fn list_program_intake_plans(
-		&self,
-		project_id: &str,
-	) -> Result<Vec<ProgramIntakePlanRecord>> {
+	fn list_program_intake_plans(&self, project_id: &str) -> Result<Vec<ProgramIntakePlanRecord>> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, program_id, plan_id, intake_kind, source_contract_id, \
 			 accepted_contract_fingerprint, public_summary, created_at, created_at_unix, \
@@ -3157,9 +3105,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			let branch_name: String = row.get(2)?;
 			let run_id: String = row.get(3)?;
 			let attempt_number: i64 = row.get(4)?;
-			let request_description_thumbs_up_count = row
-				.get::<_, Option<i64>>(13)?
-				.and_then(|count| usize::try_from(count).ok());
+			let request_description_thumbs_up_count =
+				row.get::<_, Option<i64>>(13)?.and_then(|count| usize::try_from(count).ok());
 
 			Ok((
 				ReviewLifecycleKey::new(&project_id, &issue_id, &branch_name),
@@ -3221,9 +3168,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			let branch_name: String = row.get(2)?;
 			let run_id: String = row.get(3)?;
 			let attempt_number: i64 = row.get(4)?;
-			let request_description_thumbs_up_count = row
-				.get::<_, Option<i64>>(13)?
-				.and_then(|count| usize::try_from(count).ok());
+			let request_description_thumbs_up_count =
+				row.get::<_, Option<i64>>(13)?.and_then(|count| usize::try_from(count).ok());
 
 			Ok((
 				ReviewLifecycleKey::new(&project_id, &issue_id, &branch_name),
@@ -3683,11 +3629,7 @@ struct AutonomyObjectiveKey {
 }
 impl AutonomyObjectiveKey {
 	fn new(project_id: &str, objective_id: &str, version: u64) -> Self {
-		Self {
-			project_id: project_id.to_owned(),
-			objective_id: objective_id.to_owned(),
-			version,
-		}
+		Self { project_id: project_id.to_owned(), objective_id: objective_id.to_owned(), version }
 	}
 }
 
@@ -3704,11 +3646,7 @@ struct AutonomyObjectiveRuntimeRecord {
 impl AutonomyObjectiveRuntimeRecord {
 	#[allow(dead_code)]
 	fn key(&self) -> AutonomyObjectiveKey {
-		AutonomyObjectiveKey::new(
-			&self.project_id,
-			self.objective.id(),
-			self.objective.version(),
-		)
+		AutonomyObjectiveKey::new(&self.project_id, self.objective.id(), self.objective.version())
 	}
 
 	#[allow(dead_code)]
@@ -4051,15 +3989,10 @@ impl EvidenceArtifactRuntimeRecord {
 				self.head_sha
 			)
 		})?;
-		let nonclean_rounds = payload
-			.get("nonclean_rounds")
-			.and_then(Value::as_i64)
-			.unwrap_or_default();
-		let details_json = payload
-			.get("details_json")
-			.and_then(Value::as_str)
-			.unwrap_or("{}")
-			.to_owned();
+		let nonclean_rounds =
+			payload.get("nonclean_rounds").and_then(Value::as_i64).unwrap_or_default();
+		let details_json =
+			payload.get("details_json").and_then(Value::as_str).unwrap_or("{}").to_owned();
 
 		Ok(ReviewPolicyCheckpoint {
 			project_id: self.project_id.clone(),
@@ -4336,7 +4269,8 @@ pub(crate) fn write_run_operation_marker_for_process(
 
 	let now = OffsetDateTime::now_utc().unix_timestamp();
 	let existing_marker = read_run_activity_marker_record(worktree_path)?;
-	let mut marker = run_activity_marker_record_for_attempt(existing_marker.as_ref(), run_id, attempt_number);
+	let mut marker =
+		run_activity_marker_record_for_attempt(existing_marker.as_ref(), run_id, attempt_number);
 
 	set_run_activity_marker_process_identity(&mut marker, process_id);
 
@@ -4358,7 +4292,8 @@ pub(crate) fn write_run_operation_marker_preserving_activity(
 	fs::create_dir_all(worktree_path)?;
 
 	let existing_marker = read_run_activity_marker_record(worktree_path)?;
-	let mut marker = run_activity_marker_record_for_attempt(existing_marker.as_ref(), run_id, attempt_number);
+	let mut marker =
+		run_activity_marker_record_for_attempt(existing_marker.as_ref(), run_id, attempt_number);
 
 	marker.current_operation = Some(current_operation.to_owned());
 
@@ -4619,15 +4554,15 @@ pub(crate) fn read_run_activity_marker_snapshot(
 	Ok(read_run_activity_marker_record(worktree_path)?.and_then(|marker| {
 		let accounts = accounts_from_marker_record(&marker);
 
-			Some(RunActivityMarker {
-				run_id: marker.run_id?,
-				attempt_number: marker.attempt_number?,
-				process_id: marker.process_id,
-				host_boot_id: marker.host_boot_id,
-				process_start_identity: marker.process_start_identity,
-				last_activity_unix_epoch: marker.last_activity_unix_epoch,
-				last_protocol_activity_unix_epoch: marker.last_protocol_activity_unix_epoch,
-				last_progress_unix_epoch: marker.last_progress_unix_epoch,
+		Some(RunActivityMarker {
+			run_id: marker.run_id?,
+			attempt_number: marker.attempt_number?,
+			process_id: marker.process_id,
+			host_boot_id: marker.host_boot_id,
+			process_start_identity: marker.process_start_identity,
+			last_activity_unix_epoch: marker.last_activity_unix_epoch,
+			last_protocol_activity_unix_epoch: marker.last_protocol_activity_unix_epoch,
+			last_progress_unix_epoch: marker.last_progress_unix_epoch,
 			current_operation: marker.current_operation,
 			thread_id: marker.thread_id,
 			turn_id: marker.turn_id,
@@ -4661,9 +4596,7 @@ pub(crate) fn current_host_boot_id() -> Option<String> {
 pub(crate) fn current_process_start_identity() -> Option<String> {
 	static CURRENT_PROCESS_START_IDENTITY: OnceLock<Option<String>> = OnceLock::new();
 
-	CURRENT_PROCESS_START_IDENTITY
-		.get_or_init(|| process_start_identity(process::id()))
-		.clone()
+	CURRENT_PROCESS_START_IDENTITY.get_or_init(|| process_start_identity(process::id())).clone()
 }
 
 pub(crate) fn process_start_identity(process_id: u32) -> Option<String> {
@@ -4682,8 +4615,7 @@ fn protocol_event_is_non_work_activity(normalized_event_type: &str) -> bool {
 		|| matches!(
 			normalized_event_type,
 			"deprecationnotice"
-				| "warning"
-				| "configwarning"
+				| "warning" | "configwarning"
 				| "guardianwarning"
 				| "model/rerouted"
 				| "model/verification"
@@ -4694,15 +4626,11 @@ fn normalize_accounts(
 	selected: &CodexAccountActivitySummary,
 	accounts: &[CodexAccountActivitySummary],
 ) -> Vec<CodexAccountActivitySummary> {
-	let mut normalized = if accounts.is_empty() {
-		vec![selected.clone()]
-	} else {
-		accounts.to_vec()
-	};
+	let mut normalized =
+		if accounts.is_empty() { vec![selected.clone()] } else { accounts.to_vec() };
 
-	if !normalized.iter().any(|account| {
-		account.account_fingerprint == selected.account_fingerprint
-	}) {
+	if !normalized.iter().any(|account| account.account_fingerprint == selected.account_fingerprint)
+	{
 		normalized.insert(0, selected.clone());
 	}
 
@@ -4719,10 +4647,7 @@ fn accounts_from_marker_record(
 	}
 }
 
-fn set_run_activity_marker_process_identity(
-	marker: &mut RunActivityMarkerRecord,
-	process_id: u32,
-) {
+fn set_run_activity_marker_process_identity(marker: &mut RunActivityMarkerRecord, process_id: u32) {
 	marker.process_id = Some(process_id);
 	marker.host_boot_id = current_host_boot_id();
 	marker.process_start_identity = if process_id == process::id() {
@@ -4803,9 +4728,7 @@ fn read_platform_host_boot_id() -> Option<String> {
 		boot_id.pop();
 	}
 
-	String::from_utf8(boot_id).ok().map(|boot_id| {
-		format!("macos_bootsessionuuid:{boot_id}")
-	})
+	String::from_utf8(boot_id).ok().map(|boot_id| format!("macos_bootsessionuuid:{boot_id}"))
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -4844,13 +4767,7 @@ fn read_platform_process_start_identity(process_id: u32) -> Option<String> {
 		return None;
 	};
 	let read_size = unsafe {
-		libc::proc_pidinfo(
-			pid,
-			PROC_PIDTBSDINFO,
-			0,
-			info.as_mut_ptr().cast::<c_void>(),
-			info_size,
-		)
+		libc::proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, info.as_mut_ptr().cast::<c_void>(), info_size)
 	};
 
 	if read_size != info_size {
@@ -4986,10 +4903,7 @@ fn persist_run_control_channels(transaction: &Transaction<'_>, state: &StateData
 	Ok(())
 }
 
-fn persist_protocol_events(
-	transaction: &Transaction<'_>,
-	state: &StateData,
-) -> Result<()> {
+fn persist_protocol_events(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for (run_id, events) in &state.events {
 		for event in events {
 			transaction.execute(
@@ -5012,10 +4926,7 @@ fn persist_protocol_events(
 	Ok(())
 }
 
-fn persist_run_activity_summaries(
-	transaction: &Transaction<'_>,
-	state: &StateData,
-) -> Result<()> {
+fn persist_run_activity_summaries(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for summary in state.run_activity_summaries.values() {
 		let child_agent_activity_json = summary
 			.child_agent_activity
@@ -5024,11 +4935,8 @@ fn persist_run_activity_summaries(
 			.map(ChildAgentActivitySummary::sealed_durable)
 			.map(|summary| serde_json::to_string(&summary))
 			.transpose()?;
-		let protocol_activity_json = summary
-			.protocol_activity
-			.as_ref()
-			.map(serde_json::to_string)
-			.transpose()?;
+		let protocol_activity_json =
+			summary.protocol_activity.as_ref().map(serde_json::to_string).transpose()?;
 
 		transaction.execute(
 			"INSERT OR REPLACE INTO run_activity_summaries (
@@ -5071,10 +4979,7 @@ fn persist_worktrees(transaction: &Transaction<'_>, state: &StateData) -> Result
 	Ok(())
 }
 
-fn persist_linear_execution_events(
-	transaction: &Transaction<'_>,
-	state: &StateData,
-) -> Result<()> {
+fn persist_linear_execution_events(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for record in state.linear_execution_events.values() {
 		let payload_json = serde_json::to_string(&record.record)?;
 
@@ -5129,10 +5034,7 @@ fn persist_private_execution_events(
 	Ok(())
 }
 
-fn persist_decision_contracts(
-	transaction: &Transaction<'_>,
-	state: &StateData,
-) -> Result<()> {
+fn persist_decision_contracts(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for record in state.decision_contracts.values() {
 		let payload_json = serde_json::to_string(&record.contract)?;
 
@@ -5158,10 +5060,7 @@ fn persist_decision_contracts(
 	Ok(())
 }
 
-fn persist_autonomy_objectives(
-	transaction: &Transaction<'_>,
-	state: &StateData,
-) -> Result<()> {
+fn persist_autonomy_objectives(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for record in state.autonomy_objectives.values() {
 		let payload_json = serde_json::to_string(&record.objective)?;
 		let version = i64::try_from(record.objective.version())
@@ -5189,14 +5088,12 @@ fn persist_autonomy_objectives(
 	Ok(())
 }
 
-fn persist_autonomy_signals(
-	transaction: &Transaction<'_>,
-	state: &StateData,
-) -> Result<()> {
+fn persist_autonomy_signals(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for record in state.autonomy_signals.values() {
 		let payload_json = serde_json::to_string(&record.signal)?;
-		let version = i64::try_from(record.signal.objective_version())
-			.map_err(|_| eyre::eyre!("Autonomy signal objective_version exceeds SQLite integer range."))?;
+		let version = i64::try_from(record.signal.objective_version()).map_err(|_| {
+			eyre::eyre!("Autonomy signal objective_version exceeds SQLite integer range.")
+		})?;
 
 		transaction.execute(
 			"INSERT OR REPLACE INTO autonomy_signals (
@@ -5227,14 +5124,12 @@ fn persist_autonomy_signals(
 	Ok(())
 }
 
-fn persist_autonomy_proposals(
-	transaction: &Transaction<'_>,
-	state: &StateData,
-) -> Result<()> {
+fn persist_autonomy_proposals(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for record in state.autonomy_proposals.values() {
 		let payload_json = serde_json::to_string(&record.proposal)?;
-		let version = i64::try_from(record.proposal.objective_version())
-			.map_err(|_| eyre::eyre!("Autonomy proposal objective_version exceeds SQLite integer range."))?;
+		let version = i64::try_from(record.proposal.objective_version()).map_err(|_| {
+			eyre::eyre!("Autonomy proposal objective_version exceeds SQLite integer range.")
+		})?;
 
 		transaction.execute(
 			"INSERT OR REPLACE INTO autonomy_proposals (
@@ -5263,10 +5158,7 @@ fn persist_autonomy_proposals(
 	Ok(())
 }
 
-fn persist_execution_programs(
-	transaction: &Transaction<'_>,
-	state: &StateData,
-) -> Result<()> {
+fn persist_execution_programs(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for record in state.execution_programs.values() {
 		let payload_json = serde_json::to_string(&record.program)?;
 
@@ -5588,9 +5480,7 @@ fn shared_lock_coordinator_path(root: &Path) -> PathBuf {
 		hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
 	}
 
-	env::temp_dir()
-		.join("decodex-shared-lock-coordinators")
-		.join(format!("{hash:016x}.lock"))
+	env::temp_dir().join("decodex-shared-lock-coordinators").join(format!("{hash:016x}.lock"))
 }
 
 fn acquire_shared_lock_coordinator(root: &Path) -> Result<File> {
@@ -5754,10 +5644,11 @@ fn write_run_activity_marker_at(
 	last_protocol_activity_unix_epoch: Option<i64>,
 ) -> Result<()> {
 	let existing_marker = read_run_activity_marker_record(worktree_path)?;
-	let same_run_marker = existing_marker
-		.as_ref()
-		.filter(|marker| marker.run_id.as_deref() == Some(run_id) && marker.attempt_number == Some(attempt_number));
-	let mut marker = run_activity_marker_record_for_attempt(existing_marker.as_ref(), run_id, attempt_number);
+	let same_run_marker = existing_marker.as_ref().filter(|marker| {
+		marker.run_id.as_deref() == Some(run_id) && marker.attempt_number == Some(attempt_number)
+	});
+	let mut marker =
+		run_activity_marker_record_for_attempt(existing_marker.as_ref(), run_id, attempt_number);
 
 	set_run_activity_marker_process_identity(&mut marker, process_id);
 
@@ -5780,20 +5671,23 @@ fn run_activity_marker_record_for_attempt(
 	run_id: &str,
 	attempt_number: i64,
 ) -> RunActivityMarkerRecord {
-	let same_run_marker = existing_marker
-		.filter(|marker| marker.run_id.as_deref() == Some(run_id) && marker.attempt_number == Some(attempt_number));
+	let same_run_marker = existing_marker.filter(|marker| {
+		marker.run_id.as_deref() == Some(run_id) && marker.attempt_number == Some(attempt_number)
+	});
 
 	RunActivityMarkerRecord {
-			run_id: Some(run_id.to_owned()),
-			attempt_number: Some(attempt_number),
-			process_id: same_run_marker.and_then(|marker| marker.process_id),
-			host_boot_id: same_run_marker.and_then(|marker| marker.host_boot_id.clone()),
-			process_start_identity: same_run_marker
-				.and_then(|marker| marker.process_start_identity.clone()),
-			last_activity_unix_epoch: same_run_marker.and_then(|marker| marker.last_activity_unix_epoch),
-			last_protocol_activity_unix_epoch: same_run_marker
-				.and_then(|marker| marker.last_protocol_activity_unix_epoch),
-		last_progress_unix_epoch: same_run_marker.and_then(|marker| marker.last_progress_unix_epoch),
+		run_id: Some(run_id.to_owned()),
+		attempt_number: Some(attempt_number),
+		process_id: same_run_marker.and_then(|marker| marker.process_id),
+		host_boot_id: same_run_marker.and_then(|marker| marker.host_boot_id.clone()),
+		process_start_identity: same_run_marker
+			.and_then(|marker| marker.process_start_identity.clone()),
+		last_activity_unix_epoch: same_run_marker
+			.and_then(|marker| marker.last_activity_unix_epoch),
+		last_protocol_activity_unix_epoch: same_run_marker
+			.and_then(|marker| marker.last_protocol_activity_unix_epoch),
+		last_progress_unix_epoch: same_run_marker
+			.and_then(|marker| marker.last_progress_unix_epoch),
 		current_operation: same_run_marker.and_then(|marker| marker.current_operation.clone()),
 		thread_id: same_run_marker.and_then(|marker| marker.thread_id.clone()),
 		turn_id: same_run_marker.and_then(|marker| marker.turn_id.clone()),
@@ -5818,12 +5712,13 @@ fn run_activity_marker_record_for_attempt(
 		protocol_activity: same_run_marker.and_then(|marker| marker.protocol_activity.clone()),
 		account: same_run_marker.and_then(|marker| marker.account.clone()),
 		accounts: same_run_marker.map(|marker| marker.accounts.clone()).unwrap_or_default(),
-			retry_budget_attempt_count: existing_marker
-				.and_then(|marker| marker.retry_budget_attempt_count),
-			retry_kind: same_run_marker.and_then(|marker| marker.retry_kind.clone()),
-			retry_ready_at_unix_epoch: same_run_marker.and_then(|marker| marker.retry_ready_at_unix_epoch),
-		}
+		retry_budget_attempt_count: existing_marker
+			.and_then(|marker| marker.retry_budget_attempt_count),
+		retry_kind: same_run_marker.and_then(|marker| marker.retry_kind.clone()),
+		retry_ready_at_unix_epoch: same_run_marker
+			.and_then(|marker| marker.retry_ready_at_unix_epoch),
 	}
+}
 
 fn read_run_activity_marker_record(
 	worktree_path: &Path,
@@ -5843,12 +5738,12 @@ fn read_run_activity_marker_record(
 
 		match key {
 			"run_id" => marker.run_id = Some(value.to_owned()),
-				"attempt_number" => marker.attempt_number = value.parse::<i64>().ok(),
-				"process_id" => marker.process_id = value.parse::<u32>().ok(),
-				"host_boot_id" => marker.host_boot_id = Some(value.to_owned()),
-				"process_start_identity" => marker.process_start_identity = Some(value.to_owned()),
-				"last_activity_unix_epoch" =>
-					marker.last_activity_unix_epoch = value.parse::<i64>().ok(),
+			"attempt_number" => marker.attempt_number = value.parse::<i64>().ok(),
+			"process_id" => marker.process_id = value.parse::<u32>().ok(),
+			"host_boot_id" => marker.host_boot_id = Some(value.to_owned()),
+			"process_start_identity" => marker.process_start_identity = Some(value.to_owned()),
+			"last_activity_unix_epoch" =>
+				marker.last_activity_unix_epoch = value.parse::<i64>().ok(),
 			"last_protocol_activity_unix_epoch" =>
 				marker.last_protocol_activity_unix_epoch = value.parse::<i64>().ok(),
 			"last_progress_unix_epoch" =>
@@ -5861,8 +5756,7 @@ fn read_run_activity_marker_record(
 			"event_count" => marker.event_count = value.parse::<i64>().ok(),
 			"last_event_type" => marker.last_event_type = Some(value.to_owned()),
 			"effective_model" => marker.effective_model = Some(value.to_owned()),
-			"effective_model_provider" =>
-				marker.effective_model_provider = Some(value.to_owned()),
+			"effective_model_provider" => marker.effective_model_provider = Some(value.to_owned()),
 			"effective_cwd" => marker.effective_cwd = Some(value.to_owned()),
 			"effective_approval_policy" =>
 				marker.effective_approval_policy = Some(value.to_owned()),
@@ -5873,19 +5767,18 @@ fn read_run_activity_marker_record(
 				marker.child_agent_activity = serde_json::from_str(value).ok(),
 			"protocol_activity" => marker.protocol_activity = serde_json::from_str(value).ok(),
 			"account" => marker.account = serde_json::from_str(value).ok(),
-			"accounts" => {
+			"accounts" =>
 				if let Ok(accounts) = serde_json::from_str(value) {
 					marker.accounts = accounts;
-				}
-			},
+				},
 			"retry_budget_attempt_count" =>
 				marker.retry_budget_attempt_count = value.parse::<i64>().ok(),
-				"retry_kind" => marker.retry_kind = Some(value.to_owned()),
-				"retry_ready_at_unix_epoch" =>
-					marker.retry_ready_at_unix_epoch = value.parse::<i64>().ok(),
-				_ => {},
-			}
+			"retry_kind" => marker.retry_kind = Some(value.to_owned()),
+			"retry_ready_at_unix_epoch" =>
+				marker.retry_ready_at_unix_epoch = value.parse::<i64>().ok(),
+			_ => {},
 		}
+	}
 
 	Ok(Some(marker))
 }
@@ -5901,7 +5794,10 @@ fn write_run_activity_marker_record(
 		preserve_current_run_account_marker_fields(&current_marker, &mut marker);
 	}
 
-	write_run_activity_marker_body_atomic(&marker_path, &serialize_run_activity_marker_record(&marker))?;
+	write_run_activity_marker_body_atomic(
+		&marker_path,
+		&serialize_run_activity_marker_record(&marker),
+	)?;
 
 	Ok(())
 }
@@ -5943,9 +5839,7 @@ fn selected_marker_account(
 		.account
 		.as_ref()
 		.or_else(|| {
-			marker.accounts.iter().find(|account| {
-				account.status.eq_ignore_ascii_case("selected")
-			})
+			marker.accounts.iter().find(|account| account.status.eq_ignore_ascii_case("selected"))
 		})
 		.or_else(|| marker.accounts.first())
 }
@@ -5962,20 +5856,12 @@ fn write_run_activity_marker_body_atomic(marker_path: &Path, body: &str) -> Resu
 	let parent = marker_path.parent().ok_or_else(|| {
 		eyre::eyre!("activity marker path `{}` has no parent directory", marker_path.display())
 	})?;
-	let sequence = RUN_ACTIVITY_MARKER_WRITE_SEQUENCE.fetch_add(
-		1,
-		std::sync::atomic::Ordering::Relaxed,
-	);
-	let temp_path = parent.join(format!(
-		".{RUN_ACTIVITY_MARKER_FILE}.{}.{}.tmp",
-		process::id(),
-		sequence,
-	));
+	let sequence =
+		RUN_ACTIVITY_MARKER_WRITE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+	let temp_path =
+		parent.join(format!(".{RUN_ACTIVITY_MARKER_FILE}.{}.{}.tmp", process::id(), sequence,));
 	let result = (|| -> Result<()> {
-		let mut temp_file = OpenOptions::new()
-			.write(true)
-			.create_new(true)
-			.open(&temp_path)?;
+		let mut temp_file = OpenOptions::new().write(true).create_new(true).open(&temp_path)?;
 
 		temp_file.write_all(body.as_bytes())?;
 		temp_file.flush()?;
@@ -6037,10 +5923,7 @@ fn serialize_run_activity_marker_record(marker: &RunActivityMarkerRecord) -> Str
 	}
 
 	if !marker.thread_active_flags.is_empty() {
-		body.push_str(&format!(
-			"thread_active_flags={}\n",
-			marker.thread_active_flags.join(",")
-		));
+		body.push_str(&format!("thread_active_flags={}\n", marker.thread_active_flags.join(",")));
 	}
 
 	if let Some(event_count) = marker.event_count {
@@ -6059,14 +5942,10 @@ fn serialize_run_activity_marker_record(marker: &RunActivityMarkerRecord) -> Str
 		body.push_str(&format!("effective_cwd={effective_cwd}\n"));
 	}
 	if let Some(effective_approval_policy) = &marker.effective_approval_policy {
-		body.push_str(&format!(
-			"effective_approval_policy={effective_approval_policy}\n"
-		));
+		body.push_str(&format!("effective_approval_policy={effective_approval_policy}\n"));
 	}
 	if let Some(effective_approvals_reviewer) = &marker.effective_approvals_reviewer {
-		body.push_str(&format!(
-			"effective_approvals_reviewer={effective_approvals_reviewer}\n"
-		));
+		body.push_str(&format!("effective_approvals_reviewer={effective_approvals_reviewer}\n"));
 	}
 	if let Some(effective_sandbox_mode) = &marker.effective_sandbox_mode {
 		body.push_str(&format!("effective_sandbox_mode={effective_sandbox_mode}\n"));
@@ -6088,10 +5967,7 @@ fn serialize_run_activity_marker_record(marker: &RunActivityMarkerRecord) -> Str
 	body
 }
 
-fn append_run_activity_marker_account_fields(
-	body: &mut String,
-	marker: &RunActivityMarkerRecord,
-) {
+fn append_run_activity_marker_account_fields(body: &mut String, marker: &RunActivityMarkerRecord) {
 	if let Some(account) = &marker.account
 		&& let Ok(summary_json) = serde_json::to_string(account)
 	{
@@ -6118,11 +5994,7 @@ fn append_run_activity_marker_retry_fields(body: &mut String, marker: &RunActivi
 }
 
 fn parse_marker_list(value: &str) -> Vec<String> {
-	value
-		.split(',')
-		.filter(|part| !part.is_empty())
-		.map(str::to_owned)
-		.collect()
+	value.split(',').filter(|part| !part.is_empty()).map(str::to_owned).collect()
 }
 
 fn timestamp_parts() -> TimestampParts {
@@ -6166,7 +6038,9 @@ fn validate_private_execution_event_inputs(
 	Ok(())
 }
 
-fn protocol_event_summary_from_events(events: &[ProtocolEventRecord]) -> ProtocolEventSummaryRecord {
+fn protocol_event_summary_from_events(
+	events: &[ProtocolEventRecord],
+) -> ProtocolEventSummaryRecord {
 	let mut summary = ProtocolEventSummaryRecord::default();
 
 	for event in events {
@@ -6176,7 +6050,9 @@ fn protocol_event_summary_from_events(events: &[ProtocolEventRecord]) -> Protoco
 	summary
 }
 
-fn protocol_event_record_from_row(row: &Row<'_>) -> std::result::Result<ProtocolEventRecord, rusqlite::Error> {
+fn protocol_event_record_from_row(
+	row: &Row<'_>,
+) -> std::result::Result<ProtocolEventRecord, rusqlite::Error> {
 	Ok(ProtocolEventRecord {
 		sequence_number: row.get(0)?,
 		event_type: row.get(1)?,
@@ -6235,11 +6111,7 @@ where
 	value
 		.map(|value| {
 			serde_json::from_str(&value).map_err(|error| {
-				rusqlite::Error::FromSqlConversionFailure(
-					index,
-					Type::Text,
-					Box::new(error),
-				)
+				rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
 			})
 		})
 		.transpose()
@@ -6429,8 +6301,9 @@ fn autonomy_signal_record_from_row_parts(
 	parts: AutonomySignalRuntimeRowParts,
 ) -> Result<AutonomySignalRuntimeRecord> {
 	let signal = serde_json::from_str::<AutonomySignal>(&parts.payload_json)?;
-	let version = u64::try_from(parts.objective_version)
-		.map_err(|_| eyre::eyre!("Autonomy signal row objective_version must be greater than zero."))?;
+	let version = u64::try_from(parts.objective_version).map_err(|_| {
+		eyre::eyre!("Autonomy signal row objective_version must be greater than zero.")
+	})?;
 
 	signal.validate()?;
 
@@ -6510,8 +6383,9 @@ fn autonomy_proposal_record_from_row_parts(
 	parts: AutonomyProposalRuntimeRowParts,
 ) -> Result<AutonomyProposalRuntimeRecord> {
 	let proposal = serde_json::from_str::<AutonomyProposal>(&parts.payload_json)?;
-	let version = u64::try_from(parts.objective_version)
-		.map_err(|_| eyre::eyre!("Autonomy proposal row objective_version must be greater than zero."))?;
+	let version = u64::try_from(parts.objective_version).map_err(|_| {
+		eyre::eyre!("Autonomy proposal row objective_version must be greater than zero.")
+	})?;
 
 	proposal.validate()?;
 
@@ -6675,7 +6549,9 @@ fn sqlite_bool_value(value: bool) -> i64 {
 	if value { 1 } else { 0 }
 }
 
-fn connector_backoff_from_row(row: &Row<'_>) -> std::result::Result<ConnectorBackoff, rusqlite::Error> {
+fn connector_backoff_from_row(
+	row: &Row<'_>,
+) -> std::result::Result<ConnectorBackoff, rusqlite::Error> {
 	Ok(ConnectorBackoff {
 		project_id: row.get(0)?,
 		connector: row.get(1)?,
@@ -6788,11 +6664,7 @@ fn compare_program_issue_mapping_records(
 		.then_with(|| left.node_id.cmp(&right.node_id))
 }
 
-fn remove_derived_program_intake_state(
-	state: &mut StateData,
-	project_id: &str,
-	program_id: &str,
-) {
+fn remove_derived_program_intake_state(state: &mut StateData, project_id: &str, program_id: &str) {
 	state
 		.program_intake_plans
 		.retain(|key, _record| key.project_id != project_id || key.program_id != program_id);
@@ -6815,11 +6687,7 @@ fn apply_derived_program_intake_state(
 	}
 	for mapping in derived_program_issue_mapping_records(record) {
 		state.program_issue_mappings.insert(
-			ProgramIssueMappingKey::new(
-				&mapping.project_id,
-				&mapping.program_id,
-				&mapping.node_id,
-			),
+			ProgramIssueMappingKey::new(&mapping.project_id, &mapping.program_id, &mapping.node_id),
 			mapping,
 		);
 	}
