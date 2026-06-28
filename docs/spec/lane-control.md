@@ -304,8 +304,9 @@ it preserves the queue label, verifies that no run lease or active shared claim 
 reappeared, marks the stale attempt `terminal_guarded`, retires the inactive
 run-control channel, removes only clean or marker-only retained worktree mappings,
 writes local private `stale_active_release` audit evidence when a matching stale run
-exists, repeats the run-lease/shared-claim guard, rechecks tracker labels, and removes
-only the service active label as the final mutation.
+exists, repeats the run-lease/shared-claim guard, rechecks tracker labels, restores a
+queued issue from the configured in-progress state to the first configured startable
+state when the queue label is preserved, and removes only the service active label.
 
 If a stale-active release attempt stops after local cleanup but before the final
 tracker-label mutation, reentry is allowed only when local evidence proves the same
@@ -314,6 +315,10 @@ worktree mapping/path cleanup completed, `stale_active_release` audit evidence e
 and the remaining blockers are limited to stale protocol/activity summaries from the
 already-terminal run. Reentry still repeats the run-lease/shared-claim,
 review-lineage, and tracker-label guards before removing the service active label.
+If that final active-label mutation already happened but the queued issue remained in
+the configured in-progress state, reentry is allowed only with the same run/attempt
+release audit and completed local cleanup evidence; it may restore the issue to the
+first configured startable state without hand-editing tracker state.
 
 Stale active recovery must fail closed when any blocker indicates possible live or
 useful work: run lease, active shared claim, `decodex:needs-attention`, live process,
