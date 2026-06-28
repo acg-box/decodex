@@ -64,7 +64,10 @@ DELIBERATION_GATE_HINT = (
     "review with $deliberation:challenge before material conclusions. Inline only "
     "for one local question that fits in 1-2 files or one command and cannot affect "
     "architecture, debugging, review repair, public contracts, docs drift, "
-    "commit/land, or ready/done decisions."
+    "commit/land, or ready/done decisions. Do not wait for the user to explicitly "
+    "request support agents; when the inline exception fails and support-agent tools "
+    "are allowed, dispatch bounded read-only scout/challenge support agents. If "
+    "support-agent tools are unavailable, name the inline fallback."
 )
 
 COMMIT_COMMAND_TERMS = [
