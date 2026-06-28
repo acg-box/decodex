@@ -27,7 +27,7 @@ use crate::{
 	},
 	state::{
 		self, ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
-		CodexAccountMarker, ConnectorBackoffInput, DispatchSlotLimit, EffectiveRuntimeMarker,
+		CodexAccountMarker, ConnectorBackoffInput, EffectiveRuntimeMarker,
 		LoopGuardrailCheckpointInput, PreacquiredLeaseGuards, ProjectRegistration,
 		ProtocolActivityMarker, ProtocolActivitySummary, RUN_ACTIVITY_MARKER_FILE,
 		RUN_CONTROL_ACTION_COMPLETED, RUN_CONTROL_ACTION_FAILED, RUN_CONTROL_ACTION_FALLBACK,
@@ -1498,10 +1498,10 @@ fn persistent_shared_claim_check_does_not_refresh_full_event_journal() {
 	let slot_root = temp_dir.path().join("slots");
 
 	observer
-		.configure_dispatch_slot_root("pubfi", &slot_root, 2)
+		.configure_dispatch_slot_root("pubfi", &slot_root)
 		.expect("observer slot root should configure");
 	holder
-		.configure_dispatch_slot_root("pubfi", &slot_root, 2)
+		.configure_dispatch_slot_root("pubfi", &slot_root)
 		.expect("holder slot root should configure");
 	writer.record_run_attempt("run-b", "PUB-102", 1, "running").expect("writer run should record");
 	writer
@@ -1622,48 +1622,6 @@ fn tracks_issue_specific_leases_without_project_limit() {
 }
 
 #[test]
-fn shared_dispatch_slots_honor_configured_limit_across_process_local_stores() {
-	let temp_dir = TempDir::new().expect("tempdir should create");
-	let store_one = StateStore::open_in_memory().expect("first store should open");
-	let store_two = StateStore::open_in_memory().expect("second store should open");
-	let store_three = StateStore::open_in_memory().expect("third store should open");
-
-	store_one
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
-		.expect("first store should configure dispatch slot root");
-	store_two
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
-		.expect("second store should configure dispatch slot root");
-	store_three
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
-		.expect("third store should configure dispatch slot root");
-
-	assert!(
-		store_one
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
-			.expect("first shared lease acquisition should succeed")
-	);
-	assert!(
-		store_two
-			.try_acquire_lease("pubfi", "PUB-102", "run-2", IN_PROGRESS_STATE)
-			.expect("second store should acquire the second shared slot")
-	);
-	assert!(
-		!store_three
-			.try_acquire_lease("pubfi", "PUB-103", "run-3", IN_PROGRESS_STATE)
-			.expect("third store should observe the configured shared slots as busy")
-	);
-
-	store_one.clear_lease("PUB-101").expect("shared lease should clear");
-
-	assert!(
-		store_three
-			.try_acquire_lease("pubfi", "PUB-103", "run-3", IN_PROGRESS_STATE)
-			.expect("shared slot should reopen after one of the configured leases clears")
-	);
-}
-
-#[test]
 fn cleared_shared_lease_removes_lock_anchor_files() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let issue_claim_path = temp_dir.path().join(".decodex-issue-claim.PUB-101.lock");
@@ -1671,7 +1629,7 @@ fn cleared_shared_lease_removes_lock_anchor_files() {
 	let store = StateStore::open_in_memory().expect("state store should open");
 
 	store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("store should configure dispatch slot root");
 
 	assert!(
@@ -1709,7 +1667,7 @@ fn configure_dispatch_slot_root_prunes_unlocked_shared_lock_files() {
 	fs::write(&stale_dispatch_slot_path, "").expect("stale dispatch-slot anchor should write");
 
 	store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("configuration should prune unlocked shared lock anchors");
 
 	assert!(
@@ -1723,21 +1681,21 @@ fn configure_dispatch_slot_root_prunes_unlocked_shared_lock_files() {
 }
 
 #[test]
-fn shared_dispatch_slots_support_unlimited_across_process_local_stores() {
+fn shared_dispatch_slots_allocate_on_demand_across_process_local_stores() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store_one = StateStore::open_in_memory().expect("first store should open");
 	let store_two = StateStore::open_in_memory().expect("second store should open");
 	let store_three = StateStore::open_in_memory().expect("third store should open");
 
 	store_one
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), DispatchSlotLimit::Unlimited)
-		.expect("first store should configure unlimited dispatch slots");
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
+		.expect("first store should configure dispatch slots");
 	store_two
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), DispatchSlotLimit::Unlimited)
-		.expect("second store should configure unlimited dispatch slots");
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
+		.expect("second store should configure dispatch slots");
 	store_three
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), DispatchSlotLimit::Unlimited)
-		.expect("third store should configure unlimited dispatch slots");
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
+		.expect("third store should configure dispatch slots");
 
 	assert!(
 		store_one
@@ -1757,53 +1715,16 @@ fn shared_dispatch_slots_support_unlimited_across_process_local_stores() {
 }
 
 #[test]
-fn failed_shared_slot_attempt_releases_issue_claim_before_retry() {
-	let temp_dir = TempDir::new().expect("tempdir should create");
-	let store_one = StateStore::open_in_memory().expect("first store should open");
-	let store_two = StateStore::open_in_memory().expect("second store should open");
-
-	store_one
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
-		.expect("first store should configure dispatch slot root");
-	store_two
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
-		.expect("second store should configure dispatch slot root");
-
-	assert!(
-		store_one
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
-			.expect("first store should acquire the only shared slot")
-	);
-	assert!(
-		!store_two
-			.try_acquire_lease("pubfi", "PUB-102", "run-2", IN_PROGRESS_STATE)
-			.expect("second store should fail while the only slot is busy")
-	);
-	assert!(
-		!temp_dir.path().join(".decodex-issue-claim.PUB-102.lock").exists(),
-		"failed slot acquisition should remove its temporary issue-claim anchor"
-	);
-
-	store_one.clear_lease("PUB-101").expect("shared lease should clear");
-
-	assert!(
-		store_two
-			.try_acquire_lease("pubfi", "PUB-102", "run-2", IN_PROGRESS_STATE)
-			.expect("retry should succeed after the failed contender releases its issue claim")
-	);
-}
-
-#[test]
 fn shared_issue_claim_blocks_duplicate_issue_across_process_local_stores() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store_one = StateStore::open_in_memory().expect("first store should open");
 	let store_two = StateStore::open_in_memory().expect("second store should open");
 
 	store_one
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("first store should configure dispatch slot root");
 	store_two
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("second store should configure dispatch slot root");
 
 	assert!(
@@ -1819,7 +1740,7 @@ fn shared_issue_claim_blocks_duplicate_issue_across_process_local_stores() {
 	assert!(
 		store_two
 			.try_acquire_lease("pubfi", "PUB-102", "run-3", IN_PROGRESS_STATE)
-			.expect("another issue should still be able to use the remaining slot")
+			.expect("another issue should still acquire an independent dispatch slot")
 	);
 }
 
@@ -1830,10 +1751,10 @@ fn shared_issue_claim_reopens_same_issue_after_clear_across_process_local_stores
 	let store_two = StateStore::open_in_memory().expect("second store should open");
 
 	store_one
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("first store should configure dispatch slot root");
 	store_two
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("second store should configure dispatch slot root");
 
 	assert!(
@@ -1863,10 +1784,10 @@ fn shared_issue_claim_listing_reports_other_process_state() {
 	let observer_store = StateStore::open_in_memory().expect("observer store should open");
 
 	remote_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("remote store should configure dispatch slot root");
 	observer_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("observer store should configure dispatch slot root");
 
 	assert!(
@@ -1887,20 +1808,20 @@ fn shared_issue_claim_listing_reports_other_process_state() {
 
 #[cfg(unix)]
 #[test]
-fn adopted_dispatch_slot_blocks_after_parent_releases_local_guard() {
+fn adopted_dispatch_slot_handoff_does_not_block_other_issues_after_parent_releases_local_guard() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let parent_store = StateStore::open_in_memory().expect("parent store should open");
 	let child_store = StateStore::open_in_memory().expect("child store should open");
 	let contender_store = StateStore::open_in_memory().expect("contender store should open");
 
 	parent_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("parent store should configure dispatch slot root");
 	child_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("child store should configure dispatch slot root");
 	contender_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("contender store should configure dispatch slot root");
 
 	assert!(
@@ -1934,9 +1855,9 @@ fn adopted_dispatch_slot_blocks_after_parent_releases_local_guard() {
 		.expect("parent should release its local guard after handoff");
 
 	assert!(
-		!contender_store
+		contender_store
 			.try_acquire_lease("pubfi", "PUB-102", "run-2", IN_PROGRESS_STATE)
-			.expect("child-held guard should keep the slot busy")
+			.expect("child-held guard should not block another issue")
 	);
 
 	child_store.clear_lease("PUB-101").expect("child lease should clear");
@@ -1953,13 +1874,13 @@ fn adopted_issue_claim_blocks_same_issue_after_parent_clears_local_guard() {
 	let contender_store = StateStore::open_in_memory().expect("contender store should open");
 
 	parent_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("parent store should configure dispatch slot root");
 	child_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("child store should configure dispatch slot root");
 	contender_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("contender store should configure dispatch slot root");
 
 	assert!(
@@ -2027,13 +1948,13 @@ fn parent_can_release_handed_off_guards_without_dropping_runtime_lease() {
 	let contender_store = StateStore::open_in_memory().expect("contender store should open");
 
 	parent_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("parent store should configure dispatch slot root");
 	child_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("child store should configure dispatch slot root");
 	contender_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 2)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("contender store should configure dispatch slot root");
 
 	assert!(
@@ -2081,7 +2002,7 @@ fn parent_can_release_handed_off_guards_without_dropping_runtime_lease() {
 	assert!(
 		contender_store
 			.try_acquire_lease("pubfi", "PUB-102", "run-2", IN_PROGRESS_STATE)
-			.expect("another issue should acquire the second dispatch slot")
+			.expect("another issue should acquire an independent dispatch slot")
 	);
 
 	child_store.clear_lease("PUB-101").expect("child lease should clear");
@@ -2095,10 +2016,10 @@ fn adopted_preacquired_lease_restores_close_on_exec_on_inherited_fds() {
 	let child_store = StateStore::open_in_memory().expect("child store should open");
 
 	parent_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("parent store should configure dispatch slot root");
 	child_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("child store should configure dispatch slot root");
 
 	assert!(
@@ -2161,13 +2082,13 @@ fn adopted_child_clear_releases_lock_when_descendant_keeps_inherited_fds_open() 
 	let contender_store = StateStore::open_in_memory().expect("contender store should open");
 
 	parent_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("parent store should configure dispatch slot root");
 	child_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("child store should configure dispatch slot root");
 	contender_store
-		.configure_dispatch_slot_root("pubfi", temp_dir.path(), 1)
+		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("contender store should configure dispatch slot root");
 
 	assert!(

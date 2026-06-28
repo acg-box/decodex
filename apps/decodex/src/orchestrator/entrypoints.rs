@@ -1866,7 +1866,6 @@ fn build_operator_state_snapshot_without_live_observers(
 	state_store.configure_dispatch_slot_root(
 		project.service_id(),
 		project.worktree_root(),
-		workflow.frontmatter().execution().max_concurrent_agents(),
 	)?;
 
 	let mut snapshot = build_operator_status_snapshot_with_account_mode(

@@ -136,8 +136,7 @@ fn queued_retry_stays_blocked_when_project_lookup_blips_before_due_time() {
 #[test]
 fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
 	let workflow = WorkflowDocument::parse_markdown(
-		&sample_workflow_markdown("pubfi", &[], "Multi-slot daemon policy.\n", 1)
-			.replace("max_concurrent_agents = 1", "max_concurrent_agents = 2"),
+		&sample_workflow_markdown("pubfi", &[], "Retry exclusion policy.\n", 1),
 	)
 	.expect("workflow should parse");
 	let first_future_retry = selection_sample_service_owned_issue_with_sort_fields(
@@ -207,13 +206,12 @@ fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
 	let next_run = orchestrator::plan_next_daemon_run(
 		&mut retry_queue,
 		&tracker,
-		&config,
-		&workflow,
-		&state_store,
-
-	)
+			&config,
+			&workflow,
+			&state_store,
+		)
 	.expect("daemon planning should succeed")
-	.expect("normal work should still fill open capacity");
+	.expect("normal work should still dispatch");
 
 	assert!(!next_run.1, "alternate work should not dispatch from the retry queue");
 	assert_eq!(next_run.0.issue_id, todo_issue.id);
@@ -503,65 +501,6 @@ fn due_continuation_retry_releases_when_issue_moves_to_different_startable_state
 }
 
 #[test]
-fn due_continuation_retry_stays_queued_when_global_concurrency_is_exhausted() {
-	let workflow = WorkflowDocument::parse_markdown(&sample_workflow_markdown(
-		"pubfi",
-		&[],
-		"Continuation retry policy.\n",
-		1,
-	))
-	.expect("workflow should parse");
-	let (_temp_dir, config, _default_workflow) = temp_project_layout();
-	let issue = selection_sample_service_owned_issue("Todo");
-	let tracker =
-		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
-	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let mut retry_queue = RetryQueue::default();
-
-	state_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
-		)
-		.expect("dispatch slot root should configure");
-	state_store
-		.upsert_lease(config.service_id(), "issue-other", "run-other", "In Progress")
-		.expect("competing in-progress lease should record");
-	retry_queue.upsert(RetryEntry {
-		issue_id: issue.id.clone(),
-		retry_project_slug: issue
-			.project_slug
-			.clone()
-			.expect("sample issue should carry a project slug"),
-		continuation_initial_issue_state: Some(issue.state.name.clone()),
-		dispatch_mode: IssueDispatchMode::Retry,
-		kind: RetryKind::Continuation,
-		attempt: 1,
-		ready_at: Instant::now(),
-	});
-
-	let decision = orchestrator::plan_due_retry_run(
-		&mut retry_queue,
-		&tracker,
-		&config,
-		&workflow,
-		&state_store,
-	)
-	.expect("retry planning should succeed");
-
-	assert!(matches!(
-		decision,
-		RetryDispatchDecision::Blocked{ excluded_issue_ids }
-			if excluded_issue_ids == vec![issue.id.clone()]
-	));
-	assert!(
-		retry_queue.entries.contains_key(&issue.id),
-		"stale-startable continuation retries should remain queued when the global concurrency cap blocks dispatch"
-	);
-}
-
-#[test]
 fn future_retry_claim_stays_blocked_when_issue_returns_to_todo_before_due_time() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = selection_sample_service_owned_issue("Todo");
@@ -609,7 +548,7 @@ fn future_retry_claim_stays_blocked_when_issue_returns_to_todo_before_due_time()
 }
 
 #[test]
-fn due_retry_claim_stays_queued_when_dispatch_slot_is_temporarily_unavailable() {
+fn due_retry_dispatches_when_another_issue_has_active_lease() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Progress");
 	let tracker =
@@ -644,13 +583,8 @@ fn due_retry_claim_stays_queued_when_dispatch_slot_is_temporarily_unavailable() 
 
 	assert!(matches!(
 		decision,
-		RetryDispatchDecision::Blocked{ excluded_issue_ids }
-			if excluded_issue_ids == vec![issue.id.clone()]
+		RetryDispatchDecision::Dispatch(summary) if summary.issue_id == issue.id
 	));
-	assert!(
-		retry_queue.entries.contains_key(&issue.id),
-		"active retry entry should remain queued while another lease temporarily holds the slot"
-	);
 }
 
 #[test]
@@ -667,14 +601,12 @@ fn due_retry_claim_stays_queued_when_issue_is_claimed_by_another_process() {
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("local dispatch slot root should configure");
 	remote_store
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("remote dispatch slot root should configure");
 

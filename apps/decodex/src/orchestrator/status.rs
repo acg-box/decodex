@@ -979,7 +979,6 @@ where
 		state_store.configure_dispatch_slot_root(
 			project.service_id(),
 			project.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)?;
 	}
 
@@ -4362,7 +4361,6 @@ where
 	T: IssueTracker,
 {
 	let queue_label = tracker::automation_queue_label(project.service_id());
-	let concurrency = ConcurrencySnapshot::new(project.service_id(), state_store)?;
 	let retained_post_review_issue_ids = state_store
 		.list_worktrees(project.service_id())?
 		.into_iter()
@@ -4384,14 +4382,7 @@ where
 			)
 		})
 		.map(|issue| {
-			operator_queued_issue_status(
-				tracker,
-				project,
-				workflow,
-				state_store,
-				&concurrency,
-				issue,
-			)
+			operator_queued_issue_status(tracker, project, workflow, state_store, issue)
 		})
 		.collect()
 }
@@ -4409,14 +4400,13 @@ fn operator_queued_issue_status<T>(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
-	concurrency: &ConcurrencySnapshot,
 	issue: TrackerIssue,
 ) -> crate::prelude::Result<OperatorQueuedIssueStatus>
 where
 	T: IssueTracker,
 {
 	let (classification, reason) =
-		classify_queued_issue(tracker, project, workflow, state_store, concurrency, &issue)?;
+		classify_queued_issue(tracker, project, workflow, state_store, &issue)?;
 	let blocker_identifiers = queued_issue_blocker_identifiers(&issue, workflow, reason);
 	let attention = operator_queued_issue_attention_status(
 		tracker,
@@ -4512,7 +4502,6 @@ fn classify_queued_issue<T>(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
-	concurrency: &ConcurrencySnapshot,
 	issue: &TrackerIssue,
 ) -> crate::prelude::Result<(&'static str, &'static str)>
 where
@@ -4577,10 +4566,6 @@ where
 	if !issue_has_generic_dispatch_briefing(issue) {
 		return Ok(("blocked", "missing_dispatch_briefing"));
 	}
-	if !concurrency.has_global_capacity(workflow.frontmatter().execution()) {
-		return Ok(("waiting", "global_concurrency_exhausted"));
-	}
-
 	let queue_label = tracker::automation_queue_label(project.service_id());
 
 	if !issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, true)? {
