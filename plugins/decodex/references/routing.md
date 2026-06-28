@@ -27,7 +27,8 @@ Use when Decodex work crosses research, planning, ops, commit, or landing.
 ## Boundaries
 
 - Research never queues work, mutates Linear, implements, sets goals, or dispatches
-  Program nodes; it is not runtime `compact_current_head_review`.
+  runtime Program nodes; read-only scout/challenge support agents are allowed by the
+  research skill. Research is not runtime `compact_current_head_review`.
 - Program Intake dispatches persisted Program nodes; queue labels are not scheduling.
 - Ordinary intake starts from `decodex:queued:<service-id>` and still must pass
   workflow, terminal-state, dependency, opt-out, and active-lease checks.
