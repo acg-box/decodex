@@ -675,6 +675,10 @@ Worktree visibility follows the owning dashboard section:
   retained worktree has tracked changes, untracked non-runtime files, unmerged local
   commits, unavailable default-branch proof, or cannot be inspected, status uses
   `inspect_retained_worktree_changes_before_stale_active_recovery` instead.
+  If a previous release attempt completed the local cleanup and wrote
+  `stale_active_release` audit evidence but stopped before the final tracker label
+  mutation, the same recovery command may reenter only when the remaining blockers
+  are stale protocol/activity summaries from the already-terminal run.
 - `Recovery Worktrees` means the path is retained local state after the authoritative
   runtime owner is gone or cannot explain it as active, review/landing, or queued
   work.

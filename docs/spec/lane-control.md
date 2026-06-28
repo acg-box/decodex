@@ -307,6 +307,14 @@ writes local private `stale_active_release` audit evidence when a matching stale
 exists, repeats the run-lease/shared-claim guard, rechecks tracker labels, and removes
 only the service active label as the final mutation.
 
+If a stale-active release attempt stops after local cleanup but before the final
+tracker-label mutation, reentry is allowed only when local evidence proves the same
+run attempt is already `terminal_guarded`, the control channel is inactive, retained
+worktree mapping/path cleanup completed, `stale_active_release` audit evidence exists,
+and the remaining blockers are limited to stale protocol/activity summaries from the
+already-terminal run. Reentry still repeats the run-lease/shared-claim,
+review-lineage, and tracker-label guards before removing the service active label.
+
 Stale active recovery must fail closed when any blocker indicates possible live or
 useful work: run lease, active shared claim, `decodex:needs-attention`, live process,
 unknown process liveness for a runtime marker, tracked or untracked non-runtime
