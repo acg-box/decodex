@@ -6,15 +6,17 @@ Read when `$codebase:work` needs exact command, structure, validation, or eviden
 
 - Inspect checked-in authority first: nearest `AGENTS.md`, README/docs, task runner,
   manifests, OKF/LLM Wiki, or repo-memory owner.
-- Prefer repo-native `fmt`, `fmt-check`, `check`, `lint`, `test`, `build`, `smoke`,
-  and codegen tasks over raw tool defaults.
+- Do not duplicate this routing in host bootstrap files; route to the owning plugin
+  surface instead.
+- Prefer repo-native commands: `fmt`, `fmt-check`, `check`, `lint`, `test`, `build`,
+  `smoke`, and codegen tasks over raw tool defaults.
 - Use English for durable or executable artifacts unless the user requests another
   language, source text is being preserved, or the file is a locale/i18n fixture.
 - After behavior, command, config, status/help, public contract, architecture, or
   plugin/skill changes, classify docs drift or writeback before ready.
 - Before substantial implementation, inspect existing package/module ownership. Do not leave generated monoliths or files mixing unrelated parsing, state, I/O, rendering, persistence, CLI wiring, or tests.
 
-## Task Runners
+## Task Runner Structure
 
 - Treat `Makefile.toml` and equivalents as public command APIs.
 - Group by action family, not domain/toolchain: `Check`, `Build`, `Format`, `Lint`,
@@ -32,6 +34,8 @@ Read when `$codebase:work` needs exact command, structure, validation, or eviden
   Put real logic in `scripts/` or the owning package.
 - After task renames/removals, reverse-scan docs, CI, scripts, tests, fixtures,
   reports, help/status text, and examples for stale commands.
+- Task-runner review checklist: authority source, public command names, action-family
+  grouping, docs/help references, CI callers, and generated artifacts.
 
 ## Validation And Claims
 
@@ -62,13 +66,13 @@ Read when `$codebase:work` needs exact command, structure, validation, or eviden
 ## Plugin Changes
 
 - Treat Codex skill/plugin edits as executable workflow changes.
-- When plugin-eval is available, run `plugin-eval analyze <plugin-root> --format
-  markdown` before ready claims; report the score, highest-priority finding, and
+- Run `plugin-eval analyze <plugin-root> --format markdown` before ready claims when
+  plugin-eval is available; report the score, highest-priority finding, and
   static-vs-measured limitation.
 
 ## Evidence To Report
 
-- Checked-in command authority and whether a task runner existed.
+- Checked-in command authority used and whether a task runner existed.
 - Task-runner naming/structure evidence when task config changed.
 - Validation scope and why it matches the touched files and risk.
 - Drift/debugging/verification owner used when relevant.

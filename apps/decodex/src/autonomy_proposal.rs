@@ -70,6 +70,7 @@ impl AutonomyProposalRefusalReason {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AutonomyProposalChallengeSource {
+	#[serde(alias = "support_agent")]
 	Subagent,
 	InlineSkeptic,
 }
@@ -1859,17 +1860,22 @@ mod tests {
 	}
 
 	#[test]
-	fn autonomy_proposal_challenge_source_rejects_legacy_support_agent_alias() {
+	fn autonomy_proposal_challenge_source_accepts_legacy_support_agent_alias() {
 		let source: AutonomyProposalChallengeSource =
 			serde_json::from_value(serde_json::json!("subagent"))
 				.expect("canonical subagent source should parse");
+		let legacy_source: AutonomyProposalChallengeSource =
+			serde_json::from_value(serde_json::json!("support_agent"))
+				.expect("legacy support_agent source should parse");
 
 		assert_eq!(source, AutonomyProposalChallengeSource::Subagent);
 		assert!(
-			serde_json::from_value::<AutonomyProposalChallengeSource>(serde_json::json!(
-				"support_agent"
-			))
-			.is_err()
+			legacy_source == AutonomyProposalChallengeSource::Subagent,
+			"legacy support_agent should canonicalize to Subagent"
+		);
+		assert_eq!(
+			serde_json::to_value(legacy_source).expect("source should serialize"),
+			serde_json::json!("subagent")
 		);
 	}
 
