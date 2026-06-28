@@ -28,12 +28,6 @@ fn select_issue_candidate_with_exclusions(
 	project_id: &str,
 	excluded_issue_ids: &[&str],
 ) -> Result<Option<TrackerIssue>> {
-	let concurrency = ConcurrencySnapshot::new(project_id, state_store)?;
-
-	if !concurrency.has_global_capacity(workflow.frontmatter().execution()) {
-		return Ok(None);
-	}
-
 	let mut eligible_issues = Vec::new();
 
 	for issue in issues {
@@ -81,7 +75,7 @@ fn format_no_eligible_issue_message(
 
 fn format_status_no_eligible_issue_hint(service_id: &str) -> String {
 	format!(
-		"Hint: check `Todo`, label {}, no opt-out/manual-only or needs-attention labels, non-terminal state, no open dependency blockers, and available capacity.",
+		"Hint: check `Todo`, label {}, no opt-out/manual-only or needs-attention labels, non-terminal state, no open dependency blockers, and no active issue claim.",
 		format_no_eligible_queue_label_hint(service_id),
 	)
 }
@@ -92,7 +86,7 @@ fn format_no_eligible_issue_hint(
 	needs_attention_label: &str,
 ) -> String {
 	format!(
-		"Hint: check `Todo`, label {}, no `{opt_out_label}`/`{needs_attention_label}`, non-terminal state, no open dependency blockers, and available capacity.",
+		"Hint: check `Todo`, label {}, no `{opt_out_label}`/`{needs_attention_label}`, non-terminal state, no open dependency blockers, and no active issue claim.",
 		format_no_eligible_queue_label_hint(service_id),
 	)
 }

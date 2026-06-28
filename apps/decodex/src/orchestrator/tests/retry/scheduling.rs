@@ -1390,36 +1390,6 @@ fn exited_unsuccessful_child_does_not_downgrade_persisted_success() {
 	);
 }
 
-fn assert_fake_admin_merge_invocation(
-	invocation_log_path: &Path,
-	head_oid: &str,
-	merge_subject: &str,
-	pr_url: &str,
-) {
-	let gh_invocation = fs::read_to_string(invocation_log_path)
-		.expect("fake gh invocation log should read")
-		.lines()
-		.map(str::to_owned)
-		.collect::<Vec<_>>();
-
-	assert_eq!(
-		gh_invocation,
-		vec![
-			String::from("pr"),
-			String::from("merge"),
-			String::from("--admin"),
-			String::from("--merge"),
-			String::from("--match-head-commit"),
-			String::from(head_oid),
-			String::from("--subject"),
-			String::from(merge_subject),
-			String::from("--body"),
-			String::new(),
-			String::from(pr_url),
-		]
-	);
-}
-
 fn assert_fake_admin_merge_invocation_present(
 	invocation_log_path: &Path,
 	head_oid: &str,
@@ -1585,7 +1555,7 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 
 	assert_eq!(marker.phase(), "waiting_for_merge");
 
-	assert_fake_admin_merge_invocation(
+	assert_fake_admin_merge_invocation_present(
 		&invocation_log_path,
 		&head_oid,
 		PUB_704_RETAINED_LANDED_SUBJECT,

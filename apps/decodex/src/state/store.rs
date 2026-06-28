@@ -1,4 +1,3 @@
-use crate::workflow::WorkflowConcurrencyLimit;
 use crate::autonomy_proposal::AutonomyProposalChallengeInput;
 
 const TERMINAL_THREAD_ARCHIVE_EVENT_TYPES: [&str; 2] = [
@@ -459,13 +458,9 @@ impl StateStore {
 		&self,
 		project_id: &str,
 		worktree_root: impl AsRef<Path>,
-		slot_limit: impl Into<DispatchSlotLimit>,
 	) -> Result<()> {
-		let slot_limit = slot_limit.into();
 		let worktree_root = worktree_root.as_ref().to_path_buf();
 		let mut state = self.lock_without_refresh()?;
-
-		slot_limit.validate()?;
 
 		if state.issue_claim_guards.is_empty() && state.dispatch_slot_guards.is_empty() {
 			prune_unlocked_shared_lock_files(&worktree_root)?;
@@ -473,7 +468,7 @@ impl StateStore {
 
 		state.dispatch_slot_configs.insert(
 			project_id.to_owned(),
-			DispatchSlotConfig { root: worktree_root, slot_limit },
+			DispatchSlotConfig { root: worktree_root },
 		);
 
 		Ok(())
@@ -644,10 +639,9 @@ impl StateStore {
 				.filter(|guard| guard.project_id == project_id)
 				.map(|guard| guard.slot_index)
 				.collect::<HashSet<_>>();
-			let mut acquired_guard = None;
 			let mut slot_index = 0;
 
-			while dispatch_slot_config.slot_limit.includes(slot_index)? {
+			let dispatch_slot_guard = loop {
 				if held_slot_indexes.contains(&slot_index) {
 					slot_index = slot_index
 						.checked_add(1)
@@ -667,15 +661,13 @@ impl StateStore {
 
 				match lock_file.try_lock() {
 					Ok(()) => {
-						acquired_guard = Some(DispatchSlotGuard {
+						break DispatchSlotGuard {
 							project_id: project_id.to_owned(),
 							slot_index,
 							lock_path: dispatch_slot_lock_path,
 							lock_file,
 							retention: GuardRetention::Local,
-						});
-
-						break;
+						};
 					},
 					Err(TryLockError::WouldBlock) => {},
 					Err(TryLockError::Error(error)) => return Err(error.into()),
@@ -684,12 +676,6 @@ impl StateStore {
 				slot_index = slot_index
 					.checked_add(1)
 					.ok_or_else(|| eyre::eyre!("dispatch slot index overflowed usize"))?;
-			}
-
-			let Some(dispatch_slot_guard) = acquired_guard else {
-				issue_claim_guard.unlock()?;
-
-				return Ok(false);
 			};
 
 			state.issue_claim_guards.insert(issue_id.to_owned(), issue_claim_guard);
@@ -4852,54 +4838,6 @@ struct RunControlAuditTarget {
 	last_event_type: Option<String>,
 	last_event_at: Option<String>,
 	channel: Option<RunControlChannel>,
-}
-
-/// Shared dispatch-slot capacity for one project.
-#[derive(Clone, Copy)]
-pub(crate) enum DispatchSlotLimit {
-	/// Fixed number of cross-process dispatch slots.
-	Limited(u32),
-	/// Allocate dispatch slots on demand without a fixed project cap.
-	Unlimited,
-}
-impl DispatchSlotLimit {
-	fn validate(self) -> Result<()> {
-		if matches!(self, Self::Limited(0)) {
-			eyre::bail!("dispatch slot limit must be greater than zero or unlimited");
-		}
-
-		Ok(())
-	}
-
-	fn includes(self, slot_index: usize) -> Result<bool> {
-		match self {
-			Self::Unlimited => Ok(true),
-			Self::Limited(limit) => Ok(slot_index
-				< usize::try_from(limit)
-					.map_err(|_error| eyre::eyre!("dispatch slot limit overflowed usize"))?),
-		}
-	}
-}
-
-impl From<u32> for DispatchSlotLimit {
-	fn from(value: u32) -> Self {
-		Self::Limited(value)
-	}
-}
-
-impl From<Option<u32>> for DispatchSlotLimit {
-	fn from(value: Option<u32>) -> Self {
-		match value {
-			Some(limit) => Self::Limited(limit),
-			None => Self::Unlimited,
-		}
-	}
-}
-
-impl From<WorkflowConcurrencyLimit> for DispatchSlotLimit {
-	fn from(value: WorkflowConcurrencyLimit) -> Self {
-		Self::from(value.dispatch_slot_limit())
-	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

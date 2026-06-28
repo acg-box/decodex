@@ -1272,7 +1272,7 @@ fn operator_status_text_explains_empty_backlog_checks() {
 	assert!(rendered.contains("needs-attention"));
 	assert!(rendered.contains("non-terminal state"));
 	assert!(rendered.contains("dependency blockers"));
-	assert!(rendered.contains("available capacity"));
+	assert!(rendered.contains("no active issue claim"));
 }
 
 #[test]
