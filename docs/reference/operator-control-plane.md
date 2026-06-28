@@ -7,7 +7,7 @@ authority: current_state
 owner: docs
 tags: [reference]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/mcp.rs]
-drift_watch: [decodex serve, decodex status, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, stale_active_release, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
+drift_watch: [decodex serve, decodex status, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, stale_active_release, stale_active_state_restore_pending, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
 last_verified: 2026-06-28
 ---
 # Operator Control Plane
@@ -679,6 +679,10 @@ Worktree visibility follows the owning dashboard section:
   `stale_active_release` audit evidence but stopped before the final tracker label
   mutation, the same recovery command may reenter only when the remaining blockers
   are stale protocol/activity summaries from the already-terminal run.
+  If the final active-label mutation already completed while the queue label remains
+  and the issue stayed in the configured in-progress state, the command may reenter
+  as `stale_active_state_restore_pending` and restore only the first configured
+  startable state after rechecking the same run/attempt audit and cleanup evidence.
 - `Recovery Worktrees` means the path is retained local state after the authoritative
   runtime owner is gone or cannot explain it as active, review/landing, or queued
   work.
