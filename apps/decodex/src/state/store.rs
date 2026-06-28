@@ -1,11 +1,8 @@
 use crate::autonomy_proposal::AutonomyProposalChallengeInput;
 
-const TERMINAL_THREAD_ARCHIVE_EVENT_TYPES: [&str; 2] = [
-	"thread/archive",
-	"thread/archive/discarded",
-];
-const DISCARDED_POST_ARCHIVE_PROTOCOL_EVENT_TYPE: &str =
-	"protocol/post_archive_event/discarded";
+const TERMINAL_THREAD_ARCHIVE_EVENT_TYPES: [&str; 2] =
+	["thread/archive", "thread/archive/discarded"];
+const DISCARDED_POST_ARCHIVE_PROTOCOL_EVENT_TYPE: &str = "protocol/post_archive_event/discarded";
 const REVIEW_CHECKPOINT_PROMPT_VERSION: &str = "decodex-review-checkpoint/2";
 
 /// Input fields for recording a project-scoped external connector backoff.
@@ -57,20 +54,14 @@ pub(crate) struct ProjectLoopEvidenceSnapshot {
 impl ProjectLoopEvidenceSnapshot {
 	fn insert_private_event(&mut self, event: PrivateExecutionEvent) {
 		self.private_events
-			.entry((
-				event.issue_id().to_owned(),
-				event.run_id().to_owned(),
-				event.attempt_number(),
-			))
+			.entry((event.issue_id().to_owned(), event.run_id().to_owned(), event.attempt_number()))
 			.or_default()
 			.push(event);
 	}
 
 	fn insert_review_lifecycle_record(&mut self, record: ReviewLifecycleRecord) {
-		self.review_lifecycle_records.insert(
-			(record.issue_id().to_owned(), record.branch_name().to_owned()),
-			record,
-		);
+		self.review_lifecycle_records
+			.insert((record.issue_id().to_owned(), record.branch_name().to_owned()), record);
 	}
 
 	fn insert_review_checkpoint(&mut self, checkpoint: ReviewPolicyCheckpoint) {
@@ -149,7 +140,7 @@ impl ProjectLoopEvidenceSnapshot {
 				.updated_at_unix()
 				.cmp(&left.updated_at_unix())
 				.then_with(|| left.proposal_id().cmp(right.proposal_id()))
-			});
+		});
 	}
 
 	fn sort_program_intake_plans(&mut self) {
@@ -338,15 +329,14 @@ impl StateStore {
 
 		let mut registration = registration.clone();
 
-		if let Some(enabled) = state.projects.get(registration.service_id()).map(ProjectRegistration::enabled)
+		if let Some(enabled) =
+			state.projects.get(registration.service_id()).map(ProjectRegistration::enabled)
 			&& registration.enabled() != enabled
 		{
 			registration.set_enabled(enabled);
 		}
 
-		state
-			.projects
-			.insert(registration.service_id().to_owned(), registration.clone());
+		state.projects.insert(registration.service_id().to_owned(), registration.clone());
 		self.upsert_project_locked(&registration)?;
 
 		Ok(registration)
@@ -411,10 +401,9 @@ impl StateStore {
 		};
 		let mut state = self.lock()?;
 
-		state.connector_backoffs.insert(
-			(input.project_id.to_owned(), input.connector.to_owned()),
-			record.clone(),
-		);
+		state
+			.connector_backoffs
+			.insert((input.project_id.to_owned(), input.connector.to_owned()), record.clone());
 		self.persist_runtime_state_locked(&state)?;
 
 		Ok(record)
@@ -434,18 +423,11 @@ impl StateStore {
 
 		let state = self.lock()?;
 
-		Ok(state
-			.connector_backoffs
-			.get(&(project_id.to_owned(), connector.to_owned()))
-			.cloned())
+		Ok(state.connector_backoffs.get(&(project_id.to_owned(), connector.to_owned())).cloned())
 	}
 
 	/// Clear a project-scoped connector backoff from the runtime store.
-	pub(crate) fn clear_connector_backoff(
-		&self,
-		project_id: &str,
-		connector: &str,
-	) -> Result<()> {
+	pub(crate) fn clear_connector_backoff(&self, project_id: &str, connector: &str) -> Result<()> {
 		let mut state = self.lock()?;
 
 		state.connector_backoffs.remove(&(project_id.to_owned(), connector.to_owned()));
@@ -466,10 +448,25 @@ impl StateStore {
 			prune_unlocked_shared_lock_files(&worktree_root)?;
 		}
 
-		state.dispatch_slot_configs.insert(
-			project_id.to_owned(),
-			DispatchSlotConfig { root: worktree_root },
-		);
+		state
+			.dispatch_slot_configs
+			.insert(project_id.to_owned(), DispatchSlotConfig { root: worktree_root });
+
+		Ok(())
+	}
+
+	/// Observe the shared cross-process dispatch-slot root without pruning lock files.
+	pub(crate) fn observe_dispatch_slot_root(
+		&self,
+		project_id: &str,
+		worktree_root: impl AsRef<Path>,
+	) -> Result<()> {
+		let worktree_root = worktree_root.as_ref().to_path_buf();
+		let mut state = self.lock_without_refresh()?;
+
+		state
+			.dispatch_slot_configs
+			.insert(project_id.to_owned(), DispatchSlotConfig { root: worktree_root });
 
 		Ok(())
 	}
@@ -525,10 +522,8 @@ impl StateStore {
 			state.dispatch_slot_guards.entry(canonical_issue_id.to_owned()).or_insert(guard);
 		}
 
-		for attempt in state
-			.run_attempts
-			.values_mut()
-			.filter(|attempt| attempt.issue_id == previous_issue_id)
+		for attempt in
+			state.run_attempts.values_mut().filter(|attempt| attempt.issue_id == previous_issue_id)
 		{
 			attempt.issue_id = canonical_issue_id.to_owned();
 		}
@@ -604,8 +599,7 @@ impl StateStore {
 			fs::create_dir_all(&dispatch_slot_config.root)?;
 
 			let _coordinator = acquire_shared_lock_coordinator(&dispatch_slot_config.root)?;
-			let issue_claim_lock_path =
-				issue_claim_lock_path(&dispatch_slot_config.root, issue_id);
+			let issue_claim_lock_path = issue_claim_lock_path(&dispatch_slot_config.root, issue_id);
 			let issue_claim_lock_file = OpenOptions::new()
 				.read(true)
 				.write(true)
@@ -809,6 +803,24 @@ impl StateStore {
 
 	/// Report whether one issue is actively claimed by this or another process.
 	pub fn issue_has_active_shared_claim(&self, project_id: &str, issue_id: &str) -> Result<bool> {
+		self.issue_has_active_shared_claim_with_cleanup(project_id, issue_id, true)
+	}
+
+	/// Report whether one issue is actively claimed without deleting stale claim files.
+	pub(crate) fn issue_has_active_shared_claim_read_only(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+	) -> Result<bool> {
+		self.issue_has_active_shared_claim_with_cleanup(project_id, issue_id, false)
+	}
+
+	fn issue_has_active_shared_claim_with_cleanup(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		cleanup_unlocked_claim: bool,
+	) -> Result<bool> {
 		let state = self.lock_without_refresh()?;
 
 		if state.leases.contains_key(issue_id) {
@@ -840,8 +852,10 @@ impl StateStore {
 			Ok(()) => {
 				claim_lock_file.unlock()?;
 
-				drop(claim_lock_file);
-				remove_lock_file_if_exists(&path)?;
+				if cleanup_unlocked_claim {
+					drop(claim_lock_file);
+					remove_lock_file_if_exists(&path)?;
+				}
 
 				Ok(false)
 			},
@@ -959,11 +973,10 @@ impl StateStore {
 		set_close_on_exec(&lock_file)?;
 
 		let mut state = self.lock()?;
-		let dispatch_slot_config = state
-			.dispatch_slot_configs
-			.get(project_id)
-			.cloned()
-			.ok_or_else(|| eyre::eyre!("project `{project_id}` has no shared dispatch-slot root"))?;
+		let dispatch_slot_config =
+			state.dispatch_slot_configs.get(project_id).cloned().ok_or_else(|| {
+				eyre::eyre!("project `{project_id}` has no shared dispatch-slot root")
+			})?;
 
 		state.issue_claim_guards.insert(
 			issue_id.to_owned(),
@@ -1083,9 +1096,10 @@ impl StateStore {
 			.control_channels
 			.get(run_id)
 			.filter(|channel| channel.attempt_number == attempt_number)
-			.map_or_else(|| (now.text.clone(), now.unix), |channel| {
-				(channel.published_at.clone(), channel.published_at_unix)
-			});
+			.map_or_else(
+				|| (now.text.clone(), now.unix),
+				|channel| (channel.published_at.clone(), channel.published_at_unix),
+			);
 		let channel = RunControlChannelRecord {
 			project_id: lease.project_id.clone(),
 			issue_id: attempt.issue_id.clone(),
@@ -1159,10 +1173,8 @@ impl StateStore {
 			&resolution.reason,
 			None,
 		)?;
-		let receipt_channel = resolution
-			.channel
-			.clone()
-			.or_else(|| resolution.audit_target.channel.clone());
+		let receipt_channel =
+			resolution.channel.clone().or_else(|| resolution.audit_target.channel.clone());
 
 		Ok(RunControlActionReceipt {
 			project_id: resolution.audit_target.project_id,
@@ -1219,12 +1231,7 @@ impl StateStore {
 			channel: receipt.channel.clone(),
 		};
 
-		self.append_run_control_audit_event(
-			&target,
-			outcome,
-			reason,
-			Some(receipt.audit_record_id),
-		)
+		self.append_run_control_audit_event(&target, outcome, reason, Some(receipt.audit_record_id))
 	}
 
 	/// Append a follow-up audit outcome for a control action handled from a channel request.
@@ -1350,9 +1357,8 @@ impl StateStore {
 	/// Count attempts that consume the retry budget for one issue.
 	pub fn retry_budget_attempt_count(&self, issue_id: &str) -> Result<i64> {
 		if let Some(sqlite) = self.sqlite.as_ref() {
-			let sqlite = sqlite
-				.lock()
-				.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+			let sqlite =
+				sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 			return sqlite.retry_budget_attempt_count(issue_id);
 		}
@@ -1380,9 +1386,8 @@ impl StateStore {
 		attempt_number: i64,
 	) -> Result<bool> {
 		if let Some(sqlite) = self.sqlite.as_ref() {
-			let sqlite = sqlite
-				.lock()
-				.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+			let sqlite =
+				sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 			return sqlite.issue_has_retry_budget_attempt_after(issue_id, attempt_number);
 		}
@@ -1392,10 +1397,7 @@ impl StateStore {
 		Ok(state.run_attempts.values().any(|attempt| {
 			attempt.issue_id == issue_id
 				&& attempt.attempt_number > attempt_number
-				&& matches!(
-					attempt.status.as_str(),
-					"failed" | "interrupted" | "terminal_guarded"
-				)
+				&& matches!(attempt.status.as_str(), "failed" | "interrupted" | "terminal_guarded")
 		}))
 	}
 
@@ -1599,9 +1601,10 @@ impl StateStore {
 
 		let state = self.lock()?;
 
-		Ok(state.events.get(run_id).is_some_and(|events| {
-			events.iter().any(|event| event.event_type == event_type)
-		}))
+		Ok(state
+			.events
+			.get(run_id)
+			.is_some_and(|events| events.iter().any(|event| event.event_type == event_type)))
 	}
 
 	/// List recent run attempts for one project, including lease and protocol summary fields.
@@ -1632,7 +1635,11 @@ impl StateStore {
 		project_id: &str,
 		base_recent_limit: usize,
 	) -> Result<(Vec<ProjectRunStatus>, Vec<ProjectRunStatus>)> {
-		self.list_project_runs_with_mode(project_id, base_recent_limit, ProjectRunListingMode::ReadOnly)
+		self.list_project_runs_with_mode(
+			project_id,
+			base_recent_limit,
+			ProjectRunListingMode::ReadOnly,
+		)
 	}
 
 	fn list_project_runs_with_mode(
@@ -1647,8 +1654,7 @@ impl StateStore {
 
 		if matches!(mode, ProjectRunListingMode::AllowMarkerIdentityPersistence) {
 			self.refresh_run_attempt_identities_from_worktree_markers_locked(
-				&mut state,
-				project_id,
+				&mut state, project_id,
 			)?;
 		}
 
@@ -1660,7 +1666,9 @@ impl StateStore {
 
 		let recovery_candidates = project_run_recovery_candidates(&state, project_id, None)?
 			.into_iter()
-			.filter(|candidate| project_run_recovery_candidate_counts_as_project_run(&state, candidate))
+			.filter(|candidate| {
+				project_run_recovery_candidate_counts_as_project_run(&state, candidate)
+			})
 			.collect::<Vec<_>>();
 		let recovery_run_ids = recovery_candidates
 			.iter()
@@ -1677,27 +1685,19 @@ impl StateStore {
 			.collect::<Vec<_>>();
 
 		runs.extend(
-			recovery_candidates
-				.iter()
-				.filter_map(|candidate| project_run_status_from_recovery_candidate(&state, candidate)),
+			recovery_candidates.iter().filter_map(|candidate| {
+				project_run_status_from_recovery_candidate(&state, candidate)
+			}),
 		);
 		runs.sort_by(compare_project_run_status);
 
-		let leased_runs = runs
-			.iter()
-			.filter(|status| status.run_lease())
-			.cloned()
-			.collect::<Vec<_>>();
+		let leased_runs =
+			runs.iter().filter(|status| status.run_lease()).cloned().collect::<Vec<_>>();
 		let recent_limit = base_recent_limit.saturating_add(leased_runs.len());
-		let recent_run_ids = runs
-			.iter()
-			.take(recent_limit)
-			.map(|run| run.run_id().to_owned())
-			.collect::<Vec<_>>();
-		let mut summary_run_ids = leased_runs
-			.iter()
-			.map(|run| run.run_id().to_owned())
-			.collect::<Vec<_>>();
+		let recent_run_ids =
+			runs.iter().take(recent_limit).map(|run| run.run_id().to_owned()).collect::<Vec<_>>();
+		let mut summary_run_ids =
+			leased_runs.iter().map(|run| run.run_id().to_owned()).collect::<Vec<_>>();
 
 		summary_run_ids.extend(recent_run_ids);
 		summary_run_ids.sort();
@@ -1717,15 +1717,14 @@ impl StateStore {
 			recovery_candidates
 				.iter()
 				.filter(|candidate| summary_run_id_set.contains(&candidate.run_id))
-				.filter_map(|candidate| project_run_status_from_recovery_candidate(&state, candidate)),
+				.filter_map(|candidate| {
+					project_run_status_from_recovery_candidate(&state, candidate)
+				}),
 		);
 		selected_runs.sort_by(compare_project_run_status);
 
-		let leased_runs = selected_runs
-			.iter()
-			.filter(|status| status.run_lease())
-			.cloned()
-			.collect::<Vec<_>>();
+		let leased_runs =
+			selected_runs.iter().filter(|status| status.run_lease()).cloned().collect::<Vec<_>>();
 		let mut recent_runs = selected_runs;
 
 		recent_runs.truncate(recent_limit);
@@ -1742,10 +1741,7 @@ impl StateStore {
 		let mut state = self.lock_without_refresh()?;
 
 		self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
-		self.refresh_run_attempt_identities_from_worktree_markers_locked(
-			&mut state,
-			project_id,
-		)?;
+		self.refresh_run_attempt_identities_from_worktree_markers_locked(&mut state, project_id)?;
 		self.refresh_project_loop_evidence_state_locked(&mut state, project_id)?;
 
 		let lease_run_ids = project_lease_run_ids(&state, project_id, Some(issue_id));
@@ -1780,9 +1776,9 @@ impl StateStore {
 			.collect::<Vec<_>>();
 
 		runs.extend(
-			recovery_candidates
-				.iter()
-				.filter_map(|candidate| project_run_status_from_recovery_candidate(&state, candidate)),
+			recovery_candidates.iter().filter_map(|candidate| {
+				project_run_status_from_recovery_candidate(&state, candidate)
+			}),
 		);
 		runs.sort_by(compare_project_run_status);
 
@@ -1853,7 +1849,9 @@ impl StateStore {
 			let (insert_index, cached_existing) = {
 				let events = state.events.entry(run_id.to_owned()).or_default();
 
-				match events.binary_search_by_key(&event.sequence_number, |event| event.sequence_number) {
+				match events
+					.binary_search_by_key(&event.sequence_number, |event| event.sequence_number)
+				{
 					Ok(index) => (index, Some(events[index].clone())),
 					Err(index) => (index, None),
 				}
@@ -1861,10 +1859,7 @@ impl StateStore {
 
 			if let Some(existing) = cached_existing {
 				if self.handle_protocol_event_append_conflict_locked(
-					&mut state,
-					run_id,
-					&mut event,
-					&existing,
+					&mut state, run_id, &mut event, &existing,
 				)? {
 					continue;
 				}
@@ -1882,10 +1877,7 @@ impl StateStore {
 					})?;
 
 				if self.handle_protocol_event_append_conflict_locked(
-					&mut state,
-					run_id,
-					&mut event,
-					&existing,
+					&mut state, run_id, &mut event, &existing,
 				)? {
 					continue;
 				}
@@ -1909,10 +1901,7 @@ impl StateStore {
 			return Ok(Some(event));
 		}
 		if self.protocol_event_replay_already_recorded_locked(state, run_id, &event)? {
-			self.refresh_protocol_event_summaries_for_runs_locked(
-				state,
-				&[run_id.to_owned()],
-			)?;
+			self.refresh_protocol_event_summaries_for_runs_locked(state, &[run_id.to_owned()])?;
 
 			return Ok(None);
 		}
@@ -1968,10 +1957,7 @@ impl StateStore {
 			}) {
 				summary.record_event(&inserted_event);
 			} else {
-				self.refresh_protocol_event_summaries_for_runs_locked(
-					state,
-					&[run_id.to_owned()],
-				)?;
+				self.refresh_protocol_event_summaries_for_runs_locked(state, &[run_id.to_owned()])?;
 			}
 		} else if let Some(events) = state.events.get(run_id) {
 			let summary = protocol_event_summary_from_events(events);
@@ -2001,9 +1987,7 @@ impl StateStore {
 		run_id: &str,
 	) -> Result<bool> {
 		if state.events.get(run_id).is_some_and(|events| {
-			events
-				.iter()
-				.any(|event| protocol_event_is_terminal_thread_archive(&event.event_type))
+			events.iter().any(|event| protocol_event_is_terminal_thread_archive(&event.event_type))
 		}) {
 			return Ok(true);
 		}
@@ -2019,9 +2003,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(false);
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		for event_type in TERMINAL_THREAD_ARCHIVE_EVENT_TYPES {
 			if sqlite.run_has_protocol_event(run_id, event_type)? {
@@ -2063,7 +2046,9 @@ impl StateStore {
 		let summary = RunActivitySummaryRecord {
 			run_id: run_id.to_owned(),
 			attempt_number,
-			child_agent_activity: child_agent_activity.cloned().map(ChildAgentActivitySummary::sealed_durable),
+			child_agent_activity: child_agent_activity
+				.cloned()
+				.map(ChildAgentActivitySummary::sealed_durable),
 			protocol_activity: protocol_activity.cloned(),
 			updated_at: now.text,
 			updated_at_unix: now.unix,
@@ -2080,7 +2065,8 @@ impl StateStore {
 		&self,
 		record: &LinearExecutionEventRecord,
 	) -> Result<bool> {
-		records::validate_linear_execution_event_record(record).map_err(|error| eyre::eyre!(error))?;
+		records::validate_linear_execution_event_record(record)
+			.map_err(|error| eyre::eyre!(error))?;
 
 		let now = timestamp_parts();
 		let idempotency_key = record.idempotency_key.clone();
@@ -2261,17 +2247,13 @@ impl StateStore {
 
 		self.refresh_project_loop_evidence_state_locked(&mut state, project_id)?;
 
-		for record in state
-			.private_execution_events
-			.iter()
-			.filter(|record| record.project_id == project_id)
+		for record in
+			state.private_execution_events.iter().filter(|record| record.project_id == project_id)
 		{
 			snapshot.insert_private_event(record.as_public());
 		}
-		for record in state
-			.review_lifecycle_records
-			.values()
-			.filter(|record| record.project_id == project_id)
+		for record in
+			state.review_lifecycle_records.values().filter(|record| record.project_id == project_id)
 		{
 			snapshot.insert_review_lifecycle_record(record.as_public());
 		}
@@ -2282,38 +2264,28 @@ impl StateStore {
 		{
 			snapshot.insert_review_checkpoint(record.as_public());
 		}
-		for record in state
-			.decision_contracts
-			.values()
-			.filter(|record| record.project_id == project_id)
+		for record in
+			state.decision_contracts.values().filter(|record| record.project_id == project_id)
 		{
 			snapshot.insert_decision_contract(record.as_public());
 		}
-		for record in state
-			.autonomy_objectives
-			.values()
-			.filter(|record| record.project_id == project_id)
+		for record in
+			state.autonomy_objectives.values().filter(|record| record.project_id == project_id)
 		{
 			snapshot.insert_autonomy_objective(record.as_public());
 		}
-		for record in state
-			.autonomy_signals
-			.values()
-			.filter(|record| record.project_id == project_id)
+		for record in
+			state.autonomy_signals.values().filter(|record| record.project_id == project_id)
 		{
 			snapshot.insert_autonomy_signal(record.as_public());
 		}
-		for record in state
-			.autonomy_proposals
-			.values()
-			.filter(|record| record.project_id == project_id)
+		for record in
+			state.autonomy_proposals.values().filter(|record| record.project_id == project_id)
 		{
 			snapshot.insert_autonomy_proposal(record.as_public());
 		}
-		for record in state
-			.program_intake_plans
-			.values()
-			.filter(|record| record.project_id == project_id)
+		for record in
+			state.program_intake_plans.values().filter(|record| record.project_id == project_id)
 		{
 			snapshot.insert_program_intake_plan(record.clone());
 		}
@@ -2341,12 +2313,10 @@ impl StateStore {
 		let now = timestamp_parts();
 		let mut state = self.lock_without_refresh()?;
 		let key = DecisionContractKey::new(project_id, contract.contract_id());
-		let (created_at, created_at_unix) = state
-			.decision_contracts
-			.get(&key)
-			.map_or_else(|| (now.text.clone(), now.unix), |record| {
-				(record.created_at.clone(), record.created_at_unix)
-			});
+		let (created_at, created_at_unix) = state.decision_contracts.get(&key).map_or_else(
+			|| (now.text.clone(), now.unix),
+			|record| (record.created_at.clone(), record.created_at_unix),
+		);
 		let record = DecisionContractRuntimeRecord {
 			project_id: project_id.to_owned(),
 			source_issue_id: source_issue_id.map(str::to_owned),
@@ -2578,21 +2548,20 @@ impl StateStore {
 		let mut state = self.lock()?;
 
 		if let Some(existing) = state.autonomy_objectives.get(&key)
-			&& existing.state != AutonomyObjectiveState::Draft {
-				eyre::bail!(
-					"Autonomy objective `{}` version {} is `{}` and cannot be replaced as a draft.",
-					objective.id(),
-					objective.version(),
-					existing.state.as_str()
-				);
-			}
+			&& existing.state != AutonomyObjectiveState::Draft
+		{
+			eyre::bail!(
+				"Autonomy objective `{}` version {} is `{}` and cannot be replaced as a draft.",
+				objective.id(),
+				objective.version(),
+				existing.state.as_str()
+			);
+		}
 
-		let (created_at, created_at_unix) = state
-			.autonomy_objectives
-			.get(&key)
-			.map_or_else(|| (now.text.clone(), now.unix), |record| {
-				(record.created_at.clone(), record.created_at_unix)
-			});
+		let (created_at, created_at_unix) = state.autonomy_objectives.get(&key).map_or_else(
+			|| (now.text.clone(), now.unix),
+			|record| (record.created_at.clone(), record.created_at_unix),
+		);
 		let record = AutonomyObjectiveRuntimeRecord {
 			project_id: project_id.to_owned(),
 			state: objective.state(),
@@ -2694,7 +2663,9 @@ impl StateStore {
 		let mut records = state
 			.autonomy_objectives
 			.values()
-			.filter(|record| record.project_id == project_id && record.objective.id() == objective_id)
+			.filter(|record| {
+				record.project_id == project_id && record.objective.id() == objective_id
+			})
 			.cloned()
 			.collect::<Vec<_>>();
 
@@ -2763,17 +2734,14 @@ impl StateStore {
 			signal.objective_id(),
 			signal.objective_version(),
 		);
-		let objective = state
-			.autonomy_objectives
-			.get(&objective_key)
-			.ok_or_else(|| {
-				eyre::eyre!(
-					"Autonomy signal `{}` references missing objective `{}` version {}.",
-					signal.id(),
-					signal.objective_id(),
-					signal.objective_version()
-				)
-			})?;
+		let objective = state.autonomy_objectives.get(&objective_key).ok_or_else(|| {
+			eyre::eyre!(
+				"Autonomy signal `{}` references missing objective `{}` version {}.",
+				signal.id(),
+				signal.objective_id(),
+				signal.objective_version()
+			)
+		})?;
 
 		if objective.state != AutonomyObjectiveState::Accepted {
 			eyre::bail!(
@@ -2786,12 +2754,10 @@ impl StateStore {
 		}
 
 		let key = AutonomySignalKey::new(project_id, signal.id());
-		let (created_at, created_at_unix) = state
-			.autonomy_signals
-			.get(&key)
-			.map_or_else(|| (now.text.clone(), now.unix), |record| {
-				(record.created_at.clone(), record.created_at_unix)
-			});
+		let (created_at, created_at_unix) = state.autonomy_signals.get(&key).map_or_else(
+			|| (now.text.clone(), now.unix),
+			|record| (record.created_at.clone(), record.created_at_unix),
+		);
 		let record = AutonomySignalRuntimeRecord {
 			project_id: project_id.to_owned(),
 			signal,
@@ -2926,9 +2892,9 @@ impl StateStore {
 		for signal_id in signal_ids {
 			validate_required_autonomy_proposal_field("signal_id", signal_id)?;
 
-			let signal = self
-				.autonomy_signal(&input.project_id, signal_id)?
-				.ok_or_else(|| eyre::eyre!("Autonomy proposal signal `{signal_id}` does not exist."))?;
+			let signal = self.autonomy_signal(&input.project_id, signal_id)?.ok_or_else(|| {
+				eyre::eyre!("Autonomy proposal signal `{signal_id}` does not exist.")
+			})?;
 
 			signals.push(signal.signal().clone());
 		}
@@ -2954,17 +2920,14 @@ impl StateStore {
 				proposal.objective_id(),
 				proposal.objective_version(),
 			);
-			let objective = state
-				.autonomy_objectives
-				.get(&objective_key)
-				.ok_or_else(|| {
-					eyre::eyre!(
-						"Autonomy proposal `{}` references missing objective `{}` version {}.",
-						proposal.id(),
-						proposal.objective_id(),
-						proposal.objective_version()
-					)
-				})?;
+			let objective = state.autonomy_objectives.get(&objective_key).ok_or_else(|| {
+				eyre::eyre!(
+					"Autonomy proposal `{}` references missing objective `{}` version {}.",
+					proposal.id(),
+					proposal.objective_id(),
+					proposal.objective_version()
+				)
+			})?;
 
 			if objective.state != AutonomyObjectiveState::Accepted {
 				eyre::bail!(
@@ -3001,12 +2964,10 @@ impl StateStore {
 		}
 
 		let key = AutonomyProposalKey::new(project_id, proposal.id());
-		let (created_at, created_at_unix) = state
-			.autonomy_proposals
-			.get(&key)
-			.map_or_else(|| (now.text.clone(), now.unix), |record| {
-				(record.created_at.clone(), record.created_at_unix)
-			});
+		let (created_at, created_at_unix) = state.autonomy_proposals.get(&key).map_or_else(
+			|| (now.text.clone(), now.unix),
+			|record| (record.created_at.clone(), record.created_at_unix),
+		);
 		let record = AutonomyProposalRuntimeRecord {
 			project_id: project_id.to_owned(),
 			state: proposal.state(),
@@ -3220,15 +3181,9 @@ impl StateStore {
 		let now = timestamp_parts();
 		let key = AutonomyObjectiveKey::new(project_id, objective_id, version);
 		let mut state = self.lock()?;
-		let mut record = state
-			.autonomy_objectives
-			.get(&key)
-			.cloned()
-			.ok_or_else(|| {
-				eyre::eyre!(
-					"Autonomy objective `{objective_id}` version {version} does not exist."
-				)
-			})?;
+		let mut record = state.autonomy_objectives.get(&key).cloned().ok_or_else(|| {
+			eyre::eyre!("Autonomy objective `{objective_id}` version {version} does not exist.")
+		})?;
 
 		if let Some(current_version) = state
 			.autonomy_objectives
@@ -3239,12 +3194,12 @@ impl StateStore {
 					&& candidate.state == AutonomyObjectiveState::Accepted
 			})
 			.map(|candidate| candidate.objective.version())
-			.max()
-			&& version <= current_version {
-				eyre::bail!(
-					"Autonomy objective `{objective_id}` version {version} must be greater than current accepted version {current_version}."
-				);
-			}
+			.max() && version <= current_version
+		{
+			eyre::bail!(
+				"Autonomy objective `{objective_id}` version {version} must be greater than current accepted version {current_version}."
+			);
+		}
 
 		record.objective.accept(acceptance)?;
 
@@ -3285,9 +3240,7 @@ impl StateStore {
 			superseded.updated_at = now.text.clone();
 			superseded.updated_at_unix = now.unix;
 
-			state
-				.autonomy_objectives
-				.insert(superseded.key(), superseded.clone());
+			state.autonomy_objectives.insert(superseded.key(), superseded.clone());
 			changed_records.push(superseded);
 		}
 
@@ -3344,15 +3297,9 @@ impl StateStore {
 		let now = timestamp_parts();
 		let key = AutonomyObjectiveKey::new(project_id, objective_id, version);
 		let mut state = self.lock()?;
-		let mut record = state
-			.autonomy_objectives
-			.get(&key)
-			.cloned()
-			.ok_or_else(|| {
-				eyre::eyre!(
-					"Autonomy objective `{objective_id}` version {version} does not exist."
-				)
-			})?;
+		let mut record = state.autonomy_objectives.get(&key).cloned().ok_or_else(|| {
+			eyre::eyre!("Autonomy objective `{objective_id}` version {version} does not exist.")
+		})?;
 
 		update(&mut record.objective)?;
 
@@ -3380,12 +3327,10 @@ impl StateStore {
 		let now = timestamp_parts();
 		let mut state = self.lock_without_refresh()?;
 		let key = ExecutionProgramKey::new(project_id, program.program_id());
-		let (created_at, created_at_unix) = state
-			.execution_programs
-			.get(&key)
-			.map_or_else(|| (now.text.clone(), now.unix), |record| {
-				(record.created_at.clone(), record.created_at_unix)
-			});
+		let (created_at, created_at_unix) = state.execution_programs.get(&key).map_or_else(
+			|| (now.text.clone(), now.unix),
+			|record| (record.created_at.clone(), record.created_at_unix),
+		);
 		let record = ExecutionProgramRuntimeRecord {
 			project_id: project_id.to_owned(),
 			source_contract_id: program.source_contract_id().map(str::to_owned),
@@ -3594,8 +3539,11 @@ impl StateStore {
 	) -> Result<()> {
 		let mut state = self.lock_without_refresh()?;
 		let now_unix = OffsetDateTime::now_utc().unix_timestamp();
-		let created_at_unix =
-			state.worktrees.get(issue_id).and_then(|mapping| mapping.created_at_unix).or(Some(now_unix));
+		let created_at_unix = state
+			.worktrees
+			.get(issue_id)
+			.and_then(|mapping| mapping.created_at_unix)
+			.or(Some(now_unix));
 		let mapping = WorktreeMappingRecord {
 			project_id: project_id.to_owned(),
 			issue_id: issue_id.to_owned(),
@@ -3623,17 +3571,13 @@ impl StateStore {
 	) -> Result<()> {
 		let mut state = self.lock_without_refresh()?;
 		let existing = state.worktrees.get(issue_id);
-		let existing_provenance_source =
-			existing.map(|mapping| mapping.provenance_source.as_str());
-		let provenance_source =
-			match existing_provenance_source {
-				Some(WORKTREE_PROVENANCE_RUNTIME_RECORDED) =>
-					WORKTREE_PROVENANCE_RUNTIME_RECORDED,
-				Some(WORKTREE_PROVENANCE_RUNTIME_RECOVERED) =>
-					WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
-				_ => WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
-			}
-			.to_owned();
+		let existing_provenance_source = existing.map(|mapping| mapping.provenance_source.as_str());
+		let provenance_source = match existing_provenance_source {
+			Some(WORKTREE_PROVENANCE_RUNTIME_RECORDED) => WORKTREE_PROVENANCE_RUNTIME_RECORDED,
+			Some(WORKTREE_PROVENANCE_RUNTIME_RECOVERED) => WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
+			_ => WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
+		}
+		.to_owned();
 		let existing_created_at_unix = existing.and_then(|mapping| mapping.created_at_unix);
 		let existing_updated_at_unix = existing.and_then(|mapping| mapping.updated_at_unix);
 		let created_at_unix = existing_created_at_unix.or(observed_at_unix);
@@ -3668,35 +3612,34 @@ impl StateStore {
 		let now = timestamp_parts();
 		let key = ReviewLifecycleKey::new(project_id, issue_id, marker.branch_name());
 		let mut state = self.lock()?;
-		let record =
-			state.review_lifecycle_records.entry(key).or_insert_with(|| {
-				ReviewLifecycleRuntimeRecord {
-					project_id: project_id.to_owned(),
-					issue_id: issue_id.to_owned(),
-					branch_name: marker.branch_name().to_owned(),
-					run_id: marker.run_id().to_owned(),
-					attempt_number: marker.attempt_number(),
-					pr_url: marker.pr_url().to_owned(),
-					target_base_ref_name: marker.target_base_ref_name().map(str::to_owned),
-					pr_head_ref_name: marker.pr_head_ref_name().to_owned(),
-					pr_head_oid: marker.pr_head_oid().to_owned(),
-					head_sha: marker.pr_head_oid().to_owned(),
-					phase: String::from("request_pending"),
-					request_comment_database_id: None,
-					request_created_at_unix_epoch: None,
-					request_description_thumbs_up_count: None,
-					request_retry_count: 0,
-					external_round_count: 0,
-					auto_merge_enabled_at_unix_epoch: None,
-					landing_state: String::from("not_started"),
-					closeout_state: String::from("not_started"),
-					repair_attempt_count: 0,
-					evidence_json: String::from("{}"),
-					next_action: String::new(),
-					updated_at: now.text.clone(),
-					updated_at_unix: now.unix,
-				}
-			});
+		let record = state.review_lifecycle_records.entry(key).or_insert_with(|| {
+			ReviewLifecycleRuntimeRecord {
+				project_id: project_id.to_owned(),
+				issue_id: issue_id.to_owned(),
+				branch_name: marker.branch_name().to_owned(),
+				run_id: marker.run_id().to_owned(),
+				attempt_number: marker.attempt_number(),
+				pr_url: marker.pr_url().to_owned(),
+				target_base_ref_name: marker.target_base_ref_name().map(str::to_owned),
+				pr_head_ref_name: marker.pr_head_ref_name().to_owned(),
+				pr_head_oid: marker.pr_head_oid().to_owned(),
+				head_sha: marker.pr_head_oid().to_owned(),
+				phase: String::from("request_pending"),
+				request_comment_database_id: None,
+				request_created_at_unix_epoch: None,
+				request_description_thumbs_up_count: None,
+				request_retry_count: 0,
+				external_round_count: 0,
+				auto_merge_enabled_at_unix_epoch: None,
+				landing_state: String::from("not_started"),
+				closeout_state: String::from("not_started"),
+				repair_attempt_count: 0,
+				evidence_json: String::from("{}"),
+				next_action: String::new(),
+				updated_at: now.text.clone(),
+				updated_at_unix: now.unix,
+			}
+		});
 		let same_handoff_projection = record.run_id == marker.run_id()
 			&& record.attempt_number == marker.attempt_number()
 			&& record.pr_url == marker.pr_url()
@@ -3741,9 +3684,8 @@ impl StateStore {
 		issue_id: &str,
 		branch_name: &str,
 	) -> Result<Option<ReviewHandoffMarker>> {
-		Ok(self
-			.review_lifecycle_record(project_id, issue_id, branch_name)?
-			.map(|record| ReviewHandoffMarker {
+		Ok(self.review_lifecycle_record(project_id, issue_id, branch_name)?.map(|record| {
+			ReviewHandoffMarker {
 				run_id: record.run_id().to_owned(),
 				attempt_number: record.attempt_number(),
 				branch_name: record.branch_name().to_owned(),
@@ -3751,7 +3693,8 @@ impl StateStore {
 				target_base_ref_name: record.target_base_ref_name().map(str::to_owned),
 				pr_head_ref_name: record.pr_head_ref_name().to_owned(),
 				pr_head_oid: record.pr_head_oid().to_owned(),
-			}))
+			}
+		}))
 	}
 
 	/// Read the runtime-owned review lifecycle record for one retained issue branch.
@@ -3791,35 +3734,34 @@ impl StateStore {
 		let now = timestamp_parts();
 		let key = ReviewLifecycleKey::new(project_id, issue_id, marker.branch_name());
 		let mut state = self.lock()?;
-		let record =
-			state.review_lifecycle_records.entry(key).or_insert_with(|| {
-				ReviewLifecycleRuntimeRecord {
-					project_id: project_id.to_owned(),
-					issue_id: issue_id.to_owned(),
-					branch_name: marker.branch_name().to_owned(),
-					run_id: marker.run_id().to_owned(),
-					attempt_number: marker.attempt_number(),
-					pr_url: marker.pr_url().to_owned(),
-					target_base_ref_name: None,
-					pr_head_ref_name: marker.branch_name().to_owned(),
-					pr_head_oid: marker.head_sha().to_owned(),
-					head_sha: marker.head_sha().to_owned(),
-					phase: marker.phase().to_owned(),
-					request_comment_database_id: None,
-					request_created_at_unix_epoch: None,
-					request_description_thumbs_up_count: None,
-					request_retry_count: 0,
-					external_round_count: 0,
-					auto_merge_enabled_at_unix_epoch: None,
-					landing_state: String::from("not_started"),
-					closeout_state: String::from("not_started"),
-					repair_attempt_count: 0,
-					evidence_json: String::from("{}"),
-					next_action: String::new(),
-					updated_at: now.text.clone(),
-					updated_at_unix: now.unix,
-				}
-			});
+		let record = state.review_lifecycle_records.entry(key).or_insert_with(|| {
+			ReviewLifecycleRuntimeRecord {
+				project_id: project_id.to_owned(),
+				issue_id: issue_id.to_owned(),
+				branch_name: marker.branch_name().to_owned(),
+				run_id: marker.run_id().to_owned(),
+				attempt_number: marker.attempt_number(),
+				pr_url: marker.pr_url().to_owned(),
+				target_base_ref_name: None,
+				pr_head_ref_name: marker.branch_name().to_owned(),
+				pr_head_oid: marker.head_sha().to_owned(),
+				head_sha: marker.head_sha().to_owned(),
+				phase: marker.phase().to_owned(),
+				request_comment_database_id: None,
+				request_created_at_unix_epoch: None,
+				request_description_thumbs_up_count: None,
+				request_retry_count: 0,
+				external_round_count: 0,
+				auto_merge_enabled_at_unix_epoch: None,
+				landing_state: String::from("not_started"),
+				closeout_state: String::from("not_started"),
+				repair_attempt_count: 0,
+				evidence_json: String::from("{}"),
+				next_action: String::new(),
+				updated_at: now.text.clone(),
+				updated_at_unix: now.unix,
+			}
+		});
 
 		record.run_id = marker.run_id().to_owned();
 		record.attempt_number = marker.attempt_number();
@@ -3828,8 +3770,7 @@ impl StateStore {
 		record.phase = marker.phase().to_owned();
 		record.request_comment_database_id = marker.request_comment_database_id();
 		record.request_created_at_unix_epoch = marker.request_created_at_unix_epoch();
-		record.request_description_thumbs_up_count =
-			marker.request_description_thumbs_up_count();
+		record.request_description_thumbs_up_count = marker.request_description_thumbs_up_count();
 		record.request_retry_count = marker.request_retry_count();
 		record.external_round_count = marker.external_round_count();
 		record.auto_merge_enabled_at_unix_epoch = marker.auto_merge_enabled_at_unix_epoch();
@@ -3985,12 +3926,12 @@ impl StateStore {
 		let state = self.lock()?;
 
 		Ok(state.evidence_artifacts.values().any(|record| {
-				record.project_id == project_id
-					&& record.issue_id == issue_id
-					&& record.artifact_kind == "issue_review_checkpoint"
-					&& record.phase == phase
-					&& record.status != "clean"
-			}))
+			record.project_id == project_id
+				&& record.issue_id == issue_id
+				&& record.artifact_kind == "issue_review_checkpoint"
+				&& record.phase == phase
+				&& record.status != "clean"
+		}))
 	}
 
 	/// Clear review-policy checkpoints for one completed run attempt.
@@ -4075,9 +4016,9 @@ impl StateStore {
 	) -> Result<()> {
 		let mut state = self.lock()?;
 
-		state.loop_guardrail_checkpoints.retain(|key, _record| {
-			key.project_id != project_id || key.issue_id != issue_id
-		});
+		state
+			.loop_guardrail_checkpoints
+			.retain(|key, _record| key.project_id != project_id || key.issue_id != issue_id);
 
 		self.delete_loop_guardrail_checkpoints_for_issue_locked(project_id, issue_id)
 	}
@@ -4105,7 +4046,8 @@ impl StateStore {
 		handoff_marker: &ReviewHandoffMarker,
 		orchestration_marker: &ReviewOrchestrationMarker,
 	) -> Result<()> {
-		let lifecycle_key = ReviewLifecycleKey::new(project_id, issue_id, handoff_marker.branch_name());
+		let lifecycle_key =
+			ReviewLifecycleKey::new(project_id, issue_id, handoff_marker.branch_name());
 		let mut state = self.lock()?;
 
 		if state
@@ -4171,15 +4113,21 @@ impl StateStore {
 		let mut state = self.lock()?;
 
 		state.worktrees.remove(issue_id);
-		state
-			.review_lifecycle_records
-			.retain(|key, _record| key.issue_id != issue_id);
-		state
-			.review_policy_checkpoints
-			.retain(|key, _record| key.issue_id != issue_id);
+		state.review_lifecycle_records.retain(|key, _record| key.issue_id != issue_id);
+		state.review_policy_checkpoints.retain(|key, _record| key.issue_id != issue_id);
 		self.persist_runtime_state_locked(&state)?;
 
 		self.delete_worktree_and_review_lifecycle_locked(issue_id)
+	}
+
+	/// Remove only the worktree mapping for one issue.
+	pub(crate) fn clear_worktree_mapping(&self, issue_id: &str) -> Result<()> {
+		let mut state = self.lock()?;
+
+		state.worktrees.remove(issue_id);
+		self.persist_runtime_state_locked(&state)?;
+
+		self.delete_worktree_mapping_locked(issue_id)
 	}
 
 	fn lock_without_refresh(&self) -> Result<MutexGuard<'_, StateData>> {
@@ -4198,9 +4146,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 		let loaded = sqlite.load_state()?;
 
 		state.replace_durable_state(loaded);
@@ -4216,9 +4163,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 		let loaded = sqlite.load_project_run_metadata_for_project(project_id)?;
 
 		state.replace_project_run_metadata_state(loaded);
@@ -4234,9 +4180,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.load_protocol_event_summaries_for_runs(state, run_ids)
 	}
@@ -4249,9 +4194,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.load_run_activity_summaries_for_runs(state, run_ids)
 	}
@@ -4269,7 +4213,7 @@ impl StateStore {
 				let marker = match read_run_activity_marker_snapshot(&mapping.worktree_path) {
 					Ok(Some(marker)) => marker,
 					Ok(None) => return None,
-					Err(error) => return Some(Err(error)),
+					Err(_) => return None,
 				};
 				let attempt = state.run_attempts.get(marker.run_id())?;
 
@@ -4326,9 +4270,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 		let loaded = sqlite.load_project_loop_evidence_for_project(project_id)?;
 
 		state.replace_project_loop_evidence_state(project_id, loaded);
@@ -4340,9 +4283,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 		let loaded = sqlite.load_project_registry_state()?;
 
 		state.replace_project_registry_state(loaded);
@@ -4354,9 +4296,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.persist_runtime_state(state)
 	}
@@ -4365,9 +4306,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_project(service_id)
 	}
@@ -4376,9 +4316,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_project(project)
 	}
@@ -4387,9 +4326,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_connector_backoff(project_id, connector)
 	}
@@ -4398,9 +4336,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_run_attempt(attempt)
 	}
@@ -4409,9 +4346,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_run_control_channel(channel)
 	}
@@ -4420,9 +4356,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_run_activity_summary(summary)
 	}
@@ -4431,9 +4366,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_lease_and_remember_run_project(lease)
 	}
@@ -4445,9 +4379,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_worktree_and_remember_run_project(mapping)
 	}
@@ -4460,9 +4393,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(true);
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.append_protocol_event(run_id, event)
 	}
@@ -4475,9 +4407,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(None);
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.protocol_event(run_id, sequence_number)
 	}
@@ -4489,9 +4420,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(true);
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.insert_linear_execution_event_if_absent(record)
 	}
@@ -4500,9 +4430,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_linear_execution_event(idempotency_key)
 	}
@@ -4515,9 +4444,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(None);
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.list_linear_execution_events(service_id, issue_id).map(Some)
 	}
@@ -4529,9 +4457,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(None);
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.insert_private_execution_event(record).map(Some)
 	}
@@ -4544,9 +4471,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_decision_contract(record)
 	}
@@ -4559,24 +4485,19 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_autonomy_objective(record)
 	}
 
 	#[allow(dead_code)]
-	fn upsert_autonomy_signal_locked(
-		&self,
-		record: &AutonomySignalRuntimeRecord,
-	) -> Result<()> {
+	fn upsert_autonomy_signal_locked(&self, record: &AutonomySignalRuntimeRecord) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_autonomy_signal(record)
 	}
@@ -4589,9 +4510,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_autonomy_proposal(record)
 	}
@@ -4604,9 +4524,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_execution_program(record)
 	}
@@ -4615,9 +4534,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_lease(issue_id)
 	}
@@ -4630,9 +4548,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.retarget_issue_identity(previous_issue_id, canonical_issue_id)
 	}
@@ -4641,11 +4558,20 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_worktree_and_review_lifecycle(issue_id)
+	}
+
+	fn delete_worktree_mapping_locked(&self, issue_id: &str) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.delete_worktree_mapping(issue_id)
 	}
 
 	fn delete_review_marker_identity_locked(
@@ -4659,9 +4585,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_review_marker_identity(
 			project_id,
@@ -4682,9 +4607,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_review_policy_checkpoints_for_run_attempt(
 			project_id,
@@ -4702,9 +4626,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_loop_guardrail_checkpoints_for_issue(project_id, issue_id)
 	}
@@ -4718,9 +4641,8 @@ impl StateStore {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_loop_guardrail_checkpoint(project_id, issue_id, reason)
 	}
@@ -4774,7 +4696,8 @@ impl ProjectRunRecoveryCandidate {
 				self.attempt_number, attempt_number
 			));
 		}
-		if project_run_recovery_status_rank(status) > project_run_recovery_status_rank(&self.status) {
+		if project_run_recovery_status_rank(status) > project_run_recovery_status_rank(&self.status)
+		{
 			self.status = status.to_owned();
 		}
 		if updated_at_unix >= self.updated_at_unix {
@@ -5017,10 +4940,7 @@ fn collect_review_checkpoint_recovery_candidates(
 			"recovered",
 			checkpoint.updated_at.clone(),
 			checkpoint.updated_at_unix,
-			format!(
-				"review_policy_checkpoint:{}:{}",
-				checkpoint.phase, checkpoint.status
-			),
+			format!("review_policy_checkpoint:{}:{}", checkpoint.phase, checkpoint.status),
 		);
 	}
 }
@@ -5070,8 +4990,9 @@ fn collect_worktree_marker_recovery_candidates(
 			continue;
 		}
 
-		let Some(marker) = read_run_activity_marker_snapshot(&mapping.worktree_path)? else {
-			continue;
+		let marker = match read_run_activity_marker_snapshot(&mapping.worktree_path) {
+			Ok(Some(marker)) => marker,
+			Ok(None) | Err(_) => continue,
 		};
 
 		if recorded_run_ids.contains(marker.run_id()) {
@@ -5122,14 +5043,12 @@ fn finalize_project_run_recovery_candidates(
 		let event_summary = state.protocol_event_summary(&candidate.run_id);
 
 		if event_summary.event_count > 0 {
-			candidate
-				.evidence
-				.insert(format!("protocol_events:{}", event_summary.event_count));
+			candidate.evidence.insert(format!("protocol_events:{}", event_summary.event_count));
 		}
-		if !state.run_activity_summaries.contains_key(&candidate.run_id) && event_summary.event_count == 0 {
-			candidate
-				.gaps
-				.insert(String::from("no_activity_or_protocol_summary"));
+		if !state.run_activity_summaries.contains_key(&candidate.run_id)
+			&& event_summary.event_count == 0
+		{
+			candidate.gaps.insert(String::from("no_activity_or_protocol_summary"));
 		}
 	}
 }
@@ -5154,22 +5073,16 @@ fn project_run_recovery_candidate_counts_as_project_run(
 	let has_active_lease = state.leases.get(&candidate.issue_id).is_some_and(|lease| {
 		lease.project_id == candidate.project_id && lease.run_id == candidate.run_id
 	});
-	let has_control_channel = state
-		.control_channels
-		.get(&candidate.run_id)
-		.is_some_and(|channel| {
+	let has_control_channel =
+		state.control_channels.get(&candidate.run_id).is_some_and(|channel| {
 			channel.project_id == candidate.project_id
 				&& channel.issue_id == candidate.issue_id
 				&& channel.attempt_number == candidate.attempt_number
 		});
-	let has_worktree_marker = candidate
-		.evidence
-		.iter()
-		.any(|evidence| evidence == "worktree_activity_marker");
-	let issue_has_recorded_attempt = state
-		.run_attempts
-		.values()
-		.any(|attempt| attempt.issue_id == candidate.issue_id);
+	let has_worktree_marker =
+		candidate.evidence.iter().any(|evidence| evidence == "worktree_activity_marker");
+	let issue_has_recorded_attempt =
+		state.run_attempts.values().any(|attempt| attempt.issue_id == candidate.issue_id);
 
 	has_active_lease || has_control_channel || (has_worktree_marker && !issue_has_recorded_attempt)
 }
@@ -5274,11 +5187,8 @@ fn retarget_review_lifecycle_issue(
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
 ) {
-	let previous_keys = records
-		.keys()
-		.filter(|key| key.issue_id == previous_issue_id)
-		.cloned()
-		.collect::<Vec<_>>();
+	let previous_keys =
+		records.keys().filter(|key| key.issue_id == previous_issue_id).cloned().collect::<Vec<_>>();
 
 	for key in previous_keys {
 		let Some(mut record) = records.remove(&key) else {
@@ -5298,11 +5208,8 @@ fn retarget_review_policy_issue(
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
 ) {
-	let previous_keys = records
-		.keys()
-		.filter(|key| key.issue_id == previous_issue_id)
-		.cloned()
-		.collect::<Vec<_>>();
+	let previous_keys =
+		records.keys().filter(|key| key.issue_id == previous_issue_id).cloned().collect::<Vec<_>>();
 
 	for key in previous_keys {
 		let Some(mut record) = records.remove(&key) else {
@@ -5328,11 +5235,8 @@ fn retarget_evidence_artifact_issue(
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
 ) {
-	let previous_keys = records
-		.keys()
-		.filter(|key| key.issue_id == previous_issue_id)
-		.cloned()
-		.collect::<Vec<_>>();
+	let previous_keys =
+		records.keys().filter(|key| key.issue_id == previous_issue_id).cloned().collect::<Vec<_>>();
 
 	for key in previous_keys {
 		let Some(mut record) = records.remove(&key) else {
@@ -5357,11 +5261,8 @@ fn retarget_loop_guardrail_issue(
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
 ) {
-	let previous_keys = records
-		.keys()
-		.filter(|key| key.issue_id == previous_issue_id)
-		.cloned()
-		.collect::<Vec<_>>();
+	let previous_keys =
+		records.keys().filter(|key| key.issue_id == previous_issue_id).cloned().collect::<Vec<_>>();
 
 	for key in previous_keys {
 		let Some(mut record) = records.remove(&key) else {
@@ -5395,10 +5296,10 @@ fn resolve_run_control_action_locked(
 		.or_else(|| state.project_id_for_run(&attempt.issue_id, &attempt.run_id))
 		.unwrap_or_else(|| request.project_id.to_owned());
 	let project_run_status = state.project_run_status(&audit_project_id, attempt);
-	let control_channel = project_run_status
-		.as_ref()
-		.and_then(|status| status.control_channel().cloned())
-		.or_else(|| state.control_channels.get(request.run_id).map(RunControlChannelRecord::as_public));
+	let control_channel =
+		project_run_status.as_ref().and_then(|status| status.control_channel().cloned()).or_else(
+			|| state.control_channels.get(request.run_id).map(RunControlChannelRecord::as_public),
+		);
 	let audit_target = RunControlAuditTarget {
 		project_id: audit_project_id,
 		issue_id: attempt.issue_id.clone(),
@@ -5437,9 +5338,7 @@ fn resolve_run_control_action_locked(
 	if attempt.attempt_number != request.attempt_number {
 		return rejected_run_control_resolution(request, Some(audit_target), "attempt_mismatch");
 	}
-	if request.thread_id.is_some()
-		&& attempt.thread_id.as_deref() != request.thread_id
-	{
+	if request.thread_id.is_some() && attempt.thread_id.as_deref() != request.thread_id {
 		return rejected_run_control_resolution(request, Some(audit_target), "thread_mismatch");
 	}
 	if request.turn_id.is_some() && attempt.turn_id.as_deref() != request.turn_id {
@@ -5461,7 +5360,11 @@ fn resolve_run_control_action_locked(
 	}
 
 	let Some(channel) = control_channel else {
-		return rejected_run_control_resolution(request, Some(audit_target), "control_channel_missing");
+		return rejected_run_control_resolution(
+			request,
+			Some(audit_target),
+			"control_channel_missing",
+		);
 	};
 	let audit_target = RunControlAuditTarget { channel: Some(channel.clone()), ..audit_target };
 
@@ -5615,10 +5518,7 @@ fn validate_autonomy_objective_version(version: u64) -> Result<()> {
 }
 
 #[allow(dead_code)]
-fn validate_autonomy_signal_record_inputs(
-	project_id: &str,
-	signal: &AutonomySignal,
-) -> Result<()> {
+fn validate_autonomy_signal_record_inputs(project_id: &str, signal: &AutonomySignal) -> Result<()> {
 	validate_required_autonomy_signal_field("project_id", project_id)?;
 
 	if signal.project_id() != project_id {
@@ -5879,10 +5779,8 @@ fn discarded_post_archive_protocol_event_with_log(
 }
 
 fn discarded_post_archive_protocol_sequence(event: &ProtocolEventRecord) -> i64 {
-	let payload = format!(
-		"{}\n{}\n{}",
-		event.sequence_number, event.event_type, event.payload_sha256
-	);
+	let payload =
+		format!("{}\n{}\n{}", event.sequence_number, event.event_type, event.payload_sha256);
 	let digest = Sha256::digest(payload.as_bytes());
 	let mut bytes = [0_u8; 8];
 
@@ -5890,11 +5788,7 @@ fn discarded_post_archive_protocol_sequence(event: &ProtocolEventRecord) -> i64 
 
 	let slot = i64::from_be_bytes(bytes) & i64::MAX;
 
-	if slot == i64::MAX {
-		i64::MIN
-	} else {
-		-1 - slot
-	}
+	if slot == i64::MAX { i64::MIN } else { -1 - slot }
 }
 
 fn next_discarded_post_archive_sequence_after_collision(sequence_number: i64) -> Result<i64> {

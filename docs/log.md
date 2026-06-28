@@ -7,6 +7,22 @@
   the bounded read-only execution mechanism. Updated plugin skills, routing, tests,
   hooks, and current docs to use `$deliberation:skeptic` and
   `plugins/deliberation/skills/skeptic/`.
+- Added the tracker-present stale active ownership recovery surface:
+  `decodex recover stale-active diagnose [ISSUE]` and
+  `decodex recover stale-active release <ISSUE>` now own the supported path for
+  `linear_active_label_present` lanes with no run lease, no live process, no tracked
+  or untracked non-runtime worktree changes, no uninspectable worktree, no active
+  app-server thread marker, no protocol/activity-summary evidence, no private
+  progress evidence, and no PR/review lineage or review-policy checkpoint under
+  either issue id key. The release path revalidates before mutation, preflights local
+  cleanup, terminalizes local stale ownership, records `stale_active_release` when a
+  matching stale run exists, repeats the run-lease/shared-claim guard, rechecks
+  tracker labels, and removes only the service active label as the final mutation;
+  stale thread/turn refs alone are recoverable metadata only after all progress
+  checks are clean. Updated the
+  lane-control spec, recovery runbook, and operator control-plane reference to
+  distinguish this from missing-issue ghost-lane recovery and retained review-handoff
+  recovery.
 
 ## 2026-06-27
 
