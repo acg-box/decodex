@@ -2314,21 +2314,6 @@ struct TargetIssueRunContext<'a, T> {
 	preferred_retry_budget_base: Option<i64>,
 }
 
-struct ConcurrencySnapshot {
-	total_leased: usize,
-}
-impl ConcurrencySnapshot {
-	fn new(project_id: &str, state_store: &StateStore) -> crate::prelude::Result<Self> {
-		let leases = state_store.list_active_shared_leases(project_id)?;
-
-		Ok(Self { total_leased: leases.len() })
-	}
-
-	fn has_global_capacity(&self, execution: &WorkflowExecution) -> bool {
-		execution.max_concurrent_agents().has_capacity(self.total_leased)
-	}
-}
-
 #[derive(Deserialize)]
 struct PullRequestReviewStateResponse {
 	data: PullRequestReviewStateData,

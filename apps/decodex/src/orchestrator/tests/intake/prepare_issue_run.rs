@@ -149,7 +149,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 gate_profiles = {}
 canonicalize_commands = []
 verify_commands = []
@@ -391,14 +390,12 @@ fn prepare_issue_run_allows_preacquired_cross_process_slot() {
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("parent dispatch-slot root should configure");
 	child_store
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("child dispatch-slot root should configure");
 
@@ -482,14 +479,12 @@ fn prepare_issue_run_allows_preacquired_recovered_retry_attempt() {
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("parent dispatch-slot root should configure");
 	child_store
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("child dispatch-slot root should configure");
 
@@ -581,14 +576,12 @@ fn prepare_issue_run_allows_preacquired_cross_process_slot_without_github_token_
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("parent dispatch-slot root should configure");
 	child_store
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("child dispatch-slot root should configure");
 
@@ -684,14 +677,12 @@ fn run_target_issue_once_skips_reconciliation_for_preacquired_child_runs() {
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("parent dispatch-slot root should configure");
 	child_store
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("child dispatch-slot root should configure");
 

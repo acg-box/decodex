@@ -161,13 +161,7 @@ where
 		state_store,
 	);
 
-	while context
-		.workflow
-		.frontmatter()
-		.execution()
-		.max_concurrent_agents()
-		.has_capacity(active_children.len())
-	{
+	loop {
 		if !spawn_next_daemon_child(config_path, state_store, active_children, retry_queue, &context)?
 		{
 			break;
@@ -561,7 +555,6 @@ where
 			state_store.configure_dispatch_slot_root(
 				context.project.service_id(),
 				context.project.worktree_root(),
-				context.workflow.frontmatter().execution().max_concurrent_agents(),
 			)?;
 
 			if !state_store.try_acquire_lease(
@@ -1047,9 +1040,7 @@ where
 		return Ok(true);
 	}
 
-	let concurrency = ConcurrencySnapshot::new(project.service_id(), state_store)?;
-
-	Ok(!concurrency.has_global_capacity(workflow.frontmatter().execution()))
+	Ok(false)
 }
 
 fn schedule_retry_after_child_exit<T>(

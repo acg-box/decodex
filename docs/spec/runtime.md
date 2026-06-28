@@ -266,8 +266,7 @@ An issue is eligible only when all of the following are true:
 5. The issue does not have the human-attention label `decodex:needs-attention`.
 6. If the issue state is `Todo`, every blocker is already in a configured terminal state.
 7. The issue does not already have an active `decodex` lease.
-8. The project still has an available dispatch slot.
-9. For generic normal dispatch, the Linear `description` surface still provides a generic issue briefing rather than only a machine-readable fenced block.
+8. For generic normal dispatch, the Linear `description` surface still provides a generic issue briefing rather than only a machine-readable fenced block.
 
 Typical configured `startable_states`:
 
@@ -281,8 +280,8 @@ Optional future expansion:
 
 Current runtime note:
 
-- Project-level concurrency must be explicit; set `[execution] max_concurrent_agents = 0` for no project-level cap, or use a positive integer for a finite cap.
-- Active leases are the service-local claim set for running lanes, and shared dispatch-slot locks coordinate cross-process capacity when a finite cap is configured.
+- Decodex does not enforce a project-level concurrent-agent cap.
+- Active leases are the service-local claim set for running lanes, and shared lock files coordinate cross-process issue ownership and child lease handoff.
 
 ## Lane model
 

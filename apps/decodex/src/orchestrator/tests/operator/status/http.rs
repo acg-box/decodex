@@ -82,7 +82,6 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains("Queued issue -> reviewed change -> landed branch"));
 		assert!(response.contains("Current Lanes"));
 		assert!(response.contains("Intake Queue"));
-		assert!(!response.contains("At capacity"));
 		assert!(response.contains("Review &amp; Landing"));
 		assert!(response.contains("Run History"));
 		assert!(response.contains("historyLedgerOutcome"));

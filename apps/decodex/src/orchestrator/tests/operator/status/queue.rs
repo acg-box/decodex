@@ -1,8 +1,7 @@
 #[test]
 fn live_operator_status_snapshot_includes_queued_candidates_with_dispatch_classification() {
 	let workflow_markdown =
-		sample_workflow_markdown("pubfi", &[], "Follow the repository policy.", 1)
-			.replace("max_concurrent_agents = 1", "max_concurrent_agents = 2");
+		sample_workflow_markdown("pubfi", &[], "Follow the repository policy.", 1);
 	let (_temp_dir, config, workflow) =
 		temp_project_layout_with_workflow_markdown(&workflow_markdown);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -714,7 +713,7 @@ fn live_operator_status_snapshot_surfaces_dirty_active_label_recovery_worktree()
 }
 
 #[test]
-fn live_operator_status_snapshot_reports_capacity_waiting_separately_from_blocked() {
+fn live_operator_status_snapshot_reports_ready_when_another_issue_has_active_lease() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let waiting_issue = sample_issue_with_sort_fields(
@@ -729,7 +728,7 @@ fn live_operator_status_snapshot_reports_capacity_waiting_separately_from_blocke
 
 	state_store
 		.upsert_lease(config.service_id(), "issue-running", "run-active", "In Progress")
-		.expect("run lease should consume the single global slot");
+		.expect("run lease should record");
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
@@ -739,11 +738,11 @@ fn live_operator_status_snapshot_reports_capacity_waiting_separately_from_blocke
 		10,
 	)
 	.expect("snapshot should build");
-	let candidate = snapshot.queued_candidates.first().expect("waiting queued issue should exist");
+	let candidate = snapshot.queued_candidates.first().expect("queued issue should exist");
 
 	assert_eq!(candidate.issue_identifier, "PUB-101");
-	assert_eq!(candidate.classification, "waiting");
-	assert_eq!(candidate.reason, "global_concurrency_exhausted");
+	assert_eq!(candidate.classification, "ready");
+	assert_eq!(candidate.reason, "eligible_for_dispatch");
 	assert_eq!(candidate.attention, None);
 }
 
@@ -1413,8 +1412,7 @@ fn live_operator_status_snapshot_surfaces_git_credential_failures() {
 #[test]
 fn live_operator_status_snapshot_recovers_shared_claims_for_fresh_status_store_instances() {
 	let workflow_markdown =
-		sample_workflow_markdown("pubfi", &[], "Follow the repository policy.", 1)
-			.replace("max_concurrent_agents = 1", "max_concurrent_agents = 2");
+		sample_workflow_markdown("pubfi", &[], "Follow the repository policy.", 1);
 	let (_temp_dir, config, workflow) =
 		temp_project_layout_with_workflow_markdown(&workflow_markdown);
 	let remote_store = StateStore::open_in_memory().expect("remote state store should open");
@@ -1441,7 +1439,6 @@ fn live_operator_status_snapshot_recovers_shared_claims_for_fresh_status_store_i
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("remote store should configure dispatch-slot root");
 
