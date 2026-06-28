@@ -32,6 +32,11 @@
   stopped before removing the tracker active label, diagnose/release may continue
   only when the remaining blockers are the stale protocol/activity summaries from the
   already-terminal run.
+- Added stale-active startable-state restore reentry: if release already removed the
+  active label while preserving the queue label but left the issue in the configured
+  in-progress state, the same recovery command may restore the issue to the first
+  configured startable state only when the same run/attempt release audit and local
+  cleanup evidence are present.
 
 ## 2026-06-27
 
