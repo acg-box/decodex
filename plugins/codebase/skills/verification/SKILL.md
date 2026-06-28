@@ -37,7 +37,7 @@ base, running artifact, and review state. If evidence is missing or stale, downg
 
 Treat evidence as stale after code/docs/config/generated/lock/dependency changes,
 branch/base/head changes, rebases/merges/conflict fixes, uncertain rebuild/restart
-state, CI/PR-head/mergeability changes, review-repair replies, or support-agent
+state, CI/PR-head/mergeability changes, review-repair replies, or subagent
 success that the main thread has not checked.
 
 ## Risk Scaling

@@ -14,10 +14,10 @@ Follow the compact loop: first-principles probe, scout evidence, options, judgme
 skeptic review, decision. Use `$deliberation:grill` for framing when scope or
 constraints are unclear, `$deliberation:scout` for non-obvious evidence, and
 `$deliberation:skeptic` before `decision_ready` or any material recommendation.
-Do not wait for the user to explicitly request support agents: Decodex research that
+Do not wait for the user to explicitly request subagents: Decodex research that
 will produce a material recommendation, option judgment, or `decision_ready` claim
-must use at least one fresh bounded read-only scout or skeptic support-agent pass
-when support-agent tools are allowed. Use `research-promote` only after explicit
+must use at least one fresh bounded read-only scout subagent or skeptic subagent pass
+when subagent tools are allowed. Use `research-promote` only after explicit
 acceptance.
 
 - Before broad evidence gathering, establish the artifact contract: decision owner,
@@ -25,10 +25,10 @@ acceptance.
   change the recommendation.
 - Keep research bounded, not inline by default. Purely local fact checks may stay
   inline only when they end without a material recommendation. Ordinary material
-  research uses at least one read-only support-agent scout or skeptic pass.
+  research uses at least one read-only scout subagent or skeptic subagent pass.
   Architecture, product, cross-boundary, root-cause, or public-contract research uses
-  separate scout and skeptic support agents unless the user explicitly opts out or
-  support-agent tooling is unavailable.
+  separate scout and skeptic subagents unless the user explicitly opts out or
+  subagent tooling is unavailable.
 - For non-trivial repo research, use `$knowledge:docs`, `$knowledge:okf`, or
   `$knowledge:repo-memory` for source-backed context, and `$knowledge:docs-drift`
   when docs, code, config, help, or status claims may diverge.
@@ -59,12 +59,12 @@ acceptance.
   `promote_and_retire`, or `reject_or_deprecate`.
 - Do not queue work, mutate Linear, set Codex goals, implement, or dispatch Program
   nodes from research alone.
-- Scout and skeptic passes are dynamic fresh-context support-agent work, not
+- Scout and skeptic passes are dynamic fresh-context subagent work, not
   configured static roles. Use the `$deliberation:*` inline exception: inline only
   when one local question fits in 1-2 files or one command and cannot affect
   decision readiness, public contracts, docs drift, commit/land, or ready/done
-  claims. Otherwise dispatch a bounded read-only scout or skeptic support agent when
-  support-agent tools are allowed, and keep any fallback visible. Support agents must
+  claims. Otherwise dispatch a bounded read-only scout subagent or skeptic subagent when
+  subagent tools are allowed, and keep any fallback visible. Subagents must
   receive one objective, allowed roots or sources, excluded surfaces, and expected
-  output shape; they must not mutate state or spawn further support agents unless the
+  output shape; they must not mutate state or spawn further subagents unless the
   main thread explicitly delegates that.

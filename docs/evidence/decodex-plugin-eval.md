@@ -7,9 +7,9 @@ authority: evidence
 owner: docs
 tags: [plugin-eval, skills, codebase, docs, research, okf, repo-memory, semantic-drift, debugging, scout, grill, skeptic]
 source_refs: []
-code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/research-lifecycle.md, plugins/decodex/references/research-contract.md, plugins/decodex/references/research-promotion.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/decodex-ops/SKILL.md, plugins/decodex/skills/commit/SKILL.md, plugins/decodex/skills/land/SKILL.md, plugins/decodex/skills/planning/SKILL.md, plugins/decodex/skills/research/SKILL.md, plugins/decodex/skills/research-promote/SKILL.md, plugins/knowledge/.codex-plugin/plugin.json, plugins/knowledge/references/docs-drift.md, plugins/knowledge/references/docs-method.md, plugins/knowledge/references/docs-okf.md, plugins/knowledge/references/docs-wiki.md, plugins/knowledge/references/okf-layer.md, plugins/knowledge/skills/docs/SKILL.md, plugins/knowledge/skills/docs-drift/SKILL.md, plugins/knowledge/skills/okf/SKILL.md, plugins/knowledge/skills/repo-memory/SKILL.md, plugins/knowledge/skills/writeback/SKILL.md, plugins/knowledge/scripts/semantic_drift_audit.py, plugins/codebase/.codex-plugin/plugin.json, plugins/codebase/hooks/hooks.json, plugins/codebase/references/codebase.md, plugins/codebase/references/dependency-policy.md, plugins/codebase/scripts/codex_lifecycle_hook, plugins/codebase/scripts/test_codex_lifecycle_hook.py, plugins/codebase/skills/work/SKILL.md, plugins/codebase/skills/dependency-policy/SKILL.md, plugins/codebase/skills/review-feedback/SKILL.md, plugins/codebase/skills/verification/SKILL.md, plugins/codebase/skills/debugging/SKILL.md, plugins/deliberation/.codex-plugin/plugin.json, plugins/deliberation/references/deliberation-gate.md, plugins/deliberation/skills/scout/SKILL.md, plugins/deliberation/skills/grill/SKILL.md, plugins/deliberation/skills/skeptic/SKILL.md]
+code_refs: [plugins/decodex/.codex-plugin/plugin.json, plugins/decodex/references/routing.md, plugins/decodex/references/research-lifecycle.md, plugins/decodex/references/research-contract.md, plugins/decodex/references/research-promotion.md, plugins/decodex/skills/decodex/SKILL.md, plugins/decodex/skills/decodex-ops/SKILL.md, plugins/decodex/skills/commit/SKILL.md, plugins/decodex/skills/land/SKILL.md, plugins/decodex/skills/planning/SKILL.md, plugins/decodex/skills/research/SKILL.md, plugins/decodex/skills/research-promote/SKILL.md, plugins/knowledge/.codex-plugin/plugin.json, plugins/knowledge/references/docs-drift.md, plugins/knowledge/references/docs-method.md, plugins/knowledge/references/docs-okf.md, plugins/knowledge/references/docs-wiki.md, plugins/knowledge/references/okf-layer.md, plugins/knowledge/skills/docs/SKILL.md, plugins/knowledge/skills/docs-drift/SKILL.md, plugins/knowledge/skills/okf/SKILL.md, plugins/knowledge/skills/repo-memory/SKILL.md, plugins/knowledge/skills/writeback/SKILL.md, scripts/semantic-drift/semantic_drift_audit.py, tests/plugins/knowledge/test_semantic_drift_audit.py, plugins/codebase/.codex-plugin/plugin.json, plugins/codebase/hooks/hooks.json, plugins/codebase/references/codebase.md, plugins/codebase/references/dependency-policy.md, plugins/codebase/scripts/codex_lifecycle_hook, tests/plugins/codebase/test_codex_lifecycle_hook.py, plugins/codebase/skills/work/SKILL.md, plugins/codebase/skills/dependency-policy/SKILL.md, plugins/codebase/skills/review-feedback/SKILL.md, plugins/codebase/skills/verification/SKILL.md, plugins/codebase/skills/debugging/SKILL.md, plugins/deliberation/.codex-plugin/plugin.json, plugins/deliberation/references/deliberation-gate.md, plugins/deliberation/skills/scout/SKILL.md, plugins/deliberation/skills/grill/SKILL.md, plugins/deliberation/skills/skeptic/SKILL.md]
 related: [../policy.md, ./docs-self-iteration.md]
-last_verified: 2026-06-25
+last_verified: 2026-06-29
 ---
 
 # Decodex Plugin Eval
@@ -43,39 +43,33 @@ node ~/.codex/plugins/cache/openai-curated-remote/plugin-eval/0.1.2/scripts/plug
 | Target | Score | Grade | Risk | Checks | Fix First |
 | --- | ---: | --- | --- | --- | --- |
 | `plugins/decodex` | 95 | A | medium | 0 fail, 1 warn, 2 info | Deferred cost is heavy. |
-| `plugins/knowledge` | 81 | C | high | 1 fail, 1 warn, 2 info | Deferred cost is excessive; invoke cost is heavy. |
-| `plugins/codebase` | 72 | C | high | 2 fail, 0 warn, 2 info | Invoke and deferred costs are excessive. |
+| `plugins/knowledge` | 100 | A | low | 0 fail, 0 warn, 2 info | No urgent fixes. |
+| `plugins/codebase` | 95 | A | medium | 0 fail, 1 warn, 2 info | Deferred cost is heavy. |
 | `plugins/deliberation` | 95 | A | medium | 0 fail, 1 warn, 2 info | Invoke cost is heavy. |
 
-Static budget snapshot from the 2026-06-25 source-root run:
+Static budget snapshot from the 2026-06-29 source-root run:
 
 | Target | Active | Trigger | Invoke | Deferred | Explicit-only | Total |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `plugins/decodex` | 889 | 50 | 839 | 2045 | 2836 | 2934 |
-| `plugins/knowledge` | 2108 | 227 | 1881 | 4340 | 0 | 6448 |
-| `plugins/codebase` | 3415 | 234 | 3181 | 4714 | 0 | 8129 |
-| `plugins/deliberation` | 2031 | 195 | 1836 | 337 | 0 | 2368 |
+| `plugins/decodex` | 901 | 50 | 851 | 2178 | 2983 | 3079 |
+| `plugins/knowledge` | 761 | 82 | 679 | 891 | 1210 | 1652 |
+| `plugins/codebase` | 1133 | 101 | 1032 | 2086 | 1899 | 3219 |
+| `plugins/deliberation` | 1687 | 193 | 1494 | 475 | 0 | 2162 |
 
 ## Invocation Policy
 
-Decodex keeps lifecycle specialist skills explicit-only. Knowledge, Codebase, and
-Deliberation skills are intentionally available for implicit routing through concise
-frontmatter descriptions, while host `AGENTS.md` still names the owner skills at
-task start, review, commit, handoff, landing, or ready-claim gates.
+Decodex lifecycle specialist skills, Knowledge narrow skills, and Codebase narrow
+skills are explicit-only. `docs` and `work` remain the lightweight implicit routers,
+while host `AGENTS.md` and hooks name the owner skills at task start, review, commit,
+handoff, landing, docs impact, or ready-claim gates. Deliberation stays implicit so
+grill/scout/skeptic can be used autonomously for design, research, critique, and
+fresh-context subagent review.
 
 Implicit skills:
 
 - `decodex`
 - `$knowledge:docs`
-- `$knowledge:docs-drift`
-- `$knowledge:okf`
-- `$knowledge:repo-memory`
-- `$knowledge:writeback`
 - `$codebase:work`
-- `$codebase:dependency-policy`
-- `$codebase:review-feedback`
-- `$codebase:verification`
-- `$codebase:debugging`
 - `$deliberation:scout`
 - `$deliberation:grill`
 - `$deliberation:skeptic`
@@ -90,6 +84,20 @@ Decodex lifecycle:
 - `planning`
 - `research`
 - `research-promote`
+
+Knowledge:
+
+- `docs-drift`
+- `okf`
+- `repo-memory`
+- `writeback`
+
+Codebase:
+
+- `debugging`
+- `dependency-policy`
+- `review-feedback`
+- `verification`
 
 ## Hook Boundary
 
@@ -110,11 +118,10 @@ executes in a live session.
 ## Limits
 
 The evaluation is static plugin analysis, not a measured real-usage benchmark. The
-2026-06-25 rerun after compacting Decodex research references improved
-`plugins/decodex` from a failing 86/high-risk report to 95/medium-risk, but did not
-prove an all-plugin 100/100 state. `plugins/knowledge` and `plugins/codebase` still
-need budget-focused slimming or measured-usage evidence before any ready claim about
-plugin-eval quality.
+2026-06-29 source-root run reports `plugins/knowledge` at 100/low-risk and
+`plugins/decodex`, `plugins/codebase`, and `plugins/deliberation` at 95/medium-risk.
+The remaining 95-point reports are budget tradeoffs, not structural failures; measure
+real usage before deleting more workflow contract text for score-only gains.
 
 Directly evaluating the installed cache path
 `~/.codex/plugins/cache/hack-ink/decodex/0.2.0` reports an additional

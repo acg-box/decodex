@@ -70,7 +70,7 @@ impl AutonomyProposalRefusalReason {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AutonomyProposalChallengeSource {
-	SupportAgent,
+	Subagent,
 	InlineSkeptic,
 }
 
@@ -1719,7 +1719,7 @@ mod tests {
 			],
 			summary: String::from("Compile a bounded proposal from runtime friction evidence."),
 			challenge_requirements: vec![String::from(
-				"Support-agent or inline skeptic objections are evidence only.",
+				"Subagent or inline skeptic objections are evidence only.",
 			)],
 			rejected_alternatives: vec![String::from("Direct Decision Contract promotion.")],
 			rollback_path: String::from("Discard the dry-run proposal record."),
@@ -1735,7 +1735,7 @@ mod tests {
 			"2026-06-22T00:03:00Z",
 			"conversation",
 			"Operator accepted the proposal for Decision Contract promotion.",
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			None,
 		)
@@ -1764,15 +1764,15 @@ mod tests {
 
 	fn runtime_policy_bridge_authority() -> AutonomyProposalDecisionBridgeAuthority {
 		AutonomyProposalDecisionBridgeAuthority::new(
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			"2026-06-22T00:03:00Z",
 			"runtime-policy",
 			"Accepted project policy allows this agent to accept the proposal.",
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			Some(accepted_project_policy(
-				"support-agent",
+				"subagent",
 				AutonomyProposalAuthorityActorKind::ExternalAgent,
 				"runtime-policy",
 			)),
@@ -1859,6 +1859,21 @@ mod tests {
 	}
 
 	#[test]
+	fn autonomy_proposal_challenge_source_rejects_legacy_support_agent_alias() {
+		let source: AutonomyProposalChallengeSource =
+			serde_json::from_value(serde_json::json!("subagent"))
+				.expect("canonical subagent source should parse");
+
+		assert_eq!(source, AutonomyProposalChallengeSource::Subagent);
+		assert!(
+			serde_json::from_value::<AutonomyProposalChallengeSource>(serde_json::json!(
+				"support_agent"
+			))
+			.is_err()
+		);
+	}
+
+	#[test]
 	fn autonomy_proposal_dry_run_candidate_shows_lineage_signals_gates_and_gaps() {
 		let objective = objective_fixture();
 		let signal = runtime_signal();
@@ -1895,7 +1910,7 @@ mod tests {
 		);
 		assert_eq!(
 			dry_run_json["challenge_requirements"][0],
-			"Support-agent or inline skeptic objections are evidence only."
+			"Subagent or inline skeptic objections are evidence only."
 		);
 		assert_eq!(dry_run_json["rejected_alternatives"][0], "Direct Decision Contract promotion.");
 		assert_eq!(dry_run_json["rollback_path"], "Discard the dry-run proposal record.");
@@ -2124,12 +2139,12 @@ mod tests {
 
 	fn assert_external_agent_policy_authority_validation() {
 		let self_accept_without_policy = AutonomyProposalDecisionBridgeAuthority::new(
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::User,
 			"2026-06-22T00:03:00Z",
 			"agent-output",
 			"Agent accepted its own proposal.",
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			None,
 		);
@@ -2137,12 +2152,12 @@ mod tests {
 		assert!(self_accept_without_policy.is_err());
 
 		let wrong_actor_policy = AutonomyProposalDecisionBridgeAuthority::new(
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			"2026-06-22T00:03:00Z",
 			"runtime-policy",
 			"Agent tried to rely on another actor's policy.",
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			Some(accepted_project_policy(
 				"other-agent",
@@ -2154,15 +2169,15 @@ mod tests {
 		assert!(wrong_actor_policy.is_err());
 
 		let wrong_source_policy = AutonomyProposalDecisionBridgeAuthority::new(
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			"2026-06-22T00:03:00Z",
 			"runtime-policy",
 			"Agent tried to rely on a policy for a different source.",
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			Some(accepted_project_policy(
-				"support-agent",
+				"subagent",
 				AutonomyProposalAuthorityActorKind::ExternalAgent,
 				"manual-only",
 			)),
@@ -2177,7 +2192,7 @@ mod tests {
 			"quality-autonomy-policy",
 			"1",
 			"decodex.runtime_policy:quality-autonomy-policy@1",
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			vec![String::from("runtime-policy")],
 			vec![String::from("other_scope")],
@@ -2194,19 +2209,19 @@ mod tests {
 			"quality-autonomy-policy",
 			"1",
 			"decodex.runtime_policy:quality-autonomy-policy@1",
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			vec![String::from("runtime-policy")],
 			vec![String::from(super::AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE)],
 		)
 		.expect("wrong objective policy shape should still validate");
 		let wrong_objective_authority = AutonomyProposalDecisionBridgeAuthority::new(
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			"2026-06-22T00:03:00Z",
 			"runtime-policy",
 			"Accepted project policy references the wrong objective.",
-			"support-agent",
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			Some(wrong_objective_policy),
 		)
@@ -2446,11 +2461,11 @@ mod tests {
 
 		proposal
 			.record_challenge(AutonomyProposalChallengeInput {
-				source: AutonomyProposalChallengeSource::SupportAgent,
-				actor: String::from("support-agent"),
-				summary: String::from("Support agent challenged the evidence sufficiency."),
+				source: AutonomyProposalChallengeSource::Subagent,
+				actor: String::from("subagent"),
+				summary: String::from("Subagent challenged the evidence sufficiency."),
 				objections: vec![String::from("Needs a fresher operator status readback.")],
-				evidence_refs: vec![String::from("challenge:support-agent")],
+				evidence_refs: vec![String::from("challenge:subagent")],
 				recorded_at: String::from("2026-06-22T00:02:00Z"),
 			})
 			.expect("challenge should record");
@@ -2548,11 +2563,11 @@ mod tests {
 
 			proposal
 				.record_challenge(AutonomyProposalChallengeInput {
-					source: AutonomyProposalChallengeSource::SupportAgent,
-					actor: String::from("support-agent"),
-					summary: String::from("Support agent challenged the evidence sufficiency."),
+					source: AutonomyProposalChallengeSource::Subagent,
+					actor: String::from("subagent"),
+					summary: String::from("Subagent challenged the evidence sufficiency."),
 					objections: vec![String::from("Needs a fresher operator status readback.")],
-					evidence_refs: vec![String::from("challenge:support-agent")],
+					evidence_refs: vec![String::from("challenge:subagent")],
 					recorded_at: String::from("2026-06-22T00:02:00Z"),
 				})
 				.expect("challenge should record");

@@ -17,6 +17,6 @@ Read `../../references/docs-drift.md` before judging docs/code alignment.
   artifact names.
 - Record `pass`, `fail`, or `needs-human`.
 - Treat `fail` as a ready/review handoff blocker.
-- Use `../../scripts/semantic_drift_audit.py` when a git diff packet would speed up
-  changed-claim, removed-term, or stale-phrase discovery. The helper collects
-  candidates only; the agent still owns the verdict.
+- If the repository has `scripts/semantic-drift/semantic_drift_audit.py`, use it
+  when a git diff packet would speed up changed-claim, removed-term, or stale-phrase
+  discovery. The helper collects candidates only; the agent still owns the verdict.
