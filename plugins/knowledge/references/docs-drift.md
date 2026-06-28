@@ -1,33 +1,10 @@
-# Docs Drift Reference
+# Docs Drift
 
-Use this when docs claims may diverge from code, commands, config, runtime state,
-tracker behavior, validation, or evidence. Portable OKF graph and frontmatter quality
-checks use `okf-layer.md`.
+Use for semantic drift between docs/public claims and code, commands, config, runtime
+state, status/help, validation, evidence, artifacts, prompts, or promoted research.
+Portable OKF graph/frontmatter checks use `okf-layer.md`.
 
-## Trigger
-
-Audit claims about commands, flags, schemas, statuses, config keys, tracker labels,
-terminal paths, validation gates, prompts, skills, generated artifacts, runtime
-behavior, or promoted research.
-
-## Audit
-
-1. Scope changed docs and executable surfaces.
-2. Extract material claims.
-3. Map each claim to source evidence: code, tests, config, CLI output, or runtime
-   readback.
-4. Reverse-check deleted or renamed terms.
-5. Record `pass`, `fail`, or `needs-human`.
-6. Update `code_refs`, `drift_watch`, or a linked `docs/evidence/` drift audit.
-
-`fail` blocks ready/review handoff. `needs-human` blocks unless the lane records a
-public-safe manual-attention path.
-
-## Helper
-
-Use `plugins/knowledge/scripts/semantic_drift_audit.py` from the repository root when a
-git diff packet can reduce manual scanning. It reports changed docs, changed
-executable surfaces, added claim-like lines, removed executable terms, stale phrase
-hits, and whether agent review is required. The helper is not a verdict; compare the
-candidate packet against direct evidence before reporting `pass`, `fail`, or
-`needs-human`.
+Audit: scope docs plus executable surfaces; map claims to evidence; reverse-check
+renamed commands, flags, schemas, statuses, labels, config keys, and artifact names;
+record `pass`, `fail`, or `needs-human`; update `code_refs`, `drift_watch`, or
+`docs/evidence` proof. `fail` blocks ready/review handoff.

@@ -3,7 +3,7 @@
 ## 2026-06-28
 
 - Renamed the Deliberation adversarial-review role from `challenge` to `skeptic` so
-  `scout` and `skeptic` are peer role/method names while support agents remain only
+  `scout` and `skeptic` are peer role/method names while subagents remain only
   the bounded read-only execution mechanism. Updated plugin skills, routing, tests,
   hooks, and current docs to use `$deliberation:skeptic` and
   `plugins/deliberation/skills/skeptic/`.
@@ -137,7 +137,7 @@
   lifecycle and runtime authority, `knowledge` owns docs/OKF/LLM Wiki/semantic
   drift/repo-memory/writeback, `codebase` owns repository engineering contracts and
   verification/debugging/dependency policy, and `deliberation` owns portable
-  scout/grill/challenge fresh-context support-agent methods.
+  scout/grill/challenge fresh-context subagent methods.
 - Narrowed repo-gate tracked-rewrite handling so validation-satisfied phase goals can
   continue to a commit-capable handoff when canonicalize rewrites only pre-gate
   implementation paths, while unsafe or strict-boundary rewrites still preserve
@@ -177,7 +177,7 @@
 ## 2026-06-21
 
 - Required non-trivial scout/search and skeptic/challenge work to use fresh dynamic
-  read-only support-agent context when tool support exists, while keeping static
+  read-only subagent context when tool support exists, while keeping static
   `scout.toml`/`skeptic.toml` role config out of the plugin contract.
 
 ## 2026-06-20
@@ -201,7 +201,7 @@
   and the direct `dependency-policy` skill for dependency roll/style contracts.
 - Consolidated Decodex research phase skills into the `research` compact loop and
   promoted the research-specific challenge entry into a generic `challenge` skeptic
-  skill; scout-style evidence gathering remains dynamic read-only support-agent work
+  skill; scout-style evidence gathering remains dynamic read-only subagent work
   rather than a configured static role.
 - Documented idempotent `ghost_lane_cleanup` audit readback for missing-issue ghost
   lanes so stale PubFi fixture cleanup evidence no longer projects as current or

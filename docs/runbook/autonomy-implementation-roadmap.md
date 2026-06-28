@@ -211,7 +211,7 @@ Deliverables:
   family, and intended surface.
 - Refusal rules for missing objective, disallowed signal kind, disallowed surface,
   stale evidence, unresolved contradiction, and weakened validation or review.
-- Challenge hook that records support-agent or inline skeptic objections as evidence
+- Challenge hook that records subagent or inline skeptic objections as evidence
   and promotion constraints, not automatic blockers.
 
 Required tests:
