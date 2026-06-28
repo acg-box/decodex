@@ -2122,8 +2122,6 @@ where
 	} else {
 		evidence.push(String::from("run_lease_missing"));
 	}
-	inspect_stale_active_run_evidence(&runs, &mut evidence, &mut blockers);
-
 	let mapping = match stale_active_worktree_mapping_for_keys(state_store, &issue_keys) {
 		Ok(mapping) => mapping,
 		Err(error) => {
@@ -2146,15 +2144,23 @@ where
 			None
 		},
 	};
+	let marker_liveness = stale_active_optional_marker_process_liveness(marker.as_ref());
+	inspect_stale_active_run_evidence(&runs, marker_liveness, &mut evidence, &mut blockers);
 	let worktree_state = inspect_stale_active_worktree(
 		&worktree_path,
 		mapping.as_ref(),
 		marker.as_ref(),
+		marker_liveness,
 		&mut evidence,
 		&mut blockers,
 	);
-	let control_channel =
-		inspect_stale_active_control_channel(latest_run, &runs, &mut evidence, &mut blockers);
+	let control_channel = inspect_stale_active_control_channel(
+		latest_run,
+		&runs,
+		marker_liveness,
+		&mut evidence,
+		&mut blockers,
+	);
 
 	inspect_stale_active_private_evidence(
 		project_id,
@@ -2310,6 +2316,7 @@ fn latest_stale_active_run(runs: &[ProjectRunStatus]) -> Option<&ProjectRunStatu
 
 fn inspect_stale_active_run_evidence(
 	runs: &[ProjectRunStatus],
+	marker_liveness: StaleActiveProcessLiveness,
 	evidence: &mut Vec<String>,
 	blockers: &mut Vec<String>,
 ) {
@@ -2327,17 +2334,29 @@ fn inspect_stale_active_run_evidence(
 	if runs.iter().any(|run| {
 		run.event_count() > 0 || run.last_event_type().is_some() || run.last_event_at().is_some()
 	}) {
-		blockers.push(String::from("protocol_event_evidence_present"));
+		if marker_liveness == StaleActiveProcessLiveness::NotAlive {
+			evidence.push(String::from("stale_protocol_event_evidence_present"));
+		} else {
+			blockers.push(String::from("protocol_event_evidence_present"));
+		}
 	} else {
 		evidence.push(String::from("protocol_event_evidence_missing"));
 	}
 	if runs.iter().any(|run| run.child_agent_activity().is_some()) {
-		blockers.push(String::from("child_agent_activity_present"));
+		if marker_liveness == StaleActiveProcessLiveness::NotAlive {
+			evidence.push(String::from("stale_child_agent_activity_present"));
+		} else {
+			blockers.push(String::from("child_agent_activity_present"));
+		}
 	} else {
 		evidence.push(String::from("child_agent_activity_missing"));
 	}
 	if runs.iter().any(|run| run.protocol_activity().is_some()) {
-		blockers.push(String::from("protocol_activity_present"));
+		if marker_liveness == StaleActiveProcessLiveness::NotAlive {
+			evidence.push(String::from("stale_protocol_activity_present"));
+		} else {
+			blockers.push(String::from("protocol_activity_present"));
+		}
 	} else {
 		evidence.push(String::from("protocol_activity_missing"));
 	}
@@ -2352,6 +2371,7 @@ fn inspect_stale_active_worktree(
 	worktree_path: &Path,
 	mapping: Option<&WorktreeMapping>,
 	marker: Option<&state::RunActivityMarker>,
+	marker_liveness: StaleActiveProcessLiveness,
 	evidence: &mut Vec<String>,
 	blockers: &mut Vec<String>,
 ) -> String {
@@ -2372,7 +2392,7 @@ fn inspect_stale_active_worktree(
 			return String::from("tracked_changes_unknown");
 		},
 	}
-	inspect_stale_active_activity_marker(marker, evidence, blockers);
+	inspect_stale_active_activity_marker(marker, marker_liveness, evidence, blockers);
 	match worktree_path.join(".git").try_exists() {
 		Ok(false) => {
 			match state::retained_path_contains_only_decodex_runtime_artifacts(worktree_path) {
@@ -2417,48 +2437,100 @@ fn inspect_stale_active_worktree(
 		},
 	}
 	evidence.push(String::from("worktree_clean"));
+	match worktree_head_has_unmerged_commits_against_remote_default(worktree_path) {
+		Ok(Some(true)) => {
+			blockers.push(String::from("worktree_unmerged_commits_present"));
+
+			return String::from("unmerged_commits_present");
+		},
+		Ok(Some(false)) => {
+			evidence.push(String::from("worktree_head_reachable_from_default_branch"));
+		},
+		Ok(None) => {
+			blockers.push(String::from("worktree_default_branch_unavailable"));
+			evidence.push(String::from("worktree_default_branch_unavailable"));
+
+			return String::from("default_branch_unavailable");
+		},
+		Err(error) => {
+			blockers.push(String::from("worktree_tracked_changes_unknown"));
+			evidence.push(format!("worktree_head_status_error:{}", error));
+
+			return String::from("tracked_changes_unknown");
+		},
+	}
 
 	String::from("clean")
 }
 
 fn inspect_stale_active_activity_marker(
 	marker: Option<&state::RunActivityMarker>,
+	marker_liveness: StaleActiveProcessLiveness,
 	evidence: &mut Vec<String>,
 	blockers: &mut Vec<String>,
 ) {
 	if let Some(marker) = marker {
-		if stale_active_marker_process_alive(marker) {
-			blockers.push(String::from("process_alive"));
-		} else {
-			evidence.push(String::from("process_not_alive"));
+		match marker_liveness {
+			StaleActiveProcessLiveness::Alive => blockers.push(String::from("process_alive")),
+			StaleActiveProcessLiveness::NotAlive => {
+				evidence.push(String::from("process_not_alive"))
+			},
+			StaleActiveProcessLiveness::Unknown => {
+				blockers.push(String::from("process_liveness_unknown"))
+			},
 		}
 		if marker.last_progress_unix_epoch().is_some() {
-			blockers.push(String::from("activity_marker_progress_present"));
+			if marker_liveness == StaleActiveProcessLiveness::NotAlive {
+				evidence.push(String::from("stale_activity_marker_progress_present"));
+			} else {
+				blockers.push(String::from("activity_marker_progress_present"));
+			}
 		} else {
 			evidence.push(String::from("activity_marker_progress_missing"));
 		}
 		if marker.event_count() > 0 || marker.last_event_type().is_some() {
-			blockers.push(String::from("protocol_event_marker_present"));
+			if marker_liveness == StaleActiveProcessLiveness::NotAlive {
+				evidence.push(String::from("stale_protocol_event_marker_present"));
+			} else {
+				blockers.push(String::from("protocol_event_marker_present"));
+			}
 		} else {
 			evidence.push(String::from("protocol_event_marker_missing"));
 		}
 		if marker.last_protocol_activity_unix_epoch().is_some() {
-			blockers.push(String::from("activity_marker_protocol_activity_present"));
+			if marker_liveness == StaleActiveProcessLiveness::NotAlive {
+				evidence.push(String::from("stale_activity_marker_protocol_activity_present"));
+			} else {
+				blockers.push(String::from("activity_marker_protocol_activity_present"));
+			}
 		} else {
 			evidence.push(String::from("activity_marker_protocol_activity_missing"));
 		}
 		if marker.child_agent_activity().is_some() {
-			blockers.push(String::from("activity_marker_child_agent_activity_present"));
+			if marker_liveness == StaleActiveProcessLiveness::NotAlive {
+				evidence.push(String::from("stale_activity_marker_child_agent_activity_present"));
+			} else {
+				blockers.push(String::from("activity_marker_child_agent_activity_present"));
+			}
 		} else {
 			evidence.push(String::from("activity_marker_child_agent_activity_missing"));
 		}
 		if marker.protocol_activity().is_some() {
-			blockers.push(String::from("activity_marker_protocol_activity_summary_present"));
+			if marker_liveness == StaleActiveProcessLiveness::NotAlive {
+				evidence
+					.push(String::from("stale_activity_marker_protocol_activity_summary_present"));
+			} else {
+				blockers.push(String::from("activity_marker_protocol_activity_summary_present"));
+			}
 		} else {
 			evidence.push(String::from("activity_marker_protocol_activity_summary_missing"));
 		}
 		if stale_active_marker_thread_active(marker) {
-			blockers.push(String::from("activity_marker_thread_active"));
+			if marker_liveness == StaleActiveProcessLiveness::NotAlive {
+				evidence.push(String::from("stale_activity_marker_thread_active"));
+			} else {
+				blockers.push(String::from("activity_marker_thread_active"));
+			}
 		} else {
 			evidence.push(String::from("activity_marker_thread_inactive"));
 		}
@@ -2470,6 +2542,7 @@ fn inspect_stale_active_activity_marker(
 fn inspect_stale_active_control_channel(
 	run: Option<&ProjectRunStatus>,
 	runs: &[ProjectRunStatus],
+	marker_liveness: StaleActiveProcessLiveness,
 	evidence: &mut Vec<String>,
 	blockers: &mut Vec<String>,
 ) -> String {
@@ -2493,7 +2566,11 @@ fn inspect_stale_active_control_channel(
 	}
 
 	if active_channel_present {
-		blockers.push(String::from("active_control_channel_present"));
+		if marker_liveness == StaleActiveProcessLiveness::NotAlive {
+			evidence.push(String::from("stale_active_control_channel_present"));
+		} else {
+			blockers.push(String::from("active_control_channel_present"));
+		}
 	}
 
 	let Some(channel) = run.and_then(ProjectRunStatus::control_channel) else {
@@ -2538,6 +2615,8 @@ fn inspect_stale_active_private_evidence(
 fn stale_active_private_event_allows_release(event: &PrivateExecutionEvent) -> bool {
 	stale_active_private_event_is_release_audit(event)
 		|| stale_active_private_event_is_failed_control_attempt(event)
+		|| stale_active_private_event_is_stale_runtime_marker(event)
+		|| stale_active_private_event_is_probing_checkpoint(event)
 }
 
 fn stale_active_private_event_is_release_audit(event: &PrivateExecutionEvent) -> bool {
@@ -2549,14 +2628,48 @@ fn stale_active_private_event_is_release_audit(event: &PrivateExecutionEvent) ->
 }
 
 fn stale_active_private_event_is_failed_control_attempt(event: &PrivateExecutionEvent) -> bool {
+	if event.event_type() == "lane_control/interrupt" {
+		return event.payload().get("processAliveAfter").and_then(serde_json::Value::as_bool)
+			== Some(false)
+			&& event.payload().get("status").and_then(serde_json::Value::as_str) == Some("sent");
+	}
+
 	event.event_type() == "control_action"
 		&& matches!(
 			event.payload().get("action").and_then(serde_json::Value::as_str),
 			Some("interrupt" | "steer")
 		) && matches!(
 		event.payload().get("reason").and_then(serde_json::Value::as_str),
-		Some("run_lease_missing" | "hard_fallback_unavailable" | "process_not_signalable")
+		Some(
+			"run_lease_missing"
+				| "hard_fallback_unavailable"
+				| "hard_interrupt_fallback"
+				| "process_not_signalable"
+		)
 	)
+}
+
+fn stale_active_private_event_is_stale_runtime_marker(event: &PrivateExecutionEvent) -> bool {
+	matches!(event.event_type(), "control_channel_published" | "phase_goal_set")
+}
+
+fn stale_active_private_event_is_probing_checkpoint(event: &PrivateExecutionEvent) -> bool {
+	if event.event_type() != "progress_checkpoint" {
+		return false;
+	}
+	let payload = event.payload();
+
+	payload.get("phase").and_then(serde_json::Value::as_str) == Some("probing")
+		&& json_string_is_missing_or_empty(payload.get("pr_url"))
+		&& json_array_is_missing_or_empty(payload.get("verification"))
+}
+
+fn json_string_is_missing_or_empty(value: Option<&serde_json::Value>) -> bool {
+	value.is_none_or(|value| value.as_str().is_none_or(|value| value.is_empty()) || value.is_null())
+}
+
+fn json_array_is_missing_or_empty(value: Option<&serde_json::Value>) -> bool {
+	value.is_none_or(|value| value.as_array().is_none_or(Vec::is_empty))
 }
 
 fn inspect_stale_active_review_lineage<T>(
@@ -6002,33 +6115,109 @@ fn worktree_has_tracked_changes_for_recovery(worktree_path: &Path) -> Result<boo
 	Ok(!worktree_blocking_status_lines(worktree_path)?.is_empty())
 }
 
-fn stale_active_marker_process_alive(marker: &state::RunActivityMarker) -> bool {
+fn worktree_head_has_unmerged_commits_against_remote_default(
+	worktree_path: &Path,
+) -> Result<Option<bool>> {
+	let Some(default_ref) = worktree_remote_default_ref(worktree_path)? else {
+		return Ok(None);
+	};
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(worktree_path)
+		.args(["merge-base", "--is-ancestor", "HEAD", default_ref.as_str()])
+		.output()?;
+
+	match output.status.code() {
+		Some(0) => Ok(Some(false)),
+		Some(1) => Ok(Some(true)),
+		status => {
+			let stderr = String::from_utf8_lossy(&output.stderr);
+
+			eyre::bail!(
+				"Failed to compare retained worktree HEAD in `{}` against `{default_ref}`: status={:?} {}",
+				worktree_path.display(),
+				status,
+				stderr.trim()
+			)
+		},
+	}
+}
+
+fn worktree_remote_default_ref(worktree_path: &Path) -> Result<Option<String>> {
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(worktree_path)
+		.args(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+		.output()?;
+	if output.status.success() {
+		let value = trimmed_stdout(&output.stdout)?;
+
+		if !value.is_empty() {
+			return Ok(Some(value));
+		}
+	}
+
+	for candidate in ["origin/main", "main"] {
+		let revision = format!("{candidate}^{{commit}}");
+		let output = Command::new("git")
+			.arg("-C")
+			.arg(worktree_path)
+			.args(["rev-parse", "--verify", "--quiet", revision.as_str()])
+			.output()?;
+		if output.status.success() {
+			return Ok(Some(candidate.to_owned()));
+		}
+	}
+
+	Ok(None)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StaleActiveProcessLiveness {
+	Alive,
+	NotAlive,
+	Unknown,
+}
+
+fn stale_active_optional_marker_process_liveness(
+	marker: Option<&state::RunActivityMarker>,
+) -> StaleActiveProcessLiveness {
+	marker.map(stale_active_marker_process_liveness).unwrap_or(StaleActiveProcessLiveness::Unknown)
+}
+
+fn stale_active_marker_process_liveness(
+	marker: &state::RunActivityMarker,
+) -> StaleActiveProcessLiveness {
 	let Some(process_id) = marker.process_id() else {
-		return false;
+		return StaleActiveProcessLiveness::Unknown;
 	};
 
 	if !stale_active_process_is_alive(process_id) {
-		return false;
+		return StaleActiveProcessLiveness::NotAlive;
 	}
 	let Some(marker_host_boot_id) = marker.host_boot_id() else {
-		return false;
+		return StaleActiveProcessLiveness::Unknown;
 	};
 	let Some(current_host_boot_id) = state::current_host_boot_id() else {
-		return false;
+		return StaleActiveProcessLiveness::Unknown;
 	};
 
 	if marker_host_boot_id != current_host_boot_id.as_str() {
-		return false;
+		return StaleActiveProcessLiveness::NotAlive;
 	}
 
 	let Some(marker_process_start_identity) = marker.process_start_identity() else {
-		return false;
+		return StaleActiveProcessLiveness::Unknown;
 	};
 	let Some(current_process_start_identity) = state::process_start_identity(process_id) else {
-		return false;
+		return StaleActiveProcessLiveness::Unknown;
 	};
 
-	marker_process_start_identity == current_process_start_identity.as_str()
+	if marker_process_start_identity == current_process_start_identity.as_str() {
+		StaleActiveProcessLiveness::Alive
+	} else {
+		StaleActiveProcessLiveness::NotAlive
+	}
 }
 
 fn stale_active_marker_thread_active(marker: &state::RunActivityMarker) -> bool {
@@ -6671,6 +6860,32 @@ token_env_var = "HOME"
 		assert!(status.success(), "git init should succeed");
 	}
 
+	fn commit_test_file(path: &Path, file_name: &str, body: &str, message: &str) {
+		fs::write(path.join(file_name), body).expect("test file should write");
+		run_git(path, &["add", file_name]);
+		run_git(
+			path,
+			&[
+				"-c",
+				"user.name=Decodex Test",
+				"-c",
+				"user.email=decodex-test@example.invalid",
+				"commit",
+				"-m",
+				message,
+			],
+		);
+	}
+
+	fn init_clean_git_repo_with_remote_default(path: &Path, branch_name: &str) {
+		init_git_repo(path);
+		run_git(path, &["checkout", "-B", "main"]);
+		commit_test_file(path, "README.md", "base\n", "base");
+		run_git(path, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+		run_git(path, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
+		run_git(path, &["checkout", "-B", branch_name]);
+	}
+
 	#[test]
 	fn stale_active_diagnose_classifies_tracker_present_active_without_lease() {
 		let temp_dir = TempDir::new().expect("tempdir should create");
@@ -6963,6 +7178,277 @@ token_env_var = "HOME"
 
 		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
 		assert!(diagnostic.blockers.contains(&String::from("activity_marker_thread_active")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	fn dead_orphan_activity_summaries() -> (ChildAgentActivitySummary, ProtocolActivitySummary) {
+		(
+			ChildAgentActivitySummary {
+				event_count: 531,
+				current_bucket: Some(String::from("Model")),
+				..ChildAgentActivitySummary::default()
+			},
+			ProtocolActivitySummary {
+				turn_status: Some(String::from("running")),
+				waiting_reason: Some(String::from("model_execution")),
+				..ProtocolActivitySummary::default()
+			},
+		)
+	}
+
+	fn seed_dead_orphan_runtime_telemetry(
+		store: &StateStore,
+		issue: &TrackerIssue,
+		worktree_path: &Path,
+	) {
+		let control_channel_path = worktree_path.join(".decodex-run-control/run-1626-1.channel");
+		let (child_activity, protocol_activity) = dead_orphan_activity_summaries();
+
+		init_clean_git_repo_with_remote_default(worktree_path, "x/pubfi-pub-1626");
+		state::write_run_activity_marker_for_process(worktree_path, "run-1626", 1, u32::MAX)
+			.expect("stale process marker should write");
+		state::write_run_protocol_activity_marker(
+			worktree_path,
+			&ProtocolActivityMarker {
+				run_id: "run-1626",
+				attempt_number: 1,
+				thread_id: Some("thread-stale"),
+				turn_id: Some("turn-stale"),
+				event_count: 531,
+				last_event_type: "item/started",
+				child_agent_activity: Some(&child_activity),
+				protocol_activity: Some(&protocol_activity),
+			},
+		)
+		.expect("stale protocol marker should write");
+		state::write_run_thread_status_marker(
+			worktree_path,
+			"run-1626",
+			1,
+			Some("thread-stale"),
+			Some("turn-stale"),
+			"active",
+			&[],
+		)
+		.expect("stale thread marker should write");
+		fs::create_dir_all(control_channel_path.parent().expect("channel parent"))
+			.expect("control directory should create");
+		fs::write(
+			&control_channel_path,
+			"schema=decodex.run_control_channel/v1\nrun_id=run-1626\nattempt_number=1\n",
+		)
+		.expect("control channel file should write");
+		store.record_run_attempt("run-1626", &issue.id, 1, "running").expect("run attempt");
+		store
+			.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress")
+			.expect("temporary lease should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		store
+			.publish_run_control_channel_for_active_attempt(
+				"run-1626",
+				1,
+				&control_channel_path,
+				"local_file",
+			)
+			.expect("control channel should publish");
+		store.clear_lease(&issue.id).expect("stale lane lease should clear");
+		store
+			.append_event("run-1626", 1, "item/started", r#"{"kind":"model"}"#)
+			.expect("protocol event should record");
+		store
+			.record_run_activity_summary(
+				"run-1626",
+				1,
+				Some(&child_activity),
+				Some(&protocol_activity),
+			)
+			.expect("activity summary should record");
+		append_dead_orphan_private_telemetry(store, &issue.id);
+	}
+
+	fn append_dead_orphan_private_telemetry(store: &StateStore, issue_id: &str) {
+		for (event_type, payload) in [
+			(
+				"control_channel_published",
+				serde_json::json!({
+					"schema": "decodex.run_control_channel/v1",
+					"status": "active",
+				}),
+			),
+			(
+				"phase_goal_set",
+				serde_json::json!({
+					"schema": "decodex.phase_goal_signal/1",
+					"phase": "implement_to_validation_ready",
+				}),
+			),
+			(
+				"progress_checkpoint",
+				serde_json::json!({
+					"phase": "probing",
+					"pr_url": null,
+					"verification": [],
+					"head_sha": "1111111111111111111111111111111111111111",
+				}),
+			),
+			(
+				"control_action",
+				serde_json::json!({
+					"action": "interrupt",
+					"reason": "run_lease_missing",
+				}),
+			),
+			(
+				"lane_control/interrupt",
+				serde_json::json!({
+					"classification": "hard_interrupt_fallback",
+					"processAliveAfter": false,
+					"signals": [],
+					"status": "sent",
+				}),
+			),
+		] {
+			store
+				.append_private_execution_event(
+					"pubfi", issue_id, "run-1626", 1, event_type, payload,
+				)
+				.expect("private stale telemetry should record");
+		}
+	}
+
+	#[test]
+	fn stale_active_diagnose_allows_dead_orphan_thread_runtime_telemetry() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let queue_label = tracker::automation_queue_label("pubfi");
+		let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, STALE_ACTIVE_CLASSIFICATION);
+		assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
+		assert!(diagnostic.evidence.contains(&String::from("process_not_alive")));
+		assert!(
+			diagnostic.evidence.contains(&String::from("stale_active_control_channel_present"))
+		);
+		assert!(
+			diagnostic
+				.evidence
+				.contains(&String::from("only_stale_active_or_failed_control_evidence_present"))
+		);
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_clean_worktree_with_unmerged_commits() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		init_git_repo(&worktree_path);
+		run_git(&worktree_path, &["checkout", "-B", "main"]);
+		commit_test_file(&worktree_path, "README.md", "base\n", "base");
+		run_git(&worktree_path, &["checkout", "-b", "x/pubfi-pub-1626"]);
+		commit_test_file(&worktree_path, "source.rs", "fn retained_progress() {}\n", "progress");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.worktree_state, "unmerged_commits_present");
+		assert!(diagnostic.blockers.contains(&String::from("worktree_unmerged_commits_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_clean_git_worktree_without_default_branch() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		init_git_repo(&worktree_path);
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.worktree_state, "default_branch_unavailable");
+		assert!(
+			diagnostic
+				.blockers
+				.contains(&String::from("worktree_default_branch_unavailable"))
+		);
 		assert!(!diagnostic.recoverable());
 	}
 
@@ -7949,7 +8435,7 @@ token_env_var = "HOME"
 		let worktree_path = context.config.worktree_root().join("PUB-1626");
 
 		issue.identifier = String::from("PUB-1626");
-		init_git_repo(&worktree_path);
+		init_clean_git_repo_with_remote_default(&worktree_path, "x/pubfi-pub-1626");
 		context
 			.state_store
 			.record_run_attempt("run-1626", &issue.id, 1, "running")
