@@ -175,7 +175,7 @@ fn candidate_selection_skips_todo_issue_with_nonterminal_blockers() {
 }
 
 #[test]
-fn candidate_selection_respects_single_dispatch_slot() {
+fn candidate_selection_allows_dispatch_when_another_issue_has_active_lease() {
 	let (_temp_dir, _config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
@@ -194,7 +194,10 @@ fn candidate_selection_respects_single_dispatch_slot() {
 	)
 	.expect("candidate selection should succeed");
 
-	assert!(selected.is_none(), "project-level dispatch slot should block new selection");
+	assert!(
+		selected.is_some(),
+		"another active lease must not impose a project-level dispatch cap"
+	);
 }
 
 #[test]
@@ -517,44 +520,6 @@ fn targeted_retry_blocks_retained_review_handoff_marker_in_state_transition_wind
 		summary.is_none(),
 		"retry dispatch must not mint a duplicate attempt for a retained review handoff lane"
 	);
-}
-
-#[test]
-fn candidate_selection_allows_multi_slot_dispatch_when_configured() {
-	let workflow_source =
-		sample_workflow_markdown("pubfi", &[], "Multi-slot workflow policy.\n", 1);
-
-	assert!(workflow_source.contains("max_concurrent_agents = 1"));
-
-	let workflow = WorkflowDocument::parse_markdown(
-		&workflow_source.replace("max_concurrent_agents = 1", "max_concurrent_agents = 2"),
-	)
-	.expect("workflow should parse");
-
-	assert_eq!(
-		workflow.frontmatter().execution().max_concurrent_agents().dispatch_slot_limit(),
-		Some(2)
-	);
-
-	let state_store = StateStore::open_in_memory().expect("state store should open");
-
-	state_store
-		.upsert_lease("pubfi", "issue-active", "run-1", "In Progress")
-		.expect("existing lease should record");
-
-	let issue = sample_issue("Todo", &[]);
-	let tracker = FakeTracker::new(vec![issue.clone()]);
-	let selected = orchestrator::select_issue_candidate(
-		&tracker,
-		vec![issue],
-		&workflow,
-		&state_store,
-		"pubfi",
-	)
-	.expect("candidate selection should succeed")
-	.expect("one issue should be selected");
-
-	assert_eq!(selected.identifier, "PUB-101");
 }
 
 #[test]
@@ -1521,8 +1486,7 @@ fn non_dry_run_closeout_dispatch_errors_when_pr_state_read_fails() {
 #[test]
 fn candidate_selection_skips_issue_claimed_by_another_process() {
 	let workflow = WorkflowDocument::parse_markdown(
-		&sample_workflow_markdown("pubfi", &[], "Claim-aware workflow policy.\n", 1)
-			.replace("max_concurrent_agents = 1", "max_concurrent_agents = 2"),
+		&sample_workflow_markdown("pubfi", &[], "Claim-aware workflow policy.\n", 1),
 	)
 	.expect("workflow should parse");
 	let (_temp_dir, config, _default_workflow) = temp_project_layout();
@@ -1549,14 +1513,12 @@ fn candidate_selection_skips_issue_claimed_by_another_process() {
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("remote dispatch-slot root should configure");
 	local_store
 		.configure_dispatch_slot_root(
 			config.service_id(),
 			config.worktree_root(),
-			workflow.frontmatter().execution().max_concurrent_agents(),
 		)
 		.expect("local dispatch-slot root should configure");
 

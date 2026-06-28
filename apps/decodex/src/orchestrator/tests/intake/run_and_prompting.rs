@@ -1060,7 +1060,7 @@ fn no_eligible_issue_message_includes_operator_hint() {
 	assert!(message.contains("`decodex:manual-only`/`decodex:needs-attention`"));
 	assert!(message.contains("non-terminal state"));
 	assert!(message.contains("dependency blockers"));
-	assert!(message.contains("available capacity"));
+	assert!(message.contains("no active issue claim"));
 }
 
 #[test]
@@ -1717,7 +1717,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 4
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 gate_profiles = {}
 canonicalize_commands = []
 verify_commands = []

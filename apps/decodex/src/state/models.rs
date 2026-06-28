@@ -558,7 +558,7 @@ impl ConnectorBackoff {
 pub struct PreacquiredLeaseGuards {
 	/// The inherited issue-claim lock fd that keeps one issue single-owned across processes.
 	pub issue_claim_fd: i32,
-	/// The inherited dispatch-slot lock fd that keeps one shared capacity slot occupied.
+	/// The inherited dispatch-slot lock fd used for shared handoff bookkeeping.
 	pub dispatch_slot_fd: i32,
 	/// The inherited shared dispatch-slot index used for local guard bookkeeping.
 	pub dispatch_slot_index: usize,
