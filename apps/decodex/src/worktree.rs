@@ -14,7 +14,7 @@ use libc::{ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, SIGKILL};
 
 use crate::{
 	prelude::{Result, eyre},
-	state::{self, RUN_ACTIVITY_MARKER_FILE},
+	state,
 	workflow::WorkflowWorkspaceHooks,
 };
 
@@ -144,7 +144,9 @@ impl WorktreeManager {
 		path: &Path,
 		hooks: Option<(&str, &str, &WorkflowWorkspaceHooks)>,
 	) -> Result<bool> {
-		if !path.exists() {
+		if !path.try_exists().map_err(|error| {
+			eyre::eyre!("Failed to inspect worktree path `{}`: {error}", path.display())
+		})? {
 			return Ok(false);
 		}
 
@@ -787,27 +789,17 @@ fn remove_orphan_marker_directory_if_safe(path: &Path) -> Result<bool> {
 		return Ok(false);
 	}
 
-	let mut has_marker = false;
-
 	for entry in fs::read_dir(path)? {
 		let entry = entry?;
-		let file_type = entry.file_type()?;
-		let file_name = entry.file_name();
-		let Some(file_name) = file_name.to_str() else {
-			return Ok(false);
-		};
+		let entry_path = entry.path();
+		let relative = entry_path.strip_prefix(path).unwrap_or(entry_path.as_path());
 
-		if !file_type.is_file() {
-			return Ok(false);
+		if relative == Path::new(AFTER_CREATE_PENDING_MARKER)
+			|| state::is_decodex_runtime_artifact_relative_path(relative)
+		{
+			continue;
 		}
 
-		match file_name {
-			RUN_ACTIVITY_MARKER_FILE | AFTER_CREATE_PENDING_MARKER => has_marker = true,
-			_ => return Ok(false),
-		}
-	}
-
-	if !has_marker {
 		return Ok(false);
 	}
 
@@ -2223,6 +2215,26 @@ timeout_seconds = 60
 			!hook_log.exists(),
 			"before_remove hook should not run for a non-worktree marker directory"
 		);
+	}
+
+	#[test]
+	fn removes_orphaned_run_control_marker_directory_without_linked_git_metadata() {
+		let (_temp_dir, repo_root) = init_repo();
+		let worktree_root = repo_root.join(".worktrees");
+		let orphan_path = worktree_root.join("PUB-102");
+		let control_dir = orphan_path.join(crate::state::RUN_CONTROL_CHANNEL_DIR);
+		let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
+
+		fs::create_dir_all(&control_dir).expect("run-control marker directory should exist");
+		fs::write(control_dir.join("run-102-1.channel"), "channel\n")
+			.expect("run-control marker file should write");
+
+		assert!(
+			manager
+				.remove_worktree_path(&orphan_path)
+				.expect("run-control marker directory should remove")
+		);
+		assert!(!orphan_path.exists(), "run-control marker directory should be deleted");
 	}
 
 	#[test]

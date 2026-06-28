@@ -20,8 +20,8 @@ use crate::{
 	runtime,
 	state::{
 		self, ConnectorBackoffInput, PrivateExecutionEvent, ProjectRunStatus,
-		RUN_CONTROL_CHANNEL_STATUS_FAILED, ReviewHandoffMarker, ReviewOrchestrationMarker,
-		StateStore, WorktreeMapping,
+		RUN_CONTROL_CHANNEL_STATUS_ACTIVE, RUN_CONTROL_CHANNEL_STATUS_FAILED, ReviewHandoffMarker,
+		ReviewOrchestrationMarker, StateStore, WorktreeMapping,
 	},
 	tracker::{
 		self, IssueTracker, TrackerIssue,
@@ -30,6 +30,7 @@ use crate::{
 		records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
 	},
 	workflow::{WorkflowDocument, WorkflowTracker},
+	worktree::WorktreeManager,
 };
 
 const MISSING_HANDOFF_REASON: &str = "missing_review_handoff_record";
@@ -51,6 +52,10 @@ const MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION: &str = "mcp_test_fixture_ghost
 const GHOST_LANE_BLOCKED_CLASSIFICATION: &str = "ghost_lane_recovery_blocked";
 const GHOST_LANE_CLEANUP_EVENT: &str = "ghost_lane_cleanup";
 const GHOST_LANE_TERMINAL_STATUS: &str = "terminal_guarded";
+const STALE_ACTIVE_CLASSIFICATION: &str = "stale_active_ownership";
+const STALE_ACTIVE_BLOCKED_CLASSIFICATION: &str = "stale_active_recovery_blocked";
+const STALE_ACTIVE_RELEASE_EVENT: &str = "stale_active_release";
+const STALE_ACTIVE_RECOVERY_SCHEMA: &str = "decodex.stale_active_recovery_private_event/1";
 const MCP_TEST_FIXTURE_SOURCE: &str = "mcp-test";
 const MCP_TEST_FIXTURE_PROJECT_ID: &str = "pubfi";
 const MCP_TEST_FIXTURE_ISSUE_ID: &str = "PUB-012";
@@ -110,6 +115,24 @@ pub(crate) struct GhostLaneCleanupRequest {
 	/// Issue identifier or local issue id to terminalize.
 	pub(crate) issue: String,
 	/// Validate without writing runtime state.
+	pub(crate) dry_run: bool,
+}
+
+/// Read-only tracker-present stale active ownership diagnostic request.
+#[derive(Debug)]
+pub(crate) struct StaleActiveDiagnoseRequest {
+	/// Optional issue identifier or tracker issue id to inspect.
+	pub(crate) issue: Option<String>,
+	/// Emit JSON instead of text.
+	pub(crate) json: bool,
+}
+
+/// Explicit tracker-present stale active ownership release request.
+#[derive(Debug)]
+pub(crate) struct StaleActiveReleaseRequest {
+	/// Issue identifier or tracker issue id to release.
+	pub(crate) issue: String,
+	/// Validate without mutating tracker labels or runtime state.
 	pub(crate) dry_run: bool,
 }
 
@@ -195,6 +218,41 @@ impl GhostLaneDiagnostic {
 		(self.classification == GHOST_LANE_CLASSIFICATION
 			|| self.classification == MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION)
 			&& self.blockers.is_empty()
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct StaleActiveRecoveryReport {
+	project_id: String,
+	diagnostics: Vec<StaleActiveDiagnostic>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct StaleActiveDiagnostic {
+	project_id: String,
+	issue_id: String,
+	issue_identifier: String,
+	issue_state: String,
+	classification: String,
+	reason: String,
+	queue_label_present: bool,
+	active_label_present: bool,
+	needs_attention_label_present: bool,
+	latest_run_id: Option<String>,
+	latest_attempt_number: Option<i64>,
+	latest_attempt_status: Option<String>,
+	run_lease: bool,
+	active_shared_claim: bool,
+	control_channel: String,
+	worktree_path: Option<String>,
+	worktree_state: String,
+	evidence: Vec<String>,
+	blockers: Vec<String>,
+	next_action: String,
+}
+impl StaleActiveDiagnostic {
+	fn recoverable(&self) -> bool {
+		self.classification == STALE_ACTIVE_CLASSIFICATION && self.blockers.is_empty()
 	}
 }
 
@@ -670,6 +728,133 @@ pub(crate) fn run_ghost_lane_cleanup(
 	Ok(())
 }
 
+/// Run a read-only tracker-present stale active ownership diagnostic.
+pub(crate) fn run_stale_active_diagnose(
+	config_path: Option<&Path>,
+	request: &StaleActiveDiagnoseRequest,
+) -> Result<()> {
+	let context = load_recovery_context_read_only(config_path)?;
+
+	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
+		println!("{message}");
+
+		return Ok(());
+	}
+
+	let diagnostics = match diagnose_stale_active_issues(
+		context.config.service_id(),
+		&context.workflow,
+		context.config.worktree_root(),
+		&context.state_store,
+		&context.tracker,
+		request.issue.as_deref(),
+		RecoveryRuntimeMutationPolicy::ReadOnly,
+	) {
+		Ok(diagnostics) => diagnostics,
+		Err(error) => {
+			if let Some(message) =
+				remember_recovery_tracker_backoff_message(&context, &error, "stale_active_recovery")
+			{
+				println!("{message}");
+
+				return Ok(());
+			}
+
+			return Err(error);
+		},
+	};
+	let report = StaleActiveRecoveryReport {
+		project_id: context.config.service_id().to_owned(),
+		diagnostics,
+	};
+
+	if request.json {
+		println!("{}", serde_json::to_string_pretty(&report)?);
+	} else {
+		print!("{}", render_stale_active_recovery_report(&report));
+	}
+
+	Ok(())
+}
+
+/// Release a tracker-present stale active ownership label after fail-closed checks.
+pub(crate) fn run_stale_active_release(
+	config_path: Option<&Path>,
+	request: &StaleActiveReleaseRequest,
+) -> Result<()> {
+	let context = load_recovery_context_for_dry_run(config_path, request.dry_run)?;
+
+	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
+		println!("{message}");
+
+		return Ok(());
+	}
+
+	let mut diagnostics = match diagnose_stale_active_issues(
+		context.config.service_id(),
+		&context.workflow,
+		context.config.worktree_root(),
+		&context.state_store,
+		&context.tracker,
+		Some(&request.issue),
+		RecoveryRuntimeMutationPolicy::ReadOnly,
+	) {
+		Ok(diagnostics) => diagnostics,
+		Err(error) => {
+			if let Some(message) =
+				remember_recovery_tracker_backoff_message(&context, &error, "stale_active_recovery")
+			{
+				println!("{message}");
+
+				return Ok(());
+			}
+
+			return Err(error);
+		},
+	};
+	let diagnostic = diagnostics
+		.pop()
+		.ok_or_else(|| eyre::eyre!("No stale active issue matched `{}`.", request.issue))?;
+
+	if !diagnostic.recoverable() {
+		eyre::bail!(
+			"`recover stale-active release` refused `{}` because safety inspection reported blockers: {}",
+			request.issue,
+			diagnostic.blockers.join(", ")
+		);
+	}
+
+	preflight_stale_active_worktree_cleanup(&context.state_store, &diagnostic)?;
+
+	if request.dry_run {
+		println!(
+			"dry run: stale active release validated for project={} issue={} run_id={} attempt={} classification={}",
+			diagnostic.project_id,
+			diagnostic.issue_identifier,
+			diagnostic.latest_run_id.as_deref().unwrap_or("none"),
+			diagnostic
+				.latest_attempt_number
+				.map(|attempt| attempt.to_string())
+				.unwrap_or_else(|| String::from("none")),
+			diagnostic.classification
+		);
+
+		return Ok(());
+	}
+
+	apply_stale_active_release(&context, &diagnostic)?;
+
+	println!(
+		"stale active release ok: project={} issue={} active_label_released=yes queue_label_preserved={} terminal_status={}",
+		diagnostic.project_id,
+		diagnostic.issue_identifier,
+		diagnostic.queue_label_present,
+		GHOST_LANE_TERMINAL_STATUS
+	);
+
+	Ok(())
+}
+
 /// Run an explicit audited legacy closeout fallback.
 pub(crate) fn run_legacy_closeout(
 	config_path: Option<&Path>,
@@ -793,6 +978,7 @@ fn load_recovery_context_with_policy(
 	if runtime_mutation_policy.allows_runtime_writes() {
 		runtime::register_project_config(&state_store, &config_path, true)?;
 	}
+	state_store.observe_dispatch_slot_root(config.service_id(), config.worktree_root())?;
 
 	Ok(RecoveryContext { config, workflow, state_store, tracker, runtime_mutation_policy })
 }
@@ -1218,6 +1404,31 @@ fn diagnostic_binding(request: HandoffDiagnosticRequest<'_>) -> HandoffBindingDi
 		return diagnostic;
 	}
 
+	if let Some(diagnostic) = handoff_issue_state_drift_diagnostic(
+		&request,
+		existing_handoff,
+		pr_base_ref.clone(),
+		pr_head_oid.clone(),
+	) {
+		return diagnostic;
+	}
+
+	HandoffBindingDiagnostic {
+		classification: String::from(REVIEW_HANDOFF_BOUND_CLASSIFICATION),
+		reason: String::from("review_handoff_record_present"),
+		pr_base_ref,
+		pr_head_oid,
+		mismatched_field: None,
+		next_action: bound_handoff_next_action(request.service_id, request.active_label_present),
+	}
+}
+
+fn handoff_issue_state_drift_diagnostic(
+	request: &HandoffDiagnosticRequest<'_>,
+	existing_handoff: &ReviewHandoffMarker,
+	pr_base_ref: Option<String>,
+	pr_head_oid: Option<String>,
+) -> Option<HandoffBindingDiagnostic> {
 	if request.active_label_present == Some(false) {
 		let next_action = if request.issue_state_name == request.in_progress_state
 			|| request.issue_state_name == request.failure_state
@@ -1229,17 +1440,18 @@ fn diagnostic_binding(request: HandoffDiagnosticRequest<'_>) -> HandoffBindingDi
 			issue_state_mismatch_next_action(request.success_state, request.in_progress_state)
 		};
 
-		return HandoffBindingDiagnostic {
+		return Some(HandoffBindingDiagnostic {
 			classification: String::from(REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION),
 			reason: String::from("active_ownership_label_missing"),
 			pr_base_ref,
 			pr_head_oid,
 			mismatched_field: Some(String::from("issue.labels")),
 			next_action,
-		};
+		});
 	}
+
 	if request.issue_state_name == request.in_progress_state {
-		return HandoffBindingDiagnostic {
+		return Some(HandoffBindingDiagnostic {
 			classification: String::from(REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION),
 			reason: String::from("review_handoff_state_transition_pending"),
 			pr_base_ref,
@@ -1249,10 +1461,11 @@ fn diagnostic_binding(request: HandoffDiagnosticRequest<'_>) -> HandoffBindingDi
 				request.issue_identifier,
 				existing_handoff.pr_url(),
 			),
-		};
+		});
 	}
+
 	if request.issue_state_name == request.failure_state {
-		return HandoffBindingDiagnostic {
+		return Some(HandoffBindingDiagnostic {
 			classification: String::from(REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION),
 			reason: String::from("review_handoff_failure_state_drift"),
 			pr_base_ref,
@@ -1262,30 +1475,20 @@ fn diagnostic_binding(request: HandoffDiagnosticRequest<'_>) -> HandoffBindingDi
 				request.issue_identifier,
 				existing_handoff.pr_url(),
 			),
-		};
-	}
-	if request.issue_state_name != request.success_state {
-		return HandoffBindingDiagnostic {
-			classification: String::from(REVIEW_HANDOFF_MISMATCH_CLASSIFICATION),
-			reason: String::from("review_handoff_issue_state_mismatch"),
-			pr_base_ref,
-			pr_head_oid,
-			mismatched_field: Some(String::from("issue.state")),
-			next_action: issue_state_mismatch_next_action(
-				request.success_state,
-				request.in_progress_state,
-			),
-		};
+		});
 	}
 
-	HandoffBindingDiagnostic {
-		classification: String::from(REVIEW_HANDOFF_BOUND_CLASSIFICATION),
-		reason: String::from("review_handoff_record_present"),
+	(request.issue_state_name != request.success_state).then(|| HandoffBindingDiagnostic {
+		classification: String::from(REVIEW_HANDOFF_MISMATCH_CLASSIFICATION),
+		reason: String::from("review_handoff_issue_state_mismatch"),
 		pr_base_ref,
 		pr_head_oid,
-		mismatched_field: None,
-		next_action: bound_handoff_next_action(request.service_id, request.active_label_present),
-	}
+		mismatched_field: Some(String::from("issue.state")),
+		next_action: issue_state_mismatch_next_action(
+			request.success_state,
+			request.in_progress_state,
+		),
+	})
 }
 
 fn worktree_binding_mismatch(
@@ -1726,6 +1929,679 @@ where
 		blockers: sorted_unique(blockers),
 		next_action,
 	})
+}
+
+fn diagnose_stale_active_issues<T>(
+	project_id: &str,
+	workflow: &WorkflowDocument,
+	worktree_root: &Path,
+	state_store: &StateStore,
+	tracker: &T,
+	selector: Option<&str>,
+	listing_mode: RecoveryRuntimeMutationPolicy,
+) -> Result<Vec<StaleActiveDiagnostic>>
+where
+	T: IssueTracker + ?Sized,
+{
+	let issues = if let Some(selector) = selector {
+		vec![lookup_stale_active_issue(tracker, selector)?]
+	} else {
+		tracker.list_issues_with_label(&tracker::automation_active_label(project_id))?
+	};
+
+	issues
+		.into_iter()
+		.map(|issue| {
+			inspect_stale_active_issue(
+				project_id,
+				workflow,
+				worktree_root,
+				state_store,
+				tracker,
+				issue,
+				listing_mode,
+			)
+		})
+		.collect()
+}
+
+fn lookup_stale_active_issue<T>(tracker: &T, selector: &str) -> Result<TrackerIssue>
+where
+	T: IssueTracker + ?Sized,
+{
+	let selector = selector.trim();
+
+	if selector.is_empty() {
+		eyre::bail!("Issue selector must not be empty.");
+	}
+
+	if commit_message::looks_like_issue_identifier(selector) {
+		return tracker
+			.get_issue_by_identifier(selector)?
+			.ok_or_else(|| eyre::eyre!("No tracker issue matched `{selector}`."));
+	}
+
+	if let Some(issue) = tracker.refresh_issues(&[selector.to_owned()])?.pop() {
+		return Ok(issue);
+	}
+
+	tracker
+		.get_issue_by_identifier(selector)?
+		.ok_or_else(|| eyre::eyre!("No tracker issue matched `{selector}`."))
+}
+
+fn stale_active_issue_keys(issue_id: &str, issue_identifier: &str) -> Vec<String> {
+	let mut keys = vec![issue_id.to_owned()];
+
+	if issue_identifier != issue_id {
+		keys.push(issue_identifier.to_owned());
+	}
+	keys
+}
+
+fn stale_active_tracker_issue_keys(issue: &TrackerIssue) -> Vec<String> {
+	stale_active_issue_keys(&issue.id, &issue.identifier)
+}
+
+fn stale_active_diagnostic_issue_keys(diagnostic: &StaleActiveDiagnostic) -> Vec<String> {
+	stale_active_issue_keys(&diagnostic.issue_id, &diagnostic.issue_identifier)
+}
+
+struct StaleActiveLabelSnapshot {
+	queue_label_present: bool,
+	active_label_present: bool,
+	needs_attention_label_present: bool,
+}
+
+fn inspect_stale_active_labels<T>(
+	project_id: &str,
+	workflow: &WorkflowDocument,
+	tracker: &T,
+	issue: &TrackerIssue,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> Result<StaleActiveLabelSnapshot>
+where
+	T: IssueTracker + ?Sized,
+{
+	let active_label = tracker::automation_active_label(project_id);
+	let queue_label = tracker::automation_queue_label(project_id);
+	let needs_attention_label = workflow.frontmatter().tracker().needs_attention_label();
+	let active_label_present =
+		tracker::issue_has_label_with_server_confirmation(tracker, issue, &active_label)?;
+	let queue_label_present =
+		tracker::issue_has_label_with_server_confirmation(tracker, issue, &queue_label)?;
+	let needs_attention_label_present =
+		tracker::issue_has_label_with_server_confirmation(tracker, issue, needs_attention_label)?;
+
+	if active_label_present {
+		evidence.push(String::from("active_label_present"));
+	} else {
+		blockers.push(String::from("active_label_missing"));
+	}
+	if queue_label_present {
+		evidence.push(String::from("queue_label_present"));
+	} else {
+		evidence.push(String::from("queue_label_missing"));
+	}
+	if needs_attention_label_present {
+		blockers.push(String::from("needs_attention_label_present"));
+	} else {
+		evidence.push(String::from("needs_attention_label_missing"));
+	}
+
+	Ok(StaleActiveLabelSnapshot {
+		queue_label_present,
+		active_label_present,
+		needs_attention_label_present,
+	})
+}
+
+fn inspect_stale_active_shared_claim(
+	project_id: &str,
+	state_store: &StateStore,
+	issue_keys: &[String],
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> bool {
+	let active_shared_claim =
+		match stale_active_issue_has_active_shared_claim(project_id, state_store, issue_keys) {
+			Ok(active_shared_claim) => active_shared_claim,
+			Err(error) => {
+				blockers.push(String::from("active_shared_claim_unknown"));
+				evidence.push(format!("active_shared_claim_error:{}", error));
+
+				false
+			},
+		};
+	if active_shared_claim {
+		blockers.push(String::from("active_shared_claim_present"));
+	} else if !blockers.iter().any(|blocker| blocker == "active_shared_claim_unknown") {
+		evidence.push(String::from("active_shared_claim_missing"));
+	}
+
+	active_shared_claim
+}
+
+fn inspect_stale_active_issue<T>(
+	project_id: &str,
+	workflow: &WorkflowDocument,
+	worktree_root: &Path,
+	state_store: &StateStore,
+	tracker: &T,
+	issue: TrackerIssue,
+	listing_mode: RecoveryRuntimeMutationPolicy,
+) -> Result<StaleActiveDiagnostic>
+where
+	T: IssueTracker + ?Sized,
+{
+	let mut evidence = vec![String::from("tracker_issue_present")];
+	let mut blockers = Vec::new();
+	let issue_keys = stale_active_tracker_issue_keys(&issue);
+	let labels = inspect_stale_active_labels(
+		project_id,
+		workflow,
+		tracker,
+		&issue,
+		&mut evidence,
+		&mut blockers,
+	)?;
+	let active_shared_claim = inspect_stale_active_shared_claim(
+		project_id,
+		state_store,
+		&issue_keys,
+		&mut evidence,
+		&mut blockers,
+	);
+
+	let runs = stale_active_runs(project_id, state_store, &issue_keys, listing_mode)?;
+	let latest_run = latest_stale_active_run(&runs);
+	let run_lease = runs.iter().any(ProjectRunStatus::run_lease);
+	if run_lease {
+		blockers.push(String::from("run_lease_present"));
+	} else {
+		evidence.push(String::from("run_lease_missing"));
+	}
+	inspect_stale_active_run_evidence(&runs, &mut evidence, &mut blockers);
+
+	let mapping = match stale_active_worktree_mapping_for_keys(state_store, &issue_keys) {
+		Ok(mapping) => mapping,
+		Err(error) => {
+			blockers.push(String::from("worktree_mapping_ambiguous"));
+			evidence.push(format!("worktree_mapping_error:{}", error));
+
+			None
+		},
+	};
+	let worktree_path = mapping
+		.as_ref()
+		.map(|mapping| mapping.worktree_path().to_path_buf())
+		.unwrap_or_else(|| worktree_root.join(&issue.identifier));
+	let marker = match state::read_run_activity_marker_snapshot(&worktree_path) {
+		Ok(marker) => marker,
+		Err(error) => {
+			blockers.push(String::from("worktree_tracked_changes_unknown"));
+			evidence.push(format!("worktree_status_error:{}", error));
+
+			None
+		},
+	};
+	let worktree_state = inspect_stale_active_worktree(
+		&worktree_path,
+		mapping.as_ref(),
+		marker.as_ref(),
+		&mut evidence,
+		&mut blockers,
+	);
+	let control_channel =
+		inspect_stale_active_control_channel(latest_run, &runs, &mut evidence, &mut blockers);
+
+	inspect_stale_active_private_evidence(
+		project_id,
+		state_store,
+		&issue_keys,
+		&mut evidence,
+		&mut blockers,
+	)?;
+	inspect_stale_active_review_lineage(
+		project_id,
+		state_store,
+		tracker,
+		&issue,
+		&mut evidence,
+		&mut blockers,
+	)?;
+
+	let (classification, reason, next_action) = if blockers.is_empty() {
+		(
+			String::from(STALE_ACTIVE_CLASSIFICATION),
+			String::from("tracker_issue_has_stale_active_label_without_live_or_retained_progress"),
+			format!(
+				"Run `decodex recover stale-active release {} --dry-run`, then rerun without `--dry-run` if the report stays safe.",
+				issue.identifier
+			),
+		)
+	} else {
+		(
+			String::from(STALE_ACTIVE_BLOCKED_CLASSIFICATION),
+			String::from("safety_check_blocked"),
+			String::from(
+				"Preserve the lane and inspect the listed blockers before using a recovery command.",
+			),
+		)
+	};
+
+	Ok(StaleActiveDiagnostic {
+		project_id: project_id.to_owned(),
+		issue_id: issue.id,
+		issue_identifier: issue.identifier,
+		issue_state: issue.state.name,
+		classification,
+		reason,
+		queue_label_present: labels.queue_label_present,
+		active_label_present: labels.active_label_present,
+		needs_attention_label_present: labels.needs_attention_label_present,
+		latest_run_id: latest_run.map(|run| run.run_id().to_owned()),
+		latest_attempt_number: latest_run.map(ProjectRunStatus::attempt_number),
+		latest_attempt_status: latest_run.map(|run| run.status().to_owned()),
+		run_lease,
+		active_shared_claim,
+		control_channel,
+		worktree_path: Some(worktree_path.to_string_lossy().to_string()),
+		worktree_state,
+		evidence: sorted_unique(evidence),
+		blockers: sorted_unique(blockers),
+		next_action,
+	})
+}
+
+fn stale_active_runs(
+	project_id: &str,
+	state_store: &StateStore,
+	issue_keys: &[String],
+	listing_mode: RecoveryRuntimeMutationPolicy,
+) -> Result<Vec<ProjectRunStatus>> {
+	let mut runs = if listing_mode.allows_runtime_writes() {
+		let mut runs = Vec::new();
+		let mut seen_run_ids = HashSet::new();
+
+		for issue_key in issue_keys {
+			for run in state_store.list_project_issue_runs(project_id, issue_key)? {
+				if seen_run_ids.insert(run.run_id().to_owned()) {
+					runs.push(run);
+				}
+			}
+		}
+
+		runs
+	} else {
+		let (leased_runs, recent_runs) =
+			state_store.list_project_runs_read_only(project_id, usize::MAX)?;
+		let issue_key_set = issue_keys.iter().map(String::as_str).collect::<HashSet<_>>();
+		leased_runs
+			.into_iter()
+			.chain(recent_runs)
+			.filter(|run| issue_key_set.contains(run.issue_id()))
+			.collect()
+	};
+
+	runs.sort_by(|left, right| {
+		left.attempt_number()
+			.cmp(&right.attempt_number())
+			.then_with(|| left.run_id().cmp(right.run_id()))
+	});
+
+	Ok(runs)
+}
+
+fn stale_active_issue_has_active_shared_claim(
+	project_id: &str,
+	state_store: &StateStore,
+	issue_keys: &[String],
+) -> Result<bool> {
+	for issue_key in issue_keys {
+		if state_store.issue_has_active_shared_claim_read_only(project_id, issue_key)? {
+			return Ok(true);
+		}
+	}
+
+	Ok(false)
+}
+
+fn stale_active_worktree_mapping_for_keys(
+	state_store: &StateStore,
+	issue_keys: &[String],
+) -> Result<Option<WorktreeMapping>> {
+	let mut mapping = None;
+
+	for issue_key in issue_keys {
+		let Some(candidate) = state_store.worktree_for_issue(issue_key)? else {
+			continue;
+		};
+		if let Some(existing) = mapping.as_ref() {
+			if stale_active_worktree_mappings_conflict(existing, &candidate) {
+				eyre::bail!(
+					"conflicting retained worktree mappings for stale active issue keys `{}`",
+					issue_keys.join(", ")
+				);
+			}
+		} else {
+			mapping = Some(candidate);
+		}
+	}
+
+	Ok(mapping)
+}
+
+fn stale_active_worktree_mappings_conflict(
+	left: &WorktreeMapping,
+	right: &WorktreeMapping,
+) -> bool {
+	left.branch_name() != right.branch_name() || left.worktree_path() != right.worktree_path()
+}
+
+fn latest_stale_active_run(runs: &[ProjectRunStatus]) -> Option<&ProjectRunStatus> {
+	runs.iter().max_by(|left, right| {
+		left.attempt_number()
+			.cmp(&right.attempt_number())
+			.then_with(|| left.run_id().cmp(right.run_id()))
+	})
+}
+
+fn inspect_stale_active_run_evidence(
+	runs: &[ProjectRunStatus],
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) {
+	if runs.is_empty() {
+		evidence.push(String::from("run_attempt_missing"));
+		evidence.push(String::from("protocol_event_evidence_missing"));
+		evidence.push(String::from("child_agent_activity_missing"));
+		evidence.push(String::from("protocol_activity_missing"));
+		evidence.push(String::from("thread_reference_missing"));
+
+		return;
+	}
+
+	evidence.push(String::from("run_attempt_present"));
+	if runs.iter().any(|run| {
+		run.event_count() > 0 || run.last_event_type().is_some() || run.last_event_at().is_some()
+	}) {
+		blockers.push(String::from("protocol_event_evidence_present"));
+	} else {
+		evidence.push(String::from("protocol_event_evidence_missing"));
+	}
+	if runs.iter().any(|run| run.child_agent_activity().is_some()) {
+		blockers.push(String::from("child_agent_activity_present"));
+	} else {
+		evidence.push(String::from("child_agent_activity_missing"));
+	}
+	if runs.iter().any(|run| run.protocol_activity().is_some()) {
+		blockers.push(String::from("protocol_activity_present"));
+	} else {
+		evidence.push(String::from("protocol_activity_missing"));
+	}
+	if runs.iter().any(|run| run.thread_id().is_some() || run.turn_id().is_some()) {
+		evidence.push(String::from("stale_thread_reference_present"));
+	} else {
+		evidence.push(String::from("thread_reference_missing"));
+	}
+}
+
+fn inspect_stale_active_worktree(
+	worktree_path: &Path,
+	mapping: Option<&WorktreeMapping>,
+	marker: Option<&state::RunActivityMarker>,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> String {
+	if mapping.is_none() {
+		evidence.push(String::from("worktree_mapping_missing"));
+	}
+	match worktree_path.try_exists() {
+		Ok(false) => {
+			evidence.push(String::from("worktree_missing"));
+
+			return String::from("missing");
+		},
+		Ok(true) => {},
+		Err(error) => {
+			blockers.push(String::from("worktree_tracked_changes_unknown"));
+			evidence.push(format!("worktree_status_error:{}", error));
+
+			return String::from("tracked_changes_unknown");
+		},
+	}
+	inspect_stale_active_activity_marker(marker, evidence, blockers);
+	match worktree_path.join(".git").try_exists() {
+		Ok(false) => {
+			match state::retained_path_contains_only_decodex_runtime_artifacts(worktree_path) {
+				Ok(true) => {
+					evidence.push(String::from("worktree_non_git_marker_directory"));
+
+					return String::from("non_git_marker_directory");
+				},
+				Ok(false) => {
+					blockers.push(String::from("non_git_worktree_files_present"));
+
+					return String::from("non_git_files_present");
+				},
+				Err(error) => {
+					blockers.push(String::from("worktree_tracked_changes_unknown"));
+					evidence.push(format!("worktree_status_error:{}", error));
+
+					return String::from("tracked_changes_unknown");
+				},
+			}
+		},
+		Ok(true) => {},
+		Err(error) => {
+			blockers.push(String::from("worktree_tracked_changes_unknown"));
+			evidence.push(format!("worktree_status_error:{}", error));
+
+			return String::from("tracked_changes_unknown");
+		},
+	}
+	match worktree_has_tracked_changes_for_recovery(worktree_path) {
+		Ok(true) => {
+			blockers.push(String::from("worktree_tracked_changes_present"));
+
+			return String::from("tracked_changes_present");
+		},
+		Ok(false) => {},
+		Err(error) => {
+			blockers.push(String::from("worktree_tracked_changes_unknown"));
+			evidence.push(format!("worktree_status_error:{}", error));
+
+			return String::from("tracked_changes_unknown");
+		},
+	}
+	evidence.push(String::from("worktree_clean"));
+
+	String::from("clean")
+}
+
+fn inspect_stale_active_activity_marker(
+	marker: Option<&state::RunActivityMarker>,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) {
+	if let Some(marker) = marker {
+		if stale_active_marker_process_alive(marker) {
+			blockers.push(String::from("process_alive"));
+		} else {
+			evidence.push(String::from("process_not_alive"));
+		}
+		if marker.last_progress_unix_epoch().is_some() {
+			blockers.push(String::from("activity_marker_progress_present"));
+		} else {
+			evidence.push(String::from("activity_marker_progress_missing"));
+		}
+		if marker.event_count() > 0 || marker.last_event_type().is_some() {
+			blockers.push(String::from("protocol_event_marker_present"));
+		} else {
+			evidence.push(String::from("protocol_event_marker_missing"));
+		}
+		if marker.last_protocol_activity_unix_epoch().is_some() {
+			blockers.push(String::from("activity_marker_protocol_activity_present"));
+		} else {
+			evidence.push(String::from("activity_marker_protocol_activity_missing"));
+		}
+		if marker.child_agent_activity().is_some() {
+			blockers.push(String::from("activity_marker_child_agent_activity_present"));
+		} else {
+			evidence.push(String::from("activity_marker_child_agent_activity_missing"));
+		}
+		if marker.protocol_activity().is_some() {
+			blockers.push(String::from("activity_marker_protocol_activity_summary_present"));
+		} else {
+			evidence.push(String::from("activity_marker_protocol_activity_summary_missing"));
+		}
+		if stale_active_marker_thread_active(marker) {
+			blockers.push(String::from("activity_marker_thread_active"));
+		} else {
+			evidence.push(String::from("activity_marker_thread_inactive"));
+		}
+	} else {
+		evidence.push(String::from("activity_marker_missing"));
+	}
+}
+
+fn inspect_stale_active_control_channel(
+	run: Option<&ProjectRunStatus>,
+	runs: &[ProjectRunStatus],
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> String {
+	let mut active_channel_present = false;
+
+	for run in runs {
+		let Some(channel) = run.control_channel() else {
+			continue;
+		};
+		if channel.status() != RUN_CONTROL_CHANNEL_STATUS_ACTIVE {
+			continue;
+		}
+		match channel.channel_path().try_exists() {
+			Ok(true) => active_channel_present = true,
+			Ok(false) => {},
+			Err(error) => {
+				blockers.push(String::from("active_control_channel_unknown"));
+				evidence.push(format!("control_channel_status_error:{}", error));
+			},
+		}
+	}
+
+	if active_channel_present {
+		blockers.push(String::from("active_control_channel_present"));
+	}
+
+	let Some(channel) = run.and_then(ProjectRunStatus::control_channel) else {
+		if !active_channel_present {
+			evidence.push(String::from("control_channel_missing"));
+		}
+
+		return String::from("missing");
+	};
+
+	if !active_channel_present {
+		evidence.push(String::from("control_channel_inactive_or_file_missing"));
+	}
+
+	format!("{}:{}", channel.transport(), channel.status())
+}
+
+fn inspect_stale_active_private_evidence(
+	project_id: &str,
+	state_store: &StateStore,
+	issue_keys: &[String],
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> Result<()> {
+	let mut events = Vec::new();
+
+	for issue_key in issue_keys {
+		events.extend(state_store.list_private_execution_events_for_issue(project_id, issue_key)?);
+	}
+
+	if events.is_empty() {
+		evidence.push(String::from("private_evidence_missing"));
+	} else if events.iter().all(stale_active_private_event_allows_release) {
+		evidence.push(String::from("only_stale_active_or_failed_control_evidence_present"));
+	} else {
+		blockers.push(String::from("private_progress_evidence_present"));
+	}
+
+	Ok(())
+}
+
+fn stale_active_private_event_allows_release(event: &PrivateExecutionEvent) -> bool {
+	stale_active_private_event_is_release_audit(event)
+		|| stale_active_private_event_is_failed_control_attempt(event)
+}
+
+fn stale_active_private_event_is_release_audit(event: &PrivateExecutionEvent) -> bool {
+	event.event_type() == STALE_ACTIVE_RELEASE_EVENT
+		&& event.payload().get("schema").and_then(serde_json::Value::as_str)
+			== Some(STALE_ACTIVE_RECOVERY_SCHEMA)
+		&& event.payload().get("event").and_then(serde_json::Value::as_str)
+			== Some(STALE_ACTIVE_RELEASE_EVENT)
+}
+
+fn stale_active_private_event_is_failed_control_attempt(event: &PrivateExecutionEvent) -> bool {
+	event.event_type() == "control_action"
+		&& matches!(
+			event.payload().get("action").and_then(serde_json::Value::as_str),
+			Some("interrupt" | "steer")
+		) && matches!(
+		event.payload().get("reason").and_then(serde_json::Value::as_str),
+		Some("run_lease_missing" | "hard_fallback_unavailable" | "process_not_signalable")
+	)
+}
+
+fn inspect_stale_active_review_lineage<T>(
+	project_id: &str,
+	state_store: &StateStore,
+	tracker: &T,
+	issue: &TrackerIssue,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	if state_store.issue_has_review_lifecycle_record(project_id, &issue.id)?
+		|| (issue.identifier != issue.id
+			&& state_store.issue_has_review_lifecycle_record(project_id, &issue.identifier)?)
+	{
+		blockers.push(String::from("review_lifecycle_present"));
+
+		return Ok(());
+	}
+	if state_store.issue_has_review_policy_checkpoint(project_id, &issue.id)?
+		|| (issue.identifier != issue.id
+			&& state_store.issue_has_review_policy_checkpoint(project_id, &issue.identifier)?)
+	{
+		blockers.push(String::from("review_policy_checkpoint_present"));
+
+		return Ok(());
+	}
+
+	let records = stale_active_review_lineage_records(
+		project_id,
+		state_store,
+		tracker,
+		&issue.id,
+		&issue.identifier,
+	)?;
+
+	if records.iter().any(ghost_lane_record_has_pr_or_review_lineage) {
+		blockers.push(String::from("pr_or_review_lineage_present"));
+	} else {
+		evidence.push(String::from("review_lineage_missing"));
+	}
+
+	Ok(())
 }
 
 fn inspect_ghost_lane_tracker_issue<T>(
@@ -2172,6 +3048,368 @@ fn apply_ghost_lane_cleanup(
 	state_store.clear_lease(&diagnostic.issue_id)
 }
 
+fn apply_stale_active_release(
+	context: &RecoveryContext,
+	diagnostic: &StaleActiveDiagnostic,
+) -> Result<()> {
+	apply_stale_active_release_with_tracker(
+		&context.tracker,
+		&context.config,
+		&context.workflow,
+		&context.state_store,
+		diagnostic,
+	)
+}
+
+fn apply_stale_active_release_with_tracker<T>(
+	tracker: &T,
+	config: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	diagnostic: &StaleActiveDiagnostic,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let diagnostic = refreshed_stale_active_release_diagnostic(
+		tracker,
+		config,
+		workflow,
+		state_store,
+		diagnostic,
+	)?;
+	let worktree_cleanup = preflight_stale_active_worktree_cleanup(state_store, &diagnostic)?;
+	ensure_stale_active_run_claim_guard(config, state_store, &diagnostic)?;
+	ensure_stale_active_review_authority_missing(tracker, state_store, &diagnostic)?;
+	let active_label = tracker::automation_active_label(config.service_id());
+
+	if let Some(run_id) = diagnostic.latest_run_id.as_deref()
+		&& let Some(attempt_number) = diagnostic.latest_attempt_number
+	{
+		if diagnostic
+			.latest_attempt_status
+			.as_deref()
+			.is_some_and(stale_active_attempt_status_needs_terminal_guard)
+		{
+			state_store.update_run_status(run_id, GHOST_LANE_TERMINAL_STATUS)?;
+		}
+		state_store.retire_run_control_channel_for_attempt(
+			run_id,
+			attempt_number,
+			RUN_CONTROL_CHANNEL_STATUS_FAILED,
+		)?;
+	}
+
+	ensure_stale_active_review_authority_missing(tracker, state_store, &diagnostic)?;
+	cleanup_stale_active_worktree_mapping(
+		config,
+		workflow,
+		state_store,
+		&diagnostic,
+		worktree_cleanup,
+	)?;
+
+	if let Some(run_id) = diagnostic.latest_run_id.as_deref()
+		&& let Some(attempt_number) = diagnostic.latest_attempt_number
+	{
+		state_store
+			.append_private_execution_event(
+				&diagnostic.project_id,
+				&diagnostic.issue_id,
+				run_id,
+				attempt_number,
+				STALE_ACTIVE_RELEASE_EVENT,
+				serde_json::json!({
+					"schema": STALE_ACTIVE_RECOVERY_SCHEMA,
+					"event": STALE_ACTIVE_RELEASE_EVENT,
+					"phase": "local_cleanup_complete_before_active_label_release",
+					"classification": &diagnostic.classification,
+					"reason": &diagnostic.reason,
+					"issue_identifier": &diagnostic.issue_identifier,
+					"terminal_status": GHOST_LANE_TERMINAL_STATUS,
+					"active_label_release": "pending_final_mutation",
+					"queue_label_preserved": diagnostic.queue_label_present,
+					"cleared_run_lease": false,
+					"worktree_state": &diagnostic.worktree_state,
+					"evidence": &diagnostic.evidence,
+					"blockers": &diagnostic.blockers,
+					"next_action": "ordinary automation may continue after status readback confirms no current attention lane",
+				}),
+			)
+			.map(|_| ())?;
+	}
+
+	ensure_stale_active_review_authority_missing(tracker, state_store, &diagnostic)?;
+	ensure_stale_active_run_claim_guard(config, state_store, &diagnostic)?;
+	let final_diagnostic = refreshed_stale_active_release_diagnostic(
+		tracker,
+		config,
+		workflow,
+		state_store,
+		&diagnostic,
+	)?;
+	ensure_stale_active_review_authority_missing(tracker, state_store, &final_diagnostic)?;
+	ensure_stale_active_run_claim_guard(config, state_store, &final_diagnostic)?;
+	let issue = lookup_stale_active_issue(tracker, &diagnostic.issue_identifier)?;
+
+	tracker::set_issue_label_presence(tracker, &issue, &active_label, false)?;
+
+	Ok(())
+}
+
+fn refreshed_stale_active_release_diagnostic<T>(
+	tracker: &T,
+	config: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	original: &StaleActiveDiagnostic,
+) -> Result<StaleActiveDiagnostic>
+where
+	T: IssueTracker + ?Sized,
+{
+	let mut diagnostics = diagnose_stale_active_issues(
+		config.service_id(),
+		workflow,
+		config.worktree_root(),
+		state_store,
+		tracker,
+		Some(&original.issue_identifier),
+		RecoveryRuntimeMutationPolicy::ReadOnly,
+	)?;
+	let diagnostic = diagnostics.pop().ok_or_else(|| {
+		eyre::eyre!("No stale active issue matched `{}`.", original.issue_identifier)
+	})?;
+
+	if !diagnostic.recoverable() {
+		eyre::bail!(
+			"`recover stale-active release` refused `{}` because safety inspection changed before apply: {}",
+			original.issue_identifier,
+			diagnostic.blockers.join(", ")
+		);
+	}
+	if diagnostic.issue_id != original.issue_id
+		|| diagnostic.latest_run_id != original.latest_run_id
+		|| diagnostic.latest_attempt_number != original.latest_attempt_number
+	{
+		eyre::bail!(
+			"`recover stale-active release` refused `{}` because the stale ownership target changed before apply.",
+			original.issue_identifier
+		);
+	}
+
+	Ok(diagnostic)
+}
+
+fn stale_active_attempt_status_needs_terminal_guard(status: &str) -> bool {
+	matches!(status, "starting" | "running" | "continuation_pending" | "stalled")
+}
+
+fn ensure_stale_active_run_claim_guard(
+	config: &ServiceConfig,
+	state_store: &StateStore,
+	diagnostic: &StaleActiveDiagnostic,
+) -> Result<()> {
+	let issue_keys = stale_active_diagnostic_issue_keys(diagnostic);
+
+	match stale_active_issue_has_active_shared_claim(config.service_id(), state_store, &issue_keys)
+	{
+		Ok(false) => Ok(()),
+		Ok(true) => eyre::bail!(
+			"`recover stale-active release` refused `{}` because a run lease or shared claim appeared before active-label release.",
+			diagnostic.issue_identifier
+		),
+		Err(error) => eyre::bail!(
+			"`recover stale-active release` refused `{}` because run lease/shared claim state could not be inspected before active-label release: {}",
+			diagnostic.issue_identifier,
+			error
+		),
+	}
+}
+
+fn ensure_stale_active_review_authority_missing<T>(
+	tracker: &T,
+	state_store: &StateStore,
+	diagnostic: &StaleActiveDiagnostic,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let mut blockers = Vec::new();
+
+	if state_store
+		.issue_has_review_lifecycle_record(&diagnostic.project_id, &diagnostic.issue_id)?
+		|| (diagnostic.issue_identifier != diagnostic.issue_id
+			&& state_store.issue_has_review_lifecycle_record(
+				&diagnostic.project_id,
+				&diagnostic.issue_identifier,
+			)?) {
+		blockers.push("review_lifecycle_present");
+	}
+	if state_store
+		.issue_has_review_policy_checkpoint(&diagnostic.project_id, &diagnostic.issue_id)?
+		|| (diagnostic.issue_identifier != diagnostic.issue_id
+			&& state_store.issue_has_review_policy_checkpoint(
+				&diagnostic.project_id,
+				&diagnostic.issue_identifier,
+			)?) {
+		blockers.push("review_policy_checkpoint_present");
+	}
+
+	let records = stale_active_review_lineage_records(
+		&diagnostic.project_id,
+		state_store,
+		tracker,
+		&diagnostic.issue_id,
+		&diagnostic.issue_identifier,
+	)?;
+	if records.iter().any(ghost_lane_record_has_pr_or_review_lineage) {
+		blockers.push("pr_or_review_lineage_present");
+	}
+
+	if blockers.is_empty() {
+		return Ok(());
+	}
+
+	eyre::bail!(
+		"`recover stale-active release` refused `{}` because review authority appeared before active-label release: {}",
+		diagnostic.issue_identifier,
+		blockers.join(", ")
+	)
+}
+
+fn stale_active_review_lineage_records<T>(
+	project_id: &str,
+	state_store: &StateStore,
+	tracker: &T,
+	issue_id: &str,
+	issue_identifier: &str,
+) -> Result<Vec<LinearExecutionEventRecord>>
+where
+	T: IssueTracker + ?Sized,
+{
+	let mut records = state_store.list_linear_execution_events(project_id, issue_id)?;
+
+	if issue_identifier != issue_id {
+		records.extend(state_store.list_linear_execution_events(project_id, issue_identifier)?);
+	}
+
+	let comments = tracker.list_comments(issue_id)?;
+
+	records.extend(comments.iter().filter_map(|comment| {
+		records::parse_linear_execution_event_record(&comment.body).filter(|record| {
+			record.service_id == project_id
+				&& (record.issue_id == issue_id
+					|| record.issue_id == issue_identifier
+					|| record.issue_identifier == issue_identifier
+					|| record.issue_identifier == issue_id)
+		})
+	}));
+
+	Ok(records)
+}
+
+#[derive(Clone, Debug)]
+enum StaleActiveWorktreeCleanup {
+	None,
+	UnmappedPath(PathBuf),
+	Mapped(WorktreeMapping),
+}
+
+fn preflight_stale_active_worktree_cleanup(
+	state_store: &StateStore,
+	diagnostic: &StaleActiveDiagnostic,
+) -> Result<StaleActiveWorktreeCleanup> {
+	let issue_keys = stale_active_diagnostic_issue_keys(diagnostic);
+	let Some(mapping) = stale_active_worktree_mapping_for_keys(state_store, &issue_keys)? else {
+		if let Some(worktree_path) = diagnostic.worktree_path.as_deref().map(PathBuf::from)
+			&& stale_active_worktree_path_exists_for_cleanup(
+				&diagnostic.issue_identifier,
+				&worktree_path,
+			)? {
+			ensure_stale_active_worktree_clean(&diagnostic.issue_identifier, &worktree_path)?;
+
+			return Ok(StaleActiveWorktreeCleanup::UnmappedPath(worktree_path));
+		}
+
+		return Ok(StaleActiveWorktreeCleanup::None);
+	};
+
+	if stale_active_worktree_path_exists_for_cleanup(
+		&diagnostic.issue_identifier,
+		mapping.worktree_path(),
+	)? {
+		ensure_stale_active_worktree_clean(&diagnostic.issue_identifier, mapping.worktree_path())?;
+
+		return Ok(StaleActiveWorktreeCleanup::Mapped(mapping));
+	}
+
+	Ok(StaleActiveWorktreeCleanup::None)
+}
+
+fn stale_active_worktree_path_exists_for_cleanup(
+	issue_identifier: &str,
+	worktree_path: &Path,
+) -> Result<bool> {
+	worktree_path.try_exists().wrap_err_with(|| {
+		format!(
+			"`recover stale-active release` refused `{}` because retained worktree `{}` could not be inspected before cleanup.",
+			issue_identifier,
+			worktree_path.display()
+		)
+	})
+}
+
+fn ensure_stale_active_worktree_clean(issue_identifier: &str, worktree_path: &Path) -> Result<()> {
+	if worktree_has_tracked_changes_for_recovery(worktree_path)? {
+		eyre::bail!(
+			"`recover stale-active release` refused `{}` because retained worktree changes appeared before cleanup.",
+			issue_identifier
+		);
+	}
+
+	Ok(())
+}
+
+fn cleanup_stale_active_worktree_mapping(
+	config: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	diagnostic: &StaleActiveDiagnostic,
+	cleanup: StaleActiveWorktreeCleanup,
+) -> Result<()> {
+	match cleanup {
+		StaleActiveWorktreeCleanup::None => {},
+		StaleActiveWorktreeCleanup::UnmappedPath(worktree_path) => {
+			let worktree_manager = WorktreeManager::new(
+				config.service_id(),
+				config.repo_root(),
+				config.worktree_root(),
+			);
+			worktree_manager.remove_worktree_path(&worktree_path)?;
+		},
+		StaleActiveWorktreeCleanup::Mapped(mapping) => {
+			let worktree_manager = WorktreeManager::new(
+				config.service_id(),
+				config.repo_root(),
+				config.worktree_root(),
+			);
+			worktree_manager.remove_worktree_path_with_hooks(
+				&diagnostic.issue_identifier,
+				mapping.branch_name(),
+				mapping.worktree_path(),
+				workflow.frontmatter().execution().workspace_hooks(),
+			)?;
+		},
+	};
+
+	state_store.clear_worktree_mapping(&diagnostic.issue_id)?;
+	if diagnostic.issue_identifier != diagnostic.issue_id {
+		state_store.clear_worktree_mapping(&diagnostic.issue_identifier)?;
+	}
+
+	Ok(())
+}
+
 fn ensure_ghost_lane_live_status_allows_cleanup(
 	context: &RecoveryContext,
 	diagnostic: &GhostLaneDiagnostic,
@@ -2291,6 +3529,47 @@ fn render_ghost_lane_recovery_report(report: &GhostLaneRecoveryReport) -> String
 			diagnostic.reason,
 			diagnostic.run_lease,
 			diagnostic.control_channel,
+			render_string_list(&diagnostic.evidence),
+			render_string_list(&diagnostic.blockers),
+			diagnostic.next_action,
+		));
+	}
+
+	output
+}
+
+fn render_stale_active_recovery_report(report: &StaleActiveRecoveryReport) -> String {
+	let mut output =
+		format!("Stale active recovery diagnostics for project {}\n", report.project_id);
+
+	if report.diagnostics.is_empty() {
+		output.push_str("- none\n");
+
+		return output;
+	}
+
+	for diagnostic in &report.diagnostics {
+		output.push_str(&format!(
+			"- issue: {}\n  issue_id: {}\n  issue_state: {}\n  classification: {}\n  reason: {}\n  queue_label_present: {}\n  active_label_present: {}\n  needs_attention_label_present: {}\n  latest_run_id: {}\n  latest_attempt: {}\n  latest_attempt_status: {}\n  run_lease: {}\n  active_shared_claim: {}\n  control_channel: {}\n  worktree_path: {}\n  worktree_state: {}\n  evidence: {}\n  blockers: {}\n  next_action: {}\n",
+			diagnostic.issue_identifier,
+			diagnostic.issue_id,
+			diagnostic.issue_state,
+			diagnostic.classification,
+			diagnostic.reason,
+			diagnostic.queue_label_present,
+			diagnostic.active_label_present,
+			diagnostic.needs_attention_label_present,
+			diagnostic.latest_run_id.as_deref().unwrap_or("none"),
+			diagnostic
+				.latest_attempt_number
+				.map(|attempt| attempt.to_string())
+				.unwrap_or_else(|| String::from("none")),
+			diagnostic.latest_attempt_status.as_deref().unwrap_or("none"),
+			diagnostic.run_lease,
+			diagnostic.active_shared_claim,
+			diagnostic.control_channel,
+			diagnostic.worktree_path.as_deref().unwrap_or("none"),
+			diagnostic.worktree_state,
 			render_string_list(&diagnostic.evidence),
 			render_string_list(&diagnostic.blockers),
 			diagnostic.next_action,
@@ -4712,6 +5991,72 @@ fn repository_relative_path(repo_root: &Path, path: &Path) -> Option<String> {
 	Some(relative.to_string_lossy().to_string())
 }
 
+fn worktree_has_tracked_changes_for_recovery(worktree_path: &Path) -> Result<bool> {
+	if !worktree_path.try_exists()? {
+		return Ok(false);
+	}
+	if !worktree_path.join(".git").try_exists()? {
+		return Ok(!state::retained_path_contains_only_decodex_runtime_artifacts(worktree_path)?);
+	}
+
+	Ok(!worktree_blocking_status_lines(worktree_path)?.is_empty())
+}
+
+fn stale_active_marker_process_alive(marker: &state::RunActivityMarker) -> bool {
+	let Some(process_id) = marker.process_id() else {
+		return false;
+	};
+
+	if !stale_active_process_is_alive(process_id) {
+		return false;
+	}
+	let Some(marker_host_boot_id) = marker.host_boot_id() else {
+		return false;
+	};
+	let Some(current_host_boot_id) = state::current_host_boot_id() else {
+		return false;
+	};
+
+	if marker_host_boot_id != current_host_boot_id.as_str() {
+		return false;
+	}
+
+	let Some(marker_process_start_identity) = marker.process_start_identity() else {
+		return false;
+	};
+	let Some(current_process_start_identity) = state::process_start_identity(process_id) else {
+		return false;
+	};
+
+	marker_process_start_identity == current_process_start_identity.as_str()
+}
+
+fn stale_active_marker_thread_active(marker: &state::RunActivityMarker) -> bool {
+	matches!(marker.thread_status(), Some("active")) || !marker.thread_active_flags().is_empty()
+}
+
+#[cfg(unix)]
+fn stale_active_process_is_alive(process_id: u32) -> bool {
+	let Ok(process_id) = libc::pid_t::try_from(process_id) else {
+		return false;
+	};
+
+	if process_id <= 0 {
+		return false;
+	}
+
+	match unsafe { libc::kill(process_id, 0) } {
+		0 => true,
+		-1 => matches!(std::io::Error::last_os_error().raw_os_error(), Some(libc::EPERM)),
+		_ => false,
+	}
+}
+
+#[cfg(not(unix))]
+fn stale_active_process_is_alive(_process_id: u32) -> bool {
+	false
+}
+
 fn relative_worktree_path_for_recovery(
 	context: &RecoveryContext,
 	worktree_path: &Path,
@@ -4726,7 +6071,7 @@ fn relative_worktree_path_for_recovery(
 
 #[cfg(test)]
 mod tests {
-	use std::{cell::RefCell, fs, path::Path};
+	use std::{cell::RefCell, fs, path::Path, process::Command};
 
 	use tempfile::TempDir;
 
@@ -4738,15 +6083,17 @@ mod tests {
 			GHOST_LANE_TERMINAL_STATUS, MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION,
 			REVIEW_HANDOFF_ADOPT_EVENT, REVIEW_HANDOFF_BOUND_CLASSIFICATION,
 			REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION, REVIEW_HANDOFF_REBIND_EVENT,
-			REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION,
+			REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION, STALE_ACTIVE_CLASSIFICATION,
+			STALE_ACTIVE_RELEASE_EVENT,
 		},
 		state::{
-			self, ChildAgentActivitySummary, ConnectorBackoffInput, ProtocolActivitySummary,
-			ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpointInput,
-			StateStore, WorktreeMapping,
+			self, ChildAgentActivitySummary, ConnectorBackoffInput, ProtocolActivityMarker,
+			ProtocolActivitySummary, ReviewHandoffMarker, ReviewOrchestrationMarker,
+			ReviewPolicyCheckpointInput, StateStore, WorktreeMapping,
 		},
 		tracker::{
-			IssueTracker, TrackerComment, TrackerIssue, TrackerState, TrackerTeam,
+			self, IssueTracker, TrackerComment, TrackerIssue, TrackerLabel, TrackerState,
+			TrackerTeam,
 			linear::LinearClient,
 			records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
 		},
@@ -4757,7 +6104,10 @@ mod tests {
 		issues: Vec<TrackerIssue>,
 		refresh_error: Option<String>,
 		identifier_error: Option<String>,
+		remove_error: Option<String>,
+		comments: Vec<TrackerComment>,
 		refresh_queries: RefCell<Vec<Vec<String>>>,
+		label_removals: RefCell<Vec<(String, Vec<String>)>>,
 	}
 	impl GhostLaneTestTracker {
 		fn missing() -> Self {
@@ -4765,8 +6115,33 @@ mod tests {
 				issues: Vec::new(),
 				refresh_error: None,
 				identifier_error: None,
+				remove_error: None,
+				comments: Vec::new(),
 				refresh_queries: RefCell::new(Vec::new()),
+				label_removals: RefCell::new(Vec::new()),
 			}
+		}
+
+		fn with_issues(issues: Vec<TrackerIssue>) -> Self {
+			Self {
+				issues,
+				refresh_error: None,
+				identifier_error: None,
+				remove_error: None,
+				comments: Vec::new(),
+				refresh_queries: RefCell::new(Vec::new()),
+				label_removals: RefCell::new(Vec::new()),
+			}
+		}
+
+		fn with_comments(mut self, comments: Vec<TrackerComment>) -> Self {
+			self.comments = comments;
+			self
+		}
+
+		fn remove_error(mut self, message: &str) -> Self {
+			self.remove_error = Some(message.to_owned());
+			self
 		}
 
 		fn refresh_error(message: &str) -> Self {
@@ -4774,7 +6149,10 @@ mod tests {
 				issues: Vec::new(),
 				refresh_error: Some(message.to_owned()),
 				identifier_error: None,
+				remove_error: None,
+				comments: Vec::new(),
 				refresh_queries: RefCell::new(Vec::new()),
+				label_removals: RefCell::new(Vec::new()),
 			}
 		}
 
@@ -4783,24 +6161,31 @@ mod tests {
 				issues: Vec::new(),
 				refresh_error: None,
 				identifier_error: Some(message.to_owned()),
+				remove_error: None,
+				comments: Vec::new(),
 				refresh_queries: RefCell::new(Vec::new()),
+				label_removals: RefCell::new(Vec::new()),
 			}
 		}
 	}
 	impl IssueTracker for GhostLaneTestTracker {
 		fn list_issues_with_label(
 			&self,
-			_label_name: &str,
+			label_name: &str,
 		) -> crate::prelude::Result<Vec<TrackerIssue>> {
-			Ok(Vec::new())
+			Ok(self.issues.iter().filter(|issue| issue.has_label(label_name)).cloned().collect())
 		}
 
 		fn find_team_label_id(
 			&self,
-			_team_id: &str,
-			_label_name: &str,
+			team_id: &str,
+			label_name: &str,
 		) -> crate::prelude::Result<Option<String>> {
-			Ok(None)
+			Ok(self
+				.issues
+				.iter()
+				.find(|issue| issue.team.id == team_id)
+				.and_then(|issue| issue.label_id_for_name(label_name).map(ToOwned::to_owned)))
 		}
 
 		fn get_issue_by_identifier(
@@ -4837,6 +6222,123 @@ mod tests {
 		}
 
 		fn list_comments(&self, _issue_id: &str) -> crate::prelude::Result<Vec<TrackerComment>> {
+			Ok(self.comments.clone())
+		}
+
+		fn update_issue_state(
+			&self,
+			_issue_id: &str,
+			_state_id: &str,
+		) -> crate::prelude::Result<()> {
+			Ok(())
+		}
+
+		fn add_issue_labels(
+			&self,
+			_issue_id: &str,
+			_label_ids: &[String],
+		) -> crate::prelude::Result<()> {
+			Ok(())
+		}
+
+		fn remove_issue_labels(
+			&self,
+			issue_id: &str,
+			label_ids: &[String],
+		) -> crate::prelude::Result<()> {
+			self.label_removals.borrow_mut().push((issue_id.to_owned(), label_ids.to_vec()));
+			if let Some(message) = &self.remove_error {
+				return Err(crate::prelude::eyre::eyre!(message.clone()));
+			}
+
+			Ok(())
+		}
+
+		fn create_comment(&self, _issue_id: &str, _body: &str) -> crate::prelude::Result<()> {
+			Ok(())
+		}
+	}
+
+	struct FinalNeedsAttentionTracker {
+		issue: TrackerIssue,
+		needs_attention_label: String,
+		get_issue_calls: RefCell<usize>,
+		label_removals: RefCell<Vec<(String, Vec<String>)>>,
+	}
+	impl FinalNeedsAttentionTracker {
+		fn new(issue: TrackerIssue, needs_attention_label: String) -> Self {
+			Self {
+				issue,
+				needs_attention_label,
+				get_issue_calls: RefCell::new(0),
+				label_removals: RefCell::new(Vec::new()),
+			}
+		}
+
+		fn issue_for_call(&self, call_count: usize) -> TrackerIssue {
+			let mut issue = self.issue.clone();
+
+			if call_count >= 3 {
+				let label = TrackerLabel {
+					id: format!("label-{}", self.needs_attention_label.replace(':', "-")),
+					name: self.needs_attention_label.clone(),
+				};
+				if !issue.team.labels.iter().any(|candidate| candidate.name == label.name) {
+					issue.team.labels.push(label.clone());
+				}
+				if !issue.labels.iter().any(|candidate| candidate.name == label.name) {
+					issue.labels.push(label);
+				}
+			}
+
+			issue
+		}
+	}
+	impl IssueTracker for FinalNeedsAttentionTracker {
+		fn list_issues_with_label(
+			&self,
+			label_name: &str,
+		) -> crate::prelude::Result<Vec<TrackerIssue>> {
+			let issue = self.issue_for_call(*self.get_issue_calls.borrow());
+
+			Ok(issue.has_label(label_name).then_some(issue).into_iter().collect())
+		}
+
+		fn find_team_label_id(
+			&self,
+			_team_id: &str,
+			label_name: &str,
+		) -> crate::prelude::Result<Option<String>> {
+			Ok(Some(format!("label-{}", label_name.replace(':', "-"))))
+		}
+
+		fn get_issue_by_identifier(
+			&self,
+			issue_identifier: &str,
+		) -> crate::prelude::Result<Option<TrackerIssue>> {
+			let mut calls = self.get_issue_calls.borrow_mut();
+
+			*calls += 1;
+			let issue = self.issue_for_call(*calls);
+
+			Ok((issue.identifier == issue_identifier).then_some(issue))
+		}
+
+		fn refresh_issues(
+			&self,
+			issue_ids: &[String],
+		) -> crate::prelude::Result<Vec<TrackerIssue>> {
+			let issue = self.issue_for_call(*self.get_issue_calls.borrow());
+
+			Ok(issue_ids
+				.iter()
+				.any(|issue_id| issue_id == &issue.id)
+				.then_some(issue)
+				.into_iter()
+				.collect())
+		}
+
+		fn list_comments(&self, _issue_id: &str) -> crate::prelude::Result<Vec<TrackerComment>> {
 			Ok(Vec::new())
 		}
 
@@ -4858,9 +6360,11 @@ mod tests {
 
 		fn remove_issue_labels(
 			&self,
-			_issue_id: &str,
-			_label_ids: &[String],
+			issue_id: &str,
+			label_ids: &[String],
 		) -> crate::prelude::Result<()> {
+			self.label_removals.borrow_mut().push((issue_id.to_owned(), label_ids.to_vec()));
+
 			Ok(())
 		}
 
@@ -5137,6 +6641,1644 @@ token_env_var = "HOME"
 			labels: Vec::new(),
 			blockers: Vec::new(),
 		}
+	}
+
+	fn sample_issue_with_labels(state_name: &str, labels: &[String]) -> TrackerIssue {
+		let mut issue = sample_issue(state_name);
+
+		for label in labels {
+			let tracker_label = TrackerLabel {
+				id: format!("label-{}", label.replace(':', "-")),
+				name: label.clone(),
+			};
+
+			issue.team.labels.push(tracker_label.clone());
+			issue.labels.push(tracker_label);
+		}
+
+		issue
+	}
+
+	fn init_git_repo(path: &Path) {
+		fs::create_dir_all(path).expect("git repo path should create");
+		let status = Command::new("git")
+			.arg("-C")
+			.arg(path)
+			.arg("init")
+			.status()
+			.expect("git init should run");
+
+		assert!(status.success(), "git init should succeed");
+	}
+
+	#[test]
+	fn stale_active_diagnose_classifies_tracker_present_active_without_lease() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let queue_label = tracker::automation_queue_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label, queue_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store.update_run_thread("run-1626", "thread-stale").expect("thread should record");
+		store.update_run_turn("run-1626", "turn-stale").expect("turn should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, STALE_ACTIVE_CLASSIFICATION);
+		assert_eq!(
+			diagnostic.reason,
+			"tracker_issue_has_stale_active_label_without_live_or_retained_progress"
+		);
+		assert!(diagnostic.active_label_present);
+		assert!(diagnostic.queue_label_present);
+		assert!(!diagnostic.run_lease);
+		assert_eq!(diagnostic.latest_run_id.as_deref(), Some("run-1626"));
+		assert!(diagnostic.blockers.is_empty(), "unexpected blockers: {:?}", diagnostic.blockers);
+		assert!(diagnostic.evidence.contains(&String::from("tracker_issue_present")));
+		assert!(diagnostic.evidence.contains(&String::from("run_lease_missing")));
+		assert!(diagnostic.evidence.contains(&String::from("private_evidence_missing")));
+		assert!(diagnostic.evidence.contains(&String::from("stale_thread_reference_present")));
+		assert!(diagnostic.next_action.contains("recover stale-active release PUB-1626 --dry-run"));
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_shared_claim_lock_file() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let owner_store = StateStore::open_in_memory().expect("owner store should open");
+		let store = StateStore::open_in_memory().expect("reader store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		owner_store
+			.configure_dispatch_slot_root("pubfi", temp_dir.path())
+			.expect("owner store should configure dispatch root");
+		assert!(
+			owner_store
+				.try_acquire_lease("pubfi", &issue.id, "run-live", "In Progress")
+				.expect("owner should acquire shared claim")
+		);
+		store
+			.observe_dispatch_slot_root("pubfi", temp_dir.path())
+			.expect("reader store should observe dispatch root");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.active_shared_claim);
+		assert!(diagnostic.blockers.contains(&String::from("active_shared_claim_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_identifier_keyed_run_lease() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+
+		issue.id = String::from("linear-issue-1626");
+		issue.identifier = String::from("PUB-1626");
+		store
+			.upsert_lease("pubfi", &issue.identifier, "run-identifier", "In Progress")
+			.expect("identifier-keyed lease should record");
+		store
+			.record_run_attempt("run-identifier", &issue.identifier, 1, "running")
+			.expect("identifier-keyed run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.identifier,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("identifier-keyed worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.latest_run_id.as_deref(), Some("run-identifier"));
+		assert!(diagnostic.run_lease);
+		assert!(diagnostic.blockers.contains(&String::from("run_lease_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_identifier_keyed_private_progress() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+
+		issue.id = String::from("linear-issue-1626");
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		store
+			.append_private_execution_event(
+				"pubfi",
+				&issue.identifier,
+				"run-identifier",
+				1,
+				"source_progress",
+				serde_json::json!({"phase": "implementation"}),
+			)
+			.expect("identifier-keyed private progress should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_identifier_keyed_worktree_progress() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let worktree_path = temp_dir.path().join("identifier-worktree");
+
+		issue.id = String::from("linear-issue-1626");
+		issue.identifier = String::from("PUB-1626");
+		fs::create_dir_all(&worktree_path).expect("identifier worktree should create");
+		fs::write(worktree_path.join("source.rs"), "fn progress() {}\n")
+			.expect("ordinary worktree file should write");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.identifier,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("identifier-keyed worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.worktree_state, "non_git_files_present");
+		assert!(diagnostic.blockers.contains(&String::from("non_git_worktree_files_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_active_thread_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		fs::create_dir_all(&worktree_path).expect("worktree path should create");
+		state::write_run_thread_status_marker(
+			&worktree_path,
+			"run-1626",
+			1,
+			Some("thread-1626"),
+			Some("turn-1626"),
+			"active",
+			&[String::from("waitingOnApproval")],
+		)
+		.expect("active thread marker should write");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("activity_marker_thread_active")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_private_progress_from_older_attempt() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-old", &issue.id, 1, "running")
+			.expect("old run attempt should record");
+		store
+			.record_run_attempt("run-new", &issue.id, 2, "running")
+			.expect("new run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		store
+			.append_private_execution_event(
+				"pubfi",
+				&issue.id,
+				"run-old",
+				1,
+				"source_progress",
+				serde_json::json!({"phase": "implementation"}),
+			)
+			.expect("private progress should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.latest_run_id.as_deref(), Some("run-new"));
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_protocol_event_evidence() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		store
+			.append_event("run-1626", 1, "turn/item", r#"{"kind":"progress"}"#)
+			.expect("protocol event should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("protocol_event_evidence_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_marker_protocol_activity_evidence() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		state::write_run_protocol_activity_marker(
+			&worktree_path,
+			&ProtocolActivityMarker {
+				run_id: "run-1626",
+				attempt_number: 1,
+				thread_id: Some("thread-stale"),
+				turn_id: Some("turn-stale"),
+				event_count: 1,
+				last_event_type: "turn/completed",
+				child_agent_activity: None,
+				protocol_activity: None,
+			},
+		)
+		.expect("protocol marker should write");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("protocol_event_marker_present")));
+		assert!(
+			diagnostic
+				.blockers
+				.contains(&String::from("activity_marker_protocol_activity_present"))
+		);
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_untracked_worktree_progress() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		init_git_repo(&worktree_path);
+		fs::write(worktree_path.join("new_source.rs"), "fn retained_progress() {}\n")
+			.expect("untracked source should write");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("worktree_tracked_changes_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_non_git_retained_files() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		fs::create_dir_all(&worktree_path).expect("retained path should create");
+		fs::write(worktree_path.join("retained.txt"), "retained work\n")
+			.expect("retained file should write");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.worktree_state, "non_git_files_present");
+		assert!(diagnostic.blockers.contains(&String::from("non_git_worktree_files_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_child_agent_activity_summary() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let activity = ChildAgentActivitySummary { event_count: 1, ..Default::default() };
+
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		store
+			.record_run_activity_summary("run-1626", 1, Some(&activity), None)
+			.expect("child activity should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("child_agent_activity_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_when_worktree_status_unknown() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let worktree_path = temp_dir.path().join("PUB-1626");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+
+		fs::create_dir_all(&worktree_path).expect("worktree path should create");
+		fs::write(worktree_path.join(".git"), "gitdir: /does/not/exist\n")
+			.expect("invalid gitdir should write");
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.worktree_state, "tracked_changes_unknown");
+		assert!(diagnostic.blockers.contains(&String::from("worktree_tracked_changes_unknown")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_needs_attention_label() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let needs_attention_label = String::from("decodex:needs-attention");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label, needs_attention_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("needs_attention_label_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_review_policy_checkpoint() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		store
+			.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+				project_id: "pubfi",
+				issue_id: &issue.id,
+				run_id: "run-1626",
+				attempt_number: 1,
+				phase: "handoff",
+				review_level: "normal",
+				status: "clean",
+				head_sha: "2222222222222222222222222222222222222222",
+				nonclean_rounds: 0,
+				details_json: "{}",
+			})
+			.expect("review checkpoint should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("review_policy_checkpoint_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_identifier_keyed_review_policy_checkpoint() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+
+		issue.id = String::from("linear-issue-1626");
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		store
+			.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+				project_id: "pubfi",
+				issue_id: "PUB-1626",
+				run_id: "run-1626",
+				attempt_number: 1,
+				phase: "handoff",
+				review_level: "normal",
+				status: "clean",
+				head_sha: "2222222222222222222222222222222222222222",
+				nonclean_rounds: 0,
+				details_json: "{}",
+			})
+			.expect("identifier-keyed review checkpoint should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("review_policy_checkpoint_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_identifier_keyed_pr_lineage() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let mut event = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: "pubfi",
+				issue_id: "PUB-1626",
+				issue_identifier: "PUB-1626",
+				run_id: "run-1626",
+				attempt_number: 1,
+			},
+			"review_handoff",
+			String::from("2026-06-28T00:00:00Z"),
+			"review_handoff",
+		);
+
+		issue.id = String::from("linear-issue-1626");
+		issue.identifier = String::from("PUB-1626");
+		event.branch = Some(String::from("x/pubfi-pub-1626"));
+		event.pr_url = Some(String::from("https://github.com/hack-ink/decodex/pull/1626"));
+		event.pr_head_sha = Some(String::from("2222222222222222222222222222222222222222"));
+		event.pr_base_ref = Some(String::from("main"));
+		event.commit_sha = Some(String::from("3333333333333333333333333333333333333333"));
+		event.validation_result = Some(String::from("passed"));
+		event.summary = Some(String::from("Recorded review handoff lineage."));
+		event.terminal_path = Some(String::from("review_handoff"));
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		store.record_linear_execution_event(&event).expect("linear event should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("pr_or_review_lineage_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_tracker_comment_pr_lineage() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let mut event = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: "pubfi",
+				issue_id: "linear-issue-1626",
+				issue_identifier: "PUB-1626",
+				run_id: "run-1626",
+				attempt_number: 1,
+			},
+			"review_handoff",
+			String::from("2026-06-28T00:00:00Z"),
+			"review_handoff",
+		);
+
+		issue.id = String::from("linear-issue-1626");
+		issue.identifier = String::from("PUB-1626");
+		event.branch = Some(String::from("x/pubfi-pub-1626"));
+		event.pr_url = Some(String::from("https://github.com/hack-ink/decodex/pull/1626"));
+		event.pr_head_sha = Some(String::from("2222222222222222222222222222222222222222"));
+		event.pr_base_ref = Some(String::from("main"));
+		event.commit_sha = Some(String::from("3333333333333333333333333333333333333333"));
+		event.validation_result = Some(String::from("passed"));
+		event.summary = Some(String::from("Recorded review handoff lineage."));
+		event.terminal_path = Some(String::from("review_handoff"));
+
+		let comment = TrackerComment {
+			body: records::append_structured_comment_record(
+				&records::render_linear_execution_event_comment_body(&event, None),
+				&event,
+			)
+			.expect("structured comment should serialize"),
+			created_at: String::from("2026-06-28T00:00:00Z"),
+		};
+
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]).with_comments(vec![comment]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("pr_or_review_lineage_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_identifier_keyed_review_lifecycle() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let marker = ReviewHandoffMarker::new(
+			"run-1626",
+			1,
+			"x/pubfi-pub-1626",
+			"https://github.com/hack-ink/decodex/pull/1626",
+			"main",
+			"x/pubfi-pub-1626",
+			"2222222222222222222222222222222222222222",
+		);
+
+		issue.id = String::from("linear-issue-1626");
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&temp_dir.path().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		store
+			.upsert_review_handoff_marker("pubfi", "PUB-1626", &marker)
+			.expect("identifier-keyed review lifecycle should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("review_lifecycle_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_unreadable_activity_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		fs::create_dir_all(worktree_path.join(state::RUN_ACTIVITY_MARKER_FILE))
+			.expect("directory marker should create");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("worktree_tracked_changes_unknown")));
+		assert!(
+			diagnostic.evidence.iter().any(|entry| entry.starts_with("worktree_status_error:")),
+			"diagnostic should include marker read error evidence: {:?}",
+			diagnostic.evidence
+		);
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_release_removes_active_label_and_terminalizes_stale_run() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("Todo", &[active_label.clone(), queue_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		context
+			.state_store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&context.config.worktree_root().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert!(diagnostic.recoverable());
+
+		super::apply_stale_active_release_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect("stale active release should apply");
+
+		let run = context
+			.state_store
+			.run_attempt("run-1626")
+			.expect("run attempt should read")
+			.expect("run should exist");
+		let events = context
+			.state_store
+			.list_private_execution_events("pubfi", &issue.id, "run-1626", 1)
+			.expect("private events should read");
+
+		assert_eq!(run.status(), GHOST_LANE_TERMINAL_STATUS);
+		assert_eq!(
+			tracker.label_removals.borrow().as_slice(),
+			&[(issue.id.clone(), vec![format!("label-{}", active_label.replace(':', "-"))])]
+		);
+		assert!(events.iter().any(|event| {
+			event.event_type() == STALE_ACTIVE_RELEASE_EVENT
+				&& event.payload()["schema"] == super::STALE_ACTIVE_RECOVERY_SCHEMA
+				&& event.payload()["active_label_release"] == "pending_final_mutation"
+				&& event.payload()["phase"] == "local_cleanup_complete_before_active_label_release"
+		}));
+	}
+
+	#[test]
+	fn stale_active_release_removes_run_control_marker_only_directory() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("Todo", &[active_label.clone(), queue_label]);
+		let worktree_path = context.config.worktree_root().join("PUB-1626");
+		let control_dir = worktree_path.join(state::RUN_CONTROL_CHANNEL_DIR);
+
+		issue.identifier = String::from("PUB-1626");
+		fs::create_dir_all(&control_dir).expect("run-control marker directory should create");
+		fs::write(control_dir.join("run-1626-1.channel"), "channel\n")
+			.expect("run-control marker should write");
+		context
+			.state_store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert!(diagnostic.recoverable());
+
+		super::apply_stale_active_release_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect("stale active release should apply");
+
+		assert!(!worktree_path.exists(), "marker-only directory should be removed");
+		assert_eq!(
+			tracker.label_removals.borrow().as_slice(),
+			&[(issue.id.clone(), vec![format!("label-{}", active_label.replace(':', "-"))])]
+		);
+	}
+
+	#[test]
+	fn stale_active_release_keeps_active_label_gate_when_tracker_label_removal_fails() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("Todo", &[active_label.clone(), queue_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		context
+			.state_store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&context.config.worktree_root().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()])
+			.remove_error("Linear label removal failed");
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		let error = super::apply_stale_active_release_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect_err("tracker removal failure should abort release");
+		let run = context
+			.state_store
+			.run_attempt("run-1626")
+			.expect("run attempt should read")
+			.expect("run should exist");
+		let events = context
+			.state_store
+			.list_private_execution_events("pubfi", &issue.id, "run-1626", 1)
+			.expect("private events should read");
+		let mapping = context
+			.state_store
+			.worktree_for_issue(&issue.id)
+			.expect("worktree mapping should read");
+
+		assert!(error.to_string().contains("Linear label removal failed"));
+		assert_eq!(run.status(), GHOST_LANE_TERMINAL_STATUS);
+		assert!(events.iter().any(|event| event.event_type() == STALE_ACTIVE_RELEASE_EVENT));
+		assert!(mapping.is_none());
+		assert_eq!(
+			tracker.label_removals.borrow().as_slice(),
+			&[(issue.id.clone(), vec![format!("label-{}", active_label.replace(':', "-"))])]
+		);
+	}
+
+	#[test]
+	fn stale_active_release_revalidates_needs_attention_before_final_label_removal() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let needs_attention_label =
+			context.workflow.frontmatter().tracker().needs_attention_label().to_owned();
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		context
+			.state_store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&context.config.worktree_root().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = FinalNeedsAttentionTracker::new(issue, needs_attention_label);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		)
+		.expect("initial stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert!(diagnostic.recoverable());
+
+		let error = super::apply_stale_active_release_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect_err("late needs-attention should block active-label release");
+		let message = error.to_string();
+
+		assert!(message.contains("safety inspection changed before apply"));
+		assert!(message.contains("needs_attention_label_present"));
+		assert!(
+			tracker.label_removals.borrow().is_empty(),
+			"active label should not be removed after late needs-attention appears"
+		);
+	}
+
+	#[test]
+	fn stale_active_release_preflight_rejects_worktree_progress_after_diagnosis() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("Todo", &[active_label, queue_label]);
+		let worktree_path = context.config.worktree_root().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		init_git_repo(&worktree_path);
+		context
+			.state_store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert!(diagnostic.recoverable());
+
+		fs::write(worktree_path.join("late_progress.rs"), "fn late_progress() {}\n")
+			.expect("late untracked progress should write");
+		let error =
+			super::preflight_stale_active_worktree_cleanup(&context.state_store, &diagnostic)
+				.expect_err("preflight should reject late retained progress");
+
+		assert!(
+			error.to_string().contains("retained worktree changes appeared before cleanup"),
+			"unexpected preflight error: {error:?}"
+		);
+	}
+
+	#[test]
+	fn stale_active_release_revalidates_late_default_worktree_progress_without_mapping() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("Todo", &[active_label.clone(), queue_label]);
+		let default_worktree_path = context.config.worktree_root().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		context
+			.state_store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert!(diagnostic.recoverable());
+
+		init_git_repo(&default_worktree_path);
+		fs::write(default_worktree_path.join("late_default_progress.rs"), "fn late() {}\n")
+			.expect("late default progress should write");
+		let error = super::apply_stale_active_release_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect_err("late default worktree progress should block release");
+		let run = context
+			.state_store
+			.run_attempt("run-1626")
+			.expect("run attempt should read")
+			.expect("run should exist");
+
+		assert!(
+			error.to_string().contains("safety inspection changed before apply"),
+			"unexpected release error: {error:?}"
+		);
+		assert_eq!(run.status(), "running");
+		assert!(tracker.label_removals.borrow().is_empty());
+	}
+
+	#[test]
+	fn stale_active_release_revalidates_late_run_lease_before_mutation() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("Todo", &[active_label.clone(), queue_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		context
+			.state_store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&context.config.worktree_root().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert!(diagnostic.recoverable());
+
+		context
+			.state_store
+			.upsert_lease(context.config.service_id(), &issue.id, "run-1626", "In Progress")
+			.expect("late lease should record");
+
+		let error = super::apply_stale_active_release_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect_err("late run lease should block release");
+		let run = context
+			.state_store
+			.run_attempt("run-1626")
+			.expect("run attempt should read")
+			.expect("run should exist");
+
+		assert!(
+			error.to_string().contains("safety inspection changed before apply"),
+			"unexpected release error: {error:?}"
+		);
+		assert_eq!(run.status(), "running");
+		assert!(tracker.label_removals.borrow().is_empty());
+	}
+
+	#[test]
+	fn stale_active_release_revalidates_late_review_policy_before_mutation() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("Todo", &[active_label, queue_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		context
+			.state_store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&context.config.worktree_root().join("PUB-1626").display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert!(diagnostic.recoverable());
+
+		context
+			.state_store
+			.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+				project_id: context.config.service_id(),
+				issue_id: &issue.id,
+				run_id: "run-1626",
+				attempt_number: 1,
+				phase: "handoff",
+				review_level: "normal",
+				status: "clean",
+				head_sha: "2222222222222222222222222222222222222222",
+				nonclean_rounds: 0,
+				details_json: "{}",
+			})
+			.expect("late review checkpoint should record");
+
+		let error = super::apply_stale_active_release_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect_err("late review checkpoint should block release");
+		let run = context
+			.state_store
+			.run_attempt("run-1626")
+			.expect("run attempt should read")
+			.expect("run should exist");
+
+		assert!(
+			error.to_string().contains("safety inspection changed before apply")
+				|| error.to_string().contains("review authority appeared"),
+			"unexpected release error: {error:?}"
+		);
+		assert_eq!(run.status(), "running");
+		assert!(tracker.label_removals.borrow().is_empty());
+	}
+
+	#[test]
+	fn stale_active_final_label_guard_rejects_late_run_lease() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("Todo", &[active_label, queue_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		context
+			.state_store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert!(diagnostic.recoverable());
+
+		context
+			.state_store
+			.upsert_lease(context.config.service_id(), &issue.id, "run-1626", "In Progress")
+			.expect("late lease should record");
+
+		let error = super::ensure_stale_active_run_claim_guard(
+			&context.config,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect_err("final guard should reject late lease");
+
+		assert!(
+			error.to_string().contains("appeared before active-label release"),
+			"unexpected final guard error: {error:?}"
+		);
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_when_run_lease_is_present() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+
+		issue.identifier = String::from("PUB-1626");
+		store
+			.record_run_attempt("run-1626", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		store
+			.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress")
+			.expect("lease should record");
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("run_lease_present")));
+		assert!(diagnostic.blockers.contains(&String::from("active_shared_claim_present")));
+		assert!(!diagnostic.recoverable());
 	}
 
 	#[test]
@@ -5759,7 +8901,10 @@ token_env_var = "HOME"
 			issues: vec![issue],
 			refresh_error: None,
 			identifier_error: None,
+			remove_error: None,
+			comments: Vec::new(),
 			refresh_queries: RefCell::new(Vec::new()),
+			label_removals: RefCell::new(Vec::new()),
 		};
 
 		store
