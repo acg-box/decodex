@@ -2546,7 +2546,6 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 8
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 1
 gate_profiles = {}
 canonicalize_commands = []
 verify_commands = []

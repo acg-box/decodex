@@ -1535,7 +1535,6 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("projectNumber(project.cleanup_pending_count)"));
 	assert!(!response.contains("[project.post_review_lane_count ?? 0, \"review/land\"]"));
 	assert!(!response.contains("[project.retained_worktree_count, \"recovery\"]"));
-	assert!(!response.contains("aria-label=\"Project capacity\""));
 	assert!(response.contains("function compactProjectLocation(projectPath)"));
 	assert!(response.contains("function projectLocationMarkup(projectPath)"));
 	assert!(response.contains("projectLocationsHidden ? \"-\" : compactProjectLocation(projectPath)"));
@@ -1678,7 +1677,6 @@ fn operator_dashboard_flow_counts_distinguish_intake_attention() {
 	assert!(response.contains("label: isDirty ? \"post-review cleanup blocked\" : \"post-review cleanup\""));
 	assert!(response.contains("retainedWorktrees.some(recoveryWorktreeShouldDefaultOpen)"));
 	assert!(!response.contains("syncDefaultDetailOpenState(nodes.panels.worktrees, retainedWorktrees.length > 0);"));
-	assert!(!response.contains("Ready, capacity-limited, or blocked issues appear here before they start."));
 	assert!(!response.contains("claimed without local lane"));
 	assert!(!response.contains("const repairCount = attentionItems.length;"));
 }

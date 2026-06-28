@@ -1310,7 +1310,6 @@ where
 	state_store.configure_dispatch_slot_root(
 		project.service_id(),
 		project.worktree_root(),
-		workflow.frontmatter().execution().max_concurrent_agents(),
 	)?;
 
 	let recovered_state =
@@ -1338,13 +1337,8 @@ where
 	};
 	let dispatch_mode = selected_issue.dispatch_mode;
 	let preferred_run_identity = selected_issue.preferred_run_identity;
-	let concurrency = ConcurrencySnapshot::new(project.service_id(), state_store)?;
-
 	if !dry_run && dispatch_mode != IssueDispatchMode::Closeout {
 		ensure_project_has_no_merged_worktree_cleanup_debt(project)?;
-	}
-	if !concurrency.has_global_capacity(workflow.frontmatter().execution()) {
-		return Ok(None);
 	}
 	if !dispatch_mode.allows_issue(
 		tracker,
@@ -1856,7 +1850,6 @@ where
 	context.state_store.configure_dispatch_slot_root(
 		context.project.service_id(),
 		context.project.worktree_root(),
-		context.workflow.frontmatter().execution().max_concurrent_agents(),
 	)?;
 
 	let issue_id = resolve_target_issue_id(context.tracker, context.issue_id)?;
@@ -1918,13 +1911,6 @@ where
 
 	if target_issue_active_claim_blocks_dispatch(&context, &issue_id, &issue)? {
 		return Ok(None);
-	}
-	if !context.lease_preacquired && !reuses_existing_closeout_claim {
-		let concurrency = ConcurrencySnapshot::new(context.project.service_id(), context.state_store)?;
-
-		if !concurrency.has_global_capacity(context.workflow.frontmatter().execution()) {
-			return Ok(None);
-		}
 	}
 	if !context.dry_run && context.dispatch_mode != IssueDispatchMode::Closeout {
 		ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
@@ -2087,7 +2073,6 @@ where
 	context.state_store.configure_dispatch_slot_root(
 		context.project.service_id(),
 		context.project.worktree_root(),
-		context.workflow.frontmatter().execution().max_concurrent_agents(),
 	)?;
 
 	let target_issue_id = resolve_target_issue_id(context.tracker, context.issue_id)?;

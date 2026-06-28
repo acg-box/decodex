@@ -172,7 +172,6 @@ At minimum, the target repo should define:
 - `[execution] max_attempts`
 - `[execution] max_turns`
 - `[execution] max_retry_backoff_ms`
-- `[execution] max_concurrent_agents`; set it explicitly to `0` to run without a project-level concurrent-agent cap
 - optional `[context] read_first = [...]` only when the repo truly needs extra repo-local files loaded in addition to the `WORKFLOW.md` body; treat this as a Decodex-local extension, not as the primary policy surface
 
 Child-run execution policy is not part of the project-owned `WORKFLOW.md` contract. `decodex` must let `codex app-server` inherit sandbox and approval behavior from the active Codex runtime instead of pinning repo-local overrides.
@@ -402,7 +401,7 @@ wants to observe the self-bootstrap loop without reading source code.
    - `Recovery Worktrees` is empty for a clean baseline. A retained row is acceptable
      only when it is named as cleanup-only work, such as a landed or closed lane
      waiting deterministic worktree cleanup, and is not running, in review, or blocking
-     capacity.
+     active cleanup.
    - If any queued/running/review lane or unexplained retained worktree appears, pause
      before applying new `decodex:queued:decodex` labels and record the owner or cleanup
      reason first.
@@ -466,14 +465,14 @@ wants to observe the self-bootstrap loop without reading source code.
      it stays missing after one poll tick, stop before queueing new issues.
    - Check `decodex status --json` before applying new `decodex:queued:decodex`
      labels. The snapshot should show the intended `decodex` project registration, no
-     previous completed lane counted as running capacity, and retained or recovery
+     previous completed lane counted as active work, and retained or recovery
      worktree entries only when they correspond to a live PR, review, landing, or
      recovery state.
    - In the dashboard, confirm `Projects`, `Intake Queue`, `Running Lanes`,
      `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` agree with the same
      snapshot: the landed fix is visible through the latest run history, no stale
      retained worktree rows create noise, and no unexpected issue is waiting for
-     capacity.
+     an active claim to clear.
    - Queue the new Decodex-only issues only after those checks are clean.
 
    Post-land self-bootstrap observation checklist:
@@ -507,16 +506,16 @@ wants to observe the self-bootstrap loop without reading source code.
    - To check restart recovery, restart `decodex serve` while at least one lane is
      active. After the next dashboard refresh, the existing active lanes should
      reappear in `Running Lanes` from runtime/worktree state. Any `ready` queued
-     issues in `Intake Queue` should dispatch into only the remaining capacity after
-     the following tick; stop if recovered lanes are duplicated, lost, or replaced by
+     issues in `Intake Queue` should dispatch after the following tick; stop if
+     recovered lanes are duplicated, lost, or replaced by
      new work.
    - During PR review and landing, confirm each lane reaches `Review & Landing` with
      a non-draft PR or leaves the active view only after retained closeout progresses.
    - Treat the concurrent restart test as clean only when queued Decodex issues move
-     into `Running Lanes` up to available capacity, each lane keeps its own issue id
+     into `Running Lanes`, each lane keeps its own issue id
      and worktree, PR/review/landing state appears in `Review & Landing` and `Run
      Ledger`, and stale retained worktree entries do not reappear as active work or
-     capacity blockers.
+     active-claim blockers.
    - After completion, confirm `Recovery Worktrees` is empty unless retained PR or
      recovery work exists, and `Run Ledger` shows every batch issue completed or
      explicitly needs attention.
@@ -528,8 +527,8 @@ wants to observe the self-bootstrap loop without reading source code.
    - `Projects`: registered projects such as `decodex` and `rsnap` can remain enabled;
      use this panel to confirm what the scheduler knows about without treating every
      enabled project as queued work.
-   - `Intake Queue`: the queued Linear issues should appear as `ready`, `waiting for
-     capacity`, `claimed without local lane`, or `blocked` before they start.
+   - `Intake Queue`: the queued Linear issues should appear as `ready`, `claimed
+     without local lane`, or `blocked` before they start.
    - `Running Lanes`: the active issue should show its issue id, phase, current
      operation, attempt, health, timing, Codex thread details, and worktree path.
    - `Review & Landing`: after PR-backed handoff, retained lanes should move here with
@@ -648,7 +647,7 @@ ordinary `decodex serve` and leaves scheduler cadence to CLI-owned defaults. Dev
 not a scheduler and must not be used for this runbook's automation, queue intake,
 project registration, or retained-lane recovery steps.
 
-The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `decodex status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as claimed queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
+The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `decodex status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as claimed queue echoes, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
 
 - `GET /` or `GET /dashboard`: the same single-page operator console
 - `GET /dashboard/control`: WebSocket transport for snapshots, live run activity, and local dashboard control acknowledgements
