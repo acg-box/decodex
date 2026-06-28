@@ -38,7 +38,7 @@ promotion owners, research disposition, and LLM Wiki routing hygiene.
   `docs/runbook/`, `docs/reference/`, `docs/decisions/`, or `docs/evidence/`;
   `docs/research/` remains latent or explicitly superseded and non-authoritative.
 - For Decodex-specific loop-runtime work, Decodex `research`,
-  `$deliberation:challenge`, and Decodex `research-promote` plus
+  `$deliberation:skeptic`, and Decodex `research-promote` plus
   `decodex research compile` produce and promote a runtime-local
   `decodex.decision_contract/1` candidate. Runtime storage may stay structured for
   machine use, but checked-in docs remain Markdown OKF concepts.
@@ -53,7 +53,7 @@ Research concepts must expose the contract headings defined by
 - `Evidence`
 - `Options`
 - `Judgment`
-- `Challenge`
+- `Skeptic`
 - `Decision`
 - `Promotion`
 - `Drift Impact`
@@ -109,7 +109,7 @@ research concept may point to owners, but it must not repeat current truth.
   [`../research/index.md`](../research/index.md).
 - Read one of the four primary documentation lanes when you need current repository
   guidance.
-- Use Decodex `research`, `$deliberation:challenge`, Decodex `research-promote`, and
+- Use Decodex `research`, `$deliberation:skeptic`, Decodex `research-promote`, and
   Decision Contracts for all new bounded Decodex research.
 - New research must expose terminal status, selected option, evidence ledger, gaps,
   validation, and promotion target from the concept frontmatter and top-level

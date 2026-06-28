@@ -10,7 +10,7 @@ read-only and does not implement, mutate tracker state, create authority, or cla
 verification.
 
 Read `../../references/deliberation-gate.md` when the task may need the compact
-grill/scout/challenge gate or when deciding whether inline scouting is enough.
+grill/scout/skeptic gate or when deciding whether inline scouting is enough.
 
 ## Rules
 

@@ -42,7 +42,7 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.assertIn("$codebase:work", joined)
         self.assertIn("OKF/LLM Wiki", joined)
         self.assertIn("$knowledge:writeback", joined)
-        self.assertIn("$deliberation:challenge", joined)
+        self.assertIn("$deliberation:skeptic", joined)
 
     def test_repo_work_prompt_requires_source_backed_docs_context(self) -> None:
         self.hook.large_change_paths = lambda stats=None: []
@@ -89,7 +89,7 @@ class CodexLifecycleHookTests(unittest.TestCase):
         hints = self.hook.route_hints("git commit -m test", "/tmp/repo", "PreToolUse")
 
         joined = "\n".join(hints)
-        self.assertIn("$deliberation:challenge", joined)
+        self.assertIn("$deliberation:skeptic", joined)
         self.assertIn("module-boundary", joined)
 
     def test_public_surface_change_adds_docs_coupling(self) -> None:
@@ -114,10 +114,10 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.assertIn("When the task involves design", joined)
         self.assertIn("$deliberation:grill", joined)
         self.assertIn("$deliberation:scout", joined)
-        self.assertIn("$deliberation:challenge", joined)
+        self.assertIn("$deliberation:skeptic", joined)
         self.assertIn("1-2 files or one command", joined)
         self.assertIn("Do not wait for the user", joined)
-        self.assertIn("bounded read-only scout/challenge support agents", joined)
+        self.assertIn("bounded read-only scout/skeptic support agents", joined)
 
     def test_commit_subject_validation(self) -> None:
         valid = '{"schema":"decodex/commit/1","summary":"ship guard","authority":"XY-1099"}'

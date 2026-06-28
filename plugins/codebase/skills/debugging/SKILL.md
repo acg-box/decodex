@@ -20,7 +20,7 @@ execution authority, land changes, close tracker state, or replace final verific
 - Use the owning research workflow only when debugging produces a decision-ready
   comparison.
 - For architecture-level root-cause work, repeated failed fixes, or unclear owner
-  boundaries, use `$deliberation:grill` before repair and `$deliberation:challenge`
+  boundaries, use `$deliberation:grill` before repair and `$deliberation:skeptic`
   before claiming the diagnosis explains the symptom.
 - Use `$codebase:verification` before done/fixed/ready claims.
 
@@ -31,7 +31,7 @@ Keep the loop falsifiable:
 `symptom -> owner boundary -> fresh baseline -> hypothesis -> smallest falsifier -> repair surface -> original-symptom check`
 
 If uncertainty remains material and support-agent tools are allowed, dynamically
-spawn one read-only support agent for a single evidence slice or hypothesis challenge.
+spawn one read-only support agent for a single evidence slice or hypothesis critique.
 The prompt must name the objective, read-only boundary, and expected finding shape.
 The main thread owns diagnosis, repair, and final claim.
 

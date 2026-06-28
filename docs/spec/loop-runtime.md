@@ -70,7 +70,7 @@ Decodex owns a native Research/Decision compiler for Decodex work. That stage ac
 natural-language intent such as `research X` plus bounded research/design evidence
 when available, then stores a local Decision Contract candidate. It supersedes the
 external research skill for Decodex runtime authority: Decodex plugin `research`,
-`$deliberation:challenge`, and Decodex `research-promote` skills are the current
+`$deliberation:skeptic`, and Decodex `research-promote` skills are the current
 agent-facing method, `docs/research/` is the Markdown OKF
 research concept lane, and checked-in research JSON event logs are not a valid docs
 shape. Checked-in research evidence belongs in Markdown OKF concepts; runtime
@@ -86,9 +86,9 @@ The native research method has these ordered gates:
    readbacks, contradictions, inferences, and gaps. No evidence, no claim.
 3. Options compare realistic choices, including status quo or explicit no-go when
    relevant, with evidence-grounded tradeoffs.
-4. Judgment creates a challenge-ready recommendation or explicitly states that the run
+4. Judgment creates a skeptic-ready recommendation or explicitly states that the run
    is not decision-ready.
-5. Challenge attacks the judgment with adversarial objections. Material unresolved
+5. Skeptic attacks the judgment with adversarial objections. Material unresolved
    objections become missing decisions, evidence gaps, risk notes, or blockers.
 6. Decision ends the run with exactly one outcome and preserves the latent promotion
    boundary.
@@ -116,7 +116,7 @@ Native research/design compiler outcomes are:
 
 | Outcome | Contract status | Meaning |
 | --- | --- | --- |
-| `decision_ready` | `draft_latent` | Bounded evidence, option comparison, challenge/objection records, validation expectations, assumptions, and proposed issue-readiness data are sufficient for downstream issue shaping after promotion. It is still not execution authority while latent. |
+| `decision_ready` | `draft_latent` | Bounded evidence, option comparison, skeptic objection records, validation expectations, assumptions, and proposed issue-readiness data are sufficient for downstream issue shaping after promotion. It is still not execution authority while latent. |
 | `not_decision_ready` | `draft_latent` | The run preserved useful evidence or objections, but missing evidence or unresolved direction means it must not become implementation work. |
 | `blocked` | `draft_latent` | The run cannot finish its bounded research/design pass because a non-decision blocker must be resolved first. |
 | `needs_human_decision` | `needs_human_decision` | The package needs explicit human direction before promotion or execution can be considered. |

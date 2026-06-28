@@ -13,7 +13,7 @@ Use this skill to handle real review feedback as evidence, not orders.
 - Do not create commits, land PRs, mutate trackers, or close runtime state from here.
 - If no actionable feedback exists, say so and continue with the real blocker.
 - For ambiguous, architectural, repeated, or disputed review repair, use
-  `$deliberation:challenge` before editing or replying. Use `$deliberation:scout`
+  `$deliberation:skeptic` before editing or replying. Use `$deliberation:scout`
   when review claims need fresh bounded evidence.
 
 ## Required Flow

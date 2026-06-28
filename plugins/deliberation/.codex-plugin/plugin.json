@@ -1,7 +1,7 @@
 {
   "name": "deliberation",
   "version": "0.1.0",
-  "description": "Portable agent deliberation methods for read-only scout, grill, challenge, and skeptic review.",
+  "description": "Portable agent deliberation methods for read-only scout, grill, and skeptic review.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -12,7 +12,7 @@
   "license": "GPL-3.0",
   "keywords": [
     "agents",
-    "challenge",
+    "skeptic",
     "grill",
     "scout",
     "review",
@@ -21,8 +21,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Deliberation",
-    "shortDescription": "Run scout, grill, challenge, and skeptic passes.",
-    "longDescription": "Provides small generic deliberation skills for read-only evidence scouting, decision grilling, adversarial review, evidence sufficiency checks, and ready or decision-ready assertions.",
+    "shortDescription": "Run scout, grill, and skeptic passes.",
+    "longDescription": "Provides small generic deliberation skills for read-only evidence scouting, decision grilling, skeptical adversarial review, evidence sufficiency checks, and ready or decision-ready assertions.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -35,7 +35,7 @@
     "defaultPrompt": [
       "Scout this evidence.",
       "Grill this plan.",
-      "Challenge this claim."
+      "Skeptic-review this claim."
     ],
     "brandColor": "#334155"
   }

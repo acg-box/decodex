@@ -46,7 +46,7 @@ COMMIT_STYLE_HINT = (
 )
 ANTI_MONOLITH_HINT = (
     "Large or generated implementation changes are present. Before commit, push, "
-    "or ready/done claims, load $codebase:work and use $deliberation:challenge if "
+    "or ready/done claims, load $codebase:work and use $deliberation:skeptic if "
     "one file mixes unrelated concerns; split the implementation or state the "
     "module-boundary reason."
 )
@@ -61,12 +61,12 @@ DELIBERATION_GATE_HINT = (
     "research, option comparison, or important ready/done claims, use compact "
     "first-principles framing with $deliberation:grill, source-backed evidence "
     "with $deliberation:scout when facts are not local and obvious, and skeptic "
-    "review with $deliberation:challenge before material conclusions. Inline only "
+    "review with $deliberation:skeptic before material conclusions. Inline only "
     "for one local question that fits in 1-2 files or one command and cannot affect "
     "architecture, debugging, review repair, public contracts, docs drift, "
     "commit/land, or ready/done decisions. Do not wait for the user to explicitly "
     "request support agents; when the inline exception fails and support-agent tools "
-    "are allowed, dispatch bounded read-only scout/challenge support agents. If "
+    "are allowed, dispatch bounded read-only scout/skeptic support agents. If "
     "support-agent tools are unavailable, name the inline fallback."
 )
 

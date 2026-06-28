@@ -24,7 +24,7 @@ claims are in scope.
   not automatic constraints.
 - Challenge boundaries: owner module, acceptance, validation, rollback, migration,
   docs impact, and whether a smaller implementation would satisfy the objective.
-- For substantial plans, use `$deliberation:challenge` after grill output if the
+- For substantial plans, use `$deliberation:skeptic` after grill output if the
   claim still needs adversarial review.
 - Do not create execution authority, mutate files, or replace verification.
 
