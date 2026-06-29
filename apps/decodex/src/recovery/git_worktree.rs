@@ -11,7 +11,11 @@ use crate::{
 	state,
 };
 
-use super::ReviewHandoffLineage;
+pub(super) enum ReviewHandoffLineage {
+	Descends,
+	Diverged,
+	Unknown,
+}
 
 pub(super) fn git_toplevel_path(cwd: &Path) -> Result<PathBuf> {
 	let output =
