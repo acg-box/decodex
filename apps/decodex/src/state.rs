@@ -45,6 +45,8 @@ include!("state/store.rs");
 
 include!("state/models.rs");
 
+include!("state/run_activity_marker.rs");
+
 include!("state/internal.rs");
 
 pub(crate) const RUN_ACTIVITY_MARKER_FILE: &str = ".decodex-run-activity";
