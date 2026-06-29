@@ -1,5 +1,6 @@
 mod lane_control;
 mod status_ghost_lane_evidence;
+mod status_models;
 mod harness_improvement {
 	use crate::orchestrator::{IssueRunPlan, Result, Serialize, StateStore, Value, records, state};
 
@@ -48,6 +49,18 @@ use harness_improvement::{
 };
 #[cfg(test)]
 use harness_improvement::{HarnessOutcomeRecordInput, record_harness_outcome_for_issue_run};
+use status_models::{
+	AccountActivityMode, ExternalReviewRequestCiGate, LiveOperatorStatusObserverContext,
+	LiveOperatorStatusSnapshotOptions, MarkerProcessLiveness, OperatorExecutionProgramReadback,
+	OperatorHistoryLedgerRecord, OperatorIssueDisplayMetadata, OperatorLaneControlProjection,
+	OperatorLaneTerminalProjection, OperatorLifecycleMetricPhase,
+	OperatorReviewCheckpointSummaryFields, OperatorRunAppServerState,
+	OperatorRunLifecycleProjection, OperatorRunProtocolSummary, OperatorRunTiming,
+	OperatorTerminalFinalizeProjection, PostReviewLaneBuildContext,
+	PostReviewOrchestrationStatus, PostReviewReadbackDegradation, PostReviewRuntimeState,
+	RetainedCloseoutPrMergeGate, RunIssueMetadataHydration, TrackerObserverOutcome,
+	WorktreeOwnership,
+};
 
 include!("orchestrator/types.rs");
 
