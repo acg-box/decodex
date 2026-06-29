@@ -1904,7 +1904,15 @@ fn worktree_ownership(
 	snapshot: &OperatorStatusSnapshot,
 	completed_state: Option<&str>,
 ) -> WorktreeOwnership {
+	let post_review_owner = worktree_post_review_owner(worktree, snapshot);
+
 	if let Some(run) = worktree_current_lane_owner(worktree, snapshot) {
+		if run.ownership_state == "orphaned_live_thread"
+			&& let Some(lane) = post_review_owner
+		{
+			return post_review_worktree_ownership(lane);
+		}
+
 		return match run.ownership_state.as_str() {
 			"leased_run" => WorktreeOwnership {
 				kind: "current_lane",
@@ -1956,13 +1964,8 @@ fn worktree_ownership(
 			},
 		};
 	}
-	if let Some(lane) = worktree_post_review_owner(worktree, snapshot) {
-		return WorktreeOwnership {
-			kind: "post_review_lane",
-			reason: format!("Review & Landing owns this worktree as `{}`.", lane.classification),
-			next_action: None,
-			audit_required: false,
-		};
+	if let Some(lane) = post_review_owner {
+		return post_review_worktree_ownership(lane);
 	}
 	if let Some(lane) = worktree_history_attention_owner(worktree, snapshot) {
 		return WorktreeOwnership {
@@ -2011,6 +2014,15 @@ fn worktree_ownership(
 		reason: worktree_cleanup_only_reason(worktree, completed_state),
 		next_action: audit_required.then(|| legacy_cleanup_next_action(worktree)),
 		audit_required,
+	}
+}
+
+fn post_review_worktree_ownership(lane: &OperatorPostReviewLaneStatus) -> WorktreeOwnership {
+	WorktreeOwnership {
+		kind: "post_review_lane",
+		reason: format!("Review & Landing owns this worktree as `{}`.", lane.classification),
+		next_action: None,
+		audit_required: false,
 	}
 }
 
