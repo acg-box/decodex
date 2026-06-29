@@ -755,6 +755,23 @@ fn materialize_run_summary_worktree(
 	workflow: &WorkflowDocument,
 	summary: &RunSummary,
 ) -> Result<WorktreeSpec> {
+	if summary.dispatch_mode == IssueDispatchMode::Closeout {
+		if !summary.worktree_path.try_exists()? {
+			eyre::bail!(
+				"planned retained closeout worktree `{}` is missing for issue `{}`",
+				summary.worktree_path.display(),
+				summary.issue_identifier
+			);
+		}
+
+		return Ok(WorktreeSpec {
+			branch_name: summary.branch_name.clone(),
+			issue_identifier: summary.issue_identifier.clone(),
+			path: summary.worktree_path.clone(),
+			reused_existing: true,
+		});
+	}
+
 	let worktree_manager =
 		WorktreeManager::new(project.service_id(), project.repo_root(), project.worktree_root());
 	let worktree = worktree_manager.ensure_worktree_with_hooks(

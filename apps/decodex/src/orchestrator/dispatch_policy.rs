@@ -326,13 +326,35 @@ where
 		return Ok(CloseoutDispatchEligibility::Ineligible);
 	}
 
-	let worktree_manager =
-		WorktreeManager::new(project.service_id(), project.repo_root(), project.worktree_root());
-	let worktree = worktree_manager.plan_for_issue(&issue.identifier);
+	let worktree = match state_store.worktree_for_issue(&issue.id)? {
+		Some(mapping) => {
+			if mapping.project_id() != project.service_id()
+				|| !mapping.worktree_path().try_exists()?
+			{
+				return Ok(CloseoutDispatchEligibility::Ineligible);
+			}
 
-	if !worktree.path.exists() {
-		return Ok(CloseoutDispatchEligibility::Ineligible);
-	}
+			WorktreeSpec {
+				branch_name: mapping.branch_name().to_owned(),
+				issue_identifier: issue.identifier.clone(),
+				path: mapping.worktree_path().to_path_buf(),
+				reused_existing: true,
+			}
+		},
+		None => {
+			let worktree_manager = WorktreeManager::new(
+				project.service_id(),
+				project.repo_root(),
+				project.worktree_root(),
+			);
+			let planned_worktree = worktree_manager.plan_for_issue(&issue.identifier);
+			if !planned_worktree.path.try_exists()? {
+				return Ok(CloseoutDispatchEligibility::Ineligible);
+			}
+
+			planned_worktree
+		},
+	};
 
 	let Some(review_handoff) =
 		state_store.review_handoff_marker(project.service_id(), &issue.id, &worktree.branch_name)?
