@@ -1,4 +1,5 @@
 mod lane_control;
+mod status_ghost_lane_evidence;
 mod harness_improvement {
 	use crate::orchestrator::{IssueRunPlan, Result, Serialize, StateStore, Value, records, state};
 
