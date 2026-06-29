@@ -12,6 +12,7 @@ mod planning;
 mod prompts;
 mod resources;
 mod server;
+mod tool_schemas;
 mod tools;
 mod types;
 
