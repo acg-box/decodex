@@ -1,4 +1,5 @@
 mod lane_control;
+mod status_ghost_lane_cleanup;
 mod status_ghost_lane_evidence;
 mod status_history_ledger;
 mod status_models;
@@ -51,6 +52,10 @@ use harness_improvement::{
 };
 #[cfg(test)]
 use harness_improvement::{HarnessOutcomeRecordInput, record_harness_outcome_for_issue_run};
+pub(crate) use status_ghost_lane_cleanup::ghost_lane_cleanup_status_blockers;
+use status_ghost_lane_cleanup::{
+	apply_missing_issue_ghost_lane_projection, mark_operator_run_tracker_issue_missing,
+};
 use status_models::{
 	AccountActivityMode, ExternalReviewRequestCiGate, LiveOperatorStatusObserverContext,
 	LiveOperatorStatusSnapshotOptions, MarkerProcessLiveness, OperatorExecutionProgramReadback,
