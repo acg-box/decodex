@@ -6,61 +6,66 @@ Read when `$codebase:work` needs exact command, structure, validation, or eviden
 
 - Inspect checked-in authority first: nearest `AGENTS.md`, README/docs, task runner,
   manifests, OKF/LLM Wiki, or repo-memory owner.
-- Do not duplicate this routing in host bootstrap files; route to the owning plugin
-  surface instead.
+- Do not duplicate this routing in host bootstrap files; route to the owning plugin surface instead.
 - Prefer repo-native commands: `fmt`, `fmt-check`, `check`, `lint`, `test`, `build`,
-  `smoke`, and codegen tasks over raw tool defaults.
-- Use English for durable or executable artifacts unless the user requests another
-  language, source text is being preserved, or the file is a locale/i18n fixture.
+  `smoke`, and codegen over raw tool defaults.
+- Durable/executable artifacts are English unless explicitly requested, preserved
+  source text, or locale/i18n.
 - After behavior, command, config, status/help, public contract, architecture, or
-  plugin/skill changes, classify docs drift or writeback before ready.
-- Before substantial implementation, inspect existing package/module ownership. Do not leave generated monoliths or files mixing unrelated parsing, state, I/O, rendering, persistence, CLI wiring, or tests.
+  plugin/skill changes, classify docs drift/writeback before ready.
+- Before substantial implementation, inspect package/module ownership. Do not leave generated monoliths or files mixing unrelated parsing, state, I/O, rendering, persistence, CLI wiring, or tests.
+
+## Module Boundaries
+
+- "Split the file" is not enough; modularization means language-level modules,
+  ownership, APIs, and visibility boundaries.
+- Rust refactors must use normal `mod`/file modules, explicit `pub`/`pub(crate)`
+  surfaces, owner-specific types/functions, and tests for the new boundary.
+- Do not claim Rust module/refactor completion by moving code into fragments pulled
+  back with `include!`, `#[path]`, or original-scope tricks; that is physical file
+  splitting, not Rust module design.
+- Moving tests out reduces noise but is not production module design. Generated/FFI
+  includes are documented plumbing, not modularization progress.
 
 ## Task Runner Structure
 
 - Treat `Makefile.toml` and equivalents as public command APIs.
-- Group by action family, not domain/toolchain: `Check`, `Build`, `Format`, `Lint`,
-  `Lint Fix`, `Smoke`, `Test`.
-- Sort action-family sections alphabetically unless a checked-in template says
-  otherwise. Inside a family, primary aggregate first, then peer tasks alphabetical.
-- Name public tasks action-first: `check-docs`, `lint-rust`, `fmt-rust`,
-  `test-rust`, `build-node`, `smoke-*`. Avoid `docs-check`, `typecheck-node`,
-  public `*-smoke`, legacy `checks`, and undocumented `[tasks.fix]`.
-- Classify by what the task proves: typecheck and `cargo check` are `check`; clippy
-  is `lint`; format verification is `fmt-check`; build, smoke, lint, test, and
+- Group by action family: `Check`, `Build`, `Format`, `Lint`, `Lint Fix`, `Smoke`,
+  `Test`. Sort sections alphabetically; inside a family, primary aggregate first,
+  then peers alphabetical.
+- Public tasks are action-first: `check-docs`, `lint-rust`, `fmt-rust`, `test-rust`,
+  `build-node`, `smoke-*`. Avoid `docs-check`, `typecheck-node`, public `*-smoke`,
+  legacy `checks`, and undocumented `[tasks.fix]`.
+- Typecheck and `cargo check` are `check`; clippy is `lint`; build, smoke, test, and
   mutating fixes stay out of `check-*` composites.
-- Keep substantive shell out of task config: no `bash -lc`, heredocs, long multi-line
-  scripts, loops over repo files, temp/db/json flows, or embedded language programs.
-  Put real logic in `scripts/` or the owning package.
+- No substantive shell in task config: no `bash -lc`, heredocs, long scripts, loops,
+  temp/db/json flows, or embedded language programs. Put logic in `scripts/` or the
+  owning package.
 - After task renames/removals, reverse-scan docs, CI, scripts, tests, fixtures,
-  reports, help/status text, and examples for stale commands.
+  reports, help/status text, and examples.
 - Task-runner review checklist: authority source, public command names, action-family
-  grouping, docs/help references, CI callers, and generated artifacts.
+  grouping, docs/help references, CI callers, generated artifacts.
 
 ## Validation And Claims
 
-- Treat local validation, remote CI, review handoff, landing, and closeout as separate
-  lifecycle surfaces.
-- Select the smallest repo-native evidence that proves the claim; broaden for shared
-  behavior, generated outputs, runtime/build, public contracts, security, release,
-  landing, or failures wider than the touched file.
-- Before positive ready/done/fixed claims, verify current head/worktree/base state and
-  use `$codebase:verification`; for material architecture, root-cause, review-repair,
-  generated, large, or public-contract claims, use `$deliberation:skeptic` unless the
-  inline exception clearly applies.
+- Local validation, remote CI, review handoff, landing, and closeout are separate.
+- Use the smallest repo-native proof; broaden for shared behavior, generated outputs,
+  runtime/build, public contracts, security, release, landing, or wider failures.
+- Before ready/done/fixed claims, verify head/worktree/base and use
+  `$codebase:verification`; for material architecture, root cause, review repair,
+  generated/large/public contracts, use `$deliberation:skeptic` unless inline applies.
 
 ## Drift, Naming, Config
 
-- Docs/code/help/status/config/runtime alignment belongs to the drift owner; tests,
-  help output, link checks, or generated summaries do not prove semantic consistency.
-- Treat names as authority. Before renaming a symbol, field, status, command, or
-  config key, classify its boundary: internal, external, UI, persisted schema,
-  telemetry/status, adapter, or migration.
-- Prefer the root-cause fix and one canonical owner/name/config/execution path.
-  Remove obsolete code, config, commands, fixtures, docs, aliases, and tests in the
-  same change unless an external contract or migration requires compatibility.
+- Drift owner handles docs/code/help/status/config/runtime alignment; tests/help/link
+  checks do not prove semantics.
+- Names are authority. Before renaming symbols, fields, statuses, commands, or config
+  keys, classify internal/external/UI/persisted/telemetry/adapter/migration boundary.
+- Prefer one canonical owner/name/config/execution path. Remove obsolete code,
+  config, commands, fixtures, docs, aliases, and tests unless compatibility requires
+  migration.
 - Config files are user-facing contracts: missing fields need explicit errors or
-  migrations; unknown fields should be rejected unless a checked-in policy says
+  migrations; unknown fields should be rejected unless checked-in policy says
   otherwise.
 
 ## Plugin Changes
@@ -72,9 +77,8 @@ Read when `$codebase:work` needs exact command, structure, validation, or eviden
 
 ## Evidence To Report
 
-- Checked-in command authority used and whether a task runner existed.
+- Checked-in command authority used and task-runner presence.
 - Task-runner naming/structure evidence when task config changed.
-- Validation scope and why it matches the touched files and risk.
-- Drift/debugging/verification owner used when relevant.
-- Fresh evidence for done, fixed, passing, ready, landed, closed out, or verified
-  claims, plus honest remaining gaps.
+- Validation scope and touched-file/risk match.
+- Drift/debugging/verification owner used.
+- Fresh evidence for done/fixed/passing/ready/landed/closed/verified claims, plus gaps.

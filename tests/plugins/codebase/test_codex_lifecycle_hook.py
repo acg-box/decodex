@@ -31,6 +31,7 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.hook = load_hook_module()
         self.hook.dependency_surface_paths = lambda paths=None: []
         self.hook.task_runner_paths = lambda paths=None: []
+        self.hook.fake_modularization_paths = lambda paths=None: []
 
     def test_route_hints_selects_codebase_knowledge_and_deliberation(self) -> None:
         self.hook.large_change_paths = lambda stats=None: []
@@ -102,6 +103,37 @@ class CodexLifecycleHookTests(unittest.TestCase):
         stats = [{"path": "src/app.tsx", "added": "120", "removed": "0", "changed": 120}]
 
         self.assertEqual(self.hook.large_change_paths(stats), ["src/app.tsx"])
+
+    def test_fake_modularization_paths_detects_rust_include_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "src"
+            src.mkdir()
+            (src / "lib.rs").write_text(
+                'mod generated { include!("fragments/generated.rs"); }\n',
+                encoding="utf-8",
+            )
+            self.hook.git_root = lambda: str(root)
+            # Exercise the real helper instead of the setUp stub.
+            module = load_hook_module()
+            module.git_root = lambda: str(root)
+
+            self.assertEqual(
+                module.fake_modularization_paths(["src/lib.rs", "src/view.ts"]),
+                ["src/lib.rs"],
+            )
+
+    def test_fake_modularization_adds_hard_guard(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: []
+        self.hook.fake_modularization_paths = lambda paths=None: ["src/lib.rs"]
+
+        hints = self.hook.route_hints("", "/tmp/repo", "PostToolUse")
+
+        joined = "\n".join(hints)
+        self.assertIn("physical file splitting is not a Rust module boundary", joined)
+        self.assertIn("normal `mod` modules", joined)
+        self.assertIn("$deliberation:skeptic", joined)
 
     def test_small_source_change_does_not_add_module_guard(self) -> None:
         self.hook.git_root = lambda: "/tmp/repo"
