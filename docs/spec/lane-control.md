@@ -308,6 +308,10 @@ writes local private `stale_active_release` audit evidence when a matching stale
 exists, repeats the run-lease/shared-claim guard, rechecks tracker labels, restores a
 queued issue from the configured in-progress state to the first configured startable
 state when the queue label is preserved, and removes only the service active label.
+The `terminal_guarded` write applies to stale active attempts that are still active
+and to terminal-looking app-server failures such as `failed` or `interrupted`; the
+guard records that recovery, not the old child/protocol telemetry, now owns the final
+label-release safety check.
 
 If a stale-active release attempt stops after local cleanup but before the final
 tracker-label mutation, reentry is allowed only when local evidence proves the same
