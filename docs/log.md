@@ -1,5 +1,14 @@
 # Documentation Log
 
+## 2026-06-29
+
+- Clarified tracker-present stale-active recovery evidence: app-server no-diff
+  `loop_guardrail_checkpoint`, no-progress `harness_outcome`, and app-server
+  implementation phase-goal recovery telemetry are recoverable only as dead-process
+  runtime evidence after process, worktree, private-progress, and PR/review lineage
+  guards are clean. Updated the lane-control spec, recovery runbook, and operator
+  control-plane reference.
+
 ## 2026-06-28
 
 - Renamed the Deliberation adversarial-review role from `challenge` to `skeptic` so
