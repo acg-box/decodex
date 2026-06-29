@@ -7106,7 +7106,14 @@ fn recover_issue_runtime_state<T>(
 where
 	T: IssueTracker,
 {
-	let worktree = worktree_manager.plan_for_issue(&issue.identifier);
+	let planned_worktree = worktree_manager.plan_for_issue(&issue.identifier);
+	let existing_worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
+	let existing_worktree = existing_recoverable_worktree_spec(
+		project.service_id(),
+		&issue,
+		existing_worktree_mapping.as_ref(),
+	)?;
+	let worktree = existing_worktree.unwrap_or(planned_worktree);
 
 	if !worktree.path.exists() {
 		return Ok(None);
@@ -7115,7 +7122,6 @@ where
 	state_store.canonicalize_issue_identity(&issue.identifier, &issue.id)?;
 
 	let activity_marker = state::read_run_activity_marker_snapshot(&worktree.path)?;
-	let existing_worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
 	let recovered_service_ownership =
 		issue_has_recovered_service_ownership(tracker, &issue, project.service_id())?;
 
@@ -7201,6 +7207,26 @@ where
 	}
 
 	Ok(None)
+}
+
+fn existing_recoverable_worktree_spec(
+	project_id: &str,
+	issue: &TrackerIssue,
+	mapping: Option<&WorktreeMapping>,
+) -> crate::prelude::Result<Option<WorktreeSpec>> {
+	let Some(mapping) = mapping else {
+		return Ok(None);
+	};
+	if mapping.project_id() != project_id || !mapping.worktree_path().try_exists()? {
+		return Ok(None);
+	}
+
+	Ok(Some(WorktreeSpec {
+		branch_name: mapping.branch_name().to_owned(),
+		issue_identifier: issue.identifier.clone(),
+		path: mapping.worktree_path().to_path_buf(),
+		reused_existing: true,
+	}))
 }
 
 fn upsert_recovered_worktree_mapping(
