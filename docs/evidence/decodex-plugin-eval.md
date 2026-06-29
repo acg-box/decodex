@@ -53,7 +53,7 @@ Static budget snapshot from the 2026-06-29 source-root run:
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `plugins/decodex` | 901 | 50 | 851 | 2178 | 2983 | 3079 |
 | `plugins/knowledge` | 761 | 82 | 679 | 891 | 1210 | 1652 |
-| `plugins/codebase` | 1133 | 101 | 1032 | 2086 | 1899 | 3219 |
+| `plugins/codebase` | 1138 | 101 | 1037 | 2187 | 1899 | 3325 |
 | `plugins/deliberation` | 1687 | 193 | 1494 | 475 | 0 | 2162 |
 
 ## Invocation Policy
