@@ -9,7 +9,6 @@ use std::{
 #[cfg(test)]
 use crate::state::RUN_CONTROL_CHANNEL_STATUS_FAILED;
 use crate::{
-	github,
 	prelude::{Result, eyre},
 	pull_request::PullRequestLandingState,
 	state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore, WorktreeMapping},
@@ -31,6 +30,7 @@ mod ghost_lane_diagnosis;
 mod git_worktree;
 mod identifiers;
 mod process_liveness;
+mod pull_request_inspection;
 mod reports;
 mod requests;
 mod review_handoff_diagnosis;
@@ -72,6 +72,10 @@ use git_worktree::worktree_blocking_status_lines;
 use git_worktree::{
 	git_toplevel_path, repository_relative_path, worktree_checkout_branch_name, worktree_head_oid,
 	worktree_is_clean,
+};
+use pull_request_inspection::{
+	inspect_project_pull_request, inspect_project_pull_request_merge_commit,
+	inspect_rebind_pull_request, landing_url,
 };
 #[cfg(test)]
 use reports::GhostLaneDiagnostic;
@@ -842,77 +846,6 @@ fn validate_existing_handoff_refresh(
 	))
 }
 
-fn inspect_rebind_pull_request(
-	context: &RecoveryContext,
-	pr_url: &str,
-) -> Result<PullRequestLandingState> {
-	let (landing_state, default_branch) = inspect_project_pull_request(context, pr_url)?;
-
-	if landing_state.base_ref_name != default_branch {
-		eyre::bail!(
-			"Pull request `{}` targets `{}`, but configured default branch is `{}`.",
-			pr_url,
-			landing_state.base_ref_name,
-			default_branch
-		);
-	}
-	if landing_state.state != "OPEN" {
-		eyre::bail!(
-			"Pull request `{pr_url}` is `{}`; rebind requires `OPEN`.",
-			landing_state.state
-		);
-	}
-	if landing_state.is_draft {
-		eyre::bail!("Pull request `{pr_url}` is still draft.");
-	}
-
-	Ok(landing_state)
-}
-
-fn inspect_project_pull_request(
-	context: &RecoveryContext,
-	pr_url: &str,
-) -> Result<(PullRequestLandingState, String)> {
-	let github_token = context.config.github().resolve_token()?;
-	let repository = github::inspect_repository_context(
-		context.config.repo_root(),
-		&github_token,
-		context.config.github().command_path(),
-	)?;
-
-	if !github::pull_request_matches_repository(pr_url, &repository)? {
-		eyre::bail!(
-			"Pull request `{}` does not belong to configured repository `{}/{}`.",
-			pr_url,
-			repository.owner,
-			repository.name
-		);
-	}
-
-	let landing_state = github::inspect_pull_request_landing_state(
-		context.config.repo_root(),
-		pr_url,
-		&github_token,
-		context.config.github().command_path(),
-	)?;
-
-	Ok((landing_state, repository.default_branch))
-}
-
-fn inspect_project_pull_request_merge_commit(
-	context: &RecoveryContext,
-	pr_url: &str,
-) -> Result<String> {
-	let github_token = context.config.github().resolve_token()?;
-
-	github::inspect_pull_request_merge_commit(
-		context.config.repo_root(),
-		pr_url,
-		&github_token,
-		context.config.github().command_path(),
-	)
-}
-
 fn validate_rebind_worktree(
 	worktree: &WorktreeMapping,
 	landing_state: &PullRequestLandingState,
@@ -1644,10 +1577,6 @@ fn write_adopt_audit(
 	)?;
 
 	Ok(())
-}
-
-fn landing_url(landing_state: &PullRequestLandingState) -> &str {
-	&landing_state.url
 }
 
 fn relative_worktree_path_for_recovery(
