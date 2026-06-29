@@ -64,7 +64,7 @@ use identifiers::{
 	ghost_lane_worktree_selectors,
 };
 use git_worktree::{
-	git_toplevel_path, repository_relative_path, worktree_checkout_branch_name,
+	ReviewHandoffLineage, git_toplevel_path, repository_relative_path, worktree_checkout_branch_name,
 	worktree_has_tracked_changes_for_recovery,
 	worktree_head_descends_from_review_handoff,
 	worktree_head_has_unmerged_commits_against_remote_default, worktree_head_oid,
@@ -281,12 +281,6 @@ impl RebindMode {
 			Self::CompleteExistingHandoffState => "completed retained review handoff state",
 		}
 	}
-}
-
-enum ReviewHandoffLineage {
-	Descends,
-	Diverged,
-	Unknown,
 }
 
 /// Run a read-only retained review handoff diagnostic.
