@@ -1,7 +1,7 @@
 #[cfg(target_os = "macos")] use std::mem;
 #[cfg(target_os = "macos")] use std::mem::MaybeUninit;
 
-use github::{GhCommandResolution, PullRequestMergeViewResponse};
+use github::PullRequestMergeViewResponse;
 #[cfg(target_os = "macos")] use libc::PROC_PIDTBSDINFO;
 #[cfg(target_os = "macos")] use libc::SZOMB;
 #[cfg(target_os = "macos")] use libc::c_void;
@@ -278,65 +278,6 @@ fn global_codex_account_control_status() -> OperatorCodexAccountControlStatus {
 	let mode = if account_selector.is_some() { "fixed" } else { "balanced" };
 
 	OperatorCodexAccountControlStatus { mode: String::from(mode), account_selector }
-}
-
-fn operator_github_cli_authority(project: &ServiceConfig) -> OperatorGitHubCliAuthority {
-	operator_github_cli_authority_from_resolution(&github::gh_command_resolution(
-		project.github().command_path(),
-	))
-}
-
-fn operator_github_cli_authority_from_registration(
-	project: &ProjectRegistration,
-) -> OperatorGitHubCliAuthority {
-	let configured_path = ServiceConfig::from_path(project.config_path())
-		.ok()
-		.and_then(|config| config.github().command_path().map(Path::to_path_buf));
-
-	operator_github_cli_authority_from_resolution(&github::gh_command_resolution(
-		configured_path.as_deref(),
-	))
-}
-
-fn operator_github_cli_authority_from_resolution(
-	resolution: &GhCommandResolution,
-) -> OperatorGitHubCliAuthority {
-	let discovery_tier = resolution.discovery_tier().as_str().to_owned();
-	let configured_path = resolution.configured_path().map(display_path);
-	let available = resolution.available();
-
-	OperatorGitHubCliAuthority {
-		command_path: display_path(resolution.command_path()),
-		resolved_path: resolution.resolved_path().map(display_path),
-		configured_path,
-		discovery_tier: discovery_tier.clone(),
-		available,
-		next_action: github_cli_authority_next_action(discovery_tier.as_str(), available),
-	}
-}
-
-fn github_cli_authority_next_action(discovery_tier: &str, available: bool) -> String {
-	match (discovery_tier, available) {
-		("configured", true) => {
-			String::from("No action needed; Decodex will use the configured GitHub CLI path.")
-		},
-		("configured", false) => String::from(
-			"Fix `github.command_path` in project.toml so it points to an installed `gh` binary.",
-		),
-		("path", true) => {
-			String::from("No action needed; Decodex resolved `gh` from the process PATH.")
-		},
-		("user-bin" | "known-fallback", true) => String::from(
-			"Set `github.command_path` in project.toml if this fallback path is unexpected.",
-		),
-		_ => String::from(
-			"Install GitHub CLI or set `github.command_path` in project.toml to the expected `gh` binary.",
-		),
-	}
-}
-
-fn display_path(path: &Path) -> String {
-	path.display().to_string()
 }
 
 fn build_live_operator_status_snapshot<T>(
