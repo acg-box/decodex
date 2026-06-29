@@ -9,7 +9,7 @@ use crate::{
 use super::{
 	DEFAULT_MCP_STATUS_LIMIT, McpCapabilityProfile, McpServer, TOOL_LANE_CONTROL,
 	TOOL_PROJECT_CONTROL, invalid_tool_arguments, non_empty_string,
-	resources::{mcp_public_lane_inspect_resource, sanitize_mcp_observability_value},
+	observability::{mcp_public_lane_inspect_resource, sanitize_mcp_observability_value},
 	tool_refusal_value, tool_success,
 };
 
