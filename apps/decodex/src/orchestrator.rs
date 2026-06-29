@@ -5,6 +5,7 @@ mod status_execution_programs;
 mod status_github_cli_authority;
 mod status_history_ledger;
 mod status_history_projection;
+mod status_issue_metadata;
 mod status_models;
 mod status_project_display;
 mod status_queued_attention;
@@ -93,6 +94,11 @@ use status_history_projection::{
 	current_lane_terminal_projection_from_local_ledger, history_lane_group_key,
 	history_ledger_outcome_is_terminal, history_ledger_outcome_requires_attention,
 	hydrate_history_lanes_from_local_ledger, suppress_terminal_attention_queue_echoes,
+};
+use status_issue_metadata::{
+	fill_missing_history_lane_issue_metadata, fill_missing_run_issue_metadata,
+	hydrate_operator_run_rows_from_tracker, operator_run_is_stale_terminal_local_residue,
+	operator_run_tracker_issue_identifier_selector,
 };
 pub(crate) use status_worktrees::ensure_project_has_no_merged_worktree_cleanup_debt;
 use status_worktrees::{
