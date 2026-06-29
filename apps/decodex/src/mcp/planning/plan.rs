@@ -1,0 +1,72 @@
+use serde::Deserialize;
+use serde_json::{self, Value};
+
+use crate::mcp::{TOOL_PLAN, invalid_tool_arguments, tool_success};
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PlanToolArgs {
+	intent: String,
+	issue: Option<String>,
+	contract_id: Option<String>,
+}
+
+pub(in crate::mcp) fn call_plan_tool(arguments: Value) -> Value {
+	let params = match serde_json::from_value::<PlanToolArgs>(arguments) {
+		Ok(params) => params,
+		Err(_) => {
+			return invalid_tool_arguments(
+				TOOL_PLAN,
+				"`intent` is required and must be one of research, validation_ready, handoff, or lane_control.",
+			);
+		},
+	};
+
+	if !matches!(
+		params.intent.as_str(),
+		"research" | "validation_ready" | "handoff" | "lane_control"
+	) {
+		return invalid_tool_arguments(
+			TOOL_PLAN,
+			"`intent` must be one of research, validation_ready, handoff, or lane_control.",
+		);
+	}
+
+	tool_success(plan_tool_result(&params))
+}
+
+fn plan_tool_result(params: &PlanToolArgs) -> Value {
+	let (prompt, resource_hint, next_action) = match params.intent.as_str() {
+		"research" => (
+			"decodex_research",
+			"decodex://docs/spec/loop-runtime",
+			"Use the research prompt and keep output latent until explicit promotion.",
+		),
+		"handoff" => (
+			"decodex_handoff",
+			"decodex://docs/spec/review-orchestration",
+			"Run bounded review and repo validation before PR-backed handoff.",
+		),
+		"lane_control" => (
+			"decodex_lane_control",
+			"decodex://docs/spec/lane-control",
+			"Inspect first; then call guarded MCP lane-control with explicit authority and current run/turn preconditions.",
+		),
+		_ => (
+			"decodex_validation_ready",
+			"decodex://docs/reference/build-test-run",
+			"Implement locally, run targeted validation, record docs impact, and complete the phase goal.",
+		),
+	};
+
+	serde_json::json!({
+		"schema": "decodex.mcp.plan_result/1",
+		"status": "ok",
+		"intent": params.intent.as_str(),
+		"prompt": prompt,
+		"resource": resource_hint,
+		"next_action": next_action,
+		"issue": params.issue.as_deref(),
+		"contract_id": params.contract_id.as_deref()
+	})
+}
