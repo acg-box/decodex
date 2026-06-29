@@ -2550,7 +2550,10 @@ fn prepare_issue_run<T>(
 where
 	T: IssueTracker,
 {
-	let planned_worktree = context.worktree_manager.plan_for_issue(&issue.identifier);
+	let retained_closeout_worktree = retained_closeout_prepare_worktree(&context, &issue)?;
+	let planned_worktree = retained_closeout_worktree
+		.clone()
+		.unwrap_or_else(|| context.worktree_manager.plan_for_issue(&issue.identifier));
 	let Some((attempt_number, run_id)) =
 		resolve_prepare_run_identity(context.state_store, &issue, context.preferred_run_identity)?
 	else {
@@ -2585,12 +2588,15 @@ where
 	}
 
 	match (|| -> Result<Option<IssueRunPlan>> {
-		let worktree =
+		let worktree = if let Some(worktree) = retained_closeout_worktree.clone() {
+			worktree
+		} else {
 			context.worktree_manager.ensure_worktree_with_hooks(
 				&issue.identifier,
 				context.dry_run,
 				context.workflow.frontmatter().execution().workspace_hooks(),
-			)?;
+			)?
+		};
 
 		if !context.dry_run {
 			context.state_store.upsert_worktree(
@@ -2667,6 +2673,34 @@ where
 			Err(error)
 		},
 	}
+}
+
+fn retained_closeout_prepare_worktree<T>(
+	context: &PrepareIssueRunContext<'_, T>,
+	issue: &TrackerIssue,
+) -> Result<Option<WorktreeSpec>>
+where
+	T: IssueTracker,
+{
+	if context.dispatch_mode != IssueDispatchMode::Closeout {
+		return Ok(None);
+	}
+
+	let Some(worktree) = context.state_store.worktree_for_issue(&issue.id)? else {
+		return Ok(None);
+	};
+	if worktree.project_id() != context.project.service_id()
+		|| !worktree.worktree_path().try_exists()?
+	{
+		return Ok(None);
+	}
+
+	Ok(Some(WorktreeSpec {
+		branch_name: worktree.branch_name().to_owned(),
+		issue_identifier: issue.identifier.clone(),
+		path: worktree.worktree_path().to_path_buf(),
+		reused_existing: true,
+	}))
 }
 
 fn prepare_issue_run_dispatch_allowed<T>(

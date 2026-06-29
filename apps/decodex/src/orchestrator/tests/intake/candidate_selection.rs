@@ -1276,9 +1276,17 @@ fn closeout_dispatch_policy_blocks_completed_issue_with_missing_review_handoff_r
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
-	let _worktree = worktree_manager
+	let worktree = worktree_manager
 		.ensure_worktree(&closeout_issue.identifier, false)
 		.expect("worktree should exist");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&closeout_issue.id,
+			&worktree.branch_name,
+			&worktree.path.display().to_string(),
+		)
+		.expect("retained closeout worktree mapping should persist");
 
 	assert!(
 		!orchestrator::issue_passes_closeout_dispatch_policy(
