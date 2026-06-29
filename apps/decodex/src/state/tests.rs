@@ -4543,6 +4543,10 @@ fn decision_contract_reload_migrates_legacy_flat_issue_summary_rows() {
 		String::from("proposed_issue_summaries"),
 		serde_json::json!(["Legacy flat summary that must not be compiled."]),
 	);
+	readiness.insert(
+		String::from("queue_intent"),
+		serde_json::json!(["Legacy queue intent that must not be re-admitted."]),
+	);
 
 	let connection = Connection::open(&state_path).expect("sqlite should open");
 
@@ -4606,6 +4610,10 @@ fn decision_contract_reload_migrates_legacy_flat_issue_summary_rows() {
 	assert!(
 		migrated_value.pointer("/execution_readiness/proposed_issue_summaries").is_none(),
 		"legacy field should be removed after migration"
+	);
+	assert!(
+		migrated_value.pointer("/execution_readiness/queue_intent").is_none(),
+		"legacy queue intent should be removed after migration"
 	);
 }
 
