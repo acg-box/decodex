@@ -3,7 +3,6 @@
 use std::{
 	collections::{BTreeMap, BTreeSet, HashSet},
 	env,
-	fmt::{self, Display, Formatter},
 	fs::{self, OpenOptions},
 	io::Write as _,
 	iter,
@@ -21,12 +20,23 @@ use reqwest::{
 	header::{ACCEPT, AUTHORIZATION, HeaderMap, LINK, USER_AGENT},
 };
 use rusqlite::{self, Connection, OptionalExtension as _};
-use serde::Serialize;
 use serde_json::{self, Map, Value};
 use sha2::{Digest as _, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::prelude::eyre::{self, Report};
+
+mod requests;
+
+pub(crate) use requests::{
+	RadarBackfillReleaseRangeReport, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
+	RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
+	RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
+	RadarRefreshQueueReport, RadarRefreshQueueRequest, RadarRefreshReleaseDeltaReport,
+	RadarRefreshReleaseDeltaRequest, RadarRenderSignalReport, RadarRenderSignalRequest,
+	RadarSocialReservePublishReport, RadarSocialReservePublishRequest, RadarValidateRequest,
+	RadarValidationReport,
+};
 
 const BUNDLE_SCHEMA: &str = "github_change_bundle/v1";
 const CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA: &str = "control_plane_upgrade_candidate/v1";
@@ -197,323 +207,6 @@ const RETRYABLE_GITHUB_STATUS_CODES: &[StatusCode] = &[
 	StatusCode::SERVICE_UNAVAILABLE,
 	StatusCode::GATEWAY_TIMEOUT,
 ];
-
-/// Request to validate Radar JSON artifacts.
-#[derive(Debug)]
-pub(crate) struct RadarValidateRequest {
-	/// Explicit files or directories to validate. Defaults to current checked Radar collections.
-	pub(crate) paths: Vec<PathBuf>,
-}
-
-/// Request to reserve one X publish slot before browser compose.
-#[derive(Debug)]
-pub(crate) struct RadarSocialReservePublishRequest {
-	pub(crate) slug: String,
-	pub(crate) mode: String,
-	pub(crate) idempotency_key: String,
-	pub(crate) reserved_at: String,
-	pub(crate) expires_at: String,
-	pub(crate) day: String,
-	pub(crate) timezone: String,
-	pub(crate) candidate_paths: Vec<PathBuf>,
-	pub(crate) urls: Vec<String>,
-	pub(crate) duplicate_keys: Vec<String>,
-	pub(crate) out_dir: PathBuf,
-	pub(crate) posts_dir: PathBuf,
-	pub(crate) automation_id: Option<String>,
-	pub(crate) run_id: Option<String>,
-	pub(crate) branch: Option<String>,
-	pub(crate) daily_limit: usize,
-	pub(crate) dry_run: bool,
-}
-
-/// Result of a social publish reservation attempt.
-#[derive(Debug, Serialize)]
-pub(crate) struct RadarSocialReservePublishReport {
-	pub(crate) status: String,
-	pub(crate) path: String,
-	pub(crate) idempotency_key: String,
-	pub(crate) daily_limit: usize,
-	pub(crate) published_count: usize,
-	pub(crate) active_reservation_count: usize,
-}
-
-/// Request to refresh the deterministic upstream Radar review queue.
-#[derive(Debug)]
-pub(crate) struct RadarRefreshQueueRequest {
-	/// GitHub repository in owner/name form.
-	pub(crate) repo: String,
-	/// How many recent upstream commits to inspect.
-	pub(crate) search_limit: usize,
-	/// Published signal directory used to suppress already-published subjects.
-	pub(crate) signals_dir: PathBuf,
-	/// Queue artifact output path.
-	pub(crate) queue_out: PathBuf,
-	/// Environment variable containing a GitHub token.
-	pub(crate) token_env: Option<String>,
-	/// Local Radar ledger path.
-	pub(crate) ledger: PathBuf,
-	/// Disable local Radar ledger writes.
-	pub(crate) no_ledger: bool,
-	/// Print the generated queue without writing the artifact.
-	pub(crate) dry_run: bool,
-}
-impl Default for RadarRefreshQueueRequest {
-	fn default() -> Self {
-		Self {
-			repo: "openai/codex".to_owned(),
-			search_limit: DEFAULT_SEARCH_LIMIT,
-			signals_dir: PathBuf::from(DEFAULT_SIGNALS_DIR),
-			queue_out: PathBuf::from(DEFAULT_QUEUE_OUT),
-			token_env: None,
-			ledger: PathBuf::from(DEFAULT_LEDGER_PATH),
-			no_ledger: false,
-			dry_run: false,
-		}
-	}
-}
-
-/// Summary of an upstream Radar review queue refresh.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct RadarRefreshQueueReport {
-	/// Whether the checked-in queue artifact was rewritten.
-	pub(crate) changed: bool,
-	/// Number of recent commits scanned.
-	pub(crate) recent_commits_scanned: usize,
-	/// Number of scanned subjects already covered by published signals.
-	pub(crate) published_subjects_seen: usize,
-	/// Number of subjects queued for AI review.
-	pub(crate) subjects_queued: usize,
-	/// Whether local ledger writes were enabled.
-	pub(crate) ledger_enabled: bool,
-	/// Queue artifact path that was written or compared.
-	pub(crate) queue_out: PathBuf,
-}
-
-/// Request to refresh the stable-versus-prerelease release-delta artifact.
-#[derive(Debug)]
-pub(crate) struct RadarRefreshReleaseDeltaRequest {
-	/// GitHub repository in owner/name form.
-	pub(crate) repo: String,
-	/// Published signal directory used to map compare commits to signal slugs.
-	pub(crate) signals_dir: PathBuf,
-	/// Release-delta artifact output path.
-	pub(crate) out: PathBuf,
-	/// Release tag prefix to scope the tracked channel.
-	pub(crate) tag_prefix: String,
-	/// Environment variable containing a GitHub token.
-	pub(crate) token_env: Option<String>,
-	/// Maximum recent stable releases to include. Zero means all releases at or above the floor.
-	pub(crate) stable_limit: usize,
-	/// Maximum recent prereleases to include. Zero means all supported prereleases.
-	pub(crate) preview_limit: usize,
-	/// Maximum signal-bearing compare entries. Zero means all valid pairs.
-	pub(crate) pair_limit: usize,
-	/// Minimum stable tag included in comparator options.
-	pub(crate) min_stable_tag: String,
-	/// Print the generated release delta without writing the artifact.
-	pub(crate) dry_run: bool,
-}
-impl Default for RadarRefreshReleaseDeltaRequest {
-	fn default() -> Self {
-		Self {
-			repo: "openai/codex".to_owned(),
-			signals_dir: PathBuf::from(DEFAULT_SIGNALS_DIR),
-			out: PathBuf::from(DEFAULT_RELEASE_DELTA_OUT),
-			tag_prefix: DEFAULT_TAG_PREFIX.to_owned(),
-			token_env: None,
-			stable_limit: DEFAULT_STABLE_LIMIT,
-			preview_limit: DEFAULT_PREVIEW_LIMIT,
-			pair_limit: DEFAULT_PAIR_LIMIT,
-			min_stable_tag: DEFAULT_MIN_STABLE_TAG.to_owned(),
-			dry_run: false,
-		}
-	}
-}
-
-/// Summary of a release-delta refresh.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct RadarRefreshReleaseDeltaReport {
-	/// Whether the checked-in release-delta artifact was rewritten.
-	pub(crate) changed: bool,
-	/// Stable release selected for the default comparison.
-	pub(crate) stable_tag_name: String,
-	/// Prerelease selected for the default comparison.
-	pub(crate) prerelease_tag_name: String,
-	/// Number of precomputed comparison entries.
-	pub(crate) comparisons: usize,
-	/// Release-delta artifact path that was written or compared.
-	pub(crate) out: PathBuf,
-}
-
-/// Request to initialize the local Radar SQLite ledger.
-#[derive(Debug)]
-pub(crate) struct RadarLedgerBootstrapRequest {
-	/// SQLite ledger path.
-	pub(crate) db_path: PathBuf,
-}
-
-/// Request to ingest one bundle and optional derived artifacts into the Radar ledger.
-#[derive(Debug)]
-pub(crate) struct RadarLedgerIngestRequest {
-	/// SQLite ledger path.
-	pub(crate) db_path: PathBuf,
-	/// Path to a `github_change_bundle/v1` JSON artifact.
-	pub(crate) bundle_path: PathBuf,
-	/// Optional analysis draft artifact path.
-	pub(crate) analysis_path: Option<PathBuf>,
-	/// Optional rendered `signal_entry/v1` artifact path.
-	pub(crate) signal_path: Option<PathBuf>,
-}
-
-/// Request to ingest existing checked-in Radar artifacts into the Radar ledger.
-#[derive(Debug)]
-pub(crate) struct RadarLedgerIngestExistingRequest {
-	/// SQLite ledger path.
-	pub(crate) db_path: PathBuf,
-	/// Directory containing `github_change_bundle/v1` JSON artifacts.
-	pub(crate) bundles_dir: PathBuf,
-	/// Directory containing analysis draft artifacts.
-	pub(crate) analysis_dir: PathBuf,
-	/// Directory containing rendered `signal_entry/v1` artifacts.
-	pub(crate) signals_dir: PathBuf,
-}
-
-/// Request to attach one artifact path to an existing Radar subject.
-#[derive(Debug)]
-pub(crate) struct RadarLedgerArtifactLinkRequest {
-	/// SQLite ledger path.
-	pub(crate) db_path: PathBuf,
-	/// GitHub repository in `owner/name` form.
-	pub(crate) repo: String,
-	/// Subject kind, either `commit` or `pr`.
-	pub(crate) subject_kind: String,
-	/// Subject id, either a commit SHA or pull request number.
-	pub(crate) subject_id: String,
-	/// Artifact kind stored in the ledger.
-	pub(crate) artifact_kind: String,
-	/// Artifact path to digest and link.
-	pub(crate) path: PathBuf,
-}
-
-/// Request to summarize the local Radar SQLite ledger.
-#[derive(Debug)]
-pub(crate) struct RadarLedgerSummaryRequest {
-	/// SQLite ledger path.
-	pub(crate) db_path: PathBuf,
-}
-
-/// Request to build a deterministic GitHub change bundle.
-#[derive(Debug)]
-pub(crate) struct RadarBundleBuildRequest {
-	/// GitHub repository in `owner/name` form.
-	pub(crate) repo: String,
-	/// Pull request number to fetch.
-	pub(crate) pr: Option<u64>,
-	/// Commit SHA to fetch when PR context is unavailable.
-	pub(crate) commit: Option<String>,
-	/// Skip commit-to-PR promotion when building from a commit.
-	pub(crate) force_commit_only: bool,
-	/// Optional environment variable name holding a GitHub token.
-	pub(crate) token_env: Option<String>,
-	/// Output path for the bundle JSON artifact.
-	pub(crate) out: PathBuf,
-	/// Additional note strings to store in the bundle.
-	pub(crate) notes: Vec<String>,
-}
-
-/// Request to validate GitHub change bundle JSON artifacts.
-#[derive(Debug)]
-pub(crate) struct RadarBundleValidateRequest {
-	/// Bundle JSON files or directories to validate.
-	pub(crate) paths: Vec<PathBuf>,
-}
-
-/// Request to render one `signal_entry/v1` artifact from a bundle and analysis draft.
-#[derive(Debug)]
-pub(crate) struct RadarRenderSignalRequest {
-	/// Path to a `github_change_bundle/v1` JSON artifact.
-	pub(crate) bundle: PathBuf,
-	/// Path to a Codex-owned `analysis_draft` JSON artifact.
-	pub(crate) analysis: PathBuf,
-	/// Path to write the rendered `signal_entry/v1` artifact.
-	pub(crate) out: PathBuf,
-	/// Optional publication timestamp override.
-	pub(crate) published_at: Option<String>,
-}
-
-/// Summary of a rendered signal artifact.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct RadarRenderSignalReport {
-	/// Path that received the rendered signal artifact.
-	pub(crate) out: PathBuf,
-}
-
-/// Request to backfill unpublished signals from a release-delta comparison window.
-#[derive(Debug)]
-pub(crate) struct RadarBackfillReleaseRangeRequest {
-	/// GitHub repository in `owner/name` format.
-	pub(crate) repo: String,
-	/// Release-delta artifact to read or refresh.
-	pub(crate) release_delta: PathBuf,
-	/// Stable tag to use as the comparison start.
-	pub(crate) stable_tag: Option<String>,
-	/// Preview tag to use as the comparison end.
-	pub(crate) preview_tag: Option<String>,
-	/// Directory containing published signal entries.
-	pub(crate) signals_dir: PathBuf,
-	/// Directory for generated GitHub bundles.
-	pub(crate) bundles_dir: PathBuf,
-	/// Directory for Codex-owned analysis drafts.
-	pub(crate) analysis_dir: PathBuf,
-	/// Optional GitHub token environment variable name passed through to helper scripts.
-	pub(crate) token_env: Option<String>,
-	/// Codex executable to pass to the AI analysis boundary.
-	pub(crate) codex_bin: String,
-	/// Optional Codex model override for the AI analysis boundary.
-	pub(crate) model: Option<String>,
-	/// Optional PR count cap for partial runs.
-	pub(crate) max_prs: Option<usize>,
-	/// Print selected targets without writing generated content.
-	pub(crate) dry_run: bool,
-	/// Refresh the release-delta artifact into a temporary file before selecting targets.
-	pub(crate) refresh_release_delta_first: bool,
-	/// Stable release limit passed through only when refreshing first.
-	pub(crate) refresh_stable_limit: Option<usize>,
-	/// Preview release limit passed through only when refreshing first.
-	pub(crate) refresh_preview_limit: Option<usize>,
-	/// Compare-pair limit passed through only when refreshing first.
-	pub(crate) refresh_pair_limit: Option<usize>,
-	/// Python executable used for the Codex AI analysis helper boundary.
-	pub(crate) python_bin: String,
-}
-
-/// Summary of a release-window backfill selection or run.
-#[derive(Debug, Eq, PartialEq, Serialize)]
-pub(crate) struct RadarBackfillReleaseRangeReport {
-	/// Stable tag selected for the comparison.
-	pub(crate) stable_tag: String,
-	/// Preview tag selected for the comparison.
-	pub(crate) preview_tag: String,
-	/// PR numbers selected for backfill.
-	pub(crate) target_prs: Vec<u64>,
-	/// Number of signal entries created by this run.
-	pub(crate) created: usize,
-	/// Whether the command only previewed targets.
-	pub(crate) dry_run: bool,
-}
-impl Display for RadarBackfillReleaseRangeReport {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-		write!(formatter, "{}", serde_json::to_string_pretty(self).map_err(|_| fmt::Error)?)
-	}
-}
-
-/// Summary of a Radar validation pass.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct RadarValidationReport {
-	/// Number of JSON files parsed and validated.
-	pub(crate) checked_files: usize,
-}
 
 #[derive(Debug)]
 struct ArtifactValidation {
@@ -1316,8 +1009,9 @@ pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> crate::prelude:
 			};
 
 			match promoted_pr {
-				Some(pr_number) =>
-					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?,
+				Some(pr_number) => {
+					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?
+				},
 				None => client.build_commit_bundle(&request.repo, commit_sha, &request.notes)?,
 			}
 		},
@@ -4592,11 +4286,7 @@ fn is_historical_archive_manifest_path(path: &Path, payload: &Value) -> bool {
 
 	string_field(entry, "schema") == Some(RADAR_ARCHIVE_MANIFEST_SCHEMA)
 		&& normalized.contains("/cache/archive/index/")
-		&& timestamp_field_before(
-			entry,
-			"created_at",
-			RADAR_ARCHIVE_HISTORICAL_RETENTION_CUTOFF,
-		)
+		&& timestamp_field_before(entry, "created_at", RADAR_ARCHIVE_HISTORICAL_RETENTION_CUTOFF)
 }
 
 fn is_historical_upstream_review_path(path: &Path, payload: &Value) -> bool {
@@ -4645,9 +4335,8 @@ fn validate_artifact(payload: &Value) -> ArtifactValidation {
 fn validate_artifact_for_path(path: &Path, payload: &Value) -> ArtifactValidation {
 	if is_analysis_draft_path(path) && payload.get("schema").is_none() {
 		return match validate_analysis_draft(payload) {
-			Ok(()) => ArtifactValidation {
-				schema: Some(ANALYSIS_DRAFT_KIND.into()),
-				errors: Vec::new(),
+			Ok(()) => {
+				ArtifactValidation { schema: Some(ANALYSIS_DRAFT_KIND.into()), errors: Vec::new() }
 			},
 			Err(error) => ArtifactValidation {
 				schema: Some(ANALYSIS_DRAFT_KIND.into()),
@@ -4683,16 +4372,19 @@ fn validate_artifact_with_options(
 	match schema.as_deref() {
 		Some(BUNDLE_SCHEMA) => validate_bundle(entry, &mut errors),
 		Some(CONFIG_FEATURE_CATALOG_SCHEMA) => validate_config_feature_catalog(entry, &mut errors),
-		Some(CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA) =>
-			validate_control_plane_upgrade_candidate(entry, &mut errors),
-		Some(RADAR_ARCHIVE_MANIFEST_SCHEMA) =>
-			validate_radar_archive_manifest(entry, options, &mut errors),
+		Some(CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA) => {
+			validate_control_plane_upgrade_candidate(entry, &mut errors)
+		},
+		Some(RADAR_ARCHIVE_MANIFEST_SCHEMA) => {
+			validate_radar_archive_manifest(entry, options, &mut errors)
+		},
 		Some(RELEASE_DELTA_SCHEMA) => validate_release_delta(entry, &mut errors),
 		Some(SIGNAL_SCHEMA) => validate_signal(entry, &mut errors),
 		Some(SOCIAL_CANDIDATE_SCHEMA) => validate_social_candidate(entry, &mut errors),
 		Some(SOCIAL_POST_SCHEMA) => validate_social_post(entry, &mut errors),
-		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) =>
-			validate_social_publish_reservation(entry, &mut errors),
+		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) => {
+			validate_social_publish_reservation(entry, &mut errors)
+		},
 		Some(UPSTREAM_IMPACT_SCHEMA) => validate_upstream_impact(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_QUEUE_SCHEMA) => validate_upstream_review_queue(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_SCHEMA) => validate_upstream_review(entry, options, &mut errors),
@@ -4936,10 +4628,11 @@ fn collect_json_strings(value: &Value, text: &mut String) {
 			text.push(' ');
 			text.push_str(value);
 		},
-		Value::Array(values) =>
+		Value::Array(values) => {
 			for value in values {
 				collect_json_strings(value, text);
-			},
+			}
+		},
 		Value::Object(object) => collect_json_strings_from_map(object, text),
 		Value::Bool(_) | Value::Null | Value::Number(_) => {},
 	}
@@ -5239,25 +4932,31 @@ fn validate_release_comparison_tags(
 	errors: &mut Vec<String>,
 ) {
 	match string_field(comparison, "stable_tag_name") {
-		Some("") =>
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
+		Some("") => {
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
+		},
 		Some(tag_name)
 			if !option_tags.stable.is_empty() && !option_tags.stable.contains(tag_name) =>
+		{
 			errors.push(format!(
 				"comparisons[{index}].stable_tag_name must exist in release_options.stable"
-			)),
+			))
+		},
 		Some(_) => {},
-		None =>
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
+		None => {
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
+		},
 	}
 	match string_field(comparison, "prerelease_tag_name") {
 		Some("") => errors
 			.push(format!("comparisons[{index}].prerelease_tag_name must be a non-empty string")),
 		Some(tag_name)
 			if !option_tags.preview.is_empty() && !option_tags.preview.contains(tag_name) =>
+		{
 			errors.push(format!(
 				"comparisons[{index}].prerelease_tag_name must exist in release_options.preview"
-			)),
+			))
+		},
 		Some(_) => {},
 		None => errors
 			.push(format!("comparisons[{index}].prerelease_tag_name must be a non-empty string")),
@@ -5544,7 +5243,9 @@ fn validate_upstream_review_actions(
 		let legacy_linear_followup = options.allow_historical_upstream_review_linear_followup
 			&& string_field(action, "type") == Some("linear_followup");
 
-		if !legacy_linear_followup && !matches_one_of(action.get("type"), UPSTREAM_REVIEW_ACTION_TYPES) {
+		if !legacy_linear_followup
+			&& !matches_one_of(action.get("type"), UPSTREAM_REVIEW_ACTION_TYPES)
+		{
 			errors.push(format!(
 				"next_actions[{index}].type must be one of {}",
 				choices(UPSTREAM_REVIEW_ACTION_TYPES)
@@ -6016,10 +5717,12 @@ fn validate_social_publish_reservation_status_payload(
 	errors: &mut Vec<String>,
 ) {
 	match string_field(entry, "status") {
-		Some("consumed") if !is_non_empty_string(entry.get("consumed_by_social_post")) =>
-			errors.push("consumed_by_social_post is required when status is consumed".into()),
-		Some("canceled" | "expired") if !is_non_empty_string(entry.get("release_reason")) =>
-			errors.push("release_reason is required when status is canceled or expired".into()),
+		Some("consumed") if !is_non_empty_string(entry.get("consumed_by_social_post")) => {
+			errors.push("consumed_by_social_post is required when status is consumed".into())
+		},
+		Some("canceled" | "expired") if !is_non_empty_string(entry.get("release_reason")) => {
+			errors.push("release_reason is required when status is canceled or expired".into())
+		},
 		_ => {},
 	}
 }
@@ -6234,10 +5937,12 @@ fn validate_social_post_status_payload(entry: &Map<String, Value>, errors: &mut 
 	match string_field(entry, "status") {
 		Some("published") => validate_social_post_publication(entry.get("publication"), errors),
 		Some("blocked") => validate_social_post_block(entry, errors),
-		Some("failed") if entry.get("failure").and_then(Value::as_object).is_none() =>
-			errors.push("failure is required when status is failed".into()),
-		Some("skipped") if entry.get("skip").and_then(Value::as_object).is_none() =>
-			errors.push("skip is required when status is skipped".into()),
+		Some("failed") if entry.get("failure").and_then(Value::as_object).is_none() => {
+			errors.push("failure is required when status is failed".into())
+		},
+		Some("skipped") if entry.get("skip").and_then(Value::as_object).is_none() => {
+			errors.push("skip is required when status is skipped".into())
+		},
 		_ => {},
 	}
 }
