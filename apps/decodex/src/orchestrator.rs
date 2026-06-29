@@ -2,6 +2,7 @@ mod lane_control;
 mod status_ghost_lane_evidence;
 mod status_history_ledger;
 mod status_models;
+mod status_summary;
 mod harness_improvement {
 	use crate::orchestrator::{IssueRunPlan, Result, Serialize, StateStore, Value, records, state};
 
@@ -67,6 +68,16 @@ use status_history_ledger::{
 	hydrate_history_lane_from_ledger_records, hydrate_history_lanes_from_linear_ledger,
 	local_history_ledger_records, missing_history_ledger_outcome,
 	not_loaded_history_ledger_outcome, operator_history_ledger_outcome, parse_rfc3339_unix_epoch,
+};
+use status_summary::{
+	hydrate_post_review_lane_current_lane_shadowing, operator_issue_attention_key,
+	operator_run_counts_as_attention, operator_run_counts_as_current_lane,
+	operator_run_counts_as_running, operator_run_counts_as_waiting,
+	operator_run_has_fresh_execution, operator_run_has_live_execution,
+	operator_run_has_recent_app_server_execution,
+	operator_run_has_stale_execution_without_known_process, operator_run_needs_attention,
+	project_attention_count, project_history_only_attention_count,
+	queued_candidate_counts_as_waiting_intake, refresh_operator_project_summary,
 };
 
 include!("orchestrator/types.rs");
