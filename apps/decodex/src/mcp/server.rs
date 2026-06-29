@@ -12,12 +12,12 @@ use super::{
 	TOOL_AUTONOMY_COMPILE_PROPOSAL, TOOL_AUTONOMY_DRAFT_OBJECTIVE, TOOL_AUTONOMY_REQUEST_PROMOTION,
 	TOOL_AUTONOMY_SUBMIT_SIGNAL, TOOL_INTAKE_GOAL, TOOL_LANE_CONTROL, TOOL_OBSERVE, TOOL_PLAN,
 	TOOL_PROJECT_CONTROL, TOOL_RESEARCH_COMPILE, TOOL_RESEARCH_PROMOTE, capability_profile_refusal,
-	invalid_tool_arguments, planning,
-	resources::{
+	invalid_tool_arguments,
+	observability::{
 		mcp_public_lane_inspect_resource, mcp_status_live_resource,
 		sanitize_mcp_observability_value,
 	},
-	tool_call_result_allows_progress, tool_refusal, tool_success, tools,
+	planning, tool_call_result_allows_progress, tool_refusal, tool_success, tools,
 };
 
 pub(super) struct McpServer {
