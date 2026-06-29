@@ -8,7 +8,6 @@ use std::{
 };
 
 use color_eyre::{Report, eyre::WrapErr};
-use serde::Serialize;
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
@@ -33,8 +32,13 @@ use crate::{
 	worktree::WorktreeManager,
 };
 
+mod reports;
 mod requests;
 
+use reports::{
+	GhostLaneDiagnostic, GhostLaneRecoveryReport, ReviewHandoffDiagnostic,
+	ReviewHandoffRecoveryReport, StaleActiveDiagnostic, StaleActiveRecoveryReport,
+};
 pub(crate) use requests::{
 	GhostLaneCleanupRequest, GhostLaneDiagnoseRequest, LegacyCloseoutRecoveryRequest,
 	MergedCloseoutRecoveryRequest, ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest,
@@ -77,103 +81,6 @@ const LINEAR_RATE_LIMIT_BACKOFF_WARNING: &str = "tracker_rate_limited";
 const LINEAR_RATE_LIMIT_BACKOFF_SECS: i64 = 15 * 60;
 const LINEAR_TRANSIENT_TIMEOUT_BACKOFF_WARNING: &str = "tracker_transient_timeout";
 const LINEAR_TRANSIENT_TIMEOUT_BACKOFF_SECS: i64 = 60;
-
-#[derive(Serialize)]
-struct ReviewHandoffRecoveryReport {
-	project_id: String,
-	diagnostics: Vec<ReviewHandoffDiagnostic>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-struct ReviewHandoffDiagnostic {
-	project_id: String,
-	issue_id: String,
-	issue_identifier: String,
-	issue_state: String,
-	classification: String,
-	reason: String,
-	branch_name: String,
-	worktree_path: String,
-	local_branch_name: Option<String>,
-	local_head_oid: Option<String>,
-	worktree_clean: Option<bool>,
-	existing_pr_url: Option<String>,
-	existing_lifecycle_handoff_head_oid: Option<String>,
-	existing_lifecycle_phase_head_oid: Option<String>,
-	pr_base_ref: Option<String>,
-	pr_head_oid: Option<String>,
-	mismatched_field: Option<String>,
-	active_label_present: Option<bool>,
-	next_action: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-struct GhostLaneRecoveryReport {
-	project_id: String,
-	diagnostics: Vec<GhostLaneDiagnostic>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-struct GhostLaneDiagnostic {
-	project_id: String,
-	issue_id: String,
-	issue_identifier: Option<String>,
-	run_id: String,
-	attempt_number: i64,
-	attempt_status: String,
-	classification: String,
-	reason: String,
-	run_lease: bool,
-	control_channel: String,
-	evidence: Vec<String>,
-	blockers: Vec<String>,
-	next_action: String,
-}
-impl GhostLaneDiagnostic {
-	fn recoverable(&self) -> bool {
-		(self.classification == GHOST_LANE_CLASSIFICATION
-			|| self.classification == MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION)
-			&& self.blockers.is_empty()
-	}
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-struct StaleActiveRecoveryReport {
-	project_id: String,
-	diagnostics: Vec<StaleActiveDiagnostic>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-struct StaleActiveDiagnostic {
-	project_id: String,
-	issue_id: String,
-	issue_identifier: String,
-	issue_state: String,
-	classification: String,
-	reason: String,
-	queue_label_present: bool,
-	active_label_present: bool,
-	needs_attention_label_present: bool,
-	latest_run_id: Option<String>,
-	latest_attempt_number: Option<i64>,
-	latest_attempt_status: Option<String>,
-	run_lease: bool,
-	active_shared_claim: bool,
-	control_channel: String,
-	worktree_path: Option<String>,
-	worktree_state: String,
-	evidence: Vec<String>,
-	blockers: Vec<String>,
-	next_action: String,
-}
-impl StaleActiveDiagnostic {
-	fn recoverable(&self) -> bool {
-		matches!(
-			self.classification.as_str(),
-			STALE_ACTIVE_CLASSIFICATION | STALE_ACTIVE_STATE_RESTORE_CLASSIFICATION
-		) && self.blockers.is_empty()
-	}
-}
 
 struct HandoffBindingDiagnostic {
 	classification: String,
