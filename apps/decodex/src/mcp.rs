@@ -1,17 +1,11 @@
-use std::{
-	env,
-	fmt::Display,
-	io,
-	net::TcpListener,
-	path::{Path, PathBuf},
-	str,
-};
+use std::{fmt::Display, io, net::TcpListener, path::Path, str};
 
-use crate::{config::ServiceConfig, prelude::eyre, runtime, state::StateStore};
+use crate::prelude::eyre;
 use clap::ValueEnum;
 use serde::Deserialize;
 use serde_json::{self, Value};
 
+mod context;
 mod control;
 mod http;
 mod planning;
@@ -28,6 +22,7 @@ use self::resources::{
 	mcp_status_live_resource, sanitize_mcp_observability_value,
 };
 use self::{
+	context::McpContext,
 	http::{
 		McpHttpAuthorization, serve_streamable_http_with_profile,
 		validate_mcp_http_capability_profile, validate_mcp_http_listen_address,
@@ -122,36 +117,6 @@ pub(crate) struct McpServeRequest<'a> {
 	pub(crate) listen_address: &'a str,
 	pub(crate) allowed_origins: &'a [String],
 	pub(crate) bearer_token_env: Option<&'a str>,
-}
-
-struct McpContext {
-	repo_root: PathBuf,
-	config_path: Option<PathBuf>,
-	project_id: Option<String>,
-	state_store: Option<StateStore>,
-}
-impl McpContext {
-	fn for_process(config_path: Option<&Path>) -> crate::prelude::Result<Self> {
-		let state_store = runtime::open_runtime_store_lazy().ok();
-		let config_path = resolve_context_config_path(config_path, state_store.as_ref())?;
-		let config = config_path.as_ref().map(ServiceConfig::from_path).transpose()?;
-		let repo_root = config
-			.as_ref()
-			.map(|config| config.repo_root().to_path_buf())
-			.or_else(|| discover_repo_root_from_current_dir().ok().flatten())
-			.ok_or_else(|| {
-				eyre::eyre!(
-					"Failed to find the Decodex repository root for MCP docs resources; start from a checkout or pass --config."
-				)
-		})?;
-		let project_id = config.map(|config| config.service_id().to_owned());
-
-		Ok(Self { repo_root, config_path, project_id, state_store })
-	}
-
-	fn project_id(&self) -> Option<&str> {
-		self.project_id.as_deref()
-	}
 }
 
 #[derive(Deserialize)]
@@ -298,34 +263,6 @@ fn tool_call_result_allows_progress(result: &Value) -> bool {
 
 fn non_empty_string(value: Option<&str>) -> Option<&str> {
 	value.map(str::trim).filter(|value| !value.is_empty())
-}
-
-fn resolve_context_config_path(
-	explicit_path: Option<&Path>,
-	state_store: Option<&StateStore>,
-) -> crate::prelude::Result<Option<PathBuf>> {
-	if let Some(path) = explicit_path {
-		return Ok(Some(path.to_path_buf()));
-	}
-
-	let Some(state_store) = state_store else {
-		return Ok(None);
-	};
-
-	runtime::registered_config_path_for_cwd(state_store, &env::current_dir()?)
-}
-
-fn discover_repo_root_from_current_dir() -> crate::prelude::Result<Option<PathBuf>> {
-	let mut candidate = env::current_dir()?;
-
-	loop {
-		if candidate.join("docs/index.md").is_file() && candidate.join("Cargo.toml").is_file() {
-			return Ok(Some(candidate));
-		}
-		if !candidate.pop() {
-			return Ok(None);
-		}
-	}
 }
 
 fn safe_runtime_identifier(value: &str) -> bool {
