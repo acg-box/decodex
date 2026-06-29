@@ -795,7 +795,7 @@ fn operator_status_json_surfaces_missing_contract_program_recovery() {
 }
 
 #[test]
-fn operator_status_readback_quarantines_legacy_flat_decision_contracts() {
+fn operator_status_readback_uses_migrated_legacy_flat_decision_contracts() {
 	let (temp_dir, config, workflow) = temp_project_layout();
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let state_store = StateStore::open(&state_path).expect("state store should open");
@@ -853,13 +853,22 @@ fn operator_status_readback_quarantines_legacy_flat_decision_contracts() {
 				],
 			)
 			.expect("legacy decision contract row should insert");
+			connection
+				.execute("UPDATE schema_meta SET value = '11' WHERE key = 'schema_version'", [])
+				.expect("schema version should mark legacy state");
 	}
 
-	assert!(
-		state_store
-			.decision_contract(config.service_id(), contract.contract_id())
-			.is_err(),
-		"execution-facing legacy contract reads must still fail closed"
+	drop(state_store);
+	let state_store = StateStore::open(&state_path).expect("legacy contract should migrate");
+
+	let migrated_contract = state_store
+		.decision_contract(config.service_id(), contract.contract_id())
+		.expect("migrated contract read should succeed")
+		.expect("migrated contract should exist");
+
+	assert_eq!(
+		migrated_contract.contract().execution_readiness().proposed_issues()[0].objective(),
+		"Legacy flat summary that must not be re-admitted."
 	);
 
 	let snapshot = build_program_readback_snapshot(&config, &workflow, &state_store);
@@ -867,7 +876,7 @@ fn operator_status_readback_quarantines_legacy_flat_decision_contracts() {
 
 	assert_eq!(program.program_id, "program-legacy-flat-contract");
 	assert_eq!(program.status, "stale");
-	assert_eq!(program.readback_warning.as_deref(), Some("source_decision_contract_missing"));
+	assert_ne!(program.readback_warning.as_deref(), Some("source_decision_contract_missing"));
 	assert_eq!(program.stale_count, 1);
 	assert_eq!(program.mapped_issue_identifiers, vec![String::from("PUB-947")]);
 }

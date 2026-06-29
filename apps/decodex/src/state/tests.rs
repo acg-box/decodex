@@ -1087,6 +1087,207 @@ fn persistent_append_event_does_not_refresh_full_event_journal() {
 }
 
 #[test]
+fn persistent_open_backfills_protocol_event_summaries_from_legacy_journal() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+
+	{
+		let store = StateStore::open(&state_path).expect("state store should create schema");
+
+		store.record_run_attempt("run-legacy", "PUB-101", 1, "running").expect("run should record");
+	}
+
+	let connection = Connection::open(&state_path).expect("sqlite should open");
+
+	connection
+		.execute("DELETE FROM schema_meta WHERE key = 'schema_version'", [])
+		.expect("schema version should reset");
+	connection
+		.execute(
+			"DELETE FROM schema_meta
+			 WHERE key = 'migration:protocol_event_summaries_from_events:v12'",
+			[],
+		)
+		.expect("protocol summary migration marker should reset");
+	connection
+		.execute("DELETE FROM protocol_event_summaries", [])
+		.expect("summary rows should clear");
+	connection
+		.execute(
+			"INSERT INTO protocol_events (
+					run_id, sequence_number, event_type, payload_sha256, created_at, created_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+			rusqlite::params![
+				"run-legacy",
+				1_i64,
+				"turn/started",
+				"sha-1",
+				"2026-06-17T00:00:00Z",
+				1_i64,
+			],
+		)
+		.expect("legacy event should insert");
+	connection
+		.execute(
+			"INSERT INTO protocol_events (
+					run_id, sequence_number, event_type, payload_sha256, created_at, created_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+			rusqlite::params![
+				"run-legacy",
+				2_i64,
+				"turn/completed",
+				"sha-2",
+				"2026-06-17T00:00:01Z",
+				2_i64,
+			],
+		)
+		.expect("legacy event should insert");
+
+	let reopened = StateStore::open(&state_path).expect("state store should migrate");
+
+	assert_eq!(reopened.event_count("run-legacy").expect("event count should load"), 2);
+
+	let summary = connection
+		.query_row(
+			"SELECT event_count, last_sequence_number, last_event_type
+			 FROM protocol_event_summaries
+			 WHERE run_id = 'run-legacy'",
+			[],
+			|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)),
+		)
+		.expect("summary should persist");
+
+	assert_eq!(summary, (2, 2, String::from("turn/completed")));
+}
+
+#[test]
+fn persistent_open_keeps_protocol_backfill_marker_when_later_migration_fails() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+
+	{
+		let store = StateStore::open(&state_path).expect("state store should create schema");
+
+		store.record_run_attempt("run-legacy", "PUB-102", 1, "running").expect("run should record");
+	}
+
+	let connection = Connection::open(&state_path).expect("sqlite should open");
+	let mut legacy_payload = serde_json::to_value(latent_decision_contract_fixture())
+		.expect("fixture should encode as JSON");
+
+	legacy_payload["contract_id"] = serde_json::json!("legacy-invalid-contract");
+	legacy_payload["status"] = serde_json::json!("accepted_promoted");
+	legacy_payload["execution_readiness"]["ready_for_issue_shaping"] = serde_json::json!(false);
+
+	let readiness = legacy_payload
+		.get_mut("execution_readiness")
+		.expect("readiness should exist")
+		.as_object_mut()
+		.expect("readiness should be an object");
+
+	readiness.remove("proposed_issues");
+	readiness.insert(
+		String::from("proposed_issue_summaries"),
+		serde_json::json!(["Legacy invalid summary."]),
+	);
+
+	connection
+		.execute("UPDATE schema_meta SET value = '11' WHERE key = 'schema_version'", [])
+		.expect("schema version should mark legacy state");
+	connection
+		.execute(
+			"DELETE FROM schema_meta
+			 WHERE key = 'migration:protocol_event_summaries_from_events:v12'",
+			[],
+		)
+		.expect("protocol summary migration marker should reset");
+	connection
+		.execute("DELETE FROM protocol_event_summaries", [])
+		.expect("summary rows should clear");
+	connection
+		.execute(
+			"INSERT INTO protocol_events (
+					run_id, sequence_number, event_type, payload_sha256, created_at, created_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+			rusqlite::params![
+				"run-legacy",
+				1_i64,
+				"turn/started",
+				"sha-1",
+				"2026-06-17T00:00:00Z",
+				1_i64,
+			],
+		)
+		.expect("legacy event should insert");
+	connection
+		.execute(
+			"INSERT INTO decision_contracts (
+					project_id, contract_id, source_issue_id, status, payload_json, created_at,
+					created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+			rusqlite::params![
+				"decodex",
+				"legacy-invalid-contract",
+				"XY-BAD",
+				"accepted_promoted",
+				serde_json::to_string(&legacy_payload).expect("legacy payload should serialize"),
+				"2026-06-17T00:00:00Z",
+				1_i64,
+				"2026-06-17T00:00:00Z",
+				1_i64,
+			],
+		)
+		.expect("invalid legacy decision contract row should insert");
+
+	assert!(
+		StateStore::open(&state_path).is_err(),
+		"invalid legacy decision contract migration should still fail closed"
+	);
+
+	let marker: String = connection
+		.query_row(
+			"SELECT value FROM schema_meta
+			 WHERE key = 'migration:protocol_event_summaries_from_events:v12'",
+			[],
+			|row| row.get(0),
+		)
+		.expect("protocol backfill marker should persist after later migration failure");
+	let event_count: i64 = connection
+		.query_row(
+			"SELECT event_count FROM protocol_event_summaries WHERE run_id = 'run-legacy'",
+			[],
+			|row| row.get(0),
+		)
+		.expect("protocol summary should persist after later migration failure");
+
+	assert_eq!(marker, "completed");
+	assert_eq!(event_count, 1);
+}
+
+#[test]
+fn persistent_open_preserves_future_schema_version() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+
+	StateStore::open(&state_path).expect("state store should create schema");
+	let connection = Connection::open(&state_path).expect("sqlite should open");
+
+	connection
+		.execute("UPDATE schema_meta SET value = '13' WHERE key = 'schema_version'", [])
+		.expect("future schema version should set");
+
+	StateStore::open(&state_path).expect("state store should reopen");
+
+	let version: String = connection
+		.query_row("SELECT value FROM schema_meta WHERE key = 'schema_version'", [], |row| {
+			row.get(0)
+		})
+		.expect("schema version should read");
+
+	assert_eq!(version, "13");
+}
+
+#[test]
 fn protocol_event_replay_is_idempotent_when_payload_matches() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
@@ -4317,7 +4518,7 @@ fn decision_contract_reload_rejects_row_key_payload_mismatch() {
 }
 
 #[test]
-fn decision_contract_reload_skips_legacy_flat_issue_summary_rows() {
+fn decision_contract_reload_migrates_legacy_flat_issue_summary_rows() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let store = StateStore::open(&state_path).expect("state store should open");
@@ -4364,24 +4565,47 @@ fn decision_contract_reload_skips_legacy_flat_issue_summary_rows() {
 			],
 		)
 		.expect("legacy decision contract row should insert");
+	connection
+		.execute("UPDATE schema_meta SET value = '11' WHERE key = 'schema_version'", [])
+		.expect("schema version should mark legacy state");
 
-	let reopened = StateStore::open(&state_path)
-		.expect("legacy flat issue summary row should not block state reload");
+	let reopened =
+		StateStore::open(&state_path).expect("legacy flat issue summary row should migrate");
 	let project_contracts = reopened
 		.list_decision_contracts_for_project("decodex")
 		.expect("project contracts should list");
+	let contract_ids =
+		project_contracts.iter().map(|record| record.contract_id()).collect::<Vec<_>>();
 
-	assert_eq!(project_contracts.len(), 1);
-	assert_eq!(project_contracts[0].contract_id(), "research-x-loop-contract");
-	assert!(
-		reopened
-			.list_decision_contracts_for_issue("decodex", "XY-OLD")
-			.expect("legacy issue contracts should list as empty")
-			.is_empty()
+	assert_eq!(project_contracts.len(), 2);
+	assert!(contract_ids.contains(&"research-x-loop-contract"));
+	assert!(contract_ids.contains(&"legacy-flat-issue-contract"));
+
+	let legacy_contract = reopened
+		.decision_contract("decodex", "legacy-flat-issue-contract")
+		.expect("legacy contract read should succeed")
+		.expect("legacy contract should exist");
+
+	assert_eq!(legacy_contract.source_issue_id(), Some("XY-OLD"));
+	assert_eq!(legacy_contract.contract().execution_readiness().proposed_issues().len(), 1);
+	assert_eq!(
+		legacy_contract.contract().execution_readiness().proposed_issues()[0].objective(),
+		"Legacy flat summary that must not be compiled."
 	);
+
+	let migrated_payload: String = connection
+		.query_row(
+			"SELECT payload_json FROM decision_contracts WHERE contract_id = 'legacy-flat-issue-contract'",
+			[],
+			|row| row.get(0),
+		)
+		.expect("migrated payload should read");
+	let migrated_value: serde_json::Value =
+		serde_json::from_str(&migrated_payload).expect("migrated payload should parse");
+
 	assert!(
-		reopened.decision_contract("decodex", "legacy-flat-issue-contract").is_err(),
-		"direct legacy contract reads must still fail closed"
+		migrated_value.pointer("/execution_readiness/proposed_issue_summaries").is_none(),
+		"legacy field should be removed after migration"
 	);
 }
 
