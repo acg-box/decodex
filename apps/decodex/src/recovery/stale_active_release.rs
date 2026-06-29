@@ -19,6 +19,7 @@ use super::{
 	git_worktree::worktree_has_tracked_changes_for_recovery,
 	reports::StaleActiveDiagnostic,
 	stale_active_authority::ensure_stale_active_review_authority_missing,
+	stale_active_diagnosis::{diagnose_stale_active_issues, lookup_stale_active_issue},
 	stale_active_labels::{
 		stale_active_diagnostic_issue_keys, stale_active_issue_has_active_shared_claim,
 	},
@@ -127,7 +128,7 @@ where
 	)?;
 	ensure_stale_active_review_authority_missing(tracker, state_store, &final_diagnostic)?;
 	ensure_stale_active_run_claim_guard(config, state_store, &final_diagnostic)?;
-	let issue = super::lookup_stale_active_issue(tracker, &diagnostic.issue_identifier)?;
+	let issue = lookup_stale_active_issue(tracker, &diagnostic.issue_identifier)?;
 	restore_stale_active_startable_state_if_queued(tracker, workflow, &issue, &final_diagnostic)?;
 
 	tracker::set_issue_label_presence(tracker, &issue, &active_label, false)?;
@@ -145,7 +146,7 @@ fn refreshed_stale_active_release_diagnostic<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let mut diagnostics = super::diagnose_stale_active_issues(
+	let mut diagnostics = diagnose_stale_active_issues(
 		config.service_id(),
 		workflow,
 		config.worktree_root(),
