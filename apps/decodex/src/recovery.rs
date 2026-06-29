@@ -7,9 +7,6 @@ use std::{
 	process::Command,
 };
 
-use color_eyre::{Report, eyre::WrapErr};
-use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
-
 use crate::{
 	commit_message,
 	config::ServiceConfig,
@@ -26,15 +23,24 @@ use crate::{
 		self, IssueTracker, TrackerIssue,
 		linear::LinearClient,
 		privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier,
-		records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
+		records::{self, LinearExecutionEventRecord},
 	},
 	workflow::{WorkflowDocument, WorkflowTracker},
 	worktree::WorktreeManager,
 };
+use color_eyre::{Report, eyre::WrapErr};
+use time::OffsetDateTime;
 
+mod events;
 mod reports;
 mod requests;
 
+use events::{
+	append_review_handoff_adopt_private_event, append_review_handoff_rebind_private_event,
+	legacy_closeout_event, manual_adopt_run_id, merged_closeout_cleanup_event,
+	merged_closeout_event, review_handoff_adopt_event, review_handoff_rebind_event,
+};
+#[cfg(test)] use events::{current_timestamp, timestamp_after_seconds};
 use reports::{
 	GhostLaneDiagnostic, GhostLaneRecoveryReport, ReviewHandoffDiagnostic,
 	ReviewHandoffRecoveryReport, StaleActiveDiagnostic, StaleActiveRecoveryReport,
@@ -5541,188 +5547,6 @@ fn mark_adopt_attempt_failed(context: &RecoveryContext, validation: &AdoptValida
 	}
 }
 
-fn append_review_handoff_rebind_private_event(
-	state_store: &StateStore,
-	service_id: &str,
-	validation: &RebindValidation,
-	writeback_stage: &str,
-	active_label_restored: bool,
-) -> Result<()> {
-	state_store
-		.append_private_execution_event(
-			service_id,
-			&validation.issue.id,
-			&validation.run_id,
-			validation.attempt_number,
-			REVIEW_HANDOFF_REBIND_EVENT,
-			serde_json::json!({
-				"schema": "decodex.review_handoff_recovery_private_event/1",
-				"event": REVIEW_HANDOFF_REBIND_EVENT,
-				"writeback_stage": writeback_stage,
-				"issue_identifier": &validation.issue.identifier,
-				"branch": validation.worktree.branch_name(),
-				"worktree_path": &validation.worktree_path_for_event,
-				"pr_url": landing_url(&validation.landing_state),
-				"pr_head_sha": &validation.local_head_oid,
-				"pr_base_ref": &validation.landing_state.base_ref_name,
-				"pr_state": &validation.landing_state.state,
-				"mergeable": &validation.landing_state.mergeable,
-				"merge_state_status": &validation.landing_state.merge_state_status,
-				"status_check_rollup_state": &validation.landing_state.status_check_rollup_state,
-				"mode": validation.mode.as_str(),
-				"active_label_present": validation.active_label_present,
-				"active_label_restored": active_label_restored,
-				"clear_needs_attention_label": validation.clear_needs_attention_label,
-				"next_action": "continue retained post-review lifecycle",
-			}),
-		)
-		.map(|_| ())
-}
-
-fn append_review_handoff_adopt_private_event(
-	state_store: &StateStore,
-	service_id: &str,
-	validation: &AdoptValidation,
-	writeback_stage: &str,
-	active_label_restored: bool,
-) -> Result<()> {
-	state_store
-		.append_private_execution_event(
-			service_id,
-			&validation.issue.id,
-			&validation.run_id,
-			validation.attempt_number,
-			REVIEW_HANDOFF_ADOPT_EVENT,
-			serde_json::json!({
-				"schema": "decodex.review_handoff_recovery_private_event/1",
-				"event": REVIEW_HANDOFF_ADOPT_EVENT,
-				"writeback_stage": writeback_stage,
-				"issue_identifier": &validation.issue.identifier,
-				"branch": &validation.branch_name,
-				"worktree_path": &validation.worktree_path_for_event,
-				"pr_url": landing_url(&validation.landing_state),
-				"pr_head_sha": &validation.local_head_oid,
-				"pr_base_ref": &validation.landing_state.base_ref_name,
-				"pr_state": &validation.landing_state.state,
-				"mergeable": &validation.landing_state.mergeable,
-				"merge_state_status": &validation.landing_state.merge_state_status,
-				"status_check_rollup_state": &validation.landing_state.status_check_rollup_state,
-				"active_label_present": validation.active_label_present,
-				"active_label_restored": active_label_restored,
-				"existing_retained_worktree_mapping": validation.previous_worktree_mapping.is_some(),
-				"existing_review_handoff_marker": false,
-				"manual_takeover_adopt": true,
-				"next_action": "continue retained post-review lifecycle",
-			}),
-		)
-		.map(|_| ())
-}
-
-fn review_handoff_rebind_event(
-	context: &RecoveryContext,
-	validation: &RebindValidation,
-	active_label_restored: bool,
-) -> LinearExecutionEventRecord {
-	let pr_url = landing_url(&validation.landing_state);
-	let stable_anchor = records::stable_event_anchor(&[
-		pr_url,
-		&validation.local_head_oid,
-		REVIEW_HANDOFF_REBIND_EVENT,
-	]);
-	let mut event = LinearExecutionEventRecord::new(
-		LinearExecutionEventIdentity {
-			service_id: context.config.service_id(),
-			issue_id: &validation.issue.id,
-			issue_identifier: &validation.issue.identifier,
-			run_id: &validation.run_id,
-			attempt_number: validation.attempt_number,
-		},
-		REVIEW_HANDOFF_REBIND_EVENT,
-		current_timestamp(),
-		&stable_anchor,
-	);
-
-	event.branch = Some(validation.worktree.branch_name().to_owned());
-	event.worktree_path = validation.worktree_path_for_event.clone();
-	event.pr_url = Some(pr_url.to_owned());
-	event.pr_head_sha = Some(validation.local_head_oid.clone());
-	event.pr_base_ref = Some(validation.landing_state.base_ref_name.clone());
-	event.commit_sha = Some(validation.local_head_oid.clone());
-	event.validation_result = Some(String::from("passed"));
-	event.summary = Some(format!(
-		"Explicit operator rebind {} for {}.",
-		validation.mode.summary_action(),
-		validation.issue.identifier,
-	));
-	event.evidence = Some(vec![
-		format!("issue_state={}", validation.issue.state.name),
-		format!("branch={}", validation.worktree.branch_name()),
-		format!("pr_url={pr_url}"),
-		format!("pr_head_sha={}", validation.local_head_oid),
-		format!("existing_review_lifecycle_record={}", validation.mode.evidence_value()),
-		format!("active_label_present={}", validation.active_label_present),
-		format!("active_label_repair={active_label_restored}"),
-		format!("needs_attention_label_repair={}", validation.clear_needs_attention_label),
-	]);
-	event.next_action = Some(String::from("continue retained post-review lifecycle"));
-
-	event
-}
-
-fn review_handoff_adopt_event(
-	context: &RecoveryContext,
-	validation: &AdoptValidation,
-	active_label_restored: bool,
-) -> LinearExecutionEventRecord {
-	let pr_url = landing_url(&validation.landing_state);
-	let stable_anchor = records::stable_event_anchor(&[
-		pr_url,
-		&validation.local_head_oid,
-		REVIEW_HANDOFF_ADOPT_EVENT,
-	]);
-	let mut event = LinearExecutionEventRecord::new(
-		LinearExecutionEventIdentity {
-			service_id: context.config.service_id(),
-			issue_id: &validation.issue.id,
-			issue_identifier: &validation.issue.identifier,
-			run_id: &validation.run_id,
-			attempt_number: validation.attempt_number,
-		},
-		REVIEW_HANDOFF_ADOPT_EVENT,
-		current_timestamp(),
-		&stable_anchor,
-	);
-
-	event.branch = Some(validation.branch_name.clone());
-	event.worktree_path = validation.worktree_path_for_event.clone();
-	event.pr_url = Some(pr_url.to_owned());
-	event.pr_head_sha = Some(validation.local_head_oid.clone());
-	event.pr_base_ref = Some(validation.landing_state.base_ref_name.clone());
-	event.commit_sha = Some(validation.local_head_oid.clone());
-	event.validation_result = Some(String::from("passed"));
-	event.summary = Some(format!(
-		"Explicit operator manual takeover adopted review handoff for {}.",
-		validation.issue.identifier,
-	));
-	event.evidence = Some(vec![
-		format!("issue_state={}", validation.issue.state.name),
-		format!("branch={}", validation.branch_name),
-		format!("pr_url={pr_url}"),
-		format!("pr_head_sha={}", validation.local_head_oid),
-		format!("active_label_present={}", validation.active_label_present),
-		format!("active_label_restored={active_label_restored}"),
-		String::from("manual_takeover_adopt=true"),
-		format!(
-			"existing_retained_worktree_mapping={}",
-			validation.previous_worktree_mapping.is_some()
-		),
-		String::from("existing_review_lifecycle_record=false"),
-	]);
-	event.next_action = Some(String::from("continue retained post-review lifecycle"));
-
-	event
-}
-
 fn write_rebind_audit(
 	context: &RecoveryContext,
 	validation: &RebindValidation,
@@ -5788,60 +5612,6 @@ fn write_adopt_audit(
 	)?;
 
 	Ok(())
-}
-
-fn legacy_closeout_event(
-	context: &RecoveryContext,
-	validation: &LegacyCloseoutValidation,
-) -> LinearExecutionEventRecord {
-	let pr_url = landing_url(&validation.landing_state);
-	let stable_anchor = records::stable_event_anchor(&[
-		pr_url,
-		&validation.local_head_oid,
-		&validation.merge_commit,
-		LEGACY_MANUAL_CLOSEOUT_ANCHOR,
-	]);
-	let run_id = format!("legacy-closeout-{}", validation.issue.identifier.to_ascii_lowercase());
-	let mut event = LinearExecutionEventRecord::new(
-		LinearExecutionEventIdentity {
-			service_id: context.config.service_id(),
-			issue_id: &validation.issue.id,
-			issue_identifier: &validation.issue.identifier,
-			run_id: &run_id,
-			attempt_number: 1,
-		},
-		LEGACY_MANUAL_CLOSEOUT_EVENT,
-		current_timestamp(),
-		&stable_anchor,
-	);
-
-	event.branch = Some(validation.worktree.branch_name().to_owned());
-	event.worktree_path = validation.worktree_path_for_event.clone();
-	event.pr_url = Some(pr_url.to_owned());
-	event.pr_head_sha = Some(validation.local_head_oid.clone());
-	event.pr_base_ref = Some(validation.landing_state.base_ref_name.clone());
-	event.commit_sha = Some(validation.merge_commit.clone());
-	event.validation_result = Some(String::from("passed"));
-	event.target_state = Some(validation.issue.state.name.clone());
-	event.cleanup_status = Some(String::from("manual_audit_recorded"));
-	event.summary = Some(format!(
-		"Legacy manual closeout audit recorded for {} after merged PR {}.",
-		validation.issue.identifier, pr_url
-	));
-	event.evidence = Some(vec![
-		format!("issue_state={}", validation.issue.state.name),
-		format!("branch={}", validation.worktree.branch_name()),
-		format!("pr_url={pr_url}"),
-		format!("pr_head_sha={}", validation.local_head_oid),
-		format!("merge_commit={}", validation.merge_commit),
-		format!("worktree_provenance={}", validation.worktree.provenance().source()),
-		String::from("worktree_clean=true"),
-	]);
-	event.next_action = Some(String::from(
-		"remove the local worktree only after preserving or discarding local-only changes intentionally",
-	));
-
-	event
 }
 
 fn write_legacy_closeout_audit(
@@ -5968,126 +5738,8 @@ fn write_merged_closeout_event(
 	Ok(true)
 }
 
-fn merged_closeout_event(
-	context: &RecoveryContext,
-	validation: &MergedCloseoutValidation,
-) -> LinearExecutionEventRecord {
-	let pr_url = landing_url(&validation.landing_state);
-	let stable_anchor = records::stable_event_anchor(&[
-		pr_url,
-		&validation.merge_commit,
-		MERGED_CLOSEOUT_CLOSEOUT_ANCHOR,
-	]);
-	let mut event = LinearExecutionEventRecord::new(
-		LinearExecutionEventIdentity {
-			service_id: context.config.service_id(),
-			issue_id: &validation.issue.id,
-			issue_identifier: &validation.issue.identifier,
-			run_id: &validation.run_id,
-			attempt_number: validation.attempt_number,
-		},
-		LEGACY_MANUAL_CLOSEOUT_EVENT,
-		current_timestamp(),
-		&stable_anchor,
-	);
-
-	event.branch = Some(validation.branch_name.clone());
-	event.worktree_path = Some(validation.worktree_path_for_event.clone());
-	event.pr_url = Some(pr_url.to_owned());
-	event.pr_head_sha = Some(validation.landing_state.head_ref_oid.clone());
-	event.pr_base_ref = Some(validation.landing_state.base_ref_name.clone());
-	event.commit_sha = Some(validation.merge_commit.clone());
-	event.validation_result = Some(String::from("passed"));
-	event.target_state = Some(validation.issue.state.name.clone());
-	event.summary = Some(format!(
-		"Merged closeout recovery recorded for {} after PR {} was already merged.",
-		validation.issue.identifier, pr_url
-	));
-	event.evidence = Some(vec![
-		format!("issue_state={}", validation.issue.state.name),
-		format!("branch={}", validation.branch_name),
-		format!("pr_url={pr_url}"),
-		format!("pr_head_sha={}", validation.landing_state.head_ref_oid),
-		format!("merge_commit={}", validation.merge_commit),
-		String::from("origin_default_contains_merge_commit=true"),
-	]);
-	event.next_action = Some(String::from(
-		"Decodex will record cleanup_complete for the already-merged retained lane.",
-	));
-
-	event
-}
-
-fn merged_closeout_cleanup_event(
-	context: &RecoveryContext,
-	validation: &MergedCloseoutValidation,
-) -> LinearExecutionEventRecord {
-	let pr_url = landing_url(&validation.landing_state);
-	let stable_anchor = records::stable_event_anchor(&[
-		&validation.branch_name,
-		&validation.worktree_path_for_event,
-		&validation.merge_commit,
-		MERGED_CLOSEOUT_CLEANUP_ANCHOR,
-	]);
-	let mut event = LinearExecutionEventRecord::new(
-		LinearExecutionEventIdentity {
-			service_id: context.config.service_id(),
-			issue_id: &validation.issue.id,
-			issue_identifier: &validation.issue.identifier,
-			run_id: &validation.run_id,
-			attempt_number: validation.attempt_number,
-		},
-		"cleanup_complete",
-		timestamp_after_seconds(1),
-		&stable_anchor,
-	);
-
-	event.branch = Some(validation.branch_name.clone());
-	event.worktree_path = Some(validation.worktree_path_for_event.clone());
-	event.pr_url = Some(pr_url.to_owned());
-	event.pr_head_sha = Some(validation.landing_state.head_ref_oid.clone());
-	event.pr_base_ref = Some(validation.landing_state.base_ref_name.clone());
-	event.commit_sha = Some(validation.merge_commit.clone());
-	event.cleanup_status = Some(String::from("merged_closeout_reconciled"));
-	event.target_state = Some(validation.issue.state.name.clone());
-	event.summary = Some(format!(
-		"Merged closeout recovery marked stale retained lane {} cleanup complete.",
-		validation.issue.identifier
-	));
-	event.evidence = Some(vec![
-		format!("issue_state={}", validation.issue.state.name),
-		format!("branch={}", validation.branch_name),
-		format!("worktree_path={}", validation.worktree_path_for_event),
-		String::from("linear_queue_active_attention_labels_absent=true"),
-		String::from("retained_worktree_has_no_uncommitted_changes=true"),
-	]);
-	event.next_action = Some(String::from("No Decodex runtime action remains for this lane."));
-
-	event
-}
-
 fn landing_url(landing_state: &PullRequestLandingState) -> &str {
 	&landing_state.url
-}
-
-fn manual_adopt_run_id(issue_identifier: &str, attempt_number: i64, head_oid: &str) -> String {
-	let normalized_issue = issue_identifier
-		.chars()
-		.map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
-		.collect::<String>();
-	let head_prefix = head_oid.chars().take(12).collect::<String>();
-
-	format!("{normalized_issue}-manual-adopt-{attempt_number}-{head_prefix}")
-}
-
-fn current_timestamp() -> String {
-	OffsetDateTime::now_utc().format(&Rfc3339).expect("timestamp formatting should succeed")
-}
-
-fn timestamp_after_seconds(seconds: i64) -> String {
-	(OffsetDateTime::now_utc() + Duration::seconds(seconds))
-		.format(&Rfc3339)
-		.expect("timestamp formatting should succeed")
 }
 
 fn git_toplevel_path(cwd: &Path) -> Result<PathBuf> {
