@@ -23,10 +23,12 @@ use crate::prelude::eyre::{self, Report};
 
 mod github_api;
 mod github_bundle_client;
+mod github_token;
 mod requests;
 
 use github_api::GitHubApi;
 use github_bundle_client::GithubClient;
+use github_token::github_token;
 
 pub(crate) use requests::{
 	RadarBackfillReleaseRangeReport, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
@@ -1830,20 +1832,6 @@ fn repo_default_branch(api: &GitHubApi, repo: &str) -> crate::prelude::Result<St
 
 	required_value_string(&payload, "default_branch")
 		.map_err(|error| eyre::eyre!("Unable to resolve default branch for {repo}: {error}"))
-}
-
-fn github_token(token_env: Option<&str>) -> Option<String> {
-	if let Some(token_env) = token_env {
-		return env_token(token_env);
-	}
-
-	routed_token_env()
-		.and_then(|token_env| env_token(&token_env))
-		.or_else(|| env_token("GITHUB_TOKEN"))
-}
-
-fn env_token(token_env: &str) -> Option<String> {
-	env::var(token_env).ok().filter(|token| !token.is_empty())
 }
 
 fn absolute_repo_path(root: &Path, path: &Path) -> PathBuf {
@@ -3962,21 +3950,6 @@ fn truncate_patch(value: &str) -> Option<String> {
 
 fn first_line(value: &str) -> String {
 	value.trim().lines().next().unwrap_or("").into()
-}
-
-fn routed_token_env() -> Option<String> {
-	let output =
-		Command::new("git").args(["config", "--get", "codex.github-identity"]).output().ok()?;
-
-	if !output.status.success() {
-		return None;
-	}
-
-	match String::from_utf8_lossy(&output.stdout).trim() {
-		"x" => Some("GITHUB_PAT_X".into()),
-		"y" => Some("GITHUB_PAT_Y".into()),
-		_ => Some("GITHUB_TOKEN".into()),
-	}
 }
 
 fn is_analysis_draft_path(path: &Path) -> bool {
