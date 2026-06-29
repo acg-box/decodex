@@ -40,11 +40,12 @@ use super::{
 	McpContext, McpServer, TOOL_AUTONOMY_ACCEPT_OBJECTIVE, TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
 	TOOL_AUTONOMY_COMPILE_PROPOSAL, TOOL_AUTONOMY_DRAFT_OBJECTIVE, TOOL_AUTONOMY_REQUEST_PROMOTION,
 	TOOL_AUTONOMY_SUBMIT_SIGNAL, TOOL_INTAKE_GOAL, TOOL_PLAN, TOOL_RESEARCH_COMPILE,
-	TOOL_RESEARCH_PROMOTE, invalid_tool_arguments, non_empty_string,
-	observability::mcp_sanitized_value,
-	resources::{
+	TOOL_RESEARCH_PROMOTE,
+	autonomy_resources::{
 		mcp_autonomy_objective_summary, mcp_autonomy_proposal_summary, mcp_autonomy_signal_summary,
 	},
+	invalid_tool_arguments, non_empty_string,
+	observability::mcp_sanitized_value,
 	safe_autonomy_record_identifier, safe_runtime_identifier, tool_refusal, tool_refusal_value,
 	tool_success,
 };
