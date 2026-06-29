@@ -4,6 +4,7 @@ mod status_ghost_lane_evidence;
 mod status_execution_programs;
 mod status_github_cli_authority;
 mod status_history_ledger;
+mod status_history_projection;
 mod status_models;
 mod status_project_display;
 mod status_queued_attention;
@@ -83,9 +84,15 @@ use status_queued_attention::{
 };
 use status_history_ledger::{
 	collect_history_ledger_records, compare_history_ledger_record_position,
-	hydrate_history_lane_from_ledger_records, hydrate_history_lanes_from_linear_ledger,
-	local_history_ledger_records, missing_history_ledger_outcome,
+	hydrate_history_lanes_from_linear_ledger, local_history_ledger_records,
 	not_loaded_history_ledger_outcome, operator_history_ledger_outcome, parse_rfc3339_unix_epoch,
+};
+use status_history_projection::{
+	apply_operator_lane_terminal_projection, apply_terminal_history_ledger_outcome_to_run,
+	apply_terminal_history_ledger_outcomes, current_lane_has_authoritative_live_owner,
+	current_lane_terminal_projection_from_local_ledger, history_lane_group_key,
+	history_ledger_outcome_is_terminal, history_ledger_outcome_requires_attention,
+	hydrate_history_lanes_from_local_ledger, suppress_terminal_attention_queue_echoes,
 };
 pub(crate) use status_worktrees::ensure_project_has_no_merged_worktree_cleanup_debt;
 use status_worktrees::{
