@@ -3,6 +3,7 @@ use std::{io, net::TcpListener, str};
 use crate::prelude::eyre;
 use serde_json::{self, Value};
 
+mod autonomy_resources;
 mod context;
 mod control;
 mod http;
