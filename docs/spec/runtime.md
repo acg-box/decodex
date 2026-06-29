@@ -96,10 +96,11 @@ state or this state machine.
   Decision Contract writes. They update the SQLite `decision_contracts` surface and do
   not by themselves create Linear issues, queue intent, goals, or executable lanes.
 - Runtime schema migration owns legacy Decision Contract payload rewrites. Schema 12
-  removes legacy `execution_readiness.proposed_issue_summaries` rows from SQLite by
-  converting them into structured `proposed_issues[]` with `handoff` stage and
-  `not_ready` queue intent. After migration, normal Decision Contract readback is
-  strict: it does not skip, quarantine, or compile the removed flat field.
+  removes legacy `execution_readiness.proposed_issue_summaries` and
+  `execution_readiness.queue_intent` rows from SQLite by converting summaries into
+  structured `proposed_issues[]` with `handoff` stage and `not_ready` queue intent.
+  After migration, normal Decision Contract readback is strict: it does not skip,
+  quarantine, or compile the removed flat fields.
 - `decodex mcp serve --transport stdio` is the local MCP gateway for desktop and CLI
   clients. The stdio gateway advertises resources, resource templates, prompts, tools,
   logging compatibility, and progress notifications. Resources read checked-in docs,
