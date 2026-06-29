@@ -174,6 +174,13 @@ deprecated, and runtimes must not compile issues from it. Each proposed issue ca
 least one structured proposed issue fail readiness validation and cannot be
 materialized for goal intake or Program Intake.
 
+Runtime schema migration may rewrite old local SQLite payloads that still carry
+`execution_readiness.proposed_issue_summaries`. That rewrite is a one-time data
+migration only: each legacy summary becomes a structured `proposed_issues[]` entry
+with `handoff` stage and `not_ready` queue intent so operators can inspect and revise
+the contract. Normal readback, status, Program Intake, and compile paths remain strict
+and must not treat the removed flat field as a supported compatibility input.
+
 Decision Contracts are top-level snapshots. Terminal status, selected option, material
 evidence, unresolved gaps, validation expectations, and promotion target must be
 readable from the payload without replaying chat or scanning a chronological event
