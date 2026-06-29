@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 enum PanelPalette {
@@ -212,4 +213,8 @@ private struct PanelInteractiveSurfaceModifier: ViewModifier {
 			? Color.black.opacity(0.18)
 			: Color.black.opacity(0.09)
 	}
+}
+
+func panelTrimmed(_ value: String?) -> String? {
+	value?.trimmingCharacters(in: .whitespacesAndNewlines)
 }
