@@ -5,6 +5,7 @@ mod status_execution_programs;
 mod status_github_cli_authority;
 mod status_history_ledger;
 mod status_models;
+mod status_project_display;
 mod status_queued_attention;
 mod status_summary;
 mod status_worktrees;
@@ -76,6 +77,7 @@ use status_models::{
 	RetainedCloseoutPrMergeGate, RunIssueMetadataHydration, TrackerObserverOutcome,
 	WorktreeOwnership,
 };
+use status_project_display::operator_project_display_name;
 use status_queued_attention::{
 	operator_authority_decision_request_status_from_event, operator_queued_issue_attention_status,
 };
