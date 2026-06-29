@@ -1,0 +1,300 @@
+use serde_json::{self, Value};
+
+use crate::mcp::{
+	McpServer, TOOL_AUTONOMY_CHALLENGE_PROPOSAL, TOOL_AUTONOMY_COMPILE_PROPOSAL,
+	TOOL_AUTONOMY_REQUEST_PROMOTION, invalid_tool_arguments, non_empty_string,
+	safe_autonomy_record_identifier, tool_refusal, tool_success,
+};
+
+use super::{
+	super::{
+		missing_authority_refusal, planning_authority_present, planning_mode, planning_project_id,
+		planning_state_store,
+	},
+	args::{
+		AutonomyChallengeProposalToolArgs, AutonomyCompileProposalToolArgs,
+		AutonomyRequestPromotionToolArgs,
+	},
+	results::{
+		autonomy_challenge_tool_result, autonomy_promotion_request_result,
+		autonomy_proposal_tool_result,
+	},
+};
+
+impl McpServer {
+	pub(in crate::mcp) fn call_autonomy_compile_proposal_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<AutonomyCompileProposalToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_AUTONOMY_COMPILE_PROPOSAL,
+					"`proposal`, `signalIds`, and optional `mode` are required.",
+				),
+		};
+		let mode = match planning_mode(
+			params.mode.as_deref(),
+			"dry_run",
+			TOOL_AUTONOMY_COMPILE_PROPOSAL,
+		) {
+			Ok(mode) => mode,
+			Err(result) => return result,
+		};
+		let project_id = match planning_project_id(
+			&self.context,
+			params.project_id.as_deref(),
+			TOOL_AUTONOMY_COMPILE_PROPOSAL,
+		) {
+			Ok(project_id) => project_id,
+			Err(result) => return result,
+		};
+		let input = match params.proposal.into_compile_input(&project_id) {
+			Ok(input) => input,
+			Err(result) => return result,
+		};
+
+		if mode == "apply" && !planning_authority_present(params.authority.as_ref()) {
+			return missing_authority_refusal(
+				TOOL_AUTONOMY_COMPILE_PROPOSAL,
+				"autonomy_compile_proposal apply requires authority.source and authority.reason.",
+			);
+		}
+
+		let store = match planning_state_store(&self.context, TOOL_AUTONOMY_COMPILE_PROPOSAL) {
+			Ok(store) => store,
+			Err(result) => return result,
+		};
+		let proposal = match store.compile_autonomy_proposal_dry_run(input, &params.signal_ids) {
+			Ok(proposal) => proposal,
+			Err(error) =>
+				return tool_refusal(
+					"autonomy_proposal_refused",
+					format!("Autonomy proposal compile was refused: {error}"),
+				),
+		};
+
+		if mode == "dry_run" {
+			return tool_success(autonomy_proposal_tool_result(
+				&project_id,
+				&proposal,
+				mode,
+				false,
+				None,
+			));
+		}
+
+		match store.record_autonomy_proposal(&project_id, proposal) {
+			Ok(record) => tool_success(autonomy_proposal_tool_result(
+				&project_id,
+				record.proposal(),
+				mode,
+				true,
+				Some(record.updated_at()),
+			)),
+			Err(error) => tool_refusal(
+				"autonomy_proposal_refused",
+				format!(
+					"Autonomy proposal persistence was refused by Decodex authority checks: {error}"
+				),
+			),
+		}
+	}
+
+	pub(in crate::mcp) fn call_autonomy_challenge_proposal_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<AutonomyChallengeProposalToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+					"`proposalId`, `challenge`, and optional `mode` are required.",
+				),
+		};
+		let Some(proposal_id) = non_empty_string(Some(params.proposal_id.as_str())) else {
+			return invalid_tool_arguments(
+				TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+				"`proposalId` is required.",
+			);
+		};
+
+		if !safe_autonomy_record_identifier(proposal_id) {
+			return invalid_tool_arguments(
+				TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+				"`proposalId` must be a safe Decodex autonomy identifier.",
+			);
+		}
+
+		let mode = match planning_mode(
+			params.mode.as_deref(),
+			"dry_run",
+			TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+		) {
+			Ok(mode) => mode,
+			Err(result) => return result,
+		};
+		let project_id = match planning_project_id(
+			&self.context,
+			params.project_id.as_deref(),
+			TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+		) {
+			Ok(project_id) => project_id,
+			Err(result) => return result,
+		};
+		let challenge = match params.challenge.into_challenge_input() {
+			Ok(challenge) => challenge,
+			Err(result) => return result,
+		};
+		let store = match planning_state_store(&self.context, TOOL_AUTONOMY_CHALLENGE_PROPOSAL) {
+			Ok(store) => store,
+			Err(result) => return result,
+		};
+
+		if mode == "apply" && !planning_authority_present(params.authority.as_ref()) {
+			return missing_authority_refusal(
+				TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+				"autonomy_challenge_proposal apply requires authority.source and authority.reason.",
+			);
+		}
+		if mode == "dry_run" {
+			let record = match store.autonomy_proposal(&project_id, proposal_id) {
+				Ok(Some(record)) => record,
+				Ok(None) =>
+					return tool_refusal(
+						"proposal_not_found",
+						"Autonomy proposal was not found in the current Decodex project.",
+					),
+				Err(error) =>
+					return tool_refusal(
+						"autonomy_challenge_refused",
+						format!("Autonomy proposal readback failed closed: {error}"),
+					),
+			};
+			let mut proposal = record.proposal().clone();
+
+			return match proposal.record_challenge(challenge) {
+				Ok(()) => tool_success(autonomy_challenge_tool_result(
+					&project_id,
+					&proposal,
+					mode,
+					false,
+					Some(record.updated_at()),
+				)),
+				Err(error) => tool_refusal(
+					"autonomy_challenge_refused",
+					format!("Autonomy proposal challenge was refused: {error}"),
+				),
+			};
+		}
+
+		match store.record_autonomy_proposal_challenge(&project_id, proposal_id, challenge) {
+			Ok(record) => tool_success(autonomy_challenge_tool_result(
+				&project_id,
+				record.proposal(),
+				mode,
+				true,
+				Some(record.updated_at()),
+			)),
+			Err(error) => tool_refusal(
+				"autonomy_challenge_refused",
+				format!(
+					"Autonomy proposal challenge was refused by Decodex authority checks: {error}"
+				),
+			),
+		}
+	}
+
+	pub(in crate::mcp) fn call_autonomy_request_promotion_tool(&self, arguments: Value) -> Value {
+		let params = match serde_json::from_value::<AutonomyRequestPromotionToolArgs>(arguments) {
+			Ok(params) => params,
+			Err(_) =>
+				return invalid_tool_arguments(
+					TOOL_AUTONOMY_REQUEST_PROMOTION,
+					"`proposalId` and optional `mode` are required.",
+				),
+		};
+		let Some(proposal_id) = non_empty_string(Some(params.proposal_id.as_str())) else {
+			return invalid_tool_arguments(
+				TOOL_AUTONOMY_REQUEST_PROMOTION,
+				"`proposalId` is required.",
+			);
+		};
+
+		if !safe_autonomy_record_identifier(proposal_id) {
+			return invalid_tool_arguments(
+				TOOL_AUTONOMY_REQUEST_PROMOTION,
+				"`proposalId` must be a safe Decodex autonomy identifier.",
+			);
+		}
+
+		let mode =
+			match planning_mode(params.mode.as_deref(), "dry_run", TOOL_AUTONOMY_REQUEST_PROMOTION)
+			{
+				Ok(mode) => mode,
+				Err(result) => return result,
+			};
+		let project_id = match planning_project_id(
+			&self.context,
+			params.project_id.as_deref(),
+			TOOL_AUTONOMY_REQUEST_PROMOTION,
+		) {
+			Ok(project_id) => project_id,
+			Err(result) => return result,
+		};
+		let store = match planning_state_store(&self.context, TOOL_AUTONOMY_REQUEST_PROMOTION) {
+			Ok(store) => store,
+			Err(result) => return result,
+		};
+		let record = match store.autonomy_proposal(&project_id, proposal_id) {
+			Ok(Some(record)) => record,
+			Ok(None) =>
+				return tool_refusal(
+					"proposal_not_found",
+					"Autonomy proposal was not found in the current Decodex project.",
+				),
+			Err(error) =>
+				return tool_refusal(
+					"autonomy_promotion_refused",
+					format!("Autonomy proposal readback failed closed: {error}"),
+				),
+		};
+
+		if mode == "dry_run" {
+			return tool_success(autonomy_promotion_request_result(
+				&project_id,
+				record.proposal(),
+				mode,
+				false,
+				None,
+			));
+		}
+
+		let Some(authority) = params.authority else {
+			return missing_authority_refusal(
+				TOOL_AUTONOMY_REQUEST_PROMOTION,
+				"autonomy_request_promotion apply requires explicit proposal acceptance authority.",
+			);
+		};
+		let authority = match authority.into_decision_bridge_authority() {
+			Ok(authority) => authority,
+			Err(result) => return result,
+		};
+
+		match store.accept_autonomy_proposal_as_decision_contract_candidate(
+			&project_id,
+			proposal_id,
+			authority,
+		) {
+			Ok(contract) => tool_success(autonomy_promotion_request_result(
+				&project_id,
+				record.proposal(),
+				mode,
+				true,
+				Some(contract.contract_id()),
+			)),
+			Err(error) => tool_refusal(
+				"autonomy_promotion_refused",
+				format!(
+					"Autonomy proposal promotion request was refused by Decodex authority checks: {error}"
+				),
+			),
+		}
+	}
+}
