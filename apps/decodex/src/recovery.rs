@@ -453,9 +453,8 @@ pub(crate) fn run_review_handoff_diagnose(
 	}
 
 	let diagnostics = match match request.issue.as_deref() {
-		Some(issue_identifier) => {
-			diagnose_issue(&context, issue_identifier).map(|diagnostic| vec![diagnostic])
-		},
+		Some(issue_identifier) =>
+			diagnose_issue(&context, issue_identifier).map(|diagnostic| vec![diagnostic]),
 		None => diagnose_all_retained_review_worktrees(&context),
 	} {
 		Ok(diagnostics) => diagnostics,
@@ -1025,9 +1024,8 @@ fn remember_recovery_tracker_backoff_message(
 		let (reset_unix_epoch, reset_source) =
 			match parse_recovery_rate_limit_reset_unix_epoch(&message) {
 				Some(reset) if reset > now_unix_epoch => (reset, "linear"),
-				_ => {
-					(now_unix_epoch.saturating_add(LINEAR_RATE_LIMIT_BACKOFF_SECS), "local_default")
-				},
+				_ =>
+					(now_unix_epoch.saturating_add(LINEAR_RATE_LIMIT_BACKOFF_SECS), "local_default"),
 			};
 
 		(
@@ -1586,12 +1584,10 @@ fn marker_head_binding_mismatch(
 			local_head_oid,
 		) {
 			ReviewHandoffLineage::Descends => None,
-			ReviewHandoffLineage::Diverged => {
-				Some(("review_handoff_lineage_mismatch", "review_handoff.pr_head_oid"))
-			},
-			ReviewHandoffLineage::Unknown => {
-				Some(("review_handoff_lineage_check_failed", "review_handoff.pr_head_oid"))
-			},
+			ReviewHandoffLineage::Diverged =>
+				Some(("review_handoff_lineage_mismatch", "review_handoff.pr_head_oid")),
+			ReviewHandoffLineage::Unknown =>
+				Some(("review_handoff_lineage_check_failed", "review_handoff.pr_head_oid")),
 		}
 	} else if let Some(orchestration) = context.existing_orchestration {
 		orchestration_binding_mismatch(context, orchestration, local_head_oid)
@@ -2710,12 +2706,10 @@ fn inspect_stale_active_activity_marker(
 	if let Some(marker) = marker {
 		match marker_liveness {
 			StaleActiveProcessLiveness::Alive => blockers.push(String::from("process_alive")),
-			StaleActiveProcessLiveness::NotAlive => {
-				evidence.push(String::from("process_not_alive"))
-			},
-			StaleActiveProcessLiveness::Unknown => {
-				blockers.push(String::from("process_liveness_unknown"))
-			},
+			StaleActiveProcessLiveness::NotAlive =>
+				evidence.push(String::from("process_not_alive")),
+			StaleActiveProcessLiveness::Unknown =>
+				blockers.push(String::from("process_liveness_unknown")),
 		}
 		if marker.last_progress_unix_epoch().is_some() {
 			if marker_liveness == StaleActiveProcessLiveness::NotAlive {
@@ -2864,6 +2858,9 @@ fn stale_active_private_event_allows_release(event: &PrivateExecutionEvent) -> b
 		|| stale_active_private_event_is_failed_control_attempt(event)
 		|| stale_active_private_event_is_stale_runtime_marker(event)
 		|| stale_active_private_event_is_probing_checkpoint(event)
+		|| stale_active_private_event_is_no_diff_guardrail(event)
+		|| stale_active_private_event_is_phase_goal_runtime_failure_telemetry(event)
+		|| stale_active_private_event_is_no_progress_harness_outcome(event)
 }
 
 fn stale_active_private_event_is_release_audit_for_run(
@@ -2922,6 +2919,109 @@ fn stale_active_private_event_is_probing_checkpoint(event: &PrivateExecutionEven
 	payload.get("phase").and_then(serde_json::Value::as_str) == Some("probing")
 		&& json_string_is_missing_or_empty(payload.get("pr_url"))
 		&& json_array_is_missing_or_empty(payload.get("verification"))
+}
+
+fn stale_active_private_event_is_no_diff_guardrail(event: &PrivateExecutionEvent) -> bool {
+	if event.event_type() != "loop_guardrail_checkpoint" {
+		return false;
+	}
+	let payload = event.payload();
+
+	payload.get("schema").and_then(serde_json::Value::as_str)
+		== Some("decodex.loop_guardrail_checkpoint/1")
+		&& payload.get("source_error_class").and_then(serde_json::Value::as_str)
+			== Some("app_server_turn_failed")
+		&& payload.get("reason").and_then(serde_json::Value::as_str) == Some("no_effective_diff")
+		&& stale_active_guardrail_details_have_no_delta(payload)
+}
+
+fn stale_active_private_event_is_phase_goal_runtime_failure_telemetry(
+	event: &PrivateExecutionEvent,
+) -> bool {
+	if !matches!(event.event_type(), "phase_goal_recovery" | "phase_goal_recovery_blocked") {
+		return false;
+	}
+	let payload = event.payload();
+	let source_error_class =
+		payload.pointer("/payload/sourceErrorClass").and_then(serde_json::Value::as_str);
+
+	payload.get("schema").and_then(serde_json::Value::as_str) == Some("decodex.phase_goal_signal/1")
+		&& payload.get("phase").and_then(serde_json::Value::as_str)
+			== Some("implement_to_validation_ready")
+		&& matches!(
+			payload.get("signal").and_then(serde_json::Value::as_str),
+			Some("phase_goal_recovered" | "continuation_budget_exhausted")
+		) && source_error_class.is_some_and(|error_class| error_class.starts_with("app_server_"))
+}
+
+fn stale_active_guardrail_details_have_no_delta(payload: &serde_json::Value) -> bool {
+	let details = payload
+		.get("details")
+		.and_then(serde_json::Value::as_str)
+		.and_then(|details| serde_json::from_str::<serde_json::Value>(details).ok());
+	let details = details.as_ref().unwrap_or(payload);
+
+	json_bool_is_false(details.get("branch_delta_present"))
+		&& json_bool_is_false(details.get("effective_delta_present"))
+}
+
+fn stale_active_private_event_is_no_progress_harness_outcome(
+	event: &PrivateExecutionEvent,
+) -> bool {
+	if event.event_type() != "harness_outcome" {
+		return false;
+	}
+	let payload = event.payload();
+
+	payload.get("schema").and_then(serde_json::Value::as_str) == Some("decodex.harness_outcome/1")
+		&& payload.pointer("/source/outcome").and_then(serde_json::Value::as_str)
+			== Some("retryable_failure")
+		&& payload.pointer("/pr_lifecycle/outcome").and_then(serde_json::Value::as_str)
+			== Some("retryable_failure")
+		&& payload.pointer("/manual_attention").is_none_or(serde_json::Value::is_null)
+		&& json_array_is_missing_or_empty(payload.get("contracts"))
+		&& json_array_is_missing_or_empty(payload.get("execution_programs"))
+		&& stale_active_harness_pr_lifecycle_has_no_progress(payload)
+		&& stale_active_harness_review_has_no_progress(payload)
+		&& stale_active_harness_validation_has_no_progress(payload)
+}
+
+fn stale_active_harness_pr_lifecycle_has_no_progress(payload: &serde_json::Value) -> bool {
+	json_array_is_missing_or_empty(payload.pointer("/pr_lifecycle/pr_urls"))
+}
+
+fn stale_active_harness_review_has_no_progress(payload: &serde_json::Value) -> bool {
+	let review = payload.pointer("/review");
+	let statuses = review.and_then(|review| review.get("statuses"));
+	let accepted_findings = review.and_then(|review| review.get("accepted_finding_count"));
+	let rejected_findings = review.and_then(|review| review.get("rejected_finding_count"));
+	let nonclean_rounds = review.and_then(|review| review.get("nonclean_rounds"));
+
+	json_array_is_missing_or_empty(statuses)
+		&& json_number_is_zero_or_missing(accepted_findings)
+		&& json_number_is_zero_or_missing(rejected_findings)
+		&& json_number_is_zero_or_missing(nonclean_rounds)
+}
+
+fn stale_active_harness_validation_has_no_progress(payload: &serde_json::Value) -> bool {
+	let validation = payload.pointer("/validation");
+	let validation_result = validation
+		.and_then(|validation| validation.get("result"))
+		.and_then(serde_json::Value::as_str);
+	let failure_count = validation.and_then(|validation| validation.get("failure_count"));
+	let failure_classes = validation.and_then(|validation| validation.get("failure_classes"));
+
+	validation_result.is_none_or(|result| result == "not_recorded")
+		&& json_number_is_zero_or_missing(failure_count)
+		&& json_array_is_missing_or_empty(failure_classes)
+}
+
+fn json_bool_is_false(value: Option<&serde_json::Value>) -> bool {
+	value.and_then(serde_json::Value::as_bool) == Some(false)
+}
+
+fn json_number_is_zero_or_missing(value: Option<&serde_json::Value>) -> bool {
+	value.is_none_or(|value| value.as_u64() == Some(0))
 }
 
 fn json_string_is_missing_or_empty(value: Option<&serde_json::Value>) -> bool {
@@ -2990,9 +3090,8 @@ where
 {
 	let refreshed = match tracker.refresh_issues(&[run.issue_id().to_owned()]) {
 		Ok(refreshed) => refreshed,
-		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, run.issue_id()) => {
-			Vec::new()
-		},
+		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, run.issue_id()) =>
+			Vec::new(),
 		Err(error) => return Err(error),
 	};
 
@@ -3205,9 +3304,8 @@ fn ghost_lane_has_mcp_test_fixture_identity(
 
 fn ghost_lane_mcp_test_fixture_issue_identifier_matches(issue_identifier: Option<&str>) -> bool {
 	match issue_identifier {
-		Some(value) => {
-			value == MCP_TEST_FIXTURE_ISSUE_ID || value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER
-		},
+		Some(value) =>
+			value == MCP_TEST_FIXTURE_ISSUE_ID || value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER,
 		None => true,
 	}
 }
@@ -3231,13 +3329,11 @@ fn ghost_lane_private_events_are_mcp_test_recovery_evidence(
 
 fn ghost_lane_private_event_is_mcp_test_control_evidence(event: &PrivateExecutionEvent) -> bool {
 	match event.event_type() {
-		"control_action" => {
+		"control_action" =>
 			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE)
-				|| ghost_lane_cli_control_action_matches_mcp_test_fixture(event.payload())
-		},
-		"lane_control/steer/requested" | "lane_control/interrupt/requested" => {
-			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE)
-		},
+				|| ghost_lane_cli_control_action_matches_mcp_test_fixture(event.payload()),
+		"lane_control/steer/requested" | "lane_control/interrupt/requested" =>
+			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE),
 		_ => false,
 	}
 }
@@ -7630,6 +7726,252 @@ token_env_var = "HOME"
 		}
 	}
 
+	fn append_app_server_no_progress_failure_evidence(store: &StateStore, issue_id: &str) {
+		for (event_type, payload) in [
+			(
+				"loop_guardrail_checkpoint",
+				serde_json::json!({
+					"checkpoint_attempt_number": 1,
+					"checkpoint_run_id": "run-1626",
+					"consecutive_count": 1,
+					"details": serde_json::json!({
+						"branch_delta_present": false,
+						"effective_delta_present": false,
+						"reason": "no_effective_diff",
+						"source_error_class": "app_server_turn_failed",
+					})
+					.to_string(),
+					"fingerprint": "empty:empty",
+					"reason": "no_effective_diff",
+					"schema": "decodex.loop_guardrail_checkpoint/1",
+					"source_error_class": "app_server_turn_failed",
+					"threshold": 3,
+				}),
+			),
+			(
+				"harness_outcome",
+				serde_json::json!({
+					"authority_boundary": {
+						"dispositions": [],
+						"failed_check_count": 0,
+						"improvement_signal_count": 0,
+					},
+					"contracts": [],
+					"execution_programs": [],
+					"linear_projection": {
+						"event_types": ["run_started"],
+						"final_error_class": null,
+						"final_event_type": "run_started",
+						"final_terminal_path": null,
+					},
+					"manual_attention": null,
+					"phase_goal_outcomes": [{
+						"event_type": "phase_goal_set",
+						"phase": "implement_to_validation_ready",
+						"status": "active",
+					}],
+					"pr_lifecycle": {
+						"outcome": "retryable_failure",
+						"pr_urls": [],
+					},
+					"record_version": 1,
+					"repair": {
+						"attempt_number": 1,
+						"repair_attempt_observed": false,
+						"repair_phase_events": 0,
+					},
+					"review": {
+						"accepted_finding_count": 0,
+						"nonclean_rounds": 0,
+						"rejected_finding_count": 0,
+						"statuses": [],
+					},
+					"schema": "decodex.harness_outcome/1",
+					"source": {
+						"attempt_number": 1,
+						"issue_id": issue_id,
+						"issue_identifier": "PUB-1626",
+						"outcome": "retryable_failure",
+						"project_id": "pubfi",
+						"run_id": "run-1626",
+						"source_intents": [],
+					},
+					"validation": {
+						"failure_classes": [],
+						"failure_count": 0,
+						"result": "not_recorded",
+					},
+				}),
+			),
+		] {
+			store
+				.append_private_execution_event(
+					"pubfi", issue_id, "run-1626", 1, event_type, payload,
+				)
+				.expect("private no-progress failure evidence should record");
+		}
+	}
+
+	fn append_no_diff_guardrail_event(
+		store: &StateStore,
+		issue_id: &str,
+		branch_delta_present: bool,
+		effective_delta_present: bool,
+	) {
+		store
+			.append_private_execution_event(
+				"pubfi",
+				issue_id,
+				"run-1626",
+				1,
+				"loop_guardrail_checkpoint",
+				serde_json::json!({
+					"details": serde_json::json!({
+						"branch_delta_present": branch_delta_present,
+						"effective_delta_present": effective_delta_present,
+					})
+					.to_string(),
+					"reason": "no_effective_diff",
+					"schema": "decodex.loop_guardrail_checkpoint/1",
+					"source_error_class": "app_server_turn_failed",
+				}),
+			)
+			.expect("private guardrail evidence should record");
+	}
+
+	fn append_harness_outcome_with_pr_progress(store: &StateStore, issue_id: &str) {
+		store
+			.append_private_execution_event(
+				"pubfi",
+				issue_id,
+				"run-1626",
+				1,
+				"harness_outcome",
+				serde_json::json!({
+					"manual_attention": null,
+					"pr_lifecycle": {
+						"outcome": "retryable_failure",
+						"pr_urls": ["https://github.com/hack-ink/pubfi/pull/1631"],
+					},
+					"review": {
+						"accepted_finding_count": 0,
+						"nonclean_rounds": 0,
+						"rejected_finding_count": 0,
+						"statuses": [],
+					},
+					"schema": "decodex.harness_outcome/1",
+					"source": {
+						"outcome": "retryable_failure",
+					},
+					"validation": {
+						"failure_classes": [],
+						"failure_count": 0,
+						"result": "not_recorded",
+					},
+				}),
+			)
+			.expect("private harness progress evidence should record");
+	}
+
+	fn append_harness_outcome_with_review_progress(store: &StateStore, issue_id: &str) {
+		store
+			.append_private_execution_event(
+				"pubfi",
+				issue_id,
+				"run-1626",
+				1,
+				"harness_outcome",
+				serde_json::json!({
+					"contracts": [],
+					"execution_programs": [],
+					"manual_attention": null,
+					"pr_lifecycle": {
+						"outcome": "retryable_failure",
+						"pr_urls": [],
+					},
+					"review": {
+						"accepted_finding_count": 1,
+						"nonclean_rounds": 0,
+						"rejected_finding_count": 0,
+						"statuses": [],
+					},
+					"schema": "decodex.harness_outcome/1",
+					"source": {
+						"outcome": "retryable_failure",
+					},
+					"validation": {
+						"failure_classes": [],
+						"failure_count": 0,
+						"result": "not_recorded",
+					},
+				}),
+			)
+			.expect("private harness review progress evidence should record");
+	}
+
+	fn append_harness_outcome_with_validation_progress(store: &StateStore, issue_id: &str) {
+		store
+			.append_private_execution_event(
+				"pubfi",
+				issue_id,
+				"run-1626",
+				1,
+				"harness_outcome",
+				serde_json::json!({
+					"contracts": [],
+					"execution_programs": [],
+					"manual_attention": null,
+					"pr_lifecycle": {
+						"outcome": "retryable_failure",
+						"pr_urls": [],
+					},
+					"review": {
+						"accepted_finding_count": 0,
+						"nonclean_rounds": 0,
+						"rejected_finding_count": 0,
+						"statuses": [],
+					},
+					"schema": "decodex.harness_outcome/1",
+					"source": {
+						"outcome": "retryable_failure",
+					},
+					"validation": {
+						"failure_classes": ["repo_gate_verify_failed"],
+						"failure_count": 1,
+						"result": "failed",
+					},
+				}),
+			)
+			.expect("private harness validation progress evidence should record");
+	}
+
+	fn append_phase_goal_recovery_event(
+		store: &StateStore,
+		issue_id: &str,
+		phase: &str,
+		source_error_class: &str,
+	) {
+		store
+			.append_private_execution_event(
+				"pubfi",
+				issue_id,
+				"run-1626",
+				1,
+				"phase_goal_recovery",
+				serde_json::json!({
+						"schema": "decodex.phase_goal_signal/1",
+						"phase": phase,
+						"signal": "phase_goal_recovered",
+						"payload": {
+							"nextPhase": "handoff_evidence",
+						"sourceErrorClass": source_error_class,
+						"sourceErrorMessage": "runtime failure",
+					},
+				}),
+			)
+			.expect("private phase goal recovery evidence should record");
+	}
+
 	fn append_stale_active_release_audit(store: &StateStore, issue_id: &str) {
 		append_stale_active_release_audit_for_run(store, issue_id, "run-1626", 1);
 	}
@@ -7693,6 +8035,280 @@ token_env_var = "HOME"
 				.evidence
 				.contains(&String::from("only_stale_active_or_failed_control_evidence_present"))
 		);
+	}
+
+	#[test]
+	fn stale_active_diagnose_allows_app_server_no_progress_failure_evidence() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let queue_label = tracker::automation_queue_label("pubfi");
+		let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
+		append_app_server_no_progress_failure_evidence(&store, &issue.id);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, STALE_ACTIVE_CLASSIFICATION);
+		assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
+		assert!(
+			diagnostic
+				.evidence
+				.contains(&String::from("only_stale_active_or_failed_control_evidence_present"))
+		);
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_harness_outcome_with_pr_progress() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let queue_label = tracker::automation_queue_label("pubfi");
+		let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
+		append_harness_outcome_with_pr_progress(&store, &issue.id);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_harness_outcome_with_review_progress() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let queue_label = tracker::automation_queue_label("pubfi");
+		let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
+		append_harness_outcome_with_review_progress(&store, &issue.id);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_harness_outcome_with_validation_progress() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let queue_label = tracker::automation_queue_label("pubfi");
+		let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
+		append_harness_outcome_with_validation_progress(&store, &issue.id);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_no_diff_guardrail_with_delta() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let queue_label = tracker::automation_queue_label("pubfi");
+		let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
+		append_no_diff_guardrail_event(&store, &issue.id, true, false);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_allows_app_server_phase_goal_recovery_telemetry() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let queue_label = tracker::automation_queue_label("pubfi");
+		let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
+		append_phase_goal_recovery_event(
+			&store,
+			&issue.id,
+			"implement_to_validation_ready",
+			"app_server_dynamic_tool_protocol_failure",
+		);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, STALE_ACTIVE_CLASSIFICATION);
+		assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_repo_gate_phase_goal_recovery_telemetry() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let queue_label = tracker::automation_queue_label("pubfi");
+		let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
+		append_phase_goal_recovery_event(
+			&store,
+			&issue.id,
+			"implement_to_validation_ready",
+			"repo_gate_verify_failed",
+		);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+		assert!(!diagnostic.recoverable());
+	}
+
+	#[test]
+	fn stale_active_diagnose_blocks_repair_phase_goal_recovery_telemetry() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let store = StateStore::open_in_memory().expect("state store should open");
+		let workflow = sample_workflow();
+		let active_label = tracker::automation_active_label("pubfi");
+		let queue_label = tracker::automation_queue_label("pubfi");
+		let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
+		let worktree_path = temp_dir.path().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
+		append_phase_goal_recovery_event(
+			&store,
+			&issue.id,
+			"repair_accepted_review_findings",
+			"app_server_dynamic_tool_protocol_failure",
+		);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let diagnostics = super::diagnose_stale_active_issues(
+			"pubfi",
+			&workflow,
+			temp_dir.path(),
+			&store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+		assert!(!diagnostic.recoverable());
 	}
 
 	#[test]
