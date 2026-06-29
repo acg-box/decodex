@@ -830,6 +830,10 @@ fn operator_status_readback_uses_migrated_legacy_flat_decision_contracts() {
 		String::from("proposed_issue_summaries"),
 		serde_json::json!(["Legacy flat summary that must not be re-admitted."]),
 	);
+	readiness.insert(
+		String::from("queue_intent"),
+		serde_json::json!(["Legacy queue intent that must not be re-admitted."]),
+	);
 
 	{
 		let connection = Connection::open(&state_path).expect("sqlite should open");

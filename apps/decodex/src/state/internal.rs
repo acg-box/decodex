@@ -1020,6 +1020,7 @@ ON CONFLICT(key) DO UPDATE SET value =
 				"SELECT project_id, contract_id, payload_json
 				 FROM decision_contracts
 				 WHERE json_type(payload_json, '$.execution_readiness.proposed_issue_summaries') IS NOT NULL
+				 OR json_type(payload_json, '$.execution_readiness.queue_intent') IS NOT NULL
 				 ORDER BY project_id ASC, contract_id ASC",
 			)?;
 			let rows = statement.query_map([], |row| {
@@ -5578,6 +5579,7 @@ fn migrate_legacy_decision_contract_payload(payload_json: &str) -> Result<String
 		.and_then(Value::as_object_mut)
 		.ok_or_else(|| eyre::eyre!("Decision Contract payload missing execution_readiness."))?;
 	let summaries = readiness.remove("proposed_issue_summaries");
+	readiness.remove("queue_intent");
 
 	let should_insert_issues = readiness
 		.get("proposed_issues")
