@@ -28,15 +28,7 @@ const GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING: &str = "tracker_issue_missing"
 const GHOST_LANE_OWNERSHIP_STATE: &str = "ghost_lane";
 const GHOST_LANE_POLICY_STATE: &str = "runtime_recovery_required";
 const GHOST_LANE_NEXT_ACTION: &str = "run_ghost_lane_recovery";
-const GHOST_LANE_CLEANUP_EVENT: &str = "ghost_lane_cleanup";
 const GHOST_LANE_TERMINAL_STATUS: &str = "terminal_guarded";
-const MCP_TEST_FIXTURE_SOURCE: &str = "mcp-test";
-const MCP_TEST_FIXTURE_PROJECT_ID: &str = "pubfi";
-const MCP_TEST_FIXTURE_ISSUE_ID: &str = "PUB-012";
-const MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER: &str = "PUBFI-012";
-const MCP_TEST_FIXTURE_RUN_ID: &str = "run-12";
-const MCP_TEST_FIXTURE_THREAD_ID: &str = "thread-12";
-const MCP_TEST_FIXTURE_TURN_ID: &str = "turn-12";
 const AUTONOMY_REPLAY_EVIDENCE_SCHEMA: &str = "decodex.autonomy_replay_evidence/1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3320,7 +3312,7 @@ fn missing_issue_ghost_lane_local_conditions(
 	}
 
 	let mcp_test_fixture =
-		status_ghost_lane_mcp_test_fixture_control_evidence(project, state_store, run)?;
+		status_ghost_lane_evidence::mcp_test_fixture_control_evidence(project, state_store, run)?;
 
 	inspect_status_ghost_lane_worktree(
 		project,
@@ -3479,10 +3471,9 @@ fn inspect_status_ghost_lane_live_evidence(
 		return;
 	}
 	if mcp_test_fixture
-		&& live_blockers
-			.iter()
-			.all(|blocker| status_ghost_lane_mcp_test_fixture_allowed_live_blocker(blocker))
-	{
+		&& live_blockers.iter().all(|blocker| {
+			status_ghost_lane_evidence::mcp_test_fixture_allowed_live_blocker(blocker)
+		}) {
 		conditions.push(String::from("mcp_test_fixture_protocol_or_thread_evidence_present"));
 
 		return;
@@ -3511,166 +3502,16 @@ fn inspect_status_ghost_lane_private_evidence(
 	} else if mcp_test_fixture {
 		conditions.push(String::from("mcp_test_fixture_private_control_evidence_present"));
 
-		if events.iter().any(status_ghost_lane_private_event_is_cleanup_audit) {
+		if events.iter().any(status_ghost_lane_evidence::private_event_is_cleanup_audit) {
 			conditions.push(String::from("ghost_lane_cleanup_audit_present"));
 		}
-	} else if status_ghost_lane_private_events_are_cleanup_audit_evidence(&events) {
+	} else if status_ghost_lane_evidence::private_events_are_cleanup_audit_evidence(&events) {
 		conditions.push(String::from("ghost_lane_cleanup_audit_present"));
 	} else {
 		blockers.push(String::from("private_evidence_present"));
 	}
 
 	Ok(())
-}
-
-fn status_ghost_lane_mcp_test_fixture_control_evidence(
-	project: &ServiceConfig,
-	state_store: &StateStore,
-	run: &OperatorRunStatus,
-) -> crate::prelude::Result<bool> {
-	if !status_ghost_lane_has_mcp_test_fixture_identity(project, run) {
-		return Ok(false);
-	}
-
-	let events = state_store.list_private_execution_events(
-		project.service_id(),
-		&run.issue_id,
-		&run.run_id,
-		run.attempt_number,
-	)?;
-
-	Ok(status_ghost_lane_private_events_are_mcp_test_recovery_evidence(&events))
-}
-
-fn status_ghost_lane_has_mcp_test_fixture_identity(
-	project: &ServiceConfig,
-	run: &OperatorRunStatus,
-) -> bool {
-	project.service_id() == MCP_TEST_FIXTURE_PROJECT_ID
-		&& run.issue_id == MCP_TEST_FIXTURE_ISSUE_ID
-		&& run.run_id == MCP_TEST_FIXTURE_RUN_ID
-		&& run.attempt_number == 1
-		&& status_ghost_lane_mcp_test_fixture_issue_identifier_matches(
-			run.issue_identifier.as_deref(),
-		) && status_ghost_lane_optional_fixture_value(
-		run.thread_id.as_deref(),
-		MCP_TEST_FIXTURE_THREAD_ID,
-	) && status_ghost_lane_optional_fixture_value(run.turn_id.as_deref(), MCP_TEST_FIXTURE_TURN_ID)
-}
-
-fn status_ghost_lane_mcp_test_fixture_issue_identifier_matches(
-	issue_identifier: Option<&str>,
-) -> bool {
-	match issue_identifier {
-		Some(value) =>
-			value == MCP_TEST_FIXTURE_ISSUE_ID || value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER,
-		None => true,
-	}
-}
-
-fn status_ghost_lane_optional_fixture_value(value: Option<&str>, expected: &str) -> bool {
-	match value {
-		Some(value) => value == expected,
-		None => true,
-	}
-}
-
-fn status_ghost_lane_private_events_are_mcp_test_recovery_evidence(
-	events: &[PrivateExecutionEvent],
-) -> bool {
-	!events.is_empty()
-		&& events.iter().all(|event| {
-			status_ghost_lane_private_event_is_mcp_test_control_evidence(event)
-				|| status_ghost_lane_private_event_is_cleanup_audit(event)
-		})
-}
-
-fn status_ghost_lane_private_event_is_mcp_test_control_evidence(
-	event: &PrivateExecutionEvent,
-) -> bool {
-	match event.event_type() {
-		"control_action" =>
-			status_ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE)
-				|| status_ghost_lane_cli_control_action_matches_mcp_test_fixture(event.payload()),
-		"lane_control/steer/requested" | "lane_control/interrupt/requested" =>
-			status_ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE),
-		_ => false,
-	}
-}
-
-fn status_ghost_lane_private_event_source(payload: &serde_json::Value) -> Option<&str> {
-	payload
-		.get("source")
-		.and_then(serde_json::Value::as_str)
-		.or_else(|| payload.pointer("/authority/source").and_then(serde_json::Value::as_str))
-}
-
-fn status_ghost_lane_cli_control_action_matches_mcp_test_fixture(
-	payload: &serde_json::Value,
-) -> bool {
-	status_ghost_lane_private_event_source(payload) == Some("cli")
-		&& matches!(
-			payload.get("action").and_then(serde_json::Value::as_str),
-			Some("steer" | "interrupt")
-		) && payload.pointer("/requested/project_id").and_then(serde_json::Value::as_str)
-		== Some(MCP_TEST_FIXTURE_PROJECT_ID)
-		&& payload.pointer("/requested/issue_id").and_then(serde_json::Value::as_str)
-			== Some(MCP_TEST_FIXTURE_ISSUE_ID)
-		&& payload.pointer("/requested/run_id").and_then(serde_json::Value::as_str)
-			== Some(MCP_TEST_FIXTURE_RUN_ID)
-		&& payload.pointer("/requested/attempt_number").and_then(serde_json::Value::as_i64)
-			== Some(1)
-}
-
-fn status_ghost_lane_private_events_are_cleanup_audit_evidence(
-	events: &[PrivateExecutionEvent],
-) -> bool {
-	!events.is_empty() && events.iter().all(status_ghost_lane_private_event_is_cleanup_audit)
-}
-
-fn status_ghost_lane_private_event_is_cleanup_audit(event: &PrivateExecutionEvent) -> bool {
-	if event.event_type() != GHOST_LANE_CLEANUP_EVENT {
-		return false;
-	}
-
-	let payload = event.payload();
-
-	payload.get("schema").and_then(serde_json::Value::as_str)
-		== Some("decodex.ghost_lane_recovery_private_event/1")
-		&& payload.get("event").and_then(serde_json::Value::as_str)
-			== Some(GHOST_LANE_CLEANUP_EVENT)
-		&& matches!(
-			payload.get("classification").and_then(serde_json::Value::as_str),
-			Some("missing_issue_ghost_lane" | "mcp_test_fixture_ghost_lane")
-		) && payload.get("terminal_status").and_then(serde_json::Value::as_str)
-		== Some(GHOST_LANE_TERMINAL_STATUS)
-		&& payload.get("cleared_run_lease").and_then(serde_json::Value::as_bool) == Some(true)
-		&& payload
-			.get("blockers")
-			.and_then(serde_json::Value::as_array)
-			.is_some_and(|blockers| blockers.is_empty())
-		&& status_ghost_lane_cleanup_audit_evidence_contains(payload, "tracker_issue_missing")
-		&& status_ghost_lane_cleanup_audit_evidence_contains(payload, "worktree_missing")
-		&& status_ghost_lane_cleanup_audit_evidence_contains(payload, "review_lineage_missing")
-}
-
-fn status_ghost_lane_cleanup_audit_evidence_contains(
-	payload: &serde_json::Value,
-	expected: &str,
-) -> bool {
-	payload
-		.get("evidence")
-		.and_then(serde_json::Value::as_array)
-		.is_some_and(|evidence| evidence.iter().any(|entry| entry.as_str() == Some(expected)))
-}
-
-fn status_ghost_lane_mcp_test_fixture_allowed_live_blocker(blocker: &str) -> bool {
-	matches!(
-		blocker,
-		"protocol_event_evidence_present"
-			| "protocol_activity_present"
-			| "thread_reference_present"
-	)
 }
 
 fn inspect_status_ghost_lane_review_lineage(
