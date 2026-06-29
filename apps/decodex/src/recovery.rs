@@ -8,27 +8,28 @@ use std::{
 };
 
 use crate::{
-	config::ServiceConfig,
 	github, orchestrator,
 	prelude::{Result, eyre},
 	pull_request::{self, LandingGateMode, PullRequestLandingGateView, PullRequestLandingState},
 	state::{
-		RUN_CONTROL_CHANNEL_STATUS_FAILED, ReviewHandoffMarker, ReviewOrchestrationMarker,
-		StateStore, WorktreeMapping,
+		ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore, WorktreeMapping,
 	},
 	tracker::{
 		self, IssueTracker, TrackerIssue,
 		privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier,
 		records::{self, LinearExecutionEventRecord},
 	},
-	workflow::{WorkflowDocument, WorkflowTracker},
+	workflow::WorkflowTracker,
 };
+#[cfg(test)]
+use crate::state::RUN_CONTROL_CHANNEL_STATUS_FAILED;
 use color_eyre::eyre::WrapErr;
 
 mod context;
 mod events;
 mod evidence;
 mod git_worktree;
+mod ghost_lane_cleanup;
 mod ghost_lane_diagnosis;
 mod identifiers;
 mod process_liveness;
@@ -60,15 +61,26 @@ use git_worktree::{
 	worktree_head_descends_from_review_handoff,
 	worktree_head_oid, worktree_is_clean,
 };
+use ghost_lane_cleanup::{
+	apply_ghost_lane_cleanup, apply_ghost_lane_live_status_blockers,
+	ensure_ghost_lane_live_status_allows_cleanup,
+};
+#[cfg(test)]
+use ghost_lane_cleanup::{
+	apply_ghost_lane_live_status_blockers_with_tracker,
+	ensure_ghost_lane_live_status_allows_cleanup_with_tracker,
+};
 use ghost_lane_diagnosis::{diagnose_ghost_lanes, diagnose_ghost_lanes_read_only};
 #[cfg(test)]
 use git_worktree::worktree_blocking_status_lines;
 use reports::{
-	GhostLaneDiagnostic, GhostLaneRecoveryReport, ReviewHandoffDiagnostic,
-	ReviewHandoffRecoveryReport, StaleActiveRecoveryReport,
+	GhostLaneRecoveryReport, ReviewHandoffDiagnostic, ReviewHandoffRecoveryReport,
+	StaleActiveRecoveryReport,
 	render_ghost_lane_issue, render_ghost_lane_recovery_report,
 	render_review_handoff_recovery_report, render_stale_active_recovery_report,
 };
+#[cfg(test)]
+use reports::GhostLaneDiagnostic;
 use stale_active_diagnosis::diagnose_stale_active_issues;
 use stale_active_release::{
 	apply_stale_active_release, preflight_stale_active_worktree_cleanup,
@@ -1372,145 +1384,6 @@ fn issue_state_mismatch_next_action(success_state: &str, in_progress_state: &str
 	format!(
 		"Move the issue to `{success_state}` or `{in_progress_state}` only after confirming the retained handoff lineage still belongs to the current lane."
 	)
-}
-
-fn apply_ghost_lane_cleanup(
-	state_store: &StateStore,
-	diagnostic: &GhostLaneDiagnostic,
-) -> Result<()> {
-	state_store
-		.append_private_execution_event(
-			&diagnostic.project_id,
-			&diagnostic.issue_id,
-			&diagnostic.run_id,
-			diagnostic.attempt_number,
-			GHOST_LANE_CLEANUP_EVENT,
-			serde_json::json!({
-				"schema": "decodex.ghost_lane_recovery_private_event/1",
-				"event": GHOST_LANE_CLEANUP_EVENT,
-				"classification": &diagnostic.classification,
-				"reason": &diagnostic.reason,
-				"issue_identifier": &diagnostic.issue_identifier,
-				"terminal_status": GHOST_LANE_TERMINAL_STATUS,
-				"cleared_run_lease": true,
-				"evidence": &diagnostic.evidence,
-				"blockers": &diagnostic.blockers,
-				"next_action": "ordinary automation may continue after status readback confirms no current attention lane",
-			}),
-		)
-		.map(|_| ())?;
-	state_store.update_run_status(&diagnostic.run_id, GHOST_LANE_TERMINAL_STATUS)?;
-	state_store.retire_run_control_channel_for_attempt(
-		&diagnostic.run_id,
-		diagnostic.attempt_number,
-		RUN_CONTROL_CHANNEL_STATUS_FAILED,
-	)?;
-
-	if let Some(mapping) = state_store.worktree_for_issue(&diagnostic.issue_id)?
-		&& !mapping.worktree_path().exists()
-	{
-		state_store.clear_worktree(&diagnostic.issue_id)?;
-	}
-
-	state_store.clear_lease(&diagnostic.issue_id)
-}
-
-fn ensure_ghost_lane_live_status_allows_cleanup(
-	context: &RecoveryContext,
-	diagnostic: &GhostLaneDiagnostic,
-) -> Result<()> {
-	ensure_ghost_lane_live_status_allows_cleanup_with_tracker(
-		&context.tracker,
-		&context.config,
-		&context.workflow,
-		&context.state_store,
-		diagnostic,
-	)
-}
-
-fn ensure_ghost_lane_live_status_allows_cleanup_with_tracker<T>(
-	tracker: &T,
-	config: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	diagnostic: &GhostLaneDiagnostic,
-) -> Result<()>
-where
-	T: IssueTracker,
-{
-	let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
-		tracker,
-		config,
-		workflow,
-		state_store,
-		&diagnostic.issue_id,
-		&diagnostic.run_id,
-	)?;
-
-	if blockers.is_empty() {
-		return Ok(());
-	}
-
-	eyre::bail!(
-		"`recover ghost-lane cleanup` refused `{}` because live status reported blockers: {}",
-		render_ghost_lane_issue(diagnostic),
-		blockers.join(", ")
-	)
-}
-
-fn apply_ghost_lane_live_status_blockers(
-	context: &RecoveryContext,
-	diagnostics: &mut [GhostLaneDiagnostic],
-) -> Result<()> {
-	apply_ghost_lane_live_status_blockers_with_tracker(
-		&context.tracker,
-		&context.config,
-		&context.workflow,
-		&context.state_store,
-		diagnostics,
-	)
-}
-
-fn apply_ghost_lane_live_status_blockers_with_tracker<T>(
-	tracker: &T,
-	config: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	diagnostics: &mut [GhostLaneDiagnostic],
-) -> Result<()>
-where
-	T: IssueTracker,
-{
-	for diagnostic in diagnostics {
-		let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
-			tracker,
-			config,
-			workflow,
-			state_store,
-			&diagnostic.issue_id,
-			&diagnostic.run_id,
-		)?;
-
-		if blockers.is_empty() {
-			continue;
-		}
-
-		diagnostic.classification = String::from(GHOST_LANE_BLOCKED_CLASSIFICATION);
-		diagnostic.reason = String::from("status_safety_check_blocked");
-		diagnostic.next_action = String::from(
-			"Preserve attention and inspect the listed blockers before using a recovery command.",
-		);
-		diagnostic.blockers = sorted_unique(
-			diagnostic
-				.blockers
-				.iter()
-				.cloned()
-				.chain(blockers.into_iter().map(|blocker| format!("status:{blocker}")))
-				.collect(),
-		);
-	}
-
-	Ok(())
 }
 
 fn sorted_unique(values: Vec<String>) -> Vec<String> {
