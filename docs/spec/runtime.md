@@ -62,6 +62,12 @@ state or this state machine.
   the same event type and digest are idempotent and must not inflate event counts or
   fail a continuation/recovery path. A different event type or different digest at the
   same sequence remains a journal integrity error.
+- Protocol event summaries are compact startup state, not advisory cache. Schema
+  migrations must backfill `protocol_event_summaries` from legacy raw journals once,
+  and normal startup/status paths must load those summary rows instead of aggregating
+  the full `protocol_events` journal. Bounded raw-journal recomputation is reserved for
+  a requested run whose compact summary is missing, and it must persist the repaired
+  summary before returning.
 - `thread/archive` and `thread/archive/discarded` are terminal protocol barriers for
   one run. After either barrier is recorded, later non-terminal app-server events for
   the same run must not compete for the normal positive protocol sequence namespace.
@@ -89,6 +95,11 @@ state or this state machine.
 - `decodex research compile` and `decodex research promote` are runtime-local
   Decision Contract writes. They update the SQLite `decision_contracts` surface and do
   not by themselves create Linear issues, queue intent, goals, or executable lanes.
+- Runtime schema migration owns legacy Decision Contract payload rewrites. Schema 12
+  removes legacy `execution_readiness.proposed_issue_summaries` rows from SQLite by
+  converting them into structured `proposed_issues[]` with `handoff` stage and
+  `not_ready` queue intent. After migration, normal Decision Contract readback is
+  strict: it does not skip, quarantine, or compile the removed flat field.
 - `decodex mcp serve --transport stdio` is the local MCP gateway for desktop and CLI
   clients. The stdio gateway advertises resources, resource templates, prompts, tools,
   logging compatibility, and progress notifications. Resources read checked-in docs,
@@ -833,6 +844,7 @@ The runtime database stores at least:
 - run leases and dispatch ownership
 - run attempts and attempt status
 - protocol event journals
+- protocol event summaries used by startup/status readback
 - private execution events scoped by project, issue, run, and attempt
 - Objective Contracts scoped by project, objective id, and immutable version, with
   lifecycle state and acceptance, rejection, or supersession provenance

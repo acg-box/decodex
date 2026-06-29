@@ -1956,6 +1956,9 @@ impl StateStore {
 				inserted_event.sequence_number == last_sequence_number.saturating_add(1)
 			}) {
 				summary.record_event(&inserted_event);
+				let summary = summary.clone();
+
+				self.upsert_protocol_event_summary_locked(run_id, &summary)?;
 			} else {
 				self.refresh_protocol_event_summaries_for_runs_locked(state, &[run_id.to_owned()])?;
 			}
@@ -4184,6 +4187,20 @@ impl StateStore {
 			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.load_protocol_event_summaries_for_runs(state, run_ids)
+	}
+
+	fn upsert_protocol_event_summary_locked(
+		&self,
+		run_id: &str,
+		summary: &ProtocolEventSummaryRecord,
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_protocol_event_summary(run_id, summary)
 	}
 
 	fn refresh_run_activity_summaries_for_runs_locked(

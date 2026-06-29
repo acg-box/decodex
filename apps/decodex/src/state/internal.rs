@@ -483,8 +483,10 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.bootstrap_execution_programs_schema()?;
 		self.bootstrap_program_intake_state_schema()?;
 		self.bootstrap_loop_guardrail_schema()?;
+		self.run_schema_migrations()?;
 		self.record_schema_version()?;
 		self.seal_run_activity_summary_records()?;
+		self.connection.execute_batch("PRAGMA optimize=0x10002;")?;
 
 		Ok(())
 	}
@@ -889,6 +891,76 @@ ON program_issue_mappings (project_id, issue_id, updated_at_unix);
 		Ok(())
 	}
 
+	fn schema_version(&self) -> Result<Option<i64>> {
+		self.ensure_schema_meta_table()?;
+		let version = self
+			.connection
+			.query_row(
+				"SELECT value FROM schema_meta WHERE key = 'schema_version'",
+				[],
+				|row| row.get::<_, String>(0),
+			)
+			.optional()?
+			.and_then(|value| value.parse::<i64>().ok());
+
+		Ok(version)
+	}
+
+	fn ensure_schema_meta_table(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS schema_meta (
+	key TEXT PRIMARY KEY NOT NULL,
+	value TEXT NOT NULL
+);
+"#,
+		)?;
+
+		Ok(())
+	}
+
+	fn schema_migration_completed(&self, key: &str) -> Result<bool> {
+		self.ensure_schema_meta_table()?;
+		let value = self
+			.connection
+			.query_row("SELECT value FROM schema_meta WHERE key = ?1", params![key], |row| {
+				row.get::<_, String>(0)
+			})
+			.optional()?;
+
+		Ok(value.as_deref() == Some("completed"))
+	}
+
+	fn record_schema_migration_completed(&self, key: &str) -> Result<()> {
+		self.ensure_schema_meta_table()?;
+		self.connection.execute(
+			"INSERT INTO schema_meta (key, value)
+			 VALUES (?1, 'completed')
+			 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+			params![key],
+		)?;
+
+		Ok(())
+	}
+
+	fn run_schema_migrations(&self) -> Result<()> {
+		let version = self.schema_version()?.unwrap_or(0);
+
+		if version < 12 {
+			if !self.schema_migration_completed(
+				"migration:protocol_event_summaries_from_events:v12",
+			)? {
+				self.backfill_protocol_event_summaries_from_events()?;
+				self.record_schema_migration_completed(
+					"migration:protocol_event_summaries_from_events:v12",
+				)?;
+			}
+			self.migrate_legacy_decision_contract_issue_summaries()?;
+		}
+
+		Ok(())
+	}
+
 	fn record_schema_version(&self) -> Result<()> {
 		self.connection.execute_batch(
 			r#"
@@ -897,10 +969,93 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 	value TEXT NOT NULL
 );
 INSERT INTO schema_meta (key, value)
-VALUES ('schema_version', '11')
-ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+VALUES ('schema_version', '12')
+ON CONFLICT(key) DO UPDATE SET value =
+	CASE
+		WHEN CAST(schema_meta.value AS INTEGER) < CAST(excluded.value AS INTEGER)
+		THEN excluded.value
+		ELSE schema_meta.value
+	END;
 "#,
 		)?;
+
+		Ok(())
+	}
+
+	fn backfill_protocol_event_summaries_from_events(&self) -> Result<()> {
+		let now = timestamp_parts();
+
+		self.connection.execute(
+			"INSERT INTO protocol_event_summaries (
+					run_id, event_count, last_sequence_number, last_event_type, last_event_at,
+					last_event_at_unix, compacted_at, compacted_at_unix
+				)
+			 SELECT totals.run_id, totals.event_count, totals.last_sequence_number,
+					last.event_type, last.created_at, last.created_at_unix, ?1, ?2
+			 FROM (
+				 SELECT run_id, COUNT(*) AS event_count, MAX(sequence_number) AS last_sequence_number
+				 FROM protocol_events
+				 GROUP BY run_id
+			 ) totals
+			 JOIN protocol_events last
+			 ON last.run_id = totals.run_id
+			 AND last.sequence_number = totals.last_sequence_number
+			 ON CONFLICT(run_id) DO UPDATE SET
+				 event_count = excluded.event_count,
+				 last_sequence_number = excluded.last_sequence_number,
+				 last_event_type = excluded.last_event_type,
+				 last_event_at = excluded.last_event_at,
+				 last_event_at_unix = excluded.last_event_at_unix,
+				 compacted_at = excluded.compacted_at,
+				 compacted_at_unix = excluded.compacted_at_unix",
+			params![now.text, now.unix],
+		)?;
+
+		Ok(())
+	}
+
+	fn migrate_legacy_decision_contract_issue_summaries(&self) -> Result<()> {
+		let updates = {
+			let mut statement = self.connection.prepare(
+				"SELECT project_id, contract_id, payload_json
+				 FROM decision_contracts
+				 WHERE json_type(payload_json, '$.execution_readiness.proposed_issue_summaries') IS NOT NULL
+				 ORDER BY project_id ASC, contract_id ASC",
+			)?;
+			let rows = statement.query_map([], |row| {
+				Ok((
+					row.get::<_, String>(0)?,
+					row.get::<_, String>(1)?,
+					row.get::<_, String>(2)?,
+				))
+			})?;
+			let mut updates = Vec::new();
+
+			for row in rows {
+				let (project_id, contract_id, payload_json) = row?;
+				let migrated_payload = migrate_legacy_decision_contract_payload(&payload_json)
+					.map_err(|error| {
+						eyre::eyre!(
+							"Decision Contract `{project_id}/{contract_id}` legacy payload migration failed: {error}"
+						)
+					})?;
+
+				if migrated_payload != payload_json {
+					updates.push((project_id, contract_id, migrated_payload));
+				}
+			}
+
+			updates
+		};
+
+		for (project_id, contract_id, payload_json) in updates {
+			self.connection.execute(
+				"UPDATE decision_contracts
+				 SET payload_json = ?3
+				 WHERE project_id = ?1 AND contract_id = ?2",
+				params![project_id, contract_id, payload_json],
+			)?;
+		}
 
 		Ok(())
 	}
@@ -2035,40 +2190,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	}
 
 	fn load_protocol_event_summaries(&self, state: &mut StateData) -> Result<()> {
-		self.load_compacted_protocol_event_summaries(state)?;
-
-		let mut statement = self.connection.prepare(
-			"SELECT totals.run_id, totals.event_count, totals.last_sequence_number, \
-			 last.event_type, last.created_at, last.created_at_unix \
-			 FROM (
-			 SELECT run_id, COUNT(*) AS event_count, MAX(sequence_number) AS last_sequence_number \
-			 FROM protocol_events GROUP BY run_id
-			 ) totals \
-			 JOIN protocol_events last \
-			 ON last.run_id = totals.run_id \
-			 AND last.sequence_number = totals.last_sequence_number \
-			 ORDER BY totals.run_id",
-		)?;
-		let rows = statement.query_map([], |row| {
-			Ok((
-				row.get::<_, String>(0)?,
-				ProtocolEventSummaryRecord {
-					event_count: row.get(1)?,
-					last_sequence_number: Some(row.get(2)?),
-					last_event_type: Some(row.get(3)?),
-					last_event_at: Some(row.get(4)?),
-					last_event_at_unix: Some(row.get(5)?),
-				},
-			))
-		})?;
-
-		for row in rows {
-			let (run_id, summary) = row?;
-
-			state.event_summaries.insert(run_id, summary);
-		}
-
-		Ok(())
+		self.load_compacted_protocol_event_summaries(state)
 	}
 
 	fn load_protocol_event_summaries_for_runs(
@@ -2078,8 +2200,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	) -> Result<()> {
 		for run_id in run_ids {
 			state.event_summaries.remove(run_id);
-			self.load_compacted_protocol_event_summary_for_run(state, run_id)?;
-			self.load_protocol_event_summary_for_run(state, run_id)?;
+			if !self.load_compacted_protocol_event_summary_for_run(state, run_id)? {
+				self.load_protocol_event_summary_for_run(state, run_id)?;
+			}
 		}
 
 		Ok(())
@@ -2114,6 +2237,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			.optional()?;
 
 		if let Some(summary) = summary {
+			self.upsert_protocol_event_summary(run_id, &summary)?;
 			state.event_summaries.insert(run_id.to_owned(), summary);
 		}
 
@@ -2203,7 +2327,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		&self,
 		state: &mut StateData,
 		run_id: &str,
-	) -> Result<()> {
+	) -> Result<bool> {
 		let mut statement = self.connection.prepare(
 			"SELECT event_count, last_sequence_number, last_event_type, last_event_at, \
 			 last_event_at_unix FROM protocol_event_summaries WHERE run_id = ?1",
@@ -2222,7 +2346,36 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
 		if let Some(summary) = summary {
 			state.event_summaries.insert(run_id.to_owned(), summary);
+
+			return Ok(true);
 		}
+
+		Ok(false)
+	}
+
+	fn upsert_protocol_event_summary(
+		&self,
+		run_id: &str,
+		summary: &ProtocolEventSummaryRecord,
+	) -> Result<()> {
+		let now = timestamp_parts();
+
+		self.connection.execute(
+			"INSERT OR REPLACE INTO protocol_event_summaries (
+					run_id, event_count, last_sequence_number, last_event_type, last_event_at,
+					last_event_at_unix, compacted_at, compacted_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+			params![
+				run_id,
+				summary.event_count,
+				summary.last_sequence_number,
+				summary.last_event_type.as_deref(),
+				summary.last_event_at.as_deref(),
+				summary.last_event_at_unix,
+				now.text,
+				now.unix,
+			],
+		)?;
 
 		Ok(())
 	}
@@ -2443,9 +2596,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let rows = statement.query_map([], decision_contract_runtime_row_parts)?;
 
 		for row in rows {
-			if let Some(record) = maybe_decision_contract_record_from_row_parts(row?)? {
-				state.decision_contracts.insert(record.key(), record);
-			}
+			let record = decision_contract_record_from_row_parts(row?)?;
+
+			state.decision_contracts.insert(record.key(), record);
 		}
 
 		Ok(())
@@ -2489,7 +2642,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			return Ok(None);
 		};
 
-		maybe_decision_contract_record_from_row_parts(parts)
+		decision_contract_record_from_row_parts(parts).map(Some)
 	}
 
 	fn list_decision_contracts_for_issue(
@@ -2509,9 +2662,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let mut records = Vec::new();
 
 		for row in rows {
-			if let Some(record) = maybe_decision_contract_record_from_row_parts(row?)? {
-				records.push(record);
-			}
+			records.push(decision_contract_record_from_row_parts(row?)?);
 		}
 
 		Ok(records)
@@ -2532,9 +2683,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let mut records = Vec::new();
 
 		for row in rows {
-			if let Some(record) = maybe_decision_contract_record_from_row_parts(row?)? {
-				records.push(record);
-			}
+			records.push(decision_contract_record_from_row_parts(row?)?);
 		}
 
 		Ok(records)
@@ -5188,30 +5337,6 @@ fn decision_contract_record_from_row_parts(
 	})
 }
 
-fn maybe_decision_contract_record_from_row_parts(
-	parts: DecisionContractRuntimeRowParts,
-) -> Result<Option<DecisionContractRuntimeRecord>> {
-	let has_removed_flat_issue_summaries =
-		decision_contract_payload_has_removed_flat_issue_summaries(&parts.payload_json);
-	let project_id = parts.project_id.clone();
-	let contract_id = parts.contract_id.clone();
-
-	match decision_contract_record_from_row_parts(parts) {
-		Ok(record) => Ok(Some(record)),
-		Err(error) if has_removed_flat_issue_summaries => {
-			tracing::warn!(
-				project_id = %project_id,
-				contract_id = %contract_id,
-				error = %error,
-				"skipping legacy Decision Contract row with removed proposed_issue_summaries field"
-			);
-
-			Ok(None)
-		},
-		Err(error) => Err(error),
-	}
-}
-
 fn autonomy_objective_runtime_row_parts(
 	row: &Row<'_>,
 ) -> std::result::Result<AutonomyObjectiveRuntimeRowParts, rusqlite::Error> {
@@ -5446,16 +5571,88 @@ fn autonomy_proposal_record_from_row_parts(
 	})
 }
 
-fn decision_contract_payload_has_removed_flat_issue_summaries(payload_json: &str) -> bool {
-	serde_json::from_str::<Value>(payload_json)
-		.ok()
-		.and_then(|payload| {
-			payload
-				.get("execution_readiness")
-				.and_then(|readiness| readiness.get("proposed_issue_summaries"))
-				.map(|_| ())
-		})
-		.is_some()
+fn migrate_legacy_decision_contract_payload(payload_json: &str) -> Result<String> {
+	let mut payload = serde_json::from_str::<Value>(payload_json)?;
+	let readiness = payload
+		.get_mut("execution_readiness")
+		.and_then(Value::as_object_mut)
+		.ok_or_else(|| eyre::eyre!("Decision Contract payload missing execution_readiness."))?;
+	let summaries = readiness.remove("proposed_issue_summaries");
+
+	let should_insert_issues = readiness
+		.get("proposed_issues")
+		.and_then(Value::as_array)
+		.is_none_or(Vec::is_empty);
+
+	if should_insert_issues {
+		let summaries = legacy_issue_summary_values(summaries.as_ref());
+
+		readiness.insert(
+			String::from("proposed_issues"),
+			Value::Array(
+				summaries
+					.iter()
+					.enumerate()
+					.map(|(index, summary)| legacy_issue_summary_to_proposed_issue(index, summary))
+					.collect(),
+			),
+		);
+	}
+
+	let contract = serde_json::from_value::<DecisionContract>(payload.clone())?;
+
+	contract.validate()?;
+
+	Ok(serde_json::to_string(&payload)?)
+}
+
+fn legacy_issue_summary_values(value: Option<&Value>) -> Vec<String> {
+	let summaries = match value {
+		Some(Value::Array(values)) => values
+			.iter()
+			.map(|value| {
+				value
+					.as_str()
+					.map(str::to_owned)
+					.unwrap_or_else(|| value.to_string())
+					.trim()
+					.to_owned()
+			})
+			.filter(|value| !value.is_empty())
+			.collect::<Vec<_>>(),
+		Some(Value::String(value)) if !value.trim().is_empty() => vec![value.trim().to_owned()],
+		Some(value) => vec![value.to_string()],
+		None => Vec::new(),
+	};
+
+	if summaries.is_empty() {
+		vec![String::from("Legacy proposed issue summary was empty.")]
+	} else {
+		summaries
+	}
+}
+
+fn legacy_issue_summary_to_proposed_issue(index: usize, summary: &str) -> Value {
+	let issue_number = index + 1;
+
+	serde_json::json!({
+		"key": format!("legacy-proposed-issue-{issue_number}"),
+		"title": format!("Legacy proposed issue {issue_number}"),
+		"objective": summary,
+		"stage": "handoff",
+		"dependencies": [],
+		"conflict_domains": ["legacy_decision_contract_migration"],
+		"acceptance": [
+			format!("Review and preserve the migrated legacy proposed issue summary: {summary}")
+		],
+		"validation": [
+			"Review the migrated legacy proposed issue before promotion or intake."
+		],
+		"risk": [
+			"Migrated from removed proposed_issue_summaries; structured fields may be incomplete."
+		],
+		"queue_intent": "not_ready"
+	})
 }
 
 fn execution_program_runtime_row_parts(
