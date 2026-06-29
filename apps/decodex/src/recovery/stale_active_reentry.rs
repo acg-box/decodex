@@ -2,7 +2,7 @@
 
 use crate::{state::ProjectRunStatus, tracker::TrackerIssue, workflow::WorkflowTracker};
 
-use super::{GHOST_LANE_TERMINAL_STATUS, StaleActiveLabelSnapshot};
+use super::{GHOST_LANE_TERMINAL_STATUS, stale_active_labels::StaleActiveLabelSnapshot};
 
 struct StaleActiveStartableStateRestoreReentryInput<'a> {
 	run: Option<&'a ProjectRunStatus>,
