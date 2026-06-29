@@ -1,6 +1,7 @@
 mod lane_control;
 mod status_ghost_lane_cleanup;
 mod status_ghost_lane_evidence;
+mod status_execution_programs;
 mod status_history_ledger;
 mod status_models;
 mod status_summary;
@@ -57,6 +58,7 @@ pub(crate) use status_ghost_lane_cleanup::ghost_lane_cleanup_status_blockers;
 use status_ghost_lane_cleanup::{
 	apply_missing_issue_ghost_lane_projection, mark_operator_run_tracker_issue_missing,
 };
+use status_execution_programs::operator_execution_program_statuses;
 use status_models::{
 	AccountActivityMode, ExternalReviewRequestCiGate, LiveOperatorStatusObserverContext,
 	LiveOperatorStatusSnapshotOptions, MarkerProcessLiveness, OperatorExecutionProgramReadback,
