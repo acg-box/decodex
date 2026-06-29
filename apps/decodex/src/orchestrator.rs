@@ -4,6 +4,7 @@ mod status_ghost_lane_evidence;
 mod status_history_ledger;
 mod status_models;
 mod status_summary;
+mod status_worktrees;
 mod harness_improvement {
 	use crate::orchestrator::{IssueRunPlan, Result, Serialize, StateStore, Value, records, state};
 
@@ -73,6 +74,11 @@ use status_history_ledger::{
 	hydrate_history_lane_from_ledger_records, hydrate_history_lanes_from_linear_ledger,
 	local_history_ledger_records, missing_history_ledger_outcome,
 	not_loaded_history_ledger_outcome, operator_history_ledger_outcome, parse_rfc3339_unix_epoch,
+};
+pub(crate) use status_worktrees::ensure_project_has_no_merged_worktree_cleanup_debt;
+use status_worktrees::{
+	active_shared_issue_ids, operator_status_worktrees, refresh_worktree_ownership,
+	stale_terminal_local_issue_ids,
 };
 use status_summary::{
 	hydrate_post_review_lane_current_lane_shadowing, operator_issue_attention_key,
