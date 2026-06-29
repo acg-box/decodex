@@ -2,6 +2,7 @@ mod lane_control;
 mod status_ghost_lane_cleanup;
 mod status_ghost_lane_evidence;
 mod status_execution_programs;
+mod status_github_cli_authority;
 mod status_history_ledger;
 mod status_models;
 mod status_queued_attention;
@@ -60,6 +61,9 @@ use status_ghost_lane_cleanup::{
 	apply_missing_issue_ghost_lane_projection, mark_operator_run_tracker_issue_missing,
 };
 use status_execution_programs::operator_execution_program_statuses;
+use status_github_cli_authority::{
+	operator_github_cli_authority, operator_github_cli_authority_from_registration,
+};
 use status_models::{
 	AccountActivityMode, ExternalReviewRequestCiGate, LiveOperatorStatusObserverContext,
 	LiveOperatorStatusSnapshotOptions, MarkerProcessLiveness, OperatorExecutionProgramReadback,
