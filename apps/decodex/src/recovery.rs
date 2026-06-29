@@ -2390,9 +2390,7 @@ fn stale_active_startable_state_restore_reentry_allowed(
 		&& input.startable_state_id_present
 		&& run.status() == GHOST_LANE_TERMINAL_STATUS
 		&& input.worktree_state == "missing"
-		&& input.control_channel != "missing"
-		&& !input.control_channel.ends_with(":active")
-		&& evidence_contains(evidence, "control_channel_inactive_or_file_missing")
+		&& stale_active_reentry_control_channel_inactive_or_absent(input.control_channel, evidence)
 		&& evidence_contains(evidence, "only_stale_active_or_failed_control_evidence_present")
 		&& evidence_contains(evidence, "review_lineage_missing")
 		&& evidence_contains(evidence, "stale_active_release_audit_present")
@@ -2432,9 +2430,7 @@ fn stale_active_local_cleanup_reentry_allowed(
 		&& !input.active_shared_claim
 		&& run.status() == GHOST_LANE_TERMINAL_STATUS
 		&& input.worktree_state == "missing"
-		&& input.control_channel != "missing"
-		&& !input.control_channel.ends_with(":active")
-		&& evidence_contains(evidence, "control_channel_inactive_or_file_missing")
+		&& stale_active_reentry_control_channel_inactive_or_absent(input.control_channel, evidence)
 		&& evidence_contains(evidence, "only_stale_active_or_failed_control_evidence_present")
 		&& evidence_contains(evidence, "review_lineage_missing")
 		&& evidence_contains(evidence, "stale_active_release_audit_present")
@@ -2449,6 +2445,18 @@ fn stale_active_local_cleanup_reentry_blocker(blocker: &str) -> bool {
 			| "protocol_activity_present"
 			| "protocol_event_evidence_present"
 	)
+}
+
+fn stale_active_reentry_control_channel_inactive_or_absent(
+	control_channel: &str,
+	evidence: &[String],
+) -> bool {
+	if control_channel == "missing" {
+		return evidence_contains(evidence, "control_channel_missing");
+	}
+
+	!control_channel.ends_with(":active")
+		&& evidence_contains(evidence, "control_channel_inactive_or_file_missing")
 }
 
 fn evidence_contains(evidence: &[String], expected: &str) -> bool {
@@ -7273,6 +7281,8 @@ token_env_var = "HOME"
 				"user.name=Decodex Test",
 				"-c",
 				"user.email=decodex-test@example.invalid",
+				"-c",
+				"commit.gpgsign=false",
 				"commit",
 				"-m",
 				message,
@@ -7676,15 +7686,83 @@ token_env_var = "HOME"
 		append_dead_orphan_private_telemetry(store, &issue.id);
 	}
 
+	fn seed_dead_orphan_runtime_telemetry_without_control_channel(
+		store: &StateStore,
+		issue: &TrackerIssue,
+		worktree_path: &Path,
+	) {
+		let (child_activity, protocol_activity) = dead_orphan_activity_summaries();
+
+		state::write_run_activity_marker_for_process(worktree_path, "run-1626", 1, u32::MAX)
+			.expect("stale process marker should write");
+		state::write_run_protocol_activity_marker(
+			worktree_path,
+			&ProtocolActivityMarker {
+				run_id: "run-1626",
+				attempt_number: 1,
+				thread_id: Some("thread-stale"),
+				turn_id: Some("turn-stale"),
+				event_count: 531,
+				last_event_type: "item/started",
+				child_agent_activity: Some(&child_activity),
+				protocol_activity: Some(&protocol_activity),
+			},
+		)
+		.expect("stale protocol marker should write");
+		state::write_run_thread_status_marker(
+			worktree_path,
+			"run-1626",
+			1,
+			Some("thread-stale"),
+			Some("turn-stale"),
+			"active",
+			&[],
+		)
+		.expect("stale thread marker should write");
+		store
+			.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress")
+			.expect("temporary lease should record");
+		store.record_run_attempt("run-1626", &issue.id, 1, "running").expect("run attempt");
+		store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-1626",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+		store.clear_lease(&issue.id).expect("stale lane lease should clear");
+		store
+			.append_event("run-1626", 1, "item/started", r#"{"kind":"model"}"#)
+			.expect("protocol event should record");
+		store
+			.record_run_activity_summary(
+				"run-1626",
+				1,
+				Some(&child_activity),
+				Some(&protocol_activity),
+			)
+			.expect("activity summary should record");
+		append_dead_orphan_private_telemetry_without_control_channel_marker(store, &issue.id);
+	}
+
 	fn append_dead_orphan_private_telemetry(store: &StateStore, issue_id: &str) {
-		for (event_type, payload) in [
-			(
-				"control_channel_published",
-				serde_json::json!({
-					"schema": "decodex.run_control_channel/v1",
-					"status": "active",
-				}),
-			),
+		append_dead_orphan_private_telemetry_events(store, issue_id, true);
+	}
+
+	fn append_dead_orphan_private_telemetry_without_control_channel_marker(
+		store: &StateStore,
+		issue_id: &str,
+	) {
+		append_dead_orphan_private_telemetry_events(store, issue_id, false);
+	}
+
+	fn append_dead_orphan_private_telemetry_events(
+		store: &StateStore,
+		issue_id: &str,
+		include_control_channel_marker: bool,
+	) {
+		let mut events = vec![
 			(
 				"phase_goal_set",
 				serde_json::json!({
@@ -7717,7 +7795,22 @@ token_env_var = "HOME"
 					"status": "sent",
 				}),
 			),
-		] {
+		];
+
+		if include_control_channel_marker {
+			events.insert(
+				0,
+				(
+					"control_channel_published",
+					serde_json::json!({
+						"schema": "decodex.run_control_channel/v1",
+						"status": "active",
+					}),
+				),
+			);
+		}
+
+		for (event_type, payload) in events {
 			store
 				.append_private_execution_event(
 					"pubfi", issue_id, "run-1626", 1, event_type, payload,
@@ -8463,6 +8556,119 @@ token_env_var = "HOME"
 			tracker.state_updates.borrow().as_slice(),
 			&[(issue.id.clone(), String::from("state-todo"))]
 		);
+	}
+
+	#[test]
+	fn stale_active_release_allows_reentry_after_local_cleanup_without_control_channel() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue =
+			sample_issue_with_labels("In Progress", &[active_label.clone(), queue_label]);
+		let worktree_path = context.config.worktree_root().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		init_clean_git_repo_with_remote_default(&worktree_path, "x/pubfi-pub-1626");
+		seed_dead_orphan_runtime_telemetry_without_control_channel(
+			&context.state_store,
+			&issue,
+			&worktree_path,
+		);
+		context
+			.state_store
+			.update_run_status("run-1626", GHOST_LANE_TERMINAL_STATUS)
+			.expect("run should terminalize");
+		fs::remove_dir_all(&worktree_path).expect("worktree should be removed");
+		context
+			.state_store
+			.clear_worktree_mapping(&issue.id)
+			.expect("issue-id worktree mapping should clear");
+		append_stale_active_release_audit(&context.state_store, &issue.id);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, STALE_ACTIVE_CLASSIFICATION);
+		assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
+		assert!(diagnostic.evidence.contains(&String::from("control_channel_missing")));
+		assert!(diagnostic.evidence.contains(&String::from("stale_active_local_cleanup_complete")));
+
+		super::apply_stale_active_release_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect("reentry release should remove active label");
+		assert_eq!(
+			tracker.label_removals.borrow().as_slice(),
+			&[(issue.id.clone(), vec![format!("label-{}", active_label.replace(':', "-"))])]
+		);
+	}
+
+	#[test]
+	fn stale_active_release_reentry_without_control_channel_blocks_private_progress() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
+		let worktree_path = context.config.worktree_root().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		init_clean_git_repo_with_remote_default(&worktree_path, "x/pubfi-pub-1626");
+		seed_dead_orphan_runtime_telemetry_without_control_channel(
+			&context.state_store,
+			&issue,
+			&worktree_path,
+		);
+		context
+			.state_store
+			.update_run_status("run-1626", GHOST_LANE_TERMINAL_STATUS)
+			.expect("run should terminalize");
+		fs::remove_dir_all(&worktree_path).expect("worktree should be removed");
+		context
+			.state_store
+			.clear_worktree_mapping(&issue.id)
+			.expect("issue-id worktree mapping should clear");
+		append_stale_active_release_audit(&context.state_store, &issue.id);
+		append_harness_outcome_with_pr_progress(&context.state_store, &issue.id);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert_eq!(diagnostic.classification, super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
+		assert!(diagnostic.evidence.contains(&String::from("control_channel_missing")));
+		assert!(diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+		assert!(!diagnostic.recoverable());
 	}
 
 	#[test]
@@ -9360,6 +9566,75 @@ token_env_var = "HOME"
 				&& event.payload()["active_label_release"] == "pending_final_mutation"
 				&& event.payload()["phase"] == "local_cleanup_complete_before_active_label_release"
 		}));
+	}
+
+	#[test]
+	fn stale_active_release_allows_final_reentry_when_control_channel_was_never_published() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(
+			&temp_dir,
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		);
+		let active_label = tracker::automation_active_label(context.config.service_id());
+		let queue_label = tracker::automation_queue_label(context.config.service_id());
+		let mut issue = sample_issue_with_labels("Todo", &[active_label.clone(), queue_label]);
+		let worktree_path = context.config.worktree_root().join("PUB-1626");
+
+		issue.identifier = String::from("PUB-1626");
+		init_git_repo(context.config.repo_root());
+		run_git(context.config.repo_root(), &["checkout", "-B", "main"]);
+		commit_test_file(context.config.repo_root(), "README.md", "base\n", "base");
+		run_git(context.config.repo_root(), &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+		run_git(
+			context.config.repo_root(),
+			&["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"],
+		);
+		run_git(
+			context.config.repo_root(),
+			&[
+				"worktree",
+				"add",
+				"-b",
+				"x/pubfi-pub-1626",
+				worktree_path.to_str().expect("worktree path should be utf-8"),
+				"main",
+			],
+		);
+		seed_dead_orphan_runtime_telemetry_without_control_channel(
+			&context.state_store,
+			&issue,
+			&worktree_path,
+		);
+
+		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+		let mut diagnostics = super::diagnose_stale_active_issues(
+			context.config.service_id(),
+			&context.workflow,
+			context.config.worktree_root(),
+			&context.state_store,
+			&tracker,
+			Some("PUB-1626"),
+			super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		)
+		.expect("stale active diagnosis should run");
+		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+		assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
+		assert!(diagnostic.evidence.contains(&String::from("control_channel_missing")));
+
+		super::apply_stale_active_release_with_tracker(
+			&tracker,
+			&context.config,
+			&context.workflow,
+			&context.state_store,
+			&diagnostic,
+		)
+		.expect("stale active release should treat missing control channel as inactive reentry");
+
+		assert_eq!(
+			tracker.label_removals.borrow().as_slice(),
+			&[(issue.id.clone(), vec![format!("label-{}", active_label.replace(':', "-"))])]
+		);
 	}
 
 	#[test]
