@@ -664,8 +664,10 @@ Worktree visibility follows the owning dashboard section:
   status sets `attention_next_action = run_stale_active_recovery` and points to
   `decodex recover stale-active diagnose <ISSUE>` followed by
   `decodex recover stale-active release <ISSUE> --dry-run`. The release command
-  preserves any queue label, treats dead-process runtime telemetry as recoverable
-  only after process identity proves the recorded child is gone and
+  preserves any queue label, treats dead-process runtime telemetry such as
+  implementation phase-goal recovery rows, app-server no-diff loop guardrail
+  checkpoints, and no-progress harness outcomes as recoverable only after process
+  identity proves the recorded child is gone and
   worktree/branch/private/lineage checks are clean, blocks on review-policy
   checkpoints and issue-id or issue-identifier PR lineage, reads local runtime
   evidence under both issue id keys, terminalizes stale local ownership as
