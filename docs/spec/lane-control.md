@@ -315,12 +315,13 @@ label-release safety check.
 
 If a stale-active release attempt stops after local cleanup but before the final
 tracker-label mutation, reentry is allowed only when local evidence proves the same
-run attempt is already `terminal_guarded`, the control channel is inactive or was
-never published, retained worktree mapping/path cleanup completed,
+run attempt is already `terminal_guarded` or still carries a terminal-looking
+app-server status such as `failed` or `interrupted`, the control channel is inactive
+or was never published, retained worktree mapping/path cleanup completed,
 `stale_active_release` audit evidence exists, and the remaining blockers are limited
-to stale protocol/activity summaries from the already-terminal run. Reentry still
-repeats the run-lease/shared-claim, review-lineage, and tracker-label guards before
-removing the service active label.
+to stale protocol/activity summaries from the old run. Reentry still repeats the
+run-lease/shared-claim, review-lineage, and tracker-label guards before removing the
+service active label.
 If that final active-label mutation already happened but the queued issue remained in
 the configured in-progress state, reentry is allowed only with the same run/attempt
 release audit and completed local cleanup evidence; it may restore the issue to the
