@@ -7,8 +7,8 @@ description: Use when repository code work needs command authority, module bound
 
 Use this first for repository work. It chooses checked-in authority, scope,
 validation, and the narrow owner skill. Read `../../references/codebase.md` when
-command authority, task-runner structure, dependency policy, validation, landing, or
-final evidence matters.
+command authority, task-runner structure, module boundaries, dependency policy,
+validation, landing, or final evidence matters.
 
 ## Route
 

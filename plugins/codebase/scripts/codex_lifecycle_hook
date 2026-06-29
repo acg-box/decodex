@@ -54,6 +54,13 @@ ANTI_MONOLITH_HINT = (
     "split files that mix unrelated concerns or state why the owner boundary is "
     "deliberate. Use $deliberation:skeptic when the structure is material."
 )
+FAKE_MODULARIZATION_HINT = (
+    "Rust files in the current diff use `include!`, `#[path]`, or equivalent "
+    "original-scope fragment wiring. Do not claim this as modularization: physical "
+    "file splitting is not a Rust module boundary. Replace it with normal `mod` "
+    "modules, explicit owner APIs, and visibility boundaries, or document the include "
+    "as generated/FFI adapter plumbing that does not count toward the refactor."
+)
 PUBLIC_SURFACE_HINT = (
     "Changed files include docs, plugin/skill, command/config, status/help, or "
     "workflow-facing surfaces. Before ready/done/commit, read or update the "
@@ -156,6 +163,10 @@ SOURCE_EXTENSIONS = {
     ".vue",
     ".zig",
 }
+FAKE_RUST_MODULARIZATION_PATTERNS = (
+    "include!(",
+    "#[path",
+)
 PUBLIC_SURFACE_SEGMENTS = (
     "config",
     "configs",
@@ -317,6 +328,25 @@ def file_line_count(path: str, root: str | None = None) -> int | None:
         return None
 
 
+def fake_modularization_paths(paths: list[str] | None = None) -> list[str]:
+    paths = changed_paths() if paths is None else paths
+    root = git_root()
+    if not root:
+        return []
+    offenders = []
+    for path in paths:
+        if not path.endswith(".rs") or path_excluded_from_large_change(path):
+            continue
+        full_path = Path(root) / path
+        try:
+            text = full_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if any(pattern in text for pattern in FAKE_RUST_MODULARIZATION_PATTERNS):
+            offenders.append(path)
+    return offenders
+
+
 def large_change_paths(stats: list[dict[str, Any]] | None = None) -> list[str]:
     stats = changed_file_stats() if stats is None else stats
     large_paths = []
@@ -423,10 +453,13 @@ def route_hints(text: str, root: str | None, event: str = "UserPromptSubmit") ->
     surface_paths = public_surface_paths() if inspect_worktree else []
     dependency_paths = dependency_surface_paths() if inspect_worktree else []
     task_paths = task_runner_paths() if inspect_worktree else []
-    if large_paths or surface_paths or dependency_paths or task_paths:
+    fake_module_paths = fake_modularization_paths() if inspect_worktree else []
+    if large_paths or surface_paths or dependency_paths or task_paths or fake_module_paths:
         hints.append(REPO_WORK_HINT)
     if large_paths:
         hints.append(ANTI_MONOLITH_HINT)
+    if fake_module_paths:
+        hints.append(FAKE_MODULARIZATION_HINT)
     if dependency_paths:
         hints.append(DEPENDENCY_POLICY_HINT)
     if task_paths:
@@ -437,7 +470,7 @@ def route_hints(text: str, root: str | None, event: str = "UserPromptSubmit") ->
         hints.append(KNOWLEDGE_HINT)
         hints.append(PUBLIC_SURFACE_HINT)
 
-    if large_paths or surface_paths or task_paths:
+    if large_paths or surface_paths or task_paths or fake_module_paths:
         hints.append(DELIBERATION_GATE_HINT)
 
     if root and "git push" in lowered:
@@ -476,6 +509,9 @@ def record_event(event: str, payload: dict[str, Any], root: str | None, hints: l
     task_paths = task_runner_paths()
     if task_paths:
         record["task_runner_paths"] = task_paths[:20]
+    fake_module_paths = fake_modularization_paths()
+    if fake_module_paths:
+        record["fake_modularization_paths"] = fake_module_paths[:20]
     with STATE_PATH.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
 
