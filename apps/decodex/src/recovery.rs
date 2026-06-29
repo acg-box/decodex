@@ -33,6 +33,14 @@ use crate::{
 	worktree::WorktreeManager,
 };
 
+mod requests;
+
+pub(crate) use requests::{
+	GhostLaneCleanupRequest, GhostLaneDiagnoseRequest, LegacyCloseoutRecoveryRequest,
+	MergedCloseoutRecoveryRequest, ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest,
+	ReviewHandoffRebindRequest, StaleActiveDiagnoseRequest, StaleActiveReleaseRequest,
+};
+
 const MISSING_HANDOFF_REASON: &str = "missing_review_handoff_record";
 const ORPHANED_REVIEW_HANDOFF_CLASSIFICATION: &str = "orphaned_review_handoff";
 const REVIEW_HANDOFF_BOUND_CLASSIFICATION: &str = "review_handoff_bound";
@@ -69,99 +77,6 @@ const LINEAR_RATE_LIMIT_BACKOFF_WARNING: &str = "tracker_rate_limited";
 const LINEAR_RATE_LIMIT_BACKOFF_SECS: i64 = 15 * 60;
 const LINEAR_TRANSIENT_TIMEOUT_BACKOFF_WARNING: &str = "tracker_transient_timeout";
 const LINEAR_TRANSIENT_TIMEOUT_BACKOFF_SECS: i64 = 60;
-
-/// Read-only retained review handoff diagnostic request.
-#[derive(Debug)]
-pub(crate) struct ReviewHandoffDiagnoseRequest {
-	/// Optional issue identifier to inspect.
-	pub(crate) issue: Option<String>,
-	/// Emit JSON instead of text.
-	pub(crate) json: bool,
-}
-
-/// Explicit retained review handoff rebind request.
-#[derive(Debug)]
-pub(crate) struct ReviewHandoffRebindRequest {
-	/// Issue identifier to repair.
-	pub(crate) issue: String,
-	/// Pull request URL to bind.
-	pub(crate) pr_url: String,
-	/// Validate without writing a lifecycle record or tracker audit comments.
-	pub(crate) dry_run: bool,
-}
-
-/// Explicit manual PR takeover into retained review handoff state.
-#[derive(Debug)]
-pub(crate) struct ReviewHandoffAdoptRequest {
-	/// Issue identifier to adopt.
-	pub(crate) issue: String,
-	/// Pull request URL to adopt.
-	pub(crate) pr_url: String,
-	/// Validate without writing runtime lifecycle state or tracker audit comments.
-	pub(crate) dry_run: bool,
-}
-
-/// Read-only ghost-lane diagnostic request.
-#[derive(Debug)]
-pub(crate) struct GhostLaneDiagnoseRequest {
-	/// Optional issue identifier or local issue id to inspect.
-	pub(crate) issue: Option<String>,
-	/// Emit JSON instead of text.
-	pub(crate) json: bool,
-}
-
-/// Explicit missing-issue ghost-lane cleanup request.
-#[derive(Debug)]
-pub(crate) struct GhostLaneCleanupRequest {
-	/// Issue identifier or local issue id to terminalize.
-	pub(crate) issue: String,
-	/// Validate without writing runtime state.
-	pub(crate) dry_run: bool,
-}
-
-/// Read-only tracker-present stale active ownership diagnostic request.
-#[derive(Debug)]
-pub(crate) struct StaleActiveDiagnoseRequest {
-	/// Optional issue identifier or tracker issue id to inspect.
-	pub(crate) issue: Option<String>,
-	/// Emit JSON instead of text.
-	pub(crate) json: bool,
-}
-
-/// Explicit tracker-present stale active ownership release request.
-#[derive(Debug)]
-pub(crate) struct StaleActiveReleaseRequest {
-	/// Issue identifier or tracker issue id to release.
-	pub(crate) issue: String,
-	/// Validate without mutating tracker labels or runtime state.
-	pub(crate) dry_run: bool,
-}
-
-/// Explicit legacy closeout audit request.
-#[derive(Debug)]
-pub(crate) struct LegacyCloseoutRecoveryRequest {
-	/// Issue identifier to audit.
-	pub(crate) issue: String,
-	/// Merged pull request URL that proves terminal code lineage.
-	pub(crate) pr_url: String,
-	/// Validate without writing a tracker audit comment.
-	pub(crate) dry_run: bool,
-	/// Required for non-dry-run mutation.
-	pub(crate) manual_authority: bool,
-}
-
-/// Explicit merged PR closeout reconciliation for stale retained attention.
-#[derive(Debug)]
-pub(crate) struct MergedCloseoutRecoveryRequest {
-	/// Issue identifier to reconcile.
-	pub(crate) issue: String,
-	/// Merged pull request URL that proves terminal code lineage.
-	pub(crate) pr_url: String,
-	/// Validate without writing runtime or tracker ledger events.
-	pub(crate) dry_run: bool,
-	/// Required for non-dry-run mutation.
-	pub(crate) manual_authority: bool,
-}
 
 #[derive(Serialize)]
 struct ReviewHandoffRecoveryReport {
