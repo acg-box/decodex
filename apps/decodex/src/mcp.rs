@@ -1,8 +1,6 @@
-use std::{fmt::Display, io, net::TcpListener, path::Path, str};
+use std::{io, net::TcpListener, str};
 
 use crate::prelude::eyre;
-use clap::ValueEnum;
-use serde::Deserialize;
 use serde_json::{self, Value};
 
 mod context;
@@ -13,6 +11,7 @@ mod prompts;
 mod resources;
 mod server;
 mod tools;
+mod types;
 
 #[cfg(test)] use self::http::{McpHttpHandler, McpHttpSessions, http_header_end};
 #[cfg(test)]
@@ -21,6 +20,7 @@ use self::resources::{
 	mcp_public_post_review_lane, mcp_run_activity_summary, mcp_run_resource,
 	mcp_status_live_resource, sanitize_mcp_observability_value,
 };
+pub(crate) use self::types::{McpCapabilityProfile, McpServeRequest, McpTransport};
 use self::{
 	context::McpContext,
 	http::{
@@ -28,6 +28,7 @@ use self::{
 		validate_mcp_http_capability_profile, validate_mcp_http_listen_address,
 	},
 	server::{McpServer, json_rpc_error, serve_stdio_with_profile},
+	types::{McpError, McpTool, ReadResourceParams},
 };
 
 /// Safe default listen address for Streamable HTTP MCP.
@@ -52,107 +53,6 @@ const TOOL_LANE_CONTROL: &str = "decodex_lane_control";
 const TOOL_PROJECT_CONTROL: &str = "decodex_project_control";
 const MCP_HTTP_ENDPOINT_PATH: &str = "/mcp";
 const MCP_SESSION_HEADER: &str = "Mcp-Session-Id";
-
-/// MCP transport supported by the native Decodex gateway.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-#[value(rename_all = "kebab-case")]
-pub(crate) enum McpTransport {
-	/// JSON-RPC messages over stdin/stdout.
-	Stdio,
-	/// MCP Streamable HTTP endpoint for remote-capable clients.
-	StreamableHttp,
-}
-impl McpTransport {
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::Stdio => "stdio",
-			Self::StreamableHttp => "streamable-http",
-		}
-	}
-
-	pub(crate) fn default_capability_profile(self) -> McpCapabilityProfile {
-		match self {
-			Self::Stdio => McpCapabilityProfile::Admin,
-			Self::StreamableHttp => McpCapabilityProfile::Observe,
-		}
-	}
-}
-
-/// Capability profile exposed by the Decodex MCP gateway.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, ValueEnum)]
-#[value(rename_all = "kebab-case")]
-pub(crate) enum McpCapabilityProfile {
-	/// Public-safe local observability only.
-	Observe,
-	/// Observe plus planning and workflow prompt helpers.
-	Plan,
-	/// Observe, plan, and guarded lane-control operations.
-	Operate,
-	/// Full local operator profile for supported Decodex MCP tools.
-	Admin,
-}
-impl McpCapabilityProfile {
-	const ALL: [Self; 4] = [Self::Observe, Self::Plan, Self::Operate, Self::Admin];
-
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::Observe => "observe",
-			Self::Plan => "plan",
-			Self::Operate => "operate",
-			Self::Admin => "admin",
-		}
-	}
-
-	fn allows(self, required: Self) -> bool {
-		required <= self
-	}
-}
-
-/// Request to start the native Decodex MCP gateway.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct McpServeRequest<'a> {
-	pub(crate) transport: McpTransport,
-	pub(crate) config_path: Option<&'a Path>,
-	pub(crate) capability_profile: McpCapabilityProfile,
-	pub(crate) listen_address: &'a str,
-	pub(crate) allowed_origins: &'a [String],
-	pub(crate) bearer_token_env: Option<&'a str>,
-}
-
-#[derive(Deserialize)]
-struct ReadResourceParams {
-	uri: String,
-}
-
-struct McpTool {
-	required_profile: McpCapabilityProfile,
-	value: Value,
-}
-
-#[derive(Debug)]
-struct McpError {
-	code: i64,
-	message: String,
-}
-impl McpError {
-	fn invalid_params() -> Self {
-		Self { code: -32_602, message: String::from("Invalid params") }
-	}
-
-	fn method_not_found() -> Self {
-		Self { code: -32_601, message: String::from("Method not found") }
-	}
-
-	fn resource_not_found() -> Self {
-		Self { code: RESOURCE_NOT_FOUND_CODE, message: String::from("Resource not found") }
-	}
-
-	fn internal(error: impl Display) -> Self {
-		tracing::warn!(error = %error, "MCP resource read failed.");
-
-		Self { code: -32_603, message: String::from("Internal error") }
-	}
-}
 
 /// Start the Decodex MCP gateway.
 pub(crate) fn serve(request: McpServeRequest<'_>) -> crate::prelude::Result<()> {
