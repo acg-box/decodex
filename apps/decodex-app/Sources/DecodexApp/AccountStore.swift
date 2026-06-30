@@ -19,6 +19,7 @@ final class AccountStore: ObservableObject {
 	@Published private(set) var isSettingFastMode = false
 	@Published var loginTranscript = ""
 	@Published var notice: String?
+	@Published private var pendingLogoutRemovalKeys = Set<String>()
 
 	private let bridge = DecodexAppBridge()
 	private var automaticRefreshTask: Task<Void, Never>?
@@ -35,7 +36,11 @@ final class AccountStore: ObservableObject {
 	}
 
 	var accounts: [CodexAccount] {
-		accountList?.accounts ?? []
+		guard let accounts = accountList?.accounts else {
+			return []
+		}
+
+		return accounts.filter { isLogoutRemovalPending(for: $0) == false }
 	}
 
 	var fastModeEnabled: Bool {
@@ -88,10 +93,10 @@ final class AccountStore: ObservableObject {
 		}
 
 		do {
-			accountList = try await bridge.runJSON(
+			applyAccountList(try await bridge.runJSON(
 				.accountList(forceRefresh: force),
 				as: AccountListResponse.self
-			)
+			))
 			notice = nil
 			await refreshFastMode()
 		} catch {
@@ -271,12 +276,12 @@ final class AccountStore: ObservableObject {
 	func select(_ account: CodexAccount) async {
 		do {
 			if account.selected {
-				accountList = try await bridge.runJSON(.accountClear, as: AccountListResponse.self)
+				applyAccountList(try await bridge.runJSON(.accountClear, as: AccountListResponse.self))
 			} else {
-				accountList = try await bridge.runJSON(
+				applyAccountList(try await bridge.runJSON(
 					.accountSelect(selector: account.selector),
 					as: AccountListResponse.self
-				)
+				))
 			}
 			notice = nil
 		} catch {
@@ -286,7 +291,7 @@ final class AccountStore: ObservableObject {
 
 	func clearSelection() async {
 		do {
-			accountList = try await bridge.runJSON(.accountClear, as: AccountListResponse.self)
+			applyAccountList(try await bridge.runJSON(.accountClear, as: AccountListResponse.self))
 			notice = nil
 		} catch {
 			notice = error.localizedDescription
@@ -321,13 +326,16 @@ final class AccountStore: ObservableObject {
 	}
 
 	func logout(_ account: CodexAccount) async throws {
+		beginOptimisticLogoutRemoval(account)
+
 		do {
-			accountList = try await bridge.runJSON(
+			applyAccountList(try await bridge.runJSON(
 				.accountLogout(selector: account.selector),
 				as: AccountListResponse.self
-			)
+			))
 			notice = nil
 		} catch {
+			cancelOptimisticLogoutRemoval(account)
 			throw error
 		}
 	}
@@ -338,9 +346,9 @@ final class AccountStore: ObservableObject {
 		notice = nil
 
 		do {
-			accountList = try await bridge.runStreaming(.accountLogin(), as: AccountListResponse.self) { [weak self] chunk in
+			applyAccountList(try await bridge.runStreaming(.accountLogin(), as: AccountListResponse.self) { [weak self] chunk in
 				self?.loginTranscript += chunk
-			}
+			})
 			notice = nil
 			await refreshFastMode()
 		} catch {
@@ -358,6 +366,54 @@ final class AccountStore: ObservableObject {
 			)
 		} catch {
 			notice = error.localizedDescription
+		}
+	}
+
+	func beginOptimisticLogoutRemoval(_ account: CodexAccount) {
+		pendingLogoutRemovalKeys.formUnion(Self.logoutRemovalKeys(for: account))
+	}
+
+	func cancelOptimisticLogoutRemoval(_ account: CodexAccount) {
+		pendingLogoutRemovalKeys.subtract(Self.logoutRemovalKeys(for: account))
+	}
+
+	func applyAccountList(_ response: AccountListResponse) {
+		accountList = response
+		reconcilePendingLogoutRemovals(with: response.accounts)
+	}
+
+	private func reconcilePendingLogoutRemovals(with accounts: [CodexAccount]) {
+		guard pendingLogoutRemovalKeys.isEmpty == false else {
+			return
+		}
+
+		let visibleKeys = accounts.reduce(into: Set<String>()) { keys, account in
+			keys.formUnion(Self.logoutRemovalKeys(for: account))
+		}
+		pendingLogoutRemovalKeys = pendingLogoutRemovalKeys.intersection(visibleKeys)
+	}
+
+	private func isLogoutRemovalPending(for account: CodexAccount) -> Bool {
+		Self.logoutRemovalKeys(for: account).isDisjoint(with: pendingLogoutRemovalKeys) == false
+	}
+
+	private static func logoutRemovalKeys(for account: CodexAccount) -> Set<String> {
+		[
+			account.id,
+			account.selector,
+			account.email,
+			account.accountFingerprint,
+		]
+		.compactMap { value in
+			guard let key = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+				key.isEmpty == false
+			else {
+				return nil
+			}
+			return key
+		}
+		.reduce(into: Set<String>()) { keys, key in
+			keys.insert(key)
 		}
 	}
 }

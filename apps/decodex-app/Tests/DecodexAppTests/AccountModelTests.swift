@@ -74,6 +74,36 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertEqual(AccountDisplay.compactEmail("xavier.lau@helixbox.ai"), "xav...lau@helixbox.ai")
 	}
 
+	@MainActor
+	func testOptimisticLogoutRemovalMasksStaleAccountListsUntilBackendCatchesUp() {
+		let removedAccount = makeAccount(
+			status: "available",
+			email: "remove@example.com",
+			accountFingerprint: "fp-remove"
+		)
+		let keptAccount = makeAccount(
+			status: "available",
+			email: "keep@example.com",
+			accountFingerprint: "fp-keep"
+		)
+		let store = AccountStore()
+
+		store.applyAccountList(makeAccountList([removedAccount, keptAccount]))
+		XCTAssertEqual(store.accounts.map(\.id), [removedAccount.id, keptAccount.id])
+
+		store.beginOptimisticLogoutRemoval(removedAccount)
+		XCTAssertEqual(store.accounts.map(\.id), [keptAccount.id])
+
+		store.applyAccountList(makeAccountList([removedAccount, keptAccount]))
+		XCTAssertEqual(store.accounts.map(\.id), [keptAccount.id])
+
+		store.applyAccountList(makeAccountList([keptAccount]))
+		XCTAssertEqual(store.accounts.map(\.id), [keptAccount.id])
+
+		store.applyAccountList(makeAccountList([removedAccount, keptAccount]))
+		XCTAssertEqual(store.accounts.map(\.id), [removedAccount.id, keptAccount.id])
+	}
+
 	func testUsageResetDisplayUsesInjectedClock() {
 		let base = Date(timeIntervalSince1970: 1_800_000_000)
 		let thirteenMinutesLater = Int(base.timeIntervalSince1970) + 780
@@ -1119,6 +1149,19 @@ final class AccountModelTests: XCTestCase {
 			sevenDayUsedPercent: nil,
 			sevenDayDailyAveragePercent: nil,
 			usageRecords: nil
+		)
+	}
+
+	private func makeAccountList(_ accounts: [CodexAccount]) -> AccountListResponse {
+		AccountListResponse(
+			accountsPath: "/tmp/accounts.json",
+			globalConfigPath: "/tmp/config.toml",
+			codexAuthPath: "/tmp/auth.json",
+			codexAuth: nil,
+			control: AccountControl(mode: "balanced", accountSelector: nil),
+			accounts: accounts,
+			usageEstimate: nil,
+			usageProbeError: nil
 		)
 	}
 }
