@@ -56,9 +56,10 @@ use sha2::Sha256;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-	agent, default_branch_sync, git_credentials, maintenance, state,
+	agent, default_branch_sync, git_credentials, maintenance, state, tracker,
 	tracker::privacy_classifier::PublicProjectionPrivacyClassifier,
 };
+use state::PrivateExecutionEvent;
 #[rustfmt::skip]
 use crate::{agent::{RUN_LEASE_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerProcessEnv, AppServerRunRequest, AppServerRunResult, AppServerTransportFailure, AppServerTurnFailure, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, DecodexRunContext, DecodexToolBridge, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition, ReviewExecutionMode, ReviewHandoffContext, ReviewHandoffWritebackFailed, ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, TrackerToolBridge, TurnContinuationGuard}, config::{ReviewLevel, ServiceConfig}, execution_program::{ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary, ExecutionProgramReadinessContext, ExecutionWorkflowPolicy}, git_credentials::GitCredentialSource, github, prelude::{Result, eyre}, state::{ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary, ExecutionProgramRecord, LoopGuardrailCheckpoint, LoopGuardrailCheckpointInput, ProjectRegistration, ProjectRunStatus, ProtocolActivitySummary, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_GIT_CREDENTIALS, RUN_OPERATION_IDLE, RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, RUN_OPERATION_REVIEW_WRITEBACK, RUN_OPERATION_WAITING_EXTERNAL, ReviewHandoffMarker, ReviewOrchestrationMarker, RunActivityMarker, RunAttempt, StateStore, WorktreeMapping}, tracker::{IssueTracker, TrackerIssue, linear::LinearClient, records}, workflow::{WorkflowDocument, WorkflowExecution}, worktree::{WorktreeManager, WorktreeSpec}};
 use execution_architecture_recovery::{
@@ -164,7 +165,61 @@ use status_worktrees::{
 	stale_terminal_local_issue_ids,
 };
 
-include!("orchestrator/types.rs");
+mod types;
+#[allow(unused_imports)]
+pub(crate) use types::{
+	ARCHITECTURE_RECOVERY_PACKET_EVENT_TYPE, ARCHITECTURE_RECOVERY_PACKET_SCHEMA,
+	ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE, ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE,
+	AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
+	ActiveWorkflowOverride, AgentGitCredentialsUnavailable, AuthorityBoundaryChangedSurface,
+	AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryImprovementSignal,
+	AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionOption,
+	AuthorityDecisionRequestInput, CachedWorkflowDocument, ChildExitRetryContext, ChildRunRef,
+	CurrentChildRunContext, DaemonRunChild, DaemonTickContext, DiagnoseRequest, EvidenceRequest,
+	GhPullRequestReviewStateInspector, IssueDispatchMode, IssueRunPlan, IssueTurnContinuationGuard,
+	LaneSteerReport, LaneSteerRequest, LoopGuardrailReason, LoopGuardrailStopRequested,
+	ManualAttentionRequested, MaterializedDaemonSpawnState, OperatorArchitectureRecoveryStatus,
+	OperatorAuthorityDecisionRequestStatus, OperatorAutonomyDecisionContractStatus,
+	OperatorAutonomyExecutionEvidenceStatus, OperatorAutonomyLineageStatus,
+	OperatorAutonomyObjectiveStatus, OperatorAutonomyProgramIntakeStatus,
+	OperatorAutonomyProposalRefusalStatus, OperatorAutonomyProposalStatus,
+	OperatorAutonomyReportReadbackStatus, OperatorAutonomySignalStatus, OperatorBoundaryStatus,
+	OperatorCodexAccountControlStatus, OperatorConnectorBackoffStatus,
+	OperatorContinuationRecoveryStatus, OperatorControlRequests,
+	OperatorExecutionProgramNodeStatus, OperatorExecutionProgramStatus, OperatorGitHubCliAuthority,
+	OperatorHistoryLaneStatus, OperatorHistoryLedgerOutcome, OperatorLaneLifecycleAttemptEvidence,
+	OperatorLaneLifecycleMetrics, OperatorLaneLifecyclePhaseMetrics, OperatorLinearScanRequest,
+	OperatorLoopStatus, OperatorPhaseAcceptanceStatus, OperatorPostReviewLaneStatus,
+	OperatorProjectStatus, OperatorQueuedIssueAttentionStatus, OperatorQueuedIssueStatus,
+	OperatorRecoveryBudgetStatus, OperatorReviewCheckpointStatus, OperatorReviewLoopStatus,
+	OperatorReviewRouteCount, OperatorRunControlCapability, OperatorRunStatus,
+	OperatorSnapshotWarningDetail, OperatorStateEndpoint, OperatorStatusSnapshot,
+	OperatorWorktreeHygieneStatus, OperatorWorktreeProvenanceStatus, OperatorWorktreeStatus,
+	PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT,
+	PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE,
+	PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
+	PostReviewLaneStateLoad, PreferredRunIdentity, PrepareIssueRunContext, ProjectDaemonRuntime,
+	PublishedOperatorSnapshot, PullRequestActor, PullRequestCommitConnection,
+	PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection,
+	PullRequestIssueCommentNode, PullRequestIssueCommentState, PullRequestIssueCommentsData,
+	PullRequestIssueCommentsNode, PullRequestIssueCommentsRepository,
+	PullRequestIssueCommentsResponse, PullRequestMergeCommitNode, PullRequestPageInfo,
+	PullRequestReactionGroup, PullRequestReactionUsersConnection, PullRequestReadbackFailure,
+	PullRequestReadbackRootCause, PullRequestRepository, PullRequestRepositoryOwner,
+	PullRequestReviewConnection, PullRequestReviewNode, PullRequestReviewRequestConnection,
+	PullRequestReviewState, PullRequestReviewStateData, PullRequestReviewStateInspector,
+	PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewStateResponse,
+	PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode,
+	PullRequestStatusCheckRollup, RecoverableWorktreeSkipCache, RecoveredRuntimeState,
+	RetainedPartialProgress, RetainedReviewLaneBlocked, RetainedReviewLaneLoad,
+	RetainedReviewNeedsAttention, RetainedReviewRunIdentity, RetryDispatchDecision, RetryEntry,
+	RetryIssueStateHint, RetryKind, RetryQueue, ReviewHandoffNeedsAttention,
+	ReviewOrchestrationPhase, RunCycleRequest, RunLeaseDisposition, RunLeaseReconciliation,
+	RunOnceRequest, RunSummary, SelectedIssueRunCandidate, ServeRequest, SpawnRunOnceChildRequest,
+	StalledRunNeedsAttention, TargetIssueRunContext, TerminalFailureOutcome,
+	TrackerConnectorBackoff, classify_pull_request_readback_report,
+	record_authority_boundary_check_private_event, record_authority_decision_request_private_event,
+};
 
 include!("orchestrator/operator_presentation.rs");
 
