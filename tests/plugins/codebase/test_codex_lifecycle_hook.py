@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import sys
 import tempfile
 import unittest
 from importlib.machinery import SourceFileLoader
@@ -86,6 +89,515 @@ class CodexLifecycleHookTests(unittest.TestCase):
         joined = "\n".join(hints)
         self.assertIn("repair non-JSON ahead commit subjects", joined)
         self.assertIn("plain prose subject", joined)
+
+    def test_root_task_branch_apply_patch_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+        payload = {"tool_name": "apply_patch", "tool_input": {"patch": "*** Begin Patch"}}
+
+        reason = self.hook.pre_tool_use_block_reason(
+            payload,
+            "/tmp/repo",
+            "apply_patch *** Begin Patch",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+        self.assertIn(".worktrees/<task>", reason or "")
+
+    def test_root_task_branch_read_only_command_is_allowed(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git status --short"}},
+            "/tmp/repo",
+            "git status --short",
+        )
+
+        self.assertIsNone(reason)
+
+    def test_root_task_branch_can_switch_back_to_default(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git switch main"}},
+            "/tmp/repo",
+            "git switch main",
+        )
+
+        self.assertIsNone(reason)
+
+    def test_root_task_branch_switch_back_mixed_with_mutation_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git switch main && touch x"}},
+            "/tmp/repo",
+            "git switch main && touch x",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_switch_back_with_redirection_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git switch main > out"}},
+            "/tmp/repo",
+            "git switch main > out",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_switch_back_with_command_substitution_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git switch main $(touch x)"}},
+            "/tmp/repo",
+            "git switch main $(touch x)",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_read_only_with_command_substitution_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git status $(touch x)"}},
+            "/tmp/repo",
+            "git status $(touch x)",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_quoted_command_substitution_search_is_allowed(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "rg '$(' docs"}},
+            "/tmp/repo",
+            "rg '$(' docs",
+        )
+
+        self.assertIsNone(reason)
+
+    def test_root_task_branch_double_quoted_command_substitution_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "echo \"'$(touch x)'\""}},
+            "/tmp/repo",
+            "echo \"'$(touch x)'\"",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_mutation_without_spaced_operator_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git status&&touch out"}},
+            "/tmp/repo",
+            "git status&&touch out",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_ampersand_separated_mutation_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git status & touch out"}},
+            "/tmp/repo",
+            "git status & touch out",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_newline_separated_mutation_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git status\ntouch out"}},
+            "/tmp/repo",
+            "git status\ntouch out",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_assignment_prefixed_mutation_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "VAR=1 touch x"}},
+            "/tmp/repo",
+            "VAR=1 touch x",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_redirection_without_spaced_operator_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "echo hi>out"}},
+            "/tmp/repo",
+            "echo hi>out",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_default_branch_can_direct_push_mutate(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "apply_patch", "tool_input": {"patch": "*** Begin Patch"}},
+            "/tmp/repo",
+            "apply_patch *** Begin Patch",
+        )
+
+        self.assertIsNone(reason)
+
+    def test_root_default_branch_task_switch_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git switch -c xy/task"}},
+            "/tmp/repo",
+            "git switch -c xy/task",
+        )
+
+        self.assertIn("Refusing to switch the root worktree", reason or "")
+
+    def test_root_default_branch_task_switch_with_git_c_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git -C /tmp/repo switch -c xy/task"}},
+            "/tmp/repo",
+            "git -C /tmp/repo switch -c xy/task",
+        )
+
+        self.assertIn("Refusing to switch the root worktree", reason or "")
+
+    def test_root_default_branch_assignment_prefixed_task_switch_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "VAR=1 git switch -c xy/task"}},
+            "/tmp/repo",
+            "VAR=1 git switch -c xy/task",
+        )
+
+        self.assertIn("Refusing to switch the root worktree", reason or "")
+
+    def test_root_default_branch_env_prefixed_task_switch_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "env VAR=1 git switch -c xy/task"}},
+            "/tmp/repo",
+            "env VAR=1 git switch -c xy/task",
+        )
+
+        self.assertIn("Refusing to switch the root worktree", reason or "")
+
+    def test_root_default_branch_env_option_prefixed_task_switch_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "env -i git switch -c xy/task"}},
+            "/tmp/repo",
+            "env -i git switch -c xy/task",
+        )
+
+        self.assertIn("Refusing to switch the root worktree", reason or "")
+
+    def test_root_default_branch_env_double_dash_task_switch_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "env -- git switch -c xy/task"}},
+            "/tmp/repo",
+            "env -- git switch -c xy/task",
+        )
+
+        self.assertIn("Refusing to switch the root worktree", reason or "")
+
+    def test_root_default_branch_env_split_string_task_switch_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "env -S 'git switch -c xy/task'"}},
+            "/tmp/repo",
+            "env -S 'git switch -c xy/task'",
+        )
+
+        self.assertIn("Refusing to switch the root worktree", reason or "")
+
+    def test_root_default_branch_env_attached_split_string_task_switch_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "env -S'git switch -c xy/task'"}},
+            "/tmp/repo",
+            "env -S'git switch -c xy/task'",
+        )
+
+        self.assertIn("Refusing to switch the root worktree", reason or "")
+
+    def test_root_task_branch_env_prefixed_git_mutation_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "env VAR=1 git reset --hard"}},
+            "/tmp/repo",
+            "env VAR=1 git reset --hard",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_env_option_git_mutation_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "env -i git reset --hard"}},
+            "/tmp/repo",
+            "env -i git reset --hard",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_env_split_string_git_mutation_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "env -S 'git reset --hard'"}},
+            "/tmp/repo",
+            "env -S 'git reset --hard'",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_task_branch_env_attached_split_string_git_mutation_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "env -S'git reset --hard'"}},
+            "/tmp/repo",
+            "env -S'git reset --hard'",
+        )
+
+        self.assertIn("root worktree on a non-default branch", reason or "")
+
+    def test_root_default_branch_git_c_worktree_task_switch_is_allowed(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+        self.hook.git_command_cwd_targets_root = lambda command_cwd, root: False
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {
+                "tool_name": "exec_command",
+                "tool_input": {"cmd": "git -C .worktrees/task switch -c xy/task"},
+            },
+            "/tmp/repo",
+            "git -C .worktrees/task switch -c xy/task",
+        )
+
+        self.assertIsNone(reason)
+
+    def test_root_default_branch_git_c_worktrees_container_task_switch_is_blocked(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {
+                "tool_name": "exec_command",
+                "tool_input": {"cmd": "git -C .worktrees switch -c xy/task"},
+            },
+            "/tmp/repo",
+            "git -C .worktrees switch -c xy/task",
+        )
+
+        self.assertIn("Refusing to switch the root worktree", reason or "")
+
+    def test_root_default_branch_checkout_path_is_allowed(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+        self.hook.git_branch_ref_exists = lambda target: False
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git checkout -- README.md"}},
+            "/tmp/repo",
+            "git checkout -- README.md",
+        )
+
+        self.assertIsNone(reason)
+
+    def test_root_default_branch_checkout_treeish_path_is_allowed(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "main"
+        self.hook.git_branch_ref_exists = lambda target: True
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "git checkout HEAD -- README.md"}},
+            "/tmp/repo",
+            "git checkout HEAD -- README.md",
+        )
+
+        self.assertIsNone(reason)
+
+    def test_root_non_default_read_only_search_with_git_words_is_allowed(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": 'rg "git reset" docs'}},
+            "/tmp/repo",
+            'rg "git reset" docs',
+        )
+
+        self.assertIsNone(reason)
+
+    def test_root_non_default_read_only_search_with_quoted_redirection_is_allowed(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": 'rg "a > b" docs'}},
+            "/tmp/repo",
+            'rg "a > b" docs',
+        )
+
+        self.assertIsNone(reason)
+
+    def test_root_non_default_read_only_search_single_quoted_redirection_is_allowed(self) -> None:
+        self.hook.git_is_root_worktree = lambda: True
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "exec_command", "tool_input": {"cmd": "rg '>' docs"}},
+            "/tmp/repo",
+            "rg '>' docs",
+        )
+
+        self.assertIsNone(reason)
+
+    def test_main_pre_tool_use_block_emits_decision_json_only(self) -> None:
+        self.hook.load_payload = lambda: {"tool_name": "apply_patch", "tool_input": {"patch": "x"}}
+        self.hook.git_root = lambda: "/tmp/repo"
+        self.hook.pre_tool_use_block_reason = lambda payload, root, text: "blocked for test"
+        self.hook.record_event = lambda event, payload, root, hints: None
+        original_argv = sys.argv
+        output = io.StringIO()
+        try:
+            sys.argv = ["codex_lifecycle_hook", "--event", "PreToolUse"]
+            with contextlib.redirect_stdout(output):
+                exit_code = self.hook.main()
+        finally:
+            sys.argv = original_argv
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(json.loads(output.getvalue()), {"decision": "block", "reason": "blocked for test"})
+
+    def test_main_pre_tool_use_uses_tool_input_command_text(self) -> None:
+        seen: dict[str, str] = {}
+        self.hook.load_payload = lambda: {
+            "tool_name": "exec_command",
+            "tool_input": {"cmd": "git switch -c xy/task"},
+        }
+        self.hook.git_root = lambda: "/tmp/repo"
+
+        def fake_block_reason(payload, root, text):
+            seen["text"] = text
+            return "blocked for test"
+
+        self.hook.pre_tool_use_block_reason = fake_block_reason
+        self.hook.record_event = lambda event, payload, root, hints: None
+        original_argv = sys.argv
+        output = io.StringIO()
+        try:
+            sys.argv = ["codex_lifecycle_hook", "--event", "PreToolUse"]
+            with contextlib.redirect_stdout(output):
+                exit_code = self.hook.main()
+        finally:
+            sys.argv = original_argv
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(seen["text"], "git switch -c xy/task")
+
+    def test_linked_worktree_task_branch_mutation_is_allowed(self) -> None:
+        self.hook.git_is_root_worktree = lambda: False
+        self.hook.git_default_branch = lambda: "main"
+        self.hook.git_current_branch = lambda: "xy/task"
+
+        reason = self.hook.pre_tool_use_block_reason(
+            {"tool_name": "apply_patch", "tool_input": {"patch": "*** Begin Patch"}},
+            "/tmp/repo/.worktrees/task",
+            "apply_patch *** Begin Patch",
+        )
+
+        self.assertIsNone(reason)
 
     def test_ready_with_large_change_adds_monolith_guard(self) -> None:
         self.hook.large_change_paths = lambda stats=None: ["src/large.rs"]
