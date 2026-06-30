@@ -1,3 +1,5 @@
+use super::*;
+
 #[test]
 fn operator_status_history_limit_applies_after_current_lanes_are_split_out() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
@@ -111,20 +113,10 @@ fn seed_grouped_history_lane_lifecycle_metrics(state_store: &StateStore, issue_i
 	let second_activity = history_lane_child_activity(20, 3, 4, 200, 40);
 
 	state_store
-		.record_run_activity_summary(
-			"xy-323-attempt-1-1777361523",
-			1,
-			Some(&first_activity),
-			None,
-		)
+		.record_run_activity_summary("xy-323-attempt-1-1777361523", 1, Some(&first_activity), None)
 		.expect("first activity summary should record");
 	state_store
-		.record_run_activity_summary(
-			"xy-323-attempt-2-1777361550",
-			2,
-			Some(&second_activity),
-			None,
-		)
+		.record_run_activity_summary("xy-323-attempt-2-1777361550", 2, Some(&second_activity), None)
 		.expect("second activity summary should record");
 	state_store
 		.append_event("xy-323-attempt-2-1777361550", 1, "turn/started", "{}")
@@ -230,14 +222,8 @@ fn operator_status_history_lanes_group_attempts_by_issue() {
 	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].child_event_count, 2);
 	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].wall_seconds, 10);
 	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].tool_call_count, 1);
-	assert_eq!(
-		grouped_lane.lifecycle_metrics.phases[0].input_tokens_cumulative,
-		100
-	);
-	assert_eq!(
-		grouped_lane.lifecycle_metrics.phases[0].output_tokens_cumulative,
-		30
-	);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].input_tokens_cumulative, 100);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].output_tokens_cumulative, 30);
 	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].phase, "review");
 	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].label, "Review");
 	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].attempt_count, 1);
@@ -246,14 +232,8 @@ fn operator_status_history_lanes_group_attempts_by_issue() {
 	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].child_event_count, 3);
 	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].wall_seconds, 20);
 	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].tool_call_count, 4);
-	assert_eq!(
-		grouped_lane.lifecycle_metrics.phases[1].input_tokens_cumulative,
-		200
-	);
-	assert_eq!(
-		grouped_lane.lifecycle_metrics.phases[1].output_tokens_cumulative,
-		40
-	);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].input_tokens_cumulative, 200);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].output_tokens_cumulative, 40);
 	assert!(rendered.contains("Run ledger shown: 2 issue lanes from 3 history attempts"));
 	assert!(rendered.contains("issue: XY-323"));
 	assert!(rendered.contains("attempts: 2"));
@@ -507,23 +487,16 @@ fn live_operator_history_lanes_prefer_linear_ledger_outcome() {
 	assert!(rendered.contains("lifecycle_elapsed_seconds: 600"));
 	assert!(rendered.contains("local_attempts: 2"));
 	assert!(rendered.contains("lifecycle_bucket_breakdown"));
-	assert!(rendered.contains(
-		"lifecycle_bucket: Development lifecycle_bucket_key: development attempts: 2"
-	));
+	assert!(
+		rendered.contains(
+			"lifecycle_bucket: Development lifecycle_bucket_key: development attempts: 2"
+		)
+	);
 	assert!(!rendered.contains("pr_url: none"));
+	assert_eq!(snapshot_json["history_lanes"][0]["latest_run"]["status"], "closeout");
+	assert_eq!(snapshot_json["history_lanes"][0]["attempts"][0]["status"], "failed");
 	assert_eq!(
-		snapshot_json["history_lanes"][0]["latest_run"]["status"],
-		"closeout"
-	);
-	assert_eq!(
-		snapshot_json["history_lanes"][0]["attempts"][0]["status"],
-		"failed"
-	);
-	assert_eq!(
-		snapshot_json["recent_runs"]
-			.as_array()
-			.expect("recent runs should be an array")
-			.len(),
+		snapshot_json["recent_runs"].as_array().expect("recent runs should be an array").len(),
 		0
 	);
 }
@@ -574,8 +547,7 @@ fn local_operator_history_lanes_prefer_terminal_ledger_outcome() {
 	assert_eq!(lane.latest_run.attempt_status, "closeout");
 	assert_eq!(lane.latest_run.phase, "completed");
 	assert_eq!(
-		lane
-			.latest_run
+		lane.latest_run
 			.loop_status
 			.as_ref()
 			.expect("terminal history should keep loop readback")
@@ -585,23 +557,14 @@ fn local_operator_history_lanes_prefer_terminal_ledger_outcome() {
 	assert_eq!(lane.ledger_outcome.final_outcome, "closeout");
 	assert_eq!(lane.attempts.len(), 1);
 	assert_eq!(lane.attempts[0].status, "failed");
-	assert_eq!(
-		snapshot_json["history_lanes"][0]["latest_run"]["status"],
-		"closeout"
-	);
+	assert_eq!(snapshot_json["history_lanes"][0]["latest_run"]["status"], "closeout");
 	assert_eq!(
 		snapshot_json["history_lanes"][0]["latest_run"]["loop_status"]["summary"],
 		"terminal lifecycle: closeout"
 	);
+	assert_eq!(snapshot_json["history_lanes"][0]["attempts"][0]["status"], "failed");
 	assert_eq!(
-		snapshot_json["history_lanes"][0]["attempts"][0]["status"],
-		"failed"
-	);
-	assert_eq!(
-		snapshot_json["recent_runs"]
-			.as_array()
-			.expect("recent runs should be an array")
-			.len(),
+		snapshot_json["recent_runs"].as_array().expect("recent runs should be an array").len(),
 		0
 	);
 }
@@ -663,20 +626,11 @@ fn live_status_terminal_cleanup_demotes_unleased_protocol_observed_current_lane(
 	assert_eq!(snapshot.projects[0].attention_count, 0);
 	assert_eq!(snapshot.history_lanes.len(), 1);
 	assert_eq!(snapshot.history_lanes[0].issue_identifier.as_deref(), Some("XY-952"));
-	assert_eq!(
-		snapshot.history_lanes[0].latest_run.run_id,
-		"xy-952-attempt-2-1781598614"
-	);
+	assert_eq!(snapshot.history_lanes[0].latest_run.run_id, "xy-952-attempt-2-1781598614");
 	assert_eq!(snapshot.history_lanes[0].latest_run.status, "cleanup_complete");
 	assert_eq!(snapshot.history_lanes[0].latest_run.phase, "completed");
-	assert_eq!(
-		snapshot.history_lanes[0].latest_run.current_operation,
-		"ledger_outcome"
-	);
-	assert_eq!(
-		snapshot.history_lanes[0].ledger_outcome.final_outcome,
-		"cleanup_complete"
-	);
+	assert_eq!(snapshot.history_lanes[0].latest_run.current_operation, "ledger_outcome");
+	assert_eq!(snapshot.history_lanes[0].ledger_outcome.final_outcome, "cleanup_complete");
 	assert_eq!(snapshot_json["current_lanes"].as_array().map(Vec::len), Some(0));
 	assert!(rendered.contains("Current lanes: 0"));
 	assert!(rendered.contains("Running lanes: 0"));
@@ -741,13 +695,12 @@ fn local_status_summary_counts_terminal_history_needs_attention_without_queue_ca
 	assert_eq!(worktree.ownership, "retained_attention");
 	assert_eq!(snapshot_json["projects"][0]["attention_count"], 1);
 	assert_eq!(snapshot_json["queued_candidates"].as_array().map(Vec::len), Some(0));
-	assert_eq!(
-		snapshot_json["history_lanes"][0]["latest_run"]["status"],
-		"needs_attention"
-	);
+	assert_eq!(snapshot_json["history_lanes"][0]["latest_run"]["status"], "needs_attention");
 	assert_eq!(snapshot_json["worktrees"][0]["ownership"], "retained_attention");
 	assert!(rendered.contains("outcome: needs_attention"));
-	assert!(rendered.contains("needs_attention_reason: Decodex retained validation-ready partial progress for manual review."));
+	assert!(rendered.contains(
+		"needs_attention_reason: Decodex retained validation-ready partial progress for manual review."
+	));
 	assert!(rendered.contains("role: retained_attention"));
 	assert!(rendered.contains("Current attention: 1"));
 	assert!(rendered.contains("History-only terminal attention: 0"));
@@ -814,10 +767,7 @@ fn local_status_summary_ignores_history_only_terminal_attention_without_current_
 	assert!(!lane.latest_run.run_lease);
 	assert_eq!(snapshot_json["projects"][0]["attention_count"], 0);
 	assert_eq!(snapshot_json["worktrees"].as_array().map(Vec::len), Some(0));
-	assert_eq!(
-		snapshot_json["history_lanes"][0]["latest_run"]["status"],
-		"needs_attention"
-	);
+	assert_eq!(snapshot_json["history_lanes"][0]["latest_run"]["status"], "needs_attention");
 	assert!(rendered.contains("Current attention: 0"));
 	assert!(rendered.contains("History-only terminal attention: 1"));
 	assert!(rendered.contains(
@@ -871,9 +821,7 @@ fn live_status_counts_terminal_attention_when_current_attention_label_remains() 
 	state_store
 		.record_run_attempt("pub-1550-attempt-1-1781241600", &issue.id, 1, "failed")
 		.expect("failed attempt should record");
-	state_store
-		.clear_worktree(&issue.id)
-		.expect("current retained worktree should be absent");
+	state_store.clear_worktree(&issue.id).expect("current retained worktree should be absent");
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
@@ -887,10 +835,7 @@ fn live_status_counts_terminal_attention_when_current_attention_label_remains() 
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
 	assert!(
-		snapshot
-			.queued_candidates
-			.iter()
-			.all(|candidate| candidate.issue_identifier != "PUB-1550"),
+		snapshot.queued_candidates.iter().all(|candidate| candidate.issue_identifier != "PUB-1550"),
 		"terminal attention queue echo should be suppressed"
 	);
 	assert!(snapshot.worktrees.is_empty());
@@ -977,10 +922,7 @@ fn live_status_treats_adopted_ready_to_land_history_attention_as_history_only() 
 	assert_eq!(snapshot.history_lanes[0].active_label_present, Some(true));
 	assert_eq!(snapshot.history_lanes[0].needs_attention_label_present, Some(false));
 	assert!(
-		snapshot
-			.queued_candidates
-			.iter()
-			.all(|candidate| candidate.issue_identifier != "XY-948"),
+		snapshot.queued_candidates.iter().all(|candidate| candidate.issue_identifier != "XY-948"),
 		"the regression should isolate retained history plus post-review ownership, not queue attention"
 	);
 
@@ -1055,7 +997,9 @@ fn live_status_does_not_count_done_history_attention_without_retained_ownership(
 	state_store
 		.record_run_attempt("pub-1549-attempt-1-1781240781", &issue.id, 1, "failed")
 		.expect("failed attempt should record");
-	state_store.clear_worktree(&issue.id).expect("completed lane cleanup should clear local worktree");
+	state_store
+		.clear_worktree(&issue.id)
+		.expect("completed lane cleanup should clear local worktree");
 	tracker.issue_comments.borrow_mut().insert(issue.id.clone(), comments);
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
@@ -1103,7 +1047,9 @@ fn live_operator_history_lanes_require_linear_execution_ledger_records() {
 	state_store
 		.record_run_attempt("xy-356-attempt-1", &issue.id, 1, "succeeded")
 		.expect("successful attempt should record");
-	state_store.clear_worktree(&issue.id).expect("completed lane cleanup should clear local worktree");
+	state_store
+		.clear_worktree(&issue.id)
+		.expect("completed lane cleanup should clear local worktree");
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,

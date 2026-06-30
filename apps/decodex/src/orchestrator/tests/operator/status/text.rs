@@ -1,3 +1,5 @@
+use super::*;
+
 mod operator_status_output_tests {
 	use std::io::{Error, ErrorKind, Result, Write};
 
@@ -39,12 +41,14 @@ mod operator_status_output_tests {
 	}
 }
 
-use crate::execution_program::{
-	ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionLinearIssueMapping,
-	ExecutionProgram, ExecutionProgramDependency, ExecutionProgramNode, ExecutionProgramNodeStage,
-	ExecutionQueueIntent,
+use crate::{
+	execution_program::{
+		ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionLinearIssueMapping,
+		ExecutionProgram, ExecutionProgramDependency, ExecutionProgramNode,
+		ExecutionProgramNodeStage, ExecutionQueueIntent,
+	},
+	loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
 };
-use crate::loop_contract::{DecisionPromotion, DecisionPromotionActorKind};
 
 #[test]
 fn operator_status_text_surfaces_github_cli_authority() {
@@ -163,9 +167,7 @@ fn operator_status_text_renders_human_readable_sections() {
 	assert!(rendered.contains(
 		"account: account=...acct01; plan=pro; status=selected; token=ok; primary=5h remaining=72%"
 	));
-	assert!(rendered.contains(
-		"accounts: account=...acct01; plan=pro; status=selected"
-	));
+	assert!(rendered.contains("accounts: account=...acct01; plan=pro; status=selected"));
 	assert!(rendered.contains(
 		"account=...acct02; plan=plus; status=available; token=ok; primary=5h remaining=41%"
 	));
@@ -418,10 +420,7 @@ fn operator_status_json_uses_direct_dispatch_program_fields() {
 	assert_eq!(program.intake_kind, None);
 	assert_eq!(program.public_summary, None);
 	assert_eq!(program.dispatchable_count, 1);
-	assert_eq!(
-		program.node_readbacks[0].dispatch_action.as_deref(),
-		Some("dispatch")
-	);
+	assert_eq!(program.node_readbacks[0].dispatch_action.as_deref(), Some("dispatch"));
 }
 
 #[test]
@@ -449,9 +448,10 @@ fn operator_status_program_readback_prefers_post_review_owner_over_stale_active_
 	let branch_name = "x/pubfi-pub-946";
 	let conflict = ExecutionConflictDomain::new(ExecutionConflictDomainKind::Module, "runtime")
 		.expect("conflict domain should build");
-	let node = status_program_active_node("node-post-review", issue_id, issue_identifier, "In Review")
-		.with_conflict_domains([conflict])
-		.expect("conflict domain should attach");
+	let node =
+		status_program_active_node("node-post-review", issue_id, issue_identifier, "In Review")
+			.with_conflict_domains([conflict])
+			.expect("conflict domain should attach");
 	let program = ExecutionProgram::from_issue_batch_intake(
 		"program-post-review-owner",
 		config.service_id(),
@@ -565,10 +565,7 @@ fn operator_status_program_readback_refreshes_live_tracker_issue_mapping() {
 		"terminal refreshed Program nodes should not render stale attention readbacks"
 	);
 	assert_eq!(tracker.refresh_queries.borrow().len(), 1);
-	assert_eq!(
-		tracker.refresh_queries.borrow()[0],
-		vec![String::from("issue-live-refresh")]
-	);
+	assert_eq!(tracker.refresh_queries.borrow()[0], vec![String::from("issue-live-refresh")]);
 }
 
 fn seed_program_readback_status(state_store: &StateStore, config: &ServiceConfig) {
@@ -623,14 +620,8 @@ fn build_program_readback_snapshot(
 ) -> OperatorStatusSnapshot {
 	let tracker = FakeTracker::new(Vec::new());
 
-	orchestrator::build_live_operator_status_snapshot(
-		&tracker,
-		config,
-		workflow,
-		state_store,
-		10,
-	)
-	.expect("status snapshot should build")
+	orchestrator::build_live_operator_status_snapshot(&tracker, config, workflow, state_store, 10)
+		.expect("status snapshot should build")
 }
 
 fn assert_program_readback_summary(program: &OperatorExecutionProgramStatus) {
@@ -682,10 +673,7 @@ fn assert_program_readback_json(program_json: &Value) {
 	assert!(program_json.get("graph").is_none());
 }
 
-fn assert_program_node_readbacks(
-	program: &OperatorExecutionProgramStatus,
-	program_json: &Value,
-) {
+fn assert_program_node_readbacks(program: &OperatorExecutionProgramStatus, program_json: &Value) {
 	let node_by_issue = program
 		.node_readbacks
 		.iter()
@@ -785,7 +773,10 @@ fn operator_status_json_surfaces_missing_contract_program_recovery() {
 	assert_eq!(program_json["status"], "stale");
 	assert_eq!(program_json["readback_warning"], "source_decision_contract_missing");
 	assert_eq!(program_json["node_readbacks"][0]["program_stage"], "runtime");
-	assert_eq!(program_json["node_readbacks"][0]["reason_codes"][0], "source_decision_contract_missing");
+	assert_eq!(
+		program_json["node_readbacks"][0]["reason_codes"][0],
+		"source_decision_contract_missing"
+	);
 	assert_eq!(
 		program_json["node_readbacks"][0]["next_action"],
 		"Restore or supersede the source Decision Contract before dispatching this program."
@@ -818,7 +809,8 @@ fn operator_status_readback_uses_migrated_legacy_flat_decision_contracts() {
 		.upsert_execution_program(config.service_id(), program)
 		.expect("program should persist");
 
-	let mut legacy_payload = serde_json::to_value(&contract).expect("contract should encode as JSON");
+	let mut legacy_payload =
+		serde_json::to_value(&contract).expect("contract should encode as JSON");
 	let readiness = legacy_payload
 		.get_mut("execution_readiness")
 		.expect("readiness should exist")
@@ -849,7 +841,8 @@ fn operator_status_readback_uses_migrated_legacy_flat_decision_contracts() {
 					contract.contract_id(),
 					"PUB-947",
 					contract.status().as_str(),
-					serde_json::to_string(&legacy_payload).expect("legacy payload should serialize"),
+					serde_json::to_string(&legacy_payload)
+						.expect("legacy payload should serialize"),
 					"2026-06-17T00:00:00Z",
 					1_i64,
 					"2026-06-17T00:00:00Z",
@@ -857,9 +850,9 @@ fn operator_status_readback_uses_migrated_legacy_flat_decision_contracts() {
 				],
 			)
 			.expect("legacy decision contract row should insert");
-			connection
-				.execute("UPDATE schema_meta SET value = '11' WHERE key = 'schema_version'", [])
-				.expect("schema version should mark legacy state");
+		connection
+			.execute("UPDATE schema_meta SET value = '11' WHERE key = 'schema_version'", [])
+			.expect("schema version should mark legacy state");
 	}
 
 	drop(state_store);
@@ -923,8 +916,9 @@ fn status_program_node_with_dependency(
 		issue_state,
 		ExecutionQueueIntent::ReadyToQueue,
 	)
-	.with_dependencies([ExecutionProgramDependency::new(dependency_identifier)
-		.expect("dependency should build")])
+	.with_dependencies([
+		ExecutionProgramDependency::new(dependency_identifier).expect("dependency should build")
+	])
 	.expect("dependency should attach")
 }
 
@@ -962,12 +956,10 @@ fn status_program_active_node(
 }
 
 fn accepted_status_decision_contract_fixture() -> DecisionContract {
-	let mut contract: DecisionContract = serde_json::from_str(include_str!(
-		concat!(
+	let mut contract: DecisionContract = serde_json::from_str(include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
 		"/fixtures/decision_contract/research_x_latent_contract.json"
-	)
-	))
+	)))
 	.expect("decision contract fixture should deserialize");
 
 	contract
@@ -1012,29 +1004,14 @@ fn operator_status_json_and_text_surface_loop_review_and_recovery_state() {
 	);
 	assert_eq!(findings["loop_status"]["review"]["status"], "findings");
 	assert_eq!(findings["loop_status"]["review"]["checkpoint"]["round"], 2);
-	assert_eq!(
-		findings["loop_status"]["architecture_recovery"]["status"],
-		"active"
-	);
+	assert_eq!(findings["loop_status"]["architecture_recovery"]["status"], "active");
 	assert_eq!(findings["loop_status"]["autonomy"], "autonomous");
 	assert_eq!(blocked["loop_status"]["review"]["status"], "blocked");
-	assert_eq!(
-		blocked["loop_status"]["architecture_recovery"]["status"],
-		"exhausted"
-	);
-	assert_eq!(
-		blocked["loop_status"]["boundary"]["disposition"],
-		"requires_human"
-	);
-	assert_eq!(
-		blocked["loop_status"]["boundary"]["policy_decision"],
-		"requires_human_decision"
-	);
+	assert_eq!(blocked["loop_status"]["architecture_recovery"]["status"], "exhausted");
+	assert_eq!(blocked["loop_status"]["boundary"]["disposition"], "requires_human");
+	assert_eq!(blocked["loop_status"]["boundary"]["policy_decision"], "requires_human_decision");
 	assert_eq!(blocked["loop_status"]["autonomy"], "human_required");
-	assert_eq!(
-		blocked["loop_status"]["decision_request"]["decision_request_id"],
-		"dr-pub-874-1"
-	);
+	assert_eq!(blocked["loop_status"]["decision_request"]["decision_request_id"], "dr-pub-874-1");
 
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
@@ -1481,9 +1458,7 @@ fn operator_status_text_explains_unleased_live_running_lane() {
 	assert!(rendered.contains("queue_lease_state: not_held"));
 	assert!(rendered.contains("queue_lease: not_held (process_alive keeps lane visible)"));
 	assert!(
-		rendered.contains(
-			"status_projection_reason: terminal_attempt_promoted_by_process_alive"
-		)
+		rendered.contains("status_projection_reason: terminal_attempt_promoted_by_process_alive")
 	);
 	assert!(rendered.contains("execution_liveness: process_alive"));
 }
