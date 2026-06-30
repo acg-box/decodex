@@ -161,6 +161,8 @@ include!("orchestrator/daemon.rs");
 
 include!("orchestrator/reconciliation.rs");
 
+include!("orchestrator/retained_review_orchestration.rs");
+
 include!("orchestrator/run_cycle.rs");
 
 include!("orchestrator/runtime_validation.rs");
