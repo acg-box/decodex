@@ -2,7 +2,6 @@
 use std::{
 	env,
 	error::Error,
-	fmt::{self, Display, Formatter},
 	fs::{self, File, OpenOptions},
 	io::ErrorKind,
 	path::{Path, PathBuf},
@@ -19,19 +18,33 @@ use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-	config::ProjectCodexAccountsConfig,
-	prelude::eyre,
-	runtime,
-	state::{CodexAccountActivitySummary, CodexAccountProfileDailyUsageSummary},
+	config::ProjectCodexAccountsConfig, prelude::eyre, runtime, state::CodexAccountActivitySummary,
 };
 
 mod auth_failure;
 mod login;
+mod refresh;
 mod selection;
 #[cfg(test)] mod tests;
+mod usage;
 
-use self::selection::{account_summaries, account_summary_is_limited, compare_account_candidates};
-pub(crate) use self::{auth_failure::CodexAccountAuthFailure, login::CodexAccountLogin};
+#[cfg(test)] pub(crate) use self::usage::{CreditsSnapshot, UsageWindow};
+pub(crate) use self::{
+	auth_failure::CodexAccountAuthFailure, login::CodexAccountLogin,
+	refresh::ProactiveRefreshReason,
+};
+use self::{
+	refresh::{
+		CodexTokenData, ProactiveRefreshError, RefreshRequest, RefreshResponse, RefreshStatus,
+		ReportableRefreshError, jwt_email_claim, jwt_expiration_unix_epoch, rfc3339_unix_epoch,
+		token_refresh_auth_status,
+	},
+	selection::{account_summaries, compare_account_candidates},
+	usage::{
+		AccountProfileSnapshot, AccountUsageSnapshot, UsageProbeError, nonblank_string,
+		preserve_cached_usage_windows, profile_snapshot_from_payload, usage_snapshot_from_payload,
+	},
+};
 
 const DEFAULT_USAGE_ENDPOINT: &str = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_PROFILE_ENDPOINT: &str = "https://chatgpt.com/backend-api/wham/profiles/me";
@@ -1271,153 +1284,6 @@ impl AccountPoolRecord {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-struct CodexTokenData {
-	#[serde(skip_serializing_if = "Option::is_none")]
-	email: Option<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	id_token: Option<String>,
-	access_token: String,
-	refresh_token: String,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	account_id: Option<String>,
-}
-
-#[derive(Serialize)]
-struct RefreshRequest {
-	client_id: &'static str,
-	grant_type: &'static str,
-	refresh_token: String,
-}
-
-#[derive(Deserialize)]
-struct RefreshResponse {
-	id_token: Option<String>,
-	access_token: Option<String>,
-	refresh_token: Option<String>,
-}
-
-#[derive(Debug)]
-struct ProactiveRefreshError {
-	source: ReportableRefreshError,
-	requires_skip: bool,
-	auth_failed: bool,
-}
-
-#[derive(Debug)]
-struct ReportableRefreshError {
-	message: String,
-}
-impl ReportableRefreshError {
-	fn new(message: String) -> Self {
-		Self { message }
-	}
-}
-
-impl Display for ReportableRefreshError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-		formatter.write_str(&self.message)
-	}
-}
-
-impl Error for ReportableRefreshError {}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct AccountUsageSnapshot {
-	plan_type: Option<String>,
-	primary: Option<UsageWindow>,
-	secondary: Option<UsageWindow>,
-	credits: Option<CreditsSnapshot>,
-	rate_limit_reached_type: Option<String>,
-	checked_at_unix_epoch: i64,
-}
-impl AccountUsageSnapshot {
-	fn is_limited(&self) -> bool {
-		self.rate_limit_reached_type.is_some()
-			|| self.primary.as_ref().is_some_and(UsageWindow::is_depleted)
-			|| self.secondary.as_ref().is_some_and(UsageWindow::is_depleted)
-	}
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct AccountProfileSnapshot {
-	display_name: Option<String>,
-	username: Option<String>,
-	lifetime_tokens: Option<i64>,
-	peak_daily_tokens: Option<i64>,
-	longest_task_seconds: Option<i64>,
-	current_streak_days: Option<i64>,
-	longest_streak_days: Option<i64>,
-	daily_usage: Vec<CodexAccountProfileDailyUsageSummary>,
-	checked_at_unix_epoch: i64,
-}
-impl AccountProfileSnapshot {
-	fn is_empty(&self) -> bool {
-		self.display_name.is_none()
-			&& self.username.is_none()
-			&& self.lifetime_tokens.is_none()
-			&& self.peak_daily_tokens.is_none()
-			&& self.longest_task_seconds.is_none()
-			&& self.current_streak_days.is_none()
-			&& self.longest_streak_days.is_none()
-			&& self.daily_usage.is_empty()
-	}
-
-	fn apply_to_summary(self, summary: &mut CodexAccountActivitySummary) {
-		summary.profile_display_name = self.display_name;
-		summary.profile_username = self.username;
-		summary.profile_checked_at_unix_epoch = Some(self.checked_at_unix_epoch);
-		summary.profile_lifetime_tokens = self.lifetime_tokens;
-		summary.profile_peak_daily_tokens = self.peak_daily_tokens;
-		summary.profile_longest_task_seconds = self.longest_task_seconds;
-		summary.profile_current_streak_days = self.current_streak_days;
-		summary.profile_longest_streak_days = self.longest_streak_days;
-		summary.profile_daily_usage = self.daily_usage;
-	}
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct UsageWindow {
-	window_seconds: Option<i64>,
-	remaining_percent: i64,
-	resets_at_unix_epoch: Option<i64>,
-}
-impl UsageWindow {
-	const fn is_depleted(&self) -> bool {
-		self.remaining_percent <= 0
-	}
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct CreditsSnapshot {
-	has_credits: bool,
-	unlimited: bool,
-	balance: Option<String>,
-}
-
-#[derive(Debug)]
-struct UsageProbeError {
-	unauthorized: bool,
-	message: String,
-}
-impl UsageProbeError {
-	fn unauthorized() -> Self {
-		Self { unauthorized: true, message: String::from("usage endpoint returned 401") }
-	}
-
-	fn other(message: impl Into<String>) -> Self {
-		Self { unauthorized: false, message: message.into() }
-	}
-}
-
-impl Display for UsageProbeError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-		formatter.write_str(&self.message)
-	}
-}
-
-impl Error for UsageProbeError {}
-
-#[derive(Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 enum AccountPoolLine {
 	Wrapped {
@@ -1465,42 +1331,6 @@ impl AccountPoolLine {
 				tokens: auth.tokens,
 				last_refresh: auth.last_refresh,
 			},
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RefreshStatus {
-	NotNeeded,
-	Succeeded,
-	Failed,
-}
-impl RefreshStatus {
-	const fn as_str(self) -> &'static str {
-		match self {
-			Self::NotNeeded => "not_needed",
-			Self::Succeeded => "succeeded",
-			Self::Failed => "failed",
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ProactiveRefreshReason {
-	AccessTokenExpired,
-	LastRefreshStale,
-}
-impl ProactiveRefreshReason {
-	const fn requires_valid_token(self) -> bool {
-		matches!(self, Self::AccessTokenExpired)
-	}
-}
-
-impl Display for ProactiveRefreshReason {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-		match self {
-			Self::AccessTokenExpired => formatter.write_str("expired access token"),
-			Self::LastRefreshStale => formatter.write_str("stale refresh timestamp"),
 		}
 	}
 }
@@ -1619,276 +1449,9 @@ fn secure_account_file(path: &Path) -> crate::prelude::Result<()> {
 	Ok(())
 }
 
-fn usage_snapshot_from_payload(
-	payload: &Value,
-	checked_at_unix_epoch: i64,
-) -> AccountUsageSnapshot {
-	let rate_limit = payload.get("rate_limit").filter(|value| !value.is_null());
-
-	AccountUsageSnapshot {
-		plan_type: payload.get("plan_type").and_then(json_scalar_to_string),
-		primary: rate_limit
-			.and_then(|details| usage_window_from_value(details.get("primary_window"))),
-		secondary: rate_limit
-			.and_then(|details| usage_window_from_value(details.get("secondary_window"))),
-		credits: payload.get("credits").and_then(credits_from_value),
-		rate_limit_reached_type: rate_limit_reached_type_from_payload(payload),
-		checked_at_unix_epoch,
-	}
-}
-
-fn profile_snapshot_from_payload(
-	payload: &Value,
-	checked_at_unix_epoch: i64,
-) -> Option<AccountProfileSnapshot> {
-	let profile = payload.get("profile").filter(|value| !value.is_null());
-	let stats = payload.get("stats").filter(|value| !value.is_null());
-	let daily_usage = stats
-		.and_then(|value| value.get("daily_usage_buckets"))
-		.and_then(Value::as_array)
-		.map(|items| items.iter().filter_map(profile_daily_usage_from_value).collect::<Vec<_>>())
-		.unwrap_or_default();
-	let peak_daily_tokens = stats
-		.and_then(|value| nonnegative_number_as_i64(value.get("peak_daily_tokens")))
-		.or_else(|| daily_usage.iter().map(|record| record.tokens).max());
-	let snapshot = AccountProfileSnapshot {
-		display_name: profile.and_then(|value| nonblank_json_string(value.get("display_name"))),
-		username: profile.and_then(|value| nonblank_json_string(value.get("username"))),
-		lifetime_tokens: stats
-			.and_then(|value| nonnegative_number_as_i64(value.get("lifetime_tokens"))),
-		peak_daily_tokens,
-		longest_task_seconds: stats
-			.and_then(|value| nonnegative_number_as_i64(value.get("longest_running_turn_sec"))),
-		current_streak_days: stats
-			.and_then(|value| nonnegative_number_as_i64(value.get("current_streak_days"))),
-		longest_streak_days: stats
-			.and_then(|value| nonnegative_number_as_i64(value.get("longest_streak_days"))),
-		daily_usage,
-		checked_at_unix_epoch,
-	};
-
-	(!snapshot.is_empty()).then_some(snapshot)
-}
-
-fn profile_daily_usage_from_value(value: &Value) -> Option<CodexAccountProfileDailyUsageSummary> {
-	let date = nonblank_json_string(value.get("start_date"))?;
-	let tokens = nonnegative_number_as_i64(value.get("tokens"))?;
-
-	Some(CodexAccountProfileDailyUsageSummary { date, tokens })
-}
-
-fn usage_window_from_value(value: Option<&Value>) -> Option<UsageWindow> {
-	let value = value.filter(|value| !value.is_null())?;
-	let used_percent = number_as_i64(value.get("used_percent")?)?;
-	let window_seconds = value.get("limit_window_seconds").and_then(number_as_i64);
-
-	if window_seconds.is_some_and(|seconds| seconds <= 0) {
-		return None;
-	}
-
-	let remaining_percent = 100_i64.saturating_sub(used_percent).clamp(0, 100);
-
-	Some(UsageWindow {
-		window_seconds,
-		remaining_percent,
-		resets_at_unix_epoch: value.get("reset_at").and_then(number_as_i64),
-	})
-}
-
-fn preserve_cached_usage_windows(
-	summaries: &mut [CodexAccountActivitySummary],
-	cached_summaries: &[CodexAccountActivitySummary],
-	now_unix_epoch: i64,
-) {
-	for summary in summaries {
-		if account_summary_is_limited(summary) {
-			continue;
-		}
-
-		let Some(cached) =
-			cached_summaries.iter().find(|cached| account_summaries_match(summary, cached))
-		else {
-			continue;
-		};
-
-		preserve_primary_usage_window(summary, cached, now_unix_epoch);
-		preserve_secondary_usage_window(summary, cached, now_unix_epoch);
-	}
-}
-
-fn preserve_primary_usage_window(
-	summary: &mut CodexAccountActivitySummary,
-	cached: &CodexAccountActivitySummary,
-	now_unix_epoch: i64,
-) {
-	if has_usage_window(summary.primary_window_seconds, summary.primary_remaining_percent)
-		|| !has_current_usage_window(
-			cached.primary_window_seconds,
-			cached.primary_remaining_percent,
-			cached.primary_resets_at_unix_epoch,
-			now_unix_epoch,
-		) {
-		return;
-	}
-
-	summary.primary_window_seconds = cached.primary_window_seconds;
-	summary.primary_remaining_percent = cached.primary_remaining_percent;
-	summary.primary_resets_at_unix_epoch = cached.primary_resets_at_unix_epoch;
-}
-
-fn preserve_secondary_usage_window(
-	summary: &mut CodexAccountActivitySummary,
-	cached: &CodexAccountActivitySummary,
-	now_unix_epoch: i64,
-) {
-	if has_usage_window(summary.secondary_window_seconds, summary.secondary_remaining_percent)
-		|| !has_current_usage_window(
-			cached.secondary_window_seconds,
-			cached.secondary_remaining_percent,
-			cached.secondary_resets_at_unix_epoch,
-			now_unix_epoch,
-		) {
-		return;
-	}
-
-	summary.secondary_window_seconds = cached.secondary_window_seconds;
-	summary.secondary_remaining_percent = cached.secondary_remaining_percent;
-	summary.secondary_resets_at_unix_epoch = cached.secondary_resets_at_unix_epoch;
-}
-
-const fn has_usage_window(window_seconds: Option<i64>, remaining_percent: Option<i64>) -> bool {
-	matches!(window_seconds, Some(seconds) if seconds > 0) && remaining_percent.is_some()
-}
-
-fn has_current_usage_window(
-	window_seconds: Option<i64>,
-	remaining_percent: Option<i64>,
-	resets_at_unix_epoch: Option<i64>,
-	now_unix_epoch: i64,
-) -> bool {
-	has_usage_window(window_seconds, remaining_percent)
-		&& resets_at_unix_epoch.is_some_and(|reset| reset > now_unix_epoch)
-}
-
-fn account_summaries_match(
-	left: &CodexAccountActivitySummary,
-	right: &CodexAccountActivitySummary,
-) -> bool {
-	left.account_fingerprint == right.account_fingerprint
-		|| left
-			.email
-			.as_deref()
-			.zip(right.email.as_deref())
-			.is_some_and(|(left, right)| left == right)
-}
-
-fn credits_from_value(value: &Value) -> Option<CreditsSnapshot> {
-	if value.is_null() {
-		return None;
-	}
-
-	Some(CreditsSnapshot {
-		has_credits: value.get("has_credits").and_then(Value::as_bool).unwrap_or(true),
-		unlimited: value.get("unlimited").and_then(Value::as_bool).unwrap_or(false),
-		balance: value.get("balance").and_then(json_scalar_to_string),
-	})
-}
-
-fn rate_limit_reached_type_from_payload(payload: &Value) -> Option<String> {
-	let reached = payload.get("rate_limit_reached_type").filter(|value| !value.is_null())?;
-
-	if let Some(kind) = reached.get("kind").and_then(json_scalar_to_string) {
-		return Some(kind);
-	}
-
-	json_scalar_to_string(reached)
-}
-
-fn number_as_i64(value: &Value) -> Option<i64> {
-	value
-		.as_i64()
-		.or_else(|| value.as_u64().and_then(|number| i64::try_from(number).ok()))
-		.or_else(|| value.as_f64().map(|number| number.round() as i64))
-}
-
-fn nonnegative_number_as_i64(value: Option<&Value>) -> Option<i64> {
-	value.and_then(number_as_i64).map(|number| number.max(0))
-}
-
-fn json_scalar_to_string(value: &Value) -> Option<String> {
-	match value {
-		Value::String(text) if !text.is_empty() => Some(text.clone()),
-		Value::Number(number) => Some(number.to_string()),
-		Value::Bool(value) => Some(value.to_string()),
-		_ => None,
-	}
-}
-
-fn nonblank_json_string(value: Option<&Value>) -> Option<String> {
-	value.and_then(json_scalar_to_string).and_then(|value| nonblank_string(Some(&value)))
-}
-
 fn first_nonblank_string(left: Option<String>, right: Option<String>) -> Option<String> {
 	left.filter(|value| !value.trim().is_empty())
 		.or_else(|| right.filter(|value| !value.trim().is_empty()))
-}
-
-fn nonblank_string(value: Option<&str>) -> Option<String> {
-	value.map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
-}
-
-fn jwt_email_claim(id_token: Option<&str>) -> Option<String> {
-	let payload = id_token?.split('.').nth(1)?;
-	let payload_bytes = parse_base64_url(payload)?;
-	let claims = serde_json::from_slice::<Value>(&payload_bytes).ok()?;
-
-	claims.get("email").and_then(json_scalar_to_string)
-}
-
-fn jwt_expiration_unix_epoch(jwt: &str) -> Option<i64> {
-	let payload = jwt.split('.').nth(1)?;
-	let payload_bytes = parse_base64_url(payload)?;
-	let claims = serde_json::from_slice::<Value>(&payload_bytes).ok()?;
-
-	claims.get("exp").and_then(number_as_i64)
-}
-
-fn rfc3339_unix_epoch(input: &str) -> Option<i64> {
-	OffsetDateTime::parse(input, &Rfc3339).ok().map(|timestamp| timestamp.unix_timestamp())
-}
-
-fn parse_base64_url(input: &str) -> Option<Vec<u8>> {
-	let mut output = Vec::with_capacity(input.len() * 3 / 4);
-	let mut accumulator = 0_u32;
-	let mut bits = 0_u32;
-
-	for byte in input.bytes().take_while(|byte| *byte != b'=') {
-		accumulator = (accumulator << 6) | u32::from(base64_url_value(byte)?);
-		bits += 6;
-
-		if bits >= 8 {
-			bits -= 8;
-
-			output.push(((accumulator >> bits) & 0xff) as u8);
-		}
-	}
-
-	Some(output)
-}
-
-const fn base64_url_value(byte: u8) -> Option<u8> {
-	match byte {
-		b'A'..=b'Z' => Some(byte - b'A'),
-		b'a'..=b'z' => Some(byte - b'a' + 26),
-		b'0'..=b'9' => Some(byte - b'0' + 52),
-		b'-' => Some(62),
-		b'_' => Some(63),
-		_ => None,
-	}
-}
-
-fn token_refresh_auth_status(status: StatusCode) -> bool {
-	matches!(status, StatusCode::BAD_REQUEST | StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
 }
 
 fn redact_account_id(account_id: &str) -> String {
