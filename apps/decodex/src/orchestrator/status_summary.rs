@@ -6,8 +6,8 @@ use crate::state::RUN_OPERATION_WAITING_EXTERNAL;
 use super::{
 	OperatorHistoryLaneStatus, OperatorPostReviewLaneStatus, OperatorQueuedIssueStatus,
 	OperatorRunStatus, OperatorStatusSnapshot, OperatorWorktreeStatus, history_lane_group_key,
-	history_ledger_outcome_requires_attention, operator_run_group_key, rendered_recovery_worktrees,
-	snapshot_warnings_include_tracker_backoff,
+	history_ledger_outcome_requires_attention, rendered_recovery_worktrees,
+	snapshot_warnings_include_tracker_backoff, status_run_projection::operator_run_group_key,
 };
 
 pub(super) fn refresh_operator_project_summary(

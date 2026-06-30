@@ -11,8 +11,8 @@ use super::{
 	LinearExecutionEventRecord, OperatorHistoryLaneStatus, OperatorHistoryLedgerOutcome,
 	OperatorHistoryLedgerRecord, OperatorIssueDisplayMetadata, TrackerObserverOutcome,
 	fill_missing_history_lane_issue_metadata, fill_missing_run_issue_metadata,
-	format_optional_unix_timestamp, operator_run_is_stale_terminal_local_residue,
-	tracker_connector_backoff,
+	operator_run_is_stale_terminal_local_residue,
+	status_run_projection::format_optional_unix_timestamp, tracker_connector_backoff,
 };
 
 pub(super) fn hydrate_history_lanes_from_linear_ledger<T>(
