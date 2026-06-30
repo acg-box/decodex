@@ -1,6 +1,6 @@
 {
   "name": "knowledge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Knowledge and documentation workflows for OKF, LLM Wiki navigation, semantic drift, source-backed repo memory, and knowledge writeback.",
   "author": {
     "name": "hack-ink",
