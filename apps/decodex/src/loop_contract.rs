@@ -527,12 +527,13 @@ impl DecisionExecutionReadiness {
 					);
 				}
 			},
-			DecisionContractStatus::NeedsHumanDecision =>
+			DecisionContractStatus::NeedsHumanDecision => {
 				if self.missing_decisions.is_empty() {
 					eyre::bail!(
 						"Needs-human-decision contracts must include at least one missing decision."
 					);
-				},
+				}
+			},
 			DecisionContractStatus::DraftLatent | DecisionContractStatus::RejectedSuperseded => {},
 		}
 
@@ -875,8 +876,9 @@ fn validate_proposed_issues(issues: &[DecisionProposedIssue]) -> Result<()> {
 
 fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
 	match stage {
-		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" =>
-			Ok(()),
+		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" => {
+			Ok(())
+		},
 		_ => {
 			eyre::bail!("Decision Contract proposed issue `{key}` has unsupported stage `{stage}`.")
 		},
@@ -885,8 +887,9 @@ fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
 
 fn validate_proposed_issue_queue_intent(key: &str, queue_intent: &str) -> Result<()> {
 	match queue_intent {
-		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" =>
-			Ok(()),
+		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" => {
+			Ok(())
+		},
 		_ => eyre::bail!(
 			"Decision Contract proposed issue `{key}` has unsupported queue_intent `{queue_intent}`."
 		),

@@ -137,11 +137,12 @@ pub(super) struct ReviewHandoffRecoveryCommand {
 impl ReviewHandoffRecoveryCommand {
 	fn run(&self, config_path: Option<&Path>) -> Result<()> {
 		match &self.command {
-			ReviewHandoffRecoverySubcommand::Diagnose(args) =>
+			ReviewHandoffRecoverySubcommand::Diagnose(args) => {
 				recovery::run_review_handoff_diagnose(
 					config_path,
 					&ReviewHandoffDiagnoseRequest { issue: args.issue.clone(), json: args.json },
-				),
+				)
+			},
 			ReviewHandoffRecoverySubcommand::Rebind(args) => recovery::run_review_handoff_rebind(
 				config_path,
 				&ReviewHandoffRebindRequest {

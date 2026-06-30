@@ -19,7 +19,8 @@ mod graph;
 mod init;
 mod model;
 mod support;
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;
 
 pub(crate) use self::{
 	check::{render_docs_check_report, render_okf_check_report, run_docs_check, run_okf_check},

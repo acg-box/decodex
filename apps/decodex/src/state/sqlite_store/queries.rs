@@ -851,26 +851,6 @@ impl super::SqliteStateStore {
 			.transpose()
 	}
 
-	pub(in crate::state) fn decision_contract_for_readback(
-		&self,
-		project_id: &str,
-		contract_id: &str,
-	) -> Result<Option<DecisionContractRuntimeRecord>> {
-		let mut statement = self.connection.prepare(
-			"SELECT project_id, contract_id, source_issue_id, status, payload_json, created_at, \
-			 created_at_unix, updated_at, updated_at_unix \
-			 FROM decision_contracts \
-			 WHERE project_id = ?1 AND contract_id = ?2 \
-			 LIMIT 1",
-		)?;
-		let mut rows = statement.query(params![project_id, contract_id])?;
-		let Some(parts) = rows.next()?.map(decision_contract_runtime_row_parts).transpose()? else {
-			return Ok(None);
-		};
-
-		decision_contract_record_from_row_parts(parts).map(Some)
-	}
-
 	pub(in crate::state) fn list_decision_contracts_for_issue(
 		&self,
 		project_id: &str,

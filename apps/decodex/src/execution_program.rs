@@ -7,7 +7,8 @@ mod evaluation;
 mod intake;
 mod model;
 mod policy;
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;
 mod validation;
 
 pub(crate) use self::{

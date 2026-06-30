@@ -1,6 +1,7 @@
 use std::{
 	env,
 	ffi::{OsStr, OsString},
+	process::Command,
 	sync::{Mutex, MutexGuard, OnceLock},
 };
 
@@ -53,6 +54,28 @@ impl Drop for TestEnvVarGuard {
 
 pub(crate) struct TestEnvLockGuard {
 	_lock: MutexGuard<'static, ()>,
+}
+
+pub(crate) fn hermetic_git_command() -> Command {
+	let mut command = Command::new("git");
+
+	command
+		.env("GIT_CONFIG_GLOBAL", "/dev/null")
+		.env("GIT_CONFIG_SYSTEM", "/dev/null")
+		.env("GIT_TERMINAL_PROMPT", "0")
+		.env("GCM_INTERACTIVE", "never")
+		.args([
+			"-c",
+			"core.hooksPath=/dev/null",
+			"-c",
+			"commit.gpgsign=false",
+			"-c",
+			"tag.gpgsign=false",
+			"-c",
+			"init.defaultBranch=main",
+		]);
+
+	command
 }
 
 fn test_env_mutex() -> &'static Mutex<()> {

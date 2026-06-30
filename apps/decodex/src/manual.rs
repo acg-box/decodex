@@ -302,4 +302,5 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 	Ok(())
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

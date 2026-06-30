@@ -14,6 +14,7 @@ enum ChildExitPhaseGoalRecovery {
 }
 
 struct ChildExitRetrySchedule<'a> {
+	project_id: &'a str,
 	issue_id: &'a str,
 	run_id: &'a str,
 	attempt_number: i64,
@@ -59,10 +60,10 @@ fn load_daemon_tick_workflow(
 	match WorkflowDocument::from_path(&workflow_path) {
 		Ok(workflow) => {
 			if cached_same_path.as_ref().is_some_and(|cached| cached != &workflow) {
-						tracing::info!(
-							workflow_path = %workflow_path.display(),
-							"Reloaded project WORKFLOW.md for future control-plane decisions."
-						);
+				tracing::info!(
+					workflow_path = %workflow_path.display(),
+					"Reloaded project WORKFLOW.md for future control-plane decisions."
+				);
 			}
 
 			*workflow_cache =
@@ -70,18 +71,19 @@ fn load_daemon_tick_workflow(
 
 			Ok(workflow)
 		},
-		Err(error) =>
+		Err(error) => {
 			if let Some(cached_workflow) = cached_same_path {
-						tracing::warn!(
-							workflow_path = %workflow_path.display(),
-							?error,
-							"Failed to reload project WORKFLOW.md; keeping the last known good workflow active for control-plane decisions."
-						);
+				tracing::warn!(
+					workflow_path = %workflow_path.display(),
+					?error,
+					"Failed to reload project WORKFLOW.md; keeping the last known good workflow active for control-plane decisions."
+				);
 
 				Ok(cached_workflow)
 			} else {
 				Err(error)
-			},
+			}
+		},
 	}
 }
 
@@ -107,10 +109,10 @@ fn run_daemon_tick(
 			tracker: &context.tracker,
 			project: &context.config,
 			workflow: &context.workflow,
-				worktree_manager: &context.worktree_manager,
-				review_state_inspector: &review_state_inspector,
-				recoverable_worktree_skip_cache: Some(recoverable_worktree_skip_cache),
-			},
+			worktree_manager: &context.worktree_manager,
+			review_state_inspector: &review_state_inspector,
+			recoverable_worktree_skip_cache: Some(recoverable_worktree_skip_cache),
+		},
 	)
 }
 
@@ -136,7 +138,8 @@ where
 	)?;
 
 	if active_children.is_empty() {
-		let recoverable_worktree_skip_cache = context.recoverable_worktree_skip_cache.as_deref_mut();
+		let recoverable_worktree_skip_cache =
+			context.recoverable_worktree_skip_cache.as_deref_mut();
 
 		recover_and_reconcile_idle_daemon_state(
 			context.tracker,
@@ -162,8 +165,13 @@ where
 	);
 
 	loop {
-		if !spawn_next_daemon_child(config_path, state_store, active_children, retry_queue, &context)?
-		{
+		if !spawn_next_daemon_child(
+			config_path,
+			state_store,
+			active_children,
+			retry_queue,
+			&context,
+		)? {
 			break;
 		}
 	}
@@ -206,7 +214,13 @@ where
 	T: IssueTracker,
 {
 	let mut snapshot = if warnings.is_empty() {
-		build_control_plane_operator_status_snapshot(tracker, project, workflow, state_store, limit)?
+		build_control_plane_operator_status_snapshot(
+			tracker,
+			project,
+			workflow,
+			state_store,
+			limit,
+		)?
 	} else {
 		build_operator_status_snapshot_with_account_mode(
 			project,
@@ -228,8 +242,11 @@ where
 			github_command_path: project.github().command_path().map(Path::to_path_buf),
 		};
 
-		snapshot.post_review_lanes =
-			build_degraded_post_review_lane_statuses(project, state_store, &review_state_inspector)?;
+		snapshot.post_review_lanes = build_degraded_post_review_lane_statuses(
+			project,
+			state_store,
+			&review_state_inspector,
+		)?;
 	}
 
 	for warning in warnings {
@@ -413,36 +430,34 @@ where
 		&issue,
 		&run_attempt,
 	);
-	let retained_closeout =
-		terminal_issue_keeps_retained_closeout(
-			tracker,
-			&issue,
-			project,
-			action_workflow,
-			state_store,
-		)?;
-	let completed_closeout_child = matches!(child_context.dispatch_mode, IssueDispatchMode::Closeout)
-		&& is_terminal_issue(&issue, action_workflow);
-	let disposition = if !retained_closeout && !completed_closeout_child
+	let retained_closeout = terminal_issue_keeps_retained_closeout(
+		tracker,
+		&issue,
+		project,
+		action_workflow,
+		state_store,
+	)?;
+	let completed_closeout_child =
+		matches!(child_context.dispatch_mode, IssueDispatchMode::Closeout)
+			&& is_terminal_issue(&issue, action_workflow);
+	let disposition = if !retained_closeout
+		&& !completed_closeout_child
 		&& is_terminal_issue(&issue, action_workflow)
 	{
 		Some(RunLeaseDisposition::Terminal)
-	} else if !retained_closeout && !completed_closeout_child
+	} else if !retained_closeout
+		&& !completed_closeout_child
 		&& is_issue_not_dispatchable_for_current_dispatch(
 			tracker,
 			&issue,
 			project,
 			action_workflow,
 			child_context.dispatch_mode,
-		)?
-	{
+		)? {
 		Some(RunLeaseDisposition::NotDispatchable)
-	} else if let Some(idle_for) = stalled_idle_duration(
-		state_store,
-		&run_attempt,
-		worktree_mapping.as_ref(),
-		now_unix_epoch,
-	)? {
+	} else if let Some(idle_for) =
+		stalled_idle_duration(state_store, &run_attempt, worktree_mapping.as_ref(), now_unix_epoch)?
+	{
 		if retained_review_handoff_matches_run(
 			state_store,
 			&run_attempt,
@@ -566,11 +581,15 @@ where
 				return Ok(false);
 			}
 
-			let daemon_spawn_state =
-				materialize_daemon_spawn_state(context.project, context.workflow, state_store, &summary)
-					.inspect_err(|_error| {
-						let _ = state_store.clear_lease(&summary.issue_id);
-					})?;
+			let daemon_spawn_state = materialize_daemon_spawn_state(
+				context.project,
+				context.workflow,
+				state_store,
+				&summary,
+			)
+			.inspect_err(|_error| {
+				let _ = state_store.clear_lease(&summary.issue_id);
+			})?;
 
 			state_store.record_run_attempt(
 				&summary.run_id,
@@ -666,11 +685,11 @@ fn spawn_planned_daemon_child(
 		preferred_issue_state: summary.issue_state.as_str(),
 		preferred_initial_issue_state: Some(summary.initial_issue_state.as_str()),
 		dispatch_mode: summary.dispatch_mode,
-			preferred_run_id: summary.run_id.as_str(),
-			preferred_attempt_number: summary.attempt_number,
-			preferred_retry_budget_base: retry_budget_base,
-			workflow,
-			issue_claim_handoff: issue_claim_handoff.as_ref(),
+		preferred_run_id: summary.run_id.as_str(),
+		preferred_attempt_number: summary.attempt_number,
+		preferred_retry_budget_base: retry_budget_base,
+		workflow,
+		issue_claim_handoff: issue_claim_handoff.as_ref(),
 		dispatch_slot_handoff: dispatch_slot_handoff.as_ref(),
 		dispatch_slot_index_handoff,
 	})
@@ -713,8 +732,9 @@ where
 				&excluded_issue_ids,
 			)?;
 
-			Ok(issue_run
-				.map(|issue_run| (run_summary_from_issue_run(project.service_id(), &issue_run), false)))
+			Ok(issue_run.map(|issue_run| {
+				(run_summary_from_issue_run(project.service_id(), &issue_run), false)
+			}))
 		},
 		RetryDispatchDecision::Continue => {
 			let issue_run = plan_project_issue_run_with_exclusions(
@@ -726,8 +746,9 @@ where
 				&[],
 			)?;
 
-			Ok(issue_run
-				.map(|issue_run| (run_summary_from_issue_run(project.service_id(), &issue_run), false)))
+			Ok(issue_run.map(|issue_run| {
+				(run_summary_from_issue_run(project.service_id(), &issue_run), false)
+			}))
 		},
 	}
 }
@@ -949,23 +970,23 @@ where
 	T: IssueTracker + ?Sized,
 {
 	match dispatch_mode {
-		IssueDispatchMode::ReviewRepair => Ok(
-			if issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)? {
+		IssueDispatchMode::ReviewRepair => {
+			Ok(if issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)? {
 				RetryEntryRetentionDecision::Retain
 			} else {
 				RetryEntryRetentionDecision::Drop
-			},
-		),
+			})
+		},
 		IssueDispatchMode::Closeout => Ok(match evaluate_closeout_dispatch_policy_with_inspector(
 			tracker,
-				issue,
-				project,
-				workflow,
-				state_store,
-				&GhPullRequestReviewStateInspector {
-					github_token_env_var: Some(project.github().token_env_var().to_owned()),
-					github_command_path: project.github().command_path().map(Path::to_path_buf),
-				},
+			issue,
+			project,
+			workflow,
+			state_store,
+			&GhPullRequestReviewStateInspector {
+				github_token_env_var: Some(project.github().token_env_var().to_owned()),
+				github_command_path: project.github().command_path().map(Path::to_path_buf),
+			},
 		)? {
 			CloseoutDispatchEligibility::Eligible => RetryEntryRetentionDecision::Retain,
 			CloseoutDispatchEligibility::Ineligible => RetryEntryRetentionDecision::Drop,
@@ -986,10 +1007,12 @@ fn evaluate_retry_entry_retention_policy<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	if matches!(
-		entry.dispatch_mode,
-		IssueDispatchMode::ReviewRepair | IssueDispatchMode::Closeout
-	) {
+	if issue_has_blocking_lane_decision_evidence(project, state_store, &issue.id)? {
+		return Ok(RetryEntryRetentionDecision::Drop);
+	}
+
+	if matches!(entry.dispatch_mode, IssueDispatchMode::ReviewRepair | IssueDispatchMode::Closeout)
+	{
 		if entry.dispatch_mode == IssueDispatchMode::ReviewRepair
 			&& issue_retry_budget_exhausted(workflow, state_store, &issue.id)?
 		{
@@ -999,11 +1022,11 @@ where
 		return evaluate_post_review_retention_policy(
 			tracker,
 			issue,
-				project,
-				workflow,
-				state_store,
-				entry.dispatch_mode,
-			);
+			project,
+			workflow,
+			state_store,
+			entry.dispatch_mode,
+		);
 	}
 
 	let preferred_issue_state = (entry.kind == RetryKind::Continuation)
@@ -1063,8 +1086,7 @@ where
 fn schedule_retry_after_child_exit<T>(
 	mut context: ChildExitRetryContext<'_, T>,
 	child: ChildRunRef<'_>,
-	#[cfg(test)]
-	_retry_project_slug: &str,
+	#[cfg(test)] _retry_project_slug: &str,
 	initial_issue_state: &str,
 	dispatch_mode: IssueDispatchMode,
 	exit_status: ExitStatus,
@@ -1103,7 +1125,8 @@ where
 
 		return Ok(());
 	};
-	let continuation_pending = exit_status.success() && run_attempt.status() == CONTINUATION_PENDING_RUN_STATUS;
+	let continuation_pending =
+		exit_status.success() && run_attempt.status() == CONTINUATION_PENDING_RUN_STATUS;
 
 	if !exit_status.success() && run_attempt.status() != "failed" {
 		clear_retry_schedule_and_release(context.retry_queue, context.state_store, issue_id)?;
@@ -1175,12 +1198,40 @@ where
 
 		(RetryKind::Failure, retry_budget_attempts, None)
 	};
+	let lane_snapshot = LaneDecisionSnapshot::child_exit_retry(
+		issue.identifier.clone(),
+		run_attempt.run_id().to_owned(),
+		run_attempt.attempt_number(),
+		dispatch_mode,
+		kind == RetryKind::Continuation,
+		Some(kind),
+		0,
+		false,
+		false,
+	);
+	let lane_decision = decide_lane_next_action(&lane_snapshot);
+
+	context.state_store.append_private_execution_event(
+		context.project.service_id(),
+		issue_id,
+		run_attempt.run_id(),
+		run_attempt.attempt_number(),
+		"lane_decision",
+		lane_snapshot.to_json(lane_decision.next_action, lane_decision.reason),
+	)?;
+
+	if lane_decision_blocks_automatic_execution(lane_decision.next_action) {
+		clear_retry_schedule_and_release(context.retry_queue, context.state_store, issue_id)?;
+
+		return Ok(());
+	}
 
 	queue_child_exit_retry(
 		context.retry_queue,
 		context.state_store,
 		context.workflow,
 		ChildExitRetrySchedule {
+			project_id: context.project.service_id(),
 			issue_id,
 			run_id: run_attempt.run_id(),
 			attempt_number: run_attempt.attempt_number(),
@@ -1221,6 +1272,27 @@ fn queue_child_exit_retry(
 		schedule.kind,
 		retry_ready_at_unix_epoch,
 	)?;
+
+	if schedule.kind == RetryKind::Continuation {
+		state_store.append_private_execution_event(
+			schedule.project_id,
+			schedule.issue_id,
+			schedule.run_id,
+			schedule.attempt_number,
+			"continuation_lineage",
+			json!({
+				"schema": "decodex.continuation_lineage/1",
+				"continuation_of_run_id": schedule.run_id,
+				"source_attempt_number": schedule.attempt_number,
+				"phase_cursor": "issue_private_evidence",
+				"retry_budget_consumed": false,
+				"retry_schedule_attempt": attempt,
+				"continuation_initial_issue_state": schedule.continuation_initial_issue_state.as_deref(),
+				"dispatch_mode": schedule.dispatch_mode.as_str(),
+				"next_retry_kind": schedule.kind.as_str(),
+			}),
+		)?;
+	}
 
 	retry_queue.upsert(RetryEntry {
 		issue_id: schedule.issue_id.to_owned(),
@@ -1342,18 +1414,19 @@ fn child_exit_retry_retention_decision<T>(
 where
 	T: IssueTracker,
 {
-	if matches!(
-		dispatch_mode,
-		IssueDispatchMode::ReviewRepair | IssueDispatchMode::Closeout
-	) {
+	if issue_has_blocking_lane_decision_evidence(context.project, context.state_store, &issue.id)? {
+		return Ok(RetryEntryRetentionDecision::Drop);
+	}
+
+	if matches!(dispatch_mode, IssueDispatchMode::ReviewRepair | IssueDispatchMode::Closeout) {
 		return evaluate_post_review_retention_policy(
 			context.tracker,
 			issue,
-				context.project,
-				context.workflow,
-				context.state_store,
-				dispatch_mode,
-			);
+			context.project,
+			context.workflow,
+			context.state_store,
+			dispatch_mode,
+		);
 	}
 
 	let preferred_issue_state = continuation_pending
@@ -1393,14 +1466,12 @@ where
 	let marker_is_current_child =
 		marker.run_id() == child.run_id && marker.attempt_number() == child.attempt_number;
 	let marker_attempt_is_local = context.state_store.run_attempt(marker.run_id())?.is_some();
-	let retry_budget_attempts = if marker_attempts > 0
-		&& !marker_is_current_child
-		&& !marker_attempt_is_local
-	{
-		marker_attempts.saturating_add(state_attempts)
-	} else {
-		marker_attempts.max(state_attempts)
-	};
+	let retry_budget_attempts =
+		if marker_attempts > 0 && !marker_is_current_child && !marker_attempt_is_local {
+			marker_attempts.saturating_add(state_attempts)
+		} else {
+			marker_attempts.max(state_attempts)
+		};
 
 	Ok(u32::try_from(retry_budget_attempts).unwrap_or(u32::MAX).max(1))
 }
@@ -1423,8 +1494,9 @@ where
 		&& marker.attempt_number() == child.attempt_number
 		&& marker.retry_kind() == Some(ARCHITECTURE_RECOVERY_RETRY_KIND)
 	{
-		return Ok(max_attempts
-			.saturating_add(u32::try_from(ARCHITECTURE_RECOVERY_BUDGET).unwrap_or(0)));
+		return Ok(
+			max_attempts.saturating_add(u32::try_from(ARCHITECTURE_RECOVERY_BUDGET).unwrap_or(0))
+		);
 	}
 
 	Ok(max_attempts)
@@ -1449,11 +1521,7 @@ where
 		dispatch_mode,
 		i64::from(retry_budget_attempts),
 	)?;
-	clear_retry_schedule_and_release(
-		context.retry_queue,
-		context.state_store,
-		child.issue_id,
-	)?;
+	clear_retry_schedule_and_release(context.retry_queue, context.state_store, child.issue_id)?;
 
 	Ok(())
 }
@@ -1492,8 +1560,8 @@ where
 		})
 	} else {
 		Report::msg(format!(
-		"Daemon child `{}` for issue `{}` exited unsuccessfully after exhausting retry budget.",
-		child.run_id, issue.identifier
+			"Daemon child `{}` for issue `{}` exited unsuccessfully after exhausting retry budget.",
+			child.run_id, issue.identifier
 		))
 	};
 	let privacy_classifier = configured_public_projection_privacy_classifier(context.project)?;
@@ -1518,9 +1586,7 @@ where
 			issue_run.attempt_number,
 		)?;
 
-		context
-			.state_store
-			.update_run_status(&issue_run.run_id, TERMINAL_GUARDED_RUN_STATUS)?;
+		context.state_store.update_run_status(&issue_run.run_id, TERMINAL_GUARDED_RUN_STATUS)?;
 	}
 
 	write_retry_budget_marker(
@@ -1583,13 +1649,8 @@ fn write_retry_schedule_for_run(
 		RetryKind::Continuation => "continuation",
 		RetryKind::Failure => "failure",
 	};
-	let retry_kind_label = preserved_retry_schedule_kind(
-		state_store,
-		issue_id,
-		run_id,
-		attempt_number,
-		default_kind,
-	)?;
+	let retry_kind_label =
+		preserved_retry_schedule_kind(state_store, issue_id, run_id, attempt_number, default_kind)?;
 
 	if let Some(worktree) = state_store.worktree_for_issue(issue_id)? {
 		state::write_run_retry_schedule(

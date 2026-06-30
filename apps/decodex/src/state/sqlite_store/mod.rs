@@ -32,7 +32,7 @@ use super::{
 		autonomy_signal_record_from_row_parts, autonomy_signal_runtime_row_parts,
 		connector_backoff_from_row, decision_contract_record_from_row_parts,
 		decision_contract_runtime_row_parts, execution_program_record_from_row_parts,
-		execution_program_runtime_row_parts, migrate_legacy_decision_contract_payload,
+		execution_program_runtime_row_parts, migrate_removed_decision_contract_fields,
 		program_intake_plan_row, program_issue_mapping_row, protocol_event_record_from_row,
 		run_activity_summary_record_from_row, run_attempt_record_from_row, sqlite_bool_value,
 		timestamp_parts, worktree_mapping_record_from_row,

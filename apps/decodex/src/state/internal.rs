@@ -1,4 +1,5 @@
-#[cfg(unix)] use std::os::{fd::AsRawFd, unix::ffi::OsStrExt};
+#[cfg(unix)]
+use std::os::{fd::AsRawFd, unix::ffi::OsStrExt};
 use std::{
 	cmp,
 	collections::HashMap,

@@ -23,9 +23,9 @@ code_refs:
   - apps/decodex/src/config.rs
   - apps/decodex/src/mcp.rs
   - apps/decodex/src/program_intake.rs
-  - apps/decodex/src/orchestrator/status.rs
-  - apps/decodex/src/orchestrator/types.rs
-  - apps/decodex/src/orchestrator/operator_dashboard.html
+  - apps/decodex/src/orchestrator/status/mod.rs
+  - apps/decodex/src/orchestrator/types/mod.rs
+  - apps/decodex/src/orchestrator/operator_dashboard/body.html
   - apps/decodex/src/state/store.rs
   - apps/decodex/src/state/internal.rs
 related:

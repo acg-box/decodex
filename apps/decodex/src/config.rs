@@ -1,6 +1,7 @@
 //! Service configuration for Decodex.
 
-#[cfg(unix)] use std::os::unix::ffi::OsStringExt as _;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt as _;
 use std::{
 	env,
 	ffi::OsString,
@@ -1030,22 +1031,24 @@ fn resolve_secret_env_var(field_name: &str, env_var: &str) -> Result<String> {
 
 	let value = match env::var(env_var) {
 		Ok(value) if !value.trim().is_empty() => value,
-		Ok(_) =>
+		Ok(_) => {
 			if let Some(value) = resolve_secret_launchd_env_var(env_var) {
 				value
 			} else {
 				eyre::bail!(
 					"Environment variable `{env_var}` referenced by `{field_name}` must not be blank."
 				);
-			},
-		Err(error) =>
+			}
+		},
+		Err(error) => {
 			if let Some(value) = resolve_secret_launchd_env_var(env_var) {
 				value
 			} else {
 				return Err(eyre::eyre!(
 					"Failed to read environment variable `{env_var}` referenced by `{field_name}`: {error}"
 				));
-			},
+			}
+		},
 	};
 
 	if value.trim().is_empty() {
@@ -1089,6 +1092,7 @@ mod tests {
 
 	use crate::{
 		config::{self, ReviewLevel, ServiceConfig},
+		test_support::hermetic_git_command,
 		worktree::WorktreeManager,
 	};
 
@@ -1897,7 +1901,7 @@ mod tests {
 		fs::create_dir_all(&worktree_root).expect("worktree root should exist");
 
 		assert!(
-			std::process::Command::new("git")
+			hermetic_git_command()
 				.args(["init", "-b", "main"])
 				.current_dir(temp_dir.path())
 				.arg(&repo_root)
@@ -1906,7 +1910,7 @@ mod tests {
 				.success()
 		);
 		assert!(
-			std::process::Command::new("git")
+			hermetic_git_command()
 				.args(["config", "user.name", "Decodex Tests"])
 				.current_dir(&repo_root)
 				.status()
@@ -1914,7 +1918,7 @@ mod tests {
 				.success()
 		);
 		assert!(
-			std::process::Command::new("git")
+			hermetic_git_command()
 				.args(["config", "user.email", "decodex-tests@example.com"])
 				.current_dir(&repo_root)
 				.status()
@@ -1922,7 +1926,7 @@ mod tests {
 				.success()
 		);
 		assert!(
-			std::process::Command::new("git")
+			hermetic_git_command()
 				.args(["config", "commit.gpgsign", "false"])
 				.current_dir(&repo_root)
 				.status()
@@ -1933,7 +1937,7 @@ mod tests {
 		fs::write(repo_root.join("README.md"), "bootstrap\n").expect("readme should write");
 
 		assert!(
-			std::process::Command::new("git")
+			hermetic_git_command()
 				.args(["add", "README.md"])
 				.current_dir(&repo_root)
 				.status()
@@ -1941,7 +1945,7 @@ mod tests {
 				.success()
 		);
 		assert!(
-			std::process::Command::new("git")
+			hermetic_git_command()
 				.args(["commit", "-m", "seed repo"])
 				.current_dir(&repo_root)
 				.status()

@@ -2,17 +2,19 @@
 
 use super::{
 	AUTHORITY_DECISION_REQUEST_EVENT_TYPE, BTreeSet, Display, Error, Formatter, IssueDispatchMode,
-	IssueRunPlan, LoopGuardrailRecoveryDecision, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
+	IssueRunPlan, LaneDecisionSnapshot, LaneNextAction, LoopGuardrailRecoveryDecision,
+	ManualAttentionRequested, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
 	PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE,
 	PHASE_GOAL_RECOVERY_EVENT_TYPE, Path, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec,
 	PhaseGoalTransition, RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE, RUN_OPERATION_REPO_GATE,
 	RepoGateCommandOutcome, RepoGateFailure, RepoGateFailureDisposition,
 	RepoGateTrackedRewriteDecision, Report, ResolvedRepoGate, Result, RunSummary, ServiceConfig,
-	StateStore, Value, WorkflowDocument, git_guardrail_output, json,
-	loop_guardrail_architecture_recovery_decision, loop_guardrail_worktree_fingerprint,
-	repo_gate_changed_tracked_files, retained_progress_source_error_class,
-	retryable_failure_loop_guardrail_stop, run_repo_gate_commands_allow_owned_tracked_rewrites,
-	run_summary_from_issue_run, select_repo_gate_for_worktree, state, worktree_has_tracked_changes,
+	StateStore, Value, WorkflowDocument, decide_lane_next_action, git_guardrail_output, json,
+	lane_decision_blocks_automatic_execution, loop_guardrail_architecture_recovery_decision,
+	loop_guardrail_worktree_fingerprint, repo_gate_changed_tracked_files,
+	retained_progress_source_error_class, retryable_failure_loop_guardrail_stop,
+	run_repo_gate_commands_allow_owned_tracked_rewrites, run_summary_from_issue_run,
+	select_repo_gate_for_worktree, state, worktree_has_tracked_changes,
 	write_run_operation_marker_best_effort,
 };
 
@@ -30,8 +32,9 @@ pub(super) struct RepoGatePhaseGoalController<'a> {
 impl RepoGatePhaseGoalController<'_> {
 	fn initial_phase_goal_kind(&self) -> PhaseGoalKind {
 		match self.issue_run.dispatch_mode {
-			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry =>
-				PhaseGoalKind::ImplementToValidationReady,
+			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry => {
+				PhaseGoalKind::ImplementToValidationReady
+			},
 			IssueDispatchMode::ReviewRepair => PhaseGoalKind::RepairAcceptedReviewFindings,
 			IssueDispatchMode::Closeout => PhaseGoalKind::HandoffEvidence,
 		}
@@ -123,9 +126,23 @@ impl RepoGatePhaseGoalController<'_> {
 			},
 			Err(error) => {
 				if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
+					let scope_envelope_violation = repo_gate_failure
+						.tracked_rewrite_decision()
+						.is_some_and(RepoGateTrackedRewriteDecision::is_scope_envelope_violation);
+					let lane_snapshot = LaneDecisionSnapshot::repo_gate_failure(
+						self.issue_run.issue.identifier.clone(),
+						self.issue_run.run_id.clone(),
+						self.issue_run.attempt_number,
+						self.issue_run.dispatch_mode,
+						phase,
+						repo_gate_failure.disposition(),
+						scope_envelope_violation,
+					);
+					let lane_decision = decide_lane_next_action(&lane_snapshot);
 					let mut transition_payload = json!({
 						"errorClass": repo_gate_failure.error_class(),
 						"disposition": repo_gate_failure.disposition().as_str(),
+						"laneDecision": lane_decision.next_action.as_str(),
 					});
 
 					if let Some(diagnostic) = repo_gate_failure.diagnostic() {
@@ -140,6 +157,15 @@ impl RepoGatePhaseGoalController<'_> {
 						"validation_fail",
 						transition_payload,
 					)?;
+					self.record_lane_decision_snapshot(
+						&lane_snapshot,
+						lane_decision.next_action,
+						lane_decision.reason,
+					)?;
+
+					if lane_decision_blocks_automatic_execution(lane_decision.next_action) {
+						return Err(error);
+					}
 
 					if repo_gate_failure.disposition() == RepoGateFailureDisposition::ContinueRepair
 					{
@@ -363,6 +389,17 @@ impl RepoGatePhaseGoalController<'_> {
 		let failure = PhaseAcceptanceCheckFailure::new(acceptance_check.reason_code);
 		let error_class = failure.error_class();
 		let error = Report::new(failure);
+		let lane_snapshot = LaneDecisionSnapshot::phase_acceptance(
+			self.issue_run.issue.identifier.clone(),
+			self.issue_run.run_id.clone(),
+			self.issue_run.attempt_number,
+			self.issue_run.dispatch_mode,
+			phase,
+			acceptance_check.blocker_count,
+			!acceptance_check.non_goal_passed,
+			false,
+		);
+		let lane_decision = decide_lane_next_action(&lane_snapshot);
 
 		self.record_phase_goal_transition(
 			phase,
@@ -372,8 +409,24 @@ impl RepoGatePhaseGoalController<'_> {
 				"disposition": RepoGateFailureDisposition::ContinueRepair.as_str(),
 				"acceptanceDecision": acceptance_check.decision.as_str(),
 				"acceptanceReason": acceptance_check.reason_code,
+				"laneDecision": lane_decision.next_action.as_str(),
 			}),
 		)?;
+		self.record_lane_decision_snapshot(
+			&lane_snapshot,
+			lane_decision.next_action,
+			lane_decision.reason,
+		)?;
+
+		if lane_decision_blocks_automatic_execution(lane_decision.next_action) {
+			return Err(Report::new(ManualAttentionRequested {
+				issue_identifier: self.issue_run.issue.identifier.clone(),
+				label: self.workflow.frontmatter().tracker().needs_attention_label().to_owned(),
+				run_id: self.issue_run.run_id.clone(),
+				error_class: Some(error_class.to_owned()),
+			})
+			.wrap_err(error));
+		}
 
 		if let Some(loop_guardrail_stop) = retryable_failure_loop_guardrail_stop(
 			self.project,
@@ -404,6 +457,27 @@ impl RepoGatePhaseGoalController<'_> {
 			}
 		}
 
+		match lane_decision.next_action {
+			LaneNextAction::RetryFailure => {},
+			LaneNextAction::ContinueCurrentPhase
+			| LaneNextAction::ResumeContinuation
+			| LaneNextAction::RunRepoGate
+			| LaneNextAction::EnterReviewHandoff
+			| LaneNextAction::WaitExternal
+			| LaneNextAction::NeedsAttention
+			| LaneNextAction::StopBlocked
+			| LaneNextAction::CleanupTerminal
+			| LaneNextAction::ForbiddenStaleOrAmbiguous => {
+				return Err(Report::new(ManualAttentionRequested {
+					issue_identifier: self.issue_run.issue.identifier.clone(),
+					label: self.workflow.frontmatter().tracker().needs_attention_label().to_owned(),
+					run_id: self.issue_run.run_id.clone(),
+					error_class: Some(error_class.to_owned()),
+				})
+				.wrap_err(error));
+			},
+		}
+
 		let next_phase = phase_acceptance_repair_phase(phase);
 		let detail = format!(
 			"Phase acceptance check failed after repo gate pass with `{}`. {}",
@@ -415,6 +489,24 @@ impl RepoGatePhaseGoalController<'_> {
 		self.persist_next_phase_goal(&next_goal, "phase_acceptance_fail")?;
 
 		Ok(PhaseGoalTransition::Continue(next_goal))
+	}
+
+	fn record_lane_decision_snapshot(
+		&self,
+		snapshot: &LaneDecisionSnapshot,
+		action: LaneNextAction,
+		reason: &str,
+	) -> Result<()> {
+		self.state_store.append_private_execution_event(
+			self.project.service_id(),
+			&self.issue_run.issue.id,
+			&self.issue_run.run_id,
+			self.issue_run.attempt_number,
+			"lane_decision",
+			snapshot.to_json(action, reason),
+		)?;
+
+		Ok(())
 	}
 
 	fn record_phase_acceptance_check(&self, check: &PhaseAcceptanceCheck) -> Result<()> {
@@ -535,18 +627,24 @@ impl PhaseAcceptanceCheck {
 	fn next_action(&self) -> &'static str {
 		match self.reason_code {
 			"accepted" => "continue to handoff evidence",
-			"missing_progress_checkpoint" =>
-				"record a current-HEAD issue_progress_checkpoint with docs_impact before completing the phase goal again",
-			"stale_progress_checkpoint" =>
-				"record a fresh issue_progress_checkpoint for the current worktree HEAD before completing the phase goal again",
-			"docs_impact_missing" =>
-				"record parseable docs_impact in the current-HEAD issue_progress_checkpoint",
-			"no_effective_delta" =>
-				"produce an issue-scoped effective delta before completing the phase goal again",
-			"non_goal_violation" =>
-				"remove or explicitly resolve the non-goal or scope violation before handoff",
-			"progress_blockers_present" =>
-				"clear recorded progress blockers or route to manual attention before handoff",
+			"missing_progress_checkpoint" => {
+				"record a current-HEAD issue_progress_checkpoint with docs_impact before completing the phase goal again"
+			},
+			"stale_progress_checkpoint" => {
+				"record a fresh issue_progress_checkpoint for the current worktree HEAD before completing the phase goal again"
+			},
+			"docs_impact_missing" => {
+				"record parseable docs_impact in the current-HEAD issue_progress_checkpoint"
+			},
+			"no_effective_delta" => {
+				"produce an issue-scoped effective delta before completing the phase goal again"
+			},
+			"non_goal_violation" => {
+				"remove or explicitly resolve the non-goal or scope violation before handoff"
+			},
+			"progress_blockers_present" => {
+				"clear recorded progress blockers or route to manual attention before handoff"
+			},
 			_ => "inspect phase_acceptance_check evidence before selecting the next phase",
 		}
 	}
@@ -620,8 +718,9 @@ fn phase_acceptance_repair_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
 fn phase_validation_pass_next_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
 	match phase {
 		PhaseGoalKind::RepairAcceptedReviewFindings => PhaseGoalKind::ReviewRepairEvidence,
-		PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures =>
-			PhaseGoalKind::HandoffEvidence,
+		PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures => {
+			PhaseGoalKind::HandoffEvidence
+		},
 		PhaseGoalKind::ReviewRepairEvidence | PhaseGoalKind::HandoffEvidence => phase,
 	}
 }
@@ -829,7 +928,7 @@ fn truncate_phase_goal_recovery_error(value: String, max_chars: usize) -> String
 	truncated
 }
 
-fn latest_phase_goal_recovery_candidate(
+pub(super) fn latest_phase_goal_recovery_candidate(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -840,6 +939,7 @@ fn latest_phase_goal_recovery_candidate(
 		&issue_run.run_id,
 		issue_run.attempt_number,
 	)?;
+	let mut progress_blockers_cleared = false;
 
 	for event in events.iter().rev() {
 		match event.event_type() {
@@ -849,8 +949,14 @@ fn latest_phase_goal_recovery_candidate(
 			| "review_completion_intent"
 			| "terminal_finalize" => return Ok(None),
 			AUTHORITY_DECISION_REQUEST_EVENT_TYPE => return Ok(None),
-			"progress_checkpoint" if progress_checkpoint_has_blockers(event.payload()) => {
+			"progress_checkpoint"
+				if progress_checkpoint_has_blockers(event.payload())
+					&& !progress_blockers_cleared =>
+			{
 				return Ok(None);
+			},
+			"progress_checkpoint" if progress_checkpoint_clears_blockers(event.payload()) => {
+				progress_blockers_cleared = true;
 			},
 			"phase_goal_set" | "phase_goal_status" => {
 				let Some(phase) = phase_goal_event_phase(event.payload()) else {
@@ -882,6 +988,7 @@ pub(super) fn latest_open_issue_phase_goal_before_attempt(
 
 	let events =
 		state_store.list_private_execution_events_for_issue(project.service_id(), issue_id)?;
+	let mut progress_blockers_cleared = false;
 
 	for event in events.iter().rev().filter(|event| {
 		event.attempt_number() < current_attempt_number && event.run_id() != current_run_id
@@ -892,15 +999,22 @@ pub(super) fn latest_open_issue_phase_goal_before_attempt(
 			| AUTHORITY_DECISION_REQUEST_EVENT_TYPE
 			| PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE
 			| RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE => return Ok(None),
-			"progress_checkpoint" if progress_checkpoint_has_blockers(event.payload()) => {
+			"progress_checkpoint"
+				if progress_checkpoint_has_blockers(event.payload())
+					&& !progress_blockers_cleared =>
+			{
 				return Ok(None);
 			},
-			PHASE_GOAL_RECOVERY_EVENT_TYPE | "phase_goal_next" | "phase_goal_transition" =>
+			"progress_checkpoint" if progress_checkpoint_clears_blockers(event.payload()) => {
+				progress_blockers_cleared = true;
+			},
+			PHASE_GOAL_RECOVERY_EVENT_TYPE | "phase_goal_next" | "phase_goal_transition" => {
 				if let Some(phase) =
 					phase_goal_continuation_next_phase(event.event_type(), event.payload())
 				{
 					return Ok(Some(phase));
-				},
+				}
+			},
 			"phase_goal_set" | "phase_goal_status" => {
 				if let Some(phase) = phase_goal_active_phase(event.payload()) {
 					return Ok(Some(phase));
@@ -913,12 +1027,60 @@ pub(super) fn latest_open_issue_phase_goal_before_attempt(
 	Ok(None)
 }
 
+pub(super) fn issue_has_blocking_lane_decision_evidence(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_id: &str,
+) -> Result<bool> {
+	let events =
+		state_store.list_private_execution_events_for_issue(project.service_id(), issue_id)?;
+
+	for event in events.iter().rev() {
+		match event.event_type() {
+			"terminal_finalize" | "review_completion_intent" => return Ok(false),
+			AUTHORITY_DECISION_REQUEST_EVENT_TYPE | PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE => {
+				return Ok(true);
+			},
+			"lane_decision"
+				if event.payload().get("next_action").and_then(Value::as_str).is_some_and(
+					|action| {
+						matches!(
+							action,
+							"needs_attention" | "stop_blocked" | "forbidden_stale_or_ambiguous"
+						)
+					},
+				) =>
+			{
+				return Ok(true);
+			},
+			"progress_checkpoint" if progress_checkpoint_has_blockers(event.payload()) => {
+				return Ok(true);
+			},
+			"progress_checkpoint" if progress_checkpoint_clears_blockers(event.payload()) => {
+				return Ok(false);
+			},
+			"phase_goal_next" | "phase_goal_transition" | "phase_goal_completed" => {
+				return Ok(false);
+			},
+			_ => {},
+		}
+	}
+
+	Ok(false)
+}
+
 fn progress_checkpoint_has_blockers(payload: &Value) -> bool {
 	payload.get("blockers").is_some_and(|blockers| match blockers {
 		Value::Array(items) => !items.is_empty(),
 		Value::Null => false,
 		_ => true,
 	})
+}
+
+fn progress_checkpoint_clears_blockers(payload: &Value) -> bool {
+	payload
+		.get("blockers")
+		.is_some_and(|blockers| matches!(blockers, Value::Array(items) if items.is_empty()))
 }
 
 fn phase_goal_event_phase(payload: &Value) -> Option<PhaseGoalKind> {

@@ -94,10 +94,11 @@ fn spawn_login_pipe_reader(
 		loop {
 			match reader.read(&mut buffer) {
 				Ok(0) => return,
-				Ok(len) =>
+				Ok(len) => {
 					if sender.send(LoginPipeEvent::Chunk(buffer[..len].to_vec())).is_err() {
 						return;
-					},
+					}
+				},
 				Err(error) => {
 					let _ = sender.send(LoginPipeEvent::ReaderFailed(error.to_string()));
 

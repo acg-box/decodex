@@ -1,4 +1,5 @@
-#[cfg(unix)] use std::os::{fd::AsRawFd, unix::process::CommandExt as _};
+#[cfg(unix)]
+use std::os::{fd::AsRawFd, unix::process::CommandExt as _};
 use std::{
 	env,
 	ffi::OsStr,
@@ -20,7 +21,8 @@ use crate::{
 
 mod cleanup;
 
-#[allow(unused_imports)] pub(crate) use cleanup::MergedWorktreeCleanliness;
+#[allow(unused_imports)]
+pub(crate) use cleanup::MergedWorktreeCleanliness;
 pub(crate) use cleanup::{
 	MergedWorktreeCleanupDebt, infer_default_branch_name, merged_worktree_cleanup_debts,
 };
@@ -934,4 +936,5 @@ fn sanitize_branch_component(value: &str) -> String {
 		.to_owned()
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

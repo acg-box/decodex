@@ -1,4 +1,5 @@
-#[cfg(unix)] use std::os::fd::FromRawFd;
+#[cfg(unix)]
+use std::os::fd::FromRawFd;
 use std::{
 	collections::{HashMap, HashSet},
 	fs::{self, File, OpenOptions, TryLockError},
