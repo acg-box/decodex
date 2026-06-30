@@ -234,8 +234,9 @@ Run:
 decodex docs check
 ```
 
-In this repository, `cargo make check` includes the same docs gate. `decodex docs lint`
-remains an alias for compatibility.
+In this repository, `cargo make check` includes the same docs gate. Command aliases
+are not allowed; `decodex docs check` is the only supported docs validation
+subcommand.
 
 The check fails when:
 

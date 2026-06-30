@@ -1,7 +1,7 @@
 ---
 type: Spec
 title: OKF Knowledge Layer
-description: Defines the portable OKF engine, LLM Wiki profile, Decodex docs alias, and profile boundary.
+description: Defines the portable OKF engine, LLM Wiki profile, Decodex docs command surface, and profile boundary.
 status: active
 authority: normative
 owner: docs
@@ -9,7 +9,7 @@ tags: [okf, llm-wiki, docs, repo-memory]
 source_refs: [https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md, https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing, https://developers.openai.com/codex/guides/agents-md, https://code.claude.com/docs/en/memory, https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/docs_okf.rs, plugins/decodex/references/routing.md, plugins/knowledge/references/okf-layer.md, plugins/knowledge/skills/okf/SKILL.md, plugins/knowledge/skills/repo-memory/SKILL.md, plugins/knowledge/skills/docs/SKILL.md]
 related: [../policy.md, ../reference/docs-knowledge-map.md, ../reference/research-concepts.md, ../evidence/decodex-plugin-eval.md]
-drift_watch: [decodex okf, decodex docs, docs check, docs lint, okf profile, docs alias, okf skill]
+drift_watch: [decodex okf, decodex docs, docs check, okf profile, docs command surface, okf skill]
 last_verified: 2026-06-18
 ---
 
@@ -45,8 +45,8 @@ scorers, route benchmarks, and top-N hit rates may consume an OKF/LLM Wiki bundl
 but they are not the OKF format and are not required LLM Wiki behavior.
 
 `docs` is this repository's default OKF bundle location and convenience command
-surface. In this repository, `decodex docs` is an alias for operating on `docs/` with
-the Decodex profile.
+surface. In this repository, `decodex docs` operates on `docs/` with the Decodex
+profile.
 
 `decodex` is the strict profile for this repository. It adds lane taxonomy,
 authority classes, research-promotion rules, drift gates, and docs-impact integration.

@@ -55,7 +55,7 @@ explain why a narrower check is sufficient.
 | Task | Command surface | Owns |
 | --- | --- | --- |
 | `cargo make check` | composite root task | Aggregate build, docs, node, Rust, format, lint, and test validation |
-| `cargo make check-docs` | `decodex docs lint` compatibility alias for `decodex docs check` | Decodex docs OKF/profile validation |
+| `cargo make check-docs` | `decodex docs check` | Decodex docs OKF/profile validation |
 | `cargo make check-rust` | `cargo check --all-features --all-targets --workspace` | Rust workspace type checking |
 | `cargo make check-node` | `npm run check` in `site/` | Astro and TypeScript site checks |
 | `cargo make fmt-check` | Rust nightly fmt plus Taplo check | Rust and TOML formatting |
