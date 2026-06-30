@@ -146,6 +146,59 @@ fn append_dead_orphan_private_telemetry(store: &StateStore, issue_id: &str) {
 	append_dead_orphan_private_telemetry_events(store, issue_id, true);
 }
 
+fn append_dead_process_interrupt_control_telemetry(store: &StateStore, issue_id: &str) {
+	for (event_type, payload) in [
+		(
+			"control_action",
+			serde_json::json!({
+				"action": "interrupt",
+				"context": {
+					"process_alive": false,
+				},
+				"outcome": "accepted",
+				"reason": "run_lease_control_channel_resolved",
+				"schema": "decodex.run_control_action/v1",
+			}),
+		),
+		(
+			"lane_control/interrupt/requested",
+			serde_json::json!({
+				"force": true,
+				"method": "turn/interrupt",
+				"source": "cli",
+			}),
+		),
+		(
+			"control_action",
+			serde_json::json!({
+				"action": "interrupt",
+				"context": {
+					"process_alive": false,
+				},
+				"outcome": "timed_out",
+				"reason": "soft_interrupt_response_pending",
+				"schema": "decodex.run_control_action/v1",
+			}),
+		),
+		(
+			"control_action",
+			serde_json::json!({
+				"action": "interrupt",
+				"context": {
+					"process_alive": false,
+				},
+				"outcome": "fallback",
+				"reason": "hard_interrupt_fallback",
+				"schema": "decodex.run_control_action/v1",
+			}),
+		),
+	] {
+		store
+			.append_private_execution_event("pubfi", issue_id, "run-1626", 1, event_type, payload)
+			.expect("private dead-process control telemetry should record");
+	}
+}
+
 fn append_dead_orphan_private_telemetry_without_control_channel_marker(
 	store: &StateStore,
 	issue_id: &str,
