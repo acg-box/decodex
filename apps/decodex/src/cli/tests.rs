@@ -1,6 +1,6 @@
 use std::{ffi::OsString, path::Path};
 
-use clap::Parser;
+use clap::{Parser, error::ErrorKind};
 
 use super::{
 	AppCommand, AttemptCommand, Cli, Command, ProbeCommand, ProjectConfigArgs,
@@ -36,6 +36,13 @@ fn parses_app_command() {
 	let cli = Cli::parse_from(["decodex", "app"]);
 
 	assert!(matches!(cli.command, Command::App(AppCommand { bundle: None, new: false })));
+}
+
+#[test]
+fn rejects_radar_as_runtime_subcommand() {
+	let error = Cli::try_parse_from(["decodex", "radar"]).expect_err("radar is a standalone tool");
+
+	assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
 }
 
 #[test]

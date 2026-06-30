@@ -14,7 +14,7 @@ Goal: Move old raw Radar artifacts out of hot cache after the 21-day hot window 
 keeping public signals and archive recovery evidence available.
 
 Read this when:
-- You are pruning `.agent/automations/decodex/cache/github/bundles/` or `.agent/automations/decodex/cache/generated/analysis/`.
+- You are pruning `.agent/automations/radar/cache/github/bundles/` or `.agent/automations/radar/cache/generated/analysis/`.
 - You need to package cold Radar artifacts for an explicit external-archive handoff.
 - You are reviewing whether a public signal can remain after its raw bundle leaves hot
   cache.
@@ -26,21 +26,20 @@ Governing spec:
 
 Archive these after the 21-day hot window:
 
-- `.agent/automations/decodex/cache/github/bundles/*.json`
-- `.agent/automations/decodex/cache/github/reviews/*.review.json`
-- `.agent/automations/decodex/cache/generated/analysis/*.analysis.json`
+- `.agent/automations/radar/cache/github/bundles/*.json`
+- `.agent/automations/radar/cache/github/reviews/*.review.json`
+- `.agent/automations/radar/cache/generated/analysis/*.analysis.json`
 - optional raw source snapshots if a future cache directory is added
 - optional ledger exports if they are generated for a closed archive batch
 
 Do not archive these as part of raw cleanup:
 
-- `.agent/automations/decodex/cache/site-content/signals/*.json`
-- the current `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json`
-- `.agent/automations/decodex/cache/github/impact/*.json` with active Control Plane or Publisher relevance
-- `.agent/automations/decodex/cache/github/control-plane-upgrades/*.json` with active
+- `.agent/automations/radar/cache/site-content/signals/*.json`
+- the current `.agent/automations/radar/cache/site-content/release-deltas/openai-codex-latest.json`
+- `.agent/automations/radar/cache/github/impact/*.json` with active Control Plane or Publisher relevance
+- `.agent/automations/radar/cache/github/control-plane-upgrades/*.json` with active
   Control Plane review relevance
-- `.agent/automations/decodex/cache/social/x/posts/*.json`
-- `.agent/automations/decodex/cache/archive/index/*.json`
+- `.agent/automations/radar/cache/archive/index/*.json`
 
 ## Procedure
 
@@ -67,10 +66,10 @@ Do not archive these as part of raw cleanup:
    - Do not create GitHub Actions or write archive assets into the main Decodex repo.
 
 5. Persist the local cleanup.
-   - Add `.agent/automations/decodex/cache/archive/index/<archive-id>.json`.
-   - Remove the archived raw files from `.agent/automations/decodex/cache/github/bundles/`,
-     `.agent/automations/decodex/cache/github/reviews/`, and
-     `.agent/automations/decodex/cache/generated/analysis/`.
+   - Add `.agent/automations/radar/cache/archive/index/<archive-id>.json`.
+   - Remove the archived raw files from `.agent/automations/radar/cache/github/bundles/`,
+     `.agent/automations/radar/cache/github/reviews/`, and
+     `.agent/automations/radar/cache/generated/analysis/`.
    - Keep public signals and curated impact/social artifacts in place.
 
 6. Verify recovery metadata.

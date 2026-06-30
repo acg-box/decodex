@@ -1,41 +1,21 @@
-# Decodex Automation Operations
+# Decodex Publisher Automation Operations
 
-This directory owns Decodex upstream-monitoring and public-publishing automation that
-previously lived in the local Documents automation folder.
+This directory owns repo-local source for Decodex Publisher automation.
 
-It is intentionally operations-shaped and repo-local:
-
-- `skills/`: Codex-facing automation skills for upstream triage, analysis,
-  signal drafting, and X post quality/publishing.
-- `scripts/`: automation scripts and schemas.
-- There is no GitHub Actions-owned workflow lane here; recurring work is owned by
-  Codex app automation and local scripts.
-- `rust/`: Rust automation implementation extracted from the Decodex runtime tree.
-- Repository `docs/`: automation-specific runbooks, specs, and decisions.
+- `automations.toml`: checked-in recurring automation source for public-publishing and
+  automation health audit jobs.
+- `prompts/`: Codex app automation prompts for Publisher-owned jobs.
+- `scripts/social/`: social candidate, reservation, and post schemas.
+- `skills/`: Publisher skills and shared publishing gates.
+- `scripts/config/`: shared automation config evaluation utilities.
 - `research/`: retained automation research data that is not part of the Markdown docs
   bundle.
-- `.agent/automations/decodex/cache/github/`: upstream GitHub bundles, reviews, impact classifications, queues, and
-  publication candidates.
-- `.agent/automations/decodex/cache/social/`: external publication records, reservations, and generated media
-  evidence.
-- `.agent/automations/decodex/cache/archive/`: archived automation batch manifests.
-- `.agent/automations/decodex/cache/site-content/`: generated static-site content snapshots that automation may
-  reuse.
-- `.agent/automations/decodex/cache/generated/`: generated JSON side data used by automation.
 
-Product/runtime/app code remains under `apps/`, `site/`, and `plugins/`. This directory
-is for automation source. Generated state belongs under `.agent/automations/decodex/`.
+Generated Publisher state belongs under `.agent/automations/decodex/cache/social`.
 
-## Pipeline Boundary
+Publisher owns `social_candidate/v1`, `social_publish_reservation/v1`, and
+`social_post/v1`. It consumes Radar handoff evidence from
+`.agent/automations/radar/cache`, but it must not refresh upstream state or perform
+fresh upstream source analysis.
 
-`codex-upstream-radar-review` is the shared upstream evidence producer. It refreshes
-the upstream review queue, creates source-backed review artifacts, and promotes shared
-`upstream_impact/v1` handoff artifacts before downstream Control Plane upgrade
-candidates or public social candidates consume the same upstream scan.
-
-`codex-release-checkpoint-publisher` and `decodex-x-publisher` are downstream
-consumers. They should read existing `upstream_impact/v1`, `release_delta/v1`,
-`upstream_review/v1`, `signal_entry/v1`, and `social_candidate/v1` artifacts instead of
-repeating upstream source analysis. Release Curator may refresh only the lightweight
-release-delta checkpoint when that artifact is missing or stale. X Publisher may only
-publish from a validated candidate or explicit operator handoff.
+Radar automation source lives under `automations/radar/`.
