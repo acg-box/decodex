@@ -18,7 +18,6 @@ use std::{
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest as _, Sha256};
 use time::OffsetDateTime;
 
 use crate::{
@@ -42,6 +41,9 @@ use crate::{
 };
 
 mod project_run_recovery;
+mod protocol_events;
+mod review_records;
+mod run_attempts;
 mod runtime_records;
 mod runtime_row_parsers;
 mod store_run_control;
@@ -64,9 +66,9 @@ use runtime_row_parsers::{
 	autonomy_objective_record_from_row_parts, autonomy_objective_runtime_row_parts,
 	autonomy_proposal_record_from_row_parts, autonomy_proposal_runtime_row_parts,
 	autonomy_signal_record_from_row_parts, autonomy_signal_runtime_row_parts,
-	compare_attempt_records, compare_autonomy_proposal_runtime_records,
-	compare_autonomy_signal_runtime_records, compare_decision_contract_runtime_records,
-	compare_execution_program_runtime_records, compare_linear_execution_event_runtime_records,
+	compare_autonomy_proposal_runtime_records, compare_autonomy_signal_runtime_records,
+	compare_decision_contract_runtime_records, compare_execution_program_runtime_records,
+	compare_linear_execution_event_runtime_records,
 	compare_private_execution_event_runtime_records, compare_program_intake_plan_records,
 	compare_program_issue_mapping_records, compare_recent_autonomy_proposal_runtime_records,
 	compare_recent_autonomy_signal_runtime_records, connector_backoff_from_row,
