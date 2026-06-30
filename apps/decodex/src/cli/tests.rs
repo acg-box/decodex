@@ -14,6 +14,7 @@ use super::{
 		DocsCommand, DocsGraphCommand, DocsSubcommand, OkfCommand, OkfFindCommand, OkfFindFilters,
 		OkfInitCommand, OkfInitProfileArg, OkfSubcommand,
 	},
+	git_hook_commands::{GitHookCommand, GitHookSubcommand},
 	manual_commands::{CommitCommand, LandCommand},
 	recovery_commands::{
 		GhostLaneCleanupCommand, GhostLaneDiagnoseCommand, GhostLaneRecoveryCommand,
@@ -90,6 +91,28 @@ fn parses_commit_with_authority_related_and_breaking() {
 			..
 		})
 	));
+}
+
+#[test]
+fn parses_git_hook_commands() {
+	for (args, expected) in [
+		(&["decodex", "git-hook", "commit-msg", ".git/COMMIT_EDITMSG"][..], "commit-msg"),
+		(
+			&["decodex", "git-hook", "pre-push", "origin", "git@github.com-y:hack-ink/repo.git"][..],
+			"pre-push",
+		),
+	] {
+		let cli = Cli::parse_from(args.iter().copied());
+		let Command::GitHook(GitHookCommand { command }) = cli.command else {
+			panic!("expected git-hook command");
+		};
+
+		match (expected, command) {
+			("commit-msg", GitHookSubcommand::CommitMsg(_)) => {},
+			("pre-push", GitHookSubcommand::PrePush(_)) => {},
+			_ => panic!("unexpected parsed git-hook command for `{expected}`"),
+		}
+	}
 }
 
 #[test]
