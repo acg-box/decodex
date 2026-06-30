@@ -1,6 +1,36 @@
-use std::env;
+#[cfg(unix)] use std::os::{fd::AsRawFd, unix::ffi::OsStrExt};
+use std::{
+	cmp,
+	collections::HashMap,
+	env, fs,
+	fs::{File, OpenOptions, TryLockError},
+	io::{ErrorKind, Read, Seek, SeekFrom, Write},
+	path::{Path, PathBuf},
+};
 
 use libc::{F_GETFD, F_SETFD, FD_CLOEXEC};
+
+use crate::prelude::{Result, eyre};
+
+use super::{
+	ChildAgentActivitySummary, CodexAccountActivitySummary, ConnectorBackoff,
+	DISPATCH_SLOT_LOCK_FILE_PREFIX, ISSUE_CLAIM_LOCK_FILE_PREFIX, IssueLease,
+	ProgramIntakePlanRecord, ProgramIssueMappingRecord, ProjectRegistration, ProjectRunStatus,
+	ProtocolActivitySummary, protocol_event_summary_from_events,
+	runtime_records::{
+		AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord, AutonomyProposalKey,
+		AutonomyProposalRuntimeRecord, AutonomySignalKey, AutonomySignalRuntimeRecord,
+		DecisionContractKey, DecisionContractRuntimeRecord, EvidenceArtifactKey,
+		EvidenceArtifactRuntimeRecord, ExecutionProgramKey, ExecutionProgramRuntimeRecord,
+		GuardRetention, LinearExecutionEventRuntimeRecord, LoopGuardrailKey,
+		LoopGuardrailRuntimeRecord, PrivateExecutionEventRuntimeRecord, ProgramIntakePlanKey,
+		ProgramIssueMappingKey, ProtocolEventRecord, ProtocolEventSummaryRecord,
+		ReviewLifecycleKey, ReviewLifecycleRuntimeRecord, ReviewPolicyKey,
+		ReviewPolicyRuntimeRecord, RunActivitySummaryRecord, RunAttemptRecord,
+		RunControlChannelRecord, WorktreeMappingRecord,
+	},
+};
+
 pub(crate) struct EffectiveRuntimeMarker<'a> {
 	pub(crate) thread_id: Option<&'a str>,
 	pub(crate) turn_id: Option<&'a str>,
@@ -31,21 +61,21 @@ pub(crate) struct CodexAccountMarker<'a> {
 }
 
 #[derive(Clone)]
-struct DispatchSlotConfig {
-	root: PathBuf,
+pub(super) struct DispatchSlotConfig {
+	pub(super) root: PathBuf,
 }
 
-struct IssueClaimGuard {
-	lock_path: PathBuf,
-	lock_file: File,
-	retention: GuardRetention,
+pub(super) struct IssueClaimGuard {
+	pub(super) lock_path: PathBuf,
+	pub(super) lock_file: File,
+	pub(super) retention: GuardRetention,
 }
 impl IssueClaimGuard {
-	fn lock_root(&self) -> Result<&Path> {
+	pub(super) fn lock_root(&self) -> Result<&Path> {
 		lock_root_from_lock_path(&self.lock_path)
 	}
 
-	fn unlock(self) -> Result<()> {
+	pub(super) fn unlock(self) -> Result<()> {
 		let Self { lock_path, lock_file, retention: _ } = self;
 
 		lock_file.unlock()?;
@@ -56,7 +86,7 @@ impl IssueClaimGuard {
 		Ok(())
 	}
 
-	fn release_for_clear(self) -> Result<()> {
+	pub(super) fn release_for_clear(self) -> Result<()> {
 		match self.retention {
 			GuardRetention::ParentAfterHandoff => Ok(()),
 			GuardRetention::Local | GuardRetention::AdoptingChild => self.unlock(),
@@ -64,19 +94,19 @@ impl IssueClaimGuard {
 	}
 }
 
-struct DispatchSlotGuard {
-	project_id: String,
-	slot_index: usize,
-	lock_path: PathBuf,
-	lock_file: File,
-	retention: GuardRetention,
+pub(super) struct DispatchSlotGuard {
+	pub(super) project_id: String,
+	pub(super) slot_index: usize,
+	pub(super) lock_path: PathBuf,
+	pub(super) lock_file: File,
+	pub(super) retention: GuardRetention,
 }
 impl DispatchSlotGuard {
-	fn lock_root(&self) -> Result<&Path> {
+	pub(super) fn lock_root(&self) -> Result<&Path> {
 		lock_root_from_lock_path(&self.lock_path)
 	}
 
-	fn release_for_clear(self) -> Result<()> {
+	pub(super) fn release_for_clear(self) -> Result<()> {
 		match self.retention {
 			GuardRetention::ParentAfterHandoff => Ok(()),
 			GuardRetention::Local | GuardRetention::AdoptingChild => {
@@ -95,35 +125,35 @@ impl DispatchSlotGuard {
 }
 
 #[derive(Default)]
-struct StateData {
-	projects: HashMap<String, ProjectRegistration>,
-	leases: HashMap<String, IssueLease>,
-	run_attempts: HashMap<String, RunAttemptRecord>,
-	control_channels: HashMap<String, RunControlChannelRecord>,
-	events: HashMap<String, Vec<ProtocolEventRecord>>,
-	event_summaries: HashMap<String, ProtocolEventSummaryRecord>,
-	run_activity_summaries: HashMap<String, RunActivitySummaryRecord>,
-	worktrees: HashMap<String, WorktreeMappingRecord>,
-	linear_execution_events: HashMap<String, LinearExecutionEventRuntimeRecord>,
-	private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
-	decision_contracts: HashMap<DecisionContractKey, DecisionContractRuntimeRecord>,
-	autonomy_objectives: HashMap<AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord>,
-	autonomy_signals: HashMap<AutonomySignalKey, AutonomySignalRuntimeRecord>,
-	autonomy_proposals: HashMap<AutonomyProposalKey, AutonomyProposalRuntimeRecord>,
-	execution_programs: HashMap<ExecutionProgramKey, ExecutionProgramRuntimeRecord>,
-	program_intake_plans: HashMap<ProgramIntakePlanKey, ProgramIntakePlanRecord>,
-	program_issue_mappings: HashMap<ProgramIssueMappingKey, ProgramIssueMappingRecord>,
-	review_lifecycle_records: HashMap<ReviewLifecycleKey, ReviewLifecycleRuntimeRecord>,
-	review_policy_checkpoints: HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
-	evidence_artifacts: HashMap<EvidenceArtifactKey, EvidenceArtifactRuntimeRecord>,
-	loop_guardrail_checkpoints: HashMap<LoopGuardrailKey, LoopGuardrailRuntimeRecord>,
-	connector_backoffs: HashMap<(String, String), ConnectorBackoff>,
-	dispatch_slot_configs: HashMap<String, DispatchSlotConfig>,
-	issue_claim_guards: HashMap<String, IssueClaimGuard>,
-	dispatch_slot_guards: HashMap<String, DispatchSlotGuard>,
+pub(super) struct StateData {
+	pub(super) projects: HashMap<String, ProjectRegistration>,
+	pub(super) leases: HashMap<String, IssueLease>,
+	pub(super) run_attempts: HashMap<String, RunAttemptRecord>,
+	pub(super) control_channels: HashMap<String, RunControlChannelRecord>,
+	pub(super) events: HashMap<String, Vec<ProtocolEventRecord>>,
+	pub(super) event_summaries: HashMap<String, ProtocolEventSummaryRecord>,
+	pub(super) run_activity_summaries: HashMap<String, RunActivitySummaryRecord>,
+	pub(super) worktrees: HashMap<String, WorktreeMappingRecord>,
+	pub(super) linear_execution_events: HashMap<String, LinearExecutionEventRuntimeRecord>,
+	pub(super) private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
+	pub(super) decision_contracts: HashMap<DecisionContractKey, DecisionContractRuntimeRecord>,
+	pub(super) autonomy_objectives: HashMap<AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord>,
+	pub(super) autonomy_signals: HashMap<AutonomySignalKey, AutonomySignalRuntimeRecord>,
+	pub(super) autonomy_proposals: HashMap<AutonomyProposalKey, AutonomyProposalRuntimeRecord>,
+	pub(super) execution_programs: HashMap<ExecutionProgramKey, ExecutionProgramRuntimeRecord>,
+	pub(super) program_intake_plans: HashMap<ProgramIntakePlanKey, ProgramIntakePlanRecord>,
+	pub(super) program_issue_mappings: HashMap<ProgramIssueMappingKey, ProgramIssueMappingRecord>,
+	pub(super) review_lifecycle_records: HashMap<ReviewLifecycleKey, ReviewLifecycleRuntimeRecord>,
+	pub(super) review_policy_checkpoints: HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
+	pub(super) evidence_artifacts: HashMap<EvidenceArtifactKey, EvidenceArtifactRuntimeRecord>,
+	pub(super) loop_guardrail_checkpoints: HashMap<LoopGuardrailKey, LoopGuardrailRuntimeRecord>,
+	pub(super) connector_backoffs: HashMap<(String, String), ConnectorBackoff>,
+	pub(super) dispatch_slot_configs: HashMap<String, DispatchSlotConfig>,
+	pub(super) issue_claim_guards: HashMap<String, IssueClaimGuard>,
+	pub(super) dispatch_slot_guards: HashMap<String, DispatchSlotGuard>,
 }
 impl StateData {
-	fn replace_durable_state(&mut self, loaded: Self) {
+	pub(super) fn replace_durable_state(&mut self, loaded: Self) {
 		self.projects = loaded.projects;
 		self.leases = loaded.leases;
 		self.run_attempts = loaded.run_attempts;
@@ -148,7 +178,7 @@ impl StateData {
 		self.connector_backoffs = loaded.connector_backoffs;
 	}
 
-	fn replace_project_run_metadata_state(&mut self, loaded: Self) {
+	pub(super) fn replace_project_run_metadata_state(&mut self, loaded: Self) {
 		self.leases = loaded.leases;
 		self.run_attempts = loaded.run_attempts;
 		self.control_channels = loaded.control_channels;
@@ -156,7 +186,7 @@ impl StateData {
 		self.worktrees = loaded.worktrees;
 	}
 
-	fn replace_project_loop_evidence_state(&mut self, project_id: &str, loaded: Self) {
+	pub(super) fn replace_project_loop_evidence_state(&mut self, project_id: &str, loaded: Self) {
 		self.private_execution_events.retain(|record| record.project_id != project_id);
 		self.private_execution_events.extend(loaded.private_execution_events);
 		self.review_lifecycle_records.retain(|key, _record| key.project_id != project_id);
@@ -171,11 +201,11 @@ impl StateData {
 		self.autonomy_proposals.extend(loaded.autonomy_proposals);
 	}
 
-	fn replace_project_registry_state(&mut self, loaded: Self) {
+	pub(super) fn replace_project_registry_state(&mut self, loaded: Self) {
 		self.projects = loaded.projects;
 	}
 
-	fn project_run_status(
+	pub(super) fn project_run_status(
 		&self,
 		project_id: &str,
 		attempt: &RunAttemptRecord,
@@ -251,7 +281,7 @@ impl StateData {
 		})
 	}
 
-	fn protocol_event_summary(&self, run_id: &str) -> ProtocolEventSummaryRecord {
+	pub(super) fn protocol_event_summary(&self, run_id: &str) -> ProtocolEventSummaryRecord {
 		self.event_summaries
 			.get(run_id)
 			.cloned()
@@ -261,7 +291,7 @@ impl StateData {
 			.unwrap_or_default()
 	}
 
-	fn project_id_for_run(&self, issue_id: &str, run_id: &str) -> Option<String> {
+	pub(super) fn project_id_for_run(&self, issue_id: &str, run_id: &str) -> Option<String> {
 		self.leases
 			.get(issue_id)
 			.filter(|lease| lease.run_id == run_id)
@@ -269,7 +299,12 @@ impl StateData {
 			.or_else(|| self.worktrees.get(issue_id).map(|mapping| mapping.project_id.clone()))
 	}
 
-	fn remember_run_project(&mut self, project_id: &str, issue_id: &str, run_id: Option<&str>) {
+	pub(super) fn remember_run_project(
+		&mut self,
+		project_id: &str,
+		issue_id: &str,
+		run_id: Option<&str>,
+	) {
 		for attempt in self
 			.run_attempts
 			.values_mut()
@@ -280,7 +315,7 @@ impl StateData {
 		}
 	}
 
-	fn next_private_execution_event_id(&self) -> Result<i64> {
+	pub(super) fn next_private_execution_event_id(&self) -> Result<i64> {
 		self.private_execution_events
 			.iter()
 			.map(|record| record.record_id)
@@ -291,15 +326,15 @@ impl StateData {
 	}
 }
 
-fn dispatch_slot_lock_path(root: &Path, slot_index: usize) -> PathBuf {
+pub(super) fn dispatch_slot_lock_path(root: &Path, slot_index: usize) -> PathBuf {
 	root.join(format!("{DISPATCH_SLOT_LOCK_FILE_PREFIX}.{slot_index}.lock"))
 }
 
-fn issue_claim_lock_path(root: &Path, issue_id: &str) -> PathBuf {
+pub(super) fn issue_claim_lock_path(root: &Path, issue_id: &str) -> PathBuf {
 	root.join(format!("{ISSUE_CLAIM_LOCK_FILE_PREFIX}.{issue_id}.lock"))
 }
 
-fn issue_claim_id_from_path(path: &Path) -> Option<String> {
+pub(super) fn issue_claim_id_from_path(path: &Path) -> Option<String> {
 	let file_name = path.file_name()?.to_str()?;
 
 	file_name
@@ -308,7 +343,7 @@ fn issue_claim_id_from_path(path: &Path) -> Option<String> {
 		.map(str::to_owned)
 }
 
-fn shared_lock_coordinator_path(root: &Path) -> PathBuf {
+pub(super) fn shared_lock_coordinator_path(root: &Path) -> PathBuf {
 	let mut hash = 0xcbf2_9ce4_8422_2325_u64;
 
 	for byte in root.as_os_str().as_bytes() {
@@ -319,7 +354,7 @@ fn shared_lock_coordinator_path(root: &Path) -> PathBuf {
 	env::temp_dir().join("decodex-shared-lock-coordinators").join(format!("{hash:016x}.lock"))
 }
 
-fn acquire_shared_lock_coordinator(root: &Path) -> Result<File> {
+pub(super) fn acquire_shared_lock_coordinator(root: &Path) -> Result<File> {
 	fs::create_dir_all(root)?;
 
 	let coordinator_path = shared_lock_coordinator_path(root);
@@ -340,13 +375,13 @@ fn acquire_shared_lock_coordinator(root: &Path) -> Result<File> {
 	Ok(coordinator)
 }
 
-fn lock_root_from_lock_path(lock_path: &Path) -> Result<&Path> {
+pub(super) fn lock_root_from_lock_path(lock_path: &Path) -> Result<&Path> {
 	lock_path
 		.parent()
 		.ok_or_else(|| eyre::eyre!("shared lock path `{}` has no parent root", lock_path.display()))
 }
 
-fn remove_lock_file_if_exists(path: &Path) -> Result<()> {
+pub(super) fn remove_lock_file_if_exists(path: &Path) -> Result<()> {
 	match fs::remove_file(path) {
 		Ok(()) => Ok(()),
 		Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
@@ -354,7 +389,7 @@ fn remove_lock_file_if_exists(path: &Path) -> Result<()> {
 	}
 }
 
-fn shared_lock_file_is_cleanup_candidate(path: &Path) -> bool {
+pub(super) fn shared_lock_file_is_cleanup_candidate(path: &Path) -> bool {
 	let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
 		return false;
 	};
@@ -363,7 +398,7 @@ fn shared_lock_file_is_cleanup_candidate(path: &Path) -> bool {
 		|| file_name.starts_with(&format!("{DISPATCH_SLOT_LOCK_FILE_PREFIX}."))
 }
 
-fn prune_unlocked_shared_lock_files(root: &Path) -> Result<()> {
+pub(super) fn prune_unlocked_shared_lock_files(root: &Path) -> Result<()> {
 	let _coordinator = acquire_shared_lock_coordinator(root)?;
 	let read_dir = match fs::read_dir(root) {
 		Ok(read_dir) => read_dir,
@@ -405,7 +440,7 @@ fn prune_unlocked_shared_lock_files(root: &Path) -> Result<()> {
 	Ok(())
 }
 
-fn write_issue_claim_record(
+pub(super) fn write_issue_claim_record(
 	lock_file: &mut File,
 	project_id: &str,
 	issue_id: &str,
@@ -425,7 +460,7 @@ fn write_issue_claim_record(
 	Ok(())
 }
 
-fn read_issue_claim_record(path: &Path) -> Result<Option<IssueLease>> {
+pub(super) fn read_issue_claim_record(path: &Path) -> Result<Option<IssueLease>> {
 	let mut body = String::new();
 	let mut file = File::open(path)?;
 
@@ -470,7 +505,11 @@ fn read_issue_claim_record(path: &Path) -> Result<Option<IssueLease>> {
 	Ok(Some(IssueLease { project_id, issue_id, run_id, issue_state }))
 }
 
-fn remove_derived_program_intake_state(state: &mut StateData, project_id: &str, program_id: &str) {
+pub(super) fn remove_derived_program_intake_state(
+	state: &mut StateData,
+	project_id: &str,
+	program_id: &str,
+) {
 	state
 		.program_intake_plans
 		.retain(|key, _record| key.project_id != project_id || key.program_id != program_id);
@@ -479,7 +518,7 @@ fn remove_derived_program_intake_state(state: &mut StateData, project_id: &str, 
 		.retain(|key, _record| key.project_id != project_id || key.program_id != program_id);
 }
 
-fn apply_derived_program_intake_state(
+pub(super) fn apply_derived_program_intake_state(
 	state: &mut StateData,
 	record: &ExecutionProgramRuntimeRecord,
 ) {
@@ -499,7 +538,7 @@ fn apply_derived_program_intake_state(
 	}
 }
 
-fn derived_program_intake_plan_records(
+pub(super) fn derived_program_intake_plan_records(
 	record: &ExecutionProgramRuntimeRecord,
 ) -> Vec<ProgramIntakePlanRecord> {
 	record
@@ -523,7 +562,7 @@ fn derived_program_intake_plan_records(
 		.unwrap_or_default()
 }
 
-fn derived_program_issue_mapping_records(
+pub(super) fn derived_program_issue_mapping_records(
 	record: &ExecutionProgramRuntimeRecord,
 ) -> Vec<ProgramIssueMappingRecord> {
 	record
@@ -554,7 +593,10 @@ fn derived_program_issue_mapping_records(
 		.collect()
 }
 
-fn compare_project_run_status(left: &ProjectRunStatus, right: &ProjectRunStatus) -> cmp::Ordering {
+pub(super) fn compare_project_run_status(
+	left: &ProjectRunStatus,
+	right: &ProjectRunStatus,
+) -> cmp::Ordering {
 	right
 		.run_lease
 		.cmp(&left.run_lease)
@@ -564,7 +606,7 @@ fn compare_project_run_status(left: &ProjectRunStatus, right: &ProjectRunStatus)
 }
 
 #[cfg(unix)]
-fn clear_close_on_exec(file: &File) -> Result<()> {
+pub(super) fn clear_close_on_exec(file: &File) -> Result<()> {
 	let fd = file.as_raw_fd();
 	let existing_flags = unsafe { libc::fcntl(fd, F_GETFD) };
 
@@ -586,7 +628,7 @@ fn clear_close_on_exec(file: &File) -> Result<()> {
 }
 
 #[cfg(unix)]
-fn set_close_on_exec(file: &File) -> Result<()> {
+pub(super) fn set_close_on_exec(file: &File) -> Result<()> {
 	let fd = file.as_raw_fd();
 	let existing_flags = unsafe { libc::fcntl(fd, F_GETFD) };
 
