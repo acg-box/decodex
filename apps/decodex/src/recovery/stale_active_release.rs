@@ -57,8 +57,10 @@ where
 		diagnostic,
 	)?;
 	let worktree_cleanup = preflight_stale_active_worktree_cleanup_plan(state_store, &diagnostic)?;
-	ensure_stale_active_run_claim_guard(config, state_store, &diagnostic)?;
 	ensure_stale_active_review_authority_missing(tracker, state_store, &diagnostic)?;
+	let cleared_run_lease =
+		clear_stale_active_dead_run_claims_before_release(state_store, &diagnostic)?;
+	ensure_stale_active_run_claim_guard(config, state_store, &diagnostic)?;
 	let active_label = tracker::automation_active_label(config.service_id());
 
 	if let Some(run_id) = diagnostic.latest_run_id.as_deref()
@@ -107,7 +109,7 @@ where
 					"terminal_status": GHOST_LANE_TERMINAL_STATUS,
 					"active_label_release": "pending_final_mutation",
 					"queue_label_preserved": diagnostic.queue_label_present,
-					"cleared_run_lease": false,
+					"cleared_run_lease": cleared_run_lease,
 					"worktree_state": &diagnostic.worktree_state,
 					"evidence": &diagnostic.evidence,
 					"blockers": &diagnostic.blockers,
@@ -134,6 +136,34 @@ where
 	tracker::set_issue_label_presence(tracker, &issue, &active_label, false)?;
 
 	Ok(())
+}
+
+pub(super) fn clear_stale_active_dead_run_claims_before_release(
+	state_store: &StateStore,
+	diagnostic: &StaleActiveDiagnostic,
+) -> Result<bool> {
+	if !diagnostic.run_lease
+		|| !diagnostic.evidence.iter().any(|evidence| evidence == "stale_run_lease_present")
+	{
+		return Ok(false);
+	}
+
+	let Some(run_id) = diagnostic.latest_run_id.as_deref() else {
+		return Ok(false);
+	};
+	let mut cleared = false;
+
+	for issue_key in stale_active_diagnostic_issue_keys(diagnostic) {
+		let Some(lease) = state_store.lease_for_issue(&issue_key)? else {
+			continue;
+		};
+		if lease.project_id() == diagnostic.project_id && lease.run_id() == run_id {
+			state_store.clear_lease(&issue_key)?;
+			cleared = true;
+		}
+	}
+
+	Ok(cleared)
 }
 
 fn refreshed_stale_active_release_diagnostic<T>(

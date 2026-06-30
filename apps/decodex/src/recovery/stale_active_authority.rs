@@ -14,6 +14,7 @@ use super::{
 		ghost_lane_record_has_pr_or_review_lineage, stale_active_private_event_allows_release,
 		stale_active_private_event_is_release_audit_for_run,
 	},
+	process_liveness::StaleActiveProcessLiveness,
 	reports::StaleActiveDiagnostic,
 };
 
@@ -22,6 +23,7 @@ pub(super) fn inspect_stale_active_private_evidence(
 	state_store: &StateStore,
 	issue_keys: &[String],
 	latest_run: Option<&ProjectRunStatus>,
+	marker_liveness: StaleActiveProcessLiveness,
 	evidence: &mut Vec<String>,
 	blockers: &mut Vec<String>,
 ) -> Result<()> {
@@ -34,13 +36,15 @@ pub(super) fn inspect_stale_active_private_evidence(
 	if events.is_empty() {
 		evidence.push(String::from("private_evidence_missing"));
 	} else {
-		if events
+		let release_audit_present = events
 			.iter()
-			.any(|event| stale_active_private_event_is_release_audit_for_run(event, latest_run))
-		{
+			.any(|event| stale_active_private_event_is_release_audit_for_run(event, latest_run));
+		if release_audit_present {
 			evidence.push(String::from("stale_active_release_audit_present"));
 		}
-		if events.iter().all(stale_active_private_event_allows_release) {
+		if events.iter().all(|event| {
+			stale_active_private_event_allows_release(event, marker_liveness, release_audit_present)
+		}) {
 			evidence.push(String::from("only_stale_active_or_failed_control_evidence_present"));
 		} else {
 			blockers.push(String::from("private_progress_evidence_present"));

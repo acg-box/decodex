@@ -729,6 +729,57 @@ fn stale_active_final_label_guard_rejects_late_run_lease() {
 }
 
 #[test]
+fn stale_active_release_clears_only_matching_dead_process_run_lease() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let store = StateStore::open_in_memory().expect("state store should open");
+	let workflow = sample_workflow();
+	let active_label = tracker::automation_active_label("pubfi");
+	let queue_label = tracker::automation_queue_label("pubfi");
+	let mut issue = sample_issue_with_labels("Todo", &[active_label, queue_label]);
+	let worktree_path = temp_dir.path().join("PUB-1626");
+
+	issue.identifier = String::from("PUB-1626");
+	seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
+	store
+		.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress")
+		.expect("dead run lease should remain recorded");
+	append_dead_process_interrupt_control_telemetry(&store, &issue.id);
+
+	let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+	let diagnostics = super::super::super::diagnose_stale_active_issues(
+		"pubfi",
+		&workflow,
+		temp_dir.path(),
+		&store,
+		&tracker,
+		Some("PUB-1626"),
+		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+	)
+	.expect("stale active diagnosis should run");
+	let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+	assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
+	store
+		.upsert_lease("pubfi", &issue.identifier, "run-other", "In Progress")
+		.expect("unrelated issue-key lease should record");
+
+	let cleared =
+		super::super::super::clear_stale_active_dead_run_claims_before_release(&store, diagnostic)
+			.expect("dead matching run lease cleanup should run");
+
+	assert!(cleared);
+	assert!(store.lease_for_issue(&issue.id).expect("matching lease should read").is_none());
+	assert_eq!(
+		store
+			.lease_for_issue(&issue.identifier)
+			.expect("nonmatching lease should read")
+			.expect("nonmatching lease should remain")
+			.run_id(),
+		"run-other"
+	);
+}
+
+#[test]
 fn stale_active_diagnose_blocks_when_run_lease_is_present() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
