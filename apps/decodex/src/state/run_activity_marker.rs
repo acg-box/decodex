@@ -1,15 +1,32 @@
 // Runtime activity-marker filesystem helpers.
 
+use std::{
+	fs::{self, OpenOptions},
+	io::{ErrorKind, Write},
+	path::Path,
+	process,
+	sync::{OnceLock, atomic::AtomicU64},
+};
+
 #[cfg(target_os = "macos")] use std::mem::{self, MaybeUninit};
 #[cfg(target_os = "macos")] use std::ptr;
-use std::sync::atomic::AtomicU64;
 
 #[cfg(target_os = "macos")] use libc::{PROC_PIDTBSDINFO, c_char, c_void, proc_bsdinfo};
+use time::OffsetDateTime;
+
+use crate::{
+	prelude::{Result, eyre},
+	state::{
+		ChildAgentActivitySummary, CodexAccountActivitySummary, CodexAccountMarker,
+		EffectiveRuntimeMarker, ProtocolActivityMarker, ProtocolActivitySummary,
+		RUN_ACTIVITY_MARKER_FILE, RUN_OPERATION_AGENT_RUN, RunActivityMarker,
+	},
+};
 
 static RUN_ACTIVITY_MARKER_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Default)]
-struct RunActivityMarkerRecord {
+pub(crate) struct RunActivityMarkerRecord {
 	run_id: Option<String>,
 	attempt_number: Option<i64>,
 	process_id: Option<u32>,
@@ -635,7 +652,7 @@ fn normalized_process_start_identity(identity: &str) -> Option<String> {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-fn write_run_activity_marker_at(
+pub(crate) fn write_run_activity_marker_at(
 	worktree_path: &Path,
 	run_id: &str,
 	attempt_number: i64,
@@ -720,7 +737,8 @@ fn run_activity_marker_record_for_attempt(
 	}
 }
 
-fn read_run_activity_marker_record(
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn read_run_activity_marker_record(
 	worktree_path: &Path,
 ) -> Result<Option<RunActivityMarkerRecord>> {
 	let marker_path = worktree_path.join(RUN_ACTIVITY_MARKER_FILE);
@@ -783,7 +801,8 @@ fn read_run_activity_marker_record(
 	Ok(Some(marker))
 }
 
-fn write_run_activity_marker_record(
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn write_run_activity_marker_record(
 	worktree_path: &Path,
 	marker: &RunActivityMarkerRecord,
 ) -> Result<()> {
