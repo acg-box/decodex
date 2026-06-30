@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate live Decodex Codex app automations against repo-local authority."""
+"""Evaluate live Codex app automations against repo-local authority."""
 
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MANIFEST_PATH = REPO_ROOT / "automations/decodex/automations.toml"
+VALID_SOURCE_ROOTS = {"automations/decodex", "automations/radar"}
 REQUIRED_FORBIDDEN_PROMPT_FRAGMENTS = [
     "/Users/x/Documents/automations",
     "Documents/automations",
     ".github/workflows",
     "site/src/content",
-    "apps/decodex/src/radar.rs",
     ".agent/decodex",
     "~/.codex/decodex",
     ".codex/decodex",
@@ -59,6 +59,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", default=str(MANIFEST_PATH), help="Automation manifest path.")
     parser.add_argument("--codex-home", default=default_codex_home(), help="Codex home path.")
     parser.add_argument("--automation-id", action="append", help="Evaluate only this automation id. Repeatable.")
+    parser.add_argument(
+        "--repo-only",
+        action="store_true",
+        help="Validate checked-in manifest, prompt, path, and cache boundaries without reading active Codex home configs.",
+    )
     parser.add_argument("--json", action="store_true", help="Write machine-readable JSON.")
     return parser.parse_args()
 
@@ -92,10 +97,18 @@ def validate_manifest_shape(manifest: dict[str, Any]) -> list[str]:
     if not isinstance(defaults, dict):
         errors.append("manifest.defaults must be a table")
     else:
-        if defaults.get("source_root") != "automations/decodex":
-            errors.append("manifest.defaults.source_root must be automations/decodex")
-        if defaults.get("cache_root") != ".agent/automations/decodex/cache":
-            errors.append("manifest.defaults.cache_root must be .agent/automations/decodex/cache")
+        source_root = defaults.get("source_root")
+        if source_root not in VALID_SOURCE_ROOTS:
+            errors.append(
+                "manifest.defaults.source_root must be one of "
+                f"{', '.join(sorted(VALID_SOURCE_ROOTS))}"
+            )
+        expected_cache_root = f".agent/{source_root}/cache" if isinstance(source_root, str) else None
+        if defaults.get("cache_root") != expected_cache_root:
+            errors.append(f"manifest.defaults.cache_root must be {expected_cache_root}")
+        external_prefixes = defaults.get("allowed_external_cache_prefixes", [])
+        if not isinstance(external_prefixes, list):
+            errors.append("manifest.defaults.allowed_external_cache_prefixes must be an array when present")
         forbidden_fragments = defaults.get("forbidden_prompt_fragments", [])
         for fragment in REQUIRED_FORBIDDEN_PROMPT_FRAGMENTS:
             if fragment not in forbidden_fragments:
@@ -109,13 +122,18 @@ def validate_manifest_shape(manifest: dict[str, Any]) -> list[str]:
     return errors
 
 
-def validate_prompt_text(prompt: str, forbidden_fragments: list[str], result: AutomationResult) -> None:
+def validate_prompt_text(
+    prompt: str,
+    cache_root: str,
+    forbidden_fragments: list[str],
+    result: AutomationResult,
+) -> None:
     if not prompt.strip():
         result.fail("prompt file is empty")
     if "Codex app automation" not in prompt:
         result.fail("prompt must explicitly identify Codex app automation ownership")
-    if ".agent/automations/decodex/cache" not in prompt:
-        result.fail("prompt must keep generated automation state under .agent/automations/decodex/cache")
+    if cache_root not in prompt:
+        result.fail(f"prompt must keep generated automation state under {cache_root}")
     if "GitHub Actions" not in prompt:
         result.fail("prompt must explicitly exclude GitHub Actions ownership")
     for required in REQUIRED_PREFLIGHT_FRAGMENTS:
@@ -156,10 +174,18 @@ def validate_prompt_required_reads(
             result.fail(f"prompt required read is missing from manifest required_paths: {match.group(1)}")
 
 
-def validate_cache_prefixes(automation: dict[str, Any], cache_root: str, result: AutomationResult) -> None:
+def validate_cache_prefixes(
+    automation: dict[str, Any],
+    cache_root: str,
+    allowed_external_prefixes: list[str],
+    result: AutomationResult,
+) -> None:
     for value in automation.get("required_cache_prefixes", []):
-        if not value.startswith(cache_root):
-            result.fail(f"cache prefix is outside {cache_root}: {value}")
+        allowed = value.startswith(cache_root) or any(
+            value.startswith(prefix) for prefix in allowed_external_prefixes
+        )
+        if not allowed:
+            result.fail(f"cache prefix is outside allowed cache roots: {value}")
         if ".agent/decodex" in value:
             result.fail(f"cache prefix must not use Decodex private runtime path: {value}")
 
@@ -199,23 +225,30 @@ def evaluate_automation(
     automation: dict[str, Any],
     defaults: dict[str, Any],
     codex_home: Path,
+    repo_only: bool,
 ) -> AutomationResult:
     automation_id = automation["id"]
     result = AutomationResult(automation_id=automation_id)
     prompt_path = REPO_ROOT / automation["prompt_file"]
     forbidden_fragments = list(defaults.get("forbidden_prompt_fragments", []))
     cache_root = str(defaults.get("cache_root", ".agent/automations/decodex/cache"))
+    allowed_external_prefixes = [
+        str(value) for value in defaults.get("allowed_external_cache_prefixes", [])
+    ]
 
     if not prompt_path.exists():
         result.fail(f"prompt_file does not exist: {automation['prompt_file']}")
         prompt = ""
     else:
         prompt = read_text(prompt_path).strip()
-        validate_prompt_text(prompt, forbidden_fragments, result)
+        validate_prompt_text(prompt, cache_root, forbidden_fragments, result)
 
     validate_required_paths(automation, result)
     validate_prompt_required_reads(prompt, automation, result)
-    validate_cache_prefixes(automation, cache_root, result)
+    validate_cache_prefixes(automation, cache_root, allowed_external_prefixes, result)
+
+    if repo_only:
+        return result
 
     active_path = active_automation_path(codex_home, automation_id)
     if not active_path.exists():
@@ -271,7 +304,10 @@ def main() -> int:
         print(f"unknown automation id(s): {', '.join(sorted(missing_ids))}", file=sys.stderr)
         return 2
 
-    results = [evaluate_automation(automation, defaults, Path(args.codex_home)) for automation in automations]
+    results = [
+        evaluate_automation(automation, defaults, Path(args.codex_home), args.repo_only)
+        for automation in automations
+    ]
     status = "pass" if all(result.status == "pass" for result in results) else "fail"
     payload = {
         "status": status,

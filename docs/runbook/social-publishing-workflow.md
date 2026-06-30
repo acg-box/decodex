@@ -40,8 +40,8 @@ Depends on:
   static-first public surface decision.
 
 Outputs:
-- An optional `upstream_impact/v1` artifact under `.agent/automations/decodex/cache/github/impact/`.
-- A `social_candidate/v1` record under `.agent/automations/decodex/cache/github/social-candidates/` when
+- An optional `upstream_impact/v1` artifact under `.agent/automations/radar/cache/github/impact/`.
+- A `social_candidate/v1` record under `.agent/automations/decodex/cache/social/x/candidates/` when
   analysis needs a durable Publisher handoff or pre-publication decision.
 - A `social_publish_reservation/v1` record under
   `.agent/automations/decodex/cache/social/x/reservations/<yyyy-mm-dd>/` before any X compose step.
@@ -126,18 +126,21 @@ one exact compare URL intentionally carries the detailed PR list.
      started.
 
 2. Classify upstream impact.
-   - Prefer existing `upstream_impact/v1`. If it is missing and the source-backed
-     review already proves the Control Plane or Publisher implication, write or update
-     `.agent/automations/decodex/cache/github/impact/<slug>.json`.
+   - Prefer existing `upstream_impact/v1` under
+     `.agent/automations/radar/cache/github/impact/<slug>.json`.
+   - Publisher must not write or update `upstream_impact/v1`. If the source-backed
+     review does not already provide the needed shared handoff, route back to Radar
+     Review or stop with `decision.worthiness = "defer"`.
    - If impact depends on unreviewed code or patch evidence, route back to the upstream
      analysis stage instead of resolving it inside Publisher.
    - Use `public_signal_decision`, `control_plane_impact`, and `publisher_angle` from
      [`../spec/upstream-impact.md`](../spec/upstream-impact.md).
 
 3. Decide whether to create or consume a candidate.
-   - Release checkpoint automation should write `social_candidate/v1` with
+   - Decodex Publisher should write or consume `social_candidate/v1` with
      `decision.worthiness = "publish"`, `"defer"`, or `"skip"`.
-   - New Radar-derived candidates should cite the shared `upstream_impact/v1` under
+   - New Publisher candidates derived from Radar handoff evidence should cite the shared
+     `upstream_impact/v1` under
      `source_refs.upstream_impacts` so Publisher and Control Plane use the same
      upstream scan conclusion.
    - General Publisher automation should consume only candidates whose
@@ -177,7 +180,7 @@ one exact compare URL intentionally carries the detailed PR list.
    - The default cap day uses `Asia/Shanghai`.
    - If the candidate would exceed 8 posts, do not post. Write
      `status = "blocked"` with `block.reason = "daily_cap_exceeded"`.
-   - Before opening the X composer, run `decodex radar social reserve-publish` with
+   - Before opening the X composer, run `decodex-publisher social reserve-publish` with
      the idempotency key, duplicate keys, owner/run metadata, cap day, `reserved_at`,
      and `expires_at`. Do not hand-write active reservation JSON.
    - The command persists the reservation in
@@ -229,7 +232,7 @@ one exact compare URL intentionally carries the detailed PR list.
    - Run:
 
 ```bash
-decodex radar validate .agent/automations/decodex/cache/github/social-candidates .agent/automations/decodex/cache/social/x
+decodex-publisher validate-social .agent/automations/decodex/cache/social/x
 ```
 
 ## Mode Guidance

@@ -1,6 +1,6 @@
 use std::{ffi::OsString, path::Path};
 
-use clap::Parser;
+use clap::{Parser, error::ErrorKind};
 
 use super::{
 	AppCommand, AttemptCommand, Cli, Command, ProbeCommand, ProjectConfigArgs,
@@ -36,6 +36,13 @@ fn parses_app_command() {
 	let cli = Cli::parse_from(["decodex", "app"]);
 
 	assert!(matches!(cli.command, Command::App(AppCommand { bundle: None, new: false })));
+}
+
+#[test]
+fn rejects_radar_as_runtime_subcommand() {
+	let error = Cli::try_parse_from(["decodex", "radar"]).expect_err("radar is a standalone tool");
+
+	assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
 }
 
 #[test]
@@ -394,24 +401,6 @@ fn parses_mcp_streamable_http_serve_with_safe_profile_default() {
 	assert_eq!(serve.listen_address, "127.0.0.1:8194");
 	assert_eq!(serve.allowed_origins, vec!["http://127.0.0.1:8194"]);
 	assert_eq!(serve.bearer_token_env.as_deref(), Some("DECODEX_MCP_TOKEN"));
-}
-
-#[test]
-fn parses_radar_command_family_after_module_split() {
-	let cli = Cli::parse_from([
-		"decodex",
-		"radar",
-		"bundle",
-		"build",
-		"--repo",
-		"openai/codex",
-		"--pr",
-		"42",
-		"--out",
-		"bundle.json",
-	]);
-
-	assert!(matches!(cli.command, Command::Radar(_)));
 }
 
 #[test]

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Decodex GitHub Signal"
+  short_description: "Draft GitHub-backed Decodex signal analysis."
+  default_prompt: "Use the repo-local instructions at automations/radar/skills/github-signal/SKILL.md to turn a GitHub bundle into a Decodex signal draft."
+
+policy:
+  allow_implicit_invocation: false

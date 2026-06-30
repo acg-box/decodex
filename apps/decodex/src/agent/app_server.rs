@@ -1,9 +1,12 @@
 mod activity;
+mod constants;
 mod dynamic_tools;
 mod lane_control;
+mod markers;
 mod phase_goal;
 mod preflight;
 mod protocol;
+mod runtime_types;
 mod schema_probe;
 mod server_requests;
 mod turn_failure;
@@ -32,6 +35,7 @@ use self::schema_probe::{
 use self::server_requests::{record_interactive_request_state, record_server_request};
 pub(crate) use self::{
 	activity::protocol_activity_idle_timeout,
+	constants::{MODEL_EXECUTION_IDLE_TIMEOUT, RUN_LEASE_IDLE_TIMEOUT},
 	dynamic_tools::AppServerDynamicToolFailure,
 	phase_goal::{
 		AppServerPhaseGoalFailure, PhaseGoalController, PhaseGoalKind, PhaseGoalRunStatus,
@@ -41,9 +45,23 @@ pub(crate) use self::{
 		AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
 		CommandExecHealthCheck,
 	},
+	runtime_types::{
+		AppServerRunRequest, AppServerRunResult, AppServerThreadArchiveOutcome,
+		AppServerThreadArchiveRequest, TurnContinuationGuard,
+	},
 };
 use self::{
 	activity::{ChildActivityAccumulator, ProtocolActivityAccumulator, redact_identifier},
+	constants::{
+		JSONRPC_METHOD_NOT_FOUND, PREFLIGHT_CHECK_CONFIG, PREFLIGHT_CHECK_MCP,
+		PREFLIGHT_CHECK_MODEL, PREFLIGHT_CHECK_MODEL_PROVIDER, PREFLIGHT_CHECK_PLUGINS,
+		PREFLIGHT_CHECK_SKILLS, PREFLIGHT_EVENT_TYPE, PREFLIGHT_MCP_DETAIL,
+		PREFLIGHT_MCP_PAGE_LIMIT, PREFLIGHT_MODEL_PAGE_LIMIT, PREFLIGHT_PLUGIN_MARKETPLACE_KIND,
+		PROBE_COMMAND_EXEC_EXPECTED_OUTPUT, PROBE_COMMAND_EXEC_OUTPUT_BYTES_CAP,
+		PROBE_COMMAND_EXEC_TIMEOUT_MS, PROBE_DEVELOPER_INSTRUCTIONS, PROBE_EXPECTED_OUTPUT,
+		PROBE_ISSUE_ID, PROBE_RUN_ID, PROBE_TIMEOUT, PROBE_USER_INPUT, REQUEST_TIMEOUT,
+		RUN_CONTROL_POLL_INTERVAL,
+	},
 	dynamic_tools::{
 		classify_turn_completion, dispatch_dynamic_tool_call,
 		dynamic_tool_call_unavailable_for_phase, has_terminal_completion_signal,
@@ -51,12 +69,18 @@ use self::{
 		validated_dynamic_tool_specs,
 	},
 	lane_control::handle_pending_turn_control_requests,
+	markers::{
+		publish_run_control_channel_for_request, write_activity_marker_best_effort,
+		write_activity_marker_best_effort_for_request,
+		write_capability_preflight_marker_best_effort,
+	},
 	phase_goal::{
 		PhaseGoalRuntime, app_server_method_not_found, clear_thread_phase_goal_best_effort,
 		get_thread_phase_goal, initialize_phase_goal_runtime, record_phase_goal_completed,
 		set_thread_phase_goal,
 	},
 	preflight::{run_app_server_capability_preflight, run_command_exec_health_check},
+	runtime_types::{RequestDispatchContext, RequestWaitPhase, RunRecorder, TurnLoopResult},
 	schema_probe::probe_app_server_schema,
 	server_requests::{
 		apply_protocol_message_side_effects, handle_server_request_during_turn_execution,
@@ -70,7 +94,7 @@ use std::{
 	env,
 	error::Error,
 	fmt::{self, Display, Formatter},
-	fs, mem,
+	mem,
 	path::{Path, PathBuf},
 	time::{Duration, Instant},
 };
@@ -126,341 +150,6 @@ use crate::{
 		StateStore,
 	},
 };
-
-pub(crate) const RUN_LEASE_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
-pub(crate) const MODEL_EXECUTION_IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
-
-const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
-const RUN_CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(500);
-const PROBE_RUN_ID: &str = "protocol-probe-run";
-const PROBE_ISSUE_ID: &str = "protocol-probe";
-const PROBE_EXPECTED_OUTPUT: &str = "PROBE_OK";
-const PROBE_COMMAND_EXEC_EXPECTED_OUTPUT: &str = "COMMAND_EXEC_OK";
-const PROBE_COMMAND_EXEC_TIMEOUT_MS: u64 = 5_000;
-const PROBE_COMMAND_EXEC_OUTPUT_BYTES_CAP: u64 = 1_024;
-const PROBE_DEVELOPER_INSTRUCTIONS: &str = "You are a protocol probe. You must call the dynamic tool `echo_probe` exactly once with the JSON argument `{\"text\":\"PROBE_OK\"}`. Do not use shell. Do not inspect files. After the tool response is returned, reply with the exact text PROBE_OK and nothing else.";
-const PROBE_USER_INPUT: &str = "Call `echo_probe` with `{\\\"text\\\":\\\"PROBE_OK\\\"}`. After the tool succeeds, reply with the exact text PROBE_OK.";
-const PREFLIGHT_EVENT_TYPE: &str = "app-server/preflight";
-const PREFLIGHT_MODEL_PAGE_LIMIT: u32 = 200;
-const PREFLIGHT_MCP_PAGE_LIMIT: u32 = 50;
-const PREFLIGHT_MCP_DETAIL: &str = "toolsAndAuthOnly";
-const PREFLIGHT_CHECK_CONFIG: &str = "config";
-const PREFLIGHT_CHECK_MODEL: &str = "model";
-const PREFLIGHT_CHECK_MODEL_PROVIDER: &str = "model_provider";
-const PREFLIGHT_CHECK_SKILLS: &str = "skills";
-const PREFLIGHT_CHECK_PLUGINS: &str = "plugins";
-const PREFLIGHT_CHECK_MCP: &str = "mcp";
-const PREFLIGHT_PLUGIN_MARKETPLACE_KIND: &str = "local";
-const JSONRPC_METHOD_NOT_FOUND: i64 = -32_601;
-
-pub(crate) trait TurnContinuationGuard {
-	fn should_continue_turn(&self, turn_count: u32) -> crate::prelude::Result<bool>;
-	fn validate_continuation_boundary(&self, _turn_count: u32) -> crate::prelude::Result<()> {
-		Ok(())
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AppServerThreadArchiveOutcome {
-	Archived,
-	DiscardedMissingThread,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RequestWaitPhase {
-	Initialize,
-	AccountLogin,
-	ThreadStart,
-	ThreadResume,
-	TurnStart,
-	TurnExecution,
-}
-impl RequestWaitPhase {
-	fn label(self) -> &'static str {
-		match self {
-			Self::Initialize => "initialize",
-			Self::AccountLogin => "account/login/start",
-			Self::ThreadStart => "thread/start",
-			Self::ThreadResume => "thread/resume",
-			Self::TurnStart => "turn/start",
-			Self::TurnExecution => "turn execution",
-		}
-	}
-
-	fn transport_failure_is_retryable_startup(self) -> bool {
-		matches!(
-			self,
-			Self::Initialize | Self::AccountLogin | Self::ThreadStart | Self::ThreadResume
-		)
-	}
-}
-
-pub(crate) struct AppServerThreadArchiveRequest<'a> {
-	pub(crate) run_id: &'a str,
-	pub(crate) issue_id: &'a str,
-	pub(crate) attempt_number: i64,
-	pub(crate) listen: &'a str,
-	pub(crate) process_env: &'a AppServerProcessEnv,
-	pub(crate) thread_id: &'a str,
-	pub(crate) sequence_number: i64,
-}
-
-#[derive(Clone)]
-pub(crate) struct AppServerRunRequest<'a> {
-	pub(crate) project_id: String,
-	pub(crate) run_id: String,
-	pub(crate) issue_id: String,
-	pub(crate) attempt_number: i64,
-	pub(crate) listen: String,
-	pub(crate) cwd: String,
-	pub(crate) developer_instructions: String,
-	pub(crate) user_input: String,
-	pub(crate) max_turns: u32,
-	pub(crate) timeout: Duration,
-	pub(crate) process_env: AppServerProcessEnv,
-	pub(crate) continuation_user_input: Option<String>,
-	pub(crate) activity_marker_path: Option<PathBuf>,
-	pub(crate) resume_thread_id: Option<String>,
-	pub(crate) ephemeral_thread: bool,
-	pub(crate) command_exec_health_check: Option<CommandExecHealthCheck>,
-	pub(crate) dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
-	pub(crate) continuation_guard: Option<&'a dyn TurnContinuationGuard>,
-	pub(crate) phase_goal_controller: Option<&'a dyn PhaseGoalController>,
-	pub(crate) codex_account_provider: Option<&'a dyn CodexAccountProvider>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct AppServerRunResult {
-	pub(crate) user_agent: String,
-	pub(crate) capability_preflight: AppServerCapabilityPreflightReport,
-	pub(crate) thread_id: String,
-	pub(crate) turn_id: String,
-	pub(crate) turn_count: u32,
-	pub(crate) event_count: i64,
-	pub(crate) final_output: String,
-	pub(crate) continuation_pending: bool,
-	pub(crate) phase_goal_status: Option<PhaseGoalRunStatus>,
-}
-
-struct RunRecorder<'a> {
-	state_store: &'a StateStore,
-	project_id: &'a str,
-	issue_id: &'a str,
-	run_id: &'a str,
-	attempt_number: i64,
-	activity_marker_path: Option<&'a PathBuf>,
-	thread_id: Option<String>,
-	turn_id: Option<String>,
-	next_sequence: i64,
-	child_activity: ChildActivityAccumulator,
-	protocol_activity: ProtocolActivityAccumulator,
-}
-impl<'a> RunRecorder<'a> {
-	#[cfg(test)]
-	fn new(
-		state_store: &'a StateStore,
-		run_id: &'a str,
-		attempt_number: i64,
-		activity_marker_path: Option<&'a PathBuf>,
-	) -> Self {
-		Self::new_with_context(
-			state_store,
-			"unknown",
-			"unknown",
-			run_id,
-			attempt_number,
-			activity_marker_path,
-		)
-	}
-
-	fn new_with_context(
-		state_store: &'a StateStore,
-		project_id: &'a str,
-		issue_id: &'a str,
-		run_id: &'a str,
-		attempt_number: i64,
-		activity_marker_path: Option<&'a PathBuf>,
-	) -> Self {
-		Self {
-			state_store,
-			project_id,
-			issue_id,
-			run_id,
-			attempt_number,
-			activity_marker_path,
-			thread_id: None,
-			turn_id: None,
-			next_sequence: 1,
-			child_activity: ChildActivityAccumulator::new(),
-			protocol_activity: ProtocolActivityAccumulator::new(),
-		}
-	}
-
-	fn project_id(&self) -> &str {
-		self.project_id
-	}
-
-	fn issue_id(&self) -> &str {
-		self.issue_id
-	}
-
-	fn mark_activity(&self) -> crate::prelude::Result<()> {
-		if let Some(marker_path) = self.activity_marker_path {
-			write_activity_marker_best_effort(marker_path, self.run_id, self.attempt_number);
-		};
-
-		Ok(())
-	}
-
-	fn set_thread_id(&mut self, thread_id: &str) -> crate::prelude::Result<()> {
-		self.thread_id = Some(thread_id.to_owned());
-
-		if let Some(marker_path) = self.activity_marker_path {
-			write_thread_marker_best_effort(
-				marker_path,
-				self.run_id,
-				self.attempt_number,
-				thread_id,
-			);
-		}
-
-		Ok(())
-	}
-
-	fn set_turn_id(&mut self, turn_id: &str) -> crate::prelude::Result<()> {
-		self.turn_id = Some(turn_id.to_owned());
-
-		if let Some(marker_path) = self.activity_marker_path {
-			write_turn_marker_best_effort(marker_path, self.run_id, self.attempt_number, turn_id);
-		}
-
-		Ok(())
-	}
-
-	fn set_thread_status(
-		&mut self,
-		status: &str,
-		active_flags: &[String],
-	) -> crate::prelude::Result<()> {
-		if let Some(marker_path) = self.activity_marker_path {
-			write_thread_status_marker_best_effort(
-				marker_path,
-				self.run_id,
-				self.attempt_number,
-				self.thread_id.as_deref(),
-				self.turn_id.as_deref(),
-				status,
-				active_flags,
-			);
-		}
-
-		Ok(())
-	}
-
-	fn set_effective_runtime(
-		&mut self,
-		runtime: &EffectiveThreadConfig,
-	) -> crate::prelude::Result<()> {
-		if let Some(marker_path) = self.activity_marker_path {
-			write_effective_runtime_marker_best_effort(
-				marker_path,
-				self.run_id,
-				self.attempt_number,
-				self.thread_id.as_deref(),
-				self.turn_id.as_deref(),
-				runtime,
-			);
-		}
-
-		Ok(())
-	}
-
-	fn set_codex_account(
-		&mut self,
-		summary: &CodexAccountActivitySummary,
-		account_summaries: &[CodexAccountActivitySummary],
-	) -> crate::prelude::Result<()> {
-		if let Some(marker_path) = self.activity_marker_path {
-			write_codex_account_marker_best_effort(
-				marker_path,
-				self.run_id,
-				self.attempt_number,
-				summary,
-				account_summaries,
-			);
-		}
-
-		Ok(())
-	}
-
-	fn record(&mut self, event_type: &str, payload: &str) -> crate::prelude::Result<()> {
-		self.state_store.append_event(self.run_id, self.next_sequence, event_type, payload)?;
-
-		let child_activity = self.child_activity.record(event_type, payload);
-		let protocol_activity = self.protocol_activity.record(event_type, payload, &child_activity);
-
-		self.state_store.record_run_activity_summary(
-			self.run_id,
-			self.attempt_number,
-			Some(&child_activity),
-			Some(&protocol_activity),
-		)?;
-
-		if let Some(marker_path) = self.activity_marker_path {
-			let activity = state::ProtocolActivityMarker {
-				run_id: self.run_id,
-				attempt_number: self.attempt_number,
-				thread_id: self.thread_id.as_deref(),
-				turn_id: self.turn_id.as_deref(),
-				event_count: self.next_sequence,
-				last_event_type: event_type,
-				child_agent_activity: Some(&child_activity),
-				protocol_activity: Some(&protocol_activity),
-			};
-
-			write_protocol_activity_marker_best_effort(marker_path, &activity);
-		}
-
-		self.next_sequence += 1;
-
-		Ok(())
-	}
-}
-
-struct TurnLoopResult {
-	turn_id: String,
-	turn_count: u32,
-	final_output: String,
-	continuation_pending: bool,
-	phase_goal_status: Option<PhaseGoalRunStatus>,
-}
-
-#[derive(Clone, Copy)]
-struct RequestDispatchContext<'a> {
-	phase: RequestWaitPhase,
-	dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
-	codex_account_provider: Option<&'a dyn CodexAccountProvider>,
-	target_thread_id: Option<&'a str>,
-	target_turn_id: Option<&'a str>,
-}
-impl<'a> RequestDispatchContext<'a> {
-	fn new(
-		phase: RequestWaitPhase,
-		dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
-		codex_account_provider: Option<&'a dyn CodexAccountProvider>,
-		target_thread_id: Option<&'a str>,
-		target_turn_id: Option<&'a str>,
-	) -> Self {
-		Self {
-			phase,
-			dynamic_tool_handler,
-			codex_account_provider,
-			target_thread_id,
-			target_turn_id,
-		}
-	}
-}
 
 pub(crate) fn execute_app_server_run(
 	request: &AppServerRunRequest<'_>,
@@ -669,267 +358,6 @@ fn thread_archive_error_allows_discard(error: &Report) -> bool {
 	let message = error.to_string().to_lowercase();
 
 	thread_missing_error_message_allows_discard(&message) || message.contains("already archived")
-}
-
-fn publish_run_control_channel_for_request(
-	request: &AppServerRunRequest<'_>,
-	state_store: &StateStore,
-) -> crate::prelude::Result<Option<RunControlChannel>> {
-	let Some(marker_path) = request.activity_marker_path.as_ref() else {
-		return Ok(None);
-	};
-	let channel_path =
-		run_control_channel_path(marker_path, &request.run_id, request.attempt_number);
-
-	write_run_control_channel_file(&channel_path, request)?;
-
-	let channel = state_store.publish_run_control_channel_for_active_attempt(
-		&request.run_id,
-		request.attempt_number,
-		&channel_path,
-		RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE,
-	)?;
-
-	if let Some(channel) = channel.as_ref() {
-		state_store.append_private_execution_event(
-			channel.project_id(),
-			channel.issue_id(),
-			channel.run_id(),
-			channel.attempt_number(),
-			"control_channel_published",
-			serde_json::json!({
-				"schema": "decodex.run_control_channel/v1",
-				"transport": channel.transport(),
-				"channel_path": channel.channel_path().display().to_string(),
-				"status": channel.status(),
-				"published_at": channel.published_at(),
-			}),
-		)?;
-	}
-
-	Ok(channel)
-}
-
-fn run_control_channel_path(marker_path: &Path, run_id: &str, attempt_number: i64) -> PathBuf {
-	marker_path
-		.join(RUN_CONTROL_CHANNEL_DIR)
-		.join(format!("{}-{attempt_number}.channel", sanitize_run_control_path_segment(run_id)))
-}
-
-fn sanitize_run_control_path_segment(value: &str) -> String {
-	let sanitized = value
-		.chars()
-		.map(|character| {
-			if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
-				character
-			} else {
-				'_'
-			}
-		})
-		.collect::<String>();
-
-	if sanitized.is_empty() { String::from("run") } else { sanitized }
-}
-
-fn write_run_control_channel_file(
-	channel_path: &Path,
-	request: &AppServerRunRequest<'_>,
-) -> crate::prelude::Result<()> {
-	if let Some(parent) = channel_path.parent() {
-		fs::create_dir_all(parent)?;
-	}
-
-	fs::write(
-		channel_path,
-		format!(
-			"schema=decodex.run_control_channel/v1\nrun_id={}\nissue_id={}\nattempt_number={}\ntransport={}\n",
-			request.run_id,
-			request.issue_id,
-			request.attempt_number,
-			state::RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE,
-		),
-	)?;
-
-	Ok(())
-}
-
-fn write_activity_marker_best_effort(marker_path: &Path, run_id: &str, attempt_number: i64) {
-	if let Err(error) = state::write_run_operation_marker(
-		marker_path,
-		run_id,
-		attempt_number,
-		RUN_OPERATION_AGENT_RUN,
-	) {
-		tracing::warn!(
-			?error,
-			run_id,
-			attempt_number,
-			marker_path = %marker_path.display(),
-			"Failed to update worktree activity marker."
-		);
-	}
-}
-
-fn write_activity_marker_best_effort_for_request(request: &AppServerRunRequest<'_>) {
-	if let Some(marker_path) = request.activity_marker_path.as_ref() {
-		write_activity_marker_best_effort(marker_path, &request.run_id, request.attempt_number);
-	}
-}
-
-fn write_capability_preflight_marker_best_effort(request: &AppServerRunRequest<'_>) {
-	if let Some(marker_path) = request.activity_marker_path.as_ref()
-		&& let Err(error) = state::write_run_operation_marker(
-			marker_path,
-			&request.run_id,
-			request.attempt_number,
-			RUN_OPERATION_APP_SERVER_PREFLIGHT,
-		) {
-		tracing::warn!(
-			?error,
-			run_id = request.run_id,
-			attempt_number = request.attempt_number,
-			marker_path = %marker_path.display(),
-			"Failed to update worktree app-server preflight marker."
-		);
-	}
-}
-
-fn write_protocol_activity_marker_best_effort(
-	marker_path: &Path,
-	activity: &state::ProtocolActivityMarker<'_>,
-) {
-	if let Err(error) = state::write_run_protocol_activity_marker(marker_path, activity) {
-		tracing::warn!(
-			?error,
-			run_id = activity.run_id,
-			attempt_number = activity.attempt_number,
-			marker_path = %marker_path.display(),
-			"Failed to update worktree protocol-activity marker."
-		);
-	}
-}
-
-fn write_turn_marker_best_effort(
-	marker_path: &Path,
-	run_id: &str,
-	attempt_number: i64,
-	turn_id: &str,
-) {
-	if let Err(error) = state::write_run_turn_marker(marker_path, run_id, attempt_number, turn_id) {
-		tracing::warn!(
-			?error,
-			run_id,
-			attempt_number,
-			marker_path = %marker_path.display(),
-			"Failed to update worktree turn marker."
-		);
-	}
-}
-
-fn write_thread_status_marker_best_effort(
-	marker_path: &Path,
-	run_id: &str,
-	attempt_number: i64,
-	thread_id: Option<&str>,
-	turn_id: Option<&str>,
-	thread_status: &str,
-	thread_active_flags: &[String],
-) {
-	if let Err(error) = state::write_run_thread_status_marker(
-		marker_path,
-		run_id,
-		attempt_number,
-		thread_id,
-		turn_id,
-		thread_status,
-		thread_active_flags,
-	) {
-		tracing::warn!(
-			?error,
-			run_id,
-			attempt_number,
-			marker_path = %marker_path.display(),
-			"Failed to update worktree thread-status marker."
-		);
-	}
-}
-
-fn write_effective_runtime_marker_best_effort(
-	marker_path: &Path,
-	run_id: &str,
-	attempt_number: i64,
-	thread_id: Option<&str>,
-	turn_id: Option<&str>,
-	runtime: &EffectiveThreadConfig,
-) {
-	if let Err(error) = state::write_run_effective_runtime_marker(
-		marker_path,
-		run_id,
-		attempt_number,
-		&EffectiveRuntimeMarker {
-			thread_id,
-			turn_id,
-			effective_model: &runtime.model,
-			effective_model_provider: &runtime.model_provider,
-			effective_cwd: &runtime.cwd,
-			effective_approval_policy: &runtime.approval_policy,
-			effective_approvals_reviewer: &runtime.approvals_reviewer,
-			effective_sandbox_mode: &runtime.sandbox_mode,
-		},
-	) {
-		tracing::warn!(
-			?error,
-			run_id,
-			attempt_number,
-			marker_path = %marker_path.display(),
-			"Failed to update worktree effective-runtime marker."
-		);
-	}
-}
-
-fn write_codex_account_marker_best_effort(
-	marker_path: &Path,
-	run_id: &str,
-	attempt_number: i64,
-	summary: &CodexAccountActivitySummary,
-	account_summaries: &[CodexAccountActivitySummary],
-) {
-	if let Err(error) = state::write_run_account_marker(
-		marker_path,
-		&CodexAccountMarker {
-			run_id,
-			attempt_number,
-			account: summary,
-			accounts: account_summaries,
-		},
-	) {
-		tracing::warn!(
-			?error,
-			run_id,
-			attempt_number,
-			marker_path = %marker_path.display(),
-			"Failed to update worktree Codex account marker."
-		);
-	}
-}
-
-fn write_thread_marker_best_effort(
-	marker_path: &Path,
-	run_id: &str,
-	attempt_number: i64,
-	thread_id: &str,
-) {
-	if let Err(error) =
-		state::write_run_thread_marker(marker_path, run_id, attempt_number, thread_id)
-	{
-		tracing::warn!(
-			?error,
-			run_id,
-			attempt_number,
-			marker_path = %marker_path.display(),
-			"Failed to update worktree thread marker."
-		);
-	}
 }
 
 fn execute_app_server_run_inner(

@@ -6,14 +6,14 @@ status: active
 authority: normative
 owner: automation
 tags: [spec, publishing]
-code_refs: [apps/decodex/src/radar.rs, automations/decodex/scripts/github/social_candidate.schema.json]
+code_refs: [apps/decodex-publisher/src/lib.rs, automations/decodex/scripts/social/social_candidate.schema.json]
 drift_watch: [social_candidate/v1, upstream_impact/v1, source_refs.upstream_impacts]
 last_verified: 2026-06-27
 ---
 # Social Candidate
 
-Purpose: Define the checked-in Publisher candidate artifact produced by upstream Radar
-source analysis before any social publication record is written.
+Purpose: Define the checked-in Publisher candidate artifact produced before any social
+publication record is written.
 
 Status: normative
 
@@ -43,7 +43,7 @@ The canonical schema identifier is:
 
 Recommended checked-in location:
 
-- `.agent/automations/decodex/cache/github/social-candidates/<source-slug>.json`
+- `.agent/automations/decodex/cache/social/x/candidates/<source-slug>.json`
 
 `social_candidate/v1` is a handoff artifact, not a publication ledger entry. It must not
 claim that a post was published, skipped, blocked, or failed. Downstream Publisher
@@ -91,7 +91,7 @@ shared handoff from Radar Review into Publisher. `release_deltas`, official rele
 URLs, compare metadata, and `upstream_reviews` can support channel lineage and claim
 evidence, but they should not become a parallel release-analysis source when a matching
 `upstream_impact/v1` exists or Radar Review can produce one.
-`decodex radar validate` rejects a Radar-derived social candidate that cites
+`decodex-publisher validate-social` rejects a Radar-derived social candidate that cites
 `upstream_reviews` or `release_deltas` without also citing `upstream_impacts`.
 
 ## Decision Object
@@ -146,5 +146,6 @@ prerelease when an adjacent prerelease-to-prerelease comparison is available.
 - Do not mix stable release and prerelease channels. Release candidates use
   stable-to-stable comparison; prerelease candidates use adjacent prerelease comparison,
   except the first prerelease after a stable release.
-- Use `social_candidate` as the upstream-review next action for public Publisher
-  opportunities that are not yet publication records.
+- Use `upstream_impact` as the upstream-review next action for public Publisher
+  opportunities that are not yet publication records. Publisher may later create or
+  consume `social_candidate/v1` from that shared handoff.

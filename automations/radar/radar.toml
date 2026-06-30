@@ -1,0 +1,14 @@
+version = 1
+
+[paths]
+archive_root      = ".agent/automations/radar/cache/archive"
+cache_root        = ".agent/automations/radar/cache"
+generated_root    = ".agent/automations/radar/cache/generated"
+github_root       = ".agent/automations/radar/cache/github"
+site_content_root = ".agent/automations/radar/cache/site-content"
+
+[handoff]
+publisher_cache_root   = ".agent/automations/decodex/cache/social"
+publisher_tool         = "decodex-publisher"
+signal_schema          = "signal_entry/v1"
+upstream_impact_schema = "upstream_impact/v1"

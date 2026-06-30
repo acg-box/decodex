@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Decodex upstream review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "slug",
+    "repo",
+    "subject",
+    "source_refs",
+    "reviewed_at",
+    "observed_change",
+    "changed_surfaces",
+    "confidence",
+    "evidence",
+    "next_actions"
+  ],
+  "properties": {
+    "schema": {
+      "const": "upstream_review/v1"
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repo": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_kind", "subject_id"],
+      "properties": {
+        "subject_kind": {
+          "type": "string",
+          "enum": ["commit", "pr"]
+        },
+        "subject_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit_shas": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "source_refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "title", "url"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^https://"
+              },
+              "meta": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "reviewed_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_change": {
+      "type": "string",
+      "minLength": 1
+    },
+    "changed_surfaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "user_visible_path": {
+      "type": "string"
+    },
+    "control_plane_relevance": {
+      "type": "string"
+    },
+    "compatibility_risk": {
+      "type": "string"
+    },
+    "adoption_opportunity": {
+      "type": "string"
+    },
+    "community_value": {
+      "type": "string"
+    },
+    "deprecated_or_breaking_notes": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["confirmed", "likely", "weak"]
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "caveats": {
+      "type": "string"
+    },
+    "next_actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "reason"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "none",
+              "upstream_impact",
+              "signal_entry",
+              "control_plane_upgrade_candidate"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}
