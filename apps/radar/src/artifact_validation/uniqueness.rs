@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::model::ValidationState;
 
-pub(in crate::radar) fn validate_signal_slug_uniqueness(
+pub(crate) fn validate_signal_slug_uniqueness(
 	path: &Path,
 	payload: &Value,
 	state: &mut ValidationState,
@@ -25,7 +25,7 @@ pub(in crate::radar) fn validate_signal_slug_uniqueness(
 	}
 }
 
-pub(in crate::radar) fn validate_terminal_social_post_idempotency_key_uniqueness(
+pub(crate) fn validate_terminal_social_post_idempotency_key_uniqueness(
 	path: &Path,
 	payload: &Value,
 	state: &mut ValidationState,
@@ -64,7 +64,7 @@ pub(in crate::radar) fn validate_terminal_social_post_idempotency_key_uniqueness
 	}
 }
 
-pub(in crate::radar) fn validate_active_social_publish_reservation_uniqueness(
+pub(crate) fn validate_active_social_publish_reservation_uniqueness(
 	path: &Path,
 	payload: &Value,
 	state: &mut ValidationState,

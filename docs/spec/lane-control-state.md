@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [lane-control, runtime, scheduler]
 source_refs: []
-code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs]
+code_refs: [apps/decodex/src/orchestrator/status/mod.rs, apps/decodex/src/orchestrator/tests/operator/status/http/mod.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs]
 related: [lane-control.md, runtime.md]
 drift_watch: [ownership_state, liveness_state, policy_state, terminalization_state, review_churn_exceeded]
 last_verified: 2026-06-27

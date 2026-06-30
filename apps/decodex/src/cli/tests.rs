@@ -397,24 +397,6 @@ fn parses_mcp_streamable_http_serve_with_safe_profile_default() {
 }
 
 #[test]
-fn parses_radar_command_family_after_module_split() {
-	let cli = Cli::parse_from([
-		"decodex",
-		"radar",
-		"bundle",
-		"build",
-		"--repo",
-		"openai/codex",
-		"--pr",
-		"42",
-		"--out",
-		"bundle.json",
-	]);
-
-	assert!(matches!(cli.command, Command::Radar(_)));
-}
-
-#[test]
 fn rejects_serve_interval_argument() {
 	let error = Cli::try_parse_from(["decodex", "serve", "--interval", "30s"])
 		.expect_err("serve interval override should be removed");

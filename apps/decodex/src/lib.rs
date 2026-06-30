@@ -26,7 +26,6 @@ mod mcp;
 mod orchestrator;
 mod program_intake;
 mod pull_request;
-mod radar;
 mod prelude {
 	pub use color_eyre::{Result, eyre};
 }

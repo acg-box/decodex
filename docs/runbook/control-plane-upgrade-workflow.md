@@ -6,7 +6,7 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook, radar, control-plane]
-code_refs: [automations/decodex/prompts/radar-review.md, automations/decodex/automations.toml, apps/decodex/src/radar.rs]
+code_refs: [automations/decodex/prompts/radar-review.md, automations/decodex/automations.toml, apps/radar/src/lib.rs]
 drift_watch: [control_plane_upgrade_candidate/v1, Codex compatibility matrix, decodex probe, Program Intake, Decision Contract]
 last_verified: 2026-06-27
 ---
@@ -36,8 +36,8 @@ The current tested Codex versions are recorded in
 1. Refresh upstream source state:
 
    ```sh
-   decodex radar refresh-upstream-queue --repo openai/codex
-   decodex radar refresh-release-delta --repo openai/codex
+   radar refresh-upstream-queue --repo openai/codex
+   radar refresh-release-delta --repo openai/codex
    ```
 
 2. Review high-priority queue subjects through the Radar Review automation or an
@@ -62,7 +62,7 @@ The current tested Codex versions are recorded in
 5. Validate the changed artifacts:
 
    ```sh
-   decodex radar validate \
+   radar validate \
      .agent/automations/decodex/cache/github/reviews \
      .agent/automations/decodex/cache/github/impact \
      .agent/automations/decodex/cache/github/control-plane-upgrades
