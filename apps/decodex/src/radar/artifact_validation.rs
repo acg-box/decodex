@@ -220,9 +220,8 @@ pub(super) fn validate_artifact(payload: &Value) -> ArtifactValidation {
 pub(super) fn validate_artifact_for_path(path: &Path, payload: &Value) -> ArtifactValidation {
 	if is_analysis_draft_path(path) && payload.get("schema").is_none() {
 		return match validate_analysis_draft(payload) {
-			Ok(()) => {
-				ArtifactValidation { schema: Some(ANALYSIS_DRAFT_KIND.into()), errors: Vec::new() }
-			},
+			Ok(()) =>
+				ArtifactValidation { schema: Some(ANALYSIS_DRAFT_KIND.into()), errors: Vec::new() },
 			Err(error) => ArtifactValidation {
 				schema: Some(ANALYSIS_DRAFT_KIND.into()),
 				errors: analysis_draft_error_lines(error),
@@ -257,19 +256,16 @@ fn validate_artifact_with_options(
 	match schema.as_deref() {
 		Some(BUNDLE_SCHEMA) => validate_bundle(entry, &mut errors),
 		Some(CONFIG_FEATURE_CATALOG_SCHEMA) => validate_config_feature_catalog(entry, &mut errors),
-		Some(CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA) => {
-			validate_control_plane_upgrade_candidate(entry, &mut errors)
-		},
-		Some(RADAR_ARCHIVE_MANIFEST_SCHEMA) => {
-			validate_radar_archive_manifest(entry, options, &mut errors)
-		},
+		Some(CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA) =>
+			validate_control_plane_upgrade_candidate(entry, &mut errors),
+		Some(RADAR_ARCHIVE_MANIFEST_SCHEMA) =>
+			validate_radar_archive_manifest(entry, options, &mut errors),
 		Some(RELEASE_DELTA_SCHEMA) => validate_release_delta(entry, &mut errors),
 		Some(SIGNAL_SCHEMA) => validate_signal(entry, &mut errors),
 		Some(SOCIAL_CANDIDATE_SCHEMA) => validate_social_candidate(entry, &mut errors),
 		Some(SOCIAL_POST_SCHEMA) => validate_social_post(entry, &mut errors),
-		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) => {
-			validate_social_publish_reservation(entry, &mut errors)
-		},
+		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) =>
+			validate_social_publish_reservation(entry, &mut errors),
 		Some(UPSTREAM_IMPACT_SCHEMA) => validate_upstream_impact(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_QUEUE_SCHEMA) => validate_upstream_review_queue(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_SCHEMA) => validate_upstream_review(entry, options, &mut errors),
@@ -513,11 +509,10 @@ fn collect_json_strings(value: &Value, text: &mut String) {
 			text.push(' ');
 			text.push_str(value);
 		},
-		Value::Array(values) => {
+		Value::Array(values) =>
 			for value in values {
 				collect_json_strings(value, text);
-			}
-		},
+			},
 		Value::Object(object) => collect_json_strings_from_map(object, text),
 		Value::Bool(_) | Value::Null | Value::Number(_) => {},
 	}
@@ -817,31 +812,25 @@ fn validate_release_comparison_tags(
 	errors: &mut Vec<String>,
 ) {
 	match string_field(comparison, "stable_tag_name") {
-		Some("") => {
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
-		},
+		Some("") =>
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
 		Some(tag_name)
 			if !option_tags.stable.is_empty() && !option_tags.stable.contains(tag_name) =>
-		{
 			errors.push(format!(
 				"comparisons[{index}].stable_tag_name must exist in release_options.stable"
-			))
-		},
+			)),
 		Some(_) => {},
-		None => {
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
-		},
+		None =>
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
 	}
 	match string_field(comparison, "prerelease_tag_name") {
 		Some("") => errors
 			.push(format!("comparisons[{index}].prerelease_tag_name must be a non-empty string")),
 		Some(tag_name)
 			if !option_tags.preview.is_empty() && !option_tags.preview.contains(tag_name) =>
-		{
 			errors.push(format!(
 				"comparisons[{index}].prerelease_tag_name must exist in release_options.preview"
-			))
-		},
+			)),
 		Some(_) => {},
 		None => errors
 			.push(format!("comparisons[{index}].prerelease_tag_name must be a non-empty string")),
@@ -1602,12 +1591,10 @@ fn validate_social_publish_reservation_status_payload(
 	errors: &mut Vec<String>,
 ) {
 	match string_field(entry, "status") {
-		Some("consumed") if !is_non_empty_string(entry.get("consumed_by_social_post")) => {
-			errors.push("consumed_by_social_post is required when status is consumed".into())
-		},
-		Some("canceled" | "expired") if !is_non_empty_string(entry.get("release_reason")) => {
-			errors.push("release_reason is required when status is canceled or expired".into())
-		},
+		Some("consumed") if !is_non_empty_string(entry.get("consumed_by_social_post")) =>
+			errors.push("consumed_by_social_post is required when status is consumed".into()),
+		Some("canceled" | "expired") if !is_non_empty_string(entry.get("release_reason")) =>
+			errors.push("release_reason is required when status is canceled or expired".into()),
 		_ => {},
 	}
 }
@@ -1822,12 +1809,10 @@ fn validate_social_post_status_payload(entry: &Map<String, Value>, errors: &mut 
 	match string_field(entry, "status") {
 		Some("published") => validate_social_post_publication(entry.get("publication"), errors),
 		Some("blocked") => validate_social_post_block(entry, errors),
-		Some("failed") if entry.get("failure").and_then(Value::as_object).is_none() => {
-			errors.push("failure is required when status is failed".into())
-		},
-		Some("skipped") if entry.get("skip").and_then(Value::as_object).is_none() => {
-			errors.push("skip is required when status is skipped".into())
-		},
+		Some("failed") if entry.get("failure").and_then(Value::as_object).is_none() =>
+			errors.push("failure is required when status is failed".into()),
+		Some("skipped") if entry.get("skip").and_then(Value::as_object).is_none() =>
+			errors.push("skip is required when status is skipped".into()),
 		_ => {},
 	}
 }

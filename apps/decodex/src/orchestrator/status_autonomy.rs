@@ -698,9 +698,8 @@ fn operator_autonomy_evidence_completeness_rank(value: &str) -> u8 {
 
 fn operator_autonomy_max_redaction_level(left: &str, right: &str) -> &'static str {
 	match (operator_autonomy_redaction_rank(left), operator_autonomy_redaction_rank(right)) {
-		(left_rank, right_rank) if left_rank >= right_rank => {
-			operator_autonomy_redaction_label(left)
-		},
+		(left_rank, right_rank) if left_rank >= right_rank =>
+			operator_autonomy_redaction_label(left),
 		_ => operator_autonomy_redaction_label(right),
 	}
 }
