@@ -4465,23 +4465,14 @@
 
 			function runProcessStoppedWhileActive(run) {
 				return (
-					run.status === "running" &&
-					run.process_alive === false &&
-					!run.wait_reason &&
-					!runHasFreshExecution(run)
+					["starting", "running"].includes(run.status) &&
+					run.phase === "executing" &&
+					run.process_alive === false
 				);
 			}
 
-			function runOperationRequiresLiveAgent(run) {
-				return !run.current_operation || run.current_operation === "agent_run";
-			}
-
 			function runStoppedProcessNeedsAttention(run) {
-				return runProcessStoppedWhileActive(run) && runOperationRequiresLiveAgent(run);
-			}
-
-			function runProcessStoppedWithoutAttention(run) {
-				return runProcessStoppedWhileActive(run) && !runStoppedProcessNeedsAttention(run);
+				return runProcessStoppedWhileActive(run);
 			}
 
 				function runPhaseLabel(run) {
@@ -4531,7 +4522,7 @@
 				return (
 					["starting", "running"].includes(run.status) &&
 					run.phase === "executing" &&
-					(run.process_alive !== false || runHasFreshExecution(run)) &&
+					run.process_alive !== false &&
 					!runNeedsAttention(run)
 				);
 			}
@@ -4550,9 +4541,6 @@
 					["stalled", "failed", "terminated", "interrupted"].includes(run.status)
 				) {
 					return "tone-blocked";
-				}
-				if (runProcessStoppedWithoutAttention(run)) {
-					return "tone-run";
 				}
 				if (runTelemetryMissing(run) || runProcessStoppedWhileActive(run)) {
 					return "tone-wait";
@@ -11248,7 +11236,7 @@
 					return "tone-run";
 				}
 
-				return "tone-run";
+				return toneForRun(run);
 			}
 
 			function dashboardRunActivityIsStale(payload) {
