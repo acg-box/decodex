@@ -8,12 +8,10 @@ struct AccountPanelView: View {
 	@ObservedObject var loginWindowState: LoginWindowState
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var accountScrollOffset: CGFloat = 0
-	@State private var currentTime = Date()
-	@State private var pendingLogout: CodexAccount?
 	@State private var armedLogoutAccountID: String?
-	@State private var logoutArmToken = UUID()
+	@State private var deletingLogoutAccountID: String?
+	@State private var logoutErrorMessage: String?
 	@AppStorage("decodex.operator.accountPrivacy") private var accountPrivacy = AccountPrivacy.hiddenValue
-	private let localClock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
 	var body: some View {
 		Group {
@@ -25,38 +23,12 @@ struct AccountPanelView: View {
 				panelContent
 			}
 		}
-		.confirmationDialog(
-			"Remove account?",
-			isPresented: Binding(
-				get: { pendingLogout != nil },
-				set: { visible in
-					if visible == false {
-						pendingLogout = nil
-						disarmLogout()
-					}
-				}
-			),
-			titleVisibility: .visible
-		) {
-			if let account = pendingLogout {
-				Button("Remove \(displayName(for: account))", role: .destructive) {
-					disarmLogout()
-					Task {
-						await store.logout(account)
-					}
-				}
-			}
-		} message: {
-			if let account = pendingLogout {
-				Text("This removes \(displayName(for: account)) from the Decodex account pool on this Mac.")
-			}
-		}
 		.background {
 			LoginPanelPresenter(store: store, state: loginWindowState)
 				.frame(width: 0, height: 0)
 		}
-		.onReceive(localClock) { tick in
-			currentTime = tick
+		.onDisappear {
+			disarmLogout()
 		}
 	}
 
@@ -280,7 +252,8 @@ struct AccountPanelView: View {
 					displayName: displayName(for: account),
 					showsDivider: index < store.accounts.count - 1,
 					isLogoutArmed: armedLogoutAccountID == account.id,
-					currentTime: currentTime,
+					isLogoutPending: deletingLogoutAccountID == account.id,
+					logoutErrorMessage: armedLogoutAccountID == account.id ? logoutErrorMessage : nil,
 					useInCodex: {
 						Task {
 							await store.useInCodex(account)
@@ -296,6 +269,12 @@ struct AccountPanelView: View {
 					},
 					logout: {
 						requestLogout(account)
+					},
+					cancelLogout: {
+						disarmLogout()
+					},
+					confirmLogout: {
+						confirmLogout(account)
 					}
 				)
 			}
@@ -486,34 +465,38 @@ struct AccountPanelView: View {
 	}
 
 	private func requestLogout(_ account: CodexAccount) {
+		guard deletingLogoutAccountID == nil else {
+			return
+		}
 		if armedLogoutAccountID == account.id {
-			pendingLogout = account
-			disarmLogout()
 			return
 		}
 
-		let token = UUID()
-		logoutArmToken = token
-		withAnimation(PanelMotion.state) {
-			armedLogoutAccountID = account.id
-		}
+		logoutErrorMessage = nil
+		armedLogoutAccountID = account.id
+	}
 
-		Task { @MainActor in
-			try? await Task.sleep(nanoseconds: 2_400_000_000)
-			guard logoutArmToken == token, armedLogoutAccountID == account.id else {
-				return
-			}
-			withAnimation(PanelMotion.state) {
-				armedLogoutAccountID = nil
+	private func confirmLogout(_ account: CodexAccount) {
+		Task {
+			deletingLogoutAccountID = account.id
+			logoutErrorMessage = nil
+			do {
+				try await store.logout(account)
+				deletingLogoutAccountID = nil
+				disarmLogout()
+			} catch {
+				deletingLogoutAccountID = nil
+				logoutErrorMessage = error.localizedDescription
 			}
 		}
 	}
 
 	private func disarmLogout() {
-		logoutArmToken = UUID()
-		withAnimation(PanelMotion.state) {
-			armedLogoutAccountID = nil
+		guard deletingLogoutAccountID == nil else {
+			return
 		}
+		logoutErrorMessage = nil
+		armedLogoutAccountID = nil
 	}
 
 	private func presentLogin(_ mode: AccountLoginSheetMode) {

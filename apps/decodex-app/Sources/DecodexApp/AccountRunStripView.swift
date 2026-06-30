@@ -3,7 +3,6 @@ import SwiftUI
 
 struct AccountRunSummaryView: View {
 	let runs: [OperatorCurrentLaneCard]
-	let currentTime: Date
 	@State private var placementStore = AccountRunStripPlacementStore()
 	@State private var scrollProxy = AccountRunStripScrollProxy()
 	@State private var scrollMetrics = AccountRunStripMetrics()
@@ -33,7 +32,7 @@ struct AccountRunSummaryView: View {
 			) {
 				HStack(spacing: 5) {
 					ForEach(runs) { card in
-						AccountRunChipView(card: card, currentTime: currentTime)
+						AccountRunChipView(card: card)
 							.modifier(
 								AccountRunChipPlacementReporter(
 									runID: card.id,
