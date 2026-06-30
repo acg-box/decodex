@@ -888,6 +888,8 @@ fn add_external_review_findings(review_state: &mut PullRequestReviewState, body:
 
 fn git_output(worktree_path: &Path, args: &[&str]) -> String {
 	let output = Command::new("git")
+		.arg("-c")
+		.arg("core.hooksPath=/dev/null")
 		.arg("-C")
 		.arg(worktree_path)
 		.args(args)
@@ -906,6 +908,8 @@ fn git_output(worktree_path: &Path, args: &[&str]) -> String {
 
 fn git_status_success(worktree_path: &Path, args: &[&str]) {
 	let output = Command::new("git")
+		.arg("-c")
+		.arg("core.hooksPath=/dev/null")
 		.arg("-C")
 		.arg(worktree_path)
 		.args(args)

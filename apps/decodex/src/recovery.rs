@@ -106,7 +106,8 @@ use stale_active_diagnosis::diagnose_stale_active_issues;
 use stale_active_release::{apply_stale_active_release, preflight_stale_active_worktree_cleanup};
 #[cfg(test)]
 use stale_active_release::{
-	apply_stale_active_release_with_tracker, ensure_stale_active_run_claim_guard,
+	apply_stale_active_release_with_tracker, clear_stale_active_dead_run_claims_before_release,
+	ensure_stale_active_run_claim_guard,
 };
 
 const MISSING_HANDOFF_REASON: &str = "missing_review_handoff_record";
