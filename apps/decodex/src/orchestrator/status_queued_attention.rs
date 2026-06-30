@@ -19,9 +19,10 @@ use super::{
 	OperatorAuthorityDecisionRequestStatus, OperatorHistoryLedgerRecord,
 	OperatorQueuedIssueAttentionStatus, QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT,
 	WorktreeTrackedChangeState, collect_history_ledger_records,
-	compare_history_ledger_record_position, format_optional_unix_timestamp,
-	marker_process_liveness_for_marker, operator_loop_status_for_run, parse_rfc3339_unix_epoch,
-	relative_worktree_path_for_path, worktree_tracked_change_state,
+	compare_history_ledger_record_position, marker_process_liveness_for_marker,
+	parse_rfc3339_unix_epoch, relative_worktree_path_for_path,
+	status_run_projection::{format_optional_unix_timestamp, operator_loop_status_for_run},
+	worktree_tracked_change_state,
 };
 
 struct OperatorQueuedIssueWorktreeContext {
