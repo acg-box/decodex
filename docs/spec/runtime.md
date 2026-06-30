@@ -95,8 +95,8 @@ state or this state machine.
 - `decodex research compile` and `decodex research promote` are runtime-local
   Decision Contract writes. They update the SQLite `decision_contracts` surface and do
   not by themselves create Linear issues, queue intent, goals, or executable lanes.
-- Runtime schema migration owns legacy Decision Contract payload rewrites. Schema 12
-  removes legacy `execution_readiness.proposed_issue_summaries` and
+- Runtime schema migration owns removed Decision Contract payload rewrites. Schema 12
+  removes `execution_readiness.proposed_issue_summaries` and
   `execution_readiness.queue_intent` rows from SQLite by converting summaries into
   structured `proposed_issues[]` with `handoff` stage and `not_ready` queue intent.
   After migration, normal Decision Contract readback is strict: it does not skip,

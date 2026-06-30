@@ -7,15 +7,15 @@ authority: normative
 owner: automation
 tags: [spec, radar]
 code_refs:
-  - apps/decodex/src/radar.rs
-  - automations/decodex/prompts/radar-review.md
-  - automations/decodex/prompts/release-curator.md
+  - apps/radar/src/lib.rs
+  - automations/radar/prompts/upstream-review.md
+  - automations/radar/prompts/release-curator.md
 drift_watch:
   - upstream_impact/v1
   - social_candidate/v1
   - control_plane_upgrade_candidate/v1
   - codex-upstream-radar-review
-  - codex-release-checkpoint-publisher
+  - codex-release-checkpoint-curator
 last_verified: 2026-06-27
 ---
 # Upstream Impact
@@ -58,7 +58,7 @@ The canonical schema identifier is:
 
 Recommended checked-in location:
 
-- `.agent/automations/decodex/cache/github/impact/<source-slug>.json`
+- `.agent/automations/radar/cache/github/impact/<source-slug>.json`
 
 ## Shared Handoff Rule
 
@@ -67,7 +67,7 @@ self-iteration consumers. Radar Review may read bundles and source-backed
 `upstream_review/v1` records, but release publishing and Control Plane upgrade
 proposal work should consume the reviewed `upstream_impact/v1` conclusion first.
 
-New Radar-derived `social_candidate/v1` and
+Publisher `social_candidate/v1` records and Radar
 `control_plane_upgrade_candidate/v1` artifacts should cite the matching
 `upstream_impact/v1` under their `source_refs`. Raw `upstream_review/v1`,
 `release_delta/v1`, release URLs, and compare metadata remain evidence and gap-finding
@@ -93,8 +93,8 @@ Optional fields:
 
 - `candidate_followups`: bounded evidence-gathering suggestions for a later
   `control_plane_upgrade_candidate/v1`; they are not executable work.
-- `social_notes`: notes useful to a later `social_candidate/v1` or terminal
-  `social_post/v1`.
+- `social_notes`: notes useful to a later Publisher `social_candidate/v1` or terminal
+  Publisher `social_post/v1`.
 - `caveats`: uncertainty, version gating, platform limits, or rollout limits.
 
 ## Control Plane impact ladder
@@ -148,7 +148,8 @@ summary.
 - It should normally consume a source-backed `upstream_review/v1` conclusion when the
   change came from continuous Radar.
 - It may support a `signal_entry/v1`.
-- It may support a `social_candidate/v1` or terminal `social_post/v1`.
+- It may support later Publisher `social_candidate/v1` or terminal `social_post/v1`
+  records without making Radar the owner of those records.
 - It may justify a later `control_plane_upgrade_candidate/v1`.
 
 It does not replace any of those artifacts.

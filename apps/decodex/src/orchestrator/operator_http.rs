@@ -1,333 +1,69 @@
+//! Operator HTTP endpoint, dashboard, and control API handling.
+
+use std::{
+	io::{ErrorKind, Read, Write},
+	net::{TcpListener, TcpStream},
+	path::{Path, PathBuf},
+	sync::{
+		Arc, Mutex,
+		mpsc::{Receiver, RecvTimeoutError},
+	},
+	thread,
+	time::{Duration, Instant},
+};
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use color_eyre::Report;
+use serde_json::{Value, json};
 use sha1::Sha1;
+use time::OffsetDateTime;
 
-use crate::accounts::{self, AccountUseRequest};
+use crate::{
+	accounts::{self, AccountUseRequest},
+	config::ServiceConfig,
+	prelude::{Result, eyre},
+	state::StateStore,
+	workflow::WorkflowDocument,
+};
 
-static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-	[
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/head.html"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/styles/foundation.css"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/styles/layout.css"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/styles/accounts.css"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/styles/activity.css"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/styles/details.css"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/styles/responsive.css"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/body.html"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/app/boot.js"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/app/formatting.js"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/app/preferences.js"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/app/render-primitives.js"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/app/accounts.js"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/app/activity.js"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/app/overview.js"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/app/lanes.js"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/app/stream.js"
-		)),
-		include_str!(concat!(
-			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/tail.html"
-		)),
-	]
-	.concat()
-});
-const OPERATOR_DASHBOARD_ICON_PNG: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/icon.png"));
-const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo.ico"));
-const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo-touch.png"));
-const OPERATOR_HTTP_READ_TIMEOUT: Duration = Duration::from_millis(250);
-const DASHBOARD_MAX_WEBSOCKET_CLIENTS: usize = 64;
-const DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS: &[&str] = &[
-	"idle_for_seconds",
-	"protocol_idle_for_seconds",
-	"current_elapsed_seconds",
-	"wall_seconds",
-];
+use super::{
+	DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneSteerReport,
+	LaneSteerRequest, OPERATOR_ACCOUNTS_ENDPOINT_PATH, OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH,
+	OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH,
+	OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES, OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
+	OPERATOR_DASHBOARD_WS_HEARTBEAT_INTERVAL, OPERATOR_LANE_INSPECT_ENDPOINT_PATH,
+	OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH, OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH,
+	OPERATOR_LANE_STEER_ENDPOINT_PATH, OPERATOR_LINEAR_SCAN_ENDPOINT_PATH,
+	OPERATOR_LIVE_ENDPOINT_PATH, OPERATOR_RUN_ACTIVITY_STREAM_INTERVAL,
+	OPERATOR_STATE_HEADER_TERMINATOR, OPERATOR_STATE_MAX_REQUEST_BYTES,
+	OperatorCodexAccountControlStatus, OperatorControlRequests, OperatorRunStatus,
+	OperatorStatusSnapshot, PublishedOperatorSnapshot,
+	build_operator_state_snapshot_without_live_observers, global_codex_account_control_status,
+	lane_control, operator_snapshot_presentation_value,
+};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum OperatorRequestRoute {
-	Dashboard,
-	DashboardIconPng,
-	DashboardLogoIco,
-	DashboardLogoTouchPng,
-	DashboardWs,
-	Live,
-	AppSnapshot,
-	LinearScan,
-	LaneInspect,
-	LaneInterrupt,
-	LaneSteer,
-	AccountList { force_refresh: bool },
-	AccountSelect,
-	AccountClear,
-	AccountLogout,
-	AccountImport,
-	AccountUse,
-	AccountRerollName,
-}
+mod assets;
+mod types;
 
-enum DashboardClientFrame {
-	Text(Vec<u8>),
-	Close,
-	Ping(Vec<u8>),
-	Pong,
-}
+pub(crate) use self::{
+	assets::DASHBOARD_MAX_WEBSOCKET_CLIENTS,
+	types::{DashboardClientSubscription, DashboardEventHub},
+};
+use self::{
+	assets::{
+		DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS, OPERATOR_DASHBOARD_HTML,
+		OPERATOR_DASHBOARD_ICON_PNG, OPERATOR_DASHBOARD_LOGO_ICO,
+		OPERATOR_DASHBOARD_LOGO_TOUCH_PNG, OPERATOR_HTTP_READ_TIMEOUT,
+	},
+	types::{
+		DashboardBroadcastEvent, DashboardClientFrame, DashboardClientMessage, DashboardControlAck,
+		DashboardRunActivityEvent, DashboardWebSocketSession, OperatorAccountRequest,
+		OperatorLaneInterruptHttpRequest, OperatorLaneSteerHttpRequest,
+		OperatorLinearScanHttpRequest, OperatorRequestRoute,
+	},
+};
 
-#[derive(Clone, Default)]
-struct DashboardEventHub {
-	clients: Arc<Mutex<Vec<DashboardClientHandle>>>,
-	last_run_activity: Arc<Mutex<Option<DashboardBroadcastEvent>>>,
-	next_client_id: Arc<Mutex<u64>>,
-}
-impl DashboardEventHub {
-	fn subscribe(&self) -> Result<DashboardClientRegistration> {
-		let (event_tx, event_rx) = mpsc::channel();
-		let mut clients = self
-			.clients
-			.lock()
-			.map_err(|error| eyre::eyre!("Dashboard event client lock poisoned: {error}"))?;
-
-		if clients.len() >= DASHBOARD_MAX_WEBSOCKET_CLIENTS {
-			eyre::bail!(
-				"Dashboard websocket client limit reached ({DASHBOARD_MAX_WEBSOCKET_CLIENTS})."
-			);
-		}
-
-		let mut next_client_id = self
-			.next_client_id
-			.lock()
-			.map_err(|error| eyre::eyre!("Dashboard event client id lock poisoned: {error}"))?;
-		let id = *next_client_id;
-
-		*next_client_id = next_client_id.saturating_add(1);
-
-		clients.push(DashboardClientHandle { id, sender: event_tx });
-
-		Ok(DashboardClientRegistration {
-			id,
-			receiver: event_rx,
-			clients: Arc::clone(&self.clients),
-		})
-	}
-
-	fn broadcast(&self, event_type: &'static str, payload: Value) {
-		let event = DashboardBroadcastEvent { event_type, payload };
-
-		if event_type == "runActivity"
-			&& let Ok(mut last_run_activity) = self.last_run_activity.lock()
-		{
-			*last_run_activity = Some(event.clone());
-		}
-
-		let Ok(mut clients) = self.clients.lock() else {
-			tracing::warn!(
-				"Skipped dashboard event broadcast because the client list lock is poisoned."
-			);
-
-			return;
-		};
-
-		clients.retain(|client| client.sender.send(event.clone()).is_ok());
-	}
-
-	fn has_clients(&self) -> bool {
-		self.clients.lock().is_ok_and(|clients| !clients.is_empty())
-	}
-
-	fn cached_run_activity_event(
-		&self,
-		subscription: &DashboardClientSubscription,
-	) -> Option<DashboardBroadcastEvent> {
-		self.last_run_activity
-			.lock()
-			.ok()
-			.and_then(|event| event.as_ref().and_then(|event| dashboard_event_for_subscription(event, subscription)))
-	}
-
-	#[cfg(test)]
-	fn close_clients_for_test(&self) {
-		if let Ok(mut clients) = self.clients.lock() {
-			clients.clear();
-		}
-	}
-
-	#[cfg(test)]
-	fn client_count_for_test(&self) -> usize {
-		self.clients.lock().map(|clients| clients.len()).unwrap_or_default()
-	}
-}
-
-#[derive(Debug)]
-struct DashboardClientHandle {
-	id: u64,
-	sender: Sender<DashboardBroadcastEvent>,
-}
-
-struct DashboardClientRegistration {
-	id: u64,
-	receiver: Receiver<DashboardBroadcastEvent>,
-	clients: Arc<Mutex<Vec<DashboardClientHandle>>>,
-}
-impl DashboardClientRegistration {
-	fn recv_timeout(
-		&self,
-		timeout: Duration,
-	) -> std::result::Result<DashboardBroadcastEvent, RecvTimeoutError> {
-		self.receiver.recv_timeout(timeout)
-	}
-}
-impl Drop for DashboardClientRegistration {
-	fn drop(&mut self) {
-		if let Ok(mut clients) = self.clients.lock() {
-			clients.retain(|client| client.id != self.id);
-		}
-	}
-}
-#[derive(Clone, Debug)]
-struct DashboardBroadcastEvent {
-	event_type: &'static str,
-	payload: Value,
-}
-
-#[derive(Clone, Debug, Default)]
-struct DashboardClientSubscription {
-	project_id: Option<String>,
-	issue_id: Option<String>,
-	run_id: Option<String>,
-}
-
-#[derive(Default)]
-struct DashboardWebSocketSession {
-	subscription: DashboardClientSubscription,
-}
-
-#[derive(Debug, Deserialize)]
-struct DashboardClientMessage {
-	#[serde(rename = "type")]
-	message_type: String,
-	#[serde(rename = "requestId")]
-	request_id: Option<String>,
-
-	action: Option<String>,
-	#[serde(rename = "projectId")]
-	project_id: Option<String>,
-	#[serde(rename = "issueId")]
-	issue_id: Option<String>,
-	#[serde(rename = "runId")]
-	run_id: Option<String>,
-	#[serde(rename = "accountSelector")]
-	account_selector: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct OperatorAccountRequest {
-	selector: Option<String>,
-	auth_json_path: Option<String>,
-	random_name_offset: Option<i64>,
-}
-
-#[derive(Deserialize)]
-struct OperatorLinearScanHttpRequest {
-	#[serde(alias = "projectId")]
-	project_id: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct OperatorLaneInterruptHttpRequest {
-	#[serde(alias = "projectId")]
-	project_id: Option<String>,
-	issue: String,
-	#[serde(alias = "runId")]
-	run_id: String,
-	force: Option<bool>,
-	reason: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct OperatorLaneSteerHttpRequest {
-	#[serde(alias = "projectId")]
-	project_id: Option<String>,
-	issue: Option<String>,
-	#[serde(alias = "issueId")]
-	issue_id: Option<String>,
-	#[serde(alias = "runId")]
-	run_id: String,
-	#[serde(alias = "expectedTurnId")]
-	expected_turn_id: String,
-	message: String,
-	#[serde(alias = "waitTimeoutMs")]
-	wait_timeout_ms: Option<u64>,
-}
-
-struct DashboardControlAck<'a> {
-	request_id: Option<&'a str>,
-	action: &'a str,
-	accepted: bool,
-	status: &'a str,
-	message: &'a str,
-	project_id: Option<&'a str>,
-	issue_id: Option<&'a str>,
-	run_id: Option<&'a str>,
-	subscription: Option<&'a DashboardClientSubscription>,
-}
-
-struct DashboardRunActivityEvent {
-	fingerprint: Vec<u8>,
-	event: DashboardBroadcastEvent,
-}
-
-fn run_operator_state_endpoint(
+pub(crate) fn run_operator_state_endpoint(
 	listener: TcpListener,
 	snapshot: Arc<Mutex<PublishedOperatorSnapshot>>,
 	dashboard_events: DashboardEventHub,
@@ -371,7 +107,7 @@ fn run_operator_state_endpoint(
 	}
 }
 
-fn handle_operator_state_endpoint_connection(
+pub(crate) fn handle_operator_state_endpoint_connection(
 	mut stream: TcpStream,
 	snapshot: &Arc<Mutex<PublishedOperatorSnapshot>>,
 	dashboard_events: &DashboardEventHub,
@@ -599,7 +335,7 @@ fn handle_operator_dashboard_websocket_connection(
 	}
 }
 
-fn run_operator_run_activity_websocket_broadcasts(
+pub(crate) fn run_operator_run_activity_websocket_broadcasts(
 	state_store: Arc<StateStore>,
 	dashboard_events: DashboardEventHub,
 	shutdown_rx: Receiver<()>,
@@ -635,7 +371,7 @@ fn run_operator_run_activity_websocket_broadcasts(
 	}
 }
 
-fn build_operator_run_activity_event(
+pub(crate) fn build_operator_run_activity_event(
 	state_store: &StateStore,
 ) -> Result<DashboardRunActivityEvent> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
@@ -719,7 +455,7 @@ fn dashboard_run_activity_fingerprint_payload(
 	Ok(fingerprint_payload)
 }
 
-fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
+pub(crate) fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
 	match value {
 		Value::Object(object) => {
 			for field in DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS {
@@ -738,7 +474,7 @@ fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
 	}
 }
 
-fn operator_snapshot_json_value(snapshot: &OperatorStatusSnapshot) -> Result<Value> {
+pub(crate) fn operator_snapshot_json_value(snapshot: &OperatorStatusSnapshot) -> Result<Value> {
 	let mut value = serde_json::to_value(snapshot)?;
 
 	attach_operator_snapshot_presentation(&mut value, &snapshot.current_lanes)?;
@@ -802,7 +538,8 @@ fn write_cached_dashboard_run_activity_event(
 ) {
 	match dashboard_events.cached_run_activity_event(subscription) {
 		Some(event) if dashboard_run_activity_event_has_current_lanes(&event) => {
-			if let Err(error) = write_dashboard_websocket_event(stream, event.event_type, &event.payload)
+			if let Err(error) =
+				write_dashboard_websocket_event(stream, event.event_type, &event.payload)
 			{
 				tracing::warn!(
 					?error,
@@ -828,7 +565,7 @@ fn write_dashboard_websocket_event(
 	Ok(())
 }
 
-fn dashboard_websocket_message(event_type: &str, payload: &Value) -> Result<Vec<u8>> {
+pub(crate) fn dashboard_websocket_message(event_type: &str, payload: &Value) -> Result<Vec<u8>> {
 	let message = serde_json::to_vec(&json!({
 		"type": event_type,
 		"payload": payload,
@@ -1068,12 +805,15 @@ fn handle_dashboard_control_action(
 ) -> Value {
 	match action {
 		"focus" => dashboard_focus_control_ack(session, message, action),
-		"clearFocus" | "clearSubscription" =>
-			dashboard_clear_focus_control_ack(session, message, action),
-		"selectAccount" =>
-			dashboard_account_selection_control_ack(session, state_store, message, action, true),
-		"clearAccountSelection" =>
-			dashboard_account_selection_control_ack(session, state_store, message, action, false),
+		"clearFocus" | "clearSubscription" => {
+			dashboard_clear_focus_control_ack(session, message, action)
+		},
+		"selectAccount" => {
+			dashboard_account_selection_control_ack(session, state_store, message, action, true)
+		},
+		"clearAccountSelection" => {
+			dashboard_account_selection_control_ack(session, state_store, message, action, false)
+		},
 		"ack" | "ackNotice" => dashboard_control_ack_for_message(
 			session,
 			message,
@@ -1266,17 +1006,15 @@ fn dashboard_event_for_subscription(
 		return Some(event.clone());
 	}
 
-	let current_lanes = event.payload.get("currentLanes").and_then(Value::as_array).map(|runs| {
-		runs.iter()
-			.filter(|run| dashboard_run_matches_subscription(run, subscription))
-			.cloned()
-			.collect::<Vec<_>>()
-	})?;
-	let current_lanes_complete = event
-		.payload
-		.get("currentLanesComplete")
-		.and_then(Value::as_bool)
-		.unwrap_or(true);
+	let current_lanes =
+		event.payload.get("currentLanes").and_then(Value::as_array).map(|runs| {
+			runs.iter()
+				.filter(|run| dashboard_run_matches_subscription(run, subscription))
+				.cloned()
+				.collect::<Vec<_>>()
+		})?;
+	let current_lanes_complete =
+		event.payload.get("currentLanesComplete").and_then(Value::as_bool).unwrap_or(true);
 	let current_lane_cards = event
 		.payload
 		.get("presentation")
@@ -1453,14 +1191,14 @@ fn operator_http_content_length(headers: &[u8]) -> Result<usize> {
 }
 
 #[cfg(test)]
-fn build_operator_state_http_response(request: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn build_operator_state_http_response(request: &[u8]) -> Result<Vec<u8>> {
 	let control_requests = OperatorControlRequests::default();
 
 	build_operator_state_http_response_with_control_requests(request, &control_requests)
 }
 
 #[cfg(test)]
-fn build_operator_state_http_response_with_control_requests(
+pub(crate) fn build_operator_state_http_response_with_control_requests(
 	request: &[u8],
 	control_requests: &OperatorControlRequests,
 ) -> Result<Vec<u8>> {
@@ -1509,9 +1247,10 @@ fn operator_account_http_response_body(
 	request: &[u8],
 ) -> Result<Vec<u8>> {
 	match route {
-		OperatorRequestRoute::AccountList { force_refresh } =>
+		OperatorRequestRoute::AccountList { force_refresh } => {
 			serde_json::to_vec(&accounts::account_list_with_cached_usage(force_refresh)?)
-				.map_err(Into::into),
+				.map_err(Into::into)
+		},
 		OperatorRequestRoute::AccountSelect => {
 			let selector = operator_account_request_selector(request)?;
 			let response =
@@ -1663,7 +1402,10 @@ fn operator_linear_scan_request_project_id(request: &[u8]) -> Result<Option<Stri
 	}
 }
 
-fn build_operator_lane_inspect_http_response(state_store: &StateStore, request: &[u8]) -> Vec<u8> {
+pub(crate) fn build_operator_lane_inspect_http_response(
+	state_store: &StateStore,
+	request: &[u8],
+) -> Vec<u8> {
 	match operator_lane_inspect_http_response_body(state_store, request) {
 		Ok(body) => http_response_bytes("200 OK", "application/json", &body),
 		Err(error) => operator_lane_error_http_response(error),
@@ -1690,7 +1432,7 @@ fn operator_lane_inspect_http_response_body(
 	serde_json::to_vec(&report).map_err(Into::into)
 }
 
-fn build_operator_lane_interrupt_http_response(
+pub(crate) fn build_operator_lane_interrupt_http_response(
 	state_store: &StateStore,
 	request: &[u8],
 ) -> Vec<u8> {
@@ -1730,7 +1472,10 @@ fn operator_lane_interrupt_http_response_body(
 	Ok((status_line, serde_json::to_vec(&report)?))
 }
 
-fn build_operator_lane_steer_http_response(state_store: &StateStore, request: &[u8]) -> Vec<u8> {
+pub(crate) fn build_operator_lane_steer_http_response(
+	state_store: &StateStore,
+	request: &[u8],
+) -> Vec<u8> {
 	match operator_lane_steer_http_response_body(state_store, request) {
 		Ok((status_line, body)) => http_response_bytes(status_line, "application/json", &body),
 		Err(error) => operator_lane_error_http_response(error),
@@ -1903,15 +1648,19 @@ fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> 
 			"text/html; charset=utf-8",
 			OPERATOR_DASHBOARD_HTML.as_bytes(),
 		),
-		OperatorRequestRoute::DashboardIconPng =>
-			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG),
-		OperatorRequestRoute::DashboardLogoIco =>
-			http_response_bytes("200 OK", "image/x-icon", OPERATOR_DASHBOARD_LOGO_ICO),
-		OperatorRequestRoute::DashboardLogoTouchPng =>
-			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_LOGO_TOUCH_PNG),
+		OperatorRequestRoute::DashboardIconPng => {
+			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG)
+		},
+		OperatorRequestRoute::DashboardLogoIco => {
+			http_response_bytes("200 OK", "image/x-icon", OPERATOR_DASHBOARD_LOGO_ICO)
+		},
+		OperatorRequestRoute::DashboardLogoTouchPng => {
+			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_LOGO_TOUCH_PNG)
+		},
 		OperatorRequestRoute::DashboardWs => websocket_upgrade_required_response(),
-		OperatorRequestRoute::AppSnapshot =>
-			http_response_bytes("200 OK", "application/json", b"{}"),
+		OperatorRequestRoute::AppSnapshot => {
+			http_response_bytes("200 OK", "application/json", b"{}")
+		},
 		OperatorRequestRoute::LinearScan => http_response_bytes(
 			"405 Method Not Allowed",
 			"text/plain; charset=utf-8",
@@ -1924,8 +1673,9 @@ fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> 
 			"text/plain; charset=utf-8",
 			b"method not allowed",
 		),
-		OperatorRequestRoute::Live =>
-			http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok"),
+		OperatorRequestRoute::Live => {
+			http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok")
+		},
 		OperatorRequestRoute::AccountList { .. }
 		| OperatorRequestRoute::AccountSelect
 		| OperatorRequestRoute::AccountClear
@@ -1975,8 +1725,9 @@ fn parse_operator_state_request_route(
 		.map_or(path_without_query, |(path_without_fragment, _)| path_without_fragment);
 
 	match (method, normalized_path) {
-		("GET", OPERATOR_DASHBOARD_ENDPOINT_PATH | OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH) =>
-			Ok(OperatorRequestRoute::Dashboard),
+		("GET", OPERATOR_DASHBOARD_ENDPOINT_PATH | OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH) => {
+			Ok(OperatorRequestRoute::Dashboard)
+		},
 		("GET", "/assets/icon.png") => Ok(OperatorRequestRoute::DashboardIconPng),
 		("GET", "/assets/logo.ico") => Ok(OperatorRequestRoute::DashboardLogoIco),
 		("GET", "/assets/logo-touch.png") => Ok(OperatorRequestRoute::DashboardLogoTouchPng),
@@ -1989,8 +1740,9 @@ fn parse_operator_state_request_route(
 		("POST", OPERATOR_LINEAR_SCAN_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LinearScan),
 		("GET", OPERATOR_LANE_INSPECT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInspect),
 		("POST", OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInterrupt),
-		("POST", OPERATOR_LANE_STEER_ENDPOINT_PATH | OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH) =>
-			Ok(OperatorRequestRoute::LaneSteer),
+		("POST", OPERATOR_LANE_STEER_ENDPOINT_PATH | OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH) => {
+			Ok(OperatorRequestRoute::LaneSteer)
+		},
 		("POST", "/api/accounts/select") => Ok(OperatorRequestRoute::AccountSelect),
 		("POST", "/api/accounts/clear") => Ok(OperatorRequestRoute::AccountClear),
 		("POST", "/api/accounts/logout") => Ok(OperatorRequestRoute::AccountLogout),

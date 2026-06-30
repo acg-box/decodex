@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: automation
 tags: [spec, radar, control-plane]
-code_refs: [apps/decodex/src/radar.rs, automations/decodex/scripts/github/control_plane_upgrade_candidate.schema.json]
+code_refs: [apps/radar/src/lib.rs, automations/radar/scripts/github/control_plane_upgrade_candidate.schema.json]
 drift_watch: [control_plane_upgrade_candidate/v1, control_plane_upgrade_candidate, control-plane-upgrades, Codex compatibility matrix, Decision Contract, Program Intake]
 last_verified: 2026-06-27
 ---
@@ -21,7 +21,7 @@ Read this when:
 - You are deciding whether an upstream Codex change should trigger Decodex runtime,
   app-server, plugin, MCP, browser, sandbox, config, or automation upgrade work.
 - You are validating Radar artifacts under
-  `.agent/automations/decodex/cache/github/control-plane-upgrades/`.
+  `.agent/automations/radar/cache/github/control-plane-upgrades/`.
 - You are bridging Codex release monitoring into Decodex Program Intake.
 
 Not this document:
@@ -48,11 +48,11 @@ The canonical schema identifier is:
 
 Recommended checked-in location:
 
-- `.agent/automations/decodex/cache/github/control-plane-upgrades/<source-slug>.json`
+- `.agent/automations/radar/cache/github/control-plane-upgrades/<source-slug>.json`
 
 Rust validation entrypoint:
 
-- `decodex radar validate`
+- `radar validate`
 
 ## Required Fields
 
@@ -99,8 +99,8 @@ context, or gap evidence, but they should not be the only source for a new Decod
 Control Plane candidate when a reviewed `upstream_impact/v1` exists or can be produced
 by Radar Review.
 
-`urls` must use HTTPS. Local generated artifact references should use repository-relative
-paths under `.agent/automations/decodex/cache`.
+`urls` must use HTTPS. Local generated Radar artifact references should use
+repository-relative paths under `.agent/automations/radar/cache`.
 
 ## Target Codex
 

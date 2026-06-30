@@ -65,7 +65,7 @@
   repository docs validation command used by `cargo make check-docs`, and operator
   docs now forbid duplicate owners for the default `127.0.0.1:8192` Decodex
   App/helper listener.
-- Made `decodex radar validate` path-aware for existing operations cache drift:
+- Made `radar validate` path-aware for existing operations cache drift:
   generated analysis drafts are validated as helper outputs without a `schema` field,
   historical archive manifests may retain their original retention policy, and
   pre-shared-handoff upstream reviews can still read old `linear_followup` actions

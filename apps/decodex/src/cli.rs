@@ -3,7 +3,6 @@ mod control_commands;
 mod docs_okf_commands;
 mod git_hook_commands;
 mod manual_commands;
-mod radar_commands;
 mod recovery_commands;
 mod research_intake_commands;
 
@@ -16,7 +15,6 @@ use self::{
 	docs_okf_commands::{DocsCommand, OkfCommand},
 	git_hook_commands::GitHookCommand,
 	manual_commands::{CommitCommand, LandCommand},
-	radar_commands::RadarCommand,
 	recovery_commands::RecoverCommand,
 	research_intake_commands::{
 		ArchiveLinearCommand, IntakeCommand, MaintenanceCommand, ResearchCommand,
@@ -81,7 +79,6 @@ impl Cli {
 			Command::Docs(args) => args.run(),
 			Command::Okf(args) => args.run(),
 			Command::Research(args) => args.run(),
-			Command::Radar(args) => args.run(),
 			Command::Intake(args) => args.run(),
 			Command::Recover(args) => args.run(),
 			Command::ArchiveLinear(args) => args.run(),
@@ -269,8 +266,6 @@ enum Command {
 	Okf(OkfCommand),
 	/// Compile or promote Decodex-native research/design contracts.
 	Research(ResearchCommand),
-	/// Run Decodex Radar automation commands.
-	Radar(RadarCommand),
 	/// Operator issue-batch intake into internal Execution Programs, not a graph editor.
 	Intake(IntakeCommand),
 	/// Diagnose or explicitly repair supported retained-lane recovery cases.
