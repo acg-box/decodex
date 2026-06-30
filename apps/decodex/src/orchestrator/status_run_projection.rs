@@ -445,17 +445,17 @@ fn operator_run_liveness_state(run: &OperatorRunStatus) -> String {
 	if run.process_alive == Some(true) {
 		return String::from("process_alive");
 	}
+	if run.process_alive == Some(false)
+		|| matches!(run.execution_liveness.as_str(), "not_running" | "process_identity_mismatch")
+	{
+		return String::from("not_running");
+	}
 	if matches!(run.thread_status.as_deref(), Some("active")) || !run.thread_active_flags.is_empty()
 	{
 		return String::from("thread_active");
 	}
 	if operator_run_has_recent_app_server_execution(run) {
 		return String::from("protocol_recent");
-	}
-	if run.process_alive == Some(false)
-		|| matches!(run.execution_liveness.as_str(), "not_running" | "process_identity_mismatch")
-	{
-		return String::from("not_running");
 	}
 
 	String::from("unknown")
