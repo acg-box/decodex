@@ -70,7 +70,8 @@ PUBLIC_SURFACE_HINT = (
 DEPENDENCY_POLICY_HINT = (
     "Changed files include dependency manifests, lockfiles, generated dependency "
     "artifacts, or workflow action refs. Load $codebase:dependency-policy and report "
-    "whether this is a roll or style-only dependency change with version/SHA evidence."
+    "whether this is a roll or style-only dependency change with version/SHA evidence, "
+    "a discovered-candidate inventory, and residual dependency checks."
 )
 TASK_RUNNER_HINT = (
     "Changed files include Makefile.toml or an equivalent task-runner surface. Load "
