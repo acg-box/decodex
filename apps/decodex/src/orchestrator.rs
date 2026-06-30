@@ -50,14 +50,18 @@ use std::{
 };
 
 use color_eyre::Report;
+use records::LinearExecutionEventRecord;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::Sha256;
+use state::{ProjectLoopEvidenceSnapshot, ProtocolActivityEventSummary};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-	agent, default_branch_sync, git_credentials, maintenance, state, tracker,
-	tracker::privacy_classifier::PublicProjectionPrivacyClassifier,
+	agent,
+	agent::REVIEW_POLICY_CONVERGENCE_BUDGET,
+	default_branch_sync, git_credentials, maintenance, state, tracker,
+	tracker::{privacy_classifier::PublicProjectionPrivacyClassifier, public_text},
 };
 use state::PrivateExecutionEvent;
 #[rustfmt::skip]
@@ -251,7 +255,11 @@ include!("orchestrator/prompting.rs");
 
 include!("orchestrator/git_ops.rs");
 
-include!("orchestrator/status.rs");
+mod status;
+#[allow(clippy::wildcard_imports)]
+#[allow(unused_imports)]
+use status::*;
+pub(crate) use status::{worktree_checkout_branch_name, worktree_head_oid};
 
 include!("orchestrator/status_render.rs");
 
