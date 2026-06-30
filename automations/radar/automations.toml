@@ -1,0 +1,92 @@
+version = 1
+
+[defaults]
+cache_root = ".agent/automations/radar/cache"
+cwd = "{repo_root}"
+execution_environment = "local"
+forbidden_prompt_fragments = [
+	".agent/decodex",
+	".codex/decodex",
+	".github/workflows",
+	"/Users/x/Documents/automations",
+	"DECODEX_AGENT_HOME",
+	"Documents/automations",
+	"accounts.jsonl",
+	"auth.json",
+	"migrate-agent-home",
+	"runtime.sqlite3",
+	"site/src/content",
+	"~/.codex/decodex",
+]
+kind = "cron"
+model = "gpt-5.5"
+reasoning_effort = "xhigh"
+source_root = "automations/radar"
+status = "ACTIVE"
+
+[[automations]]
+id = "codex-upstream-radar-review"
+name = "Radar Upstream Review"
+prompt_file = "automations/radar/prompts/upstream-review.md"
+required_cache_prefixes = [
+	".agent/automations/radar/cache/generated/analysis",
+	".agent/automations/radar/cache/github/bundles",
+	".agent/automations/radar/cache/github/control-plane-upgrades",
+	".agent/automations/radar/cache/github/impact",
+	".agent/automations/radar/cache/github/review-queue",
+	".agent/automations/radar/cache/github/reviews",
+	".agent/automations/radar/cache/site-content/signals",
+]
+required_paths = [
+	"apps/radar/src/lib.rs",
+	"automations/radar/radar.toml",
+	"automations/radar/scripts/github/control_plane_upgrade_candidate.schema.json",
+	"automations/radar/scripts/github/run_codex_analysis.py",
+	"automations/radar/skills/codex-code-analysis/SKILL.md",
+	"automations/radar/skills/codex-upstream-triage/SKILL.md",
+	"automations/radar/skills/github-signal/SKILL.md",
+	"docs/spec/control-plane-upgrade-candidate.md",
+	"docs/spec/github-change-bundle.md",
+	"docs/spec/signal-entry.md",
+	"docs/spec/upstream-impact.md",
+	"docs/spec/upstream-review.md",
+]
+rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=0;BYSECOND=0"
+
+[[automations]]
+id = "codex-release-checkpoint-curator"
+name = "Radar Release Curator"
+prompt_file = "automations/radar/prompts/release-curator.md"
+required_cache_prefixes = [
+	".agent/automations/radar/cache/github/impact",
+	".agent/automations/radar/cache/github/reviews",
+	".agent/automations/radar/cache/site-content/release-deltas",
+	".agent/automations/radar/cache/site-content/signals",
+]
+required_paths = [
+	"apps/radar/src/lib.rs",
+	"automations/radar/skills/codex-release-analysis/SKILL.md",
+	"docs/spec/release-delta.md",
+	"docs/spec/upstream-impact.md",
+	"docs/spec/upstream-review.md",
+]
+rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=20;BYSECOND=0"
+
+[[automations]]
+id = "radar-artifact-archive"
+name = "Radar Artifact Retention"
+prompt_file = "automations/radar/prompts/retention.md"
+required_cache_prefixes = [
+	".agent/automations/radar/cache/archive/index",
+	".agent/automations/radar/cache/generated/analysis",
+	".agent/automations/radar/cache/github/bundles",
+	".agent/automations/radar/cache/github/impact",
+	".agent/automations/radar/cache/github/reviews",
+]
+required_paths = [
+	"apps/radar/src/lib.rs",
+	"automations/radar/radar.toml",
+	"docs/runbook/radar-artifact-archive.md",
+	"docs/spec/radar-artifact-retention.md",
+]
+rrule = "FREQ=DAILY;BYHOUR=3;BYMINUTE=30;BYSECOND=0"

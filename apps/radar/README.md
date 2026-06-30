@@ -1,17 +1,14 @@
 # Radar
 
 Radar is the Decodex auxiliary automation tool for upstream review queues,
-release deltas, artifact validation, signal rendering, bundle generation, and
-social publishing reservations.
+release deltas, artifact validation, signal rendering, and bundle generation.
 
-Run it from the workspace with:
+Run it with:
 
 ```sh
-cargo run -p radar -- --help
+radar --help
 ```
 
-Installed operators use the `radar` binary directly:
-
 ```sh
-radar validate .agent/automations/decodex/cache/site-content/signals
+radar validate .agent/automations/radar/cache/site-content/signals
 ```

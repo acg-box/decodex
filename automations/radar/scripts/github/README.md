@@ -26,17 +26,14 @@ Rust CLI entrypoints:
 - `radar validate` validates checked Radar artifact JSON contracts from the
   Rust CLI.
 - `radar refresh-upstream-queue` refreshes
-  `.agent/automations/decodex/cache/github/review-queue/openai-codex-latest.json`.
+  `.agent/automations/radar/cache/github/review-queue/openai-codex-latest.json`.
 - `radar refresh-release-delta` refreshes
-  `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json`.
+  `.agent/automations/radar/cache/site-content/release-deltas/openai-codex-latest.json`.
 - `radar bundle build` builds deterministic bundles for PR-first and
   commit-only inputs.
 - `radar bundle validate` validates deterministic bundles.
 - `radar ledger ...` owns bootstrap, ingest, ingest-existing, artifact-link,
   and summary operations.
-- `radar social reserve-publish` creates pre-compose X publish reservations
-  with cap, duplicate, idempotency, active-reservation, terminal-post, create-new, and
-  schema checks.
 - `radar render-signal` renders `signal_entry/v1` from a validated
   `github_change_bundle/v1` plus Codex-owned `analysis_draft`.
 - `radar backfill-release-range` selects release-window signal gaps and can
@@ -51,10 +48,9 @@ Current checked contracts:
 - `upstream_impact/v1` artifacts are validated by `radar validate`.
 - `control_plane_upgrade_candidate/v1` artifacts are validated by
   `radar validate`.
-- `social_candidate/v1` artifacts are validated by `radar validate`.
-- `social_publish_reservation/v1` artifacts are validated by
-  `radar validate`.
-- `social_post/v1` artifacts are validated by `radar validate`.
+Decodex Publisher validates `social_candidate/v1`,
+`social_publish_reservation/v1`, and `social_post/v1` with
+`decodex-publisher validate-social`.
 
 Contract ownership:
 
@@ -64,8 +60,6 @@ Contract ownership:
 - upstream impact shape: `docs/spec/upstream-impact.md`
 - Control Plane upgrade candidate shape:
   `docs/spec/control-plane-upgrade-candidate.md`
-- social candidate shape: `docs/spec/social-candidate.md`
-- social publication shape: `docs/spec/social-publishing.md`
 
 Example flow:
 
@@ -73,27 +67,27 @@ Example flow:
 radar bundle build \
   --repo openai/codex \
   --pr 22414 \
-  --out .agent/automations/decodex/cache/github/bundles/openai-codex-pr-22414.json
+  --out .agent/automations/radar/cache/github/bundles/openai-codex-pr-22414.json
 
 radar render-signal \
-  --bundle .agent/automations/decodex/cache/github/bundles/openai-codex-pr-22414.json \
-  --analysis .agent/automations/decodex/cache/generated/analysis/openai-codex-pr-22414.analysis.json \
-  --out .agent/automations/decodex/cache/site-content/signals/openai-codex-pr-22414.json
+  --bundle .agent/automations/radar/cache/github/bundles/openai-codex-pr-22414.json \
+  --analysis .agent/automations/radar/cache/generated/analysis/openai-codex-pr-22414.analysis.json \
+  --out .agent/automations/radar/cache/site-content/signals/openai-codex-pr-22414.json
 
 radar validate \
-  .agent/automations/decodex/cache/site-content/signals/openai-codex-pr-22414.json
+  .agent/automations/radar/cache/site-content/signals/openai-codex-pr-22414.json
 ```
 
 Continuous upstream Radar sync:
 
 ```bash
-cargo run -p radar -- refresh-upstream-queue \
+radar refresh-upstream-queue \
   --repo openai/codex \
   --search-limit 40
 ```
 
 The sync records every observed recent commit in the local SQLite Radar ledger and
-writes `.agent/automations/decodex/cache/github/review-queue/openai-codex-latest.json`. It does not install
+writes `.agent/automations/radar/cache/github/review-queue/openai-codex-latest.json`. It does not install
 Codex, make AI judgments, render public signals, or publish social posts.
 If only `generated_at` would change, the command leaves the existing queue file intact
 to avoid empty commits.
@@ -101,10 +95,10 @@ to avoid empty commits.
 Release-delta refresh:
 
 ```bash
-cargo run -p radar -- refresh-release-delta \
+radar refresh-release-delta \
   --repo openai/codex \
-  --signals-dir .agent/automations/decodex/cache/site-content/signals \
-  --out .agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json
+  --signals-dir .agent/automations/radar/cache/site-content/signals \
+  --out .agent/automations/radar/cache/site-content/release-deltas/openai-codex-latest.json
 ```
 
 The release-delta refresh compares the latest stable and prerelease tags, maps compare
@@ -133,8 +127,9 @@ release deltas, and validation through `radar ...`. Codex automation owns AI
 review of queued subjects and promotes Publisher or Control Plane conclusions into the
 shared `upstream_impact/v1` handoff artifact before downstream
 `control_plane_upgrade_candidate/v1`, `analysis_draft`,
-`radar render-signal` output, or `social_candidate/v1` artifacts consume that
-same reviewed scan. Publisher automation writes terminal `social_post/v1` records.
+or `radar render-signal` output consumes that same reviewed scan. Publisher
+automation may later consume the shared handoff to write Publisher-owned social
+records.
 
 Do not wire `run_codex_analysis.py` into GitHub Actions. Actions must not pass
 `--allow-ai-analysis-boundary` or set `DECODEX_ALLOW_CODEX_ANALYSIS`; that
@@ -142,12 +137,11 @@ acknowledgement is reserved for Rust-owned local automation and explicit operato
 recovery runs that still keep bundle validation and `analysis_draft` schema validation
 inside the helper.
 
-Repo-local skills under `automations/decodex/skills/` are reasoning instructions for the Codex
-analysis step and for manual Radar/Publisher work. Pre-publication social decisions use
-the checked-in `social_candidate/v1` contract; terminal publication, block, skip, and
-failure outcomes use `social_post/v1`.
+Repo-local skills under `automations/radar/skills/` are reasoning instructions for the Codex
+analysis step and for manual Radar work. Pre-publication and terminal social artifacts
+are Decodex Publisher contracts, not Radar contracts.
 
 Raw bundles and analysis drafts are retained in hot cache for a 21-day window. Archive
 older raw batches through an explicit external-archive handoff when needed, and write
-the recovery manifest under `.agent/automations/decodex/cache/archive/index/`. See
+the recovery manifest under `.agent/automations/radar/cache/archive/index/`. See
 `docs/spec/radar-artifact-retention.md` and `docs/runbook/radar-artifact-archive.md`.

@@ -426,6 +426,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "decodex-publisher"
+version = "0.2.0"
+dependencies = [
+ "clap",
+ "color-eyre",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "time",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,10 +1,11 @@
 //! Social publishing reservation generation and conflict checks.
 
-use super::{
-	Map, Path, PathBuf, RadarSocialReservePublishReport, RadarSocialReservePublishRequest,
-	SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA, Value, collect_json_files, eyre,
-	load_json, path_arg, repo_root, resolve_against, serde_json, slugify, validate_artifact,
-	write_new_json,
+use crate::{
+	Map, Path, PathBuf, SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA,
+	SocialReservePublishReport, SocialReservePublishRequest, Value, collect_json_files, load_json,
+	path_arg,
+	prelude::{Result, eyre},
+	repo_root, resolve_against, slugify, validate_generated_social_artifact, write_new_json,
 };
 
 #[derive(Debug, Default)]
@@ -15,8 +16,8 @@ struct SocialPublishStateScan {
 }
 
 pub(crate) fn reserve_social_publish(
-	request: &RadarSocialReservePublishRequest,
-) -> crate::prelude::Result<RadarSocialReservePublishReport> {
+	request: &SocialReservePublishRequest,
+) -> Result<SocialReservePublishReport> {
 	if request.slug.trim().is_empty() {
 		return Err(eyre::eyre!("slug is required"));
 	}
@@ -58,19 +59,14 @@ pub(crate) fn reserve_social_publish(
 	}
 
 	let payload = social_publish_reservation_payload(request, &root);
-	let validation = validate_artifact(&payload);
 
-	if !validation.errors.is_empty() {
-		return Err(eyre::eyre!(
-			"generated reservation failed validation: {}",
-			validation.errors.join("; ")
-		));
-	}
+	validate_generated_social_artifact(&payload)
+		.map_err(|error| eyre::eyre!("generated reservation failed validation: {error}"))?;
 	if !request.dry_run {
 		write_new_json(&reservation_path, &payload)?;
 	}
 
-	Ok(RadarSocialReservePublishReport {
+	Ok(SocialReservePublishReport {
 		status: if request.dry_run { "dry_run".into() } else { "reserved".into() },
 		path: path_arg(&root, &reservation_path),
 		idempotency_key: request.idempotency_key.clone(),
@@ -85,7 +81,7 @@ fn scan_social_publish_state(
 	posts_dir: &Path,
 	idempotency_key: &str,
 	day: &str,
-) -> crate::prelude::Result<SocialPublishStateScan> {
+) -> Result<SocialPublishStateScan> {
 	let mut scan = SocialPublishStateScan::default();
 
 	for payload_path in existing_json_files(reservations_dir)? {
@@ -138,7 +134,7 @@ fn scan_social_publish_state(
 	Ok(scan)
 }
 
-fn existing_json_files(path: &Path) -> crate::prelude::Result<Vec<PathBuf>> {
+fn existing_json_files(path: &Path) -> Result<Vec<PathBuf>> {
 	if !path.exists() {
 		return Ok(Vec::new());
 	}
@@ -146,10 +142,7 @@ fn existing_json_files(path: &Path) -> crate::prelude::Result<Vec<PathBuf>> {
 	collect_json_files(&[path.to_path_buf()])
 }
 
-fn social_publish_reservation_payload(
-	request: &RadarSocialReservePublishRequest,
-	root: &Path,
-) -> Value {
+fn social_publish_reservation_payload(request: &SocialReservePublishRequest, root: &Path) -> Value {
 	let mut refs = Map::new();
 
 	if !request.candidate_paths.is_empty() {
