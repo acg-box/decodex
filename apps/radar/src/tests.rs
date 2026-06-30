@@ -8,8 +8,8 @@ use std::{
 
 use serde_json::{self, Value};
 
-use crate::radar::{
-	self, RadarBackfillReleaseRangeRequest, RadarBundleValidateRequest,
+use crate::{
+	self as radar, RadarBackfillReleaseRangeRequest, RadarBundleValidateRequest,
 	RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest, RadarLedgerIngestExistingRequest,
 	RadarRenderSignalRequest, RadarSocialReservePublishRequest, RadarValidateRequest, RefreshKind,
 };
@@ -21,7 +21,7 @@ struct TestEnvVars {
 
 impl TestEnvVars {
 	fn set(vars: &[(&str, Option<&str>)]) -> Self {
-		let lock = crate::test_support::TestEnvVarGuard::lock();
+		let lock = crate::test_support::lock_test_env();
 		let previous =
 			vars.iter().map(|(key, _)| ((*key).to_owned(), env::var_os(key))).collect::<Vec<_>>();
 

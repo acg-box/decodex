@@ -11,7 +11,7 @@ code_refs:
   - apps/decodex/src/orchestrator/execution.rs
   - apps/decodex/src/orchestrator/dispatch_policy.rs
   - apps/decodex/src/orchestrator/run_cycle.rs
-  - apps/decodex/src/orchestrator/status.rs
+  - apps/decodex/src/orchestrator/status/mod.rs
   - apps/decodex/src/pull_request.rs
   - apps/decodex/src/recovery.rs
   - apps/decodex/src/worktree.rs

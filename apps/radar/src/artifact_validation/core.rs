@@ -32,10 +32,7 @@ use super::{
 	},
 };
 
-pub(in crate::radar) fn validate_signal_file(
-	path: &Path,
-	payload: &Value,
-) -> crate::prelude::Result<()> {
+pub(crate) fn validate_signal_file(path: &Path, payload: &Value) -> crate::prelude::Result<()> {
 	let validation = validate_artifact(payload);
 
 	if validation.schema.as_deref() != Some(SIGNAL_SCHEMA) || !validation.errors.is_empty() {
@@ -49,7 +46,7 @@ pub(in crate::radar) fn validate_signal_file(
 	Ok(())
 }
 
-pub(in crate::radar) fn validate_analysis_draft(value: &Value) -> crate::prelude::Result<()> {
+pub(crate) fn validate_analysis_draft(value: &Value) -> crate::prelude::Result<()> {
 	let Some(draft) = value.as_object() else {
 		return Err(eyre::eyre!("Analysis draft must be an object"));
 	};
@@ -90,7 +87,7 @@ pub(in crate::radar) fn validate_analysis_draft(value: &Value) -> crate::prelude
 	}
 }
 
-pub(in crate::radar) fn validate_artifact_errors(payload: &Value) -> Vec<String> {
+pub(crate) fn validate_artifact_errors(payload: &Value) -> Vec<String> {
 	validate_artifact(payload).errors
 }
 
@@ -156,14 +153,11 @@ pub(super) fn analysis_draft_error_lines(error: Report) -> Vec<String> {
 		.collect()
 }
 
-pub(in crate::radar) fn validate_artifact(payload: &Value) -> ArtifactValidation {
+pub(crate) fn validate_artifact(payload: &Value) -> ArtifactValidation {
 	validate_artifact_with_options(payload, ArtifactValidationOptions::default())
 }
 
-pub(in crate::radar) fn validate_artifact_for_path(
-	path: &Path,
-	payload: &Value,
-) -> ArtifactValidation {
+pub(crate) fn validate_artifact_for_path(path: &Path, payload: &Value) -> ArtifactValidation {
 	if is_analysis_draft_path(path) && payload.get("schema").is_none() {
 		return match validate_analysis_draft(payload) {
 			Ok(()) =>
@@ -186,7 +180,7 @@ pub(in crate::radar) fn validate_artifact_for_path(
 	)
 }
 
-pub(in crate::radar) fn validate_artifact_with_options(
+pub(crate) fn validate_artifact_with_options(
 	payload: &Value,
 	options: ArtifactValidationOptions,
 ) -> ArtifactValidation {

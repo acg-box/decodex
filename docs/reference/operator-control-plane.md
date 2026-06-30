@@ -6,7 +6,7 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/mcp.rs]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status/mod.rs, apps/decodex/src/orchestrator/types/mod.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard/body.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence/mod.rs, apps/decodex/src/orchestrator/tests/operator/status/http/mod.rs, apps/decodex/src/mcp.rs]
 drift_watch: [decodex serve, decodex status, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, stale_active_release, stale_active_state_restore_pending, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
 last_verified: 2026-06-30
 ---

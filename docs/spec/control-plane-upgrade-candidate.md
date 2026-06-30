@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: automation
 tags: [spec, radar, control-plane]
-code_refs: [apps/decodex/src/radar.rs, automations/decodex/scripts/github/control_plane_upgrade_candidate.schema.json]
+code_refs: [apps/radar/src/lib.rs, automations/decodex/scripts/github/control_plane_upgrade_candidate.schema.json]
 drift_watch: [control_plane_upgrade_candidate/v1, control_plane_upgrade_candidate, control-plane-upgrades, Codex compatibility matrix, Decision Contract, Program Intake]
 last_verified: 2026-06-27
 ---
@@ -52,7 +52,7 @@ Recommended checked-in location:
 
 Rust validation entrypoint:
 
-- `decodex radar validate`
+- `radar validate`
 
 ## Required Fields
 

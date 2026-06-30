@@ -55,7 +55,7 @@ account state, idempotency, daily cap, media, and final publication.
 create a durable active reservation before opening X compose. A missing, temporary,
 expired, or unvalidated reservation does not authorize publication.
 Publisher automation must create active reservations through
-`decodex radar social reserve-publish`; hand-written active reservation JSON is not a
+`radar social reserve-publish`; hand-written active reservation JSON is not a
 publication authority because it bypasses code-owned cap, idempotency, active
 reservation, terminal-post, atomic-write, and schema checks.
 
@@ -224,10 +224,10 @@ Optional fields:
 - `consumed_by_social_post`: required when `status = "consumed"`.
 - `release_reason`: required when `status = "canceled"` or `status = "expired"`.
 
-Validation rule: `decodex radar social reserve-publish` refuses exhausted daily caps,
+Validation rule: `radar social reserve-publish` refuses exhausted daily caps,
 duplicate active reservation keys, and keys that already have a non-failed terminal
 `social_post/v1` record before writing the active reservation with create-new
-semantics. `decodex radar validate` repeats cross-file validation and rejects duplicate
+semantics. `radar validate` repeats cross-file validation and rejects duplicate
 active reservation idempotency keys or active reservations whose key already has a
 terminal record. Failed publication attempts do not reserve the key permanently; a
 retry must create a fresh active reservation and consume, cancel, or expire it at the

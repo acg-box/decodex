@@ -16,8 +16,8 @@ traceable without putting every raw or low-value artifact into Git.
 Status: normative
 
 Read this when:
-- You are changing `decodex radar refresh-upstream-queue`.
-- You are changing `decodex radar ledger ...`.
+- You are changing `radar refresh-upstream-queue`.
+- You are changing `radar ledger ...`.
 - You are importing existing GitHub bundles, analysis drafts, or signal entries into
   historical Radar state.
 - You need to decide what belongs in local history instead of checked-in public
@@ -49,8 +49,8 @@ but it is the preferred place for high-frequency trace and skip history.
 
 ## Schema
 
-The schema is created by `decodex radar refresh-upstream-queue` and
-`decodex radar ledger bootstrap`. The Rust `decodex radar ledger ...` surface owns the
+The schema is created by `radar refresh-upstream-queue` and
+`radar ledger bootstrap`. The Rust `radar ledger ...` surface owns the
 command path for ledger bootstrap, ingest, ingest-existing, artifact-link, and summary
 operations.
 
@@ -89,19 +89,19 @@ candidate, retry queue, or long low-value analysis.
 
 ## Sync behavior
 
-`decodex radar refresh-upstream-queue` writes the local ledger by default. It records
+`radar refresh-upstream-queue` writes the local ledger by default. It records
 every recent commit it inspects, including commits that do not become public signals.
 
 Operators may disable ledger writes with:
 
 ```sh
-cargo run -p decodex --bin decodex -- radar refresh-upstream-queue --no-ledger
+cargo run -p radar -- refresh-upstream-queue --no-ledger
 ```
 
 Existing checked-in artifacts can be imported with:
 
 ```sh
-decodex radar ledger ingest-existing
+radar ledger ingest-existing
 ```
 
 This import is useful when bootstrapping a new local workspace or rebuilding trace after
@@ -110,5 +110,5 @@ raw GitHub bundles move to cold archive assets.
 Operators can inspect local counts with:
 
 ```sh
-decodex radar ledger summary --json
+radar ledger summary --json
 ```

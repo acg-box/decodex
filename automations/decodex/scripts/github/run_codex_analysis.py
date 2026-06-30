@@ -103,7 +103,7 @@ def main() -> None:
     if not analysis_boundary_allowed(args):
         raise SystemExit(
             "Codex analysis helper requires --allow-ai-analysis-boundary or "
-            f"{ALLOW_ANALYSIS_ENV}=1. Use Rust-owned decodex radar commands for "
+            f"{ALLOW_ANALYSIS_ENV}=1. Use Rust-owned radar commands for "
             "deterministic Radar workflows; GitHub Actions must not run this helper."
         )
 

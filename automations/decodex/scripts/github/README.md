@@ -11,7 +11,7 @@ Current helper:
   Codex with the checked prompt and output schema, validate the returned draft, then
   write the artifact. Direct invocation is a recovery or automation-only path and must
   pass `--allow-ai-analysis-boundary` or set `DECODEX_ALLOW_CODEX_ANALYSIS=1`.
-  Normal operator workflows should reach it through Rust-owned `decodex radar`
+  Normal operator workflows should reach it through Rust-owned `radar`
   commands such as `backfill-release-range`.
 
 Shared support:
@@ -23,38 +23,38 @@ Shared support:
 
 Rust CLI entrypoints:
 
-- `decodex radar validate` validates checked Radar artifact JSON contracts from the
+- `radar validate` validates checked Radar artifact JSON contracts from the
   Rust CLI.
-- `decodex radar refresh-upstream-queue` refreshes
+- `radar refresh-upstream-queue` refreshes
   `.agent/automations/decodex/cache/github/review-queue/openai-codex-latest.json`.
-- `decodex radar refresh-release-delta` refreshes
+- `radar refresh-release-delta` refreshes
   `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json`.
-- `decodex radar bundle build` builds deterministic bundles for PR-first and
+- `radar bundle build` builds deterministic bundles for PR-first and
   commit-only inputs.
-- `decodex radar bundle validate` validates deterministic bundles.
-- `decodex radar ledger ...` owns bootstrap, ingest, ingest-existing, artifact-link,
+- `radar bundle validate` validates deterministic bundles.
+- `radar ledger ...` owns bootstrap, ingest, ingest-existing, artifact-link,
   and summary operations.
-- `decodex radar social reserve-publish` creates pre-compose X publish reservations
+- `radar social reserve-publish` creates pre-compose X publish reservations
   with cap, duplicate, idempotency, active-reservation, terminal-post, create-new, and
   schema checks.
-- `decodex radar render-signal` renders `signal_entry/v1` from a validated
+- `radar render-signal` renders `signal_entry/v1` from a validated
   `github_change_bundle/v1` plus Codex-owned `analysis_draft`.
-- `decodex radar backfill-release-range` selects release-window signal gaps and can
+- `radar backfill-release-range` selects release-window signal gaps and can
   sequence the remaining helper boundaries for local or Codex automation backfills.
 
 Current checked contracts:
 
 - `analysis_draft.schema.json` is the Codex AI helper output schema.
-- `upstream_review_queue/v1` artifacts are validated by `decodex radar validate`.
-- `upstream_review/v1` artifacts are validated by `decodex radar validate`.
-- `release_delta/v1` artifacts are validated by `decodex radar validate`.
-- `upstream_impact/v1` artifacts are validated by `decodex radar validate`.
+- `upstream_review_queue/v1` artifacts are validated by `radar validate`.
+- `upstream_review/v1` artifacts are validated by `radar validate`.
+- `release_delta/v1` artifacts are validated by `radar validate`.
+- `upstream_impact/v1` artifacts are validated by `radar validate`.
 - `control_plane_upgrade_candidate/v1` artifacts are validated by
-  `decodex radar validate`.
-- `social_candidate/v1` artifacts are validated by `decodex radar validate`.
+  `radar validate`.
+- `social_candidate/v1` artifacts are validated by `radar validate`.
 - `social_publish_reservation/v1` artifacts are validated by
-  `decodex radar validate`.
-- `social_post/v1` artifacts are validated by `decodex radar validate`.
+  `radar validate`.
+- `social_post/v1` artifacts are validated by `radar validate`.
 
 Contract ownership:
 
@@ -70,24 +70,24 @@ Contract ownership:
 Example flow:
 
 ```bash
-decodex radar bundle build \
+radar bundle build \
   --repo openai/codex \
   --pr 22414 \
   --out .agent/automations/decodex/cache/github/bundles/openai-codex-pr-22414.json
 
-decodex radar render-signal \
+radar render-signal \
   --bundle .agent/automations/decodex/cache/github/bundles/openai-codex-pr-22414.json \
   --analysis .agent/automations/decodex/cache/generated/analysis/openai-codex-pr-22414.analysis.json \
   --out .agent/automations/decodex/cache/site-content/signals/openai-codex-pr-22414.json
 
-decodex radar validate \
+radar validate \
   .agent/automations/decodex/cache/site-content/signals/openai-codex-pr-22414.json
 ```
 
 Continuous upstream Radar sync:
 
 ```bash
-cargo run -p decodex --bin decodex -- radar refresh-upstream-queue \
+cargo run -p radar -- refresh-upstream-queue \
   --repo openai/codex \
   --search-limit 40
 ```
@@ -101,7 +101,7 @@ to avoid empty commits.
 Release-delta refresh:
 
 ```bash
-cargo run -p decodex --bin decodex -- radar refresh-release-delta \
+cargo run -p radar -- refresh-release-delta \
   --repo openai/codex \
   --signals-dir .agent/automations/decodex/cache/site-content/signals \
   --out .agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json
@@ -115,13 +115,13 @@ Use `--no-ledger` only for throwaway runs. To bootstrap the ledger from existing
 checked-in artifacts:
 
 ```bash
-decodex radar ledger ingest-existing
+radar ledger ingest-existing
 ```
 
 Release-window gap fill:
 
 ```bash
-decodex radar backfill-release-range \
+radar backfill-release-range \
   --repo openai/codex \
   --stable-tag rust-v0.130.0 \
   --preview-tag rust-v0.131.0-alpha.9 \
@@ -129,11 +129,11 @@ decodex radar backfill-release-range \
 ```
 
 Codex app automation or an explicit local operator run may refresh upstream queues,
-release deltas, and validation through `decodex radar ...`. Codex automation owns AI
+release deltas, and validation through `radar ...`. Codex automation owns AI
 review of queued subjects and promotes Publisher or Control Plane conclusions into the
 shared `upstream_impact/v1` handoff artifact before downstream
 `control_plane_upgrade_candidate/v1`, `analysis_draft`,
-`decodex radar render-signal` output, or `social_candidate/v1` artifacts consume that
+`radar render-signal` output, or `social_candidate/v1` artifacts consume that
 same reviewed scan. Publisher automation writes terminal `social_post/v1` records.
 
 Do not wire `run_codex_analysis.py` into GitHub Actions. Actions must not pass
