@@ -44,6 +44,7 @@ use crate::{
 mod project_run_recovery;
 mod runtime_row_parsers;
 mod runtime_records;
+mod store_run_control;
 
 use runtime_row_parsers::{
 	autonomy_objective_record_from_row_parts, autonomy_objective_runtime_row_parts,
