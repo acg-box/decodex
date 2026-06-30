@@ -1,0 +1,1164 @@
+
+			.child-activity {
+				--child-muted-readable: color-mix(in srgb, var(--muted-strong) 62%, var(--muted));
+				margin-top: 12px;
+				padding-top: 10px;
+				border-top: 1px solid var(--line);
+				overflow: hidden;
+			}
+
+			.account-privacy-toggle,
+			.project-location-toggle,
+			.project-work-info {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 20px;
+				height: 20px;
+				padding: 0;
+				border: 0;
+				border-radius: 999px;
+				background: transparent;
+				color: var(--muted-strong);
+				cursor: pointer;
+				transition:
+					background-color var(--fast) var(--ease),
+					color var(--fast) var(--ease);
+			}
+
+			.project-work-info {
+				cursor: help;
+			}
+
+			.project-work-info-wrap {
+				position: relative;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+			}
+
+			.project-work-tooltip {
+				position: absolute;
+				z-index: 24;
+				top: calc(100% + 7px);
+				right: 0;
+				width: max-content;
+				max-width: 220px;
+				padding: 5px 7px;
+				border: 1px solid var(--line-strong);
+				border-radius: var(--radius-sm);
+				background: var(--surface);
+				box-shadow: 0 8px 20px color-mix(in srgb, var(--shadow) 20%, transparent);
+				color: var(--text);
+				font-family: var(--sans);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				line-height: 1.25;
+				opacity: 0;
+				pointer-events: none;
+				text-align: left;
+				transform: translateY(-2px);
+				transition:
+					opacity var(--fast) var(--ease),
+					transform var(--fast) var(--ease);
+			}
+
+			.project-work-info-wrap:hover .project-work-tooltip,
+			.project-work-info:focus-visible + .project-work-tooltip,
+			.project-work-info.is-open + .project-work-tooltip {
+				opacity: 1;
+				pointer-events: auto;
+				transform: translateY(0);
+			}
+
+			.account-privacy-toggle svg,
+			.project-location-toggle svg,
+			.project-work-info svg {
+				display: block;
+				width: 14px;
+				height: 14px;
+				stroke-width: 2;
+			}
+
+			.account-privacy-toggle .account-eye-open,
+			.project-location-toggle .account-eye-open {
+				display: none;
+			}
+
+			.account-privacy-toggle.is-on .account-eye-open,
+			.project-location-toggle.is-on .account-eye-open {
+				display: block;
+			}
+
+			.account-privacy-toggle.is-on .account-eye-off,
+			.project-location-toggle.is-on .account-eye-off {
+				display: none;
+			}
+
+			.account-privacy-toggle:hover,
+			.project-location-toggle:hover,
+			.project-work-info:hover {
+				background: var(--surface-muted);
+				color: var(--text);
+			}
+
+			.account-privacy-toggle:focus-visible,
+			.project-location-toggle:focus-visible,
+			.project-work-info:focus-visible {
+				color: var(--text);
+				outline: 2px solid var(--info);
+				outline-offset: 2px;
+			}
+
+			.project-filter-toggle {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 20px;
+				height: 20px;
+				padding: 0;
+				border: 0;
+				border-radius: 999px;
+				background: transparent;
+				color: var(--muted-strong);
+				cursor: pointer;
+				transition:
+					background-color var(--fast) var(--ease),
+					color var(--fast) var(--ease);
+			}
+
+			.project-filter-toggle svg {
+				display: block;
+				width: 13px;
+				height: 13px;
+				stroke-width: 2;
+			}
+
+			.project-filter-toggle.is-on {
+				color: var(--info);
+			}
+
+			.account-privacy-toggle.is-on,
+			.project-location-toggle.is-on {
+				color: var(--info);
+			}
+
+			.project-filter-toggle:hover {
+				background: var(--surface-muted);
+				color: var(--text);
+			}
+
+			.project-filter-toggle:focus-visible {
+				color: var(--text);
+				outline: 2px solid var(--info);
+				outline-offset: 2px;
+			}
+
+			.project-filter-toggle[disabled] {
+				cursor: not-allowed;
+				opacity: 0.45;
+			}
+
+			.run-meta-line {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: baseline;
+				gap: 6px 14px;
+				margin-top: 8px;
+				min-width: 0;
+				font-family: var(--mono);
+				font-size: var(--type-label);
+				font-variant-ligatures: none;
+				letter-spacing: 0;
+				line-height: 1.35;
+				color: var(--muted);
+			}
+
+			.run-meta-item {
+				display: inline-flex;
+				align-items: baseline;
+				gap: 5px;
+				min-width: 0;
+			}
+
+			.run-meta-item.is-account {
+				position: relative;
+				gap: 0;
+				padding-left: 16px;
+			}
+
+			.run-meta-item:not(:first-child)::before {
+				content: "";
+				width: 2px;
+				height: 2px;
+				margin-right: 7px;
+				border-radius: 999px;
+				background: currentColor;
+				opacity: 0.64;
+				transform: translateY(-1px);
+			}
+
+			.run-meta-label {
+				min-width: 0;
+				color: var(--muted);
+				overflow-wrap: anywhere;
+			}
+
+			.run-meta-icon {
+				position: absolute;
+				top: 50%;
+				left: 0;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 12px;
+				height: 12px;
+				color: var(--muted-strong);
+				transform: translateY(-50%);
+			}
+
+			.run-meta-icon svg {
+				display: block;
+				width: 12px;
+				height: 12px;
+			}
+
+			.run-meta-item strong {
+				min-width: 0;
+				color: var(--text);
+				font-weight: var(--weight-label);
+				overflow-wrap: anywhere;
+			}
+
+			.run-meta-item.is-missing strong {
+				color: var(--muted-strong);
+			}
+
+			.account-meta {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				gap: 4px 8px;
+				min-width: 0;
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				color: var(--muted);
+			}
+
+			.account-meta span {
+				display: inline-flex;
+				align-items: baseline;
+				gap: 3px;
+				min-width: 0;
+				overflow-wrap: anywhere;
+			}
+
+			.account-meta span strong {
+				color: var(--muted-strong);
+				font-weight: var(--weight-label);
+			}
+
+			.account-pool-activity-strip {
+				display: flex;
+				align-items: center;
+				justify-content: flex-start;
+				gap: 2px;
+				width: min(100%, 128px);
+				min-width: 0;
+				height: 8px;
+				margin-top: 2px;
+				overflow: hidden;
+			}
+
+			.account-profile-activity-strip {
+				justify-self: center;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				gap: 2px;
+				width: min(100%, 128px);
+				min-width: 0;
+				height: 8px;
+				overflow: hidden;
+			}
+
+			.account-pool-activity-tile,
+			.account-profile-activity-tile {
+				display: block;
+				flex: 0 0 6px;
+				width: 6px;
+				height: 8px;
+				border-radius: 2px;
+				background: var(--info);
+				opacity: var(--account-activity-opacity, 0.28);
+			}
+
+			#account-mode-meta {
+				display: flex;
+				align-items: center;
+				justify-content: flex-end;
+				gap: 8px;
+				max-width: min(760px, 72vw);
+				letter-spacing: 0;
+			}
+
+			.account-mode-head {
+				display: inline-flex;
+				align-items: baseline;
+				gap: 6px;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-pool {
+				display: grid;
+				gap: 10px;
+				min-width: 0;
+				overflow-x: auto;
+				padding-bottom: 2px;
+			}
+
+			.account-pool-summary {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+				gap: 0;
+				min-width: 0;
+				padding: 8px 0 8px var(--space-row-indent);
+				border-bottom: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+				color: var(--muted);
+			}
+
+			.account-pool-metric {
+				display: grid;
+				gap: 3px;
+				min-width: 0;
+				padding: 0 14px;
+				border-left: 1px solid var(--line);
+				font-variant-numeric: tabular-nums;
+				line-height: 1.15;
+			}
+
+			.account-pool-metric:first-child {
+				padding-left: 0;
+				border-left: 0;
+			}
+
+			.account-pool-metric-label {
+				overflow: hidden;
+				color: var(--muted);
+				font-family: var(--sans);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-pool-metric-value {
+				overflow: hidden;
+				color: var(--muted-strong);
+				font-family: var(--mono);
+				font-size: var(--type-row-title);
+				font-weight: var(--weight-label);
+				letter-spacing: 0;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-pool-metric-value[data-tone="run"] {
+				color: var(--tone-run);
+			}
+
+			.account-pool-metric-value[data-tone="warning"] {
+				color: var(--warning);
+			}
+
+			.account-pool-metric-value[data-tone="danger"] {
+				color: var(--danger);
+			}
+
+			.account-pool-metric-value[data-tone="muted"] {
+				color: var(--muted-strong);
+			}
+
+			.account-pool-summary-note {
+				grid-column: 1 / -1;
+				margin-top: 2px;
+				color: var(--muted);
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				line-height: 1.2;
+			}
+
+			.account-profile-panel {
+				--account-accent: var(--tone-muted);
+				position: relative;
+				isolation: isolate;
+				overflow: hidden;
+				min-width: 0;
+				max-height: 0;
+				padding: 0 28px 0 var(--space-row-indent);
+				border-bottom: 0 solid transparent;
+				background: linear-gradient(
+					90deg,
+					color-mix(in srgb, var(--account-accent) 7%, transparent),
+					transparent 72%
+				);
+				color: var(--muted);
+				opacity: 0;
+				pointer-events: none;
+				transform: translateY(-4px);
+				transition:
+					max-height var(--medium) var(--ease),
+					padding-bottom var(--medium) var(--ease),
+					border-width var(--medium) var(--ease),
+					border-color var(--medium) var(--ease),
+					opacity var(--medium) var(--ease),
+					transform var(--medium) var(--ease);
+			}
+
+			.account-row.is-profile-open {
+				border-bottom-color: color-mix(in srgb, var(--line) 34%, transparent);
+			}
+
+			.account-profile-panel.is-selected,
+			.account-profile-panel.is-ready {
+				--account-accent: var(--success);
+			}
+
+			.account-profile-panel.is-fixed {
+				--account-accent: var(--info);
+			}
+
+			.account-profile-panel.is-warn {
+				--account-accent: var(--warning);
+			}
+
+			.account-profile-panel.is-danger {
+				--account-accent: var(--danger);
+			}
+
+			.account-profile-panel.is-open {
+				max-height: 88px;
+				padding-bottom: 10px;
+				border-bottom-width: 1px;
+				border-bottom-color: var(--line);
+				opacity: 1;
+				pointer-events: auto;
+				transform: translateY(0);
+			}
+
+			.account-profile-panel-inner {
+				display: grid;
+				grid-template-columns: repeat(5, minmax(0, 1fr));
+				align-items: center;
+				gap: 8px var(--space-row-y);
+				min-width: 0;
+				padding: 8px 0 0;
+			}
+
+			.account-profile-fact,
+			.account-profile-activity {
+				display: grid;
+				gap: 3px;
+				min-width: 0;
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				font-variant-numeric: tabular-nums;
+				line-height: 1.15;
+			}
+
+			.account-profile-fact {
+				justify-items: center;
+				text-align: center;
+			}
+
+			.account-profile-fact span,
+			.account-profile-activity-label {
+				max-width: 100%;
+				overflow: hidden;
+				color: var(--muted);
+				font-family: var(--sans);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-profile-fact strong,
+			.account-profile-empty {
+				max-width: 100%;
+				overflow: hidden;
+				color: var(--muted-strong);
+				font-weight: var(--weight-label);
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-profile-activity {
+				justify-items: center;
+				text-align: center;
+			}
+
+			.account-profile-panel:last-child {
+				border-bottom: 0;
+			}
+
+			.account-pool-list {
+				--account-grid: minmax(220px, 1.12fr) minmax(56px, 0.42fr) repeat(4, minmax(0, 1fr));
+				--account-gap: var(--space-row-y);
+				display: grid;
+				min-width: 760px;
+				background: transparent;
+			}
+
+			.account-pool-guide {
+				display: grid;
+				grid-template-columns: var(--account-grid);
+				align-items: end;
+				gap: var(--account-gap);
+				min-width: 0;
+				padding: 0 0 var(--space-sm) var(--space-row-indent);
+				border-bottom: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+				color: var(--muted);
+				font-family: var(--sans);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+				line-height: 1.15;
+			}
+
+			.account-pool-sort {
+				justify-self: center;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				gap: 4px;
+				min-width: 0;
+				max-width: 100%;
+				padding: 0;
+				border: 0;
+				background: transparent;
+				color: inherit;
+				font: inherit;
+				letter-spacing: inherit;
+				line-height: inherit;
+				text-align: center;
+				text-transform: inherit;
+				cursor: pointer;
+				transition: color var(--fast) var(--ease);
+			}
+
+			.account-pool-heading {
+				justify-self: center;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				gap: 5px;
+				min-width: 0;
+			}
+
+			.account-pool-sort:hover,
+			.account-pool-sort.is-active {
+				color: var(--text);
+			}
+
+			.account-pool-sort:focus-visible {
+				color: var(--text);
+				outline: 2px solid var(--info);
+				outline-offset: 3px;
+			}
+
+			.account-pool-sort-label {
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+
+			.account-pool-sort-icon {
+				display: block;
+				flex: 0 0 auto;
+				width: 8px;
+				height: 12px;
+			}
+
+			.account-pool-sort-icon path {
+				opacity: 0.38;
+				transition: opacity var(--fast) var(--ease);
+			}
+
+			.account-pool-sort.is-asc .account-sort-up,
+			.account-pool-sort.is-desc .account-sort-down {
+				opacity: 1;
+			}
+
+			.account-row {
+				--account-accent: var(--tone-muted);
+				--account-confirm-accent: var(--tone-run);
+				--account-confirm-cycle: 1.45s;
+				position: relative;
+				isolation: isolate;
+				display: grid;
+				grid-template-areas:
+					"id plan primary secondary credit state"
+					"meta meta meta meta meta meta";
+				grid-template-columns: var(--account-grid);
+				align-items: center;
+				gap: 4px var(--account-gap);
+				min-width: 0;
+				min-height: 42px;
+				padding: var(--space-account-row-y) 28px var(--space-account-row-y) var(--space-row-indent);
+				border-bottom: 1px solid var(--line);
+				background: transparent;
+				transition:
+					background-color var(--fast) var(--ease),
+					color var(--fast) var(--ease);
+			}
+
+			.account-row.is-profile-toggleable {
+				cursor: pointer;
+			}
+
+			.account-pool-list > .account-row.is-last-account {
+				border-bottom: 0;
+			}
+
+			.account-row > * {
+				position: relative;
+				z-index: 1;
+			}
+
+			.account-row::before {
+				content: "";
+				position: absolute;
+				z-index: 2;
+				left: 0;
+				top: calc(var(--space-account-row-y) - 1px);
+				bottom: calc(var(--space-account-row-y) - 1px);
+				width: 3px;
+				background: var(--account-accent);
+				box-shadow: none;
+				transform-origin: left center;
+				transition:
+					background-color var(--fast) var(--ease),
+					box-shadow var(--medium) var(--ease),
+					transform var(--medium) var(--ease);
+			}
+
+			.account-row::after {
+				content: "";
+				position: absolute;
+				inset: 0 auto 0 0;
+				z-index: 0;
+				width: min(58%, 720px);
+				background: linear-gradient(
+					90deg,
+					color-mix(in srgb, var(--account-accent) 12%, transparent),
+					transparent 78%
+				);
+				opacity: 0;
+				transform: scaleX(0.92);
+				transform-origin: left center;
+				transition:
+					opacity var(--medium) var(--ease),
+					transform var(--medium) var(--ease);
+			}
+
+			.account-row.is-selected {
+				--account-accent: var(--success);
+			}
+
+			.account-row.is-ready {
+				--account-accent: var(--success);
+			}
+
+			.account-row.is-selected::before,
+			.account-row.is-fixed::before {
+				box-shadow: 0 0 10px color-mix(in srgb, var(--account-accent) 22%, transparent);
+			}
+
+			.account-row.is-selected::after,
+			.account-row.is-fixed::after {
+				opacity: 0.45;
+				transform: scaleX(1);
+			}
+
+			.account-row.is-warn {
+				--account-accent: var(--warning);
+			}
+
+			.account-row.is-danger {
+				--account-accent: var(--danger);
+			}
+
+			.account-row.is-fixed {
+				--account-accent: var(--info);
+			}
+
+			.account-row.is-warn::after,
+			.account-row.is-danger::after {
+				opacity: 0.35;
+				transform: scaleX(1);
+			}
+
+			.account-row:hover,
+			.account-row:focus-within {
+				background: linear-gradient(90deg, var(--hover), transparent 78%);
+			}
+
+			.account-row:hover::before,
+			.account-row:focus-within::before {
+				box-shadow: 0 0 18px color-mix(in srgb, var(--account-accent) 42%, transparent);
+				transform: scaleX(1.45) scaleY(1.08);
+			}
+
+			.account-row.is-armed:hover::before,
+			.account-row.is-armed:focus-within::before {
+				transform: none;
+			}
+
+			.account-row.is-armed:not(.is-selected):not(.is-fixed):hover::before,
+			.account-row.is-armed:not(.is-selected):not(.is-fixed):focus-within::before {
+				box-shadow: none;
+			}
+
+			.account-row.is-armed.is-selected:hover::before,
+			.account-row.is-armed.is-selected:focus-within::before,
+			.account-row.is-armed.is-fixed:hover::before,
+			.account-row.is-armed.is-fixed:focus-within::before {
+				box-shadow: 0 0 10px color-mix(in srgb, var(--account-accent) 22%, transparent);
+			}
+
+			.account-row:hover::after,
+			.account-row:focus-within::after {
+				opacity: 0.85;
+				transform: scaleX(1);
+			}
+
+			@keyframes account-confirm-name-breathe {
+				0%,
+				100% {
+					color: color-mix(in srgb, var(--account-confirm-accent) 46%, var(--muted));
+					text-shadow: none;
+				}
+				50% {
+					color: var(--account-confirm-accent);
+					text-shadow:
+						0 0 6px color-mix(in srgb, var(--account-confirm-accent) 34%, transparent),
+						0 0 15px color-mix(in srgb, var(--account-confirm-accent) 20%, transparent);
+				}
+			}
+
+			@keyframes account-confirm-bracket-left {
+				0%,
+				100% {
+					opacity: 0.36;
+					transform: translate(0.18ch, -50%);
+				}
+				50% {
+					opacity: 0.98;
+					transform: translate(-0.12ch, -50%);
+				}
+			}
+
+			@keyframes account-confirm-bracket-right {
+				0%,
+				100% {
+					opacity: 0.36;
+					transform: translate(-0.18ch, -50%);
+				}
+				50% {
+					opacity: 0.98;
+					transform: translate(0.12ch, -50%);
+				}
+			}
+
+			.account-row-id {
+				grid-area: id;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				justify-self: stretch;
+				gap: 6px;
+				min-width: 0;
+				font-family: var(--mono);
+				font-variant-ligatures: none;
+				letter-spacing: 0;
+				text-align: center;
+			}
+
+			.account-row-id strong {
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				color: var(--text);
+				font-size: var(--type-label);
+				font-weight: var(--weight-label);
+			}
+
+			.account-name-button {
+				position: relative;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				min-width: 0;
+				max-width: 100%;
+				padding: 0 2px;
+				border: 0;
+				background: transparent;
+				color: var(--text);
+				font-family: var(--mono);
+				font-size: var(--type-label);
+				font-variant-ligatures: none;
+				font-weight: var(--weight-label);
+				letter-spacing: 0;
+				line-height: 1.25;
+				cursor: pointer;
+				transition:
+					color var(--fast) var(--ease),
+					text-shadow var(--medium) var(--ease);
+			}
+
+			.account-name-button::before,
+			.account-name-button::after {
+				position: absolute;
+				top: 50%;
+				display: block;
+				color: var(--account-confirm-accent);
+				font-weight: var(--weight-strong);
+				line-height: 1;
+				opacity: 0;
+				pointer-events: none;
+				text-shadow:
+					0 0 8px color-mix(in srgb, var(--account-confirm-accent) 42%, transparent),
+					0 0 16px color-mix(in srgb, var(--account-confirm-accent) 22%, transparent);
+				will-change: opacity, transform;
+			}
+
+			.account-name-button::before {
+				content: ">";
+				left: -1.35ch;
+				transform: translate(0.18ch, -50%);
+			}
+
+			.account-name-button::after {
+				content: "<";
+				right: -1.35ch;
+				transform: translate(-0.18ch, -50%);
+			}
+
+			.account-name-button .account-name {
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-name-button:hover,
+			.account-name-button.is-fixed {
+				color: var(--account-confirm-accent);
+			}
+
+			.account-name-button.is-fixed {
+				text-shadow:
+					0 0 6px color-mix(in srgb, var(--account-confirm-accent) 34%, transparent),
+					0 0 15px color-mix(in srgb, var(--account-confirm-accent) 20%, transparent);
+			}
+
+			.account-name-button.is-fixed::before,
+			.account-name-button.is-fixed::after {
+				opacity: 0.72;
+				transform: translate(0, -50%);
+			}
+
+			.account-name-button.is-armed {
+				animation: account-confirm-name-breathe var(--account-confirm-cycle) var(--ease) infinite;
+				will-change: color, text-shadow;
+			}
+
+			.account-name-button.is-armed::before {
+				animation: account-confirm-bracket-left var(--account-confirm-cycle) var(--ease) infinite;
+			}
+
+			.account-name-button.is-armed::after {
+				animation: account-confirm-bracket-right var(--account-confirm-cycle) var(--ease) infinite;
+			}
+
+			.account-name-button:focus-visible {
+				outline: 2px solid var(--info);
+				outline-offset: 4px;
+			}
+
+			.account-name-reroll {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				flex: 0 0 auto;
+				width: 16px;
+				height: 16px;
+				padding: 0;
+				border: 0;
+				border-radius: 999px;
+				background: transparent;
+				color: var(--muted);
+				cursor: pointer;
+				transition:
+					background-color var(--fast) var(--ease),
+					color var(--fast) var(--ease);
+			}
+
+			.account-profile-toggle {
+				position: absolute;
+				z-index: 3;
+				top: 50%;
+				right: 5px;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 18px;
+				height: 24px;
+				padding: 0;
+				border: 0;
+				border-radius: var(--radius-sm);
+				background: transparent;
+				color: var(--muted);
+				cursor: pointer;
+				opacity: 0.58;
+				transform: translateY(-50%);
+				transition:
+					background-color var(--fast) var(--ease),
+					color var(--fast) var(--ease),
+					opacity var(--fast) var(--ease);
+			}
+
+			.account-name-button + .account-name-reroll {
+				margin-left: 8px;
+			}
+
+			.account-name-reroll svg,
+			.account-profile-toggle svg {
+				display: block;
+				width: 12px;
+				height: 12px;
+				stroke-width: 2.1;
+			}
+
+			.account-profile-toggle svg {
+				transition: transform var(--medium) var(--ease);
+			}
+
+			.account-profile-toggle[aria-expanded="true"] svg {
+				transform: rotate(180deg);
+			}
+
+			.account-row:hover .account-profile-toggle,
+			.account-row:focus-within .account-profile-toggle,
+			.account-name-reroll:hover,
+			.account-profile-toggle:hover,
+			.account-profile-toggle[aria-expanded="true"] {
+				background: var(--surface-muted);
+				color: var(--text);
+				opacity: 1;
+			}
+
+			.account-name-reroll:focus-visible,
+			.account-profile-toggle:focus-visible {
+				color: var(--text);
+				outline: 2px solid var(--info);
+				outline-offset: 2px;
+			}
+
+			.account-row-plan {
+				grid-area: plan;
+				justify-self: center;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				color: var(--muted);
+				font-family: var(--sans);
+				font-size: var(--type-label);
+				font-weight: 500;
+				line-height: 1.2;
+				text-align: center;
+				white-space: nowrap;
+			}
+
+			.account-window {
+				display: inline-grid;
+				grid-template-columns: max-content max-content;
+				justify-content: center;
+				justify-items: center;
+				align-items: baseline;
+				gap: 1px 5px;
+				min-width: 0;
+				width: 100%;
+				font-family: var(--mono);
+				line-height: 1.18;
+				text-align: center;
+				transition:
+					color var(--fast) var(--ease);
+			}
+
+			.account-row:hover .account-window,
+			.account-row:focus-within .account-window {
+				color: var(--text);
+			}
+
+			.account-window.is-primary {
+				grid-area: primary;
+				justify-self: stretch;
+				min-width: 0;
+			}
+
+			.account-window.is-secondary {
+				grid-area: secondary;
+				justify-self: stretch;
+				min-width: 0;
+			}
+
+			.account-window-label {
+				display: none;
+				color: var(--muted);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+			}
+
+			.account-window > strong {
+				display: inline;
+				grid-column: 1;
+				grid-row: 1;
+				color: var(--text);
+				font-size: var(--type-label);
+				font-weight: var(--weight-label);
+				line-height: 1.15;
+			}
+
+			.account-window.is-danger > strong {
+				color: var(--danger);
+			}
+
+			.account-window.is-warn > strong {
+				color: var(--warning);
+			}
+
+			.account-window-reset {
+				display: inline;
+				grid-column: 2;
+				grid-row: 1;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				color: var(--muted);
+				font-family: var(--mono);
+				font-size: var(--type-label);
+				line-height: 1.08;
+				white-space: nowrap;
+			}
+
+			.account-window-date {
+				grid-column: 1 / -1;
+				grid-row: 2;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				color: var(--muted);
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				line-height: 1.12;
+				white-space: nowrap;
+			}
+
+			.account-row-state {
+				grid-area: state;
+				justify-self: stretch;
+				display: flex;
+				justify-content: center;
+				min-width: 0;
+				width: auto;
+				text-align: center;
+				font-family: var(--sans);
+				font-size: var(--type-label);
+				color: var(--muted);
+			}
+
+			.account-row-credit {
+				grid-area: credit;
+				justify-self: center;
+				display: inline-flex;
+				align-items: baseline;
+				justify-content: center;
+				min-width: 0;
+				font-family: var(--mono);
+				font-size: var(--type-label);
+				line-height: 1.2;
+				text-align: center;
+				white-space: nowrap;
+				color: var(--muted);
+			}
+
+			.account-row-credit span {
+				display: none;
+			}
+
+			.account-row-credit strong {
+				color: var(--text);
+				font-weight: var(--weight-label);
+			}
+
+			.account-row-credit.is-danger strong {
+				color: var(--danger);
+			}
+
+			.account-status {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				min-width: 0;
+				color: var(--muted-strong);
+				font-weight: var(--weight-label);
+				line-height: 1.25;
+				white-space: nowrap;
+				transition:
+					color var(--fast) var(--ease);
+			}
+
+			.account-status::before {
+				content: "";
+				flex: 0 0 auto;
+				width: 5px;
+				height: 5px;
+				border-radius: 999px;
+				background: var(--account-accent);
+				box-shadow: 0 0 6px color-mix(in srgb, var(--account-accent) 28%, transparent);
+				transition:
+					box-shadow var(--medium) var(--ease),
+					transform var(--medium) var(--ease);
+			}
+
+			.account-row.is-selected .account-status,
+			.account-row.is-fixed .account-status,
+			.account-row.is-ready .account-status {
+				color: var(--account-accent);
+			}
+
+			.account-row.is-warn .account-status,
+			.account-row.is-danger .account-status {
+				color: var(--account-accent);
+			}
+
+			.account-row:hover .account-status::before,
+			.account-row:focus-within .account-status::before {
+				box-shadow: 0 0 0 4px color-mix(in srgb, var(--account-accent) 12%, transparent);
+				transform: scale(1.08);
+			}
+
+			.account-row-meta {
+				grid-area: meta;
+				grid-column: 1 / -1;
+			}

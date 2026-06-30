@@ -11,7 +11,27 @@ static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> = std::sync::LazyLoc
 		)),
 		include_str!(concat!(
 			env!("CARGO_MANIFEST_DIR"),
-			"/src/orchestrator/operator_dashboard/styles.css"
+			"/src/orchestrator/operator_dashboard/styles/foundation.css"
+		)),
+		include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/orchestrator/operator_dashboard/styles/layout.css"
+		)),
+		include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/orchestrator/operator_dashboard/styles/accounts.css"
+		)),
+		include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/orchestrator/operator_dashboard/styles/activity.css"
+		)),
+		include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/orchestrator/operator_dashboard/styles/details.css"
+		)),
+		include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/orchestrator/operator_dashboard/styles/responsive.css"
 		)),
 		include_str!(concat!(
 			env!("CARGO_MANIFEST_DIR"),
