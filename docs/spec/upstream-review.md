@@ -20,7 +20,7 @@ Read this when:
 - You are building automation that asks AI to analyze Codex commits or PRs.
 - You need to decide what deterministic local automation may refresh without Codex auth.
 - You are deciding whether an upstream change should become a signal, impact artifact,
-  social post, or Decodex engineering follow-up.
+  Publisher handoff evidence, or Decodex engineering follow-up.
 
 Not this document:
 - The normalized GitHub source bundle schema. Read [`github-change-bundle.md`](./github-change-bundle.md).
@@ -35,7 +35,7 @@ Defines:
 - The AI-owned `upstream_review/v1` artifact.
 - The rule that release and prerelease tags are rollup checkpoints over commit and PR
   evidence, not first-class discovery roots.
-- The promotion boundary from upstream review into impact, site, social, or Control
+- The promotion boundary from upstream review into impact, site, Publisher handoff, or Control
   Plane upgrade candidate work.
 
 ## Core rule
@@ -57,11 +57,11 @@ The deterministic queue schema identifier is:
 
 Recommended checked-in location:
 
-- `.agent/automations/decodex/cache/github/review-queue/openai-codex-latest.json`
+- `.agent/automations/radar/cache/github/review-queue/openai-codex-latest.json`
 
 Rust refresh entrypoint:
 
-- `decodex radar refresh-upstream-queue`
+- `radar refresh-upstream-queue`
 
 The AI review schema identifier is:
 
@@ -69,10 +69,10 @@ The AI review schema identifier is:
 
 Recommended checked-in location:
 
-- `.agent/automations/decodex/cache/github/reviews/<source-slug>.review.json`
+- `.agent/automations/radar/cache/github/reviews/<source-slug>.review.json`
 
 Review artifacts are hot Radar artifacts unless they are promoted into
-`upstream_impact/v1`, `signal_entry/v1`, `social_candidate/v1`, or
+`upstream_impact/v1`, `signal_entry/v1`, or
 `control_plane_upgrade_candidate/v1`. Apply the 21-day hot-window rule from
 [`radar-artifact-retention.md`](./radar-artifact-retention.md).
 
@@ -125,19 +125,19 @@ or public value.
 - deprecated, removed, migration, or breaking-change notes, if any
 - confidence: `confirmed`, `likely`, or `weak`
 - source-backed evidence notes
-- next actions, each mapped to `none`, `upstream_impact`, `signal_entry`,
-  `social_candidate`, or `control_plane_upgrade_candidate`
+- next actions, each mapped to `none`, `upstream_impact`, `signal_entry`, or
+  `control_plane_upgrade_candidate`
 
 AI review must read enough source evidence to explain behavior. A PR title, release
 title, or deterministic queue hint is not enough for a confirmed claim.
 
-The remaining Python analysis helper, `automations/decodex/scripts/github/run_codex_analysis.py`, is only
+The remaining Python analysis helper, `automations/radar/scripts/github/run_codex_analysis.py`, is only
 the bounded deterministic process wrapper for this AI review boundary. It must validate
 the input `github_change_bundle/v1`, run Codex with the checked `analysis_draft` output
 schema, validate the returned draft again before writing it, and require an explicit
 `--allow-ai-analysis-boundary` flag or `DECODEX_ALLOW_CODEX_ANALYSIS=1` environment
 acknowledgement. The normal operator command surface remains Rust-owned
-`decodex radar ...`; GitHub Actions must not set that acknowledgement.
+`radar ...`; GitHub Actions must not set that acknowledgement.
 
 ## Promotion boundary
 
@@ -147,8 +147,6 @@ Promote an upstream review into:
   or Publisher planning.
 - `signal_entry/v1` when it is community-ready and has user-visible capability,
   behavior, try path, or migration value.
-- `social_candidate/v1` when there is a clear public angle and source links are
-  available. Publisher later decides whether to write terminal `social_post/v1`.
 - `control_plane_upgrade_candidate/v1` when Decodex should adopt, guard, migrate, or
   investigate the change. The candidate remains evidence-only until Decision Contract
   and Program Intake promotion.
@@ -168,4 +166,4 @@ They may trigger a gap scan, but they must not replace commit and PR evidence.
 
 This matters most for Codex prereleases because prerelease bodies may be sparse or empty.
 Rollups should combine prior reviews, impact artifacts, public signals, and compare
-metadata before producing a social candidate or X post.
+metadata before Publisher decides whether a social candidate or X post is justified.
