@@ -36,8 +36,8 @@ use std::{
 	error::Error,
 	fmt::{self, Display, Formatter},
 	fs::{self, File},
-	io::{ErrorKind, Read, Write},
-	net::{SocketAddr, TcpListener, TcpStream},
+	io::{ErrorKind, Write},
+	net::{SocketAddr, TcpListener},
 	path::{Path, PathBuf},
 	process::{Child, Command, ExitStatus, Stdio},
 	slice,
@@ -227,6 +227,25 @@ pub(crate) use types::{
 
 include!("orchestrator/operator_presentation.rs");
 
+mod entrypoints_status_cache;
+pub(crate) use entrypoints_status_cache::status_should_attempt_operator_snapshot_cache;
+#[cfg(test)]
+pub(crate) use entrypoints_status_cache::{
+	StatusSnapshotHttpResponse, status_snapshot_from_operator_cache_response,
+};
+use entrypoints_status_cache::{
+	add_status_snapshot_cache_miss_warning, status_snapshot_from_local_operator_cache,
+};
+mod entrypoints_tracker_backoff;
+pub(crate) use entrypoints_tracker_backoff::{
+	active_connector_backoff_statuses, active_stored_tracker_backoff_status,
+	active_stored_tracker_backoff_status_best_effort,
+	build_operator_status_snapshot_for_tracker_backoff, clear_tracker_backoff_state_best_effort,
+	persist_tracker_backoff_state, push_connector_backoff_warning,
+	render_tracker_backoff_cli_message, snapshot_warnings_include_tracker_backoff,
+	tracker_connector_backoff, warnings_include_tracker_backoff,
+};
+
 include!("orchestrator/entrypoints.rs");
 
 mod operator_http;
@@ -248,11 +267,33 @@ include!("orchestrator/pull_request_review.rs");
 
 include!("orchestrator/program_reconciler.rs");
 
+mod run_cycle_reconciliation;
+pub(crate) use run_cycle_reconciliation::{
+	local_run_attempt_status_is_terminal, looks_like_tracker_issue_identifier_key,
+	reconcile_project_state, retained_closeout_lease_has_fresh_activity,
+	terminal_issue_keeps_retained_closeout,
+};
+
 include!("orchestrator/daemon.rs");
 
 include!("orchestrator/reconciliation.rs");
 
 include!("orchestrator/retained_review_orchestration.rs");
+
+mod run_cycle_post_review;
+pub(crate) use run_cycle_post_review::{
+	post_review_lane_is_closeout_candidate, post_review_lane_is_repair_candidate,
+	retained_closeout_preferred_run_identity, select_post_review_issue_candidate,
+	select_target_post_review_closeout_issue_candidate_with_inspector,
+	select_target_post_review_repair_issue_candidate_with_inspector,
+};
+#[cfg(test)]
+pub(crate) use run_cycle_post_review::{
+	retained_closeout_run_identity_is_reusable,
+	select_post_review_closeout_issue_candidate_with_inspector,
+	select_post_review_issue_candidate_with_inspector,
+	select_post_review_repair_issue_candidate_with_inspector,
+};
 
 include!("orchestrator/run_cycle.rs");
 
