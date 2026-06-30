@@ -82,7 +82,7 @@ large catch-all test file unless the behavior crosses several of these stages.
 | `apps/decodex/src/orchestrator/tests/retry/scheduling.rs` | 24 | Retry timing, dry-run behavior, retry marker semantics |
 | `apps/decodex/src/orchestrator/tests/retry/selection.rs` | 14 | Retry queue selection and blocked retry candidates |
 | `apps/decodex/src/orchestrator/tests/runtime/repo_gate.rs` | 9 | Repo gate command selection, cleanliness, shell fallback, and failure classification |
-| `apps/decodex/src/orchestrator/tests/runtime/failure.rs` | 38 | Failure comments, runtime credentials, cleanup, lease release |
+| `apps/decodex/src/orchestrator/tests/runtime_failure/` | 66 | Failure comments, retry markers, loop guardrails, handoff recovery, app-server failures, runtime credentials, cleanup, lease release |
 | `apps/decodex/src/orchestrator/tests/runtime/loop_scenarios.rs` | 2 | Research-to-execution loop scenarios, Program dispatch readiness, phase-goal validation, review, guardrails, and harness feedback |
 | `apps/decodex/src/orchestrator/tests/runtime/thread_archive.rs` | 1 | Completed-thread archive candidate filtering |
 | `apps/decodex/src/orchestrator/tests/recovery/reconciliation.rs` | 24 | Stale lease, recovery worktree, and reconciliation behavior |
