@@ -7,6 +7,7 @@ mod status_history_ledger;
 mod status_history_projection;
 mod status_issue_metadata;
 mod status_models;
+mod status_process_liveness;
 mod status_project_display;
 mod status_queued_attention;
 mod status_summary;
@@ -44,7 +45,6 @@ use std::{
 };
 
 use color_eyre::Report;
-use libc::pid_t;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::Sha256;
@@ -78,6 +78,11 @@ use status_models::{
 	PostReviewOrchestrationStatus, PostReviewReadbackDegradation, PostReviewRuntimeState,
 	RetainedCloseoutPrMergeGate, RunIssueMetadataHydration, TrackerObserverOutcome,
 	WorktreeOwnership,
+};
+pub(crate) use status_process_liveness::process_is_alive;
+use status_process_liveness::{
+	marker_process_is_alive, marker_process_liveness_for_marker, run_activity_idle_timeout,
+	worktree_activity_marker_is_fresh,
 };
 use status_project_display::operator_project_display_name;
 use status_queued_attention::{
