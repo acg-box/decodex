@@ -1,0 +1,189 @@
+		</style>
+	</head>
+	<body>
+		<div class="shell">
+			<header class="masthead" aria-label="Decodex status">
+				<div class="topbar">
+					<div class="topbar-main">
+						<div class="topbar-heading">
+							<h1 id="project-title">Decodex</h1>
+							<div class="transport-row" id="transport-health"></div>
+						</div>
+					</div>
+					<div class="topbar-side">
+						<div class="toolbar-controls">
+							<div class="theme-switch" aria-label="Theme mode" role="group">
+								<button class="theme-option" data-theme-choice="system" type="button">System</button>
+								<button class="theme-option" data-theme-choice="light" type="button">Light</button>
+								<button class="theme-option" data-theme-choice="dark" type="button">Dark</button>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<section class="flow-strip" aria-label="Delivery flow">
+					<div class="flow-step-labels" aria-label="Delivery flow">
+						<div class="flow-step" data-flow-step="queue">
+							<span>Intake</span>
+							<strong id="flow-queue">0 issues</strong>
+						</div>
+						<div class="flow-step" data-flow-step="run">
+							<span>Running</span>
+							<strong id="flow-run">0 lanes</strong>
+						</div>
+						<div class="flow-step" data-flow-step="review">
+							<span>Review</span>
+							<strong id="flow-review">0 PRs</strong>
+						</div>
+						<div class="flow-step" data-flow-step="land">
+							<span>Landing</span>
+							<strong id="flow-land">0 PRs</strong>
+						</div>
+					</div>
+				</section>
+			</header>
+
+			<main class="workspace" id="workspace">
+				<section class="stack" id="primary-stack">
+					<div
+						class="section-marker section-marker-control"
+						id="section-marker-control"
+						aria-label="Accounts group"
+					>
+						<span>Accounts</span>
+						<p class="table-meta section-marker-meta" id="account-mode-meta"></p>
+					</div>
+					<section class="panel section-control" id="account-pool-panel">
+						<div class="panel-body">
+							<div id="account-pool"></div>
+						</div>
+					</section>
+
+					<div
+						class="section-marker section-marker-projects"
+						id="section-marker-projects"
+						aria-label="Projects group"
+					>
+						<span>
+							Projects
+							<button class="project-filter-toggle" id="project-filter-toggle" type="button" role="switch" aria-checked="false" aria-label="Show all projects">
+								<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+									<path d="M3 4h10l-4 4.6v3.1l-2 1V8.6L3 4Z" fill="none" stroke="currentColor" stroke-linejoin="round" />
+								</svg>
+							</button>
+						</span>
+					</div>
+					<section class="panel section-projects" id="projects-panel">
+						<div class="panel-body">
+							<div class="project-scope-list" id="project-overview" role="group" aria-label="Projects"></div>
+						</div>
+					</section>
+
+					<div
+						class="section-marker section-marker-execution"
+						id="section-marker-execution"
+						aria-label="Execution group"
+					>
+						<span>Execution</span>
+					</div>
+					<section class="panel section-execution" id="current-lanes-panel">
+						<div class="panel-head">
+							<div>
+								<h2 id="current-lanes-title">Current Lanes</h2>
+							</div>
+							<p class="table-meta" id="current-lanes-meta"></p>
+						</div>
+						<div class="panel-body">
+							<div class="card-list" id="current-lanes"></div>
+						</div>
+					</section>
+
+					<section class="panel section-execution" id="programs-panel">
+						<div class="panel-head">
+							<div>
+								<h2 id="programs-title">Program Intake</h2>
+							</div>
+							<p class="table-meta" id="programs-meta"></p>
+						</div>
+						<div class="panel-body">
+							<div class="card-list" id="execution-programs"></div>
+						</div>
+					</section>
+
+					<section class="panel section-execution" id="queue-panel">
+						<div class="panel-head">
+							<div>
+								<h2 id="queue-title">Intake Queue</h2>
+							</div>
+							<p class="table-meta" id="queued-meta"></p>
+						</div>
+						<div class="panel-body">
+							<div class="card-list" id="queued-candidates"></div>
+						</div>
+					</section>
+
+					<div
+						class="section-marker section-marker-aftercare"
+						id="section-marker-aftercare"
+						aria-label="Closeout group"
+					>
+						<span>Closeout</span>
+					</div>
+					<section class="panel section-aftercare" id="review-panel">
+						<div class="panel-head">
+							<div>
+								<h2>Review &amp; Landing</h2>
+							</div>
+							<p class="table-meta" id="review-lanes-meta">0 PRs · 0 need attention · 0 ready · 0 waiting</p>
+						</div>
+						<div class="panel-body">
+							<div class="card-list" id="review-queue"></div>
+						</div>
+					</section>
+				</section>
+
+				<details class="panel fold-panel section-aftercare" id="worktrees-panel" data-fold-key="panel:worktrees">
+					<summary class="panel-head">
+						<div>
+							<h2 id="worktrees-title">Recovery Worktrees</h2>
+						</div>
+						<div class="summary-tools">
+							<p class="table-meta" id="worktrees-meta"></p>
+							<span class="fold-indicator" aria-hidden="true"></span>
+						</div>
+					</summary>
+					<div class="panel-body">
+						<div class="card-list" id="worktrees"></div>
+					</div>
+				</details>
+
+				<details class="panel fold-panel section-aftercare" id="recent-panel" data-fold-key="panel:recent">
+					<summary class="panel-head">
+						<div>
+							<h2 id="recent-title">Run History</h2>
+						</div>
+						<div class="summary-tools">
+							<p class="table-meta" id="recent-runs-meta"></p>
+							<span class="fold-indicator" aria-hidden="true"></span>
+						</div>
+					</summary>
+					<div class="panel-body">
+						<div class="card-list" id="recent-runs"></div>
+					</div>
+				</details>
+			</main>
+		</div>
+
+		<details class="notice-dock" id="notice-dock" aria-hidden="true" aria-live="polite">
+			<summary class="notice-trigger" aria-label="Open operator notices">
+				<span class="notice-main">
+						<span class="notice-kicker">Notices</span>
+					<strong id="notice-count">0</strong>
+					<span id="notice-label">notices</span>
+				</span>
+				<span class="notice-hint">Open</span>
+			</summary>
+			<div class="notice-panel" id="notice-list"></div>
+		</details>
+
+		<script>

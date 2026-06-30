@@ -1,4 +1,60 @@
-use crate::autonomy_proposal::AutonomyProposalChallengeInput;
+#[cfg(unix)] use std::os::fd::FromRawFd;
+use std::{
+	collections::{HashMap, HashSet},
+	fs::{self, File, OpenOptions, TryLockError},
+	io::ErrorKind,
+	path::Path,
+	sync::{Mutex, MutexGuard},
+};
+
+use serde_json::Value;
+
+use crate::{
+	autonomy_objective::{
+		AutonomyObjectiveAcceptance, AutonomyObjectiveContract, AutonomyObjectiveRejection,
+		AutonomyObjectiveState, AutonomyObjectiveSupersession,
+	},
+	autonomy_proposal::{
+		AutonomyProposal, AutonomyProposalChallengeInput, AutonomyProposalCompileInput,
+		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalRefusalReason,
+	},
+	autonomy_signal::AutonomySignal,
+	execution_program::ExecutionProgram,
+	loop_contract::{DecisionContract, DecisionContractStatus, DecisionPromotion},
+	prelude::{Result, eyre},
+	tracker::records::{self, LinearExecutionEventRecord},
+};
+
+use super::{
+	AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
+	ChildAgentActivitySummary, ConnectorBackoff, DecisionContractRecord, DispatchSlotConfig,
+	DispatchSlotGuard, ExecutionProgramRecord, IssueClaimGuard, IssueLease, PreacquiredLeaseGuards,
+	PrivateExecutionEvent, ProgramIntakePlanRecord, ProgramIssueMappingRecord, ProjectRegistration,
+	ProtocolActivitySummary, ReviewLifecycleRecord, ReviewPolicyCheckpoint, StateData,
+	acquire_shared_lock_coordinator, apply_derived_program_intake_state, clear_close_on_exec,
+	compare_autonomy_proposal_runtime_records, compare_autonomy_signal_runtime_records,
+	compare_decision_contract_runtime_records, compare_execution_program_runtime_records,
+	compare_linear_execution_event_runtime_records,
+	compare_private_execution_event_runtime_records, compare_program_intake_plan_records,
+	compare_program_issue_mapping_records, compare_recent_autonomy_proposal_runtime_records,
+	compare_recent_autonomy_signal_runtime_records, dispatch_slot_lock_path,
+	issue_claim_id_from_path, issue_claim_lock_path, parse_linear_execution_event_unix,
+	prune_unlocked_shared_lock_files, read_issue_claim_record, read_run_activity_marker_snapshot,
+	remove_lock_file_if_exists,
+	runtime_records::{
+		AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord, AutonomyProposalKey,
+		AutonomyProposalRuntimeRecord, AutonomySignalKey, AutonomySignalRuntimeRecord,
+		DecisionContractKey, DecisionContractRuntimeRecord, EvidenceArtifactKey,
+		EvidenceArtifactRuntimeRecord, ExecutionProgramKey, ExecutionProgramRuntimeRecord,
+		GuardRetention, LinearExecutionEventRuntimeRecord, LoopGuardrailKey,
+		LoopGuardrailRuntimeRecord, PrivateExecutionEventRuntimeRecord, ReviewLifecycleKey,
+		ReviewLifecycleRuntimeRecord, ReviewPolicyKey, ReviewPolicyRuntimeRecord,
+		RunActivitySummaryRecord, RunAttemptRecord, RunControlChannelRecord, WorktreeMappingRecord,
+	},
+	set_close_on_exec,
+	sqlite_store::SqliteStateStore,
+	timestamp_parts, validate_private_execution_event_inputs, write_issue_claim_record,
+};
 
 /// Input fields for recording a project-scoped external connector backoff.
 pub(crate) struct ConnectorBackoffInput<'a> {
@@ -47,19 +103,19 @@ pub(crate) struct ProjectLoopEvidenceSnapshot {
 	program_intake_plans: Vec<ProgramIntakePlanRecord>,
 }
 impl ProjectLoopEvidenceSnapshot {
-	fn insert_private_event(&mut self, event: PrivateExecutionEvent) {
+	pub(super) fn insert_private_event(&mut self, event: PrivateExecutionEvent) {
 		self.private_events
 			.entry((event.issue_id().to_owned(), event.run_id().to_owned(), event.attempt_number()))
 			.or_default()
 			.push(event);
 	}
 
-	fn insert_review_lifecycle_record(&mut self, record: ReviewLifecycleRecord) {
+	pub(super) fn insert_review_lifecycle_record(&mut self, record: ReviewLifecycleRecord) {
 		self.review_lifecycle_records
 			.insert((record.issue_id().to_owned(), record.branch_name().to_owned()), record);
 	}
 
-	fn insert_review_checkpoint(&mut self, checkpoint: ReviewPolicyCheckpoint) {
+	pub(super) fn insert_review_checkpoint(&mut self, checkpoint: ReviewPolicyCheckpoint) {
 		self.review_checkpoints.insert(
 			(
 				checkpoint.issue_id().to_owned(),
@@ -71,27 +127,27 @@ impl ProjectLoopEvidenceSnapshot {
 		);
 	}
 
-	fn insert_decision_contract(&mut self, contract: DecisionContractRecord) {
+	pub(super) fn insert_decision_contract(&mut self, contract: DecisionContractRecord) {
 		self.decision_contracts.push(contract);
 	}
 
-	fn insert_autonomy_objective(&mut self, objective: AutonomyObjectiveRecord) {
+	pub(super) fn insert_autonomy_objective(&mut self, objective: AutonomyObjectiveRecord) {
 		self.autonomy_objectives.push(objective);
 	}
 
-	fn insert_autonomy_signal(&mut self, signal: AutonomySignalRecord) {
+	pub(super) fn insert_autonomy_signal(&mut self, signal: AutonomySignalRecord) {
 		self.autonomy_signals.push(signal);
 	}
 
-	fn insert_autonomy_proposal(&mut self, proposal: AutonomyProposalRecord) {
+	pub(super) fn insert_autonomy_proposal(&mut self, proposal: AutonomyProposalRecord) {
 		self.autonomy_proposals.push(proposal);
 	}
 
-	fn insert_program_intake_plan(&mut self, plan: ProgramIntakePlanRecord) {
+	pub(super) fn insert_program_intake_plan(&mut self, plan: ProgramIntakePlanRecord) {
 		self.program_intake_plans.push(plan);
 	}
 
-	fn sort_private_events(&mut self) {
+	pub(super) fn sort_private_events(&mut self) {
 		for events in self.private_events.values_mut() {
 			events.sort_by(|left, right| {
 				left.recorded_at_unix()
@@ -101,7 +157,7 @@ impl ProjectLoopEvidenceSnapshot {
 		}
 	}
 
-	fn sort_decision_contracts(&mut self) {
+	pub(super) fn sort_decision_contracts(&mut self) {
 		self.decision_contracts.sort_by(|left, right| {
 			right
 				.updated_at_unix()
@@ -110,7 +166,7 @@ impl ProjectLoopEvidenceSnapshot {
 		});
 	}
 
-	fn sort_autonomy_objectives(&mut self) {
+	pub(super) fn sort_autonomy_objectives(&mut self) {
 		self.autonomy_objectives.sort_by(|left, right| {
 			right
 				.updated_at_unix()
@@ -120,7 +176,7 @@ impl ProjectLoopEvidenceSnapshot {
 		});
 	}
 
-	fn sort_autonomy_signals(&mut self) {
+	pub(super) fn sort_autonomy_signals(&mut self) {
 		self.autonomy_signals.sort_by(|left, right| {
 			right
 				.updated_at_unix()
@@ -129,7 +185,7 @@ impl ProjectLoopEvidenceSnapshot {
 		});
 	}
 
-	fn sort_autonomy_proposals(&mut self) {
+	pub(super) fn sort_autonomy_proposals(&mut self) {
 		self.autonomy_proposals.sort_by(|left, right| {
 			right
 				.updated_at_unix()
@@ -138,7 +194,7 @@ impl ProjectLoopEvidenceSnapshot {
 		});
 	}
 
-	fn sort_program_intake_plans(&mut self) {
+	pub(super) fn sort_program_intake_plans(&mut self) {
 		self.program_intake_plans.sort_by(|left, right| {
 			right
 				.updated_at_unix()
@@ -286,8 +342,8 @@ pub(crate) struct LoopGuardrailCheckpointInput<'a> {
 /// Local runtime store for leases, attempts, worktrees, protocol events, and private evidence.
 #[derive(Default)]
 pub struct StateStore {
-	inner: Mutex<StateData>,
-	sqlite: Option<Mutex<SqliteStateStore>>,
+	pub(super) inner: Mutex<StateData>,
+	pub(super) sqlite: Option<Mutex<SqliteStateStore>>,
 }
 impl StateStore {
 	/// Open the local persistent runtime store.
@@ -810,7 +866,7 @@ impl StateStore {
 		self.issue_has_active_shared_claim_with_cleanup(project_id, issue_id, false)
 	}
 
-	fn issue_has_active_shared_claim_with_cleanup(
+	pub(super) fn issue_has_active_shared_claim_with_cleanup(
 		&self,
 		project_id: &str,
 		issue_id: &str,
@@ -1471,7 +1527,7 @@ impl StateStore {
 	}
 
 	#[allow(dead_code)]
-	fn update_decision_contract(
+	pub(super) fn update_decision_contract(
 		&self,
 		project_id: &str,
 		contract_id: &str,
@@ -2256,7 +2312,7 @@ impl StateStore {
 	}
 
 	#[allow(dead_code)]
-	fn update_autonomy_objective(
+	pub(super) fn update_autonomy_objective(
 		&self,
 		project_id: &str,
 		objective_id: &str,
@@ -2488,11 +2544,11 @@ impl StateStore {
 		})
 	}
 
-	fn lock_without_refresh(&self) -> Result<MutexGuard<'_, StateData>> {
+	pub(super) fn lock_without_refresh(&self) -> Result<MutexGuard<'_, StateData>> {
 		self.inner.lock().map_err(|_| eyre::eyre!("StateStore mutex is poisoned."))
 	}
 
-	fn lock(&self) -> Result<MutexGuard<'_, StateData>> {
+	pub(super) fn lock(&self) -> Result<MutexGuard<'_, StateData>> {
 		let mut state = self.lock_without_refresh()?;
 
 		self.refresh_runtime_state_locked(&mut state)?;
@@ -2500,7 +2556,7 @@ impl StateStore {
 		Ok(state)
 	}
 
-	fn refresh_runtime_state_locked(&self, state: &mut StateData) -> Result<()> {
+	pub(super) fn refresh_runtime_state_locked(&self, state: &mut StateData) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2513,7 +2569,7 @@ impl StateStore {
 		Ok(())
 	}
 
-	fn refresh_project_run_metadata_state_locked(
+	pub(super) fn refresh_project_run_metadata_state_locked(
 		&self,
 		state: &mut StateData,
 		project_id: &str,
@@ -2530,7 +2586,7 @@ impl StateStore {
 		Ok(())
 	}
 
-	fn refresh_run_activity_summaries_for_runs_locked(
+	pub(super) fn refresh_run_activity_summaries_for_runs_locked(
 		&self,
 		state: &mut StateData,
 		run_ids: &[String],
@@ -2544,7 +2600,7 @@ impl StateStore {
 		sqlite.load_run_activity_summaries_for_runs(state, run_ids)
 	}
 
-	fn refresh_run_attempt_identities_from_worktree_markers_locked(
+	pub(super) fn refresh_run_attempt_identities_from_worktree_markers_locked(
 		&self,
 		state: &mut StateData,
 		project_id: &str,
@@ -2606,7 +2662,7 @@ impl StateStore {
 		Ok(())
 	}
 
-	fn refresh_project_loop_evidence_state_locked(
+	pub(super) fn refresh_project_loop_evidence_state_locked(
 		&self,
 		state: &mut StateData,
 		project_id: &str,
@@ -2623,7 +2679,10 @@ impl StateStore {
 		Ok(())
 	}
 
-	fn refresh_project_registry_state_locked(&self, state: &mut StateData) -> Result<()> {
+	pub(super) fn refresh_project_registry_state_locked(
+		&self,
+		state: &mut StateData,
+	) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2636,7 +2695,7 @@ impl StateStore {
 		Ok(())
 	}
 
-	fn persist_runtime_state_locked(&self, state: &StateData) -> Result<()> {
+	pub(super) fn persist_runtime_state_locked(&self, state: &StateData) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2646,7 +2705,7 @@ impl StateStore {
 		sqlite.persist_runtime_state(state)
 	}
 
-	fn delete_project_locked(&self, service_id: &str) -> Result<()> {
+	pub(super) fn delete_project_locked(&self, service_id: &str) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2656,7 +2715,7 @@ impl StateStore {
 		sqlite.delete_project(service_id)
 	}
 
-	fn upsert_project_locked(&self, project: &ProjectRegistration) -> Result<()> {
+	pub(super) fn upsert_project_locked(&self, project: &ProjectRegistration) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2666,7 +2725,11 @@ impl StateStore {
 		sqlite.upsert_project(project)
 	}
 
-	fn delete_connector_backoff_locked(&self, project_id: &str, connector: &str) -> Result<()> {
+	pub(super) fn delete_connector_backoff_locked(
+		&self,
+		project_id: &str,
+		connector: &str,
+	) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2676,7 +2739,7 @@ impl StateStore {
 		sqlite.delete_connector_backoff(project_id, connector)
 	}
 
-	fn upsert_run_attempt_locked(&self, attempt: &RunAttemptRecord) -> Result<()> {
+	pub(super) fn upsert_run_attempt_locked(&self, attempt: &RunAttemptRecord) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2686,7 +2749,10 @@ impl StateStore {
 		sqlite.upsert_run_attempt(attempt)
 	}
 
-	fn upsert_run_control_channel_locked(&self, channel: &RunControlChannelRecord) -> Result<()> {
+	pub(super) fn upsert_run_control_channel_locked(
+		&self,
+		channel: &RunControlChannelRecord,
+	) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2696,7 +2762,10 @@ impl StateStore {
 		sqlite.upsert_run_control_channel(channel)
 	}
 
-	fn upsert_run_activity_summary_locked(&self, summary: &RunActivitySummaryRecord) -> Result<()> {
+	pub(super) fn upsert_run_activity_summary_locked(
+		&self,
+		summary: &RunActivitySummaryRecord,
+	) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2706,7 +2775,10 @@ impl StateStore {
 		sqlite.upsert_run_activity_summary(summary)
 	}
 
-	fn upsert_lease_and_remember_run_project_locked(&self, lease: &IssueLease) -> Result<()> {
+	pub(super) fn upsert_lease_and_remember_run_project_locked(
+		&self,
+		lease: &IssueLease,
+	) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2716,7 +2788,7 @@ impl StateStore {
 		sqlite.upsert_lease_and_remember_run_project(lease)
 	}
 
-	fn upsert_worktree_and_remember_run_project_locked(
+	pub(super) fn upsert_worktree_and_remember_run_project_locked(
 		&self,
 		mapping: &WorktreeMappingRecord,
 	) -> Result<()> {
@@ -2729,7 +2801,7 @@ impl StateStore {
 		sqlite.upsert_worktree_and_remember_run_project(mapping)
 	}
 
-	fn insert_linear_execution_event_if_absent_locked(
+	pub(super) fn insert_linear_execution_event_if_absent_locked(
 		&self,
 		record: &LinearExecutionEventRuntimeRecord,
 	) -> Result<bool> {
@@ -2742,7 +2814,7 @@ impl StateStore {
 		sqlite.insert_linear_execution_event_if_absent(record)
 	}
 
-	fn delete_linear_execution_event_locked(&self, idempotency_key: &str) -> Result<()> {
+	pub(super) fn delete_linear_execution_event_locked(&self, idempotency_key: &str) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2752,7 +2824,7 @@ impl StateStore {
 		sqlite.delete_linear_execution_event(idempotency_key)
 	}
 
-	fn list_persisted_linear_execution_events(
+	pub(super) fn list_persisted_linear_execution_events(
 		&self,
 		service_id: &str,
 		issue_id: &str,
@@ -2766,7 +2838,7 @@ impl StateStore {
 		sqlite.list_linear_execution_events(service_id, issue_id).map(Some)
 	}
 
-	fn insert_private_execution_event_locked(
+	pub(super) fn insert_private_execution_event_locked(
 		&self,
 		record: &PrivateExecutionEventRuntimeRecord,
 	) -> Result<Option<i64>> {
@@ -2780,7 +2852,7 @@ impl StateStore {
 	}
 
 	#[allow(dead_code)]
-	fn upsert_decision_contract_locked(
+	pub(super) fn upsert_decision_contract_locked(
 		&self,
 		record: &DecisionContractRuntimeRecord,
 	) -> Result<()> {
@@ -2794,7 +2866,7 @@ impl StateStore {
 	}
 
 	#[allow(dead_code)]
-	fn upsert_autonomy_objective_locked(
+	pub(super) fn upsert_autonomy_objective_locked(
 		&self,
 		record: &AutonomyObjectiveRuntimeRecord,
 	) -> Result<()> {
@@ -2808,7 +2880,10 @@ impl StateStore {
 	}
 
 	#[allow(dead_code)]
-	fn upsert_autonomy_signal_locked(&self, record: &AutonomySignalRuntimeRecord) -> Result<()> {
+	pub(super) fn upsert_autonomy_signal_locked(
+		&self,
+		record: &AutonomySignalRuntimeRecord,
+	) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2819,7 +2894,7 @@ impl StateStore {
 	}
 
 	#[allow(dead_code)]
-	fn upsert_autonomy_proposal_locked(
+	pub(super) fn upsert_autonomy_proposal_locked(
 		&self,
 		record: &AutonomyProposalRuntimeRecord,
 	) -> Result<()> {
@@ -2833,7 +2908,7 @@ impl StateStore {
 	}
 
 	#[allow(dead_code)]
-	fn upsert_execution_program_locked(
+	pub(super) fn upsert_execution_program_locked(
 		&self,
 		record: &ExecutionProgramRuntimeRecord,
 	) -> Result<()> {
@@ -2846,7 +2921,7 @@ impl StateStore {
 		sqlite.upsert_execution_program(record)
 	}
 
-	fn delete_lease_locked(&self, issue_id: &str) -> Result<()> {
+	pub(super) fn delete_lease_locked(&self, issue_id: &str) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2856,7 +2931,7 @@ impl StateStore {
 		sqlite.delete_lease(issue_id)
 	}
 
-	fn retarget_issue_identity_locked(
+	pub(super) fn retarget_issue_identity_locked(
 		&self,
 		previous_issue_id: &str,
 		canonical_issue_id: &str,
@@ -2870,7 +2945,7 @@ impl StateStore {
 		sqlite.retarget_issue_identity(previous_issue_id, canonical_issue_id)
 	}
 
-	fn delete_worktree_and_review_lifecycle_locked(&self, issue_id: &str) -> Result<()> {
+	pub(super) fn delete_worktree_and_review_lifecycle_locked(&self, issue_id: &str) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2880,7 +2955,7 @@ impl StateStore {
 		sqlite.delete_worktree_and_review_lifecycle(issue_id)
 	}
 
-	fn delete_worktree_mapping_locked(&self, issue_id: &str) -> Result<()> {
+	pub(super) fn delete_worktree_mapping_locked(&self, issue_id: &str) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -2890,7 +2965,7 @@ impl StateStore {
 		sqlite.delete_worktree_mapping(issue_id)
 	}
 
-	fn delete_review_marker_identity_locked(
+	pub(super) fn delete_review_marker_identity_locked(
 		&self,
 		project_id: &str,
 		issue_id: &str,
@@ -2913,7 +2988,7 @@ impl StateStore {
 		)
 	}
 
-	fn delete_review_policy_checkpoints_for_run_attempt_locked(
+	pub(super) fn delete_review_policy_checkpoints_for_run_attempt_locked(
 		&self,
 		project_id: &str,
 		issue_id: &str,
@@ -2934,7 +3009,7 @@ impl StateStore {
 		)
 	}
 
-	fn delete_loop_guardrail_checkpoints_for_issue_locked(
+	pub(super) fn delete_loop_guardrail_checkpoints_for_issue_locked(
 		&self,
 		project_id: &str,
 		issue_id: &str,
@@ -2948,7 +3023,7 @@ impl StateStore {
 		sqlite.delete_loop_guardrail_checkpoints_for_issue(project_id, issue_id)
 	}
 
-	fn delete_loop_guardrail_checkpoint_locked(
+	pub(super) fn delete_loop_guardrail_checkpoint_locked(
 		&self,
 		project_id: &str,
 		issue_id: &str,
@@ -2964,7 +3039,7 @@ impl StateStore {
 	}
 }
 
-fn retarget_review_lifecycle_issue(
+pub(super) fn retarget_review_lifecycle_issue(
 	records: &mut HashMap<ReviewLifecycleKey, ReviewLifecycleRuntimeRecord>,
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
@@ -2985,7 +3060,7 @@ fn retarget_review_lifecycle_issue(
 	}
 }
 
-fn retarget_review_policy_issue(
+pub(super) fn retarget_review_policy_issue(
 	records: &mut HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
@@ -3012,7 +3087,7 @@ fn retarget_review_policy_issue(
 	}
 }
 
-fn retarget_evidence_artifact_issue(
+pub(super) fn retarget_evidence_artifact_issue(
 	records: &mut HashMap<EvidenceArtifactKey, EvidenceArtifactRuntimeRecord>,
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
@@ -3038,7 +3113,7 @@ fn retarget_evidence_artifact_issue(
 	}
 }
 
-fn retarget_loop_guardrail_issue(
+pub(super) fn retarget_loop_guardrail_issue(
 	records: &mut HashMap<LoopGuardrailKey, LoopGuardrailRuntimeRecord>,
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
@@ -3059,12 +3134,12 @@ fn retarget_loop_guardrail_issue(
 	}
 }
 
-fn running_run_attempt_status(status: &str) -> bool {
+pub(super) fn running_run_attempt_status(status: &str) -> bool {
 	matches!(status, "starting" | "running")
 }
 
 #[allow(dead_code)]
-fn validate_decision_contract_record_inputs(
+pub(super) fn validate_decision_contract_record_inputs(
 	project_id: &str,
 	source_issue_id: Option<&str>,
 	contract: &DecisionContract,
@@ -3079,7 +3154,7 @@ fn validate_decision_contract_record_inputs(
 }
 
 #[allow(dead_code)]
-fn validate_required_decision_contract_field(name: &str, value: &str) -> Result<()> {
+pub(super) fn validate_required_decision_contract_field(name: &str, value: &str) -> Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("Decision contract {name} must not be empty.");
 	}
@@ -3088,7 +3163,7 @@ fn validate_required_decision_contract_field(name: &str, value: &str) -> Result<
 }
 
 #[allow(dead_code)]
-fn validate_autonomy_objective_record_inputs(
+pub(super) fn validate_autonomy_objective_record_inputs(
 	project_id: &str,
 	objective: &AutonomyObjectiveContract,
 ) -> Result<()> {
@@ -3107,7 +3182,7 @@ fn validate_autonomy_objective_record_inputs(
 }
 
 #[allow(dead_code)]
-fn validate_required_autonomy_objective_field(name: &str, value: &str) -> Result<()> {
+pub(super) fn validate_required_autonomy_objective_field(name: &str, value: &str) -> Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("Autonomy objective {name} must not be empty.");
 	}
@@ -3116,7 +3191,7 @@ fn validate_required_autonomy_objective_field(name: &str, value: &str) -> Result
 }
 
 #[allow(dead_code)]
-fn validate_autonomy_objective_version(version: u64) -> Result<()> {
+pub(super) fn validate_autonomy_objective_version(version: u64) -> Result<()> {
 	if version == 0 {
 		eyre::bail!("Autonomy objective version must be greater than zero.");
 	}
@@ -3125,7 +3200,10 @@ fn validate_autonomy_objective_version(version: u64) -> Result<()> {
 }
 
 #[allow(dead_code)]
-fn validate_autonomy_signal_record_inputs(project_id: &str, signal: &AutonomySignal) -> Result<()> {
+pub(super) fn validate_autonomy_signal_record_inputs(
+	project_id: &str,
+	signal: &AutonomySignal,
+) -> Result<()> {
 	validate_required_autonomy_signal_field("project_id", project_id)?;
 
 	if signal.project_id() != project_id {
@@ -3141,7 +3219,7 @@ fn validate_autonomy_signal_record_inputs(project_id: &str, signal: &AutonomySig
 }
 
 #[allow(dead_code)]
-fn validate_required_autonomy_signal_field(name: &str, value: &str) -> Result<()> {
+pub(super) fn validate_required_autonomy_signal_field(name: &str, value: &str) -> Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("Autonomy signal {name} must not be empty.");
 	}
@@ -3150,7 +3228,7 @@ fn validate_required_autonomy_signal_field(name: &str, value: &str) -> Result<()
 }
 
 #[allow(dead_code)]
-fn validate_autonomy_proposal_record_inputs(
+pub(super) fn validate_autonomy_proposal_record_inputs(
 	project_id: &str,
 	proposal: &AutonomyProposal,
 ) -> Result<()> {
@@ -3169,7 +3247,7 @@ fn validate_autonomy_proposal_record_inputs(
 }
 
 #[allow(dead_code)]
-fn validate_required_autonomy_proposal_field(name: &str, value: &str) -> Result<()> {
+pub(super) fn validate_required_autonomy_proposal_field(name: &str, value: &str) -> Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("Autonomy proposal {name} must not be empty.");
 	}
@@ -3178,7 +3256,7 @@ fn validate_required_autonomy_proposal_field(name: &str, value: &str) -> Result<
 }
 
 #[allow(dead_code)]
-fn validate_execution_program_record_inputs(
+pub(super) fn validate_execution_program_record_inputs(
 	project_id: &str,
 	program: &ExecutionProgram,
 ) -> Result<()> {
@@ -3188,7 +3266,7 @@ fn validate_execution_program_record_inputs(
 }
 
 #[allow(dead_code)]
-fn validate_required_execution_program_field(name: &str, value: &str) -> Result<()> {
+pub(super) fn validate_required_execution_program_field(name: &str, value: &str) -> Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("Execution program {name} must not be empty.");
 	}
