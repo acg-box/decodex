@@ -1,6 +1,20 @@
 //! Phase-goal controller, acceptance checks, and continuation recovery.
 
-use super::*;
+use super::{
+	AUTHORITY_DECISION_REQUEST_EVENT_TYPE, BTreeSet, Display, Error, Formatter, IssueDispatchMode,
+	IssueRunPlan, LoopGuardrailRecoveryDecision, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
+	PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE,
+	PHASE_GOAL_RECOVERY_EVENT_TYPE, Path, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec,
+	PhaseGoalTransition, RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE, RUN_OPERATION_REPO_GATE,
+	RepoGateCommandOutcome, RepoGateFailure, RepoGateFailureDisposition,
+	RepoGateTrackedRewriteDecision, Report, ResolvedRepoGate, Result, RunSummary, ServiceConfig,
+	StateStore, Value, WorkflowDocument, git_guardrail_output, json,
+	loop_guardrail_architecture_recovery_decision, loop_guardrail_worktree_fingerprint,
+	repo_gate_changed_tracked_files, retained_progress_source_error_class,
+	retryable_failure_loop_guardrail_stop, run_repo_gate_commands_allow_owned_tracked_rewrites,
+	run_summary_from_issue_run, select_repo_gate_for_worktree, state, worktree_has_tracked_changes,
+	write_run_operation_marker_best_effort,
+};
 
 pub(super) struct PhaseGoalRecoveryContinuation {
 	pub(super) source_phase: PhaseGoalKind,
@@ -16,9 +30,8 @@ pub(super) struct RepoGatePhaseGoalController<'a> {
 impl RepoGatePhaseGoalController<'_> {
 	fn initial_phase_goal_kind(&self) -> PhaseGoalKind {
 		match self.issue_run.dispatch_mode {
-			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry => {
-				PhaseGoalKind::ImplementToValidationReady
-			},
+			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry =>
+				PhaseGoalKind::ImplementToValidationReady,
 			IssueDispatchMode::ReviewRepair => PhaseGoalKind::RepairAcceptedReviewFindings,
 			IssueDispatchMode::Closeout => PhaseGoalKind::HandoffEvidence,
 		}
@@ -522,24 +535,18 @@ impl PhaseAcceptanceCheck {
 	fn next_action(&self) -> &'static str {
 		match self.reason_code {
 			"accepted" => "continue to handoff evidence",
-			"missing_progress_checkpoint" => {
-				"record a current-HEAD issue_progress_checkpoint with docs_impact before completing the phase goal again"
-			},
-			"stale_progress_checkpoint" => {
-				"record a fresh issue_progress_checkpoint for the current worktree HEAD before completing the phase goal again"
-			},
-			"docs_impact_missing" => {
-				"record parseable docs_impact in the current-HEAD issue_progress_checkpoint"
-			},
-			"no_effective_delta" => {
-				"produce an issue-scoped effective delta before completing the phase goal again"
-			},
-			"non_goal_violation" => {
-				"remove or explicitly resolve the non-goal or scope violation before handoff"
-			},
-			"progress_blockers_present" => {
-				"clear recorded progress blockers or route to manual attention before handoff"
-			},
+			"missing_progress_checkpoint" =>
+				"record a current-HEAD issue_progress_checkpoint with docs_impact before completing the phase goal again",
+			"stale_progress_checkpoint" =>
+				"record a fresh issue_progress_checkpoint for the current worktree HEAD before completing the phase goal again",
+			"docs_impact_missing" =>
+				"record parseable docs_impact in the current-HEAD issue_progress_checkpoint",
+			"no_effective_delta" =>
+				"produce an issue-scoped effective delta before completing the phase goal again",
+			"non_goal_violation" =>
+				"remove or explicitly resolve the non-goal or scope violation before handoff",
+			"progress_blockers_present" =>
+				"clear recorded progress blockers or route to manual attention before handoff",
 			_ => "inspect phase_acceptance_check evidence before selecting the next phase",
 		}
 	}
@@ -613,9 +620,8 @@ fn phase_acceptance_repair_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
 fn phase_validation_pass_next_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
 	match phase {
 		PhaseGoalKind::RepairAcceptedReviewFindings => PhaseGoalKind::ReviewRepairEvidence,
-		PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures => {
-			PhaseGoalKind::HandoffEvidence
-		},
+		PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures =>
+			PhaseGoalKind::HandoffEvidence,
 		PhaseGoalKind::ReviewRepairEvidence | PhaseGoalKind::HandoffEvidence => phase,
 	}
 }
@@ -889,13 +895,12 @@ pub(super) fn latest_open_issue_phase_goal_before_attempt(
 			"progress_checkpoint" if progress_checkpoint_has_blockers(event.payload()) => {
 				return Ok(None);
 			},
-			PHASE_GOAL_RECOVERY_EVENT_TYPE | "phase_goal_next" | "phase_goal_transition" => {
+			PHASE_GOAL_RECOVERY_EVENT_TYPE | "phase_goal_next" | "phase_goal_transition" =>
 				if let Some(phase) =
 					phase_goal_continuation_next_phase(event.event_type(), event.payload())
 				{
 					return Ok(Some(phase));
-				}
-			},
+				},
 			"phase_goal_set" | "phase_goal_status" => {
 				if let Some(phase) = phase_goal_active_phase(event.payload()) {
 					return Ok(Some(phase));
