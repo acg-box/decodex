@@ -16,10 +16,10 @@ use std::{
 };
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::OffsetDateTime;
 
 use crate::{
 	autonomy_objective::{
@@ -42,8 +42,27 @@ use crate::{
 };
 
 mod project_run_recovery;
+mod runtime_row_parsers;
 mod runtime_records;
 
+use runtime_row_parsers::{
+	autonomy_objective_record_from_row_parts, autonomy_objective_runtime_row_parts,
+	autonomy_proposal_record_from_row_parts, autonomy_proposal_runtime_row_parts,
+	autonomy_signal_record_from_row_parts, autonomy_signal_runtime_row_parts,
+	compare_attempt_records, compare_autonomy_proposal_runtime_records,
+	compare_autonomy_signal_runtime_records, compare_decision_contract_runtime_records,
+	compare_execution_program_runtime_records, compare_linear_execution_event_runtime_records,
+	compare_private_execution_event_runtime_records, compare_program_intake_plan_records,
+	compare_program_issue_mapping_records, compare_recent_autonomy_proposal_runtime_records,
+	compare_recent_autonomy_signal_runtime_records, connector_backoff_from_row,
+	decision_contract_record_from_row_parts, decision_contract_runtime_row_parts,
+	execution_program_record_from_row_parts, execution_program_runtime_row_parts,
+	migrate_legacy_decision_contract_payload, program_intake_plan_row, program_issue_mapping_row,
+	parse_linear_execution_event_unix, protocol_event_record_from_row,
+	protocol_event_summary_from_events, run_activity_summary_record_from_row,
+	run_attempt_record_from_row, sqlite_bool_value, timestamp_parts,
+	validate_private_execution_event_inputs, worktree_mapping_record_from_row,
+};
 use runtime_records::{
 	AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord, AutonomyObjectiveRuntimeRowParts,
 	AutonomyProposalKey, AutonomyProposalRuntimeRecord, AutonomyProposalRuntimeRowParts,
