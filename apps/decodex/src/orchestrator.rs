@@ -1,7 +1,8 @@
 mod lane_control;
+mod status_autonomy;
+mod status_execution_programs;
 mod status_ghost_lane_cleanup;
 mod status_ghost_lane_evidence;
-mod status_execution_programs;
 mod status_github_cli_authority;
 mod status_history_ledger;
 mod status_history_projection;
@@ -59,6 +60,11 @@ use harness_improvement::{
 };
 #[cfg(test)]
 use harness_improvement::{HarnessOutcomeRecordInput, record_harness_outcome_for_issue_run};
+use status_autonomy::{
+	operator_autonomy_lineage_statuses, operator_autonomy_objective_status,
+	operator_autonomy_proposal_statuses, operator_autonomy_report_status,
+	operator_autonomy_signal_statuses,
+};
 pub(crate) use status_ghost_lane_cleanup::ghost_lane_cleanup_status_blockers;
 use status_ghost_lane_cleanup::{
 	apply_missing_issue_ghost_lane_projection, mark_operator_run_tracker_issue_missing,
