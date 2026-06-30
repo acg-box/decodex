@@ -20,39 +20,6 @@ pub(crate) struct RadarValidateRequest {
 	pub(crate) paths: Vec<PathBuf>,
 }
 
-/// Request to reserve one X publish slot before browser compose.
-#[derive(Debug)]
-pub(crate) struct RadarSocialReservePublishRequest {
-	pub(crate) slug: String,
-	pub(crate) mode: String,
-	pub(crate) idempotency_key: String,
-	pub(crate) reserved_at: String,
-	pub(crate) expires_at: String,
-	pub(crate) day: String,
-	pub(crate) timezone: String,
-	pub(crate) candidate_paths: Vec<PathBuf>,
-	pub(crate) urls: Vec<String>,
-	pub(crate) duplicate_keys: Vec<String>,
-	pub(crate) out_dir: PathBuf,
-	pub(crate) posts_dir: PathBuf,
-	pub(crate) automation_id: Option<String>,
-	pub(crate) run_id: Option<String>,
-	pub(crate) branch: Option<String>,
-	pub(crate) daily_limit: usize,
-	pub(crate) dry_run: bool,
-}
-
-/// Result of a social publish reservation attempt.
-#[derive(Debug, Serialize)]
-pub(crate) struct RadarSocialReservePublishReport {
-	pub(crate) status: String,
-	pub(crate) path: String,
-	pub(crate) idempotency_key: String,
-	pub(crate) daily_limit: usize,
-	pub(crate) published_count: usize,
-	pub(crate) active_reservation_count: usize,
-}
-
 /// Request to refresh the deterministic upstream Radar review queue.
 #[derive(Debug)]
 pub(crate) struct RadarRefreshQueueRequest {

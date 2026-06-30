@@ -147,7 +147,6 @@
               "none",
               "upstream_impact",
               "signal_entry",
-              "social_candidate",
               "control_plane_upgrade_candidate"
             ]
           },

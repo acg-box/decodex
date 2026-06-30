@@ -55,7 +55,7 @@ account state, idempotency, daily cap, media, and final publication.
 create a durable active reservation before opening X compose. A missing, temporary,
 expired, or unvalidated reservation does not authorize publication.
 Publisher automation must create active reservations through
-`radar social reserve-publish`; hand-written active reservation JSON is not a
+`decodex-publisher social reserve-publish`; hand-written active reservation JSON is not a
 publication authority because it bypasses code-owned cap, idempotency, active
 reservation, terminal-post, atomic-write, and schema checks.
 
@@ -224,12 +224,12 @@ Optional fields:
 - `consumed_by_social_post`: required when `status = "consumed"`.
 - `release_reason`: required when `status = "canceled"` or `status = "expired"`.
 
-Validation rule: `radar social reserve-publish` refuses exhausted daily caps,
+Validation rule: `decodex-publisher social reserve-publish` refuses exhausted daily caps,
 duplicate active reservation keys, and keys that already have a non-failed terminal
 `social_post/v1` record before writing the active reservation with create-new
-semantics. `radar validate` repeats cross-file validation and rejects duplicate
-active reservation idempotency keys or active reservations whose key already has a
-terminal record. Failed publication attempts do not reserve the key permanently; a
+semantics. `decodex-publisher validate-social` repeats cross-file validation and
+rejects duplicate active reservation idempotency keys or active reservations whose key
+already has a terminal record. Failed publication attempts do not reserve the key permanently; a
 retry must create a fresh active reservation and consume, cancel, or expire it at the
 end of the run.
 
@@ -356,9 +356,9 @@ prune old cache entries according to operator policy; the cache is not source co
 ## Release Checkpoints
 
 Release and prerelease publishing is separate from continuous six-hour Radar review.
-Release checkpoint automation may poll upstream releases more frequently than the
-commit review loop, but it must record an explicit terminal outcome whenever a new
-release, prerelease, app update, or changelog checkpoint appears.
+Radar Release Curator may poll upstream releases more frequently than the commit
+review loop, but it must record Radar evidence under the Radar cache and must not
+write Publisher social artifacts.
 
 Rollups must use prior `upstream_review/v1`, `upstream_impact/v1`, `signal_entry/v1`,
 and compare evidence. Sparse Codex prerelease bodies are not sufficient proof for
@@ -368,13 +368,13 @@ However, a prerelease intro does not need to pretend to be a full rollup. A spar
 prerelease may still produce a `watch_note` when the post is useful as a timely
 prerelease read and every claim is limited to source-backed release metadata, compare
 metadata, PR-title metadata, exact source URLs, and explicit caveats. If the only fact
-is the tag name with no reader value, automation should write a `social_candidate/v1`
-with `decision.worthiness = "defer"` or `"skip"` instead of posting.
+is the tag name with no reader value, Decodex Publisher should defer, skip, or omit the
+`social_candidate/v1` instead of posting.
 
 Official Codex app or mobile changelog entries may produce `release_pulse` posts when
 the changelog itself contains concrete user-visible changes.
 
-Release checkpoint automation should normally write `social_candidate/v1` first. X
+Decodex Publisher should normally write or consume `social_candidate/v1` first. X
 Publisher consumes only candidates whose `decision.worthiness = "publish"` and writes
 the terminal `social_post/v1` record.
 
