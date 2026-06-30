@@ -12,7 +12,7 @@ forbidden_prompt_fragments = [
 	"DECODEX_AGENT_HOME",
 	"Documents/automations",
 	"accounts.jsonl",
-	"apps/decodex/src/radar.rs",
+	"apps/radar/src/lib.rs",
 	"auth.json",
 	"migrate-agent-home",
 	"runtime.sqlite3",
@@ -39,7 +39,7 @@ required_cache_prefixes = [
 	".agent/automations/decodex/cache/site-content/signals",
 ]
 required_paths = [
-	"apps/decodex/src/radar.rs",
+	"apps/radar/src/lib.rs",
 	"automations/decodex/scripts/github/control_plane_upgrade_candidate.schema.json",
 	"automations/decodex/scripts/github/run_codex_analysis.py",
 	"automations/decodex/skills/codex-code-analysis/SKILL.md",
@@ -66,7 +66,7 @@ required_cache_prefixes = [
 	".agent/automations/decodex/cache/site-content/signals",
 ]
 required_paths = [
-	"apps/decodex/src/radar.rs",
+	"apps/radar/src/lib.rs",
 	"automations/decodex/skills/codex-release-analysis/SKILL.md",
 	"automations/decodex/skills/references/social-release-publisher-gates.md",
 	"automations/decodex/skills/x-post-quality-system/SKILL.md",
@@ -88,7 +88,7 @@ required_cache_prefixes = [
 	".agent/automations/decodex/cache/social/x/reservations",
 ]
 required_paths = [
-	"apps/decodex/src/radar.rs",
+	"apps/radar/src/lib.rs",
 	"automations/decodex/skills/references/social-release-publisher-gates.md",
 	"automations/decodex/skills/x-post-publisher/SKILL.md",
 	"automations/decodex/skills/x-post-quality-system/SKILL.md",
@@ -110,7 +110,7 @@ required_cache_prefixes = [
 	".agent/automations/decodex/cache/github/reviews",
 ]
 required_paths = [
-	"apps/decodex/src/radar.rs",
+	"apps/radar/src/lib.rs",
 	"docs/runbook/radar-artifact-archive.md",
 	"docs/spec/radar-artifact-retention.md",
 ]
@@ -127,7 +127,7 @@ required_cache_prefixes = [
 	".agent/automations/decodex/cache/social",
 ]
 required_paths = [
-	"apps/decodex/src/radar.rs",
+	"apps/radar/src/lib.rs",
 	"automations/decodex/README.md",
 	"automations/decodex/automations.toml",
 	"automations/decodex/scripts/config/evaluate_automations.py",

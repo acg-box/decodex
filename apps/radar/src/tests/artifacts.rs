@@ -18,7 +18,7 @@ fn accepts_valid_signal_and_rejects_missing_try_effect() {
 	assert_errors(&signal, []);
 
 	signal["kind"] = serde_json::json!("try_now");
-	signal["how_to_try"] = serde_json::json!("Run decodex radar validate.");
+	signal["how_to_try"] = serde_json::json!("Run radar validate.");
 
 	assert_errors(&signal, ["expected_effect is required when how_to_try is present"]);
 }
@@ -158,7 +158,7 @@ fn material_refresh_comparison_ignores_only_generated_at() {
 #[test]
 fn rejects_duplicate_signal_slugs_across_files() {
 	let signal = valid_signal();
-	let mut state = crate::radar::ValidationState::new();
+	let mut state = crate::ValidationState::new();
 	let mut errors = Vec::new();
 
 	radar::validate_signal_slug_uniqueness(
@@ -181,7 +181,7 @@ fn rejects_duplicate_signal_slugs_across_files() {
 #[test]
 fn rejects_duplicate_terminal_social_post_idempotency_keys_across_files() {
 	let social_post = valid_social_post();
-	let mut state = crate::radar::ValidationState::new();
+	let mut state = crate::ValidationState::new();
 	let mut errors = Vec::new();
 
 	radar::validate_terminal_social_post_idempotency_key_uniqueness(
@@ -208,7 +208,7 @@ fn permits_failed_social_post_idempotency_key_retry() {
 	failed_post["status"] = serde_json::json!("failed");
 
 	let published_post = valid_social_post();
-	let mut state = crate::radar::ValidationState::new();
+	let mut state = crate::ValidationState::new();
 	let mut errors = Vec::new();
 
 	radar::validate_terminal_social_post_idempotency_key_uniqueness(
@@ -302,7 +302,7 @@ fn social_reserve_publish_writes_active_reservation_once() {
 #[test]
 fn rejects_duplicate_active_social_publish_reservation_idempotency_keys() {
 	let reservation = valid_social_publish_reservation();
-	let mut state = crate::radar::ValidationState::new();
+	let mut state = crate::ValidationState::new();
 	let mut errors = Vec::new();
 
 	radar::validate_active_social_publish_reservation_uniqueness(
@@ -326,7 +326,7 @@ fn rejects_duplicate_active_social_publish_reservation_idempotency_keys() {
 fn rejects_active_reservation_for_terminal_social_post_idempotency_key() {
 	let social_post = valid_social_post();
 	let reservation = valid_social_publish_reservation();
-	let mut state = crate::radar::ValidationState::new();
+	let mut state = crate::ValidationState::new();
 	let mut errors = Vec::new();
 
 	radar::validate_terminal_social_post_idempotency_key_uniqueness(
@@ -350,7 +350,7 @@ fn rejects_active_reservation_for_terminal_social_post_idempotency_key() {
 fn rejects_terminal_social_post_for_active_reservation_idempotency_key() {
 	let social_post = valid_social_post();
 	let reservation = valid_social_publish_reservation();
-	let mut state = crate::radar::ValidationState::new();
+	let mut state = crate::ValidationState::new();
 	let mut errors = Vec::new();
 
 	radar::validate_active_social_publish_reservation_uniqueness(

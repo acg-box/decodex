@@ -21,10 +21,10 @@ Required reads:
 - `docs/spec/social-candidate.md`
 
 Workflow:
-1. Refresh deterministic upstream state with `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar refresh-upstream-queue` and, when release context matters, `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar refresh-release-delta`.
+1. Refresh deterministic upstream state with `cargo run -p radar -- refresh-upstream-queue` and, when release context matters, `cargo run -p radar -- refresh-release-delta`.
 2. Read `.agent/automations/decodex/cache/github/review-queue/openai-codex-latest.json` and select the smallest high-value batch that can finish in this run.
 3. For each selected subject, build or validate its bundle under `.agent/automations/decodex/cache/github/bundles`.
-4. Run Codex source analysis only through the explicit AI boundary in `automations/decodex/scripts/github/run_codex_analysis.py` or the Rust `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar` command that wraps it.
+4. Run Codex source analysis only through the explicit AI boundary in `automations/decodex/scripts/github/run_codex_analysis.py` or the Rust `cargo run -p radar --` command that wraps it.
 5. Persist source-backed `upstream_review/v1`. When the reviewed change has any
    Publisher or Control Plane relevance, also persist the matching
    `upstream_impact/v1`; this is the shared upstream scan artifact consumed by Release
@@ -36,7 +36,7 @@ Workflow:
    - Write Control Plane upgrade candidates only under `.agent/automations/decodex/cache/github/control-plane-upgrades`.
    - Cite the shared impact artifact in downstream `source_refs.upstream_impacts`.
    - A Control Plane upgrade candidate is evidence for later Decision Contract and Program Intake work; it must not mutate Linear, GitHub, worktrees, project config, Codex installs, or Decodex source.
-7. Validate changed JSON with `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar validate` before terminal completion.
+7. Validate changed JSON with `cargo run -p radar -- validate` before terminal completion.
 
 Terminal report:
 Report selected subjects, generated or updated paths, validation commands, skipped/deferred subjects, evidence gaps, and residual risks. Archive the run thread after a terminal no-op, no-new-subject, artifacts-persisted, blocked, skipped, or failed-closed outcome when no human handoff remains.

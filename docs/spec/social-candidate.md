@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: automation
 tags: [spec, publishing]
-code_refs: [apps/decodex/src/radar.rs, automations/decodex/scripts/github/social_candidate.schema.json]
+code_refs: [apps/radar/src/lib.rs, automations/decodex/scripts/github/social_candidate.schema.json]
 drift_watch: [social_candidate/v1, upstream_impact/v1, source_refs.upstream_impacts]
 last_verified: 2026-06-27
 ---
@@ -91,7 +91,7 @@ shared handoff from Radar Review into Publisher. `release_deltas`, official rele
 URLs, compare metadata, and `upstream_reviews` can support channel lineage and claim
 evidence, but they should not become a parallel release-analysis source when a matching
 `upstream_impact/v1` exists or Radar Review can produce one.
-`decodex radar validate` rejects a Radar-derived social candidate that cites
+`radar validate` rejects a Radar-derived social candidate that cites
 `upstream_reviews` or `release_deltas` without also citing `upstream_impacts`.
 
 ## Decision Object

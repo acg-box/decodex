@@ -21,7 +21,7 @@ REQUIRED_FORBIDDEN_PROMPT_FRAGMENTS = [
     "Documents/automations",
     ".github/workflows",
     "site/src/content",
-    "apps/decodex/src/radar.rs",
+    "apps/radar/src/lib.rs",
     ".agent/decodex",
     "~/.codex/decodex",
     ".codex/decodex",
