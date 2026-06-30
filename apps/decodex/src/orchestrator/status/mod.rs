@@ -10,17 +10,26 @@ mod runtime_recovery;
 mod snapshot;
 mod worktrees;
 
-#[allow(clippy::wildcard_imports)] pub(in crate::orchestrator) use post_review::*;
-#[allow(clippy::wildcard_imports)] pub(in crate::orchestrator) use queue::*;
-#[allow(clippy::wildcard_imports)] pub(in crate::orchestrator) use review_orchestration::*;
-#[allow(clippy::wildcard_imports)] pub(in crate::orchestrator) use review_state::*;
+#[allow(clippy::wildcard_imports)]
+pub(in crate::orchestrator) use post_review::*;
+#[allow(clippy::wildcard_imports)]
+pub(in crate::orchestrator) use queue::*;
+#[allow(clippy::wildcard_imports)]
+pub(in crate::orchestrator) use review_orchestration::*;
+#[allow(clippy::wildcard_imports)]
+pub(in crate::orchestrator) use review_state::*;
 pub(crate) use review_state::{worktree_checkout_branch_name, worktree_head_oid};
-#[allow(clippy::wildcard_imports)] pub(in crate::orchestrator) use runtime_recovery::*;
-#[allow(clippy::wildcard_imports)] pub(in crate::orchestrator) use snapshot::*;
-#[allow(clippy::wildcard_imports)] pub(in crate::orchestrator) use worktrees::*;
+#[allow(clippy::wildcard_imports)]
+pub(in crate::orchestrator) use runtime_recovery::*;
+#[allow(clippy::wildcard_imports)]
+pub(in crate::orchestrator) use snapshot::*;
+#[allow(clippy::wildcard_imports)]
+pub(in crate::orchestrator) use worktrees::*;
 
-#[allow(unused_imports)] use github::PullRequestMergeViewResponse;
-#[allow(unused_imports)] use records::LinearExecutionEventRecord;
+#[allow(unused_imports)]
+use github::PullRequestMergeViewResponse;
+#[allow(unused_imports)]
+use records::LinearExecutionEventRecord;
 #[allow(unused_imports)]
 use state::{
 	ProjectLoopEvidenceSnapshot, ProtocolActivityEventSummary, ReviewCheckpointArtifactLookup,

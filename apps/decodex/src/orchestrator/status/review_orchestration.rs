@@ -317,7 +317,7 @@ pub(in crate::orchestrator) fn apply_review_orchestration_phase_classification(
 				},
 			}
 		},
-		ReviewOrchestrationPhase::WaitingForAck =>
+		ReviewOrchestrationPhase::WaitingForAck => {
 			if orchestration_status.request_acknowledged {
 				classification.reason = String::from("external_review_result_pending");
 			} else if request_ack_timed_out(orchestration_marker, now_unix_epoch) {
@@ -327,7 +327,8 @@ pub(in crate::orchestrator) fn apply_review_orchestration_phase_classification(
 				);
 			} else {
 				classification.reason = String::from("external_review_ack_pending");
-			},
+			}
+		},
 		ReviewOrchestrationPhase::WaitingForResult => {
 			if !orchestration_status.request_acknowledged {
 				classification.reason = String::from("external_review_ack_pending");

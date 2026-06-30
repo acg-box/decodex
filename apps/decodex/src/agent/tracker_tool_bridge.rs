@@ -1652,4 +1652,5 @@ fn format_review_repair_comment(
 	)
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

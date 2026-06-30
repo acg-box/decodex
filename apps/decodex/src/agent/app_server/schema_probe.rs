@@ -211,8 +211,9 @@ fn validate_generated_method_union(
 	let missing_or_mismatched = required_methods
 		.iter()
 		.filter_map(|(method, expected_ref)| match method_refs.get(*method) {
-			Some(actual_ref) if actual_ref.as_deref() == expected_ref_to_option(expected_ref) =>
-				None,
+			Some(actual_ref) if actual_ref.as_deref() == expected_ref_to_option(expected_ref) => {
+				None
+			},
 			Some(actual_ref) => Some(format!(
 				"{method} expected {} got {}",
 				expected_ref_display(expected_ref),
@@ -453,7 +454,7 @@ fn record_schema_markers_from_value(
 	marker_presence: &mut BTreeMap<&'static str, bool>,
 ) {
 	match value {
-		Value::Object(object) =>
+		Value::Object(object) => {
 			for (key, value) in object {
 				if schema_prose_key(key) {
 					continue;
@@ -461,11 +462,13 @@ fn record_schema_markers_from_value(
 
 				record_schema_marker_from_text(key, marker_presence);
 				record_schema_markers_from_value(value, marker_presence);
-			},
-		Value::Array(values) =>
+			}
+		},
+		Value::Array(values) => {
 			for value in values {
 				record_schema_markers_from_value(value, marker_presence);
-			},
+			}
+		},
 		Value::String(value) => record_schema_marker_from_text(value, marker_presence),
 		Value::Null | Value::Bool(_) | Value::Number(_) => {},
 	}

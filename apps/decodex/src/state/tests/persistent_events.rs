@@ -155,14 +155,14 @@ fn persistent_open_keeps_protocol_backfill_marker_when_later_migration_fails() {
 	}
 
 	let connection = Connection::open(&state_path).expect("sqlite should open");
-	let mut legacy_payload = serde_json::to_value(latent_decision_contract_fixture())
+	let mut removed_field_payload = serde_json::to_value(latent_decision_contract_fixture())
 		.expect("fixture should encode as JSON");
 
-	legacy_payload["contract_id"] = serde_json::json!("legacy-invalid-contract");
-	legacy_payload["status"] = serde_json::json!("accepted_promoted");
-	legacy_payload["execution_readiness"]["ready_for_issue_shaping"] = serde_json::json!(false);
+	removed_field_payload["contract_id"] = serde_json::json!("removed-field-invalid-contract");
+	removed_field_payload["status"] = serde_json::json!("accepted_promoted");
+	removed_field_payload["execution_readiness"]["ready_for_issue_shaping"] = serde_json::json!(false);
 
-	let readiness = legacy_payload
+	let readiness = removed_field_payload
 		.get_mut("execution_readiness")
 		.expect("readiness should exist")
 		.as_object_mut()
@@ -171,12 +171,12 @@ fn persistent_open_keeps_protocol_backfill_marker_when_later_migration_fails() {
 	readiness.remove("proposed_issues");
 	readiness.insert(
 		String::from("proposed_issue_summaries"),
-		serde_json::json!(["Legacy invalid summary."]),
+		serde_json::json!(["Removed-field invalid summary."]),
 	);
 
 	connection
 		.execute("UPDATE schema_meta SET value = '11' WHERE key = 'schema_version'", [])
-		.expect("schema version should mark legacy state");
+		.expect("schema version should mark removed-field state");
 	connection
 		.execute(
 			"DELETE FROM schema_meta
@@ -210,21 +210,22 @@ fn persistent_open_keeps_protocol_backfill_marker_when_later_migration_fails() {
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
 			rusqlite::params![
 				"decodex",
-				"legacy-invalid-contract",
+				"removed-field-invalid-contract",
 				"XY-BAD",
 				"accepted_promoted",
-				serde_json::to_string(&legacy_payload).expect("legacy payload should serialize"),
+				serde_json::to_string(&removed_field_payload)
+					.expect("removed-field payload should serialize"),
 				"2026-06-17T00:00:00Z",
 				1_i64,
 				"2026-06-17T00:00:00Z",
 				1_i64,
 			],
 		)
-		.expect("invalid legacy decision contract row should insert");
+		.expect("invalid removed-field decision contract row should insert");
 
 	assert!(
 		StateStore::open(&state_path).is_err(),
-		"invalid legacy decision contract migration should still fail closed"
+		"invalid removed-field decision contract migration should still fail closed"
 	);
 
 	let marker: String = connection

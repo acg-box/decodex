@@ -28,12 +28,7 @@ pub(in crate::orchestrator) fn retryable_failure_loop_guardrail_stop(
 	{
 		observations.push((
 			LoopGuardrailReason::ValidationRepeat,
-			format!(
-				"{}:{}:{}",
-				repo_gate_failure.error_class(),
-				worktree_fingerprint.head_sha.as_str(),
-				loop_guardrail_text_hash(&error.to_string())
-			),
+			loop_guardrail_normalized_validation_fingerprint(repo_gate_failure.error_class()),
 			Some(repo_gate_failure.error_class()),
 		));
 		observations.push((
@@ -113,6 +108,10 @@ pub(in crate::orchestrator) fn retryable_failure_loop_guardrail_stop(
 	}
 
 	Ok(None)
+}
+
+fn loop_guardrail_normalized_validation_fingerprint(error_class: &str) -> String {
+	format!("{error_class}:repo_gate:validation_repair:lane_authority")
 }
 
 pub(in crate::orchestrator) fn loop_guardrail_worktree_fingerprint(

@@ -2,6 +2,7 @@ mod execution_architecture_recovery;
 mod execution_failure;
 mod execution_phase_goal;
 mod lane_control;
+mod lane_decision;
 mod status_autonomy;
 mod status_execution_programs;
 mod status_ghost_lane_cleanup;
@@ -28,7 +29,8 @@ pub(crate) use lane_control::{
 	print_lane_inspect, steer_lane,
 };
 
-#[cfg(unix)] use std::os::fd::AsRawFd;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::{
 	cmp::Ordering,
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -88,15 +90,20 @@ use execution_failure::{
 	promote_zero_evidence_app_server_start_failure, retry_budget_attempts_for_current_failure,
 	write_retry_schedule_marker_for_runtime_retry,
 };
-#[cfg(test)] use execution_phase_goal::RepoGatePhaseGoalController;
+#[cfg(test)]
+use execution_phase_goal::RepoGatePhaseGoalController;
 use execution_phase_goal::{
 	PhaseAcceptanceCheckFailure, PhaseGoalRecoveryContinuation, build_phase_goal_controller,
-	latest_open_issue_phase_goal_before_attempt, maybe_continue_after_phase_goal_recovery,
-	recover_phase_goal_continuation,
+	issue_has_blocking_lane_decision_evidence, latest_open_issue_phase_goal_before_attempt,
+	maybe_continue_after_phase_goal_recovery, recover_phase_goal_continuation,
 };
 use harness_improvement::{HarnessOutcomeKind, record_harness_outcome_best_effort};
 #[cfg(test)]
 use harness_improvement::{HarnessOutcomeRecordInput, record_harness_outcome_for_issue_run};
+use lane_decision::{
+	LaneDecisionSnapshot, LaneNextAction, decide_lane_next_action,
+	lane_decision_blocks_automatic_execution,
+};
 use status_autonomy::{
 	operator_autonomy_lineage_statuses, operator_autonomy_objective_status,
 	operator_autonomy_proposal_statuses, operator_autonomy_report_status,
@@ -320,7 +327,8 @@ include!("orchestrator/status_render.rs");
 include!("orchestrator/selection.rs");
 
 mod agent_evidence;
-#[cfg(test)] use agent_evidence::PrivateEvidenceReadback;
+#[cfg(test)]
+use agent_evidence::PrivateEvidenceReadback;
 use agent_evidence::{
 	AgentEvidenceSource, AgentPrivateEvidenceRef, build_private_evidence_readback,
 	private_evidence_ref_for_run_fields, render_agent_evidence_write_result,
@@ -493,4 +501,5 @@ query($owner: String!, $name: String!, $number: Int!, $commentsAfter: String) {
 }
 "#;
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

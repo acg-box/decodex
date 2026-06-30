@@ -19,7 +19,8 @@ mod sqlite_store;
 mod store;
 mod store_run_control;
 
-#[allow(unused_imports)] pub(crate) use models::WorktreeProvenance;
+#[allow(unused_imports)]
+pub(crate) use models::WorktreeProvenance;
 pub(crate) use models::{
 	AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
 	ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
@@ -151,4 +152,5 @@ pub(crate) fn is_decodex_runtime_artifact_relative_path(path: &Path) -> bool {
 		|| path.starts_with(RUN_CONTROL_CHANNEL_DIR)
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

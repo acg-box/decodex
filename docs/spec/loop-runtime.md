@@ -6,9 +6,9 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/research_design.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
-drift_watch: [phase_goal, phase_acceptance_check, docs_impact, review_contract, issue_review_checkpoint, decodex.autonomy_proposal/1, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
-last_verified: 2026-06-27
+code_refs: [apps/decodex/src/orchestrator/lane_decision.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/execution_phase_goal.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/research_design.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
+drift_watch: [lane_decision, continuation_lineage, phase_goal, phase_acceptance_check, docs_impact, review_contract, issue_review_checkpoint, decodex.autonomy_proposal/1, decodex.decision_contract/1, execution_program, decodex research compile, decodex research promote, decodex intake goal]
+last_verified: 2026-06-30
 ---
 # Loop Runtime Specification
 
@@ -570,6 +570,35 @@ change accepted direction. Direction drift must pause the affected node and requ
 research-contract or architecture decision. Dependent nodes must wait. Independent
 ready nodes may continue.
 
+## Lane Decision Core
+
+Lane execution must converge through a single next-action decision before scheduling
+or continuing mutating work. The implemented core input is a private
+`LaneDecisionSnapshot` for the lifecycle decision points currently routed through the
+adapter: child-exit retry scheduling, retry-retention blocker checks, phase
+acceptance, and repo-gate failures from phase-goal and terminal completion gates.
+Those snapshots include phase, progress-checkpoint, repo-gate disposition,
+scope-envelope, continuation/retry, terminal, and lineage fields needed by those
+decision points. The core output is the only valid lifecycle action for the covered
+decision point, such as `continue_current_phase`, `resume_continuation`,
+`retry_failure`, `run_repo_gate`, `enter_review_handoff`, `wait_external`,
+`needs_attention`, `stop_blocked`, `cleanup_terminal`, or
+`forbidden_stale_or_ambiguous`.
+
+Adapters such as daemon child-exit handling, retry retention, phase-goal validation,
+repo-gate failure handling, review repair, and operator status may collect or
+project state, but they must not independently reinterpret blocker, continuation,
+scope, or terminal evidence into a contradictory next action for a covered decision
+point. Future adapters that add tracker-state, run-lease, worktree-lineage,
+review/recovery, or authority-evidence inputs must extend the snapshot instead of
+creating a second lifecycle reducer. When the snapshot contains blocker-bearing
+progress evidence, a non-goal violation, an authority-decision request, blocked
+phase-goal recovery, a repo-gate scope-envelope violation, or ambiguous lineage,
+automatic continuation and retry are forbidden until the blocker is materially
+cleared. A newer progress checkpoint with an empty blocker set may clear older
+progress-blocker evidence; stale blocker evidence must not remain terminal after an
+explicit unblocked checkpoint.
+
 ## Phase-Scoped Codex Goals
 
 Codex goals used by Decodex lanes must be phase-scoped. Do not set one giant goal such
@@ -600,9 +629,12 @@ objective coverage, effective delta, changed surfaces, no non-goal violation,
 docs-impact readiness, validation evidence, and a pass/fail decision. Only a passing
 acceptance check may advance to `handoff_evidence` for ordinary implementation or
 validation repair, or to `review_repair_evidence` for accepted-review repair. A
-failing check keeps the lane in the appropriate repair phase with the reason and next
-action available in private status/evidence readback. Retained phase-goal recovery
-uses the same repo-gate plus acceptance check before scheduling automatic
+failing check caused by missing or stale evidence may keep the lane in the appropriate
+repair phase with the reason and next action available in private status/evidence
+readback. A failing check caused by blocker-bearing progress evidence, non-goal
+violation, or repo-gate scope-envelope violation must route through the lane decision
+core to human attention instead of ordinary validation repair. Retained phase-goal
+recovery uses the same repo-gate plus acceptance check before scheduling automatic
 continuation.
 Effective delta is the canonical lane delta, not merely worktree dirtiness. It
 includes issue-branch changes from the repo-gate base merge-base through current
@@ -621,6 +653,9 @@ recovery, an audited failed-start cleanup, or a blocker-bearing progress checkpo
 can close or block inheritance.
 This preserves the state-machine boundary between validated work and the later
 review/handoff contract.
+When Decodex schedules a continuation, it must record private `continuation_lineage`
+evidence that distinguishes the continuation source run and attempt, phase cursor, and
+`retry_budget_consumed = false` from ordinary failure retries.
 
 ## Validation And Review
 
@@ -696,6 +731,10 @@ For `no_effective_diff`, the repeated-observation fingerprint must be stable for
 absence of progress. It may record current `HEAD` in details for forensics, but `HEAD`
 alone must not reset the consecutive counter when the canonical lane delta, validation
 evidence, and decision state did not change.
+For `validation_repeat`, the stop key must be normalized by issue, phase or command
+domain, repo-gate error class, and lane authority domain. Raw error text, diagnostic
+line counts, and changing worktree diff hashes may remain in forensic details, but
+they must not reset same-class validation churn.
 
 Stop attribution must preserve the reason instead of collapsing failures into a
 generic retry bucket. Normalized outcomes include:

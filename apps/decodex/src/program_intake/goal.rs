@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(super) fn ensure_goal_intake_authority(contract: &DecisionContract) -> Result<()> {
 	if contract.status() != DecisionContractStatus::AcceptedPromoted {
@@ -112,13 +113,14 @@ where
 
 	for index in 0..plan_count {
 		let issue = match contract.links().generated_issue_identifiers().get(index) {
-			Some(identifier) =>
+			Some(identifier) => {
 				Some(tracker.get_issue_by_identifier(identifier)?.ok_or_else(|| {
 					eyre::eyre!(
 						"Generated issue link `{identifier}` for Decision Contract `{}` did not resolve.",
 						contract.contract_id()
 					)
-				})?),
+				})?)
+			},
 			None => None,
 		};
 
@@ -356,12 +358,15 @@ pub(super) fn dry_run_goal_issue_rows(
 				GoalIntakeIssueAction::WouldCreate
 			};
 			let reason = match action {
-				GoalIntakeIssueAction::WouldCreate =>
-					"apply will create a normal Linear issue and persist a mapped program node",
-				GoalIntakeIssueAction::WouldUpdate =>
-					"apply will update the linked normal Linear issue and persist a mapped program node",
-				GoalIntakeIssueAction::Created | GoalIntakeIssueAction::Updated =>
-					"apply already materialized this issue",
+				GoalIntakeIssueAction::WouldCreate => {
+					"apply will create a normal Linear issue and persist a mapped program node"
+				},
+				GoalIntakeIssueAction::WouldUpdate => {
+					"apply will update the linked normal Linear issue and persist a mapped program node"
+				},
+				GoalIntakeIssueAction::Created | GoalIntakeIssueAction::Updated => {
+					"apply already materialized this issue"
+				},
 			};
 
 			goal_issue_report_row(plan, linked.as_ref(), action, None, vec![reason.to_owned()])

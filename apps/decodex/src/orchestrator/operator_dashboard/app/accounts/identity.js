@@ -329,4 +329,3 @@
 
 					return `${sign}${absValue.toFixed(1)}pp`;
 				}
-

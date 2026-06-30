@@ -42,8 +42,9 @@ where
 		state_store,
 		&records,
 	) {
-		Ok(statuses) =>
-			Ok(OperatorExecutionProgramReadback { statuses, issue_metadata_unavailable: false }),
+		Ok(statuses) => {
+			Ok(OperatorExecutionProgramReadback { statuses, issue_metadata_unavailable: false })
+		},
 		Err(error) => {
 			let _ = error;
 
@@ -112,8 +113,8 @@ where
 		let record = &refreshed.record;
 		let program = &refreshed.program;
 		let evaluation = if let Some(source_contract_id) = record.source_contract_id() {
-			let Some(contract) = state_store
-				.decision_contract_for_readback(project.service_id(), source_contract_id)?
+			let Some(contract) =
+				state_store.decision_contract(project.service_id(), source_contract_id)?
 			else {
 				statuses.push(OperatorExecutionProgramStatus::missing_contract(record));
 
@@ -182,8 +183,8 @@ fn operator_execution_program_statuses_from_persisted(
 
 		let program = record.program().clone().with_nodes(nodes)?;
 		let evaluation = if let Some(source_contract_id) = record.source_contract_id() {
-			let Some(contract) = state_store
-				.decision_contract_for_readback(project.service_id(), source_contract_id)?
+			let Some(contract) =
+				state_store.decision_contract(project.service_id(), source_contract_id)?
 			else {
 				statuses.push(OperatorExecutionProgramStatus::missing_contract(record));
 

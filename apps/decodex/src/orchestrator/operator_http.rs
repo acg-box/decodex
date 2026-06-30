@@ -465,10 +465,11 @@ pub(crate) fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
 				strip_dashboard_run_activity_volatile_fields(child);
 			}
 		},
-		Value::Array(values) =>
+		Value::Array(values) => {
 			for child in values {
 				strip_dashboard_run_activity_volatile_fields(child);
-			},
+			}
+		},
 		_ => {},
 	}
 }
@@ -804,12 +805,15 @@ fn handle_dashboard_control_action(
 ) -> Value {
 	match action {
 		"focus" => dashboard_focus_control_ack(session, message, action),
-		"clearFocus" | "clearSubscription" =>
-			dashboard_clear_focus_control_ack(session, message, action),
-		"selectAccount" =>
-			dashboard_account_selection_control_ack(session, state_store, message, action, true),
-		"clearAccountSelection" =>
-			dashboard_account_selection_control_ack(session, state_store, message, action, false),
+		"clearFocus" | "clearSubscription" => {
+			dashboard_clear_focus_control_ack(session, message, action)
+		},
+		"selectAccount" => {
+			dashboard_account_selection_control_ack(session, state_store, message, action, true)
+		},
+		"clearAccountSelection" => {
+			dashboard_account_selection_control_ack(session, state_store, message, action, false)
+		},
 		"ack" | "ackNotice" => dashboard_control_ack_for_message(
 			session,
 			message,
@@ -1243,9 +1247,10 @@ fn operator_account_http_response_body(
 	request: &[u8],
 ) -> Result<Vec<u8>> {
 	match route {
-		OperatorRequestRoute::AccountList { force_refresh } =>
+		OperatorRequestRoute::AccountList { force_refresh } => {
 			serde_json::to_vec(&accounts::account_list_with_cached_usage(force_refresh)?)
-				.map_err(Into::into),
+				.map_err(Into::into)
+		},
 		OperatorRequestRoute::AccountSelect => {
 			let selector = operator_account_request_selector(request)?;
 			let response =
@@ -1643,15 +1648,19 @@ fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> 
 			"text/html; charset=utf-8",
 			OPERATOR_DASHBOARD_HTML.as_bytes(),
 		),
-		OperatorRequestRoute::DashboardIconPng =>
-			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG),
-		OperatorRequestRoute::DashboardLogoIco =>
-			http_response_bytes("200 OK", "image/x-icon", OPERATOR_DASHBOARD_LOGO_ICO),
-		OperatorRequestRoute::DashboardLogoTouchPng =>
-			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_LOGO_TOUCH_PNG),
+		OperatorRequestRoute::DashboardIconPng => {
+			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG)
+		},
+		OperatorRequestRoute::DashboardLogoIco => {
+			http_response_bytes("200 OK", "image/x-icon", OPERATOR_DASHBOARD_LOGO_ICO)
+		},
+		OperatorRequestRoute::DashboardLogoTouchPng => {
+			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_LOGO_TOUCH_PNG)
+		},
 		OperatorRequestRoute::DashboardWs => websocket_upgrade_required_response(),
-		OperatorRequestRoute::AppSnapshot =>
-			http_response_bytes("200 OK", "application/json", b"{}"),
+		OperatorRequestRoute::AppSnapshot => {
+			http_response_bytes("200 OK", "application/json", b"{}")
+		},
 		OperatorRequestRoute::LinearScan => http_response_bytes(
 			"405 Method Not Allowed",
 			"text/plain; charset=utf-8",
@@ -1664,8 +1673,9 @@ fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> 
 			"text/plain; charset=utf-8",
 			b"method not allowed",
 		),
-		OperatorRequestRoute::Live =>
-			http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok"),
+		OperatorRequestRoute::Live => {
+			http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok")
+		},
 		OperatorRequestRoute::AccountList { .. }
 		| OperatorRequestRoute::AccountSelect
 		| OperatorRequestRoute::AccountClear
@@ -1715,8 +1725,9 @@ fn parse_operator_state_request_route(
 		.map_or(path_without_query, |(path_without_fragment, _)| path_without_fragment);
 
 	match (method, normalized_path) {
-		("GET", OPERATOR_DASHBOARD_ENDPOINT_PATH | OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH) =>
-			Ok(OperatorRequestRoute::Dashboard),
+		("GET", OPERATOR_DASHBOARD_ENDPOINT_PATH | OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH) => {
+			Ok(OperatorRequestRoute::Dashboard)
+		},
 		("GET", "/assets/icon.png") => Ok(OperatorRequestRoute::DashboardIconPng),
 		("GET", "/assets/logo.ico") => Ok(OperatorRequestRoute::DashboardLogoIco),
 		("GET", "/assets/logo-touch.png") => Ok(OperatorRequestRoute::DashboardLogoTouchPng),
@@ -1729,8 +1740,9 @@ fn parse_operator_state_request_route(
 		("POST", OPERATOR_LINEAR_SCAN_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LinearScan),
 		("GET", OPERATOR_LANE_INSPECT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInspect),
 		("POST", OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInterrupt),
-		("POST", OPERATOR_LANE_STEER_ENDPOINT_PATH | OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH) =>
-			Ok(OperatorRequestRoute::LaneSteer),
+		("POST", OPERATOR_LANE_STEER_ENDPOINT_PATH | OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH) => {
+			Ok(OperatorRequestRoute::LaneSteer)
+		},
 		("POST", "/api/accounts/select") => Ok(OperatorRequestRoute::AccountSelect),
 		("POST", "/api/accounts/clear") => Ok(OperatorRequestRoute::AccountClear),
 		("POST", "/api/accounts/logout") => Ok(OperatorRequestRoute::AccountLogout),

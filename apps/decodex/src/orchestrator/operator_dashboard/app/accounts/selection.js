@@ -242,4 +242,3 @@
 
 					armAccountSelectionConfirmation(action, selector);
 				}
-

@@ -1,6 +1,7 @@
 //! Shared file, Markdown, frontmatter, and path helpers.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(super) fn collect_files(root: &Path, dir: &Path, files: &mut Vec<DocsFile>) -> Result<()> {
 	for entry in fs::read_dir(dir)? {

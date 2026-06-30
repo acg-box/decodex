@@ -1454,8 +1454,7 @@ fn resolve_lane_default_branch_uses_cached_origin_head_without_reachable_remote(
 }
 
 fn run_git_for_handoff(cwd: &Path, args: &[&str]) {
-	let status = Command::new("git")
-		.args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
+	let status = crate::test_support::hermetic_git_command()
 		.arg("-C")
 		.arg(cwd)
 		.args(args)

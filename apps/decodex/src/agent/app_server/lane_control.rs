@@ -175,8 +175,9 @@ fn handle_pending_turn_steer_request(
 		},
 	);
 	let response = match result {
-		Ok(value) =>
-			LaneControlSteerResponse::delivered(&pending.request, target_turn_id, &value.turn_id),
+		Ok(value) => {
+			LaneControlSteerResponse::delivered(&pending.request, target_turn_id, &value.turn_id)
+		},
 		Err(error) => {
 			let error_class = steer_error_class(&error);
 
@@ -291,8 +292,9 @@ fn record_lane_steer_response(
 ) -> crate::prelude::Result<()> {
 	let outcome = match &response.status {
 		LaneControlSteerResponseStatus::Delivered => RUN_CONTROL_ACTION_COMPLETED,
-		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected =>
-			RUN_CONTROL_ACTION_FAILED,
+		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected => {
+			RUN_CONTROL_ACTION_FAILED
+		},
 	};
 	let metadata = serde_json::json!({
 		"requestId": response.request_id,

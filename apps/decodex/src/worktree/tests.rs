@@ -8,7 +8,9 @@ use std::{
 
 use tempfile::TempDir;
 
-use crate::{git_credentials, workflow::WorkflowDocument, worktree::WorktreeManager};
+use crate::{
+	test_support::hermetic_git_command, workflow::WorkflowDocument, worktree::WorktreeManager,
+};
 
 fn workspace_hooks(workspace_hooks_frontmatter: &str) -> crate::workflow::WorkflowWorkspaceHooks {
 	let markdown = format!(
@@ -55,11 +57,7 @@ read_first = []
 }
 
 fn test_git_command() -> Command {
-	let mut command = Command::new("git");
-
-	git_credentials::clear_injected_git_config(&mut command);
-
-	command
+	hermetic_git_command()
 }
 
 fn run_git(repo_root: &Path, args: &[&str]) {

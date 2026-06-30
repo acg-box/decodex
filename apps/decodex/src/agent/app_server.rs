@@ -13,8 +13,10 @@ mod turn_failure;
 
 pub(crate) use turn_failure::AppServerTurnFailure;
 
-#[cfg(test)] use self::dynamic_tools::handle_dynamic_tool_call;
-#[cfg(test)] use self::lane_control::steer_error_class;
+#[cfg(test)]
+use self::dynamic_tools::handle_dynamic_tool_call;
+#[cfg(test)]
+use self::lane_control::steer_error_class;
 #[cfg(test)]
 use self::preflight::{
 	AppServerCapabilityPreflightStatus, build_command_exec_health_check_params,
@@ -168,14 +170,15 @@ pub(crate) fn execute_app_server_run(
 	let result = execute_app_server_run_inner(request, state_store);
 
 	match &result {
-		Ok(_result) =>
+		Ok(_result) => {
 			if control_channel.is_some() {
 				state_store.retire_run_control_channel_for_attempt(
 					&request.run_id,
 					request.attempt_number,
 					RUN_CONTROL_CHANNEL_STATUS_COMPLETED,
 				)?;
-			},
+			}
+		},
 		Err(_error) => {
 			state_store.record_run_attempt(
 				&request.run_id,
@@ -211,8 +214,9 @@ pub(crate) fn archive_app_server_thread_after_success(
 ) -> crate::prelude::Result<AppServerThreadArchiveOutcome> {
 	let result = match archive_app_server_thread_after_success_inner(request) {
 		Ok(()) => Ok(AppServerThreadArchiveOutcome::Archived),
-		Err(error) if thread_archive_error_allows_discard(&error) =>
-			Ok(AppServerThreadArchiveOutcome::DiscardedMissingThread),
+		Err(error) if thread_archive_error_allows_discard(&error) => {
+			Ok(AppServerThreadArchiveOutcome::DiscardedMissingThread)
+		},
 		Err(error) => Err(error),
 	};
 
@@ -1255,7 +1259,9 @@ fn next_turn_wire_message(
 			if control_enabled
 				&& recv_timeout < wait_timeout
 				&& is_app_server_output_timeout(&error) =>
-			Ok(None),
+		{
+			Ok(None)
+		},
 		Err(error) => Err(error),
 	}
 }
@@ -1507,4 +1513,5 @@ fn turn_id_from_value(value: &Value) -> Option<&str> {
 		.or_else(|| value.get("turn").and_then(|turn| turn.get("id")).and_then(Value::as_str))
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

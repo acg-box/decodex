@@ -1,6 +1,7 @@
 //! Local Decodex control-plane runtime paths and project registry helpers.
 
-#[cfg(test)] use std::process;
+#[cfg(test)]
+use std::process;
 use std::{
 	cmp::Reverse,
 	env, fs,

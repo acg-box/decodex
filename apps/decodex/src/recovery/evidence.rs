@@ -77,9 +77,10 @@ fn stale_active_private_event_is_dead_process_control_telemetry(
 	event: &PrivateExecutionEvent,
 ) -> bool {
 	match event.event_type() {
-		"lane_control/interrupt/requested" =>
+		"lane_control/interrupt/requested" => {
 			event.payload().get("method").and_then(serde_json::Value::as_str)
-				== Some("turn/interrupt"),
+				== Some("turn/interrupt")
+		},
 		"control_action" => {
 			let payload = event.payload();
 
@@ -245,8 +246,9 @@ pub(super) fn ghost_lane_has_mcp_test_fixture_identity(
 
 fn ghost_lane_mcp_test_fixture_issue_identifier_matches(issue_identifier: Option<&str>) -> bool {
 	match issue_identifier {
-		Some(value) =>
-			value == MCP_TEST_FIXTURE_ISSUE_ID || value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER,
+		Some(value) => {
+			value == MCP_TEST_FIXTURE_ISSUE_ID || value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER
+		},
 		None => true,
 	}
 }
@@ -270,11 +272,13 @@ pub(super) fn ghost_lane_private_events_are_mcp_test_recovery_evidence(
 
 fn ghost_lane_private_event_is_mcp_test_control_evidence(event: &PrivateExecutionEvent) -> bool {
 	match event.event_type() {
-		"control_action" =>
+		"control_action" => {
 			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE)
-				|| ghost_lane_cli_control_action_matches_mcp_test_fixture(event.payload()),
-		"lane_control/steer/requested" | "lane_control/interrupt/requested" =>
-			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE),
+				|| ghost_lane_cli_control_action_matches_mcp_test_fixture(event.payload())
+		},
+		"lane_control/steer/requested" | "lane_control/interrupt/requested" => {
+			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE)
+		},
 		_ => false,
 	}
 }
