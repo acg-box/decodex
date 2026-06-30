@@ -99,4 +99,4 @@ Then keep the body explicit:
 - [`workflow-file.md`](./workflow-file.md) defines registered project `WORKFLOW.md`
   configuration semantics and required fields.
 - [`okf-knowledge-layer.md`](./okf-knowledge-layer.md) defines the portable OKF
-  engine, LLM Wiki profile stack, Decodex docs alias, and profile boundary.
+  engine, LLM Wiki profile stack, Decodex docs command surface, and profile boundary.

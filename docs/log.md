@@ -1,5 +1,12 @@
 # Documentation Log
 
+## 2026-06-30
+
+- Removed the `decodex docs lint` command alias and made `decodex docs check` the
+  only docs validation subcommand. Updated `cargo make check-docs`, docs-impact
+  prompts, codebase command policy, knowledge references, and OKF docs evidence to
+  make command aliases disallowed by default.
+
 ## 2026-06-29
 
 - Clarified tracker-present stale-active recovery evidence: app-server no-diff
@@ -55,9 +62,9 @@
 - Refreshed docs/plugin drift after the latest local install readback: Codex stable
   compatibility now points at `0.142.3` and Decodex `0.2.0-26dc90d3`, preview
   planning now points at `0.143.0-alpha.26`, the docs gate reference names the
-  `decodex docs lint` compatibility alias used by `cargo make check-docs`, and
-  operator docs now forbid duplicate owners for the default `127.0.0.1:8192`
-  Decodex App/helper listener.
+  repository docs validation command used by `cargo make check-docs`, and operator
+  docs now forbid duplicate owners for the default `127.0.0.1:8192` Decodex
+  App/helper listener.
 - Made `decodex radar validate` path-aware for existing operations cache drift:
   generated analysis drafts are validated as helper outputs without a `schema` field,
   historical archive manifests may retain their original retention policy, and
@@ -349,10 +356,9 @@
   LLM Wiki graph/retrieval behavior, repository-memory anchors, and the strict
   Decodex docs profile.
 - Clarified that `decodex okf` is the cross-repository command surface while
-  `decodex docs` is the local `docs/` alias, and that `docs okf` command nesting is
-  not part of the user-facing model.
-- Added the initial OKF/docs check, find, and graph command surfaces; `decodex docs
-  lint` remains a compatibility alias.
+  `decodex docs` is the local `docs/` command surface, and that `docs okf` command
+  nesting is not part of the user-facing model.
+- Added the initial OKF/docs check, find, and graph command surfaces.
 - Added `decodex okf init` as a turnkey scaffold for portable `core`, `wiki`, and
   `repo-memory` bundles in other repositories.
 - Added portable `okf`, `okf-query`, and `okf-maintain` plugin skills and clarified
@@ -361,7 +367,7 @@
   standard.
 - Defined `docs/` as a Markdown-only OKF bundle with no non-Markdown documentation
   artifacts.
-- Added `decodex docs lint` as the repository gate for OKF frontmatter, typed
+- Added `decodex docs check` as the repository gate for OKF frontmatter, typed
   enum/date values, routing, local links, Markdown-only artifacts, required concept
   headings, and drift audit evidence anchors.
 - Migrated all checked-in docs concepts to required OKF frontmatter.

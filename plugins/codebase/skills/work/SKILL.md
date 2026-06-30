@@ -31,6 +31,7 @@ validation, landing, or final evidence matters.
   before editing.
 - Implementation: follow checked-in tooling, docs, dependency, module-boundary, and
   owner-design rules for the touched surface.
+- Command surfaces: keep one canonical spelling; command aliases are not allowed.
 - Pre-claim: run drift/writeback when public claims may diverge, then verification
   before any positive status claim.
 - Commit/landing: use the repository's owning authority.
