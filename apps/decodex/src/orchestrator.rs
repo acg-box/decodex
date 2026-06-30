@@ -62,7 +62,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use crate::{
 	agent,
 	agent::REVIEW_POLICY_CONVERGENCE_BUDGET,
-	default_branch_sync, git_credentials, maintenance, state, tracker,
+	default_branch_sync, git_credentials, state, tracker,
 	tracker::{privacy_classifier::PublicProjectionPrivacyClassifier, public_text},
 };
 use state::PrivateExecutionEvent;
@@ -233,6 +233,18 @@ pub(crate) use types::{
 };
 
 include!("orchestrator/operator_presentation.rs");
+
+mod entrypoints_control_plane;
+#[cfg(test)]
+pub(crate) use entrypoints_control_plane::{
+	ControlPlaneProjectTick, collect_control_plane_snapshot, complete_project_status,
+	linear_scan_due, remember_next_linear_scan, run_control_plane_dev_tick, run_control_plane_tick,
+};
+pub(crate) use entrypoints_control_plane::{
+	build_diagnose_live_snapshot, build_operator_state_snapshot_without_live_observers,
+	empty_control_plane_snapshot, run_control_plane, runtime_recovery_error_class,
+	runtime_recovery_warning,
+};
 
 mod entrypoints_status_cache;
 pub(crate) use entrypoints_status_cache::status_should_attempt_operator_snapshot_cache;
