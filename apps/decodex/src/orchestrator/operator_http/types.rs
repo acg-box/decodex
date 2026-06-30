@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::prelude::{Result, eyre};
 
-use super::{DASHBOARD_MAX_WEBSOCKET_CLIENTS, dashboard_event_for_subscription};
+use super::{assets::DASHBOARD_MAX_WEBSOCKET_CLIENTS, dashboard::dashboard_event_for_subscription};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum OperatorRequestRoute {
