@@ -1,6 +1,7 @@
 mod account_commands;
 mod control_commands;
 mod docs_okf_commands;
+mod git_hook_commands;
 mod manual_commands;
 mod radar_commands;
 mod recovery_commands;
@@ -13,6 +14,7 @@ use self::{
 		ServeCommand, StatusCommand,
 	},
 	docs_okf_commands::{DocsCommand, OkfCommand},
+	git_hook_commands::GitHookCommand,
 	manual_commands::{CommitCommand, LandCommand},
 	radar_commands::RadarCommand,
 	recovery_commands::RecoverCommand,
@@ -66,6 +68,7 @@ impl Cli {
 		match &self.command {
 			Command::App(args) => args.run(),
 			Command::Commit(args) => args.run(),
+			Command::GitHook(args) => args.run(),
 			Command::Land(args) => args.run(),
 			Command::Run(args) => args.run(),
 			Command::Serve(args) => args.run(),
@@ -240,6 +243,8 @@ enum Command {
 	App(AppCommand),
 	/// Create a signed local commit with a `decodex/commit/1` message.
 	Commit(CommitCommand),
+	/// Validate Git hook inputs with Decodex-owned policy.
+	GitHook(GitHookCommand),
 	/// Land the current reviewed lane with a GitHub admin merge commit.
 	Land(LandCommand),
 	/// Run one orchestration pass.
