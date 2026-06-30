@@ -1,6 +1,8 @@
 mod execution_architecture_recovery;
+mod execution_closeout;
 mod execution_failure;
 mod execution_phase_goal;
+mod execution_thread_archive;
 mod lane_control;
 mod lane_decision;
 mod status_autonomy;
@@ -71,6 +73,9 @@ use crate::{agent::{RUN_LEASE_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure,
 use execution_architecture_recovery::{
 	architecture_recovery_retry_next_action, loop_guardrail_architecture_recovery_decision,
 };
+use execution_closeout::execute_deterministic_closeout;
+#[cfg(test)]
+use execution_closeout::ensure_closeout_issue_completed_state;
 use execution_failure::{
 	ARCHITECTURE_RECOVERY_BUDGET, ARCHITECTURE_RECOVERY_RETRY_KIND,
 	AppServerZeroEvidenceStartFailure, ArchitectureRecoveryStart,
@@ -96,6 +101,14 @@ use execution_phase_goal::{
 	PhaseAcceptanceCheckFailure, PhaseGoalRecoveryContinuation, build_phase_goal_controller,
 	issue_has_blocking_lane_decision_evidence, latest_open_issue_phase_goal_before_attempt,
 	maybe_continue_after_phase_goal_recovery, recover_phase_goal_continuation,
+};
+use execution_thread_archive::{
+	archive_completed_issue_threads_best_effort,
+	reconcile_terminal_thread_archive_backlog_best_effort,
+};
+#[cfg(test)]
+use execution_thread_archive::{
+	completed_issue_thread_archive_candidates, terminal_thread_archive_backlog_candidates,
 };
 use harness_improvement::{HarnessOutcomeKind, record_harness_outcome_best_effort};
 #[cfg(test)]
