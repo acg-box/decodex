@@ -75,8 +75,8 @@ DEPENDENCY_POLICY_HINT = (
 TASK_RUNNER_HINT = (
     "Changed files include Makefile.toml or an equivalent task-runner surface. Load "
     "$codebase:work and apply the task-runner checklist: action-family grouping, "
-    "action-first public names, deterministic ordering, no long inline shell, and "
-    "stale-command reverse checks."
+    "action-first public names, no command aliases, deterministic ordering, no long "
+    "inline shell, and stale-command reverse checks."
 )
 DELIBERATION_GATE_HINT = (
     "When the task involves design, architecture, refactor, root-cause debugging, "

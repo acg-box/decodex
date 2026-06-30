@@ -174,6 +174,7 @@ class CodexLifecycleHookTests(unittest.TestCase):
         joined = "\n".join(hints)
         self.assertIn("task-runner checklist", joined)
         self.assertIn("action-first public names", joined)
+        self.assertIn("no command aliases", joined)
 
     def test_public_surface_matching_avoids_substring_false_positive(self) -> None:
         self.assertFalse(self.hook.path_is_public_surface("src/helpful.rs"))

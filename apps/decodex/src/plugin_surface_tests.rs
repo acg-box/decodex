@@ -364,7 +364,6 @@ fn packaged_knowledge_skills_encode_okf_wiki_and_drift_boundaries() {
 	assert_contains(&docs_surface, "OKF");
 	assert_contains(&docs_surface, "LLM Wiki");
 	assert_contains(&docs_surface, "docs check");
-	assert_contains(&docs_surface, "docs lint");
 	assert_contains(&docs_surface, "Markdown-only");
 	assert_contains(&docs_surface, "Research Contract");
 	assert_contains(&docs_surface, "Drift Audit");

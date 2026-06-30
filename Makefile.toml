@@ -33,7 +33,7 @@ args = [
 	"decodex",
 	"--",
 	"docs",
-	"lint",
+	"check",
 ]
 
 [tasks.check-node]

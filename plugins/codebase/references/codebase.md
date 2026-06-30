@@ -36,6 +36,9 @@ Read when `$codebase:work` needs exact command, structure, validation, or eviden
 - Public tasks are action-first: `check-docs`, `lint-rust`, `fmt-rust`, `test-rust`,
   `build-node`, `smoke-*`. Avoid `docs-check`, `typecheck-node`, public `*-smoke`,
   legacy `checks`, and undocumented `[tasks.fix]`.
+- Command aliases are not allowed. Keep one canonical command spelling, remove
+  compatibility aliases, and update callers/docs instead of preserving duplicate
+  command names.
 - Typecheck and `cargo check` are `check`; clippy is `lint`; build, smoke, test, and
   mutating fixes stay out of `check-*` composites.
 - No substantive shell in task config: no `bash -lc`, heredocs, long scripts, loops,
@@ -62,8 +65,8 @@ Read when `$codebase:work` needs exact command, structure, validation, or eviden
 - Names are authority. Before renaming symbols, fields, statuses, commands, or config
   keys, classify internal/external/UI/persisted/telemetry/adapter/migration boundary.
 - Prefer one canonical owner/name/config/execution path. Remove obsolete code,
-  config, commands, fixtures, docs, aliases, and tests unless compatibility requires
-  migration.
+  config, commands, fixtures, docs, aliases, and tests; migrate callers to the
+  canonical spelling instead of keeping compatibility aliases.
 - Config files are user-facing contracts: missing fields need explicit errors or
   migrations; unknown fields should be rejected unless checked-in policy says
   otherwise.

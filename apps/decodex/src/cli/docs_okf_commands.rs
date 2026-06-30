@@ -183,7 +183,6 @@ impl From<&OkfFindFilters> for OkfQuery {
 #[derive(Debug, Subcommand)]
 pub(super) enum DocsSubcommand {
 	/// Validate the complete Markdown-only Decodex docs bundle.
-	#[command(alias = "lint")]
 	Check,
 	/// Validate OKF index files and concept frontmatter.
 	Index,

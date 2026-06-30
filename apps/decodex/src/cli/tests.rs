@@ -133,6 +133,14 @@ fn parses_okf_and_docs_find_graph_commands() {
 }
 
 #[test]
+fn docs_command_rejects_legacy_lint_alias() {
+	let error = Cli::try_parse_from(["decodex", "docs", "lint"])
+		.expect_err("command aliases are not supported");
+
+	assert!(error.to_string().contains("unrecognized subcommand 'lint'"));
+}
+
+#[test]
 fn parses_okf_init_command() {
 	let cli = Cli::parse_from(["decodex", "okf", "init", "knowledge", "--profile", "wiki"]);
 
