@@ -61,10 +61,12 @@ struct AccountRowView: View {
 
 			if runs.isEmpty == false {
 				AccountRunSummaryView(runs: runs)
+					.transition(.panelInline)
 			}
 
 			if account.hasUsageSummary {
 				AccountUsageSummaryView(account: account)
+					.transition(.panelInline)
 			}
 		}
 		.padding(.vertical, 7)
@@ -82,6 +84,9 @@ struct AccountRowView: View {
 		}
 		.animation(PanelMotion.state, value: account.selected)
 		.animation(PanelMotion.state, value: account.codexActive)
+		.animation(PanelMotion.inlineLayout, value: runs.map(\.id))
+		.animation(PanelMotion.inlineLayout, value: account.hasUsageSummary)
+		.animation(PanelMotion.inlineLayout, value: showsDivider)
 	}
 
 	@ViewBuilder
@@ -114,6 +119,7 @@ struct AccountRowView: View {
 		.frame(width: isLogoutArmed ? AccountActionClusterLayout.confirmWidth : AccountActionClusterLayout.defaultWidth, alignment: .trailing)
 		.clipped()
 		.animation(AccountActionClusterLayout.transition, value: isLogoutArmed)
+		.animation(PanelMotion.inlineLayout, value: isLogoutPending)
 	}
 
 	private var routeHelp: String {

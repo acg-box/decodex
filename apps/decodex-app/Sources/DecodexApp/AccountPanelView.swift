@@ -33,7 +33,7 @@ struct AccountPanelView: View {
 	}
 
 	private var panelContent: some View {
-		VStack(alignment: .leading, spacing: 6) {
+		return VStack(alignment: .leading, spacing: 6) {
 			header
 			accountSummary
 
@@ -43,23 +43,29 @@ struct AccountPanelView: View {
 					usageEstimate: store.accountList?.usageEstimate,
 					accounts: store.accounts
 				)
+				.transition(.panelSection)
 			}
 
 			if let notice = store.notice {
 				NoticeView(text: notice)
+					.transition(.panelSection)
 			}
 
 			if let usageProbeError = store.accountList?.usageProbeError {
 				NoticeView(text: "Usage probe: \(usageProbeError)")
+					.transition(.panelSection)
 			}
 
-			if store.isInitialLoading {
-				loadingState
-			} else if store.accounts.isEmpty {
-				emptyState
-			} else {
-				accountList
+			Group {
+				if store.isInitialLoading {
+					loadingState
+				} else if store.accounts.isEmpty {
+					emptyState
+				} else {
+					accountList
+				}
 			}
+			.transition(.panelSection)
 		}
 		.frame(width: 322)
 		.padding(9)
@@ -69,6 +75,7 @@ struct AccountPanelView: View {
 		)
 		.controlSize(.small)
 		.symbolRenderingMode(.hierarchical)
+		.animation(PanelMotion.panelLayout, value: panelAnimationKey)
 	}
 
 	private var header: some View {
@@ -101,7 +108,9 @@ struct AccountPanelView: View {
 					tint: PanelPalette.secondaryText(colorScheme),
 					isActive: false,
 					action: {
-						accountPrivacy = emailsHidden ? AccountPrivacy.visibleValue : AccountPrivacy.hiddenValue
+						withAnimation(PanelMotion.inlineLayout) {
+							accountPrivacy = emailsHidden ? AccountPrivacy.visibleValue : AccountPrivacy.hiddenValue
+						}
 					},
 					help: emailsHidden ? "Show account emails" : "Hide account emails"
 				)
@@ -242,15 +251,17 @@ struct AccountPanelView: View {
 	}
 
 	private var accountRows: some View {
-		VStack(spacing: 0) {
-			ForEach(Array(store.accounts.enumerated()), id: \.element.id) { index, account in
+		let accounts = store.accounts
+
+		return VStack(spacing: 0) {
+			ForEach(Array(accounts.enumerated()), id: \.element.id) { index, account in
 				let runs = operatorCurrentLaneCards(for: account)
 
 				AccountRowView(
 					account: account,
 					runs: runs,
 					displayName: displayName(for: account),
-					showsDivider: index < store.accounts.count - 1,
+					showsDivider: index < accounts.count - 1,
 					isLogoutArmed: armedLogoutAccountID == account.id,
 					isLogoutPending: deletingLogoutAccountID == account.id,
 					logoutErrorMessage: armedLogoutAccountID == account.id ? logoutErrorMessage : nil,
@@ -277,8 +288,10 @@ struct AccountPanelView: View {
 						confirmLogout(account)
 					}
 				)
+				.transition(.accountRowRemoval)
 			}
 		}
+		.animation(PanelMotion.accountRemoval, value: accounts.map(\.id))
 	}
 
 	private var codexAuthLabel: String {
@@ -341,6 +354,20 @@ struct AccountPanelView: View {
 
 	private var accountListNeedsScrolling: Bool {
 		accountListContentHeight > accountListAvailableHeight + 1
+	}
+
+	private var panelAnimationKey: AccountPanelAnimationKey {
+		AccountPanelAnimationKey(
+			accountIDs: store.accounts.map(\.id),
+			isInitialLoading: store.isInitialLoading,
+			hasAccounts: store.accounts.isEmpty == false,
+			hasTelemetry: telemetryMatrixIsVisible,
+			hasNotice: store.notice != nil,
+			hasUsageProbeError: store.accountList?.usageProbeError != nil,
+			hasFixedSelection: hasFixedSelection,
+			emailsHidden: emailsHidden,
+			needsScrolling: accountListNeedsScrolling
+		)
 	}
 
 	private var accountListAvailableHeight: CGFloat {
@@ -472,21 +499,29 @@ struct AccountPanelView: View {
 			return
 		}
 
-		logoutErrorMessage = nil
-		armedLogoutAccountID = account.id
+		withAnimation(PanelMotion.inlineLayout) {
+			logoutErrorMessage = nil
+			armedLogoutAccountID = account.id
+		}
 	}
 
 	private func confirmLogout(_ account: CodexAccount) {
 		Task {
-			deletingLogoutAccountID = account.id
+			withAnimation(PanelMotion.accountRemoval) {
+				deletingLogoutAccountID = account.id
+				store.beginOptimisticLogoutRemoval(account)
+			}
 			logoutErrorMessage = nil
 			do {
 				try await store.logout(account)
 				deletingLogoutAccountID = nil
 				disarmLogout()
 			} catch {
-				deletingLogoutAccountID = nil
-				logoutErrorMessage = error.localizedDescription
+				withAnimation(PanelMotion.accountRemoval) {
+					store.cancelOptimisticLogoutRemoval(account)
+					deletingLogoutAccountID = nil
+					logoutErrorMessage = error.localizedDescription
+				}
 			}
 		}
 	}
@@ -495,8 +530,10 @@ struct AccountPanelView: View {
 		guard deletingLogoutAccountID == nil else {
 			return
 		}
-		logoutErrorMessage = nil
-		armedLogoutAccountID = nil
+		withAnimation(PanelMotion.inlineLayout) {
+			logoutErrorMessage = nil
+			armedLogoutAccountID = nil
+		}
 	}
 
 	private func presentLogin(_ mode: AccountLoginSheetMode) {
@@ -505,4 +542,16 @@ struct AccountPanelView: View {
 		NSApp.activate(ignoringOtherApps: true)
 		loginWindowState.isPresented = true
 	}
+}
+
+private struct AccountPanelAnimationKey: Equatable {
+	let accountIDs: [String]
+	let isInitialLoading: Bool
+	let hasAccounts: Bool
+	let hasTelemetry: Bool
+	let hasNotice: Bool
+	let hasUsageProbeError: Bool
+	let hasFixedSelection: Bool
+	let emailsHidden: Bool
+	let needsScrolling: Bool
 }

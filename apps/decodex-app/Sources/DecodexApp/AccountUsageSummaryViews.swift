@@ -9,6 +9,7 @@ struct AccountUsageSummaryView: View {
 			VStack(spacing: 5) {
 				if account.hasProfileSummary {
 					AccountProfileSummaryView(account: account)
+						.transition(.panelInline)
 				}
 
 				if account.hasPrimaryUsageData {
@@ -22,6 +23,7 @@ struct AccountUsageSummaryView: View {
 						tone: account.usageTone(remainingPercent: account.primaryRemainingPercent),
 						currentTime: timeline.date
 					)
+					.transition(.panelInline)
 				}
 
 				if account.hasSecondaryUsageData {
@@ -35,11 +37,15 @@ struct AccountUsageSummaryView: View {
 						tone: account.usageTone(remainingPercent: account.secondaryRemainingPercent),
 						currentTime: timeline.date
 					)
+					.transition(.panelInline)
 				}
 			}
 			.frame(maxWidth: .infinity)
 			.padding(.horizontal, 1)
 			.padding(.vertical, 1)
+			.animation(PanelMotion.inlineLayout, value: account.hasProfileSummary)
+			.animation(PanelMotion.inlineLayout, value: account.hasPrimaryUsageData)
+			.animation(PanelMotion.inlineLayout, value: account.hasSecondaryUsageData)
 		}
 	}
 }
