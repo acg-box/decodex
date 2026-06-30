@@ -321,11 +321,7 @@ fn schedule_retry_after_child_exit_terminalizes_exhausted_review_repair_issue() 
 			workflow: &workflow,
 			state_store: &state_store,
 		},
-		ChildRunRef {
-			issue_id: &issue.id,
-			run_id: "run-review-repair-3",
-			attempt_number: 3,
-		},
+		ChildRunRef { issue_id: &issue.id, run_id: "run-review-repair-3", attempt_number: 3 },
 		issue.project_slug.as_deref().expect("sample issue should carry a project slug"),
 		&issue.state.name,
 		IssueDispatchMode::ReviewRepair,
@@ -396,11 +392,7 @@ fn schedule_retry_after_child_exit_counts_persisted_retry_budget_after_restart()
 			workflow: &workflow,
 			state_store: &state_store,
 		},
-		ChildRunRef {
-			issue_id: &issue.id,
-			run_id: "run-review-repair-3",
-			attempt_number: 3,
-		},
+		ChildRunRef { issue_id: &issue.id, run_id: "run-review-repair-3", attempt_number: 3 },
 		issue.project_slug.as_deref().expect("sample issue should carry a project slug"),
 		&issue.state.name,
 		IssueDispatchMode::ReviewRepair,
@@ -814,21 +806,24 @@ fn schedule_retry_after_child_exit_records_continuation_retry_for_clean_exit() {
 	.expect("continuation retry should schedule");
 
 	let entry = retry_queue.entries.get(&issue.id).expect("retry entry should exist for the issue");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, run_id, 1)
+		.expect("private continuation lineage events should load");
 
 	assert_eq!(entry.kind, orchestrator::RetryKind::Continuation);
 	assert_eq!(entry.attempt, 1);
+	assert!(events.iter().any(|event| {
+		event.event_type() == "continuation_lineage"
+			&& event.payload()["continuation_of_run_id"] == run_id
+			&& event.payload()["retry_budget_consumed"] == false
+			&& event.payload()["next_retry_kind"] == "continuation"
+	}));
 }
 
 #[test]
 fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites() {
 	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
-		&sample_workflow_markdown(
-			"pubfi",
-			&[],
-			"Phase goal validation policy.\n",
-			1,
-		)
-		.replace(
+		&sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1).replace(
 			"canonicalize_commands = []",
 			"canonicalize_commands = [\"printf 'rewritten\\\\n' > other.txt\"]",
 		),
@@ -842,8 +837,7 @@ fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites
 	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	commit_worktree_change(config.repo_root(), "other.txt", "before\n", "add other file");
 
-	fs::write(config.repo_root().join("ready.txt"), "after\n")
-		.expect("tracked diff should write");
+	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	for (attempt, recorded_run_id) in [(1, "run-1"), (2, "run-2"), (3, run_id)] {
 		state_store
@@ -933,8 +927,7 @@ fn schedule_retry_after_child_exit_respects_terminal_finalize_before_phase_goal_
 
 	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 
-	fs::write(config.repo_root().join("ready.txt"), "after\n")
-		.expect("tracked diff should write");
+	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	for (attempt, recorded_run_id) in [(1, "run-1"), (2, "run-2"), (3, run_id)] {
 		state_store

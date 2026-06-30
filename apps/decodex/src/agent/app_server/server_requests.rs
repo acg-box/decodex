@@ -50,10 +50,12 @@ fn dispatch_server_request(
 	context: RequestDispatchContext<'_>,
 ) -> crate::prelude::Result<()> {
 	match request.method.as_str() {
-		"item/tool/call" if context.phase == RequestWaitPhase::TurnExecution =>
-			dispatch_dynamic_tool_call(connection, recorder, request, context),
-		"account/chatgptAuthTokens/refresh" =>
-			dispatch_codex_account_refresh(connection, recorder, request, context),
+		"item/tool/call" if context.phase == RequestWaitPhase::TurnExecution => {
+			dispatch_dynamic_tool_call(connection, recorder, request, context)
+		},
+		"account/chatgptAuthTokens/refresh" => {
+			dispatch_codex_account_refresh(connection, recorder, request, context)
+		},
 		"item/tool/call" => respond_to_dynamic_tool_call_dispatch(
 			connection,
 			recorder,
@@ -109,8 +111,9 @@ fn dispatch_server_request(
 				meta: None,
 			},
 		),
-		other =>
-			reject_unsupported_server_request(connection, recorder, request, context.phase, other),
+		other => {
+			reject_unsupported_server_request(connection, recorder, request, context.phase, other)
+		},
 	}
 }
 
@@ -147,7 +150,9 @@ fn record_wire_message_safely(
 	match &wire_message.message {
 		JsonRpcMessage::Request(request)
 			if request.method == "account/chatgptAuthTokens/refresh" =>
-			record_codex_account_refresh_request(recorder, request),
+		{
+			record_codex_account_refresh_request(recorder, request)
+		},
 		_ => recorder.record(message_type(wire_message), &wire_message.raw),
 	}
 }

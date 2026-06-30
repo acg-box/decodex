@@ -1,4 +1,5 @@
-#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
 use std::{
 	env,
 	error::Error,
@@ -28,7 +29,8 @@ use crate::{
 mod auth_failure;
 mod login;
 mod selection;
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;
 
 use self::selection::{account_summaries, account_summary_is_limited, compare_account_candidates};
 pub(crate) use self::{auth_failure::CodexAccountAuthFailure, login::CodexAccountLogin};
@@ -615,10 +617,12 @@ impl CodexAccountPool {
 						records_changed = true;
 
 						match self.probe_record_usage(&record) {
-							Ok(usage) =>
-								self.activity_summary_from_usage_probe(&record, usage, "succeeded")?,
-							Err(retry_error) =>
-								record.probe_failed_activity_summary(now, "failed", &retry_error),
+							Ok(usage) => {
+								self.activity_summary_from_usage_probe(&record, usage, "succeeded")?
+							},
+							Err(retry_error) => {
+								record.probe_failed_activity_summary(now, "failed", &retry_error)
+							},
 						}
 					},
 					Err(refresh_error) => {

@@ -450,7 +450,7 @@ pub(super) fn autonomy_proposal_record_from_row_parts(
 	})
 }
 
-pub(super) fn migrate_legacy_decision_contract_payload(payload_json: &str) -> Result<String> {
+pub(super) fn migrate_removed_decision_contract_fields(payload_json: &str) -> Result<String> {
 	let mut payload = serde_json::from_str::<Value>(payload_json)?;
 	let readiness = payload
 		.get_mut("execution_readiness")
@@ -463,7 +463,7 @@ pub(super) fn migrate_legacy_decision_contract_payload(payload_json: &str) -> Re
 		readiness.get("proposed_issues").and_then(Value::as_array).is_none_or(Vec::is_empty);
 
 	if should_insert_issues {
-		let summaries = legacy_issue_summary_values(summaries.as_ref());
+		let summaries = removed_issue_summary_values(summaries.as_ref());
 
 		readiness.insert(
 			String::from("proposed_issues"),
@@ -471,7 +471,7 @@ pub(super) fn migrate_legacy_decision_contract_payload(payload_json: &str) -> Re
 				summaries
 					.iter()
 					.enumerate()
-					.map(|(index, summary)| legacy_issue_summary_to_proposed_issue(index, summary))
+					.map(|(index, summary)| removed_issue_summary_to_proposed_issue(index, summary))
 					.collect(),
 			),
 		);
@@ -484,7 +484,7 @@ pub(super) fn migrate_legacy_decision_contract_payload(payload_json: &str) -> Re
 	Ok(serde_json::to_string(&payload)?)
 }
 
-fn legacy_issue_summary_values(value: Option<&Value>) -> Vec<String> {
+fn removed_issue_summary_values(value: Option<&Value>) -> Vec<String> {
 	let summaries = match value {
 		Some(Value::Array(values)) => values
 			.iter()
@@ -504,27 +504,27 @@ fn legacy_issue_summary_values(value: Option<&Value>) -> Vec<String> {
 	};
 
 	if summaries.is_empty() {
-		vec![String::from("Legacy proposed issue summary was empty.")]
+		vec![String::from("Migrated proposed issue summary was empty.")]
 	} else {
 		summaries
 	}
 }
 
-fn legacy_issue_summary_to_proposed_issue(index: usize, summary: &str) -> Value {
+fn removed_issue_summary_to_proposed_issue(index: usize, summary: &str) -> Value {
 	let issue_number = index + 1;
 
 	serde_json::json!({
-		"key": format!("legacy-proposed-issue-{issue_number}"),
-		"title": format!("Legacy proposed issue {issue_number}"),
+		"key": format!("migrated-proposed-issue-{issue_number}"),
+		"title": format!("Migrated proposed issue {issue_number}"),
 		"objective": summary,
 		"stage": "handoff",
 		"dependencies": [],
-		"conflict_domains": ["legacy_decision_contract_migration"],
+		"conflict_domains": ["removed_decision_contract_field_migration"],
 		"acceptance": [
-			format!("Review and preserve the migrated legacy proposed issue summary: {summary}")
+			format!("Review and preserve the migrated proposed issue summary: {summary}")
 		],
 		"validation": [
-			"Review the migrated legacy proposed issue before promotion or intake."
+			"Review the migrated proposed issue before promotion or intake."
 		],
 		"risk": [
 			"Migrated from removed proposed_issue_summaries; structured fields may be incomplete."

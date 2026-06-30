@@ -2,7 +2,8 @@
 
 use std::collections::BTreeSet;
 
-#[cfg(test)] use crate::state::RUN_CONTROL_CHANNEL_STATUS_FAILED;
+#[cfg(test)]
+use crate::state::RUN_CONTROL_CHANNEL_STATUS_FAILED;
 use crate::{
 	tracker::{
 		privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier,
@@ -38,7 +39,8 @@ mod stale_active_runtime;
 mod stale_active_worktree;
 
 pub(crate) use closeout::{run_legacy_closeout, run_merged_closeout};
-#[cfg(test)] use context::LINEAR_RATE_LIMIT_BACKOFF_WARNING;
+#[cfg(test)]
+use context::LINEAR_RATE_LIMIT_BACKOFF_WARNING;
 use context::{
 	RecoveryContext, RecoveryRuntimeMutationPolicy, active_recovery_tracker_backoff_message,
 	load_recovery_context_for_dry_run, load_recovery_context_read_only,
@@ -48,7 +50,8 @@ use events::{
 	append_review_handoff_adopt_private_event, append_review_handoff_rebind_private_event,
 	manual_adopt_run_id, review_handoff_adopt_event, review_handoff_rebind_event,
 };
-#[cfg(test)] use events::{current_timestamp, timestamp_after_seconds};
+#[cfg(test)]
+use events::{current_timestamp, timestamp_after_seconds};
 pub(crate) use ghost_lane::{run_ghost_lane_cleanup, run_ghost_lane_diagnose};
 use ghost_lane_cleanup::{
 	apply_ghost_lane_cleanup, apply_ghost_lane_live_status_blockers,
@@ -60,7 +63,8 @@ use ghost_lane_cleanup::{
 	ensure_ghost_lane_live_status_allows_cleanup_with_tracker,
 };
 use ghost_lane_diagnosis::{diagnose_ghost_lanes, diagnose_ghost_lanes_read_only};
-#[cfg(test)] use git_worktree::worktree_blocking_status_lines;
+#[cfg(test)]
+use git_worktree::worktree_blocking_status_lines;
 use git_worktree::{
 	git_toplevel_path, repository_relative_path, worktree_checkout_branch_name, worktree_head_oid,
 	worktree_is_clean,
@@ -69,7 +73,8 @@ use pull_request_inspection::{
 	inspect_project_pull_request, inspect_project_pull_request_merge_commit,
 	inspect_rebind_pull_request, landing_url,
 };
-#[cfg(test)] use reports::GhostLaneDiagnostic;
+#[cfg(test)]
+use reports::GhostLaneDiagnostic;
 use reports::{
 	GhostLaneRecoveryReport, ReviewHandoffRecoveryReport, StaleActiveRecoveryReport,
 	render_ghost_lane_issue, render_ghost_lane_recovery_report,
@@ -89,7 +94,8 @@ pub(crate) use review_handoff::{
 };
 #[cfg(test)]
 use review_handoff::{validate_adopt_existing_worktree_mapping, validate_existing_handoff_refresh};
-#[cfg(test)] use review_handoff_apply::write_review_lifecycle_markers_with_rollback;
+#[cfg(test)]
+use review_handoff_apply::write_review_lifecycle_markers_with_rollback;
 use review_handoff_apply::{apply_review_handoff_adopt, apply_review_handoff_rebind};
 #[cfg(test)]
 use review_handoff_diagnosis::{
@@ -153,4 +159,5 @@ fn sorted_unique(values: Vec<String>) -> Vec<String> {
 	set.into_iter().collect()
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

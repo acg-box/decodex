@@ -232,8 +232,9 @@ where
 {
 	let refreshed = match tracker.refresh_issues(&[run.issue_id().to_owned()]) {
 		Ok(refreshed) => refreshed,
-		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, run.issue_id()) =>
-			Vec::new(),
+		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, run.issue_id()) => {
+			Vec::new()
+		},
 		Err(error) => return Err(error),
 	};
 

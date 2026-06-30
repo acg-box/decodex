@@ -16,14 +16,16 @@ mod tool_schemas;
 mod tools;
 mod types;
 
-#[cfg(test)] use self::http::{McpHttpHandler, McpHttpSessions, http_header_end};
+#[cfg(test)]
+use self::http::{McpHttpHandler, McpHttpSessions, http_header_end};
 #[cfg(test)]
 use self::observability::{
 	mcp_activity_tail_resource, mcp_pr_review_state_resource, mcp_public_post_review_lane,
 	mcp_run_activity_summary, mcp_run_resource, mcp_status_live_resource,
 	sanitize_mcp_observability_value,
 };
-#[cfg(test)] use self::resources::ResourceContent;
+#[cfg(test)]
+use self::resources::ResourceContent;
 pub(crate) use self::types::{McpCapabilityProfile, McpServeRequest, McpTransport};
 use self::{
 	context::McpContext,
@@ -185,4 +187,5 @@ fn safe_autonomy_record_identifier(value: &str) -> bool {
 		&& !value.contains("..")
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

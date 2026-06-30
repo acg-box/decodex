@@ -1,4 +1,5 @@
-#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
 use std::{
 	collections::BTreeMap,
 	fs,

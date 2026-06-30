@@ -654,7 +654,7 @@ fn loop_guardrail_requires_human_when_boundary_evidence_is_missing() {
 }
 
 #[test]
-fn loop_guardrail_stops_unchanged_remaining_delta_when_validation_text_changes() {
+fn loop_guardrail_stops_validation_repeat_when_validation_text_changes() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("In Progress", &[]);
@@ -690,9 +690,9 @@ fn loop_guardrail_stops_unchanged_remaining_delta_when_validation_text_changes()
 		&error,
 	)
 	.expect("third unchanged delta should evaluate")
-	.expect("unchanged remaining delta should stop");
+	.expect("normalized validation repeat should stop");
 
-	assert_eq!(stop.reason, orchestrator::LoopGuardrailReason::RemainingDeltaUnchanged);
+	assert_eq!(stop.reason, orchestrator::LoopGuardrailReason::ValidationRepeat);
 	assert_eq!(stop.consecutive_count, 3);
 	assert_eq!(stop.source_error_class.as_deref(), Some("repo_gate_verify_failed"));
 
@@ -701,18 +701,13 @@ fn loop_guardrail_stops_unchanged_remaining_delta_when_validation_text_changes()
 		.expect("validation checkpoint should read")
 		.expect("validation checkpoint should exist");
 
-	assert_eq!(
-		validation_checkpoint.consecutive_count(),
-		1,
-		"changing validation text should keep validation_repeat below threshold"
+	assert_eq!(validation_checkpoint.consecutive_count(), 3);
+	assert!(
+		validation_checkpoint
+			.fingerprint()
+			.contains("repo_gate_verify_failed:repo_gate:validation_repair"),
+		"normalized fingerprint should not include raw error text"
 	);
-
-	let delta_checkpoint = state_store
-		.loop_guardrail_checkpoint(config.service_id(), &issue.id, "remaining_delta_unchanged")
-		.expect("remaining-delta checkpoint should read")
-		.expect("remaining-delta checkpoint should exist");
-
-	assert_eq!(delta_checkpoint.consecutive_count(), 3);
 }
 
 #[test]

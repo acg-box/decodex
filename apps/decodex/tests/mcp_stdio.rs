@@ -350,7 +350,7 @@ worktree_root = ".worktrees"
 
 fn git_status_success(cwd: &Path, args: &[&str]) {
 	let output =
-		Command::new("git").arg("-C").arg(cwd).args(args).output().expect("git should run");
+		hermetic_git_command().arg("-C").arg(cwd).args(args).output().expect("git should run");
 
 	assert!(
 		output.status.success(),
@@ -358,6 +358,28 @@ fn git_status_success(cwd: &Path, args: &[&str]) {
 		args,
 		String::from_utf8_lossy(&output.stderr)
 	);
+}
+
+fn hermetic_git_command() -> Command {
+	let mut command = Command::new("git");
+
+	command
+		.env("GIT_CONFIG_GLOBAL", "/dev/null")
+		.env("GIT_CONFIG_SYSTEM", "/dev/null")
+		.env("GIT_TERMINAL_PROMPT", "0")
+		.env("GCM_INTERACTIVE", "never")
+		.args([
+			"-c",
+			"core.hooksPath=/dev/null",
+			"-c",
+			"commit.gpgsign=false",
+			"-c",
+			"tag.gpgsign=false",
+			"-c",
+			"init.defaultBranch=main",
+		]);
+
+	command
 }
 
 fn write_file(path: PathBuf, contents: &str) {

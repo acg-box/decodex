@@ -1,4 +1,5 @@
-#[cfg(unix)] use std::os::fd::IntoRawFd;
+#[cfg(unix)]
+use std::os::fd::IntoRawFd;
 use std::{
 	cell::RefCell,
 	collections::{BTreeSet, HashMap},
@@ -52,7 +53,7 @@ use crate::state::{
 	RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, ReviewPolicyCheckpointInput,
 	StateStore, WorktreeMapping,
 };
-use crate::test_support::TestEnvVarGuard;
+use crate::test_support::{TestEnvVarGuard, hermetic_git_command};
 #[rustfmt::skip]
 use crate::tracker::{self, IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker, TrackerLabel, TrackerState, TrackerTeam, records::{LinearExecutionEventIdentity}};
 #[rustfmt::skip]
@@ -871,9 +872,7 @@ fn add_external_review_findings(review_state: &mut PullRequestReviewState, body:
 }
 
 fn git_output(worktree_path: &Path, args: &[&str]) -> String {
-	let output = Command::new("git")
-		.arg("-c")
-		.arg("core.hooksPath=/dev/null")
+	let output = hermetic_git_command()
 		.arg("-C")
 		.arg(worktree_path)
 		.args(args)
@@ -891,9 +890,7 @@ fn git_output(worktree_path: &Path, args: &[&str]) -> String {
 }
 
 fn git_status_success(worktree_path: &Path, args: &[&str]) {
-	let output = Command::new("git")
-		.arg("-c")
-		.arg("core.hooksPath=/dev/null")
+	let output = hermetic_git_command()
 		.arg("-C")
 		.arg(worktree_path)
 		.args(args)
@@ -1054,7 +1051,7 @@ fn sample_pull_request_review_state_repository(
 }
 
 fn try_git_local_config_value(repo_root: &Path, key: &str) -> Option<String> {
-	let output = Command::new("git")
+	let output = hermetic_git_command()
 		.arg("-C")
 		.arg(repo_root)
 		.args(["config", "--local", "--get", key])
@@ -1074,7 +1071,7 @@ fn try_git_local_config_value(repo_root: &Path, key: &str) -> Option<String> {
 }
 
 fn git_remote_url(repo_root: &Path, remote_name: &str) -> Option<String> {
-	let output = Command::new("git")
+	let output = hermetic_git_command()
 		.arg("-C")
 		.arg(repo_root)
 		.args(["remote", "get-url", remote_name])

@@ -100,7 +100,7 @@ fn merged_closeout_retry_exhaustion_reports_cleanup_blocker_with_pr_url_after_de
 	initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
 
 	assert!(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["push", "origin", &format!("HEAD:{}", worktree.branch_name)])
@@ -286,7 +286,7 @@ fn cleanup_completed_post_review_lane_deletes_local_lane_branch_after_worktree_c
 	initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
 
 	assert!(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["push", "origin", &format!("HEAD:{}", worktree.branch_name)])
@@ -434,7 +434,7 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delet
 	initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
 
 	assert!(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["push", "origin", &format!("HEAD:{}", worktree.branch_name)])
@@ -443,7 +443,7 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delet
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["checkout", "--quiet", "--detach"])
@@ -452,7 +452,7 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delet
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args([
