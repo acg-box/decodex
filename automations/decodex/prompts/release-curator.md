@@ -20,7 +20,7 @@ Required reads:
 - `docs/spec/social-publishing.md`
 
 Workflow:
-1. Read `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json` first. Run `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar refresh-release-delta` only when that checkpoint artifact is missing, stale, invalid, or explicitly needed for a newly observed release tag. Do not refresh the upstream review queue or perform deep source analysis here.
+1. Read `.agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json` first. Run `cargo run -p radar -- refresh-release-delta` only when that checkpoint artifact is missing, stale, invalid, or explicitly needed for a newly observed release tag. Do not refresh the upstream review queue or perform deep source analysis here.
 2. Compare release/changelog claims against the shared `upstream_impact/v1` artifacts
    produced by Decodex Radar Review under
    `.agent/automations/decodex/cache/github/impact`. Use `release_delta/v1`,
@@ -33,7 +33,7 @@ Workflow:
    `.agent/automations/decodex/cache/github/social-candidates`; for Radar-derived
    candidates, include the consumed shared impact artifact in
    `source_refs.upstream_impacts`.
-5. Validate changed JSON with `cargo run --manifest-path apps/decodex/Cargo.toml --bin decodex -- radar validate`.
+5. Validate changed JSON with `cargo run -p radar -- validate`.
 
 Terminal report:
 Report consumed evidence, selected mode, generated or updated paths, candidate worthiness, no-op/defer/skip decisions, validation evidence, style/reference gates used, and residual caveats. Archive the run thread after a terminal outcome when no human handoff remains.

@@ -1,6 +1,6 @@
 ---
 name: github-signal
-description: Use when turning a reviewed GitHub bundle and code-analysis result into a Decodex signal draft, especially for writing or updating the local editorial analysis JSON that feeds `decodex radar render-signal`.
+description: Use when turning a reviewed GitHub bundle and code-analysis result into a Decodex signal draft, especially for writing or updating the local editorial analysis JSON that feeds `radar render-signal`.
 ---
 
 # Decodex GitHub Signal
@@ -12,7 +12,7 @@ plugin.
 
 This skill does not replace the deterministic Radar CLI or upstream source analysis.
 It consumes a reviewed bundle plus source-backed analysis and drafts the JSON that
-`decodex radar render-signal` renders into a final `signal_entry/v1`.
+`radar render-signal` renders into a final `signal_entry/v1`.
 
 ## Read before drafting
 
@@ -103,7 +103,7 @@ Write a JSON analysis draft with these fields:
    evidence shows Decodex may need adoption, compatibility mitigation, or discovery;
    cite the shared `upstream_impact/v1` and do not create Linear issues or mutate
    runtime state from this skill.
-7. Render the final signal entry with `decodex radar render-signal`.
+7. Render the final signal entry with `radar render-signal`.
 8. Validate the published signal collection and site build.
 
 ## Commands
@@ -111,13 +111,13 @@ Write a JSON analysis draft with these fields:
 Validate a bundle:
 
 ```bash
-decodex radar bundle validate .agent/automations/decodex/cache/github/bundles/<bundle>.json
+radar bundle validate .agent/automations/decodex/cache/github/bundles/<bundle>.json
 ```
 
 Render the final signal entry after drafting:
 
 ```bash
-decodex radar render-signal \
+radar render-signal \
   --bundle .agent/automations/decodex/cache/github/bundles/<bundle>.json \
   --analysis .agent/automations/decodex/cache/generated/analysis/<bundle>.analysis.json \
   --out .agent/automations/decodex/cache/site-content/signals/<bundle>.json
@@ -126,7 +126,7 @@ decodex radar render-signal \
 Validate the published output:
 
 ```bash
-decodex radar validate .agent/automations/decodex/cache/site-content/signals
+radar validate .agent/automations/decodex/cache/site-content/signals
 npm run build --prefix site
 npm run check --prefix site
 ```

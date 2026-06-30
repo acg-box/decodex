@@ -7,7 +7,7 @@ authority: current_state
 owner: automation
 tags: [reference, codex, compatibility]
 source_refs: [https://github.com/openai/codex/releases, https://www.npmjs.com/package/@openai/codex]
-code_refs: [apps/decodex/src/agent/app_server.rs, apps/decodex/src/radar.rs, docs/spec/app-server.md]
+code_refs: [apps/decodex/src/agent/app_server.rs, apps/radar/src/lib.rs, docs/spec/app-server.md]
 drift_watch: [codex --version, npm view @openai/codex version dist-tags --json, decodex probe, release_delta/v1, control_plane_upgrade_candidate/v1]
 last_verified: 2026-06-27
 ---

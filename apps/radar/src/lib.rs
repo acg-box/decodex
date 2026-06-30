@@ -1,4 +1,4 @@
-//! Rust-owned Radar artifact contracts and file validation.
+//! Radar auxiliary automation and artifact tooling.
 
 use std::{
 	collections::{BTreeMap, BTreeSet, HashSet},
@@ -20,6 +20,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use crate::prelude::eyre;
 
 mod artifact_validation;
+mod cli;
 mod github_api;
 mod github_bundle_client;
 mod github_token;
@@ -30,6 +31,40 @@ mod review_queue;
 mod signal_render;
 mod social_publish;
 mod source_bundle;
+
+mod prelude {
+	pub use color_eyre::{Result, eyre};
+}
+
+#[cfg(test)]
+mod test_support {
+	use std::sync::{Mutex, MutexGuard, OnceLock};
+
+	pub(crate) struct TestEnvLockGuard {
+		_lock: MutexGuard<'static, ()>,
+	}
+
+	pub(crate) fn lock_test_env() -> TestEnvLockGuard {
+		TestEnvLockGuard {
+			_lock: test_env_mutex().lock().expect("test env mutex should not be poisoned"),
+		}
+	}
+
+	fn test_env_mutex() -> &'static Mutex<()> {
+		static TEST_ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+
+		TEST_ENV_MUTEX.get_or_init(|| Mutex::new(()))
+	}
+}
+
+/// Run the Radar CLI.
+pub fn run() -> prelude::Result<()> {
+	use clap::Parser as _;
+
+	color_eyre::install()?;
+
+	cli::Cli::parse().run()
+}
 
 #[cfg(test)] use artifact_validation::has_legacy_multi_agent_v2_context;
 use artifact_validation::{
@@ -503,7 +538,7 @@ fn repo_root() -> crate::prelude::Result<PathBuf> {
 
 	loop {
 		if candidate.join("automations/decodex/scripts/github/README.md").is_file()
-			&& candidate.join("apps/decodex/src/radar.rs").is_file()
+			&& candidate.join("apps/radar/src/lib.rs").is_file()
 		{
 			return Ok(candidate);
 		}

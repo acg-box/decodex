@@ -15,7 +15,7 @@ Purpose: Define the normalized GitHub input bundle that feeds Decodex signal ana
 Status: normative
 
 Read this when:
-- You are changing `decodex radar bundle build` or bundle normalization behavior.
+- You are changing `radar bundle build` or bundle normalization behavior.
 - You are deciding what data Codex should read before drafting a signal.
 - You are validating whether a bundle contains enough context for GitHub-first analysis.
 
@@ -31,11 +31,11 @@ other non-deterministic editorial state.
 The Rust CLI owns deterministic bundle building and validation:
 
 ```sh
-decodex radar bundle build --repo openai/codex --pr 15222 --out .agent/automations/decodex/cache/github/bundles/openai-codex-pr-15222.json
-decodex radar bundle validate .agent/automations/decodex/cache/github/bundles/openai-codex-pr-15222.json
+radar bundle build --repo openai/codex --pr 15222 --out .agent/automations/decodex/cache/github/bundles/openai-codex-pr-15222.json
+radar bundle validate .agent/automations/decodex/cache/github/bundles/openai-codex-pr-15222.json
 ```
 
-The Rust `decodex radar bundle ...` surface is the single active deterministic bundle
+The Rust `radar bundle ...` surface is the single active deterministic bundle
 command path.
 
 Defines:
