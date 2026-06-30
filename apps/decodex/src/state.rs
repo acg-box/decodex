@@ -1,36 +1,12 @@
 //! Persistent single-machine runtime state for active Decodex execution.
 
-#[cfg(unix)] use std::os::{
-	fd::{AsRawFd, FromRawFd},
-	unix::ffi::OsStrExt,
-};
-use std::{
-	cmp,
-	collections::{HashMap, HashSet},
-	fs::{self, File, OpenOptions, TryLockError},
-	io::{ErrorKind, Read, Seek, SeekFrom, Write},
-	path::{Path, PathBuf},
-	sync::{Mutex, MutexGuard},
-};
+use std::{fs, path::Path};
 
 use serde_json::Value;
 
-use crate::{
-	autonomy_objective::{
-		AutonomyObjectiveAcceptance, AutonomyObjectiveContract, AutonomyObjectiveRejection,
-		AutonomyObjectiveState, AutonomyObjectiveSupersession,
-	},
-	autonomy_proposal::{
-		AutonomyProposal, AutonomyProposalCompileInput, AutonomyProposalDecisionBridgeAuthority,
-		AutonomyProposalRefusalReason,
-	},
-	autonomy_signal::AutonomySignal,
-	execution_program::ExecutionProgram,
-	loop_contract::{DecisionContract, DecisionContractStatus, DecisionPromotion},
-	prelude::{Result, eyre},
-	tracker::records::{self, LinearExecutionEventRecord},
-};
+use crate::prelude::{Result, eyre};
 
+mod internal;
 mod models;
 mod project_run_recovery;
 mod protocol_events;
@@ -40,34 +16,8 @@ mod run_attempts;
 mod runtime_records;
 mod runtime_row_parsers;
 mod sqlite_store;
+mod store;
 mod store_run_control;
-
-use runtime_records::{
-	AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord, AutonomyObjectiveRuntimeRowParts,
-	AutonomyProposalKey, AutonomyProposalRuntimeRecord, AutonomyProposalRuntimeRowParts,
-	AutonomySignalKey, AutonomySignalRuntimeRecord, AutonomySignalRuntimeRowParts,
-	DecisionContractKey, DecisionContractRuntimeRecord, DecisionContractRuntimeRowParts,
-	EvidenceArtifactKey, EvidenceArtifactRuntimeRecord, ExecutionProgramKey,
-	ExecutionProgramRuntimeRecord, ExecutionProgramRuntimeRowParts, GuardRetention,
-	LinearExecutionEventRuntimeRecord, LoopGuardrailKey, LoopGuardrailRuntimeRecord,
-	PrivateExecutionEventRuntimeRecord, ProgramIntakePlanKey, ProgramIssueMappingKey,
-	ProtocolEventRecord, ProtocolEventSummaryRecord, ReviewLifecycleKey,
-	ReviewLifecycleRuntimeRecord, ReviewPolicyKey, ReviewPolicyRuntimeRecord,
-	RunActivitySummaryRecord, RunAttemptRecord, RunControlChannelRecord, TimestampParts,
-	WorktreeMappingRecord,
-};
-use runtime_row_parsers::{
-	compare_autonomy_proposal_runtime_records, compare_autonomy_signal_runtime_records,
-	compare_decision_contract_runtime_records, compare_execution_program_runtime_records,
-	compare_linear_execution_event_runtime_records,
-	compare_private_execution_event_runtime_records, compare_program_intake_plan_records,
-	compare_program_issue_mapping_records, compare_recent_autonomy_proposal_runtime_records,
-	compare_recent_autonomy_signal_runtime_records, parse_linear_execution_event_unix,
-	protocol_event_summary_from_events, timestamp_parts, validate_private_execution_event_inputs,
-};
-use sqlite_store::SqliteStateStore;
-
-include!("state/store.rs");
 
 #[allow(unused_imports)] pub(crate) use models::WorktreeProvenance;
 pub(crate) use models::{
@@ -82,6 +32,29 @@ pub(crate) use models::{
 	RunControlChannel, WORKTREE_PROVENANCE_FILESYSTEM_SCAN, WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN,
 	WORKTREE_PROVENANCE_LEGACY_UNKNOWN, WORKTREE_PROVENANCE_RUNTIME_RECORDED,
 	WORKTREE_PROVENANCE_RUNTIME_RECOVERED, WorktreeMapping, worktree_provenance,
+};
+use runtime_records::{
+	AutonomyObjectiveRuntimeRecord, AutonomyObjectiveRuntimeRowParts,
+	AutonomyProposalRuntimeRecord, AutonomyProposalRuntimeRowParts, AutonomySignalRuntimeRecord,
+	AutonomySignalRuntimeRowParts, DecisionContractRuntimeRecord, DecisionContractRuntimeRowParts,
+	ExecutionProgramRuntimeRecord, ExecutionProgramRuntimeRowParts,
+	LinearExecutionEventRuntimeRecord, PrivateExecutionEventRuntimeRecord, ProtocolEventRecord,
+	ProtocolEventSummaryRecord, RunActivitySummaryRecord, RunAttemptRecord,
+	RunControlChannelRecord, TimestampParts, WorktreeMappingRecord,
+};
+use runtime_row_parsers::{
+	compare_autonomy_proposal_runtime_records, compare_autonomy_signal_runtime_records,
+	compare_decision_contract_runtime_records, compare_execution_program_runtime_records,
+	compare_linear_execution_event_runtime_records,
+	compare_private_execution_event_runtime_records, compare_program_intake_plan_records,
+	compare_program_issue_mapping_records, compare_recent_autonomy_proposal_runtime_records,
+	compare_recent_autonomy_signal_runtime_records, parse_linear_execution_event_unix,
+	protocol_event_summary_from_events, timestamp_parts, validate_private_execution_event_inputs,
+};
+pub use store::StateStore;
+pub(crate) use store::{
+	ConnectorBackoffInput, LoopGuardrailCheckpointInput, ProjectLoopEvidenceSnapshot,
+	ReviewCheckpointArtifactLookup, ReviewPolicyCheckpointInput,
 };
 
 pub(crate) use run_activity_marker::{
@@ -102,7 +75,16 @@ pub(crate) use run_activity_marker::{
 	write_run_activity_marker_record,
 };
 
-include!("state/internal.rs");
+pub(crate) use internal::{CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker};
+use internal::{
+	DispatchSlotConfig, DispatchSlotGuard, IssueClaimGuard, StateData,
+	acquire_shared_lock_coordinator, apply_derived_program_intake_state, clear_close_on_exec,
+	compare_project_run_status, derived_program_intake_plan_records,
+	derived_program_issue_mapping_records, dispatch_slot_lock_path, issue_claim_id_from_path,
+	issue_claim_lock_path, prune_unlocked_shared_lock_files, read_issue_claim_record,
+	remove_lock_file_if_exists, set_close_on_exec, write_issue_claim_record,
+};
+use store::running_run_attempt_status;
 
 pub(crate) const RUN_ACTIVITY_MARKER_FILE: &str = ".decodex-run-activity";
 pub(crate) const RUN_OPERATION_IDLE: &str = "idle";

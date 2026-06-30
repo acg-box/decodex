@@ -3,8 +3,31 @@ use sha1::Sha1;
 
 use crate::accounts::{self, AccountUseRequest};
 
-const OPERATOR_DASHBOARD_HTML: &str =
-	include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/operator_dashboard.html"));
+static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+	[
+		include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/orchestrator/operator_dashboard/head.html"
+		)),
+		include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/orchestrator/operator_dashboard/styles.css"
+		)),
+		include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/orchestrator/operator_dashboard/body.html"
+		)),
+		include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/orchestrator/operator_dashboard/app.js"
+		)),
+		include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/orchestrator/operator_dashboard/tail.html"
+		)),
+	]
+	.concat()
+});
 const OPERATOR_DASHBOARD_ICON_PNG: &[u8] =
 	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/icon.png"));
 const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
