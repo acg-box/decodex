@@ -67,11 +67,17 @@ pub(crate) fn build_landed_merge_commit_message(
 	head_message: &str,
 	expected_authority: &str,
 ) -> Result<String> {
-	let record = parse_commit_message_record(head_message, expected_authority)?;
+	let record = parse_commit_message_record(head_message, Some(expected_authority))?;
 	let landed_summary = landing_summary(&record.summary);
 	let authority = normalize_commit_authority("expected_authority", expected_authority)?;
 
 	build_commit_message(&landed_summary, &authority, &record.related, record.breaking)
+}
+
+pub(crate) fn validate_commit_message_subject(message: &str) -> Result<()> {
+	parse_commit_message_record(message, None)?;
+
+	Ok(())
 }
 
 pub(crate) fn looks_like_issue_identifier(value: &str) -> bool {
@@ -131,7 +137,7 @@ fn landing_summary(summary: &str) -> String {
 
 fn parse_commit_message_record(
 	message: &str,
-	expected_authority: &str,
+	expected_authority: Option<&str>,
 ) -> Result<CommitMessageRecord> {
 	let message = normalize_single_line_field("commit_message", message)?;
 	let mut record: CommitMessageRecord = serde_json::from_str(&message)?;
@@ -146,12 +152,15 @@ fn parse_commit_message_record(
 	record.summary = normalize_single_line_field("summary", &record.summary)?;
 
 	let authority = normalize_commit_authority("authority", &record.authority)?;
-	let expected_authority = normalize_commit_authority("expected_authority", expected_authority)?;
+	if let Some(expected_authority) = expected_authority {
+		let expected_authority =
+			normalize_commit_authority("expected_authority", expected_authority)?;
 
-	if !authority.eq_ignore_ascii_case(&expected_authority) {
-		eyre::bail!(
-			"`commit_message.authority` `{authority}` does not match expected authority `{expected_authority}`."
-		);
+		if !authority.eq_ignore_ascii_case(&expected_authority) {
+			eyre::bail!(
+				"`commit_message.authority` `{authority}` does not match expected authority `{expected_authority}`."
+			);
+		}
 	}
 
 	for related in &mut record.related {
@@ -289,6 +298,41 @@ mod tests {
 				.expect_err("invalid landed head subject should fail");
 
 			assert!(error.to_string().contains(expected));
+		}
+	}
+
+	#[test]
+	fn validate_commit_message_subject_accepts_schema_record_without_expected_authority() {
+		commit_message::validate_commit_message_subject(
+			r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"manual"}"#,
+		)
+		.expect("manual schema subject should validate");
+	}
+
+	#[test]
+	fn validate_commit_message_subject_rejects_non_schema_records() {
+		for (message, expected) in [
+			("ship fix", "expected value"),
+			(
+				r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"manual","extra":true}"#,
+				"unknown field",
+			),
+			(
+				r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"manual","related":["not-an-issue"]}"#,
+				"issue identifier",
+			),
+			(
+				r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"not-an-issue"}"#,
+				"authority",
+			),
+		] {
+			let error = commit_message::validate_commit_message_subject(message)
+				.expect_err("invalid schema subject should fail");
+
+			assert!(
+				error.to_string().contains(expected),
+				"`{message}` failed with unexpected error: {error}"
+			);
 		}
 	}
 }
