@@ -103,6 +103,40 @@ enum PanelMotion {
 	static let hover = Animation.interactiveSpring(response: 0.22, dampingFraction: 0.86, blendDuration: 0.04)
 	static let press = Animation.interactiveSpring(response: 0.16, dampingFraction: 0.78, blendDuration: 0.02)
 	static let state = Animation.interactiveSpring(response: 0.24, dampingFraction: 0.88, blendDuration: 0.05)
+	static let inlineLayout = Animation.interactiveSpring(response: 0.2, dampingFraction: 0.9, blendDuration: 0.03)
+	static let panelLayout = Animation.interactiveSpring(response: 0.3, dampingFraction: 0.92, blendDuration: 0.05)
+	static let accountRemoval = Animation.interactiveSpring(response: 0.28, dampingFraction: 0.94, blendDuration: 0.04)
+}
+
+extension AnyTransition {
+	static var panelSection: AnyTransition {
+		.asymmetric(
+			insertion: .opacity
+				.combined(with: .offset(y: -4))
+				.combined(with: .scale(scale: 0.992, anchor: .top)),
+			removal: .opacity
+				.combined(with: .offset(y: -3))
+				.combined(with: .scale(scale: 0.996, anchor: .top))
+		)
+	}
+
+	static var accountRowRemoval: AnyTransition {
+		.asymmetric(
+			insertion: .opacity
+				.combined(with: .offset(y: -3))
+				.combined(with: .scale(scale: 0.992, anchor: .top)),
+			removal: .opacity
+				.combined(with: .offset(y: -5))
+				.combined(with: .scale(scale: 0.985, anchor: .top))
+		)
+	}
+
+	static var panelInline: AnyTransition {
+		.asymmetric(
+			insertion: .opacity.combined(with: .offset(y: -2)),
+			removal: .opacity.combined(with: .offset(y: -2))
+		)
+	}
 }
 
 private extension View {
