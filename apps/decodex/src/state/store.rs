@@ -1678,7 +1678,7 @@ impl StateStore {
 		state.events.entry(run_id.to_owned()).or_default().insert(insert_index, event);
 
 		if self.sqlite.is_some() && !had_cached_summary {
-			self.refresh_protocol_event_summaries_for_runs_locked(state, &[run_id.to_owned()])?;
+			self.rebuild_protocol_event_summaries_for_runs_locked(state, &[run_id.to_owned()])?;
 		} else if self.sqlite.is_some() {
 			let summary = state.event_summaries.entry(run_id.to_owned()).or_default();
 
@@ -1690,7 +1690,7 @@ impl StateStore {
 
 				self.upsert_protocol_event_summary_locked(run_id, &summary)?;
 			} else {
-				self.refresh_protocol_event_summaries_for_runs_locked(state, &[run_id.to_owned()])?;
+				self.rebuild_protocol_event_summaries_for_runs_locked(state, &[run_id.to_owned()])?;
 			}
 		} else if let Some(events) = state.events.get(run_id) {
 			let summary = protocol_event_summary_from_events(events);
@@ -3917,6 +3917,20 @@ impl StateStore {
 			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.load_protocol_event_summaries_for_runs(state, run_ids)
+	}
+
+	fn rebuild_protocol_event_summaries_for_runs_locked(
+		&self,
+		state: &mut StateData,
+		run_ids: &[String],
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.rebuild_protocol_event_summaries_for_runs(state, run_ids)
 	}
 
 	fn upsert_protocol_event_summary_locked(
