@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::{
 	commit_message,
 	prelude::{Result, eyre},
-	state::{self, ProjectRunStatus, StateStore},
+	state::{self, ProjectRunStatus, StateStore, WorktreeMapping},
 	tracker::{self, IssueTracker, TrackerIssue},
 	workflow::WorkflowDocument,
 };
@@ -14,7 +14,7 @@ use super::{
 	STALE_ACTIVE_BLOCKED_CLASSIFICATION, STALE_ACTIVE_CLASSIFICATION,
 	STALE_ACTIVE_STATE_RESTORE_CLASSIFICATION,
 	context::RecoveryRuntimeMutationPolicy,
-	process_liveness::stale_active_optional_marker_process_liveness,
+	process_liveness::{StaleActiveProcessLiveness, stale_active_optional_marker_process_liveness},
 	reports::StaleActiveDiagnostic,
 	stale_active_authority::{
 		inspect_stale_active_private_evidence, inspect_stale_active_review_lineage,
@@ -128,34 +128,29 @@ where
 	let runs = stale_active_runs(project_id, state_store, &issue_keys, listing_mode)?;
 	let latest_run = latest_stale_active_run(&runs);
 	let run_lease = runs.iter().any(ProjectRunStatus::run_lease);
-	if run_lease {
-		blockers.push(String::from("run_lease_present"));
-	} else {
-		evidence.push(String::from("run_lease_missing"));
-	}
-	let mapping = match stale_active_worktree_mapping_for_keys(state_store, &issue_keys) {
-		Ok(mapping) => mapping,
-		Err(error) => {
-			blockers.push(String::from("worktree_mapping_ambiguous"));
-			evidence.push(format!("worktree_mapping_error:{}", error));
-
-			None
-		},
-	};
+	record_stale_active_run_lease_evidence(run_lease, &mut evidence, &mut blockers);
+	let mapping =
+		read_stale_active_worktree_mapping(state_store, &issue_keys, &mut evidence, &mut blockers);
 	let worktree_path = mapping
 		.as_ref()
 		.map(|mapping| mapping.worktree_path().to_path_buf())
 		.unwrap_or_else(|| worktree_root.join(&issue.identifier));
-	let marker = match state::read_run_activity_marker_snapshot(&worktree_path) {
-		Ok(marker) => marker,
-		Err(error) => {
-			blockers.push(String::from("worktree_tracked_changes_unknown"));
-			evidence.push(format!("worktree_status_error:{}", error));
-
-			None
-		},
-	};
+	let marker = read_stale_active_activity_marker(&worktree_path, &mut evidence, &mut blockers);
 	let marker_liveness = stale_active_optional_marker_process_liveness(marker.as_ref());
+	record_recoverable_dead_leased_ownership(
+		StaleActiveDeadOwnershipInput {
+			project_id,
+			state_store,
+			issue_keys: &issue_keys,
+			marker: marker.as_ref(),
+			marker_liveness,
+			latest_run,
+			run_lease,
+			active_shared_claim,
+		},
+		&mut evidence,
+		&mut blockers,
+	);
 	inspect_stale_active_run_evidence(&runs, marker_liveness, &mut evidence, &mut blockers);
 	let worktree_state = inspect_stale_active_worktree(
 		&worktree_path,
@@ -178,6 +173,7 @@ where
 		state_store,
 		&issue_keys,
 		latest_run,
+		marker_liveness,
 		&mut evidence,
 		&mut blockers,
 	)?;
@@ -229,6 +225,148 @@ where
 		blockers: super::sorted_unique(blockers),
 		next_action,
 	})
+}
+
+fn record_stale_active_run_lease_evidence(
+	run_lease: bool,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) {
+	if run_lease {
+		blockers.push(String::from("run_lease_present"));
+	} else {
+		evidence.push(String::from("run_lease_missing"));
+	}
+}
+
+fn read_stale_active_worktree_mapping(
+	state_store: &StateStore,
+	issue_keys: &[String],
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> Option<WorktreeMapping> {
+	match stale_active_worktree_mapping_for_keys(state_store, issue_keys) {
+		Ok(mapping) => mapping,
+		Err(error) => {
+			blockers.push(String::from("worktree_mapping_ambiguous"));
+			evidence.push(format!("worktree_mapping_error:{}", error));
+
+			None
+		},
+	}
+}
+
+fn read_stale_active_activity_marker(
+	worktree_path: &Path,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) -> Option<state::RunActivityMarker> {
+	match state::read_run_activity_marker_snapshot(worktree_path) {
+		Ok(marker) => marker,
+		Err(error) => {
+			blockers.push(String::from("worktree_tracked_changes_unknown"));
+			evidence.push(format!("worktree_status_error:{}", error));
+
+			None
+		},
+	}
+}
+
+struct StaleActiveDeadOwnershipInput<'a> {
+	project_id: &'a str,
+	state_store: &'a StateStore,
+	issue_keys: &'a [String],
+	marker: Option<&'a state::RunActivityMarker>,
+	marker_liveness: StaleActiveProcessLiveness,
+	latest_run: Option<&'a ProjectRunStatus>,
+	run_lease: bool,
+	active_shared_claim: bool,
+}
+
+fn record_recoverable_dead_leased_ownership(
+	input: StaleActiveDeadOwnershipInput<'_>,
+	evidence: &mut Vec<String>,
+	blockers: &mut Vec<String>,
+) {
+	let Some(latest_run) = input.latest_run else {
+		return;
+	};
+	if !(input.run_lease
+		&& stale_active_dead_marker_matches_run(input.marker, input.marker_liveness, latest_run))
+	{
+		return;
+	}
+	let Ok(local_claims) = stale_active_dead_local_claims_for_run(
+		input.project_id,
+		input.state_store,
+		input.issue_keys,
+		latest_run,
+	) else {
+		blockers.push(String::from("active_shared_claim_unknown"));
+		evidence.push(String::from("active_shared_claim_error:dead_local_claim_inspection_failed"));
+
+		return;
+	};
+	if local_claims.matching_claim_count == 0 {
+		return;
+	}
+	if local_claims.incompatible_claim_present {
+		evidence.push(String::from("stale_active_claim_identity_mismatch_present"));
+
+		return;
+	}
+	blockers.retain(|blocker| blocker != "run_lease_present");
+	evidence.push(String::from("stale_run_lease_present"));
+	if input.active_shared_claim {
+		blockers.retain(|blocker| blocker != "active_shared_claim_present");
+		evidence.push(String::from("stale_active_shared_claim_present"));
+	}
+}
+
+fn stale_active_dead_marker_matches_run(
+	marker: Option<&state::RunActivityMarker>,
+	marker_liveness: StaleActiveProcessLiveness,
+	run: &ProjectRunStatus,
+) -> bool {
+	marker_liveness == StaleActiveProcessLiveness::NotAlive
+		&& marker.is_some_and(|marker| {
+			marker.run_id() == run.run_id() && marker.attempt_number() == run.attempt_number()
+		})
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct StaleActiveDeadLocalClaims {
+	matching_claim_count: usize,
+	incompatible_claim_present: bool,
+}
+
+fn stale_active_dead_local_claims_for_run(
+	project_id: &str,
+	state_store: &StateStore,
+	issue_keys: &[String],
+	run: &ProjectRunStatus,
+) -> Result<StaleActiveDeadLocalClaims> {
+	let mut claims = StaleActiveDeadLocalClaims::default();
+
+	for issue_key in issue_keys {
+		let local_claim_matches =
+			state_store.lease_for_issue(issue_key)?.as_ref().is_some_and(|lease| {
+				lease.project_id() == project_id && lease.run_id() == run.run_id()
+			});
+		let active_claim =
+			state_store.issue_has_active_shared_claim_read_only(project_id, issue_key)?;
+		let external_claim =
+			state_store.issue_has_external_shared_claim_read_only(project_id, issue_key)?;
+
+		if local_claim_matches {
+			claims.matching_claim_count += 1;
+		}
+		if external_claim || (active_claim && !local_claim_matches) {
+			claims.incompatible_claim_present = true;
+		}
+	}
+
+	Ok(claims)
 }
 
 fn stale_active_diagnostic_outcome(

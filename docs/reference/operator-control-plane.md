@@ -8,7 +8,7 @@ owner: docs
 tags: [reference]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/mcp.rs]
 drift_watch: [decodex serve, decodex status, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, stale_active_release, stale_active_state_restore_pending, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
-last_verified: 2026-06-28
+last_verified: 2026-06-30
 ---
 # Operator Control Plane
 
@@ -664,16 +664,20 @@ Worktree visibility follows the owning dashboard section:
   status sets `attention_next_action = run_stale_active_recovery` and points to
   `decodex recover stale-active diagnose <ISSUE>` followed by
   `decodex recover stale-active release <ISSUE> --dry-run`. The release command
-  preserves any queue label, treats dead-process runtime telemetry such as
+  preserves any queue label, treats a run lease or active shared claim as recoverable
+  only when the marker run id and attempt match the latest leased run, the local
+  lease belongs to that same project/run, and no external or incompatible shared
+  claim is present, treats dead-process runtime telemetry such as
   implementation phase-goal recovery rows, app-server no-diff loop guardrail
   checkpoints, and no-progress harness outcomes as recoverable only after process
   identity proves the recorded child is gone and
   worktree/branch/private/lineage checks are clean, blocks on review-policy
   checkpoints and issue-id or issue-identifier PR lineage, reads local runtime
   evidence under both issue id keys, terminalizes stale local ownership as
-  `terminal_guarded`, writes a local private `stale_active_release` audit when a
-  stale run attempt exists, repeats the run-lease/shared-claim guard, rechecks tracker
-  labels, and removes only the service active label as the final mutation. If a
+  `terminal_guarded`, clears only matching proven-dead local run leases, writes a
+  local private `stale_active_release` audit when a stale run attempt exists, repeats
+  the run-lease/shared-claim guard, rechecks tracker labels, and removes only the
+  service active label as the final mutation. If a
   retained worktree has tracked changes, untracked non-runtime files, unmerged local
   commits, unavailable default-branch proof, or cannot be inspected, status uses
   `inspect_retained_worktree_changes_before_stale_active_recovery` instead.
