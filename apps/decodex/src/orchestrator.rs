@@ -165,6 +165,8 @@ include!("orchestrator/run_cycle.rs");
 
 include!("orchestrator/runtime_validation.rs");
 
+include!("orchestrator/execution_lifecycle.rs");
+
 include!("orchestrator/execution.rs");
 
 include!("orchestrator/dispatch_policy.rs");
