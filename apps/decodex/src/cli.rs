@@ -1,6 +1,30 @@
+mod account_commands;
+mod docs_okf_commands;
 mod radar_commands;
+mod recovery_commands;
 
-use self::radar_commands::RadarCommand;
+use self::{
+	account_commands::AccountCommand,
+	docs_okf_commands::{DocsCommand, OkfCommand},
+	radar_commands::RadarCommand,
+	recovery_commands::RecoverCommand,
+};
+#[cfg(test)]
+use self::{
+	account_commands::{AccountSubcommand, AccountUseCommand},
+	docs_okf_commands::{
+		DocsGraphCommand, DocsSubcommand, OkfFindCommand, OkfFindFilters, OkfInitCommand,
+		OkfInitProfileArg, OkfSubcommand,
+	},
+	recovery_commands::{
+		GhostLaneCleanupCommand, GhostLaneDiagnoseCommand, GhostLaneRecoveryCommand,
+		GhostLaneRecoverySubcommand, LegacyCloseoutRecoveryCommand, MergedCloseoutRecoveryCommand,
+		RecoverSubcommand, ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand,
+		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
+		StaleActiveDiagnoseCommand, StaleActiveRecoveryCommand, StaleActiveRecoverySubcommand,
+		StaleActiveReleaseCommand,
+	},
+};
 use std::{
 	fs,
 	io::{self, Read as _},
@@ -18,10 +42,8 @@ use clap::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	accounts::{self, AccountImportRequest, AccountLoginRequest, AccountUseRequest},
 	agent,
 	archive_hygiene::{self, ArchiveHygieneRequest},
-	docs_okf::{self, DocsCheckScope, OkfCheckProfile, OkfQuery},
 	maintenance::{self, MaintenanceMode, MaintenancePruneRequest, MaintenanceScope},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
 	mcp::{self, McpCapabilityProfile, McpServeRequest, McpTransport},
@@ -32,11 +54,6 @@ use crate::{
 	},
 	prelude::{Result, eyre},
 	program_intake::{self, GoalIntakeCommandRequest, IssueBatchIntakeCommandRequest},
-	recovery::{
-		self, GhostLaneCleanupRequest, GhostLaneDiagnoseRequest, LegacyCloseoutRecoveryRequest,
-		MergedCloseoutRecoveryRequest, ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest,
-		ReviewHandoffRebindRequest, StaleActiveDiagnoseRequest, StaleActiveReleaseRequest,
-	},
 	research_design::{
 		self, ResearchDesignCompileRequest, ResearchDesignOutcome, ResearchDesignPromoteRequest,
 		ResearchDesignRunInput,
@@ -126,177 +143,6 @@ impl ProjectConfigArgs {
 }
 
 #[derive(Debug, Args)]
-struct DocsCommand {
-	/// Documentation root to validate.
-	#[arg(long, value_name = "DIR", default_value = "docs")]
-	root: PathBuf,
-	#[command(subcommand)]
-	command: DocsSubcommand,
-}
-impl DocsCommand {
-	fn run(&self) -> Result<()> {
-		match &self.command {
-			DocsSubcommand::Check => self.run_check(DocsCheckScope::All),
-			DocsSubcommand::Index => self.run_check(DocsCheckScope::Index),
-			DocsSubcommand::Links => self.run_check(DocsCheckScope::Links),
-			DocsSubcommand::Drift => self.run_check(DocsCheckScope::Drift),
-			DocsSubcommand::Find(args) => run_okf_find(&self.root, &args.filters),
-			DocsSubcommand::Graph(args) => run_okf_graph(&self.root, args.json),
-		}
-	}
-
-	fn run_check(&self, scope: DocsCheckScope) -> Result<()> {
-		let report = docs_okf::run_docs_check(&self.root, scope)?;
-
-		print!("{}", docs_okf::render_docs_check_report(&report));
-
-		if report.has_issues() {
-			eyre::bail!("docs {} check failed.", scope.as_str());
-		}
-
-		Ok(())
-	}
-}
-
-#[derive(Debug, Args)]
-struct OkfCommand {
-	#[command(subcommand)]
-	command: OkfSubcommand,
-}
-impl OkfCommand {
-	fn run(&self) -> Result<()> {
-		match &self.command {
-			OkfSubcommand::Init(args) => args.run(),
-			OkfSubcommand::Check(args) => args.run(),
-			OkfSubcommand::Find(args) => run_okf_find(&args.root, &args.filters),
-			OkfSubcommand::Graph(args) => run_okf_graph(&args.root, args.json),
-		}
-	}
-}
-
-#[derive(Debug, Args)]
-struct OkfInitCommand {
-	/// OKF bundle root to scaffold.
-	#[arg(value_name = "ROOT", default_value = "docs")]
-	root: PathBuf,
-	/// Portable profile scaffold to create.
-	#[arg(long, value_enum, default_value_t = OkfInitProfileArg::RepoMemory)]
-	profile: OkfInitProfileArg,
-}
-impl OkfInitCommand {
-	fn run(&self) -> Result<()> {
-		let profile = OkfCheckProfile::from(self.profile);
-		let init_report = docs_okf::init_okf_bundle(&self.root, profile)?;
-
-		print!("{}", docs_okf::render_okf_init_report(&init_report));
-
-		let check_report = docs_okf::run_okf_check(&self.root, profile)?;
-
-		print!("{}", docs_okf::render_okf_check_report(&check_report));
-
-		if check_report.has_issues() {
-			eyre::bail!("okf {} scaffold validation failed.", check_report.profile().as_str());
-		}
-
-		Ok(())
-	}
-}
-
-#[derive(Debug, Args)]
-struct OkfCheckCommand {
-	/// OKF bundle root.
-	#[arg(value_name = "ROOT", default_value = "docs")]
-	root: PathBuf,
-	/// Validation profile to apply.
-	#[arg(long, value_enum, default_value_t = OkfProfileArg::Core)]
-	profile: OkfProfileArg,
-}
-impl OkfCheckCommand {
-	fn run(&self) -> Result<()> {
-		let profile = OkfCheckProfile::from(self.profile);
-		let report = docs_okf::run_okf_check(&self.root, profile)?;
-
-		print!("{}", docs_okf::render_okf_check_report(&report));
-
-		if report.has_issues() {
-			eyre::bail!("okf {} check failed.", report.profile().as_str());
-		}
-
-		Ok(())
-	}
-}
-
-#[derive(Debug, Args)]
-struct OkfFindCommand {
-	/// OKF bundle root.
-	#[arg(value_name = "ROOT", default_value = "docs")]
-	root: PathBuf,
-	#[command(flatten)]
-	filters: OkfFindFilters,
-}
-
-#[derive(Debug, Args)]
-struct OkfGraphCommand {
-	/// OKF bundle root.
-	#[arg(value_name = "ROOT", default_value = "docs")]
-	root: PathBuf,
-	/// Emit graph JSON instead of a text summary.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct DocsFindCommand {
-	#[command(flatten)]
-	filters: OkfFindFilters,
-}
-
-#[derive(Debug, Args)]
-struct DocsGraphCommand {
-	/// Emit graph JSON instead of a text summary.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct OkfFindFilters {
-	/// Match concept type.
-	#[arg(long = "type")]
-	concept_type: Option<String>,
-	/// Match exact tag. May be repeated.
-	#[arg(long)]
-	tag: Vec<String>,
-	/// Match resource URI substring.
-	#[arg(long)]
-	resource: Option<String>,
-	/// Match source_refs substring.
-	#[arg(long)]
-	source_ref: Option<String>,
-	/// Match code_refs substring.
-	#[arg(long)]
-	code_ref: Option<String>,
-	/// Match related refs substring.
-	#[arg(long)]
-	related: Option<String>,
-	/// Match path, title, or description substring.
-	#[arg(long)]
-	text: Option<String>,
-}
-impl From<&OkfFindFilters> for OkfQuery {
-	fn from(value: &OkfFindFilters) -> Self {
-		Self {
-			concept_type: value.concept_type.clone(),
-			tags: value.tag.clone(),
-			resource: value.resource.clone(),
-			source_ref: value.source_ref.clone(),
-			code_ref: value.code_ref.clone(),
-			related: value.related.clone(),
-			text: value.text.clone(),
-		}
-	}
-}
-
-#[derive(Debug, Args)]
 struct AppCommand {
 	/// Open this Decodex app bundle instead of the installed `Decodex` app.
 	#[arg(long, value_name = "APP_BUNDLE")]
@@ -309,103 +155,6 @@ impl AppCommand {
 	fn run(&self) -> Result<()> {
 		open_decodex_app(self.bundle.as_deref(), self.new)
 	}
-}
-
-#[derive(Debug, Args)]
-struct AccountCommand {
-	#[command(subcommand)]
-	command: AccountSubcommand,
-}
-impl AccountCommand {
-	fn run(&self) -> Result<()> {
-		match &self.command {
-			AccountSubcommand::List(args) => accounts::run_account_list(args.json),
-			AccountSubcommand::Select(args) =>
-				accounts::run_account_select(&args.selector, args.json),
-			AccountSubcommand::Clear(args) => accounts::run_account_clear(args.json),
-			AccountSubcommand::Logout(args) =>
-				accounts::run_account_logout(&args.selector, args.json),
-			AccountSubcommand::ImportAuth(args) =>
-				accounts::run_account_import(&AccountImportRequest {
-					auth_json_path: args.auth_json.clone(),
-					json: args.json,
-				}),
-			AccountSubcommand::Use(args) => accounts::run_account_use(&AccountUseRequest {
-				selector: args.selector.clone(),
-				auth_json_path: args.auth_json.clone(),
-				json: args.json,
-			}),
-			AccountSubcommand::Login(args) => accounts::run_account_login(&AccountLoginRequest {
-				codex_bin: args.codex_bin.clone(),
-				keep_temp_home: args.keep_temp_home,
-			}),
-		}
-	}
-}
-
-#[derive(Debug, Args)]
-struct AccountListCommand {
-	/// Emit structured JSON instead of human-readable text.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct AccountSelectCommand {
-	/// Email, full account id, or redacted fingerprint to pin.
-	selector: String,
-	/// Emit structured JSON instead of human-readable text.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct AccountClearCommand {
-	/// Emit structured JSON instead of human-readable text.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct AccountLogoutCommand {
-	/// Email, full account id, or redacted fingerprint to remove.
-	selector: String,
-	/// Emit structured JSON instead of human-readable text.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct AccountImportCommand {
-	/// Path to a Codex `auth.json` file to import.
-	#[arg(value_name = "AUTH_JSON")]
-	auth_json: PathBuf,
-	/// Emit structured JSON instead of human-readable text.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct AccountUseCommand {
-	/// Email, full account id, or redacted fingerprint to write into Codex `auth.json`.
-	selector: String,
-	/// Override the Codex `auth.json` destination. Defaults to `$CODEX_HOME/auth.json`
-	/// or `~/.codex/auth.json`.
-	#[arg(long, value_name = "AUTH_JSON")]
-	auth_json: Option<PathBuf>,
-	/// Emit structured JSON instead of human-readable text.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct AccountLoginCommand {
-	/// Codex CLI binary used for isolated device login.
-	#[arg(long, default_value = "codex")]
-	codex_bin: String,
-	/// Keep the temporary Codex home after login for manual inspection.
-	#[arg(long, hide = true)]
-	keep_temp_home: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1088,222 +837,6 @@ impl ResearchPromoteCommand {
 }
 
 #[derive(Debug, Args)]
-struct RecoverCommand {
-	#[command(flatten)]
-	project_config: ProjectConfigArgs,
-	#[command(subcommand)]
-	command: RecoverSubcommand,
-}
-impl RecoverCommand {
-	fn run(&self) -> Result<()> {
-		match &self.command {
-			RecoverSubcommand::ReviewHandoff(args) => args.run(self.project_config.as_path()),
-			RecoverSubcommand::GhostLane(args) => args.run(self.project_config.as_path()),
-			RecoverSubcommand::StaleActive(args) => args.run(self.project_config.as_path()),
-			RecoverSubcommand::LegacyCloseout(args) => recovery::run_legacy_closeout(
-				self.project_config.as_path(),
-				&LegacyCloseoutRecoveryRequest {
-					issue: args.issue.clone(),
-					pr_url: args.pr.clone(),
-					dry_run: args.dry_run,
-					manual_authority: args.manual_authority,
-				},
-			),
-			RecoverSubcommand::MergedCloseout(args) => recovery::run_merged_closeout(
-				self.project_config.as_path(),
-				&MergedCloseoutRecoveryRequest {
-					issue: args.issue.clone(),
-					pr_url: args.pr.clone(),
-					dry_run: args.dry_run,
-					manual_authority: args.manual_authority,
-				},
-			),
-		}
-	}
-}
-
-#[derive(Debug, Args)]
-struct StaleActiveRecoveryCommand {
-	#[command(subcommand)]
-	command: StaleActiveRecoverySubcommand,
-}
-impl StaleActiveRecoveryCommand {
-	fn run(&self, config_path: Option<&Path>) -> Result<()> {
-		match &self.command {
-			StaleActiveRecoverySubcommand::Diagnose(args) => recovery::run_stale_active_diagnose(
-				config_path,
-				&StaleActiveDiagnoseRequest { issue: args.issue.clone(), json: args.json },
-			),
-			StaleActiveRecoverySubcommand::Release(args) => recovery::run_stale_active_release(
-				config_path,
-				&StaleActiveReleaseRequest { issue: args.issue.clone(), dry_run: args.dry_run },
-			),
-		}
-	}
-}
-
-#[derive(Debug, Args)]
-struct StaleActiveDiagnoseCommand {
-	/// Issue identifier or tracker issue id to inspect. Omit to inspect active-label issues.
-	#[arg(value_name = "ISSUE")]
-	issue: Option<String>,
-	/// Emit structured JSON instead of human-readable text.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct StaleActiveReleaseCommand {
-	/// Issue identifier or tracker issue id for the stale active lane.
-	#[arg(value_name = "ISSUE")]
-	issue: String,
-	/// Validate only; do not clear labels, terminalize the run, or write private audit evidence.
-	#[arg(long)]
-	dry_run: bool,
-}
-
-#[derive(Debug, Args)]
-struct GhostLaneRecoveryCommand {
-	#[command(subcommand)]
-	command: GhostLaneRecoverySubcommand,
-}
-impl GhostLaneRecoveryCommand {
-	fn run(&self, config_path: Option<&Path>) -> Result<()> {
-		match &self.command {
-			GhostLaneRecoverySubcommand::Diagnose(args) => recovery::run_ghost_lane_diagnose(
-				config_path,
-				&GhostLaneDiagnoseRequest { issue: args.issue.clone(), json: args.json },
-			),
-			GhostLaneRecoverySubcommand::Cleanup(args) => recovery::run_ghost_lane_cleanup(
-				config_path,
-				&GhostLaneCleanupRequest { issue: args.issue.clone(), dry_run: args.dry_run },
-			),
-		}
-	}
-}
-
-#[derive(Debug, Args)]
-struct GhostLaneDiagnoseCommand {
-	/// Issue identifier or local issue id to inspect. Omit to inspect leased lanes.
-	#[arg(value_name = "ISSUE")]
-	issue: Option<String>,
-	/// Emit structured JSON instead of human-readable text.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct GhostLaneCleanupCommand {
-	/// Issue identifier or local issue id for the ghost lane.
-	#[arg(value_name = "ISSUE")]
-	issue: String,
-	/// Validate only; do not terminalize the run lease or write private audit evidence.
-	#[arg(long)]
-	dry_run: bool,
-}
-
-#[derive(Debug, Args)]
-struct ReviewHandoffRecoveryCommand {
-	#[command(subcommand)]
-	command: ReviewHandoffRecoverySubcommand,
-}
-impl ReviewHandoffRecoveryCommand {
-	fn run(&self, config_path: Option<&Path>) -> Result<()> {
-		match &self.command {
-			ReviewHandoffRecoverySubcommand::Diagnose(args) =>
-				recovery::run_review_handoff_diagnose(
-					config_path,
-					&ReviewHandoffDiagnoseRequest { issue: args.issue.clone(), json: args.json },
-				),
-			ReviewHandoffRecoverySubcommand::Rebind(args) => recovery::run_review_handoff_rebind(
-				config_path,
-				&ReviewHandoffRebindRequest {
-					issue: args.issue.clone(),
-					pr_url: args.pr.clone(),
-					dry_run: args.dry_run,
-				},
-			),
-			ReviewHandoffRecoverySubcommand::Adopt(args) => recovery::run_review_handoff_adopt(
-				config_path,
-				&ReviewHandoffAdoptRequest {
-					issue: args.issue.clone(),
-					pr_url: args.pr.clone(),
-					dry_run: args.dry_run,
-				},
-			),
-		}
-	}
-}
-
-#[derive(Debug, Args)]
-struct ReviewHandoffDiagnoseCommand {
-	/// Issue identifier to inspect. Omit to inspect all retained review worktrees.
-	#[arg(value_name = "ISSUE")]
-	issue: Option<String>,
-	/// Emit structured JSON instead of human-readable text.
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Debug, Args)]
-struct ReviewHandoffRebindCommand {
-	/// Issue identifier for the retained review lane.
-	#[arg(value_name = "ISSUE")]
-	issue: String,
-	/// Pull request URL to bind after validation.
-	#[arg(long, value_name = "URL")]
-	pr: String,
-	/// Validate only; do not write runtime lifecycle state or tracker audit comments.
-	#[arg(long)]
-	dry_run: bool,
-}
-
-#[derive(Debug, Args)]
-struct ReviewHandoffAdoptCommand {
-	/// Issue identifier for the human-owned review lane.
-	#[arg(value_name = "ISSUE")]
-	issue: String,
-	/// Pull request URL to adopt after validation.
-	#[arg(long, value_name = "URL")]
-	pr: String,
-	/// Validate only; do not write runtime lifecycle state or tracker audit comments.
-	#[arg(long)]
-	dry_run: bool,
-}
-
-#[derive(Debug, Args)]
-struct LegacyCloseoutRecoveryCommand {
-	/// Issue identifier for the legacy cleanup-only worktree.
-	#[arg(value_name = "ISSUE")]
-	issue: String,
-	/// Merged pull request URL that proves the lane's terminal code lineage.
-	#[arg(long, value_name = "PR_URL")]
-	pr: String,
-	/// Validate without writing a Linear execution audit event.
-	#[arg(long)]
-	dry_run: bool,
-	/// Required for non-dry-run audited legacy closeout.
-	#[arg(long)]
-	manual_authority: bool,
-}
-
-#[derive(Debug, Args)]
-struct MergedCloseoutRecoveryCommand {
-	/// Issue identifier for the already-merged retained lane.
-	#[arg(value_name = "ISSUE")]
-	issue: String,
-	/// Merged pull request URL that proves the lane's terminal code lineage.
-	#[arg(long, value_name = "PR_URL")]
-	pr: String,
-	/// Validate without writing closeout or cleanup ledger events.
-	#[arg(long)]
-	dry_run: bool,
-	/// Required for non-dry-run merged closeout reconciliation.
-	#[arg(long)]
-	manual_authority: bool,
-}
-
-#[derive(Debug, Args)]
 struct ArchiveLinearCommand {
 	#[command(flatten)]
 	project_config: ProjectConfigArgs,
@@ -1474,35 +1007,6 @@ impl From<IssueDispatchMode> for AttemptDispatchMode {
 	}
 }
 
-#[derive(Debug, Subcommand)]
-enum DocsSubcommand {
-	/// Validate the complete Markdown-only Decodex docs bundle.
-	#[command(alias = "lint")]
-	Check,
-	/// Validate OKF index files and concept frontmatter.
-	Index,
-	/// Validate local Markdown links.
-	Links,
-	/// Validate semantic-drift audit structure.
-	Drift,
-	/// Find concepts in the default docs bundle.
-	Find(DocsFindCommand),
-	/// Print the default docs bundle graph.
-	Graph(DocsGraphCommand),
-}
-
-#[derive(Debug, Subcommand)]
-enum OkfSubcommand {
-	/// Initialize a portable OKF bundle scaffold.
-	Init(OkfInitCommand),
-	/// Validate an OKF bundle with a selected profile.
-	Check(OkfCheckCommand),
-	/// Find concepts by frontmatter fields.
-	Find(OkfFindCommand),
-	/// Print an OKF concept graph.
-	Graph(OkfGraphCommand),
-}
-
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
@@ -1554,24 +1058,6 @@ enum Command {
 }
 
 #[derive(Debug, Subcommand)]
-enum AccountSubcommand {
-	/// List configured Codex accounts without printing token material.
-	List(AccountListCommand),
-	/// Pin new Decodex runs to one account.
-	Select(AccountSelectCommand),
-	/// Return new Decodex runs to balanced account selection.
-	Clear(AccountClearCommand),
-	/// Remove one account from the Decodex account pool.
-	Logout(AccountLogoutCommand),
-	/// Import an existing Codex `auth.json` into the Decodex account pool.
-	ImportAuth(AccountImportCommand),
-	/// Force Codex to use one stored account by overwriting its `auth.json`.
-	Use(AccountUseCommand),
-	/// Run Codex device login in an isolated temporary home, then import it.
-	Login(AccountLoginCommand),
-}
-
-#[derive(Debug, Subcommand)]
 enum ProjectSubcommand {
 	/// Register or refresh one Decodex project config and enable it.
 	Add(ProjectAddCommand),
@@ -1619,89 +1105,11 @@ enum IntakeSubcommand {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 #[value(rename_all = "kebab-case")]
-enum OkfProfileArg {
-	Core,
-	Wiki,
-	RepoMemory,
-	Decodex,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-#[value(rename_all = "kebab-case")]
-enum OkfInitProfileArg {
-	Core,
-	Wiki,
-	RepoMemory,
-}
-
-impl From<OkfProfileArg> for OkfCheckProfile {
-	fn from(value: OkfProfileArg) -> Self {
-		match value {
-			OkfProfileArg::Core => Self::Core,
-			OkfProfileArg::Wiki => Self::Wiki,
-			OkfProfileArg::RepoMemory => Self::RepoMemory,
-			OkfProfileArg::Decodex => Self::Decodex,
-		}
-	}
-}
-
-impl From<OkfInitProfileArg> for OkfCheckProfile {
-	fn from(value: OkfInitProfileArg) -> Self {
-		match value {
-			OkfInitProfileArg::Core => Self::Core,
-			OkfInitProfileArg::Wiki => Self::Wiki,
-			OkfInitProfileArg::RepoMemory => Self::RepoMemory,
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-#[value(rename_all = "kebab-case")]
 enum ResearchOutcomeArg {
 	DecisionReady,
 	NotDecisionReady,
 	Blocked,
 	NeedsHumanDecision,
-}
-
-#[derive(Debug, Subcommand)]
-enum RecoverSubcommand {
-	/// Recover retained review lanes whose lifecycle record is missing.
-	ReviewHandoff(ReviewHandoffRecoveryCommand),
-	/// Diagnose or clear missing-issue ghost lanes after fail-closed safety checks.
-	GhostLane(GhostLaneRecoveryCommand),
-	/// Diagnose or release tracker-present stale active ownership after fail-closed checks.
-	StaleActive(StaleActiveRecoveryCommand),
-	/// Record an audited fallback closeout for a legacy cleanup-only worktree.
-	LegacyCloseout(LegacyCloseoutRecoveryCommand),
-	/// Reconcile stale retained attention after a PR is already merged and cleaned up.
-	MergedCloseout(MergedCloseoutRecoveryCommand),
-}
-
-#[derive(Debug, Subcommand)]
-enum GhostLaneRecoverySubcommand {
-	/// Read-only diagnosis for local leases whose tracker issue is missing.
-	Diagnose(GhostLaneDiagnoseCommand),
-	/// Terminalize a proven ghost lane and clear its local run lease.
-	Cleanup(GhostLaneCleanupCommand),
-}
-
-#[derive(Debug, Subcommand)]
-enum StaleActiveRecoverySubcommand {
-	/// Read-only diagnosis for tracker-present stale active ownership.
-	Diagnose(StaleActiveDiagnoseCommand),
-	/// Clear a proven stale active label and terminalize stale local ownership.
-	Release(StaleActiveReleaseCommand),
-}
-
-#[derive(Debug, Subcommand)]
-enum ReviewHandoffRecoverySubcommand {
-	/// Read-only diagnosis for orphaned retained review lanes.
-	Diagnose(ReviewHandoffDiagnoseCommand),
-	/// Explicitly bind a validated PR URL to one retained review lane.
-	Rebind(ReviewHandoffRebindCommand),
-	/// Adopt a verified human-owned PR into the retained review lifecycle.
-	Adopt(ReviewHandoffAdoptCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1712,40 +1120,6 @@ enum MaintenanceSubcommand {
 
 fn default_lane_steer_wait_timeout_ms() -> u64 {
 	u64::try_from(DEFAULT_STEER_RESULT_WAIT_TIMEOUT.as_millis()).unwrap_or(10_000)
-}
-
-fn run_okf_find(root: &Path, filters: &OkfFindFilters) -> Result<()> {
-	let query = OkfQuery::from(filters);
-	let concepts = docs_okf::query_okf_bundle(root, &query)?;
-
-	println!("okf find: concepts={} root={}", concepts.len(), root.display());
-
-	for concept in concepts {
-		println!(
-			"{} | {} | {}{}",
-			concept.path,
-			concept.concept_type,
-			concept.title,
-			concept
-				.description
-				.as_deref()
-				.map_or(String::new(), |description| format!(" | {description}"))
-		);
-	}
-
-	Ok(())
-}
-
-fn run_okf_graph(root: &Path, json: bool) -> Result<()> {
-	let graph = docs_okf::build_okf_graph(root)?;
-
-	if json {
-		print!("{}", docs_okf::render_okf_graph_json(&graph)?);
-	} else {
-		print!("{}", docs_okf::render_okf_graph_summary(root, &graph));
-	}
-
-	Ok(())
 }
 
 fn lane_steer_report_is_failure(report: &LaneSteerReport) -> bool {
