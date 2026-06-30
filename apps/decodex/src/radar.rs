@@ -31,8 +31,7 @@ mod signal_render;
 mod social_publish;
 mod source_bundle;
 
-#[cfg(test)]
-use artifact_validation::has_legacy_multi_agent_v2_context;
+#[cfg(test)] use artifact_validation::has_legacy_multi_agent_v2_context;
 use artifact_validation::{
 	ValidationState, validate_active_social_publish_reservation_uniqueness,
 	validate_analysis_draft, validate_artifact, validate_artifact_errors,
@@ -44,8 +43,7 @@ use github_bundle_client::GithubClient;
 use github_token::github_token;
 use ledger::RadarLedger;
 pub(crate) use release_delta::{backfill_release_range, refresh_release_delta};
-use review_queue::RecentCommit;
-use review_queue::build_review_queue;
+use review_queue::{RecentCommit, build_review_queue};
 use signal_render::{rendered_config_flags, rendered_signal};
 pub(crate) use social_publish::reserve_social_publish;
 use source_bundle::{build_commit_bundle_from_sources, build_pr_bundle_from_sources};
@@ -283,9 +281,8 @@ pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> crate::prelude:
 			};
 
 			match promoted_pr {
-				Some(pr_number) => {
-					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?
-				},
+				Some(pr_number) =>
+					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?,
 				None => client.build_commit_bundle(&request.repo, commit_sha, &request.notes)?,
 			}
 		},

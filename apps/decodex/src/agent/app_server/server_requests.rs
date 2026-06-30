@@ -1,6 +1,18 @@
 //! App-server server request routing and non-interactive response handling.
 
-use super::*;
+use super::{
+	AppServerClient, ChatgptAuthTokensRefreshParams, ChatgptAuthTokensRefreshResponse,
+	CommandExecutionApprovalDecision, CommandExecutionRequestApprovalResponse,
+	FileChangeApprovalDecision, FileChangeRequestApprovalResponse, JSONRPC_METHOD_NOT_FOUND,
+	JsonRpcConnection, JsonRpcMessage, JsonRpcRequest, McpServerElicitationAction,
+	McpServerElicitationRequestResponse, PermissionGrantScope, PermissionsRequestApprovalResponse,
+	RequestDispatchContext, RequestWaitPhase, RunRecorder, Serialize,
+	ThreadStatusChangedNotification, ToolRequestUserInputResponse, WireMessage,
+	dispatch_dynamic_tool_call, dynamic_tool_call_unavailable_for_phase, eyre, message_type,
+	record_codex_account_failure, redact_identifier, respond_to_dynamic_tool_call_dispatch,
+	serde_json, targets_thread, thread_id_from_value, turn_id_from_value,
+};
+use color_eyre::eyre::Report;
 
 pub(super) fn handle_server_request_while_waiting(
 	connection: &mut JsonRpcConnection,
@@ -38,12 +50,10 @@ fn dispatch_server_request(
 	context: RequestDispatchContext<'_>,
 ) -> crate::prelude::Result<()> {
 	match request.method.as_str() {
-		"item/tool/call" if context.phase == RequestWaitPhase::TurnExecution => {
-			dispatch_dynamic_tool_call(connection, recorder, request, context)
-		},
-		"account/chatgptAuthTokens/refresh" => {
-			dispatch_codex_account_refresh(connection, recorder, request, context)
-		},
+		"item/tool/call" if context.phase == RequestWaitPhase::TurnExecution =>
+			dispatch_dynamic_tool_call(connection, recorder, request, context),
+		"account/chatgptAuthTokens/refresh" =>
+			dispatch_codex_account_refresh(connection, recorder, request, context),
 		"item/tool/call" => respond_to_dynamic_tool_call_dispatch(
 			connection,
 			recorder,
@@ -99,9 +109,8 @@ fn dispatch_server_request(
 				meta: None,
 			},
 		),
-		other => {
-			reject_unsupported_server_request(connection, recorder, request, context.phase, other)
-		},
+		other =>
+			reject_unsupported_server_request(connection, recorder, request, context.phase, other),
 	}
 }
 
@@ -138,9 +147,7 @@ fn record_wire_message_safely(
 	match &wire_message.message {
 		JsonRpcMessage::Request(request)
 			if request.method == "account/chatgptAuthTokens/refresh" =>
-		{
-			record_codex_account_refresh_request(recorder, request)
-		},
+			record_codex_account_refresh_request(recorder, request),
 		_ => recorder.record(message_type(wire_message), &wire_message.raw),
 	}
 }
