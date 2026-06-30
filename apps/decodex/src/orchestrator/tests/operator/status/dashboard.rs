@@ -622,8 +622,8 @@ fn operator_dashboard_current_lane_status_copy_stays_concise() {
 		"[\"model_execution\", \"tool_execution\", \"protocol_activity\"].includes(run.wait_reason)"
 	));
 	assert!(response.contains("run.wait_reason && !runWaitReasonShowsExecutionProgress(run)"));
-	assert!(response.contains("runOperationRequiresLiveAgent"));
-	assert!(response.contains("runProcessStoppedWithoutAttention"));
+	assert!(!response.contains("runOperationRequiresLiveAgent"));
+	assert!(!response.contains("runProcessStoppedWithoutAttention"));
 	assert!(response.contains("runPhaseLabel"));
 	assert!(response.contains("return run.process_liveness_reason || \"process_stopped\";"));
 	assert!(response.contains("return displayToken(run.run_phase || run.phase || run.status);"));
@@ -1527,6 +1527,9 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("`${project.attention_count ?? 0} attention`"));
 	assert!(response.contains("`${cleanup} cleanup`"));
 	assert!(response.contains("run.process_alive !== false"));
+	assert!(!response.contains("(run.process_alive !== false || runHasFreshExecution(run))"));
+	assert!(!response.contains("run.process_alive === false &&\n\t\t\t\t\t!run.wait_reason &&\n\t\t\t\t\t!runHasFreshExecution(run)"));
+	assert!(response.contains("return toneForRun(run);"));
 	assert!(response.contains("return project.running_lane_count ?? project.current_lane_count ?? 0;"));
 	assert!(response.contains("run: derived.currentLaneCount > 0,"));
 	assert!(!response.contains("const running = project.current_lane_count ?? 0;"));

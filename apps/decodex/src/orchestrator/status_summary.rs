@@ -358,7 +358,7 @@ pub(super) fn operator_run_counts_as_running(run: &OperatorRunStatus) -> bool {
 	run.ownership_state == "leased_run"
 		&& matches!(run.status.as_str(), "starting" | "running")
 		&& run.phase == "executing"
-		&& (run.process_alive != Some(false) || run.has_fresh_execution)
+		&& run.process_alive != Some(false)
 		&& !operator_run_needs_attention(run)
 }
 
@@ -379,10 +379,7 @@ pub(super) fn operator_run_needs_attention(run: &OperatorRunStatus) -> bool {
 		|| run.phase == "needs_attention"
 		|| run.suspected_stall
 		|| run.phase == "stalled"
-		|| run.process_alive == Some(false)
-			&& matches!(run.status.as_str(), "starting" | "running")
-			&& run.wait_reason.is_none()
-			&& !run.has_fresh_execution
+		|| run.process_alive == Some(false) && matches!(run.status.as_str(), "starting" | "running")
 		|| operator_run_has_stale_execution_without_known_process(run)
 }
 
