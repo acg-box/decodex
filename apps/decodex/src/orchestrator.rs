@@ -31,15 +31,15 @@ pub(crate) use lane_control::{
 #[cfg(unix)] use std::os::fd::AsRawFd;
 use std::{
 	cmp::Ordering,
-	collections::{self, BTreeMap, BTreeSet, HashMap, HashSet},
+	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	env,
 	error::Error,
 	fmt::{self, Display, Formatter},
-	fs::{self, File, OpenOptions},
+	fs::{self, File},
 	io::{ErrorKind, Read, Write},
 	net::{SocketAddr, TcpListener, TcpStream},
 	path::{Path, PathBuf},
-	process::{self, Child, Command, ExitStatus, Stdio},
+	process::{Child, Command, ExitStatus, Stdio},
 	slice,
 	sync::{
 		Arc, Mutex,
@@ -89,10 +89,7 @@ use execution_phase_goal::{
 	latest_open_issue_phase_goal_before_attempt, maybe_continue_after_phase_goal_recovery,
 	recover_phase_goal_continuation,
 };
-use harness_improvement::{
-	HarnessImprovementCandidateSummary, HarnessOutcomeKind,
-	harness_improvement_candidates_from_private_events, record_harness_outcome_best_effort,
-};
+use harness_improvement::{HarnessOutcomeKind, record_harness_outcome_best_effort};
 #[cfg(test)]
 use harness_improvement::{HarnessOutcomeRecordInput, record_harness_outcome_for_issue_run};
 use status_autonomy::{
@@ -157,8 +154,7 @@ use status_summary::{
 	operator_run_counts_as_attention, operator_run_counts_as_current_lane,
 	operator_run_counts_as_running, operator_run_counts_as_waiting,
 	operator_run_has_fresh_execution, operator_run_has_live_execution,
-	operator_run_has_recent_app_server_execution,
-	operator_run_has_stale_execution_without_known_process, operator_run_needs_attention,
+	operator_run_has_recent_app_server_execution, operator_run_needs_attention,
 	project_attention_count, project_history_only_attention_count,
 	queued_candidate_counts_as_waiting_intake, refresh_operator_project_summary,
 };
@@ -206,7 +202,14 @@ include!("orchestrator/status_render.rs");
 
 include!("orchestrator/selection.rs");
 
-include!("orchestrator/agent_evidence.rs");
+mod agent_evidence;
+#[cfg(test)] use agent_evidence::PrivateEvidenceReadback;
+use agent_evidence::{
+	AgentEvidenceSource, AgentPrivateEvidenceRef, build_private_evidence_readback,
+	private_evidence_ref_for_run_fields, render_agent_evidence_write_result,
+	render_private_evidence_readback, render_private_evidence_reference,
+	write_agent_evidence_best_effort, write_agent_evidence_snapshot,
+};
 
 pub(crate) const DEFAULT_STATUS_RUN_LIMIT: usize = 10;
 pub(crate) const DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT: usize = 25;
