@@ -1,6 +1,6 @@
 {
   "name": "codebase",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Codebase work contracts for repository command authority, task runners, module boundaries, dependency policy, review repair, verification, and debugging.",
   "author": {
     "name": "hack-ink",

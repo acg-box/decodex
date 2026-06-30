@@ -1,6 +1,6 @@
 {
   "name": "deliberation",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Portable agent deliberation methods for read-only scout, grill, and skeptic review.",
   "author": {
     "name": "hack-ink",
