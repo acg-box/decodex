@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/hack-ink/codebase/0.1.0/scripts/codex_lifecycle_hook\" --event UserPromptSubmit",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/hack-ink/codebase/0.2.0/scripts/codex_lifecycle_hook\" --event UserPromptSubmit",
             "timeout": 10
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/hack-ink/codebase/0.1.0/scripts/codex_lifecycle_hook\" --event PreToolUse",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/hack-ink/codebase/0.2.0/scripts/codex_lifecycle_hook\" --event PreToolUse",
             "timeout": 10
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/hack-ink/codebase/0.1.0/scripts/codex_lifecycle_hook\" --event PostToolUse",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/hack-ink/codebase/0.2.0/scripts/codex_lifecycle_hook\" --event PostToolUse",
             "timeout": 10
           }
         ]
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/hack-ink/codebase/0.1.0/scripts/codex_lifecycle_hook\" --event PreCompact",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/hack-ink/codebase/0.2.0/scripts/codex_lifecycle_hook\" --event PreCompact",
             "timeout": 10
           }
         ]
