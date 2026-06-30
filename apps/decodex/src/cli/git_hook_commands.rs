@@ -146,7 +146,7 @@ fn validate_pre_push_updates(remote_name: &str, updates: &[PrePushUpdate]) -> Re
 				)
 			})?;
 
-			commit_message::validate_commit_message_subject(&subject).map_err(|error| {
+			commit_message::validate_commit_message_subject(subject).map_err(|error| {
 				eyre::eyre!(
 					"Commit `{oid}` on `{}` has an invalid Decodex commit message subject: {error}\nsubject: {subject}",
 					update.local_ref
