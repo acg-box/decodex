@@ -31,8 +31,7 @@ pub(crate) use lane_control::{
 	print_lane_inspect, steer_lane,
 };
 
-#[cfg(unix)]
-use std::os::fd::AsRawFd;
+#[cfg(unix)] use std::os::fd::AsRawFd;
 use std::{
 	cmp::Ordering,
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -73,9 +72,8 @@ use crate::{agent::{RUN_LEASE_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure,
 use execution_architecture_recovery::{
 	architecture_recovery_retry_next_action, loop_guardrail_architecture_recovery_decision,
 };
+#[cfg(test)] use execution_closeout::ensure_closeout_issue_completed_state;
 use execution_closeout::execute_deterministic_closeout;
-#[cfg(test)]
-use execution_closeout::ensure_closeout_issue_completed_state;
 use execution_failure::{
 	ARCHITECTURE_RECOVERY_BUDGET, ARCHITECTURE_RECOVERY_RETRY_KIND,
 	AppServerZeroEvidenceStartFailure, ArchitectureRecoveryStart,
@@ -95,8 +93,7 @@ use execution_failure::{
 	promote_zero_evidence_app_server_start_failure, retry_budget_attempts_for_current_failure,
 	write_retry_schedule_marker_for_runtime_retry,
 };
-#[cfg(test)]
-use execution_phase_goal::RepoGatePhaseGoalController;
+#[cfg(test)] use execution_phase_goal::RepoGatePhaseGoalController;
 use execution_phase_goal::{
 	PhaseAcceptanceCheckFailure, PhaseGoalRecoveryContinuation, build_phase_goal_controller,
 	issue_has_blocking_lane_decision_evidence, latest_open_issue_phase_goal_before_attempt,
@@ -350,13 +347,14 @@ mod status;
 use status::*;
 pub(crate) use status::{worktree_checkout_branch_name, worktree_head_oid};
 
-include!("orchestrator/status_render.rs");
+mod status_render;
+pub(in crate::orchestrator) use status_render::rendered_recovery_worktrees;
+pub(crate) use status_render::{render_operator_status, render_queue_explain};
 
 include!("orchestrator/selection.rs");
 
 mod agent_evidence;
-#[cfg(test)]
-use agent_evidence::PrivateEvidenceReadback;
+#[cfg(test)] use agent_evidence::PrivateEvidenceReadback;
 use agent_evidence::{
 	AgentEvidenceSource, AgentPrivateEvidenceRef, build_private_evidence_readback,
 	private_evidence_ref_for_run_fields, render_agent_evidence_write_result,
@@ -529,5 +527,4 @@ query($owner: String!, $name: String!, $number: Int!, $commentsAfter: String) {
 }
 "#;
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;
