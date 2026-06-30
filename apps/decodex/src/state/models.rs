@@ -1,3 +1,21 @@
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::{
+	autonomy_objective::{AutonomyObjectiveContract, AutonomyObjectiveState},
+	autonomy_proposal::{AutonomyProposal, AutonomyProposalState},
+	autonomy_signal::{
+		AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
+		AutonomySignalFreshness, AutonomySignalKind, AutonomySignalPrivacy,
+	},
+	config::ServiceConfig,
+	execution_program::ExecutionProgram,
+	loop_contract::{DecisionContract, DecisionContractStatus},
+	state::timestamp_parts,
+};
+
 pub(crate) const WORKTREE_PROVENANCE_FILESYSTEM_SCAN: &str = "filesystem_scan";
 pub(crate) const WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN: &str = "git_hygiene_scan";
 pub(crate) const WORKTREE_PROVENANCE_LEGACY_UNKNOWN: &str = "legacy_unknown";
@@ -7,10 +25,10 @@ pub(crate) const WORKTREE_PROVENANCE_RUNTIME_RECORDED: &str = "runtime_recorded"
 /// Active lease for one issue.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IssueLease {
-	project_id: String,
-	issue_id: String,
-	run_id: String,
-	issue_state: String,
+	pub(super) project_id: String,
+	pub(super) issue_id: String,
+	pub(super) run_id: String,
+	pub(super) issue_state: String,
 }
 impl IssueLease {
 	/// Local project identifier owning this lease.
@@ -37,12 +55,12 @@ impl IssueLease {
 /// Persistent run attempt metadata.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunAttempt {
-	run_id: String,
-	issue_id: String,
-	attempt_number: i64,
-	status: String,
-	thread_id: Option<String>,
-	turn_id: Option<String>,
+	pub(super) run_id: String,
+	pub(super) issue_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) status: String,
+	pub(super) thread_id: Option<String>,
+	pub(super) turn_id: Option<String>,
 }
 impl RunAttempt {
 	/// Stable run identifier.
@@ -79,17 +97,17 @@ impl RunAttempt {
 /// Local control capability published by one running run attempt.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunControlChannel {
-	project_id: String,
-	issue_id: String,
-	run_id: String,
-	attempt_number: i64,
-	transport: String,
-	channel_path: PathBuf,
-	status: String,
-	published_at: String,
-	published_at_unix: i64,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) issue_id: String,
+	pub(super) run_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) transport: String,
+	pub(super) channel_path: PathBuf,
+	pub(super) status: String,
+	pub(super) published_at: String,
+	pub(super) published_at_unix: i64,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 impl RunControlChannel {
 	/// Local project identifier owning this control channel.
@@ -141,23 +159,24 @@ impl RunControlChannel {
 /// Local run-control request resolution and first audit row.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunControlActionReceipt {
-	project_id: String,
-	issue_id: String,
-	run_id: String,
-	attempt_number: i64,
-	thread_id: Option<String>,
-	turn_id: Option<String>,
-	current_thread_id: Option<String>,
-	current_turn_id: Option<String>,
-	source: String,
-	action: String,
-	outcome: String,
-	reason: String,
-	audit_record_id: i64,
-	metadata: Option<Value>,
-	context: Option<Value>,
-	channel: Option<RunControlChannel>,
+	pub(super) project_id: String,
+	pub(super) issue_id: String,
+	pub(super) run_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) thread_id: Option<String>,
+	pub(super) turn_id: Option<String>,
+	pub(super) current_thread_id: Option<String>,
+	pub(super) current_turn_id: Option<String>,
+	pub(super) source: String,
+	pub(super) action: String,
+	pub(super) outcome: String,
+	pub(super) reason: String,
+	pub(super) audit_record_id: i64,
+	pub(super) metadata: Option<Value>,
+	pub(super) context: Option<Value>,
+	pub(super) channel: Option<RunControlChannel>,
 }
+#[allow(dead_code)]
 impl RunControlActionReceipt {
 	/// Project identifier used for the local audit scope.
 	pub fn project_id(&self) -> &str {
@@ -243,15 +262,15 @@ impl RunControlActionReceipt {
 /// One private, local-only execution event retained in the runtime SQLite ledger.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PrivateExecutionEvent {
-	record_id: i64,
-	project_id: String,
-	issue_id: String,
-	run_id: String,
-	attempt_number: i64,
-	event_type: String,
-	payload: Value,
-	recorded_at: String,
-	recorded_at_unix: i64,
+	pub(super) record_id: i64,
+	pub(super) project_id: String,
+	pub(super) issue_id: String,
+	pub(super) run_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) event_type: String,
+	pub(super) payload: Value,
+	pub(super) recorded_at: String,
+	pub(super) recorded_at_unix: i64,
 }
 impl PrivateExecutionEvent {
 	/// Monotonic local row id assigned by the runtime store.
@@ -303,27 +322,27 @@ impl PrivateExecutionEvent {
 /// Project-scoped operator view of one run attempt.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectRunStatus {
-	run_id: String,
-	issue_id: String,
-	attempt_number: i64,
-	status: String,
-	thread_id: Option<String>,
-	turn_id: Option<String>,
-	updated_at: String,
-	updated_at_unix: i64,
-	branch_name: Option<String>,
-	worktree_path: Option<PathBuf>,
-	run_lease: bool,
-	event_count: i64,
-	last_event_type: Option<String>,
-	last_event_at: Option<String>,
-	last_event_at_unix: Option<i64>,
-	control_channel: Option<RunControlChannel>,
-	child_agent_activity: Option<ChildAgentActivitySummary>,
-	protocol_activity: Option<ProtocolActivitySummary>,
-	recovery_source: String,
-	recovery_evidence: Vec<String>,
-	recovery_gaps: Vec<String>,
+	pub(super) run_id: String,
+	pub(super) issue_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) status: String,
+	pub(super) thread_id: Option<String>,
+	pub(super) turn_id: Option<String>,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
+	pub(super) branch_name: Option<String>,
+	pub(super) worktree_path: Option<PathBuf>,
+	pub(super) run_lease: bool,
+	pub(super) event_count: i64,
+	pub(super) last_event_type: Option<String>,
+	pub(super) last_event_at: Option<String>,
+	pub(super) last_event_at_unix: Option<i64>,
+	pub(super) control_channel: Option<RunControlChannel>,
+	pub(super) child_agent_activity: Option<ChildAgentActivitySummary>,
+	pub(super) protocol_activity: Option<ProtocolActivitySummary>,
+	pub(super) recovery_source: String,
+	pub(super) recovery_evidence: Vec<String>,
+	pub(super) recovery_gaps: Vec<String>,
 }
 impl ProjectRunStatus {
 	/// Stable run identifier.
@@ -432,11 +451,11 @@ impl ProjectRunStatus {
 /// Worktree mapping for one issue lane.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorktreeMapping {
-	project_id: String,
-	issue_id: String,
-	branch_name: String,
-	worktree_path: PathBuf,
-	provenance: WorktreeProvenance,
+	pub(super) project_id: String,
+	pub(super) issue_id: String,
+	pub(super) branch_name: String,
+	pub(super) worktree_path: PathBuf,
+	pub(super) provenance: WorktreeProvenance,
 }
 impl WorktreeMapping {
 	/// Local project identifier owning this lane.
@@ -468,9 +487,9 @@ impl WorktreeMapping {
 /// Durable provenance for a retained worktree mapping.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorktreeProvenance {
-	source: String,
-	created_at_unix: Option<i64>,
-	updated_at_unix: Option<i64>,
+	pub(super) source: String,
+	pub(super) created_at_unix: Option<i64>,
+	pub(super) updated_at_unix: Option<i64>,
 }
 impl WorktreeProvenance {
 	/// Source that created or last classified this mapping.
@@ -497,16 +516,17 @@ impl WorktreeProvenance {
 /// Project-scoped external connector backoff retained in the runtime store.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConnectorBackoff {
-	project_id: String,
-	connector: String,
-	sync_phase: String,
-	quota_class: String,
-	reset_unix_epoch: i64,
-	reset_source: String,
-	warning: String,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) connector: String,
+	pub(super) sync_phase: String,
+	pub(super) quota_class: String,
+	pub(super) reset_unix_epoch: i64,
+	pub(super) reset_source: String,
+	pub(super) warning: String,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
+#[allow(dead_code)]
 impl ConnectorBackoff {
 	/// Local project identifier affected by this connector backoff.
 	pub fn project_id(&self) -> &str {
@@ -567,14 +587,14 @@ pub struct PreacquiredLeaseGuards {
 /// SQLite-backed Loop/Decision Contract retained by the local runtime.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DecisionContractRecord {
-	project_id: String,
-	source_issue_id: Option<String>,
-	contract: DecisionContract,
-	status: DecisionContractStatus,
-	created_at: String,
-	created_at_unix: i64,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) source_issue_id: Option<String>,
+	pub(super) contract: DecisionContract,
+	pub(super) status: DecisionContractStatus,
+	pub(super) created_at: String,
+	pub(super) created_at_unix: i64,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 #[allow(dead_code)]
 impl DecisionContractRecord {
@@ -618,13 +638,13 @@ impl DecisionContractRecord {
 /// SQLite-backed Objective Contract authority version retained by the local runtime.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AutonomyObjectiveRecord {
-	project_id: String,
-	objective: AutonomyObjectiveContract,
-	state: AutonomyObjectiveState,
-	created_at: String,
-	created_at_unix: i64,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) objective: AutonomyObjectiveContract,
+	pub(super) state: AutonomyObjectiveState,
+	pub(super) created_at: String,
+	pub(super) created_at_unix: i64,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 #[allow(dead_code)]
 impl AutonomyObjectiveRecord {
@@ -668,12 +688,12 @@ impl AutonomyObjectiveRecord {
 /// SQLite-backed autonomy signal evidence retained by the local runtime.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AutonomySignalRecord {
-	project_id: String,
-	signal: AutonomySignal,
-	created_at: String,
-	created_at_unix: i64,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) signal: AutonomySignal,
+	pub(super) created_at: String,
+	pub(super) created_at_unix: i64,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 #[allow(dead_code)]
 impl AutonomySignalRecord {
@@ -737,13 +757,13 @@ impl AutonomySignalRecord {
 /// SQLite-backed autonomy proposal dry-run evidence retained by the local runtime.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AutonomyProposalRecord {
-	project_id: String,
-	proposal: AutonomyProposal,
-	state: AutonomyProposalState,
-	created_at: String,
-	created_at_unix: i64,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) proposal: AutonomyProposal,
+	pub(super) state: AutonomyProposalState,
+	pub(super) created_at: String,
+	pub(super) created_at_unix: i64,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 #[allow(dead_code)]
 impl AutonomyProposalRecord {
@@ -791,13 +811,13 @@ impl AutonomyProposalRecord {
 /// SQLite-backed internal Execution Program retained by the local runtime.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ExecutionProgramRecord {
-	project_id: String,
-	program: ExecutionProgram,
-	source_contract_id: Option<String>,
-	created_at: String,
-	created_at_unix: i64,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) program: ExecutionProgram,
+	pub(super) source_contract_id: Option<String>,
+	pub(super) created_at: String,
+	pub(super) created_at_unix: i64,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 #[allow(dead_code)]
 impl ExecutionProgramRecord {
@@ -837,17 +857,17 @@ impl ExecutionProgramRecord {
 /// SQLite-backed Program Intake Plan projection retained by the local runtime.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ProgramIntakePlanRecord {
-	project_id: String,
-	program_id: String,
-	plan_id: String,
-	intake_kind: String,
-	source_contract_id: Option<String>,
-	accepted_contract_fingerprint: String,
-	public_summary: String,
-	created_at: String,
-	created_at_unix: i64,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) program_id: String,
+	pub(super) plan_id: String,
+	pub(super) intake_kind: String,
+	pub(super) source_contract_id: Option<String>,
+	pub(super) accepted_contract_fingerprint: String,
+	pub(super) public_summary: String,
+	pub(super) created_at: String,
+	pub(super) created_at_unix: i64,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 #[allow(dead_code)]
 impl ProgramIntakePlanRecord {
@@ -899,21 +919,21 @@ impl ProgramIntakePlanRecord {
 /// SQLite-backed normal Linear issue mapping for one internal program node.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ProgramIssueMappingRecord {
-	project_id: String,
-	program_id: String,
-	node_id: String,
-	issue_id: String,
-	issue_identifier: String,
-	issue_state: String,
-	queue_intent: String,
-	has_active_label: bool,
-	has_opt_out_label: bool,
-	has_needs_attention_label: bool,
-	has_generic_dispatch_briefing: bool,
-	created_at: String,
-	created_at_unix: i64,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) program_id: String,
+	pub(super) node_id: String,
+	pub(super) issue_id: String,
+	pub(super) issue_identifier: String,
+	pub(super) issue_state: String,
+	pub(super) queue_intent: String,
+	pub(super) has_active_label: bool,
+	pub(super) has_opt_out_label: bool,
+	pub(super) has_needs_attention_label: bool,
+	pub(super) has_generic_dispatch_briefing: bool,
+	pub(super) created_at: String,
+	pub(super) created_at_unix: i64,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 #[allow(dead_code)]
 impl ProgramIssueMappingRecord {
@@ -981,17 +1001,17 @@ impl ProgramIssueMappingRecord {
 /// Latest runtime-owned review-policy checkpoint for one run phase.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ReviewPolicyCheckpoint {
-	project_id: String,
-	issue_id: String,
-	run_id: String,
-	attempt_number: i64,
-	phase: String,
-	status: String,
-	head_sha: String,
-	nonclean_rounds: i64,
-	details_json: String,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) issue_id: String,
+	pub(super) run_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) phase: String,
+	pub(super) status: String,
+	pub(super) head_sha: String,
+	pub(super) nonclean_rounds: i64,
+	pub(super) details_json: String,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 #[cfg_attr(not(test), allow(dead_code))]
 impl ReviewPolicyCheckpoint {
@@ -1043,16 +1063,16 @@ impl ReviewPolicyCheckpoint {
 /// Latest loop-guardrail checkpoint for one issue and stop reason.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct LoopGuardrailCheckpoint {
-	project_id: String,
-	issue_id: String,
-	reason: String,
-	fingerprint: String,
-	run_id: String,
-	attempt_number: i64,
-	consecutive_count: i64,
-	details_json: String,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) issue_id: String,
+	pub(super) reason: String,
+	pub(super) fingerprint: String,
+	pub(super) run_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) consecutive_count: i64,
+	pub(super) details_json: String,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 impl LoopGuardrailCheckpoint {
 	#[cfg(test)]
@@ -1169,17 +1189,17 @@ pub(crate) struct RunControlActionOutcomeRequest<'a> {
 /// Registered repo target managed by the local Decodex control plane.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ProjectRegistration {
-	service_id: String,
-	config_path: PathBuf,
-	repo_root: PathBuf,
-	worktree_root: PathBuf,
-	workflow_path: PathBuf,
-	tracker_api_key_env_var: String,
-	github_token_env_var: String,
-	enabled: bool,
-	config_fingerprint: String,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) service_id: String,
+	pub(super) config_path: PathBuf,
+	pub(super) repo_root: PathBuf,
+	pub(super) worktree_root: PathBuf,
+	pub(super) workflow_path: PathBuf,
+	pub(super) tracker_api_key_env_var: String,
+	pub(super) github_token_env_var: String,
+	pub(super) enabled: bool,
+	pub(super) config_fingerprint: String,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 impl ProjectRegistration {
 	/// Build a registry row from a Decodex project config.
@@ -1263,7 +1283,7 @@ impl ProjectRegistration {
 	}
 
 	/// Set whether the registered project is enabled.
-	fn set_enabled(&mut self, enabled: bool) {
+	pub(super) fn set_enabled(&mut self, enabled: bool) {
 		self.enabled = enabled;
 
 		let now = timestamp_parts();
@@ -1290,27 +1310,22 @@ pub(crate) struct ChildAgentActivitySummary {
 	pub(crate) largest_tool_output_bytes: Option<i64>,
 	pub(crate) largest_tool_output_tool: Option<String>,
 	pub(crate) large_output_warnings: Vec<String>,
-	}
-	impl ChildAgentActivitySummary {
-		pub(crate) fn sealed_durable(mut self) -> Self {
-			self.seal_open_interval();
+}
+impl ChildAgentActivitySummary {
+	pub(crate) fn sealed_durable(mut self) -> Self {
+		self.seal_open_interval();
 
-			self
-		}
+		self
+	}
 
 	pub(crate) fn live_projection(mut self, now_unix_epoch: i64) -> Self {
-		let observed_elapsed_seconds = self
-			.current_elapsed_seconds
-			.filter(|elapsed| *elapsed >= 0)
-			.unwrap_or(0);
-		let current_elapsed_seconds =
-			self.current_started_unix_epoch.and_then(|started_at| {
-				now_unix_epoch.checked_sub(started_at).filter(|elapsed| *elapsed >= 0)
-			});
+		let observed_elapsed_seconds =
+			self.current_elapsed_seconds.filter(|elapsed| *elapsed >= 0).unwrap_or(0);
+		let current_elapsed_seconds = self.current_started_unix_epoch.and_then(|started_at| {
+			now_unix_epoch.checked_sub(started_at).filter(|elapsed| *elapsed >= 0)
+		});
 		let open_delta_seconds = current_elapsed_seconds.and_then(|elapsed| {
-			elapsed
-				.checked_sub(observed_elapsed_seconds)
-				.filter(|delta| *delta > 0)
+			elapsed.checked_sub(observed_elapsed_seconds).filter(|delta| *delta > 0)
 		});
 
 		self.current_elapsed_seconds = current_elapsed_seconds;
@@ -1426,34 +1441,34 @@ pub(crate) struct CodexAccountProfileDailyUsageSummary {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RunActivityMarker {
-	run_id: String,
-	attempt_number: i64,
-	process_id: Option<u32>,
-	host_boot_id: Option<String>,
-	process_start_identity: Option<String>,
-	last_activity_unix_epoch: Option<i64>,
-	last_protocol_activity_unix_epoch: Option<i64>,
-	last_progress_unix_epoch: Option<i64>,
-	current_operation: Option<String>,
-	thread_id: Option<String>,
-	turn_id: Option<String>,
-	thread_status: Option<String>,
-	thread_active_flags: Vec<String>,
-	event_count: Option<i64>,
-	last_event_type: Option<String>,
-	effective_model: Option<String>,
-	effective_model_provider: Option<String>,
-	effective_cwd: Option<String>,
-	effective_approval_policy: Option<String>,
-	effective_approvals_reviewer: Option<String>,
-	effective_sandbox_mode: Option<String>,
-	child_agent_activity: Option<ChildAgentActivitySummary>,
-	protocol_activity: Option<ProtocolActivitySummary>,
-	account: Option<CodexAccountActivitySummary>,
-	accounts: Vec<CodexAccountActivitySummary>,
-	retry_budget_attempt_count: Option<i64>,
-	retry_kind: Option<String>,
-	retry_ready_at_unix_epoch: Option<i64>,
+	pub(super) run_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) process_id: Option<u32>,
+	pub(super) host_boot_id: Option<String>,
+	pub(super) process_start_identity: Option<String>,
+	pub(super) last_activity_unix_epoch: Option<i64>,
+	pub(super) last_protocol_activity_unix_epoch: Option<i64>,
+	pub(super) last_progress_unix_epoch: Option<i64>,
+	pub(super) current_operation: Option<String>,
+	pub(super) thread_id: Option<String>,
+	pub(super) turn_id: Option<String>,
+	pub(super) thread_status: Option<String>,
+	pub(super) thread_active_flags: Vec<String>,
+	pub(super) event_count: Option<i64>,
+	pub(super) last_event_type: Option<String>,
+	pub(super) effective_model: Option<String>,
+	pub(super) effective_model_provider: Option<String>,
+	pub(super) effective_cwd: Option<String>,
+	pub(super) effective_approval_policy: Option<String>,
+	pub(super) effective_approvals_reviewer: Option<String>,
+	pub(super) effective_sandbox_mode: Option<String>,
+	pub(super) child_agent_activity: Option<ChildAgentActivitySummary>,
+	pub(super) protocol_activity: Option<ProtocolActivitySummary>,
+	pub(super) account: Option<CodexAccountActivitySummary>,
+	pub(super) accounts: Vec<CodexAccountActivitySummary>,
+	pub(super) retry_budget_attempt_count: Option<i64>,
+	pub(super) retry_kind: Option<String>,
+	pub(super) retry_ready_at_unix_epoch: Option<i64>,
 }
 impl RunActivityMarker {
 	pub(crate) fn run_id(&self) -> &str {
@@ -1571,13 +1586,13 @@ impl RunActivityMarker {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ReviewHandoffMarker {
-	run_id: String,
-	attempt_number: i64,
-	branch_name: String,
-	pr_url: String,
-	target_base_ref_name: Option<String>,
-	pr_head_ref_name: String,
-	pr_head_oid: String,
+	pub(super) run_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) branch_name: String,
+	pub(super) pr_url: String,
+	pub(super) target_base_ref_name: Option<String>,
+	pub(super) pr_head_ref_name: String,
+	pub(super) pr_head_oid: String,
 }
 impl ReviewHandoffMarker {
 	pub(crate) fn new(
@@ -1631,18 +1646,18 @@ impl ReviewHandoffMarker {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ReviewOrchestrationMarker {
-	run_id: String,
-	attempt_number: i64,
-	branch_name: String,
-	pr_url: String,
-	head_sha: String,
-	phase: String,
-	request_comment_database_id: Option<i64>,
-	request_created_at_unix_epoch: Option<i64>,
-	request_description_thumbs_up_count: Option<usize>,
-	request_retry_count: i64,
-	external_round_count: i64,
-	auto_merge_enabled_at_unix_epoch: Option<i64>,
+	pub(super) run_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) branch_name: String,
+	pub(super) pr_url: String,
+	pub(super) head_sha: String,
+	pub(super) phase: String,
+	pub(super) request_comment_database_id: Option<i64>,
+	pub(super) request_created_at_unix_epoch: Option<i64>,
+	pub(super) request_description_thumbs_up_count: Option<usize>,
+	pub(super) request_retry_count: i64,
+	pub(super) external_round_count: i64,
+	pub(super) auto_merge_enabled_at_unix_epoch: Option<i64>,
 }
 impl ReviewOrchestrationMarker {
 	#[allow(clippy::too_many_arguments)]
@@ -1728,30 +1743,30 @@ impl ReviewOrchestrationMarker {
 /// Runtime-owned review lifecycle record for one retained PR-backed lane.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ReviewLifecycleRecord {
-	project_id: String,
-	issue_id: String,
-	branch_name: String,
-	run_id: String,
-	attempt_number: i64,
-	pr_url: String,
-	target_base_ref_name: Option<String>,
-	pr_head_ref_name: String,
-	pr_head_oid: String,
-	head_sha: String,
-	phase: String,
-	request_comment_database_id: Option<i64>,
-	request_created_at_unix_epoch: Option<i64>,
-	request_description_thumbs_up_count: Option<usize>,
-	request_retry_count: i64,
-	external_round_count: i64,
-	auto_merge_enabled_at_unix_epoch: Option<i64>,
-	landing_state: String,
-	closeout_state: String,
-	repair_attempt_count: i64,
-	evidence_json: String,
-	next_action: String,
-	updated_at: String,
-	updated_at_unix: i64,
+	pub(super) project_id: String,
+	pub(super) issue_id: String,
+	pub(super) branch_name: String,
+	pub(super) run_id: String,
+	pub(super) attempt_number: i64,
+	pub(super) pr_url: String,
+	pub(super) target_base_ref_name: Option<String>,
+	pub(super) pr_head_ref_name: String,
+	pub(super) pr_head_oid: String,
+	pub(super) head_sha: String,
+	pub(super) phase: String,
+	pub(super) request_comment_database_id: Option<i64>,
+	pub(super) request_created_at_unix_epoch: Option<i64>,
+	pub(super) request_description_thumbs_up_count: Option<usize>,
+	pub(super) request_retry_count: i64,
+	pub(super) external_round_count: i64,
+	pub(super) auto_merge_enabled_at_unix_epoch: Option<i64>,
+	pub(super) landing_state: String,
+	pub(super) closeout_state: String,
+	pub(super) repair_attempt_count: i64,
+	pub(super) evidence_json: String,
+	pub(super) next_action: String,
+	pub(super) updated_at: String,
+	pub(super) updated_at_unix: i64,
 }
 #[allow(dead_code)]
 impl ReviewLifecycleRecord {
