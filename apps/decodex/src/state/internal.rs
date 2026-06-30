@@ -2209,6 +2209,19 @@ ON CONFLICT(key) DO UPDATE SET value =
 		Ok(())
 	}
 
+	fn rebuild_protocol_event_summaries_for_runs(
+		&self,
+		state: &mut StateData,
+		run_ids: &[String],
+	) -> Result<()> {
+		for run_id in run_ids {
+			state.event_summaries.remove(run_id);
+			self.load_protocol_event_summary_for_run(state, run_id)?;
+		}
+
+		Ok(())
+	}
+
 	fn load_protocol_event_summary_for_run(
 		&self,
 		state: &mut StateData,
