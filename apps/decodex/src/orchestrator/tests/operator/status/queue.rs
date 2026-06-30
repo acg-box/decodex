@@ -1,3 +1,5 @@
+use super::*;
+
 #[test]
 fn live_operator_status_snapshot_includes_queued_candidates_with_dispatch_classification() {
 	let workflow_markdown =
