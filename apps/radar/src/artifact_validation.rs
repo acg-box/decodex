@@ -7,7 +7,6 @@ mod core;
 mod model;
 mod release;
 mod signal;
-mod social;
 mod support;
 mod uniqueness;
 mod upstream;
@@ -18,10 +17,7 @@ pub(super) use self::{
 		validate_artifact_for_path, validate_signal_file,
 	},
 	model::ValidationState,
-	uniqueness::{
-		validate_active_social_publish_reservation_uniqueness, validate_signal_slug_uniqueness,
-		validate_terminal_social_post_idempotency_key_uniqueness,
-	},
+	uniqueness::validate_signal_slug_uniqueness,
 };
 
 #[cfg(test)] pub(super) use self::signal::has_legacy_multi_agent_v2_context;
@@ -30,8 +26,7 @@ use self::constants::RADAR_ARCHIVE_MANIFEST_SCHEMA;
 use super::{
 	ANALYSIS_DRAFT_KIND, BUNDLE_SCHEMA, CONFIG_FEATURE_CATALOG_SCHEMA,
 	CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA, RADAR_ARCHIVE_HISTORICAL_RETENTION_CUTOFF,
-	RELEASE_DELTA_SCHEMA, SIGNAL_CONFIDENCE, SIGNAL_SCHEMA, SOCIAL_CANDIDATE_SCHEMA,
-	SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA, UPSTREAM_IMPACT_SCHEMA,
+	RELEASE_DELTA_SCHEMA, SIGNAL_CONFIDENCE, SIGNAL_SCHEMA, UPSTREAM_IMPACT_SCHEMA,
 	UPSTREAM_REVIEW_LINEAR_FOLLOWUP_CUTOFF, UPSTREAM_REVIEW_QUEUE_SCHEMA, UPSTREAM_REVIEW_SCHEMA,
 	UPSTREAM_SUBJECT_KINDS,
 };

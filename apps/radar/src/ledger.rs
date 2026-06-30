@@ -314,7 +314,6 @@ fn initialize_ledger(connection: &Connection) -> crate::prelude::Result<()> {
 		      'watch',
 		      'signal',
 		      'control_plane',
-		      'social',
 		      'deprecated',
 		      'archived'
 		    )
@@ -337,8 +336,6 @@ fn initialize_ledger(connection: &Connection) -> crate::prelude::Result<()> {
 		      'signal',
 		      'upstream_impact',
 		      'control_plane_upgrade_candidate',
-		      'social_candidate',
-		      'social_post',
 		      'release_delta',
 		      'archive_manifest',
 		      'ledger_export'
@@ -367,6 +364,7 @@ fn initialize_ledger(connection: &Connection) -> crate::prelude::Result<()> {
 		",
 	)?;
 
+	migrate_radar_review_statuses(connection)?;
 	migrate_artifact_link_kinds(connection)?;
 
 	connection.execute(
@@ -393,16 +391,9 @@ fn migrate_artifact_link_kinds(connection: &Connection) -> crate::prelude::Resul
 			|row| row.get::<_, String>(0),
 		)
 		.optional()?;
-	let Some(table_sql) = table_sql else {
+	if table_sql.is_none() {
 		return Ok(());
 	};
-
-	if table_sql.contains("social_candidate")
-		&& table_sql.contains("control_plane_upgrade_candidate")
-		&& !table_sql.contains("social_draft")
-	{
-		return Ok(());
-	}
 
 	connection.execute_batch(
 		"
@@ -419,8 +410,6 @@ fn migrate_artifact_link_kinds(connection: &Connection) -> crate::prelude::Resul
 		      'signal',
 		      'upstream_impact',
 		      'control_plane_upgrade_candidate',
-		      'social_candidate',
-		      'social_post',
 		      'release_delta',
 		      'archive_manifest',
 		      'ledger_export'
@@ -447,17 +436,103 @@ fn migrate_artifact_link_kinds(connection: &Connection) -> crate::prelude::Resul
 		  repo,
 		  subject_kind,
 		  subject_id,
-		  CASE artifact_kind
-		    WHEN 'social_draft' THEN 'social_post'
-		    ELSE artifact_kind
-		  END,
+		  artifact_kind,
 		  path,
 		  sha256,
 		  size_bytes,
 		  created_at
-		FROM artifact_link_old;
+		FROM artifact_link_old
+		WHERE artifact_kind IN (
+		  'bundle',
+		  'analysis',
+		  'signal',
+		  'upstream_impact',
+		  'control_plane_upgrade_candidate',
+		  'release_delta',
+		  'archive_manifest',
+		  'ledger_export'
+		);
 
 		DROP TABLE artifact_link_old;
+		",
+	)?;
+
+	Ok(())
+}
+
+fn migrate_radar_review_statuses(connection: &Connection) -> crate::prelude::Result<()> {
+	let table_sql = connection
+		.query_row(
+			"
+			SELECT sql
+			FROM sqlite_master
+			WHERE type = 'table' AND name = 'radar_review'
+			",
+			[],
+			|row| row.get::<_, String>(0),
+		)
+		.optional()?;
+	if table_sql.is_none() {
+		return Ok(());
+	};
+
+	connection.execute_batch(
+		"
+		ALTER TABLE radar_review RENAME TO radar_review_old;
+
+		CREATE TABLE radar_review (
+		  repo TEXT NOT NULL,
+		  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('commit', 'pr')),
+		  subject_id TEXT NOT NULL,
+		  status TEXT NOT NULL CHECK (
+		    status IN (
+		      'seen',
+		      'skipped',
+		      'watch',
+		      'signal',
+		      'control_plane',
+		      'deprecated',
+		      'archived'
+		    )
+		  ),
+		  reason TEXT NOT NULL DEFAULT '',
+		  confidence TEXT CHECK (confidence IN ('confirmed', 'likely', 'weak')),
+		  reviewed_at TEXT NOT NULL,
+		  updated_at TEXT NOT NULL,
+		  PRIMARY KEY (repo, subject_kind, subject_id)
+		);
+
+		INSERT OR REPLACE INTO radar_review (
+		  repo,
+		  subject_kind,
+		  subject_id,
+		  status,
+		  reason,
+		  confidence,
+		  reviewed_at,
+		  updated_at
+		)
+		SELECT
+		  repo,
+		  subject_kind,
+		  subject_id,
+		  status,
+		  reason,
+		  confidence,
+		  reviewed_at,
+		  updated_at
+		FROM radar_review_old
+		WHERE status IN (
+		  'seen',
+		  'skipped',
+		  'watch',
+		  'signal',
+		  'control_plane',
+		  'deprecated',
+		  'archived'
+		);
+
+		DROP TABLE radar_review_old;
 		",
 	)?;
 

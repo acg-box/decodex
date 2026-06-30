@@ -15,7 +15,7 @@ from urllib.parse import quote
 SCHEMA_URL = "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json"
 CONFIG_REFERENCE_URL = "https://developers.openai.com/codex/config-reference"
 REPO_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_OUT = REPO_ROOT / ".agent/automations/decodex/cache/generated/codex-config-features.json"
+DEFAULT_OUT = REPO_ROOT / ".agent/automations/radar/cache/generated/codex-config-features.json"
 REFERENCE_DESCRIPTION_OVERRIDES = {
     "features.multi_agent_v2": (
         "Enable MultiAgentV2 collaboration tools (`spawn_agent`, `send_message`, "

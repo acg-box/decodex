@@ -1,0 +1,24 @@
+[package]
+authors.workspace    = true
+categories           = []
+description          = "Decodex auxiliary publishing handoff tooling."
+edition.workspace    = true
+homepage.workspace   = true
+keywords             = ["decodex", "publisher", "social", "tooling"]
+license.workspace    = true
+name                 = "decodex-publisher"
+readme               = "README.md"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+# crates.io
+clap       = { workspace = true }
+color-eyre = { workspace = true }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+time       = { workspace = true, features = ["parsing"] }
+
+[dev-dependencies]
+# crates.io
+tempfile = { workspace = true }

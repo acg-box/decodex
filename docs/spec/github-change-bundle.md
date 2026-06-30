@@ -31,8 +31,8 @@ other non-deterministic editorial state.
 The Rust CLI owns deterministic bundle building and validation:
 
 ```sh
-radar bundle build --repo openai/codex --pr 15222 --out .agent/automations/decodex/cache/github/bundles/openai-codex-pr-15222.json
-radar bundle validate .agent/automations/decodex/cache/github/bundles/openai-codex-pr-15222.json
+radar bundle build --repo openai/codex --pr 15222 --out .agent/automations/radar/cache/github/bundles/openai-codex-pr-15222.json
+radar bundle validate .agent/automations/radar/cache/github/bundles/openai-codex-pr-15222.json
 ```
 
 The Rust `radar bundle ...` surface is the single active deterministic bundle
