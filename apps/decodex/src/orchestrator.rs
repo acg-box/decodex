@@ -43,7 +43,7 @@ use std::{
 	slice,
 	sync::{
 		Arc, Mutex,
-		mpsc::{self, Receiver, RecvTimeoutError, Sender},
+		mpsc::{self, Sender},
 	},
 	thread::{self, JoinHandle},
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -229,7 +229,20 @@ include!("orchestrator/operator_presentation.rs");
 
 include!("orchestrator/entrypoints.rs");
 
-include!("orchestrator/operator_http.rs");
+mod operator_http;
+#[cfg(test)]
+pub(crate) use operator_http::{
+	DASHBOARD_MAX_WEBSOCKET_CLIENTS, DashboardClientSubscription,
+	build_operator_lane_inspect_http_response, build_operator_lane_interrupt_http_response,
+	build_operator_lane_steer_http_response, build_operator_run_activity_event,
+	build_operator_state_http_response, build_operator_state_http_response_with_control_requests,
+	dashboard_websocket_message, handle_operator_state_endpoint_connection,
+	strip_dashboard_run_activity_volatile_fields,
+};
+pub(crate) use operator_http::{
+	DashboardEventHub, operator_snapshot_json_value,
+	run_operator_run_activity_websocket_broadcasts, run_operator_state_endpoint,
+};
 
 include!("orchestrator/pull_request_review.rs");
 
