@@ -9,7 +9,10 @@ use color_eyre::Report;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::*;
+use super::{
+	AppServerClient, AppServerRunRequest, RunRecorder, ThreadGoal, ThreadGoalClearParams,
+	ThreadGoalGetParams, ThreadGoalSetParams, ThreadGoalStatus, serde_json,
+};
 
 pub(crate) trait PhaseGoalController {
 	fn initial_phase_goal(&self) -> crate::prelude::Result<Option<PhaseGoalSpec>>;
@@ -97,12 +100,10 @@ impl AppServerPhaseGoalFailure {
 
 	pub(crate) fn error_class(&self) -> &'static str {
 		match self.kind {
-			AppServerPhaseGoalFailureKind::Unsupported { .. } => {
-				"app_server_phase_goal_unsupported"
-			},
-			AppServerPhaseGoalFailureKind::MissingTerminalPath { .. } => {
-				"phase_goal_terminal_path_missing"
-			},
+			AppServerPhaseGoalFailureKind::Unsupported { .. } =>
+				"app_server_phase_goal_unsupported",
+			AppServerPhaseGoalFailureKind::MissingTerminalPath { .. } =>
+				"phase_goal_terminal_path_missing",
 		}
 	}
 
@@ -177,10 +178,9 @@ pub(super) fn initialize_phase_goal_runtime<'a>(
 
 	match set_thread_phase_goal(client, recorder, thread_id, &active_goal) {
 		Ok(()) => Ok(Some(PhaseGoalRuntime { controller, active_goal })),
-		Err(error) if app_server_method_not_found(&error) => {
+		Err(error) if app_server_method_not_found(&error) =>
 			Err(Report::new(AppServerPhaseGoalFailure::unsupported("thread/goal/set"))
-				.wrap_err(error))
-		},
+				.wrap_err(error)),
 		Err(error) => Err(error),
 	}
 }

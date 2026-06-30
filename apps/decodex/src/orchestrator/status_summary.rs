@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
-use crate::agent::RUN_LEASE_IDLE_TIMEOUT;
-use crate::state::RUN_OPERATION_WAITING_EXTERNAL;
+use crate::{agent::RUN_LEASE_IDLE_TIMEOUT, state::RUN_OPERATION_WAITING_EXTERNAL};
 
 use super::{
 	OperatorHistoryLaneStatus, OperatorPostReviewLaneStatus, OperatorQueuedIssueStatus,

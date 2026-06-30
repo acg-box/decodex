@@ -1,6 +1,13 @@
 //! Upstream review queue source discovery and subject classification.
 
-use super::*;
+use super::{
+	ATTENTION_RULES, BTreeMap, GitHubApi, HIGH_VALUE_SURFACES, HashSet, Path, RadarLedger,
+	RadarRefreshQueueRequest, SURFACE_RULES, UPSTREAM_REVIEW_QUEUE_SCHEMA, Value,
+	absolute_repo_path, extract_commit_sha_from_url, extract_pr_number_from_url, eyre, first_line,
+	ledger_path, load_json, optional_value_string, percent_encode, repo_default_branch,
+	required_value_string, required_value_u64, serde_json, sorted_json_files, string_array,
+	truncate_patch_excerpt, utc_now_iso, validate_signal_file,
+};
 
 pub(super) struct RecentCommit {
 	pub(super) sha: String,

@@ -1,6 +1,20 @@
 //! App-server capability preflight and command/exec health checks.
 
-use super::*;
+use super::{
+	AppServerClient, AppServerOutputTimeout, AppServerRunRequest, BTreeMap, CommandExecParams,
+	CommandExecResponse, ConfigReadParams, Display, Duration, Error, Formatter,
+	ListMcpServerStatusParams, ListMcpServerStatusResponse, McpServerStatusSummary,
+	ModelListParams, ModelListResponse, ModelProviderCapabilitiesReadResponse, ModelSummary,
+	PREFLIGHT_CHECK_CONFIG, PREFLIGHT_CHECK_MCP, PREFLIGHT_CHECK_MODEL,
+	PREFLIGHT_CHECK_MODEL_PROVIDER, PREFLIGHT_CHECK_PLUGINS, PREFLIGHT_CHECK_SKILLS,
+	PREFLIGHT_EVENT_TYPE, PREFLIGHT_MCP_DETAIL, PREFLIGHT_MCP_PAGE_LIMIT,
+	PREFLIGHT_MODEL_PAGE_LIMIT, PREFLIGHT_PLUGIN_MARKETPLACE_KIND,
+	PROBE_COMMAND_EXEC_EXPECTED_OUTPUT, PROBE_COMMAND_EXEC_OUTPUT_BYTES_CAP,
+	PROBE_COMMAND_EXEC_TIMEOUT_MS, PluginListParams, PluginListResponse, REQUEST_TIMEOUT,
+	RunRecorder, RuntimeConfigSummary, Serialize, SkillsListParams, SkillsListResponse, Value,
+	eyre, flush_pending_messages, fmt, serde_json,
+};
+use color_eyre::eyre::Report;
 
 const MCP_PREFLIGHT_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const PLUGIN_PREFLIGHT_MAX_ATTEMPTS: u32 = 2;
@@ -162,15 +176,12 @@ impl AppServerCapabilityPreflightFailure {
 				timed_out: true,
 				..
 			} => "app_server_plugin_list_timeout",
-			AppServerCapabilityPreflightFailureKind::MethodFailed { timed_out: true, .. } => {
-				"app_server_preflight_timeout"
-			},
-			AppServerCapabilityPreflightFailureKind::MethodFailed { .. } => {
-				"app_server_introspection_method_failed"
-			},
-			AppServerCapabilityPreflightFailureKind::BlockedState => {
-				"app_server_runtime_preflight_failed"
-			},
+			AppServerCapabilityPreflightFailureKind::MethodFailed { timed_out: true, .. } =>
+				"app_server_preflight_timeout",
+			AppServerCapabilityPreflightFailureKind::MethodFailed { .. } =>
+				"app_server_introspection_method_failed",
+			AppServerCapabilityPreflightFailureKind::BlockedState =>
+				"app_server_runtime_preflight_failed",
 		}
 	}
 
@@ -198,9 +209,8 @@ impl AppServerCapabilityPreflightFailure {
 				"decodex will retry app-server preflight automatically; inspect local app_server_preflight_failed evidence for the `{method}` timeout and restart `decodex serve` if the retry budget exhausts"
 			),
 			AppServerCapabilityPreflightFailureKind::MethodFailed { .. }
-			| AppServerCapabilityPreflightFailureKind::BlockedState => {
-				String::from("app-server preflight requires operator recovery")
-			},
+			| AppServerCapabilityPreflightFailureKind::BlockedState =>
+				String::from("app-server preflight requires operator recovery"),
 		}
 	}
 

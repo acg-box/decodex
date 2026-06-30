@@ -117,9 +117,8 @@ pub(super) fn remember_recovery_tracker_backoff_message(
 		let (reset_unix_epoch, reset_source) =
 			match parse_recovery_rate_limit_reset_unix_epoch(&message) {
 				Some(reset) if reset > now_unix_epoch => (reset, "linear"),
-				_ => {
-					(now_unix_epoch.saturating_add(LINEAR_RATE_LIMIT_BACKOFF_SECS), "local_default")
-				},
+				_ =>
+					(now_unix_epoch.saturating_add(LINEAR_RATE_LIMIT_BACKOFF_SECS), "local_default"),
 			};
 
 		(
