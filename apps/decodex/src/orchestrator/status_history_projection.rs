@@ -6,11 +6,14 @@ use crate::{config::ServiceConfig, state::StateStore};
 
 use super::{
 	OperatorHistoryLaneStatus, OperatorHistoryLedgerOutcome, OperatorLaneTerminalProjection,
-	OperatorRunStatus, OperatorStatusSnapshot, hydrate_history_lane_from_run,
-	operator_lane_lifecycle_metrics, operator_run_group_key, operator_run_issue_key,
+	OperatorRunStatus, OperatorStatusSnapshot,
 	status_history_ledger::{
 		hydrate_history_lane_from_ledger_records, local_history_ledger_records,
 		missing_history_ledger_outcome, operator_history_ledger_outcome,
+	},
+	status_run_projection::{
+		hydrate_history_lane_from_run, operator_lane_lifecycle_metrics, operator_run_group_key,
+		operator_run_issue_key,
 	},
 	status_summary::operator_issue_attention_key,
 };

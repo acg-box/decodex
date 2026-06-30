@@ -16,8 +16,8 @@ use super::{
 	OperatorHistoryLaneStatus, OperatorIssueDisplayMetadata, OperatorRunStatus,
 	OperatorStatusSnapshot, RunIssueMetadataHydration, TrackerObserverOutcome,
 	local_run_attempt_status_is_terminal, looks_like_tracker_issue_identifier_key,
-	mark_operator_run_tracker_issue_missing, operator_run_issue_identifier_from_fields,
-	tracker_connector_backoff,
+	mark_operator_run_tracker_issue_missing,
+	status_run_projection::operator_run_issue_identifier_from_fields, tracker_connector_backoff,
 };
 
 pub(super) fn hydrate_operator_run_rows_from_tracker<T>(
