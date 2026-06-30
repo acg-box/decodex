@@ -309,12 +309,10 @@ fn classify_child_activity_event(
 		payload_value.as_ref().and_then(|value| find_numeric_field(value, OUTPUT_TOKEN_KEYS));
 
 	match event_type {
-		"item/tool/call" => {
-			child_tool_call_event(payload_value.as_ref(), input_tokens, output_tokens)
-		},
-		"item/tool/call/response" => {
-			child_tool_response_event(payload_value.as_ref(), active_tool_name, payload)
-		},
+		"item/tool/call" =>
+			child_tool_call_event(payload_value.as_ref(), input_tokens, output_tokens),
+		"item/tool/call/response" =>
+			child_tool_response_event(payload_value.as_ref(), active_tool_name, payload),
 		"item/completed" => child_item_completed_event(payload_value.as_ref(), payload),
 		"item/agentMessage/delta" => ChildActivityEvent {
 			event_bucket: CHILD_BUCKET_MODEL.to_owned(),
@@ -596,9 +594,8 @@ fn token_usage_detail(payload_value: Option<&Value>) -> Option<String> {
 	.and_then(json_number_to_i64);
 
 	match (input_tokens, output_tokens) {
-		(Some(input_tokens), Some(output_tokens)) => {
-			Some(format!("input={input_tokens}, output={output_tokens}"))
-		},
+		(Some(input_tokens), Some(output_tokens)) =>
+			Some(format!("input={input_tokens}, output={output_tokens}")),
 		(Some(input_tokens), None) => Some(format!("input={input_tokens}")),
 		(None, Some(output_tokens)) => Some(format!("output={output_tokens}")),
 		(None, None) => None,

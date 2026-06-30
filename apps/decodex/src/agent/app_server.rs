@@ -10,35 +10,8 @@ mod turn_failure;
 
 pub(crate) use turn_failure::AppServerTurnFailure;
 
-pub(crate) use self::activity::protocol_activity_idle_timeout;
-use self::activity::{ChildActivityAccumulator, ProtocolActivityAccumulator, redact_identifier};
-pub(crate) use self::dynamic_tools::AppServerDynamicToolFailure;
-use self::dynamic_tools::{
-	classify_turn_completion, dispatch_dynamic_tool_call, dynamic_tool_call_unavailable_for_phase,
-	has_terminal_completion_signal, reject_nonterminal_single_turn_completion,
-	respond_to_dynamic_tool_call_dispatch, validated_dynamic_tool_specs,
-};
-#[cfg(test)]
-use self::dynamic_tools::handle_dynamic_tool_call;
-use self::lane_control::handle_pending_turn_control_requests;
-#[cfg(test)]
-use self::lane_control::steer_error_class;
-pub(crate) use self::phase_goal::{
-	AppServerPhaseGoalFailure, PhaseGoalController, PhaseGoalKind, PhaseGoalRunStatus,
-	PhaseGoalSpec, PhaseGoalTransition,
-};
-pub(crate) use self::preflight::{
-	AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
-	CommandExecHealthCheck,
-};
-use self::phase_goal::{
-	PhaseGoalRuntime, app_server_method_not_found, clear_thread_phase_goal_best_effort,
-	get_thread_phase_goal, initialize_phase_goal_runtime, record_phase_goal_completed,
-	set_thread_phase_goal,
-};
-use self::preflight::{
-	run_app_server_capability_preflight, run_command_exec_health_check,
-};
+#[cfg(test)] use self::dynamic_tools::handle_dynamic_tool_call;
+#[cfg(test)] use self::lane_control::steer_error_class;
 #[cfg(test)]
 use self::preflight::{
 	AppServerCapabilityPreflightStatus, build_command_exec_health_check_params,
@@ -47,19 +20,48 @@ use self::preflight::{
 	record_mcp_preflight_degraded, record_model_preflight, record_model_provider_preflight,
 	record_plugin_preflight, record_skills_preflight, validate_command_exec_health_check_result,
 };
-use self::schema_probe::probe_app_server_schema;
 #[cfg(test)]
 use self::schema_probe::{
 	APP_SERVER_REQUIRED_CLIENT_NOTIFICATIONS, APP_SERVER_REQUIRED_CLIENT_REQUESTS,
 	APP_SERVER_REQUIRED_SERVER_NOTIFICATIONS, APP_SERVER_REQUIRED_SERVER_REQUESTS,
 	APP_SERVER_SCHEMA_REQUIRED_MARKERS, validate_generated_app_server_schema,
 };
-use self::server_requests::{
-	apply_protocol_message_side_effects, handle_server_request_during_turn_execution,
-	handle_server_request_while_waiting, interactive_flag_for_request, record_server_request_response,
-};
 #[cfg(test)]
 use self::server_requests::{record_interactive_request_state, record_server_request};
+pub(crate) use self::{
+	activity::protocol_activity_idle_timeout,
+	dynamic_tools::AppServerDynamicToolFailure,
+	phase_goal::{
+		AppServerPhaseGoalFailure, PhaseGoalController, PhaseGoalKind, PhaseGoalRunStatus,
+		PhaseGoalSpec, PhaseGoalTransition,
+	},
+	preflight::{
+		AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
+		CommandExecHealthCheck,
+	},
+};
+use self::{
+	activity::{ChildActivityAccumulator, ProtocolActivityAccumulator, redact_identifier},
+	dynamic_tools::{
+		classify_turn_completion, dispatch_dynamic_tool_call,
+		dynamic_tool_call_unavailable_for_phase, has_terminal_completion_signal,
+		reject_nonterminal_single_turn_completion, respond_to_dynamic_tool_call_dispatch,
+		validated_dynamic_tool_specs,
+	},
+	lane_control::handle_pending_turn_control_requests,
+	phase_goal::{
+		PhaseGoalRuntime, app_server_method_not_found, clear_thread_phase_goal_best_effort,
+		get_thread_phase_goal, initialize_phase_goal_runtime, record_phase_goal_completed,
+		set_thread_phase_goal,
+	},
+	preflight::{run_app_server_capability_preflight, run_command_exec_health_check},
+	schema_probe::probe_app_server_schema,
+	server_requests::{
+		apply_protocol_message_side_effects, handle_server_request_during_turn_execution,
+		handle_server_request_while_waiting, interactive_flag_for_request,
+		record_server_request_response,
+	},
+};
 
 use std::{
 	collections::BTreeMap,
@@ -591,7 +593,6 @@ fn transport_failure_at_phase(error: Report, phase: RequestWaitPhase) -> Report 
 		phase.transport_failure_is_retryable_startup(),
 	))
 }
-
 
 fn archive_app_server_thread_after_success_inner(
 	request: &AppServerThreadArchiveRequest<'_>,
@@ -2078,5 +2079,4 @@ fn turn_id_from_value(value: &Value) -> Option<&str> {
 		.or_else(|| value.get("turn").and_then(|turn| turn.get("id")).and_then(Value::as_str))
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;
