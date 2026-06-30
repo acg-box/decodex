@@ -4,8 +4,6 @@ use agent::{
 };
 use git_credentials::GitSigningConfig;
 
-
-
 struct AgentGitCredentialEnvironment {
 	process_env: AppServerProcessEnv,
 }
@@ -14,7 +12,6 @@ impl AgentGitCredentialEnvironment {
 		&self.process_env
 	}
 }
-
 
 struct CompletedAppServerRun<'a, T>
 where
@@ -68,7 +65,6 @@ struct ThreadArchiveCandidateSource<'a> {
 	thread_id: &'a str,
 	sequence_number: Option<i64>,
 }
-
 
 enum IssueAppServerRunOutcome {
 	Completed(AppServerRunResult),
@@ -1028,7 +1024,13 @@ where
 	Ok(())
 }
 
-fn run_completion_repo_gate(workflow: &WorkflowDocument, issue_run: &IssueRunPlan) -> Result<()> {
+fn run_completion_repo_gate(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	phase: PhaseGoalKind,
+) -> Result<()> {
 	let selected_repo_gate =
 		select_repo_gate_for_worktree(workflow.frontmatter().execution(), &issue_run.worktree.path);
 
@@ -1038,11 +1040,38 @@ fn run_completion_repo_gate(workflow: &WorkflowDocument, issue_run: &IssueRunPla
 		issue_run.attempt_number,
 		RUN_OPERATION_REPO_GATE,
 	);
-	run_repo_gate_commands(
+	if let Err(error) = run_repo_gate_commands(
 		selected_repo_gate.canonicalize_commands(),
 		selected_repo_gate.verify_commands(),
 		&issue_run.worktree.path,
-	)?;
+	) {
+		if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
+			let scope_envelope_violation = repo_gate_failure
+				.tracked_rewrite_decision()
+				.is_some_and(RepoGateTrackedRewriteDecision::is_scope_envelope_violation);
+			let lane_snapshot = LaneDecisionSnapshot::repo_gate_failure(
+				issue_run.issue.identifier.clone(),
+				issue_run.run_id.clone(),
+				issue_run.attempt_number,
+				issue_run.dispatch_mode,
+				phase,
+				repo_gate_failure.disposition(),
+				scope_envelope_violation,
+			);
+			let lane_decision = decide_lane_next_action(&lane_snapshot);
+
+			state_store.append_private_execution_event(
+				project.service_id(),
+				&issue_run.issue.id,
+				&issue_run.run_id,
+				issue_run.attempt_number,
+				"lane_decision",
+				lane_snapshot.to_json(lane_decision.next_action, lane_decision.reason),
+			)?;
+		}
+
+		return Err(error);
+	}
 	write_run_operation_marker_best_effort(
 		&issue_run.worktree.path,
 		&issue_run.run_id,
@@ -1151,7 +1180,13 @@ where
 	match tracker_tool_bridge.completion_disposition()? {
 		RunCompletionDisposition::ReviewHandoff => {
 			validate_review_handoff_runtime(project, false)?;
-			run_completion_repo_gate(workflow, issue_run)?;
+			run_completion_repo_gate(
+				project,
+				workflow,
+				state_store,
+				issue_run,
+				PhaseGoalKind::HandoffEvidence,
+			)?;
 
 			tracker_tool_bridge.apply_review_handoff().map_err(|error| {
 				if let Some(writeback_error) = error.downcast_ref::<ReviewHandoffWritebackFailed>()
@@ -1189,7 +1224,13 @@ where
 		},
 		RunCompletionDisposition::ReviewRepair => {
 			validate_review_repair_runtime(project, false)?;
-			run_completion_repo_gate(workflow, issue_run)?;
+			run_completion_repo_gate(
+				project,
+				workflow,
+				state_store,
+				issue_run,
+				PhaseGoalKind::ReviewRepairEvidence,
+			)?;
 			push_retained_review_repair_head(
 				project,
 				issue_run,
@@ -1324,8 +1365,9 @@ fn planned_issue_state_for_dispatch(
 	preferred_issue_state: Option<&str>,
 ) -> String {
 	match dispatch_mode {
-		IssueDispatchMode::Normal | IssueDispatchMode::Program =>
-			workflow.frontmatter().tracker().in_progress_state().to_owned(),
+		IssueDispatchMode::Normal | IssueDispatchMode::Program => {
+			workflow.frontmatter().tracker().in_progress_state().to_owned()
+		},
 		IssueDispatchMode::Retry => preferred_issue_state
 			.filter(|state| {
 				*state == workflow.frontmatter().tracker().in_progress_state()

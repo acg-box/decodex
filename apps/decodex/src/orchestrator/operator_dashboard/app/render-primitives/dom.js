@@ -199,4 +199,3 @@
 				patchChildNodes(container, template.content, true);
 				animateStableListSize(container, startHeight);
 			}
-

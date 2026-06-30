@@ -1,4 +1,5 @@
-#[cfg(unix)] use std::os::fd::{AsRawFd, IntoRawFd};
+#[cfg(unix)]
+use std::os::fd::{AsRawFd, IntoRawFd};
 use std::{
 	fs,
 	path::Path,
@@ -7,7 +8,8 @@ use std::{
 	thread,
 };
 
-#[cfg(unix)] use libc::{F_GETFD, FD_CLOEXEC};
+#[cfg(unix)]
+use libc::{F_GETFD, FD_CLOEXEC};
 use rusqlite::{self, Connection};
 use serde_json::{self, Value};
 use tempfile::TempDir;

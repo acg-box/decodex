@@ -1,6 +1,6 @@
 use super::{
-	AgentGitCredentialsUnavailable, ChildRunRef, Command, FakeTracker, IssueDispatchMode,
-	IssueRunPlan, PrepareIssueRunContext, RUN_ACTIVITY_MARKER_FILE, RUN_OPERATION_RECONCILIATION,
+	AgentGitCredentialsUnavailable, ChildRunRef, FakeTracker, IssueDispatchMode, IssueRunPlan,
+	PrepareIssueRunContext, RUN_ACTIVITY_MARKER_FILE, RUN_OPERATION_RECONCILIATION,
 	RUN_OPERATION_REPO_GATE, RepoGateFailureKind, Report, RetainedReviewRepairPushFailed,
 	RunFailureWritebackDisposition, StateStore, TEST_SERVICE_ID, TempDir, TestEnvVarGuard,
 	WorktreeManager, WorktreeSpec, add_origin_remote, checkout_new_branch, commit_worktree_change,
@@ -119,7 +119,7 @@ fn retained_review_repair_completion_pushes_repaired_head_to_pr_branch() {
 	)
 	.expect("retained review-repair completion should push the repaired head");
 
-	let output = Command::new("git")
+	let output = crate::test_support::hermetic_git_command()
 		.arg("--git-dir")
 		.arg(&remote_root)
 		.args(["rev-parse", &format!("refs/heads/{}", issue_run.worktree.branch_name)])
@@ -242,7 +242,7 @@ fn agent_git_credentials_pin_repo_local_signing_key_when_configured() {
 		config.repo_root(),
 	)
 	.expect("agent Git credentials should prepare");
-	let mut signing_key_probe = Command::new("git");
+	let mut signing_key_probe = crate::test_support::hermetic_git_command();
 
 	signing_key_probe.arg("-C").arg(config.repo_root()).args([
 		"config",

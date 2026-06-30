@@ -527,12 +527,13 @@ impl DecisionExecutionReadiness {
 					);
 				}
 			},
-			DecisionContractStatus::NeedsHumanDecision =>
+			DecisionContractStatus::NeedsHumanDecision => {
 				if self.missing_decisions.is_empty() {
 					eyre::bail!(
 						"Needs-human-decision contracts must include at least one missing decision."
 					);
-				},
+				}
+			},
 			DecisionContractStatus::DraftLatent | DecisionContractStatus::RejectedSuperseded => {},
 		}
 
@@ -875,8 +876,9 @@ fn validate_proposed_issues(issues: &[DecisionProposedIssue]) -> Result<()> {
 
 fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
 	match stage {
-		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" =>
-			Ok(()),
+		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" => {
+			Ok(())
+		},
 		_ => {
 			eyre::bail!("Decision Contract proposed issue `{key}` has unsupported stage `{stage}`.")
 		},
@@ -885,8 +887,9 @@ fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
 
 fn validate_proposed_issue_queue_intent(key: &str, queue_intent: &str) -> Result<()> {
 	match queue_intent {
-		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" =>
-			Ok(()),
+		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" => {
+			Ok(())
+		},
 		_ => eyre::bail!(
 			"Decision Contract proposed issue `{key}` has unsupported queue_intent `{queue_intent}`."
 		),
@@ -1030,7 +1033,7 @@ mod tests {
 	}
 
 	#[test]
-	fn legacy_flat_proposed_issue_summaries_are_rejected() {
+	fn removed_flat_proposed_issue_summaries_are_rejected() {
 		let mut payload = serde_json::to_value(latent_research_contract_fixture())
 			.expect("fixture should encode");
 		let readiness = payload
@@ -1042,11 +1045,11 @@ mod tests {
 		readiness.remove("proposed_issues");
 		readiness.insert(
 			String::from("proposed_issue_summaries"),
-			serde_json::json!(["Legacy flat summary."]),
+			serde_json::json!(["Removed flat summary."]),
 		);
 
 		let error = serde_json::from_value::<DecisionContract>(payload)
-			.expect_err("legacy flat summaries must not deserialize");
+			.expect_err("removed flat summaries must not deserialize");
 
 		assert!(error.to_string().contains("proposed_issue_summaries"));
 	}

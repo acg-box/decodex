@@ -1,6 +1,7 @@
 //! OKF bundle query and graph construction.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(crate) fn query_okf_bundle(root: &Path, query: &OkfQuery) -> Result<Vec<OkfConceptSummary>> {
 	let files = read_okf_files(root)?;
@@ -140,8 +141,9 @@ fn frontmatter_string_list_lossy(fields: &Mapping, key: &str) -> Vec<String> {
 		Some(serde_yaml::Value::Sequence(items)) => items
 			.iter()
 			.filter_map(|item| match item {
-				serde_yaml::Value::String(value) if !value.trim().is_empty() =>
-					Some(value.trim().to_owned()),
+				serde_yaml::Value::String(value) if !value.trim().is_empty() => {
+					Some(value.trim().to_owned())
+				},
 				_ => None,
 			})
 			.collect(),

@@ -347,4 +347,5 @@ fn open_decodex_app(_bundle: Option<&Path>, _new: bool) -> Result<()> {
 	eyre::bail!("`decodex app` is only supported on macOS");
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

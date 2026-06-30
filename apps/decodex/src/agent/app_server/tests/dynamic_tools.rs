@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 #[test]
 fn dynamic_tool_call_accepts_thread_bound_request_when_payload_turn_id_differs() {

@@ -1,7 +1,7 @@
 use super::{
 	ChildAgentActivitySummary, OptionalExtension, Result, SqliteStateStore,
 	execution_program_record_from_row_parts, execution_program_runtime_row_parts, eyre,
-	migrate_legacy_decision_contract_payload, params, timestamp_parts,
+	migrate_removed_decision_contract_fields, params, timestamp_parts,
 };
 
 const REVIEW_LIFECYCLE_SCHEMA_SQL: &str = r#"
@@ -644,17 +644,16 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 	pub(in crate::state) fn run_schema_migrations(&self) -> Result<()> {
 		let version = self.schema_version()?.unwrap_or(0);
 
-		if version < 12 {
-			if !self
+		if version < 12
+			&& !self
 				.schema_migration_completed("migration:protocol_event_summaries_from_events:v12")?
-			{
-				self.backfill_protocol_event_summaries_from_events()?;
-				self.record_schema_migration_completed(
-					"migration:protocol_event_summaries_from_events:v12",
-				)?;
-			}
-			self.migrate_legacy_decision_contract_issue_summaries()?;
+		{
+			self.backfill_protocol_event_summaries_from_events()?;
+			self.record_schema_migration_completed(
+				"migration:protocol_event_summaries_from_events:v12",
+			)?;
 		}
+		self.migrate_removed_decision_contract_fields()?;
 
 		Ok(())
 	}
@@ -712,7 +711,7 @@ ON CONFLICT(key) DO UPDATE SET value =
 		Ok(())
 	}
 
-	pub(in crate::state) fn migrate_legacy_decision_contract_issue_summaries(&self) -> Result<()> {
+	pub(in crate::state) fn migrate_removed_decision_contract_fields(&self) -> Result<()> {
 		let updates = {
 			let mut statement = self.connection.prepare(
 				"SELECT project_id, contract_id, payload_json
@@ -728,10 +727,10 @@ ON CONFLICT(key) DO UPDATE SET value =
 
 			for row in rows {
 				let (project_id, contract_id, payload_json) = row?;
-				let migrated_payload = migrate_legacy_decision_contract_payload(&payload_json)
+				let migrated_payload = migrate_removed_decision_contract_fields(&payload_json)
 					.map_err(|error| {
 						eyre::eyre!(
-							"Decision Contract `{project_id}/{contract_id}` legacy payload migration failed: {error}"
+							"Decision Contract `{project_id}/{contract_id}` removed-field migration failed: {error}"
 						)
 					})?;
 

@@ -139,8 +139,9 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 				)
 			})?;
 			let next_cursor = match &mut review_state {
-				Some(review_state) =>
-					merge_pull_request_review_state_page(review_state, &repository, pull_request)?,
+				Some(review_state) => {
+					merge_pull_request_review_state_page(review_state, &repository, pull_request)?
+				},
 				None => {
 					let next_cursor = next_pull_request_review_threads_cursor(pull_request)?;
 

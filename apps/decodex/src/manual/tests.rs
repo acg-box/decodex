@@ -4,7 +4,6 @@ use std::{
 	env, fs,
 	os::unix::fs::PermissionsExt,
 	path::{Path, PathBuf},
-	process::Command,
 };
 
 use tempfile::TempDir;
@@ -14,7 +13,7 @@ use crate::{
 	manual::{self, LandExecutionMode, ManualAuthority, ManualLandContext, ManualLandRequest},
 	pull_request::PullRequestLandingState,
 	runtime, state,
-	test_support::TestEnvVarGuard,
+	test_support::{TestEnvVarGuard, hermetic_git_command},
 	tracker::{
 		TrackerIssue, TrackerLabel, TrackerState, TrackerTeam,
 		privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier, records,
@@ -36,7 +35,7 @@ fn init_git_checkout(temp_dir: &TempDir, directory_name: &str) -> PathBuf {
 	let checkout = temp_dir.path().join(directory_name);
 
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["init", "-b", "main"])
 			.current_dir(temp_dir.path())
 			.arg(&checkout)
@@ -45,7 +44,7 @@ fn init_git_checkout(temp_dir: &TempDir, directory_name: &str) -> PathBuf {
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["config", "user.name", "Decodex Tests"])
 			.current_dir(&checkout)
 			.status()
@@ -53,7 +52,7 @@ fn init_git_checkout(temp_dir: &TempDir, directory_name: &str) -> PathBuf {
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["config", "user.email", "decodex-tests@example.com"])
 			.current_dir(&checkout)
 			.status()
@@ -61,7 +60,7 @@ fn init_git_checkout(temp_dir: &TempDir, directory_name: &str) -> PathBuf {
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["config", "commit.gpgsign", "false"])
 			.current_dir(&checkout)
 			.status()
@@ -74,7 +73,7 @@ fn init_git_checkout(temp_dir: &TempDir, directory_name: &str) -> PathBuf {
 
 fn git_success(cwd: &Path, args: &[&str]) {
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(args)
 			.current_dir(cwd)
 			.status()
@@ -87,7 +86,7 @@ fn git_success(cwd: &Path, args: &[&str]) {
 
 fn git_add_and_commit(cwd: &Path, pathspec: &str, message: &str) {
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["add", pathspec])
 			.current_dir(cwd)
 			.status()
@@ -95,7 +94,7 @@ fn git_add_and_commit(cwd: &Path, pathspec: &str, message: &str) {
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["commit", "-m", message])
 			.current_dir(cwd)
 			.status()
@@ -109,7 +108,7 @@ fn init_git_checkout_with_origin(temp_dir: &TempDir) -> PathBuf {
 	let checkout = temp_dir.path().join("repo");
 
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["init", "--bare", "--initial-branch", "main"])
 			.arg(&remote_root)
 			.status()
@@ -117,7 +116,7 @@ fn init_git_checkout_with_origin(temp_dir: &TempDir) -> PathBuf {
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["clone"])
 			.arg(&remote_root)
 			.arg(&checkout)
@@ -1733,7 +1732,7 @@ fn resolve_manual_config_path_uses_registered_project_for_linked_worktree() {
 	fs::create_dir_all(&config_dir).expect("config dir should exist");
 
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["init", "-b", "main"])
 			.current_dir(temp_dir.path())
 			.arg(&repo_root)
@@ -1742,7 +1741,7 @@ fn resolve_manual_config_path_uses_registered_project_for_linked_worktree() {
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["config", "user.name", "Decodex Tests"])
 			.current_dir(&repo_root)
 			.status()
@@ -1750,7 +1749,7 @@ fn resolve_manual_config_path_uses_registered_project_for_linked_worktree() {
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["config", "user.email", "decodex-tests@example.com"])
 			.current_dir(&repo_root)
 			.status()
@@ -1758,7 +1757,7 @@ fn resolve_manual_config_path_uses_registered_project_for_linked_worktree() {
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		hermetic_git_command()
 			.args(["config", "commit.gpgsign", "false"])
 			.current_dir(&repo_root)
 			.status()

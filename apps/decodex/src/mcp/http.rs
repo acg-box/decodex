@@ -14,6 +14,8 @@ const MCP_WWW_AUTHENTICATE_HEADER: &str = "Bearer realm=\"decodex-mcp\"";
 
 pub(super) use auth::McpHttpAuthorization;
 pub(super) use handler::serve_streamable_http_with_profile;
-#[cfg(test)] pub(super) use handler::{McpHttpHandler, McpHttpSessions};
-#[cfg(test)] pub(super) use message::http_header_end;
+#[cfg(test)]
+pub(super) use handler::{McpHttpHandler, McpHttpSessions};
+#[cfg(test)]
+pub(super) use message::http_header_end;
 pub(super) use security::{validate_mcp_http_capability_profile, validate_mcp_http_listen_address};

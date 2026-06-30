@@ -7,7 +7,7 @@ fn build_post_review_lane_statuses_reports_ready_to_land() {
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -173,7 +173,7 @@ fn retained_worktree_with_stale_review_lifecycle_marker(
 
 fn git_head_oid_for_worktree(worktree: &WorktreeSpec) -> String {
 	String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["rev-parse", "HEAD"])
@@ -188,7 +188,7 @@ fn git_head_oid_for_worktree(worktree: &WorktreeSpec) -> String {
 
 fn commit_empty_repair_head_for_worktree(worktree: &WorktreeSpec) -> String {
 	assert!(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args([
@@ -285,7 +285,7 @@ fn build_post_review_lane_statuses_preserves_handoff_marker_when_pr_readback_fai
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -348,7 +348,7 @@ fn build_post_review_lane_statuses_skips_external_review_when_disabled() {
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -414,7 +414,7 @@ fn build_post_review_lane_statuses_routes_mixed_external_pass_and_feedback_to_re
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -494,7 +494,7 @@ fn build_post_review_lane_statuses_ignores_non_external_review_signals() {
 			FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 		let head_oid = String::from_utf8(
-			Command::new("git")
+			crate::test_support::hermetic_git_command()
 				.arg("-C")
 				.arg(&repo_root)
 				.args(["rev-parse", "HEAD"])
@@ -583,7 +583,7 @@ fn build_post_review_lane_statuses_accepts_existing_description_thumbs_up_for_la
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -673,7 +673,7 @@ fn build_post_review_lane_statuses_keeps_completed_issue_visible_for_closeout_ta
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -744,7 +744,7 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_retry_bud
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -960,7 +960,7 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 
 	assert!(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["config", "--local", "codex.github-identity", "y"])
@@ -969,7 +969,7 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 			.success()
 	);
 	assert!(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["config", "--local", "codex.linear-workspace", "hackink"])
@@ -981,7 +981,7 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["rev-parse", "HEAD"])
@@ -1406,7 +1406,7 @@ fn build_post_review_lane_statuses_blocks_worktree_head_read_failures() {
 	let branch_ref_path =
 		config.repo_root().join(".git").join("refs").join("heads").join(&worktree.branch_name);
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["rev-parse", "HEAD"])
@@ -1463,7 +1463,7 @@ fn build_post_review_lane_statuses_blocks_missing_worktree_checkout_branch() {
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["rev-parse", "HEAD"])
@@ -1477,7 +1477,7 @@ fn build_post_review_lane_statuses_blocks_missing_worktree_checkout_branch() {
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 
 	assert!(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["checkout", "--detach", &head_oid])

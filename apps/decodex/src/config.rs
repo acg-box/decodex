@@ -564,7 +564,8 @@ impl Default for ReviewLevel {
 
 mod git_paths;
 mod validation;
-#[cfg(test)] use git_paths::path_buf_from_git_line_output;
+#[cfg(test)]
+use git_paths::path_buf_from_git_line_output;
 pub use git_paths::{
 	canonical_repo_root_for_checkout, checkouts_share_repository, git_dir_for_checkout,
 };
@@ -661,4 +662,5 @@ fn normalize_path(path: &Path) -> PathBuf {
 	if normalized.as_os_str().is_empty() { PathBuf::from(".") } else { normalized }
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

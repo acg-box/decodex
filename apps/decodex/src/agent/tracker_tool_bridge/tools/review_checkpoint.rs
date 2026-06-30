@@ -577,8 +577,9 @@ fn normalize_review_class(review_class: String) -> Result<String, String> {
 	};
 
 	match review_class {
-		REVIEW_CLASS_COMPACT_CURRENT_HEAD | REVIEW_CLASS_FULL_CURRENT_HEAD =>
-			Ok(review_class.to_owned()),
+		REVIEW_CLASS_COMPACT_CURRENT_HEAD | REVIEW_CLASS_FULL_CURRENT_HEAD => {
+			Ok(review_class.to_owned())
+		},
 		other => Err(format!(
 			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `review_cost_control.review_class` to be `{REVIEW_CLASS_COMPACT_CURRENT_HEAD}` or `{REVIEW_CLASS_FULL_CURRENT_HEAD}`, not `{other}`."
 		)),
@@ -1102,10 +1103,12 @@ fn review_route_bound_finding_severity<'a>(
 	let index = usize::try_from(index?).ok()?;
 
 	match source {
-		REVIEW_ROUTE_SOURCE_ACCEPTED =>
-			accepted_findings.get(index).map(|finding| finding.severity.as_str()),
-		REVIEW_ROUTE_SOURCE_REJECTED =>
-			rejected_findings.get(index).map(|finding| finding.severity.as_str()),
+		REVIEW_ROUTE_SOURCE_ACCEPTED => {
+			accepted_findings.get(index).map(|finding| finding.severity.as_str())
+		},
+		REVIEW_ROUTE_SOURCE_REJECTED => {
+			rejected_findings.get(index).map(|finding| finding.severity.as_str())
+		},
 		_ => None,
 	}
 }

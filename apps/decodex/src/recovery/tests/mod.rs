@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fs, path::Path, process::Command};
+use std::{cell::RefCell, fs, path::Path};
 
 use tempfile::TempDir;
 
@@ -565,8 +565,12 @@ fn sample_issue_with_labels(state_name: &str, labels: &[String]) -> TrackerIssue
 
 fn init_git_repo(path: &Path) {
 	fs::create_dir_all(path).expect("git repo path should create");
-	let status =
-		Command::new("git").arg("-C").arg(path).arg("init").status().expect("git init should run");
+	let status = crate::test_support::hermetic_git_command()
+		.arg("-C")
+		.arg(path)
+		.arg("init")
+		.status()
+		.expect("git init should run");
 
 	assert!(status.success(), "git init should succeed");
 }
@@ -600,11 +604,9 @@ fn init_clean_git_repo_with_remote_default(path: &Path, branch_name: &str) {
 }
 
 fn run_git(repo: &Path, args: &[&str]) -> String {
-	let output = std::process::Command::new("git")
+	let output = crate::test_support::hermetic_git_command()
 		.arg("-C")
 		.arg(repo)
-		.arg("-c")
-		.arg("core.hooksPath=/dev/null")
 		.args(args)
 		.output()
 		.expect("git command should run");
