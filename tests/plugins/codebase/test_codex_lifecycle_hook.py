@@ -163,6 +163,8 @@ class CodexLifecycleHookTests(unittest.TestCase):
         joined = "\n".join(hints)
         self.assertIn("$codebase:dependency-policy", joined)
         self.assertIn("roll or style-only", joined)
+        self.assertIn("discovered-candidate inventory", joined)
+        self.assertIn("residual dependency checks", joined)
 
     def test_task_runner_surface_adds_task_runner_hint(self) -> None:
         self.hook.large_change_paths = lambda stats=None: []
