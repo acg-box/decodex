@@ -1,11 +1,12 @@
-use orchestrator::HarnessOutcomeKind;
-use orchestrator::HarnessOutcomeRecordInput;
-use orchestrator::PrivateEvidenceReadback;
+use super::*;
+
+use orchestrator::{HarnessOutcomeKind, HarnessOutcomeRecordInput, PrivateEvidenceReadback};
 
 #[test]
 fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
-	let _home_guard = TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be utf-8"));
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be utf-8"));
 	let mut current_lane = operator_status_text_current_lane();
 
 	current_lane.suspected_stall = true;
@@ -42,9 +43,7 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	)
 	.expect("agent evidence should write");
 	let result = results.first().expect("project evidence should exist");
-	let index_path = temp_dir
-		.path()
-		.join(".codex/decodex/agent-evidence/pubfi/handoff-index.json");
+	let index_path = temp_dir.path().join(".codex/decodex/agent-evidence/pubfi/handoff-index.json");
 	let index_json = read_json_file(&index_path);
 
 	assert_eq!(result.project_id, TEST_SERVICE_ID);
@@ -89,24 +88,17 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	assert_eq!(capsule_json["schema"], "decodex.run_capsule/1");
 	assert_eq!(capsule_json["run_id"], "run-1");
 	assert_eq!(capsule_json["diagnosis"]["reason_code"], "suspected_stall");
-	assert_eq!(
-		capsule_json["private_evidence"]["default_view"],
-		"summarized_payloads"
-	);
+	assert_eq!(capsule_json["private_evidence"]["default_view"], "summarized_payloads");
 
 	let blocker_json = read_json_file(
-		&temp_dir
-			.path()
-			.join(".codex/decodex/agent-evidence/pubfi/blockers/pub-101.json"),
+		&temp_dir.path().join(".codex/decodex/agent-evidence/pubfi/blockers/pub-101.json"),
 	);
 
 	assert_eq!(blocker_json["schema"], "decodex.blocker_snapshot/1");
 	assert_eq!(blocker_json["issue_identifier"], "PUB-101");
 	assert_eq!(blocker_json["related_run_capsules"][0]["run_id"], "run-1");
 
-	let events_path = temp_dir
-		.path()
-		.join(".codex/decodex/agent-evidence/pubfi/events.jsonl");
+	let events_path = temp_dir.path().join(".codex/decodex/agent-evidence/pubfi/events.jsonl");
 	let events_body = fs::read_to_string(events_path).expect("events stream should exist");
 	let event_json: Value =
 		serde_json::from_str(events_body.lines().next().expect("event line should exist"))
@@ -119,7 +111,8 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 #[test]
 fn agent_evidence_snapshot_does_not_turn_waiting_running_lane_into_attention_blocker() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
-	let _home_guard = TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be utf-8"));
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be utf-8"));
 	let mut current_lane = operator_status_text_current_lane();
 
 	current_lane.wait_reason = Some(String::from("tool_execution"));
@@ -150,15 +143,11 @@ fn agent_evidence_snapshot_does_not_turn_waiting_running_lane_into_attention_blo
 		worktrees: operator_status_text_worktrees(),
 		post_review_lanes: Vec::new(),
 	};
-	let results = orchestrator::write_agent_evidence_snapshot(
-		&snapshot,
-		AgentEvidenceSource::ServeTick,
-	)
-	.expect("agent evidence should write");
+	let results =
+		orchestrator::write_agent_evidence_snapshot(&snapshot, AgentEvidenceSource::ServeTick)
+			.expect("agent evidence should write");
 	let result = results.first().expect("project evidence should exist");
-	let index_path = temp_dir
-		.path()
-		.join(".codex/decodex/agent-evidence/pubfi/handoff-index.json");
+	let index_path = temp_dir.path().join(".codex/decodex/agent-evidence/pubfi/handoff-index.json");
 	let index_json = read_json_file(&index_path);
 
 	assert_eq!(result.handoff_index.summary.blocker_count, 0);
@@ -174,10 +163,7 @@ fn agent_evidence_snapshot_does_not_turn_waiting_running_lane_into_attention_blo
 	assert_eq!(capsule_json["diagnosis"]["attention_required"], false);
 	assert!(capsule_json["diagnosis"]["reason_code"].is_null());
 	assert!(
-		!temp_dir
-			.path()
-			.join(".codex/decodex/agent-evidence/pubfi/blockers/pub-101.json")
-			.exists(),
+		!temp_dir.path().join(".codex/decodex/agent-evidence/pubfi/blockers/pub-101.json").exists(),
 		"ordinary wait_reason must not create a stale attention blocker file"
 	);
 }
@@ -252,16 +238,9 @@ fn private_evidence_readback_summarizes_payloads_without_connector() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
-		.upsert_worktree(
-			TEST_SERVICE_ID,
-			"issue-1",
-			"x/pubfi-pub-101",
-			".worktrees/PUB-101",
-		)
+		.upsert_worktree(TEST_SERVICE_ID, "issue-1", "x/pubfi-pub-101", ".worktrees/PUB-101")
 		.expect("worktree should persist");
-	state_store
-		.record_run_attempt("run-1", "issue-1", 1, "failed")
-		.expect("run should persist");
+	state_store.record_run_attempt("run-1", "issue-1", 1, "failed").expect("run should persist");
 	state_store
 		.append_private_execution_event(
 			TEST_SERVICE_ID,
@@ -286,12 +265,8 @@ fn private_evidence_readback_summarizes_payloads_without_connector() {
 		json: true,
 		include_payload: false,
 	};
-	let readback = orchestrator::build_private_evidence_readback(
-		&state_store,
-		&config,
-		&request,
-	)
-	.expect("private evidence should read from local state");
+	let readback = orchestrator::build_private_evidence_readback(&state_store, &config, &request)
+		.expect("private evidence should read from local state");
 
 	assert_eq!(readback.event_count, 1);
 	assert_eq!(readback.issue_id, "issue-1");
@@ -325,12 +300,7 @@ fn agent_evidence_authority_boundary_readback_recommends_candidates_without_payl
 	let private_marker = "PRIVATE_AUTHORITY_READBACK_PAYLOAD";
 
 	state_store
-		.upsert_worktree(
-			TEST_SERVICE_ID,
-			"issue-boundary",
-			"x/pubfi-pub-111",
-			".worktrees/PUB-111",
-		)
+		.upsert_worktree(TEST_SERVICE_ID, "issue-boundary", "x/pubfi-pub-111", ".worktrees/PUB-111")
 		.expect("worktree should persist");
 	state_store
 		.record_run_attempt("run-boundary", "issue-boundary", 1, "terminal_guarded")
@@ -382,30 +352,22 @@ fn agent_evidence_authority_boundary_readback_recommends_candidates_without_payl
 		json: true,
 		include_payload: false,
 	};
-	let readback = orchestrator::build_private_evidence_readback(
-		&state_store,
-		&config,
-		&request,
-	)
-	.expect("authority boundary evidence should read");
+	let readback = orchestrator::build_private_evidence_readback(&state_store, &config, &request)
+		.expect("authority boundary evidence should read");
 	let rendered = orchestrator::render_private_evidence_readback(&readback);
 
 	assert_eq!(readback.event_count, 1);
 	assert_eq!(readback.latest_event_type.as_deref(), Some("authority_boundary_check"));
 	assert!(readback.events.iter().all(|event| event.payload.is_none()));
-	assert!(
-		readback.improvement_candidates.iter().any(|candidate| {
-			candidate.kind == "underspecified_decision_contract"
-				&& candidate.reason_code == "authority_underspecified"
-				&& candidate.target == "decision_contract:contract-boundary"
-		})
-	);
-	assert!(
-		readback.improvement_candidates.iter().any(|candidate| {
-			candidate.kind == "missing_issue_template_field"
-				&& candidate.reason_code == "authority_boundary_template_gap"
-		})
-	);
+	assert!(readback.improvement_candidates.iter().any(|candidate| {
+		candidate.kind == "underspecified_decision_contract"
+			&& candidate.reason_code == "authority_underspecified"
+			&& candidate.target == "decision_contract:contract-boundary"
+	}));
+	assert!(readback.improvement_candidates.iter().any(|candidate| {
+		candidate.kind == "missing_issue_template_field"
+			&& candidate.reason_code == "authority_boundary_template_gap"
+	}));
 	assert!(rendered.contains("authority_underspecified"));
 	assert!(!rendered.contains(private_marker));
 }
@@ -488,19 +450,12 @@ fn agent_evidence_private_readback_summarizes_authority_decision_request_without
 		json: true,
 		include_payload: false,
 	};
-	let readback = orchestrator::build_private_evidence_readback(
-		&state_store,
-		&config,
-		&request,
-	)
-	.expect("decision request evidence should read");
+	let readback = orchestrator::build_private_evidence_readback(&state_store, &config, &request)
+		.expect("decision request evidence should read");
 	let rendered = orchestrator::render_private_evidence_readback(&readback);
 
 	assert_eq!(readback.decision_requests.len(), 1);
-	assert_eq!(
-		readback.decision_requests[0].decision_request_id,
-		"dr-pub-112-1"
-	);
+	assert_eq!(readback.decision_requests[0].decision_request_id, "dr-pub-112-1");
 	assert_eq!(readback.decision_requests[0].phase, "human_required");
 	assert_eq!(readback.decision_requests[0].reason, "contract_boundary_required");
 	assert!(rendered.contains("Decision Requests"));
@@ -515,12 +470,7 @@ fn private_evidence_readback_reports_missing_events_for_known_run() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
-		.upsert_worktree(
-			TEST_SERVICE_ID,
-			"issue-2",
-			"x/pubfi-pub-102",
-			".worktrees/PUB-102",
-		)
+		.upsert_worktree(TEST_SERVICE_ID, "issue-2", "x/pubfi-pub-102", ".worktrees/PUB-102")
 		.expect("worktree should persist");
 	state_store
 		.record_run_attempt("run-empty", "issue-2", 1, "running")
@@ -535,22 +485,12 @@ fn private_evidence_readback_reports_missing_events_for_known_run() {
 		json: false,
 		include_payload: false,
 	};
-	let readback = orchestrator::build_private_evidence_readback(
-		&state_store,
-		&config,
-		&request,
-	)
-	.expect("missing private evidence should still produce readback");
+	let readback = orchestrator::build_private_evidence_readback(&state_store, &config, &request)
+		.expect("missing private evidence should still produce readback");
 
 	assert_eq!(readback.event_count, 0);
-	assert_eq!(
-		readback.warnings,
-		vec![String::from("private_execution_evidence_missing")]
-	);
-	assert!(
-		orchestrator::render_private_evidence_readback(&readback)
-			.contains("- none")
-	);
+	assert_eq!(readback.warnings, vec![String::from("private_execution_evidence_missing")]);
+	assert!(orchestrator::render_private_evidence_readback(&readback).contains("- none"));
 }
 
 #[test]
@@ -580,12 +520,8 @@ fn private_evidence_readback_direct_lookup_uses_stored_issue_id() {
 		json: true,
 		include_payload: false,
 	};
-	let readback = orchestrator::build_private_evidence_readback(
-		&state_store,
-		&config,
-		&request,
-	)
-	.expect("direct private evidence lookup should infer stored issue id");
+	let readback = orchestrator::build_private_evidence_readback(&state_store, &config, &request)
+		.expect("direct private evidence lookup should infer stored issue id");
 
 	assert_eq!(readback.event_count, 1);
 	assert_eq!(readback.issue_id, "issue-1");
@@ -643,12 +579,8 @@ fn private_evidence_readback_returns_manual_adopt_events_and_stable_command() {
 		json: true,
 		include_payload: false,
 	};
-	let readback = orchestrator::build_private_evidence_readback(
-		&state_store,
-		&config,
-		&request,
-	)
-	.expect("manual adopt evidence should read");
+	let readback = orchestrator::build_private_evidence_readback(&state_store, &config, &request)
+		.expect("manual adopt evidence should read");
 	let expected_command = format!(
 		"decodex evidence --config {} PUB-1579 --run-id {run_id} --attempt 2 --json",
 		config.config_path().display()
@@ -678,9 +610,7 @@ fn private_evidence_readback_shell_quotes_config_paths_with_spaces() {
 
 	let config = load_service_config(&repo_root);
 
-	state_store
-		.record_run_attempt(run_id, "issue-space", 1, "failed")
-		.expect("run should persist");
+	state_store.record_run_attempt(run_id, "issue-space", 1, "failed").expect("run should persist");
 	state_store
 		.append_private_execution_event(
 			TEST_SERVICE_ID,
@@ -701,12 +631,8 @@ fn private_evidence_readback_shell_quotes_config_paths_with_spaces() {
 		json: true,
 		include_payload: false,
 	};
-	let readback = orchestrator::build_private_evidence_readback(
-		&state_store,
-		&config,
-		&request,
-	)
-	.expect("private evidence should read");
+	let readback = orchestrator::build_private_evidence_readback(&state_store, &config, &request)
+		.expect("private evidence should read");
 
 	assert_eq!(
 		readback.read_command,
@@ -758,12 +684,8 @@ fn agent_evidence_harness_outcome_records_validation_review_and_repair_signals()
 		json: true,
 		include_payload: false,
 	};
-	let readback = orchestrator::build_private_evidence_readback(
-		&state_store,
-		&config,
-		&request,
-	)
-	.expect("private evidence should read");
+	let readback = orchestrator::build_private_evidence_readback(&state_store, &config, &request)
+		.expect("private evidence should read");
 
 	assert_harness_private_readback(&readback);
 }
@@ -890,15 +812,13 @@ fn assert_harness_private_readback(readback: &PrivateEvidenceReadback) {
 			.iter()
 			.any(|candidate| candidate.reason_code == "architecture_recovery_exhausted")
 	);
-	assert!(
-		readback.architecture_recoveries.iter().any(|recovery| {
-			recovery.reason_code == "architecture_recovery_exhausted"
-				&& recovery.guardrail_reason.as_deref() == Some("validation_repeat")
-				&& recovery.boundary_disposition.as_deref() == Some("within_authority")
-				&& recovery.recovery_budget_attempt == Some(2)
-				&& recovery.recovery_budget_max_attempts == Some(1)
-		})
-	);
+	assert!(readback.architecture_recoveries.iter().any(|recovery| {
+		recovery.reason_code == "architecture_recovery_exhausted"
+			&& recovery.guardrail_reason.as_deref() == Some("validation_repeat")
+			&& recovery.boundary_disposition.as_deref() == Some("within_authority")
+			&& recovery.recovery_budget_attempt == Some(2)
+			&& recovery.recovery_budget_max_attempts == Some(1)
+	}));
 	assert!(readback.review_checkpoints.iter().any(|checkpoint| {
 		checkpoint.phase == "handoff"
 			&& checkpoint.status == "findings"
@@ -909,9 +829,10 @@ fn assert_harness_private_readback(readback: &PrivateEvidenceReadback) {
 			&& checkpoint.compact_eligible == Some(false)
 			&& checkpoint.fallback_reason.as_deref() == Some("accepted_findings_present")
 			&& checkpoint.accepted_finding_count == 1
-			&& checkpoint.route_counts.iter().any(|count| {
-				count.route == "current_blocker" && count.count == 1
-			})
+			&& checkpoint
+				.route_counts
+				.iter()
+				.any(|count| count.route == "current_blocker" && count.count == 1)
 			&& checkpoint.route_next_action.as_deref() == Some("Repair the accepted finding.")
 	}));
 	assert!(readback.phase_acceptance_checks.iter().any(|check| {
@@ -1108,12 +1029,16 @@ fn harness_eval_fixture_recommends_contract_improvement_without_payload_leakage(
 	let issue_identifier = fixture["issue_identifier"].as_str().expect("fixture issue identifier");
 	let run_id = fixture["run_id"].as_str().expect("fixture run id");
 	let attempt_number = fixture["attempt_number"].as_i64().expect("fixture attempt");
-	let contract: DecisionContract =
-		serde_json::from_value(fixture["decision_contract"].clone())
-			.expect("fixture contract should deserialize");
+	let contract: DecisionContract = serde_json::from_value(fixture["decision_contract"].clone())
+		.expect("fixture contract should deserialize");
 
 	state_store
-		.upsert_worktree(TEST_SERVICE_ID, issue_id, "y/decodex-xy-857-eval", ".worktrees/XY-857-EVAL")
+		.upsert_worktree(
+			TEST_SERVICE_ID,
+			issue_id,
+			"y/decodex-xy-857-eval",
+			".worktrees/XY-857-EVAL",
+		)
 		.expect("worktree should persist");
 	state_store
 		.record_run_attempt(run_id, issue_id, attempt_number, "terminal_guarded")
@@ -1160,22 +1085,15 @@ fn harness_eval_fixture_recommends_contract_improvement_without_payload_leakage(
 		json: false,
 		include_payload: false,
 	};
-	let readback = orchestrator::build_private_evidence_readback(
-		&state_store,
-		&config,
-		&request,
-	)
-	.expect("fixture readback should summarize private evidence");
+	let readback = orchestrator::build_private_evidence_readback(&state_store, &config, &request)
+		.expect("fixture readback should summarize private evidence");
 	let expected = &fixture["expected_candidate"];
 
-	assert!(
-		readback.improvement_candidates.iter().any(|candidate| {
-			candidate.kind == expected["kind"].as_str().expect("expected kind")
-				&& candidate.reason_code
-					== expected["reason_code"].as_str().expect("expected reason")
-				&& candidate.target == expected["target"].as_str().expect("expected target")
-		})
-	);
+	assert!(readback.improvement_candidates.iter().any(|candidate| {
+		candidate.kind == expected["kind"].as_str().expect("expected kind")
+			&& candidate.reason_code == expected["reason_code"].as_str().expect("expected reason")
+			&& candidate.target == expected["target"].as_str().expect("expected target")
+	}));
 
 	let rendered = orchestrator::render_private_evidence_readback(&readback);
 
