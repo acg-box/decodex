@@ -1,5 +1,6 @@
-use orchestrator::ProjectDaemonRuntime;
-use orchestrator::StatusSnapshotHttpResponse;
+use super::*;
+
+use orchestrator::{ProjectDaemonRuntime, StatusSnapshotHttpResponse};
 
 #[test]
 fn control_plane_snapshot_lists_disabled_registered_projects() {
@@ -163,17 +164,13 @@ fn control_plane_linear_scan_cadence_uses_fixed_window_and_manual_override() {
 	assert!(orchestrator::linear_scan_due(
 		"pubfi",
 		&runtime,
-		&[orchestrator::OperatorLinearScanRequest {
-			project_id: Some(String::from("pubfi")),
-		}],
+		&[orchestrator::OperatorLinearScanRequest { project_id: Some(String::from("pubfi")) }],
 		now
 	));
 	assert!(!orchestrator::linear_scan_due(
 		"pubfi",
 		&runtime,
-		&[orchestrator::OperatorLinearScanRequest {
-			project_id: Some(String::from("rsnap")),
-		}],
+		&[orchestrator::OperatorLinearScanRequest { project_id: Some(String::from("rsnap")) }],
 		now
 	));
 }
@@ -401,10 +398,7 @@ fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects
 				.cloned()
 				.map(|status| orchestrator::complete_project_status(project, status));
 
-			ControlPlaneProjectTick {
-				snapshot: Some(project_snapshot),
-				project_status,
-			}
+			ControlPlaneProjectTick { snapshot: Some(project_snapshot), project_status }
 		},
 	);
 	let project_by_id = snapshot
@@ -507,10 +501,7 @@ fn status_cache_projects_aggregate_snapshot_to_requested_project() {
 				.cloned()
 				.map(|status| orchestrator::complete_project_status(project, status));
 
-			ControlPlaneProjectTick {
-				snapshot: Some(project_snapshot),
-				project_status,
-			}
+			ControlPlaneProjectTick { snapshot: Some(project_snapshot), project_status }
 		},
 	);
 	let cached = orchestrator::status_snapshot_from_operator_cache_response(
@@ -546,10 +537,7 @@ fn status_cache_rejects_missing_stale_or_too_small_snapshot() {
 	let missing_timestamp = orchestrator::status_snapshot_from_operator_cache_response(
 		&config,
 		10,
-		StatusSnapshotHttpResponse {
-			body: body.clone(),
-			published_at_unix_epoch: None,
-		},
+		StatusSnapshotHttpResponse { body: body.clone(), published_at_unix_epoch: None },
 		105,
 	)
 	.expect_err("missing publish timestamp should fall back");
@@ -559,10 +547,7 @@ fn status_cache_rejects_missing_stale_or_too_small_snapshot() {
 	let stale = orchestrator::status_snapshot_from_operator_cache_response(
 		&config,
 		10,
-		StatusSnapshotHttpResponse {
-			body: body.clone(),
-			published_at_unix_epoch: Some(1),
-		},
+		StatusSnapshotHttpResponse { body: body.clone(), published_at_unix_epoch: Some(1) },
 		1 + 61,
 	)
 	.expect_err("stale snapshot should fall back");
@@ -572,10 +557,7 @@ fn status_cache_rejects_missing_stale_or_too_small_snapshot() {
 	let too_small = orchestrator::status_snapshot_from_operator_cache_response(
 		&config,
 		100,
-		StatusSnapshotHttpResponse {
-			body,
-			published_at_unix_epoch: Some(100),
-		},
+		StatusSnapshotHttpResponse { body, published_at_unix_epoch: Some(100) },
 		101,
 	)
 	.expect_err("lower snapshot limit should fall back");
@@ -634,10 +616,7 @@ fn control_plane_snapshot_keeps_queued_project_summaries_service_scoped() {
 				.cloned()
 				.map(|status| orchestrator::complete_project_status(project, status));
 
-			ControlPlaneProjectTick {
-				snapshot: Some(project_snapshot),
-				project_status,
-			}
+			ControlPlaneProjectTick { snapshot: Some(project_snapshot), project_status }
 		},
 	);
 	let project_by_id = snapshot
@@ -672,13 +651,7 @@ fn service_scoped_project_registration(
 ) -> ProjectRegistration {
 	write_service_config(
 		base_config.repo_root(),
-		&sample_service_config_toml(
-			service_id,
-			"HOME",
-			"HOME",
-			None,
-			ReviewLevel::Strict,
-		),
+		&sample_service_config_toml(service_id, "HOME", "HOME", None, ReviewLevel::Strict),
 	);
 
 	let config = load_service_config(base_config.repo_root());
