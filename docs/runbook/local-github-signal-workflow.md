@@ -42,7 +42,7 @@ Outputs:
 
 ## Workflow
 
-1. Track upstream Codex commits continuously with `decodex radar refresh-upstream-queue`.
+1. Track upstream Codex commits continuously with `radar refresh-upstream-queue`.
    Treat each commit as an evidence unit, resolve it back to a PR when possible, write
    `.agent/automations/decodex/cache/github/radar.sqlite3`, and refresh `upstream_review_queue/v1`.
 2. Let Codex automation consume queued subjects and run
@@ -56,7 +56,7 @@ Outputs:
 6. Run final signal drafting with `automations/decodex/skills/github-signal/` and save the
    `analysis_draft` JSON under `.agent/automations/decodex/cache/generated/analysis/`.
 7. Render the resulting signal entry into `.agent/automations/decodex/cache/site-content/signals/` with
-   `decodex radar render-signal`.
+   `radar render-signal`.
 8. Validate the signal entry shape and collection consistency.
 9. Classify upstream impact when the change may affect Control Plane or Publisher.
 10. Regenerate the release-delta artifact so the homepage compares release windows
@@ -74,7 +74,7 @@ Outputs:
 Build a PR-first bundle:
 
 ```bash
-decodex radar bundle build \
+radar bundle build \
   --repo openai/codex \
   --pr 22414 \
   --out .agent/automations/decodex/cache/github/bundles/openai-codex-pr-22414.json
@@ -83,7 +83,7 @@ decodex radar bundle build \
 Validate the bundle:
 
 ```bash
-decodex radar bundle validate \
+radar bundle validate \
   .agent/automations/decodex/cache/github/bundles/openai-codex-pr-22414.json
 ```
 
@@ -91,7 +91,7 @@ Render a final signal entry from the reviewed bundle plus the Codex-owned
 `analysis_draft`:
 
 ```bash
-decodex radar render-signal \
+radar render-signal \
   --bundle .agent/automations/decodex/cache/github/bundles/openai-codex-pr-22414.json \
   --analysis .agent/automations/decodex/cache/generated/analysis/openai-codex-pr-22414.analysis.json \
   --out .agent/automations/decodex/cache/site-content/signals/openai-codex-pr-22414.json
@@ -100,13 +100,13 @@ decodex radar render-signal \
 Validate the published signal entries and the site collection:
 
 ```bash
-decodex radar validate .agent/automations/decodex/cache/site-content/signals
+radar validate .agent/automations/decodex/cache/site-content/signals
 ```
 
 Build the homepage release-delta artifact:
 
 ```bash
-cargo run -p decodex --bin decodex -- radar refresh-release-delta \
+cargo run -p radar -- refresh-release-delta \
   --repo openai/codex \
   --signals-dir .agent/automations/decodex/cache/site-content/signals \
   --out .agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json
@@ -116,7 +116,7 @@ Preview unpublished PRs from a selected release compare range without generating
 content:
 
 ```bash
-decodex radar backfill-release-range \
+radar backfill-release-range \
   --repo openai/codex \
   --stable-tag rust-v0.130.0 \
   --preview-tag rust-v0.131.0-alpha.9 \
@@ -131,7 +131,7 @@ AI review step follows the repo-local skills and schemas instead of running insi
 GitHub Actions.
 
 `automations/decodex/scripts/github/run_codex_analysis.py` remains only the bounded deterministic process
-wrapper for that AI review step. Prefer `decodex radar backfill-release-range` or a
+wrapper for that AI review step. Prefer `radar backfill-release-range` or a
 normal Codex automation session. Direct helper recovery runs must pass
 `--allow-ai-analysis-boundary` or set `DECODEX_ALLOW_CODEX_ANALYSIS=1`, and the helper
 still validates both the input bundle and the returned `analysis_draft` before writing
@@ -155,13 +155,13 @@ content contracts for this workflow.
 
 Automated sync entrypoint:
 
-- `decodex radar refresh-upstream-queue`
+- `radar refresh-upstream-queue`
 
 Bootstrap or inspect local historical trace:
 
 ```bash
-decodex radar ledger ingest-existing
-decodex radar ledger summary --json
+radar ledger ingest-existing
+radar ledger summary --json
 ```
 
 ## Editorial gate
@@ -204,9 +204,9 @@ The current Decodex boundary is:
 - Codex app automation: deterministic upstream commit discovery, PR mapping,
   review-queue refresh, release-delta refresh, validation, AI source review,
   compatibility judgment, Publisher judgment, social publication, `analysis_draft`
-  creation, `decodex radar render-signal`, and any promotion into signal or follow-up
+  creation, `radar render-signal`, and any promotion into signal or follow-up
   artifacts.
 - local operator sessions: manual editorial review, batch backfills, prompt iteration,
-  `decodex radar backfill-release-range`, and public-content audit.
+  `radar backfill-release-range`, and public-content audit.
 - GitHub Actions: no ownership in this operations lane. Do not create or rely on
   GitHub Actions for upstream-monitoring or public-publishing state.

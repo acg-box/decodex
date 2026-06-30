@@ -56,7 +56,7 @@ explicitly marks the batch as still active.
 
 Analysis drafts under `.agent/automations/decodex/cache/generated/analysis/*.analysis.json`
 are Codex helper output, not first-class Radar artifacts, so they do not carry a
-`schema` field. `decodex radar validate` still checks them by path against the
+`schema` field. `radar validate` still checks them by path against the
 `analysis_draft` contract before they can feed `signal_entry/v1` rendering.
 
 For existing artifacts that do not carry their own collection timestamp, the retention

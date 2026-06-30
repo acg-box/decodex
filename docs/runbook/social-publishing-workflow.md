@@ -177,7 +177,7 @@ one exact compare URL intentionally carries the detailed PR list.
    - The default cap day uses `Asia/Shanghai`.
    - If the candidate would exceed 8 posts, do not post. Write
      `status = "blocked"` with `block.reason = "daily_cap_exceeded"`.
-   - Before opening the X composer, run `decodex radar social reserve-publish` with
+   - Before opening the X composer, run `radar social reserve-publish` with
      the idempotency key, duplicate keys, owner/run metadata, cap day, `reserved_at`,
      and `expires_at`. Do not hand-write active reservation JSON.
    - The command persists the reservation in
@@ -229,7 +229,7 @@ one exact compare URL intentionally carries the detailed PR list.
    - Run:
 
 ```bash
-decodex radar validate .agent/automations/decodex/cache/github/social-candidates .agent/automations/decodex/cache/social/x
+radar validate .agent/automations/decodex/cache/github/social-candidates .agent/automations/decodex/cache/social/x
 ```
 
 ## Mode Guidance
