@@ -320,7 +320,7 @@ final class AccountStore: ObservableObject {
 		}
 	}
 
-	func logout(_ account: CodexAccount) async {
+	func logout(_ account: CodexAccount) async throws {
 		do {
 			accountList = try await bridge.runJSON(
 				.accountLogout(selector: account.selector),
@@ -328,7 +328,7 @@ final class AccountStore: ObservableObject {
 			)
 			notice = nil
 		} catch {
-			notice = error.localizedDescription
+			throw error
 		}
 	}
 
