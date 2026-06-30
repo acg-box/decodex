@@ -1,4 +1,5 @@
 mod execution_architecture_recovery;
+mod execution_failure;
 mod execution_phase_goal;
 mod lane_control;
 mod status_autonomy;
@@ -54,11 +55,33 @@ use serde_json::{Value, json};
 use sha2::Sha256;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::{agent, default_branch_sync, git_credentials, maintenance, state};
+use crate::{
+	agent, default_branch_sync, git_credentials, maintenance, state,
+	tracker::privacy_classifier::PublicProjectionPrivacyClassifier,
+};
 #[rustfmt::skip]
 use crate::{agent::{RUN_LEASE_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerProcessEnv, AppServerRunRequest, AppServerRunResult, AppServerTransportFailure, AppServerTurnFailure, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, DecodexRunContext, DecodexToolBridge, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition, ReviewExecutionMode, ReviewHandoffContext, ReviewHandoffWritebackFailed, ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, TrackerToolBridge, TurnContinuationGuard}, config::{ReviewLevel, ServiceConfig}, execution_program::{ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary, ExecutionProgramReadinessContext, ExecutionWorkflowPolicy}, git_credentials::GitCredentialSource, github, prelude::{Result, eyre}, state::{ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary, ExecutionProgramRecord, LoopGuardrailCheckpoint, LoopGuardrailCheckpointInput, ProjectRegistration, ProjectRunStatus, ProtocolActivitySummary, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_GIT_CREDENTIALS, RUN_OPERATION_IDLE, RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, RUN_OPERATION_REVIEW_WRITEBACK, RUN_OPERATION_WAITING_EXTERNAL, ReviewHandoffMarker, ReviewOrchestrationMarker, RunActivityMarker, RunAttempt, StateStore, WorktreeMapping}, tracker::{IssueTracker, TrackerIssue, linear::LinearClient, records}, workflow::{WorkflowDocument, WorkflowExecution}, worktree::{WorktreeManager, WorktreeSpec}};
 use execution_architecture_recovery::{
 	architecture_recovery_retry_next_action, loop_guardrail_architecture_recovery_decision,
+};
+use execution_failure::{
+	ARCHITECTURE_RECOVERY_BUDGET, ARCHITECTURE_RECOVERY_RETRY_KIND,
+	AppServerZeroEvidenceStartFailure, ArchitectureRecoveryStart,
+	LOOP_GUARDRAIL_CONVERGENCE_BUDGET, LoopGuardrailRecoveryDecision,
+	RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE, RetainedReviewRepairPushFailed,
+	RetainedReviewRepairPushFailureKind, TerminalFailureWritebackRuntime,
+	apply_terminal_failure_writeback, ensure_automation_activity_label, git_guardrail_output,
+	handle_failure, loop_guardrail_effective_status, loop_guardrail_text_hash,
+	loop_guardrail_worktree_fingerprint, preserve_and_promote_app_server_run_failure,
+	retained_progress_source_error_class, retryable_failure_loop_guardrail_stop,
+	run_failure_requires_terminal_attention, run_failure_writeback_disposition,
+	truncate_private_diagnostic_text,
+};
+#[cfg(test)]
+use execution_failure::{
+	RunFailureWritebackDisposition, preserve_manual_attention_request,
+	promote_zero_evidence_app_server_start_failure, retry_budget_attempts_for_current_failure,
+	write_retry_schedule_marker_for_runtime_retry,
 };
 #[cfg(test)] use execution_phase_goal::RepoGatePhaseGoalController;
 use execution_phase_goal::{
