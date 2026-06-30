@@ -1,28 +1,29 @@
-use std::{panic, slice};
+use super::*;
 
 use orchestrator::{
 	AgentPrivateEvidenceRef, OperatorLaneLifecycleMetrics, OperatorPostReviewLaneStatus,
 	OperatorQueuedIssueStatus, OperatorRunControlCapability, OperatorRunStatus,
 	OperatorWorktreeProvenanceStatus, OperatorWorktreeStatus,
 };
-use serde_json::Value;
 use state::{ChildAgentActivityBucket, ProtocolActivityEventSummary};
 
-fn successful_linear_execution_history_comments(issue: &TrackerIssue) -> Vec<TrackerComment> {
+pub(super) fn successful_linear_execution_history_comments(
+	issue: &TrackerIssue,
+) -> Vec<TrackerComment> {
 	vec![
-			linear_execution_history_comment(
-				issue,
-				"run_started",
-				"2026-04-29T10:00:00Z",
-				"run-start",
-				|record| {
-					record.branch = Some(String::from("y/decodex-xy-355"));
-					record.worktree_path = Some(String::from(".worktrees/XY-355"));
-					record.commit_sha = Some(String::from("0000000000000000000000000000000000000000"));
-					record.transport = Some(String::from("stdio://"));
-					record.summary = Some(String::from("Started the Decodex lane."));
-				},
-			),
+		linear_execution_history_comment(
+			issue,
+			"run_started",
+			"2026-04-29T10:00:00Z",
+			"run-start",
+			|record| {
+				record.branch = Some(String::from("y/decodex-xy-355"));
+				record.worktree_path = Some(String::from(".worktrees/XY-355"));
+				record.commit_sha = Some(String::from("0000000000000000000000000000000000000000"));
+				record.transport = Some(String::from("stdio://"));
+				record.summary = Some(String::from("Started the Decodex lane."));
+			},
+		),
 		linear_execution_history_comment(
 			issue,
 			"review_handoff",
@@ -84,7 +85,7 @@ fn successful_linear_execution_history_comments(issue: &TrackerIssue) -> Vec<Tra
 	]
 }
 
-fn successful_linear_execution_history_comments_with_cleanup(
+pub(super) fn successful_linear_execution_history_comments_with_cleanup(
 	issue: &TrackerIssue,
 ) -> Vec<TrackerComment> {
 	let mut comments = successful_linear_execution_history_comments(issue);
@@ -107,7 +108,7 @@ fn successful_linear_execution_history_comments_with_cleanup(
 	comments
 }
 
-fn retained_partial_progress_linear_execution_history_comments(
+pub(super) fn retained_partial_progress_linear_execution_history_comments(
 	issue: &TrackerIssue,
 ) -> Vec<TrackerComment> {
 	vec![
@@ -152,7 +153,10 @@ fn retained_partial_progress_linear_execution_history_comments(
 	]
 }
 
-fn seed_local_linear_execution_events(state_store: &StateStore, comments: &[TrackerComment]) {
+pub(super) fn seed_local_linear_execution_events(
+	state_store: &StateStore,
+	comments: &[TrackerComment],
+) {
 	for comment in comments {
 		let record = records::parse_linear_execution_event_record(&comment.body)
 			.expect("test comment should contain a valid Linear execution event");
@@ -163,7 +167,7 @@ fn seed_local_linear_execution_events(state_store: &StateStore, comments: &[Trac
 	}
 }
 
-fn linear_execution_history_comment<F>(
+pub(super) fn linear_execution_history_comment<F>(
 	issue: &TrackerIssue,
 	event_type: &str,
 	event_timestamp: &str,
@@ -201,7 +205,7 @@ where
 	}
 }
 
-fn operator_status_text_codex_account() -> state::CodexAccountActivitySummary {
+pub(super) fn operator_status_text_codex_account() -> state::CodexAccountActivitySummary {
 	state::CodexAccountActivitySummary {
 		account_fingerprint: String::from("...acct01"),
 		email: Some(String::from("primary@example.com")),
@@ -226,7 +230,7 @@ fn operator_status_text_codex_account() -> state::CodexAccountActivitySummary {
 	}
 }
 
-fn operator_status_text_backup_codex_account() -> state::CodexAccountActivitySummary {
+pub(super) fn operator_status_text_backup_codex_account() -> state::CodexAccountActivitySummary {
 	state::CodexAccountActivitySummary {
 		account_fingerprint: String::from("...acct02"),
 		email: Some(String::from("backup@example.com")),
@@ -251,7 +255,7 @@ fn operator_status_text_backup_codex_account() -> state::CodexAccountActivitySum
 	}
 }
 
-fn operator_status_text_control_capability() -> OperatorRunControlCapability {
+pub(super) fn operator_status_text_control_capability() -> OperatorRunControlCapability {
 	OperatorRunControlCapability {
 		project_id: String::from("pubfi"),
 		issue_id: String::from("issue-1"),
@@ -267,7 +271,7 @@ fn operator_status_text_control_capability() -> OperatorRunControlCapability {
 	}
 }
 
-fn operator_status_text_child_agent_activity() -> ChildAgentActivitySummary {
+pub(super) fn operator_status_text_child_agent_activity() -> ChildAgentActivitySummary {
 	ChildAgentActivitySummary {
 		buckets: vec![
 			ChildAgentActivityBucket {
@@ -308,7 +312,7 @@ fn operator_status_text_child_agent_activity() -> ChildAgentActivitySummary {
 	}
 }
 
-fn operator_status_text_protocol_activity() -> ProtocolActivitySummary {
+pub(super) fn operator_status_text_protocol_activity() -> ProtocolActivitySummary {
 	ProtocolActivitySummary {
 		turn_status: Some(String::from("completed")),
 		waiting_reason: Some(String::from("model_execution")),
@@ -328,7 +332,7 @@ fn operator_status_text_protocol_activity() -> ProtocolActivitySummary {
 	}
 }
 
-fn operator_status_text_current_lane() -> OperatorRunStatus {
+pub(super) fn operator_status_text_current_lane() -> OperatorRunStatus {
 	let account = operator_status_text_codex_account();
 	let backup_account = operator_status_text_backup_codex_account();
 
@@ -418,7 +422,7 @@ fn operator_status_text_current_lane() -> OperatorRunStatus {
 	}
 }
 
-fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
+pub(super) fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
 	vec![
 		OperatorQueuedIssueStatus {
 			project_id: String::from(TEST_SERVICE_ID),
@@ -465,7 +469,7 @@ fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
 	]
 }
 
-fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
+pub(super) fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 	vec![
 		OperatorWorktreeStatus {
 			project_id: String::from(TEST_SERVICE_ID),
@@ -513,7 +517,7 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 	]
 }
 
-fn test_worktree_provenance(source: &str) -> OperatorWorktreeProvenanceStatus {
+pub(super) fn test_worktree_provenance(source: &str) -> OperatorWorktreeProvenanceStatus {
 	OperatorWorktreeProvenanceStatus {
 		source: source.to_owned(),
 		created_at_unix: Some(1),
@@ -522,7 +526,7 @@ fn test_worktree_provenance(source: &str) -> OperatorWorktreeProvenanceStatus {
 	}
 }
 
-fn operator_status_text_post_review_lanes() -> Vec<OperatorPostReviewLaneStatus> {
+pub(super) fn operator_status_text_post_review_lanes() -> Vec<OperatorPostReviewLaneStatus> {
 	vec![OperatorPostReviewLaneStatus {
 		project_id: String::from(TEST_SERVICE_ID),
 		issue_id: String::from("issue-3"),
@@ -546,7 +550,7 @@ fn operator_status_text_post_review_lanes() -> Vec<OperatorPostReviewLaneStatus>
 	}]
 }
 
-fn assert_recovery_worktree_roles_are_grouped(rendered: &str) {
+pub(super) fn assert_recovery_worktree_roles_are_grouped(rendered: &str) {
 	let post_review_role_index =
 		rendered.find("role: post_review_lane").expect("post-review role should render");
 	let recovery_role_index =
