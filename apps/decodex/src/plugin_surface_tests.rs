@@ -426,6 +426,9 @@ fn packaged_codebase_skills_preserve_command_and_verification_authority() {
 	assert_contains(&repo_surface, "Run `plugin-eval analyze <plugin-root> --format markdown`");
 	assert_contains(&repo_surface, "Task-runner review checklist");
 	assert_contains(&repo_surface, "External `uses: owner/action@ref`");
+	assert_contains(&repo_surface, "whole discoverable dependency surface");
+	assert_contains(&repo_surface, "open Dependabot PRs are authoritative candidates");
+	assert_contains(&repo_surface, "residual dependency checks");
 	assert_contains(&repo_surface, "requires-follow-up-migration");
 	assert_contains(&repo_surface, "Do not duplicate this routing in host bootstrap files");
 }
