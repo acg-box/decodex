@@ -12,7 +12,6 @@ enum AccountRunChipLayout {
 
 struct AccountRunChipView: View {
 	let card: OperatorCurrentLaneCard
-	let currentTime: Date
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var isHovered = false
 	@State private var showsPopover = false
@@ -52,8 +51,10 @@ struct AccountRunChipView: View {
 			cancelPopover()
 		}
 		.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
-			OperatorLanePopoverView(run: card.run, currentTime: currentTime)
-				.fixedSize(horizontal: true, vertical: false)
+			TimelineView(.periodic(from: Date(), by: 1)) { timeline in
+				OperatorLanePopoverView(run: card.run, currentTime: timeline.date)
+					.fixedSize(horizontal: true, vertical: false)
+			}
 		}
 	}
 
