@@ -21,6 +21,7 @@ struct AccountRunSummaryView: View {
 				} stopContinuousAction: {
 					scrollProxy.stopContinuousScroll()
 				}
+				.transition(.panelInline)
 			}
 
 			AccountRunStripScrollView(
@@ -61,6 +62,7 @@ struct AccountRunSummaryView: View {
 				} stopContinuousAction: {
 					scrollProxy.stopContinuousScroll()
 				}
+				.transition(.panelInline)
 			}
 		}
 		.frame(height: AccountRunChipLayout.height)
@@ -73,6 +75,7 @@ struct AccountRunSummaryView: View {
 		.onChange(of: runs.map(\.id)) { _, runIDs in
 			placementStore.retainOnly(Set(runIDs))
 		}
+		.animation(PanelMotion.inlineLayout, value: showsEdgeControls)
 	}
 
 	private func updateScrollMetrics(_ metrics: AccountRunStripMetrics) {
@@ -85,11 +88,18 @@ struct AccountRunSummaryView: View {
 			scrollProxy.stopContinuousScroll()
 		}
 
-		var transaction = Transaction()
-		transaction.disablesAnimations = true
-		withTransaction(transaction) {
-			scrollMetrics = metrics
-			showsEdgeControls = nextShowsEdgeControls
+		if metrics != scrollMetrics {
+			var transaction = Transaction()
+			transaction.disablesAnimations = true
+			withTransaction(transaction) {
+				scrollMetrics = metrics
+			}
+		}
+
+		if nextShowsEdgeControls != showsEdgeControls {
+			withAnimation(PanelMotion.inlineLayout) {
+				showsEdgeControls = nextShowsEdgeControls
+			}
 		}
 	}
 
