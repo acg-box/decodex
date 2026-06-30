@@ -10,15 +10,10 @@ use std::{
 	fs::{self, File, OpenOptions, TryLockError},
 	io::{ErrorKind, Read, Seek, SeekFrom, Write},
 	path::{Path, PathBuf},
-	process,
-	sync::{Mutex, MutexGuard, OnceLock},
-	time::Duration,
+	sync::{Mutex, MutexGuard},
 };
 
-use rusqlite::{Connection, OptionalExtension, Transaction, params};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use time::OffsetDateTime;
 
 use crate::{
 	autonomy_objective::{
@@ -27,25 +22,24 @@ use crate::{
 	},
 	autonomy_proposal::{
 		AutonomyProposal, AutonomyProposalCompileInput, AutonomyProposalDecisionBridgeAuthority,
-		AutonomyProposalRefusalReason, AutonomyProposalState,
+		AutonomyProposalRefusalReason,
 	},
-	autonomy_signal::{
-		AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
-		AutonomySignalFreshness, AutonomySignalKind, AutonomySignalPrivacy,
-	},
-	config::ServiceConfig,
+	autonomy_signal::AutonomySignal,
 	execution_program::ExecutionProgram,
 	loop_contract::{DecisionContract, DecisionContractStatus, DecisionPromotion},
 	prelude::{Result, eyre},
 	tracker::records::{self, LinearExecutionEventRecord},
 };
 
+mod models;
 mod project_run_recovery;
 mod protocol_events;
 mod review_records;
+mod run_activity_marker;
 mod run_attempts;
 mod runtime_records;
 mod runtime_row_parsers;
+mod sqlite_store;
 mod store_run_control;
 
 use runtime_records::{
@@ -63,29 +57,50 @@ use runtime_records::{
 	WorktreeMappingRecord,
 };
 use runtime_row_parsers::{
-	autonomy_objective_record_from_row_parts, autonomy_objective_runtime_row_parts,
-	autonomy_proposal_record_from_row_parts, autonomy_proposal_runtime_row_parts,
-	autonomy_signal_record_from_row_parts, autonomy_signal_runtime_row_parts,
 	compare_autonomy_proposal_runtime_records, compare_autonomy_signal_runtime_records,
 	compare_decision_contract_runtime_records, compare_execution_program_runtime_records,
 	compare_linear_execution_event_runtime_records,
 	compare_private_execution_event_runtime_records, compare_program_intake_plan_records,
 	compare_program_issue_mapping_records, compare_recent_autonomy_proposal_runtime_records,
-	compare_recent_autonomy_signal_runtime_records, connector_backoff_from_row,
-	decision_contract_record_from_row_parts, decision_contract_runtime_row_parts,
-	execution_program_record_from_row_parts, execution_program_runtime_row_parts,
-	migrate_legacy_decision_contract_payload, parse_linear_execution_event_unix,
-	program_intake_plan_row, program_issue_mapping_row, protocol_event_record_from_row,
-	protocol_event_summary_from_events, run_activity_summary_record_from_row,
-	run_attempt_record_from_row, sqlite_bool_value, timestamp_parts,
-	validate_private_execution_event_inputs, worktree_mapping_record_from_row,
+	compare_recent_autonomy_signal_runtime_records, parse_linear_execution_event_unix,
+	protocol_event_summary_from_events, timestamp_parts, validate_private_execution_event_inputs,
 };
+use sqlite_store::SqliteStateStore;
 
 include!("state/store.rs");
 
-include!("state/models.rs");
+#[allow(unused_imports)] pub(crate) use models::WorktreeProvenance;
+pub(crate) use models::{
+	AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
+	ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
+	CodexAccountProfileDailyUsageSummary, ConnectorBackoff, DecisionContractRecord,
+	ExecutionProgramRecord, IssueLease, LoopGuardrailCheckpoint, PreacquiredLeaseGuards,
+	PrivateExecutionEvent, ProgramIntakePlanRecord, ProgramIssueMappingRecord, ProjectRegistration,
+	ProjectRunStatus, ProtocolActivityEventSummary, ProtocolActivitySummary, ReviewHandoffMarker,
+	ReviewLifecycleRecord, ReviewOrchestrationMarker, ReviewPolicyCheckpoint, RunActivityMarker,
+	RunAttempt, RunControlActionOutcomeRequest, RunControlActionReceipt, RunControlActionRequest,
+	RunControlChannel, WORKTREE_PROVENANCE_FILESYSTEM_SCAN, WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN,
+	WORKTREE_PROVENANCE_LEGACY_UNKNOWN, WORKTREE_PROVENANCE_RUNTIME_RECORDED,
+	WORKTREE_PROVENANCE_RUNTIME_RECOVERED, WorktreeMapping, worktree_provenance,
+};
 
-include!("state/run_activity_marker.rs");
+pub(crate) use run_activity_marker::{
+	clear_run_retry_schedule, current_host_boot_id, process_start_identity,
+	protocol_event_counts_as_work_progress, read_run_activity_marker,
+	read_run_activity_marker_snapshot, read_run_protocol_activity_marker,
+	read_run_retry_budget_attempt_count, write_run_account_marker,
+	write_run_effective_runtime_marker, write_run_operation_marker,
+	write_run_operation_marker_for_process, write_run_operation_marker_preserving_activity,
+	write_run_protocol_activity_marker, write_run_retry_budget_attempt_count,
+	write_run_retry_schedule, write_run_thread_marker, write_run_thread_status_marker,
+	write_run_turn_marker,
+};
+#[cfg(test)]
+pub(crate) use run_activity_marker::{
+	current_process_start_identity, read_run_activity_marker_record, write_run_activity_marker,
+	write_run_activity_marker_at, write_run_activity_marker_for_process,
+	write_run_activity_marker_record,
+};
 
 include!("state/internal.rs");
 
