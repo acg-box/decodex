@@ -1096,7 +1096,7 @@ fn decision_contract_reload_rejects_row_key_payload_mismatch() {
 }
 
 #[test]
-fn decision_contract_reload_migrates_legacy_flat_issue_summary_rows() {
+fn decision_contract_reload_migrates_removed_flat_issue_summary_rows() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let store = StateStore::open(&state_path).expect("state store should open");
@@ -1105,12 +1105,12 @@ fn decision_contract_reload_migrates_legacy_flat_issue_summary_rows() {
 		.upsert_decision_contract("decodex", Some("XY-852"), latent_decision_contract_fixture())
 		.expect("current decision contract should persist");
 
-	let mut legacy_payload = serde_json::to_value(latent_decision_contract_fixture())
+	let mut removed_field_payload = serde_json::to_value(latent_decision_contract_fixture())
 		.expect("fixture should encode as JSON");
 
-	legacy_payload["contract_id"] = serde_json::json!("legacy-flat-issue-contract");
+	removed_field_payload["contract_id"] = serde_json::json!("removed-flat-issue-contract");
 
-	let readiness = legacy_payload
+	let readiness = removed_field_payload
 		.get_mut("execution_readiness")
 		.expect("readiness should exist")
 		.as_object_mut()
@@ -1119,11 +1119,11 @@ fn decision_contract_reload_migrates_legacy_flat_issue_summary_rows() {
 	readiness.remove("proposed_issues");
 	readiness.insert(
 		String::from("proposed_issue_summaries"),
-		serde_json::json!(["Legacy flat summary that must not be compiled."]),
+		serde_json::json!(["Flat summary that must be migrated."]),
 	);
 	readiness.insert(
 		String::from("queue_intent"),
-		serde_json::json!(["Legacy queue intent that must not be re-admitted."]),
+		serde_json::json!(["Removed queue intent that must not be re-admitted."]),
 	);
 
 	let connection = Connection::open(&state_path).expect("sqlite should open");
@@ -1136,23 +1136,23 @@ fn decision_contract_reload_migrates_legacy_flat_issue_summary_rows() {
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
 			rusqlite::params![
 				"decodex",
-				"legacy-flat-issue-contract",
+			"removed-flat-issue-contract",
 				"XY-OLD",
 				"draft_latent",
-				serde_json::to_string(&legacy_payload).expect("legacy payload should serialize"),
+			serde_json::to_string(&removed_field_payload).expect("removed-field payload should serialize"),
 				"2026-06-17T00:00:00Z",
 				1_i64,
 				"2026-06-17T00:00:00Z",
 				1_i64,
 			],
 		)
-		.expect("legacy decision contract row should insert");
+		.expect("removed-field decision contract row should insert");
 	connection
 		.execute("UPDATE schema_meta SET value = '11' WHERE key = 'schema_version'", [])
-		.expect("schema version should mark legacy state");
+		.expect("schema version should mark removed-field state");
 
 	let reopened =
-		StateStore::open(&state_path).expect("legacy flat issue summary row should migrate");
+		StateStore::open(&state_path).expect("removed flat issue summary row should migrate");
 	let project_contracts = reopened
 		.list_decision_contracts_for_project("decodex")
 		.expect("project contracts should list");
@@ -1161,23 +1161,23 @@ fn decision_contract_reload_migrates_legacy_flat_issue_summary_rows() {
 
 	assert_eq!(project_contracts.len(), 2);
 	assert!(contract_ids.contains(&"research-x-loop-contract"));
-	assert!(contract_ids.contains(&"legacy-flat-issue-contract"));
+	assert!(contract_ids.contains(&"removed-flat-issue-contract"));
 
-	let legacy_contract = reopened
-		.decision_contract("decodex", "legacy-flat-issue-contract")
-		.expect("legacy contract read should succeed")
-		.expect("legacy contract should exist");
+	let migrated_contract = reopened
+		.decision_contract("decodex", "removed-flat-issue-contract")
+		.expect("migrated contract read should succeed")
+		.expect("migrated contract should exist");
 
-	assert_eq!(legacy_contract.source_issue_id(), Some("XY-OLD"));
-	assert_eq!(legacy_contract.contract().execution_readiness().proposed_issues().len(), 1);
+	assert_eq!(migrated_contract.source_issue_id(), Some("XY-OLD"));
+	assert_eq!(migrated_contract.contract().execution_readiness().proposed_issues().len(), 1);
 	assert_eq!(
-		legacy_contract.contract().execution_readiness().proposed_issues()[0].objective(),
-		"Legacy flat summary that must not be compiled."
+		migrated_contract.contract().execution_readiness().proposed_issues()[0].objective(),
+		"Flat summary that must be migrated."
 	);
 
 	let migrated_payload: String = connection
 		.query_row(
-			"SELECT payload_json FROM decision_contracts WHERE contract_id = 'legacy-flat-issue-contract'",
+				"SELECT payload_json FROM decision_contracts WHERE contract_id = 'removed-flat-issue-contract'",
 			[],
 			|row| row.get(0),
 		)
@@ -1187,11 +1187,11 @@ fn decision_contract_reload_migrates_legacy_flat_issue_summary_rows() {
 
 	assert!(
 		migrated_value.pointer("/execution_readiness/proposed_issue_summaries").is_none(),
-		"legacy field should be removed after migration"
+		"removed field should be absent after migration"
 	);
 	assert!(
 		migrated_value.pointer("/execution_readiness/queue_intent").is_none(),
-		"legacy queue intent should be removed after migration"
+		"removed queue intent should be absent after migration"
 	);
 }
 

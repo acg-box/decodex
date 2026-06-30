@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 #[test]
 fn archive_thread_after_success_calls_app_server_archive_and_records_event() {

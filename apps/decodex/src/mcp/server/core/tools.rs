@@ -50,15 +50,19 @@ impl McpServer {
 			TOOL_RESEARCH_PROMOTE => Ok(self.call_research_promote_tool(arguments)),
 			TOOL_INTAKE_GOAL => Ok(self.call_intake_goal_tool(arguments)),
 			TOOL_AUTONOMY_DRAFT_OBJECTIVE => Ok(self.call_autonomy_draft_objective_tool(arguments)),
-			TOOL_AUTONOMY_ACCEPT_OBJECTIVE =>
-				Ok(self.call_autonomy_accept_objective_tool(arguments)),
+			TOOL_AUTONOMY_ACCEPT_OBJECTIVE => {
+				Ok(self.call_autonomy_accept_objective_tool(arguments))
+			},
 			TOOL_AUTONOMY_SUBMIT_SIGNAL => Ok(self.call_autonomy_submit_signal_tool(arguments)),
-			TOOL_AUTONOMY_COMPILE_PROPOSAL =>
-				Ok(self.call_autonomy_compile_proposal_tool(arguments)),
-			TOOL_AUTONOMY_CHALLENGE_PROPOSAL =>
-				Ok(self.call_autonomy_challenge_proposal_tool(arguments)),
-			TOOL_AUTONOMY_REQUEST_PROMOTION =>
-				Ok(self.call_autonomy_request_promotion_tool(arguments)),
+			TOOL_AUTONOMY_COMPILE_PROPOSAL => {
+				Ok(self.call_autonomy_compile_proposal_tool(arguments))
+			},
+			TOOL_AUTONOMY_CHALLENGE_PROPOSAL => {
+				Ok(self.call_autonomy_challenge_proposal_tool(arguments))
+			},
+			TOOL_AUTONOMY_REQUEST_PROMOTION => {
+				Ok(self.call_autonomy_request_promotion_tool(arguments))
+			},
 			TOOL_LANE_CONTROL => Ok(self.call_lane_control_tool(arguments, required_profile)),
 			TOOL_PROJECT_CONTROL => Ok(self.call_project_control_tool(arguments, required_profile)),
 			_ => Ok(mcp::tool_refusal("unknown_tool", "Decodex MCP tool is not registered.")),

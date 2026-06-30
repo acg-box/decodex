@@ -506,12 +506,15 @@ impl<'a> TrackerToolBridge<'a> {
 		let review_completion = self.pending_review_completion.borrow().clone();
 
 		match (manual_attention_requested, manual_attention_comment_recorded, review_completion) {
-			(false, false, Some(PendingReviewCompletion::Handoff(_))) =>
-				Ok(RunCompletionDisposition::ReviewHandoff),
-			(false, false, Some(PendingReviewCompletion::Repair(_))) =>
-				Ok(RunCompletionDisposition::ReviewRepair),
-			(false, false, Some(PendingReviewCompletion::Closeout(_))) =>
-				Ok(RunCompletionDisposition::Closeout),
+			(false, false, Some(PendingReviewCompletion::Handoff(_))) => {
+				Ok(RunCompletionDisposition::ReviewHandoff)
+			},
+			(false, false, Some(PendingReviewCompletion::Repair(_))) => {
+				Ok(RunCompletionDisposition::ReviewRepair)
+			},
+			(false, false, Some(PendingReviewCompletion::Closeout(_))) => {
+				Ok(RunCompletionDisposition::Closeout)
+			},
 			(true, true, None) => Ok(RunCompletionDisposition::ManualAttention),
 			(true, false, None) => eyre::bail!(
 				"Run `{}` requested human attention with label `{}`, but issue `{}` never recorded the required explanatory comment.",
@@ -1196,8 +1199,9 @@ impl<'a> TrackerToolBridge<'a> {
 				return None;
 			},
 			ReviewPolicyStatus::Findings => ReviewPolicyStopReason::Exhausted,
-			ReviewPolicyStatus::NeedsArchitectureReview =>
-				ReviewPolicyStopReason::ArchitectureReviewRequired,
+			ReviewPolicyStatus::NeedsArchitectureReview => {
+				ReviewPolicyStopReason::ArchitectureReviewRequired
+			},
 			ReviewPolicyStatus::Blocked => ReviewPolicyStopReason::Blocked,
 		};
 

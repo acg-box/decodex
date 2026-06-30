@@ -259,4 +259,3 @@
 
 					return hasMetric || dailyUsage.length ? aggregate : null;
 				}
-

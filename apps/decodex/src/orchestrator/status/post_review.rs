@@ -19,7 +19,8 @@ use super::{
 	worktree_mapping_is_stale_terminal_local_residue,
 };
 
-#[cfg(test)] use super::ReviewLevel;
+#[cfg(test)]
+use super::ReviewLevel;
 
 pub(in crate::orchestrator) fn build_post_review_lane_statuses<T, I>(
 	tracker: &T,

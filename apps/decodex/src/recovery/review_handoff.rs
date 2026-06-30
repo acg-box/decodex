@@ -83,8 +83,9 @@ pub(crate) fn run_review_handoff_diagnose(
 	}
 
 	let diagnostics = match match request.issue.as_deref() {
-		Some(issue_identifier) =>
-			diagnose_issue(&context, issue_identifier).map(|diagnostic| vec![diagnostic]),
+		Some(issue_identifier) => {
+			diagnose_issue(&context, issue_identifier).map(|diagnostic| vec![diagnostic])
+		},
 		None => diagnose_all_retained_review_worktrees(&context),
 	} {
 		Ok(diagnostics) => diagnostics,

@@ -15,11 +15,12 @@ impl McpServer {
 	pub(in crate::mcp) fn call_autonomy_draft_objective_tool(&self, arguments: Value) -> Value {
 		let params = match serde_json::from_value::<AutonomyDraftObjectiveToolArgs>(arguments) {
 			Ok(params) => params,
-			Err(_) =>
+			Err(_) => {
 				return mcp::invalid_tool_arguments(
 					TOOL_AUTONOMY_DRAFT_OBJECTIVE,
 					"`objective` is required and `mode` must be dry_run or apply.",
-				),
+				);
+			},
 		};
 		let mode = match planning::planning_mode(
 			params.mode.as_deref(),

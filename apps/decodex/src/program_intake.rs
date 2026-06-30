@@ -33,14 +33,17 @@ use crate::{
 mod goal;
 mod issue_batch;
 mod render;
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;
 
 use self::render::{
 	generated_issue_private_identifiers, render_goal_issue_brief, validate_generated_issue_text,
 };
 pub(crate) use self::render::{render_goal_intake_report, render_issue_batch_intake_report};
-#[allow(clippy::wildcard_imports)] use goal::*;
-#[allow(clippy::wildcard_imports)] use issue_batch::*;
+#[allow(clippy::wildcard_imports)]
+use goal::*;
+#[allow(clippy::wildcard_imports)]
+use issue_batch::*;
 
 /// CLI/runtime request for issue-batch Program Intake.
 pub(crate) struct IssueBatchIntakeCommandRequest<'a> {

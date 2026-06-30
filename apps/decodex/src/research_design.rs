@@ -33,8 +33,9 @@ pub(crate) enum ResearchDesignOutcome {
 impl ResearchDesignOutcome {
 	fn contract_status(self) -> DecisionContractStatus {
 		match self {
-			Self::DecisionReady | Self::NotDecisionReady | Self::Blocked =>
-				DecisionContractStatus::DraftLatent,
+			Self::DecisionReady | Self::NotDecisionReady | Self::Blocked => {
+				DecisionContractStatus::DraftLatent
+			},
 			Self::NeedsHumanDecision => DecisionContractStatus::NeedsHumanDecision,
 		}
 	}
@@ -920,14 +921,18 @@ fn risk_notes(input: &NormalizedResearchDesignInput) -> Vec<String> {
 
 fn default_feedback(outcome: ResearchDesignOutcome) -> &'static str {
 	match outcome {
-		ResearchDesignOutcome::DecisionReady =>
-			"Decision-ready research/design output is stored as a latent contract until promotion.",
-		ResearchDesignOutcome::NotDecisionReady =>
-			"Research/design output is not decision-ready and must not become implementation work.",
-		ResearchDesignOutcome::Blocked =>
-			"Research/design output is blocked; resolve blockers before promotion.",
-		ResearchDesignOutcome::NeedsHumanDecision =>
-			"Research/design output needs an explicit human decision before execution authority exists.",
+		ResearchDesignOutcome::DecisionReady => {
+			"Decision-ready research/design output is stored as a latent contract until promotion."
+		},
+		ResearchDesignOutcome::NotDecisionReady => {
+			"Research/design output is not decision-ready and must not become implementation work."
+		},
+		ResearchDesignOutcome::Blocked => {
+			"Research/design output is blocked; resolve blockers before promotion."
+		},
+		ResearchDesignOutcome::NeedsHumanDecision => {
+			"Research/design output needs an explicit human decision before execution authority exists."
+		},
 	}
 }
 

@@ -418,8 +418,9 @@ fn review_checkpoint_next_action(status: &str) -> String {
 			"Repair accepted findings, rerun validation, and checkpoint the repaired head.",
 		),
 		"blocked" => String::from("Resolve the blocking review condition before continuing."),
-		"needs_architecture_review" =>
-			String::from("Escalate for an architecture decision before further repair churn."),
+		"needs_architecture_review" => {
+			String::from("Escalate for an architecture decision before further repair churn.")
+		},
 		_ => String::from("Inspect the Decodex Review checkpoint summary before continuing."),
 	}
 }
@@ -626,16 +627,18 @@ fn boundary_policy_blocks_landing(policy_decision: &str) -> bool {
 
 fn boundary_check_next_action(policy_decision: &str) -> String {
 	match policy_decision {
-		"auto_continue" =>
-			String::from("Continue autonomous architecture recovery inside the accepted boundary."),
+		"auto_continue" => {
+			String::from("Continue autonomous architecture recovery inside the accepted boundary.")
+		},
 		"requires_enhanced_evidence" => String::from(
 			"Continue recovery and preserve enhanced evidence before review handoff or landing.",
 		),
 		"block_landing" => String::from(
 			"Continue recovery, but block landing until review or validation policy evidence is restored.",
 		),
-		"requires_human_decision" =>
-			String::from("Stop for a human boundary decision before continuing."),
+		"requires_human_decision" => {
+			String::from("Stop for a human boundary decision before continuing.")
+		},
 		_ => String::from("Inspect the authority boundary summary before continuing."),
 	}
 }
