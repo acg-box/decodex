@@ -7,7 +7,7 @@ use crate::{
 	RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
 	RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
 	RadarRefreshQueueRequest, RadarRefreshReleaseDeltaRequest, RadarRenderSignalRequest,
-	RadarSocialReservePublishRequest, RadarValidateRequest, prelude::Result,
+	RadarValidateRequest, prelude::Result,
 };
 
 /// Root CLI parser for the Radar auxiliary tool.
@@ -30,7 +30,6 @@ impl Cli {
 			RadarSubcommand::RefreshUpstreamQueue(args) => args.run(),
 			RadarSubcommand::RefreshReleaseDelta(args) => args.run(),
 			RadarSubcommand::Bundle(args) => args.run(),
-			RadarSubcommand::Social(args) => args.run(),
 			RadarSubcommand::RenderSignal(args) => args.run(),
 			RadarSubcommand::BackfillReleaseRange(args) => args.run(),
 			RadarSubcommand::Ledger(args) => args.run(),
@@ -62,13 +61,13 @@ struct RadarRefreshUpstreamQueueCommand {
 	#[arg(
 		long,
 		value_name = "DIR",
-		default_value = ".agent/automations/decodex/cache/site-content/signals"
+		default_value = crate::paths::DEFAULT_SIGNALS_DIR
 	)]
 	signals_dir: PathBuf,
 	#[arg(
 		long,
 		value_name = "FILE",
-		default_value = ".agent/automations/decodex/cache/github/review-queue/openai-codex-latest.json"
+		default_value = crate::paths::DEFAULT_QUEUE_OUT
 	)]
 	queue_out: PathBuf,
 	#[arg(long)]
@@ -106,13 +105,13 @@ struct RadarRefreshReleaseDeltaCommand {
 	#[arg(
 		long,
 		value_name = "DIR",
-		default_value = ".agent/automations/decodex/cache/site-content/signals"
+		default_value = crate::paths::DEFAULT_SIGNALS_DIR
 	)]
 	signals_dir: PathBuf,
 	#[arg(
 		long,
 		value_name = "FILE",
-		default_value = ".agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json"
+		default_value = crate::paths::DEFAULT_RELEASE_DELTA_OUT
 	)]
 	out: PathBuf,
 	#[arg(long, default_value = "rust-v")]
@@ -217,92 +216,6 @@ impl RadarBundleValidateCommand {
 }
 
 #[derive(Debug, Args)]
-struct RadarSocialCommand {
-	#[command(subcommand)]
-	command: RadarSocialSubcommand,
-}
-impl RadarSocialCommand {
-	fn run(&self) -> Result<()> {
-		match &self.command {
-			RadarSocialSubcommand::ReservePublish(args) => args.run(),
-		}
-	}
-}
-
-#[derive(Debug, Args)]
-struct RadarSocialReservePublishCommand {
-	#[arg(long)]
-	slug: String,
-	#[arg(long)]
-	mode: String,
-	#[arg(long)]
-	idempotency_key: String,
-	#[arg(long)]
-	reserved_at: String,
-	#[arg(long)]
-	expires_at: String,
-	#[arg(long)]
-	day: String,
-	#[arg(long, default_value = "Asia/Shanghai")]
-	timezone: String,
-	#[arg(long = "candidate", value_name = "FILE")]
-	candidate_paths: Vec<PathBuf>,
-	#[arg(long = "url")]
-	urls: Vec<String>,
-	#[arg(long = "duplicate-key")]
-	duplicate_keys: Vec<String>,
-	#[arg(
-		long,
-		value_name = "DIR",
-		default_value = ".agent/automations/decodex/cache/social/x/reservations"
-	)]
-	out_dir: PathBuf,
-	#[arg(
-		long,
-		value_name = "DIR",
-		default_value = ".agent/automations/decodex/cache/social/x/posts"
-	)]
-	posts_dir: PathBuf,
-	#[arg(long)]
-	automation_id: Option<String>,
-	#[arg(long)]
-	run_id: Option<String>,
-	#[arg(long)]
-	branch: Option<String>,
-	#[arg(long, default_value_t = 8)]
-	daily_limit: usize,
-	#[arg(long)]
-	dry_run: bool,
-}
-impl RadarSocialReservePublishCommand {
-	fn run(&self) -> Result<()> {
-		let report = radar::reserve_social_publish(&RadarSocialReservePublishRequest {
-			slug: self.slug.clone(),
-			mode: self.mode.clone(),
-			idempotency_key: self.idempotency_key.clone(),
-			reserved_at: self.reserved_at.clone(),
-			expires_at: self.expires_at.clone(),
-			day: self.day.clone(),
-			timezone: self.timezone.clone(),
-			candidate_paths: self.candidate_paths.clone(),
-			urls: self.urls.clone(),
-			duplicate_keys: self.duplicate_keys.clone(),
-			out_dir: self.out_dir.clone(),
-			posts_dir: self.posts_dir.clone(),
-			automation_id: self.automation_id.clone(),
-			run_id: self.run_id.clone(),
-			branch: self.branch.clone(),
-			daily_limit: self.daily_limit,
-			dry_run: self.dry_run,
-		})?;
-
-		println!("{}", serde_json::to_string_pretty(&report)?);
-
-		Ok(())
-	}
-}
-
-#[derive(Debug, Args)]
 struct RadarRenderSignalCommand {
 	#[arg(long, value_name = "FILE")]
 	bundle: PathBuf,
@@ -335,7 +248,7 @@ struct RadarBackfillReleaseRangeCommand {
 	#[arg(
 		long,
 		value_name = "FILE",
-		default_value = ".agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json"
+		default_value = crate::paths::DEFAULT_RELEASE_DELTA_OUT
 	)]
 	release_delta: PathBuf,
 	#[arg(long)]
@@ -345,19 +258,19 @@ struct RadarBackfillReleaseRangeCommand {
 	#[arg(
 		long,
 		value_name = "DIR",
-		default_value = ".agent/automations/decodex/cache/site-content/signals"
+		default_value = crate::paths::DEFAULT_SIGNALS_DIR
 	)]
 	signals_dir: PathBuf,
 	#[arg(
 		long,
 		value_name = "DIR",
-		default_value = ".agent/automations/decodex/cache/github/bundles"
+		default_value = crate::paths::DEFAULT_BUNDLES_DIR
 	)]
 	bundles_dir: PathBuf,
 	#[arg(
 		long,
 		value_name = "DIR",
-		default_value = ".agent/automations/decodex/cache/generated/analysis"
+		default_value = crate::paths::DEFAULT_ANALYSIS_DIR
 	)]
 	analysis_dir: PathBuf,
 	#[arg(long)]
@@ -474,19 +387,19 @@ struct RadarLedgerIngestExistingCommand {
 	#[arg(
 		long,
 		value_name = "DIR",
-		default_value = ".agent/automations/decodex/cache/github/bundles"
+		default_value = crate::paths::DEFAULT_BUNDLES_DIR
 	)]
 	bundles_dir: PathBuf,
 	#[arg(
 		long,
 		value_name = "DIR",
-		default_value = ".agent/automations/decodex/cache/generated/analysis"
+		default_value = crate::paths::DEFAULT_ANALYSIS_DIR
 	)]
 	analysis_dir: PathBuf,
 	#[arg(
 		long,
 		value_name = "DIR",
-		default_value = ".agent/automations/decodex/cache/site-content/signals"
+		default_value = crate::paths::DEFAULT_SIGNALS_DIR
 	)]
 	signals_dir: PathBuf,
 }
@@ -564,8 +477,6 @@ enum RadarSubcommand {
 	RefreshReleaseDelta(RadarRefreshReleaseDeltaCommand),
 	/// Build or validate GitHub change bundles.
 	Bundle(RadarBundleCommand),
-	/// Manage social publication handoff state.
-	Social(RadarSocialCommand),
 	/// Render a signal entry from a bundle and analysis draft.
 	RenderSignal(RadarRenderSignalCommand),
 	/// Backfill unpublished signal entries from a release comparison.
@@ -580,12 +491,6 @@ enum RadarBundleSubcommand {
 	Build(RadarBundleBuildCommand),
 	/// Validate GitHub change bundle artifacts.
 	Validate(RadarBundleValidateCommand),
-}
-
-#[derive(Debug, Subcommand)]
-enum RadarSocialSubcommand {
-	/// Atomically reserve one social publish slot before browser compose.
-	ReservePublish(RadarSocialReservePublishCommand),
 }
 
 #[derive(Debug, Subcommand)]

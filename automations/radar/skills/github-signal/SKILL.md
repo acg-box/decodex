@@ -20,20 +20,19 @@ It consumes a reviewed bundle plus source-backed analysis and drafts the JSON th
 - `docs/spec/upstream-impact.md`
 - `docs/spec/control-plane-upgrade-candidate.md`
 - `docs/spec/signal-entry.md`
-- `docs/spec/social-publishing.md`
 - `docs/runbook/local-github-signal-workflow.md`
-- `automations/decodex/skills/codex-upstream-triage/SKILL.md`
-- `automations/decodex/skills/codex-code-analysis/SKILL.md`
+- `automations/radar/skills/codex-upstream-triage/SKILL.md`
+- `automations/radar/skills/codex-code-analysis/SKILL.md`
 
 ## Inputs
 
-- A normalized bundle JSON under `.agent/automations/decodex/cache/github/bundles/`
+- A normalized bundle JSON under `.agent/automations/radar/cache/github/bundles/`
 - A source-backed `upstream_review/v1` or code-analysis result from
-  `automations/decodex/skills/codex-code-analysis/SKILL.md`
-- An output path under `.agent/automations/decodex/cache/generated/analysis/`
-- Optional upstream impact output under `.agent/automations/decodex/cache/github/impact/`
+  `automations/radar/skills/codex-code-analysis/SKILL.md`
+- An output path under `.agent/automations/radar/cache/generated/analysis/`
+- Optional upstream impact output under `.agent/automations/radar/cache/github/impact/`
 - Optional Control Plane upgrade candidate output under
-  `.agent/automations/decodex/cache/github/control-plane-upgrades/`
+  `.agent/automations/radar/cache/github/control-plane-upgrades/`
 
 ## Companion Skill Routing
 
@@ -42,8 +41,8 @@ It consumes a reviewed bundle plus source-backed analysis and drafts the JSON th
 - Use `codex-code-analysis` before this skill when the behavior path or Control Plane
   impact is not already clear.
 - Use `codex-release-analysis` before this skill when the source is release-shaped.
-- Use `x-post-publisher` after this skill only when the rendered signal or
-  upstream-impact artifact supports a social post.
+- Decodex Publisher may later consume the rendered signal or upstream-impact artifact,
+  but this skill does not create social artifacts or publish posts.
 
 ## Boundaries
 
@@ -95,7 +94,7 @@ Write a JSON analysis draft with these fields:
 2. Read the reviewed bundle metadata plus the source-backed upstream review or
    code-analysis result.
 3. Decide whether the change is signal-worthy.
-4. Draft the `analysis_draft` JSON under `.agent/automations/decodex/cache/generated/analysis/`.
+4. Draft the `analysis_draft` JSON under `.agent/automations/radar/cache/generated/analysis/`.
 5. Draft or update an `upstream_impact/v1` artifact when the change affects Control
    Plane or Publisher follow-up. This impact artifact is the shared handoff that
    release publishing and Control Plane upgrade proposals should consume.
@@ -111,22 +110,22 @@ Write a JSON analysis draft with these fields:
 Validate a bundle:
 
 ```bash
-radar bundle validate .agent/automations/decodex/cache/github/bundles/<bundle>.json
+radar bundle validate .agent/automations/radar/cache/github/bundles/<bundle>.json
 ```
 
 Render the final signal entry after drafting:
 
 ```bash
 radar render-signal \
-  --bundle .agent/automations/decodex/cache/github/bundles/<bundle>.json \
-  --analysis .agent/automations/decodex/cache/generated/analysis/<bundle>.analysis.json \
-  --out .agent/automations/decodex/cache/site-content/signals/<bundle>.json
+  --bundle .agent/automations/radar/cache/github/bundles/<bundle>.json \
+  --analysis .agent/automations/radar/cache/generated/analysis/<bundle>.analysis.json \
+  --out .agent/automations/radar/cache/site-content/signals/<bundle>.json
 ```
 
 Validate the published output:
 
 ```bash
-radar validate .agent/automations/decodex/cache/site-content/signals
+radar validate .agent/automations/radar/cache/site-content/signals
 npm run build --prefix site
 npm run check --prefix site
 ```

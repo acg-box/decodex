@@ -40,7 +40,7 @@ Defines:
 The default local Radar ledger path is:
 
 ```text
-.agent/automations/decodex/cache/github/radar.sqlite3
+.agent/automations/radar/cache/github/radar.sqlite3
 ```
 
 `.agent/` is ignored by Git. The ledger is local or CI runtime state, not a checked-in
@@ -59,7 +59,7 @@ Required tables:
 | Table | Purpose |
 | --- | --- |
 | `upstream_commit` | One row per observed upstream commit, including SHA, title, URL, commit time, PR number when known, and first/last seen timestamps. |
-| `radar_review` | One current review state per commit or PR subject. Status values include `seen`, `skipped`, `watch`, `signal`, `control_plane`, `social`, `deprecated`, and `archived`. The deterministic queue uses `watch` for subjects awaiting AI review. |
+| `radar_review` | One current review state per commit or PR subject. Status values include `seen`, `skipped`, `watch`, `signal`, `control_plane`, `deprecated`, and `archived`. The deterministic queue uses `watch` for subjects awaiting AI review. |
 | `artifact_link` | Links commits or PRs to Git-tracked or archived artifacts, including file path, artifact kind, SHA-256, size, and creation time. |
 | `source_cache` | Optional source cache index for fetched remote payloads when a future cache is added. |
 
@@ -73,15 +73,15 @@ Use the ledger for:
 - commits skipped because they are low-signal maintenance
 - subjects queued for AI review by `upstream_review_queue/v1`
 - mappings from commits to PRs
-- links from commits or PRs to bundles, analysis drafts, signals, impact notes, social
-  posts, release deltas, archive manifests, or ledger exports
+- links from commits or PRs to bundles, analysis drafts, signals, impact notes,
+  release deltas, control-plane upgrade candidates, archive manifests, or ledger
+  exports
 
 Use Git for:
 
 - curated public site signals
 - current release-delta data
 - upstream-impact records that affect Decodex Control Plane or Publisher follow-up
-- social publication records
 - cold archive manifests
 
 Do not use Git as the permanent store for every raw bundle, raw source cache, skipped
@@ -95,7 +95,7 @@ every recent commit it inspects, including commits that do not become public sig
 Operators may disable ledger writes with:
 
 ```sh
-cargo run -p radar -- refresh-upstream-queue --no-ledger
+radar refresh-upstream-queue --no-ledger
 ```
 
 Existing checked-in artifacts can be imported with:

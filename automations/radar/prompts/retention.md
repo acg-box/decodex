@@ -1,9 +1,9 @@
-Apply Decodex Radar and Publisher artifact retention from this repo checkout.
+Apply Decodex Radar artifact retention from this repo checkout.
 
 Authority and boundaries:
 - This is Codex app automation, not GitHub Actions.
-- Repo-local automation source is `automations/decodex`.
-- Generated state must stay under `.agent/automations/decodex/cache`.
+- Repo-local automation source is `automations/radar`.
+- Generated state must stay under `.agent/automations/radar/cache`.
 - Do not mutate Linear, publish social content, open or land PRs, or write generated archive state into tracked source.
 
 Preflight:
@@ -15,9 +15,9 @@ Required reads:
 
 Workflow:
 1. Start with a dry-run-first pass.
-2. Identify hot raw artifacts older than the retention window under `.agent/automations/decodex/cache/github/bundles`, `.agent/automations/decodex/cache/github/reviews`, and `.agent/automations/decodex/cache/generated/analysis`.
-3. Preserve curated downstream artifacts that still have automation value: current queue, impact records, social candidates, social posts, release deltas, signals, and archive manifests.
-4. If cleanup is needed, write an archive manifest under `.agent/automations/decodex/cache/archive/index` before removing matching raw cache files.
+2. Identify hot raw artifacts older than the retention window under `.agent/automations/radar/cache/github/bundles`, `.agent/automations/radar/cache/github/reviews`, and `.agent/automations/radar/cache/generated/analysis`.
+3. Preserve curated Radar artifacts that still have automation value: current queue, impact records, release deltas, signals, and archive manifests.
+4. If cleanup is needed, write an archive manifest under `.agent/automations/radar/cache/archive/index` before removing matching raw cache files.
 5. If external release storage is required, report an explicit handoff instead of using GitHub Actions.
 6. Validate archive manifests when practical.
 

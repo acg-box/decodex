@@ -77,7 +77,7 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 }
 
 #[test]
-fn ledger_bootstrap_migrates_social_draft_artifact_kind() {
+fn ledger_bootstrap_drops_legacy_publisher_artifact_links_and_status() {
 	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
 	let db_path = temp_dir.path().join("radar.sqlite3");
 	let connection = rusqlite::Connection::open(&db_path).expect("temporary ledger should open");
@@ -95,7 +95,7 @@ fn ledger_bootstrap_migrates_social_draft_artifact_kind() {
 				      'analysis',
 				      'signal',
 				      'upstream_impact',
-				      'social_draft',
+				      'publisher_handoff',
 				      'release_delta',
 				      'archive_manifest',
 				      'ledger_export'
@@ -106,6 +106,28 @@ fn ledger_bootstrap_migrates_social_draft_artifact_kind() {
 				  size_bytes INTEGER NOT NULL,
 				  created_at TEXT NOT NULL,
 				  PRIMARY KEY (repo, subject_kind, subject_id, artifact_kind, path)
+				);
+				CREATE TABLE radar_review (
+				  repo TEXT NOT NULL,
+				  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('commit', 'pr')),
+				  subject_id TEXT NOT NULL,
+				  status TEXT NOT NULL CHECK (
+				    status IN (
+				      'seen',
+				      'skipped',
+				      'watch',
+				      'signal',
+				      'control_plane',
+				      'publisher_handoff',
+				      'deprecated',
+				      'archived'
+				    )
+				  ),
+				  reason TEXT NOT NULL DEFAULT '',
+				  confidence TEXT CHECK (confidence IN ('confirmed', 'likely', 'weak')),
+				  reviewed_at TEXT NOT NULL,
+				  updated_at TEXT NOT NULL,
+				  PRIMARY KEY (repo, subject_kind, subject_id)
 				);
 				INSERT INTO artifact_link (
 				  repo,
@@ -121,10 +143,30 @@ fn ledger_bootstrap_migrates_social_draft_artifact_kind() {
 				  'openai/codex',
 				  'pr',
 				  '22414',
-				  'social_draft',
-				  '.agent/automations/decodex/cache/social/x/posts/2026-06-01/example.json',
+				  'publisher_handoff',
+				  '.agent/automations/decodex/cache/publisher/handoffs/example.json',
 				  'abc123',
 				  10,
+				  '2026-06-01T00:00:00Z'
+				);
+				INSERT INTO radar_review (
+				  repo,
+				  subject_kind,
+				  subject_id,
+				  status,
+				  reason,
+				  confidence,
+				  reviewed_at,
+				  updated_at
+				)
+				VALUES (
+				  'openai/codex',
+				  'pr',
+				  '22414',
+				  'publisher_handoff',
+				  'legacy publisher handoff',
+				  'likely',
+				  '2026-06-01T00:00:00Z',
 				  '2026-06-01T00:00:00Z'
 				);
 				",
@@ -134,18 +176,22 @@ fn ledger_bootstrap_migrates_social_draft_artifact_kind() {
 	drop(connection);
 
 	radar::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
-		.expect("ledger bootstrap should migrate social_draft rows");
+		.expect("ledger bootstrap should migrate legacy publisher rows");
 
 	let connection = rusqlite::Connection::open(&db_path).expect("migrated ledger should open");
-	let artifact_kind: String = connection
-		.query_row("SELECT artifact_kind FROM artifact_link", [], |row| row.get(0))
-		.expect("artifact kind should be readable");
+	let artifact_links: i64 = connection
+		.query_row("SELECT COUNT(*) FROM artifact_link", [], |row| row.get(0))
+		.expect("artifact link count should be readable");
+	let review_status: String = connection
+		.query_row("SELECT COALESCE(MAX(status), '') FROM radar_review", [], |row| row.get(0))
+		.expect("review status count should be readable");
 	let schema_version: String = connection
 		.query_row("SELECT value FROM metadata WHERE key = 'schema_version'", [], |row| row.get(0))
 		.expect("schema version should be readable");
 
-	assert_eq!(artifact_kind, "social_post");
-	assert_eq!(schema_version, "4");
+	assert_eq!(artifact_links, 0);
+	assert_eq!(review_status, "");
+	assert_eq!(schema_version, "5");
 }
 
 #[test]
@@ -192,92 +238,6 @@ fn ledger_ingests_existing_bundle_analysis_and_signal_artifacts() {
 }
 
 #[test]
-fn ledger_artifact_link_records_social_post_artifacts() {
-	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
-	let db_path = temp_dir.path().join("radar.sqlite3");
-	let social_post_path = temp_dir.path().join("post.json");
-
-	fs::write(&social_post_path, r#"{"schema":"social_post/v1"}"#)
-		.expect("social post fixture should be written");
-
-	let summary = radar::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
-		db_path: db_path.clone(),
-		repo: "openai/codex".into(),
-		subject_kind: "pr".into(),
-		subject_id: "22414".into(),
-		artifact_kind: "social_post".into(),
-		path: social_post_path,
-	})
-	.expect("artifact link should be recorded");
-
-	assert_eq!(summary.get("artifact_links"), Some(&1));
-
-	let connection =
-		rusqlite::Connection::open(&db_path).expect("ledger should open after artifact link");
-	let artifact_kind: String = connection
-		.query_row("SELECT artifact_kind FROM artifact_link", [], |row| row.get(0))
-		.expect("artifact link row should be readable");
-
-	assert_eq!(artifact_kind, "social_post");
-}
-
-#[test]
-fn ledger_artifact_link_records_social_candidate_after_schema_migration() {
-	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
-	let db_path = temp_dir.path().join("radar.sqlite3");
-	let social_candidate_path = temp_dir.path().join("candidate.json");
-	let connection = rusqlite::Connection::open(&db_path).expect("temporary ledger should open");
-
-	connection
-		.execute_batch(
-			"
-				CREATE TABLE artifact_link (
-				  repo TEXT NOT NULL,
-				  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('commit', 'pr')),
-				  subject_id TEXT NOT NULL,
-				  artifact_kind TEXT NOT NULL CHECK (
-				    artifact_kind IN (
-				      'bundle',
-				      'analysis',
-				      'signal',
-				      'upstream_impact',
-				      'social_post',
-				      'release_delta',
-				      'archive_manifest',
-				      'ledger_export'
-				    )
-				  ),
-				  path TEXT NOT NULL,
-				  sha256 TEXT NOT NULL,
-				  size_bytes INTEGER NOT NULL,
-				  created_at TEXT NOT NULL,
-				  PRIMARY KEY (repo, subject_kind, subject_id, artifact_kind, path)
-				);
-				",
-		)
-		.expect("legacy artifact link schema should be created");
-
-	drop(connection);
-
-	fs::write(&social_candidate_path, r#"{"schema":"social_candidate/v1"}"#)
-		.expect("social candidate fixture should be written");
-	radar::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
-		.expect("ledger bootstrap should add social_candidate artifact kind");
-
-	let summary = radar::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
-		db_path: db_path.clone(),
-		repo: "openai/codex".into(),
-		subject_kind: "pr".into(),
-		subject_id: "22414".into(),
-		artifact_kind: "social_candidate".into(),
-		path: social_candidate_path,
-	})
-	.expect("social candidate artifact link should be recorded");
-
-	assert_eq!(summary.get("artifact_links"), Some(&1));
-}
-
-#[test]
 fn ledger_artifact_link_records_control_plane_upgrade_candidate_after_schema_migration() {
 	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
 	let db_path = temp_dir.path().join("radar.sqlite3");
@@ -297,8 +257,6 @@ fn ledger_artifact_link_records_control_plane_upgrade_candidate_after_schema_mig
 				      'analysis',
 				      'signal',
 				      'upstream_impact',
-				      'social_candidate',
-				      'social_post',
 				      'release_delta',
 				      'archive_manifest',
 				      'ledger_export'

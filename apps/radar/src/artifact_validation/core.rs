@@ -10,8 +10,7 @@ use crate::prelude::eyre::{self, Report};
 use super::{
 	ANALYSIS_DRAFT_KIND, BUNDLE_SCHEMA, CONFIG_FEATURE_CATALOG_SCHEMA,
 	CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA, RADAR_ARCHIVE_HISTORICAL_RETENTION_CUTOFF,
-	RELEASE_DELTA_SCHEMA, SIGNAL_CONFIDENCE, SIGNAL_SCHEMA, SOCIAL_CANDIDATE_SCHEMA,
-	SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA, UPSTREAM_IMPACT_SCHEMA,
+	RELEASE_DELTA_SCHEMA, SIGNAL_CONFIDENCE, SIGNAL_SCHEMA, UPSTREAM_IMPACT_SCHEMA,
 	UPSTREAM_REVIEW_LINEAR_FOLLOWUP_CUTOFF, UPSTREAM_REVIEW_QUEUE_SCHEMA, UPSTREAM_REVIEW_SCHEMA,
 	archive::validate_radar_archive_manifest,
 	bundle::validate_bundle,
@@ -19,9 +18,6 @@ use super::{
 	model::{ArtifactValidation, ArtifactValidationOptions},
 	release::validate_release_delta,
 	signal::{validate_config_feature_catalog, validate_signal},
-	social::{
-		validate_social_candidate, validate_social_post, validate_social_publish_reservation,
-	},
 	support::{
 		choices, is_non_empty_string, is_truthy_json_value, known_schemas, matches_one_of,
 		non_empty_array, string_field,
@@ -202,10 +198,6 @@ pub(crate) fn validate_artifact_with_options(
 			validate_radar_archive_manifest(entry, options, &mut errors),
 		Some(RELEASE_DELTA_SCHEMA) => validate_release_delta(entry, &mut errors),
 		Some(SIGNAL_SCHEMA) => validate_signal(entry, &mut errors),
-		Some(SOCIAL_CANDIDATE_SCHEMA) => validate_social_candidate(entry, &mut errors),
-		Some(SOCIAL_POST_SCHEMA) => validate_social_post(entry, &mut errors),
-		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) =>
-			validate_social_publish_reservation(entry, &mut errors),
 		Some(UPSTREAM_IMPACT_SCHEMA) => validate_upstream_impact(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_QUEUE_SCHEMA) => validate_upstream_review_queue(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_SCHEMA) => validate_upstream_review(entry, options, &mut errors),

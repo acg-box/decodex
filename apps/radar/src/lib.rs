@@ -21,15 +21,16 @@ use crate::prelude::eyre;
 
 mod artifact_validation;
 mod cli;
+mod config;
 mod github_api;
 mod github_bundle_client;
 mod github_token;
 mod ledger;
+mod paths;
 mod release_delta;
 mod requests;
 mod review_queue;
 mod signal_render;
-mod social_publish;
 mod source_bundle;
 
 mod prelude {
@@ -68,10 +69,8 @@ pub fn run() -> prelude::Result<()> {
 
 #[cfg(test)] use artifact_validation::has_legacy_multi_agent_v2_context;
 use artifact_validation::{
-	ValidationState, validate_active_social_publish_reservation_uniqueness,
-	validate_analysis_draft, validate_artifact, validate_artifact_errors,
+	ValidationState, validate_analysis_draft, validate_artifact, validate_artifact_errors,
 	validate_artifact_for_path, validate_signal_file, validate_signal_slug_uniqueness,
-	validate_terminal_social_post_idempotency_key_uniqueness,
 };
 use github_api::GitHubApi;
 use github_bundle_client::GithubClient;
@@ -80,7 +79,6 @@ use ledger::RadarLedger;
 pub(crate) use release_delta::{backfill_release_range, refresh_release_delta};
 use review_queue::{RecentCommit, build_review_queue};
 use signal_render::{rendered_config_flags, rendered_signal};
-pub(crate) use social_publish::reserve_social_publish;
 use source_bundle::{build_commit_bundle_from_sources, build_pr_bundle_from_sources};
 
 pub(crate) use ledger::{
@@ -94,30 +92,24 @@ pub(crate) use requests::{
 	RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
 	RadarRefreshQueueReport, RadarRefreshQueueRequest, RadarRefreshReleaseDeltaReport,
 	RadarRefreshReleaseDeltaRequest, RadarRenderSignalReport, RadarRenderSignalRequest,
-	RadarSocialReservePublishReport, RadarSocialReservePublishRequest, RadarValidateRequest,
-	RadarValidationReport,
+	RadarValidateRequest, RadarValidationReport,
 };
 
 const BUNDLE_SCHEMA: &str = "github_change_bundle/v1";
 const CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA: &str = "control_plane_upgrade_candidate/v1";
-const DEFAULT_LEDGER_PATH: &str = ".agent/automations/decodex/cache/github/radar.sqlite3";
+const DEFAULT_LEDGER_PATH: &str = paths::DEFAULT_LEDGER_PATH;
 const DEFAULT_MIN_STABLE_TAG: &str = "rust-v0.116.0";
 const DEFAULT_PAIR_LIMIT: usize = 24;
 const DEFAULT_PREVIEW_LIMIT: usize = 0;
-const DEFAULT_QUEUE_OUT: &str =
-	".agent/automations/decodex/cache/github/review-queue/openai-codex-latest.json";
-const DEFAULT_RELEASE_DELTA_OUT: &str =
-	".agent/automations/decodex/cache/site-content/release-deltas/openai-codex-latest.json";
+const DEFAULT_QUEUE_OUT: &str = paths::DEFAULT_QUEUE_OUT;
+const DEFAULT_RELEASE_DELTA_OUT: &str = paths::DEFAULT_RELEASE_DELTA_OUT;
 const DEFAULT_SEARCH_LIMIT: usize = 40;
-const DEFAULT_SIGNALS_DIR: &str = ".agent/automations/decodex/cache/site-content/signals";
+const DEFAULT_SIGNALS_DIR: &str = paths::DEFAULT_SIGNALS_DIR;
 const DEFAULT_STABLE_LIMIT: usize = 0;
 const DEFAULT_TAG_PREFIX: &str = "rust-v";
 const RELEASE_DELTA_SCHEMA: &str = "release_delta/v1";
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 const SIGNAL_SCHEMA: &str = "signal_entry/v1";
-const SOCIAL_CANDIDATE_SCHEMA: &str = "social_candidate/v1";
-const SOCIAL_POST_SCHEMA: &str = "social_post/v1";
-const SOCIAL_PUBLISH_RESERVATION_SCHEMA: &str = "social_publish_reservation/v1";
 const UPSTREAM_IMPACT_SCHEMA: &str = "upstream_impact/v1";
 const UPSTREAM_REVIEW_QUEUE_SCHEMA: &str = "upstream_review_queue/v1";
 const UPSTREAM_REVIEW_SCHEMA: &str = "upstream_review/v1";
@@ -127,23 +119,11 @@ const RADAR_ARCHIVE_HISTORICAL_RETENTION_CUTOFF: &str = "2026-06-07T00:00:00Z";
 const UPSTREAM_REVIEW_LINEAR_FOLLOWUP_CUTOFF: &str = "2026-06-12T00:00:00Z";
 const SIGNAL_CONFIDENCE: &[&str] = &["confirmed", "likely", "weak"];
 const UPSTREAM_SUBJECT_KINDS: &[&str] = &["commit", "pr"];
-const DEFAULT_VALIDATION_PATHS: &[&str] = &[
-	".agent/automations/decodex/cache/github/bundles",
-	".agent/automations/decodex/cache/github/review-queue",
-	".agent/automations/decodex/cache/github/reviews",
-	".agent/automations/decodex/cache/github/impact",
-	".agent/automations/decodex/cache/github/control-plane-upgrades",
-	".agent/automations/decodex/cache/github/social-candidates",
-	".agent/automations/decodex/cache/social/x",
-	".agent/automations/decodex/cache/site-content/signals",
-	".agent/automations/decodex/cache/site-content/release-deltas",
-	".agent/automations/decodex/cache/generated",
-];
+const DEFAULT_VALIDATION_PATHS: &[&str] = paths::DEFAULT_VALIDATION_PATHS;
 const GENERIC_COMMIT_TITLES: &[&str] =
 	&["update", "fix", "fix.", "fix tests", "fix tests.", "merge fixes", "flaky syntax"];
-const CONFIG_FEATURE_CATALOG_PATH: &str =
-	".agent/automations/decodex/cache/generated/codex-config-features.json";
-const RUN_CODEX_ANALYSIS_SCRIPT: &str = "automations/decodex/scripts/github/run_codex_analysis.py";
+const CONFIG_FEATURE_CATALOG_PATH: &str = paths::CONFIG_FEATURE_CATALOG_PATH;
+const RUN_CODEX_ANALYSIS_SCRIPT: &str = paths::RUN_CODEX_ANALYSIS_SCRIPT;
 const HIGH_VALUE_SURFACES: &[&str] = &[
 	"app_server_protocol",
 	"mcp_plugins",
@@ -198,7 +178,7 @@ const SURFACE_RULES: &[(&str, &[&str])] = &[
 	("tests_ci", &["test", "tests", ".github", "ci", "fixture"]),
 ];
 const REVIEW_STATUSES: &[&str] =
-	&["archived", "control_plane", "deprecated", "seen", "signal", "skipped", "social", "watch"];
+	&["archived", "control_plane", "deprecated", "seen", "signal", "skipped", "watch"];
 const ARTIFACT_KINDS: &[&str] = &[
 	"analysis",
 	"archive_manifest",
@@ -207,8 +187,6 @@ const ARTIFACT_KINDS: &[&str] = &[
 	"ledger_export",
 	"release_delta",
 	"signal",
-	"social_candidate",
-	"social_post",
 	"upstream_impact",
 ];
 const GITHUB_REQUEST_ATTEMPTS: usize = 4;
@@ -272,22 +250,6 @@ pub(crate) fn validate(
 
 		if validation.schema.as_deref() == Some(SIGNAL_SCHEMA) {
 			validate_signal_slug_uniqueness(path, &payload, &mut state, &mut errors);
-		}
-		if validation.schema.as_deref() == Some(SOCIAL_POST_SCHEMA) {
-			validate_terminal_social_post_idempotency_key_uniqueness(
-				path,
-				&payload,
-				&mut state,
-				&mut errors,
-			);
-		}
-		if validation.schema.as_deref() == Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) {
-			validate_active_social_publish_reservation_uniqueness(
-				path,
-				&payload,
-				&mut state,
-				&mut errors,
-			);
 		}
 
 		for error in validation.errors {
@@ -537,7 +499,7 @@ fn repo_root() -> crate::prelude::Result<PathBuf> {
 	let mut candidate = env::current_dir()?;
 
 	loop {
-		if candidate.join("automations/decodex/scripts/github/README.md").is_file()
+		if candidate.join(config::DEFAULT_CONFIG_PATH).is_file()
 			&& candidate.join("apps/radar/src/lib.rs").is_file()
 		{
 			return Ok(candidate);
@@ -758,23 +720,6 @@ fn write_json(path: &Path, payload: &Value) -> crate::prelude::Result<()> {
 	}
 
 	write_result?;
-
-	Ok(())
-}
-
-fn write_new_json(path: &Path, payload: &Value) -> crate::prelude::Result<()> {
-	if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
-		fs::create_dir_all(parent)?;
-	}
-
-	let mut output = serde_json::to_string_pretty(payload)?;
-
-	output.push('\n');
-
-	let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
-
-	file.write_all(output.as_bytes())?;
-	file.sync_all()?;
 
 	Ok(())
 }

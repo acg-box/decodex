@@ -19,15 +19,15 @@ window?
 
 Decision: Keep raw GitHub bundles and editorial analysis drafts in Git for at most 21
 days, then archive cold batches as dedicated GitHub Release assets. The repository keeps
-only a manifest under `.agent/automations/decodex/cache/archive/index/`; compressed archives are not committed
+only a manifest under `.agent/automations/radar/cache/archive/index/`; compressed archives are not committed
 to Git.
 
 Rationale:
 
 - Continuous Radar should inspect every upstream Codex commit, but the repository should
   not become a permanent raw-data warehouse.
-- Public signal entries, upstream-impact records, and social publication records are
-  small, curated artifacts and can remain in Git.
+- Public signal entries and upstream-impact records are small, curated Radar artifacts
+  and can remain in Git. Publisher social records belong to Decodex Publisher storage.
 - Raw bundles and analysis drafts can be recovered from an archive asset when needed, as
   long as the manifest records file paths, checksums, source commit, and release URL.
 - GitHub Release assets are better than checked-in compressed archives because they keep
@@ -35,7 +35,7 @@ Rationale:
 
 Consequences:
 
-- `.agent/automations/decodex/cache/github/bundles/` and `.agent/automations/decodex/cache/github/analysis/` are hot working
+- `.agent/automations/radar/cache/github/bundles/` and `.agent/automations/radar/cache/generated/analysis/` are hot working
   directories, not permanent history.
 - Archive releases use a separate tag namespace such as `radar-archive-2026-05` so they
   are not confused with Decodex product releases.
