@@ -1,4 +1,4 @@
-struct RetainedReviewLane {
+pub(crate) struct RetainedReviewLane {
 	snapshot: PostReviewLaneSnapshot,
 	review_state: PullRequestReviewState,
 	orchestration_marker: ReviewOrchestrationMarker,
