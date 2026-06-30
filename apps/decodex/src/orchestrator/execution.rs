@@ -1,8 +1,8 @@
+use agent::{
+	AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest, CodexAccountAuthFailure,
+	CodexAccountPool, CodexAccountProvider,
+};
 use git_credentials::GitSigningConfig;
-use agent::CodexAccountAuthFailure;
-use agent::CodexAccountPool;
-use agent::CodexAccountProvider;
-use agent::{AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest};
 use records::LinearExecutionEventPublicProjection;
 use sha2::Digest;
 
@@ -11,8 +11,7 @@ use crate::tracker::privacy_classifier::PublicProjectionPrivacyClassifier;
 const LOOP_GUARDRAIL_CONVERGENCE_BUDGET: i64 = 3;
 const ARCHITECTURE_RECOVERY_BUDGET: usize = 1;
 const ARCHITECTURE_RECOVERY_RETRY_KIND: &str = "architecture_recovery";
-const REVIEW_HANDOFF_STATE_DRIFT_DETECTED_EVENT_TYPE: &str =
-	"review_handoff_state_drift_detected";
+const REVIEW_HANDOFF_STATE_DRIFT_DETECTED_EVENT_TYPE: &str = "review_handoff_state_drift_detected";
 const REVIEW_HANDOFF_STATE_DRIFT_RECOVERED_EVENT_TYPE: &str =
 	"review_handoff_state_drift_recovered";
 const REVIEW_HANDOFF_REBOUND_ORCHESTRATION_PHASE: &str = "request_pending";
@@ -132,22 +131,6 @@ impl AgentGitCredentialEnvironment {
 	fn process_env(&self) -> &AppServerProcessEnv {
 		&self.process_env
 	}
-}
-
-struct TerminalFailureLifecycle<'a> {
-	error_class: &'a str,
-	next_action: &'a str,
-	pr_url: Option<&'a str>,
-	target_state: &'a str,
-	worktree_path: &'a str,
-	manual_attention_requested: bool,
-	retained_source_error_class: Option<&'a str>,
-}
-
-struct RunStartedLifecycleFields<'a> {
-	worktree_path: &'a str,
-	commit_sha: &'a str,
-	privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
 }
 
 #[derive(Clone, Copy)]
@@ -321,9 +304,7 @@ enum TerminalFailureEventRecordStatus {
 	NoLocalStore,
 }
 
-pub(crate) fn run_failure_writeback_disposition(
-	error: &Report,
-) -> RunFailureWritebackDisposition {
+pub(crate) fn run_failure_writeback_disposition(error: &Report) -> RunFailureWritebackDisposition {
 	if error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
 		|| error
@@ -345,23 +326,16 @@ pub(crate) fn run_failure_writeback_disposition(
 			.downcast_ref::<AppServerTurnFailure>()
 			.is_some_and(AppServerTurnFailure::requires_operator_attention)
 		|| error.downcast_ref::<ReviewPolicyStopRequested>().is_some()
-		|| error
-			.downcast_ref::<RepoGateFailure>()
-			.is_some_and(|repo_gate_failure| {
-				repo_gate_failure.disposition() == RepoGateFailureDisposition::NeedsHumanAttention
-			})
-	{
+		|| error.downcast_ref::<RepoGateFailure>().is_some_and(|repo_gate_failure| {
+			repo_gate_failure.disposition() == RepoGateFailureDisposition::NeedsHumanAttention
+		}) {
 		RunFailureWritebackDisposition::TerminalAttention
-	} else if error
-		.downcast_ref::<AppServerZeroEvidenceStartFailure>()
-		.is_some()
+	} else if error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()
 		|| error
 			.downcast_ref::<AppServerCapabilityPreflightFailure>()
 			.is_some_and(AppServerCapabilityPreflightFailure::is_retryable_timeout)
 		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
-		|| error
-		.downcast_ref::<RepoGateFailure>()
-		.is_some_and(|repo_gate_failure| {
+		|| error.downcast_ref::<RepoGateFailure>().is_some_and(|repo_gate_failure| {
 			matches!(
 				repo_gate_failure.disposition(),
 				RepoGateFailureDisposition::ContinueRepair
@@ -410,8 +384,11 @@ where
 		&issue_run.worktree.path.display().to_string(),
 	)?;
 
-	let result = ensure_automation_activity_label(tracker, &issue_run.issue, project.service_id(), true)
-		.and_then(|_| execute_issue_run_inner(tracker, project, workflow, state_store, &issue_run));
+	let result =
+		ensure_automation_activity_label(tracker, &issue_run.issue, project.service_id(), true)
+			.and_then(|_| {
+				execute_issue_run_inner(tracker, project, workflow, state_store, &issue_run)
+			});
 
 	state_store.clear_lease(&issue_run.issue.id)?;
 
@@ -518,241 +495,6 @@ fn configured_public_projection_privacy_classifier(
 	)
 }
 
-fn lifecycle_event_identity<'a>(
-	project: &'a ServiceConfig,
-	issue_run: &'a IssueRunPlan,
-) -> records::LinearExecutionEventIdentity<'a> {
-	records::LinearExecutionEventIdentity {
-		service_id: project.service_id(),
-		issue_id: &issue_run.issue.id,
-		issue_identifier: &issue_run.issue.identifier,
-		run_id: &issue_run.run_id,
-		attempt_number: issue_run.attempt_number,
-	}
-}
-
-fn write_lifecycle_event<T>(
-	tracker: &T,
-	state_store: &StateStore,
-	issue_id: &str,
-	record: &records::LinearExecutionEventRecord,
-	privacy_classifier: &dyn PublicProjectionPrivacyClassifier,
-) -> Result<()>
-where
-	T: IssueTracker + ?Sized,
-{
-	let retry_budget_attempt_count = state_store.retry_budget_attempt_count(issue_id)?;
-	let retry_budget_attempt_count = (retry_budget_attempt_count > 0)
-		.then_some(retry_budget_attempt_count);
-	let body =
-		records::render_linear_execution_event_comment_body(record, retry_budget_attempt_count);
-	let projection =
-		tracker::prepare_linear_execution_event_comment(&body, record, privacy_classifier)?;
-
-	if state_store.record_linear_execution_event(&projection.record)?
-		&& let Err(error) = tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
-			tracker,
-			issue_id,
-			&projection,
-		)
-	{
-		state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
-
-		return Err(error);
-	}
-
-	Ok(())
-}
-
-fn write_prepare_lifecycle_events<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-) -> Result<()>
-where
-	T: IssueTracker + ?Sized,
-{
-	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
-	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
-	let commit_sha = worktree_head_oid(&issue_run.worktree.path)?.ok_or_else(|| {
-		eyre::eyre!(
-			"Prepared worktree `{}` for issue `{}` did not expose a HEAD commit.",
-			issue_run.worktree.path.display(),
-			issue_run.issue.identifier
-			)
-		})?;
-
-	write_run_started_lifecycle_event(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		issue_run,
-		RunStartedLifecycleFields {
-			worktree_path: &worktree_path,
-			commit_sha: &commit_sha,
-			privacy_classifier: &privacy_classifier,
-		},
-	)
-}
-
-fn write_run_started_lifecycle_event<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	fields: RunStartedLifecycleFields<'_>,
-) -> Result<()>
-where
-	T: IssueTracker + ?Sized,
-{
-	let transport = workflow.frontmatter().agent().transport();
-	let anchor = records::stable_event_anchor(&[
-		issue_run.dispatch_mode.as_str(),
-		&issue_run.worktree.branch_name,
-		fields.commit_sha,
-		transport,
-	]);
-	let mut record = records::LinearExecutionEventRecord::new(
-		lifecycle_event_identity(project, issue_run),
-		"run_started",
-		current_timestamp(),
-		&anchor,
-	);
-
-	record.branch = Some(issue_run.worktree.branch_name.clone());
-	record.worktree_path = Some(fields.worktree_path.to_owned());
-	record.commit_sha = Some(fields.commit_sha.to_owned());
-	record.transport = Some(transport.to_owned());
-	record.summary = Some(format!(
-		"Decodex started a {} run for this issue.",
-		issue_run.dispatch_mode.as_str()
-	));
-
-	write_lifecycle_event(
-		tracker,
-		state_store,
-		&issue_run.issue.id,
-		&record,
-		fields.privacy_classifier,
-	)
-}
-
-fn terminal_failure_lifecycle_event(
-	service_id: &str,
-	issue_run: &IssueRunPlan,
-	failure: TerminalFailureLifecycle<'_>,
-) -> records::LinearExecutionEventRecord {
-	let retained_partial_progress = failure.error_class == "partial_progress_retained";
-	let event_type = if failure.manual_attention_requested || retained_partial_progress {
-		"needs_attention"
-	} else {
-		"terminal_failure"
-	};
-	let anchor = records::stable_event_anchor(&[
-		event_type,
-		failure.error_class,
-		failure.target_state,
-	]);
-	let mut record = records::LinearExecutionEventRecord::new(
-		records::LinearExecutionEventIdentity {
-			service_id,
-			issue_id: &issue_run.issue.id,
-			issue_identifier: &issue_run.issue.identifier,
-			run_id: &issue_run.run_id,
-			attempt_number: issue_run.attempt_number,
-		},
-		event_type,
-		current_timestamp(),
-		&anchor,
-	);
-
-	record.branch = Some(issue_run.worktree.branch_name.clone());
-	record.worktree_path = Some(failure.worktree_path.to_owned());
-	record.error_class = Some(failure.error_class.to_owned());
-	record.next_action = Some(failure.next_action.to_owned());
-
-	if retained_partial_progress {
-		let mut evidence = vec![format!(
-			"Attempt {} stopped with tracked worktree changes retained.",
-			issue_run.attempt_number
-		)];
-
-		if let Some(source_error_class) = failure.retained_source_error_class {
-			evidence.push(format!(
-				"Source failure class `{source_error_class}` was preserved for recovery context."
-			));
-		}
-
-		record.blockers = Some(vec![String::from(
-			"Retained tracked worktree changes require operator recovery.",
-		)]);
-		record.evidence = Some(evidence);
-		record.summary = Some(String::from("Decodex retained partial progress and needs attention."));
-		record.terminal_path = Some(String::from("retained_partial_progress"));
-	} else {
-		record.blockers = Some(vec![format!("Run failed with `{}`.", failure.error_class)]);
-		record.evidence = Some(vec![format!(
-			"Attempt {} reached terminal failure handling.",
-			issue_run.attempt_number
-		)]);
-		record.summary = Some(String::from("Decodex run failed and needs attention."));
-	}
-
-	record.pr_url = failure.pr_url.map(ToOwned::to_owned);
-	record.target_state = Some(failure.target_state.to_owned());
-
-	if failure.manual_attention_requested {
-		record.terminal_path = Some(String::from("manual_attention"));
-	}
-
-	record
-}
-
-fn write_cleanup_complete_lifecycle_event<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	pr_url: Option<&str>,
-	commit_sha: Option<&str>,
-) -> Result<()>
-where
-	T: IssueTracker + ?Sized,
-{
-	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
-	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
-	let anchor = records::stable_event_anchor(&[
-		&issue_run.worktree.branch_name,
-		commit_sha.unwrap_or_default(),
-		"cleanup_complete",
-	]);
-	let mut record = records::LinearExecutionEventRecord::new(
-		lifecycle_event_identity(project, issue_run),
-		"cleanup_complete",
-		current_timestamp(),
-		&anchor,
-	);
-
-	record.branch = Some(issue_run.worktree.branch_name.clone());
-	record.worktree_path = Some(worktree_path);
-	record.cleanup_status = Some(String::from("completed"));
-	record.summary = Some(String::from("Decodex cleaned up the retained lane worktree."));
-	record.pr_url = pr_url.map(ToOwned::to_owned);
-	record.commit_sha = commit_sha.map(ToOwned::to_owned);
-
-	write_lifecycle_event(
-		tracker,
-		state_store,
-		&issue_run.issue.id,
-		&record,
-		&privacy_classifier,
-	)
-}
-
 fn build_closeout_review_state_inspector(
 	project: &ServiceConfig,
 ) -> GhPullRequestReviewStateInspector {
@@ -775,14 +517,15 @@ where
 	let transport = workflow.frontmatter().agent().transport().to_owned();
 	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
 	let review_context = build_review_run_context(project, state_store, issue_run)?;
-	let tracker_tool_bridge = TrackerToolBridge::with_run_context_state_store_and_privacy_classifier(
-		tracker,
-		&issue_run.issue,
-		workflow,
-		review_context.clone(),
-		state_store,
-		&privacy_classifier,
-	);
+	let tracker_tool_bridge =
+		TrackerToolBridge::with_run_context_state_store_and_privacy_classifier(
+			tracker,
+			&issue_run.issue,
+			workflow,
+			review_context.clone(),
+			state_store,
+			&privacy_classifier,
+		);
 
 	if let Some(summary) = maybe_execute_deterministic_closeout(
 		tracker,
@@ -811,8 +554,10 @@ where
 		issue_run,
 		Some(&closeout_review_state_inspector),
 	);
-	let decodex_tool_bridge =
-		DecodexToolBridge::new(&tracker_tool_bridge, build_decodex_run_context(workflow, issue_run));
+	let decodex_tool_bridge = DecodexToolBridge::new(
+		&tracker_tool_bridge,
+		build_decodex_run_context(workflow, issue_run),
+	);
 	let phase_goal_controller =
 		build_phase_goal_controller(project, workflow, state_store, issue_run);
 	let run_result = match execute_issue_app_server_run(IssueAppServerRun {
@@ -924,8 +669,7 @@ where
 					input.state_store,
 					input.issue_run,
 					&error,
-				)?
-			{
+				)? {
 				return Ok(IssueAppServerRunOutcome::Finalized(summary));
 			}
 
@@ -1103,19 +847,19 @@ fn reconcile_terminal_thread_archive_backlog_best_effort(
 ) {
 	let process_env = AppServerProcessEnv::default();
 	let transport = workflow.frontmatter().agent().transport();
-	let candidates = match terminal_thread_archive_backlog_candidates(state_store, project.service_id())
-	{
-		Ok(candidates) => candidates,
-		Err(error) => {
-			tracing::warn!(
-				?error,
-				project_id = project.service_id(),
-				"Failed to list terminal thread archive backlog; skipping this archive reconciliation pass."
-			);
+	let candidates =
+		match terminal_thread_archive_backlog_candidates(state_store, project.service_id()) {
+			Ok(candidates) => candidates,
+			Err(error) => {
+				tracing::warn!(
+					?error,
+					project_id = project.service_id(),
+					"Failed to list terminal thread archive backlog; skipping this archive reconciliation pass."
+				);
 
-			return;
-		},
-	};
+				return;
+			},
+		};
 
 	for candidate in candidates {
 		archive_completed_issue_thread_best_effort(
@@ -1596,30 +1340,23 @@ fn push_retained_review_repair_head(
 	pr_url: Option<&str>,
 ) -> Result<()> {
 	let token_env_var = project.github().token_env_var();
-	let github_token =
-		resolve_configured_env_var("github.token_env_var", Some(token_env_var)).map_err(
-			|error| {
-				Report::new(RetainedReviewRepairPushFailed {
-					issue_identifier: issue_run.issue.identifier.clone(),
-					run_id: issue_run.run_id.clone(),
-					branch_name: issue_run.worktree.branch_name.clone(),
-					pr_url: pr_url.map(ToOwned::to_owned),
-					kind: RetainedReviewRepairPushFailureKind::Auth,
-					detail: error.to_string(),
-				})
-			},
-		)?;
+	let github_token = resolve_configured_env_var("github.token_env_var", Some(token_env_var))
+		.map_err(|error| {
+			Report::new(RetainedReviewRepairPushFailed {
+				issue_identifier: issue_run.issue.identifier.clone(),
+				run_id: issue_run.run_id.clone(),
+				branch_name: issue_run.worktree.branch_name.clone(),
+				pr_url: pr_url.map(ToOwned::to_owned),
+				kind: RetainedReviewRepairPushFailureKind::Auth,
+				detail: error.to_string(),
+			})
+		})?;
 	let git_credentials =
 		GitCredentialSource::new(token_env_var, &github_token).materialize_github_credentials();
 	let refspec = format!("HEAD:{}", issue_run.worktree.branch_name);
 	let mut command = Command::new("git");
 
-	command
-		.arg("-C")
-		.arg(&issue_run.worktree.path)
-		.arg("push")
-		.arg("origin")
-		.arg(&refspec);
+	command.arg("-C").arg(&issue_run.worktree.path).arg("push").arg("origin").arg(&refspec);
 	git_credentials.apply_to(&mut command);
 
 	let output = command.output().map_err(|error| {
@@ -1805,12 +1542,9 @@ fn write_run_operation_marker_best_effort(
 	attempt_number: i64,
 	current_operation: &str,
 ) {
-	if let Err(error) = state::write_run_operation_marker(
-		worktree_path,
-		run_id,
-		attempt_number,
-		current_operation,
-	) {
+	if let Err(error) =
+		state::write_run_operation_marker(worktree_path, run_id, attempt_number, current_operation)
+	{
 		tracing::warn!(
 			?error,
 			run_id,
@@ -1858,7 +1592,10 @@ fn continuation_boundary_summary(
 		"Run reached a clean continuation boundary and will rely on the next bounded re-entry."
 	);
 
-	RunSummary { continuation_pending: true, ..run_summary_from_issue_run(project.service_id(), issue_run) }
+	RunSummary {
+		continuation_pending: true,
+		..run_summary_from_issue_run(project.service_id(), issue_run)
+	}
 }
 
 fn planned_issue_state_for_dispatch(
@@ -1886,8 +1623,7 @@ fn planned_issue_state_for_dispatch(
 					.to_owned()
 			})
 			.unwrap_or_else(|| issue.state.name.clone()),
-		IssueDispatchMode::ReviewRepair | IssueDispatchMode::Closeout =>
-			issue.state.name.clone(),
+		IssueDispatchMode::ReviewRepair | IssueDispatchMode::Closeout => issue.state.name.clone(),
 	}
 }
 
@@ -2120,8 +1856,7 @@ where
 		return Ok(false);
 	}
 
-	let Some(worktree_fingerprint) =
-		loop_guardrail_worktree_fingerprint(&issue_run.worktree.path)?
+	let Some(worktree_fingerprint) = loop_guardrail_worktree_fingerprint(&issue_run.worktree.path)?
 	else {
 		return Ok(false);
 	};
@@ -2179,9 +1914,7 @@ where
 		false,
 	)?;
 
-	if let ReviewHandoffStateDriftTransition::MoveToSuccess(state_id) =
-		success_state_transition
-	{
+	if let ReviewHandoffStateDriftTransition::MoveToSuccess(state_id) = success_state_transition {
 		tracker.update_issue_state(&issue_run.issue.id, &state_id)?;
 	}
 
@@ -2252,9 +1985,7 @@ fn review_handoff_state_drift_success_transition(
 		)
 	})?;
 
-	Ok(Some(ReviewHandoffStateDriftTransition::MoveToSuccess(
-		state_id.to_owned(),
-	)))
+	Ok(Some(ReviewHandoffStateDriftTransition::MoveToSuccess(state_id.to_owned())))
 }
 
 fn rebound_review_handoff_orchestration_marker(
@@ -2264,8 +1995,11 @@ fn rebound_review_handoff_orchestration_marker(
 	review_handoff: &ReviewHandoffMarker,
 	local_head_sha: &str,
 ) -> Result<bool> {
-	let existing_orchestration =
-		state_store.review_orchestration_marker(project.service_id(), &issue_run.issue.id, review_handoff)?;
+	let existing_orchestration = state_store.review_orchestration_marker(
+		project.service_id(),
+		&issue_run.issue.id,
+		review_handoff,
+	)?;
 	let rebounded_orchestration = existing_orchestration.as_ref().is_none_or(|marker| {
 		marker.branch_name() != review_handoff.branch_name()
 			|| marker.pr_url() != review_handoff.pr_url()
@@ -2283,9 +2017,7 @@ fn rebound_review_handoff_orchestration_marker(
 		None,
 		None,
 		0,
-		existing_orchestration
-			.as_ref()
-			.map_or(0, ReviewOrchestrationMarker::external_round_count),
+		existing_orchestration.as_ref().map_or(0, ReviewOrchestrationMarker::external_round_count),
 		None,
 	);
 
@@ -2348,8 +2080,7 @@ fn review_handoff_state_drift_attention_error(
 		return Ok(None);
 	}
 
-	let Some(worktree_fingerprint) =
-		loop_guardrail_worktree_fingerprint(&issue_run.worktree.path)?
+	let Some(worktree_fingerprint) = loop_guardrail_worktree_fingerprint(&issue_run.worktree.path)?
 	else {
 		return Ok(None);
 	};
@@ -2381,7 +2112,8 @@ fn review_handoff_state_drift_attention_error(
 				return Ok(None);
 			};
 
-			if checkpoint.status() != "clean" || checkpoint.head_sha() != worktree_fingerprint.head_sha
+			if checkpoint.status() != "clean"
+				|| checkpoint.head_sha() != worktree_fingerprint.head_sha
 			{
 				return Ok(None);
 			}
@@ -2456,8 +2188,7 @@ fn retryable_failure_loop_guardrail_stop(
 	issue_run: &IssueRunPlan,
 	error: &Report,
 ) -> Result<Option<LoopGuardrailStopRequested>> {
-	let Some(worktree_fingerprint) =
-		loop_guardrail_worktree_fingerprint(&issue_run.worktree.path)?
+	let Some(worktree_fingerprint) = loop_guardrail_worktree_fingerprint(&issue_run.worktree.path)?
 	else {
 		return Ok(None);
 	};
@@ -2524,8 +2255,8 @@ fn retryable_failure_loop_guardrail_stop(
 		}
 
 		let details_json = details.to_string();
-		let checkpoint = state_store.observe_loop_guardrail_checkpoint(
-			LoopGuardrailCheckpointInput {
+		let checkpoint =
+			state_store.observe_loop_guardrail_checkpoint(LoopGuardrailCheckpointInput {
 				project_id: project.service_id(),
 				issue_id: &issue_run.issue.id,
 				reason: reason.error_class(),
@@ -2533,8 +2264,7 @@ fn retryable_failure_loop_guardrail_stop(
 				run_id: &issue_run.run_id,
 				attempt_number: issue_run.attempt_number,
 				details_json: &details_json,
-			},
-		)?;
+			})?;
 
 		record_loop_guardrail_private_event(
 			project,
@@ -2580,8 +2310,8 @@ fn loop_guardrail_worktree_fingerprint(
 		return Ok(None);
 	};
 	let effective_status = loop_guardrail_effective_status(&raw_status);
-	let branch_delta_present =
-		repo_gate_changed_tracked_files(worktree_path).is_ok_and(|changed_files| !changed_files.is_empty());
+	let branch_delta_present = repo_gate_changed_tracked_files(worktree_path)
+		.is_ok_and(|changed_files| !changed_files.is_empty());
 
 	Ok(Some(LoopGuardrailWorktreeFingerprint {
 		head_sha,
@@ -2615,11 +2345,7 @@ fn loop_guardrail_effective_status(raw_status: &str) -> String {
 }
 
 fn git_guardrail_output(worktree_path: &Path, args: &[&str]) -> Result<Option<String>> {
-	let output = Command::new("git")
-		.arg("-C")
-		.arg(worktree_path)
-		.args(args)
-		.output()?;
+	let output = Command::new("git").arg("-C").arg(worktree_path).args(args).output()?;
 
 	if !output.status.success() {
 		return Ok(None);
@@ -2708,8 +2434,7 @@ where
 	let manual_attention_requested = error.downcast_ref::<ManualAttentionRequested>().is_some();
 	let requires_terminal_attention = run_failure_requires_terminal_attention(error);
 	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
-	let retry_budget_attempts =
-		retry_budget_attempts_for_current_failure(state_store, issue_run)?;
+	let retry_budget_attempts = retry_budget_attempts_for_current_failure(state_store, issue_run)?;
 	let failure_context = FailureHandlingContext {
 		tracker,
 		project,
@@ -2739,11 +2464,8 @@ where
 		error,
 		requires_terminal_attention,
 	)?;
-	let retained_partial_progress = retained_partial_progress_error(
-		error,
-		issue_run,
-		&worktree_path,
-	);
+	let retained_partial_progress =
+		retained_partial_progress_error(error, issue_run, &worktree_path);
 
 	if let Some(review_policy_stop) = error.downcast_ref::<ReviewPolicyStopRequested>()
 		&& review_policy_stop.reason == ReviewPolicyStopReason::Exhausted
@@ -2756,7 +2478,11 @@ where
 			error,
 		)? {
 			LoopGuardrailRecoveryDecision::Start(recovery) =>
-				apply_architecture_recovery_retry_writeback(&failure_context, recovery, max_attempts),
+				apply_architecture_recovery_retry_writeback(
+					&failure_context,
+					recovery,
+					max_attempts,
+				),
 			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) =>
 				apply_loop_guardrail_failure_writeback(&failure_context, loop_guardrail_stop),
 		};
@@ -2770,7 +2496,11 @@ where
 			error,
 		)? {
 			LoopGuardrailRecoveryDecision::Start(recovery) =>
-				apply_architecture_recovery_retry_writeback(&failure_context, recovery, max_attempts),
+				apply_architecture_recovery_retry_writeback(
+					&failure_context,
+					recovery,
+					max_attempts,
+				),
 			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) =>
 				apply_loop_guardrail_failure_writeback(&failure_context, loop_guardrail_stop),
 		};
@@ -2812,8 +2542,13 @@ where
 		return Ok(true);
 	}
 
-	let Some(attention_error) =
-		review_handoff_state_drift_attention_error(project, workflow, state_store, issue_run, error)?
+	let Some(attention_error) = review_handoff_state_drift_attention_error(
+		project,
+		workflow,
+		state_store,
+		issue_run,
+		error,
+	)?
 	else {
 		return Ok(false);
 	};
@@ -3022,10 +2757,8 @@ where
 
 	let tracker_policy = context.workflow.frontmatter().tracker();
 	let failure_state_name = tracker_policy.failure_state();
-	let failure_state_is_startable = tracker_policy
-		.startable_states()
-		.iter()
-		.any(|state| state == failure_state_name);
+	let failure_state_is_startable =
+		tracker_policy.startable_states().iter().any(|state| state == failure_state_name);
 
 	if !failure_state_is_startable {
 		tracing::warn!(
@@ -3112,10 +2845,10 @@ where
 	if context.state_store.lease_for_issue(&context.issue_run.issue.id)?.is_some() {
 		return Ok(false);
 	}
-	if context
-		.state_store
-		.issue_has_review_lifecycle_record(context.project.service_id(), &context.issue_run.issue.id)?
-	{
+	if context.state_store.issue_has_review_lifecycle_record(
+		context.project.service_id(),
+		&context.issue_run.issue.id,
+	)? {
 		return Ok(false);
 	}
 	if latest_open_issue_phase_goal_before_attempt(
@@ -3135,9 +2868,7 @@ where
 }
 
 fn retryable_failure_happened_before_effective_agent_execution(error: &Report) -> bool {
-	error
-		.downcast_ref::<AppServerZeroEvidenceStartFailure>()
-		.is_some()
+	error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()
 		|| error
 			.downcast_ref::<AppServerCapabilityPreflightFailure>()
 			.is_some_and(AppServerCapabilityPreflightFailure::is_retryable_timeout)
@@ -3231,7 +2962,6 @@ where
 	Ok(())
 }
 
-
 fn apply_loop_guardrail_failure_writeback<T>(
 	context: &FailureHandlingContext<'_, T>,
 	loop_guardrail_stop: LoopGuardrailStopRequested,
@@ -3294,20 +3024,14 @@ fn retry_budget_attempts_for_current_failure(
 	issue_run: &IssueRunPlan,
 ) -> Result<i64> {
 	let state_attempts = state_store.retry_budget_attempt_count(&issue_run.issue.id)?;
-	let current_attempt_counts = state_store
-		.run_attempt(&issue_run.run_id)?
-		.is_some_and(|attempt| {
+	let current_attempt_counts =
+		state_store.run_attempt(&issue_run.run_id)?.is_some_and(|attempt| {
 			attempt.issue_id() == issue_run.issue.id
-				&& matches!(
-					attempt.status(),
-					"failed" | "interrupted" | "terminal_guarded"
-				)
+				&& matches!(attempt.status(), "failed" | "interrupted" | "terminal_guarded")
 		});
-	let previous_state_attempts =
-		state_attempts.saturating_sub(i64::from(current_attempt_counts));
+	let previous_state_attempts = state_attempts.saturating_sub(i64::from(current_attempt_counts));
 
-	Ok(issue_run.retry_budget_base.max(previous_state_attempts)
-		+ i64::from(current_attempt_counts))
+	Ok(issue_run.retry_budget_base.max(previous_state_attempts) + i64::from(current_attempt_counts))
 }
 
 fn retained_partial_progress_error(
@@ -3353,29 +3077,21 @@ fn retained_progress_source_error_class(error: &Report) -> Option<&'static str> 
 		error.downcast_ref::<AppServerCapabilityPreflightFailure>()
 	{
 		Some(app_server_failure.error_class())
-	} else if let Some(app_server_failure) =
-		error.downcast_ref::<AppServerHomePreflightFailure>()
-	{
+	} else if let Some(app_server_failure) = error.downcast_ref::<AppServerHomePreflightFailure>() {
 		Some(app_server_failure.error_class())
 	} else if let Some(account_failure) = error.downcast_ref::<CodexAccountAuthFailure>() {
 		Some(account_failure.error_class())
-	} else if let Some(app_server_failure) =
-		error.downcast_ref::<AppServerTransportFailure>()
-	{
+	} else if let Some(app_server_failure) = error.downcast_ref::<AppServerTransportFailure>() {
 		Some(app_server_failure.error_class())
 	} else if let Some(app_server_failure) = error.downcast_ref::<AppServerPhaseGoalFailure>() {
 		Some(app_server_failure.error_class())
-	} else if let Some(app_server_failure) =
-		error.downcast_ref::<AppServerDynamicToolFailure>()
-	{
+	} else if let Some(app_server_failure) = error.downcast_ref::<AppServerDynamicToolFailure>() {
 		Some(app_server_failure.error_class())
 	} else if let Some(app_server_failure) = error.downcast_ref::<AppServerTurnFailure>() {
 		Some(app_server_failure.error_class())
 	} else if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
 		Some(repo_gate_failure.error_class())
-	} else if let Some(acceptance_failure) =
-		error.downcast_ref::<PhaseAcceptanceCheckFailure>()
-	{
+	} else if let Some(acceptance_failure) = error.downcast_ref::<PhaseAcceptanceCheckFailure>() {
 		Some(acceptance_failure.error_class())
 	} else {
 		None
@@ -3411,12 +3127,7 @@ fn write_retry_schedule_marker_for_runtime_retry(
 		return Ok(());
 	};
 
-	write_retry_schedule_marker(
-		workflow,
-		issue_run,
-		retry_budget_attempts,
-		retry_kind,
-	)
+	write_retry_schedule_marker(workflow, issue_run, retry_budget_attempts, retry_kind)
 }
 
 fn write_failure_retry_schedule_marker(
