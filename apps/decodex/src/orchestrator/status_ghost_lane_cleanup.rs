@@ -19,10 +19,10 @@ use crate::{
 use super::{
 	GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING, GHOST_LANE_NEXT_ACTION, GHOST_LANE_OWNERSHIP_STATE,
 	GHOST_LANE_POLICY_STATE, GHOST_LANE_TERMINAL_STATUS, OperatorRunStatus, OperatorStatusSnapshot,
-	OperatorWorktreeStatus, issue_identifier_in_text, operator_issue_attention_key,
-	operator_project_display_name, operator_run_has_recent_app_server_execution,
-	operator_run_status, operator_run_tracker_issue_identifier_selector,
+	OperatorWorktreeStatus, operator_issue_attention_key, operator_project_display_name,
+	operator_run_has_recent_app_server_execution, operator_run_tracker_issue_identifier_selector,
 	recoverable_worktree_identifiers, status_ghost_lane_evidence,
+	status_run_projection::{issue_identifier_in_text, operator_run_status},
 };
 
 pub(crate) fn ghost_lane_cleanup_status_blockers<T>(

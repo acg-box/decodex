@@ -12,6 +12,7 @@ mod status_models;
 mod status_process_liveness;
 mod status_project_display;
 mod status_queued_attention;
+mod status_run_projection;
 mod status_summary;
 mod status_worktrees;
 mod harness_improvement {
@@ -97,6 +98,13 @@ use status_process_liveness::{
 use status_project_display::operator_project_display_name;
 use status_queued_attention::{
 	operator_authority_decision_request_status_from_event, operator_queued_issue_attention_status,
+};
+use status_run_projection::{
+	format_optional_i64, format_optional_unix_timestamp, hydrate_current_lane_lifecycle_metrics,
+	operator_boundary_policy_blocks_landing, operator_boundary_policy_requires_enhanced_evidence,
+	operator_history_lanes, operator_loop_status_for_run,
+	operator_protocol_activity_detail_is_public, operator_run_group_key,
+	operator_run_issue_identifier_from_fields, operator_run_status,
 };
 use status_history_ledger::{
 	collect_history_ledger_records, compare_history_ledger_record_position,

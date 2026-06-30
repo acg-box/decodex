@@ -18,9 +18,9 @@ use super::{
 	OperatorSnapshotWarningDetail, OperatorStatusSnapshot, OperatorWorktreeHygieneStatus,
 	OperatorWorktreeProvenanceStatus, OperatorWorktreeStatus,
 	QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT, WorktreeOwnership, history_lane_group_key,
-	history_ledger_outcome_requires_attention, issue_identifier_in_text,
-	operator_issue_attention_key, recoverable_worktree_identifiers,
-	relative_worktree_path_for_path, worktree_checkout_branch_name,
+	history_ledger_outcome_requires_attention, operator_issue_attention_key,
+	recoverable_worktree_identifiers, relative_worktree_path_for_path,
+	status_run_projection::issue_identifier_in_text, worktree_checkout_branch_name,
 	worktree_mapping_is_stale_terminal_local_residue,
 };
 
