@@ -61,9 +61,8 @@ where
 	let retry_budget_max_attempts = i64::from(workflow.frontmatter().execution().max_attempts());
 	let auto_retry_blocked_reason = match reason {
 		"issue_needs_attention" => Some(String::from("needs_attention_label")),
-		QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT => {
-			Some(String::from(QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT))
-		},
+		QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT =>
+			Some(String::from(QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT)),
 		_ => None,
 	};
 	let attention_record =
@@ -488,18 +487,15 @@ fn operator_queued_issue_attention_summary(
 	}
 
 	match marker.and_then(RunActivityMarker::current_operation) {
-		Some(RUN_OPERATION_GIT_CREDENTIALS) => {
-			String::from("Git credential preflight failed; operator recovery required.")
-		},
-		Some(RUN_OPERATION_APP_SERVER_PREFLIGHT) => {
-			String::from("Codex app-server preflight failed; operator recovery required.")
-		},
+		Some(RUN_OPERATION_GIT_CREDENTIALS) =>
+			String::from("Git credential preflight failed; operator recovery required."),
+		Some(RUN_OPERATION_APP_SERVER_PREFLIGHT) =>
+			String::from("Codex app-server preflight failed; operator recovery required."),
 		Some(RUN_OPERATION_RECONCILIATION) => String::from(
 			"Stopped during reconciliation or tracker handoff; operator recovery required.",
 		),
-		Some(RUN_OPERATION_AGENT_RUN) => {
-			String::from("Stopped during agent execution; operator recovery required.")
-		},
+		Some(RUN_OPERATION_AGENT_RUN) =>
+			String::from("Stopped during agent execution; operator recovery required."),
 		Some(operation) => format!("Stopped during `{operation}`; operator recovery required."),
 		None => String::from("Needs operator recovery; no local run marker was found."),
 	}
