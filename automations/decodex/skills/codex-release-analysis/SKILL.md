@@ -50,7 +50,7 @@ or prerelease decision.
 3. Read existing `upstream_impact/v1` artifacts that match the channel first, then use
    `release_delta/v1`, `signal_entry/v1`, and `upstream_review/v1` artifacts to check
    lineage, evidence, and gaps.
-4. Use `decodex radar backfill-release-range --dry-run` when compare PR gaps may need
+4. Use `radar backfill-release-range --dry-run` when compare PR gaps may need
    later source review.
 5. Choose exactly one primary mode:
    - `release_pulse`: release or changelog headline is the story
@@ -72,5 +72,5 @@ matching signal slugs, Control Plane impact if any, and `social_candidate/v1`
 `decision.worthiness`.
 
 Promote durable conclusions only through existing artifacts: shared
-`upstream_impact/v1`, Codex-owned `analysis_draft` plus `decodex radar render-signal`,
+`upstream_impact/v1`, Codex-owned `analysis_draft` plus `radar render-signal`,
 refreshed `release_delta/v1`, `social_candidate/v1`, or terminal `social_post/v1`.

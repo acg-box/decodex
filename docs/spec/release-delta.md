@@ -45,7 +45,7 @@ The canonical schema identifier is:
 
 Rust refresh entrypoint:
 
-- `decodex radar refresh-release-delta`
+- `radar refresh-release-delta`
 
 ## Required fields
 

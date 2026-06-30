@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status/mod.rs]
 drift_watch: [decodex recover ghost-lane, decodex recover stale-active, stale_active_release, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, runtime_recovery_required, runtime_recovery_blocked, run_control_channels]
 last_verified: 2026-06-30
 ---

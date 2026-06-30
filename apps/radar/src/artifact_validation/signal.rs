@@ -154,7 +154,7 @@ pub(super) fn validate_multi_agent_v2_reference_text(
 	}
 }
 
-pub(in crate::radar) fn has_legacy_multi_agent_v2_context(text: &str) -> bool {
+pub(crate) fn has_legacy_multi_agent_v2_context(text: &str) -> bool {
 	["legacy", "historical", "older", "previous", "renamed", "rename"]
 		.into_iter()
 		.any(|term| text.contains(term))

@@ -61,7 +61,7 @@ Recommended checked-in location:
 
 Rust refresh entrypoint:
 
-- `decodex radar refresh-upstream-queue`
+- `radar refresh-upstream-queue`
 
 The AI review schema identifier is:
 
@@ -137,7 +137,7 @@ the input `github_change_bundle/v1`, run Codex with the checked `analysis_draft`
 schema, validate the returned draft again before writing it, and require an explicit
 `--allow-ai-analysis-boundary` flag or `DECODEX_ALLOW_CODEX_ANALYSIS=1` environment
 acknowledgement. The normal operator command surface remains Rust-owned
-`decodex radar ...`; GitHub Actions must not set that acknowledgement.
+`radar ...`; GitHub Actions must not set that acknowledgement.
 
 ## Promotion boundary
 

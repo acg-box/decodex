@@ -46,7 +46,7 @@ Publish only when all are true:
   show no matching post for the candidate's exact lead text, idempotency subject,
   release tag, or source URL
 - an active `social_publish_reservation/v1` with the same idempotency key and
-  duplicate keys has been created by `decodex radar social reserve-publish` under
+  duplicate keys has been created by `radar social reserve-publish` under
   `.agent/automations/decodex/cache/social/x/reservations/<yyyy-mm-dd>/` before X
   compose
 - daily cap of 8 posts for `@decodexspace` in `Asia/Shanghai` is not reached
@@ -115,5 +115,5 @@ reservation.
 Run:
 
 ```bash
-decodex radar validate .agent/automations/decodex/cache/github/social-candidates .agent/automations/decodex/cache/social/x
+radar validate .agent/automations/decodex/cache/github/social-candidates .agent/automations/decodex/cache/social/x
 ```

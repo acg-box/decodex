@@ -14,7 +14,7 @@ code_refs:
   - apps/decodex/src/config.rs
   - apps/decodex/src/mcp.rs
   - apps/decodex/src/program_intake.rs
-  - apps/decodex/src/orchestrator/status.rs
+  - apps/decodex/src/orchestrator/status/mod.rs
   - apps/decodex/src/state/store.rs
 related:
   - ../spec/autonomy-control-plane.md

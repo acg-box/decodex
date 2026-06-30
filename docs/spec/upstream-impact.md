@@ -7,7 +7,7 @@ authority: normative
 owner: automation
 tags: [spec, radar]
 code_refs:
-  - apps/decodex/src/radar.rs
+  - apps/radar/src/lib.rs
   - automations/decodex/prompts/radar-review.md
   - automations/decodex/prompts/release-curator.md
 drift_watch:

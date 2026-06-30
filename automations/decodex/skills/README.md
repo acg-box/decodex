@@ -18,7 +18,7 @@ content or follow-up work:
 3. `codex-release-analysis`: evaluate release or changelog material against commits,
    PRs, release-delta artifacts, and already-published Decodex signals.
 4. `github-signal`: turn the reviewed GitHub bundle and analysis result into the
-   `analysis_draft` JSON consumed by `decodex radar render-signal`.
+   `analysis_draft` JSON consumed by `radar render-signal`.
 5. `x-post-publisher`: consume social candidates whose
    `decision.worthiness = "publish"` or explicit operator handoffs that name checked
    Radar artifacts, then write a low-frequency

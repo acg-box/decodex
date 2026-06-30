@@ -1,25 +1,30 @@
 use std::path::PathBuf;
 
-use clap::{Args, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 use crate::{
-	prelude::Result,
-	radar::{
-		self, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
-		RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
-		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
-		RadarRefreshQueueRequest, RadarRefreshReleaseDeltaRequest, RadarRenderSignalRequest,
-		RadarSocialReservePublishRequest, RadarValidateRequest,
-	},
+	self as radar, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
+	RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
+	RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
+	RadarRefreshQueueRequest, RadarRefreshReleaseDeltaRequest, RadarRenderSignalRequest,
+	RadarSocialReservePublishRequest, RadarValidateRequest, prelude::Result,
 };
 
-#[derive(Debug, Args)]
-pub(super) struct RadarCommand {
+/// Root CLI parser for the Radar auxiliary tool.
+#[derive(Debug, Parser)]
+#[command(
+	about = "Auxiliary Radar automation and artifact tooling.",
+	version,
+	arg_required_else_help = true,
+	rename_all = "kebab",
+	subcommand_required = true
+)]
+pub(crate) struct Cli {
 	#[command(subcommand)]
 	command: RadarSubcommand,
 }
-impl RadarCommand {
-	pub(super) fn run(&self) -> Result<()> {
+impl Cli {
+	pub(crate) fn run(&self) -> Result<()> {
 		match &self.command {
 			RadarSubcommand::Validate(args) => args.run(),
 			RadarSubcommand::RefreshUpstreamQueue(args) => args.run(),
