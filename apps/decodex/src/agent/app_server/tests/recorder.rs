@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 #[test]
 fn turn_notification_ignores_agent_output_for_non_target_turn() {

@@ -152,10 +152,12 @@ fn inspect_stale_active_activity_marker(
 	if let Some(marker) = marker {
 		match marker_liveness {
 			StaleActiveProcessLiveness::Alive => blockers.push(String::from("process_alive")),
-			StaleActiveProcessLiveness::NotAlive =>
-				evidence.push(String::from("process_not_alive")),
-			StaleActiveProcessLiveness::Unknown =>
-				blockers.push(String::from("process_liveness_unknown")),
+			StaleActiveProcessLiveness::NotAlive => {
+				evidence.push(String::from("process_not_alive"))
+			},
+			StaleActiveProcessLiveness::Unknown => {
+				blockers.push(String::from("process_liveness_unknown"))
+			},
 		}
 		if marker.last_progress_unix_epoch().is_some() {
 			if marker_liveness == StaleActiveProcessLiveness::NotAlive {

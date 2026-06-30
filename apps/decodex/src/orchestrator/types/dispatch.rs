@@ -66,9 +66,10 @@ impl IssueDispatchMode {
 				state_store,
 				hint,
 			),
-			Self::ReviewRepair =>
+			Self::ReviewRepair => {
 				Ok(issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?
-					&& !issue_retry_budget_exhausted(workflow, state_store, &issue.id)?),
+					&& !issue_retry_budget_exhausted(workflow, state_store, &issue.id)?)
+			},
 			Self::Closeout => issue_passes_closeout_dispatch_policy(
 				tracker,
 				issue,
@@ -108,6 +109,14 @@ impl PostReviewLaneDecision {
 pub(crate) enum RetryKind {
 	Continuation,
 	Failure,
+}
+impl RetryKind {
+	pub(crate) const fn as_str(self) -> &'static str {
+		match self {
+			Self::Continuation => "continuation",
+			Self::Failure => "failure",
+		}
+	}
 }
 
 pub(crate) enum RetryDispatchDecision {
@@ -206,12 +215,14 @@ impl LoopGuardrailReason {
 			"no_effective_diff" => Some(Self::NoEffectiveDiff),
 			"remaining_delta_unchanged" => Some(Self::RemainingDeltaUnchanged),
 			"review_churn" | "review_policy_exhausted" => Some(Self::ReviewChurn),
-			"review_handoff_state_drift" | "review_handoff_rebind_required" =>
-				Some(Self::ReviewHandoffStateDrift),
+			"review_handoff_state_drift" | "review_handoff_rebind_required" => {
+				Some(Self::ReviewHandoffStateDrift)
+			},
 			"dependency_program_stale" | "dependency_blocked" => Some(Self::DependencyProgramStale),
 			"uncovered_direction" | "research_contract_required" => Some(Self::UncoveredDirection),
-			"ambiguous_retained_progress" | "ownership_ambiguous" =>
-				Some(Self::AmbiguousRetainedProgress),
+			"ambiguous_retained_progress" | "ownership_ambiguous" => {
+				Some(Self::AmbiguousRetainedProgress)
+			},
 			_ => None,
 		}
 	}

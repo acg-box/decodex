@@ -12,7 +12,7 @@ fn remove_local_git_metadata_for_post_review_status(worktree_path: &Path) {
 	];
 
 	for args in commands {
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(worktree_path)
 			.args(*args)

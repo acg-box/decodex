@@ -1,8 +1,8 @@
 mod repo_gate_failure {
-	use std::fmt::Formatter;
-	use std::fmt::Display;
 	use crate::orchestrator::RepoGateFailureDiagnostic;
 	use crate::orchestrator::RepoGateTrackedRewriteDecision;
+	use std::fmt::Display;
+	use std::fmt::Formatter;
 	#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 	pub(super) enum RepoGateFailureDisposition {
 		ContinueRepair,
@@ -24,6 +24,7 @@ mod repo_gate_failure {
 		CanonicalizeCommandFailed,
 		VerifyCommandFailed,
 		TrackedRewritesLeft,
+		ScopeEnvelopeViolation,
 		GitLockContention,
 		CommandSpawnFailed,
 		CleanlinessCheckFailed,
@@ -34,6 +35,7 @@ mod repo_gate_failure {
 				Self::CanonicalizeCommandFailed => "repo_gate_canonicalize_failed",
 				Self::VerifyCommandFailed => "repo_gate_verify_failed",
 				Self::TrackedRewritesLeft => "repo_gate_tracked_rewrites_left",
+				Self::ScopeEnvelopeViolation => "repo_gate_scope_envelope_violation",
 				Self::GitLockContention => "repo_gate_git_lock_contention",
 				Self::CommandSpawnFailed => "repo_gate_command_spawn_failed",
 				Self::CleanlinessCheckFailed => "repo_gate_cleanliness_check_failed",
@@ -42,9 +44,12 @@ mod repo_gate_failure {
 
 		fn disposition(self) -> RepoGateFailureDisposition {
 			match self {
-				Self::CanonicalizeCommandFailed
-				| Self::VerifyCommandFailed => RepoGateFailureDisposition::ContinueRepair,
-				Self::TrackedRewritesLeft => RepoGateFailureDisposition::NeedsHumanAttention,
+				Self::CanonicalizeCommandFailed | Self::VerifyCommandFailed => {
+					RepoGateFailureDisposition::ContinueRepair
+				},
+				Self::TrackedRewritesLeft | Self::ScopeEnvelopeViolation => {
+					RepoGateFailureDisposition::NeedsHumanAttention
+				},
 				Self::GitLockContention => RepoGateFailureDisposition::RetryAfterBackoff,
 				Self::CommandSpawnFailed | Self::CleanlinessCheckFailed => {
 					RepoGateFailureDisposition::NeedsHumanAttention
@@ -62,6 +67,9 @@ mod repo_gate_failure {
 				},
 				Self::TrackedRewritesLeft => {
 					"automatic retry is stopped because the repo gate left tracked rewrites after completing; inspect the retained worktree manually"
+				},
+				Self::ScopeEnvelopeViolation => {
+					"automatic retry is stopped because the repo gate wrote files outside the lane scope envelope"
 				},
 				Self::GitLockContention => {
 					"another Git process appears to hold `.git/index.lock`; decodex will wait briefly, refresh lane state, and retry automatically"
@@ -86,6 +94,9 @@ mod repo_gate_failure {
 				Self::TrackedRewritesLeft => format!(
 					"inspect the retained worktree, decide whether the tracked rewrites are in scope, then finish validation and PR handoff or reset the patch manually, {recovery_gate}"
 				),
+				Self::ScopeEnvelopeViolation => format!(
+					"inspect the retained worktree and explicitly decide whether to expand lane scope or isolate repo-wide baseline cleanup before retrying, {recovery_gate}"
+				),
 				Self::GitLockContention => format!(
 					"inspect the worktree for an active or stale `.git/index.lock` holder, clear the Git lock contention manually, {recovery_gate}"
 				),
@@ -108,18 +119,10 @@ mod repo_gate_failure {
 	}
 	impl RepoGateFailure {
 		pub(super) fn new(kind: RepoGateFailureKind, message: String) -> Self {
-			Self {
-				kind,
-				message,
-				diagnostic: None,
-				tracked_rewrite_decision: None,
-			}
+			Self { kind, message, diagnostic: None, tracked_rewrite_decision: None }
 		}
 
-		pub(super) fn with_diagnostic(
-			mut self,
-			diagnostic: RepoGateFailureDiagnostic,
-		) -> Self {
+		pub(super) fn with_diagnostic(mut self, diagnostic: RepoGateFailureDiagnostic) -> Self {
 			self.diagnostic = Some(diagnostic);
 
 			self
@@ -172,10 +175,7 @@ mod repo_gate_failure {
 	impl std::error::Error for RepoGateFailure {}
 
 	impl Display for RepoGateFailure {
-		fn fmt(
-			&self,
-			f: &mut Formatter<'_>,
-		) -> std::result::Result<(), std::fmt::Error> {
+		fn fmt(&self, f: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
 			write!(f, "{}", self.message)
 		}
 	}
@@ -183,8 +183,8 @@ mod repo_gate_failure {
 
 use std::process::Output;
 
-use repo_gate_failure::{RepoGateFailure, RepoGateFailureDisposition, RepoGateFailureKind};
 use crate::workflow::ResolvedRepoGate;
+use repo_gate_failure::{RepoGateFailure, RepoGateFailureDisposition, RepoGateFailureKind};
 
 const REPO_GATE_DIAGNOSTIC_EXCERPT_LIMIT: usize = 4_000;
 const REPO_GATE_DIAGNOSTIC_LINE_LIMIT: usize = 16;
@@ -223,11 +223,7 @@ impl RepoGateFailureDiagnostic {
 		}
 	}
 
-	fn from_spawn_error(
-		stage: &'static str,
-		failed_command: &str,
-		error: &dyn Display,
-	) -> Self {
+	fn from_spawn_error(stage: &'static str, failed_command: &str, error: &dyn Display) -> Self {
 		let output_text = error.to_string();
 		let (output_excerpt, output_truncated) =
 			repo_gate_bounded_output_excerpt(&output_text, REPO_GATE_DIAGNOSTIC_EXCERPT_LIMIT);
@@ -278,6 +274,8 @@ struct RepoGateTrackedRewriteDecision {
 	owned: bool,
 	decision: &'static str,
 	reason: &'static str,
+	source_error_class: Option<&'static str>,
+	source_diagnostic: Option<RepoGateFailureDiagnostic>,
 }
 impl RepoGateTrackedRewriteDecision {
 	fn continue_to_commit_capable_phase(files: Vec<String>) -> Self {
@@ -285,21 +283,35 @@ impl RepoGateTrackedRewriteDecision {
 			files,
 			owned: true,
 			decision: "continue_to_commit_capable_phase",
-			reason:
-				"all rewritten files were already present in the pre-gate implementation diff and the repo gate passed",
+			reason: "all rewritten files were already present in the pre-gate implementation diff and the repo gate passed",
+			source_error_class: None,
+			source_diagnostic: None,
 		}
 	}
 
-	fn require_attention(
-		files: Vec<String>,
-		owned: bool,
-		reason: &'static str,
-	) -> Self {
+	fn require_attention(files: Vec<String>, owned: bool, reason: &'static str) -> Self {
 		Self {
 			files,
 			owned,
 			decision: "repo_gate_tracked_rewrites_left",
 			reason,
+			source_error_class: None,
+			source_diagnostic: None,
+		}
+	}
+
+	fn scope_envelope_violation(
+		files: Vec<String>,
+		source_error_class: Option<&'static str>,
+		source_diagnostic: Option<RepoGateFailureDiagnostic>,
+	) -> Self {
+		Self {
+			files,
+			owned: false,
+			decision: "scope_envelope_violation",
+			reason: "one or more repo-gate rewrites were not present in the pre-gate lane diff",
+			source_error_class,
+			source_diagnostic,
 		}
 	}
 
@@ -317,7 +329,13 @@ impl RepoGateTrackedRewriteDecision {
 			"owned": self.owned,
 			"decision": self.decision,
 			"reason": self.reason,
+			"sourceErrorClass": self.source_error_class,
+			"sourceRepoGateFailure": self.source_diagnostic.as_ref().map(RepoGateFailureDiagnostic::to_json),
 		})
+	}
+
+	fn is_scope_envelope_violation(&self) -> bool {
+		self.decision == "scope_envelope_violation"
 	}
 }
 
@@ -331,9 +349,7 @@ impl RepoGateCommandOutcome {
 	}
 
 	fn with_tracked_rewrite_decision(decision: RepoGateTrackedRewriteDecision) -> Self {
-		Self {
-			tracked_rewrite_decision: Some(decision),
-		}
+		Self { tracked_rewrite_decision: Some(decision) }
 	}
 
 	fn tracked_rewrite_decision(&self) -> Option<&RepoGateTrackedRewriteDecision> {
@@ -347,6 +363,20 @@ struct RepoGateTrackedDiffSnapshot {
 	path_diffs: BTreeMap<String, String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RepoGateScopeEnvelope {
+	authorized_paths: BTreeSet<String>,
+}
+impl RepoGateScopeEnvelope {
+	fn from_pre_gate_diff(snapshot: &RepoGateTrackedDiffSnapshot) -> Self {
+		Self { authorized_paths: snapshot.path_diffs.keys().cloned().collect() }
+	}
+
+	fn violation_files(&self, rewritten_files: impl IntoIterator<Item = String>) -> Vec<String> {
+		rewritten_files.into_iter().filter(|path| !self.authorized_paths.contains(path)).collect()
+	}
+}
+
 impl RepoGateFailureKind {
 	fn retry_schedule_kind(self) -> Option<&'static str> {
 		match self {
@@ -356,10 +386,7 @@ impl RepoGateFailureKind {
 	}
 }
 
-pub(crate) fn delete_local_branch_if_present(
-	repo_root: &Path,
-	branch_name: &str,
-) -> Result<()> {
+pub(crate) fn delete_local_branch_if_present(repo_root: &Path, branch_name: &str) -> Result<()> {
 	let local_ref = format!("refs/heads/{branch_name}");
 	let branch_check = Command::new("git")
 		.arg("-C")
@@ -477,10 +504,7 @@ fn repo_gate_output_text(output: &Output) -> String {
 	String::from("(command produced no output)")
 }
 
-fn repo_gate_bounded_output_excerpt(
-	output_text: &str,
-	limit: usize,
-) -> (String, bool) {
+fn repo_gate_bounded_output_excerpt(output_text: &str, limit: usize) -> (String, bool) {
 	let mut excerpt = String::new();
 	let mut truncated = false;
 
@@ -503,10 +527,8 @@ fn repo_gate_diagnostic_summary(
 	output: &Output,
 	problem_lines: &[String],
 ) -> String {
-	let exit_status = output.status.code().map_or_else(
-		|| String::from("unknown"),
-		|code| code.to_string(),
-	);
+	let exit_status =
+		output.status.code().map_or_else(|| String::from("unknown"), |code| code.to_string());
 	let first_problem = problem_lines
 		.first()
 		.map_or_else(|| String::from("no diagnostic output"), ToOwned::to_owned);
@@ -585,12 +607,7 @@ fn repo_gate_truncate_diagnostic_line(line: &str) -> String {
 fn repo_gate_git_output_lines(output: &Output) -> BTreeSet<String> {
 	let stdout = String::from_utf8_lossy(&output.stdout);
 
-	stdout
-		.lines()
-		.map(str::trim)
-		.filter(|line| !line.is_empty())
-		.map(str::to_owned)
-		.collect()
+	stdout.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_owned).collect()
 }
 
 fn repo_gate_is_git_lock_contention(output_text: &str) -> bool {
@@ -620,9 +637,7 @@ fn repo_gate_shell_from_env(
 		&& !shell.is_empty()
 	{
 		let shell_path = Path::new(&shell);
-			let shell_name = shell_path
-				.file_name()
-				.and_then(std::ffi::OsStr::to_str);
+		let shell_name = shell_path.file_name().and_then(std::ffi::OsStr::to_str);
 
 		if shell_name == Some("sh") {
 			return (std::ffi::OsString::from("/bin/sh"), "-c");
@@ -642,16 +657,11 @@ fn repo_gate_shell() -> (std::ffi::OsString, &'static str) {
 fn run_repo_gate_shell_command(command: &str, cwd: &Path) -> Result<Output> {
 	let (shell, shell_flag) = repo_gate_shell();
 
-	Command::new(&shell)
-		.arg(shell_flag)
-		.arg(command)
-		.current_dir(cwd)
-		.output()
-		.map_err(|error| {
-			let diagnostic =
-				RepoGateFailureDiagnostic::from_spawn_error("spawn", command, &error);
+	Command::new(&shell).arg(shell_flag).arg(command).current_dir(cwd).output().map_err(|error| {
+		let diagnostic = RepoGateFailureDiagnostic::from_spawn_error("spawn", command, &error);
 
-			Report::new(RepoGateFailure::new(
+		Report::new(
+			RepoGateFailure::new(
 				RepoGateFailureKind::CommandSpawnFailed,
 				format!(
 					"Failed to spawn repo gate command `{}` in `{}` via `{}` `{}`: {}",
@@ -662,8 +672,9 @@ fn run_repo_gate_shell_command(command: &str, cwd: &Path) -> Result<Output> {
 					error
 				),
 			)
-			.with_diagnostic(diagnostic))
-		})
+			.with_diagnostic(diagnostic),
+		)
+	})
 }
 
 fn run_repo_gate_cleanliness_check_with_git(
@@ -688,28 +699,22 @@ fn run_repo_gate_cleanliness_check_with_git(
 		})
 }
 
-fn run_repo_gate_git_command(
-	args: &[&str],
-	cwd: &Path,
-) -> Result<Output> {
-	Command::new("git")
-		.arg("-C")
-		.arg(cwd)
-		.args(args)
-		.output()
-		.map_err(|error| {
-			eyre::eyre!(
-				"Failed to inspect repo-gate changed-file classification in `{}` via `git {}`: {}",
-				cwd.display(),
-				args.join(" "),
-				error
-			)
-		})
+fn run_repo_gate_git_command(args: &[&str], cwd: &Path) -> Result<Output> {
+	Command::new("git").arg("-C").arg(cwd).args(args).output().map_err(|error| {
+		eyre::eyre!(
+			"Failed to inspect repo-gate changed-file classification in `{}` via `git {}`: {}",
+			cwd.display(),
+			args.join(" "),
+			error
+		)
+	})
 }
 
 fn repo_gate_remote_head_ref(cwd: &Path) -> Result<String> {
-	let output =
-		run_repo_gate_git_command(&["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cwd)?;
+	let output = run_repo_gate_git_command(
+		&["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+		cwd,
+	)?;
 
 	if output.status.success() {
 		let remote_head = repo_gate_output_text(&output);
@@ -719,7 +724,8 @@ fn repo_gate_remote_head_ref(cwd: &Path) -> Result<String> {
 		}
 	}
 
-	let remote_probe = run_repo_gate_git_command(&["ls-remote", "--symref", "origin", "HEAD"], cwd)?;
+	let remote_probe =
+		run_repo_gate_git_command(&["ls-remote", "--symref", "origin", "HEAD"], cwd)?;
 
 	if !remote_probe.status.success() {
 		eyre::bail!(
@@ -733,8 +739,7 @@ fn repo_gate_remote_head_ref(cwd: &Path) -> Result<String> {
 	let Some(remote_head) = stdout.lines().find_map(|line| {
 		let line = line.trim();
 
-		line
-			.strip_prefix("ref: refs/heads/")
+		line.strip_prefix("ref: refs/heads/")
 			.and_then(|remainder| remainder.strip_suffix("\tHEAD"))
 			.map(|branch_name| format!("origin/{branch_name}"))
 	}) else {
@@ -747,10 +752,7 @@ fn repo_gate_remote_head_ref(cwd: &Path) -> Result<String> {
 	Ok(remote_head)
 }
 
-fn repo_gate_merge_base(
-	cwd: &Path,
-	base_ref: &str,
-) -> Result<String> {
+fn repo_gate_merge_base(cwd: &Path, base_ref: &str) -> Result<String> {
 	let output = run_repo_gate_git_command(&["merge-base", "HEAD", base_ref], cwd)?;
 
 	if !output.status.success() {
@@ -775,10 +777,7 @@ fn repo_gate_merge_base(
 	Ok(merge_base)
 }
 
-fn repo_gate_changed_files_for_diff_spec(
-	cwd: &Path,
-	diff_spec: &str,
-) -> Result<BTreeSet<String>> {
+fn repo_gate_changed_files_for_diff_spec(cwd: &Path, diff_spec: &str) -> Result<BTreeSet<String>> {
 	let output = run_repo_gate_git_command(
 		&["diff", "--name-only", "--diff-filter=ACDMRTUXB", diff_spec],
 		cwd,
@@ -854,19 +853,21 @@ fn run_canonicalize_commands(commands: &[String], cwd: &Path) -> Result<()> {
 				&output_text,
 			);
 
-			return Err(Report::new(RepoGateFailure::new(
-				repo_gate_failure_kind_for_output(
-					RepoGateFailureKind::CanonicalizeCommandFailed,
-					&output_text,
-				),
-				format!(
-					"Repo canonicalize command `{}` failed in `{}`: {}",
-					command,
-					cwd.display(),
-					output_text
-				),
-			)
-			.with_diagnostic(diagnostic)));
+			return Err(Report::new(
+				RepoGateFailure::new(
+					repo_gate_failure_kind_for_output(
+						RepoGateFailureKind::CanonicalizeCommandFailed,
+						&output_text,
+					),
+					format!(
+						"Repo canonicalize command `{}` failed in `{}`: {}",
+						command,
+						cwd.display(),
+						output_text
+					),
+				)
+				.with_diagnostic(diagnostic),
+			));
 		}
 	}
 
@@ -882,29 +883,28 @@ fn run_verify_commands(commands: &[String], cwd: &Path) -> Result<()> {
 			let diagnostic =
 				RepoGateFailureDiagnostic::from_output("verify", command, &output, &output_text);
 
-			return Err(Report::new(RepoGateFailure::new(
-				repo_gate_failure_kind_for_output(
-					RepoGateFailureKind::VerifyCommandFailed,
-					&output_text,
-				),
-				format!(
-					"Repo verify command `{}` failed in `{}`: {}",
-					command,
-					cwd.display(),
-					output_text
-				),
-			)
-			.with_diagnostic(diagnostic)));
+			return Err(Report::new(
+				RepoGateFailure::new(
+					repo_gate_failure_kind_for_output(
+						RepoGateFailureKind::VerifyCommandFailed,
+						&output_text,
+					),
+					format!(
+						"Repo verify command `{}` failed in `{}`: {}",
+						command,
+						cwd.display(),
+						output_text
+					),
+				)
+				.with_diagnostic(diagnostic),
+			));
 		}
 	}
 
 	Ok(())
 }
 
-fn read_repo_gate_tracked_diff_paths(
-	cwd: &Path,
-	phase: &str,
-) -> Result<BTreeSet<String>> {
+fn read_repo_gate_tracked_diff_paths(cwd: &Path, phase: &str) -> Result<BTreeSet<String>> {
 	let output = Command::new("git")
 		.arg("-C")
 		.arg(cwd)
@@ -974,11 +974,7 @@ fn read_repo_gate_tracked_diff(cwd: &Path, phase: &str) -> Result<String> {
 	Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-fn read_repo_gate_tracked_diff_for_path(
-	cwd: &Path,
-	phase: &str,
-	path: &str,
-) -> Result<String> {
+fn read_repo_gate_tracked_diff_for_path(cwd: &Path, phase: &str, path: &str) -> Result<String> {
 	let output = Command::new("git")
 		.arg("-C")
 		.arg(cwd)
@@ -1057,8 +1053,9 @@ fn repo_gate_tracked_rewrite_decision(
 	}
 
 	let rewritten_files = repo_gate_rewritten_files(before, after);
+	let scope_envelope = RepoGateScopeEnvelope::from_pre_gate_diff(before);
 	let owned = !rewritten_files.is_empty()
-		&& rewritten_files.iter().all(|path| before.path_diffs.contains_key(path));
+		&& scope_envelope.violation_files(rewritten_files.iter().cloned()).is_empty();
 
 	if allow_owned_rewrites && owned {
 		return Some(RepoGateTrackedRewriteDecision::continue_to_commit_capable_phase(
@@ -1072,11 +1069,7 @@ fn repo_gate_tracked_rewrite_decision(
 		"one or more rewritten files were not present in the pre-gate implementation diff"
 	};
 
-	Some(RepoGateTrackedRewriteDecision::require_attention(
-		rewritten_files,
-		owned,
-		reason,
-	))
+	Some(RepoGateTrackedRewriteDecision::require_attention(rewritten_files, owned, reason))
 }
 
 fn repo_gate_diff_rewrite_outcome(
@@ -1086,8 +1079,7 @@ fn repo_gate_diff_rewrite_outcome(
 	allow_owned_rewrites: bool,
 ) -> Result<RepoGateCommandOutcome> {
 	let after = read_repo_gate_tracked_diff_snapshot(cwd, phase)?;
-	let Some(decision) =
-		repo_gate_tracked_rewrite_decision(before, &after, allow_owned_rewrites)
+	let Some(decision) = repo_gate_tracked_rewrite_decision(before, &after, allow_owned_rewrites)
 	else {
 		return Ok(RepoGateCommandOutcome::clean());
 	};
@@ -1131,6 +1123,58 @@ fn repo_gate_diff_rewrite_outcome(
 	).with_tracked_rewrite_decision(decision)))
 }
 
+fn repo_gate_scope_envelope_failure_or_source(
+	cwd: &Path,
+	phase: &str,
+	before: &RepoGateTrackedDiffSnapshot,
+	source_error: Report,
+) -> Report {
+	let source_error_text = source_error.to_string();
+	let source_repo_gate_failure = source_error.downcast_ref::<RepoGateFailure>();
+	let source_error_class = source_repo_gate_failure.map(RepoGateFailure::error_class);
+	let source_diagnostic =
+		source_repo_gate_failure.and_then(|failure| failure.diagnostic().cloned());
+	let after = match read_repo_gate_tracked_diff_snapshot(cwd, phase) {
+		Ok(after) => after,
+		Err(error) => {
+			tracing::warn!(
+				repo_root = %cwd.display(),
+				phase,
+				error = %error,
+				"Could not inspect repo-gate write-set after command failure."
+			);
+
+			return source_error;
+		},
+	};
+	let rewritten_files = repo_gate_rewritten_files(before, &after);
+	let scope_envelope = RepoGateScopeEnvelope::from_pre_gate_diff(before);
+	let scope_violation_files = scope_envelope.violation_files(rewritten_files);
+
+	if scope_violation_files.is_empty() {
+		return source_error;
+	}
+
+	let decision = RepoGateTrackedRewriteDecision::scope_envelope_violation(
+		scope_violation_files,
+		source_error_class,
+		source_diagnostic,
+	);
+
+	Report::new(
+		RepoGateFailure::new(
+			RepoGateFailureKind::ScopeEnvelopeViolation,
+			format!(
+				"Repo gate {phase} failed after writing files outside the lane scope envelope in `{}`; files={}; source failure: {}",
+				cwd.display(),
+				decision.files_display(),
+				source_error_text
+			),
+		)
+		.with_tracked_rewrite_decision(decision),
+	)
+}
+
 fn run_repo_gate_commands(
 	canonicalize_commands: &[String],
 	verify_commands: &[String],
@@ -1156,8 +1200,22 @@ fn run_repo_gate_commands_with_rewrite_policy(
 ) -> Result<RepoGateCommandOutcome> {
 	let baseline_tracked_diff = read_repo_gate_tracked_diff_snapshot(cwd, "baseline")?;
 
-	run_canonicalize_commands(canonicalize_commands, cwd)?;
-	run_verify_commands(verify_commands, cwd)?;
+	if let Err(error) = run_canonicalize_commands(canonicalize_commands, cwd) {
+		return Err(repo_gate_scope_envelope_failure_or_source(
+			cwd,
+			"canonicalize",
+			&baseline_tracked_diff,
+			error,
+		));
+	}
+	if let Err(error) = run_verify_commands(verify_commands, cwd) {
+		return Err(repo_gate_scope_envelope_failure_or_source(
+			cwd,
+			"verify",
+			&baseline_tracked_diff,
+			error,
+		));
+	}
 
 	repo_gate_diff_rewrite_outcome(
 		cwd,

@@ -172,19 +172,22 @@ fn classify_loop_guardrail_authority_boundary(
 	match stop.reason {
 		LoopGuardrailReason::ValidationRepeat | LoopGuardrailReason::RemainingDeltaUnchanged
 			if source_is_repo_gate =>
+		{
 			ArchitectureRecoveryBoundary {
 				disposition: AuthorityBoundaryDisposition::WithinAuthority,
 				policy_decision: AuthorityBoundaryPolicyDecision::AutoContinue,
 				final_reason: "Repo-gate convergence failed on an engineering implementation problem; architecture recovery may change implementation strategy without weakening validation.",
 				boundary_type: AuthorityBoundarySurface::ImplementationStrategy,
-			},
-		LoopGuardrailReason::NoEffectiveDiff if source_is_repo_gate =>
+			}
+		},
+		LoopGuardrailReason::NoEffectiveDiff if source_is_repo_gate => {
 			ArchitectureRecoveryBoundary {
 				disposition: AuthorityBoundaryDisposition::WithinAuthority,
 				policy_decision: AuthorityBoundaryPolicyDecision::AutoContinue,
 				final_reason: "No-effective-diff convergence followed repo-gate repair work; architecture recovery may replace the ineffective implementation strategy.",
 				boundary_type: AuthorityBoundarySurface::ImplementationStrategy,
-			},
+			}
+		},
 		LoopGuardrailReason::ReviewChurn => ArchitectureRecoveryBoundary {
 			disposition: AuthorityBoundaryDisposition::WithinAuthority,
 			policy_decision: AuthorityBoundaryPolicyDecision::BlockLanding,
@@ -438,35 +441,47 @@ fn architecture_recovery_path_has_segment(path: &str, segment: &str) -> bool {
 
 fn architecture_recovery_surface_summary(surface: AuthorityBoundarySurface) -> &'static str {
 	match surface {
-		AuthorityBoundarySurface::ImplementationStrategy =>
-			"Replace the non-converging guardrail repair strategy with a materially different architecture recovery strategy.",
-		AuthorityBoundarySurface::Runtime =>
-			"Runtime implementation files changed during recovery.",
+		AuthorityBoundarySurface::ImplementationStrategy => {
+			"Replace the non-converging guardrail repair strategy with a materially different architecture recovery strategy."
+		},
+		AuthorityBoundarySurface::Runtime => {
+			"Runtime implementation files changed during recovery."
+		},
 		AuthorityBoundarySurface::Tests => "Test files changed during recovery.",
 		AuthorityBoundarySurface::Docs => "Documentation files changed during recovery.",
-		AuthorityBoundarySurface::PublicApi =>
-			"Public API or command surface files changed during recovery.",
+		AuthorityBoundarySurface::PublicApi => {
+			"Public API or command surface files changed during recovery."
+		},
 		AuthorityBoundarySurface::Config => "Configuration files changed during recovery.",
-		AuthorityBoundarySurface::Security =>
-			"Security-sensitive implementation files changed during recovery.",
-		AuthorityBoundarySurface::Data =>
-			"Data or state persistence files changed during recovery.",
+		AuthorityBoundarySurface::Security => {
+			"Security-sensitive implementation files changed during recovery."
+		},
+		AuthorityBoundarySurface::Data => {
+			"Data or state persistence files changed during recovery."
+		},
 		AuthorityBoundarySurface::Billing => "Billing or usage files changed during recovery.",
 		AuthorityBoundarySurface::Privacy => "Privacy-sensitive files changed during recovery.",
-		AuthorityBoundarySurface::Validation =>
-			"Validation or repository-gate files changed during recovery.",
-		AuthorityBoundarySurface::ReviewPolicy =>
-			"Review policy or landing policy files changed during recovery.",
-		AuthorityBoundarySurface::Objective =>
-			"Objective-changing recovery requires an explicit human decision.",
-		AuthorityBoundarySurface::NonGoal =>
-			"Non-goal-changing recovery requires an explicit human decision.",
-		AuthorityBoundarySurface::ExternalDependency =>
-			"External dependency recovery requires accepted authority.",
-		AuthorityBoundarySurface::RetainedOwnership =>
-			"Retained ownership evidence changed during recovery.",
-		AuthorityBoundarySurface::AuthorityEvidence =>
-			"Authority evidence changed or is insufficient during recovery.",
+		AuthorityBoundarySurface::Validation => {
+			"Validation or repository-gate files changed during recovery."
+		},
+		AuthorityBoundarySurface::ReviewPolicy => {
+			"Review policy or landing policy files changed during recovery."
+		},
+		AuthorityBoundarySurface::Objective => {
+			"Objective-changing recovery requires an explicit human decision."
+		},
+		AuthorityBoundarySurface::NonGoal => {
+			"Non-goal-changing recovery requires an explicit human decision."
+		},
+		AuthorityBoundarySurface::ExternalDependency => {
+			"External dependency recovery requires accepted authority."
+		},
+		AuthorityBoundarySurface::RetainedOwnership => {
+			"Retained ownership evidence changed during recovery."
+		},
+		AuthorityBoundarySurface::AuthorityEvidence => {
+			"Authority evidence changed or is insufficient during recovery."
+		},
 	}
 }
 
@@ -488,10 +503,12 @@ fn architecture_recovery_final_reason(
 
 	match policy_decision {
 		AuthorityBoundaryPolicyDecision::AutoContinue => boundary.final_reason,
-		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence =>
-			"Changed high-risk surfaces can continue recovery autonomously, but require enhanced evidence before review handoff or landing.",
-		AuthorityBoundaryPolicyDecision::BlockLanding =>
-			"Changed validation or review-policy surfaces can continue recovery autonomously, but block landing until the required evidence is restored.",
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence => {
+			"Changed high-risk surfaces can continue recovery autonomously, but require enhanced evidence before review handoff or landing."
+		},
+		AuthorityBoundaryPolicyDecision::BlockLanding => {
+			"Changed validation or review-policy surfaces can continue recovery autonomously, but block landing until the required evidence is restored."
+		},
 		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => boundary.final_reason,
 	}
 }
@@ -919,14 +936,18 @@ fn architecture_recovery_policy_recovery_guidance(
 	policy_decision: AuthorityBoundaryPolicyDecision,
 ) -> &'static str {
 	match policy_decision {
-		AuthorityBoundaryPolicyDecision::AutoContinue =>
-			"request human attention only if the next viable action would change product behavior, public API/config contract, security, data, credential, billing, validation standards, or accepted authority",
-		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence =>
-			"preserve enhanced evidence for the changed high-risk surfaces before review handoff or landing",
-		AuthorityBoundaryPolicyDecision::BlockLanding =>
-			"keep landing blocked until validation or review-policy evidence is restored",
-		AuthorityBoundaryPolicyDecision::RequiresHumanDecision =>
-			"request human attention before continuing recovery",
+		AuthorityBoundaryPolicyDecision::AutoContinue => {
+			"request human attention only if the next viable action would change product behavior, public API/config contract, security, data, credential, billing, validation standards, or accepted authority"
+		},
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence => {
+			"preserve enhanced evidence for the changed high-risk surfaces before review handoff or landing"
+		},
+		AuthorityBoundaryPolicyDecision::BlockLanding => {
+			"keep landing blocked until validation or review-policy evidence is restored"
+		},
+		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => {
+			"request human attention before continuing recovery"
+		},
 	}
 }
 
@@ -934,13 +955,17 @@ pub(super) fn architecture_recovery_retry_next_action(
 	policy_decision: AuthorityBoundaryPolicyDecision,
 ) -> &'static str {
 	match policy_decision {
-		AuthorityBoundaryPolicyDecision::AutoContinue =>
-			"decodex recorded authority policy `auto_continue` and will retry with a materially different architecture recovery strategy",
-		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence =>
-			"decodex recorded authority policy `requires_enhanced_evidence` and will retry with a materially different architecture recovery strategy while preserving enhanced evidence before review handoff or landing",
-		AuthorityBoundaryPolicyDecision::BlockLanding =>
-			"decodex recorded authority policy `block_landing` and will retry with a materially different architecture recovery strategy while landing remains blocked until validation or review-policy evidence is restored",
-		AuthorityBoundaryPolicyDecision::RequiresHumanDecision =>
-			"decodex recorded authority policy `requires_human_decision` and requires human attention before retrying",
+		AuthorityBoundaryPolicyDecision::AutoContinue => {
+			"decodex recorded authority policy `auto_continue` and will retry with a materially different architecture recovery strategy"
+		},
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence => {
+			"decodex recorded authority policy `requires_enhanced_evidence` and will retry with a materially different architecture recovery strategy while preserving enhanced evidence before review handoff or landing"
+		},
+		AuthorityBoundaryPolicyDecision::BlockLanding => {
+			"decodex recorded authority policy `block_landing` and will retry with a materially different architecture recovery strategy while landing remains blocked until validation or review-policy evidence is restored"
+		},
+		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => {
+			"decodex recorded authority policy `requires_human_decision` and requires human attention before retrying"
+		},
 	}
 }

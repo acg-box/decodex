@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(super) fn proposal_refusals(
 	objective: Option<&AutonomyObjectiveContract>,

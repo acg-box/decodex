@@ -38,7 +38,11 @@ mod loop_status;
 mod run;
 mod runtime;
 
-#[allow(clippy::wildcard_imports)] pub(super) use history::*;
-#[allow(clippy::wildcard_imports)] pub(super) use loop_status::*;
-#[allow(clippy::wildcard_imports)] pub(super) use run::*;
-#[allow(clippy::wildcard_imports)] pub(super) use runtime::*;
+#[allow(clippy::wildcard_imports)]
+pub(super) use history::*;
+#[allow(clippy::wildcard_imports)]
+pub(super) use loop_status::*;
+#[allow(clippy::wildcard_imports)]
+pub(super) use run::*;
+#[allow(clippy::wildcard_imports)]
+pub(super) use runtime::*;

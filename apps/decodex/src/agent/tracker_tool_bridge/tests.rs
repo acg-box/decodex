@@ -5,7 +5,7 @@ use std::{
 	ffi::OsString,
 	fs,
 	path::{Path, PathBuf},
-	process::{self, Command},
+	process,
 };
 
 use serde_json::Value;

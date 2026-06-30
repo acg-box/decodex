@@ -1,6 +1,7 @@
 //! Mutations for the user-level Codex configuration file.
 
-#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
 use std::{
 	env, fs,
 	io::ErrorKind,

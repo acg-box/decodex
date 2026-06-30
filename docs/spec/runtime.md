@@ -6,9 +6,9 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/git_ops.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/config.rs, decodex.example.toml]
-drift_watch: [issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, repo_gate_tracked_rewrites_left, protocol_events, review_policy_checkpoints, review_checkpoint, review_lifecycle_records, lane_control_next_action, review_handoff_pending, review_repair_pending, review_repair_writeback_missing_lifecycle_marker, review_repair_writeback_stale_lifecycle_marker, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings, autonomy_proposals, decodex.autonomy_proposal/1, "[autonomy]", auto_promote, auto_intake, "[autonomy.runtime_policy]", accepted_objective_id, accepted_objective_version, accepted_policy_id, accepted_policy_version, policy_authority_ref]
-last_verified: 2026-06-27
+code_refs: [apps/decodex/src/orchestrator/lane_decision.rs, apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/execution_phase_goal.rs, apps/decodex/src/orchestrator/git_ops.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status/mod.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/config.rs, decodex.example.toml]
+drift_watch: [lane_decision, continuation_lineage, issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, repo_gate_tracked_rewrites_left, repo_gate_scope_envelope_violation, protocol_events, review_policy_checkpoints, review_checkpoint, review_lifecycle_records, lane_control_next_action, review_handoff_pending, review_repair_pending, review_repair_writeback_missing_lifecycle_marker, review_repair_writeback_stale_lifecycle_marker, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings, autonomy_proposals, decodex.autonomy_proposal/1, "[autonomy]", auto_promote, auto_intake, "[autonomy.runtime_policy]", accepted_objective_id, accepted_objective_version, accepted_policy_id, accepted_policy_version, policy_authority_ref]
+last_verified: 2026-06-30
 ---
 # Runtime Specification
 
@@ -541,8 +541,13 @@ material public lifecycle signal changes.
 
 When `decodex` runs the repo-native gate during `validating`, it must preserve the repo-gate failure class instead of collapsing everything into one generic failure bucket:
 
-- `canonicalize_commands` non-zero exit: continued repair in the retained lane
+- `canonicalize_commands` non-zero exit: continued repair in the retained lane unless
+  the failed command already wrote tracked files outside the pre-gate lane diff
 - `verify_commands` non-zero exit: continued repair in the retained lane
+- repo gate command failure after tracked writes outside the pre-gate lane diff:
+  retained partial progress that records `repo_gate_scope_envelope_violation`,
+  preserves the source repo-gate error class and diagnostic as structured evidence,
+  and requires operator attention before any scope expansion or baseline isolation
 - repo gate changes only tracked files that were already present in the pre-gate
   implementation diff during phase-goal validation, after the canonicalize and verify
   commands pass: continue to the commit-capable handoff phase and record private
@@ -553,7 +558,7 @@ When `decodex` runs the repo-native gate during `validating`, it must preserve t
   requires operator attention
 - repo-gate command spawn failures or tracked-file cleanliness inspection failures: human-attention failure path immediately
 
-The continued-repair classes above are ordinary bounded churn: the coding agent should keep repairing code and rerun the repo gate rather than requesting `manual_attention` just because the gate has not passed yet. A tracked-rewrite residue after the gate commands have changed the pre-gate implementation diff is different unless every rewritten file was already in the pre-gate implementation diff and the active phase can continue to a commit-capable handoff. Decodex must not infer repository file meaning, generated-artifact ownership, or fixture policy; ownership here is only same tracked path membership in the pre-gate implementation diff. Unsafe or strict-boundary tracked rewrites must preserve the retained worktree, write `error_class = "partial_progress_retained"` with the repo-gate source class in evidence, and stop until an operator decides whether to finish validation and handoff or reset the patch. Human-attention exits also remain reserved for environment, toolchain, or operator-owned blockers that the coding agent cannot clear from the retained worktree alone.
+The continued-repair classes above are ordinary bounded churn: the coding agent should keep repairing code and rerun the repo gate rather than requesting `manual_attention` just because the gate has not passed yet. A tracked-rewrite residue after the gate commands have changed the pre-gate implementation diff is different unless every rewritten file was already in the pre-gate implementation diff and the active phase can continue to a commit-capable handoff. Decodex must not infer repository file meaning, generated-artifact ownership, or fixture policy; ownership here is only same tracked path membership in the pre-gate implementation diff. Unsafe or strict-boundary tracked rewrites must preserve the retained worktree, write the retained-progress or scope-envelope class with the repo-gate source class in evidence, and stop until an operator decides whether to finish validation and handoff, expand scope, isolate baseline debt, or reset the patch. Human-attention exits also remain reserved for environment, toolchain, or operator-owned blockers that the coding agent cannot clear from the retained worktree alone.
 
 Continued repair is still bounded by loop guardrails. For each retryable failure,
 Decodex records local `loop_guardrail_checkpoint` evidence and updates the
@@ -568,6 +573,8 @@ strategy. Otherwise it records a terminal recovery reason such as
 `external_dependency_required`, or `architecture_recovery_exhausted` and routes the
 lane through the human-required failure path. Retryable repo-gate command failures
 record both `validation_repeat` and `remaining_delta_unchanged` observations.
+`validation_repeat` uses a normalized same-class key for the repo-gate error class
+and command/authority domain so changing diagnostics do not reset churn.
 Tracked rewrites left by a completed repo gate bypass architecture recovery and are
 retained for operator convergence instead. Retryable failures
 record `no_effective_diff` only when the retained worktree has no effective source

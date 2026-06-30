@@ -34,8 +34,10 @@ fn operator_github_cli_authority_from_resolution(
 	let available = resolution.available();
 
 	OperatorGitHubCliAuthority {
-		command_path: display_path(resolution.command_path()),
-		resolved_path: resolution.resolved_path().map(display_path),
+		command_path: public_discovered_path(discovery_tier.as_str(), resolution.command_path()),
+		resolved_path: resolution
+			.resolved_path()
+			.map(|path| public_discovered_path(discovery_tier.as_str(), path)),
 		configured_path,
 		discovery_tier: discovery_tier.clone(),
 		available,
@@ -45,13 +47,15 @@ fn operator_github_cli_authority_from_resolution(
 
 fn github_cli_authority_next_action(discovery_tier: &str, available: bool) -> String {
 	match (discovery_tier, available) {
-		("configured", true) =>
-			String::from("No action needed; Decodex will use the configured GitHub CLI path."),
+		("configured", true) => {
+			String::from("No action needed; Decodex will use the configured GitHub CLI path.")
+		},
 		("configured", false) => String::from(
 			"Fix `github.command_path` in project.toml so it points to an installed `gh` binary.",
 		),
-		("path", true) =>
-			String::from("No action needed; Decodex resolved `gh` from the process PATH."),
+		("path", true) => {
+			String::from("No action needed; Decodex resolved `gh` from the process PATH.")
+		},
 		("user-bin" | "known-fallback", true) => String::from(
 			"Set `github.command_path` in project.toml if this fallback path is unexpected.",
 		),
@@ -63,4 +67,15 @@ fn github_cli_authority_next_action(discovery_tier: &str, available: bool) -> St
 
 fn display_path(path: &Path) -> String {
 	path.display().to_string()
+}
+
+fn public_discovered_path(discovery_tier: &str, path: &Path) -> String {
+	if discovery_tier == "configured" {
+		return display_path(path);
+	}
+
+	path.file_name()
+		.and_then(|name| name.to_str())
+		.map(str::to_owned)
+		.unwrap_or_else(|| String::from("gh"))
 }

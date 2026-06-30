@@ -31,7 +31,8 @@ mod signal_render;
 mod social_publish;
 mod source_bundle;
 
-#[cfg(test)] use artifact_validation::has_legacy_multi_agent_v2_context;
+#[cfg(test)]
+use artifact_validation::has_legacy_multi_agent_v2_context;
 use artifact_validation::{
 	ValidationState, validate_active_social_publish_reservation_uniqueness,
 	validate_analysis_draft, validate_artifact, validate_artifact_errors,
@@ -281,8 +282,9 @@ pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> crate::prelude:
 			};
 
 			match promoted_pr {
-				Some(pr_number) =>
-					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?,
+				Some(pr_number) => {
+					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?
+				},
 				None => client.build_commit_bundle(&request.repo, commit_sha, &request.notes)?,
 			}
 		},
@@ -803,4 +805,5 @@ fn first_line(value: &str) -> String {
 	value.trim().lines().next().unwrap_or("").into()
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

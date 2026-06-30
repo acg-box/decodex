@@ -1,6 +1,7 @@
 //! OKF and Decodex docs check orchestration.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(crate) fn run_docs_check(root: &Path, scope: DocsCheckScope) -> Result<DocsCheckReport> {
 	let docs_root = root.to_path_buf();

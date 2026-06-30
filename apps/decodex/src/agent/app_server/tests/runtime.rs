@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 #[test]
 fn remaining_idle_budget_resets_from_latest_activity() {

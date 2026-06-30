@@ -248,7 +248,6 @@ mod tests {
 		collections::HashMap,
 		fs,
 		path::{Path, PathBuf},
-		process::Command,
 	};
 
 	use tempfile::TempDir;
@@ -497,8 +496,12 @@ mod tests {
 	}
 
 	fn git_stdout(cwd: &Path, args: &[&str]) -> String {
-		let output =
-			Command::new("git").arg("-C").arg(cwd).args(args).output().expect("git should run");
+		let output = crate::test_support::hermetic_git_command()
+			.arg("-C")
+			.arg(cwd)
+			.args(args)
+			.output()
+			.expect("git should run");
 
 		assert!(
 			output.status.success(),
@@ -512,8 +515,12 @@ mod tests {
 	}
 
 	fn run_git(cwd: &Path, args: &[&str]) {
-		let status =
-			Command::new("git").arg("-C").arg(cwd).args(args).status().expect("git should run");
+		let status = crate::test_support::hermetic_git_command()
+			.arg("-C")
+			.arg(cwd)
+			.args(args)
+			.status()
+			.expect("git should run");
 
 		assert!(status.success(), "git {:?} should succeed in `{}`", args, cwd.display());
 	}

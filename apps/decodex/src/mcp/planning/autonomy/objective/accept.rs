@@ -15,11 +15,12 @@ impl McpServer {
 	pub(in crate::mcp) fn call_autonomy_accept_objective_tool(&self, arguments: Value) -> Value {
 		let params = match serde_json::from_value::<AutonomyAcceptObjectiveToolArgs>(arguments) {
 			Ok(params) => params,
-			Err(_) =>
+			Err(_) => {
 				return mcp::invalid_tool_arguments(
 					TOOL_AUTONOMY_ACCEPT_OBJECTIVE,
 					"`objectiveId`, `objectiveVersion`, and optional `mode` are required.",
-				),
+				);
+			},
 		};
 		let Some(objective_id) = mcp::non_empty_string(Some(params.objective_id.as_str())) else {
 			return mcp::invalid_tool_arguments(
@@ -65,16 +66,18 @@ impl McpServer {
 		let record =
 			match store.autonomy_objective(&project_id, objective_id, params.objective_version) {
 				Ok(Some(record)) => record,
-				Ok(None) =>
+				Ok(None) => {
 					return mcp::tool_refusal(
 						"objective_not_found",
 						"Autonomy Objective Contract draft was not found in the current Decodex project.",
-					),
-				Err(error) =>
+					);
+				},
+				Err(error) => {
 					return mcp::tool_refusal(
 						"objective_acceptance_refused",
 						format!("Objective Contract readback failed closed: {error}"),
-					),
+					);
+				},
 			};
 
 		if record.state() != AutonomyObjectiveState::Draft {

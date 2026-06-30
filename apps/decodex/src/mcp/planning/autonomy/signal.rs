@@ -20,11 +20,12 @@ impl McpServer {
 	pub(in crate::mcp) fn call_autonomy_submit_signal_tool(&self, arguments: Value) -> Value {
 		let params = match serde_json::from_value::<AutonomySubmitSignalToolArgs>(arguments) {
 			Ok(params) => params,
-			Err(_) =>
+			Err(_) => {
 				return invalid_tool_arguments(
 					TOOL_AUTONOMY_SUBMIT_SIGNAL,
 					"`kind`, `signal`, and optional `mode` are required.",
-				),
+				);
+			},
 		};
 		let mode =
 			match planning_mode(params.mode.as_deref(), "dry_run", TOOL_AUTONOMY_SUBMIT_SIGNAL) {

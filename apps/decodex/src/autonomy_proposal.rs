@@ -17,11 +17,14 @@ use crate::{
 };
 
 mod decision;
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;
 mod validation;
 
-#[allow(clippy::wildcard_imports)] use decision::*;
-#[allow(clippy::wildcard_imports)] use validation::*;
+#[allow(clippy::wildcard_imports)]
+use decision::*;
+#[allow(clippy::wildcard_imports)]
+use validation::*;
 
 pub(crate) const AUTONOMY_PROPOSAL_SCHEMA: &str = "decodex.autonomy_proposal/1";
 

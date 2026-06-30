@@ -99,7 +99,7 @@ large catch-all test file unless the behavior crosses several of these stages.
 | `apps/decodex/src/orchestrator/tests/operator/status/text.rs` | 10 | Human-readable operator status text |
 | `apps/decodex/src/orchestrator/tests/operator/status/publishing.rs` | 11 | Snapshot publishing, degraded observers, and tracker backoff |
 | `apps/decodex/src/orchestrator/tests/operator/status/queue.rs` | 18 | Intake queue classifications and shared-claim visibility |
-| `apps/decodex/src/orchestrator/tests/operator/status/http.rs` | 31 | Operator dashboard HTTP pages/assets, `/livez`, WebSocket control, and removed snapshot-route responses |
+| `apps/decodex/src/orchestrator/tests/operator/status/http/mod.rs` | 31 | Operator dashboard HTTP pages/assets, `/livez`, WebSocket control, and removed snapshot-route responses |
 | `apps/decodex/src/orchestrator/tests/operator/status/dashboard.rs` | 34 | Dashboard client rendering contracts |
 | `apps/decodex/src/orchestrator/tests/operator/status/agent_evidence.rs` | 6 | Agent evidence snapshots and private evidence readback |
 | `apps/decodex/src/orchestrator/tests/review_landing/status_support.rs` | 0 | Shared Review & Landing status fixtures |

@@ -83,8 +83,9 @@ impl AuthorityBoundarySurface {
 
 	pub(crate) fn policy_decision(self) -> AuthorityBoundaryPolicyDecision {
 		match self {
-			Self::ImplementationStrategy | Self::Runtime | Self::Tests | Self::Docs =>
-				AuthorityBoundaryPolicyDecision::AutoContinue,
+			Self::ImplementationStrategy | Self::Runtime | Self::Tests | Self::Docs => {
+				AuthorityBoundaryPolicyDecision::AutoContinue
+			},
 			Self::PublicApi
 			| Self::Config
 			| Self::Security
@@ -122,8 +123,9 @@ impl AuthorityBoundaryPolicyDecision {
 
 	pub(crate) fn disposition(self) -> AuthorityBoundaryDisposition {
 		match self {
-			Self::AutoContinue | Self::RequiresEnhancedEvidence | Self::BlockLanding =>
-				AuthorityBoundaryDisposition::WithinAuthority,
+			Self::AutoContinue | Self::RequiresEnhancedEvidence | Self::BlockLanding => {
+				AuthorityBoundaryDisposition::WithinAuthority
+			},
 			Self::RequiresHumanDecision => AuthorityBoundaryDisposition::RequiresHuman,
 		}
 	}

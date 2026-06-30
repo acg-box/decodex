@@ -13,7 +13,7 @@ fn reconcile_post_review_orchestration_requests_external_review_without_thumbs_u
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -148,7 +148,7 @@ fn reconcile_post_review_orchestration_uses_matching_handoff_record_for_current_
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1047,7 +1047,7 @@ fn reconcile_post_review_orchestration_waits_for_green_checks_before_requesting_
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1132,7 +1132,7 @@ fn reconcile_post_review_orchestration_waits_when_pr_readback_degrades() {
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1339,7 +1339,7 @@ fn reconcile_post_review_orchestration_routes_fixable_ci_red_to_repair_before_re
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1427,7 +1427,7 @@ fn reconcile_post_review_orchestration_routes_thread_only_external_review_to_rep
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1504,7 +1504,7 @@ fn reconcile_post_review_orchestration_fails_closed_when_pull_request_is_closed(
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1571,7 +1571,7 @@ fn reconcile_post_review_orchestration_skips_issue_with_run_lease() {
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1672,7 +1672,7 @@ fn reconcile_post_review_orchestration_skips_issue_without_service_active_label(
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1747,7 +1747,7 @@ fn reconcile_post_review_orchestration_repairs_unhandled_ci_red_before_requestin
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])

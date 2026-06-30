@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(super) fn resolve_intake_project_config_path(
 	config_path: Option<&Path>,
@@ -343,8 +344,9 @@ pub(super) fn classify_issue(
 	}
 
 	match evaluation.lifecycle_state() {
-		ExecutionProgramNodeLifecycleState::Ready | ExecutionProgramNodeLifecycleState::Queued =>
-			IssueBatchIntakeClassification::Ready,
+		ExecutionProgramNodeLifecycleState::Ready | ExecutionProgramNodeLifecycleState::Queued => {
+			IssueBatchIntakeClassification::Ready
+		},
 		ExecutionProgramNodeLifecycleState::Planned
 		| ExecutionProgramNodeLifecycleState::Mapped
 		| ExecutionProgramNodeLifecycleState::Active

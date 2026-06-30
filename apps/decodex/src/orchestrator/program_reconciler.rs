@@ -137,9 +137,8 @@ where
 
 	for refreshed in refreshed_programs {
 		let evaluation = if let Some(source_contract_id) = refreshed.record.source_contract_id() {
-			let Some(contract) = state_store
-				.decision_contract_for_readback(project.service_id(), source_contract_id)?
-			else {
+				let Some(contract) = state_store.decision_contract(project.service_id(), source_contract_id)?
+				else {
 				continue;
 			};
 

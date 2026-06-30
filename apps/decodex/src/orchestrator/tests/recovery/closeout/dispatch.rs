@@ -34,7 +34,7 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 	route_origin_github_url_to_local_bare_repo(config.repo_root(), &remote_root);
 
 	assert!(
-		Command::new("git")
+		crate::test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["push", "origin", &format!("HEAD:{}", worktree.branch_name)])

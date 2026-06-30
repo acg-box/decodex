@@ -15,14 +15,13 @@ use super::{
 	AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerTransportFailure,
 	AppServerTurnFailure, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput,
 	AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface,
-	ChildRunRef, Command, Duration, FakeTracker, IssueDispatchMode, IssueRunPlan,
-	ManualAttentionRequested, Path, PhaseGoalKind, PrepareIssueRunContext,
-	RUN_ACTIVITY_MARKER_FILE, RUN_LEASE_IDLE_TIMEOUT, RUN_OPERATION_RECONCILIATION,
-	RUN_OPERATION_REPO_GATE, Report, RetainedPartialProgress, RetainedReviewRepairPushFailed,
-	RetryComment, ReviewHandoffMarker, ReviewPolicyCheckpointInput, ReviewPolicyStopReason,
-	ReviewPolicyStopRequested, RunCompletionDisposition, ServiceConfig, StateStore,
-	TEST_SERVICE_ID, TestEnvVarGuard, TrackerIssue, Value, WorktreeManager, WorktreeSpec,
-	add_origin_remote, checkout_new_branch, commit_worktree_change, fs, git_output,
+	ChildRunRef, Duration, FakeTracker, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested,
+	Path, PhaseGoalKind, PrepareIssueRunContext, RUN_ACTIVITY_MARKER_FILE, RUN_LEASE_IDLE_TIMEOUT,
+	RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, Report, RetainedPartialProgress,
+	RetainedReviewRepairPushFailed, RetryComment, ReviewHandoffMarker, ReviewPolicyCheckpointInput,
+	ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, ServiceConfig,
+	StateStore, TEST_SERVICE_ID, TestEnvVarGuard, TrackerIssue, Value, WorktreeManager,
+	WorktreeSpec, add_origin_remote, checkout_new_branch, commit_worktree_change, fs, git_output,
 	git_status_success, orchestrator, process, sample_issue,
 	service_config_with_github_token_env_var, state, temp_project_layout,
 	temp_project_layout_with_read_first, tracker,
@@ -40,7 +39,7 @@ fn git_config_value(
 	key: &str,
 	credentials: Option<&AgentGitCredentialEnvironment>,
 ) -> Option<String> {
-	let mut probe = Command::new("git");
+	let mut probe = crate::test_support::hermetic_git_command();
 
 	probe.arg("-C").arg(repo_root).args(["config", "--get", key]);
 
@@ -54,7 +53,7 @@ fn git_config_value(
 }
 
 fn injected_git_config_keys(credentials: &AgentGitCredentialEnvironment) -> Vec<String> {
-	let mut probe = Command::new("git");
+	let mut probe = crate::test_support::hermetic_git_command();
 
 	credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
 
@@ -69,7 +68,7 @@ fn injected_git_config_keys(credentials: &AgentGitCredentialEnvironment) -> Vec<
 }
 
 fn injected_git_config_values(credentials: &AgentGitCredentialEnvironment) -> Vec<String> {
-	let mut probe = Command::new("git");
+	let mut probe = crate::test_support::hermetic_git_command();
 
 	credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
 
