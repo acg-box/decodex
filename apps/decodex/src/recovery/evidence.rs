@@ -11,11 +11,18 @@ use super::{
 	MCP_TEST_FIXTURE_ISSUE_ID, MCP_TEST_FIXTURE_PROJECT_ID, MCP_TEST_FIXTURE_RUN_ID,
 	MCP_TEST_FIXTURE_SOURCE, MCP_TEST_FIXTURE_THREAD_ID, MCP_TEST_FIXTURE_TURN_ID,
 	STALE_ACTIVE_RECOVERY_SCHEMA, STALE_ACTIVE_RELEASE_EVENT,
+	process_liveness::StaleActiveProcessLiveness,
 };
 
-pub(super) fn stale_active_private_event_allows_release(event: &PrivateExecutionEvent) -> bool {
+pub(super) fn stale_active_private_event_allows_release(
+	event: &PrivateExecutionEvent,
+	marker_liveness: StaleActiveProcessLiveness,
+	release_audit_present: bool,
+) -> bool {
 	stale_active_private_event_is_release_audit(event)
 		|| stale_active_private_event_is_failed_control_attempt(event)
+		|| ((marker_liveness == StaleActiveProcessLiveness::NotAlive || release_audit_present)
+			&& stale_active_private_event_is_dead_process_control_telemetry(event))
 		|| stale_active_private_event_is_stale_runtime_marker(event)
 		|| stale_active_private_event_is_probing_checkpoint(event)
 		|| stale_active_private_event_is_no_diff_guardrail(event)
@@ -64,6 +71,36 @@ fn stale_active_private_event_is_failed_control_attempt(event: &PrivateExecution
 				| "process_not_signalable"
 		)
 	)
+}
+
+fn stale_active_private_event_is_dead_process_control_telemetry(
+	event: &PrivateExecutionEvent,
+) -> bool {
+	match event.event_type() {
+		"lane_control/interrupt/requested" =>
+			event.payload().get("method").and_then(serde_json::Value::as_str)
+				== Some("turn/interrupt"),
+		"control_action" => {
+			let payload = event.payload();
+
+			payload.get("schema").and_then(serde_json::Value::as_str)
+				== Some("decodex.run_control_action/v1")
+				&& payload.get("action").and_then(serde_json::Value::as_str) == Some("interrupt")
+				&& matches!(
+					payload.get("reason").and_then(serde_json::Value::as_str),
+					Some(
+						"run_lease_control_channel_resolved"
+							| "soft_interrupt_response_pending"
+							| "hard_interrupt_fallback"
+					)
+				) && matches!(
+				payload.get("outcome").and_then(serde_json::Value::as_str),
+				Some("accepted" | "timed_out" | "fallback")
+			) && payload.pointer("/context/process_alive").and_then(serde_json::Value::as_bool)
+				== Some(false)
+		},
+		_ => false,
+	}
 }
 
 fn stale_active_private_event_is_stale_runtime_marker(event: &PrivateExecutionEvent) -> bool {
