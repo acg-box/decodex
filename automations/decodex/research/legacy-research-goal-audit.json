@@ -111,12 +111,12 @@
       "legacy_target": "Codex Radar skill split",
       "current_status": "Implemented.",
       "repo_evidence": [
-        "automations/decodex/skills/README.md",
-        "automations/decodex/skills/codex-upstream-triage/SKILL.md",
-        "automations/decodex/skills/codex-code-analysis/SKILL.md",
-        "automations/decodex/skills/codex-release-analysis/SKILL.md",
-        "automations/decodex/skills/github-signal/SKILL.md",
-        "automations/decodex/scripts/github/README.md"
+        "automations/radar/skills/README.md",
+        "automations/radar/skills/codex-upstream-triage/SKILL.md",
+        "automations/radar/skills/codex-code-analysis/SKILL.md",
+        "automations/radar/skills/codex-release-analysis/SKILL.md",
+        "automations/radar/skills/github-signal/SKILL.md",
+        "automations/radar/scripts/github/README.md"
       ],
       "retained_value": "Keep deterministic source collection separate from AI judgment and require source-backed evidence before public signal or X drafting."
     },
@@ -182,9 +182,9 @@
       "id": "E6",
       "kind": "repo_source",
       "source": [
-        "automations/decodex/skills/README.md",
-        "automations/decodex/skills/*/SKILL.md",
-        "automations/decodex/scripts/github/README.md"
+        "automations/radar/skills/README.md",
+        "automations/radar/skills/*/SKILL.md",
+        "automations/radar/scripts/github/README.md"
       ],
       "supports": "Radar was split into source triage, code/release analysis, signal drafting, and publishing skills."
     },

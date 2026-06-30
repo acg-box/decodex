@@ -23,12 +23,12 @@ of redoing the source pass.
 - `docs/spec/upstream-impact.md`
 - `docs/spec/control-plane-upgrade-candidate.md`
 - `docs/spec/signal-entry.md`
-- `automations/decodex/skills/README.md`
+- `automations/radar/skills/README.md`
 
 ## Inputs
 
 - An `upstream_review_queue/v1` subject, a `github_change_bundle/v1` under
-  `.agent/automations/decodex/cache/github/bundles/`, or enough GitHub PR or commit evidence to request or
+  `.agent/automations/radar/cache/github/bundles/`, or enough GitHub PR or commit evidence to request or
   create one
 - Optional release or changelog context
 - Optional existing Decodex signal, upstream-impact, or release-delta artifacts
@@ -36,7 +36,7 @@ of redoing the source pass.
 This skill may produce an `upstream_review/v1` when Codex automation is processing the
 continuous review queue. Keep ad hoc manual notes in-session unless they are promoted
 into `upstream_review/v1`, `analysis_draft`, `upstream_impact/v1`, or
-`control_plane_upgrade_candidate/v1`, or `social_candidate/v1`.
+`control_plane_upgrade_candidate/v1`.
 
 ## Analysis Loop
 
@@ -98,8 +98,7 @@ Return an analysis note that can feed `github-signal`, `codex-release-analysis`,
 - Publisher angle, if any
 - confidence and caveats
 - recommended next artifact: `none`, `analysis_draft` through `github-signal`,
-  `upstream_impact/v1`, `control_plane_upgrade_candidate/v1`, or
-  `social_candidate/v1`
+  `upstream_impact/v1`, or `control_plane_upgrade_candidate/v1`
 - downstream consumer gates: which artifacts are safe to consume and which claims still
   require source review
 

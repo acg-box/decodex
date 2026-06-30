@@ -47,7 +47,7 @@ def repo_root_from(bundle_path: Path) -> Path:
     resolved = bundle_path.resolve()
     for root in resolved.parents:
         if (
-            root / "automations" / "decodex" / "skills" / "github-signal" / "SKILL.md"
+            root / "automations" / "radar" / "skills" / "github-signal" / "SKILL.md"
         ).exists():
             return root
     raise SystemExit(f"Unable to resolve repo root from {bundle_path}")
@@ -58,9 +58,9 @@ def build_prompt(bundle_path: Path, repo_root: Path) -> str:
     return "\n".join(
         [
             "Read and follow these repo-local instructions before drafting:",
-            "- automations/decodex/skills/README.md",
-            "- automations/decodex/skills/codex-code-analysis/SKILL.md",
-            "- automations/decodex/skills/github-signal/SKILL.md",
+            "- automations/radar/skills/README.md",
+            "- automations/radar/skills/codex-code-analysis/SKILL.md",
+            "- automations/radar/skills/github-signal/SKILL.md",
             "- docs/spec/github-change-bundle.md",
             "- docs/spec/signal-entry.md",
             "- docs/runbook/local-github-signal-workflow.md",

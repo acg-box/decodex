@@ -11,7 +11,7 @@ use serde_json::{self, Value};
 use crate::{
 	self as radar, RadarBackfillReleaseRangeRequest, RadarBundleValidateRequest,
 	RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest, RadarLedgerIngestExistingRequest,
-	RadarRenderSignalRequest, RadarSocialReservePublishRequest, RadarValidateRequest, RefreshKind,
+	RadarRenderSignalRequest, RadarValidateRequest, RefreshKind,
 };
 
 struct TestEnvVars {
@@ -360,10 +360,10 @@ fn valid_control_plane_upgrade_candidate() -> Value {
 		"status": "proposed",
 		"source_refs": {
 			"upstream_reviews": [
-				".agent/automations/decodex/cache/github/reviews/openai-codex-pr-22414.review.json"
+				".agent/automations/radar/cache/github/reviews/openai-codex-pr-22414.review.json"
 			],
 			"upstream_impacts": [
-				".agent/automations/decodex/cache/github/impact/openai-codex-pr-22414.json"
+				".agent/automations/radar/cache/github/impact/openai-codex-pr-22414.json"
 			],
 			"urls": ["https://github.com/openai/codex/pull/22414"]
 		},
@@ -394,121 +394,6 @@ fn valid_control_plane_upgrade_candidate() -> Value {
 	})
 }
 
-fn valid_social_candidate() -> Value {
-	serde_json::json!({
-		"schema": "social_candidate/v1",
-		"slug": "openai-codex-pr-22414",
-		"repo": "openai/codex",
-		"channel": "x",
-		"target_account": "decodexspace",
-		"mode": "operator_impact",
-		"priority": "normal",
-		"audience": "Codex operators",
-		"candidate_text": [
-			"Remote Codex can now use Unix socket endpoints. Source: https://github.com/openai/codex/pull/22414"
-		],
-		"source_refs": {
-			"upstream_reviews": [".agent/automations/decodex/cache/github/reviews/openai-codex-pr-22414.review.json"],
-			"upstream_impacts": [".agent/automations/decodex/cache/github/impact/openai-codex-pr-22414.json"],
-			"urls": ["https://github.com/openai/codex/pull/22414"]
-		},
-		"evidence_notes": ["PR #22414 changes remote endpoint handling."],
-		"claims": [
-			{
-				"text": "Remote Codex can use Unix socket endpoints.",
-				"evidence": "https://github.com/openai/codex/pull/22414",
-				"confidence": "confirmed"
-			}
-		],
-		"decision": {
-			"worthiness": "publish",
-			"reason": "The source-backed review has a clear operator impact angle.",
-			"idempotency_key": "x:decodexspace:openai-codex-pr-22414:operator_impact"
-		}
-	})
-}
-
-fn valid_social_post() -> Value {
-	serde_json::json!({
-		"schema": "social_post/v1",
-		"slug": "openai-codex-pr-22414",
-		"channel": "x",
-		"target_account": "decodexspace",
-		"controller_account": "hackink",
-		"mode": "operator_impact",
-		"status": "published",
-		"audience": "Codex operators",
-		"text": ["Remote Codex can now use Unix socket endpoints. Source: https://github.com/openai/codex/pull/22414"],
-		"source_refs": {
-			"urls": ["https://github.com/openai/codex/pull/22414"]
-		},
-		"evidence_notes": ["PR #22414 changes remote endpoint handling."],
-		"claims": [
-			{
-				"text": "Remote Codex can use Unix socket endpoints.",
-				"evidence": "https://github.com/openai/codex/pull/22414",
-				"confidence": "confirmed"
-			}
-		],
-		"decision": {
-			"worthiness": "publish",
-			"priority": "high",
-			"idempotency_key": "x:decodexspace:operator_impact:openai-codex-pr-22414",
-			"reason": "High-value Control Plane transport implication.",
-			"daily_limit": 8,
-			"daily_count_before": 2,
-			"daily_count_after": 3,
-			"day": "2026-06-02",
-			"timezone": "Asia/Shanghai"
-		},
-		"publication": {
-			"posted_at": "2026-06-02T03:00:00Z",
-			"published_urls": ["https://x.com/decodexspace/status/1"],
-			"publisher": "chrome",
-			"account_verified": true,
-			"made_with_ai": true,
-			"image_template": "decodex_signal_card"
-		},
-		"media_refs": ["https://x.com/decodexspace/status/1/photo/1"]
-	})
-}
-
-fn valid_social_publish_reservation() -> Value {
-	serde_json::json!({
-		"schema": "social_publish_reservation/v1",
-		"slug": "openai-codex-pr-22414",
-		"channel": "x",
-		"target_account": "decodexspace",
-		"controller_account": "hackink",
-		"mode": "operator_impact",
-		"status": "active",
-		"idempotency_key": "x:decodexspace:operator_impact:openai-codex-pr-22414",
-		"reserved_at": "2026-06-02T02:50:00Z",
-		"expires_at": "2026-06-02T03:50:00Z",
-		"day": "2026-06-02",
-		"timezone": "Asia/Shanghai",
-		"candidate_refs": {
-			"social_candidates": [
-				".agent/automations/decodex/cache/github/social-candidates/openai-codex-pr-22414.json"
-			],
-			"urls": ["https://github.com/openai/codex/pull/22414"]
-		},
-		"duplicate_keys": [
-			"Remote Codex can now use Unix socket endpoints.",
-			"https://github.com/openai/codex/pull/22414"
-		],
-		"owner": {
-			"automation_id": "decodex-x-publisher",
-			"branch": "automation/decodex-x-publisher-2026-06-02-pr-22414",
-			"pr_url": "https://github.com/hack-ink/decodex/pull/1",
-			"run_id": "2026-06-02T02:50:00Z"
-		},
-		"evidence_notes": [
-			"Created before compose after durable records and live profile readback were clear."
-		]
-	})
-}
-
 fn valid_radar_archive_manifest() -> Value {
 	serde_json::json!({
 		"schema": "radar_archive_manifest/v1",
@@ -529,36 +414,11 @@ fn valid_radar_archive_manifest() -> Value {
 		},
 		"files": [
 			{
-				"path": ".agent/automations/decodex/cache/github/bundles/openai-codex-pr-22414.json",
+				"path": ".agent/automations/radar/cache/github/bundles/openai-codex-pr-22414.json",
 				"kind": "bundle",
 				"sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
 				"size_bytes": 512
 			}
 		]
 	})
-}
-
-fn social_reserve_request(root: &Path, dry_run: bool) -> RadarSocialReservePublishRequest {
-	RadarSocialReservePublishRequest {
-		slug: "openai-codex-pr-22414".into(),
-		mode: "operator_impact".into(),
-		idempotency_key: "x:decodexspace:operator_impact:openai-codex-pr-22414".into(),
-		reserved_at: "2026-06-02T02:50:00Z".into(),
-		expires_at: "2026-06-02T03:50:00Z".into(),
-		day: "2026-06-02".into(),
-		timezone: "Asia/Shanghai".into(),
-		candidate_paths: Vec::new(),
-		urls: vec!["https://github.com/openai/codex/pull/22414".into()],
-		duplicate_keys: vec![
-			"Remote Codex can now use Unix socket endpoints.".into(),
-			"https://github.com/openai/codex/pull/22414".into(),
-		],
-		out_dir: root.join("reservations"),
-		posts_dir: root.join("posts"),
-		automation_id: Some("decodex-x-publisher".into()),
-		run_id: Some("2026-06-02T02:50:00Z".into()),
-		branch: Some("xy/agent-home-cutover".into()),
-		daily_limit: 8,
-		dry_run,
-	}
 }

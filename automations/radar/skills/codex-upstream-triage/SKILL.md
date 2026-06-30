@@ -1,6 +1,6 @@
 ---
 name: codex-upstream-triage
-description: Use when scanning latest upstream OpenAI Codex commits, PRs, releases, or changelog entries to decide which items deserve a GitHub bundle, code analysis, upstream-impact classification, site signal, or social post.
+description: Use when scanning latest upstream OpenAI Codex commits, PRs, releases, or changelog entries to decide which items deserve a GitHub bundle, code analysis, upstream-impact classification, site signal, or Publisher handoff evidence.
 ---
 
 # Decodex Codex Upstream Triage
@@ -19,8 +19,8 @@ Decodex plugin skill.
 - `docs/spec/upstream-impact.md`
 - `docs/spec/control-plane-upgrade-candidate.md`
 - `docs/runbook/local-github-signal-workflow.md`
-- `automations/decodex/skills/codex-code-analysis/SKILL.md`
-- `automations/decodex/skills/codex-release-analysis/SKILL.md`
+- `automations/radar/skills/codex-code-analysis/SKILL.md`
+- `automations/radar/skills/codex-release-analysis/SKILL.md`
 
 ## Inputs
 
@@ -83,8 +83,8 @@ Escalate to `codex-release-analysis` when the source is a release, prerelease, a
 update, or public changelog. For Codex releases and prereleases, summarize from prior
 commit/PR analysis whenever possible, then use compare data to find gaps.
 
-Escalate to `x-post-publisher` only after there is technical source evidence and a clear
-Publisher angle. Style references from X must not start a social post by themselves.
+Record a Publisher angle only after there is technical source evidence. Style
+references from X must not start a Publisher handoff by themselves.
 
 ## Output
 
@@ -97,8 +97,8 @@ Return a compact triage note with:
 - next skill to use
 - confidence limits
 
-Do not draft `signal_entry/v1`, `control_plane_upgrade_candidate/v1`,
-`social_candidate/v1`, or `social_post/v1` directly from this skill. Do not treat
+Do not draft `signal_entry/v1` or `control_plane_upgrade_candidate/v1` directly from
+this skill. Do not treat
 deterministic queue hints as technical claims. The durable review layer is
 `upstream_review/v1`; public and Control Plane artifacts are promotions from that
 source-backed review.

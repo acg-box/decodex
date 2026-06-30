@@ -34,9 +34,11 @@ Repo-native agent orchestration, retained lanes, and local operator control.
 Prototype / in active development.
 
 This repository owns the Decodex runtime, native app, static site, installable plugins,
-and repo-local automation source under `automations/decodex`. Recurring Codex App
-automation execution and private generated state stay outside tracked source; generated
-Radar and publishing artifacts must stay under `.agent/automations/decodex/cache`.
+Radar auxiliary tooling, and repo-local automation source under `automations/radar`
+and `automations/decodex`. Recurring Codex App automation execution and private
+generated state stay outside tracked source; generated Radar artifacts must stay under
+`.agent/automations/radar/cache`, while Publisher social artifacts stay under
+`.agent/automations/decodex/cache/social`.
 
 Supported runtime host targets are macOS and Linux. Windows remains unsupported for the
 runtime.
@@ -53,6 +55,10 @@ runtime.
 ## Workspace posture
 
 - `apps/decodex/` owns the Rust package that builds the `decodex` CLI and runtime.
+- `apps/radar/` owns the standalone Radar auxiliary tool for upstream evidence,
+  release-delta, signal rendering, validation, and local ledger workflows.
+- `apps/decodex-publisher/` owns the standalone Publisher auxiliary tool for social
+  candidate, reservation, and post validation/workflows.
 - `apps/decodex-app/` owns the native macOS app that manages Decodex
   Codex accounts through the bundled Rust app helper.
 - `site/` owns the Astro static product site and app download entry.
