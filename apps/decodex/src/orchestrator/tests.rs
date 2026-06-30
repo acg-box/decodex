@@ -17,6 +17,7 @@ use std::{
 
 use color_eyre::{Report, eyre};
 use rusqlite::Connection;
+use serde_json::Value;
 use tempfile::TempDir;
 use time::OffsetDateTime;
 
@@ -103,25 +104,7 @@ include!("tests/recovery/terminal_failures.rs");
 include!("tests/recovery/runtime_reentry.rs");
 
 // Operator status plus retained post-review review/landing behavior.
-include!("tests/operator/status_support.rs");
-
-include!("tests/operator/status/control_plane.rs");
-
-include!("tests/operator/status/running_lanes.rs");
-
-include!("tests/operator/status/history.rs");
-
-include!("tests/operator/status/text.rs");
-
-include!("tests/operator/status/publishing.rs");
-
-include!("tests/operator/status/queue.rs");
-
-include!("tests/operator/status/agent_evidence.rs");
-
-include!("tests/operator/status/http.rs");
-
-include!("tests/operator/status/dashboard.rs");
+mod operator;
 
 include!("tests/review_landing/status_support.rs");
 

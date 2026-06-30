@@ -1,3 +1,5 @@
+use super::*;
+
 use crate::state::ConnectorBackoffInput;
 
 #[test]
@@ -76,9 +78,7 @@ fn live_operator_status_snapshot_preserves_retained_handoff_during_linear_backof
 	.expect("snapshot should degrade instead of failing");
 
 	assert!(
-		snapshot
-			.warnings
-			.contains(&String::from(orchestrator::TRACKER_TRANSIENT_TIMEOUT_WARNING))
+		snapshot.warnings.contains(&String::from(orchestrator::TRACKER_TRANSIENT_TIMEOUT_WARNING))
 	);
 	assert!(snapshot.warnings.contains(&String::from("external_observer_status_skipped")));
 	assert_eq!(snapshot.connector_backoffs.len(), 1);
@@ -216,10 +216,7 @@ fn operator_state_snapshot_reports_tracker_rate_limit_as_backoff() {
 	assert_eq!(snapshot.connector_backoffs[0].retry_after_seconds, 15);
 	assert_eq!(snapshot.connector_backoffs[0].warning, orchestrator::TRACKER_RATE_LIMIT_WARNING);
 	assert_eq!(snapshot_json["connector_backoffs"][0]["connector"], "linear");
-	assert_eq!(
-		snapshot_json["connector_backoffs"][0]["sync_phase"],
-		"operator_snapshot_refresh"
-	);
+	assert_eq!(snapshot_json["connector_backoffs"][0]["sync_phase"], "operator_snapshot_refresh");
 	assert_eq!(snapshot_json["connector_backoffs"][0]["reset_unix_epoch"], reset_unix_epoch);
 	assert_eq!(snapshot_json["connector_backoffs"][0]["retry_after_seconds"], 15);
 	assert_ne!(snapshot_json["connector_backoffs"][0]["reset_at"], Value::Null);
@@ -251,16 +248,10 @@ fn operator_state_snapshot_reports_tracker_timeout_as_transient_backoff() {
 	let tracker = FakeTracker::new(vec![sample_issue("Todo", &[])]);
 	let now = Instant::now();
 	let error = eyre::eyre!("Linear connector timed out during GraphQL request: deadline elapsed");
-	let connector_backoff = orchestrator::tracker_connector_backoff(
-		&error,
-		now,
-		"operator_snapshot_refresh",
-	)
-	.expect("timeout should create transient backoff")
-	.to_operator_status(
-		config.service_id(),
-		OffsetDateTime::now_utc().unix_timestamp(),
-	);
+	let connector_backoff =
+		orchestrator::tracker_connector_backoff(&error, now, "operator_snapshot_refresh")
+			.expect("timeout should create transient backoff")
+			.to_operator_status(config.service_id(), OffsetDateTime::now_utc().unix_timestamp());
 	let snapshot = orchestrator::build_operator_state_snapshot_for_publish(
 		&tracker,
 		&config,
@@ -386,22 +377,13 @@ fn operator_state_snapshot_publish_does_not_derive_history_outcome_without_execu
 		lane.ledger_outcome.summary.as_deref(),
 		Some("No decodex.linear_execution_event records are available for this history lane.")
 	);
-	assert_eq!(
-		snapshot_json["history_lanes"][0]["ledger_outcome"]["ledger_status"],
-		"missing"
-	);
+	assert_eq!(snapshot_json["history_lanes"][0]["ledger_outcome"]["ledger_status"], "missing");
 	assert_eq!(
 		snapshot_json["history_lanes"][0]["ledger_outcome"]["final_outcome"],
 		"execution_ledger_missing"
 	);
-	assert_ne!(
-		snapshot_json["history_lanes"][0]["ledger_outcome"]["ledger_status"],
-		Value::Null
-	);
-	assert_ne!(
-		snapshot_json["history_lanes"][0]["ledger_outcome"]["final_outcome"],
-		Value::Null
-	);
+	assert_ne!(snapshot_json["history_lanes"][0]["ledger_outcome"]["ledger_status"], Value::Null);
+	assert_ne!(snapshot_json["history_lanes"][0]["ledger_outcome"]["final_outcome"], Value::Null);
 	assert!(
 		tracker.comment_queries.borrow().is_empty(),
 		"control-plane publish should not replay Linear history comments every tick"
@@ -508,9 +490,7 @@ fn operator_state_snapshot_publish_still_refreshes_current_lane_metadata() {
 	let refresh_queries = tracker.refresh_queries.borrow();
 
 	assert!(
-		refresh_queries
-			.iter()
-			.any(|query| query.len() == 1 && query.first() == Some(&issue.id)),
+		refresh_queries.iter().any(|query| query.len() == 1 && query.first() == Some(&issue.id)),
 		"current-lane publish should still refresh the current lane issue metadata"
 	);
 	assert_eq!(snapshot.current_lanes.len(), 1);
@@ -526,10 +506,7 @@ fn operator_state_snapshot_publish_still_refreshes_current_lane_metadata() {
 		snapshot_json["presentation"]["current_lane_cards"][0]["run_id"],
 		"xy-355-attempt-1"
 	);
-	assert_eq!(
-		snapshot_json["presentation"]["current_lane_cards"][0]["title"],
-		"XY-355"
-	);
+	assert_eq!(snapshot_json["presentation"]["current_lane_cards"][0]["title"], "XY-355");
 	assert_eq!(
 		snapshot_json["presentation"]["current_lane_cards"][0]["run"]["title"],
 		"Implement orchestration"
@@ -594,10 +571,7 @@ fn operator_state_snapshot_publish_reads_local_completed_ledger_details_without_
 	assert_eq!(lane.ledger_outcome.closeout_status.as_deref(), Some("completed"));
 	assert_eq!(lane.ledger_outcome.lifecycle_elapsed_seconds, Some(660));
 	assert_eq!(lane.ledger_outcome.record_count, 6);
-	assert_eq!(
-		snapshot_json["history_lanes"][0]["ledger_outcome"]["ledger_status"],
-		"present"
-	);
+	assert_eq!(snapshot_json["history_lanes"][0]["ledger_outcome"]["ledger_status"], "present");
 	assert_eq!(
 		snapshot_json["history_lanes"][0]["ledger_outcome"]["pr_url"],
 		"https://github.com/hack-ink/decodex/pull/355"
