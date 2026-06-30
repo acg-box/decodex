@@ -42,6 +42,22 @@ use crate::{
 };
 
 mod project_run_recovery;
+mod runtime_records;
+
+use runtime_records::{
+	AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord, AutonomyObjectiveRuntimeRowParts,
+	AutonomyProposalKey, AutonomyProposalRuntimeRecord, AutonomyProposalRuntimeRowParts,
+	AutonomySignalKey, AutonomySignalRuntimeRecord, AutonomySignalRuntimeRowParts,
+	DecisionContractKey, DecisionContractRuntimeRecord, DecisionContractRuntimeRowParts,
+	EvidenceArtifactKey, EvidenceArtifactRuntimeRecord, ExecutionProgramKey,
+	ExecutionProgramRuntimeRecord, ExecutionProgramRuntimeRowParts, GuardRetention,
+	LinearExecutionEventRuntimeRecord, LoopGuardrailKey, LoopGuardrailRuntimeRecord,
+	PrivateExecutionEventRuntimeRecord, ProgramIntakePlanKey, ProgramIssueMappingKey,
+	ProtocolEventRecord, ProtocolEventSummaryRecord, ReviewLifecycleKey,
+	ReviewLifecycleRuntimeRecord, ReviewPolicyKey, ReviewPolicyRuntimeRecord,
+	RunActivitySummaryRecord, RunAttemptRecord, RunControlChannelRecord, TimestampParts,
+	WorktreeMappingRecord,
+};
 
 include!("state/store.rs");
 
