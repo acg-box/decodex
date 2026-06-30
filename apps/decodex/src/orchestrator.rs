@@ -41,7 +41,7 @@ use std::{
 	io::{ErrorKind, Write},
 	net::{SocketAddr, TcpListener},
 	path::{Path, PathBuf},
-	process::{Child, Command, ExitStatus, Stdio},
+	process::{Child, Command, Stdio},
 	slice,
 	sync::{
 		Arc, Mutex,
@@ -280,6 +280,9 @@ pub(crate) use run_cycle_reconciliation::{
 	reconcile_project_state, retained_closeout_lease_has_fresh_activity,
 	terminal_issue_keeps_retained_closeout,
 };
+
+mod daemon_retry;
+pub(crate) use daemon_retry::{retry_delay, write_retry_schedule_for_run};
 
 include!("orchestrator/daemon.rs");
 
