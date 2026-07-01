@@ -7,7 +7,7 @@ use std::{
 	io::Write as _,
 	iter,
 	path::{Path, PathBuf},
-	process::{self, Command},
+	process,
 	sync::OnceLock,
 	time::Duration,
 };
