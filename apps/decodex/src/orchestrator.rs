@@ -301,8 +301,22 @@ pub(crate) use run_cycle_reconciliation::{
 
 mod daemon_retry;
 pub(crate) use daemon_retry::{retry_delay, write_retry_schedule_for_run};
+#[cfg(test)]
+pub(crate) use daemon_retry::schedule_retry_after_child_exit;
 
-include!("orchestrator/daemon.rs");
+mod daemon;
+pub(crate) use daemon::{
+	build_operator_state_snapshot_for_publish, clear_orphaned_daemon_child_state,
+	load_daemon_tick_context, resolve_child_exit_run_attempt, run_daemon_tick,
+};
+#[cfg(test)]
+pub(crate) use daemon::{
+	DaemonTickRuntimeContext, inspect_current_daemon_child_reconciliation,
+	inspect_current_daemon_child_reconciliation_at, inspect_or_clear_active_children,
+	load_daemon_tick_workflow, materialize_daemon_spawn_state, materialize_run_summary_worktree,
+	plan_due_retry_run, plan_next_daemon_run, recover_and_reconcile_idle_daemon_state,
+	run_daemon_tick_with_review_state_inspector,
+};
 
 include!("orchestrator/reconciliation.rs");
 
