@@ -1,10 +1,12 @@
-use state::{PreacquiredLeaseGuards, WORKTREE_PROVENANCE_RUNTIME_RECORDED};
+#[allow(clippy::wildcard_imports)] use super::*;
+
+use state::PreacquiredLeaseGuards;
 
 use crate::commit_message;
 
 const INTERNAL_RETAINED_DRAIN_MAX_PASSES: usize = 2;
 
-fn run_configured_cycle(request: RunCycleRequest<'_>) -> Result<Option<RunSummary>> {
+pub(crate) fn run_configured_cycle(request: RunCycleRequest<'_>) -> Result<Option<RunSummary>> {
 	let config = ServiceConfig::from_path(request.config_path)?;
 	let workflow = load_configured_cycle_workflow(&config, request.preferred_workflow_snapshot)?;
 	let api_key = config.tracker().resolve_api_key()?;
@@ -38,7 +40,7 @@ fn run_configured_cycle(request: RunCycleRequest<'_>) -> Result<Option<RunSummar
 	run_project_once(&tracker, &config, &workflow, request.state_store, request.dry_run)
 }
 
-fn load_configured_cycle_workflow(
+pub(crate) fn load_configured_cycle_workflow(
 	config: &ServiceConfig,
 	preferred_workflow_snapshot: Option<&str>,
 ) -> Result<WorkflowDocument> {
@@ -50,7 +52,7 @@ fn load_configured_cycle_workflow(
 	}
 }
 
-fn run_project_once<T>(
+pub(crate) fn run_project_once<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -93,7 +95,7 @@ where
 	complete_issue_run(tracker, project, workflow, state_store, issue_run, dry_run)
 }
 
-fn plan_project_issue_run_with_exclusions<T>(
+pub(crate) fn plan_project_issue_run_with_exclusions<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -348,7 +350,9 @@ where
 	)
 }
 
-fn run_target_issue_once<T>(context: TargetIssueRunContext<'_, T>) -> Result<Option<RunSummary>>
+pub(crate) fn run_target_issue_once<T>(
+	context: TargetIssueRunContext<'_, T>,
+) -> Result<Option<RunSummary>>
 where
 	T: IssueTracker,
 {
@@ -516,7 +520,7 @@ fn preferred_run_identity_with_closeout_fallback<'a>(
 	}
 }
 
-fn run_target_issue_once_with_inferred_dispatch<T>(
+pub(crate) fn run_target_issue_once_with_inferred_dispatch<T>(
 	context: TargetIssueRunContext<'_, T>,
 ) -> Result<Option<RunSummary>>
 where
@@ -568,7 +572,7 @@ where
 	run_target_issue_once(context)
 }
 
-fn select_target_status_visible_program_candidate<T>(
+pub(crate) fn select_target_status_visible_program_candidate<T>(
 	context: &TargetIssueRunContext<'_, T>,
 ) -> Result<Option<SelectedIssueRunCandidate>>
 where
@@ -805,7 +809,7 @@ where
 	Ok(!closeout_lane_active_claim_blocks_dispatch(context.project, context.state_store, issue)?)
 }
 
-fn target_issue_active_claim_blocks_dispatch<T>(
+pub(crate) fn target_issue_active_claim_blocks_dispatch<T>(
 	context: &TargetIssueRunContext<'_, T>,
 	issue_id: &str,
 	issue: &TrackerIssue,
@@ -830,7 +834,7 @@ where
 	Ok(true)
 }
 
-fn closeout_lane_active_claim_blocks_dispatch(
+pub(crate) fn closeout_lane_active_claim_blocks_dispatch(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue: &TrackerIssue,
@@ -917,7 +921,7 @@ where
 	Ok(())
 }
 
-fn prepare_issue_run<T>(
+pub(crate) fn prepare_issue_run<T>(
 	context: PrepareIssueRunContext<'_, T>,
 	issue: TrackerIssue,
 ) -> Result<Option<IssueRunPlan>>
@@ -1221,7 +1225,7 @@ where
 	Ok(Some(summary))
 }
 
-fn run_retained_closeout_for_handoff_summary<T>(
+pub(crate) fn run_retained_closeout_for_handoff_summary<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -1250,7 +1254,7 @@ where
 	})
 }
 
-fn drain_non_github_review_retained_tail_with_inspector<T, I, F>(
+pub(crate) fn drain_non_github_review_retained_tail_with_inspector<T, I, F>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
