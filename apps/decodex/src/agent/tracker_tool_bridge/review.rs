@@ -1,23 +1,26 @@
 use color_eyre::Report;
 use serde_json::Value;
 
+mod linear_events;
+mod policy;
+mod repo;
+
+use linear_events::{
+	linear_execution_closeout_event, linear_execution_review_event,
+	review_handoff_marker_from_pull_request, review_handoff_marker_lineage_matches,
+};
+
 use crate::{
 	agent::tracker_tool_bridge::{
 		self, CLOSEOUT_PUBLIC_SUMMARY_FALLBACK, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
-		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME,
-		ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LocalRepoDetails,
-		PendingReviewAction, PendingReviewCompletion, PullRequestDetails,
-		REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK, REVIEW_POLICY_CONVERGENCE_BUDGET,
+		ISSUE_TRANSITION_TOOL_NAME, PendingReviewAction, PendingReviewCompletion,
+		PullRequestDetails, REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK,
 		REVIEW_REPAIR_PUBLIC_SUMMARY_FALLBACK, ReviewExecutionMode, ReviewHandoffContext,
-		ReviewHandoffWritebackFailed, ReviewPolicyPhase, ReviewPolicyState, ReviewPolicyStatus,
-		ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, ScopeArgs,
-		TrackerToolBridge, tools::REVIEW_COMPLETION_INTENT_EVENT_TYPE,
+		ReviewHandoffWritebackFailed, RunCompletionDisposition, ScopeArgs, TrackerToolBridge,
+		tools::REVIEW_COMPLETION_INTENT_EVENT_TYPE,
 	},
 	prelude::eyre,
-	state::{
-		ReviewCheckpointArtifactLookup, ReviewHandoffMarker, ReviewOrchestrationMarker,
-		ReviewPolicyCheckpoint, ReviewPolicyCheckpointInput,
-	},
+	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
 	tracker::{
 		self, TrackerIssue,
 		records::{self, LinearExecutionEventPublicProjection},
@@ -105,45 +108,6 @@ impl<'a> TrackerToolBridge<'a> {
 			&self.issue.id,
 			marker,
 		)
-	}
-
-	pub(super) fn persist_review_policy_state(
-		&self,
-		review_context: &ReviewHandoffContext,
-		review_policy_phase: ReviewPolicyPhase,
-		review_policy_status: ReviewPolicyStatus,
-		head_sha: &str,
-		nonclean_rounds: i64,
-		details_json: &str,
-	) -> Result<(), String> {
-		let state_store = self.state_store.ok_or_else(|| {
-			format!(
-				"Runtime state store is required to persist review checkpoint state for issue `{}`.",
-				self.issue.identifier
-			)
-		})?;
-
-		state_store
-			.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
-				project_id: &review_context.service_id,
-				issue_id: &self.issue.id,
-				run_id: &review_context.run_id,
-				attempt_number: review_context.attempt_number,
-				phase: review_policy_phase.as_str(),
-				review_level: review_context.review_level.as_str(),
-				status: review_policy_status.as_str(),
-				head_sha,
-				nonclean_rounds,
-				details_json,
-			})
-			.map_err(|error| {
-				format!(
-					"Failed to persist review checkpoint state for issue `{}`: {error}",
-					self.issue.identifier
-				)
-			})?;
-
-		Ok(())
 	}
 
 	pub(super) fn ensure_issue_scope(&self, scope: &ScopeArgs) -> Result<(), String> {
@@ -506,15 +470,12 @@ impl<'a> TrackerToolBridge<'a> {
 		let review_completion = self.pending_review_completion.borrow().clone();
 
 		match (manual_attention_requested, manual_attention_comment_recorded, review_completion) {
-			(false, false, Some(PendingReviewCompletion::Handoff(_))) => {
-				Ok(RunCompletionDisposition::ReviewHandoff)
-			},
-			(false, false, Some(PendingReviewCompletion::Repair(_))) => {
-				Ok(RunCompletionDisposition::ReviewRepair)
-			},
-			(false, false, Some(PendingReviewCompletion::Closeout(_))) => {
-				Ok(RunCompletionDisposition::Closeout)
-			},
+			(false, false, Some(PendingReviewCompletion::Handoff(_))) =>
+				Ok(RunCompletionDisposition::ReviewHandoff),
+			(false, false, Some(PendingReviewCompletion::Repair(_))) =>
+				Ok(RunCompletionDisposition::ReviewRepair),
+			(false, false, Some(PendingReviewCompletion::Closeout(_))) =>
+				Ok(RunCompletionDisposition::Closeout),
 			(true, true, None) => Ok(RunCompletionDisposition::ManualAttention),
 			(true, false, None) => eyre::bail!(
 				"Run `{}` requested human attention with label `{}`, but issue `{}` never recorded the required explanatory comment.",
@@ -973,58 +934,6 @@ impl<'a> TrackerToolBridge<'a> {
 		tracker::clear_automation_lane_labels(self.tracker, self.issue, &review_context.service_id)
 	}
 
-	pub(super) fn canonicalize_current_lane_head_sha(
-		&self,
-		tool_name: &str,
-		head_sha: &str,
-		current_head_sha: &str,
-	) -> std::result::Result<String, String> {
-		let head_sha = head_sha.trim();
-
-		if head_sha.is_empty() {
-			return Err(format!("`{tool_name}` requires a non-empty `head_sha`."));
-		}
-		if head_sha == current_head_sha {
-			return Ok(current_head_sha.to_owned());
-		}
-		if head_sha.len() >= 7 && current_head_sha.starts_with(head_sha) {
-			return Ok(current_head_sha.to_owned());
-		}
-
-		Err(format!(
-			"`{tool_name}` head `{head_sha}` does not match the current lane HEAD `{current_head_sha}`."
-		))
-	}
-
-	pub(super) fn current_local_repo_details(
-		&self,
-		review_context: &ReviewHandoffContext,
-	) -> std::result::Result<LocalRepoDetails, String> {
-		self.local_repo_inspector.inspect_local_repo(&review_context.cwd)
-	}
-
-	pub(super) fn resolve_progress_checkpoint_head_sha(
-		&self,
-		head_sha: Option<String>,
-	) -> std::result::Result<Option<String>, String> {
-		let normalized_head_sha = tracker_tool_bridge::normalize_optional_progress_field(head_sha);
-		let Some(review_context) = self.review_context.as_ref() else {
-			return Ok(normalized_head_sha);
-		};
-		let local_repo = self.current_local_repo_details(review_context)?;
-
-		match normalized_head_sha {
-			Some(head_sha) => self
-				.canonicalize_current_lane_head_sha(
-					ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
-					&head_sha,
-					&local_repo.head_oid,
-				)
-				.map(Some),
-			None => Ok(Some(local_repo.head_oid)),
-		}
-	}
-
 	pub(super) fn validate_closeout_issue_completed_state(
 		&self,
 	) -> std::result::Result<(), String> {
@@ -1051,278 +960,4 @@ impl<'a> TrackerToolBridge<'a> {
 
 		Ok(())
 	}
-
-	fn review_policy_state_from_checkpoint(
-		&self,
-		checkpoint: ReviewPolicyCheckpoint,
-	) -> crate::prelude::Result<ReviewPolicyState> {
-		let phase =
-			ReviewPolicyPhase::parse(checkpoint.phase()).map_err(|error| eyre::eyre!(error))?;
-		let status =
-			ReviewPolicyStatus::parse(checkpoint.status()).map_err(|error| eyre::eyre!(error))?;
-
-		Ok(ReviewPolicyState {
-			phase,
-			status,
-			head_sha: checkpoint.head_sha().to_owned(),
-			nonclean_rounds: checkpoint.nonclean_rounds(),
-			details_json: checkpoint.details_json().to_owned(),
-		})
-	}
-
-	pub(super) fn review_policy_state_for_current_head(
-		&self,
-		review_context: &ReviewHandoffContext,
-	) -> crate::prelude::Result<Option<ReviewPolicyState>> {
-		let Some(current_phase) = ReviewPolicyPhase::for_mode(review_context.mode) else {
-			return Ok(None);
-		};
-		let local_repo =
-			self.current_local_repo_details(review_context).map_err(|error| eyre::eyre!(error))?;
-
-		self.review_policy_artifact_for_head(review_context, current_phase, &local_repo.head_oid)
-	}
-
-	pub(super) fn review_policy_artifact_for_head(
-		&self,
-		review_context: &ReviewHandoffContext,
-		review_policy_phase: ReviewPolicyPhase,
-		head_sha: &str,
-	) -> crate::prelude::Result<Option<ReviewPolicyState>> {
-		let Some(state_store) = self.state_store else {
-			return Ok(None);
-		};
-		let Some(checkpoint) =
-			state_store.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
-				project_id: &review_context.service_id,
-				issue_id: &self.issue.id,
-				phase: review_policy_phase.as_str(),
-				review_level: review_context.review_level.as_str(),
-				head_sha,
-			})?
-		else {
-			return Ok(None);
-		};
-
-		self.review_policy_state_from_checkpoint(checkpoint).map(Some)
-	}
-
-	pub(super) fn require_clean_review_checkpoint(
-		&self,
-		review_context: &ReviewHandoffContext,
-	) -> std::result::Result<(), String> {
-		if !review_context.decodex_review_checkpoint_enabled() {
-			return Ok(());
-		}
-
-		let local_repo = self.current_local_repo_details(review_context)?;
-
-		if !local_repo.review_worktree_clean() {
-			return Err(format!(
-				"`{}` requires a clean committed lane HEAD before reusing a Decodex Review checkpoint. Commit or revert review-blocking local changes, rerun required validation, and record a fresh clean checkpoint. Review-blocking local changes: {}",
-				self.required_pr_completion_tool_name(),
-				tracker_tool_bridge::summarize_review_blocking_changes(
-					&local_repo.review_blocking_changes
-				)
-			));
-		}
-
-		let Some(checkpoint) = self
-			.review_policy_artifact_for_head(
-				review_context,
-				ReviewPolicyPhase::for_mode(review_context.mode)
-					.expect("review completion should only be available during review phases"),
-				&local_repo.head_oid,
-			)
-			.map_err(|error| error.to_string())?
-		else {
-			return Err(format!(
-				"`{}` requires a current `{}` review checkpoint with status `clean` for the current lane HEAD.",
-				self.required_pr_completion_tool_name(),
-				ReviewPolicyPhase::for_mode(review_context.mode)
-					.expect("review completion should only be available during review phases")
-					.as_str(),
-			));
-		};
-
-		if checkpoint.status != ReviewPolicyStatus::Clean {
-			return Err(format!(
-				"`{}` requires the latest review checkpoint to be `clean`, not `{}`.",
-				self.required_pr_completion_tool_name(),
-				checkpoint.status.as_str(),
-			));
-		}
-
-		Ok(())
-	}
-
-	pub(super) fn review_policy_stop_requested(
-		&self,
-		review_context: &ReviewHandoffContext,
-	) -> crate::prelude::Result<Option<ReviewPolicyStopRequested>> {
-		if !review_context.decodex_review_checkpoint_enabled() {
-			return Ok(None);
-		}
-
-		let Some(current_phase) = ReviewPolicyPhase::for_mode(review_context.mode) else {
-			return Ok(None);
-		};
-		let Some(state_store) = self.state_store else {
-			return Ok(None);
-		};
-
-		if !state_store.has_nonclean_review_checkpoint_artifact(
-			&review_context.service_id,
-			&self.issue.id,
-			current_phase.as_str(),
-		)? {
-			return Ok(None);
-		}
-
-		let Some(checkpoint) = self.review_policy_state_for_current_head(review_context)? else {
-			return Ok(None);
-		};
-
-		Ok(self.review_policy_stop_from_checkpoint(review_context, checkpoint))
-	}
-
-	fn review_policy_stop_from_checkpoint(
-		&self,
-		review_context: &ReviewHandoffContext,
-		checkpoint: ReviewPolicyState,
-	) -> Option<ReviewPolicyStopRequested> {
-		let stop_reason = match checkpoint.status {
-			ReviewPolicyStatus::Clean => return None,
-			ReviewPolicyStatus::Findings
-				if checkpoint.nonclean_rounds < REVIEW_POLICY_CONVERGENCE_BUDGET =>
-			{
-				return None;
-			},
-			ReviewPolicyStatus::Findings => ReviewPolicyStopReason::Exhausted,
-			ReviewPolicyStatus::NeedsArchitectureReview => {
-				ReviewPolicyStopReason::ArchitectureReviewRequired
-			},
-			ReviewPolicyStatus::Blocked => ReviewPolicyStopReason::Blocked,
-		};
-
-		Some(ReviewPolicyStopRequested {
-			head_sha: checkpoint.head_sha,
-			issue_identifier: self.issue.identifier.clone(),
-			fingerprint: review_policy_stop_fingerprint(&checkpoint.details_json),
-			nonclean_rounds: Some(checkpoint.nonclean_rounds),
-			reason: stop_reason,
-			run_id: review_context.run_id.clone(),
-		})
-	}
-
-	pub(super) fn required_pr_completion_tool_name(&self) -> &'static str {
-		match self.review_context.as_ref().map(|context| context.mode) {
-			Some(ReviewExecutionMode::Handoff) => ISSUE_REVIEW_HANDOFF_TOOL_NAME,
-			Some(ReviewExecutionMode::Repair) => ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
-			Some(ReviewExecutionMode::Closeout) => ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
-			None => ISSUE_REVIEW_HANDOFF_TOOL_NAME,
-		}
-	}
-}
-
-fn review_policy_stop_fingerprint(details_json: &str) -> Option<String> {
-	serde_json::from_str::<Value>(details_json)
-		.ok()?
-		.get("finding_policy")?
-		.get("stop_fingerprint")?
-		.as_str()
-		.map(str::to_owned)
-}
-
-fn review_handoff_marker_from_pull_request(
-	review_context: &ReviewHandoffContext,
-	pull_request: &PullRequestDetails,
-) -> ReviewHandoffMarker {
-	ReviewHandoffMarker::new(
-		review_context.run_id.clone(),
-		review_context.attempt_number,
-		review_context.branch_name.clone(),
-		pull_request.url.clone(),
-		pull_request.base_ref_name.clone(),
-		pull_request.head_ref_name.clone(),
-		pull_request.head_ref_oid.clone(),
-	)
-}
-
-fn review_handoff_marker_lineage_matches(
-	existing: &ReviewHandoffMarker,
-	marker: &ReviewHandoffMarker,
-) -> bool {
-	existing.branch_name() == marker.branch_name()
-		&& existing.pr_url() == marker.pr_url()
-		&& existing.target_base_ref_name() == marker.target_base_ref_name()
-		&& existing.pr_head_ref_name() == marker.pr_head_ref_name()
-		&& existing.pr_head_oid() == marker.pr_head_oid()
-}
-
-fn linear_execution_identity<'a>(
-	issue: &'a TrackerIssue,
-	review_context: &'a ReviewHandoffContext,
-) -> records::LinearExecutionEventIdentity<'a> {
-	records::LinearExecutionEventIdentity {
-		service_id: &review_context.service_id,
-		issue_id: &issue.id,
-		issue_identifier: &issue.identifier,
-		run_id: &review_context.run_id,
-		attempt_number: review_context.attempt_number,
-	}
-}
-
-fn linear_execution_review_event(
-	issue: &TrackerIssue,
-	review_context: &ReviewHandoffContext,
-	pull_request: &PullRequestDetails,
-	event_type: &str,
-	terminal_path: &str,
-	summary: &str,
-) -> records::LinearExecutionEventRecord {
-	let anchor = records::stable_event_anchor(&[&pull_request.url, &pull_request.head_ref_oid]);
-	let mut record = records::LinearExecutionEventRecord::new(
-		linear_execution_identity(issue, review_context),
-		event_type,
-		tracker_tool_bridge::current_timestamp(),
-		&anchor,
-	);
-
-	record.branch = Some(review_context.branch_name.clone());
-	record.worktree_path = Some(review_context.worktree_path.clone());
-	record.pr_url = Some(pull_request.url.clone());
-	record.pr_head_sha = Some(pull_request.head_ref_oid.clone());
-	record.pr_base_ref = Some(pull_request.base_ref_name.clone());
-	record.commit_sha = Some(pull_request.head_ref_oid.clone());
-	record.validation_result = Some(String::from("passed"));
-	record.summary = Some(summary.to_owned());
-	record.terminal_path = Some(terminal_path.to_owned());
-	record.verification = Some(vec![String::from("repo gate passed before tracker writeback")]);
-
-	record
-}
-
-fn linear_execution_closeout_event(
-	issue: &TrackerIssue,
-	review_context: &ReviewHandoffContext,
-	pull_request: &PullRequestDetails,
-	summary: &str,
-) -> records::LinearExecutionEventRecord {
-	let anchor = records::stable_event_anchor(&[&pull_request.url, &pull_request.head_ref_oid]);
-	let mut record = records::LinearExecutionEventRecord::new(
-		linear_execution_identity(issue, review_context),
-		"closeout",
-		tracker_tool_bridge::current_timestamp(),
-		&anchor,
-	);
-
-	record.branch = Some(review_context.branch_name.clone());
-	record.worktree_path = Some(review_context.worktree_path.clone());
-	record.pr_url = Some(pull_request.url.clone());
-	record.commit_sha = Some(pull_request.head_ref_oid.clone());
-	record.summary = Some(summary.to_owned());
-	record.validation_result = Some(String::from("passed"));
-
-	record
 }
