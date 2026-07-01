@@ -18,7 +18,8 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 MANIFEST_PATH = REPO_ROOT / "automations/decodex/automations.toml"
 VALID_SOURCE_ROOTS = {"automations/decodex", "automations/radar"}
 REQUIRED_FORBIDDEN_PROMPT_FRAGMENTS = [
-    "/Users/x/Documents/automations",
+    "/Users/",
+    "/home/",
     "Documents/automations",
     ".github/workflows",
     "site/src/content",

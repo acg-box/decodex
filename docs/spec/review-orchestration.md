@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs]
+code_refs: [apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal/mod.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs]
 drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, review_policy_checkpoints, finding_routes, evidence_artifacts, authority_boundary_check, decodex.autonomy_signal/1]
 last_verified: 2026-06-23
 ---

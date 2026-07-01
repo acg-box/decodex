@@ -7,7 +7,7 @@ This directory owns repo-local source for Decodex Publisher automation.
 - `prompts/`: Codex app automation prompts for Publisher-owned jobs.
 - `scripts/social/`: social candidate, reservation, and post schemas.
 - `skills/`: Publisher skills and shared publishing gates.
-- `scripts/config/`: shared automation config evaluation utilities.
+- `scripts/config/`: shared automation config evaluation and live-install utilities.
 - `research/`: retained automation research data that is not part of the Markdown docs
   bundle.
 
@@ -19,3 +19,33 @@ Publisher owns `social_candidate/v1`, `social_publish_reservation/v1`, and
 fresh upstream source analysis.
 
 Radar automation source lives under `automations/radar/`.
+
+## Portable Codex App Install
+
+The repo intentionally keeps the portable automation source in `automations.toml` plus
+prompt files instead of checking in live `$CODEX_HOME/automations/*/automation.toml`
+files. Live Codex app configs contain machine-local fields such as absolute checkout
+paths and timestamps.
+
+Install or refresh the live Codex app automation configs from a clone with:
+
+```sh
+python3 automations/decodex/scripts/config/sync_automations.py --apply
+```
+
+Dry-run without writing:
+
+```sh
+python3 automations/decodex/scripts/config/sync_automations.py
+```
+
+Validate the installed live configs against repo authority:
+
+```sh
+python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
+python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/radar/automations.toml
+```
+
+The installer resolves `cwd = "{repo_root}"` to the current clone path at install time
+and refuses prompts containing configured private fragments such as absolute user-home
+paths, auth files, account files, or runtime databases.

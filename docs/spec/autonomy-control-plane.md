@@ -16,8 +16,8 @@ source_refs:
   - https://modelcontextprotocol.io/specification/2025-11-25
   - https://developers.openai.com/codex/learn/best-practices
 code_refs:
-  - apps/decodex/src/autonomy_objective.rs
-  - apps/decodex/src/autonomy_signal.rs
+  - apps/decodex/src/autonomy_objective/mod.rs
+  - apps/decodex/src/autonomy_signal/mod.rs
   - apps/decodex/src/autonomy_proposal.rs
   - apps/decodex/src/loop_contract.rs
   - apps/decodex/src/config.rs

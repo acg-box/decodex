@@ -70,6 +70,9 @@ runtime.
 - `plugins/deliberation/` owns generic read-only scout, grill, challenge, and
   skeptic review skills.
 - `docs/` remains the authoritative documentation surface.
+- `automations/decodex/automations.toml` and `automations/radar/automations.toml`
+  are the portable Codex app automation source; install live local configs from a
+  clone with `python3 automations/decodex/scripts/config/sync_automations.py --apply`.
 
 Runtime authority stays in `apps/decodex/src/`, the registered project contracts under
 `~/.codex/decodex/projects/<service-id>/`, and the governing specs under `docs/spec/`.
