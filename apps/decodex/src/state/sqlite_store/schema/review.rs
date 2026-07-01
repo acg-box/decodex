@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 const REVIEW_LIFECYCLE_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS review_lifecycle_records (

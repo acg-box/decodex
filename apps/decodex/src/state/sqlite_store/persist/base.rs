@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(in crate::state::sqlite_store) fn persist_projects(
 	transaction: &Transaction<'_>,

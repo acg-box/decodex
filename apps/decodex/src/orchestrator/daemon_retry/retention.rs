@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::orchestrator::daemon_retry) enum RetryEntryRetentionDecision {
@@ -36,12 +37,13 @@ where
 	T: IssueTracker + ?Sized,
 {
 	match dispatch_mode {
-		IssueDispatchMode::ReviewRepair =>
+		IssueDispatchMode::ReviewRepair => {
 			Ok(if issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)? {
 				RetryEntryRetentionDecision::Retain
 			} else {
 				RetryEntryRetentionDecision::Drop
-			}),
+			})
+		},
 		IssueDispatchMode::Closeout => Ok(match evaluate_closeout_dispatch_policy_with_inspector(
 			tracker,
 			issue,
