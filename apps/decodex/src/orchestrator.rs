@@ -339,7 +339,20 @@ include!("orchestrator/dispatch_policy.rs");
 
 include!("orchestrator/prompting.rs");
 
-include!("orchestrator/git_ops.rs");
+mod git_ops;
+pub(crate) use crate::workflow::ResolvedRepoGate;
+pub(crate) use git_ops::{
+	RepoGateCommandOutcome, RepoGateFailure, RepoGateFailureDiagnostic, RepoGateFailureDisposition,
+	RepoGateTrackedRewriteDecision, delete_local_branch_if_present,
+	detach_worktree_head_from_branch_if_checked_out, relative_worktree_path,
+	relative_worktree_path_for_path, repo_gate_changed_tracked_files, repo_gate_output_text,
+	run_repo_gate_commands, run_repo_gate_commands_allow_owned_tracked_rewrites,
+	select_repo_gate_for_worktree,
+};
+#[cfg(test)]
+pub(crate) use git_ops::{
+	RepoGateFailureKind, repo_gate_shell_from_env, run_repo_gate_cleanliness_check_with_git,
+};
 
 mod status;
 #[allow(clippy::wildcard_imports)]
