@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(in crate::state::sqlite_store) fn persist_review_lifecycle_records(
 	transaction: &Transaction<'_>,

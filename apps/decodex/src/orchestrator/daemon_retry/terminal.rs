@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(in crate::orchestrator::daemon_retry) fn child_exit_retry_budget_attempt_count<T>(
 	context: &ChildExitRetryContext<'_, T>,

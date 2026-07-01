@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(in crate::orchestrator) fn issue_passes_review_repair_dispatch_policy<T>(
 	tracker: &T,
@@ -198,10 +199,12 @@ where
 			review_state_inspector,
 		)? {
 			RetainedCloseoutPrMergeGate::Merged => CloseoutDispatchEligibility::Eligible,
-			RetainedCloseoutPrMergeGate::NotMerged =>
-				CloseoutDispatchEligibility::Blocked("pull_request_not_merged"),
-			RetainedCloseoutPrMergeGate::PullRequestStateReadFailed =>
-				CloseoutDispatchEligibility::Blocked("pull_request_state_read_failed"),
+			RetainedCloseoutPrMergeGate::NotMerged => {
+				CloseoutDispatchEligibility::Blocked("pull_request_not_merged")
+			},
+			RetainedCloseoutPrMergeGate::PullRequestStateReadFailed => {
+				CloseoutDispatchEligibility::Blocked("pull_request_state_read_failed")
+			},
 		},
 	)
 }

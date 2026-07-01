@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 impl SqliteStateStore {
 	pub(in crate::state) fn schema_version(&self) -> Result<Option<i64>> {
