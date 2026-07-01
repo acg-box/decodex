@@ -62,6 +62,10 @@ fn tools_list_exposes_schema_bound_tools() {
 		.iter()
 		.find(|tool| tool.get("name").and_then(Value::as_str) == Some("decodex_plan"))
 		.expect("plan tool should be listed");
+	let autonomy_compile = tools
+		.iter()
+		.find(|tool| tool.get("name").and_then(Value::as_str) == Some("autonomy_compile_proposal"))
+		.expect("autonomy_compile_proposal tool should exist");
 
 	for tool_name in ["research_compile", "research_promote", "intake_goal"] {
 		assert!(tool_names.contains(&tool_name), "{tool_name} should be listed");
@@ -79,6 +83,11 @@ fn tools_list_exposes_schema_bound_tools() {
 	assert!(plan.get("inputSchema").is_some());
 	assert!(plan.get("outputSchema").is_some());
 	assert_eq!(plan["_meta"]["decodex/capabilityProfile"], "plan");
+	assert_eq!(
+		autonomy_compile["inputSchema"]["properties"]["proposal"]["properties"]["issueCandidates"]
+			["items"]["properties"]["dependencies"]["description"],
+		"Candidate keys that must complete before this candidate."
+	);
 
 	assert_tool_output_schema_variant(plan, "decodex.mcp.plan_result/1", Some("next_action"));
 	assert_tool_output_schema_variant(plan, "decodex.mcp.refusal/1", Some("reason"));
