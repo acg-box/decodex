@@ -178,7 +178,7 @@ where
 	Ok(false)
 }
 
-pub(super) fn schedule_retry_after_child_exit<T>(
+pub(crate) fn schedule_retry_after_child_exit<T>(
 	mut context: ChildExitRetryContext<'_, T>,
 	child: ChildRunRef<'_>,
 	#[cfg(test)] _retry_project_slug: &str,
