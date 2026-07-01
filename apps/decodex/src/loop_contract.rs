@@ -1,41 +1,32 @@
 //! Versioned Loop/Decision Contract model for research-to-execution handoff.
 
-use std::collections::BTreeSet;
+mod evidence;
+mod links;
+mod promotion;
+mod schema;
+mod validation;
 
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::{Result, eyre};
 
-pub(crate) const DECISION_CONTRACT_SCHEMA: &str = "decodex.decision_contract/1";
-pub(crate) const DECISION_CONTRACT_RECORD_VERSION: u16 = 1;
-
-/// Runtime-facing state for a Loop/Decision Contract.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum DecisionContractStatus {
-	DraftLatent,
-	AcceptedPromoted,
-	RejectedSuperseded,
-	NeedsHumanDecision,
-}
-impl DecisionContractStatus {
-	pub(crate) fn as_str(self) -> &'static str {
-		match self {
-			Self::DraftLatent => "draft_latent",
-			Self::AcceptedPromoted => "accepted_promoted",
-			Self::RejectedSuperseded => "rejected_superseded",
-			Self::NeedsHumanDecision => "needs_human_decision",
-		}
-	}
-}
-
-/// Actor class that accepted or promoted the contract.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum DecisionPromotionActorKind {
-	User,
-	RuntimePolicy,
-}
+pub(crate) use self::{
+	evidence::DecisionEvidenceBoundary,
+	links::DecisionContractLinks,
+	promotion::DecisionPromotion,
+	schema::{
+		DECISION_CONTRACT_RECORD_VERSION, DECISION_CONTRACT_SCHEMA, DecisionContractStatus,
+		DecisionPromotionActorKind,
+	},
+};
+use self::{
+	schema::{decision_contract_record_version, decision_contract_schema},
+	validation::{
+		default_research_evidence_kind, normalized_link_values, validate_optional,
+		validate_proposed_issue_queue_intent, validate_proposed_issue_stage,
+		validate_proposed_issues, validate_required, validate_string_list,
+	},
+};
 
 /// Versioned research-to-execution contract payload.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -527,13 +518,12 @@ impl DecisionExecutionReadiness {
 					);
 				}
 			},
-			DecisionContractStatus::NeedsHumanDecision => {
+			DecisionContractStatus::NeedsHumanDecision =>
 				if self.missing_decisions.is_empty() {
 					eyre::bail!(
 						"Needs-human-decision contracts must include at least one missing decision."
 					);
-				}
-			},
+				},
 			DecisionContractStatus::DraftLatent | DecisionContractStatus::RejectedSuperseded => {},
 		}
 
@@ -630,289 +620,6 @@ impl DecisionProposedIssue {
 
 		validate_proposed_issue_queue_intent(&self.key, &self.queue_intent)
 	}
-}
-
-/// Promotion metadata that records who or what accepted the contract and when.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct DecisionPromotion {
-	accepted_by: String,
-	accepted_by_kind: DecisionPromotionActorKind,
-	accepted_at: String,
-	acceptance_source: String,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	promotion_reason: Option<String>,
-}
-#[allow(dead_code)]
-impl DecisionPromotion {
-	pub(crate) fn new(
-		accepted_by: impl Into<String>,
-		accepted_by_kind: DecisionPromotionActorKind,
-		accepted_at: impl Into<String>,
-		acceptance_source: impl Into<String>,
-		promotion_reason: Option<String>,
-	) -> Result<Self> {
-		let promotion = Self {
-			accepted_by: accepted_by.into(),
-			accepted_by_kind,
-			accepted_at: accepted_at.into(),
-			acceptance_source: acceptance_source.into(),
-			promotion_reason,
-		};
-
-		promotion.validate()?;
-
-		Ok(promotion)
-	}
-
-	pub(crate) fn accepted_by(&self) -> &str {
-		&self.accepted_by
-	}
-
-	pub(crate) fn accepted_at(&self) -> &str {
-		&self.accepted_at
-	}
-
-	fn validate(&self) -> Result<()> {
-		validate_required("decision contract promotion.accepted_by", &self.accepted_by)?;
-		validate_required("decision contract promotion.accepted_at", &self.accepted_at)?;
-		validate_required(
-			"decision contract promotion.acceptance_source",
-			&self.acceptance_source,
-		)?;
-
-		validate_optional(
-			"decision contract promotion.promotion_reason",
-			self.promotion_reason.as_deref(),
-		)
-	}
-}
-
-/// Links from the decision contract to generated execution surfaces.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct DecisionContractLinks {
-	#[serde(default)]
-	generated_issue_ids: Vec<String>,
-	#[serde(default)]
-	generated_issue_identifiers: Vec<String>,
-	#[serde(default)]
-	execution_program_node_ids: Vec<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	superseded_by_contract_id: Option<String>,
-}
-#[allow(dead_code)]
-impl DecisionContractLinks {
-	pub(crate) fn generated_issue_ids(&self) -> &[String] {
-		&self.generated_issue_ids
-	}
-
-	pub(crate) fn generated_issue_identifiers(&self) -> &[String] {
-		&self.generated_issue_identifiers
-	}
-
-	pub(crate) fn execution_program_node_ids(&self) -> &[String] {
-		&self.execution_program_node_ids
-	}
-
-	pub(crate) fn superseded_by_contract_id(&self) -> Option<&str> {
-		self.superseded_by_contract_id.as_deref()
-	}
-
-	fn validate(&self) -> Result<()> {
-		validate_string_list(
-			"decision contract links.generated_issue_ids",
-			&self.generated_issue_ids,
-		)?;
-		validate_string_list(
-			"decision contract links.generated_issue_identifiers",
-			&self.generated_issue_identifiers,
-		)?;
-		validate_string_list(
-			"decision contract links.execution_program_node_ids",
-			&self.execution_program_node_ids,
-		)?;
-
-		validate_optional(
-			"decision contract links.superseded_by_contract_id",
-			self.superseded_by_contract_id.as_deref(),
-		)
-	}
-}
-
-/// Boundary between private runtime evidence and public tracker projection.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct DecisionEvidenceBoundary {
-	#[serde(default)]
-	private_evidence_refs: Vec<DecisionPrivateEvidenceRef>,
-	#[serde(default)]
-	public_projection_refs: Vec<DecisionPublicProjectionRef>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	public_summary: Option<String>,
-}
-#[allow(dead_code)]
-impl DecisionEvidenceBoundary {
-	pub(crate) fn private_evidence_refs(&self) -> &[DecisionPrivateEvidenceRef] {
-		&self.private_evidence_refs
-	}
-
-	pub(crate) fn public_projection_refs(&self) -> &[DecisionPublicProjectionRef] {
-		&self.public_projection_refs
-	}
-
-	fn validate(&self) -> Result<()> {
-		for evidence_ref in &self.private_evidence_refs {
-			evidence_ref.validate()?;
-		}
-		for projection_ref in &self.public_projection_refs {
-			projection_ref.validate()?;
-		}
-
-		validate_optional(
-			"decision contract evidence_boundary.public_summary",
-			self.public_summary.as_deref(),
-		)
-	}
-}
-
-/// Reference to local-only runtime evidence that must not be mirrored to Linear.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct DecisionPrivateEvidenceRef {
-	project_id: String,
-	issue_id: String,
-	run_id: String,
-	attempt_number: i64,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	record_id: Option<i64>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	event_type: Option<String>,
-}
-impl DecisionPrivateEvidenceRef {
-	fn validate(&self) -> Result<()> {
-		validate_required("decision contract private_evidence_ref.project_id", &self.project_id)?;
-		validate_required("decision contract private_evidence_ref.issue_id", &self.issue_id)?;
-		validate_required("decision contract private_evidence_ref.run_id", &self.run_id)?;
-
-		if self.attempt_number < 1 {
-			eyre::bail!("Decision contract private evidence attempt_number must be positive.");
-		}
-
-		if let Some(record_id) = self.record_id
-			&& record_id < 1
-		{
-			eyre::bail!("Decision contract private evidence record_id must be positive.");
-		}
-
-		validate_optional(
-			"decision contract private_evidence_ref.event_type",
-			self.event_type.as_deref(),
-		)
-	}
-}
-
-/// Reference to a low-frequency public projection such as Linear or a generated issue.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct DecisionPublicProjectionRef {
-	surface: String,
-	reference: String,
-	summary: String,
-}
-impl DecisionPublicProjectionRef {
-	fn validate(&self) -> Result<()> {
-		validate_required("decision contract public_projection_ref.surface", &self.surface)?;
-		validate_required("decision contract public_projection_ref.reference", &self.reference)?;
-
-		validate_required("decision contract public_projection_ref.summary", &self.summary)
-	}
-}
-
-fn decision_contract_schema() -> String {
-	DECISION_CONTRACT_SCHEMA.to_owned()
-}
-
-fn decision_contract_record_version() -> u16 {
-	DECISION_CONTRACT_RECORD_VERSION
-}
-
-fn default_research_evidence_kind() -> String {
-	String::from("unspecified")
-}
-
-fn validate_required(name: &str, value: &str) -> Result<()> {
-	if value.trim().is_empty() {
-		eyre::bail!("{name} must not be empty.");
-	}
-
-	Ok(())
-}
-
-fn validate_optional(name: &str, value: Option<&str>) -> Result<()> {
-	if let Some(value) = value {
-		validate_required(name, value)?;
-	}
-
-	Ok(())
-}
-
-fn validate_string_list(name: &str, values: &[String]) -> Result<()> {
-	for value in values {
-		validate_required(name, value)?;
-	}
-
-	Ok(())
-}
-
-fn validate_proposed_issues(issues: &[DecisionProposedIssue]) -> Result<()> {
-	let mut keys = BTreeSet::new();
-
-	for issue in issues {
-		issue.validate()?;
-
-		if !keys.insert(issue.key()) {
-			eyre::bail!("Decision Contract proposed issue key `{}` is duplicated.", issue.key());
-		}
-	}
-
-	Ok(())
-}
-
-fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
-	match stage {
-		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" => {
-			Ok(())
-		},
-		_ => {
-			eyre::bail!("Decision Contract proposed issue `{key}` has unsupported stage `{stage}`.")
-		},
-	}
-}
-
-fn validate_proposed_issue_queue_intent(key: &str, queue_intent: &str) -> Result<()> {
-	match queue_intent {
-		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" => {
-			Ok(())
-		},
-		_ => eyre::bail!(
-			"Decision Contract proposed issue `{key}` has unsupported queue_intent `{queue_intent}`."
-		),
-	}
-}
-
-fn normalized_link_values(
-	values: impl IntoIterator<Item = impl Into<String>>,
-) -> Result<Vec<String>> {
-	let mut normalized = Vec::new();
-
-	for value in values {
-		let value = value.into();
-		let value = value.trim();
-
-		validate_required("decision contract generated link", value)?;
-
-		if !normalized.iter().any(|existing| existing == value) {
-			normalized.push(value.to_owned());
-		}
-	}
-
-	Ok(normalized)
 }
 
 #[cfg(test)]
