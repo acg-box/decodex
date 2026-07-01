@@ -4,6 +4,8 @@ mod review_checkpoint;
 mod review_checkpoint_flow;
 mod tool_specs;
 
+use serde_json::{self, Value};
+
 use self::review_checkpoint::{
 	ReviewFindingPolicyUpdate, current_review_blocker_findings, non_empty_string_array_schema,
 	normalize_review_checkpoint_payload, review_checkpoint_checks_schema,
@@ -15,29 +17,24 @@ use self::review_checkpoint::{
 };
 use crate::{
 	agent::tracker_tool_bridge::{
-		self, AuthorityDecisionOptionArgs, AuthorityDecisionRequestArgs, DocsImpact,
-		DynamicToolCallResponse, DynamicToolSpec, ExecutionProgressPhase, ISSUE_COMMENT_TOOL_NAME,
-		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
-		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
-		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
-		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LabelArgs, LocalRepoDetails,
-		NormalizedProgressCheckpoint, NormalizedReviewCheckpointPayload, PendingReviewAction,
-		PendingReviewCompletion, ProgressCheckpointArgs, PullRequestDetails,
-		REVIEW_POLICY_CONVERGENCE_BUDGET, ReviewCheckpointArgs, ReviewExecutionMode,
-		ReviewHandoffArgs, ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus,
-		RunCompletionDisposition, TerminalFinalizeArgs, TrackerToolBridge, TransitionArgs,
-	},
-	orchestrator::{
-		self, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AuthorityDecisionOption,
-		AuthorityDecisionRequestInput,
+		self, DocsImpact, DynamicToolCallResponse, DynamicToolSpec, ExecutionProgressPhase,
+		ISSUE_COMMENT_TOOL_NAME, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
+		ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		ISSUE_TRANSITION_TOOL_NAME, LabelArgs, LocalRepoDetails, NormalizedProgressCheckpoint,
+		NormalizedReviewCheckpointPayload, PendingReviewAction, PendingReviewCompletion,
+		ProgressCheckpointArgs, PullRequestDetails, REVIEW_POLICY_CONVERGENCE_BUDGET,
+		ReviewCheckpointArgs, ReviewExecutionMode, ReviewHandoffArgs, ReviewHandoffContext,
+		ReviewPolicyPhase, ReviewPolicyStatus, RunCompletionDisposition, TerminalFinalizeArgs,
+		TrackerToolBridge, TransitionArgs,
 	},
 	state::StateStore,
 	tracker::{
-		self, public_text, records,
-		records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
+		self,
+		records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
 	},
 };
-use serde_json::{self, Value};
 
 pub(super) const REVIEW_COMPLETION_INTENT_EVENT_TYPE: &str = "review_completion_intent";
 
