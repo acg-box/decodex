@@ -2,11 +2,12 @@ use super::{
 	BTreeSet, CodexAccountActivitySummary, Instant, IssueTracker, OffsetDateTime, Path,
 	RecoverableWorktreeSkipCache, RecoveredRuntimeState, RetryIssueStateHint, RunActivityMarker,
 	ServiceConfig, StateStore, TrackerIssue, WorkflowDocument, WorktreeManager, WorktreeMapping,
-	WorktreeSpec, active_shared_issue_ids, clear_recovered_issue_lease, commit_message,
-	compare_issue_candidates, fs, issue_passes_closeout_dispatch_policy,
-	issue_passes_retry_dispatch_policy, slice, state, tracker, worktree_activity_marker_is_fresh,
-	worktree_mapping_is_stale_terminal_local_residue,
+	WorktreeSpec, active_shared_issue_ids, clear_recovered_issue_lease, compare_issue_candidates,
+	fs, issue_passes_closeout_dispatch_policy, issue_passes_retry_dispatch_policy, slice, state,
+	tracker, worktree_activity_marker_is_fresh, worktree_mapping_is_stale_terminal_local_residue,
 };
+
+use crate::commit_message;
 
 pub(in crate::orchestrator) fn recover_runtime_state_from_tracker_and_worktrees<T>(
 	tracker: &T,
@@ -368,9 +369,7 @@ where
 		Ok(issue) => issue,
 		Err(error)
 			if tracker::issue_lookup_missing_error_for_candidate(&error, issue_identifier) =>
-		{
-			None
-		},
+			None,
 		Err(error) => return Err(error),
 	};
 	let Some(issue) = issue else {
