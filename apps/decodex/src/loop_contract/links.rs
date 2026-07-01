@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::prelude::Result;
-
-use super::validation::{validate_optional, validate_string_list};
+use crate::{loop_contract::validation, prelude::Result};
 
 /// Links from the decision contract to generated execution surfaces.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
@@ -35,20 +33,20 @@ impl DecisionContractLinks {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_string_list(
+		validation::validate_string_list(
 			"decision contract links.generated_issue_ids",
 			&self.generated_issue_ids,
 		)?;
-		validate_string_list(
+		validation::validate_string_list(
 			"decision contract links.generated_issue_identifiers",
 			&self.generated_issue_identifiers,
 		)?;
-		validate_string_list(
+		validation::validate_string_list(
 			"decision contract links.execution_program_node_ids",
 			&self.execution_program_node_ids,
 		)?;
 
-		validate_optional(
+		validation::validate_optional(
 			"decision contract links.superseded_by_contract_id",
 			self.superseded_by_contract_id.as_deref(),
 		)

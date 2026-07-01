@@ -1,39 +1,39 @@
 //! Versioned Loop/Decision Contract model for research-to-execution handoff.
 
-mod evidence;
-mod links;
-mod promotion;
-mod schema;
-mod validation;
+pub(crate) mod authority;
+pub(crate) mod evidence;
+pub(crate) mod links;
+pub(crate) mod promotion;
+pub(crate) mod readiness;
+pub(crate) mod research;
+pub(crate) mod schema;
+pub(crate) mod source_intent;
+pub(crate) mod validation;
+
+pub(crate) use self::{
+	authority::DecisionAcceptedAuthority,
+	evidence::DecisionEvidenceBoundary,
+	links::DecisionContractLinks,
+	promotion::DecisionPromotion,
+	readiness::{DecisionExecutionReadiness, DecisionProposedIssue},
+	research::{DecisionResearchEvidence, DecisionResearchOption, DecisionResearchProvenance},
+	schema::{
+		DECISION_CONTRACT_RECORD_VERSION, DECISION_CONTRACT_SCHEMA, DecisionContractStatus,
+		DecisionPromotionActorKind,
+	},
+	source_intent::DecisionSourceIntent,
+};
 
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::{Result, eyre};
 
-pub(crate) use self::{
-	evidence::DecisionEvidenceBoundary,
-	links::DecisionContractLinks,
-	promotion::DecisionPromotion,
-	schema::{
-		DECISION_CONTRACT_RECORD_VERSION, DECISION_CONTRACT_SCHEMA, DecisionContractStatus,
-		DecisionPromotionActorKind,
-	},
-};
-use self::{
-	schema::{decision_contract_record_version, decision_contract_schema},
-	validation::{
-		default_research_evidence_kind, normalized_link_values, validate_optional,
-		validate_proposed_issue_queue_intent, validate_proposed_issue_stage,
-		validate_proposed_issues, validate_required, validate_string_list,
-	},
-};
-
 /// Versioned research-to-execution contract payload.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct DecisionContract {
-	#[serde(default = "decision_contract_schema")]
+	#[serde(default = "schema::decision_contract_schema")]
 	schema: String,
-	#[serde(default = "decision_contract_record_version")]
+	#[serde(default = "schema::decision_contract_record_version")]
 	record_version: u16,
 	contract_id: String,
 	status: DecisionContractStatus,
@@ -102,9 +102,10 @@ impl DecisionContract {
 	) -> Result<()> {
 		let mut candidate = self.clone();
 
-		candidate.links.generated_issue_ids = normalized_link_values(issue_ids)?;
-		candidate.links.generated_issue_identifiers = normalized_link_values(issue_identifiers)?;
-		candidate.links.execution_program_node_ids = normalized_link_values(node_ids)?;
+		candidate.links.generated_issue_ids = validation::normalized_link_values(issue_ids)?;
+		candidate.links.generated_issue_identifiers =
+			validation::normalized_link_values(issue_identifiers)?;
+		candidate.links.execution_program_node_ids = validation::normalized_link_values(node_ids)?;
 
 		candidate.validate()?;
 
@@ -114,8 +115,8 @@ impl DecisionContract {
 	}
 
 	pub(crate) fn validate(&self) -> Result<()> {
-		validate_required("decision contract schema", &self.schema)?;
-		validate_required("decision contract contract_id", &self.contract_id)?;
+		validation::validate_required("decision contract schema", &self.schema)?;
+		validation::validate_required("decision contract contract_id", &self.contract_id)?;
 
 		self.source_intent.validate()?;
 		self.accepted_authority.validate(self.status)?;
@@ -218,7 +219,7 @@ impl DecisionContract {
 
 		let reason = reason.into();
 
-		validate_required("decision contract human-decision reason", &reason)?;
+		validation::validate_required("decision contract human-decision reason", &reason)?;
 
 		let mut candidate = self.clone();
 
@@ -248,7 +249,10 @@ impl DecisionContract {
 		let mut candidate = self.clone();
 
 		if let Some(contract_id) = superseded_by_contract_id {
-			validate_required("decision contract superseded_by_contract_id", &contract_id)?;
+			validation::validate_required(
+				"decision contract superseded_by_contract_id",
+				&contract_id,
+			)?;
 
 			candidate.links.superseded_by_contract_id = Some(contract_id);
 		}
@@ -260,365 +264,6 @@ impl DecisionContract {
 		*self = candidate;
 
 		Ok(())
-	}
-}
-
-/// Natural-language source intent that led to research or design work.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct DecisionSourceIntent {
-	summary: String,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	user_utterance: Option<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	source_issue_identifier: Option<String>,
-}
-#[allow(dead_code)]
-impl DecisionSourceIntent {
-	pub(crate) fn summary(&self) -> &str {
-		&self.summary
-	}
-
-	pub(crate) fn source_issue_identifier(&self) -> Option<&str> {
-		self.source_issue_identifier.as_deref()
-	}
-
-	fn validate(&self) -> Result<()> {
-		validate_required("decision contract source_intent.summary", &self.summary)?;
-		validate_optional(
-			"decision contract source_intent.user_utterance",
-			self.user_utterance.as_deref(),
-		)?;
-
-		validate_optional(
-			"decision contract source_intent.source_issue_identifier",
-			self.source_issue_identifier.as_deref(),
-		)
-	}
-}
-
-/// Research or design source used to produce the contract.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct DecisionResearchProvenance {
-	kind: String,
-	reference: String,
-	summary: String,
-}
-impl DecisionResearchProvenance {
-	pub(crate) fn kind(&self) -> &str {
-		&self.kind
-	}
-
-	pub(crate) fn reference(&self) -> &str {
-		&self.reference
-	}
-
-	fn validate(&self) -> Result<()> {
-		validate_required("decision contract research_provenance.kind", &self.kind)?;
-		validate_required("decision contract research_provenance.reference", &self.reference)?;
-
-		validate_required("decision contract research_provenance.summary", &self.summary)
-	}
-}
-
-/// Non-authoritative research evidence retained before promotion.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct DecisionResearchEvidence {
-	#[serde(default = "default_research_evidence_kind")]
-	kind: String,
-	claim: String,
-	support: String,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	source_ref: Option<String>,
-}
-impl DecisionResearchEvidence {
-	pub(crate) fn kind(&self) -> &str {
-		&self.kind
-	}
-
-	pub(crate) fn source_ref(&self) -> Option<&str> {
-		self.source_ref.as_deref()
-	}
-
-	fn validate(&self) -> Result<()> {
-		validate_required("decision contract research_evidence.kind", &self.kind)?;
-		validate_required("decision contract research_evidence.claim", &self.claim)?;
-		validate_required("decision contract research_evidence.support", &self.support)?;
-
-		validate_optional(
-			"decision contract research_evidence.source_ref",
-			self.source_ref.as_deref(),
-		)
-	}
-}
-
-/// Option comparison retained as non-authoritative research context.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct DecisionResearchOption {
-	option: String,
-	#[serde(default)]
-	tradeoffs: Vec<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	decision: Option<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	rejected_reason: Option<String>,
-}
-#[allow(dead_code)]
-impl DecisionResearchOption {
-	pub(crate) fn option(&self) -> &str {
-		&self.option
-	}
-
-	fn validate(&self) -> Result<()> {
-		validate_required("decision contract research_options.option", &self.option)?;
-		validate_string_list("decision contract research_options.tradeoffs", &self.tradeoffs)?;
-		validate_optional("decision contract research_options.decision", self.decision.as_deref())?;
-
-		validate_optional(
-			"decision contract research_options.rejected_reason",
-			self.rejected_reason.as_deref(),
-		)
-	}
-}
-
-/// Proposed or accepted execution authority carried by the contract.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct DecisionAcceptedAuthority {
-	#[serde(default)]
-	accepted_objectives: Vec<String>,
-	#[serde(default)]
-	non_goals: Vec<String>,
-	#[serde(default)]
-	constraints: Vec<String>,
-	#[serde(default)]
-	assumptions: Vec<String>,
-	#[serde(default)]
-	objections: Vec<String>,
-	#[serde(default)]
-	stop_conditions: Vec<String>,
-}
-#[allow(dead_code)]
-impl DecisionAcceptedAuthority {
-	pub(crate) fn accepted_objectives(&self) -> &[String] {
-		&self.accepted_objectives
-	}
-
-	pub(crate) fn non_goals(&self) -> &[String] {
-		&self.non_goals
-	}
-
-	pub(crate) fn constraints(&self) -> &[String] {
-		&self.constraints
-	}
-
-	pub(crate) fn assumptions(&self) -> &[String] {
-		&self.assumptions
-	}
-
-	pub(crate) fn objections(&self) -> &[String] {
-		&self.objections
-	}
-
-	pub(crate) fn stop_conditions(&self) -> &[String] {
-		&self.stop_conditions
-	}
-
-	fn validate(&self, status: DecisionContractStatus) -> Result<()> {
-		if status == DecisionContractStatus::AcceptedPromoted && self.accepted_objectives.is_empty()
-		{
-			eyre::bail!("Accepted decision contracts must include accepted objectives.");
-		}
-
-		validate_string_list("decision contract accepted_objectives", &self.accepted_objectives)?;
-		validate_string_list("decision contract non_goals", &self.non_goals)?;
-		validate_string_list("decision contract constraints", &self.constraints)?;
-		validate_string_list("decision contract assumptions", &self.assumptions)?;
-		validate_string_list("decision contract objections", &self.objections)?;
-
-		validate_string_list("decision contract stop_conditions", &self.stop_conditions)
-	}
-}
-
-/// Natural-language readiness summary for later issue shaping.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DecisionExecutionReadiness {
-	summary: String,
-	ready_for_issue_shaping: bool,
-	#[serde(default)]
-	missing_decisions: Vec<String>,
-	#[serde(default)]
-	validation_expectations: Vec<String>,
-	#[serde(default)]
-	risk_notes: Vec<String>,
-	proposed_issues: Vec<DecisionProposedIssue>,
-	#[serde(default)]
-	promotion_targets: Vec<String>,
-	#[serde(default)]
-	conflict_domains: Vec<String>,
-}
-#[allow(dead_code)]
-impl DecisionExecutionReadiness {
-	pub(crate) fn summary(&self) -> &str {
-		&self.summary
-	}
-
-	pub(crate) fn ready_for_issue_shaping(&self) -> bool {
-		self.ready_for_issue_shaping
-	}
-
-	pub(crate) fn missing_decisions(&self) -> &[String] {
-		&self.missing_decisions
-	}
-
-	pub(crate) fn proposed_issues(&self) -> &[DecisionProposedIssue] {
-		&self.proposed_issues
-	}
-
-	pub(crate) fn promotion_targets(&self) -> &[String] {
-		&self.promotion_targets
-	}
-
-	pub(crate) fn conflict_domains(&self) -> &[String] {
-		&self.conflict_domains
-	}
-
-	pub(crate) fn validation_expectations(&self) -> &[String] {
-		&self.validation_expectations
-	}
-
-	pub(crate) fn risk_notes(&self) -> &[String] {
-		&self.risk_notes
-	}
-
-	fn validate(&self, status: DecisionContractStatus) -> Result<()> {
-		validate_required("decision contract execution_readiness.summary", &self.summary)?;
-		validate_string_list("decision contract missing_decisions", &self.missing_decisions)?;
-		validate_string_list(
-			"decision contract validation_expectations",
-			&self.validation_expectations,
-		)?;
-		validate_string_list("decision contract risk_notes", &self.risk_notes)?;
-		validate_proposed_issues(&self.proposed_issues)?;
-		validate_string_list("decision contract promotion_targets", &self.promotion_targets)?;
-		validate_string_list("decision contract conflict_domains", &self.conflict_domains)?;
-
-		match status {
-			DecisionContractStatus::AcceptedPromoted => {
-				if !self.ready_for_issue_shaping {
-					eyre::bail!("Accepted decision contracts must be ready for issue shaping.");
-				}
-				if self.proposed_issues.is_empty() {
-					eyre::bail!(
-						"Accepted decision contracts must include structured proposed_issues."
-					);
-				}
-				if !self.missing_decisions.is_empty() {
-					eyre::bail!(
-						"Accepted decision contracts must not carry unresolved missing decisions."
-					);
-				}
-			},
-			DecisionContractStatus::NeedsHumanDecision =>
-				if self.missing_decisions.is_empty() {
-					eyre::bail!(
-						"Needs-human-decision contracts must include at least one missing decision."
-					);
-				},
-			DecisionContractStatus::DraftLatent | DecisionContractStatus::RejectedSuperseded => {},
-		}
-
-		Ok(())
-	}
-}
-
-/// Structured issue-shaping input retained inside Decision Contract readiness.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DecisionProposedIssue {
-	key: String,
-	title: String,
-	objective: String,
-	stage: String,
-	dependencies: Vec<String>,
-	conflict_domains: Vec<String>,
-	acceptance: Vec<String>,
-	validation: Vec<String>,
-	risk: Vec<String>,
-	queue_intent: String,
-}
-#[allow(dead_code)]
-impl DecisionProposedIssue {
-	pub(crate) fn key(&self) -> &str {
-		&self.key
-	}
-
-	pub(crate) fn title(&self) -> &str {
-		&self.title
-	}
-
-	pub(crate) fn objective(&self) -> &str {
-		&self.objective
-	}
-
-	pub(crate) fn stage(&self) -> &str {
-		&self.stage
-	}
-
-	pub(crate) fn dependencies(&self) -> &[String] {
-		&self.dependencies
-	}
-
-	pub(crate) fn conflict_domains(&self) -> &[String] {
-		&self.conflict_domains
-	}
-
-	pub(crate) fn acceptance(&self) -> &[String] {
-		&self.acceptance
-	}
-
-	pub(crate) fn validation(&self) -> &[String] {
-		&self.validation
-	}
-
-	pub(crate) fn risk(&self) -> &[String] {
-		&self.risk
-	}
-
-	pub(crate) fn queue_intent(&self) -> &str {
-		&self.queue_intent
-	}
-
-	fn validate(&self) -> Result<()> {
-		validate_required("decision contract proposed_issues.key", &self.key)?;
-		validate_required("decision contract proposed_issues.title", &self.title)?;
-		validate_required("decision contract proposed_issues.objective", &self.objective)?;
-		validate_required("decision contract proposed_issues.stage", &self.stage)?;
-		validate_string_list("decision contract proposed_issues.dependencies", &self.dependencies)?;
-		validate_string_list(
-			"decision contract proposed_issues.conflict_domains",
-			&self.conflict_domains,
-		)?;
-		validate_string_list("decision contract proposed_issues.acceptance", &self.acceptance)?;
-		validate_string_list("decision contract proposed_issues.validation", &self.validation)?;
-		validate_string_list("decision contract proposed_issues.risk", &self.risk)?;
-		validate_required("decision contract proposed_issues.queue_intent", &self.queue_intent)?;
-
-		if self.acceptance.is_empty() {
-			eyre::bail!(
-				"Decision Contract proposed issue `{}` must include acceptance criteria.",
-				self.key
-			);
-		}
-		if self.validation.is_empty() {
-			eyre::bail!(
-				"Decision Contract proposed issue `{}` must include validation expectations.",
-				self.key
-			);
-		}
-
-		validate_proposed_issue_stage(&self.key, &self.stage)?;
-
-		validate_proposed_issue_queue_intent(&self.key, &self.queue_intent)
 	}
 }
 
