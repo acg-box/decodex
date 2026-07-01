@@ -6,6 +6,11 @@ use std::{
 
 use libc::{ESRCH, SIGKILL, SIGTERM, c_int, pid_t};
 
+use crate::orchestrator::lane_control::{
+	constants::{LANE_HARD_INTERRUPT_TERM_WAIT, LANE_INTERRUPT_RESPONSE_WAIT},
+	context::{self},
+	reports::{LaneHardInterruptReport, LaneSoftInterruptReport},
+};
 use crate::{
 	config::ServiceConfig,
 	orchestrator::{self, ChildRunRef, OperatorRunStatus},
@@ -20,11 +25,6 @@ use crate::{
 	},
 };
 
-use super::{
-	LANE_HARD_INTERRUPT_TERM_WAIT, LANE_INTERRUPT_RESPONSE_WAIT, LaneHardInterruptReport,
-	LaneSoftInterruptReport, absolute_lane_worktree_path, lane_control_operator_context,
-};
-
 pub(super) fn attempt_soft_lane_interrupt(
 	state_store: &StateStore,
 	project: &ServiceConfig,
@@ -33,7 +33,8 @@ pub(super) fn attempt_soft_lane_interrupt(
 	reason: Option<&str>,
 	source: &str,
 ) -> Result<LaneSoftInterruptReport> {
-	let Some(worktree_path) = absolute_lane_worktree_path(project, state_store, run)? else {
+	let Some(worktree_path) = context::absolute_lane_worktree_path(project, state_store, run)?
+	else {
 		return Ok(LaneSoftInterruptReport::unavailable(
 			"worktree_missing",
 			"Soft interrupt requires the current lane worktree and run-control directory.",
@@ -146,33 +147,6 @@ pub(super) fn attempt_soft_lane_interrupt(
 	}
 }
 
-fn resolve_soft_interrupt_control_action(
-	state_store: &StateStore,
-	project: &ServiceConfig,
-	run: &OperatorRunStatus,
-	thread_id: &str,
-	turn_id: &str,
-	source: &str,
-) -> Result<RunControlActionReceipt> {
-	let context = lane_control_operator_context(run);
-
-	state_store.resolve_run_control_action(RunControlActionRequest {
-		project_id: project.service_id(),
-		issue_id: &run.issue_id,
-		run_id: &run.run_id,
-		attempt_number: run.attempt_number,
-		thread_id: Some(thread_id),
-		turn_id: Some(turn_id),
-		source,
-		action: "interrupt",
-		timeout_ms: Some(
-			i64::try_from(LANE_INTERRUPT_RESPONSE_WAIT.as_millis()).unwrap_or(i64::MAX),
-		),
-		metadata: None,
-		context: Some(&context),
-	})
-}
-
 pub(super) fn attempt_hard_lane_interrupt(
 	state_store: &StateStore,
 	run: &OperatorRunStatus,
@@ -260,12 +234,99 @@ pub(super) fn attempt_hard_lane_interrupt(
 	})
 }
 
+pub(super) fn lane_interrupt_next_action(
+	soft: &LaneSoftInterruptReport,
+	hard: Option<&LaneHardInterruptReport>,
+	force: bool,
+) -> String {
+	if let Some(hard) = hard {
+		return if hard.status == "unavailable" {
+			String::from("Hard fallback was unavailable; inspect the lane before retrying.")
+		} else if hard.status == "sent" || hard.status == "process_not_found" {
+			String::from(
+				"Inspect the lane to confirm the lease and dirty-worktree reconciliation state.",
+			)
+		} else {
+			String::from(
+				"The fallback signal did not stop the recorded process; inspect the host process before retrying.",
+			)
+		};
+	}
+
+	match soft.status.as_str() {
+		"delivered" => {
+			String::from("Inspect the lane until the app-server turn records completion.")
+		},
+		"pending" => {
+			if force {
+				String::from("Soft interrupt is pending; forced fallback was not attempted.")
+			} else {
+				String::from(
+					"Re-run inspect shortly, or retry interrupt with --force if operator intent is to kill the process.",
+				)
+			}
+		},
+		"rejected" => String::from(
+			"Inspect the lane identity before retrying; resolver rejection is not converted into hard fallback.",
+		),
+		"failed" | "unavailable" => String::from(
+			"Retry with --force only if operator intent is to use hard process-kill fallback.",
+		),
+		_ => String::from("Inspect the lane for the latest run status."),
+	}
+}
+
+pub(super) fn soft_interrupt_allows_hard_fallback(
+	soft: &LaneSoftInterruptReport,
+	run: &OperatorRunStatus,
+) -> bool {
+	if run.phase == "terminal_pending" {
+		return false;
+	}
+
+	match soft.status.as_str() {
+		"pending" | "failed" | "unavailable" => {
+			soft.error_class.as_deref() != Some("lane_not_active")
+				|| run.process_id.is_some() && run.process_alive != Some(false)
+		},
+		"rejected" => soft.error_class.as_deref() == Some("run_lease_missing"),
+		_ => false,
+	}
+}
+
+fn resolve_soft_interrupt_control_action(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	run: &OperatorRunStatus,
+	thread_id: &str,
+	turn_id: &str,
+	source: &str,
+) -> Result<RunControlActionReceipt> {
+	let context = context::lane_control_operator_context(run);
+
+	state_store.resolve_run_control_action(RunControlActionRequest {
+		project_id: project.service_id(),
+		issue_id: &run.issue_id,
+		run_id: &run.run_id,
+		attempt_number: run.attempt_number,
+		thread_id: Some(thread_id),
+		turn_id: Some(turn_id),
+		source,
+		action: "interrupt",
+		timeout_ms: Some(
+			i64::try_from(LANE_INTERRUPT_RESPONSE_WAIT.as_millis()).unwrap_or(i64::MAX),
+		),
+		metadata: None,
+		context: Some(&context),
+	})
+}
+
 fn record_hard_interrupt_control_fallback(
 	state_store: &StateStore,
 	run: &OperatorRunStatus,
 	_reason: Option<&str>,
 ) -> Result<()> {
-	let context = lane_control_operator_context(run);
+	let context = context::lane_control_operator_context(run);
 	let receipt = state_store.resolve_run_control_action(RunControlActionRequest {
 		project_id: &run.project_id,
 		issue_id: &run.issue_id,
@@ -318,44 +379,4 @@ fn wait_for_lane_process_exit(process_id: u32, timeout: Duration) -> bool {
 	}
 
 	!orchestrator::process_is_alive(process_id)
-}
-
-pub(super) fn lane_interrupt_next_action(
-	soft: &LaneSoftInterruptReport,
-	hard: Option<&LaneHardInterruptReport>,
-	force: bool,
-) -> String {
-	if let Some(hard) = hard {
-		return if hard.status == "unavailable" {
-			String::from("Hard fallback was unavailable; inspect the lane before retrying.")
-		} else if hard.status == "sent" || hard.status == "process_not_found" {
-			String::from(
-				"Inspect the lane to confirm the lease and dirty-worktree reconciliation state.",
-			)
-		} else {
-			String::from(
-				"The fallback signal did not stop the recorded process; inspect the host process before retrying.",
-			)
-		};
-	}
-
-	match soft.status.as_str() {
-		"delivered" =>
-			String::from("Inspect the lane until the app-server turn records completion."),
-		"pending" =>
-			if force {
-				String::from("Soft interrupt is pending; forced fallback was not attempted.")
-			} else {
-				String::from(
-					"Re-run inspect shortly, or retry interrupt with --force if operator intent is to kill the process.",
-				)
-			},
-		"rejected" => String::from(
-			"Inspect the lane identity before retrying; resolver rejection is not converted into hard fallback.",
-		),
-		"failed" | "unavailable" => String::from(
-			"Retry with --force only if operator intent is to use hard process-kill fallback.",
-		),
-		_ => String::from("Inspect the lane for the latest run status."),
-	}
 }
