@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::orchestrator::lane_control::context::{self};
 use crate::{
 	config::ServiceConfig,
 	orchestrator::{LaneSteerReport, LaneSteerRequest, OperatorRunStatus},
@@ -14,8 +15,6 @@ use crate::{
 	},
 };
 
-use super::{absolute_lane_worktree_path, lane_control_operator_context};
-
 pub(super) fn attempt_lane_steer(
 	state_store: &StateStore,
 	project: &ServiceConfig,
@@ -24,7 +23,7 @@ pub(super) fn attempt_lane_steer(
 ) -> Result<LaneSteerReport> {
 	let message_byte_count = request.message.len();
 	let message_line_count = lane_steer_message_line_count(request.message);
-	let context = lane_control_operator_context(run);
+	let context = context::lane_control_operator_context(run);
 	let metadata = serde_json::json!({
 		"expectedTurnId": request.expected_turn_id,
 		"messageByteCount": message_byte_count,
@@ -55,7 +54,8 @@ pub(super) fn attempt_lane_steer(
 		));
 	}
 
-	let Some(worktree_path) = absolute_lane_worktree_path(project, state_store, run)? else {
+	let Some(worktree_path) = context::absolute_lane_worktree_path(project, state_store, run)?
+	else {
 		eyre::bail!("Lane steer was accepted without a current lane worktree.");
 	};
 	let Some(thread_id) = run.thread_id.as_deref() else {
@@ -136,6 +136,26 @@ pub(super) fn attempt_lane_steer(
 	}
 }
 
+pub(super) fn validate_lane_steer_request(request: &LaneSteerRequest<'_>) -> Result<()> {
+	if request.issue.trim().is_empty() {
+		eyre::bail!("Lane steer issue must not be empty.");
+	}
+	if request.run_id.trim().is_empty() {
+		eyre::bail!("Lane steer run id must not be empty.");
+	}
+	if request.expected_turn_id.trim().is_empty() {
+		eyre::bail!("Lane steer expected turn id must not be empty.");
+	}
+	if request.message.trim().is_empty() {
+		eyre::bail!("Lane steer message must not be empty.");
+	}
+	if request.source.trim().is_empty() {
+		eyre::bail!("Lane steer source must not be empty.");
+	}
+
+	Ok(())
+}
+
 fn lane_steer_report_from_rejected_receipt(
 	issue: &str,
 	run: &OperatorRunStatus,
@@ -176,8 +196,9 @@ fn lane_steer_report_from_response(
 ) -> LaneSteerReport {
 	let outcome = match &response.status {
 		LaneControlSteerResponseStatus::Delivered => RUN_CONTROL_ACTION_COMPLETED,
-		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected =>
-			RUN_CONTROL_ACTION_FAILED,
+		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected => {
+			RUN_CONTROL_ACTION_FAILED
+		},
 	};
 
 	LaneSteerReport {
@@ -229,26 +250,6 @@ fn lane_steer_report_pending(
 		message_byte_count: request.message_byte_count,
 		message_line_count: request.message_line_count,
 	}
-}
-
-pub(super) fn validate_lane_steer_request(request: &LaneSteerRequest<'_>) -> Result<()> {
-	if request.issue.trim().is_empty() {
-		eyre::bail!("Lane steer issue must not be empty.");
-	}
-	if request.run_id.trim().is_empty() {
-		eyre::bail!("Lane steer run id must not be empty.");
-	}
-	if request.expected_turn_id.trim().is_empty() {
-		eyre::bail!("Lane steer expected turn id must not be empty.");
-	}
-	if request.message.trim().is_empty() {
-		eyre::bail!("Lane steer message must not be empty.");
-	}
-	if request.source.trim().is_empty() {
-		eyre::bail!("Lane steer source must not be empty.");
-	}
-
-	Ok(())
 }
 
 fn lane_steer_failure_class_for_reason(reason: &str) -> Option<&'static str> {
