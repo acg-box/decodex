@@ -1,5 +1,4 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+#[allow(clippy::wildcard_imports)] use super::*;
 
 pub(super) fn autonomy_decision_research_provenance(
 	proposal: &AutonomyProposal,
