@@ -6,7 +6,7 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/status/mod.rs]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/status.rs]
 drift_watch: [decodex recover ghost-lane, decodex recover stale-active, stale_active_release, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, runtime_recovery_required, runtime_recovery_blocked, authority_boundary_check, architecture_recovery_packet, architecture_recovery_started, architecture_recovery_terminal, loop_status]
 last_verified: 2026-06-30
 ---
