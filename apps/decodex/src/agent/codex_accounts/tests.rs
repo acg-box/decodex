@@ -7,6 +7,7 @@ use std::{
 
 use tempfile::TempDir;
 
+use super::{record::parse_account_records, usage::preserve_cached_usage_windows};
 use crate::agent::codex_accounts::{
 	self, AccountPoolRecord, CodexAccountActivitySummary, CodexAccountAuthFailure,
 	CodexAccountLogin, CodexAccountPool, CodexAccountProvider, CodexTokenData, CreditsSnapshot,
@@ -20,7 +21,7 @@ fn accounts_accept_flat_and_wrapped_auth_jsonl_records() {
 		{"email":"primary@example.com","auth_mode":"chatgpt","tokens":{"id_token":"id","access_token":"access","refresh_token":"refresh","account_id":"acct_primary"}}
 		{"auth":{"auth_mode":"chatgpt","tokens":{"id_token":"x.eyJlbWFpbCI6IndyYXBwZWRAZXhhbXBsZS5jb20ifQ.y","access_token":"access-2","refresh_token":"refresh-2","account_id":"acct_wrapped"}}}
 	"#;
-	let records = codex_accounts::parse_account_records(input, Path::new("/tmp/accounts.jsonl"))
+	let records = parse_account_records(input, Path::new("/tmp/accounts.jsonl"))
 		.expect("records should parse");
 
 	assert_eq!(records.len(), 2);
@@ -469,7 +470,7 @@ fn usage_cache_preserves_current_windows_across_placeholder_refresh() {
 		..CodexAccountActivitySummary::default()
 	}];
 
-	codex_accounts::preserve_cached_usage_windows(&mut refreshed, &cached, now + 60);
+	preserve_cached_usage_windows(&mut refreshed, &cached, now + 60);
 
 	assert_eq!(refreshed[0].primary_window_seconds, Some(18_000));
 	assert_eq!(refreshed[0].primary_remaining_percent, Some(72));
