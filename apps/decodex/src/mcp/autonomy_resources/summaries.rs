@@ -73,6 +73,25 @@ pub(in crate::mcp) fn mcp_autonomy_proposal_summary(
 		"source_signal_ids": proposal.source_signal_ids(),
 		"allowed_surfaces": proposal.allowed_surfaces(),
 		"validation_gates": proposal.validation_gates(),
+		"issue_candidate_count": proposal.issue_candidates().len(),
+		"issue_candidates": proposal
+			.issue_candidates()
+			.iter()
+			.map(|candidate| {
+				serde_json::json!({
+					"key": candidate.key.as_str(),
+					"title": candidate.title.as_str(),
+					"objective": candidate.objective.as_str(),
+					"stage": candidate.stage.as_str(),
+					"dependencies": &candidate.dependencies,
+					"conflict_domains": &candidate.conflict_domains,
+					"acceptance": &candidate.acceptance,
+					"validation": &candidate.validation,
+					"risk": &candidate.risk,
+					"queue_intent": candidate.queue_intent.as_str()
+				})
+			})
+			.collect::<Vec<_>>(),
 		"refusal_reasons": proposal
 			.refusal_reasons()
 			.iter()

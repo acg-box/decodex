@@ -6,7 +6,7 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/orchestrator/agent_evidence/mod.rs, apps/decodex/src/orchestrator/status/mod.rs, apps/decodex/src/orchestrator/types/mod.rs]
+code_refs: [apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs]
 drift_watch: [decodex evidence, issue_review_checkpoint, review_cost_control, phase_acceptance_check, authority_boundary_check, architecture_recovery_packet, private_execution_evidence_readback]
 last_verified: 2026-06-22
 ---

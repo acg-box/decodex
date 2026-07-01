@@ -7,14 +7,15 @@ authority: procedural
 owner: runtime
 tags: [runbook, autonomy, objective, roadmap]
 code_refs:
-  - apps/decodex/src/autonomy_objective/mod.rs
-  - apps/decodex/src/autonomy_signal/mod.rs
+  - apps/decodex/src/autonomy_objective.rs
+  - apps/decodex/src/autonomy_signal.rs
   - apps/decodex/src/autonomy_proposal.rs
   - apps/decodex/src/loop_contract.rs
   - apps/decodex/src/config.rs
   - apps/decodex/src/mcp.rs
   - apps/decodex/src/program_intake.rs
-  - apps/decodex/src/orchestrator/status/mod.rs
+  - apps/decodex/src/orchestrator/program_reconciler.rs
+  - apps/decodex/src/orchestrator/status.rs
   - apps/decodex/src/state/store.rs
 related:
   - ../spec/autonomy-control-plane.md
@@ -26,10 +27,12 @@ drift_watch:
   - decodex.autonomy_objective/1
   - decodex.autonomy_signal/1
   - decodex.autonomy_proposal/1
+  - issue_candidates
+  - decodex.program_dispatch_selected/1
   - allowed_signal_kinds
   - Program Intake
   - decodex mcp serve
-last_verified: 2026-06-27
+last_verified: 2026-06-30
 ---
 # Autonomy Implementation Roadmap
 
@@ -100,13 +103,54 @@ validation gates, review policy, and stop conditions. If validation fails, evide
 stale, authority is missing, or self-evaluation finds that execution began from a
 signal or report without accepted authority, the next phase must not be queued.
 
+## Automatic Improvement Tracking
+
+Automatic improvement is not a magic trigger. Treat it as an evidence-producing
+pipeline that may recommend a normal Decision Contract and Program Intake plan only
+after the gates below pass.
+
+Durable work items:
+
+- `DAG-AUTO-001`: Preserve Program dispatch provenance. Every Program-selected run
+  records `decodex.program_dispatch_selected/1` with issue id, run id, attempt,
+  program id, node id, source contract id when present, and queue intent.
+- `DAG-AUTO-002`: Support explicit proposal issue DAGs. `decodex.autonomy_proposal/1`
+  may carry `issue_candidates[]`; each candidate has a key, stage, dependencies,
+  acceptance, validation, queue intent, and optional conflict domains or risk notes.
+- `DAG-AUTO-003`: Keep proposal compilation dry-run and non-executable. Signals and
+  proposals never create tracker issues, Program Intake rows, worktrees, commits, PRs,
+  installs, restarts, or plugin syncs.
+- `DAG-AUTO-004`: Add a policy resolver before unattended proposal acceptance. Until
+  accepted policy authority is implemented and tested, default acceptance is human.
+- `DAG-AUTO-005`: Gate any planner MVP on a small eval suite. The suite must include
+  single-issue, dependent multi-issue, rejected-surface, stale-evidence,
+  contradiction, and weakened-validation cases.
+- `DAG-AUTO-006`: Provide review and accept UX in natural language. The user should
+  see the proposed goal split, dependencies, risks, validation gates, and stop
+  conditions without needing to know Program ids, node ids, or internal schema names.
+- `DAG-AUTO-007`: Run a weekly read-only automatic-improvement evaluation for Decodex
+  dogfood. Track accepted proposal rate, false suggestion rate, repeated
+  needs-attention causes, blocked-reason coverage, and landed proposal outcomes.
+- `DAG-AUTO-008`: Require one full replayable dogfood loop before broad enablement:
+  objective -> signals -> proposal -> explicit acceptance -> Decision Contract ->
+  Program Intake -> normal run -> review -> validation -> handoff/land evidence.
+
+Stop conditions:
+
+- A generated recommendation can auto-execute before explicit acceptance or accepted
+  policy authority.
+- The user must type internal Program or DAG schema details to get a useful split.
+- A proposal has no independent challenge evidence or no validation gate.
+- Weekly evaluation cannot explain why suggestions were accepted, rejected, or
+  ignored.
+
 ## Phase 1: Objective Contract Authority
 
 Goal: Add Objective Contract storage and readback without automatic execution.
 
 Implementation surfaces:
 
-- `apps/decodex/src/autonomy_objective/mod.rs` for `decodex.autonomy_objective/1`.
+- `apps/decodex/src/autonomy_objective.rs` for `decodex.autonomy_objective/1`.
 - `apps/decodex/src/loop_contract.rs` remains the separate Decision Contract model.
 - `apps/decodex/src/state/store.rs` and `apps/decodex/src/state/internal.rs` for
   persisted objective records.
@@ -149,7 +193,7 @@ Goal: Persist signals as evidence only.
 
 Implementation surfaces:
 
-- `apps/decodex/src/autonomy_signal/mod.rs` owns the versioned
+- `apps/decodex/src/autonomy_signal.rs` owns the versioned
   `decodex.autonomy_signal/1` payload, fingerprint, validation rules, and first
   dogfood builders.
 - Runtime state store for `decodex.autonomy_signal/1`.
@@ -209,6 +253,8 @@ Deliverables:
   `accepted_promoted`.
 - Stable proposal id from objective, sorted signals, affected identifiers, source
   family, and intended surface.
+- Optional `issue_candidates[]` for explicit multi-issue DAG shaping. Empty
+  `issue_candidates[]` preserves the legacy single proposed issue fallback.
 - Refusal rules for missing objective, disallowed signal kind, disallowed surface,
   stale evidence, unresolved contradiction, and weakened validation or review.
 - Challenge hook that records subagent or inline skeptic objections as evidence
@@ -282,6 +328,8 @@ Deliverables:
 - Generated tracker-backed work has normal cold-start issue briefs.
 - Program graph ids remain internal.
 - Service queue labels are not used as Program scheduler authority.
+- Program-selected runs record private `program_dispatch_selected` evidence before
+  execution so later readback can identify the exact Program node that dispatched.
 - Existing validation, review, landing, closeout, and cleanup gates remain required.
 
 Required tests:

@@ -1,8 +1,11 @@
+use crate::execution_program::ExecutionConflictDomain;
 use crate::execution_program::{
 	ExecutionDependencySnapshot, ExecutionLinearIssueMapping, ExecutionProgram,
 	ExecutionProgramNode, ExecutionReadinessState,
 };
-use crate::execution_program::ExecutionConflictDomain;
+
+const PROGRAM_DISPATCH_SELECTED_SCHEMA: &str = "decodex.program_dispatch_selected/1";
+const PROGRAM_DISPATCH_SELECTED_EVENT_TYPE: &str = "program_dispatch_selected";
 
 #[derive(Clone)]
 struct RefreshedExecutionProgram {
@@ -29,11 +32,11 @@ impl ProgramIssueSnapshot {
 			&self.issue.state.name,
 		)?
 		.with_active_label(self.has_active_label)
-			.with_opt_out_label(self.has_opt_out_label)
-			.with_needs_attention_label(self.has_needs_attention_label)
-			.with_open_tracker_blockers(self.has_open_tracker_blockers)
-			.with_generic_dispatch_briefing(self.has_generic_dispatch_briefing)
-			.with_post_review_lifecycle(self.has_post_review_lifecycle))
+		.with_opt_out_label(self.has_opt_out_label)
+		.with_needs_attention_label(self.has_needs_attention_label)
+		.with_open_tracker_blockers(self.has_open_tracker_blockers)
+		.with_generic_dispatch_briefing(self.has_generic_dispatch_briefing)
+		.with_post_review_lifecycle(self.has_post_review_lifecycle))
 	}
 }
 
@@ -58,6 +61,40 @@ struct ProgramSchedulerSummary {
 struct ProgramSchedulerSelection {
 	selected: Option<SelectedIssueRunCandidate>,
 	summary: ProgramSchedulerSummary,
+}
+
+fn record_program_dispatch_selected(
+	state_store: &StateStore,
+	project_id: &str,
+	issue_run: &IssueRunPlan,
+	program_dispatch: &ProgramDispatchSelection,
+) -> Result<PrivateExecutionEvent> {
+	state_store.append_private_execution_event(
+		project_id,
+		&issue_run.issue.id,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+		PROGRAM_DISPATCH_SELECTED_EVENT_TYPE,
+		json!({
+			"schema": PROGRAM_DISPATCH_SELECTED_SCHEMA,
+			"record_version": 1,
+			"issue": {
+				"id": &issue_run.issue.id,
+				"identifier": &issue_run.issue.identifier,
+			},
+			"run": {
+				"run_id": &issue_run.run_id,
+				"attempt_number": issue_run.attempt_number,
+				"dispatch_mode": issue_run.dispatch_mode.as_str(),
+			},
+			"execution_program": {
+				"program_id": &program_dispatch.program_id,
+				"node_id": &program_dispatch.node_id,
+				"source_contract_id": &program_dispatch.source_contract_id,
+				"queue_intent": &program_dispatch.queue_intent,
+			},
+		}),
+	)
 }
 
 fn select_execution_program_run_candidate<T>(
@@ -137,8 +174,9 @@ where
 
 	for refreshed in refreshed_programs {
 		let evaluation = if let Some(source_contract_id) = refreshed.record.source_contract_id() {
-				let Some(contract) = state_store.decision_contract(project.service_id(), source_contract_id)?
-				else {
+			let Some(contract) =
+				state_store.decision_contract(project.service_id(), source_contract_id)?
+			else {
 				continue;
 			};
 
@@ -165,10 +203,29 @@ where
 			let Some(snapshot) = refreshed.issues_by_node.get(node.node_id()) else {
 				continue;
 			};
+			let Some(program_node) = refreshed
+				.program
+				.nodes()
+				.iter()
+				.find(|program_node| program_node.node_id() == node.node_id())
+			else {
+				continue;
+			};
 
 			summary.dispatchable_nodes += 1;
 
-			candidates.push(snapshot.issue.clone());
+			candidates.push(
+				SelectedIssueRunCandidate::new(snapshot.issue.clone(), IssueDispatchMode::Program)
+					.with_program_dispatch(ProgramDispatchSelection {
+						program_id: refreshed.record.program_id().to_owned(),
+						node_id: node.node_id().to_owned(),
+						source_contract_id: refreshed
+							.record
+							.source_contract_id()
+							.map(str::to_owned),
+						queue_intent: program_node.queue_intent().as_str().to_owned(),
+					}),
+			);
 		}
 
 		if refreshed.program != *refreshed.record.program() {
@@ -178,15 +235,9 @@ where
 		}
 	}
 
-	candidates.sort_by(compare_issue_candidates);
+	candidates.sort_by(|left, right| compare_issue_candidates(&left.issue, &right.issue));
 
-	Ok(ProgramSchedulerSelection {
-		selected: candidates
-			.into_iter()
-			.next()
-			.map(|issue| SelectedIssueRunCandidate::new(issue, IssueDispatchMode::Program)),
-		summary,
-	})
+	Ok(ProgramSchedulerSelection { selected: candidates.into_iter().next(), summary })
 }
 
 fn refresh_execution_program_issues<T>(
@@ -277,28 +328,28 @@ fn refresh_execution_program_local_lifecycle_facts(
 		return Ok(node.clone());
 	}
 
-	node.clone().with_linear_issue(issue.clone().with_post_review_lifecycle(has_post_review_lifecycle))
+	node.clone()
+		.with_linear_issue(issue.clone().with_post_review_lifecycle(has_post_review_lifecycle))
 }
 
-fn program_issue_snapshot<T>(input: ProgramIssueSnapshotInput<'_, T>) -> Result<ProgramIssueSnapshot>
+fn program_issue_snapshot<T>(
+	input: ProgramIssueSnapshotInput<'_, T>,
+) -> Result<ProgramIssueSnapshot>
 where
 	T: IssueTracker + ?Sized,
 {
-	let ProgramIssueSnapshotInput {
-		tracker,
-		state_store,
-		service_id,
-		workflow,
-		issue,
-	} = input;
+	let ProgramIssueSnapshotInput { tracker, state_store, service_id, workflow, issue } = input;
 	let tracker_policy = workflow.frontmatter().tracker();
 	let has_active_label = tracker::issue_has_label_with_server_confirmation(
 		tracker,
 		issue,
 		&tracker::automation_active_label(service_id),
 	)?;
-	let has_opt_out_label =
-		tracker::issue_has_label_with_server_confirmation(tracker, issue, tracker_policy.opt_out_label())?;
+	let has_opt_out_label = tracker::issue_has_label_with_server_confirmation(
+		tracker,
+		issue,
+		tracker_policy.opt_out_label(),
+	)?;
 	let has_needs_attention_label = tracker::issue_has_label_with_server_confirmation(
 		tracker,
 		issue,
@@ -360,7 +411,11 @@ fn execution_program_dependency_snapshots(
 			)?;
 
 			for blocker in &snapshot.issue.blockers {
-				insert_dependency_snapshot(&mut snapshots, &blocker.identifier, &blocker.state.name)?;
+				insert_dependency_snapshot(
+					&mut snapshots,
+					&blocker.identifier,
+					&blocker.state.name,
+				)?;
 			}
 		}
 	}
@@ -436,8 +491,8 @@ fn program_issue_occupies_conflict_domain(
 	snapshot: &ProgramIssueSnapshot,
 ) -> Result<bool> {
 	let issue = &snapshot.issue;
-	let retained_nonterminal =
-		retained_issue_ids.contains(&issue.id) && !state_name_is_terminal(&issue.state.name, workflow);
+	let retained_nonterminal = retained_issue_ids.contains(&issue.id)
+		&& !state_name_is_terminal(&issue.state.name, workflow);
 
 	Ok(snapshot.has_active_label
 		|| snapshot.has_needs_attention_label
