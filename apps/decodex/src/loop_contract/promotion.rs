@@ -1,10 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::prelude::Result;
-
-use super::{
-	DecisionPromotionActorKind,
-	validation::{validate_optional, validate_required},
+use crate::{
+	loop_contract::{DecisionPromotionActorKind, validation},
+	prelude::Result,
 };
 
 /// Promotion metadata that records who or what accepted the contract and when.
@@ -48,14 +46,20 @@ impl DecisionPromotion {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("decision contract promotion.accepted_by", &self.accepted_by)?;
-		validate_required("decision contract promotion.accepted_at", &self.accepted_at)?;
-		validate_required(
+		validation::validate_required(
+			"decision contract promotion.accepted_by",
+			&self.accepted_by,
+		)?;
+		validation::validate_required(
+			"decision contract promotion.accepted_at",
+			&self.accepted_at,
+		)?;
+		validation::validate_required(
 			"decision contract promotion.acceptance_source",
 			&self.acceptance_source,
 		)?;
 
-		validate_optional(
+		validation::validate_optional(
 			"decision contract promotion.promotion_reason",
 			self.promotion_reason.as_deref(),
 		)
