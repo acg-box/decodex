@@ -2,6 +2,18 @@
 
 use std::time::Duration;
 
+pub(crate) const DASHBOARD_MAX_WEBSOCKET_CLIENTS: usize = 64;
+
+pub(super) const OPERATOR_DASHBOARD_ICON_PNG: &[u8] =
+	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/icon.png"));
+pub(super) const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
+	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo.ico"));
+pub(super) const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] =
+	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo-touch.png"));
+pub(super) const OPERATOR_HTTP_READ_TIMEOUT: Duration = Duration::from_millis(250);
+pub(super) const DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS: &[&str] =
+	&["idle_for_seconds", "protocol_idle_for_seconds", "current_elapsed_seconds", "wall_seconds"];
+
 pub(super) static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> =
 	std::sync::LazyLock::new(|| {
 		[
@@ -44,6 +56,18 @@ pub(super) static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> =
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/app/formatting.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/formatting/time.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/formatting/run-state.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/formatting/queue.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -95,7 +119,23 @@ pub(super) static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> =
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/activity/child-agent/context.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/activity/child-agent/buckets.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/activity/child-agent/lifecycle.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/app/activity/child-agent.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/activity/child-agent/summary.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -123,7 +163,35 @@ pub(super) static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> =
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
-				"/src/orchestrator/operator_dashboard/app/lanes.js"
+				"/src/orchestrator/operator_dashboard/app/lanes/cards.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/lanes/current.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/lanes/recent.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/lanes/worktrees.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/stream/clock.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/stream/live-activity.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/stream/socket.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/stream/render.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -133,16 +201,6 @@ pub(super) static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> =
 				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/tail.html"
 			)),
-		]
-		.concat()
-	});
-pub(super) const OPERATOR_DASHBOARD_ICON_PNG: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/icon.png"));
-pub(super) const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo.ico"));
-pub(super) const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo-touch.png"));
-pub(super) const OPERATOR_HTTP_READ_TIMEOUT: Duration = Duration::from_millis(250);
-pub(crate) const DASHBOARD_MAX_WEBSOCKET_CLIENTS: usize = 64;
-pub(super) const DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS: &[&str] =
-	&["idle_for_seconds", "protocol_idle_for_seconds", "current_elapsed_seconds", "wall_seconds"];
+			]
+			.concat()
+		});
