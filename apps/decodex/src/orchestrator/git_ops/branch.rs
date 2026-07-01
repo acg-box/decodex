@@ -1,4 +1,6 @@
-use super::*;
+use std::{path::Path, process::Command};
+
+use crate::prelude::{Result, eyre};
 
 pub(crate) fn delete_local_branch_if_present(repo_root: &Path, branch_name: &str) -> Result<()> {
 	let local_ref = format!("refs/heads/{branch_name}");
