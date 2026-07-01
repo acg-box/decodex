@@ -3,6 +3,7 @@ mod execution_closeout;
 mod execution_failure;
 mod execution_phase_goal;
 mod execution_thread_archive;
+mod harness_improvement;
 mod lane_control;
 mod lane_decision;
 mod status_autonomy;
@@ -20,11 +21,6 @@ mod status_queued_attention;
 mod status_run_projection;
 mod status_summary;
 mod status_worktrees;
-mod harness_improvement {
-	use crate::orchestrator::{IssueRunPlan, Result, Serialize, StateStore, Value, records, state};
-
-	include!("orchestrator/harness_improvement.rs");
-}
 
 pub(crate) use lane_control::{
 	DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneInspectRequest, LaneInterruptRequest, interrupt_lane,
