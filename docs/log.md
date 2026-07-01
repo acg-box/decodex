@@ -1,5 +1,14 @@
 # Documentation Log
 
+## 2026-07-01
+
+- Added a privacy-safe Codex app automation installer so checked-in Decodex/Radar
+  automation manifests and prompts can be audited, versioned, and installed on a new
+  machine without committing live `$CODEX_HOME` config, absolute checkout paths, auth
+  files, account files, or runtime databases.
+- Refreshed stale autonomy docs `code_refs` from pre-module files to current module
+  entrypoints so the docs gate reflects the current source layout.
+
 ## 2026-06-30
 
 - Removed the `decodex docs lint` command alias and made `decodex docs check` the

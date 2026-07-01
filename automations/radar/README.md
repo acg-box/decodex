@@ -21,3 +21,9 @@ commands or Decodex social publication artifacts.
 Decodex Publisher consumes Radar handoff evidence and owns
 `social_candidate/v1`, `social_publish_reservation/v1`, and `social_post/v1` under
 `.agent/automations/decodex/cache/social`.
+
+Live Codex app automation configs for these Radar jobs are generated from this
+directory's `automations.toml` by
+`automations/decodex/scripts/config/sync_automations.py`. Keep repo source portable:
+use relative paths and `{repo_root}` placeholders here, and let the installer resolve
+machine-local checkout paths under `$CODEX_HOME/automations` on each host.
