@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::prelude::{Result, eyre};
-
-use super::validation::{validate_optional, validate_required};
+use crate::{
+	loop_contract::validation,
+	prelude::{Result, eyre},
+};
 
 /// Boundary between private runtime evidence and public tracker projection.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
@@ -32,7 +33,7 @@ impl DecisionEvidenceBoundary {
 			projection_ref.validate()?;
 		}
 
-		validate_optional(
+		validation::validate_optional(
 			"decision contract evidence_boundary.public_summary",
 			self.public_summary.as_deref(),
 		)
@@ -53,9 +54,18 @@ pub(crate) struct DecisionPrivateEvidenceRef {
 }
 impl DecisionPrivateEvidenceRef {
 	fn validate(&self) -> Result<()> {
-		validate_required("decision contract private_evidence_ref.project_id", &self.project_id)?;
-		validate_required("decision contract private_evidence_ref.issue_id", &self.issue_id)?;
-		validate_required("decision contract private_evidence_ref.run_id", &self.run_id)?;
+		validation::validate_required(
+			"decision contract private_evidence_ref.project_id",
+			&self.project_id,
+		)?;
+		validation::validate_required(
+			"decision contract private_evidence_ref.issue_id",
+			&self.issue_id,
+		)?;
+		validation::validate_required(
+			"decision contract private_evidence_ref.run_id",
+			&self.run_id,
+		)?;
 
 		if self.attempt_number < 1 {
 			eyre::bail!("Decision contract private evidence attempt_number must be positive.");
@@ -67,7 +77,7 @@ impl DecisionPrivateEvidenceRef {
 			eyre::bail!("Decision contract private evidence record_id must be positive.");
 		}
 
-		validate_optional(
+		validation::validate_optional(
 			"decision contract private_evidence_ref.event_type",
 			self.event_type.as_deref(),
 		)
@@ -83,9 +93,18 @@ pub(crate) struct DecisionPublicProjectionRef {
 }
 impl DecisionPublicProjectionRef {
 	fn validate(&self) -> Result<()> {
-		validate_required("decision contract public_projection_ref.surface", &self.surface)?;
-		validate_required("decision contract public_projection_ref.reference", &self.reference)?;
+		validation::validate_required(
+			"decision contract public_projection_ref.surface",
+			&self.surface,
+		)?;
+		validation::validate_required(
+			"decision contract public_projection_ref.reference",
+			&self.reference,
+		)?;
 
-		validate_required("decision contract public_projection_ref.summary", &self.summary)
+		validation::validate_required(
+			"decision contract public_projection_ref.summary",
+			&self.summary,
+		)
 	}
 }
