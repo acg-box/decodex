@@ -1,4 +1,6 @@
-use super::*;
+use std::path::Path;
+
+use crate::{config::ServiceConfig, worktree::WorktreeSpec};
 
 pub(crate) fn relative_worktree_path(project: &ServiceConfig, worktree: &WorktreeSpec) -> String {
 	relative_worktree_path_for_path(project, &worktree.path)
