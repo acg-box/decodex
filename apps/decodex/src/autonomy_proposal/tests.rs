@@ -8,8 +8,8 @@ use crate::{
 		AutonomyProposal, AutonomyProposalAcceptedProjectPolicy,
 		AutonomyProposalAuthorityActorKind, AutonomyProposalChallengeInput,
 		AutonomyProposalChallengeSource, AutonomyProposalCompileInput,
-		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalRefusalReason,
-		AutonomyProposalState,
+		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalIssueCandidate,
+		AutonomyProposalRefusalReason, AutonomyProposalState,
 	},
 	autonomy_signal::{
 		AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
@@ -143,7 +143,27 @@ fn compile_input() -> AutonomyProposalCompileInput {
 		rejected_alternatives: vec![String::from("Direct Decision Contract promotion.")],
 		rollback_path: String::from("Discard the dry-run proposal record."),
 		weakened_validation_or_review: Vec::new(),
+		issue_candidates: Vec::new(),
 		created_at: String::from("2026-06-22T00:01:00Z"),
+	}
+}
+
+fn issue_candidate(
+	key: &str,
+	stage: &str,
+	dependencies: Vec<String>,
+) -> AutonomyProposalIssueCandidate {
+	AutonomyProposalIssueCandidate {
+		key: key.to_owned(),
+		title: format!("Issue candidate {key}"),
+		objective: format!("Complete issue candidate {key}."),
+		stage: stage.to_owned(),
+		dependencies,
+		conflict_domains: vec![format!("issue:{key}")],
+		acceptance: vec![format!("{key} acceptance criterion is met.")],
+		validation: vec![String::from("cargo test -p decodex autonomy_proposal --lib")],
+		risk: vec![String::from("Keep autonomy proposal non-executable until promotion.")],
+		queue_intent: String::from("ready_to_queue"),
 	}
 }
 
@@ -300,6 +320,26 @@ fn autonomy_proposal_challenge_source_accepts_legacy_support_agent_alias() {
 }
 
 #[test]
+fn autonomy_proposal_issue_candidate_accepts_mcp_camel_case_fields() {
+	let candidate: AutonomyProposalIssueCandidate = serde_json::from_value(serde_json::json!({
+		"key": "evaluation-gate",
+		"title": "Evaluate the proposed split.",
+		"objective": "Prove the proposal split is useful before execution.",
+		"stage": "eval",
+		"dependencies": ["readback-contract"],
+		"conflictDomains": ["module:autonomy"],
+		"acceptance": ["Evaluation result is recorded."],
+		"validation": ["cargo test -p decodex autonomy_proposal --lib"],
+		"risk": ["False positives remain visible."],
+		"queueIntent": "ready_to_queue"
+	}))
+	.expect("MCP-shaped issue candidate should parse");
+
+	assert_eq!(candidate.conflict_domains, [String::from("module:autonomy")]);
+	assert_eq!(candidate.queue_intent, "ready_to_queue");
+}
+
+#[test]
 fn autonomy_proposal_dry_run_candidate_shows_lineage_signals_gates_and_gaps() {
 	let objective = objective_fixture();
 	let signal = runtime_signal();
@@ -341,6 +381,110 @@ fn autonomy_proposal_dry_run_candidate_shows_lineage_signals_gates_and_gaps() {
 		"cargo test -p decodex autonomy_proposal --lib"
 	);
 	assert!(dry_run_json["refusal_reasons"].as_array().expect("refusals array").is_empty());
+}
+
+#[test]
+fn autonomy_proposal_can_carry_explicit_dependent_issue_candidates_into_decision_contract() {
+	let objective = objective_fixture();
+	let signal = runtime_signal();
+	let mut input = compile_input();
+
+	input.issue_candidates = vec![
+		issue_candidate("readback-contract", "runtime", Vec::new()),
+		issue_candidate("evaluation-gate", "eval", vec![String::from("readback-contract")]),
+	];
+
+	let proposal = AutonomyProposal::compile_dry_run(Some(&objective), &[signal], input)
+		.expect("proposal with explicit issue candidates should compile");
+
+	assert_eq!(proposal.state(), AutonomyProposalState::DecisionCandidate);
+	assert_eq!(proposal.issue_candidates().len(), 2);
+
+	let contract = proposal
+		.to_decision_contract_candidate(bridge_authority())
+		.expect("proposal should bridge to latent decision contract");
+	let proposed_issues = contract.execution_readiness().proposed_issues();
+
+	assert_eq!(proposed_issues.len(), 2);
+	assert_eq!(proposed_issues[0].key(), "readback-contract");
+	assert_eq!(proposed_issues[0].stage(), "runtime");
+	assert_eq!(proposed_issues[1].key(), "evaluation-gate");
+	assert_eq!(proposed_issues[1].stage(), "eval");
+	assert_eq!(proposed_issues[1].dependencies(), &[String::from("readback-contract")]);
+	assert_eq!(proposed_issues[1].queue_intent(), "ready_to_queue");
+}
+
+#[test]
+fn autonomy_proposal_rejects_invalid_issue_candidate_dag_shape() {
+	let objective = objective_fixture();
+	let signal = runtime_signal();
+	let mut duplicate_input = compile_input();
+
+	duplicate_input.issue_candidates = vec![
+		issue_candidate("same-key", "runtime", Vec::new()),
+		issue_candidate("same-key", "eval", Vec::new()),
+	];
+
+	let duplicate = AutonomyProposal::compile_dry_run(
+		Some(&objective),
+		slice::from_ref(&signal),
+		duplicate_input,
+	)
+	.expect_err("duplicate issue candidate keys should fail");
+
+	assert!(duplicate.to_string().contains("duplicated"));
+
+	let mut missing_dependency_input = compile_input();
+
+	missing_dependency_input.issue_candidates =
+		vec![issue_candidate("evaluation-gate", "eval", vec![String::from("missing-runtime")])];
+
+	let missing_dependency = AutonomyProposal::compile_dry_run(
+		Some(&objective),
+		slice::from_ref(&signal),
+		missing_dependency_input,
+	)
+	.expect_err("missing dependency should fail");
+
+	assert!(missing_dependency.to_string().contains("depends on unknown key"));
+
+	let mut cyclic_input = compile_input();
+
+	cyclic_input.issue_candidates = vec![
+		issue_candidate("runtime-work", "runtime", vec![String::from("eval-work")]),
+		issue_candidate("eval-work", "eval", vec![String::from("runtime-work")]),
+	];
+
+	let cyclic =
+		AutonomyProposal::compile_dry_run(Some(&objective), slice::from_ref(&signal), cyclic_input)
+			.expect_err("cyclic dependencies should fail");
+
+	assert!(cyclic.to_string().contains("cyclic dependencies"));
+
+	let mut self_dependency_input = compile_input();
+
+	self_dependency_input.issue_candidates =
+		vec![issue_candidate("self-cycle", "runtime", vec![String::from("self-cycle")])];
+
+	let self_dependency = AutonomyProposal::compile_dry_run(
+		Some(&objective),
+		slice::from_ref(&signal),
+		self_dependency_input,
+	)
+	.expect_err("self dependency should fail");
+
+	assert!(self_dependency.to_string().contains("cyclic dependencies"));
+
+	let mut invalid_stage_input = compile_input();
+
+	invalid_stage_input.issue_candidates =
+		vec![issue_candidate("bad-stage", "implementation", Vec::new())];
+
+	let invalid_stage =
+		AutonomyProposal::compile_dry_run(Some(&objective), &[signal], invalid_stage_input)
+			.expect_err("unsupported stage should fail");
+
+	assert!(invalid_stage.to_string().contains("unsupported stage"));
 }
 
 #[test]

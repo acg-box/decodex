@@ -49,8 +49,8 @@ pub(crate) use daemon_state::{
 };
 pub(crate) use dispatch::{
 	IssueDispatchMode, LoopGuardrailReason, PostReviewLaneDecision, PostReviewLaneStateLoad,
-	RetainedReviewLaneLoad, RetryDispatchDecision, RetryIssueStateHint, RetryKind,
-	ReviewOrchestrationPhase, RunLeaseDisposition, SelectedIssueRunCandidate,
+	ProgramDispatchSelection, RetainedReviewLaneLoad, RetryDispatchDecision, RetryIssueStateHint,
+	RetryKind, ReviewOrchestrationPhase, RunLeaseDisposition, SelectedIssueRunCandidate,
 };
 pub(crate) use errors::{
 	AgentGitCredentialsUnavailable, LoopGuardrailStopRequested, ManualAttentionRequested,
