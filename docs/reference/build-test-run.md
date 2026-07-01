@@ -9,7 +9,7 @@ tags: [reference, build, test, run, validation, setup, automation, resources, en
 source_refs: []
 code_refs: [Makefile.toml, Cargo.toml, apps/decodex/Cargo.toml, site/package.json, apps/decodex-app/Package.swift, README.md]
 related: [./workspace-layout.md, ./test-suite.md, ./docs-knowledge-map.md, ../policy.md, ../runbook/release-readiness.md, ../spec/okf-knowledge-layer.md]
-drift_watch: [Makefile.toml, Cargo.toml, site/package.json, apps/decodex-app/Package.swift, cargo make --list-all-steps, cargo make check, cargo nextest list --workspace --all-targets --all-features]
+drift_watch: [Makefile.toml, Cargo.toml, site/package.json, apps/decodex-app/Package.swift, cargo make --list-all-steps, cargo make check, cargo nextest list --workspace --all-targets --all-features, automations/decodex/scripts/config/sync_automations.py, automations/decodex/automations.toml, automations/radar/automations.toml]
 last_verified: 2026-06-27
 ---
 
@@ -94,6 +94,22 @@ decodex serve --listen-address 127.0.0.1:8192
 
 `README.md` remains the better source for the broad CLI usage list. This document owns
 the repository-memory owner for validation and entrypoint selection.
+
+Use these commands when installing or auditing repo-owned Codex app automations on a
+new machine:
+
+```sh
+python3 automations/decodex/scripts/config/sync_automations.py --apply
+python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
+python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/radar/automations.toml
+```
+
+`sync_automations.py` installs live `$CODEX_HOME/automations/*/automation.toml` files
+from repo manifests and prompts. The checked-in source stays portable: manifests use
+relative paths and `cwd = "{repo_root}"`, while the installer resolves the current
+clone path only in local Codex app config. It also refuses configured private prompt
+fragments such as absolute user-home paths, auth files, account files, and runtime
+databases before writing.
 
 ## Source Entrypoints
 
