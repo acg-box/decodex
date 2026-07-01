@@ -300,15 +300,10 @@ pub(crate) use run_cycle_reconciliation::{
 };
 
 mod daemon_retry;
+#[cfg(test)] pub(crate) use daemon_retry::schedule_retry_after_child_exit;
 pub(crate) use daemon_retry::{retry_delay, write_retry_schedule_for_run};
-#[cfg(test)]
-pub(crate) use daemon_retry::schedule_retry_after_child_exit;
 
 mod daemon;
-pub(crate) use daemon::{
-	build_operator_state_snapshot_for_publish, clear_orphaned_daemon_child_state,
-	load_daemon_tick_context, resolve_child_exit_run_attempt, run_daemon_tick,
-};
 #[cfg(test)]
 pub(crate) use daemon::{
 	DaemonTickRuntimeContext, inspect_current_daemon_child_reconciliation,
@@ -317,8 +312,22 @@ pub(crate) use daemon::{
 	plan_due_retry_run, plan_next_daemon_run, recover_and_reconcile_idle_daemon_state,
 	run_daemon_tick_with_review_state_inspector,
 };
+pub(crate) use daemon::{
+	build_operator_state_snapshot_for_publish, clear_orphaned_daemon_child_state,
+	load_daemon_tick_context, resolve_child_exit_run_attempt, run_daemon_tick,
+};
 
-include!("orchestrator/reconciliation.rs");
+mod reconciliation;
+pub(in crate::orchestrator) use reconciliation::{
+	apply_run_lease_reconciliation, inspect_exited_daemon_child_reconciliation,
+	observed_idle_duration, retained_review_handoff_matches_run, run_lease_reconciliation_workflow,
+	stalled_idle_duration, stalled_run_has_retained_partial_progress, superseded_run_disposition,
+};
+#[cfg(test)]
+pub(crate) use reconciliation::{
+	inspect_exited_daemon_child_reconciliation_at, inspect_run_lease_reconciliation_at,
+	stalled_protocol_idle_duration,
+};
 
 mod retained_review_orchestration;
 #[cfg(test)]
@@ -365,7 +374,29 @@ include!("orchestrator/execution_lifecycle.rs");
 
 include!("orchestrator/execution.rs");
 
-include!("orchestrator/dispatch_policy.rs");
+mod dispatch_policy;
+pub(crate) use dispatch_policy::issue_has_generic_dispatch_briefing;
+pub(in crate::orchestrator) use dispatch_policy::{
+	CloseoutDispatchEligibility, ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON,
+	cleanup_completed_post_review_lane, cleanup_terminal_worktree, cleanup_worktree_mapping,
+	clear_recovered_issue_lease, clear_terminal_guard_marker, clear_worktree_retry_schedule,
+	closeout_dispatch_block_reason, evaluate_closeout_dispatch_policy_with_inspector,
+	is_issue_eligible, is_issue_in_progress_for_run,
+	is_issue_not_dispatchable_for_current_dispatch, is_terminal_issue, issue_has_service_ownership,
+	issue_passes_closeout_dispatch_policy, issue_passes_dispatch_policy,
+	issue_passes_retry_dispatch_policy, issue_passes_retry_retention_policy,
+	issue_passes_review_repair_dispatch_policy, issue_retry_budget_exhausted,
+	issue_retry_budget_exhausted_for_worktree, mark_run_attempt_if_active,
+	ordinary_dispatch_blocked_by_retained_review_handoff, refresh_issue,
+	render_issue_description_for_prompt, retry_budget_base_for_dispatch_mode,
+	retry_budget_base_for_issue_worktree, state_name_is_terminal, todo_blocker_rule_passes,
+	write_retry_budget_marker, write_terminal_guard_marker,
+};
+#[cfg(test)]
+pub(crate) use dispatch_policy::{
+	closeout_dispatch_block_reason_with_inspector,
+	issue_passes_closeout_dispatch_policy_with_inspector,
+};
 
 include!("orchestrator/prompting.rs");
 
