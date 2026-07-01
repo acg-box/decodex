@@ -1,9 +1,13 @@
 use serde_json::json;
 
 use crate::tracker::linear::{
-	GraphqlError, IssueRelationConnection, LabelConnection, LinearIssue, LinearIssueRelation,
-	LinearLabel, LinearRelatedIssue, LinearState, LinearTeam, LinearUser, PageInfo,
-	StateConnection,
+	mapping,
+	schema::{
+		GraphqlError, IssueRelationConnection, LabelConnection, LinearIssue, LinearIssueRelation,
+		LinearLabel, LinearRelatedIssue, LinearState, LinearTeam, LinearUser, PageInfo,
+		StateConnection,
+	},
+	transport,
 };
 
 #[test]
@@ -61,8 +65,8 @@ fn map_issue_preserves_priority_and_created_at() {
 			page_info: PageInfo { has_next_page: false, end_cursor: None },
 		},
 	};
-	let blockers = super::map_blockers(&issue.inverse_relations.nodes);
-	let mapped = super::map_issue(issue, blockers);
+	let blockers = mapping::map_blockers(&issue.inverse_relations.nodes);
+	let mapped = mapping::map_issue(issue, blockers);
 
 	assert_eq!(mapped.priority, Some(2));
 	assert_eq!(mapped.author.as_deref(), Some("Yvette"));
@@ -75,7 +79,7 @@ fn map_issue_preserves_priority_and_created_at() {
 
 #[test]
 fn map_blockers_filters_non_blocking_relations() {
-	let blockers = super::map_blockers(&[
+	let blockers = mapping::map_blockers(&[
 		LinearIssueRelation {
 			relation_type: String::from("blocks"),
 			issue: LinearRelatedIssue {
@@ -111,7 +115,8 @@ fn rate_limited_error_message_uses_typed_linear_extensions() {
 			"reset": 1_777_392_000
 		})),
 	}];
-	let message = super::rate_limited_error_message(&errors).expect("rate limit should classify");
+	let message =
+		transport::rate_limited_error_message(&errors).expect("rate limit should classify");
 
 	assert!(message.contains("rate limited"));
 	assert!(message.contains("1777392000"));
