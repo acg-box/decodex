@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(in crate::orchestrator::reconciliation) fn reconcile_stalled_run_lease<T>(
 	tracker: &T,

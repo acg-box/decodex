@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(in crate::orchestrator) fn stalled_idle_duration(
 	state_store: &StateStore,

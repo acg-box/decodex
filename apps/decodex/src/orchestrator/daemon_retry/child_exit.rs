@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(crate) fn schedule_retry_after_child_exit<T>(
 	mut context: ChildExitRetryContext<'_, T>,

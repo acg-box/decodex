@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 impl SqliteStateStore {
 	pub(in crate::state) fn delete_lease(&mut self, issue_id: &str) -> Result<()> {
