@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 impl SqliteStateStore {
 	pub(in crate::state) fn bootstrap_run_control_channels_schema(&self) -> Result<()> {

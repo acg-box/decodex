@@ -4,12 +4,9 @@ use std::collections::BTreeSet;
 
 #[cfg(test)]
 use crate::state::RUN_CONTROL_CHANNEL_STATUS_FAILED;
-use crate::{
-	tracker::{
-		privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier,
-		records::LinearExecutionEventRecord,
-	},
-	workflow::WorkflowTracker,
+use crate::tracker::{
+	privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier,
+	records::LinearExecutionEventRecord,
 };
 
 mod closeout;
@@ -46,9 +43,11 @@ use context::{
 	load_recovery_context_for_dry_run, load_recovery_context_read_only,
 	remember_recovery_tracker_backoff_message,
 };
+#[cfg(test)]
+use events::manual_adopt_run_id;
 use events::{
 	append_review_handoff_adopt_private_event, append_review_handoff_rebind_private_event,
-	manual_adopt_run_id, review_handoff_adopt_event, review_handoff_rebind_event,
+	review_handoff_adopt_event, review_handoff_rebind_event,
 };
 #[cfg(test)]
 use events::{current_timestamp, timestamp_after_seconds};
@@ -65,30 +64,19 @@ use ghost_lane_cleanup::{
 use ghost_lane_diagnosis::{diagnose_ghost_lanes, diagnose_ghost_lanes_read_only};
 #[cfg(test)]
 use git_worktree::worktree_blocking_status_lines;
-use git_worktree::{
-	git_toplevel_path, repository_relative_path, worktree_checkout_branch_name, worktree_head_oid,
-	worktree_is_clean,
-};
-use pull_request_inspection::{
-	inspect_project_pull_request, inspect_project_pull_request_merge_commit,
-	inspect_rebind_pull_request, landing_url,
-};
+use pull_request_inspection::{inspect_project_pull_request, landing_url};
 #[cfg(test)]
 use reports::GhostLaneDiagnostic;
 use reports::{
-	GhostLaneRecoveryReport, ReviewHandoffRecoveryReport, StaleActiveRecoveryReport,
-	render_ghost_lane_issue, render_ghost_lane_recovery_report,
-	render_review_handoff_recovery_report, render_stale_active_recovery_report,
+	GhostLaneRecoveryReport, StaleActiveRecoveryReport, render_ghost_lane_issue,
+	render_ghost_lane_recovery_report, render_stale_active_recovery_report,
 };
 pub(crate) use requests::{
 	GhostLaneCleanupRequest, GhostLaneDiagnoseRequest, LegacyCloseoutRecoveryRequest,
 	MergedCloseoutRecoveryRequest, ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest,
 	ReviewHandoffRebindRequest, StaleActiveDiagnoseRequest, StaleActiveReleaseRequest,
 };
-use review_handoff::{
-	AdoptValidation, RebindValidation, load_issue_by_identifier,
-	relative_worktree_path_for_recovery, validate_retained_pr_worktree,
-};
+use review_handoff::{AdoptValidation, RebindValidation, load_issue_by_identifier};
 pub(crate) use review_handoff::{
 	run_review_handoff_adopt, run_review_handoff_diagnose, run_review_handoff_rebind,
 };
@@ -96,16 +84,15 @@ pub(crate) use review_handoff::{
 use review_handoff::{validate_adopt_existing_worktree_mapping, validate_existing_handoff_refresh};
 #[cfg(test)]
 use review_handoff_apply::write_review_lifecycle_markers_with_rollback;
-use review_handoff_apply::{apply_review_handoff_adopt, apply_review_handoff_rebind};
 #[cfg(test)]
 use review_handoff_diagnosis::{
 	HandoffDiagnosticRequest, diagnose_all_retained_review_worktrees_with_tracker,
 	diagnose_issue_with_tracker, diagnostic_binding,
 };
-use review_handoff_diagnosis::{diagnose_all_retained_review_worktrees, diagnose_issue};
+#[cfg(test)]
 use review_handoff_policy::{
-	RebindMode, RebindSuccessStateTransition, validate_adopt_issue_state_for_policy,
-	validate_adopt_landing_state, validate_rebind_issue_state_for_policy,
+	RebindMode, validate_adopt_issue_state_for_policy, validate_adopt_landing_state,
+	validate_rebind_issue_state_for_policy,
 };
 pub(crate) use stale_active::{run_stale_active_diagnose, run_stale_active_release};
 use stale_active_diagnosis::diagnose_stale_active_issues;

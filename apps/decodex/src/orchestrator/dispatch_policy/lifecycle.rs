@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(in crate::orchestrator) fn clear_recovered_issue_lease(
 	project_id: &str,
@@ -113,8 +114,9 @@ where
 	T: IssueTracker + ?Sized,
 {
 	match dispatch_mode {
-		IssueDispatchMode::ReviewRepair =>
-			Ok(!issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?),
+		IssueDispatchMode::ReviewRepair => {
+			Ok(!issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?)
+		},
 		IssueDispatchMode::Normal
 		| IssueDispatchMode::Program
 		| IssueDispatchMode::Retry

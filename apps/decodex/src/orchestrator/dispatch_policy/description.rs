@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(in crate::orchestrator::dispatch_policy) fn description_is_machine_only_fenced_block(
 	description: &str,
