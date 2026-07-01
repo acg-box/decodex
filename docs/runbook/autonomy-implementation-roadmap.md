@@ -7,15 +7,15 @@ authority: procedural
 owner: runtime
 tags: [runbook, autonomy, objective, roadmap]
 code_refs:
-  - apps/decodex/src/autonomy_objective/mod.rs
-  - apps/decodex/src/autonomy_signal/mod.rs
+  - apps/decodex/src/autonomy_objective.rs
+  - apps/decodex/src/autonomy_signal.rs
   - apps/decodex/src/autonomy_proposal.rs
   - apps/decodex/src/loop_contract.rs
   - apps/decodex/src/config.rs
   - apps/decodex/src/mcp.rs
   - apps/decodex/src/program_intake.rs
   - apps/decodex/src/orchestrator/program_reconciler.rs
-  - apps/decodex/src/orchestrator/status/mod.rs
+  - apps/decodex/src/orchestrator/status.rs
   - apps/decodex/src/state/store.rs
 related:
   - ../spec/autonomy-control-plane.md
@@ -150,7 +150,7 @@ Goal: Add Objective Contract storage and readback without automatic execution.
 
 Implementation surfaces:
 
-- `apps/decodex/src/autonomy_objective/mod.rs` for `decodex.autonomy_objective/1`.
+- `apps/decodex/src/autonomy_objective.rs` for `decodex.autonomy_objective/1`.
 - `apps/decodex/src/loop_contract.rs` remains the separate Decision Contract model.
 - `apps/decodex/src/state/store.rs` and `apps/decodex/src/state/internal.rs` for
   persisted objective records.
@@ -193,7 +193,7 @@ Goal: Persist signals as evidence only.
 
 Implementation surfaces:
 
-- `apps/decodex/src/autonomy_signal/mod.rs` owns the versioned
+- `apps/decodex/src/autonomy_signal.rs` owns the versioned
   `decodex.autonomy_signal/1` payload, fingerprint, validation rules, and first
   dogfood builders.
 - Runtime state store for `decodex.autonomy_signal/1`.
