@@ -1,10 +1,10 @@
-use super::{
-	DynamicToolCallResponse, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, LocalRepoDetails,
+use serde_json::{self, Value};
+
+use crate::agent::tracker_tool_bridge::tools::{review_checkpoint::{self, ReviewFindingPolicyUpdate}};
+use crate::agent::tracker_tool_bridge::{
+	self, DynamicToolCallResponse, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, LocalRepoDetails,
 	NormalizedReviewCheckpointPayload, REVIEW_POLICY_CONVERGENCE_BUDGET, ReviewCheckpointArgs,
-	ReviewFindingPolicyUpdate, ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus,
-	TrackerToolBridge, Value, current_review_blocker_findings, normalize_review_checkpoint_payload,
-	review_finding_policy_from_previous_state, review_finding_policy_update, serde_json,
-	tracker_tool_bridge, validate_review_cost_control_policy_state,
+	ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus, TrackerToolBridge,
 };
 
 struct ReviewCheckpointPayloadCounts {
@@ -91,7 +91,7 @@ impl<'a> TrackerToolBridge<'a> {
 				accepted_findings: prepared.checkpoint_payload.accepted_findings.len(),
 				rejected_findings: prepared.checkpoint_payload.rejected_findings.len(),
 				finding_routes: prepared.checkpoint_payload.finding_routes.len(),
-				current_blockers: current_review_blocker_findings(&prepared.checkpoint_payload)
+				current_blockers: review_checkpoint::current_review_blocker_findings(&prepared.checkpoint_payload)
 					.count(),
 			},
 		);
@@ -128,7 +128,7 @@ impl<'a> TrackerToolBridge<'a> {
 
 		self.ensure_review_checkpoint_committed_head(&local_repo)?;
 
-		let mut checkpoint_payload = normalize_review_checkpoint_payload(
+		let mut checkpoint_payload = review_checkpoint::normalize_review_checkpoint_payload(
 			parsed,
 			review_policy_phase,
 			review_policy_status,
@@ -143,7 +143,7 @@ impl<'a> TrackerToolBridge<'a> {
 			&checkpoint_payload,
 		)?;
 
-		validate_review_cost_control_policy_state(
+		review_checkpoint::validate_review_cost_control_policy_state(
 			&checkpoint_payload.review_cost_control,
 			&policy_update,
 		)?;
@@ -211,7 +211,7 @@ impl<'a> TrackerToolBridge<'a> {
 		let previous_finding_policy = previous_state
 			.as_ref()
 			.and_then(|previous_state| {
-				review_finding_policy_from_previous_state(previous_state, review_policy_phase)
+				review_checkpoint::review_finding_policy_from_previous_state(previous_state, review_policy_phase)
 			})
 			.unwrap_or_default();
 		let previous_nonclean_rounds = previous_state
@@ -250,7 +250,7 @@ impl<'a> TrackerToolBridge<'a> {
 			));
 		}
 
-		Ok(review_finding_policy_update(
+		Ok(review_checkpoint::review_finding_policy_update(
 			previous_finding_policy,
 			previous_nonclean_rounds,
 			review_policy_phase,
