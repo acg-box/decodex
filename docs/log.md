@@ -11,6 +11,11 @@
 
 ## 2026-06-30
 
+- Added the automatic-improvement tracking checklist to the autonomy roadmap,
+  including Program dispatch provenance, explicit proposal issue DAGs, policy
+  resolver and eval gates, natural-language review UX, and weekly read-only dogfood
+  evaluation criteria. Updated the autonomy spec for `issue_candidates[]` proposal
+  identity and Decision Contract bridge behavior.
 - Removed the `decodex docs lint` command alias and made `decodex docs check` the
   only docs validation subcommand. Updated `cargo make check-docs`, docs-impact
   prompts, codebase command policy, knowledge references, and OKF docs evidence to

@@ -681,6 +681,7 @@ fn autonomy_proposal_input(
 		rejected_alternatives: vec![String::from("Ask operators to inspect SQLite manually.")],
 		rollback_path: String::from("Remove the operator readback projection."),
 		weakened_validation_or_review: Vec::new(),
+		issue_candidates: Vec::new(),
 		created_at: String::from("2026-06-23T00:02:00Z"),
 	}
 }

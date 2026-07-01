@@ -689,6 +689,7 @@ pub(super) fn seed_autonomy_mcp_state(state_store: &StateStore) -> String {
 				rejected_alternatives: Vec::new(),
 				rollback_path: String::from("Revert MCP autonomy surface."),
 				weakened_validation_or_review: Vec::new(),
+				issue_candidates: Vec::new(),
 				created_at: String::from("2026-06-23T00:02:00Z"),
 			},
 			&[signal_id],
