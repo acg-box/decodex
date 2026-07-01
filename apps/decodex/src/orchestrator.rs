@@ -310,7 +310,17 @@ include!("orchestrator/daemon.rs");
 
 include!("orchestrator/reconciliation.rs");
 
-include!("orchestrator/retained_review_orchestration.rs");
+mod retained_review_orchestration;
+#[cfg(test)]
+pub(crate) use retained_review_orchestration::{
+	PassiveRetainedAttentionRuntime, apply_passive_retained_manual_attention_with_run_identity,
+	ensure_review_orchestration_marker,
+};
+pub(crate) use retained_review_orchestration::{
+	RetainedReviewLane, reconcile_post_review_orchestration,
+	reconcile_post_review_orchestration_with_inspector,
+	worktree_mapping_is_stale_terminal_local_residue,
+};
 
 mod run_cycle_post_review;
 pub(crate) use run_cycle_post_review::{
@@ -327,7 +337,17 @@ pub(crate) use run_cycle_post_review::{
 	select_post_review_repair_issue_candidate_with_inspector,
 };
 
-include!("orchestrator/run_cycle.rs");
+mod run_cycle;
+pub(crate) use run_cycle::{
+	closeout_lane_active_claim_blocks_dispatch, load_configured_cycle_workflow,
+	plan_project_issue_run_with_exclusions, run_configured_cycle, run_target_issue_once,
+};
+#[cfg(test)]
+pub(crate) use run_cycle::{
+	drain_non_github_review_retained_tail_with_inspector, prepare_issue_run, run_project_once,
+	run_retained_closeout_for_handoff_summary, run_target_issue_once_with_inferred_dispatch,
+	select_target_status_visible_program_candidate, target_issue_active_claim_blocks_dispatch,
+};
 
 include!("orchestrator/runtime_validation.rs");
 
