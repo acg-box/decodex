@@ -1,9 +1,13 @@
-use super::super::{
-	BTreeSet, Deserialize, ExecutionNodeEvaluation, ExecutionProgramEvaluation,
-	ExecutionProgramOperatorSummary, ExecutionProgramRecord, Serialize,
-};
+use std::collections::BTreeSet;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+use serde::{Deserialize, Serialize};
+
+use crate::execution_program::{
+	ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary,
+};
+use crate::state::ExecutionProgramRecord;
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct OperatorExecutionProgramStatus {
 	pub(crate) program_id: String,
 	#[serde(default = "operator_execution_program_unknown_status")]
@@ -108,7 +112,7 @@ impl OperatorExecutionProgramStatus {
 	}
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct OperatorExecutionProgramNodeStatus {
 	#[serde(default = "operator_execution_program_unknown_status")]
 	pub(crate) program_stage: String,
