@@ -21,7 +21,19 @@ impl super::super::SqliteStateStore {
 		let rows = statement.query_map([], decision_contract_runtime_row_parts)?;
 
 		for row in rows {
-			let record = decision_contract_record_from_row_parts(row?)?;
+			let parts = row?;
+			let record = match decision_contract_record_from_row_parts(parts) {
+				Ok(record) => record,
+				Err(error) if decision_contract_load_error_is_quarantinable(error.as_ref()) => {
+					tracing::warn!(
+						error = %error,
+						"Skipped invalid Decision Contract during state snapshot load."
+					);
+
+					continue;
+				},
+				Err(error) => return Err(error),
+			};
 
 			state.decision_contracts.insert(record.key(), record);
 		}
@@ -67,7 +79,23 @@ impl super::super::SqliteStateStore {
 		let mut records = Vec::new();
 
 		for row in rows {
-			records.push(decision_contract_record_from_row_parts(row?)?);
+			let parts = row?;
+			let record = match decision_contract_record_from_row_parts(parts) {
+				Ok(record) => record,
+				Err(error) if decision_contract_load_error_is_quarantinable(error.as_ref()) => {
+					tracing::warn!(
+						error = %error,
+						project_id,
+						source_issue_id,
+						"Skipped invalid Decision Contract during issue list read."
+					);
+
+					continue;
+				},
+				Err(error) => return Err(error),
+			};
+
+			records.push(record);
 		}
 
 		Ok(records)
@@ -88,7 +116,22 @@ impl super::super::SqliteStateStore {
 		let mut records = Vec::new();
 
 		for row in rows {
-			records.push(decision_contract_record_from_row_parts(row?)?);
+			let parts = row?;
+			let record = match decision_contract_record_from_row_parts(parts) {
+				Ok(record) => record,
+				Err(error) if decision_contract_load_error_is_quarantinable(error.as_ref()) => {
+					tracing::warn!(
+						error = %error,
+						project_id,
+						"Skipped invalid Decision Contract during project list read."
+					);
+
+					continue;
+				},
+				Err(error) => return Err(error),
+			};
+
+			records.push(record);
 		}
 
 		Ok(records)
@@ -339,7 +382,19 @@ impl super::super::SqliteStateStore {
 		let rows = statement.query_map([], autonomy_proposal_runtime_row_parts)?;
 
 		for row in rows {
-			let record = autonomy_proposal_record_from_row_parts(row?)?;
+			let parts = row?;
+			let record = match autonomy_proposal_record_from_row_parts(parts) {
+				Ok(record) => record,
+				Err(error) if autonomy_proposal_load_error_is_quarantinable(error.as_ref()) => {
+					tracing::warn!(
+						error = %error,
+						"Skipped invalid Autonomy Proposal during state snapshot load."
+					);
+
+					continue;
+				},
+				Err(error) => return Err(error),
+			};
 
 			state.autonomy_proposals.insert(record.key(), record);
 		}
@@ -363,7 +418,20 @@ impl super::super::SqliteStateStore {
 		let rows = statement.query_map(params![project_id], autonomy_proposal_runtime_row_parts)?;
 
 		for row in rows {
-			let record = autonomy_proposal_record_from_row_parts(row?)?;
+			let parts = row?;
+			let record = match autonomy_proposal_record_from_row_parts(parts) {
+				Ok(record) => record,
+				Err(error) if autonomy_proposal_load_error_is_quarantinable(error.as_ref()) => {
+					tracing::warn!(
+						error = %error,
+						project_id,
+						"Skipped invalid Autonomy Proposal during project state load."
+					);
+
+					continue;
+				},
+				Err(error) => return Err(error),
+			};
 
 			state.autonomy_proposals.insert(record.key(), record);
 		}
@@ -417,7 +485,24 @@ impl super::super::SqliteStateStore {
 		let mut records = Vec::new();
 
 		for row in rows {
-			records.push(autonomy_proposal_record_from_row_parts(row?)?);
+			let parts = row?;
+			let record = match autonomy_proposal_record_from_row_parts(parts) {
+				Ok(record) => record,
+				Err(error) if autonomy_proposal_load_error_is_quarantinable(error.as_ref()) => {
+					tracing::warn!(
+						error = %error,
+						project_id,
+						objective_id,
+						objective_version,
+						"Skipped invalid Autonomy Proposal during objective list read."
+					);
+
+					continue;
+				},
+				Err(error) => return Err(error),
+			};
+
+			records.push(record);
 		}
 
 		Ok(records)
@@ -445,7 +530,22 @@ impl super::super::SqliteStateStore {
 		let mut records = Vec::new();
 
 		for row in rows {
-			records.push(autonomy_proposal_record_from_row_parts(row?)?);
+			let parts = row?;
+			let record = match autonomy_proposal_record_from_row_parts(parts) {
+				Ok(record) => record,
+				Err(error) if autonomy_proposal_load_error_is_quarantinable(error.as_ref()) => {
+					tracing::warn!(
+						error = %error,
+						project_id,
+						"Skipped invalid Autonomy Proposal during recent project read."
+					);
+
+					continue;
+				},
+				Err(error) => return Err(error),
+			};
+
+			records.push(record);
 		}
 
 		Ok(records)
@@ -644,4 +744,23 @@ impl super::super::SqliteStateStore {
 
 		Ok(records)
 	}
+}
+
+fn decision_contract_load_error_is_quarantinable(
+	error: &(dyn std::error::Error + 'static),
+) -> bool {
+	let message = error.to_string();
+
+	message.contains("Decision Contract proposed issue `")
+		&& (message.contains("depends on unknown issue")
+			|| message.contains("must not depend on itself")
+			|| message.contains("dependency cycle includes"))
+}
+
+fn autonomy_proposal_load_error_is_quarantinable(
+	error: &(dyn std::error::Error + 'static),
+) -> bool {
+	let message = error.to_string();
+
+	message.contains("Autonomy proposal `") && message.contains("fingerprint mismatch")
 }
