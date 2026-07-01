@@ -85,6 +85,7 @@ where
 	};
 	let dispatch_mode = selected_issue.dispatch_mode;
 	let preferred_run_identity = selected_issue.preferred_run_identity;
+	let program_dispatch = selected_issue.program_dispatch.clone();
 	if !dry_run && dispatch_mode != IssueDispatchMode::Closeout {
 		ensure_project_has_no_merged_worktree_cleanup_debt(project)?;
 	}
@@ -143,6 +144,15 @@ where
 	else {
 		return Ok(None);
 	};
+
+	if !dry_run && let Some(program_dispatch) = program_dispatch.as_ref() {
+		record_program_dispatch_selected(
+			state_store,
+			project.service_id(),
+			&issue_run,
+			program_dispatch,
+		)?;
+	}
 
 	Ok(Some(issue_run))
 }

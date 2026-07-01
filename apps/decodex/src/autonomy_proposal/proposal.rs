@@ -46,6 +46,7 @@ impl AutonomyProposal {
 		let refusal_reasons = proposal_refusals(objective, signals, &input, &contradictions);
 		let state = derive_proposal_state(!source_signal_ids.is_empty(), &refusal_reasons);
 		let affected_identifiers = unique_sorted_strings(input.affected_identifiers);
+		let issue_candidates = input.issue_candidates;
 		let mut proposal = Self {
 			schema: autonomy_proposal_schema(),
 			record_version: autonomy_proposal_record_version(),
@@ -71,6 +72,7 @@ impl AutonomyProposal {
 			challenge_requirements: unique_sorted_strings(input.challenge_requirements),
 			rejected_alternatives: unique_sorted_strings(input.rejected_alternatives),
 			rollback_path: input.rollback_path,
+			issue_candidates,
 			contradictions,
 			gaps,
 			refusal_reasons,
@@ -139,6 +141,10 @@ impl AutonomyProposal {
 
 	pub(crate) fn validation_gates(&self) -> &[String] {
 		&self.validation_gates
+	}
+
+	pub(crate) fn issue_candidates(&self) -> &[AutonomyProposalIssueCandidate] {
+		&self.issue_candidates
 	}
 
 	pub(crate) fn contradictions(&self) -> &[String] {
@@ -225,7 +231,7 @@ impl AutonomyProposal {
 				"missing_decisions": [],
 				"validation_expectations": proposal_validation_expectations(self),
 				"risk_notes": proposal_risk_notes(self),
-				"proposed_issues": [proposal_issue_candidate(self)],
+				"proposed_issues": proposal_issue_candidates(self),
 				"promotion_targets": ["research_promote", "decision_contract"],
 				"conflict_domains": proposal_conflict_domains(self),
 			},

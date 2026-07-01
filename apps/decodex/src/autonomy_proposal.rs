@@ -96,7 +96,64 @@ pub(crate) struct AutonomyProposalCompileInput {
 	pub(crate) rejected_alternatives: Vec<String>,
 	pub(crate) rollback_path: String,
 	pub(crate) weakened_validation_or_review: Vec<String>,
+	pub(crate) issue_candidates: Vec<AutonomyProposalIssueCandidate>,
 	pub(crate) created_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AutonomyProposalIssueCandidate {
+	pub(crate) key: String,
+	pub(crate) title: String,
+	pub(crate) objective: String,
+	pub(crate) stage: String,
+	#[serde(default)]
+	pub(crate) dependencies: Vec<String>,
+	#[serde(default)]
+	#[serde(alias = "conflictDomains")]
+	pub(crate) conflict_domains: Vec<String>,
+	pub(crate) acceptance: Vec<String>,
+	pub(crate) validation: Vec<String>,
+	#[serde(default)]
+	pub(crate) risk: Vec<String>,
+	#[serde(alias = "queueIntent")]
+	pub(crate) queue_intent: String,
+}
+impl AutonomyProposalIssueCandidate {
+	fn validate(&self) -> Result<()> {
+		validate_required("autonomy proposal issue_candidates.key", &self.key)?;
+		validate_required("autonomy proposal issue_candidates.title", &self.title)?;
+		validate_required("autonomy proposal issue_candidates.objective", &self.objective)?;
+		validate_required("autonomy proposal issue_candidates.stage", &self.stage)?;
+		validate_string_list(
+			"autonomy proposal issue_candidates.dependencies",
+			&self.dependencies,
+		)?;
+		validate_string_list(
+			"autonomy proposal issue_candidates.conflict_domains",
+			&self.conflict_domains,
+		)?;
+		validate_string_list("autonomy proposal issue_candidates.acceptance", &self.acceptance)?;
+		validate_string_list("autonomy proposal issue_candidates.validation", &self.validation)?;
+		validate_string_list("autonomy proposal issue_candidates.risk", &self.risk)?;
+		validate_required("autonomy proposal issue_candidates.queue_intent", &self.queue_intent)?;
+
+		if self.acceptance.is_empty() {
+			eyre::bail!(
+				"Autonomy proposal issue candidate `{}` must include acceptance criteria.",
+				self.key
+			);
+		}
+		if self.validation.is_empty() {
+			eyre::bail!(
+				"Autonomy proposal issue candidate `{}` must include validation expectations.",
+				self.key
+			);
+		}
+
+		validate_proposed_issue_stage(&self.key, &self.stage)?;
+		validate_proposed_issue_queue_intent(&self.key, &self.queue_intent)
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -210,6 +267,9 @@ pub(crate) struct AutonomyProposal {
 	#[serde(default)]
 	rejected_alternatives: Vec<String>,
 	rollback_path: String,
+	#[serde(default)]
+	#[serde(skip_serializing_if = "Vec::is_empty")]
+	issue_candidates: Vec<AutonomyProposalIssueCandidate>,
 	#[serde(default)]
 	contradictions: Vec<String>,
 	#[serde(default)]

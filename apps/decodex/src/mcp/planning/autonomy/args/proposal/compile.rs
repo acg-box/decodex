@@ -2,7 +2,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
-	autonomy_proposal::AutonomyProposalCompileInput,
+	autonomy_proposal::{AutonomyProposalCompileInput, AutonomyProposalIssueCandidate},
 	mcp::{
 		self, TOOL_AUTONOMY_COMPILE_PROPOSAL,
 		planning::{self, PlanningAuthorityArgs},
@@ -37,6 +37,8 @@ pub(in crate::mcp::planning::autonomy) struct AutonomyProposalCompileArgs {
 	pub(in crate::mcp::planning::autonomy) rollback_path: String,
 	#[serde(default)]
 	pub(in crate::mcp::planning::autonomy) weakened_validation_or_review: Vec<String>,
+	#[serde(default)]
+	pub(in crate::mcp::planning::autonomy) issue_candidates: Vec<AutonomyProposalIssueCandidate>,
 	pub(in crate::mcp::planning::autonomy) created_at: Option<String>,
 }
 impl AutonomyProposalCompileArgs {
@@ -63,6 +65,7 @@ impl AutonomyProposalCompileArgs {
 			rejected_alternatives: self.rejected_alternatives,
 			rollback_path: self.rollback_path,
 			weakened_validation_or_review: self.weakened_validation_or_review,
+			issue_candidates: self.issue_candidates,
 			created_at: self.created_at.unwrap_or_else(planning::mcp_now_rfc3339),
 		})
 	}

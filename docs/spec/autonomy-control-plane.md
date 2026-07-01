@@ -16,15 +16,15 @@ source_refs:
   - https://modelcontextprotocol.io/specification/2025-11-25
   - https://developers.openai.com/codex/learn/best-practices
 code_refs:
-  - apps/decodex/src/autonomy_objective/mod.rs
-  - apps/decodex/src/autonomy_signal/mod.rs
+  - apps/decodex/src/autonomy_objective.rs
+  - apps/decodex/src/autonomy_signal.rs
   - apps/decodex/src/autonomy_proposal.rs
   - apps/decodex/src/loop_contract.rs
   - apps/decodex/src/config.rs
   - apps/decodex/src/mcp.rs
   - apps/decodex/src/program_intake.rs
-  - apps/decodex/src/orchestrator/status/mod.rs
-  - apps/decodex/src/orchestrator/types/mod.rs
+  - apps/decodex/src/orchestrator/status.rs
+  - apps/decodex/src/orchestrator/types.rs
   - apps/decodex/src/orchestrator/operator_dashboard/body.html
   - apps/decodex/src/state/store.rs
   - apps/decodex/src/state/internal.rs
@@ -303,13 +303,17 @@ A proposal must bind:
 - non-goals and allowed surfaces that constrain it
 - validation gates
 - review and challenge requirements
+- optional `issue_candidates[]` for explicit issue splitting; each candidate must
+  have a stable key, title, objective, stage, dependencies, acceptance criteria,
+  validation expectations, queue intent, and optional conflict domains or risk notes
 - evidence class, contradictions, and gaps
 - rejected alternatives and rollback path
 
 Stable proposal identity is derived from objective id, objective version, project id,
 sorted signal ids, affected identifiers, source family, and intended surface. It must
-not include timestamps, elapsed seconds, warning order, volatile counts, or model
-output size.
+also include explicit `issue_candidates[]` when present so a changed issue split is a
+new proposal identity. It must not include timestamps, elapsed seconds, warning
+order, volatile counts, or model output size.
 
 Proposal states:
 

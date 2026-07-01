@@ -183,6 +183,7 @@ where
 				issue,
 				dispatch_mode: IssueDispatchMode::Closeout,
 				preferred_run_identity,
+				program_dispatch: None,
 			}));
 		}
 	}
@@ -413,5 +414,6 @@ where
 		issue,
 		dispatch_mode: IssueDispatchMode::Closeout,
 		preferred_run_identity,
+		program_dispatch: None,
 	}))
 }
