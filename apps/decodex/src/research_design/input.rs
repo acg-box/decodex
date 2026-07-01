@@ -4,8 +4,7 @@ use crate::{
 	loop_contract::DecisionContractStatus,
 	prelude::{Result, eyre},
 };
-
-use super::{normalize_optional_text, normalize_required_text, normalize_text_list};
+use crate::research_design::normalized;
 
 /// Research/design outcome before any execution authority exists.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -19,8 +18,9 @@ pub(crate) enum ResearchDesignOutcome {
 impl ResearchDesignOutcome {
 	pub(super) fn contract_status(self) -> DecisionContractStatus {
 		match self {
-			Self::DecisionReady | Self::NotDecisionReady | Self::Blocked =>
-				DecisionContractStatus::DraftLatent,
+			Self::DecisionReady | Self::NotDecisionReady | Self::Blocked => {
+				DecisionContractStatus::DraftLatent
+			},
 			Self::NeedsHumanDecision => DecisionContractStatus::NeedsHumanDecision,
 		}
 	}
@@ -133,9 +133,9 @@ pub(crate) struct ResearchProvenanceInput {
 impl ResearchProvenanceInput {
 	pub(super) fn normalized(self) -> Result<Self> {
 		Ok(Self {
-			kind: normalize_required_text("provenance.kind", self.kind)?,
-			reference: normalize_required_text("provenance.reference", self.reference)?,
-			summary: normalize_required_text("provenance.summary", self.summary)?,
+			kind: normalized::normalize_required_text("provenance.kind", self.kind)?,
+			reference: normalized::normalize_required_text("provenance.reference", self.reference)?,
+			summary: normalized::normalize_required_text("provenance.summary", self.summary)?,
 		})
 	}
 }
@@ -154,10 +154,13 @@ pub(crate) struct ResearchEvidenceInput {
 impl ResearchEvidenceInput {
 	pub(super) fn normalized(self) -> Result<Self> {
 		Ok(Self {
-			kind: normalize_required_text("evidence.kind", self.kind)?,
-			claim: normalize_required_text("evidence.claim", self.claim)?,
-			support: normalize_required_text("evidence.support", self.support)?,
-			source_ref: normalize_optional_text("evidence.source_ref", self.source_ref)?,
+			kind: normalized::normalize_required_text("evidence.kind", self.kind)?,
+			claim: normalized::normalize_required_text("evidence.claim", self.claim)?,
+			support: normalized::normalize_required_text("evidence.support", self.support)?,
+			source_ref: normalized::normalize_optional_text(
+				"evidence.source_ref",
+				self.source_ref,
+			)?,
 		})
 	}
 }
@@ -177,10 +180,10 @@ pub(crate) struct ResearchOptionInput {
 impl ResearchOptionInput {
 	pub(super) fn normalized(self) -> Result<Self> {
 		Ok(Self {
-			option: normalize_required_text("options.option", self.option)?,
-			tradeoffs: normalize_text_list("options.tradeoffs", self.tradeoffs)?,
-			decision: normalize_optional_text("options.decision", self.decision)?,
-			rejected_reason: normalize_optional_text(
+			option: normalized::normalize_required_text("options.option", self.option)?,
+			tradeoffs: normalized::normalize_text_list("options.tradeoffs", self.tradeoffs)?,
+			decision: normalized::normalize_optional_text("options.decision", self.decision)?,
+			rejected_reason: normalized::normalize_optional_text(
 				"options.rejected_reason",
 				self.rejected_reason,
 			)?,
@@ -201,10 +204,16 @@ pub(crate) struct ResearchSubworkInput {
 impl ResearchSubworkInput {
 	pub(super) fn normalized(self) -> Result<Self> {
 		Ok(Self {
-			worker_kind: normalize_required_text("ai_subwork.worker_kind", self.worker_kind)?,
-			objective: normalize_required_text("ai_subwork.objective", self.objective)?,
-			outcome: normalize_required_text("ai_subwork.outcome", self.outcome)?,
-			evidence_refs: normalize_text_list("ai_subwork.evidence_refs", self.evidence_refs)?,
+			worker_kind: normalized::normalize_required_text(
+				"ai_subwork.worker_kind",
+				self.worker_kind,
+			)?,
+			objective: normalized::normalize_required_text("ai_subwork.objective", self.objective)?,
+			outcome: normalized::normalize_required_text("ai_subwork.outcome", self.outcome)?,
+			evidence_refs: normalized::normalize_text_list(
+				"ai_subwork.evidence_refs",
+				self.evidence_refs,
+			)?,
 		})
 	}
 
@@ -235,19 +244,31 @@ pub(crate) struct ResearchProposedIssueInput {
 impl ResearchProposedIssueInput {
 	pub(super) fn normalized(self) -> Result<Self> {
 		let issue = Self {
-			key: normalize_required_text("proposed_issues.key", self.key)?,
-			title: normalize_required_text("proposed_issues.title", self.title)?,
-			objective: normalize_required_text("proposed_issues.objective", self.objective)?,
-			stage: normalize_required_text("proposed_issues.stage", self.stage)?,
-			dependencies: normalize_text_list("proposed_issues.dependencies", self.dependencies)?,
-			conflict_domains: normalize_text_list(
+			key: normalized::normalize_required_text("proposed_issues.key", self.key)?,
+			title: normalized::normalize_required_text("proposed_issues.title", self.title)?,
+			objective: normalized::normalize_required_text(
+				"proposed_issues.objective",
+				self.objective,
+			)?,
+			stage: normalized::normalize_required_text("proposed_issues.stage", self.stage)?,
+			dependencies: normalized::normalize_text_list(
+				"proposed_issues.dependencies",
+				self.dependencies,
+			)?,
+			conflict_domains: normalized::normalize_text_list(
 				"proposed_issues.conflict_domains",
 				self.conflict_domains,
 			)?,
-			acceptance: normalize_text_list("proposed_issues.acceptance", self.acceptance)?,
-			validation: normalize_text_list("proposed_issues.validation", self.validation)?,
-			risk: normalize_text_list("proposed_issues.risk", self.risk)?,
-			queue_intent: normalize_required_text(
+			acceptance: normalized::normalize_text_list(
+				"proposed_issues.acceptance",
+				self.acceptance,
+			)?,
+			validation: normalized::normalize_text_list(
+				"proposed_issues.validation",
+				self.validation,
+			)?,
+			risk: normalized::normalize_text_list("proposed_issues.risk", self.risk)?,
+			queue_intent: normalized::normalize_required_text(
 				"proposed_issues.queue_intent",
 				self.queue_intent,
 			)?,
@@ -281,15 +302,21 @@ pub(crate) struct ResearchPrivateEvidenceRefInput {
 impl ResearchPrivateEvidenceRefInput {
 	pub(super) fn normalized(self) -> Result<Self> {
 		Ok(Self {
-			project_id: normalize_optional_text(
+			project_id: normalized::normalize_optional_text(
 				"private_evidence_refs.project_id",
 				self.project_id,
 			)?,
-			issue_id: normalize_required_text("private_evidence_refs.issue_id", self.issue_id)?,
-			run_id: normalize_required_text("private_evidence_refs.run_id", self.run_id)?,
+			issue_id: normalized::normalize_required_text(
+				"private_evidence_refs.issue_id",
+				self.issue_id,
+			)?,
+			run_id: normalized::normalize_required_text(
+				"private_evidence_refs.run_id",
+				self.run_id,
+			)?,
 			attempt_number: self.attempt_number,
 			record_id: self.record_id,
-			event_type: normalize_optional_text(
+			event_type: normalized::normalize_optional_text(
 				"private_evidence_refs.event_type",
 				self.event_type,
 			)?,
@@ -308,9 +335,18 @@ pub(crate) struct ResearchPublicProjectionRefInput {
 impl ResearchPublicProjectionRefInput {
 	pub(super) fn normalized(self) -> Result<Self> {
 		Ok(Self {
-			surface: normalize_required_text("public_projection_refs.surface", self.surface)?,
-			reference: normalize_required_text("public_projection_refs.reference", self.reference)?,
-			summary: normalize_required_text("public_projection_refs.summary", self.summary)?,
+			surface: normalized::normalize_required_text(
+				"public_projection_refs.surface",
+				self.surface,
+			)?,
+			reference: normalized::normalize_required_text(
+				"public_projection_refs.reference",
+				self.reference,
+			)?,
+			summary: normalized::normalize_required_text(
+				"public_projection_refs.summary",
+				self.summary,
+			)?,
 		})
 	}
 }
