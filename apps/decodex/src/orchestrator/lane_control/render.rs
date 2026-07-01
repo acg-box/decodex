@@ -1,4 +1,4 @@
-use super::{LaneInspectReport, LaneInterruptReport};
+use crate::orchestrator::lane_control::reports::{LaneInspectReport, LaneInterruptReport};
 
 pub(super) fn render_lane_inspect_report(report: &LaneInspectReport) -> String {
 	let mut output = format!(
