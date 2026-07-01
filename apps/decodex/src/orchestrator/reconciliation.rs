@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 mod actions;
 mod idle;
@@ -8,7 +9,8 @@ use actions::{
 	reconcile_not_dispatchable_run_lease, reconcile_retained_review_complete_run_lease,
 	reconcile_superseded_run_lease,
 };
-#[cfg(test)] pub(crate) use idle::stalled_protocol_idle_duration;
+#[cfg(test)]
+pub(crate) use idle::stalled_protocol_idle_duration;
 pub(in crate::orchestrator) use idle::{observed_idle_duration, stalled_idle_duration};
 use stalled::{
 	reconcile_stalled_attention_run_lease, reconcile_stalled_retained_partial_progress_run,
@@ -200,7 +202,9 @@ pub(in crate::orchestrator) fn run_lease_reconciliation_workflow<'a>(
 		Some(override_context)
 			if override_context.child.issue_id == issue.id
 				&& override_context.child.run_id == run_attempt.run_id() =>
-			override_context.workflow,
+		{
+			override_context.workflow
+		},
 		_ => current_workflow,
 	}
 }
