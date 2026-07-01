@@ -264,6 +264,31 @@ pub(super) fn proposal_risk_notes(proposal: &AutonomyProposal) -> Vec<String> {
 	risk_notes
 }
 
+pub(super) fn proposal_issue_candidates(proposal: &AutonomyProposal) -> Vec<Value> {
+	if proposal.issue_candidates.is_empty() {
+		return vec![proposal_issue_candidate(proposal)];
+	}
+
+	proposal
+		.issue_candidates
+		.iter()
+		.map(|candidate| {
+			serde_json::json!({
+				"key": candidate.key.clone(),
+				"title": candidate.title.clone(),
+				"objective": candidate.objective.clone(),
+				"stage": candidate.stage.clone(),
+				"dependencies": candidate.dependencies.clone(),
+				"conflict_domains": candidate.conflict_domains.clone(),
+				"acceptance": candidate.acceptance.clone(),
+				"validation": candidate.validation.clone(),
+				"risk": candidate.risk.clone(),
+				"queue_intent": candidate.queue_intent.clone(),
+			})
+		})
+		.collect()
+}
+
 pub(super) fn proposal_issue_candidate(proposal: &AutonomyProposal) -> Value {
 	serde_json::json!({
 		"key": format!("autonomy-{}", stable_slug(&proposal.source_family, 48)),
