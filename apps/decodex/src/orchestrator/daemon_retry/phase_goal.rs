@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(in crate::orchestrator::daemon_retry) fn recover_child_exit_phase_goal<T>(
 	context: &mut ChildExitRetryContext<'_, T>,
