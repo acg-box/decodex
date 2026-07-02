@@ -170,7 +170,7 @@ actor DashboardWebSocketConnection {
 		}
 
 		let data = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
-			connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) {
+			connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1_024) {
 				data,
 				_,
 				isComplete,
