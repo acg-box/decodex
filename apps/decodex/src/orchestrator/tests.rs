@@ -1,11 +1,20 @@
-#[cfg(unix)] use std::os::fd::IntoRawFd;
+// Workflow reload, intake eligibility, prompting, and candidate selection.
+mod intake_candidate_selection;
+mod intake_eligibility;
+mod intake_prepare_issue_run;
+mod intake_run_and_prompting;
+mod intake_workflow_reload;
+mod runtime_failure;
+// Operator status plus retained post-review review/landing behavior.
+mod operator;
+
 use std::{
 	cell::RefCell,
 	collections::{BTreeSet, HashMap},
 	env,
 	ffi::{OsStr, OsString},
 	fs,
-	io::{Read as _, Write as _},
+	io::{Read, Write},
 	iter,
 	net::{Shutdown, TcpListener, TcpStream},
 	path::{Path, PathBuf},
@@ -31,9 +40,8 @@ use crate::{
 		AppServerCapabilityPreflightFailure,
 		AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure,
 		AppServerTransportFailure, AppServerTurnFailure,
-		DynamicToolHandler, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec,
+		PhaseGoalController, PhaseGoalKind, PhaseGoalSpec,
 		PhaseGoalTransition, ReviewPolicyStopReason, ReviewPolicyStopRequested,
-		TrackerToolBridge, TurnContinuationGuard,
 	};
 #[rustfmt::skip]
 use crate::config::{ReviewLevel, ServiceConfig};
@@ -41,7 +49,7 @@ use crate::config::{ReviewLevel, ServiceConfig};
 use crate::github;
 use crate::loop_contract::DecisionContract;
 #[rustfmt::skip]
-use crate::orchestrator::{self, AppServerZeroEvidenceStartFailure, CurrentChildRunContext, RunLeaseDisposition, RunLeaseReconciliation, ActiveWorkflowOverride, AgentEvidenceSource, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionRequestInput, ChildExitRetryContext, ChildRunRef, ControlPlaneProjectTick, CONTINUATION_PENDING_RUN_STATUS, DaemonRunChild, DaemonTickRuntimeContext, DashboardEventHub, EvidenceRequest, GhPullRequestReviewStateInspector, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, IssueDispatchMode, IssueRunPlan, IssueTurnContinuationGuard, ManualAttentionRequested, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, OperatorCodexAccountControlStatus, OperatorExecutionProgramNodeStatus, OperatorExecutionProgramStatus, OperatorGitHubCliAuthority, OperatorProjectStatus, OperatorStatusSnapshot, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot, PreferredRunIdentity, PrepareIssueRunContext, PublishedOperatorSnapshot, PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection, PullRequestIssueCommentState, PullRequestIssueCommentsNode, PullRequestPageInfo, PullRequestReactionGroup, PullRequestReactionUsersConnection, PullRequestActor, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewConnection, PullRequestIssueCommentNode, PullRequestReviewNode, PullRequestReviewRequestConnection, PullRequestReviewState, PullRequestReviewStateInspector, PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode, PullRequestStatusCheckRollup, RecoveredRuntimeState, RetainedPartialProgress, RetainedReviewRepairPushFailed, RetainedReviewRunIdentity, RetryComment, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, RunCompletionDisposition, RunSummary, RepoGateFailure, RepoGateFailureKind, StalledRunNeedsAttention, TERMINAL_GUARD_MARKER_FILE, TERMINAL_GUARDED_RUN_STATUS, TRACKER_RATE_LIMIT_WARNING, TRACKER_TRANSIENT_TIMEOUT_WARNING, TargetIssueRunContext, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY};
+use crate::orchestrator::{self, AppServerZeroEvidenceStartFailure, CurrentChildRunContext, RunLeaseDisposition, RunLeaseReconciliation, AgentEvidenceSource, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionRequestInput, ChildExitRetryContext, ChildRunRef, ControlPlaneProjectTick, CONTINUATION_PENDING_RUN_STATUS, DaemonRunChild, DaemonTickRuntimeContext, DashboardEventHub, EvidenceRequest, GhPullRequestReviewStateInspector, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, OperatorCodexAccountControlStatus, OperatorExecutionProgramNodeStatus, OperatorExecutionProgramStatus, OperatorGitHubCliAuthority, OperatorProjectStatus, OperatorStatusSnapshot, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot, PrepareIssueRunContext, PublishedOperatorSnapshot, PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection, PullRequestIssueCommentState, PullRequestIssueCommentsNode, PullRequestPageInfo, PullRequestReactionGroup, PullRequestReactionUsersConnection, PullRequestActor, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewConnection, PullRequestIssueCommentNode, PullRequestReviewNode, PullRequestReviewRequestConnection, PullRequestReviewState, PullRequestReviewStateInspector, PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode, PullRequestStatusCheckRollup, RecoveredRuntimeState, RetainedPartialProgress, RetainedReviewRepairPushFailed, RetainedReviewRunIdentity, RetryComment, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, RunCompletionDisposition, RunSummary, RepoGateFailure, RepoGateFailureKind, StalledRunNeedsAttention, TERMINAL_GUARD_MARKER_FILE, TERMINAL_GUARDED_RUN_STATUS, TRACKER_RATE_LIMIT_WARNING, TRACKER_TRANSIENT_TIMEOUT_WARNING, TargetIssueRunContext, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY};
 #[rustfmt::skip]
 use crate::prelude::Result;
 #[rustfmt::skip]
@@ -52,7 +60,7 @@ use crate::state::{
 	RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, ReviewPolicyCheckpointInput,
 	StateStore, WorktreeMapping,
 };
-use crate::test_support::{TestEnvVarGuard, hermetic_git_command};
+use crate::test_support::{self, TestEnvVarGuard};
 #[rustfmt::skip]
 use crate::tracker::{self, IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker, TrackerLabel, TrackerState, TrackerTeam, records::{LinearExecutionEventIdentity}};
 #[rustfmt::skip]
@@ -60,17 +68,7 @@ use crate::workflow::WorkflowDocument;
 #[rustfmt::skip]
 use crate::worktree::{WorktreeManager, WorktreeSpec};
 use crate::orchestrator::{ReviewHandoffMarker, ReviewOrchestrationMarker};
-
-// Workflow reload, intake eligibility, prompting, and candidate selection.
-include!("tests/intake/workflow_reload.rs");
-
-include!("tests/intake/eligibility.rs");
-
-include!("tests/intake/run_and_prompting.rs");
-
-include!("tests/intake/prepare_issue_run.rs");
-
-include!("tests/intake/candidate_selection.rs");
+use runtime_failure::loop_guardrail_issue_run;
 
 // Retry scheduling, runtime failure classes, and recovery cleanup.
 include!("tests/retry/scheduling.rs");
@@ -78,9 +76,6 @@ include!("tests/retry/scheduling.rs");
 include!("tests/retry/selection.rs");
 
 include!("tests/runtime/repo_gate.rs");
-
-mod runtime_failure;
-use runtime_failure::loop_guardrail_issue_run;
 
 include!("tests/runtime/loop_scenarios.rs");
 
@@ -103,9 +98,6 @@ include!("tests/recovery/closeout/cleanup.rs");
 include!("tests/recovery/terminal_failures.rs");
 
 include!("tests/recovery/runtime_reentry.rs");
-
-// Operator status plus retained post-review review/landing behavior.
-mod operator;
 
 include!("tests/review_landing/status_support.rs");
 
@@ -871,7 +863,7 @@ fn add_external_review_findings(review_state: &mut PullRequestReviewState, body:
 }
 
 fn git_output(worktree_path: &Path, args: &[&str]) -> String {
-	let output = hermetic_git_command()
+	let output = test_support::hermetic_git_command()
 		.arg("-C")
 		.arg(worktree_path)
 		.args(args)
@@ -889,7 +881,7 @@ fn git_output(worktree_path: &Path, args: &[&str]) -> String {
 }
 
 fn git_status_success(worktree_path: &Path, args: &[&str]) {
-	let output = hermetic_git_command()
+	let output = test_support::hermetic_git_command()
 		.arg("-C")
 		.arg(worktree_path)
 		.args(args)
@@ -1050,7 +1042,7 @@ fn sample_pull_request_review_state_repository(
 }
 
 fn try_git_local_config_value(repo_root: &Path, key: &str) -> Option<String> {
-	let output = hermetic_git_command()
+	let output = test_support::hermetic_git_command()
 		.arg("-C")
 		.arg(repo_root)
 		.args(["config", "--local", "--get", key])
@@ -1070,7 +1062,7 @@ fn try_git_local_config_value(repo_root: &Path, key: &str) -> Option<String> {
 }
 
 fn git_remote_url(repo_root: &Path, remote_name: &str) -> Option<String> {
-	let output = hermetic_git_command()
+	let output = test_support::hermetic_git_command()
 		.arg("-C")
 		.arg(repo_root)
 		.args(["remote", "get-url", remote_name])
