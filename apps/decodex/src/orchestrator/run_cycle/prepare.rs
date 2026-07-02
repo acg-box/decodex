@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(crate) fn prepare_issue_run<T>(
 	context: PrepareIssueRunContext<'_, T>,
@@ -162,12 +163,13 @@ fn prepare_issue_run_dispatch_allowed<T>(
 where
 	T: IssueTracker,
 {
-	let dispatch_allowed = context.dispatch_mode.allows_issue(
+	let dispatch_allowed = issue_passes_current_dispatch_policy(
 		context.tracker,
 		refreshed_issue,
 		context.project,
 		context.workflow,
 		context.state_store,
+		context.dispatch_mode,
 		RetryIssueStateHint {
 			preferred_issue_state: context.preferred_issue_state,
 			preferred_initial_issue_state: context.preferred_initial_issue_state,
@@ -251,7 +253,8 @@ fn resolve_prepare_run_identity(
 				preferred_run_identity.run_id.to_owned(),
 			)))
 		},
-		None =>
-			Ok(Some((next_attempt_number, build_run_id(&issue.identifier, next_attempt_number)?))),
+		None => {
+			Ok(Some((next_attempt_number, build_run_id(&issue.identifier, next_attempt_number)?)))
+		},
 	}
 }
