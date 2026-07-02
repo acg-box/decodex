@@ -7,23 +7,14 @@ mod repo_gate;
 mod review;
 
 pub(in crate::orchestrator) use self::render::render_private_evidence_readback;
-use self::{
-	architecture::architecture_recoveries_from_private_events,
-	boundary::{
-		authority_decision_requests_from_private_events, boundary_checks_from_private_events,
-	},
-	payload::summarize_private_evidence_payload,
-	phase::phase_acceptance_checks_from_private_events,
-	repo_gate::repo_gate_failures_from_private_events,
-	review::review_checkpoints_from_private_events,
-};
 
-use super::{
-	AgentPrivateEvidenceRef, EvidenceRequest, OperatorRunStatus, PRIVATE_EVIDENCE_READBACK_SCHEMA,
-	Path, PrivateEvidenceReadback, PrivateEvidenceReadbackEvent, PrivateEvidenceTarget,
-	ProjectRunStatus, Result, ServiceConfig, StateStore, collections, eyre,
-	harness_improvement_candidates_from_private_events, operator_run_issue_identifier_from_fields,
-	relative_worktree_path_for_path, state,
+use std::collections::BTreeSet;
+use std::path::Path;
+
+use crate::orchestrator::agent_evidence::{
+	self, AgentPrivateEvidenceRef, EvidenceRequest, OperatorRunStatus,
+	PRIVATE_EVIDENCE_READBACK_SCHEMA, PrivateEvidenceReadback, PrivateEvidenceReadbackEvent,
+	PrivateEvidenceTarget, ProjectRunStatus, Result, ServiceConfig, StateStore, eyre, state,
 };
 
 pub(in crate::orchestrator) fn render_private_evidence_reference(
@@ -67,37 +58,6 @@ pub(in crate::orchestrator) fn private_evidence_ref_for_run_fields(
 			false,
 		),
 	}
-}
-
-fn private_evidence_read_command(
-	project_config_path: &Path,
-	issue_selector: &str,
-	run_id: Option<&str>,
-	attempt_number: Option<i64>,
-	json: bool,
-	include_payload: bool,
-) -> String {
-	let mut command = format!(
-		"decodex evidence --config {} {}",
-		shell_quote(&project_config_path.display().to_string()),
-		shell_quote(issue_selector)
-	);
-
-	if let Some(run_id) = run_id {
-		command.push_str(&format!(" --run-id {}", shell_quote(run_id)));
-	}
-	if let Some(attempt_number) = attempt_number {
-		command.push_str(&format!(" --attempt {attempt_number}"));
-	}
-
-	if json {
-		command.push_str(" --json");
-	}
-	if include_payload {
-		command.push_str(" --include-payload");
-	}
-
-	command
 }
 
 pub(in crate::orchestrator) fn private_evidence_ref_for_parts(
@@ -174,19 +134,54 @@ pub(in crate::orchestrator) fn build_private_evidence_readback(
 		event_count: events.len(),
 		latest_event_type: latest_event.map(|event| event.event_type().to_owned()),
 		latest_event_at: latest_event.map(|event| event.recorded_at().to_owned()),
-		review_checkpoints: review_checkpoints_from_private_events(&events),
-		repo_gate_failures: repo_gate_failures_from_private_events(&events),
-		phase_acceptance_checks: phase_acceptance_checks_from_private_events(&events),
-		boundary_checks: boundary_checks_from_private_events(&events),
-		decision_requests: authority_decision_requests_from_private_events(&events),
-		architecture_recoveries: architecture_recoveries_from_private_events(&events),
-		improvement_candidates: harness_improvement_candidates_from_private_events(&events),
+		review_checkpoints: self::review::review_checkpoints_from_private_events(&events),
+		repo_gate_failures: self::repo_gate::repo_gate_failures_from_private_events(&events),
+		phase_acceptance_checks: self::phase::phase_acceptance_checks_from_private_events(&events),
+		boundary_checks: self::boundary::boundary_checks_from_private_events(&events),
+		decision_requests: self::boundary::authority_decision_requests_from_private_events(&events),
+		architecture_recoveries: self::architecture::architecture_recoveries_from_private_events(
+			&events,
+		),
+		improvement_candidates: agent_evidence::harness_improvement_candidates_from_private_events(
+			&events,
+		),
 		events: events
 			.iter()
 			.map(|event| private_evidence_readback_event(event, request.include_payload))
 			.collect(),
 		warnings,
 	})
+}
+
+fn private_evidence_read_command(
+	project_config_path: &Path,
+	issue_selector: &str,
+	run_id: Option<&str>,
+	attempt_number: Option<i64>,
+	json: bool,
+	include_payload: bool,
+) -> String {
+	let mut command = format!(
+		"decodex evidence --config {} {}",
+		shell_quote(&project_config_path.display().to_string()),
+		shell_quote(issue_selector)
+	);
+
+	if let Some(run_id) = run_id {
+		command.push_str(&format!(" --run-id {}", shell_quote(run_id)));
+	}
+	if let Some(attempt_number) = attempt_number {
+		command.push_str(&format!(" --attempt {attempt_number}"));
+	}
+
+	if json {
+		command.push_str(" --json");
+	}
+	if include_payload {
+		command.push_str(" --include-payload");
+	}
+
+	command
 }
 
 fn resolve_private_evidence_target(
@@ -206,9 +201,10 @@ fn resolve_private_evidence_target(
 
 	if let Some(run) = matching_run {
 		let branch_name = run.branch_name().map(str::to_owned);
-		let worktree_path =
-			run.worktree_path().map(|path| relative_worktree_path_for_path(project, path));
-		let issue_identifier = operator_run_issue_identifier_from_fields(
+		let worktree_path = run
+			.worktree_path()
+			.map(|path| agent_evidence::relative_worktree_path_for_path(project, path));
+		let issue_identifier = agent_evidence::operator_run_issue_identifier_from_fields(
 			run.run_id(),
 			branch_name.as_deref(),
 			worktree_path.as_deref(),
@@ -255,10 +251,8 @@ fn private_evidence_direct_lookup_issue_id(
 	events: &[state::PrivateExecutionEvent],
 	selector: &str,
 ) -> Result<Option<String>> {
-	let issue_ids = events
-		.iter()
-		.map(state::PrivateExecutionEvent::issue_id)
-		.collect::<collections::BTreeSet<_>>();
+	let issue_ids =
+		events.iter().map(state::PrivateExecutionEvent::issue_id).collect::<BTreeSet<_>>();
 
 	if issue_ids.is_empty() {
 		return Ok(None);
@@ -285,9 +279,10 @@ fn private_evidence_run_matches_issue(
 	}
 
 	let branch_name = run.branch_name().map(str::to_owned);
-	let worktree_path =
-		run.worktree_path().map(|path| relative_worktree_path_for_path(project, path));
-	let issue_identifier = operator_run_issue_identifier_from_fields(
+	let worktree_path = run
+		.worktree_path()
+		.map(|path| agent_evidence::relative_worktree_path_for_path(project, path));
+	let issue_identifier = agent_evidence::operator_run_issue_identifier_from_fields(
 		run.run_id(),
 		branch_name.as_deref(),
 		worktree_path.as_deref(),
@@ -306,7 +301,7 @@ fn private_evidence_readback_event(
 		record_id: event.record_id(),
 		event_type: event.event_type().to_owned(),
 		recorded_at: event.recorded_at().to_owned(),
-		payload_summary: summarize_private_evidence_payload(event.payload()),
+		payload_summary: self::payload::summarize_private_evidence_payload(event.payload()),
 		payload: include_payload.then(|| event.payload().clone()),
 	}
 }
