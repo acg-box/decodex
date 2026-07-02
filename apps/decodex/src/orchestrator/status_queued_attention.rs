@@ -31,6 +31,7 @@ struct OperatorQueuedIssueWorktreeContext {
 	marker_unreadable: bool,
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn operator_queued_issue_attention_status<T>(
 	tracker: &T,
 	project: &ServiceConfig,
