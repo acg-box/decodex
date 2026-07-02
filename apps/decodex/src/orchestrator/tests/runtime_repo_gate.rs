@@ -1,11 +1,53 @@
+use std::{
+	ffi::{OsStr, OsString},
+	fs,
+	path::Path,
+};
+
+use color_eyre::Report;
 use serde::Deserialize;
+
+use crate::orchestrator::execution_phase_goal;
+use crate::{orchestrator::{self, tests, AppServerCapabilityPreflightFailure, EvidenceRequest, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition, RepoGateFailure, RepoGatePhaseGoalController, ServiceConfig, StateStore}, agent::PhaseGoalController, orchestrator::tests::{TEST_SERVICE_ID}, tracker::{self, TrackerIssue}, worktree::WorktreeSpec};
+
+pub(super) fn record_phase_acceptance_progress_checkpoint(
+	config: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	blockers: &[&str],
+) {
+	let head_sha = tests::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	let blockers = blockers.iter().map(|blocker| (*blocker).to_owned()).collect::<Vec<_>>();
+
+	state_store
+		.append_private_execution_event(
+			config.service_id(),
+			&issue_run.issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+			"progress_checkpoint",
+			serde_json::json!({
+				"phase": "verifying",
+				"docs_impact": "none",
+				"focus": "Validate phase-specific work before handoff.",
+				"next_action": "Complete the active phase goal.",
+				"blockers": blockers,
+				"evidence": ["current worktree inspected"],
+				"verification": ["repo gate will run after phase goal completion"],
+				"head_sha": head_sha,
+				"branch": issue_run.worktree.branch_name.as_str(),
+				"worktree_path": issue_run.worktree.path.display().to_string(),
+			}),
+		)
+		.expect("phase acceptance progress checkpoint should record");
+}
 
 #[test]
 fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 
-	commit_worktree_change(repo_root, "tracked.txt", "before\n", "add tracked file");
+	tests::commit_worktree_change(repo_root, "tracked.txt", "before\n", "add tracked file");
 
 	let error = orchestrator::run_repo_gate_commands(
 		&[String::from("printf 'after\\n' > tracked.txt")],
@@ -15,7 +57,7 @@ fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
 	.expect_err("tracked autofix rewrites should fail the repo gate");
 	let tracked_contents = fs::read_to_string(repo_root.join("tracked.txt"))
 		.expect("tracked file should remain readable");
-	let tracked_status = git_output(repo_root, &["status", "--porcelain", "--untracked-files=no"]);
+	let tracked_status = tests::git_output(repo_root, &["status", "--porcelain", "--untracked-files=no"]);
 	let repo_gate_failure = error
 		.downcast_ref::<RepoGateFailure>()
 		.expect("repo gate failures should preserve structured classification");
@@ -32,11 +74,11 @@ fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
 
 #[test]
 fn repo_gate_stops_canonicalize_failure_after_scope_envelope_widening() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 
-	commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
-	commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
+	tests::commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
+	tests::commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
 	fs::write(repo_root.join("owned.txt"), "implementation\n")
 		.expect("pre-gate implementation diff should write");
 
@@ -63,11 +105,11 @@ fn repo_gate_stops_canonicalize_failure_after_scope_envelope_widening() {
 
 #[test]
 fn repo_gate_stops_verify_failure_after_scope_envelope_widening() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 
-	commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
-	commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
+	tests::commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
+	tests::commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
 	fs::write(repo_root.join("owned.txt"), "implementation\n")
 		.expect("pre-gate implementation diff should write");
 
@@ -95,7 +137,7 @@ fn repo_gate_stops_verify_failure_after_scope_envelope_widening() {
 #[test]
 fn completion_repo_gate_records_lane_decision_for_scope_envelope_violation() {
 	let failing_verify = "printf 'rewritten\\n' > outside.txt; exit 1";
-	let workflow_markdown = sample_workflow_markdown("pubfi", &[], "Completion gate policy.\n", 1)
+	let workflow_markdown = tests::sample_workflow_markdown("pubfi", &[], "Completion gate policy.\n", 1)
 		.replace(
 			"verify_commands = []",
 			&format!(
@@ -104,18 +146,18 @@ fn completion_repo_gate_records_lane_decision_for_scope_envelope_violation() {
 			),
 		);
 	let (_temp_dir, config, workflow) =
-		temp_project_layout_with_workflow_markdown(&workflow_markdown);
+		tests::temp_project_layout_with_workflow_markdown(&workflow_markdown);
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = phase_goal_repo_gate_issue_run(&config, &issue);
 
-	commit_worktree_change(config.repo_root(), "owned.txt", "before\n", "add owned file");
-	commit_worktree_change(config.repo_root(), "outside.txt", "before\n", "add outside file");
+	tests::commit_worktree_change(config.repo_root(), "owned.txt", "before\n", "add owned file");
+	tests::commit_worktree_change(config.repo_root(), "outside.txt", "before\n", "add outside file");
 	fs::write(config.repo_root().join("owned.txt"), "implementation\n")
 		.expect("pre-gate implementation diff should write");
 
-	let error = super::run_completion_repo_gate(
+	let error = orchestrator::run_completion_repo_gate(
 		&config,
 		&workflow,
 		&state_store,
@@ -131,6 +173,7 @@ fn completion_repo_gate_records_lane_decision_for_scope_envelope_violation() {
 		.expect("private lane decision events should load");
 
 	assert_eq!(repo_gate_failure.error_class(), "repo_gate_scope_envelope_violation");
+
 	let decision = repo_gate_failure
 		.tracked_rewrite_decision()
 		.expect("scope envelope violation should retain rewrite decision");
@@ -148,11 +191,10 @@ fn completion_repo_gate_records_lane_decision_for_scope_envelope_violation() {
 
 #[test]
 fn repo_gate_allows_existing_tracked_diff_when_commands_preserve_it() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 
-	commit_worktree_change(repo_root, "tracked.txt", "before\n", "add tracked file");
-
+	tests::commit_worktree_change(repo_root, "tracked.txt", "before\n", "add tracked file");
 	fs::write(repo_root.join("tracked.txt"), "after\n")
 		.expect("tracked implementation diff should write");
 	orchestrator::run_repo_gate_commands(
@@ -165,7 +207,7 @@ fn repo_gate_allows_existing_tracked_diff_when_commands_preserve_it() {
 
 #[test]
 fn repo_gate_cleanliness_check_spawn_failures_require_human_attention() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 	let error = orchestrator::run_repo_gate_cleanliness_check_with_git(
 		OsStr::new("/definitely-missing-git-for-tests"),
@@ -186,7 +228,7 @@ fn repo_gate_cleanliness_check_spawn_failures_require_human_attention() {
 
 #[test]
 fn repo_gate_classifies_git_index_lock_contention_as_retryable_runtime_failure() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 	let error = orchestrator::run_repo_gate_commands(
 		&[String::from(
@@ -210,13 +252,13 @@ fn repo_gate_classifies_git_index_lock_contention_as_retryable_runtime_failure()
 #[test]
 fn repo_gate_selects_matching_profile_for_scoped_lane_changes() {
 	let (temp_dir, config, workflow) =
-		temp_project_layout_with_workflow_markdown(&profile_scoped_workflow_markdown("pubfi"));
+		tests::temp_project_layout_with_workflow_markdown(&tests::profile_scoped_workflow_markdown("pubfi"));
 	let repo_root = config.repo_root();
 	let remote_root = temp_dir.path().join("origin.git");
 
-	add_origin_remote(repo_root, &remote_root);
-	checkout_new_branch(repo_root, "config-subset");
-	commit_worktree_change(
+	tests::add_origin_remote(repo_root, &remote_root);
+	tests::checkout_new_branch(repo_root, "config-subset");
+	tests::commit_worktree_change(
 		repo_root,
 		"config/new-surface.toml",
 		"name = \"new-surface\"\n",
@@ -234,11 +276,11 @@ fn repo_gate_selects_matching_profile_for_scoped_lane_changes() {
 #[test]
 fn repo_gate_falls_back_to_full_gate_when_changed_file_classification_is_unavailable() {
 	let (_temp_dir, config, workflow) =
-		temp_project_layout_with_workflow_markdown(&profile_scoped_workflow_markdown("pubfi"));
+		tests::temp_project_layout_with_workflow_markdown(&tests::profile_scoped_workflow_markdown("pubfi"));
 	let repo_root = config.repo_root();
 
-	checkout_new_branch(repo_root, "config-subset");
-	commit_worktree_change(
+	tests::checkout_new_branch(repo_root, "config-subset");
+	tests::commit_worktree_change(
 		repo_root,
 		"config/new-surface.toml",
 		"name = \"new-surface\"\n",
@@ -255,7 +297,7 @@ fn repo_gate_falls_back_to_full_gate_when_changed_file_classification_is_unavail
 
 #[test]
 fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
-	let workflow_markdown = sample_workflow_markdown(
+	let workflow_markdown = tests::sample_workflow_markdown(
 		"pubfi",
 		&[],
 		"Phase goal validation policy.\n",
@@ -270,14 +312,13 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 		"verify_commands = [\"test -f phase-canonicalized.txt && printf verified > phase-verified.txt\"]",
 	);
 	let (_temp_dir, config, workflow) =
-		temp_project_layout_with_workflow_markdown(&workflow_markdown);
+		tests::temp_project_layout_with_workflow_markdown(&workflow_markdown);
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 1);
+	let issue_run = tests::loop_guardrail_issue_run(&config, &issue, 1);
 
-	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
-
+	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
@@ -314,7 +355,7 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 fn phase_goal_repo_gate_failure_records_structured_diagnostic() {
 	let failing_command = "printf 'error: function has too many lines\\n --> apps/decodex/src/mcp.rs:12:1\\nfn mcp_tools() {}\\n' >&2; exit 1";
 	let workflow_markdown =
-		sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 3).replace(
+		tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 3).replace(
 			"canonicalize_commands = []",
 			&format!(
 				"canonicalize_commands = [{}]",
@@ -322,9 +363,9 @@ fn phase_goal_repo_gate_failure_records_structured_diagnostic() {
 			),
 		);
 	let (_temp_dir, config, workflow) =
-		temp_project_layout_with_workflow_markdown(&workflow_markdown);
+		tests::temp_project_layout_with_workflow_markdown(&workflow_markdown);
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = phase_goal_repo_gate_issue_run(&config, &issue);
 	let transition = RepoGatePhaseGoalController {
@@ -463,13 +504,12 @@ fn review_repair_phase_goal_issue_run(
 
 #[test]
 fn review_repair_phase_goal_validation_passes_to_review_repair_evidence() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = review_repair_phase_goal_issue_run(&config, &issue);
 
-	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
-
+	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
@@ -517,8 +557,8 @@ fn review_repair_phase_goal_validation_passes_to_review_repair_evidence() {
 
 #[test]
 fn phase_goal_completion_continues_with_owned_tracked_rewrites_after_validation() {
-	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
-		&sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 3)
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_workflow_markdown(
+		&tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 3)
 			.replace(
 				"canonicalize_commands = []",
 				"canonicalize_commands = [\"printf 'rewritten\\\\n' > ready.txt\"]",
@@ -529,7 +569,7 @@ fn phase_goal_completion_continues_with_owned_tracked_rewrites_after_validation(
 			),
 	);
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -548,8 +588,7 @@ fn phase_goal_completion_continues_with_owned_tracked_rewrites_after_validation(
 		retry_budget_base: 0,
 	};
 
-	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
-
+	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
@@ -596,10 +635,10 @@ fn phase_goal_completion_continues_with_owned_tracked_rewrites_after_validation(
 
 #[test]
 fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
-	let (temp_dir, config, workflow) = temp_project_layout();
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let remote_root = temp_dir.path().join("origin.git");
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -618,16 +657,16 @@ fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
 		retry_budget_base: 0,
 	};
 
-	add_origin_remote(config.repo_root(), &remote_root);
-	checkout_new_branch(config.repo_root(), &issue_run.worktree.branch_name);
-	commit_worktree_change(
+	tests::add_origin_remote(config.repo_root(), &remote_root);
+	tests::checkout_new_branch(config.repo_root(), &issue_run.worktree.branch_name);
+	tests::commit_worktree_change(
 		config.repo_root(),
 		"ready.txt",
 		"implementation complete\n",
 		"implement issue scope",
 	);
 
-	assert_eq!(git_output(config.repo_root(), &["status", "--porcelain"]), "");
+	assert_eq!(tests::git_output(config.repo_root(), &["status", "--porcelain"]), "");
 
 	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
 
@@ -660,9 +699,9 @@ fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
 
 #[test]
 fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -725,9 +764,9 @@ fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
 
 #[test]
 fn phase_goal_acceptance_non_goal_violation_requests_manual_attention() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -746,8 +785,7 @@ fn phase_goal_acceptance_non_goal_violation_requests_manual_attention() {
 		retry_budget_base: 0,
 	};
 
-	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
-
+	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	record_phase_acceptance_progress_checkpoint(
@@ -788,9 +826,9 @@ fn phase_goal_acceptance_non_goal_violation_requests_manual_attention() {
 
 #[test]
 fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-cleared-blocker";
 
@@ -807,6 +845,7 @@ fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 			}),
 		)
 		.expect("blocking checkpoint should record");
+
 	assert!(
 		orchestrator::issue_has_blocking_lane_decision_evidence(&config, &state_store, &issue.id)
 			.expect("blocking evidence should evaluate")
@@ -824,6 +863,7 @@ fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 			}),
 		)
 		.expect("ordinary checkpoint should record");
+
 	assert!(
 		orchestrator::issue_has_blocking_lane_decision_evidence(&config, &state_store, &issue.id)
 			.expect("blocking evidence should evaluate"),
@@ -853,9 +893,9 @@ fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 
 #[test]
 fn blocking_lane_decision_evidence_prefers_kernel_projection_over_legacy_action() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-kernel-lane-decision";
 
@@ -875,6 +915,7 @@ fn blocking_lane_decision_evidence_prefers_kernel_projection_over_legacy_action(
 			}),
 		)
 		.expect("kernel retry decision should record");
+
 	assert!(
 		!orchestrator::issue_has_blocking_lane_decision_evidence(&config, &state_store, &issue.id)
 			.expect("blocking evidence should evaluate"),
@@ -897,6 +938,7 @@ fn blocking_lane_decision_evidence_prefers_kernel_projection_over_legacy_action(
 			}),
 		)
 		.expect("kernel manual decision should record");
+
 	assert!(
 		orchestrator::issue_has_blocking_lane_decision_evidence(&config, &state_store, &issue.id)
 			.expect("blocking evidence should evaluate"),
@@ -906,9 +948,9 @@ fn blocking_lane_decision_evidence_prefers_kernel_projection_over_legacy_action(
 
 #[test]
 fn cleared_checkpoint_allows_same_run_phase_goal_recovery_candidate() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = phase_goal_repo_gate_issue_run(&config, &issue);
 
@@ -951,7 +993,7 @@ fn cleared_checkpoint_allows_same_run_phase_goal_recovery_candidate() {
 		.expect("clearing checkpoint should record");
 
 	assert_eq!(
-		super::execution_phase_goal::latest_phase_goal_recovery_candidate(
+		execution_phase_goal::latest_phase_goal_recovery_candidate(
 			&config,
 			&state_store,
 			&issue_run,
@@ -963,9 +1005,9 @@ fn cleared_checkpoint_allows_same_run_phase_goal_recovery_candidate() {
 
 #[test]
 fn cleared_checkpoint_allows_cross_attempt_phase_goal_inheritance() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let source_run_id = "pub-101-attempt-1";
 
@@ -1007,7 +1049,7 @@ fn cleared_checkpoint_allows_cross_attempt_phase_goal_inheritance() {
 		.expect("clearing checkpoint should record");
 
 	assert_eq!(
-		super::latest_open_issue_phase_goal_before_attempt(
+		orchestrator::latest_open_issue_phase_goal_before_attempt(
 			&config,
 			&state_store,
 			&issue.id,
@@ -1021,9 +1063,9 @@ fn cleared_checkpoint_allows_cross_attempt_phase_goal_inheritance() {
 
 #[test]
 fn retry_phase_goal_resumes_cross_attempt_handoff_after_recovered_validation_pass() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let first_issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -1042,8 +1084,7 @@ fn retry_phase_goal_resumes_cross_attempt_handoff_after_recovered_validation_pas
 		retry_budget_base: 0,
 	};
 
-	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
-
+	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	record_phase_acceptance_progress_checkpoint(&config, &state_store, &first_issue_run, &[]);
@@ -1105,9 +1146,9 @@ fn retry_phase_goal_resumes_cross_attempt_handoff_after_recovered_validation_pas
 
 #[test]
 fn retry_phase_goal_resumes_cross_attempt_active_handoff_phase() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
@@ -1164,9 +1205,9 @@ fn retry_phase_goal_resumes_cross_attempt_active_handoff_phase() {
 
 #[test]
 fn retry_phase_goal_does_not_resume_cross_attempt_phase_after_terminal_finalize() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
@@ -1232,9 +1273,9 @@ fn retry_phase_goal_does_not_resume_cross_attempt_phase_after_terminal_finalize(
 
 #[test]
 fn retry_phase_goal_uses_latest_open_phase_for_cross_attempt_resume() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
@@ -1301,9 +1342,9 @@ fn retry_phase_goal_uses_latest_open_phase_for_cross_attempt_resume() {
 
 #[test]
 fn retry_phase_goal_skips_empty_failed_start_attempt_for_cross_attempt_resume() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
@@ -1360,9 +1401,9 @@ fn retry_phase_goal_skips_empty_failed_start_attempt_for_cross_attempt_resume() 
 
 #[test]
 fn program_phase_goal_skips_empty_failed_start_attempt_for_cross_attempt_resume() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
@@ -1419,15 +1460,15 @@ fn program_phase_goal_skips_empty_failed_start_attempt_for_cross_attempt_resume(
 
 #[test]
 fn open_phase_goal_unowned_tracked_rewrites_stop_instead_of_repair_continuation() {
-	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
-		&sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1).replace(
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_workflow_markdown(
+		&tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1).replace(
 			"canonicalize_commands = []",
 			"canonicalize_commands = [\"printf 'rewritten\\\\n' > other.txt\"]",
 		),
 	);
 	let repo_root = config.repo_root();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -1446,9 +1487,8 @@ fn open_phase_goal_unowned_tracked_rewrites_stop_instead_of_repair_continuation(
 		retry_budget_base: 0,
 	};
 
-	commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
-	commit_worktree_change(repo_root, "other.txt", "before\n", "add other file");
-
+	tests::commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
+	tests::commit_worktree_change(repo_root, "other.txt", "before\n", "add other file");
 	fs::write(repo_root.join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
@@ -1506,15 +1546,15 @@ fn open_phase_goal_unowned_tracked_rewrites_stop_instead_of_repair_continuation(
 
 #[test]
 fn open_phase_goal_owned_tracked_rewrites_continue_to_handoff_recovery() {
-	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
-		&sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1).replace(
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_workflow_markdown(
+		&tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1).replace(
 			"canonicalize_commands = []",
 			"canonicalize_commands = [\"printf 'rewritten\\\\n' > ready.txt\"]",
 		),
 	);
 	let repo_root = config.repo_root();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -1533,8 +1573,7 @@ fn open_phase_goal_owned_tracked_rewrites_continue_to_handoff_recovery() {
 		retry_budget_base: 0,
 	};
 
-	commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
-
+	tests::commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
 	fs::write(repo_root.join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
@@ -1595,10 +1634,10 @@ fn open_phase_goal_owned_tracked_rewrites_continue_to_handoff_recovery() {
 
 #[test]
 fn repeated_phase_goal_recovery_blocks_second_automatic_continuation() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let app_server_timeout =
 		Report::new(AppServerCapabilityPreflightFailure::method_timed_out_for_test(
@@ -1606,8 +1645,7 @@ fn repeated_phase_goal_recovery_blocks_second_automatic_continuation() {
 			String::from("Timed out while waiting for app-server output."),
 		));
 
-	commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
-
+	tests::commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
 	fs::write(repo_root.join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	for (run_id, attempt_number) in [("pub-101-attempt-1", 1), ("pub-101-attempt-2", 2)] {
@@ -1711,9 +1749,9 @@ fn repeated_phase_goal_recovery_blocks_second_automatic_continuation() {
 
 #[test]
 fn implementation_phase_goal_contract_requires_explicit_goal_completion() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -1777,36 +1815,4 @@ fn repo_gate_shell_keeps_login_mode_for_other_configured_shells() {
 
 	assert_eq!(Path::new(&shell), Path::new("/bin/bash"));
 	assert_eq!(shell_flag, "-lc");
-}
-
-fn record_phase_acceptance_progress_checkpoint(
-	config: &ServiceConfig,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	blockers: &[&str],
-) {
-	let head_sha = git_output(config.repo_root(), &["rev-parse", "HEAD"]);
-	let blockers = blockers.iter().map(|blocker| (*blocker).to_owned()).collect::<Vec<_>>();
-
-	state_store
-		.append_private_execution_event(
-			config.service_id(),
-			&issue_run.issue.id,
-			&issue_run.run_id,
-			issue_run.attempt_number,
-			"progress_checkpoint",
-			serde_json::json!({
-				"phase": "verifying",
-				"docs_impact": "none",
-				"focus": "Validate phase-specific work before handoff.",
-				"next_action": "Complete the active phase goal.",
-				"blockers": blockers,
-				"evidence": ["current worktree inspected"],
-				"verification": ["repo gate will run after phase goal completion"],
-				"head_sha": head_sha,
-				"branch": issue_run.worktree.branch_name.as_str(),
-				"worktree_path": issue_run.worktree.path.display().to_string(),
-			}),
-		)
-		.expect("phase acceptance progress checkpoint should record");
 }

@@ -1,19 +1,24 @@
+use std::fs;
+
+use crate::{orchestrator::{self, tests, ReviewLevel, ReviewOrchestrationMarker, StateStore, TERMINAL_GUARDED_RUN_STATUS}, orchestrator::tests::{FakePullRequestReviewStateInspector, FakeTracker, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, review_landing_classification_review, review_landing_status_support}, worktree::WorktreeManager};
+use crate::test_support;
+
 #[test]
 fn reconcile_post_review_orchestration_requests_external_review_without_thumbs_up_baseline() {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&config, "PATH");
-	let _path_guard = install_fake_post_issue_comment_gh_response(
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&config, "PATH");
+	let _path_guard = tests::install_fake_post_issue_comment_gh_response(
 		&temp_dir,
 		TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,
 		"2025-11-03T00:00:00Z",
 	);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -30,13 +35,13 @@ fn reconcile_post_review_orchestration_requests_external_review_without_thumbs_u
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -56,7 +61,7 @@ fn reconcile_post_review_orchestration_requests_external_review_without_thumbs_u
 		),
 	);
 
-	let initial_review_state = sample_pull_request_review_state(
+	let initial_review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -76,7 +81,7 @@ fn reconcile_post_review_orchestration_requests_external_review_without_thumbs_u
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -89,9 +94,9 @@ fn reconcile_post_review_orchestration_requests_external_review_without_thumbs_u
 #[test]
 fn reconcile_post_review_orchestration_filters_terminal_identifier_worktree_before_tracker_refresh()
 {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("Todo");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("Todo");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let stale_issue_id = "PUB-001";
@@ -135,20 +140,20 @@ fn reconcile_post_review_orchestration_filters_terminal_identifier_worktree_befo
 
 #[test]
 fn reconcile_post_review_orchestration_uses_matching_handoff_record_for_current_branch() {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&config, "PATH");
-	let _path_guard = install_fake_post_issue_comment_gh_response(
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&config, "PATH");
+	let _path_guard = tests::install_fake_post_issue_comment_gh_response(
 		&temp_dir,
 		TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,
 		"2025-11-03T00:00:00Z",
 	);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -171,13 +176,13 @@ fn reconcile_post_review_orchestration_uses_matching_handoff_record_for_current_
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker(current_branch, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(current_branch, pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -197,7 +202,7 @@ fn reconcile_post_review_orchestration_uses_matching_handoff_record_for_current_
 		),
 	);
 
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		current_branch,
 		&head_oid,
@@ -217,7 +222,7 @@ fn reconcile_post_review_orchestration_uses_matching_handoff_record_for_current_
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -229,38 +234,38 @@ fn reconcile_post_review_orchestration_uses_matching_handoff_record_for_current_
 
 #[test]
 fn reconcile_post_review_orchestration_rebinds_stale_head_marker_after_repair_push() {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&config, "PATH");
-	let _path_guard = install_fake_post_issue_comment_gh_response(
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&config, "PATH");
+	let _path_guard = tests::install_fake_post_issue_comment_gh_response(
 		&temp_dir,
 		TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,
 		"2025-11-03T00:00:00Z",
 	);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
-	let marker_head_oid = git_output(&repo_root, &["rev-parse", "HEAD"]);
+	let marker_head_oid = tests::git_output(&repo_root, &["rev-parse", "HEAD"]);
 	let current_head_oid =
-		commit_worktree_change(&repo_root, "repair.txt", "repair push\n", "repair push");
+		tests::commit_worktree_change(&repo_root, "repair.txt", "repair push\n", "repair push");
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &marker_head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &marker_head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker(
+		&tests::sample_review_orchestration_marker(
 			"main",
 			pr_url,
 			&marker_head_oid,
@@ -269,7 +274,7 @@ fn reconcile_post_review_orchestration_rebinds_stale_head_marker_after_repair_pu
 		),
 	);
 
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&current_head_oid,
@@ -289,7 +294,7 @@ fn reconcile_post_review_orchestration_rebinds_stale_head_marker_after_repair_pu
 	)
 	.expect("post-review orchestration should rebind stale marker without attention");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -297,10 +302,7 @@ fn reconcile_post_review_orchestration_rebinds_stale_head_marker_after_repair_pu
 
 	assert_eq!(marker.phase(), "waiting_for_ack");
 	assert_eq!(marker.head_sha(), current_head_oid);
-	assert_eq!(
-		marker.request_comment_database_id(),
-		Some(TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID)
-	);
+	assert_eq!(marker.request_comment_database_id(), Some(TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID));
 	assert_eq!(marker.external_round_count(), 1);
 	assert!(tracker.comments.borrow().is_empty());
 	assert!(tracker.state_updates.borrow().is_empty());
@@ -310,8 +312,8 @@ fn reconcile_post_review_orchestration_rebinds_stale_head_marker_after_repair_pu
 
 #[test]
 fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manual_attention() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -319,11 +321,11 @@ fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manua
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let pr_head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let pr_head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let merge_commit_oid =
-		commit_worktree_change(&worktree.path, "landed.txt", "landed\n", "land retained lane");
+		tests::commit_worktree_change(&worktree.path, "landed.txt", "landed\n", "land retained lane");
 	let current_head_oid =
-		commit_worktree_change(&worktree.path, "later.txt", "later\n", "advance main later");
+		tests::commit_worktree_change(&worktree.path, "later.txt", "later\n", "advance main later");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/203";
 
 	state_store
@@ -335,13 +337,13 @@ fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manua
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &pr_head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &pr_head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
@@ -361,7 +363,7 @@ fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manua
 		),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&pr_head_oid,
@@ -384,7 +386,7 @@ fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manua
 	)
 	.expect("merged post-review orchestration should not fail");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
@@ -398,38 +400,41 @@ fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manua
 
 #[test]
 fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
-	let config =
-		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let config = tests::service_config_with_github_token_env_var_and_command_path(
+		&config,
+		"PATH",
+		&gh_command_path,
+	);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
 	let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -440,9 +445,8 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
-	add_external_review_pass(&mut review_state);
-
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
 		&config,
@@ -452,7 +456,7 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -485,38 +489,44 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 
 #[test]
 fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_boundary() {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
-	let config =
-		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let config = tests::service_config_with_github_token_env_var_and_command_path(
+		&config,
+		"PATH",
+		&gh_command_path,
+	);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
-	record_block_landing_authority_boundary(&state_store, &issue);
+	review_landing_classification_review::record_block_landing_authority_boundary(
+		&state_store,
+		&issue,
+	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -527,9 +537,8 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_boundary
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
-	add_external_review_pass(&mut review_state);
-
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
 		&config,
@@ -539,7 +548,7 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_boundary
 	)
 	.expect("post-review orchestration should wait for authority-boundary clearance");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -557,38 +566,44 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_boundary
 
 #[test]
 fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_boundary() {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
-	let config =
-		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let config = tests::service_config_with_github_token_env_var_and_command_path(
+		&config,
+		"PATH",
+		&gh_command_path,
+	);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
-	record_requires_human_authority_boundary(&state_store, &issue);
+	review_landing_classification_review::record_requires_human_authority_boundary(
+		&state_store,
+		&issue,
+	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -599,9 +614,8 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_bou
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
-	add_external_review_pass(&mut review_state);
-
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
 		&config,
@@ -611,7 +625,7 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_bou
 	)
 	.expect("post-review orchestration should wait for human authority decision");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -629,38 +643,41 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_bou
 
 #[test]
 fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision_request() {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
-	let config =
-		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let config = tests::service_config_with_github_token_env_var_and_command_path(
+		&config,
+		"PATH",
+		&gh_command_path,
+	);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
-	record_authority_decision_request(&state_store, &issue);
+	review_landing_classification_review::record_authority_decision_request(&state_store, &issue);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -671,9 +688,8 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
-	add_external_review_pass(&mut review_state);
-
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
 		&config,
@@ -683,7 +699,7 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision
 	)
 	.expect("post-review orchestration should wait for authority decision request");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -701,37 +717,40 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision
 
 #[test]
 fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallback() {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
-	let config =
-		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let config = tests::service_config_with_github_token_env_var_and_command_path(
+		&config,
+		"PATH",
+		&gh_command_path,
+	);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -742,9 +761,8 @@ fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallbac
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
-	add_external_review_pass(&mut review_state);
-
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
 		&config,
@@ -754,7 +772,7 @@ fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallbac
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -786,10 +804,10 @@ fn reconcile_post_review_orchestration_runs_admin_merge_in_basic_review_level() 
 fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_review(
 	review_level: ReviewLevel,
 ) {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
-	let config = service_config_with_review_level(
-		&service_config_with_github_token_env_var_and_command_path(
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let config = tests::service_config_with_review_level(
+		&tests::service_config_with_github_token_env_var_and_command_path(
 			&config,
 			"PATH",
 			&gh_command_path,
@@ -797,27 +815,27 @@ fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_
 		review_level,
 	);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
 	let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
 
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -837,7 +855,7 @@ fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -873,12 +891,12 @@ fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_
 }
 
 #[test]
-fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landing_to_agent_fallback(
-) {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
-	let config = service_config_with_review_level(
-		&service_config_with_github_token_env_var_and_command_path(
+fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landing_to_agent_fallback()
+ {
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let config = tests::service_config_with_review_level(
+		&tests::service_config_with_github_token_env_var_and_command_path(
 			&config,
 			"PATH",
 			&gh_command_path,
@@ -886,26 +904,26 @@ fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landin
 		ReviewLevel::Standard,
 	);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
 
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -925,7 +943,7 @@ fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landin
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -942,39 +960,42 @@ fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landin
 
 #[test]
 fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
-	let (temp_dir, config, workflow) = temp_project_layout();
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
 	let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 	let (gh_command_path, invocation_log_path) =
-		install_fake_admin_merge_gh_response_with_merge_exit_code(&temp_dir, &head_oid, 1);
-	let config =
-		service_config_with_github_token_env_var_and_command_path(&config, "PATH", &gh_command_path);
+		tests::install_fake_admin_merge_gh_response_with_merge_exit_code(&temp_dir, &head_oid, 1);
+	let config = tests::service_config_with_github_token_env_var_and_command_path(
+		&config,
+		"PATH",
+		&gh_command_path,
+	);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -985,9 +1006,8 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
-	add_external_review_pass(&mut review_state);
-
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
 		&config,
@@ -997,7 +1017,7 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 	)
 	.expect("post-review orchestration should accept an already-merged PR race");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1040,14 +1060,14 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 
 #[test]
 fn reconcile_post_review_orchestration_waits_for_green_checks_before_requesting_external_review() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1064,13 +1084,13 @@ fn reconcile_post_review_orchestration_waits_for_green_checks_before_requesting_
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1090,7 +1110,7 @@ fn reconcile_post_review_orchestration_waits_for_green_checks_before_requesting_
 		),
 	);
 
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -1110,7 +1130,7 @@ fn reconcile_post_review_orchestration_waits_for_green_checks_before_requesting_
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1125,14 +1145,14 @@ fn reconcile_post_review_orchestration_waits_for_green_checks_before_requesting_
 
 #[test]
 fn reconcile_post_review_orchestration_waits_when_pr_readback_degrades() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1149,13 +1169,13 @@ fn reconcile_post_review_orchestration_waits_when_pr_readback_degrades() {
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1174,7 +1194,6 @@ fn reconcile_post_review_orchestration_waits_when_pr_readback_degrades() {
 			None,
 		),
 	);
-
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
 		&config,
@@ -1186,7 +1205,7 @@ fn reconcile_post_review_orchestration_waits_when_pr_readback_degrades() {
 	)
 	.expect("post-review orchestration should tolerate degraded PR readback");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1201,8 +1220,8 @@ fn reconcile_post_review_orchestration_waits_when_pr_readback_degrades() {
 
 #[test]
 fn reconcile_post_review_orchestration_waits_when_worktree_head_read_fails() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1212,7 +1231,7 @@ fn reconcile_post_review_orchestration_waits_when_worktree_head_read_fails() {
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let branch_ref_path =
 		config.repo_root().join(".git").join("refs").join("heads").join(&worktree.branch_name);
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 
 	state_store
@@ -1224,13 +1243,13 @@ fn reconcile_post_review_orchestration_waits_when_worktree_head_read_fails() {
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
@@ -1249,7 +1268,6 @@ fn reconcile_post_review_orchestration_waits_when_worktree_head_read_fails() {
 			None,
 		),
 	);
-
 	fs::remove_file(&branch_ref_path).expect("branch ref should remove");
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
@@ -1275,14 +1293,14 @@ fn reconcile_post_review_orchestration_waits_when_worktree_head_read_fails() {
 
 #[test]
 fn reconcile_post_review_orchestration_waits_when_worktree_branch_read_fails() {
-	let (temp_dir, config, workflow) = temp_project_layout();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let missing_worktree_path = temp_dir.path().join("missing-retained-worktree");
 	let branch_name = "x/pubfi-pub-101";
-	let head_oid = git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 
 	fs::create_dir_all(&missing_worktree_path).expect("broken worktree path should exist");
@@ -1296,13 +1314,12 @@ fn reconcile_post_review_orchestration_waits_when_worktree_branch_read_fails() {
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(branch_name, pr_url, &head_oid),
 	);
-
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
 		&config,
@@ -1332,14 +1349,14 @@ fn reconcile_post_review_orchestration_waits_when_worktree_branch_read_fails() {
 #[test]
 fn reconcile_post_review_orchestration_routes_fixable_ci_red_to_repair_before_requesting_external_review()
  {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1356,13 +1373,13 @@ fn reconcile_post_review_orchestration_routes_fixable_ci_red_to_repair_before_re
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1382,7 +1399,7 @@ fn reconcile_post_review_orchestration_routes_fixable_ci_red_to_repair_before_re
 		),
 	);
 
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -1402,7 +1419,7 @@ fn reconcile_post_review_orchestration_routes_fixable_ci_red_to_repair_before_re
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1420,14 +1437,14 @@ fn reconcile_post_review_orchestration_routes_fixable_ci_red_to_repair_before_re
 
 #[test]
 fn reconcile_post_review_orchestration_routes_thread_only_external_review_to_repair() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1444,20 +1461,20 @@ fn reconcile_post_review_orchestration_routes_thread_only_external_review_to_rep
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -1468,8 +1485,7 @@ fn reconcile_post_review_orchestration_routes_thread_only_external_review_to_rep
 		1,
 	);
 
-	add_external_review_ack(&mut review_state);
-
+	tests::add_external_review_ack(&mut review_state);
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
 		&config,
@@ -1479,7 +1495,7 @@ fn reconcile_post_review_orchestration_routes_thread_only_external_review_to_rep
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1497,14 +1513,14 @@ fn reconcile_post_review_orchestration_routes_thread_only_external_review_to_rep
 
 #[test]
 fn reconcile_post_review_orchestration_fails_closed_when_pull_request_is_closed() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1521,20 +1537,20 @@ fn reconcile_post_review_orchestration_fails_closed_when_pull_request_is_closed(
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -1564,14 +1580,14 @@ fn reconcile_post_review_orchestration_fails_closed_when_pull_request_is_closed(
 
 #[test]
 fn reconcile_post_review_orchestration_skips_issue_with_run_lease() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1588,17 +1604,17 @@ fn reconcile_post_review_orchestration_skips_issue_with_run_lease() {
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
 
 	assert!(
@@ -1621,7 +1637,7 @@ fn reconcile_post_review_orchestration_skips_issue_with_run_lease() {
 	)
 	.expect("post-review orchestration should skip active repair lanes");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1637,9 +1653,9 @@ fn reconcile_post_review_orchestration_skips_issue_with_run_lease() {
 
 #[test]
 fn reconcile_post_review_orchestration_fails_closed_when_review_handoff_is_missing() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1665,14 +1681,14 @@ fn reconcile_post_review_orchestration_fails_closed_when_review_handoff_is_missi
 
 #[test]
 fn reconcile_post_review_orchestration_skips_issue_without_service_active_label() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1689,13 +1705,13 @@ fn reconcile_post_review_orchestration_skips_issue_without_service_active_label(
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1714,7 +1730,6 @@ fn reconcile_post_review_orchestration_skips_issue_without_service_active_label(
 			None,
 		),
 	);
-
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,
 		&config,
@@ -1724,7 +1739,7 @@ fn reconcile_post_review_orchestration_skips_issue_without_service_active_label(
 	)
 	.expect("post-review orchestration should skip unowned retained lanes");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1739,15 +1754,16 @@ fn reconcile_post_review_orchestration_skips_issue_without_service_active_label(
 }
 
 #[test]
-fn reconcile_post_review_orchestration_repairs_unhandled_ci_red_before_requesting_external_review() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+fn reconcile_post_review_orchestration_repairs_unhandled_ci_red_before_requesting_external_review()
+{
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = post_review_sample_service_owned_issue("In Review");
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -1764,13 +1780,13 @@ fn reconcile_post_review_orchestration_repairs_unhandled_ci_red_before_requestin
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1790,7 +1806,7 @@ fn reconcile_post_review_orchestration_repairs_unhandled_ci_red_before_requestin
 		),
 	);
 
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -1810,7 +1826,7 @@ fn reconcile_post_review_orchestration_repairs_unhandled_ci_red_before_requestin
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,

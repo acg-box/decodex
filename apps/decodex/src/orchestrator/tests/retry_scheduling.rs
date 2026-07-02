@@ -1,3 +1,15 @@
+use std::{
+	fs,
+	path::Path,
+	process::Command,
+	thread,
+	time::{Duration, Instant},
+};
+
+use time::OffsetDateTime;
+
+use crate::{orchestrator::{self, tests, CONTINUATION_PENDING_RUN_STATUS, ChildExitRetryContext, ChildRunRef, DaemonRunChild, DaemonTickRuntimeContext, IssueDispatchMode, PullRequestReviewState, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, ReviewLevel, StateStore, TERMINAL_GUARDED_RUN_STATUS, TargetIssueRunContext}, orchestrator::tests::{FakePullRequestReviewStateInspector, FakeTracker, TEST_SERVICE_ID, recovery_terminal_support}, state, tracker::{self, TrackerIssue}, workflow::WorkflowDocument, worktree::WorktreeManager};
+
 const PUB_704_RETAINED_HEAD_SUBJECT: &str =
 	r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-704"}"#;
 const PUB_704_RETAINED_LANDED_SUBJECT: &str = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-704"}"#;
@@ -7,7 +19,7 @@ fn sample_approved_clean_review_state(
 	branch_name: &str,
 	head_oid: &str,
 ) -> PullRequestReviewState {
-	sample_pull_request_review_state(
+	tests::sample_pull_request_review_state(
 		pr_url,
 		branch_name,
 		head_oid,
@@ -22,13 +34,13 @@ fn sample_approved_clean_review_state(
 fn sample_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue(state_name, &[active_label.as_str()])
+	tests::sample_issue(state_name, &[active_label.as_str()])
 }
 
 fn sample_service_owned_issue_without_needs_attention_team_label(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue_without_needs_attention_team_label(state_name, &[active_label.as_str()])
+	tests::sample_issue_without_needs_attention_team_label(state_name, &[active_label.as_str()])
 }
 
 fn sample_service_owned_issue_with_project_slug_and_sort_fields(
@@ -41,7 +53,7 @@ fn sample_service_owned_issue_with_project_slug_and_sort_fields(
 ) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue_with_project_slug_and_sort_fields(
+	tests::sample_issue_with_project_slug_and_sort_fields(
 		id,
 		identifier,
 		project_slug,
@@ -54,7 +66,7 @@ fn sample_service_owned_issue_with_project_slug_and_sort_fields(
 
 #[test]
 fn retry_delay_distinguishes_continuation_and_capped_failure_backoff() {
-	let (_, _, workflow) = temp_project_layout();
+	let (_, _, workflow) = tests::temp_project_layout();
 
 	assert_eq!(
 		orchestrator::retry_delay(orchestrator::RetryKind::Continuation, 1, &workflow,),
@@ -74,9 +86,9 @@ fn retry_delay_distinguishes_continuation_and_capped_failure_backoff() {
 fn retry_run_dry_run_enforces_active_ownership() {
 	for (case_name, issue, expected_dispatch) in [
 		("active issue", sample_service_owned_issue("In Progress"), true),
-		("unowned issue", sample_issue("In Progress", &[]), false),
+		("unowned issue", tests::sample_issue("In Progress", &[]), false),
 	] {
-		let (_temp_dir, config, workflow) = temp_project_layout();
+		let (_temp_dir, config, workflow) = tests::temp_project_layout();
 		let tracker = FakeTracker::with_refresh_snapshots(
 			vec![issue.clone()],
 			vec![vec![issue.clone()], vec![issue.clone()]],
@@ -107,8 +119,8 @@ fn retry_run_dry_run_enforces_active_ownership() {
 
 #[test]
 fn targeted_run_dry_run_accepts_startable_issue_with_normal_dispatch() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
 		vec![vec![issue.clone()], vec![issue.clone()]],
@@ -138,7 +150,7 @@ fn targeted_run_dry_run_accepts_startable_issue_with_normal_dispatch() {
 
 #[test]
 fn retry_run_dry_run_rejects_terminal_guarded_issue_without_attention_label() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue_without_needs_attention_team_label("In Progress");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
@@ -186,7 +198,7 @@ fn schedule_retry_after_child_exit_records_failure_retries_for_active_dispatch_m
 			"run-review-repair",
 		),
 	] {
-		let (_temp_dir, config, workflow) = temp_project_layout();
+		let (_temp_dir, config, workflow) = tests::temp_project_layout();
 		let issue = sample_service_owned_issue(issue_state);
 		let tracker =
 			FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -227,7 +239,7 @@ fn schedule_retry_after_child_exit_records_failure_retries_for_active_dispatch_m
 
 #[test]
 fn failure_retry_budget_ignores_prior_continuation_attempts() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -279,7 +291,7 @@ fn failure_retry_budget_ignores_prior_continuation_attempts() {
 
 #[test]
 fn schedule_retry_after_child_exit_terminalizes_exhausted_review_repair_issue() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -354,7 +366,7 @@ fn schedule_retry_after_child_exit_terminalizes_exhausted_review_repair_issue() 
 
 #[test]
 fn schedule_retry_after_child_exit_counts_persisted_retry_budget_after_restart() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -418,8 +430,8 @@ fn schedule_retry_after_child_exit_counts_persisted_retry_budget_after_restart()
 #[test]
 fn schedule_retry_after_child_exit_records_failure_retry_for_closeout_issue_after_tracker_completion()
  {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let issue = sample_service_owned_issue("Done");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -429,13 +441,13 @@ fn schedule_retry_after_child_exit_records_failure_retry_for_closeout_issue_afte
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/175";
 	let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response(
 		&temp_dir, &worktree, pr_url, &head_oid,
 	);
 
-	seed_review_handoff_marker(
+	tests::seed_review_handoff_marker(
 		&state_store,
 		config.service_id(),
 		&issue.id,
@@ -444,7 +456,7 @@ fn schedule_retry_after_child_exit_records_failure_retry_for_closeout_issue_afte
 		&head_oid,
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -505,8 +517,8 @@ fn schedule_retry_after_child_exit_records_failure_retry_for_closeout_issue_afte
 
 #[test]
 fn schedule_retry_after_child_exit_keeps_blocked_closeout_retry_for_completed_issue_with_open_pr() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let issue = sample_service_owned_issue("Done");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -516,13 +528,13 @@ fn schedule_retry_after_child_exit_keeps_blocked_closeout_retry_for_completed_is
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/176";
 	let _path_guard = recovery_terminal_support::install_fake_open_pr_gh_response(
 		&temp_dir, &worktree, pr_url, &head_oid,
 	);
 
-	seed_review_handoff_marker(
+	tests::seed_review_handoff_marker(
 		&state_store,
 		config.service_id(),
 		&issue.id,
@@ -531,7 +543,7 @@ fn schedule_retry_after_child_exit_keeps_blocked_closeout_retry_for_completed_is
 		&head_oid,
 	);
 
-	let open_review_state = sample_pull_request_review_state(
+	let open_review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -604,7 +616,7 @@ fn schedule_retry_after_child_exit_keeps_blocked_closeout_retry_for_completed_is
 
 #[test]
 fn future_review_repair_retry_keeps_backoff_window_until_due() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -652,7 +664,7 @@ fn future_review_repair_retry_keeps_backoff_window_until_due() {
 
 #[test]
 fn due_review_repair_retry_drops_after_backoff_budget_exhausted() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -697,8 +709,8 @@ fn due_review_repair_retry_drops_after_backoff_budget_exhausted() {
 
 #[test]
 fn due_review_repair_retry_drops_when_active_ownership_is_gone() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -736,7 +748,7 @@ fn due_review_repair_retry_drops_when_active_ownership_is_gone() {
 
 #[test]
 fn interrupted_exits_consume_retry_budget() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -781,7 +793,7 @@ fn interrupted_exits_consume_retry_budget() {
 
 #[test]
 fn schedule_retry_after_child_exit_records_continuation_retry_for_clean_exit() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -829,8 +841,8 @@ fn schedule_retry_after_child_exit_records_continuation_retry_for_clean_exit() {
 
 #[test]
 fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites() {
-	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
-		&sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1).replace(
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_workflow_markdown(
+		&tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1).replace(
 			"canonicalize_commands = []",
 			"canonicalize_commands = [\"printf 'rewritten\\\\n' > other.txt\"]",
 		),
@@ -841,9 +853,8 @@ fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-3";
 
-	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
-	commit_worktree_change(config.repo_root(), "other.txt", "before\n", "add other file");
-
+	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
+	tests::commit_worktree_change(config.repo_root(), "other.txt", "before\n", "add other file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	for (attempt, recorded_run_id) in [(1, "run-1"), (2, "run-2"), (3, run_id)] {
@@ -925,15 +936,14 @@ fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites
 
 #[test]
 fn schedule_retry_after_child_exit_respects_terminal_finalize_before_phase_goal_recovery() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-3";
 
-	commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
-
+	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
 
 	for (attempt, recorded_run_id) in [(1, "run-1"), (2, "run-2"), (3, run_id)] {
@@ -1016,7 +1026,7 @@ fn schedule_retry_after_child_exit_respects_terminal_finalize_before_phase_goal_
 
 #[test]
 fn schedule_retry_after_child_exit_preserves_specific_retry_schedule_kind_for_failure_retry() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -1077,7 +1087,7 @@ fn schedule_retry_after_child_exit_preserves_specific_retry_schedule_kind_for_fa
 
 #[test]
 fn schedule_retry_after_child_exit_retains_continuation_retry_for_stale_startable_issue() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("Todo");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -1116,8 +1126,8 @@ fn schedule_retry_after_child_exit_retains_continuation_retry_for_stale_startabl
 
 #[test]
 fn schedule_retry_after_child_exit_skips_retry_for_completed_successful_run() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1155,7 +1165,7 @@ fn schedule_retry_after_child_exit_skips_retry_for_completed_successful_run() {
 
 #[test]
 fn schedule_retry_after_child_exit_requires_exact_run_id() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -1193,7 +1203,7 @@ fn schedule_retry_after_child_exit_requires_exact_run_id() {
 
 #[test]
 fn exited_retry_child_keeps_queued_claim_when_no_run_attempt_was_persisted() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -1261,7 +1271,7 @@ fn exited_retry_child_keeps_queued_claim_when_no_run_attempt_was_persisted() {
 
 #[test]
 fn exited_successful_child_marks_recent_run_succeeded_before_cleanup() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -1325,7 +1335,7 @@ fn exited_successful_child_marks_recent_run_succeeded_before_cleanup() {
 
 #[test]
 fn exited_unsuccessful_child_does_not_downgrade_persisted_success() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -1452,10 +1462,10 @@ fn spawn_sleeping_daemon_child(
 
 #[test]
 fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
-	let config = service_config_with_review_level(
-		&service_config_with_github_token_env_var_and_command_path(
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let config = tests::service_config_with_review_level(
+		&tests::service_config_with_github_token_env_var_and_command_path(
 			&base_config,
 			"PATH",
 			&gh_command_path,
@@ -1489,7 +1499,7 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 		.ensure_worktree(&retained_issue.identifier, false)
 		.expect("retained worktree should exist");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/704";
-	let head_oid = commit_worktree_change(
+	let head_oid = tests::commit_worktree_change(
 		&retained_worktree.path,
 		"retained.txt",
 		"ready\n",
@@ -1508,14 +1518,14 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 		.record_run_attempt("leased-run", &active_issue.id, 1, "running")
 		.expect("current lane should record");
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&retained_issue.id,
-		&sample_review_handoff_marker(&retained_worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&retained_worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&retained_worktree.branch_name,
 		&head_oid,
@@ -1528,7 +1538,7 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 	let mut active_children = vec![spawn_sleeping_daemon_child(&active_issue, &workflow)];
 	let mut retry_queue = RetryQueue::default();
 	let result = orchestrator::run_daemon_tick_with_review_state_inspector(
-		&service_config_path(config.repo_root()),
+		&tests::service_config_path(config.repo_root()),
 		&state_store,
 		&mut active_children,
 		&mut retry_queue,
@@ -1548,7 +1558,7 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 
 	result.expect("daemon tick should reconcile retained review lanes");
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&retained_worktree.path,
@@ -1566,10 +1576,10 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 
 #[test]
 fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let (gh_command_path, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
-	let config = service_config_with_review_level(
-		&service_config_with_github_token_env_var_and_command_path(
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let config = tests::service_config_with_review_level(
+		&tests::service_config_with_github_token_env_var_and_command_path(
 			&base_config,
 			"PATH",
 			&gh_command_path,
@@ -1611,7 +1621,7 @@ fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
 		.ensure_worktree(&retained_issue.identifier, false)
 		.expect("retained worktree should exist");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/704";
-	let head_oid = commit_worktree_change(
+	let head_oid = tests::commit_worktree_change(
 		&retained_worktree.path,
 		"retained.txt",
 		"ready\n",
@@ -1635,18 +1645,18 @@ fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
 		)
 		.expect("retained worktree should record");
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&retained_issue.id,
-		&sample_review_handoff_marker(&retained_worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&retained_worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let mut active_children = Vec::new();
 	let mut retry_queue = RetryQueue::default();
 
 	orchestrator::run_daemon_tick_with_review_state_inspector(
-		&service_config_path(config.repo_root()),
+		&tests::service_config_path(config.repo_root()),
 		&state_store,
 		&mut active_children,
 		&mut retry_queue,
