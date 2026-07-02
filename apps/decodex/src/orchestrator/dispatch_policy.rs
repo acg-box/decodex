@@ -109,3 +109,49 @@ where
 
 	Ok(true)
 }
+
+pub(in crate::orchestrator) fn issue_passes_current_dispatch_policy<T>(
+	tracker: &T,
+	issue: &TrackerIssue,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	dispatch_mode: IssueDispatchMode,
+	hint: RetryIssueStateHint<'_>,
+) -> Result<bool>
+where
+	T: IssueTracker + ?Sized,
+{
+	match dispatch_mode {
+		IssueDispatchMode::Normal => {
+			let queue_label = tracker::automation_queue_label(project.service_id());
+
+			Ok(issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, false)?
+				&& !ordinary_dispatch_blocked_by_retained_review_handoff(
+					project.service_id(),
+					issue,
+					state_store,
+				)?)
+		},
+		IssueDispatchMode::Program => {
+			let queue_label = tracker::automation_queue_label(project.service_id());
+
+			Ok(issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, true)?
+				&& !ordinary_dispatch_blocked_by_retained_review_handoff(
+					project.service_id(),
+					issue,
+					state_store,
+				)?)
+		},
+		IssueDispatchMode::Retry => {
+			issue_passes_retry_dispatch_policy(tracker, issue, project, workflow, state_store, hint)
+		},
+		IssueDispatchMode::ReviewRepair => {
+			Ok(issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?
+				&& !issue_retry_budget_exhausted(workflow, state_store, &issue.id)?)
+		},
+		IssueDispatchMode::Closeout => {
+			issue_passes_closeout_dispatch_policy(tracker, issue, project, workflow, state_store)
+		},
+	}
+}
