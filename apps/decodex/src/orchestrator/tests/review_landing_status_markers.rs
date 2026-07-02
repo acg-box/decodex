@@ -1,7 +1,9 @@
+use crate::{orchestrator::{self, tests, ReviewOrchestrationMarker, StateStore}, orchestrator::tests::{TEST_EXTERNAL_REVIEW_AUTO_MERGE_ENABLED_AT, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT}};
+
 #[test]
 fn ensure_review_orchestration_marker_ignores_stale_tracker_record_from_prior_handoff() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let current_pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let head_oid = "abc123";
@@ -27,11 +29,11 @@ fn ensure_review_orchestration_marker_ignores_stale_tracker_record_from_prior_ha
 		)
 		.expect("stale orchestration marker should persist");
 
-	let marker = super::ensure_review_orchestration_marker(
+	let marker = orchestrator::ensure_review_orchestration_marker(
 		config.service_id(),
 		&state_store,
 		&issue,
-		&sample_review_handoff_marker("x/pubfi-pub-101", current_pr_url, head_oid),
+		&tests::sample_review_handoff_marker("x/pubfi-pub-101", current_pr_url, head_oid),
 		head_oid,
 	)
 	.expect("fresh review orchestration marker should initialize");
@@ -45,7 +47,7 @@ fn ensure_review_orchestration_marker_ignores_stale_tracker_record_from_prior_ha
 		.review_orchestration_marker(
 			config.service_id(),
 			&issue.id,
-			&sample_review_handoff_marker("x/pubfi-pub-101", current_pr_url, head_oid),
+			&tests::sample_review_handoff_marker("x/pubfi-pub-101", current_pr_url, head_oid),
 		)
 		.expect("runtime orchestration lookup should succeed")
 		.expect("runtime orchestration marker should persist");

@@ -1,13 +1,18 @@
+use std::fs;
+
+use crate::{orchestrator::{self, tests, EXTERNAL_REVIEW_PASS_PHRASE, ReviewHandoffMarker, ReviewLevel, ReviewOrchestrationMarker, ServiceConfig, StateStore}, orchestrator::tests::{FakePullRequestReviewStateInspector, FakeTracker, ReviewPolicyCheckpointInput, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT, TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN, recovery_terminal_support, review_landing_status_support}, tracker::TrackerIssue, worktree::{WorktreeManager, WorktreeSpec}};
+use crate::test_support;
+
 #[test]
 fn build_post_review_lane_statuses_reports_ready_to_land() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -24,20 +29,20 @@ fn build_post_review_lane_statuses_reports_ready_to_land() {
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -48,8 +53,8 @@ fn build_post_review_lane_statuses_reports_ready_to_land() {
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
-	add_external_review_pass(&mut review_state);
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
 
 	let lanes = orchestrator::build_post_review_lane_statuses(
 		&tracker,
@@ -73,8 +78,8 @@ fn build_post_review_lane_statuses_reports_ready_to_land() {
 
 #[test]
 fn build_post_review_lane_statuses_waits_when_clean_repair_head_outruns_lifecycle_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -91,7 +96,7 @@ fn build_post_review_lane_statuses_waits_when_clean_repair_head_outruns_lifecycl
 		&repaired_head_oid,
 	);
 
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&repaired_head_oid,
@@ -140,11 +145,11 @@ fn retained_worktree_with_stale_review_lifecycle_marker(
 		)
 		.expect("worktree should record");
 
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_orchestration_marker(
+		&tests::sample_review_orchestration_marker(
 			&worktree.branch_name,
 			pr_url,
 			&old_head_oid,
@@ -160,7 +165,7 @@ fn retained_worktree_with_stale_review_lifecycle_marker(
 
 fn git_head_oid_for_worktree(worktree: &WorktreeSpec) -> String {
 	String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["rev-parse", "HEAD"])
@@ -175,7 +180,7 @@ fn git_head_oid_for_worktree(worktree: &WorktreeSpec) -> String {
 
 fn commit_empty_repair_head_for_worktree(worktree: &WorktreeSpec) -> String {
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args([
@@ -265,14 +270,14 @@ fn seed_clean_repair_completion_writeback_gap(
 
 #[test]
 fn build_post_review_lane_statuses_preserves_handoff_marker_when_pr_readback_fails() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -289,11 +294,11 @@ fn build_post_review_lane_statuses_preserves_handoff_marker_when_pr_readback_fai
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
 
 	let lanes = orchestrator::build_post_review_lane_statuses(
@@ -321,15 +326,15 @@ fn build_post_review_lane_statuses_preserves_handoff_marker_when_pr_readback_fai
 
 #[test]
 fn build_post_review_lane_statuses_skips_external_review_when_disabled() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_review_level(&config, ReviewLevel::Standard);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_review_level(&config, ReviewLevel::Standard);
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -346,14 +351,14 @@ fn build_post_review_lane_statuses_skips_external_review_when_disabled() {
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
 
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -384,14 +389,14 @@ fn build_post_review_lane_statuses_skips_external_review_when_disabled() {
 
 #[test]
 fn build_post_review_lane_statuses_routes_mixed_external_pass_and_feedback_to_repair() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -408,20 +413,20 @@ fn build_post_review_lane_statuses_routes_mixed_external_pass_and_feedback_to_re
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -432,11 +437,11 @@ fn build_post_review_lane_statuses_routes_mixed_external_pass_and_feedback_to_re
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
+	tests::add_external_review_ack(&mut review_state);
 
 	review_state.issue_description_external_review_thumbs_up_count = 1;
 
-	add_external_review_summary(
+	tests::add_external_review_summary(
 		&mut review_state,
 		"Didn't find any major issues. Please fix X.",
 		"COMMENTED",
@@ -464,14 +469,14 @@ fn build_post_review_lane_statuses_ignores_non_external_review_signals() {
 		("waiting_for_ack", "ack", "external_review_ack_pending"),
 		("waiting_for_result", "pass", "external_review_result_pending"),
 	] {
-		let (_temp_dir, config, workflow) = temp_project_layout();
+		let (_temp_dir, config, workflow) = tests::temp_project_layout();
 		let repo_root = config.repo_root().to_path_buf();
-		let issue = sample_issue("In Review", &[]);
+		let issue = tests::sample_issue("In Review", &[]);
 		let tracker =
 			FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 		let head_oid = String::from_utf8(
-			crate::test_support::hermetic_git_command()
+			test_support::hermetic_git_command()
 				.arg("-C")
 				.arg(&repo_root)
 				.args(["rev-parse", "HEAD"])
@@ -488,20 +493,20 @@ fn build_post_review_lane_statuses_ignores_non_external_review_signals() {
 			.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 			.expect("worktree should record");
 
-		seed_review_handoff_marker_for_path(
+		tests::seed_review_handoff_marker_for_path(
 			&state_store,
 			config.service_id(),
 			&repo_root,
-			&sample_review_handoff_marker("main", pr_url, &head_oid),
+			&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 		);
-		seed_review_orchestration_marker_for_path(
+		tests::seed_review_orchestration_marker_for_path(
 			&state_store,
 			config.service_id(),
 			&repo_root,
-			&sample_review_orchestration_marker("main", pr_url, &head_oid, phase, 1),
+			&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, phase, 1),
 		);
 
-		let mut review_state = sample_pull_request_review_state(
+		let mut review_state = tests::sample_pull_request_review_state(
 			pr_url,
 			"main",
 			&head_oid,
@@ -513,13 +518,13 @@ fn build_post_review_lane_statuses_ignores_non_external_review_signals() {
 		);
 
 		match signal {
-			"ack" => add_review_request_ack_from_actor(
+			"ack" => tests::add_review_request_ack_from_actor(
 				&mut review_state,
 				TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN,
 			),
 			"pass" => {
-				add_external_review_ack(&mut review_state);
-				add_external_review_pass_from_actor(
+				tests::add_external_review_ack(&mut review_state);
+				tests::add_external_review_pass_from_actor(
 					&mut review_state,
 					TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN,
 				);
@@ -549,14 +554,14 @@ fn build_post_review_lane_statuses_ignores_non_external_review_signals() {
 
 #[test]
 fn build_post_review_lane_statuses_accepts_existing_description_thumbs_up_for_later_pass_rounds() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -573,13 +578,13 @@ fn build_post_review_lane_statuses_accepts_existing_description_thumbs_up_for_la
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -599,7 +604,7 @@ fn build_post_review_lane_statuses_accepts_existing_description_thumbs_up_for_la
 		),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -610,11 +615,11 @@ fn build_post_review_lane_statuses_accepts_existing_description_thumbs_up_for_la
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
+	tests::add_external_review_ack(&mut review_state);
 
 	review_state.issue_description_external_review_thumbs_up_count = 1;
 
-	add_external_review_summary(
+	tests::add_external_review_summary(
 		&mut review_state,
 		EXTERNAL_REVIEW_PASS_PHRASE,
 		"APPROVED",
@@ -638,15 +643,15 @@ fn build_post_review_lane_statuses_accepts_existing_description_thumbs_up_for_la
 
 #[test]
 fn build_post_review_lane_statuses_keeps_completed_issue_visible_for_closeout_tail_work() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = sample_issue("Done", &[]);
+	let issue = tests::sample_issue("Done", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -675,14 +680,14 @@ fn build_post_review_lane_statuses_keeps_completed_issue_visible_for_closeout_ta
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -713,15 +718,15 @@ fn build_post_review_lane_statuses_keeps_completed_issue_visible_for_closeout_ta
 
 #[test]
 fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_retry_budget() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let repo_root = config.repo_root().to_path_buf();
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&repo_root)
 			.args(["rev-parse", "HEAD"])
@@ -750,11 +755,11 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_retry_bud
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
 
 	for attempt in 1..=3 {
@@ -763,7 +768,7 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_retry_bud
 			.expect("failed attempt should record");
 	}
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		"main",
 		&head_oid,
@@ -795,9 +800,9 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_retry_bud
 
 #[test]
 fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_landed_main_advances() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("In Review", &[]);
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -805,11 +810,11 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_landed_ma
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let pr_head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let pr_head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let merge_commit_oid =
-		commit_worktree_change(&worktree.path, "landed.txt", "landed\n", "land retained lane");
+		tests::commit_worktree_change(&worktree.path, "landed.txt", "landed\n", "land retained lane");
 	let current_head_oid =
-		commit_worktree_change(&worktree.path, "later.txt", "later\n", "advance main later");
+		tests::commit_worktree_change(&worktree.path, "later.txt", "later\n", "advance main later");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/203";
 	let _path_guard = recovery_terminal_support::install_fake_closeout_gh_responses(
 		&temp_dir,
@@ -827,14 +832,14 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_landed_ma
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &pr_head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &pr_head_oid),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&pr_head_oid,
@@ -857,7 +862,7 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_landed_ma
 	)
 	.expect("post-review lane status build should succeed");
 
-	assert_eq!(git_output(&worktree.path, &["rev-parse", "HEAD"]), current_head_oid);
+	assert_eq!(tests::git_output(&worktree.path, &["rev-parse", "HEAD"]), current_head_oid);
 	assert_eq!(lanes.len(), 1);
 	assert_eq!(lanes[0].classification, "continue");
 	assert_eq!(lanes[0].reason, "pull_request_merged_closeout_pending");
@@ -867,9 +872,9 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_landed_ma
 
 #[test]
 fn build_post_review_lane_statuses_blocks_closeout_when_merge_readbacks_conflict() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("In Review", &[]);
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -878,7 +883,7 @@ fn build_post_review_lane_statuses_blocks_closeout_when_merge_readbacks_conflict
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/204";
 	let _path_guard = recovery_terminal_support::install_fake_closeout_gh_responses_with_states(
 		&temp_dir, &worktree, pr_url, &head_oid, "OPEN", "MERGED",
@@ -893,14 +898,14 @@ fn build_post_review_lane_statuses_blocks_closeout_when_merge_readbacks_conflict
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -933,8 +938,8 @@ fn build_post_review_lane_statuses_blocks_closeout_when_merge_readbacks_conflict
 
 #[test]
 fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouched() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -942,7 +947,7 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["config", "--local", "codex.github-identity", "y"])
@@ -951,7 +956,7 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 			.success()
 	);
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["config", "--local", "codex.linear-workspace", "hackink"])
@@ -963,7 +968,7 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["rev-parse", "HEAD"])
@@ -976,7 +981,7 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 	.to_owned();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 
-	remove_local_git_metadata_for_post_review_status(&worktree.path);
+	review_landing_status_support::remove_local_git_metadata_for_post_review_status(&worktree.path);
 
 	state_store
 		.upsert_worktree(
@@ -987,17 +992,17 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_orchestration_marker(
+		&tests::sample_review_orchestration_marker(
 			&worktree.branch_name,
 			pr_url,
 			&head_oid,
@@ -1006,7 +1011,7 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 		),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -1017,8 +1022,8 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
-	add_external_review_pass(&mut review_state);
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
 
 	let lanes = orchestrator::build_post_review_lane_statuses(
 		&tracker,
@@ -1031,16 +1036,16 @@ fn build_post_review_lane_statuses_leaves_managed_worktree_git_metadata_untouche
 
 	assert_eq!(lanes.len(), 1);
 	assert_eq!(lanes[0].classification, "ready_to_land");
-	assert_eq!(try_git_local_config_value(&worktree.path, "codex.github-identity"), None);
-	assert_eq!(try_git_local_config_value(&worktree.path, "codex.linear-workspace"), None);
-	assert_eq!(git_remote_url(&worktree.path, "origin"), None);
+	assert_eq!(tests::try_git_local_config_value(&worktree.path, "codex.github-identity"), None);
+	assert_eq!(tests::try_git_local_config_value(&worktree.path, "codex.linear-workspace"), None);
+	assert_eq!(tests::git_remote_url(&worktree.path, "origin"), None);
 }
 
 #[test]
 fn build_post_review_lane_statuses_blocks_missing_review_handoff_record() {
 	for managed_worktree in [false, true] {
-		let (_temp_dir, config, workflow) = temp_project_layout();
-		let issue = sample_issue("In Review", &[]);
+		let (_temp_dir, config, workflow) = tests::temp_project_layout();
+		let issue = tests::sample_issue("In Review", &[]);
 		let tracker =
 			FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1088,8 +1093,8 @@ fn build_post_review_lane_statuses_blocks_missing_review_handoff_record() {
 
 #[test]
 fn build_post_review_lane_statuses_allows_descendant_review_handoff_head_after_repair_push() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1097,9 +1102,9 @@ fn build_post_review_lane_statuses_allows_descendant_review_handoff_head_after_r
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let marker_head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let marker_head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let current_head_oid =
-		commit_worktree_change(&worktree.path, "repair.txt", "repair push\n", "repair push");
+		tests::commit_worktree_change(&worktree.path, "repair.txt", "repair push\n", "repair push");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 
 	state_store
@@ -1111,17 +1116,17 @@ fn build_post_review_lane_statuses_allows_descendant_review_handoff_head_after_r
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &marker_head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &marker_head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_orchestration_marker(
+		&tests::sample_review_orchestration_marker(
 			&worktree.branch_name,
 			pr_url,
 			&current_head_oid,
@@ -1130,7 +1135,7 @@ fn build_post_review_lane_statuses_allows_descendant_review_handoff_head_after_r
 		),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&current_head_oid,
@@ -1141,8 +1146,8 @@ fn build_post_review_lane_statuses_allows_descendant_review_handoff_head_after_r
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
-	add_external_review_pass(&mut review_state);
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
 
 	let lanes = orchestrator::build_post_review_lane_statuses(
 		&tracker,
@@ -1161,8 +1166,8 @@ fn build_post_review_lane_statuses_allows_descendant_review_handoff_head_after_r
 
 #[test]
 fn build_post_review_lane_statuses_blocks_review_handoff_lineage_rewrite() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1170,19 +1175,17 @@ fn build_post_review_lane_statuses_blocks_review_handoff_lineage_rewrite() {
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let marker_head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let marker_head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 
-	git_status_success(&worktree.path, &["checkout", "--orphan", "rewrite-history"]);
-
+	tests::git_status_success(&worktree.path, &["checkout", "--orphan", "rewrite-history"]);
 	fs::write(worktree.path.join("rewrite.txt"), "rewritten history\n")
 		.expect("rewrite file should write");
+	tests::git_status_success(&worktree.path, &["add", "rewrite.txt"]);
+	tests::git_status_success(&worktree.path, &["commit", "-m", "rewrite history"]);
+	tests::git_status_success(&worktree.path, &["branch", "-M", &worktree.branch_name]);
 
-	git_status_success(&worktree.path, &["add", "rewrite.txt"]);
-	git_status_success(&worktree.path, &["commit", "-m", "rewrite history"]);
-	git_status_success(&worktree.path, &["branch", "-M", &worktree.branch_name]);
-
-	let rewritten_head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let rewritten_head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 
 	state_store
 		.upsert_worktree(
@@ -1193,11 +1196,11 @@ fn build_post_review_lane_statuses_blocks_review_handoff_lineage_rewrite() {
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &marker_head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &marker_head_oid),
 	);
 
 	let lanes = orchestrator::build_post_review_lane_statuses(
@@ -1205,7 +1208,7 @@ fn build_post_review_lane_statuses_blocks_review_handoff_lineage_rewrite() {
 		&config,
 		&workflow,
 		&state_store,
-		&FakePullRequestReviewStateInspector::new(vec![Ok(sample_pull_request_review_state(
+		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
 			pr_url,
 			&worktree.branch_name,
 			&rewritten_head_oid,
@@ -1227,14 +1230,14 @@ fn build_post_review_lane_statuses_blocks_review_handoff_lineage_rewrite() {
 
 #[test]
 fn build_post_review_lane_statuses_blocks_not_dispatchable_labeled_post_review_issues() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	for (labels, expected_reason) in [
 		(&["decodex:manual-only"][..], "issue_opted_out"),
 		(&["decodex:needs-attention"][..], "issue_needs_attention"),
 	] {
-		let issue = sample_issue("In Review", labels);
+		let issue = tests::sample_issue("In Review", labels);
 
 		state_store
 			.upsert_worktree(
@@ -1266,8 +1269,8 @@ fn build_post_review_lane_statuses_blocks_not_dispatchable_labeled_post_review_i
 
 #[test]
 fn build_post_review_lane_statuses_blocks_exhausted_retry_budget() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1303,8 +1306,8 @@ fn build_post_review_lane_statuses_blocks_exhausted_retry_budget() {
 
 #[test]
 fn build_post_review_lane_statuses_keeps_unmerged_retry_budget_blocked() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1313,10 +1316,10 @@ fn build_post_review_lane_statuses_keeps_unmerged_retry_budget_blocked() {
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/120";
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
@@ -1351,7 +1354,7 @@ fn build_post_review_lane_statuses_keeps_unmerged_retry_budget_blocked() {
 		&config,
 		&workflow,
 		&state_store,
-		&FakePullRequestReviewStateInspector::new(vec![Ok(sample_pull_request_review_state(
+		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
 			pr_url,
 			&worktree.branch_name,
 			&head_oid,
@@ -1373,8 +1376,8 @@ fn build_post_review_lane_statuses_keeps_unmerged_retry_budget_blocked() {
 
 #[test]
 fn build_post_review_lane_statuses_blocks_worktree_head_read_failures() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1385,7 +1388,7 @@ fn build_post_review_lane_statuses_blocks_worktree_head_read_failures() {
 	let branch_ref_path =
 		config.repo_root().join(".git").join("refs").join("heads").join(&worktree.branch_name);
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["rev-parse", "HEAD"])
@@ -1398,13 +1401,12 @@ fn build_post_review_lane_statuses_blocks_worktree_head_read_failures() {
 	.to_owned();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
-
 	fs::remove_file(&branch_ref_path).expect("branch ref should remove");
 
 	state_store
@@ -1432,8 +1434,8 @@ fn build_post_review_lane_statuses_blocks_worktree_head_read_failures() {
 
 #[test]
 fn build_post_review_lane_statuses_blocks_missing_worktree_checkout_branch() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1442,7 +1444,7 @@ fn build_post_review_lane_statuses_blocks_missing_worktree_checkout_branch() {
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let head_oid = String::from_utf8(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["rev-parse", "HEAD"])
@@ -1456,7 +1458,7 @@ fn build_post_review_lane_statuses_blocks_missing_worktree_checkout_branch() {
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["checkout", "--detach", &head_oid])
@@ -1474,11 +1476,11 @@ fn build_post_review_lane_statuses_blocks_missing_worktree_checkout_branch() {
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let lanes = orchestrator::build_post_review_lane_statuses(
