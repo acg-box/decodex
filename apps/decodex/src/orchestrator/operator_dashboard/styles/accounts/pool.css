@@ -1,0 +1,177 @@
+
+			.account-pool-activity-strip {
+				display: flex;
+				align-items: center;
+				justify-content: flex-start;
+				gap: 2px;
+				width: min(100%, 128px);
+				min-width: 0;
+				height: 8px;
+				margin-top: 2px;
+				overflow: hidden;
+			}
+
+			.account-profile-activity-strip {
+				justify-self: center;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				gap: 2px;
+				width: min(100%, 128px);
+				min-width: 0;
+				height: 8px;
+				overflow: hidden;
+			}
+
+			.account-pool-activity-tile,
+			.account-profile-activity-tile {
+				display: block;
+				flex: 0 0 6px;
+				width: 6px;
+				height: 8px;
+				border-radius: 2px;
+				background: var(--info);
+				opacity: var(--account-activity-opacity, 0.28);
+			}
+
+			#account-mode-meta {
+				display: flex;
+				align-items: center;
+				justify-content: flex-end;
+				gap: 8px;
+				max-width: min(760px, 72vw);
+				letter-spacing: 0;
+			}
+
+			.account-mode-head {
+				display: inline-flex;
+				align-items: baseline;
+				gap: 6px;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-pool {
+				display: grid;
+				gap: 10px;
+				min-width: 0;
+				overflow-x: auto;
+				padding-bottom: 2px;
+			}
+
+			.account-pool-summary {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+				gap: 0;
+				min-width: 0;
+				padding: 8px 0 8px var(--space-row-indent);
+				border-bottom: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+				color: var(--muted);
+			}
+
+			.account-pool-metric {
+				display: grid;
+				gap: 3px;
+				min-width: 0;
+				padding: 0 14px;
+				border-left: 1px solid var(--line);
+				font-variant-numeric: tabular-nums;
+				line-height: 1.15;
+			}
+
+			.account-pool-metric:first-child {
+				padding-left: 0;
+				border-left: 0;
+			}
+
+			.account-pool-metric-label {
+				overflow: hidden;
+				color: var(--muted);
+				font-family: var(--sans);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-pool-metric-value {
+				overflow: hidden;
+				color: var(--muted-strong);
+				font-family: var(--mono);
+				font-size: var(--type-row-title);
+				font-weight: var(--weight-label);
+				letter-spacing: 0;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-pool-metric-value[data-tone="run"] {
+				color: var(--tone-run);
+			}
+
+			.account-pool-metric-value[data-tone="warning"] {
+				color: var(--warning);
+			}
+
+			.account-pool-metric-value[data-tone="danger"] {
+				color: var(--danger);
+			}
+
+			.account-pool-metric-value[data-tone="muted"] {
+				color: var(--muted-strong);
+			}
+
+			.account-pool-summary-note {
+				grid-column: 1 / -1;
+				margin-top: 2px;
+				color: var(--muted);
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				line-height: 1.2;
+			}
+
+			.account-profile-panel {
+				--account-accent: var(--tone-muted);
+				position: relative;
+				isolation: isolate;
+				overflow: hidden;
+				min-width: 0;
+				max-height: 0;
+				padding: 0 28px 0 var(--space-row-indent);
+				border-bottom: 0 solid transparent;
+				background: linear-gradient(
+					90deg,
+					color-mix(in srgb, var(--account-accent) 7%, transparent),
+					transparent 72%
+				);
+				color: var(--muted);
+				opacity: 0;
+				pointer-events: none;
+				transform: translateY(-4px);
+				transition:
+					max-height var(--medium) var(--ease),
+					padding-bottom var(--medium) var(--ease),
+					border-width var(--medium) var(--ease),
+					border-color var(--medium) var(--ease),
+					opacity var(--medium) var(--ease),
+					transform var(--medium) var(--ease);
+			}
+
+			.account-row.is-profile-open {
+				border-bottom-color: color-mix(in srgb, var(--line) 34%, transparent);
+			}
+
+			.account-profile-panel.is-selected,
+			.account-profile-panel.is-ready {
+				--account-accent: var(--success);
+			}
+
+			.account-profile-panel.is-fixed {
+				--account-accent: var(--info);
+			}
+
+			.account-profile-panel.is-warn {
