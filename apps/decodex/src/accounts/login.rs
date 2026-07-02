@@ -2,7 +2,7 @@ use std::{
 	env, fs,
 	io::{self, Read, Write as _},
 	path::{Path, PathBuf},
-	process::{Child, Command, ExitStatus, Stdio},
+	process::{self, Child, Command, ExitStatus, Stdio},
 	sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
 	thread::{self, JoinHandle},
 	time::Duration,
@@ -10,9 +10,14 @@ use std::{
 
 use time::OffsetDateTime;
 
-use crate::prelude::{Result, eyre};
-
-use super::{AccountListResponse, AccountLoginRequest, AccountStore, secure_account_file};
+use crate::{
+	accounts::{
+		file_security, output,
+		store::AccountStore,
+		types::{AccountListResponse, AccountLoginRequest},
+	},
+	prelude::{Result, eyre},
+};
 
 enum LoginPipeEvent {
 	Chunk(Vec<u8>),
@@ -28,7 +33,7 @@ pub(crate) fn run_account_login(request: &AccountLoginRequest) -> Result<()> {
 		Ok(())
 	})?;
 
-	super::print_list_response(&response, false)
+	output::print_list_response(&response, false)
 }
 
 pub(crate) fn account_login(
@@ -94,11 +99,10 @@ fn spawn_login_pipe_reader(
 		loop {
 			match reader.read(&mut buffer) {
 				Ok(0) => return,
-				Ok(len) => {
+				Ok(len) =>
 					if sender.send(LoginPipeEvent::Chunk(buffer[..len].to_vec())).is_err() {
 						return;
-					}
-				},
+					},
 				Err(error) => {
 					let _ = sender.send(LoginPipeEvent::ReaderFailed(error.to_string()));
 
@@ -169,13 +173,12 @@ fn join_login_pipe_reader(handle: JoinHandle<()>) -> Result<()> {
 fn create_login_home() -> Result<PathBuf> {
 	let root = env::temp_dir().join(format!(
 		"decodex-codex-login-{}-{}",
-		std::process::id(),
+		process::id(),
 		OffsetDateTime::now_utc().unix_timestamp()
 	));
 
 	fs::create_dir_all(&root)?;
-
-	secure_account_file(&root)?;
+	file_security::secure_account_file(&root)?;
 
 	Ok(root)
 }
