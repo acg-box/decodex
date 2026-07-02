@@ -11,16 +11,30 @@ mod recovery_reconciliation;
 mod recovery_runtime_reentry;
 mod recovery_terminal_failures;
 mod recovery_terminal_support;
+mod retry_scheduling;
+mod retry_selection;
+mod review_landing_classification_checks;
+mod review_landing_classification_review;
+mod review_landing_orchestration;
+mod review_landing_review_state;
+mod review_landing_status_markers;
+mod review_landing_status_rows;
+mod review_landing_status_support;
 mod runtime_failure;
+mod runtime_loop_scenarios;
+mod runtime_program_intake_dogfood;
+mod runtime_program_reconciler;
+mod runtime_repo_gate;
+mod runtime_thread_archive;
 // Operator status plus retained post-review review/landing behavior.
 mod operator;
 
-#[cfg(unix)] use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
 	cell::RefCell,
 	collections::{BTreeSet, HashMap},
 	env,
-	ffi::{OsStr, OsString},
 	fs,
 	io::{Read, Write},
 	iter,
@@ -38,18 +52,13 @@ use serde_json::Value;
 use tempfile::TempDir;
 use time::OffsetDateTime;
 
-use crate::{
-	orchestrator::RepoGatePhaseGoalController,
-	tracker::{TrackerIssueCreate, records},
-};
+use crate::tracker::{TrackerIssueCreate, records};
 #[rustfmt::skip]
 	use crate::agent::{
 		RUN_LEASE_IDLE_TIMEOUT, MODEL_EXECUTION_IDLE_TIMEOUT,
 		AppServerCapabilityPreflightFailure,
 		AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure,
-		AppServerTransportFailure, AppServerTurnFailure,
-		PhaseGoalController, PhaseGoalKind, PhaseGoalSpec,
-		PhaseGoalTransition, ReviewPolicyStopReason, ReviewPolicyStopRequested,
+		AppServerTransportFailure, AppServerTurnFailure, PhaseGoalKind, ReviewPolicyStopReason, ReviewPolicyStopRequested,
 	};
 #[rustfmt::skip]
 use crate::config::{ReviewLevel, ServiceConfig};
@@ -57,7 +66,7 @@ use crate::config::{ReviewLevel, ServiceConfig};
 use crate::github;
 use crate::loop_contract::DecisionContract;
 #[rustfmt::skip]
-use crate::orchestrator::{self, AgentEvidenceSource, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionRequestInput, ChildExitRetryContext, ChildRunRef, ControlPlaneProjectTick, CONTINUATION_PENDING_RUN_STATUS, DaemonRunChild, DaemonTickRuntimeContext, DashboardEventHub, EvidenceRequest, GhPullRequestReviewStateInspector, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, OperatorCodexAccountControlStatus, OperatorExecutionProgramNodeStatus, OperatorExecutionProgramStatus, OperatorGitHubCliAuthority, OperatorProjectStatus, OperatorStatusSnapshot, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot, PrepareIssueRunContext, PublishedOperatorSnapshot, PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection, PullRequestIssueCommentState, PullRequestIssueCommentsNode, PullRequestPageInfo, PullRequestReactionGroup, PullRequestReactionUsersConnection, PullRequestActor, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewConnection, PullRequestIssueCommentNode, PullRequestReviewNode, PullRequestReviewRequestConnection, PullRequestReviewState, PullRequestReviewStateInspector, PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode, PullRequestStatusCheckRollup, RecoveredRuntimeState, RetainedPartialProgress, RetainedReviewRepairPushFailed, RetryComment, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, RunCompletionDisposition, RepoGateFailure, TERMINAL_GUARDED_RUN_STATUS, TRACKER_RATE_LIMIT_WARNING, TRACKER_TRANSIENT_TIMEOUT_WARNING, TargetIssueRunContext, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY};
+use crate::orchestrator::{self, AgentEvidenceSource, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionRequestInput, ChildRunRef, ControlPlaneProjectTick, DashboardEventHub, EvidenceRequest, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, OperatorCodexAccountControlStatus, OperatorExecutionProgramNodeStatus, OperatorExecutionProgramStatus, OperatorGitHubCliAuthority, OperatorProjectStatus, OperatorStatusSnapshot, PrepareIssueRunContext, PublishedOperatorSnapshot, PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection, PullRequestIssueCommentState, PullRequestPageInfo, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewConnection, PullRequestReviewRequestConnection, PullRequestReviewState, PullRequestReviewStateInspector, PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode, PullRequestStatusCheckRollup, RecoveredRuntimeState, RetainedPartialProgress, RetainedReviewRepairPushFailed, RetryComment, RunCompletionDisposition, TERMINAL_GUARDED_RUN_STATUS, TRACKER_RATE_LIMIT_WARNING, TRACKER_TRANSIENT_TIMEOUT_WARNING, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY};
 #[rustfmt::skip]
 use crate::prelude::Result;
 #[rustfmt::skip]
@@ -75,37 +84,8 @@ use crate::tracker::{self, IssueTracker, TrackerComment, TrackerIssue, TrackerIs
 use crate::workflow::WorkflowDocument;
 #[rustfmt::skip]
 use crate::worktree::{WorktreeManager, WorktreeSpec};
-use crate::orchestrator::{ReviewHandoffMarker, ReviewOrchestrationMarker};
+use crate::orchestrator::ReviewHandoffMarker;
 use runtime_failure::loop_guardrail_issue_run;
-
-// Retry scheduling, runtime failure classes, and recovery cleanup.
-include!("tests/retry/scheduling.rs");
-
-include!("tests/retry/selection.rs");
-
-include!("tests/runtime/repo_gate.rs");
-
-include!("tests/runtime/loop_scenarios.rs");
-
-include!("tests/runtime/program_reconciler.rs");
-
-include!("tests/runtime/program_intake_dogfood.rs");
-
-include!("tests/runtime/thread_archive.rs");
-
-include!("tests/review_landing/status_support.rs");
-
-include!("tests/review_landing/status_rows.rs");
-
-include!("tests/review_landing/orchestration.rs");
-
-include!("tests/review_landing/status_markers.rs");
-
-include!("tests/review_landing/classification_review.rs");
-
-include!("tests/review_landing/classification_checks.rs");
-
-include!("tests/review_landing/review_state.rs");
 
 const TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID: i64 = 991;
 const TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT: i64 = 1_763_600_000;
