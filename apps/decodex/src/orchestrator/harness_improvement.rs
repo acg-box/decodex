@@ -14,7 +14,13 @@ mod payload;
 mod record;
 
 use candidates::harness_improvement_candidates;
-use model::*;
+use model::{
+	HARNESS_OUTCOME_EVENT_TYPE, HARNESS_OUTCOME_SCHEMA, HarnessAuthorityBoundaryOutcome,
+	HarnessLinearProjectionSummary, HarnessManualAttentionOutcome, HarnessOutcomeContract,
+	HarnessOutcomePayload, HarnessOutcomeProgram, HarnessOutcomeProgramNode, HarnessOutcomeSignals,
+	HarnessOutcomeSource, HarnessPhaseGoalOutcome, HarnessPrLifecycleOutcome, HarnessRepairOutcome,
+	HarnessReviewOutcome, HarnessSourceIntent, HarnessValidationOutcome,
+};
 pub(crate) use model::{
 	HarnessImprovementCandidateSummary, HarnessOutcomeKind, HarnessOutcomeRecordInput,
 };

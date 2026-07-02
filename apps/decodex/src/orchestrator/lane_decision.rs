@@ -1,6 +1,15 @@
-//! Central lane next-action decisions shared by lifecycle adapters.
+//! Compatibility projection for lifecycle decisions shared by adapters.
 
-use super::{IssueDispatchMode, PhaseGoalKind, RepoGateFailureDisposition, RetryKind, json};
+use super::{
+	IssueDispatchMode, PhaseGoalKind, RepoGateFailureDisposition, RetryKind, json,
+	kernel::{
+		action::OwnedLaneAction,
+		command::{CommandFact, CommandIntent, CommandIntentKind},
+		decision::{DecisionBlocker, OwnedLaneDecision, decide_owned_lane},
+		facts::LaneObservation,
+		state::{LaneStateAxes, LivenessState, TerminalizationState},
+	},
+};
 use serde_json::Value;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -13,7 +22,6 @@ pub(super) enum LaneNextAction {
 	EnterReviewHandoff,
 	WaitExternal,
 	NeedsAttention,
-	StopBlocked,
 	CleanupTerminal,
 	ForbiddenStaleOrAmbiguous,
 }
@@ -27,7 +35,6 @@ impl LaneNextAction {
 			Self::EnterReviewHandoff => "enter_review_handoff",
 			Self::WaitExternal => "wait_external",
 			Self::NeedsAttention => "needs_attention",
-			Self::StopBlocked => "stop_blocked",
 			Self::CleanupTerminal => "cleanup_terminal",
 			Self::ForbiddenStaleOrAmbiguous => "forbidden_stale_or_ambiguous",
 		}
@@ -53,6 +60,7 @@ pub(super) struct LaneDecisionSnapshot {
 	pub(super) terminal_evidence_present: bool,
 }
 impl LaneDecisionSnapshot {
+	#[allow(clippy::too_many_arguments)]
 	pub(super) fn phase_acceptance(
 		issue_identifier: impl Into<String>,
 		run_id: impl Into<String>,
@@ -82,6 +90,7 @@ impl LaneDecisionSnapshot {
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub(super) fn child_exit_retry(
 		issue_identifier: impl Into<String>,
 		run_id: impl Into<String>,
@@ -141,6 +150,8 @@ impl LaneDecisionSnapshot {
 	}
 
 	pub(super) fn to_json(&self, action: LaneNextAction, reason: &str) -> Value {
+		let decision = decide_lane_next_action(self);
+
 		json!({
 			"schema": "decodex.lane_decision_snapshot/1",
 			"issue_identifier": self.issue_identifier,
@@ -160,7 +171,37 @@ impl LaneDecisionSnapshot {
 			"terminal_evidence_present": self.terminal_evidence_present,
 			"next_action": action.as_str(),
 			"reason": reason,
+			"kernel_decision": owned_lane_decision_to_json(&decision.kernel_decision),
 		})
+	}
+
+	fn to_kernel_observation(&self) -> LaneObservation {
+		let mut observation = LaneObservation::for_issue(self.issue_identifier.clone());
+
+		observation.run_id = Some(self.run_id.clone());
+		observation.authority_complete = true;
+		observation.run_lease = true;
+		observation.active_owned_work = true;
+		observation.liveness = LivenessState::ThreadActive;
+		observation.terminalization = if self.terminal_evidence_present {
+			TerminalizationState::CleanupPending
+		} else {
+			TerminalizationState::None
+		};
+		observation.contradictory_authority = self.ambiguous_lineage;
+		observation.human_attention_signal = self.progress_blocker_count > 0
+			|| self.non_goal_violation
+			|| self.scope_envelope_violation
+			|| self.repo_gate_disposition == Some(RepoGateFailureDisposition::NeedsHumanAttention);
+		observation.retry_budget_available = self.phase_acceptance_failure
+			|| self.retry_kind.is_some()
+			|| self.repo_gate_disposition == Some(RepoGateFailureDisposition::ContinueRepair);
+		observation.retry_budget_exhausted = false;
+		observation.retained_lane_reusable = self.continuation_pending;
+		observation.external_signal_pending =
+			self.repo_gate_disposition == Some(RepoGateFailureDisposition::RetryAfterBackoff);
+
+		observation
 	}
 }
 
@@ -168,84 +209,285 @@ impl LaneDecisionSnapshot {
 pub(super) struct LaneDecision {
 	pub(super) next_action: LaneNextAction,
 	pub(super) reason: &'static str,
+	pub(super) kernel_decision: OwnedLaneDecision,
 }
 impl LaneDecision {
-	pub(super) const fn new(next_action: LaneNextAction, reason: &'static str) -> Self {
-		Self { next_action, reason }
+	fn new(
+		next_action: LaneNextAction,
+		reason: &'static str,
+		kernel_decision: OwnedLaneDecision,
+	) -> Self {
+		Self { next_action, reason, kernel_decision }
+	}
+
+	pub(super) fn permits_child_exit_retry_kind(&self, kind: RetryKind) -> bool {
+		let required_intent = match kind {
+			RetryKind::Continuation => CommandIntentKind::ResumeRetainedLane,
+			RetryKind::Failure => CommandIntentKind::ScheduleRetry,
+		};
+
+		self.has_command_intent(required_intent)
+	}
+
+	pub(super) fn permits_phase_repair_retry(&self) -> bool {
+		self.has_command_intent(CommandIntentKind::ScheduleRetry)
+	}
+
+	pub(super) fn blocks_automatic_execution(&self) -> bool {
+		self.kernel_decision.decision_class == OwnedLaneAction::ManualInterventionRequired
+	}
+
+	fn has_command_intent(&self, kind: CommandIntentKind) -> bool {
+		self.kernel_decision.command_intents.iter().any(|intent| intent.kind == kind)
 	}
 }
 
 pub(super) fn decide_lane_next_action(snapshot: &LaneDecisionSnapshot) -> LaneDecision {
+	let kernel_decision = decide_owned_lane(&snapshot.to_kernel_observation());
+	let next_action = project_lane_next_action(snapshot, &kernel_decision);
+	let reason = project_lane_reason(snapshot, &kernel_decision, next_action);
+
+	LaneDecision::new(next_action, reason, kernel_decision)
+}
+
+fn project_lane_next_action(
+	snapshot: &LaneDecisionSnapshot,
+	decision: &OwnedLaneDecision,
+) -> LaneNextAction {
+	match decision.decision_class {
+		OwnedLaneAction::ManualInterventionRequired =>
+			if snapshot.ambiguous_lineage {
+				LaneNextAction::ForbiddenStaleOrAmbiguous
+			} else {
+				LaneNextAction::NeedsAttention
+			},
+		OwnedLaneAction::Continue =>
+			if snapshot.terminal_evidence_present {
+				LaneNextAction::CleanupTerminal
+			} else if snapshot.active_phase.is_some() && !snapshot.phase_acceptance_failure {
+				LaneNextAction::RunRepoGate
+			} else {
+				LaneNextAction::ContinueCurrentPhase
+			},
+		OwnedLaneAction::RetryAutomatically => LaneNextAction::RetryFailure,
+		OwnedLaneAction::ResumeRetainedLane => LaneNextAction::ResumeContinuation,
+		OwnedLaneAction::WaitForExternalSignal => LaneNextAction::WaitExternal,
+		OwnedLaneAction::ReadyToLand => LaneNextAction::EnterReviewHandoff,
+	}
+}
+
+fn project_lane_reason(
+	snapshot: &LaneDecisionSnapshot,
+	decision: &OwnedLaneDecision,
+	next_action: LaneNextAction,
+) -> &'static str {
 	if snapshot.ambiguous_lineage {
-		return LaneDecision::new(
-			LaneNextAction::ForbiddenStaleOrAmbiguous,
-			"lineage or ownership is ambiguous",
-		);
+		return "lineage or ownership is ambiguous";
 	}
 	if snapshot.terminal_evidence_present {
-		return LaneDecision::new(LaneNextAction::CleanupTerminal, "terminal evidence is present");
+		return "terminal evidence is present";
 	}
 	if snapshot.progress_blocker_count > 0 || snapshot.non_goal_violation {
-		return LaneDecision::new(
-			LaneNextAction::NeedsAttention,
-			"progress checkpoint carries blockers or non-goal violation",
-		);
+		return "progress checkpoint carries blockers or non-goal violation";
 	}
 	if snapshot.scope_envelope_violation {
-		return LaneDecision::new(
-			LaneNextAction::NeedsAttention,
-			"repo-gate write-set crossed the lane scope envelope",
-		);
+		return "repo-gate write-set crossed the lane scope envelope";
 	}
 	if snapshot.phase_acceptance_failure {
-		return LaneDecision::new(
-			LaneNextAction::RetryFailure,
-			"phase acceptance failure remains an issue-local repair",
-		);
+		return "phase acceptance failure remains an issue-local repair";
 	}
 	if let Some(disposition) = snapshot.repo_gate_disposition {
 		return match disposition {
-			RepoGateFailureDisposition::ContinueRepair => LaneDecision::new(
-				LaneNextAction::RetryFailure,
+			RepoGateFailureDisposition::ContinueRepair =>
 				"repo-gate failure remains an issue-local repair",
-			),
-			RepoGateFailureDisposition::RetryAfterBackoff => LaneDecision::new(
-				LaneNextAction::WaitExternal,
+			RepoGateFailureDisposition::RetryAfterBackoff =>
 				"repo-gate failure requires backoff before retry",
-			),
-			RepoGateFailureDisposition::NeedsHumanAttention => LaneDecision::new(
-				LaneNextAction::NeedsAttention,
+			RepoGateFailureDisposition::NeedsHumanAttention =>
 				"repo-gate failure crossed an authority boundary",
-			),
 		};
 	}
 	if snapshot.continuation_pending {
-		return LaneDecision::new(
-			LaneNextAction::ResumeContinuation,
-			"open phase continuation remains valid",
-		);
+		return "open phase continuation remains valid";
 	}
 	if snapshot.retry_kind.is_some() {
-		return LaneDecision::new(
-			LaneNextAction::RetryFailure,
-			"retryable failure remains in budget",
-		);
+		return "retryable failure remains in budget";
 	}
 	if snapshot.active_phase.is_some() {
-		return LaneDecision::new(
-			LaneNextAction::RunRepoGate,
-			"active phase is ready for repo gate",
+		return "active phase is ready for repo gate";
+	}
+
+	match next_action {
+		LaneNextAction::WaitExternal => "external signal remains pending",
+		LaneNextAction::NeedsAttention | LaneNextAction::ForbiddenStaleOrAmbiguous => decision
+			.blockers
+			.first()
+			.map_or("lane requires manual intervention", |blocker| blocker.public_summary),
+		_ => "ordinary lane execution may continue",
+	}
+}
+
+fn owned_lane_decision_to_json(decision: &OwnedLaneDecision) -> Value {
+	json!({
+		"decision_class": decision.decision_class.as_str(),
+		"policy_state": decision.policy_state.as_str(),
+		"lane_state_axes": lane_state_axes_to_json(decision.lane_state_axes),
+		"command_intents": decision
+			.command_intents
+			.iter()
+			.map(command_intent_to_json)
+			.collect::<Vec<_>>(),
+		"projection_hints": {
+			"lane_control_next_action": decision.projection_hints.lane_control_next_action,
+			"primary_reason": decision.projection_hints.primary_reason.as_str(),
+		},
+		"blockers": decision
+			.blockers
+			.iter()
+			.map(decision_blocker_to_json)
+			.collect::<Vec<_>>(),
+	})
+}
+
+fn lane_state_axes_to_json(axes: LaneStateAxes) -> Value {
+	json!({
+		"ownership": axes.ownership.as_str(),
+		"liveness": axes.liveness.as_str(),
+		"policy": axes.policy.as_str(),
+		"terminalization": axes.terminalization.as_str(),
+	})
+}
+
+fn command_intent_to_json(intent: &CommandIntent) -> Value {
+	json!({
+		"kind": intent.kind.as_str(),
+		"idempotency_key": intent.idempotency_key,
+		"preconditions": facts_to_json(&intent.preconditions),
+		"expected_postconditions": facts_to_json(&intent.expected_postconditions),
+	})
+}
+
+fn facts_to_json(facts: &[CommandFact]) -> Vec<&'static str> {
+	facts.iter().map(|fact| fact.as_str()).collect()
+}
+
+fn decision_blocker_to_json(blocker: &DecisionBlocker) -> Value {
+	json!({
+		"reason": blocker.reason.as_str(),
+		"public_summary": blocker.public_summary,
+	})
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn repo_gate_snapshot(disposition: RepoGateFailureDisposition) -> LaneDecisionSnapshot {
+		LaneDecisionSnapshot::repo_gate_failure(
+			"PUB-101",
+			"run-1",
+			1,
+			IssueDispatchMode::Normal,
+			PhaseGoalKind::ImplementToValidationReady,
+			disposition,
+			false,
+		)
+	}
+
+	#[test]
+	fn phase_acceptance_failure_projects_kernel_retry_to_legacy_retry_failure() {
+		let snapshot = LaneDecisionSnapshot::phase_acceptance(
+			"PUB-101",
+			"run-1",
+			1,
+			IssueDispatchMode::Normal,
+			PhaseGoalKind::ImplementToValidationReady,
+			0,
+			false,
+			false,
+		);
+
+		let decision = decide_lane_next_action(&snapshot);
+
+		assert_eq!(decision.next_action, LaneNextAction::RetryFailure);
+		assert_eq!(decision.kernel_decision.decision_class, OwnedLaneAction::RetryAutomatically);
+		assert_eq!(decision.kernel_decision.command_intents[0].kind.as_str(), "schedule_retry");
+		assert!(decision.permits_child_exit_retry_kind(RetryKind::Failure));
+		assert!(!decision.permits_child_exit_retry_kind(RetryKind::Continuation));
+		assert!(decision.permits_phase_repair_retry());
+		assert!(!decision.blocks_automatic_execution());
+		assert_eq!(
+			snapshot.to_json(decision.next_action, decision.reason)["kernel_decision"]["decision_class"],
+			"retry_automatically"
 		);
 	}
 
-	LaneDecision::new(LaneNextAction::ContinueCurrentPhase, "ordinary lane execution may continue")
-}
+	#[test]
+	fn repo_gate_backoff_projects_kernel_wait_to_legacy_wait_external() {
+		let snapshot = repo_gate_snapshot(RepoGateFailureDisposition::RetryAfterBackoff);
 
-pub(super) fn lane_decision_blocks_automatic_execution(action: LaneNextAction) -> bool {
-	matches!(
-		action,
-		LaneNextAction::NeedsAttention
-			| LaneNextAction::StopBlocked
-			| LaneNextAction::ForbiddenStaleOrAmbiguous
-	)
+		let decision = decide_lane_next_action(&snapshot);
+
+		assert_eq!(decision.next_action, LaneNextAction::WaitExternal);
+		assert_eq!(decision.kernel_decision.decision_class, OwnedLaneAction::WaitForExternalSignal);
+		assert_eq!(decision.kernel_decision.command_intents[0].kind.as_str(), "wait_external");
+		assert!(!decision.permits_phase_repair_retry());
+	}
+
+	#[test]
+	fn repo_gate_continue_repair_requires_kernel_retry_intent() {
+		let snapshot = repo_gate_snapshot(RepoGateFailureDisposition::ContinueRepair);
+
+		let decision = decide_lane_next_action(&snapshot);
+
+		assert_eq!(decision.next_action, LaneNextAction::RetryFailure);
+		assert_eq!(decision.kernel_decision.decision_class, OwnedLaneAction::RetryAutomatically);
+		assert!(decision.permits_phase_repair_retry());
+	}
+
+	#[test]
+	fn scope_envelope_violation_projects_kernel_manual_to_legacy_attention() {
+		let mut snapshot = repo_gate_snapshot(RepoGateFailureDisposition::NeedsHumanAttention);
+
+		snapshot.scope_envelope_violation = true;
+
+		let decision = decide_lane_next_action(&snapshot);
+
+		assert_eq!(decision.next_action, LaneNextAction::NeedsAttention);
+		assert_eq!(
+			decision.kernel_decision.decision_class,
+			OwnedLaneAction::ManualInterventionRequired
+		);
+		assert_eq!(
+			decision.kernel_decision.blockers[0].public_summary,
+			"human attention was requested for this lane"
+		);
+		assert!(decision.blocks_automatic_execution());
+		assert!(!decision.permits_phase_repair_retry());
+	}
+
+	#[test]
+	fn child_exit_continuation_projects_kernel_resume_to_legacy_resume() {
+		let snapshot = LaneDecisionSnapshot::child_exit_retry(
+			"PUB-101",
+			"run-1",
+			1,
+			IssueDispatchMode::Retry,
+			true,
+			Some(RetryKind::Continuation),
+			0,
+			false,
+			false,
+		);
+
+		let decision = decide_lane_next_action(&snapshot);
+
+		assert_eq!(decision.next_action, LaneNextAction::ResumeContinuation);
+		assert_eq!(decision.kernel_decision.decision_class, OwnedLaneAction::ResumeRetainedLane);
+		assert_eq!(
+			decision.kernel_decision.command_intents[0].kind.as_str(),
+			"resume_retained_lane"
+		);
+		assert!(decision.permits_child_exit_retry_kind(RetryKind::Continuation));
+		assert!(!decision.permits_child_exit_retry_kind(RetryKind::Failure));
+	}
 }

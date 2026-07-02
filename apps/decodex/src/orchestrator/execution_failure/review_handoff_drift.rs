@@ -8,6 +8,10 @@ use super::{
 	loop_guardrail_worktree_fingerprint, retained_progress_source_error_class,
 	run_failure_requires_terminal_attention, tracker, write_terminal_guard_marker,
 };
+use crate::orchestrator::kernel::{
+	command::{CommandFact, CommandIntent, CommandIntentKind},
+	post_review::build_post_review_command_intent,
+};
 
 const REVIEW_HANDOFF_STATE_DRIFT_DETECTED_EVENT_TYPE: &str = "review_handoff_state_drift_detected";
 const REVIEW_HANDOFF_STATE_DRIFT_RECOVERED_EVENT_TYPE: &str =
@@ -268,6 +272,14 @@ fn rebound_review_handoff_orchestration_marker(
 		None,
 	);
 
+	review_handoff_drift_command_adapter(
+		review_handoff_drift_marker_rebind_command_intent(
+			&issue_run.issue.id,
+			review_handoff.run_id(),
+		),
+		CommandIntentKind::SyncReviewOrchestrationMarker,
+	)?;
+
 	state_store.upsert_review_orchestration_marker(
 		project.service_id(),
 		&issue_run.issue.id,
@@ -275,6 +287,59 @@ fn rebound_review_handoff_orchestration_marker(
 	)?;
 
 	Ok(rebounded_orchestration)
+}
+
+fn review_handoff_drift_marker_rebind_command_intent(
+	issue_id: &str,
+	run_id: &str,
+) -> CommandIntent {
+	build_post_review_command_intent(
+		issue_id,
+		Some(run_id),
+		"review_handoff_state_drift_orchestration_rebound",
+		CommandIntentKind::SyncReviewOrchestrationMarker,
+	)
+}
+
+fn review_handoff_drift_command_adapter(
+	command_intent: CommandIntent,
+	expected_kind: CommandIntentKind,
+) -> Result<CommandIntent> {
+	if command_intent.kind != expected_kind {
+		eyre::bail!(
+			"Review handoff drift command adapter expected `{}` intent, got `{}`.",
+			expected_kind.as_str(),
+			command_intent.kind.as_str(),
+		);
+	}
+	if command_intent.idempotency_key.trim().is_empty() {
+		eyre::bail!(
+			"Review handoff drift command adapter requires a non-empty `{}` idempotency key.",
+			expected_kind.as_str(),
+		);
+	}
+	if command_intent.expected_postconditions.is_empty() {
+		eyre::bail!(
+			"Review handoff drift command adapter requires `{}` expected postconditions.",
+			expected_kind.as_str(),
+		);
+	}
+	for required in [
+		CommandFact::AuthorityComplete,
+		CommandFact::IssueStillOwned,
+		CommandFact::NoContradictoryAuthority,
+		CommandFact::PostReviewLifecyclePresent,
+	] {
+		if !command_intent.preconditions.contains(&required) {
+			eyre::bail!(
+				"Review handoff drift command adapter rejected `{}` without `{}` precondition.",
+				expected_kind.as_str(),
+				required.as_str(),
+			);
+		}
+	}
+
+	Ok(command_intent)
 }
 
 fn review_handoff_failure_drift_can_handle(error: &Report) -> bool {
@@ -468,4 +533,31 @@ where
 	}
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn drift_recovery_marker_rebind_intent_preserves_kernel_contract() {
+		let intent = review_handoff_drift_marker_rebind_command_intent("PUB-101", "run-1");
+
+		assert_eq!(intent.kind, CommandIntentKind::SyncReviewOrchestrationMarker);
+		assert_eq!(
+			intent.idempotency_key,
+			"PUB-101:run-1:sync_review_orchestration_marker:review_handoff_state_drift_orchestration_rebound",
+		);
+		assert!(intent.preconditions.contains(&CommandFact::PostReviewLifecyclePresent));
+		assert_eq!(
+			intent.expected_postconditions,
+			vec![CommandFact::ReviewOrchestrationMarkerCurrent],
+		);
+
+		review_handoff_drift_command_adapter(
+			intent,
+			CommandIntentKind::SyncReviewOrchestrationMarker,
+		)
+		.expect("kernel-built drift recovery marker sync intent should pass adapter");
+	}
 }

@@ -45,6 +45,19 @@ impl PostReviewLaneDecision {
 			Self::Block => "blocked",
 		}
 	}
+
+	pub(crate) fn from_str(value: &str) -> Option<Self> {
+		Some(match value {
+			"continue" => Self::Continue,
+			"wait_for_review" => Self::WaitForReview,
+			"needs_review_repair" => Self::NeedsReviewRepair,
+			"ready_to_land" => Self::ReadyToLand,
+			"closeout_blocked" => Self::CloseoutBlocked,
+			"cleanup_blocked" => Self::CleanupBlocked,
+			"blocked" => Self::Block,
+			_ => return None,
+		})
+	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -157,14 +170,12 @@ impl LoopGuardrailReason {
 			"no_effective_diff" => Some(Self::NoEffectiveDiff),
 			"remaining_delta_unchanged" => Some(Self::RemainingDeltaUnchanged),
 			"review_churn" | "review_policy_exhausted" => Some(Self::ReviewChurn),
-			"review_handoff_state_drift" | "review_handoff_rebind_required" => {
-				Some(Self::ReviewHandoffStateDrift)
-			},
+			"review_handoff_state_drift" | "review_handoff_rebind_required" =>
+				Some(Self::ReviewHandoffStateDrift),
 			"dependency_program_stale" | "dependency_blocked" => Some(Self::DependencyProgramStale),
 			"uncovered_direction" | "research_contract_required" => Some(Self::UncoveredDirection),
-			"ambiguous_retained_progress" | "ownership_ambiguous" => {
-				Some(Self::AmbiguousRetainedProgress)
-			},
+			"ambiguous_retained_progress" | "ownership_ambiguous" =>
+				Some(Self::AmbiguousRetainedProgress),
 			_ => None,
 		}
 	}
