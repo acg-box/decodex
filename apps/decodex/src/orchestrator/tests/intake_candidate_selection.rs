@@ -1,22 +1,39 @@
 use std::{cell::RefCell, fs, path::Path};
 
+use tempfile::TempDir;
+
 use crate::{
 	config::ReviewLevel,
 	orchestrator::{
 		self, IssueDispatchMode, RetainedReviewRunIdentity, ReviewHandoffMarker, RunSummary,
 		TERMINAL_GUARDED_RUN_STATUS, TargetIssueRunContext,
-		tests::{self, FakePullRequestReviewStateInspector, FakeTracker, TEST_SERVICE_ID},
+		tests::{
+			self, FakePullRequestReviewStateInspector, FakeTracker, TEST_SERVICE_ID,
+			recovery_terminal_support,
+		},
 	},
 	state::{self, StateStore},
+	test_support::TestEnvVarGuard,
 	tracker::{self, TrackerIssue},
 	workflow::WorkflowDocument,
-	worktree::WorktreeManager,
+	worktree::{WorktreeManager, WorktreeSpec},
 };
 
 fn candidate_selection_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
 	tests::sample_issue(state_name, &[active_label.as_str()])
+}
+
+fn install_merged_pr_response(
+	temp_dir: &TempDir,
+	worktree: &WorktreeSpec,
+	pr_url: &str,
+	head_oid: &str,
+) -> TestEnvVarGuard {
+	recovery_terminal_support::install_fake_merged_pr_gh_response(
+		temp_dir, worktree, pr_url, head_oid,
+	)
 }
 
 fn sample_handoff_summary(issue: &TrackerIssue, worktree_path: &Path) -> RunSummary {
@@ -587,8 +604,7 @@ fn plan_project_issue_run_prefers_post_review_closeout_lane_over_normal_candidat
 		),
 	);
 
-	let _path_guard =
-		tests::install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = install_merged_pr_response(&temp_dir, &worktree, pr_url, &head_oid);
 	let mut merged_review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
@@ -717,8 +733,7 @@ fn plan_project_issue_run_allows_merged_closeout_after_retry_budget() {
 			.expect("failed attempt should record");
 	}
 
-	let _path_guard =
-		tests::install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = install_merged_pr_response(&temp_dir, &worktree, pr_url, &head_oid);
 	let mut merged_review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
