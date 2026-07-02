@@ -7,18 +7,19 @@ use std::{
 };
 
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use toml::{Table, Value};
 
 use crate::{
+	accounts::{
+		auth_json::{self, AuthDotJson},
+		file_security,
+		identity::AccountIdentity,
+		random_names,
+		record::{AccountPoolLine, AccountPoolRecord},
+		types::{AccountControlSummary, AccountListResponse, AccountUseResponse},
+	},
 	prelude::{Result, eyre},
 	runtime,
-};
-
-use super::{
-	AccountControlSummary, AccountIdentity, AccountListResponse, AccountPoolLine,
-	AccountPoolRecord, AccountUseResponse,
-	auth_json::{AuthDotJson, default_codex_auth_json_path, write_auth_json_atomically},
-	random_names::{assign_unique_random_names, normalize_random_name_offset},
-	secure_account_file,
 };
 
 pub(crate) struct AccountStore {
@@ -26,13 +27,12 @@ pub(crate) struct AccountStore {
 	pub(super) global_config_path: PathBuf,
 	codex_auth_path: PathBuf,
 }
-
 impl AccountStore {
 	pub(crate) fn global() -> Result<Self> {
 		Ok(Self {
 			accounts_path: runtime::accounts_path()?,
 			global_config_path: runtime::global_config_path()?,
-			codex_auth_path: default_codex_auth_json_path()?,
+			codex_auth_path: auth_json::default_codex_auth_json_path()?,
 		})
 	}
 
@@ -151,8 +151,8 @@ impl AccountStore {
 		let offsets = self.account_name_offsets()?;
 		let current = offsets.get(&key).copied().unwrap_or_default();
 		let next = offset.map_or_else(
-			|| normalize_random_name_offset(current + 1),
-			normalize_random_name_offset,
+			|| random_names::normalize_random_name_offset(current + 1),
+			random_names::normalize_random_name_offset,
 		);
 
 		self.write_account_name_offset(&key, next)?;
@@ -220,7 +220,7 @@ impl AccountStore {
 
 		let target_path = auth_json_path.unwrap_or(&self.codex_auth_path);
 
-		write_auth_json_atomically(target_path, &record.auth_dot_json()?)?;
+		auth_json::write_auth_json_atomically(target_path, &record.auth_dot_json()?)?;
 
 		Ok(AccountUseResponse {
 			codex_auth_path: target_path.display().to_string(),
@@ -249,12 +249,9 @@ impl AccountStore {
 
 		fs::create_dir_all(parent)?;
 		fs::write(&temp_path, body)?;
-
-		secure_account_file(&temp_path)?;
-
+		file_security::secure_account_file(&temp_path)?;
 		fs::rename(temp_path, &self.accounts_path)?;
-
-		secure_account_file(&self.accounts_path)?;
+		file_security::secure_account_file(&self.accounts_path)?;
 
 		Ok(())
 	}
@@ -287,7 +284,7 @@ impl AccountStore {
 			.map(|record| record.summary(selector.as_deref(), codex_auth.as_ref(), &name_offsets))
 			.collect::<Vec<_>>();
 
-		assign_unique_random_names(&mut accounts);
+		random_names::assign_unique_random_names(&mut accounts);
 
 		Ok(AccountListResponse {
 			accounts_path: self.accounts_path.display().to_string(),
@@ -324,11 +321,11 @@ impl AccountStore {
 		let document = self.load_global_config_document()?;
 		let selector = document
 			.get("codex")
-			.and_then(toml::Value::as_table)
+			.and_then(Value::as_table)
 			.and_then(|codex| codex.get("accounts"))
-			.and_then(toml::Value::as_table)
+			.and_then(Value::as_table)
 			.and_then(|accounts| accounts.get("fixed_account"))
-			.and_then(toml::Value::as_str)
+			.and_then(Value::as_str)
 			.map(str::trim)
 			.filter(|value| !value.is_empty())
 			.map(str::to_owned);
@@ -340,11 +337,11 @@ impl AccountStore {
 		let document = self.load_global_config_document()?;
 		let Some(offsets) = document
 			.get("codex")
-			.and_then(toml::Value::as_table)
+			.and_then(Value::as_table)
 			.and_then(|codex| codex.get("account_names"))
-			.and_then(toml::Value::as_table)
+			.and_then(Value::as_table)
 			.and_then(|account_names| account_names.get("offsets"))
-			.and_then(toml::Value::as_table)
+			.and_then(Value::as_table)
 		else {
 			return Ok(BTreeMap::new());
 		};
@@ -356,7 +353,9 @@ impl AccountStore {
 
 				(!key.is_empty()).then_some((
 					key.to_owned(),
-					normalize_random_name_offset(value.as_integer().unwrap_or_default()),
+					random_names::normalize_random_name_offset(
+						value.as_integer().unwrap_or_default(),
+					),
 				))
 			})
 			.collect())
@@ -375,7 +374,10 @@ impl AccountStore {
 			"offsets",
 		)?;
 
-		offsets.insert(key.to_owned(), toml::Value::Integer(normalize_random_name_offset(offset)));
+		offsets.insert(
+			key.to_owned(),
+			Value::Integer(random_names::normalize_random_name_offset(offset)),
+		);
 
 		self.write_global_config_document(&document)
 	}
@@ -391,9 +393,8 @@ impl AccountStore {
 				accounts.insert(String::from("fixed_account"), selector.to_owned().into());
 			},
 			None => {
-				if let Some(codex) = document.get_mut("codex").and_then(toml::Value::as_table_mut)
-					&& let Some(accounts) =
-						codex.get_mut("accounts").and_then(toml::Value::as_table_mut)
+				if let Some(codex) = document.get_mut("codex").and_then(Value::as_table_mut)
+					&& let Some(accounts) = codex.get_mut("accounts").and_then(Value::as_table_mut)
 				{
 					accounts.remove("fixed_account");
 				}
@@ -403,10 +404,10 @@ impl AccountStore {
 		self.write_global_config_document(&document)
 	}
 
-	fn load_global_config_document(&self) -> Result<toml::Table> {
+	fn load_global_config_document(&self) -> Result<Table> {
 		let input = match fs::read_to_string(&self.global_config_path) {
 			Ok(input) => input,
-			Err(error) if error.kind() == ErrorKind::NotFound => return Ok(toml::Table::new()),
+			Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Table::new()),
 			Err(error) => {
 				eyre::bail!(
 					"Failed to read Decodex global config `{}`: {error}",
@@ -415,10 +416,10 @@ impl AccountStore {
 			},
 		};
 
-		if input.trim().is_empty() { Ok(toml::Table::new()) } else { Ok(toml::from_str(&input)?) }
+		if input.trim().is_empty() { Ok(Table::new()) } else { Ok(toml::from_str(&input)?) }
 	}
 
-	fn write_global_config_document(&self, document: &toml::Table) -> Result<()> {
+	fn write_global_config_document(&self, document: &Table) -> Result<()> {
 		let parent = self.global_config_path.parent().ok_or_else(|| {
 			eyre::eyre!(
 				"Decodex global config `{}` must have a parent directory.",
@@ -434,12 +435,9 @@ impl AccountStore {
 
 		fs::create_dir_all(parent)?;
 		fs::write(&temp_path, output)?;
-
-		secure_account_file(&temp_path)?;
-
+		file_security::secure_account_file(&temp_path)?;
 		fs::rename(temp_path, &self.global_config_path)?;
-
-		secure_account_file(&self.global_config_path)?;
+		file_security::secure_account_file(&self.global_config_path)?;
 
 		Ok(())
 	}
@@ -469,14 +467,14 @@ fn parse_account_records(input: &str, path: &Path) -> Result<Vec<AccountPoolReco
 	Ok(records)
 }
 
-fn ensure_toml_table<'a>(parent: &'a mut toml::Table, key: &str) -> Result<&'a mut toml::Table> {
+fn ensure_toml_table<'a>(parent: &'a mut Table, key: &str) -> Result<&'a mut Table> {
 	if !parent.contains_key(key) {
-		parent.insert(String::from(key), toml::Value::Table(toml::Table::new()));
+		parent.insert(String::from(key), Value::Table(Table::new()));
 	}
 
 	parent
 		.get_mut(key)
-		.and_then(toml::Value::as_table_mut)
+		.and_then(Value::as_table_mut)
 		.ok_or_else(|| eyre::eyre!("`{key}` in Decodex global config must be a table."))
 }
 

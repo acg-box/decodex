@@ -5,10 +5,12 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-use crate::prelude::{Result, eyre};
-
-use super::secure_account_file;
+use crate::{
+	accounts::file_security,
+	prelude::{Result, eyre},
+};
 
 #[derive(Clone, Deserialize, Serialize)]
 pub(super) struct AuthDotJson {
@@ -65,12 +67,9 @@ pub(super) fn write_auth_json_atomically(path: &Path, auth: &AuthDotJson) -> Res
 
 	fs::create_dir_all(parent)?;
 	fs::write(&temp_path, output)?;
-
-	secure_account_file(&temp_path)?;
-
+	file_security::secure_account_file(&temp_path)?;
 	fs::rename(temp_path, path)?;
-
-	secure_account_file(path)?;
+	file_security::secure_account_file(path)?;
 
 	Ok(())
 }
@@ -87,7 +86,7 @@ pub(super) fn nonblank_string(value: Option<&str>) -> Option<String> {
 pub(super) fn jwt_email_claim(id_token: Option<&str>) -> Option<String> {
 	let payload = id_token?.split('.').nth(1)?;
 	let payload_bytes = parse_base64_url(payload)?;
-	let claims = serde_json::from_slice::<serde_json::Value>(&payload_bytes).ok()?;
+	let claims = serde_json::from_slice::<Value>(&payload_bytes).ok()?;
 
 	claims.get("email").and_then(json_scalar_to_string)
 }
@@ -95,7 +94,7 @@ pub(super) fn jwt_email_claim(id_token: Option<&str>) -> Option<String> {
 pub(super) fn jwt_expiration_unix_epoch(jwt: &str) -> Option<i64> {
 	let payload = jwt.split('.').nth(1)?;
 	let payload_bytes = parse_base64_url(payload)?;
-	let claims = serde_json::from_slice::<serde_json::Value>(&payload_bytes).ok()?;
+	let claims = serde_json::from_slice::<Value>(&payload_bytes).ok()?;
 
 	claims.get("exp").and_then(number_as_i64)
 }
@@ -130,16 +129,16 @@ const fn base64_url_value(byte: u8) -> Option<u8> {
 	}
 }
 
-fn json_scalar_to_string(value: &serde_json::Value) -> Option<String> {
+fn json_scalar_to_string(value: &Value) -> Option<String> {
 	match value {
-		serde_json::Value::String(text) if !text.is_empty() => Some(text.clone()),
-		serde_json::Value::Number(number) => Some(number.to_string()),
-		serde_json::Value::Bool(value) => Some(value.to_string()),
+		Value::String(text) if !text.is_empty() => Some(text.clone()),
+		Value::Number(number) => Some(number.to_string()),
+		Value::Bool(value) => Some(value.to_string()),
 		_ => None,
 	}
 }
 
-fn number_as_i64(value: &serde_json::Value) -> Option<i64> {
+fn number_as_i64(value: &Value) -> Option<i64> {
 	value
 		.as_i64()
 		.or_else(|| value.as_u64().and_then(|number| i64::try_from(number).ok()))

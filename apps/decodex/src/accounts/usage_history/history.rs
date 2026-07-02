@@ -4,7 +4,8 @@ use time::OffsetDateTime;
 
 use crate::{
 	accounts::{
-		self, AccountSummary,
+		file_security,
+		types::AccountSummary,
 		usage_history::{self, AccountUsageHistoryRecord, USAGE_ESTIMATE_WINDOW_DAYS},
 	},
 	prelude::{Result, eyre},
@@ -63,9 +64,9 @@ impl AccountUsageHistory {
 
 		fs::create_dir_all(parent)?;
 		fs::write(&temp_path, body)?;
-		accounts::secure_account_file(&temp_path)?;
+		file_security::secure_account_file(&temp_path)?;
 		fs::rename(temp_path, path)?;
-		accounts::secure_account_file(path)?;
+		file_security::secure_account_file(path)?;
 
 		Ok(())
 	}
