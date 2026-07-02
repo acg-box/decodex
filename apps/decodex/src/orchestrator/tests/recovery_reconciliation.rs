@@ -1,4 +1,25 @@
+use std::{fs, path::Path, process, time::Duration};
+
 use serde::Serialize;
+use time::OffsetDateTime;
+
+use crate::{
+	agent::{MODEL_EXECUTION_IDLE_TIMEOUT, RUN_LEASE_IDLE_TIMEOUT},
+	orchestrator::{
+		self, CONTINUATION_PENDING_RUN_STATUS, ChildRunRef, CurrentChildRunContext,
+		IssueDispatchMode, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, ReviewHandoffMarker,
+		RunLeaseDisposition, RunLeaseReconciliation, TERMINAL_GUARDED_RUN_STATUS,
+		tests::{
+			FakeTracker, TEST_SERVICE_ID, {self},
+		},
+	},
+	state::{
+		self, RUN_ACTIVITY_MARKER_FILE, RUN_OPERATION_REPO_GATE, ReviewPolicyCheckpointInput,
+		StateStore,
+	},
+	tracker::{self, TrackerIssue, records},
+	worktree::WorktreeManager,
+};
 
 struct StalledPhaseGoalOutcome {
 	run_status: String,
@@ -14,14 +35,14 @@ struct StalledPhaseGoalOutcome {
 fn reconciliation_sample_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue(state_name, &[active_label.as_str()])
+	tests::sample_issue(state_name, &[active_label.as_str()])
 }
 
 #[test]
 fn run_lease_reconciliation_detects_terminal_not_dispatchable_and_stalled_runs() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let terminal_issue = sample_issue_with_sort_fields(
+	let terminal_issue = tests::sample_issue_with_sort_fields(
 		"issue-terminal",
 		"PUB-201",
 		"Done",
@@ -29,7 +50,7 @@ fn run_lease_reconciliation_detects_terminal_not_dispatchable_and_stalled_runs()
 		Some(3),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let not_dispatchable_issue = sample_issue_with_sort_fields(
+	let not_dispatchable_issue = tests::sample_issue_with_sort_fields(
 		"issue-not-dispatchable",
 		"PUB-202",
 		"Blocked",
@@ -37,7 +58,7 @@ fn run_lease_reconciliation_detects_terminal_not_dispatchable_and_stalled_runs()
 		Some(3),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let stalled_issue = sample_issue_with_sort_fields(
+	let stalled_issue = tests::sample_issue_with_sort_fields(
 		"issue-stalled",
 		"PUB-203",
 		"In Progress",
@@ -101,9 +122,9 @@ fn run_lease_reconciliation_detects_terminal_not_dispatchable_and_stalled_runs()
 
 #[test]
 fn run_lease_reconciliation_detects_stalled_run_without_protocol_events() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let stalled_issue = sample_issue_with_sort_fields(
+	let stalled_issue = tests::sample_issue_with_sort_fields(
 		"issue-stalled-no-events",
 		"PUB-204",
 		"In Progress",
@@ -154,9 +175,9 @@ fn run_lease_reconciliation_detects_stalled_run_without_protocol_events() {
 
 #[test]
 fn run_lease_reconciliation_supersedes_stale_lease_for_newer_attempt() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = tests::sample_issue_with_sort_fields(
 		"issue-superseded-lease",
 		"PUB-207",
 		"In Progress",
@@ -225,8 +246,8 @@ fn run_lease_reconciliation_supersedes_stale_lease_for_newer_attempt() {
 
 #[test]
 fn run_lease_reconciliation_keeps_completed_closeout_lane_with_fresh_activity() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(
 		&base_config,
 		"DECODEX_TEST_MISSING_ACTIVE_DELIVERY_CLOSEOUT_GITHUB_TOKEN",
 	);
@@ -239,7 +260,7 @@ fn run_lease_reconciliation_keeps_completed_closeout_lane_with_fresh_activity() 
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/180";
 
 	state_store
@@ -255,13 +276,12 @@ fn run_lease_reconciliation_keeps_completed_closeout_lane_with_fresh_activity() 
 		)
 		.expect("worktree mapping should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
-
 	state::write_run_activity_marker(&worktree.path, run_id, 1)
 		.expect("fresh activity marker should write");
 
@@ -283,8 +303,8 @@ fn run_lease_reconciliation_keeps_completed_closeout_lane_with_fresh_activity() 
 
 #[test]
 fn active_daemon_child_reconciliation_keeps_completed_closeout_lane_with_fresh_activity() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(
 		&base_config,
 		"DECODEX_TEST_MISSING_ACTIVE_DAEMON_DELIVERY_CLOSEOUT_GITHUB_TOKEN",
 	);
@@ -297,7 +317,7 @@ fn active_daemon_child_reconciliation_keeps_completed_closeout_lane_with_fresh_a
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/181";
 
 	state_store
@@ -313,13 +333,12 @@ fn active_daemon_child_reconciliation_keeps_completed_closeout_lane_with_fresh_a
 		)
 		.expect("worktree mapping should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
-
 	state::write_run_activity_marker(&worktree.path, run_id, 1)
 		.expect("fresh activity marker should write");
 
@@ -344,7 +363,7 @@ fn active_daemon_child_reconciliation_keeps_completed_closeout_lane_with_fresh_a
 
 #[test]
 fn current_daemon_child_reconciliation_keeps_review_repair_lane_in_review() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = reconciliation_sample_service_owned_issue("In Review");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -391,8 +410,8 @@ fn current_daemon_child_reconciliation_keeps_review_repair_lane_in_review() {
 
 #[test]
 fn current_daemon_child_reconciliation_keeps_closeout_child_after_tracker_completion() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Done", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Done", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-closeout-completed";
@@ -425,8 +444,8 @@ fn current_daemon_child_reconciliation_keeps_closeout_child_after_tracker_comple
 
 #[test]
 fn run_lease_reconciliation_treats_completed_retained_handoff_as_success() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue_with_sort_fields(
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue_with_sort_fields(
 		"issue-handoff-complete",
 		"PUB-205",
 		"In Progress",
@@ -442,7 +461,7 @@ fn run_lease_reconciliation_treats_completed_retained_handoff_as_success() {
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained review worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/205";
 
 	state_store
@@ -463,11 +482,11 @@ fn run_lease_reconciliation_treats_completed_retained_handoff_as_success() {
 		.append_event(run_id, 1, "thread/status/changed", "{\"status\":\"active\"}")
 		.expect("stale run activity should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let now =
@@ -518,8 +537,8 @@ fn run_lease_reconciliation_treats_completed_retained_handoff_as_success() {
 
 #[test]
 fn run_lease_reconciliation_ignores_stale_retained_handoff_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue_with_sort_fields(
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue_with_sort_fields(
 		"issue-stale-handoff",
 		"PUB-205B",
 		"In Progress",
@@ -535,7 +554,7 @@ fn run_lease_reconciliation_ignores_stale_retained_handoff_marker() {
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained review worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 
 	state_store
 		.record_run_attempt(run_id, &issue.id, 1, "running")
@@ -555,7 +574,7 @@ fn run_lease_reconciliation_ignores_stale_retained_handoff_marker() {
 		.append_event(run_id, 1, "thread/status/changed", "{\"status\":\"active\"}")
 		.expect("stale run activity should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
@@ -592,8 +611,8 @@ fn run_lease_reconciliation_ignores_stale_retained_handoff_marker() {
 
 #[test]
 fn active_daemon_child_reconciliation_treats_completed_retained_handoff_as_success() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue_with_sort_fields(
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue_with_sort_fields(
 		"issue-daemon-handoff-complete",
 		"PUB-206",
 		"In Progress",
@@ -609,7 +628,7 @@ fn active_daemon_child_reconciliation_treats_completed_retained_handoff_as_succe
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained review worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/206";
 
 	state_store
@@ -630,11 +649,11 @@ fn active_daemon_child_reconciliation_treats_completed_retained_handoff_as_succe
 		.append_event(run_id, 1, "thread/status/changed", "{\"status\":\"active\"}")
 		.expect("stale run activity should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let now =
@@ -689,8 +708,8 @@ fn stalled_idle_duration_ignores_future_last_activity() {
 
 #[test]
 fn run_lease_reconciliation_uses_worktree_activity_marker_from_child_process() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-shared-activity";
@@ -746,8 +765,8 @@ fn run_lease_reconciliation_uses_worktree_activity_marker_from_child_process() {
 
 #[test]
 fn run_lease_reconciliation_allows_running_model_execution_until_model_timeout() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-model-execution-idle";
@@ -774,8 +793,7 @@ fn run_lease_reconciliation_allows_running_model_execution_until_model_timeout()
 		.last_run_activity_unix_epoch(run_id)
 		.expect("last activity lookup should succeed")
 		.expect("run activity should exist");
-	let protocol_activity =
-		r#"{"turn_status":"running","waiting_reason":"model_execution","rate_limit_status":null,"recent_events":[]}"#;
+	let protocol_activity = r#"{"turn_status":"running","waiting_reason":"model_execution","rate_limit_status":null,"recent_events":[]}"#;
 
 	fs::write(
 		worktree_path.join(RUN_ACTIVITY_MARKER_FILE),
@@ -817,19 +835,19 @@ fn run_lease_reconciliation_allows_running_model_execution_until_model_timeout()
 				RunLeaseDisposition::Stalled{ idle_for }
 					if idle_for >= MODEL_EXECUTION_IDLE_TIMEOUT
 			)
-		}));
+	}));
 }
 
 #[test]
 fn run_lease_reconciliation_defers_live_repo_gate_even_with_dirty_worktree() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-live-repo-gate";
 	let worktree_path = config.worktree_root().join("PUB-101-repo-gate");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&[
 			"worktree",
@@ -840,7 +858,6 @@ fn run_lease_reconciliation_defers_live_repo_gate_even_with_dirty_worktree() {
 			"main",
 		],
 	);
-
 	fs::write(worktree_path.join("README.md"), "repo gate is still running\n")
 		.expect("tracked worktree file should change");
 
@@ -922,15 +939,15 @@ fn run_lease_reconciliation_defers_live_repo_gate_even_with_dirty_worktree() {
 
 #[test]
 fn exited_child_reconciliation_defers_dirty_worktree_with_retry_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-failed-with-retry-marker";
 	let worktree_path = config.worktree_root().join("PUB-101-retry-marker");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&[
 			"worktree",
@@ -941,7 +958,6 @@ fn exited_child_reconciliation_defers_dirty_worktree_with_retry_marker() {
 			"main",
 		],
 	);
-
 	fs::write(worktree_path.join("README.md"), "retry still owns this patch\n")
 		.expect("tracked worktree file should change");
 
@@ -989,7 +1005,7 @@ fn record_active_validation_ready_phase_goal_progress(
 	progress_phase: &str,
 	blockers: impl Serialize,
 ) {
-	let head_sha = git_output(worktree_path, &["rev-parse", "HEAD"]);
+	let head_sha = tests::git_output(worktree_path, &["rev-parse", "HEAD"]);
 
 	state_store
 		.append_private_execution_event(
@@ -1030,8 +1046,8 @@ fn apply_stalled_phase_goal_reconciliation(
 	progress_phase: &str,
 	blockers: impl Serialize,
 ) -> StalledPhaseGoalOutcome {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -1039,7 +1055,7 @@ fn apply_stalled_phase_goal_reconciliation(
 	let run_id = "run-stalled-phase-goal";
 	let worktree_path = config.worktree_root().join("PUB-101-phase-goal");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&[
 			"worktree",
@@ -1050,7 +1066,6 @@ fn apply_stalled_phase_goal_reconciliation(
 			"main",
 		],
 	);
-
 	fs::write(worktree_path.join("README.md"), "validation-ready retained patch\n")
 		.expect("tracked worktree file should change");
 
@@ -1204,9 +1219,9 @@ fn stalled_protocol_idle_duration_ignores_future_protocol_activity() {
 
 #[test]
 fn run_lease_reconciliation_ignores_startable_preclaim_states() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = tests::sample_issue_with_sort_fields(
 		"issue-startable",
 		"PUB-204",
 		"Todo",
@@ -1239,7 +1254,7 @@ fn run_lease_reconciliation_ignores_startable_preclaim_states() {
 
 #[test]
 fn run_lease_reconciliation_clears_terminal_lane_labels() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = reconciliation_sample_service_owned_issue("Done");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1297,12 +1312,12 @@ fn run_lease_reconciliation_clears_terminal_lane_labels() {
 
 #[test]
 fn run_lease_reconciliation_keeps_nonterminal_not_dispatchable_worktrees() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
 		WorktreeManager::new("pubfi", config.repo_root(), config.worktree_root());
-	let issue = sample_issue("Todo", &[]);
+	let issue = tests::sample_issue("Todo", &[]);
 	let run_id = "run-not-dispatchable";
 	let worktree_path = config.worktree_root().join("PUB-101");
 
@@ -1362,12 +1377,12 @@ fn run_lease_reconciliation_keeps_nonterminal_not_dispatchable_worktrees() {
 
 #[test]
 fn stalled_run_reconciliation_schedules_retry_before_attention_budget_exhaustion() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
 		WorktreeManager::new("pubfi", config.repo_root(), config.worktree_root());
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let run_id = "run-stalled";
 	let worktree_path = config.worktree_root().join("PUB-101");
 
@@ -1454,14 +1469,16 @@ fn stalled_run_reconciliation_schedules_retry_before_attention_budget_exhaustion
 		.expect("retry marker should exist");
 
 	assert_eq!(marker.retry_kind(), Some("failure"));
-	assert!(marker.retry_ready_at_unix_epoch().is_some_and(
-		|retry_ready_at| retry_ready_at > OffsetDateTime::now_utc().unix_timestamp()
-	));
+	assert!(
+		marker.retry_ready_at_unix_epoch().is_some_and(
+			|retry_ready_at| retry_ready_at > OffsetDateTime::now_utc().unix_timestamp()
+		)
+	);
 }
 
 #[test]
 fn stalled_run_reconciliation_routes_to_needs_attention_after_retry_budget_exhaustion() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -1540,20 +1557,19 @@ fn stalled_run_reconciliation_routes_to_needs_attention_after_retry_budget_exhau
 
 #[test]
 fn stalled_run_reconciliation_reports_retained_partial_progress_for_dirty_worktree() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
 		WorktreeManager::new("pubfi", config.repo_root(), config.worktree_root());
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let run_id = "run-stalled-dirty";
 	let worktree_path = config.worktree_root().join("PUB-102");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&["worktree", "add", "-b", "x/pubfi-pub-102", ".worktrees/PUB-102", "main"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "retained partial work\n")
 		.expect("tracked worktree file should change");
 
@@ -1630,11 +1646,11 @@ fn assert_dirty_stalled_retained_progress_comments(comments: &[String]) {
 			&& comment.contains(".worktrees/PUB-102")
 	}));
 	assert!(
-		comments
-			.iter()
-			.all(|comment| !comment.contains("- error_class: `stalled_run_detected`"))
+		comments.iter().all(|comment| !comment.contains("- error_class: `stalled_run_detected`"))
 	);
-	assert!(comments.iter().all(|comment| !comment.contains("decodex run failed and needs attention")));
+	assert!(
+		comments.iter().all(|comment| !comment.contains("decodex run failed and needs attention"))
+	);
 
 	let ledger_event = comments
 		.iter()
@@ -1650,34 +1666,28 @@ fn assert_dirty_stalled_retained_progress_comments(comments: &[String]) {
 	);
 	assert_eq!(
 		ledger_event.blockers.as_deref(),
-		Some([String::from(
-			"Retained tracked worktree changes require operator recovery."
-		)]
-		.as_slice())
+		Some(
+			[String::from("Retained tracked worktree changes require operator recovery.")]
+				.as_slice()
+		)
 	);
 	assert!(
-		ledger_event
-			.evidence
-			.as_deref()
-			.is_some_and(|evidence| evidence
-				.iter()
-				.any(|item| item.contains("tracked worktree changes retained"))),
+		ledger_event.evidence.as_deref().is_some_and(|evidence| evidence
+			.iter()
+			.any(|item| item.contains("tracked worktree changes retained"))),
 		"retained partial progress evidence should mention retained tracked changes"
 	);
 	assert!(
-		ledger_event
-			.evidence
-			.as_deref()
-			.is_some_and(|evidence| evidence
-				.iter()
-				.any(|item| item.contains("Source failure class `stalled_run_detected`"))),
+		ledger_event.evidence.as_deref().is_some_and(|evidence| evidence
+			.iter()
+			.any(|item| item.contains("Source failure class `stalled_run_detected`"))),
 		"retained partial progress evidence should preserve the stalled source class"
 	);
 }
 
 #[test]
 fn project_reconciliation_schedules_retry_for_orphaned_active_worktree_run() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = reconciliation_sample_service_owned_issue("In Progress");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1745,7 +1755,7 @@ fn project_reconciliation_schedules_retry_for_orphaned_active_worktree_run() {
 
 #[test]
 fn project_reconciliation_clears_terminal_identifier_worktree_before_tracker_refresh() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(Vec::new());
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -1794,10 +1804,10 @@ fn project_reconciliation_clears_terminal_identifier_worktree_before_tracker_ref
 
 #[test]
 fn project_reconciliation_preserves_terminal_identifier_worktree_with_review_authority() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let stale_issue_id = "PUB-001";
 	let branch_name = "x/pubfi-pub-001";
-	let issue = sample_issue_with_sort_fields(
+	let issue = tests::sample_issue_with_sort_fields(
 		stale_issue_id,
 		stale_issue_id,
 		"In Review",
@@ -1823,7 +1833,7 @@ fn project_reconciliation_preserves_terminal_identifier_worktree_with_review_aut
 		)
 		.expect("stale worktree mapping should record");
 
-	seed_review_handoff_marker(
+	tests::seed_review_handoff_marker(
 		&state_store,
 		config.service_id(),
 		stale_issue_id,
@@ -1872,13 +1882,7 @@ fn project_reconciliation_preserves_terminal_identifier_worktree_with_review_aut
 	);
 	assert!(
 		state_store
-			.review_policy_checkpoint(
-				config.service_id(),
-				stale_issue_id,
-				"run-01",
-				1,
-				"handoff",
-			)
+			.review_policy_checkpoint(config.service_id(), stale_issue_id, "run-01", 1, "handoff",)
 			.expect("review checkpoint lookup should succeed")
 			.is_some(),
 		"review checkpoint authority must be preserved"
@@ -1887,8 +1891,8 @@ fn project_reconciliation_preserves_terminal_identifier_worktree_with_review_aut
 
 #[test]
 fn project_reconciliation_marks_orphaned_attention_worktree_run_stalled_without_tracker_writes() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &["decodex:needs-attention"]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &["decodex:needs-attention"]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -1943,12 +1947,12 @@ fn project_reconciliation_marks_orphaned_attention_worktree_run_stalled_without_
 
 #[test]
 fn stalled_run_reconciliation_preserves_retry_budget_marker_from_retained_worktree() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
 		WorktreeManager::new("pubfi", config.repo_root(), config.worktree_root());
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let run_id = "run-stalled-budget";
 	let worktree_path = config.worktree_root().join("PUB-101");
 

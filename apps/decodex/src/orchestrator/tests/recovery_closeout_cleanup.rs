@@ -1,13 +1,27 @@
+use std::fs;
+
+use crate::{
+	orchestrator::{
+		self, IssueDispatchMode, IssueRunPlan, ReviewHandoffMarker,
+		tests::{
+			FakePullRequestReviewStateInspector, FakeTracker, recovery_terminal_support, {self},
+		},
+	},
+	state::StateStore,
+	test_support,
+	worktree::{WorktreeManager, WorktreeSpec},
+};
+
 #[test]
 fn cleanup_completed_post_review_lane_preserves_worktree_when_remote_delete_fails() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Done", &[]);
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Done", &[]);
 	let _tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let remote_root =
 		config.repo_root().parent().expect("repo root should have a parent").join("origin.git");
-	let head_oid = git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/67";
 	let worktree = WorktreeSpec {
 		branch_name: String::from("main"),
@@ -15,16 +29,13 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_remote_delete_fail
 		path: config.repo_root().to_path_buf(),
 		reused_existing: true,
 	};
-	let _path_guard = install_fake_merged_pr_gh_response_with_delete_exit_code(
-		&temp_dir,
-		&worktree,
-		pr_url,
-		&head_oid,
-		1,
-	);
+	let _path_guard =
+		recovery_terminal_support::install_fake_merged_pr_gh_response_with_delete_exit_code(
+			&temp_dir, &worktree, pr_url, &head_oid, 1,
+		);
 
-	initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
-	seed_review_handoff_marker_value(
+	recovery_terminal_support::initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
@@ -48,7 +59,11 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_remote_delete_fail
 		)
 		.expect("worktree should record");
 
-	let issue_run = sample_closeout_issue_run(&issue, &worktree, "run-closeout-cleanup");
+	let issue_run = recovery_terminal_support::sample_closeout_issue_run(
+		&issue,
+		&worktree,
+		"run-closeout-cleanup",
+	);
 	let error = orchestrator::cleanup_completed_post_review_lane(
 		&config,
 		&workflow,
@@ -73,7 +88,7 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_remote_delete_fail
 		"worktree mapping must remain so cleanup can retry later"
 	);
 	assert!(
-		!git_output(config.repo_root(), &["branch", "--list", "main"]).is_empty(),
+		!tests::git_output(config.repo_root(), &["branch", "--list", "main"]).is_empty(),
 		"cleanup must not mutate local branch state when remote delete fails before local cleanup"
 	);
 }
@@ -81,9 +96,9 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_remote_delete_fail
 #[test]
 fn merged_closeout_retry_exhaustion_reports_cleanup_blocker_with_pr_url_after_default_branch_dirty()
 {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Done", &[]);
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Done", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -91,16 +106,18 @@ fn merged_closeout_retry_exhaustion_reports_cleanup_blocker_with_pr_url_after_de
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/119";
-	let _path_guard = install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 	let remote_root =
 		config.repo_root().parent().expect("repo root should have a parent").join("origin.git");
 
-	initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
+	recovery_terminal_support::initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
 
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["push", "origin", &format!("HEAD:{}", worktree.branch_name)])
@@ -109,11 +126,11 @@ fn merged_closeout_retry_exhaustion_reports_cleanup_blocker_with_pr_url_after_de
 			.success()
 	);
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store
@@ -128,7 +145,11 @@ fn merged_closeout_retry_exhaustion_reports_cleanup_blocker_with_pr_url_after_de
 	fs::write(config.repo_root().join("README.md"), "local repo override\n")
 		.expect("tracked repo-root file should become dirty");
 
-	let issue_run = sample_closeout_issue_run(&issue, &worktree, "run-closeout-dirty-root");
+	let issue_run = recovery_terminal_support::sample_closeout_issue_run(
+		&issue,
+		&worktree,
+		"run-closeout-dirty-root",
+	);
 	let error = orchestrator::cleanup_completed_post_review_lane(
 		&config,
 		&workflow,
@@ -154,7 +175,7 @@ fn merged_closeout_retry_exhaustion_reports_cleanup_blocker_with_pr_url_after_de
 			.expect("failed closeout attempt should record");
 	}
 
-	let mut merged_review_state = sample_pull_request_review_state(
+	let mut merged_review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -185,9 +206,9 @@ fn merged_closeout_retry_exhaustion_reports_cleanup_blocker_with_pr_url_after_de
 
 #[test]
 fn cleanup_completed_post_review_lane_fails_closed_when_pr_target_branch_drifted() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Done", &[]);
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Done", &[]);
 	let _tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -195,9 +216,9 @@ fn cleanup_completed_post_review_lane_fails_closed_when_pr_target_branch_drifted
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/180";
-	let _path_guard = install_fake_merged_pr_gh_response_with_base_ref(
+	let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response_with_base_ref(
 		&temp_dir,
 		&worktree,
 		pr_url,
@@ -205,11 +226,11 @@ fn cleanup_completed_post_review_lane_fails_closed_when_pr_target_branch_drifted
 		"release/1.x",
 	);
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store
@@ -267,9 +288,9 @@ fn cleanup_completed_post_review_lane_fails_closed_when_pr_target_branch_drifted
 
 #[test]
 fn cleanup_completed_post_review_lane_deletes_local_lane_branch_after_worktree_cleanup() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Done", &[]);
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Done", &[]);
 	let _tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -277,16 +298,18 @@ fn cleanup_completed_post_review_lane_deletes_local_lane_branch_after_worktree_c
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/181";
-	let _path_guard = install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 	let remote_root =
 		config.repo_root().parent().expect("repo root should have a parent").join("origin.git");
 
-	initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
+	recovery_terminal_support::initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
 
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["push", "origin", &format!("HEAD:{}", worktree.branch_name)])
@@ -295,11 +318,11 @@ fn cleanup_completed_post_review_lane_deletes_local_lane_branch_after_worktree_c
 			.success()
 	);
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store
@@ -311,15 +334,19 @@ fn cleanup_completed_post_review_lane_deletes_local_lane_branch_after_worktree_c
 		)
 		.expect("worktree mapping should record");
 
-	let issue_run =
-		sample_closeout_issue_run(&issue, &worktree, "run-closeout-local-branch-cleanup");
+	let issue_run = recovery_terminal_support::sample_closeout_issue_run(
+		&issue,
+		&worktree,
+		"run-closeout-local-branch-cleanup",
+	);
 
 	orchestrator::cleanup_completed_post_review_lane(&config, &workflow, &state_store, &issue_run)
 		.expect("cleanup should succeed once merged closeout is authoritative");
 
 	assert!(!worktree.path.exists(), "cleanup should remove the retained worktree path");
 	assert!(
-		git_output(config.repo_root(), &["branch", "--list", &worktree.branch_name]).is_empty(),
+		tests::git_output(config.repo_root(), &["branch", "--list", &worktree.branch_name])
+			.is_empty(),
 		"cleanup should delete the retained local lane branch"
 	);
 	assert!(
@@ -351,27 +378,31 @@ fn cleanup_completed_post_review_lane_uses_persisted_handoff_marker() {
 	];
 
 	for (case_name, pr_url, marker_run_id, marker_attempt, issue_run_id) in cases {
-		let (temp_dir, base_config, workflow) = temp_project_layout();
-		let config = service_config_with_github_token_env_var(&base_config, "HOME");
-		let issue = sample_issue("Done", &[]);
+		let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+		let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+		let issue = tests::sample_issue("Done", &[]);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 		let worktree_manager =
 			WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 		let worktree = worktree_manager
 			.ensure_worktree(&issue.identifier, false)
 			.expect("retained closeout worktree should exist");
-		let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
-		let _path_guard =
-			install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+		let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
+		let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response(
+			&temp_dir, &worktree, pr_url, &head_oid,
+		);
 		let remote_root =
 			config.repo_root().parent().expect("repo root should have a parent").join("origin.git");
 
-		initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
-		git_status_success(
+		recovery_terminal_support::initialize_closeout_cleanup_origin(
+			config.repo_root(),
+			&remote_root,
+		);
+		tests::git_status_success(
 			config.repo_root(),
 			&["push", "origin", &format!("HEAD:{}", worktree.branch_name)],
 		);
-		seed_review_handoff_marker_value(
+		tests::seed_review_handoff_marker_value(
 			&state_store,
 			config.service_id(),
 			&issue.id,
@@ -395,7 +426,8 @@ fn cleanup_completed_post_review_lane_uses_persisted_handoff_marker() {
 			)
 			.expect("worktree mapping should record");
 
-		let issue_run = sample_closeout_issue_run(&issue, &worktree, issue_run_id);
+		let issue_run =
+			recovery_terminal_support::sample_closeout_issue_run(&issue, &worktree, issue_run_id);
 
 		orchestrator::cleanup_completed_post_review_lane(
 			&config,
@@ -414,9 +446,9 @@ fn cleanup_completed_post_review_lane_uses_persisted_handoff_marker() {
 
 #[test]
 fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delete_fails() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Done", &[]);
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Done", &[]);
 	let _tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -424,17 +456,19 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delet
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/182";
-	let _path_guard = install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 	let remote_root =
 		config.repo_root().parent().expect("repo root should have a parent").join("origin.git");
 	let blocking_worktree = config.worktree_root().join("blocking-local-branch-delete");
 
-	initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
+	recovery_terminal_support::initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
 
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["push", "origin", &format!("HEAD:{}", worktree.branch_name)])
@@ -443,7 +477,7 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delet
 			.success()
 	);
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(&worktree.path)
 			.args(["checkout", "--quiet", "--detach"])
@@ -452,7 +486,7 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delet
 			.success()
 	);
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args([
@@ -467,11 +501,11 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delet
 			.success()
 	);
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store
@@ -483,8 +517,11 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delet
 		)
 		.expect("worktree mapping should record");
 
-	let issue_run =
-		sample_closeout_issue_run(&issue, &worktree, "run-closeout-local-branch-delete-blocked");
+	let issue_run = recovery_terminal_support::sample_closeout_issue_run(
+		&issue,
+		&worktree,
+		"run-closeout-local-branch-delete-blocked",
+	);
 	let error = orchestrator::cleanup_completed_post_review_lane(
 		&config,
 		&workflow,

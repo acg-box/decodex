@@ -65,17 +65,10 @@ fn build_post_review_lane_statuses_reports_ready_to_land() {
 	assert_eq!(lanes[0].reason, "external_review_passed_strict");
 	assert_eq!(lanes[0].pr_url.as_deref(), Some(pr_url));
 	assert!(
-		lanes[0]
-			.loop_status
-			.as_ref()
-			.and_then(|status| status.review.as_ref())
-			.is_none(),
+		lanes[0].loop_status.as_ref().and_then(|status| status.review.as_ref()).is_none(),
 		"ready_to_land must not project a pending review checkpoint"
 	);
-	assert_eq!(
-		lanes[0].readback_warning.as_deref(),
-		Some("active_ownership_label_missing")
-	);
+	assert_eq!(lanes[0].readback_warning.as_deref(), Some("active_ownership_label_missing"));
 }
 
 #[test]
@@ -87,12 +80,7 @@ fn build_post_review_lane_statuses_waits_when_clean_repair_head_outruns_lifecycl
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let (worktree, repaired_head_oid) =
-		retained_worktree_with_stale_review_lifecycle_marker(
-			&config,
-			&state_store,
-			&issue,
-			pr_url,
-		);
+		retained_worktree_with_stale_review_lifecycle_marker(&config, &state_store, &issue, pr_url);
 
 	seed_clean_repair_completion_writeback_gap(
 		&config,
@@ -139,9 +127,8 @@ fn retained_worktree_with_stale_review_lifecycle_marker(
 ) -> (WorktreeSpec, String) {
 	let worktree_manager =
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
-	let worktree = worktree_manager
-		.ensure_worktree(&issue.identifier, false)
-		.expect("worktree should exist");
+	let worktree =
+		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let old_head_oid = git_head_oid_for_worktree(&worktree);
 
 	state_store
@@ -327,14 +314,8 @@ fn build_post_review_lane_statuses_preserves_handoff_marker_when_pr_readback_fai
 	assert_eq!(lanes[0].branch_name, "main");
 	assert_eq!(lanes[0].pr_url.as_deref(), Some(pr_url));
 	assert_eq!(lanes[0].pr_head_sha.as_deref(), Some(head_oid.as_str()));
-	assert_eq!(
-		lanes[0].readback_warning.as_deref(),
-		Some("pull_request_state_read_failed")
-	);
-	assert_eq!(
-		lanes[0].readback_root_cause.as_deref(),
-		Some("github_api_read_failed")
-	);
+	assert_eq!(lanes[0].readback_warning.as_deref(), Some("pull_request_state_read_failed"));
+	assert_eq!(lanes[0].readback_root_cause.as_deref(), Some("github_api_read_failed"));
 	assert_eq!(lanes[0].pr_state, None);
 }
 
@@ -396,11 +377,7 @@ fn build_post_review_lane_statuses_skips_external_review_when_disabled() {
 	assert_eq!(lanes[0].reason, "non_github_review_ready_to_land");
 	assert_eq!(lanes[0].pr_url.as_deref(), Some(pr_url));
 	assert!(
-		lanes[0]
-			.loop_status
-			.as_ref()
-			.and_then(|status| status.review.as_ref())
-			.is_none(),
+		lanes[0].loop_status.as_ref().and_then(|status| status.review.as_ref()).is_none(),
 		"ready_to_land must not project a pending review checkpoint"
 	);
 }
@@ -546,7 +523,7 @@ fn build_post_review_lane_statuses_ignores_non_external_review_signals() {
 					&mut review_state,
 					TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN,
 				);
-			}
+			},
 
 			_ => unreachable!("test case should use a known non-external signal"),
 		}
@@ -564,11 +541,7 @@ fn build_post_review_lane_statuses_ignores_non_external_review_signals() {
 		assert_eq!(lanes[0].classification, "wait_for_review");
 		assert_eq!(lanes[0].reason, expected_reason);
 		assert!(
-			lanes[0]
-				.loop_status
-				.as_ref()
-				.and_then(|status| status.review.as_ref())
-				.is_none(),
+			lanes[0].loop_status.as_ref().and_then(|status| status.review.as_ref()).is_none(),
 			"wait_for_review must not project a repair review checkpoint"
 		);
 	}
@@ -691,8 +664,12 @@ fn build_post_review_lane_statuses_keeps_completed_issue_visible_for_closeout_ta
 		path: repo_root.clone(),
 		reused_existing: true,
 	};
-	let _path_guard =
-		install_fake_closeout_gh_responses(&temp_dir, &worktree_spec, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_closeout_gh_responses(
+		&temp_dir,
+		&worktree_spec,
+		pr_url,
+		&head_oid,
+	);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
@@ -762,8 +739,12 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_retry_bud
 		path: repo_root.clone(),
 		reused_existing: true,
 	};
-	let _path_guard =
-		install_fake_closeout_gh_responses(&temp_dir, &worktree_spec, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_closeout_gh_responses(
+		&temp_dir,
+		&worktree_spec,
+		pr_url,
+		&head_oid,
+	);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
@@ -830,8 +811,12 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_landed_ma
 	let current_head_oid =
 		commit_worktree_change(&worktree.path, "later.txt", "later\n", "advance main later");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/203";
-	let _path_guard =
-		install_fake_closeout_gh_responses(&temp_dir, &worktree, pr_url, &pr_head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_closeout_gh_responses(
+		&temp_dir,
+		&worktree,
+		pr_url,
+		&pr_head_oid,
+	);
 
 	state_store
 		.upsert_worktree(
@@ -895,7 +880,7 @@ fn build_post_review_lane_statuses_blocks_closeout_when_merge_readbacks_conflict
 		.expect("retained worktree should exist");
 	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/204";
-	let _path_guard = install_fake_closeout_gh_responses_with_states(
+	let _path_guard = recovery_terminal_support::install_fake_closeout_gh_responses_with_states(
 		&temp_dir, &worktree, pr_url, &head_oid, "OPEN", "MERGED",
 	);
 
@@ -941,10 +926,7 @@ fn build_post_review_lane_statuses_blocks_closeout_when_merge_readbacks_conflict
 	assert_eq!(lanes[0].classification, "blocked");
 	assert_eq!(lanes[0].reason, "pull_request_merge_state_conflict");
 	assert_eq!(lanes[0].readback_warning.as_deref(), Some("pull_request_merge_state_conflict"));
-	assert_eq!(
-		lanes[0].readback_root_cause.as_deref(),
-		Some("lineage_validation_failed")
-	);
+	assert_eq!(lanes[0].readback_root_cause.as_deref(), Some("lineage_validation_failed"));
 	assert_eq!(lanes[0].pr_state.as_deref(), Some("OPEN"));
 	assert_eq!(lanes[0].pr_url.as_deref(), Some(pr_url));
 }
@@ -1239,10 +1221,7 @@ fn build_post_review_lane_statuses_blocks_review_handoff_lineage_rewrite() {
 	assert_eq!(lanes.len(), 1);
 	assert_eq!(lanes[0].classification, "blocked");
 	assert_eq!(lanes[0].reason, "review_handoff_lineage_mismatch");
-	assert_eq!(
-		lanes[0].readback_root_cause.as_deref(),
-		Some("lineage_validation_failed")
-	);
+	assert_eq!(lanes[0].readback_root_cause.as_deref(), Some("lineage_validation_failed"));
 	assert_eq!(lanes[0].pr_url.as_deref(), Some(pr_url));
 }
 

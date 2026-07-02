@@ -1,14 +1,36 @@
-use orchestrator::ReviewHandoffNeedsAttention;
-use orchestrator::PassiveRetainedAttentionRuntime;
+use std::{fs, time::Duration};
+
+use color_eyre::Report;
+
+use crate::{
+	agent::{
+		AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure,
+		AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerTransportFailure,
+		AppServerTurnFailure, ReviewPolicyStopReason, ReviewPolicyStopRequested,
+	},
+	orchestrator::{
+		self, AppServerZeroEvidenceStartFailure, IssueDispatchMode, IssueRunPlan,
+		ManualAttentionRequested, PassiveRetainedAttentionRuntime, PhaseGoalKind,
+		PrepareIssueRunContext, RUN_LEASE_IDLE_TIMEOUT, RepoGateFailure, RepoGateFailureKind,
+		RetainedReviewRunIdentity, ReviewHandoffNeedsAttention, ServiceConfig,
+		StalledRunNeedsAttention, TERMINAL_GUARD_MARKER_FILE, WorkflowDocument,
+		tests::{
+			FakeTracker, TEST_SERVICE_ID, recovery_terminal_support, {self},
+		},
+	},
+	state::{self, StateStore},
+	tracker::{self, records},
+	worktree::{WorktreeManager, WorktreeSpec},
+};
 
 #[test]
 fn terminal_failures_without_needs_attention_label_use_nonstartable_guard_state() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let mut issue =
-		sample_issue_without_needs_attention_team_label("Todo", &[active_label.as_str()]);
+		tests::sample_issue_without_needs_attention_team_label("Todo", &[active_label.as_str()]);
 
 	for label in &mut issue.labels {
 		label.id = issue
@@ -84,11 +106,11 @@ fn terminal_failures_without_needs_attention_label_use_nonstartable_guard_state(
 
 #[test]
 fn terminal_failures_apply_incremental_label_mutations_when_issue_labels_paginate() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let mut issue = sample_issue("Todo", &[active_label.as_str()]);
+	let mut issue = tests::sample_issue("Todo", &[active_label.as_str()]);
 
 	issue.labels_complete = false;
 
@@ -165,18 +187,17 @@ fn terminal_failures_apply_incremental_label_mutations_when_issue_labels_paginat
 
 #[test]
 fn terminal_failure_with_retained_tracked_changes_records_retained_partial_progress() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join("PUB-101");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&["worktree", "add", "-b", "x/pubfi-pub-101", ".worktrees/PUB-101", "main"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "retained terminal patch\n")
 		.expect("tracked worktree file should change");
 
@@ -190,7 +211,10 @@ fn terminal_failure_with_retained_tracked_changes_records_retained_partial_progr
 			path: worktree_path,
 			reused_existing: true,
 		},
-		retry_project_slug: issue.project_slug.clone().expect("sample issue should carry a project slug"),
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
 		dispatch_mode: IssueDispatchMode::Normal,
 		attempt_number: 1,
 		run_id: String::from("pub-101-attempt-1-123"),
@@ -215,7 +239,9 @@ fn terminal_failure_with_retained_tracked_changes_records_retained_partial_progr
 			&& comment.contains("partial_progress_retained")
 			&& comment.contains("finish validation and PR handoff or reset the patch manually")
 	}));
-	assert!(comments.iter().all(|comment| !comment.contains("decodex run failed and needs attention")));
+	assert!(
+		comments.iter().all(|comment| !comment.contains("decodex run failed and needs attention"))
+	);
 
 	let ledger_event = comments
 		.iter()
@@ -226,30 +252,26 @@ fn terminal_failure_with_retained_tracked_changes_records_retained_partial_progr
 	assert_eq!(ledger_event.error_class.as_deref(), Some("partial_progress_retained"));
 	assert_eq!(ledger_event.terminal_path.as_deref(), Some("retained_partial_progress"));
 	assert!(
-		ledger_event
-			.evidence
-			.as_deref()
-			.is_some_and(|evidence| evidence
-				.iter()
-				.any(|item| item.contains("Source failure class `repo_gate_command_spawn_failed`"))),
-			"retained partial progress evidence should preserve the source failure class"
+		ledger_event.evidence.as_deref().is_some_and(|evidence| evidence
+			.iter()
+			.any(|item| item.contains("Source failure class `repo_gate_command_spawn_failed`"))),
+		"retained partial progress evidence should preserve the source failure class"
 	);
 }
 
 #[test]
 fn repo_gate_tracked_rewrites_left_records_retained_partial_progress_without_retry() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join("PUB-102");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&["worktree", "add", "-b", "x/pubfi-pub-102", ".worktrees/PUB-102", "main"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "repo gate left tracked rewrites\n")
 		.expect("tracked worktree file should change");
 
@@ -263,7 +285,10 @@ fn repo_gate_tracked_rewrites_left_records_retained_partial_progress_without_ret
 			path: worktree_path,
 			reused_existing: true,
 		},
-		retry_project_slug: issue.project_slug.clone().expect("sample issue should carry a project slug"),
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
 		dispatch_mode: IssueDispatchMode::Normal,
 		attempt_number: 1,
 		run_id: String::from("pub-102-attempt-1-123"),
@@ -289,9 +314,7 @@ fn repo_gate_tracked_rewrites_left_records_retained_partial_progress_without_ret
 			&& comment.contains("finish validation and PR handoff or reset the patch manually")
 	}));
 	assert!(
-		comments
-			.iter()
-			.all(|comment| !comment.contains("decodex run failed and will retry")),
+		comments.iter().all(|comment| !comment.contains("decodex run failed and will retry")),
 		"tracked repo-gate rewrites should not continue automatic retry"
 	);
 
@@ -304,30 +327,26 @@ fn repo_gate_tracked_rewrites_left_records_retained_partial_progress_without_ret
 	assert_eq!(ledger_event.error_class.as_deref(), Some("partial_progress_retained"));
 	assert_eq!(ledger_event.terminal_path.as_deref(), Some("retained_partial_progress"));
 	assert!(
-		ledger_event
-			.evidence
-			.as_deref()
-			.is_some_and(|evidence| evidence
-				.iter()
-				.any(|item| item.contains("Source failure class `repo_gate_tracked_rewrites_left`"))),
-			"retained progress evidence should preserve the source repo-gate failure class"
+		ledger_event.evidence.as_deref().is_some_and(|evidence| evidence
+			.iter()
+			.any(|item| item.contains("Source failure class `repo_gate_tracked_rewrites_left`"))),
+		"retained progress evidence should preserve the source repo-gate failure class"
 	);
 }
 
 #[test]
 fn retryable_runtime_failure_with_retained_tracked_changes_retries_before_attention() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join("PUB-102");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&["worktree", "add", "-b", "x/pubfi-pub-102", ".worktrees/PUB-102", "main"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "retained validation-ready runtime patch\n")
 		.expect("tracked worktree file should change");
 
@@ -341,13 +360,18 @@ fn retryable_runtime_failure_with_retained_tracked_changes_retries_before_attent
 			path: worktree_path,
 			reused_existing: true,
 		},
-		retry_project_slug: issue.project_slug.clone().expect("sample issue should carry a project slug"),
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
 		dispatch_mode: IssueDispatchMode::Normal,
 		attempt_number: 1,
 		run_id: String::from("pub-102-attempt-1-123"),
 		retry_budget_base: 0,
 	};
-	let error = Report::msg("app-server run ended after a validation-ready checkpoint without a terminal path");
+	let error = Report::msg(
+		"app-server run ended after a validation-ready checkpoint without a terminal path",
+	);
 
 	state_store
 		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
@@ -368,21 +392,23 @@ fn retryable_runtime_failure_with_retained_tracked_changes_retries_before_attent
 	assert!(
 		comments
 			.iter()
-			.all(|comment| !comment.contains("decodex retained partial progress and needs attention")),
+			.all(|comment| !comment
+				.contains("decodex retained partial progress and needs attention")),
 		"retained work must not force manual attention while retry budget remains"
 	);
 	assert!(
-		comments.iter().all(|comment| records::parse_linear_execution_event_record(comment)
-			.is_none()),
+		comments
+			.iter()
+			.all(|comment| records::parse_linear_execution_event_record(comment).is_none()),
 		"retryable retained work should not write a terminal needs-attention ledger event"
 	);
 }
 
 #[test]
 fn duplicate_terminal_failure_event_does_not_reapply_tracker_writeback() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Review", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Review", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
@@ -395,7 +421,10 @@ fn duplicate_terminal_failure_event_does_not_reapply_tracker_writeback() {
 			path: config.worktree_root().join("PUB-101"),
 			reused_existing: true,
 		},
-		retry_project_slug: issue.project_slug.clone().expect("sample issue should carry a project slug"),
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
 		dispatch_mode: IssueDispatchMode::ReviewRepair,
 		attempt_number: 2,
 		run_id: String::from("pub-101-attempt-2-123"),
@@ -441,9 +470,9 @@ fn duplicate_terminal_failure_event_does_not_reapply_tracker_writeback() {
 
 #[test]
 fn duplicate_remote_terminal_failure_event_does_not_reapply_tracker_writeback() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Review", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Review", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let first_state_store = StateStore::open_in_memory().expect("state store should open");
 	let second_state_store = StateStore::open_in_memory().expect("state store should open");
@@ -457,7 +486,10 @@ fn duplicate_remote_terminal_failure_event_does_not_reapply_tracker_writeback() 
 			path: config.worktree_root().join("PUB-101"),
 			reused_existing: true,
 		},
-		retry_project_slug: issue.project_slug.clone().expect("sample issue should carry a project slug"),
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
 		dispatch_mode: IssueDispatchMode::ReviewRepair,
 		attempt_number: 2,
 		run_id: String::from("pub-101-attempt-2-123"),
@@ -512,9 +544,9 @@ fn duplicate_remote_terminal_failure_event_does_not_reapply_tracker_writeback() 
 
 #[test]
 fn duplicate_passive_retained_review_attention_event_does_not_reapply_tracker_writeback() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Review", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Review", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -587,9 +619,9 @@ fn duplicate_passive_retained_review_attention_event_does_not_reapply_tracker_wr
 
 #[test]
 fn rebound_handoff_marker_suppresses_stale_missing_handoff_attention_writeback() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Review", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Review", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -597,7 +629,7 @@ fn rebound_handoff_marker_suppresses_stale_missing_handoff_attention_writeback()
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let run_identity = RetainedReviewRunIdentity {
 		run_id: String::from("pub-101-attempt-8-123"),
 		attempt_number: 8,
@@ -615,7 +647,7 @@ fn rebound_handoff_marker_suppresses_stale_missing_handoff_attention_writeback()
 		.upsert_review_handoff_marker(
 			config.service_id(),
 			&issue.id,
-			&sample_review_handoff_marker(
+			&tests::sample_review_handoff_marker(
 				&worktree.branch_name,
 				"https://github.com/hack-ink/decodex/pull/101",
 				&head_oid,
@@ -657,10 +689,10 @@ fn rebound_handoff_marker_suppresses_stale_missing_handoff_attention_writeback()
 
 #[test]
 fn review_policy_exhausted_failures_start_architecture_recovery_pre_pr() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -730,10 +762,10 @@ fn review_policy_exhausted_failures_start_architecture_recovery_pre_pr() {
 
 #[test]
 fn review_policy_blocked_failures_skip_retry_and_require_attention_in_review() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -792,7 +824,7 @@ fn review_policy_blocked_failures_skip_retry_and_require_attention_in_review() {
 
 #[test]
 fn app_server_failures_skip_retry_and_require_attention() {
-	assert_app_server_failure_requires_attention(
+	recovery_terminal_support::assert_app_server_failure_requires_attention(
 		Report::new(AppServerCapabilityPreflightFailure::blocked_for_test(
 			"skills",
 			"skills/list returned no enabled skills.",
@@ -800,14 +832,14 @@ fn app_server_failures_skip_retry_and_require_attention() {
 		"app_server_runtime_preflight_failed",
 		"repair the local Codex runtime configuration",
 	);
-	assert_app_server_failure_requires_attention(
+	recovery_terminal_support::assert_app_server_failure_requires_attention(
 		Report::new(AppServerHomePreflightFailure::resolution_failed(String::from(
 			"app_server_preflight_failed: HOME is not set, so Decodex cannot resolve the shared Codex home for app-server dispatch.",
 		))),
 		"app_server_codex_home_preflight_failed",
 		"inspect the local Decodex and Codex home sharing",
 	);
-	assert_app_server_failure_requires_attention(
+	recovery_terminal_support::assert_app_server_failure_requires_attention(
 		Report::new(AppServerHomePreflightFailure::initialize_mismatch(
 			String::from("/tmp/per-account-codex-home"),
 			String::from("/Users/test/.codex"),
@@ -815,14 +847,14 @@ fn app_server_failures_skip_retry_and_require_attention() {
 		"app_server_codex_home_mismatch",
 		"restart `decodex serve`",
 	);
-	assert_app_server_failure_requires_attention(
+	recovery_terminal_support::assert_app_server_failure_requires_attention(
 		Report::new(AppServerTransportFailure::new(String::from(
 			"App-server stdout disconnected unexpectedly.",
 		))),
 		"app_server_transport_disconnected",
 		"resolve the Codex app-server transport failure manually",
 	);
-	assert_app_server_failure_requires_attention(
+	recovery_terminal_support::assert_app_server_failure_requires_attention(
 		Report::new(AppServerTransportFailure::with_phase(
 			String::from("App-server stdout disconnected unexpectedly."),
 			"turn/start",
@@ -835,10 +867,10 @@ fn app_server_failures_skip_retry_and_require_attention() {
 
 #[test]
 fn app_server_preflight_timeouts_retry_before_attention_budget_is_exhausted() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -896,10 +928,10 @@ fn app_server_preflight_timeouts_retry_before_attention_budget_is_exhausted() {
 
 #[test]
 fn exhausted_app_server_preflight_timeout_retry_budget_requires_attention_with_timeout_class() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -940,7 +972,8 @@ fn exhausted_app_server_preflight_timeout_retry_budget_requires_attention_with_t
 	assert!(tracker.comments.borrow().iter().any(|comment| {
 		comment.contains("decodex run failed and needs attention")
 			&& comment.contains("app_server_plugin_list_timeout")
-			&& comment.contains("app_server_preflight_failed evidence for the `plugin/list` timeout")
+			&& comment
+				.contains("app_server_preflight_failed evidence for the `plugin/list` timeout")
 	}));
 	assert!(
 		!tracker
@@ -953,10 +986,10 @@ fn exhausted_app_server_preflight_timeout_retry_budget_requires_attention_with_t
 
 #[test]
 fn phase_goal_terminal_path_missing_retries_before_attention_budget_is_exhausted() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -1013,18 +1046,17 @@ fn phase_goal_terminal_path_missing_retries_before_attention_budget_is_exhausted
 
 #[test]
 fn phase_goal_terminal_path_missing_with_retained_changes_retries_before_attention() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join("PUB-103");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&["worktree", "add", "-b", "x/pubfi-pub-103", ".worktrees/PUB-103", "main"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "retained handoff patch\n")
 		.expect("tracked worktree file should change");
 
@@ -1075,7 +1107,7 @@ fn phase_goal_terminal_path_missing_with_retained_changes_retries_before_attenti
 
 #[test]
 fn retryable_app_server_failures_do_not_write_attention_before_budget_exhaustion() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 
 	assert_retryable_failure_writeback_does_not_require_attention(
 		&config,
@@ -1167,7 +1199,7 @@ fn retryable_app_server_failures_do_not_write_attention_before_budget_exhaustion
 
 #[test]
 fn retryable_orchestrator_failures_do_not_write_attention_before_budget_exhaustion() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 
 	assert_retryable_failure_writeback_does_not_require_attention(
 		&config,
@@ -1204,7 +1236,7 @@ fn retryable_orchestrator_failures_do_not_write_attention_before_budget_exhausti
 
 #[test]
 fn dirty_retryable_runtime_failures_keep_automatic_recovery_before_budget_exhaustion() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 
 	assert_dirty_retryable_failure_writeback_does_not_require_attention(
 		&config,
@@ -1280,10 +1312,10 @@ fn dirty_retryable_runtime_failures_keep_automatic_recovery_before_budget_exhaus
 
 #[test]
 fn startup_transport_failures_retry_before_attention_budget_is_exhausted() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -1337,10 +1369,10 @@ fn startup_transport_failures_retry_before_attention_budget_is_exhausted() {
 
 #[test]
 fn exhausted_startup_transport_retry_budget_requires_attention_with_transport_class() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -1395,10 +1427,10 @@ fn exhausted_startup_transport_retry_budget_requires_attention_with_transport_cl
 
 #[test]
 fn usage_limit_turn_failures_retry_before_attention_budget_is_exhausted() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -1453,18 +1485,17 @@ fn usage_limit_turn_failures_retry_before_attention_budget_is_exhausted() {
 
 #[test]
 fn usage_limit_turn_failures_with_retained_tracked_changes_retry_before_attention() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join("PUB-103");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&["worktree", "add", "-b", "x/pubfi-pub-103", ".worktrees/PUB-103", "main"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "retained usage-limit patch\n")
 		.expect("tracked worktree file should change");
 
@@ -1520,10 +1551,10 @@ fn usage_limit_turn_failures_with_retained_tracked_changes_retry_before_attentio
 
 #[test]
 fn exhausted_usage_limit_retry_budget_requires_attention_with_usage_class() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -1580,18 +1611,17 @@ fn exhausted_usage_limit_retry_budget_requires_attention_with_usage_class() {
 
 #[test]
 fn dirty_runtime_failures_record_retained_progress_instead_of_terminal_failure() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join("PUB-101");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&["worktree", "add", "-b", "x/pubfi-pub-101", ".worktrees/PUB-101", "main"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "retained runtime recovery work\n")
 		.expect("tracked worktree file should change");
 
@@ -1634,9 +1664,7 @@ fn dirty_runtime_failures_record_retained_progress_instead_of_terminal_failure()
 			&& comment.contains("app_server_runtime_preflight_failed")
 	}));
 	assert!(
-		comments
-			.iter()
-			.all(|comment| !comment.contains("decodex run failed and needs attention"))
+		comments.iter().all(|comment| !comment.contains("decodex run failed and needs attention"))
 	);
 
 	let ledger_event = comments
@@ -1648,30 +1676,26 @@ fn dirty_runtime_failures_record_retained_progress_instead_of_terminal_failure()
 	assert_eq!(ledger_event.error_class.as_deref(), Some("partial_progress_retained"));
 	assert_eq!(ledger_event.terminal_path.as_deref(), Some("retained_partial_progress"));
 	assert!(
-		ledger_event
-			.evidence
-			.as_deref()
-			.is_some_and(|evidence| evidence
-				.iter()
-				.any(|item| item.contains("app_server_runtime_preflight_failed"))),
+		ledger_event.evidence.as_deref().is_some_and(|evidence| evidence
+			.iter()
+			.any(|item| item.contains("app_server_runtime_preflight_failed"))),
 		"retained progress evidence should preserve the source runtime error class"
 	);
 }
 
 #[test]
 fn explicit_manual_attention_keeps_manual_terminal_path_with_dirty_worktree() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join("PUB-101");
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&["worktree", "add", "-b", "x/pubfi-pub-101", ".worktrees/PUB-101", "main"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "manual attention work\n")
 		.expect("tracked worktree file should change");
 
@@ -1718,17 +1742,14 @@ fn explicit_manual_attention_keeps_manual_terminal_path_with_dirty_worktree() {
 	assert_eq!(ledger_event.event_type, "needs_attention");
 	assert_eq!(ledger_event.error_class.as_deref(), Some("human_attention_required"));
 	assert_eq!(ledger_event.terminal_path.as_deref(), Some("manual_attention"));
-	assert_eq!(
-		ledger_event.summary.as_deref(),
-		Some("Decodex run failed and needs attention.")
-	);
+	assert_eq!(ledger_event.summary.as_deref(), Some("Decodex run failed and needs attention."));
 }
 
 #[test]
 fn prepare_issue_run_clears_terminal_guard_marker_when_new_attempt_starts() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::with_refresh_snapshots(vec![], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -1769,10 +1790,10 @@ fn prepare_issue_run_clears_terminal_guard_marker_when_new_attempt_starts() {
 
 #[test]
 fn retryable_failures_ignore_prior_continuation_attempts_in_writeback() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -1860,7 +1881,7 @@ fn assert_retryable_failure_writeback_does_not_require_attention(
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_id = format!("issue-{case_number}");
 	let issue_identifier = format!("PUB-10{case_number}");
-	let issue = sample_issue_with_sort_fields(
+	let issue = tests::sample_issue_with_sort_fields(
 		&issue_id,
 		&issue_identifier,
 		"In Progress",
@@ -1909,14 +1930,16 @@ fn assert_retryable_failure_writeback_does_not_require_attention(
 		!comment.contains("decodex run failed and needs attention")
 			&& !comment.contains("decodex retained partial progress and needs attention")
 	}));
-	assert!(comments.iter().all(|comment| {
-		records::parse_linear_execution_event_record(comment).is_none()
-	}));
+	assert!(
+		comments
+			.iter()
+			.all(|comment| { records::parse_linear_execution_event_record(comment).is_none() })
+	);
 	assert!(
 		state_store
 			.list_linear_execution_events(config.service_id(), &issue.id)
-		.expect("linear execution events should list")
-		.is_empty()
+			.expect("linear execution events should list")
+			.is_empty()
 	);
 }
 
@@ -1932,7 +1955,7 @@ fn assert_dirty_retryable_failure_writeback_does_not_require_attention(
 	let issue_id = format!("issue-dirty-{case_number}");
 	let issue_identifier = format!("PUB-30{case_number}");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue_with_sort_fields(
+	let issue = tests::sample_issue_with_sort_fields(
 		&issue_id,
 		&issue_identifier,
 		"In Progress",
@@ -1944,11 +1967,10 @@ fn assert_dirty_retryable_failure_writeback_does_not_require_attention(
 	let worktree_rel_path = format!(".worktrees/{issue_identifier}");
 	let worktree_path = config.worktree_root().join(&issue_identifier);
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&["worktree", "add", "-b", &branch_name, &worktree_rel_path, "main"],
 	);
-
 	fs::write(
 		worktree_path.join("README.md"),
 		format!("dirty retryable recovery case {case_number}\n"),
@@ -1997,9 +2019,11 @@ fn assert_dirty_retryable_failure_writeback_does_not_require_attention(
 		}),
 		"retained tracked changes must not force manual attention for `{expected_error_class}` while retry budget remains"
 	);
-	assert!(comments.iter().all(|comment| {
-		records::parse_linear_execution_event_record(comment).is_none()
-	}));
+	assert!(
+		comments
+			.iter()
+			.all(|comment| { records::parse_linear_execution_event_record(comment).is_none() })
+	);
 	assert!(
 		state_store
 			.list_linear_execution_events(config.service_id(), &issue.id)

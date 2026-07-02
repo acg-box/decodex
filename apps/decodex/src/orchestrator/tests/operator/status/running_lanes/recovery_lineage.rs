@@ -1,4 +1,5 @@
 use super::*;
+use crate::orchestrator::tests::recovery_terminal_support;
 
 #[test]
 fn operator_status_snapshot_surfaces_repeated_continuation_recovery_lineage() {
@@ -808,7 +809,7 @@ fn runtime_recovery_preserves_legacy_cleanup_only_provenance_without_recoverable
 #[test]
 fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("In Progress");
+	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join(&issue.identifier);
@@ -851,7 +852,7 @@ fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
 #[test]
 fn runtime_recovery_splits_invalid_local_id_batch_without_losing_valid_issue() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
-	let mut issue = sample_active_issue("In Progress");
+	let mut issue = recovery_terminal_support::sample_active_issue("In Progress");
 
 	issue.id = String::from("00000000-0000-0000-0000-000000000101");
 
@@ -909,7 +910,7 @@ fn runtime_recovery_splits_invalid_local_id_batch_without_losing_valid_issue() {
 #[test]
 fn post_review_worktree_refresh_splits_invalid_local_id_batch_without_losing_valid_issue() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
-	let mut issue = sample_active_issue("In Review");
+	let mut issue = recovery_terminal_support::sample_active_issue("In Review");
 
 	issue.id = String::from("00000000-0000-0000-0000-000000000101");
 
