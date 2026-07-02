@@ -1,4 +1,5 @@
 mod agent_evidence;
+mod constants;
 mod daemon;
 mod daemon_retry;
 mod dispatch_policy;
@@ -48,7 +49,33 @@ mod status_summary;
 mod status_worktrees;
 mod types;
 
+pub(in crate::orchestrator) use self::constants::{
+	CONTINUATION_PENDING_RUN_STATUS, CONTINUATION_RETRY_DELAY_MS,
+	DEFAULT_CONTROL_PLANE_POLL_INTERVAL, FAILURE_RETRY_BASE_DELAY_MS,
+	LINEAR_CONTROL_PLANE_POLL_INTERVAL, OPERATOR_ACCOUNTS_ENDPOINT_PATH,
+	OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
+	OPERATOR_DASHBOARD_ENDPOINT_PATH, OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES,
+	OPERATOR_DASHBOARD_WS_ENDPOINT_PATH, OPERATOR_DASHBOARD_WS_HEARTBEAT_INTERVAL,
+	OPERATOR_DEV_SNAPSHOT_STREAM_INTERVAL, OPERATOR_LANE_INSPECT_ENDPOINT_PATH,
+	OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH, OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH,
+	OPERATOR_LANE_STEER_ENDPOINT_PATH, OPERATOR_LINEAR_SCAN_ENDPOINT_PATH,
+	OPERATOR_LIVE_ENDPOINT_PATH, OPERATOR_RUN_ACTIVITY_STREAM_INTERVAL,
+	OPERATOR_STATE_HEADER_TERMINATOR, OPERATOR_STATE_MAX_REQUEST_BYTES,
+	PULL_REQUEST_ISSUE_COMMENTS_QUERY, PULL_REQUEST_REVIEW_STATE_QUERY,
+	RECOVERABLE_WORKTREE_SKIP_TTL, STATUS_OPERATOR_SNAPSHOT_CONNECT_TIMEOUT,
+	STATUS_OPERATOR_SNAPSHOT_IO_TIMEOUT, STATUS_OPERATOR_SNAPSHOT_MAX_AGE,
+	STATUS_OPERATOR_SNAPSHOT_WARNING, TERMINAL_GUARD_MARKER_FILE, TERMINAL_GUARDED_RUN_STATUS,
+	TRACKER_RATE_LIMIT_BACKOFF_SECS, TRACKER_RATE_LIMIT_WARNING,
+	TRACKER_TRANSIENT_TIMEOUT_BACKOFF_SECS, TRACKER_TRANSIENT_TIMEOUT_WARNING,
+};
+
 pub(crate) use self::{
+	constants::{
+		DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT, DEFAULT_OPERATOR_LISTEN_ADDRESS,
+		DEFAULT_STATUS_RUN_LIMIT, EXTERNAL_REVIEW_ACK_TIMEOUT_SECS, EXTERNAL_REVIEW_ACTOR_LOGIN,
+		EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS, EXTERNAL_REVIEW_PASS_PHRASE,
+		EXTERNAL_REVIEW_REQUEST_BODY,
+	},
 	dispatch_policy::issue_has_generic_dispatch_briefing,
 	execution::{planned_issue_state_for_dispatch, run_summary_from_issue_run},
 };
@@ -515,171 +542,6 @@ use status_worktrees::{
 	active_shared_issue_ids, operator_status_worktrees, refresh_worktree_ownership,
 	stale_terminal_local_issue_ids,
 };
-
-pub(crate) const DEFAULT_STATUS_RUN_LIMIT: usize = 10;
-pub(crate) const DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT: usize = 25;
-pub(crate) const DEFAULT_OPERATOR_LISTEN_ADDRESS: &str = "127.0.0.1:8192";
-pub(crate) const EXTERNAL_REVIEW_ACTOR_LOGIN: &str = "codex";
-pub(crate) const EXTERNAL_REVIEW_REQUEST_BODY: &str = "@codex review";
-pub(crate) const EXTERNAL_REVIEW_PASS_PHRASE: &str = "Didn't find any major issues.";
-pub(crate) const EXTERNAL_REVIEW_ACK_TIMEOUT_SECS: i64 = 60;
-pub(crate) const EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS: i64 = 15 * 60;
-
-const CONTINUATION_RETRY_DELAY_MS: u64 = 1_000;
-const FAILURE_RETRY_BASE_DELAY_MS: u64 = 10_000;
-const RECOVERABLE_WORKTREE_SKIP_TTL: Duration = Duration::from_secs(10 * 60);
-const CONTINUATION_PENDING_RUN_STATUS: &str = "continuation_pending";
-const TERMINAL_GUARDED_RUN_STATUS: &str = "terminal_guarded";
-const TERMINAL_GUARD_MARKER_FILE: &str = ".decodex-terminal-guarded";
-const TRACKER_RATE_LIMIT_BACKOFF_SECS: u64 = 15 * 60;
-const TRACKER_RATE_LIMIT_WARNING: &str = "tracker_rate_limited";
-const TRACKER_TRANSIENT_TIMEOUT_BACKOFF_SECS: u64 = 60;
-const TRACKER_TRANSIENT_TIMEOUT_WARNING: &str = "tracker_transient_timeout";
-const OPERATOR_DASHBOARD_ENDPOINT_PATH: &str = "/";
-const OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH: &str = "/dashboard";
-const OPERATOR_DASHBOARD_WS_ENDPOINT_PATH: &str = "/dashboard/control";
-const OPERATOR_LIVE_ENDPOINT_PATH: &str = "/livez";
-const OPERATOR_ACCOUNTS_ENDPOINT_PATH: &str = "/api/accounts";
-const OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH: &str = "/api/operator-snapshot";
-const OPERATOR_LINEAR_SCAN_ENDPOINT_PATH: &str = "/api/linear-scan";
-const OPERATOR_LANE_INSPECT_ENDPOINT_PATH: &str = "/api/lane/inspect";
-const OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH: &str = "/api/lane/interrupt";
-const OPERATOR_LANE_STEER_ENDPOINT_PATH: &str = "/api/lane/steer";
-const OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH: &str = "/api/lane-steer";
-const OPERATOR_STATE_MAX_REQUEST_BYTES: usize = 256 * 1_024;
-const OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES: usize = 64 * 1_024;
-const OPERATOR_STATE_HEADER_TERMINATOR: &[u8] = b"\r\n\r\n";
-const STATUS_OPERATOR_SNAPSHOT_MAX_AGE: Duration = Duration::from_secs(60);
-const STATUS_OPERATOR_SNAPSHOT_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
-const STATUS_OPERATOR_SNAPSHOT_IO_TIMEOUT: Duration = Duration::from_millis(500);
-const STATUS_OPERATOR_SNAPSHOT_WARNING: &str = "status_cached_snapshot_unavailable";
-const OPERATOR_DASHBOARD_WS_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
-const OPERATOR_RUN_ACTIVITY_STREAM_INTERVAL: Duration = Duration::from_secs(1);
-const OPERATOR_DEV_SNAPSHOT_STREAM_INTERVAL: Duration = Duration::from_secs(1);
-const DEFAULT_CONTROL_PLANE_POLL_INTERVAL: Duration = Duration::from_secs(15);
-const LINEAR_CONTROL_PLANE_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
-const PULL_REQUEST_REVIEW_STATE_QUERY: &str = r#"
-query($owner: String!, $name: String!, $number: Int!, $reviewThreadsAfter: String) {
-  repository(owner: $owner, name: $name) {
-    mergeCommitAllowed
-    pullRequest(number: $number) {
-      url
-      state
-      isDraft
-      reviewDecision
-      mergeable
-      mergeStateStatus
-      headRefName
-      headRefOid
-      mergeCommit {
-        oid
-      }
-      headRepository {
-        name
-      }
-      headRepositoryOwner {
-        login
-      }
-      reactionGroups {
-        content
-        users(first: 100) {
-          totalCount
-          nodes {
-            login
-          }
-        }
-      }
-      comments(first: 100) {
-        nodes {
-          databaseId
-          body
-          createdAt
-          author {
-            login
-          }
-          reactionGroups {
-            content
-            users(first: 100) {
-              totalCount
-              nodes {
-                login
-              }
-            }
-          }
-        }
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-      }
-      reviews(last: 100) {
-        nodes {
-          body
-          state
-          submittedAt
-          author {
-            login
-          }
-        }
-      }
-      reviewRequests(first: 1) {
-        totalCount
-      }
-      reviewThreads(first: 100, after: $reviewThreadsAfter) {
-        nodes {
-          isResolved
-          isOutdated
-        }
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-      }
-      commits(last: 1) {
-        nodes {
-          commit {
-            statusCheckRollup {
-              state
-            }
-          }
-        }
-      }
-    }
-  }
-}
-"#;
-const PULL_REQUEST_ISSUE_COMMENTS_QUERY: &str = r#"
-query($owner: String!, $name: String!, $number: Int!, $commentsAfter: String) {
-  repository(owner: $owner, name: $name) {
-    pullRequest(number: $number) {
-      url
-      comments(first: 100, after: $commentsAfter) {
-        nodes {
-          databaseId
-          body
-          createdAt
-          author {
-            login
-          }
-          reactionGroups {
-            content
-            users(first: 100) {
-              totalCount
-              nodes {
-                login
-              }
-            }
-          }
-        }
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-      }
-    }
-  }
-}
-"#;
 
 #[cfg(test)]
 mod tests;
