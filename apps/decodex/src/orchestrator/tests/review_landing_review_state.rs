@@ -1,6 +1,8 @@
+use crate::{orchestrator::{self, tests, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY, PullRequestActor, PullRequestIssueCommentNode, PullRequestReactionGroup, PullRequestReactionUsersConnection, PullRequestReviewNode}, orchestrator::tests::{TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN}};
+
 #[test]
 fn pull_request_review_state_from_page_scopes_signals_to_external_review_actor() {
-	let mut page = sample_pull_request_review_state_page(
+	let mut page = tests::sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/173",
 		"main",
 		"deadbeef",
@@ -46,7 +48,7 @@ fn pull_request_review_state_from_page_scopes_signals_to_external_review_actor()
 		}),
 	});
 
-	let repository = sample_pull_request_review_state_repository(page);
+	let repository = tests::sample_pull_request_review_state_repository(page);
 	let review_state = orchestrator::pull_request_review_state_from_page(
 		&repository,
 		repository.pull_request.as_ref().expect("pull request should exist"),
@@ -64,7 +66,7 @@ fn pull_request_review_state_from_page_scopes_signals_to_external_review_actor()
 
 #[test]
 fn pull_request_review_state_from_page_skips_pending_reviews_without_submitted_timestamp() {
-	let mut page = sample_pull_request_review_state_page(
+	let mut page = tests::sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/173",
 		"main",
 		"deadbeef",
@@ -77,12 +79,10 @@ fn pull_request_review_state_from_page_skips_pending_reviews_without_submitted_t
 		body: String::from("pending"),
 		state: String::from("PENDING"),
 		submitted_at: None,
-		author: Some(PullRequestActor {
-			login: String::from(EXTERNAL_REVIEW_ACTOR_LOGIN),
-		}),
+		author: Some(PullRequestActor { login: String::from(EXTERNAL_REVIEW_ACTOR_LOGIN) }),
 	});
 
-	let repository = sample_pull_request_review_state_repository(page);
+	let repository = tests::sample_pull_request_review_state_repository(page);
 	let review_state = orchestrator::pull_request_review_state_from_page(
 		&repository,
 		repository.pull_request.as_ref().expect("pull request should exist"),

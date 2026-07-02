@@ -1,7 +1,16 @@
+use std::{
+	fs,
+	time::{Duration, Instant},
+};
+
+use time::OffsetDateTime;
+
+use crate::{orchestrator::{self, tests, IssueDispatchMode, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, StateStore}, orchestrator::tests::{FakeTracker, TEST_SERVICE_ID}, state, tracker::{self, TrackerIssue}, workflow::WorkflowDocument, worktree::WorktreeManager};
+
 fn selection_sample_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue(state_name, &[active_label.as_str()])
+	tests::sample_issue(state_name, &[active_label.as_str()])
 }
 
 fn selection_sample_service_owned_issue_with_sort_fields(
@@ -13,7 +22,7 @@ fn selection_sample_service_owned_issue_with_sort_fields(
 ) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue_with_sort_fields(
+	tests::sample_issue_with_sort_fields(
 		id,
 		identifier,
 		state_name,
@@ -33,7 +42,7 @@ fn selection_sample_service_owned_issue_with_project_slug_and_sort_fields(
 ) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue_with_project_slug_and_sort_fields(
+	tests::sample_issue_with_project_slug_and_sort_fields(
 		id,
 		identifier,
 		project_slug,
@@ -46,7 +55,7 @@ fn selection_sample_service_owned_issue_with_project_slug_and_sort_fields(
 
 #[test]
 fn queued_retry_blocks_normal_candidate_selection_until_due() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -91,7 +100,7 @@ fn queued_retry_blocks_normal_candidate_selection_until_due() {
 
 #[test]
 fn queued_retry_stays_blocked_when_project_lookup_blips_before_due_time() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]])
@@ -137,7 +146,7 @@ fn queued_retry_stays_blocked_when_project_lookup_blips_before_due_time() {
 
 #[test]
 fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
-	let workflow = WorkflowDocument::parse_markdown(&sample_workflow_markdown(
+	let workflow = WorkflowDocument::parse_markdown(&tests::sample_workflow_markdown(
 		"pubfi",
 		&[],
 		"Retry exclusion policy.\n",
@@ -158,7 +167,7 @@ fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
 		Some(2),
 		"2026-03-13T04:17:17.133Z",
 	);
-	let todo_issue = sample_issue_with_sort_fields(
+	let todo_issue = tests::sample_issue_with_sort_fields(
 		"issue-3",
 		"PUB-103",
 		"Todo",
@@ -172,7 +181,7 @@ fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
 		listed_issues.clone(),
 		vec![listed_issues.clone(), listed_issues.clone(), listed_issues],
 	);
-	let (_temp_dir, config, _default_workflow) = temp_project_layout();
+	let (_temp_dir, config, _default_workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
@@ -234,7 +243,7 @@ fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
 
 #[test]
 fn future_retry_claim_stays_blocked_when_issue_moves_to_another_project_before_due_time() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue_with_project_slug_and_sort_fields(
 		"issue-1",
 		"PUB-101",
@@ -286,7 +295,7 @@ fn future_retry_claim_stays_blocked_when_issue_moves_to_another_project_before_d
 
 #[test]
 fn future_retry_claim_stays_blocked_when_issue_becomes_not_dispatchable_before_due_time() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -334,7 +343,7 @@ fn future_retry_claim_stays_blocked_when_issue_becomes_not_dispatchable_before_d
 
 #[test]
 fn due_retry_claim_releases_when_issue_becomes_not_dispatchable() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -370,7 +379,7 @@ fn due_retry_claim_releases_when_issue_becomes_not_dispatchable() {
 
 #[test]
 fn due_retry_claim_release_clears_persisted_retry_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -435,7 +444,7 @@ fn due_retry_claim_release_clears_persisted_retry_marker() {
 
 #[test]
 fn due_continuation_retry_dispatches_when_issue_still_reflects_startable_state() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue("Todo");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -475,11 +484,11 @@ fn due_continuation_retry_dispatches_when_issue_still_reflects_startable_state()
 #[test]
 fn due_continuation_retry_releases_when_issue_moves_to_different_startable_state() {
 	let workflow = WorkflowDocument::parse_markdown(
-		&sample_workflow_markdown("pubfi", &[], "Continuation retry policy.\n", 1)
+		&tests::sample_workflow_markdown("pubfi", &[], "Continuation retry policy.\n", 1)
 			.replace("startable_states = [\"Todo\"]", "startable_states = [\"Todo\", \"Backlog\"]"),
 	)
 	.expect("workflow should parse");
-	let (_temp_dir, config, _default_workflow) = temp_project_layout();
+	let (_temp_dir, config, _default_workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue("Backlog");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -517,7 +526,7 @@ fn due_continuation_retry_releases_when_issue_moves_to_different_startable_state
 
 #[test]
 fn future_retry_claim_stays_blocked_when_issue_returns_to_todo_before_due_time() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue("Todo");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -565,7 +574,7 @@ fn future_retry_claim_stays_blocked_when_issue_returns_to_todo_before_due_time()
 
 #[test]
 fn due_retry_dispatches_when_another_issue_has_active_lease() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -606,7 +615,7 @@ fn due_retry_dispatches_when_another_issue_has_active_lease() {
 
 #[test]
 fn due_retry_claim_stays_queued_when_issue_is_claimed_by_another_process() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -663,8 +672,8 @@ fn due_retry_claim_stays_queued_when_issue_is_claimed_by_another_process() {
 
 #[test]
 fn due_closeout_retry_stays_queued_when_pr_state_read_fails() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(
 		&base_config,
 		"DECODEX_TEST_MISSING_DELIVERY_CLOSEOUT_GITHUB_TOKEN",
 	);
@@ -676,15 +685,15 @@ fn due_closeout_retry_stays_queued_when_pr_state_read_fails() {
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/178";
 	let mut retry_queue = RetryQueue::default();
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	retry_queue.upsert(RetryEntry {
