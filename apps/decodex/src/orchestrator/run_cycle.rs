@@ -1,11 +1,12 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 const INTERNAL_RETAINED_DRAIN_MAX_PASSES: usize = 2;
 
 mod complete;
 mod prepare;
 mod project;
-mod target;
+mod target_issue;
 
 use complete::complete_issue_run;
 #[cfg(test)]
@@ -14,12 +15,12 @@ pub(crate) use complete::{
 };
 pub(crate) use prepare::prepare_issue_run;
 pub(crate) use project::{plan_project_issue_run_with_exclusions, run_project_once};
-pub(crate) use target::{
+pub(crate) use target_issue::{
 	closeout_lane_active_claim_blocks_dispatch, run_target_issue_once,
 	run_target_issue_once_with_inferred_dispatch,
 };
 #[cfg(test)]
-pub(crate) use target::{
+pub(crate) use target_issue::{
 	select_target_status_visible_program_candidate, target_issue_active_claim_blocks_dispatch,
 };
 

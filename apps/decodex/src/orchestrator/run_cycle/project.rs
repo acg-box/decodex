@@ -1,4 +1,5 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+#[allow(clippy::wildcard_imports)]
+use super::*;
 
 pub(crate) fn run_project_once<T>(
 	tracker: &T,
@@ -89,12 +90,13 @@ where
 	if !dry_run && dispatch_mode != IssueDispatchMode::Closeout {
 		ensure_project_has_no_merged_worktree_cleanup_debt(project)?;
 	}
-	if !dispatch_mode.allows_issue(
+	if !issue_passes_current_dispatch_policy(
 		tracker,
 		&issue,
 		project,
 		workflow,
 		state_store,
+		dispatch_mode,
 		RetryIssueStateHint::default(),
 	)? {
 		if dispatch_mode == IssueDispatchMode::Closeout
