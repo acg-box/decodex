@@ -26,7 +26,7 @@ final class DecodexServerBridgeTests: XCTestCase {
 	func testDashboardWebSocketHandshakeRequestEndsWithHeaderTerminator() {
 		let request = DashboardWebSocketConnection.handshakeRequest(
 			host: "127.0.0.1",
-			port: 8192,
+			port: 8_192,
 			path: "/dashboard/control",
 			key: "test-key"
 		)
