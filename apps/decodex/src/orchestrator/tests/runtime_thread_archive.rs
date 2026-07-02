@@ -1,10 +1,13 @@
+use tempfile::TempDir;
+
 use crate::agent::{AppServerCapabilityPreflightReport, AppServerRunResult};
+use crate::{orchestrator::{self, tests, IssueDispatchMode, IssueRunPlan, StateStore, TERMINAL_GUARDED_RUN_STATUS}, worktree::WorktreeSpec};
 
 #[test]
 fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 
 	state_store
 		.record_run_attempt("run-old", &issue.id, 1, "failed")
@@ -25,7 +28,9 @@ fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
 	state_store
 		.record_run_attempt("run-active", &issue.id, 3, "running")
 		.expect("active attempt should record");
-	state_store.update_run_thread("run-active", "thread-active").expect("active thread should attach");
+	state_store
+		.update_run_thread("run-active", "thread-active")
+		.expect("active thread should attach");
 	state_store
 		.record_run_attempt("run-archived", &issue.id, 4, TERMINAL_GUARDED_RUN_STATUS)
 		.expect("archived attempt should record");
@@ -49,9 +54,9 @@ fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
 		retry_project_slug: String::from("pubfi"),
 		dispatch_mode: IssueDispatchMode::Normal,
 		attempt_number: 2,
-			run_id: String::from("run-current"),
-			retry_budget_base: 0,
-		};
+		run_id: String::from("run-current"),
+		retry_budget_base: 0,
+	};
 	let run_result = AppServerRunResult {
 		user_agent: String::from("codex-test"),
 		capability_preflight: AppServerCapabilityPreflightReport::new(),
@@ -63,13 +68,14 @@ fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
 		continuation_pending: false,
 		phase_goal_status: None,
 	};
-	let candidates =
-		super::completed_issue_thread_archive_candidates(&state_store, &issue_run, &run_result)
-			.expect("archive candidates should load");
-	let candidate_threads = candidates
-		.iter()
-		.map(|candidate| candidate.thread_id.as_str())
-		.collect::<Vec<_>>();
+	let candidates = orchestrator::completed_issue_thread_archive_candidates(
+		&state_store,
+		&issue_run,
+		&run_result,
+	)
+	.expect("archive candidates should load");
+	let candidate_threads =
+		candidates.iter().map(|candidate| candidate.thread_id.as_str()).collect::<Vec<_>>();
 
 	assert_eq!(candidate_threads, vec!["thread-current", "thread-old"]);
 	assert_eq!(candidates[0].sequence_number, 2);
@@ -92,9 +98,7 @@ fn terminal_thread_archive_backlog_candidates_scan_project_terminal_runs() {
 		state_store
 			.try_acquire_lease(project, issue_id, run_id, "In Progress")
 			.expect("lease should record project ownership");
-		state_store
-			.record_run_attempt(run_id, issue_id, 1, status)
-			.expect("attempt should record");
+		state_store.record_run_attempt(run_id, issue_id, 1, status).expect("attempt should record");
 		state_store.update_run_thread(run_id, thread_id).expect("thread should attach");
 	}
 
@@ -105,24 +109,20 @@ fn terminal_thread_archive_backlog_candidates_scan_project_terminal_runs() {
 		.append_event("run-discarded", 1, "thread/archive/discarded", "{}")
 		.expect("discarded archive event should record");
 
-	let candidates = super::terminal_thread_archive_backlog_candidates(&state_store, "decodex")
-		.expect("backlog candidates should load");
-	let mut candidate_threads = candidates
-		.iter()
-		.map(|candidate| candidate.thread_id.as_str())
-		.collect::<Vec<_>>();
+	let candidates =
+		orchestrator::terminal_thread_archive_backlog_candidates(&state_store, "decodex")
+			.expect("backlog candidates should load");
+	let mut candidate_threads =
+		candidates.iter().map(|candidate| candidate.thread_id.as_str()).collect::<Vec<_>>();
 
 	candidate_threads.sort_unstable();
 
-	assert_eq!(
-		candidate_threads,
-		vec!["thread-failed", "thread-succeeded", "thread-terminated"]
-	);
+	assert_eq!(candidate_threads, vec!["thread-failed", "thread-succeeded", "thread-terminated"]);
 }
 
 #[test]
 fn terminal_thread_archive_reconciler_records_backlog_archive_events() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_id = "issue-succeeded";
 	let run_id = "run-succeeded";
@@ -135,7 +135,7 @@ fn terminal_thread_archive_reconciler_records_backlog_archive_events() {
 		.expect("attempt should record");
 	state_store.update_run_thread(run_id, "thread-succeeded").expect("thread should attach");
 
-	super::reconcile_terminal_thread_archive_backlog_best_effort(
+	orchestrator::reconcile_terminal_thread_archive_backlog_best_effort(
 		&config,
 		&workflow,
 		&state_store,

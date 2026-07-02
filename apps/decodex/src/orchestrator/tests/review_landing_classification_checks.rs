@@ -1,12 +1,18 @@
-use orchestrator::PullRequestReadbackFailure;
-use orchestrator::PostReviewReadbackDegradation;
-use orchestrator::PullRequestReadbackRootCause;
+use std::{
+	fs,
+	process::{self, Command},
+};
+
+use color_eyre::{Report, eyre};
+use tempfile::TempDir;
+
+use crate::{orchestrator::{self, tests, GhPullRequestReviewStateInspector, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot, PostReviewReadbackDegradation, PullRequestActor, PullRequestIssueCommentConnection, PullRequestIssueCommentNode, PullRequestIssueCommentsNode, PullRequestPageInfo, PullRequestReadbackFailure, PullRequestReadbackRootCause, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewStateNode, StateStore}, orchestrator::tests::{FakePullRequestReviewStateInspector, TEST_SERVICE_ID}, test_support::TestEnvVarGuard};
 
 #[test]
 fn classify_post_review_lane_blocks_completed_issue_until_pull_request_is_merged() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Done", &[]);
+	let issue = tests::sample_issue("Done", &[]);
 	let head_oid = String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 	let worktree_path = temp_dir.path().join("lane");
 
@@ -30,7 +36,7 @@ fn classify_post_review_lane_blocks_completed_issue_until_pull_request_is_merged
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(sample_review_handoff_marker(
+		review_handoff: Some(tests::sample_review_handoff_marker(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -41,8 +47,8 @@ fn classify_post_review_lane_blocks_completed_issue_until_pull_request_is_merged
 	let classification = orchestrator::classify_post_review_lane(
 		&snapshot,
 		&state_store,
-		&sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(sample_pull_request_review_state(
+		&tests::sample_workflow(),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
 			"https://github.com/hack-ink/decodex/pull/174",
 			"x/pubfi-pub-101",
 			&head_oid,
@@ -63,7 +69,7 @@ fn classify_post_review_lane_blocks_completed_issue_until_pull_request_is_merged
 fn classify_post_review_lane_waits_for_pending_required_checks_before_ready_to_land() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let head_oid = String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 	let worktree_path = temp_dir.path().join("lane");
 
@@ -87,7 +93,7 @@ fn classify_post_review_lane_waits_for_pending_required_checks_before_ready_to_l
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(sample_review_handoff_marker(
+		review_handoff: Some(tests::sample_review_handoff_marker(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -96,11 +102,11 @@ fn classify_post_review_lane_waits_for_pending_required_checks_before_ready_to_l
 		local_head_oid: Some(head_oid.clone()),
 	};
 
-	seed_review_orchestration_marker(
+	tests::seed_review_orchestration_marker(
 		&state_store,
 		TEST_SERVICE_ID,
 		&snapshot.issue.id,
-		&sample_review_orchestration_marker(
+		&tests::sample_review_orchestration_marker(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -109,7 +115,7 @@ fn classify_post_review_lane_waits_for_pending_required_checks_before_ready_to_l
 		),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
 		&head_oid,
@@ -120,13 +126,13 @@ fn classify_post_review_lane_waits_for_pending_required_checks_before_ready_to_l
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
-	add_external_review_pass(&mut review_state);
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
 
 	let classification = orchestrator::classify_post_review_lane(
 		&snapshot,
 		&state_store,
-		&sample_workflow(),
+		&tests::sample_workflow(),
 		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
 	)
 	.expect("classification should succeed");
@@ -137,10 +143,12 @@ fn classify_post_review_lane_waits_for_pending_required_checks_before_ready_to_l
 
 #[test]
 fn classify_post_review_lane_routes_non_clean_landing_to_agent_fallback() {
-	for (merge_state, status_check_state) in [("HAS_HOOKS", Some("SUCCESS")), ("UNSTABLE", Some("FAILURE"))] {
+	for (merge_state, status_check_state) in
+		[("HAS_HOOKS", Some("SUCCESS")), ("UNSTABLE", Some("FAILURE"))]
+	{
 		let temp_dir = TempDir::new().expect("temp dir should exist");
 		let state_store = StateStore::open_in_memory().expect("state store should open");
-		let issue = sample_issue("In Review", &[]);
+		let issue = tests::sample_issue("In Review", &[]);
 		let head_oid = String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 		let worktree_path = temp_dir.path().join("lane");
 
@@ -164,7 +172,7 @@ fn classify_post_review_lane_routes_non_clean_landing_to_agent_fallback() {
 		let snapshot = PostReviewLaneSnapshot {
 			issue,
 			worktree,
-			review_handoff: Some(sample_review_handoff_marker(
+			review_handoff: Some(tests::sample_review_handoff_marker(
 				"x/pubfi-pub-101",
 				"https://github.com/hack-ink/decodex/pull/174",
 				&head_oid,
@@ -173,11 +181,11 @@ fn classify_post_review_lane_routes_non_clean_landing_to_agent_fallback() {
 			local_head_oid: Some(head_oid.clone()),
 		};
 
-		seed_review_orchestration_marker(
+		tests::seed_review_orchestration_marker(
 			&state_store,
 			TEST_SERVICE_ID,
 			&snapshot.issue.id,
-			&sample_review_orchestration_marker(
+			&tests::sample_review_orchestration_marker(
 				"x/pubfi-pub-101",
 				"https://github.com/hack-ink/decodex/pull/174",
 				&head_oid,
@@ -186,7 +194,7 @@ fn classify_post_review_lane_routes_non_clean_landing_to_agent_fallback() {
 			),
 		);
 
-		let mut review_state = sample_pull_request_review_state(
+		let mut review_state = tests::sample_pull_request_review_state(
 			"https://github.com/hack-ink/decodex/pull/174",
 			"x/pubfi-pub-101",
 			&head_oid,
@@ -197,13 +205,13 @@ fn classify_post_review_lane_routes_non_clean_landing_to_agent_fallback() {
 			0,
 		);
 
-		add_external_review_ack(&mut review_state);
-		add_external_review_pass(&mut review_state);
+		tests::add_external_review_ack(&mut review_state);
+		tests::add_external_review_pass(&mut review_state);
 
 		let classification = orchestrator::classify_post_review_lane(
 			&snapshot,
 			&state_store,
-			&sample_workflow(),
+			&tests::sample_workflow(),
 			&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
 		)
 		.expect("classification should succeed");
@@ -217,7 +225,7 @@ fn classify_post_review_lane_routes_non_clean_landing_to_agent_fallback() {
 fn classify_post_review_lane_waits_for_review_before_optional_failed_checks() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let head_oid = String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 	let worktree_path = temp_dir.path().join("lane");
 
@@ -241,7 +249,7 @@ fn classify_post_review_lane_waits_for_review_before_optional_failed_checks() {
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(sample_review_handoff_marker(
+		review_handoff: Some(tests::sample_review_handoff_marker(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -250,11 +258,11 @@ fn classify_post_review_lane_waits_for_review_before_optional_failed_checks() {
 		local_head_oid: Some(head_oid.clone()),
 	};
 
-	seed_review_orchestration_marker(
+	tests::seed_review_orchestration_marker(
 		&state_store,
 		TEST_SERVICE_ID,
 		&snapshot.issue.id,
-		&sample_review_orchestration_marker(
+		&tests::sample_review_orchestration_marker(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -263,7 +271,7 @@ fn classify_post_review_lane_waits_for_review_before_optional_failed_checks() {
 		),
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
 		&head_oid,
@@ -274,12 +282,12 @@ fn classify_post_review_lane_waits_for_review_before_optional_failed_checks() {
 		0,
 	);
 
-	add_external_review_ack(&mut review_state);
+	tests::add_external_review_ack(&mut review_state);
 
 	let classification = orchestrator::classify_post_review_lane(
 		&snapshot,
 		&state_store,
-		&sample_workflow(),
+		&tests::sample_workflow(),
 		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
 	)
 	.expect("classification should succeed");
@@ -292,7 +300,7 @@ fn classify_post_review_lane_waits_for_review_before_optional_failed_checks() {
 fn classify_post_review_lane_requires_review_repair_before_review_when_required_checks_fail() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let head_oid = String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 	let worktree_path = temp_dir.path().join("lane");
 
@@ -316,7 +324,7 @@ fn classify_post_review_lane_requires_review_repair_before_review_when_required_
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(sample_review_handoff_marker(
+		review_handoff: Some(tests::sample_review_handoff_marker(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -327,8 +335,8 @@ fn classify_post_review_lane_requires_review_repair_before_review_when_required_
 	let classification = orchestrator::classify_post_review_lane(
 		&snapshot,
 		&state_store,
-		&sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(sample_pull_request_review_state(
+		&tests::sample_workflow(),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
 			"https://github.com/hack-ink/decodex/pull/174",
 			"x/pubfi-pub-101",
 			&head_oid,
@@ -349,7 +357,7 @@ fn classify_post_review_lane_requires_review_repair_before_review_when_required_
 fn classify_post_review_lane_blocks_checkout_branch_mismatch() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let head_oid = String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 	let worktree_path = temp_dir.path().join("lane");
 
@@ -373,7 +381,7 @@ fn classify_post_review_lane_blocks_checkout_branch_mismatch() {
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(sample_review_handoff_marker(
+		review_handoff: Some(tests::sample_review_handoff_marker(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -384,7 +392,7 @@ fn classify_post_review_lane_blocks_checkout_branch_mismatch() {
 	let classification = orchestrator::classify_post_review_lane(
 		&snapshot,
 		&state_store,
-		&sample_workflow(),
+		&tests::sample_workflow(),
 		&FakePullRequestReviewStateInspector::new(Vec::new()),
 	)
 	.expect("classification should degrade to blocked");
@@ -397,7 +405,7 @@ fn classify_post_review_lane_blocks_checkout_branch_mismatch() {
 fn classify_post_review_lane_degrades_pull_request_state_read_failures_to_handoff_marker() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let head_oid = String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 	let worktree_path = temp_dir.path().join("lane");
 
@@ -421,7 +429,7 @@ fn classify_post_review_lane_degrades_pull_request_state_read_failures_to_handof
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(sample_review_handoff_marker(
+		review_handoff: Some(tests::sample_review_handoff_marker(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -432,7 +440,7 @@ fn classify_post_review_lane_degrades_pull_request_state_read_failures_to_handof
 	let classification = orchestrator::classify_post_review_lane(
 		&snapshot,
 		&state_store,
-		&sample_workflow(),
+		&tests::sample_workflow(),
 		&FakePullRequestReviewStateInspector::new(vec![Err(color_eyre::eyre::eyre!(
 			"gh api failed"
 		))]),
@@ -446,14 +454,8 @@ fn classify_post_review_lane_degrades_pull_request_state_read_failures_to_handof
 		Some("https://github.com/hack-ink/decodex/pull/174")
 	);
 	assert_eq!(classification.pr_head_sha.as_deref(), Some(head_oid.as_str()));
-	assert_eq!(
-		classification.readback_warning.as_deref(),
-		Some("pull_request_state_read_failed")
-	);
-	assert_eq!(
-		classification.readback_root_cause.as_deref(),
-		Some("github_api_read_failed")
-	);
+	assert_eq!(classification.readback_warning.as_deref(), Some("pull_request_state_read_failed"));
+	assert_eq!(classification.readback_root_cause.as_deref(), Some("github_api_read_failed"));
 }
 
 #[test]
@@ -461,7 +463,7 @@ fn post_review_readback_degradation_helper_preserves_warning_and_typed_cause() {
 	let marker_head_oid = "1111111111111111111111111111111111111111";
 	let review_head_oid = "2222222222222222222222222222222222222222";
 	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
-	let review_handoff = sample_review_handoff_marker("x/pubfi-pub-101", pr_url, marker_head_oid);
+	let review_handoff = tests::sample_review_handoff_marker("x/pubfi-pub-101", pr_url, marker_head_oid);
 	let pull_request_readback = PostReviewReadbackDegradation::pull_request_state_from_handoff(
 		&review_handoff,
 		PullRequestReadbackRootCause::GithubApiReadFailed,
@@ -482,19 +484,18 @@ fn post_review_readback_degradation_helper_preserves_warning_and_typed_cause() {
 	assert_eq!(pull_request_readback.pr_head_sha.as_deref(), Some(marker_head_oid));
 	assert_eq!(pull_request_readback.pr_state, None);
 
-	let tracker_readback = PostReviewReadbackDegradation::tracker_issue_from_handoff(
-		&review_handoff,
-	)
-	.wait_for_review_classification(Some(sample_pull_request_review_state(
-		pr_url,
-		"x/pubfi-pub-101",
-		review_head_oid,
-		Some("APPROVED"),
-		"MERGEABLE",
-		"CLEAN",
-		Some("SUCCESS"),
-		2,
-	)));
+	let tracker_readback =
+		PostReviewReadbackDegradation::tracker_issue_from_handoff(&review_handoff)
+			.wait_for_review_classification(Some(tests::sample_pull_request_review_state(
+				pr_url,
+				"x/pubfi-pub-101",
+				review_head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"CLEAN",
+				Some("SUCCESS"),
+				2,
+			)));
 
 	assert_eq!(tracker_readback.decision, PostReviewLaneDecision::WaitForReview);
 	assert_eq!(tracker_readback.reason, "tracker_issue_readback_degraded");
@@ -520,14 +521,8 @@ fn classify_post_review_lane_degrades_missing_or_blank_github_token_env_var() {
 	assert_eq!(missing.decision, PostReviewLaneDecision::WaitForReview);
 	assert_eq!(missing.reason, "pull_request_state_read_failed");
 	assert_eq!(missing.pr_url.as_deref(), Some("https://github.com/hack-ink/decodex/pull/174"));
-	assert_eq!(
-		missing.readback_warning.as_deref(),
-		Some("pull_request_state_read_failed")
-	);
-	assert_eq!(
-		missing.readback_root_cause.as_deref(),
-		Some("missing_github_token")
-	);
+	assert_eq!(missing.readback_warning.as_deref(), Some("pull_request_state_read_failed"));
+	assert_eq!(missing.readback_root_cause.as_deref(), Some("missing_github_token"));
 
 	let env_var = format!("DECODEX_TEST_BLANK_STATUS_GITHUB_TOKEN_ENV_{}", process::id());
 	let _env_guard = TestEnvVarGuard::set(&env_var, "");
@@ -536,14 +531,8 @@ fn classify_post_review_lane_degrades_missing_or_blank_github_token_env_var() {
 	assert_eq!(blank.decision, PostReviewLaneDecision::WaitForReview);
 	assert_eq!(blank.reason, "pull_request_state_read_failed");
 	assert_eq!(blank.pr_url.as_deref(), Some("https://github.com/hack-ink/decodex/pull/174"));
-	assert_eq!(
-		blank.readback_warning.as_deref(),
-		Some("pull_request_state_read_failed")
-	);
-	assert_eq!(
-		blank.readback_root_cause.as_deref(),
-		Some("missing_github_token")
-	);
+	assert_eq!(blank.readback_warning.as_deref(), Some("pull_request_state_read_failed"));
+	assert_eq!(blank.readback_root_cause.as_deref(), Some("missing_github_token"));
 }
 
 #[test]
@@ -571,7 +560,7 @@ fn classify_post_review_lane_with_github_token_env_var(
 ) -> PostReviewLaneClassification {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Review", &[]);
+	let issue = tests::sample_issue("In Review", &[]);
 	let head_oid = String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 	let worktree_path = temp_dir.path().join("lane");
 
@@ -595,7 +584,7 @@ fn classify_post_review_lane_with_github_token_env_var(
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(sample_review_handoff_marker(
+		review_handoff: Some(tests::sample_review_handoff_marker(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -607,7 +596,7 @@ fn classify_post_review_lane_with_github_token_env_var(
 	orchestrator::classify_post_review_lane(
 		&snapshot,
 		&state_store,
-		&sample_workflow(),
+		&tests::sample_workflow(),
 		&GhPullRequestReviewStateInspector { github_token_env_var, github_command_path: None },
 	)
 	.expect("classification should degrade to blocked")
@@ -615,7 +604,7 @@ fn classify_post_review_lane_with_github_token_env_var(
 
 #[test]
 fn merge_pull_request_review_state_page_counts_unresolved_threads_across_pages() {
-	let first_page = sample_pull_request_review_state_page(
+	let first_page = tests::sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
 		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
@@ -623,13 +612,13 @@ fn merge_pull_request_review_state_page_counts_unresolved_threads_across_pages()
 		true,
 		Some("cursor-1"),
 	);
-	let repository = sample_pull_request_review_state_repository(first_page);
+	let repository = tests::sample_pull_request_review_state_repository(first_page);
 	let mut review_state = orchestrator::pull_request_review_state_from_page(
 		&repository,
 		repository.pull_request.as_ref().expect("pull request should exist"),
 	)
 	.expect("review state should build");
-	let next_page = sample_pull_request_review_state_page(
+	let next_page = tests::sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
 		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
@@ -637,7 +626,7 @@ fn merge_pull_request_review_state_page_counts_unresolved_threads_across_pages()
 		false,
 		None,
 	);
-	let next_repository = sample_pull_request_review_state_repository(next_page);
+	let next_repository = tests::sample_pull_request_review_state_repository(next_page);
 	let next_cursor = orchestrator::merge_pull_request_review_state_page(
 		&mut review_state,
 		&next_repository,
@@ -651,7 +640,7 @@ fn merge_pull_request_review_state_page_counts_unresolved_threads_across_pages()
 
 #[test]
 fn merge_pull_request_issue_comment_page_appends_comments_across_pages() {
-	let first_page = sample_pull_request_review_state_page(
+	let first_page = tests::sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
 		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
@@ -659,7 +648,7 @@ fn merge_pull_request_issue_comment_page_appends_comments_across_pages() {
 		false,
 		None,
 	);
-	let repository = sample_pull_request_review_state_repository(first_page);
+	let repository = tests::sample_pull_request_review_state_repository(first_page);
 	let mut review_state = orchestrator::pull_request_review_state_from_page(
 		&repository,
 		repository.pull_request.as_ref().expect("pull request should exist"),
@@ -719,7 +708,7 @@ fn assert_review_state_page_rejects_changed_metadata(
 	case_name: &str,
 	mutate: fn(&mut PullRequestReviewStateNode),
 ) {
-	let first_page = sample_pull_request_review_state_page(
+	let first_page = tests::sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
 		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
@@ -727,13 +716,13 @@ fn assert_review_state_page_rejects_changed_metadata(
 		true,
 		Some("cursor-1"),
 	);
-	let repository = sample_pull_request_review_state_repository(first_page);
+	let repository = tests::sample_pull_request_review_state_repository(first_page);
 	let mut review_state = orchestrator::pull_request_review_state_from_page(
 		&repository,
 		repository.pull_request.as_ref().expect("pull request should exist"),
 	)
 	.expect("review state should build");
-	let mut next_page = sample_pull_request_review_state_page(
+	let mut next_page = tests::sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
 		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
@@ -744,7 +733,7 @@ fn assert_review_state_page_rejects_changed_metadata(
 
 	mutate(&mut next_page);
 
-	let next_repository = sample_pull_request_review_state_repository(next_page);
+	let next_repository = tests::sample_pull_request_review_state_repository(next_page);
 	let error = orchestrator::merge_pull_request_review_state_page(
 		&mut review_state,
 		&next_repository,
@@ -772,7 +761,7 @@ fn pull_request_review_state_query_requests_required_fields() {
 
 #[test]
 fn next_pull_request_review_threads_cursor_requires_end_cursor_when_pagination_continues() {
-	let page = sample_pull_request_review_state_page(
+	let page = tests::sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
 		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
