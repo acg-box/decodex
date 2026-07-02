@@ -6,9 +6,9 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard/body.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/mcp.rs]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/recovery/stale_active_guidance.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard/body.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/mcp.rs]
 drift_watch: [decodex serve, decodex status, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, stale_active_release, stale_active_state_restore_pending, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
-last_verified: 2026-06-30
+last_verified: 2026-07-02
 ---
 # Operator Control Plane
 
@@ -672,7 +672,10 @@ Worktree visibility follows the owning dashboard section:
   checkpoints, and no-progress harness outcomes as recoverable only after process
   identity proves the recorded child is gone and
   worktree/branch/private/lineage checks are clean, blocks on review-policy
-  checkpoints and issue-id or issue-identifier PR lineage, reads local runtime
+  checkpoints and issue-id or issue-identifier PR lineage, and renders blocker-family
+  `next_action` guidance for retained progress, review-handoff, live/unsettled
+  ownership, or missing safety evidence instead of returning only a generic blocker
+  list. It reads local runtime
   evidence under both issue id keys, terminalizes stale local ownership as
   `terminal_guarded`, clears only matching proven-dead local run leases, writes a
   local private `stale_active_release` audit when a stale run attempt exists, repeats

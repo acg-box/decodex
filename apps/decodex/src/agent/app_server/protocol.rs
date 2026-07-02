@@ -3,26 +3,29 @@ mod model;
 
 pub(super) use client::AppServerClient;
 pub(super) use model::{
-	AgentMessageDeltaNotification, AppServerDynamicToolNamespaceTool, AppServerDynamicToolSpec,
+	AgentMessageDeltaNotification,
 	ChatgptAuthTokensRefreshParams, ChatgptAuthTokensRefreshResponse, ClientInfo,
 	CommandExecParams, CommandExecResponse, CommandExecutionApprovalDecision,
-	CommandExecutionRequestApprovalResponse, CompletedItem, ConfigReadParams, ConfigReadResponse,
+	CommandExecutionRequestApprovalResponse, ConfigReadParams, ConfigReadResponse,
 	DynamicToolCallParams, EffectiveThreadConfig, ErrorNotification, FileChangeApprovalDecision,
-	FileChangeRequestApprovalResponse, GrantedPermissionProfile, InitializeCapabilities,
+	FileChangeRequestApprovalResponse, InitializeCapabilities,
 	InitializeParams, InitializeResponse, ItemCompletedNotification, ListMcpServerStatusParams,
-	ListMcpServerStatusResponse, LoginAccountParams, LoginAccountResponse,
-	MarketplaceLoadErrorInfo, McpServerElicitationAction, McpServerElicitationRequestResponse,
+	ListMcpServerStatusResponse, LoginAccountParams, LoginAccountResponse, McpServerElicitationAction, McpServerElicitationRequestResponse,
 	McpServerStatusSummary, ModelListParams, ModelListResponse,
 	ModelProviderCapabilitiesReadParams, ModelProviderCapabilitiesReadResponse, ModelSummary,
-	PermissionGrantScope, PermissionsRequestApprovalResponse, PluginListParams, PluginListResponse,
-	PluginMarketplaceEntry, PluginSummary, ProbeDynamicToolHandler, RunOutcome,
-	RuntimeConfigSummary, SkillErrorInfo, SkillMetadata, SkillsListEntry, SkillsListParams,
-	SkillsListResponse, Thread, ThreadArchiveRequest, ThreadArchiveResponse, ThreadGoal,
+	PermissionGrantScope, PermissionsRequestApprovalResponse, PluginListParams, PluginListResponse, ProbeDynamicToolHandler, RunOutcome,
+	RuntimeConfigSummary, SkillsListParams,
+	SkillsListResponse, ThreadArchiveRequest, ThreadArchiveResponse, ThreadGoal,
 	ThreadGoalClearParams, ThreadGoalClearResponse, ThreadGoalGetParams, ThreadGoalGetResponse,
 	ThreadGoalSetParams, ThreadGoalSetResponse, ThreadGoalStatus, ThreadGoalUpdatedNotification,
-	ThreadResumeRequest, ThreadSessionResponse, ThreadStartRequest, ThreadStatus,
-	ThreadStatusChangedNotification, ToolRequestUserInputAnswer, ToolRequestUserInputResponse,
+	ThreadResumeRequest, ThreadSessionResponse, ThreadStartRequest,
+	ThreadStatusChangedNotification, ToolRequestUserInputResponse,
 	TurnCompletedNotification, TurnError, TurnInterruptRequest, TurnStartRequest,
-	TurnStartResponse, TurnStatusPayload, TurnSteerRequest, TurnSteerResponse, UserInput,
+	TurnStartResponse, TurnSteerRequest, TurnSteerResponse, UserInput,
 	app_server_dynamic_tool_specs,
+};
+#[cfg(test)]
+pub(super) use model::{
+	MarketplaceLoadErrorInfo, PluginMarketplaceEntry, PluginSummary, SkillErrorInfo, SkillMetadata,
+	SkillsListEntry,
 };

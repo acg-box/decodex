@@ -470,6 +470,7 @@ fn goal_intake_apply_creates_updates_and_persists_links() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn autonomy_proposal_issue_dag_materializes_through_goal_intake_in_isolated_store() {
 	let store = StateStore::open_in_memory().expect("isolated store should open");
 	store

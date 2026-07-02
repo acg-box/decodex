@@ -50,6 +50,25 @@ fn stale_active_diagnose_blocks_private_progress_from_older_attempt() {
 	assert_eq!(diagnostic.latest_run_id.as_deref(), Some("run-new"));
 	assert_eq!(diagnostic.classification, super::super::super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
 	assert!(diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+	assert!(
+		diagnostic
+			.evidence
+			.contains(&String::from("private_progress_evidence_ref:run-old:1:source_progress")),
+		"private progress blockers should identify the retained evidence row"
+	);
+	assert!(
+		diagnostic.next_action.contains("Preserve retained progress")
+			&& diagnostic
+				.next_action
+				.contains("decodex evidence PUB-1626 --run-id run-old --attempt 1 --json")
+			&& !diagnostic
+				.next_action
+				.contains("decodex evidence PUB-1626 --run-id run-new --attempt 2 --json")
+			&& diagnostic.next_action.contains("private_progress_evidence_ref")
+			&& diagnostic.next_action.contains("manual attention"),
+		"private progress blockers should route to exact private evidence inspection, got {:?}",
+		diagnostic.next_action
+	);
 	assert!(!diagnostic.recoverable());
 }
 
@@ -92,6 +111,14 @@ fn stale_active_diagnose_blocks_protocol_event_evidence() {
 
 	assert_eq!(diagnostic.classification, super::super::super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
 	assert!(diagnostic.blockers.contains(&String::from("protocol_event_evidence_present")));
+	assert!(
+		diagnostic
+			.next_action
+			.contains("runtime ownership still appears live or unsettled")
+			&& diagnostic.next_action.contains("decodex lane inspect PUB-1626"),
+		"runtime evidence blockers should route to lane-control inspection, got {:?}",
+		diagnostic.next_action
+	);
 	assert!(!diagnostic.recoverable());
 }
 
@@ -414,6 +441,13 @@ fn stale_active_diagnose_blocks_review_policy_checkpoint() {
 
 	assert_eq!(diagnostic.classification, super::super::super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
 	assert!(diagnostic.blockers.contains(&String::from("review_policy_checkpoint_present")));
+	assert!(
+		diagnostic
+			.next_action
+			.contains("review-handoff diagnose PUB-1626 --json"),
+		"review blockers should route to review-handoff recovery, got {:?}",
+		diagnostic.next_action
+	);
 	assert!(!diagnostic.recoverable());
 }
 
@@ -529,6 +563,13 @@ fn stale_active_diagnose_blocks_identifier_keyed_pr_lineage() {
 
 	assert_eq!(diagnostic.classification, super::super::super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
 	assert!(diagnostic.blockers.contains(&String::from("pr_or_review_lineage_present")));
+	assert!(
+		diagnostic
+			.next_action
+			.contains("review-handoff diagnose PUB-1626 --json"),
+		"PR lineage blockers should route to review-handoff recovery, got {:?}",
+		diagnostic.next_action
+	);
 	assert!(!diagnostic.recoverable());
 }
 

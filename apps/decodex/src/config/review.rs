@@ -3,6 +3,7 @@ use serde::Deserialize;
 /// Review level for agent runs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ReviewLevel {
 	/// Disable review gates.
 	Off,
@@ -11,7 +12,8 @@ pub enum ReviewLevel {
 	/// Require self-check plus the Decodex Review checkpoint gate.
 	Standard,
 	/// Require standard review plus the GitHub Review path.
-	Strict,
+	#[default]
+ Strict,
 }
 impl ReviewLevel {
 	/// Config string for this level.
@@ -37,11 +39,5 @@ impl ReviewLevel {
 	/// Whether this level uses the GitHub `@codex review` path.
 	pub const fn uses_github_review(self) -> bool {
 		matches!(self, Self::Strict)
-	}
-}
-
-impl Default for ReviewLevel {
-	fn default() -> Self {
-		Self::Strict
 	}
 }
