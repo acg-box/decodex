@@ -1,14 +1,28 @@
-const OPERATOR_PRESENTATION_SCHEMA: &str = "decodex.operator.presentation/1";
+use std::collections::BTreeSet;
+
+use serde::Serialize;
+use serde_json::Value;
+
+use crate::{
+	orchestrator::{
+		OperatorRunStatus, RUN_OPERATION_IDLE, operator_run_counts_as_attention,
+		operator_run_counts_as_running, operator_run_counts_as_waiting,
+	},
+	prelude::Result,
+};
+
+pub(in crate::orchestrator) const OPERATOR_PRESENTATION_SCHEMA: &str =
+	"decodex.operator.presentation/1";
 
 #[derive(Serialize)]
-struct OperatorSnapshotPresentation<'a> {
+pub(in crate::orchestrator) struct OperatorSnapshotPresentation<'a> {
 	schema: &'static str,
 	#[serde(rename = "current_lane_cards")]
 	current_lane_cards: Vec<OperatorCurrentLaneCard<'a>>,
 }
 
 #[derive(Serialize)]
-struct OperatorCurrentLaneCard<'a> {
+pub(in crate::orchestrator) struct OperatorCurrentLaneCard<'a> {
 	id: &'a str,
 	#[serde(rename = "run_id")]
 	run_id: &'a str,
@@ -34,11 +48,13 @@ struct OperatorCurrentLaneCard<'a> {
 	run: &'a OperatorRunStatus,
 }
 
-fn operator_snapshot_presentation_value(current_lanes: &[OperatorRunStatus]) -> Result<Value> {
+pub(in crate::orchestrator) fn operator_snapshot_presentation_value(
+	current_lanes: &[OperatorRunStatus],
+) -> Result<Value> {
 	Ok(serde_json::to_value(operator_snapshot_presentation(current_lanes))?)
 }
 
-fn operator_snapshot_presentation(
+pub(in crate::orchestrator) fn operator_snapshot_presentation(
 	current_lanes: &[OperatorRunStatus],
 ) -> OperatorSnapshotPresentation<'_> {
 	OperatorSnapshotPresentation {
@@ -47,7 +63,9 @@ fn operator_snapshot_presentation(
 	}
 }
 
-fn operator_current_lane_card(run: &OperatorRunStatus) -> OperatorCurrentLaneCard<'_> {
+pub(in crate::orchestrator) fn operator_current_lane_card(
+	run: &OperatorRunStatus,
+) -> OperatorCurrentLaneCard<'_> {
 	OperatorCurrentLaneCard {
 		id: run.run_id.as_str(),
 		run_id: run.run_id.as_str(),
@@ -66,14 +84,16 @@ fn operator_current_lane_card(run: &OperatorRunStatus) -> OperatorCurrentLaneCar
 	}
 }
 
-fn operator_current_lane_card_title(run: &OperatorRunStatus) -> String {
+pub(in crate::orchestrator) fn operator_current_lane_card_title(run: &OperatorRunStatus) -> String {
 	trimmed_operator_presentation_text(run.issue_identifier.as_deref())
 		.or_else(|| trimmed_operator_presentation_text(run.title.as_deref()))
 		.unwrap_or("Run")
 		.to_owned()
 }
 
-fn operator_current_lane_card_detail(run: &OperatorRunStatus) -> String {
+pub(in crate::orchestrator) fn operator_current_lane_card_detail(
+	run: &OperatorRunStatus,
+) -> String {
 	trimmed_operator_presentation_text(
 		run.child_agent_activity.as_ref().and_then(|activity| activity.current_detail.as_deref()),
 	)
@@ -96,7 +116,9 @@ fn operator_current_lane_card_detail(run: &OperatorRunStatus) -> String {
 	.to_owned()
 }
 
-fn operator_current_lane_card_tone(run: &OperatorRunStatus) -> &'static str {
+pub(in crate::orchestrator) fn operator_current_lane_card_tone(
+	run: &OperatorRunStatus,
+) -> &'static str {
 	if operator_run_counts_as_attention(run) {
 		"attention"
 	} else if operator_run_counts_as_waiting(run) {
@@ -106,7 +128,9 @@ fn operator_current_lane_card_tone(run: &OperatorRunStatus) -> &'static str {
 	}
 }
 
-fn operator_run_assigned_account_fingerprints(run: &OperatorRunStatus) -> Vec<String> {
+pub(in crate::orchestrator) fn operator_run_assigned_account_fingerprints(
+	run: &OperatorRunStatus,
+) -> Vec<String> {
 	let mut fingerprints = BTreeSet::new();
 
 	if let Some(account) = run.account.as_ref() {
@@ -128,7 +152,9 @@ fn operator_run_assigned_account_fingerprints(run: &OperatorRunStatus) -> Vec<St
 	fingerprints.into_iter().collect()
 }
 
-fn operator_run_assigned_account_emails(run: &OperatorRunStatus) -> Vec<String> {
+pub(in crate::orchestrator) fn operator_run_assigned_account_emails(
+	run: &OperatorRunStatus,
+) -> Vec<String> {
 	let mut emails = BTreeSet::new();
 
 	if let Some(account) = run.account.as_ref()
@@ -148,12 +174,17 @@ fn operator_run_assigned_account_emails(run: &OperatorRunStatus) -> Vec<String> 
 	emails.into_iter().collect()
 }
 
-fn insert_non_empty_operator_presentation_text(values: &mut BTreeSet<String>, value: &str) {
+pub(in crate::orchestrator) fn insert_non_empty_operator_presentation_text(
+	values: &mut BTreeSet<String>,
+	value: &str,
+) {
 	if let Some(value) = trimmed_operator_presentation_text(Some(value)) {
 		values.insert(value.to_owned());
 	}
 }
 
-fn trimmed_operator_presentation_text(value: Option<&str>) -> Option<&str> {
+pub(in crate::orchestrator) fn trimmed_operator_presentation_text(
+	value: Option<&str>,
+) -> Option<&str> {
 	value.map(str::trim).filter(|value| !value.is_empty())
 }

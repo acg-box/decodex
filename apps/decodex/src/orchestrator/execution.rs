@@ -1,35 +1,29 @@
-#[path = "execution/app_server.rs"] mod execution_app_server;
-#[path = "execution/closeout.rs"] mod execution_closeout_flow;
-#[path = "execution/completion.rs"] mod execution_completion;
-#[path = "execution/context.rs"] mod execution_context;
-#[path = "execution/credentials.rs"] mod execution_credentials;
-#[path = "execution/summary.rs"] mod execution_summary;
-
-use agent::{CodexAccountAuthFailure, CodexAccountPool, CodexAccountProvider};
+mod app_server;
+mod closeout;
+mod completion;
+mod context;
+mod credentials;
+mod summary;
 
 #[cfg(test)]
-pub(crate) use self::execution_completion::{
-	push_retained_review_repair_head, run_completion_repo_gate,
-};
-pub(crate) use self::execution_summary::{
-	planned_issue_state_for_dispatch, run_summary_from_issue_run,
-};
-use self::{
-	execution_app_server::{
-		CompletedAppServerRun, IssueAppServerRun, IssueAppServerRunOutcome,
-		build_issue_turn_continuation_guard, execute_issue_app_server_run,
-		finalize_completed_app_server_run,
-	},
-	execution_closeout_flow::maybe_execute_deterministic_closeout,
-	execution_completion::apply_run_completion_disposition,
-	execution_context::{build_decodex_run_context, write_git_credentials_operation_marker},
-	execution_summary::continuation_boundary_summary,
-};
-pub(crate) use execution_context::write_run_operation_marker_best_effort;
-#[cfg(test)] pub(crate) use execution_credentials::AgentGitCredentialEnvironment;
-pub(crate) use execution_credentials::prepare_agent_git_credentials;
+pub(crate) use self::completion::{push_retained_review_repair_head, run_completion_repo_gate};
+pub(crate) use self::summary::{planned_issue_state_for_dispatch, run_summary_from_issue_run};
+use crate::tracker;
+pub(crate) use context::write_run_operation_marker_best_effort;
+#[cfg(test)]
+pub(crate) use credentials::AgentGitCredentialEnvironment;
+pub(crate) use credentials::prepare_agent_git_credentials;
 
-fn execute_issue_run<T>(
+use crate::orchestrator::*;
+
+use agent::{CodexAccountPool, CodexAccountProvider};
+
+use self::{
+	app_server::{CompletedAppServerRun, IssueAppServerRun, IssueAppServerRunOutcome},
+	completion::apply_run_completion_disposition,
+};
+
+pub(in crate::orchestrator) fn execute_issue_run<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -105,7 +99,7 @@ where
 	}
 }
 
-fn persist_issue_run_outcome(
+pub(in crate::orchestrator) fn persist_issue_run_outcome(
 	state_store: &StateStore,
 	run_id: &str,
 	summary: &RunSummary,
@@ -116,7 +110,7 @@ fn persist_issue_run_outcome(
 	)
 }
 
-fn resolve_resume_thread_id(
+pub(in crate::orchestrator) fn resolve_resume_thread_id(
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 ) -> Result<Option<String>> {
@@ -137,7 +131,7 @@ fn resolve_resume_thread_id(
 		.and_then(|marker| marker.thread_id().map(str::to_owned)))
 }
 
-fn configured_public_projection_privacy_classifier(
+pub(in crate::orchestrator) fn configured_public_projection_privacy_classifier(
 	project: &ServiceConfig,
 ) -> Result<tracker::privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier> {
 	tracker::privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier::from_config(
@@ -145,7 +139,7 @@ fn configured_public_projection_privacy_classifier(
 	)
 }
 
-fn build_closeout_review_state_inspector(
+pub(in crate::orchestrator) fn build_closeout_review_state_inspector(
 	project: &ServiceConfig,
 ) -> GhPullRequestReviewStateInspector {
 	GhPullRequestReviewStateInspector {
@@ -154,7 +148,7 @@ fn build_closeout_review_state_inspector(
 	}
 }
 
-fn execute_issue_run_inner<T>(
+pub(in crate::orchestrator) fn execute_issue_run_inner<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -177,7 +171,7 @@ where
 			&privacy_classifier,
 		);
 
-	if let Some(summary) = maybe_execute_deterministic_closeout(
+	if let Some(summary) = self::closeout::maybe_execute_deterministic_closeout(
 		tracker,
 		project,
 		workflow,
@@ -189,14 +183,14 @@ where
 		return Ok(summary);
 	}
 
-	write_git_credentials_operation_marker(issue_run);
+	self::context::write_git_credentials_operation_marker(issue_run);
 
 	let agent_git_credentials =
 		prepare_agent_git_credentials(project, &issue_run.run_id, &issue_run.worktree.path)?;
 	let codex_account_pool =
 		project.codex().accounts().map(CodexAccountPool::from_config).transpose()?;
 	let closeout_review_state_inspector = build_closeout_review_state_inspector(project);
-	let continuation_guard = build_issue_turn_continuation_guard(
+	let continuation_guard = self::app_server::build_issue_turn_continuation_guard(
 		tracker,
 		&tracker_tool_bridge,
 		workflow,
@@ -206,11 +200,11 @@ where
 	);
 	let decodex_tool_bridge = DecodexToolBridge::new(
 		&tracker_tool_bridge,
-		build_decodex_run_context(workflow, issue_run),
+		self::context::build_decodex_run_context(workflow, issue_run),
 	);
 	let phase_goal_controller =
 		build_phase_goal_controller(project, workflow, state_store, issue_run);
-	let run_result = match execute_issue_app_server_run(IssueAppServerRun {
+	let run_result = match self::app_server::execute_issue_app_server_run(IssueAppServerRun {
 		tracker,
 		project,
 		workflow,
@@ -232,10 +226,15 @@ where
 	};
 
 	if run_result.continuation_pending {
-		return Ok(continuation_boundary_summary(project, workflow, issue_run, &run_result));
+		return Ok(self::summary::continuation_boundary_summary(
+			project,
+			workflow,
+			issue_run,
+			&run_result,
+		));
 	}
 
-	finalize_completed_app_server_run(CompletedAppServerRun {
+	self::app_server::finalize_completed_app_server_run(CompletedAppServerRun {
 		tracker,
 		project,
 		workflow,
