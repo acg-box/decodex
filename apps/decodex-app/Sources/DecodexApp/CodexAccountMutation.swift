@@ -1,0 +1,50 @@
+import Foundation
+
+extension CodexAccount {
+	func withCodexActive(_ value: Bool) -> CodexAccount {
+		CodexAccount(
+			accountFingerprint: accountFingerprint,
+			email: email,
+			selector: selector,
+			randomName: randomName,
+			randomNameKey: randomNameKey,
+			randomNameOffset: randomNameOffset,
+			status: status,
+			selected: selected,
+			codexActive: value,
+			disabled: disabled,
+			refreshTokenPresent: refreshTokenPresent,
+			accessTokenExpiresAtUnixEpoch: accessTokenExpiresAtUnixEpoch,
+			lastSelectedAtUnixEpoch: lastSelectedAtUnixEpoch,
+			cooldownUntilUnixEpoch: cooldownUntilUnixEpoch,
+			note: note,
+			planType: planType,
+			capacityMultiplier: capacityMultiplier,
+			recoveryAction: recoveryAction,
+			refreshStatus: refreshStatus,
+			checkedAtUnixEpoch: checkedAtUnixEpoch,
+			primaryWindowSeconds: primaryWindowSeconds,
+			primaryRemainingPercent: primaryRemainingPercent,
+			primaryResetsAtUnixEpoch: primaryResetsAtUnixEpoch,
+			secondaryWindowSeconds: secondaryWindowSeconds,
+			secondaryRemainingPercent: secondaryRemainingPercent,
+			secondaryResetsAtUnixEpoch: secondaryResetsAtUnixEpoch,
+			creditsHasCredits: creditsHasCredits,
+			creditsUnlimited: creditsUnlimited,
+			creditsBalance: creditsBalance,
+			rateLimitReachedType: rateLimitReachedType,
+			profileDisplayName: profileDisplayName,
+			profileUsername: profileUsername,
+			profileCheckedAtUnixEpoch: profileCheckedAtUnixEpoch,
+			profileLifetimeTokens: profileLifetimeTokens,
+			profilePeakDailyTokens: profilePeakDailyTokens,
+			profileLongestTaskSeconds: profileLongestTaskSeconds,
+			profileCurrentStreakDays: profileCurrentStreakDays,
+			profileLongestStreakDays: profileLongestStreakDays,
+			profileDailyUsage: profileDailyUsage,
+			sevenDayUsedPercent: sevenDayUsedPercent,
+			sevenDayDailyAveragePercent: sevenDayDailyAveragePercent,
+			usageRecords: usageRecords
+		)
+	}
+}
