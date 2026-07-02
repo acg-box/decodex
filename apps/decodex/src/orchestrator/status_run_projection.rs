@@ -30,7 +30,7 @@ pub(super) use self::{
 		hydrate_operator_run_derived_status, operator_run_accounts,
 		operator_run_active_goal_phase, operator_run_default_review_phase,
 		operator_run_lifecycle_loop_summary, operator_run_lifecycle_projection,
-		operator_run_loop_status, operator_run_phase_acceptance_status,
+		operator_run_lane_control_readback, operator_run_loop_status, operator_run_phase_acceptance_status,
 		operator_run_private_evidence, operator_run_public_progress_phase,
 		operator_run_relative_worktree_path, operator_run_status, operator_run_status_from_parts,
 		operator_run_wait_reason,

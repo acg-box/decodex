@@ -2,7 +2,7 @@ use crate::{
 	orchestrator::{
 		self, OperatorHistoryLaneStatus, OperatorPostReviewLaneStatus, OperatorRunStatus,
 		OperatorStatusSnapshot, OperatorWorktreeStatus, QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT,
-		WorktreeOwnership,
+		WorktreeOwnership, kernel::state::OwnershipState,
 	},
 	state::WORKTREE_PROVENANCE_LEGACY_UNKNOWN,
 };
@@ -33,20 +33,22 @@ fn worktree_ownership(
 	let post_review_owner = worktree_post_review_owner(worktree, snapshot);
 
 	if let Some(run) = worktree_current_lane_owner(worktree, snapshot) {
-		if run.ownership_state == "orphaned_live_thread"
+		let ownership_state = OwnershipState::from_str(&run.ownership_state);
+
+		if ownership_state == Some(OwnershipState::OrphanedLiveThread)
 			&& let Some(lane) = post_review_owner
 		{
 			return post_review_worktree_ownership(lane);
 		}
 
-		return match run.ownership_state.as_str() {
-			"leased_run" => WorktreeOwnership {
+		return match ownership_state {
+			Some(OwnershipState::LeasedRun) => WorktreeOwnership {
 				kind: "current_lane",
 				reason: format!("Current lane `{}` owns this worktree.", run.run_id),
 				next_action: None,
 				audit_required: false,
 			},
-			"retained_attention" => WorktreeOwnership {
+			Some(OwnershipState::RetainedAttention) => WorktreeOwnership {
 				kind: "retained_attention",
 				reason: format!(
 					"Lane `{}` requires operator attention before it can own this worktree.",
@@ -55,7 +57,7 @@ fn worktree_ownership(
 				next_action: Some(run.lane_control_next_action.clone()),
 				audit_required: true,
 			},
-			"orphaned_live_thread" => WorktreeOwnership {
+			Some(OwnershipState::OrphanedLiveThread) => WorktreeOwnership {
 				kind: "orphaned_live_thread",
 				reason: format!(
 					"Lane `{}` has live evidence but no active Decodex lease.",
@@ -64,7 +66,7 @@ fn worktree_ownership(
 				next_action: Some(run.lane_control_next_action.clone()),
 				audit_required: true,
 			},
-			"terminalizing" => WorktreeOwnership {
+			Some(OwnershipState::Terminalizing) => WorktreeOwnership {
 				kind: "terminalizing_lane",
 				reason: format!(
 					"Lane `{}` is inside terminalization and no longer counts as running.",
@@ -73,7 +75,7 @@ fn worktree_ownership(
 				next_action: Some(run.lane_control_next_action.clone()),
 				audit_required: true,
 			},
-			"continuation_pending" => WorktreeOwnership {
+			Some(OwnershipState::ContinuationPending) => WorktreeOwnership {
 				kind: "continuation_pending",
 				reason: format!(
 					"Lane `{}` is waiting for scheduled continuation re-entry.",
@@ -158,12 +160,14 @@ fn worktree_current_lane_owner<'a>(
 ) -> Option<&'a OperatorRunStatus> {
 	snapshot.current_lanes.iter().chain(snapshot.recent_runs.iter()).find(|run| {
 		matches!(
-			run.ownership_state.as_str(),
-			"leased_run"
-				| "retained_attention"
-				| "orphaned_live_thread"
-				| "terminalizing"
-				| "continuation_pending"
+			OwnershipState::from_str(&run.ownership_state),
+			Some(
+				OwnershipState::LeasedRun
+					| OwnershipState::RetainedAttention
+					| OwnershipState::OrphanedLiveThread
+					| OwnershipState::Terminalizing
+					| OwnershipState::ContinuationPending
+			)
 		) && (run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
 			|| run.branch_name.as_deref() == Some(worktree.branch_name.as_str())
 			|| run.issue_id == worktree.issue_id)

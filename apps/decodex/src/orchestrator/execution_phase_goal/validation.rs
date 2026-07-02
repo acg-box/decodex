@@ -1,18 +1,19 @@
 use serde_json::Value;
 
-use crate::orchestrator::execution_phase_goal::{
-	acceptance::{
-		self, PhaseAcceptanceCheck, PhaseAcceptanceCheckFailure, PhaseAcceptanceDecision,
-		phase_acceptance_blocker_count, phase_acceptance_docs_impact_valid,
-		phase_acceptance_has_non_goal_violation,
-	},
-	controller::RepoGatePhaseGoalController,
-};
 use crate::orchestrator::{
-	self, LaneDecisionSnapshot, LaneNextAction, LoopGuardrailRecoveryDecision,
-	ManualAttentionRequested, PhaseGoalKind, PhaseGoalTransition, RUN_OPERATION_REPO_GATE,
-	RepoGateCommandOutcome, RepoGateFailure, RepoGateFailureDisposition,
-	RepoGateTrackedRewriteDecision, Report, ResolvedRepoGate, Result, state,
+	self, LaneDecisionSnapshot, LoopGuardrailRecoveryDecision, ManualAttentionRequested,
+	PhaseGoalKind, PhaseGoalTransition, RUN_OPERATION_REPO_GATE, RepoGateCommandOutcome,
+	RepoGateFailure, RepoGateFailureDisposition, RepoGateTrackedRewriteDecision, Report,
+	ResolvedRepoGate, Result,
+	execution_phase_goal::{
+		acceptance::{
+			self, PhaseAcceptanceCheck, PhaseAcceptanceCheckFailure, PhaseAcceptanceDecision,
+			phase_acceptance_blocker_count, phase_acceptance_docs_impact_valid,
+			phase_acceptance_has_non_goal_violation,
+		},
+		controller::RepoGatePhaseGoalController,
+	},
+	state,
 };
 
 impl RepoGatePhaseGoalController<'_> {
@@ -37,9 +38,8 @@ impl RepoGatePhaseGoalController<'_> {
 			selected_repo_gate.verify_commands(),
 			&self.issue_run.worktree.path,
 		) {
-			Ok(repo_gate_outcome) => {
-				self.continue_after_repo_gate_pass(phase, &selected_repo_gate, &repo_gate_outcome)
-			},
+			Ok(repo_gate_outcome) =>
+				self.continue_after_repo_gate_pass(phase, &selected_repo_gate, &repo_gate_outcome),
 			Err(error) => self.continue_after_repo_gate_error(phase, error),
 		}
 	}
@@ -124,13 +124,14 @@ impl RepoGatePhaseGoalController<'_> {
 			lane_decision.reason,
 		)?;
 
-		if orchestrator::lane_decision_blocks_automatic_execution(lane_decision.next_action) {
+		if lane_decision.blocks_automatic_execution() {
 			return Err(error);
 		}
 
-		let repair_target_detail =
-			(repo_gate_failure.disposition() == RepoGateFailureDisposition::ContinueRepair)
-				.then(|| repo_gate_failure.repair_target_detail().to_owned());
+		let repair_target_detail = (repo_gate_failure.disposition()
+			== RepoGateFailureDisposition::ContinueRepair
+			&& lane_decision.permits_phase_repair_retry())
+		.then(|| repo_gate_failure.repair_target_detail().to_owned());
 
 		if let Some(repair_target_detail) = repair_target_detail {
 			return self.continue_after_repairable_repo_gate_error(repair_target_detail, error);
@@ -304,7 +305,7 @@ impl RepoGatePhaseGoalController<'_> {
 			lane_decision.reason,
 		)?;
 
-		if orchestrator::lane_decision_blocks_automatic_execution(lane_decision.next_action) {
+		if lane_decision.blocks_automatic_execution() {
 			return Err(Report::new(ManualAttentionRequested {
 				issue_identifier: self.issue_run.issue.identifier.clone(),
 				label: self.workflow.frontmatter().tracker().needs_attention_label().to_owned(),
@@ -343,25 +344,14 @@ impl RepoGatePhaseGoalController<'_> {
 			}
 		}
 
-		match lane_decision.next_action {
-			LaneNextAction::RetryFailure => {},
-			LaneNextAction::ContinueCurrentPhase
-			| LaneNextAction::ResumeContinuation
-			| LaneNextAction::RunRepoGate
-			| LaneNextAction::EnterReviewHandoff
-			| LaneNextAction::WaitExternal
-			| LaneNextAction::NeedsAttention
-			| LaneNextAction::StopBlocked
-			| LaneNextAction::CleanupTerminal
-			| LaneNextAction::ForbiddenStaleOrAmbiguous => {
-				return Err(Report::new(ManualAttentionRequested {
-					issue_identifier: self.issue_run.issue.identifier.clone(),
-					label: self.workflow.frontmatter().tracker().needs_attention_label().to_owned(),
-					run_id: self.issue_run.run_id.clone(),
-					error_class: Some(error_class.to_owned()),
-				})
-				.wrap_err(error));
-			},
+		if !lane_decision.permits_phase_repair_retry() {
+			return Err(Report::new(ManualAttentionRequested {
+				issue_identifier: self.issue_run.issue.identifier.clone(),
+				label: self.workflow.frontmatter().tracker().needs_attention_label().to_owned(),
+				run_id: self.issue_run.run_id.clone(),
+				error_class: Some(error_class.to_owned()),
+			})
+			.wrap_err(error));
 		}
 
 		let next_phase = acceptance::phase_acceptance_repair_phase(phase);

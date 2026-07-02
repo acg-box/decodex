@@ -7,14 +7,19 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs:
-  - apps/decodex/src/manual.rs
-  - apps/decodex/src/orchestrator/execution.rs
+  - apps/decodex/src/orchestrator/kernel/post_review.rs
+  - apps/decodex/src/orchestrator/kernel/command.rs
+  - apps/decodex/src/orchestrator/status/post_review/classification.rs
+  - apps/decodex/src/orchestrator/retained_review_orchestration.rs
+  - apps/decodex/src/orchestrator/retained_review_orchestration/phases.rs
+  - apps/decodex/src/orchestrator/retained_review_orchestration/admin_merge.rs
+  - apps/decodex/src/orchestrator/retained_review_orchestration/markers.rs
+  - apps/decodex/src/orchestrator/execution_failure/review_handoff_drift.rs
   - apps/decodex/src/orchestrator/dispatch_policy.rs
-  - apps/decodex/src/orchestrator/run_cycle.rs
-  - apps/decodex/src/orchestrator/status.rs
+  - apps/decodex/src/orchestrator/run_cycle_post_review.rs
+  - apps/decodex/src/orchestrator/status/post_review.rs
   - apps/decodex/src/pull_request.rs
-  - apps/decodex/src/recovery.rs
-  - apps/decodex/src/worktree.rs
+  - apps/decodex/src/state/review_records/lifecycle.rs
 drift_watch:
   - decodex land --manual-authority --pr
   - review_handoff_state_transition_pending
@@ -26,7 +31,7 @@ drift_watch:
   - IssueDispatchMode::Retry
   - IssueDispatchMode::ReviewRepair
   - IssueDispatchMode::Closeout
-last_verified: 2026-06-27
+last_verified: 2026-07-01
 ---
 # Post-Review Lifecycle
 

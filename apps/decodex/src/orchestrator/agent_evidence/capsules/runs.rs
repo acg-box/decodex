@@ -6,6 +6,7 @@ use crate::orchestrator::{
 		self, AGENT_RUN_CAPSULE_SCHEMA, AgentEvidenceProjectView, AgentRunCapsule,
 		AgentRunCapsuleRef, AgentRunDiagnosis, AgentRunLedgerOutcome,
 	},
+	kernel::state::{OwnershipState, PolicyState},
 	status_summary,
 };
 
@@ -64,17 +65,18 @@ pub(in crate::orchestrator) fn run_capsule_ref(capsule: &AgentRunCapsule) -> Age
 }
 
 pub(super) fn agent_run_blocker_reason(run: &OperatorRunStatus) -> Option<&'static str> {
-	if run.policy_state == "review_churn_exceeded" {
-		return Some("review_churn_exceeded");
+	match PolicyState::from_str(&run.policy_state) {
+		Some(PolicyState::ReviewChurnExceeded) => return Some("review_churn_exceeded"),
+		Some(PolicyState::RuntimeRecoveryRequired) => return Some("runtime_recovery_required"),
+		Some(PolicyState::RuntimeRecoveryBlocked) => return Some("runtime_recovery_blocked"),
+		_ => {},
 	}
-	if run.ownership_state == "retained_attention" {
-		return Some("retained_attention");
-	}
-	if run.ownership_state == "orphaned_live_thread" {
-		return Some("orphaned_live_thread");
-	}
-	if run.ownership_state == "terminalizing" {
-		return Some("terminalizing");
+	match OwnershipState::from_str(&run.ownership_state) {
+		Some(OwnershipState::RetainedAttention) => return Some("retained_attention"),
+		Some(OwnershipState::OrphanedLiveThread) => return Some("orphaned_live_thread"),
+		Some(OwnershipState::Terminalizing) => return Some("terminalizing"),
+		Some(OwnershipState::GhostLane) => return Some("ghost_lane"),
+		_ => {},
 	}
 	if run.suspected_stall {
 		return Some("suspected_stall");

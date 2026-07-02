@@ -2,10 +2,10 @@ use std::{collections::HashMap, path::Path};
 
 use super::{
 	GhPullRequestReviewStateInspector, IssueDispatchMode, IssueTracker,
-	OperatorPostReviewLaneStatus, PullRequestReviewStateInspector, RetainedReviewRunIdentity,
-	SelectedIssueRunCandidate, ServiceConfig, StateStore, TERMINAL_GUARDED_RUN_STATUS,
-	TrackerIssue, WorkflowDocument, WorktreeMapping, build_post_review_lane_statuses,
-	closeout_lane_active_claim_blocks_dispatch,
+	OperatorPostReviewLaneStatus, PostReviewLaneDecision, PullRequestReviewStateInspector,
+	RetainedReviewRunIdentity, SelectedIssueRunCandidate, ServiceConfig, StateStore,
+	TERMINAL_GUARDED_RUN_STATUS, TrackerIssue, WorkflowDocument, WorktreeMapping,
+	build_post_review_lane_statuses, closeout_lane_active_claim_blocks_dispatch,
 };
 use crate::{
 	prelude::{Result, eyre},
@@ -91,7 +91,7 @@ where
 	)?;
 	let candidate_issue_ids = lanes
 		.iter()
-		.filter(|lane| lane.classification == "needs_review_repair")
+		.filter(|lane| post_review_lane_is_repair_candidate(lane))
 		.filter(|lane| !excluded_issue_ids.contains(&lane.issue_id.as_str()))
 		.map(|lane| lane.issue_id.clone())
 		.collect::<Vec<_>>();
@@ -105,7 +105,7 @@ where
 		issues.into_iter().map(|issue| (issue.id.clone(), issue)).collect::<HashMap<_, _>>();
 
 	for lane in lanes {
-		if lane.classification != "needs_review_repair" {
+		if !post_review_lane_is_repair_candidate(&lane) {
 			continue;
 		}
 		if excluded_issue_ids.contains(&lane.issue_id.as_str()) {
@@ -290,11 +290,13 @@ pub(crate) fn post_review_lane_is_closeout_candidate(
 	lane: &OperatorPostReviewLaneStatus,
 	_completed_state: &str,
 ) -> bool {
-	lane.classification == "continue" && lane.reason == "pull_request_merged_closeout_pending"
+	PostReviewLaneDecision::from_str(&lane.classification) == Some(PostReviewLaneDecision::Continue)
+		&& lane.reason == "pull_request_merged_closeout_pending"
 }
 
 pub(crate) fn post_review_lane_is_repair_candidate(lane: &OperatorPostReviewLaneStatus) -> bool {
-	lane.classification == "needs_review_repair"
+	PostReviewLaneDecision::from_str(&lane.classification)
+		== Some(PostReviewLaneDecision::NeedsReviewRepair)
 }
 
 pub(crate) fn select_target_post_review_repair_issue_candidate_with_inspector<T, I>(

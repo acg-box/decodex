@@ -9,7 +9,9 @@ use crate::{
 	orchestrator::{
 		self, GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING, GHOST_LANE_NEXT_ACTION,
 		GHOST_LANE_OWNERSHIP_STATE, GHOST_LANE_POLICY_STATE, OperatorRunStatus,
-		OperatorStatusSnapshot, OperatorWorktreeStatus, status_ghost_lane_cleanup::conditions,
+		OperatorStatusSnapshot, OperatorWorktreeStatus,
+		kernel::state::{OwnershipState, PolicyState},
+		status_ghost_lane_cleanup::conditions,
 		status_ghost_lane_evidence, status_run_projection,
 	},
 	prelude::Result,
@@ -65,8 +67,8 @@ pub(crate) fn apply_missing_issue_ghost_lane_projection(
 			run.lane_control_next_action = String::from(GHOST_LANE_NEXT_ACTION);
 			run.needs_attention = true;
 		} else {
-			run.ownership_state = String::from("retained_attention");
-			run.policy_state = String::from("runtime_recovery_blocked");
+			run.ownership_state = String::from(OwnershipState::RetainedAttention.as_str());
+			run.policy_state = String::from(PolicyState::RuntimeRecoveryBlocked.as_str());
 			run.lane_control_next_action =
 				String::from("inspect_missing_issue_runtime_recovery_blockers");
 			run.needs_attention = true;
@@ -116,8 +118,8 @@ pub(in crate::orchestrator::status_ghost_lane_cleanup) fn apply_missing_issue_gh
 		run.policy_state = String::from(GHOST_LANE_POLICY_STATE);
 		run.lane_control_next_action = String::from(GHOST_LANE_NEXT_ACTION);
 	} else {
-		run.ownership_state = String::from("retained_attention");
-		run.policy_state = String::from("runtime_recovery_blocked");
+		run.ownership_state = String::from(OwnershipState::RetainedAttention.as_str());
+		run.policy_state = String::from(PolicyState::RuntimeRecoveryBlocked.as_str());
 		run.lane_control_next_action =
 			String::from("inspect_missing_issue_runtime_recovery_blockers");
 	}

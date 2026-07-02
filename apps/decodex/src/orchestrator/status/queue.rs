@@ -9,6 +9,31 @@ use super::{
 	ordinary_dispatch_blocked_by_retained_review_handoff, state_name_is_terminal,
 	todo_blocker_rule_passes, tracker,
 };
+use crate::orchestrator::kernel::command::{CommandFact, CommandIntent, CommandIntentKind};
+
+#[derive(Clone, Debug)]
+pub(in crate::orchestrator) struct QueuedCandidateStatusPlan {
+	pub(in crate::orchestrator) statuses: Vec<OperatorQueuedIssueStatus>,
+	pub(in crate::orchestrator) guardrail_commands: Vec<QueuedGuardrailCommand>,
+}
+
+#[derive(Clone, Debug)]
+pub(in crate::orchestrator) struct QueuedGuardrailCommand {
+	pub(in crate::orchestrator) intent: CommandIntent,
+	action: QueuedGuardrailCommandAction,
+	issue: TrackerIssue,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum QueuedGuardrailCommandAction {
+	ObserveDependencyProgramStale,
+	ClearDependencyProgramStale,
+}
+
+struct QueuedIssueStatusOutcome {
+	status: OperatorQueuedIssueStatus,
+	guardrail_command: Option<QueuedGuardrailCommand>,
+}
 
 pub(in crate::orchestrator) fn codex_account_activity_summaries(
 	project: &ServiceConfig,
@@ -48,6 +73,18 @@ pub(in crate::orchestrator) fn build_queued_candidate_statuses<T>(
 where
 	T: IssueTracker,
 {
+	Ok(build_queued_candidate_status_plan(tracker, project, workflow, state_store)?.statuses)
+}
+
+pub(in crate::orchestrator) fn build_queued_candidate_status_plan<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+) -> crate::prelude::Result<QueuedCandidateStatusPlan>
+where
+	T: IssueTracker,
+{
 	let queue_label = tracker::automation_queue_label(project.service_id());
 	let retained_post_review_issue_ids = state_store
 		.list_worktrees(project.service_id())?
@@ -59,18 +96,35 @@ where
 
 	issues.sort_by(compare_issue_candidates);
 
-	issues
-		.into_iter()
-		.filter(|issue| !is_terminal_issue(issue, workflow))
-		.filter(|issue| {
-			!queued_issue_is_retained_post_review_lane(
-				issue,
+	let mut statuses = Vec::new();
+	let mut guardrail_commands = Vec::new();
+
+	for issue in issues {
+		if is_terminal_issue(&issue, workflow)
+			|| queued_issue_is_retained_post_review_lane(
+				&issue,
 				success_state,
 				&retained_post_review_issue_ids,
-			)
-		})
-		.map(|issue| operator_queued_issue_status(tracker, project, workflow, state_store, issue))
-		.collect()
+			) {
+			continue;
+		}
+
+		let outcome = operator_queued_issue_status_with_commands(
+			tracker,
+			project,
+			workflow,
+			state_store,
+			issue,
+		)?;
+
+		if let Some(command) = outcome.guardrail_command {
+			guardrail_commands.push(command);
+		}
+
+		statuses.push(outcome.status);
+	}
+
+	Ok(QueuedCandidateStatusPlan { statuses, guardrail_commands })
 }
 
 pub(in crate::orchestrator) fn queued_issue_is_retained_post_review_lane(
@@ -81,6 +135,7 @@ pub(in crate::orchestrator) fn queued_issue_is_retained_post_review_lane(
 	issue.state.name == success_state && retained_post_review_issue_ids.contains(&issue.id)
 }
 
+#[allow(dead_code)]
 pub(in crate::orchestrator) fn operator_queued_issue_status<T>(
 	tracker: &T,
 	project: &ServiceConfig,
@@ -91,8 +146,22 @@ pub(in crate::orchestrator) fn operator_queued_issue_status<T>(
 where
 	T: IssueTracker,
 {
-	let (classification, reason) =
-		classify_queued_issue(tracker, project, workflow, state_store, &issue)?;
+	Ok(operator_queued_issue_status_with_commands(tracker, project, workflow, state_store, issue)?
+		.status)
+}
+
+fn operator_queued_issue_status_with_commands<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue: TrackerIssue,
+) -> crate::prelude::Result<QueuedIssueStatusOutcome>
+where
+	T: IssueTracker,
+{
+	let (classification, reason, guardrail_command) =
+		classify_queued_issue_with_command(tracker, project, workflow, state_store, &issue)?;
 	let blocker_identifiers = queued_issue_blocker_identifiers(&issue, workflow, reason);
 	let attention = operator_queued_issue_attention_status(
 		tracker,
@@ -103,19 +172,22 @@ where
 		reason,
 	)?;
 
-	Ok(OperatorQueuedIssueStatus {
-		project_id: project.service_id().to_owned(),
-		issue_id: issue.id,
-		issue_identifier: issue.identifier,
-		title: issue.title,
-		author: issue.author,
-		state: issue.state.name,
-		priority: issue.priority,
-		created_at: issue.created_at,
-		classification: classification.to_owned(),
-		reason: reason.to_owned(),
-		attention,
-		blocker_identifiers,
+	Ok(QueuedIssueStatusOutcome {
+		status: OperatorQueuedIssueStatus {
+			project_id: project.service_id().to_owned(),
+			issue_id: issue.id,
+			issue_identifier: issue.identifier,
+			title: issue.title,
+			author: issue.author,
+			state: issue.state.name,
+			priority: issue.priority,
+			created_at: issue.created_at,
+			classification: classification.to_owned(),
+			reason: reason.to_owned(),
+			attention,
+			blocker_identifiers,
+		},
+		guardrail_command,
 	})
 }
 
@@ -185,6 +257,116 @@ pub(in crate::orchestrator) fn dependency_blocker_fingerprint(
 	loop_guardrail_text_hash(&blockers.join("|"))
 }
 
+pub(in crate::orchestrator) fn apply_queued_candidate_guardrail_commands(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	commands: &[QueuedGuardrailCommand],
+) -> crate::prelude::Result<()> {
+	for command in commands {
+		match (command.action, command.intent.kind) {
+			(
+				QueuedGuardrailCommandAction::ObserveDependencyProgramStale,
+				CommandIntentKind::ObserveLoopGuardrailCheckpoint,
+			) => {
+				observe_dependency_program_stale_guardrail(
+					project,
+					workflow,
+					state_store,
+					&command.issue,
+				)?;
+			},
+			(
+				QueuedGuardrailCommandAction::ClearDependencyProgramStale,
+				CommandIntentKind::ClearLoopGuardrailCheckpoint,
+			) => {
+				state_store.clear_loop_guardrail_checkpoint(
+					project.service_id(),
+					&command.issue.id,
+					LoopGuardrailReason::DependencyProgramStale.error_class(),
+				)?;
+			},
+			_ => {
+				color_eyre::eyre::bail!(
+					"queued guardrail command action `{}` does not match intent `{}`",
+					match command.action {
+						QueuedGuardrailCommandAction::ObserveDependencyProgramStale =>
+							"observe_dependency_program_stale",
+						QueuedGuardrailCommandAction::ClearDependencyProgramStale =>
+							"clear_dependency_program_stale",
+					},
+					command.intent.kind.as_str()
+				);
+			},
+		}
+	}
+
+	Ok(())
+}
+
+fn current_dependency_program_stale_count(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+) -> crate::prelude::Result<i64> {
+	let blocker_fingerprint = dependency_blocker_fingerprint(issue, workflow);
+
+	Ok(state_store
+		.loop_guardrail_checkpoint(
+			project.service_id(),
+			&issue.id,
+			LoopGuardrailReason::DependencyProgramStale.error_class(),
+		)?
+		.filter(|checkpoint| checkpoint.fingerprint() == blocker_fingerprint)
+		.map_or(0, |checkpoint| checkpoint.consecutive_count()))
+}
+
+fn dependency_program_stale_checkpoint_exists(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+) -> crate::prelude::Result<bool> {
+	Ok(state_store
+		.loop_guardrail_checkpoint(
+			project.service_id(),
+			&issue.id,
+			LoopGuardrailReason::DependencyProgramStale.error_class(),
+		)?
+		.is_some())
+}
+
+fn observe_dependency_program_stale_guardrail_command(
+	issue: &TrackerIssue,
+) -> QueuedGuardrailCommand {
+	QueuedGuardrailCommand {
+		intent: CommandIntent::new(
+			CommandIntentKind::ObserveLoopGuardrailCheckpoint,
+			format!("{}:dependency_program_stale:observe", issue.id),
+			vec![CommandFact::OpenTrackerBlockersPresent],
+			vec![CommandFact::LoopGuardrailCheckpointObserved],
+		),
+		action: QueuedGuardrailCommandAction::ObserveDependencyProgramStale,
+		issue: issue.clone(),
+	}
+}
+
+fn clear_dependency_program_stale_guardrail_command(
+	issue: &TrackerIssue,
+) -> QueuedGuardrailCommand {
+	QueuedGuardrailCommand {
+		intent: CommandIntent::new(
+			CommandIntentKind::ClearLoopGuardrailCheckpoint,
+			format!("{}:dependency_program_stale:clear", issue.id),
+			vec![CommandFact::OpenTrackerBlockersResolved],
+			vec![CommandFact::LoopGuardrailCheckpointCleared],
+		),
+		action: QueuedGuardrailCommandAction::ClearDependencyProgramStale,
+		issue: issue.clone(),
+	}
+}
+
+#[allow(dead_code)]
 pub(in crate::orchestrator) fn classify_queued_issue<T>(
 	tracker: &T,
 	project: &ServiceConfig,
@@ -195,16 +377,32 @@ pub(in crate::orchestrator) fn classify_queued_issue<T>(
 where
 	T: IssueTracker,
 {
+	let (classification, reason, _command) =
+		classify_queued_issue_with_command(tracker, project, workflow, state_store, issue)?;
+
+	Ok((classification, reason))
+}
+
+fn classify_queued_issue_with_command<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+) -> crate::prelude::Result<(&'static str, &'static str, Option<QueuedGuardrailCommand>)>
+where
+	T: IssueTracker,
+{
 	let tracker_policy = workflow.frontmatter().tracker();
 
 	if tracker_policy.terminal_states().iter().any(|state| state == &issue.state.name) {
-		return Ok(("closed", "terminal_state"));
+		return Ok(("closed", "terminal_state", None));
 	}
 	if issue.has_label(tracker_policy.needs_attention_label()) {
-		return Ok(("blocked", "issue_needs_attention"));
+		return Ok(("blocked", "issue_needs_attention", None));
 	}
 	if state_store.issue_has_active_shared_claim(project.service_id(), &issue.id)? {
-		return Ok(("claimed", "shared_claim_present"));
+		return Ok(("claimed", "shared_claim_present", None));
 	}
 	if (issue.state.name == tracker_policy.in_progress_state()
 		|| tracker_policy.startable_states().iter().any(|state| state == &issue.state.name))
@@ -213,47 +411,49 @@ where
 			issue,
 			state_store,
 		)? {
-		return Ok(("blocked", ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON));
+		return Ok(("blocked", ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON, None));
 	}
 	if tracker::issue_has_label_with_server_confirmation(
 		tracker,
 		issue,
 		&tracker::automation_active_label(project.service_id()),
 	)? {
-		return Ok(("blocked", QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT));
+		return Ok(("blocked", QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT, None));
 	}
 	if !tracker_policy.startable_states().iter().any(|state| state == &issue.state.name) {
-		return Ok(("blocked", "non_startable_state"));
+		return Ok(("blocked", "non_startable_state", None));
 	}
 	if issue.has_label(tracker_policy.opt_out_label()) {
-		return Ok(("blocked", "issue_opted_out"));
+		return Ok(("blocked", "issue_opted_out", None));
 	}
 	if !todo_blocker_rule_passes(issue, workflow) {
-		let checkpoint =
-			observe_dependency_program_stale_guardrail(project, workflow, state_store, issue)?;
-		let reason = if checkpoint.consecutive_count() >= LOOP_GUARDRAIL_CONVERGENCE_BUDGET {
+		let checkpoint_count =
+			current_dependency_program_stale_count(project, workflow, state_store, issue)?;
+		let reason = if checkpoint_count >= LOOP_GUARDRAIL_CONVERGENCE_BUDGET {
 			LoopGuardrailReason::DependencyProgramStale.error_class()
 		} else {
 			"open_tracker_blockers"
 		};
 
-		return Ok(("blocked", reason));
+		return Ok((
+			"blocked",
+			reason,
+			Some(observe_dependency_program_stale_guardrail_command(issue)),
+		));
 	}
 
-	state_store.clear_loop_guardrail_checkpoint(
-		project.service_id(),
-		&issue.id,
-		LoopGuardrailReason::DependencyProgramStale.error_class(),
-	)?;
+	let clear_guardrail_command =
+		dependency_program_stale_checkpoint_exists(project, state_store, issue)?
+			.then(|| clear_dependency_program_stale_guardrail_command(issue));
 
 	if !issue_has_generic_dispatch_briefing(issue) {
-		return Ok(("blocked", "missing_dispatch_briefing"));
+		return Ok(("blocked", "missing_dispatch_briefing", clear_guardrail_command));
 	}
 	let queue_label = tracker::automation_queue_label(project.service_id());
 
 	if !issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, true)? {
-		return Ok(("blocked", "dispatch_policy_rejected"));
+		return Ok(("blocked", "dispatch_policy_rejected", clear_guardrail_command));
 	}
 
-	Ok(("ready", "eligible_for_dispatch"))
+	Ok(("ready", "eligible_for_dispatch", clear_guardrail_command))
 }
