@@ -1,5 +1,6 @@
-use records::REVIEW_HANDOFF_RECORD_TYPE;
-use records::ReviewHandoffRecord;
+use records::{REVIEW_HANDOFF_RECORD_TYPE, ReviewHandoffRecord};
+
+use crate::test_support;
 
 #[test]
 fn turn_completion_requires_explicit_terminal_finalize_after_review_handoff() {
@@ -74,8 +75,8 @@ fn review_handoff_reuses_same_head_clean_checkpoint_artifact_across_attempts() {
 			"reviewer": "independent_fresh_context",
 			"status": "clean",
 			"head_sha": sample_local_repo().head_oid,
-			"review_contract": handoff_review_contract_json(),
-			"checks": review_checks_json(),
+			"review_contract": review_policy::handoff_review_contract_json(),
+			"checks": review_policy::review_checks_json(),
 			"evidence": ["fresh reviewer read the issue contract, current diff, and HEAD"]
 		}),
 	);
@@ -147,10 +148,8 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/53"),
 	};
-	let inspector = FakePullRequestInspector::new(vec![
-		Ok(pull_request.clone()),
-		Ok(pull_request.clone()),
-	]);
+	let inspector =
+		FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request.clone())]);
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
 	let review_context = sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
@@ -196,9 +195,7 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 	assert!(checkpoint_response.success);
 	assert!(finalize_response.success);
 	assert_eq!(
-		bridge
-			.finalized_completion_disposition()
-			.expect("finalized disposition should resolve"),
+		bridge.finalized_completion_disposition().expect("finalized disposition should resolve"),
 		Some(RunCompletionDisposition::ReviewHandoff)
 	);
 
@@ -215,17 +212,13 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 			&& event.payload()["pr_url"] == "https://github.com/hack-ink/decodex/pull/53"
 	}));
 	assert!(events.iter().any(|event| {
-		event.event_type() == "terminal_finalize"
-			&& event.payload()["path"] == "review_handoff"
+		event.event_type() == "terminal_finalize" && event.payload()["path"] == "review_handoff"
 	}));
 
 	let handoff_marker = persisted_review_handoff_marker(&bridge, &issue, &review_context);
 
 	assert_eq!(handoff_marker.pr_url(), "https://github.com/hack-ink/decodex/pull/53");
-	assert_eq!(
-		handoff_marker.pr_head_oid(),
-		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6"
-	);
+	assert_eq!(handoff_marker.pr_head_oid(), "08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 }
 
 #[test]
@@ -244,10 +237,8 @@ fn terminal_finalize_rejects_review_handoff_when_existing_marker_points_at_diffe
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/53"),
 	};
-	let inspector = FakePullRequestInspector::new(vec![
-		Ok(pull_request.clone()),
-		Ok(pull_request.clone()),
-	]);
+	let inspector =
+		FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request.clone())]);
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
 	let review_context = sample_review_context_in(temp_dir.path());
@@ -947,10 +938,8 @@ fn review_handoff_writeback_replaces_private_summary_with_public_fallback() {
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/151"),
 	};
-	let inspector = FakePullRequestInspector::new(vec![
-		Ok(pull_request.clone()),
-		Ok(pull_request.clone()),
-	]);
+	let inspector =
+		FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request.clone())]);
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
 	let review_context = sample_review_context_in(temp_dir.path());
@@ -992,10 +981,7 @@ fn review_handoff_writeback_replaces_private_summary_with_public_fallback() {
 		record.summary.as_deref(),
 		Some("Implementation completed and the PR is ready for review.")
 	);
-	assert_eq!(
-		record.pr_url.as_deref(),
-		Some("https://github.com/hack-ink/decodex/pull/151")
-	);
+	assert_eq!(record.pr_url.as_deref(), Some("https://github.com/hack-ink/decodex/pull/151"));
 }
 
 #[test]
@@ -1014,16 +1000,13 @@ fn review_handoff_validation_failure_reports_recoverable_writeback_with_pr_url()
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/152"),
 	};
-	let inspector = FakePullRequestInspector::new(vec![
-		Ok(pull_request.clone()),
-		Ok(pull_request.clone()),
-	]);
+	let inspector =
+		FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request.clone())]);
 	let local_repo_inspector =
 		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
 	let mut review_context = sample_review_context_in(temp_dir.path());
 
-	review_context.worktree_path =
-		String::from("/Users/example/repo/.worktrees/PUB-618");
+	review_context.worktree_path = String::from("/Users/example/repo/.worktrees/PUB-618");
 
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
@@ -1054,10 +1037,7 @@ fn review_handoff_validation_failure_reports_recoverable_writeback_with_pr_url()
 		.downcast_ref::<ReviewHandoffWritebackFailed>()
 		.expect("validation failure should use dedicated writeback error type");
 
-	assert_eq!(
-		writeback_error.pr_url,
-		"https://github.com/hack-ink/decodex/pull/152"
-	);
+	assert_eq!(writeback_error.pr_url, "https://github.com/hack-ink/decodex/pull/152");
 	assert_eq!(writeback_error.success_state, "In Review");
 	assert!(writeback_error.source.contains("failed to prepare the tracker review handoff record"));
 	assert!(
@@ -1285,12 +1265,12 @@ fn parses_credentialed_https_github_remote() {
 	.expect("credentialed GitHub remote should parse");
 
 	assert_eq!(
-			repository,
-			super::RepositoryIdentity {
-				owner: String::from("hack-ink"),
-				name: String::from("decodex"),
-			}
-		);
+		repository,
+		super::RepositoryIdentity {
+			owner: String::from("hack-ink"),
+			name: String::from("decodex"),
+		}
+	);
 }
 
 #[test]
@@ -1454,7 +1434,7 @@ fn resolve_lane_default_branch_uses_cached_origin_head_without_reachable_remote(
 }
 
 fn run_git_for_handoff(cwd: &Path, args: &[&str]) {
-	let status = crate::test_support::hermetic_git_command()
+	let status = test_support::hermetic_git_command()
 		.arg("-C")
 		.arg(cwd)
 		.args(args)
