@@ -11,7 +11,8 @@ pub(super) fn operator_autonomy_signal_statuses(
 		.into_iter()
 		.map(|record| {
 			let signal = record.signal();
-			let (source_refs, source_refs_redacted) = status_autonomy::public_autonomy_refs(signal.source_refs());
+			let (source_refs, source_refs_redacted) =
+				status_autonomy::public_autonomy_refs(signal.source_refs());
 			let (primary_source_refs, primary_source_refs_redacted) =
 				status_autonomy::public_autonomy_refs(signal.primary_source_refs());
 			let (gaps, gaps_redacted) = status_autonomy::public_status_values(signal.gaps());

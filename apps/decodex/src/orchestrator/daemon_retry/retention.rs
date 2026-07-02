@@ -1,5 +1,4 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+#[allow(clippy::wildcard_imports)] use super::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::orchestrator::daemon_retry) enum RetryEntryRetentionDecision {
@@ -25,41 +24,42 @@ pub(in crate::orchestrator::daemon_retry) struct ChildExitRetrySchedule<'a> {
 	pub(in crate::orchestrator::daemon_retry) attempt: u32,
 }
 
-pub(in crate::orchestrator::daemon_retry) fn evaluate_post_review_retention_policy<T>(
+fn evaluate_post_review_retention_policy<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
-	dispatch_mode: IssueDispatchMode,
+	lifecycle: RetryEntryLifecycle,
 ) -> Result<RetryEntryRetentionDecision>
 where
 	T: IssueTracker + ?Sized,
 {
-	match dispatch_mode {
-		IssueDispatchMode::ReviewRepair => {
+	match lifecycle {
+		RetryEntryLifecycle::ReviewRepair =>
 			Ok(if issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)? {
 				RetryEntryRetentionDecision::Retain
 			} else {
 				RetryEntryRetentionDecision::Drop
-			})
-		},
-		IssueDispatchMode::Closeout => Ok(match evaluate_closeout_dispatch_policy_with_inspector(
-			tracker,
-			issue,
-			project,
-			workflow,
-			state_store,
-			&GhPullRequestReviewStateInspector {
-				github_token_env_var: Some(project.github().token_env_var().to_owned()),
-				github_command_path: project.github().command_path().map(Path::to_path_buf),
+			}),
+		RetryEntryLifecycle::Closeout => Ok(
+			match evaluate_closeout_dispatch_policy_with_inspector(
+				tracker,
+				issue,
+				project,
+				workflow,
+				state_store,
+				&GhPullRequestReviewStateInspector {
+					github_token_env_var: Some(project.github().token_env_var().to_owned()),
+					github_command_path: project.github().command_path().map(Path::to_path_buf),
+				},
+			)? {
+				CloseoutDispatchEligibility::Eligible => RetryEntryRetentionDecision::Retain,
+				CloseoutDispatchEligibility::Ineligible => RetryEntryRetentionDecision::Drop,
+				CloseoutDispatchEligibility::Blocked(_) => RetryEntryRetentionDecision::Block,
 			},
-		)? {
-			CloseoutDispatchEligibility::Eligible => RetryEntryRetentionDecision::Retain,
-			CloseoutDispatchEligibility::Ineligible => RetryEntryRetentionDecision::Drop,
-			CloseoutDispatchEligibility::Blocked(_) => RetryEntryRetentionDecision::Block,
-		}),
-		_ => Ok(RetryEntryRetentionDecision::Drop),
+		),
+		RetryEntryLifecycle::Active => Ok(RetryEntryRetentionDecision::Drop),
 	}
 }
 
@@ -78,9 +78,8 @@ where
 		return Ok(RetryEntryRetentionDecision::Drop);
 	}
 
-	if matches!(entry.dispatch_mode, IssueDispatchMode::ReviewRepair | IssueDispatchMode::Closeout)
-	{
-		if entry.dispatch_mode == IssueDispatchMode::ReviewRepair
+	if entry.lifecycle != RetryEntryLifecycle::Active {
+		if entry.lifecycle == RetryEntryLifecycle::ReviewRepair
 			&& issue_retry_budget_exhausted(workflow, state_store, &issue.id)?
 		{
 			return Ok(RetryEntryRetentionDecision::Drop);
@@ -92,7 +91,7 @@ where
 			project,
 			workflow,
 			state_store,
-			entry.dispatch_mode,
+			entry.lifecycle,
 		);
 	}
 
@@ -154,7 +153,7 @@ pub(in crate::orchestrator::daemon_retry) fn child_exit_retry_retention_decision
 	context: &ChildExitRetryContext<'_, T>,
 	issue: &TrackerIssue,
 	initial_issue_state: &str,
-	dispatch_mode: IssueDispatchMode,
+	lifecycle: RetryEntryLifecycle,
 	continuation_pending: bool,
 ) -> Result<RetryEntryRetentionDecision>
 where
@@ -164,14 +163,14 @@ where
 		return Ok(RetryEntryRetentionDecision::Drop);
 	}
 
-	if matches!(dispatch_mode, IssueDispatchMode::ReviewRepair | IssueDispatchMode::Closeout) {
+	if lifecycle != RetryEntryLifecycle::Active {
 		return evaluate_post_review_retention_policy(
 			context.tracker,
 			issue,
 			context.project,
 			context.workflow,
 			context.state_store,
-			dispatch_mode,
+			lifecycle,
 		);
 	}
 

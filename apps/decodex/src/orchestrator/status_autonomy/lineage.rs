@@ -3,8 +3,7 @@ use std::collections::BTreeSet;
 use crate::{
 	orchestrator::{
 		OperatorAutonomyDecisionContractStatus, OperatorAutonomyLineageStatus,
-		OperatorAutonomyProgramIntakeStatus, status_autonomy,
-		status_autonomy::evidence,
+		OperatorAutonomyProgramIntakeStatus, status_autonomy, status_autonomy::evidence,
 	},
 	state::ProjectLoopEvidenceSnapshot,
 };
@@ -51,7 +50,9 @@ pub(super) fn operator_autonomy_lineage_statuses(
 								.source_contract_id()
 								.unwrap_or("none")
 								.to_owned(),
-							public_summary: status_autonomy::public_or_redacted_status_value(plan.public_summary()),
+							public_summary: status_autonomy::public_or_redacted_status_value(
+								plan.public_summary(),
+							),
 							updated_at: plan.updated_at().to_owned(),
 						})
 						.collect::<Vec<_>>()
@@ -91,7 +92,8 @@ pub(super) fn operator_autonomy_lineage_statuses(
 				);
 			}
 
-			let (proposal_gaps, proposal_gaps_redacted) = status_autonomy::public_status_values(proposal.gaps());
+			let (proposal_gaps, proposal_gaps_redacted) =
+				status_autonomy::public_status_values(proposal.gaps());
 
 			known_gaps.extend(proposal_gaps);
 

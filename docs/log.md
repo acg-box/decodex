@@ -1,7 +1,20 @@
 # Documentation Log
 
+## 2026-07-02
+
+- Synchronized Decodex agent-facing skills with the orchestration-kernel cutover:
+  runtime lifecycle work now routes to the kernel runbook/specs, treats readbacks as
+  projections, and requires mutating lifecycle work to follow typed command intents
+  or an owning recovery runbook.
+
 ## 2026-07-01
 
+- Added the orchestration-kernel cutover runbook to track the direct refactor from
+  scattered lifecycle decisions to a single typed runtime kernel, including
+  checkpoint, subagent-review, and validation gates.
+- Updated the lane-control state spec for kernel-owned typed projections, runtime
+  ghost/continuation states, and the architecture-recovery boundary as policy detail
+  rather than a seventh owned-lane action class.
 - Added a privacy-safe Codex app automation installer so checked-in Decodex/Radar
   automation manifests and prompts can be audited, versioned, and installed on a new
   machine without committing live `$CODEX_HOME` config, absolute checkout paths, auth

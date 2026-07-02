@@ -1,9 +1,9 @@
-use crate::state::runtime_row_parsers;
 use crate::{
 	prelude::Result,
 	state::{
 		LoopGuardrailCheckpoint, LoopGuardrailCheckpointInput, StateStore,
 		runtime_records::{LoopGuardrailKey, LoopGuardrailRuntimeRecord},
+		runtime_row_parsers,
 	},
 };
 
@@ -44,7 +44,6 @@ impl StateStore {
 	}
 
 	/// Read one loop-guardrail checkpoint by project, issue, and reason.
-	#[cfg(test)]
 	pub(crate) fn loop_guardrail_checkpoint(
 		&self,
 		project_id: &str,

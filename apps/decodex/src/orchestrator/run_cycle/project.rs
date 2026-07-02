@@ -198,7 +198,7 @@ where
 		return Ok(Some(candidate));
 	}
 
-	let issues = queued_issues_for_dispatch(tracker, project, workflow, dry_run)?;
+	let issues = queued_issues_for_dispatch(tracker, project, workflow, state_store, dry_run)?;
 
 	Ok(select_issue_candidate_with_exclusions(
 		tracker,
@@ -234,6 +234,7 @@ fn queued_issues_for_dispatch<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
+	state_store: &StateStore,
 	dry_run: bool,
 ) -> Result<Vec<TrackerIssue>>
 where
@@ -241,13 +242,26 @@ where
 {
 	let queue_label = tracker::automation_queue_label(project.service_id());
 
-	clear_terminal_queued_lane_labels(
+	let issues = clear_terminal_queued_lane_labels(
 		tracker,
 		project,
 		workflow,
 		tracker.list_issues_with_label(&queue_label)?,
 		dry_run,
-	)
+	)?;
+
+	if !dry_run {
+		let plan = build_queued_candidate_status_plan(tracker, project, workflow, state_store)?;
+
+		apply_queued_candidate_guardrail_commands(
+			project,
+			workflow,
+			state_store,
+			&plan.guardrail_commands,
+		)?;
+	}
+
+	Ok(issues)
 }
 
 fn clear_terminal_queued_lane_labels<T>(

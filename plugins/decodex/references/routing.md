@@ -23,6 +23,9 @@ Use when Decodex work crosses research, planning, ops, commit, or landing.
 - This repo: `README.md`, `docs/index.md`, `docs/policy.md`, `Makefile.toml`.
 - Projects: `project.toml` and `WORKFLOW.md`.
 - Runtime: `docs/spec/` and `docs/runbook/`.
+- Orchestration lifecycle: `docs/runbook/orchestration-kernel-cutover.md`,
+  `docs/spec/owned-lane-policy.md`, `docs/spec/lane-control-state.md`, and
+  `docs/spec/post-review-lifecycle.md`.
 
 ## Boundaries
 
@@ -34,6 +37,9 @@ Use when Decodex work crosses research, planning, ops, commit, or landing.
   workflow, terminal-state, dependency, opt-out, and active-lease checks.
 - `decodex:active:<service-id>` is runtime ownership, not "please start work";
   `decodex:manual-only` opts out; `decodex:needs-attention` stops automation.
+- Lane lifecycle policy belongs to the typed orchestration kernel. Scheduler, retry,
+  post-review, queue, status, dashboard, MCP, and tracker surfaces are fact
+  collectors, command-intent executors, or compatibility projections after cutover.
 - Use `decodex commit` for human-driven commits and `decodex land` for PR landing;
   diagnose missing review handoff before rebind/adopt recovery.
 - MCP is a typed facade, not a bypass. Non-loopback Streamable HTTP requires origin

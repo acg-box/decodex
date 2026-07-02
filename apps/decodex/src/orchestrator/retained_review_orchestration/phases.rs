@@ -105,17 +105,21 @@ where
 	)
 	.is_some()
 	{
-		return write_retained_review_orchestration_marker(
+		return write_retained_review_orchestration_marker_for_command(
 			state_store,
 			lane,
+			CommandIntentKind::StartReviewRepair,
+			"non_github_review_repair_required",
 			ReviewOrchestrationPhase::RepairRequired,
 			RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
 		);
 	}
 	if review_state_landing_requires_agent_fallback(&lane.review_state) {
-		return write_retained_review_orchestration_marker(
+		return write_retained_review_orchestration_marker_for_command(
 			state_store,
 			lane,
+			CommandIntentKind::StartReviewRepair,
+			"retained_landing_agent_fallback_required",
 			ReviewOrchestrationPhase::RepairRequired,
 			RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
 		);
@@ -137,6 +141,7 @@ where
 		&mut runtime,
 		lane,
 		RetainedAdminMergeReasons {
+			start_landing: "non_github_review_ready_to_land",
 			admin_merge_unavailable: "non_github_review_admin_merge_unavailable",
 			admin_merge_failed: "non_github_review_admin_merge_failed",
 		},
@@ -153,27 +158,30 @@ fn handle_request_pending_phase(
 		ExternalReviewRequestCiGate::Ready => {},
 		ExternalReviewRequestCiGate::WaitForGreenChecks => return Ok(()),
 		ExternalReviewRequestCiGate::RepairRequired => {
-			return write_retained_review_orchestration_marker(
+			return write_retained_review_orchestration_marker_for_command(
 				state_store,
 				lane,
+				CommandIntentKind::StartReviewRepair,
+				"external_review_request_ci_red_repair_required",
 				ReviewOrchestrationPhase::RepairRequired,
 				RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
 			);
 		},
 	}
 
-	let github_token = retained_review_github_token(project, github_token)?;
-	let (comment_id, created_at_unix_epoch) = github::post_pull_request_issue_comment(
-		lane.snapshot.worktree.worktree_path(),
-		lane.review_state.url.as_str(),
-		EXTERNAL_REVIEW_REQUEST_BODY,
+	let (comment_id, created_at_unix_epoch) = post_external_review_request_for_command(
+		project,
+		lane,
 		github_token,
-		project.github().command_path(),
+		CommandIntentKind::RequestExternalReview,
+		"external_review_request_pending",
 	)?;
 
-	write_retained_review_orchestration_marker(
+	write_retained_review_orchestration_marker_for_command(
 		state_store,
 		lane,
+		CommandIntentKind::RequestExternalReview,
+		"external_review_request_pending",
 		ReviewOrchestrationPhase::WaitingForAck,
 		RetainedReviewOrchestrationMarkerFields {
 			request_comment_database_id: Some(comment_id),
@@ -197,9 +205,11 @@ where
 	T: IssueTracker,
 {
 	if request_comment_has_eyes(&lane.review_state, &lane.orchestration_marker).unwrap_or(false) {
-		return write_retained_review_orchestration_marker(
+		return write_retained_review_orchestration_marker_for_command(
 			state_store,
 			lane,
+			CommandIntentKind::ProbeExternalReviewAcknowledgement,
+			"external_review_acknowledged",
 			ReviewOrchestrationPhase::WaitingForResult,
 			RetainedReviewOrchestrationMarkerFields {
 				..RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker)
@@ -217,18 +227,19 @@ where
 		return Ok(());
 	}
 	if lane.orchestration_marker.request_retry_count() == 0 {
-		let github_token = retained_review_github_token(project, github_token)?;
-		let (comment_id, created_at_unix_epoch) = github::post_pull_request_issue_comment(
-			lane.snapshot.worktree.worktree_path(),
-			lane.review_state.url.as_str(),
-			EXTERNAL_REVIEW_REQUEST_BODY,
+		let (comment_id, created_at_unix_epoch) = post_external_review_request_for_command(
+			project,
+			lane,
 			github_token,
-			project.github().command_path(),
+			CommandIntentKind::ResendExternalReviewRequest,
+			"external_review_ack_pending",
 		)?;
 
-		return write_retained_review_orchestration_marker(
+		return write_retained_review_orchestration_marker_for_command(
 			state_store,
 			lane,
+			CommandIntentKind::ResendExternalReviewRequest,
+			"external_review_ack_pending",
 			ReviewOrchestrationPhase::WaitingForAck,
 			RetainedReviewOrchestrationMarkerFields {
 				request_comment_database_id: Some(comment_id),
@@ -257,9 +268,11 @@ where
 	T: IssueTracker,
 {
 	if external_review_requires_repair(&lane.review_state, &lane.orchestration_marker) {
-		return write_retained_review_orchestration_marker(
+		return write_retained_review_orchestration_marker_for_command(
 			runtime.state_store,
 			lane,
+			CommandIntentKind::StartReviewRepair,
+			"external_review_feedback_pending_repair",
 			ReviewOrchestrationPhase::RepairRequired,
 			RetainedReviewOrchestrationMarkerFields {
 				external_round_count: lane
@@ -279,9 +292,11 @@ where
 	)
 	.is_some()
 	{
-		return write_retained_review_orchestration_marker(
+		return write_retained_review_orchestration_marker_for_command(
 			runtime.state_store,
 			lane,
+			CommandIntentKind::StartReviewRepair,
+			"required_checks_or_merge_state_repair_required",
 			ReviewOrchestrationPhase::RepairRequired,
 			RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
 		);
@@ -292,23 +307,28 @@ where
 				runtime,
 				lane,
 				RetainedAdminMergeReasons {
+					start_landing: "external_review_passed_strict",
 					admin_merge_unavailable: "external_review_admin_merge_unavailable",
 					admin_merge_failed: "external_review_admin_merge_failed",
 				},
 			);
 		}
 		if review_state_landing_requires_agent_fallback(&lane.review_state) {
-			return write_retained_review_orchestration_marker(
+			return write_retained_review_orchestration_marker_for_command(
 				runtime.state_store,
 				lane,
+				CommandIntentKind::StartReviewRepair,
+				"retained_landing_agent_fallback_required",
 				ReviewOrchestrationPhase::RepairRequired,
 				RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
 			);
 		}
 		if phase == ReviewOrchestrationPhase::WaitingForResult {
-			return write_retained_review_orchestration_marker(
+			return write_retained_review_orchestration_marker_for_command(
 				runtime.state_store,
 				lane,
+				CommandIntentKind::WaitExternal,
+				"external_review_passed_waiting_for_gates",
 				ReviewOrchestrationPhase::PassWaitingForGates,
 				RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
 			);
@@ -368,5 +388,24 @@ where
 		&lane.snapshot.worktree,
 		&lane.orchestration_marker,
 		timeout_reason,
+	)
+}
+
+fn post_external_review_request_for_command(
+	project: &ServiceConfig,
+	lane: &RetainedReviewLane,
+	github_token: &mut Option<String>,
+	kind: CommandIntentKind,
+	reason: &str,
+) -> Result<(i64, i64)> {
+	retained_review_command_adapter(retained_review_command_intent(lane, kind, reason), kind)?;
+	let github_token = retained_review_github_token(project, github_token)?;
+
+	github::post_pull_request_issue_comment(
+		lane.snapshot.worktree.worktree_path(),
+		lane.review_state.url.as_str(),
+		EXTERNAL_REVIEW_REQUEST_BODY,
+		github_token,
+		project.github().command_path(),
 	)
 }
