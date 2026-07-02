@@ -1,15 +1,16 @@
 use serde_json::Value;
 
-use super::super::{PrivateEvidenceRepoGateFailureSummary, state};
+use crate::orchestrator::PrivateExecutionEvent;
+use crate::orchestrator::agent_evidence::PrivateEvidenceRepoGateFailureSummary;
 
 pub(super) fn repo_gate_failures_from_private_events(
-	events: &[state::PrivateExecutionEvent],
+	events: &[PrivateExecutionEvent],
 ) -> Vec<PrivateEvidenceRepoGateFailureSummary> {
 	events.iter().filter_map(repo_gate_failure_from_private_event).collect()
 }
 
 fn repo_gate_failure_from_private_event(
-	event: &state::PrivateExecutionEvent,
+	event: &PrivateExecutionEvent,
 ) -> Option<PrivateEvidenceRepoGateFailureSummary> {
 	if event.event_type() != "phase_goal_transition" {
 		return None;
