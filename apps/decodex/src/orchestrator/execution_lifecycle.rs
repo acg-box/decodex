@@ -1,20 +1,23 @@
-struct TerminalFailureLifecycle<'a> {
-	error_class: &'a str,
-	next_action: &'a str,
-	pr_url: Option<&'a str>,
-	target_state: &'a str,
-	worktree_path: &'a str,
-	manual_attention_requested: bool,
-	retained_source_error_class: Option<&'a str>,
+use crate::orchestrator::*;
+use crate::tracker;
+
+pub(in crate::orchestrator) struct TerminalFailureLifecycle<'a> {
+	pub(in crate::orchestrator) error_class: &'a str,
+	pub(in crate::orchestrator) next_action: &'a str,
+	pub(in crate::orchestrator) pr_url: Option<&'a str>,
+	pub(in crate::orchestrator) target_state: &'a str,
+	pub(in crate::orchestrator) worktree_path: &'a str,
+	pub(in crate::orchestrator) manual_attention_requested: bool,
+	pub(in crate::orchestrator) retained_source_error_class: Option<&'a str>,
 }
 
-struct RunStartedLifecycleFields<'a> {
-	worktree_path: &'a str,
-	commit_sha: &'a str,
-	privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
+pub(in crate::orchestrator) struct RunStartedLifecycleFields<'a> {
+	pub(in crate::orchestrator) worktree_path: &'a str,
+	pub(in crate::orchestrator) commit_sha: &'a str,
+	pub(in crate::orchestrator) privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
 }
 
-fn lifecycle_event_identity<'a>(
+pub(in crate::orchestrator) fn lifecycle_event_identity<'a>(
 	project: &'a ServiceConfig,
 	issue_run: &'a IssueRunPlan,
 ) -> records::LinearExecutionEventIdentity<'a> {
@@ -27,7 +30,7 @@ fn lifecycle_event_identity<'a>(
 	}
 }
 
-fn write_lifecycle_event<T>(
+pub(in crate::orchestrator) fn write_lifecycle_event<T>(
 	tracker: &T,
 	state_store: &StateStore,
 	issue_id: &str,
@@ -60,7 +63,7 @@ where
 	Ok(())
 }
 
-fn write_prepare_lifecycle_events<T>(
+pub(in crate::orchestrator) fn write_prepare_lifecycle_events<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -94,7 +97,7 @@ where
 	)
 }
 
-fn write_run_started_lifecycle_event<T>(
+pub(in crate::orchestrator) fn write_run_started_lifecycle_event<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -135,7 +138,7 @@ where
 	)
 }
 
-fn terminal_failure_lifecycle_event(
+pub(in crate::orchestrator) fn terminal_failure_lifecycle_event(
 	service_id: &str,
 	issue_run: &IssueRunPlan,
 	failure: TerminalFailureLifecycle<'_>,
@@ -204,7 +207,7 @@ fn terminal_failure_lifecycle_event(
 	record
 }
 
-fn write_cleanup_complete_lifecycle_event<T>(
+pub(in crate::orchestrator) fn write_cleanup_complete_lifecycle_event<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	state_store: &StateStore,
