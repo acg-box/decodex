@@ -292,10 +292,10 @@ pub(crate) use types::{
 	PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewStateResponse,
 	PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode,
 	PullRequestStatusCheckRollup, RecoverableWorktreeSkipCache, RecoveredRuntimeState,
-	RetainedPartialProgress, RetainedReviewLaneBlocked, RetainedReviewLaneLoad,
-	RetainedReviewNeedsAttention, RetainedReviewRunIdentity, RetryDispatchDecision, RetryEntry,
-	RetryIssueStateHint, RetryKind, RetryQueue, ReviewHandoffNeedsAttention,
-	ReviewOrchestrationPhase, RunCycleRequest, RunLeaseDisposition, RunLeaseReconciliation,
+		RetainedPartialProgress, RetainedReviewLaneBlocked, RetainedReviewLaneLoad,
+		RetainedReviewNeedsAttention, RetainedReviewRunIdentity, RetryDispatchDecision, RetryEntry,
+		RetryEntryLifecycle, RetryIssueStateHint, RetryKind, RetryQueue, ReviewHandoffNeedsAttention,
+		ReviewOrchestrationPhase, RunCycleRequest, RunLeaseDisposition, RunLeaseReconciliation,
 	RunOnceRequest, RunSummary, SelectedIssueRunCandidate, ServeRequest, SpawnRunOnceChildRequest,
 	StalledRunNeedsAttention, TargetIssueRunContext, TerminalFailureOutcome,
 	TrackerConnectorBackoff, classify_pull_request_readback_report,
@@ -471,7 +471,6 @@ use harness_improvement::{HarnessOutcomeKind, record_harness_outcome_best_effort
 use harness_improvement::{HarnessOutcomeRecordInput, record_harness_outcome_for_issue_run};
 use lane_decision::{
 	LaneDecisionSnapshot, LaneNextAction, decide_lane_next_action,
-	lane_decision_blocks_automatic_execution,
 };
 #[allow(clippy::wildcard_imports)]
 #[allow(unused_imports)]
@@ -535,8 +534,7 @@ use status_summary::{
 	hydrate_post_review_lane_current_lane_shadowing, operator_issue_attention_key,
 	operator_run_counts_as_attention, operator_run_counts_as_current_lane,
 	operator_run_counts_as_running, operator_run_counts_as_waiting,
-	operator_run_has_fresh_execution, operator_run_has_live_execution,
-	operator_run_has_recent_app_server_execution, operator_run_needs_attention,
+	operator_run_has_live_execution, operator_run_has_recent_app_server_execution,
 	project_attention_count, project_history_only_attention_count,
 	queued_candidate_counts_as_waiting_intake, refresh_operator_project_summary,
 };
