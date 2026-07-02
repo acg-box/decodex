@@ -27,7 +27,8 @@ pub(crate) use lane_control::{
 	print_lane_inspect, steer_lane,
 };
 
-#[cfg(unix)] use std::os::fd::AsRawFd;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::{
 	cmp::Ordering,
 	collections::{BTreeSet, HashMap, HashSet},
@@ -68,7 +69,8 @@ use crate::{agent::{RUN_LEASE_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure,
 use execution_architecture_recovery::{
 	architecture_recovery_retry_next_action, loop_guardrail_architecture_recovery_decision,
 };
-#[cfg(test)] use execution_closeout::ensure_closeout_issue_completed_state;
+#[cfg(test)]
+use execution_closeout::ensure_closeout_issue_completed_state;
 use execution_closeout::execute_deterministic_closeout;
 use execution_failure::{
 	ARCHITECTURE_RECOVERY_BUDGET, ARCHITECTURE_RECOVERY_RETRY_KIND,
@@ -89,7 +91,8 @@ use execution_failure::{
 	promote_zero_evidence_app_server_start_failure, retry_budget_attempts_for_current_failure,
 	write_retry_schedule_marker_for_runtime_retry,
 };
-#[cfg(test)] use execution_phase_goal::RepoGatePhaseGoalController;
+#[cfg(test)]
+use execution_phase_goal::RepoGatePhaseGoalController;
 use execution_phase_goal::{
 	PhaseAcceptanceCheckFailure, PhaseGoalRecoveryContinuation, build_phase_goal_controller,
 	issue_has_blocking_lane_decision_evidence, latest_open_issue_phase_goal_before_attempt,
@@ -300,7 +303,8 @@ pub(crate) use run_cycle_reconciliation::{
 };
 
 mod daemon_retry;
-#[cfg(test)] pub(crate) use daemon_retry::schedule_retry_after_child_exit;
+#[cfg(test)]
+pub(crate) use daemon_retry::schedule_retry_after_child_exit;
 pub(crate) use daemon_retry::{retry_delay, write_retry_schedule_for_run};
 
 mod daemon;
@@ -383,12 +387,12 @@ pub(in crate::orchestrator) use dispatch_policy::{
 	closeout_dispatch_block_reason, evaluate_closeout_dispatch_policy_with_inspector,
 	is_issue_eligible, is_issue_in_progress_for_run,
 	is_issue_not_dispatchable_for_current_dispatch, is_terminal_issue, issue_has_service_ownership,
-	issue_passes_closeout_dispatch_policy, issue_passes_dispatch_policy,
-	issue_passes_retry_dispatch_policy, issue_passes_retry_retention_policy,
-	issue_passes_review_repair_dispatch_policy, issue_retry_budget_exhausted,
-	issue_retry_budget_exhausted_for_worktree, mark_run_attempt_if_active,
-	ordinary_dispatch_blocked_by_retained_review_handoff, refresh_issue,
-	render_issue_description_for_prompt, retry_budget_base_for_dispatch_mode,
+	issue_passes_closeout_dispatch_policy, issue_passes_current_dispatch_policy,
+	issue_passes_dispatch_policy, issue_passes_retry_dispatch_policy,
+	issue_passes_retry_retention_policy, issue_passes_review_repair_dispatch_policy,
+	issue_retry_budget_exhausted, issue_retry_budget_exhausted_for_worktree,
+	mark_run_attempt_if_active, ordinary_dispatch_blocked_by_retained_review_handoff,
+	refresh_issue, render_issue_description_for_prompt, retry_budget_base_for_dispatch_mode,
 	retry_budget_base_for_issue_worktree, state_name_is_terminal, todo_blocker_rule_passes,
 	write_retry_budget_marker, write_terminal_guard_marker,
 };
@@ -428,7 +432,8 @@ pub(crate) use status_render::{render_operator_status, render_queue_explain};
 include!("orchestrator/selection.rs");
 
 mod agent_evidence;
-#[cfg(test)] use agent_evidence::PrivateEvidenceReadback;
+#[cfg(test)]
+use agent_evidence::PrivateEvidenceReadback;
 use agent_evidence::{
 	AgentEvidenceSource, AgentPrivateEvidenceRef, build_private_evidence_readback,
 	private_evidence_ref_for_run_fields, render_agent_evidence_write_result,
@@ -601,4 +606,5 @@ query($owner: String!, $name: String!, $number: Int!, $commentsAfter: String) {
 }
 "#;
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

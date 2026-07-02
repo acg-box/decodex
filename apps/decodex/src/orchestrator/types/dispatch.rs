@@ -1,12 +1,6 @@
-use crate::tracker;
-
 use super::{
-	Duration, IssueTracker, PostReviewLaneClassification, PullRequestReviewState,
-	RetainedReviewLane, RetainedReviewLaneBlocked, RetainedReviewRunIdentity, RunSummary,
-	ServiceConfig, StateStore, TrackerIssue, WorkflowDocument,
-	issue_passes_closeout_dispatch_policy, issue_passes_dispatch_policy,
-	issue_passes_retry_dispatch_policy, issue_passes_review_repair_dispatch_policy,
-	issue_retry_budget_exhausted, ordinary_dispatch_blocked_by_retained_review_handoff,
+	Duration, PostReviewLaneClassification, PullRequestReviewState, RetainedReviewLane,
+	RetainedReviewLaneBlocked, RetainedReviewRunIdentity, RunSummary, TrackerIssue,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -25,58 +19,6 @@ impl IssueDispatchMode {
 			Self::Retry => "retry",
 			Self::ReviewRepair => "review_repair",
 			Self::Closeout => "closeout",
-		}
-	}
-
-	pub(crate) fn allows_issue(
-		self,
-		tracker: &dyn IssueTracker,
-		issue: &TrackerIssue,
-		project: &ServiceConfig,
-		workflow: &WorkflowDocument,
-		state_store: &StateStore,
-		hint: RetryIssueStateHint<'_>,
-	) -> crate::prelude::Result<bool> {
-		match self {
-			Self::Normal => {
-				let queue_label = tracker::automation_queue_label(project.service_id());
-
-				Ok(issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, false)?
-					&& !ordinary_dispatch_blocked_by_retained_review_handoff(
-						project.service_id(),
-						issue,
-						state_store,
-					)?)
-			},
-			Self::Program => {
-				let queue_label = tracker::automation_queue_label(project.service_id());
-
-				Ok(issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, true)?
-					&& !ordinary_dispatch_blocked_by_retained_review_handoff(
-						project.service_id(),
-						issue,
-						state_store,
-					)?)
-			},
-			Self::Retry => issue_passes_retry_dispatch_policy(
-				tracker,
-				issue,
-				project,
-				workflow,
-				state_store,
-				hint,
-			),
-			Self::ReviewRepair => {
-				Ok(issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?
-					&& !issue_retry_budget_exhausted(workflow, state_store, &issue.id)?)
-			},
-			Self::Closeout => issue_passes_closeout_dispatch_policy(
-				tracker,
-				issue,
-				project,
-				workflow,
-				state_store,
-			),
 		}
 	}
 }
