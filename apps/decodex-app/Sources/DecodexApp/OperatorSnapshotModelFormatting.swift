@@ -63,8 +63,8 @@ func formatOperatorCompactBytes(_ value: Int) -> String {
 	let units = ["B", "KiB", "MiB", "GiB"]
 	var amount = Double(max(0, value))
 	var unitIndex = 0
-	while amount >= 1024, unitIndex < units.count - 1 {
-		amount /= 1024
+	while amount >= 1_024, unitIndex < units.count - 1 {
+		amount /= 1_024
 		unitIndex += 1
 	}
 
