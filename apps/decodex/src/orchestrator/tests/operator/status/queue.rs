@@ -1,4 +1,5 @@
 use super::*;
+use crate::orchestrator::tests::recovery_terminal_support;
 
 #[test]
 fn live_operator_status_snapshot_includes_queued_candidates_with_dispatch_classification() {
@@ -1872,7 +1873,7 @@ fn live_operator_status_snapshot_recovers_shared_claims_for_fresh_status_store_i
 #[test]
 fn live_operator_status_snapshot_reconstructs_same_shared_view_for_fresh_state_stores() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
-	let active_issue = sample_active_issue("In Progress");
+	let active_issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let closed_issue = sample_issue_with_sort_fields(
 		"issue-closed",
 		"PUB-104",
