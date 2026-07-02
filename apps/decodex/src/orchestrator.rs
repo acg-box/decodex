@@ -70,6 +70,8 @@ pub(in crate::orchestrator) use self::constants::{
 	TRACKER_RATE_LIMIT_BACKOFF_SECS, TRACKER_RATE_LIMIT_WARNING,
 	TRACKER_TRANSIENT_TIMEOUT_BACKOFF_SECS, TRACKER_TRANSIENT_TIMEOUT_WARNING,
 };
+#[cfg(test)]
+pub(crate) use crate::agent::ISSUE_REVIEW_CHECKPOINT_TOOL_NAME;
 
 pub(crate) use self::{
 	constants::{
@@ -410,16 +412,16 @@ use crate::{
 	agent::{self, CodexAccountAuthFailure, CodexAccountPool, REVIEW_POLICY_CONVERGENCE_BUDGET},
 	default_branch_sync, git_credentials, runtime, state,
 	state::PrivateExecutionEvent,
-	tracker::{self, privacy_classifier::PublicProjectionPrivacyClassifier, public_text},
+	tracker::{self, privacy_classifier::PublicProjectionPrivacyClassifier},
 };
+#[allow(unused_imports)]
 #[rustfmt::skip]
-use crate::{agent::{RUN_LEASE_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerProcessEnv, AppServerRunRequest, AppServerRunResult, AppServerTransportFailure, AppServerTurnFailure, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, DecodexRunContext, DecodexToolBridge, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition, ReviewExecutionMode, ReviewHandoffContext, ReviewHandoffWritebackFailed, ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, TrackerToolBridge, TurnContinuationGuard}, config::{ReviewLevel, ServiceConfig}, execution_program::{ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary, ExecutionProgramReadinessContext, ExecutionWorkflowPolicy}, git_credentials::GitCredentialSource, github, prelude::{Result, eyre}, state::{ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary, ExecutionProgramRecord, LoopGuardrailCheckpoint, LoopGuardrailCheckpointInput, ProjectRegistration, ProjectRunStatus, ProtocolActivitySummary, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_GIT_CREDENTIALS, RUN_OPERATION_IDLE, RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, RUN_OPERATION_REVIEW_WRITEBACK, RUN_OPERATION_WAITING_EXTERNAL, ReviewHandoffMarker, ReviewOrchestrationMarker, RunActivityMarker, RunAttempt, StateStore, WorktreeMapping}, tracker::{IssueTracker, TrackerIssue, linear::LinearClient, records}, workflow::WorkflowDocument, worktree::{WorktreeManager, WorktreeSpec}};
+use crate::{agent::{RUN_LEASE_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerProcessEnv, AppServerRunRequest, AppServerRunResult, AppServerTransportFailure, AppServerTurnFailure, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, DecodexRunContext, DecodexToolBridge, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition, ReviewHandoffContext, ReviewHandoffWritebackFailed, ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, TrackerToolBridge, TurnContinuationGuard}, config::{ReviewLevel, ServiceConfig}, execution_program::{ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary, ExecutionProgramReadinessContext, ExecutionWorkflowPolicy}, git_credentials::GitCredentialSource, github, prelude::{Result, eyre}, state::{ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary, ExecutionProgramRecord, LoopGuardrailCheckpoint, LoopGuardrailCheckpointInput, ProjectRegistration, ProjectRunStatus, ProtocolActivitySummary, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_GIT_CREDENTIALS, RUN_OPERATION_IDLE, RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, RUN_OPERATION_REVIEW_WRITEBACK, RUN_OPERATION_WAITING_EXTERNAL, ReviewHandoffMarker, ReviewOrchestrationMarker, RunActivityMarker, RunAttempt, StateStore, WorktreeMapping}, tracker::{IssueTracker, TrackerIssue, linear::LinearClient, records}, workflow::WorkflowDocument, worktree::{WorktreeManager, WorktreeSpec}};
 use crate::tracker::records::LinearExecutionEventRecord;
 #[cfg(test)]
 use agent_evidence::PrivateEvidenceReadback;
 use agent_evidence::{
-	AgentEvidenceSource, AgentPrivateEvidenceRef, build_private_evidence_readback,
-	private_evidence_ref_for_run_fields, render_agent_evidence_write_result,
+	AgentEvidenceSource, AgentPrivateEvidenceRef, build_private_evidence_readback, render_agent_evidence_write_result,
 	render_private_evidence_readback, render_private_evidence_reference,
 	write_agent_evidence_best_effort, write_agent_evidence_snapshot,
 };
@@ -516,7 +518,7 @@ use status_models::{
 	RunIssueMetadataHydration, TrackerObserverOutcome, WorktreeOwnership,
 };
 use status_process_liveness::{
-	marker_process_is_alive, marker_process_liveness_for_marker, run_activity_idle_timeout,
+	marker_process_is_alive, marker_process_liveness_for_marker,
 	worktree_activity_marker_is_fresh,
 };
 use status_project_display::operator_project_display_name;
