@@ -1,59 +1,15 @@
-#[allow(clippy::wildcard_imports)] use super::*;
-
-fn write_retained_review_orchestration_marker(
-	state_store: &StateStore,
-	lane: &RetainedReviewLane,
-	command_intent: CommandIntent,
-	expected_kind: CommandIntentKind,
-	phase: ReviewOrchestrationPhase,
-	fields: RetainedReviewOrchestrationMarkerFields,
-) -> Result<()> {
-	retained_review_command_adapter(command_intent, expected_kind)?;
-	let local_head_oid =
-		lane.snapshot.local_head_oid.as_deref().ok_or_else(|| {
-			eyre::eyre!("Retained review orchestration requires a local lane HEAD.")
-		})?;
-	let marker = ReviewOrchestrationMarker::new(
-		lane.orchestration_marker.run_id().to_owned(),
-		lane.orchestration_marker.attempt_number(),
-		lane.snapshot.worktree.branch_name().to_owned(),
-		lane.review_state.url.clone(),
-		local_head_oid.to_owned(),
-		phase.as_str(),
-		fields.request_comment_database_id,
-		fields.request_created_at_unix_epoch,
-		None,
-		fields.request_retry_count,
-		fields.external_round_count,
-		fields.auto_merge_enabled_at_unix_epoch,
-	);
-
-	state_store.upsert_review_orchestration_marker(
-		lane.snapshot.worktree.project_id(),
-		&lane.snapshot.issue.id,
-		&marker,
-	)?;
-
-	Ok(())
-}
-
-pub(super) fn write_retained_review_orchestration_marker_for_command(
-	state_store: &StateStore,
-	lane: &RetainedReviewLane,
-	kind: CommandIntentKind,
-	reason: &str,
-	phase: ReviewOrchestrationPhase,
-	fields: RetainedReviewOrchestrationMarkerFields,
-) -> Result<()> {
-	write_retained_review_orchestration_marker(
-		state_store,
-		lane,
-		retained_review_command_intent(lane, kind, reason),
-		kind,
-		phase,
-		fields,
-	)
-}
+use crate::{
+	orchestrator::{
+		ReviewOrchestrationPhase,
+		kernel::command::{CommandIntent, CommandIntentKind},
+		retained_review_orchestration::{
+			RetainedReviewLane, command, model::RetainedReviewOrchestrationMarkerFields,
+		},
+	},
+	prelude::{Result, eyre},
+	state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore},
+	tracker::TrackerIssue,
+};
 
 pub(crate) fn ensure_review_orchestration_marker(
 	project_id: &str,
@@ -84,8 +40,8 @@ pub(crate) fn ensure_review_orchestration_marker(
 				None,
 			);
 
-			retained_review_command_adapter(
-				retained_review_command_intent_for_issue(
+			command::retained_review_command_adapter(
+				command::retained_review_command_intent_for_issue(
 					&issue.id,
 					Some(marker.run_id()),
 					CommandIntentKind::SyncReviewOrchestrationMarker,
@@ -131,8 +87,8 @@ pub(crate) fn ensure_review_orchestration_marker(
 		None,
 	);
 
-	retained_review_command_adapter(
-		retained_review_command_intent_for_issue(
+	command::retained_review_command_adapter(
+		command::retained_review_command_intent_for_issue(
 			&issue.id,
 			Some(review_handoff.run_id()),
 			CommandIntentKind::SyncReviewOrchestrationMarker,
@@ -144,4 +100,60 @@ pub(crate) fn ensure_review_orchestration_marker(
 	state_store.upsert_review_orchestration_marker(project_id, &issue.id, &marker)?;
 
 	Ok(marker)
+}
+
+pub(super) fn write_retained_review_orchestration_marker_for_command(
+	state_store: &StateStore,
+	lane: &RetainedReviewLane,
+	kind: CommandIntentKind,
+	reason: &str,
+	phase: ReviewOrchestrationPhase,
+	fields: RetainedReviewOrchestrationMarkerFields,
+) -> Result<()> {
+	write_retained_review_orchestration_marker(
+		state_store,
+		lane,
+		command::retained_review_command_intent(lane, kind, reason),
+		kind,
+		phase,
+		fields,
+	)
+}
+
+fn write_retained_review_orchestration_marker(
+	state_store: &StateStore,
+	lane: &RetainedReviewLane,
+	command_intent: CommandIntent,
+	expected_kind: CommandIntentKind,
+	phase: ReviewOrchestrationPhase,
+	fields: RetainedReviewOrchestrationMarkerFields,
+) -> Result<()> {
+	command::retained_review_command_adapter(command_intent, expected_kind)?;
+
+	let local_head_oid =
+		lane.snapshot.local_head_oid.as_deref().ok_or_else(|| {
+			eyre::eyre!("Retained review orchestration requires a local lane HEAD.")
+		})?;
+	let marker = ReviewOrchestrationMarker::new(
+		lane.orchestration_marker.run_id().to_owned(),
+		lane.orchestration_marker.attempt_number(),
+		lane.snapshot.worktree.branch_name().to_owned(),
+		lane.review_state.url.clone(),
+		local_head_oid.to_owned(),
+		phase.as_str(),
+		fields.request_comment_database_id,
+		fields.request_created_at_unix_epoch,
+		None,
+		fields.request_retry_count,
+		fields.external_round_count,
+		fields.auto_merge_enabled_at_unix_epoch,
+	);
+
+	state_store.upsert_review_orchestration_marker(
+		lane.snapshot.worktree.project_id(),
+		&lane.snapshot.issue.id,
+		&marker,
+	)?;
+
+	Ok(())
 }
