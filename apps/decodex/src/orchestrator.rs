@@ -329,7 +329,7 @@ pub(in crate::orchestrator) use self::{
 };
 #[allow(unused_imports)]
 pub(in crate::orchestrator) use self::{
-	entrypoints::{publish_operator_snapshot, write_cli_output},
+	entrypoints::output::{publish_operator_snapshot, write_cli_output},
 	operator_presentation::{
 		OPERATOR_PRESENTATION_SCHEMA, OperatorCurrentLaneCard, OperatorSnapshotPresentation,
 		insert_non_empty_operator_presentation_text, operator_current_lane_card,
