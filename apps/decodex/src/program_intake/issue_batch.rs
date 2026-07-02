@@ -1,7 +1,32 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	env,
+	path::{Path, PathBuf},
+};
 
-pub(super) fn resolve_intake_project_config_path(
+use sha2::{Digest, Sha256};
+
+use crate::{
+	config::ServiceConfig,
+	execution_program::{
+		ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionDependencySnapshot,
+		ExecutionDispatchAction, ExecutionLinearIssueMapping, ExecutionNodeEvaluation,
+		ExecutionProgramDependency, ExecutionProgramNode, ExecutionProgramNodeLifecycleState,
+		ExecutionProgramNodeStage, ExecutionQueueIntent,
+	},
+	orchestrator,
+	prelude::{Result, eyre},
+	program_intake::{
+		IssueBatchIntakeClassification, IssueBatchIntakeCounts, IssueBatchIntakeIssueReport,
+		model::IssueFacts,
+	},
+	runtime,
+	state::StateStore,
+	tracker::{self, IssueTracker, TrackerIssue},
+	workflow::WorkflowDocument,
+};
+
+pub(crate) fn resolve_intake_project_config_path(
 	config_path: Option<&Path>,
 	project_id: Option<&str>,
 	state_store: &StateStore,
@@ -30,7 +55,7 @@ pub(super) fn resolve_intake_project_config_path(
 	})
 }
 
-pub(super) fn register_intake_project_config_for_persist(
+pub(crate) fn register_intake_project_config_for_persist(
 	state_store: &StateStore,
 	config_path: &Path,
 	persist: bool,
