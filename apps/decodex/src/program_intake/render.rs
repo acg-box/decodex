@@ -1,11 +1,11 @@
 use crate::{
 	loop_contract::DecisionContract,
 	prelude::{Result, eyre},
+	program_intake::{
+		goal,
+		model::{GoalIntakeReport, GoalIssueBriefInput, IssueBatchIntakeReport},
+	},
 	tracker::public_text,
-};
-
-use super::{
-	GoalIntakeReport, GoalIssueBriefInput, IssueBatchIntakeReport, conflict_domain_labels,
 };
 
 /// Render a compact human-readable intake report.
@@ -75,6 +75,28 @@ pub(crate) fn render_goal_intake_report(report: &GoalIntakeReport) -> String {
 	output
 }
 
+pub(crate) fn validate_generated_issue_text(
+	title: &str,
+	description: &str,
+	private_identifiers: &[&str],
+) -> Result<()> {
+	public_text::validate_public_text_field("generated issue title", title)
+		.map_err(|error| eyre::eyre!(error))?;
+
+	ensure_no_generated_issue_private_identifier(
+		"generated issue title",
+		title,
+		private_identifiers,
+	)?;
+	validate_public_issue_description(description)?;
+
+	ensure_no_generated_issue_private_identifier(
+		"generated issue description",
+		description,
+		private_identifiers,
+	)
+}
+
 pub(super) fn render_goal_issue_brief(input: GoalIssueBriefInput<'_>) -> Result<String> {
 	let mut output = String::new();
 
@@ -119,9 +141,9 @@ pub(super) fn render_goal_issue_brief(input: GoalIssueBriefInput<'_>) -> Result<
 	append_heading(&mut output, "Dependencies");
 	append_items_or_none(&mut output, input.dependencies);
 	append_heading(&mut output, "Conflict Domains");
-	append_items_or_none(&mut output, &conflict_domain_labels(input.conflict_domains));
+	append_items_or_none(&mut output, &goal::conflict_domain_labels(input.conflict_domains));
 	append_heading(&mut output, "Current-tree Landing Zone");
-	append_items_or_none(&mut output, &conflict_domain_labels(input.conflict_domains));
+	append_items_or_none(&mut output, &goal::conflict_domain_labels(input.conflict_domains));
 	append_heading(&mut output, "Acceptance");
 	append_items(&mut output, input.acceptance);
 	append_heading(&mut output, "Validation");
@@ -143,6 +165,33 @@ pub(super) fn render_goal_issue_brief(input: GoalIssueBriefInput<'_>) -> Result<
 	validate_public_issue_description(&output)?;
 
 	Ok(output)
+}
+
+pub(super) fn generated_issue_private_identifiers(
+	contract: &DecisionContract,
+	program_id: &str,
+	node_id: &str,
+) -> Vec<String> {
+	let mut identifiers = vec![program_id.to_owned(), node_id.to_owned()];
+
+	identifiers.extend(contract.research_provenance().iter().filter_map(|provenance| {
+		if matches!(provenance.kind(), "autonomy_objective" | "autonomy_proposal") {
+			Some(provenance.reference().to_owned())
+		} else {
+			None
+		}
+	}));
+	identifiers.extend(contract.research_evidence().iter().filter_map(|evidence| {
+		if evidence.kind().starts_with("autonomy_signal:") {
+			evidence.source_ref().map(str::to_owned)
+		} else {
+			None
+		}
+	}));
+	identifiers.sort();
+	identifiers.dedup();
+
+	identifiers
 }
 
 fn append_heading(output: &mut String, heading: &str) {
@@ -181,28 +230,6 @@ fn append_items_or_none(output: &mut String, items: &[String]) {
 	}
 }
 
-pub(super) fn validate_generated_issue_text(
-	title: &str,
-	description: &str,
-	private_identifiers: &[&str],
-) -> Result<()> {
-	public_text::validate_public_text_field("generated issue title", title)
-		.map_err(|error| eyre::eyre!(error))?;
-
-	ensure_no_generated_issue_private_identifier(
-		"generated issue title",
-		title,
-		private_identifiers,
-	)?;
-	validate_public_issue_description(description)?;
-
-	ensure_no_generated_issue_private_identifier(
-		"generated issue description",
-		description,
-		private_identifiers,
-	)
-}
-
 fn validate_public_issue_description(description: &str) -> Result<()> {
 	public_text::validate_public_text_field("generated issue description", description)
 		.map_err(|error| eyre::eyre!(error))
@@ -220,33 +247,6 @@ fn ensure_no_generated_issue_private_identifier(
 	}
 
 	Ok(())
-}
-
-pub(super) fn generated_issue_private_identifiers(
-	contract: &DecisionContract,
-	program_id: &str,
-	node_id: &str,
-) -> Vec<String> {
-	let mut identifiers = vec![program_id.to_owned(), node_id.to_owned()];
-
-	identifiers.extend(contract.research_provenance().iter().filter_map(|provenance| {
-		if matches!(provenance.kind(), "autonomy_objective" | "autonomy_proposal") {
-			Some(provenance.reference().to_owned())
-		} else {
-			None
-		}
-	}));
-	identifiers.extend(contract.research_evidence().iter().filter_map(|evidence| {
-		if evidence.kind().starts_with("autonomy_signal:") {
-			evidence.source_ref().map(str::to_owned)
-		} else {
-			None
-		}
-	}));
-	identifiers.sort();
-	identifiers.dedup();
-
-	identifiers
 }
 
 fn list_or_none(values: &[String], separator: &str) -> String {

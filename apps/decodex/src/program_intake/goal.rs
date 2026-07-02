@@ -1,5 +1,25 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use std::collections::BTreeMap;
+
+use crate::{
+	execution_program::{
+		ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionDispatchAction,
+		ExecutionLinearIssueMapping, ExecutionNodeEvaluation, ExecutionProgram,
+		ExecutionProgramDependency, ExecutionProgramEvaluation, ExecutionProgramNode,
+		ExecutionProgramNodeStage, ExecutionQueueIntent,
+	},
+	loop_contract::{DecisionContract, DecisionContractStatus, DecisionProposedIssue},
+	prelude::{Result, eyre},
+	program_intake::{
+		issue_batch,
+		model::{
+			ApplyGoalIssuesInput, GoalIntakeAnchor, GoalIntakeIssueAction, GoalIntakeIssueReport,
+			GoalIssueBriefInput, GoalIssuePlan,
+		},
+		render,
+	},
+	tracker::{self, IssueTracker, TrackerIssue, TrackerIssueBriefUpdate, TrackerIssueCreate},
+	workflow::WorkflowDocument,
+};
 
 pub(super) fn ensure_goal_intake_authority(contract: &DecisionContract) -> Result<()> {
 	if contract.status() != DecisionContractStatus::AcceptedPromoted {
@@ -46,7 +66,7 @@ pub(super) fn goal_issue_plans(
 		let risk = issue.risk().to_vec();
 		let dependencies = issue.dependencies().to_vec();
 		let conflict_domains = goal_proposed_issue_conflict_domains(issue)?;
-		let description = render_goal_issue_brief(GoalIssueBriefInput {
+		let description = render::render_goal_issue_brief(GoalIssueBriefInput {
 			contract,
 			objective: &objective,
 			dependencies: &dependencies,
@@ -56,11 +76,11 @@ pub(super) fn goal_issue_plans(
 			risk: &risk,
 		})?;
 		let private_identifiers =
-			generated_issue_private_identifiers(contract, program_id, &node_id);
+			render::generated_issue_private_identifiers(contract, program_id, &node_id);
 		let private_identifier_refs =
 			private_identifiers.iter().map(String::as_str).collect::<Vec<_>>();
 
-		validate_generated_issue_text(&title, &description, &private_identifier_refs)?;
+		render::validate_generated_issue_text(&title, &description, &private_identifier_refs)?;
 
 		plans.push(GoalIssuePlan {
 			key: issue.key().to_owned(),
@@ -313,7 +333,7 @@ pub(super) fn goal_issue_mapping(
 		.with_active_label(issue.has_label(&active_label))
 		.with_opt_out_label(issue.has_label(tracker_policy.opt_out_label()))
 		.with_needs_attention_label(issue.has_label(tracker_policy.needs_attention_label()))
-		.with_generic_dispatch_briefing(issue_has_generic_dispatch_briefing(issue)))
+		.with_generic_dispatch_briefing(issue_batch::issue_has_generic_dispatch_briefing(issue)))
 }
 
 pub(super) fn applied_goal_issue_rows(
@@ -389,7 +409,7 @@ pub(super) fn goal_issue_report_row(
 		issue_identifier: issue.map(|issue| issue.identifier.clone()),
 		action,
 		queue_intent: plan.queue_intent.as_str().to_owned(),
-		dispatch_action: dispatch_action.map(dispatch_action_name),
+		dispatch_action: dispatch_action.map(issue_batch::dispatch_action_name),
 		dependencies: plan.dependencies.clone(),
 		conflict_domains: conflict_domain_labels(&plan.conflict_domains),
 		acceptance: plan.acceptance.clone(),
