@@ -1,6 +1,37 @@
-use std::io;
+use std::{
+	io::{self, ErrorKind, Write},
+	path::{Path, PathBuf},
+	time::{Duration, Instant},
+};
 
-use crate::runtime;
+use serde_json::{self, Value};
+
+use time::OffsetDateTime;
+
+use crate::{
+	config::ServiceConfig,
+	orchestrator::{
+		self, AccountActivityMode, AgentEvidenceSource, DiagnoseRequest, EvidenceRequest,
+		LaneSteerRequest, OperatorStateEndpoint, OperatorStatusSnapshot, PreferredRunIdentity,
+		RunCycleRequest, RunOnceRequest, build_operator_status_snapshot_with_account_mode,
+		build_private_evidence_readback, build_queued_candidate_statuses,
+		build_status_command_operator_status_snapshot, clear_tracker_backoff_state_best_effort,
+		format_no_eligible_issue_message, format_run_once_summary, hydrate_status_snapshot_state,
+		lane_control, load_configured_cycle_workflow, persist_tracker_backoff_state,
+		recover_runtime_state_from_tracker_and_worktrees, refresh_operator_project_summary,
+		render_agent_evidence_write_result, render_operator_status,
+		render_private_evidence_readback, render_queue_explain, render_tracker_backoff_cli_message,
+		resolve_config_path, run_configured_cycle, runtime_recovery_error_class,
+		runtime_recovery_warning, status_should_attempt_operator_snapshot_cache,
+		status_snapshot_from_local_operator_cache, tracker_connector_backoff,
+		write_agent_evidence_snapshot,
+	},
+	prelude::{Result, eyre},
+	runtime,
+	state::StateStore,
+	tracker::linear::LinearClient,
+	workflow::WorkflowDocument,
+};
 
 pub(crate) struct McpLaneSteerRequest<'a> {
 	pub(crate) config_path: Option<&'a Path>,
@@ -34,7 +65,9 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 	let config = ServiceConfig::from_path(&config_path)?;
 	let workflow = load_configured_cycle_workflow(&config, request.preferred_workflow_snapshot)?;
 
-	if let Some(status) = active_stored_tracker_backoff_status(&state_store, config.service_id())? {
+	if let Some(status) =
+		orchestrator::active_stored_tracker_backoff_status(&state_store, config.service_id())?
+	{
 		print!("{}", render_tracker_backoff_cli_message("run", &status));
 
 		return Ok(());
@@ -141,22 +174,27 @@ pub(crate) fn print_status(
 		match status_snapshot_from_local_operator_cache(&config, limit) {
 			Ok(snapshot) => snapshot,
 			Err(cache_miss) => {
-				let mut snapshot = build_operator_state_snapshot_without_live_observers(
-					&config,
-					&workflow,
-					&state_store,
-					limit,
-				)?;
+				let mut snapshot =
+					orchestrator::build_operator_state_snapshot_without_live_observers(
+						&config,
+						&workflow,
+						&state_store,
+						limit,
+					)?;
 
 				snapshot.status_source = Some(String::from("local_runtime"));
 
-				add_status_snapshot_cache_miss_warning(&mut snapshot, &config, cache_miss);
+				orchestrator::add_status_snapshot_cache_miss_warning(
+					&mut snapshot,
+					&config,
+					cache_miss,
+				);
 
 				snapshot
 			},
 		}
 	} else {
-		let mut snapshot = build_operator_state_snapshot_without_live_observers(
+		let mut snapshot = orchestrator::build_operator_state_snapshot_without_live_observers(
 			&config,
 			&workflow,
 			&state_store,
@@ -228,7 +266,7 @@ pub(crate) fn build_mcp_lane_control_resource(
 		AccountActivityMode::Snapshot,
 	)?;
 
-	Ok(json!({
+	Ok(serde_json::json!({
 		"schema": "decodex.mcp.lane_control_readback/1",
 		"project_id": snapshot.project_id,
 		"read_only": true,
@@ -307,9 +345,13 @@ pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
 	runtime::register_project_config(&state_store, &config_path, true)?;
 
 	let mut snapshot = match config.tracker().resolve_api_key().and_then(LinearClient::new) {
-		Ok(tracker) => {
-			build_diagnose_live_snapshot(&tracker, &config, &workflow, &state_store, request.limit)
-		},
+		Ok(tracker) => orchestrator::build_diagnose_live_snapshot(
+			&tracker,
+			&config,
+			&workflow,
+			&state_store,
+			request.limit,
+		),
 		Err(error) => {
 			let _ = error;
 
@@ -319,9 +361,12 @@ pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
 			);
 
 			let mut snapshot =
-				build_operator_status_snapshot(&config, &state_store, request.limit)?;
+				orchestrator::build_operator_status_snapshot(&config, &state_store, request.limit)?;
 
-			add_operator_snapshot_warning(&mut snapshot, "diagnose_tracker_observer_unavailable");
+			orchestrator::add_operator_snapshot_warning(
+				&mut snapshot,
+				"diagnose_tracker_observer_unavailable",
+			);
 
 			Ok(snapshot)
 		},
@@ -374,6 +419,30 @@ pub(crate) fn print_private_evidence(request: EvidenceRequest<'_>) -> Result<()>
 	Ok(())
 }
 
+pub(in crate::orchestrator) fn write_cli_output<W>(writer: &mut W, output: &str) -> Result<()>
+where
+	W: Write,
+{
+	match writer.write_all(output.as_bytes()).and_then(|()| writer.flush()) {
+		Ok(()) => Ok(()),
+		Err(error) if error.kind() == ErrorKind::BrokenPipe => Ok(()),
+		Err(error) => Err(error.into()),
+	}
+}
+
+pub(in crate::orchestrator) fn publish_operator_snapshot(
+	operator_state_endpoint: &OperatorStateEndpoint,
+	snapshot: &OperatorStatusSnapshot,
+) {
+	if let Err(error) = operator_state_endpoint.publish_snapshot(snapshot) {
+		let _ = error;
+
+		tracing::warn!(
+			"Operator snapshot publish failed; sensitive runtime details were withheld from control-plane logs."
+		);
+	}
+}
+
 fn resolve_private_evidence_config_path(
 	request: &EvidenceRequest<'_>,
 	state_store: &StateStore,
@@ -397,8 +466,10 @@ fn build_live_status_command_snapshot(
 	state_store: &StateStore,
 	limit: usize,
 ) -> Result<OperatorStatusSnapshot> {
-	if let Some(status) = active_stored_tracker_backoff_status(state_store, config.service_id())? {
-		return build_operator_status_snapshot_for_tracker_backoff(
+	if let Some(status) =
+		orchestrator::active_stored_tracker_backoff_status(state_store, config.service_id())?
+	{
+		return orchestrator::build_operator_status_snapshot_for_tracker_backoff(
 			config,
 			state_store,
 			limit,
@@ -424,7 +495,7 @@ fn build_live_status_command_snapshot(
 
 				persist_tracker_backoff_state(state_store, config.service_id(), &backoff);
 
-				return build_operator_status_snapshot_for_tracker_backoff(
+				return orchestrator::build_operator_status_snapshot_for_tracker_backoff(
 					config,
 					state_store,
 					limit,
@@ -464,12 +535,17 @@ fn build_live_status_command_snapshot(
 
 			persist_tracker_backoff_state(state_store, config.service_id(), &backoff);
 
-			build_operator_status_snapshot_for_tracker_backoff(config, state_store, limit, &status)?
+			orchestrator::build_operator_status_snapshot_for_tracker_backoff(
+				config,
+				state_store,
+				limit,
+				&status,
+			)?
 		},
 	};
 
 	for warning in snapshot_warnings {
-		add_operator_snapshot_warning(&mut snapshot, &warning);
+		orchestrator::add_operator_snapshot_warning(&mut snapshot, &warning);
 	}
 
 	refresh_operator_project_summary(
@@ -536,28 +612,4 @@ fn print_operator_status_snapshot(snapshot: &OperatorStatusSnapshot, json: bool)
 	let mut stdout = stdout.lock();
 
 	write_cli_output(&mut stdout, &output)
-}
-
-fn write_cli_output<W>(writer: &mut W, output: &str) -> Result<()>
-where
-	W: Write,
-{
-	match writer.write_all(output.as_bytes()).and_then(|()| writer.flush()) {
-		Ok(()) => Ok(()),
-		Err(error) if error.kind() == ErrorKind::BrokenPipe => Ok(()),
-		Err(error) => Err(error.into()),
-	}
-}
-
-fn publish_operator_snapshot(
-	operator_state_endpoint: &OperatorStateEndpoint,
-	snapshot: &OperatorStatusSnapshot,
-) {
-	if let Err(error) = operator_state_endpoint.publish_snapshot(snapshot) {
-		let _ = error;
-
-		tracing::warn!(
-			"Operator snapshot publish failed; sensitive runtime details were withheld from control-plane logs."
-		);
-	}
 }

@@ -3,26 +3,32 @@ use crate::execution_program::{
 	ExecutionDependencySnapshot, ExecutionLinearIssueMapping, ExecutionProgram,
 	ExecutionProgramNode, ExecutionReadinessState,
 };
+use crate::orchestrator::*;
+use crate::state::PrivateExecutionEvent;
+use crate::tracker;
 
-const PROGRAM_DISPATCH_SELECTED_SCHEMA: &str = "decodex.program_dispatch_selected/1";
-const PROGRAM_DISPATCH_SELECTED_EVENT_TYPE: &str = "program_dispatch_selected";
+pub(in crate::orchestrator) const PROGRAM_DISPATCH_SELECTED_SCHEMA: &str =
+	"decodex.program_dispatch_selected/1";
+pub(in crate::orchestrator) const PROGRAM_DISPATCH_SELECTED_EVENT_TYPE: &str =
+	"program_dispatch_selected";
 
 #[derive(Clone)]
-struct RefreshedExecutionProgram {
-	record: ExecutionProgramRecord,
-	program: ExecutionProgram,
-	issues_by_node: std::collections::BTreeMap<String, ProgramIssueSnapshot>,
+pub(in crate::orchestrator) struct RefreshedExecutionProgram {
+	pub(in crate::orchestrator) record: ExecutionProgramRecord,
+	pub(in crate::orchestrator) program: ExecutionProgram,
+	pub(in crate::orchestrator) issues_by_node:
+		std::collections::BTreeMap<String, ProgramIssueSnapshot>,
 }
 
 #[derive(Clone)]
-struct ProgramIssueSnapshot {
-	issue: TrackerIssue,
-	has_active_label: bool,
-	has_opt_out_label: bool,
-	has_needs_attention_label: bool,
-	has_open_tracker_blockers: bool,
-	has_generic_dispatch_briefing: bool,
-	has_post_review_lifecycle: bool,
+pub(in crate::orchestrator) struct ProgramIssueSnapshot {
+	pub(in crate::orchestrator) issue: TrackerIssue,
+	pub(in crate::orchestrator) has_active_label: bool,
+	pub(in crate::orchestrator) has_opt_out_label: bool,
+	pub(in crate::orchestrator) has_needs_attention_label: bool,
+	pub(in crate::orchestrator) has_open_tracker_blockers: bool,
+	pub(in crate::orchestrator) has_generic_dispatch_briefing: bool,
+	pub(in crate::orchestrator) has_post_review_lifecycle: bool,
 }
 impl ProgramIssueSnapshot {
 	fn linear_mapping(&self) -> Result<ExecutionLinearIssueMapping> {
@@ -40,30 +46,30 @@ impl ProgramIssueSnapshot {
 	}
 }
 
-struct ProgramIssueSnapshotInput<'a, T>
+pub(in crate::orchestrator) struct ProgramIssueSnapshotInput<'a, T>
 where
 	T: IssueTracker + ?Sized,
 {
-	tracker: &'a T,
-	state_store: &'a StateStore,
-	service_id: &'a str,
-	workflow: &'a WorkflowDocument,
-	issue: &'a TrackerIssue,
+	pub(in crate::orchestrator) tracker: &'a T,
+	pub(in crate::orchestrator) state_store: &'a StateStore,
+	pub(in crate::orchestrator) service_id: &'a str,
+	pub(in crate::orchestrator) workflow: &'a WorkflowDocument,
+	pub(in crate::orchestrator) issue: &'a TrackerIssue,
 }
 
 #[derive(Default)]
-struct ProgramSchedulerSummary {
-	programs_evaluated: usize,
-	programs_updated: usize,
-	dispatchable_nodes: usize,
+pub(in crate::orchestrator) struct ProgramSchedulerSummary {
+	pub(in crate::orchestrator) programs_evaluated: usize,
+	pub(in crate::orchestrator) programs_updated: usize,
+	pub(in crate::orchestrator) dispatchable_nodes: usize,
 }
 
-struct ProgramSchedulerSelection {
-	selected: Option<SelectedIssueRunCandidate>,
-	summary: ProgramSchedulerSummary,
+pub(in crate::orchestrator) struct ProgramSchedulerSelection {
+	pub(in crate::orchestrator) selected: Option<SelectedIssueRunCandidate>,
+	pub(in crate::orchestrator) summary: ProgramSchedulerSummary,
 }
 
-fn record_program_dispatch_selected(
+pub(in crate::orchestrator) fn record_program_dispatch_selected(
 	state_store: &StateStore,
 	project_id: &str,
 	issue_run: &IssueRunPlan,
@@ -97,7 +103,7 @@ fn record_program_dispatch_selected(
 	)
 }
 
-fn select_execution_program_run_candidate<T>(
+pub(in crate::orchestrator) fn select_execution_program_run_candidate<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -129,7 +135,7 @@ where
 	Ok(selected)
 }
 
-fn select_execution_program_run_candidate_with_summary<T>(
+pub(in crate::orchestrator) fn select_execution_program_run_candidate_with_summary<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -240,7 +246,7 @@ where
 	Ok(ProgramSchedulerSelection { selected: candidates.into_iter().next(), summary })
 }
 
-fn refresh_execution_program_issues<T>(
+pub(in crate::orchestrator) fn refresh_execution_program_issues<T>(
 	tracker: &T,
 	records: &[ExecutionProgramRecord],
 ) -> Result<std::collections::BTreeMap<String, TrackerIssue>>
@@ -266,7 +272,7 @@ where
 		.collect())
 }
 
-fn refresh_execution_program_tracker_facts<T>(
+pub(in crate::orchestrator) fn refresh_execution_program_tracker_facts<T>(
 	tracker: &T,
 	state_store: &StateStore,
 	service_id: &str,
@@ -313,7 +319,7 @@ where
 	Ok(RefreshedExecutionProgram { record, program, issues_by_node })
 }
 
-fn refresh_execution_program_local_lifecycle_facts(
+pub(in crate::orchestrator) fn refresh_execution_program_local_lifecycle_facts(
 	state_store: &StateStore,
 	service_id: &str,
 	node: &ExecutionProgramNode,
@@ -332,7 +338,7 @@ fn refresh_execution_program_local_lifecycle_facts(
 		.with_linear_issue(issue.clone().with_post_review_lifecycle(has_post_review_lifecycle))
 }
 
-fn program_issue_snapshot<T>(
+pub(in crate::orchestrator) fn program_issue_snapshot<T>(
 	input: ProgramIssueSnapshotInput<'_, T>,
 ) -> Result<ProgramIssueSnapshot>
 where
@@ -371,7 +377,7 @@ where
 	})
 }
 
-fn execution_program_readiness_context(
+pub(in crate::orchestrator) fn execution_program_readiness_context(
 	service_id: &str,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
@@ -392,7 +398,7 @@ fn execution_program_readiness_context(
 		.with_active_issue_ids(active_issue_ids))
 }
 
-fn execution_program_dependency_snapshots(
+pub(in crate::orchestrator) fn execution_program_dependency_snapshots(
 	programs: &[RefreshedExecutionProgram],
 ) -> Result<Vec<ExecutionDependencySnapshot>> {
 	let mut snapshots = std::collections::BTreeMap::new();
@@ -423,7 +429,7 @@ fn execution_program_dependency_snapshots(
 	Ok(snapshots.into_values().collect())
 }
 
-fn insert_dependency_snapshot(
+pub(in crate::orchestrator) fn insert_dependency_snapshot(
 	snapshots: &mut std::collections::BTreeMap<String, ExecutionDependencySnapshot>,
 	dependency_id: &str,
 	state: &str,
@@ -440,7 +446,7 @@ fn insert_dependency_snapshot(
 	Ok(())
 }
 
-fn execution_program_occupied_conflict_domains(
+pub(in crate::orchestrator) fn execution_program_occupied_conflict_domains(
 	service_id: &str,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
@@ -483,7 +489,7 @@ fn execution_program_occupied_conflict_domains(
 	Ok(occupied)
 }
 
-fn program_issue_occupies_conflict_domain(
+pub(in crate::orchestrator) fn program_issue_occupies_conflict_domain(
 	service_id: &str,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
