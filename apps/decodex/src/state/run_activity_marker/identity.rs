@@ -1,12 +1,15 @@
-use std::{process, sync::OnceLock};
+#[allow(unused_imports)]
+use std::{
+	fs,
+	mem::{self, MaybeUninit},
+	process, ptr,
+	sync::OnceLock,
+};
 
-#[cfg(target_os = "linux")] use std::fs;
-#[cfg(target_os = "macos")] use std::mem::{self, MaybeUninit};
-#[cfg(target_os = "macos")] use std::ptr;
+#[cfg(target_os = "macos")]
+use libc::{PROC_PIDTBSDINFO, c_char, c_void, proc_bsdinfo};
 
-#[cfg(target_os = "macos")] use libc::{PROC_PIDTBSDINFO, c_char, c_void, proc_bsdinfo};
-
-use super::RunActivityMarkerRecord;
+use crate::state::run_activity_marker::record::RunActivityMarkerRecord;
 
 pub(crate) fn current_host_boot_id() -> Option<String> {
 	static CURRENT_HOST_BOOT_ID: OnceLock<Option<String>> = OnceLock::new();
