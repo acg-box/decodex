@@ -1,6 +1,8 @@
 use serde_json::Value;
 
-use super::super::{PRIVATE_EVIDENCE_PAYLOAD_PREVIEW_LIMIT, PrivateEvidencePayloadSummary};
+use crate::orchestrator::agent_evidence::{
+	PRIVATE_EVIDENCE_PAYLOAD_PREVIEW_LIMIT, PrivateEvidencePayloadSummary,
+};
 
 pub(super) fn summarize_private_evidence_payload(payload: &Value) -> PrivateEvidencePayloadSummary {
 	let encoded = serde_json::to_vec(payload).unwrap_or_default();

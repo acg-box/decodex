@@ -1,11 +1,12 @@
 use serde_json::Value;
 
-use super::super::{
-	PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PrivateEvidencePhaseAcceptanceSummary, state,
+use crate::orchestrator::PrivateExecutionEvent;
+use crate::orchestrator::agent_evidence::{
+	PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PrivateEvidencePhaseAcceptanceSummary,
 };
 
 pub(super) fn phase_acceptance_checks_from_private_events(
-	events: &[state::PrivateExecutionEvent],
+	events: &[PrivateExecutionEvent],
 ) -> Vec<PrivateEvidencePhaseAcceptanceSummary> {
 	events
 		.iter()
@@ -15,7 +16,7 @@ pub(super) fn phase_acceptance_checks_from_private_events(
 }
 
 fn phase_acceptance_check_from_private_event(
-	event: &state::PrivateExecutionEvent,
+	event: &PrivateExecutionEvent,
 ) -> Option<PrivateEvidencePhaseAcceptanceSummary> {
 	let payload = event.payload();
 	let phase = payload.get("phase")?.as_str()?.to_owned();
