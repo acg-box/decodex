@@ -536,6 +536,12 @@ fn stale_active_diagnose_blocks_clean_worktree_with_unmerged_commits() {
 
 	assert_eq!(diagnostic.worktree_state, "unmerged_commits_present");
 	assert!(diagnostic.blockers.contains(&String::from("worktree_unmerged_commits_present")));
+	assert!(
+		diagnostic.next_action.contains("Preserve retained progress")
+			&& diagnostic.next_action.contains("inspect the retained worktree"),
+		"retained worktree blockers should route to retained-progress inspection, got {:?}",
+		diagnostic.next_action
+	);
 	assert!(!diagnostic.recoverable());
 }
 

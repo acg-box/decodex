@@ -29,6 +29,7 @@ mod review_handoff_policy;
 mod stale_active;
 mod stale_active_authority;
 mod stale_active_diagnosis;
+mod stale_active_guidance;
 mod stale_active_labels;
 mod stale_active_reentry;
 mod stale_active_release;

@@ -9,6 +9,7 @@ use crate::{
 		process_liveness::{self, StaleActiveProcessLiveness},
 		reports::StaleActiveDiagnostic,
 		stale_active_authority,
+		stale_active_guidance::blocked_stale_active_next_action,
 		stale_active_labels::{self, StaleActiveLabelSnapshot},
 		stale_active_reentry::{self, StaleActiveReleaseReentryInput},
 		stale_active_runtime, stale_active_worktree,
@@ -220,6 +221,7 @@ fn stale_active_diagnostic_from_parts(
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 fn inspect_stale_active_authority_evidence<T>(
 	project_id: &str,
 	state_store: &StateStore,
@@ -439,9 +441,7 @@ fn stale_active_diagnostic_outcome(
 		(
 			String::from(STALE_ACTIVE_BLOCKED_CLASSIFICATION),
 			String::from("safety_check_blocked"),
-			String::from(
-				"Preserve the lane and inspect the listed blockers before using a recovery command.",
-			),
+			blocked_stale_active_next_action(issue_identifier, blockers, evidence),
 		)
 	}
 }
