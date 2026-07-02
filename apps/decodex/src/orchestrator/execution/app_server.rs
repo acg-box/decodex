@@ -1,6 +1,7 @@
-#[allow(clippy::wildcard_imports)] use super::*;
-
-use super::execution_context::{build_run_developer_instructions, build_run_user_input};
+use crate::agent;
+use crate::orchestrator::execution::context::{self};
+#[allow(clippy::wildcard_imports)]
+use crate::orchestrator::execution::*;
 
 pub(super) struct CompletedAppServerRun<'a, T>
 where
@@ -55,7 +56,7 @@ where
 			attempt_number: input.issue_run.attempt_number,
 			listen: input.transport.to_owned(),
 			cwd: input.issue_run.worktree.path.display().to_string(),
-			developer_instructions: build_run_developer_instructions(
+			developer_instructions: context::build_run_developer_instructions(
 				input.tracker,
 				input.project,
 				input.workflow,
@@ -63,7 +64,7 @@ where
 				input.issue_run,
 				input.review_context,
 			)?,
-			user_input: build_run_user_input(
+			user_input: context::build_run_user_input(
 				input.tracker,
 				input.project,
 				input.workflow,
@@ -128,6 +129,58 @@ where
 	};
 
 	Ok(IssueAppServerRunOutcome::Completed(run_result))
+}
+
+pub(super) fn build_issue_turn_continuation_guard<'a, T>(
+	tracker: &'a T,
+	tracker_tool_bridge: &'a TrackerToolBridge<'a>,
+	workflow: &'a WorkflowDocument,
+	project: &'a ServiceConfig,
+	issue_run: &'a IssueRunPlan,
+	review_state_inspector: Option<&'a dyn PullRequestReviewStateInspector>,
+) -> IssueTurnContinuationGuard<'a, T>
+where
+	T: IssueTracker,
+{
+	IssueTurnContinuationGuard {
+		tracker,
+		tracker_tool_bridge,
+		workflow,
+		service_id: project.service_id(),
+		issue_id: &issue_run.issue.id,
+		issue_identifier: &issue_run.issue.identifier,
+		initial_issue_state: &issue_run.initial_issue_state,
+		#[cfg(test)]
+		retry_project_slug: "",
+		dispatch_mode: issue_run.dispatch_mode,
+		review_state_inspector,
+	}
+}
+
+pub(super) fn finalize_completed_app_server_run<T>(
+	run: CompletedAppServerRun<'_, T>,
+) -> Result<RunSummary>
+where
+	T: IssueTracker,
+{
+	apply_run_completion_disposition(
+		run.tracker,
+		run.project,
+		run.workflow,
+		run.state_store,
+		run.issue_run,
+		run.tracker_tool_bridge,
+	)?;
+	archive_completed_issue_threads_best_effort(
+		run.project,
+		run.state_store,
+		run.issue_run,
+		run.process_env,
+		run.transport,
+		run.run_result,
+	);
+
+	Ok(run_summary_from_issue_run(run.project.service_id(), run.issue_run))
 }
 
 fn build_issue_run_continuation_user_input(
@@ -203,56 +256,4 @@ where
 	)?;
 
 	Ok(Some(run_summary_from_issue_run(project.service_id(), issue_run)))
-}
-
-pub(super) fn build_issue_turn_continuation_guard<'a, T>(
-	tracker: &'a T,
-	tracker_tool_bridge: &'a TrackerToolBridge<'a>,
-	workflow: &'a WorkflowDocument,
-	project: &'a ServiceConfig,
-	issue_run: &'a IssueRunPlan,
-	review_state_inspector: Option<&'a dyn PullRequestReviewStateInspector>,
-) -> IssueTurnContinuationGuard<'a, T>
-where
-	T: IssueTracker,
-{
-	IssueTurnContinuationGuard {
-		tracker,
-		tracker_tool_bridge,
-		workflow,
-		service_id: project.service_id(),
-		issue_id: &issue_run.issue.id,
-		issue_identifier: &issue_run.issue.identifier,
-		initial_issue_state: &issue_run.initial_issue_state,
-		#[cfg(test)]
-		retry_project_slug: "",
-		dispatch_mode: issue_run.dispatch_mode,
-		review_state_inspector,
-	}
-}
-
-pub(super) fn finalize_completed_app_server_run<T>(
-	run: CompletedAppServerRun<'_, T>,
-) -> Result<RunSummary>
-where
-	T: IssueTracker,
-{
-	apply_run_completion_disposition(
-		run.tracker,
-		run.project,
-		run.workflow,
-		run.state_store,
-		run.issue_run,
-		run.tracker_tool_bridge,
-	)?;
-	archive_completed_issue_threads_best_effort(
-		run.project,
-		run.state_store,
-		run.issue_run,
-		run.process_env,
-		run.transport,
-		run.run_result,
-	);
-
-	Ok(run_summary_from_issue_run(run.project.service_id(), run.issue_run))
 }
