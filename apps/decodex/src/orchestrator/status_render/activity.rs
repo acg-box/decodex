@@ -1,11 +1,10 @@
-use super::{
-	ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
+use crate::orchestrator::{
+	self, ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
 	OperatorLoopStatus, OperatorRunControlCapability, ProtocolActivityEventSummary,
-	ProtocolActivitySummary, format_optional_unix_timestamp,
-	operator_protocol_activity_detail_is_public,
+	ProtocolActivitySummary,
 };
 
-pub(super) fn render_child_agent_activity_summary(
+pub(in crate::orchestrator::status_render) fn render_child_agent_activity_summary(
 	summary: Option<&ChildAgentActivitySummary>,
 ) -> String {
 	let Some(summary) = summary else {
@@ -26,7 +25,7 @@ pub(super) fn render_child_agent_activity_summary(
 	)
 }
 
-pub(super) fn render_protocol_activity_summary(
+pub(in crate::orchestrator::status_render) fn render_protocol_activity_summary(
 	summary: Option<&ProtocolActivitySummary>,
 ) -> String {
 	let Some(summary) = summary else {
@@ -51,22 +50,9 @@ pub(super) fn render_protocol_activity_summary(
 	format!("turn={turn}; waiting={wait}; rate_limit={rate_limit}; recent={recent}")
 }
 
-fn render_protocol_activity_event_summary(event: &ProtocolActivityEventSummary) -> String {
-	event.detail.as_ref().map_or_else(
-		|| event.event_type.clone(),
-		|detail| format!("{}:{}", event.event_type, render_protocol_activity_detail(detail)),
-	)
-}
-
-fn render_protocol_activity_detail(detail: &str) -> &str {
-	if operator_protocol_activity_detail_is_public(detail) {
-		detail
-	} else {
-		"redacted_sensitive_detail"
-	}
-}
-
-pub(super) fn render_loop_status_summary(status: Option<&OperatorLoopStatus>) -> String {
+pub(in crate::orchestrator::status_render) fn render_loop_status_summary(
+	status: Option<&OperatorLoopStatus>,
+) -> String {
 	let Some(status) = status else {
 		return String::from("none");
 	};
@@ -89,7 +75,9 @@ pub(super) fn render_loop_status_summary(status: Option<&OperatorLoopStatus>) ->
 	)
 }
 
-pub(super) fn render_loop_autonomy_signals_summary(status: Option<&OperatorLoopStatus>) -> String {
+pub(in crate::orchestrator::status_render) fn render_loop_autonomy_signals_summary(
+	status: Option<&OperatorLoopStatus>,
+) -> String {
 	let Some(status) = status else {
 		return String::from("none");
 	};
@@ -120,7 +108,9 @@ pub(super) fn render_loop_autonomy_signals_summary(status: Option<&OperatorLoopS
 		.join(";")
 }
 
-pub(super) fn render_loop_review_summary(status: Option<&OperatorLoopStatus>) -> String {
+pub(in crate::orchestrator::status_render) fn render_loop_review_summary(
+	status: Option<&OperatorLoopStatus>,
+) -> String {
 	let Some(review) = status.and_then(|status| status.review.as_ref()) else {
 		return String::from("none");
 	};
@@ -145,7 +135,7 @@ pub(super) fn render_loop_review_summary(status: Option<&OperatorLoopStatus>) ->
 	format!("phase={} status={} {checkpoint}", review.phase, review.status)
 }
 
-pub(super) fn render_loop_architecture_recovery_summary(
+pub(in crate::orchestrator::status_render) fn render_loop_architecture_recovery_summary(
 	status: Option<&OperatorLoopStatus>,
 ) -> String {
 	let Some(recovery) = status.and_then(|status| status.architecture_recovery.as_ref()) else {
@@ -170,7 +160,9 @@ pub(super) fn render_loop_architecture_recovery_summary(
 	)
 }
 
-pub(super) fn render_loop_boundary_summary(status: Option<&OperatorLoopStatus>) -> String {
+pub(in crate::orchestrator::status_render) fn render_loop_boundary_summary(
+	status: Option<&OperatorLoopStatus>,
+) -> String {
 	let Some(boundary) = status.and_then(|status| status.boundary.as_ref()) else {
 		return String::from("none");
 	};
@@ -188,7 +180,7 @@ pub(super) fn render_loop_boundary_summary(status: Option<&OperatorLoopStatus>) 
 	)
 }
 
-pub(super) fn render_control_capability_summary(
+pub(in crate::orchestrator::status_render) fn render_control_capability_summary(
 	capability: Option<&OperatorRunControlCapability>,
 ) -> String {
 	let Some(capability) = capability else {
@@ -203,7 +195,9 @@ pub(super) fn render_control_capability_summary(
 	)
 }
 
-pub(super) fn render_account_summary(summary: Option<&CodexAccountActivitySummary>) -> String {
+pub(in crate::orchestrator::status_render) fn render_account_summary(
+	summary: Option<&CodexAccountActivitySummary>,
+) -> String {
 	let Some(summary) = summary else {
 		return String::from("none");
 	};
@@ -228,7 +222,9 @@ pub(super) fn render_account_summary(summary: Option<&CodexAccountActivitySummar
 	)
 }
 
-pub(super) fn render_accounts_summary(accounts: &[CodexAccountActivitySummary]) -> String {
+pub(in crate::orchestrator::status_render) fn render_accounts_summary(
+	accounts: &[CodexAccountActivitySummary],
+) -> String {
 	if accounts.is_empty() {
 		return String::from("none");
 	}
@@ -240,6 +236,66 @@ pub(super) fn render_accounts_summary(accounts: &[CodexAccountActivitySummary]) 
 		.join(" | ")
 }
 
+pub(in crate::orchestrator::status_render) fn render_child_agent_context_pressure(
+	summary: Option<&ChildAgentActivitySummary>,
+) -> String {
+	let Some(summary) = summary else {
+		return String::from("none");
+	};
+	let current_input = summary
+		.input_tokens_current
+		.map(format_count_compact)
+		.unwrap_or_else(|| String::from("none"));
+	let max_input =
+		summary.input_tokens_max.map(format_count_compact).unwrap_or_else(|| String::from("none"));
+	let max_input_relation = match (summary.input_tokens_current, summary.input_tokens_max) {
+		(Some(current), Some(max)) if current == max => " (same as current)",
+		_ => "",
+	};
+	let largest_output = summary
+		.largest_tool_output_bytes
+		.map(format_bytes_compact)
+		.unwrap_or_else(|| String::from("none"));
+	let largest_tool = summary.largest_tool_output_tool.as_deref().unwrap_or("none");
+	let warnings = if summary.large_output_warnings.is_empty() {
+		String::from("none")
+	} else {
+		summary.large_output_warnings.join(" | ")
+	};
+
+	format!(
+		"input=current_window {current_input}, peak_window {max_input}{max_input_relation}, cumulative_input {}; output_tokens={}; largest_output={largest_output} by {largest_tool}; warnings={warnings}",
+		format_count_compact(summary.input_tokens_cumulative),
+		format_count_compact(summary.output_tokens_cumulative)
+	)
+}
+
+pub(in crate::orchestrator::status_render) fn format_seconds_compact(seconds: i64) -> String {
+	if seconds >= 3_600 {
+		return format!("{}h{}m", seconds / 3_600, (seconds % 3_600) / 60);
+	}
+	if seconds >= 60 {
+		return format!("{}m{}s", seconds / 60, seconds % 60);
+	}
+
+	format!("{seconds}s")
+}
+
+fn render_protocol_activity_event_summary(event: &ProtocolActivityEventSummary) -> String {
+	event.detail.as_ref().map_or_else(
+		|| event.event_type.clone(),
+		|detail| format!("{}:{}", event.event_type, render_protocol_activity_detail(detail)),
+	)
+}
+
+fn render_protocol_activity_detail(detail: &str) -> &str {
+	if orchestrator::operator_protocol_activity_detail_is_public(detail) {
+		detail
+	} else {
+		"redacted_sensitive_detail"
+	}
+}
+
 fn render_codex_account_window(
 	window_seconds: Option<i64>,
 	remaining_percent: Option<i64>,
@@ -248,7 +304,7 @@ fn render_codex_account_window(
 	let label = window_seconds.map(codex_window_label).unwrap_or_else(|| String::from("window"));
 	let remaining =
 		remaining_percent.map_or_else(|| String::from("unknown"), |value| format!("{value}%"));
-	let reset = format_optional_unix_timestamp(resets_at_unix_epoch)
+	let reset = orchestrator::format_optional_unix_timestamp(resets_at_unix_epoch)
 		.unwrap_or_else(|| String::from("unknown"));
 
 	format!("{label} remaining={remaining} reset={reset}")
@@ -285,40 +341,6 @@ fn codex_window_label(window_seconds: i64) -> String {
 	}
 }
 
-pub(super) fn render_child_agent_context_pressure(
-	summary: Option<&ChildAgentActivitySummary>,
-) -> String {
-	let Some(summary) = summary else {
-		return String::from("none");
-	};
-	let current_input = summary
-		.input_tokens_current
-		.map(format_count_compact)
-		.unwrap_or_else(|| String::from("none"));
-	let max_input =
-		summary.input_tokens_max.map(format_count_compact).unwrap_or_else(|| String::from("none"));
-	let max_input_relation = match (summary.input_tokens_current, summary.input_tokens_max) {
-		(Some(current), Some(max)) if current == max => " (same as current)",
-		_ => "",
-	};
-	let largest_output = summary
-		.largest_tool_output_bytes
-		.map(format_bytes_compact)
-		.unwrap_or_else(|| String::from("none"));
-	let largest_tool = summary.largest_tool_output_tool.as_deref().unwrap_or("none");
-	let warnings = if summary.large_output_warnings.is_empty() {
-		String::from("none")
-	} else {
-		summary.large_output_warnings.join(" | ")
-	};
-
-	format!(
-		"input=current_window {current_input}, peak_window {max_input}{max_input_relation}, cumulative_input {}; output_tokens={}; largest_output={largest_output} by {largest_tool}; warnings={warnings}",
-		format_count_compact(summary.input_tokens_cumulative),
-		format_count_compact(summary.output_tokens_cumulative)
-	)
-}
-
 fn render_child_agent_bucket_distribution(buckets: &[ChildAgentActivityBucket]) -> String {
 	if buckets.is_empty() {
 		return String::from("none");
@@ -340,17 +362,6 @@ fn render_child_agent_bucket_distribution(buckets: &[ChildAgentActivityBucket]) 
 		.map(|bucket| format!("{} {}", bucket.name, format_seconds_compact(bucket.wall_seconds)))
 		.collect::<Vec<_>>()
 		.join(", ")
-}
-
-pub(super) fn format_seconds_compact(seconds: i64) -> String {
-	if seconds >= 3_600 {
-		return format!("{}h{}m", seconds / 3_600, (seconds % 3_600) / 60);
-	}
-	if seconds >= 60 {
-		return format!("{}m{}s", seconds / 60, seconds % 60);
-	}
-
-	format!("{seconds}s")
 }
 
 fn format_count_compact(count: i64) -> String {
