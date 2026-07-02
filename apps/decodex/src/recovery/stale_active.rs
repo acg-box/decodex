@@ -100,9 +100,10 @@ pub(crate) fn run_stale_active_release(
 
 	if !diagnostic.recoverable() {
 		eyre::bail!(
-			"`recover stale-active release` refused `{}` because safety inspection reported blockers: {}",
+			"`recover stale-active release` refused `{}` because safety inspection reported blockers: {}; next_action: {}",
 			request.issue,
-			diagnostic.blockers.join(", ")
+			diagnostic.blockers.join(", "),
+			diagnostic.next_action
 		);
 	}
 

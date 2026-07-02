@@ -1,4 +1,4 @@
-use crate::orchestrator::*;
+use crate::orchestrator::{eyre, PublicProjectionPrivacyClassifier, ServiceConfig, IssueRunPlan, records, IssueTracker, StateStore, Result, WorkflowDocument, relative_worktree_path, configured_public_projection_privacy_classifier, worktree_head_oid, current_timestamp};
 use crate::tracker;
 
 pub(in crate::orchestrator) struct TerminalFailureLifecycle<'a> {

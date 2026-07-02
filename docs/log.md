@@ -2,6 +2,11 @@
 
 ## 2026-07-02
 
+- Added blocker-family guidance for tracker-present stale-active diagnostics so
+  blocked release attempts now route review lineage to review-handoff recovery,
+  retained worktree/private progress to evidence and worktree inspection, live or
+  unsettled ownership to lane-control inspection, and missing safety evidence back to
+  blocker repair instead of a generic refusal.
 - Synchronized Decodex agent-facing skills with the orchestration-kernel cutover:
   runtime lifecycle work now routes to the kernel runbook/specs, treats readbacks as
   projections, and requires mutating lifecycle work to follow typed command intents

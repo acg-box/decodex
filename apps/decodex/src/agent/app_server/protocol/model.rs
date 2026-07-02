@@ -14,10 +14,13 @@ pub(in crate::agent::app_server) use auth::{
 	LoginAccountResponse,
 };
 pub(in crate::agent::app_server) use catalog::{
-	ListMcpServerStatusParams, ListMcpServerStatusResponse, MarketplaceLoadErrorInfo,
-	McpServerStatusSummary, PluginListParams, PluginListResponse, PluginMarketplaceEntry,
-	PluginSummary, SkillErrorInfo, SkillMetadata, SkillsListEntry, SkillsListParams,
-	SkillsListResponse,
+	ListMcpServerStatusParams, ListMcpServerStatusResponse, McpServerStatusSummary,
+	PluginListParams, PluginListResponse, SkillsListParams, SkillsListResponse,
+};
+#[cfg(test)]
+pub(in crate::agent::app_server) use catalog::{
+	MarketplaceLoadErrorInfo, PluginMarketplaceEntry, PluginSummary, SkillErrorInfo,
+	SkillMetadata, SkillsListEntry,
 };
 pub(in crate::agent::app_server) use core::{
 	ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse, RunOutcome,
@@ -29,9 +32,8 @@ pub(in crate::agent::app_server) use enums::{
 pub(in crate::agent::app_server) use error::{TurnError, TurnStatusPayload};
 use helpers::{externally_tagged_value_name, string_like_json_value};
 pub(in crate::agent::app_server) use notifications::{
-	AgentMessageDeltaNotification, CompletedItem, ErrorNotification, ItemCompletedNotification,
-	ThreadGoalUpdatedNotification, ThreadStatus, ThreadStatusChangedNotification,
-	TurnCompletedNotification,
+	AgentMessageDeltaNotification, ErrorNotification, ItemCompletedNotification,
+	ThreadGoalUpdatedNotification, ThreadStatusChangedNotification, TurnCompletedNotification,
 };
 pub(in crate::agent::app_server) use runtime::{
 	CommandExecParams, CommandExecResponse, ConfigReadParams, ConfigReadResponse, ModelListParams,
@@ -40,18 +42,16 @@ pub(in crate::agent::app_server) use runtime::{
 	TurnSteerRequest, TurnSteerResponse,
 };
 pub(in crate::agent::app_server) use thread::{
-	EffectiveThreadConfig, Thread, ThreadArchiveRequest, ThreadArchiveResponse, ThreadGoal,
+	EffectiveThreadConfig, ThreadArchiveRequest, ThreadArchiveResponse, ThreadGoal,
 	ThreadGoalClearParams, ThreadGoalClearResponse, ThreadGoalGetParams, ThreadGoalGetResponse,
 	ThreadGoalSetParams, ThreadGoalSetResponse, ThreadResumeRequest, ThreadSessionResponse,
 	ThreadStartRequest,
 };
 pub(in crate::agent::app_server) use tools::{
-	AppServerDynamicToolNamespaceTool, AppServerDynamicToolSpec,
-	CommandExecutionRequestApprovalResponse, DynamicToolCallParams,
-	FileChangeRequestApprovalResponse, GrantedPermissionProfile,
+	AppServerDynamicToolSpec, CommandExecutionRequestApprovalResponse, DynamicToolCallParams,
+	FileChangeRequestApprovalResponse,
 	McpServerElicitationRequestResponse, PermissionsRequestApprovalResponse,
-	ProbeDynamicToolHandler, ToolRequestUserInputAnswer, ToolRequestUserInputResponse,
-	app_server_dynamic_tool_specs,
+	ProbeDynamicToolHandler, ToolRequestUserInputResponse, app_server_dynamic_tool_specs,
 };
 
 #[cfg(test)] use crate::agent::app_server::REQUEST_TIMEOUT;
