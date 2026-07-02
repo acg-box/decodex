@@ -4,10 +4,18 @@ mod intake_eligibility;
 mod intake_prepare_issue_run;
 mod intake_run_and_prompting;
 mod intake_workflow_reload;
+mod recovery_closeout_cleanup;
+mod recovery_closeout_dispatch;
+mod recovery_closeout_identity;
+mod recovery_reconciliation;
+mod recovery_runtime_reentry;
+mod recovery_terminal_failures;
+mod recovery_terminal_support;
 mod runtime_failure;
 // Operator status plus retained post-review review/landing behavior.
 mod operator;
 
+#[cfg(unix)] use std::os::unix::fs::PermissionsExt;
 use std::{
 	cell::RefCell,
 	collections::{BTreeSet, HashMap},
@@ -49,7 +57,7 @@ use crate::config::{ReviewLevel, ServiceConfig};
 use crate::github;
 use crate::loop_contract::DecisionContract;
 #[rustfmt::skip]
-use crate::orchestrator::{self, AppServerZeroEvidenceStartFailure, CurrentChildRunContext, RunLeaseDisposition, RunLeaseReconciliation, AgentEvidenceSource, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionRequestInput, ChildExitRetryContext, ChildRunRef, ControlPlaneProjectTick, CONTINUATION_PENDING_RUN_STATUS, DaemonRunChild, DaemonTickRuntimeContext, DashboardEventHub, EvidenceRequest, GhPullRequestReviewStateInspector, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, OperatorCodexAccountControlStatus, OperatorExecutionProgramNodeStatus, OperatorExecutionProgramStatus, OperatorGitHubCliAuthority, OperatorProjectStatus, OperatorStatusSnapshot, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot, PrepareIssueRunContext, PublishedOperatorSnapshot, PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection, PullRequestIssueCommentState, PullRequestIssueCommentsNode, PullRequestPageInfo, PullRequestReactionGroup, PullRequestReactionUsersConnection, PullRequestActor, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewConnection, PullRequestIssueCommentNode, PullRequestReviewNode, PullRequestReviewRequestConnection, PullRequestReviewState, PullRequestReviewStateInspector, PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode, PullRequestStatusCheckRollup, RecoveredRuntimeState, RetainedPartialProgress, RetainedReviewRepairPushFailed, RetainedReviewRunIdentity, RetryComment, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, RunCompletionDisposition, RunSummary, RepoGateFailure, RepoGateFailureKind, StalledRunNeedsAttention, TERMINAL_GUARD_MARKER_FILE, TERMINAL_GUARDED_RUN_STATUS, TRACKER_RATE_LIMIT_WARNING, TRACKER_TRANSIENT_TIMEOUT_WARNING, TargetIssueRunContext, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY};
+use crate::orchestrator::{self, AgentEvidenceSource, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionRequestInput, ChildExitRetryContext, ChildRunRef, ControlPlaneProjectTick, CONTINUATION_PENDING_RUN_STATUS, DaemonRunChild, DaemonTickRuntimeContext, DashboardEventHub, EvidenceRequest, GhPullRequestReviewStateInspector, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, OperatorCodexAccountControlStatus, OperatorExecutionProgramNodeStatus, OperatorExecutionProgramStatus, OperatorGitHubCliAuthority, OperatorProjectStatus, OperatorStatusSnapshot, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot, PrepareIssueRunContext, PublishedOperatorSnapshot, PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection, PullRequestIssueCommentState, PullRequestIssueCommentsNode, PullRequestPageInfo, PullRequestReactionGroup, PullRequestReactionUsersConnection, PullRequestActor, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewConnection, PullRequestIssueCommentNode, PullRequestReviewNode, PullRequestReviewRequestConnection, PullRequestReviewState, PullRequestReviewStateInspector, PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode, PullRequestStatusCheckRollup, RecoveredRuntimeState, RetainedPartialProgress, RetainedReviewRepairPushFailed, RetryComment, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, RunCompletionDisposition, RepoGateFailure, TERMINAL_GUARDED_RUN_STATUS, TRACKER_RATE_LIMIT_WARNING, TRACKER_TRANSIENT_TIMEOUT_WARNING, TargetIssueRunContext, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY};
 #[rustfmt::skip]
 use crate::prelude::Result;
 #[rustfmt::skip]
@@ -84,20 +92,6 @@ include!("tests/runtime/program_reconciler.rs");
 include!("tests/runtime/program_intake_dogfood.rs");
 
 include!("tests/runtime/thread_archive.rs");
-
-include!("tests/recovery/reconciliation.rs");
-
-include!("tests/recovery/terminal_support.rs");
-
-include!("tests/recovery/closeout/dispatch.rs");
-
-include!("tests/recovery/closeout/identity.rs");
-
-include!("tests/recovery/closeout/cleanup.rs");
-
-include!("tests/recovery/terminal_failures.rs");
-
-include!("tests/recovery/runtime_reentry.rs");
 
 include!("tests/review_landing/status_support.rs");
 

@@ -207,7 +207,7 @@ use crate::{
 		TargetIssueRunContext, TurnContinuationGuard,
 		tests::{
 			self, FakePullRequestReviewStateInspector, FakeTracker, TEST_SERVICE_ID,
-			intake_workflow_reload,
+			intake_workflow_reload, recovery_terminal_support,
 		},
 	},
 	state::{self, StateStore},
@@ -583,8 +583,9 @@ fn targeted_identifier_dispatch_accepts_status_visible_retained_closeout_lane() 
 		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let _path_guard =
-		tests::install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
 		&config,
@@ -661,8 +662,9 @@ fn targeted_identifier_dispatch_accepts_status_visible_review_repair_lane() {
 		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let _path_guard =
-		tests::install_fake_conflicting_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_conflicting_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
 		&config,
@@ -745,8 +747,9 @@ fn targeted_identifier_dispatch_accepts_stopped_active_closeout_lease() {
 		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let _path_guard =
-		tests::install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
 		&config,
@@ -874,8 +877,9 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_closeout_lane()
 		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let _path_guard =
-		tests::install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
 		&config,
@@ -962,8 +966,9 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_review_repair_l
 		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let _path_guard =
-		tests::install_fake_conflicting_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_conflicting_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
 		&config,

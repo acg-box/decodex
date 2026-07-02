@@ -1,9 +1,21 @@
+use crate::{
+	orchestrator::{
+		self, IssueDispatchMode, RetryQueue, ReviewOrchestrationMarker,
+		tests::{
+			TEST_EXTERNAL_REVIEW_AUTO_MERGE_ENABLED_AT, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,
+			TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT, recovery_terminal_support, {self},
+		},
+	},
+	state,
+	tracker::records,
+};
+
 #[test]
 fn run_project_once_closeout_reuses_completed_handoff_run_identity_for_record_and_summary() {
-	let fixture = closeout_identity_fixture();
+	let fixture = recovery_terminal_support::closeout_identity_fixture();
 	let _keep_fixture_alive = (&fixture._temp_dir, &fixture._path_guard);
 
-	assert_closeout_lane_ready(&fixture);
+	recovery_terminal_support::assert_closeout_lane_ready(&fixture);
 
 	let planned = orchestrator::run_project_once(
 		&fixture.tracker,
@@ -88,18 +100,18 @@ fn run_project_once_closeout_reuses_completed_handoff_run_identity_for_record_an
 
 #[test]
 fn daemon_planned_closeout_reuses_handoff_identity_after_parent_failed_status() {
-	let fixture = closeout_identity_fixture();
+	let fixture = recovery_terminal_support::closeout_identity_fixture();
 	let _keep_fixture_alive = (&fixture._temp_dir, &fixture._path_guard);
 	let mut retry_queue = RetryQueue::default();
 
-	assert_closeout_lane_ready(&fixture);
+	recovery_terminal_support::assert_closeout_lane_ready(&fixture);
 
 	fixture
 		.state_store
 		.update_run_status(&fixture.completed_run_id, "failed")
 		.expect("daemon parent failed status should record");
 
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&fixture.state_store,
 		fixture.config.service_id(),
 		&fixture.worktree.path,
@@ -125,7 +137,6 @@ fn daemon_planned_closeout_reuses_handoff_identity_after_parent_failed_status() 
 		&fixture.config,
 		&fixture.workflow,
 		&fixture.state_store,
-
 	)
 	.expect("daemon planning should succeed")
 	.expect("retained closeout should be selected");
@@ -188,11 +199,11 @@ fn daemon_planned_closeout_reuses_handoff_identity_after_parent_failed_status() 
 
 #[test]
 fn daemon_planned_closeout_allocates_retry_after_recorded_closeout_failure() {
-	let fixture = closeout_identity_fixture();
+	let fixture = recovery_terminal_support::closeout_identity_fixture();
 	let _keep_fixture_alive = (&fixture._temp_dir, &fixture._path_guard);
 	let mut retry_queue = RetryQueue::default();
 
-	assert_closeout_lane_ready(&fixture);
+	recovery_terminal_support::assert_closeout_lane_ready(&fixture);
 
 	fixture
 		.state_store
@@ -214,7 +225,6 @@ fn daemon_planned_closeout_allocates_retry_after_recorded_closeout_failure() {
 		&fixture.config,
 		&fixture.workflow,
 		&fixture.state_store,
-
 	)
 	.expect("daemon planning should succeed")
 	.expect("retained closeout should be selected");
@@ -227,7 +237,7 @@ fn daemon_planned_closeout_allocates_retry_after_recorded_closeout_failure() {
 
 #[test]
 fn run_project_once_closeout_preserves_handoff_identity_after_fresh_activity_recovery() {
-	let fixture = closeout_identity_fixture();
+	let fixture = recovery_terminal_support::closeout_identity_fixture();
 	let _keep_fixture_alive = (&fixture._temp_dir, &fixture._path_guard);
 
 	state::write_run_activity_marker(&fixture.worktree.path, &fixture.completed_run_id, 1)

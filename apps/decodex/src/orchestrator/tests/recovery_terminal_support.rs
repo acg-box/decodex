@@ -1,32 +1,58 @@
 #[cfg(unix)] use std::os::unix::fs::PermissionsExt;
+use std::{
+	env, fs,
+	path::{Path, PathBuf},
+};
 
-struct CloseoutIdentityFixture {
-	_temp_dir: TempDir,
-	_path_guard: TestEnvVarGuard,
-	config: ServiceConfig,
-	workflow: WorkflowDocument,
-	tracker: FakeTracker,
-	state_store: StateStore,
-	issue: TrackerIssue,
-	worktree: WorktreeSpec,
-	pr_url: String,
-	head_oid: String,
-	completed_run_id: String,
+use color_eyre::Report;
+use tempfile::TempDir;
+
+#[rustfmt::skip]
+use crate::config::ServiceConfig;
+#[rustfmt::skip]
+use crate::orchestrator::tests::{self, FakePullRequestReviewStateInspector, TEST_SERVICE_ID};
+#[rustfmt::skip]
+use crate::orchestrator::{self, IssueDispatchMode, ReviewHandoffMarker};
+#[rustfmt::skip]
+use crate::state::StateStore;
+#[rustfmt::skip]
+use crate::test_support::{self, TestEnvVarGuard};
+#[rustfmt::skip]
+use crate::tracker::{self, TrackerIssue, TrackerState};
+#[rustfmt::skip]
+use crate::workflow::WorkflowDocument;
+#[rustfmt::skip]
+use crate::worktree::{WorktreeManager, WorktreeSpec};
+
+pub(super) struct CloseoutIdentityFixture {
+	pub(super) _temp_dir: TempDir,
+	pub(super) _path_guard: TestEnvVarGuard,
+	pub(super) config: ServiceConfig,
+	pub(super) workflow: WorkflowDocument,
+	pub(super) tracker: tests::FakeTracker,
+	pub(super) state_store: StateStore,
+	pub(super) issue: TrackerIssue,
+	pub(super) worktree: WorktreeSpec,
+	pub(super) pr_url: String,
+	pub(super) head_oid: String,
+	pub(super) completed_run_id: String,
 }
 
-fn sample_active_issue(state_name: &str) -> TrackerIssue {
+pub(super) fn sample_active_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue(state_name, &[active_label.as_str()])
+	tests::sample_issue(state_name, &[active_label.as_str()])
 }
 
-fn sample_active_issue_without_needs_attention_team_label(state_name: &str) -> TrackerIssue {
+pub(super) fn sample_active_issue_without_needs_attention_team_label(
+	state_name: &str,
+) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue_without_needs_attention_team_label(state_name, &[active_label.as_str()])
+	tests::sample_issue_without_needs_attention_team_label(state_name, &[active_label.as_str()])
 }
 
-fn install_fake_open_pr_gh_response(
+pub(super) fn install_fake_open_pr_gh_response(
 	temp_dir: &TempDir,
 	worktree: &WorktreeSpec,
 	pr_url: &str,
@@ -89,7 +115,7 @@ fn install_fake_open_pr_gh_response(
 	TestEnvVarGuard::set("PATH", &format!("{}:{path_env}", fake_gh_dir.display()))
 }
 
-fn install_fake_conflicting_pr_gh_response(
+pub(super) fn install_fake_conflicting_pr_gh_response(
 	temp_dir: &TempDir,
 	worktree: &WorktreeSpec,
 	pr_url: &str,
@@ -152,7 +178,7 @@ fn install_fake_conflicting_pr_gh_response(
 	TestEnvVarGuard::set("PATH", &format!("{}:{path_env}", fake_gh_dir.display()))
 }
 
-fn install_fake_ready_to_land_admin_merge_gh_response(
+pub(super) fn install_fake_ready_to_land_admin_merge_gh_response(
 	temp_dir: &TempDir,
 	worktree: &WorktreeSpec,
 	pr_url: &str,
@@ -246,7 +272,7 @@ exit 1\n",
 	)
 }
 
-fn install_fake_merged_pr_gh_response(
+pub(super) fn install_fake_merged_pr_gh_response(
 	temp_dir: &TempDir,
 	worktree: &WorktreeSpec,
 	pr_url: &str,
@@ -257,7 +283,7 @@ fn install_fake_merged_pr_gh_response(
 	)
 }
 
-fn install_fake_merged_pr_gh_response_with_base_ref(
+pub(super) fn install_fake_merged_pr_gh_response_with_base_ref(
 	temp_dir: &TempDir,
 	worktree: &WorktreeSpec,
 	pr_url: &str,
@@ -274,7 +300,7 @@ fn install_fake_merged_pr_gh_response_with_base_ref(
 	)
 }
 
-fn install_fake_merged_pr_gh_response_with_delete_exit_code(
+pub(super) fn install_fake_merged_pr_gh_response_with_delete_exit_code(
 	temp_dir: &TempDir,
 	worktree: &WorktreeSpec,
 	pr_url: &str,
@@ -291,7 +317,7 @@ fn install_fake_merged_pr_gh_response_with_delete_exit_code(
 	)
 }
 
-fn install_fake_merged_pr_gh_response_with_base_ref_and_delete_exit_code(
+pub(super) fn install_fake_merged_pr_gh_response_with_base_ref_and_delete_exit_code(
 	temp_dir: &TempDir,
 	worktree: &WorktreeSpec,
 	pr_url: &str,
@@ -385,7 +411,7 @@ exit 1\n",
 	TestEnvVarGuard::set("PATH", &format!("{}:{path_env}", fake_gh_dir.display()))
 }
 
-fn install_fake_closeout_gh_responses(
+pub(super) fn install_fake_closeout_gh_responses(
 	temp_dir: &TempDir,
 	worktree: &WorktreeSpec,
 	pr_url: &str,
@@ -394,7 +420,7 @@ fn install_fake_closeout_gh_responses(
 	install_fake_closeout_gh_responses_with_state(temp_dir, worktree, pr_url, head_oid, "MERGED")
 }
 
-fn install_fake_closeout_gh_responses_with_state(
+pub(super) fn install_fake_closeout_gh_responses_with_state(
 	temp_dir: &TempDir,
 	worktree: &WorktreeSpec,
 	pr_url: &str,
@@ -406,7 +432,7 @@ fn install_fake_closeout_gh_responses_with_state(
 	)
 }
 
-fn install_fake_closeout_gh_responses_with_states(
+pub(super) fn install_fake_closeout_gh_responses_with_states(
 	temp_dir: &TempDir,
 	worktree: &WorktreeSpec,
 	pr_url: &str,
@@ -505,8 +531,8 @@ exit 1\n",
 	TestEnvVarGuard::set("PATH", &format!("{}:{path_env}", fake_gh_dir.display()))
 }
 
-fn initialize_closeout_cleanup_origin(repo_root: &Path, remote_root: &Path) {
-	git_status_success(
+pub(super) fn initialize_closeout_cleanup_origin(repo_root: &Path, remote_root: &Path) {
+	tests::git_status_success(
 		remote_root.parent().expect("remote root should have parent"),
 		&[
 			"init",
@@ -516,25 +542,25 @@ fn initialize_closeout_cleanup_origin(repo_root: &Path, remote_root: &Path) {
 			remote_root.to_str().expect("remote path should be utf-8"),
 		],
 	);
-	git_status_success(
+	tests::git_status_success(
 		repo_root,
 		&["remote", "add", "origin", remote_root.to_string_lossy().as_ref()],
 	);
-	git_status_success(repo_root, &["push", "-u", "origin", "main"]);
+	tests::git_status_success(repo_root, &["push", "-u", "origin", "main"]);
 }
 
-fn route_origin_github_url_to_local_bare_repo(repo_root: &Path, remote_root: &Path) {
+pub(super) fn route_origin_github_url_to_local_bare_repo(repo_root: &Path, remote_root: &Path) {
 	let github_remote = "https://github.com/hack-ink/decodex.git";
 	let local_remote = format!("file://{}", remote_root.display());
 
-	git_status_success(
+	tests::git_status_success(
 		repo_root,
 		&["config", &format!("url.{local_remote}.insteadOf"), github_remote],
 	);
-	git_status_success(repo_root, &["remote", "set-url", "origin", github_remote]);
+	tests::git_status_success(repo_root, &["remote", "set-url", "origin", github_remote]);
 }
 
-fn issue_with_completed_state(mut issue: TrackerIssue) -> TrackerIssue {
+pub(super) fn issue_with_completed_state(mut issue: TrackerIssue) -> TrackerIssue {
 	if !issue.team.states.iter().any(|state| state.name == "Done") {
 		issue
 			.team
@@ -545,7 +571,7 @@ fn issue_with_completed_state(mut issue: TrackerIssue) -> TrackerIssue {
 	issue
 }
 
-fn sample_closeout_issue_run(
+pub(super) fn sample_closeout_issue_run(
 	issue: &TrackerIssue,
 	worktree: &WorktreeSpec,
 	run_id: &str,
@@ -571,20 +597,23 @@ fn sample_closeout_issue_run(
 	}
 }
 
-fn closeout_identity_fixture() -> CloseoutIdentityFixture {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+pub(super) fn closeout_identity_fixture() -> CloseoutIdentityFixture {
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = issue_with_completed_state(sample_issue("In Review", &[active_label.as_str()]));
-	let tracker =
-		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]; 8]);
+	let issue =
+		issue_with_completed_state(tests::sample_issue("In Review", &[active_label.as_str()]));
+	let tracker = tests::FakeTracker::with_refresh_snapshots(
+		vec![issue.clone()],
+		vec![vec![issue.clone()]; 8],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = String::from("https://github.com/hack-ink/decodex/pull/703");
 	let _path_guard = install_fake_closeout_gh_responses(&temp_dir, &worktree, &pr_url, &head_oid);
 	let remote_root =
@@ -595,7 +624,7 @@ fn closeout_identity_fixture() -> CloseoutIdentityFixture {
 	route_origin_github_url_to_local_bare_repo(config.repo_root(), &remote_root);
 
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["push", "origin", &format!("HEAD:{}", worktree.branch_name)])
@@ -646,8 +675,8 @@ fn closeout_identity_fixture() -> CloseoutIdentityFixture {
 	}
 }
 
-fn assert_closeout_lane_ready(fixture: &CloseoutIdentityFixture) {
-	let mut merged_review_state = sample_pull_request_review_state(
+pub(super) fn assert_closeout_lane_ready(fixture: &CloseoutIdentityFixture) {
+	let mut merged_review_state = tests::sample_pull_request_review_state(
 		&fixture.pr_url,
 		&fixture.worktree.branch_name,
 		&fixture.head_oid,
@@ -693,15 +722,15 @@ fn assert_closeout_lane_ready(fixture: &CloseoutIdentityFixture) {
 	);
 }
 
-fn assert_app_server_failure_requires_attention(
+pub(super) fn assert_app_server_failure_requires_attention(
 	error: Report,
 	error_class: &str,
 	next_action_fragment: &str,
 ) {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let tracker = FakeTracker::new(vec![]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let tracker = tests::FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),

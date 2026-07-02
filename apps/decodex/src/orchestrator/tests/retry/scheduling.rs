@@ -431,7 +431,9 @@ fn schedule_retry_after_child_exit_records_failure_retry_for_closeout_issue_afte
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/175";
-	let _path_guard = install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 
 	seed_review_handoff_marker(
 		&state_store,
@@ -516,7 +518,9 @@ fn schedule_retry_after_child_exit_keeps_blocked_closeout_retry_for_completed_is
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/176";
-	let _path_guard = install_fake_open_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_open_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 
 	seed_review_handoff_marker(
 		&state_store,
