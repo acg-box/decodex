@@ -175,19 +175,111 @@ pub(super) static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> =
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
-				"/src/orchestrator/operator_dashboard/app/accounts/identity.js"
+				"/src/orchestrator/operator_dashboard/app/accounts/identity/core.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
-				"/src/orchestrator/operator_dashboard/app/accounts/usage.js"
+				"/src/orchestrator/operator_dashboard/app/accounts/identity/random-name.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
-				"/src/orchestrator/operator_dashboard/app/accounts/profile.js"
+				"/src/orchestrator/operator_dashboard/app/accounts/identity/display.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
-				"/src/orchestrator/operator_dashboard/app/accounts/pool.js"
+				"/src/orchestrator/operator_dashboard/app/accounts/identity/capacity.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/identity/token.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/identity/privacy.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/identity/numbers.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/usage/records.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/usage/pool.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/usage/time.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/usage/profile.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/profile/activity.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/profile/expansion.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/profile/window-state.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/profile/status.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/profile/credits.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/profile/meta.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/profile/window-render.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/profile/toggle.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/pool/rows.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/pool/sort-controls.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/pool/mode.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/pool/summary.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/pool/render.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/pool/run-meta.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/pool/sorting.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/pool/render-account-pool.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
