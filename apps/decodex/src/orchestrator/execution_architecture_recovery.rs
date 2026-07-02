@@ -21,6 +21,17 @@ mod surface;
 
 pub(super) use decision::loop_guardrail_architecture_recovery_decision;
 pub(super) use events::architecture_recovery_retry_next_action;
-use events::*;
-use model::*;
-use surface::*;
+use events::{
+	architecture_recovery_goal_detail, record_architecture_recovery_packet,
+	record_architecture_recovery_started_event, record_architecture_recovery_terminal_outcome,
+};
+use model::{
+	ArchitectureRecoveryBoundary, ArchitectureRecoveryPacketInput,
+	ArchitectureRecoveryTerminalEventInput,
+};
+use surface::{
+	architecture_recovery_changed_surfaces, architecture_recovery_contracts_for_issue,
+	architecture_recovery_final_reason, architecture_recovery_improvement_signals,
+	architecture_recovery_policy_decision, architecture_recovery_reason_code,
+	architecture_recovery_started_count, classify_loop_guardrail_authority_boundary,
+};

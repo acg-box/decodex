@@ -36,10 +36,14 @@ where
 			classification.decision = PostReviewLaneDecision::CleanupBlocked;
 			classification.reason = String::from("default_branch_worktree_dirty");
 
-			return classification;
+			return finalize_post_review_lane_classification_with_retry_budget(
+				snapshot,
+				classification,
+				true,
+			);
 		}
 
-		return classification;
+		return finalize_post_review_lane_classification(snapshot, classification);
 	}
 	if classification.pr_state.as_deref() == Some("MERGED")
 		&& worktree_has_no_tracked_changes(snapshot.worktree.worktree_path())
@@ -53,13 +57,17 @@ where
 		};
 		classification.reason = String::from("retry_budget_exhausted");
 
-		return classification;
+		return finalize_post_review_lane_classification_with_retry_budget(
+			snapshot,
+			classification,
+			true,
+		);
 	}
 
 	classification.decision = PostReviewLaneDecision::Block;
 	classification.reason = String::from("retry_budget_exhausted");
 
-	classification
+	finalize_post_review_lane_classification_with_retry_budget(snapshot, classification, true)
 }
 
 pub(in crate::orchestrator) fn merged_closeout_pending_classification(

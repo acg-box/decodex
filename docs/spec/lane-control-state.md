@@ -7,10 +7,18 @@ authority: normative
 owner: runtime
 tags: [lane-control, runtime, scheduler]
 source_refs: []
-code_refs: [apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs]
+code_refs:
+  - apps/decodex/src/orchestrator/kernel/lane_control.rs
+  - apps/decodex/src/orchestrator/kernel/state.rs
+  - apps/decodex/src/orchestrator/status_run_projection/run/lane_control.rs
+  - apps/decodex/src/orchestrator/status_summary.rs
+  - apps/decodex/src/orchestrator/status_history_projection.rs
+  - apps/decodex/src/orchestrator/status_ghost_lane_cleanup/projection.rs
+  - apps/decodex/src/orchestrator/tests/operator/status/http.rs
+  - apps/decodex/src/agent/tracker_tool_bridge/tools.rs
 related: [lane-control.md, runtime.md]
-drift_watch: [ownership_state, liveness_state, policy_state, terminalization_state, review_churn_exceeded]
-last_verified: 2026-06-27
+drift_watch: [ownership_state, liveness_state, policy_state, terminalization_state, continuation_pending, ghost_lane, review_churn_exceeded, runtime_recovery_required, runtime_recovery_blocked]
+last_verified: 2026-07-01
 ---
 
 # Lane-Control State Specification
@@ -28,7 +36,9 @@ and projection rules that prevent liveness evidence from re-creating ownership.
 
 ## Resource Model
 
-Each Decodex lane is a control-plane resource with four separate state axes:
+Each Decodex lane is a control-plane resource with four separate state axes. The
+typed state values are owned by the orchestration kernel; status, lane inspect,
+dashboard, MCP, and tracker mirrors are compatibility projections of those values.
 
 - `ownership_state`: who, if anyone, is authorized to mutate the lane.
 - `liveness_state`: what local process, app-server, or protocol evidence is visible.
@@ -53,6 +63,10 @@ from protocol activity.
 - `retained_attention`: useful retained state exists but autonomous mutation is stopped
   until recovery or human attention resolves the blocker.
 - `orphaned_live_thread`: liveness evidence remains after Decodex lost active ownership.
+- `continuation_pending`: the lane is waiting for a bounded continuation or recovery
+  re-entry rather than a new independent claim.
+- `ghost_lane`: local runtime evidence remains for an issue that no longer has a
+  tracker/worktree authority path and must enter explicit runtime recovery.
 - `closed`: no active ownership remains and no retained recovery bucket is required.
 
 `liveness_state` values:
@@ -73,9 +87,15 @@ from protocol activity.
   within the repair budget.
 - `review_churn_exceeded`: repeated non-clean findings exceeded the convergence budget
   and the current repair strategy must stop.
+- `continuation_recovery_churn_exceeded`: continuation or recovery re-entry exceeded
+  its bounded retry/churn budget.
 - `architecture_recovery_pending`: architecture recovery is the next autonomous path.
 - `authority_boundary_required`: a boundary decision or human authority is required.
 - `human_attention_required`: the lane is blocked for explicit operator attention.
+- `runtime_recovery_required`: a local runtime ghost can be recovered only through the
+  explicit runtime recovery command path.
+- `runtime_recovery_blocked`: runtime recovery was requested but blockers preserve
+  the lane in attention until resolved.
 
 `terminalization_state` values:
 
@@ -89,7 +109,9 @@ from protocol activity.
 
 ## Invariants
 
-- A lane counts as a running lane only when `ownership_state` is `leased_run`.
+- A lane counts as a running lane only when the kernel lane-control projection marks
+  it as running. The stable compatibility case is `ownership_state=leased_run`; other
+  liveness observations are evidence, not ownership.
 - Liveness evidence may update `liveness_state`, but it must not create or restore
   `leased_run` ownership.
 - When a newer visible attempt for the same issue exists, older attempts with stale

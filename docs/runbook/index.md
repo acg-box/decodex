@@ -44,6 +44,9 @@ Question this index answers: "which sequence should I execute?"
 - [`mcp-remote-control.md`](./mcp-remote-control.md) for running Streamable HTTP MCP
   with loopback defaults, CORS trust, capability profiles, public-safe observation,
   canonical refusal paths, and the current auth/process-smoke gaps.
+- [`orchestration-kernel-cutover.md`](./orchestration-kernel-cutover.md) for the
+  direct runtime cutover from scattered lane lifecycle decisions to a single typed
+  orchestration kernel with checklist, subagent review, and validation gates.
 - [`recover-review-handoff.md`](./recover-review-handoff.md) for diagnosing retained
   review lanes, explicitly rebinding missing or stale runtime DB lifecycle records, and
   adopting verified human-owned PRs into the normal Decodex landing lifecycle.

@@ -19,6 +19,10 @@ use super::{
 	worktree_mapping_is_stale_terminal_local_residue,
 };
 
+use crate::orchestrator::kernel::post_review::{
+	PostReviewLaneKernelInput, decide_post_review_lane, project_post_review_lane_decision,
+};
+
 #[cfg(test)] use super::ReviewLevel;
 
 mod authority_boundary;

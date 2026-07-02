@@ -26,7 +26,8 @@ pub(super) fn operator_autonomy_proposal_statuses(
 				.refusal_reasons()
 				.iter()
 				.map(|refusal| {
-					let (evidence_refs, _) = status_autonomy::public_autonomy_refs(refusal.evidence_refs());
+					let (evidence_refs, _) =
+						status_autonomy::public_autonomy_refs(refusal.evidence_refs());
 
 					OperatorAutonomyProposalRefusalStatus {
 						reason: refusal.reason().as_str().to_owned(),

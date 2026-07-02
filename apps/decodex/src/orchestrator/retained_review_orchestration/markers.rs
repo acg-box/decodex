@@ -1,11 +1,14 @@
 #[allow(clippy::wildcard_imports)] use super::*;
 
-pub(super) fn write_retained_review_orchestration_marker(
+fn write_retained_review_orchestration_marker(
 	state_store: &StateStore,
 	lane: &RetainedReviewLane,
+	command_intent: CommandIntent,
+	expected_kind: CommandIntentKind,
 	phase: ReviewOrchestrationPhase,
 	fields: RetainedReviewOrchestrationMarkerFields,
 ) -> Result<()> {
+	retained_review_command_adapter(command_intent, expected_kind)?;
 	let local_head_oid =
 		lane.snapshot.local_head_oid.as_deref().ok_or_else(|| {
 			eyre::eyre!("Retained review orchestration requires a local lane HEAD.")
@@ -32,6 +35,24 @@ pub(super) fn write_retained_review_orchestration_marker(
 	)?;
 
 	Ok(())
+}
+
+pub(super) fn write_retained_review_orchestration_marker_for_command(
+	state_store: &StateStore,
+	lane: &RetainedReviewLane,
+	kind: CommandIntentKind,
+	reason: &str,
+	phase: ReviewOrchestrationPhase,
+	fields: RetainedReviewOrchestrationMarkerFields,
+) -> Result<()> {
+	write_retained_review_orchestration_marker(
+		state_store,
+		lane,
+		retained_review_command_intent(lane, kind, reason),
+		kind,
+		phase,
+		fields,
+	)
 }
 
 pub(crate) fn ensure_review_orchestration_marker(
@@ -62,6 +83,16 @@ pub(crate) fn ensure_review_orchestration_marker(
 				marker.external_round_count(),
 				None,
 			);
+
+			retained_review_command_adapter(
+				retained_review_command_intent_for_issue(
+					&issue.id,
+					Some(marker.run_id()),
+					CommandIntentKind::SyncReviewOrchestrationMarker,
+					"review_orchestration_marker_rebound",
+				),
+				CommandIntentKind::SyncReviewOrchestrationMarker,
+			)?;
 
 			state_store.upsert_review_orchestration_marker(
 				project_id,
@@ -99,6 +130,16 @@ pub(crate) fn ensure_review_orchestration_marker(
 		0,
 		None,
 	);
+
+	retained_review_command_adapter(
+		retained_review_command_intent_for_issue(
+			&issue.id,
+			Some(review_handoff.run_id()),
+			CommandIntentKind::SyncReviewOrchestrationMarker,
+			"review_orchestration_marker_created",
+		),
+		CommandIntentKind::SyncReviewOrchestrationMarker,
+	)?;
 
 	state_store.upsert_review_orchestration_marker(project_id, &issue.id, &marker)?;
 
