@@ -1,4 +1,8 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use crate::orchestrator::{
+	ChildAgentActivitySummary, OperatorRunAppServerState, ProtocolActivitySummary,
+	RUN_LEASE_IDLE_TIMEOUT, RunActivityMarker, status_run_projection,
+};
+use crate::tracker::public_text;
 
 pub(in crate::orchestrator) fn operator_run_child_agent_activity(
 	marker: Option<&RunActivityMarker>,
@@ -36,7 +40,8 @@ pub(in crate::orchestrator) fn operator_run_protocol_activity(
 		&& let Some(child_agent_activity) = child_agent_activity
 		&& let Some(current_bucket) = child_agent_activity.current_bucket.as_deref()
 	{
-		summary.waiting_reason = Some(protocol_wait_reason_from_child_bucket(current_bucket));
+		summary.waiting_reason =
+			Some(status_run_projection::protocol_wait_reason_from_child_bucket(current_bucket));
 	}
 	if is_running
 		&& summary.waiting_reason.is_none()
