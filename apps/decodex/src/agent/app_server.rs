@@ -21,7 +21,10 @@ pub(crate) use probe::probe_app_server;
 pub(crate) use turn_failure::AppServerTurnFailure;
 
 #[cfg(test)]
-use self::dynamic_tools::handle_dynamic_tool_call;
+use self::dynamic_tools::{
+	classify_turn_completion, handle_dynamic_tool_call,
+	reject_nonterminal_single_turn_completion,
+};
 #[cfg(test)]
 use self::lane_control::steer_error_class;
 #[cfg(test)]
@@ -65,32 +68,20 @@ use self::{
 		PREFLIGHT_CHECK_SKILLS, PREFLIGHT_EVENT_TYPE, PREFLIGHT_MCP_DETAIL,
 		PREFLIGHT_MCP_PAGE_LIMIT, PREFLIGHT_MODEL_PAGE_LIMIT, PREFLIGHT_PLUGIN_MARKETPLACE_KIND,
 		PROBE_COMMAND_EXEC_EXPECTED_OUTPUT, PROBE_COMMAND_EXEC_OUTPUT_BYTES_CAP,
-		PROBE_COMMAND_EXEC_TIMEOUT_MS, PROBE_DEVELOPER_INSTRUCTIONS, PROBE_EXPECTED_OUTPUT,
-		PROBE_ISSUE_ID, PROBE_RUN_ID, PROBE_TIMEOUT, PROBE_USER_INPUT, REQUEST_TIMEOUT,
-		RUN_CONTROL_POLL_INTERVAL,
+		PROBE_COMMAND_EXEC_TIMEOUT_MS, REQUEST_TIMEOUT,
 	},
 	dynamic_tools::{
-		classify_turn_completion, dispatch_dynamic_tool_call,
-		dynamic_tool_call_unavailable_for_phase, has_terminal_completion_signal,
-		reject_nonterminal_single_turn_completion, respond_to_dynamic_tool_call_dispatch,
-		validated_dynamic_tool_specs,
+		dispatch_dynamic_tool_call,
+		dynamic_tool_call_unavailable_for_phase, respond_to_dynamic_tool_call_dispatch,
 	},
-	lane_control::handle_pending_turn_control_requests,
 	markers::{
 		publish_run_control_channel_for_request, write_activity_marker_best_effort,
 		write_activity_marker_best_effort_for_request,
 		write_capability_preflight_marker_best_effort,
 	},
-	phase_goal::{
-		PhaseGoalRuntime, app_server_method_not_found, clear_thread_phase_goal_best_effort,
-		get_thread_phase_goal, initialize_phase_goal_runtime, record_phase_goal_completed,
-		set_thread_phase_goal,
-	},
 	preflight::{run_app_server_capability_preflight, run_command_exec_health_check},
-	runtime_types::{RequestDispatchContext, RequestWaitPhase, RunRecorder, TurnLoopResult},
-	schema_probe::probe_app_server_schema,
+	runtime_types::{RequestDispatchContext, RequestWaitPhase, RunRecorder},
 	server_requests::{
-		apply_protocol_message_side_effects, handle_server_request_during_turn_execution,
 		handle_server_request_while_waiting, interactive_flag_for_request,
 		record_server_request_response,
 	},
@@ -121,44 +112,37 @@ use self::{
 
 use std::{
 	collections::BTreeMap,
-	env,
 	error::Error,
 	fmt::{self, Display, Formatter},
-	mem,
-	path::{Path, PathBuf},
-	time::{Duration, Instant},
+	path::Path,
+	time::Duration,
 };
 
-use color_eyre::Report;
 use serde::Serialize;
 use serde_json::{self, Value};
 
 use self::protocol::{
-	AgentMessageDeltaNotification, AppServerClient, ChatgptAuthTokensRefreshParams,
+	AppServerClient, ChatgptAuthTokensRefreshParams,
 	ChatgptAuthTokensRefreshResponse, CommandExecParams, CommandExecResponse,
 	CommandExecutionApprovalDecision, CommandExecutionRequestApprovalResponse, ConfigReadParams,
-	DynamicToolCallParams, EffectiveThreadConfig, ErrorNotification, FileChangeApprovalDecision,
-	FileChangeRequestApprovalResponse, InitializeResponse, ItemCompletedNotification,
-	ListMcpServerStatusParams, ListMcpServerStatusResponse, LoginAccountParams,
+	DynamicToolCallParams, EffectiveThreadConfig, FileChangeApprovalDecision,
+	FileChangeRequestApprovalResponse,
+	ListMcpServerStatusParams, ListMcpServerStatusResponse,
 	McpServerElicitationAction, McpServerElicitationRequestResponse, McpServerStatusSummary,
 	ModelListParams, ModelListResponse, ModelProviderCapabilitiesReadResponse, ModelSummary,
-	PermissionGrantScope, PermissionsRequestApprovalResponse, PluginListParams, PluginListResponse,
-	ProbeDynamicToolHandler, RunOutcome, RuntimeConfigSummary, SkillsListParams,
-	SkillsListResponse, ThreadArchiveRequest, ThreadGoal, ThreadGoalClearParams,
-	ThreadGoalGetParams, ThreadGoalSetParams, ThreadGoalStatus, ThreadGoalUpdatedNotification,
-	ThreadResumeRequest, ThreadSessionResponse, ThreadStartRequest,
-	ThreadStatusChangedNotification, ToolRequestUserInputResponse, TurnCompletedNotification,
-	TurnError, TurnInterruptRequest, TurnStartRequest, TurnSteerRequest, UserInput,
+	PermissionGrantScope, PermissionsRequestApprovalResponse, PluginListParams, PluginListResponse, RuntimeConfigSummary, SkillsListParams,
+	SkillsListResponse, ThreadGoal, ThreadGoalClearParams,
+	ThreadGoalGetParams, ThreadGoalSetParams, ThreadGoalStatus,
+	ThreadStatusChangedNotification, ToolRequestUserInputResponse, TurnInterruptRequest,
 };
+#[cfg(test)]
+use self::protocol::{InitializeResponse, ProbeDynamicToolHandler, UserInput};
 use crate::{
 	agent::{
-		app_server::protocol::LoginAccountResponse,
-		codex_accounts::{CodexAccountAuthFailure, CodexAccountLogin, CodexAccountProvider},
-		json_rpc,
+		codex_accounts::CodexAccountProvider,
 		json_rpc::{
-			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
-			JsonRpcConnection, JsonRpcError, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest,
-			ResolvedAppServerCodexHomeEnv, WireMessage,
+			AppServerOutputTimeout,
+			JsonRpcConnection, JsonRpcMessage, JsonRpcRequest, WireMessage,
 		},
 		tracker_tool_bridge::{
 			self, DynamicToolCallResponse, DynamicToolContentItem, DynamicToolHandler,

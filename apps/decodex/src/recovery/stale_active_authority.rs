@@ -42,11 +42,28 @@ pub(super) fn inspect_stale_active_private_evidence(
 		if release_audit_present {
 			evidence.push(String::from("stale_active_release_audit_present"));
 		}
-		if events.iter().all(|event| {
-			stale_active_private_event_allows_release(event, marker_liveness, release_audit_present)
-		}) {
+		let private_progress_events = events
+			.iter()
+			.filter(|event| {
+				!stale_active_private_event_allows_release(
+					event,
+					marker_liveness,
+					release_audit_present,
+				)
+			})
+			.collect::<Vec<_>>();
+
+		if private_progress_events.is_empty() {
 			evidence.push(String::from("only_stale_active_or_failed_control_evidence_present"));
 		} else {
+			evidence.extend(private_progress_events.iter().map(|event| {
+				format!(
+					"private_progress_evidence_ref:{}:{}:{}",
+					event.run_id(),
+					event.attempt_number(),
+					event.event_type()
+				)
+			}));
 			blockers.push(String::from("private_progress_evidence_present"));
 		}
 	}
