@@ -1,4 +1,25 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use crate::{
+	config::ServiceConfig,
+	github,
+	orchestrator::{
+		EXTERNAL_REVIEW_ACK_TIMEOUT_SECS, EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS,
+		EXTERNAL_REVIEW_REQUEST_BODY, ExternalReviewRequestCiGate, PullRequestReviewState,
+		ReviewOrchestrationMarker, ReviewOrchestrationPhase,
+		kernel::command::CommandIntentKind,
+		retained_review_orchestration::{
+			RetainedReviewLane, admin_merge, attention, command, markers,
+			model::{
+				PassiveRetainedAttentionRuntime, RetainedAdminMergeReasons,
+				RetainedReviewOrchestrationMarkerFields, RetainedReviewRuntime,
+			},
+		},
+		status,
+	},
+	prelude::{Result, eyre},
+	state::StateStore,
+	tracker::IssueTracker,
+	workflow::WorkflowDocument,
+};
 
 pub(super) fn reconcile_retained_review_lane<T>(
 	tracker: &T,
@@ -30,8 +51,9 @@ where
 		})?;
 
 	match phase {
-		ReviewOrchestrationPhase::RequestPending =>
-			handle_request_pending_phase(project, state_store, lane, github_token),
+		ReviewOrchestrationPhase::RequestPending => {
+			handle_request_pending_phase(project, state_store, lane, github_token)
+		},
 		ReviewOrchestrationPhase::WaitingForAck => handle_waiting_for_ack_phase(
 			tracker,
 			project,
@@ -96,16 +118,16 @@ where
 		);
 	}
 	if external_review_requires_repair(&lane.review_state, &lane.orchestration_marker)
-		|| failed_checks_require_repair(
+		|| status::failed_checks_require_repair(
 			lane.review_state.status_check_rollup_state.as_deref(),
 			&lane.review_state.merge_state_status,
-		) || merge_state_requires_review_repair(
+		) || status::merge_state_requires_review_repair(
 		&lane.review_state.mergeable,
 		&lane.review_state.merge_state_status,
 	)
 	.is_some()
 	{
-		return write_retained_review_orchestration_marker_for_command(
+		return markers::write_retained_review_orchestration_marker_for_command(
 			state_store,
 			lane,
 			CommandIntentKind::StartReviewRepair,
@@ -114,8 +136,8 @@ where
 			RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
 		);
 	}
-	if review_state_landing_requires_agent_fallback(&lane.review_state) {
-		return write_retained_review_orchestration_marker_for_command(
+	if status::review_state_landing_requires_agent_fallback(&lane.review_state) {
+		return markers::write_retained_review_orchestration_marker_for_command(
 			state_store,
 			lane,
 			CommandIntentKind::StartReviewRepair,
@@ -124,7 +146,7 @@ where
 			RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
 		);
 	}
-	if !review_state_landing_gates_satisfied(&lane.review_state) {
+	if !status::review_state_landing_gates_satisfied(&lane.review_state) {
 		return Ok(());
 	}
 
@@ -137,7 +159,7 @@ where
 		github_token,
 	};
 
-	start_retained_admin_merge(
+	admin_merge::start_retained_admin_merge(
 		&mut runtime,
 		lane,
 		RetainedAdminMergeReasons {
@@ -154,11 +176,11 @@ fn handle_request_pending_phase(
 	lane: &RetainedReviewLane,
 	github_token: &mut Option<String>,
 ) -> Result<()> {
-	match external_review_request_ci_gate(&lane.review_state) {
+	match status::external_review_request_ci_gate(&lane.review_state) {
 		ExternalReviewRequestCiGate::Ready => {},
 		ExternalReviewRequestCiGate::WaitForGreenChecks => return Ok(()),
 		ExternalReviewRequestCiGate::RepairRequired => {
-			return write_retained_review_orchestration_marker_for_command(
+			return markers::write_retained_review_orchestration_marker_for_command(
 				state_store,
 				lane,
 				CommandIntentKind::StartReviewRepair,
@@ -177,7 +199,7 @@ fn handle_request_pending_phase(
 		"external_review_request_pending",
 	)?;
 
-	write_retained_review_orchestration_marker_for_command(
+	markers::write_retained_review_orchestration_marker_for_command(
 		state_store,
 		lane,
 		CommandIntentKind::RequestExternalReview,
@@ -204,8 +226,10 @@ fn handle_waiting_for_ack_phase<T>(
 where
 	T: IssueTracker,
 {
-	if request_comment_has_eyes(&lane.review_state, &lane.orchestration_marker).unwrap_or(false) {
-		return write_retained_review_orchestration_marker_for_command(
+	if status::request_comment_has_eyes(&lane.review_state, &lane.orchestration_marker)
+		.unwrap_or(false)
+	{
+		return markers::write_retained_review_orchestration_marker_for_command(
 			state_store,
 			lane,
 			CommandIntentKind::ProbeExternalReviewAcknowledgement,
@@ -235,7 +259,7 @@ where
 			"external_review_ack_pending",
 		)?;
 
-		return write_retained_review_orchestration_marker_for_command(
+		return markers::write_retained_review_orchestration_marker_for_command(
 			state_store,
 			lane,
 			CommandIntentKind::ResendExternalReviewRequest,
@@ -250,7 +274,7 @@ where
 		);
 	}
 
-	apply_passive_retained_manual_attention(
+	attention::apply_passive_retained_manual_attention(
 		PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 		&lane.snapshot.issue,
 		&lane.snapshot.worktree,
@@ -268,7 +292,7 @@ where
 	T: IssueTracker,
 {
 	if external_review_requires_repair(&lane.review_state, &lane.orchestration_marker) {
-		return write_retained_review_orchestration_marker_for_command(
+		return markers::write_retained_review_orchestration_marker_for_command(
 			runtime.state_store,
 			lane,
 			CommandIntentKind::StartReviewRepair,
@@ -283,16 +307,16 @@ where
 			},
 		);
 	}
-	if failed_checks_require_repair(
+	if status::failed_checks_require_repair(
 		lane.review_state.status_check_rollup_state.as_deref(),
 		&lane.review_state.merge_state_status,
-	) || merge_state_requires_review_repair(
+	) || status::merge_state_requires_review_repair(
 		&lane.review_state.mergeable,
 		&lane.review_state.merge_state_status,
 	)
 	.is_some()
 	{
-		return write_retained_review_orchestration_marker_for_command(
+		return markers::write_retained_review_orchestration_marker_for_command(
 			runtime.state_store,
 			lane,
 			CommandIntentKind::StartReviewRepair,
@@ -301,9 +325,12 @@ where
 			RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
 		);
 	}
-	if external_review_has_strict_pass_signals(&lane.review_state, &lane.orchestration_marker) {
-		if review_state_clean_path_landing_gates_satisfied(&lane.review_state) {
-			return start_retained_admin_merge(
+	if status::external_review_has_strict_pass_signals(
+		&lane.review_state,
+		&lane.orchestration_marker,
+	) {
+		if status::review_state_clean_path_landing_gates_satisfied(&lane.review_state) {
+			return admin_merge::start_retained_admin_merge(
 				runtime,
 				lane,
 				RetainedAdminMergeReasons {
@@ -313,8 +340,8 @@ where
 				},
 			);
 		}
-		if review_state_landing_requires_agent_fallback(&lane.review_state) {
-			return write_retained_review_orchestration_marker_for_command(
+		if status::review_state_landing_requires_agent_fallback(&lane.review_state) {
+			return markers::write_retained_review_orchestration_marker_for_command(
 				runtime.state_store,
 				lane,
 				CommandIntentKind::StartReviewRepair,
@@ -324,7 +351,7 @@ where
 			);
 		}
 		if phase == ReviewOrchestrationPhase::WaitingForResult {
-			return write_retained_review_orchestration_marker_for_command(
+			return markers::write_retained_review_orchestration_marker_for_command(
 				runtime.state_store,
 				lane,
 				CommandIntentKind::WaitExternal,
@@ -336,9 +363,9 @@ where
 
 		return Ok(());
 	}
-	if external_review_result_arrived(&lane.review_state, &lane.orchestration_marker) {
-		return apply_passive_retained_manual_attention(
-			passive_attention_runtime(runtime),
+	if status::external_review_result_arrived(&lane.review_state, &lane.orchestration_marker) {
+		return attention::apply_passive_retained_manual_attention(
+			attention::passive_attention_runtime(runtime),
 			&lane.snapshot.issue,
 			&lane.snapshot.worktree,
 			&lane.orchestration_marker,
@@ -355,7 +382,7 @@ fn external_review_requires_repair(
 ) -> bool {
 	review_state.unresolved_review_threads > 0
 		|| matches!(review_state.review_decision.as_deref(), Some("CHANGES_REQUESTED"))
-		|| external_review_has_actionable_feedback(review_state, marker)
+		|| status::external_review_has_actionable_feedback(review_state, marker)
 }
 
 fn handle_waiting_for_merge_phase<T>(
@@ -382,7 +409,7 @@ where
 		return Ok(());
 	}
 
-	apply_passive_retained_manual_attention(
+	attention::apply_passive_retained_manual_attention(
 		PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 		&lane.snapshot.issue,
 		&lane.snapshot.worktree,
@@ -398,8 +425,12 @@ fn post_external_review_request_for_command(
 	kind: CommandIntentKind,
 	reason: &str,
 ) -> Result<(i64, i64)> {
-	retained_review_command_adapter(retained_review_command_intent(lane, kind, reason), kind)?;
-	let github_token = retained_review_github_token(project, github_token)?;
+	command::retained_review_command_adapter(
+		command::retained_review_command_intent(lane, kind, reason),
+		kind,
+	)?;
+
+	let github_token = admin_merge::retained_review_github_token(project, github_token)?;
 
 	github::post_pull_request_issue_comment(
 		lane.snapshot.worktree.worktree_path(),

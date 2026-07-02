@@ -1,26 +1,18 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use color_eyre::Report;
 
-pub(super) fn apply_passive_retained_manual_attention<T>(
-	runtime: PassiveRetainedAttentionRuntime<'_, T>,
-	issue: &TrackerIssue,
-	worktree: &WorktreeMapping,
-	orchestration_marker: &ReviewOrchestrationMarker,
-	reason: &str,
-) -> Result<()>
-where
-	T: IssueTracker,
-{
-	apply_passive_retained_manual_attention_with_run_identity(
-		runtime,
-		issue,
-		worktree,
-		&RetainedReviewRunIdentity {
-			run_id: orchestration_marker.run_id().to_owned(),
-			attempt_number: orchestration_marker.attempt_number(),
+use crate::{
+	orchestrator::{
+		self, IssueDispatchMode, IssueRunPlan, RetainedReviewNeedsAttention,
+		RetainedReviewRunIdentity, TerminalFailureWritebackRuntime,
+		retained_review_orchestration::model::{
+			PassiveRetainedAttentionRuntime, RetainedReviewRuntime,
 		},
-		reason,
-	)
-}
+	},
+	prelude::Result,
+	state::{ReviewOrchestrationMarker, WorktreeMapping},
+	tracker::{IssueTracker, TrackerIssue},
+	worktree::WorktreeSpec,
+};
 
 pub(crate) fn apply_passive_retained_manual_attention_with_run_identity<T>(
 	runtime: PassiveRetainedAttentionRuntime<'_, T>,
@@ -53,12 +45,13 @@ where
 		run_id: run_identity.run_id.clone(),
 		retry_budget_base: 0,
 	};
-	let worktree_path = relative_worktree_path_for_path(
+	let worktree_path = orchestrator::relative_worktree_path_for_path(
 		runtime.project,
 		synthetic_issue_run.worktree.path.as_path(),
 	);
-	let privacy_classifier = configured_public_projection_privacy_classifier(runtime.project)?;
-	let _ = apply_terminal_failure_writeback(
+	let privacy_classifier =
+		orchestrator::configured_public_projection_privacy_classifier(runtime.project)?;
+	let _ = orchestrator::apply_terminal_failure_writeback(
 		runtime.tracker,
 		TerminalFailureWritebackRuntime {
 			service_id: runtime.project.service_id(),
@@ -73,6 +66,39 @@ where
 	)?;
 
 	Ok(())
+}
+
+pub(super) fn apply_passive_retained_manual_attention<T>(
+	runtime: PassiveRetainedAttentionRuntime<'_, T>,
+	issue: &TrackerIssue,
+	worktree: &WorktreeMapping,
+	orchestration_marker: &ReviewOrchestrationMarker,
+	reason: &str,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	apply_passive_retained_manual_attention_with_run_identity(
+		runtime,
+		issue,
+		worktree,
+		&RetainedReviewRunIdentity {
+			run_id: orchestration_marker.run_id().to_owned(),
+			attempt_number: orchestration_marker.attempt_number(),
+		},
+		reason,
+	)
+}
+
+pub(super) fn passive_attention_runtime<'a, T>(
+	runtime: &'a RetainedReviewRuntime<'_, T>,
+) -> PassiveRetainedAttentionRuntime<'a, T> {
+	PassiveRetainedAttentionRuntime {
+		tracker: runtime.tracker,
+		project: runtime.project,
+		workflow: runtime.workflow,
+		state_store: runtime.state_store,
+	}
 }
 
 fn passive_retained_attention_blocker_was_resolved<T>(
@@ -108,15 +134,4 @@ where
 	);
 
 	Ok(true)
-}
-
-pub(super) fn passive_attention_runtime<'a, T>(
-	runtime: &'a RetainedReviewRuntime<'_, T>,
-) -> PassiveRetainedAttentionRuntime<'a, T> {
-	PassiveRetainedAttentionRuntime {
-		tracker: runtime.tracker,
-		project: runtime.project,
-		workflow: runtime.workflow,
-		state_store: runtime.state_store,
-	}
 }
