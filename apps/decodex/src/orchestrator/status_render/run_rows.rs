@@ -1,16 +1,9 @@
-use super::{
-	EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH, OperatorContinuationRecoveryStatus,
+use crate::orchestrator::status_render::activity;
+use crate::orchestrator::{
+	self, EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH, OperatorContinuationRecoveryStatus,
 	OperatorHistoryLaneStatus, OperatorHistoryLedgerOutcome, OperatorLaneLifecycleMetrics,
-	OperatorPhaseAcceptanceStatus, OperatorRunStatus, operator_run_counts_as_current_lane,
-	operator_run_has_recent_app_server_execution, render_account_summary, render_accounts_summary,
-	render_child_agent_activity_summary, render_child_agent_context_pressure,
-	render_control_capability_summary, render_loop_architecture_recovery_summary,
-	render_loop_autonomy_signals_summary, render_loop_boundary_summary, render_loop_review_summary,
-	render_loop_status_summary, render_private_evidence_reference,
-	render_protocol_activity_summary,
+	OperatorPhaseAcceptanceStatus, OperatorRunStatus,
 };
-
-use super::activity::format_seconds_compact;
 
 pub(super) fn append_rendered_history_lane(output: &mut String, lane: &OperatorHistoryLaneStatus) {
 	output.push_str(&format!(
@@ -59,12 +52,16 @@ pub(super) fn append_rendered_history_lane(output: &mut String, lane: &OperatorH
 			phase.attempt_count,
 			phase.protocol_event_count,
 			phase.child_event_count,
-			format_seconds_compact(phase.wall_seconds),
+			activity::format_seconds_compact(phase.wall_seconds),
 			phase.tool_call_count,
 			phase.input_tokens_cumulative,
 			phase.output_tokens_cumulative,
 		));
 	}
+}
+
+pub(super) fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
+	append_rendered_run_impl(output, run);
 }
 
 fn render_lane_lifecycle_metrics(metrics: &OperatorLaneLifecycleMetrics) -> String {
@@ -79,7 +76,7 @@ fn render_lane_lifecycle_metrics(metrics: &OperatorLaneLifecycleMetrics) -> Stri
 		metrics.missing_attempt_count,
 		metrics.protocol_event_count,
 		metrics.child_event_count,
-		format_seconds_compact(metrics.wall_seconds),
+		activity::format_seconds_compact(metrics.wall_seconds),
 		metrics.tool_call_count,
 		metrics.input_tokens_cumulative,
 		metrics.output_tokens_cumulative,
@@ -176,7 +173,7 @@ fn operator_run_phase_readback(run: &OperatorRunStatus) -> &str {
 	if run.run_phase.trim().is_empty() { &run.phase } else { &run.run_phase }
 }
 
-pub(super) fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
+fn append_rendered_run_impl(output: &mut String, run: &OperatorRunStatus) {
 	let (freshness_source, freshness_at) = operator_run_freshness(run);
 	let protocol_event = render_run_protocol_event(run);
 	let thread_id = run.thread_id.as_deref().unwrap_or("none");
@@ -192,19 +189,23 @@ pub(super) fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) 
 	let worktree_path = run.worktree_path.as_deref().unwrap_or("none");
 	let queue_lease = operator_run_queue_lease_summary(run);
 	let child_agent_activity =
-		render_child_agent_activity_summary(run.child_agent_activity.as_ref());
-	let context_pressure = render_child_agent_context_pressure(run.child_agent_activity.as_ref());
-	let protocol_activity = render_protocol_activity_summary(run.protocol_activity.as_ref());
-	let account = render_account_summary(run.account.as_ref());
-	let accounts = render_accounts_summary(&run.accounts);
-	let private_evidence = render_private_evidence_reference(run);
-	let loop_status = render_loop_status_summary(run.loop_status.as_ref());
-	let loop_autonomy_signals = render_loop_autonomy_signals_summary(run.loop_status.as_ref());
-	let loop_review = render_loop_review_summary(run.loop_status.as_ref());
+		activity::render_child_agent_activity_summary(run.child_agent_activity.as_ref());
+	let context_pressure =
+		activity::render_child_agent_context_pressure(run.child_agent_activity.as_ref());
+	let protocol_activity =
+		activity::render_protocol_activity_summary(run.protocol_activity.as_ref());
+	let account = activity::render_account_summary(run.account.as_ref());
+	let accounts = activity::render_accounts_summary(&run.accounts);
+	let private_evidence = orchestrator::render_private_evidence_reference(run);
+	let loop_status = activity::render_loop_status_summary(run.loop_status.as_ref());
+	let loop_autonomy_signals =
+		activity::render_loop_autonomy_signals_summary(run.loop_status.as_ref());
+	let loop_review = activity::render_loop_review_summary(run.loop_status.as_ref());
 	let loop_architecture_recovery =
-		render_loop_architecture_recovery_summary(run.loop_status.as_ref());
-	let loop_boundary = render_loop_boundary_summary(run.loop_status.as_ref());
-	let control_capability = render_control_capability_summary(run.control_capability.as_ref());
+		activity::render_loop_architecture_recovery_summary(run.loop_status.as_ref());
+	let loop_boundary = activity::render_loop_boundary_summary(run.loop_status.as_ref());
+	let control_capability =
+		activity::render_control_capability_summary(run.control_capability.as_ref());
 	let continuation_recovery =
 		render_continuation_recovery_summary(run.continuation_recovery.as_ref());
 	let phase_acceptance = render_phase_acceptance_summary(run.phase_acceptance.as_ref());
@@ -278,10 +279,7 @@ pub(super) fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) 
 		if run.suspected_stall { "yes" } else { "no" },
 		run.progress_diagnostic.as_deref().unwrap_or("none"),
 		run.process_id.map_or_else(|| String::from("none"), |value| value.to_string()),
-		run.process_alive.map_or_else(
-			|| String::from("none"),
-			|value| if value { String::from("yes") } else { String::from("no") },
-		),
+		render_optional_bool(run.process_alive),
 		run.process_liveness_reason.as_deref().unwrap_or("none"),
 		run.retry_kind.as_deref().unwrap_or("none"),
 		run.next_retry_at.as_deref().unwrap_or("none"),
@@ -381,6 +379,10 @@ fn single_line_status_value(value: &str) -> String {
 	value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+fn render_optional_bool(value: Option<bool>) -> String {
+	value.map_or_else(|| String::from("none"), |value| if value { "yes" } else { "no" }.into())
+}
+
 fn operator_run_queue_lease_summary(run: &OperatorRunStatus) -> String {
 	if run.run_lease {
 		return String::from("held");
@@ -392,16 +394,19 @@ fn operator_run_queue_lease_summary(run: &OperatorRunStatus) -> String {
 		"protocol_observed" => String::from("not_held (protocol_observed keeps lane visible)"),
 		"process_stopped" => String::from("not_held (process_stopped needs attention)"),
 		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH
-			if operator_run_has_recent_app_server_execution(run) =>
-			String::from("not_held (app_server_activity keeps lane visible)"),
-		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH =>
-			String::from("not_held (process_identity_mismatch needs attention)"),
+			if orchestrator::operator_run_has_recent_app_server_execution(run) =>
+		{
+			String::from("not_held (app_server_activity keeps lane visible)")
+		},
+		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH => {
+			String::from("not_held (process_identity_mismatch needs attention)")
+		},
 		_ => String::from("not_held"),
 	}
 }
 
 fn operator_run_freshness(run: &OperatorRunStatus) -> (&'static str, &str) {
-	if operator_run_counts_as_current_lane(run) {
+	if orchestrator::operator_run_counts_as_current_lane(run) {
 		if let Some(timestamp) = run.last_run_activity_at.as_deref() {
 			return ("last_run_activity_at", timestamp);
 		}
