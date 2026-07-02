@@ -1,4 +1,6 @@
-fn validate_review_handoff_runtime(
+use crate::orchestrator::*;
+
+pub(in crate::orchestrator) fn validate_review_handoff_runtime(
 	project: &ServiceConfig,
 	dry_run: bool,
 ) -> Result<()> {
@@ -6,17 +8,13 @@ fn validate_review_handoff_runtime(
 		return Ok(());
 	}
 
-	validate_command_available(
-		"gh",
-		project.github().command_path(),
-		"PR-backed review handoff",
-	)?;
+	validate_command_available("gh", project.github().command_path(), "PR-backed review handoff")?;
 	resolve_configured_env_var("github.token_env_var", Some(project.github().token_env_var()))?;
 
 	Ok(())
 }
 
-fn validate_review_repair_runtime(
+pub(in crate::orchestrator) fn validate_review_repair_runtime(
 	project: &ServiceConfig,
 	dry_run: bool,
 ) -> Result<()> {
@@ -34,7 +32,7 @@ fn validate_review_repair_runtime(
 	Ok(())
 }
 
-fn validate_closeout_runtime(
+pub(in crate::orchestrator) fn validate_closeout_runtime(
 	project: &ServiceConfig,
 	dry_run: bool,
 ) -> Result<()> {
@@ -52,11 +50,11 @@ fn validate_closeout_runtime(
 	Ok(())
 }
 
-fn validate_daemon_runtime() -> Result<()> {
+pub(in crate::orchestrator) fn validate_daemon_runtime() -> Result<()> {
 	Ok(())
 }
 
-fn validate_command_available(
+pub(in crate::orchestrator) fn validate_command_available(
 	command: &str,
 	configured_path: Option<&Path>,
 	purpose: &str,

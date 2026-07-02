@@ -1,28 +1,28 @@
 //! Queued issue attention projection for operator status snapshots.
 
+pub(in crate::orchestrator) use self::records::operator_authority_decision_request_status_from_event;
+
+mod active_label;
+mod records;
+
 use std::path::PathBuf;
 
-use serde_json::Value;
-
+use crate::orchestrator::{
+	self, ATTENTION_ERROR_EVIDENCE_MISSING, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
+	OperatorAuthorityDecisionRequestStatus, OperatorLoopStatus, OperatorQueuedIssueAttentionStatus,
+	QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT, WorktreeTrackedChangeState,
+	marker_process_liveness_for_marker,
+	status_run_projection::{self},
+};
+use crate::prelude::Result;
 use crate::{
 	config::ServiceConfig,
 	state::{
-		self, PrivateExecutionEvent, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_APP_SERVER_PREFLIGHT,
+		self, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_APP_SERVER_PREFLIGHT,
 		RUN_OPERATION_GIT_CREDENTIALS, RUN_OPERATION_RECONCILIATION, RunActivityMarker, StateStore,
 	},
 	tracker::{IssueTracker, TrackerIssue, records::LinearExecutionEventRecord},
 	workflow::WorkflowDocument,
-};
-
-use super::{
-	ATTENTION_ERROR_EVIDENCE_MISSING, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
-	OperatorAuthorityDecisionRequestStatus, OperatorHistoryLedgerRecord,
-	OperatorQueuedIssueAttentionStatus, QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT,
-	WorktreeTrackedChangeState, collect_history_ledger_records,
-	compare_history_ledger_record_position, marker_process_liveness_for_marker,
-	parse_rfc3339_unix_epoch, relative_worktree_path_for_path,
-	status_run_projection::{format_optional_unix_timestamp, operator_loop_status_for_run},
-	worktree_tracked_change_state,
 };
 
 struct OperatorQueuedIssueWorktreeContext {
@@ -38,7 +38,7 @@ pub(super) fn operator_queued_issue_attention_status<T>(
 	state_store: &StateStore,
 	issue: &TrackerIssue,
 	reason: &str,
-) -> crate::prelude::Result<Option<OperatorQueuedIssueAttentionStatus>>
+) -> Result<Option<OperatorQueuedIssueAttentionStatus>>
 where
 	T: IssueTracker,
 {
@@ -66,8 +66,12 @@ where
 		},
 		_ => None,
 	};
-	let attention_record =
-		operator_queued_issue_latest_attention_record(tracker, project, state_store, issue);
+	let attention_record = records::operator_queued_issue_latest_attention_record(
+		tracker,
+		project,
+		state_store,
+		issue,
+	);
 	let private_evidence_missing = operator_queued_issue_private_evidence_missing(
 		project,
 		state_store,
@@ -98,12 +102,12 @@ where
 	let worktree_tracked_change_state = if marker_unreadable {
 		WorktreeTrackedChangeState::Unknown
 	} else {
-		worktree_tracked_change_state(&worktree_path)
+		orchestrator::worktree_tracked_change_state(&worktree_path)
 	};
 	let worktree_has_tracked_changes = worktree_tracked_change_state.has_tracked_changes();
 	let recorded_next_action =
 		attention_record.as_ref().and_then(|record| record.next_action.clone());
-	let stale_active_next_action = operator_active_label_attention_next_action(
+	let stale_active_next_action = active_label::operator_active_label_attention_next_action(
 		reason,
 		&issue.identifier,
 		worktree_tracked_change_state,
@@ -147,11 +151,15 @@ where
 		last_activity_at: marker
 			.as_ref()
 			.and_then(RunActivityMarker::last_activity_unix_epoch)
-			.and_then(|unix_epoch| format_optional_unix_timestamp(Some(unix_epoch))),
+			.and_then(|unix_epoch| {
+				status_run_projection::format_optional_unix_timestamp(Some(unix_epoch))
+			}),
 		last_progress_at: marker
 			.as_ref()
 			.and_then(RunActivityMarker::last_progress_unix_epoch)
-			.and_then(|unix_epoch| format_optional_unix_timestamp(Some(unix_epoch))),
+			.and_then(|unix_epoch| {
+				status_run_projection::format_optional_unix_timestamp(Some(unix_epoch))
+			}),
 		last_event_type: marker
 			.as_ref()
 			.and_then(RunActivityMarker::last_event_type)
@@ -160,7 +168,7 @@ where
 		process_alive: process_liveness.map(|liveness| liveness.alive),
 		process_liveness_reason: process_liveness.map(|liveness| liveness.reason.to_owned()),
 		worktree_path: matches!(worktree_path.try_exists(), Ok(true))
-			.then(|| relative_worktree_path_for_path(project, &worktree_path)),
+			.then(|| orchestrator::relative_worktree_path_for_path(project, &worktree_path)),
 		worktree_has_tracked_changes,
 	}))
 }
@@ -169,7 +177,7 @@ fn operator_queued_issue_worktree_context(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue: &TrackerIssue,
-) -> crate::prelude::Result<OperatorQueuedIssueWorktreeContext> {
+) -> Result<OperatorQueuedIssueWorktreeContext> {
 	let worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
 	let path = worktree_mapping
 		.as_ref()
@@ -197,7 +205,7 @@ fn operator_queued_issue_attention_next_action(
 fn operator_queued_issue_attempt_status(
 	state_store: &StateStore,
 	marker: Option<&RunActivityMarker>,
-) -> crate::prelude::Result<Option<String>> {
+) -> Result<Option<String>> {
 	Ok(marker
 		.and_then(|marker| state_store.run_attempt(marker.run_id()).transpose())
 		.transpose()?
@@ -210,7 +218,7 @@ fn operator_queued_issue_loop_status(
 	issue: &TrackerIssue,
 	attention_record: Option<&LinearExecutionEventRecord>,
 	marker: Option<&RunActivityMarker>,
-) -> crate::prelude::Result<Option<super::OperatorLoopStatus>> {
+) -> Result<Option<OperatorLoopStatus>> {
 	let run_id = attention_record
 		.map(|record| record.run_id.as_str())
 		.or_else(|| marker.map(RunActivityMarker::run_id));
@@ -219,16 +227,18 @@ fn operator_queued_issue_loop_status(
 		.or_else(|| marker.map(RunActivityMarker::attempt_number));
 
 	match (run_id, attempt_number) {
-		(Some(run_id), Some(attempt_number)) => operator_loop_status_for_run(
-			project,
-			state_store,
-			&issue.id,
-			run_id,
-			attempt_number,
-			Some("handoff"),
-			None,
-		)
-		.map(Some),
+		(Some(run_id), Some(attempt_number)) => {
+			status_run_projection::operator_loop_status_for_run(
+				project,
+				state_store,
+				&issue.id,
+				run_id,
+				attempt_number,
+				Some("handoff"),
+				None,
+			)
+			.map(Some)
+		},
 		_ => Ok(None),
 	}
 }
@@ -239,7 +249,7 @@ fn operator_queued_issue_decision_request_status(
 	issue: &TrackerIssue,
 	attention_record: Option<&LinearExecutionEventRecord>,
 	marker: Option<&RunActivityMarker>,
-) -> crate::prelude::Result<Option<OperatorAuthorityDecisionRequestStatus>> {
+) -> Result<Option<OperatorAuthorityDecisionRequestStatus>> {
 	let run_id = attention_record
 		.map(|record| record.run_id.as_str())
 		.or_else(|| marker.map(RunActivityMarker::run_id));
@@ -263,41 +273,13 @@ fn operator_queued_issue_decision_request_status(
 		.and_then(operator_authority_decision_request_status_from_event))
 }
 
-pub(super) fn operator_authority_decision_request_status_from_event(
-	event: &PrivateExecutionEvent,
-) -> Option<OperatorAuthorityDecisionRequestStatus> {
-	let payload = event.payload();
-	let decision_request_id = payload.get("decision_request_id")?.as_str()?.to_owned();
-	let reason = payload.get("reason")?.as_str()?.to_owned();
-	let boundary = payload.get("boundary")?.as_str()?.to_owned();
-	let phase = payload.get("phase").and_then(Value::as_str).unwrap_or("human_required").to_owned();
-	let next_action = payload
-		.get("next_action")
-		.or_else(|| payload.get("resume_condition"))?
-		.as_str()?
-		.to_owned();
-	let recommendation = payload.get("recommendation").and_then(Value::as_str).map(str::to_owned);
-	let resume_condition =
-		payload.get("resume_condition").and_then(Value::as_str).map(str::to_owned);
-
-	Some(OperatorAuthorityDecisionRequestStatus {
-		phase,
-		reason,
-		boundary,
-		decision_request_id,
-		next_action,
-		recommendation,
-		resume_condition,
-	})
-}
-
 fn operator_queued_issue_private_evidence_missing(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue: &TrackerIssue,
 	marker: Option<&RunActivityMarker>,
 	reason: &str,
-) -> crate::prelude::Result<bool> {
+) -> Result<bool> {
 	if reason != QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT {
 		return Ok(false);
 	}
@@ -315,76 +297,6 @@ fn operator_queued_issue_private_evidence_missing(
 	Ok(events.is_empty())
 }
 
-fn operator_queued_issue_latest_attention_record<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	state_store: &StateStore,
-	issue: &TrackerIssue,
-) -> Option<LinearExecutionEventRecord>
-where
-	T: IssueTracker,
-{
-	let local_records = state_store
-		.list_linear_execution_events(project.service_id(), &issue.id)
-		.inspect_err(|error| {
-			tracing::debug!(
-				?error,
-				issue_id = issue.id,
-				issue = issue.identifier,
-				"Failed to load local attention records for queued issue."
-			);
-		})
-		.ok();
-
-	if let Some(record) =
-		local_records.as_deref().and_then(latest_attention_record_from_linear_records)
-	{
-		return Some(record.clone());
-	}
-
-	let comments = tracker
-		.list_comments(&issue.id)
-		.inspect_err(|error| {
-			tracing::debug!(
-				?error,
-				issue_id = issue.id,
-				issue = issue.identifier,
-				"Failed to load tracker comments for queued attention issue."
-			);
-		})
-		.ok()?;
-	let records = collect_history_ledger_records(project.service_id(), &issue.id, &comments);
-
-	latest_attention_record_from_history_ledger_records(&records)
-		.map(|record| record.record.clone())
-}
-
-fn latest_attention_record_from_linear_records(
-	records: &[LinearExecutionEventRecord],
-) -> Option<&LinearExecutionEventRecord> {
-	records
-		.iter()
-		.filter(|record| {
-			matches!(record.event_type.as_str(), "needs_attention" | "terminal_failure")
-		})
-		.max_by(|left, right| {
-			parse_rfc3339_unix_epoch(&left.event_timestamp)
-				.cmp(&parse_rfc3339_unix_epoch(&right.event_timestamp))
-				.then_with(|| left.idempotency_key.cmp(&right.idempotency_key))
-		})
-}
-
-fn latest_attention_record_from_history_ledger_records(
-	records: &[OperatorHistoryLedgerRecord],
-) -> Option<&OperatorHistoryLedgerRecord> {
-	records
-		.iter()
-		.filter(|entry| {
-			matches!(entry.record.event_type.as_str(), "needs_attention" | "terminal_failure")
-		})
-		.max_by(|left, right| compare_history_ledger_record_position(left, right))
-}
-
 fn operator_queued_issue_attention_summary(
 	reason: &str,
 	marker: Option<&RunActivityMarker>,
@@ -393,7 +305,7 @@ fn operator_queued_issue_attention_summary(
 	worktree_tracked_change_state: WorktreeTrackedChangeState,
 	attention_error_class: Option<&str>,
 ) -> String {
-	if let Some(summary) = operator_active_label_attention_summary(
+	if let Some(summary) = active_label::operator_active_label_attention_summary(
 		reason,
 		marker,
 		retry_budget_attempts,
@@ -503,80 +415,6 @@ fn operator_queued_issue_attention_summary(
 		Some(operation) => format!("Stopped during `{operation}`; operator recovery required."),
 		None => String::from("Needs operator recovery; no local run marker was found."),
 	}
-}
-
-fn operator_active_label_attention_summary(
-	reason: &str,
-	marker: Option<&RunActivityMarker>,
-	retry_budget_attempts: i64,
-	worktree_tracked_change_state: WorktreeTrackedChangeState,
-	attention_error_class: Option<&str>,
-) -> Option<String> {
-	if reason != QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT {
-		return None;
-	}
-	if worktree_tracked_change_state.has_tracked_changes() {
-		return Some(String::from(
-			"Linear active ownership is still present with retained worktree changes; inspect the patch and reconcile the lane before dispatch.",
-		));
-	}
-	if worktree_tracked_change_state.is_unknown() {
-		return Some(String::from(
-			"Linear active ownership is still present and retained worktree cleanliness could not be verified; inspect the worktree before dispatch.",
-		));
-	}
-	if retry_budget_attempts > 0 {
-		return Some(format!(
-			"Retryable failed-start cleanup is still pending after {retry_budget_attempts} failed attempts; no retained worktree changes were found, so clear stale active ownership before dispatch."
-		));
-	}
-	if attention_error_class == Some(ATTENTION_ERROR_EVIDENCE_MISSING) {
-		return Some(if marker.is_some() {
-			String::from(
-				"Linear active ownership is still present but private execution evidence is missing; inspect the retained marker and reconcile before dispatch.",
-			)
-		} else {
-			String::from(
-				"Linear active ownership is still present but the retained marker or private execution evidence is missing; reconcile before dispatch.",
-			)
-		});
-	}
-	if marker.is_some() {
-		return Some(String::from(
-			"Linear active ownership is still present alongside queue intake; inspect the retained marker before dispatch.",
-		));
-	}
-
-	Some(String::from(
-		"Linear active ownership is still present without a matching local run lease; reconcile before dispatch.",
-	))
-}
-
-fn operator_active_label_attention_next_action(
-	reason: &str,
-	issue_identifier: &str,
-	worktree_tracked_change_state: WorktreeTrackedChangeState,
-	attention_error_class: Option<&str>,
-) -> Option<String> {
-	if reason != QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT {
-		return None;
-	}
-	if worktree_tracked_change_state.has_tracked_changes()
-		|| worktree_tracked_change_state.is_unknown()
-	{
-		return Some(String::from(
-			"inspect_retained_worktree_changes_before_stale_active_recovery",
-		));
-	}
-	if attention_error_class == Some(ATTENTION_ERROR_EVIDENCE_MISSING) {
-		return Some(format!(
-			"run_stale_active_recovery: decodex recover stale-active diagnose {issue_identifier} --json; decodex recover stale-active release {issue_identifier} --dry-run"
-		));
-	}
-
-	Some(format!(
-		"run_stale_active_recovery: decodex recover stale-active diagnose {issue_identifier}; decodex recover stale-active release {issue_identifier} --dry-run"
-	))
 }
 
 fn operator_recovery_operation_label(marker: Option<&RunActivityMarker>) -> String {

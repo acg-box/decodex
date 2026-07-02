@@ -4,12 +4,15 @@ mod prompting_review_context;
 mod prompting_review_guidance;
 mod prompting_workflow_context;
 
+use crate::orchestrator::*;
+
 pub(crate) const TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION: &str =
 	prompting_contracts::TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION;
 
-const DOCS_IMPACT_CONTRACT: &str = prompting_contracts::DOCS_IMPACT_CONTRACT;
+pub(in crate::orchestrator) const DOCS_IMPACT_CONTRACT: &str =
+	prompting_contracts::DOCS_IMPACT_CONTRACT;
 
-fn build_review_run_context(
+pub(in crate::orchestrator) fn build_review_run_context(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -17,17 +20,18 @@ fn build_review_run_context(
 	prompting_review_context::build_review_run_context(project, state_store, issue_run)
 }
 
-fn review_pull_request_title(issue: &TrackerIssue) -> String {
+pub(in crate::orchestrator) fn review_pull_request_title(issue: &TrackerIssue) -> String {
 	prompting_workflow_context::review_pull_request_title(issue)
 }
 
-fn validate_workflow_read_first_files(
+pub(in crate::orchestrator) fn validate_workflow_read_first_files(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 ) -> Result<()> {
 	prompting_workflow_context::validate_workflow_read_first_files(project, workflow)
 }
-fn build_developer_instructions<T>(
+
+pub(in crate::orchestrator) fn build_developer_instructions<T>(
 	_tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -38,7 +42,10 @@ fn build_developer_instructions<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let continuation_guidance = if prompting_contracts::allows_clean_continuation(workflow, issue_run.dispatch_mode) {
+	let continuation_guidance = if prompting_contracts::allows_clean_continuation(
+		workflow,
+		issue_run.dispatch_mode,
+	) {
 		"\n- If more implementation work still remains at the current turn boundary, you may end the turn without `{terminal_finalize_tool}` and `decodex` may continue the same lane in a later turn."
 	} else {
 		""
@@ -66,7 +73,9 @@ where
 	sections.push(prompting_contracts::build_phase_goal_runtime_contract());
 	sections.push(String::from(TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION));
 
-	if let Some(recovery_context) = prompting_recovery::build_retry_recovery_context(issue_run.dispatch_mode) {
+	if let Some(recovery_context) =
+		prompting_recovery::build_retry_recovery_context(issue_run.dispatch_mode)
+	{
 		sections.push(recovery_context);
 	}
 	if let Some(recovery_context) =
@@ -76,7 +85,11 @@ where
 	}
 
 	let repair_architecture_guidance =
-		prompting_recovery::build_external_repair_architecture_guidance(project, state_store, issue_run);
+		prompting_recovery::build_external_repair_architecture_guidance(
+			project,
+			state_store,
+			issue_run,
+		);
 	let completed_state = workflow.frontmatter().tracker().resolved_completed_state();
 	let review_level = project.codex().review_level();
 	let needs_attention = workflow.frontmatter().tracker().needs_attention_label();
@@ -106,7 +119,8 @@ where
 			manual_attention_guidance = repair_manual_attention_guidance,
 			continuation_guidance = continuation_guidance,
 			repair_architecture_guidance = repair_architecture_guidance,
-			decodex_review_guidance = prompting_review_guidance::build_repair_review_guidance(review_level),
+			decodex_review_guidance =
+				prompting_review_guidance::build_repair_review_guidance(review_level),
 			github_review_guidance = prompting_review_guidance::build_repair_github_review_guidance(
 				review_level,
 				ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
@@ -115,7 +129,8 @@ where
 				review_level,
 				workflow.frontmatter().tracker().success_state(),
 			),
-			completion_guidance = prompting_review_guidance::build_repair_completion_guidance(review_level),
+			completion_guidance =
+				prompting_review_guidance::build_repair_completion_guidance(review_level),
 		),
 		IssueDispatchMode::Closeout => format!(
 			"Tracker tool contract\n- You own issue-scoped tracker writes for `{issue}` on retained PR `{pr_url}`.\n- This run resumes a merged post-review lane for the same PR lineage. The tracker issue may still be in `{success}` or may already be in `{completed}` while deterministic closeout tail work remains. Do not move the issue back to `{in_progress}` and do not call `{review_handoff_tool}` or `{review_repair_tool}`.\n- Treat retained closeout as a short deterministic tail. Reuse the existing merged PR evidence instead of restarting broad discovery, and only rerun the minimum validation needed to justify `Done` plus cleanup.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, docs impact, focus, next action, blockers, evidence, or verification state changes materially.\n- If you call `{progress_checkpoint_tool}` during closeout, either omit `head_sha` and let `decodex` record the exact current lane HEAD automatically, or pass the exact full current `HEAD` SHA. Do not send an abbreviated SHA that differs from the live lane head.\n- Merge is already authoritative for `{pr_url}` before this run starts. Do not land, merge, or request review from this closeout run.\n- If the issue is still in `{success}`, transition it once to `{completed}` with `{transition_tool}` before `{closeout_tool}`. If it is already in `{completed}`, leave it there.\n- Finish the remaining Linear closeout tail work for this same merged PR lineage, then call `{closeout_tool}` with PR `{pr_url}` and a short result summary, then call `{terminal_finalize_tool}` with path `closeout`.\n- Do not end the turn without either `{closeout_tool}` plus `{terminal_finalize_tool}`, or the manual-attention path.\n- {manual_attention_guidance}\n- Keep all tracker and PR writes scoped to this retained lane. `decodex` will validate the merged PR lineage, the resolved completed state, and the later cleanup boundary.\n- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}\n- Never write to any other issue.",
@@ -145,8 +160,10 @@ where
 			manual_attention_guidance = handoff_manual_attention_guidance,
 			continuation_guidance = continuation_guidance,
 			pr_title = review_pull_request_title(&issue_run.issue),
-			decodex_review_guidance = prompting_review_guidance::build_handoff_review_guidance(review_level),
-			completion_guidance = prompting_review_guidance::build_handoff_completion_guidance(review_level),
+			decodex_review_guidance =
+				prompting_review_guidance::build_handoff_review_guidance(review_level),
+			completion_guidance =
+				prompting_review_guidance::build_handoff_completion_guidance(review_level),
 		),
 	};
 
@@ -155,7 +172,7 @@ where
 	Ok(sections.join("\n\n"))
 }
 
-fn build_user_input<T>(
+pub(in crate::orchestrator) fn build_user_input<T>(
 	_tracker: &T,
 	project: &ServiceConfig,
 	issue: &TrackerIssue,
@@ -167,14 +184,21 @@ fn build_user_input<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let continuation_guidance = if prompting_contracts::allows_clean_continuation(workflow, issue_run.dispatch_mode) {
+	let continuation_guidance = if prompting_contracts::allows_clean_continuation(
+		workflow,
+		issue_run.dispatch_mode,
+	) {
 		"\n- If more work still remains at the current turn boundary, you may end the turn without `{terminal_finalize_tool}` and `decodex` will decide whether to continue the lane."
 	} else {
 		""
 	};
 	let description = render_issue_description_for_prompt(issue);
 	let repair_architecture_guidance =
-		prompting_recovery::build_external_repair_architecture_guidance(project, state_store, issue_run);
+		prompting_recovery::build_external_repair_architecture_guidance(
+			project,
+			state_store,
+			issue_run,
+		);
 	let completed_state = workflow.frontmatter().tracker().resolved_completed_state();
 	let review_level = project.codex().review_level();
 	let needs_attention = workflow.frontmatter().tracker().needs_attention_label();
@@ -190,11 +214,16 @@ where
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
 		Some(ISSUE_REVIEW_HANDOFF_TOOL_NAME),
 	);
-	let recovery_context = prompting_recovery::build_retry_recovery_context(issue_run.dispatch_mode)
-		.into_iter()
-		.chain(prompting_recovery::build_architecture_recovery_context(project, state_store, issue_run))
-		.map(|section| format!("{section}\n\n"))
-		.collect::<String>();
+	let recovery_context =
+		prompting_recovery::build_retry_recovery_context(issue_run.dispatch_mode)
+			.into_iter()
+			.chain(prompting_recovery::build_architecture_recovery_context(
+				project,
+				state_store,
+				issue_run,
+			))
+			.map(|section| format!("{section}\n\n"))
+			.collect::<String>();
 
 	match issue_run.dispatch_mode {
 		IssueDispatchMode::ReviewRepair => format!(
@@ -211,12 +240,14 @@ where
 			success = workflow.frontmatter().tracker().success_state(),
 			continuation_guidance = continuation_guidance,
 			repair_architecture_guidance = repair_architecture_guidance,
-			decodex_review_guidance = prompting_review_guidance::build_repair_review_guidance(review_level),
+			decodex_review_guidance =
+				prompting_review_guidance::build_repair_review_guidance(review_level),
 			github_review_guidance = prompting_review_guidance::build_repair_github_review_guidance(
 				review_level,
 				ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
 			),
-			completion_guidance = prompting_review_guidance::build_repair_completion_guidance(review_level),
+			completion_guidance =
+				prompting_review_guidance::build_repair_completion_guidance(review_level),
 		),
 		IssueDispatchMode::Closeout => format!(
 			"Continue retained closeout for Linear issue {identifier}: {title}\n\nDescription:\n{description}\n\nCurrent PR:\n- `{pr_url}`\n\nExecution checklist:\n- Resume from the current branch and merged PR lineage in this worktree. Do not move the issue back to `{in_progress}`.\n- Treat retained closeout as a short deterministic tail. Reuse the existing merged PR evidence instead of restarting broad discovery, and only rerun the minimum validation needed to justify `Done` plus cleanup.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, docs impact, focus, next action, blockers, evidence, or verification state changes materially.\n- If you call `{progress_checkpoint_tool}` during closeout, either omit `head_sha` and let `decodex` record the exact current lane HEAD automatically, or pass the exact full current `HEAD` SHA.\n- Merge is already authoritative for `{pr_url}` before this run starts. Do not land, merge, or request review from this closeout run.\n- The tracker issue may already be in `{completed}` while this deterministic tail work remains pending.\n- If the issue is still in `{success}`, move it once to `{completed}` with `{transition_tool}` before `{closeout_tool}`.\n- Call `{closeout_tool}` with `{pr_url}` and a short result summary, then call `{terminal_finalize_tool}` with path `closeout`.\n- Do not end the turn without either `{closeout_tool}` plus `{terminal_finalize_tool}`, or the manual-attention path.\n- {manual_attention_guidance}\n- Keep the lane scoped to this retained post-review work and do not treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}",
@@ -249,13 +280,15 @@ where
 			manual_attention_guidance = handoff_manual_attention_guidance,
 			continuation_guidance = continuation_guidance,
 			pr_title = review_pull_request_title(issue),
-			decodex_review_guidance = prompting_review_guidance::build_handoff_review_guidance(review_level),
-			completion_guidance = prompting_review_guidance::build_handoff_completion_guidance(review_level),
+			decodex_review_guidance =
+				prompting_review_guidance::build_handoff_review_guidance(review_level),
+			completion_guidance =
+				prompting_review_guidance::build_handoff_completion_guidance(review_level),
 		),
 	}
 }
 
-fn build_continuation_user_input(
+pub(in crate::orchestrator) fn build_continuation_user_input(
 	issue: &TrackerIssue,
 	workflow: &WorkflowDocument,
 	dispatch_mode: IssueDispatchMode,
@@ -290,8 +323,12 @@ fn build_continuation_user_input(
 				review_level,
 				ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
 			),
-			decodex_review_guidance = prompting_review_guidance::build_repair_continuation_review_guidance(review_level),
-			completion_guidance = prompting_review_guidance::build_repair_continuation_completion_guidance(review_level),
+			decodex_review_guidance =
+				prompting_review_guidance::build_repair_continuation_review_guidance(review_level),
+			completion_guidance =
+				prompting_review_guidance::build_repair_continuation_completion_guidance(
+					review_level
+				),
 		),
 		IssueDispatchMode::Closeout => format!(
 			"Continue retained closeout for Linear issue {identifier} in the current thread and worktree.\n\nContinuation checklist:\n- Resume from the current repository state and merged PR lineage on `{pr_url}`.\n- Keep changes scoped to the same retained post-review lane. Do not move the issue back to implementation; the tracker may already be in `{completed}` while closeout or cleanup remains pending.\n- Treat this resumed closeout as a short deterministic tail. Reuse the existing merged PR evidence instead of restarting broad discovery, and only rerun the minimum validation needed to justify `Done` plus cleanup.\n- Record a current-HEAD `{progress_checkpoint_tool}` with `docs_impact`; either omit `head_sha` or pass the exact full current `HEAD` SHA.\n- Merge is already authoritative for `{pr_url}` before this run starts. Do not land, merge, or request review from this closeout run.\n- If the issue is still in `{success}`, transition it once to `{completed}` with `{transition_tool}` before `{closeout_tool}`.\n- If Linear closeout is complete, call `{closeout_tool}` and then call `{terminal_finalize_tool}` with path `closeout`.\n- Do not end the turn without either `{closeout_tool}` plus `{terminal_finalize_tool}`, or the manual-attention path.\n- {manual_attention_guidance}",
@@ -310,11 +347,13 @@ fn build_continuation_user_input(
 			identifier = issue.identifier,
 			progress_checkpoint_tool = ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 			manual_attention_guidance = handoff_manual_attention_guidance,
-			decodex_review_guidance = prompting_review_guidance::build_handoff_continuation_review_guidance(review_level),
-			completion_guidance = prompting_review_guidance::build_handoff_continuation_completion_guidance(
-				review_level,
-				&review_pull_request_title(issue),
-			),
+			decodex_review_guidance =
+				prompting_review_guidance::build_handoff_continuation_review_guidance(review_level),
+			completion_guidance =
+				prompting_review_guidance::build_handoff_continuation_completion_guidance(
+					review_level,
+					&review_pull_request_title(issue),
+				),
 		),
 	}
 }
