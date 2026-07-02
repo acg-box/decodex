@@ -1,9 +1,14 @@
 use std::fs;
 
 use tempfile::TempDir;
+use time::OffsetDateTime;
 
 use crate::{
-	accounts::{AccountPoolRecord, AccountStore, AuthDotJson, CodexTokenData},
+	accounts::{
+		auth_json::{AuthDotJson, CodexTokenData},
+		record::AccountPoolRecord,
+		store::AccountStore,
+	},
 	state::{CodexAccountActivitySummary, CodexAccountProfileDailyUsageSummary},
 };
 
@@ -462,7 +467,7 @@ fn usage_history_preserves_last_good_windows_across_placeholder_refresh() {
 		temp_dir.path().join("accounts.jsonl"),
 		temp_dir.path().join("config.toml"),
 	);
-	let now = time::OffsetDateTime::now_utc().unix_timestamp();
+	let now = OffsetDateTime::now_utc().unix_timestamp();
 
 	store
 		.save_records(&[account_record(
