@@ -1,19 +1,13 @@
 use serde_json::Value;
 
-use super::{
-	super::{
-		ARCHITECTURE_RECOVERY_PACKET_EVENT_TYPE, ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE,
-		ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE, PrivateEvidenceArchitectureRecoverySummary,
-		state,
-	},
-	boundary::{
-		boundary_policy_blocks_landing, boundary_policy_decision_from_disposition,
-		boundary_policy_requires_enhanced_evidence,
-	},
+use crate::orchestrator::{
+	ARCHITECTURE_RECOVERY_PACKET_EVENT_TYPE, ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE,
+	ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE, PrivateExecutionEvent,
+	agent_evidence::{self, PrivateEvidenceArchitectureRecoverySummary},
 };
 
 pub(super) fn architecture_recoveries_from_private_events(
-	events: &[state::PrivateExecutionEvent],
+	events: &[PrivateExecutionEvent],
 ) -> Vec<PrivateEvidenceArchitectureRecoverySummary> {
 	events
 		.iter()
@@ -30,7 +24,7 @@ pub(super) fn architecture_recoveries_from_private_events(
 }
 
 fn architecture_recovery_from_private_event(
-	event: &state::PrivateExecutionEvent,
+	event: &PrivateExecutionEvent,
 ) -> Option<PrivateEvidenceArchitectureRecoverySummary> {
 	let payload = event.payload();
 	let reason_code = payload.get("reason_code")?.as_str()?.to_owned();
@@ -67,7 +61,7 @@ fn architecture_recovery_from_private_event(
 		.or_else(|| {
 			boundary_disposition
 				.as_deref()
-				.map(boundary_policy_decision_from_disposition)
+				.map(agent_evidence::private_readback::boundary::boundary_policy_decision_from_disposition)
 				.map(str::to_owned)
 		});
 	let requires_enhanced_evidence = payload
@@ -82,7 +76,9 @@ fn architecture_recovery_from_private_event(
 		.unwrap_or_else(|| {
 			boundary_policy_decision
 				.as_deref()
-				.is_some_and(boundary_policy_requires_enhanced_evidence)
+				.is_some_and(
+					agent_evidence::private_readback::boundary::boundary_policy_requires_enhanced_evidence,
+				)
 		});
 	let blocks_landing = payload
 		.get("blocks_landing")
@@ -94,7 +90,9 @@ fn architecture_recovery_from_private_event(
 				.and_then(Value::as_bool)
 		})
 		.unwrap_or_else(|| {
-			boundary_policy_decision.as_deref().is_some_and(boundary_policy_blocks_landing)
+			boundary_policy_decision.as_deref().is_some_and(
+				agent_evidence::private_readback::boundary::boundary_policy_blocks_landing,
+			)
 		});
 	let recovery_budget_attempt = payload
 		.get("recovery_budget")

@@ -1,10 +1,10 @@
-use super::super::{
-	HarnessImprovementCandidateSummary, PrivateEvidenceArchitectureRecoverySummary,
-	PrivateEvidenceBoundaryCheckSummary, PrivateEvidenceDecisionRequestSummary,
-	PrivateEvidencePayloadSummary, PrivateEvidencePhaseAcceptanceSummary, PrivateEvidenceReadback,
-	PrivateEvidenceReadbackEvent, PrivateEvidenceRepoGateFailureSummary,
-	PrivateEvidenceReviewCheckpointSummary,
+use crate::orchestrator::agent_evidence::{
+	PrivateEvidenceArchitectureRecoverySummary, PrivateEvidenceBoundaryCheckSummary,
+	PrivateEvidenceDecisionRequestSummary, PrivateEvidencePayloadSummary,
+	PrivateEvidencePhaseAcceptanceSummary, PrivateEvidenceReadback, PrivateEvidenceReadbackEvent,
+	PrivateEvidenceRepoGateFailureSummary, PrivateEvidenceReviewCheckpointSummary,
 };
+use crate::orchestrator::harness_improvement::HarnessImprovementCandidateSummary;
 
 pub(in crate::orchestrator) fn render_private_evidence_readback(
 	readback: &PrivateEvidenceReadback,
@@ -22,6 +22,24 @@ pub(in crate::orchestrator) fn render_private_evidence_readback(
 	append_private_evidence_events(&mut output, &readback.events);
 
 	output
+}
+
+pub(in crate::orchestrator) fn render_private_evidence_payload_summary(
+	summary: &PrivateEvidencePayloadSummary,
+) -> String {
+	let keys = if summary.keys.is_empty() { String::from("none") } else { summary.keys.join(",") };
+	let preview =
+		if summary.preview.is_empty() { String::from("none") } else { summary.preview.join("; ") };
+	let redacted = if summary.redacted_default_keys.is_empty() {
+		String::from("none")
+	} else {
+		summary.redacted_default_keys.join(",")
+	};
+
+	format!(
+		"kind={} bytes={} keys={} preview={} redacted_default_keys={}",
+		summary.kind, summary.byte_count, keys, preview, redacted
+	)
 }
 
 fn append_private_evidence_readback_header(
@@ -318,22 +336,4 @@ fn append_private_evidence_events(output: &mut String, events: &[PrivateEvidence
 			output.push_str(&format!("  full_payload: {}\n", payload));
 		}
 	}
-}
-
-pub(in crate::orchestrator) fn render_private_evidence_payload_summary(
-	summary: &PrivateEvidencePayloadSummary,
-) -> String {
-	let keys = if summary.keys.is_empty() { String::from("none") } else { summary.keys.join(",") };
-	let preview =
-		if summary.preview.is_empty() { String::from("none") } else { summary.preview.join("; ") };
-	let redacted = if summary.redacted_default_keys.is_empty() {
-		String::from("none")
-	} else {
-		summary.redacted_default_keys.join(",")
-	};
-
-	format!(
-		"kind={} bytes={} keys={} preview={} redacted_default_keys={}",
-		summary.kind, summary.byte_count, keys, preview, redacted
-	)
 }

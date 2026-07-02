@@ -1,12 +1,13 @@
 use serde_json::Value;
 
-use super::super::{
+use crate::orchestrator::PrivateExecutionEvent;
+use crate::orchestrator::agent_evidence::{
 	AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
-	PrivateEvidenceBoundaryCheckSummary, PrivateEvidenceDecisionRequestSummary, state,
+	PrivateEvidenceBoundaryCheckSummary, PrivateEvidenceDecisionRequestSummary,
 };
 
 pub(super) fn boundary_checks_from_private_events(
-	events: &[state::PrivateExecutionEvent],
+	events: &[PrivateExecutionEvent],
 ) -> Vec<PrivateEvidenceBoundaryCheckSummary> {
 	events
 		.iter()
@@ -15,8 +16,33 @@ pub(super) fn boundary_checks_from_private_events(
 		.collect()
 }
 
+pub(super) fn boundary_policy_decision_from_disposition(disposition: &str) -> &'static str {
+	match disposition {
+		"requires_human" | "insufficient_evidence" => "requires_human_decision",
+		_ => "auto_continue",
+	}
+}
+
+pub(super) fn boundary_policy_requires_enhanced_evidence(policy_decision: &str) -> bool {
+	matches!(policy_decision, "requires_enhanced_evidence" | "block_landing")
+}
+
+pub(super) fn boundary_policy_blocks_landing(policy_decision: &str) -> bool {
+	policy_decision == "block_landing"
+}
+
+pub(super) fn authority_decision_requests_from_private_events(
+	events: &[PrivateExecutionEvent],
+) -> Vec<PrivateEvidenceDecisionRequestSummary> {
+	events
+		.iter()
+		.filter(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE)
+		.filter_map(authority_decision_request_from_private_event)
+		.collect()
+}
+
 fn boundary_check_from_private_event(
-	event: &state::PrivateExecutionEvent,
+	event: &PrivateExecutionEvent,
 ) -> Option<PrivateEvidenceBoundaryCheckSummary> {
 	let payload = event.payload();
 	let disposition = payload.get("disposition")?.as_str()?.to_owned();
@@ -67,49 +93,26 @@ fn boundary_check_from_private_event(
 	})
 }
 
-pub(super) fn boundary_policy_decision_from_disposition(disposition: &str) -> &'static str {
-	match disposition {
-		"requires_human" | "insufficient_evidence" => "requires_human_decision",
-		_ => "auto_continue",
-	}
-}
-
-pub(super) fn boundary_policy_requires_enhanced_evidence(policy_decision: &str) -> bool {
-	matches!(policy_decision, "requires_enhanced_evidence" | "block_landing")
-}
-
-pub(super) fn boundary_policy_blocks_landing(policy_decision: &str) -> bool {
-	policy_decision == "block_landing"
-}
-
 fn boundary_check_next_action(policy_decision: &str) -> String {
 	match policy_decision {
-		"auto_continue" =>
-			String::from("Continue autonomous architecture recovery inside the accepted boundary."),
+		"auto_continue" => {
+			String::from("Continue autonomous architecture recovery inside the accepted boundary.")
+		},
 		"requires_enhanced_evidence" => String::from(
 			"Continue recovery and preserve enhanced evidence before review handoff or landing.",
 		),
 		"block_landing" => String::from(
 			"Continue recovery, but block landing until review or validation policy evidence is restored.",
 		),
-		"requires_human_decision" =>
-			String::from("Stop for a human boundary decision before continuing."),
+		"requires_human_decision" => {
+			String::from("Stop for a human boundary decision before continuing.")
+		},
 		_ => String::from("Inspect the authority boundary summary before continuing."),
 	}
 }
 
-pub(super) fn authority_decision_requests_from_private_events(
-	events: &[state::PrivateExecutionEvent],
-) -> Vec<PrivateEvidenceDecisionRequestSummary> {
-	events
-		.iter()
-		.filter(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE)
-		.filter_map(authority_decision_request_from_private_event)
-		.collect()
-}
-
 fn authority_decision_request_from_private_event(
-	event: &state::PrivateExecutionEvent,
+	event: &PrivateExecutionEvent,
 ) -> Option<PrivateEvidenceDecisionRequestSummary> {
 	let payload = event.payload();
 	let decision_request_id = payload.get("decision_request_id")?.as_str()?.to_owned();
