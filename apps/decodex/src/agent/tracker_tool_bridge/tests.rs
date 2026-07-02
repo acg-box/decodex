@@ -1,3 +1,5 @@
+mod review_policy;
+
 use std::{
 	cell::RefCell,
 	collections::HashMap,
@@ -13,15 +15,15 @@ use tempfile::TempDir;
 
 use crate::{
 	agent::tracker_tool_bridge::{
-		DynamicToolCallResponse, DynamicToolContentItem, DynamicToolHandler,
-		ISSUE_COMMENT_TOOL_NAME, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
-		ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
-		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME,
-		ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
-		ISSUE_TRANSITION_TOOL_NAME, LocalRepoDetails, LocalRepoInspector, PullRequestDetails,
-		PullRequestInspector, ReviewExecutionMode, ReviewHandoffContext,
-		ReviewHandoffWritebackFailed, ReviewPolicyStopReason, ReviewPolicyStopRequested,
-		RunCompletionDisposition, TrackerToolBridge, TurnCompletionStatus,
+		DynamicToolContentItem, DynamicToolHandler, ISSUE_COMMENT_TOOL_NAME,
+		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LocalRepoDetails,
+		LocalRepoInspector, PullRequestDetails, PullRequestInspector, ReviewExecutionMode,
+		ReviewHandoffContext, ReviewHandoffWritebackFailed, ReviewPolicyStopReason,
+		ReviewPolicyStopRequested, RunCompletionDisposition, TrackerToolBridge,
+		TurnCompletionStatus,
 	},
 	config::ReviewLevel,
 	prelude::eyre,
@@ -45,7 +47,6 @@ include!("tests/mutation/continuation.rs");
 include!("tests/mutation/progress.rs");
 
 // Review handoff, repair, closeout, and Decodex Review policy.
-include!("tests/review/policy.rs");
 include!("tests/review/handoff.rs");
 
 const TEST_SERVICE_ID: &str = "pubfi";
