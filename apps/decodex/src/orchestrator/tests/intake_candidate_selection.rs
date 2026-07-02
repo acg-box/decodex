@@ -1,7 +1,22 @@
+use std::{cell::RefCell, fs, path::Path};
+
+use crate::{
+	config::ReviewLevel,
+	orchestrator::{
+		self, IssueDispatchMode, RetainedReviewRunIdentity, ReviewHandoffMarker, RunSummary,
+		TERMINAL_GUARDED_RUN_STATUS, TargetIssueRunContext,
+		tests::{self, FakePullRequestReviewStateInspector, FakeTracker, TEST_SERVICE_ID},
+	},
+	state::{self, StateStore},
+	tracker::{self, TrackerIssue},
+	workflow::WorkflowDocument,
+	worktree::WorktreeManager,
+};
+
 fn candidate_selection_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue(state_name, &[active_label.as_str()])
+	tests::sample_issue(state_name, &[active_label.as_str()])
 }
 
 fn sample_handoff_summary(issue: &TrackerIssue, worktree_path: &Path) -> RunSummary {
@@ -23,9 +38,9 @@ fn sample_handoff_summary(issue: &TrackerIssue, worktree_path: &Path) -> RunSumm
 
 #[test]
 fn candidate_selection_sorts_by_priority_created_at_and_identifier() {
-	let (_temp_dir, _config, workflow) = temp_project_layout();
+	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let high_priority = sample_issue_with_sort_fields(
+	let high_priority = tests::sample_issue_with_sort_fields(
 		"issue-2",
 		"PUB-102",
 		"Todo",
@@ -33,7 +48,7 @@ fn candidate_selection_sorts_by_priority_created_at_and_identifier() {
 		Some(1),
 		"2026-03-13T04:18:17.133Z",
 	);
-	let oldest_same_priority = sample_issue_with_sort_fields(
+	let oldest_same_priority = tests::sample_issue_with_sort_fields(
 		"issue-3",
 		"PUB-103",
 		"Todo",
@@ -41,7 +56,7 @@ fn candidate_selection_sorts_by_priority_created_at_and_identifier() {
 		Some(2),
 		"2026-03-13T04:15:17.133Z",
 	);
-	let newest_same_priority = sample_issue_with_sort_fields(
+	let newest_same_priority = tests::sample_issue_with_sort_fields(
 		"issue-4",
 		"PUB-104",
 		"Todo",
@@ -49,7 +64,7 @@ fn candidate_selection_sorts_by_priority_created_at_and_identifier() {
 		Some(2),
 		"2026-03-13T04:19:17.133Z",
 	);
-	let no_priority = sample_issue_with_sort_fields(
+	let no_priority = tests::sample_issue_with_sort_fields(
 		"issue-5",
 		"PUB-105",
 		"Todo",
@@ -78,9 +93,9 @@ fn candidate_selection_sorts_by_priority_created_at_and_identifier() {
 
 #[test]
 fn candidate_selection_breaks_ties_by_identifier_after_created_at() {
-	let (_temp_dir, _config, workflow) = temp_project_layout();
+	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let later_identifier = sample_issue_with_sort_fields(
+	let later_identifier = tests::sample_issue_with_sort_fields(
 		"issue-2",
 		"PUB-102",
 		"Todo",
@@ -88,7 +103,7 @@ fn candidate_selection_breaks_ties_by_identifier_after_created_at() {
 		Some(2),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let earlier_identifier = sample_issue_with_sort_fields(
+	let earlier_identifier = tests::sample_issue_with_sort_fields(
 		"issue-3",
 		"PUB-101",
 		"Todo",
@@ -112,10 +127,10 @@ fn candidate_selection_breaks_ties_by_identifier_after_created_at() {
 
 #[test]
 fn candidate_selection_does_not_requery_queue_label_for_truncated_candidates() {
-	let (_temp_dir, _config, workflow) = temp_project_layout();
+	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
-	let issue = sample_issue("Todo", &[]);
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()])
 		.with_label_lookup_issues(&queue_label, vec![issue.clone()]);
 	let mut truncated_issue = issue.clone();
@@ -138,9 +153,9 @@ fn candidate_selection_does_not_requery_queue_label_for_truncated_candidates() {
 
 #[test]
 fn candidate_selection_skips_todo_issue_with_nonterminal_blockers() {
-	let (_temp_dir, _config, workflow) = temp_project_layout();
+	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let mut blocked_high_priority = sample_issue_with_sort_fields(
+	let mut blocked_high_priority = tests::sample_issue_with_sort_fields(
 		"issue-2",
 		"PUB-102",
 		"Todo",
@@ -149,9 +164,10 @@ fn candidate_selection_skips_todo_issue_with_nonterminal_blockers() {
 		"2026-03-13T04:15:17.133Z",
 	);
 
-	blocked_high_priority.blockers = vec![sample_blocker("issue-9", "PUB-109", "In Progress")];
+	blocked_high_priority.blockers =
+		vec![tests::sample_blocker("issue-9", "PUB-109", "In Progress")];
 
-	let unblocked_lower_priority = sample_issue_with_sort_fields(
+	let unblocked_lower_priority = tests::sample_issue_with_sort_fields(
 		"issue-3",
 		"PUB-103",
 		"Todo",
@@ -176,14 +192,14 @@ fn candidate_selection_skips_todo_issue_with_nonterminal_blockers() {
 
 #[test]
 fn candidate_selection_allows_dispatch_when_another_issue_has_active_lease() {
-	let (_temp_dir, _config, workflow) = temp_project_layout();
+	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
 		.upsert_lease("pubfi", "issue-active", "run-1", "In Progress")
 		.expect("lease should record");
 
-	let issue = sample_issue("Todo", &[]);
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let selected = orchestrator::select_issue_candidate(
 		&tracker,
@@ -202,15 +218,14 @@ fn candidate_selection_allows_dispatch_when_another_issue_has_active_lease() {
 
 #[test]
 fn candidate_selection_blocks_ordinary_dispatch_for_retained_review_handoff_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = tests::sample_issue("Todo", &[]);
 	let worktree_manager =
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
-	let worktree = worktree_manager
-		.ensure_worktree(&issue.identifier, false)
-		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let worktree =
+		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
 
 	state_store
@@ -222,11 +237,11 @@ fn candidate_selection_blocks_ordinary_dispatch_for_retained_review_handoff_mark
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let tracker = FakeTracker::new(vec![issue.clone()]);
@@ -247,9 +262,9 @@ fn candidate_selection_blocks_ordinary_dispatch_for_retained_review_handoff_mark
 
 #[test]
 fn plan_project_issue_run_prefers_post_review_repair_lane_over_normal_candidate() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let normal_issue = sample_issue_with_sort_fields(
+	let normal_issue = tests::sample_issue_with_sort_fields(
 		"issue-1",
 		"PUB-101",
 		"Todo",
@@ -257,7 +272,7 @@ fn plan_project_issue_run_prefers_post_review_repair_lane_over_normal_candidate(
 		Some(1),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let repair_issue = sample_issue_with_sort_fields(
+	let repair_issue = tests::sample_issue_with_sort_fields(
 		"issue-2",
 		"PUB-102",
 		"In Review",
@@ -274,7 +289,7 @@ fn plan_project_issue_run_prefers_post_review_repair_lane_over_normal_candidate(
 	let worktree = worktree_manager
 		.ensure_worktree(&repair_issue.identifier, false)
 		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
 
 	state_store
@@ -286,15 +301,15 @@ fn plan_project_issue_run_prefers_post_review_repair_lane_over_normal_candidate(
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&repair_issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let inspector =
-		FakePullRequestReviewStateInspector::new(vec![Ok(sample_pull_request_review_state(
+	let inspector = FakePullRequestReviewStateInspector::new(vec![Ok(
+		tests::sample_pull_request_review_state(
 			pr_url,
 			&worktree.branch_name,
 			&head_oid,
@@ -303,7 +318,8 @@ fn plan_project_issue_run_prefers_post_review_repair_lane_over_normal_candidate(
 			"CLEAN",
 			Some("SUCCESS"),
 			0,
-		))]);
+		),
+	)]);
 	let selected = orchestrator::select_post_review_repair_issue_candidate_with_inspector(
 		&tracker,
 		&config,
@@ -348,7 +364,7 @@ fn plan_project_issue_run_prefers_post_review_repair_lane_over_normal_candidate(
 
 #[test]
 fn post_review_repair_selection_skips_exhausted_retry_budget() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let repair_issue = candidate_selection_service_owned_issue("In Review");
 	let tracker = FakeTracker::with_refresh_snapshots(
@@ -360,7 +376,7 @@ fn post_review_repair_selection_skips_exhausted_retry_budget() {
 	let worktree = worktree_manager
 		.ensure_worktree(&repair_issue.identifier, false)
 		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
 
 	state_store
@@ -383,15 +399,15 @@ fn post_review_repair_selection_skips_exhausted_retry_budget() {
 			.expect("failed repair attempt should record");
 	}
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&repair_issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let inspector =
-		FakePullRequestReviewStateInspector::new(vec![Ok(sample_pull_request_review_state(
+	let inspector = FakePullRequestReviewStateInspector::new(vec![Ok(
+		tests::sample_pull_request_review_state(
 			pr_url,
 			&worktree.branch_name,
 			&head_oid,
@@ -400,7 +416,8 @@ fn post_review_repair_selection_skips_exhausted_retry_budget() {
 			"CLEAN",
 			Some("SUCCESS"),
 			0,
-		))]);
+		),
+	)]);
 	let selected = orchestrator::select_post_review_repair_issue_candidate_with_inspector(
 		&tracker,
 		&config,
@@ -416,7 +433,7 @@ fn post_review_repair_selection_skips_exhausted_retry_budget() {
 
 #[test]
 fn targeted_post_review_repair_skips_persisted_exhausted_retry_budget() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let repair_issue = candidate_selection_service_owned_issue("In Review");
 	let tracker = FakeTracker::with_refresh_snapshots(
@@ -465,20 +482,17 @@ fn targeted_post_review_repair_skips_persisted_exhausted_retry_budget() {
 
 #[test]
 fn targeted_retry_blocks_retained_review_handoff_marker_in_state_transition_window() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
-	let tracker = FakeTracker::with_refresh_snapshots(
-		vec![issue.clone()],
-		vec![vec![issue.clone()]],
-	);
+	let issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let worktree_manager =
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
-	let worktree = worktree_manager
-		.ensure_worktree(&issue.identifier, false)
-		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let worktree =
+		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
 
 	state_store
@@ -490,11 +504,11 @@ fn targeted_retry_blocks_retained_review_handoff_marker_in_state_transition_wind
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let summary = orchestrator::run_target_issue_once(TargetIssueRunContext {
@@ -524,10 +538,10 @@ fn targeted_retry_blocks_retained_review_handoff_marker_in_state_transition_wind
 
 #[test]
 fn plan_project_issue_run_prefers_post_review_closeout_lane_over_normal_candidate() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let normal_issue = sample_issue("Todo", &[]);
+	let normal_issue = tests::sample_issue("Todo", &[]);
 	let closeout_issue = candidate_selection_service_owned_issue("In Review");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![normal_issue.clone(), closeout_issue.clone()],
@@ -542,7 +556,7 @@ fn plan_project_issue_run_prefers_post_review_closeout_lane_over_normal_candidat
 	let worktree = worktree_manager
 		.ensure_worktree(&closeout_issue.identifier, false)
 		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/175";
 
 	state_store
@@ -554,17 +568,17 @@ fn plan_project_issue_run_prefers_post_review_closeout_lane_over_normal_candidat
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&closeout_issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_orchestration_marker(
+		&tests::sample_review_orchestration_marker(
 			&worktree.branch_name,
 			pr_url,
 			&head_oid,
@@ -573,8 +587,9 @@ fn plan_project_issue_run_prefers_post_review_closeout_lane_over_normal_candidat
 		),
 	);
 
-	let _path_guard = install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
-	let mut merged_review_state = sample_pull_request_review_state(
+	let _path_guard =
+		tests::install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let mut merged_review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -643,8 +658,8 @@ fn plan_project_issue_run_prefers_post_review_closeout_lane_over_normal_candidat
 
 #[test]
 fn plan_project_issue_run_allows_merged_closeout_after_retry_budget() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let closeout_issue = candidate_selection_service_owned_issue("In Review");
 	let tracker = FakeTracker::with_refresh_snapshots(
@@ -660,7 +675,7 @@ fn plan_project_issue_run_allows_merged_closeout_after_retry_budget() {
 	let worktree = worktree_manager
 		.ensure_worktree(&closeout_issue.identifier, false)
 		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/175";
 
 	state_store
@@ -672,17 +687,17 @@ fn plan_project_issue_run_allows_merged_closeout_after_retry_budget() {
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&closeout_issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
-	seed_review_orchestration_marker_for_path(
+	tests::seed_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_orchestration_marker(
+		&tests::sample_review_orchestration_marker(
 			&worktree.branch_name,
 			pr_url,
 			&head_oid,
@@ -702,8 +717,9 @@ fn plan_project_issue_run_allows_merged_closeout_after_retry_budget() {
 			.expect("failed attempt should record");
 	}
 
-	let _path_guard = install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
-	let mut merged_review_state = sample_pull_request_review_state(
+	let _path_guard =
+		tests::install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let mut merged_review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -865,18 +881,19 @@ fn retained_closeout_identity_reuse_respects_attempt_history() {
 #[test]
 fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visibility() {
 	for closeout_available in [true, false] {
-		let (temp_dir, config, workflow) = temp_project_layout();
+		let (temp_dir, config, workflow) = tests::temp_project_layout();
 		let repo_root = config.repo_root().to_path_buf();
 		let pr_url = "https://github.com/hack-ink/decodex/pull/176";
-		let merge_subject =
-			r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-		let landed_merge_subject =
-			r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
-		let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+		let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
+		let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
+		let head_oid =
+			tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 		let (gh_command_path, invocation_log_path) =
-			install_fake_admin_merge_gh_response_with_merge_exit_code(&temp_dir, &head_oid, 0);
-		let config = service_config_with_review_level(
-			&service_config_with_github_token_env_var_and_command_path(
+			tests::install_fake_admin_merge_gh_response_with_merge_exit_code(
+				&temp_dir, &head_oid, 0,
+			);
+		let config = tests::service_config_with_review_level(
+			&tests::service_config_with_github_token_env_var_and_command_path(
 				&config,
 				"PATH",
 				&gh_command_path,
@@ -904,14 +921,14 @@ fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visi
 			)
 			.expect("worktree should record");
 
-		seed_review_handoff_marker_for_path(
+		tests::seed_review_handoff_marker_for_path(
 			&state_store,
 			config.service_id(),
 			&repo_root,
-			&sample_review_handoff_marker("main", pr_url, &head_oid),
+			&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 		);
 
-		let open_review_state = sample_pull_request_review_state(
+		let open_review_state = tests::sample_pull_request_review_state(
 			pr_url,
 			"main",
 			&head_oid,
@@ -959,7 +976,7 @@ fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visi
 		assert_eq!(drained, closeout_available.then_some(closeout_summary.clone()));
 		assert_eq!(*closeout_dispatches.borrow(), vec![issue.id.clone()]);
 
-		let marker = persisted_review_orchestration_marker_for_path(
+		let marker = tests::persisted_review_orchestration_marker_for_path(
 			&state_store,
 			config.service_id(),
 			&repo_root,
@@ -1013,8 +1030,8 @@ fn assert_admin_merge_invocation(
 
 #[test]
 fn non_github_review_retained_drain_stops_cleanly_when_checks_are_pending() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_review_level(&config, ReviewLevel::Standard);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_review_level(&config, ReviewLevel::Standard);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = candidate_selection_service_owned_issue("In Review");
 	let tracker = FakeTracker::with_refresh_snapshots(
@@ -1022,18 +1039,18 @@ fn non_github_review_retained_drain_stops_cleanly_when_checks_are_pending() {
 		vec![vec![issue.clone()], vec![issue.clone()]],
 	);
 	let repo_root = config.repo_root().to_path_buf();
-	let head_oid = git_output(&repo_root, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&repo_root, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/177";
 
 	state_store
 		.upsert_worktree(config.service_id(), &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
 	);
 
 	let handoff_summary = sample_handoff_summary(&issue, &repo_root);
@@ -1045,7 +1062,7 @@ fn non_github_review_retained_drain_stops_cleanly_when_checks_are_pending() {
 		&state_store,
 		&handoff_summary,
 		&FakePullRequestReviewStateInspector::new(vec![
-			Ok(sample_pull_request_review_state(
+			Ok(tests::sample_pull_request_review_state(
 				pr_url,
 				"main",
 				&head_oid,
@@ -1055,7 +1072,7 @@ fn non_github_review_retained_drain_stops_cleanly_when_checks_are_pending() {
 				Some("PENDING"),
 				0,
 			)),
-			Ok(sample_pull_request_review_state(
+			Ok(tests::sample_pull_request_review_state(
 				pr_url,
 				"main",
 				&head_oid,
@@ -1077,7 +1094,7 @@ fn non_github_review_retained_drain_stops_cleanly_when_checks_are_pending() {
 	assert!(drained.is_none());
 	assert!(closeout_dispatches.borrow().is_empty());
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -1088,7 +1105,7 @@ fn non_github_review_retained_drain_stops_cleanly_when_checks_are_pending() {
 
 #[test]
 fn post_review_closeout_selection_skips_completed_issue_with_open_pull_request() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let closeout_issue = candidate_selection_service_owned_issue("Done");
 	let tracker = FakeTracker::with_refresh_snapshots(
@@ -1100,7 +1117,7 @@ fn post_review_closeout_selection_skips_completed_issue_with_open_pull_request()
 	let worktree = worktree_manager
 		.ensure_worktree(&closeout_issue.identifier, false)
 		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/175";
 
 	state_store
@@ -1112,14 +1129,14 @@ fn post_review_closeout_selection_skips_completed_issue_with_open_pull_request()
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&closeout_issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let open_pr_review_state = sample_pull_request_review_state(
+	let open_pr_review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -1152,7 +1169,7 @@ fn post_review_closeout_selection_skips_completed_issue_with_open_pull_request()
 #[test]
 fn closeout_dispatch_policy_rejects_open_pull_request() {
 	for state_name in ["Done", "In Review"] {
-		let (_temp_dir, config, workflow) = temp_project_layout();
+		let (_temp_dir, config, workflow) = tests::temp_project_layout();
 		let closeout_issue = candidate_selection_service_owned_issue(state_name);
 		let tracker = FakeTracker::new(vec![closeout_issue.clone()]);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1161,10 +1178,10 @@ fn closeout_dispatch_policy_rejects_open_pull_request() {
 		let worktree = worktree_manager
 			.ensure_worktree(&closeout_issue.identifier, false)
 			.expect("worktree should exist");
-		let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+		let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 		let pr_url = "https://github.com/hack-ink/decodex/pull/176";
 
-		seed_review_handoff_marker(
+		tests::seed_review_handoff_marker(
 			&state_store,
 			config.service_id(),
 			&closeout_issue.id,
@@ -1173,7 +1190,7 @@ fn closeout_dispatch_policy_rejects_open_pull_request() {
 			&head_oid,
 		);
 
-		let open_pr_review_state = sample_pull_request_review_state(
+		let open_pr_review_state = tests::sample_pull_request_review_state(
 			pr_url,
 			&worktree.branch_name,
 			&head_oid,
@@ -1218,7 +1235,7 @@ fn closeout_dispatch_policy_rejects_open_pull_request() {
 
 #[test]
 fn closeout_dispatch_policy_allows_completed_issue_after_pull_request_merges() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let closeout_issue = candidate_selection_service_owned_issue("Done");
 	let tracker = FakeTracker::new(vec![closeout_issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1227,10 +1244,10 @@ fn closeout_dispatch_policy_allows_completed_issue_after_pull_request_merges() {
 	let worktree = worktree_manager
 		.ensure_worktree(&closeout_issue.identifier, false)
 		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/177";
 
-	seed_review_handoff_marker(
+	tests::seed_review_handoff_marker(
 		&state_store,
 		config.service_id(),
 		&closeout_issue.id,
@@ -1239,7 +1256,7 @@ fn closeout_dispatch_policy_allows_completed_issue_after_pull_request_merges() {
 		&head_oid,
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -1270,7 +1287,7 @@ fn closeout_dispatch_policy_allows_completed_issue_after_pull_request_merges() {
 
 #[test]
 fn closeout_dispatch_policy_blocks_completed_issue_with_missing_review_handoff_record() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let closeout_issue = candidate_selection_service_owned_issue("Done");
 	let tracker = FakeTracker::new(vec![closeout_issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1279,6 +1296,7 @@ fn closeout_dispatch_policy_blocks_completed_issue_with_missing_review_handoff_r
 	let worktree = worktree_manager
 		.ensure_worktree(&closeout_issue.identifier, false)
 		.expect("worktree should exist");
+
 	state_store
 		.upsert_worktree(
 			config.service_id(),
@@ -1315,8 +1333,8 @@ fn closeout_dispatch_policy_blocks_completed_issue_with_missing_review_handoff_r
 
 #[test]
 fn closeout_dispatch_policy_rejects_completed_issue_without_service_active_label() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let closeout_issue = sample_issue("Done", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let closeout_issue = tests::sample_issue("Done", &[]);
 	let tracker = FakeTracker::new(vec![closeout_issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -1324,10 +1342,10 @@ fn closeout_dispatch_policy_rejects_completed_issue_without_service_active_label
 	let worktree = worktree_manager
 		.ensure_worktree(&closeout_issue.identifier, false)
 		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/177";
 
-	seed_review_handoff_marker(
+	tests::seed_review_handoff_marker(
 		&state_store,
 		config.service_id(),
 		&closeout_issue.id,
@@ -1336,7 +1354,7 @@ fn closeout_dispatch_policy_rejects_completed_issue_without_service_active_label
 		&head_oid,
 	);
 
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -1380,7 +1398,7 @@ fn closeout_dispatch_policy_rejects_completed_issue_without_service_active_label
 
 #[test]
 fn closeout_dispatch_policy_uses_matching_handoff_record_for_current_branch() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let closeout_issue = candidate_selection_service_owned_issue("Done");
 	let tracker = FakeTracker::new(vec![closeout_issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1389,10 +1407,10 @@ fn closeout_dispatch_policy_uses_matching_handoff_record_for_current_branch() {
 	let worktree = worktree_manager
 		.ensure_worktree(&closeout_issue.identifier, false)
 		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let current_pr_url = "https://github.com/hack-ink/decodex/pull/177";
 
-	seed_review_handoff_marker(
+	tests::seed_review_handoff_marker(
 		&state_store,
 		config.service_id(),
 		&closeout_issue.id,
@@ -1417,7 +1435,7 @@ fn closeout_dispatch_policy_uses_matching_handoff_record_for_current_branch() {
 		)
 		.expect("unrelated branch handoff should persist");
 
-	let mut merged_review_state = sample_pull_request_review_state(
+	let mut merged_review_state = tests::sample_pull_request_review_state(
 		current_pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -1446,8 +1464,8 @@ fn closeout_dispatch_policy_uses_matching_handoff_record_for_current_branch() {
 
 #[test]
 fn non_dry_run_closeout_dispatch_errors_when_pr_state_read_fails() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(
 		&base_config,
 		"DECODEX_TEST_MISSING_DIRECT_DELIVERY_CLOSEOUT_GITHUB_TOKEN",
 	);
@@ -1459,14 +1477,14 @@ fn non_dry_run_closeout_dispatch_errors_when_pr_state_read_fails() {
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/179";
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let error = orchestrator::run_target_issue_once(TargetIssueRunContext {
@@ -1493,14 +1511,17 @@ fn non_dry_run_closeout_dispatch_errors_when_pr_state_read_fails() {
 
 #[test]
 fn candidate_selection_skips_issue_claimed_by_another_process() {
-	let workflow = WorkflowDocument::parse_markdown(
-		&sample_workflow_markdown("pubfi", &[], "Claim-aware workflow policy.\n", 1),
-	)
+	let workflow = WorkflowDocument::parse_markdown(&tests::sample_workflow_markdown(
+		"pubfi",
+		&[],
+		"Claim-aware workflow policy.\n",
+		1,
+	))
 	.expect("workflow should parse");
-	let (_temp_dir, config, _default_workflow) = temp_project_layout();
+	let (_temp_dir, config, _default_workflow) = tests::temp_project_layout();
 	let remote_store = StateStore::open_in_memory().expect("remote state store should open");
 	let local_store = StateStore::open_in_memory().expect("local state store should open");
-	let claimed_issue = sample_issue_with_sort_fields(
+	let claimed_issue = tests::sample_issue_with_sort_fields(
 		"issue-claimed",
 		"PUB-100",
 		"Todo",
@@ -1508,7 +1529,7 @@ fn candidate_selection_skips_issue_claimed_by_another_process() {
 		Some(1),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let free_issue = sample_issue_with_sort_fields(
+	let free_issue = tests::sample_issue_with_sort_fields(
 		"issue-free",
 		"PUB-101",
 		"Todo",
@@ -1518,16 +1539,10 @@ fn candidate_selection_skips_issue_claimed_by_another_process() {
 	);
 
 	remote_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("remote dispatch-slot root should configure");
 	local_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("local dispatch-slot root should configure");
 
 	assert!(

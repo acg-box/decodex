@@ -1,11 +1,25 @@
-use state::PreacquiredLeaseGuards;
+use std::fs;
+#[cfg(unix)] use std::os::fd::IntoRawFd;
+
+use crate::{
+	orchestrator::{
+		self, IssueDispatchMode, PreferredRunIdentity, PrepareIssueRunContext,
+		TargetIssueRunContext,
+		tests::{self, FakeTracker, TEST_SERVICE_ID},
+	},
+	state::{self, PreacquiredLeaseGuards, StateStore},
+	tracker::{self, records},
+	worktree::WorktreeManager,
+};
 
 #[test]
 fn prepare_issue_run_records_starting_attempt_before_execute() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -56,24 +70,21 @@ fn prepare_issue_run_records_starting_attempt_before_execute() {
 		.map(|record| record.event_type)
 		.collect::<Vec<_>>();
 
-	assert_eq!(
-		event_types,
-		vec![String::from("run_started")]
-	);
+	assert_eq!(event_types, vec![String::from("run_started")]);
 }
 
 #[test]
 fn prepare_issue_run_rejects_missing_read_first_before_lease_or_attempt() {
-	let workflow_markdown = sample_workflow_markdown(
+	let workflow_markdown = tests::sample_workflow_markdown(
 		"pubfi",
 		&["docs/guide/getting_started.md"],
 		"Follow the repository policy.\n",
 		1,
 	);
 	let (_temp_dir, base_config, workflow) =
-		temp_project_layout_with_workflow_markdown(&workflow_markdown);
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Todo", &[]);
+		tests::temp_project_layout_with_workflow_markdown(&workflow_markdown);
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -101,12 +112,11 @@ fn prepare_issue_run_rejects_missing_read_first_before_lease_or_attempt() {
 
 	assert!(message.contains("context.read_first"));
 	assert!(message.contains("docs/guide/getting_started.md"));
-	assert!(message.contains(config.workflow_path().to_str().expect("workflow path should be utf-8")));
 	assert!(
-		state_store
-			.lease_for_issue(&issue.id)
-			.expect("lease lookup should succeed")
-			.is_none(),
+		message.contains(config.workflow_path().to_str().expect("workflow path should be utf-8"))
+	);
+	assert!(
+		state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none(),
 		"read_first preflight must reject before acquiring a lease"
 	);
 	assert!(
@@ -165,9 +175,9 @@ read_first = []
 Follow the repository policy.
 	"#;
 	let (_temp_dir, base_config, workflow) =
-		temp_project_layout_with_workflow_markdown(workflow_markdown);
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Todo", &[]);
+		tests::temp_project_layout_with_workflow_markdown(workflow_markdown);
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -202,9 +212,9 @@ Follow the repository policy.
 
 #[test]
 fn prepare_issue_run_starts_fresh_retry_budget_for_normal_queue_intake() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -244,10 +254,12 @@ fn prepare_issue_run_starts_fresh_retry_budget_for_normal_queue_intake() {
 
 #[test]
 fn prepare_issue_run_uses_persisted_retry_budget_marker_for_recovered_retry() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -287,10 +299,12 @@ fn prepare_issue_run_uses_persisted_retry_budget_marker_for_recovered_retry() {
 
 #[test]
 fn prepare_issue_run_keeps_persisted_retry_budget_when_preferred_retry_base_is_stale() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -330,9 +344,9 @@ fn prepare_issue_run_keeps_persisted_retry_budget_when_preferred_retry_base_is_s
 
 #[test]
 fn prepare_issue_run_honors_preferred_identity_when_attempt_is_current() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -376,9 +390,9 @@ fn prepare_issue_run_honors_preferred_identity_when_attempt_is_current() {
 #[cfg(unix)]
 #[test]
 fn prepare_issue_run_allows_preacquired_cross_process_slot() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let parent_store = StateStore::open_in_memory().expect("parent state store should open");
@@ -387,16 +401,10 @@ fn prepare_issue_run_allows_preacquired_cross_process_slot() {
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 
 	parent_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("parent dispatch-slot root should configure");
 	child_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("child dispatch-slot root should configure");
 
 	assert!(
@@ -464,10 +472,12 @@ fn prepare_issue_run_allows_preacquired_cross_process_slot() {
 #[cfg(unix)]
 #[test]
 fn prepare_issue_run_allows_preacquired_recovered_retry_attempt() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let parent_store = StateStore::open_in_memory().expect("parent state store should open");
@@ -476,16 +486,10 @@ fn prepare_issue_run_allows_preacquired_recovered_retry_attempt() {
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 
 	parent_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("parent dispatch-slot root should configure");
 	child_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("child dispatch-slot root should configure");
 
 	assert!(
@@ -556,8 +560,8 @@ fn prepare_issue_run_allows_preacquired_recovered_retry_attempt() {
 #[cfg(unix)]
 #[test]
 fn prepare_issue_run_allows_preacquired_cross_process_slot_without_github_token_authority() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let parent_store = StateStore::open_in_memory().expect("parent state store should open");
@@ -573,16 +577,10 @@ fn prepare_issue_run_allows_preacquired_cross_process_slot_without_github_token_
 		.expect("retained worktree should keep local edits");
 
 	parent_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("parent dispatch-slot root should configure");
 	child_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("child dispatch-slot root should configure");
 
 	assert!(
@@ -666,24 +664,18 @@ fn prepare_issue_run_allows_preacquired_cross_process_slot_without_github_token_
 #[cfg(unix)]
 #[test]
 fn run_target_issue_once_skips_reconciliation_for_preacquired_child_runs() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![Vec::new(), Vec::new()]);
 	let parent_store = StateStore::open_in_memory().expect("parent state store should open");
 	let child_store = StateStore::open_in_memory().expect("child state store should open");
 
 	parent_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("parent dispatch-slot root should configure");
 	child_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("child dispatch-slot root should configure");
 
 	assert!(
@@ -716,13 +708,13 @@ fn run_target_issue_once_skips_reconciliation_for_preacquired_child_runs() {
 		preferred_issue_claim_fd: Some(child_issue_claim.into_raw_fd()),
 		preferred_dispatch_slot_fd: Some(child_guard.into_raw_fd()),
 		preferred_dispatch_slot_index: Some(child_slot_index),
-			dispatch_mode: IssueDispatchMode::Normal,
-			preferred_run_identity: Some(PreferredRunIdentity {
-				run_id: "planned-run",
-				attempt_number: 1,
-			}),
-			preferred_retry_budget_base: None,
-		})
+		dispatch_mode: IssueDispatchMode::Normal,
+		preferred_run_identity: Some(PreferredRunIdentity {
+			run_id: "planned-run",
+			attempt_number: 1,
+		}),
+		preferred_retry_budget_base: None,
+	})
 	.expect("targeted child run should not error before refresh lookup");
 
 	assert!(summary.is_none(), "missing refreshed issue should stop before execution");
@@ -746,8 +738,8 @@ fn run_target_issue_once_skips_reconciliation_for_preacquired_child_runs() {
 
 #[test]
 fn prepare_issue_run_rejects_stale_preferred_identity_after_attempt_advance() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");

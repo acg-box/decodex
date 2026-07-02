@@ -1,20 +1,27 @@
+use crate::{
+	orchestrator,
+	orchestrator::tests::{self, FakeTracker, TEST_SERVICE_ID},
+	state::StateStore,
+	tracker,
+};
+
 #[test]
 fn eligibility_uses_state_label_blocker_and_lease_rules() {
-	let (_, _, workflow) = temp_project_layout();
+	let (_, _, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let eligible_issue = sample_issue("Todo", &[]);
+	let eligible_issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(vec![eligible_issue.clone()]);
-	let opted_out_issue = sample_issue("Todo", &["decodex:manual-only"]);
-	let needs_attention_issue = sample_issue("Todo", &["decodex:needs-attention"]);
-	let mut blocked_issue = sample_issue("Todo", &[]);
+	let opted_out_issue = tests::sample_issue("Todo", &["decodex:manual-only"]);
+	let needs_attention_issue = tests::sample_issue("Todo", &["decodex:needs-attention"]);
+	let mut blocked_issue = tests::sample_issue("Todo", &[]);
 
-	blocked_issue.blockers = vec![sample_blocker("issue-2", "PUB-102", "In Progress")];
+	blocked_issue.blockers = vec![tests::sample_blocker("issue-2", "PUB-102", "In Progress")];
 
-	let mut unblocked_issue = sample_issue("Todo", &[]);
+	let mut unblocked_issue = tests::sample_issue("Todo", &[]);
 
-	unblocked_issue.blockers = vec![sample_blocker("issue-3", "PUB-103", "Done")];
+	unblocked_issue.blockers = vec![tests::sample_blocker("issue-3", "PUB-103", "Done")];
 
-	let wrong_state_issue = sample_issue("In Progress", &[]);
+	let wrong_state_issue = tests::sample_issue("In Progress", &[]);
 
 	assert!(
 		orchestrator::is_issue_eligible(
@@ -95,9 +102,9 @@ fn eligibility_uses_state_label_blocker_and_lease_rules() {
 
 #[test]
 fn claimed_issue_still_passes_post_claim_dispatch_policy() {
-	let (_, _, workflow) = temp_project_layout();
+	let (_, _, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 
 	state_store
@@ -129,7 +136,7 @@ fn claimed_issue_still_passes_post_claim_dispatch_policy() {
 
 #[test]
 fn machine_only_fenced_descriptions_fail_normal_dispatch_policy() {
-	let (_, _, workflow) = temp_project_layout();
+	let (_, _, workflow) = tests::temp_project_layout();
 	let cases = [
 		(
 			"single json fence",
@@ -144,7 +151,7 @@ fn machine_only_fenced_descriptions_fail_normal_dispatch_policy() {
 	];
 
 	for (case_name, description) in cases {
-		let mut issue = sample_issue("Todo", &[]);
+		let mut issue = tests::sample_issue("Todo", &[]);
 
 		issue.description = description.to_owned();
 
@@ -166,8 +173,8 @@ fn machine_only_fenced_descriptions_fail_normal_dispatch_policy() {
 
 #[test]
 fn prose_plus_fenced_block_description_still_passes_normal_dispatch_policy() {
-	let (_, _, workflow) = temp_project_layout();
-	let mut issue = sample_issue("Todo", &[]);
+	let (_, _, workflow) = tests::temp_project_layout();
+	let mut issue = tests::sample_issue("Todo", &[]);
 
 	issue.description = String::from(
 		"Implement the retained lane repair.\n\n```json\n{\n  \"schema\": \"opaque-pointer/1\"\n}\n```",
@@ -190,9 +197,9 @@ fn prose_plus_fenced_block_description_still_passes_normal_dispatch_policy() {
 
 #[test]
 fn truncated_label_pages_do_not_block_queue_label_dispatch() {
-	let (_, _, workflow) = temp_project_layout();
+	let (_, _, workflow) = tests::temp_project_layout();
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
-	let mut issue = sample_issue("Todo", &[]);
+	let mut issue = tests::sample_issue("Todo", &[]);
 
 	issue.labels_complete = false;
 
@@ -216,9 +223,9 @@ fn truncated_label_pages_do_not_block_queue_label_dispatch() {
 
 #[test]
 fn truncated_label_pages_block_dispatch_when_queue_label_was_removed() {
-	let (_, _, workflow) = temp_project_layout();
+	let (_, _, workflow) = tests::temp_project_layout();
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
-	let mut issue = sample_issue("Todo", &[]);
+	let mut issue = tests::sample_issue("Todo", &[]);
 
 	issue.labels_complete = false;
 
@@ -241,8 +248,8 @@ fn truncated_label_pages_block_dispatch_when_queue_label_was_removed() {
 
 #[test]
 fn text_fenced_briefing_still_passes_normal_dispatch_policy() {
-	let (_, _, workflow) = temp_project_layout();
-	let mut issue = sample_issue("Todo", &[]);
+	let (_, _, workflow) = tests::temp_project_layout();
+	let mut issue = tests::sample_issue("Todo", &[]);
 
 	issue.description =
 		String::from("```text\nImplement the retained lane repair and keep scope tight.\n```");
