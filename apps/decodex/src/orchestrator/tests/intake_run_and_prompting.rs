@@ -1,212 +1,220 @@
 mod targeted_program_dispatch_tests {
-	use crate::execution_program::{
-		ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionLinearIssueMapping,
-		ExecutionProgram, ExecutionProgramNode, ExecutionProgramNodeStage, ExecutionQueueIntent,
-	};
-	use crate::orchestrator::{self, IssueDispatchMode, TargetIssueRunContext};
-	use crate::orchestrator::tests::{
-		FakeTracker, sample_issue_with_sort_fields, temp_project_layout,
-	};
-	use crate::state::StateStore;
-
-#[test]
-fn targeted_identifier_dispatch_accepts_status_ready_program_node() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
-		"issue-program-ready",
-		"PUB-1094",
-		"Todo",
-		&[],
-		Some(1),
-		"2026-06-23T04:16:17.133Z",
-	);
-	let mapping = ExecutionLinearIssueMapping::new(
-		&issue.id,
-		&issue.identifier,
-		&issue.state.name,
-	)
-	.expect("program issue mapping should build");
-	let node = ExecutionProgramNode::new(
-		"node-program-ready",
-		ExecutionProgramNodeStage::Runtime,
-		"Resolve a dispatchable Program Intake node.",
-		ExecutionQueueIntent::ReadyToQueue,
-	)
-	.expect("program node should build")
-	.with_acceptance_expectations(["Program node maps to a normal Linear issue."])
-	.expect("acceptance should attach")
-	.with_validation_expectations(["Run focused Program dispatch validation."])
-	.expect("validation should attach")
-	.with_linear_issue(mapping)
-	.expect("issue mapping should attach");
-	let program = ExecutionProgram::from_issue_batch_intake(
-		"program-targeted-run",
-		config.service_id(),
-		"program-targeted-run-fingerprint",
-		"Targeted Program run bridge.",
-		vec![node],
-	)
-	.expect("program should build");
-
-	state_store
-		.upsert_execution_program(config.service_id(), program)
-		.expect("program should persist");
-
-	let tracker = FakeTracker::new(vec![issue.clone()]);
-	let snapshot = orchestrator::build_live_operator_status_snapshot(
-		&tracker,
-		&config,
-		&workflow,
-		&state_store,
-		10,
-	)
-	.expect("status snapshot should build");
-	let program = snapshot
-		.execution_programs
-		.iter()
-		.find(|program| program.program_id == "program-targeted-run")
-		.expect("program should appear in status");
-
-	assert_eq!(program.dispatchable_count, 1);
-	assert_eq!(program.node_readbacks[0].dispatch_action.as_deref(), Some("dispatch"));
-
-	let summary = orchestrator::run_target_issue_once_with_inferred_dispatch(
-		TargetIssueRunContext {
-			tracker: &tracker,
-			project: &config,
-			workflow: &workflow,
-			state_store: &state_store,
-			issue_id: &issue.identifier,
-			preferred_issue_state: None,
-			preferred_initial_issue_state: None,
-			dry_run: true,
-			lease_preacquired: false,
-			preferred_issue_claim_fd: None,
-			preferred_dispatch_slot_fd: None,
-			preferred_dispatch_slot_index: None,
-			dispatch_mode: IssueDispatchMode::Normal,
-			preferred_run_identity: None,
-			preferred_retry_budget_base: None,
+	use crate::{
+		execution_program::{
+			ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionLinearIssueMapping,
+			ExecutionProgram, ExecutionProgramNode, ExecutionProgramNodeStage,
+			ExecutionQueueIntent,
 		},
-	)
-	.expect("targeted identifier run should succeed")
-	.expect("status-ready program issue should dispatch by identifier");
+		orchestrator::{self, IssueDispatchMode, TargetIssueRunContext, tests, tests::FakeTracker},
+		state::StateStore,
+	};
 
-	assert_eq!(summary.issue_id, issue.id);
-	assert_eq!(summary.issue_identifier, issue.identifier);
-	assert_eq!(summary.dispatch_mode, IssueDispatchMode::Program);
-}
-
-#[test]
-fn targeted_program_selection_reconciles_stale_worktree_mapping_before_dispatch() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
-		"issue-program-stale-mapping",
-		"PUB-1095",
-		"Todo",
-		&[],
-		Some(1),
-		"2026-06-23T04:16:17.133Z",
-	);
-	let missing_worktree_path = config.worktree_root().join(&issue.identifier);
-	let conflict = ExecutionConflictDomain::new(
-		ExecutionConflictDomainKind::Module,
-		"runtime",
-	)
-	.expect("conflict should build");
-	let mapping = ExecutionLinearIssueMapping::new(
-		&issue.id,
-		&issue.identifier,
-		&issue.state.name,
-	)
-	.expect("program issue mapping should build");
-	let node = ExecutionProgramNode::new(
-		"node-program-stale-mapping",
-		ExecutionProgramNodeStage::Runtime,
-		"Resolve a dispatchable Program node after stale worktree cleanup.",
-		ExecutionQueueIntent::ReadyToQueue,
-	)
-	.expect("program node should build")
-	.with_acceptance_expectations(["Program node maps to a normal Linear issue."])
-	.expect("acceptance should attach")
-	.with_validation_expectations(["Run focused Program dispatch validation."])
-	.expect("validation should attach")
-	.with_conflict_domains([conflict])
-	.expect("conflict should attach")
-	.with_linear_issue(mapping)
-	.expect("issue mapping should attach");
-	let program = ExecutionProgram::from_issue_batch_intake(
-		"program-targeted-stale-mapping",
-		config.service_id(),
-		"program-targeted-stale-mapping-fingerprint",
-		"Targeted Program run bridge with stale mapping.",
-		vec![node],
-	)
-	.expect("program should build");
-
-	state_store
-		.upsert_worktree(
-			config.service_id(),
-			&issue.id,
-			"x/pubfi-pub-1095",
-			&missing_worktree_path.display().to_string(),
+	#[test]
+	fn targeted_identifier_dispatch_accepts_status_ready_program_node() {
+		let (_temp_dir, config, workflow) = tests::temp_project_layout();
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let issue = tests::sample_issue_with_sort_fields(
+			"issue-program-ready",
+			"PUB-1094",
+			"Todo",
+			&[],
+			Some(1),
+			"2026-06-23T04:16:17.133Z",
+		);
+		let mapping =
+			ExecutionLinearIssueMapping::new(&issue.id, &issue.identifier, &issue.state.name)
+				.expect("program issue mapping should build");
+		let node = ExecutionProgramNode::new(
+			"node-program-ready",
+			ExecutionProgramNodeStage::Runtime,
+			"Resolve a dispatchable Program Intake node.",
+			ExecutionQueueIntent::ReadyToQueue,
 		)
-		.expect("stale worktree mapping should persist");
-	state_store
-		.upsert_execution_program(config.service_id(), program)
-		.expect("program should persist");
+		.expect("program node should build")
+		.with_acceptance_expectations(["Program node maps to a normal Linear issue."])
+		.expect("acceptance should attach")
+		.with_validation_expectations(["Run focused Program dispatch validation."])
+		.expect("validation should attach")
+		.with_linear_issue(mapping)
+		.expect("issue mapping should attach");
+		let program = ExecutionProgram::from_issue_batch_intake(
+			"program-targeted-run",
+			config.service_id(),
+			"program-targeted-run-fingerprint",
+			"Targeted Program run bridge.",
+			vec![node],
+		)
+		.expect("program should build");
 
-	let tracker = FakeTracker::new(vec![issue.clone()]);
-	let blocked = orchestrator::select_execution_program_run_candidate_with_summary(
-		&tracker,
-		&config,
-		&workflow,
-		&state_store,
-		&[],
-	)
-	.expect("stale mapping should evaluate");
-
-	assert!(blocked.selected.is_none());
-	assert_eq!(blocked.summary.dispatchable_nodes, 0);
-
-	let candidate = orchestrator::select_target_status_visible_program_candidate(
-		&TargetIssueRunContext {
-			tracker: &tracker,
-			project: &config,
-			workflow: &workflow,
-			state_store: &state_store,
-			issue_id: &issue.identifier,
-			preferred_issue_state: None,
-			preferred_initial_issue_state: None,
-			dry_run: false,
-			lease_preacquired: false,
-			preferred_issue_claim_fd: None,
-			preferred_dispatch_slot_fd: None,
-			preferred_dispatch_slot_index: None,
-			dispatch_mode: IssueDispatchMode::Program,
-			preferred_run_identity: None,
-			preferred_retry_budget_base: None,
-		},
-	)
-	.expect("targeted Program selection should reconcile")
-	.expect("targeted Program issue should select after stale mapping cleanup");
-
-	assert_eq!(candidate.issue.id, issue.id);
-	assert_eq!(candidate.dispatch_mode, IssueDispatchMode::Program);
-	assert!(
 		state_store
-			.worktree_for_issue(&issue.id)
-			.expect("worktree lookup should succeed")
-			.is_none()
-	);
+			.upsert_execution_program(config.service_id(), program)
+			.expect("program should persist");
+
+		let tracker = FakeTracker::new(vec![issue.clone()]);
+		let snapshot = orchestrator::build_live_operator_status_snapshot(
+			&tracker,
+			&config,
+			&workflow,
+			&state_store,
+			10,
+		)
+		.expect("status snapshot should build");
+		let program = snapshot
+			.execution_programs
+			.iter()
+			.find(|program| program.program_id == "program-targeted-run")
+			.expect("program should appear in status");
+
+		assert_eq!(program.dispatchable_count, 1);
+		assert_eq!(program.node_readbacks[0].dispatch_action.as_deref(), Some("dispatch"));
+
+		let summary =
+			orchestrator::run_target_issue_once_with_inferred_dispatch(TargetIssueRunContext {
+				tracker: &tracker,
+				project: &config,
+				workflow: &workflow,
+				state_store: &state_store,
+				issue_id: &issue.identifier,
+				preferred_issue_state: None,
+				preferred_initial_issue_state: None,
+				dry_run: true,
+				lease_preacquired: false,
+				preferred_issue_claim_fd: None,
+				preferred_dispatch_slot_fd: None,
+				preferred_dispatch_slot_index: None,
+				dispatch_mode: IssueDispatchMode::Normal,
+				preferred_run_identity: None,
+				preferred_retry_budget_base: None,
+			})
+			.expect("targeted identifier run should succeed")
+			.expect("status-ready program issue should dispatch by identifier");
+
+		assert_eq!(summary.issue_id, issue.id);
+		assert_eq!(summary.issue_identifier, issue.identifier);
+		assert_eq!(summary.dispatch_mode, IssueDispatchMode::Program);
+	}
+
+	#[test]
+	fn targeted_program_selection_reconciles_stale_worktree_mapping_before_dispatch() {
+		let (_temp_dir, config, workflow) = tests::temp_project_layout();
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let issue = tests::sample_issue_with_sort_fields(
+			"issue-program-stale-mapping",
+			"PUB-1095",
+			"Todo",
+			&[],
+			Some(1),
+			"2026-06-23T04:16:17.133Z",
+		);
+		let missing_worktree_path = config.worktree_root().join(&issue.identifier);
+		let conflict = ExecutionConflictDomain::new(ExecutionConflictDomainKind::Module, "runtime")
+			.expect("conflict should build");
+		let mapping =
+			ExecutionLinearIssueMapping::new(&issue.id, &issue.identifier, &issue.state.name)
+				.expect("program issue mapping should build");
+		let node = ExecutionProgramNode::new(
+			"node-program-stale-mapping",
+			ExecutionProgramNodeStage::Runtime,
+			"Resolve a dispatchable Program node after stale worktree cleanup.",
+			ExecutionQueueIntent::ReadyToQueue,
+		)
+		.expect("program node should build")
+		.with_acceptance_expectations(["Program node maps to a normal Linear issue."])
+		.expect("acceptance should attach")
+		.with_validation_expectations(["Run focused Program dispatch validation."])
+		.expect("validation should attach")
+		.with_conflict_domains([conflict])
+		.expect("conflict should attach")
+		.with_linear_issue(mapping)
+		.expect("issue mapping should attach");
+		let program = ExecutionProgram::from_issue_batch_intake(
+			"program-targeted-stale-mapping",
+			config.service_id(),
+			"program-targeted-stale-mapping-fingerprint",
+			"Targeted Program run bridge with stale mapping.",
+			vec![node],
+		)
+		.expect("program should build");
+
+		state_store
+			.upsert_worktree(
+				config.service_id(),
+				&issue.id,
+				"x/pubfi-pub-1095",
+				&missing_worktree_path.display().to_string(),
+			)
+			.expect("stale worktree mapping should persist");
+		state_store
+			.upsert_execution_program(config.service_id(), program)
+			.expect("program should persist");
+
+		let tracker = FakeTracker::new(vec![issue.clone()]);
+		let blocked = orchestrator::select_execution_program_run_candidate_with_summary(
+			&tracker,
+			&config,
+			&workflow,
+			&state_store,
+			&[],
+		)
+		.expect("stale mapping should evaluate");
+
+		assert!(blocked.selected.is_none());
+		assert_eq!(blocked.summary.dispatchable_nodes, 0);
+
+		let candidate =
+			orchestrator::select_target_status_visible_program_candidate(&TargetIssueRunContext {
+				tracker: &tracker,
+				project: &config,
+				workflow: &workflow,
+				state_store: &state_store,
+				issue_id: &issue.identifier,
+				preferred_issue_state: None,
+				preferred_initial_issue_state: None,
+				dry_run: false,
+				lease_preacquired: false,
+				preferred_issue_claim_fd: None,
+				preferred_dispatch_slot_fd: None,
+				preferred_dispatch_slot_index: None,
+				dispatch_mode: IssueDispatchMode::Program,
+				preferred_run_identity: None,
+				preferred_retry_budget_base: None,
+			})
+			.expect("targeted Program selection should reconcile")
+			.expect("targeted Program issue should select after stale mapping cleanup");
+
+		assert_eq!(candidate.issue.id, issue.id);
+		assert_eq!(candidate.dispatch_mode, IssueDispatchMode::Program);
+		assert!(
+			state_store
+				.worktree_for_issue(&issue.id)
+				.expect("worktree lookup should succeed")
+				.is_none()
+		);
+	}
 }
 
-}
+use std::path::{Path, PathBuf};
 
-use crate::agent::ReviewExecutionMode;
-use crate::agent::ReviewHandoffContext;
+use crate::{
+	agent::{DynamicToolHandler, ReviewExecutionMode, ReviewHandoffContext, TrackerToolBridge},
+	config::{ReviewLevel, ServiceConfig},
+	orchestrator::{
+		self, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, IssueDispatchMode,
+		IssueTurnContinuationGuard, ReviewHandoffMarker, ReviewOrchestrationMarker, RunSummary,
+		TargetIssueRunContext, TurnContinuationGuard,
+		tests::{
+			self, FakePullRequestReviewStateInspector, FakeTracker, TEST_SERVICE_ID,
+			intake_workflow_reload,
+		},
+	},
+	state::{self, StateStore},
+	tracker::{self, TrackerIssue},
+	workflow::WorkflowDocument,
+	worktree::{WorktreeManager, WorktreeSpec},
+};
 
 struct PromptSurfaces {
 	developer_instructions: String,
@@ -243,9 +251,10 @@ fn assert_manual_attention_prompt_guidance(prompt: &str, expects_handoff_guard: 
 	assert!(!prompt.contains("add the needs-attention label"));
 
 	if expects_handoff_guard {
-		assert!(prompt.contains(&format!(
-			"Do not call `{ISSUE_REVIEW_HANDOFF_TOOL_NAME}` in that case"
-		)));
+		assert!(
+			prompt
+				.contains(&format!("Do not call `{ISSUE_REVIEW_HANDOFF_TOOL_NAME}` in that case"))
+		);
 	}
 }
 
@@ -262,7 +271,9 @@ fn assert_review_repair_developer_prompt(prompt: &str) {
 	assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
 	assert!(prompt.contains("Do not move the issue back to `In Progress`"));
 	assert!(prompt.contains("do not call `issue_review_handoff`"));
-	assert!(prompt.contains("Decodex Review: request an independent fresh-context read-only verification pass"));
+	assert!(prompt.contains(
+		"Decodex Review: request an independent fresh-context read-only verification pass"
+	));
 	assert!(prompt.contains("review_type = \"repair_verification\""));
 	assert!(prompt.contains("registered project workflow policy"));
 	assert!(prompt.contains("structured accepted/rejected findings"));
@@ -282,7 +293,9 @@ fn assert_review_repair_developer_prompt(prompt: &str) {
 fn assert_review_repair_user_prompt(prompt: &str, pr_url: &str) {
 	assert!(prompt.contains(pr_url));
 	assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
-	assert!(prompt.contains("Decodex Review: request an independent fresh-context read-only verification pass"));
+	assert!(prompt.contains(
+		"Decodex Review: request an independent fresh-context read-only verification pass"
+	));
 	assert!(prompt.contains("review_contract"));
 	assert!(prompt.contains("structured accepted/rejected findings"));
 
@@ -291,9 +304,11 @@ fn assert_review_repair_user_prompt(prompt: &str, pr_url: &str) {
 	assert!(prompt.contains(
 		"Read the current review feedback on `https://github.com/hack-ink/decodex/pull/77`, including non-thread review summaries"
 	));
-	assert!(prompt.contains(
-		"validate each actionable claim against the codebase, tests, and requirements"
-	));
+	assert!(
+		prompt.contains(
+			"validate each actionable claim against the codebase, tests, and requirements"
+		)
+	);
 	assert!(prompt.contains("Leave pushback or clarification threads open"));
 	assert!(prompt.contains("because retained landing was not a deterministic clean path"));
 	assert!(prompt.contains("Do not merge or land the PR yourself"));
@@ -313,9 +328,11 @@ fn assert_review_repair_continuation_prompt(prompt: &str) {
 	assert!(prompt.contains(
 		"Validate each actionable review claim against the codebase, tests, and requirements before changing code"
 	));
-	assert!(prompt.contains(
-		"keep pushback or clarification threads open until the repaired head is ready"
-	));
+	assert!(
+		prompt.contains(
+			"keep pushback or clarification threads open until the repaired head is ready"
+		)
+	);
 	assert!(prompt.contains("retained landing fallback"));
 	assert!(prompt.contains("do not merge or land the PR yourself"));
 	assert!(prompt.contains("Do not request GitHub Review yourself"));
@@ -326,7 +343,7 @@ fn assert_review_repair_continuation_prompt(prompt: &str) {
 fn run_and_prompting_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
-	sample_issue(state_name, &[active_label.as_str()])
+	tests::sample_issue(state_name, &[active_label.as_str()])
 }
 
 fn run_and_prompting_target_context<'a, T>(
@@ -370,7 +387,7 @@ fn build_normal_prompt_surfaces(
 	config: &ServiceConfig,
 	workflow: &WorkflowDocument,
 ) -> PromptSurfaces {
-	let issue = sample_issue("Todo", &[]);
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue: issue.clone(),
@@ -421,8 +438,8 @@ fn build_normal_prompt_surfaces(
 
 #[test]
 fn dry_run_selects_one_issue_and_plans_worktree() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let tracker = FakeTracker::new(vec![sample_issue("Todo", &[])]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let tracker = FakeTracker::new(vec![tests::sample_issue("Todo", &[])]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("run once should succeed")
@@ -450,9 +467,9 @@ fn dry_run_selects_one_issue_and_plans_worktree() {
 
 #[test]
 fn targeted_identifier_dispatch_accepts_status_ready_queued_issue() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = tests::sample_issue_with_sort_fields(
 		"issue-ready",
 		"PUB-101",
 		"Todo",
@@ -478,8 +495,8 @@ fn targeted_identifier_dispatch_accepts_status_ready_queued_issue() {
 	assert_eq!(candidate.classification, "ready");
 	assert_eq!(candidate.reason, "eligible_for_dispatch");
 
-	let summary = orchestrator::run_target_issue_once_with_inferred_dispatch(
-		TargetIssueRunContext {
+	let summary =
+		orchestrator::run_target_issue_once_with_inferred_dispatch(TargetIssueRunContext {
 			tracker: &tracker,
 			project: &config,
 			workflow: &workflow,
@@ -495,10 +512,9 @@ fn targeted_identifier_dispatch_accepts_status_ready_queued_issue() {
 			dispatch_mode: IssueDispatchMode::Normal,
 			preferred_run_identity: None,
 			preferred_retry_budget_base: None,
-		},
-	)
-	.expect("targeted identifier run should succeed")
-	.expect("status-ready queued issue should dispatch by identifier");
+		})
+		.expect("targeted identifier run should succeed")
+		.expect("status-ready queued issue should dispatch by identifier");
 
 	assert_eq!(summary.issue_id, issue.id);
 	assert_eq!(summary.issue_identifier, issue.identifier);
@@ -507,12 +523,12 @@ fn targeted_identifier_dispatch_accepts_status_ready_queued_issue() {
 
 #[test]
 fn targeted_inferred_dispatch_keeps_retry_for_active_issue() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = run_and_prompting_service_owned_issue("In Progress");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
-	let summary = orchestrator::run_target_issue_once_with_inferred_dispatch(
-		TargetIssueRunContext {
+	let summary =
+		orchestrator::run_target_issue_once_with_inferred_dispatch(TargetIssueRunContext {
 			tracker: &tracker,
 			project: &config,
 			workflow: &workflow,
@@ -528,10 +544,9 @@ fn targeted_inferred_dispatch_keeps_retry_for_active_issue() {
 			dispatch_mode: IssueDispatchMode::Normal,
 			preferred_run_identity: None,
 			preferred_retry_budget_base: None,
-		},
-	)
-	.expect("targeted active identifier run should succeed")
-	.expect("active target should fall back to retry dispatch");
+		})
+		.expect("targeted active identifier run should succeed")
+		.expect("active target should fall back to retry dispatch");
 
 	assert_eq!(summary.issue_id, issue.id);
 	assert_eq!(summary.issue_identifier, issue.identifier);
@@ -540,8 +555,8 @@ fn targeted_inferred_dispatch_keeps_retry_for_active_issue() {
 
 #[test]
 fn targeted_identifier_dispatch_accepts_status_visible_retained_closeout_lane() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = run_and_prompting_service_owned_issue("In Review");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
@@ -549,7 +564,7 @@ fn targeted_identifier_dispatch_accepts_status_visible_retained_closeout_lane() 
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/181";
 
 	state_store
@@ -561,14 +576,15 @@ fn targeted_identifier_dispatch_accepts_status_visible_retained_closeout_lane() 
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let _path_guard = install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard =
+		tests::install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
 		&config,
@@ -587,8 +603,8 @@ fn targeted_identifier_dispatch_accepts_status_visible_retained_closeout_lane() 
 	assert_eq!(lane.reason, "pull_request_merged_closeout_pending");
 	assert_eq!(lane.pr_state.as_deref(), Some("MERGED"));
 
-	let summary = orchestrator::run_target_issue_once_with_inferred_dispatch(
-		TargetIssueRunContext {
+	let summary =
+		orchestrator::run_target_issue_once_with_inferred_dispatch(TargetIssueRunContext {
 			tracker: &tracker,
 			project: &config,
 			workflow: &workflow,
@@ -604,10 +620,9 @@ fn targeted_identifier_dispatch_accepts_status_visible_retained_closeout_lane() 
 			dispatch_mode: IssueDispatchMode::Normal,
 			preferred_run_identity: None,
 			preferred_retry_budget_base: None,
-		},
-	)
-	.expect("targeted retained closeout identifier run should succeed")
-	.expect("status-visible retained closeout lane should dispatch by identifier");
+		})
+		.expect("targeted retained closeout identifier run should succeed")
+		.expect("status-visible retained closeout lane should dispatch by identifier");
 
 	assert_eq!(summary.issue_id, issue.id);
 	assert_eq!(summary.issue_identifier, issue.identifier);
@@ -618,8 +633,8 @@ fn targeted_identifier_dispatch_accepts_status_visible_retained_closeout_lane() 
 
 #[test]
 fn targeted_identifier_dispatch_accepts_status_visible_review_repair_lane() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = run_and_prompting_service_owned_issue("In Review");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
@@ -627,7 +642,7 @@ fn targeted_identifier_dispatch_accepts_status_visible_review_repair_lane() {
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/184";
 
 	state_store
@@ -639,15 +654,15 @@ fn targeted_identifier_dispatch_accepts_status_visible_review_repair_lane() {
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let _path_guard =
-		install_fake_conflicting_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+		tests::install_fake_conflicting_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
 		&config,
@@ -665,8 +680,8 @@ fn targeted_identifier_dispatch_accepts_status_visible_review_repair_lane() {
 	assert_eq!(lane.classification, "needs_review_repair");
 	assert_eq!(lane.reason, "pull_request_merge_conflict");
 
-	let summary = orchestrator::run_target_issue_once_with_inferred_dispatch(
-		TargetIssueRunContext {
+	let summary =
+		orchestrator::run_target_issue_once_with_inferred_dispatch(TargetIssueRunContext {
 			tracker: &tracker,
 			project: &config,
 			workflow: &workflow,
@@ -682,10 +697,9 @@ fn targeted_identifier_dispatch_accepts_status_visible_review_repair_lane() {
 			dispatch_mode: IssueDispatchMode::Normal,
 			preferred_run_identity: None,
 			preferred_retry_budget_base: None,
-		},
-	)
-	.expect("targeted retained repair identifier run should succeed")
-	.expect("status-visible retained repair lane should dispatch by identifier");
+		})
+		.expect("targeted retained repair identifier run should succeed")
+		.expect("status-visible retained repair lane should dispatch by identifier");
 
 	assert_eq!(summary.issue_id, issue.id);
 	assert_eq!(summary.issue_identifier, issue.identifier);
@@ -695,8 +709,8 @@ fn targeted_identifier_dispatch_accepts_status_visible_review_repair_lane() {
 
 #[test]
 fn targeted_identifier_dispatch_accepts_stopped_active_closeout_lease() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = run_and_prompting_service_owned_issue("Done");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
@@ -704,7 +718,7 @@ fn targeted_identifier_dispatch_accepts_stopped_active_closeout_lease() {
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/183";
 
 	state_store
@@ -724,15 +738,15 @@ fn targeted_identifier_dispatch_accepts_stopped_active_closeout_lease() {
 
 	state::write_run_activity_marker_for_process(&worktree.path, "run-1", 1, u32::MAX)
 		.expect("stopped closeout activity marker should write");
-
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let _path_guard = install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard =
+		tests::install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
 		&config,
@@ -815,11 +829,11 @@ fn targeted_identifier_dispatch_accepts_stopped_active_closeout_lease() {
 
 #[test]
 fn targeted_identifier_dispatch_rejects_different_status_visible_closeout_lane() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let closeout_issue = sample_issue_with_sort_fields(
+	let closeout_issue = tests::sample_issue_with_sort_fields(
 		"issue-closeout",
 		"PUB-101",
 		"In Review",
@@ -827,7 +841,7 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_closeout_lane()
 		Some(1),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let requested_issue = sample_issue_with_sort_fields(
+	let requested_issue = tests::sample_issue_with_sort_fields(
 		"issue-requested",
 		"PUB-102",
 		"In Review",
@@ -841,7 +855,7 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_closeout_lane()
 	let worktree = worktree_manager
 		.ensure_worktree(&closeout_issue.identifier, false)
 		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/182";
 
 	state_store
@@ -853,14 +867,15 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_closeout_lane()
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let _path_guard = install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard =
+		tests::install_fake_merged_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
 		&config,
@@ -875,25 +890,23 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_closeout_lane()
 	assert_eq!(snapshot.post_review_lanes[0].classification, "continue");
 	assert_eq!(snapshot.post_review_lanes[0].reason, "pull_request_merged_closeout_pending",);
 
-	let error = orchestrator::run_target_issue_once_with_inferred_dispatch(
-		TargetIssueRunContext {
-			tracker: &tracker,
-			project: &config,
-			workflow: &workflow,
-			state_store: &state_store,
-			issue_id: &requested_issue.identifier,
-			preferred_issue_state: None,
-			preferred_initial_issue_state: None,
-			dry_run: true,
-			lease_preacquired: false,
-			preferred_issue_claim_fd: None,
-			preferred_dispatch_slot_fd: None,
-			preferred_dispatch_slot_index: None,
-			dispatch_mode: IssueDispatchMode::Normal,
-			preferred_run_identity: None,
-			preferred_retry_budget_base: None,
-		},
-	)
+	let error = orchestrator::run_target_issue_once_with_inferred_dispatch(TargetIssueRunContext {
+		tracker: &tracker,
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_id: &requested_issue.identifier,
+		preferred_issue_state: None,
+		preferred_initial_issue_state: None,
+		dry_run: true,
+		lease_preacquired: false,
+		preferred_issue_claim_fd: None,
+		preferred_dispatch_slot_fd: None,
+		preferred_dispatch_slot_index: None,
+		dispatch_mode: IssueDispatchMode::Normal,
+		preferred_run_identity: None,
+		preferred_retry_budget_base: None,
+	})
 	.expect_err("targeted closeout inference should reject a different visible lane");
 	let message = error.to_string();
 
@@ -904,11 +917,11 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_closeout_lane()
 
 #[test]
 fn targeted_identifier_dispatch_rejects_different_status_visible_review_repair_lane() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let repair_issue = sample_issue_with_sort_fields(
+	let repair_issue = tests::sample_issue_with_sort_fields(
 		"issue-repair",
 		"PUB-201",
 		"In Review",
@@ -916,7 +929,7 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_review_repair_l
 		Some(1),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let requested_issue = sample_issue_with_sort_fields(
+	let requested_issue = tests::sample_issue_with_sort_fields(
 		"issue-requested",
 		"PUB-202",
 		"In Review",
@@ -930,7 +943,7 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_review_repair_l
 	let worktree = worktree_manager
 		.ensure_worktree(&repair_issue.identifier, false)
 		.expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/185";
 
 	state_store
@@ -942,15 +955,15 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_review_repair_l
 		)
 		.expect("worktree should record");
 
-	seed_review_handoff_marker_for_path(
+	tests::seed_review_handoff_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let _path_guard =
-		install_fake_conflicting_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+		tests::install_fake_conflicting_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
 		&config,
@@ -965,25 +978,23 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_review_repair_l
 	assert_eq!(snapshot.post_review_lanes[0].classification, "needs_review_repair");
 	assert_eq!(snapshot.post_review_lanes[0].reason, "pull_request_merge_conflict");
 
-	let error = orchestrator::run_target_issue_once_with_inferred_dispatch(
-		TargetIssueRunContext {
-			tracker: &tracker,
-			project: &config,
-			workflow: &workflow,
-			state_store: &state_store,
-			issue_id: &requested_issue.identifier,
-			preferred_issue_state: None,
-			preferred_initial_issue_state: None,
-			dry_run: true,
-			lease_preacquired: false,
-			preferred_issue_claim_fd: None,
-			preferred_dispatch_slot_fd: None,
-			preferred_dispatch_slot_index: None,
-			dispatch_mode: IssueDispatchMode::Normal,
-			preferred_run_identity: None,
-			preferred_retry_budget_base: None,
-		},
-	)
+	let error = orchestrator::run_target_issue_once_with_inferred_dispatch(TargetIssueRunContext {
+		tracker: &tracker,
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_id: &requested_issue.identifier,
+		preferred_issue_state: None,
+		preferred_initial_issue_state: None,
+		dry_run: true,
+		lease_preacquired: false,
+		preferred_issue_claim_fd: None,
+		preferred_dispatch_slot_fd: None,
+		preferred_dispatch_slot_index: None,
+		dispatch_mode: IssueDispatchMode::Normal,
+		preferred_run_identity: None,
+		preferred_retry_budget_base: None,
+	})
 	.expect_err("targeted review repair inference should reject a different visible lane");
 	let message = error.to_string();
 
@@ -1018,7 +1029,7 @@ fn format_run_once_summary_surfaces_continuation_boundaries() {
 #[test]
 fn dry_run_returns_none_when_intake_has_no_service_owned_candidate() {
 	{
-		let (_temp_dir, config, workflow) = temp_project_layout();
+		let (_temp_dir, config, workflow) = tests::temp_project_layout();
 		let tracker = FakeTracker::with_refresh_snapshots_and_project(vec![], vec![vec![]], false);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 		let summary =
@@ -1028,8 +1039,8 @@ fn dry_run_returns_none_when_intake_has_no_service_owned_candidate() {
 		assert!(summary.is_none(), "empty intake should simply produce no dry-run selection");
 	}
 	{
-		let (_temp_dir, config, workflow) = temp_project_layout();
-		let issue = sample_issue_with_project_slug_and_sort_fields(
+		let (_temp_dir, config, workflow) = tests::temp_project_layout();
+		let issue = tests::sample_issue_with_project_slug_and_sort_fields(
 			"issue-1",
 			"PUB-101",
 			"other-service",
@@ -1050,7 +1061,7 @@ fn dry_run_returns_none_when_intake_has_no_service_owned_candidate() {
 
 #[test]
 fn no_eligible_issue_message_includes_operator_hint() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let message = orchestrator::format_no_eligible_issue_message(&config, &workflow);
 
 	assert!(message.contains("No eligible issue found for the configured project."));
@@ -1065,9 +1076,9 @@ fn no_eligible_issue_message_includes_operator_hint() {
 
 #[test]
 fn dry_run_falls_back_to_normal_issue_when_retained_retry_loses_ownership() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let normal_issue = sample_issue_with_sort_fields(
+	let normal_issue = tests::sample_issue_with_sort_fields(
 		"issue-2",
 		"PUB-102",
 		"Todo",
@@ -1076,7 +1087,7 @@ fn dry_run_falls_back_to_normal_issue_when_retained_retry_loses_ownership() {
 		"2026-03-13T04:17:17.133Z",
 	);
 	let retry_issue = run_and_prompting_service_owned_issue("In Progress");
-	let retry_issue_without_ownership = sample_issue("In Progress", &[]);
+	let retry_issue_without_ownership = tests::sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![normal_issue.clone(), retry_issue.clone()],
 		vec![
@@ -1084,7 +1095,7 @@ fn dry_run_falls_back_to_normal_issue_when_retained_retry_loses_ownership() {
 			vec![retry_issue.clone()],
 			vec![retry_issue_without_ownership.clone()],
 			vec![retry_issue_without_ownership],
-			vec![sample_issue("In Progress", &[])],
+			vec![tests::sample_issue("In Progress", &[])],
 			vec![normal_issue.clone()],
 		],
 	);
@@ -1113,8 +1124,8 @@ fn dry_run_falls_back_to_normal_issue_when_retained_retry_loses_ownership() {
 
 #[test]
 fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue,
@@ -1146,8 +1157,13 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains("Keep pre-edit discovery bounded"));
 	assert!(instructions.contains("Do not browse upstream references"));
 	assert!(instructions.contains("Docs impact contract"));
-	assert!(instructions.contains("classify docs impact as `none`, `update_required`, `research_required`, or `drift_required`"));
-	assert!(instructions.contains("record it in a current-HEAD `issue_progress_checkpoint` as `docs_impact`"));
+	assert!(instructions.contains(
+		"classify docs impact as `none`, `update_required`, `research_required`, or `drift_required`"
+	));
+	assert!(
+		instructions
+			.contains("record it in a current-HEAD `issue_progress_checkpoint` as `docs_impact`")
+	);
 	assert!(instructions.contains("Tracker tool contract"));
 	assert!(instructions.contains("Linear tracker text is public/team-visible"));
 	assert!(instructions.contains("You own issue-scoped tracker writes for `PUB-101`."));
@@ -1161,8 +1177,12 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains(ISSUE_REVIEW_HANDOFF_TOOL_NAME));
 	assert!(instructions.contains(ISSUE_TERMINAL_FINALIZE_TOOL_NAME));
 	assert!(instructions.contains("Phase goal runtime contract"));
-	assert!(instructions.contains("Treat the active phase goal as the authoritative current contract"));
-	assert!(instructions.contains("explicitly complete the active phase goal with the Codex goal completion mechanism"));
+	assert!(
+		instructions.contains("Treat the active phase goal as the authoritative current contract")
+	);
+	assert!(instructions.contains(
+		"explicitly complete the active phase goal with the Codex goal completion mechanism"
+	));
 	assert!(
 		instructions.contains(
 			"Do not use `issue_progress_checkpoint`, final chat text, or an \"await next phase\" statement as a substitute"
@@ -1175,7 +1195,7 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 
 #[test]
 fn normal_prompts_record_manual_attention_label_intent_before_label_application() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let surfaces = build_normal_prompt_surfaces(&config, &workflow);
 
 	for prompt in surfaces.all() {
@@ -1185,7 +1205,7 @@ fn normal_prompts_record_manual_attention_label_intent_before_label_application(
 
 #[test]
 fn normal_prompts_require_review_signal_routes_before_repair() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let surfaces = build_normal_prompt_surfaces(&config, &workflow);
 
 	for prompt in surfaces.all() {
@@ -1201,7 +1221,7 @@ fn review_pull_request_title_normalizes_issue_prefix() {
 		"Ensure Decodex-created PR titles include issue authority prefix",
 		"xy-381: Ensure Decodex-created PR titles include issue authority prefix",
 	] {
-		let mut issue = sample_issue("Todo", &[]);
+		let mut issue = tests::sample_issue("Todo", &[]);
 
 		issue.identifier = String::from("XY-381");
 		issue.title = String::from(title);
@@ -1215,8 +1235,8 @@ fn review_pull_request_title_normalizes_issue_prefix() {
 
 #[test]
 fn normal_prompts_require_issue_prefixed_pull_request_title() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let mut issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let mut issue = tests::sample_issue("Todo", &[]);
 
 	issue.identifier = String::from("XY-381");
 	issue.title = String::from("Ensure Decodex-created PR titles include issue authority prefix");
@@ -1280,8 +1300,8 @@ fn normal_prompts_require_issue_prefixed_pull_request_title() {
 
 #[test]
 fn retry_prompts_include_recovery_context() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue: issue.clone(),
@@ -1328,8 +1348,8 @@ fn retry_prompts_include_recovery_context() {
 
 #[test]
 fn architecture_recovery_prompt_uses_only_latest_active_recovery_start() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue: issue.clone(),
@@ -1417,19 +1437,15 @@ fn architecture_recovery_prompt_uses_only_latest_active_recovery_start() {
 #[test]
 fn normal_prompts_respect_non_standard_review_levels() {
 	for (mode, expected, forbidden_checkpoint) in [
-		(
-			ReviewLevel::Off,
-			"[codex].review = \"off\"",
-			None,
-		),
+		(ReviewLevel::Off, "[codex].review = \"off\"", None),
 		(
 			ReviewLevel::Basic,
 			"Self Check: Review your work repeatedly and fix any logic bugs until no new issues are found.",
 			Some(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME),
 		),
 	] {
-		let (_temp_dir, config, workflow) = temp_project_layout();
-		let config = service_config_with_review_level(&config, mode);
+		let (_temp_dir, config, workflow) = tests::temp_project_layout();
+		let config = tests::service_config_with_review_level(&config, mode);
 		let prompts = build_normal_prompt_surfaces(&config, &workflow);
 
 		for prompt in prompts.all() {
@@ -1455,8 +1471,8 @@ fn normal_prompts_respect_non_standard_review_levels() {
 
 #[test]
 fn multi_turn_prompts_allow_nonterminal_yield_boundary() {
-	let (_temp_dir, config, workflow) = temp_project_layout_with_max_turns(4);
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_max_turns(4);
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue: issue.clone(),
@@ -1499,8 +1515,8 @@ fn multi_turn_prompts_allow_nonterminal_yield_boundary() {
 
 #[test]
 fn closeout_prompts_forbid_clean_continuation_boundaries() {
-	let (_temp_dir, config, workflow) = temp_project_layout_with_max_turns(4);
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_max_turns(4);
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue: issue.clone(),
@@ -1555,8 +1571,8 @@ fn closeout_prompts_forbid_clean_continuation_boundaries() {
 
 #[test]
 fn review_repair_prompts_require_same_pr_repair_completion() {
-	let (_temp_dir, config, workflow) = temp_project_layout_with_max_turns(4);
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_max_turns(4);
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue: issue.clone(),
@@ -1626,9 +1642,9 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 
 #[test]
 fn review_repair_prompts_skip_decodex_review_checkpoint_when_off() {
-	let (_temp_dir, config, workflow) = temp_project_layout_with_max_turns(4);
-	let config = service_config_with_review_level(&config, ReviewLevel::Off);
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_max_turns(4);
+	let config = tests::service_config_with_review_level(&config, ReviewLevel::Off);
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue: issue.clone(),
@@ -1734,7 +1750,7 @@ Custom workflow.
 "#,
 	)
 	.expect("workflow should parse");
-	let issue = sample_issue("Ready For QA", &[]);
+	let issue = tests::sample_issue("Ready For QA", &[]);
 	let continuation_input = orchestrator::build_continuation_user_input(
 		&issue,
 		&workflow,
@@ -1750,8 +1766,8 @@ Custom workflow.
 
 #[test]
 fn review_repair_prompts_surface_architecture_check_on_fourth_external_round() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join(&issue.identifier);
@@ -1766,8 +1782,13 @@ fn review_repair_prompts_surface_architecture_check_on_fourth_external_round() {
 		"abc123",
 	);
 
-	seed_review_handoff_marker_value(&state_store, config.service_id(), &issue.id, &review_handoff);
-	seed_review_orchestration_marker(
+	tests::seed_review_handoff_marker_value(
+		&state_store,
+		config.service_id(),
+		&issue.id,
+		&review_handoff,
+	);
+	tests::seed_review_orchestration_marker(
 		&state_store,
 		config.service_id(),
 		&issue.id,
@@ -1831,8 +1852,8 @@ fn review_repair_prompts_surface_architecture_check_on_fourth_external_round() {
 
 #[test]
 fn review_repair_prompts_ignore_newer_unrelated_branch_orchestration_records() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join(&issue.identifier);
@@ -1847,13 +1868,13 @@ fn review_repair_prompts_ignore_newer_unrelated_branch_orchestration_records() {
 		"abc123",
 	);
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
 		&current_handoff,
 	);
-	seed_review_orchestration_marker(
+	tests::seed_review_orchestration_marker(
 		&state_store,
 		config.service_id(),
 		&issue.id,
@@ -1883,13 +1904,13 @@ fn review_repair_prompts_ignore_newer_unrelated_branch_orchestration_records() {
 		"def456",
 	);
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
 		&unrelated_handoff,
 	);
-	seed_review_orchestration_marker(
+	tests::seed_review_orchestration_marker(
 		&state_store,
 		config.service_id(),
 		&issue.id,
@@ -1941,8 +1962,8 @@ fn review_repair_prompts_ignore_newer_unrelated_branch_orchestration_records() {
 
 #[test]
 fn closeout_prompts_require_retained_pr_closeout_completion() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Review", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Review", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue: issue.clone(),
@@ -2032,8 +2053,8 @@ fn closeout_prompts_require_retained_pr_closeout_completion() {
 
 #[test]
 fn single_turn_prompts_do_not_allow_nonterminal_yield_boundary() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue,
@@ -2063,7 +2084,7 @@ fn single_turn_prompts_do_not_allow_nonterminal_yield_boundary() {
 	let user_input = orchestrator::build_user_input(
 		&tracker,
 		&config,
-		&sample_issue("Todo", &[]),
+		&tests::sample_issue("Todo", &[]),
 		&workflow,
 		&issue_run,
 		&StateStore::open_in_memory().expect("state store should open"),
@@ -2076,7 +2097,7 @@ fn single_turn_prompts_do_not_allow_nonterminal_yield_boundary() {
 
 #[test]
 fn prompts_handle_machine_only_and_text_fenced_tracker_descriptions() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let cases: &[(&str, &str, &[&str])] = &[
 		(
 			"single json fence",
@@ -2101,7 +2122,7 @@ fn prompts_handle_machine_only_and_text_fenced_tracker_descriptions() {
 	];
 
 	for (case_name, description, forbidden_fragments) in cases {
-		let mut issue = sample_issue("Todo", &[]);
+		let mut issue = tests::sample_issue("Todo", &[]);
 
 		issue.description = (*description).to_owned();
 
@@ -2127,7 +2148,7 @@ fn prompts_handle_machine_only_and_text_fenced_tracker_descriptions() {
 		}
 	}
 
-	let mut issue = sample_issue("Todo", &[]);
+	let mut issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 
 	issue.description =
@@ -2176,11 +2197,11 @@ fn developer_instructions_match_trimmed_prompt_shape() {
 		("docs/index.md", "Use the documentation index.\n"),
 		("docs/runbook/index.md", "Use the runbook index.\n"),
 	];
-	let (_temp_dir, config, workflow) = temp_project_layout_with_read_first(
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_read_first(
 		&read_first_files,
 		"This workflow body should be appended.\n",
 	);
-	let issue = sample_issue("Todo", &[]);
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
 		issue,
@@ -2210,14 +2231,18 @@ fn developer_instructions_match_trimmed_prompt_shape() {
 
 	assert_eq!(
 		instructions,
-		expected_developer_instructions(&read_first_files, &workflow, &issue_run)
+		intake_workflow_reload::expected_developer_instructions(
+			&read_first_files,
+			&workflow,
+			&issue_run
+		)
 	);
 }
 
 #[test]
 fn continuation_guard_rejects_first_turn_without_startup_transition() {
-	let (_temp_dir, _config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let tracker_tool_bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
@@ -2246,7 +2271,7 @@ fn continuation_guard_rejects_first_turn_without_startup_transition() {
 #[test]
 fn continuation_guard_allows_local_startup_transition_on_stale_rereads() {
 	{
-		let (_temp_dir, _config, workflow) = temp_project_layout();
+		let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 		let issue = run_and_prompting_service_owned_issue("Todo");
 		let tracker =
 			FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -2286,7 +2311,7 @@ fn continuation_guard_allows_local_startup_transition_on_stale_rereads() {
 		);
 	}
 	{
-		let (_temp_dir, _config, workflow) = temp_project_layout();
+		let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 		let issue = run_and_prompting_service_owned_issue("Todo");
 		let tracker = FakeTracker::with_refresh_snapshots(
 			vec![issue.clone()],
@@ -2332,7 +2357,7 @@ fn continuation_guard_allows_local_startup_transition_on_stale_rereads() {
 
 #[test]
 fn continuation_guard_allows_review_repair_continuation_while_issue_remains_in_review() {
-	let (_temp_dir, _config, workflow) = temp_project_layout();
+	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let issue = run_and_prompting_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -2366,7 +2391,7 @@ fn continuation_guard_allows_review_repair_continuation_while_issue_remains_in_r
 
 #[test]
 fn continuation_guard_allows_closeout_continuation_after_issue_reaches_completed_state() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = run_and_prompting_service_owned_issue("Done");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
@@ -2375,14 +2400,14 @@ fn continuation_guard_allows_closeout_continuation_after_issue_reaches_completed
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/175";
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let tracker_tool_bridge = TrackerToolBridge::with_run_context_and_state_store(
@@ -2404,7 +2429,7 @@ fn continuation_guard_allows_closeout_continuation_after_issue_reaches_completed
 		},
 		&state_store,
 	);
-	let mut review_state = sample_pull_request_review_state(
+	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -2448,7 +2473,7 @@ fn continuation_guard_allows_closeout_continuation_after_issue_reaches_completed
 
 #[test]
 fn continuation_guard_blocks_closeout_continuation_when_completed_issue_pr_is_open() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = run_and_prompting_service_owned_issue("Done");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
@@ -2459,14 +2484,14 @@ fn continuation_guard_blocks_closeout_continuation_when_completed_issue_pr_is_op
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/176";
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let tracker_tool_bridge = TrackerToolBridge::with_run_context_and_state_store(
@@ -2488,7 +2513,7 @@ fn continuation_guard_blocks_closeout_continuation_when_completed_issue_pr_is_op
 		},
 		&state_store,
 	);
-	let review_state = sample_pull_request_review_state(
+	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
 		&worktree.branch_name,
 		&head_oid,
@@ -2531,7 +2556,7 @@ fn continuation_guard_blocks_closeout_continuation_when_completed_issue_pr_is_op
 
 #[test]
 fn continuation_guard_errors_when_completed_issue_pr_state_cannot_be_read() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = run_and_prompting_service_owned_issue("Done");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
@@ -2542,14 +2567,14 @@ fn continuation_guard_errors_when_completed_issue_pr_state_cannot_be_read() {
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/177";
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let tracker_tool_bridge = TrackerToolBridge::with_run_context_and_state_store(
@@ -2605,7 +2630,7 @@ fn continuation_guard_errors_when_completed_issue_pr_state_cannot_be_read() {
 
 #[test]
 fn continuation_guard_preserves_original_startable_state_across_continuation_retries() {
-	let (_temp_dir, _config, workflow) = temp_project_layout();
+	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let issue = run_and_prompting_service_owned_issue("In Progress");
 	let stale_issue = run_and_prompting_service_owned_issue("Todo");
 	let tracker =
@@ -2636,11 +2661,11 @@ fn continuation_guard_preserves_original_startable_state_across_continuation_ret
 
 #[test]
 fn continuation_guard_stops_when_service_active_label_is_removed() {
-	let (_temp_dir, _config, workflow) = temp_project_layout();
+	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let issue = run_and_prompting_service_owned_issue("In Progress");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
-		vec![vec![sample_issue("In Progress", &[])]],
+		vec![vec![tests::sample_issue("In Progress", &[])]],
 	);
 	let tracker_tool_bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let guard = IssueTurnContinuationGuard {
