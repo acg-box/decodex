@@ -1,4 +1,9 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use crate::orchestrator::{
+	self, CONTINUATION_PENDING_RUN_STATUS, OperatorRunAppServerState, OperatorRunControlCapability,
+	OperatorRunProtocolSummary, OperatorRunTiming, ProjectRunStatus, RunActivityMarker, state,
+	status_run_projection,
+};
+use crate::prelude::Result;
 
 pub(in crate::orchestrator) fn operator_run_control_capability(
 	run: &ProjectRunStatus,
@@ -23,7 +28,7 @@ pub(in crate::orchestrator) fn operator_run_control_capability(
 
 pub(in crate::orchestrator) fn load_operator_run_marker(
 	run: &ProjectRunStatus,
-) -> crate::prelude::Result<Option<RunActivityMarker>> {
+) -> Result<Option<RunActivityMarker>> {
 	let marker = run.worktree_path().and_then(|worktree_path| {
 		state::read_run_activity_marker_snapshot(worktree_path).unwrap_or_default()
 	});
@@ -39,11 +44,11 @@ pub(in crate::orchestrator) fn operator_run_timing(
 	now_unix_epoch: i64,
 ) -> OperatorRunTiming {
 	let process_id = marker.and_then(RunActivityMarker::process_id);
-	let last_run_activity_unix_epoch = max_optional_i64(
+	let last_run_activity_unix_epoch = status_run_projection::max_optional_i64(
 		Some(run.last_run_activity_unix_epoch()),
 		marker.and_then(RunActivityMarker::last_activity_unix_epoch),
 	);
-	let last_protocol_activity_unix_epoch = max_optional_i64(
+	let last_protocol_activity_unix_epoch = status_run_projection::max_optional_i64(
 		run.last_event_at_unix(),
 		marker.and_then(RunActivityMarker::last_protocol_activity_unix_epoch),
 	);
@@ -51,11 +56,11 @@ pub(in crate::orchestrator) fn operator_run_timing(
 		.last_event_type()
 		.filter(|event_type| state::protocol_event_counts_as_work_progress(event_type))
 		.and_then(|_| run.last_event_at_unix());
-	let last_progress_unix_epoch = max_optional_i64(
+	let last_progress_unix_epoch = status_run_projection::max_optional_i64(
 		marker.and_then(RunActivityMarker::last_progress_unix_epoch),
 		run_event_progress_unix_epoch,
 	);
-	let process_liveness = marker.and_then(marker_process_liveness_for_marker);
+	let process_liveness = marker.and_then(orchestrator::marker_process_liveness_for_marker);
 
 	OperatorRunTiming {
 		process_alive: process_liveness.map(|liveness| liveness.alive),
@@ -64,8 +69,11 @@ pub(in crate::orchestrator) fn operator_run_timing(
 		last_run_activity_unix_epoch,
 		last_protocol_activity_unix_epoch,
 		last_progress_unix_epoch,
-		idle_for_seconds: idle_duration_seconds(last_run_activity_unix_epoch, now_unix_epoch),
-		protocol_idle_for_seconds: idle_duration_seconds(
+		idle_for_seconds: status_run_projection::idle_duration_seconds(
+			last_run_activity_unix_epoch,
+			now_unix_epoch,
+		),
+		protocol_idle_for_seconds: status_run_projection::idle_duration_seconds(
 			last_protocol_activity_unix_epoch,
 			now_unix_epoch,
 		),
@@ -124,7 +132,9 @@ pub(in crate::orchestrator) fn operator_run_protocol_summary(
 			last_event_type: marker.and_then(RunActivityMarker::last_event_type).map(str::to_owned),
 			last_event_at: marker
 				.and_then(RunActivityMarker::last_protocol_activity_unix_epoch)
-				.and_then(|unix_epoch| format_optional_unix_timestamp(Some(unix_epoch))),
+				.and_then(|unix_epoch| {
+					status_run_projection::format_optional_unix_timestamp(Some(unix_epoch))
+				}),
 			event_count: marker.map_or(0, RunActivityMarker::event_count),
 		};
 	}
