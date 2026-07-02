@@ -63,6 +63,15 @@ pub(super) fn start_retained_admin_merge<T>(
 where
 	T: IssueTracker,
 {
+	retained_review_command_adapter(
+		retained_review_command_intent(
+			lane,
+			CommandIntentKind::StartRetainedLanding,
+			reasons.start_landing,
+		),
+		CommandIntentKind::StartRetainedLanding,
+	)?;
+
 	if let Some(reason) = authority_boundary_landing_requirement(
 		&lane.snapshot,
 		Some(PostReviewRuntimeState {
@@ -135,9 +144,11 @@ where
 	};
 
 	if merge_succeeded {
-		return write_retained_review_orchestration_marker(
+		return write_retained_review_orchestration_marker_for_command(
 			runtime.state_store,
 			lane,
+			CommandIntentKind::StartRetainedLanding,
+			reasons.start_landing,
 			ReviewOrchestrationPhase::WaitingForMerge,
 			RetainedReviewOrchestrationMarkerFields {
 				auto_merge_enabled_at_unix_epoch: Some(runtime.now_unix_epoch),

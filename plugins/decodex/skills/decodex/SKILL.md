@@ -28,6 +28,14 @@ For MCP gateway, runtime, tracker, or control-plane work, read
 not bypass Decision Contract, lane-control, review, landing, tracker, or runtime
 authority gates.
 
+For lane lifecycle architecture, treat the orchestration kernel as the runtime
+authority boundary. Read `docs/runbook/orchestration-kernel-cutover.md` with
+`docs/spec/owned-lane-policy.md`, `docs/spec/lane-control-state.md`, and
+`docs/spec/post-review-lifecycle.md` when work touches scheduler, retry,
+post-review, queue, status, lane-control, or operator readback decisions. Runtime
+surfaces may collect facts, execute command intents, or render projections; they
+must not reintroduce independent lifecycle policy branches.
+
 For autonomy work, route to `decodex://docs/spec/autonomy-control-plane`,
 `decodex://docs/decisions/mcp-capability-gateway-and-skill-slimming`, and the
 capability-profiled MCP surface: observe reads `decodex://projects/{service_id}/autonomy`

@@ -3,16 +3,18 @@ mod lane_control;
 mod lifecycle;
 mod phase;
 
-use crate::orchestrator::status_process_liveness;
-use crate::orchestrator::{
-	AgentPrivateEvidenceRef, ChildAgentActivitySummary, CodexAccountActivitySummary,
-	OperatorContinuationRecoveryStatus, OperatorLaneLifecycleMetrics, OperatorLoopStatus,
-	OperatorPhaseAcceptanceStatus, OperatorRunAppServerState, OperatorRunLifecycleProjection,
-	OperatorRunProtocolSummary, OperatorRunStatus, OperatorRunTiming,
-	OperatorTerminalFinalizeProjection, PrivateExecutionEvent, ProjectLoopEvidenceSnapshot,
-	ProjectRunStatus, ProtocolActivitySummary, RunActivityMarker, ServiceConfig,
+use crate::{
+	orchestrator::{
+		AgentPrivateEvidenceRef, ChildAgentActivitySummary, CodexAccountActivitySummary,
+		OperatorContinuationRecoveryStatus, OperatorLaneLifecycleMetrics, OperatorLoopStatus,
+		OperatorPhaseAcceptanceStatus, OperatorRunAppServerState, OperatorRunLifecycleProjection,
+		OperatorRunProtocolSummary, OperatorRunStatus, OperatorRunTiming,
+		OperatorTerminalFinalizeProjection, PrivateExecutionEvent, ProjectLoopEvidenceSnapshot,
+		ProjectRunStatus, ProtocolActivitySummary, RunActivityMarker, ServiceConfig,
+		status_process_liveness,
+	},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
 pub(in crate::orchestrator) fn operator_run_status(
 	project: &ServiceConfig,
@@ -246,6 +248,12 @@ pub(in crate::orchestrator) fn hydrate_operator_run_derived_status(
 	status: OperatorRunStatus,
 ) -> OperatorRunStatus {
 	lane_control::hydrate_operator_run_derived_status(status)
+}
+
+pub(in crate::orchestrator) fn operator_run_lane_control_readback(
+	run: &OperatorRunStatus,
+) -> lane_control::OperatorRunLaneControlReadback {
+	lane_control::operator_run_lane_control_readback(run)
 }
 
 pub(in crate::orchestrator) fn operator_run_lifecycle_projection(

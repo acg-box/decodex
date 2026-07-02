@@ -7,13 +7,14 @@ use crate::{config::ServiceConfig, state::StateStore};
 use super::{
 	OperatorHistoryLaneStatus, OperatorHistoryLedgerOutcome, OperatorLaneTerminalProjection,
 	OperatorRunStatus, OperatorStatusSnapshot,
+	kernel::state::{LivenessState, OwnershipState, PolicyState, TerminalizationState},
 	status_history_ledger::{
 		hydrate_history_lane_from_ledger_records, local_history_ledger_records,
 		missing_history_ledger_outcome, operator_history_ledger_outcome,
 	},
 	status_run_projection::{
 		hydrate_history_lane_from_run, operator_lane_lifecycle_metrics, operator_run_group_key,
-		operator_run_issue_key,
+		operator_run_issue_key, operator_run_lane_control_readback,
 	},
 	status_summary::operator_issue_attention_key,
 };
@@ -133,10 +134,7 @@ fn current_lane_terminal_outcome_supersedes(
 }
 
 pub(super) fn current_lane_has_authoritative_live_owner(run: &OperatorRunStatus) -> bool {
-	run.run_lease
-		|| run.process_alive == Some(true)
-		|| matches!(run.thread_status.as_deref(), Some("active"))
-		|| !run.thread_active_flags.is_empty()
+	operator_run_lane_control_readback(run).has_authoritative_live_owner
 }
 
 fn current_lane_has_current_attention_signal(
@@ -321,13 +319,21 @@ pub(super) fn apply_terminal_history_ledger_outcome_to_run(
 	run.continuation_pending = false;
 	run.run_lease = false;
 	run.queue_lease_state = String::from("not_held");
-	run.execution_liveness = String::from("not_running");
-	run.ownership_state =
-		String::from(if requires_attention { "retained_attention" } else { "closed" });
-	run.liveness_state = String::from("not_running");
-	run.policy_state = String::from("allowed");
-	run.terminalization_state =
-		String::from(if requires_attention { "none" } else { "cleanup_complete" });
+	run.execution_liveness = String::from(LivenessState::NotRunning.as_str());
+	run.ownership_state = String::from(
+		if requires_attention { OwnershipState::RetainedAttention } else { OwnershipState::Closed }
+			.as_str(),
+	);
+	run.liveness_state = String::from(LivenessState::NotRunning.as_str());
+	run.policy_state = String::from(PolicyState::Allowed.as_str());
+	run.terminalization_state = String::from(
+		if requires_attention {
+			TerminalizationState::None
+		} else {
+			TerminalizationState::CleanupComplete
+		}
+		.as_str(),
+	);
 	run.lane_control_conditions.clear();
 	run.suspected_stall = false;
 	run.retry_kind = None;

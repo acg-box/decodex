@@ -250,16 +250,7 @@ pub(in crate::orchestrator) fn issue_has_blocking_lane_decision_evidence(
 			AUTHORITY_DECISION_REQUEST_EVENT_TYPE | PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE => {
 				return Ok(true);
 			},
-			"lane_decision"
-				if event.payload().get("next_action").and_then(Value::as_str).is_some_and(
-					|action| {
-						matches!(
-							action,
-							"needs_attention" | "stop_blocked" | "forbidden_stale_or_ambiguous"
-						)
-					},
-				) =>
-			{
+			"lane_decision" if lane_decision_event_blocks_automatic_recovery(event.payload()) => {
 				return Ok(true);
 			},
 			"progress_checkpoint" if progress_checkpoint_has_blockers(event.payload()) => {
@@ -276,6 +267,27 @@ pub(in crate::orchestrator) fn issue_has_blocking_lane_decision_evidence(
 	}
 
 	Ok(false)
+}
+
+fn lane_decision_event_blocks_automatic_recovery(payload: &Value) -> bool {
+	if let Some(kernel_decision) = payload.get("kernel_decision") {
+		return kernel_decision
+			.get("decision_class")
+			.and_then(Value::as_str)
+			.is_some_and(|decision_class| decision_class == "manual_intervention_required")
+			|| kernel_decision.get("command_intents").and_then(Value::as_array).is_some_and(
+				|intents| {
+					intents.iter().any(|intent| {
+						intent.get("kind").and_then(Value::as_str)
+							== Some("request_manual_intervention")
+					})
+				},
+			);
+	}
+
+	payload.get("next_action").and_then(Value::as_str).is_some_and(|action| {
+		matches!(action, "needs_attention" | "stop_blocked" | "forbidden_stale_or_ambiguous")
+	})
 }
 
 fn progress_checkpoint_has_blockers(payload: &Value) -> bool {

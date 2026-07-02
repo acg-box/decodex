@@ -2,6 +2,11 @@
 
 use state::WORKTREE_PROVENANCE_RUNTIME_RECORDED;
 
+use crate::orchestrator::kernel::{
+	command::{CommandFact, CommandIntent, CommandIntentKind},
+	post_review::build_post_review_command_intent,
+};
+
 mod admin_merge;
 mod attention;
 mod markers;
@@ -66,8 +71,72 @@ impl RetainedReviewOrchestrationMarkerFields {
 
 #[derive(Clone, Copy)]
 struct RetainedAdminMergeReasons {
+	start_landing: &'static str,
 	admin_merge_unavailable: &'static str,
 	admin_merge_failed: &'static str,
+}
+
+fn retained_review_command_intent(
+	lane: &RetainedReviewLane,
+	kind: CommandIntentKind,
+	reason: &str,
+) -> CommandIntent {
+	build_post_review_command_intent(
+		&lane.snapshot.issue.id,
+		Some(lane.orchestration_marker.run_id()),
+		reason,
+		kind,
+	)
+}
+
+fn retained_review_command_intent_for_issue(
+	issue_id: &str,
+	run_id: Option<&str>,
+	kind: CommandIntentKind,
+	reason: &str,
+) -> CommandIntent {
+	build_post_review_command_intent(issue_id, run_id, reason, kind)
+}
+
+fn retained_review_command_adapter(
+	command_intent: CommandIntent,
+	expected_kind: CommandIntentKind,
+) -> Result<CommandIntent> {
+	if command_intent.kind != expected_kind {
+		eyre::bail!(
+			"Retained review command adapter expected `{}` intent, got `{}`.",
+			expected_kind.as_str(),
+			command_intent.kind.as_str(),
+		);
+	}
+	if command_intent.idempotency_key.trim().is_empty() {
+		eyre::bail!(
+			"Retained review command adapter requires a non-empty `{}` idempotency key.",
+			expected_kind.as_str(),
+		);
+	}
+	if command_intent.expected_postconditions.is_empty() {
+		eyre::bail!(
+			"Retained review command adapter requires `{}` expected postconditions.",
+			expected_kind.as_str(),
+		);
+	}
+	for required in [
+		CommandFact::AuthorityComplete,
+		CommandFact::IssueStillOwned,
+		CommandFact::NoContradictoryAuthority,
+		CommandFact::PostReviewLifecyclePresent,
+	] {
+		if !command_intent.preconditions.contains(&required) {
+			eyre::bail!(
+				"Retained review command adapter rejected `{}` without `{}` precondition.",
+				expected_kind.as_str(),
+				required.as_str(),
+			);
+		}
+	}
+
+	Ok(command_intent)
 }
 
 enum RetainedReviewLaneReviewLoad {
@@ -340,13 +409,14 @@ where
 	let review_state =
 		match load_retained_review_lane_review_state(&snapshot, review_state_inspector)? {
 			RetainedReviewLaneReviewLoad::Skip => return Ok(RetainedReviewLaneLoad::Skip),
-			RetainedReviewLaneReviewLoad::Blocked(reason) =>
+			RetainedReviewLaneReviewLoad::Blocked(reason) => {
 				return Ok(blocked_retained_review_lane(
 					snapshot.issue,
 					snapshot.worktree,
 					Some(&review_handoff),
 					&reason,
-				)),
+				));
+			},
 			RetainedReviewLaneReviewLoad::ReviewState(review_state) => *review_state,
 		};
 	let orchestration_marker = ensure_review_orchestration_marker(
@@ -372,8 +442,9 @@ where
 	I: PullRequestReviewStateInspector,
 {
 	let review_state = match load_post_review_lane_review_state(snapshot, review_state_inspector)? {
-		PostReviewLaneStateLoad::Classification(classification) =>
-			return Ok(retained_review_lane_review_load_from_classification(classification)),
+		PostReviewLaneStateLoad::Classification(classification) => {
+			return Ok(retained_review_lane_review_load_from_classification(classification));
+		},
 		PostReviewLaneStateLoad::ReviewState(review_state) => Box::new(review_state),
 	};
 
@@ -429,4 +500,48 @@ fn retained_review_run_identity(
 	}
 
 	(String::from("retained-review-orchestration"), 1)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn retained_review_command_adapter_accepts_kernel_built_marker_sync_intent() {
+		let intent = retained_review_command_intent_for_issue(
+			"PUB-101",
+			Some("run-1"),
+			CommandIntentKind::SyncReviewOrchestrationMarker,
+			"review_orchestration_marker_created",
+		);
+
+		let accepted = retained_review_command_adapter(
+			intent,
+			CommandIntentKind::SyncReviewOrchestrationMarker,
+		)
+		.expect("kernel-built marker sync intent should pass retained adapter");
+
+		assert_eq!(accepted.kind, CommandIntentKind::SyncReviewOrchestrationMarker);
+		assert!(
+			accepted
+				.expected_postconditions
+				.contains(&CommandFact::ReviewOrchestrationMarkerCurrent)
+		);
+	}
+
+	#[test]
+	fn retained_review_command_adapter_rejects_intent_without_kernel_contract() {
+		let intent = CommandIntent::new(
+			CommandIntentKind::StartRetainedLanding,
+			"PUB-101:run-1",
+			vec![],
+			vec![],
+		);
+
+		let error =
+			retained_review_command_adapter(intent, CommandIntentKind::StartRetainedLanding)
+				.expect_err("adapter should reject an intent without kernel contract facts");
+
+		assert!(error.to_string().contains("expected postconditions"));
+	}
 }

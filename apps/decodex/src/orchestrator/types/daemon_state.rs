@@ -32,6 +32,24 @@ pub(crate) struct CurrentChildRunContext<'a> {
 	pub(crate) dispatch_mode: IssueDispatchMode,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RetryEntryLifecycle {
+	Active,
+	ReviewRepair,
+	Closeout,
+}
+
+impl RetryEntryLifecycle {
+	pub(crate) const fn for_dispatch_mode(dispatch_mode: IssueDispatchMode) -> Self {
+		match dispatch_mode {
+			IssueDispatchMode::ReviewRepair => Self::ReviewRepair,
+			IssueDispatchMode::Closeout => Self::Closeout,
+			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry =>
+				Self::Active,
+		}
+	}
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct RetryEntry {
 	pub(crate) issue_id: String,
@@ -39,6 +57,7 @@ pub(crate) struct RetryEntry {
 	#[cfg(test)]
 	pub(crate) retry_project_slug: String,
 	pub(crate) continuation_initial_issue_state: Option<String>,
+	pub(crate) lifecycle: RetryEntryLifecycle,
 	pub(crate) dispatch_mode: IssueDispatchMode,
 	pub(crate) kind: RetryKind,
 	pub(crate) attempt: u32,

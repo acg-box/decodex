@@ -13,6 +13,10 @@ service labels, recovery, or lane-control details matter.
 
 - Confirm execution authority before tracker or runtime mutation.
 - Inspect `decodex status` or `decodex lane inspect <ISSUE>` first.
+- Treat status, dashboard, MCP, and Linear readbacks as projections of kernel-owned
+  lifecycle state; do not use rendered strings as policy authority.
+- Mutating recovery, retry, terminalization, post-review, or queue guardrail work
+  must be justified by typed command intents or the owning recovery runbook.
 - With MCP, use `decodex_observe` for readback, `decodex_lane_control` for
   inspect-first steer/interrupt, and `decodex_project_control` only for project
   status or future-dispatch pause/resume.

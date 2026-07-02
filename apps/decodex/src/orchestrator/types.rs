@@ -8,13 +8,10 @@ use super::{
 	RECOVERABLE_WORKTREE_SKIP_TTL, Report, Result, RetainedCloseoutPrMergeGate, RetainedReviewLane,
 	ReviewHandoffMarker, RunAttempt, Sender, Serialize, ServiceConfig, SocketAddr, StateStore,
 	TcpListener, TrackerIssue, TrackerToolBridge, TurnContinuationGuard, WorkflowDocument,
-	WorktreeManager, WorktreeMapping, WorktreeSpec, eyre, fmt, github,
-	issue_passes_closeout_dispatch_policy, issue_passes_dispatch_policy,
-	issue_passes_retry_dispatch_policy, issue_passes_review_repair_dispatch_policy,
-	issue_retry_budget_exhausted, json, merge_pull_request_issue_comment_page,
-	merge_pull_request_review_state_page, mpsc, next_pull_request_issue_comments_cursor,
-	next_pull_request_review_threads_cursor, operator_snapshot_json_value,
-	ordinary_dispatch_blocked_by_retained_review_handoff, pull_request_review_state_from_page,
+	WorktreeManager, WorktreeMapping, WorktreeSpec, eyre, fmt, github, json,
+	merge_pull_request_issue_comment_page, merge_pull_request_review_state_page, mpsc,
+	next_pull_request_issue_comments_cursor, next_pull_request_review_threads_cursor,
+	operator_snapshot_json_value, pull_request_review_state_from_page,
 	query_pull_request_issue_comments_page, query_pull_request_review_state_page, refresh_issue,
 	resolve_configured_env_var, retained_closeout_pr_merge_gate_with_inspector,
 	run_operator_run_activity_websocket_broadcasts, run_operator_state_endpoint, state, thread,
@@ -44,7 +41,7 @@ pub(crate) use continuation::IssueTurnContinuationGuard;
 pub(crate) use daemon_state::{
 	ActiveWorkflowOverride, CachedWorkflowDocument, ChildRunRef, CurrentChildRunContext,
 	DaemonRunChild, DaemonTickContext, ProjectDaemonRuntime, RecoverableWorktreeSkipCache,
-	RetryEntry, RetryQueue, RunLeaseReconciliation, TerminalFailureOutcome,
+	RetryEntry, RetryEntryLifecycle, RetryQueue, RunLeaseReconciliation, TerminalFailureOutcome,
 	TrackerConnectorBackoff,
 };
 pub(crate) use dispatch::{

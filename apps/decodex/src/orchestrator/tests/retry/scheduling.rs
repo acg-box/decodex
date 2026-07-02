@@ -614,6 +614,7 @@ fn future_review_repair_retry_keeps_backoff_window_until_due() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::ReviewRepair,
 		dispatch_mode: IssueDispatchMode::ReviewRepair,
 		kind: RetryKind::Failure,
 		attempt: 1,
@@ -667,6 +668,7 @@ fn due_review_repair_retry_drops_after_backoff_budget_exhausted() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::ReviewRepair,
 		dispatch_mode: IssueDispatchMode::ReviewRepair,
 		kind: RetryKind::Failure,
 		attempt: 3,
@@ -705,6 +707,7 @@ fn due_review_repair_retry_drops_when_active_ownership_is_gone() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::ReviewRepair,
 		dispatch_mode: IssueDispatchMode::ReviewRepair,
 		kind: RetryKind::Failure,
 		attempt: 1,
@@ -1227,6 +1230,7 @@ fn exited_retry_child_keeps_queued_claim_when_no_run_attempt_was_persisted() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 1,

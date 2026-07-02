@@ -5,8 +5,10 @@ use crate::{agent::RUN_LEASE_IDLE_TIMEOUT, state::RUN_OPERATION_WAITING_EXTERNAL
 use super::{
 	OperatorHistoryLaneStatus, OperatorPostReviewLaneStatus, OperatorQueuedIssueStatus,
 	OperatorRunStatus, OperatorStatusSnapshot, OperatorWorktreeStatus, history_lane_group_key,
-	history_ledger_outcome_requires_attention, rendered_recovery_worktrees,
-	snapshot_warnings_include_tracker_backoff, status_run_projection::operator_run_group_key,
+	history_ledger_outcome_requires_attention,
+	kernel::state::{OwnershipState, PolicyState},
+	rendered_recovery_worktrees, snapshot_warnings_include_tracker_backoff,
+	status_run_projection::{operator_run_group_key, operator_run_lane_control_readback},
 };
 
 pub(super) fn refresh_operator_project_summary(
@@ -342,50 +344,44 @@ fn worktree_cleanup_key(worktree: &OperatorWorktreeStatus) -> String {
 }
 
 pub(super) fn operator_run_counts_as_current_lane(run: &OperatorRunStatus) -> bool {
-	(run.run_lease || operator_run_has_live_execution(run))
-		&& !matches!(run.phase.as_str(), "completed" | "failed" | "terminated")
+	operator_run_lane_control_readback(run).counts_as_current_lane
 }
 
 pub(super) fn operator_run_has_live_execution(run: &OperatorRunStatus) -> bool {
-	matches!(run.status.as_str(), "starting" | "running")
-		&& (matches!(
-			run.execution_liveness.as_str(),
-			"process_alive" | "thread_active" | "protocol_observed"
-		) || operator_run_has_recent_app_server_execution(run))
+	operator_run_lane_control_readback(run).has_live_execution
 }
 
 pub(super) fn operator_run_counts_as_running(run: &OperatorRunStatus) -> bool {
-	run.ownership_state == "leased_run"
-		&& matches!(run.status.as_str(), "starting" | "running")
-		&& run.phase == "executing"
-		&& run.process_alive != Some(false)
-		&& !operator_run_needs_attention(run)
+	if !run.ownership_state.is_empty() {
+		return run.counts_as_running;
+	}
+
+	operator_run_lane_control_readback(run).counts_as_running
 }
 
 pub(super) fn operator_run_counts_as_attention(run: &OperatorRunStatus) -> bool {
-	run.needs_attention
-		|| run.ownership_state == "retained_attention"
-		|| matches!(
-			run.policy_state.as_str(),
-			"review_churn_exceeded"
-				| "continuation_recovery_churn_exceeded"
-				| "authority_boundary_required"
-				| "human_attention_required"
+	let ownership = OwnershipState::from_str(&run.ownership_state);
+	let policy = PolicyState::from_str(&run.policy_state);
+
+	if !run.ownership_state.is_empty() {
+		return run.needs_attention
+			|| ownership == Some(OwnershipState::RetainedAttention)
+			|| policy_requires_attention(policy);
+	}
+
+	operator_run_lane_control_readback(run).counts_as_attention
+}
+
+fn policy_requires_attention(policy: Option<PolicyState>) -> bool {
+	matches!(
+		policy,
+		Some(
+			PolicyState::ReviewChurnExceeded
+				| PolicyState::ContinuationRecoveryChurnExceeded
+				| PolicyState::AuthorityBoundaryRequired
+				| PolicyState::HumanAttentionRequired
 		)
-}
-
-pub(super) fn operator_run_needs_attention(run: &OperatorRunStatus) -> bool {
-	matches!(run.status.as_str(), "needs_attention" | "terminal_failure")
-		|| run.phase == "needs_attention"
-		|| run.suspected_stall
-		|| run.phase == "stalled"
-		|| run.process_alive == Some(false) && matches!(run.status.as_str(), "starting" | "running")
-		|| operator_run_has_stale_execution_without_known_process(run)
-}
-
-pub(super) fn operator_run_has_fresh_execution(run: &OperatorRunStatus) -> bool {
-	matches!(run.status.as_str(), "starting" | "running")
-		&& (run.process_alive == Some(true) || operator_run_has_recent_app_server_execution(run))
+	)
 }
 
 pub(super) fn operator_run_has_recent_app_server_execution(run: &OperatorRunStatus) -> bool {
