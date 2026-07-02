@@ -1,5 +1,14 @@
-use crate::orchestrator::execution_failure::{self, AgentGitCredentialsUnavailable, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerTransportFailure, AppServerTurnFailure, AppServerZeroEvidenceStartFailure, CodexAccountAuthFailure, IssueRunPlan, LoopGuardrailStopRequested, ManualAttentionRequested, RepoGateFailure, RepoGateFailureDisposition, Report, Result, RetainedPartialProgress, RetainedReviewNeedsAttention, RetainedReviewRepairPushFailed, ReviewHandoffNeedsAttention, ReviewPolicyStopRequested, RunCompletionDisposition, RunFailureWritebackDisposition, ServiceConfig, StalledRunNeedsAttention, StateStore, WorkflowDocument};
-use crate::orchestrator::execution_failure::PhaseAcceptanceCheckFailure;
+use crate::orchestrator::execution_failure::{
+	self, AgentGitCredentialsUnavailable, AppServerCapabilityPreflightFailure,
+	AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure,
+	AppServerTransportFailure, AppServerTurnFailure, AppServerZeroEvidenceStartFailure,
+	CodexAccountAuthFailure, IssueRunPlan, LoopGuardrailStopRequested, ManualAttentionRequested,
+	PhaseAcceptanceCheckFailure, RepoGateFailure, RepoGateFailureDisposition, Report, Result,
+	RetainedPartialProgress, RetainedReviewNeedsAttention, RetainedReviewRepairPushFailed,
+	ReviewHandoffNeedsAttention, ReviewPolicyStopRequested, RunCompletionDisposition,
+	RunFailureWritebackDisposition, ServiceConfig, StalledRunNeedsAttention, StateStore,
+	WorkflowDocument,
+};
 
 pub(in crate::orchestrator) fn run_failure_writeback_disposition(
 	error: &Report,
@@ -85,7 +94,12 @@ pub(in crate::orchestrator) fn preserve_and_promote_app_server_run_failure(
 	let error =
 		preserve_manual_attention_request(completion_disposition, issue_run, workflow, error);
 
-	execution_failure::promote_zero_evidence_app_server_start_failure(project, state_store, issue_run, error)
+	execution_failure::promote_zero_evidence_app_server_start_failure(
+		project,
+		state_store,
+		issue_run,
+		error,
+	)
 }
 
 pub(in crate::orchestrator) fn retained_progress_source_error_class(
@@ -117,9 +131,7 @@ pub(in crate::orchestrator) fn retained_progress_source_error_class(
 		Some(app_server_failure.error_class())
 	} else if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
 		Some(repo_gate_failure.error_class())
-	} else if let Some(acceptance_failure) =
-		error.downcast_ref::<PhaseAcceptanceCheckFailure>()
-	{
+	} else if let Some(acceptance_failure) = error.downcast_ref::<PhaseAcceptanceCheckFailure>() {
 		Some(acceptance_failure.error_class())
 	} else {
 		None

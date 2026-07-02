@@ -60,6 +60,7 @@ fn queued_retry_blocks_normal_candidate_selection_until_due() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 2,
@@ -105,6 +106,7 @@ fn queued_retry_stays_blocked_when_project_lookup_blips_before_due_time() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 2,
@@ -135,9 +137,12 @@ fn queued_retry_stays_blocked_when_project_lookup_blips_before_due_time() {
 
 #[test]
 fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
-	let workflow = WorkflowDocument::parse_markdown(
-		&sample_workflow_markdown("pubfi", &[], "Retry exclusion policy.\n", 1),
-	)
+	let workflow = WorkflowDocument::parse_markdown(&sample_workflow_markdown(
+		"pubfi",
+		&[],
+		"Retry exclusion policy.\n",
+		1,
+	))
 	.expect("workflow should parse");
 	let first_future_retry = selection_sample_service_owned_issue_with_sort_fields(
 		"issue-1",
@@ -185,6 +190,7 @@ fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 2,
@@ -197,6 +203,7 @@ fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 2,
@@ -206,10 +213,10 @@ fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
 	let next_run = orchestrator::plan_next_daemon_run(
 		&mut retry_queue,
 		&tracker,
-			&config,
-			&workflow,
-			&state_store,
-		)
+		&config,
+		&workflow,
+		&state_store,
+	)
 	.expect("daemon planning should succeed")
 	.expect("normal work should still dispatch");
 
@@ -245,6 +252,7 @@ fn future_retry_claim_stays_blocked_when_issue_moves_to_another_project_before_d
 		issue_id: issue.id.clone(),
 		retry_project_slug: String::from("pubfi"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 2,
@@ -292,6 +300,7 @@ fn future_retry_claim_stays_blocked_when_issue_becomes_not_dispatchable_before_d
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 1,
@@ -339,6 +348,7 @@ fn due_retry_claim_releases_when_issue_becomes_not_dispatchable() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 1,
@@ -393,6 +403,7 @@ fn due_retry_claim_release_clears_persisted_retry_marker() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 1,
@@ -409,7 +420,10 @@ fn due_retry_claim_release_clears_persisted_retry_marker() {
 	.expect("retry planning should succeed");
 
 	assert!(matches!(decision, orchestrator::RetryDispatchDecision::Continue));
-	assert!(retry_queue.is_empty(), "not-dispatchable issue should release the queued claim when due");
+	assert!(
+		retry_queue.is_empty(),
+		"not-dispatchable issue should release the queued claim when due"
+	);
 
 	let marker = state::read_run_activity_marker_snapshot(&worktree_path)
 		.expect("marker should load")
@@ -434,6 +448,7 @@ fn due_continuation_retry_dispatches_when_issue_still_reflects_startable_state()
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: Some(issue.state.name.clone()),
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Continuation,
 		attempt: 1,
@@ -446,7 +461,6 @@ fn due_continuation_retry_dispatches_when_issue_still_reflects_startable_state()
 		&config,
 		&workflow,
 		&state_store,
-
 	)
 	.expect("daemon planning should succeed")
 	.expect("the continuation retry should still dispatch");
@@ -478,6 +492,7 @@ fn due_continuation_retry_releases_when_issue_moves_to_different_startable_state
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: Some(String::from("Todo")),
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Continuation,
 		attempt: 1,
@@ -516,6 +531,7 @@ fn future_retry_claim_stays_blocked_when_issue_returns_to_todo_before_due_time()
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 1,
@@ -566,6 +582,7 @@ fn due_retry_dispatches_when_another_issue_has_active_lease() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 1,
@@ -598,16 +615,10 @@ fn due_retry_claim_stays_queued_when_issue_is_claimed_by_another_process() {
 	let mut retry_queue = RetryQueue::default();
 
 	local_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("local dispatch slot root should configure");
 	remote_store
-		.configure_dispatch_slot_root(
-			config.service_id(),
-			config.worktree_root(),
-		)
+		.configure_dispatch_slot_root(config.service_id(), config.worktree_root())
 		.expect("remote dispatch slot root should configure");
 
 	assert!(
@@ -623,6 +634,7 @@ fn due_retry_claim_stays_queued_when_issue_is_claimed_by_another_process() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: None,
+		lifecycle: RetryEntryLifecycle::Active,
 		dispatch_mode: IssueDispatchMode::Retry,
 		kind: RetryKind::Failure,
 		attempt: 1,
@@ -682,6 +694,7 @@ fn due_closeout_retry_stays_queued_when_pr_state_read_fails() {
 			.clone()
 			.expect("sample issue should carry a project slug"),
 		continuation_initial_issue_state: Some(String::from("In Review")),
+		lifecycle: RetryEntryLifecycle::Closeout,
 		dispatch_mode: IssueDispatchMode::Closeout,
 		kind: RetryKind::Failure,
 		attempt: 1,

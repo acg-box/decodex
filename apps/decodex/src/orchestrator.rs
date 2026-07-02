@@ -16,6 +16,8 @@ mod execution_phase_goal;
 mod execution_thread_archive;
 mod git_ops;
 mod harness_improvement;
+#[allow(dead_code)]
+mod kernel;
 mod lane_control;
 mod lane_decision;
 mod operator_http;

@@ -1,6 +1,6 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+#[allow(clippy::wildcard_imports)] use super::*;
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn schedule_retry_after_child_exit<T>(
 	mut context: ChildExitRetryContext<'_, T>,
 	child: ChildRunRef<'_>,
@@ -56,7 +56,7 @@ where
 		&context,
 		&issue,
 		initial_issue_state,
-		dispatch_mode,
+		RetryEntryLifecycle::for_dispatch_mode(dispatch_mode),
 		continuation_pending,
 	)?;
 
@@ -138,7 +138,12 @@ where
 		lane_snapshot.to_json(lane_decision.next_action, lane_decision.reason),
 	)?;
 
-	if lane_decision_blocks_automatic_execution(lane_decision.next_action) {
+	if lane_decision.blocks_automatic_execution() {
+		clear_retry_schedule_and_release(context.retry_queue, context.state_store, issue_id)?;
+
+		return Ok(());
+	}
+	if !lane_decision.permits_child_exit_retry_kind(kind) {
 		clear_retry_schedule_and_release(context.retry_queue, context.state_store, issue_id)?;
 
 		return Ok(());
@@ -217,6 +222,7 @@ pub(in crate::orchestrator::daemon_retry) fn queue_child_exit_retry(
 		#[cfg(test)]
 		retry_project_slug: String::new(),
 		continuation_initial_issue_state: schedule.continuation_initial_issue_state,
+		lifecycle: RetryEntryLifecycle::for_dispatch_mode(schedule.dispatch_mode),
 		dispatch_mode: schedule.dispatch_mode,
 		kind: schedule.kind,
 		attempt,

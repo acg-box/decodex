@@ -3,9 +3,7 @@ use std::collections::BTreeSet;
 use serde_json::Value;
 
 use crate::{
-	orchestrator::{
-		OperatorAutonomyExecutionEvidenceStatus, status_autonomy,
-	},
+	orchestrator::{OperatorAutonomyExecutionEvidenceStatus, status_autonomy},
 	state::{
 		DecisionContractRecord, PrivateExecutionEvent, ProjectLoopEvidenceSnapshot,
 		ReviewLifecycleRecord,
@@ -91,7 +89,8 @@ fn operator_autonomy_pr_evidence_status_from_event(
 	summary: String,
 	summary_redacted: bool,
 ) -> OperatorAutonomyExecutionEvidenceStatus {
-	let (source_refs, refs_redacted) = status_autonomy::public_autonomy_refs(&[review.pr_url().to_owned()]);
+	let (source_refs, refs_redacted) =
+		status_autonomy::public_autonomy_refs(&[review.pr_url().to_owned()]);
 	let mut known_gaps = Vec::new();
 
 	if source_refs.is_empty() {

@@ -1,6 +1,7 @@
 use crate::orchestrator::{
 	GHOST_LANE_NEXT_ACTION, GHOST_LANE_OWNERSHIP_STATE, GHOST_LANE_POLICY_STATE,
 	GHOST_LANE_TERMINAL_STATUS, OperatorRunStatus,
+	kernel::state::{LivenessState, OwnershipState, PolicyState, TerminalizationState},
 };
 
 pub(in crate::orchestrator::status_ghost_lane_cleanup) fn missing_issue_ghost_lane_status_allows_cleanup(
@@ -14,8 +15,8 @@ pub(in crate::orchestrator::status_ghost_lane_cleanup) fn missing_issue_ghost_la
 pub(in crate::orchestrator::status_ghost_lane_cleanup) fn missing_issue_ghost_lane_status_is_cleanup_complete(
 	run: &OperatorRunStatus,
 ) -> bool {
-	run.ownership_state == "closed"
-		&& run.policy_state == "allowed"
+	run.ownership_state == OwnershipState::Closed.as_str()
+		&& run.policy_state == PolicyState::Allowed.as_str()
 		&& run.lane_control_next_action == "no_action"
 		&& missing_issue_ghost_lane_cleanup_audit_present(run)
 }
@@ -34,10 +35,10 @@ pub(in crate::orchestrator::status_ghost_lane_cleanup) fn apply_missing_issue_gh
 	run.status = String::from(GHOST_LANE_TERMINAL_STATUS);
 	run.attempt_status = String::from(GHOST_LANE_TERMINAL_STATUS);
 	run.status_projection_reason = None;
-	run.ownership_state = String::from("closed");
-	run.liveness_state = String::from("not_running");
-	run.policy_state = String::from("allowed");
-	run.terminalization_state = String::from("cleanup_complete");
+	run.ownership_state = String::from(OwnershipState::Closed.as_str());
+	run.liveness_state = String::from(LivenessState::NotRunning.as_str());
+	run.policy_state = String::from(PolicyState::Allowed.as_str());
+	run.terminalization_state = String::from(TerminalizationState::CleanupComplete.as_str());
 	run.lane_control_next_action = String::from("no_action");
 	run.phase = String::from("completed");
 	run.run_phase = String::from("completed");
