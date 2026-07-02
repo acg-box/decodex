@@ -1,4 +1,10 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::time::Duration;
+
+use crate::orchestrator::{
+	self, CONTINUATION_PENDING_RUN_STATUS, OperatorRunTiming, PrivateExecutionEvent,
+	ProtocolActivitySummary, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_IDLE,
+	RUN_OPERATION_WAITING_EXTERNAL, TERMINAL_GUARDED_RUN_STATUS, Value, state,
+};
 
 pub(in crate::orchestrator) fn classify_operator_run_operation(
 	phase: &str,
@@ -30,7 +36,9 @@ pub(in crate::orchestrator) fn operator_run_is_suspected_stall(
 	}
 
 	last_progress_unix_epoch
-		.and_then(|last_progress| observed_idle_duration(last_progress, now_unix_epoch))
+		.and_then(|last_progress| {
+			orchestrator::observed_idle_duration(last_progress, now_unix_epoch)
+		})
 		.is_some_and(|idle_for| {
 			idle_for >= suspected_operator_run_stall_threshold(idle_timeout)
 				&& idle_for < idle_timeout
@@ -69,9 +77,9 @@ pub(in crate::orchestrator) fn operator_run_progress_diagnostic(
 		return None;
 	}
 
-	let protocol_idle = timing
-		.last_protocol_activity_unix_epoch
-		.and_then(|last_protocol| observed_idle_duration(last_protocol, now_unix_epoch))?;
+	let protocol_idle = timing.last_protocol_activity_unix_epoch.and_then(|last_protocol| {
+		orchestrator::observed_idle_duration(last_protocol, now_unix_epoch)
+	})?;
 
 	if protocol_idle >= idle_timeout {
 		return None;
@@ -79,7 +87,9 @@ pub(in crate::orchestrator) fn operator_run_progress_diagnostic(
 
 	let progress_is_stale = timing
 		.last_progress_unix_epoch
-		.and_then(|last_progress| observed_idle_duration(last_progress, now_unix_epoch))
+		.and_then(|last_progress| {
+			orchestrator::observed_idle_duration(last_progress, now_unix_epoch)
+		})
 		.is_none_or(|idle_for| idle_for >= suspected_operator_run_stall_threshold(idle_timeout));
 
 	progress_is_stale.then(|| String::from("protocol_only_activity"))
@@ -171,8 +181,9 @@ pub(in crate::orchestrator) fn classify_operator_run_phase(
 
 	match status {
 		"starting" | "running" => (String::from("executing"), None),
-		CONTINUATION_PENDING_RUN_STATUS =>
-			(String::from("waiting_continuation"), Some(String::from("turn_boundary"))),
+		CONTINUATION_PENDING_RUN_STATUS => {
+			(String::from("waiting_continuation"), Some(String::from("turn_boundary")))
+		},
 		"succeeded" => (String::from("completed"), None),
 		"failed" | "interrupted" | TERMINAL_GUARDED_RUN_STATUS => (String::from("failed"), None),
 		other => (other.to_owned(), None),
