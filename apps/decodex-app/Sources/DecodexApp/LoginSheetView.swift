@@ -39,11 +39,24 @@ struct LoginSheetView: View {
 
 	private var content: some View {
 		VStack(alignment: .leading, spacing: 7) {
-			header
-			codeCard
+			LoginSheetHeaderView(
+				mode: mode,
+				statusLabel: store.loginStatusLabel,
+				isActive: store.isLoggingIn || store.loginPrompt != nil || store.notice != nil
+			)
+			LoginCodeCardView(
+				code: store.loginPrompt?.compactCode ?? "",
+				destinationLabel: loginDestinationLabel,
+				canCopy: store.loginPrompt != nil,
+				canOpen: store.loginPrompt?.verificationURL != nil,
+				copyFeedback: copyFeedback,
+				openFeedback: openFeedback,
+				copyCode: copyCode,
+				openVerificationURL: openVerificationURL
+			)
 
 			if isRequestingCode {
-				requestStatus
+				LoginRequestStatusView()
 					.transition(.opacity.combined(with: .move(edge: .top)))
 			}
 
@@ -55,7 +68,16 @@ struct LoginSheetView: View {
 					.fixedSize(horizontal: false, vertical: true)
 			}
 
-			actions
+			LoginSheetActionsView(
+				isRequestingCode: isRequestingCode,
+				isLoggingIn: store.isLoggingIn,
+				requestStarted: requestStarted,
+				onCancel: {
+					requestStarted = false
+					onCancel()
+				},
+				onPrimary: requestLogin
+			)
 		}
 		.frame(width: 310)
 		.padding(9)
@@ -74,134 +96,8 @@ struct LoginSheetView: View {
 		}
 	}
 
-	private var header: some View {
-		HStack(spacing: 8) {
-			Image(systemName: mode.icon)
-				.font(LoginFont.icon)
-				.foregroundStyle(LoginPalette.accent(colorScheme))
-				.frame(width: 28, height: 28)
-				.modernGlassSurface(cornerRadius: 9, depth: .control)
-
-			VStack(alignment: .leading, spacing: 1) {
-				Text(mode.title)
-					.font(LoginFont.title)
-					.foregroundStyle(LoginPalette.primaryText(colorScheme))
-				Text(
-					mode.subtitle(
-						fallback: store.loginStatusLabel,
-						isActive: store.isLoggingIn || store.loginPrompt != nil || store.notice != nil
-					)
-				)
-					.font(LoginFont.caption)
-					.foregroundStyle(LoginPalette.secondaryText(colorScheme))
-					.lineLimit(1)
-					.truncationMode(.middle)
-			}
-
-			Spacer()
-		}
-		.padding(.bottom, 1)
-	}
-
-	private var requestStatus: some View {
-		HStack(spacing: 7) {
-			ProgressView()
-				.controlSize(.small)
-				.scaleEffect(0.72)
-			Text("Requesting device code")
-				.font(LoginFont.caption)
-				.foregroundStyle(LoginPalette.secondaryText(colorScheme))
-			Spacer(minLength: 0)
-		}
-		.padding(.horizontal, 8)
-		.padding(.vertical, 5)
-		.modernGlassSurface(cornerRadius: 9, depth: .section)
-	}
-
-	private var codeCard: some View {
-		VStack(alignment: .leading, spacing: 8) {
-			LoginCodeBoxesView(code: store.loginPrompt?.compactCode ?? "")
-
-			HStack(spacing: 6) {
-				Text(loginDestinationLabel)
-					.font(LoginFont.destination)
-					.foregroundStyle(LoginPalette.secondaryText(colorScheme))
-					.lineLimit(1)
-					.truncationMode(.middle)
-
-				Spacer(minLength: 4)
-
-				LoginIconActionButton(
-					symbol: "doc.on.doc",
-					feedbackSymbol: "checkmark",
-					isFeedbackActive: copyFeedback,
-					isEnabled: store.loginPrompt != nil,
-					action: copyCode,
-					help: copyFeedback ? "Copied" : "Copy code"
-				)
-
-				LoginIconActionButton(
-					symbol: "arrow.up.forward.app",
-					feedbackSymbol: nil,
-					isFeedbackActive: openFeedback,
-					isEnabled: store.loginPrompt?.verificationURL != nil,
-					action: openVerificationURL,
-					help: openFeedback ? "Opened browser" : "Open browser"
-				)
-			}
-		}
-		.padding(8)
-		.modernGlassSurface(cornerRadius: 10, depth: .section)
-	}
-
-	private var actions: some View {
-		HStack(spacing: 7) {
-			Button("Cancel") {
-				requestStarted = false
-				onCancel()
-			}
-			.keyboardShortcut(.cancelAction)
-			.buttonStyle(LoginTextButtonStyle())
-
-			Spacer()
-
-			Button {
-				requestStarted = true
-				Task {
-					await store.login()
-					requestStarted = false
-					if store.notice == nil {
-						onComplete()
-					}
-				}
-			} label: {
-				HStack(spacing: 5) {
-					if isRequestingCode {
-						ProgressView()
-							.controlSize(.small)
-							.scaleEffect(0.64)
-					} else {
-						Image(systemName: store.isLoggingIn ? "clock" : "arrow.right.circle")
-					}
-					Text(primaryActionTitle)
-				}
-			}
-			.keyboardShortcut(.defaultAction)
-			.buttonStyle(LoginTextButtonStyle(isPrimary: true))
-			.disabled(store.isLoggingIn || requestStarted)
-		}
-	}
-
 	private var isRequestingCode: Bool {
 		store.loginPrompt == nil && (requestStarted || store.isLoggingIn)
-	}
-
-	private var primaryActionTitle: String {
-		if isRequestingCode {
-			return "Requesting"
-		}
-
-		return store.isLoggingIn ? "Waiting" : "Get Code"
 	}
 
 	private var loginDestinationLabel: String {
@@ -210,6 +106,17 @@ struct LoginSheetView: View {
 		}
 
 		return url.host.map { "\($0)\(url.path)" } ?? url.absoluteString
+	}
+
+	private func requestLogin() {
+		requestStarted = true
+		Task {
+			await store.login()
+			requestStarted = false
+			if store.notice == nil {
+				onComplete()
+			}
+		}
 	}
 
 	private func copyCode() {
