@@ -1,9 +1,27 @@
+use std::path::PathBuf;
+
+use crate::{
+	orchestrator::{
+		self, IssueDispatchMode, RunSummary, TargetIssueRunContext,
+		tests::{
+			FakeTracker, TEST_SERVICE_ID, recovery_terminal_support, {self},
+		},
+	},
+	state::StateStore,
+	test_support,
+	tracker::{self, TrackerState, records},
+	worktree::{WorktreeManager, WorktreeSpec},
+};
+
 #[test]
 fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = issue_with_completed_state(sample_issue("In Review", &[active_label.as_str()]));
+	let issue = recovery_terminal_support::issue_with_completed_state(tests::sample_issue(
+		"In Review",
+		&[active_label.as_str()],
+	));
 	let mut completed_issue = issue.clone();
 
 	completed_issue.state =
@@ -24,17 +42,22 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/701";
-	let _path_guard = install_fake_closeout_gh_responses(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_closeout_gh_responses(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 	let remote_root =
 		config.repo_root().parent().expect("repo root should have a parent").join("origin.git");
 
-	initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
-	route_origin_github_url_to_local_bare_repo(config.repo_root(), &remote_root);
+	recovery_terminal_support::initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
+	recovery_terminal_support::route_origin_github_url_to_local_bare_repo(
+		config.repo_root(),
+		&remote_root,
+	);
 
 	assert!(
-		crate::test_support::hermetic_git_command()
+		test_support::hermetic_git_command()
 			.arg("-C")
 			.arg(config.repo_root())
 			.args(["push", "origin", &format!("HEAD:{}", worktree.branch_name)])
@@ -43,7 +66,7 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 			.success()
 	);
 
-	seed_review_handoff_marker(
+	tests::seed_review_handoff_marker(
 		&state_store,
 		config.service_id(),
 		&issue.id,
@@ -52,7 +75,11 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 		&head_oid,
 	);
 
-	let issue_run = sample_closeout_issue_run(&issue, &worktree, "pub-701-attempt-3-closeout");
+	let issue_run = recovery_terminal_support::sample_closeout_issue_run(
+		&issue,
+		&worktree,
+		"pub-701-attempt-3-closeout",
+	);
 
 	state_store
 		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "starting")
@@ -100,10 +127,10 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 
 #[test]
 fn direct_closeout_dispatch_reuses_completed_handoff_run_identity_for_record_and_summary() {
-	let fixture = closeout_identity_fixture();
+	let fixture = recovery_terminal_support::closeout_identity_fixture();
 	let _keep_fixture_alive = (&fixture._temp_dir, &fixture._path_guard);
 
-	assert_closeout_lane_ready(&fixture);
+	recovery_terminal_support::assert_closeout_lane_ready(&fixture);
 
 	let summary = orchestrator::run_target_issue_once(TargetIssueRunContext {
 		tracker: &fixture.tracker,
@@ -166,10 +193,10 @@ fn direct_closeout_dispatch_reuses_completed_handoff_run_identity_for_record_and
 
 #[test]
 fn same_run_closeout_reuses_matching_active_handoff_lease() {
-	let fixture = closeout_identity_fixture();
+	let fixture = recovery_terminal_support::closeout_identity_fixture();
 	let _keep_fixture_alive = (&fixture._temp_dir, &fixture._path_guard);
 
-	assert_closeout_lane_ready(&fixture);
+	recovery_terminal_support::assert_closeout_lane_ready(&fixture);
 
 	fixture
 		.state_store
@@ -219,9 +246,12 @@ fn same_run_closeout_reuses_matching_active_handoff_lease() {
 
 #[test]
 fn closeout_completed_state_check_skips_redundant_transition() {
-	let (_temp_dir, _config, workflow) = temp_project_layout();
+	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = issue_with_completed_state(sample_issue("Done", &[active_label.as_str()]));
+	let issue = recovery_terminal_support::issue_with_completed_state(tests::sample_issue(
+		"Done",
+		&[active_label.as_str()],
+	));
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let worktree = WorktreeSpec {
@@ -230,7 +260,11 @@ fn closeout_completed_state_check_skips_redundant_transition() {
 		path: PathBuf::from(".worktrees/PUB-101"),
 		reused_existing: true,
 	};
-	let issue_run = sample_closeout_issue_run(&issue, &worktree, "pub-101-closeout-done");
+	let issue_run = recovery_terminal_support::sample_closeout_issue_run(
+		&issue,
+		&worktree,
+		"pub-101-closeout-done",
+	);
 
 	orchestrator::ensure_closeout_issue_completed_state(&tracker, &workflow, &issue_run)
 		.expect("completed issue should not require another transition");
@@ -243,10 +277,13 @@ fn closeout_completed_state_check_skips_redundant_transition() {
 
 #[test]
 fn closeout_dispatch_validates_pr_before_marking_issue_done() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = issue_with_completed_state(sample_issue("In Review", &[active_label.as_str()]));
+	let issue = recovery_terminal_support::issue_with_completed_state(tests::sample_issue(
+		"In Review",
+		&[active_label.as_str()],
+	));
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -255,24 +292,31 @@ fn closeout_dispatch_validates_pr_before_marking_issue_done() {
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/702";
-	let _path_guard = install_fake_closeout_gh_responses_with_state(
+	let _path_guard = recovery_terminal_support::install_fake_closeout_gh_responses_with_state(
 		&temp_dir, &worktree, pr_url, &head_oid, "OPEN",
 	);
 	let remote_root =
 		config.repo_root().parent().expect("repo root should have a parent").join("origin.git");
 
-	initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
-	route_origin_github_url_to_local_bare_repo(config.repo_root(), &remote_root);
-	seed_review_handoff_marker_value(
+	recovery_terminal_support::initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
+	recovery_terminal_support::route_origin_github_url_to_local_bare_repo(
+		config.repo_root(),
+		&remote_root,
+	);
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let issue_run = sample_closeout_issue_run(&issue, &worktree, "pub-702-attempt-1-closeout");
+	let issue_run = recovery_terminal_support::sample_closeout_issue_run(
+		&issue,
+		&worktree,
+		"pub-702-attempt-1-closeout",
+	);
 
 	state_store
 		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "starting")

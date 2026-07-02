@@ -1,10 +1,29 @@
-use orchestrator::RecoverableWorktreeSkipCache;
+use std::{
+	fs,
+	process::{self, Command},
+};
+
+use time::OffsetDateTime;
+
+use crate::{
+	agent::RUN_LEASE_IDLE_TIMEOUT,
+	orchestrator::{
+		self, RecoverableWorktreeSkipCache, ReviewLevel, RunLeaseDisposition,
+		TERMINAL_GUARD_MARKER_FILE,
+		tests::{
+			FakeTracker, TEST_SERVICE_ID, recovery_terminal_support, {self},
+		},
+	},
+	state::{self, ProtocolActivityMarker, StateStore},
+	tracker::{self},
+	worktree::WorktreeManager,
+};
 
 #[test]
 fn exited_child_reconciliation_detects_stalled_failed_runs_from_protocol_idle() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = tests::sample_issue_with_sort_fields(
 		"issue-stalled-after-exit",
 		"PUB-205",
 		"In Progress",
@@ -40,12 +59,12 @@ fn exited_child_reconciliation_detects_stalled_failed_runs_from_protocol_idle() 
 			attempt_number: 1,
 			thread_id: None,
 			turn_id: None,
-				event_count: 1,
-				last_event_type: "thread/status/changed",
-				child_agent_activity: None,
-				protocol_activity: None,
-			},
-		)
+			event_count: 1,
+			last_event_type: "thread/status/changed",
+			child_agent_activity: None,
+			protocol_activity: None,
+		},
+	)
 	.expect("protocol marker should write");
 
 	let last_protocol_activity =
@@ -75,9 +94,9 @@ fn exited_child_reconciliation_detects_stalled_failed_runs_from_protocol_idle() 
 
 #[test]
 fn exited_child_reconciliation_detects_retained_partial_progress_from_dirty_worktree() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = tests::sample_issue_with_sort_fields(
 		"issue-stalled-dirty-after-exit",
 		"PUB-206",
 		"In Progress",
@@ -89,11 +108,10 @@ fn exited_child_reconciliation_detects_retained_partial_progress_from_dirty_work
 	let run_id = "run-stalled-dirty-after-exit";
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 
-	git_status_success(
+	tests::git_status_success(
 		config.repo_root(),
 		&["worktree", "add", "-b", "x/pubfi-pub-206", ".worktrees/PUB-206", "main"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "retained partial work\n")
 		.expect("tracked worktree file should change");
 
@@ -124,9 +142,10 @@ fn exited_child_reconciliation_detects_retained_partial_progress_from_dirty_work
 	)
 	.expect("protocol marker should write");
 
-	let last_protocol_activity = state::read_run_protocol_activity_marker(&worktree_path, run_id, 1)
-		.expect("protocol marker should read")
-		.expect("protocol activity should exist");
+	let last_protocol_activity =
+		state::read_run_protocol_activity_marker(&worktree_path, run_id, 1)
+			.expect("protocol marker should read")
+			.expect("protocol activity should exist");
 	let actions = orchestrator::inspect_exited_daemon_child_reconciliation_at(
 		&tracker,
 		&config,
@@ -148,9 +167,9 @@ fn exited_child_reconciliation_detects_retained_partial_progress_from_dirty_work
 
 #[test]
 fn exited_child_reconciliation_ignores_superseded_failed_run() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = tests::sample_issue_with_sort_fields(
 		"issue-superseded-after-exit",
 		"PUB-206",
 		"In Progress",
@@ -243,8 +262,8 @@ fn exited_child_reconciliation_ignores_superseded_failed_run() {
 
 #[test]
 fn run_project_once_prefers_recovered_in_progress_worktree_after_empty_state_startup() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("In Progress");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -272,8 +291,8 @@ fn run_project_once_prefers_recovered_in_progress_worktree_after_empty_state_sta
 
 #[test]
 fn recover_runtime_state_recovers_fresh_review_repair_activity_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("In Review");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("In Review");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
@@ -309,9 +328,9 @@ fn recover_runtime_state_recovers_fresh_review_repair_activity_marker() {
 
 #[test]
 fn run_project_once_recovers_retained_worktree_from_issue_identifier() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue_with_project_slug_and_sort_fields(
+	let issue = tests::sample_issue_with_project_slug_and_sort_fields(
 		"issue-1",
 		"PUB-101",
 		"tracker-project",
@@ -340,12 +359,12 @@ fn run_project_once_recovers_retained_worktree_from_issue_identifier() {
 
 #[test]
 fn run_project_once_recovers_ready_post_review_lane_before_landing() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_review_level(
-		&service_config_with_github_token_env_var(&base_config, "PATH"),
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_review_level(
+		&tests::service_config_with_github_token_env_var(&base_config, "PATH"),
 		ReviewLevel::Standard,
 	);
-	let issue = sample_active_issue("In Review");
+	let issue = recovery_terminal_support::sample_active_issue("In Review");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
 		vec![vec![issue.clone()], vec![issue.clone()], vec![issue.clone()]],
@@ -361,16 +380,22 @@ fn run_project_once_recovers_ready_post_review_lane_before_landing() {
 		r#"{"schema":"decodex/commit/1","summary":"Add retry hint","authority":"PUB-101"}"#;
 	let landed_subject =
 		r#"{"schema":"decodex/commit/1","summary":"Land Add retry hint","authority":"PUB-101"}"#;
-	let head_oid =
-		commit_worktree_change(&worktree.path, "retained-ready.txt", "ready\n", head_subject);
+	let head_oid = tests::commit_worktree_change(
+		&worktree.path,
+		"retained-ready.txt",
+		"ready\n",
+		head_subject,
+	);
 	let (_path_guard, invocation_log_path) =
-		install_fake_ready_to_land_admin_merge_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+		recovery_terminal_support::install_fake_ready_to_land_admin_merge_gh_response(
+			&temp_dir, &worktree, pr_url, &head_oid,
+		);
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
@@ -381,7 +406,7 @@ fn run_project_once_recovers_ready_post_review_lane_before_landing() {
 		"ready retained post-review landing should not dispatch a new current lane"
 	);
 
-	let marker = persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_orchestration_marker_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
@@ -413,8 +438,8 @@ fn run_project_once_recovers_ready_post_review_lane_before_landing() {
 
 #[test]
 fn materialize_run_summary_worktree_creates_worktree_before_child_activity_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
 		vec![vec![issue.clone()], vec![issue.clone()]],
@@ -488,7 +513,7 @@ read_first = []
 Follow the repository policy.
 	"#;
 	let (_temp_dir, config, workflow) =
-		temp_project_layout_with_workflow_markdown(workflow_markdown);
+		tests::temp_project_layout_with_workflow_markdown(workflow_markdown);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
@@ -514,15 +539,16 @@ Follow the repository policy.
 	);
 	assert!(!worktree.path.exists(), "cleanup should still remove the worktree");
 	assert!(
-		!git_output(config.repo_root(), &["branch", "--list", &worktree.branch_name]).is_empty(),
+		!tests::git_output(config.repo_root(), &["branch", "--list", &worktree.branch_name])
+			.is_empty(),
 		"generic terminal cleanup should preserve the retained local branch ref"
 	);
 }
 
 #[test]
 fn materialize_daemon_spawn_state_starts_fresh_budget_for_normal_queue_intake() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
 		vec![vec![issue.clone()], vec![issue.clone()]],
@@ -553,8 +579,8 @@ fn materialize_daemon_spawn_state_starts_fresh_budget_for_normal_queue_intake() 
 
 #[test]
 fn materialize_daemon_spawn_state_uses_retained_retry_budget_marker_for_recovered_retry() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("In Progress");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
 		vec![vec![issue.clone()], vec![issue.clone()]],
@@ -586,8 +612,8 @@ fn materialize_daemon_spawn_state_uses_retained_retry_budget_marker_for_recovere
 
 #[test]
 fn run_project_once_skips_recovered_worktree_with_fresh_activity_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("In Progress");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -628,8 +654,8 @@ fn run_project_once_skips_recovered_worktree_with_fresh_activity_marker() {
 #[cfg(unix)]
 #[test]
 fn run_project_once_retries_recovered_worktree_after_marker_process_is_killed() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("In Progress");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
 		vec![vec![issue.clone()], vec![issue.clone()]],
@@ -677,8 +703,8 @@ fn run_project_once_retries_recovered_worktree_after_marker_process_is_killed() 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn run_project_once_retries_recovered_worktree_from_previous_boot() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("In Progress");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
 		vec![vec![issue.clone()], vec![issue.clone()]],
@@ -692,8 +718,7 @@ fn run_project_once_retries_recovered_worktree_from_previous_boot() {
 
 	state::write_run_activity_marker_for_process(&worktree.path, "run-1", 1, process::id())
 		.expect("activity marker should write");
-
-	rewrite_run_activity_marker_host_boot_id(&worktree.path, "previous-boot");
+	tests::rewrite_run_activity_marker_host_boot_id(&worktree.path, "previous-boot");
 
 	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("previous-boot recovery should succeed")
@@ -710,8 +735,8 @@ fn run_project_once_retries_recovered_worktree_from_previous_boot() {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn run_project_once_retries_recovered_worktree_from_reused_pid() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("In Progress");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
 		vec![vec![issue.clone()], vec![issue.clone()]],
@@ -725,8 +750,10 @@ fn run_project_once_retries_recovered_worktree_from_reused_pid() {
 
 	state::write_run_activity_marker_for_process(&worktree.path, "run-1", 1, process::id())
 		.expect("activity marker should write");
-
-	rewrite_run_activity_marker_process_start_identity(&worktree.path, "previous-process-start");
+	tests::rewrite_run_activity_marker_process_start_identity(
+		&worktree.path,
+		"previous-process-start",
+	);
 
 	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("same-boot PID-reuse recovery should succeed")
@@ -755,8 +782,8 @@ fn process_is_alive_handles_current_process_and_invalid_sentinel() {
 
 #[test]
 fn run_project_once_clears_recovered_lease_when_marker_turns_stale() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("In Progress");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![issue.clone()],
 		vec![vec![issue.clone()], vec![issue.clone()]],
@@ -805,8 +832,10 @@ fn run_project_once_clears_recovered_lease_when_marker_turns_stale() {
 
 #[test]
 fn run_project_once_skips_recovered_terminal_guarded_worktree_after_empty_state_startup() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue_without_needs_attention_team_label("In Progress");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue_without_needs_attention_team_label(
+		"In Progress",
+	);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -840,9 +869,9 @@ fn run_project_once_skips_recovered_terminal_guarded_worktree_after_empty_state_
 
 #[test]
 fn run_project_once_clears_terminal_queued_lane_labels_without_dispatch() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("Done", &[active_label.as_str()]);
+	let issue = tests::sample_issue("Done", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
@@ -860,9 +889,9 @@ fn run_project_once_clears_terminal_queued_lane_labels_without_dispatch() {
 
 #[test]
 fn run_project_once_dry_run_keeps_terminal_queued_lane_labels() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("Done", &[active_label.as_str()]);
+	let issue = tests::sample_issue("Done", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
@@ -878,8 +907,8 @@ fn run_project_once_dry_run_keeps_terminal_queued_lane_labels() {
 #[test]
 fn run_project_once_preserves_terminal_recovered_worktree_without_prior_state_when_review_handoff_is_missing()
  {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("Done");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("Done");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -910,12 +939,12 @@ fn run_project_once_preserves_terminal_recovered_worktree_without_prior_state_wh
 
 #[test]
 fn run_project_once_clears_stale_completed_closeout_lease_but_keeps_worktree() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(
 		&base_config,
 		"DECODEX_TEST_MISSING_STARTUP_DELIVERY_CLOSEOUT_GITHUB_TOKEN",
 	);
-	let issue = sample_active_issue("Done");
+	let issue = recovery_terminal_support::sample_active_issue("Done");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -924,15 +953,15 @@ fn run_project_once_clears_stale_completed_closeout_lease_but_keeps_worktree() {
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let run_id = "run-closeout-startup";
 	let pr_url = "https://github.com/hack-ink/decodex/pull/178";
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store
@@ -984,12 +1013,12 @@ fn run_project_once_clears_stale_completed_closeout_lease_but_keeps_worktree() {
 
 #[test]
 fn run_project_once_preserves_fresh_completed_closeout_lease() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(
 		&base_config,
 		"DECODEX_TEST_MISSING_STARTUP_DELIVERY_CLOSEOUT_GITHUB_TOKEN",
 	);
-	let issue = sample_active_issue("Done");
+	let issue = recovery_terminal_support::sample_active_issue("Done");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -998,17 +1027,16 @@ fn run_project_once_preserves_fresh_completed_closeout_lease() {
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let run_id = "run-closeout-fresh-startup";
 	let pr_url = "https://github.com/hack-ink/decodex/pull/178";
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
-
 	state::write_run_activity_marker(&worktree.path, run_id, 1)
 		.expect("fresh activity marker should write");
 
@@ -1061,9 +1089,9 @@ fn run_project_once_preserves_fresh_completed_closeout_lease() {
 
 #[test]
 fn run_project_once_preserves_completed_unmerged_closeout_worktree() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_active_issue("Done");
+	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = recovery_terminal_support::sample_active_issue("Done");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1072,16 +1100,18 @@ fn run_project_once_preserves_completed_unmerged_closeout_worktree() {
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let run_id = "run-closeout-open-pr-startup";
 	let pr_url = "https://github.com/hack-ink/decodex/pull/179";
-	let _path_guard = install_fake_open_pr_gh_response(&temp_dir, &worktree, pr_url, &head_oid);
+	let _path_guard = recovery_terminal_support::install_fake_open_pr_gh_response(
+		&temp_dir, &worktree, pr_url, &head_oid,
+	);
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store
@@ -1133,8 +1163,8 @@ fn run_project_once_preserves_completed_unmerged_closeout_worktree() {
 
 #[test]
 fn run_project_once_skips_recovered_worktree_without_service_active_label() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1167,9 +1197,9 @@ fn run_project_once_skips_recovered_worktree_without_service_active_label() {
 
 #[test]
 fn run_project_once_recovers_worktree_when_identifier_lookup_labels_are_truncated() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let listed_issue = sample_active_issue("In Progress");
+	let listed_issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let mut identifier_lookup_issue = listed_issue.clone();
 
 	identifier_lookup_issue.labels_complete = false;
@@ -1199,8 +1229,8 @@ fn run_project_once_recovers_worktree_when_identifier_lookup_labels_are_truncate
 
 #[test]
 fn recovery_skip_cache_suppresses_repeated_unowned_worktree_lookup() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::new(Vec::new()).with_identifier_lookup_issues(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join(&issue.identifier);
@@ -1242,11 +1272,11 @@ fn recovery_skip_cache_suppresses_repeated_unowned_worktree_lookup() {
 
 #[test]
 fn live_run_skips_issue_that_becomes_ineligible_after_worktree_prepare() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let listed_issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let listed_issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![listed_issue.clone()],
-		vec![vec![], vec![listed_issue.clone()], vec![sample_issue("In Progress", &[])]],
+		vec![vec![], vec![listed_issue.clone()], vec![tests::sample_issue("In Progress", &[])]],
 	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
@@ -1267,8 +1297,8 @@ fn live_run_skips_issue_that_becomes_ineligible_after_worktree_prepare() {
 
 #[test]
 fn live_run_clears_claimed_lease_when_refresh_fails_after_worktree_prepare() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let listed_issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let listed_issue = tests::sample_issue("Todo", &[]);
 	let tracker =
 		FakeTracker::with_refresh_error(vec![listed_issue.clone()], "transient refresh failure");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1286,8 +1316,8 @@ fn live_run_clears_claimed_lease_when_refresh_fails_after_worktree_prepare() {
 
 #[test]
 fn run_project_once_ignores_fresh_marker_for_exited_process() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_active_issue("In Progress");
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1315,12 +1345,12 @@ fn run_project_once_ignores_fresh_marker_for_exited_process() {
 
 #[test]
 fn idle_daemon_recovery_reconstructs_completed_closeout_worktree_mapping() {
-	let (_temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_github_token_env_var(
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_github_token_env_var(
 		&base_config,
 		"DECODEX_TEST_MISSING_DAEMON_DELIVERY_CLOSEOUT_GITHUB_TOKEN",
 	);
-	let issue = sample_active_issue("Done");
+	let issue = recovery_terminal_support::sample_active_issue("Done");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1329,16 +1359,15 @@ fn idle_daemon_recovery_reconstructs_completed_closeout_worktree_mapping() {
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained closeout worktree should exist");
-	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/178";
 
-	seed_review_handoff_marker_value(
+	tests::seed_review_handoff_marker_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
-
 	orchestrator::recover_and_reconcile_idle_daemon_state(
 		&tracker,
 		&config,
