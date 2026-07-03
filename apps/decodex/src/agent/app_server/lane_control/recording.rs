@@ -2,7 +2,7 @@ use crate::{
 	agent::app_server::{
 		LaneControlInterruptRequest, LaneControlInterruptResponse, LaneControlSteerRequest,
 		LaneControlSteerResponse, LaneControlSteerResponseStatus, RUN_CONTROL_ACTION_COMPLETED,
-		RUN_CONTROL_ACTION_FAILED, RunControlActionOutcomeRequest, RunRecorder, serde_json,
+		RUN_CONTROL_ACTION_FAILED, RunControlActionOutcomeRequest, RunRecorder,
 	},
 	prelude::Result,
 };
@@ -100,8 +100,9 @@ pub(in crate::agent::app_server::lane_control) fn record_lane_steer_response(
 ) -> Result<()> {
 	let outcome = match &response.status {
 		LaneControlSteerResponseStatus::Delivered => RUN_CONTROL_ACTION_COMPLETED,
-		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected =>
-			RUN_CONTROL_ACTION_FAILED,
+		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected => {
+			RUN_CONTROL_ACTION_FAILED
+		},
 	};
 	let metadata = serde_json::json!({
 		"requestId": response.request_id,
