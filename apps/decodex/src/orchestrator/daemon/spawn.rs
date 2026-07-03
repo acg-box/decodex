@@ -1,4 +1,28 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::{
+	env,
+	io::Write,
+	path::Path,
+	process::{Child, Command, Stdio},
+};
+
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+
+use crate::{
+	cli::AttemptRequest,
+	orchestrator::{
+		DaemonRunChild, IssueDispatchMode, IssueTracker, MaterializedDaemonSpawnState,
+		PullRequestReviewStateInspector, Result, RetryDispatchDecision, RetryQueue,
+		RUN_OPERATION_AGENT_RUN, RunSummary, ServiceConfig, SpawnRunOnceChildRequest, StateStore,
+		WorkflowDocument, WorktreeManager, WorktreeSpec,
+		ensure_project_has_no_merged_worktree_cleanup_debt, plan_project_issue_run_with_exclusions,
+		retry_budget_base_for_dispatch_mode, run_summary_from_issue_run, validate_workflow_read_first_files,
+	},
+	prelude::eyre,
+	state,
+};
+
+use crate::orchestrator::daemon::{DaemonTickRuntimeContext, plan_due_retry_run};
 
 pub(super) fn spawn_next_daemon_child<T>(
 	config_path: &Path,
