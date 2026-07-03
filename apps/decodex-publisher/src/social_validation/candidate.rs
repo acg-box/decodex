@@ -1,6 +1,13 @@
 //! social_candidate/v1 schema validation.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use serde_json::{Map, Value};
+
+use super::{
+	SOCIAL_POST_MODES, SOCIAL_POST_PRIORITIES, choices, is_empty_or_missing_array,
+	is_https_string_array, is_non_empty_string, matches_one_of, non_empty_array, string_field,
+	validate_non_empty_string_list, validate_optional_string_list, validate_social_post_claims,
+	validate_social_post_text,
+};
 
 pub(super) fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut Vec<String>) {
 	for field in ["slug", "repo", "audience"] {
