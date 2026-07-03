@@ -9,7 +9,7 @@ use crate::{
 	state::PrivateExecutionEvent,
 };
 
-pub(in crate::orchestrator) fn record_program_dispatch_selected(
+pub(crate) fn record_program_dispatch_selected(
 	state_store: &StateStore,
 	project_id: &str,
 	issue_run: &IssueRunPlan,
@@ -43,7 +43,7 @@ pub(in crate::orchestrator) fn record_program_dispatch_selected(
 	)
 }
 
-pub(in crate::orchestrator) fn select_execution_program_run_candidate<T>(
+pub(crate) fn select_execution_program_run_candidate<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -75,7 +75,7 @@ where
 	Ok(selected)
 }
 
-pub(in crate::orchestrator) fn select_execution_program_run_candidate_with_summary<T>(
+pub(crate) fn select_execution_program_run_candidate_with_summary<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
