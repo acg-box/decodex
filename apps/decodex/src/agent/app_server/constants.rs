@@ -5,6 +5,7 @@ pub(crate) const MODEL_EXECUTION_IDLE_TIMEOUT: Duration = Duration::from_secs(30
 
 pub(super) const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 pub(super) const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+pub(super) const THREAD_SESSION_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 pub(super) const RUN_CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(500);
 pub(super) const PROBE_RUN_ID: &str = "protocol-probe-run";
 pub(super) const PROBE_ISSUE_ID: &str = "protocol-probe";

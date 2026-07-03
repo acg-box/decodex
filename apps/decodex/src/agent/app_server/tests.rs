@@ -695,6 +695,13 @@ for line in sys.stdin:
 "#
 }
 
+fn slow_thread_start_fake_codex_script() -> String {
+	orphan_response_fake_codex_script().replace(
+		"    elif method == \"thread/start\":\n        cwd = params.get(\"cwd\")",
+		"    elif method == \"thread/start\":\n        import time\n        time.sleep(6)\n        cwd = params.get(\"cwd\")",
+	)
+}
+
 fn phase_goal_fake_codex_script(
 	turn_outputs: &[&str],
 	goal_statuses: &[&str],

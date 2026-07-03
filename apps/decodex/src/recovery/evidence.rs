@@ -209,10 +209,17 @@ fn stale_active_private_event_is_no_diff_guardrail(event: &PrivateExecutionEvent
 
 	payload.get("schema").and_then(serde_json::Value::as_str)
 		== Some("decodex.loop_guardrail_checkpoint/1")
-		&& payload.get("source_error_class").and_then(serde_json::Value::as_str)
-			== Some("app_server_turn_failed")
+		&& stale_active_no_diff_guardrail_source_is_startup_or_turn_failure(payload)
 		&& payload.get("reason").and_then(serde_json::Value::as_str) == Some("no_effective_diff")
 		&& stale_active_guardrail_details_have_no_delta(payload)
+}
+
+fn stale_active_no_diff_guardrail_source_is_startup_or_turn_failure(
+	payload: &serde_json::Value,
+) -> bool {
+	let source_error_class = payload.get("source_error_class").and_then(serde_json::Value::as_str);
+
+	matches!(source_error_class, Some("app_server_turn_failed") | None)
 }
 
 fn stale_active_private_event_is_phase_goal_runtime_failure_telemetry(

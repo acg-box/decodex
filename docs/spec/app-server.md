@@ -364,6 +364,10 @@ internal logical tool declaration flat so callback authorization can still match
 Decodex must not inject project-owned config, model, personality, service-tier, sandbox, or approval-policy overrides into `thread/start`. Child runs inherit runtime defaults from the active Codex runtime.
 
 `ThreadStartResponse` returns the effective thread plus the effective execution settings.
+`thread/start` is allowed a longer bounded startup timeout than ordinary metadata
+requests because current Codex app-server builds may need to hydrate tool, skill, and
+thread runtime state before the first response. The longer timeout is still a startup
+transport timeout, not a model-execution wait.
 
 ## `thread/resume`
 
@@ -575,6 +579,9 @@ Rationale:
 - JSON-RPC transport failure before a thread session is attached is a retryable
   startup failure. This covers the client waiting on `initialize`,
   `account/login/start`, `thread/start`, or `thread/resume`.
+- `thread/start` and `thread/resume` may use a longer bounded timeout than ordinary
+  metadata requests; they still fail as startup transport failures when the timeout is
+  exhausted before a thread id is attached.
 - If that startup transport failure exhausts the registered retry budget, the
   terminal failure must still preserve `app_server_transport_disconnected`.
 - JSON-RPC transport failure after a thread session is attached, including
