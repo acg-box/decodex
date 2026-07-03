@@ -1,9 +1,13 @@
 use tempfile::TempDir;
 
 use crate::{
-	program_intake::tests::test_support,
-	program_intake::tests::test_support::{FakeTracker, TestIssueExt as _},
-	program_intake::{self, IssueBatchIntakeClassification},
+	program_intake::{
+		self, IssueBatchIntakeClassification,
+		tests::{
+			test_support,
+			test_support::{FakeTracker, TestIssueExt as _},
+		},
+	},
 	state::StateStore,
 };
 
