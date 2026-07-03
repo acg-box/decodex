@@ -1,6 +1,13 @@
 //! Low-level ledger row upserts.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::path::Path;
+
+use rusqlite::{self, Connection};
+
+use crate::ledger::files::{self};
+use crate::{
+	ARTIFACT_KINDS, REVIEW_STATUSES, SIGNAL_CONFIDENCE, UPSTREAM_SUBJECT_KINDS, prelude::Result,
+};
 
 pub(super) struct CommitInput<'a> {
 	pub(super) repo: &'a str,
@@ -27,11 +34,8 @@ pub(super) struct ArtifactLinkInput<'a> {
 	pub(super) artifact_kind: &'a str,
 	pub(super) path: &'a Path,
 }
-pub(super) fn record_commit(
-	connection: &Connection,
-	input: CommitInput<'_>,
-) -> crate::prelude::Result<()> {
-	let timestamp = utc_now_iso()?;
+pub(super) fn record_commit(connection: &Connection, input: CommitInput<'_>) -> Result<()> {
+	let timestamp = crate::utc_now_iso()?;
 
 	connection.execute(
 		"
@@ -67,18 +71,15 @@ pub(super) fn record_commit(
 	Ok(())
 }
 
-pub(super) fn record_review(
-	connection: &Connection,
-	input: ReviewInput<'_>,
-) -> crate::prelude::Result<()> {
-	require_member(input.subject_kind, UPSTREAM_SUBJECT_KINDS, "subject_kind")?;
-	require_member(input.status, REVIEW_STATUSES, "status")?;
+pub(super) fn record_review(connection: &Connection, input: ReviewInput<'_>) -> Result<()> {
+	crate::require_member(input.subject_kind, UPSTREAM_SUBJECT_KINDS, "subject_kind")?;
+	crate::require_member(input.status, REVIEW_STATUSES, "status")?;
 
 	if let Some(confidence) = input.confidence {
-		require_member(confidence, SIGNAL_CONFIDENCE, "confidence")?;
+		crate::require_member(confidence, SIGNAL_CONFIDENCE, "confidence")?;
 	}
 
-	let timestamp = utc_now_iso()?;
+	let timestamp = crate::utc_now_iso()?;
 
 	connection.execute(
 		"
@@ -114,16 +115,13 @@ pub(super) fn record_review(
 	Ok(())
 }
 
-pub(super) fn record_artifact(
-	connection: &Connection,
-	input: ArtifactLinkInput<'_>,
-) -> crate::prelude::Result<()> {
-	require_member(input.subject_kind, UPSTREAM_SUBJECT_KINDS, "subject_kind")?;
-	require_member(input.artifact_kind, ARTIFACT_KINDS, "artifact_kind")?;
+pub(super) fn record_artifact(connection: &Connection, input: ArtifactLinkInput<'_>) -> Result<()> {
+	crate::require_member(input.subject_kind, UPSTREAM_SUBJECT_KINDS, "subject_kind")?;
+	crate::require_member(input.artifact_kind, ARTIFACT_KINDS, "artifact_kind")?;
 
-	let (sha256, size_bytes) = file_digest(input.path)?;
-	let created_at = utc_now_iso()?;
-	let storage_path = path_for_storage(input.path)?;
+	let (sha256, size_bytes) = files::file_digest(input.path)?;
+	let created_at = crate::utc_now_iso()?;
+	let storage_path = files::path_for_storage(input.path)?;
 
 	connection.execute(
 		"

@@ -11,7 +11,8 @@ mod support;
 mod uniqueness;
 mod upstream;
 
-#[cfg(test)] pub(super) use self::signal::has_legacy_multi_agent_v2_context;
+#[cfg(test)]
+pub(super) use self::signal::has_legacy_multi_agent_v2_context;
 pub(super) use self::{
 	core::{
 		validate_analysis_draft, validate_artifact, validate_artifact_errors,

@@ -4,26 +4,23 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 
+use crate::prelude::Result;
 use crate::prelude::eyre;
-
-use super::{
-	GENERIC_COMMIT_TITLES, SIGNAL_SCHEMA, first_line, is_truthy_json_value, object_value,
-	required_string, short_sha, slugify, string_field, utc_now_iso,
-};
+use crate::{GENERIC_COMMIT_TITLES, SIGNAL_SCHEMA};
 
 pub(super) fn rendered_signal(
 	bundle: &Value,
 	analysis: &Value,
 	published_at_override: Option<&str>,
 	config_flags: Vec<String>,
-) -> crate::prelude::Result<Value> {
-	let bundle = object_value(bundle, "Bundle")?;
-	let analysis = object_value(analysis, "Analysis draft")?;
-	let title = required_string(analysis, "title", "analysis draft")?;
-	let slug = string_field(analysis, "slug")
+) -> Result<Value> {
+	let bundle = crate::object_value(bundle, "Bundle")?;
+	let analysis = crate::object_value(analysis, "Analysis draft")?;
+	let title = crate::required_string(analysis, "title", "analysis draft")?;
+	let slug = crate::string_field(analysis, "slug")
 		.filter(|value| !value.is_empty())
 		.map(str::to_owned)
-		.unwrap_or_else(|| slugify(title));
+		.unwrap_or_else(|| crate::slugify(title));
 	let mut signal = Map::new();
 
 	signal.insert("schema".into(), serde_json::json!(SIGNAL_SCHEMA));
@@ -33,7 +30,7 @@ pub(super) fn rendered_signal(
 	for field in ["kind", "title", "summary", "why_it_matters", "confidence", "impact"] {
 		signal.insert(
 			field.into(),
-			serde_json::json!(required_string(analysis, field, "analysis draft")?),
+			serde_json::json!(crate::required_string(analysis, field, "analysis draft")?),
 		);
 	}
 
@@ -52,7 +49,7 @@ pub(super) fn rendered_signal(
 	signal.insert("source_refs".into(), rendered_source_refs(bundle)?);
 
 	for field in ["how_to_try", "expected_effect", "caveats", "watch_state"] {
-		if is_truthy_json_value(analysis.get(field)) {
+		if crate::is_truthy_json_value(analysis.get(field)) {
 			signal.insert(
 				field.into(),
 				analysis
@@ -145,7 +142,7 @@ fn known_feature_name(value: &str, known_features: &BTreeSet<String>) -> Option<
 	if valid && known_features.contains(value) { Some(value.to_owned()) } else { None }
 }
 
-fn rendered_source_refs(bundle: &Map<String, Value>) -> crate::prelude::Result<Value> {
+fn rendered_source_refs(bundle: &Map<String, Value>) -> Result<Value> {
 	let commits = bundle_commits(bundle)?;
 	let commit_urls = commits
 		.iter()
@@ -153,14 +150,17 @@ fn rendered_source_refs(bundle: &Map<String, Value>) -> crate::prelude::Result<V
 		.collect::<Vec<_>>();
 	let mut refs = Map::new();
 
-	refs.insert("repo".into(), serde_json::json!(required_string(bundle, "repo", "bundle")?));
+	refs.insert(
+		"repo".into(),
+		serde_json::json!(crate::required_string(bundle, "repo", "bundle")?),
+	);
 	refs.insert("commit_urls".into(), serde_json::json!(commit_urls));
 	refs.insert("items".into(), serde_json::json!(rendered_source_items(bundle)?));
 
 	if let Some(pr_url) = bundle
 		.get("primary_pr")
 		.and_then(Value::as_object)
-		.and_then(|primary_pr| string_field(primary_pr, "url"))
+		.and_then(|primary_pr| crate::string_field(primary_pr, "url"))
 	{
 		refs.insert("pr_url".into(), serde_json::json!(pr_url));
 	}
@@ -168,19 +168,17 @@ fn rendered_source_refs(bundle: &Map<String, Value>) -> crate::prelude::Result<V
 	Ok(Value::Object(refs))
 }
 
-fn rendered_source_items(
-	bundle: &Map<String, Value>,
-) -> crate::prelude::Result<Vec<Map<String, Value>>> {
+fn rendered_source_items(bundle: &Map<String, Value>) -> Result<Vec<Map<String, Value>>> {
 	let mut items = Vec::new();
 
 	if let Some(primary_pr) = bundle.get("primary_pr").and_then(Value::as_object)
 		&& let (Some(url), Some(title)) =
-			(string_field(primary_pr, "url"), string_field(primary_pr, "title"))
+			(crate::string_field(primary_pr, "url"), crate::string_field(primary_pr, "title"))
 	{
 		let mut item = Map::new();
 
 		item.insert("kind".into(), serde_json::json!("pull_request"));
-		item.insert("title".into(), serde_json::json!(first_line(title)));
+		item.insert("title".into(), serde_json::json!(crate::first_line(title)));
 		item.insert("url".into(), serde_json::json!(url));
 
 		if let Some(number) = primary_pr.get("number").and_then(Value::as_i64) {
@@ -195,15 +193,14 @@ fn rendered_source_items(
 	Ok(items)
 }
 
-fn rendered_commit_items(
-	bundle: &Map<String, Value>,
-) -> crate::prelude::Result<Vec<Map<String, Value>>> {
+fn rendered_commit_items(bundle: &Map<String, Value>) -> Result<Vec<Map<String, Value>>> {
 	let mut fallback_items = Vec::new();
 	let mut picked_items = Vec::new();
 	let mut seen_titles = BTreeSet::new();
 
 	for commit in bundle_commits(bundle)? {
-		let title = first_line(commit.get("message").and_then(Value::as_str).unwrap_or_default());
+		let title =
+			crate::first_line(commit.get("message").and_then(Value::as_str).unwrap_or_default());
 
 		if title.is_empty()
 			|| !seen_titles.insert(title.clone())
@@ -224,22 +221,22 @@ fn rendered_commit_items(
 	Ok(if picked_items.is_empty() { fallback_items } else { picked_items })
 }
 
-fn rendered_commit_item(
-	commit: &Map<String, Value>,
-	title: &str,
-) -> crate::prelude::Result<Map<String, Value>> {
-	let sha = required_string(commit, "sha", "bundle commit")?;
+fn rendered_commit_item(commit: &Map<String, Value>, title: &str) -> Result<Map<String, Value>> {
+	let sha = crate::required_string(commit, "sha", "bundle commit")?;
 	let mut entry = Map::new();
 
 	entry.insert("kind".into(), serde_json::json!("commit"));
 	entry.insert("title".into(), serde_json::json!(title));
-	entry.insert("url".into(), serde_json::json!(required_string(commit, "url", "bundle commit")?));
-	entry.insert("meta".into(), serde_json::json!(short_sha(sha)));
+	entry.insert(
+		"url".into(),
+		serde_json::json!(crate::required_string(commit, "url", "bundle commit")?),
+	);
+	entry.insert("meta".into(), serde_json::json!(crate::short_sha(sha)));
 
 	Ok(entry)
 }
 
-fn bundle_commits(bundle: &Map<String, Value>) -> crate::prelude::Result<Vec<&Map<String, Value>>> {
+fn bundle_commits(bundle: &Map<String, Value>) -> Result<Vec<&Map<String, Value>>> {
 	bundle
 		.get("commits")
 		.and_then(Value::as_array)
@@ -255,17 +252,19 @@ fn pick_published_at(
 	bundle: &Map<String, Value>,
 	analysis: &Map<String, Value>,
 	override_value: Option<&str>,
-) -> crate::prelude::Result<String> {
+) -> Result<String> {
 	if let Some(value) = override_value.filter(|value| !value.is_empty()) {
 		return Ok(value.to_owned());
 	}
-	if let Some(value) = string_field(analysis, "published_at").filter(|value| !value.is_empty()) {
+	if let Some(value) =
+		crate::string_field(analysis, "published_at").filter(|value| !value.is_empty())
+	{
 		return Ok(value.to_owned());
 	}
 	if let Some(value) = bundle
 		.get("primary_pr")
 		.and_then(Value::as_object)
-		.and_then(|primary_pr| string_field(primary_pr, "merged_at"))
+		.and_then(|primary_pr| crate::string_field(primary_pr, "merged_at"))
 		.filter(|value| !value.is_empty())
 	{
 		return Ok(value.to_owned());
@@ -277,10 +276,10 @@ fn pick_published_at(
 		.ok_or_else(|| eyre::eyre!("Bundle commits must be a non-empty list"))?;
 
 	if let Some(value) =
-		string_field(first_commit, "committed_at").filter(|value| !value.is_empty())
+		crate::string_field(first_commit, "committed_at").filter(|value| !value.is_empty())
 	{
 		Ok(value.to_owned())
 	} else {
-		utc_now_iso()
+		crate::utc_now_iso()
 	}
 }

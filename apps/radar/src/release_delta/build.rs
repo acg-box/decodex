@@ -1,41 +1,56 @@
 //! Release-delta artifact construction and refresh entrypoints.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::path::Path;
+
+use serde_json::Value;
+
+use crate::release_delta::{
+	comparison::{self},
+	options::{self, compact_release, compact_releases},
+	selection::{self},
+};
+use crate::{
+	GitHubApi, RELEASE_DELTA_SCHEMA, RadarRefreshReleaseDeltaReport,
+	RadarRefreshReleaseDeltaRequest, RefreshKind,
+	prelude::{Result, eyre},
+	utc_now_iso,
+};
 
 /// Refresh the stable-versus-prerelease release-delta artifact.
 pub(crate) fn refresh_release_delta(
 	request: &RadarRefreshReleaseDeltaRequest,
-) -> crate::prelude::Result<RadarRefreshReleaseDeltaReport> {
-	let root = repo_root()?;
-	let api = GitHubApi::new(github_token(request.token_env.as_deref()))?;
+) -> Result<RadarRefreshReleaseDeltaReport> {
+	let root = crate::repo_root()?;
+	let api = GitHubApi::new(crate::github_token(request.token_env.as_deref()))?;
 	let payload = build_release_delta(request, &root, &api)?;
-	let errors = validate_artifact_errors(&payload);
+	let errors = crate::validate_artifact_errors(&payload);
 
 	if !errors.is_empty() {
 		eyre::bail!("Release-delta validation failed:\n- {}", errors.join("\n- "));
 	}
 	if request.dry_run {
-		println!("{}", pretty_json(&payload)?);
+		println!("{}", crate::pretty_json(&payload)?);
 
-		return Ok(release_delta_report(&payload, false, &root, &request.out));
+		return Ok(options::release_delta_report(&payload, false, &root, &request.out));
 	}
 
-	let out = absolute_repo_path(&root, &request.out);
-	let changed = write_json_if_material_changed(&out, &payload, RefreshKind::ReleaseDelta)?;
+	let out = crate::absolute_repo_path(&root, &request.out);
+	let changed = crate::write_json_if_material_changed(&out, &payload, RefreshKind::ReleaseDelta)?;
 
-	Ok(release_delta_report(&payload, changed, &root, &request.out))
+	Ok(options::release_delta_report(&payload, changed, &root, &request.out))
 }
 
 pub(crate) fn build_release_delta(
 	request: &RadarRefreshReleaseDeltaRequest,
 	root: &Path,
 	api: &GitHubApi,
-) -> crate::prelude::Result<Value> {
+) -> Result<Value> {
 	let releases = github_releases(api, &request.repo)?;
-	let stable_release = select_release(&releases, &request.tag_prefix, false)?;
-	let prerelease = select_release(&releases, &request.tag_prefix, true)?;
-	let (stable_releases, preview_releases) = select_release_options(request, &releases)?;
-	let release_pairs = select_release_pairs(
+	let stable_release = selection::select_release(&releases, &request.tag_prefix, false)?;
+	let prerelease = selection::select_release(&releases, &request.tag_prefix, true)?;
+	let (stable_releases, preview_releases) =
+		selection::select_release_options(request, &releases)?;
+	let release_pairs = selection::select_release_pairs(
 		request,
 		root,
 		&stable_release,
@@ -43,20 +58,24 @@ pub(crate) fn build_release_delta(
 		&stable_releases,
 		&preview_releases,
 	)?;
-	let signal_entries =
-		load_signal_entries(&absolute_repo_path(root, &request.signals_dir), &request.repo)?;
+	let signal_entries = comparison::load_signal_entries(
+		&crate::absolute_repo_path(root, &request.signals_dir),
+		&request.repo,
+	)?;
 	let mut comparison_entries = Vec::new();
 	let mut default_tracked_signal_slugs = Vec::<String>::new();
 	let mut default_compare_payload = None::<Value>;
 
 	for pair in release_pairs {
-		let is_default_pair = release_tag(&pair.stable) == release_tag(&stable_release)
-			&& release_tag(&pair.preview) == release_tag(&prerelease);
-		let comparison = build_release_comparison(api, request, &pair, &signal_entries)?;
+		let is_default_pair = options::release_tag(&pair.stable)
+			== options::release_tag(&stable_release)
+			&& options::release_tag(&pair.preview) == options::release_tag(&prerelease);
+		let comparison =
+			comparison::build_release_comparison(api, request, &pair, &signal_entries)?;
 
 		if is_default_pair {
 			default_compare_payload = comparison.get("compare").cloned();
-			default_tracked_signal_slugs = string_array_from_value(
+			default_tracked_signal_slugs = crate::string_array_from_value(
 				comparison.get("tracked_signal_slugs").unwrap_or(&Value::Null),
 			);
 		}
@@ -75,7 +94,7 @@ pub(crate) fn build_release_delta(
 		eyre::bail!("Default stable/prerelease pair was not included in comparison entries");
 	};
 	let (stable_options, preview_options) =
-		filter_release_options(&stable_releases, &preview_releases, &comparison_entries);
+		options::filter_release_options(&stable_releases, &preview_releases, &comparison_entries);
 
 	Ok(serde_json::json!({
 		"schema": RELEASE_DELTA_SCHEMA,
@@ -94,7 +113,7 @@ pub(crate) fn build_release_delta(
 	}))
 }
 
-fn github_releases(api: &GitHubApi, repo: &str) -> crate::prelude::Result<Vec<Value>> {
+fn github_releases(api: &GitHubApi, repo: &str) -> Result<Vec<Value>> {
 	let mut releases = Vec::new();
 
 	for page in 1..=5 {

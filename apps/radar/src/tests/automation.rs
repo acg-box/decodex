@@ -1,4 +1,12 @@
-use super::*;
+use std::{fs, path::Path, process::Command};
+
+use rusqlite::Connection;
+
+use crate::{
+	RUN_CODEX_ANALYSIS_SCRIPT, RadarBackfillReleaseRangeRequest, RadarBundleValidateRequest,
+	RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest, RadarLedgerIngestExistingRequest,
+	tests::{self, TestEnvVars},
+};
 
 #[test]
 fn analysis_helper_fails_closed_without_explicit_boundary_opt_in() {
@@ -12,7 +20,7 @@ fn analysis_helper_fails_closed_without_explicit_boundary_opt_in() {
 	let output_path = temp_dir.path().join("analysis.json");
 	let output = Command::new("python3")
 		.current_dir(repo_root)
-		.arg(repo_root.join(super::super::RUN_CODEX_ANALYSIS_SCRIPT))
+		.arg(repo_root.join(RUN_CODEX_ANALYSIS_SCRIPT))
 		.arg("--bundle")
 		.arg(&bundle_path)
 		.arg("--out")
@@ -36,7 +44,7 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
 	let release_delta_path = temp_dir.path().join("release-delta.json");
 	let signals_dir = temp_dir.path().join("signals");
-	let mut release_delta = valid_release_delta();
+	let mut release_delta = tests::valid_release_delta();
 
 	release_delta["compare"]["pr_numbers"] = serde_json::json!([22_414, 22_415, 22_416]);
 	release_delta["comparisons"][0]["compare"]["pr_numbers"] =
@@ -45,10 +53,10 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 	fs::create_dir_all(&signals_dir).expect("signals directory should be created");
 	fs::write(release_delta_path.as_path(), release_delta.to_string())
 		.expect("release delta should be written");
-	fs::write(signals_dir.join("published.json"), valid_signal().to_string())
+	fs::write(signals_dir.join("published.json"), tests::valid_signal().to_string())
 		.expect("signal should be written");
 
-	let report = radar::backfill_release_range(&RadarBackfillReleaseRangeRequest {
+	let report = crate::backfill_release_range(&RadarBackfillReleaseRangeRequest {
 		repo: "openai/codex".into(),
 		release_delta: release_delta_path,
 		stable_tag: None,
@@ -80,7 +88,7 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 fn ledger_bootstrap_drops_legacy_publisher_artifact_links_and_status() {
 	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
 	let db_path = temp_dir.path().join("radar.sqlite3");
-	let connection = rusqlite::Connection::open(&db_path).expect("temporary ledger should open");
+	let connection = Connection::open(&db_path).expect("temporary ledger should open");
 
 	connection
 		.execute_batch(
@@ -175,10 +183,10 @@ fn ledger_bootstrap_drops_legacy_publisher_artifact_links_and_status() {
 
 	drop(connection);
 
-	radar::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
+	crate::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
 		.expect("ledger bootstrap should migrate legacy publisher rows");
 
-	let connection = rusqlite::Connection::open(&db_path).expect("migrated ledger should open");
+	let connection = Connection::open(&db_path).expect("migrated ledger should open");
 	let artifact_links: i64 = connection
 		.query_row("SELECT COUNT(*) FROM artifact_link", [], |row| row.get(0))
 		.expect("artifact link count should be readable");
@@ -205,14 +213,14 @@ fn ledger_ingests_existing_bundle_analysis_and_signal_artifacts() {
 	fs::create_dir_all(&bundles_dir).expect("bundles directory should be created");
 	fs::create_dir_all(&analysis_dir).expect("analysis directory should be created");
 	fs::create_dir_all(&signals_dir).expect("signals directory should be created");
-	fs::write(bundles_dir.join("openai-codex-pr-22414.json"), valid_bundle().to_string())
+	fs::write(bundles_dir.join("openai-codex-pr-22414.json"), tests::valid_bundle().to_string())
 		.expect("bundle fixture should be written");
 	fs::write(analysis_dir.join("openai-codex-pr-22414.analysis.json"), r#"{"kind":"capability"}"#)
 		.expect("analysis fixture should be written");
-	fs::write(signals_dir.join("openai-codex-pr-22414.json"), valid_signal().to_string())
+	fs::write(signals_dir.join("openai-codex-pr-22414.json"), tests::valid_signal().to_string())
 		.expect("signal fixture should be written");
 
-	let summary = radar::ledger_ingest_existing(&RadarLedgerIngestExistingRequest {
+	let summary = crate::ledger_ingest_existing(&RadarLedgerIngestExistingRequest {
 		db_path: db_path.clone(),
 		bundles_dir,
 		analysis_dir,
@@ -225,7 +233,7 @@ fn ledger_ingests_existing_bundle_analysis_and_signal_artifacts() {
 	assert_eq!(summary.get("radar_reviews"), Some(&1));
 	assert_eq!(summary.get("artifact_links"), Some(&3));
 
-	let connection = rusqlite::Connection::open(&db_path).expect("ingested ledger should open");
+	let connection = Connection::open(&db_path).expect("ingested ledger should open");
 	let review: (String, String) = connection
 		.query_row(
 			"SELECT status, confidence FROM radar_review WHERE subject_kind = 'pr'",
@@ -242,7 +250,7 @@ fn ledger_artifact_link_records_control_plane_upgrade_candidate_after_schema_mig
 	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
 	let db_path = temp_dir.path().join("radar.sqlite3");
 	let candidate_path = temp_dir.path().join("upgrade.json");
-	let connection = rusqlite::Connection::open(&db_path).expect("temporary ledger should open");
+	let connection = Connection::open(&db_path).expect("temporary ledger should open");
 
 	connection
 		.execute_batch(
@@ -276,10 +284,10 @@ fn ledger_artifact_link_records_control_plane_upgrade_candidate_after_schema_mig
 
 	fs::write(&candidate_path, r#"{"schema":"control_plane_upgrade_candidate/v1"}"#)
 		.expect("upgrade candidate fixture should be written");
-	radar::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
+	crate::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
 		.expect("ledger bootstrap should add control-plane upgrade artifact kind");
 
-	let summary = radar::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
+	let summary = crate::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
 		db_path: db_path.clone(),
 		repo: "openai/codex".into(),
 		subject_kind: "pr".into(),
@@ -323,7 +331,7 @@ fn builds_pr_bundle_from_fixture_payloads() {
 		"deletions": 1,
 		"patch": patch
 	})];
-	let bundle = super::super::build_pr_bundle_from_sources(
+	let bundle = crate::build_pr_bundle_from_sources(
 		"openai/codex",
 		&pr,
 		&commits,
@@ -333,7 +341,7 @@ fn builds_pr_bundle_from_fixture_payloads() {
 	)
 	.expect("PR bundle should build from fixture payloads");
 
-	assert_errors(&bundle, []);
+	tests::assert_errors(&bundle, []);
 
 	assert_eq!(bundle["analysis_mode"], "pr_first");
 	assert_eq!(bundle["primary_pr"]["state"], "merged");
@@ -360,18 +368,18 @@ fn validates_bundle_directories_and_rejects_other_schemas() {
 	let bundle_path = temp_dir.path().join("bundle.json");
 	let signal_path = temp_dir.path().join("signal.json");
 
-	fs::write(&bundle_path, valid_bundle().to_string()).expect("bundle should be written");
+	fs::write(&bundle_path, tests::valid_bundle().to_string()).expect("bundle should be written");
 
-	let report = radar::validate_bundles(&RadarBundleValidateRequest {
+	let report = crate::validate_bundles(&RadarBundleValidateRequest {
 		paths: vec![temp_dir.path().to_path_buf()],
 	})
 	.expect("bundle directory should validate");
 
 	assert_eq!(report.checked_files, 1);
 
-	fs::write(&signal_path, valid_signal().to_string()).expect("signal should be written");
+	fs::write(&signal_path, tests::valid_signal().to_string()).expect("signal should be written");
 
-	let error = radar::validate_bundles(&RadarBundleValidateRequest {
+	let error = crate::validate_bundles(&RadarBundleValidateRequest {
 		paths: vec![temp_dir.path().to_path_buf()],
 	})
 	.expect_err("non-bundle schema should be rejected by bundle validation");

@@ -1,20 +1,25 @@
 //! Transactional Radar ledger writer.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::{fs, path::Path};
+
+use rusqlite::{self, Connection};
+
+use crate::ledger::schema;
+use crate::{RecentCommit, prelude::Result};
 
 #[derive(Debug)]
 pub(crate) struct RadarLedger {
 	connection: Connection,
 }
 impl RadarLedger {
-	pub(crate) fn open(path: &Path) -> crate::prelude::Result<Self> {
+	pub(crate) fn open(path: &Path) -> Result<Self> {
 		if let Some(parent) = path.parent() {
 			fs::create_dir_all(parent)?;
 		}
 
 		let connection = Connection::open(path)?;
 
-		initialize_ledger(&connection)?;
+		schema::initialize_ledger(&connection)?;
 
 		connection.execute_batch("BEGIN IMMEDIATE")?;
 
@@ -26,8 +31,8 @@ impl RadarLedger {
 		repo: &str,
 		commit: &RecentCommit,
 		pr_number: Option<u64>,
-	) -> crate::prelude::Result<()> {
-		let timestamp = utc_now_iso()?;
+	) -> Result<()> {
+		let timestamp = crate::utc_now_iso()?;
 
 		self.connection.execute(
 			"
@@ -72,8 +77,8 @@ impl RadarLedger {
 		status: &str,
 		reason: &str,
 		confidence: Option<&str>,
-	) -> crate::prelude::Result<()> {
-		let timestamp = utc_now_iso()?;
+	) -> Result<()> {
+		let timestamp = crate::utc_now_iso()?;
 
 		self.connection.execute(
 			"
@@ -110,7 +115,7 @@ impl RadarLedger {
 		Ok(())
 	}
 
-	pub(crate) fn commit(&mut self) -> crate::prelude::Result<()> {
+	pub(crate) fn commit(&mut self) -> Result<()> {
 		self.connection.execute_batch("COMMIT")?;
 
 		Ok(())

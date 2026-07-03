@@ -1,6 +1,14 @@
 //! Release option filtering and compact response shaping.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::{collections::BTreeSet, path::Path};
+
+use serde_json::Value;
+
+use crate::{
+	RadarRefreshReleaseDeltaReport, optional_value_string,
+	prelude::{Result, eyre},
+	required_value_string,
+};
 
 pub(super) fn filter_release_options(
 	stable_releases: &[Value],
@@ -31,11 +39,11 @@ pub(super) fn filter_release_options(
 	(stable, preview)
 }
 
-pub(super) fn compact_releases(releases: &[Value]) -> crate::prelude::Result<Vec<Value>> {
+pub(super) fn compact_releases(releases: &[Value]) -> Result<Vec<Value>> {
 	releases.iter().map(compact_release).collect()
 }
 
-pub(super) fn compact_release(release: &Value) -> crate::prelude::Result<Value> {
+pub(super) fn compact_release(release: &Value) -> Result<Value> {
 	let tag_name = required_release_tag(release)?;
 
 	Ok(serde_json::json!({
@@ -64,7 +72,7 @@ pub(super) fn release_sort_key(release: &Value) -> &str {
 	release.get("published_at").and_then(Value::as_str).unwrap_or_default()
 }
 
-pub(super) fn required_release_tag(release: &Value) -> crate::prelude::Result<&str> {
+pub(super) fn required_release_tag(release: &Value) -> Result<&str> {
 	release_tag(release).ok_or_else(|| eyre::eyre!("Release payload is missing tag_name"))
 }
 
@@ -91,6 +99,6 @@ pub(super) fn release_delta_report(
 			.unwrap_or_default()
 			.to_owned(),
 		comparisons: payload.get("comparisons").and_then(Value::as_array).map_or(0, Vec::len),
-		out: absolute_repo_path(root, out),
+		out: crate::absolute_repo_path(root, out),
 	}
 }
