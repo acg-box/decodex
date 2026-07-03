@@ -1,16 +1,15 @@
 use crate::{
 	prelude::Result,
+	recovery::{
+		closeout::{LegacyCloseoutValidation, MergedCloseoutValidation, events},
+		context::RecoveryContext,
+		pull_request_inspection,
+	},
 	tracker::{
 		self,
 		privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier,
 		records::{self, LinearExecutionEventRecord},
 	},
-};
-
-use crate::recovery::{
-	closeout::{LegacyCloseoutValidation, MergedCloseoutValidation, events},
-	context::RecoveryContext,
-	pull_request_inspection::landing_url,
 };
 
 pub(super) fn write_legacy_closeout_audit(
@@ -20,7 +19,7 @@ pub(super) fn write_legacy_closeout_audit(
 ) -> Result<bool> {
 	let audit_body = format!(
 		"Decodex legacy manual closeout audit: verified merged PR `{}` for `{}`. Runtime provenance was `{}`, so this records the manual fallback before local cleanup.",
-		landing_url(&validation.landing_state),
+		pull_request_inspection::landing_url(&validation.landing_state),
 		validation.issue.identifier,
 		validation.worktree.provenance().source()
 	);

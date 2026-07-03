@@ -1,12 +1,16 @@
-use super::{
-	AgentGitCredentialsUnavailable, ChildRunRef, FakeTracker, IssueDispatchMode, IssueRunPlan,
-	PrepareIssueRunContext, RUN_ACTIVITY_MARKER_FILE, RUN_OPERATION_RECONCILIATION,
-	RUN_OPERATION_REPO_GATE, RepoGateFailureKind, Report, RetainedReviewRepairPushFailed,
-	RunFailureWritebackDisposition, StateStore, TEST_SERVICE_ID, TempDir, TestEnvVarGuard,
-	WorktreeManager, WorktreeSpec, add_origin_remote, checkout_new_branch, commit_worktree_change,
-	fs, git_config_value, git_status_success, injected_git_config_keys, injected_git_config_values,
-	loop_guardrail_issue_run, orchestrator, process, sample_issue,
-	service_config_with_github_token_env_var, temp_project_layout, tracker,
+use crate::{
+	orchestrator::tests::{
+		self,
+		runtime_failure::{
+			self, AgentGitCredentialsUnavailable, ChildRunRef, FakeTracker, IssueDispatchMode,
+			IssueRunPlan, PrepareIssueRunContext, RUN_ACTIVITY_MARKER_FILE,
+			RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, RepoGateFailureKind, Report,
+			RetainedReviewRepairPushFailed, RunFailureWritebackDisposition, StateStore,
+			TEST_SERVICE_ID, TempDir, TestEnvVarGuard, WorktreeManager, WorktreeSpec, fs,
+			orchestrator, process, tracker,
+		},
+	},
+	test_support,
 };
 
 #[test]
@@ -53,13 +57,13 @@ fn operation_marker_write_failures_do_not_abort_completion_flow() {
 
 #[test]
 fn validate_review_handoff_runtime_requires_gh_and_github_token_authority() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 
 	{
 		let _env_lock = TestEnvVarGuard::lock();
 		let missing_env_var = format!("DECODEX_TEST_MISSING_GITHUB_TOKEN_ENV_{}", process::id());
 		let config_missing_github =
-			service_config_with_github_token_env_var(&config, &missing_env_var);
+			runtime_failure::service_config_with_github_token_env_var(&config, &missing_env_var);
 
 		assert!(orchestrator::validate_review_handoff_runtime(&config, true).is_ok());
 		assert!(orchestrator::validate_review_handoff_runtime(&config, false).is_ok());
@@ -74,7 +78,8 @@ fn validate_review_handoff_runtime_requires_gh_and_github_token_authority() {
 
 	let env_var = format!("DECODEX_TEST_BLANK_GITHUB_TOKEN_ENV_{}", process::id());
 	let _env_guard = TestEnvVarGuard::set(&env_var, "");
-	let config_blank_github = service_config_with_github_token_env_var(&config, &env_var);
+	let config_blank_github =
+		runtime_failure::service_config_with_github_token_env_var(&config, &env_var);
 	let error = orchestrator::validate_review_handoff_runtime(&config_blank_github, false)
 		.expect_err("blank github token authority should fail live preflight");
 
@@ -94,18 +99,18 @@ fn validate_review_handoff_runtime_requires_gh_and_github_token_authority() {
 
 #[test]
 fn retained_review_repair_completion_pushes_repaired_head_to_pr_branch() {
-	let (temp_dir, base_config, _workflow) = temp_project_layout();
+	let (temp_dir, base_config, _workflow) = tests::temp_project_layout();
 	let env_var = format!("DECODEX_TEST_REPAIR_PUSH_GITHUB_TOKEN_ENV_{}", process::id());
 	let _env_guard = TestEnvVarGuard::set(&env_var, "secret-token-value");
-	let config = service_config_with_github_token_env_var(&base_config, &env_var);
+	let config = runtime_failure::service_config_with_github_token_env_var(&base_config, &env_var);
 	let remote_root = temp_dir.path().join("origin.git");
-	let issue = sample_issue("In Review", &[]);
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 2);
+	let issue = tests::sample_issue("In Review", &[]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 2);
 
-	add_origin_remote(config.repo_root(), &remote_root);
-	checkout_new_branch(config.repo_root(), &issue_run.worktree.branch_name);
+	runtime_failure::add_origin_remote(config.repo_root(), &remote_root);
+	runtime_failure::checkout_new_branch(config.repo_root(), &issue_run.worktree.branch_name);
 
-	let local_head = commit_worktree_change(
+	let local_head = runtime_failure::commit_worktree_change(
 		config.repo_root(),
 		"repair.txt",
 		"repair\n",
@@ -119,7 +124,7 @@ fn retained_review_repair_completion_pushes_repaired_head_to_pr_branch() {
 	)
 	.expect("retained review-repair completion should push the repaired head");
 
-	let output = crate::test_support::hermetic_git_command()
+	let output = test_support::hermetic_git_command()
 		.arg("--git-dir")
 		.arg(&remote_root)
 		.args(["rev-parse", &format!("refs/heads/{}", issue_run.worktree.branch_name)])
@@ -137,11 +142,12 @@ fn retained_review_repair_completion_pushes_repaired_head_to_pr_branch() {
 #[test]
 fn retained_review_repair_push_failures_are_structured_terminal_attention() {
 	let _env_lock = TestEnvVarGuard::lock();
-	let (_temp_dir, base_config, _workflow) = temp_project_layout();
+	let (_temp_dir, base_config, _workflow) = tests::temp_project_layout();
 	let missing_env_var = format!("DECODEX_TEST_MISSING_REPAIR_PUSH_TOKEN_ENV_{}", process::id());
-	let config = service_config_with_github_token_env_var(&base_config, &missing_env_var);
-	let issue = sample_issue("In Review", &[]);
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 2);
+	let config =
+		runtime_failure::service_config_with_github_token_env_var(&base_config, &missing_env_var);
+	let issue = tests::sample_issue("In Review", &[]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 2);
 	let error = orchestrator::push_retained_review_repair_head(
 		&config,
 		&issue_run,
@@ -169,10 +175,10 @@ fn retained_review_repair_push_failures_are_structured_terminal_attention() {
 
 #[test]
 fn agent_git_credentials_use_runtime_env_without_persisting_the_token() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let env_var = format!("DECODEX_TEST_AGENT_GITHUB_TOKEN_ENV_{}", process::id());
 	let _env_guard = TestEnvVarGuard::set(&env_var, "secret-token-value");
-	let config = service_config_with_github_token_env_var(&config, &env_var);
+	let config = runtime_failure::service_config_with_github_token_env_var(&config, &env_var);
 	let credentials =
 		orchestrator::prepare_agent_git_credentials(&config, "run/with spaces", config.repo_root())
 			.expect("agent Git credentials should prepare");
@@ -185,20 +191,25 @@ fn agent_git_credentials_use_runtime_env_without_persisting_the_token() {
 		"agent Git credentials should not materialize askpass helper files"
 	);
 
-	let inherited_signing_key = git_config_value(config.repo_root(), "user.signingkey", None);
-	let agent_signing_key =
-		git_config_value(config.repo_root(), "user.signingkey", Some(&credentials));
+	let inherited_signing_key =
+		runtime_failure::git_config_value(config.repo_root(), "user.signingkey", None);
+	let agent_signing_key = runtime_failure::git_config_value(
+		config.repo_root(),
+		"user.signingkey",
+		Some(&credentials),
+	);
 
 	assert_eq!(
 		agent_signing_key, inherited_signing_key,
 		"agent git environment should preserve inherited signing keys when the repo has no local key"
 	);
 	assert_eq!(
-		git_config_value(config.repo_root(), "commit.gpgsign", Some(&credentials)).as_deref(),
+		runtime_failure::git_config_value(config.repo_root(), "commit.gpgsign", Some(&credentials))
+			.as_deref(),
 		Some("false")
 	);
 
-	let inherited_git_config_keys = injected_git_config_keys(&credentials);
+	let inherited_git_config_keys = runtime_failure::injected_git_config_keys(&credentials);
 
 	assert!(
 		!inherited_git_config_keys.iter().any(|key| key == "commit.gpgsign"),
@@ -213,7 +224,7 @@ fn agent_git_credentials_use_runtime_env_without_persisting_the_token() {
 		"agent git environment should not mask inherited signing keys"
 	);
 
-	let injected_git_config_values = injected_git_config_values(&credentials);
+	let injected_git_config_values = runtime_failure::injected_git_config_values(&credentials);
 
 	assert!(
 		injected_git_config_values
@@ -229,12 +240,15 @@ fn agent_git_credentials_use_runtime_env_without_persisting_the_token() {
 
 #[test]
 fn agent_git_credentials_pin_repo_local_signing_key_when_configured() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let env_var = format!("DECODEX_TEST_AGENT_SIGNING_GITHUB_TOKEN_ENV_{}", process::id());
 	let _env_guard = TestEnvVarGuard::set(&env_var, "secret-token-value");
-	let config = service_config_with_github_token_env_var(&config, &env_var);
+	let config = runtime_failure::service_config_with_github_token_env_var(&config, &env_var);
 
-	git_status_success(config.repo_root(), &["config", "user.signingkey", "route-y-signing-key"]);
+	runtime_failure::git_status_success(
+		config.repo_root(),
+		&["config", "user.signingkey", "route-y-signing-key"],
+	);
 
 	let credentials = orchestrator::prepare_agent_git_credentials(
 		&config,
@@ -242,7 +256,7 @@ fn agent_git_credentials_pin_repo_local_signing_key_when_configured() {
 		config.repo_root(),
 	)
 	.expect("agent Git credentials should prepare");
-	let mut signing_key_probe = crate::test_support::hermetic_git_command();
+	let mut signing_key_probe = test_support::hermetic_git_command();
 
 	signing_key_probe.arg("-C").arg(config.repo_root()).args([
 		"config",
@@ -260,9 +274,10 @@ fn agent_git_credentials_pin_repo_local_signing_key_when_configured() {
 #[test]
 fn missing_agent_git_credentials_stop_without_retry() {
 	let _env_lock = TestEnvVarGuard::lock();
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let missing_env_var = format!("DECODEX_TEST_MISSING_AGENT_GITHUB_TOKEN_ENV_{}", process::id());
-	let config = service_config_with_github_token_env_var(&config, &missing_env_var);
+	let config =
+		runtime_failure::service_config_with_github_token_env_var(&config, &missing_env_var);
 	let error = match orchestrator::prepare_agent_git_credentials(
 		&config,
 		"run-missing-token",
@@ -288,7 +303,7 @@ fn missing_agent_git_credentials_stop_without_retry() {
 
 #[test]
 fn live_run_without_candidate_does_not_require_github_token_authority() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::with_refresh_snapshots_and_project(vec![], vec![vec![]], true);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
@@ -300,8 +315,8 @@ fn live_run_without_candidate_does_not_require_github_token_authority() {
 #[test]
 fn prepare_issue_run_with_candidate_does_not_require_github_token_authority_before_agent_execution()
 {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let listed_issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let listed_issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::with_refresh_snapshots(
 		vec![listed_issue.clone()],
 		vec![vec![listed_issue.clone()]],
@@ -352,8 +367,8 @@ fn prepare_issue_run_with_candidate_does_not_require_github_token_authority_befo
 
 #[test]
 fn execute_issue_run_clears_lease_when_active_label_setup_fails() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let mut listed_issue = sample_issue("Todo", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let mut listed_issue = tests::sample_issue("Todo", &[]);
 	let mut refreshed_issue = listed_issue.clone();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let worktree_path = config.worktree_root().join(&listed_issue.identifier);
@@ -427,9 +442,9 @@ fn execute_issue_run_clears_lease_when_active_label_setup_fails() {
 
 #[test]
 fn reconciliation_clears_stale_leases_and_terminal_worktrees() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("Done", &[active_label.as_str()]);
+	let issue = tests::sample_issue("Done", &[active_label.as_str()]);
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
 	let tracker =
 		FakeTracker::new(vec![issue.clone()]).with_label_lookup_issues(&queue_label, vec![]);
@@ -478,9 +493,9 @@ fn reconciliation_clears_stale_leases_and_terminal_worktrees() {
 
 #[test]
 fn reconciliation_runs_without_project_validation() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("Done", &[active_label.as_str()]);
+	let issue = tests::sample_issue("Done", &[active_label.as_str()]);
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
 	let tracker = FakeTracker::with_refresh_snapshots_and_project(
 		vec![issue.clone()],
@@ -525,7 +540,7 @@ fn exited_child_cleanup_updates_status_and_retry_budget_by_interrupt_flag() {
 		[("clean exit", false, "running", 0), ("interrupted exit", true, "interrupted", 1)]
 	{
 		let state_store = StateStore::open_in_memory().expect("state store should open");
-		let issue = sample_issue("In Progress", &[]);
+		let issue = tests::sample_issue("In Progress", &[]);
 
 		state_store
 			.record_run_attempt("run-1", &issue.id, 1, "running")
@@ -568,7 +583,7 @@ fn exited_child_cleanup_handles_worktree_mapping_ownership() {
 	{
 		let temp_dir = TempDir::new().expect("tempdir should create");
 		let state_store = StateStore::open_in_memory().expect("state store should open");
-		let issue = sample_issue("Done", &[]);
+		let issue = tests::sample_issue("Done", &[]);
 		let removed_worktree_path = temp_dir.path().join("removed-lane");
 
 		state_store
@@ -615,7 +630,7 @@ fn exited_child_cleanup_handles_worktree_mapping_ownership() {
 	{
 		let temp_dir = TempDir::new().expect("tempdir should create");
 		let state_store = StateStore::open_in_memory().expect("state store should open");
-		let issue = sample_issue("In Review", &[]);
+		let issue = tests::sample_issue("In Review", &[]);
 		let existing_worktree_path = temp_dir.path().join("retained-lane");
 
 		fs::create_dir_all(&existing_worktree_path).expect("worktree path should exist");
@@ -656,7 +671,7 @@ fn exited_child_cleanup_handles_worktree_mapping_ownership() {
 #[test]
 fn exited_child_cleanup_requires_exact_run_id() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 
 	state_store
 		.record_run_attempt("other-run", &issue.id, 1, "running")
@@ -694,7 +709,7 @@ fn exited_child_cleanup_requires_exact_run_id() {
 fn exited_child_cleanup_keeps_other_run_lease_and_worktree_mapping() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let removed_worktree_path = temp_dir.path().join("removed-lane");
 
 	state_store

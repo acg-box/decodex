@@ -2,10 +2,15 @@ use std::time::Duration;
 
 use tempfile::TempDir;
 
-use super::{LiveResumeBoundaryGuard, LiveResumeDynamicToolHandler};
 use crate::{
 	agent::{
-		app_server::{AppServerTurnFailure, RequestWaitPhase, RunRecorder},
+		app_server::{
+			self, AppServerRunRequest, RequestWaitPhase,
+			tests::{
+				AppServerTurnFailure, LiveResumeBoundaryGuard, LiveResumeDynamicToolHandler,
+				RunRecorder,
+			},
+		},
 		json_rpc::{AppServerProcessEnv, JsonRpcNotification, JsonRpcRequest},
 		tracker_tool_bridge::DynamicToolContentItem,
 	},
@@ -42,7 +47,7 @@ fn turn_notification_ignores_agent_output_for_non_target_turn() {
 	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
 
 	assert!(
-		super::super::handle_turn_execution_notification(
+		super::handle_turn_execution_notification(
 			&old_completed,
 			"thread-1",
 			"turn-new",
@@ -53,7 +58,7 @@ fn turn_notification_ignores_agent_output_for_non_target_turn() {
 		.is_none()
 	);
 	assert!(
-		super::super::handle_turn_execution_notification(
+		super::handle_turn_execution_notification(
 			&old_delta,
 			"thread-1",
 			"turn-new",
@@ -65,7 +70,7 @@ fn turn_notification_ignores_agent_output_for_non_target_turn() {
 	);
 	assert_eq!(final_output, "CURRENT");
 
-	super::super::handle_turn_execution_notification(
+	super::handle_turn_execution_notification(
 		&target_completed,
 		"thread-1",
 		"turn-new",
@@ -79,8 +84,7 @@ fn turn_notification_ignores_agent_output_for_non_target_turn() {
 
 #[test]
 fn dynamic_tool_call_unavailable_outside_turn_execution_is_protocol_diagnostic() {
-	let dispatch =
-		super::super::dynamic_tool_call_unavailable_for_phase(RequestWaitPhase::TurnStart);
+	let dispatch = app_server::dynamic_tool_call_unavailable_for_phase(RequestWaitPhase::TurnStart);
 
 	assert!(!dispatch.response.success);
 	assert!(matches!(
@@ -125,7 +129,7 @@ fn interactive_request_updates_marker_turn_id_to_current_turn() {
 		}),
 	};
 
-	super::super::record_interactive_request_state(&mut recorder, &request)
+	super::record_interactive_request_state(&mut recorder, &request)
 		.expect("interactive request state should record");
 
 	let marker = state::read_run_activity_marker_snapshot(temp_dir.path())
@@ -460,7 +464,7 @@ fn turn_execution_records_dynamic_tool_call_before_response() {
 	};
 	let mut recorder = RunRecorder::new(&state_store, "run-1", 1, Some(&marker_path));
 
-	super::super::record_server_request(&mut recorder, &request)
+	super::record_server_request(&mut recorder, &request)
 		.expect("tool call request should record before handler execution");
 
 	let marker = state::read_run_activity_marker_snapshot(temp_dir.path())
@@ -488,8 +492,8 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 	let developer_instructions = String::from(
 		"You are a live resume integration test. On the first turn, call the dynamic tool `echo_resume` exactly once with the JSON argument `{\"text\":\"FIRST_OK\"}` and then reply with the exact text CONTINUE. If the thread is later resumed and the user asks for `SECOND_OK`, call `echo_resume` exactly once with `{\"text\":\"SECOND_OK\"}` and then reply with the exact text DONE. Do not use shell. Do not inspect files.",
 	);
-	let first_result = super::super::execute_app_server_run(
-		&super::super::AppServerRunRequest {
+	let first_result = super::execute_app_server_run(
+		&AppServerRunRequest {
 			project_id: String::from("test-project"),
 			run_id: String::from("live-resume-run"),
 			issue_id: String::from("live-resume-issue"),
@@ -536,8 +540,8 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 
 	let resumed_state_store =
 		StateStore::open_in_memory().expect("resumed state store should open");
-	let second_result = super::super::execute_app_server_run(
-		&super::super::AppServerRunRequest {
+	let second_result = super::execute_app_server_run(
+		&AppServerRunRequest {
 			project_id: String::from("test-project"),
 			run_id: String::from("live-resume-run"),
 			issue_id: String::from("live-resume-issue"),

@@ -2,6 +2,98 @@ use serde_json::{self, Value};
 
 use crate::mcp::tool_schemas;
 
+pub(in crate::mcp) fn autonomy_compile_proposal_tool_input_schema() -> Value {
+	let mut proposal_schema = autonomy_compile_proposal_payload_schema();
+
+	if let Some(object) = proposal_schema.as_object_mut() {
+		object.insert(
+			"description".to_owned(),
+			Value::String("Autonomy proposal compile input.".to_owned()),
+		);
+	}
+
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run compiles non-executable proposal evidence; apply persists it."
+			},
+			"projectId": {
+				"type": "string",
+				"description": "Optional Decodex service id when the MCP context is not project-scoped."
+			},
+			"proposal": proposal_schema,
+			"signalIds": {
+				"type": "array",
+				"items": { "type": "string" },
+				"description": "Persisted autonomy signal ids to bind into the proposal."
+			},
+			"authority": tool_schemas::planning_authority_input_schema()
+		},
+		"required": ["proposal"]
+	})
+}
+
+pub(in crate::mcp) fn autonomy_challenge_proposal_tool_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run previews the challenge effect; apply records challenge evidence."
+			},
+			"projectId": {
+				"type": "string",
+				"description": "Optional Decodex service id when the MCP context is not project-scoped."
+			},
+			"proposalId": {
+				"type": "string",
+				"description": "Stable autonomy proposal id."
+			},
+			"challenge": {
+				"type": "object",
+				"additionalProperties": true,
+				"description": "Challenge evidence. It is not acceptance authority."
+			},
+			"authority": tool_schemas::planning_authority_input_schema()
+		},
+		"required": ["proposalId", "challenge"]
+	})
+}
+
+pub(in crate::mcp) fn autonomy_request_promotion_tool_input_schema() -> Value {
+	serde_json::json!({
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"mode": {
+				"type": "string",
+				"enum": ["dry_run", "apply"],
+				"description": "dry_run explains required authority; apply creates a latent Decision Contract candidate only with explicit proposal acceptance authority."
+			},
+			"projectId": {
+				"type": "string",
+				"description": "Optional Decodex service id when the MCP context is not project-scoped."
+			},
+			"proposalId": {
+				"type": "string",
+				"description": "Stable autonomy proposal id."
+			},
+			"authority": {
+				"type": "object",
+				"additionalProperties": true,
+				"description": "Explicit proposal acceptance authority, including acceptedBy, acceptedByKind, acceptanceSource, reason, proposalActor, and proposalActorKind. acceptedProjectPolicy payloads are refused because trusted policy authority must be resolved from Decodex state."
+			}
+		},
+		"required": ["proposalId"]
+	})
+}
+
 fn autonomy_compile_proposal_payload_schema() -> Value {
 	serde_json::json!({
 		"type": "object",
@@ -137,96 +229,5 @@ fn autonomy_issue_candidate_schema() -> Value {
 			"validation",
 			"queueIntent"
 		]
-	})
-}
-
-pub(in crate::mcp) fn autonomy_compile_proposal_tool_input_schema() -> Value {
-	let mut proposal_schema = autonomy_compile_proposal_payload_schema();
-	if let Some(object) = proposal_schema.as_object_mut() {
-		object.insert(
-			"description".to_owned(),
-			Value::String("Autonomy proposal compile input.".to_owned()),
-		);
-	}
-
-	serde_json::json!({
-		"type": "object",
-		"additionalProperties": false,
-		"properties": {
-			"mode": {
-				"type": "string",
-				"enum": ["dry_run", "apply"],
-				"description": "dry_run compiles non-executable proposal evidence; apply persists it."
-			},
-			"projectId": {
-				"type": "string",
-				"description": "Optional Decodex service id when the MCP context is not project-scoped."
-			},
-			"proposal": proposal_schema,
-			"signalIds": {
-				"type": "array",
-				"items": { "type": "string" },
-				"description": "Persisted autonomy signal ids to bind into the proposal."
-			},
-			"authority": tool_schemas::planning_authority_input_schema()
-		},
-		"required": ["proposal"]
-	})
-}
-
-pub(in crate::mcp) fn autonomy_challenge_proposal_tool_input_schema() -> Value {
-	serde_json::json!({
-		"type": "object",
-		"additionalProperties": false,
-		"properties": {
-			"mode": {
-				"type": "string",
-				"enum": ["dry_run", "apply"],
-				"description": "dry_run previews the challenge effect; apply records challenge evidence."
-			},
-			"projectId": {
-				"type": "string",
-				"description": "Optional Decodex service id when the MCP context is not project-scoped."
-			},
-			"proposalId": {
-				"type": "string",
-				"description": "Stable autonomy proposal id."
-			},
-			"challenge": {
-				"type": "object",
-				"additionalProperties": true,
-				"description": "Challenge evidence. It is not acceptance authority."
-			},
-			"authority": tool_schemas::planning_authority_input_schema()
-		},
-		"required": ["proposalId", "challenge"]
-	})
-}
-
-pub(in crate::mcp) fn autonomy_request_promotion_tool_input_schema() -> Value {
-	serde_json::json!({
-		"type": "object",
-		"additionalProperties": false,
-		"properties": {
-			"mode": {
-				"type": "string",
-				"enum": ["dry_run", "apply"],
-				"description": "dry_run explains required authority; apply creates a latent Decision Contract candidate only with explicit proposal acceptance authority."
-			},
-			"projectId": {
-				"type": "string",
-				"description": "Optional Decodex service id when the MCP context is not project-scoped."
-			},
-			"proposalId": {
-				"type": "string",
-				"description": "Stable autonomy proposal id."
-			},
-			"authority": {
-				"type": "object",
-				"additionalProperties": true,
-				"description": "Explicit proposal acceptance authority, including acceptedBy, acceptedByKind, acceptanceSource, reason, proposalActor, and proposalActorKind. acceptedProjectPolicy payloads are refused because trusted policy authority must be resolved from Decodex state."
-			}
-		},
-		"required": ["proposalId"]
 	})
 }

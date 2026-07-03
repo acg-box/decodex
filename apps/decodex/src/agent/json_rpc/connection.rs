@@ -1,6 +1,6 @@
 use std::{
 	collections::VecDeque,
-	io::{self, BufRead as _, BufReader, Write as _},
+	io::{BufRead as _, BufReader, Error, Write as _},
 	process::{Child, ChildStdin, Command},
 	sync::{
 		Arc, Mutex,
@@ -14,13 +14,13 @@ use color_eyre::{Report, eyre};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{self, Value};
 
-use super::{
-	environment::{
-		APP_SERVER_STDERR_TAIL_LINES, AppServerProcessEnv, app_server_command_program,
-		configure_app_server_command,
+use crate::{
+	agent::json_rpc::{
+		environment::{self, APP_SERVER_STDERR_TAIL_LINES, AppServerProcessEnv},
+		errors::{AppServerOutputTimeout, AppServerTransportFailure},
+		wire::{JsonRpcMessage, JsonRpcRequest, WireMessage},
 	},
-	errors::{AppServerOutputTimeout, AppServerTransportFailure},
-	wire::{JsonRpcMessage, JsonRpcRequest, WireMessage},
+	prelude::Result,
 };
 
 pub(crate) struct JsonRpcConnection {
@@ -35,9 +35,10 @@ impl JsonRpcConnection {
 	pub(crate) fn spawn_app_server(
 		listen: &str,
 		process_env: &AppServerProcessEnv,
-	) -> crate::prelude::Result<Self> {
-		let mut command = Command::new(app_server_command_program());
-		let _codex_home_env = configure_app_server_command(&mut command, listen, process_env)?;
+	) -> Result<Self> {
+		let mut command = Command::new(environment::app_server_command_program());
+		let _codex_home_env =
+			environment::configure_app_server_command(&mut command, listen, process_env)?;
 		let mut child = command.spawn()?;
 		let stdin =
 			child.stdin.take().ok_or_else(|| eyre::eyre!("Failed to capture app-server stdin."))?;
@@ -123,12 +124,7 @@ impl JsonRpcConnection {
 	}
 
 	#[allow(dead_code)]
-	pub(crate) fn request<P, T>(
-		&mut self,
-		method: &str,
-		params: &P,
-		timeout: Duration,
-	) -> crate::prelude::Result<T>
+	pub(crate) fn request<P, T>(&mut self, method: &str, params: &P, timeout: Duration) -> Result<T>
 	where
 		P: Serialize,
 		T: DeserializeOwned,
@@ -147,11 +143,11 @@ impl JsonRpcConnection {
 		params: &P,
 		timeout: Duration,
 		mut handle_request: F,
-	) -> crate::prelude::Result<T>
+	) -> Result<T>
 	where
 		P: Serialize,
 		T: DeserializeOwned,
-		F: FnMut(&mut Self, &WireMessage, &JsonRpcRequest) -> crate::prelude::Result<()>,
+		F: FnMut(&mut Self, &WireMessage, &JsonRpcRequest) -> Result<()>,
 	{
 		let request_id = self.next_request_id;
 		let expected_id = Value::from(request_id);
@@ -207,11 +203,7 @@ impl JsonRpcConnection {
 		}
 	}
 
-	pub(crate) fn notify<P>(
-		&mut self,
-		method: &str,
-		params: Option<&P>,
-	) -> crate::prelude::Result<()>
+	pub(crate) fn notify<P>(&mut self, method: &str, params: Option<&P>) -> Result<()>
 	where
 		P: Serialize,
 	{
@@ -226,10 +218,7 @@ impl JsonRpcConnection {
 		self.send_value(&value)
 	}
 
-	pub(crate) fn recv(
-		&mut self,
-		timeout: Option<Duration>,
-	) -> crate::prelude::Result<WireMessage> {
+	pub(crate) fn recv(&mut self, timeout: Option<Duration>) -> Result<WireMessage> {
 		if let Some(message) = self.pending_messages.pop_front() {
 			return Ok(message);
 		}
@@ -237,7 +226,7 @@ impl JsonRpcConnection {
 		self.read_message(timeout)
 	}
 
-	pub(crate) fn respond<R>(&mut self, id: &Value, result: &R) -> crate::prelude::Result<()>
+	pub(crate) fn respond<R>(&mut self, id: &Value, result: &R) -> Result<()>
 	where
 		R: Serialize,
 	{
@@ -247,12 +236,7 @@ impl JsonRpcConnection {
 		}))
 	}
 
-	pub(crate) fn respond_error(
-		&mut self,
-		id: &Value,
-		code: i64,
-		message: &str,
-	) -> crate::prelude::Result<()> {
+	pub(crate) fn respond_error(&mut self, id: &Value, code: i64, message: &str) -> Result<()> {
 		self.send_value(&serde_json::json!({
 			"id": id,
 			"error": {
@@ -266,7 +250,7 @@ impl JsonRpcConnection {
 		self.pending_messages.drain(..).collect()
 	}
 
-	fn send_value(&mut self, value: &Value) -> crate::prelude::Result<()> {
+	fn send_value(&mut self, value: &Value) -> Result<()> {
 		let payload = serde_json::to_string(value)?;
 
 		if let Err(error) = writeln!(self.stdin, "{payload}") {
@@ -279,7 +263,7 @@ impl JsonRpcConnection {
 		Ok(())
 	}
 
-	fn read_message(&mut self, timeout: Option<Duration>) -> crate::prelude::Result<WireMessage> {
+	fn read_message(&mut self, timeout: Option<Duration>) -> Result<WireMessage> {
 		let raw = match timeout {
 			Some(timeout) => match self.stdout_rx.recv_timeout(timeout) {
 				Ok(raw) => raw,
@@ -304,7 +288,7 @@ impl JsonRpcConnection {
 		Report::new(AppServerTransportFailure::new(details))
 	}
 
-	fn app_server_stdin_error(&mut self, operation: &str, error: io::Error) -> Report {
+	fn app_server_stdin_error(&mut self, operation: &str, error: Error) -> Report {
 		let details = self.app_server_transport_error_details(format!(
 			"App-server stdin {operation} failed: {error}"
 		));

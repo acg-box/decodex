@@ -4,260 +4,255 @@ use super::args::ScopeArgs;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCheckpointArgs {
+pub(crate) struct ReviewCheckpointArgs {
 	#[serde(flatten)]
-	pub(in crate::agent::tracker_tool_bridge) scope: ScopeArgs,
-	pub(in crate::agent::tracker_tool_bridge) reviewer: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) status: String,
-	pub(in crate::agent::tracker_tool_bridge) head_sha: String,
-	pub(in crate::agent::tracker_tool_bridge) review_contract: Option<ReviewCheckpointContractArgs>,
-	pub(in crate::agent::tracker_tool_bridge) review_cost_control: Option<ReviewCostControlArgs>,
-	pub(in crate::agent::tracker_tool_bridge) checks: Option<ReviewCheckpointChecksArgs>,
+	pub(crate) scope: ScopeArgs,
+	pub(crate) reviewer: Option<String>,
+	pub(crate) status: String,
+	pub(crate) head_sha: String,
+	pub(crate) review_contract: Option<ReviewCheckpointContractArgs>,
+	pub(crate) review_cost_control: Option<ReviewCostControlArgs>,
+	pub(crate) checks: Option<ReviewCheckpointChecksArgs>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
+	pub(crate) evidence: Vec<String>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) accepted_findings: Vec<ReviewCheckpointFindingArgs>,
+	pub(crate) accepted_findings: Vec<ReviewCheckpointFindingArgs>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) rejected_findings:
-		Vec<ReviewCheckpointRejectedFindingArgs>,
+	pub(crate) rejected_findings: Vec<ReviewCheckpointRejectedFindingArgs>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) finding_routes: Vec<ReviewCheckpointFindingRouteArgs>,
+	pub(crate) finding_routes: Vec<ReviewCheckpointFindingRouteArgs>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCostControlArgs {
-	pub(in crate::agent::tracker_tool_bridge) review_class: String,
-	pub(in crate::agent::tracker_tool_bridge) risk_class: String,
-	pub(in crate::agent::tracker_tool_bridge) changed_surface_count: u64,
+pub(crate) struct ReviewCostControlArgs {
+	pub(crate) review_class: String,
+	pub(crate) risk_class: String,
+	pub(crate) changed_surface_count: u64,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) changed_surface_summary: Vec<String>,
+	pub(crate) changed_surface_summary: Vec<String>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) high_risk_surfaces: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) current_head_evidence: bool,
-	pub(in crate::agent::tracker_tool_bridge) validation_backed: bool,
+	pub(crate) high_risk_surfaces: Vec<String>,
+	pub(crate) current_head_evidence: bool,
+	pub(crate) validation_backed: bool,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) validation_current: bool,
+	pub(crate) validation_current: bool,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) evidence_sufficient: bool,
-	pub(in crate::agent::tracker_tool_bridge) reviewer_judgment: String,
-	pub(in crate::agent::tracker_tool_bridge) fallback_reason: Option<String>,
+	pub(crate) evidence_sufficient: bool,
+	pub(crate) reviewer_judgment: String,
+	pub(crate) fallback_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCheckpointContractArgs {
-	pub(in crate::agent::tracker_tool_bridge) workflow_policy_source: String,
-	pub(in crate::agent::tracker_tool_bridge) review_type: String,
-	pub(in crate::agent::tracker_tool_bridge) risk_tier: String,
-	pub(in crate::agent::tracker_tool_bridge) objective: String,
+pub(crate) struct ReviewCheckpointContractArgs {
+	pub(crate) workflow_policy_source: String,
+	pub(crate) review_type: String,
+	pub(crate) risk_tier: String,
+	pub(crate) objective: String,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) scope: Vec<String>,
+	pub(crate) scope: Vec<String>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) non_goals: Vec<String>,
+	pub(crate) non_goals: Vec<String>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) required_checks: Vec<String>,
+	pub(crate) required_checks: Vec<String>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) allowed_expansion_triggers: Vec<String>,
+	pub(crate) allowed_expansion_triggers: Vec<String>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) validation_evidence: Vec<String>,
+	pub(crate) validation_evidence: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCheckpointChecksArgs {
-	pub(in crate::agent::tracker_tool_bridge) intended_behavior: String,
-	pub(in crate::agent::tracker_tool_bridge) regression_risk: String,
-	pub(in crate::agent::tracker_tool_bridge) missing_tests: String,
-	pub(in crate::agent::tracker_tool_bridge) docs_config_drift: String,
-	pub(in crate::agent::tracker_tool_bridge) migration_fallout: String,
-	pub(in crate::agent::tracker_tool_bridge) operator_facing_fallout: String,
-	pub(in crate::agent::tracker_tool_bridge) loop_decision_contract: String,
+pub(crate) struct ReviewCheckpointChecksArgs {
+	pub(crate) intended_behavior: String,
+	pub(crate) regression_risk: String,
+	pub(crate) missing_tests: String,
+	pub(crate) docs_config_drift: String,
+	pub(crate) migration_fallout: String,
+	pub(crate) operator_facing_fallout: String,
+	pub(crate) loop_decision_contract: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCheckpointFindingArgs {
-	pub(in crate::agent::tracker_tool_bridge) severity: String,
-	pub(in crate::agent::tracker_tool_bridge) summary: String,
+pub(crate) struct ReviewCheckpointFindingArgs {
+	pub(crate) severity: String,
+	pub(crate) summary: String,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) kind: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) file: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) line: Option<u64>,
-	pub(in crate::agent::tracker_tool_bridge) line_range: Option<ReviewCheckpointLineRangeArgs>,
-	pub(in crate::agent::tracker_tool_bridge) guidance: String,
+	pub(crate) evidence: Vec<String>,
+	pub(crate) kind: Option<String>,
+	pub(crate) file: Option<String>,
+	pub(crate) line: Option<u64>,
+	pub(crate) line_range: Option<ReviewCheckpointLineRangeArgs>,
+	pub(crate) guidance: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCheckpointRejectedFindingArgs {
-	pub(in crate::agent::tracker_tool_bridge) severity: String,
-	pub(in crate::agent::tracker_tool_bridge) summary: String,
-	pub(in crate::agent::tracker_tool_bridge) rejection_reason: String,
+pub(crate) struct ReviewCheckpointRejectedFindingArgs {
+	pub(crate) severity: String,
+	pub(crate) summary: String,
+	pub(crate) rejection_reason: String,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) kind: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) file: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) line: Option<u64>,
-	pub(in crate::agent::tracker_tool_bridge) line_range: Option<ReviewCheckpointLineRangeArgs>,
+	pub(crate) evidence: Vec<String>,
+	pub(crate) kind: Option<String>,
+	pub(crate) file: Option<String>,
+	pub(crate) line: Option<u64>,
+	pub(crate) line_range: Option<ReviewCheckpointLineRangeArgs>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCheckpointFindingRouteArgs {
-	pub(in crate::agent::tracker_tool_bridge) route: String,
-	pub(in crate::agent::tracker_tool_bridge) severity: String,
-	pub(in crate::agent::tracker_tool_bridge) summary: String,
+pub(crate) struct ReviewCheckpointFindingRouteArgs {
+	pub(crate) route: String,
+	pub(crate) severity: String,
+	pub(crate) summary: String,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) resolver: String,
-	pub(in crate::agent::tracker_tool_bridge) next_action: String,
-	pub(in crate::agent::tracker_tool_bridge) risk_tier: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) finding_source: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) finding_index: Option<u64>,
+	pub(crate) evidence: Vec<String>,
+	pub(crate) resolver: String,
+	pub(crate) next_action: String,
+	pub(crate) risk_tier: Option<String>,
+	pub(crate) finding_source: Option<String>,
+	pub(crate) finding_index: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCheckpointLineRangeArgs {
-	pub(in crate::agent::tracker_tool_bridge) start: u64,
-	pub(in crate::agent::tracker_tool_bridge) end: u64,
+pub(crate) struct ReviewCheckpointLineRangeArgs {
+	pub(crate) start: u64,
+	pub(crate) end: u64,
 }
 
 #[derive(Debug, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct NormalizedReviewCheckpointPayload {
-	pub(in crate::agent::tracker_tool_bridge) reviewer: String,
-	pub(in crate::agent::tracker_tool_bridge) review_contract: NormalizedReviewCheckpointContract,
-	pub(in crate::agent::tracker_tool_bridge) review_contract_hash: String,
-	pub(in crate::agent::tracker_tool_bridge) review_cost_control: NormalizedReviewCostControl,
-	pub(in crate::agent::tracker_tool_bridge) reviewed_head: ReviewCheckpointHeadBinding,
-	pub(in crate::agent::tracker_tool_bridge) checks: ReviewCheckpointChecksArgs,
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) accepted_findings:
-		Vec<NormalizedReviewCheckpointFinding>,
-	pub(in crate::agent::tracker_tool_bridge) rejected_findings:
-		Vec<NormalizedRejectedReviewCheckpointFinding>,
-	pub(in crate::agent::tracker_tool_bridge) finding_routes:
-		Vec<NormalizedReviewCheckpointFindingRoute>,
-	pub(in crate::agent::tracker_tool_bridge) finding_route_summary:
-		ReviewCheckpointFindingRouteSummary,
-	pub(in crate::agent::tracker_tool_bridge) finding_policy: ReviewFindingPolicyState,
+pub(crate) struct NormalizedReviewCheckpointPayload {
+	pub(crate) reviewer: String,
+	pub(crate) review_contract: NormalizedReviewCheckpointContract,
+	pub(crate) review_contract_hash: String,
+	pub(crate) review_cost_control: NormalizedReviewCostControl,
+	pub(crate) reviewed_head: ReviewCheckpointHeadBinding,
+	pub(crate) checks: ReviewCheckpointChecksArgs,
+	pub(crate) evidence: Vec<String>,
+	pub(crate) accepted_findings: Vec<NormalizedReviewCheckpointFinding>,
+	pub(crate) rejected_findings: Vec<NormalizedRejectedReviewCheckpointFinding>,
+	pub(crate) finding_routes: Vec<NormalizedReviewCheckpointFindingRoute>,
+	pub(crate) finding_route_summary: ReviewCheckpointFindingRouteSummary,
+	pub(crate) finding_policy: ReviewFindingPolicyState,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct NormalizedReviewCheckpointContract {
-	pub(in crate::agent::tracker_tool_bridge) workflow_policy_source: String,
-	pub(in crate::agent::tracker_tool_bridge) review_type: String,
-	pub(in crate::agent::tracker_tool_bridge) risk_tier: String,
-	pub(in crate::agent::tracker_tool_bridge) objective: String,
-	pub(in crate::agent::tracker_tool_bridge) scope: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) non_goals: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) required_checks: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) allowed_expansion_triggers: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) validation_evidence: Vec<String>,
+pub(crate) struct NormalizedReviewCheckpointContract {
+	pub(crate) workflow_policy_source: String,
+	pub(crate) review_type: String,
+	pub(crate) risk_tier: String,
+	pub(crate) objective: String,
+	pub(crate) scope: Vec<String>,
+	pub(crate) non_goals: Vec<String>,
+	pub(crate) required_checks: Vec<String>,
+	pub(crate) allowed_expansion_triggers: Vec<String>,
+	pub(crate) validation_evidence: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct NormalizedReviewCostControl {
-	pub(in crate::agent::tracker_tool_bridge) review_class: String,
-	pub(in crate::agent::tracker_tool_bridge) risk_class: String,
-	pub(in crate::agent::tracker_tool_bridge) compact_eligible: bool,
-	pub(in crate::agent::tracker_tool_bridge) changed_surface_count: u64,
-	pub(in crate::agent::tracker_tool_bridge) changed_surface_summary: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) high_risk_surfaces: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) current_head_evidence: bool,
-	pub(in crate::agent::tracker_tool_bridge) validation_backed: bool,
-	pub(in crate::agent::tracker_tool_bridge) validation_current: bool,
-	pub(in crate::agent::tracker_tool_bridge) evidence_sufficient: bool,
-	pub(in crate::agent::tracker_tool_bridge) reviewer_judgment: String,
-	pub(in crate::agent::tracker_tool_bridge) fallback_reason: Option<String>,
+pub(crate) struct NormalizedReviewCostControl {
+	pub(crate) review_class: String,
+	pub(crate) risk_class: String,
+	pub(crate) compact_eligible: bool,
+	pub(crate) changed_surface_count: u64,
+	pub(crate) changed_surface_summary: Vec<String>,
+	pub(crate) high_risk_surfaces: Vec<String>,
+	pub(crate) current_head_evidence: bool,
+	pub(crate) validation_backed: bool,
+	pub(crate) validation_current: bool,
+	pub(crate) evidence_sufficient: bool,
+	pub(crate) reviewer_judgment: String,
+	pub(crate) fallback_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCheckpointHeadBinding {
-	pub(in crate::agent::tracker_tool_bridge) head_sha: String,
-	pub(in crate::agent::tracker_tool_bridge) head_tree_oid: String,
-	pub(in crate::agent::tracker_tool_bridge) review_worktree_clean: bool,
+pub(crate) struct ReviewCheckpointHeadBinding {
+	pub(crate) head_sha: String,
+	pub(crate) head_tree_oid: String,
+	pub(crate) review_worktree_clean: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct NormalizedReviewCheckpointFinding {
-	pub(in crate::agent::tracker_tool_bridge) severity: String,
-	pub(in crate::agent::tracker_tool_bridge) summary: String,
+pub(crate) struct NormalizedReviewCheckpointFinding {
+	pub(crate) severity: String,
+	pub(crate) summary: String,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) kind: String,
-	pub(in crate::agent::tracker_tool_bridge) file: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) line: Option<u64>,
-	pub(in crate::agent::tracker_tool_bridge) line_range: Option<ReviewCheckpointLineRangeArgs>,
-	pub(in crate::agent::tracker_tool_bridge) guidance: String,
-	pub(in crate::agent::tracker_tool_bridge) fingerprint: String,
+	pub(crate) evidence: Vec<String>,
+	pub(crate) kind: String,
+	pub(crate) file: Option<String>,
+	pub(crate) line: Option<u64>,
+	pub(crate) line_range: Option<ReviewCheckpointLineRangeArgs>,
+	pub(crate) guidance: String,
+	pub(crate) fingerprint: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct NormalizedRejectedReviewCheckpointFinding {
-	pub(in crate::agent::tracker_tool_bridge) severity: String,
-	pub(in crate::agent::tracker_tool_bridge) summary: String,
-	pub(in crate::agent::tracker_tool_bridge) rejection_reason: String,
+pub(crate) struct NormalizedRejectedReviewCheckpointFinding {
+	pub(crate) severity: String,
+	pub(crate) summary: String,
+	pub(crate) rejection_reason: String,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) kind: String,
-	pub(in crate::agent::tracker_tool_bridge) file: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) line: Option<u64>,
-	pub(in crate::agent::tracker_tool_bridge) line_range: Option<ReviewCheckpointLineRangeArgs>,
+	pub(crate) evidence: Vec<String>,
+	pub(crate) kind: String,
+	pub(crate) file: Option<String>,
+	pub(crate) line: Option<u64>,
+	pub(crate) line_range: Option<ReviewCheckpointLineRangeArgs>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct NormalizedReviewCheckpointFindingRoute {
-	pub(in crate::agent::tracker_tool_bridge) route: String,
-	pub(in crate::agent::tracker_tool_bridge) severity: String,
-	pub(in crate::agent::tracker_tool_bridge) risk_tier: String,
-	pub(in crate::agent::tracker_tool_bridge) summary: String,
+pub(crate) struct NormalizedReviewCheckpointFindingRoute {
+	pub(crate) route: String,
+	pub(crate) severity: String,
+	pub(crate) risk_tier: String,
+	pub(crate) summary: String,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) resolver: String,
-	pub(in crate::agent::tracker_tool_bridge) next_action: String,
-	pub(in crate::agent::tracker_tool_bridge) finding_source: String,
-	pub(in crate::agent::tracker_tool_bridge) finding_index: Option<u64>,
-	pub(in crate::agent::tracker_tool_bridge) finding_fingerprint: Option<String>,
+	pub(crate) evidence: Vec<String>,
+	pub(crate) resolver: String,
+	pub(crate) next_action: String,
+	pub(crate) finding_source: String,
+	pub(crate) finding_index: Option<u64>,
+	pub(crate) finding_fingerprint: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCheckpointFindingRouteSummary {
-	pub(in crate::agent::tracker_tool_bridge) route_counts: Vec<ReviewCheckpointFindingRouteCount>,
-	pub(in crate::agent::tracker_tool_bridge) next_action: Option<String>,
+pub(crate) struct ReviewCheckpointFindingRouteSummary {
+	pub(crate) route_counts: Vec<ReviewCheckpointFindingRouteCount>,
+	pub(crate) next_action: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewCheckpointFindingRouteCount {
-	pub(in crate::agent::tracker_tool_bridge) route: String,
-	pub(in crate::agent::tracker_tool_bridge) count: usize,
+pub(crate) struct ReviewCheckpointFindingRouteCount {
+	pub(crate) route: String,
+	pub(crate) count: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewFindingPolicyState {
-	pub(in crate::agent::tracker_tool_bridge) schema: String,
-	pub(in crate::agent::tracker_tool_bridge) phase: String,
-	pub(in crate::agent::tracker_tool_bridge) status: String,
-	pub(in crate::agent::tracker_tool_bridge) head_sha: String,
-	pub(in crate::agent::tracker_tool_bridge) nonclean_rounds: i64,
-	pub(in crate::agent::tracker_tool_bridge) active_fingerprints: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) stop_fingerprint: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) findings: Vec<ReviewFindingPolicyRecord>,
+pub(crate) struct ReviewFindingPolicyState {
+	pub(crate) schema: String,
+	pub(crate) phase: String,
+	pub(crate) status: String,
+	pub(crate) head_sha: String,
+	pub(crate) nonclean_rounds: i64,
+	pub(crate) active_fingerprints: Vec<String>,
+	pub(crate) stop_fingerprint: Option<String>,
+	pub(crate) findings: Vec<ReviewFindingPolicyRecord>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewFindingPolicyRecord {
-	pub(in crate::agent::tracker_tool_bridge) fingerprint: String,
-	pub(in crate::agent::tracker_tool_bridge) kind: String,
-	pub(in crate::agent::tracker_tool_bridge) title: String,
-	pub(in crate::agent::tracker_tool_bridge) body: String,
-	pub(in crate::agent::tracker_tool_bridge) file: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) line_range: Option<ReviewCheckpointLineRangeArgs>,
-	pub(in crate::agent::tracker_tool_bridge) first_seen_head: String,
-	pub(in crate::agent::tracker_tool_bridge) last_seen_head: String,
-	pub(in crate::agent::tracker_tool_bridge) status: String,
-	pub(in crate::agent::tracker_tool_bridge) repeat_count: i64,
-	pub(in crate::agent::tracker_tool_bridge) repair_evidence: Vec<String>,
+pub(crate) struct ReviewFindingPolicyRecord {
+	pub(crate) fingerprint: String,
+	pub(crate) kind: String,
+	pub(crate) title: String,
+	pub(crate) body: String,
+	pub(crate) file: Option<String>,
+	pub(crate) line_range: Option<ReviewCheckpointLineRangeArgs>,
+	pub(crate) first_seen_head: String,
+	pub(crate) last_seen_head: String,
+	pub(crate) status: String,
+	pub(crate) repeat_count: i64,
+	pub(crate) repair_evidence: Vec<String>,
 }

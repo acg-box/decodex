@@ -4,33 +4,39 @@ mod completion;
 mod context;
 mod credentials;
 mod summary;
-
-use std::path::Path;
-
 #[cfg(test)]
 pub(crate) use self::completion::{push_retained_review_repair_head, run_completion_repo_gate};
 pub(crate) use self::summary::{planned_issue_state_for_dispatch, run_summary_from_issue_run};
+pub(crate) use crate::agent::{
+	ReviewHandoffContext, ReviewHandoffWritebackFailed, RunCompletionDisposition,
+};
 pub(crate) use context::write_run_operation_marker_best_effort;
-#[cfg(test)]
-pub(crate) use credentials::AgentGitCredentialEnvironment;
+#[cfg(test)] pub(crate) use credentials::AgentGitCredentialEnvironment;
 pub(crate) use credentials::prepare_agent_git_credentials;
+
+use self::app_server::{CompletedAppServerRun, IssueAppServerRun, IssueAppServerRunOutcome};
 use crate::{
 	agent::{CodexAccountPool, CodexAccountProvider},
 	orchestrator::{
-		CONTINUATION_PENDING_RUN_STATUS, DecodexToolBridge, GhPullRequestReviewStateInspector,
-		IssueRunPlan, IssueTracker, Result, RunSummary, ServiceConfig, StateStore,
-		TrackerToolBridge, WorkflowDocument, build_phase_goal_controller, build_review_run_context,
-		ensure_automation_activity_label, handle_failure, reconcile_terminal_thread_archive_backlog_best_effort,
-		relative_worktree_path,
+		self, AgentGitCredentialsUnavailable, AppServerRunResult, CONTINUATION_PENDING_RUN_STATUS,
+		Command, DecodexRunContext, DecodexToolBridge, GhPullRequestReviewStateInspector,
+		GitCredentialSource, HarnessOutcomeKind, IssueDispatchMode, IssueRunPlan, IssueTracker,
+		LaneDecisionSnapshot, ManualAttentionRequested, Path, PhaseGoalKind,
+		RUN_OPERATION_GIT_CREDENTIALS, RUN_OPERATION_REPO_GATE, RUN_OPERATION_REVIEW_WRITEBACK,
+		RepoGateFailure, RepoGateTrackedRewriteDecision, Report, Result,
+		RetainedReviewRepairPushFailed, RetainedReviewRepairPushFailureKind,
+		ReviewHandoffNeedsAttention, RunSummary, ServiceConfig, StateStore, TrackerIssue,
+		TrackerToolBridge, WorkflowDocument, build_developer_instructions, build_user_input,
+		cleanup_completed_post_review_lane, decide_lane_next_action,
+		execute_deterministic_closeout, record_harness_outcome_best_effort, repo_gate_output_text,
+		resolve_configured_env_var, run_repo_gate_commands, select_repo_gate_for_worktree,
+		validate_review_handoff_runtime, validate_review_repair_runtime, worktree_head_oid,
+		write_cleanup_complete_lifecycle_event,
 	},
 	state, tracker,
 };
 
-use self::{
-	app_server::{CompletedAppServerRun, IssueAppServerRun, IssueAppServerRunOutcome},
-};
-
-pub(in crate::orchestrator) fn execute_issue_run<T>(
+pub(crate) fn execute_issue_run<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -47,7 +53,7 @@ where
 		run_id = issue_run.run_id,
 		attempt = issue_run.attempt_number,
 		branch = issue_run.worktree.branch_name,
-		worktree_path = %relative_worktree_path(project, &issue_run.worktree),
+		worktree_path = %orchestrator::relative_worktree_path(project, &issue_run.worktree),
 		"Starting issue run."
 	);
 
@@ -58,11 +64,13 @@ where
 		&issue_run.worktree.path.display().to_string(),
 	)?;
 
-	let result =
-		ensure_automation_activity_label(tracker, &issue_run.issue, project.service_id(), true)
-			.and_then(|_| {
-				execute_issue_run_inner(tracker, project, workflow, state_store, &issue_run)
-			});
+	let result = orchestrator::ensure_automation_activity_label(
+		tracker,
+		&issue_run.issue,
+		project.service_id(),
+		true,
+	)
+	.and_then(|_| execute_issue_run_inner(tracker, project, workflow, state_store, &issue_run));
 
 	state_store.clear_lease(&issue_run.issue.id)?;
 
@@ -76,7 +84,7 @@ where
 					&issue_run.issue.id,
 				)?;
 
-				reconcile_terminal_thread_archive_backlog_best_effort(
+				orchestrator::reconcile_terminal_thread_archive_backlog_best_effort(
 					project,
 					workflow,
 					state_store,
@@ -90,7 +98,7 @@ where
 				run_id = issue_run.run_id,
 				attempt = issue_run.attempt_number,
 				branch = issue_run.worktree.branch_name,
-				worktree_path = %relative_worktree_path(project, &issue_run.worktree),
+				worktree_path = %orchestrator::relative_worktree_path(project, &issue_run.worktree),
 				"Completed issue run."
 			);
 
@@ -99,14 +107,21 @@ where
 		Err(error) => {
 			state_store.update_run_status(&issue_run.run_id, "failed")?;
 
-			handle_failure(tracker, project, workflow, state_store, &issue_run, &error)?;
+			orchestrator::handle_failure(
+				tracker,
+				project,
+				workflow,
+				state_store,
+				&issue_run,
+				&error,
+			)?;
 
 			Err(error)
 		},
 	}
 }
 
-pub(in crate::orchestrator) fn persist_issue_run_outcome(
+pub(crate) fn persist_issue_run_outcome(
 	state_store: &StateStore,
 	run_id: &str,
 	summary: &RunSummary,
@@ -117,7 +132,7 @@ pub(in crate::orchestrator) fn persist_issue_run_outcome(
 	)
 }
 
-pub(in crate::orchestrator) fn resolve_resume_thread_id(
+pub(crate) fn resolve_resume_thread_id(
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 ) -> Result<Option<String>> {
@@ -138,7 +153,7 @@ pub(in crate::orchestrator) fn resolve_resume_thread_id(
 		.and_then(|marker| marker.thread_id().map(str::to_owned)))
 }
 
-pub(in crate::orchestrator) fn configured_public_projection_privacy_classifier(
+pub(crate) fn configured_public_projection_privacy_classifier(
 	project: &ServiceConfig,
 ) -> Result<tracker::privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier> {
 	tracker::privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier::from_config(
@@ -146,7 +161,7 @@ pub(in crate::orchestrator) fn configured_public_projection_privacy_classifier(
 	)
 }
 
-pub(in crate::orchestrator) fn build_closeout_review_state_inspector(
+pub(crate) fn build_closeout_review_state_inspector(
 	project: &ServiceConfig,
 ) -> GhPullRequestReviewStateInspector {
 	GhPullRequestReviewStateInspector {
@@ -155,7 +170,7 @@ pub(in crate::orchestrator) fn build_closeout_review_state_inspector(
 	}
 }
 
-pub(in crate::orchestrator) fn execute_issue_run_inner<T>(
+pub(crate) fn execute_issue_run_inner<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -167,7 +182,7 @@ where
 {
 	let transport = workflow.frontmatter().agent().transport().to_owned();
 	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
-	let review_context = build_review_run_context(project, state_store, issue_run)?;
+	let review_context = orchestrator::build_review_run_context(project, state_store, issue_run)?;
 	let tracker_tool_bridge =
 		TrackerToolBridge::with_run_context_state_store_and_privacy_classifier(
 			tracker,
@@ -210,7 +225,7 @@ where
 		self::context::build_decodex_run_context(workflow, issue_run),
 	);
 	let phase_goal_controller =
-		build_phase_goal_controller(project, workflow, state_store, issue_run);
+		orchestrator::build_phase_goal_controller(project, workflow, state_store, issue_run);
 	let run_result = match self::app_server::execute_issue_app_server_run(IssueAppServerRun {
 		tracker,
 		project,

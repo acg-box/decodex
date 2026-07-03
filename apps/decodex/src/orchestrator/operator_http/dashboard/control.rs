@@ -1,17 +1,15 @@
 use serde_json::Value;
 
-use super::{
-	super::{
+use crate::{
+	accounts,
+	orchestrator::operator_http::{
 		DashboardClientMessage, DashboardControlAck, DashboardWebSocketSession, StateStore,
-		accounts, json, types::DashboardClientSubscription,
-	},
-	subscription::{
-		dashboard_required_account_selector, dashboard_subscription_from_message,
-		dashboard_subscription_payload,
+		dashboard::subscription::{self, dashboard_subscription_payload},
+		types::DashboardClientSubscription,
 	},
 };
 
-pub(super) fn dashboard_control_ack_should_push_snapshot(ack: &Value) -> bool {
+pub(crate) fn dashboard_control_ack_should_push_snapshot(ack: &Value) -> bool {
 	ack.get("accepted").and_then(Value::as_bool).unwrap_or(false)
 		&& matches!(
 			ack.get("action").and_then(Value::as_str),
@@ -19,7 +17,7 @@ pub(super) fn dashboard_control_ack_should_push_snapshot(ack: &Value) -> bool {
 		)
 }
 
-pub(super) fn dashboard_control_ack_should_push_run_activity(ack: &Value) -> bool {
+pub(crate) fn dashboard_control_ack_should_push_run_activity(ack: &Value) -> bool {
 	ack.get("accepted").and_then(Value::as_bool).unwrap_or(false)
 		&& matches!(
 			ack.get("action").and_then(Value::as_str),
@@ -27,8 +25,8 @@ pub(super) fn dashboard_control_ack_should_push_run_activity(ack: &Value) -> boo
 		)
 }
 
-pub(super) fn dashboard_control_ready_payload(subscription: &DashboardClientSubscription) -> Value {
-	json!({
+pub(crate) fn dashboard_control_ready_payload(subscription: &DashboardClientSubscription) -> Value {
+	crate::orchestrator::operator_http::json!({
 		"supportedActions": [
 			"subscribe",
 			"focus",
@@ -41,7 +39,7 @@ pub(super) fn dashboard_control_ready_payload(subscription: &DashboardClientSubs
 	})
 }
 
-pub(super) fn handle_dashboard_client_message(
+pub(crate) fn handle_dashboard_client_message(
 	session: &mut DashboardWebSocketSession,
 	state_store: &StateStore,
 	payload: &[u8],
@@ -72,7 +70,7 @@ pub(super) fn handle_dashboard_client_message(
 
 	match message.message_type.as_str() {
 		"subscribe" => {
-			session.subscription = dashboard_subscription_from_message(&message);
+			session.subscription = subscription::dashboard_subscription_from_message(&message);
 
 			dashboard_control_ack_for_message(
 				session,
@@ -95,7 +93,7 @@ pub(super) fn handle_dashboard_client_message(
 	}
 }
 
-pub(super) fn handle_dashboard_control_action(
+pub(crate) fn handle_dashboard_control_action(
 	session: &mut DashboardWebSocketSession,
 	state_store: &StateStore,
 	message: &DashboardClientMessage,
@@ -121,12 +119,12 @@ pub(super) fn handle_dashboard_control_action(
 	}
 }
 
-pub(super) fn dashboard_focus_control_ack(
+pub(crate) fn dashboard_focus_control_ack(
 	session: &mut DashboardWebSocketSession,
 	message: &DashboardClientMessage,
 	action: &str,
 ) -> Value {
-	session.subscription = dashboard_subscription_from_message(message);
+	session.subscription = subscription::dashboard_subscription_from_message(message);
 
 	dashboard_control_ack_for_message(
 		session,
@@ -138,7 +136,7 @@ pub(super) fn dashboard_focus_control_ack(
 	)
 }
 
-pub(super) fn dashboard_clear_focus_control_ack(
+pub(crate) fn dashboard_clear_focus_control_ack(
 	session: &mut DashboardWebSocketSession,
 	message: &DashboardClientMessage,
 	action: &str,
@@ -158,7 +156,7 @@ pub(super) fn dashboard_clear_focus_control_ack(
 	})
 }
 
-pub(super) fn dashboard_account_selection_control_ack(
+pub(crate) fn dashboard_account_selection_control_ack(
 	session: &DashboardWebSocketSession,
 	_state_store: &StateStore,
 	message: &DashboardClientMessage,
@@ -166,7 +164,7 @@ pub(super) fn dashboard_account_selection_control_ack(
 	set_fixed: bool,
 ) -> Value {
 	let selector = if set_fixed {
-		match dashboard_required_account_selector(message) {
+		match subscription::dashboard_required_account_selector(message) {
 			Some(selector) => Some(selector),
 			None => {
 				return dashboard_control_ack_value(DashboardControlAck {
@@ -217,7 +215,7 @@ pub(super) fn dashboard_account_selection_control_ack(
 	})
 }
 
-pub(super) fn dashboard_unsupported_control_ack(
+pub(crate) fn dashboard_unsupported_control_ack(
 	session: &DashboardWebSocketSession,
 	message: &DashboardClientMessage,
 	action: &str,
@@ -232,7 +230,7 @@ pub(super) fn dashboard_unsupported_control_ack(
 	)
 }
 
-pub(super) fn dashboard_control_ack_for_message(
+pub(crate) fn dashboard_control_ack_for_message(
 	session: &DashboardWebSocketSession,
 	message: &DashboardClientMessage,
 	action: &str,
@@ -253,8 +251,8 @@ pub(super) fn dashboard_control_ack_for_message(
 	})
 }
 
-pub(super) fn dashboard_control_ack_value(ack: DashboardControlAck<'_>) -> Value {
-	json!({
+pub(crate) fn dashboard_control_ack_value(ack: DashboardControlAck<'_>) -> Value {
+	crate::orchestrator::operator_http::json!({
 		"requestId": ack.request_id,
 		"action": ack.action,
 		"accepted": ack.accepted,

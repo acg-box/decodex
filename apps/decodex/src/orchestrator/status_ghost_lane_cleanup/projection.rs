@@ -94,7 +94,7 @@ pub(crate) fn apply_missing_issue_ghost_lane_projection(
 	Ok(())
 }
 
-pub(in crate::orchestrator::status_ghost_lane_cleanup) fn apply_missing_issue_ghost_lane_status_projection(
+pub(crate) fn apply_missing_issue_ghost_lane_status_projection(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	run: &mut OperatorRunStatus,

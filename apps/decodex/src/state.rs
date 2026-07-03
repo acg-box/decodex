@@ -1,11 +1,5 @@
 //! Persistent single-machine runtime state for active Decodex execution.
 
-use std::{fs, path::Path};
-
-use serde_json::Value;
-
-use crate::prelude::{Result, eyre};
-
 mod internal;
 mod models;
 mod project_run_recovery;
@@ -19,20 +13,60 @@ mod sqlite_store;
 mod store;
 mod store_run_control;
 
-#[allow(unused_imports)]
-pub(crate) use models::WorktreeProvenance;
-pub(crate) use models::{
-	AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
-	ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
-	CodexAccountProfileDailyUsageSummary, ConnectorBackoff, DecisionContractRecord,
-	ExecutionProgramRecord, IssueLease, LoopGuardrailCheckpoint, PreacquiredLeaseGuards,
-	PrivateExecutionEvent, ProgramIntakePlanRecord, ProgramIssueMappingRecord, ProjectRegistration,
-	ProjectRunStatus, ProtocolActivityEventSummary, ProtocolActivitySummary, ReviewHandoffMarker,
-	ReviewLifecycleRecord, ReviewOrchestrationMarker, ReviewPolicyCheckpoint, RunActivityMarker,
-	RunAttempt, RunControlActionOutcomeRequest, RunControlActionReceipt, RunControlActionRequest,
-	RunControlChannel, WORKTREE_PROVENANCE_FILESYSTEM_SCAN, WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN,
-	WORKTREE_PROVENANCE_LEGACY_UNKNOWN, WORKTREE_PROVENANCE_RUNTIME_RECORDED,
-	WORKTREE_PROVENANCE_RUNTIME_RECOVERED, WorktreeMapping, worktree_provenance,
+pub(crate) use self::{
+	models::{
+		AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
+		ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
+		CodexAccountProfileDailyUsageSummary, ConnectorBackoff, DecisionContractRecord,
+		ExecutionProgramRecord, IssueLease, LoopGuardrailCheckpoint, PreacquiredLeaseGuards,
+		PrivateExecutionEvent, ProgramIntakePlanRecord, ProgramIssueMappingRecord,
+		ProjectRegistration, ProjectRunStatus, ProtocolActivityEventSummary,
+		ProtocolActivitySummary, ReviewHandoffMarker, ReviewLifecycleRecord,
+		ReviewOrchestrationMarker, ReviewPolicyCheckpoint, RunActivityMarker, RunAttempt,
+		RunControlActionOutcomeRequest, RunControlActionReceipt, RunControlActionRequest,
+		RunControlChannel, WORKTREE_PROVENANCE_FILESYSTEM_SCAN,
+		WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN, WORKTREE_PROVENANCE_LEGACY_UNKNOWN,
+		WORKTREE_PROVENANCE_RUNTIME_RECORDED, WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
+		WorktreeMapping, worktree_provenance,
+	},
+	run_activity_marker::{
+		clear_run_retry_schedule, current_host_boot_id, process_start_identity,
+		protocol_event_counts_as_work_progress, read_run_activity_marker,
+		read_run_activity_marker_snapshot, read_run_protocol_activity_marker,
+		read_run_retry_budget_attempt_count, write_run_account_marker,
+		write_run_effective_runtime_marker, write_run_operation_marker,
+		write_run_operation_marker_for_process, write_run_operation_marker_preserving_activity,
+		write_run_protocol_activity_marker, write_run_retry_budget_attempt_count,
+		write_run_retry_schedule, write_run_thread_marker, write_run_thread_status_marker,
+		write_run_turn_marker,
+	},
+	store::{
+		ConnectorBackoffInput, LoopGuardrailCheckpointInput, ProjectLoopEvidenceSnapshot,
+		ReviewCheckpointArtifactLookup, ReviewPolicyCheckpointInput,
+	},
+};
+pub(crate) use internal::{CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker};
+#[allow(unused_imports)] pub(crate) use models::WorktreeProvenance;
+#[cfg(test)]
+pub(crate) use run_activity_marker::{
+	current_process_start_identity, read_run_activity_marker_record, write_run_activity_marker,
+	write_run_activity_marker_at, write_run_activity_marker_for_process,
+	write_run_activity_marker_record,
+};
+pub(crate) use store::StateStore;
+
+use std::{fs, path::Path};
+
+use serde_json::Value;
+
+use crate::prelude::{Result, eyre};
+use internal::{
+	DispatchSlotConfig, DispatchSlotGuard, IssueClaimGuard, StateData,
+	acquire_shared_lock_coordinator, apply_derived_program_intake_state, clear_close_on_exec,
+	compare_project_run_status, derived_program_intake_plan_records,
+	derived_program_issue_mapping_records, dispatch_slot_lock_path, issue_claim_id_from_path,
+	issue_claim_lock_path, prune_unlocked_shared_lock_files, read_issue_claim_record,
+	remove_lock_file_if_exists, set_close_on_exec, write_issue_claim_record,
 };
 use runtime_records::{
 	AutonomyObjectiveRuntimeRecord, AutonomyObjectiveRuntimeRowParts,
@@ -49,40 +83,8 @@ use runtime_row_parsers::{
 	compare_linear_execution_event_runtime_records,
 	compare_private_execution_event_runtime_records, compare_program_intake_plan_records,
 	compare_program_issue_mapping_records, compare_recent_autonomy_proposal_runtime_records,
-	compare_recent_autonomy_signal_runtime_records, parse_linear_execution_event_unix, timestamp_parts, validate_private_execution_event_inputs,
-};
-pub use store::StateStore;
-pub(crate) use store::{
-	ConnectorBackoffInput, LoopGuardrailCheckpointInput, ProjectLoopEvidenceSnapshot,
-	ReviewCheckpointArtifactLookup, ReviewPolicyCheckpointInput,
-};
-
-pub(crate) use run_activity_marker::{
-	clear_run_retry_schedule, current_host_boot_id, process_start_identity,
-	protocol_event_counts_as_work_progress, read_run_activity_marker,
-	read_run_activity_marker_snapshot, read_run_protocol_activity_marker,
-	read_run_retry_budget_attempt_count, write_run_account_marker,
-	write_run_effective_runtime_marker, write_run_operation_marker,
-	write_run_operation_marker_for_process, write_run_operation_marker_preserving_activity,
-	write_run_protocol_activity_marker, write_run_retry_budget_attempt_count,
-	write_run_retry_schedule, write_run_thread_marker, write_run_thread_status_marker,
-	write_run_turn_marker,
-};
-#[cfg(test)]
-pub(crate) use run_activity_marker::{
-	current_process_start_identity, read_run_activity_marker_record, write_run_activity_marker,
-	write_run_activity_marker_at, write_run_activity_marker_for_process,
-	write_run_activity_marker_record,
-};
-
-pub(crate) use internal::{CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker};
-use internal::{
-	DispatchSlotConfig, DispatchSlotGuard, IssueClaimGuard, StateData,
-	acquire_shared_lock_coordinator, apply_derived_program_intake_state, clear_close_on_exec,
-	compare_project_run_status, derived_program_intake_plan_records,
-	derived_program_issue_mapping_records, dispatch_slot_lock_path, issue_claim_id_from_path,
-	issue_claim_lock_path, prune_unlocked_shared_lock_files, read_issue_claim_record,
-	remove_lock_file_if_exists, set_close_on_exec, write_issue_claim_record,
+	compare_recent_autonomy_signal_runtime_records, parse_linear_execution_event_unix,
+	timestamp_parts, validate_private_execution_event_inputs,
 };
 use store::running_run_attempt_status;
 
@@ -151,5 +153,4 @@ pub(crate) fn is_decodex_runtime_artifact_relative_path(path: &Path) -> bool {
 		|| path.starts_with(RUN_CONTROL_CHANNEL_DIR)
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

@@ -1,8 +1,9 @@
-use crate::tracker::privacy_classifier::{
-	PublicProjectionPrivacyClassification, PublicProjectionPrivacyClassifier,
+use crate::tracker::{
+	privacy_classifier::{
+		PublicProjectionPrivacyClassification, PublicProjectionPrivacyClassifier,
+	},
+	records::{LinearExecutionEventPublicProjection, LinearExecutionEventRecord},
 };
-
-use super::{LinearExecutionEventPublicProjection, LinearExecutionEventRecord};
 
 pub(crate) const PRIVACY_CLASSIFIER_WITHHELD_PUBLIC_SUMMARY: &str =
 	"Public summary withheld by local privacy classifier.";

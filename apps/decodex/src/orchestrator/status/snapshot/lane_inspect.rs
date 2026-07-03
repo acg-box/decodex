@@ -2,12 +2,12 @@ use std::collections::HashSet;
 
 use time::OffsetDateTime;
 
-use crate::orchestrator::status::{
-	self, OperatorRunStatus, ProjectRunStatus, ServiceConfig, StateStore,
+use crate::{
+	orchestrator::status::{self, OperatorRunStatus, ProjectRunStatus, ServiceConfig, StateStore},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
-pub(in crate::orchestrator) fn build_lane_inspect_operator_runs(
+pub(crate) fn build_lane_inspect_operator_runs(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue: &str,
@@ -49,7 +49,7 @@ pub(in crate::orchestrator) fn build_lane_inspect_operator_runs(
 	Ok(runs)
 }
 
-pub(in crate::orchestrator) fn apply_terminal_ledger_projection_to_lane_inspect_run(
+pub(crate) fn apply_terminal_ledger_projection_to_lane_inspect_run(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	run: &mut OperatorRunStatus,
@@ -72,10 +72,7 @@ pub(in crate::orchestrator) fn apply_terminal_ledger_projection_to_lane_inspect_
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn project_run_status_issue_matches(
-	run: &ProjectRunStatus,
-	issue: &str,
-) -> bool {
+pub(crate) fn project_run_status_issue_matches(run: &ProjectRunStatus, issue: &str) -> bool {
 	let issue = issue.trim();
 	let worktree_path = run.worktree_path().map(|path| path.display().to_string());
 	let issue_identifier = status::operator_run_issue_identifier_from_fields(

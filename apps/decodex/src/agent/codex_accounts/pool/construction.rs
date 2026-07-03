@@ -6,9 +6,9 @@ use std::{
 use reqwest::blocking::Client;
 
 use crate::{
-	agent::codex_accounts::pool::CodexAccountPool,
 	agent::codex_accounts::{
-		DEFAULT_REFRESH_ENDPOINT, DEFAULT_USAGE_ENDPOINT, HTTP_TIMEOUT, record, usage,
+		DEFAULT_REFRESH_ENDPOINT, DEFAULT_USAGE_ENDPOINT, HTTP_TIMEOUT, pool::CodexAccountPool,
+		record, usage,
 	},
 	config::ProjectCodexAccountsConfig,
 	prelude::Result,

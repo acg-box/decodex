@@ -1,9 +1,11 @@
 use serde_json::Value;
 
-use super::McpHttpHandler;
 use crate::mcp::{
 	self, MCP_SESSION_HEADER,
-	http::message::{McpHttpRequest, McpHttpResponse},
+	http::{
+		handler::request::McpHttpHandler,
+		message::{McpHttpRequest, McpHttpResponse},
+	},
 };
 
 impl McpHttpHandler {

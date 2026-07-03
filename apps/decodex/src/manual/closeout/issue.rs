@@ -2,13 +2,14 @@ use std::path::Path;
 
 use crate::{
 	config::ServiceConfig,
+	manual::{
+		ManualLandLedgerContext, PreparedCloseout,
+		closeout::{ledger, marker},
+	},
 	prelude::{Result, eyre},
 	tracker::{self, IssueTracker, TrackerIssue, linear::LinearClient},
 	workflow::WorkflowDocument,
 };
-
-use crate::manual::closeout::{ledger, marker};
-use crate::manual::{ManualLandLedgerContext, PreparedCloseout};
 
 pub(in crate::manual) fn prepare_closeout(
 	config: &ServiceConfig,
@@ -91,7 +92,6 @@ where
 			)
 			.as_str(),
 		)?;
-
 		marker::write_manual_land_closeout_marker(
 			checkout_root,
 			ledger.pr_url,

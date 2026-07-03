@@ -6,15 +6,15 @@ use std::{
 };
 
 use color_eyre::Report;
-use serde_json::{Value, json};
+use serde_json::{self, Value};
 
-use super::{
-	RepoGateFailure, RepoGateFailureDiagnostic, RepoGateFailureKind,
-	command::run_repo_gate_cleanliness_check_with_git,
-	diagnostic::{repo_gate_failure_kind_for_output, repo_gate_git_output_lines},
-	repo_gate_output_text,
+use crate::{
+	orchestrator::git_ops::{
+		self, RepoGateFailure, RepoGateFailureDiagnostic, RepoGateFailureKind, command,
+		diagnostic::{self},
+	},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RepoGateTrackedRewriteDecision {
@@ -72,7 +72,7 @@ impl RepoGateTrackedRewriteDecision {
 	}
 
 	pub(crate) fn to_json(&self) -> Value {
-		json!({
+		serde_json::json!({
 			"files": &self.files,
 			"owned": self.owned,
 			"decision": self.decision,
@@ -125,114 +125,6 @@ impl RepoGateScopeEnvelope {
 	}
 }
 
-fn read_repo_gate_tracked_diff_paths(cwd: &Path, phase: &str) -> Result<BTreeSet<String>> {
-	let output = Command::new("git")
-		.arg("-C")
-		.arg(cwd)
-		.args(["diff", "--name-only", "--diff-filter=ACDMRTUXB", "HEAD", "--"])
-		.output()
-		.map_err(|error| {
-			Report::new(RepoGateFailure::new(
-				RepoGateFailureKind::CommandSpawnFailed,
-				format!(
-					"Failed to spawn tracked-file path check after repo gate {phase} in `{}`: {error}",
-					cwd.display()
-				),
-			))
-		})?;
-
-	if !output.status.success() {
-		let output_text = repo_gate_output_text(&output);
-
-		return Err(Report::new(RepoGateFailure::new(
-			repo_gate_failure_kind_for_output(
-				RepoGateFailureKind::CleanlinessCheckFailed,
-				&output_text,
-			),
-			format!(
-				"Failed to inspect tracked-file paths after repo gate {phase} in `{}`: {}",
-				cwd.display(),
-				output_text
-			),
-		)));
-	}
-
-	Ok(repo_gate_git_output_lines(&output))
-}
-
-fn read_repo_gate_tracked_diff(cwd: &Path, phase: &str) -> Result<String> {
-	let output = Command::new("git")
-		.arg("-C")
-		.arg(cwd)
-		.args(["diff", "--no-ext-diff", "--binary", "HEAD", "--"])
-		.output()
-		.map_err(|error| {
-			Report::new(RepoGateFailure::new(
-				RepoGateFailureKind::CommandSpawnFailed,
-				format!(
-					"Failed to spawn tracked-file diff check after repo gate {phase} in `{}`: {error}",
-					cwd.display()
-				),
-			))
-		})?;
-
-	if !output.status.success() {
-		let output_text = repo_gate_output_text(&output);
-
-		return Err(Report::new(RepoGateFailure::new(
-			repo_gate_failure_kind_for_output(
-				RepoGateFailureKind::CleanlinessCheckFailed,
-				&output_text,
-			),
-			format!(
-				"Failed to inspect tracked-file diff after repo gate {phase} in `{}`: {}",
-				cwd.display(),
-				output_text
-			),
-		)));
-	}
-
-	Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
-fn read_repo_gate_tracked_diff_for_path(cwd: &Path, phase: &str, path: &str) -> Result<String> {
-	let output = Command::new("git")
-		.arg("-C")
-		.arg(cwd)
-		.args(["diff", "--no-ext-diff", "--binary", "HEAD", "--"])
-		.arg(path)
-		.output()
-		.map_err(|error| {
-			Report::new(RepoGateFailure::new(
-				RepoGateFailureKind::CommandSpawnFailed,
-				format!(
-					"Failed to spawn tracked-file diff check for `{}` after repo gate {phase} in `{}`: {error}",
-					path,
-					cwd.display()
-				),
-			))
-		})?;
-
-	if !output.status.success() {
-		let output_text = repo_gate_output_text(&output);
-
-		return Err(Report::new(RepoGateFailure::new(
-			repo_gate_failure_kind_for_output(
-				RepoGateFailureKind::CleanlinessCheckFailed,
-				&output_text,
-			),
-			format!(
-				"Failed to inspect tracked-file diff for `{}` after repo gate {phase} in `{}`: {}",
-				path,
-				cwd.display(),
-				output_text
-			),
-		)));
-	}
-
-	Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
 pub(super) fn read_repo_gate_tracked_diff_snapshot(
 	cwd: &Path,
 	phase: &str,
@@ -248,49 +140,6 @@ pub(super) fn read_repo_gate_tracked_diff_snapshot(
 	}
 
 	Ok(RepoGateTrackedDiffSnapshot { full_diff, path_diffs })
-}
-
-fn repo_gate_rewritten_files(
-	before: &RepoGateTrackedDiffSnapshot,
-	after: &RepoGateTrackedDiffSnapshot,
-) -> Vec<String> {
-	let mut paths = before.path_diffs.keys().cloned().collect::<BTreeSet<_>>();
-
-	paths.extend(after.path_diffs.keys().cloned());
-
-	paths
-		.into_iter()
-		.filter(|path| before.path_diffs.get(path) != after.path_diffs.get(path))
-		.collect()
-}
-
-fn repo_gate_tracked_rewrite_decision(
-	before: &RepoGateTrackedDiffSnapshot,
-	after: &RepoGateTrackedDiffSnapshot,
-	allow_owned_rewrites: bool,
-) -> Option<RepoGateTrackedRewriteDecision> {
-	if before.full_diff == after.full_diff {
-		return None;
-	}
-
-	let rewritten_files = repo_gate_rewritten_files(before, after);
-	let scope_envelope = RepoGateScopeEnvelope::from_pre_gate_diff(before);
-	let owned = !rewritten_files.is_empty()
-		&& scope_envelope.violation_files(rewritten_files.iter().cloned()).is_empty();
-
-	if allow_owned_rewrites && owned {
-		return Some(RepoGateTrackedRewriteDecision::continue_to_commit_capable_phase(
-			rewritten_files,
-		));
-	}
-
-	let reason = if owned {
-		"all rewritten files were pre-gate implementation paths, but this lifecycle boundary requires a clean committed worktree"
-	} else {
-		"one or more rewritten files were not present in the pre-gate implementation diff"
-	};
-
-	Some(RepoGateTrackedRewriteDecision::require_attention(rewritten_files, owned, reason))
 }
 
 pub(super) fn repo_gate_diff_rewrite_outcome(
@@ -309,13 +158,13 @@ pub(super) fn repo_gate_diff_rewrite_outcome(
 		return Ok(RepoGateCommandOutcome::with_tracked_rewrite_decision(decision));
 	}
 
-	let output = run_repo_gate_cleanliness_check_with_git(OsStr::new("git"), cwd)?;
+	let output = command::run_repo_gate_cleanliness_check_with_git(OsStr::new("git"), cwd)?;
 
 	if !output.status.success() {
-		let output_text = repo_gate_output_text(&output);
+		let output_text = git_ops::repo_gate_output_text(&output);
 
 		return Err(Report::new(RepoGateFailure::new(
-			repo_gate_failure_kind_for_output(
+			diagnostic::repo_gate_failure_kind_for_output(
 				RepoGateFailureKind::CleanlinessCheckFailed,
 				&output_text,
 			),
@@ -327,7 +176,7 @@ pub(super) fn repo_gate_diff_rewrite_outcome(
 		)));
 	}
 
-	let output_text = repo_gate_output_text(&output);
+	let output_text = git_ops::repo_gate_output_text(&output);
 	let dirty_entries = output_text.trim();
 
 	Err(Report::new(RepoGateFailure::new(
@@ -394,4 +243,155 @@ pub(super) fn repo_gate_scope_envelope_failure_or_source(
 		)
 		.with_tracked_rewrite_decision(decision),
 	)
+}
+
+fn read_repo_gate_tracked_diff_paths(cwd: &Path, phase: &str) -> Result<BTreeSet<String>> {
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(cwd)
+		.args(["diff", "--name-only", "--diff-filter=ACDMRTUXB", "HEAD", "--"])
+		.output()
+		.map_err(|error| {
+			Report::new(RepoGateFailure::new(
+				RepoGateFailureKind::CommandSpawnFailed,
+				format!(
+					"Failed to spawn tracked-file path check after repo gate {phase} in `{}`: {error}",
+					cwd.display()
+				),
+			))
+		})?;
+
+	if !output.status.success() {
+		let output_text = git_ops::repo_gate_output_text(&output);
+
+		return Err(Report::new(RepoGateFailure::new(
+			diagnostic::repo_gate_failure_kind_for_output(
+				RepoGateFailureKind::CleanlinessCheckFailed,
+				&output_text,
+			),
+			format!(
+				"Failed to inspect tracked-file paths after repo gate {phase} in `{}`: {}",
+				cwd.display(),
+				output_text
+			),
+		)));
+	}
+
+	Ok(diagnostic::repo_gate_git_output_lines(&output))
+}
+
+fn read_repo_gate_tracked_diff(cwd: &Path, phase: &str) -> Result<String> {
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(cwd)
+		.args(["diff", "--no-ext-diff", "--binary", "HEAD", "--"])
+		.output()
+		.map_err(|error| {
+			Report::new(RepoGateFailure::new(
+				RepoGateFailureKind::CommandSpawnFailed,
+				format!(
+					"Failed to spawn tracked-file diff check after repo gate {phase} in `{}`: {error}",
+					cwd.display()
+				),
+			))
+		})?;
+
+	if !output.status.success() {
+		let output_text = git_ops::repo_gate_output_text(&output);
+
+		return Err(Report::new(RepoGateFailure::new(
+			diagnostic::repo_gate_failure_kind_for_output(
+				RepoGateFailureKind::CleanlinessCheckFailed,
+				&output_text,
+			),
+			format!(
+				"Failed to inspect tracked-file diff after repo gate {phase} in `{}`: {}",
+				cwd.display(),
+				output_text
+			),
+		)));
+	}
+
+	Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn read_repo_gate_tracked_diff_for_path(cwd: &Path, phase: &str, path: &str) -> Result<String> {
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(cwd)
+		.args(["diff", "--no-ext-diff", "--binary", "HEAD", "--"])
+		.arg(path)
+		.output()
+		.map_err(|error| {
+			Report::new(RepoGateFailure::new(
+				RepoGateFailureKind::CommandSpawnFailed,
+				format!(
+					"Failed to spawn tracked-file diff check for `{}` after repo gate {phase} in `{}`: {error}",
+					path,
+					cwd.display()
+				),
+			))
+		})?;
+
+	if !output.status.success() {
+		let output_text = git_ops::repo_gate_output_text(&output);
+
+		return Err(Report::new(RepoGateFailure::new(
+			diagnostic::repo_gate_failure_kind_for_output(
+				RepoGateFailureKind::CleanlinessCheckFailed,
+				&output_text,
+			),
+			format!(
+				"Failed to inspect tracked-file diff for `{}` after repo gate {phase} in `{}`: {}",
+				path,
+				cwd.display(),
+				output_text
+			),
+		)));
+	}
+
+	Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn repo_gate_rewritten_files(
+	before: &RepoGateTrackedDiffSnapshot,
+	after: &RepoGateTrackedDiffSnapshot,
+) -> Vec<String> {
+	let mut paths = before.path_diffs.keys().cloned().collect::<BTreeSet<_>>();
+
+	paths.extend(after.path_diffs.keys().cloned());
+
+	paths
+		.into_iter()
+		.filter(|path| before.path_diffs.get(path) != after.path_diffs.get(path))
+		.collect()
+}
+
+fn repo_gate_tracked_rewrite_decision(
+	before: &RepoGateTrackedDiffSnapshot,
+	after: &RepoGateTrackedDiffSnapshot,
+	allow_owned_rewrites: bool,
+) -> Option<RepoGateTrackedRewriteDecision> {
+	if before.full_diff == after.full_diff {
+		return None;
+	}
+
+	let rewritten_files = repo_gate_rewritten_files(before, after);
+	let scope_envelope = RepoGateScopeEnvelope::from_pre_gate_diff(before);
+	let owned = !rewritten_files.is_empty()
+		&& scope_envelope.violation_files(rewritten_files.iter().cloned()).is_empty();
+
+	if allow_owned_rewrites && owned {
+		return Some(RepoGateTrackedRewriteDecision::continue_to_commit_capable_phase(
+			rewritten_files,
+		));
+	}
+
+	let reason = if owned {
+		"all rewritten files were pre-gate implementation paths, but this lifecycle boundary requires a clean committed worktree"
+	} else {
+		"one or more rewritten files were not present in the pre-gate implementation diff"
+	};
+
+	Some(RepoGateTrackedRewriteDecision::require_attention(rewritten_files, owned, reason))
 }

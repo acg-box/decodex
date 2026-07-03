@@ -4,17 +4,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
 	config::ServiceConfig,
-	execution_program::{ExecutionConflictDomain, ExecutionDependencySnapshot},
+	execution_program::{
+		ExecutionConflictDomain, ExecutionDependencySnapshot, ExecutionWorkflowPolicy,
+	},
+	orchestrator::{self, OperatorExecutionProgramReadback, OperatorExecutionProgramStatus},
+	prelude::Result,
 	state::{ExecutionProgramRecord, StateStore},
 	tracker::IssueTracker,
 	workflow::WorkflowDocument,
-};
-
-use super::{
-	OperatorExecutionProgramReadback, OperatorExecutionProgramStatus,
-	execution_program_readiness_context, insert_dependency_snapshot,
-	refresh_execution_program_issues, refresh_execution_program_local_lifecycle_facts,
-	refresh_execution_program_tracker_facts, state_name_is_terminal,
 };
 
 pub(super) fn operator_execution_program_statuses<T>(
@@ -22,7 +19,7 @@ pub(super) fn operator_execution_program_statuses<T>(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
-) -> crate::prelude::Result<OperatorExecutionProgramReadback>
+) -> Result<OperatorExecutionProgramReadback>
 where
 	T: IssueTracker + ?Sized,
 {
@@ -42,9 +39,8 @@ where
 		state_store,
 		&records,
 	) {
-		Ok(statuses) => {
-			Ok(OperatorExecutionProgramReadback { statuses, issue_metadata_unavailable: false })
-		},
+		Ok(statuses) =>
+			Ok(OperatorExecutionProgramReadback { statuses, issue_metadata_unavailable: false }),
 		Err(error) => {
 			let _ = error;
 
@@ -72,16 +68,13 @@ fn operator_execution_program_statuses_with_live_tracker<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	records: &[ExecutionProgramRecord],
-) -> crate::prelude::Result<Vec<OperatorExecutionProgramStatus>>
+) -> Result<Vec<OperatorExecutionProgramStatus>>
 where
 	T: IssueTracker + ?Sized,
 {
-	let policy = crate::execution_program::ExecutionWorkflowPolicy::from_workflow(
-		project.service_id(),
-		workflow,
-	)?;
+	let policy = ExecutionWorkflowPolicy::from_workflow(project.service_id(), workflow)?;
 	let mapped_issue_ids = operator_execution_program_mapped_issue_ids(records);
-	let refreshed_issues = refresh_execution_program_issues(tracker, records)?;
+	let refreshed_issues = orchestrator::refresh_execution_program_issues(tracker, records)?;
 
 	if mapped_issue_ids.iter().any(|issue_id| !refreshed_issues.contains_key(issue_id)) {
 		crate::prelude::eyre::bail!("Execution Program tracker metadata was incomplete.");
@@ -91,7 +84,7 @@ where
 		.iter()
 		.cloned()
 		.map(|record| {
-			refresh_execution_program_tracker_facts(
+			orchestrator::refresh_execution_program_tracker_facts(
 				tracker,
 				state_store,
 				project.service_id(),
@@ -100,8 +93,8 @@ where
 				&refreshed_issues,
 			)
 		})
-		.collect::<crate::prelude::Result<Vec<_>>>()?;
-	let context = execution_program_readiness_context(
+		.collect::<Result<Vec<_>>>()?;
+	let context = orchestrator::execution_program_readiness_context(
 		project.service_id(),
 		workflow,
 		state_store,
@@ -157,11 +150,8 @@ fn operator_execution_program_statuses_from_persisted(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	records: &[ExecutionProgramRecord],
-) -> crate::prelude::Result<Vec<OperatorExecutionProgramStatus>> {
-	let policy = crate::execution_program::ExecutionWorkflowPolicy::from_workflow(
-		project.service_id(),
-		workflow,
-	)?;
+) -> Result<Vec<OperatorExecutionProgramStatus>> {
+	let policy = ExecutionWorkflowPolicy::from_workflow(project.service_id(), workflow)?;
 	let context = operator_execution_program_readiness_context(
 		project.service_id(),
 		workflow,
@@ -174,7 +164,7 @@ fn operator_execution_program_statuses_from_persisted(
 		let mut nodes = Vec::with_capacity(record.program().nodes().len());
 
 		for node in record.program().nodes() {
-			nodes.push(refresh_execution_program_local_lifecycle_facts(
+			nodes.push(orchestrator::refresh_execution_program_local_lifecycle_facts(
 				state_store,
 				project.service_id(),
 				node,
@@ -213,7 +203,7 @@ fn operator_execution_program_readiness_context(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	records: &[ExecutionProgramRecord],
-) -> crate::prelude::Result<crate::execution_program::ExecutionProgramReadinessContext> {
+) -> Result<crate::execution_program::ExecutionProgramReadinessContext> {
 	let dependency_snapshots = operator_execution_program_dependency_snapshots(records)?;
 	let occupied_conflict_domains = operator_execution_program_occupied_conflict_domains(
 		service_id,
@@ -235,7 +225,7 @@ fn operator_execution_program_readiness_context(
 
 fn operator_execution_program_dependency_snapshots(
 	records: &[ExecutionProgramRecord],
-) -> crate::prelude::Result<Vec<ExecutionDependencySnapshot>> {
+) -> Result<Vec<ExecutionDependencySnapshot>> {
 	let mut snapshots = BTreeMap::new();
 
 	for record in records {
@@ -244,8 +234,12 @@ fn operator_execution_program_dependency_snapshots(
 				continue;
 			};
 
-			insert_dependency_snapshot(&mut snapshots, node.node_id(), issue.issue_state())?;
-			insert_dependency_snapshot(
+			orchestrator::insert_dependency_snapshot(
+				&mut snapshots,
+				node.node_id(),
+				issue.issue_state(),
+			)?;
+			orchestrator::insert_dependency_snapshot(
 				&mut snapshots,
 				issue.issue_identifier(),
 				issue.issue_state(),
@@ -261,7 +255,7 @@ fn operator_execution_program_occupied_conflict_domains(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	records: &[ExecutionProgramRecord],
-) -> crate::prelude::Result<Vec<ExecutionConflictDomain>> {
+) -> Result<Vec<ExecutionConflictDomain>> {
 	let retained_issue_ids = state_store
 		.list_worktrees(service_id)?
 		.into_iter()
@@ -276,7 +270,7 @@ fn operator_execution_program_occupied_conflict_domains(
 				continue;
 			};
 			let retained_nonterminal = retained_issue_ids.contains(issue.issue_id())
-				&& !state_name_is_terminal(issue.issue_state(), workflow);
+				&& !orchestrator::state_name_is_terminal(issue.issue_state(), workflow);
 			let has_post_review_lifecycle =
 				state_store.issue_has_review_lifecycle_record(service_id, issue.issue_id())?;
 			let issue_occupies_domain = issue.has_active_label()

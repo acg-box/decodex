@@ -1,22 +1,22 @@
 //! Queued issue attention projection for operator status snapshots.
 
-pub(in crate::orchestrator) use self::records::operator_authority_decision_request_status_from_event;
-
 mod active_label;
 mod records;
 
+pub(crate) use self::records::operator_authority_decision_request_status_from_event;
+
 use std::path::PathBuf;
 
-use crate::orchestrator::{
-	self, ATTENTION_ERROR_EVIDENCE_MISSING, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
-	OperatorAuthorityDecisionRequestStatus, OperatorLoopStatus, OperatorQueuedIssueAttentionStatus,
-	QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT, WorktreeTrackedChangeState,
-	marker_process_liveness_for_marker,
-	status_run_projection::{self},
-};
-use crate::prelude::Result;
 use crate::{
 	config::ServiceConfig,
+	orchestrator::{
+		self, ATTENTION_ERROR_EVIDENCE_MISSING, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
+		OperatorAuthorityDecisionRequestStatus, OperatorLoopStatus,
+		OperatorQueuedIssueAttentionStatus, QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT,
+		WorktreeTrackedChangeState, marker_process_liveness_for_marker,
+		status_run_projection::{self},
+	},
+	prelude::Result,
 	state::{
 		self, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_APP_SERVER_PREFLIGHT,
 		RUN_OPERATION_GIT_CREDENTIALS, RUN_OPERATION_RECONCILIATION, RunActivityMarker, StateStore,
@@ -31,7 +31,6 @@ struct OperatorQueuedIssueWorktreeContext {
 	marker_unreadable: bool,
 }
 
-#[allow(clippy::too_many_lines)]
 pub(super) fn operator_queued_issue_attention_status<T>(
 	tracker: &T,
 	project: &ServiceConfig,
@@ -54,19 +53,10 @@ where
 
 	let OperatorQueuedIssueWorktreeContext { path: worktree_path, marker, marker_unreadable } =
 		operator_queued_issue_worktree_context(project, state_store, issue)?;
-	let state_retry_attempts = state_store.retry_budget_attempt_count(&issue.id)?;
-	let marker_retry_attempts =
-		marker.as_ref().and_then(RunActivityMarker::retry_budget_attempt_count).unwrap_or(0);
-	let retry_budget_attempts = state_retry_attempts.max(marker_retry_attempts);
-	let retry_budget_attempt_count = (retry_budget_attempts > 0).then_some(retry_budget_attempts);
+	let retry_budget_attempts =
+		operator_queued_issue_retry_budget_attempts(state_store, issue, marker.as_ref())?;
 	let retry_budget_max_attempts = i64::from(workflow.frontmatter().execution().max_attempts());
-	let auto_retry_blocked_reason = match reason {
-		"issue_needs_attention" => Some(String::from("needs_attention_label")),
-		QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT => {
-			Some(String::from(QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT))
-		},
-		_ => None,
-	};
+	let auto_retry_blocked_reason = operator_queued_issue_auto_retry_blocked_reason(reason);
 	let attention_record = records::operator_queued_issue_latest_attention_record(
 		tracker,
 		project,
@@ -147,20 +137,10 @@ where
 		auto_retry_blocked_reason,
 		attention_error_class,
 		attention_next_action,
-		retry_budget_attempt_count,
+		retry_budget_attempt_count: (retry_budget_attempts > 0).then_some(retry_budget_attempts),
 		retry_budget_max_attempts,
-		last_activity_at: marker
-			.as_ref()
-			.and_then(RunActivityMarker::last_activity_unix_epoch)
-			.and_then(|unix_epoch| {
-				status_run_projection::format_optional_unix_timestamp(Some(unix_epoch))
-			}),
-		last_progress_at: marker
-			.as_ref()
-			.and_then(RunActivityMarker::last_progress_unix_epoch)
-			.and_then(|unix_epoch| {
-				status_run_projection::format_optional_unix_timestamp(Some(unix_epoch))
-			}),
+		last_activity_at: operator_queued_issue_marker_activity_at(marker.as_ref()),
+		last_progress_at: operator_queued_issue_marker_progress_at(marker.as_ref()),
 		last_event_type: marker
 			.as_ref()
 			.and_then(RunActivityMarker::last_event_type)
@@ -172,6 +152,39 @@ where
 			.then(|| orchestrator::relative_worktree_path_for_path(project, &worktree_path)),
 		worktree_has_tracked_changes,
 	}))
+}
+
+fn operator_queued_issue_marker_activity_at(marker: Option<&RunActivityMarker>) -> Option<String> {
+	marker.and_then(RunActivityMarker::last_activity_unix_epoch).and_then(|unix_epoch| {
+		status_run_projection::format_optional_unix_timestamp(Some(unix_epoch))
+	})
+}
+
+fn operator_queued_issue_marker_progress_at(marker: Option<&RunActivityMarker>) -> Option<String> {
+	marker.and_then(RunActivityMarker::last_progress_unix_epoch).and_then(|unix_epoch| {
+		status_run_projection::format_optional_unix_timestamp(Some(unix_epoch))
+	})
+}
+
+fn operator_queued_issue_retry_budget_attempts(
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+	marker: Option<&RunActivityMarker>,
+) -> Result<i64> {
+	let state_retry_attempts = state_store.retry_budget_attempt_count(&issue.id)?;
+	let marker_retry_attempts =
+		marker.and_then(RunActivityMarker::retry_budget_attempt_count).unwrap_or(0);
+
+	Ok(state_retry_attempts.max(marker_retry_attempts))
+}
+
+fn operator_queued_issue_auto_retry_blocked_reason(reason: &str) -> Option<String> {
+	match reason {
+		"issue_needs_attention" => Some(String::from("needs_attention_label")),
+		QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT =>
+			Some(String::from(QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT)),
+		_ => None,
+	}
 }
 
 fn operator_queued_issue_worktree_context(
@@ -228,7 +241,7 @@ fn operator_queued_issue_loop_status(
 		.or_else(|| marker.map(RunActivityMarker::attempt_number));
 
 	match (run_id, attempt_number) {
-		(Some(run_id), Some(attempt_number)) => {
+		(Some(run_id), Some(attempt_number)) =>
 			status_run_projection::operator_loop_status_for_run(
 				project,
 				state_store,
@@ -238,8 +251,7 @@ fn operator_queued_issue_loop_status(
 				Some("handoff"),
 				None,
 			)
-			.map(Some)
-		},
+			.map(Some),
 		_ => Ok(None),
 	}
 }
@@ -401,18 +413,15 @@ fn operator_queued_issue_attention_summary(
 	}
 
 	match marker.and_then(RunActivityMarker::current_operation) {
-		Some(RUN_OPERATION_GIT_CREDENTIALS) => {
-			String::from("Git credential preflight failed; operator recovery required.")
-		},
-		Some(RUN_OPERATION_APP_SERVER_PREFLIGHT) => {
-			String::from("Codex app-server preflight failed; operator recovery required.")
-		},
+		Some(RUN_OPERATION_GIT_CREDENTIALS) =>
+			String::from("Git credential preflight failed; operator recovery required."),
+		Some(RUN_OPERATION_APP_SERVER_PREFLIGHT) =>
+			String::from("Codex app-server preflight failed; operator recovery required."),
 		Some(RUN_OPERATION_RECONCILIATION) => String::from(
 			"Stopped during reconciliation or tracker handoff; operator recovery required.",
 		),
-		Some(RUN_OPERATION_AGENT_RUN) => {
-			String::from("Stopped during agent execution; operator recovery required.")
-		},
+		Some(RUN_OPERATION_AGENT_RUN) =>
+			String::from("Stopped during agent execution; operator recovery required."),
 		Some(operation) => format!("Stopped during `{operation}`; operator recovery required."),
 		None => String::from("Needs operator recovery; no local run marker was found."),
 	}

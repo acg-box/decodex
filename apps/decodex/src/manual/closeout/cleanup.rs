@@ -1,16 +1,14 @@
-use std::fs;
-use std::path::Path;
+use std::{fs, path::Path};
 
 use color_eyre::eyre::WrapErr;
 
 use crate::{
-	github, orchestrator,
+	github,
+	manual::{ManualAuthority, ManualLandContext},
+	orchestrator,
 	prelude::{Result, eyre},
-	worktree,
-	worktree::WorktreeManager,
+	worktree::{self, WorktreeManager},
 };
-
-use crate::manual::{ManualAuthority, ManualLandContext};
 
 pub(super) fn manual_land_relative_worktree_path(context: &ManualLandContext) -> String {
 	if let Ok(relative_path) = context.worktree_root.strip_prefix(&context.canonical_repo_root) {

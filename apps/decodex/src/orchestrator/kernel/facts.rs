@@ -1,27 +1,26 @@
-use super::state::{LivenessState, TerminalizationState};
+use crate::orchestrator::kernel::state::{LivenessState, TerminalizationState};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) struct LaneObservation {
-	pub(in crate::orchestrator) issue_id: String,
-	pub(in crate::orchestrator) run_id: Option<String>,
-	pub(in crate::orchestrator) run_lease: bool,
-	pub(in crate::orchestrator) authority_complete: bool,
-	pub(in crate::orchestrator) liveness: LivenessState,
-	pub(in crate::orchestrator) terminalization: TerminalizationState,
-	pub(in crate::orchestrator) active_owned_work: bool,
-	pub(in crate::orchestrator) external_signal_pending: bool,
-	pub(in crate::orchestrator) retry_budget_available: bool,
-	pub(in crate::orchestrator) retry_budget_exhausted: bool,
-	pub(in crate::orchestrator) retained_lane_reusable: bool,
-	pub(in crate::orchestrator) ready_to_land: bool,
-	pub(in crate::orchestrator) human_attention_signal: bool,
-	pub(in crate::orchestrator) contradictory_authority: bool,
-	pub(in crate::orchestrator) post_review_lifecycle_required: bool,
-	pub(in crate::orchestrator) post_review_lifecycle_present: bool,
+pub(crate) struct LaneObservation {
+	pub(crate) issue_id: String,
+	pub(crate) run_id: Option<String>,
+	pub(crate) run_lease: bool,
+	pub(crate) authority_complete: bool,
+	pub(crate) liveness: LivenessState,
+	pub(crate) terminalization: TerminalizationState,
+	pub(crate) active_owned_work: bool,
+	pub(crate) external_signal_pending: bool,
+	pub(crate) retry_budget_available: bool,
+	pub(crate) retry_budget_exhausted: bool,
+	pub(crate) retained_lane_reusable: bool,
+	pub(crate) ready_to_land: bool,
+	pub(crate) human_attention_signal: bool,
+	pub(crate) contradictory_authority: bool,
+	pub(crate) post_review_lifecycle_required: bool,
+	pub(crate) post_review_lifecycle_present: bool,
 }
-
 impl LaneObservation {
-	pub(in crate::orchestrator) fn for_issue(issue_id: impl Into<String>) -> Self {
+	pub(crate) fn for_issue(issue_id: impl Into<String>) -> Self {
 		Self {
 			issue_id: issue_id.into(),
 			run_id: None,

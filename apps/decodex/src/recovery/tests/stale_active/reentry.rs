@@ -1,19 +1,36 @@
-use super::*;
+use std::fs;
+
+use tempfile::TempDir;
+
+use crate::{
+	recovery::{
+		GHOST_LANE_TERMINAL_STATUS, RUN_CONTROL_CHANNEL_STATUS_FAILED,
+		RecoveryRuntimeMutationPolicy, STALE_ACTIVE_CLASSIFICATION,
+		tests::{
+			self, GhostLaneTestTracker,
+			stale_active::{self},
+		},
+	},
+	tracker,
+};
 
 #[test]
 fn stale_active_release_allows_reentry_after_local_cleanup_audit() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let context = sample_recovery_context(
+	let context = tests::sample_recovery_context(
 		&temp_dir,
-		super::super::super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
 	);
 	let active_label = tracker::automation_active_label(context.config.service_id());
 	let queue_label = tracker::automation_queue_label(context.config.service_id());
-	let mut issue = sample_issue_with_labels("In Progress", &[active_label.clone(), queue_label]);
 	let worktree_path = context.config.worktree_root().join("PUB-1626");
+	let mut issue =
+		tests::sample_issue_with_labels("In Progress", &[active_label.clone(), queue_label]);
 
 	issue.identifier = String::from("PUB-1626");
-	seed_dead_orphan_runtime_telemetry(&context.state_store, &issue, &worktree_path);
+
+	stale_active::seed_dead_orphan_runtime_telemetry(&context.state_store, &issue, &worktree_path);
+
 	context
 		.state_store
 		.update_run_status("run-1626", GHOST_LANE_TERMINAL_STATUS)
@@ -22,22 +39,25 @@ fn stale_active_release_allows_reentry_after_local_cleanup_audit() {
 		.state_store
 		.retire_run_control_channel_for_attempt("run-1626", 1, RUN_CONTROL_CHANNEL_STATUS_FAILED)
 		.expect("control channel should retire");
+
 	fs::remove_dir_all(&worktree_path).expect("worktree should be removed");
+
 	context
 		.state_store
 		.clear_worktree_mapping(&issue.id)
 		.expect("issue-id worktree mapping should clear");
-	append_stale_active_release_audit(&context.state_store, &issue.id);
+
+	stale_active::append_stale_active_release_audit(&context.state_store, &issue.id);
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
-	let mut diagnostics = super::super::super::diagnose_stale_active_issues(
+	let mut diagnostics = super::diagnose_stale_active_issues(
 		context.config.service_id(),
 		&context.workflow,
 		context.config.worktree_root(),
 		&context.state_store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.pop().expect("diagnostic should exist");
@@ -45,7 +65,8 @@ fn stale_active_release_allows_reentry_after_local_cleanup_audit() {
 	assert_eq!(diagnostic.classification, STALE_ACTIVE_CLASSIFICATION);
 	assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
 	assert!(diagnostic.evidence.contains(&String::from("stale_active_local_cleanup_complete")));
-	super::super::super::apply_stale_active_release_with_tracker(
+
+	super::apply_stale_active_release_with_tracker(
 		&tracker,
 		&context.config,
 		&context.workflow,
@@ -53,6 +74,7 @@ fn stale_active_release_allows_reentry_after_local_cleanup_audit() {
 		&diagnostic,
 	)
 	.expect("reentry release should remove active label");
+
 	assert_eq!(
 		tracker.label_removals.borrow().as_slice(),
 		&[(issue.id.clone(), vec![format!("label-{}", active_label.replace(':', "-"))])]
@@ -66,17 +88,19 @@ fn stale_active_release_allows_reentry_after_local_cleanup_audit() {
 #[test]
 fn stale_active_release_reentry_blocks_active_status_after_local_cleanup_audit() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let context = sample_recovery_context(
+	let context = tests::sample_recovery_context(
 		&temp_dir,
-		super::super::super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
 	);
 	let active_label = tracker::automation_active_label(context.config.service_id());
 	let queue_label = tracker::automation_queue_label(context.config.service_id());
-	let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
 	let worktree_path = context.config.worktree_root().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("In Progress", &[active_label, queue_label]);
 
 	issue.identifier = String::from("PUB-1626");
-	seed_dead_orphan_runtime_telemetry(&context.state_store, &issue, &worktree_path);
+
+	stale_active::seed_dead_orphan_runtime_telemetry(&context.state_store, &issue, &worktree_path);
+
 	context
 		.state_store
 		.update_run_status("run-1626", "running")
@@ -85,22 +109,25 @@ fn stale_active_release_reentry_blocks_active_status_after_local_cleanup_audit()
 		.state_store
 		.retire_run_control_channel_for_attempt("run-1626", 1, RUN_CONTROL_CHANNEL_STATUS_FAILED)
 		.expect("control channel should retire");
+
 	fs::remove_dir_all(&worktree_path).expect("worktree should be removed");
+
 	context
 		.state_store
 		.clear_worktree_mapping(&issue.id)
 		.expect("issue-id worktree mapping should clear");
-	append_stale_active_release_audit(&context.state_store, &issue.id);
+
+	stale_active::append_stale_active_release_audit(&context.state_store, &issue.id);
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let mut diagnostics = super::super::super::diagnose_stale_active_issues(
+	let mut diagnostics = super::diagnose_stale_active_issues(
 		context.config.service_id(),
 		&context.workflow,
 		context.config.worktree_root(),
 		&context.state_store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.pop().expect("diagnostic should exist");
@@ -116,18 +143,24 @@ fn stale_active_release_reentry_blocks_active_status_after_local_cleanup_audit()
 fn stale_active_release_reentry_terminal_guards_terminal_looking_audited_run() {
 	for status in ["failed", "interrupted"] {
 		let temp_dir = TempDir::new().expect("tempdir should create");
-		let context = sample_recovery_context(
+		let context = tests::sample_recovery_context(
 			&temp_dir,
-			super::super::super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+			RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
 		);
 		let active_label = tracker::automation_active_label(context.config.service_id());
 		let queue_label = tracker::automation_queue_label(context.config.service_id());
-		let mut issue =
-			sample_issue_with_labels("In Progress", &[active_label.clone(), queue_label]);
 		let worktree_path = context.config.worktree_root().join("PUB-1626");
+		let mut issue =
+			tests::sample_issue_with_labels("In Progress", &[active_label.clone(), queue_label]);
 
 		issue.identifier = String::from("PUB-1626");
-		seed_dead_orphan_runtime_telemetry(&context.state_store, &issue, &worktree_path);
+
+		stale_active::seed_dead_orphan_runtime_telemetry(
+			&context.state_store,
+			&issue,
+			&worktree_path,
+		);
+
 		context
 			.state_store
 			.update_run_status("run-1626", status)
@@ -140,22 +173,25 @@ fn stale_active_release_reentry_terminal_guards_terminal_looking_audited_run() {
 				RUN_CONTROL_CHANNEL_STATUS_FAILED,
 			)
 			.expect("control channel should retire");
+
 		fs::remove_dir_all(&worktree_path).expect("worktree should be removed");
+
 		context
 			.state_store
 			.clear_worktree_mapping(&issue.id)
 			.expect("issue-id worktree mapping should clear");
-		append_stale_active_release_audit(&context.state_store, &issue.id);
+
+		stale_active::append_stale_active_release_audit(&context.state_store, &issue.id);
 
 		let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
-		let mut diagnostics = super::super::super::diagnose_stale_active_issues(
+		let mut diagnostics = super::diagnose_stale_active_issues(
 			context.config.service_id(),
 			&context.workflow,
 			context.config.worktree_root(),
 			&context.state_store,
 			&tracker,
 			Some("PUB-1626"),
-			super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+			RecoveryRuntimeMutationPolicy::ReadOnly,
 		)
 		.expect("stale active diagnosis should run");
 		let diagnostic = diagnostics.pop().expect("diagnostic should exist");
@@ -165,7 +201,7 @@ fn stale_active_release_reentry_terminal_guards_terminal_looking_audited_run() {
 		assert_eq!(diagnostic.latest_attempt_status.as_deref(), Some(status));
 		assert!(diagnostic.evidence.contains(&String::from("stale_active_local_cleanup_complete")));
 
-		super::super::super::apply_stale_active_release_with_tracker(
+		super::apply_stale_active_release_with_tracker(
 			&tracker,
 			&context.config,
 			&context.workflow,
@@ -195,42 +231,48 @@ fn stale_active_release_reentry_terminal_guards_terminal_looking_audited_run() {
 #[test]
 fn stale_active_release_allows_reentry_after_local_cleanup_without_control_channel() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let context = sample_recovery_context(
+	let context = tests::sample_recovery_context(
 		&temp_dir,
-		super::super::super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
 	);
 	let active_label = tracker::automation_active_label(context.config.service_id());
 	let queue_label = tracker::automation_queue_label(context.config.service_id());
-	let mut issue = sample_issue_with_labels("In Progress", &[active_label.clone(), queue_label]);
 	let worktree_path = context.config.worktree_root().join("PUB-1626");
+	let mut issue =
+		tests::sample_issue_with_labels("In Progress", &[active_label.clone(), queue_label]);
 
 	issue.identifier = String::from("PUB-1626");
-	init_clean_git_repo_with_remote_default(&worktree_path, "x/pubfi-pub-1626");
-	seed_dead_orphan_runtime_telemetry_without_control_channel(
+
+	tests::init_clean_git_repo_with_remote_default(&worktree_path, "x/pubfi-pub-1626");
+	stale_active::seed_dead_orphan_runtime_telemetry_without_control_channel(
 		&context.state_store,
 		&issue,
 		&worktree_path,
 	);
+
 	context
 		.state_store
 		.update_run_status("run-1626", GHOST_LANE_TERMINAL_STATUS)
 		.expect("run should terminalize");
+
 	fs::remove_dir_all(&worktree_path).expect("worktree should be removed");
+
 	context
 		.state_store
 		.clear_worktree_mapping(&issue.id)
 		.expect("issue-id worktree mapping should clear");
-	append_stale_active_release_audit(&context.state_store, &issue.id);
+
+	stale_active::append_stale_active_release_audit(&context.state_store, &issue.id);
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
-	let mut diagnostics = super::super::super::diagnose_stale_active_issues(
+	let mut diagnostics = super::diagnose_stale_active_issues(
 		context.config.service_id(),
 		&context.workflow,
 		context.config.worktree_root(),
 		&context.state_store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.pop().expect("diagnostic should exist");
@@ -240,7 +282,7 @@ fn stale_active_release_allows_reentry_after_local_cleanup_without_control_chann
 	assert!(diagnostic.evidence.contains(&String::from("control_channel_missing")));
 	assert!(diagnostic.evidence.contains(&String::from("stale_active_local_cleanup_complete")));
 
-	super::super::super::apply_stale_active_release_with_tracker(
+	super::apply_stale_active_release_with_tracker(
 		&tracker,
 		&context.config,
 		&context.workflow,
@@ -248,6 +290,7 @@ fn stale_active_release_allows_reentry_after_local_cleanup_without_control_chann
 		&diagnostic,
 	)
 	.expect("reentry release should remove active label");
+
 	assert_eq!(
 		tracker.label_removals.borrow().as_slice(),
 		&[(issue.id.clone(), vec![format!("label-{}", active_label.replace(':', "-"))])]
@@ -257,43 +300,48 @@ fn stale_active_release_allows_reentry_after_local_cleanup_without_control_chann
 #[test]
 fn stale_active_release_reentry_without_control_channel_blocks_private_progress() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let context = sample_recovery_context(
+	let context = tests::sample_recovery_context(
 		&temp_dir,
-		super::super::super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
 	);
 	let active_label = tracker::automation_active_label(context.config.service_id());
 	let queue_label = tracker::automation_queue_label(context.config.service_id());
-	let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
 	let worktree_path = context.config.worktree_root().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("In Progress", &[active_label, queue_label]);
 
 	issue.identifier = String::from("PUB-1626");
-	init_clean_git_repo_with_remote_default(&worktree_path, "x/pubfi-pub-1626");
-	seed_dead_orphan_runtime_telemetry_without_control_channel(
+
+	tests::init_clean_git_repo_with_remote_default(&worktree_path, "x/pubfi-pub-1626");
+	stale_active::seed_dead_orphan_runtime_telemetry_without_control_channel(
 		&context.state_store,
 		&issue,
 		&worktree_path,
 	);
+
 	context
 		.state_store
 		.update_run_status("run-1626", GHOST_LANE_TERMINAL_STATUS)
 		.expect("run should terminalize");
+
 	fs::remove_dir_all(&worktree_path).expect("worktree should be removed");
+
 	context
 		.state_store
 		.clear_worktree_mapping(&issue.id)
 		.expect("issue-id worktree mapping should clear");
-	append_stale_active_release_audit(&context.state_store, &issue.id);
-	append_harness_outcome_with_pr_progress(&context.state_store, &issue.id);
+
+	stale_active::append_stale_active_release_audit(&context.state_store, &issue.id);
+	stale_active::append_harness_outcome_with_pr_progress(&context.state_store, &issue.id);
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let mut diagnostics = super::super::super::diagnose_stale_active_issues(
+	let mut diagnostics = super::diagnose_stale_active_issues(
 		context.config.service_id(),
 		&context.workflow,
 		context.config.worktree_root(),
 		&context.state_store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.pop().expect("diagnostic should exist");
@@ -307,16 +355,18 @@ fn stale_active_release_reentry_without_control_channel_blocks_private_progress(
 #[test]
 fn stale_active_release_reentry_restores_startable_state_after_active_label_release() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let context = sample_recovery_context(
+	let context = tests::sample_recovery_context(
 		&temp_dir,
-		super::super::super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
 	);
 	let queue_label = tracker::automation_queue_label(context.config.service_id());
-	let mut issue = sample_issue_with_labels("In Progress", &[queue_label]);
 	let worktree_path = context.config.worktree_root().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("In Progress", &[queue_label]);
 
 	issue.identifier = String::from("PUB-1626");
-	seed_dead_orphan_runtime_telemetry(&context.state_store, &issue, &worktree_path);
+
+	stale_active::seed_dead_orphan_runtime_telemetry(&context.state_store, &issue, &worktree_path);
+
 	context
 		.state_store
 		.update_run_status("run-1626", GHOST_LANE_TERMINAL_STATUS)
@@ -325,22 +375,25 @@ fn stale_active_release_reentry_restores_startable_state_after_active_label_rele
 		.state_store
 		.retire_run_control_channel_for_attempt("run-1626", 1, RUN_CONTROL_CHANNEL_STATUS_FAILED)
 		.expect("control channel should retire");
+
 	fs::remove_dir_all(&worktree_path).expect("worktree should be removed");
+
 	context
 		.state_store
 		.clear_worktree_mapping(&issue.id)
 		.expect("issue-id worktree mapping should clear");
-	append_stale_active_release_audit(&context.state_store, &issue.id);
+
+	stale_active::append_stale_active_release_audit(&context.state_store, &issue.id);
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
-	let mut diagnostics = super::super::super::diagnose_stale_active_issues(
+	let mut diagnostics = super::diagnose_stale_active_issues(
 		context.config.service_id(),
 		&context.workflow,
 		context.config.worktree_root(),
 		&context.state_store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.pop().expect("diagnostic should exist");
@@ -353,7 +406,8 @@ fn stale_active_release_reentry_restores_startable_state_after_active_label_rele
 	assert!(
 		diagnostic.evidence.contains(&String::from("stale_active_startable_state_restore_pending"))
 	);
-	super::super::super::apply_stale_active_release_with_tracker(
+
+	super::apply_stale_active_release_with_tracker(
 		&tracker,
 		&context.config,
 		&context.workflow,
@@ -361,6 +415,7 @@ fn stale_active_release_reentry_restores_startable_state_after_active_label_rele
 		&diagnostic,
 	)
 	.expect("state-restore reentry should complete");
+
 	assert!(tracker.label_removals.borrow().is_empty());
 	assert_eq!(
 		tracker.state_updates.borrow().as_slice(),
@@ -371,17 +426,19 @@ fn stale_active_release_reentry_restores_startable_state_after_active_label_rele
 #[test]
 fn stale_active_release_reentry_rejects_release_audit_from_other_run() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let context = sample_recovery_context(
+	let context = tests::sample_recovery_context(
 		&temp_dir,
-		super::super::super::RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+		RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
 	);
 	let active_label = tracker::automation_active_label(context.config.service_id());
 	let queue_label = tracker::automation_queue_label(context.config.service_id());
-	let mut issue = sample_issue_with_labels("In Progress", &[active_label, queue_label]);
 	let worktree_path = context.config.worktree_root().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("In Progress", &[active_label, queue_label]);
 
 	issue.identifier = String::from("PUB-1626");
-	seed_dead_orphan_runtime_telemetry(&context.state_store, &issue, &worktree_path);
+
+	stale_active::seed_dead_orphan_runtime_telemetry(&context.state_store, &issue, &worktree_path);
+
 	context
 		.state_store
 		.update_run_status("run-1626", GHOST_LANE_TERMINAL_STATUS)
@@ -390,22 +447,30 @@ fn stale_active_release_reentry_rejects_release_audit_from_other_run() {
 		.state_store
 		.retire_run_control_channel_for_attempt("run-1626", 1, RUN_CONTROL_CHANNEL_STATUS_FAILED)
 		.expect("control channel should retire");
+
 	fs::remove_dir_all(&worktree_path).expect("worktree should be removed");
+
 	context
 		.state_store
 		.clear_worktree_mapping(&issue.id)
 		.expect("issue-id worktree mapping should clear");
-	append_stale_active_release_audit_for_run(&context.state_store, &issue.id, "run-older", 1);
+
+	stale_active::append_stale_active_release_audit_for_run(
+		&context.state_store,
+		&issue.id,
+		"run-older",
+		1,
+	);
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let mut diagnostics = super::super::super::diagnose_stale_active_issues(
+	let mut diagnostics = super::diagnose_stale_active_issues(
 		context.config.service_id(),
 		&context.workflow,
 		context.config.worktree_root(),
 		&context.state_store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.pop().expect("diagnostic should exist");

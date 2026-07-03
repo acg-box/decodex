@@ -1,13 +1,21 @@
-use super::*;
-
 use orchestrator::{HarnessOutcomeKind, HarnessOutcomeRecordInput, PrivateEvidenceReadback};
+
+use crate::orchestrator::tests::operator::status::{
+	self, AgentEvidenceSource, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput,
+	AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface,
+	AuthorityDecisionRequestInput, DecisionContract, EvidenceRequest,
+	OperatorCodexAccountControlStatus, OperatorGitHubCliAuthority, OperatorPostReviewLaneStatus,
+	OperatorProjectStatus, OperatorQueuedIssueStatus, OperatorStatusSnapshot,
+	PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, Path, ReviewLevel, StateStore, TEST_SERVICE_ID, TempDir,
+	TestEnvVarGuard, Value, env, fs, orchestrator,
+};
 
 #[test]
 fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be utf-8"));
-	let mut current_lane = operator_status_text_current_lane();
+	let mut current_lane = status::operator_status_text_current_lane();
 
 	current_lane.suspected_stall = true;
 	current_lane.phase = String::from("stalled");
@@ -34,7 +42,7 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 		history_lanes: Vec::new(),
 		execution_programs: Vec::new(),
 		queued_candidates: vec![agent_evidence_blocked_candidate()],
-		worktrees: operator_status_text_worktrees(),
+		worktrees: status::operator_status_text_worktrees(),
 		post_review_lanes: vec![agent_evidence_missing_handoff_lane()],
 	};
 	let results = orchestrator::write_agent_evidence_snapshot(
@@ -113,7 +121,7 @@ fn agent_evidence_snapshot_does_not_turn_waiting_running_lane_into_attention_blo
 	let temp_dir = TempDir::new().expect("temp dir should create");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be utf-8"));
-	let mut current_lane = operator_status_text_current_lane();
+	let mut current_lane = status::operator_status_text_current_lane();
 
 	current_lane.wait_reason = Some(String::from("tool_execution"));
 	current_lane.lane_control_next_action = String::from("continue_owned_attempt");
@@ -140,7 +148,7 @@ fn agent_evidence_snapshot_does_not_turn_waiting_running_lane_into_attention_blo
 		history_lanes: Vec::new(),
 		execution_programs: Vec::new(),
 		queued_candidates: Vec::new(),
-		worktrees: operator_status_text_worktrees(),
+		worktrees: status::operator_status_text_worktrees(),
 		post_review_lanes: Vec::new(),
 	};
 	let results =
@@ -178,7 +186,7 @@ fn assert_agent_evidence_github_cli_authority(index_json: &Value) {
 }
 
 fn agent_evidence_blocked_candidate() -> OperatorQueuedIssueStatus {
-	let mut blocked_candidate = operator_status_text_queued_candidates()
+	let mut blocked_candidate = status::operator_status_text_queued_candidates()
 		.into_iter()
 		.find(|candidate| candidate.issue_identifier == "PUB-102")
 		.expect("fixture should include queued issue");
@@ -190,7 +198,7 @@ fn agent_evidence_blocked_candidate() -> OperatorQueuedIssueStatus {
 }
 
 fn agent_evidence_missing_handoff_lane() -> OperatorPostReviewLaneStatus {
-	let mut missing_handoff_lane = operator_status_text_post_review_lanes()
+	let mut missing_handoff_lane = status::operator_status_text_post_review_lanes()
 		.into_iter()
 		.next()
 		.expect("fixture should include retained review lane");
@@ -234,7 +242,7 @@ fn agent_evidence_project_status_with_configured_gh() -> OperatorProjectStatus {
 
 #[test]
 fn private_evidence_readback_summarizes_payloads_without_connector() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
@@ -295,7 +303,7 @@ fn private_evidence_readback_summarizes_payloads_without_connector() {
 
 #[test]
 fn agent_evidence_authority_boundary_readback_recommends_candidates_without_payload_leakage() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let private_marker = "PRIVATE_AUTHORITY_READBACK_PAYLOAD";
 
@@ -374,7 +382,7 @@ fn agent_evidence_authority_boundary_readback_recommends_candidates_without_payl
 
 #[test]
 fn agent_evidence_private_readback_summarizes_authority_decision_request_without_payload_leakage() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let private_diff_evidence = "PRIVATE_DECISION_REQUEST_DIFF_PAYLOAD";
 
@@ -466,7 +474,7 @@ fn agent_evidence_private_readback_summarizes_authority_decision_request_without
 
 #[test]
 fn private_evidence_readback_reports_missing_events_for_known_run() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
@@ -495,7 +503,7 @@ fn private_evidence_readback_reports_missing_events_for_known_run() {
 
 #[test]
 fn private_evidence_readback_direct_lookup_uses_stored_issue_id() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
@@ -532,7 +540,7 @@ fn private_evidence_readback_direct_lookup_uses_stored_issue_id() {
 
 #[test]
 fn private_evidence_readback_returns_manual_adopt_events_and_stable_command() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "pub-1579-manual-adopt-2-de5a4c6bf98a";
 
@@ -602,13 +610,12 @@ fn private_evidence_readback_shell_quotes_config_paths_with_spaces() {
 	let run_id = "pub-space-attempt-1";
 
 	fs::create_dir_all(&repo_root).expect("repo root should exist");
-
-	write_service_config(
+	status::write_service_config(
 		&repo_root,
-		&sample_service_config_toml("pubfi", "HOME", "HOME", None, ReviewLevel::Strict),
+		&status::sample_service_config_toml("pubfi", "HOME", "HOME", None, ReviewLevel::Strict),
 	);
 
-	let config = load_service_config(&repo_root);
+	let config = status::load_service_config(&repo_root);
 
 	state_store.record_run_attempt(run_id, "issue-space", 1, "failed").expect("run should persist");
 	state_store
@@ -645,7 +652,7 @@ fn private_evidence_readback_shell_quotes_config_paths_with_spaces() {
 
 #[test]
 fn agent_evidence_harness_outcome_records_validation_review_and_repair_signals() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
@@ -692,7 +699,7 @@ fn agent_evidence_harness_outcome_records_validation_review_and_repair_signals()
 
 #[test]
 fn harness_outcome_does_not_report_validation_failed_for_review_no_effective_diff() {
-	let (_temp_dir, _config, _workflow) = temp_project_layout();
+	let (_temp_dir, _config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
@@ -1018,7 +1025,7 @@ fn record_harness_phase_acceptance_event(state_store: &StateStore) {
 
 #[test]
 fn harness_eval_fixture_recommends_contract_improvement_without_payload_leakage() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let fixture: Value = serde_json::from_str(include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),

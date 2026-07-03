@@ -1,7 +1,6 @@
 mod parse;
 mod public_projection;
 mod render;
-#[cfg(test)] mod tests;
 mod types;
 mod validation;
 
@@ -28,3 +27,5 @@ pub(crate) use self::{
 	},
 	validation::validate_linear_execution_event_record,
 };
+
+#[cfg(test)] mod tests;

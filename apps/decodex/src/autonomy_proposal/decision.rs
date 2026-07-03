@@ -4,9 +4,8 @@ use serde_json::Value;
 
 use crate::autonomy_proposal::{
 	AutonomyProposal, AutonomyProposalChallengeEvidence, AutonomyProposalDecisionBridgeAuthority,
-	validation,
+	validation::{self},
 };
-
 pub(super) fn autonomy_decision_research_provenance(
 	proposal: &AutonomyProposal,
 	authority: &AutonomyProposalDecisionBridgeAuthority,

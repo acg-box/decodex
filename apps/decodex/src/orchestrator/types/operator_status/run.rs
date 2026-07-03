@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-use crate::orchestrator::agent_evidence::AgentPrivateEvidenceRef;
-use crate::orchestrator::types::operator_status::{
-	lifecycle::OperatorLaneLifecycleMetrics, loop_status::OperatorLoopStatus,
-};
-use crate::state::{
-	ChildAgentActivitySummary, CodexAccountActivitySummary, ProtocolActivitySummary,
+use crate::{
+	orchestrator::{
+		agent_evidence::AgentPrivateEvidenceRef,
+		types::operator_status::{
+			lifecycle::OperatorLaneLifecycleMetrics, loop_status::OperatorLoopStatus,
+		},
+	},
+	state::{ChildAgentActivitySummary, CodexAccountActivitySummary, ProtocolActivitySummary},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -72,7 +74,7 @@ pub(crate) struct OperatorRunStatus {
 	pub(crate) last_event_type: Option<String>,
 	pub(crate) last_event_at: Option<String>,
 	pub(crate) event_count: i64,
-	pub(in crate::orchestrator) private_evidence: AgentPrivateEvidenceRef,
+	pub(crate) private_evidence: AgentPrivateEvidenceRef,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(crate) loop_status: Option<OperatorLoopStatus>,
 	pub(crate) control_capability: Option<OperatorRunControlCapability>,

@@ -1,6 +1,5 @@
 use serde_json::Value;
 
-use crate::orchestrator::lane_decision::{json_projection, projection};
 use crate::orchestrator::{
 	IssueDispatchMode, PhaseGoalKind, RepoGateFailureDisposition, RetryKind,
 	kernel::{
@@ -10,6 +9,7 @@ use crate::orchestrator::{
 		facts::LaneObservation,
 		state::{LivenessState, TerminalizationState},
 	},
+	lane_decision::{json_projection, projection},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -1,21 +1,17 @@
 //! Versioned read-only autonomy signal evidence.
 
 mod fingerprint;
-
 mod model;
-
 mod review;
-
 mod types;
-
 mod validation;
 
-#[allow(unused_imports)] pub(crate) use model::AUTONOMY_SIGNAL_SCHEMA;
-pub(crate) use model::{AutonomySignal, AutonomySignalInput};
-
-pub(crate) use review::AutonomySignalReviewEvidence;
-#[allow(unused_imports)] pub(crate) use review::AutonomySignalReviewRoute;
-
+#[allow(unused_imports)]
+pub(crate) use self::{model::AUTONOMY_SIGNAL_SCHEMA, review::AutonomySignalReviewRoute};
+pub(crate) use self::{
+	model::{AutonomySignal, AutonomySignalInput},
+	review::AutonomySignalReviewEvidence,
+};
 pub(crate) use types::{
 	AutonomySignalConfidence, AutonomySignalEvidenceClass, AutonomySignalFreshness,
 	AutonomySignalKind, AutonomySignalPrivacy, AutonomySignalSourceType,

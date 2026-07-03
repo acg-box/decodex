@@ -1,14 +1,7 @@
 //! OKF bundle initialization and scaffold rendering.
 
-use std::{
-	fs,
-	io::ErrorKind,
-	path::{Path, PathBuf},
-};
-
-use crate::{
-	docs_okf::model::{OkfCheckProfile, OkfInitReport, OkfScaffoldFile},
-	prelude::Result,
+use crate::docs_okf::{
+	ErrorKind, OkfCheckProfile, OkfInitReport, OkfScaffoldFile, Path, PathBuf, Result, fs,
 };
 
 pub(crate) fn init_okf_bundle(root: &Path, profile: OkfCheckProfile) -> Result<OkfInitReport> {
@@ -101,15 +94,12 @@ fn ensure_scaffold_target_available(root: &Path, relative_path: &str, content: &
 
 fn overview_concept(profile: OkfCheckProfile) -> &'static str {
 	match profile {
-		OkfCheckProfile::Core => {
-			"---\ntype: Knowledge Bundle\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n"
-		},
-		OkfCheckProfile::Wiki => {
-			"---\ntype: Knowledge Bundle\ntitle: OKF Bundle Overview\ndescription: Entry concept for the repository knowledge bundle.\ntags: [okf]\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n"
-		},
-		OkfCheckProfile::RepoMemory => {
-			"---\ntype: Knowledge Bundle\ntitle: OKF Bundle Overview\ndescription: Entry concept for the repository knowledge bundle.\ntags: [okf, repo-memory]\nsource_refs: []\ncode_refs: []\nrelated: []\ndrift_watch: [decodex okf check, decodex okf graph]\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n"
-		},
+		OkfCheckProfile::Core =>
+			"---\ntype: Knowledge Bundle\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n",
+		OkfCheckProfile::Wiki =>
+			"---\ntype: Knowledge Bundle\ntitle: OKF Bundle Overview\ndescription: Entry concept for the repository knowledge bundle.\ntags: [okf]\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n",
+		OkfCheckProfile::RepoMemory =>
+			"---\ntype: Knowledge Bundle\ntitle: OKF Bundle Overview\ndescription: Entry concept for the repository knowledge bundle.\ntags: [okf, repo-memory]\nsource_refs: []\ncode_refs: []\nrelated: []\ndrift_watch: [decodex okf check, decodex okf graph]\n---\n\n# OKF Bundle Overview\n\nThis concept introduces the bundle and should be replaced with repository-specific knowledge.\n",
 		OkfCheckProfile::Decodex => unreachable!("decodex profile is rejected before scaffold"),
 	}
 }

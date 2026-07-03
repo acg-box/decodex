@@ -1,4 +1,4 @@
-use super::{Result, StateData, Transaction, params};
+use crate::state::sqlite_store::persist::{self, Result, StateData, Transaction};
 
 pub(in crate::state::sqlite_store) fn persist_review_lifecycle_records(
 	transaction: &Transaction<'_>,
@@ -17,7 +17,7 @@ pub(in crate::state::sqlite_store) fn persist_review_lifecycle_records(
 					?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
 					?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24
 				)",
-			params![
+			persist::params![
 				record.project_id,
 				record.issue_id,
 				record.branch_name,
@@ -61,7 +61,7 @@ pub(in crate::state::sqlite_store) fn persist_review_policy_checkpoints(
 					project_id, issue_id, run_id, attempt_number, phase, status, head_sha,
 					nonclean_rounds, details_json, updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-			params![
+			persist::params![
 				record.project_id,
 				record.issue_id,
 				record.run_id,
@@ -91,7 +91,7 @@ pub(in crate::state::sqlite_store) fn persist_evidence_artifacts(
 					key_json, payload_json, source_run_id, source_attempt_number, updated_at,
 					updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-			params![
+			persist::params![
 				record.project_id,
 				record.issue_id,
 				record.artifact_kind,
@@ -122,7 +122,7 @@ pub(in crate::state::sqlite_store) fn persist_loop_guardrail_checkpoints(
 					project_id, issue_id, reason, fingerprint, run_id, attempt_number,
 					consecutive_count, details_json, updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-			params![
+			persist::params![
 				record.project_id,
 				record.issue_id,
 				record.reason,
@@ -150,7 +150,7 @@ pub(in crate::state::sqlite_store) fn persist_connector_backoffs(
 					project_id, connector, sync_phase, quota_class, reset_unix_epoch,
 					reset_source, warning, updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-			params![
+			persist::params![
 				record.project_id,
 				record.connector,
 				record.sync_phase,

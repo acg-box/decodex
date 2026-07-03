@@ -1,17 +1,12 @@
 //! Release comparison payloads and tracked-signal matching.
 
-use std::{
-	collections::{BTreeSet, HashSet},
-	path::Path,
-};
-
-use serde_json::Value;
-
-use crate::release_delta::{ReleasePair, options};
 use crate::{
-	GitHubApi, RadarRefreshReleaseDeltaRequest, extract_pr_number_from_url,
-	prelude::{Result, eyre},
-	required_value_i64, required_value_string,
+	prelude::Result,
+	release_delta::{
+		self, BTreeSet, GitHubApi, HashSet, Path, RadarRefreshReleaseDeltaRequest, ReleasePair,
+		Value, extract_pr_number_from_url, eyre, required_value_i64, required_value_string,
+		serde_json,
+	},
 };
 
 pub(super) fn build_release_comparison(
@@ -20,8 +15,8 @@ pub(super) fn build_release_comparison(
 	pair: &ReleasePair,
 	signals: &[Value],
 ) -> Result<Value> {
-	let stable_tag = options::required_release_tag(&pair.stable)?;
-	let preview_tag = options::required_release_tag(&pair.preview)?;
+	let stable_tag = release_delta::required_release_tag(&pair.stable)?;
+	let preview_tag = release_delta::required_release_tag(&pair.preview)?;
 	let compare = api
 		.get(&format!(
 			"https://api.github.com/repos/{}/compare/{stable_tag}...{preview_tag}",
@@ -57,10 +52,10 @@ pub(super) fn build_release_comparison(
 pub(super) fn load_signal_entries(signals_dir: &Path, repo: &str) -> Result<Vec<Value>> {
 	let mut entries = Vec::new();
 
-	for path in crate::sorted_json_files(signals_dir)? {
-		let payload = crate::load_json(&path)?;
+	for path in release_delta::sorted_json_files(signals_dir)? {
+		let payload = release_delta::load_json(&path)?;
 
-		crate::validate_signal_file(&path, &payload)?;
+		release_delta::validate_signal_file(&path, &payload)?;
 
 		if payload.pointer("/source_refs/repo").and_then(Value::as_str) == Some(repo) {
 			entries.push(payload);
@@ -101,9 +96,9 @@ fn tracked_signal_slugs(
 }
 
 fn signal_commit_shas(signal: &Value) -> Vec<String> {
-	crate::string_array(signal.pointer("/source_refs/commit_urls"))
+	release_delta::string_array(signal.pointer("/source_refs/commit_urls"))
 		.into_iter()
-		.filter_map(|url| crate::extract_commit_sha_from_url(&url))
+		.filter_map(|url| release_delta::extract_commit_sha_from_url(&url))
 		.collect()
 }
 

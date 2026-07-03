@@ -7,9 +7,10 @@ use std::{
 
 use crate::git_credentials;
 
-const GH_BINARY: &str = "gh";
 pub(crate) const GH_FALLBACK_PATHS: &[&str] =
 	&["/run/current-system/sw/bin/gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"];
+
+const GH_BINARY: &str = "gh";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum GhCommandDiscoveryTier {

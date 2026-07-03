@@ -11,44 +11,14 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use crate::{
-	commit_message::{self, MANUAL_AUTHORITY},
-	default_branch_sync,
-	git_credentials::GitCredentialSource,
-	github::{self, RepositoryContext},
-	prelude::{Result, eyre},
-	state::{ReviewHandoffMarker, StateStore},
-	tracker::{
-		TrackerIssue,
-		linear::LinearClient,
-		privacy_classifier::{
-			ConfiguredPublicProjectionPrivacyClassifier, PublicProjectionPrivacyClassifier,
-		},
-	},
-	workflow::WorkflowDocument,
-};
-
 use self::{
-	authority::{resolve_authority, resolve_land_authority},
-	closeout::{
-		ensure_manual_land_checkout_is_managed_lane,
-		ensure_manual_land_left_no_merged_worktree_cleanup_debt, finalize_land_closeout,
-		manual_land_cleanup_identifier, prepare_closeout,
-	},
-	commit_guard::ensure_manual_commit_not_claimed_by_active_lane,
-	context::prepare_manual_land_context,
+	authority::resolve_land_authority,
+	closeout::{ensure_manual_land_left_no_merged_worktree_cleanup_debt, prepare_closeout},
 	git::{
-		current_branch_name, current_branch_name_if_attached, current_head_oid,
-		current_worktree_root, ensure_clean_worktree, paths_match_for_manual_commit_guard,
-		run_git_capture, run_git_checked_with_stdio,
+		current_branch_name, current_branch_name_if_attached, ensure_clean_worktree,
+		paths_match_for_manual_commit_guard, run_git_capture,
 	},
-	landing::{
-		execute_land_merge, inspect_pull_request_landing_state_for_manual_land,
-		load_authoritative_landed_change_record, validate_landing_state,
-	},
-	recovery::finalize_already_merged_manual_land_recovery,
 };
-
 #[cfg(test)]
 use self::{
 	authority::{infer_issue_identifier_from_worktree_root, looks_like_issue_identifier},
@@ -65,6 +35,23 @@ use self::{
 		resolve_manual_config_path, resolve_pr_url,
 	},
 	recovery::ensure_already_merged_manual_land_recovery_ready,
+};
+#[cfg(test)] use crate::pull_request::PullRequestLandingState;
+use crate::{
+	commit_message::{self, MANUAL_AUTHORITY},
+	default_branch_sync,
+	git_credentials::GitCredentialSource,
+	github::{self, RepositoryContext},
+	prelude::{Result, eyre},
+	state::{ReviewHandoffMarker, StateStore},
+	tracker::{
+		TrackerIssue,
+		linear::LinearClient,
+		privacy_classifier::{
+			ConfiguredPublicProjectionPrivacyClassifier, PublicProjectionPrivacyClassifier,
+		},
+	},
+	workflow::WorkflowDocument,
 };
 
 const MANUAL_LAND_CLOSEOUT_MARKER_GIT_PATH: &str = "decodex/manual-land-closeout";
@@ -191,15 +178,19 @@ struct ManualCommitActiveLaneBlocker {
 
 pub(crate) fn run_commit(config_path: Option<&Path>, request: &ManualCommitRequest) -> Result<()> {
 	let cwd = env::current_dir()?;
-	let worktree_root = current_worktree_root(&cwd)?;
-	let authority = resolve_authority(
+	let worktree_root = self::git::current_worktree_root(&cwd)?;
+	let authority = self::authority::resolve_authority(
 		config_path,
 		request.authority.as_deref(),
 		request.manual_authority,
 		&worktree_root,
 	)?;
 
-	ensure_manual_commit_not_claimed_by_active_lane(config_path, &cwd, &worktree_root)?;
+	self::commit_guard::ensure_manual_commit_not_claimed_by_active_lane(
+		config_path,
+		&cwd,
+		&worktree_root,
+	)?;
 
 	let message = commit_message::build_commit_message(
 		&request.summary,
@@ -208,11 +199,11 @@ pub(crate) fn run_commit(config_path: Option<&Path>, request: &ManualCommitReque
 		request.breaking,
 	)?;
 
-	run_git_checked_with_stdio(&cwd, &["commit", "-S", "-m", message.as_str()])
+	self::git::run_git_checked_with_stdio(&cwd, &["commit", "-S", "-m", message.as_str()])
 }
 
 pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) -> Result<()> {
-	let context = prepare_manual_land_context(config_path, request)?;
+	let context = self::context::prepare_manual_land_context(config_path, request)?;
 
 	if !github::pull_request_matches_repository(&context.pr_url, &context.repository)? {
 		eyre::bail!(
@@ -223,7 +214,9 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 		);
 	}
 
-	if let Some(recovery) = finalize_already_merged_manual_land_recovery(&context, request)? {
+	if let Some(recovery) =
+		self::recovery::finalize_already_merged_manual_land_recovery(&context, request)?
+	{
 		println!(
 			"land ok: pr={} merge_commit={} default_branch={} local_default_branch_synced=true",
 			context.pr_url, recovery.merge_commit, context.repository.default_branch
@@ -232,10 +225,10 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 		return Ok(());
 	}
 
-	ensure_manual_land_checkout_is_managed_lane(
+	self::closeout::ensure_manual_land_checkout_is_managed_lane(
 		&context.worktree_root,
 		&context.project_worktree_root,
-		manual_land_cleanup_identifier(&context.authority, &context.current_branch),
+		self::closeout::manual_land_cleanup_identifier(&context.authority, &context.current_branch),
 	)?;
 
 	if context.current_branch == context.repository.default_branch {
@@ -256,14 +249,14 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 	}
 
 	let default_branch = context.repository.default_branch.clone();
-	let landing_state = inspect_pull_request_landing_state_for_manual_land(
+	let landing_state = self::landing::inspect_pull_request_landing_state_for_manual_land(
 		&context.canonical_repo_root,
 		&context.pr_url,
 		&context.github_token,
 		context.github_command_path.as_deref(),
 	)?;
-	let current_head = current_head_oid(&context.cwd)?;
-	let execution_mode = validate_landing_state(
+	let current_head = self::git::current_head_oid(&context.cwd)?;
+	let execution_mode = self::landing::validate_landing_state(
 		&landing_state,
 		&context.pr_url,
 		&default_branch,
@@ -283,11 +276,16 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 		&request.related,
 		request.breaking,
 	)?;
-	let merge_commit =
-		execute_land_merge(&context, &current_head, landed_change_record.as_str(), execution_mode)?;
-	let landed_change_record = load_authoritative_landed_change_record(&context, &merge_commit)?;
+	let merge_commit = self::landing::execute_land_merge(
+		&context,
+		&current_head,
+		landed_change_record.as_str(),
+		execution_mode,
+	)?;
+	let landed_change_record =
+		self::landing::load_authoritative_landed_change_record(&context, &merge_commit)?;
 
-	finalize_land_closeout(
+	self::closeout::finalize_land_closeout(
 		&context,
 		&merge_commit,
 		&default_branch,
@@ -303,4 +301,65 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 }
 
 #[cfg(test)]
-mod tests;
+fn resolve_authority(
+	config_path: Option<&Path>,
+	explicit: Option<&str>,
+	manual_authority: bool,
+	worktree_root: &Path,
+) -> Result<ManualAuthority> {
+	authority::resolve_authority(config_path, explicit, manual_authority, worktree_root)
+}
+
+#[cfg(test)]
+fn ensure_manual_land_checkout_is_managed_lane(
+	repo_root: &Path,
+	worktree_root: &Path,
+	identifier: &str,
+) -> Result<()> {
+	closeout::ensure_manual_land_checkout_is_managed_lane(repo_root, worktree_root, identifier)
+}
+
+#[cfg(test)]
+fn execute_land_merge(
+	context: &ManualLandContext,
+	current_head: &str,
+	landed_change_record: &str,
+	execution_mode: LandExecutionMode,
+) -> Result<String> {
+	landing::execute_land_merge(context, current_head, landed_change_record, execution_mode)
+}
+
+#[cfg(test)]
+fn load_authoritative_landed_change_record(
+	context: &ManualLandContext,
+	merge_commit: &str,
+) -> Result<String> {
+	landing::load_authoritative_landed_change_record(context, merge_commit)
+}
+
+#[cfg(test)]
+fn validate_landing_state(
+	landing_state: &PullRequestLandingState,
+	pr_url: &str,
+	expected_base_branch: &str,
+	current_branch: &str,
+	current_head: &str,
+) -> Result<LandExecutionMode> {
+	landing::validate_landing_state(
+		landing_state,
+		pr_url,
+		expected_base_branch,
+		current_branch,
+		current_head,
+	)
+}
+
+#[cfg(test)]
+fn finalize_already_merged_manual_land_recovery(
+	context: &ManualLandContext,
+	request: &ManualLandRequest,
+) -> Result<Option<ManualLandRecoveryOutcome>> {
+	recovery::finalize_already_merged_manual_land_recovery(context, request)
+}
+
+#[cfg(test)] mod tests;

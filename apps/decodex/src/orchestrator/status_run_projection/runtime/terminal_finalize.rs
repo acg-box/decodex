@@ -3,7 +3,7 @@ use crate::orchestrator::{
 	ProjectRunStatus, RUN_OPERATION_REVIEW_WRITEBACK, Value,
 };
 
-pub(in crate::orchestrator) fn operator_run_terminal_finalize_projection(
+pub(crate) fn operator_run_terminal_finalize_projection(
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	run: &ProjectRunStatus,
 ) -> Option<OperatorTerminalFinalizeProjection> {
@@ -44,7 +44,7 @@ pub(in crate::orchestrator) fn operator_run_terminal_finalize_projection(
 	}
 }
 
-pub(in crate::orchestrator) fn review_handoff_terminal_finalize_wait_reason(
+pub(crate) fn review_handoff_terminal_finalize_wait_reason(
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	run: &ProjectRunStatus,
 	events: &[PrivateExecutionEvent],
@@ -72,7 +72,7 @@ pub(in crate::orchestrator) fn review_handoff_terminal_finalize_wait_reason(
 	"review_handoff_writeback"
 }
 
-pub(in crate::orchestrator) fn review_repair_terminal_finalize_wait_reason(
+pub(crate) fn review_repair_terminal_finalize_wait_reason(
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	run: &ProjectRunStatus,
 	events: &[PrivateExecutionEvent],

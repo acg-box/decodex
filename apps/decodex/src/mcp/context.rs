@@ -3,7 +3,12 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use crate::{config::ServiceConfig, prelude::eyre, runtime, state::StateStore};
+use crate::{
+	config::ServiceConfig,
+	prelude::{Result, eyre},
+	runtime,
+	state::StateStore,
+};
 
 pub(super) struct McpContext {
 	pub(super) repo_root: PathBuf,
@@ -11,9 +16,8 @@ pub(super) struct McpContext {
 	pub(super) project_id: Option<String>,
 	pub(super) state_store: Option<StateStore>,
 }
-
 impl McpContext {
-	pub(super) fn for_process(config_path: Option<&Path>) -> crate::prelude::Result<Self> {
+	pub(super) fn for_process(config_path: Option<&Path>) -> Result<Self> {
 		let state_store = runtime::open_runtime_store_lazy().ok();
 		let config_path = resolve_context_config_path(config_path, state_store.as_ref())?;
 		let config = config_path.as_ref().map(ServiceConfig::from_path).transpose()?;
@@ -39,7 +43,7 @@ impl McpContext {
 fn resolve_context_config_path(
 	explicit_path: Option<&Path>,
 	state_store: Option<&StateStore>,
-) -> crate::prelude::Result<Option<PathBuf>> {
+) -> Result<Option<PathBuf>> {
 	if let Some(path) = explicit_path {
 		return Ok(Some(path.to_path_buf()));
 	}
@@ -51,7 +55,7 @@ fn resolve_context_config_path(
 	runtime::registered_config_path_for_cwd(state_store, &env::current_dir()?)
 }
 
-fn discover_repo_root_from_current_dir() -> crate::prelude::Result<Option<PathBuf>> {
+fn discover_repo_root_from_current_dir() -> Result<Option<PathBuf>> {
 	let mut candidate = env::current_dir()?;
 
 	loop {

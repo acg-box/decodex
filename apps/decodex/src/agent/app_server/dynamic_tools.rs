@@ -1,12 +1,13 @@
 //! App-server dynamic tool declaration, completion, and call dispatch.
 
-use super::{
-	Display, DynamicToolCallParams, DynamicToolCallResponse, DynamicToolContentItem,
+use color_eyre::eyre::Report;
+
+use crate::agent::app_server::{
+	self, Display, DynamicToolCallParams, DynamicToolCallResponse, DynamicToolContentItem,
 	DynamicToolHandler, DynamicToolSpec, Error, Formatter, JsonRpcConnection, JsonRpcRequest,
 	RequestDispatchContext, RequestWaitPhase, RunRecorder, Serialize, TurnCompletionStatus, eyre,
-	fmt, record_server_request_response, tracker_tool_bridge,
+	fmt, serde_json, tracker_tool_bridge,
 };
-use color_eyre::eyre::Report;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AppServerDynamicToolFailureKind {
@@ -63,12 +64,10 @@ impl AppServerDynamicToolFailure {
 
 	fn diagnostic_next_action(&self) -> &'static str {
 		match self.kind {
-			AppServerDynamicToolFailureKind::Protocol => {
-				"inspect the declared dynamic tool surface and item/tool/call payload before retrying the lane"
-			},
-			AppServerDynamicToolFailureKind::Tool => {
-				"inspect the tool response, correct the call arguments or backing state, and retry the tool call"
-			},
+			AppServerDynamicToolFailureKind::Protocol =>
+				"inspect the declared dynamic tool surface and item/tool/call payload before retrying the lane",
+			AppServerDynamicToolFailureKind::Tool =>
+				"inspect the tool response, correct the call arguments or backing state, and retry the tool call",
 		}
 	}
 }
@@ -241,7 +240,7 @@ pub(super) fn respond_to_dynamic_tool_call_dispatch(
 	request: &JsonRpcRequest,
 	dispatch: DynamicToolCallDispatch,
 ) -> crate::prelude::Result<()> {
-	record_server_request_response(
+	app_server::record_server_request_response(
 		connection,
 		recorder,
 		request,

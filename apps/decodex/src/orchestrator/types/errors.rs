@@ -1,4 +1,6 @@
-use super::{Display, Duration, Error, Formatter, LoopGuardrailReason, fmt};
+use crate::orchestrator::types::{
+	Display, Duration, Error, Formatter, LoopGuardrailReason, fmt::Result,
+};
 
 #[derive(Debug)]
 pub(crate) struct ManualAttentionRequested {
@@ -8,7 +10,7 @@ pub(crate) struct ManualAttentionRequested {
 	pub(crate) error_class: Option<String>,
 }
 impl Display for ManualAttentionRequested {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		write!(
 			f,
 			"Run `{}` for issue `{}` requested human attention via label `{}`; stop automatic retries and hand off manually.",
@@ -26,7 +28,7 @@ pub(crate) struct ReviewHandoffNeedsAttention {
 	pub(crate) run_id: String,
 }
 impl Display for ReviewHandoffNeedsAttention {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		write!(
 			f,
 			"Run `{}` for issue `{}` partially applied review handoff writeback for PR `{}`; stop retries and repair the issue manually.",
@@ -42,7 +44,7 @@ pub(crate) struct RetainedReviewNeedsAttention {
 	pub(crate) reason: String,
 }
 impl Display for RetainedReviewNeedsAttention {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		write!(f, "Retained review orchestration requires operator attention: {}.", self.reason)
 	}
 }
@@ -57,7 +59,7 @@ pub(crate) struct RetainedPartialProgress {
 	pub(crate) source_error_class: Option<String>,
 }
 impl Display for RetainedPartialProgress {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		write!(
 			f,
 			"Run `{}` for issue `{}` retained tracked worktree changes at `{}`; stop automatic retries and finish recovery manually.",
@@ -100,16 +102,15 @@ impl LoopGuardrailStopRequested {
 			Some("external_dependency_required") => format!(
 				"inspect the dependency or Execution Program readiness blocker and resolve that external dependency before retrying, {recovery_gate}"
 			),
-			Some("architecture_recovery_started") | None => {
-				self.reason.terminal_next_action(recovery_gate)
-			},
+			Some("architecture_recovery_started") | None =>
+				self.reason.terminal_next_action(recovery_gate),
 			Some(_) => self.reason.terminal_next_action(recovery_gate),
 		}
 	}
 }
 
 impl Display for LoopGuardrailStopRequested {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		let source = self.source_error_class.as_deref().unwrap_or("none");
 		let architecture_recovery =
 			self.architecture_recovery_reason_code.as_deref().unwrap_or("none");
@@ -136,7 +137,7 @@ pub(crate) struct AgentGitCredentialsUnavailable {
 	pub(crate) token_env_var: String,
 }
 impl Display for AgentGitCredentialsUnavailable {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		write!(
 			f,
 			"Run `{}` could not prepare noninteractive GitHub credentials from `{}`; stop automatic execution and repair the configured credential.",
@@ -154,7 +155,7 @@ pub(crate) struct StalledRunNeedsAttention {
 	pub(crate) idle_for: Duration,
 }
 impl Display for StalledRunNeedsAttention {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		write!(
 			f,
 			"Run `{}` for issue `{}` stalled after {:?} without app-server activity; reconcile through the retry budget before requiring operator attention.",

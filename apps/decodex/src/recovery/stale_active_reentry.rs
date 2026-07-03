@@ -1,8 +1,22 @@
 //! Reentry predicates for stale-active release recovery.
 
-use crate::{state::ProjectRunStatus, tracker::TrackerIssue, workflow::WorkflowTracker};
+use crate::{
+	recovery::{GHOST_LANE_TERMINAL_STATUS, stale_active_labels::StaleActiveLabelSnapshot},
+	state::ProjectRunStatus,
+	tracker::TrackerIssue,
+	workflow::WorkflowTracker,
+};
 
-use super::{GHOST_LANE_TERMINAL_STATUS, stale_active_labels::StaleActiveLabelSnapshot};
+pub(super) struct StaleActiveReleaseReentryInput<'a> {
+	pub(super) run: Option<&'a ProjectRunStatus>,
+	pub(super) run_lease: bool,
+	pub(super) active_shared_claim: bool,
+	pub(super) labels: &'a StaleActiveLabelSnapshot,
+	pub(super) issue: &'a TrackerIssue,
+	pub(super) tracker_policy: &'a WorkflowTracker,
+	pub(super) worktree_state: &'a str,
+	pub(super) control_channel: &'a str,
+}
 
 struct StaleActiveStartableStateRestoreReentryInput<'a> {
 	run: Option<&'a ProjectRunStatus>,
@@ -16,17 +30,6 @@ struct StaleActiveStartableStateRestoreReentryInput<'a> {
 	startable_state_id_present: bool,
 	worktree_state: &'a str,
 	control_channel: &'a str,
-}
-
-pub(super) struct StaleActiveReleaseReentryInput<'a> {
-	pub(super) run: Option<&'a ProjectRunStatus>,
-	pub(super) run_lease: bool,
-	pub(super) active_shared_claim: bool,
-	pub(super) labels: &'a StaleActiveLabelSnapshot,
-	pub(super) issue: &'a TrackerIssue,
-	pub(super) tracker_policy: &'a WorkflowTracker,
-	pub(super) worktree_state: &'a str,
-	pub(super) control_channel: &'a str,
 }
 
 struct StaleActiveLocalCleanupReentryInput<'a> {
@@ -76,6 +79,10 @@ pub(super) fn apply_stale_active_release_reentries(
 	);
 }
 
+pub(super) fn evidence_contains(evidence: &[String], expected: &str) -> bool {
+	evidence.iter().any(|entry| entry == expected)
+}
+
 fn stale_active_startable_state_id_present(input: &StaleActiveReleaseReentryInput<'_>) -> bool {
 	input
 		.tracker_policy
@@ -119,6 +126,7 @@ fn stale_active_startable_state_restore_reentry_allowed(
 	{
 		return false;
 	}
+
 	let Some(run) = input.run else {
 		return false;
 	};
@@ -162,6 +170,7 @@ fn stale_active_local_cleanup_reentry_allowed(
 	{
 		return false;
 	}
+
 	let Some(run) = input.run else {
 		return false;
 	};
@@ -203,8 +212,4 @@ fn stale_active_reentry_control_channel_inactive_or_absent(
 
 	!control_channel.ends_with(":active")
 		&& evidence_contains(evidence, "control_channel_inactive_or_file_missing")
-}
-
-pub(super) fn evidence_contains(evidence: &[String], expected: &str) -> bool {
-	evidence.iter().any(|entry| entry == expected)
 }

@@ -4,7 +4,7 @@ use crate::orchestrator::{
 	OperatorRunStatus, RUN_OPERATION_REVIEW_WRITEBACK, status_run_projection,
 };
 
-pub(in crate::orchestrator) fn operator_lane_lifecycle_metrics(
+pub(crate) fn operator_lane_lifecycle_metrics(
 	attempts: &[OperatorRunStatus],
 ) -> OperatorLaneLifecycleMetrics {
 	let mut metrics = operator_lane_lifecycle_totals(attempts.iter());
@@ -14,7 +14,7 @@ pub(in crate::orchestrator) fn operator_lane_lifecycle_metrics(
 	metrics
 }
 
-pub(in crate::orchestrator) fn operator_lane_lifecycle_totals<'a>(
+pub(crate) fn operator_lane_lifecycle_totals<'a>(
 	runs: impl IntoIterator<Item = &'a OperatorRunStatus>,
 ) -> OperatorLaneLifecycleMetrics {
 	let mut bucket_totals = HashMap::<String, ChildAgentActivityBucket>::new();
@@ -119,7 +119,7 @@ pub(in crate::orchestrator) fn operator_lane_lifecycle_totals<'a>(
 	metrics
 }
 
-pub(in crate::orchestrator) fn operator_lane_lifecycle_phase_metrics(
+pub(crate) fn operator_lane_lifecycle_phase_metrics(
 	attempts: &[OperatorRunStatus],
 ) -> Vec<OperatorLaneLifecyclePhaseMetrics> {
 	let mut groups = HashMap::<String, (String, u8, Vec<&OperatorRunStatus>)>::new();
@@ -176,7 +176,7 @@ pub(in crate::orchestrator) fn operator_lane_lifecycle_phase_metrics(
 	phases.into_iter().map(|(_rank, phase)| phase).collect()
 }
 
-pub(in crate::orchestrator) fn operator_run_lifecycle_metric_phase(
+pub(crate) fn operator_run_lifecycle_metric_phase(
 	run: &OperatorRunStatus,
 ) -> OperatorLifecycleMetricPhase {
 	if matches!(
@@ -217,7 +217,7 @@ pub(in crate::orchestrator) fn operator_run_lifecycle_metric_phase(
 	operator_lifecycle_metric_phase("development", "Development", 0)
 }
 
-pub(in crate::orchestrator) fn operator_lane_lifecycle_attempt_evidence(
+pub(crate) fn operator_lane_lifecycle_attempt_evidence(
 	run: &OperatorRunStatus,
 ) -> OperatorLaneLifecycleAttemptEvidence {
 	let phase = operator_run_lifecycle_metric_phase(run);
@@ -239,7 +239,7 @@ pub(in crate::orchestrator) fn operator_lane_lifecycle_attempt_evidence(
 	}
 }
 
-pub(in crate::orchestrator) fn operator_lifecycle_metric_phase(
+pub(crate) fn operator_lifecycle_metric_phase(
 	key: &'static str,
 	label: &'static str,
 	rank: u8,

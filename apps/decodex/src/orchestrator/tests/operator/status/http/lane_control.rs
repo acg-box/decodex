@@ -1,17 +1,21 @@
-use super::*;
-
+use crate::orchestrator::tests::operator::status::http::{
+	self, Arc, Command, DashboardEventHub, Mutex, OperatorControlRequests, ProjectRegistration,
+	PublishedOperatorSnapshot, RUN_CONTROL_CHANNEL_DIR, RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE,
+	Read as _, RunLeaseMissingControlFixture, ServiceConfig, Shutdown, StateStore, TcpListener,
+	TcpStream, Value, Write, fs, orchestrator, state, thread,
+};
 #[test]
 fn operator_lane_inspect_api_returns_lane_identity() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = http::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 
 	fs::create_dir_all(&worktree_path).expect("worktree should exist");
@@ -69,16 +73,16 @@ fn operator_lane_inspect_api_returns_lane_identity() {
 
 #[test]
 fn operator_lane_inspect_projects_terminal_ledger_for_unowned_stale_run() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("Done", &[]);
+	let issue = http::sample_issue("Done", &[]);
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 
 	fs::create_dir_all(&worktree_path).expect("worktree should exist");
@@ -95,9 +99,10 @@ fn operator_lane_inspect_projects_terminal_ledger_for_unowned_stale_run() {
 			&worktree_path.display().to_string(),
 		)
 		.expect("worktree should record");
-	seed_local_linear_execution_events(
+
+	http::seed_local_linear_execution_events(
 		&state_store,
-		&successful_linear_execution_history_comments_with_cleanup(&issue),
+		&http::successful_linear_execution_history_comments_with_cleanup(&issue),
 	);
 
 	let response = String::from_utf8(orchestrator::build_operator_lane_inspect_http_response(
@@ -129,16 +134,16 @@ fn operator_lane_inspect_projects_terminal_ledger_for_unowned_stale_run() {
 
 #[test]
 fn operator_lane_inspect_does_not_project_terminal_ledger_over_leased_run() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = http::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 
 	fs::create_dir_all(&worktree_path).expect("worktree should exist");
@@ -158,9 +163,10 @@ fn operator_lane_inspect_does_not_project_terminal_ledger_over_leased_run() {
 			&worktree_path.display().to_string(),
 		)
 		.expect("worktree should record");
-	seed_local_linear_execution_events(
+
+	http::seed_local_linear_execution_events(
 		&state_store,
-		&successful_linear_execution_history_comments_with_cleanup(&issue),
+		&http::successful_linear_execution_history_comments_with_cleanup(&issue),
 	);
 
 	let response = String::from_utf8(orchestrator::build_operator_lane_inspect_http_response(
@@ -190,16 +196,16 @@ fn operator_lane_inspect_does_not_project_terminal_ledger_over_leased_run() {
 
 #[test]
 fn operator_lane_inspect_api_filters_by_run_id() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = http::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 
 	fs::create_dir_all(&worktree_path).expect("worktree should exist");
@@ -246,11 +252,11 @@ fn operator_lane_inspect_api_filters_by_run_id() {
 
 #[test]
 fn operator_lane_interrupt_api_rejects_blank_run_id() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
@@ -282,16 +288,16 @@ fn operator_lane_interrupt_api_rejects_blank_run_id() {
 
 #[test]
 fn operator_lane_interrupt_api_force_reports_hard_fallback_after_pending_soft_interrupt() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = http::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 	let body =
 		br#"{"projectId":"pubfi","issue":"PUB-101","runId":"pub-101-attempt-1","force":true}"#;
@@ -360,16 +366,16 @@ fn operator_lane_interrupt_api_force_reports_hard_fallback_after_pending_soft_in
 
 #[test]
 fn operator_lane_interrupt_api_force_does_not_hard_fallback_after_control_rejection() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = http::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 	let body =
 		br#"{"projectId":"pubfi","issue":"PUB-101","runId":"pub-101-attempt-1","force":true}"#;
@@ -433,12 +439,12 @@ fn run_lease_missing_control_fixture(
 ) -> RunLeaseMissingControlFixture {
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = http::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 	let channel_path =
 		worktree_path.join(RUN_CONTROL_CHANNEL_DIR).join("pub-101-attempt-1.channel");
@@ -499,9 +505,9 @@ fn operator_json_response_body(response: &str, context: &str) -> Value {
 	let body = response
 		.split_once("\r\n\r\n")
 		.map(|(_, body)| body)
-		.unwrap_or_else(|| panic!("{context} response should include body"));
+		.unwrap_or_else(|| http::panic!("{context} response should include body"));
 
-	serde_json::from_str(body).unwrap_or_else(|_| panic!("{context} response should be json"))
+	serde_json::from_str(body).unwrap_or_else(|_| http::panic!("{context} response should be json"))
 }
 
 #[cfg(unix)]
@@ -593,7 +599,7 @@ fn assert_run_lease_missing_control_audit(
 #[cfg(unix)]
 #[test]
 fn operator_lane_interrupt_api_force_hard_fallbacks_after_run_lease_missing() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let mut fixture = run_lease_missing_control_fixture(&config, &state_store);
 	let project_id = config.service_id().to_owned();
@@ -654,16 +660,16 @@ fn operator_lane_interrupt_api_force_hard_fallbacks_after_run_lease_missing() {
 #[cfg(unix)]
 #[test]
 fn operator_lane_interrupt_api_force_hard_fallbacks_terminal_live_process_without_soft_owner() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = http::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 	let project_id = config.service_id().to_owned();
 	let issue_identifier = issue.identifier.clone();
@@ -728,16 +734,16 @@ fn operator_lane_interrupt_api_force_hard_fallbacks_terminal_live_process_withou
 
 #[test]
 fn operator_lane_steer_api_rejects_stale_expected_turn_id() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = http::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 	let body = br#"{"projectId":"pubfi","issue":"PUB-101","runId":"pub-101-attempt-1","expectedTurnId":"turn-old","message":"please adjust priority"}"#;
 	let request = format!(
@@ -812,16 +818,16 @@ fn operator_lane_steer_api_rejects_stale_expected_turn_id() {
 
 #[test]
 fn operator_lane_steer_endpoint_accepts_large_operator_message_body() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = http::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 	let channel_path =
 		worktree_path.join(RUN_CONTROL_CHANNEL_DIR).join("pub-101-attempt-1.channel");

@@ -4,9 +4,10 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 
-use crate::prelude::Result;
-use crate::prelude::eyre;
-use crate::{GENERIC_COMMIT_TITLES, SIGNAL_SCHEMA};
+use crate::{
+	GENERIC_COMMIT_TITLES, SIGNAL_SCHEMA,
+	prelude::{Result, eyre},
+};
 
 pub(super) fn rendered_signal(
 	bundle: &Value,

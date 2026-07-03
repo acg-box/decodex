@@ -1,18 +1,34 @@
-use color_eyre::Report;
-
 use crate::{
-	orchestrator::{
-		self, IssueDispatchMode, IssueRunPlan, RetainedReviewNeedsAttention,
-		RetainedReviewRunIdentity, TerminalFailureWritebackRuntime,
-		retained_review_orchestration::model::{
-			PassiveRetainedAttentionRuntime, RetainedReviewRuntime,
-		},
+	orchestrator,
+	orchestrator::retained_review_orchestration::{
+		IssueDispatchMode, IssueRunPlan, IssueTracker, PassiveRetainedAttentionRuntime, Report,
+		Result, RetainedReviewNeedsAttention, RetainedReviewRunIdentity, RetainedReviewRuntime,
+		ReviewOrchestrationMarker, TerminalFailureWritebackRuntime, TrackerIssue, WorktreeMapping,
+		WorktreeSpec,
 	},
-	prelude::Result,
-	state::{ReviewOrchestrationMarker, WorktreeMapping},
-	tracker::{IssueTracker, TrackerIssue},
-	worktree::WorktreeSpec,
 };
+
+pub(crate) fn apply_passive_retained_manual_attention<T>(
+	runtime: PassiveRetainedAttentionRuntime<'_, T>,
+	issue: &TrackerIssue,
+	worktree: &WorktreeMapping,
+	orchestration_marker: &ReviewOrchestrationMarker,
+	reason: &str,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	apply_passive_retained_manual_attention_with_run_identity(
+		runtime,
+		issue,
+		worktree,
+		&RetainedReviewRunIdentity {
+			run_id: orchestration_marker.run_id().to_owned(),
+			attempt_number: orchestration_marker.attempt_number(),
+		},
+		reason,
+	)
+}
 
 pub(crate) fn apply_passive_retained_manual_attention_with_run_identity<T>(
 	runtime: PassiveRetainedAttentionRuntime<'_, T>,
@@ -66,28 +82,6 @@ where
 	)?;
 
 	Ok(())
-}
-
-pub(super) fn apply_passive_retained_manual_attention<T>(
-	runtime: PassiveRetainedAttentionRuntime<'_, T>,
-	issue: &TrackerIssue,
-	worktree: &WorktreeMapping,
-	orchestration_marker: &ReviewOrchestrationMarker,
-	reason: &str,
-) -> Result<()>
-where
-	T: IssueTracker,
-{
-	apply_passive_retained_manual_attention_with_run_identity(
-		runtime,
-		issue,
-		worktree,
-		&RetainedReviewRunIdentity {
-			run_id: orchestration_marker.run_id().to_owned(),
-			attempt_number: orchestration_marker.attempt_number(),
-		},
-		reason,
-	)
 }
 
 pub(super) fn passive_attention_runtime<'a, T>(

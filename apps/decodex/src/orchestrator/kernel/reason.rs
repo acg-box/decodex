@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum ReasonCode {
+pub(crate) enum ReasonCode {
 	ActiveOwnedWork,
 	ContradictoryAuthority,
 	ExternalSignalPending,
@@ -13,9 +13,8 @@ pub(in crate::orchestrator) enum ReasonCode {
 	RetryBudgetExhausted,
 	TerminalCleanupPending,
 }
-
 impl ReasonCode {
-	pub(in crate::orchestrator) const fn as_str(self) -> &'static str {
+	pub(crate) const fn as_str(self) -> &'static str {
 		match self {
 			Self::ActiveOwnedWork => "active_owned_work",
 			Self::ContradictoryAuthority => "contradictory_authority",
@@ -32,7 +31,7 @@ impl ReasonCode {
 		}
 	}
 
-	pub(in crate::orchestrator) const fn public_summary(self) -> &'static str {
+	pub(crate) const fn public_summary(self) -> &'static str {
 		match self {
 			Self::ActiveOwnedWork => "owned work remains active",
 			Self::ContradictoryAuthority => "lane authority signals conflict",

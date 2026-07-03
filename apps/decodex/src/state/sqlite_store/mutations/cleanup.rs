@@ -1,8 +1,9 @@
-use super::{Result, SqliteStateStore, params};
+use crate::state::sqlite_store::mutations::{self, Result, SqliteStateStore};
 
 impl SqliteStateStore {
 	pub(in crate::state) fn delete_lease(&mut self, issue_id: &str) -> Result<()> {
-		self.connection.execute("DELETE FROM leases WHERE issue_id = ?1", params![issue_id])?;
+		self.connection
+			.execute("DELETE FROM leases WHERE issue_id = ?1", mutations::params![issue_id])?;
 
 		Ok(())
 	}
@@ -17,10 +18,12 @@ impl SqliteStateStore {
 		transaction.execute(
 			"INSERT OR IGNORE INTO leases (issue_id, project_id, run_id, issue_state)
 			 SELECT ?2, project_id, run_id, issue_state FROM leases WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
-		transaction
-			.execute("DELETE FROM leases WHERE issue_id = ?1", params![previous_issue_id])?;
+		transaction.execute(
+			"DELETE FROM leases WHERE issue_id = ?1",
+			mutations::params![previous_issue_id],
+		)?;
 		transaction.execute(
 			"INSERT OR IGNORE INTO worktrees (
 				issue_id, project_id, branch_name, worktree_path,
@@ -29,29 +32,31 @@ impl SqliteStateStore {
 			 SELECT ?2, project_id, branch_name, worktree_path,
 				provenance_source, created_at_unix, updated_at_unix
 			 FROM worktrees WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
-		transaction
-			.execute("DELETE FROM worktrees WHERE issue_id = ?1", params![previous_issue_id])?;
+		transaction.execute(
+			"DELETE FROM worktrees WHERE issue_id = ?1",
+			mutations::params![previous_issue_id],
+		)?;
 		transaction.execute(
 			"UPDATE run_attempts SET issue_id = ?2 WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
 			"UPDATE run_control_channels SET issue_id = ?2 WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
 			"UPDATE private_execution_events SET issue_id = ?2 WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
 			"UPDATE decision_contracts SET source_issue_id = ?2 WHERE source_issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
 			"UPDATE program_issue_mappings SET issue_id = ?2 WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
 			"INSERT OR IGNORE INTO loop_guardrail_checkpoints (
@@ -61,11 +66,11 @@ impl SqliteStateStore {
 			 SELECT project_id, ?2, reason, fingerprint, run_id, attempt_number,
 					consecutive_count, details_json, updated_at, updated_at_unix
 			 FROM loop_guardrail_checkpoints WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
 			"DELETE FROM loop_guardrail_checkpoints WHERE issue_id = ?1",
-			params![previous_issue_id],
+			mutations::params![previous_issue_id],
 		)?;
 		transaction.execute(
 			"INSERT OR IGNORE INTO review_policy_checkpoints (
@@ -75,11 +80,11 @@ impl SqliteStateStore {
 			 SELECT project_id, ?2, run_id, attempt_number, phase, status, head_sha,
 					nonclean_rounds, details_json, updated_at, updated_at_unix
 			 FROM review_policy_checkpoints WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
 			"DELETE FROM review_policy_checkpoints WHERE issue_id = ?1",
-			params![previous_issue_id],
+			mutations::params![previous_issue_id],
 		)?;
 		transaction.execute(
 			"INSERT OR IGNORE INTO evidence_artifacts (
@@ -91,11 +96,11 @@ impl SqliteStateStore {
 					key_json, payload_json, source_run_id, source_attempt_number, updated_at,
 					updated_at_unix
 			 FROM evidence_artifacts WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
 			"DELETE FROM evidence_artifacts WHERE issue_id = ?1",
-			params![previous_issue_id],
+			mutations::params![previous_issue_id],
 		)?;
 		transaction.execute(
 			"INSERT OR IGNORE INTO review_lifecycle_records (
@@ -113,11 +118,11 @@ impl SqliteStateStore {
 					auto_merge_enabled_at_unix_epoch, landing_state, closeout_state,
 					repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix
 			 FROM review_lifecycle_records WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
+			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
 			"DELETE FROM review_lifecycle_records WHERE issue_id = ?1",
-			params![previous_issue_id],
+			mutations::params![previous_issue_id],
 		)?;
 		transaction.commit()?;
 
@@ -130,20 +135,23 @@ impl SqliteStateStore {
 	) -> Result<()> {
 		let transaction = self.connection.transaction()?;
 
-		transaction.execute("DELETE FROM worktrees WHERE issue_id = ?1", params![issue_id])?;
+		transaction
+			.execute("DELETE FROM worktrees WHERE issue_id = ?1", mutations::params![issue_id])?;
 		transaction.execute(
 			"DELETE FROM review_lifecycle_records WHERE issue_id = ?1",
-			params![issue_id],
+			mutations::params![issue_id],
 		)?;
 		transaction.execute(
 			"DELETE FROM review_policy_checkpoints WHERE issue_id = ?1",
-			params![issue_id],
+			mutations::params![issue_id],
 		)?;
-		transaction
-			.execute("DELETE FROM evidence_artifacts WHERE issue_id = ?1", params![issue_id])?;
+		transaction.execute(
+			"DELETE FROM evidence_artifacts WHERE issue_id = ?1",
+			mutations::params![issue_id],
+		)?;
 		transaction.execute(
 			"DELETE FROM loop_guardrail_checkpoints WHERE issue_id = ?1",
-			params![issue_id],
+			mutations::params![issue_id],
 		)?;
 		transaction.commit()?;
 
@@ -151,7 +159,8 @@ impl SqliteStateStore {
 	}
 
 	pub(in crate::state) fn delete_worktree_mapping(&mut self, issue_id: &str) -> Result<()> {
-		self.connection.execute("DELETE FROM worktrees WHERE issue_id = ?1", params![issue_id])?;
+		self.connection
+			.execute("DELETE FROM worktrees WHERE issue_id = ?1", mutations::params![issue_id])?;
 
 		Ok(())
 	}
@@ -170,12 +179,12 @@ impl SqliteStateStore {
 			"DELETE FROM review_lifecycle_records
 			 WHERE project_id = ?1 AND issue_id = ?2 AND branch_name = ?3
 			   AND run_id = ?4 AND attempt_number = ?5",
-			params![project_id, issue_id, branch_name, run_id, attempt_number],
+			mutations::params![project_id, issue_id, branch_name, run_id, attempt_number],
 		)?;
 		transaction.execute(
 			"DELETE FROM review_policy_checkpoints
 			 WHERE project_id = ?1 AND issue_id = ?2 AND run_id = ?3 AND attempt_number = ?4",
-			params![project_id, issue_id, run_id, attempt_number],
+			mutations::params![project_id, issue_id, run_id, attempt_number],
 		)?;
 		transaction.commit()?;
 
@@ -189,7 +198,7 @@ impl SqliteStateStore {
 	) -> Result<()> {
 		self.connection.execute(
 			"DELETE FROM loop_guardrail_checkpoints WHERE project_id = ?1 AND issue_id = ?2",
-			params![project_id, issue_id],
+			mutations::params![project_id, issue_id],
 		)?;
 
 		Ok(())
@@ -204,7 +213,7 @@ impl SqliteStateStore {
 		self.connection.execute(
 			"DELETE FROM loop_guardrail_checkpoints \
 			 WHERE project_id = ?1 AND issue_id = ?2 AND reason = ?3",
-			params![project_id, issue_id, reason],
+			mutations::params![project_id, issue_id, reason],
 		)?;
 
 		Ok(())
@@ -220,7 +229,7 @@ impl SqliteStateStore {
 		self.connection.execute(
 			"DELETE FROM review_policy_checkpoints
 			 WHERE project_id = ?1 AND issue_id = ?2 AND run_id = ?3 AND attempt_number = ?4",
-			params![project_id, issue_id, run_id, attempt_number],
+			mutations::params![project_id, issue_id, run_id, attempt_number],
 		)?;
 
 		Ok(())

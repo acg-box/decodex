@@ -1,4 +1,4 @@
-use super::{Result, StateData, Transaction, eyre, params};
+use crate::state::sqlite_store::persist::{self, Result, StateData, Transaction, eyre};
 
 pub(in crate::state::sqlite_store) fn persist_decision_contracts(
 	transaction: &Transaction<'_>,
@@ -12,7 +12,7 @@ pub(in crate::state::sqlite_store) fn persist_decision_contracts(
 					project_id, contract_id, source_issue_id, status, payload_json, created_at,
 					created_at_unix, updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-			params![
+			persist::params![
 				&record.project_id,
 				record.contract.contract_id(),
 				record.source_issue_id.as_deref(),
@@ -43,7 +43,7 @@ pub(in crate::state::sqlite_store) fn persist_autonomy_objectives(
 					project_id, objective_id, version, state, payload_json, created_at,
 					created_at_unix, updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-			params![
+			persist::params![
 				&record.project_id,
 				record.objective.id(),
 				version,
@@ -76,7 +76,7 @@ pub(in crate::state::sqlite_store) fn persist_autonomy_signals(
 					freshness, evidence_class, confidence, privacy, payload_json, created_at,
 					created_at_unix, updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-			params![
+			persist::params![
 				&record.project_id,
 				record.signal.id(),
 				record.signal.objective_id(),
@@ -115,7 +115,7 @@ pub(in crate::state::sqlite_store) fn persist_autonomy_proposals(
 					source_family, intended_surface, payload_json, created_at, created_at_unix,
 					updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-			params![
+			persist::params![
 				&record.project_id,
 				record.proposal.id(),
 				record.proposal.objective_id(),
@@ -148,7 +148,7 @@ pub(in crate::state::sqlite_store) fn persist_execution_programs(
 					project_id, program_id, source_contract_id, payload_json, created_at,
 					created_at_unix, updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-			params![
+			persist::params![
 				&record.project_id,
 				record.program.program_id(),
 				record.source_contract_id.as_deref(),

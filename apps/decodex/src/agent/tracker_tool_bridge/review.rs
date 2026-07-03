@@ -1,14 +1,14 @@
-use color_eyre::Report;
-use serde_json::Value;
-
+mod closeout;
+mod completion;
+mod handoff;
+mod lifecycle;
 mod linear_events;
 mod policy;
+mod repair;
 mod repo;
 
-use linear_events::{
-	linear_execution_closeout_event, linear_execution_review_event,
-	review_handoff_marker_from_pull_request, review_handoff_marker_lineage_matches,
-};
+use color_eyre::Report;
+use serde_json::Value;
 
 use crate::{
 	agent::tracker_tool_bridge::{
@@ -21,14 +21,9 @@ use crate::{
 	},
 	prelude::eyre,
 	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
-	tracker::{
-		self, TrackerIssue,
-		records::{self, LinearExecutionEventPublicProjection},
-	},
+	tracker::{TrackerIssue, records::LinearExecutionEventPublicProjection},
 };
-
-mod closeout;
-mod completion;
-mod handoff;
-mod lifecycle;
-mod repair;
+use linear_events::{
+	linear_execution_closeout_event, linear_execution_review_event,
+	review_handoff_marker_from_pull_request, review_handoff_marker_lineage_matches,
+};

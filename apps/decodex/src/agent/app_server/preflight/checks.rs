@@ -1,27 +1,16 @@
-use std::collections::BTreeMap;
-
-use color_eyre::eyre::Report;
-use serde_json::Value;
-
-use super::{
-	super::{
-		constants::{
-			PREFLIGHT_CHECK_CONFIG, PREFLIGHT_CHECK_MCP, PREFLIGHT_CHECK_MODEL,
-			PREFLIGHT_CHECK_MODEL_PROVIDER, PREFLIGHT_CHECK_PLUGINS, PREFLIGHT_CHECK_SKILLS,
-			PREFLIGHT_EVENT_TYPE,
-		},
-		protocol::{
-			McpServerStatusSummary, ModelProviderCapabilitiesReadResponse, ModelSummary,
-			PluginListResponse, RuntimeConfigSummary, SkillsListResponse,
-		},
-		runtime_types::RunRecorder,
+use crate::{
+	agent::app_server::preflight::{
+		AppServerCapabilityPreflightReport, AppServerOutputTimeout, BTreeMap,
+		MCP_PREFLIGHT_REQUEST_TIMEOUT, McpServerStatusSummary,
+		ModelProviderCapabilitiesReadResponse, ModelSummary, PREFLIGHT_CHECK_CONFIG,
+		PREFLIGHT_CHECK_MCP, PREFLIGHT_CHECK_MODEL, PREFLIGHT_CHECK_MODEL_PROVIDER,
+		PREFLIGHT_CHECK_PLUGINS, PREFLIGHT_CHECK_SKILLS, PREFLIGHT_EVENT_TYPE, PluginListResponse,
+		Report, RunRecorder, RuntimeConfigSummary, SkillsListResponse, Value, serde_json,
 	},
-	MCP_PREFLIGHT_REQUEST_TIMEOUT,
-	report::AppServerCapabilityPreflightReport,
+	prelude::Result,
 };
-use crate::agent::json_rpc::AppServerOutputTimeout;
 
-pub(in crate::agent::app_server) fn record_config_preflight(
+pub(crate) fn record_config_preflight(
 	report: &mut AppServerCapabilityPreflightReport,
 	config: &RuntimeConfigSummary,
 ) {
@@ -44,7 +33,7 @@ pub(in crate::agent::app_server) fn record_config_preflight(
 	);
 }
 
-pub(in crate::agent::app_server) fn record_model_preflight(
+pub(crate) fn record_model_preflight(
 	report: &mut AppServerCapabilityPreflightReport,
 	config: &RuntimeConfigSummary,
 	models: &[ModelSummary],
@@ -94,7 +83,7 @@ pub(in crate::agent::app_server) fn record_model_preflight(
 	}
 }
 
-pub(in crate::agent::app_server) fn record_model_provider_preflight(
+pub(crate) fn record_model_provider_preflight(
 	report: &mut AppServerCapabilityPreflightReport,
 	capabilities: &ModelProviderCapabilitiesReadResponse,
 ) {
@@ -110,7 +99,7 @@ pub(in crate::agent::app_server) fn record_model_provider_preflight(
 	);
 }
 
-pub(in crate::agent::app_server) fn record_skills_preflight(
+pub(crate) fn record_skills_preflight(
 	report: &mut AppServerCapabilityPreflightReport,
 	cwd: &str,
 	skills: &SkillsListResponse,
@@ -160,7 +149,7 @@ pub(in crate::agent::app_server) fn record_skills_preflight(
 	}
 }
 
-pub(in crate::agent::app_server) fn record_plugin_preflight(
+pub(crate) fn record_plugin_preflight(
 	report: &mut AppServerCapabilityPreflightReport,
 	plugins: &PluginListResponse,
 ) {
@@ -207,7 +196,7 @@ pub(in crate::agent::app_server) fn record_plugin_preflight(
 	}
 }
 
-pub(in crate::agent::app_server) fn record_mcp_preflight(
+pub(crate) fn record_mcp_preflight(
 	report: &mut AppServerCapabilityPreflightReport,
 	servers: &[McpServerStatusSummary],
 ) {
@@ -240,15 +229,11 @@ pub(in crate::agent::app_server) fn record_mcp_preflight(
 	}
 }
 
-pub(in crate::agent::app_server) fn mcp_preflight_can_degrade(error: &Report) -> bool {
+pub(crate) fn mcp_preflight_can_degrade(error: &Report) -> bool {
 	preflight_error_timed_out(error)
 }
 
-pub(super) fn preflight_error_timed_out(error: &Report) -> bool {
-	error.downcast_ref::<AppServerOutputTimeout>().is_some()
-}
-
-pub(in crate::agent::app_server) fn record_mcp_preflight_degraded(
+pub(crate) fn record_mcp_preflight_degraded(
 	report: &mut AppServerCapabilityPreflightReport,
 	error: &Report,
 ) {
@@ -268,10 +253,14 @@ pub(in crate::agent::app_server) fn record_mcp_preflight_degraded(
 	);
 }
 
-pub(super) fn record_app_server_preflight_report(
+pub(crate) fn preflight_error_timed_out(error: &Report) -> bool {
+	error.downcast_ref::<AppServerOutputTimeout>().is_some()
+}
+
+pub(crate) fn record_app_server_preflight_report(
 	recorder: &mut RunRecorder<'_>,
 	report: &AppServerCapabilityPreflightReport,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	recorder.record(PREFLIGHT_EVENT_TYPE, &serde_json::to_string(report)?)
 }
 

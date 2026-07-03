@@ -1,16 +1,19 @@
-use super::*;
-
 use orchestrator::{ProjectDaemonRuntime, StatusSnapshotHttpResponse};
+
+use crate::orchestrator::tests::operator::status::{
+	self, ControlPlaneProjectTick, FakeTracker, HashMap, Instant, ProjectRegistration, ReviewLevel,
+	ServiceConfig, StateStore, TestEnvVarGuard, WorkflowDocument, env, fs, orchestrator, state,
+};
 
 #[test]
 fn control_plane_snapshot_lists_disabled_registered_projects() {
-	let (temp_dir, config, _workflow) = temp_project_layout();
+	let (temp_dir, config, _workflow) = status::temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&status::service_config_path(config.repo_root()),
 		&config,
 		false,
 		"test-fingerprint",
@@ -38,7 +41,7 @@ fn control_plane_snapshot_lists_disabled_registered_projects() {
 
 #[test]
 fn control_plane_snapshot_includes_disabled_project_current_lanes_without_ticking() {
-	let (temp_dir, config, _workflow) = temp_project_layout();
+	let (temp_dir, config, _workflow) = status::temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
 	let state_path = temp_dir.path().join("runtime.sqlite3");
@@ -46,12 +49,12 @@ fn control_plane_snapshot_includes_disabled_project_current_lanes_without_tickin
 	let writer_store = StateStore::open(&state_path).expect("writer store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&status::service_config_path(config.repo_root()),
 		&config,
 		false,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = status::sample_issue("In Progress", &[]);
 
 	observer_store.upsert_project(&registration).expect("project should register");
 	writer_store
@@ -83,7 +86,7 @@ fn control_plane_snapshot_includes_disabled_project_current_lanes_without_tickin
 
 #[test]
 fn control_plane_context_failure_includes_project_warning_detail() {
-	let (_temp_dir, base_config, _workflow) = temp_project_layout();
+	let (_temp_dir, base_config, _workflow) = status::temp_project_layout();
 	let missing_env_var = "DECODEX_TEST_MISSING_CONTROL_PLANE_LINEAR_API_KEY";
 	let _env_lock = TestEnvVarGuard::lock();
 
@@ -91,9 +94,9 @@ fn control_plane_context_failure_includes_project_warning_detail() {
 		env::remove_var(missing_env_var);
 	}
 
-	write_service_config(
+	status::write_service_config(
 		base_config.repo_root(),
-		&sample_service_config_toml(
+		&status::sample_service_config_toml(
 			base_config.service_id(),
 			missing_env_var,
 			base_config.github().token_env_var(),
@@ -102,11 +105,11 @@ fn control_plane_context_failure_includes_project_warning_detail() {
 		),
 	);
 
-	let config = load_service_config(base_config.repo_root());
+	let config = status::load_service_config(base_config.repo_root());
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&status::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
@@ -177,13 +180,13 @@ fn control_plane_linear_scan_cadence_uses_fixed_window_and_manual_override() {
 
 #[test]
 fn control_plane_dev_snapshot_does_not_tick_enabled_projects() {
-	let (temp_dir, config, _workflow) = temp_project_layout();
+	let (temp_dir, config, _workflow) = status::temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&status::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
@@ -210,7 +213,7 @@ fn control_plane_dev_snapshot_does_not_tick_enabled_projects() {
 
 #[test]
 fn control_plane_dev_snapshot_marks_unloadable_project_config() {
-	let (temp_dir, config, _workflow) = temp_project_layout();
+	let (temp_dir, config, _workflow) = status::temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -241,18 +244,18 @@ fn control_plane_dev_snapshot_marks_unloadable_project_config() {
 
 #[test]
 fn control_plane_dev_snapshot_includes_local_current_lanes() {
-	let (temp_dir, config, _workflow) = temp_project_layout();
+	let (temp_dir, config, _workflow) = status::temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&status::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("Todo", &[]);
+	let issue = status::sample_issue("Todo", &[]);
 
 	state_store.upsert_project(&registration).expect("project should register");
 	state_store
@@ -281,18 +284,18 @@ fn control_plane_dev_snapshot_includes_local_current_lanes() {
 
 #[test]
 fn control_plane_dev_snapshot_separates_visible_current_lanes_from_running_lanes() {
-	let (temp_dir, config, _workflow) = temp_project_layout();
+	let (temp_dir, config, _workflow) = status::temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&status::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("Todo", &[]);
+	let issue = status::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store.upsert_project(&registration).expect("project should register");
@@ -332,14 +335,14 @@ fn control_plane_dev_snapshot_separates_visible_current_lanes_from_running_lanes
 
 #[test]
 fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects() {
-	let (active_temp_dir, active_config, _active_workflow) = temp_project_layout();
-	let (_idle_temp_dir, idle_base_config, _idle_workflow) = temp_project_layout();
+	let (active_temp_dir, active_config, _active_workflow) = status::temp_project_layout();
+	let (_idle_temp_dir, idle_base_config, _idle_workflow) = status::temp_project_layout();
 	let _home_guard = TestEnvVarGuard::set(
 		"HOME",
 		active_temp_dir.path().to_str().expect("home should be utf-8"),
 	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-active",
 		"PUB-101",
 		"Todo",
@@ -348,22 +351,22 @@ fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects
 		"2026-04-30T03:01:00Z",
 	);
 
-	write_service_config(
+	status::write_service_config(
 		idle_base_config.repo_root(),
-		&sample_service_config_toml("rsnap", "HOME", "HOME", None, ReviewLevel::Strict),
+		&status::sample_service_config_toml("rsnap", "HOME", "HOME", None, ReviewLevel::Strict),
 	);
 
-	let idle_config = load_service_config(idle_base_config.repo_root());
+	let idle_config = status::load_service_config(idle_base_config.repo_root());
 	let active_registration = ProjectRegistration::from_config(
 		active_config.service_id(),
-		&service_config_path(active_config.repo_root()),
+		&status::service_config_path(active_config.repo_root()),
 		&active_config,
 		true,
 		"active-fingerprint",
 	);
 	let idle_registration = ProjectRegistration::from_config(
 		idle_config.service_id(),
-		&service_config_path(idle_config.repo_root()),
+		&status::service_config_path(idle_config.repo_root()),
 		&idle_config,
 		true,
 		"idle-fingerprint",
@@ -390,7 +393,7 @@ fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects
 			let project_snapshot = match project.service_id() {
 				"pubfi" => active_snapshot.take().expect("active snapshot should be used once"),
 				"rsnap" => idle_snapshot.take().expect("idle snapshot should be used once"),
-				service_id => panic!("unexpected project {service_id}"),
+				service_id => status::panic!("unexpected project {service_id}"),
 			};
 			let project_status = project_snapshot
 				.projects
@@ -426,14 +429,14 @@ fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects
 
 #[test]
 fn status_cache_projects_aggregate_snapshot_to_requested_project() {
-	let (active_temp_dir, active_config, _active_workflow) = temp_project_layout();
-	let (_idle_temp_dir, idle_base_config, _idle_workflow) = temp_project_layout();
+	let (active_temp_dir, active_config, _active_workflow) = status::temp_project_layout();
+	let (_idle_temp_dir, idle_base_config, _idle_workflow) = status::temp_project_layout();
 	let _home_guard = TestEnvVarGuard::set(
 		"HOME",
 		active_temp_dir.path().to_str().expect("home should be utf-8"),
 	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-active",
 		"PUB-101",
 		"Todo",
@@ -443,22 +446,22 @@ fn status_cache_projects_aggregate_snapshot_to_requested_project() {
 	);
 	let worktree_path = active_config.worktree_root().join("PUB-101");
 
-	write_service_config(
+	status::write_service_config(
 		idle_base_config.repo_root(),
-		&sample_service_config_toml("rsnap", "HOME", "HOME", None, ReviewLevel::Strict),
+		&status::sample_service_config_toml("rsnap", "HOME", "HOME", None, ReviewLevel::Strict),
 	);
 
-	let idle_config = load_service_config(idle_base_config.repo_root());
+	let idle_config = status::load_service_config(idle_base_config.repo_root());
 	let active_registration = ProjectRegistration::from_config(
 		active_config.service_id(),
-		&service_config_path(active_config.repo_root()),
+		&status::service_config_path(active_config.repo_root()),
 		&active_config,
 		true,
 		"active-fingerprint",
 	);
 	let idle_registration = ProjectRegistration::from_config(
 		idle_config.service_id(),
-		&service_config_path(idle_config.repo_root()),
+		&status::service_config_path(idle_config.repo_root()),
 		&idle_config,
 		true,
 		"idle-fingerprint",
@@ -493,7 +496,7 @@ fn status_cache_projects_aggregate_snapshot_to_requested_project() {
 			let project_snapshot = match project.service_id() {
 				"pubfi" => active_snapshot.take().expect("active snapshot should be used once"),
 				"rsnap" => idle_snapshot.take().expect("idle snapshot should be used once"),
-				service_id => panic!("unexpected project {service_id}"),
+				service_id => status::panic!("unexpected project {service_id}"),
 			};
 			let project_status = project_snapshot
 				.projects
@@ -529,7 +532,7 @@ fn status_cache_projects_aggregate_snapshot_to_requested_project() {
 
 #[test]
 fn status_cache_rejects_missing_stale_or_too_small_snapshot() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 25)
 		.expect("project snapshot should build");
@@ -573,12 +576,12 @@ fn status_cache_is_bypassed_for_live_status() {
 
 #[test]
 fn control_plane_snapshot_keeps_queued_project_summaries_service_scoped() {
-	let (_decodex_temp_dir, decodex_base_config, _decodex_workflow) = temp_project_layout();
-	let (_rsnap_temp_dir, rsnap_base_config, _rsnap_workflow) = temp_project_layout();
+	let (_decodex_temp_dir, decodex_base_config, _decodex_workflow) = status::temp_project_layout();
+	let (_rsnap_temp_dir, rsnap_base_config, _rsnap_workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let decodex_registration = service_scoped_project_registration(&decodex_base_config, "decodex");
 	let rsnap_registration = service_scoped_project_registration(&rsnap_base_config, "rsnap");
-	let queued_issue = sample_issue_with_project_slug_and_sort_fields(
+	let queued_issue = status::sample_issue_with_project_slug_and_sort_fields(
 		"issue-decodex",
 		"XY-403",
 		"decodex",
@@ -649,16 +652,16 @@ fn service_scoped_project_registration(
 	base_config: &ServiceConfig,
 	service_id: &str,
 ) -> ProjectRegistration {
-	write_service_config(
+	status::write_service_config(
 		base_config.repo_root(),
-		&sample_service_config_toml(service_id, "HOME", "HOME", None, ReviewLevel::Strict),
+		&status::sample_service_config_toml(service_id, "HOME", "HOME", None, ReviewLevel::Strict),
 	);
 
-	let config = load_service_config(base_config.repo_root());
+	let config = status::load_service_config(base_config.repo_root());
 
 	ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&status::service_config_path(config.repo_root()),
 		&config,
 		true,
 		&format!("{service_id}-fingerprint"),

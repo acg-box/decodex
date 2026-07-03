@@ -1,10 +1,19 @@
-use super::*;
-
-use records::LinearExecutionEventRecord;
+use crate::{
+	orchestrator::tests::operator::status::{
+		running_lanes,
+		running_lanes::{
+			Connection, FakeTracker, LinearExecutionEventIdentity, ProtocolActivityMarker,
+			ReviewHandoffMarker, ReviewPolicyCheckpointInput, StateStore,
+			TERMINAL_GUARDED_RUN_STATUS, TEST_SERVICE_ID, WorktreeSpec, fs, orchestrator, process,
+			state,
+		},
+	},
+	tracker::{self, records::LinearExecutionEventRecord},
+};
 
 #[test]
 fn failure_comments_use_repo_relative_worktree_paths() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
 		issue_identifier: String::from("PUB-101"),
@@ -17,12 +26,12 @@ fn failure_comments_use_repo_relative_worktree_paths() {
 
 #[test]
 fn operator_status_snapshot_includes_current_lanes_and_repo_relative_paths() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
-	git_status_success(
+	running_lanes::git_status_success(
 		config.repo_root(),
 		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
 	);
@@ -95,9 +104,9 @@ fn operator_status_snapshot_includes_current_lanes_and_repo_relative_paths() {
 
 #[test]
 fn operator_status_does_not_synthesize_review_for_continuation_pending_attempt() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -130,7 +139,7 @@ fn operator_status_does_not_synthesize_review_for_continuation_pending_attempt()
 
 #[test]
 fn live_operator_status_classifies_missing_issue_ghost_lane_for_runtime_recovery() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 
@@ -174,7 +183,7 @@ fn live_operator_status_classifies_missing_issue_ghost_lane_for_runtime_recovery
 
 #[test]
 fn live_operator_status_classifies_invalid_local_issue_id_as_ghost_lane() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::with_refresh_error(
 		Vec::new(),
@@ -212,7 +221,7 @@ fn live_operator_status_classifies_invalid_local_issue_id_as_ghost_lane() {
 
 #[test]
 fn live_operator_status_ignores_terminal_identifier_worktree_mapping_without_tracker_refresh() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let stale_issue_id = "PUB-001";
@@ -268,10 +277,10 @@ fn live_operator_status_ignores_terminal_identifier_worktree_mapping_without_tra
 
 #[test]
 fn live_operator_status_hydrates_terminal_identifier_history_with_review_checkpoint() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let protected_issue_id = "PUB-001";
-	let issue = sample_issue_with_sort_fields(
+	let issue = running_lanes::sample_issue_with_sort_fields(
 		protected_issue_id,
 		protected_issue_id,
 		"In Review",
@@ -344,14 +353,14 @@ fn live_operator_status_hydrates_terminal_identifier_history_with_review_checkpo
 
 #[test]
 fn live_operator_status_hydrates_active_terminal_identifier_lane() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_issue_id = "PUB-001";
-	let issue = sample_issue_with_sort_fields(
+	let issue = running_lanes::sample_issue_with_sort_fields(
 		active_issue_id,
 		active_issue_id,
 		"In Progress",
-		&[crate::tracker::automation_active_label(config.service_id()).as_str()],
+		&[tracker::automation_active_label(config.service_id()).as_str()],
 		Some(1),
 		"2026-06-19T00:00:00.000Z",
 	);
@@ -406,7 +415,7 @@ fn live_operator_status_hydrates_active_terminal_identifier_lane() {
 
 #[test]
 fn live_operator_status_allows_ghost_recovery_when_worktree_mapping_path_is_missing() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let missing_worktree_path = config.worktree_root().join("PUB-012");
@@ -446,7 +455,7 @@ fn live_operator_status_allows_ghost_recovery_when_worktree_mapping_path_is_miss
 
 #[test]
 fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_retained_worktree_exists() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 
@@ -480,7 +489,7 @@ fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_retained_worktre
 
 #[test]
 fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_control_channel_row_exists() {
-	let (temp_dir, config, workflow) = temp_project_layout();
+	let (temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let channel_path = temp_dir.path().join("missing-control-channel.json");
@@ -516,7 +525,7 @@ fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_control_channel_
 
 #[test]
 fn ghost_lane_cleanup_status_blockers_treat_invalid_local_issue_id_as_missing_issue() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::with_refresh_error(
 		Vec::new(),
@@ -545,7 +554,7 @@ fn ghost_lane_cleanup_status_blockers_treat_invalid_local_issue_id_as_missing_is
 
 #[test]
 fn ghost_lane_cleanup_status_blockers_preserve_live_blockers_after_invalid_issue_id_lookup() {
-	let (temp_dir, config, workflow) = temp_project_layout();
+	let (temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::with_refresh_error(
 		Vec::new(),
@@ -579,7 +588,7 @@ fn ghost_lane_cleanup_status_blockers_preserve_live_blockers_after_invalid_issue
 
 #[test]
 fn ghost_lane_cleanup_status_blockers_do_not_hide_validation_error_for_server_issue_id() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::with_refresh_error(
 		Vec::new(),
@@ -609,7 +618,7 @@ fn ghost_lane_cleanup_status_blockers_do_not_hide_validation_error_for_server_is
 
 #[test]
 fn ghost_lane_cleanup_status_blockers_reject_live_process_evidence() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let worktree_path = config.worktree_root().join("PUB-012");
@@ -650,7 +659,7 @@ fn ghost_lane_cleanup_status_blockers_reject_live_process_evidence() {
 
 #[test]
 fn ghost_lane_cleanup_status_blockers_reject_active_thread_evidence() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let worktree_path = config.worktree_root().join("PUB-012");
@@ -699,7 +708,7 @@ fn ghost_lane_cleanup_status_blockers_reject_active_thread_evidence() {
 
 #[test]
 fn ghost_lane_cleanup_status_blockers_do_not_persist_marker_thread_identity() {
-	let (temp_dir, config, workflow) = temp_project_layout();
+	let (temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let state_store = StateStore::open(&state_path).expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
@@ -758,9 +767,9 @@ fn ghost_lane_cleanup_status_blockers_do_not_persist_marker_thread_identity() {
 
 #[test]
 fn ghost_lane_cleanup_status_blockers_reject_existing_tracker_issue() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let mut issue = sample_issue("In Progress", &[]);
+	let mut issue = running_lanes::sample_issue("In Progress", &[]);
 
 	issue.id = String::from("PUB-012");
 	issue.identifier = String::from("PUB-012");
@@ -790,7 +799,7 @@ fn ghost_lane_cleanup_status_blockers_reject_existing_tracker_issue() {
 
 #[test]
 fn ghost_lane_cleanup_status_blockers_reject_recent_protocol_evidence() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let worktree_path = config.worktree_root().join("PUB-012");
@@ -826,8 +835,7 @@ fn ghost_lane_cleanup_status_blockers_reject_recent_protocol_evidence() {
 		},
 	)
 	.expect("recent protocol marker should write");
-
-	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
+	running_lanes::rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
 
 	let blockers = orchestrator::ghost_lane_cleanup_status_blockers(
 		&tracker,
@@ -845,7 +853,7 @@ fn ghost_lane_cleanup_status_blockers_reject_recent_protocol_evidence() {
 
 #[test]
 fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_review_lifecycle_exists() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let marker = ReviewHandoffMarker::new(
@@ -885,7 +893,7 @@ fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_review_lifecycle
 
 #[test]
 fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_private_evidence_exists() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 
@@ -923,7 +931,7 @@ fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_private_evidence
 
 #[test]
 fn live_operator_status_allows_mcp_test_fixture_ghost_lane_cleanup_conditions() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let missing_channel_path = config.worktree_root().join("missing-run-control.channel");
@@ -1020,7 +1028,7 @@ fn live_operator_status_allows_mcp_test_fixture_ghost_lane_cleanup_conditions() 
 
 #[test]
 fn live_operator_status_drops_cleanup_audited_mcp_test_fixture_ghost_lane() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let missing_channel_path = config.worktree_root().join("missing-run-control.channel");
@@ -1095,7 +1103,7 @@ fn live_operator_status_drops_cleanup_audited_mcp_test_fixture_ghost_lane() {
 
 #[test]
 fn live_operator_status_keeps_cleanup_audited_mcp_fixture_blocked_when_worktree_exists() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let missing_channel_path = config.worktree_root().join("missing-run-control.channel");
@@ -1212,7 +1220,7 @@ fn append_mcp_test_fixture_ghost_lane_cleanup_audit(state_store: &StateStore) {
 
 #[test]
 fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_review_checkpoint_exists() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 
@@ -1256,7 +1264,7 @@ fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_review_checkpoin
 
 #[test]
 fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_pr_lineage_exists() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let mut event = LinearExecutionEventRecord::new(

@@ -8,12 +8,12 @@ use crate::orchestrator::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum AgentEvidenceSource {
+pub(crate) enum AgentEvidenceSource {
 	DiagnoseCommand,
 	ServeTick,
 }
 impl AgentEvidenceSource {
-	pub(in crate::orchestrator) fn as_str(self) -> &'static str {
+	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::DiagnoseCommand => "diagnose_command",
 			Self::ServeTick => "serve_tick",
@@ -22,380 +22,378 @@ impl AgentEvidenceSource {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct AgentEvidenceWriteResult {
-	pub(in crate::orchestrator) project_id: String,
-	pub(in crate::orchestrator) handoff_index_path: String,
-	pub(in crate::orchestrator) handoff_index: AgentHandoffIndex,
+pub(crate) struct AgentEvidenceWriteResult {
+	pub(crate) project_id: String,
+	pub(crate) handoff_index_path: String,
+	pub(crate) handoff_index: AgentHandoffIndex,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct AgentEvidenceSummary {
-	pub(in crate::orchestrator) project_count: usize,
-	pub(in crate::orchestrator) current_lane_count: usize,
-	pub(in crate::orchestrator) recent_run_count: usize,
-	pub(in crate::orchestrator) history_lane_count: usize,
-	pub(in crate::orchestrator) queued_candidate_count: usize,
-	pub(in crate::orchestrator) post_review_lane_count: usize,
-	pub(in crate::orchestrator) recovery_worktree_count: usize,
-	pub(in crate::orchestrator) blocker_count: usize,
-	pub(in crate::orchestrator) run_capsule_count: usize,
-	pub(in crate::orchestrator) connector_backoff_count: usize,
-	pub(in crate::orchestrator) warning_count: usize,
+pub(crate) struct AgentEvidenceSummary {
+	pub(crate) project_count: usize,
+	pub(crate) current_lane_count: usize,
+	pub(crate) recent_run_count: usize,
+	pub(crate) history_lane_count: usize,
+	pub(crate) queued_candidate_count: usize,
+	pub(crate) post_review_lane_count: usize,
+	pub(crate) recovery_worktree_count: usize,
+	pub(crate) blocker_count: usize,
+	pub(crate) run_capsule_count: usize,
+	pub(crate) connector_backoff_count: usize,
+	pub(crate) warning_count: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub(in crate::orchestrator) struct AgentPrivateEvidenceRef {
-	pub(in crate::orchestrator) evidence_ref: String,
-	pub(in crate::orchestrator) source: String,
-	pub(in crate::orchestrator) default_view: String,
-	pub(in crate::orchestrator) read_command: String,
+pub(crate) struct AgentPrivateEvidenceRef {
+	pub(crate) evidence_ref: String,
+	pub(crate) source: String,
+	pub(crate) default_view: String,
+	pub(crate) read_command: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct PrivateEvidenceReadback {
-	pub(in crate::orchestrator) schema: &'static str,
-	pub(in crate::orchestrator) project_id: String,
-	pub(in crate::orchestrator) issue_selector: String,
-	pub(in crate::orchestrator) issue_id: String,
-	pub(in crate::orchestrator) issue_identifier: Option<String>,
-	pub(in crate::orchestrator) run_id: String,
-	pub(in crate::orchestrator) attempt_number: i64,
-	pub(in crate::orchestrator) source: &'static str,
-	pub(in crate::orchestrator) evidence_ref: String,
-	pub(in crate::orchestrator) read_command: String,
-	pub(in crate::orchestrator) payload_mode: &'static str,
-	pub(in crate::orchestrator) event_count: usize,
-	pub(in crate::orchestrator) latest_event_type: Option<String>,
-	pub(in crate::orchestrator) latest_event_at: Option<String>,
-	pub(in crate::orchestrator) review_checkpoints: Vec<PrivateEvidenceReviewCheckpointSummary>,
-	pub(in crate::orchestrator) repo_gate_failures: Vec<PrivateEvidenceRepoGateFailureSummary>,
-	pub(in crate::orchestrator) phase_acceptance_checks: Vec<PrivateEvidencePhaseAcceptanceSummary>,
-	pub(in crate::orchestrator) boundary_checks: Vec<PrivateEvidenceBoundaryCheckSummary>,
-	pub(in crate::orchestrator) decision_requests: Vec<PrivateEvidenceDecisionRequestSummary>,
-	pub(in crate::orchestrator) architecture_recoveries:
-		Vec<PrivateEvidenceArchitectureRecoverySummary>,
-	pub(in crate::orchestrator) improvement_candidates: Vec<HarnessImprovementCandidateSummary>,
-	pub(in crate::orchestrator) events: Vec<PrivateEvidenceReadbackEvent>,
-	pub(in crate::orchestrator) warnings: Vec<String>,
+pub(crate) struct PrivateEvidenceReadback {
+	pub(crate) schema: &'static str,
+	pub(crate) project_id: String,
+	pub(crate) issue_selector: String,
+	pub(crate) issue_id: String,
+	pub(crate) issue_identifier: Option<String>,
+	pub(crate) run_id: String,
+	pub(crate) attempt_number: i64,
+	pub(crate) source: &'static str,
+	pub(crate) evidence_ref: String,
+	pub(crate) read_command: String,
+	pub(crate) payload_mode: &'static str,
+	pub(crate) event_count: usize,
+	pub(crate) latest_event_type: Option<String>,
+	pub(crate) latest_event_at: Option<String>,
+	pub(crate) review_checkpoints: Vec<PrivateEvidenceReviewCheckpointSummary>,
+	pub(crate) repo_gate_failures: Vec<PrivateEvidenceRepoGateFailureSummary>,
+	pub(crate) phase_acceptance_checks: Vec<PrivateEvidencePhaseAcceptanceSummary>,
+	pub(crate) boundary_checks: Vec<PrivateEvidenceBoundaryCheckSummary>,
+	pub(crate) decision_requests: Vec<PrivateEvidenceDecisionRequestSummary>,
+	pub(crate) architecture_recoveries: Vec<PrivateEvidenceArchitectureRecoverySummary>,
+	pub(crate) improvement_candidates: Vec<HarnessImprovementCandidateSummary>,
+	pub(crate) events: Vec<PrivateEvidenceReadbackEvent>,
+	pub(crate) warnings: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct PrivateEvidenceDecisionRequestSummary {
-	pub(in crate::orchestrator) decision_request_id: String,
-	pub(in crate::orchestrator) phase: String,
-	pub(in crate::orchestrator) reason: String,
-	pub(in crate::orchestrator) boundary: String,
-	pub(in crate::orchestrator) next_action: String,
-	pub(in crate::orchestrator) recommendation: Option<String>,
-	pub(in crate::orchestrator) resume_condition: Option<String>,
+pub(crate) struct PrivateEvidenceDecisionRequestSummary {
+	pub(crate) decision_request_id: String,
+	pub(crate) phase: String,
+	pub(crate) reason: String,
+	pub(crate) boundary: String,
+	pub(crate) next_action: String,
+	pub(crate) recommendation: Option<String>,
+	pub(crate) resume_condition: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct PrivateEvidenceReviewCheckpointSummary {
-	pub(in crate::orchestrator) phase: String,
-	pub(in crate::orchestrator) status: String,
-	pub(in crate::orchestrator) head_sha: Option<String>,
-	pub(in crate::orchestrator) round: Option<u64>,
-	pub(in crate::orchestrator) review_class: Option<String>,
-	pub(in crate::orchestrator) risk_class: Option<String>,
-	pub(in crate::orchestrator) compact_eligible: Option<bool>,
-	pub(in crate::orchestrator) fallback_reason: Option<String>,
-	pub(in crate::orchestrator) active_fingerprints: Vec<String>,
-	pub(in crate::orchestrator) stop_fingerprint: Option<String>,
-	pub(in crate::orchestrator) accepted_finding_count: usize,
-	pub(in crate::orchestrator) rejected_finding_count: usize,
-	pub(in crate::orchestrator) route_counts: Vec<PrivateEvidenceReviewRouteCount>,
-	pub(in crate::orchestrator) route_next_action: Option<String>,
-	pub(in crate::orchestrator) next_action: String,
+pub(crate) struct PrivateEvidenceReviewCheckpointSummary {
+	pub(crate) phase: String,
+	pub(crate) status: String,
+	pub(crate) head_sha: Option<String>,
+	pub(crate) round: Option<u64>,
+	pub(crate) review_class: Option<String>,
+	pub(crate) risk_class: Option<String>,
+	pub(crate) compact_eligible: Option<bool>,
+	pub(crate) fallback_reason: Option<String>,
+	pub(crate) active_fingerprints: Vec<String>,
+	pub(crate) stop_fingerprint: Option<String>,
+	pub(crate) accepted_finding_count: usize,
+	pub(crate) rejected_finding_count: usize,
+	pub(crate) route_counts: Vec<PrivateEvidenceReviewRouteCount>,
+	pub(crate) route_next_action: Option<String>,
+	pub(crate) next_action: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct PrivateEvidenceReviewRouteCount {
-	pub(in crate::orchestrator) route: String,
-	pub(in crate::orchestrator) count: usize,
+pub(crate) struct PrivateEvidenceReviewRouteCount {
+	pub(crate) route: String,
+	pub(crate) count: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct PrivateEvidenceRepoGateFailureSummary {
-	pub(in crate::orchestrator) record_id: i64,
-	pub(in crate::orchestrator) phase: String,
-	pub(in crate::orchestrator) error_class: String,
-	pub(in crate::orchestrator) disposition: String,
-	pub(in crate::orchestrator) stage: Option<String>,
-	pub(in crate::orchestrator) failed_command: Option<String>,
-	pub(in crate::orchestrator) exit_status: Option<i64>,
-	pub(in crate::orchestrator) summary: Option<String>,
-	pub(in crate::orchestrator) problem_lines: Vec<String>,
-	pub(in crate::orchestrator) output_excerpt: Option<String>,
-	pub(in crate::orchestrator) output_truncated: Option<bool>,
+pub(crate) struct PrivateEvidenceRepoGateFailureSummary {
+	pub(crate) record_id: i64,
+	pub(crate) phase: String,
+	pub(crate) error_class: String,
+	pub(crate) disposition: String,
+	pub(crate) stage: Option<String>,
+	pub(crate) failed_command: Option<String>,
+	pub(crate) exit_status: Option<i64>,
+	pub(crate) summary: Option<String>,
+	pub(crate) problem_lines: Vec<String>,
+	pub(crate) output_excerpt: Option<String>,
+	pub(crate) output_truncated: Option<bool>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct PrivateEvidencePhaseAcceptanceSummary {
-	pub(in crate::orchestrator) phase: String,
-	pub(in crate::orchestrator) decision: String,
-	pub(in crate::orchestrator) reason_code: String,
-	pub(in crate::orchestrator) objective_covered: bool,
-	pub(in crate::orchestrator) effective_delta_present: bool,
-	pub(in crate::orchestrator) changed_surfaces: Vec<String>,
-	pub(in crate::orchestrator) non_goal_passed: bool,
-	pub(in crate::orchestrator) validation_passed: bool,
-	pub(in crate::orchestrator) next_action: String,
+pub(crate) struct PrivateEvidencePhaseAcceptanceSummary {
+	pub(crate) phase: String,
+	pub(crate) decision: String,
+	pub(crate) reason_code: String,
+	pub(crate) objective_covered: bool,
+	pub(crate) effective_delta_present: bool,
+	pub(crate) changed_surfaces: Vec<String>,
+	pub(crate) non_goal_passed: bool,
+	pub(crate) validation_passed: bool,
+	pub(crate) next_action: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct PrivateEvidenceBoundaryCheckSummary {
-	pub(in crate::orchestrator) disposition: String,
-	pub(in crate::orchestrator) policy_decision: String,
-	pub(in crate::orchestrator) reason: Option<String>,
-	pub(in crate::orchestrator) attempted_recovery_reason: Option<String>,
-	pub(in crate::orchestrator) decision_contract_count: usize,
-	pub(in crate::orchestrator) changed_surface_count: usize,
-	pub(in crate::orchestrator) improvement_signal_count: usize,
-	pub(in crate::orchestrator) requires_enhanced_evidence: bool,
-	pub(in crate::orchestrator) blocks_landing: bool,
-	pub(in crate::orchestrator) next_action: String,
+pub(crate) struct PrivateEvidenceBoundaryCheckSummary {
+	pub(crate) disposition: String,
+	pub(crate) policy_decision: String,
+	pub(crate) reason: Option<String>,
+	pub(crate) attempted_recovery_reason: Option<String>,
+	pub(crate) decision_contract_count: usize,
+	pub(crate) changed_surface_count: usize,
+	pub(crate) improvement_signal_count: usize,
+	pub(crate) requires_enhanced_evidence: bool,
+	pub(crate) blocks_landing: bool,
+	pub(crate) next_action: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct PrivateEvidenceArchitectureRecoverySummary {
-	pub(in crate::orchestrator) reason_code: String,
-	pub(in crate::orchestrator) guardrail_reason: Option<String>,
-	pub(in crate::orchestrator) boundary_disposition: Option<String>,
-	pub(in crate::orchestrator) boundary_policy_decision: Option<String>,
-	pub(in crate::orchestrator) requires_enhanced_evidence: bool,
-	pub(in crate::orchestrator) blocks_landing: bool,
-	pub(in crate::orchestrator) recovery_budget_attempt: Option<u64>,
-	pub(in crate::orchestrator) recovery_budget_max_attempts: Option<u64>,
-	pub(in crate::orchestrator) next_action: String,
+pub(crate) struct PrivateEvidenceArchitectureRecoverySummary {
+	pub(crate) reason_code: String,
+	pub(crate) guardrail_reason: Option<String>,
+	pub(crate) boundary_disposition: Option<String>,
+	pub(crate) boundary_policy_decision: Option<String>,
+	pub(crate) requires_enhanced_evidence: bool,
+	pub(crate) blocks_landing: bool,
+	pub(crate) recovery_budget_attempt: Option<u64>,
+	pub(crate) recovery_budget_max_attempts: Option<u64>,
+	pub(crate) next_action: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct PrivateEvidenceReadbackEvent {
-	pub(in crate::orchestrator) record_id: i64,
-	pub(in crate::orchestrator) event_type: String,
-	pub(in crate::orchestrator) recorded_at: String,
-	pub(in crate::orchestrator) payload_summary: PrivateEvidencePayloadSummary,
+pub(crate) struct PrivateEvidenceReadbackEvent {
+	pub(crate) record_id: i64,
+	pub(crate) event_type: String,
+	pub(crate) recorded_at: String,
+	pub(crate) payload_summary: PrivateEvidencePayloadSummary,
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub(in crate::orchestrator) payload: Option<Value>,
+	pub(crate) payload: Option<Value>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct PrivateEvidencePayloadSummary {
-	pub(in crate::orchestrator) kind: String,
-	pub(in crate::orchestrator) byte_count: usize,
-	pub(in crate::orchestrator) keys: Vec<String>,
-	pub(in crate::orchestrator) preview: Vec<String>,
-	pub(in crate::orchestrator) redacted_default_keys: Vec<String>,
+pub(crate) struct PrivateEvidencePayloadSummary {
+	pub(crate) kind: String,
+	pub(crate) byte_count: usize,
+	pub(crate) keys: Vec<String>,
+	pub(crate) preview: Vec<String>,
+	pub(crate) redacted_default_keys: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator) struct AgentHandoffIndex {
-	pub(in crate::orchestrator::agent_evidence) schema: &'static str,
-	pub(in crate::orchestrator::agent_evidence) project_id: String,
-	pub(in crate::orchestrator::agent_evidence) generated_at: String,
-	pub(in crate::orchestrator::agent_evidence) source: String,
-	pub(in crate::orchestrator::agent_evidence) evidence_root: String,
-	pub(in crate::orchestrator::agent_evidence) handoff_index_path: String,
-	pub(in crate::orchestrator::agent_evidence) blockers_dir: String,
-	pub(in crate::orchestrator::agent_evidence) runs_dir: String,
-	pub(in crate::orchestrator::agent_evidence) events_path: String,
-	pub(in crate::orchestrator) summary: AgentEvidenceSummary,
-	pub(in crate::orchestrator::agent_evidence) github_cli_authority:
-		Option<OperatorGitHubCliAuthority>,
-	pub(in crate::orchestrator::agent_evidence) warnings: Vec<String>,
-	pub(in crate::orchestrator::agent_evidence) connector_backoffs: Vec<AgentConnectorBackoff>,
-	pub(in crate::orchestrator::agent_evidence) blockers: Vec<AgentBlocker>,
-	pub(in crate::orchestrator::agent_evidence) run_capsules: Vec<AgentRunCapsuleRef>,
-	pub(in crate::orchestrator::agent_evidence) recovery_worktrees: Vec<AgentRecoveryWorktree>,
-	pub(in crate::orchestrator::agent_evidence) recovery_contracts: Vec<AgentRecoveryContract>,
+pub(crate) struct AgentHandoffIndex {
+	pub(crate) schema: &'static str,
+	pub(crate) project_id: String,
+	pub(crate) generated_at: String,
+	pub(crate) source: String,
+	pub(crate) evidence_root: String,
+	pub(crate) handoff_index_path: String,
+	pub(crate) blockers_dir: String,
+	pub(crate) runs_dir: String,
+	pub(crate) events_path: String,
+	pub(crate) summary: AgentEvidenceSummary,
+	pub(crate) github_cli_authority: Option<OperatorGitHubCliAuthority>,
+	pub(crate) warnings: Vec<String>,
+	pub(crate) connector_backoffs: Vec<AgentConnectorBackoff>,
+	pub(crate) blockers: Vec<AgentBlocker>,
+	pub(crate) run_capsules: Vec<AgentRunCapsuleRef>,
+	pub(crate) recovery_worktrees: Vec<AgentRecoveryWorktree>,
+	pub(crate) recovery_contracts: Vec<AgentRecoveryContract>,
 }
 
-pub(in crate::orchestrator::agent_evidence) struct PrivateEvidenceTarget {
-	pub(in crate::orchestrator::agent_evidence) issue_id: String,
-	pub(in crate::orchestrator::agent_evidence) issue_identifier: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) run_id: String,
-	pub(in crate::orchestrator::agent_evidence) attempt_number: i64,
+pub(crate) struct PrivateEvidenceTarget {
+	pub(crate) issue_id: String,
+	pub(crate) issue_identifier: Option<String>,
+	pub(crate) run_id: String,
+	pub(crate) attempt_number: i64,
 }
 
-pub(in crate::orchestrator::agent_evidence) struct AgentEvidenceFileWriteContext<'a> {
-	pub(in crate::orchestrator::agent_evidence) project_id: &'a str,
-	pub(in crate::orchestrator::agent_evidence) generated_at: &'a str,
-	pub(in crate::orchestrator::agent_evidence) source: AgentEvidenceSource,
-	pub(in crate::orchestrator::agent_evidence) handoff_index_path: &'a Path,
-	pub(in crate::orchestrator::agent_evidence) blockers_dir: &'a Path,
-	pub(in crate::orchestrator::agent_evidence) events_path: &'a Path,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator::agent_evidence) struct AgentConnectorBackoff {
-	pub(in crate::orchestrator::agent_evidence) evidence_ref: String,
-	pub(in crate::orchestrator::agent_evidence) connector: String,
-	pub(in crate::orchestrator::agent_evidence) sync_phase: String,
-	pub(in crate::orchestrator::agent_evidence) quota_class: String,
-	pub(in crate::orchestrator::agent_evidence) reset_at: String,
-	pub(in crate::orchestrator::agent_evidence) reset_unix_epoch: i64,
-	pub(in crate::orchestrator::agent_evidence) reset_source: String,
-	pub(in crate::orchestrator::agent_evidence) retry_after_seconds: i64,
-	pub(in crate::orchestrator::agent_evidence) warning: String,
-	pub(in crate::orchestrator::agent_evidence) next_action: String,
+pub(crate) struct AgentEvidenceFileWriteContext<'a> {
+	pub(crate) project_id: &'a str,
+	pub(crate) generated_at: &'a str,
+	pub(crate) source: AgentEvidenceSource,
+	pub(crate) handoff_index_path: &'a Path,
+	pub(crate) blockers_dir: &'a Path,
+	pub(crate) events_path: &'a Path,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator::agent_evidence) struct AgentBlocker {
-	pub(in crate::orchestrator::agent_evidence) evidence_ref: String,
-	pub(in crate::orchestrator::agent_evidence) project_id: String,
-	pub(in crate::orchestrator::agent_evidence) surface: String,
-	pub(in crate::orchestrator::agent_evidence) issue_id: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) issue_identifier: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) run_id: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) attempt_number: Option<i64>,
-	pub(in crate::orchestrator::agent_evidence) classification: String,
-	pub(in crate::orchestrator::agent_evidence) reason_code: String,
-	pub(in crate::orchestrator::agent_evidence) reason: String,
-	pub(in crate::orchestrator::agent_evidence) next_action: String,
-	pub(in crate::orchestrator::agent_evidence) blocker_snapshot_path: String,
-	pub(in crate::orchestrator::agent_evidence) related_run_capsule_path: Option<String>,
+pub(crate) struct AgentConnectorBackoff {
+	pub(crate) evidence_ref: String,
+	pub(crate) connector: String,
+	pub(crate) sync_phase: String,
+	pub(crate) quota_class: String,
+	pub(crate) reset_at: String,
+	pub(crate) reset_unix_epoch: i64,
+	pub(crate) reset_source: String,
+	pub(crate) retry_after_seconds: i64,
+	pub(crate) warning: String,
+	pub(crate) next_action: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator::agent_evidence) struct AgentBlockerSnapshot {
-	pub(in crate::orchestrator::agent_evidence) schema: &'static str,
-	pub(in crate::orchestrator::agent_evidence) project_id: String,
-	pub(in crate::orchestrator::agent_evidence) generated_at: String,
-	pub(in crate::orchestrator::agent_evidence) issue_id: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) issue_identifier: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) blockers: Vec<AgentBlocker>,
-	pub(in crate::orchestrator::agent_evidence) related_run_capsules: Vec<AgentRunCapsuleRef>,
+pub(crate) struct AgentBlocker {
+	pub(crate) evidence_ref: String,
+	pub(crate) project_id: String,
+	pub(crate) surface: String,
+	pub(crate) issue_id: Option<String>,
+	pub(crate) issue_identifier: Option<String>,
+	pub(crate) run_id: Option<String>,
+	pub(crate) attempt_number: Option<i64>,
+	pub(crate) classification: String,
+	pub(crate) reason_code: String,
+	pub(crate) reason: String,
+	pub(crate) next_action: String,
+	pub(crate) blocker_snapshot_path: String,
+	pub(crate) related_run_capsule_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator::agent_evidence) struct AgentRunCapsuleRef {
-	pub(in crate::orchestrator::agent_evidence) evidence_ref: String,
-	pub(in crate::orchestrator::agent_evidence) run_id: String,
-	pub(in crate::orchestrator::agent_evidence) issue_id: String,
-	pub(in crate::orchestrator::agent_evidence) issue_identifier: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) attempt_number: i64,
-	pub(in crate::orchestrator::agent_evidence) status: String,
-	pub(in crate::orchestrator::agent_evidence) phase: String,
-	pub(in crate::orchestrator::agent_evidence) current_operation: String,
-	pub(in crate::orchestrator::agent_evidence) path: String,
-	pub(in crate::orchestrator::agent_evidence) private_evidence: AgentPrivateEvidenceRef,
+pub(crate) struct AgentBlockerSnapshot {
+	pub(crate) schema: &'static str,
+	pub(crate) project_id: String,
+	pub(crate) generated_at: String,
+	pub(crate) issue_id: Option<String>,
+	pub(crate) issue_identifier: Option<String>,
+	pub(crate) blockers: Vec<AgentBlocker>,
+	pub(crate) related_run_capsules: Vec<AgentRunCapsuleRef>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator::agent_evidence) struct AgentRunCapsule {
-	pub(in crate::orchestrator::agent_evidence) schema: &'static str,
-	pub(in crate::orchestrator::agent_evidence) evidence_ref: String,
-	pub(in crate::orchestrator::agent_evidence) project_id: String,
-	pub(in crate::orchestrator::agent_evidence) generated_at: String,
-	pub(in crate::orchestrator::agent_evidence) path: String,
-	pub(in crate::orchestrator::agent_evidence) run_id: String,
-	pub(in crate::orchestrator::agent_evidence) issue_id: String,
-	pub(in crate::orchestrator::agent_evidence) issue_identifier: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) title: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) attempt_number: i64,
-	pub(in crate::orchestrator::agent_evidence) status: String,
-	pub(in crate::orchestrator::agent_evidence) attempt_status: String,
-	pub(in crate::orchestrator::agent_evidence) phase: String,
-	pub(in crate::orchestrator::agent_evidence) wait_reason: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) current_operation: String,
-	pub(in crate::orchestrator::agent_evidence) queue_lease_state: String,
-	pub(in crate::orchestrator::agent_evidence) execution_liveness: String,
-	pub(in crate::orchestrator::agent_evidence) ownership_state: String,
-	pub(in crate::orchestrator::agent_evidence) liveness_state: String,
-	pub(in crate::orchestrator::agent_evidence) policy_state: String,
-	pub(in crate::orchestrator::agent_evidence) terminalization_state: String,
-	pub(in crate::orchestrator::agent_evidence) lane_control_next_action: String,
-	pub(in crate::orchestrator::agent_evidence) lane_control_conditions: Vec<String>,
-	pub(in crate::orchestrator::agent_evidence) run_lease: bool,
-	pub(in crate::orchestrator::agent_evidence) continuation_pending: bool,
-	pub(in crate::orchestrator::agent_evidence) suspected_stall: bool,
-	pub(in crate::orchestrator::agent_evidence) thread_id: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) turn_id: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) thread_status: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) thread_active_flags: Vec<String>,
-	pub(in crate::orchestrator::agent_evidence) interactive_requested: bool,
-	pub(in crate::orchestrator::agent_evidence) process_id: Option<u32>,
-	pub(in crate::orchestrator::agent_evidence) process_alive: Option<bool>,
-	pub(in crate::orchestrator::agent_evidence) process_liveness_reason: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) event_count: i64,
-	pub(in crate::orchestrator::agent_evidence) last_event_type: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) last_event_at: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) last_run_activity_at: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) last_protocol_activity_at: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) last_progress_at: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) idle_for_seconds: Option<i64>,
-	pub(in crate::orchestrator::agent_evidence) protocol_idle_for_seconds: Option<i64>,
-	pub(in crate::orchestrator::agent_evidence) retry_kind: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) next_retry_at: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) effective_model: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) effective_model_provider: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) effective_cwd: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) effective_approval_policy: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) effective_approvals_reviewer: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) effective_sandbox_mode: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) branch_name: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) worktree_path: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) private_evidence: AgentPrivateEvidenceRef,
-	pub(in crate::orchestrator::agent_evidence) ledger_outcome: Option<AgentRunLedgerOutcome>,
-	pub(in crate::orchestrator::agent_evidence) diagnosis: AgentRunDiagnosis,
+pub(crate) struct AgentRunCapsuleRef {
+	pub(crate) evidence_ref: String,
+	pub(crate) run_id: String,
+	pub(crate) issue_id: String,
+	pub(crate) issue_identifier: Option<String>,
+	pub(crate) attempt_number: i64,
+	pub(crate) status: String,
+	pub(crate) phase: String,
+	pub(crate) current_operation: String,
+	pub(crate) path: String,
+	pub(crate) private_evidence: AgentPrivateEvidenceRef,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator::agent_evidence) struct AgentRunLedgerOutcome {
-	pub(in crate::orchestrator::agent_evidence) ledger_status: String,
-	pub(in crate::orchestrator::agent_evidence) final_outcome: String,
-	pub(in crate::orchestrator::agent_evidence) final_event_type: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) final_event_at: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) summary: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) pr_url: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) commit_sha: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) closeout_status: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) needs_attention_reason: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) record_count: usize,
+pub(crate) struct AgentRunCapsule {
+	pub(crate) schema: &'static str,
+	pub(crate) evidence_ref: String,
+	pub(crate) project_id: String,
+	pub(crate) generated_at: String,
+	pub(crate) path: String,
+	pub(crate) run_id: String,
+	pub(crate) issue_id: String,
+	pub(crate) issue_identifier: Option<String>,
+	pub(crate) title: Option<String>,
+	pub(crate) attempt_number: i64,
+	pub(crate) status: String,
+	pub(crate) attempt_status: String,
+	pub(crate) phase: String,
+	pub(crate) wait_reason: Option<String>,
+	pub(crate) current_operation: String,
+	pub(crate) queue_lease_state: String,
+	pub(crate) execution_liveness: String,
+	pub(crate) ownership_state: String,
+	pub(crate) liveness_state: String,
+	pub(crate) policy_state: String,
+	pub(crate) terminalization_state: String,
+	pub(crate) lane_control_next_action: String,
+	pub(crate) lane_control_conditions: Vec<String>,
+	pub(crate) run_lease: bool,
+	pub(crate) continuation_pending: bool,
+	pub(crate) suspected_stall: bool,
+	pub(crate) thread_id: Option<String>,
+	pub(crate) turn_id: Option<String>,
+	pub(crate) thread_status: Option<String>,
+	pub(crate) thread_active_flags: Vec<String>,
+	pub(crate) interactive_requested: bool,
+	pub(crate) process_id: Option<u32>,
+	pub(crate) process_alive: Option<bool>,
+	pub(crate) process_liveness_reason: Option<String>,
+	pub(crate) event_count: i64,
+	pub(crate) last_event_type: Option<String>,
+	pub(crate) last_event_at: Option<String>,
+	pub(crate) last_run_activity_at: Option<String>,
+	pub(crate) last_protocol_activity_at: Option<String>,
+	pub(crate) last_progress_at: Option<String>,
+	pub(crate) idle_for_seconds: Option<i64>,
+	pub(crate) protocol_idle_for_seconds: Option<i64>,
+	pub(crate) retry_kind: Option<String>,
+	pub(crate) next_retry_at: Option<String>,
+	pub(crate) effective_model: Option<String>,
+	pub(crate) effective_model_provider: Option<String>,
+	pub(crate) effective_cwd: Option<String>,
+	pub(crate) effective_approval_policy: Option<String>,
+	pub(crate) effective_approvals_reviewer: Option<String>,
+	pub(crate) effective_sandbox_mode: Option<String>,
+	pub(crate) branch_name: Option<String>,
+	pub(crate) worktree_path: Option<String>,
+	pub(crate) private_evidence: AgentPrivateEvidenceRef,
+	pub(crate) ledger_outcome: Option<AgentRunLedgerOutcome>,
+	pub(crate) diagnosis: AgentRunDiagnosis,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator::agent_evidence) struct AgentRunDiagnosis {
-	pub(in crate::orchestrator::agent_evidence) attention_required: bool,
-	pub(in crate::orchestrator::agent_evidence) reason_code: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) next_action: Option<String>,
+pub(crate) struct AgentRunLedgerOutcome {
+	pub(crate) ledger_status: String,
+	pub(crate) final_outcome: String,
+	pub(crate) final_event_type: Option<String>,
+	pub(crate) final_event_at: Option<String>,
+	pub(crate) summary: Option<String>,
+	pub(crate) pr_url: Option<String>,
+	pub(crate) commit_sha: Option<String>,
+	pub(crate) closeout_status: Option<String>,
+	pub(crate) needs_attention_reason: Option<String>,
+	pub(crate) record_count: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator::agent_evidence) struct AgentRecoveryWorktree {
-	pub(in crate::orchestrator::agent_evidence) issue_id: String,
-	pub(in crate::orchestrator::agent_evidence) issue_identifier: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) issue_state: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) branch_name: String,
-	pub(in crate::orchestrator::agent_evidence) worktree_path: String,
-	pub(in crate::orchestrator::agent_evidence) role: String,
-	pub(in crate::orchestrator::agent_evidence) ownership: String,
-	pub(in crate::orchestrator::agent_evidence) ownership_reason: String,
-	pub(in crate::orchestrator::agent_evidence) hygiene_classification: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) hygiene_reason: Option<String>,
+pub(crate) struct AgentRunDiagnosis {
+	pub(crate) attention_required: bool,
+	pub(crate) reason_code: Option<String>,
+	pub(crate) next_action: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator::agent_evidence) struct AgentRecoveryContract {
-	pub(in crate::orchestrator::agent_evidence) evidence_ref: String,
-	pub(in crate::orchestrator::agent_evidence) kind: String,
-	pub(in crate::orchestrator::agent_evidence) issue_identifier: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) reason_code: String,
-	pub(in crate::orchestrator::agent_evidence) command: Option<String>,
-	pub(in crate::orchestrator::agent_evidence) next_action: String,
+pub(crate) struct AgentRecoveryWorktree {
+	pub(crate) issue_id: String,
+	pub(crate) issue_identifier: Option<String>,
+	pub(crate) issue_state: Option<String>,
+	pub(crate) branch_name: String,
+	pub(crate) worktree_path: String,
+	pub(crate) role: String,
+	pub(crate) ownership: String,
+	pub(crate) ownership_reason: String,
+	pub(crate) hygiene_classification: Option<String>,
+	pub(crate) hygiene_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::orchestrator::agent_evidence) struct AgentEvidenceEvent {
-	pub(in crate::orchestrator::agent_evidence) schema: &'static str,
-	pub(in crate::orchestrator::agent_evidence) project_id: String,
-	pub(in crate::orchestrator::agent_evidence) generated_at: String,
-	pub(in crate::orchestrator::agent_evidence) source: String,
-	pub(in crate::orchestrator::agent_evidence) handoff_index_path: String,
-	pub(in crate::orchestrator::agent_evidence) blocker_count: usize,
-	pub(in crate::orchestrator::agent_evidence) run_capsule_count: usize,
-	pub(in crate::orchestrator::agent_evidence) warning_count: usize,
-	pub(in crate::orchestrator::agent_evidence) connector_backoff_count: usize,
+pub(crate) struct AgentRecoveryContract {
+	pub(crate) evidence_ref: String,
+	pub(crate) kind: String,
+	pub(crate) issue_identifier: Option<String>,
+	pub(crate) reason_code: String,
+	pub(crate) command: Option<String>,
+	pub(crate) next_action: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct AgentEvidenceEvent {
+	pub(crate) schema: &'static str,
+	pub(crate) project_id: String,
+	pub(crate) generated_at: String,
+	pub(crate) source: String,
+	pub(crate) handoff_index_path: String,
+	pub(crate) blocker_count: usize,
+	pub(crate) run_capsule_count: usize,
+	pub(crate) warning_count: usize,
+	pub(crate) connector_backoff_count: usize,
 }

@@ -7,11 +7,14 @@ use std::{
 
 use color_eyre::Report;
 
-use crate::git_credentials::{GitCredentialEnvironment, GitSigningConfig};
-
-use super::errors::AppServerHomePreflightFailure;
+use crate::{
+	agent::json_rpc::errors::AppServerHomePreflightFailure,
+	git_credentials::{GitCredentialEnvironment, GitSigningConfig},
+	prelude::Result,
+};
 
 pub(super) const APP_SERVER_STDERR_TAIL_LINES: usize = 20;
+
 const CODEX_APP_SERVER_BINARY: &str = "codex";
 const CODEX_HOME_ENV_VAR: &str = "CODEX_HOME";
 const CODEX_SQLITE_HOME_ENV_VAR: &str = "CODEX_SQLITE_HOME";
@@ -52,9 +55,7 @@ impl AppServerProcessEnv {
 		}
 	}
 
-	pub(crate) fn resolve_codex_home_env(
-		&self,
-	) -> crate::prelude::Result<ResolvedAppServerCodexHomeEnv> {
+	pub(crate) fn resolve_codex_home_env(&self) -> Result<ResolvedAppServerCodexHomeEnv> {
 		match &self.codex_home_policy {
 			AppServerCodexHomePolicy::SharedDefault => resolve_shared_codex_home_env(),
 			#[cfg(test)]
@@ -62,10 +63,7 @@ impl AppServerProcessEnv {
 		}
 	}
 
-	pub(crate) fn apply_to(
-		&self,
-		command: &mut Command,
-	) -> crate::prelude::Result<ResolvedAppServerCodexHomeEnv> {
+	pub(crate) fn apply_to(&self, command: &mut Command) -> Result<ResolvedAppServerCodexHomeEnv> {
 		self.git.apply_to(command);
 
 		let codex_home_env = self.resolve_codex_home_env()?;
@@ -99,7 +97,7 @@ pub(crate) struct ResolvedAppServerCodexHomeEnv {
 	sqlite_home: PathBuf,
 }
 impl ResolvedAppServerCodexHomeEnv {
-	pub(crate) fn new(codex_home: PathBuf, sqlite_home: PathBuf) -> crate::prelude::Result<Self> {
+	pub(crate) fn new(codex_home: PathBuf, sqlite_home: PathBuf) -> Result<Self> {
 		validate_codex_home_path(CODEX_HOME_ENV_VAR, &codex_home)?;
 		validate_codex_home_path(CODEX_SQLITE_HOME_ENV_VAR, &sqlite_home)?;
 
@@ -115,7 +113,7 @@ impl ResolvedAppServerCodexHomeEnv {
 		&self.sqlite_home
 	}
 
-	fn apply_to(&self, command: &mut Command) -> crate::prelude::Result<()> {
+	fn apply_to(&self, command: &mut Command) -> Result<()> {
 		let codex_home = path_env_value(CODEX_HOME_ENV_VAR, &self.codex_home)?;
 		let sqlite_home = path_env_value(CODEX_SQLITE_HOME_ENV_VAR, &self.sqlite_home)?;
 
@@ -139,13 +137,9 @@ pub(crate) fn app_server_command_program() -> PathBuf {
 	app_server_command_program_from_env(env::var_os("PATH"), env::var_os("HOME"))
 }
 
-fn resolve_shared_codex_home_env() -> crate::prelude::Result<ResolvedAppServerCodexHomeEnv> {
-	resolve_shared_codex_home_env_from_home(env::var_os("HOME"))
-}
-
 pub(super) fn resolve_shared_codex_home_env_from_home(
 	home: Option<OsString>,
-) -> crate::prelude::Result<ResolvedAppServerCodexHomeEnv> {
+) -> Result<ResolvedAppServerCodexHomeEnv> {
 	let Some(home) = home else {
 		return Err(Report::new(AppServerHomePreflightFailure::resolution_failed(String::from(
 			"app_server_preflight_failed: HOME is not set, so Decodex cannot resolve the shared Codex home for app-server dispatch.",
@@ -170,36 +164,11 @@ pub(super) fn resolve_shared_codex_home_env_from_home(
 	ResolvedAppServerCodexHomeEnv::new(codex_home.clone(), codex_home)
 }
 
-fn validate_codex_home_path(name: &str, path: &Path) -> crate::prelude::Result<()> {
-	if path.as_os_str().is_empty() {
-		return Err(Report::new(AppServerHomePreflightFailure::resolution_failed(format!(
-			"app_server_preflight_failed: {name} resolved to an empty path."
-		))));
-	}
-	if !path.is_absolute() {
-		return Err(Report::new(AppServerHomePreflightFailure::resolution_failed(format!(
-			"app_server_preflight_failed: {name} `{}` is not absolute.",
-			path.display()
-		))));
-	}
-
-	path_env_value(name, path).map(|_| ())
-}
-
-fn path_env_value(name: &str, path: &Path) -> crate::prelude::Result<String> {
-	path.to_str().map(str::to_owned).ok_or_else(|| {
-		Report::new(AppServerHomePreflightFailure::resolution_failed(format!(
-			"app_server_preflight_failed: {name} `{}` is not valid UTF-8.",
-			path.display()
-		)))
-	})
-}
-
 pub(super) fn configure_app_server_command(
 	command: &mut Command,
 	listen: &str,
 	process_env: &AppServerProcessEnv,
-) -> crate::prelude::Result<ResolvedAppServerCodexHomeEnv> {
+) -> Result<ResolvedAppServerCodexHomeEnv> {
 	command
 		.args(["app-server", "--listen", listen])
 		.stdin(Stdio::piped())
@@ -239,4 +208,33 @@ pub(super) fn app_server_command_program_from_env(
 	}
 
 	PathBuf::from(CODEX_APP_SERVER_BINARY)
+}
+
+fn resolve_shared_codex_home_env() -> Result<ResolvedAppServerCodexHomeEnv> {
+	resolve_shared_codex_home_env_from_home(env::var_os("HOME"))
+}
+
+fn validate_codex_home_path(name: &str, path: &Path) -> Result<()> {
+	if path.as_os_str().is_empty() {
+		return Err(Report::new(AppServerHomePreflightFailure::resolution_failed(format!(
+			"app_server_preflight_failed: {name} resolved to an empty path."
+		))));
+	}
+	if !path.is_absolute() {
+		return Err(Report::new(AppServerHomePreflightFailure::resolution_failed(format!(
+			"app_server_preflight_failed: {name} `{}` is not absolute.",
+			path.display()
+		))));
+	}
+
+	path_env_value(name, path).map(|_| ())
+}
+
+fn path_env_value(name: &str, path: &Path) -> Result<String> {
+	path.to_str().map(str::to_owned).ok_or_else(|| {
+		Report::new(AppServerHomePreflightFailure::resolution_failed(format!(
+			"app_server_preflight_failed: {name} `{}` is not valid UTF-8.",
+			path.display()
+		)))
+	})
 }

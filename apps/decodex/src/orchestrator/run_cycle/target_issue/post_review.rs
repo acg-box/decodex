@@ -5,9 +5,7 @@ use crate::orchestrator::{
 	Result, RunSummary, TargetIssueRunContext, run_cycle::target_issue,
 };
 
-pub(in crate::orchestrator::run_cycle::target_issue) fn target_issue_has_status_visible_review_repair<
-	T,
->(
+pub(crate) fn target_issue_has_status_visible_review_repair<T>(
 	context: &TargetIssueRunContext<'_, T>,
 ) -> Result<bool>
 where
@@ -33,9 +31,7 @@ where
 	}))
 }
 
-pub(in crate::orchestrator::run_cycle::target_issue) fn run_target_status_visible_review_repair_once<
-	T,
->(
+pub(crate) fn run_target_status_visible_review_repair_once<T>(
 	context: TargetIssueRunContext<'_, T>,
 ) -> Result<Option<RunSummary>>
 where
@@ -66,9 +62,7 @@ where
 	))
 }
 
-pub(in crate::orchestrator::run_cycle::target_issue) fn target_issue_has_status_visible_closeout<
-	T,
->(
+pub(crate) fn target_issue_has_status_visible_closeout<T>(
 	context: &TargetIssueRunContext<'_, T>,
 ) -> Result<bool>
 where
@@ -95,7 +89,7 @@ where
 	}))
 }
 
-pub(in crate::orchestrator::run_cycle::target_issue) fn run_target_status_visible_closeout_once<T>(
+pub(crate) fn run_target_status_visible_closeout_once<T>(
 	context: TargetIssueRunContext<'_, T>,
 ) -> Result<Option<RunSummary>>
 where

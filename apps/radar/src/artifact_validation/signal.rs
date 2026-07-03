@@ -2,10 +2,10 @@
 
 use serde_json::{Map, Value};
 
-use crate::artifact_validation::support;
 use crate::artifact_validation::{
 	SIGNAL_CONFIDENCE,
 	constants::{SIGNAL_IMPACT, SIGNAL_KINDS, SOURCE_ITEM_KINDS},
+	support,
 };
 
 pub(super) fn validate_signal(entry: &Map<String, Value>, errors: &mut Vec<String>) {
@@ -162,11 +162,10 @@ pub(super) fn collect_json_strings(value: &Value, text: &mut String) {
 			text.push(' ');
 			text.push_str(value);
 		},
-		Value::Array(values) => {
+		Value::Array(values) =>
 			for value in values {
 				collect_json_strings(value, text);
-			}
-		},
+			},
 		Value::Object(object) => collect_json_strings_from_map(object, text),
 		Value::Bool(_) | Value::Null | Value::Number(_) => {},
 	}

@@ -4,8 +4,7 @@ use std::{collections::BTreeMap, path::Path};
 
 use serde_json::Value;
 
-use super::{SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA};
-use crate::{path_arg, repo_root};
+use crate::social_validation::{SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA};
 
 #[derive(Debug)]
 pub(crate) struct SocialValidationState {
@@ -27,10 +26,11 @@ pub(crate) fn validate_social_cross_file_constraints(
 	state: &mut SocialValidationState,
 	errors: &mut Vec<String>,
 ) {
-	let root = repo_root().ok();
-	let display_path = root
-		.as_deref()
-		.map_or_else(|| path.to_string_lossy().replace('\\', "/"), |root| path_arg(root, path));
+	let root = crate::repo_root().ok();
+	let display_path = root.as_deref().map_or_else(
+		|| path.to_string_lossy().replace('\\', "/"),
+		|root| crate::path_arg(root, path),
+	);
 
 	match payload.get("schema").and_then(Value::as_str) {
 		Some(SOCIAL_POST_SCHEMA) => {

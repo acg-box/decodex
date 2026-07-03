@@ -7,7 +7,7 @@ use crate::{
 	prelude::Result,
 };
 
-pub(in crate::orchestrator) fn load_post_review_orchestration_marker(
+pub(crate) fn load_post_review_orchestration_marker(
 	snapshot: &PostReviewLaneSnapshot,
 	review_state: &PullRequestReviewState,
 	classification: &mut PostReviewLaneClassification,
@@ -69,7 +69,7 @@ pub(in crate::orchestrator) fn load_post_review_orchestration_marker(
 	Ok(Some(orchestration_marker))
 }
 
-pub(in crate::orchestrator) fn clean_current_head_review_repair_writeback_pending(
+pub(crate) fn clean_current_head_review_repair_writeback_pending(
 	snapshot: &PostReviewLaneSnapshot,
 	review_state: &PullRequestReviewState,
 	runtime_state: Option<PostReviewRuntimeState<'_>>,
@@ -133,7 +133,7 @@ pub(in crate::orchestrator) fn clean_current_head_review_repair_writeback_pendin
 	Ok(false)
 }
 
-pub(in crate::orchestrator) fn review_repair_terminal_finalize_event_matches_snapshot(
+pub(crate) fn review_repair_terminal_finalize_event_matches_snapshot(
 	event: &PrivateExecutionEvent,
 	snapshot: &PostReviewLaneSnapshot,
 ) -> bool {
@@ -147,7 +147,7 @@ pub(in crate::orchestrator) fn review_repair_terminal_finalize_event_matches_sna
 			== Some(snapshot.worktree.worktree_path().display().to_string().as_str())
 }
 
-pub(in crate::orchestrator) fn review_repair_completion_intent_matches_current_head(
+pub(crate) fn review_repair_completion_intent_matches_current_head(
 	event: &PrivateExecutionEvent,
 	snapshot: &PostReviewLaneSnapshot,
 	review_state: &PullRequestReviewState,
@@ -167,7 +167,7 @@ pub(in crate::orchestrator) fn review_repair_completion_intent_matches_current_h
 		&& payload.get("pr_head_oid").and_then(Value::as_str) == Some(local_head_oid)
 }
 
-pub(in crate::orchestrator) fn validate_review_orchestration_marker(
+pub(crate) fn validate_review_orchestration_marker(
 	snapshot: &PostReviewLaneSnapshot,
 	review_state: &PullRequestReviewState,
 	marker: &ReviewOrchestrationMarker,

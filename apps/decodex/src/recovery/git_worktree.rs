@@ -189,6 +189,7 @@ fn worktree_remote_default_ref(worktree_path: &Path) -> Result<Option<String>> {
 		.arg(worktree_path)
 		.args(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
 		.output()?;
+
 	if output.status.success() {
 		let value = trimmed_stdout(&output.stdout)?;
 
@@ -204,6 +205,7 @@ fn worktree_remote_default_ref(worktree_path: &Path) -> Result<Option<String>> {
 			.arg(worktree_path)
 			.args(["rev-parse", "--verify", "--quiet", revision.as_str()])
 			.output()?;
+
 		if output.status.success() {
 			return Ok(Some(candidate.to_owned()));
 		}

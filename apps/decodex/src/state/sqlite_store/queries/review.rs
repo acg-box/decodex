@@ -1,14 +1,17 @@
-use super::{
-	EvidenceArtifactKey, EvidenceArtifactRuntimeRecord, LoopGuardrailKey,
-	LoopGuardrailRuntimeRecord, Result, ReviewLifecycleKey, ReviewLifecycleRuntimeRecord,
-	ReviewPolicyKey, ReviewPolicyRuntimeRecord, Row, StateData, params,
+use crate::state::sqlite_store::{
+	SqliteStateStore,
+	queries::{
+		self, EvidenceArtifactKey, EvidenceArtifactRuntimeRecord, LoopGuardrailKey,
+		LoopGuardrailRuntimeRecord, ReviewLifecycleKey, ReviewLifecycleRuntimeRecord,
+		ReviewPolicyKey, ReviewPolicyRuntimeRecord, Row, StateData,
+	},
 };
 
-impl super::super::SqliteStateStore {
+impl SqliteStateStore {
 	pub(in crate::state) fn load_review_lifecycle_records(
 		&self,
 		state: &mut StateData,
-	) -> Result<()> {
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, branch_name, run_id, attempt_number, pr_url, \
 			 target_base_ref_name, pr_head_ref_name, pr_head_oid, head_sha, phase, \
@@ -71,7 +74,7 @@ impl super::super::SqliteStateStore {
 		&self,
 		state: &mut StateData,
 		project_id: &str,
-	) -> Result<()> {
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, branch_name, run_id, attempt_number, pr_url, \
 			 target_base_ref_name, pr_head_ref_name, pr_head_oid, head_sha, phase, \
@@ -81,7 +84,7 @@ impl super::super::SqliteStateStore {
 			 repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix \
 			 FROM review_lifecycle_records WHERE project_id = ?1",
 		)?;
-		let rows = statement.query_map(params![project_id], |row| {
+		let rows = statement.query_map(queries::params![project_id], |row| {
 			let project_id: String = row.get(0)?;
 			let issue_id: String = row.get(1)?;
 			let branch_name: String = row.get(2)?;
@@ -133,7 +136,7 @@ impl super::super::SqliteStateStore {
 	pub(in crate::state) fn load_review_policy_checkpoints(
 		&self,
 		state: &mut StateData,
-	) -> Result<()> {
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, run_id, attempt_number, phase, status, head_sha, \
 			 nonclean_rounds, details_json, updated_at, updated_at_unix FROM review_policy_checkpoints",
@@ -176,13 +179,13 @@ impl super::super::SqliteStateStore {
 		&self,
 		state: &mut StateData,
 		project_id: &str,
-	) -> Result<()> {
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, run_id, attempt_number, phase, status, head_sha, \
 			 nonclean_rounds, details_json, updated_at, updated_at_unix FROM review_policy_checkpoints \
 			 WHERE project_id = ?1",
 		)?;
-		let rows = statement.query_map(params![project_id], |row| {
+		let rows = statement.query_map(queries::params![project_id], |row| {
 			let project_id: String = row.get(0)?;
 			let issue_id: String = row.get(1)?;
 			let run_id: String = row.get(2)?;
@@ -216,7 +219,10 @@ impl super::super::SqliteStateStore {
 		Ok(())
 	}
 
-	pub(in crate::state) fn load_evidence_artifacts(&self, state: &mut StateData) -> Result<()> {
+	pub(in crate::state) fn load_evidence_artifacts(
+		&self,
+		state: &mut StateData,
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, artifact_kind, key_hash, phase, status, head_sha, \
 			 key_json, payload_json, source_run_id, source_attempt_number, updated_at, \
@@ -237,13 +243,14 @@ impl super::super::SqliteStateStore {
 		&self,
 		state: &mut StateData,
 		project_id: &str,
-	) -> Result<()> {
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, artifact_kind, key_hash, phase, status, head_sha, \
 			 key_json, payload_json, source_run_id, source_attempt_number, updated_at, \
 			 updated_at_unix FROM evidence_artifacts WHERE project_id = ?1",
 		)?;
-		let rows = statement.query_map(params![project_id], Self::evidence_artifact_from_row)?;
+		let rows =
+			statement.query_map(queries::params![project_id], Self::evidence_artifact_from_row)?;
 
 		for row in rows {
 			let (key, record) = row?;
@@ -285,7 +292,7 @@ impl super::super::SqliteStateStore {
 	pub(in crate::state) fn load_loop_guardrail_checkpoints(
 		&self,
 		state: &mut StateData,
-	) -> Result<()> {
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, reason, fingerprint, run_id, attempt_number, \
 			 consecutive_count, details_json, updated_at, updated_at_unix \

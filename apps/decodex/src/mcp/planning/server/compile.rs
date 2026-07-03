@@ -57,9 +57,8 @@ impl McpServer {
 		};
 
 		match report {
-			Ok(report) => {
-				mcp::tool_success(results::research_compile_result(&report, mode == "apply", mode))
-			},
+			Ok(report) =>
+				mcp::tool_success(results::research_compile_result(&report, mode == "apply", mode)),
 			Err(_) => mcp::tool_refusal(
 				"research_compile_refused",
 				"Research compile input did not satisfy Decodex Decision Contract requirements.",

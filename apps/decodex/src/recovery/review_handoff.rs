@@ -21,29 +21,22 @@ use std::{
 use crate::{
 	prelude::{Result, eyre},
 	pull_request::PullRequestLandingState,
+	recovery::{
+		context::{self, RecoveryContext},
+		events,
+		git_worktree::{self},
+		pull_request_inspection::{self},
+		reports,
+		reports::ReviewHandoffRecoveryReport,
+		requests::{
+			ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest,
+		},
+		review_handoff_apply,
+		review_handoff_diagnosis::{self},
+		review_handoff_policy::{self, RebindMode, RebindSuccessStateTransition},
+	},
 	state::WorktreeMapping,
 	tracker::{self, TrackerIssue},
-};
-
-use crate::recovery::{
-	context::{
-		RecoveryContext, active_recovery_tracker_backoff_message,
-		load_recovery_context_for_dry_run, load_recovery_context_read_only,
-		remember_recovery_tracker_backoff_message,
-	},
-	events::manual_adopt_run_id,
-	git_worktree::{worktree_checkout_branch_name, worktree_head_oid},
-	pull_request_inspection::{inspect_rebind_pull_request, landing_url},
-	reports::{ReviewHandoffRecoveryReport, render_review_handoff_recovery_report},
-	requests::{
-		ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest,
-	},
-	review_handoff_apply::{apply_review_handoff_adopt, apply_review_handoff_rebind},
-	review_handoff_diagnosis::{diagnose_all_retained_review_worktrees, diagnose_issue},
-	review_handoff_policy::{
-		RebindMode, RebindSuccessStateTransition, validate_adopt_issue_state_for_policy,
-		validate_adopt_landing_state,
-	},
 };
 
 pub(super) struct RebindValidation {
@@ -60,7 +53,6 @@ pub(super) struct RebindValidation {
 	pub(super) success_state_transition: Option<RebindSuccessStateTransition>,
 	pub(super) clear_needs_attention_label: bool,
 }
-
 impl RebindValidation {
 	pub(super) fn should_restore_active_label(&self) -> bool {
 		self.restore_active_label
@@ -80,7 +72,6 @@ pub(super) struct AdoptValidation {
 	pub(super) success_state_transition: Option<RebindSuccessStateTransition>,
 	pub(super) previous_worktree_mapping: Option<WorktreeMapping>,
 }
-
 impl AdoptValidation {
 	pub(super) fn should_restore_active_label(&self) -> bool {
 		!self.active_label_present
@@ -98,23 +89,23 @@ pub(crate) fn run_review_handoff_diagnose(
 	config_path: Option<&Path>,
 	request: &ReviewHandoffDiagnoseRequest,
 ) -> Result<()> {
-	let context = load_recovery_context_read_only(config_path)?;
+	let context = context::load_recovery_context_read_only(config_path)?;
 
-	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
+	if let Some(message) = context::active_recovery_tracker_backoff_message(&context)? {
 		println!("{message}");
 
 		return Ok(());
 	}
 
 	let diagnostics = match match request.issue.as_deref() {
-		Some(issue_identifier) => {
-			diagnose_issue(&context, issue_identifier).map(|diagnostic| vec![diagnostic])
-		},
-		None => diagnose_all_retained_review_worktrees(&context),
+		Some(issue_identifier) =>
+			review_handoff_diagnosis::diagnose_issue(&context, issue_identifier)
+				.map(|diagnostic| vec![diagnostic]),
+		None => review_handoff_diagnosis::diagnose_all_retained_review_worktrees(&context),
 	} {
 		Ok(diagnostics) => diagnostics,
 		Err(error) => {
-			if let Some(message) = remember_recovery_tracker_backoff_message(
+			if let Some(message) = context::remember_recovery_tracker_backoff_message(
 				&context,
 				&error,
 				"review_handoff_recovery",
@@ -135,7 +126,7 @@ pub(crate) fn run_review_handoff_diagnose(
 	if request.json {
 		println!("{}", serde_json::to_string_pretty(&report)?);
 	} else {
-		print!("{}", render_review_handoff_recovery_report(&report));
+		print!("{}", reports::render_review_handoff_recovery_report(&report));
 	}
 
 	Ok(())
@@ -146,7 +137,7 @@ pub(crate) fn run_review_handoff_rebind(
 	config_path: Option<&Path>,
 	request: &ReviewHandoffRebindRequest,
 ) -> Result<()> {
-	let context = load_recovery_context_for_dry_run(config_path, request.dry_run)?;
+	let context = context::load_recovery_context_for_dry_run(config_path, request.dry_run)?;
 	let validation = validate_rebind_request(&context, request)?;
 
 	if request.dry_run {
@@ -160,7 +151,7 @@ pub(crate) fn run_review_handoff_rebind(
 			context.config.service_id(),
 			validation.issue.identifier,
 			validation.worktree.branch_name(),
-			landing_url(&validation.landing_state),
+			pull_request_inspection::landing_url(&validation.landing_state),
 			validation.local_head_oid,
 			validation.mode.evidence_value(),
 			validation.active_label_present,
@@ -171,14 +162,14 @@ pub(crate) fn run_review_handoff_rebind(
 		return Ok(());
 	}
 
-	apply_review_handoff_rebind(&context, &validation)?;
+	review_handoff_apply::apply_review_handoff_rebind(&context, &validation)?;
 
 	println!(
 		"rebind ok: project={} issue={} branch={} pr={} head={} mode={}",
 		context.config.service_id(),
 		validation.issue.identifier,
 		validation.worktree.branch_name(),
-		landing_url(&validation.landing_state),
+		pull_request_inspection::landing_url(&validation.landing_state),
 		validation.local_head_oid,
 		validation.mode.evidence_value()
 	);
@@ -191,7 +182,7 @@ pub(crate) fn run_review_handoff_adopt(
 	config_path: Option<&Path>,
 	request: &ReviewHandoffAdoptRequest,
 ) -> Result<()> {
-	let context = load_recovery_context_for_dry_run(config_path, request.dry_run)?;
+	let context = context::load_recovery_context_for_dry_run(config_path, request.dry_run)?;
 	let validation = validate_adopt_request(&context, request)?;
 
 	if request.dry_run {
@@ -206,7 +197,7 @@ pub(crate) fn run_review_handoff_adopt(
 			context.config.service_id(),
 			validation.issue.identifier,
 			validation.branch_name,
-			landing_url(&validation.landing_state),
+			pull_request_inspection::landing_url(&validation.landing_state),
 			validation.local_head_oid,
 			validation.run_id,
 			validation.attempt_number,
@@ -219,14 +210,14 @@ pub(crate) fn run_review_handoff_adopt(
 		return Ok(());
 	}
 
-	apply_review_handoff_adopt(&context, &validation)?;
+	review_handoff_apply::apply_review_handoff_adopt(&context, &validation)?;
 
 	println!(
 		"adopt ok: project={} issue={} branch={} pr={} head={} run_id={} attempt={}",
 		context.config.service_id(),
 		validation.issue.identifier,
 		validation.branch_name,
-		landing_url(&validation.landing_state),
+		pull_request_inspection::landing_url(&validation.landing_state),
 		validation.local_head_oid,
 		validation.run_id,
 		validation.attempt_number
@@ -246,7 +237,8 @@ fn validate_rebind_request(
 		&issue.id,
 		worktree.branch_name(),
 	)?;
-	let landing_state = inspect_rebind_pull_request(context, &request.pr_url)?;
+	let landing_state =
+		pull_request_inspection::inspect_rebind_pull_request(context, &request.pr_url)?;
 	let local_head_oid = worktree::validate_rebind_worktree(&worktree, &landing_state)?;
 	let existing_orchestration = existing_handoff
 		.as_ref()
@@ -295,10 +287,11 @@ fn validate_adopt_request(
 ) -> Result<AdoptValidation> {
 	let issue = issue::load_issue_by_identifier(&context.tracker, &request.issue)?;
 	let label_validation = labels::validate_adopt_issue_context(context, &issue)?;
-	let landing_state = inspect_rebind_pull_request(context, &request.pr_url)?;
+	let landing_state =
+		pull_request_inspection::inspect_rebind_pull_request(context, &request.pr_url)?;
 	let existing_worktree_mapping = context.state_store.worktree_for_issue(&issue.id)?;
 
-	validate_adopt_landing_state(&landing_state)?;
+	review_handoff_policy::validate_adopt_landing_state(&landing_state)?;
 
 	let cwd = env::current_dir()?;
 	let worktree_path = worktree::validate_adopt_current_worktree(
@@ -308,9 +301,9 @@ fn validate_adopt_request(
 		&cwd,
 		existing_worktree_mapping.as_ref(),
 	)?;
-	let branch_name = worktree_checkout_branch_name(&worktree_path)?
+	let branch_name = git_worktree::worktree_checkout_branch_name(&worktree_path)?
 		.ok_or_else(|| eyre::eyre!("Manual takeover worktree is detached."))?;
-	let local_head_oid = worktree_head_oid(&worktree_path)?
+	let local_head_oid = git_worktree::worktree_head_oid(&worktree_path)?
 		.ok_or_else(|| eyre::eyre!("Manual takeover worktree has no readable HEAD."))?;
 
 	worktree::validate_adopt_absent_handoff_marker(
@@ -325,7 +318,7 @@ fn validate_adopt_request(
 		.state_store
 		.latest_run_attempt_for_issue(&issue.id)?
 		.map_or(1, |attempt| attempt.attempt_number().saturating_add(1));
-	let run_id = manual_adopt_run_id(&issue.identifier, attempt_number, &local_head_oid);
+	let run_id = events::manual_adopt_run_id(&issue.identifier, attempt_number, &local_head_oid);
 	let worktree_path_for_event =
 		worktree::relative_worktree_path_for_recovery(context, &worktree_path);
 
@@ -348,5 +341,8 @@ fn validate_adopt_issue_state(
 	context: &RecoveryContext,
 	issue: &TrackerIssue,
 ) -> Result<Option<RebindSuccessStateTransition>> {
-	validate_adopt_issue_state_for_policy(context.workflow.frontmatter().tracker(), issue)
+	review_handoff_policy::validate_adopt_issue_state_for_policy(
+		context.workflow.frontmatter().tracker(),
+		issue,
+	)
 }

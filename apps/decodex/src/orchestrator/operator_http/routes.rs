@@ -1,5 +1,5 @@
-use super::{
-	OPERATOR_ACCOUNTS_ENDPOINT_PATH, OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH,
+use crate::orchestrator::operator_http::{
+	self, OPERATOR_ACCOUNTS_ENDPOINT_PATH, OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH,
 	OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH,
 	OPERATOR_DASHBOARD_WS_ENDPOINT_PATH, OPERATOR_LANE_INSPECT_ENDPOINT_PATH,
 	OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH, OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH,
@@ -9,46 +9,51 @@ use super::{
 		OPERATOR_DASHBOARD_HTML, OPERATOR_DASHBOARD_ICON_PNG, OPERATOR_DASHBOARD_LOGO_ICO,
 		OPERATOR_DASHBOARD_LOGO_TOUCH_PNG,
 	},
-	http_response_bytes, websocket_upgrade_required_response,
 };
 
 pub(super) fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> Vec<u8> {
 	match route {
-		OperatorRequestRoute::Dashboard => http_response_bytes(
+		OperatorRequestRoute::Dashboard => operator_http::http_response_bytes(
 			"200 OK",
 			"text/html; charset=utf-8",
 			OPERATOR_DASHBOARD_HTML.as_bytes(),
 		),
 		OperatorRequestRoute::DashboardIconPng =>
-			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG),
-		OperatorRequestRoute::DashboardLogoIco =>
-			http_response_bytes("200 OK", "image/x-icon", OPERATOR_DASHBOARD_LOGO_ICO),
-		OperatorRequestRoute::DashboardLogoTouchPng =>
-			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_LOGO_TOUCH_PNG),
-		OperatorRequestRoute::DashboardWs => websocket_upgrade_required_response(),
+			operator_http::http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG),
+		OperatorRequestRoute::DashboardLogoIco => operator_http::http_response_bytes(
+			"200 OK",
+			"image/x-icon",
+			OPERATOR_DASHBOARD_LOGO_ICO,
+		),
+		OperatorRequestRoute::DashboardLogoTouchPng => operator_http::http_response_bytes(
+			"200 OK",
+			"image/png",
+			OPERATOR_DASHBOARD_LOGO_TOUCH_PNG,
+		),
+		OperatorRequestRoute::DashboardWs => operator_http::websocket_upgrade_required_response(),
 		OperatorRequestRoute::AppSnapshot =>
-			http_response_bytes("200 OK", "application/json", b"{}"),
-		OperatorRequestRoute::LinearScan => http_response_bytes(
+			operator_http::http_response_bytes("200 OK", "application/json", b"{}"),
+		OperatorRequestRoute::LinearScan => operator_http::http_response_bytes(
 			"405 Method Not Allowed",
 			"text/plain; charset=utf-8",
 			b"method not allowed",
 		),
 		OperatorRequestRoute::LaneInspect
 		| OperatorRequestRoute::LaneInterrupt
-		| OperatorRequestRoute::LaneSteer => http_response_bytes(
+		| OperatorRequestRoute::LaneSteer => operator_http::http_response_bytes(
 			"405 Method Not Allowed",
 			"text/plain; charset=utf-8",
 			b"method not allowed",
 		),
 		OperatorRequestRoute::Live =>
-			http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok"),
+			operator_http::http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok"),
 		OperatorRequestRoute::AccountList { .. }
 		| OperatorRequestRoute::AccountSelect
 		| OperatorRequestRoute::AccountClear
 		| OperatorRequestRoute::AccountLogout
 		| OperatorRequestRoute::AccountImport
 		| OperatorRequestRoute::AccountUse
-		| OperatorRequestRoute::AccountRerollName => http_response_bytes(
+		| OperatorRequestRoute::AccountRerollName => operator_http::http_response_bytes(
 			"405 Method Not Allowed",
 			"text/plain; charset=utf-8",
 			b"method not allowed",
@@ -62,7 +67,7 @@ pub(super) fn parse_operator_state_request_route(
 	let request = String::from_utf8_lossy(request);
 	let mut request_line = request.lines();
 	let Some(request_line) = request_line.next() else {
-		return Err(http_response_bytes(
+		return Err(operator_http::http_response_bytes(
 			"400 Bad Request",
 			"text/plain; charset=utf-8",
 			b"missing request line",
@@ -70,14 +75,14 @@ pub(super) fn parse_operator_state_request_route(
 	};
 	let mut parts = request_line.split_whitespace();
 	let Some(method) = parts.next() else {
-		return Err(http_response_bytes(
+		return Err(operator_http::http_response_bytes(
 			"400 Bad Request",
 			"text/plain; charset=utf-8",
 			b"missing method",
 		));
 	};
 	let Some(path) = parts.next() else {
-		return Err(http_response_bytes(
+		return Err(operator_http::http_response_bytes(
 			"400 Bad Request",
 			"text/plain; charset=utf-8",
 			b"missing path",
@@ -132,12 +137,16 @@ pub(super) fn parse_operator_state_request_route(
 			| "/api/accounts/import"
 			| "/api/accounts/use"
 			| "/api/accounts/reroll-name",
-		) => Err(http_response_bytes(
+		) => Err(operator_http::http_response_bytes(
 			"405 Method Not Allowed",
 			"text/plain; charset=utf-8",
 			b"method not allowed",
 		)),
-		_ => Err(http_response_bytes("404 Not Found", "text/plain; charset=utf-8", b"not found")),
+		_ => Err(operator_http::http_response_bytes(
+			"404 Not Found",
+			"text/plain; charset=utf-8",
+			b"not found",
+		)),
 	}
 }
 

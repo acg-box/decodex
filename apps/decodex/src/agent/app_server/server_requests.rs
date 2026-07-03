@@ -1,18 +1,20 @@
 //! App-server server request routing and non-interactive response handling.
 
-use super::{
-	AppServerClient, ChatgptAuthTokensRefreshParams, ChatgptAuthTokensRefreshResponse,
-	CommandExecutionApprovalDecision, CommandExecutionRequestApprovalResponse,
-	FileChangeApprovalDecision, FileChangeRequestApprovalResponse, JSONRPC_METHOD_NOT_FOUND,
-	JsonRpcConnection, JsonRpcMessage, JsonRpcRequest, McpServerElicitationAction,
-	McpServerElicitationRequestResponse, PermissionGrantScope, PermissionsRequestApprovalResponse,
-	RequestDispatchContext, RequestWaitPhase, RunRecorder, Serialize,
-	ThreadStatusChangedNotification, ToolRequestUserInputResponse, WireMessage,
-	dispatch_dynamic_tool_call, dynamic_tool_call_unavailable_for_phase, eyre, message_type,
-	record_codex_account_failure, redact_identifier, respond_to_dynamic_tool_call_dispatch,
-	targets_thread, thread_id_from_value, turn_id_from_value,
-};
 use color_eyre::eyre::Report;
+
+use crate::{
+	agent::app_server::{
+		self, AppServerClient, ChatgptAuthTokensRefreshParams, ChatgptAuthTokensRefreshResponse,
+		CommandExecutionApprovalDecision, CommandExecutionRequestApprovalResponse,
+		FileChangeApprovalDecision, FileChangeRequestApprovalResponse, JSONRPC_METHOD_NOT_FOUND,
+		JsonRpcConnection, JsonRpcMessage, JsonRpcRequest, McpServerElicitationAction,
+		McpServerElicitationRequestResponse, PermissionGrantScope,
+		PermissionsRequestApprovalResponse, RequestDispatchContext, RequestWaitPhase, RunRecorder,
+		Serialize, ThreadStatusChangedNotification, ToolRequestUserInputResponse, WireMessage,
+		eyre, redact_identifier, serde_json,
+	},
+	prelude::Result,
+};
 
 pub(super) fn handle_server_request_while_waiting(
 	connection: &mut JsonRpcConnection,
@@ -20,8 +22,8 @@ pub(super) fn handle_server_request_while_waiting(
 	wire_message: &WireMessage,
 	request: &JsonRpcRequest,
 	context: RequestDispatchContext<'_>,
-) -> crate::prelude::Result<()> {
-	if targets_thread(wire_message, context.target_thread_id) {
+) -> Result<()> {
+	if app_server::targets_thread(wire_message, context.target_thread_id) {
 		record_wire_message_safely(recorder, wire_message)?;
 		record_interactive_request_state(recorder, request)?;
 	} else if request.method == "account/chatgptAuthTokens/refresh" {
@@ -36,11 +38,93 @@ pub(super) fn handle_server_request_during_turn_execution(
 	recorder: &mut RunRecorder<'_>,
 	request: &JsonRpcRequest,
 	context: RequestDispatchContext<'_>,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	record_server_request_safely(recorder, request)?;
 	record_interactive_request_state(recorder, request)?;
 
 	dispatch_server_request(&mut client.connection, recorder, request, context)
+}
+
+pub(super) fn record_server_request(
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+) -> Result<()> {
+	recorder.record(
+		request.method.as_str(),
+		&serde_json::json!({
+			"id": request.id.clone(),
+			"method": request.method.clone(),
+			"params": request.params.clone(),
+		})
+		.to_string(),
+	)
+}
+
+pub(super) fn record_server_request_response<T>(
+	connection: &mut JsonRpcConnection,
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+	event_type: &str,
+	response: &T,
+) -> Result<()>
+where
+	T: Serialize,
+{
+	connection.respond(&request.id, response)?;
+
+	recorder.record(event_type, &serde_json::to_string(response)?)
+}
+
+pub(super) fn record_interactive_request_state(
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+) -> Result<()> {
+	let Some(flag) = interactive_flag_for_request(request.method.as_str()) else {
+		return Ok(());
+	};
+
+	if let Some(thread_id) = app_server::thread_id_from_value(&request.params) {
+		recorder.set_thread_id(thread_id)?;
+	}
+	if let Some(turn_id) = app_server::turn_id_from_value(&request.params) {
+		recorder.set_turn_id(turn_id)?;
+	}
+
+	recorder.set_thread_status("active", &[flag.to_owned()])
+}
+
+pub(super) fn interactive_flag_for_request(method: &str) -> Option<&'static str> {
+	match method {
+		"item/tool/requestUserInput" => Some("waitingOnUserInput"),
+		"item/commandExecution/requestApproval"
+		| "item/fileChange/requestApproval"
+		| "item/permissions/requestApproval"
+		| "mcpServer/elicitation/request" => Some("waitingOnApproval"),
+		_ => None,
+	}
+}
+
+pub(super) fn apply_protocol_message_side_effects(
+	recorder: &mut RunRecorder<'_>,
+	message: &WireMessage,
+) -> Result<()> {
+	match &message.message {
+		JsonRpcMessage::Notification(notification)
+			if notification.method == "thread/status/changed" =>
+		{
+			let payload: ThreadStatusChangedNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			if recorder.thread_id.is_none() {
+				recorder.set_thread_id(&payload.thread_id)?;
+			}
+
+			recorder.set_thread_status(&payload.status.kind, &payload.status.active_flags)?;
+		},
+		_ => {},
+	}
+
+	Ok(())
 }
 
 fn dispatch_server_request(
@@ -48,19 +132,17 @@ fn dispatch_server_request(
 	recorder: &mut RunRecorder<'_>,
 	request: &JsonRpcRequest,
 	context: RequestDispatchContext<'_>,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	match request.method.as_str() {
-		"item/tool/call" if context.phase == RequestWaitPhase::TurnExecution => {
-			dispatch_dynamic_tool_call(connection, recorder, request, context)
-		},
-		"account/chatgptAuthTokens/refresh" => {
-			dispatch_codex_account_refresh(connection, recorder, request, context)
-		},
-		"item/tool/call" => respond_to_dynamic_tool_call_dispatch(
+		"item/tool/call" if context.phase == RequestWaitPhase::TurnExecution =>
+			app_server::dispatch_dynamic_tool_call(connection, recorder, request, context),
+		"account/chatgptAuthTokens/refresh" =>
+			dispatch_codex_account_refresh(connection, recorder, request, context),
+		"item/tool/call" => app_server::respond_to_dynamic_tool_call_dispatch(
 			connection,
 			recorder,
 			request,
-			dynamic_tool_call_unavailable_for_phase(context.phase),
+			app_server::dynamic_tool_call_unavailable_for_phase(context.phase),
 		),
 		"item/commandExecution/requestApproval" => reject_interactive_server_request(
 			connection,
@@ -111,31 +193,15 @@ fn dispatch_server_request(
 				meta: None,
 			},
 		),
-		other => {
-			reject_unsupported_server_request(connection, recorder, request, context.phase, other)
-		},
+		other =>
+			reject_unsupported_server_request(connection, recorder, request, context.phase, other),
 	}
-}
-
-pub(super) fn record_server_request(
-	recorder: &mut RunRecorder<'_>,
-	request: &JsonRpcRequest,
-) -> crate::prelude::Result<()> {
-	recorder.record(
-		request.method.as_str(),
-		&serde_json::json!({
-			"id": request.id.clone(),
-			"method": request.method.clone(),
-			"params": request.params.clone(),
-		})
-		.to_string(),
-	)
 }
 
 fn record_server_request_safely(
 	recorder: &mut RunRecorder<'_>,
 	request: &JsonRpcRequest,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	if request.method == "account/chatgptAuthTokens/refresh" {
 		return record_codex_account_refresh_request(recorder, request);
 	}
@@ -146,21 +212,19 @@ fn record_server_request_safely(
 fn record_wire_message_safely(
 	recorder: &mut RunRecorder<'_>,
 	wire_message: &WireMessage,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	match &wire_message.message {
 		JsonRpcMessage::Request(request)
 			if request.method == "account/chatgptAuthTokens/refresh" =>
-		{
-			record_codex_account_refresh_request(recorder, request)
-		},
-		_ => recorder.record(message_type(wire_message), &wire_message.raw),
+			record_codex_account_refresh_request(recorder, request),
+		_ => recorder.record(app_server::message_type(wire_message), &wire_message.raw),
 	}
 }
 
 fn record_codex_account_refresh_request(
 	recorder: &mut RunRecorder<'_>,
 	request: &JsonRpcRequest,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	let params = serde_json::from_value::<ChatgptAuthTokensRefreshParams>(request.params.clone())
 		.unwrap_or(ChatgptAuthTokensRefreshParams { reason: None, previous_account_id: None });
 
@@ -181,7 +245,7 @@ fn dispatch_codex_account_refresh(
 	recorder: &mut RunRecorder<'_>,
 	request: &JsonRpcRequest,
 	context: RequestDispatchContext<'_>,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	let account_provider = context.codex_account_provider.ok_or_else(|| {
 		eyre::eyre!(
 			"app_server_protocol_failure: received `account/chatgptAuthTokens/refresh` without a configured Codex account provider."
@@ -191,7 +255,7 @@ fn dispatch_codex_account_refresh(
 	let account = match account_provider.refresh_account(params.previous_account_id.as_deref()) {
 		Ok(account) => account,
 		Err(error) => {
-			record_codex_account_failure(
+			app_server::record_codex_account_failure(
 				recorder,
 				"account/chatgptAuthTokens/refresh/failed",
 				&error,
@@ -229,7 +293,7 @@ fn reject_unsupported_server_request(
 	request: &JsonRpcRequest,
 	phase: RequestWaitPhase,
 	method: &str,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	let message = format!("unsupported non-interactive server request `{method}`");
 
 	connection.respond_error(&request.id, JSONRPC_METHOD_NOT_FOUND, &message)?;
@@ -248,21 +312,6 @@ fn reject_unsupported_server_request(
 	);
 }
 
-pub(super) fn record_server_request_response<T>(
-	connection: &mut JsonRpcConnection,
-	recorder: &mut RunRecorder<'_>,
-	request: &JsonRpcRequest,
-	event_type: &str,
-	response: &T,
-) -> crate::prelude::Result<()>
-where
-	T: Serialize,
-{
-	connection.respond(&request.id, response)?;
-
-	recorder.record(event_type, &serde_json::to_string(response)?)
-}
-
 fn reject_interactive_server_request<T>(
 	connection: &mut JsonRpcConnection,
 	recorder: &mut RunRecorder<'_>,
@@ -270,7 +319,7 @@ fn reject_interactive_server_request<T>(
 	phase: RequestWaitPhase,
 	event_type: &str,
 	response: &T,
-) -> crate::prelude::Result<()>
+) -> Result<()>
 where
 	T: Serialize,
 {
@@ -284,56 +333,4 @@ fn noninteractive_interaction_required(method: &str, phase: RequestWaitPhase) ->
 		"noninteractive_interaction_required: server request `{method}` requires interactive handling during {}.",
 		phase.label()
 	)
-}
-
-pub(super) fn record_interactive_request_state(
-	recorder: &mut RunRecorder<'_>,
-	request: &JsonRpcRequest,
-) -> crate::prelude::Result<()> {
-	let Some(flag) = interactive_flag_for_request(request.method.as_str()) else {
-		return Ok(());
-	};
-
-	if let Some(thread_id) = thread_id_from_value(&request.params) {
-		recorder.set_thread_id(thread_id)?;
-	}
-	if let Some(turn_id) = turn_id_from_value(&request.params) {
-		recorder.set_turn_id(turn_id)?;
-	}
-
-	recorder.set_thread_status("active", &[flag.to_owned()])
-}
-
-pub(super) fn interactive_flag_for_request(method: &str) -> Option<&'static str> {
-	match method {
-		"item/tool/requestUserInput" => Some("waitingOnUserInput"),
-		"item/commandExecution/requestApproval"
-		| "item/fileChange/requestApproval"
-		| "item/permissions/requestApproval"
-		| "mcpServer/elicitation/request" => Some("waitingOnApproval"),
-		_ => None,
-	}
-}
-
-pub(super) fn apply_protocol_message_side_effects(
-	recorder: &mut RunRecorder<'_>,
-	message: &WireMessage,
-) -> crate::prelude::Result<()> {
-	match &message.message {
-		JsonRpcMessage::Notification(notification)
-			if notification.method == "thread/status/changed" =>
-		{
-			let payload: ThreadStatusChangedNotification =
-				serde_json::from_value(notification.params.clone())?;
-
-			if recorder.thread_id.is_none() {
-				recorder.set_thread_id(&payload.thread_id)?;
-			}
-
-			recorder.set_thread_status(&payload.status.kind, &payload.status.active_flags)?;
-		},
-		_ => {},
-	}
-
-	Ok(())
 }

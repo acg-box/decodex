@@ -5,17 +5,11 @@ use crate::{
 		self, AppServerProcessEnv, AppServerRunRequest, AppServerRunResult, CodexAccountProvider,
 	},
 	orchestrator::{
-		DecodexToolBridge, IssueRunPlan, IssueTracker, IssueTurnContinuationGuard,
-		PhaseGoalController, PullRequestReviewStateInspector, Result, ReviewHandoffContext,
-		RUN_LEASE_IDLE_TIMEOUT, RunSummary, ServiceConfig, StateStore, TrackerToolBridge,
-		TurnContinuationGuard, WorkflowDocument, archive_completed_issue_threads_best_effort,
-		build_continuation_user_input, maybe_continue_after_phase_goal_recovery,
-		preserve_and_promote_app_server_run_failure, resolve_resume_thread_id,
-		run_summary_from_issue_run,
-	},
-	orchestrator::execution::{
-		completion::apply_run_completion_disposition,
-		context,
+		self, DecodexToolBridge, IssueRunPlan, IssueTracker, IssueTurnContinuationGuard,
+		PhaseGoalController, PullRequestReviewStateInspector, RUN_LEASE_IDLE_TIMEOUT, Result,
+		ReviewHandoffContext, RunSummary, ServiceConfig, StateStore, TrackerToolBridge,
+		TurnContinuationGuard, WorkflowDocument,
+		execution::{completion, context},
 	},
 };
 
@@ -98,7 +92,10 @@ where
 				input.review_context,
 			)),
 			activity_marker_path: Some(input.issue_run.worktree.path.clone()),
-			resume_thread_id: resolve_resume_thread_id(input.state_store, input.issue_run)?,
+			resume_thread_id: orchestrator::resolve_resume_thread_id(
+				input.state_store,
+				input.issue_run,
+			)?,
 			ephemeral_thread: false,
 			command_exec_health_check: None,
 			dynamic_tool_handler: Some(input.decodex_tool_bridge),
@@ -123,7 +120,7 @@ where
 			}
 
 			if !input.tracker_tool_bridge.has_tracker_exit_signal()
-				&& let Some(summary) = maybe_continue_after_phase_goal_recovery(
+				&& let Some(summary) = orchestrator::maybe_continue_after_phase_goal_recovery(
 					input.project,
 					input.workflow,
 					input.state_store,
@@ -133,7 +130,7 @@ where
 				return Ok(IssueAppServerRunOutcome::Finalized(summary));
 			}
 
-			return Err(preserve_and_promote_app_server_run_failure(
+			return Err(orchestrator::preserve_and_promote_app_server_run_failure(
 				input.project,
 				input.state_store,
 				input.issue_run,
@@ -179,7 +176,7 @@ pub(super) fn finalize_completed_app_server_run<T>(
 where
 	T: IssueTracker,
 {
-	apply_run_completion_disposition(
+	completion::apply_run_completion_disposition(
 		run.tracker,
 		run.project,
 		run.workflow,
@@ -187,7 +184,7 @@ where
 		run.issue_run,
 		run.tracker_tool_bridge,
 	)?;
-	archive_completed_issue_threads_best_effort(
+	orchestrator::archive_completed_issue_threads_best_effort(
 		run.project,
 		run.state_store,
 		run.issue_run,
@@ -196,7 +193,7 @@ where
 		run.run_result,
 	);
 
-	Ok(run_summary_from_issue_run(run.project.service_id(), run.issue_run))
+	Ok(orchestrator::run_summary_from_issue_run(run.project.service_id(), run.issue_run))
 }
 
 fn build_issue_run_continuation_user_input(
@@ -205,7 +202,7 @@ fn build_issue_run_continuation_user_input(
 	issue_run: &IssueRunPlan,
 	review_context: &ReviewHandoffContext,
 ) -> String {
-	build_continuation_user_input(
+	orchestrator::build_continuation_user_input(
 		&issue_run.issue,
 		workflow,
 		issue_run.dispatch_mode,
@@ -255,7 +252,7 @@ where
 		"App-server run failed after terminal finalize; applying terminal completion writeback."
 	);
 
-	apply_run_completion_disposition(
+	completion::apply_run_completion_disposition(
 		tracker,
 		project,
 		workflow,
@@ -271,5 +268,5 @@ where
 		"succeeded",
 	)?;
 
-	Ok(Some(run_summary_from_issue_run(project.service_id(), issue_run)))
+	Ok(Some(orchestrator::run_summary_from_issue_run(project.service_id(), issue_run)))
 }

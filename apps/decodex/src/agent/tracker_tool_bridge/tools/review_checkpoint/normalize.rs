@@ -3,11 +3,6 @@ mod cost_control;
 
 use sha2::{Digest as _, Sha256};
 
-use crate::agent::tracker_tool_bridge::tools::review_checkpoint::finding_policy::ReviewFindingPolicyUpdate;
-use crate::agent::tracker_tool_bridge::tools::review_checkpoint::{
-	INDEPENDENT_FRESH_CONTEXT_REVIEWER, REVIEW_ROUTE_CURRENT_BLOCKER, REVIEW_ROUTE_SOURCE_ACCEPTED,
-	finding_policy, routes,
-};
 use crate::agent::tracker_tool_bridge::{
 	self, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, LocalRepoDetails,
 	NormalizedRejectedReviewCheckpointFinding, NormalizedReviewCheckpointFinding,
@@ -15,6 +10,11 @@ use crate::agent::tracker_tool_bridge::{
 	ReviewCheckpointChecksArgs, ReviewCheckpointFindingArgs, ReviewCheckpointHeadBinding,
 	ReviewCheckpointLineRangeArgs, ReviewCheckpointRejectedFindingArgs, ReviewPolicyPhase,
 	ReviewPolicyStatus,
+	tools::review_checkpoint::{
+		INDEPENDENT_FRESH_CONTEXT_REVIEWER, REVIEW_ROUTE_CURRENT_BLOCKER,
+		REVIEW_ROUTE_SOURCE_ACCEPTED, finding_policy, finding_policy::ReviewFindingPolicyUpdate,
+		routes,
+	},
 };
 
 pub(in crate::agent::tracker_tool_bridge::tools) fn normalize_review_checkpoint_payload(

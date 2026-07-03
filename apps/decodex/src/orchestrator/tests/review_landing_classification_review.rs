@@ -2,7 +2,20 @@ use std::fs;
 
 use tempfile::TempDir;
 
-use crate::{orchestrator::{self, tests, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionRequestInput, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot, ReviewOrchestrationMarker, StateStore}, orchestrator::tests::{FakePullRequestReviewStateInspector, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT, TEST_SERVICE_ID}, tracker::TrackerIssue, worktree::WorktreeManager};
+use crate::{
+	orchestrator::{
+		self, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput,
+		AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface,
+		AuthorityDecisionRequestInput, PostReviewLaneClassification, PostReviewLaneDecision,
+		PostReviewLaneSnapshot, ReviewOrchestrationMarker, StateStore, tests,
+		tests::{
+			FakePullRequestReviewStateInspector, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,
+			TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT, TEST_SERVICE_ID,
+		},
+	},
+	tracker::TrackerIssue,
+	worktree::WorktreeManager,
+};
 
 pub(super) fn record_block_landing_authority_boundary(
 	state_store: &StateStore,
@@ -127,16 +140,18 @@ fn classify_post_review_lane_requires_review_repair_for_unresolved_threads() {
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			"https://github.com/hack-ink/decodex/pull/174",
-			"x/pubfi-pub-101",
-			&head_oid,
-			Some("APPROVED"),
-			"MERGEABLE",
-			"CLEAN",
-			Some("SUCCESS"),
-			2,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				"https://github.com/hack-ink/decodex/pull/174",
+				"x/pubfi-pub-101",
+				&head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"CLEAN",
+				Some("SUCCESS"),
+				2,
+			),
+		)]),
 	)
 	.expect("classification should succeed");
 
@@ -206,16 +221,18 @@ fn classify_post_review_lane_ignores_stale_review_orchestration_record_from_prio
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			"https://github.com/hack-ink/decodex/pull/174",
-			"x/pubfi-pub-101",
-			&head_oid,
-			Some("APPROVED"),
-			"MERGEABLE",
-			"CLEAN",
-			Some("SUCCESS"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				"https://github.com/hack-ink/decodex/pull/174",
+				"x/pubfi-pub-101",
+				&head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"CLEAN",
+				Some("SUCCESS"),
+				0,
+			),
+		)]),
 	)
 	.expect("classification should succeed");
 
@@ -285,16 +302,18 @@ fn classify_post_review_lane_request_pending_waits_for_green_checks_before_exter
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			"https://github.com/hack-ink/decodex/pull/174",
-			"x/pubfi-pub-101",
-			&head_oid,
-			Some("APPROVED"),
-			"MERGEABLE",
-			"CLEAN",
-			Some("PENDING"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				"https://github.com/hack-ink/decodex/pull/174",
+				"x/pubfi-pub-101",
+				&head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"CLEAN",
+				Some("PENDING"),
+				0,
+			),
+		)]),
 	)
 	.expect("classification should succeed");
 
@@ -363,16 +382,18 @@ fn classify_post_review_lane_request_pending_routes_fixable_ci_red_to_repair() {
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			"https://github.com/hack-ink/decodex/pull/174",
-			"x/pubfi-pub-101",
-			&head_oid,
-			Some("APPROVED"),
-			"MERGEABLE",
-			"BLOCKED",
-			Some("FAILURE"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				"https://github.com/hack-ink/decodex/pull/174",
+				"x/pubfi-pub-101",
+				&head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"BLOCKED",
+				Some("FAILURE"),
+				0,
+			),
+		)]),
 	)
 	.expect("classification should succeed");
 
@@ -441,16 +462,18 @@ fn classify_post_review_lane_request_pending_repairs_unhandled_ci_red() {
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			"https://github.com/hack-ink/decodex/pull/174",
-			"x/pubfi-pub-101",
-			&head_oid,
-			Some("APPROVED"),
-			"MERGEABLE",
-			"UNSTABLE",
-			Some("FAILURE"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				"https://github.com/hack-ink/decodex/pull/174",
+				"x/pubfi-pub-101",
+				&head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"UNSTABLE",
+				Some("FAILURE"),
+				0,
+			),
+		)]),
 	)
 	.expect("classification should succeed");
 
@@ -519,16 +542,18 @@ fn classify_post_review_lane_request_pending_waits_for_unknown_check_state() {
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			"https://github.com/hack-ink/decodex/pull/174",
-			"x/pubfi-pub-101",
-			&head_oid,
-			Some("APPROVED"),
-			"MERGEABLE",
-			"UNSTABLE",
-			Some("UNKNOWN_NEW_STATE"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				"https://github.com/hack-ink/decodex/pull/174",
+				"x/pubfi-pub-101",
+				&head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"UNSTABLE",
+				Some("UNKNOWN_NEW_STATE"),
+				0,
+			),
+		)]),
 	)
 	.expect("classification should succeed");
 
@@ -1091,16 +1116,18 @@ fn classify_post_review_lane_blocks_stale_review_handoff_head_without_lineage_pr
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			"https://github.com/hack-ink/decodex/pull/174",
-			"x/pubfi-pub-101",
-			&current_head_oid,
-			None,
-			"MERGEABLE",
-			"CLEAN",
-			Some("SUCCESS"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				"https://github.com/hack-ink/decodex/pull/174",
+				"x/pubfi-pub-101",
+				&current_head_oid,
+				None,
+				"MERGEABLE",
+				"CLEAN",
+				Some("SUCCESS"),
+				0,
+			),
+		)]),
 	)
 	.expect("classification should succeed");
 
@@ -1153,16 +1180,18 @@ fn classify_post_review_lane_blocks_when_pull_request_head_differs_from_worktree
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			"https://github.com/hack-ink/decodex/pull/174",
-			&branch_name,
-			&pr_head_oid,
-			Some("APPROVED"),
-			"MERGEABLE",
-			"CLEAN",
-			Some("SUCCESS"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				"https://github.com/hack-ink/decodex/pull/174",
+				&branch_name,
+				&pr_head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"CLEAN",
+				Some("SUCCESS"),
+				0,
+			),
+		)]),
 	)
 	.expect("classification should succeed");
 

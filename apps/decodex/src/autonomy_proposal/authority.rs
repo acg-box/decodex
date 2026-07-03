@@ -1,11 +1,8 @@
-use crate::{
-	autonomy_proposal::{
-		AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE, AutonomyProposal,
-		AutonomyProposalAcceptedProjectPolicy, AutonomyProposalAuthorityActorKind,
-		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalRefusalReason,
-		AutonomyProposalState, validation,
-	},
-	prelude::{Result, eyre},
+use crate::autonomy_proposal::{
+	AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE, AutonomyProposal, AutonomyProposalAcceptedProjectPolicy,
+	AutonomyProposalAuthorityActorKind, AutonomyProposalDecisionBridgeAuthority,
+	AutonomyProposalRefusalReason, AutonomyProposalState, Result, eyre,
+	validation::{self},
 };
 
 impl AutonomyProposalState {

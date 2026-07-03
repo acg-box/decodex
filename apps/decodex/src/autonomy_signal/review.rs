@@ -2,10 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::prelude::{Result, eyre};
-
-use super::validation::{
-	validate_nonempty_list, validate_optional_required, validate_required, validate_string_list,
+use crate::{
+	autonomy_signal::validation::{self},
+	prelude::{Result, eyre},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -22,14 +21,17 @@ pub(crate) struct AutonomySignalReviewRoute {
 }
 impl AutonomySignalReviewRoute {
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("autonomy signal review route.route", &self.route)?;
-		validate_required("autonomy signal review route.summary", &self.summary)?;
-		validate_optional_required(
+		validation::validate_required("autonomy signal review route.route", &self.route)?;
+		validation::validate_required("autonomy signal review route.summary", &self.summary)?;
+		validation::validate_optional_required(
 			"autonomy signal review route.finding_source",
 			self.finding_source.as_deref(),
 		)?;
 
-		validate_string_list("autonomy signal review route.evidence_refs", &self.evidence_refs)
+		validation::validate_string_list(
+			"autonomy signal review route.evidence_refs",
+			&self.evidence_refs,
+		)
 	}
 }
 
@@ -46,10 +48,16 @@ pub(crate) struct AutonomySignalReviewEvidence {
 }
 impl AutonomySignalReviewEvidence {
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("autonomy signal review evidence.review_phase", &self.review_phase)?;
-		validate_required("autonomy signal review evidence.review_status", &self.review_status)?;
-		validate_required("autonomy signal review evidence.head_sha", &self.head_sha)?;
-		validate_nonempty_list(
+		validation::validate_required(
+			"autonomy signal review evidence.review_phase",
+			&self.review_phase,
+		)?;
+		validation::validate_required(
+			"autonomy signal review evidence.review_status",
+			&self.review_status,
+		)?;
+		validation::validate_required("autonomy signal review evidence.head_sha", &self.head_sha)?;
+		validation::validate_nonempty_list(
 			"autonomy signal review evidence.checkpoint_refs",
 			&self.checkpoint_refs,
 		)?;

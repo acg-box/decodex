@@ -1,6 +1,8 @@
 //! Process and thread liveness predicates for stale-active recovery.
 
-use crate::state;
+use libc::pid_t;
+
+use crate::state::{self, RunActivityMarker};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum StaleActiveProcessLiveness {
@@ -10,14 +12,16 @@ pub(super) enum StaleActiveProcessLiveness {
 }
 
 pub(super) fn stale_active_optional_marker_process_liveness(
-	marker: Option<&state::RunActivityMarker>,
+	marker: Option<&RunActivityMarker>,
 ) -> StaleActiveProcessLiveness {
 	marker.map(stale_active_marker_process_liveness).unwrap_or(StaleActiveProcessLiveness::Unknown)
 }
 
-fn stale_active_marker_process_liveness(
-	marker: &state::RunActivityMarker,
-) -> StaleActiveProcessLiveness {
+pub(super) fn stale_active_marker_thread_active(marker: &RunActivityMarker) -> bool {
+	matches!(marker.thread_status(), Some("active")) || !marker.thread_active_flags().is_empty()
+}
+
+fn stale_active_marker_process_liveness(marker: &RunActivityMarker) -> StaleActiveProcessLiveness {
 	let Some(process_id) = marker.process_id() else {
 		return StaleActiveProcessLiveness::Unknown;
 	};
@@ -25,6 +29,7 @@ fn stale_active_marker_process_liveness(
 	if !stale_active_process_is_alive(process_id) {
 		return StaleActiveProcessLiveness::NotAlive;
 	}
+
 	let Some(marker_host_boot_id) = marker.host_boot_id() else {
 		return StaleActiveProcessLiveness::Unknown;
 	};
@@ -50,13 +55,9 @@ fn stale_active_marker_process_liveness(
 	}
 }
 
-pub(super) fn stale_active_marker_thread_active(marker: &state::RunActivityMarker) -> bool {
-	matches!(marker.thread_status(), Some("active")) || !marker.thread_active_flags().is_empty()
-}
-
 #[cfg(unix)]
 fn stale_active_process_is_alive(process_id: u32) -> bool {
-	let Ok(process_id) = libc::pid_t::try_from(process_id) else {
+	let Ok(process_id) = pid_t::try_from(process_id) else {
 		return false;
 	};
 

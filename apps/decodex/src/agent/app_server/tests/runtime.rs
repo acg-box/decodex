@@ -7,26 +7,21 @@ use std::{
 
 use tempfile::TempDir;
 
-use super::{
-	ContinuingCompletionHandler, NamespacedDynamicToolHandler, RejectingCompletionHandler,
-	RejectingContinuationGuard, YieldingContinuationGuard,
-};
 use crate::{
 	agent::{
-		app_server::{
-			AppServerTurnFailure, EffectiveThreadConfig, InitializeResponse,
-			ProbeDynamicToolHandler, RunRecorder,
+		app_server::tests::{
+			AppServerHomePreflightFailure, AppServerTurnFailure, ContinuingCompletionHandler,
+			EffectiveThreadConfig, InitializeResponse, JsonRpcError, JsonRpcErrorPayload,
+			LaneControlSteerRequest, LaneControlSteerRequestInput, LaneControlSteerResponse,
+			NamespacedDynamicToolHandler, ProbeDynamicToolHandler, RejectingCompletionHandler,
+			RejectingContinuationGuard, ResolvedAppServerCodexHomeEnv, Result, RunRecorder,
+			TurnCompletionStatus, YieldingContinuationGuard,
 		},
-		json_rpc::{
-			AppServerHomePreflightFailure, JsonRpcError, JsonRpcErrorPayload, JsonRpcNotification,
-			JsonRpcRequest, ResolvedAppServerCodexHomeEnv,
-		},
-		tracker_tool_bridge::{DynamicToolContentItem, TurnCompletionStatus},
+		json_rpc::{JsonRpcNotification, JsonRpcRequest},
+		tracker_tool_bridge::DynamicToolContentItem,
 	},
-	prelude::{Result, eyre},
-	run_control::{
-		self, LaneControlSteerRequest, LaneControlSteerRequestInput, LaneControlSteerResponse,
-	},
+	prelude::eyre,
+	run_control,
 	state::{ProtocolActivitySummary, StateStore},
 };
 
@@ -35,8 +30,8 @@ fn remaining_idle_budget_resets_from_latest_activity() {
 	let now = Instant::now();
 	let timeout = Duration::from_secs(300);
 	let last_activity_at = now.checked_sub(Duration::from_secs(12)).expect("instant math");
-	let remaining = super::super::remaining_idle_budget(last_activity_at, now, timeout)
-		.expect("budget should remain");
+	let remaining =
+		super::remaining_idle_budget(last_activity_at, now, timeout).expect("budget should remain");
 
 	assert!(remaining <= timeout);
 	assert!(remaining >= Duration::from_secs(287));
@@ -48,7 +43,7 @@ fn remaining_idle_budget_expires_after_idle_timeout() {
 	let timeout = Duration::from_secs(300);
 	let last_activity_at = now.checked_sub(Duration::from_secs(301)).expect("instant math");
 
-	assert!(super::super::remaining_idle_budget(last_activity_at, now, timeout).is_none());
+	assert!(super::remaining_idle_budget(last_activity_at, now, timeout).is_none());
 }
 
 #[test]
@@ -60,7 +55,7 @@ fn protocol_activity_idle_timeout_extends_running_model_execution() {
 	};
 
 	assert_eq!(
-		super::super::protocol_activity_idle_timeout(
+		super::protocol_activity_idle_timeout(
 			Some(&protocol_activity),
 			super::super::RUN_LEASE_IDLE_TIMEOUT
 		),
@@ -77,7 +72,7 @@ fn protocol_activity_idle_timeout_keeps_base_timeout_for_other_waits() {
 	};
 
 	assert_eq!(
-		super::super::protocol_activity_idle_timeout(
+		super::protocol_activity_idle_timeout(
 			Some(&protocol_activity),
 			super::super::RUN_LEASE_IDLE_TIMEOUT
 		),
@@ -100,9 +95,8 @@ fn run_recorder_keeps_events_when_marker_write_fails() {
 
 #[test]
 fn completion_classification_uses_dynamic_tool_handler() {
-	let error =
-		super::super::classify_turn_completion(Some(&RejectingCompletionHandler), "finished")
-			.expect_err("completion classifier should be consulted");
+	let error = super::classify_turn_completion(Some(&RejectingCompletionHandler), "finished")
+		.expect_err("completion classifier should be consulted");
 
 	assert!(error.to_string().contains("terminal finalization missing"));
 }
@@ -110,7 +104,7 @@ fn completion_classification_uses_dynamic_tool_handler() {
 #[test]
 fn completion_classification_defaults_to_complete_without_handler() {
 	assert_eq!(
-		super::super::classify_turn_completion(None, "finished")
+		super::classify_turn_completion(None, "finished")
 			.expect("missing dynamic handler should not fail completion"),
 		TurnCompletionStatus::Complete
 	);
@@ -119,7 +113,7 @@ fn completion_classification_defaults_to_complete_without_handler() {
 #[test]
 fn probe_handler_allows_completion_classification() {
 	assert_eq!(
-		super::super::classify_turn_completion(Some(&ProbeDynamicToolHandler), "PROBE_OK")
+		super::classify_turn_completion(Some(&ProbeDynamicToolHandler), "PROBE_OK")
 			.expect("probe handler should not override completion validation"),
 		TurnCompletionStatus::Complete
 	);
@@ -127,7 +121,7 @@ fn probe_handler_allows_completion_classification() {
 
 #[test]
 fn nonterminal_single_turn_completion_stays_invalid() {
-	let error = super::super::reject_nonterminal_single_turn_completion(
+	let error = super::reject_nonterminal_single_turn_completion(
 		Some(&ContinuingCompletionHandler),
 		"unfinished",
 	)
@@ -139,14 +133,14 @@ fn nonterminal_single_turn_completion_stays_invalid() {
 #[test]
 fn continuation_boundary_reached_yields_when_guard_allows_it() {
 	assert!(
-		super::super::continuation_boundary_reached(Some(&YieldingContinuationGuard), 2)
+		super::continuation_boundary_reached(Some(&YieldingContinuationGuard), 2)
 			.expect("yielding guard should allow a clean continuation boundary")
 	);
 }
 
 #[test]
 fn continuation_boundary_reached_rejects_invalid_boundary() {
-	let error = super::super::continuation_boundary_reached(Some(&RejectingContinuationGuard), 1)
+	let error = super::continuation_boundary_reached(Some(&RejectingContinuationGuard), 1)
 		.expect_err("invalid continuation boundaries should surface as errors");
 
 	assert!(error.to_string().contains("turn 1 hit an invalid continuation boundary"));
@@ -163,7 +157,7 @@ fn validate_effective_thread_config_accepts_noninteractive_runtime() {
 		sandbox_mode: String::from("workspaceWrite"),
 	};
 
-	super::super::validate_effective_thread_config("/tmp/worktree", &runtime)
+	super::validate_effective_thread_config("/tmp/worktree", &runtime)
 		.expect("matching non-interactive config should validate");
 }
 
@@ -186,7 +180,7 @@ fn validate_effective_thread_config_rejects_interactive_runtime_policies() {
 			approvals_reviewer: String::from("human"),
 			sandbox_mode: String::from(sandbox_mode),
 		};
-		let error = super::super::validate_effective_thread_config("/tmp/worktree", &runtime)
+		let error = super::validate_effective_thread_config("/tmp/worktree", &runtime)
 			.expect_err(case_name);
 
 		assert!(
@@ -210,7 +204,7 @@ fn initialize_codex_home_assertion_accepts_expected_home() {
 		platform_os: String::from("macos"),
 	};
 
-	super::super::validate_initialize_codex_home(&expected, &response)
+	super::validate_initialize_codex_home(&expected, &response)
 		.expect("matching Codex home should pass");
 }
 
@@ -227,7 +221,7 @@ fn initialize_codex_home_assertion_blocks_before_thread_start_on_mismatch() {
 		platform_family: String::from("unix"),
 		platform_os: String::from("macos"),
 	};
-	let error = super::super::validate_initialize_codex_home(&expected, &response)
+	let error = super::validate_initialize_codex_home(&expected, &response)
 		.expect_err("mismatched Codex home should fail before thread start");
 
 	assert!(error.downcast_ref::<AppServerHomePreflightFailure>().is_some());
@@ -286,7 +280,7 @@ fn structured_error_notification_becomes_turn_failure() {
 		}),
 	};
 	let (failure, will_retry) =
-		super::super::failure_from_error_notification(&notification, "thread-1", "turn-1")
+		super::failure_from_error_notification(&notification, "thread-1", "turn-1")
 			.expect("structured error payload should parse")
 			.expect("matching error notification should produce a failure");
 	let failure_message = failure.to_string();
@@ -306,8 +300,7 @@ fn json_rpc_error_response_becomes_recoverable_turn_failure() {
 			data: None,
 		},
 	};
-	let failure =
-		super::super::turn_failure_from_json_rpc_error_response("thread-1", "turn-1", &error);
+	let failure = super::turn_failure_from_json_rpc_error_response("thread-1", "turn-1", &error);
 	let failure_message = failure.to_string();
 
 	assert!(failure_message.contains("thread-1"));
@@ -321,7 +314,7 @@ fn steer_delivery_error_classifies_active_turn_not_steerable_distinctly() {
 	let error = eyre::eyre!(
 		"`turn/steer` failed with -32000: turn is not steerable data: {{\"type\":\"activeTurnNotSteerable\"}}"
 	);
-	let failure_class = super::super::steer_error_class(&error);
+	let failure_class = super::steer_error_class(&error);
 
 	assert_eq!(failure_class, "active_turn_not_steerable");
 }
@@ -333,7 +326,7 @@ fn steer_delivery_error_classifies_missing_method_as_unsupported() {
 		"`turn/steer` failed with -32601: Method not found",
 	] {
 		let error = eyre::eyre!("{message}");
-		let failure_class = super::super::steer_error_class(&error);
+		let failure_class = super::steer_error_class(&error);
 
 		assert_eq!(failure_class, "app_server_turn_steer_unsupported");
 	}
@@ -387,14 +380,14 @@ fn steer_response_wait_ignores_temp_file_until_atomic_response_exists() -> Resul
 
 #[test]
 fn thread_resume_fallback_only_allows_missing_thread_errors() {
-	assert!(super::super::thread_resume_error_allows_fallback(&eyre::eyre!("thread not found")));
-	assert!(super::super::thread_resume_error_allows_fallback(&eyre::eyre!(
+	assert!(super::thread_resume_error_allows_fallback(&eyre::eyre!("thread not found")));
+	assert!(super::thread_resume_error_allows_fallback(&eyre::eyre!(
 		"no rollout found for thread id thread-1"
 	)));
-	assert!(!super::super::thread_resume_error_allows_fallback(&eyre::eyre!(
+	assert!(!super::thread_resume_error_allows_fallback(&eyre::eyre!(
 		"failed to load rollout from disk"
 	)));
-	assert!(!super::super::thread_resume_error_allows_fallback(&eyre::eyre!(
+	assert!(!super::thread_resume_error_allows_fallback(&eyre::eyre!(
 		"thread belongs to another cwd"
 	)));
 }
@@ -438,12 +431,8 @@ fn dynamic_tool_call_enforces_declared_namespace() {
 			method: String::from("item/tool/call"),
 			params,
 		};
-		let dispatch = super::super::handle_dynamic_tool_call(
-			Some(&handler),
-			&request,
-			"thread-1",
-			Some("turn-1"),
-		);
+		let dispatch =
+			super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("turn-1"));
 
 		assert_eq!(dispatch.response.success, expected_success, "{case_name}");
 		assert_eq!(

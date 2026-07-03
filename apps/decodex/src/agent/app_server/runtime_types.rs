@@ -1,22 +1,23 @@
 use std::{path::PathBuf, time::Duration};
 
-use super::{
-	ChildActivityAccumulator, CodexAccountActivitySummary, CodexAccountProvider,
-	CommandExecHealthCheck, DynamicToolHandler, EffectiveThreadConfig, PhaseGoalController,
-	PhaseGoalRunStatus, ProtocolActivityAccumulator, StateStore,
-	markers::{
-		write_activity_marker_best_effort, write_codex_account_marker_best_effort,
-		write_effective_runtime_marker_best_effort, write_protocol_activity_marker_best_effort,
-		write_thread_marker_best_effort, write_thread_status_marker_best_effort,
-		write_turn_marker_best_effort,
+use crate::{
+	agent::{
+		app_server::{
+			AppServerCapabilityPreflightReport, ChildActivityAccumulator,
+			CodexAccountActivitySummary, CodexAccountProvider, CommandExecHealthCheck,
+			DynamicToolHandler, EffectiveThreadConfig, PhaseGoalController, PhaseGoalRunStatus,
+			ProtocolActivityAccumulator, StateStore,
+			markers::{self},
+		},
+		json_rpc::AppServerProcessEnv,
 	},
-	state,
+	prelude::Result,
+	state::ProtocolActivityMarker,
 };
-use crate::agent::json_rpc::AppServerProcessEnv;
 
 pub(crate) trait TurnContinuationGuard {
-	fn should_continue_turn(&self, turn_count: u32) -> crate::prelude::Result<bool>;
-	fn validate_continuation_boundary(&self, _turn_count: u32) -> crate::prelude::Result<()> {
+	fn should_continue_turn(&self, turn_count: u32) -> Result<bool>;
+	fn validate_continuation_boundary(&self, _turn_count: u32) -> Result<()> {
 		Ok(())
 	}
 }
@@ -93,7 +94,7 @@ pub(crate) struct AppServerRunRequest<'a> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AppServerRunResult {
 	pub(crate) user_agent: String,
-	pub(crate) capability_preflight: super::AppServerCapabilityPreflightReport,
+	pub(crate) capability_preflight: AppServerCapabilityPreflightReport,
 	pub(crate) thread_id: String,
 	pub(crate) turn_id: String,
 	pub(crate) turn_count: u32,
@@ -165,19 +166,23 @@ impl<'a> RunRecorder<'a> {
 		self.issue_id
 	}
 
-	pub(super) fn mark_activity(&self) -> crate::prelude::Result<()> {
+	pub(super) fn mark_activity(&self) -> Result<()> {
 		if let Some(marker_path) = self.activity_marker_path {
-			write_activity_marker_best_effort(marker_path, self.run_id, self.attempt_number);
+			markers::write_activity_marker_best_effort(
+				marker_path,
+				self.run_id,
+				self.attempt_number,
+			);
 		};
 
 		Ok(())
 	}
 
-	pub(super) fn set_thread_id(&mut self, thread_id: &str) -> crate::prelude::Result<()> {
+	pub(super) fn set_thread_id(&mut self, thread_id: &str) -> Result<()> {
 		self.thread_id = Some(thread_id.to_owned());
 
 		if let Some(marker_path) = self.activity_marker_path {
-			write_thread_marker_best_effort(
+			markers::write_thread_marker_best_effort(
 				marker_path,
 				self.run_id,
 				self.attempt_number,
@@ -188,11 +193,16 @@ impl<'a> RunRecorder<'a> {
 		Ok(())
 	}
 
-	pub(super) fn set_turn_id(&mut self, turn_id: &str) -> crate::prelude::Result<()> {
+	pub(super) fn set_turn_id(&mut self, turn_id: &str) -> Result<()> {
 		self.turn_id = Some(turn_id.to_owned());
 
 		if let Some(marker_path) = self.activity_marker_path {
-			write_turn_marker_best_effort(marker_path, self.run_id, self.attempt_number, turn_id);
+			markers::write_turn_marker_best_effort(
+				marker_path,
+				self.run_id,
+				self.attempt_number,
+				turn_id,
+			);
 		}
 
 		Ok(())
@@ -202,9 +212,9 @@ impl<'a> RunRecorder<'a> {
 		&mut self,
 		status: &str,
 		active_flags: &[String],
-	) -> crate::prelude::Result<()> {
+	) -> Result<()> {
 		if let Some(marker_path) = self.activity_marker_path {
-			write_thread_status_marker_best_effort(
+			markers::write_thread_status_marker_best_effort(
 				marker_path,
 				self.run_id,
 				self.attempt_number,
@@ -218,12 +228,9 @@ impl<'a> RunRecorder<'a> {
 		Ok(())
 	}
 
-	pub(super) fn set_effective_runtime(
-		&mut self,
-		runtime: &EffectiveThreadConfig,
-	) -> crate::prelude::Result<()> {
+	pub(super) fn set_effective_runtime(&mut self, runtime: &EffectiveThreadConfig) -> Result<()> {
 		if let Some(marker_path) = self.activity_marker_path {
-			write_effective_runtime_marker_best_effort(
+			markers::write_effective_runtime_marker_best_effort(
 				marker_path,
 				self.run_id,
 				self.attempt_number,
@@ -240,9 +247,9 @@ impl<'a> RunRecorder<'a> {
 		&mut self,
 		summary: &CodexAccountActivitySummary,
 		account_summaries: &[CodexAccountActivitySummary],
-	) -> crate::prelude::Result<()> {
+	) -> Result<()> {
 		if let Some(marker_path) = self.activity_marker_path {
-			write_codex_account_marker_best_effort(
+			markers::write_codex_account_marker_best_effort(
 				marker_path,
 				self.run_id,
 				self.attempt_number,
@@ -254,7 +261,7 @@ impl<'a> RunRecorder<'a> {
 		Ok(())
 	}
 
-	pub(super) fn record(&mut self, event_type: &str, payload: &str) -> crate::prelude::Result<()> {
+	pub(super) fn record(&mut self, event_type: &str, payload: &str) -> Result<()> {
 		self.state_store.append_event(self.run_id, self.next_sequence, event_type, payload)?;
 
 		let child_activity = self.child_activity.record(event_type, payload);
@@ -268,7 +275,7 @@ impl<'a> RunRecorder<'a> {
 		)?;
 
 		if let Some(marker_path) = self.activity_marker_path {
-			let activity = state::ProtocolActivityMarker {
+			let activity = ProtocolActivityMarker {
 				run_id: self.run_id,
 				attempt_number: self.attempt_number,
 				thread_id: self.thread_id.as_deref(),
@@ -279,7 +286,7 @@ impl<'a> RunRecorder<'a> {
 				protocol_activity: Some(&protocol_activity),
 			};
 
-			write_protocol_activity_marker_best_effort(marker_path, &activity);
+			markers::write_protocol_activity_marker_best_effort(marker_path, &activity);
 		}
 
 		self.next_sequence += 1;

@@ -8,8 +8,7 @@ use crate::{
 	},
 	orchestrator,
 	prelude::Result,
-	program_intake::issue_batch::identity,
-	program_intake::model::IssueFacts,
+	program_intake::{issue_batch::identity, model::IssueFacts},
 	tracker::{self, IssueTracker, TrackerIssue},
 	workflow::WorkflowDocument,
 };

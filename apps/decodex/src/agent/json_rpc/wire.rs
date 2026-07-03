@@ -2,13 +2,15 @@ use color_eyre::eyre;
 use serde::Deserialize;
 use serde_json::{self, Value};
 
+use crate::prelude::Result;
+
 #[derive(Clone, Debug)]
 pub(crate) struct WireMessage {
 	pub(crate) raw: String,
 	pub(crate) message: JsonRpcMessage,
 }
 impl WireMessage {
-	pub(super) fn parse(raw: String) -> crate::prelude::Result<Self> {
+	pub(super) fn parse(raw: String) -> Result<Self> {
 		let value: Value = serde_json::from_str(&raw)?;
 		let message = if value.get("method").is_some() && value.get("id").is_some() {
 			JsonRpcMessage::Request(serde_json::from_value(value)?)

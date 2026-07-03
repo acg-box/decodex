@@ -1,25 +1,25 @@
-use super::{Command, Path, state};
+use crate::{
+	orchestrator::status::{Command, Path},
+	state,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum WorktreeTrackedChangeState {
+pub(crate) enum WorktreeTrackedChangeState {
 	Clean,
 	TrackedChanges,
 	Unknown,
 }
-
 impl WorktreeTrackedChangeState {
-	pub(in crate::orchestrator) fn has_tracked_changes(self) -> bool {
+	pub(crate) fn has_tracked_changes(self) -> bool {
 		self == Self::TrackedChanges
 	}
 
-	pub(in crate::orchestrator) fn is_unknown(self) -> bool {
+	pub(crate) fn is_unknown(self) -> bool {
 		self == Self::Unknown
 	}
 }
 
-pub(in crate::orchestrator) fn worktree_tracked_change_state(
-	worktree_path: &Path,
-) -> WorktreeTrackedChangeState {
+pub(crate) fn worktree_tracked_change_state(worktree_path: &Path) -> WorktreeTrackedChangeState {
 	match worktree_path.try_exists() {
 		Ok(false) => WorktreeTrackedChangeState::Clean,
 		Ok(true) => match worktree_path.join(".git").try_exists() {
@@ -61,6 +61,6 @@ pub(in crate::orchestrator) fn worktree_tracked_change_state(
 	}
 }
 
-pub(in crate::orchestrator) fn worktree_has_tracked_changes(worktree_path: &Path) -> bool {
+pub(crate) fn worktree_has_tracked_changes(worktree_path: &Path) -> bool {
 	worktree_tracked_change_state(worktree_path).has_tracked_changes()
 }

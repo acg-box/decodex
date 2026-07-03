@@ -9,14 +9,16 @@ use std::{
 use serde::Serialize;
 use time::OffsetDateTime;
 
-use crate::orchestrator::agent_evidence::{
-	AGENT_BLOCKER_SNAPSHOT_SCHEMA, AGENT_EVIDENCE_EVENT_SCHEMA, AgentBlocker, AgentBlockerSnapshot,
-	AgentEvidenceEvent, AgentEvidenceFileWriteContext, AgentEvidenceSource, AgentHandoffIndex,
-	AgentRunCapsule, AgentRunCapsuleRef,
+use crate::{
+	orchestrator::agent_evidence::{
+		AGENT_BLOCKER_SNAPSHOT_SCHEMA, AGENT_EVIDENCE_EVENT_SCHEMA, AgentBlocker,
+		AgentBlockerSnapshot, AgentEvidenceEvent, AgentEvidenceFileWriteContext,
+		AgentEvidenceSource, AgentHandoffIndex, AgentRunCapsule, AgentRunCapsuleRef,
+	},
+	prelude::{Result, eyre},
 };
-use crate::prelude::{Result, eyre};
 
-pub(in crate::orchestrator) fn write_agent_evidence_files(
+pub(crate) fn write_agent_evidence_files(
 	context: &AgentEvidenceFileWriteContext<'_>,
 	index: &AgentHandoffIndex,
 	run_capsules: &[AgentRunCapsule],

@@ -1,28 +1,23 @@
+#[cfg(unix)] use std::os::fd::AsRawFd;
 use std::{
 	env,
-	io::Write,
+	io::Write as _,
 	path::Path,
 	process::{Child, Command, Stdio},
 };
 
-#[cfg(unix)]
-use std::os::fd::AsRawFd;
-
 use crate::{
 	cli::AttemptRequest,
 	orchestrator::{
-		DaemonRunChild, IssueDispatchMode, IssueTracker, MaterializedDaemonSpawnState,
-		PullRequestReviewStateInspector, Result, RetryDispatchDecision, RetryQueue,
-		RUN_OPERATION_AGENT_RUN, RunSummary, ServiceConfig, SpawnRunOnceChildRequest, StateStore,
+		self, DaemonRunChild, IssueDispatchMode, IssueTracker, MaterializedDaemonSpawnState,
+		PullRequestReviewStateInspector, RUN_OPERATION_AGENT_RUN, Result, RetryDispatchDecision,
+		RetryQueue, RunSummary, ServiceConfig, SpawnRunOnceChildRequest, StateStore,
 		WorkflowDocument, WorktreeManager, WorktreeSpec,
-		ensure_project_has_no_merged_worktree_cleanup_debt, plan_project_issue_run_with_exclusions,
-		retry_budget_base_for_dispatch_mode, run_summary_from_issue_run, validate_workflow_read_first_files,
+		daemon::{self, DaemonTickRuntimeContext},
 	},
 	prelude::eyre,
 	state,
 };
-
-use crate::orchestrator::daemon::{DaemonTickRuntimeContext, plan_due_retry_run};
 
 pub(super) fn spawn_next_daemon_child<T>(
 	config_path: &Path,
@@ -45,10 +40,10 @@ where
 	match next_run {
 		Some((summary, from_retry_queue)) => {
 			if summary.dispatch_mode != IssueDispatchMode::Closeout {
-				ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
+				orchestrator::ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
 			}
 
-			validate_workflow_read_first_files(context.project, context.workflow)?;
+			orchestrator::validate_workflow_read_first_files(context.project, context.workflow)?;
 
 			state_store.configure_dispatch_slot_root(
 				context.project.service_id(),
@@ -191,6 +186,60 @@ pub(super) fn spawn_planned_daemon_child(
 	Ok(child)
 }
 
+pub(super) fn spawn_run_once_child(request: SpawnRunOnceChildRequest<'_>) -> Result<Child> {
+	let executable = env::current_exe()?;
+	let lease_preacquired =
+		request.issue_claim_handoff.is_some() || request.dispatch_slot_handoff.is_some();
+	let attempt_request = AttemptRequest {
+		dry_run: false,
+		issue_id: String::from(request.preferred_issue_id),
+		issue_state: String::from(request.preferred_issue_state),
+		initial_issue_state: request.preferred_initial_issue_state.map(String::from),
+		lease_preacquired,
+		#[cfg(unix)]
+		issue_claim_fd: request.issue_claim_handoff.map(AsRawFd::as_raw_fd),
+		#[cfg(not(unix))]
+		issue_claim_fd: None,
+		#[cfg(unix)]
+		dispatch_slot_fd: request.dispatch_slot_handoff.map(AsRawFd::as_raw_fd),
+		#[cfg(not(unix))]
+		dispatch_slot_fd: None,
+		dispatch_slot_index: request.dispatch_slot_index_handoff,
+		dispatch_mode: request.dispatch_mode.into(),
+		run_id: String::from(request.preferred_run_id),
+		attempt_number: request.preferred_attempt_number,
+		retry_budget_base: request.preferred_retry_budget_base,
+		workflow_snapshot: request.workflow.to_markdown()?,
+	};
+	let payload = serde_json::to_vec(&attempt_request)?;
+	let mut command = Command::new(executable);
+
+	command
+		.args(["_attempt", "--config"])
+		.arg(request.config_path)
+		.arg("-")
+		.stdin(Stdio::piped())
+		.stdout(Stdio::inherit())
+		.stderr(Stdio::inherit());
+
+	let mut child = command.spawn()?;
+	let Some(mut stdin) = child.stdin.take() else {
+		let _ = child.kill();
+		let _ = child.wait();
+
+		eyre::bail!("Spawned `_attempt` child without a writable stdin handle.");
+	};
+
+	if let Err(error) = stdin.write_all(&payload) {
+		let _ = child.kill();
+		let _ = child.wait();
+
+		eyre::bail!("Failed to write `_attempt` request payload: {error}");
+	}
+
+	Ok(child)
+}
+
 pub(crate) fn plan_next_daemon_run<T>(
 	retry_queue: &mut RetryQueue,
 	tracker: &T,
@@ -201,12 +250,12 @@ pub(crate) fn plan_next_daemon_run<T>(
 where
 	T: IssueTracker,
 {
-	match plan_due_retry_run(retry_queue, tracker, project, workflow, state_store)? {
+	match daemon::plan_due_retry_run(retry_queue, tracker, project, workflow, state_store)? {
 		RetryDispatchDecision::Dispatch(summary) => Ok(Some((*summary, true))),
 		RetryDispatchDecision::Blocked { excluded_issue_ids } => {
 			let excluded_issue_ids =
 				excluded_issue_ids.iter().map(String::as_str).collect::<Vec<_>>();
-			let issue_run = plan_project_issue_run_with_exclusions(
+			let issue_run = orchestrator::plan_project_issue_run_with_exclusions(
 				tracker,
 				project,
 				workflow,
@@ -216,11 +265,11 @@ where
 			)?;
 
 			Ok(issue_run.map(|issue_run| {
-				(run_summary_from_issue_run(project.service_id(), &issue_run), false)
+				(orchestrator::run_summary_from_issue_run(project.service_id(), &issue_run), false)
 			}))
 		},
 		RetryDispatchDecision::Continue => {
-			let issue_run = plan_project_issue_run_with_exclusions(
+			let issue_run = orchestrator::plan_project_issue_run_with_exclusions(
 				tracker,
 				project,
 				workflow,
@@ -230,7 +279,7 @@ where
 			)?;
 
 			Ok(issue_run.map(|issue_run| {
-				(run_summary_from_issue_run(project.service_id(), &issue_run), false)
+				(orchestrator::run_summary_from_issue_run(project.service_id(), &issue_run), false)
 			}))
 		},
 	}
@@ -243,7 +292,7 @@ pub(crate) fn materialize_daemon_spawn_state(
 	summary: &RunSummary,
 ) -> Result<MaterializedDaemonSpawnState> {
 	let worktree = materialize_run_summary_worktree(project, workflow, summary)?;
-	let retry_budget_base = retry_budget_base_for_dispatch_mode(
+	let retry_budget_base = orchestrator::retry_budget_base_for_dispatch_mode(
 		state_store,
 		&summary.issue_id,
 		&worktree.path,
@@ -302,58 +351,4 @@ pub(crate) fn materialize_run_summary_worktree(
 	}
 
 	Ok(worktree)
-}
-
-pub(super) fn spawn_run_once_child(request: SpawnRunOnceChildRequest<'_>) -> Result<Child> {
-	let executable = env::current_exe()?;
-	let lease_preacquired =
-		request.issue_claim_handoff.is_some() || request.dispatch_slot_handoff.is_some();
-	let attempt_request = AttemptRequest {
-		dry_run: false,
-		issue_id: String::from(request.preferred_issue_id),
-		issue_state: String::from(request.preferred_issue_state),
-		initial_issue_state: request.preferred_initial_issue_state.map(String::from),
-		lease_preacquired,
-		#[cfg(unix)]
-		issue_claim_fd: request.issue_claim_handoff.map(AsRawFd::as_raw_fd),
-		#[cfg(not(unix))]
-		issue_claim_fd: None,
-		#[cfg(unix)]
-		dispatch_slot_fd: request.dispatch_slot_handoff.map(AsRawFd::as_raw_fd),
-		#[cfg(not(unix))]
-		dispatch_slot_fd: None,
-		dispatch_slot_index: request.dispatch_slot_index_handoff,
-		dispatch_mode: request.dispatch_mode.into(),
-		run_id: String::from(request.preferred_run_id),
-		attempt_number: request.preferred_attempt_number,
-		retry_budget_base: request.preferred_retry_budget_base,
-		workflow_snapshot: request.workflow.to_markdown()?,
-	};
-	let payload = serde_json::to_vec(&attempt_request)?;
-	let mut command = Command::new(executable);
-
-	command
-		.args(["_attempt", "--config"])
-		.arg(request.config_path)
-		.arg("-")
-		.stdin(Stdio::piped())
-		.stdout(Stdio::inherit())
-		.stderr(Stdio::inherit());
-
-	let mut child = command.spawn()?;
-	let Some(mut stdin) = child.stdin.take() else {
-		let _ = child.kill();
-		let _ = child.wait();
-
-		eyre::bail!("Spawned `_attempt` child without a writable stdin handle.");
-	};
-
-	if let Err(error) = stdin.write_all(&payload) {
-		let _ = child.kill();
-		let _ = child.wait();
-
-		eyre::bail!("Failed to write `_attempt` request payload: {error}");
-	}
-
-	Ok(child)
 }

@@ -1,9 +1,9 @@
 use crate::{
 	config::ServiceConfig,
+	orchestrator::{GHOST_LANE_TERMINAL_STATUS, OperatorRunStatus},
+	prelude::Result,
 	state::{PrivateExecutionEvent, StateStore},
 };
-
-use super::{GHOST_LANE_TERMINAL_STATUS, OperatorRunStatus};
 
 const CLEANUP_EVENT: &str = "ghost_lane_cleanup";
 const MCP_TEST_FIXTURE_SOURCE: &str = "mcp-test";
@@ -18,7 +18,7 @@ pub(super) fn mcp_test_fixture_control_evidence(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	run: &OperatorRunStatus,
-) -> crate::prelude::Result<bool> {
+) -> Result<bool> {
 	if !has_mcp_test_fixture_identity(project, run) {
 		return Ok(false);
 	}
@@ -83,9 +83,8 @@ fn has_mcp_test_fixture_identity(project: &ServiceConfig, run: &OperatorRunStatu
 
 fn mcp_test_fixture_issue_identifier_matches(issue_identifier: Option<&str>) -> bool {
 	match issue_identifier {
-		Some(value) => {
-			value == MCP_TEST_FIXTURE_ISSUE_ID || value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER
-		},
+		Some(value) =>
+			value == MCP_TEST_FIXTURE_ISSUE_ID || value == MCP_TEST_FIXTURE_ALT_ISSUE_IDENTIFIER,
 		None => true,
 	}
 }
@@ -107,13 +106,11 @@ fn private_events_are_mcp_test_recovery_evidence(events: &[PrivateExecutionEvent
 
 fn private_event_is_mcp_test_control_evidence(event: &PrivateExecutionEvent) -> bool {
 	match event.event_type() {
-		"control_action" => {
+		"control_action" =>
 			private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE)
-				|| cli_control_action_matches_mcp_test_fixture(event.payload())
-		},
-		"lane_control/steer/requested" | "lane_control/interrupt/requested" => {
-			private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE)
-		},
+				|| cli_control_action_matches_mcp_test_fixture(event.payload()),
+		"lane_control/steer/requested" | "lane_control/interrupt/requested" =>
+			private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE),
 		_ => false,
 	}
 }

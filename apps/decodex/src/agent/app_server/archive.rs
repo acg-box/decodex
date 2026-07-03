@@ -1,11 +1,13 @@
 use color_eyre::Report;
 
-use super::{
-	protocol::{AppServerClient, ThreadArchiveRequest},
-	runtime_types::{AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest},
-	session::{thread_missing_error_message_allows_discard, validate_initialize_codex_home},
+use crate::{
+	agent::app_server::{
+		protocol::{AppServerClient, ThreadArchiveRequest},
+		runtime_types::{AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest},
+		session::{self},
+	},
+	state::StateStore,
 };
-use crate::state::StateStore;
 
 pub(crate) fn archive_app_server_thread_after_success(
 	request: &AppServerThreadArchiveRequest<'_>,
@@ -13,30 +15,14 @@ pub(crate) fn archive_app_server_thread_after_success(
 ) -> crate::prelude::Result<AppServerThreadArchiveOutcome> {
 	let result = match archive_app_server_thread_after_success_inner(request) {
 		Ok(()) => Ok(AppServerThreadArchiveOutcome::Archived),
-		Err(error) if thread_archive_error_allows_discard(&error) => {
-			Ok(AppServerThreadArchiveOutcome::DiscardedMissingThread)
-		},
+		Err(error) if thread_archive_error_allows_discard(&error) =>
+			Ok(AppServerThreadArchiveOutcome::DiscardedMissingThread),
 		Err(error) => Err(error),
 	};
 
 	record_thread_archive_result_best_effort(state_store, request, result.as_ref());
 
 	result
-}
-
-fn archive_app_server_thread_after_success_inner(
-	request: &AppServerThreadArchiveRequest<'_>,
-) -> crate::prelude::Result<()> {
-	let expected_codex_home = request.process_env.resolve_codex_home_env()?;
-	let mut client = AppServerClient::spawn(request.listen, request.process_env)?;
-	let initialize_response = client.initialize(false)?;
-
-	validate_initialize_codex_home(&expected_codex_home, &initialize_response)?;
-
-	client.mark_initialized()?;
-	client.archive_thread(ThreadArchiveRequest { thread_id: request.thread_id.to_owned() })?;
-
-	Ok(())
 }
 
 pub(super) fn record_thread_archive_result_best_effort(
@@ -94,5 +80,21 @@ pub(super) fn record_thread_archive_result_best_effort(
 pub(super) fn thread_archive_error_allows_discard(error: &Report) -> bool {
 	let message = error.to_string().to_lowercase();
 
-	thread_missing_error_message_allows_discard(&message) || message.contains("already archived")
+	session::thread_missing_error_message_allows_discard(&message)
+		|| message.contains("already archived")
+}
+
+fn archive_app_server_thread_after_success_inner(
+	request: &AppServerThreadArchiveRequest<'_>,
+) -> crate::prelude::Result<()> {
+	let expected_codex_home = request.process_env.resolve_codex_home_env()?;
+	let mut client = AppServerClient::spawn(request.listen, request.process_env)?;
+	let initialize_response = client.initialize(false)?;
+
+	session::validate_initialize_codex_home(&expected_codex_home, &initialize_response)?;
+
+	client.mark_initialized()?;
+	client.archive_thread(ThreadArchiveRequest { thread_id: request.thread_id.to_owned() })?;
+
+	Ok(())
 }

@@ -1,18 +1,8 @@
 //! Shared file, Markdown, frontmatter, and path helpers.
 
-use std::{
-	collections::BTreeSet,
-	fs,
-	path::{Component, Path, PathBuf},
-};
-
-use reqwest::Url;
-use serde_yaml::Mapping;
-use time::{Date, Month};
-
-use crate::{
-	docs_okf::model::{DocsCheckIssue, DocsFile},
-	prelude::Result,
+use crate::docs_okf::{
+	BTreeSet, Component, Date, DocsCheckIssue, DocsFile, Mapping, Month, Path, PathBuf, Result,
+	Url, fs, serde_yaml,
 };
 
 pub(super) fn collect_files(root: &Path, dir: &Path, files: &mut Vec<DocsFile>) -> Result<()> {

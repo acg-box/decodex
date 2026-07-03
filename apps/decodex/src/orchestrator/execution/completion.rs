@@ -1,22 +1,10 @@
-use std::process::Command;
-
-use color_eyre::Report;
-
-use crate::{
-	git_credentials::GitCredentialSource,
-	orchestrator::{
-		HarnessOutcomeKind, IssueRunPlan, IssueTracker, LaneDecisionSnapshot,
-		ManualAttentionRequested, PhaseGoalKind, RUN_OPERATION_REPO_GATE,
-		RUN_OPERATION_REVIEW_WRITEBACK, RepoGateFailure, RepoGateTrackedRewriteDecision, Result,
-		RetainedReviewRepairPushFailed, RetainedReviewRepairPushFailureKind,
-		ReviewHandoffNeedsAttention, ReviewHandoffWritebackFailed, RunCompletionDisposition,
-		ServiceConfig, StateStore, TrackerToolBridge, WorkflowDocument,
-		cleanup_completed_post_review_lane, decide_lane_next_action,
-		record_harness_outcome_best_effort, repo_gate_output_text, resolve_configured_env_var,
-		run_repo_gate_commands, select_repo_gate_for_worktree, validate_review_handoff_runtime,
-		validate_review_repair_runtime, worktree_head_oid, write_cleanup_complete_lifecycle_event,
-		write_run_operation_marker_best_effort,
-	},
+use crate::orchestrator::execution::{
+	self, Command, GitCredentialSource, HarnessOutcomeKind, IssueRunPlan, IssueTracker,
+	LaneDecisionSnapshot, ManualAttentionRequested, PhaseGoalKind, RUN_OPERATION_REPO_GATE,
+	RUN_OPERATION_REVIEW_WRITEBACK, RepoGateFailure, RepoGateTrackedRewriteDecision, Report,
+	Result, RetainedReviewRepairPushFailed, RetainedReviewRepairPushFailureKind,
+	ReviewHandoffNeedsAttention, ReviewHandoffWritebackFailed, RunCompletionDisposition,
+	ServiceConfig, StateStore, TrackerToolBridge, WorkflowDocument,
 };
 
 pub(crate) fn run_completion_repo_gate(
@@ -26,16 +14,19 @@ pub(crate) fn run_completion_repo_gate(
 	issue_run: &IssueRunPlan,
 	phase: PhaseGoalKind,
 ) -> Result<()> {
-	let selected_repo_gate =
-		select_repo_gate_for_worktree(workflow.frontmatter().execution(), &issue_run.worktree.path);
+	let selected_repo_gate = execution::select_repo_gate_for_worktree(
+		workflow.frontmatter().execution(),
+		&issue_run.worktree.path,
+	);
 
-	write_run_operation_marker_best_effort(
+	execution::write_run_operation_marker_best_effort(
 		&issue_run.worktree.path,
 		&issue_run.run_id,
 		issue_run.attempt_number,
 		RUN_OPERATION_REPO_GATE,
 	);
-	if let Err(error) = run_repo_gate_commands(
+
+	if let Err(error) = execution::run_repo_gate_commands(
 		selected_repo_gate.canonicalize_commands(),
 		selected_repo_gate.verify_commands(),
 		&issue_run.worktree.path,
@@ -53,7 +44,7 @@ pub(crate) fn run_completion_repo_gate(
 				repo_gate_failure.disposition(),
 				scope_envelope_violation,
 			);
-			let lane_decision = decide_lane_next_action(&lane_snapshot);
+			let lane_decision = execution::decide_lane_next_action(&lane_snapshot);
 
 			state_store.append_private_execution_event(
 				project.service_id(),
@@ -67,7 +58,8 @@ pub(crate) fn run_completion_repo_gate(
 
 		return Err(error);
 	}
-	write_run_operation_marker_best_effort(
+
+	execution::write_run_operation_marker_best_effort(
 		&issue_run.worktree.path,
 		&issue_run.run_id,
 		issue_run.attempt_number,
@@ -83,17 +75,18 @@ pub(crate) fn push_retained_review_repair_head(
 	pr_url: Option<&str>,
 ) -> Result<()> {
 	let token_env_var = project.github().token_env_var();
-	let github_token = resolve_configured_env_var("github.token_env_var", Some(token_env_var))
-		.map_err(|error| {
-			Report::new(RetainedReviewRepairPushFailed {
-				issue_identifier: issue_run.issue.identifier.clone(),
-				run_id: issue_run.run_id.clone(),
-				branch_name: issue_run.worktree.branch_name.clone(),
-				pr_url: pr_url.map(ToOwned::to_owned),
-				kind: RetainedReviewRepairPushFailureKind::Auth,
-				detail: error.to_string(),
-			})
-		})?;
+	let github_token =
+		execution::resolve_configured_env_var("github.token_env_var", Some(token_env_var))
+			.map_err(|error| {
+				Report::new(RetainedReviewRepairPushFailed {
+					issue_identifier: issue_run.issue.identifier.clone(),
+					run_id: issue_run.run_id.clone(),
+					branch_name: issue_run.worktree.branch_name.clone(),
+					pr_url: pr_url.map(ToOwned::to_owned),
+					kind: RetainedReviewRepairPushFailureKind::Auth,
+					detail: error.to_string(),
+				})
+			})?;
 	let git_credentials =
 		GitCredentialSource::new(token_env_var, &github_token).materialize_github_credentials();
 	let refspec = format!("HEAD:{}", issue_run.worktree.branch_name);
@@ -117,7 +110,7 @@ pub(crate) fn push_retained_review_repair_head(
 		return Ok(());
 	}
 
-	let detail = repo_gate_output_text(&output);
+	let detail = execution::repo_gate_output_text(&output);
 	let kind = classify_retained_review_repair_push_failure(&detail);
 
 	Err(Report::new(RetainedReviewRepairPushFailed {
@@ -128,6 +121,144 @@ pub(crate) fn push_retained_review_repair_head(
 		kind,
 		detail,
 	}))
+}
+
+pub(super) fn apply_run_completion_disposition<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	tracker_tool_bridge: &TrackerToolBridge<'_>,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let recorded_pr_url =
+		tracker_tool_bridge.review_context().and_then(|context| context.recorded_pr_url.as_deref());
+
+	match tracker_tool_bridge.completion_disposition()? {
+		RunCompletionDisposition::ReviewHandoff => {
+			execution::validate_review_handoff_runtime(project, false)?;
+
+			run_completion_repo_gate(
+				project,
+				workflow,
+				state_store,
+				issue_run,
+				PhaseGoalKind::HandoffEvidence,
+			)?;
+
+			tracker_tool_bridge.apply_review_handoff().map_err(|error| {
+				if let Some(writeback_error) = error.downcast_ref::<ReviewHandoffWritebackFailed>()
+				{
+					Report::new(ReviewHandoffNeedsAttention {
+						issue_identifier: writeback_error.issue_identifier.clone(),
+						pr_url: writeback_error.pr_url.clone(),
+						run_id: writeback_error.run_id.clone(),
+					})
+					.wrap_err(error)
+				} else {
+					error
+				}
+			})?;
+
+			record_completion_outcome(
+				state_store,
+				project,
+				issue_run,
+				HarnessOutcomeKind::ReviewHandoff,
+				recorded_pr_url,
+			);
+		},
+		RunCompletionDisposition::ManualAttention => {
+			return Err(Report::new(ManualAttentionRequested {
+				issue_identifier: issue_run.issue.identifier.clone(),
+				label: workflow.frontmatter().tracker().needs_attention_label().to_owned(),
+				run_id: issue_run.run_id.clone(),
+				error_class: tracker_tool_bridge.manual_attention_error_class(),
+			}));
+		},
+		RunCompletionDisposition::ReviewRepair => {
+			execution::validate_review_repair_runtime(project, false)?;
+
+			run_completion_repo_gate(
+				project,
+				workflow,
+				state_store,
+				issue_run,
+				PhaseGoalKind::ReviewRepairEvidence,
+			)?;
+			push_retained_review_repair_head(project, issue_run, recorded_pr_url)?;
+
+			tracker_tool_bridge.apply_review_repair()?;
+
+			record_completion_outcome(
+				state_store,
+				project,
+				issue_run,
+				HarnessOutcomeKind::ReviewRepair,
+				recorded_pr_url,
+			);
+		},
+		RunCompletionDisposition::Closeout => {
+			execution::write_run_operation_marker_best_effort(
+				&issue_run.worktree.path,
+				&issue_run.run_id,
+				issue_run.attempt_number,
+				RUN_OPERATION_REVIEW_WRITEBACK,
+			);
+
+			let cleanup_commit_sha = execution::worktree_head_oid(&issue_run.worktree.path)?;
+
+			tracker_tool_bridge.apply_closeout()?;
+
+			execution::cleanup_completed_post_review_lane(
+				project,
+				workflow,
+				state_store,
+				issue_run,
+			)?;
+			execution::write_cleanup_complete_lifecycle_event(
+				tracker,
+				project,
+				state_store,
+				issue_run,
+				recorded_pr_url,
+				cleanup_commit_sha.as_deref(),
+			)?;
+
+			tracker_tool_bridge.clear_closeout_issue_scope()?;
+
+			record_completion_outcome(
+				state_store,
+				project,
+				issue_run,
+				HarnessOutcomeKind::Closeout,
+				recorded_pr_url,
+			);
+		},
+	}
+
+	Ok(())
+}
+
+fn record_completion_outcome(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	issue_run: &IssueRunPlan,
+	kind: HarnessOutcomeKind,
+	recorded_pr_url: Option<&str>,
+) {
+	execution::record_harness_outcome_best_effort(
+		state_store,
+		project.service_id(),
+		issue_run,
+		kind,
+		None,
+		Some("passed"),
+		recorded_pr_url,
+	);
 }
 
 fn classify_retained_review_repair_push_failure(
@@ -159,134 +290,4 @@ fn classify_retained_review_repair_push_failure(
 	}
 
 	RetainedReviewRepairPushFailureKind::Failed
-}
-
-pub(super) fn apply_run_completion_disposition<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	tracker_tool_bridge: &TrackerToolBridge<'_>,
-) -> Result<()>
-where
-	T: IssueTracker + ?Sized,
-{
-	match tracker_tool_bridge.completion_disposition()? {
-		RunCompletionDisposition::ReviewHandoff => {
-			validate_review_handoff_runtime(project, false)?;
-			run_completion_repo_gate(
-				project,
-				workflow,
-				state_store,
-				issue_run,
-				PhaseGoalKind::HandoffEvidence,
-			)?;
-
-			tracker_tool_bridge.apply_review_handoff().map_err(|error| {
-				if let Some(writeback_error) = error.downcast_ref::<ReviewHandoffWritebackFailed>()
-				{
-					Report::new(ReviewHandoffNeedsAttention {
-						issue_identifier: writeback_error.issue_identifier.clone(),
-						pr_url: writeback_error.pr_url.clone(),
-						run_id: writeback_error.run_id.clone(),
-					})
-					.wrap_err(error)
-				} else {
-					error
-				}
-			})?;
-
-			record_harness_outcome_best_effort(
-				state_store,
-				project.service_id(),
-				issue_run,
-				HarnessOutcomeKind::ReviewHandoff,
-				None,
-				Some("passed"),
-				tracker_tool_bridge
-					.review_context()
-					.and_then(|context| context.recorded_pr_url.as_deref()),
-			);
-		},
-		RunCompletionDisposition::ManualAttention => {
-			return Err(Report::new(ManualAttentionRequested {
-				issue_identifier: issue_run.issue.identifier.clone(),
-				label: workflow.frontmatter().tracker().needs_attention_label().to_owned(),
-				run_id: issue_run.run_id.clone(),
-				error_class: tracker_tool_bridge.manual_attention_error_class(),
-			}));
-		},
-		RunCompletionDisposition::ReviewRepair => {
-			validate_review_repair_runtime(project, false)?;
-			run_completion_repo_gate(
-				project,
-				workflow,
-				state_store,
-				issue_run,
-				PhaseGoalKind::ReviewRepairEvidence,
-			)?;
-			push_retained_review_repair_head(
-				project,
-				issue_run,
-				tracker_tool_bridge
-					.review_context()
-					.and_then(|context| context.recorded_pr_url.as_deref()),
-			)?;
-
-			tracker_tool_bridge.apply_review_repair()?;
-
-			record_harness_outcome_best_effort(
-				state_store,
-				project.service_id(),
-				issue_run,
-				HarnessOutcomeKind::ReviewRepair,
-				None,
-				Some("passed"),
-				tracker_tool_bridge
-					.review_context()
-					.and_then(|context| context.recorded_pr_url.as_deref()),
-			);
-		},
-		RunCompletionDisposition::Closeout => {
-			write_run_operation_marker_best_effort(
-				&issue_run.worktree.path,
-				&issue_run.run_id,
-				issue_run.attempt_number,
-				RUN_OPERATION_REVIEW_WRITEBACK,
-			);
-
-			let cleanup_commit_sha = worktree_head_oid(&issue_run.worktree.path)?;
-
-			tracker_tool_bridge.apply_closeout()?;
-
-			cleanup_completed_post_review_lane(project, workflow, state_store, issue_run)?;
-			write_cleanup_complete_lifecycle_event(
-				tracker,
-				project,
-				state_store,
-				issue_run,
-				tracker_tool_bridge
-					.review_context()
-					.and_then(|context| context.recorded_pr_url.as_deref()),
-				cleanup_commit_sha.as_deref(),
-			)?;
-
-			tracker_tool_bridge.clear_closeout_issue_scope()?;
-
-			record_harness_outcome_best_effort(
-				state_store,
-				project.service_id(),
-				issue_run,
-				HarnessOutcomeKind::Closeout,
-				None,
-				Some("passed"),
-				tracker_tool_bridge
-					.review_context()
-					.and_then(|context| context.recorded_pr_url.as_deref()),
-			);
-		},
-	}
-
-	Ok(())
 }

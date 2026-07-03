@@ -1,3 +1,12 @@
+mod cleanup;
+mod git;
+mod hooks;
+
+#[allow(unused_imports)] pub(crate) use cleanup::MergedWorktreeCleanliness;
+pub(crate) use cleanup::{
+	MergedWorktreeCleanupDebt, infer_default_branch_name, merged_worktree_cleanup_debts,
+};
+
 use std::{
 	fs,
 	io::ErrorKind,
@@ -10,27 +19,8 @@ use crate::{
 	prelude::{Result, eyre},
 	workflow::WorkflowWorkspaceHooks,
 };
-
-mod cleanup;
-mod git;
-mod hooks;
-
-#[allow(unused_imports)] pub(crate) use cleanup::MergedWorktreeCleanliness;
-pub(crate) use cleanup::{
-	MergedWorktreeCleanupDebt, infer_default_branch_name, merged_worktree_cleanup_debts,
-};
 #[cfg(test)] use git::is_relative_filesystem_remote;
-use git::{
-	configured_branch_owner, fetch_remote_branch_if_present, git_stdout,
-	normalize_origin_remote_for_worktrees, resolve_source_repo_git_common_dir, run_git,
-	sanitize_branch_component, worktree_is_registered,
-};
 #[cfg(test)] use hooks::workspace_hook_shell_from_env;
-use hooks::{
-	after_create_pending_marker_path, append_output_details,
-	remove_orphan_marker_directory_if_safe, run_workspace_hook_shell_command,
-	workspace_requires_after_create_pending_marker,
-};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WorktreeSpec {
@@ -59,13 +49,13 @@ impl WorktreeManager {
 	}
 
 	pub(crate) fn plan_for_issue(&self, issue_identifier: &str) -> WorktreeSpec {
-		let branch_suffix = sanitize_branch_component(issue_identifier);
+		let branch_suffix = git::sanitize_branch_component(issue_identifier);
 		let branch_owner =
-			configured_branch_owner(&self.repo_root).unwrap_or_else(|| String::from("x"));
+			git::configured_branch_owner(&self.repo_root).unwrap_or_else(|| String::from("x"));
 		let branch_name = format!(
 			"{}/{}-{}",
-			sanitize_branch_component(&branch_owner),
-			sanitize_branch_component(&self.project_id),
+			git::sanitize_branch_component(&branch_owner),
+			git::sanitize_branch_component(&self.project_id),
 			branch_suffix
 		);
 		let path = self.worktree_root.join(issue_identifier);
@@ -111,7 +101,7 @@ impl WorktreeManager {
 		if spec.reused_existing {
 			self.validate_worktree_boundary(&spec.path)?;
 
-			normalize_origin_remote_for_worktrees(&self.repo_root)?;
+			git::normalize_origin_remote_for_worktrees(&self.repo_root)?;
 
 			self.resume_after_create_hooks_if_pending(&spec, hooks)?;
 
@@ -162,7 +152,7 @@ impl WorktreeManager {
 				self.worktree_root.display()
 			);
 		}
-		if remove_orphan_marker_directory_if_safe(&canonical_path)? {
+		if hooks::remove_orphan_marker_directory_if_safe(&canonical_path)? {
 			return Ok(true);
 		}
 
@@ -179,7 +169,7 @@ impl WorktreeManager {
 			)?;
 		}
 
-		run_git(
+		git::run_git(
 			&self.repo_root,
 			[
 				"worktree",
@@ -200,8 +190,11 @@ impl WorktreeManager {
 		spec: &WorktreeSpec,
 		hooks: Option<&WorkflowWorkspaceHooks>,
 	) -> Result<()> {
-		let source_head =
-			git_stdout(&self.repo_root, ["rev-parse", "HEAD"], "read the source repository HEAD")?;
+		let source_head = git::git_stdout(
+			&self.repo_root,
+			["rev-parse", "HEAD"],
+			"read the source repository HEAD",
+		)?;
 
 		if spec.path.exists() {
 			eyre::bail!(
@@ -229,9 +222,10 @@ impl WorktreeManager {
 			);
 		}
 
-		let setup_result = normalize_origin_remote_for_worktrees(&self.repo_root).and_then(|_| {
-			self.checkout_worktree_branch(&spec.path, spec.branch_name.as_str(), &source_head)
-		});
+		let setup_result =
+			git::normalize_origin_remote_for_worktrees(&self.repo_root).and_then(|_| {
+				self.checkout_worktree_branch(&spec.path, spec.branch_name.as_str(), &source_head)
+			});
 
 		if let Err(error) = setup_result {
 			let _ = self.remove_worktree_path_internal(&spec.path, None);
@@ -239,8 +233,8 @@ impl WorktreeManager {
 			return Err(error);
 		}
 
-		if workspace_requires_after_create_pending_marker(hooks) {
-			let pending_marker = after_create_pending_marker_path(&spec.path);
+		if hooks::workspace_requires_after_create_pending_marker(hooks) {
+			let pending_marker = hooks::after_create_pending_marker_path(&spec.path);
 
 			fs::write(&pending_marker, b"pending\n").map_err(|error| {
 				let _ = self.remove_worktree_path_internal(&spec.path, None);
@@ -261,16 +255,16 @@ impl WorktreeManager {
 		branch_name: &str,
 		source_head: &str,
 	) -> Result<()> {
-		if fetch_remote_branch_if_present(&self.repo_root, branch_name)? {
+		if git::fetch_remote_branch_if_present(&self.repo_root, branch_name)? {
 			let remote_tracking_ref = format!("refs/remotes/origin/{branch_name}");
 
-			run_git(
+			git::run_git(
 				worktree_path,
 				["checkout", "--quiet", "-B", branch_name, remote_tracking_ref.as_str()],
 				"checkout the worktree branch from the remote lane head",
 			)?;
 		} else {
-			run_git(
+			git::run_git(
 				worktree_path,
 				["checkout", "--quiet", "-B", branch_name, source_head],
 				"checkout the worktree branch",
@@ -290,15 +284,15 @@ impl WorktreeManager {
 			);
 		}
 
-		let repo_git_dir = resolve_source_repo_git_common_dir(&self.repo_root)?;
+		let repo_git_dir = git::resolve_source_repo_git_common_dir(&self.repo_root)?;
 		let worktree_admin_root = repo_git_dir.join("worktrees");
 		let canonical_worktree_path = fs::canonicalize(worktree_path)?;
-		let git_dir = fs::canonicalize(PathBuf::from(git_stdout(
+		let git_dir = fs::canonicalize(PathBuf::from(git::git_stdout(
 			worktree_path,
 			["rev-parse", "--path-format=absolute", "--git-dir"],
 			"resolve worktree git dir",
 		)?))?;
-		let git_common_dir = fs::canonicalize(PathBuf::from(git_stdout(
+		let git_common_dir = fs::canonicalize(PathBuf::from(git::git_stdout(
 			worktree_path,
 			["rev-parse", "--path-format=absolute", "--git-common-dir"],
 			"resolve worktree git common dir",
@@ -320,7 +314,7 @@ impl WorktreeManager {
 				git_common_dir.display()
 			);
 		}
-		if !worktree_is_registered(&self.repo_root, &canonical_worktree_path)? {
+		if !git::worktree_is_registered(&self.repo_root, &canonical_worktree_path)? {
 			eyre::bail!(
 				"Worktree `{}` is not registered with the source repository worktree admin.",
 				worktree_path.display()
@@ -351,7 +345,7 @@ impl WorktreeManager {
 		];
 
 		for command in commands {
-			let output = run_workspace_hook_shell_command(
+			let output = hooks::run_workspace_hook_shell_command(
 				command,
 				worktree_path,
 				&envs,
@@ -367,7 +361,7 @@ impl WorktreeManager {
 			if !output.status.success() {
 				let mut details = String::new();
 
-				append_output_details(&mut details, &output);
+				hooks::append_output_details(&mut details, &output);
 
 				eyre::bail!(
 					"Workspace hook `{phase_name}` command `{command}` failed in `{}` with status `{}`.{details}",
@@ -393,7 +387,7 @@ impl WorktreeManager {
 			return Ok(());
 		}
 
-		let pending_marker = after_create_pending_marker_path(&spec.path);
+		let pending_marker = hooks::after_create_pending_marker_path(&spec.path);
 
 		if let Err(error) = self.run_workspace_hook_phase(
 			"after_create",
@@ -436,7 +430,7 @@ impl WorktreeManager {
 		if hooks.after_create_commands().is_empty() {
 			return Ok(());
 		}
-		if !after_create_pending_marker_path(&spec.path).exists() {
+		if !hooks::after_create_pending_marker_path(&spec.path).exists() {
 			return Ok(());
 		}
 

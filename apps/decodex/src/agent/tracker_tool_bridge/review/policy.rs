@@ -4,12 +4,11 @@ use crate::{
 		ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, REVIEW_POLICY_CONVERGENCE_BUDGET,
 		ReviewExecutionMode, ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyState,
 		ReviewPolicyStatus, ReviewPolicyStopReason, ReviewPolicyStopRequested, TrackerToolBridge,
+		review::linear_events,
 	},
 	prelude::eyre,
 	state::{ReviewCheckpointArtifactLookup, ReviewPolicyCheckpoint, ReviewPolicyCheckpointInput},
 };
-
-use super::linear_events::review_policy_stop_fingerprint;
 
 impl<'a> TrackerToolBridge<'a> {
 	pub(in crate::agent::tracker_tool_bridge) fn persist_review_policy_state(
@@ -206,7 +205,7 @@ impl<'a> TrackerToolBridge<'a> {
 		Some(ReviewPolicyStopRequested {
 			head_sha: checkpoint.head_sha,
 			issue_identifier: self.issue.identifier.clone(),
-			fingerprint: review_policy_stop_fingerprint(&checkpoint.details_json),
+			fingerprint: linear_events::review_policy_stop_fingerprint(&checkpoint.details_json),
 			nonclean_rounds: Some(checkpoint.nonclean_rounds),
 			reason: stop_reason,
 			run_id: review_context.run_id.clone(),

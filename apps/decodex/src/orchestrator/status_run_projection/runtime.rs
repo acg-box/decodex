@@ -7,7 +7,7 @@ mod liveness;
 mod terminal_finalize;
 
 #[allow(unused_imports)]
-pub(in crate::orchestrator) use self::{
+pub(crate) use self::{
 	activity::{
 		contains_protocol_activity_host_path_shape, contains_protocol_activity_secret_shape,
 		is_high_entropy_protocol_activity_token, operator_protocol_activity_detail_is_public,
