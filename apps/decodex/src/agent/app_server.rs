@@ -19,7 +19,7 @@ mod turn_loop;
 pub(crate) use self::{
 	activity::protocol_activity_idle_timeout,
 	constants::{MODEL_EXECUTION_IDLE_TIMEOUT, RUN_LEASE_IDLE_TIMEOUT},
-	dynamic_tools::AppServerDynamicToolFailure,
+	dynamic_tools::failure::AppServerDynamicToolFailure,
 	phase_goal::{
 		AppServerPhaseGoalFailure, PhaseGoalController, PhaseGoalKind, PhaseGoalRunStatus,
 		PhaseGoalSpec, PhaseGoalTransition,
@@ -48,10 +48,9 @@ use std::{
 use serde::Serialize;
 use serde_json::{self, Value};
 
+#[cfg(test)] use self::dynamic_tools::dispatch::handle_dynamic_tool_call;
 #[cfg(test)]
-use self::dynamic_tools::{
-	classify_turn_completion, handle_dynamic_tool_call, reject_nonterminal_single_turn_completion,
-};
+use self::dynamic_tools::{classify_turn_completion, reject_nonterminal_single_turn_completion};
 #[cfg(test)] use self::lane_control::steer_error_class;
 #[cfg(test)]
 use self::preflight::{
@@ -91,10 +90,7 @@ use self::{
 		ThreadStatusChangedNotification, ToolRequestUserInputResponse, TurnInterruptRequest,
 	},
 	runtime_types::{RequestDispatchContext, RequestWaitPhase, RunRecorder},
-	server_requests::{
-		handle_server_request_while_waiting, interactive_flag_for_request,
-		record_server_request_response,
-	},
+	server_requests::{handle_server_request_while_waiting, interactive_flag_for_request},
 	session::record_codex_account_failure,
 	turn_loop::{
 		build_turn_steer_request, is_app_server_output_timeout, message_type, targets_thread,
