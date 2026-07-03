@@ -8,8 +8,7 @@ use crate::{
 		context::RecoveryRuntimeMutationPolicy,
 		process_liveness::{self, StaleActiveProcessLiveness},
 		reports::StaleActiveDiagnostic,
-		stale_active_authority,
-		stale_active_guidance::blocked_stale_active_next_action,
+		stale_active_authority, stale_active_guidance,
 		stale_active_labels::{self, StaleActiveLabelSnapshot},
 		stale_active_reentry::{self, StaleActiveReleaseReentryInput},
 		stale_active_runtime, stale_active_worktree,
@@ -346,8 +345,8 @@ fn record_recoverable_dead_leased_ownership(
 		blockers.push(String::from("active_shared_claim_unknown"));
 		evidence.push(String::from("active_shared_claim_error:dead_local_claim_inspection_failed"));
 
-			return;
-		};
+		return;
+	};
 
 	if local_claims.matching_claim_count == 0 {
 		return;
@@ -355,8 +354,8 @@ fn record_recoverable_dead_leased_ownership(
 	if local_claims.incompatible_claim_present {
 		evidence.push(String::from("stale_active_claim_identity_mismatch_present"));
 
-			return;
-		}
+		return;
+	}
 
 	blockers.retain(|blocker| blocker != "run_lease_present");
 	evidence.push(String::from("stale_run_lease_present"));
@@ -441,7 +440,11 @@ fn stale_active_diagnostic_outcome(
 		(
 			String::from(STALE_ACTIVE_BLOCKED_CLASSIFICATION),
 			String::from("safety_check_blocked"),
-			blocked_stale_active_next_action(issue_identifier, blockers, evidence),
+			stale_active_guidance::blocked_stale_active_next_action(
+				issue_identifier,
+				blockers,
+				evidence,
+			),
 		)
 	}
 }

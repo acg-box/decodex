@@ -1,13 +1,10 @@
 use std::path::{Component, Path};
 
-use crate::prelude::eyre;
+use crate::prelude::{Result, eyre};
 
 pub(super) const FRONTMATTER_DELIMITER: &str = "+++";
 
-pub(super) fn validate_string_entries(
-	field_name: &str,
-	values: &[String],
-) -> crate::prelude::Result<()> {
+pub(super) fn validate_string_entries(field_name: &str, values: &[String]) -> Result<()> {
 	for value in values {
 		let trimmed = value.trim();
 
@@ -22,10 +19,7 @@ pub(super) fn validate_string_entries(
 	Ok(())
 }
 
-pub(super) fn validate_repo_relative_paths(
-	field_name: &str,
-	values: &[String],
-) -> crate::prelude::Result<()> {
+pub(super) fn validate_repo_relative_paths(field_name: &str, values: &[String]) -> Result<()> {
 	validate_string_entries(field_name, values)?;
 
 	for value in values {
@@ -44,7 +38,7 @@ pub(super) fn validate_repo_relative_paths(
 	Ok(())
 }
 
-pub(super) fn split_frontmatter(input: &str) -> crate::prelude::Result<(String, String)> {
+pub(super) fn split_frontmatter(input: &str) -> Result<(String, String)> {
 	let input = input.trim_start_matches(['\u{feff}', '\n', '\r']);
 	let mut lines = input.lines();
 
@@ -78,10 +72,7 @@ pub(super) fn split_frontmatter(input: &str) -> crate::prelude::Result<(String, 
 	Ok((frontmatter_lines.join("\n"), body))
 }
 
-pub(super) fn validate_trimmed_non_empty(
-	field_name: &str,
-	value: &str,
-) -> crate::prelude::Result<()> {
+pub(super) fn validate_trimmed_non_empty(field_name: &str, value: &str) -> Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("`{field_name}` must not be empty.");
 	}
@@ -92,10 +83,7 @@ pub(super) fn validate_trimmed_non_empty(
 	Ok(())
 }
 
-pub(super) fn validate_non_empty_string_list(
-	field_name: &str,
-	values: &[String],
-) -> crate::prelude::Result<()> {
+pub(super) fn validate_non_empty_string_list(field_name: &str, values: &[String]) -> Result<()> {
 	if values.is_empty() {
 		eyre::bail!("`{field_name}` must not be empty.");
 	}

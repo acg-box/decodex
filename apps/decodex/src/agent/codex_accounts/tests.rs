@@ -5,14 +5,15 @@ use std::{
 	thread,
 };
 
+use serde_json::Value;
 use tempfile::TempDir;
+use time::OffsetDateTime;
 
-use super::{record::parse_account_records, usage::preserve_cached_usage_windows};
 use crate::agent::codex_accounts::{
 	self, AccountPoolRecord, CodexAccountActivitySummary, CodexAccountAuthFailure,
 	CodexAccountLogin, CodexAccountPool, CodexAccountProvider, CodexTokenData, CreditsSnapshot,
 	DEFAULT_REFRESH_ENDPOINT, Path, ProactiveRefreshReason, UsageWindow,
-	compare_account_candidates,
+	compare_account_candidates, record, usage,
 };
 
 #[test]
@@ -21,7 +22,7 @@ fn accounts_accept_flat_and_wrapped_auth_jsonl_records() {
 		{"email":"primary@example.com","auth_mode":"chatgpt","tokens":{"id_token":"id","access_token":"access","refresh_token":"refresh","account_id":"acct_primary"}}
 		{"auth":{"auth_mode":"chatgpt","tokens":{"id_token":"x.eyJlbWFpbCI6IndyYXBwZWRAZXhhbXBsZS5jb20ifQ.y","access_token":"access-2","refresh_token":"refresh-2","account_id":"acct_wrapped"}}}
 	"#;
-	let records = parse_account_records(input, Path::new("/tmp/accounts.jsonl"))
+	let records = record::parse_account_records(input, Path::new("/tmp/accounts.jsonl"))
 		.expect("records should parse");
 
 	assert_eq!(records.len(), 2);
@@ -448,7 +449,7 @@ fn usage_summary_ignores_zero_second_placeholder_windows() {
 
 #[test]
 fn usage_cache_preserves_current_windows_across_placeholder_refresh() {
-	let now = time::OffsetDateTime::now_utc().unix_timestamp();
+	let now = OffsetDateTime::now_utc().unix_timestamp();
 	let cached = [CodexAccountActivitySummary {
 		account_fingerprint: String::from("...123456"),
 		email: Some(String::from("copy@example.com")),
@@ -470,7 +471,7 @@ fn usage_cache_preserves_current_windows_across_placeholder_refresh() {
 		..CodexAccountActivitySummary::default()
 	}];
 
-	preserve_cached_usage_windows(&mut refreshed, &cached, now + 60);
+	usage::preserve_cached_usage_windows(&mut refreshed, &cached, now + 60);
 
 	assert_eq!(refreshed[0].primary_window_seconds, Some(18_000));
 	assert_eq!(refreshed[0].primary_remaining_percent, Some(72));
@@ -561,7 +562,7 @@ fn token_refresh_syncs_matching_codex_auth_json() {
 
 	let codex_auth = fs::read_to_string(&codex_auth_path).expect("Codex auth should read");
 	let codex_auth_json =
-		serde_json::from_str::<serde_json::Value>(&codex_auth).expect("Codex auth should parse");
+		serde_json::from_str::<Value>(&codex_auth).expect("Codex auth should parse");
 
 	assert_eq!(codex_auth_json["tokens"]["account_id"], "acct_sync");
 	assert_eq!(codex_auth_json["tokens"]["id_token"], "id-new");
@@ -608,7 +609,7 @@ fn token_refresh_leaves_nonmatching_codex_auth_json_unchanged() {
 
 	let codex_auth = fs::read_to_string(&codex_auth_path).expect("Codex auth should read");
 	let codex_auth_json =
-		serde_json::from_str::<serde_json::Value>(&codex_auth).expect("Codex auth should parse");
+		serde_json::from_str::<Value>(&codex_auth).expect("Codex auth should parse");
 
 	assert_eq!(codex_auth_json["tokens"]["account_id"], "acct_other");
 	assert_eq!(codex_auth_json["tokens"]["id_token"], "id-other");

@@ -1,11 +1,9 @@
-use std::path::Path;
-
-use color_eyre::Report;
-
 use crate::{
 	agent::AppServerProcessEnv,
 	git_credentials::GitSigningConfig,
-	orchestrator::{AgentGitCredentialsUnavailable, Result, ServiceConfig},
+	orchestrator::execution::{
+		AgentGitCredentialsUnavailable, Path, Report, Result, ServiceConfig,
+	},
 };
 
 pub(crate) struct AgentGitCredentialEnvironment {

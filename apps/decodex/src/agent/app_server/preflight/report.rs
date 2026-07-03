@@ -1,19 +1,12 @@
-use std::{
-	collections::BTreeMap,
-	error::Error,
-	fmt::{self, Display, Formatter},
-};
-
-use serde::Serialize;
-
-use super::super::constants::{
-	PREFLIGHT_CHECK_CONFIG, PREFLIGHT_CHECK_MCP, PREFLIGHT_CHECK_MODEL,
-	PREFLIGHT_CHECK_MODEL_PROVIDER, PREFLIGHT_CHECK_PLUGINS, PREFLIGHT_CHECK_SKILLS,
+use crate::agent::app_server::preflight::{
+	BTreeMap, Display, Error, Formatter, PREFLIGHT_CHECK_CONFIG, PREFLIGHT_CHECK_MCP,
+	PREFLIGHT_CHECK_MODEL, PREFLIGHT_CHECK_MODEL_PROVIDER, PREFLIGHT_CHECK_PLUGINS,
+	PREFLIGHT_CHECK_SKILLS, Serialize, fmt::Result,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(in crate::agent::app_server) enum AppServerCapabilityPreflightStatus {
+pub(crate) enum AppServerCapabilityPreflightStatus {
 	Ok,
 	Blocked,
 }
@@ -34,7 +27,7 @@ impl AppServerCapabilityPreflightReport {
 	}
 
 	#[cfg(test)]
-	pub(in crate::agent::app_server) fn checks(&self) -> &[AppServerCapabilityPreflightCheck] {
+	pub(crate) fn checks(&self) -> &[AppServerCapabilityPreflightCheck] {
 		&self.checks
 	}
 
@@ -42,7 +35,7 @@ impl AppServerCapabilityPreflightReport {
 		self.checks.len()
 	}
 
-	pub(in crate::agent::app_server) fn push_ok(
+	pub(crate) fn push_ok(
 		&mut self,
 		name: &'static str,
 		summary: impl Into<String>,
@@ -56,7 +49,7 @@ impl AppServerCapabilityPreflightReport {
 		});
 	}
 
-	pub(super) fn push_blocked(
+	pub(crate) fn push_blocked(
 		&mut self,
 		name: &'static str,
 		summary: impl Into<String>,
@@ -70,11 +63,11 @@ impl AppServerCapabilityPreflightReport {
 		});
 	}
 
-	pub(in crate::agent::app_server) fn has_blockers(&self) -> bool {
+	pub(crate) fn has_blockers(&self) -> bool {
 		self.checks.iter().any(|check| check.status == AppServerCapabilityPreflightStatus::Blocked)
 	}
 
-	pub(in crate::agent::app_server) fn blocker_summary(&self) -> String {
+	pub(crate) fn blocker_summary(&self) -> String {
 		let blockers = self
 			.checks
 			.iter()
@@ -92,11 +85,11 @@ pub(crate) struct AppServerCapabilityPreflightFailure {
 	report: AppServerCapabilityPreflightReport,
 }
 impl AppServerCapabilityPreflightFailure {
-	pub(super) fn blocked(report: AppServerCapabilityPreflightReport) -> Self {
+	pub(crate) fn blocked(report: AppServerCapabilityPreflightReport) -> Self {
 		Self { kind: AppServerCapabilityPreflightFailureKind::BlockedState, report }
 	}
 
-	pub(in crate::agent::app_server) fn method_failed(
+	pub(crate) fn method_failed(
 		method: &'static str,
 		error: String,
 		report: AppServerCapabilityPreflightReport,
@@ -111,7 +104,7 @@ impl AppServerCapabilityPreflightFailure {
 		}
 	}
 
-	pub(super) fn method_timed_out(
+	pub(crate) fn method_timed_out(
 		method: &'static str,
 		error: String,
 		report: AppServerCapabilityPreflightReport,
@@ -257,13 +250,13 @@ impl AppServerCapabilityPreflightFailure {
 	}
 
 	#[cfg(test)]
-	pub(in crate::agent::app_server) fn report(&self) -> &AppServerCapabilityPreflightReport {
+	pub(crate) fn report(&self) -> &AppServerCapabilityPreflightReport {
 		&self.report
 	}
 }
 
 impl Display for AppServerCapabilityPreflightFailure {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
 		write!(formatter, "app_server_preflight_failed: {}", self.blocker_summary())
 	}
 }
@@ -271,12 +264,24 @@ impl Display for AppServerCapabilityPreflightFailure {
 impl Error for AppServerCapabilityPreflightFailure {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(in crate::agent::app_server) struct AppServerCapabilityPreflightCheck {
-	pub(in crate::agent::app_server) name: &'static str,
-	pub(in crate::agent::app_server) status: AppServerCapabilityPreflightStatus,
-	pub(in crate::agent::app_server) summary: String,
+pub(crate) struct AppServerCapabilityPreflightCheck {
+	pub(crate) name: &'static str,
+	pub(crate) status: AppServerCapabilityPreflightStatus,
+	pub(crate) summary: String,
 	#[serde(skip_serializing_if = "BTreeMap::is_empty")]
-	pub(in crate::agent::app_server) details: BTreeMap<String, String>,
+	pub(crate) details: BTreeMap<String, String>,
+}
+
+pub(crate) fn check_name_for_method(method: &str) -> &'static str {
+	match method {
+		"config/read" => PREFLIGHT_CHECK_CONFIG,
+		"model/list" => PREFLIGHT_CHECK_MODEL,
+		"modelProvider/capabilities/read" => PREFLIGHT_CHECK_MODEL_PROVIDER,
+		"skills/list" => PREFLIGHT_CHECK_SKILLS,
+		"plugin/list" => PREFLIGHT_CHECK_PLUGINS,
+		"mcpServerStatus/list" => PREFLIGHT_CHECK_MCP,
+		_ => "introspection",
+	}
 }
 
 fn preflight_check_blocker_summary(check: &AppServerCapabilityPreflightCheck) -> String {
@@ -295,16 +300,4 @@ fn preflight_check_blocker_summary(check: &AppServerCapabilityPreflightCheck) ->
 	}
 
 	summary
-}
-
-pub(super) fn check_name_for_method(method: &str) -> &'static str {
-	match method {
-		"config/read" => PREFLIGHT_CHECK_CONFIG,
-		"model/list" => PREFLIGHT_CHECK_MODEL,
-		"modelProvider/capabilities/read" => PREFLIGHT_CHECK_MODEL_PROVIDER,
-		"skills/list" => PREFLIGHT_CHECK_SKILLS,
-		"plugin/list" => PREFLIGHT_CHECK_PLUGINS,
-		"mcpServerStatus/list" => PREFLIGHT_CHECK_MCP,
-		_ => "introspection",
-	}
 }

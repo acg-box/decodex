@@ -6,20 +6,20 @@ mod render;
 mod repo_gate;
 mod review;
 
-pub(in crate::orchestrator) use self::render::render_private_evidence_readback;
+pub(crate) use self::render::render_private_evidence_readback;
 
-use std::collections::BTreeSet;
-use std::path::Path;
+use std::{collections::BTreeSet, path::Path};
 
-use crate::orchestrator::agent_evidence::{
-	self, AgentPrivateEvidenceRef, EvidenceRequest, OperatorRunStatus,
-	PRIVATE_EVIDENCE_READBACK_SCHEMA, PrivateEvidenceReadback, PrivateEvidenceReadbackEvent,
-	PrivateEvidenceTarget, ProjectRunStatus, Result, ServiceConfig, StateStore, eyre, state,
+use crate::{
+	orchestrator::agent_evidence::{
+		self, AgentPrivateEvidenceRef, EvidenceRequest, OperatorRunStatus,
+		PRIVATE_EVIDENCE_READBACK_SCHEMA, PrivateEvidenceReadback, PrivateEvidenceReadbackEvent,
+		PrivateEvidenceTarget, ProjectRunStatus, Result, ServiceConfig, StateStore, eyre,
+	},
+	state,
 };
 
-pub(in crate::orchestrator) fn render_private_evidence_reference(
-	run: &OperatorRunStatus,
-) -> String {
+pub(crate) fn render_private_evidence_reference(run: &OperatorRunStatus) -> String {
 	let private_evidence = agent_private_evidence_ref(run);
 
 	format!(
@@ -31,13 +31,11 @@ pub(in crate::orchestrator) fn render_private_evidence_reference(
 	)
 }
 
-pub(in crate::orchestrator) fn agent_private_evidence_ref(
-	run: &OperatorRunStatus,
-) -> AgentPrivateEvidenceRef {
+pub(crate) fn agent_private_evidence_ref(run: &OperatorRunStatus) -> AgentPrivateEvidenceRef {
 	run.private_evidence.clone()
 }
 
-pub(in crate::orchestrator) fn private_evidence_ref_for_run_fields(
+pub(crate) fn private_evidence_ref_for_run_fields(
 	project_id: &str,
 	project_config_path: &Path,
 	issue_id: &str,
@@ -60,7 +58,7 @@ pub(in crate::orchestrator) fn private_evidence_ref_for_run_fields(
 	}
 }
 
-pub(in crate::orchestrator) fn private_evidence_ref_for_parts(
+pub(crate) fn private_evidence_ref_for_parts(
 	project_id: &str,
 	issue_id: &str,
 	run_id: &str,
@@ -69,7 +67,7 @@ pub(in crate::orchestrator) fn private_evidence_ref_for_parts(
 	format!("private-evidence:{project_id}/{issue_id}/{run_id}/{attempt_number}")
 }
 
-pub(in crate::orchestrator) fn shell_quote(raw: &str) -> String {
+pub(crate) fn shell_quote(raw: &str) -> String {
 	if !raw.is_empty()
 		&& raw.bytes().all(|byte| {
 			byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'/' | b':')
@@ -80,7 +78,7 @@ pub(in crate::orchestrator) fn shell_quote(raw: &str) -> String {
 	format!("'{}'", raw.replace('\'', "'\\''"))
 }
 
-pub(in crate::orchestrator) fn build_private_evidence_readback(
+pub(crate) fn build_private_evidence_readback(
 	state_store: &StateStore,
 	project: &ServiceConfig,
 	request: &EvidenceRequest<'_>,

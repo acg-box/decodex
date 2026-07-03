@@ -7,8 +7,8 @@ use std::{
 
 use clap::{Args, Subcommand};
 
-use super::ProjectConfigArgs;
 use crate::{
+	cli::ProjectConfigArgs,
 	mcp::{self, McpCapabilityProfile, McpServeRequest, McpTransport},
 	orchestrator::{
 		self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, DiagnoseRequest, EvidenceRequest,

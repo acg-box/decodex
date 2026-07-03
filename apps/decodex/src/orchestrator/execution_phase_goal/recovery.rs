@@ -1,22 +1,20 @@
 use color_eyre::Report;
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use super::{
-	super::{
-		AUTHORITY_DECISION_REQUEST_EVENT_TYPE, IssueRunPlan,
+use crate::{
+	agent::{PhaseGoalKind, PhaseGoalTransition},
+	orchestrator::{
+		self, AUTHORITY_DECISION_REQUEST_EVENT_TYPE, IssueRunPlan,
 		PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE,
 		PHASE_GOAL_RECOVERY_EVENT_TYPE, RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE, Result,
 		RunSummary, ServiceConfig, StateStore, WorkflowDocument,
-		retained_progress_source_error_class, run_summary_from_issue_run,
-		worktree_has_tracked_changes,
+		execution_phase_goal::RepoGatePhaseGoalController,
 	},
-	RepoGatePhaseGoalController,
 };
-use crate::agent::{PhaseGoalKind, PhaseGoalTransition};
 
-pub(in crate::orchestrator) struct PhaseGoalRecoveryContinuation {
-	pub(in crate::orchestrator) source_phase: PhaseGoalKind,
-	pub(in crate::orchestrator) next_phase: PhaseGoalKind,
+pub(crate) struct PhaseGoalRecoveryContinuation {
+	pub(crate) source_phase: PhaseGoalKind,
+	pub(crate) next_phase: PhaseGoalKind,
 }
 
 #[derive(Clone, Copy)]
@@ -30,7 +28,7 @@ struct PhaseGoalRecoveryRecord<'a> {
 	source_error_message: Option<&'a str>,
 }
 
-pub(in crate::orchestrator) fn maybe_continue_after_phase_goal_recovery(
+pub(crate) fn maybe_continue_after_phase_goal_recovery(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
@@ -49,7 +47,7 @@ pub(in crate::orchestrator) fn maybe_continue_after_phase_goal_recovery(
 	else {
 		return Ok(None);
 	};
-	let mut summary = run_summary_from_issue_run(project.service_id(), issue_run);
+	let mut summary = orchestrator::run_summary_from_issue_run(project.service_id(), issue_run);
 
 	summary.continuation_pending = true;
 
@@ -68,7 +66,7 @@ pub(in crate::orchestrator) fn maybe_continue_after_phase_goal_recovery(
 	Ok(Some(summary))
 }
 
-pub(in crate::orchestrator) fn recover_phase_goal_continuation(
+pub(crate) fn recover_phase_goal_continuation(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
@@ -76,7 +74,7 @@ pub(in crate::orchestrator) fn recover_phase_goal_continuation(
 	source_error_class: &str,
 	source_error_message: Option<&str>,
 ) -> Result<Option<PhaseGoalRecoveryContinuation>> {
-	if !worktree_has_tracked_changes(&issue_run.worktree.path) {
+	if !orchestrator::worktree_has_tracked_changes(&issue_run.worktree.path) {
 		return Ok(None);
 	}
 
@@ -118,27 +116,7 @@ pub(in crate::orchestrator) fn recover_phase_goal_continuation(
 	Ok(Some(PhaseGoalRecoveryContinuation { source_phase, next_phase }))
 }
 
-fn phase_goal_recovery_source_error_class(error: &Report) -> &'static str {
-	retained_progress_source_error_class(error).unwrap_or("app_server_run_failed")
-}
-
-fn phase_goal_recovery_source_error_message(error: &Report) -> String {
-	truncate_phase_goal_recovery_error(error.to_string(), 512)
-}
-
-fn truncate_phase_goal_recovery_error(value: String, max_chars: usize) -> String {
-	if value.chars().count() <= max_chars {
-		return value;
-	}
-
-	let mut truncated = value.chars().take(max_chars).collect::<String>();
-
-	truncated.push_str("...");
-
-	truncated
-}
-
-pub(in crate::orchestrator) fn latest_phase_goal_recovery_candidate(
+pub(crate) fn latest_phase_goal_recovery_candidate(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -185,7 +163,7 @@ pub(in crate::orchestrator) fn latest_phase_goal_recovery_candidate(
 	Ok(None)
 }
 
-pub(in crate::orchestrator) fn latest_open_issue_phase_goal_before_attempt(
+pub(crate) fn latest_open_issue_phase_goal_before_attempt(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_id: &str,
@@ -236,7 +214,7 @@ pub(in crate::orchestrator) fn latest_open_issue_phase_goal_before_attempt(
 	Ok(None)
 }
 
-pub(in crate::orchestrator) fn issue_has_blocking_lane_decision_evidence(
+pub(crate) fn issue_has_blocking_lane_decision_evidence(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_id: &str,
@@ -267,6 +245,37 @@ pub(in crate::orchestrator) fn issue_has_blocking_lane_decision_evidence(
 	}
 
 	Ok(false)
+}
+
+pub(super) fn phase_goal_kind_from_str(value: &str) -> Option<PhaseGoalKind> {
+	match value {
+		"implement_to_validation_ready" => Some(PhaseGoalKind::ImplementToValidationReady),
+		"repair_validation_failures" => Some(PhaseGoalKind::RepairValidationFailures),
+		"repair_accepted_review_findings" => Some(PhaseGoalKind::RepairAcceptedReviewFindings),
+		"review_repair_evidence" => Some(PhaseGoalKind::ReviewRepairEvidence),
+		"handoff_evidence" => Some(PhaseGoalKind::HandoffEvidence),
+		_ => None,
+	}
+}
+
+fn phase_goal_recovery_source_error_class(error: &Report) -> &'static str {
+	orchestrator::retained_progress_source_error_class(error).unwrap_or("app_server_run_failed")
+}
+
+fn phase_goal_recovery_source_error_message(error: &Report) -> String {
+	truncate_phase_goal_recovery_error(error.to_string(), 512)
+}
+
+fn truncate_phase_goal_recovery_error(value: String, max_chars: usize) -> String {
+	if value.chars().count() <= max_chars {
+		return value;
+	}
+
+	let mut truncated = value.chars().take(max_chars).collect::<String>();
+
+	truncated.push_str("...");
+
+	truncated
 }
 
 fn lane_decision_event_blocks_automatic_recovery(payload: &Value) -> bool {
@@ -395,7 +404,7 @@ fn record_phase_goal_recovery_continuation(record: PhaseGoalRecoveryRecord<'_>) 
 		&record.issue_run.run_id,
 		record.issue_run.attempt_number,
 		PHASE_GOAL_RECOVERY_EVENT_TYPE,
-		json!({
+		serde_json::json!({
 			"schema": "decodex.phase_goal_signal/1",
 			"phase": record.source_phase.as_str(),
 			"signal": "phase_goal_recovered",
@@ -420,7 +429,7 @@ fn record_phase_goal_recovery_blocked(
 		&record.issue_run.run_id,
 		record.issue_run.attempt_number,
 		PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE,
-		json!({
+		serde_json::json!({
 			"schema": "decodex.phase_goal_signal/1",
 			"phase": record.source_phase.as_str(),
 			"signal": "continuation_budget_exhausted",
@@ -435,15 +444,4 @@ fn record_phase_goal_recovery_blocked(
 	)?;
 
 	Ok(())
-}
-
-pub(super) fn phase_goal_kind_from_str(value: &str) -> Option<PhaseGoalKind> {
-	match value {
-		"implement_to_validation_ready" => Some(PhaseGoalKind::ImplementToValidationReady),
-		"repair_validation_failures" => Some(PhaseGoalKind::RepairValidationFailures),
-		"repair_accepted_review_findings" => Some(PhaseGoalKind::RepairAcceptedReviewFindings),
-		"review_repair_evidence" => Some(PhaseGoalKind::ReviewRepairEvidence),
-		"handoff_evidence" => Some(PhaseGoalKind::HandoffEvidence),
-		_ => None,
-	}
 }

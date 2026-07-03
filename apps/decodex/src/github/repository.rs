@@ -2,9 +2,10 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::prelude::{Result, eyre};
-
-use super::{configure_gh_command, gh_command_with_config, parse_pull_request_url};
+use crate::{
+	github::{self},
+	prelude::{Result, eyre},
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RepositoryContext {
@@ -39,12 +40,12 @@ pub(crate) fn inspect_repository_context(
 	github_token: &str,
 	gh_command_path: Option<&Path>,
 ) -> Result<RepositoryContext> {
-	let mut command = gh_command_with_config(gh_command_path);
+	let mut command = github::gh_command_with_config(gh_command_path);
 
 	command.args(["repo", "view", "--json", "name,owner,defaultBranchRef,mergeCommitAllowed"]);
 	command.current_dir(cwd);
 
-	configure_gh_command(&mut command, github_token);
+	github::configure_gh_command(&mut command, github_token);
 
 	let output = command.output()?;
 
@@ -68,7 +69,7 @@ pub(crate) fn pull_request_matches_repository(
 	pr_url: &str,
 	repository: &RepositoryContext,
 ) -> Result<bool> {
-	let locator = parse_pull_request_url(pr_url)?;
+	let locator = github::parse_pull_request_url(pr_url)?;
 
 	Ok(locator.owner.eq_ignore_ascii_case(&repository.owner)
 		&& locator.repo.eq_ignore_ascii_case(&repository.name))

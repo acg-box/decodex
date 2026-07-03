@@ -1,5 +1,4 @@
-#[cfg(unix)]
-use std::os::unix::ffi::OsStringExt as _;
+#[cfg(unix)] use std::os::unix::ffi::OsStringExt as _;
 use std::{
 	ffi::OsString,
 	fs,
@@ -8,13 +7,15 @@ use std::{
 	process::Command,
 };
 
-use super::canonicalize_path_best_effort;
-use crate::prelude::{Result, eyre};
+use crate::{
+	config,
+	prelude::{Result, eyre},
+};
 
 /// Canonical repository root for the current Git checkout.
 pub fn canonical_repo_root_for_checkout(cwd: &Path) -> Result<Option<PathBuf>> {
 	let worktree_root = git_absolute_rev_parse(cwd, "show-toplevel")?
-		.map(|path| canonicalize_path_best_effort(&path));
+		.map(|path| config::canonicalize_path_best_effort(&path));
 
 	if let Some(shared_repo_root) = shared_repo_root_for_checkout(cwd, worktree_root.as_deref())? {
 		return Ok(Some(shared_repo_root));
@@ -25,27 +26,35 @@ pub fn canonical_repo_root_for_checkout(cwd: &Path) -> Result<Option<PathBuf>> {
 
 /// Absolute Git administrative directory for the current checkout.
 pub fn git_dir_for_checkout(cwd: &Path) -> Result<Option<PathBuf>> {
-	Ok(git_absolute_rev_parse(cwd, "git-dir")?.map(|path| canonicalize_path_best_effort(&path)))
+	Ok(git_absolute_rev_parse(cwd, "git-dir")?
+		.map(|path| config::canonicalize_path_best_effort(&path)))
 }
 
 /// Whether two Git checkouts belong to the same shared repository.
 pub fn checkouts_share_repository(a: &Path, b: &Path) -> Result<bool> {
 	let a_common_dir = git_absolute_rev_parse(a, "git-common-dir")?
-		.map(|path| canonicalize_path_best_effort(&path));
+		.map(|path| config::canonicalize_path_best_effort(&path));
 	let b_common_dir = git_absolute_rev_parse(b, "git-common-dir")?
-		.map(|path| canonicalize_path_best_effort(&path));
+		.map(|path| config::canonicalize_path_best_effort(&path));
 
 	Ok(a_common_dir.is_some() && a_common_dir == b_common_dir)
+}
+
+pub(super) fn path_buf_from_git_line_output(output: &[u8]) -> Result<Option<PathBuf>> {
+	let resolved = output.strip_suffix(b"\n").unwrap_or(output);
+	let resolved = resolved.strip_suffix(b"\r").unwrap_or(resolved);
+
+	path_buf_from_git_bytes(resolved)
 }
 
 fn shared_repo_root_for_checkout(
 	cwd: &Path,
 	worktree_root: Option<&Path>,
 ) -> Result<Option<PathBuf>> {
-	let git_dir =
-		git_absolute_rev_parse(cwd, "git-dir")?.map(|path| canonicalize_path_best_effort(&path));
+	let git_dir = git_absolute_rev_parse(cwd, "git-dir")?
+		.map(|path| config::canonicalize_path_best_effort(&path));
 	let common_dir = git_absolute_rev_parse(cwd, "git-common-dir")?
-		.map(|path| canonicalize_path_best_effort(&path));
+		.map(|path| config::canonicalize_path_best_effort(&path));
 	let prefers_shared_repo_root = git_dir.is_some() && git_dir != common_dir;
 
 	if prefers_shared_repo_root {
@@ -87,20 +96,20 @@ fn repo_root_from_git_worktree_list(
 	worktree_root: &Path,
 ) -> Result<Option<PathBuf>> {
 	for path in git_worktree_roots(cwd)? {
-		let path = canonicalize_path_best_effort(&path);
+		let path = config::canonicalize_path_best_effort(&path);
 
 		if path == worktree_root || path == common_dir {
 			continue;
 		}
 		if git_absolute_rev_parse(&path, "git-common-dir")?
-			.map(|path| canonicalize_path_best_effort(&path))
+			.map(|path| config::canonicalize_path_best_effort(&path))
 			.as_deref()
 			!= Some(common_dir)
 		{
 			continue;
 		}
 		if git_absolute_rev_parse(&path, "git-dir")?
-			.map(|path| canonicalize_path_best_effort(&path))
+			.map(|path| config::canonicalize_path_best_effort(&path))
 			.as_deref()
 			== Some(common_dir)
 		{
@@ -261,13 +270,6 @@ fn git_absolute_rev_parse(cwd: &Path, mode: &str) -> Result<Option<PathBuf>> {
 	}
 
 	path_buf_from_git_line_output(&output.stdout)
-}
-
-pub(super) fn path_buf_from_git_line_output(output: &[u8]) -> Result<Option<PathBuf>> {
-	let resolved = output.strip_suffix(b"\n").unwrap_or(output);
-	let resolved = resolved.strip_suffix(b"\r").unwrap_or(resolved);
-
-	path_buf_from_git_bytes(resolved)
 }
 
 #[cfg(unix)]

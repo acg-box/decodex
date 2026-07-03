@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+	error::Error,
+	fmt::{Display, Formatter},
+};
 
 #[derive(Debug)]
 pub(crate) struct AppServerHomePreflightFailure {
@@ -36,22 +39,22 @@ impl AppServerHomePreflightFailure {
 }
 
 impl Display for AppServerHomePreflightFailure {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(&self.details)
 	}
 }
 
-impl std::error::Error for AppServerHomePreflightFailure {}
+impl Error for AppServerHomePreflightFailure {}
 
 #[derive(Debug)]
 pub(crate) struct AppServerOutputTimeout;
 impl Display for AppServerOutputTimeout {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("Timed out while waiting for app-server output.")
 	}
 }
 
-impl std::error::Error for AppServerOutputTimeout {}
+impl Error for AppServerOutputTimeout {}
 
 #[derive(Debug)]
 pub(crate) struct AppServerTransportFailure {
@@ -100,12 +103,12 @@ impl AppServerTransportFailure {
 }
 
 impl Display for AppServerTransportFailure {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(&self.details)
 	}
 }
 
-impl std::error::Error for AppServerTransportFailure {}
+impl Error for AppServerTransportFailure {}
 
 #[derive(Debug)]
 enum AppServerHomePreflightFailureKind {

@@ -2,10 +2,10 @@
 
 use serde_json::{Map, Value};
 
-use crate::artifact_validation::support;
 use crate::artifact_validation::{
 	SIGNAL_CONFIDENCE,
 	constants::{SIGNAL_IMPACT, SIGNAL_KINDS, SOURCE_ITEM_KINDS},
+	support,
 };
 
 pub(super) fn validate_signal(entry: &Map<String, Value>, errors: &mut Vec<String>) {

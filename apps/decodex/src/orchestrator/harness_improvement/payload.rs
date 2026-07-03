@@ -1,5 +1,5 @@
-use super::{
-	DecisionContractRecord, ExecutionConflictDomain, ExecutionProgramRecord,
+use crate::orchestrator::harness_improvement::{
+	self, DecisionContractRecord, ExecutionConflictDomain, ExecutionProgramRecord,
 	HARNESS_OUTCOME_SCHEMA, HarnessAuthorityBoundaryOutcome, HarnessImprovementCandidateSummary,
 	HarnessLinearProjectionSummary, HarnessManualAttentionOutcome, HarnessOutcomeContract,
 	HarnessOutcomeKind, HarnessOutcomePayload, HarnessOutcomeProgram, HarnessOutcomeProgramNode,
@@ -7,11 +7,7 @@ use super::{
 	HarnessPhaseGoalOutcome, HarnessPrLifecycleOutcome, HarnessRepairOutcome, HarnessReviewOutcome,
 	HarnessSourceIntent, HarnessValidationOutcome, LinearExecutionEventRecord,
 	PrivateExecutionEvent, Result, StateStore, Value,
-	candidates::{
-		authority_boundary_final_reason_mentions_underspecified, first_decision_contract_target,
-		json_array_len, json_string,
-	},
-	harness_improvement_candidates,
+	candidates::{self},
 };
 
 pub(super) fn harness_contracts_for_issue(
@@ -101,8 +97,13 @@ pub(super) fn harness_outcome_payload(
 		outcome: input.outcome.as_str().to_owned(),
 		pr_urls: harness_pr_urls(input.pr_url, linear_records),
 	};
-	let improvement_candidates =
-		harness_improvement_candidates(input, &contracts, &programs, signals, &linear_projection);
+	let improvement_candidates = harness_improvement::harness_improvement_candidates(
+		input,
+		&contracts,
+		&programs,
+		signals,
+		&linear_projection,
+	);
 	let payload = HarnessOutcomePayload {
 		schema: HARNESS_OUTCOME_SCHEMA,
 		record_version: 1,
@@ -129,6 +130,77 @@ pub(super) fn harness_outcome_payload(
 	};
 
 	serde_json::to_value(payload).map_err(Into::into)
+}
+
+pub(super) fn harness_outcome_signals(
+	events: &[PrivateExecutionEvent],
+	_outcome: HarnessOutcomeKind,
+	error_class: Option<&str>,
+) -> HarnessOutcomeSignals {
+	let mut signals = HarnessOutcomeSignals::default();
+
+	if let Some(error_class) =
+		error_class.filter(|class| harness_error_class_is_validation_failure(class))
+	{
+		signals.validation_failure_count += 1;
+
+		signals.validation_failure_classes.insert(error_class.to_owned());
+	}
+
+	for event in events {
+		match event.event_type() {
+			"phase_goal_completed" | "phase_goal_set" =>
+				push_phase_goal_signal(&mut signals, event),
+			"review_checkpoint" => push_review_signal(&mut signals, event.payload()),
+			"loop_guardrail_checkpoint" => push_guardrail_signal(&mut signals, event.payload()),
+			"authority_boundary_check" =>
+				push_authority_boundary_signal(&mut signals, event.payload()),
+			"architecture_recovery_terminal" => {
+				push_architecture_recovery_signal(&mut signals, event.payload());
+			},
+			"progress_checkpoint" => push_progress_signal(&mut signals, event.payload()),
+			_ => {},
+		}
+	}
+
+	signals
+}
+
+pub(super) fn harness_linear_projection(
+	linear_records: &[LinearExecutionEventRecord],
+) -> HarnessLinearProjectionSummary {
+	let mut event_types =
+		linear_records.iter().map(|record| record.event_type.clone()).collect::<Vec<_>>();
+
+	event_types.sort();
+	event_types.dedup();
+
+	let final_record = linear_records
+		.iter()
+		.max_by(|left, right| left.event_timestamp.cmp(&right.event_timestamp));
+
+	HarnessLinearProjectionSummary {
+		event_types,
+		final_event_type: final_record.map(|record| record.event_type.clone()),
+		final_error_class: final_record.and_then(|record| record.error_class.clone()),
+		final_terminal_path: final_record.and_then(|record| record.terminal_path.clone()),
+	}
+}
+
+pub(super) fn harness_pr_urls(
+	explicit_pr_url: Option<&str>,
+	linear_records: &[LinearExecutionEventRecord],
+) -> Vec<String> {
+	let mut pr_urls =
+		explicit_pr_url.into_iter().map(str::to_owned).collect::<std::collections::BTreeSet<_>>();
+
+	for record in linear_records {
+		if let Some(pr_url) = &record.pr_url {
+			pr_urls.insert(pr_url.clone());
+		}
+	}
+
+	pr_urls.into_iter().collect()
 }
 
 fn harness_source_intent(record: &DecisionContractRecord) -> HarnessSourceIntent {
@@ -199,40 +271,6 @@ fn harness_conflict_domain_label(domain: &ExecutionConflictDomain) -> String {
 	format!("{}:{}", domain.kind().as_str(), domain.key())
 }
 
-pub(super) fn harness_outcome_signals(
-	events: &[PrivateExecutionEvent],
-	_outcome: HarnessOutcomeKind,
-	error_class: Option<&str>,
-) -> HarnessOutcomeSignals {
-	let mut signals = HarnessOutcomeSignals::default();
-
-	if let Some(error_class) =
-		error_class.filter(|class| harness_error_class_is_validation_failure(class))
-	{
-		signals.validation_failure_count += 1;
-
-		signals.validation_failure_classes.insert(error_class.to_owned());
-	}
-
-	for event in events {
-		match event.event_type() {
-			"phase_goal_completed" | "phase_goal_set" =>
-				push_phase_goal_signal(&mut signals, event),
-			"review_checkpoint" => push_review_signal(&mut signals, event.payload()),
-			"loop_guardrail_checkpoint" => push_guardrail_signal(&mut signals, event.payload()),
-			"authority_boundary_check" =>
-				push_authority_boundary_signal(&mut signals, event.payload()),
-			"architecture_recovery_terminal" => {
-				push_architecture_recovery_signal(&mut signals, event.payload());
-			},
-			"progress_checkpoint" => push_progress_signal(&mut signals, event.payload()),
-			_ => {},
-		}
-	}
-
-	signals
-}
-
 fn harness_error_class_is_validation_failure(error_class: &str) -> bool {
 	error_class.starts_with("repo_gate_")
 		|| matches!(error_class, "validation_repeat" | "validation_failure_repeated")
@@ -241,9 +279,11 @@ fn harness_error_class_is_validation_failure(error_class: &str) -> bool {
 fn push_phase_goal_signal(signals: &mut HarnessOutcomeSignals, event: &PrivateExecutionEvent) {
 	let payload = event.payload();
 	let nested = payload.get("payload").unwrap_or(payload);
-	let signal = json_string(nested.get("signal")).or_else(|| json_string(payload.get("signal")));
-	let phase = json_string(nested.get("phase")).or_else(|| json_string(payload.get("phase")));
-	let status = json_string(nested.get("status"));
+	let signal = candidates::json_string(nested.get("signal"))
+		.or_else(|| candidates::json_string(payload.get("signal")));
+	let phase = candidates::json_string(nested.get("phase"))
+		.or_else(|| candidates::json_string(payload.get("phase")));
+	let status = candidates::json_string(nested.get("status"));
 
 	if signal.as_deref() == Some("validation_fail") {
 		signals.validation_failure_count += 1;
@@ -263,7 +303,7 @@ fn push_phase_goal_signal(signals: &mut HarnessOutcomeSignals, event: &PrivateEx
 }
 
 fn push_review_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
-	if let Some(status) = json_string(payload.get("status")) {
+	if let Some(status) = candidates::json_string(payload.get("status")) {
 		signals.review_statuses.insert(status);
 	}
 
@@ -273,15 +313,15 @@ fn push_review_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
 
 	let review = payload.get("review").unwrap_or(payload);
 
-	signals.accepted_finding_count += json_array_len(review.get("accepted_findings"));
-	signals.rejected_finding_count += json_array_len(review.get("rejected_findings"));
+	signals.accepted_finding_count += candidates::json_array_len(review.get("accepted_findings"));
+	signals.rejected_finding_count += candidates::json_array_len(review.get("rejected_findings"));
 }
 
 fn push_guardrail_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
-	if let Some(reason) = json_string(payload.get("reason")) {
+	if let Some(reason) = candidates::json_string(payload.get("reason")) {
 		signals.guardrail_reasons.insert(reason);
 	}
-	if let Some(error_class) = json_string(payload.get("source_error_class"))
+	if let Some(error_class) = candidates::json_string(payload.get("source_error_class"))
 		&& harness_error_class_is_validation_failure(&error_class)
 	{
 		signals.validation_failure_count += 1;
@@ -291,17 +331,17 @@ fn push_guardrail_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
 }
 
 fn push_authority_boundary_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
-	if let Some(disposition) = json_string(payload.get("disposition")) {
+	if let Some(disposition) = candidates::json_string(payload.get("disposition")) {
 		signals.authority_boundary_dispositions.insert(disposition.clone());
 
 		if disposition != "within_authority" {
 			signals.authority_boundary_failed_check_count += 1;
 		}
 		if matches!(disposition.as_str(), "requires_human" | "insufficient_evidence")
-			&& json_array_len(payload.get("improvement_signals")) == 0
-			&& authority_boundary_final_reason_mentions_underspecified(payload)
+			&& candidates::json_array_len(payload.get("improvement_signals")) == 0
+			&& candidates::authority_boundary_final_reason_mentions_underspecified(payload)
 		{
-			let target = first_decision_contract_target(payload)
+			let target = candidates::first_decision_contract_target(payload)
 				.unwrap_or_else(|| String::from("issue:local-readback"));
 
 			signals.authority_boundary_candidates.push(HarnessImprovementCandidateSummary {
@@ -318,16 +358,16 @@ fn push_authority_boundary_signal(signals: &mut HarnessOutcomeSignals, payload: 
 	if let Some(improvement_signals) = payload.get("improvement_signals").and_then(Value::as_array)
 	{
 		for signal in improvement_signals {
-			let Some(kind) = json_string(signal.get("kind")) else {
+			let Some(kind) = candidates::json_string(signal.get("kind")) else {
 				continue;
 			};
-			let Some(reason_code) = json_string(signal.get("reason_code")) else {
+			let Some(reason_code) = candidates::json_string(signal.get("reason_code")) else {
 				continue;
 			};
-			let Some(target) = json_string(signal.get("target")) else {
+			let Some(target) = candidates::json_string(signal.get("target")) else {
 				continue;
 			};
-			let Some(recommendation) = json_string(signal.get("recommendation")) else {
+			let Some(recommendation) = candidates::json_string(signal.get("recommendation")) else {
 				continue;
 			};
 
@@ -343,51 +383,15 @@ fn push_authority_boundary_signal(signals: &mut HarnessOutcomeSignals, payload: 
 }
 
 fn push_architecture_recovery_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
-	if json_string(payload.get("reason_code")).as_deref() == Some("architecture_recovery_exhausted")
+	if candidates::json_string(payload.get("reason_code")).as_deref()
+		== Some("architecture_recovery_exhausted")
 	{
 		signals.architecture_recovery_budget_exhausted_count += 1;
 	}
 }
 
 fn push_progress_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
-	if json_string(payload.get("phase")).is_some_and(|phase| phase.contains("repair")) {
+	if candidates::json_string(payload.get("phase")).is_some_and(|phase| phase.contains("repair")) {
 		signals.repair_phase_events += 1;
 	}
-}
-
-pub(super) fn harness_linear_projection(
-	linear_records: &[LinearExecutionEventRecord],
-) -> HarnessLinearProjectionSummary {
-	let mut event_types =
-		linear_records.iter().map(|record| record.event_type.clone()).collect::<Vec<_>>();
-
-	event_types.sort();
-	event_types.dedup();
-
-	let final_record = linear_records
-		.iter()
-		.max_by(|left, right| left.event_timestamp.cmp(&right.event_timestamp));
-
-	HarnessLinearProjectionSummary {
-		event_types,
-		final_event_type: final_record.map(|record| record.event_type.clone()),
-		final_error_class: final_record.and_then(|record| record.error_class.clone()),
-		final_terminal_path: final_record.and_then(|record| record.terminal_path.clone()),
-	}
-}
-
-pub(super) fn harness_pr_urls(
-	explicit_pr_url: Option<&str>,
-	linear_records: &[LinearExecutionEventRecord],
-) -> Vec<String> {
-	let mut pr_urls =
-		explicit_pr_url.into_iter().map(str::to_owned).collect::<std::collections::BTreeSet<_>>();
-
-	for record in linear_records {
-		if let Some(pr_url) = &record.pr_url {
-			pr_urls.insert(pr_url.clone());
-		}
-	}
-
-	pr_urls.into_iter().collect()
 }

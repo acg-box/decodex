@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum CommandIntentKind {
+pub(crate) enum CommandIntentKind {
 	ContinueAttempt,
 	WaitExternal,
 	ScheduleRetry,
@@ -18,9 +18,8 @@ pub(in crate::orchestrator) enum CommandIntentKind {
 	ObserveLoopGuardrailCheckpoint,
 	ClearLoopGuardrailCheckpoint,
 }
-
 impl CommandIntentKind {
-	pub(in crate::orchestrator) const fn as_str(self) -> &'static str {
+	pub(crate) const fn as_str(self) -> &'static str {
 		match self {
 			Self::ContinueAttempt => "continue_attempt",
 			Self::WaitExternal => "wait_external",
@@ -44,7 +43,7 @@ impl CommandIntentKind {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum CommandFact {
+pub(crate) enum CommandFact {
 	ActiveOwnedWorkPresent,
 	AuthorityComplete,
 	ExternalSignalStillPending,
@@ -76,10 +75,9 @@ pub(in crate::orchestrator) enum CommandFact {
 	LoopGuardrailCheckpointObserved,
 	LoopGuardrailCheckpointCleared,
 }
-
 impl CommandFact {
 	#[allow(dead_code)]
-	pub(in crate::orchestrator) const fn as_str(self) -> &'static str {
+	pub(crate) const fn as_str(self) -> &'static str {
 		match self {
 			Self::ActiveOwnedWorkPresent => "active_owned_work_present",
 			Self::AuthorityComplete => "authority_complete",
@@ -117,15 +115,14 @@ impl CommandFact {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) struct CommandIntent {
-	pub(in crate::orchestrator) kind: CommandIntentKind,
-	pub(in crate::orchestrator) idempotency_key: String,
-	pub(in crate::orchestrator) preconditions: Vec<CommandFact>,
-	pub(in crate::orchestrator) expected_postconditions: Vec<CommandFact>,
+pub(crate) struct CommandIntent {
+	pub(crate) kind: CommandIntentKind,
+	pub(crate) idempotency_key: String,
+	pub(crate) preconditions: Vec<CommandFact>,
+	pub(crate) expected_postconditions: Vec<CommandFact>,
 }
-
 impl CommandIntent {
-	pub(in crate::orchestrator) fn new(
+	pub(crate) fn new(
 		kind: CommandIntentKind,
 		idempotency_key: impl Into<String>,
 		preconditions: Vec<CommandFact>,

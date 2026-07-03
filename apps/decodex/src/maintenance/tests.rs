@@ -8,11 +8,12 @@ use rusqlite::{Connection, OptionalExtension as _};
 use tempfile::TempDir;
 use time::OffsetDateTime;
 
-use crate::test_support::TestEnvVarGuard;
-
-use super::{
-	MaintenanceMode, MaintenancePolicy, MaintenancePruneRequest, MaintenanceScope,
-	ensure_protocol_event_summary_table, run_prune_with_policy,
+use crate::{
+	maintenance::{
+		self, MaintenanceMode, MaintenancePolicy, MaintenancePruneRequest, MaintenanceScope,
+	},
+	state::StateStore,
+	test_support::TestEnvVarGuard,
 };
 
 const TEST_RUNTIME_SCHEMA: &str = "PRAGMA journal_mode = WAL;
@@ -161,7 +162,7 @@ fn prune_compacts_only_terminal_unowned_protocol_events() {
 	insert_attempt(&connection, "fresh-run", "fresh-issue", "succeeded");
 	insert_event(&connection, "fresh-run", 1, fresh);
 
-	let report = run_prune_with_policy(
+	let report = maintenance::run_prune_with_policy(
 		MaintenancePruneRequest {
 			mode: MaintenanceMode::Apply,
 			scope: MaintenanceScope::Full,
@@ -197,7 +198,7 @@ fn auto_safe_prune_compacts_terminal_unowned_protocol_events() {
 	insert_attempt(&connection, "old-run", "old-issue", "succeeded");
 	insert_event(&connection, "old-run", 1, old);
 
-	let report = run_prune_with_policy(
+	let report = maintenance::run_prune_with_policy(
 		MaintenancePruneRequest {
 			mode: MaintenanceMode::Apply,
 			scope: MaintenanceScope::AutoSafe,
@@ -213,9 +214,8 @@ fn auto_safe_prune_compacts_terminal_unowned_protocol_events() {
 	assert_eq!(protocol_event_count(&connection, "old-run"), 0);
 	assert_eq!(protocol_summary_event_count(&connection, "old-run"), Some(1));
 
-	let state_store =
-		crate::state::StateStore::open(temp_dir.path().join(".codex/decodex/runtime.sqlite3"))
-			.expect("state store should reopen compacted runtime DB");
+	let state_store = StateStore::open(temp_dir.path().join(".codex/decodex/runtime.sqlite3"))
+		.expect("state store should reopen compacted runtime DB");
 	let runs = state_store
 		.list_recent_runs("decodex", 10)
 		.expect("recent runs should load compacted summary");
@@ -239,7 +239,7 @@ fn auto_safe_prune_warns_and_continues_when_runtime_candidate_detection_fails() 
 	fs::create_dir_all(&decodex_home).expect("decodex home should create");
 	Connection::open(decodex_home.join("runtime.sqlite3")).expect("empty runtime DB should create");
 
-	let report = run_prune_with_policy(
+	let report = maintenance::run_prune_with_policy(
 		MaintenancePruneRequest {
 			mode: MaintenanceMode::Apply,
 			scope: MaintenanceScope::AutoSafe,
@@ -270,7 +270,7 @@ fn prune_rotates_oversized_logs_and_agent_evidence_events() {
 	fs::write(&log_path, b"0123456789abcdef").expect("log should write");
 	fs::write(&events_path, b"0123456789abcdef").expect("events should write");
 
-	let report = run_prune_with_policy(
+	let report = maintenance::run_prune_with_policy(
 		MaintenancePruneRequest {
 			mode: MaintenanceMode::Apply,
 			scope: MaintenanceScope::AutoSafe,
@@ -343,7 +343,7 @@ fn prune_deletes_only_rotated_logs_and_agent_evidence_after_fourteen_days() {
 	set_file_modified(&old_events_path, old_time);
 	set_file_modified(&fresh_events_path, fresh_time);
 
-	let report = run_prune_with_policy(
+	let report = maintenance::run_prune_with_policy(
 		MaintenancePruneRequest {
 			mode: MaintenanceMode::Apply,
 			scope: MaintenanceScope::AutoSafe,
@@ -387,7 +387,7 @@ fn prune_deletes_old_legacy_git_askpass_helpers_from_registered_worktree_roots()
 	set_file_modified(&fresh_helper, fresh_time);
 	set_file_modified(&unrelated, old_time);
 
-	let report = run_prune_with_policy(
+	let report = maintenance::run_prune_with_policy(
 		MaintenancePruneRequest {
 			mode: MaintenanceMode::Apply,
 			scope: MaintenanceScope::AutoSafe,
@@ -451,7 +451,8 @@ fn bootstrap_test_runtime_db(temp_dir: &TempDir) -> Connection {
 
 	connection.execute_batch(TEST_RUNTIME_SCHEMA).expect("schema should bootstrap");
 
-	ensure_protocol_event_summary_table(&connection).expect("summary table should create");
+	maintenance::ensure_protocol_event_summary_table(&connection)
+		.expect("summary table should create");
 
 	connection
 }

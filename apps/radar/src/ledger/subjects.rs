@@ -1,6 +1,6 @@
 //! Radar subject extraction from artifact references.
 
-use serde_json::{Map, Value};
+use crate::ledger::{Map, Value};
 
 #[derive(Debug, Eq, PartialEq)]
 pub(super) struct RadarSubject {

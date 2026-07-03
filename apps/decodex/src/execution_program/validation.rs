@@ -1,7 +1,9 @@
 //! Shared validation helpers for execution-program payloads.
 
-use super::model::{EXECUTION_PROGRAM_RECORD_VERSION, EXECUTION_PROGRAM_SCHEMA};
-use crate::prelude::{Result, eyre};
+use crate::{
+	execution_program::model::{EXECUTION_PROGRAM_RECORD_VERSION, EXECUTION_PROGRAM_SCHEMA},
+	prelude::{Result, eyre},
+};
 
 pub(super) fn execution_program_schema() -> String {
 	EXECUTION_PROGRAM_SCHEMA.to_owned()

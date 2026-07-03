@@ -1,12 +1,11 @@
-use crate::orchestrator::agent_evidence;
-use crate::orchestrator::git_ops;
-use crate::orchestrator::status;
-use crate::orchestrator::status_run_projection::loop_status;
-use crate::orchestrator::{
-	AgentPrivateEvidenceRef, CodexAccountActivitySummary, OperatorLoopStatus,
-	ProjectLoopEvidenceSnapshot, ProjectRunStatus, RunActivityMarker, ServiceConfig,
+use crate::{
+	orchestrator::{
+		AgentPrivateEvidenceRef, CodexAccountActivitySummary, OperatorLoopStatus,
+		ProjectLoopEvidenceSnapshot, ProjectRunStatus, RunActivityMarker, ServiceConfig,
+		agent_evidence, git_ops, status, status_run_projection::loop_status,
+	},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
 pub(super) fn operator_run_accounts(
 	marker: Option<&RunActivityMarker>,

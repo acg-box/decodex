@@ -1,24 +1,21 @@
 use serde_json::Value;
 
 use crate::{
-	mcp::{McpCapabilityProfile, McpContext},
+	mcp::{
+		McpCapabilityProfile, McpContext,
+		tests::support::{self},
+	},
 	runtime,
-};
-
-use super::support::{
-	assert_no_sensitive_observability_content, isolated_mcp_runtime_home, project_mcp_context,
-	response_at, run_stdio, run_stdio_with_context, run_stdio_with_profile,
-	seed_mcp_test_private_control_evidence, seed_project_runtime_for_mcp_resources, test_repo,
 };
 
 #[test]
 fn tools_call_refuses_missing_plan_intent() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_plan","arguments":{}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 
 	assert_eq!(result["isError"], true);
 	assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.tool_validation_error/1");
@@ -28,17 +25,17 @@ fn tools_call_refuses_missing_plan_intent() {
 
 #[test]
 fn tools_call_lane_control_inspect_returns_mutating_preconditions() {
-	let repo = test_repo();
-	let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
+	let repo = support::test_repo();
+	let _runtime_home_guard = support::isolated_mcp_runtime_home(&repo);
 	let config_path = repo.path().join("project.toml");
 
-	seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+	support::seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
 
-	let responses = run_stdio_with_context(
-		project_mcp_context(repo.path(), &config_path),
+	let responses = support::run_stdio_with_context(
+		support::project_mcp_context(repo.path(), &config_path),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_lane_control","arguments":{"action":"inspect","issue":"PUB-012"}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 	let structured = &result["structuredContent"];
 
 	assert_eq!(result["isError"], false);
@@ -55,17 +52,17 @@ fn tools_call_lane_control_inspect_returns_mutating_preconditions() {
 		"turn-12"
 	);
 
-	assert_no_sensitive_observability_content(structured);
+	support::assert_no_sensitive_observability_content(structured);
 }
 
 #[test]
 fn tools_call_refuses_lane_control_mutation_without_inspect_precondition() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_lane_control","arguments":{"action":"interrupt","issue":"XY-994","runId":"run-1"}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 
 	assert_eq!(result["isError"], true);
 	assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.lane_control_result/1");
@@ -75,12 +72,12 @@ fn tools_call_refuses_lane_control_mutation_without_inspect_precondition() {
 
 #[test]
 fn tools_call_refuses_missing_lane_control_action() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_lane_control","arguments":{"issue":"XY-994"}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 
 	assert_eq!(result["isError"], true);
 	assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.tool_validation_error/1");
@@ -90,17 +87,17 @@ fn tools_call_refuses_missing_lane_control_action() {
 
 #[test]
 fn tools_call_lane_control_refuses_stale_expected_turn_id() {
-	let repo = test_repo();
-	let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
+	let repo = support::test_repo();
+	let _runtime_home_guard = support::isolated_mcp_runtime_home(&repo);
 	let config_path = repo.path().join("project.toml");
 
-	seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+	support::seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
 
-	let responses = run_stdio_with_context(
-		project_mcp_context(repo.path(), &config_path),
+	let responses = support::run_stdio_with_context(
+		support::project_mcp_context(repo.path(), &config_path),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_lane_control","arguments":{"action":"steer","projectId":"pubfi","issue":"PUB-012","runId":"run-12","expectedTurnId":"turn-old","message":"Please stop after the current safe point.","authority":{"reason":"operator requested steer","source":"mcp-test","inspectedRunId":"run-12","expectedTurnId":"turn-old"}}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 	let structured = &result["structuredContent"];
 
 	assert_eq!(result["isError"], true);
@@ -109,22 +106,22 @@ fn tools_call_lane_control_refuses_stale_expected_turn_id() {
 	assert_eq!(structured["result"]["failureClass"], "stale_expected_turn_id");
 	assert_eq!(structured["result"]["currentTurnId"], "turn-12");
 
-	assert_no_sensitive_observability_content(structured);
+	support::assert_no_sensitive_observability_content(structured);
 }
 
 #[test]
 fn tools_call_lane_control_steer_audits_and_queues_without_raw_message() {
-	let repo = test_repo();
-	let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
+	let repo = support::test_repo();
+	let _runtime_home_guard = support::isolated_mcp_runtime_home(&repo);
 	let config_path = repo.path().join("project.toml");
 
-	seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+	support::seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
 
-	let responses = run_stdio_with_context(
-		project_mcp_context(repo.path(), &config_path),
+	let responses = support::run_stdio_with_context(
+		support::project_mcp_context(repo.path(), &config_path),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_lane_control","arguments":{"action":"steer","projectId":"pubfi","issue":"PUB-012","runId":"run-12","expectedTurnId":"turn-12","message":"Please stop after the current safe point.","authority":{"reason":"operator requested steer","source":"mcp-test","inspectedRunId":"run-12","expectedTurnId":"turn-12"}}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 	let structured = &result["structuredContent"];
 	let serialized = serde_json::to_string(structured).expect("structured should serialize");
 
@@ -134,7 +131,7 @@ fn tools_call_lane_control_steer_audits_and_queues_without_raw_message() {
 	assert_eq!(structured["result"]["messageLineCount"], 1);
 	assert!(!serialized.contains("Please stop after the current safe point."));
 
-	assert_no_sensitive_observability_content(structured);
+	support::assert_no_sensitive_observability_content(structured);
 
 	let state_store = runtime::open_runtime_store().expect("runtime store should open");
 	let events = state_store
@@ -147,26 +144,26 @@ fn tools_call_lane_control_steer_audits_and_queues_without_raw_message() {
 
 #[test]
 fn tools_call_lane_control_soft_interrupt_accepts_and_force_requires_ack() {
-	let repo = test_repo();
-	let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
+	let repo = support::test_repo();
+	let _runtime_home_guard = support::isolated_mcp_runtime_home(&repo);
 	let config_path = repo.path().join("project.toml");
 
-	seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+	support::seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
 
-	let force_refusal = run_stdio_with_context(
-		project_mcp_context(repo.path(), &config_path),
+	let force_refusal = support::run_stdio_with_context(
+		support::project_mcp_context(repo.path(), &config_path),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_lane_control","arguments":{"action":"interrupt","projectId":"pubfi","issue":"PUB-012","runId":"run-12","force":true,"authority":{"reason":"operator requested hard fallback","source":"mcp-test","inspectedRunId":"run-12"}}}}"#,
 	);
-	let force_structured = &response_at(&force_refusal, 0)["result"]["structuredContent"];
+	let force_structured = &support::response_at(&force_refusal, 0)["result"]["structuredContent"];
 
 	assert_eq!(force_structured["status"], "refused");
 	assert_eq!(force_structured["reason"], "hard_fallback_authority_missing");
 
-	let soft_acceptance = run_stdio_with_context(
-		project_mcp_context(repo.path(), &config_path),
+	let soft_acceptance = support::run_stdio_with_context(
+		support::project_mcp_context(repo.path(), &config_path),
 		r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"decodex_lane_control","arguments":{"action":"interrupt","projectId":"pubfi","issue":"PUB-012","runId":"run-12","authority":{"reason":"operator requested soft interrupt","source":"mcp-test","inspectedRunId":"run-12"}}}}"#,
 	);
-	let soft_result = &response_at(&soft_acceptance, 0)["result"];
+	let soft_result = &support::response_at(&soft_acceptance, 0)["result"];
 	let soft_structured = &soft_result["structuredContent"];
 
 	assert_eq!(soft_result["isError"], false);
@@ -177,23 +174,23 @@ fn tools_call_lane_control_soft_interrupt_accepts_and_force_requires_ack() {
 	);
 	assert_eq!(soft_structured["result"]["hardInterrupt"], Value::Null);
 
-	assert_no_sensitive_observability_content(soft_structured);
+	support::assert_no_sensitive_observability_content(soft_structured);
 }
 
 #[test]
 fn tools_call_project_control_pauses_future_dispatch_only() {
-	let repo = test_repo();
-	let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
+	let repo = support::test_repo();
+	let _runtime_home_guard = support::isolated_mcp_runtime_home(&repo);
 	let config_path = repo.path().join("project.toml");
 
-	seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
-	seed_mcp_test_private_control_evidence();
+	support::seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+	support::seed_mcp_test_private_control_evidence();
 
-	let responses = run_stdio_with_context(
-		project_mcp_context(repo.path(), &config_path),
+	let responses = support::run_stdio_with_context(
+		support::project_mcp_context(repo.path(), &config_path),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_project_control","arguments":{"action":"pause","projectId":"pubfi","authority":{"reason":"operator pause","source":"mcp-test","acknowledgeFutureDispatchOnly":true}}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 	let structured = &result["structuredContent"];
 
 	assert_eq!(result["isError"], false);
@@ -220,8 +217,8 @@ fn tools_call_project_control_pauses_future_dispatch_only() {
 
 #[test]
 fn tools_call_project_control_scan_refuses_without_operator_loop() {
-	let repo = test_repo();
-	let responses = run_stdio_with_context(
+	let repo = support::test_repo();
+	let responses = support::run_stdio_with_context(
 		McpContext {
 			repo_root: repo.path().to_path_buf(),
 			config_path: None,
@@ -230,7 +227,7 @@ fn tools_call_project_control_scan_refuses_without_operator_loop() {
 		},
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_project_control","arguments":{"action":"scan","projectId":"pubfi"}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 
 	assert_eq!(result["isError"], true);
 	assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.project_control_result/1");
@@ -239,12 +236,12 @@ fn tools_call_project_control_scan_refuses_without_operator_loop() {
 
 #[test]
 fn tools_call_refuses_missing_project_control_action() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_project_control","arguments":{}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 
 	assert_eq!(result["isError"], true);
 	assert_eq!(result["structuredContent"]["schema"], "decodex.mcp.tool_validation_error/1");
@@ -254,12 +251,12 @@ fn tools_call_refuses_missing_project_control_action() {
 
 #[test]
 fn tools_call_returns_structured_refusal_for_invalid_observe_arguments() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_observe","arguments":{"limit":0}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 
 	assert_eq!(result["isError"], true);
 	assert_eq!(result["structuredContent"]["status"], "refused");
@@ -268,8 +265,8 @@ fn tools_call_returns_structured_refusal_for_invalid_observe_arguments() {
 
 #[test]
 fn tools_call_emits_json_rpc_progress_notification_when_requested() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"progressToken":"progress-1"},"name":"decodex_plan","arguments":{"intent":"validation_ready"}}}"#,
 	);
@@ -281,8 +278,8 @@ fn tools_call_emits_json_rpc_progress_notification_when_requested() {
 
 #[test]
 fn tools_call_does_not_emit_progress_for_invalid_params() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"progressToken":"progress-1"}}}"#,
 	);
@@ -294,12 +291,12 @@ fn tools_call_does_not_emit_progress_for_invalid_params() {
 
 #[test]
 fn tools_call_does_not_emit_progress_for_structured_validation_error() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"progressToken":"progress-1"},"name":"decodex_plan","arguments":{}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 
 	assert_eq!(responses.len(), 1);
 	assert_eq!(result["isError"], true);
@@ -308,13 +305,13 @@ fn tools_call_does_not_emit_progress_for_structured_validation_error() {
 
 #[test]
 fn tools_call_does_not_emit_progress_for_structured_refusal() {
-	let repo = test_repo();
-	let responses = run_stdio_with_profile(
+	let repo = support::test_repo();
+	let responses = support::run_stdio_with_profile(
 		repo.path(),
 		McpCapabilityProfile::Observe,
 		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{"progressToken":"progress-1"},"name":"decodex_plan","arguments":{"intent":"validation_ready"}}}"#,
 	);
-	let result = &response_at(&responses, 0)["result"];
+	let result = &support::response_at(&responses, 0)["result"];
 
 	assert_eq!(responses.len(), 1);
 	assert_eq!(result["isError"], true);

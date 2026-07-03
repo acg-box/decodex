@@ -1,9 +1,9 @@
 use crate::{
 	loop_contract::{DecisionContractStatus, DecisionPromotion},
 	prelude::{Result, eyre},
+	research_design::{ResearchDesignRunInput, compiler, reports::ResearchDesignRunReport},
 	state::{DecisionContractRecord, StateStore},
 };
-use crate::research_design::{ResearchDesignRunInput, compiler, reports::ResearchDesignRunReport};
 
 pub(crate) fn persist_research_design_run(
 	store: &StateStore,

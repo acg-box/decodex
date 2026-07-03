@@ -1,10 +1,13 @@
 use serde_json::{self, Value};
 
-use crate::{loop_contract::DecisionContract, prelude::Result};
-use crate::research_design::{
-	ResearchDesignOutcome, ResearchDesignRunInput,
-	normalized::NormalizedResearchDesignInput,
-	reports::{ResearchDesignCompilation, ResearchDesignRunReport},
+use crate::{
+	loop_contract::DecisionContract,
+	prelude::Result,
+	research_design::{
+		ResearchDesignOutcome, ResearchDesignRunInput,
+		normalized::NormalizedResearchDesignInput,
+		reports::{ResearchDesignCompilation, ResearchDesignRunReport},
+	},
 };
 
 pub(crate) fn dry_run_research_design_compile(

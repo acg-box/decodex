@@ -1,6 +1,6 @@
 use std::{
 	error::Error,
-	fmt::{self, Display, Formatter},
+	fmt::{Display, Formatter},
 };
 
 use reqwest::StatusCode;
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use super::usage::{json_scalar_to_string, number_as_i64};
+use crate::agent::codex_accounts::usage::{json_scalar_to_string, number_as_i64};
 
 #[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct CodexTokenData {
@@ -54,7 +54,7 @@ impl ReportableRefreshError {
 }
 
 impl Display for ReportableRefreshError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(&self.message)
 	}
 }
@@ -89,7 +89,7 @@ impl ProactiveRefreshReason {
 }
 
 impl Display for ProactiveRefreshReason {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::AccessTokenExpired => formatter.write_str("expired access token"),
 			Self::LastRefreshStale => formatter.write_str("stale refresh timestamp"),
@@ -115,6 +115,10 @@ pub(super) fn jwt_expiration_unix_epoch(jwt: &str) -> Option<i64> {
 
 pub(super) fn rfc3339_unix_epoch(input: &str) -> Option<i64> {
 	OffsetDateTime::parse(input, &Rfc3339).ok().map(|timestamp| timestamp.unix_timestamp())
+}
+
+pub(super) fn token_refresh_auth_status(status: StatusCode) -> bool {
+	matches!(status, StatusCode::BAD_REQUEST | StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
 }
 
 fn parse_base64_url(input: &str) -> Option<Vec<u8>> {
@@ -145,8 +149,4 @@ const fn base64_url_value(byte: u8) -> Option<u8> {
 		b'_' => Some(63),
 		_ => None,
 	}
-}
-
-pub(super) fn token_refresh_auth_status(status: StatusCode) -> bool {
-	matches!(status, StatusCode::BAD_REQUEST | StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
 }

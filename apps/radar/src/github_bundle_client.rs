@@ -6,9 +6,10 @@ use reqwest::{
 };
 use serde_json::{self, Value};
 
-use crate::prelude::Result;
-use crate::prelude::eyre;
-use crate::{GITHUB_REQUEST_ATTEMPTS, RETRYABLE_GITHUB_STATUS_CODES};
+use crate::{
+	GITHUB_REQUEST_ATTEMPTS, RETRYABLE_GITHUB_STATUS_CODES,
+	prelude::{Result, eyre},
+};
 
 const GITHUB_REQUEST_BACKOFF_SECONDS: u64 = 1;
 const GITHUB_REQUEST_TIMEOUT_SECONDS: u64 = 30;

@@ -10,9 +10,7 @@ use crate::orchestrator::{
 	},
 };
 
-pub(in crate::orchestrator) fn decide_post_review_lane(
-	input: &PostReviewLaneKernelInput<'_>,
-) -> OwnedLaneDecision {
+pub(crate) fn decide_post_review_lane(input: &PostReviewLaneKernelInput<'_>) -> OwnedLaneDecision {
 	let mut observation = LaneObservation::for_issue(input.issue_id);
 
 	observation.run_id = input.run_id.map(str::to_owned);
@@ -51,7 +49,7 @@ pub(in crate::orchestrator) fn decide_post_review_lane(
 	decision
 }
 
-pub(in crate::orchestrator) fn project_post_review_lane_decision(
+pub(crate) fn project_post_review_lane_decision(
 	input: &PostReviewLaneKernelInput<'_>,
 	decision: &OwnedLaneDecision,
 ) -> PostReviewLaneDecision {

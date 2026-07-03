@@ -10,35 +10,33 @@ use crate::{
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(in crate::mcp::planning::autonomy) struct AutonomyDraftObjectiveToolArgs {
-	pub(in crate::mcp::planning::autonomy) mode: Option<String>,
-	pub(in crate::mcp::planning::autonomy) project_id: Option<String>,
-	pub(in crate::mcp::planning::autonomy) objective: AutonomyObjectiveContract,
-	pub(in crate::mcp::planning::autonomy) authority: Option<PlanningAuthorityArgs>,
+pub(in crate::mcp) struct AutonomyDraftObjectiveToolArgs {
+	pub(in crate::mcp) mode: Option<String>,
+	pub(in crate::mcp) project_id: Option<String>,
+	pub(in crate::mcp) objective: AutonomyObjectiveContract,
+	pub(in crate::mcp) authority: Option<PlanningAuthorityArgs>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(in crate::mcp::planning::autonomy) struct AutonomyAcceptObjectiveToolArgs {
-	pub(in crate::mcp::planning::autonomy) mode: Option<String>,
-	pub(in crate::mcp::planning::autonomy) project_id: Option<String>,
-	pub(in crate::mcp::planning::autonomy) objective_id: String,
-	pub(in crate::mcp::planning::autonomy) objective_version: u64,
-	pub(in crate::mcp::planning::autonomy) authority: Option<AutonomyObjectiveAcceptanceArgs>,
+pub(in crate::mcp) struct AutonomyAcceptObjectiveToolArgs {
+	pub(in crate::mcp) mode: Option<String>,
+	pub(in crate::mcp) project_id: Option<String>,
+	pub(in crate::mcp) objective_id: String,
+	pub(in crate::mcp) objective_version: u64,
+	pub(in crate::mcp) authority: Option<AutonomyObjectiveAcceptanceArgs>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(in crate::mcp::planning::autonomy) struct AutonomyObjectiveAcceptanceArgs {
-	pub(in crate::mcp::planning::autonomy) accepted_by: String,
-	pub(in crate::mcp::planning::autonomy) accepted_by_kind: AutonomyObjectiveActorKind,
-	pub(in crate::mcp::planning::autonomy) accepted_at: Option<String>,
-	pub(in crate::mcp::planning::autonomy) acceptance_source: String,
+pub(in crate::mcp) struct AutonomyObjectiveAcceptanceArgs {
+	pub(in crate::mcp) accepted_by: String,
+	pub(in crate::mcp) accepted_by_kind: AutonomyObjectiveActorKind,
+	pub(in crate::mcp) accepted_at: Option<String>,
+	pub(in crate::mcp) acceptance_source: String,
 }
 impl AutonomyObjectiveAcceptanceArgs {
-	pub(in crate::mcp::planning::autonomy) fn into_acceptance(
-		self,
-	) -> Result<AutonomyObjectiveAcceptance, Value> {
+	pub(in crate::mcp) fn into_acceptance(self) -> Result<AutonomyObjectiveAcceptance, Value> {
 		if self.accepted_by_kind == AutonomyObjectiveActorKind::RuntimePolicy {
 			return Err(mcp::tool_refusal(
 				"objective_acceptance_refused",

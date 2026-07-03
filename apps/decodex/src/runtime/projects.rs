@@ -102,6 +102,7 @@ pub(crate) fn registered_config_path_for_project_id(
 		if registered.is_empty() { "none" } else { registered.as_str() }
 	)
 }
+
 pub(super) fn config_fingerprint(config_path: &Path, workflow_path: &Path) -> Result<String> {
 	let config_body = fs::read(config_path)?;
 	let workflow_body = fs::read(workflow_path)?;

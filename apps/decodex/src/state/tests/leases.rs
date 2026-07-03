@@ -109,8 +109,7 @@ fn read_only_shared_claim_check_does_not_remove_unlocked_claim_anchor() {
 		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("store should configure dispatch slot root");
 
-	TestFile::write(&issue_claim_path, "stale claim anchor\n")
-		.expect("stale claim anchor should write");
+	fs::write(&issue_claim_path, "stale claim anchor\n").expect("stale claim anchor should write");
 
 	assert!(
 		!store
@@ -138,8 +137,7 @@ fn observe_dispatch_slot_root_does_not_prune_unlocked_claim_anchor() {
 	let issue_claim_path = temp_dir.path().join(".decodex-issue-claim.PUB-101.lock");
 	let store = StateStore::open_in_memory().expect("state store should open");
 
-	TestFile::write(&issue_claim_path, "stale claim anchor\n")
-		.expect("stale claim anchor should write");
+	fs::write(&issue_claim_path, "stale claim anchor\n").expect("stale claim anchor should write");
 
 	store
 		.observe_dispatch_slot_root("pubfi", temp_dir.path())

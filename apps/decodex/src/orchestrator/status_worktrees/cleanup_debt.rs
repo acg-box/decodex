@@ -29,7 +29,7 @@ pub(crate) fn ensure_project_has_no_merged_worktree_cleanup_debt(
 	);
 }
 
-pub(in crate::orchestrator::status_worktrees) fn append_merged_worktree_cleanup_debts(
+pub(crate) fn append_merged_worktree_cleanup_debts(
 	project: &ServiceConfig,
 	worktrees: &mut Vec<OperatorWorktreeStatus>,
 	seen_paths: &mut HashSet<String>,

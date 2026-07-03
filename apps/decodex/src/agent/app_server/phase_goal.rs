@@ -7,11 +7,11 @@ use std::{
 
 use color_eyre::Report;
 use serde::{Deserialize, Serialize};
-use serde_json::{self, Value};
 
-use super::{
+use crate::agent::app_server::{
 	AppServerClient, AppServerRunRequest, RunRecorder, ThreadGoal, ThreadGoalClearParams,
 	ThreadGoalGetParams, ThreadGoalSetParams, ThreadGoalStatus,
+	serde_json::{self, Value},
 };
 
 pub(crate) trait PhaseGoalController {
@@ -100,12 +100,10 @@ impl AppServerPhaseGoalFailure {
 
 	pub(crate) fn error_class(&self) -> &'static str {
 		match self.kind {
-			AppServerPhaseGoalFailureKind::Unsupported { .. } => {
-				"app_server_phase_goal_unsupported"
-			},
-			AppServerPhaseGoalFailureKind::MissingTerminalPath { .. } => {
-				"phase_goal_terminal_path_missing"
-			},
+			AppServerPhaseGoalFailureKind::Unsupported { .. } =>
+				"app_server_phase_goal_unsupported",
+			AppServerPhaseGoalFailureKind::MissingTerminalPath { .. } =>
+				"phase_goal_terminal_path_missing",
 		}
 	}
 
@@ -180,10 +178,9 @@ pub(super) fn initialize_phase_goal_runtime<'a>(
 
 	match set_thread_phase_goal(client, recorder, thread_id, &active_goal) {
 		Ok(()) => Ok(Some(PhaseGoalRuntime { controller, active_goal })),
-		Err(error) if app_server_method_not_found(&error) => {
+		Err(error) if app_server_method_not_found(&error) =>
 			Err(Report::new(AppServerPhaseGoalFailure::unsupported("thread/goal/set"))
-				.wrap_err(error))
-		},
+				.wrap_err(error)),
 		Err(error) => Err(error),
 	}
 }
@@ -285,6 +282,12 @@ pub(super) fn record_phase_goal_completed(
 	record_phase_goal_private_event(recorder, "phase_goal_completed", phase, &payload)
 }
 
+pub(super) fn app_server_method_not_found(error: &Report) -> bool {
+	let text = error.to_string().to_lowercase();
+
+	text.contains("-32601") || text.contains("method not found")
+}
+
 fn record_phase_goal_private_event(
 	recorder: &mut RunRecorder<'_>,
 	event_type: &str,
@@ -305,10 +308,4 @@ fn record_phase_goal_private_event(
 	)?;
 
 	Ok(())
-}
-
-pub(super) fn app_server_method_not_found(error: &Report) -> bool {
-	let text = error.to_string().to_lowercase();
-
-	text.contains("-32601") || text.contains("method not found")
 }

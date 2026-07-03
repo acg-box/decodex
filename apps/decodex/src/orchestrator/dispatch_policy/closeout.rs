@@ -1,16 +1,10 @@
-use std::path::Path;
-
-use crate::{
-	orchestrator::{
-		CloseoutDispatchEligibility, GhPullRequestReviewStateInspector, IssueTracker,
-		PullRequestReviewStateInspector, Result, RetainedCloseoutPrMergeGate, ServiceConfig,
-		StateStore, TrackerIssue, WorkflowDocument, issue_has_service_ownership,
-		retained_closeout_pr_merge_gate_with_inspector,
-	},
-	worktree::{WorktreeManager, WorktreeSpec},
+use crate::orchestrator::dispatch_policy::{
+	self, CloseoutDispatchEligibility, GhPullRequestReviewStateInspector, IssueTracker, Path,
+	PullRequestReviewStateInspector, Result, RetainedCloseoutPrMergeGate, ServiceConfig,
+	StateStore, TrackerIssue, WorkflowDocument, WorktreeManager, WorktreeSpec,
 };
 
-pub(in crate::orchestrator) fn issue_passes_review_repair_dispatch_policy<T>(
+pub(crate) fn issue_passes_review_repair_dispatch_policy<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
@@ -21,13 +15,13 @@ where
 {
 	let tracker_policy = workflow.frontmatter().tracker();
 
-	Ok(issue_has_service_ownership(tracker, issue, project.service_id())?
+	Ok(dispatch_policy::issue_has_service_ownership(tracker, issue, project.service_id())?
 		&& issue.state.name == tracker_policy.success_state()
 		&& !issue.has_label(tracker_policy.opt_out_label())
 		&& !issue.has_label(tracker_policy.needs_attention_label()))
 }
 
-pub(in crate::orchestrator) fn issue_passes_closeout_dispatch_policy<T>(
+pub(crate) fn issue_passes_closeout_dispatch_policy<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
@@ -52,32 +46,7 @@ where
 	)
 }
 
-pub(crate) fn issue_passes_closeout_dispatch_policy_with_inspector<T, I>(
-	tracker: &T,
-	issue: &TrackerIssue,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	review_state_inspector: &I,
-) -> Result<bool>
-where
-	T: IssueTracker + ?Sized,
-	I: PullRequestReviewStateInspector + ?Sized,
-{
-	Ok(matches!(
-		evaluate_closeout_dispatch_policy_with_inspector(
-			tracker,
-			issue,
-			project,
-			workflow,
-			state_store,
-			review_state_inspector,
-		)?,
-		CloseoutDispatchEligibility::Eligible
-	))
-}
-
-pub(in crate::orchestrator) fn closeout_dispatch_block_reason<T>(
+pub(crate) fn closeout_dispatch_block_reason<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
@@ -102,34 +71,7 @@ where
 	)
 }
 
-pub(crate) fn closeout_dispatch_block_reason_with_inspector<T, I>(
-	tracker: &T,
-	issue: &TrackerIssue,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	review_state_inspector: &I,
-) -> Result<Option<&'static str>>
-where
-	T: IssueTracker + ?Sized,
-	I: PullRequestReviewStateInspector + ?Sized,
-{
-	Ok(
-		match evaluate_closeout_dispatch_policy_with_inspector(
-			tracker,
-			issue,
-			project,
-			workflow,
-			state_store,
-			review_state_inspector,
-		)? {
-			CloseoutDispatchEligibility::Blocked(reason) => Some(reason),
-			CloseoutDispatchEligibility::Eligible | CloseoutDispatchEligibility::Ineligible => None,
-		},
-	)
-}
-
-pub(in crate::orchestrator) fn evaluate_closeout_dispatch_policy_with_inspector<T, I>(
+pub(crate) fn evaluate_closeout_dispatch_policy_with_inspector<T, I>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
@@ -150,7 +92,7 @@ where
 	{
 		return Ok(CloseoutDispatchEligibility::Ineligible);
 	}
-	if !issue_has_service_ownership(tracker, issue, project.service_id())? {
+	if !dispatch_policy::issue_has_service_ownership(tracker, issue, project.service_id())? {
 		return Ok(CloseoutDispatchEligibility::Ineligible);
 	}
 	if issue_state != tracker_policy.success_state() && issue_state != completed_state {
@@ -179,6 +121,7 @@ where
 				project.worktree_root(),
 			);
 			let planned_worktree = worktree_manager.plan_for_issue(&issue.identifier);
+
 			if !planned_worktree.path.try_exists()? {
 				return Ok(CloseoutDispatchEligibility::Ineligible);
 			}
@@ -186,7 +129,6 @@ where
 			planned_worktree
 		},
 	};
-
 	let Some(review_handoff) = state_store.review_handoff_marker(
 		project.service_id(),
 		&issue.id,
@@ -201,19 +143,69 @@ where
 	}
 
 	Ok(
-		match retained_closeout_pr_merge_gate_with_inspector(
+		match dispatch_policy::retained_closeout_pr_merge_gate_with_inspector(
 			&worktree.path,
 			&worktree.branch_name,
 			review_handoff.pr_url(),
 			review_state_inspector,
 		)? {
 			RetainedCloseoutPrMergeGate::Merged => CloseoutDispatchEligibility::Eligible,
-			RetainedCloseoutPrMergeGate::NotMerged => {
-				CloseoutDispatchEligibility::Blocked("pull_request_not_merged")
-			},
-			RetainedCloseoutPrMergeGate::PullRequestStateReadFailed => {
-				CloseoutDispatchEligibility::Blocked("pull_request_state_read_failed")
-			},
+			RetainedCloseoutPrMergeGate::NotMerged =>
+				CloseoutDispatchEligibility::Blocked("pull_request_not_merged"),
+			RetainedCloseoutPrMergeGate::PullRequestStateReadFailed =>
+				CloseoutDispatchEligibility::Blocked("pull_request_state_read_failed"),
+		},
+	)
+}
+
+pub(crate) fn issue_passes_closeout_dispatch_policy_with_inspector<T, I>(
+	tracker: &T,
+	issue: &TrackerIssue,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	review_state_inspector: &I,
+) -> Result<bool>
+where
+	T: IssueTracker + ?Sized,
+	I: PullRequestReviewStateInspector + ?Sized,
+{
+	Ok(matches!(
+		evaluate_closeout_dispatch_policy_with_inspector(
+			tracker,
+			issue,
+			project,
+			workflow,
+			state_store,
+			review_state_inspector,
+		)?,
+		CloseoutDispatchEligibility::Eligible
+	))
+}
+
+pub(crate) fn closeout_dispatch_block_reason_with_inspector<T, I>(
+	tracker: &T,
+	issue: &TrackerIssue,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	review_state_inspector: &I,
+) -> Result<Option<&'static str>>
+where
+	T: IssueTracker + ?Sized,
+	I: PullRequestReviewStateInspector + ?Sized,
+{
+	Ok(
+		match evaluate_closeout_dispatch_policy_with_inspector(
+			tracker,
+			issue,
+			project,
+			workflow,
+			state_store,
+			review_state_inspector,
+		)? {
+			CloseoutDispatchEligibility::Blocked(reason) => Some(reason),
+			CloseoutDispatchEligibility::Eligible | CloseoutDispatchEligibility::Ineligible => None,
 		},
 	)
 }

@@ -1,22 +1,14 @@
-use std::slice;
-
 use crate::{
-	config::ServiceConfig,
 	orchestrator::{
-		IssueDispatchMode, IssueRunPlan, IssueTracker, PreferredRunIdentity,
-		PrepareIssueRunContext, RecoveredRuntimeState, Result, RetryIssueStateHint, RunSummary,
-		SelectedIssueRunCandidate, StateStore, TrackerIssue, WorkflowDocument,
-		apply_queued_candidate_guardrail_commands, build_queued_candidate_status_plan,
-		closeout_dispatch_block_reason, ensure_project_has_no_merged_worktree_cleanup_debt,
-		is_terminal_issue, issue_passes_current_dispatch_policy,
-		reconcile_post_review_orchestration, reconcile_project_state,
-		reconcile_terminal_thread_archive_backlog_best_effort, record_program_dispatch_selected,
-		recover_runtime_state_from_tracker_and_worktrees, select_execution_program_run_candidate,
-		select_issue_candidate_with_exclusions, select_post_review_issue_candidate,
+		run_cycle,
+		run_cycle::{
+			IssueDispatchMode, IssueRunPlan, IssueTracker, PreferredRunIdentity,
+			PrepareIssueRunContext, RecoveredRuntimeState, Result, RetryIssueStateHint, RunSummary,
+			SelectedIssueRunCandidate, ServiceConfig, StateStore, TrackerIssue, WorkflowDocument,
+			WorktreeManager, eyre, slice,
+		},
 	},
-	prelude::eyre,
 	tracker,
-	worktree::WorktreeManager,
 };
 
 pub(crate) fn run_project_once<T>(
@@ -30,43 +22,6 @@ where
 	T: IssueTracker,
 {
 	run_project_once_with_exclusions(tracker, project, workflow, state_store, dry_run, &[])
-}
-
-fn run_project_once_with_exclusions<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	dry_run: bool,
-	excluded_issue_ids: &[&str],
-) -> Result<Option<RunSummary>>
-where
-	T: IssueTracker,
-{
-	let Some(issue_run) = plan_project_issue_run_with_exclusions(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		dry_run,
-		excluded_issue_ids,
-	)?
-	else {
-		if !dry_run {
-			reconcile_terminal_thread_archive_backlog_best_effort(project, workflow, state_store);
-		}
-
-		return Ok(None);
-	};
-
-	crate::orchestrator::run_cycle::complete::complete_issue_run(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		issue_run,
-		dry_run,
-	)
 }
 
 pub(crate) fn plan_project_issue_run_with_exclusions<T>(
@@ -85,12 +40,22 @@ where
 
 	state_store.configure_dispatch_slot_root(project.service_id(), project.worktree_root())?;
 
-	let recovered_state =
-		recover_runtime_state_from_tracker_and_worktrees(tracker, project, workflow, state_store)?;
+	let recovered_state = run_cycle::recover_runtime_state_from_tracker_and_worktrees(
+		tracker,
+		project,
+		workflow,
+		state_store,
+	)?;
 
 	if !dry_run {
-		reconcile_project_state(tracker, project, workflow, state_store, &worktree_manager)?;
-		reconcile_post_review_orchestration(tracker, project, workflow, state_store)?;
+		run_cycle::reconcile_project_state(
+			tracker,
+			project,
+			workflow,
+			state_store,
+			&worktree_manager,
+		)?;
+		run_cycle::reconcile_post_review_orchestration(tracker, project, workflow, state_store)?;
 	}
 
 	let Some(selected_issue) = select_project_issue_run_candidate(
@@ -112,10 +77,11 @@ where
 	let dispatch_mode = selected_issue.dispatch_mode;
 	let preferred_run_identity = selected_issue.preferred_run_identity;
 	let program_dispatch = selected_issue.program_dispatch.clone();
+
 	if !dry_run && dispatch_mode != IssueDispatchMode::Closeout {
-		ensure_project_has_no_merged_worktree_cleanup_debt(project)?;
+		run_cycle::ensure_project_has_no_merged_worktree_cleanup_debt(project)?;
 	}
-	if !issue_passes_current_dispatch_policy(
+	if !run_cycle::issue_passes_current_dispatch_policy(
 		tracker,
 		&issue,
 		project,
@@ -125,9 +91,13 @@ where
 		RetryIssueStateHint::default(),
 	)? {
 		if dispatch_mode == IssueDispatchMode::Closeout
-			&& let Some(reason) =
-				closeout_dispatch_block_reason(tracker, &issue, project, workflow, state_store)?
-		{
+			&& let Some(reason) = run_cycle::closeout_dispatch_block_reason(
+				tracker,
+				&issue,
+				project,
+				workflow,
+				state_store,
+			)? {
 			if !dry_run {
 				eyre::bail!("retained closeout dispatch blocked: {reason}");
 			}
@@ -146,7 +116,7 @@ where
 		);
 	}
 
-	let Some(issue_run) = crate::orchestrator::run_cycle::prepare::prepare_issue_run(
+	let Some(issue_run) = run_cycle::prepare_issue_run(
 		PrepareIssueRunContext {
 			tracker,
 			project,
@@ -173,7 +143,7 @@ where
 	};
 
 	if !dry_run && let Some(program_dispatch) = program_dispatch.as_ref() {
-		record_program_dispatch_selected(
+		run_cycle::record_program_dispatch_selected(
 			state_store,
 			project.service_id(),
 			&issue_run,
@@ -182,6 +152,40 @@ where
 	}
 
 	Ok(Some(issue_run))
+}
+
+fn run_project_once_with_exclusions<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	dry_run: bool,
+	excluded_issue_ids: &[&str],
+) -> Result<Option<RunSummary>>
+where
+	T: IssueTracker,
+{
+	let Some(issue_run) = plan_project_issue_run_with_exclusions(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		dry_run,
+		excluded_issue_ids,
+	)?
+	else {
+		if !dry_run {
+			run_cycle::reconcile_terminal_thread_archive_backlog_best_effort(
+				project,
+				workflow,
+				state_store,
+			);
+		}
+
+		return Ok(None);
+	};
+
+	run_cycle::complete_issue_run(tracker, project, workflow, state_store, issue_run, dry_run)
 }
 
 fn select_project_issue_run_candidate<T>(
@@ -202,7 +206,7 @@ where
 		recovered_state,
 		excluded_issue_ids,
 	)?;
-	let selected_post_review_issue = select_post_review_issue_candidate(
+	let selected_post_review_issue = run_cycle::select_post_review_issue_candidate(
 		tracker,
 		project,
 		workflow,
@@ -213,7 +217,7 @@ where
 	if let Some(candidate) = selected_retry_issue.or(selected_post_review_issue) {
 		return Ok(Some(candidate));
 	}
-	if let Some(candidate) = select_execution_program_run_candidate(
+	if let Some(candidate) = run_cycle::select_execution_program_run_candidate(
 		tracker,
 		project,
 		workflow,
@@ -225,7 +229,7 @@ where
 
 	let issues = queued_issues_for_dispatch(tracker, project, workflow, state_store, dry_run)?;
 
-	Ok(select_issue_candidate_with_exclusions(
+	Ok(run_cycle::select_issue_candidate_with_exclusions(
 		tracker,
 		issues,
 		workflow,
@@ -255,6 +259,7 @@ fn select_recovered_retry_issue_candidate(
 
 	Ok(None)
 }
+
 fn queued_issues_for_dispatch<T>(
 	tracker: &T,
 	project: &ServiceConfig,
@@ -266,7 +271,6 @@ where
 	T: IssueTracker,
 {
 	let queue_label = tracker::automation_queue_label(project.service_id());
-
 	let issues = clear_terminal_queued_lane_labels(
 		tracker,
 		project,
@@ -276,9 +280,10 @@ where
 	)?;
 
 	if !dry_run {
-		let plan = build_queued_candidate_status_plan(tracker, project, workflow, state_store)?;
+		let plan =
+			run_cycle::build_queued_candidate_status_plan(tracker, project, workflow, state_store)?;
 
-		apply_queued_candidate_guardrail_commands(
+		run_cycle::apply_queued_candidate_guardrail_commands(
 			project,
 			workflow,
 			state_store,
@@ -302,7 +307,7 @@ where
 	let mut nonterminal_issues = Vec::with_capacity(issues.len());
 
 	for issue in issues {
-		if is_terminal_issue(&issue, workflow) {
+		if run_cycle::is_terminal_issue(&issue, workflow) {
 			if !dry_run {
 				tracker::clear_automation_lane_labels(tracker, &issue, project.service_id())?;
 

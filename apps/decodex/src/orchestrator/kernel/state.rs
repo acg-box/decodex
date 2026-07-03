@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum OwnershipState {
+pub(crate) enum OwnershipState {
 	Pending,
 	LeasedRun,
 	Terminalizing,
@@ -9,9 +9,8 @@ pub(in crate::orchestrator) enum OwnershipState {
 	GhostLane,
 	Closed,
 }
-
 impl OwnershipState {
-	pub(in crate::orchestrator) const fn as_str(self) -> &'static str {
+	pub(crate) const fn as_str(self) -> &'static str {
 		match self {
 			Self::Pending => "pending",
 			Self::LeasedRun => "leased_run",
@@ -24,7 +23,7 @@ impl OwnershipState {
 		}
 	}
 
-	pub(in crate::orchestrator) fn from_str(value: &str) -> Option<Self> {
+	pub(crate) fn from_str(value: &str) -> Option<Self> {
 		Some(match value {
 			"pending" => Self::Pending,
 			"leased_run" => Self::LeasedRun,
@@ -40,7 +39,7 @@ impl OwnershipState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum LivenessState {
+pub(crate) enum LivenessState {
 	Unknown,
 	ProcessAlive,
 	ThreadActive,
@@ -49,9 +48,8 @@ pub(in crate::orchestrator) enum LivenessState {
 	HostBootMismatch,
 	LateProtocolActivity,
 }
-
 impl LivenessState {
-	pub(in crate::orchestrator) const fn as_str(self) -> &'static str {
+	pub(crate) const fn as_str(self) -> &'static str {
 		match self {
 			Self::Unknown => "unknown",
 			Self::ProcessAlive => "process_alive",
@@ -65,7 +63,7 @@ impl LivenessState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum PolicyState {
+pub(crate) enum PolicyState {
 	Allowed,
 	ReviewPending,
 	ReviewFindings,
@@ -77,9 +75,8 @@ pub(in crate::orchestrator) enum PolicyState {
 	RuntimeRecoveryRequired,
 	RuntimeRecoveryBlocked,
 }
-
 impl PolicyState {
-	pub(in crate::orchestrator) const fn as_str(self) -> &'static str {
+	pub(crate) const fn as_str(self) -> &'static str {
 		match self {
 			Self::Allowed => "allowed",
 			Self::ReviewPending => "review_pending",
@@ -94,7 +91,7 @@ impl PolicyState {
 		}
 	}
 
-	pub(in crate::orchestrator) fn from_str(value: &str) -> Option<Self> {
+	pub(crate) fn from_str(value: &str) -> Option<Self> {
 		Some(match value {
 			"allowed" => Self::Allowed,
 			"review_pending" => Self::ReviewPending,
@@ -112,7 +109,7 @@ impl PolicyState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum TerminalizationState {
+pub(crate) enum TerminalizationState {
 	None,
 	BarrierStarted,
 	RunControlRetired,
@@ -120,9 +117,8 @@ pub(in crate::orchestrator) enum TerminalizationState {
 	CleanupPending,
 	CleanupComplete,
 }
-
 impl TerminalizationState {
-	pub(in crate::orchestrator) const fn as_str(self) -> &'static str {
+	pub(crate) const fn as_str(self) -> &'static str {
 		match self {
 			Self::None => "none",
 			Self::BarrierStarted => "barrier_started",
@@ -135,15 +131,14 @@ impl TerminalizationState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) struct LaneStateAxes {
-	pub(in crate::orchestrator) ownership: OwnershipState,
-	pub(in crate::orchestrator) liveness: LivenessState,
-	pub(in crate::orchestrator) policy: PolicyState,
-	pub(in crate::orchestrator) terminalization: TerminalizationState,
+pub(crate) struct LaneStateAxes {
+	pub(crate) ownership: OwnershipState,
+	pub(crate) liveness: LivenessState,
+	pub(crate) policy: PolicyState,
+	pub(crate) terminalization: TerminalizationState,
 }
-
 impl LaneStateAxes {
-	pub(in crate::orchestrator) const fn new(
+	pub(crate) const fn new(
 		ownership: OwnershipState,
 		liveness: LivenessState,
 		policy: PolicyState,

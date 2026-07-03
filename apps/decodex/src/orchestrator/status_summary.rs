@@ -1,14 +1,14 @@
 use std::collections::HashSet;
 
-use crate::{agent::RUN_LEASE_IDLE_TIMEOUT, state::RUN_OPERATION_WAITING_EXTERNAL};
-
-use super::{
-	OperatorHistoryLaneStatus, OperatorPostReviewLaneStatus, OperatorQueuedIssueStatus,
-	OperatorRunStatus, OperatorStatusSnapshot, OperatorWorktreeStatus, history_lane_group_key,
-	history_ledger_outcome_requires_attention,
-	kernel::state::{OwnershipState, PolicyState},
-	rendered_recovery_worktrees, snapshot_warnings_include_tracker_backoff,
-	status_run_projection::{operator_run_group_key, operator_run_lane_control_readback},
+use crate::{
+	agent::RUN_LEASE_IDLE_TIMEOUT,
+	orchestrator::{
+		self, OperatorHistoryLaneStatus, OperatorPostReviewLaneStatus, OperatorQueuedIssueStatus,
+		OperatorRunStatus, OperatorStatusSnapshot, OperatorWorktreeStatus,
+		kernel::state::{OwnershipState, PolicyState},
+		status_run_projection::{self},
+	},
+	state::RUN_OPERATION_WAITING_EXTERNAL,
 };
 
 pub(super) fn refresh_operator_project_summary(
@@ -25,7 +25,7 @@ pub(super) fn refresh_operator_project_summary(
 		.count();
 	let post_review_lane_count =
 		snapshot.post_review_lanes.iter().filter(|lane| !lane.shadowed_by_current_lane).count();
-	let retained_worktree_count = rendered_recovery_worktrees(snapshot).len();
+	let retained_worktree_count = orchestrator::rendered_recovery_worktrees(snapshot).len();
 	let waiting_lane_count = project_waiting_lane_count(snapshot);
 	let attention_count = project_attention_count(snapshot, completed_state);
 	let cleanup_blocked_count = project_cleanup_blocked_count(snapshot);
@@ -48,6 +48,153 @@ pub(super) fn refresh_operator_project_summary(
 		project_status.last_activity_at = last_activity_at;
 		project_status.warning_count = warning_count;
 	}
+}
+
+pub(super) fn operator_run_counts_as_waiting(run: &OperatorRunStatus) -> bool {
+	run.phase == "retry_backoff" || run.phase == "waiting_continuation" || run.wait_reason.is_some()
+}
+
+pub(super) fn queued_candidate_counts_as_waiting_intake(
+	candidate: &OperatorQueuedIssueStatus,
+) -> bool {
+	!matches!(candidate.classification.as_str(), "claimed" | "closed")
+}
+
+pub(super) fn project_attention_count(
+	snapshot: &OperatorStatusSnapshot,
+	completed_state: Option<&str>,
+) -> usize {
+	let mut attention_keys = HashSet::new();
+
+	for run in snapshot.current_lanes.iter().filter(|run| operator_run_counts_as_attention(run)) {
+		attention_keys.insert(status_run_projection::operator_run_group_key(run));
+	}
+	for candidate in snapshot
+		.queued_candidates
+		.iter()
+		.filter(|candidate| queued_candidate_counts_as_attention(candidate))
+	{
+		attention_keys.insert(operator_issue_attention_key(
+			&candidate.issue_id,
+			Some(&candidate.issue_identifier),
+		));
+	}
+	for lane in
+		snapshot.post_review_lanes.iter().filter(|lane| post_review_lane_counts_as_attention(lane))
+	{
+		attention_keys
+			.insert(operator_issue_attention_key(&lane.issue_id, Some(&lane.issue_identifier)));
+	}
+	for lane in snapshot
+		.history_lanes
+		.iter()
+		.filter(|lane| history_lane_has_current_attention(snapshot, lane, completed_state))
+	{
+		attention_keys.insert(orchestrator::history_lane_group_key(lane));
+	}
+
+	attention_keys.len()
+}
+
+pub(super) fn project_history_only_attention_count(snapshot: &OperatorStatusSnapshot) -> usize {
+	snapshot
+		.history_lanes
+		.iter()
+		.filter(|lane| {
+			orchestrator::history_ledger_outcome_requires_attention(&lane.ledger_outcome)
+				&& !history_lane_has_current_attention_signal(snapshot, lane)
+		})
+		.count()
+}
+
+pub(super) fn operator_issue_attention_key(
+	issue_id: &str,
+	issue_identifier: Option<&str>,
+) -> String {
+	let issue_id = issue_id.trim();
+
+	if !issue_id.is_empty() && !issue_id.eq_ignore_ascii_case("unknown") {
+		return issue_id.to_ascii_uppercase();
+	}
+
+	if let Some(issue_identifier) = issue_identifier
+		.map(str::trim)
+		.filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("unknown"))
+	{
+		return issue_identifier.to_ascii_uppercase();
+	}
+
+	String::from("UNKNOWN")
+}
+
+pub(super) fn hydrate_post_review_lane_current_lane_shadowing(
+	snapshot: &mut OperatorStatusSnapshot,
+) {
+	let current_lane_issue_keys = snapshot
+		.current_lanes
+		.iter()
+		.filter(|run| run.counts_as_running)
+		.map(|run| status_run_projection::operator_run_group_key(run).to_ascii_uppercase())
+		.collect::<HashSet<_>>();
+
+	for lane in &mut snapshot.post_review_lanes {
+		lane.shadowed_by_current_lane = current_lane_issue_keys
+			.contains(&operator_issue_attention_key(&lane.issue_id, Some(&lane.issue_identifier)));
+	}
+}
+
+pub(super) fn operator_run_counts_as_current_lane(run: &OperatorRunStatus) -> bool {
+	status_run_projection::operator_run_lane_control_readback(run).counts_as_current_lane
+}
+
+pub(super) fn operator_run_has_live_execution(run: &OperatorRunStatus) -> bool {
+	status_run_projection::operator_run_lane_control_readback(run).has_live_execution
+}
+
+pub(super) fn operator_run_counts_as_running(run: &OperatorRunStatus) -> bool {
+	if !run.ownership_state.is_empty() {
+		return run.counts_as_running;
+	}
+
+	status_run_projection::operator_run_lane_control_readback(run).counts_as_running
+}
+
+pub(super) fn operator_run_counts_as_attention(run: &OperatorRunStatus) -> bool {
+	let ownership = OwnershipState::from_str(&run.ownership_state);
+	let policy = PolicyState::from_str(&run.policy_state);
+
+	if !run.ownership_state.is_empty() {
+		return run.needs_attention
+			|| ownership == Some(OwnershipState::RetainedAttention)
+			|| policy_requires_attention(policy);
+	}
+
+	status_run_projection::operator_run_lane_control_readback(run).counts_as_attention
+}
+
+pub(super) fn operator_run_has_recent_app_server_execution(run: &OperatorRunStatus) -> bool {
+	matches!(run.thread_status.as_deref(), Some("active"))
+		|| !run.thread_active_flags.is_empty()
+		|| run.protocol_idle_for_seconds.is_some_and(|idle_for| {
+			u64::try_from(idle_for)
+				.is_ok_and(|idle_for| idle_for < RUN_LEASE_IDLE_TIMEOUT.as_secs())
+		})
+}
+
+pub(super) fn operator_run_has_stale_execution_without_known_process(
+	run: &OperatorRunStatus,
+) -> bool {
+	matches!(run.status.as_str(), "starting" | "running")
+		&& run.phase == "executing"
+		&& run.wait_reason.is_none()
+		&& run.process_alive != Some(true)
+		&& !run.has_fresh_execution
+		&& [run.idle_for_seconds, run.protocol_idle_for_seconds].iter().any(|idle_for| {
+			idle_for.is_some_and(|idle_for| {
+				u64::try_from(idle_for)
+					.is_ok_and(|idle_for| idle_for >= RUN_LEASE_IDLE_TIMEOUT.as_secs())
+			})
+		})
 }
 
 fn project_waiting_lane_count(snapshot: &OperatorStatusSnapshot) -> usize {
@@ -79,10 +226,6 @@ fn project_summary_runs(snapshot: &OperatorStatusSnapshot) -> Vec<&OperatorRunSt
 	runs
 }
 
-pub(super) fn operator_run_counts_as_waiting(run: &OperatorRunStatus) -> bool {
-	run.phase == "retry_backoff" || run.phase == "waiting_continuation" || run.wait_reason.is_some()
-}
-
 fn operator_run_counts_as_project_waiting(run: &OperatorRunStatus) -> bool {
 	if operator_run_counts_as_attention(run) {
 		return false;
@@ -95,59 +238,6 @@ fn operator_run_counts_as_project_waiting(run: &OperatorRunStatus) -> bool {
 	}
 
 	matches!(run.wait_reason.as_deref(), Some("approval_or_user_input" | "protocol_idleness"))
-}
-
-pub(super) fn queued_candidate_counts_as_waiting_intake(
-	candidate: &OperatorQueuedIssueStatus,
-) -> bool {
-	!matches!(candidate.classification.as_str(), "claimed" | "closed")
-}
-
-pub(super) fn project_attention_count(
-	snapshot: &OperatorStatusSnapshot,
-	completed_state: Option<&str>,
-) -> usize {
-	let mut attention_keys = HashSet::new();
-
-	for run in snapshot.current_lanes.iter().filter(|run| operator_run_counts_as_attention(run)) {
-		attention_keys.insert(operator_run_group_key(run));
-	}
-	for candidate in snapshot
-		.queued_candidates
-		.iter()
-		.filter(|candidate| queued_candidate_counts_as_attention(candidate))
-	{
-		attention_keys.insert(operator_issue_attention_key(
-			&candidate.issue_id,
-			Some(&candidate.issue_identifier),
-		));
-	}
-	for lane in
-		snapshot.post_review_lanes.iter().filter(|lane| post_review_lane_counts_as_attention(lane))
-	{
-		attention_keys
-			.insert(operator_issue_attention_key(&lane.issue_id, Some(&lane.issue_identifier)));
-	}
-	for lane in snapshot
-		.history_lanes
-		.iter()
-		.filter(|lane| history_lane_has_current_attention(snapshot, lane, completed_state))
-	{
-		attention_keys.insert(history_lane_group_key(lane));
-	}
-
-	attention_keys.len()
-}
-
-pub(super) fn project_history_only_attention_count(snapshot: &OperatorStatusSnapshot) -> usize {
-	snapshot
-		.history_lanes
-		.iter()
-		.filter(|lane| {
-			history_ledger_outcome_requires_attention(&lane.ledger_outcome)
-				&& !history_lane_has_current_attention_signal(snapshot, lane)
-		})
-		.count()
 }
 
 fn queued_candidate_counts_as_attention(candidate: &OperatorQueuedIssueStatus) -> bool {
@@ -167,7 +257,7 @@ fn history_lane_has_current_attention(
 	lane: &OperatorHistoryLaneStatus,
 	completed_state: Option<&str>,
 ) -> bool {
-	if !history_ledger_outcome_requires_attention(&lane.ledger_outcome) {
+	if !orchestrator::history_ledger_outcome_requires_attention(&lane.ledger_outcome) {
 		return false;
 	}
 
@@ -183,7 +273,7 @@ fn history_lane_has_current_attention_signal(
 		return true;
 	}
 
-	let issue_key = history_lane_group_key(lane);
+	let issue_key = orchestrator::history_lane_group_key(lane);
 	let has_non_attention_post_review_owner =
 		history_lane_has_current_non_attention_post_review_owner(snapshot, &issue_key);
 
@@ -240,7 +330,7 @@ fn history_lane_attention_is_resolved_tracker_echo(
 		return false;
 	}
 
-	let issue_key = history_lane_group_key(lane);
+	let issue_key = orchestrator::history_lane_group_key(lane);
 
 	!snapshot.worktrees.iter().any(|worktree| {
 		operator_issue_attention_key(&worktree.issue_id, worktree.issue_identifier.as_deref())
@@ -258,26 +348,6 @@ fn history_lane_attention_is_resolved_tracker_echo(
 		operator_issue_attention_key(&candidate.issue_id, Some(&candidate.issue_identifier))
 			== issue_key
 	})
-}
-
-pub(super) fn operator_issue_attention_key(
-	issue_id: &str,
-	issue_identifier: Option<&str>,
-) -> String {
-	let issue_id = issue_id.trim();
-
-	if !issue_id.is_empty() && !issue_id.eq_ignore_ascii_case("unknown") {
-		return issue_id.to_ascii_uppercase();
-	}
-
-	if let Some(issue_identifier) = issue_identifier
-		.map(str::trim)
-		.filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("unknown"))
-	{
-		return issue_identifier.to_ascii_uppercase();
-	}
-
-	String::from("UNKNOWN")
 }
 
 fn project_cleanup_blocked_count(snapshot: &OperatorStatusSnapshot) -> usize {
@@ -323,53 +393,8 @@ fn post_review_lane_cleanup_key(lane: &OperatorPostReviewLaneStatus) -> String {
 	lane.issue_identifier.clone()
 }
 
-pub(super) fn hydrate_post_review_lane_current_lane_shadowing(
-	snapshot: &mut OperatorStatusSnapshot,
-) {
-	let current_lane_issue_keys = snapshot
-		.current_lanes
-		.iter()
-		.filter(|run| run.counts_as_running)
-		.map(|run| operator_run_group_key(run).to_ascii_uppercase())
-		.collect::<HashSet<_>>();
-
-	for lane in &mut snapshot.post_review_lanes {
-		lane.shadowed_by_current_lane = current_lane_issue_keys
-			.contains(&operator_issue_attention_key(&lane.issue_id, Some(&lane.issue_identifier)));
-	}
-}
-
 fn worktree_cleanup_key(worktree: &OperatorWorktreeStatus) -> String {
 	worktree.issue_identifier.clone().unwrap_or_else(|| worktree.issue_id.clone())
-}
-
-pub(super) fn operator_run_counts_as_current_lane(run: &OperatorRunStatus) -> bool {
-	operator_run_lane_control_readback(run).counts_as_current_lane
-}
-
-pub(super) fn operator_run_has_live_execution(run: &OperatorRunStatus) -> bool {
-	operator_run_lane_control_readback(run).has_live_execution
-}
-
-pub(super) fn operator_run_counts_as_running(run: &OperatorRunStatus) -> bool {
-	if !run.ownership_state.is_empty() {
-		return run.counts_as_running;
-	}
-
-	operator_run_lane_control_readback(run).counts_as_running
-}
-
-pub(super) fn operator_run_counts_as_attention(run: &OperatorRunStatus) -> bool {
-	let ownership = OwnershipState::from_str(&run.ownership_state);
-	let policy = PolicyState::from_str(&run.policy_state);
-
-	if !run.ownership_state.is_empty() {
-		return run.needs_attention
-			|| ownership == Some(OwnershipState::RetainedAttention)
-			|| policy_requires_attention(policy);
-	}
-
-	operator_run_lane_control_readback(run).counts_as_attention
 }
 
 fn policy_requires_attention(policy: Option<PolicyState>) -> bool {
@@ -384,34 +409,9 @@ fn policy_requires_attention(policy: Option<PolicyState>) -> bool {
 	)
 }
 
-pub(super) fn operator_run_has_recent_app_server_execution(run: &OperatorRunStatus) -> bool {
-	matches!(run.thread_status.as_deref(), Some("active"))
-		|| !run.thread_active_flags.is_empty()
-		|| run.protocol_idle_for_seconds.is_some_and(|idle_for| {
-			u64::try_from(idle_for)
-				.is_ok_and(|idle_for| idle_for < RUN_LEASE_IDLE_TIMEOUT.as_secs())
-		})
-}
-
-pub(super) fn operator_run_has_stale_execution_without_known_process(
-	run: &OperatorRunStatus,
-) -> bool {
-	matches!(run.status.as_str(), "starting" | "running")
-		&& run.phase == "executing"
-		&& run.wait_reason.is_none()
-		&& run.process_alive != Some(true)
-		&& !run.has_fresh_execution
-		&& [run.idle_for_seconds, run.protocol_idle_for_seconds].iter().any(|idle_for| {
-			idle_for.is_some_and(|idle_for| {
-				u64::try_from(idle_for)
-					.is_ok_and(|idle_for| idle_for >= RUN_LEASE_IDLE_TIMEOUT.as_secs())
-			})
-		})
-}
-
 fn project_connector_state(snapshot: &OperatorStatusSnapshot) -> String {
 	if !snapshot.connector_backoffs.is_empty()
-		|| snapshot_warnings_include_tracker_backoff(snapshot)
+		|| orchestrator::snapshot_warnings_include_tracker_backoff(snapshot)
 	{
 		return String::from("backoff");
 	}

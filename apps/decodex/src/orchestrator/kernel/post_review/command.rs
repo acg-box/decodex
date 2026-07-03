@@ -8,7 +8,7 @@ use crate::orchestrator::{
 	},
 };
 
-pub(in crate::orchestrator) fn build_post_review_command_intent(
+pub(crate) fn build_post_review_command_intent(
 	issue_id: &str,
 	run_id: Option<&str>,
 	reason: &str,

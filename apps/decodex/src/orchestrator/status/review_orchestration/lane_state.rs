@@ -8,7 +8,7 @@ use crate::orchestrator::{
 	},
 };
 
-pub(in crate::orchestrator) fn load_post_review_lane_review_state<I>(
+pub(crate) fn load_post_review_lane_review_state<I>(
 	snapshot: &PostReviewLaneSnapshot,
 	review_state_inspector: &I,
 ) -> crate::prelude::Result<PostReviewLaneStateLoad>
@@ -53,7 +53,7 @@ where
 	)))
 }
 
-pub(in crate::orchestrator) fn validate_post_review_lane_review_state(
+pub(crate) fn validate_post_review_lane_review_state(
 	review_state: PullRequestReviewState,
 	expected_branch_name: &str,
 	local_head_oid: &str,
@@ -130,7 +130,7 @@ pub(in crate::orchestrator) fn validate_post_review_lane_review_state(
 	PostReviewLaneStateLoad::ReviewState(review_state)
 }
 
-pub(in crate::orchestrator) fn merged_pr_local_head_matches_landed_lineage(
+pub(crate) fn merged_pr_local_head_matches_landed_lineage(
 	worktree_path: &Path,
 	review_state: &PullRequestReviewState,
 	local_head_oid: &str,

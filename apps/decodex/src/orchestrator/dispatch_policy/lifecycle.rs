@@ -1,21 +1,16 @@
-use std::path::Path;
-
-use crate::git_credentials::GitCredentialSource;
 use crate::{
-	default_branch_sync, github,
 	orchestrator::{
-		IssueDispatchMode, IssueRunPlan, IssueTracker, Result, ServiceConfig, StateStore,
-		TrackerIssue, WorkflowDocument, delete_local_branch_if_present,
-		detach_worktree_head_from_branch_if_checked_out, issue_passes_dispatch_policy,
-		issue_passes_review_repair_dispatch_policy,
-		ordinary_dispatch_blocked_by_retained_review_handoff, tracker,
+		dispatch_policy,
+		dispatch_policy::{
+			GitCredentialSource, IssueDispatchMode, IssueRunPlan, IssueTracker, Path, Result,
+			ServiceConfig, StateStore, TrackerIssue, WorkflowDocument, WorktreeManager,
+			WorktreeMapping, default_branch_sync, eyre, github,
+		},
 	},
-	prelude::eyre,
-	state::{self, WorktreeMapping},
-	worktree::WorktreeManager,
+	state, tracker,
 };
 
-pub(in crate::orchestrator) fn clear_recovered_issue_lease(
+pub(crate) fn clear_recovered_issue_lease(
 	project_id: &str,
 	issue_id: &str,
 	expected_run_id: Option<&str>,
@@ -35,7 +30,7 @@ pub(in crate::orchestrator) fn clear_recovered_issue_lease(
 	state_store.clear_lease(issue_id)
 }
 
-pub(in crate::orchestrator) fn is_issue_eligible<T>(
+pub(crate) fn is_issue_eligible<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project_id: &str,
@@ -47,20 +42,22 @@ where
 {
 	let queue_label = tracker::automation_queue_label(project_id);
 
-	if !issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, true)? {
+	if !dispatch_policy::issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, true)?
+	{
 		return Ok(false);
 	}
-	if ordinary_dispatch_blocked_by_retained_review_handoff(project_id, issue, state_store)? {
+	if dispatch_policy::ordinary_dispatch_blocked_by_retained_review_handoff(
+		project_id,
+		issue,
+		state_store,
+	)? {
 		return Ok(false);
 	}
 
 	Ok(state_store.lease_for_issue(&issue.id)?.is_none())
 }
 
-pub(in crate::orchestrator) fn todo_blocker_rule_passes(
-	issue: &TrackerIssue,
-	workflow: &WorkflowDocument,
-) -> bool {
+pub(crate) fn todo_blocker_rule_passes(issue: &TrackerIssue, workflow: &WorkflowDocument) -> bool {
 	if issue.state.name != "Todo" {
 		return true;
 	}
@@ -68,10 +65,7 @@ pub(in crate::orchestrator) fn todo_blocker_rule_passes(
 	issue.blockers.iter().all(|blocker| state_name_is_terminal(&blocker.state.name, workflow))
 }
 
-pub(in crate::orchestrator) fn refresh_issue<T>(
-	tracker: &T,
-	issue_id: &str,
-) -> Result<Option<TrackerIssue>>
+pub(crate) fn refresh_issue<T>(tracker: &T, issue_id: &str) -> Result<Option<TrackerIssue>>
 where
 	T: IssueTracker,
 {
@@ -81,21 +75,15 @@ where
 	Ok(refreshed_issues.pop())
 }
 
-pub(in crate::orchestrator) fn is_terminal_issue(
-	issue: &TrackerIssue,
-	workflow: &WorkflowDocument,
-) -> bool {
+pub(crate) fn is_terminal_issue(issue: &TrackerIssue, workflow: &WorkflowDocument) -> bool {
 	state_name_is_terminal(&issue.state.name, workflow)
 }
 
-pub(in crate::orchestrator) fn state_name_is_terminal(
-	state_name: &str,
-	workflow: &WorkflowDocument,
-) -> bool {
+pub(crate) fn state_name_is_terminal(state_name: &str, workflow: &WorkflowDocument) -> bool {
 	workflow.frontmatter().tracker().terminal_states().iter().any(|state| state == state_name)
 }
 
-pub(in crate::orchestrator) fn is_issue_in_progress_for_run(
+pub(crate) fn is_issue_in_progress_for_run(
 	issue: &TrackerIssue,
 	workflow: &WorkflowDocument,
 ) -> bool {
@@ -105,7 +93,7 @@ pub(in crate::orchestrator) fn is_issue_in_progress_for_run(
 		&& !issue.has_label(tracker_policy.needs_attention_label())
 }
 
-pub(in crate::orchestrator) fn is_issue_not_dispatchable_for_run(
+pub(crate) fn is_issue_not_dispatchable_for_run(
 	issue: &TrackerIssue,
 	workflow: &WorkflowDocument,
 ) -> bool {
@@ -117,7 +105,7 @@ pub(in crate::orchestrator) fn is_issue_not_dispatchable_for_run(
 			&& !tracker_policy.startable_states().iter().any(|state| state == &issue.state.name))
 }
 
-pub(in crate::orchestrator) fn is_issue_not_dispatchable_for_current_dispatch<T>(
+pub(crate) fn is_issue_not_dispatchable_for_current_dispatch<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
@@ -128,9 +116,10 @@ where
 	T: IssueTracker + ?Sized,
 {
 	match dispatch_mode {
-		IssueDispatchMode::ReviewRepair => {
-			Ok(!issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?)
-		},
+		IssueDispatchMode::ReviewRepair =>
+			Ok(!dispatch_policy::issue_passes_review_repair_dispatch_policy(
+				tracker, issue, project, workflow,
+			)?),
 		IssueDispatchMode::Normal
 		| IssueDispatchMode::Program
 		| IssueDispatchMode::Retry
@@ -138,7 +127,7 @@ where
 	}
 }
 
-pub(in crate::orchestrator) fn mark_run_attempt_if_active(
+pub(crate) fn mark_run_attempt_if_active(
 	state_store: &StateStore,
 	run_id: &str,
 	reconciled_status: &str,
@@ -154,7 +143,7 @@ pub(in crate::orchestrator) fn mark_run_attempt_if_active(
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn cleanup_worktree_mapping(
+pub(crate) fn cleanup_worktree_mapping(
 	state_store: &StateStore,
 	worktree_manager: &WorktreeManager,
 	workflow: &WorkflowDocument,
@@ -172,7 +161,7 @@ pub(in crate::orchestrator) fn cleanup_worktree_mapping(
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn cleanup_terminal_worktree(
+pub(crate) fn cleanup_terminal_worktree(
 	state_store: &StateStore,
 	worktree_manager: &WorktreeManager,
 	workflow: &WorkflowDocument,
@@ -192,7 +181,7 @@ pub(in crate::orchestrator) fn cleanup_terminal_worktree(
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn clear_worktree_retry_schedule(
+pub(crate) fn clear_worktree_retry_schedule(
 	state_store: &StateStore,
 	issue_id: &str,
 ) -> Result<()> {
@@ -203,7 +192,7 @@ pub(in crate::orchestrator) fn clear_worktree_retry_schedule(
 	state::clear_run_retry_schedule(worktree.worktree_path())
 }
 
-pub(in crate::orchestrator) fn cleanup_completed_post_review_lane(
+pub(crate) fn cleanup_completed_post_review_lane(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
@@ -270,12 +259,14 @@ pub(in crate::orchestrator) fn cleanup_completed_post_review_lane(
 		&github_token,
 		project.github().command_path(),
 	)?;
-
-	detach_worktree_head_from_branch_if_checked_out(
+	dispatch_policy::detach_worktree_head_from_branch_if_checked_out(
 		&issue_run.worktree.path,
 		&issue_run.worktree.branch_name,
 	)?;
-	delete_local_branch_if_present(project.repo_root(), &issue_run.worktree.branch_name)?;
+	dispatch_policy::delete_local_branch_if_present(
+		project.repo_root(),
+		&issue_run.worktree.branch_name,
+	)?;
 
 	worktree_manager.remove_worktree_path_with_hooks(
 		&issue_run.issue.identifier,

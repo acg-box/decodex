@@ -1,18 +1,4 @@
-use std::{
-	sync::{Arc, Barrier},
-	thread,
-};
-
-use rusqlite::{Connection, Result};
-use tempfile::TempDir;
-
-use crate::{
-	state::{
-		ProjectRegistration, StateStore,
-		tests::{self, IN_PROGRESS_STATE},
-	},
-	tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
-};
+use rusqlite::Error;
 
 #[test]
 fn persistent_event_appenders_can_write_distinct_runs_concurrently() {
@@ -401,7 +387,7 @@ fn late_protocol_events_after_thread_archive_use_discarded_sequence_namespace() 
 	let rows = statement
 		.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
 		.expect("protocol rows should query")
-		.collect::<Result<Vec<_>>>()
+		.collect::<std::result::Result<Vec<_>, Error>>()
 		.expect("protocol rows should collect");
 	let discarded_rows = rows
 		.iter()

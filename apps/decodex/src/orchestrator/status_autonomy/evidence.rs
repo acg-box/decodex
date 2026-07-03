@@ -12,7 +12,7 @@ use crate::{
 
 const AUTONOMY_REPLAY_EVIDENCE_SCHEMA: &str = "decodex.autonomy_replay_evidence/1";
 
-pub(in crate::orchestrator::status_autonomy) fn operator_autonomy_execution_evidence_statuses(
+pub(crate) fn operator_autonomy_execution_evidence_statuses(
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	proposal_id: &str,
 	contracts: &[&DecisionContractRecord],

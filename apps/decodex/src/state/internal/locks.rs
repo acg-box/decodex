@@ -1,5 +1,4 @@
-#[cfg(unix)]
-use std::os::{fd::AsRawFd, unix::ffi::OsStrExt as _};
+#[cfg(unix)] use std::os::{fd::AsRawFd, unix::ffi::OsStrExt as _};
 use std::{
 	env,
 	fs::{self, File, OpenOptions, TryLockError},

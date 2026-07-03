@@ -6,9 +6,8 @@ use crate::agent::tracker_tool_bridge::{
 	ISSUE_TERMINAL_FINALIZE_TOOL_NAME, PendingReviewAction, PendingReviewCompletion,
 	PullRequestDetails, ReviewExecutionMode, ReviewHandoffArgs, ReviewHandoffContext,
 	RunCompletionDisposition, TerminalFinalizeArgs, TrackerToolBridge,
+	tools::{REVIEW_COMPLETION_INTENT_EVENT_TYPE, TERMINAL_FINALIZE_EVENT_TYPE},
 };
-use crate::agent::tracker_tool_bridge::tools::REVIEW_COMPLETION_INTENT_EVENT_TYPE;
-use crate::agent::tracker_tool_bridge::tools::TERMINAL_FINALIZE_EVENT_TYPE;
 
 impl<'a> TrackerToolBridge<'a> {
 	fn append_review_completion_intent(

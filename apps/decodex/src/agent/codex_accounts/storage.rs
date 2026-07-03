@@ -3,20 +3,21 @@ use std::{
 	process,
 };
 
-use crate::prelude::eyre;
-
-use super::{AccountPoolRecord, CodexAccountPool, record::parse_account_records};
+use crate::{
+	agent::codex_accounts::{AccountPoolRecord, CodexAccountPool, record},
+	prelude::{Result, eyre},
+};
 
 impl CodexAccountPool {
-	pub(super) fn load_records(&self) -> crate::prelude::Result<Vec<AccountPoolRecord>> {
+	pub(super) fn load_records(&self) -> Result<Vec<AccountPoolRecord>> {
 		let input = fs::read_to_string(&self.path).map_err(|error| {
 			eyre::eyre!("Failed to read Codex accounts `{}`: {error}", self.path.display())
 		})?;
 
-		parse_account_records(&input, &self.path)
+		record::parse_account_records(&input, &self.path)
 	}
 
-	pub(super) fn lock_records(&self) -> crate::prelude::Result<AccountPoolFileLock> {
+	pub(super) fn lock_records(&self) -> Result<AccountPoolFileLock> {
 		let parent = self.path.parent().ok_or_else(|| {
 			eyre::eyre!(
 				"Codex accounts path `{}` must have a parent directory.",
@@ -46,7 +47,7 @@ impl CodexAccountPool {
 		Ok(AccountPoolFileLock { _file: file })
 	}
 
-	pub(super) fn save_records(&self, records: &[AccountPoolRecord]) -> crate::prelude::Result<()> {
+	pub(super) fn save_records(&self, records: &[AccountPoolRecord]) -> Result<()> {
 		let parent = self.path.parent().ok_or_else(|| {
 			eyre::eyre!(
 				"Codex accounts path `{}` must have a parent directory.",

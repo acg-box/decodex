@@ -1,4 +1,10 @@
-use std::{fs, io::Cursor, path::Path, process, str};
+use std::{
+	collections::BTreeMap,
+	fs,
+	io::Cursor,
+	path::{Path, PathBuf},
+	process, str,
+};
 
 use serde_json::Value;
 use tempfile::TempDir;
@@ -16,7 +22,7 @@ use crate::{
 	loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
 	mcp::{
 		self, DEFAULT_MCP_HTTP_LISTEN_ADDRESS, McpCapabilityProfile, McpContext,
-		McpHttpAuthorization, McpHttpHandler, McpHttpSessions, McpServer, McpTransport,
+		McpHttpAuthorization, McpHttpHandler, McpHttpSessions, McpServer, McpTransport, server,
 	},
 	runtime,
 	state::{self, ProtocolActivityEventSummary, ProtocolActivitySummary, StateStore},
@@ -28,7 +34,6 @@ pub(super) struct ParsedHttpResponse {
 	pub(super) headers: Vec<(String, String)>,
 	pub(super) body: Vec<u8>,
 }
-
 impl ParsedHttpResponse {
 	pub(super) fn parse(response: &[u8]) -> Self {
 		let header_end = mcp::http_header_end(response).expect("response should include headers");
@@ -137,7 +142,7 @@ pub(super) fn assert_no_lane_runtime_identifiers(value: &Value) {
 	}
 }
 
-pub(super) fn seed_autonomy_challenged_proposal() -> (TempDir, std::path::PathBuf, String) {
+pub(super) fn seed_autonomy_challenged_proposal() -> (TempDir, PathBuf, String) {
 	let repo = test_repo();
 	let db_path = repo.path().join("runtime.sqlite3");
 	let state_store = StateStore::open(&db_path).expect("state store should open");
@@ -273,7 +278,7 @@ pub(super) fn run_stdio_raw_with_profile(
 ) -> String {
 	let mut output = Vec::new();
 
-	mcp::serve_stdio_with_profile(
+	server::serve_stdio_with_profile(
 		Cursor::new(format!("{input}\n")),
 		&mut output,
 		context,
@@ -665,7 +670,7 @@ pub(super) fn seed_autonomy_mcp_state(state_store: &StateStore) -> String {
 		gaps: Vec::new(),
 		confidence: AutonomySignalConfidence::High,
 		privacy: AutonomySignalPrivacy::Team,
-		observed_counts: std::collections::BTreeMap::new(),
+		observed_counts: BTreeMap::new(),
 		review_evidence: None,
 		proposal_only: true,
 		created_at: String::from("2026-06-23T00:01:05Z"),
@@ -900,38 +905,6 @@ pub(super) fn isolated_mcp_runtime_home(repo: &TempDir) -> TestEnvVarGuard {
 		("CODEX_HOME".to_owned(), runtime_home.clone()),
 		("HOME".to_owned(), runtime_home),
 	])
-}
-
-#[test]
-fn mcp_project_fixture_runtime_store_stays_under_isolated_home() {
-	let operator_runtime_db =
-		runtime::runtime_db_path().expect("operator runtime path should resolve");
-	let repo = test_repo();
-	let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
-	let config_path = repo.path().join("project.toml");
-
-	seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
-	run_stdio_with_context(
-		project_mcp_context(repo.path(), &config_path),
-		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_lane_control","arguments":{"action":"steer","projectId":"pubfi","issue":"PUB-012","runId":"run-12","expectedTurnId":"turn-12","message":"Please stop after the current safe point.","authority":{"reason":"operator requested steer","source":"mcp-test","inspectedRunId":"run-12","expectedTurnId":"turn-12"}}}}"#,
-	);
-
-	let fixture_runtime_db =
-		runtime::runtime_db_path().expect("fixture runtime path should resolve");
-	let state_store = runtime::open_runtime_store().expect("fixture runtime store should open");
-	let events = state_store
-		.list_private_execution_events("pubfi", "PUB-012", "run-12", 1)
-		.expect("fixture private evidence should read");
-
-	assert_ne!(fixture_runtime_db, operator_runtime_db);
-	assert!(fixture_runtime_db.starts_with(repo.path()));
-	assert!(!events.is_empty());
-	assert!(
-		events
-			.iter()
-			.all(|event| event.payload().get("source").and_then(Value::as_str) == Some("mcp-test")),
-		"mcp fixture private evidence should stay in isolated runtime store"
-	);
 }
 
 pub(super) fn seed_project_runtime_for_mcp_resources(repo_root: &Path, config_path: &Path) {
@@ -1311,7 +1284,7 @@ pub(super) fn accepted_mcp_goal_contract() -> DecisionContract {
 	contract
 }
 
-pub(super) fn write_file(path: std::path::PathBuf, contents: &str) {
+pub(super) fn write_file(path: PathBuf, contents: &str) {
 	let parent = path.parent().expect("test path should have parent");
 
 	fs::create_dir_all(parent).expect("parent directory should exist");
@@ -1324,4 +1297,36 @@ pub(super) fn latent_decision_contract_fixture() -> DecisionContract {
 		"/fixtures/decision_contract/research_x_latent_contract.json"
 	)))
 	.expect("research X latent contract fixture should deserialize")
+}
+
+#[test]
+fn mcp_project_fixture_runtime_store_stays_under_isolated_home() {
+	let operator_runtime_db =
+		runtime::runtime_db_path().expect("operator runtime path should resolve");
+	let repo = test_repo();
+	let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
+	let config_path = repo.path().join("project.toml");
+
+	seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+	run_stdio_with_context(
+		project_mcp_context(repo.path(), &config_path),
+		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"decodex_lane_control","arguments":{"action":"steer","projectId":"pubfi","issue":"PUB-012","runId":"run-12","expectedTurnId":"turn-12","message":"Please stop after the current safe point.","authority":{"reason":"operator requested steer","source":"mcp-test","inspectedRunId":"run-12","expectedTurnId":"turn-12"}}}}"#,
+	);
+
+	let fixture_runtime_db =
+		runtime::runtime_db_path().expect("fixture runtime path should resolve");
+	let state_store = runtime::open_runtime_store().expect("fixture runtime store should open");
+	let events = state_store
+		.list_private_execution_events("pubfi", "PUB-012", "run-12", 1)
+		.expect("fixture private evidence should read");
+
+	assert_ne!(fixture_runtime_db, operator_runtime_db);
+	assert!(fixture_runtime_db.starts_with(repo.path()));
+	assert!(!events.is_empty());
+	assert!(
+		events
+			.iter()
+			.all(|event| event.payload().get("source").and_then(Value::as_str) == Some("mcp-test")),
+		"mcp fixture private evidence should stay in isolated runtime store"
+	);
 }

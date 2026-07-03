@@ -32,7 +32,7 @@ pub(crate) struct LaneInterruptReport {
 	pub(super) next_action: String,
 }
 impl LaneInterruptReport {
-	pub(in crate::orchestrator) fn http_status_line(&self) -> &'static str {
+	pub(crate) fn http_status_line(&self) -> &'static str {
 		if self.soft_interrupt.status == "pending" && self.hard_interrupt.is_none() {
 			"202 Accepted"
 		} else {

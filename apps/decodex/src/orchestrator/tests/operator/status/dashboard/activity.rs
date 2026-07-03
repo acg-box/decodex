@@ -1,8 +1,7 @@
-use super::*;
-
+use crate::orchestrator::tests::operator::status::dashboard;
 #[test]
 fn operator_dashboard_header_shows_endpoint_and_snapshot_freshness() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("const DASHBOARD_WEBSOCKET_ENDPOINT = \"/dashboard/control\";"));
 	assert!(!response.contains("SNAPSHOT_PUBLISHED_HEADER"));
@@ -54,8 +53,14 @@ fn operator_dashboard_header_shows_endpoint_and_snapshot_freshness() {
 
 #[test]
 fn operator_dashboard_active_freshness_prefers_live_activity_source() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
+	assert_dashboard_freshness_source_contract(&response);
+	assert_dashboard_lifecycle_activity_contract(&response);
+	assert_dashboard_activity_display_regressions(&response);
+}
+
+fn assert_dashboard_freshness_source_contract(response: &str) {
 	assert!(response.contains("function currentLaneFreshness(run)"));
 	assert!(response.contains("source: \"last_run_activity_at\""));
 	assert!(response.contains("source: \"none\""));
@@ -77,6 +82,9 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 		)
 	);
 	assert!(response.contains("facts.push([\"focus\", detailLabel(focus)]);"));
+}
+
+fn assert_dashboard_lifecycle_activity_contract(response: &str) {
 	assert!(
 		response.contains(
 			"function currentLaneLifecycleMetrics(run, summary = childAgentActivity(run))"
@@ -138,6 +146,9 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(response.contains(".child-phase-table {\n\t\t\t\tdisplay: inline-grid;\n\t\t\t\tgrid-template-columns:\n\t\t\t\t\tmax-content"));
 	assert!(!response.contains("function childAgentUsageFacts(summary)"));
 	assert!(!response.contains("<span class=\"child-context-label\">Usage</span>"));
+}
+
+fn assert_dashboard_activity_display_regressions(response: &str) {
 	assert!(response.contains("renderRunMetaFact(label, value)"));
 	assert!(!response.contains("sourceLabel: \"Live Activity\""));
 	assert!(
@@ -178,7 +189,7 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 
 #[test]
 fn operator_dashboard_uses_shared_protocol_activity_summary() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("function protocolActivity(run)"));
 	assert!(response.contains("function protocolActivityFocus(run)"));
@@ -198,7 +209,7 @@ fn operator_dashboard_uses_shared_protocol_activity_summary() {
 
 #[test]
 fn operator_dashboard_run_activity_consumes_server_presentation() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("function presentationCurrentLaneCards(presentation)"));
 	assert!(response.contains("function snapshotCurrentLaneCards(snapshot)"));
@@ -259,7 +270,7 @@ fn operator_dashboard_run_activity_consumes_server_presentation() {
 
 #[test]
 fn operator_dashboard_uses_websocket_without_http_state_fallback() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("connectDashboardSocket();"));
 	assert!(response.contains("function startDashboardStream()"));

@@ -1,13 +1,15 @@
-use super::{
-	Command, Digest, IssueRunPlan, LOOP_GUARDRAIL_CONVERGENCE_BUDGET, LoopGuardrailCheckpoint,
-	LoopGuardrailCheckpointInput, LoopGuardrailReason, LoopGuardrailStopRequested,
-	LoopGuardrailWorktreeFingerprint, Path, RepoGateFailure, RepoGateFailureDiagnostic,
-	RepoGateFailureDisposition, Report, Result, ReviewPolicyStopRequested, ServiceConfig, Sha256,
-	StateStore, json, repo_gate_changed_tracked_files, retained_progress_source_error_class,
-	run_failure_writeback_disposition, state, worktree_head_oid,
+use crate::{
+	orchestrator::execution_failure::{
+		self, Command, Digest, IssueRunPlan, LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
+		LoopGuardrailCheckpoint, LoopGuardrailCheckpointInput, LoopGuardrailReason,
+		LoopGuardrailStopRequested, LoopGuardrailWorktreeFingerprint, Path, RepoGateFailure,
+		RepoGateFailureDiagnostic, RepoGateFailureDisposition, Report, Result,
+		ReviewPolicyStopRequested, ServiceConfig, Sha256, StateStore,
+	},
+	state,
 };
 
-pub(in crate::orchestrator) fn retryable_failure_loop_guardrail_stop(
+pub(crate) fn retryable_failure_loop_guardrail_stop(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -52,12 +54,12 @@ pub(in crate::orchestrator) fn retryable_failure_loop_guardrail_stop(
 				worktree_fingerprint.effective_status_hash.as_str(),
 				worktree_fingerprint.tracked_diff_hash.as_str()
 			),
-			retained_progress_source_error_class(error),
+			execution_failure::retained_progress_source_error_class(error),
 		));
 	}
 
 	for (reason, fingerprint, source_error_class) in observations {
-		let mut details = json!({
+		let mut details = execution_failure::json!({
 			"schema": "decodex.loop_guardrail_checkpoint/1",
 			"reason": reason.error_class(),
 			"source_error_class": source_error_class,
@@ -110,14 +112,10 @@ pub(in crate::orchestrator) fn retryable_failure_loop_guardrail_stop(
 	Ok(None)
 }
 
-fn loop_guardrail_normalized_validation_fingerprint(error_class: &str) -> String {
-	format!("{error_class}:repo_gate:validation_repair:lane_authority")
-}
-
-pub(in crate::orchestrator) fn loop_guardrail_worktree_fingerprint(
+pub(crate) fn loop_guardrail_worktree_fingerprint(
 	worktree_path: &Path,
 ) -> Result<Option<LoopGuardrailWorktreeFingerprint>> {
-	let Some(head_sha) = worktree_head_oid(worktree_path)? else {
+	let Some(head_sha) = execution_failure::worktree_head_oid(worktree_path)? else {
 		return Ok(None);
 	};
 	let Some(tracked_status) =
@@ -134,7 +132,7 @@ pub(in crate::orchestrator) fn loop_guardrail_worktree_fingerprint(
 		return Ok(None);
 	};
 	let effective_status = loop_guardrail_effective_status(&raw_status);
-	let branch_delta_present = repo_gate_changed_tracked_files(worktree_path)
+	let branch_delta_present = execution_failure::repo_gate_changed_tracked_files(worktree_path)
 		.is_ok_and(|changed_files| !changed_files.is_empty());
 
 	Ok(Some(LoopGuardrailWorktreeFingerprint {
@@ -149,7 +147,7 @@ pub(in crate::orchestrator) fn loop_guardrail_worktree_fingerprint(
 	}))
 }
 
-pub(in crate::orchestrator) fn loop_guardrail_effective_status(raw_status: &str) -> String {
+pub(crate) fn loop_guardrail_effective_status(raw_status: &str) -> String {
 	let lines = raw_status
 		.lines()
 		.map(str::trim_end)
@@ -168,10 +166,7 @@ pub(in crate::orchestrator) fn loop_guardrail_effective_status(raw_status: &str)
 	status
 }
 
-pub(in crate::orchestrator) fn git_guardrail_output(
-	worktree_path: &Path,
-	args: &[&str],
-) -> Result<Option<String>> {
+pub(crate) fn git_guardrail_output(worktree_path: &Path, args: &[&str]) -> Result<Option<String>> {
 	let output = Command::new("git").arg("-C").arg(worktree_path).args(args).output()?;
 
 	if !output.status.success() {
@@ -181,7 +176,7 @@ pub(in crate::orchestrator) fn git_guardrail_output(
 	Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()))
 }
 
-pub(in crate::orchestrator) fn loop_guardrail_text_hash(text: &str) -> String {
+pub(crate) fn loop_guardrail_text_hash(text: &str) -> String {
 	let digest = <Sha256 as Digest>::digest(text.as_bytes());
 	let mut hash = String::with_capacity(64);
 
@@ -193,36 +188,7 @@ pub(in crate::orchestrator) fn loop_guardrail_text_hash(text: &str) -> String {
 	hash
 }
 
-fn record_loop_guardrail_private_event(
-	project: &ServiceConfig,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	checkpoint: &LoopGuardrailCheckpoint,
-	source_error_class: Option<&str>,
-) -> Result<()> {
-	state_store
-		.append_private_execution_event(
-			project.service_id(),
-			&issue_run.issue.id,
-			&issue_run.run_id,
-			issue_run.attempt_number,
-			"loop_guardrail_checkpoint",
-			json!({
-				"schema": "decodex.loop_guardrail_checkpoint/1",
-				"reason": checkpoint.reason(),
-				"fingerprint": checkpoint.fingerprint(),
-				"consecutive_count": checkpoint.consecutive_count(),
-				"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
-				"checkpoint_run_id": checkpoint.run_id(),
-				"checkpoint_attempt_number": checkpoint.attempt_number(),
-				"source_error_class": source_error_class,
-				"details": checkpoint.details_json(),
-			}),
-		)
-		.map(|_| ())
-}
-
-pub(in crate::orchestrator) fn loop_guardrail_stop_from_review_policy(
+pub(crate) fn loop_guardrail_stop_from_review_policy(
 	review_policy_stop: &ReviewPolicyStopRequested,
 ) -> LoopGuardrailStopRequested {
 	LoopGuardrailStopRequested {
@@ -242,6 +208,39 @@ pub(in crate::orchestrator) fn loop_guardrail_stop_from_review_policy(
 	}
 }
 
-pub(in crate::orchestrator) fn run_failure_requires_terminal_attention(error: &Report) -> bool {
-	run_failure_writeback_disposition(error).requires_terminal_attention()
+pub(crate) fn run_failure_requires_terminal_attention(error: &Report) -> bool {
+	execution_failure::run_failure_writeback_disposition(error).requires_terminal_attention()
+}
+
+fn loop_guardrail_normalized_validation_fingerprint(error_class: &str) -> String {
+	format!("{error_class}:repo_gate:validation_repair:lane_authority")
+}
+
+fn record_loop_guardrail_private_event(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	checkpoint: &LoopGuardrailCheckpoint,
+	source_error_class: Option<&str>,
+) -> Result<()> {
+	state_store
+		.append_private_execution_event(
+			project.service_id(),
+			&issue_run.issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+			"loop_guardrail_checkpoint",
+			execution_failure::json!({
+				"schema": "decodex.loop_guardrail_checkpoint/1",
+				"reason": checkpoint.reason(),
+				"fingerprint": checkpoint.fingerprint(),
+				"consecutive_count": checkpoint.consecutive_count(),
+				"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
+				"checkpoint_run_id": checkpoint.run_id(),
+				"checkpoint_attempt_number": checkpoint.attempt_number(),
+				"source_error_class": source_error_class,
+				"details": checkpoint.details_json(),
+			}),
+		)
+		.map(|_| ())
 }

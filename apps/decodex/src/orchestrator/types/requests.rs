@@ -1,4 +1,4 @@
-use super::{
+use crate::orchestrator::types::{
 	Duration, File, IssueDispatchMode, Path, PathBuf, RetryQueue, Serialize, ServiceConfig,
 	StateStore, TrackerIssue, WorkflowDocument, WorktreeManager, WorktreeSpec,
 };

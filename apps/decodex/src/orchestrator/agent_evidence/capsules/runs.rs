@@ -10,7 +10,7 @@ use crate::orchestrator::{
 	status_summary,
 };
 
-pub(in crate::orchestrator) fn build_run_capsules(
+pub(crate) fn build_run_capsules(
 	project_view: &AgentEvidenceProjectView<'_>,
 	generated_at: &str,
 	runs_dir: &Path,
@@ -49,7 +49,7 @@ pub(in crate::orchestrator) fn build_run_capsules(
 	capsules
 }
 
-pub(in crate::orchestrator) fn run_capsule_ref(capsule: &AgentRunCapsule) -> AgentRunCapsuleRef {
+pub(crate) fn run_capsule_ref(capsule: &AgentRunCapsule) -> AgentRunCapsuleRef {
 	AgentRunCapsuleRef {
 		evidence_ref: capsule.evidence_ref.clone(),
 		run_id: capsule.run_id.clone(),
@@ -78,6 +78,7 @@ pub(super) fn agent_run_blocker_reason(run: &OperatorRunStatus) -> Option<&'stat
 		Some(OwnershipState::GhostLane) => return Some("ghost_lane"),
 		_ => {},
 	}
+
 	if run.suspected_stall {
 		return Some("suspected_stall");
 	}
@@ -100,11 +101,10 @@ pub(super) fn agent_run_next_action(run: &OperatorRunStatus) -> Option<String> {
 	}
 
 	match agent_run_blocker_reason(run) {
-		Some("suspected_stall" | "run_stalled" | "stale_execution_without_known_process") => {
+		Some("suspected_stall" | "run_stalled" | "stale_execution_without_known_process") =>
 			Some(String::from(
 				"Inspect the run capsule, retained worktree, protocol activity, and process state before retrying.",
-			))
-		},
+			)),
 		Some("process_exited_without_terminal_status") => Some(String::from(
 			"Inspect the retained worktree and runtime markers; reconcile or retry only after preserving useful local changes.",
 		)),

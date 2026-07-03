@@ -1,13 +1,18 @@
-use super::{
-	AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure, AppServerPhaseGoalFailure,
-	AppServerTransportFailure, AppServerTurnFailure, AppServerZeroEvidenceStartFailure,
-	CodexAccountAuthFailure, Duration, FakeTracker, IssueDispatchMode, IssueRunPlan,
-	LoopGuardrailReason, LoopGuardrailStopRequested, ManualAttentionRequested, PhaseGoalKind,
-	RUN_LEASE_IDLE_TIMEOUT, RepoGateFailureKind, Report, RetainedPartialProgress, RetryComment,
-	ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition,
-	RunFailureWritebackDisposition, StalledRunNeedsAttention, TEST_SERVICE_ID, WorktreeSpec,
-	harness_outcome_payload_for_retryable_failure, orchestrator, sample_issue, temp_project_layout,
-	tracker,
+use crate::orchestrator::{
+	RepoGateFailure,
+	tests::{
+		self,
+		runtime_failure::{
+			self, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure,
+			AppServerPhaseGoalFailure, AppServerTransportFailure, AppServerTurnFailure,
+			AppServerZeroEvidenceStartFailure, CodexAccountAuthFailure, Duration, FakeTracker,
+			IssueDispatchMode, IssueRunPlan, LoopGuardrailReason, LoopGuardrailStopRequested,
+			ManualAttentionRequested, PhaseGoalKind, RUN_LEASE_IDLE_TIMEOUT, RepoGateFailureKind,
+			Report, RetainedPartialProgress, RetryComment, ReviewPolicyStopReason,
+			ReviewPolicyStopRequested, RunCompletionDisposition, RunFailureWritebackDisposition,
+			StalledRunNeedsAttention, TEST_SERVICE_ID, WorktreeSpec, orchestrator, tracker,
+		},
+	},
 };
 
 #[test]
@@ -84,7 +89,7 @@ fn failure_writeback_disposition_marks_retryable_recovery_classes() {
 		),
 		(
 			"repo gate lock contention",
-			Report::new(orchestrator::RepoGateFailure::new(
+			Report::new(RepoGateFailure::new(
 				RepoGateFailureKind::GitLockContention,
 				String::from("fatal: Unable to create '.git/index.lock': File exists."),
 			)),
@@ -177,7 +182,7 @@ fn failure_writeback_disposition_marks_terminal_attention_classes() {
 		),
 		(
 			"repo gate spawn failure",
-			Report::new(orchestrator::RepoGateFailure::new(
+			Report::new(RepoGateFailure::new(
 				RepoGateFailureKind::CommandSpawnFailed,
 				String::from("Failed to spawn repo gate command `cargo make test`: missing tool"),
 			)),
@@ -343,8 +348,8 @@ fn review_policy_terminal_failure_details_include_research_boundaries() {
 
 #[test]
 fn preserve_manual_attention_request_wraps_finalize_miss() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -414,7 +419,7 @@ fn retained_partial_progress_uses_actionable_terminal_failure_comment() {
 #[test]
 fn ensure_automation_activity_label_noops_when_active_ownership_is_confirmed() {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let mut issue = sample_issue("In Progress", &[]);
+	let mut issue = tests::sample_issue("In Progress", &[]);
 
 	issue.labels_complete = false;
 
@@ -434,7 +439,7 @@ fn ensure_automation_activity_label_noops_when_active_ownership_is_confirmed() {
 		"server-confirmed active ownership should not trigger a label mutation"
 	);
 
-	let mut issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let mut issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
 
 	issue.team.labels.retain(|label| label.name != active_label.as_str());
 
@@ -454,7 +459,7 @@ fn ensure_automation_activity_label_noops_when_active_ownership_is_confirmed() {
 #[test]
 fn ensure_automation_activity_label_uses_incremental_team_label_lookup_for_mutation() {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let mut issue = sample_issue("In Progress", &[]);
+	let mut issue = tests::sample_issue("In Progress", &[]);
 
 	issue.labels_complete = false;
 
@@ -527,8 +532,9 @@ fn retry_failure_comments_withhold_raw_error_text() {
 
 #[test]
 fn retryable_failure_writeback_does_not_mark_non_validation_harness_outcome_failed() {
-	let payload =
-		harness_outcome_payload_for_retryable_failure(Report::msg("transient runtime failure"));
+	let payload = runtime_failure::harness_outcome_payload_for_retryable_failure(Report::msg(
+		"transient runtime failure",
+	));
 
 	assert_eq!(payload["validation"]["result"], "not_recorded");
 	assert_eq!(payload["validation"]["failure_count"], 0);
@@ -537,8 +543,8 @@ fn retryable_failure_writeback_does_not_mark_non_validation_harness_outcome_fail
 
 #[test]
 fn retryable_repo_gate_writeback_marks_harness_outcome_validation_failed() {
-	let payload = harness_outcome_payload_for_retryable_failure(Report::new(
-		orchestrator::RepoGateFailure::new(
+	let payload = runtime_failure::harness_outcome_payload_for_retryable_failure(Report::new(
+		RepoGateFailure::new(
 			RepoGateFailureKind::VerifyCommandFailed,
 			String::from("verify command failed"),
 		),
@@ -576,7 +582,7 @@ fn repo_gate_retry_comments_preserve_continued_repair_error_class() {
 
 #[test]
 fn repo_gate_lock_contention_retry_comments_preserve_specific_error_class() {
-	let error = Report::new(orchestrator::RepoGateFailure::new(
+	let error = Report::new(RepoGateFailure::new(
 		RepoGateFailureKind::GitLockContention,
 		String::from(
 			"Failed to inspect tracked-file cleanliness after repo gate verification in `/tmp/repo`: fatal: Unable to create '.git/index.lock': File exists.",

@@ -1,14 +1,15 @@
-use crate::orchestrator::agent_evidence::{
-	PrivateEvidenceArchitectureRecoverySummary, PrivateEvidenceBoundaryCheckSummary,
-	PrivateEvidenceDecisionRequestSummary, PrivateEvidencePayloadSummary,
-	PrivateEvidencePhaseAcceptanceSummary, PrivateEvidenceReadback, PrivateEvidenceReadbackEvent,
-	PrivateEvidenceRepoGateFailureSummary, PrivateEvidenceReviewCheckpointSummary,
+use crate::orchestrator::{
+	agent_evidence::{
+		PrivateEvidenceArchitectureRecoverySummary, PrivateEvidenceBoundaryCheckSummary,
+		PrivateEvidenceDecisionRequestSummary, PrivateEvidencePayloadSummary,
+		PrivateEvidencePhaseAcceptanceSummary, PrivateEvidenceReadback,
+		PrivateEvidenceReadbackEvent, PrivateEvidenceRepoGateFailureSummary,
+		PrivateEvidenceReviewCheckpointSummary,
+	},
+	harness_improvement::HarnessImprovementCandidateSummary,
 };
-use crate::orchestrator::harness_improvement::HarnessImprovementCandidateSummary;
 
-pub(in crate::orchestrator) fn render_private_evidence_readback(
-	readback: &PrivateEvidenceReadback,
-) -> String {
+pub(crate) fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> String {
 	let mut output = String::new();
 
 	append_private_evidence_readback_header(&mut output, readback);
@@ -24,7 +25,7 @@ pub(in crate::orchestrator) fn render_private_evidence_readback(
 	output
 }
 
-pub(in crate::orchestrator) fn render_private_evidence_payload_summary(
+pub(crate) fn render_private_evidence_payload_summary(
 	summary: &PrivateEvidencePayloadSummary,
 ) -> String {
 	let keys = if summary.keys.is_empty() { String::from("none") } else { summary.keys.join(",") };

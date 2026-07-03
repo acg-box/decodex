@@ -152,6 +152,7 @@ fn parse_commit_message_record(
 	record.summary = normalize_single_line_field("summary", &record.summary)?;
 
 	let authority = normalize_commit_authority("authority", &record.authority)?;
+
 	if let Some(expected_authority) = expected_authority {
 		let expected_authority =
 			normalize_commit_authority("expected_authority", expected_authority)?;

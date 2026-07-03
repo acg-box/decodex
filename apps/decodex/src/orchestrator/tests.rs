@@ -35,27 +35,23 @@ use std::{
 	cell::RefCell,
 	collections::{BTreeSet, HashMap},
 	env,
-	fs,
-	io::{Read, Write},
-	iter,
-	net::{Shutdown, TcpListener, TcpStream},
+	ffi::{OsStr, OsString},
+	fs, iter,
 	path::{Path, PathBuf},
 	process::{self, Command},
-	sync::{Arc, Mutex},
 	thread,
 	time::{Duration, Instant},
 };
 
 use color_eyre::{Report, eyre};
-use rusqlite::Connection;
 use serde_json::Value;
 use tempfile::TempDir;
 use time::OffsetDateTime;
 
-use crate::tracker::{TrackerIssueCreate, records};
+use crate::{orchestrator::RepoGatePhaseGoalController, tracker::TrackerIssueCreate};
 #[rustfmt::skip]
 	use crate::agent::{
-		RUN_LEASE_IDLE_TIMEOUT, MODEL_EXECUTION_IDLE_TIMEOUT,
+		RUN_LEASE_IDLE_TIMEOUT,
 		AppServerCapabilityPreflightFailure,
 		AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure,
 		AppServerTransportFailure, AppServerTurnFailure, PhaseGoalKind, ReviewPolicyStopReason, ReviewPolicyStopRequested,
@@ -64,22 +60,20 @@ use crate::tracker::{TrackerIssueCreate, records};
 use crate::config::{ReviewLevel, ServiceConfig};
 #[rustfmt::skip]
 use crate::github;
-use crate::loop_contract::DecisionContract;
 #[rustfmt::skip]
-use crate::orchestrator::{self, AgentEvidenceSource, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionRequestInput, ChildRunRef, ControlPlaneProjectTick, DashboardEventHub, EvidenceRequest, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, OperatorCodexAccountControlStatus, OperatorExecutionProgramNodeStatus, OperatorExecutionProgramStatus, OperatorGitHubCliAuthority, OperatorProjectStatus, OperatorStatusSnapshot, PrepareIssueRunContext, PublishedOperatorSnapshot, PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection, PullRequestIssueCommentState, PullRequestPageInfo, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewConnection, PullRequestReviewRequestConnection, PullRequestReviewState, PullRequestReviewStateInspector, PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode, PullRequestStatusCheckRollup, RecoveredRuntimeState, RetainedPartialProgress, RetainedReviewRepairPushFailed, RetryComment, RunCompletionDisposition, TERMINAL_GUARDED_RUN_STATUS, TRACKER_RATE_LIMIT_WARNING, TRACKER_TRANSIENT_TIMEOUT_WARNING, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY};
+use crate::orchestrator::{self, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionRequestInput, ChildExitRetryContext, ChildRunRef, CONTINUATION_PENDING_RUN_STATUS, DaemonRunChild, DaemonTickRuntimeContext, EvidenceRequest, GhPullRequestReviewStateInspector, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot, PrepareIssueRunContext, PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection, PullRequestIssueCommentState, PullRequestIssueCommentsNode, PullRequestPageInfo, PullRequestReactionGroup, PullRequestReactionUsersConnection, PullRequestActor, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewConnection, PullRequestIssueCommentNode, PullRequestReviewNode, PullRequestReviewRequestConnection, PullRequestReviewState, PullRequestReviewStateInspector, PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode, PullRequestStatusCheckRollup, RetainedPartialProgress, RetainedReviewRepairPushFailed, RetryComment, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, RunCompletionDisposition, RepoGateFailure, TERMINAL_GUARDED_RUN_STATUS, TargetIssueRunContext, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY};
 #[rustfmt::skip]
 use crate::prelude::Result;
 #[rustfmt::skip]
 use crate::state::{
-	self, ChildAgentActivitySummary, CodexAccountActivitySummary, CodexAccountMarker,
-	EffectiveRuntimeMarker, ProjectRegistration, ProtocolActivityMarker, ProtocolActivitySummary,
-	RUN_ACTIVITY_MARKER_FILE, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_GIT_CREDENTIALS,
+	self,
+	RUN_ACTIVITY_MARKER_FILE,
 	RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, ReviewPolicyCheckpointInput,
 	StateStore, WorktreeMapping,
 };
 use crate::test_support::{self, TestEnvVarGuard};
 #[rustfmt::skip]
-use crate::tracker::{self, IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker, TrackerLabel, TrackerState, TrackerTeam, records::{LinearExecutionEventIdentity}};
+use crate::tracker::{self, IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker, TrackerLabel, TrackerState, TrackerTeam};
 #[rustfmt::skip]
 use crate::workflow::WorkflowDocument;
 #[rustfmt::skip]

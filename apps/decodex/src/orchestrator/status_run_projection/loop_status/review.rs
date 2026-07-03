@@ -1,11 +1,13 @@
-use crate::orchestrator::{
-	OperatorReviewCheckpointStatus, OperatorReviewCheckpointSummaryFields,
-	OperatorReviewLoopStatus, OperatorReviewRouteCount, ProjectLoopEvidenceSnapshot, ReviewLevel,
-	Value,
+use crate::{
+	orchestrator::{
+		OperatorReviewCheckpointStatus, OperatorReviewCheckpointSummaryFields,
+		OperatorReviewLoopStatus, OperatorReviewRouteCount, ProjectLoopEvidenceSnapshot,
+		ReviewLevel, Value,
+	},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
-pub(in crate::orchestrator) fn operator_review_loop_status(
+pub(crate) fn operator_review_loop_status(
 	review_level: ReviewLevel,
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	issue_id: &str,
@@ -70,7 +72,7 @@ pub(in crate::orchestrator) fn operator_review_loop_status(
 	Ok(None)
 }
 
-pub(in crate::orchestrator) fn operator_latest_review_checkpoint_event_status(
+pub(crate) fn operator_latest_review_checkpoint_event_status(
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	issue_id: &str,
 	run_id: &str,
@@ -121,7 +123,7 @@ pub(in crate::orchestrator) fn operator_latest_review_checkpoint_event_status(
 	})
 }
 
-pub(in crate::orchestrator) fn operator_review_checkpoint_summary_fields(
+pub(crate) fn operator_review_checkpoint_summary_fields(
 	details_json: &str,
 ) -> OperatorReviewCheckpointSummaryFields {
 	let Ok(details) = serde_json::from_str::<Value>(details_json) else {

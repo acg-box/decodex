@@ -1,13 +1,13 @@
-use super::{
-	AppServerCapabilityPreflightFailure, AppServerPhaseGoalFailure, AppServerTransportFailure,
-	AppServerZeroEvidenceStartFailure, FailureHandlingContext, HarnessOutcomeKind,
-	IssueDispatchMode, IssueRunPlan, IssueTracker, OffsetDateTime,
-	RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE, RepoGateFailure, Report, Result, RetryComment,
-	RetryKind, StalledRunNeedsAttention, WorkflowDocument, ensure_automation_activity_label,
-	format_retry_comment, json, latest_open_issue_phase_goal_before_attempt,
-	loop_guardrail_worktree_fingerprint, record_harness_outcome_best_effort,
-	retained_progress_source_error_class, retry_comment_details, retry_delay, state, tracker,
-	write_retry_budget_marker,
+use crate::{
+	orchestrator::execution_failure::{
+		self, AppServerCapabilityPreflightFailure, AppServerPhaseGoalFailure,
+		AppServerTransportFailure, AppServerZeroEvidenceStartFailure, FailureHandlingContext,
+		HarnessOutcomeKind, IssueDispatchMode, IssueRunPlan, IssueTracker, OffsetDateTime,
+		RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE, RepoGateFailure, Report, Result, RetryComment,
+		RetryKind, StalledRunNeedsAttention, WorkflowDocument,
+		retained_progress_source_error_class,
+	},
+	state, tracker,
 };
 
 pub(super) fn apply_retryable_failure_writeback<T>(
@@ -18,7 +18,7 @@ pub(super) fn apply_retryable_failure_writeback<T>(
 where
 	T: IssueTracker,
 {
-	let (retry_error_class, retry_next_action) = retry_comment_details(error);
+	let (retry_error_class, retry_next_action) = execution_failure::retry_comment_details(error);
 
 	write_retry_schedule_marker_for_runtime_retry(
 		error,
@@ -44,7 +44,7 @@ where
 	tracker::create_public_comment(
 		context.tracker,
 		&context.issue_run.issue.id,
-		&format_retry_comment(RetryComment {
+		&execution_failure::format_retry_comment(RetryComment {
 			run_id: &context.issue_run.run_id,
 			attempt_number: context.issue_run.attempt_number,
 			retry_budget_attempt_number: context.retry_budget_attempts,
@@ -55,14 +55,13 @@ where
 			next_action: &retry_next_action,
 		}),
 	)?;
-
-	write_retry_budget_marker(
+	execution_failure::write_retry_budget_marker(
 		&context.issue_run.worktree.path,
 		&context.issue_run.run_id,
 		context.issue_run.attempt_number,
 		context.retry_budget_attempts,
 	)?;
-	record_harness_outcome_best_effort(
+	execution_failure::record_harness_outcome_best_effort(
 		context.state_store,
 		context.project.service_id(),
 		context.issue_run,
@@ -71,12 +70,13 @@ where
 		retryable_failure_validation_result(error, retry_error_class),
 		None,
 	);
+
 	cleanup_retryable_failed_start_ownership(context, error)?;
 
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn write_retry_schedule_marker_for_runtime_retry(
+pub(crate) fn write_retry_schedule_marker_for_runtime_retry(
 	error: &Report,
 	workflow: &WorkflowDocument,
 	issue_run: &IssueRunPlan,
@@ -148,7 +148,7 @@ where
 
 	context.tracker.update_issue_state(&context.issue_run.issue.id, state_id)?;
 
-	ensure_automation_activity_label(
+	execution_failure::ensure_automation_activity_label(
 		context.tracker,
 		&context.issue_run.issue,
 		context.project.service_id(),
@@ -164,7 +164,7 @@ where
 			&context.issue_run.run_id,
 			context.issue_run.attempt_number,
 			RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE,
-			json!({
+			execution_failure::json!({
 				"schema": "decodex.retryable_failed_start_cleanup/1",
 				"source_error_class": retained_progress_source_error_class(error)
 					.unwrap_or("retryable_execution_failure"),
@@ -215,7 +215,7 @@ where
 	)? {
 		return Ok(false);
 	}
-	if latest_open_issue_phase_goal_before_attempt(
+	if execution_failure::latest_open_issue_phase_goal_before_attempt(
 		context.project,
 		context.state_store,
 		&context.issue_run.issue.id,
@@ -227,7 +227,7 @@ where
 		return Ok(false);
 	}
 
-	Ok(loop_guardrail_worktree_fingerprint(&context.issue_run.worktree.path)?
+	Ok(execution_failure::loop_guardrail_worktree_fingerprint(&context.issue_run.worktree.path)?
 		.is_some_and(|fingerprint| !fingerprint.effective_delta_present))
 }
 
@@ -269,7 +269,7 @@ fn write_retry_schedule_marker(
 	retry_kind: &str,
 ) -> Result<()> {
 	let retry_attempt = u32::try_from(retry_budget_attempts).unwrap_or(u32::MAX).max(1);
-	let delay = retry_delay(RetryKind::Failure, retry_attempt, workflow);
+	let delay = execution_failure::retry_delay(RetryKind::Failure, retry_attempt, workflow);
 	let retry_ready_at_unix_epoch = OffsetDateTime::now_utc().unix_timestamp().saturating_add(
 		i64::try_from((delay.as_millis().saturating_add(999)) / 1_000).unwrap_or(i64::MAX),
 	);

@@ -1,11 +1,13 @@
-use crate::state::{runtime_row_parsers, store};
 use crate::{
 	autonomy_objective::{
 		AutonomyObjectiveAcceptance, AutonomyObjectiveContract, AutonomyObjectiveRejection,
 		AutonomyObjectiveState, AutonomyObjectiveSupersession,
 	},
 	prelude::{Result, eyre},
-	state::{AutonomyObjectiveRecord, StateStore, runtime_records::AutonomyObjectiveKey},
+	state::{
+		AutonomyObjectiveRecord, StateStore, runtime_records::AutonomyObjectiveKey,
+		runtime_row_parsers, store,
+	},
 };
 
 impl StateStore {

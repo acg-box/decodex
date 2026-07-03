@@ -1,44 +1,59 @@
-use super::{
-	ConnectorBackoff, ProjectRegistration, Result, SqliteStateStore, connector_backoff_from_row,
-	params,
+use crate::state::sqlite_store::mutations::{
+	self, ConnectorBackoff, ProjectRegistration, Result, SqliteStateStore,
+	connector_backoff_from_row,
 };
 
 impl SqliteStateStore {
 	pub(in crate::state) fn delete_project(&mut self, service_id: &str) -> Result<()> {
 		let transaction = self.connection.transaction()?;
 
-		transaction.execute("DELETE FROM projects WHERE service_id = ?1", params![service_id])?;
-		transaction
-			.execute("DELETE FROM connector_backoffs WHERE project_id = ?1", params![service_id])?;
+		transaction.execute(
+			"DELETE FROM projects WHERE service_id = ?1",
+			mutations::params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM connector_backoffs WHERE project_id = ?1",
+			mutations::params![service_id],
+		)?;
 		transaction.execute(
 			"DELETE FROM run_control_channels WHERE project_id = ?1",
-			params![service_id],
+			mutations::params![service_id],
 		)?;
-		transaction
-			.execute("DELETE FROM decision_contracts WHERE project_id = ?1", params![service_id])?;
+		transaction.execute(
+			"DELETE FROM decision_contracts WHERE project_id = ?1",
+			mutations::params![service_id],
+		)?;
 		transaction.execute(
 			"DELETE FROM autonomy_objectives WHERE project_id = ?1",
-			params![service_id],
+			mutations::params![service_id],
 		)?;
-		transaction
-			.execute("DELETE FROM autonomy_signals WHERE project_id = ?1", params![service_id])?;
-		transaction
-			.execute("DELETE FROM autonomy_proposals WHERE project_id = ?1", params![service_id])?;
-		transaction
-			.execute("DELETE FROM execution_programs WHERE project_id = ?1", params![service_id])?;
+		transaction.execute(
+			"DELETE FROM autonomy_signals WHERE project_id = ?1",
+			mutations::params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM autonomy_proposals WHERE project_id = ?1",
+			mutations::params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM execution_programs WHERE project_id = ?1",
+			mutations::params![service_id],
+		)?;
 		transaction.execute(
 			"DELETE FROM program_intake_plans WHERE project_id = ?1",
-			params![service_id],
+			mutations::params![service_id],
 		)?;
 		transaction.execute(
 			"DELETE FROM program_issue_mappings WHERE project_id = ?1",
-			params![service_id],
+			mutations::params![service_id],
 		)?;
-		transaction
-			.execute("DELETE FROM evidence_artifacts WHERE project_id = ?1", params![service_id])?;
+		transaction.execute(
+			"DELETE FROM evidence_artifacts WHERE project_id = ?1",
+			mutations::params![service_id],
+		)?;
 		transaction.execute(
 			"DELETE FROM loop_guardrail_checkpoints WHERE project_id = ?1",
-			params![service_id],
+			mutations::params![service_id],
 		)?;
 		transaction.commit()?;
 
@@ -52,7 +67,7 @@ impl SqliteStateStore {
 					tracker_api_key_env_var, github_token_env_var, enabled, config_fingerprint,
 					updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-			params![
+			mutations::params![
 				project.service_id(),
 				project.config_path().to_string_lossy().as_ref(),
 				project.repo_root().to_string_lossy().as_ref(),
@@ -77,7 +92,7 @@ impl SqliteStateStore {
 	) -> Result<()> {
 		self.connection.execute(
 			"DELETE FROM connector_backoffs WHERE project_id = ?1 AND connector = ?2",
-			params![project_id, connector],
+			mutations::params![project_id, connector],
 		)?;
 
 		Ok(())
@@ -95,7 +110,7 @@ impl SqliteStateStore {
 			 WHERE project_id = ?1 AND connector = ?2
 			 LIMIT 1",
 		)?;
-		let mut rows = statement.query(params![project_id, connector])?;
+		let mut rows = statement.query(mutations::params![project_id, connector])?;
 
 		Ok(rows.next()?.map(connector_backoff_from_row).transpose()?)
 	}

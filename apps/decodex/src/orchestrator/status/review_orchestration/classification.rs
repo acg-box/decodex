@@ -8,7 +8,7 @@ use crate::{
 	prelude::{Result, eyre},
 };
 
-pub(in crate::orchestrator) fn apply_pre_orchestration_post_review_classification(
+pub(crate) fn apply_pre_orchestration_post_review_classification(
 	snapshot: &PostReviewLaneSnapshot,
 	workflow: &WorkflowDocument,
 	review_state: &PullRequestReviewState,
@@ -75,7 +75,7 @@ pub(in crate::orchestrator) fn apply_pre_orchestration_post_review_classificatio
 	false
 }
 
-pub(in crate::orchestrator) fn apply_non_github_review_post_review_classification(
+pub(crate) fn apply_non_github_review_post_review_classification(
 	classification: &mut PostReviewLaneClassification,
 	review_state: &PullRequestReviewState,
 	orchestration_marker: Option<&ReviewOrchestrationMarker>,
@@ -129,7 +129,7 @@ pub(in crate::orchestrator) fn apply_non_github_review_post_review_classificatio
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn apply_review_orchestration_phase_classification(
+pub(crate) fn apply_review_orchestration_phase_classification(
 	classification: &mut PostReviewLaneClassification,
 	review_state: &PullRequestReviewState,
 	orchestration_marker: &ReviewOrchestrationMarker,
@@ -153,7 +153,7 @@ pub(in crate::orchestrator) fn apply_review_orchestration_phase_classification(
 				},
 			}
 		},
-		ReviewOrchestrationPhase::WaitingForAck => {
+		ReviewOrchestrationPhase::WaitingForAck =>
 			if orchestration_status.request_acknowledged {
 				classification.reason = String::from("external_review_result_pending");
 			} else if status::request_ack_timed_out(orchestration_marker, now_unix_epoch) {
@@ -163,8 +163,7 @@ pub(in crate::orchestrator) fn apply_review_orchestration_phase_classification(
 				);
 			} else {
 				classification.reason = String::from("external_review_ack_pending");
-			}
-		},
+			},
 		ReviewOrchestrationPhase::WaitingForResult => {
 			if !orchestration_status.request_acknowledged {
 				classification.reason = String::from("external_review_ack_pending");
@@ -203,7 +202,7 @@ pub(in crate::orchestrator) fn apply_review_orchestration_phase_classification(
 				String::from("external_review_feedback_pending_repair")
 			};
 		},
-		ReviewOrchestrationPhase::PassWaitingForGates => {
+		ReviewOrchestrationPhase::PassWaitingForGates =>
 			if status::external_review_has_actionable_feedback(review_state, orchestration_marker) {
 				classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
 				classification.reason = String::from("external_review_feedback_pending_repair");
@@ -224,8 +223,7 @@ pub(in crate::orchestrator) fn apply_review_orchestration_phase_classification(
 					review_state,
 					"external_review_pass_signal_missing",
 				);
-			}
-		},
+			},
 		ReviewOrchestrationPhase::WaitingForMerge => {
 			if let Some(auto_merge_enabled_at) =
 				orchestration_marker.auto_merge_enabled_at_unix_epoch()

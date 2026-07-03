@@ -1,29 +1,29 @@
 //! Stale-active recovery command orchestration.
 
-use super::{
-	GHOST_LANE_TERMINAL_STATUS, RecoveryRuntimeMutationPolicy, StaleActiveDiagnoseRequest,
-	StaleActiveRecoveryReport, StaleActiveReleaseRequest, active_recovery_tracker_backoff_message,
-	apply_stale_active_release, diagnose_stale_active_issues, load_recovery_context_for_dry_run,
-	load_recovery_context_read_only, preflight_stale_active_worktree_cleanup,
-	remember_recovery_tracker_backoff_message, render_stale_active_recovery_report,
-};
-use crate::prelude::{Result, eyre};
 use std::path::Path;
+
+use crate::{
+	prelude::{Result, eyre},
+	recovery::{
+		self, GHOST_LANE_TERMINAL_STATUS, RecoveryRuntimeMutationPolicy,
+		StaleActiveDiagnoseRequest, StaleActiveRecoveryReport, StaleActiveReleaseRequest,
+	},
+};
 
 /// Run a read-only tracker-present stale active ownership diagnostic.
 pub(crate) fn run_stale_active_diagnose(
 	config_path: Option<&Path>,
 	request: &StaleActiveDiagnoseRequest,
 ) -> Result<()> {
-	let context = load_recovery_context_read_only(config_path)?;
+	let context = recovery::load_recovery_context_read_only(config_path)?;
 
-	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
+	if let Some(message) = recovery::active_recovery_tracker_backoff_message(&context)? {
 		println!("{message}");
 
 		return Ok(());
 	}
 
-	let diagnostics = match diagnose_stale_active_issues(
+	let diagnostics = match recovery::diagnose_stale_active_issues(
 		context.config.service_id(),
 		&context.workflow,
 		context.config.worktree_root(),
@@ -34,9 +34,11 @@ pub(crate) fn run_stale_active_diagnose(
 	) {
 		Ok(diagnostics) => diagnostics,
 		Err(error) => {
-			if let Some(message) =
-				remember_recovery_tracker_backoff_message(&context, &error, "stale_active_recovery")
-			{
+			if let Some(message) = recovery::remember_recovery_tracker_backoff_message(
+				&context,
+				&error,
+				"stale_active_recovery",
+			) {
 				println!("{message}");
 
 				return Ok(());
@@ -53,7 +55,7 @@ pub(crate) fn run_stale_active_diagnose(
 	if request.json {
 		println!("{}", serde_json::to_string_pretty(&report)?);
 	} else {
-		print!("{}", render_stale_active_recovery_report(&report));
+		print!("{}", recovery::render_stale_active_recovery_report(&report));
 	}
 
 	Ok(())
@@ -64,15 +66,15 @@ pub(crate) fn run_stale_active_release(
 	config_path: Option<&Path>,
 	request: &StaleActiveReleaseRequest,
 ) -> Result<()> {
-	let context = load_recovery_context_for_dry_run(config_path, request.dry_run)?;
+	let context = recovery::load_recovery_context_for_dry_run(config_path, request.dry_run)?;
 
-	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
+	if let Some(message) = recovery::active_recovery_tracker_backoff_message(&context)? {
 		println!("{message}");
 
 		return Ok(());
 	}
 
-	let mut diagnostics = match diagnose_stale_active_issues(
+	let mut diagnostics = match recovery::diagnose_stale_active_issues(
 		context.config.service_id(),
 		&context.workflow,
 		context.config.worktree_root(),
@@ -83,9 +85,11 @@ pub(crate) fn run_stale_active_release(
 	) {
 		Ok(diagnostics) => diagnostics,
 		Err(error) => {
-			if let Some(message) =
-				remember_recovery_tracker_backoff_message(&context, &error, "stale_active_recovery")
-			{
+			if let Some(message) = recovery::remember_recovery_tracker_backoff_message(
+				&context,
+				&error,
+				"stale_active_recovery",
+			) {
 				println!("{message}");
 
 				return Ok(());
@@ -107,7 +111,7 @@ pub(crate) fn run_stale_active_release(
 		);
 	}
 
-	preflight_stale_active_worktree_cleanup(&context.state_store, &diagnostic)?;
+	recovery::preflight_stale_active_worktree_cleanup(&context.state_store, &diagnostic)?;
 
 	if request.dry_run {
 		println!(
@@ -125,7 +129,7 @@ pub(crate) fn run_stale_active_release(
 		return Ok(());
 	}
 
-	apply_stale_active_release(&context, &diagnostic)?;
+	recovery::apply_stale_active_release(&context, &diagnostic)?;
 
 	println!(
 		"stale active release ok: project={} issue={} active_label_released=yes queue_label_preserved={} terminal_status={}",

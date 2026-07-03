@@ -1,10 +1,10 @@
-use serde_json::{Value, json};
+use serde_json::{self, Value};
 
-use super::super::{
+use crate::orchestrator::operator_http::{
 	DashboardBroadcastEvent, DashboardClientMessage, types::DashboardClientSubscription,
 };
 
-pub(super) fn dashboard_subscription_from_message(
+pub(crate) fn dashboard_subscription_from_message(
 	message: &DashboardClientMessage,
 ) -> DashboardClientSubscription {
 	DashboardClientSubscription {
@@ -14,25 +14,54 @@ pub(super) fn dashboard_subscription_from_message(
 	}
 }
 
-pub(super) fn dashboard_subscription_payload(subscription: &DashboardClientSubscription) -> Value {
-	json!({
+pub(crate) fn dashboard_subscription_payload(subscription: &DashboardClientSubscription) -> Value {
+	serde_json::json!({
 		"projectId": subscription.project_id,
 		"issueId": subscription.issue_id,
 		"runId": subscription.run_id,
 	})
 }
 
-pub(super) fn dashboard_required_account_selector(
+pub(crate) fn dashboard_required_account_selector(
 	message: &DashboardClientMessage,
 ) -> Option<&str> {
 	message.account_selector.as_deref().map(str::trim).filter(|value| !value.is_empty())
 }
 
-pub(super) fn dashboard_clean_scope_value(value: Option<&str>) -> Option<String> {
+pub(crate) fn dashboard_clean_scope_value(value: Option<&str>) -> Option<String> {
 	value.map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
 }
 
-pub(in crate::orchestrator::operator_http) fn dashboard_event_for_subscription(
+pub(crate) fn dashboard_subscription_is_empty(subscription: &DashboardClientSubscription) -> bool {
+	subscription.project_id.is_none()
+		&& subscription.issue_id.is_none()
+		&& subscription.run_id.is_none()
+}
+
+pub(crate) fn dashboard_run_matches_subscription(
+	run: &Value,
+	subscription: &DashboardClientSubscription,
+) -> bool {
+	if let Some(project_id) = subscription.project_id.as_deref()
+		&& run.get("project_id").and_then(Value::as_str) != Some(project_id)
+	{
+		return false;
+	}
+	if let Some(issue_id) = subscription.issue_id.as_deref()
+		&& run.get("issue_id").and_then(Value::as_str) != Some(issue_id)
+	{
+		return false;
+	}
+	if let Some(run_id) = subscription.run_id.as_deref()
+		&& run.get("run_id").and_then(Value::as_str) != Some(run_id)
+	{
+		return false;
+	}
+
+	true
+}
+
+pub(crate) fn dashboard_event_for_subscription(
 	event: &DashboardBroadcastEvent,
 	subscription: &DashboardClientSubscription,
 ) -> Option<DashboardBroadcastEvent> {
@@ -78,33 +107,4 @@ pub(in crate::orchestrator::operator_http) fn dashboard_event_for_subscription(
 	}
 
 	Some(DashboardBroadcastEvent { event_type: event.event_type, payload })
-}
-
-pub(super) fn dashboard_subscription_is_empty(subscription: &DashboardClientSubscription) -> bool {
-	subscription.project_id.is_none()
-		&& subscription.issue_id.is_none()
-		&& subscription.run_id.is_none()
-}
-
-pub(super) fn dashboard_run_matches_subscription(
-	run: &Value,
-	subscription: &DashboardClientSubscription,
-) -> bool {
-	if let Some(project_id) = subscription.project_id.as_deref()
-		&& run.get("project_id").and_then(Value::as_str) != Some(project_id)
-	{
-		return false;
-	}
-	if let Some(issue_id) = subscription.issue_id.as_deref()
-		&& run.get("issue_id").and_then(Value::as_str) != Some(issue_id)
-	{
-		return false;
-	}
-	if let Some(run_id) = subscription.run_id.as_deref()
-		&& run.get("run_id").and_then(Value::as_str) != Some(run_id)
-	{
-		return false;
-	}
-
-	true
 }

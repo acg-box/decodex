@@ -1,26 +1,21 @@
 use serde_json::Value;
 
 use crate::{
-	mcp::{self, McpCapabilityProfile, McpContext, ResourceContent},
+	mcp::{
+		self, McpCapabilityProfile, McpContext, ResourceContent,
+		tests::support::{self, observability_review_status_fixture},
+	},
 	state::StateStore,
-};
-
-use super::support::{
-	assert_no_sensitive_observability_content, assert_observability_is_sanitized,
-	assert_public_lane_control_readback, assert_public_lane_inspect_resource,
-	http_handler_with_context, http_json_rpc, http_post, http_resource_read_json,
-	isolated_mcp_runtime_home, latent_decision_contract_fixture,
-	observability_review_status_fixture, observability_snapshot_fixture, resource_response_json,
-	response_at, response_error, run_http, run_stdio, run_stdio_with_context,
-	seed_project_runtime_for_mcp_resources, sensitive_observability_fixture, test_repo,
 };
 
 #[test]
 fn initialize_exposes_protocol_primitive_capabilities() {
-	let repo = test_repo();
-	let responses =
-		run_stdio(repo.path(), r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
-	let response = response_at(&responses, 0);
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
+		repo.path(),
+		r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+	);
+	let response = support::response_at(&responses, 0);
 	let result = response.get("result").and_then(Value::as_object).expect("result object");
 	let capabilities =
 		result.get("capabilities").and_then(Value::as_object).expect("capabilities object");
@@ -34,23 +29,26 @@ fn initialize_exposes_protocol_primitive_capabilities() {
 
 #[test]
 fn logging_set_level_is_stdio_compatible() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"logging/setLevel","params":{"level":"debug"}}"#,
 	);
-	let result = response_at(&responses, 0)["result"].as_object().expect("result object");
+	let result = support::response_at(&responses, 0)["result"].as_object().expect("result object");
 
 	assert!(result.is_empty());
 }
 
 #[test]
 fn resources_list_includes_docs_decisions_and_research_concepts() {
-	let repo = test_repo();
-	let responses =
-		run_stdio(repo.path(), r#"{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}"#);
-	let resources =
-		response_at(&responses, 0)["result"]["resources"].as_array().expect("resources array");
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
+		repo.path(),
+		r#"{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}"#,
+	);
+	let resources = support::response_at(&responses, 0)["result"]["resources"]
+		.as_array()
+		.expect("resources array");
 	let uris = resources
 		.iter()
 		.filter_map(|resource| resource.get("uri").and_then(Value::as_str))
@@ -64,14 +62,18 @@ fn resources_list_includes_docs_decisions_and_research_concepts() {
 
 #[test]
 fn resources_list_includes_runtime_decision_contracts() {
-	let repo = test_repo();
+	let repo = support::test_repo();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
-		.upsert_decision_contract("decodex", Some("XY-852"), latent_decision_contract_fixture())
+		.upsert_decision_contract(
+			"decodex",
+			Some("XY-852"),
+			support::latent_decision_contract_fixture(),
+		)
 		.expect("decision contract should persist");
 
-	let responses = run_stdio_with_context(
+	let responses = support::run_stdio_with_context(
 		McpContext {
 			repo_root: repo.path().to_path_buf(),
 			config_path: None,
@@ -80,8 +82,9 @@ fn resources_list_includes_runtime_decision_contracts() {
 		},
 		r#"{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}"#,
 	);
-	let resources =
-		response_at(&responses, 0)["result"]["resources"].as_array().expect("resources array");
+	let resources = support::response_at(&responses, 0)["result"]["resources"]
+		.as_array()
+		.expect("resources array");
 	let uris = resources
 		.iter()
 		.filter_map(|resource| resource.get("uri").and_then(Value::as_str))
@@ -92,14 +95,18 @@ fn resources_list_includes_runtime_decision_contracts() {
 
 #[test]
 fn resources_read_returns_runtime_decision_contract() {
-	let repo = test_repo();
+	let repo = support::test_repo();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
-		.upsert_decision_contract("decodex", Some("XY-852"), latent_decision_contract_fixture())
+		.upsert_decision_contract(
+			"decodex",
+			Some("XY-852"),
+			support::latent_decision_contract_fixture(),
+		)
 		.expect("decision contract should persist");
 
-	let responses = run_stdio_with_context(
+	let responses = support::run_stdio_with_context(
 		McpContext {
 			repo_root: repo.path().to_path_buf(),
 			config_path: None,
@@ -108,8 +115,9 @@ fn resources_read_returns_runtime_decision_contract() {
 		},
 		r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://decision-contracts/research-x-loop-contract"}}"#,
 	);
-	let contents =
-		response_at(&responses, 0)["result"]["contents"].as_array().expect("contents array");
+	let contents = support::response_at(&responses, 0)["result"]["contents"]
+		.as_array()
+		.expect("contents array");
 	let text = contents[0]["text"].as_str().expect("text content");
 	let content: Value = serde_json::from_str(text).expect("decision contract should be json");
 
@@ -122,13 +130,14 @@ fn resources_read_returns_runtime_decision_contract() {
 
 #[test]
 fn resources_read_returns_checked_in_doc_text() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://docs/spec/runtime"}}"#,
 	);
-	let contents =
-		response_at(&responses, 0)["result"]["contents"].as_array().expect("contents array");
+	let contents = support::response_at(&responses, 0)["result"]["contents"]
+		.as_array()
+		.expect("contents array");
 	let text = contents[0]["text"].as_str().expect("text content");
 
 	assert_eq!(text, "# Runtime\n\nSpec body.\n");
@@ -136,13 +145,14 @@ fn resources_read_returns_checked_in_doc_text() {
 
 #[test]
 fn resources_read_returns_checked_in_research_markdown() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://research/sample-report"}}"#,
 	);
-	let contents =
-		response_at(&responses, 0)["result"]["contents"].as_array().expect("contents array");
+	let contents = support::response_at(&responses, 0)["result"]["contents"]
+		.as_array()
+		.expect("contents array");
 	let text = contents[0]["text"].as_str().expect("text content");
 
 	assert_eq!(contents[0]["mimeType"], "text/markdown");
@@ -151,35 +161,34 @@ fn resources_read_returns_checked_in_research_markdown() {
 
 #[test]
 fn observability_sanitizer_strips_private_operator_fields() {
-	let mut value = sensitive_observability_fixture();
+	let mut value = support::sensitive_observability_fixture();
 
 	mcp::sanitize_mcp_observability_value(&mut value);
-
-	assert_observability_is_sanitized(&value);
+	support::assert_observability_is_sanitized(&value);
 }
 
 #[test]
 fn observability_resource_content_strips_private_operator_fields() {
 	let content = ResourceContent::mcp_observability_json(
 		"decodex://projects/decodex/status",
-		sensitive_observability_fixture(),
+		support::sensitive_observability_fixture(),
 	)
 	.expect("observability content should serialize");
 	let value: Value = serde_json::from_str(&content.text).expect("content should be json");
 
 	assert_eq!(content.mime_type, "application/json");
 
-	assert_observability_is_sanitized(&value);
+	support::assert_observability_is_sanitized(&value);
 }
 
 #[test]
 fn resources_templates_list_exposes_parameterized_resources() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"resources/templates/list","params":{}}"#,
 	);
-	let templates = response_at(&responses, 0)["result"]["resourceTemplates"]
+	let templates = support::response_at(&responses, 0)["result"]["resourceTemplates"]
 		.as_array()
 		.expect("resource templates array");
 	let uri_templates = templates
@@ -227,7 +236,7 @@ fn resources_templates_list_exposes_parameterized_resources() {
 
 #[test]
 fn observability_projection_resources_expose_activity_without_private_payloads() {
-	let snapshot = observability_snapshot_fixture();
+	let snapshot = support::observability_snapshot_fixture();
 	let live = mcp::mcp_status_live_resource(snapshot.clone());
 	let activity = mcp::mcp_activity_tail_resource(snapshot.clone());
 	let events =
@@ -301,7 +310,7 @@ fn observability_projection_resources_expose_activity_without_private_payloads()
 		0
 	);
 
-	assert_no_sensitive_observability_content(&combined);
+	support::assert_no_sensitive_observability_content(&combined);
 }
 
 #[test]
@@ -401,11 +410,11 @@ fn mcp_review_surfaces_ignore_null_loop_review_status() {
 
 #[test]
 fn resources_read_exposes_bounded_live_activity_and_recent_run_readback() {
-	let repo = test_repo();
-	let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
+	let repo = support::test_repo();
+	let _runtime_home_guard = support::isolated_mcp_runtime_home(&repo);
 	let config_path = repo.path().join("project.toml");
 
-	seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+	support::seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
 
 	let context = McpContext {
 		repo_root: repo.path().to_path_buf(),
@@ -413,7 +422,7 @@ fn resources_read_exposes_bounded_live_activity_and_recent_run_readback() {
 		project_id: Some(String::from("pubfi")),
 		state_store: None,
 	};
-	let responses = run_stdio_with_context(
+	let responses = support::run_stdio_with_context(
 			context,
 			&[
 				r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/status_live"}}"#,
@@ -428,15 +437,15 @@ fn resources_read_exposes_bounded_live_activity_and_recent_run_readback() {
 			]
 			.join("\n"),
 		);
-	let status_live = resource_response_json(&responses, 0);
-	let activity_tail = resource_response_json(&responses, 1);
-	let run_events = resource_response_json(&responses, 2);
-	let hidden_run_error = response_error(&responses, 3);
-	let lane_inspect = resource_response_json(&responses, 4);
-	let lane_control_issue = resource_response_json(&responses, 5);
-	let lane_control = resource_response_json(&responses, 6);
-	let pr_review_state = resource_response_json(&responses, 7);
-	let protocol_activity = resource_response_json(&responses, 8);
+	let status_live = support::resource_response_json(&responses, 0);
+	let activity_tail = support::resource_response_json(&responses, 1);
+	let run_events = support::resource_response_json(&responses, 2);
+	let hidden_run_error = support::response_error(&responses, 3);
+	let lane_inspect = support::resource_response_json(&responses, 4);
+	let lane_control_issue = support::resource_response_json(&responses, 5);
+	let lane_control = support::resource_response_json(&responses, 6);
+	let pr_review_state = support::resource_response_json(&responses, 7);
+	let protocol_activity = support::resource_response_json(&responses, 8);
 
 	assert_eq!(status_live["schema"], "decodex.mcp.status_live/1");
 	assert_eq!(activity_tail["schema"], "decodex.mcp.activity_tail/1");
@@ -449,9 +458,9 @@ fn resources_read_exposes_bounded_live_activity_and_recent_run_readback() {
 	assert_eq!(run_events["event_count"], 6);
 	assert_eq!(hidden_run_error["code"], mcp::RESOURCE_NOT_FOUND_CODE);
 
-	assert_public_lane_inspect_resource(&lane_inspect);
-	assert_public_lane_inspect_resource(&lane_control_issue);
-	assert_public_lane_control_readback(&lane_control);
+	support::assert_public_lane_inspect_resource(&lane_inspect);
+	support::assert_public_lane_inspect_resource(&lane_control_issue);
+	support::assert_public_lane_control_readback(&lane_control);
 
 	assert_eq!(pr_review_state["schema"], "decodex.mcp.pr_review_state/1");
 
@@ -470,7 +479,7 @@ fn resources_read_exposes_bounded_live_activity_and_recent_run_readback() {
 			.contains("redacted_sensitive_detail")
 	);
 
-	assert_no_sensitive_observability_content(&serde_json::json!({
+	support::assert_no_sensitive_observability_content(&serde_json::json!({
 		"status_live": status_live,
 		"activity_tail": activity_tail,
 		"lane_inspect": lane_inspect,
@@ -483,11 +492,11 @@ fn resources_read_exposes_bounded_live_activity_and_recent_run_readback() {
 
 #[test]
 fn streamable_http_resources_read_exposes_observability_resources() {
-	let repo = test_repo();
-	let _runtime_home_guard = isolated_mcp_runtime_home(&repo);
+	let repo = support::test_repo();
+	let _runtime_home_guard = support::isolated_mcp_runtime_home(&repo);
 	let config_path = repo.path().join("project.toml");
 
-	seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
+	support::seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
 
 	let context = McpContext {
 		repo_root: repo.path().to_path_buf(),
@@ -495,59 +504,60 @@ fn streamable_http_resources_read_exposes_observability_resources() {
 		project_id: Some(String::from("pubfi")),
 		state_store: None,
 	};
-	let mut handler = http_handler_with_context(context, McpCapabilityProfile::Observe, Vec::new());
-	let initialize = run_http(
+	let mut handler =
+		support::http_handler_with_context(context, McpCapabilityProfile::Observe, Vec::new());
+	let initialize = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193")],
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
 		),
 	);
 	let session_id = initialize.header("mcp-session-id").expect("session id").to_owned();
-	let status_live = http_resource_read_json(
+	let status_live = support::http_resource_read_json(
 		&mut handler,
 		&session_id,
 		2,
 		"decodex://projects/pubfi/status_live",
 	);
-	let activity_tail = http_resource_read_json(
+	let activity_tail = support::http_resource_read_json(
 		&mut handler,
 		&session_id,
 		3,
 		"decodex://projects/pubfi/activity_tail",
 	);
-	let pr_review_state = http_resource_read_json(
+	let pr_review_state = support::http_resource_read_json(
 		&mut handler,
 		&session_id,
 		4,
 		"decodex://projects/pubfi/pr_review_state",
 	);
-	let lane_inspect = http_resource_read_json(
+	let lane_inspect = support::http_resource_read_json(
 		&mut handler,
 		&session_id,
 		5,
 		"decodex://projects/pubfi/lane_inspect/PUB-012",
 	);
-	let lane_control_issue = http_resource_read_json(
+	let lane_control_issue = support::http_resource_read_json(
 		&mut handler,
 		&session_id,
 		6,
 		"decodex://projects/pubfi/lane-control/PUB-012",
 	);
-	let lane_control = http_resource_read_json(
+	let lane_control = support::http_resource_read_json(
 		&mut handler,
 		&session_id,
 		7,
 		"decodex://projects/pubfi/lane-control",
 	);
-	let protocol_activity = http_resource_read_json(
+	let protocol_activity = support::http_resource_read_json(
 		&mut handler,
 		&session_id,
 		8,
 		"decodex://projects/pubfi/runs/run-12/protocol_activity",
 	);
-	let hidden_run = http_json_rpc(
+	let hidden_run = support::http_json_rpc(
 		&mut handler,
 		&session_id,
 		r#"{"jsonrpc":"2.0","id":9,"method":"resources/read","params":{"uri":"decodex://projects/pubfi/runs/run-01/events"}}"#,
@@ -561,9 +571,9 @@ fn streamable_http_resources_read_exposes_observability_resources() {
 	);
 	assert_eq!(pr_review_state["schema"], "decodex.mcp.pr_review_state/1");
 
-	assert_public_lane_inspect_resource(&lane_inspect);
-	assert_public_lane_inspect_resource(&lane_control_issue);
-	assert_public_lane_control_readback(&lane_control);
+	support::assert_public_lane_inspect_resource(&lane_inspect);
+	support::assert_public_lane_inspect_resource(&lane_control_issue);
+	support::assert_public_lane_control_readback(&lane_control);
 
 	assert_eq!(protocol_activity["schema"], "decodex.mcp.protocol_activity/1");
 
@@ -581,7 +591,7 @@ fn streamable_http_resources_read_exposes_observability_resources() {
 	);
 	assert_eq!(hidden_run["error"]["code"], mcp::RESOURCE_NOT_FOUND_CODE);
 
-	assert_no_sensitive_observability_content(&serde_json::json!({
+	support::assert_no_sensitive_observability_content(&serde_json::json!({
 		"status_live": status_live,
 		"activity_tail": activity_tail,
 		"pr_review_state": pr_review_state,

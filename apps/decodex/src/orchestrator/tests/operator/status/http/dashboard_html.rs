@@ -1,5 +1,6 @@
-use super::*;
-
+use crate::orchestrator::tests::operator::status::http::{
+	OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH, orchestrator,
+};
 #[test]
 fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route() {
 	for path in [OPERATOR_DASHBOARD_ENDPOINT_PATH, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH] {

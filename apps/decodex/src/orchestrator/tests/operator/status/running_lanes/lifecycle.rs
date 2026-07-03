@@ -1,5 +1,10 @@
-use super::*;
-
+use crate::orchestrator::tests::operator::status::running_lanes::{
+	self, ChildAgentActivitySummary, EffectiveRuntimeMarker, FakeTracker, OffsetDateTime,
+	OperatorRunStatus, OperatorStatusSnapshot, ProtocolActivityMarker, ProtocolActivitySummary,
+	RUN_ACTIVITY_MARKER_FILE, RUN_LEASE_IDLE_TIMEOUT, RecoveredRuntimeState, ReviewCheckpointSeed,
+	ReviewPolicyCheckpointInput, ServiceConfig, StateStore, TEST_SERVICE_ID, fs, orchestrator,
+	process, state, tracker,
+};
 pub(super) fn assert_terminal_pending_status_projection(snapshot: &OperatorStatusSnapshot) {
 	let project = snapshot.projects.first().expect("project summary should exist");
 	let run = snapshot
@@ -79,14 +84,14 @@ fn operator_status_response_body<'a>(response: &'a str, context: &str) -> &'a st
 	response
 		.split_once("\r\n\r\n")
 		.map(|(_, body)| body)
-		.unwrap_or_else(|| panic!("{context} response should include body"))
+		.unwrap_or_else(|| running_lanes::panic!("{context} response should include body"))
 }
 
 #[test]
 fn operator_status_snapshot_promotes_starting_after_app_server_activity() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -163,9 +168,9 @@ fn operator_status_snapshot_promotes_starting_after_app_server_activity() {
 
 #[test]
 fn operator_status_snapshot_counts_stale_starting_run_as_attention_not_running() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let stale_activity =
 		OffsetDateTime::now_utc().unix_timestamp() - RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 - 30;
@@ -212,9 +217,9 @@ fn operator_status_snapshot_counts_stale_starting_run_as_attention_not_running()
 
 #[test]
 fn operator_status_snapshot_shadows_stale_attempt_when_newer_leased_attempt_exists() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let stale_activity =
 		OffsetDateTime::now_utc().unix_timestamp() - RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 - 30;
@@ -270,9 +275,9 @@ fn operator_status_snapshot_shadows_stale_attempt_when_newer_leased_attempt_exis
 
 #[test]
 fn operator_status_snapshot_shadows_stale_attempt_when_newer_attempt_has_released_lease() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let stale_activity =
 		OffsetDateTime::now_utc().unix_timestamp() - RUN_LEASE_IDLE_TIMEOUT.as_secs() as i64 - 30;
@@ -317,9 +322,9 @@ fn operator_status_snapshot_shadows_stale_attempt_when_newer_attempt_has_release
 
 #[test]
 fn operator_status_snapshot_excludes_completed_lingering_lease_from_current_lanes() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let completed_issue = sample_issue_with_sort_fields(
+	let completed_issue = running_lanes::sample_issue_with_sort_fields(
 		"issue-1",
 		"XY-379",
 		"Done",
@@ -327,7 +332,7 @@ fn operator_status_snapshot_excludes_completed_lingering_lease_from_current_lane
 		Some(3),
 		"2026-04-29T17:00:33.133Z",
 	);
-	let active_issue = sample_issue_with_sort_fields(
+	let active_issue = running_lanes::sample_issue_with_sort_fields(
 		"issue-2",
 		"XY-378",
 		"In Progress",
@@ -380,9 +385,9 @@ fn operator_status_snapshot_excludes_completed_lingering_lease_from_current_lane
 
 #[test]
 fn operator_status_snapshot_rolls_current_child_bucket_elapsed_time_into_bucket() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let started_at = OffsetDateTime::now_utc().unix_timestamp() - 90;
 
@@ -459,10 +464,12 @@ fn operator_status_snapshot_rolls_current_child_bucket_elapsed_time_into_bucket(
 
 #[test]
 fn operator_status_current_lane_lifecycle_reconstructs_all_issue_attempts() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = running_lanes::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let development_activity = ChildAgentActivitySummary {
 		buckets: vec![state::ChildAgentActivityBucket {
@@ -576,10 +583,12 @@ fn operator_status_current_lane_lifecycle_reconstructs_all_issue_attempts() {
 
 #[test]
 fn operator_status_supersedes_stale_repair_findings_after_clean_handoff_checkpoint() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = running_lanes::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let run_id = "run-review";
 	let repair_head = "1111111111111111111111111111111111111111";
 	let clean_head = "2222222222222222222222222222222222222222";
@@ -790,10 +799,12 @@ fn sample_lifecycle_activity(
 
 #[test]
 fn operator_status_current_lane_lifecycle_recovers_from_local_evidence_after_restart() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = running_lanes::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let development_activity = sample_lifecycle_activity(480, 4, 2, 600, 120);
 	let review_activity = sample_lifecycle_activity(240, 3, 1, 300, 90);
@@ -891,9 +902,9 @@ fn operator_status_current_lane_lifecycle_recovers_from_local_evidence_after_res
 
 #[test]
 fn operator_status_snapshot_uses_structured_protocol_activity_summary() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let protocol_activity = ProtocolActivitySummary {
 		turn_status: Some(String::from("running")),
@@ -959,9 +970,9 @@ fn operator_status_snapshot_uses_structured_protocol_activity_summary() {
 
 #[test]
 fn operator_status_snapshot_prefers_newer_protocol_marker_over_stale_archive_event() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1007,9 +1018,9 @@ fn operator_status_snapshot_prefers_newer_protocol_marker_over_stale_archive_eve
 
 #[test]
 fn operator_status_snapshot_sanitizes_private_protocol_activity_details() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let protocol_activity = ProtocolActivitySummary {
 		turn_status: Some(String::from("running")),
@@ -1078,9 +1089,9 @@ fn operator_status_snapshot_sanitizes_private_protocol_activity_details() {
 
 #[test]
 fn operator_status_snapshot_ignores_marker_from_newer_attempt_for_stored_run() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1122,9 +1133,9 @@ fn operator_status_snapshot_ignores_marker_from_newer_attempt_for_stored_run() {
 
 #[test]
 fn operator_status_snapshot_keeps_all_current_lanes_when_recent_runs_are_limited() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let first_issue = sample_issue_with_sort_fields(
+	let first_issue = running_lanes::sample_issue_with_sort_fields(
 		"issue-1",
 		"PUB-101",
 		"Todo",
@@ -1132,7 +1143,7 @@ fn operator_status_snapshot_keeps_all_current_lanes_when_recent_runs_are_limited
 		Some(3),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let second_issue = sample_issue_with_sort_fields(
+	let second_issue = running_lanes::sample_issue_with_sort_fields(
 		"issue-2",
 		"PUB-102",
 		"Todo",
@@ -1171,9 +1182,9 @@ fn operator_status_snapshot_keeps_all_current_lanes_when_recent_runs_are_limited
 
 #[test]
 fn operator_status_snapshot_keeps_terminal_run_after_lane_cleanup() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = running_lanes::sample_issue_with_sort_fields(
 		"issue-1",
 		"PUB-101",
 		"Done",
@@ -1217,9 +1228,9 @@ fn operator_status_snapshot_keeps_terminal_run_after_lane_cleanup() {
 
 #[test]
 fn status_hydration_does_not_fabricate_run_leases_for_recovered_candidates() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = running_lanes::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1253,9 +1264,9 @@ fn status_hydration_does_not_fabricate_run_leases_for_recovered_candidates() {
 
 #[test]
 fn live_operator_status_snapshot_hydrates_current_lane_thread_and_event_metadata_from_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let issue = running_lanes::sample_issue("In Progress", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join(&issue.identifier);

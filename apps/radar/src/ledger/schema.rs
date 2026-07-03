@@ -2,7 +2,7 @@ use std::{fs, path::Path};
 
 use rusqlite::{Connection, OptionalExtension as _};
 
-use crate::prelude::Result;
+use crate::{ledger::SCHEMA_VERSION, prelude::Result};
 
 pub(super) fn open_ledger(path: &Path) -> Result<Connection> {
 	if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {

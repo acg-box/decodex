@@ -1,9 +1,11 @@
 use serde_json::Value;
 
-use super::McpServer;
 use crate::mcp::{
 	self, McpError,
-	server::protocol::{self, JsonRpcRequest},
+	server::{
+		core::McpServer,
+		protocol::{self, JsonRpcRequest},
+	},
 };
 
 impl McpServer {

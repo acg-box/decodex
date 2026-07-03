@@ -2,7 +2,7 @@ use crate::orchestrator::{
 	self, HashMap, HashSet, OperatorHistoryLaneStatus, OperatorRunStatus, status_run_projection,
 };
 
-pub(in crate::orchestrator) fn operator_history_lanes(
+pub(crate) fn operator_history_lanes(
 	current_lanes: &[OperatorRunStatus],
 	recent_runs: &[OperatorRunStatus],
 ) -> Vec<OperatorHistoryLaneStatus> {
@@ -67,7 +67,7 @@ pub(in crate::orchestrator) fn operator_history_lanes(
 	lanes
 }
 
-pub(in crate::orchestrator) fn hydrate_history_lane_from_run(
+pub(crate) fn hydrate_history_lane_from_run(
 	lane: &mut OperatorHistoryLaneStatus,
 	run: &OperatorRunStatus,
 ) {

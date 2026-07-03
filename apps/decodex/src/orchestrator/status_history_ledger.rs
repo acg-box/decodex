@@ -4,21 +4,18 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
 	config::ServiceConfig,
+	orchestrator::{
+		self, LinearExecutionEventRecord, OperatorHistoryLaneStatus, OperatorHistoryLedgerOutcome,
+		OperatorHistoryLedgerRecord, OperatorIssueDisplayMetadata, OperatorStatusSnapshot,
+		TrackerObserverOutcome, status_run_projection,
+	},
 	tracker::{IssueTracker, TrackerComment, records},
-};
-
-use super::{
-	LinearExecutionEventRecord, OperatorHistoryLaneStatus, OperatorHistoryLedgerOutcome,
-	OperatorHistoryLedgerRecord, OperatorIssueDisplayMetadata, TrackerObserverOutcome,
-	fill_missing_history_lane_issue_metadata, fill_missing_run_issue_metadata,
-	operator_run_is_stale_terminal_local_residue,
-	status_run_projection::format_optional_unix_timestamp, tracker_connector_backoff,
 };
 
 pub(super) fn hydrate_history_lanes_from_linear_ledger<T>(
 	tracker: &T,
 	project: &ServiceConfig,
-	snapshot: &mut super::OperatorStatusSnapshot,
+	snapshot: &mut OperatorStatusSnapshot,
 	stale_terminal_local_issue_ids: &HashSet<String>,
 ) -> TrackerObserverOutcome
 where
@@ -27,7 +24,7 @@ where
 	let mut unavailable = false;
 
 	for lane in &mut snapshot.history_lanes {
-		if operator_run_is_stale_terminal_local_residue(
+		if orchestrator::operator_run_is_stale_terminal_local_residue(
 			&lane.latest_run,
 			stale_terminal_local_issue_ids,
 		) {
@@ -46,9 +43,11 @@ where
 				lane.ledger_outcome = operator_history_ledger_outcome(&records);
 			},
 			Err(error) => {
-				if let Some(backoff) =
-					tracker_connector_backoff(&error, Instant::now(), "execution_ledger_status")
-				{
+				if let Some(backoff) = orchestrator::tracker_connector_backoff(
+					&error,
+					Instant::now(),
+					"execution_ledger_status",
+				) {
 					lane.ledger_outcome = unavailable_history_ledger_outcome();
 
 					return TrackerObserverOutcome::Backoff(backoff);
@@ -88,11 +87,11 @@ pub(super) fn hydrate_history_lane_from_ledger_records(
 		needs_attention_label_present: None,
 	};
 
-	fill_missing_history_lane_issue_metadata(lane, &metadata);
-	fill_missing_run_issue_metadata(&mut lane.latest_run, &metadata);
+	orchestrator::fill_missing_history_lane_issue_metadata(lane, &metadata);
+	orchestrator::fill_missing_run_issue_metadata(&mut lane.latest_run, &metadata);
 
 	for attempt in &mut lane.attempts {
-		fill_missing_run_issue_metadata(attempt, &metadata);
+		orchestrator::fill_missing_run_issue_metadata(attempt, &metadata);
 	}
 }
 
@@ -186,6 +185,61 @@ pub(super) fn collect_history_ledger_records(
 	records
 }
 
+pub(super) fn compare_history_ledger_record_position(
+	left: &OperatorHistoryLedgerRecord,
+	right: &OperatorHistoryLedgerRecord,
+) -> Ordering {
+	left.sort_unix_epoch
+		.cmp(&right.sort_unix_epoch)
+		.then_with(|| left.comment_index.cmp(&right.comment_index))
+}
+
+pub(super) fn parse_rfc3339_unix_epoch(value: &str) -> Option<i64> {
+	OffsetDateTime::parse(value, &Rfc3339).ok().map(|timestamp| timestamp.unix_timestamp())
+}
+
+pub(super) fn not_loaded_history_ledger_outcome() -> OperatorHistoryLedgerOutcome {
+	OperatorHistoryLedgerOutcome {
+		ledger_status: String::from("not_loaded"),
+		final_outcome: String::from("local_attempt_history"),
+		final_event_type: None,
+		final_event_at: None,
+		summary: Some(String::from(
+			"Linear execution ledger was not loaded for this local-only snapshot.",
+		)),
+		pr_url: None,
+		commit_sha: None,
+		branch: None,
+		closeout_status: None,
+		needs_attention_reason: None,
+		lifecycle_started_at: None,
+		lifecycle_finished_at: None,
+		lifecycle_elapsed_seconds: None,
+		record_count: 0,
+	}
+}
+
+pub(super) fn missing_history_ledger_outcome() -> OperatorHistoryLedgerOutcome {
+	OperatorHistoryLedgerOutcome {
+		ledger_status: String::from("missing"),
+		final_outcome: String::from("execution_ledger_missing"),
+		final_event_type: None,
+		final_event_at: None,
+		summary: Some(String::from(
+			"No decodex.linear_execution_event records are available for this history lane.",
+		)),
+		pr_url: None,
+		commit_sha: None,
+		branch: None,
+		closeout_status: None,
+		needs_attention_reason: None,
+		lifecycle_started_at: None,
+		lifecycle_finished_at: None,
+		lifecycle_elapsed_seconds: None,
+		record_count: 0,
+	}
+}
+
 fn final_history_ledger_record(
 	records: &[OperatorHistoryLedgerRecord],
 ) -> Option<&OperatorHistoryLedgerRecord> {
@@ -196,15 +250,6 @@ fn final_history_ledger_record(
 		.or_else(|| {
 			records.iter().max_by(|left, right| compare_history_ledger_record_position(left, right))
 		})
-}
-
-pub(super) fn compare_history_ledger_record_position(
-	left: &OperatorHistoryLedgerRecord,
-	right: &OperatorHistoryLedgerRecord,
-) -> Ordering {
-	left.sort_unix_epoch
-		.cmp(&right.sort_unix_epoch)
-		.then_with(|| left.comment_index.cmp(&right.comment_index))
 }
 
 fn history_ledger_event_outcome_rank(event_type: &str) -> u8 {
@@ -230,8 +275,12 @@ fn history_ledger_timing(
 		.filter(|elapsed| *elapsed >= 0);
 
 	(
-		started.and_then(|timestamp| format_optional_unix_timestamp(Some(timestamp))),
-		finished.and_then(|timestamp| format_optional_unix_timestamp(Some(timestamp))),
+		started.and_then(|timestamp| {
+			status_run_projection::format_optional_unix_timestamp(Some(timestamp))
+		}),
+		finished.and_then(|timestamp| {
+			status_run_projection::format_optional_unix_timestamp(Some(timestamp))
+		}),
 		elapsed,
 	)
 }
@@ -295,52 +344,6 @@ fn history_attention_reason(final_record: &OperatorHistoryLedgerRecord) -> Optio
 			.or_else(|| final_record.record.error_class.clone())
 			.or_else(|| final_record.record.next_action.clone()),
 		_ => None,
-	}
-}
-
-pub(super) fn parse_rfc3339_unix_epoch(value: &str) -> Option<i64> {
-	OffsetDateTime::parse(value, &Rfc3339).ok().map(|timestamp| timestamp.unix_timestamp())
-}
-
-pub(super) fn not_loaded_history_ledger_outcome() -> OperatorHistoryLedgerOutcome {
-	OperatorHistoryLedgerOutcome {
-		ledger_status: String::from("not_loaded"),
-		final_outcome: String::from("local_attempt_history"),
-		final_event_type: None,
-		final_event_at: None,
-		summary: Some(String::from(
-			"Linear execution ledger was not loaded for this local-only snapshot.",
-		)),
-		pr_url: None,
-		commit_sha: None,
-		branch: None,
-		closeout_status: None,
-		needs_attention_reason: None,
-		lifecycle_started_at: None,
-		lifecycle_finished_at: None,
-		lifecycle_elapsed_seconds: None,
-		record_count: 0,
-	}
-}
-
-pub(super) fn missing_history_ledger_outcome() -> OperatorHistoryLedgerOutcome {
-	OperatorHistoryLedgerOutcome {
-		ledger_status: String::from("missing"),
-		final_outcome: String::from("execution_ledger_missing"),
-		final_event_type: None,
-		final_event_at: None,
-		summary: Some(String::from(
-			"No decodex.linear_execution_event records are available for this history lane.",
-		)),
-		pr_url: None,
-		commit_sha: None,
-		branch: None,
-		closeout_status: None,
-		needs_attention_reason: None,
-		lifecycle_started_at: None,
-		lifecycle_finished_at: None,
-		lifecycle_elapsed_seconds: None,
-		record_count: 0,
 	}
 }
 

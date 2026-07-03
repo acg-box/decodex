@@ -5,7 +5,7 @@ use crate::{
 	research_design::ResearchDesignRunReport,
 };
 
-pub(super) fn research_compile_result(
+pub(in crate::mcp) fn research_compile_result(
 	report: &ResearchDesignRunReport,
 	persisted: bool,
 	mode: &str,
@@ -31,7 +31,7 @@ pub(super) fn research_compile_result(
 	})
 }
 
-pub(super) fn research_promote_readiness_result(
+pub(in crate::mcp) fn research_promote_readiness_result(
 	contract_id: &str,
 	contract_status: &str,
 	ready_for_issue_shaping: bool,
@@ -55,7 +55,7 @@ pub(super) fn research_promote_readiness_result(
 	})
 }
 
-pub(super) fn intake_goal_result(report: &GoalIntakeReport, mode: &str) -> Value {
+pub(in crate::mcp) fn intake_goal_result(report: &GoalIntakeReport, mode: &str) -> Value {
 	let issues = report.issues.iter().map(intake_goal_issue_result).collect::<Vec<_>>();
 
 	serde_json::json!({

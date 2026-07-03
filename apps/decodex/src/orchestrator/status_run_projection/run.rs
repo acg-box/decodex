@@ -15,8 +15,9 @@ use crate::{
 	},
 	prelude::Result,
 };
+use lane_control::OperatorRunLaneControlReadback;
 
-pub(in crate::orchestrator) fn operator_run_status(
+pub(crate) fn operator_run_status(
 	project: &ServiceConfig,
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	project_display_name: &str,
@@ -117,7 +118,7 @@ pub(in crate::orchestrator) fn operator_run_status(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(in crate::orchestrator) fn operator_run_status_from_parts(
+pub(crate) fn operator_run_status_from_parts(
 	project: &ServiceConfig,
 	project_display_name: &str,
 	run: &ProjectRunStatus,
@@ -226,37 +227,33 @@ pub(in crate::orchestrator) fn operator_run_status_from_parts(
 	}
 }
 
-pub(in crate::orchestrator) fn operator_run_active_goal_phase(
-	events: &[PrivateExecutionEvent],
-) -> Option<String> {
+pub(crate) fn operator_run_active_goal_phase(events: &[PrivateExecutionEvent]) -> Option<String> {
 	phase::operator_run_active_goal_phase(events)
 }
 
-pub(in crate::orchestrator) fn operator_run_public_progress_phase(
+pub(crate) fn operator_run_public_progress_phase(
 	events: &[PrivateExecutionEvent],
 ) -> Option<String> {
 	phase::operator_run_public_progress_phase(events)
 }
 
-pub(in crate::orchestrator) fn operator_run_phase_acceptance_status(
+pub(crate) fn operator_run_phase_acceptance_status(
 	events: &[PrivateExecutionEvent],
 ) -> Option<OperatorPhaseAcceptanceStatus> {
 	phase::operator_run_phase_acceptance_status(events)
 }
 
-pub(in crate::orchestrator) fn hydrate_operator_run_derived_status(
-	status: OperatorRunStatus,
-) -> OperatorRunStatus {
+pub(crate) fn hydrate_operator_run_derived_status(status: OperatorRunStatus) -> OperatorRunStatus {
 	lane_control::hydrate_operator_run_derived_status(status)
 }
 
-pub(in crate::orchestrator) fn operator_run_lane_control_readback(
+pub(crate) fn operator_run_lane_control_readback(
 	run: &OperatorRunStatus,
-) -> lane_control::OperatorRunLaneControlReadback {
+) -> OperatorRunLaneControlReadback {
 	lane_control::operator_run_lane_control_readback(run)
 }
 
-pub(in crate::orchestrator) fn operator_run_lifecycle_projection(
+pub(crate) fn operator_run_lifecycle_projection(
 	run: &ProjectRunStatus,
 	marker: Option<&RunActivityMarker>,
 	terminal_finalize_projection: Option<OperatorTerminalFinalizeProjection>,
@@ -276,7 +273,7 @@ pub(in crate::orchestrator) fn operator_run_lifecycle_projection(
 	)
 }
 
-pub(in crate::orchestrator) fn operator_run_wait_reason(
+pub(crate) fn operator_run_wait_reason(
 	phase: &str,
 	wait_reason: Option<String>,
 	protocol_activity: Option<&ProtocolActivitySummary>,
@@ -284,20 +281,20 @@ pub(in crate::orchestrator) fn operator_run_wait_reason(
 	phase::operator_run_wait_reason(phase, wait_reason, protocol_activity)
 }
 
-pub(in crate::orchestrator) fn operator_run_accounts(
+pub(crate) fn operator_run_accounts(
 	marker: Option<&RunActivityMarker>,
 ) -> (Option<CodexAccountActivitySummary>, Vec<CodexAccountActivitySummary>) {
 	accessors::operator_run_accounts(marker)
 }
 
-pub(in crate::orchestrator) fn operator_run_relative_worktree_path(
+pub(crate) fn operator_run_relative_worktree_path(
 	project: &ServiceConfig,
 	run: &ProjectRunStatus,
 ) -> Option<String> {
 	accessors::operator_run_relative_worktree_path(project, run)
 }
 
-pub(in crate::orchestrator) fn operator_run_private_evidence(
+pub(crate) fn operator_run_private_evidence(
 	project: &ServiceConfig,
 	run: &ProjectRunStatus,
 	issue_identifier: Option<&str>,
@@ -305,7 +302,7 @@ pub(in crate::orchestrator) fn operator_run_private_evidence(
 	accessors::operator_run_private_evidence(project, run, issue_identifier)
 }
 
-pub(in crate::orchestrator) fn operator_run_loop_status(
+pub(crate) fn operator_run_loop_status(
 	project: &ServiceConfig,
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	run: &ProjectRunStatus,
@@ -323,7 +320,7 @@ pub(in crate::orchestrator) fn operator_run_loop_status(
 	)
 }
 
-pub(in crate::orchestrator) fn operator_run_default_review_phase(
+pub(crate) fn operator_run_default_review_phase(
 	status: &str,
 	phase: &str,
 	current_operation: &str,
@@ -331,7 +328,7 @@ pub(in crate::orchestrator) fn operator_run_default_review_phase(
 	phase::operator_run_default_review_phase(status, phase, current_operation)
 }
 
-pub(in crate::orchestrator) fn operator_run_lifecycle_loop_summary(
+pub(crate) fn operator_run_lifecycle_loop_summary(
 	status: &str,
 	phase: &str,
 	current_operation: &str,

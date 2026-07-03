@@ -6,8 +6,7 @@ use std::{
 	sync::OnceLock,
 };
 
-#[cfg(target_os = "macos")]
-use libc::{PROC_PIDTBSDINFO, c_char, c_void, proc_bsdinfo};
+#[cfg(target_os = "macos")] use libc::{PROC_PIDTBSDINFO, c_char, c_void, proc_bsdinfo};
 
 use crate::state::run_activity_marker::record::RunActivityMarkerRecord;
 

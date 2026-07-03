@@ -1,9 +1,12 @@
-use super::{
-	ConnectorBackoff, IssueLease, PathBuf, ProjectRegistration, Result, StateData,
-	WorktreeMappingRecord, params, worktree_mapping_record_from_row,
+use crate::state::sqlite_store::{
+	SqliteStateStore,
+	queries::{
+		self, ConnectorBackoff, IssueLease, PathBuf, ProjectRegistration, Result, StateData,
+		WorktreeMappingRecord,
+	},
 };
 
-impl super::super::SqliteStateStore {
+impl SqliteStateStore {
 	pub(in crate::state) fn load_projects(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT service_id, config_path, repo_root, worktree_root, workflow_path, \
@@ -74,7 +77,7 @@ impl super::super::SqliteStateStore {
 				 FROM worktrees",
 		)?;
 		let rows = statement.query_map([], |row| {
-			let mapping = worktree_mapping_record_from_row(row)?;
+			let mapping = queries::worktree_mapping_record_from_row(row)?;
 
 			Ok((mapping.issue_id.clone(), mapping))
 		})?;
@@ -99,9 +102,12 @@ impl super::super::SqliteStateStore {
 			 WHERE issue_id = ?1
 			 LIMIT 1",
 		)?;
-		let mut rows = statement.query(params![issue_id])?;
+		let mut rows = statement.query(queries::params![issue_id])?;
 
-		Ok(rows.next()?.map(worktree_mapping_record_from_row).transpose()?)
+		Ok(rows
+			.next()?
+			.map(crate::state::sqlite_store::queries::worktree_mapping_record_from_row)
+			.transpose()?)
 	}
 
 	pub(in crate::state) fn load_connector_backoffs(&self, state: &mut StateData) -> Result<()> {

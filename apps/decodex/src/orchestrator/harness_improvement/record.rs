@@ -1,10 +1,11 @@
-use super::{
-	HARNESS_OUTCOME_EVENT_TYPE, HarnessImprovementCandidateSummary, HarnessLinearProjectionSummary,
-	HarnessOutcomeKind, HarnessOutcomeRecordInput, IssueRunPlan, PrivateExecutionEvent, Result,
-	StateStore,
-	candidates::{harness_candidates_from_payload, push_signal_candidates},
-	harness_contracts_for_issue, harness_outcome_payload, harness_programs_for_contracts,
-	payload::harness_outcome_signals,
+use std::collections::BTreeMap;
+
+use crate::orchestrator::harness_improvement::{
+	self, HARNESS_OUTCOME_EVENT_TYPE, HarnessImprovementCandidateSummary,
+	HarnessLinearProjectionSummary, HarnessOutcomeKind, HarnessOutcomeRecordInput, IssueRunPlan,
+	PrivateExecutionEvent, Result, StateStore,
+	candidates::{self},
+	payload,
 };
 
 pub(crate) fn record_harness_outcome_for_issue_run(
@@ -17,13 +18,22 @@ pub(crate) fn record_harness_outcome_for_issue_run(
 		input.run_id,
 		input.attempt_number,
 	)?;
-	let contracts = harness_contracts_for_issue(state_store, &input)?;
-	let programs = harness_programs_for_contracts(state_store, input.project_id, &contracts)?;
+	let contracts = harness_improvement::harness_contracts_for_issue(state_store, &input)?;
+	let programs = harness_improvement::harness_programs_for_contracts(
+		state_store,
+		input.project_id,
+		&contracts,
+	)?;
 	let linear_records =
 		state_store.list_linear_execution_events(input.project_id, input.issue_id)?;
-	let signals = harness_outcome_signals(&events, input.outcome, input.error_class);
-	let payload =
-		harness_outcome_payload(&input, &contracts, &programs, &linear_records, &signals)?;
+	let signals = payload::harness_outcome_signals(&events, input.outcome, input.error_class);
+	let payload = harness_improvement::harness_outcome_payload(
+		&input,
+		&contracts,
+		&programs,
+		&linear_records,
+		&signals,
+	)?;
 
 	state_store.append_private_execution_event(
 		input.project_id,
@@ -41,7 +51,7 @@ pub(crate) fn harness_improvement_candidates_from_private_events(
 	let mut from_outcome = Vec::new();
 
 	for event in events.iter().filter(|event| event.event_type() == HARNESS_OUTCOME_EVENT_TYPE) {
-		from_outcome.extend(harness_candidates_from_payload(event.payload()));
+		from_outcome.extend(candidates::harness_candidates_from_payload(event.payload()));
 	}
 
 	if !from_outcome.is_empty() {
@@ -51,7 +61,8 @@ pub(crate) fn harness_improvement_candidates_from_private_events(
 		return Vec::new();
 	}
 
-	let signals = harness_outcome_signals(events, HarnessOutcomeKind::TerminalFailure, None);
+	let signals =
+		payload::harness_outcome_signals(events, HarnessOutcomeKind::TerminalFailure, None);
 
 	if signals.validation_failure_count == 0
 		&& signals.accepted_finding_count == 0
@@ -78,9 +89,9 @@ pub(crate) fn harness_improvement_candidates_from_private_events(
 		final_error_class: None,
 		final_terminal_path: None,
 	};
-	let mut candidates = std::collections::BTreeMap::new();
+	let mut candidates = BTreeMap::new();
 
-	push_signal_candidates(&mut candidates, &input, &signals, &linear_projection);
+	candidates::push_signal_candidates(&mut candidates, &input, &signals, &linear_projection);
 
 	candidates.into_values().collect()
 }

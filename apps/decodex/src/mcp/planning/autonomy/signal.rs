@@ -3,17 +3,12 @@ use serde_json::{self, Value};
 use crate::{
 	autonomy_signal::{AutonomySignal, AutonomySignalKind},
 	mcp::{
-		McpServer, TOOL_AUTONOMY_SUBMIT_SIGNAL, invalid_tool_arguments, tool_refusal, tool_success,
+		self, McpServer, TOOL_AUTONOMY_SUBMIT_SIGNAL, planning,
+		planning::autonomy::{
+			args::{AutonomySignalInputArgs, AutonomySubmitSignalToolArgs},
+			results,
+		},
 	},
-};
-
-use super::{
-	super::{
-		missing_authority_refusal, planning_authority_present, planning_mode, planning_project_id,
-		planning_state_store,
-	},
-	args::{AutonomySignalInputArgs, AutonomySubmitSignalToolArgs},
-	results::autonomy_signal_tool_result,
 };
 
 impl McpServer {
@@ -21,18 +16,21 @@ impl McpServer {
 		let params = match serde_json::from_value::<AutonomySubmitSignalToolArgs>(arguments) {
 			Ok(params) => params,
 			Err(_) => {
-				return invalid_tool_arguments(
+				return mcp::invalid_tool_arguments(
 					TOOL_AUTONOMY_SUBMIT_SIGNAL,
 					"`kind`, `signal`, and optional `mode` are required.",
 				);
 			},
 		};
-		let mode =
-			match planning_mode(params.mode.as_deref(), "dry_run", TOOL_AUTONOMY_SUBMIT_SIGNAL) {
-				Ok(mode) => mode,
-				Err(result) => return result,
-			};
-		let project_id = match planning_project_id(
+		let mode = match planning::planning_mode(
+			params.mode.as_deref(),
+			"dry_run",
+			TOOL_AUTONOMY_SUBMIT_SIGNAL,
+		) {
+			Ok(mode) => mode,
+			Err(result) => return result,
+		};
+		let project_id = match planning::planning_project_id(
 			&self.context,
 			params.project_id.as_deref(),
 			TOOL_AUTONOMY_SUBMIT_SIGNAL,
@@ -45,14 +43,14 @@ impl McpServer {
 			Err(result) => return result,
 		};
 
-		if mode == "apply" && !planning_authority_present(params.authority.as_ref()) {
-			return missing_authority_refusal(
+		if mode == "apply" && !planning::planning_authority_present(params.authority.as_ref()) {
+			return planning::missing_authority_refusal(
 				TOOL_AUTONOMY_SUBMIT_SIGNAL,
 				"autonomy_submit_signal apply requires authority.source and authority.reason.",
 			);
 		}
 		if mode == "dry_run" {
-			return tool_success(autonomy_signal_tool_result(
+			return mcp::tool_success(results::autonomy_signal_tool_result(
 				&project_id,
 				&signal,
 				mode,
@@ -61,20 +59,21 @@ impl McpServer {
 			));
 		}
 
-		let store = match planning_state_store(&self.context, TOOL_AUTONOMY_SUBMIT_SIGNAL) {
+		let store = match planning::planning_state_store(&self.context, TOOL_AUTONOMY_SUBMIT_SIGNAL)
+		{
 			Ok(store) => store,
 			Err(result) => return result,
 		};
 
 		match store.record_autonomy_signal(&project_id, signal) {
-			Ok(record) => tool_success(autonomy_signal_tool_result(
+			Ok(record) => mcp::tool_success(results::autonomy_signal_tool_result(
 				&project_id,
 				record.signal(),
 				mode,
 				true,
 				Some(record.updated_at()),
 			)),
-			Err(error) => tool_refusal(
+			Err(error) => mcp::tool_refusal(
 				"autonomy_signal_refused",
 				format!("Autonomy signal was refused by Decodex authority checks: {error}"),
 			),
@@ -101,7 +100,7 @@ fn autonomy_signal_from_tool_args(
 	};
 
 	signal.map_err(|error| {
-		tool_refusal(
+		mcp::tool_refusal(
 			"autonomy_signal_refused",
 			format!("Autonomy signal did not satisfy Decodex signal requirements: {error}"),
 		)

@@ -5,18 +5,14 @@ use crate::agent::tracker_tool_bridge::{
 	NormalizedReviewCheckpointFindingRoute, NormalizedReviewCheckpointPayload,
 	ReviewCheckpointFindingRouteArgs, ReviewCheckpointFindingRouteCount,
 	ReviewCheckpointFindingRouteSummary,
-};
-
-use super::{
-	REVIEW_ROUTE_ARCHITECTURE_SIGNAL, REVIEW_ROUTE_CONTRACT_OR_AUTHORITY_DECISION_REQUIRED,
-	REVIEW_ROUTE_CURRENT_BLOCKER, REVIEW_ROUTE_DETERMINISTIC_GATE_CANDIDATE,
-	REVIEW_ROUTE_FOLLOW_UP, REVIEW_ROUTE_INVALID_OR_UNSUBSTANTIATED,
-	REVIEW_ROUTE_ISSUE_CONTRACT_GAP, REVIEW_ROUTE_LANDING_BLOCKER, REVIEW_ROUTE_NEEDS_EVIDENCE,
-	REVIEW_ROUTE_REVIEWER_RUBRIC_GAP, REVIEW_ROUTE_RISK_HIGH, REVIEW_ROUTE_RISK_NOTE,
-	REVIEW_ROUTE_SOURCE_ACCEPTED, REVIEW_ROUTE_SOURCE_REJECTED, REVIEW_ROUTE_SOURCE_ROUTE_ONLY,
-	normalize::{
-		normalize_required_review_evidence_list, normalize_required_review_text,
-		normalize_review_severity,
+	tools::review_checkpoint::{
+		REVIEW_ROUTE_ARCHITECTURE_SIGNAL, REVIEW_ROUTE_CONTRACT_OR_AUTHORITY_DECISION_REQUIRED,
+		REVIEW_ROUTE_CURRENT_BLOCKER, REVIEW_ROUTE_DETERMINISTIC_GATE_CANDIDATE,
+		REVIEW_ROUTE_FOLLOW_UP, REVIEW_ROUTE_INVALID_OR_UNSUBSTANTIATED,
+		REVIEW_ROUTE_ISSUE_CONTRACT_GAP, REVIEW_ROUTE_LANDING_BLOCKER, REVIEW_ROUTE_NEEDS_EVIDENCE,
+		REVIEW_ROUTE_REVIEWER_RUBRIC_GAP, REVIEW_ROUTE_RISK_HIGH, REVIEW_ROUTE_RISK_NOTE,
+		REVIEW_ROUTE_SOURCE_ACCEPTED, REVIEW_ROUTE_SOURCE_REJECTED, REVIEW_ROUTE_SOURCE_ROUTE_ONLY,
+		normalize::{self},
 	},
 };
 
@@ -67,20 +63,73 @@ pub(super) fn normalize_review_checkpoint_finding_routes(
 	Ok(routes)
 }
 
+pub(super) fn summarize_review_checkpoint_finding_routes(
+	routes: &[NormalizedReviewCheckpointFindingRoute],
+) -> ReviewCheckpointFindingRouteSummary {
+	let mut counts = BTreeMap::<String, usize>::new();
+
+	for route in routes {
+		*counts.entry(route.route.clone()).or_default() += 1;
+	}
+
+	ReviewCheckpointFindingRouteSummary {
+		route_counts: counts
+			.into_iter()
+			.map(|(route, count)| ReviewCheckpointFindingRouteCount { route, count })
+			.collect(),
+		next_action: review_route_next_action(routes),
+	}
+}
+
+pub(super) fn current_review_blocker_routes(
+	routes: &[NormalizedReviewCheckpointFindingRoute],
+) -> impl Iterator<Item = &NormalizedReviewCheckpointFindingRoute> {
+	routes.iter().filter(|route| route.route == REVIEW_ROUTE_CURRENT_BLOCKER)
+}
+
+pub(super) fn review_route_blocks_landing(route: &NormalizedReviewCheckpointFindingRoute) -> bool {
+	matches!(
+		route.route.as_str(),
+		REVIEW_ROUTE_LANDING_BLOCKER
+			| REVIEW_ROUTE_CONTRACT_OR_AUTHORITY_DECISION_REQUIRED
+			| REVIEW_ROUTE_NEEDS_EVIDENCE
+			| REVIEW_ROUTE_DETERMINISTIC_GATE_CANDIDATE
+			| REVIEW_ROUTE_ARCHITECTURE_SIGNAL
+			| REVIEW_ROUTE_ISSUE_CONTRACT_GAP
+	)
+}
+
+pub(in crate::agent::tracker_tool_bridge::tools) fn current_review_blocker_findings(
+	payload: &NormalizedReviewCheckpointPayload,
+) -> impl Iterator<Item = &NormalizedReviewCheckpointFinding> {
+	let fingerprints = current_review_blocker_routes(&payload.finding_routes)
+		.filter_map(|route| route.finding_fingerprint.clone())
+		.collect::<BTreeSet<_>>();
+
+	payload
+		.accepted_findings
+		.iter()
+		.filter(move |finding| fingerprints.contains(&finding.fingerprint))
+}
+
 fn normalize_review_checkpoint_finding_route(
 	route: ReviewCheckpointFindingRouteArgs,
 	accepted_findings: &[NormalizedReviewCheckpointFinding],
 	rejected_findings: &[NormalizedRejectedReviewCheckpointFinding],
 ) -> Result<NormalizedReviewCheckpointFindingRoute, String> {
 	let route_name = normalize_review_finding_route_name(route.route)?;
-	let severity = normalize_review_severity(route.severity, "finding_routes.severity")?;
+	let severity = normalize::normalize_review_severity(route.severity, "finding_routes.severity")?;
 	let risk_tier = normalize_review_route_risk_tier(route.risk_tier)?;
-	let summary = normalize_required_review_text(route.summary, "finding_routes.summary")?;
-	let evidence =
-		normalize_required_review_evidence_list(route.evidence, "finding_routes.evidence")?;
-	let resolver = normalize_required_review_text(route.resolver, "finding_routes.resolver")?;
+	let summary =
+		normalize::normalize_required_review_text(route.summary, "finding_routes.summary")?;
+	let evidence = normalize::normalize_required_review_evidence_list(
+		route.evidence,
+		"finding_routes.evidence",
+	)?;
+	let resolver =
+		normalize::normalize_required_review_text(route.resolver, "finding_routes.resolver")?;
 	let next_action =
-		normalize_required_review_text(route.next_action, "finding_routes.next_action")?;
+		normalize::normalize_required_review_text(route.next_action, "finding_routes.next_action")?;
 	let finding_source = normalize_review_route_source(route.finding_source)?;
 	let (finding_index, finding_fingerprint) = normalize_review_route_binding(
 		&finding_source,
@@ -294,24 +343,6 @@ fn review_severity_blocks_invalid_route(severity: &str) -> bool {
 	matches!(severity, "critical" | "high")
 }
 
-pub(super) fn summarize_review_checkpoint_finding_routes(
-	routes: &[NormalizedReviewCheckpointFindingRoute],
-) -> ReviewCheckpointFindingRouteSummary {
-	let mut counts = BTreeMap::<String, usize>::new();
-
-	for route in routes {
-		*counts.entry(route.route.clone()).or_default() += 1;
-	}
-
-	ReviewCheckpointFindingRouteSummary {
-		route_counts: counts
-			.into_iter()
-			.map(|(route, count)| ReviewCheckpointFindingRouteCount { route, count })
-			.collect(),
-		next_action: review_route_next_action(routes),
-	}
-}
-
 fn review_route_next_action(routes: &[NormalizedReviewCheckpointFindingRoute]) -> Option<String> {
 	routes
 		.iter()
@@ -334,35 +365,4 @@ fn review_route_priority(route: &str) -> u8 {
 		REVIEW_ROUTE_INVALID_OR_UNSUBSTANTIATED => 10,
 		_ => u8::MAX,
 	}
-}
-
-pub(super) fn current_review_blocker_routes(
-	routes: &[NormalizedReviewCheckpointFindingRoute],
-) -> impl Iterator<Item = &NormalizedReviewCheckpointFindingRoute> {
-	routes.iter().filter(|route| route.route == REVIEW_ROUTE_CURRENT_BLOCKER)
-}
-
-pub(in crate::agent::tracker_tool_bridge::tools) fn current_review_blocker_findings(
-	payload: &NormalizedReviewCheckpointPayload,
-) -> impl Iterator<Item = &NormalizedReviewCheckpointFinding> {
-	let fingerprints = current_review_blocker_routes(&payload.finding_routes)
-		.filter_map(|route| route.finding_fingerprint.clone())
-		.collect::<BTreeSet<_>>();
-
-	payload
-		.accepted_findings
-		.iter()
-		.filter(move |finding| fingerprints.contains(&finding.fingerprint))
-}
-
-pub(super) fn review_route_blocks_landing(route: &NormalizedReviewCheckpointFindingRoute) -> bool {
-	matches!(
-		route.route.as_str(),
-		REVIEW_ROUTE_LANDING_BLOCKER
-			| REVIEW_ROUTE_CONTRACT_OR_AUTHORITY_DECISION_REQUIRED
-			| REVIEW_ROUTE_NEEDS_EVIDENCE
-			| REVIEW_ROUTE_DETERMINISTIC_GATE_CANDIDATE
-			| REVIEW_ROUTE_ARCHITECTURE_SIGNAL
-			| REVIEW_ROUTE_ISSUE_CONTRACT_GAP
-	)
 }

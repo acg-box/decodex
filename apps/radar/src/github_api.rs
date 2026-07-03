@@ -2,16 +2,16 @@ use std::thread;
 
 use reqwest::Error;
 use reqwest::{
-	StatusCode,
+	Error, StatusCode,
 	blocking::Client,
 	header::{ACCEPT, AUTHORIZATION, HeaderMap, LINK, USER_AGENT},
 };
 use serde_json::{self, Value};
 
-use crate::prelude::eyre::{self, Report};
 use crate::{
 	GITHUB_REQUEST_ATTEMPTS, GITHUB_REQUEST_BACKOFF, GITHUB_REQUEST_TIMEOUT,
 	RETRYABLE_GITHUB_STATUS_CODES,
+	prelude::eyre::{self, Report},
 };
 
 #[derive(Debug)]

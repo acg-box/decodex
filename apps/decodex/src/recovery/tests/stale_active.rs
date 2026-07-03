@@ -1,4 +1,24 @@
-use super::*;
+mod claim_labels;
+mod evidence_blockers;
+mod reentry;
+mod release;
+mod telemetry;
+
+use std::{fs, path::Path};
+
+use crate::{
+	recovery::{
+		STALE_ACTIVE_RECOVERY_SCHEMA, STALE_ACTIVE_RELEASE_EVENT,
+		apply_stale_active_release_with_tracker, clear_stale_active_dead_run_claims_before_release,
+		diagnose_stale_active_issues, ensure_stale_active_run_claim_guard,
+		preflight_stale_active_worktree_cleanup, tests,
+	},
+	state::{
+		self, ChildAgentActivitySummary, ProtocolActivityMarker, ProtocolActivitySummary,
+		StateStore,
+	},
+	tracker::TrackerIssue,
+};
 
 fn dead_orphan_activity_summaries() -> (ChildAgentActivitySummary, ProtocolActivitySummary) {
 	(
@@ -23,7 +43,7 @@ fn seed_dead_orphan_runtime_telemetry(
 	let control_channel_path = worktree_path.join(".decodex-run-control/run-1626-1.channel");
 	let (child_activity, protocol_activity) = dead_orphan_activity_summaries();
 
-	init_clean_git_repo_with_remote_default(worktree_path, "x/pubfi-pub-1626");
+	tests::init_clean_git_repo_with_remote_default(worktree_path, "x/pubfi-pub-1626");
 	state::write_run_activity_marker_for_process(worktree_path, "run-1626", 1, u32::MAX)
 		.expect("stale process marker should write");
 	state::write_run_protocol_activity_marker(
@@ -57,6 +77,7 @@ fn seed_dead_orphan_runtime_telemetry(
 		"schema=decodex.run_control_channel/v1\nrun_id=run-1626\nattempt_number=1\n",
 	)
 	.expect("control channel file should write");
+
 	store.record_run_attempt("run-1626", &issue.id, 1, "running").expect("run attempt");
 	store
 		.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress")
@@ -84,6 +105,7 @@ fn seed_dead_orphan_runtime_telemetry(
 	store
 		.record_run_activity_summary("run-1626", 1, Some(&child_activity), Some(&protocol_activity))
 		.expect("activity summary should record");
+
 	append_dead_orphan_private_telemetry(store, &issue.id);
 }
 
@@ -120,6 +142,7 @@ fn seed_dead_orphan_runtime_telemetry_without_control_channel(
 		&[],
 	)
 	.expect("stale thread marker should write");
+
 	store
 		.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress")
 		.expect("temporary lease should record");
@@ -139,6 +162,7 @@ fn seed_dead_orphan_runtime_telemetry_without_control_channel(
 	store
 		.record_run_activity_summary("run-1626", 1, Some(&child_activity), Some(&protocol_activity))
 		.expect("activity summary should record");
+
 	append_dead_orphan_private_telemetry_without_control_channel_marker(store, &issue.id);
 }
 
@@ -535,9 +559,3 @@ fn append_stale_active_release_audit_for_run(
 		)
 		.expect("stale active release audit should record");
 }
-
-mod claim_labels;
-mod evidence_blockers;
-mod reentry;
-mod release;
-mod telemetry;

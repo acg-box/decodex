@@ -11,7 +11,7 @@ pub(crate) use self::queue::render_queue_explain;
 
 use crate::orchestrator::{self, OperatorStatusSnapshot, OperatorWorktreeStatus};
 
-pub(in crate::orchestrator) fn rendered_recovery_worktrees(
+pub(crate) fn rendered_recovery_worktrees(
 	snapshot: &OperatorStatusSnapshot,
 ) -> Vec<(&str, &OperatorWorktreeStatus)> {
 	worktrees::rendered_recovery_worktrees(snapshot)

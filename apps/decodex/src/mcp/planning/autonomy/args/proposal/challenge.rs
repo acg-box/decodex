@@ -11,28 +11,28 @@ use crate::{
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(in crate::mcp::planning::autonomy) struct AutonomyChallengeProposalToolArgs {
-	pub(in crate::mcp::planning::autonomy) mode: Option<String>,
-	pub(in crate::mcp::planning::autonomy) project_id: Option<String>,
-	pub(in crate::mcp::planning::autonomy) proposal_id: String,
-	pub(in crate::mcp::planning::autonomy) challenge: AutonomyProposalChallengeArgs,
-	pub(in crate::mcp::planning::autonomy) authority: Option<PlanningAuthorityArgs>,
+pub(in crate::mcp) struct AutonomyChallengeProposalToolArgs {
+	pub(in crate::mcp) mode: Option<String>,
+	pub(in crate::mcp) project_id: Option<String>,
+	pub(in crate::mcp) proposal_id: String,
+	pub(in crate::mcp) challenge: AutonomyProposalChallengeArgs,
+	pub(in crate::mcp) authority: Option<PlanningAuthorityArgs>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(in crate::mcp::planning::autonomy) struct AutonomyProposalChallengeArgs {
-	pub(in crate::mcp::planning::autonomy) source: AutonomyProposalChallengeSource,
-	pub(in crate::mcp::planning::autonomy) actor: String,
-	pub(in crate::mcp::planning::autonomy) summary: String,
+pub(in crate::mcp) struct AutonomyProposalChallengeArgs {
+	pub(in crate::mcp) source: AutonomyProposalChallengeSource,
+	pub(in crate::mcp) actor: String,
+	pub(in crate::mcp) summary: String,
 	#[serde(default)]
-	pub(in crate::mcp::planning::autonomy) objections: Vec<String>,
+	pub(in crate::mcp) objections: Vec<String>,
 	#[serde(default)]
-	pub(in crate::mcp::planning::autonomy) evidence_refs: Vec<String>,
-	pub(in crate::mcp::planning::autonomy) recorded_at: Option<String>,
+	pub(in crate::mcp) evidence_refs: Vec<String>,
+	pub(in crate::mcp) recorded_at: Option<String>,
 }
 impl AutonomyProposalChallengeArgs {
-	pub(in crate::mcp::planning::autonomy) fn into_challenge_input(
+	pub(in crate::mcp) fn into_challenge_input(
 		self,
 	) -> Result<AutonomyProposalChallengeInput, Value> {
 		if mcp::non_empty_string(Some(self.actor.as_str())).is_none()

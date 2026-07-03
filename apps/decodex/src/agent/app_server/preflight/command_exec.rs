@@ -1,13 +1,11 @@
-use super::super::{
-	constants::{
+use crate::{
+	agent::app_server::preflight::{
+		AppServerClient, AppServerRunRequest, CommandExecParams, CommandExecResponse,
 		PROBE_COMMAND_EXEC_EXPECTED_OUTPUT, PROBE_COMMAND_EXEC_OUTPUT_BYTES_CAP,
-		PROBE_COMMAND_EXEC_TIMEOUT_MS,
+		PROBE_COMMAND_EXEC_TIMEOUT_MS, RunRecorder, eyre, turn_loop,
 	},
-	protocol::{AppServerClient, CommandExecParams, CommandExecResponse},
-	runtime_types::{AppServerRunRequest, RunRecorder},
-	turn_loop::flush_pending_messages,
+	prelude::Result,
 };
-use crate::prelude::eyre;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CommandExecHealthCheck {
@@ -17,7 +15,7 @@ pub(crate) struct CommandExecHealthCheck {
 	pub(crate) output_bytes_cap: u64,
 }
 impl CommandExecHealthCheck {
-	pub(in crate::agent::app_server) fn probe() -> Self {
+	pub(crate) fn probe() -> Self {
 		Self {
 			command: vec![
 				String::from("/bin/sh"),
@@ -31,21 +29,21 @@ impl CommandExecHealthCheck {
 	}
 }
 
-pub(in crate::agent::app_server) fn run_command_exec_health_check(
+pub(crate) fn run_command_exec_health_check(
 	client: &mut AppServerClient,
 	recorder: &mut RunRecorder<'_>,
 	request: &AppServerRunRequest<'_>,
 	health_check: &CommandExecHealthCheck,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	let params = build_command_exec_health_check_params(health_check, &request.cwd);
 	let response = client.command_exec(&params)?;
 
-	flush_pending_messages(client, recorder, None)?;
+	turn_loop::flush_pending_messages(client, recorder, None)?;
 
 	validate_command_exec_health_check_result(health_check, &response)
 }
 
-pub(in crate::agent::app_server) fn build_command_exec_health_check_params(
+pub(crate) fn build_command_exec_health_check_params(
 	health_check: &CommandExecHealthCheck,
 	cwd: &str,
 ) -> CommandExecParams {
@@ -57,10 +55,10 @@ pub(in crate::agent::app_server) fn build_command_exec_health_check_params(
 	}
 }
 
-pub(in crate::agent::app_server) fn validate_command_exec_health_check_result(
+pub(crate) fn validate_command_exec_health_check_result(
 	health_check: &CommandExecHealthCheck,
 	response: &CommandExecResponse,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	if response.exit_code != 0 {
 		eyre::bail!(
 			"`command/exec` health check failed with exit code {}. stdout: {:?}; stderr: {:?}",

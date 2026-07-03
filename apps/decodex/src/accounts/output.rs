@@ -1,6 +1,7 @@
-use crate::prelude::Result;
-
-use super::{AccountListResponse, AccountUseResponse};
+use crate::{
+	accounts::{AccountListResponse, AccountUseResponse},
+	prelude::Result,
+};
 
 pub(super) fn print_list_response(response: &AccountListResponse, json: bool) -> Result<()> {
 	if json {

@@ -1,4 +1,6 @@
-use super::{ChildAgentActivitySummary, Result, StateData, Transaction, params};
+use crate::state::sqlite_store::persist::{
+	self, ChildAgentActivitySummary, Result, StateData, Transaction,
+};
 
 pub(in crate::state::sqlite_store) fn persist_projects(
 	transaction: &Transaction<'_>,
@@ -11,7 +13,7 @@ pub(in crate::state::sqlite_store) fn persist_projects(
 					tracker_api_key_env_var, github_token_env_var, enabled, config_fingerprint,
 					updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-			params![
+			persist::params![
 				project.service_id(),
 				project.config_path().to_string_lossy().as_ref(),
 				project.repo_root().to_string_lossy().as_ref(),
@@ -40,13 +42,13 @@ pub(in crate::state::sqlite_store) fn update_run_attempt_project(
 		Some(run_id) => {
 			transaction.execute(
 				"UPDATE run_attempts SET project_id = ?1 WHERE issue_id = ?2 AND run_id = ?3",
-				params![project_id, issue_id, run_id],
+				persist::params![project_id, issue_id, run_id],
 			)?;
 		},
 		None => {
 			transaction.execute(
 				"UPDATE run_attempts SET project_id = ?1 WHERE issue_id = ?2",
-				params![project_id, issue_id],
+				persist::params![project_id, issue_id],
 			)?;
 		},
 	}
@@ -62,7 +64,12 @@ pub(in crate::state::sqlite_store) fn persist_leases(
 		transaction.execute(
 			"INSERT OR REPLACE INTO leases (issue_id, project_id, run_id, issue_state) \
 				 VALUES (?1, ?2, ?3, ?4)",
-			params![lease.issue_id(), lease.project_id(), lease.run_id(), lease.issue_state()],
+			persist::params![
+				lease.issue_id(),
+				lease.project_id(),
+				lease.run_id(),
+				lease.issue_state()
+			],
 		)?;
 	}
 
@@ -79,7 +86,7 @@ pub(in crate::state::sqlite_store) fn persist_run_attempts(
 					run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id,
 					updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-			params![
+			persist::params![
 				&attempt.run_id,
 				attempt.project_id.as_deref(),
 				&attempt.issue_id,
@@ -106,7 +113,7 @@ pub(in crate::state::sqlite_store) fn persist_run_control_channels(
 					run_id, project_id, issue_id, attempt_number, transport, channel_path, status,
 					published_at, published_at_unix, updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-			params![
+			persist::params![
 				&channel.run_id,
 				&channel.project_id,
 				&channel.issue_id,
@@ -136,7 +143,7 @@ pub(in crate::state::sqlite_store) fn persist_protocol_events(
 						run_id, sequence_number, event_type, payload_sha256, created_at,
 						created_at_unix
 					) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-				params![
+				persist::params![
 					run_id,
 					event.sequence_number,
 					&event.event_type,
@@ -171,7 +178,7 @@ pub(in crate::state::sqlite_store) fn persist_run_activity_summaries(
 					run_id, attempt_number, child_agent_activity_json, protocol_activity_json,
 					updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-			params![
+			persist::params![
 				&summary.run_id,
 				summary.attempt_number,
 				child_agent_activity_json.as_deref(),
@@ -195,7 +202,7 @@ pub(in crate::state::sqlite_store) fn persist_worktrees(
 				issue_id, project_id, branch_name, worktree_path,
 				provenance_source, created_at_unix, updated_at_unix
 			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-			params![
+			persist::params![
 				&mapping.issue_id,
 				&mapping.project_id,
 				&mapping.branch_name,
@@ -222,7 +229,7 @@ pub(in crate::state::sqlite_store) fn persist_linear_execution_events(
 					idempotency_key, service_id, issue_id, event_type, event_timestamp,
 					event_unix, payload_json, recorded_at, recorded_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-			params![
+			persist::params![
 				&record.record.idempotency_key,
 				&record.record.service_id,
 				&record.record.issue_id,
@@ -251,7 +258,7 @@ pub(in crate::state::sqlite_store) fn persist_private_execution_events(
 					record_id, project_id, issue_id, run_id, attempt_number, event_type,
 					payload_json, recorded_at, recorded_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-			params![
+			persist::params![
 				record.record_id,
 				&record.project_id,
 				&record.issue_id,

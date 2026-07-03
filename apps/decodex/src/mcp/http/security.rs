@@ -2,9 +2,10 @@ use std::net::IpAddr;
 
 use reqwest::Url;
 
-use crate::prelude::{Result, eyre};
-
-use super::{super::McpCapabilityProfile, auth::McpHttpAuthorization};
+use crate::{
+	mcp::{McpCapabilityProfile, http::auth::McpHttpAuthorization},
+	prelude::{Result, eyre},
+};
 
 pub(in crate::mcp) fn validate_mcp_http_listen_address(
 	address: &str,
@@ -42,12 +43,6 @@ pub(in crate::mcp) fn validate_mcp_http_capability_profile(
 	)
 }
 
-fn listen_address_host_is_loopback(address: &str) -> bool {
-	let host = listen_address_host(address);
-
-	host.as_deref().is_some_and(host_is_loopback)
-}
-
 pub(super) fn mcp_http_origin_is_allowed(
 	origin: &str,
 	listen_address: Option<&str>,
@@ -73,6 +68,12 @@ pub(super) fn mcp_http_origin_is_allowed(
 	};
 
 	parsed.port_or_known_default() == Some(listen_port)
+}
+
+fn listen_address_host_is_loopback(address: &str) -> bool {
+	let host = listen_address_host(address);
+
+	host.as_deref().is_some_and(host_is_loopback)
 }
 
 fn host_is_loopback(host: &str) -> bool {

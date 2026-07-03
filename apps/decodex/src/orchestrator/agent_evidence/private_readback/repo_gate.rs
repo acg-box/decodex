@@ -1,7 +1,8 @@
 use serde_json::Value;
 
-use crate::orchestrator::PrivateExecutionEvent;
-use crate::orchestrator::agent_evidence::PrivateEvidenceRepoGateFailureSummary;
+use crate::orchestrator::{
+	PrivateExecutionEvent, agent_evidence::PrivateEvidenceRepoGateFailureSummary,
+};
 
 pub(super) fn repo_gate_failures_from_private_events(
 	events: &[PrivateExecutionEvent],

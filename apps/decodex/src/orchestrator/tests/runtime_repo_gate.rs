@@ -8,39 +8,6 @@ use color_eyre::Report;
 use serde::Deserialize;
 
 use crate::orchestrator::execution_phase_goal;
-use crate::{orchestrator::{self, tests, AppServerCapabilityPreflightFailure, EvidenceRequest, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition, RepoGateFailure, RepoGatePhaseGoalController, ServiceConfig, StateStore}, agent::PhaseGoalController, orchestrator::tests::{TEST_SERVICE_ID}, tracker::{self, TrackerIssue}, worktree::WorktreeSpec};
-
-pub(super) fn record_phase_acceptance_progress_checkpoint(
-	config: &ServiceConfig,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	blockers: &[&str],
-) {
-	let head_sha = tests::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
-	let blockers = blockers.iter().map(|blocker| (*blocker).to_owned()).collect::<Vec<_>>();
-
-	state_store
-		.append_private_execution_event(
-			config.service_id(),
-			&issue_run.issue.id,
-			&issue_run.run_id,
-			issue_run.attempt_number,
-			"progress_checkpoint",
-			serde_json::json!({
-				"phase": "verifying",
-				"docs_impact": "none",
-				"focus": "Validate phase-specific work before handoff.",
-				"next_action": "Complete the active phase goal.",
-				"blockers": blockers,
-				"evidence": ["current worktree inspected"],
-				"verification": ["repo gate will run after phase goal completion"],
-				"head_sha": head_sha,
-				"branch": issue_run.worktree.branch_name.as_str(),
-				"worktree_path": issue_run.worktree.path.display().to_string(),
-			}),
-		)
-		.expect("phase acceptance progress checkpoint should record");
-}
 
 #[test]
 fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
@@ -77,8 +44,9 @@ fn repo_gate_stops_canonicalize_failure_after_scope_envelope_widening() {
 	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 
-	tests::commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
-	tests::commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
+	commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
+	commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
+
 	fs::write(repo_root.join("owned.txt"), "implementation\n")
 		.expect("pre-gate implementation diff should write");
 
@@ -108,8 +76,9 @@ fn repo_gate_stops_verify_failure_after_scope_envelope_widening() {
 	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 
-	tests::commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
-	tests::commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
+	commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
+	commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
+
 	fs::write(repo_root.join("owned.txt"), "implementation\n")
 		.expect("pre-gate implementation diff should write");
 
@@ -152,8 +121,9 @@ fn completion_repo_gate_records_lane_decision_for_scope_envelope_violation() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = phase_goal_repo_gate_issue_run(&config, &issue);
 
-	tests::commit_worktree_change(config.repo_root(), "owned.txt", "before\n", "add owned file");
-	tests::commit_worktree_change(config.repo_root(), "outside.txt", "before\n", "add outside file");
+	commit_worktree_change(config.repo_root(), "owned.txt", "before\n", "add owned file");
+	commit_worktree_change(config.repo_root(), "outside.txt", "before\n", "add outside file");
+
 	fs::write(config.repo_root().join("owned.txt"), "implementation\n")
 		.expect("pre-gate implementation diff should write");
 

@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum OwnedLaneAction {
+pub(crate) enum OwnedLaneAction {
 	Continue,
 	WaitForExternalSignal,
 	RetryAutomatically,
@@ -7,9 +7,8 @@ pub(in crate::orchestrator) enum OwnedLaneAction {
 	ManualInterventionRequired,
 	ReadyToLand,
 }
-
 impl OwnedLaneAction {
-	pub(in crate::orchestrator) const fn as_str(self) -> &'static str {
+	pub(crate) const fn as_str(self) -> &'static str {
 		match self {
 			Self::Continue => "continue",
 			Self::WaitForExternalSignal => "wait_for_external_signal",

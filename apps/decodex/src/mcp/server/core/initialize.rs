@@ -1,9 +1,8 @@
 use serde_json::Value;
 
-use super::McpServer;
 use crate::mcp::{
 	MCP_HTTP_ENDPOINT_PATH, MCP_PROTOCOL_VERSION, MCP_SESSION_HEADER, McpCapabilityProfile,
-	SERVER_NAME,
+	SERVER_NAME, server::core::McpServer,
 };
 
 impl McpServer {

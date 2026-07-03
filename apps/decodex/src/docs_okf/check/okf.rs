@@ -1,24 +1,12 @@
-use std::path::{Path, PathBuf};
-
-use regex::Regex;
-use serde_yaml::Mapping;
-
-use crate::{
-	docs_okf::{
-		model::{DocsFile, OkfCheckReport},
-		support::{
-			docs_dirs_with_content, file_path_set, frontmatter_value, is_concept_markdown,
-			is_http_url, is_markdown, is_normalized_relative_path, issue, normalize_path,
-			resolve_link_target, should_skip_link_target, split_yaml_frontmatter, strip_fragment,
-		},
-	},
-	prelude::Result,
+use crate::docs_okf::{
+	self, DocsFile, Mapping, OkfCheckReport, Path, PathBuf, Regex, Result,
+	serde_yaml::{self, Value},
 };
 
 pub(super) fn check_okf_markdown_readability(files: &[DocsFile], report: &mut OkfCheckReport) {
 	for file in files {
 		if let Some(read_error) = &file.read_error {
-			report.issues.push(issue(
+			report.issues.push(docs_okf::issue(
 				Some(file.relative_path.clone()),
 				format!("Markdown file must be UTF-8 readable: {read_error}"),
 			));
@@ -27,14 +15,14 @@ pub(super) fn check_okf_markdown_readability(files: &[DocsFile], report: &mut Ok
 }
 
 pub(super) fn check_okf_core_concepts(files: &[DocsFile], report: &mut OkfCheckReport) {
-	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
+	for file in files.iter().filter(|file| docs_okf::is_concept_markdown(&file.relative_path)) {
 		report.concept_count += 1;
 
 		let Some(content) = file.content.as_deref() else {
 			continue;
 		};
-		let Some((frontmatter, _)) = split_yaml_frontmatter(content) else {
-			report.issues.push(issue(
+		let Some((frontmatter, _)) = docs_okf::split_yaml_frontmatter(content) else {
+			report.issues.push(docs_okf::issue(
 				Some(file.relative_path.clone()),
 				String::from("concept must start with YAML frontmatter delimited by ---"),
 			));
@@ -61,76 +49,8 @@ pub(super) fn check_okf_wiki_surface(
 	Ok(())
 }
 
-fn check_okf_indexes(files: &[DocsFile], report: &mut OkfCheckReport) {
-	let paths = file_path_set(files);
-
-	if !paths.contains(Path::new("index.md")) {
-		report.issues.push(issue(
-			Some(PathBuf::from("index.md")),
-			String::from("wiki profile expects a root progressive-disclosure index.md"),
-		));
-	}
-
-	for dir in docs_dirs_with_content(files) {
-		let index_path = dir.join("index.md");
-
-		if !paths.contains(&index_path) {
-			report.issues.push(issue(
-				Some(index_path),
-				String::from("wiki profile expects each populated directory to have index.md"),
-			));
-		}
-	}
-}
-
-fn check_okf_wiki_frontmatter(files: &[DocsFile], report: &mut OkfCheckReport) {
-	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
-		let Some(fields) = okf_frontmatter_fields(file, report) else {
-			continue;
-		};
-
-		read_required_okf_frontmatter_string(&fields, "title", &file.relative_path, report);
-		read_required_okf_frontmatter_string(&fields, "description", &file.relative_path, report);
-		okf_frontmatter_string_list(&fields, "tags", &file.relative_path, report);
-	}
-}
-
-fn check_okf_links(files: &[DocsFile], report: &mut OkfCheckReport) -> Result<()> {
-	let link_pattern = Regex::new(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+[^)]*)?\)")?;
-
-	for file in files.iter().filter(|file| is_markdown(&file.relative_path)) {
-		let Some(content) = file.content.as_deref() else {
-			continue;
-		};
-
-		for captures in link_pattern.captures_iter(content) {
-			let Some(target_match) = captures.get(1) else {
-				continue;
-			};
-			let target = target_match.as_str();
-
-			if should_skip_link_target(target) {
-				continue;
-			}
-
-			report.link_count += 1;
-
-			if let Some(link_path) = resolve_link_target(&file.path, &report.bundle_root, target)
-				&& !link_path.exists()
-			{
-				report.issues.push(issue(
-					Some(file.relative_path.clone()),
-					format!("link target `{target}` does not exist"),
-				));
-			}
-		}
-	}
-
-	Ok(())
-}
-
 pub(super) fn check_okf_repo_memory_surface(files: &[DocsFile], report: &mut OkfCheckReport) {
-	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
+	for file in files.iter().filter(|file| docs_okf::is_concept_markdown(&file.relative_path)) {
 		let Some(fields) = okf_frontmatter_fields(file, report) else {
 			continue;
 		};
@@ -144,10 +64,79 @@ pub(super) fn check_okf_repo_memory_surface(files: &[DocsFile], report: &mut Okf
 	}
 }
 
+fn check_okf_indexes(files: &[DocsFile], report: &mut OkfCheckReport) {
+	let paths = docs_okf::file_path_set(files);
+
+	if !paths.contains(Path::new("index.md")) {
+		report.issues.push(docs_okf::issue(
+			Some(PathBuf::from("index.md")),
+			String::from("wiki profile expects a root progressive-disclosure index.md"),
+		));
+	}
+
+	for dir in docs_okf::docs_dirs_with_content(files) {
+		let index_path = dir.join("index.md");
+
+		if !paths.contains(&index_path) {
+			report.issues.push(docs_okf::issue(
+				Some(index_path),
+				String::from("wiki profile expects each populated directory to have index.md"),
+			));
+		}
+	}
+}
+
+fn check_okf_wiki_frontmatter(files: &[DocsFile], report: &mut OkfCheckReport) {
+	for file in files.iter().filter(|file| docs_okf::is_concept_markdown(&file.relative_path)) {
+		let Some(fields) = okf_frontmatter_fields(file, report) else {
+			continue;
+		};
+
+		read_required_okf_frontmatter_string(&fields, "title", &file.relative_path, report);
+		read_required_okf_frontmatter_string(&fields, "description", &file.relative_path, report);
+		okf_frontmatter_string_list(&fields, "tags", &file.relative_path, report);
+	}
+}
+
+fn check_okf_links(files: &[DocsFile], report: &mut OkfCheckReport) -> Result<()> {
+	let link_pattern = Regex::new(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+[^)]*)?\)")?;
+
+	for file in files.iter().filter(|file| docs_okf::is_markdown(&file.relative_path)) {
+		let Some(content) = file.content.as_deref() else {
+			continue;
+		};
+
+		for captures in link_pattern.captures_iter(content) {
+			let Some(target_match) = captures.get(1) else {
+				continue;
+			};
+			let target = target_match.as_str();
+
+			if docs_okf::should_skip_link_target(target) {
+				continue;
+			}
+
+			report.link_count += 1;
+
+			if let Some(link_path) =
+				docs_okf::resolve_link_target(&file.path, &report.bundle_root, target)
+				&& !link_path.exists()
+			{
+				report.issues.push(docs_okf::issue(
+					Some(file.relative_path.clone()),
+					format!("link target `{target}` does not exist"),
+				));
+			}
+		}
+	}
+
+	Ok(())
+}
+
 fn okf_frontmatter_fields(file: &DocsFile, report: &mut OkfCheckReport) -> Option<Mapping> {
 	let content = file.content.as_deref()?;
-	let Some((frontmatter, _)) = split_yaml_frontmatter(content) else {
-		report.issues.push(issue(
+	let Some((frontmatter, _)) = docs_okf::split_yaml_frontmatter(content) else {
+		report.issues.push(docs_okf::issue(
 			Some(file.relative_path.clone()),
 			String::from("concept must start with YAML frontmatter delimited by ---"),
 		));
@@ -163,10 +152,10 @@ fn parse_okf_frontmatter_mapping(
 	path: &Path,
 	report: &mut OkfCheckReport,
 ) -> Option<Mapping> {
-	match serde_yaml::from_str::<serde_yaml::Value>(frontmatter) {
+	match serde_yaml::from_str::<Value>(frontmatter) {
 		Ok(serde_yaml::Value::Mapping(mapping)) => Some(mapping),
 		Ok(_) => {
-			report.issues.push(issue(
+			report.issues.push(docs_okf::issue(
 				Some(path.to_path_buf()),
 				String::from("frontmatter must be a YAML mapping"),
 			));
@@ -174,7 +163,7 @@ fn parse_okf_frontmatter_mapping(
 			None
 		},
 		Err(error) => {
-			report.issues.push(issue(
+			report.issues.push(docs_okf::issue(
 				Some(path.to_path_buf()),
 				format!("frontmatter must parse as YAML: {error}"),
 			));
@@ -190,13 +179,13 @@ fn read_required_okf_frontmatter_string(
 	path: &Path,
 	report: &mut OkfCheckReport,
 ) {
-	match frontmatter_value(fields, key) {
+	match docs_okf::frontmatter_value(fields, key) {
 		Some(serde_yaml::Value::String(value)) if !value.trim().is_empty() => {},
-		Some(serde_yaml::Value::String(_)) | None => report.issues.push(issue(
+		Some(serde_yaml::Value::String(_)) | None => report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("frontmatter key `{key}` is required and must be non-empty"),
 		)),
-		Some(_) => report.issues.push(issue(
+		Some(_) => report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("frontmatter key `{key}` must be a string"),
 		)),
@@ -209,7 +198,7 @@ fn okf_frontmatter_string_list(
 	path: &Path,
 	report: &mut OkfCheckReport,
 ) -> Option<Vec<String>> {
-	match frontmatter_value(fields, key) {
+	match docs_okf::frontmatter_value(fields, key) {
 		None => None,
 		Some(serde_yaml::Value::Sequence(items)) => {
 			let mut values = Vec::new();
@@ -219,11 +208,11 @@ fn okf_frontmatter_string_list(
 					serde_yaml::Value::String(value) if !value.trim().is_empty() => {
 						values.push(value.trim().to_owned());
 					},
-					serde_yaml::Value::String(_) => report.issues.push(issue(
+					serde_yaml::Value::String(_) => report.issues.push(docs_okf::issue(
 						Some(path.to_path_buf()),
 						format!("frontmatter list `{key}` must not contain empty strings"),
 					)),
-					_ => report.issues.push(issue(
+					_ => report.issues.push(docs_okf::issue(
 						Some(path.to_path_buf()),
 						format!("frontmatter list `{key}` must contain only strings"),
 					)),
@@ -233,7 +222,7 @@ fn okf_frontmatter_string_list(
 			Some(values)
 		},
 		Some(_) => {
-			report.issues.push(issue(
+			report.issues.push(docs_okf::issue(
 				Some(path.to_path_buf()),
 				format!("frontmatter key `{key}` must be a list of strings"),
 			));
@@ -264,8 +253,8 @@ fn validate_okf_source_refs(fields: &Mapping, path: &Path, report: &mut OkfCheck
 	};
 
 	for value in values {
-		if !is_http_url(&value) {
-			report.issues.push(issue(
+		if !docs_okf::is_http_url(&value) {
+			report.issues.push(docs_okf::issue(
 				Some(path.to_path_buf()),
 				format!("source_refs entry `{value}` must be an http(s) URL"),
 			));
@@ -298,15 +287,15 @@ fn validate_okf_code_ref_value(
 	let value_path = Path::new(value);
 
 	if value.contains('#') || value.contains('?') {
-		report.issues.push(issue(
+		report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("code_refs entry `{value}` must be a file path without fragments"),
 		));
 
 		return;
 	}
-	if !is_normalized_relative_path(value_path) {
-		report.issues.push(issue(
+	if !docs_okf::is_normalized_relative_path(value_path) {
+		report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("code_refs entry `{value}` must be a normalized repository-relative file path"),
 		));
@@ -314,15 +303,15 @@ fn validate_okf_code_ref_value(
 		return;
 	}
 
-	let target_path = normalize_path(&repo_root.join(value_path));
+	let target_path = docs_okf::normalize_path(&repo_root.join(value_path));
 
 	if !target_path.exists() {
-		report.issues.push(issue(
+		report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("code_refs entry `{value}` does not exist"),
 		));
 	} else if !target_path.is_file() {
-		report.issues.push(issue(
+		report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("code_refs entry `{value}` must reference a file"),
 		));
@@ -350,10 +339,10 @@ fn validate_okf_related_ref_value(
 	value: &str,
 	report: &mut OkfCheckReport,
 ) {
-	let target = strip_fragment(value);
+	let target = docs_okf::strip_fragment(value);
 
 	if target.is_empty() {
-		report.issues.push(issue(
+		report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("related entry `{value}` must include a bundle file path"),
 		));
@@ -364,7 +353,7 @@ fn validate_okf_related_ref_value(
 	let target_value_path = Path::new(target);
 
 	if target_value_path.is_absolute() {
-		report.issues.push(issue(
+		report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("related entry `{value}` must be a bundle-relative file path"),
 		));
@@ -373,10 +362,10 @@ fn validate_okf_related_ref_value(
 	}
 
 	let parent = path.parent().unwrap_or_else(|| Path::new(""));
-	let target_path = normalize_path(&bundle_root.join(parent).join(target_value_path));
+	let target_path = docs_okf::normalize_path(&bundle_root.join(parent).join(target_value_path));
 
 	if !target_path.starts_with(bundle_root) {
-		report.issues.push(issue(
+		report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("related entry `{value}` must stay under the OKF bundle"),
 		));
@@ -384,12 +373,12 @@ fn validate_okf_related_ref_value(
 		return;
 	}
 	if !target_path.exists() {
-		report.issues.push(issue(
+		report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("related entry `{value}` does not exist"),
 		));
-	} else if !target_path.is_file() || !is_markdown(&target_path) {
-		report.issues.push(issue(
+	} else if !target_path.is_file() || !docs_okf::is_markdown(&target_path) {
+		report.issues.push(docs_okf::issue(
 			Some(path.to_path_buf()),
 			format!("related entry `{value}` must reference a Markdown file"),
 		));
