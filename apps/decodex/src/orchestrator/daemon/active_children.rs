@@ -1,4 +1,18 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::process::Child;
+
+use time::OffsetDateTime;
+
+use crate::orchestrator::{
+	ActiveWorkflowOverride, ChildExitRetryContext, ChildRunRef, CurrentChildRunContext,
+	DaemonRunChild, IssueDispatchMode, IssueTracker, Result, RetryQueue, RunAttempt,
+	RunLeaseDisposition, RunLeaseReconciliation, ServiceConfig, StateStore, WorkflowDocument,
+	WorktreeManager, apply_run_lease_reconciliation, inspect_exited_daemon_child_reconciliation,
+	is_issue_not_dispatchable_for_current_dispatch, is_terminal_issue, mark_run_attempt_if_active,
+	refresh_issue, retained_review_handoff_matches_run, run_lease_reconciliation_workflow,
+	stalled_idle_duration, stalled_run_has_retained_partial_progress,
+	superseded_run_disposition, terminal_issue_keeps_retained_closeout,
+};
+use crate::orchestrator::daemon_retry::schedule_retry_after_child_exit;
 
 pub(crate) fn inspect_or_clear_active_children<T>(
 	active_children: &mut Vec<DaemonRunChild>,
