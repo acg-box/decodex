@@ -43,7 +43,6 @@ pub(in crate::agent::app_server) fn handle_turn_execution_notification(
 				if will_retry == Some(true) {
 					return Ok(None);
 				}
-
 				if failure.requires_operator_attention() || failure.should_stop_current_turn() {
 					return Err(Report::new(failure));
 				}

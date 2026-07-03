@@ -178,6 +178,7 @@ pub(crate) fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNod
 			},
 		}
 	}
+
 	if state == ExecutionReadinessState::Ready {
 		reasons.push(String::from("node is ready for normal Linear issue execution"));
 	}
