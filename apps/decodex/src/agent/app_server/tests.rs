@@ -459,3 +459,19 @@ fn slow_thread_start_fake_codex_script() -> String {
 		"    elif method == \"thread/start\":\n        import time\n        time.sleep(6)\n        cwd = params.get(\"cwd\")",
 	)
 }
+
+fn retrying_error_fake_codex_script() -> String {
+	orphan_response_fake_codex_script().replace(
+		"        send({\"id\": 999, \"result\": {\"late\": True}})",
+		r#"        send({"method": "error", "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "willRetry": True,
+            "error": {
+                "message": "Reconnecting... 2/5",
+                "codexErrorInfo": "transientNetworkError"
+            }
+        }})
+        send({"id": 999, "result": {"late": True}})"#,
+	)
+}

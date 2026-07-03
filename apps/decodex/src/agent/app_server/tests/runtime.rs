@@ -291,6 +291,51 @@ fn structured_error_notification_becomes_turn_failure() {
 }
 
 #[test]
+fn retrying_error_notification_does_not_replace_latest_turn_failure() {
+	let notification = JsonRpcNotification {
+		method: String::from("error"),
+		params: serde_json::json!({
+			"error": {
+				"message": "Reconnecting... 2/5",
+				"codexErrorInfo": "transientNetworkError"
+			},
+			"threadId": "thread-1",
+			"turnId": "turn-1",
+			"willRetry": true
+		}),
+	};
+	let mut final_output = String::new();
+	let mut latest_turn_failure = Some(AppServerTurnFailure::new(
+		"thread-1",
+		Some(String::from("turn-1")),
+		"failed",
+		"previous transient failure",
+		None,
+	));
+
+	let outcome = super::handle_turn_execution_notification(
+		&notification,
+		"thread-1",
+		"turn-1",
+		&mut final_output,
+		&mut latest_turn_failure,
+	)
+	.expect("retrying error notification should remain nonterminal");
+
+	assert!(outcome.is_none());
+	assert_eq!(
+		latest_turn_failure,
+		Some(AppServerTurnFailure::new(
+			"thread-1",
+			Some(String::from("turn-1")),
+			"failed",
+			"previous transient failure",
+			None,
+		))
+	);
+}
+
+#[test]
 fn json_rpc_error_response_becomes_recoverable_turn_failure() {
 	let error = JsonRpcError {
 		id: serde_json::json!(7),
