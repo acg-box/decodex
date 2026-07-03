@@ -1,0 +1,53 @@
+			.status-pill {
+				padding: 0;
+				border: 0;
+				background: transparent;
+				color: var(--muted-strong);
+				line-height: 1;
+			}
+
+			.status-pill::before {
+				content: "";
+				width: 2px;
+				height: 14px;
+				margin-right: 8px;
+				background: currentColor;
+				transition: transform var(--fast) var(--ease);
+			}
+
+			.transport-meta {
+				display: inline-flex;
+				align-items: center;
+				min-width: 0;
+				gap: 6px;
+				font-family: var(--sans);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+				line-height: 1;
+				color: var(--muted);
+				white-space: nowrap;
+			}
+
+			.transport-meta::before {
+				content: "";
+				width: 1px;
+				height: 14px;
+				background: var(--line-strong);
+			}
+
+			.transport-meta strong {
+				overflow: hidden;
+				max-width: min(42vw, 320px);
+				color: var(--muted-strong);
+				font-weight: var(--weight-label);
+				text-transform: none;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.transport-meta[data-kind="endpoint"] strong {
+				font-family: var(--mono);
+				font-variant-ligatures: none;
+				letter-spacing: 0;
+			}

@@ -1,0 +1,36 @@
+
+			@media (max-width: 1180px) {
+				.topbar {
+					grid-template-columns: 1fr;
+				}
+
+				.flow-step-labels {
+					grid-template-columns: repeat(2, minmax(0, 1fr));
+					gap: 8px 0;
+				}
+
+				.flow-step {
+					padding-top: 8px;
+				}
+
+				.flow-step:nth-child(odd) {
+					border-left: 0;
+					padding-left: 0;
+				}
+
+				.flow-step:nth-child(n + 3) {
+					border-top: 1px solid var(--line);
+				}
+
+				.flow-strip {
+					padding-top: 10px;
+				}
+
+				.topbar-side {
+					justify-content: flex-start;
+				}
+
+				.toolbar-controls {
+					justify-content: start;
+				}
+			}
