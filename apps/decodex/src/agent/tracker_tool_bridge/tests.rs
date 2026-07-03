@@ -1,3 +1,5 @@
+mod mutation;
+mod review;
 mod review_policy;
 
 use std::{
@@ -5,9 +7,7 @@ use std::{
 	collections::HashMap,
 	env,
 	ffi::OsString,
-	fs,
 	path::{Path, PathBuf},
-	process,
 };
 
 use serde_json::Value;
@@ -16,14 +16,12 @@ use tempfile::TempDir;
 use crate::{
 	agent::tracker_tool_bridge::{
 		DynamicToolContentItem, DynamicToolHandler, ISSUE_COMMENT_TOOL_NAME,
-		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
-		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
-		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
-		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LocalRepoDetails,
-		LocalRepoInspector, PullRequestDetails, PullRequestInspector, ReviewExecutionMode,
-		ReviewHandoffContext, ReviewHandoffWritebackFailed, ReviewPolicyStopReason,
-		ReviewPolicyStopRequested, RunCompletionDisposition, TrackerToolBridge,
-		TurnCompletionStatus,
+		ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		ISSUE_TRANSITION_TOOL_NAME, LocalRepoDetails, LocalRepoInspector, PullRequestDetails,
+		PullRequestInspector, ReviewExecutionMode, ReviewHandoffContext, ReviewPolicyStopReason,
+		ReviewPolicyStopRequested, TrackerToolBridge, TurnCompletionStatus,
 	},
 	config::ReviewLevel,
 	prelude::eyre,
@@ -33,21 +31,9 @@ use crate::{
 	},
 	tracker::{
 		IssueTracker, TrackerComment, TrackerIssue, TrackerLabel, TrackerState, TrackerTeam,
-		privacy_classifier::{
-			PublicProjectionPrivacyClassification, PublicProjectionPrivacyClassifier,
-		},
-		records,
 	},
 	workflow::WorkflowDocument,
 };
-
-// Tracker mutation policy for active execution turns.
-include!("tests/mutation/dispatch.rs");
-include!("tests/mutation/continuation.rs");
-include!("tests/mutation/progress.rs");
-
-// Review handoff, repair, closeout, and Decodex Review policy.
-include!("tests/review/handoff.rs");
 
 const TEST_SERVICE_ID: &str = "pubfi";
 
@@ -552,6 +538,29 @@ fn sample_local_repo() -> LocalRepoDetails {
 		repository_owner: String::from("hack-ink"),
 		review_blocking_changes: Vec::new(),
 	}
+}
+
+fn seed_docs_impact_checkpoint(
+	state_store: &StateStore,
+	review_context: &ReviewHandoffContext,
+	issue_id: &str,
+	phase: &str,
+	head_sha: &str,
+) {
+	state_store
+		.append_private_execution_event(
+			&review_context.service_id,
+			issue_id,
+			&review_context.run_id,
+			review_context.attempt_number,
+			"progress_checkpoint",
+			serde_json::json!({
+				"phase": phase,
+				"docs_impact": "none",
+				"head_sha": head_sha
+			}),
+		)
+		.expect("docs impact checkpoint should seed");
 }
 
 fn write_review_policy_checkpoint(
