@@ -1,8 +1,9 @@
 use crate::{
 	loop_contract::DecisionContract,
-	program_intake::tests::test_support,
-	program_intake::tests::test_support::FakeTracker,
-	program_intake::{self, GoalIntakeIssueAction, GoalIntakeRunRequest},
+	program_intake::{
+		self, GoalIntakeIssueAction, GoalIntakeRunRequest,
+		tests::{test_support, test_support::FakeTracker},
+	},
 	state::StateStore,
 	tracker::IssueTracker,
 };
