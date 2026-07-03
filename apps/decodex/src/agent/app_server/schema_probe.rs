@@ -16,4 +16,5 @@ pub(super) use constants::{
 	APP_SERVER_SCHEMA_REQUIRED_MARKERS,
 };
 pub(super) use generation::probe_app_server_schema;
-#[cfg(test)] pub(super) use validation::validate_generated_app_server_schema;
+#[cfg(test)]
+pub(super) use validation::validate_generated_app_server_schema;

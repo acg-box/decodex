@@ -19,8 +19,8 @@ pub(in crate::agent::app_server) use catalog::{
 };
 #[cfg(test)]
 pub(in crate::agent::app_server) use catalog::{
-	MarketplaceLoadErrorInfo, PluginMarketplaceEntry, PluginSummary, SkillErrorInfo,
-	SkillMetadata, SkillsListEntry,
+	MarketplaceLoadErrorInfo, PluginMarketplaceEntry, PluginSummary, SkillErrorInfo, SkillMetadata,
+	SkillsListEntry,
 };
 pub(in crate::agent::app_server) use core::{
 	ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse, RunOutcome,
@@ -49,12 +49,13 @@ pub(in crate::agent::app_server) use thread::{
 };
 pub(in crate::agent::app_server) use tools::{
 	AppServerDynamicToolSpec, CommandExecutionRequestApprovalResponse, DynamicToolCallParams,
-	FileChangeRequestApprovalResponse,
-	McpServerElicitationRequestResponse, PermissionsRequestApprovalResponse,
-	ProbeDynamicToolHandler, ToolRequestUserInputResponse, app_server_dynamic_tool_specs,
+	FileChangeRequestApprovalResponse, McpServerElicitationRequestResponse,
+	PermissionsRequestApprovalResponse, ProbeDynamicToolHandler, ToolRequestUserInputResponse,
+	app_server_dynamic_tool_specs,
 };
 
-#[cfg(test)] use crate::agent::app_server::REQUEST_TIMEOUT;
+#[cfg(test)]
+use crate::agent::app_server::REQUEST_TIMEOUT;
 
 #[cfg(test)]
 mod tests {
