@@ -1,0 +1,37 @@
+			@keyframes account-confirm-name-breathe {
+				0%,
+				100% {
+					color: color-mix(in srgb, var(--account-confirm-accent) 46%, var(--muted));
+					text-shadow: none;
+				}
+				50% {
+					color: var(--account-confirm-accent);
+					text-shadow:
+						0 0 6px color-mix(in srgb, var(--account-confirm-accent) 34%, transparent),
+						0 0 15px color-mix(in srgb, var(--account-confirm-accent) 20%, transparent);
+				}
+			}
+
+			@keyframes account-confirm-bracket-left {
+				0%,
+				100% {
+					opacity: 0.36;
+					transform: translate(0.18ch, -50%);
+				}
+				50% {
+					opacity: 0.98;
+					transform: translate(-0.12ch, -50%);
+				}
+			}
+
+			@keyframes account-confirm-bracket-right {
+				0%,
+				100% {
+					opacity: 0.36;
+					transform: translate(-0.18ch, -50%);
+				}
+				50% {
+					opacity: 0.98;
+					transform: translate(0.12ch, -50%);
+				}
+			}
