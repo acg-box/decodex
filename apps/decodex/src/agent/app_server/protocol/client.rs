@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::{
 	agent::{
 		app_server::{
-			REQUEST_TIMEOUT,
+			REQUEST_TIMEOUT, THREAD_SESSION_REQUEST_TIMEOUT,
 			protocol::{
 				ClientInfo, CommandExecParams, CommandExecResponse, ConfigReadParams,
 				ConfigReadResponse, InitializeCapabilities, InitializeParams, InitializeResponse,
@@ -116,7 +116,12 @@ impl AppServerClient {
 	where
 		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
 	{
-		self.connection.request_with_handler("thread/start", &params, REQUEST_TIMEOUT, handler)
+		self.connection.request_with_handler(
+			"thread/start",
+			&params,
+			THREAD_SESSION_REQUEST_TIMEOUT,
+			handler,
+		)
 	}
 
 	#[allow(dead_code)]
@@ -140,7 +145,12 @@ impl AppServerClient {
 	where
 		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
 	{
-		self.connection.request_with_handler("thread/resume", &params, REQUEST_TIMEOUT, handler)
+		self.connection.request_with_handler(
+			"thread/resume",
+			&params,
+			THREAD_SESSION_REQUEST_TIMEOUT,
+			handler,
+		)
 	}
 
 	pub(in crate::agent::app_server) fn archive_thread(
