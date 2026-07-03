@@ -1,0 +1,105 @@
+			.project-entry {
+				--project-accent: var(--tone-muted);
+				position: relative;
+				isolation: isolate;
+				display: grid;
+				grid-template-areas:
+					"identity location activity work";
+				grid-template-columns: var(--project-grid);
+				gap: 4px var(--space-row-y);
+				align-items: center;
+				min-width: 0;
+				padding: var(--space-row-y) 0 var(--space-row-y) var(--space-row-indent);
+				border-bottom: 1px solid var(--line);
+				background: transparent;
+				color: var(--muted-strong);
+				transition: background-color var(--fast) var(--ease);
+			}
+
+			.project-table-list > .project-entry:last-child {
+				border-bottom: 0;
+			}
+
+			.project-entry > * {
+				position: relative;
+				z-index: 1;
+			}
+
+			.project-entry::before {
+				content: "";
+				position: absolute;
+				z-index: 2;
+				left: 0;
+				top: var(--space-row-y);
+				bottom: var(--space-row-y);
+				width: 3px;
+				background: var(--project-accent);
+				box-shadow: none;
+				transform-origin: left center;
+				transition:
+					background-color var(--fast) var(--ease),
+					box-shadow var(--medium) var(--ease),
+					transform var(--medium) var(--ease);
+			}
+
+			.project-entry::after {
+				content: "";
+				position: absolute;
+				inset: 0 auto 0 0;
+				z-index: 0;
+				width: min(58%, 720px);
+				background: linear-gradient(
+					90deg,
+					color-mix(in srgb, var(--project-accent) 12%, transparent),
+					transparent 78%
+				);
+				opacity: 0;
+				transform: scaleX(0.92);
+				transform-origin: left center;
+				transition:
+					opacity var(--medium) var(--ease),
+					transform var(--medium) var(--ease);
+			}
+
+			.project-entry.is-active::before {
+				box-shadow: 0 0 10px color-mix(in srgb, var(--project-accent) 22%, transparent);
+			}
+
+			.project-entry.is-active::after {
+				opacity: 0.45;
+				transform: scaleX(1);
+			}
+
+			.project-entry:hover {
+				background: linear-gradient(90deg, var(--hover), transparent 78%);
+			}
+
+			.project-entry:hover::before {
+				box-shadow: 0 0 18px color-mix(in srgb, var(--project-accent) 42%, transparent);
+				transform: scaleX(1.45) scaleY(1.08);
+			}
+
+			.project-entry:hover::after {
+				opacity: 0.85;
+				transform: scaleX(1);
+			}
+
+			.project-entry.tone-land {
+				--project-accent: var(--tone-land);
+			}
+
+			.project-entry.tone-ready {
+				--project-accent: var(--tone-ready);
+			}
+
+			.project-entry.tone-wait {
+				--project-accent: var(--tone-wait);
+			}
+
+			.project-entry.tone-blocked {
+				--project-accent: var(--tone-blocked);
+			}
+
+			.project-entry.tone-muted {
+				--project-accent: var(--tone-muted);
+			}
