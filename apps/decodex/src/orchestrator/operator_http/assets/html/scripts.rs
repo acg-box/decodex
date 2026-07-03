@@ -97,6 +97,18 @@ pub(super) const SCRIPT_PARTS: &[&str] = &[
 	)),
 	include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/render-primitives/dom/empty-state.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/render-primitives/dom/patching.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/render-primitives/dom/animation.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
 		"/src/orchestrator/operator_dashboard/app/render-primitives/dom.js"
 	)),
 	include_str!(concat!(
@@ -322,6 +334,22 @@ pub(super) const SCRIPT_PARTS: &[&str] = &[
 	include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
 		"/src/orchestrator/operator_dashboard/app/overview.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/overview/core/derived-state/queue.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/overview/core/derived-state/running-items.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/overview/core/derived-state/review-items.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/overview/core/derived-state/counts.js"
 	)),
 	include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
