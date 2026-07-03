@@ -1,0 +1,78 @@
+			.account-name-reroll {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				flex: 0 0 auto;
+				width: 16px;
+				height: 16px;
+				padding: 0;
+				border: 0;
+				border-radius: 999px;
+				background: transparent;
+				color: var(--muted);
+				cursor: pointer;
+				transition:
+					background-color var(--fast) var(--ease),
+					color var(--fast) var(--ease);
+			}
+
+			.account-profile-toggle {
+				position: absolute;
+				z-index: 3;
+				top: 50%;
+				right: 5px;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 18px;
+				height: 24px;
+				padding: 0;
+				border: 0;
+				border-radius: var(--radius-sm);
+				background: transparent;
+				color: var(--muted);
+				cursor: pointer;
+				opacity: 0.58;
+				transform: translateY(-50%);
+				transition:
+					background-color var(--fast) var(--ease),
+					color var(--fast) var(--ease),
+					opacity var(--fast) var(--ease);
+			}
+
+			.account-name-button + .account-name-reroll {
+				margin-left: 8px;
+			}
+
+			.account-name-reroll svg,
+			.account-profile-toggle svg {
+				display: block;
+				width: 12px;
+				height: 12px;
+				stroke-width: 2.1;
+			}
+
+			.account-profile-toggle svg {
+				transition: transform var(--medium) var(--ease);
+			}
+
+			.account-profile-toggle[aria-expanded="true"] svg {
+				transform: rotate(180deg);
+			}
+
+			.account-row:hover .account-profile-toggle,
+			.account-row:focus-within .account-profile-toggle,
+			.account-name-reroll:hover,
+			.account-profile-toggle:hover,
+			.account-profile-toggle[aria-expanded="true"] {
+				background: var(--surface-muted);
+				color: var(--text);
+				opacity: 1;
+			}
+
+			.account-name-reroll:focus-visible,
+			.account-profile-toggle:focus-visible {
+				color: var(--text);
+				outline: 2px solid var(--info);
+				outline-offset: 2px;
+			}

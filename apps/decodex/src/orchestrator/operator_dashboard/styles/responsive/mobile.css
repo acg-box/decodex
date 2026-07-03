@@ -1,0 +1,112 @@
+			@media (max-width: 640px) {
+				body {
+					padding: 12px;
+				}
+
+				.grid,
+				.grid.two {
+					grid-template-columns: 1fr;
+				}
+
+				.debug-grid {
+					grid-template-columns: 1fr;
+				}
+
+				.masthead {
+					padding: 12px;
+				}
+
+				.panel {
+					padding-right: 16px;
+					padding-left: 16px;
+				}
+
+				.section-marker {
+					margin-right: 16px;
+					margin-left: 16px;
+				}
+
+				.flow-strip {
+					padding-top: 10px;
+				}
+
+				.flow-step-labels {
+					grid-template-columns: 1fr;
+				}
+
+				.flow-step {
+					padding: 8px 0 0;
+				}
+
+				.flow-step + .flow-step {
+					border-top: 1px solid var(--line);
+					border-left: 0;
+				}
+
+				.topbar,
+				.topbar-main,
+				.topbar-side {
+					gap: 8px 12px;
+				}
+
+				.transport-row {
+					gap: 8px;
+				}
+
+				.transport-meta {
+					flex: 1 1 160px;
+				}
+
+				.transport-meta strong {
+					max-width: 100%;
+				}
+
+				.theme-switch {
+					width: 100%;
+					justify-content: space-between;
+				}
+
+				.notice-dock {
+					right: 14px;
+					bottom: 14px;
+					width: calc(100vw - 28px);
+				}
+
+				.theme-option {
+					flex: 1 1 0;
+				}
+
+				.summary-tools {
+					width: 100%;
+					grid-template-columns: minmax(0, 1fr) 12px;
+				}
+
+				.summary-tools .table-meta {
+					white-space: normal;
+				}
+
+				.empty-state {
+					grid-template-columns: 1fr;
+					gap: 3px;
+					padding: 6px 0 12px;
+				}
+
+				.project-scope-list.is-empty .empty-state {
+					grid-template-columns: 1fr;
+					gap: 3px;
+					padding: 6px 0 10px 12px;
+				}
+
+				.project-table {
+					--project-grid:
+						minmax(150px, 1fr) minmax(70px, 0.36fr) minmax(88px, 0.46fr)
+						minmax(168px, 0.72fr);
+					min-width: 520px;
+				}
+			}
+
+			@media (max-width: 520px) {
+				.timing-strip {
+					grid-template-columns: 1fr;
+				}
+			}
