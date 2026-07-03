@@ -1,5 +1,23 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use std::slice;
+
+use crate::{
+	config::ServiceConfig,
+	orchestrator::{
+		IssueDispatchMode, IssueRunPlan, IssueTracker, PreferredRunIdentity,
+		PrepareIssueRunContext, RecoveredRuntimeState, Result, RetryIssueStateHint, RunSummary,
+		SelectedIssueRunCandidate, StateStore, TrackerIssue, WorkflowDocument,
+		apply_queued_candidate_guardrail_commands, build_queued_candidate_status_plan,
+		closeout_dispatch_block_reason, ensure_project_has_no_merged_worktree_cleanup_debt,
+		is_terminal_issue, issue_passes_current_dispatch_policy,
+		reconcile_post_review_orchestration, reconcile_project_state,
+		reconcile_terminal_thread_archive_backlog_best_effort, record_program_dispatch_selected,
+		recover_runtime_state_from_tracker_and_worktrees, select_execution_program_run_candidate,
+		select_issue_candidate_with_exclusions, select_post_review_issue_candidate,
+	},
+	prelude::eyre,
+	tracker,
+	worktree::WorktreeManager,
+};
 
 pub(crate) fn run_project_once<T>(
 	tracker: &T,
@@ -41,7 +59,14 @@ where
 		return Ok(None);
 	};
 
-	complete_issue_run(tracker, project, workflow, state_store, issue_run, dry_run)
+	crate::orchestrator::run_cycle::complete::complete_issue_run(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		issue_run,
+		dry_run,
+	)
 }
 
 pub(crate) fn plan_project_issue_run_with_exclusions<T>(
@@ -121,7 +146,7 @@ where
 		);
 	}
 
-	let Some(issue_run) = prepare_issue_run(
+	let Some(issue_run) = crate::orchestrator::run_cycle::prepare::prepare_issue_run(
 		PrepareIssueRunContext {
 			tracker,
 			project,
