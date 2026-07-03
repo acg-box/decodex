@@ -90,6 +90,19 @@ pub(in crate::agent::app_server::activity::protocol) fn protocol_waiting_reason(
 	None
 }
 
+pub(in crate::agent::app_server::activity::protocol) fn protocol_rate_limit_status(
+	_event_type: &str,
+	payload: &str,
+) -> Option<String> {
+	let payload_value = serde_json::from_str::<Value>(payload).ok()?;
+
+	payload::find_string_field(&payload_value, &["rateLimitReachedType", "rate_limit_reached_type"])
+		.or_else(|| {
+			payload::find_string_field(&payload_value, &["codexErrorInfo", "codex_error_info"])
+				.filter(|value| value.to_ascii_lowercase().contains("limit"))
+		})
+}
+
 fn item_started_waiting_reason(payload_value: Option<&Value>) -> String {
 	let Some(item_kind) = payload_value.and_then(|value| {
 		payload::string_at_paths(
@@ -122,19 +135,6 @@ fn item_started_waiting_reason(payload_value: Option<&Value>) -> String {
 	}
 
 	String::from("protocol_activity")
-}
-
-pub(in crate::agent::app_server::activity::protocol) fn protocol_rate_limit_status(
-	_event_type: &str,
-	payload: &str,
-) -> Option<String> {
-	let payload_value = serde_json::from_str::<Value>(payload).ok()?;
-
-	payload::find_string_field(&payload_value, &["rateLimitReachedType", "rate_limit_reached_type"])
-		.or_else(|| {
-			payload::find_string_field(&payload_value, &["codexErrorInfo", "codex_error_info"])
-				.filter(|value| value.to_ascii_lowercase().contains("limit"))
-		})
 }
 
 fn thread_status_waiting_reason(payload_value: Option<&Value>) -> Option<String> {
