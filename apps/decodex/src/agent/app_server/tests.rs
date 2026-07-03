@@ -9,43 +9,27 @@ mod schema_tests;
 
 use std::{
 	cell::RefCell,
-	collections::BTreeMap,
 	env, fs,
 	os::unix::fs::PermissionsExt,
 	path::{Path, PathBuf},
-	time::{Duration, Instant},
+	time::Duration,
 };
 
-use color_eyre::Report;
 use serde_json::{self, Value};
 use tempfile::TempDir;
 
-use crate::run_control::{
-	self, LaneControlSteerRequest, LaneControlSteerRequestInput, LaneControlSteerResponse,
-};
-use crate::state::{self, ProtocolActivitySummary, StateStore};
+use crate::state::StateStore;
 use crate::{
 	agent::{
 		app_server::{
 			APP_SERVER_REQUIRED_CLIENT_NOTIFICATIONS, APP_SERVER_REQUIRED_CLIENT_REQUESTS,
 			APP_SERVER_REQUIRED_SERVER_NOTIFICATIONS, APP_SERVER_REQUIRED_SERVER_REQUESTS,
-			APP_SERVER_SCHEMA_REQUIRED_MARKERS, AppServerCapabilityPreflightFailure,
-			AppServerCapabilityPreflightReport, AppServerRunResult, AppServerThreadArchiveOutcome,
-			AppServerThreadArchiveRequest, AppServerTurnFailure, CommandExecHealthCheck,
-			CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
-			ModelProviderCapabilitiesReadResponse, PhaseGoalController, PhaseGoalKind,
-			PhaseGoalSpec, PhaseGoalTransition, PluginListResponse, ProbeDynamicToolHandler,
-			REQUEST_TIMEOUT, RequestWaitPhase, RunRecorder, RuntimeConfigSummary,
-			SkillsListResponse, TurnContinuationGuard,
+			APP_SERVER_SCHEMA_REQUIRED_MARKERS, AppServerRunResult, PhaseGoalController,
+			PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition, TurnContinuationGuard,
 		},
-		json_rpc::{
-			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
-			JsonRpcError, JsonRpcErrorPayload, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest,
-			ResolvedAppServerCodexHomeEnv, WireMessage,
-		},
+		json_rpc::{AppServerProcessEnv, JsonRpcMessage, JsonRpcNotification, WireMessage},
 		tracker_tool_bridge::{
-			DynamicToolCallResponse, DynamicToolContentItem, DynamicToolHandler, DynamicToolSpec,
-			TurnCompletionStatus,
+			DynamicToolCallResponse, DynamicToolHandler, DynamicToolSpec, TurnCompletionStatus,
 		},
 	},
 	prelude::{Result, eyre},

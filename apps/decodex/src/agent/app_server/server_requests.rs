@@ -10,7 +10,7 @@ use super::{
 	ThreadStatusChangedNotification, ToolRequestUserInputResponse, WireMessage,
 	dispatch_dynamic_tool_call, dynamic_tool_call_unavailable_for_phase, eyre, message_type,
 	record_codex_account_failure, redact_identifier, respond_to_dynamic_tool_call_dispatch,
-	serde_json, targets_thread, thread_id_from_value, turn_id_from_value,
+	targets_thread, thread_id_from_value, turn_id_from_value,
 };
 use color_eyre::eyre::Report;
 
