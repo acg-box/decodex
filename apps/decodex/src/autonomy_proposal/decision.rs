@@ -1,4 +1,11 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::collections::BTreeSet;
+
+use serde_json::Value;
+
+use crate::autonomy_proposal::{
+	AutonomyProposal, AutonomyProposalChallengeEvidence, AutonomyProposalDecisionBridgeAuthority,
+	validation,
+};
 
 pub(super) fn autonomy_decision_research_provenance(
 	proposal: &AutonomyProposal,
@@ -215,7 +222,7 @@ pub(super) fn proposal_objections(proposal: &AutonomyProposal) -> Vec<String> {
 		objections.extend(challenge.objections.iter().cloned());
 	}
 
-	unique_sorted_strings(objections)
+	validation::unique_sorted_strings(objections)
 }
 
 pub(super) fn proposal_stop_conditions(proposal: &AutonomyProposal) -> Vec<String> {
@@ -307,7 +314,7 @@ pub(super) fn proposal_issue_candidate(proposal: &AutonomyProposal) -> Value {
 pub(super) fn proposal_conflict_domains(proposal: &AutonomyProposal) -> Vec<String> {
 	let mut domains = BTreeSet::new();
 
-	if let Some(surface) = normalize_repo_relative_path(&proposal.intended_surface) {
+	if let Some(surface) = validation::normalize_repo_relative_path(&proposal.intended_surface) {
 		domains.insert(format!("file:{surface}"));
 	} else {
 		domains.insert(format!("surface:{}", proposal.intended_surface));

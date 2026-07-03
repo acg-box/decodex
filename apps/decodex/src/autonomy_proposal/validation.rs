@@ -1,4 +1,20 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::{
+	collections::BTreeSet,
+	path::{Component, Path},
+};
+
+use sha2::{Digest as _, Sha256};
+
+use crate::{
+	autonomy_objective::{AutonomyObjectiveContract, AutonomyObjectiveState},
+	autonomy_proposal::{
+		AUTONOMY_PROPOSAL_RECORD_VERSION, AUTONOMY_PROPOSAL_SCHEMA, AutonomyProposal,
+		AutonomyProposalCompileInput, AutonomyProposalIssueCandidate, AutonomyProposalRefusal,
+		AutonomyProposalRefusalReason, AutonomyProposalState,
+	},
+	autonomy_signal::{AutonomySignal, AutonomySignalFreshness},
+	prelude::{Result, eyre},
+};
 
 pub(super) fn proposal_refusals(
 	objective: Option<&AutonomyObjectiveContract>,
@@ -259,7 +275,6 @@ pub(super) fn validate_issue_candidates(
 			);
 		}
 	}
-
 	for issue_candidate in issue_candidates {
 		for dependency in &issue_candidate.dependencies {
 			if !keys.contains(dependency.as_str()) {
@@ -288,39 +303,11 @@ pub(super) fn validate_issue_candidates(
 	Ok(())
 }
 
-fn validate_issue_candidate_acyclic<'a>(
-	key: &'a str,
-	issue_candidates: &'a [AutonomyProposalIssueCandidate],
-	visiting: &mut BTreeSet<&'a str>,
-	visited: &mut BTreeSet<&'a str>,
-) -> Result<()> {
-	if visited.contains(key) {
-		return Ok(());
-	}
-	if !visiting.insert(key) {
-		eyre::bail!("Autonomy proposal issue candidate `{key}` has cyclic dependencies.");
-	}
-
-	let Some(issue_candidate) =
-		issue_candidates.iter().find(|issue_candidate| issue_candidate.key == key)
-	else {
-		return Ok(());
-	};
-
-	for dependency in &issue_candidate.dependencies {
-		validate_issue_candidate_acyclic(dependency.as_str(), issue_candidates, visiting, visited)?;
-	}
-
-	visiting.remove(key);
-	visited.insert(key);
-
-	Ok(())
-}
-
 pub(super) fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
 	match stage {
-		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" =>
-			Ok(()),
+		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" => {
+			Ok(())
+		},
 		_ => {
 			eyre::bail!(
 				"Autonomy proposal issue candidate `{key}` has unsupported stage `{stage}`."
@@ -331,8 +318,9 @@ pub(super) fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()
 
 pub(super) fn validate_proposed_issue_queue_intent(key: &str, queue_intent: &str) -> Result<()> {
 	match queue_intent {
-		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" =>
-			Ok(()),
+		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" => {
+			Ok(())
+		},
 		_ => eyre::bail!(
 			"Autonomy proposal issue candidate `{key}` has unsupported queue_intent `{queue_intent}`."
 		),
@@ -391,4 +379,33 @@ pub(super) fn unique_sorted_strings(values: impl IntoIterator<Item = String>) ->
 		.collect::<BTreeSet<_>>()
 		.into_iter()
 		.collect()
+}
+
+fn validate_issue_candidate_acyclic<'a>(
+	key: &'a str,
+	issue_candidates: &'a [AutonomyProposalIssueCandidate],
+	visiting: &mut BTreeSet<&'a str>,
+	visited: &mut BTreeSet<&'a str>,
+) -> Result<()> {
+	if visited.contains(key) {
+		return Ok(());
+	}
+	if !visiting.insert(key) {
+		eyre::bail!("Autonomy proposal issue candidate `{key}` has cyclic dependencies.");
+	}
+
+	let Some(issue_candidate) =
+		issue_candidates.iter().find(|issue_candidate| issue_candidate.key == key)
+	else {
+		return Ok(());
+	};
+
+	for dependency in &issue_candidate.dependencies {
+		validate_issue_candidate_acyclic(dependency.as_str(), issue_candidates, visiting, visited)?;
+	}
+
+	visiting.remove(key);
+	visited.insert(key);
+
+	Ok(())
 }
