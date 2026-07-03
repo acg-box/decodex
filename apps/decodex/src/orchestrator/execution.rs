@@ -5,22 +5,29 @@ mod context;
 mod credentials;
 mod summary;
 
+use std::path::Path;
+
 #[cfg(test)]
 pub(crate) use self::completion::{push_retained_review_repair_head, run_completion_repo_gate};
 pub(crate) use self::summary::{planned_issue_state_for_dispatch, run_summary_from_issue_run};
-use crate::tracker;
 pub(crate) use context::write_run_operation_marker_best_effort;
 #[cfg(test)]
 pub(crate) use credentials::AgentGitCredentialEnvironment;
 pub(crate) use credentials::prepare_agent_git_credentials;
-
-use crate::orchestrator::{agent, git_credentials, IssueTracker, ServiceConfig, WorkflowDocument, StateStore, IssueRunPlan, TrackerToolBridge, AppServerProcessEnv, AppServerRunResult, ReviewHandoffContext, TurnContinuationGuard, DecodexToolBridge, PhaseGoalController, RunSummary, Result, AppServerRunRequest, RUN_LEASE_IDLE_TIMEOUT, maybe_continue_after_phase_goal_recovery, preserve_and_promote_app_server_run_failure, PullRequestReviewStateInspector, IssueTurnContinuationGuard, archive_completed_issue_threads_best_effort, build_continuation_user_input, Report, IssueDispatchMode, execute_deterministic_closeout, PhaseGoalKind, select_repo_gate_for_worktree, RUN_OPERATION_REPO_GATE, run_repo_gate_commands, RepoGateFailure, RepoGateTrackedRewriteDecision, LaneDecisionSnapshot, decide_lane_next_action, RUN_OPERATION_REVIEW_WRITEBACK, resolve_configured_env_var, RetainedReviewRepairPushFailed, RetainedReviewRepairPushFailureKind, GitCredentialSource, Command, repo_gate_output_text, RunCompletionDisposition, validate_review_handoff_runtime, ReviewHandoffWritebackFailed, ReviewHandoffNeedsAttention, record_harness_outcome_best_effort, HarnessOutcomeKind, ManualAttentionRequested, validate_review_repair_runtime, worktree_head_oid, cleanup_completed_post_review_lane, write_cleanup_complete_lifecycle_event, build_developer_instructions, build_user_input, DecodexRunContext, RUN_OPERATION_GIT_CREDENTIALS, Path, state, AgentGitCredentialsUnavailable, TrackerIssue, relative_worktree_path, ensure_automation_activity_label, reconcile_terminal_thread_archive_backlog_best_effort, handle_failure, CONTINUATION_PENDING_RUN_STATUS, GhPullRequestReviewStateInspector, build_review_run_context, build_phase_goal_controller};
-
-use agent::{CodexAccountPool, CodexAccountProvider};
+use crate::{
+	agent::{CodexAccountPool, CodexAccountProvider},
+	orchestrator::{
+		CONTINUATION_PENDING_RUN_STATUS, DecodexToolBridge, GhPullRequestReviewStateInspector,
+		IssueRunPlan, IssueTracker, Result, RunSummary, ServiceConfig, StateStore,
+		TrackerToolBridge, WorkflowDocument, build_phase_goal_controller, build_review_run_context,
+		ensure_automation_activity_label, handle_failure, reconcile_terminal_thread_archive_backlog_best_effort,
+		relative_worktree_path,
+	},
+	state, tracker,
+};
 
 use self::{
 	app_server::{CompletedAppServerRun, IssueAppServerRun, IssueAppServerRunOutcome},
-	completion::apply_run_completion_disposition,
 };
 
 pub(in crate::orchestrator) fn execute_issue_run<T>(

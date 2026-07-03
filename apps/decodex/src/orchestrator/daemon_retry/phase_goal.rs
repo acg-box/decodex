@@ -1,5 +1,13 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use crate::{
+	orchestrator::{
+		ChildExitRetryContext, ChildRunRef, IssueDispatchMode, IssueRunPlan, IssueTracker, Result,
+		handle_failure, recover_phase_goal_continuation, run_failure_requires_terminal_attention,
+	},
+	tracker::TrackerIssue,
+};
+use crate::orchestrator::daemon_retry::{
+	ChildExitPhaseGoalRecovery, child_exit_worktree_spec, clear_retry_schedule_and_release,
+};
 
 pub(in crate::orchestrator::daemon_retry) fn recover_child_exit_phase_goal<T>(
 	context: &mut ChildExitRetryContext<'_, T>,
