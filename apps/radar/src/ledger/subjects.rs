@@ -1,6 +1,6 @@
 //! Radar subject extraction from artifact references.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use serde_json::{Map, Value};
 
 #[derive(Debug, Eq, PartialEq)]
 pub(super) struct RadarSubject {

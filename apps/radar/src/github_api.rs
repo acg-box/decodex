@@ -1,5 +1,6 @@
 use std::thread;
 
+use reqwest::Error;
 use reqwest::{
 	StatusCode,
 	blocking::Client,
@@ -8,10 +9,9 @@ use reqwest::{
 use serde_json::{self, Value};
 
 use crate::prelude::eyre::{self, Report};
-
-use super::{
+use crate::{
 	GITHUB_REQUEST_ATTEMPTS, GITHUB_REQUEST_BACKOFF, GITHUB_REQUEST_TIMEOUT,
-	RETRYABLE_GITHUB_STATUS_CODES, body_excerpt,
+	RETRYABLE_GITHUB_STATUS_CODES,
 };
 
 #[derive(Debug)]
@@ -82,7 +82,7 @@ impl GitHubApi {
 		let body = response.text().map_err(GitHubError::Transport)?;
 		let payload = serde_json::from_str(&body).map_err(|error| GitHubError::Json {
 			error: error.to_string(),
-			body: body_excerpt(&body),
+			body: crate::body_excerpt(&body),
 		})?;
 
 		Ok(GitHubResponse { payload, next_url })
@@ -98,7 +98,7 @@ pub(super) struct GitHubResponse {
 #[derive(Debug)]
 enum GitHubError {
 	Status { status: StatusCode, body: String },
-	Transport(reqwest::Error),
+	Transport(Error),
 	Json { error: String, body: String },
 }
 impl GitHubError {

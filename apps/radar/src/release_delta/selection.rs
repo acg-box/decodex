@@ -1,17 +1,32 @@
 //! Release and comparison pair selection.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	iter,
+	path::Path,
+};
+
+use serde_json::Value;
+
+use crate::release_delta::{
+	ReleasePair,
+	options::{self},
+};
+use crate::{
+	RadarRefreshReleaseDeltaRequest,
+	prelude::{Result, eyre},
+};
 
 pub(super) fn select_release(
 	releases: &[Value],
 	tag_prefix: &str,
 	prerelease: bool,
-) -> crate::prelude::Result<Value> {
+) -> Result<Value> {
 	releases
 		.iter()
 		.find(|release| {
 			!release.get("draft").and_then(Value::as_bool).unwrap_or(false)
-				&& release_tag(release).is_some_and(|tag| tag.starts_with(tag_prefix))
+				&& options::release_tag(release).is_some_and(|tag| tag.starts_with(tag_prefix))
 				&& release.get("prerelease").and_then(Value::as_bool).unwrap_or(false) == prerelease
 		})
 		.cloned()
@@ -25,14 +40,14 @@ pub(super) fn select_release(
 pub(super) fn select_release_options(
 	request: &RadarRefreshReleaseDeltaRequest,
 	releases: &[Value],
-) -> crate::prelude::Result<(Vec<Value>, Vec<Value>)> {
-	let min_stable_key = stable_version_key(&request.min_stable_tag, &request.tag_prefix);
+) -> Result<(Vec<Value>, Vec<Value>)> {
+	let min_stable_key = options::stable_version_key(&request.min_stable_tag, &request.tag_prefix);
 	let mut stable = relevant_releases(releases, &request.tag_prefix)
 		.into_iter()
 		.filter(|release| {
 			!release.get("prerelease").and_then(Value::as_bool).unwrap_or(false)
-				&& release_tag(release).is_some_and(|tag| {
-					stable_version_key(tag, &request.tag_prefix) >= min_stable_key
+				&& options::release_tag(release).is_some_and(|tag| {
+					options::stable_version_key(tag, &request.tag_prefix) >= min_stable_key
 				})
 		})
 		.collect::<Vec<_>>();
@@ -61,17 +76,6 @@ pub(super) fn select_release_options(
 	Ok((stable, preview))
 }
 
-fn relevant_releases(releases: &[Value], tag_prefix: &str) -> Vec<Value> {
-	releases
-		.iter()
-		.filter(|release| {
-			!release.get("draft").and_then(Value::as_bool).unwrap_or(false)
-				&& release_tag(release).is_some_and(|tag| tag.starts_with(tag_prefix))
-		})
-		.cloned()
-		.collect()
-}
-
 pub(super) fn select_release_pairs(
 	request: &RadarRefreshReleaseDeltaRequest,
 	root: &Path,
@@ -79,14 +83,16 @@ pub(super) fn select_release_pairs(
 	prerelease: &Value,
 	stable_releases: &[Value],
 	preview_releases: &[Value],
-) -> crate::prelude::Result<Vec<ReleasePair>> {
+) -> Result<Vec<ReleasePair>> {
 	let default_pair = ReleasePair { stable: stable_release.clone(), preview: prerelease.clone() };
 	let releases_by_tag = stable_releases
 		.iter()
 		.chain(preview_releases)
-		.filter_map(|release| release_tag(release).map(|tag| (tag.to_owned(), release.clone())))
+		.filter_map(|release| {
+			options::release_tag(release).map(|tag| (tag.to_owned(), release.clone()))
+		})
 		.collect::<BTreeMap<_, _>>();
-	let previous_pairs = previous_signal_pairs(&absolute_repo_path(root, &request.out))?
+	let previous_pairs = previous_signal_pairs(&crate::absolute_repo_path(root, &request.out))?
 		.into_iter()
 		.filter_map(|(stable_tag, preview_tag)| {
 			Some(ReleasePair {
@@ -113,13 +119,26 @@ pub(super) fn select_release_pairs(
 	}
 }
 
+fn relevant_releases(releases: &[Value], tag_prefix: &str) -> Vec<Value> {
+	releases
+		.iter()
+		.filter(|release| {
+			!release.get("draft").and_then(Value::as_bool).unwrap_or(false)
+				&& options::release_tag(release).is_some_and(|tag| tag.starts_with(tag_prefix))
+		})
+		.cloned()
+		.collect()
+}
+
 fn compare_candidates(stable_releases: &[Value], preview_releases: &[Value]) -> Vec<ReleasePair> {
 	let mut candidates = stable_releases
 		.iter()
 		.flat_map(|stable| {
 			preview_releases
 				.iter()
-				.filter(move |preview| release_sort_key(preview) > release_sort_key(stable))
+				.filter(move |preview| {
+					options::release_sort_key(preview) > options::release_sort_key(stable)
+				})
 				.map(move |preview| ReleasePair {
 					stable: stable.clone(),
 					preview: preview.clone(),
@@ -128,8 +147,9 @@ fn compare_candidates(stable_releases: &[Value], preview_releases: &[Value]) -> 
 		.collect::<Vec<_>>();
 
 	candidates.sort_by(|left, right| {
-		(release_sort_key(&right.preview), release_sort_key(&right.stable))
-			.cmp(&(release_sort_key(&left.preview), release_sort_key(&left.stable)))
+		(options::release_sort_key(&right.preview), options::release_sort_key(&right.stable)).cmp(
+			&(options::release_sort_key(&left.preview), options::release_sort_key(&left.stable)),
+		)
 	});
 
 	candidates
@@ -140,10 +160,10 @@ fn unique_release_pairs(pairs: Vec<ReleasePair>) -> Vec<ReleasePair> {
 	let mut unique = Vec::new();
 
 	for pair in pairs {
-		let Some(stable_tag) = release_tag(&pair.stable) else {
+		let Some(stable_tag) = options::release_tag(&pair.stable) else {
 			continue;
 		};
-		let Some(preview_tag) = release_tag(&pair.preview) else {
+		let Some(preview_tag) = options::release_tag(&pair.preview) else {
 			continue;
 		};
 		let key = (stable_tag.to_owned(), preview_tag.to_owned());
@@ -156,19 +176,19 @@ fn unique_release_pairs(pairs: Vec<ReleasePair>) -> Vec<ReleasePair> {
 	unique
 }
 
-fn previous_signal_pairs(path: &Path) -> crate::prelude::Result<Vec<(String, String)>> {
+fn previous_signal_pairs(path: &Path) -> Result<Vec<(String, String)>> {
 	if !path.exists() {
 		return Ok(Vec::new());
 	}
 
-	let Ok(previous) = load_json(path) else {
+	let Ok(previous) = crate::load_json(path) else {
 		return Ok(Vec::new());
 	};
 	let mut keys = Vec::new();
 	let mut seen = BTreeSet::new();
 
 	for comparison in previous.get("comparisons").and_then(Value::as_array).into_iter().flatten() {
-		if string_array(comparison.get("tracked_signal_slugs")).is_empty() {
+		if crate::string_array(comparison.get("tracked_signal_slugs")).is_empty() {
 			continue;
 		}
 
