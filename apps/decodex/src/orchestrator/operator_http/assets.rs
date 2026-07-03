@@ -135,6 +135,22 @@ pub(super) static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> =
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/preferences/layout.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/preferences/accounts.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/preferences/projects.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/preferences/controls.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/app/render-primitives/labels.js"
 			)),
 			include_str!(concat!(
@@ -148,6 +164,18 @@ pub(super) static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> =
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/app/render-primitives/history.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/history/identity.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/history/lanes.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/history/run-summaries.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -315,7 +343,35 @@ pub(super) static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> =
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/activity/notices/readiness.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/activity/notices/list.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/activity/notices/accounts.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/activity/notices/warnings.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/activity/notices/render.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/app/overview.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/overview/core/derived-state.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/overview/core/header.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -376,6 +432,22 @@ pub(super) static OPERATOR_DASHBOARD_HTML: std::sync::LazyLock<String> =
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/app/stream.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/stream/startup.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/stream/events/accounts.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/stream/events/projects.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/stream/events/document.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
