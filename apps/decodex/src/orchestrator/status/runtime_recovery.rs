@@ -1,13 +1,20 @@
+mod discovery;
+mod issue;
+mod lease;
+mod snapshot;
+
+pub(crate) use self::{
+	discovery::{recoverable_worktree_identifiers, refresh_recoverable_runtime_issues},
+	snapshot::{append_primary_account_if_missing, hydrate_status_snapshot_state},
+};
+
 use crate::{
-	commit_message,
 	orchestrator::status::{
-		self, BTreeSet, CodexAccountActivitySummary, Instant, IssueTracker, OffsetDateTime, Path,
-		RecoverableWorktreeSkipCache, RecoveredRuntimeState, RetryIssueStateHint,
-		RunActivityMarker, ServiceConfig, StateStore, TrackerIssue, WorkflowDocument,
-		WorktreeManager, WorktreeMapping, WorktreeSpec, compare_issue_candidates, fs, slice,
+		self, BTreeSet, IssueTracker, OffsetDateTime, RecoverableWorktreeSkipCache,
+		RecoveredRuntimeState, ServiceConfig, StateStore, TrackerIssue, WorkflowDocument,
+		WorktreeManager, compare_issue_candidates,
 	},
 	prelude::Result,
-	state, tracker,
 };
 
 pub(crate) fn recover_runtime_state_from_tracker_and_worktrees<T>(
@@ -64,13 +71,13 @@ where
 	let mut issues = if issue_ids.is_empty() && recoverable_worktree_skip_cache.is_some() {
 		Vec::new()
 	} else {
-		refresh_recoverable_runtime_issues(tracker, &issue_ids)?
+		discovery::refresh_recoverable_runtime_issues(tracker, &issue_ids)?
 	};
 	let mut known_identifiers =
 		issues.iter().map(|issue| issue.identifier.to_ascii_uppercase()).collect::<BTreeSet<_>>();
 
-	for issue_identifier in recoverable_worktree_identifiers(project.worktree_root())? {
-		append_recoverable_tracker_issue(
+	for issue_identifier in discovery::recoverable_worktree_identifiers(project.worktree_root())? {
+		discovery::append_recoverable_tracker_issue(
 			tracker,
 			project,
 			&issue_identifier,
@@ -102,37 +109,6 @@ where
 	Ok(RecoveredRuntimeState { recoverable_issues })
 }
 
-pub(crate) fn refresh_recoverable_runtime_issues<T>(
-	tracker: &T,
-	issue_ids: &[String],
-) -> Result<Vec<TrackerIssue>>
-where
-	T: IssueTracker,
-{
-	match tracker.refresh_issues(issue_ids) {
-		Ok(issues) => Ok(issues),
-		Err(error)
-			if issue_ids.iter().any(|issue_id| {
-				tracker::issue_lookup_missing_error_for_candidate(&error, issue_id)
-			}) =>
-		{
-			let mut issues = Vec::new();
-
-			for issue_id in issue_ids {
-				match tracker.refresh_issues(slice::from_ref(issue_id)) {
-					Ok(mut refreshed) => issues.append(&mut refreshed),
-					Err(error)
-						if tracker::issue_lookup_missing_error_for_candidate(&error, issue_id) => {},
-					Err(error) => return Err(error),
-				}
-			}
-
-			Ok(issues)
-		},
-		Err(error) => Err(error),
-	}
-}
-
 pub(crate) fn recover_issue_runtime_state<T>(
 	tracker: &T,
 	project: &ServiceConfig,
@@ -145,313 +121,13 @@ pub(crate) fn recover_issue_runtime_state<T>(
 where
 	T: IssueTracker,
 {
-	let planned_worktree = worktree_manager.plan_for_issue(&issue.identifier);
-	let existing_worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
-	let existing_worktree = existing_recoverable_worktree_spec(
-		project.service_id(),
-		&issue,
-		existing_worktree_mapping.as_ref(),
-	)?;
-	let worktree = existing_worktree.unwrap_or(planned_worktree);
-
-	if !worktree.path.exists() {
-		return Ok(None);
-	}
-
-	state_store.canonicalize_issue_identity(&issue.identifier, &issue.id)?;
-
-	let activity_marker = state::read_run_activity_marker_snapshot(&worktree.path)?;
-	let recovered_service_ownership =
-		issue_has_recovered_service_ownership(tracker, &issue, project.service_id())?;
-
-	if existing_worktree_mapping.is_none() && recovered_service_ownership {
-		upsert_recovered_worktree_mapping(
-			project,
-			state_store,
-			&issue,
-			&worktree,
-			activity_marker.as_ref(),
-		)?;
-	}
-	if issue.state.name == workflow.frontmatter().tracker().success_state()
-		&& recovered_service_ownership
-		&& let Some(marker) = activity_marker.as_ref()
-		&& status::worktree_activity_marker_is_fresh(marker, now_unix_epoch)
-	{
-		upsert_recovered_worktree_mapping(
-			project,
-			state_store,
-			&issue,
-			&worktree,
-			activity_marker.as_ref(),
-		)?;
-		record_recovered_activity_lease(project, state_store, &issue, marker)?;
-
-		return Ok(None);
-	}
-	if status::issue_passes_closeout_dispatch_policy(
+	issue::recover_issue_runtime_state(
 		tracker,
-		&issue,
 		project,
 		workflow,
 		state_store,
-	)? {
-		upsert_recovered_worktree_mapping(
-			project,
-			state_store,
-			&issue,
-			&worktree,
-			activity_marker.as_ref(),
-		)?;
-
-		match activity_marker.as_ref() {
-			Some(marker) if status::worktree_activity_marker_is_fresh(marker, now_unix_epoch) => {
-				record_recovered_activity_lease(project, state_store, &issue, marker)?;
-
-				return Ok(None);
-			},
-			_ => {},
-		}
-	}
-	if status::issue_passes_retry_dispatch_policy(
-		tracker,
-		&issue,
-		project,
-		workflow,
-		state_store,
-		RetryIssueStateHint::default(),
-	)? {
-		upsert_recovered_worktree_mapping(
-			project,
-			state_store,
-			&issue,
-			&worktree,
-			activity_marker.as_ref(),
-		)?;
-
-		match activity_marker.as_ref() {
-			Some(marker) if status::worktree_activity_marker_is_fresh(marker, now_unix_epoch) => {
-				record_recovered_activity_lease(project, state_store, &issue, marker)?;
-
-				return Ok(None);
-			},
-			Some(marker) => {
-				status::clear_recovered_issue_lease(
-					project.service_id(),
-					&issue.id,
-					Some(marker.run_id()),
-					state_store,
-				)?;
-			},
-			None => {
-				status::clear_recovered_issue_lease(
-					project.service_id(),
-					&issue.id,
-					None,
-					state_store,
-				)?;
-			},
-		}
-
-		return Ok(Some(issue));
-	}
-
-	Ok(None)
-}
-
-pub(crate) fn existing_recoverable_worktree_spec(
-	project_id: &str,
-	issue: &TrackerIssue,
-	mapping: Option<&WorktreeMapping>,
-) -> Result<Option<WorktreeSpec>> {
-	let Some(mapping) = mapping else {
-		return Ok(None);
-	};
-
-	if mapping.project_id() != project_id || !mapping.worktree_path().try_exists()? {
-		return Ok(None);
-	}
-
-	Ok(Some(WorktreeSpec {
-		branch_name: mapping.branch_name().to_owned(),
-		issue_identifier: issue.identifier.clone(),
-		path: mapping.worktree_path().to_path_buf(),
-		reused_existing: true,
-	}))
-}
-
-pub(crate) fn upsert_recovered_worktree_mapping(
-	project: &ServiceConfig,
-	state_store: &StateStore,
-	issue: &TrackerIssue,
-	worktree: &WorktreeSpec,
-	activity_marker: Option<&RunActivityMarker>,
-) -> Result<()> {
-	state_store.upsert_recovered_worktree(
-		project.service_id(),
-		&issue.id,
-		&worktree.branch_name,
-		&worktree.path.display().to_string(),
-		recovered_worktree_observed_at_unix(activity_marker),
-	)
-}
-
-pub(crate) fn recovered_worktree_observed_at_unix(
-	activity_marker: Option<&RunActivityMarker>,
-) -> Option<i64> {
-	activity_marker.and_then(|marker| {
-		[
-			marker.last_activity_unix_epoch(),
-			marker.last_protocol_activity_unix_epoch(),
-			marker.last_progress_unix_epoch(),
-		]
-		.into_iter()
-		.flatten()
-		.max()
-	})
-}
-
-pub(crate) fn record_recovered_activity_lease(
-	project: &ServiceConfig,
-	state_store: &StateStore,
-	issue: &TrackerIssue,
-	marker: &RunActivityMarker,
-) -> Result<()> {
-	state_store.record_run_attempt(
-		marker.run_id(),
-		&issue.id,
-		marker.attempt_number(),
-		"running",
-	)?;
-	state_store.upsert_lease(
-		project.service_id(),
-		&issue.id,
-		marker.run_id(),
-		&issue.state.name,
-	)?;
-
-	Ok(())
-}
-
-pub(crate) fn issue_has_recovered_service_ownership<T>(
-	tracker: &T,
-	issue: &TrackerIssue,
-	service_id: &str,
-) -> Result<bool>
-where
-	T: IssueTracker,
-{
-	tracker::issue_has_label_with_server_confirmation(
-		tracker,
+		worktree_manager,
 		issue,
-		&tracker::automation_active_label(service_id),
+		now_unix_epoch,
 	)
-}
-
-pub(crate) fn append_recoverable_tracker_issue<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	issue_identifier: &str,
-	known_identifiers: &mut BTreeSet<String>,
-	issues: &mut Vec<TrackerIssue>,
-	mut recoverable_worktree_skip_cache: Option<&mut RecoverableWorktreeSkipCache>,
-) -> Result<()>
-where
-	T: IssueTracker,
-{
-	let canonical_identifier = issue_identifier.to_ascii_uppercase();
-
-	if known_identifiers.contains(&canonical_identifier) {
-		return Ok(());
-	}
-
-	let now = Instant::now();
-
-	if let Some(cache) = recoverable_worktree_skip_cache.as_deref_mut()
-		&& cache.is_suppressed(&canonical_identifier, now)
-	{
-		tracing::debug!(
-			issue = canonical_identifier,
-			"Skipped retained worktree tracker lookup because a recent recovery probe already found no service ownership."
-		);
-
-		return Ok(());
-	}
-
-	let issue = match tracker.get_issue_by_identifier(issue_identifier) {
-		Ok(issue) => issue,
-		Err(error)
-			if tracker::issue_lookup_missing_error_for_candidate(&error, issue_identifier) =>
-			None,
-		Err(error) => return Err(error),
-	};
-	let Some(issue) = issue else {
-		if let Some(cache) = recoverable_worktree_skip_cache {
-			cache.remember(&canonical_identifier, now);
-		}
-
-		return Ok(());
-	};
-
-	if !issue_has_recovered_service_ownership(tracker, &issue, project.service_id())? {
-		tracing::warn!(
-			issue = issue.identifier,
-			active_label = tracker::automation_active_label(project.service_id()),
-			labels_complete = issue.labels_complete,
-			"Skipping retained worktree recovery because the tracker issue is not explicitly owned by this service."
-		);
-
-		if let Some(cache) = recoverable_worktree_skip_cache {
-			cache.remember(&canonical_identifier, now);
-		}
-
-		return Ok(());
-	}
-
-	known_identifiers.insert(issue.identifier.to_ascii_uppercase());
-	issues.push(issue);
-
-	Ok(())
-}
-
-pub(crate) fn recoverable_worktree_identifiers(worktree_root: &Path) -> Result<Vec<String>> {
-	if !worktree_root.exists() {
-		return Ok(Vec::new());
-	}
-
-	let mut issue_identifiers = fs::read_dir(worktree_root)?
-		.filter_map(|entry| entry.ok())
-		.filter_map(|entry| {
-			entry
-				.file_type()
-				.ok()
-				.filter(|file_type| file_type.is_dir())
-				.and_then(|_| entry.file_name().into_string().ok())
-		})
-		.filter(|name| commit_message::looks_like_issue_identifier(name))
-		.collect::<Vec<_>>();
-
-	issue_identifiers.sort();
-	issue_identifiers.dedup();
-
-	Ok(issue_identifiers)
-}
-
-pub(crate) fn hydrate_status_snapshot_state(
-	_project: &ServiceConfig,
-	_state_store: &StateStore,
-	_recovered_state: RecoveredRuntimeState,
-) -> Result<()> {
-	Ok(())
-}
-
-pub(crate) fn append_primary_account_if_missing(
-	accounts: &mut Vec<CodexAccountActivitySummary>,
-	account: Option<&CodexAccountActivitySummary>,
-) {
-	if accounts.is_empty()
-		&& let Some(account) = account
-	{
-		accounts.push(account.clone());
-	}
 }
