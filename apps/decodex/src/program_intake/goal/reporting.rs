@@ -51,12 +51,15 @@ pub(in crate::program_intake) fn dry_run_goal_issue_rows(
 				GoalIntakeIssueAction::WouldCreate
 			};
 			let reason = match action {
-				GoalIntakeIssueAction::WouldCreate =>
-					"apply will create a normal Linear issue and persist a mapped program node",
-				GoalIntakeIssueAction::WouldUpdate =>
-					"apply will update the linked normal Linear issue and persist a mapped program node",
-				GoalIntakeIssueAction::Created | GoalIntakeIssueAction::Updated =>
-					"apply already materialized this issue",
+				GoalIntakeIssueAction::WouldCreate => {
+					"apply will create a normal Linear issue and persist a mapped program node"
+				},
+				GoalIntakeIssueAction::WouldUpdate => {
+					"apply will update the linked normal Linear issue and persist a mapped program node"
+				},
+				GoalIntakeIssueAction::Created | GoalIntakeIssueAction::Updated => {
+					"apply already materialized this issue"
+				},
 			};
 
 			goal_issue_report_row(plan, linked.as_ref(), action, None, vec![reason.to_owned()])
@@ -79,7 +82,7 @@ pub(in crate::program_intake) fn goal_issue_report_row(
 		issue_identifier: issue.map(|issue| issue.identifier.clone()),
 		action,
 		queue_intent: plan.queue_intent.as_str().to_owned(),
-		dispatch_action: dispatch_action.map(issue_batch::dispatch_action_name),
+		dispatch_action: dispatch_action.map(issue_batch::reporting::dispatch_action_name),
 		dependencies: plan.dependencies.clone(),
 		conflict_domains: goal::conflict_domain_labels(&plan.conflict_domains),
 		acceptance: plan.acceptance.clone(),
