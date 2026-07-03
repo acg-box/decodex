@@ -1,15 +1,31 @@
+use tempfile::TempDir;
+
+use crate::agent::tracker_tool_bridge::tests::{
+	self, FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker,
+};
+use crate::{
+	agent::tracker_tool_bridge::{
+		DynamicToolContentItem, DynamicToolHandler, ISSUE_COMMENT_TOOL_NAME,
+		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		ISSUE_TRANSITION_TOOL_NAME, PullRequestDetails, RunCompletionDisposition,
+		TrackerToolBridge, TurnCompletionStatus,
+	},
+	tracker::{TrackerLabel, TrackerState, records},
+};
+
 #[test]
 fn completion_disposition_allows_manual_attention_exit_without_review_handoff() {
-	let issue = sample_issue();
-	let tracker = tracker_with_current_issue_snapshot(&issue);
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -21,13 +37,14 @@ fn completion_disposition_allows_manual_attention_exit_without_review_handoff() 
 	let comment_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_COMMENT_TOOL_NAME,
-		manual_attention_comment_args(),
+		tests::manual_attention_comment_args(),
 	);
 
 	assert!(response.success);
 	assert!(comment_response.success);
 
-	let comment = tracker.comments.borrow().first().expect("manual attention comment should write").clone();
+	let comment =
+		tracker.comments.borrow().first().expect("manual attention comment should write").clone();
 	let record = records::parse_linear_execution_event_record(&comment)
 		.expect("manual attention comment should include a ledger record");
 
@@ -43,15 +60,15 @@ fn completion_disposition_allows_manual_attention_exit_without_review_handoff() 
 #[test]
 fn turn_completion_rejects_xy_156_shape_without_terminal_tracker_action() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -67,15 +84,15 @@ fn turn_completion_rejects_xy_156_shape_without_terminal_tracker_action() {
 #[test]
 fn turn_classification_allows_continuation_without_terminal_tracker_action() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -94,11 +111,11 @@ fn turn_classification_allows_continuation_without_terminal_tracker_action() {
 fn turn_classification_rejects_clean_closeout_continuation() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
 	let merged_pull_request = {
-		let mut pull_request = sample_pull_request();
+		let mut pull_request = tests::sample_pull_request();
 
 		pull_request.url = String::from(pr_url);
 		pull_request.state = String::from("MERGED");
@@ -106,12 +123,12 @@ fn turn_classification_rejects_clean_closeout_continuation() {
 		pull_request
 	};
 	let inspector = FakePullRequestInspector::new(vec![Ok(merged_pull_request)]);
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_closeout_context_in(temp_dir.path(), pr_url),
+		tests::sample_closeout_context_in(temp_dir.path(), pr_url),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -132,7 +149,7 @@ fn turn_classification_rejects_continuation_blocking_writes_without_terminal_pat
 		(ISSUE_LABEL_ADD_TOOL_NAME, serde_json::json!({ "label": "decodex:manual-only" })),
 		(ISSUE_TRANSITION_TOOL_NAME, serde_json::json!({ "state": "Todo" })),
 	] {
-		let mut refreshed_issue = sample_issue();
+		let mut refreshed_issue = tests::sample_issue();
 
 		if tool_name == ISSUE_LABEL_ADD_TOOL_NAME {
 			refreshed_issue.labels.push(TrackerLabel {
@@ -145,15 +162,15 @@ fn turn_classification_rejects_continuation_blocking_writes_without_terminal_pat
 		}
 
 		let tracker = FakeTracker::with_refresh_snapshots(vec![vec![refreshed_issue]]);
-		let issue = sample_issue();
-		let workflow = sample_workflow();
+		let issue = tests::sample_issue();
+		let workflow = tests::sample_workflow();
 		let inspector = FakePullRequestInspector::new(Vec::new());
 		let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 		let bridge = TrackerToolBridge::with_review_handoff_for_test(
 			&tracker,
 			&issue,
 			&workflow,
-			sample_review_context(),
+			tests::sample_review_context(),
 			&inspector,
 			&local_repo_inspector,
 		);
@@ -178,17 +195,17 @@ fn turn_classification_rejects_continuation_blocking_writes_for_stale_active_ref
 		(ISSUE_LABEL_ADD_TOOL_NAME, serde_json::json!({ "label": "decodex:manual-only" })),
 		(ISSUE_TRANSITION_TOOL_NAME, serde_json::json!({ "state": "Todo" })),
 	] {
-		let active_issue = sample_in_progress_issue();
+		let active_issue = tests::sample_in_progress_issue();
 		let tracker = FakeTracker::with_refresh_snapshots(vec![vec![active_issue]]);
-		let issue = sample_in_progress_issue();
-		let workflow = sample_workflow();
+		let issue = tests::sample_in_progress_issue();
+		let workflow = tests::sample_workflow();
 		let inspector = FakePullRequestInspector::new(Vec::new());
 		let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 		let bridge = TrackerToolBridge::with_review_handoff_for_test(
 			&tracker,
 			&issue,
 			&workflow,
-			sample_review_context(),
+			tests::sample_review_context(),
 			&inspector,
 			&local_repo_inspector,
 		);
@@ -213,7 +230,7 @@ fn turn_classification_allows_continuation_blocking_writes_after_reactivation() 
 		(ISSUE_LABEL_ADD_TOOL_NAME, serde_json::json!({ "label": "decodex:manual-only" })),
 		(ISSUE_TRANSITION_TOOL_NAME, serde_json::json!({ "state": "Todo" })),
 	] {
-		let mut reactivated_issue = sample_issue();
+		let mut reactivated_issue = tests::sample_issue();
 
 		reactivated_issue.state =
 			TrackerState { id: String::from("state-progress"), name: String::from("In Progress") };
@@ -222,15 +239,15 @@ fn turn_classification_allows_continuation_blocking_writes_after_reactivation() 
 			vec![reactivated_issue.clone()],
 			vec![reactivated_issue],
 		]);
-		let issue = sample_issue();
-		let workflow = sample_workflow();
+		let issue = tests::sample_issue();
+		let workflow = tests::sample_workflow();
 		let inspector = FakePullRequestInspector::new(Vec::new());
 		let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 		let bridge = TrackerToolBridge::with_review_handoff_for_test(
 			&tracker,
 			&issue,
 			&workflow,
-			sample_review_context(),
+			tests::sample_review_context(),
 			&inspector,
 			&local_repo_inspector,
 		);
@@ -250,16 +267,16 @@ fn turn_classification_allows_continuation_blocking_writes_after_reactivation() 
 
 #[test]
 fn manual_attention_requires_explanatory_comment() {
-	let issue = sample_issue();
-	let tracker = tracker_with_current_issue_snapshot(&issue);
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -285,15 +302,15 @@ fn manual_attention_requires_explanatory_comment() {
 #[test]
 fn failed_needs_attention_label_update_does_not_record_manual_attention() {
 	let tracker = FakeTracker::with_label_update_error("tracker labels unavailable");
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -305,7 +322,7 @@ fn failed_needs_attention_label_update_does_not_record_manual_attention() {
 	let comment_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_COMMENT_TOOL_NAME,
-		manual_attention_comment_args(),
+		tests::manual_attention_comment_args(),
 	);
 
 	assert!(response.success);
@@ -323,7 +340,7 @@ fn failed_needs_attention_label_update_does_not_record_manual_attention() {
 
 #[test]
 fn opt_out_label_add_uses_refreshed_issue_snapshot_for_label_ids() {
-	let initial_issue = sample_issue();
+	let initial_issue = tests::sample_issue();
 	let mut refreshed_issue = initial_issue.clone();
 
 	refreshed_issue.labels.push(TrackerLabel {
@@ -332,7 +349,7 @@ fn opt_out_label_add_uses_refreshed_issue_snapshot_for_label_ids() {
 	});
 
 	let tracker = FakeTracker::with_refresh_snapshots(vec![vec![refreshed_issue]]);
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &initial_issue, &workflow);
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -347,8 +364,8 @@ fn opt_out_label_add_uses_refreshed_issue_snapshot_for_label_ids() {
 #[test]
 fn label_add_fails_when_refresh_returns_no_snapshot() {
 	let tracker = FakeTracker::with_refresh_snapshots(vec![Vec::new()]);
-	let workflow = sample_workflow();
-	let issue = sample_issue();
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -372,7 +389,7 @@ fn label_add_fails_when_refresh_returns_no_snapshot() {
 
 #[test]
 fn turn_classification_rejects_continuation_blocking_write_when_refresh_returns_no_snapshot() {
-	let mut opted_out_issue = sample_issue();
+	let mut opted_out_issue = tests::sample_issue();
 
 	opted_out_issue.labels.push(TrackerLabel {
 		id: String::from("label-manual"),
@@ -380,15 +397,15 @@ fn turn_classification_rejects_continuation_blocking_write_when_refresh_returns_
 	});
 
 	let tracker = FakeTracker::with_refresh_snapshots(vec![vec![opted_out_issue], Vec::new()]);
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -413,9 +430,9 @@ fn turn_classification_rejects_continuation_blocking_write_when_refresh_returns_
 #[test]
 fn completion_disposition_rejects_conflicting_review_handoff_and_manual_attention() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let issue = sample_issue();
-	let tracker = tracker_with_current_issue_snapshot(&issue);
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
 		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
@@ -426,8 +443,8 @@ fn completion_disposition_rejects_conflicting_review_handoff_and_manual_attentio
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/48"),
 	})]);
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -437,7 +454,7 @@ fn completion_disposition_rejects_conflicting_review_handoff_and_manual_attentio
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let review_response = DynamicToolHandler::handle_call(
 		&bridge,
