@@ -1,7 +1,10 @@
 use std::path::Path;
 
-use crate::{orchestrator::tests, orchestrator::tests::{TEST_SERVICE_ID}, tracker::{self, TrackerIssue}};
-use crate::test_support;
+use crate::{
+	orchestrator::{tests, tests::TEST_SERVICE_ID},
+	test_support,
+	tracker::{self, TrackerIssue},
+};
 
 pub(super) fn post_review_sample_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);

@@ -5,7 +5,17 @@ use std::{
 
 use time::OffsetDateTime;
 
-use crate::{orchestrator::{self, tests, IssueDispatchMode, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, StateStore}, orchestrator::tests::{FakeTracker, TEST_SERVICE_ID}, state, tracker::{self, TrackerIssue}, workflow::WorkflowDocument, worktree::WorktreeManager};
+use crate::{
+	orchestrator::{
+		self, IssueDispatchMode, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind,
+		RetryQueue, StateStore, tests,
+		tests::{FakeTracker, TEST_SERVICE_ID},
+	},
+	state,
+	tracker::{self, TrackerIssue},
+	workflow::WorkflowDocument,
+	worktree::WorktreeManager,
+};
 
 fn selection_sample_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);

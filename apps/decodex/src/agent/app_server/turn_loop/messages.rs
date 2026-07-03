@@ -1,6 +1,8 @@
-use crate::agent::app_server::turn_loop::{
-	Duration, Instant, JsonRpcMessage, JsonRpcNotification, Value, WireMessage,
-};
+use std::time::{Duration, Instant};
+
+use serde_json::Value;
+
+use crate::agent::json_rpc::{JsonRpcMessage, JsonRpcNotification, WireMessage};
 
 pub(in crate::agent::app_server) fn remaining_idle_budget(
 	last_activity_at: Instant,

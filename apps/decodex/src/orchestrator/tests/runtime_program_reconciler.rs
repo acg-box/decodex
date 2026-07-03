@@ -3,17 +3,19 @@ mod program_reconciler {
 	use rusqlite::Connection;
 	use std::{collections::BTreeSet, path::Path};
 
-	use crate::agent::AppServerTransportFailure;
-	use crate::execution_program::{
-		ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionLinearIssueMapping,
-		ExecutionProgram, ExecutionProgramDependency, ExecutionProgramNode,
-		ExecutionProgramNodeStage, ExecutionQueueIntent,
+	use crate::{
+		agent::AppServerTransportFailure,
+		execution_program::{
+			ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionLinearIssueMapping,
+			ExecutionProgram, ExecutionProgramDependency, ExecutionProgramNode,
+			ExecutionProgramNodeStage, ExecutionQueueIntent,
+		},
+		loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
+		orchestrator::{self, IssueDispatchMode, IssueRunPlan},
+		state::{ReviewHandoffMarker, StateStore},
+		tracker::{self, TrackerIssue, TrackerLabel},
+		worktree::WorktreeManager,
 	};
-	use crate::loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind};
-	use crate::orchestrator::{self, IssueDispatchMode, IssueRunPlan};
-	use crate::state::{ReviewHandoffMarker, StateStore};
-	use crate::tracker::{self, TrackerIssue, TrackerLabel};
-	use crate::worktree::WorktreeManager;
 
 	use crate::orchestrator::tests::{
 		FakeTracker, sample_issue_with_project_slug_and_sort_fields, temp_project_layout,

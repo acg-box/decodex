@@ -29,12 +29,13 @@ pub(crate) fn decide_post_review_lane(input: &PostReviewLaneKernelInput<'_>) -> 
 		PostReviewLaneDecision::WaitForReview => {
 			observation.external_signal_pending = true;
 		},
-		PostReviewLaneDecision::Continue =>
+		PostReviewLaneDecision::Continue => {
 			if command::post_review_reason_is_cleanup(input.reason) {
 				observation.terminalization = TerminalizationState::CleanupPending;
 			} else {
 				observation.active_owned_work = true;
-			},
+			}
+		},
 		PostReviewLaneDecision::CloseoutBlocked
 		| PostReviewLaneDecision::CleanupBlocked
 		| PostReviewLaneDecision::Block => {

@@ -3,10 +3,12 @@ use std::{env, fs, time::Duration};
 use serde_json::{self, Value};
 use tempfile::TempDir;
 
-use crate::agent::app_server::tests::InvalidToolNameHandler;
 use crate::{
 	agent::{
-		app_server::{self, AppServerDynamicToolFailure, CommandExecHealthCheck, UserInput, tests},
+		app_server::{
+			self, AppServerDynamicToolFailure, CommandExecHealthCheck, UserInput, tests,
+			tests::InvalidToolNameHandler,
+		},
 		tracker_tool_bridge::{DynamicToolCallResponse, DynamicToolHandler, DynamicToolSpec},
 	},
 	state::{self, StateStore},

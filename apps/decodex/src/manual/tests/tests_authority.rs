@@ -3,8 +3,7 @@ use std::{env, fs, path::Path};
 use tempfile::TempDir;
 
 use crate::{
-	manual::tests::support::TestTracker,
-	manual::{self, ManualAuthority, ManualLandRequest, tests},
+	manual::{self, ManualAuthority, ManualLandRequest, tests, tests::support::TestTracker},
 	runtime,
 	state::StateStore,
 	test_support::TestEnvVarGuard,

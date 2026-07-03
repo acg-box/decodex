@@ -4,42 +4,31 @@ mod loop_scenarios {
 	use color_eyre::Report;
 	use serde_json::{Value, json};
 
-	use crate::agent::PhaseGoalController;
-	use crate::agent::PhaseGoalKind;
-	use crate::agent::PhaseGoalSpec;
-	use crate::agent::PhaseGoalTransition;
-	use crate::agent::ReviewPolicyStopReason;
-	use crate::execution_program::ExecutionDispatchAction;
-	use crate::execution_program::ExecutionLinearIssueMapping;
-	use crate::execution_program::ExecutionProgram;
-	use crate::execution_program::ExecutionProgramEvaluation;
-	use crate::execution_program::ExecutionProgramNodeStage;
-	use crate::execution_program::ExecutionProgramReadinessContext;
-	use crate::execution_program::ExecutionQueueIntent;
-	use crate::execution_program::ExecutionWorkflowPolicy;
-	use crate::loop_contract::DecisionContract;
-	use crate::loop_contract::DecisionContractStatus;
-	use crate::loop_contract::DecisionPromotion;
-	use crate::loop_contract::DecisionPromotionActorKind;
-	use crate::orchestrator;
-	use crate::orchestrator::AuthorityBoundaryChangedSurface;
-	use crate::orchestrator::AuthorityBoundaryCheckInput;
-	use crate::orchestrator::AuthorityBoundaryDisposition;
-	use crate::orchestrator::AuthorityBoundaryImprovementSignal;
-	use crate::orchestrator::AuthorityBoundaryPolicyDecision;
-	use crate::orchestrator::AuthorityBoundarySurface;
-	use crate::orchestrator::HarnessOutcomeKind;
-	use crate::orchestrator::HarnessOutcomeRecordInput;
-	use crate::orchestrator::IssueDispatchMode;
-	use crate::orchestrator::IssueRunPlan;
-	use crate::orchestrator::RepoGateFailure;
-	use crate::orchestrator::RepoGateFailureKind;
-	use crate::orchestrator::RepoGatePhaseGoalController;
-	use crate::state::LoopGuardrailCheckpointInput;
-	use crate::state::ReviewPolicyCheckpointInput;
-	use crate::state::StateStore;
-	use crate::tracker;
-	use crate::worktree::WorktreeSpec;
+	use crate::{
+		agent::{
+			PhaseGoalController, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition,
+			ReviewPolicyStopReason,
+		},
+		execution_program::{
+			ExecutionDispatchAction, ExecutionLinearIssueMapping, ExecutionProgram,
+			ExecutionProgramEvaluation, ExecutionProgramNodeStage,
+			ExecutionProgramReadinessContext, ExecutionQueueIntent, ExecutionWorkflowPolicy,
+		},
+		loop_contract::{
+			DecisionContract, DecisionContractStatus, DecisionPromotion, DecisionPromotionActorKind,
+		},
+		orchestrator,
+		orchestrator::{
+			AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput,
+			AuthorityBoundaryDisposition, AuthorityBoundaryImprovementSignal,
+			AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, HarnessOutcomeKind,
+			HarnessOutcomeRecordInput, IssueDispatchMode, IssueRunPlan, RepoGateFailure,
+			RepoGateFailureKind, RepoGatePhaseGoalController,
+		},
+		state::{LoopGuardrailCheckpointInput, ReviewPolicyCheckpointInput, StateStore},
+		tracker,
+		worktree::WorktreeSpec,
+	};
 
 	use crate::orchestrator::tests::{
 		commit_worktree_change, loop_guardrail_issue_run, runtime_repo_gate, sample_issue,

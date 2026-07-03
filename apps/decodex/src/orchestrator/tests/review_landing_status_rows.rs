@@ -1,7 +1,20 @@
 use std::fs;
 
-use crate::{orchestrator::{self, tests, EXTERNAL_REVIEW_PASS_PHRASE, ReviewHandoffMarker, ReviewLevel, ReviewOrchestrationMarker, ServiceConfig, StateStore}, orchestrator::tests::{FakePullRequestReviewStateInspector, FakeTracker, ReviewPolicyCheckpointInput, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT, TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN, recovery_terminal_support, review_landing_status_support}, tracker::TrackerIssue, worktree::{WorktreeManager, WorktreeSpec}};
-use crate::test_support;
+use crate::{
+	orchestrator::{
+		self, EXTERNAL_REVIEW_PASS_PHRASE, ReviewHandoffMarker, ReviewLevel,
+		ReviewOrchestrationMarker, ServiceConfig, StateStore, tests,
+		tests::{
+			FakePullRequestReviewStateInspector, FakeTracker, ReviewPolicyCheckpointInput,
+			TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT,
+			TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN, recovery_terminal_support,
+			review_landing_status_support,
+		},
+	},
+	test_support,
+	tracker::TrackerIssue,
+	worktree::{WorktreeManager, WorktreeSpec},
+};
 
 #[test]
 fn build_post_review_lane_statuses_reports_ready_to_land() {
@@ -39,7 +52,13 @@ fn build_post_review_lane_statuses_reports_ready_to_land() {
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 
 	let mut review_state = tests::sample_pull_request_review_state(
@@ -423,7 +442,13 @@ fn build_post_review_lane_statuses_routes_mixed_external_pass_and_feedback_to_re
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 
 	let mut review_state = tests::sample_pull_request_review_state(
@@ -811,8 +836,12 @@ fn build_post_review_lane_statuses_keeps_merged_closeout_visible_after_landed_ma
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let pr_head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
-	let merge_commit_oid =
-		tests::commit_worktree_change(&worktree.path, "landed.txt", "landed\n", "land retained lane");
+	let merge_commit_oid = tests::commit_worktree_change(
+		&worktree.path,
+		"landed.txt",
+		"landed\n",
+		"land retained lane",
+	);
 	let current_head_oid =
 		tests::commit_worktree_change(&worktree.path, "later.txt", "later\n", "advance main later");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/203";
@@ -1208,16 +1237,18 @@ fn build_post_review_lane_statuses_blocks_review_handoff_lineage_rewrite() {
 		&config,
 		&workflow,
 		&state_store,
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			pr_url,
-			&worktree.branch_name,
-			&rewritten_head_oid,
-			Some("APPROVED"),
-			"MERGEABLE",
-			"CLEAN",
-			Some("SUCCESS"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				pr_url,
+				&worktree.branch_name,
+				&rewritten_head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"CLEAN",
+				Some("SUCCESS"),
+				0,
+			),
+		)]),
 	)
 	.expect("post-review lane status build should succeed");
 
@@ -1354,16 +1385,18 @@ fn build_post_review_lane_statuses_keeps_unmerged_retry_budget_blocked() {
 		&config,
 		&workflow,
 		&state_store,
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			pr_url,
-			&worktree.branch_name,
-			&head_oid,
-			Some("APPROVED"),
-			"MERGEABLE",
-			"CLEAN",
-			Some("SUCCESS"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				pr_url,
+				&worktree.branch_name,
+				&head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"CLEAN",
+				Some("SUCCESS"),
+				0,
+			),
+		)]),
 	)
 	.expect("post-review lane status build should succeed");
 

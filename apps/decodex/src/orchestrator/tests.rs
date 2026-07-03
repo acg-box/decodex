@@ -29,26 +29,21 @@ mod runtime_thread_archive;
 // Operator status plus retained post-review review/landing behavior.
 mod operator;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)] use std::os::unix::fs::PermissionsExt;
 use std::{
 	cell::RefCell,
 	collections::{BTreeSet, HashMap},
-	env,
-	ffi::{OsStr, OsString},
-	fs, iter,
+	env, fs, iter,
 	path::{Path, PathBuf},
-	process::{self, Command},
-	thread,
-	time::{Duration, Instant},
+	process::{self},
+	time::Duration,
 };
 
-use color_eyre::{Report, eyre};
+use color_eyre::Report;
 use serde_json::Value;
 use tempfile::TempDir;
-use time::OffsetDateTime;
 
-use crate::{orchestrator::RepoGatePhaseGoalController, tracker::TrackerIssueCreate};
+use crate::tracker::TrackerIssueCreate;
 #[rustfmt::skip]
 	use crate::agent::{
 		RUN_LEASE_IDLE_TIMEOUT,
@@ -61,7 +56,7 @@ use crate::config::{ReviewLevel, ServiceConfig};
 #[rustfmt::skip]
 use crate::github;
 #[rustfmt::skip]
-use crate::orchestrator::{self, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionRequestInput, ChildExitRetryContext, ChildRunRef, CONTINUATION_PENDING_RUN_STATUS, DaemonRunChild, DaemonTickRuntimeContext, EvidenceRequest, GhPullRequestReviewStateInspector, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot, PrepareIssueRunContext, PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection, PullRequestIssueCommentState, PullRequestIssueCommentsNode, PullRequestPageInfo, PullRequestReactionGroup, PullRequestReactionUsersConnection, PullRequestActor, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewConnection, PullRequestIssueCommentNode, PullRequestReviewNode, PullRequestReviewRequestConnection, PullRequestReviewState, PullRequestReviewStateInspector, PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode, PullRequestStatusCheckRollup, RetainedPartialProgress, RetainedReviewRepairPushFailed, RetryComment, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, RunCompletionDisposition, RepoGateFailure, TERMINAL_GUARDED_RUN_STATUS, TargetIssueRunContext, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY};
+use crate::orchestrator::{self, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, ChildRunRef, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, PrepareIssueRunContext, PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload, PullRequestIssueCommentConnection, PullRequestIssueCommentState, PullRequestPageInfo, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewConnection, PullRequestReviewRequestConnection, PullRequestReviewState, PullRequestReviewStateInspector, PullRequestReviewStateNode, PullRequestReviewStateRepository, PullRequestReviewSummaryState, PullRequestReviewThreadConnection, PullRequestReviewThreadNode, PullRequestStatusCheckRollup, RetainedPartialProgress, RetainedReviewRepairPushFailed, RetryComment, RunCompletionDisposition, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY};
 #[rustfmt::skip]
 use crate::prelude::Result;
 #[rustfmt::skip]

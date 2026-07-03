@@ -6,7 +6,18 @@ use std::{
 use color_eyre::{Report, eyre};
 use tempfile::TempDir;
 
-use crate::{orchestrator::{self, tests, GhPullRequestReviewStateInspector, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot, PostReviewReadbackDegradation, PullRequestActor, PullRequestIssueCommentConnection, PullRequestIssueCommentNode, PullRequestIssueCommentsNode, PullRequestPageInfo, PullRequestReadbackFailure, PullRequestReadbackRootCause, PullRequestRepository, PullRequestRepositoryOwner, PullRequestReviewStateNode, StateStore}, orchestrator::tests::{FakePullRequestReviewStateInspector, TEST_SERVICE_ID}, test_support::TestEnvVarGuard};
+use crate::{
+	orchestrator::{
+		self, GhPullRequestReviewStateInspector, PostReviewLaneClassification,
+		PostReviewLaneDecision, PostReviewLaneSnapshot, PostReviewReadbackDegradation,
+		PullRequestActor, PullRequestIssueCommentConnection, PullRequestIssueCommentNode,
+		PullRequestIssueCommentsNode, PullRequestPageInfo, PullRequestReadbackFailure,
+		PullRequestReadbackRootCause, PullRequestRepository, PullRequestRepositoryOwner,
+		PullRequestReviewStateNode, StateStore, tests,
+		tests::{FakePullRequestReviewStateInspector, TEST_SERVICE_ID},
+	},
+	test_support::TestEnvVarGuard,
+};
 
 #[test]
 fn classify_post_review_lane_blocks_completed_issue_until_pull_request_is_merged() {
@@ -48,16 +59,18 @@ fn classify_post_review_lane_blocks_completed_issue_until_pull_request_is_merged
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			"https://github.com/hack-ink/decodex/pull/174",
-			"x/pubfi-pub-101",
-			&head_oid,
-			Some("APPROVED"),
-			"MERGEABLE",
-			"CLEAN",
-			Some("SUCCESS"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				"https://github.com/hack-ink/decodex/pull/174",
+				"x/pubfi-pub-101",
+				&head_oid,
+				Some("APPROVED"),
+				"MERGEABLE",
+				"CLEAN",
+				Some("SUCCESS"),
+				0,
+			),
+		)]),
 	)
 	.expect("classification should succeed");
 
@@ -336,16 +349,18 @@ fn classify_post_review_lane_requires_review_repair_before_review_when_required_
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&FakePullRequestReviewStateInspector::new(vec![Ok(tests::sample_pull_request_review_state(
-			"https://github.com/hack-ink/decodex/pull/174",
-			"x/pubfi-pub-101",
-			&head_oid,
-			Some("REVIEW_REQUIRED"),
-			"MERGEABLE",
-			"BLOCKED",
-			Some("FAILURE"),
-			0,
-		))]),
+		&FakePullRequestReviewStateInspector::new(vec![Ok(
+			tests::sample_pull_request_review_state(
+				"https://github.com/hack-ink/decodex/pull/174",
+				"x/pubfi-pub-101",
+				&head_oid,
+				Some("REVIEW_REQUIRED"),
+				"MERGEABLE",
+				"BLOCKED",
+				Some("FAILURE"),
+				0,
+			),
+		)]),
 	)
 	.expect("classification should succeed");
 
@@ -463,7 +478,8 @@ fn post_review_readback_degradation_helper_preserves_warning_and_typed_cause() {
 	let marker_head_oid = "1111111111111111111111111111111111111111";
 	let review_head_oid = "2222222222222222222222222222222222222222";
 	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
-	let review_handoff = tests::sample_review_handoff_marker("x/pubfi-pub-101", pr_url, marker_head_oid);
+	let review_handoff =
+		tests::sample_review_handoff_marker("x/pubfi-pub-101", pr_url, marker_head_oid);
 	let pull_request_readback = PostReviewReadbackDegradation::pull_request_state_from_handoff(
 		&review_handoff,
 		PullRequestReadbackRootCause::GithubApiReadFailed,

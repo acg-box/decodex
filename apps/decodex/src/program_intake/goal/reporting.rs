@@ -51,15 +51,12 @@ pub(in crate::program_intake) fn dry_run_goal_issue_rows(
 				GoalIntakeIssueAction::WouldCreate
 			};
 			let reason = match action {
-				GoalIntakeIssueAction::WouldCreate => {
-					"apply will create a normal Linear issue and persist a mapped program node"
-				},
-				GoalIntakeIssueAction::WouldUpdate => {
-					"apply will update the linked normal Linear issue and persist a mapped program node"
-				},
-				GoalIntakeIssueAction::Created | GoalIntakeIssueAction::Updated => {
-					"apply already materialized this issue"
-				},
+				GoalIntakeIssueAction::WouldCreate =>
+					"apply will create a normal Linear issue and persist a mapped program node",
+				GoalIntakeIssueAction::WouldUpdate =>
+					"apply will update the linked normal Linear issue and persist a mapped program node",
+				GoalIntakeIssueAction::Created | GoalIntakeIssueAction::Updated =>
+					"apply already materialized this issue",
 			};
 
 			goal_issue_report_row(plan, linked.as_ref(), action, None, vec![reason.to_owned()])

@@ -1,47 +1,34 @@
-#[cfg(unix)] use std::os::fd::{AsRawFd, IntoRawFd};
-use std::{
-	collections::BTreeMap,
-	fs,
-	path::Path,
-	process, slice,
-	sync::{Arc, Barrier},
-	thread,
-};
+mod leases;
+mod persistent_events;
+mod review_lifecycle;
+mod run_activity;
+mod run_control;
+mod runtime_records;
+
+use std::{collections::BTreeMap, path::Path};
 
 #[cfg(unix)] use libc::{F_GETFD, FD_CLOEXEC};
-use rusqlite::{self, Connection};
-use serde_json::{self, Value};
-use tempfile::TempDir;
-use time::OffsetDateTime;
+use rusqlite::Connection;
 
-#[rustfmt::skip]
-use crate::state;
-#[rustfmt::skip]
-use crate::{autonomy_objective::{
+use crate::{
+	autonomy_objective::{
 		AutonomyObjectiveAcceptance, AutonomyObjectiveActorKind, AutonomyObjectiveContract,
-		AutonomyObjectiveRejection, AutonomyObjectiveState, AutonomyObjectiveSupersession,
-	}, autonomy_proposal::{AutonomyProposal, AutonomyProposalCompileInput}, autonomy_signal::{
+	},
+	autonomy_proposal::{AutonomyProposal, AutonomyProposalCompileInput},
+	autonomy_signal::{
 		AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
 		AutonomySignalFreshness, AutonomySignalInput, AutonomySignalPrivacy,
 		AutonomySignalSourceType,
-	}, execution_program::{
+	},
+	execution_program::{
 		ExecutionLinearIssueMapping, ExecutionProgram, ExecutionProgramNode,
 		ExecutionProgramNodeStage, ExecutionQueueIntent,
-	}, loop_contract::{
-		DecisionContract, DecisionContractStatus, DecisionPromotion, DecisionPromotionActorKind,
-	}, state::{ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary, CodexAccountMarker, ConnectorBackoffInput, EffectiveRuntimeMarker, LoopGuardrailCheckpointInput, PreacquiredLeaseGuards, ProjectRegistration, ProtocolActivityMarker, ProtocolActivitySummary, RUN_ACTIVITY_MARKER_FILE, RUN_CONTROL_ACTION_COMPLETED, RUN_CONTROL_ACTION_FAILED, RUN_CONTROL_ACTION_FALLBACK, RUN_CONTROL_ACTION_TIMED_OUT, RUN_OPERATION_REPO_GATE, ReviewCheckpointArtifactLookup, ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpointInput, RunControlActionRequest, StateStore}, tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord}};
-
-include!("tests/review_lifecycle.rs");
-
-include!("tests/persistent_events.rs");
-
-include!("tests/leases.rs");
-
-include!("tests/run_activity.rs");
-
-include!("tests/runtime_records.rs");
-
-include!("tests/run_control.rs");
+	},
+	loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
+	state::{
+		ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpointInput, StateStore,
+	},
+};
 
 const IN_PROGRESS_STATE: &str = "In Progress";
 const DROPPED_REVIEW_MARKER_TABLES_FIXTURE: &str = r#"

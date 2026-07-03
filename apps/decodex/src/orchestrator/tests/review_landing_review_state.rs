@@ -1,4 +1,9 @@
-use crate::{orchestrator::{self, tests, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY, PullRequestActor, PullRequestIssueCommentNode, PullRequestReactionGroup, PullRequestReactionUsersConnection, PullRequestReviewNode}, orchestrator::tests::{TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN}};
+use crate::orchestrator::{
+	self, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE, EXTERNAL_REVIEW_REQUEST_BODY,
+	PullRequestActor, PullRequestIssueCommentNode, PullRequestReactionGroup,
+	PullRequestReactionUsersConnection, PullRequestReviewNode,
+	tests::{self, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN},
+};
 
 #[test]
 fn pull_request_review_state_from_page_scopes_signals_to_external_review_actor() {
