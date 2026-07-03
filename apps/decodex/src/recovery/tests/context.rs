@@ -1,11 +1,22 @@
-use super::*;
+use tempfile::TempDir;
+use time::OffsetDateTime;
+
+use crate::{
+	prelude::eyre,
+	recovery::{
+		GHOST_LANE_TERMINAL_STATUS, LINEAR_RATE_LIMIT_BACKOFF_WARNING,
+		RecoveryRuntimeMutationPolicy,
+		tests::{self, GhostLaneTestTracker},
+	},
+	state::ConnectorBackoffInput,
+};
 
 #[test]
 fn recovery_read_only_backoff_observer_does_not_clear_expired_backoff() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
-	let expired_unix_epoch = time::OffsetDateTime::now_utc().unix_timestamp() - 1;
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+	let expired_unix_epoch = OffsetDateTime::now_utc().unix_timestamp() - 1;
 
 	context
 		.state_store
@@ -16,11 +27,11 @@ fn recovery_read_only_backoff_observer_does_not_clear_expired_backoff() {
 			quota_class: "linear_graphql_rate_limit",
 			reset_unix_epoch: expired_unix_epoch,
 			reset_source: "test",
-			warning: super::super::LINEAR_RATE_LIMIT_BACKOFF_WARNING,
+			warning: LINEAR_RATE_LIMIT_BACKOFF_WARNING,
 		})
 		.expect("backoff should persist");
 
-	let message = super::super::active_recovery_tracker_backoff_message(&context)
+	let message = super::active_recovery_tracker_backoff_message(&context)
 		.expect("backoff observer should run");
 
 	assert_eq!(message, None);
@@ -38,14 +49,11 @@ fn recovery_read_only_backoff_observer_does_not_clear_expired_backoff() {
 fn recovery_read_only_backoff_recorder_does_not_persist_new_backoff() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
-	let error = crate::prelude::eyre::eyre!("Linear connector timed out while testing");
-	let message = super::super::remember_recovery_tracker_backoff_message(
-		&context,
-		&error,
-		"ghost_lane_recovery",
-	)
-	.expect("timeout should produce backoff message");
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+	let error = eyre::eyre!("Linear connector timed out while testing");
+	let message =
+		super::remember_recovery_tracker_backoff_message(&context, &error, "ghost_lane_recovery")
+			.expect("timeout should produce backoff message");
 
 	assert!(message.contains("Linear connector is in backoff"));
 	assert!(
@@ -62,14 +70,14 @@ fn recovery_read_only_backoff_recorder_does_not_persist_new_backoff() {
 fn review_handoff_diagnose_skips_terminal_identifier_worktree_before_tracker_refresh() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
 	let tracker = GhostLaneTestTracker::missing();
 	let stale_issue_id = "PUB-001";
 	let stale_worktree_path = context.config.worktree_root().join(stale_issue_id);
 
 	context
 		.state_store
-		.record_run_attempt("run-01", stale_issue_id, 1, super::super::GHOST_LANE_TERMINAL_STATUS)
+		.record_run_attempt("run-01", stale_issue_id, 1, GHOST_LANE_TERMINAL_STATUS)
 		.expect("terminal attempt should record");
 	context
 		.state_store
@@ -82,7 +90,7 @@ fn review_handoff_diagnose_skips_terminal_identifier_worktree_before_tracker_ref
 		.expect("stale worktree mapping should record");
 
 	let diagnostics =
-		super::super::diagnose_all_retained_review_worktrees_with_tracker(&context, &tracker)
+		super::diagnose_all_retained_review_worktrees_with_tracker(&context, &tracker)
 			.expect("retained review diagnostics should build");
 	let diagnostic = diagnostics.first().expect("local residue diagnostic should render");
 
@@ -103,7 +111,7 @@ fn review_handoff_diagnose_skips_terminal_identifier_worktree_before_tracker_ref
 fn review_handoff_diagnose_targeted_terminal_identifier_worktree_before_tracker_lookup() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
 	let tracker = GhostLaneTestTracker::identifier_error(
 		"Linear GraphQL request failed: Argument Validation Error",
 	);
@@ -112,7 +120,7 @@ fn review_handoff_diagnose_targeted_terminal_identifier_worktree_before_tracker_
 
 	context
 		.state_store
-		.record_run_attempt("run-01", stale_issue_id, 1, super::super::GHOST_LANE_TERMINAL_STATUS)
+		.record_run_attempt("run-01", stale_issue_id, 1, GHOST_LANE_TERMINAL_STATUS)
 		.expect("terminal attempt should record");
 	context
 		.state_store
@@ -124,7 +132,7 @@ fn review_handoff_diagnose_targeted_terminal_identifier_worktree_before_tracker_
 		)
 		.expect("stale worktree mapping should record");
 
-	let diagnostic = super::super::diagnose_issue_with_tracker(&context, &tracker, stale_issue_id)
+	let diagnostic = super::diagnose_issue_with_tracker(&context, &tracker, stale_issue_id)
 		.expect("targeted retained review diagnostic should classify local residue");
 
 	assert_eq!(

@@ -1,7 +1,7 @@
-use crate::agent::tracker_tool_bridge::tools::{
-	COMMENT_KIND_MANUAL_ATTENTION, manual_attention::NormalizedManualAttentionComment,
+use crate::agent::tracker_tool_bridge::{
+	self, ReviewHandoffContext,
+	tools::{COMMENT_KIND_MANUAL_ATTENTION, manual_attention::NormalizedManualAttentionComment},
 };
-use crate::agent::tracker_tool_bridge::{self, ReviewHandoffContext};
 
 pub(super) fn format_manual_attention_comment(
 	review_context: &ReviewHandoffContext,

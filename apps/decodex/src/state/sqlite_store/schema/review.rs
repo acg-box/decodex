@@ -1,4 +1,4 @@
-use super::{Result, SqliteStateStore};
+use crate::state::sqlite_store::schema::{Result, SqliteStateStore};
 
 const REVIEW_LIFECYCLE_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS review_lifecycle_records (

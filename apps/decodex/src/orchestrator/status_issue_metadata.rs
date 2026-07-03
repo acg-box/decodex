@@ -8,16 +8,14 @@ use std::{
 use crate::{
 	commit_message,
 	config::ServiceConfig,
+	orchestrator::{
+		self, OperatorHistoryLaneStatus, OperatorIssueDisplayMetadata, OperatorRunStatus,
+		OperatorStatusSnapshot, RunIssueMetadataHydration, TrackerObserverOutcome,
+		status_run_projection,
+	},
+	prelude::Result,
 	tracker::{self, IssueTracker, TrackerIssue},
 	workflow::WorkflowDocument,
-};
-
-use super::{
-	OperatorHistoryLaneStatus, OperatorIssueDisplayMetadata, OperatorRunStatus,
-	OperatorStatusSnapshot, RunIssueMetadataHydration, TrackerObserverOutcome,
-	local_run_attempt_status_is_terminal, looks_like_tracker_issue_identifier_key,
-	mark_operator_run_tracker_issue_missing,
-	status_run_projection::operator_run_issue_identifier_from_fields, tracker_connector_backoff,
 };
 
 pub(super) fn hydrate_operator_run_rows_from_tracker<T>(
@@ -40,7 +38,7 @@ where
 
 	match tracker.refresh_issues(&issue_ids) {
 		Ok(issues) => {
-			let active_label = crate::tracker::automation_active_label(project.service_id());
+			let active_label = tracker::automation_active_label(project.service_id());
 			let needs_attention_label =
 				workflow.frontmatter().tracker().needs_attention_label().to_owned();
 			let metadata_by_issue_id = issues
@@ -71,7 +69,7 @@ where
 				&active_label,
 				&needs_attention_label,
 			) {
-				if let Some(backoff) = tracker_connector_backoff(
+				if let Some(backoff) = orchestrator::tracker_connector_backoff(
 					&error,
 					Instant::now(),
 					"run_issue_identifier_metadata",
@@ -96,7 +94,7 @@ where
 				tracker::issue_lookup_missing_error_for_candidate(&error, issue_id)
 			}) =>
 		{
-			let active_label = crate::tracker::automation_active_label(project.service_id());
+			let active_label = tracker::automation_active_label(project.service_id());
 			let needs_attention_label =
 				workflow.frontmatter().tracker().needs_attention_label().to_owned();
 
@@ -106,7 +104,7 @@ where
 				&active_label,
 				&needs_attention_label,
 			) {
-				if let Some(backoff) = tracker_connector_backoff(
+				if let Some(backoff) = orchestrator::tracker_connector_backoff(
 					&error,
 					Instant::now(),
 					"run_issue_identifier_metadata",
@@ -127,9 +125,11 @@ where
 			TrackerObserverOutcome::Ok
 		},
 		Err(error) => {
-			if let Some(backoff) =
-				tracker_connector_backoff(&error, Instant::now(), "run_issue_metadata")
-			{
+			if let Some(backoff) = orchestrator::tracker_connector_backoff(
+				&error,
+				Instant::now(),
+				"run_issue_metadata",
+			) {
 				return TrackerObserverOutcome::Backoff(backoff);
 			}
 
@@ -142,6 +142,89 @@ where
 
 			TrackerObserverOutcome::Unavailable
 		},
+	}
+}
+
+pub(super) fn operator_run_is_stale_terminal_local_residue(
+	run: &OperatorRunStatus,
+	stale_terminal_local_issue_ids: &HashSet<String>,
+) -> bool {
+	operator_run_is_terminal_unleased_identifier(run)
+		&& stale_terminal_local_issue_ids.contains(run.issue_id.trim())
+}
+
+pub(super) fn operator_run_tracker_issue_identifier_selector(
+	run: &OperatorRunStatus,
+) -> Option<String> {
+	run.issue_identifier
+		.as_ref()
+		.filter(|identifier| commit_message::looks_like_issue_identifier(identifier))
+		.map(|identifier| identifier.to_ascii_uppercase())
+		.or_else(|| {
+			status_run_projection::operator_run_issue_identifier_from_fields(
+				&run.run_id,
+				run.branch_name.as_deref(),
+				run.worktree_path.as_deref(),
+			)
+		})
+		.or_else(|| {
+			commit_message::looks_like_issue_identifier(&run.issue_id)
+				.then(|| run.issue_id.to_ascii_uppercase())
+		})
+}
+
+pub(super) fn fill_missing_history_lane_issue_metadata(
+	lane: &mut OperatorHistoryLaneStatus,
+	metadata: &OperatorIssueDisplayMetadata,
+) {
+	if lane.issue_identifier.as_ref().is_none_or(|identifier| identifier.trim().is_empty())
+		&& !metadata.issue_identifier.trim().is_empty()
+	{
+		lane.issue_identifier = Some(metadata.issue_identifier.clone());
+		lane.issue_key = metadata.issue_identifier.clone();
+	}
+	if lane.title.as_ref().is_none_or(|title| title.trim().is_empty())
+		&& let Some(title) = metadata.title.as_ref().filter(|title| !title.trim().is_empty())
+	{
+		lane.title = Some(title.clone());
+	}
+	if lane.author.as_ref().is_none_or(|author| author.trim().is_empty())
+		&& let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty())
+	{
+		lane.author = Some(author.clone());
+	}
+}
+
+pub(super) fn fill_missing_run_issue_metadata(
+	run: &mut OperatorRunStatus,
+	metadata: &OperatorIssueDisplayMetadata,
+) {
+	if run.issue_identifier.as_ref().is_none_or(|identifier| identifier.trim().is_empty())
+		&& !metadata.issue_identifier.trim().is_empty()
+	{
+		run.issue_identifier = Some(metadata.issue_identifier.clone());
+	}
+	if run.title.as_ref().is_none_or(|title| title.trim().is_empty())
+		&& let Some(title) = metadata.title.as_ref().filter(|title| !title.trim().is_empty())
+	{
+		run.title = Some(title.clone());
+	}
+	if run.author.as_ref().is_none_or(|author| author.trim().is_empty())
+		&& let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty())
+	{
+		run.author = Some(author.clone());
+	}
+	if run.issue_state.as_ref().is_none_or(|issue_state| issue_state.trim().is_empty())
+		&& let Some(issue_state) =
+			metadata.issue_state.as_ref().filter(|issue_state| !issue_state.trim().is_empty())
+	{
+		run.issue_state = Some(issue_state.clone());
+	}
+	if run.active_label_present.is_none() {
+		run.active_label_present = metadata.active_label_present;
+	}
+	if run.needs_attention_label_present.is_none() {
+		run.needs_attention_label_present = metadata.needs_attention_label_present;
 	}
 }
 
@@ -198,16 +281,8 @@ fn append_operator_run_issue_id(
 
 fn operator_run_is_terminal_unleased_identifier(run: &OperatorRunStatus) -> bool {
 	!run.run_lease
-		&& looks_like_tracker_issue_identifier_key(&run.issue_id)
-		&& local_run_attempt_status_is_terminal(&run.attempt_status)
-}
-
-pub(super) fn operator_run_is_stale_terminal_local_residue(
-	run: &OperatorRunStatus,
-	stale_terminal_local_issue_ids: &HashSet<String>,
-) -> bool {
-	operator_run_is_terminal_unleased_identifier(run)
-		&& stale_terminal_local_issue_ids.contains(run.issue_id.trim())
+		&& orchestrator::looks_like_tracker_issue_identifier_key(&run.issue_id)
+		&& orchestrator::local_run_attempt_status_is_terminal(&run.attempt_status)
 }
 
 fn hydrate_operator_snapshot_run_rows(
@@ -227,7 +302,7 @@ fn hydrate_missing_current_lane_tracker_metadata<T>(
 	snapshot: &mut OperatorStatusSnapshot,
 	active_label: &str,
 	needs_attention_label: &str,
-) -> crate::prelude::Result<()>
+) -> Result<()>
 where
 	T: IssueTracker,
 {
@@ -263,7 +338,9 @@ where
 	}
 
 	for (run_id, issue_id, selector) in missing_rows {
-		mark_operator_run_tracker_issue_missing(snapshot, &run_id, &issue_id, &selector);
+		orchestrator::mark_operator_run_tracker_issue_missing(
+			snapshot, &run_id, &issue_id, &selector,
+		);
 	}
 
 	Ok(())
@@ -282,26 +359,6 @@ fn operator_issue_display_metadata(
 		active_label_present: Some(issue.has_label(active_label)),
 		needs_attention_label_present: Some(issue.has_label(needs_attention_label)),
 	}
-}
-
-pub(super) fn operator_run_tracker_issue_identifier_selector(
-	run: &OperatorRunStatus,
-) -> Option<String> {
-	run.issue_identifier
-		.as_ref()
-		.filter(|identifier| commit_message::looks_like_issue_identifier(identifier))
-		.map(|identifier| identifier.to_ascii_uppercase())
-		.or_else(|| {
-			operator_run_issue_identifier_from_fields(
-				&run.run_id,
-				run.branch_name.as_deref(),
-				run.worktree_path.as_deref(),
-			)
-		})
-		.or_else(|| {
-			commit_message::looks_like_issue_identifier(&run.issue_id)
-				.then(|| run.issue_id.to_ascii_uppercase())
-		})
 }
 
 fn hydrate_history_lane_from_issue_metadata(
@@ -377,60 +434,5 @@ fn apply_run_issue_metadata(run: &mut OperatorRunStatus, metadata: &OperatorIssu
 	}
 	if let Some(needs_attention_label_present) = metadata.needs_attention_label_present {
 		run.needs_attention_label_present = Some(needs_attention_label_present);
-	}
-}
-
-pub(super) fn fill_missing_history_lane_issue_metadata(
-	lane: &mut OperatorHistoryLaneStatus,
-	metadata: &OperatorIssueDisplayMetadata,
-) {
-	if lane.issue_identifier.as_ref().is_none_or(|identifier| identifier.trim().is_empty())
-		&& !metadata.issue_identifier.trim().is_empty()
-	{
-		lane.issue_identifier = Some(metadata.issue_identifier.clone());
-		lane.issue_key = metadata.issue_identifier.clone();
-	}
-	if lane.title.as_ref().is_none_or(|title| title.trim().is_empty())
-		&& let Some(title) = metadata.title.as_ref().filter(|title| !title.trim().is_empty())
-	{
-		lane.title = Some(title.clone());
-	}
-	if lane.author.as_ref().is_none_or(|author| author.trim().is_empty())
-		&& let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty())
-	{
-		lane.author = Some(author.clone());
-	}
-}
-
-pub(super) fn fill_missing_run_issue_metadata(
-	run: &mut OperatorRunStatus,
-	metadata: &OperatorIssueDisplayMetadata,
-) {
-	if run.issue_identifier.as_ref().is_none_or(|identifier| identifier.trim().is_empty())
-		&& !metadata.issue_identifier.trim().is_empty()
-	{
-		run.issue_identifier = Some(metadata.issue_identifier.clone());
-	}
-	if run.title.as_ref().is_none_or(|title| title.trim().is_empty())
-		&& let Some(title) = metadata.title.as_ref().filter(|title| !title.trim().is_empty())
-	{
-		run.title = Some(title.clone());
-	}
-	if run.author.as_ref().is_none_or(|author| author.trim().is_empty())
-		&& let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty())
-	{
-		run.author = Some(author.clone());
-	}
-	if run.issue_state.as_ref().is_none_or(|issue_state| issue_state.trim().is_empty())
-		&& let Some(issue_state) =
-			metadata.issue_state.as_ref().filter(|issue_state| !issue_state.trim().is_empty())
-	{
-		run.issue_state = Some(issue_state.clone());
-	}
-	if run.active_label_present.is_none() {
-		run.active_label_present = metadata.active_label_present;
-	}
-	if run.needs_attention_label_present.is_none() {
-		run.needs_attention_label_present = metadata.needs_attention_label_present;
 	}
 }

@@ -1,15 +1,16 @@
-use std::time::Duration;
-
 use crate::{
 	agent,
 	orchestrator::{
-		RUN_LEASE_IDLE_TIMEOUT, RUN_OPERATION_REPO_GATE, Result, RunActivityMarker, RunAttempt,
-		StateStore, WorktreeMapping, marker_process_is_alive,
+		reconciliation,
+		reconciliation::{
+			Duration, RUN_LEASE_IDLE_TIMEOUT, RUN_OPERATION_REPO_GATE, Result, RunActivityMarker,
+			RunAttempt, StateStore, WorktreeMapping,
+		},
 	},
 	state,
 };
 
-pub(in crate::orchestrator) fn stalled_idle_duration(
+pub(crate) fn stalled_idle_duration(
 	state_store: &StateStore,
 	run_attempt: &RunAttempt,
 	worktree_mapping: Option<&WorktreeMapping>,
@@ -33,6 +34,42 @@ pub(in crate::orchestrator) fn stalled_idle_duration(
 	let idle_timeout = run_lease_idle_timeout(run_attempt, worktree_mapping)?;
 
 	if idle_for >= idle_timeout {
+		return Ok(Some(idle_for));
+	}
+
+	Ok(None)
+}
+
+pub(crate) fn observed_idle_duration(
+	last_activity_unix_epoch: i64,
+	now_unix_epoch: i64,
+) -> Option<Duration> {
+	now_unix_epoch
+		.checked_sub(last_activity_unix_epoch)
+		.and_then(|idle_seconds| u64::try_from(idle_seconds).ok())
+		.map(Duration::from_secs)
+}
+
+pub(crate) fn stalled_protocol_idle_duration(
+	state_store: &StateStore,
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+	now_unix_epoch: i64,
+) -> Result<Option<Duration>> {
+	if stalled_reconciliation_deferred_by_marker(run_attempt, worktree_mapping)? {
+		return Ok(None);
+	}
+
+	let Some(last_activity) =
+		last_observed_protocol_activity_unix_epoch(state_store, run_attempt, worktree_mapping)?
+	else {
+		return Ok(None);
+	};
+	let Some(idle_for) = observed_idle_duration(last_activity, now_unix_epoch) else {
+		return Ok(None);
+	};
+
+	if idle_for >= RUN_LEASE_IDLE_TIMEOUT {
 		return Ok(Some(idle_for));
 	}
 
@@ -82,32 +119,6 @@ fn last_observed_run_activity_unix_epoch(
 	})
 }
 
-pub(crate) fn stalled_protocol_idle_duration(
-	state_store: &StateStore,
-	run_attempt: &RunAttempt,
-	worktree_mapping: Option<&WorktreeMapping>,
-	now_unix_epoch: i64,
-) -> Result<Option<Duration>> {
-	if stalled_reconciliation_deferred_by_marker(run_attempt, worktree_mapping)? {
-		return Ok(None);
-	}
-
-	let Some(last_activity) =
-		last_observed_protocol_activity_unix_epoch(state_store, run_attempt, worktree_mapping)?
-	else {
-		return Ok(None);
-	};
-	let Some(idle_for) = observed_idle_duration(last_activity, now_unix_epoch) else {
-		return Ok(None);
-	};
-
-	if idle_for >= RUN_LEASE_IDLE_TIMEOUT {
-		return Ok(Some(idle_for));
-	}
-
-	Ok(None)
-}
-
 fn last_observed_protocol_activity_unix_epoch(
 	state_store: &StateStore,
 	run_attempt: &RunAttempt,
@@ -131,16 +142,6 @@ fn last_observed_protocol_activity_unix_epoch(
 	})
 }
 
-pub(in crate::orchestrator) fn observed_idle_duration(
-	last_activity_unix_epoch: i64,
-	now_unix_epoch: i64,
-) -> Option<Duration> {
-	now_unix_epoch
-		.checked_sub(last_activity_unix_epoch)
-		.and_then(|idle_seconds| u64::try_from(idle_seconds).ok())
-		.map(Duration::from_secs)
-}
-
 fn stalled_reconciliation_deferred_by_marker(
 	run_attempt: &RunAttempt,
 	worktree_mapping: Option<&WorktreeMapping>,
@@ -154,7 +155,7 @@ fn stalled_reconciliation_deferred_by_marker(
 	}
 
 	Ok(marker.current_operation() == Some(RUN_OPERATION_REPO_GATE)
-		&& marker_process_is_alive(&marker))
+		&& reconciliation::marker_process_is_alive(&marker))
 }
 
 fn current_run_activity_marker(

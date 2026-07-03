@@ -1,15 +1,17 @@
 use time::OffsetDateTime;
 
-use crate::orchestrator::{
-	runtime,
-	status::{
-		self, AccountActivityMode, OperatorCodexAccountControlStatus, OperatorProjectStatus,
-		OperatorStatusSnapshot, ServiceConfig, StateStore,
+use crate::{
+	orchestrator::{
+		runtime,
+		status::{
+			self, AccountActivityMode, OperatorCodexAccountControlStatus, OperatorProjectStatus,
+			OperatorStatusSnapshot, ServiceConfig, StateStore,
+		},
 	},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
-pub(in crate::orchestrator) fn build_operator_status_snapshot(
+pub(crate) fn build_operator_status_snapshot(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	limit: usize,
@@ -22,7 +24,7 @@ pub(in crate::orchestrator) fn build_operator_status_snapshot(
 	)
 }
 
-pub(in crate::orchestrator) fn build_operator_status_snapshot_with_account_mode(
+pub(crate) fn build_operator_status_snapshot_with_account_mode(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	limit: usize,
@@ -102,8 +104,7 @@ pub(in crate::orchestrator) fn build_operator_status_snapshot_with_account_mode(
 	Ok(snapshot)
 }
 
-pub(in crate::orchestrator) fn global_codex_account_control_status()
--> OperatorCodexAccountControlStatus {
+pub(crate) fn global_codex_account_control_status() -> OperatorCodexAccountControlStatus {
 	let account_selector = runtime::global_fixed_account_selector().ok().flatten();
 	let mode = if account_selector.is_some() { "fixed" } else { "balanced" };
 

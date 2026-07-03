@@ -1,19 +1,32 @@
-use crate::orchestrator::{IssueTracker, TrackerIssue, WorkflowDocument, StateStore, Result, is_issue_eligible, Ordering, ServiceConfig, Report, run_failure_writeback_disposition, RepoGateFailure, RepoGateFailureDisposition, AppServerZeroEvidenceStartFailure, AppServerCapabilityPreflightFailure, AppServerTransportFailure, AppServerPhaseGoalFailure, AppServerDynamicToolFailure, StalledRunNeedsAttention, AppServerTurnFailure, ReviewHandoffNeedsAttention, RetainedReviewRepairPushFailed, RetainedReviewNeedsAttention, LoopGuardrailStopRequested, ManualAttentionRequested, LoopGuardrailReason, RetainedPartialProgress, CodexAccountAuthFailure, AgentGitCredentialsUnavailable, AppServerHomePreflightFailure, ReviewPolicyStopRequested, ReviewPolicyStopReason, OffsetDateTime, Rfc3339, SystemTime, UNIX_EPOCH, Path, PathBuf, runtime, env, Duration, Instant, thread};
-use crate::tracker;
+use crate::{
+	orchestrator::{
+		self, AgentGitCredentialsUnavailable, AppServerCapabilityPreflightFailure,
+		AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure,
+		AppServerTransportFailure, AppServerTurnFailure, AppServerZeroEvidenceStartFailure,
+		CodexAccountAuthFailure, Duration, Instant, IssueTracker, LoopGuardrailReason,
+		LoopGuardrailStopRequested, ManualAttentionRequested, OffsetDateTime, Ordering, Path,
+		PathBuf, RepoGateFailure, RepoGateFailureDisposition, Report, Result,
+		RetainedPartialProgress, RetainedReviewNeedsAttention, RetainedReviewRepairPushFailed,
+		ReviewHandoffNeedsAttention, ReviewPolicyStopReason, ReviewPolicyStopRequested, Rfc3339,
+		ServiceConfig, StalledRunNeedsAttention, StateStore, SystemTime, TrackerIssue, UNIX_EPOCH,
+		WorkflowDocument, env, runtime, thread,
+	},
+	tracker,
+};
 
-pub(in crate::orchestrator) struct RetryComment<'a> {
-	pub(in crate::orchestrator) run_id: &'a str,
-	pub(in crate::orchestrator) attempt_number: i64,
-	pub(in crate::orchestrator) retry_budget_attempt_number: i64,
-	pub(in crate::orchestrator) max_attempts: i64,
-	pub(in crate::orchestrator) worktree_path: String,
-	pub(in crate::orchestrator) branch_name: &'a str,
-	pub(in crate::orchestrator) error_class: &'a str,
-	pub(in crate::orchestrator) next_action: &'a str,
+pub(crate) struct RetryComment<'a> {
+	pub(crate) run_id: &'a str,
+	pub(crate) attempt_number: i64,
+	pub(crate) retry_budget_attempt_number: i64,
+	pub(crate) max_attempts: i64,
+	pub(crate) worktree_path: String,
+	pub(crate) branch_name: &'a str,
+	pub(crate) error_class: &'a str,
+	pub(crate) next_action: &'a str,
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub(in crate::orchestrator) fn select_issue_candidate(
+pub(crate) fn select_issue_candidate(
 	tracker: &dyn IssueTracker,
 	issues: Vec<TrackerIssue>,
 	workflow: &WorkflowDocument,
@@ -23,7 +36,7 @@ pub(in crate::orchestrator) fn select_issue_candidate(
 	select_issue_candidate_with_exclusions(tracker, issues, workflow, state_store, project_id, &[])
 }
 
-pub(in crate::orchestrator) fn select_issue_candidate_with_exclusions(
+pub(crate) fn select_issue_candidate_with_exclusions(
 	tracker: &dyn IssueTracker,
 	issues: Vec<TrackerIssue>,
 	workflow: &WorkflowDocument,
@@ -40,7 +53,7 @@ pub(in crate::orchestrator) fn select_issue_candidate_with_exclusions(
 		if state_store.issue_has_active_shared_claim(project_id, &issue.id)? {
 			continue;
 		}
-		if is_issue_eligible(tracker, &issue, project_id, workflow, state_store)? {
+		if orchestrator::is_issue_eligible(tracker, &issue, project_id, workflow, state_store)? {
 			eligible_issues.push(issue);
 		}
 	}
@@ -50,10 +63,7 @@ pub(in crate::orchestrator) fn select_issue_candidate_with_exclusions(
 	Ok(eligible_issues.into_iter().next())
 }
 
-pub(in crate::orchestrator) fn compare_issue_candidates(
-	left: &TrackerIssue,
-	right: &TrackerIssue,
-) -> Ordering {
+pub(crate) fn compare_issue_candidates(left: &TrackerIssue, right: &TrackerIssue) -> Ordering {
 	let left_priority = (left.priority.is_none(), left.priority.unwrap_or(i64::MAX));
 	let right_priority = (right.priority.is_none(), right.priority.unwrap_or(i64::MAX));
 
@@ -63,7 +73,7 @@ pub(in crate::orchestrator) fn compare_issue_candidates(
 		.then_with(|| left.identifier.cmp(&right.identifier))
 }
 
-pub(in crate::orchestrator) fn format_no_eligible_issue_message(
+pub(crate) fn format_no_eligible_issue_message(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 ) -> String {
@@ -79,14 +89,14 @@ pub(in crate::orchestrator) fn format_no_eligible_issue_message(
 	)
 }
 
-pub(in crate::orchestrator) fn format_status_no_eligible_issue_hint(service_id: &str) -> String {
+pub(crate) fn format_status_no_eligible_issue_hint(service_id: &str) -> String {
 	format!(
 		"Hint: check `Todo`, label {}, no opt-out/manual-only or needs-attention labels, non-terminal state, no open dependency blockers, and no active issue claim.",
 		format_no_eligible_queue_label_hint(service_id),
 	)
 }
 
-pub(in crate::orchestrator) fn format_no_eligible_issue_hint(
+pub(crate) fn format_no_eligible_issue_hint(
 	service_id: &str,
 	opt_out_label: &str,
 	needs_attention_label: &str,
@@ -97,7 +107,7 @@ pub(in crate::orchestrator) fn format_no_eligible_issue_hint(
 	)
 }
 
-pub(in crate::orchestrator) fn format_no_eligible_queue_label_hint(service_id: &str) -> String {
+pub(crate) fn format_no_eligible_queue_label_hint(service_id: &str) -> String {
 	let queue_label = tracker::automation_queue_label(service_id);
 
 	if service_id == "all" {
@@ -107,7 +117,7 @@ pub(in crate::orchestrator) fn format_no_eligible_queue_label_hint(service_id: &
 	}
 }
 
-pub(in crate::orchestrator) fn format_retry_comment(comment: RetryComment<'_>) -> String {
+pub(crate) fn format_retry_comment(comment: RetryComment<'_>) -> String {
 	let RetryComment {
 		run_id,
 		attempt_number,
@@ -127,9 +137,9 @@ pub(in crate::orchestrator) fn format_retry_comment(comment: RetryComment<'_>) -
 	)
 }
 
-pub(in crate::orchestrator) fn retry_comment_details(error: &Report) -> (&'static str, String) {
+pub(crate) fn retry_comment_details(error: &Report) -> (&'static str, String) {
 	debug_assert!(
-		!run_failure_writeback_disposition(error).requires_terminal_attention(),
+		!orchestrator::run_failure_writeback_disposition(error).requires_terminal_attention(),
 		"terminal-attention failures must not be formatted as retry comments"
 	);
 
@@ -188,7 +198,7 @@ pub(in crate::orchestrator) fn retry_comment_details(error: &Report) -> (&'stati
 	("retryable_execution_failure", String::from("decodex will retry automatically"))
 }
 
-pub(in crate::orchestrator) fn format_terminal_failure_comment(
+pub(crate) fn format_terminal_failure_comment(
 	run_id: &str,
 	attempt_number: i64,
 	worktree_path: String,
@@ -219,7 +229,7 @@ pub(in crate::orchestrator) fn format_terminal_failure_comment(
 	)
 }
 
-pub(in crate::orchestrator) fn terminal_failure_pr_url(error: &Report) -> Option<&str> {
+pub(crate) fn terminal_failure_pr_url(error: &Report) -> Option<&str> {
 	error.downcast_ref::<ReviewHandoffNeedsAttention>().map(|error| error.pr_url.as_str()).or_else(
 		|| {
 			error
@@ -229,7 +239,7 @@ pub(in crate::orchestrator) fn terminal_failure_pr_url(error: &Report) -> Option
 	)
 }
 
-pub(in crate::orchestrator) fn terminal_failure_comment_details(
+pub(crate) fn terminal_failure_comment_details(
 	manual_attention_requested: bool,
 	error: &Report,
 	recovery_gate: &str,
@@ -332,7 +342,7 @@ pub(in crate::orchestrator) fn terminal_failure_comment_details(
 	}
 }
 
-pub(in crate::orchestrator) fn review_policy_stop_terminal_next_action(
+pub(crate) fn review_policy_stop_terminal_next_action(
 	reason: ReviewPolicyStopReason,
 	recovery_gate: &str,
 ) -> String {
@@ -349,26 +359,21 @@ pub(in crate::orchestrator) fn review_policy_stop_terminal_next_action(
 	}
 }
 
-pub(in crate::orchestrator) fn retained_review_needs_attention_error_class(
-	reason: &str,
-) -> &'static str {
+pub(crate) fn retained_review_needs_attention_error_class(reason: &str) -> &'static str {
 	match reason {
 		"external_review_admin_merge_failed" => "external_review_admin_merge_failed",
 		"external_review_admin_merge_unavailable" => "external_review_admin_merge_unavailable",
 		"external_review_merge_visibility_timeout" => "external_review_merge_visibility_timeout",
 		"external_review_pass_signal_missing" => "external_review_pass_signal_missing",
-		"external_review_request_ci_red_manual_attention" => {
-			"external_review_request_ci_red_manual_attention"
-		},
+		"external_review_request_ci_red_manual_attention" =>
+			"external_review_request_ci_red_manual_attention",
 		"non_github_review_admin_merge_failed" => "non_github_review_admin_merge_failed",
 		"non_github_review_admin_merge_unavailable" => "non_github_review_admin_merge_unavailable",
-		"non_github_review_merge_visibility_timeout" => {
-			"non_github_review_merge_visibility_timeout"
-		},
+		"non_github_review_merge_visibility_timeout" =>
+			"non_github_review_merge_visibility_timeout",
 		"pull_request_is_draft" => "pull_request_is_draft",
-		"pull_request_merge_commit_lineage_check_failed" => {
-			"pull_request_merge_commit_lineage_check_failed"
-		},
+		"pull_request_merge_commit_lineage_check_failed" =>
+			"pull_request_merge_commit_lineage_check_failed",
 		"pull_request_not_open" => "pull_request_not_open",
 		"retained_admin_merge_subject_unavailable" => "retained_admin_merge_subject_unavailable",
 		"review_orchestration_branch_mismatch" => "review_orchestration_branch_mismatch",
@@ -379,7 +384,7 @@ pub(in crate::orchestrator) fn retained_review_needs_attention_error_class(
 	}
 }
 
-pub(in crate::orchestrator) fn terminal_failure_recovery_gate(
+pub(crate) fn terminal_failure_recovery_gate(
 	needs_attention_label: &str,
 	needs_attention_label_available: bool,
 	guarded_by_nonstartable_state: bool,
@@ -401,20 +406,17 @@ pub(in crate::orchestrator) fn terminal_failure_recovery_gate(
 	)
 }
 
-pub(in crate::orchestrator) fn current_timestamp() -> String {
+pub(crate) fn current_timestamp() -> String {
 	OffsetDateTime::now_utc().format(&Rfc3339).expect("timestamp formatting should succeed")
 }
 
-pub(in crate::orchestrator) fn build_run_id(
-	issue_identifier: &str,
-	attempt_number: i64,
-) -> Result<String> {
+pub(crate) fn build_run_id(issue_identifier: &str, attempt_number: i64) -> Result<String> {
 	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
 	Ok(format!("{}-attempt-{attempt_number}-{timestamp}", issue_identifier.to_lowercase()))
 }
 
-pub(in crate::orchestrator) fn resolve_config_path(
+pub(crate) fn resolve_config_path(
 	explicit_path: Option<&Path>,
 	state_store: &StateStore,
 ) -> Result<Option<PathBuf>> {
@@ -425,10 +427,7 @@ pub(in crate::orchestrator) fn resolve_config_path(
 	runtime::registered_config_path_for_cwd(state_store, &env::current_dir()?)
 }
 
-pub(in crate::orchestrator) fn sleep_until_next_tick(
-	poll_interval: Duration,
-	tick_started_at: Instant,
-) {
+pub(crate) fn sleep_until_next_tick(poll_interval: Duration, tick_started_at: Instant) {
 	let elapsed = tick_started_at.elapsed();
 
 	if elapsed < poll_interval {

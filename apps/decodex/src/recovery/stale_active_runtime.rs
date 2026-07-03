@@ -4,10 +4,11 @@ use std::collections::HashSet;
 
 use crate::{
 	prelude::Result,
+	recovery::{
+		context::RecoveryRuntimeMutationPolicy, process_liveness::StaleActiveProcessLiveness,
+	},
 	state::{ProjectRunStatus, RUN_CONTROL_CHANNEL_STATUS_ACTIVE, StateStore},
 };
-
-use super::{context::RecoveryRuntimeMutationPolicy, process_liveness::StaleActiveProcessLiveness};
 
 pub(super) fn stale_active_runs(
 	project_id: &str,
@@ -32,6 +33,7 @@ pub(super) fn stale_active_runs(
 		let (leased_runs, recent_runs) =
 			state_store.list_project_runs_read_only(project_id, usize::MAX)?;
 		let issue_key_set = issue_keys.iter().map(String::as_str).collect::<HashSet<_>>();
+
 		leased_runs
 			.into_iter()
 			.chain(recent_runs)
@@ -73,6 +75,7 @@ pub(super) fn inspect_stale_active_run_evidence(
 	}
 
 	evidence.push(String::from("run_attempt_present"));
+
 	if runs.iter().any(|run| {
 		run.event_count() > 0 || run.last_event_type().is_some() || run.last_event_at().is_some()
 	}) {
@@ -122,9 +125,11 @@ pub(super) fn inspect_stale_active_control_channel(
 		let Some(channel) = run.control_channel() else {
 			continue;
 		};
+
 		if channel.status() != RUN_CONTROL_CHANNEL_STATUS_ACTIVE {
 			continue;
 		}
+
 		match channel.channel_path().try_exists() {
 			Ok(true) => active_channel_present = true,
 			Ok(false) => {},

@@ -2,15 +2,12 @@
 
 use crate::{
 	prelude::Result,
+	recovery::{
+		self, AdoptValidation, ConfiguredPublicProjectionPrivacyClassifier,
+		LinearExecutionEventRecord, REBOUND_ORCHESTRATION_PHASE, RebindValidation, RecoveryContext,
+	},
 	state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore},
 	tracker::{self, IssueTracker, records},
-};
-
-use super::{
-	AdoptValidation, ConfiguredPublicProjectionPrivacyClassifier, LinearExecutionEventRecord,
-	REBOUND_ORCHESTRATION_PHASE, RebindValidation, RecoveryContext,
-	append_review_handoff_adopt_private_event, append_review_handoff_rebind_private_event,
-	landing_url, review_handoff_adopt_event, review_handoff_rebind_event,
 };
 
 pub(super) fn apply_review_handoff_rebind(
@@ -21,7 +18,7 @@ pub(super) fn apply_review_handoff_rebind(
 		validation.run_id.clone(),
 		validation.attempt_number,
 		validation.worktree.branch_name(),
-		landing_url(&validation.landing_state),
+		recovery::landing_url(&validation.landing_state),
 		validation.landing_state.base_ref_name.clone(),
 		validation.landing_state.head_ref_name.clone(),
 		validation.local_head_oid.clone(),
@@ -30,7 +27,7 @@ pub(super) fn apply_review_handoff_rebind(
 		validation.run_id.clone(),
 		validation.attempt_number,
 		validation.worktree.branch_name(),
-		landing_url(&validation.landing_state),
+		recovery::landing_url(&validation.landing_state),
 		validation.local_head_oid.clone(),
 		REBOUND_ORCHESTRATION_PHASE,
 		None,
@@ -69,7 +66,7 @@ pub(super) fn apply_review_handoff_rebind(
 			return Err(error);
 		},
 	};
-	let event = review_handoff_rebind_event(context, validation, active_label_restored);
+	let event = recovery::review_handoff_rebind_event(context, validation, active_label_restored);
 
 	if let Err(error) = write_rebind_audit(context, validation, &event)
 		.and_then(|()| context.state_store.record_linear_execution_event(&event))
@@ -99,7 +96,7 @@ pub(super) fn apply_review_handoff_rebind(
 		context.tracker.update_issue_state(&validation.issue.id, &transition.state_id)?;
 	}
 
-	append_review_handoff_rebind_private_event(
+	recovery::append_review_handoff_rebind_private_event(
 		&context.state_store,
 		context.config.service_id(),
 		validation,
@@ -146,7 +143,7 @@ pub(super) fn apply_review_handoff_adopt(
 		validation.run_id.clone(),
 		validation.attempt_number,
 		validation.branch_name.clone(),
-		landing_url(&validation.landing_state),
+		recovery::landing_url(&validation.landing_state),
 		validation.landing_state.base_ref_name.clone(),
 		validation.landing_state.head_ref_name.clone(),
 		validation.local_head_oid.clone(),
@@ -155,7 +152,7 @@ pub(super) fn apply_review_handoff_adopt(
 		validation.run_id.clone(),
 		validation.attempt_number,
 		validation.branch_name.clone(),
-		landing_url(&validation.landing_state),
+		recovery::landing_url(&validation.landing_state),
 		validation.local_head_oid.clone(),
 		REBOUND_ORCHESTRATION_PHASE,
 		None,
@@ -200,7 +197,7 @@ pub(super) fn apply_review_handoff_adopt(
 			return Err(error);
 		},
 	};
-	let event = review_handoff_adopt_event(context, validation, active_label_restored);
+	let event = recovery::review_handoff_adopt_event(context, validation, active_label_restored);
 
 	if let Err(error) = write_adopt_audit(context, validation, &event)
 		.and_then(|()| context.state_store.record_linear_execution_event(&event))
@@ -223,7 +220,7 @@ pub(super) fn apply_review_handoff_adopt(
 		context.tracker.update_issue_state(&validation.issue.id, &transition.state_id)?;
 	}
 
-	append_review_handoff_adopt_private_event(
+	recovery::append_review_handoff_adopt_private_event(
 		&context.state_store,
 		context.config.service_id(),
 		validation,
@@ -369,7 +366,7 @@ fn write_rebind_audit(
 		"Decodex operator recovery: {} for `{}` to `{}`. This does not land the pull request.",
 		validation.mode.summary_action(),
 		validation.issue.identifier,
-		landing_url(&validation.landing_state)
+		recovery::landing_url(&validation.landing_state)
 	);
 	let retry_budget_attempt_count =
 		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
@@ -401,7 +398,7 @@ fn write_adopt_audit(
 ) -> Result<()> {
 	let recovery_body = format!(
 		"Decodex operator recovery: adopted human-owned PR `{}` for `{}` into retained review handoff state. This does not land the pull request.",
-		landing_url(&validation.landing_state),
+		recovery::landing_url(&validation.landing_state),
 		validation.issue.identifier,
 	);
 	let retry_budget_attempt_count =

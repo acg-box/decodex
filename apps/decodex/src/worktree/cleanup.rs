@@ -7,9 +7,8 @@ use std::{
 use crate::{
 	prelude::{Result, eyre},
 	state,
+	worktree::git,
 };
-
-use super::git_stdout;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct MergedWorktreeCleanupDebt {
@@ -83,7 +82,7 @@ pub(crate) fn merged_worktree_cleanup_debts(
 }
 
 fn linked_worktrees(repo_root: &Path) -> Result<Vec<LinkedWorktree>> {
-	Ok(parse_linked_worktrees(&git_stdout(
+	Ok(parse_linked_worktrees(&git::git_stdout(
 		repo_root,
 		["worktree", "list", "--porcelain"],
 		"list linked worktrees",
@@ -192,8 +191,8 @@ fn branch_tip_is_on_default_first_parent(
 	branch_ref: &str,
 	default_ref: &str,
 ) -> Result<bool> {
-	let branch_tip = git_stdout(repo_root, ["rev-parse", branch_ref], "resolve branch tip")?;
-	let first_parent_history = git_stdout(
+	let branch_tip = git::git_stdout(repo_root, ["rev-parse", branch_ref], "resolve branch tip")?;
+	let first_parent_history = git::git_stdout(
 		repo_root,
 		["rev-list", "--first-parent", default_ref],
 		"list default branch first-parent history",
@@ -203,8 +202,8 @@ fn branch_tip_is_on_default_first_parent(
 }
 
 fn git_refs_point_to_same_tip(repo_root: &Path, left_ref: &str, right_ref: &str) -> Result<bool> {
-	let left_tip = git_stdout(repo_root, ["rev-parse", left_ref], "resolve git ref tip")?;
-	let right_tip = git_stdout(repo_root, ["rev-parse", right_ref], "resolve git ref tip")?;
+	let left_tip = git::git_stdout(repo_root, ["rev-parse", left_ref], "resolve git ref tip")?;
+	let right_tip = git::git_stdout(repo_root, ["rev-parse", right_ref], "resolve git ref tip")?;
 
 	Ok(left_tip == right_tip)
 }

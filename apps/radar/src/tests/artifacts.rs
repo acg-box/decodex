@@ -5,10 +5,12 @@ use std::{
 
 use serde_json::Value;
 
-use crate::core_io;
 use crate::{
 	RadarRenderSignalRequest, RadarValidateRequest, RefreshKind, ValidationState,
+	core_io::material_json,
+	render_signal,
 	tests::{self, TestEnvVars},
+	validate, validate_signal_slug_uniqueness,
 };
 
 #[test]
@@ -154,15 +156,15 @@ fn material_refresh_comparison_ignores_only_generated_at() {
 	second["generated_at"] = serde_json::json!("2026-06-02T00:00:00Z");
 
 	assert_eq!(
-		core_io::material_json(&first, &RefreshKind::ReleaseDelta),
-		core_io::material_json(&second, &RefreshKind::ReleaseDelta)
+		self::material_json(&first, &RefreshKind::ReleaseDelta),
+		self::material_json(&second, &RefreshKind::ReleaseDelta)
 	);
 
 	second["stable_release"]["tag_name"] = serde_json::json!("rust-v0.1.1");
 
 	assert_ne!(
-		core_io::material_json(&first, &RefreshKind::ReleaseDelta),
-		core_io::material_json(&second, &RefreshKind::ReleaseDelta)
+		self::material_json(&first, &RefreshKind::ReleaseDelta),
+		self::material_json(&second, &RefreshKind::ReleaseDelta)
 	);
 }
 
@@ -172,13 +174,13 @@ fn rejects_duplicate_signal_slugs_across_files() {
 	let mut state = ValidationState::new();
 	let mut errors = Vec::new();
 
-	crate::validate_signal_slug_uniqueness(
+	self::validate_signal_slug_uniqueness(
 		&PathBuf::from(".agent/automations/radar/cache/site-content/signals/one.json"),
 		&signal,
 		&mut state,
 		&mut errors,
 	);
-	crate::validate_signal_slug_uniqueness(
+	self::validate_signal_slug_uniqueness(
 		&PathBuf::from(".agent/automations/radar/cache/site-content/signals/two.json"),
 		&signal,
 		&mut state,
@@ -352,7 +354,7 @@ fn default_github_token_falls_back_to_workflow_token() {
 		("GITHUB_TOKEN", Some("workflow-token")),
 	]);
 
-	assert_eq!(crate::github_token(None).as_deref(), Some("workflow-token"));
+	assert_eq!(super::github_token(None).as_deref(), Some("workflow-token"));
 }
 
 #[test]
@@ -362,7 +364,7 @@ fn explicit_github_token_env_does_not_fall_back_to_workflow_token() {
 		("GITHUB_TOKEN", Some("workflow-token")),
 	]);
 
-	assert_eq!(crate::github_token(Some("DECODEX_TEST_MISSING_RADAR_TOKEN")), None);
+	assert_eq!(super::github_token(Some("DECODEX_TEST_MISSING_RADAR_TOKEN")), None);
 }
 
 #[test]
@@ -373,7 +375,7 @@ fn validates_json_files_from_directory() {
 	fs::write(&path, tests::valid_bundle().to_string()).expect("fixture should be written");
 
 	let report =
-		crate::validate(&RadarValidateRequest { paths: vec![temp_dir.path().to_path_buf()] })
+		self::validate(&RadarValidateRequest { paths: vec![temp_dir.path().to_path_buf()] })
 			.expect("valid temporary bundle should pass");
 
 	assert_eq!(report.checked_files, 1);
@@ -404,7 +406,7 @@ fn renders_signal_from_bundle_and_analysis_fixture() {
 	fs::write(&bundle_path, tests::valid_bundle().to_string()).expect("bundle should be written");
 	fs::write(&analysis_path, analysis.to_string()).expect("analysis should be written");
 
-	let report = crate::render_signal(&RadarRenderSignalRequest {
+	let report = self::render_signal(&RadarRenderSignalRequest {
 		bundle: bundle_path,
 		analysis: analysis_path,
 		out: signal_path.clone(),

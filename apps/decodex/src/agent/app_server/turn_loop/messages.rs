@@ -38,10 +38,6 @@ pub(in crate::agent::app_server) fn targets_thread(
 	}
 }
 
-pub(super) fn thread_id_from_notification(notification: &JsonRpcNotification) -> Option<&str> {
-	thread_id_from_value(&notification.params)
-}
-
 pub(in crate::agent::app_server) fn thread_id_from_value(value: &Value) -> Option<&str> {
 	value
 		.get("threadId")
@@ -54,4 +50,8 @@ pub(in crate::agent::app_server) fn turn_id_from_value(value: &Value) -> Option<
 		.get("turnId")
 		.and_then(Value::as_str)
 		.or_else(|| value.get("turn").and_then(|turn| turn.get("id")).and_then(Value::as_str))
+}
+
+pub(super) fn thread_id_from_notification(notification: &JsonRpcNotification) -> Option<&str> {
+	thread_id_from_value(&notification.params)
 }

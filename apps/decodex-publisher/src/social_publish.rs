@@ -2,10 +2,8 @@
 
 use crate::{
 	Map, Path, PathBuf, SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA,
-	SocialReservePublishReport, SocialReservePublishRequest, Value, collect_json_files, load_json,
-	path_arg,
+	SocialReservePublishReport, SocialReservePublishRequest, Value,
 	prelude::{Result, eyre},
-	repo_root, resolve_against, slugify, validate_generated_social_artifact, write_new_json,
 };
 
 #[derive(Debug, Default)]
@@ -34,11 +32,11 @@ pub(crate) fn reserve_social_publish(
 		return Err(eyre::eyre!("at least one duplicate key is required"));
 	}
 
-	let root = repo_root()?;
-	let out_dir = resolve_against(&root, &request.out_dir);
-	let posts_dir = resolve_against(&root, &request.posts_dir);
+	let root = crate::repo_root()?;
+	let out_dir = crate::resolve_against(&root, &request.out_dir);
+	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
 	let reservation_path =
-		out_dir.join(&request.day).join(format!("{}.json", slugify(&request.slug)));
+		out_dir.join(&request.day).join(format!("{}.json", crate::slugify(&request.slug)));
 	let scan =
 		scan_social_publish_state(&out_dir, &posts_dir, &request.idempotency_key, &request.day)?;
 
@@ -60,15 +58,16 @@ pub(crate) fn reserve_social_publish(
 
 	let payload = social_publish_reservation_payload(request, &root);
 
-	validate_generated_social_artifact(&payload)
+	crate::validate_generated_social_artifact(&payload)
 		.map_err(|error| eyre::eyre!("generated reservation failed validation: {error}"))?;
+
 	if !request.dry_run {
-		write_new_json(&reservation_path, &payload)?;
+		crate::write_new_json(&reservation_path, &payload)?;
 	}
 
 	Ok(SocialReservePublishReport {
 		status: if request.dry_run { "dry_run".into() } else { "reserved".into() },
-		path: path_arg(&root, &reservation_path),
+		path: crate::path_arg(&root, &reservation_path),
 		idempotency_key: request.idempotency_key.clone(),
 		daily_limit: request.daily_limit,
 		published_count: scan.published_count,
@@ -85,7 +84,7 @@ fn scan_social_publish_state(
 	let mut scan = SocialPublishStateScan::default();
 
 	for payload_path in existing_json_files(reservations_dir)? {
-		let payload = load_json(&payload_path)?;
+		let payload = crate::load_json(&payload_path)?;
 
 		if payload.get("schema").and_then(Value::as_str) != Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA)
 		{
@@ -101,7 +100,7 @@ fn scan_social_publish_state(
 		}
 	}
 	for payload_path in existing_json_files(posts_dir)? {
-		let payload = load_json(&payload_path)?;
+		let payload = crate::load_json(&payload_path)?;
 
 		if payload.get("schema").and_then(Value::as_str) != Some(SOCIAL_POST_SCHEMA) {
 			continue;
@@ -139,7 +138,7 @@ fn existing_json_files(path: &Path) -> Result<Vec<PathBuf>> {
 		return Ok(Vec::new());
 	}
 
-	collect_json_files(&[path.to_path_buf()])
+	crate::collect_json_files(&[path.to_path_buf()])
 }
 
 fn social_publish_reservation_payload(request: &SocialReservePublishRequest, root: &Path) -> Value {
@@ -152,7 +151,9 @@ fn social_publish_reservation_payload(request: &SocialReservePublishRequest, roo
 				request
 					.candidate_paths
 					.iter()
-					.map(|path| Value::String(path_arg(root, &resolve_against(root, path))))
+					.map(|path| {
+						Value::String(crate::path_arg(root, &crate::resolve_against(root, path)))
+					})
 					.collect(),
 			),
 		);

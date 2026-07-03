@@ -8,9 +8,10 @@ use std::{
 use color_eyre::Report;
 use serde::Deserialize;
 
-use crate::prelude::{Result, eyre};
-
-use super::{configure_gh_command, gh_command_with_config, parse_pull_request_url};
+use crate::{
+	github::{self},
+	prelude::{Result, eyre},
+};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct PullRequestMergeViewResponse {
@@ -44,13 +45,13 @@ pub(crate) fn admin_merge_pull_request(
 	github_token: &str,
 	gh_command_path: Option<&Path>,
 ) -> Result<()> {
-	let mut command = gh_command_with_config(gh_command_path);
+	let mut command = github::gh_command_with_config(gh_command_path);
 
 	configure_admin_merge_command(&mut command, pr_url, reviewed_head_sha, merge_subject);
 
 	command.current_dir(cwd);
 
-	configure_gh_command(&mut command, github_token);
+	github::configure_gh_command(&mut command, github_token);
 
 	let output = command.output()?;
 
@@ -116,14 +117,14 @@ pub(crate) fn inspect_commit_subject(
 	github_token: &str,
 	gh_command_path: Option<&Path>,
 ) -> Result<String> {
-	let locator = parse_pull_request_url(pr_url)?;
-	let mut command = gh_command_with_config(gh_command_path);
+	let locator = github::parse_pull_request_url(pr_url)?;
+	let mut command = github::gh_command_with_config(gh_command_path);
 
 	command
 		.args(["api", &format!("repos/{}/{}/commits/{}", locator.owner, locator.repo, commit_oid)]);
 	command.current_dir(cwd);
 
-	configure_gh_command(&mut command, github_token);
+	github::configure_gh_command(&mut command, github_token);
 
 	let output = command.output()?;
 
@@ -195,30 +196,6 @@ pub(crate) fn inspect_pull_request_merge_readback(
 	inspect_pull_request_merge_response(cwd, pr_url, github_token, gh_command_path)
 }
 
-fn inspect_pull_request_merge_response(
-	cwd: &Path,
-	pr_url: &str,
-	github_token: &str,
-	gh_command_path: Option<&Path>,
-) -> Result<PullRequestMergeViewResponse> {
-	let mut command = gh_command_with_config(gh_command_path);
-
-	command.args(["pr", "view", pr_url, "--json", "state,headRefOid,mergeCommit"]);
-	command.current_dir(cwd);
-
-	configure_gh_command(&mut command, github_token);
-
-	let output = command.output()?;
-
-	if !output.status.success() {
-		let stderr = String::from_utf8_lossy(&output.stderr);
-
-		eyre::bail!("Failed to inspect merge result for `{pr_url}`: {}", stderr.trim());
-	}
-
-	serde_json::from_slice::<PullRequestMergeViewResponse>(&output.stdout).map_err(Into::into)
-}
-
 pub(crate) fn configure_admin_merge_command(
 	command: &mut Command,
 	pr_url: &str,
@@ -247,4 +224,28 @@ pub(crate) fn commit_subject_wait_error_is_retryable(error: &Report) -> bool {
 
 	message.contains("failed to inspect merge commit")
 		&& (message.contains("not found") || message.contains("http 404"))
+}
+
+fn inspect_pull_request_merge_response(
+	cwd: &Path,
+	pr_url: &str,
+	github_token: &str,
+	gh_command_path: Option<&Path>,
+) -> Result<PullRequestMergeViewResponse> {
+	let mut command = github::gh_command_with_config(gh_command_path);
+
+	command.args(["pr", "view", pr_url, "--json", "state,headRefOid,mergeCommit"]);
+	command.current_dir(cwd);
+
+	github::configure_gh_command(&mut command, github_token);
+
+	let output = command.output()?;
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+
+		eyre::bail!("Failed to inspect merge result for `{pr_url}`: {}", stderr.trim());
+	}
+
+	serde_json::from_slice::<PullRequestMergeViewResponse>(&output.stdout).map_err(Into::into)
 }

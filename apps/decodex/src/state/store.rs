@@ -1,40 +1,3 @@
-use std::{collections::HashMap, path::Path, sync::Mutex};
-
-use crate::{
-	autonomy_objective::AutonomyObjectiveContract,
-	autonomy_proposal::AutonomyProposal,
-	autonomy_signal::AutonomySignal,
-	execution_program::ExecutionProgram,
-	loop_contract::DecisionContract,
-	prelude::{Result, eyre},
-};
-
-use super::{
-	AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
-	ChildAgentActivitySummary, ConnectorBackoff, DecisionContractRecord, DispatchSlotConfig,
-	DispatchSlotGuard, ExecutionProgramRecord, IssueClaimGuard, IssueLease, PreacquiredLeaseGuards,
-	PrivateExecutionEvent, ProgramIntakePlanRecord, ProgramIssueMappingRecord, ProjectRegistration,
-	ProtocolActivitySummary, ReviewLifecycleRecord, ReviewPolicyCheckpoint, StateData,
-	acquire_shared_lock_coordinator, apply_derived_program_intake_state, clear_close_on_exec,
-	compare_autonomy_proposal_runtime_records, compare_autonomy_signal_runtime_records,
-	compare_decision_contract_runtime_records, compare_execution_program_runtime_records,
-	compare_linear_execution_event_runtime_records,
-	compare_private_execution_event_runtime_records, compare_program_intake_plan_records,
-	compare_program_issue_mapping_records, compare_recent_autonomy_proposal_runtime_records,
-	compare_recent_autonomy_signal_runtime_records, dispatch_slot_lock_path,
-	issue_claim_id_from_path, issue_claim_lock_path, parse_linear_execution_event_unix,
-	prune_unlocked_shared_lock_files, read_issue_claim_record, read_run_activity_marker_snapshot,
-	remove_lock_file_if_exists,
-	runtime_records::{
-		EvidenceArtifactKey, EvidenceArtifactRuntimeRecord, LoopGuardrailKey,
-		LoopGuardrailRuntimeRecord, ReviewLifecycleKey, ReviewLifecycleRuntimeRecord,
-		ReviewPolicyKey, ReviewPolicyRuntimeRecord,
-	},
-	set_close_on_exec,
-	sqlite_store::SqliteStateStore,
-	timestamp_parts, validate_private_execution_event_inputs, write_issue_claim_record,
-};
-
 mod autonomy;
 mod decision_contracts;
 mod execution_evidence;
@@ -44,6 +7,44 @@ mod programs;
 mod projects;
 
 pub(crate) use execution_evidence::ProjectLoopEvidenceSnapshot;
+
+use std::{collections::HashMap, path::Path, sync::Mutex};
+
+use crate::{
+	autonomy_objective::AutonomyObjectiveContract,
+	autonomy_proposal::AutonomyProposal,
+	autonomy_signal::AutonomySignal,
+	execution_program::ExecutionProgram,
+	loop_contract::DecisionContract,
+	prelude::{Result, eyre},
+	state::{
+		AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
+		ChildAgentActivitySummary, ConnectorBackoff, DecisionContractRecord, DispatchSlotConfig,
+		DispatchSlotGuard, ExecutionProgramRecord, IssueClaimGuard, IssueLease,
+		PreacquiredLeaseGuards, PrivateExecutionEvent, ProgramIntakePlanRecord,
+		ProgramIssueMappingRecord, ProjectRegistration, ProtocolActivitySummary,
+		ReviewLifecycleRecord, ReviewPolicyCheckpoint, StateData, acquire_shared_lock_coordinator,
+		apply_derived_program_intake_state, clear_close_on_exec,
+		compare_autonomy_proposal_runtime_records, compare_autonomy_signal_runtime_records,
+		compare_decision_contract_runtime_records, compare_execution_program_runtime_records,
+		compare_linear_execution_event_runtime_records,
+		compare_private_execution_event_runtime_records, compare_program_intake_plan_records,
+		compare_program_issue_mapping_records, compare_recent_autonomy_proposal_runtime_records,
+		compare_recent_autonomy_signal_runtime_records, dispatch_slot_lock_path,
+		issue_claim_id_from_path, issue_claim_lock_path, parse_linear_execution_event_unix,
+		prune_unlocked_shared_lock_files, read_issue_claim_record,
+		read_run_activity_marker_snapshot, remove_lock_file_if_exists,
+		runtime_records::{
+			EvidenceArtifactKey, EvidenceArtifactRuntimeRecord, LoopGuardrailKey,
+			LoopGuardrailRuntimeRecord, ReviewLifecycleKey, ReviewLifecycleRuntimeRecord,
+			ReviewPolicyKey, ReviewPolicyRuntimeRecord,
+		},
+		set_close_on_exec,
+		sqlite_store::SqliteStateStore,
+		timestamp_parts, validate_private_execution_event_inputs, write_issue_claim_record,
+	},
+};
+
 /// Input fields for recording a project-scoped external connector backoff.
 pub(crate) struct ConnectorBackoffInput<'a> {
 	pub(crate) project_id: &'a str,

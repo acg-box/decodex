@@ -11,38 +11,38 @@ use crate::{
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(in crate::mcp::planning::autonomy) struct AutonomyCompileProposalToolArgs {
-	pub(in crate::mcp::planning::autonomy) mode: Option<String>,
-	pub(in crate::mcp::planning::autonomy) project_id: Option<String>,
-	pub(in crate::mcp::planning::autonomy) proposal: AutonomyProposalCompileArgs,
+pub(in crate::mcp) struct AutonomyCompileProposalToolArgs {
+	pub(in crate::mcp) mode: Option<String>,
+	pub(in crate::mcp) project_id: Option<String>,
+	pub(in crate::mcp) proposal: AutonomyProposalCompileArgs,
 	#[serde(default)]
-	pub(in crate::mcp::planning::autonomy) signal_ids: Vec<String>,
-	pub(in crate::mcp::planning::autonomy) authority: Option<PlanningAuthorityArgs>,
+	pub(in crate::mcp) signal_ids: Vec<String>,
+	pub(in crate::mcp) authority: Option<PlanningAuthorityArgs>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(in crate::mcp::planning::autonomy) struct AutonomyProposalCompileArgs {
-	pub(in crate::mcp::planning::autonomy) objective_id: String,
-	pub(in crate::mcp::planning::autonomy) objective_version: u64,
-	pub(in crate::mcp::planning::autonomy) source_family: String,
-	pub(in crate::mcp::planning::autonomy) intended_surface: String,
+pub(in crate::mcp) struct AutonomyProposalCompileArgs {
+	pub(in crate::mcp) objective_id: String,
+	pub(in crate::mcp) objective_version: u64,
+	pub(in crate::mcp) source_family: String,
+	pub(in crate::mcp) intended_surface: String,
 	#[serde(default)]
-	pub(in crate::mcp::planning::autonomy) affected_identifiers: Vec<String>,
-	pub(in crate::mcp::planning::autonomy) summary: String,
+	pub(in crate::mcp) affected_identifiers: Vec<String>,
+	pub(in crate::mcp) summary: String,
 	#[serde(default)]
-	pub(in crate::mcp::planning::autonomy) challenge_requirements: Vec<String>,
+	pub(in crate::mcp) challenge_requirements: Vec<String>,
 	#[serde(default)]
-	pub(in crate::mcp::planning::autonomy) rejected_alternatives: Vec<String>,
-	pub(in crate::mcp::planning::autonomy) rollback_path: String,
+	pub(in crate::mcp) rejected_alternatives: Vec<String>,
+	pub(in crate::mcp) rollback_path: String,
 	#[serde(default)]
-	pub(in crate::mcp::planning::autonomy) weakened_validation_or_review: Vec<String>,
+	pub(in crate::mcp) weakened_validation_or_review: Vec<String>,
 	#[serde(default)]
-	pub(in crate::mcp::planning::autonomy) issue_candidates: Vec<AutonomyProposalIssueCandidate>,
-	pub(in crate::mcp::planning::autonomy) created_at: Option<String>,
+	pub(in crate::mcp) issue_candidates: Vec<AutonomyProposalIssueCandidate>,
+	pub(in crate::mcp) created_at: Option<String>,
 }
 impl AutonomyProposalCompileArgs {
-	pub(in crate::mcp::planning::autonomy) fn into_compile_input(
+	pub(in crate::mcp) fn into_compile_input(
 		self,
 		project_id: &str,
 	) -> Result<AutonomyProposalCompileInput, Value> {

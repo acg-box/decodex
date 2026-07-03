@@ -1,12 +1,6 @@
-use std::path::Path;
-
-use crate::{
-	orchestrator::{
-		DecodexRunContext, IssueRunPlan, IssueTracker, Result, ReviewHandoffContext,
-		RUN_OPERATION_GIT_CREDENTIALS, ServiceConfig, StateStore, WorkflowDocument,
-		build_developer_instructions, build_user_input,
-	},
-	state,
+use crate::orchestrator::execution::{
+	self, DecodexRunContext, IssueRunPlan, IssueTracker, Path, RUN_OPERATION_GIT_CREDENTIALS,
+	Result, ReviewHandoffContext, ServiceConfig, StateStore, WorkflowDocument, state,
 };
 
 pub(super) fn build_run_developer_instructions<T>(
@@ -20,7 +14,7 @@ pub(super) fn build_run_developer_instructions<T>(
 where
 	T: IssueTracker,
 {
-	build_developer_instructions(
+	execution::build_developer_instructions(
 		tracker,
 		project,
 		workflow,
@@ -41,7 +35,7 @@ pub(super) fn build_run_user_input<T>(
 where
 	T: IssueTracker,
 {
-	build_user_input(
+	execution::build_user_input(
 		tracker,
 		project,
 		&issue_run.issue,

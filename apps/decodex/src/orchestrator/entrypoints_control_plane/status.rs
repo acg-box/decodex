@@ -1,6 +1,6 @@
-use super::super::{
-	OperatorCodexAccountControlStatus, OperatorProjectStatus, OperatorStatusSnapshot,
-	ProjectRegistration, operator_github_cli_authority_from_registration,
+use crate::orchestrator::{
+	self, OperatorCodexAccountControlStatus, OperatorProjectStatus, OperatorStatusSnapshot,
+	ProjectRegistration,
 };
 
 pub(crate) fn empty_control_plane_snapshot(limit: usize) -> OperatorStatusSnapshot {
@@ -37,7 +37,9 @@ pub(super) fn operator_project_status_from_registration(
 		config_path: project.config_path().display().to_string(),
 		repo_root: project.repo_root().display().to_string(),
 		enabled: project.enabled(),
-		github_cli_authority: operator_github_cli_authority_from_registration(project),
+		github_cli_authority: orchestrator::operator_github_cli_authority_from_registration(
+			project,
+		),
 		current_lane_count: 0,
 		running_lane_count: 0,
 		queued_candidate_count: 0,
@@ -65,7 +67,9 @@ pub(super) fn operator_project_status_from_dev_registration(
 		config_path: project.config_path().display().to_string(),
 		repo_root: project.repo_root().display().to_string(),
 		enabled: project.enabled(),
-		github_cli_authority: operator_github_cli_authority_from_registration(project),
+		github_cli_authority: orchestrator::operator_github_cli_authority_from_registration(
+			project,
+		),
 		current_lane_count: 0,
 		running_lane_count: 0,
 		queued_candidate_count: 0,

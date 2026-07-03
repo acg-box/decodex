@@ -1,8 +1,3 @@
-use std::{io, net::TcpListener, str};
-
-use crate::prelude::eyre;
-use serde_json::{self, Value};
-
 mod autonomy_resources;
 mod context;
 mod control;
@@ -16,26 +11,27 @@ mod tool_schemas;
 mod tools;
 mod types;
 
-#[cfg(test)]
-use self::http::{McpHttpHandler, McpHttpSessions, http_header_end};
+pub(crate) use self::types::{McpCapabilityProfile, McpServeRequest, McpTransport};
+
+use std::{io, net::TcpListener, str};
+
+use serde_json::{self, Value};
+
+#[cfg(test)] use self::http::{McpHttpHandler, McpHttpSessions, http_header_end};
 #[cfg(test)]
 use self::observability::{
 	mcp_activity_tail_resource, mcp_pr_review_state_resource, mcp_public_post_review_lane,
 	mcp_run_activity_summary, mcp_run_resource, mcp_status_live_resource,
 	sanitize_mcp_observability_value,
 };
-#[cfg(test)]
-use self::resources::ResourceContent;
-pub(crate) use self::types::{McpCapabilityProfile, McpServeRequest, McpTransport};
+#[cfg(test)] use self::resources::ResourceContent;
 use self::{
 	context::McpContext,
-	http::{
-		McpHttpAuthorization, serve_streamable_http_with_profile,
-		validate_mcp_http_capability_profile, validate_mcp_http_listen_address,
-	},
-	server::{McpServer, json_rpc_error, serve_stdio_with_profile},
+	http::McpHttpAuthorization,
+	server::{McpServer, json_rpc_error},
 	types::{McpError, McpTool, ReadResourceParams},
 };
+use crate::prelude::{Result, eyre};
 
 /// Safe default listen address for Streamable HTTP MCP.
 pub(crate) const DEFAULT_MCP_HTTP_LISTEN_ADDRESS: &str = "127.0.0.1:8193";
@@ -61,14 +57,14 @@ const MCP_HTTP_ENDPOINT_PATH: &str = "/mcp";
 const MCP_SESSION_HEADER: &str = "Mcp-Session-Id";
 
 /// Start the Decodex MCP gateway.
-pub(crate) fn serve(request: McpServeRequest<'_>) -> crate::prelude::Result<()> {
+pub(crate) fn serve(request: McpServeRequest<'_>) -> Result<()> {
 	match request.transport {
 		McpTransport::Stdio => {
 			let context = McpContext::for_process(request.config_path)?;
 			let stdin = io::stdin();
 			let stdout = io::stdout();
 
-			serve_stdio_with_profile(
+			self::server::serve_stdio_with_profile(
 				stdin.lock(),
 				stdout.lock(),
 				context,
@@ -78,12 +74,15 @@ pub(crate) fn serve(request: McpServeRequest<'_>) -> crate::prelude::Result<()> 
 		McpTransport::StreamableHttp => {
 			let authorization = McpHttpAuthorization::from_env_var_name(request.bearer_token_env)?;
 
-			validate_mcp_http_listen_address(
+			self::http::validate_mcp_http_listen_address(
 				request.listen_address,
 				request.allowed_origins,
 				&authorization,
 			)?;
-			validate_mcp_http_capability_profile(request.capability_profile, &authorization)?;
+			self::http::validate_mcp_http_capability_profile(
+				request.capability_profile,
+				&authorization,
+			)?;
 
 			let context = McpContext::for_process(request.config_path)?;
 			let listener = TcpListener::bind(request.listen_address).map_err(|error| {
@@ -93,7 +92,7 @@ pub(crate) fn serve(request: McpServeRequest<'_>) -> crate::prelude::Result<()> 
 				)
 			})?;
 
-			serve_streamable_http_with_profile(
+			self::http::serve_streamable_http_with_profile(
 				listener,
 				context,
 				request.capability_profile,
@@ -187,5 +186,4 @@ fn safe_autonomy_record_identifier(value: &str) -> bool {
 		&& !value.contains("..")
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

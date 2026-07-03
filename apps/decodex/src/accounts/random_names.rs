@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use super::{ACCOUNT_RANDOM_NAMES, AccountSummary};
+use crate::accounts::{ACCOUNT_RANDOM_NAMES, AccountSummary};
 
 pub(super) fn random_name_seed_for(account_fingerprint: &str, email: Option<String>) -> String {
 	if !account_fingerprint.trim().is_empty() {
@@ -52,6 +52,10 @@ pub(super) fn assign_unique_random_names(accounts: &mut [AccountSummary]) {
 	}
 }
 
+pub(super) fn normalize_random_name_offset(offset: i64) -> i64 {
+	offset.rem_euclid(i64::try_from(ACCOUNT_RANDOM_NAMES.len()).unwrap_or(1))
+}
+
 fn random_name_index(name: &str) -> Option<usize> {
 	ACCOUNT_RANDOM_NAMES.iter().position(|candidate| *candidate == name)
 }
@@ -89,8 +93,4 @@ fn account_identity_hash(value: &str) -> u32 {
 	}
 
 	hash
-}
-
-pub(super) fn normalize_random_name_offset(offset: i64) -> i64 {
-	offset.rem_euclid(i64::try_from(ACCOUNT_RANDOM_NAMES.len()).unwrap_or(1))
 }

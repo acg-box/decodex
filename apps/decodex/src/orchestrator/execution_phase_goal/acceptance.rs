@@ -7,13 +7,14 @@ use std::{
 
 use serde_json::Value;
 
-use super::super::{
-	RepoGateTrackedRewriteDecision, git_guardrail_output, repo_gate_changed_tracked_files, state,
+use crate::{
+	agent::PhaseGoalKind,
+	orchestrator::{self, RepoGateTrackedRewriteDecision},
+	state,
 };
-use crate::agent::PhaseGoalKind;
 
 #[derive(Debug)]
-pub(in crate::orchestrator) struct PhaseAcceptanceCheckFailure {
+pub(crate) struct PhaseAcceptanceCheckFailure {
 	reason_code: String,
 }
 impl PhaseAcceptanceCheckFailure {
@@ -21,7 +22,7 @@ impl PhaseAcceptanceCheckFailure {
 		Self { reason_code: reason_code.into() }
 	}
 
-	pub(in crate::orchestrator) fn error_class(&self) -> &'static str {
+	pub(crate) fn error_class(&self) -> &'static str {
 		"phase_acceptance_check_failed"
 	}
 }
@@ -164,10 +165,10 @@ pub(super) fn phase_tracked_rewrite_handoff_detail(
 pub(super) fn phase_acceptance_changed_surfaces(worktree_path: &Path) -> Vec<String> {
 	let mut surfaces = BTreeSet::new();
 
-	if let Ok(changed_files) = repo_gate_changed_tracked_files(worktree_path) {
+	if let Ok(changed_files) = orchestrator::repo_gate_changed_tracked_files(worktree_path) {
 		surfaces.extend(changed_files);
 	}
-	if let Ok(Some(diff_paths)) = git_guardrail_output(
+	if let Ok(Some(diff_paths)) = orchestrator::git_guardrail_output(
 		worktree_path,
 		&["diff", "--name-only", "--diff-filter=ACDMRTUXB", "HEAD", "--"],
 	) {
@@ -175,26 +176,15 @@ pub(super) fn phase_acceptance_changed_surfaces(worktree_path: &Path) -> Vec<Str
 			surfaces.insert(path.to_owned());
 		}
 	}
-	if let Ok(Some(status)) = git_guardrail_output(worktree_path, &["status", "--porcelain"]) {
+	if let Ok(Some(status)) =
+		orchestrator::git_guardrail_output(worktree_path, &["status", "--porcelain"])
+	{
 		for surface in status.lines().filter_map(phase_acceptance_status_surface) {
 			surfaces.insert(surface);
 		}
 	}
 
 	surfaces.into_iter().collect()
-}
-
-fn phase_acceptance_status_surface(line: &str) -> Option<String> {
-	let line = line.trim_end();
-
-	if line.is_empty() || state::is_untracked_decodex_runtime_artifact_status_line(line) {
-		return None;
-	}
-
-	let path = line.get(3..)?.trim();
-	let path = path.rsplit_once(" -> ").map_or(path, |(_, renamed_path)| renamed_path.trim());
-
-	(!path.is_empty()).then(|| path.to_owned())
 }
 
 pub(super) fn phase_acceptance_blocker_count(payload: &Value) -> usize {
@@ -220,4 +210,17 @@ pub(super) fn phase_acceptance_has_non_goal_violation(payload: &Value) -> bool {
 				|| normalized.contains("out of scope")
 				|| normalized.contains("scope violation")
 		})
+}
+
+fn phase_acceptance_status_surface(line: &str) -> Option<String> {
+	let line = line.trim_end();
+
+	if line.is_empty() || state::is_untracked_decodex_runtime_artifact_status_line(line) {
+		return None;
+	}
+
+	let path = line.get(3..)?.trim();
+	let path = path.rsplit_once(" -> ").map_or(path, |(_, renamed_path)| renamed_path.trim());
+
+	(!path.is_empty()).then(|| path.to_owned())
 }

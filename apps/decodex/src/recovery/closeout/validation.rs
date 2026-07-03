@@ -3,6 +3,16 @@ use std::{path::Path, process::Command};
 use crate::{
 	prelude::{Result, eyre},
 	pull_request::PullRequestLandingState,
+	recovery::{
+		closeout::{
+			LegacyCloseoutValidation, MergedCloseoutRetainedContext, MergedCloseoutValidation,
+		},
+		context::RecoveryContext,
+		git_worktree::{self},
+		pull_request_inspection::{self},
+		requests::{LegacyCloseoutRecoveryRequest, MergedCloseoutRecoveryRequest},
+		review_handoff::{self},
+	},
 	state::WorktreeMapping,
 	tracker::{
 		self, IssueTracker, TrackerIssue,
@@ -11,28 +21,11 @@ use crate::{
 	workflow::WorkflowTracker,
 };
 
-use crate::recovery::{
-	closeout::{LegacyCloseoutValidation, MergedCloseoutRetainedContext, MergedCloseoutValidation},
-	context::RecoveryContext,
-	git_worktree::{
-		repository_relative_path, worktree_checkout_branch_name, worktree_head_oid,
-		worktree_is_clean,
-	},
-	pull_request_inspection::{
-		inspect_project_pull_request, inspect_project_pull_request_merge_commit, landing_url,
-	},
-	requests::{LegacyCloseoutRecoveryRequest, MergedCloseoutRecoveryRequest},
-	review_handoff::{
-		load_issue_by_identifier, relative_worktree_path_for_recovery,
-		validate_retained_pr_worktree,
-	},
-};
-
 pub(super) fn validate_legacy_closeout_request(
 	context: &RecoveryContext,
 	request: &LegacyCloseoutRecoveryRequest,
 ) -> Result<LegacyCloseoutValidation> {
-	let issue = load_issue_by_identifier(&context.tracker, &request.issue)?;
+	let issue = review_handoff::load_issue_by_identifier(&context.tracker, &request.issue)?;
 
 	validate_legacy_closeout_issue_state(context.workflow.frontmatter().tracker(), &issue)?;
 
@@ -46,7 +39,8 @@ pub(super) fn validate_legacy_closeout_request(
 		);
 	}
 
-	let (landing_state, default_branch) = inspect_project_pull_request(context, &request.pr_url)?;
+	let (landing_state, default_branch) =
+		pull_request_inspection::inspect_project_pull_request(context, &request.pr_url)?;
 
 	if landing_state.base_ref_name != default_branch {
 		eyre::bail!(
@@ -65,9 +59,14 @@ pub(super) fn validate_legacy_closeout_request(
 	}
 
 	let local_head_oid = validate_legacy_closeout_worktree(&worktree, &landing_state)?;
-	let merge_commit = inspect_project_pull_request_merge_commit(context, &request.pr_url)?;
-	let worktree_path_for_event =
-		repository_relative_path(context.config.repo_root(), worktree.worktree_path());
+	let merge_commit = pull_request_inspection::inspect_project_pull_request_merge_commit(
+		context,
+		&request.pr_url,
+	)?;
+	let worktree_path_for_event = git_worktree::repository_relative_path(
+		context.config.repo_root(),
+		worktree.worktree_path(),
+	);
 
 	Ok(LegacyCloseoutValidation {
 		issue,
@@ -83,15 +82,19 @@ pub(super) fn validate_merged_closeout_request(
 	context: &RecoveryContext,
 	request: &MergedCloseoutRecoveryRequest,
 ) -> Result<MergedCloseoutValidation> {
-	let issue = load_issue_by_identifier(&context.tracker, &request.issue)?;
+	let issue = review_handoff::load_issue_by_identifier(&context.tracker, &request.issue)?;
 
 	validate_merged_closeout_issue_context(context, &issue)?;
 
-	let (landing_state, default_branch) = inspect_project_pull_request(context, &request.pr_url)?;
+	let (landing_state, default_branch) =
+		pull_request_inspection::inspect_project_pull_request(context, &request.pr_url)?;
 
 	validate_merged_closeout_pull_request(context, &landing_state, &default_branch)?;
 
-	let merge_commit = inspect_project_pull_request_merge_commit(context, &request.pr_url)?;
+	let merge_commit = pull_request_inspection::inspect_project_pull_request_merge_commit(
+		context,
+		&request.pr_url,
+	)?;
 
 	ensure_merge_commit_reachable_from_remote_default_branch(
 		context.config.repo_root(),
@@ -107,7 +110,7 @@ pub(super) fn validate_merged_closeout_request(
 	if landing_state.head_ref_name != retained_context.branch_name {
 		eyre::bail!(
 			"Pull request `{}` points at branch `{}`, but retained lane branch is `{}`.",
-			landing_url(&landing_state),
+			pull_request_inspection::landing_url(&landing_state),
 			landing_state.head_ref_name,
 			retained_context.branch_name
 		);
@@ -227,7 +230,9 @@ fn merged_closeout_retained_context(
 			)
 		})?;
 	let worktree_path = worktree_mapping
-		.and_then(|mapping| relative_worktree_path_for_recovery(context, mapping.worktree_path()))
+		.and_then(|mapping| {
+			review_handoff::relative_worktree_path_for_recovery(context, mapping.worktree_path())
+		})
 		.or_else(|| latest_record.as_ref().and_then(|record| record.worktree_path.clone()))
 		.unwrap_or_else(|| format!(".worktrees/{}", issue.identifier));
 	let (run_id, attempt_number) = if let Some(record) = latest_record
@@ -289,27 +294,27 @@ fn validate_merged_closeout_pull_request(
 	if landing_state.base_ref_name != default_branch {
 		eyre::bail!(
 			"Pull request `{}` targets `{}`, but configured default branch is `{default_branch}`.",
-			landing_url(landing_state),
+			pull_request_inspection::landing_url(landing_state),
 			landing_state.base_ref_name
 		);
 	}
 	if landing_state.state != "MERGED" {
 		eyre::bail!(
 			"Pull request `{}` is `{}`; merged closeout recovery requires `MERGED`.",
-			landing_url(landing_state),
+			pull_request_inspection::landing_url(landing_state),
 			landing_state.state
 		);
 	}
 	if landing_state.head_ref_name.trim().is_empty() {
 		eyre::bail!(
 			"Pull request `{}` does not expose the merged head branch required for retained lane reconciliation.",
-			landing_url(landing_state)
+			pull_request_inspection::landing_url(landing_state)
 		);
 	}
 	if landing_state.head_ref_name == default_branch {
 		eyre::bail!(
 			"Pull request `{}` uses default branch `{default_branch}` as its head; merged closeout recovery cannot prove retained lane identity.",
-			landing_url(landing_state)
+			pull_request_inspection::landing_url(landing_state)
 		);
 	}
 
@@ -398,16 +403,17 @@ fn validate_merged_closeout_worktree_path(
 	if !worktree_path.exists() {
 		return Ok(());
 	}
-	if !worktree_is_clean(worktree_path)? {
+	if !git_worktree::worktree_is_clean(worktree_path)? {
 		eyre::bail!(
 			"Retained worktree `{}` still has local changes; merged closeout recovery will not mark it cleanup-complete.",
 			worktree_path.display()
 		);
 	}
 
-	let local_branch = worktree_checkout_branch_name(worktree_path)?.ok_or_else(|| {
-		eyre::eyre!("Retained worktree `{}` is detached.", worktree_path.display())
-	})?;
+	let local_branch =
+		git_worktree::worktree_checkout_branch_name(worktree_path)?.ok_or_else(|| {
+			eyre::eyre!("Retained worktree `{}` is detached.", worktree_path.display())
+		})?;
 
 	if local_branch != landing_state.head_ref_name {
 		eyre::bail!(
@@ -417,7 +423,7 @@ fn validate_merged_closeout_worktree_path(
 		);
 	}
 
-	let local_head = worktree_head_oid(worktree_path)?.ok_or_else(|| {
+	let local_head = git_worktree::worktree_head_oid(worktree_path)?.ok_or_else(|| {
 		eyre::eyre!("Retained worktree `{}` has no readable HEAD.", worktree_path.display())
 	})?;
 
@@ -436,5 +442,5 @@ fn validate_legacy_closeout_worktree(
 	worktree: &WorktreeMapping,
 	landing_state: &PullRequestLandingState,
 ) -> Result<String> {
-	validate_retained_pr_worktree(worktree, landing_state, "legacy closeout")
+	review_handoff::validate_retained_pr_worktree(worktree, landing_state, "legacy closeout")
 }

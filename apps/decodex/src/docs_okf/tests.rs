@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, path::Path};
 
 use tempfile::TempDir;
 
@@ -263,7 +263,7 @@ fn okf_init_rejects_decodex_profile() {
 	assert!(error.to_string().contains("portable profiles only"));
 }
 
-fn write_minimal_okf_bundle(docs: &std::path::Path) {
+fn write_minimal_okf_bundle(docs: &Path) {
 	for lane in ["decisions", "evidence", "reference", "research", "runbook", "spec"] {
 		fs::create_dir_all(docs.join(lane)).expect("dirs");
 	}
@@ -292,6 +292,6 @@ fn drift_concept(title: &str) -> String {
 	)
 }
 
-fn write(path: &std::path::Path, content: impl AsRef<str>) {
+fn write(path: &Path, content: impl AsRef<str>) {
 	fs::write(path, content.as_ref()).expect("write");
 }

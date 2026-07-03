@@ -1,4 +1,4 @@
-pub(in crate::orchestrator) mod output;
+pub(crate) mod output;
 
 mod evidence;
 mod mcp;

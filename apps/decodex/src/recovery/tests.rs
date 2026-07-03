@@ -1,27 +1,38 @@
+mod context;
+mod event_records;
+mod ghost_lane;
+mod git_worktree;
+mod review_handoff;
+mod stale_active;
+
 use std::{cell::RefCell, fs, path::Path};
 
 use tempfile::TempDir;
 
 use crate::{
 	config::ServiceConfig,
+	prelude::{Result, eyre},
 	pull_request::PullRequestLandingState,
 	recovery::{
-		GHOST_LANE_BLOCKED_CLASSIFICATION, GHOST_LANE_CLASSIFICATION, GHOST_LANE_CLEANUP_EVENT,
-		GHOST_LANE_TERMINAL_STATUS, MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION,
-		REVIEW_HANDOFF_ADOPT_EVENT, REVIEW_HANDOFF_BOUND_CLASSIFICATION,
-		REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION, REVIEW_HANDOFF_REBIND_EVENT,
-		REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION, RUN_CONTROL_CHANNEL_STATUS_FAILED,
-		STALE_ACTIVE_CLASSIFICATION, STALE_ACTIVE_RECOVERY_SCHEMA, STALE_ACTIVE_RELEASE_EVENT,
+		GHOST_LANE_CLEANUP_EVENT, GHOST_LANE_TERMINAL_STATUS,
+		MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION, RecoveryRuntimeMutationPolicy,
+		active_recovery_tracker_backoff_message, append_review_handoff_adopt_private_event,
+		append_review_handoff_rebind_private_event, apply_ghost_lane_cleanup,
+		apply_ghost_lane_live_status_blockers_with_tracker, current_timestamp,
+		diagnose_all_retained_review_worktrees_with_tracker, diagnose_ghost_lanes,
+		diagnose_ghost_lanes_read_only, diagnose_issue_with_tracker, diagnostic_binding,
+		ensure_ghost_lane_live_status_allows_cleanup_with_tracker, manual_adopt_run_id,
+		remember_recovery_tracker_backoff_message, timestamp_after_seconds,
+		validate_adopt_existing_worktree_mapping, validate_adopt_issue_state_for_policy,
+		validate_adopt_landing_state, validate_existing_handoff_refresh,
+		validate_rebind_issue_state_for_policy, worktree_blocking_status_lines,
+		write_review_lifecycle_markers_with_rollback,
 	},
-	state::{
-		self, ChildAgentActivitySummary, ConnectorBackoffInput, ProtocolActivityMarker,
-		ProtocolActivitySummary, ReviewHandoffMarker, ReviewOrchestrationMarker,
-		ReviewPolicyCheckpointInput, StateStore, WorktreeMapping,
-	},
+	state::{ProtocolActivitySummary, StateStore, WorktreeMapping},
+	test_support,
 	tracker::{
-		self, IssueTracker, TrackerComment, TrackerIssue, TrackerLabel, TrackerState, TrackerTeam,
+		IssueTracker, TrackerComment, TrackerIssue, TrackerLabel, TrackerState, TrackerTeam,
 		linear::LinearClient,
-		records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
 	},
 	workflow::WorkflowDocument,
 };
@@ -65,11 +76,13 @@ impl GhostLaneTestTracker {
 
 	fn with_comments(mut self, comments: Vec<TrackerComment>) -> Self {
 		self.comments = comments;
+
 		self
 	}
 
 	fn remove_error(mut self, message: &str) -> Self {
 		self.remove_error = Some(message.to_owned());
+
 		self
 	}
 
@@ -99,19 +112,13 @@ impl GhostLaneTestTracker {
 		}
 	}
 }
+
 impl IssueTracker for GhostLaneTestTracker {
-	fn list_issues_with_label(
-		&self,
-		label_name: &str,
-	) -> crate::prelude::Result<Vec<TrackerIssue>> {
+	fn list_issues_with_label(&self, label_name: &str) -> Result<Vec<TrackerIssue>> {
 		Ok(self.issues.iter().filter(|issue| issue.has_label(label_name)).cloned().collect())
 	}
 
-	fn find_team_label_id(
-		&self,
-		team_id: &str,
-		label_name: &str,
-	) -> crate::prelude::Result<Option<String>> {
+	fn find_team_label_id(&self, team_id: &str, label_name: &str) -> Result<Option<String>> {
 		Ok(self
 			.issues
 			.iter()
@@ -119,12 +126,9 @@ impl IssueTracker for GhostLaneTestTracker {
 			.and_then(|issue| issue.label_id_for_name(label_name).map(ToOwned::to_owned)))
 	}
 
-	fn get_issue_by_identifier(
-		&self,
-		issue_identifier: &str,
-	) -> crate::prelude::Result<Option<TrackerIssue>> {
+	fn get_issue_by_identifier(&self, issue_identifier: &str) -> Result<Option<TrackerIssue>> {
 		if let Some(message) = &self.identifier_error {
-			return Err(crate::prelude::eyre::eyre!(message.clone()));
+			return Err(eyre::eyre!(message.clone()));
 		}
 
 		Ok(self
@@ -134,11 +138,11 @@ impl IssueTracker for GhostLaneTestTracker {
 			.cloned())
 	}
 
-	fn refresh_issues(&self, issue_ids: &[String]) -> crate::prelude::Result<Vec<TrackerIssue>> {
+	fn refresh_issues(&self, issue_ids: &[String]) -> Result<Vec<TrackerIssue>> {
 		self.refresh_queries.borrow_mut().push(issue_ids.to_vec());
 
 		if let Some(message) = &self.refresh_error {
-			return Err(crate::prelude::eyre::eyre!(message.clone()));
+			return Err(eyre::eyre!(message.clone()));
 		}
 
 		Ok(self
@@ -149,37 +153,31 @@ impl IssueTracker for GhostLaneTestTracker {
 			.collect())
 	}
 
-	fn list_comments(&self, _issue_id: &str) -> crate::prelude::Result<Vec<TrackerComment>> {
+	fn list_comments(&self, _issue_id: &str) -> Result<Vec<TrackerComment>> {
 		Ok(self.comments.clone())
 	}
 
-	fn update_issue_state(&self, issue_id: &str, state_id: &str) -> crate::prelude::Result<()> {
+	fn update_issue_state(&self, issue_id: &str, state_id: &str) -> Result<()> {
 		self.state_updates.borrow_mut().push((issue_id.to_owned(), state_id.to_owned()));
+
 		Ok(())
 	}
 
-	fn add_issue_labels(
-		&self,
-		_issue_id: &str,
-		_label_ids: &[String],
-	) -> crate::prelude::Result<()> {
+	fn add_issue_labels(&self, _issue_id: &str, _label_ids: &[String]) -> Result<()> {
 		Ok(())
 	}
 
-	fn remove_issue_labels(
-		&self,
-		issue_id: &str,
-		label_ids: &[String],
-	) -> crate::prelude::Result<()> {
+	fn remove_issue_labels(&self, issue_id: &str, label_ids: &[String]) -> Result<()> {
 		self.label_removals.borrow_mut().push((issue_id.to_owned(), label_ids.to_vec()));
+
 		if let Some(message) = &self.remove_error {
-			return Err(crate::prelude::eyre::eyre!(message.clone()));
+			return Err(eyre::eyre!(message.clone()));
 		}
 
 		Ok(())
 	}
 
-	fn create_comment(&self, _issue_id: &str, _body: &str) -> crate::prelude::Result<()> {
+	fn create_comment(&self, _issue_id: &str, _body: &str) -> Result<()> {
 		Ok(())
 	}
 }
@@ -208,6 +206,7 @@ impl FinalNeedsAttentionTracker {
 				id: format!("label-{}", self.needs_attention_label.replace(':', "-")),
 				name: self.needs_attention_label.clone(),
 			};
+
 			if !issue.team.labels.iter().any(|candidate| candidate.name == label.name) {
 				issue.team.labels.push(label.clone());
 			}
@@ -219,37 +218,29 @@ impl FinalNeedsAttentionTracker {
 		issue
 	}
 }
+
 impl IssueTracker for FinalNeedsAttentionTracker {
-	fn list_issues_with_label(
-		&self,
-		label_name: &str,
-	) -> crate::prelude::Result<Vec<TrackerIssue>> {
+	fn list_issues_with_label(&self, label_name: &str) -> Result<Vec<TrackerIssue>> {
 		let issue = self.issue_for_call(*self.get_issue_calls.borrow());
 
 		Ok(issue.has_label(label_name).then_some(issue).into_iter().collect())
 	}
 
-	fn find_team_label_id(
-		&self,
-		_team_id: &str,
-		label_name: &str,
-	) -> crate::prelude::Result<Option<String>> {
+	fn find_team_label_id(&self, _team_id: &str, label_name: &str) -> Result<Option<String>> {
 		Ok(Some(format!("label-{}", label_name.replace(':', "-"))))
 	}
 
-	fn get_issue_by_identifier(
-		&self,
-		issue_identifier: &str,
-	) -> crate::prelude::Result<Option<TrackerIssue>> {
+	fn get_issue_by_identifier(&self, issue_identifier: &str) -> Result<Option<TrackerIssue>> {
 		let mut calls = self.get_issue_calls.borrow_mut();
 
 		*calls += 1;
+
 		let issue = self.issue_for_call(*calls);
 
 		Ok((issue.identifier == issue_identifier).then_some(issue))
 	}
 
-	fn refresh_issues(&self, issue_ids: &[String]) -> crate::prelude::Result<Vec<TrackerIssue>> {
+	fn refresh_issues(&self, issue_ids: &[String]) -> Result<Vec<TrackerIssue>> {
 		let issue = self.issue_for_call(*self.get_issue_calls.borrow());
 
 		Ok(issue_ids
@@ -260,33 +251,25 @@ impl IssueTracker for FinalNeedsAttentionTracker {
 			.collect())
 	}
 
-	fn list_comments(&self, _issue_id: &str) -> crate::prelude::Result<Vec<TrackerComment>> {
+	fn list_comments(&self, _issue_id: &str) -> Result<Vec<TrackerComment>> {
 		Ok(Vec::new())
 	}
 
-	fn update_issue_state(&self, _issue_id: &str, _state_id: &str) -> crate::prelude::Result<()> {
+	fn update_issue_state(&self, _issue_id: &str, _state_id: &str) -> Result<()> {
 		Ok(())
 	}
 
-	fn add_issue_labels(
-		&self,
-		_issue_id: &str,
-		_label_ids: &[String],
-	) -> crate::prelude::Result<()> {
+	fn add_issue_labels(&self, _issue_id: &str, _label_ids: &[String]) -> Result<()> {
 		Ok(())
 	}
 
-	fn remove_issue_labels(
-		&self,
-		issue_id: &str,
-		label_ids: &[String],
-	) -> crate::prelude::Result<()> {
+	fn remove_issue_labels(&self, issue_id: &str, label_ids: &[String]) -> Result<()> {
 		self.label_removals.borrow_mut().push((issue_id.to_owned(), label_ids.to_vec()));
 
 		Ok(())
 	}
 
-	fn create_comment(&self, _issue_id: &str, _body: &str) -> crate::prelude::Result<()> {
+	fn create_comment(&self, _issue_id: &str, _body: &str) -> Result<()> {
 		Ok(())
 	}
 }
@@ -375,7 +358,7 @@ Test workflow.
 
 fn sample_recovery_context(
 	temp_dir: &TempDir,
-	runtime_mutation_policy: super::RecoveryRuntimeMutationPolicy,
+	runtime_mutation_policy: RecoveryRuntimeMutationPolicy,
 ) -> super::RecoveryContext {
 	let repo_root = temp_dir.path().join("repo");
 	let config_path = temp_dir.path().join("project.toml");
@@ -565,7 +548,8 @@ fn sample_issue_with_labels(state_name: &str, labels: &[String]) -> TrackerIssue
 
 fn init_git_repo(path: &Path) {
 	fs::create_dir_all(path).expect("git repo path should create");
-	let status = crate::test_support::hermetic_git_command()
+
+	let status = test_support::hermetic_git_command()
 		.arg("-C")
 		.arg(path)
 		.arg("init")
@@ -577,6 +561,7 @@ fn init_git_repo(path: &Path) {
 
 fn commit_test_file(path: &Path, file_name: &str, body: &str, message: &str) {
 	fs::write(path.join(file_name), body).expect("test file should write");
+
 	run_git(path, &["add", file_name]);
 	run_git(
 		path,
@@ -604,7 +589,7 @@ fn init_clean_git_repo_with_remote_default(path: &Path, branch_name: &str) {
 }
 
 fn run_git(repo: &Path, args: &[&str]) -> String {
-	let output = crate::test_support::hermetic_git_command()
+	let output = test_support::hermetic_git_command()
 		.arg("-C")
 		.arg(repo)
 		.args(args)
@@ -659,10 +644,3 @@ fn temp_rebased_git_worktree(branch_name: &str) -> (TempDir, String, String) {
 
 	(temp_dir, first_head, rebased_head)
 }
-
-mod context;
-mod event_records;
-mod ghost_lane;
-mod git_worktree;
-mod review_handoff;
-mod stale_active;

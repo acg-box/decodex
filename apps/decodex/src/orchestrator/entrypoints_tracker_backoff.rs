@@ -6,17 +6,14 @@ use std::{
 use color_eyre::Report;
 use time::OffsetDateTime;
 
-use super::{
-	AccountActivityMode, GhPullRequestReviewStateInspector, OperatorConnectorBackoffStatus,
-	OperatorStatusSnapshot, ProjectDaemonRuntime, ServiceConfig, StateStore,
-	TRACKER_RATE_LIMIT_BACKOFF_SECS, TRACKER_RATE_LIMIT_WARNING,
-	TRACKER_TRANSIENT_TIMEOUT_BACKOFF_SECS, TRACKER_TRANSIENT_TIMEOUT_WARNING,
-	TrackerConnectorBackoff, add_operator_snapshot_warning, apply_terminal_history_ledger_outcomes,
-	build_degraded_post_review_lane_statuses, build_operator_status_snapshot_with_account_mode,
-	format_optional_unix_timestamp, hydrate_history_lanes_from_local_ledger,
-	refresh_operator_project_summary,
-};
 use crate::{
+	orchestrator::{
+		self, AccountActivityMode, GhPullRequestReviewStateInspector,
+		OperatorConnectorBackoffStatus, OperatorStatusSnapshot, ProjectDaemonRuntime,
+		ServiceConfig, StateStore, TRACKER_RATE_LIMIT_BACKOFF_SECS, TRACKER_RATE_LIMIT_WARNING,
+		TRACKER_TRANSIENT_TIMEOUT_BACKOFF_SECS, TRACKER_TRANSIENT_TIMEOUT_WARNING,
+		TrackerConnectorBackoff,
+	},
 	prelude::Result,
 	state::{ConnectorBackoff, ConnectorBackoffInput},
 };
@@ -51,61 +48,6 @@ impl TrackerConnectorBackoff {
 			},
 			now_unix_epoch,
 		)
-	}
-}
-
-fn operator_connector_backoff_status(
-	parts: ConnectorBackoffStatusParts<'_>,
-	now_unix_epoch: i64,
-) -> OperatorConnectorBackoffStatus {
-	OperatorConnectorBackoffStatus {
-		project_id: parts.project_id.to_owned(),
-		connector: parts.connector.to_owned(),
-		sync_phase: parts.sync_phase.to_owned(),
-		quota_class: parts.quota_class.to_owned(),
-		reset_at: format_optional_unix_timestamp(Some(parts.reset_unix_epoch))
-			.unwrap_or_else(|| parts.reset_unix_epoch.to_string()),
-		reset_unix_epoch: parts.reset_unix_epoch,
-		reset_source: parts.reset_source.to_owned(),
-		retry_after_seconds: parts.reset_unix_epoch.saturating_sub(now_unix_epoch).max(0),
-		next_action: parts.next_action.to_owned(),
-		warning: parts.warning.to_owned(),
-	}
-}
-
-fn connector_backoff_record_to_operator_status(
-	backoff: &ConnectorBackoff,
-	now_unix_epoch: i64,
-) -> OperatorConnectorBackoffStatus {
-	operator_connector_backoff_status(
-		ConnectorBackoffStatusParts {
-			project_id: backoff.project_id(),
-			connector: backoff.connector(),
-			sync_phase: backoff.sync_phase(),
-			quota_class: backoff.quota_class(),
-			reset_unix_epoch: backoff.reset_unix_epoch(),
-			reset_source: backoff.reset_source(),
-			warning: backoff.warning(),
-			next_action: connector_backoff_next_action(backoff.warning()),
-		},
-		now_unix_epoch,
-	)
-}
-
-fn connector_backoff_next_action(warning: &str) -> &'static str {
-	match warning {
-		TRACKER_TRANSIENT_TIMEOUT_WARNING => {
-			"Wait for the transient tracker timeout backoff; Decodex will retry tracker reads without changing lane ownership."
-		},
-		_ => "Wait for the reset window; keep monitoring local running lanes.",
-	}
-}
-
-fn tracker_backoff_warning_label(warning: &str) -> Option<&'static str> {
-	match warning {
-		TRACKER_RATE_LIMIT_WARNING => Some(TRACKER_RATE_LIMIT_WARNING),
-		TRACKER_TRANSIENT_TIMEOUT_WARNING => Some(TRACKER_TRANSIENT_TIMEOUT_WARNING),
-		_ => None,
 	}
 }
 
@@ -219,25 +161,28 @@ pub(crate) fn build_operator_status_snapshot_for_tracker_backoff(
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
 		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
-	let mut snapshot = build_operator_status_snapshot_with_account_mode(
+	let mut snapshot = orchestrator::build_operator_status_snapshot_with_account_mode(
 		project,
 		state_store,
 		limit,
 		AccountActivityMode::Snapshot,
 	)?;
 
-	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
+	orchestrator::hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
 
-	snapshot.post_review_lanes =
-		build_degraded_post_review_lane_statuses(project, state_store, &review_state_inspector)?;
+	snapshot.post_review_lanes = orchestrator::build_degraded_post_review_lane_statuses(
+		project,
+		state_store,
+		&review_state_inspector,
+	)?;
 
-	add_operator_snapshot_warning(&mut snapshot, &status.warning);
+	orchestrator::add_operator_snapshot_warning(&mut snapshot, &status.warning);
 
 	snapshot.connector_backoffs.push(status.clone());
 
-	add_operator_snapshot_warning(&mut snapshot, "external_observer_status_skipped");
-	apply_terminal_history_ledger_outcomes(&mut snapshot);
-	refresh_operator_project_summary(&mut snapshot, None);
+	orchestrator::add_operator_snapshot_warning(&mut snapshot, "external_observer_status_skipped");
+	orchestrator::apply_terminal_history_ledger_outcomes(&mut snapshot);
+	orchestrator::refresh_operator_project_summary(&mut snapshot, None);
 
 	Ok(snapshot)
 }
@@ -257,6 +202,72 @@ pub(crate) fn tracker_connector_backoff(
 	}
 
 	None
+}
+
+pub(crate) fn active_connector_backoff_statuses(
+	project_id: &str,
+	runtime: &ProjectDaemonRuntime,
+) -> Vec<OperatorConnectorBackoffStatus> {
+	let Some(backoff) = runtime.tracker_backoff.as_ref() else {
+		return Vec::new();
+	};
+	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
+
+	vec![backoff.to_operator_status(project_id, now_unix_epoch)]
+}
+
+fn operator_connector_backoff_status(
+	parts: ConnectorBackoffStatusParts<'_>,
+	now_unix_epoch: i64,
+) -> OperatorConnectorBackoffStatus {
+	OperatorConnectorBackoffStatus {
+		project_id: parts.project_id.to_owned(),
+		connector: parts.connector.to_owned(),
+		sync_phase: parts.sync_phase.to_owned(),
+		quota_class: parts.quota_class.to_owned(),
+		reset_at: orchestrator::format_optional_unix_timestamp(Some(parts.reset_unix_epoch))
+			.unwrap_or_else(|| parts.reset_unix_epoch.to_string()),
+		reset_unix_epoch: parts.reset_unix_epoch,
+		reset_source: parts.reset_source.to_owned(),
+		retry_after_seconds: parts.reset_unix_epoch.saturating_sub(now_unix_epoch).max(0),
+		next_action: parts.next_action.to_owned(),
+		warning: parts.warning.to_owned(),
+	}
+}
+
+fn connector_backoff_record_to_operator_status(
+	backoff: &ConnectorBackoff,
+	now_unix_epoch: i64,
+) -> OperatorConnectorBackoffStatus {
+	operator_connector_backoff_status(
+		ConnectorBackoffStatusParts {
+			project_id: backoff.project_id(),
+			connector: backoff.connector(),
+			sync_phase: backoff.sync_phase(),
+			quota_class: backoff.quota_class(),
+			reset_unix_epoch: backoff.reset_unix_epoch(),
+			reset_source: backoff.reset_source(),
+			warning: backoff.warning(),
+			next_action: connector_backoff_next_action(backoff.warning()),
+		},
+		now_unix_epoch,
+	)
+}
+
+fn connector_backoff_next_action(warning: &str) -> &'static str {
+	match warning {
+		TRACKER_TRANSIENT_TIMEOUT_WARNING =>
+			"Wait for the transient tracker timeout backoff; Decodex will retry tracker reads without changing lane ownership.",
+		_ => "Wait for the reset window; keep monitoring local running lanes.",
+	}
+}
+
+fn tracker_backoff_warning_label(warning: &str) -> Option<&'static str> {
+	match warning {
+		TRACKER_RATE_LIMIT_WARNING => Some(TRACKER_RATE_LIMIT_WARNING),
+		TRACKER_TRANSIENT_TIMEOUT_WARNING => Some(TRACKER_TRANSIENT_TIMEOUT_WARNING),
+		_ => None,
+	}
 }
 
 fn tracker_connector_backoff_from_message(
@@ -302,18 +313,6 @@ fn tracker_timeout_backoff(
 		warning: TRACKER_TRANSIENT_TIMEOUT_WARNING,
 		next_action: "Wait for the transient tracker timeout backoff; Decodex will retry tracker reads without changing lane ownership.",
 	})
-}
-
-pub(crate) fn active_connector_backoff_statuses(
-	project_id: &str,
-	runtime: &ProjectDaemonRuntime,
-) -> Vec<OperatorConnectorBackoffStatus> {
-	let Some(backoff) = runtime.tracker_backoff.as_ref() else {
-		return Vec::new();
-	};
-	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
-
-	vec![backoff.to_operator_status(project_id, now_unix_epoch)]
 }
 
 fn parse_linear_rate_limit_reset_unix_epoch(message: &str) -> Option<i64> {

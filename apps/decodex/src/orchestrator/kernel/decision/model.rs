@@ -7,22 +7,22 @@ use crate::orchestrator::kernel::{
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) struct OwnedLaneDecision {
-	pub(in crate::orchestrator) decision_class: OwnedLaneAction,
-	pub(in crate::orchestrator) policy_state: PolicyState,
-	pub(in crate::orchestrator) lane_state_axes: LaneStateAxes,
-	pub(in crate::orchestrator) command_intents: Vec<CommandIntent>,
-	pub(in crate::orchestrator) projection_hints: ProjectionHints,
-	pub(in crate::orchestrator) blockers: Vec<DecisionBlocker>,
+pub(crate) struct OwnedLaneDecision {
+	pub(crate) decision_class: OwnedLaneAction,
+	pub(crate) policy_state: PolicyState,
+	pub(crate) lane_state_axes: LaneStateAxes,
+	pub(crate) command_intents: Vec<CommandIntent>,
+	pub(crate) projection_hints: ProjectionHints,
+	pub(crate) blockers: Vec<DecisionBlocker>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) struct DecisionBlocker {
-	pub(in crate::orchestrator) reason: ReasonCode,
-	pub(in crate::orchestrator) public_summary: &'static str,
+pub(crate) struct DecisionBlocker {
+	pub(crate) reason: ReasonCode,
+	pub(crate) public_summary: &'static str,
 }
 impl DecisionBlocker {
-	pub(in crate::orchestrator) const fn new(reason: ReasonCode) -> Self {
+	pub(crate) const fn new(reason: ReasonCode) -> Self {
 		Self { reason, public_summary: reason.public_summary() }
 	}
 }

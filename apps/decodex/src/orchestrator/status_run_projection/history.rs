@@ -4,7 +4,7 @@ mod lanes;
 mod lifecycle;
 
 #[allow(unused_imports)]
-pub(in crate::orchestrator) use self::{
+pub(crate) use self::{
 	current::{
 		current_lane_lifecycle_attempts, hydrate_current_lane_lifecycle_metrics,
 		operator_run_current_lane_snapshot_attempt,

@@ -3,20 +3,27 @@ use std::{env, time::Duration};
 use serde::Serialize;
 use serde_json::Value;
 
-use super::{
-	ClientInfo, CommandExecParams, CommandExecResponse, ConfigReadParams, ConfigReadResponse,
-	InitializeCapabilities, InitializeParams, InitializeResponse, ListMcpServerStatusParams,
-	ListMcpServerStatusResponse, LoginAccountParams, LoginAccountResponse, ModelListParams,
-	ModelListResponse, ModelProviderCapabilitiesReadParams, ModelProviderCapabilitiesReadResponse,
-	PluginListParams, PluginListResponse, SkillsListParams, SkillsListResponse,
-	ThreadArchiveRequest, ThreadArchiveResponse, ThreadGoalClearParams, ThreadGoalClearResponse,
-	ThreadGoalGetParams, ThreadGoalGetResponse, ThreadGoalSetParams, ThreadGoalSetResponse,
-	ThreadResumeRequest, ThreadSessionResponse, ThreadStartRequest, TurnInterruptRequest,
-	TurnStartRequest, TurnStartResponse, TurnSteerRequest, TurnSteerResponse,
-};
-use crate::agent::{
-	app_server::REQUEST_TIMEOUT,
-	json_rpc::{AppServerProcessEnv, JsonRpcConnection, JsonRpcRequest, WireMessage},
+use crate::{
+	agent::{
+		app_server::{
+			REQUEST_TIMEOUT,
+			protocol::{
+				ClientInfo, CommandExecParams, CommandExecResponse, ConfigReadParams,
+				ConfigReadResponse, InitializeCapabilities, InitializeParams, InitializeResponse,
+				ListMcpServerStatusParams, ListMcpServerStatusResponse, LoginAccountParams,
+				LoginAccountResponse, ModelListParams, ModelListResponse,
+				ModelProviderCapabilitiesReadParams, ModelProviderCapabilitiesReadResponse,
+				PluginListParams, PluginListResponse, SkillsListParams, SkillsListResponse,
+				ThreadArchiveRequest, ThreadArchiveResponse, ThreadGoalClearParams,
+				ThreadGoalClearResponse, ThreadGoalGetParams, ThreadGoalGetResponse,
+				ThreadGoalSetParams, ThreadGoalSetResponse, ThreadResumeRequest,
+				ThreadSessionResponse, ThreadStartRequest, TurnInterruptRequest, TurnStartRequest,
+				TurnStartResponse, TurnSteerRequest, TurnSteerResponse,
+			},
+		},
+		json_rpc::{AppServerProcessEnv, JsonRpcConnection, JsonRpcRequest, WireMessage},
+	},
+	prelude::Result,
 };
 
 pub(in crate::agent::app_server) struct AppServerClient {
@@ -26,7 +33,7 @@ impl AppServerClient {
 	pub(in crate::agent::app_server) fn spawn(
 		listen: &str,
 		process_env: &AppServerProcessEnv,
-	) -> crate::prelude::Result<Self> {
+	) -> Result<Self> {
 		Ok(Self { connection: JsonRpcConnection::spawn_app_server(listen, process_env)? })
 	}
 
@@ -34,7 +41,7 @@ impl AppServerClient {
 	pub(in crate::agent::app_server) fn initialize(
 		&mut self,
 		enable_experimental_api: bool,
-	) -> crate::prelude::Result<InitializeResponse> {
+	) -> Result<InitializeResponse> {
 		self.initialize_with_handler(enable_experimental_api, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `initialize`.",
@@ -47,13 +54,9 @@ impl AppServerClient {
 		&mut self,
 		enable_experimental_api: bool,
 		handler: H,
-	) -> crate::prelude::Result<InitializeResponse>
+	) -> Result<InitializeResponse>
 	where
-		H: FnMut(
-			&mut JsonRpcConnection,
-			&WireMessage,
-			&JsonRpcRequest,
-		) -> crate::prelude::Result<()>,
+		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
 	{
 		self.connection.request_with_handler(
 			"initialize",
@@ -72,7 +75,7 @@ impl AppServerClient {
 		)
 	}
 
-	pub(in crate::agent::app_server) fn mark_initialized(&mut self) -> crate::prelude::Result<()> {
+	pub(in crate::agent::app_server) fn mark_initialized(&mut self) -> Result<()> {
 		self.connection.notify::<Value>("initialized", None)
 	}
 
@@ -80,13 +83,9 @@ impl AppServerClient {
 		&mut self,
 		params: LoginAccountParams,
 		handler: H,
-	) -> crate::prelude::Result<LoginAccountResponse>
+	) -> Result<LoginAccountResponse>
 	where
-		H: FnMut(
-			&mut JsonRpcConnection,
-			&WireMessage,
-			&JsonRpcRequest,
-		) -> crate::prelude::Result<()>,
+		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
 	{
 		self.connection.request_with_handler(
 			"account/login/start",
@@ -100,7 +99,7 @@ impl AppServerClient {
 	pub(in crate::agent::app_server) fn start_thread(
 		&mut self,
 		params: ThreadStartRequest,
-	) -> crate::prelude::Result<ThreadSessionResponse> {
+	) -> Result<ThreadSessionResponse> {
 		self.start_thread_with_handler(params, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `thread/start`.",
@@ -113,13 +112,9 @@ impl AppServerClient {
 		&mut self,
 		params: ThreadStartRequest,
 		handler: H,
-	) -> crate::prelude::Result<ThreadSessionResponse>
+	) -> Result<ThreadSessionResponse>
 	where
-		H: FnMut(
-			&mut JsonRpcConnection,
-			&WireMessage,
-			&JsonRpcRequest,
-		) -> crate::prelude::Result<()>,
+		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
 	{
 		self.connection.request_with_handler("thread/start", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -128,7 +123,7 @@ impl AppServerClient {
 	pub(in crate::agent::app_server) fn resume_thread(
 		&mut self,
 		params: ThreadResumeRequest,
-	) -> crate::prelude::Result<ThreadSessionResponse> {
+	) -> Result<ThreadSessionResponse> {
 		self.resume_thread_with_handler(params, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `thread/resume`.",
@@ -141,13 +136,9 @@ impl AppServerClient {
 		&mut self,
 		params: ThreadResumeRequest,
 		handler: H,
-	) -> crate::prelude::Result<ThreadSessionResponse>
+	) -> Result<ThreadSessionResponse>
 	where
-		H: FnMut(
-			&mut JsonRpcConnection,
-			&WireMessage,
-			&JsonRpcRequest,
-		) -> crate::prelude::Result<()>,
+		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
 	{
 		self.connection.request_with_handler("thread/resume", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -155,28 +146,28 @@ impl AppServerClient {
 	pub(in crate::agent::app_server) fn archive_thread(
 		&mut self,
 		params: ThreadArchiveRequest,
-	) -> crate::prelude::Result<ThreadArchiveResponse> {
+	) -> Result<ThreadArchiveResponse> {
 		self.connection.request("thread/archive", &params, REQUEST_TIMEOUT)
 	}
 
 	pub(in crate::agent::app_server) fn set_thread_goal(
 		&mut self,
 		params: ThreadGoalSetParams,
-	) -> crate::prelude::Result<ThreadGoalSetResponse> {
+	) -> Result<ThreadGoalSetResponse> {
 		self.connection.request("thread/goal/set", &params, REQUEST_TIMEOUT)
 	}
 
 	pub(in crate::agent::app_server) fn get_thread_goal(
 		&mut self,
 		params: ThreadGoalGetParams,
-	) -> crate::prelude::Result<ThreadGoalGetResponse> {
+	) -> Result<ThreadGoalGetResponse> {
 		self.connection.request("thread/goal/get", &params, REQUEST_TIMEOUT)
 	}
 
 	pub(in crate::agent::app_server) fn clear_thread_goal(
 		&mut self,
 		params: ThreadGoalClearParams,
-	) -> crate::prelude::Result<ThreadGoalClearResponse> {
+	) -> Result<ThreadGoalClearResponse> {
 		self.connection.request("thread/goal/clear", &params, REQUEST_TIMEOUT)
 	}
 
@@ -184,7 +175,7 @@ impl AppServerClient {
 	pub(in crate::agent::app_server) fn start_turn(
 		&mut self,
 		params: TurnStartRequest,
-	) -> crate::prelude::Result<TurnStartResponse> {
+	) -> Result<TurnStartResponse> {
 		self.start_turn_with_handler(params, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `turn/start`.",
@@ -197,13 +188,9 @@ impl AppServerClient {
 		&mut self,
 		params: TurnStartRequest,
 		handler: H,
-	) -> crate::prelude::Result<TurnStartResponse>
+	) -> Result<TurnStartResponse>
 	where
-		H: FnMut(
-			&mut JsonRpcConnection,
-			&WireMessage,
-			&JsonRpcRequest,
-		) -> crate::prelude::Result<()>,
+		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
 	{
 		self.connection.request_with_handler("turn/start", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -212,13 +199,9 @@ impl AppServerClient {
 		&mut self,
 		params: TurnInterruptRequest,
 		handler: H,
-	) -> crate::prelude::Result<Value>
+	) -> Result<Value>
 	where
-		H: FnMut(
-			&mut JsonRpcConnection,
-			&WireMessage,
-			&JsonRpcRequest,
-		) -> crate::prelude::Result<()>,
+		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
 	{
 		self.connection.request_with_handler("turn/interrupt", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -227,13 +210,9 @@ impl AppServerClient {
 		&mut self,
 		params: TurnSteerRequest,
 		handler: H,
-	) -> crate::prelude::Result<TurnSteerResponse>
+	) -> Result<TurnSteerResponse>
 	where
-		H: FnMut(
-			&mut JsonRpcConnection,
-			&WireMessage,
-			&JsonRpcRequest,
-		) -> crate::prelude::Result<()>,
+		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
 	{
 		self.connection.request_with_handler("turn/steer", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -241,27 +220,27 @@ impl AppServerClient {
 	pub(in crate::agent::app_server) fn command_exec(
 		&mut self,
 		params: &CommandExecParams,
-	) -> crate::prelude::Result<CommandExecResponse> {
+	) -> Result<CommandExecResponse> {
 		self.connection.request("command/exec", params, params.request_timeout())
 	}
 
 	pub(in crate::agent::app_server) fn read_config(
 		&mut self,
 		params: &ConfigReadParams,
-	) -> crate::prelude::Result<ConfigReadResponse> {
+	) -> Result<ConfigReadResponse> {
 		self.connection.request("config/read", params, REQUEST_TIMEOUT)
 	}
 
 	pub(in crate::agent::app_server) fn list_models(
 		&mut self,
 		params: &ModelListParams,
-	) -> crate::prelude::Result<ModelListResponse> {
+	) -> Result<ModelListResponse> {
 		self.connection.request("model/list", params, REQUEST_TIMEOUT)
 	}
 
 	pub(in crate::agent::app_server) fn read_model_provider_capabilities(
 		&mut self,
-	) -> crate::prelude::Result<ModelProviderCapabilitiesReadResponse> {
+	) -> Result<ModelProviderCapabilitiesReadResponse> {
 		self.connection.request(
 			"modelProvider/capabilities/read",
 			&ModelProviderCapabilitiesReadParams {},
@@ -272,14 +251,14 @@ impl AppServerClient {
 	pub(in crate::agent::app_server) fn list_skills(
 		&mut self,
 		params: &SkillsListParams,
-	) -> crate::prelude::Result<SkillsListResponse> {
+	) -> Result<SkillsListResponse> {
 		self.connection.request("skills/list", params, REQUEST_TIMEOUT)
 	}
 
 	pub(in crate::agent::app_server) fn list_plugins(
 		&mut self,
 		params: &PluginListParams,
-	) -> crate::prelude::Result<PluginListResponse> {
+	) -> Result<PluginListResponse> {
 		self.connection.request("plugin/list", params, REQUEST_TIMEOUT)
 	}
 
@@ -287,23 +266,19 @@ impl AppServerClient {
 		&mut self,
 		params: &ListMcpServerStatusParams,
 		timeout: Duration,
-	) -> crate::prelude::Result<ListMcpServerStatusResponse> {
+	) -> Result<ListMcpServerStatusResponse> {
 		self.connection.request("mcpServerStatus/list", params, timeout)
 	}
 
 	pub(in crate::agent::app_server) fn recv(
 		&mut self,
 		timeout: Option<Duration>,
-	) -> crate::prelude::Result<WireMessage> {
+	) -> Result<WireMessage> {
 		self.connection.recv(timeout)
 	}
 
 	#[allow(dead_code)]
-	pub(in crate::agent::app_server) fn respond<R>(
-		&mut self,
-		id: &Value,
-		result: &R,
-	) -> crate::prelude::Result<()>
+	pub(in crate::agent::app_server) fn respond<R>(&mut self, id: &Value, result: &R) -> Result<()>
 	where
 		R: Serialize,
 	{
@@ -316,7 +291,7 @@ impl AppServerClient {
 		id: &Value,
 		code: i64,
 		message: &str,
-	) -> crate::prelude::Result<()> {
+	) -> Result<()> {
 		self.connection.respond_error(id, code, message)
 	}
 

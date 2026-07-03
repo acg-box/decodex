@@ -1,4 +1,114 @@
-use super::*;
+use crate::orchestrator::tests::operator::status::http::{
+	self, Arc, CodexAccountActivitySummary, CodexAccountMarker, DashboardEventHub, Instant, Mutex,
+	OPERATOR_DASHBOARD_TEST_TIMEOUT, OperatorControlRequests, Path, ProjectRegistration,
+	ProtocolActivityMarker, ProtocolActivitySummary, PublishedOperatorSnapshot, Read as _,
+	SocketAddr, StateStore, TcpListener, TcpStream, TempDir, TestEnvVarGuard, Value, Write as _,
+	fs, orchestrator, runtime, slice, state, thread,
+};
+pub(super) fn websocket_text_payload(frame: &[u8]) -> Option<(&[u8], usize)> {
+	if frame.len() < 2 || frame[0] != 0x81 {
+		return None;
+	}
+
+	let payload_length_marker = frame[1] & 0x7f;
+	let (payload_offset, payload_length): (usize, usize) = match payload_length_marker {
+		length @ 0..=125 => (2_usize, usize::from(length)),
+		126 => {
+			if frame.len() < 4 {
+				return None;
+			}
+
+			(4_usize, usize::from(u16::from_be_bytes([frame[2], frame[3]])))
+		},
+		127 => {
+			if frame.len() < 10 {
+				return None;
+			}
+
+			let length = u64::from_be_bytes([
+				frame[2], frame[3], frame[4], frame[5], frame[6], frame[7], frame[8], frame[9],
+			]);
+			let Ok(length) = usize::try_from(length) else {
+				return None;
+			};
+
+			(10_usize, length)
+		},
+		_ => return None,
+	};
+	let payload_end = payload_offset.checked_add(payload_length)?;
+
+	(frame.len() >= payload_end).then(|| (&frame[payload_offset..payload_end], payload_end))
+}
+
+pub(super) fn open_dashboard_websocket_client(address: SocketAddr) -> (TcpStream, String, Vec<u8>) {
+	let mut client = TcpStream::connect(address).expect("client should connect");
+	let mut bytes = Vec::new();
+	let mut buffer = [0_u8; 2_048];
+
+	client
+		.set_read_timeout(Some(OPERATOR_DASHBOARD_TEST_TIMEOUT))
+		.expect("client timeout should configure");
+	client
+		.write_all(
+			format!(
+				"GET {} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+				orchestrator::OPERATOR_DASHBOARD_WS_ENDPOINT_PATH
+			)
+			.as_bytes(),
+		)
+		.expect("client should write request");
+
+	let header_end = loop {
+		let header_bytes = client.read(&mut buffer).expect("client should read stream headers");
+
+		bytes.extend_from_slice(&buffer[..header_bytes]);
+
+		if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+			break index + 4;
+		}
+	};
+	let response =
+		String::from_utf8(bytes[..header_end].to_vec()).expect("headers should be utf-8");
+	let frame = bytes[header_end..].to_vec();
+
+	(client, response, frame)
+}
+
+pub(super) fn read_websocket_json_until(
+	client: &mut TcpStream,
+	frame: &mut Vec<u8>,
+	matches: impl Fn(&Value) -> bool,
+) -> Value {
+	let deadline = Instant::now() + OPERATOR_DASHBOARD_TEST_TIMEOUT;
+	let mut buffer = [0_u8; 2_048];
+
+	loop {
+		assert!(Instant::now() < deadline, "websocket should send expected event");
+
+		if frame.is_empty() {
+			let event_bytes = client.read(&mut buffer).expect("client should read websocket event");
+
+			frame.extend_from_slice(&buffer[..event_bytes]);
+		}
+
+		if let Some((payload, consumed)) = websocket_text_payload(frame) {
+			let payload: Value =
+				serde_json::from_slice(payload).expect("event payload should be json");
+
+			frame.drain(..consumed);
+
+			if matches(&payload) {
+				return payload;
+			}
+		} else {
+			let event_bytes =
+				client.read(&mut buffer).expect("client should continue websocket event");
+
+			frame.extend_from_slice(&buffer[..event_bytes]);
+		}
+	}
+}
 
 #[test]
 fn operator_dashboard_websocket_pushes_broadcast_events() {
@@ -114,7 +224,7 @@ fn operator_dashboard_websocket_sends_current_snapshot_on_connect() {
 
 #[test]
 fn operator_dashboard_websocket_sends_cached_run_activity_on_connect() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
 	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot {
@@ -126,12 +236,12 @@ fn operator_dashboard_websocket_sends_cached_run_activity_on_connect() {
 	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("Todo", &[]);
+	let issue = http::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let account = CodexAccountActivitySummary {
 		account_fingerprint: String::from("acct-1"),
@@ -213,7 +323,7 @@ fn operator_dashboard_websocket_sends_cached_run_activity_on_connect() {
 
 #[test]
 fn operator_dashboard_websocket_accepts_subscription_and_account_selection_controls() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
 	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot {
@@ -225,7 +335,7 @@ fn operator_dashboard_websocket_accepts_subscription_and_account_selection_contr
 	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
@@ -336,7 +446,7 @@ fn assert_dashboard_account_selection_controls(
 		Some(String::from("copy@example.com"))
 	);
 	assert!(
-		!fs::read_to_string(service_config_path(repo_root))
+		!fs::read_to_string(http::service_config_path(repo_root))
 			.expect("project config should remain readable")
 			.contains("fixed_account"),
 		"account selection should not write project-scoped fixed_account"
@@ -537,19 +647,19 @@ fn operator_dashboard_websocket_filters_run_activity_by_subscription() {
 
 #[test]
 fn operator_dashboard_websocket_rejects_lane_mutation_controls() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
 	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot::default()));
 	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
-	let issue = sample_issue("Todo", &[]);
+	let issue = http::sample_issue("Todo", &[]);
 	let dashboard_events = DashboardEventHub::default();
 	let server_snapshot = Arc::clone(&snapshot);
 	let server_state_store = Arc::clone(&state_store);
 	let server_dashboard_events = dashboard_events.clone();
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
@@ -635,76 +745,6 @@ fn operator_dashboard_websocket_rejects_lane_mutation_controls() {
 	server.join().expect("server thread should complete");
 }
 
-pub(super) fn websocket_text_payload(frame: &[u8]) -> Option<(&[u8], usize)> {
-	if frame.len() < 2 || frame[0] != 0x81 {
-		return None;
-	}
-
-	let payload_length_marker = frame[1] & 0x7f;
-	let (payload_offset, payload_length): (usize, usize) = match payload_length_marker {
-		length @ 0..=125 => (2_usize, usize::from(length)),
-		126 => {
-			if frame.len() < 4 {
-				return None;
-			}
-
-			(4_usize, usize::from(u16::from_be_bytes([frame[2], frame[3]])))
-		},
-		127 => {
-			if frame.len() < 10 {
-				return None;
-			}
-
-			let length = u64::from_be_bytes([
-				frame[2], frame[3], frame[4], frame[5], frame[6], frame[7], frame[8], frame[9],
-			]);
-			let Ok(length) = usize::try_from(length) else {
-				return None;
-			};
-
-			(10_usize, length)
-		},
-		_ => return None,
-	};
-	let payload_end = payload_offset.checked_add(payload_length)?;
-
-	(frame.len() >= payload_end).then(|| (&frame[payload_offset..payload_end], payload_end))
-}
-
-pub(super) fn open_dashboard_websocket_client(address: SocketAddr) -> (TcpStream, String, Vec<u8>) {
-	let mut client = TcpStream::connect(address).expect("client should connect");
-	let mut bytes = Vec::new();
-	let mut buffer = [0_u8; 2_048];
-
-	client
-		.set_read_timeout(Some(OPERATOR_DASHBOARD_TEST_TIMEOUT))
-		.expect("client timeout should configure");
-	client
-		.write_all(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
-				orchestrator::OPERATOR_DASHBOARD_WS_ENDPOINT_PATH
-			)
-			.as_bytes(),
-		)
-		.expect("client should write request");
-
-	let header_end = loop {
-		let header_bytes = client.read(&mut buffer).expect("client should read stream headers");
-
-		bytes.extend_from_slice(&buffer[..header_bytes]);
-
-		if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
-			break index + 4;
-		}
-	};
-	let response =
-		String::from_utf8(bytes[..header_end].to_vec()).expect("headers should be utf-8");
-	let frame = bytes[header_end..].to_vec();
-
-	(client, response, frame)
-}
-
 fn websocket_client_text_frame(payload: &str) -> Vec<u8> {
 	let payload = payload.as_bytes();
 	let mask = [0x11_u8, 0x22, 0x33, 0x44];
@@ -728,41 +768,6 @@ fn websocket_client_text_frame(payload: &str) -> Vec<u8> {
 	frame.extend(payload.iter().enumerate().map(|(index, byte)| byte ^ mask[index % mask.len()]));
 
 	frame
-}
-
-pub(super) fn read_websocket_json_until(
-	client: &mut TcpStream,
-	frame: &mut Vec<u8>,
-	matches: impl Fn(&Value) -> bool,
-) -> Value {
-	let deadline = Instant::now() + OPERATOR_DASHBOARD_TEST_TIMEOUT;
-	let mut buffer = [0_u8; 2_048];
-
-	loop {
-		assert!(Instant::now() < deadline, "websocket should send expected event");
-
-		if frame.is_empty() {
-			let event_bytes = client.read(&mut buffer).expect("client should read websocket event");
-
-			frame.extend_from_slice(&buffer[..event_bytes]);
-		}
-
-		if let Some((payload, consumed)) = websocket_text_payload(frame) {
-			let payload: Value =
-				serde_json::from_slice(payload).expect("event payload should be json");
-
-			frame.drain(..consumed);
-
-			if matches(&payload) {
-				return payload;
-			}
-		} else {
-			let event_bytes =
-				client.read(&mut buffer).expect("client should continue websocket event");
-
-			frame.extend_from_slice(&buffer[..event_bytes]);
-		}
-	}
 }
 
 fn assert_protocol_activity_detail_redacted(protocol_activity: &Value) {
@@ -822,16 +827,16 @@ fn operator_dashboard_run_activity_event_summarizes_current_lanes() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("Todo", &[]);
+	let issue = http::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let protocol_activity = ProtocolActivitySummary {
 		turn_status: Some(String::from("running")),
@@ -850,7 +855,7 @@ fn operator_dashboard_run_activity_event_summarizes_current_lanes() {
 		..Default::default()
 	};
 
-	git_status_success(
+	http::git_status_success(
 		config.repo_root(),
 		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
 	);

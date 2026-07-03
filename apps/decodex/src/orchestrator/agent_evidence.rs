@@ -6,7 +6,7 @@ mod private_readback;
 mod project_view;
 mod snapshot;
 
-pub(in crate::orchestrator) use self::{
+pub(crate) use self::{
 	models::{
 		AgentEvidenceSource, AgentEvidenceSummary, AgentEvidenceWriteResult,
 		AgentPrivateEvidenceRef, PrivateEvidenceArchitectureRecoverySummary,
@@ -32,24 +32,26 @@ pub(in crate::orchestrator) use self::{
 	},
 };
 
-use self::capsules::{
-	agent_connector_backoff, agent_recovery_contract, agent_recovery_worktree,
-	build_agent_blockers, build_run_capsules, run_capsule_ref,
-};
-use self::files::write_agent_evidence_files;
-use self::models::{
-	AgentBlocker, AgentBlockerSnapshot, AgentConnectorBackoff, AgentEvidenceEvent,
-	AgentEvidenceFileWriteContext, AgentHandoffIndex, AgentRecoveryContract, AgentRecoveryWorktree,
-	AgentRunCapsule, AgentRunCapsuleRef, AgentRunDiagnosis, AgentRunLedgerOutcome,
-	PrivateEvidenceTarget,
+use self::{
+	capsules::{
+		agent_connector_backoff, agent_recovery_contract, agent_recovery_worktree,
+		build_agent_blockers, build_run_capsules, run_capsule_ref,
+	},
+	files::write_agent_evidence_files,
+	models::{
+		AgentBlocker, AgentBlockerSnapshot, AgentConnectorBackoff, AgentEvidenceEvent,
+		AgentEvidenceFileWriteContext, AgentHandoffIndex, AgentRecoveryContract,
+		AgentRecoveryWorktree, AgentRunCapsule, AgentRunCapsuleRef, AgentRunDiagnosis,
+		AgentRunLedgerOutcome, PrivateEvidenceTarget,
+	},
 };
 use crate::{
 	orchestrator::{
 		AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
-		EvidenceRequest, OperatorRunStatus, OperatorStatusSnapshot, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
-		ProjectRunStatus, ServiceConfig, StateStore, current_timestamp,
-		harness_improvement::harness_improvement_candidates_from_private_events,
-		operator_run_issue_identifier_from_fields, relative_worktree_path_for_path, state,
+		EvidenceRequest, OperatorRunStatus, OperatorStatusSnapshot,
+		PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, ProjectRunStatus, ServiceConfig, StateStore,
+		current_timestamp, harness_improvement::harness_improvement_candidates_from_private_events,
+		operator_run_issue_identifier_from_fields, relative_worktree_path_for_path,
 	},
 	prelude::{Result, eyre},
 	runtime,

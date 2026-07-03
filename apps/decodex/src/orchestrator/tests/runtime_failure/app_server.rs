@@ -1,8 +1,12 @@
-use super::{
-	AppServerCapabilityPreflightFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure,
-	AppServerTransportFailure, AppServerTurnFailure, AppServerZeroEvidenceStartFailure, BTreeMap,
-	CodexAccountAuthFailure, FakeTracker, IssueDispatchMode, IssueRunPlan, PhaseGoalKind, Report,
-	StateStore, TestEnvVarGuard, WorktreeSpec, fs, orchestrator, sample_issue, temp_project_layout,
+use crate::orchestrator::{
+	tests,
+	tests::runtime_failure::{
+		AppServerCapabilityPreflightFailure, AppServerHomePreflightFailure,
+		AppServerPhaseGoalFailure, AppServerTransportFailure, AppServerTurnFailure,
+		AppServerZeroEvidenceStartFailure, BTreeMap, CodexAccountAuthFailure, FakeTracker,
+		IssueDispatchMode, IssueRunPlan, PhaseGoalKind, Report, StateStore, TestEnvVarGuard,
+		WorktreeSpec, fs, orchestrator,
+	},
 };
 
 #[test]
@@ -127,10 +131,10 @@ fn app_server_preflight_terminal_action_surfaces_first_scan_error() {
 
 #[test]
 fn zero_evidence_app_server_start_failure_is_promoted_records_private_evidence_and_retries() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let _env_guard =
 		TestEnvVarGuard::set("DECODEX_TEST_ZERO_EVIDENCE_SECRET_TOKEN", "synthetic-secret-token");
 	let issue_run = IssueRunPlan {
@@ -228,10 +232,10 @@ fn zero_evidence_app_server_start_failure_is_promoted_records_private_evidence_a
 
 #[test]
 fn exhausted_zero_evidence_start_retry_budget_requires_attention_with_typed_class() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -286,9 +290,9 @@ fn exhausted_zero_evidence_start_retry_budget_requires_attention_with_typed_clas
 
 #[test]
 fn retryable_startup_transport_failure_does_not_promote_to_zero_evidence_attention() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -346,9 +350,9 @@ fn retryable_startup_transport_failure_does_not_promote_to_zero_evidence_attenti
 
 #[test]
 fn retryable_turn_failure_does_not_promote_to_zero_evidence_attention() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),

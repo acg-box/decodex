@@ -1,22 +1,25 @@
 use color_eyre::eyre;
 
-use crate::orchestrator::{
-	execution_failure::{
-		self, IssueRunPlan, IssueTracker, Report, Result, ReviewHandoffMarker,
-		ReviewOrchestrationMarker, ServiceConfig, StateStore, WorkflowDocument,
-		review_handoff_drift::{
-			attention, command, lineage,
-			types::{
-				REVIEW_HANDOFF_REBOUND_ORCHESTRATION_PHASE,
-				REVIEW_HANDOFF_STATE_DRIFT_RECOVERED_EVENT_TYPE, ReviewHandoffStateDriftTransition,
+use crate::{
+	orchestrator::{
+		execution_failure::{
+			self, IssueRunPlan, IssueTracker, Report, Result, ReviewHandoffMarker,
+			ReviewOrchestrationMarker, ServiceConfig, StateStore, WorkflowDocument,
+			review_handoff_drift::{
+				attention, command, lineage,
+				types::{
+					REVIEW_HANDOFF_REBOUND_ORCHESTRATION_PHASE,
+					REVIEW_HANDOFF_STATE_DRIFT_RECOVERED_EVENT_TYPE,
+					ReviewHandoffStateDriftTransition,
+				},
 			},
 		},
+		kernel::command::CommandIntentKind,
 	},
-	kernel::command::CommandIntentKind,
 	tracker,
 };
 
-pub(in crate::orchestrator::execution_failure) fn handle_review_handoff_failure_drift<T>(
+pub(crate) fn handle_review_handoff_failure_drift<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,

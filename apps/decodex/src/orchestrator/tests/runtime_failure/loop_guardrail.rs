@@ -1,25 +1,30 @@
-use super::{
-	AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition,
-	AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, LoopGuardrailReason,
-	LoopGuardrailStopRequested, RepoGateFailureKind, Report, StateStore, add_origin_remote,
-	checkout_new_branch, commit_worktree_change, fs, git_output, loop_guardrail_issue_run,
-	orchestrator, sample_issue, temp_project_layout, temp_project_layout_with_read_first,
+use crate::orchestrator::{
+	RepoGateFailure,
+	tests::{
+		self,
+		runtime_failure::{
+			self, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput,
+			AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision,
+			AuthorityBoundarySurface, LoopGuardrailReason, LoopGuardrailStopRequested,
+			RepoGateFailureKind, Report, StateStore, fs, orchestrator,
+		},
+	},
 };
 
 #[test]
 fn loop_guardrail_stops_repeated_validation_failures_after_three_observations() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let error = || {
-		Report::new(orchestrator::RepoGateFailure::new(
+		Report::new(RepoGateFailure::new(
 			RepoGateFailureKind::VerifyCommandFailed,
 			String::from("Repo verify command `cargo make test` failed: same assertion failed"),
 		))
 	};
 
 	for attempt_number in 1..=2 {
-		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, attempt_number);
 
 		assert!(
 			orchestrator::retryable_failure_loop_guardrail_stop(
@@ -34,7 +39,7 @@ fn loop_guardrail_stops_repeated_validation_failures_after_three_observations() 
 		);
 	}
 
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
 	let stop = orchestrator::retryable_failure_loop_guardrail_stop(
 		&config,
 		&state_store,
@@ -66,18 +71,18 @@ fn loop_guardrail_stops_repeated_validation_failures_after_three_observations() 
 
 #[test]
 fn loop_guardrail_starts_architecture_recovery_when_boundary_is_within_authority() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let error = || {
-		Report::new(orchestrator::RepoGateFailure::new(
+		Report::new(RepoGateFailure::new(
 			RepoGateFailureKind::VerifyCommandFailed,
 			String::from("Repo verify command `cargo make test` failed: same assertion failed"),
 		))
 	};
 
 	for attempt_number in 1..=2 {
-		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, attempt_number);
 
 		assert!(
 			orchestrator::retryable_failure_loop_guardrail_stop(
@@ -91,7 +96,7 @@ fn loop_guardrail_starts_architecture_recovery_when_boundary_is_within_authority
 		);
 	}
 
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
 	let error = error();
 	let stop = orchestrator::retryable_failure_loop_guardrail_stop(
 		&config,
@@ -150,10 +155,10 @@ fn loop_guardrail_starts_architecture_recovery_when_boundary_is_within_authority
 
 #[test]
 fn loop_guardrail_review_churn_blocks_landing_but_continues_recovery() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 1);
+	let issue = tests::sample_issue("In Progress", &[]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 1);
 
 	state_store
 		.append_private_execution_event(
@@ -243,13 +248,13 @@ fn loop_guardrail_review_churn_blocks_landing_but_continues_recovery() {
 
 #[test]
 fn authority_boundary_infers_public_api_diff_requires_enhanced_evidence() {
-	let (_temp_dir, config, _workflow) = temp_project_layout_with_read_first(
+	let (_temp_dir, config, _workflow) = runtime_failure::temp_project_layout_with_read_first(
 		&[("apps/decodex/src/cli.rs", "pub fn run() {}\n")],
 		"Follow the repository policy.\n",
 	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 1);
+	let issue = tests::sample_issue("In Progress", &[]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 1);
 	let public_api_path = config.repo_root().join("apps/decodex/src/cli.rs");
 
 	fs::write(public_api_path, "pub fn run() { println!(\"changed\"); }\n")
@@ -264,7 +269,7 @@ fn authority_boundary_infers_public_api_diff_requires_enhanced_evidence() {
 		source_error_class: Some(String::from("repo_gate_verify_failed")),
 		architecture_recovery_reason_code: None,
 	};
-	let error = Report::new(orchestrator::RepoGateFailure::new(
+	let error = Report::new(RepoGateFailure::new(
 		RepoGateFailureKind::VerifyCommandFailed,
 		String::from("Repo verify command `cargo make test` failed: same assertion failed"),
 	));
@@ -359,13 +364,13 @@ fn assert_architecture_recovery_diff_surface_policy(
 	expected_surface: AuthorityBoundarySurface,
 	expected_policy_decision: AuthorityBoundaryPolicyDecision,
 ) {
-	let (_temp_dir, config, _workflow) = temp_project_layout_with_read_first(
+	let (_temp_dir, config, _workflow) = runtime_failure::temp_project_layout_with_read_first(
 		&[(relative_path, "initial\n")],
 		"Follow the repository policy.\n",
 	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 1);
+	let issue = tests::sample_issue("In Progress", &[]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 1);
 
 	fs::write(config.repo_root().join(relative_path), "updated\n")
 		.expect("tracked file should change");
@@ -379,7 +384,7 @@ fn assert_architecture_recovery_diff_surface_policy(
 		source_error_class: Some(String::from("repo_gate_verify_failed")),
 		architecture_recovery_reason_code: None,
 	};
-	let error = Report::new(orchestrator::RepoGateFailure::new(
+	let error = Report::new(RepoGateFailure::new(
 		RepoGateFailureKind::VerifyCommandFailed,
 		String::from("Repo verify command `cargo make test` failed: same assertion failed"),
 	));
@@ -422,10 +427,10 @@ fn assert_architecture_recovery_diff_surface_policy(
 
 #[test]
 fn authority_boundary_public_api_surface_requires_enhanced_evidence() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 1);
+	let issue = tests::sample_issue("In Progress", &[]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 1);
 	let event = orchestrator::record_authority_boundary_check_private_event(
 		&state_store,
 		AuthorityBoundaryCheckInput {
@@ -523,10 +528,10 @@ fn authority_boundary_surface_policy_matrix_classifies_risk() {
 
 #[test]
 fn loop_guardrail_uncovered_direction_requires_human_decision() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 1);
+	let issue = tests::sample_issue("In Progress", &[]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 1);
 	let stop = LoopGuardrailStopRequested {
 		issue_identifier: issue.identifier.clone(),
 		run_id: issue_run.run_id.clone(),
@@ -581,12 +586,12 @@ fn loop_guardrail_uncovered_direction_requires_human_decision() {
 
 #[test]
 fn loop_guardrail_requires_human_when_boundary_evidence_is_missing() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 
 	for attempt_number in 1..=2 {
-		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, attempt_number);
 		let error = Report::msg("child exited without useful change");
 
 		assert!(
@@ -601,7 +606,7 @@ fn loop_guardrail_requires_human_when_boundary_evidence_is_missing() {
 		);
 	}
 
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
 	let error = Report::msg("child exited without useful change");
 	let stop = orchestrator::retryable_failure_loop_guardrail_stop(
 		&config,
@@ -655,13 +660,13 @@ fn loop_guardrail_requires_human_when_boundary_evidence_is_missing() {
 
 #[test]
 fn loop_guardrail_stops_validation_repeat_when_validation_text_changes() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 
 	for attempt_number in 1..=2 {
-		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
-		let error = Report::new(orchestrator::RepoGateFailure::new(
+		let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let error = Report::new(RepoGateFailure::new(
 			RepoGateFailureKind::VerifyCommandFailed,
 			format!("Repo verify command failed with assertion variant {attempt_number}"),
 		));
@@ -678,8 +683,8 @@ fn loop_guardrail_stops_validation_repeat_when_validation_text_changes() {
 		);
 	}
 
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
-	let error = Report::new(orchestrator::RepoGateFailure::new(
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
+	let error = Report::new(RepoGateFailure::new(
 		RepoGateFailureKind::VerifyCommandFailed,
 		String::from("Repo verify command failed with assertion variant 3"),
 	));
@@ -712,12 +717,12 @@ fn loop_guardrail_stops_validation_repeat_when_validation_text_changes() {
 
 #[test]
 fn loop_guardrail_stops_no_effective_diff_for_retryable_errors_without_delta() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 
 	for attempt_number in 1..=2 {
-		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, attempt_number);
 		let error = Report::msg("child exited without useful change");
 
 		assert!(
@@ -732,7 +737,7 @@ fn loop_guardrail_stops_no_effective_diff_for_retryable_errors_without_delta() {
 		);
 	}
 
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
 	let error = Report::msg("child exited without useful change");
 	let stop = orchestrator::retryable_failure_loop_guardrail_stop(
 		&config,
@@ -757,24 +762,24 @@ fn loop_guardrail_stops_no_effective_diff_for_retryable_errors_without_delta() {
 
 #[test]
 fn loop_guardrail_does_not_classify_committed_branch_delta_as_no_effective_diff() {
-	let (temp_dir, config, _workflow) = temp_project_layout();
+	let (temp_dir, config, _workflow) = tests::temp_project_layout();
 	let remote_root = temp_dir.path().join("origin.git");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 
-	add_origin_remote(config.repo_root(), &remote_root);
-	checkout_new_branch(config.repo_root(), "x/pubfi-pub-101");
-	commit_worktree_change(
+	runtime_failure::add_origin_remote(config.repo_root(), &remote_root);
+	runtime_failure::checkout_new_branch(config.repo_root(), "x/pubfi-pub-101");
+	runtime_failure::commit_worktree_change(
 		config.repo_root(),
 		"ready.txt",
 		"implementation complete\n",
 		"implement issue scope",
 	);
 
-	assert_eq!(git_output(config.repo_root(), &["status", "--porcelain"]), "");
+	assert_eq!(runtime_failure::git_output(config.repo_root(), &["status", "--porcelain"]), "");
 
 	for attempt_number in 1..=3 {
-		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, attempt_number);
 		let error = Report::msg("child exited after committed issue-scoped work");
 		let stop = orchestrator::retryable_failure_loop_guardrail_stop(
 			&config,

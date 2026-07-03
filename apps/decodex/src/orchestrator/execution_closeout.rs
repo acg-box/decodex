@@ -1,10 +1,8 @@
 use std::slice;
 
-use super::{
-	IssueRunPlan, IssueTracker, RUN_OPERATION_REVIEW_WRITEBACK, Result, ReviewHandoffContext,
-	ServiceConfig, StateStore, TrackerToolBridge, WorkflowDocument,
-	cleanup_completed_post_review_lane, eyre, worktree_head_oid,
-	write_cleanup_complete_lifecycle_event, write_run_operation_marker_best_effort,
+use crate::orchestrator::{
+	self, IssueRunPlan, IssueTracker, RUN_OPERATION_REVIEW_WRITEBACK, Result, ReviewHandoffContext,
+	ServiceConfig, StateStore, TrackerToolBridge, WorkflowDocument, eyre,
 };
 
 pub(super) fn execute_deterministic_closeout<T>(
@@ -19,7 +17,7 @@ pub(super) fn execute_deterministic_closeout<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	write_run_operation_marker_best_effort(
+	orchestrator::write_run_operation_marker_best_effort(
 		&issue_run.worktree.path,
 		&issue_run.run_id,
 		issue_run.attempt_number,
@@ -34,14 +32,14 @@ where
 		)
 	})?;
 	let pull_request = tracker_tool_bridge.validate_deterministic_closeout_pr(pr_url)?;
-	let cleanup_commit_sha = worktree_head_oid(&issue_run.worktree.path)?;
+	let cleanup_commit_sha = orchestrator::worktree_head_oid(&issue_run.worktree.path)?;
 
 	ensure_closeout_issue_completed_state(tracker, workflow, issue_run)?;
 
 	tracker_tool_bridge.apply_validated_deterministic_closeout(pull_request)?;
 
-	cleanup_completed_post_review_lane(project, workflow, state_store, issue_run)?;
-	write_cleanup_complete_lifecycle_event(
+	orchestrator::cleanup_completed_post_review_lane(project, workflow, state_store, issue_run)?;
+	orchestrator::write_cleanup_complete_lifecycle_event(
 		tracker,
 		project,
 		state_store,

@@ -7,8 +7,6 @@ mod frontmatter;
 mod tracker;
 mod validation;
 
-#[cfg(test)] mod tests;
-
 pub use self::{
 	context::WorkflowContext,
 	document::WorkflowDocument,
@@ -19,3 +17,5 @@ pub use self::{
 	frontmatter::WorkflowFrontmatter,
 	tracker::{TrackerProvider, WorkflowAgent, WorkflowTracker},
 };
+
+#[cfg(test)] mod tests;

@@ -2,20 +2,19 @@ use std::str;
 
 use serde_json::{self, Value};
 
-use super::McpHttpHandler;
 use crate::{
 	mcp::{
 		self, MCP_SESSION_HEADER,
-		http::message::{self, McpHttpRequest, McpHttpResponse},
+		http::{
+			handler::request::McpHttpHandler,
+			message::{self, McpHttpRequest, McpHttpResponse},
+		},
 	},
-	prelude,
+	prelude::Result,
 };
 
 impl McpHttpHandler {
-	pub(super) fn handle_post(
-		&mut self,
-		request: McpHttpRequest,
-	) -> prelude::Result<McpHttpResponse> {
+	pub(super) fn handle_post(&mut self, request: McpHttpRequest) -> Result<McpHttpResponse> {
 		if !request.content_type_is_json() {
 			return Ok(McpHttpResponse::json_error(
 				"415 Unsupported Media Type",

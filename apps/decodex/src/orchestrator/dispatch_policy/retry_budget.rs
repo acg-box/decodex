@@ -1,19 +1,16 @@
-use std::{
-	fs,
-	io::ErrorKind,
-	path::{Path, PathBuf},
-};
-
 use crate::{
 	orchestrator::{
-		IssueDispatchMode, IssueTracker, Result, RetryIssueStateHint, ServiceConfig, StateStore,
-		TERMINAL_GUARD_MARKER_FILE, TERMINAL_GUARDED_RUN_STATUS, TrackerIssue, WorkflowDocument,
-		ordinary_dispatch_blocked_by_retained_review_handoff, tracker,
+		dispatch_policy,
+		dispatch_policy::{
+			ErrorKind, IssueDispatchMode, IssueTracker, Path, PathBuf, Result, RetryIssueStateHint,
+			ServiceConfig, StateStore, TERMINAL_GUARD_MARKER_FILE, TERMINAL_GUARDED_RUN_STATUS,
+			TrackerIssue, WorkflowDocument, fs,
+		},
 	},
-	state,
+	state, tracker,
 };
 
-pub(in crate::orchestrator) fn issue_passes_retry_dispatch_policy<T>(
+pub(crate) fn issue_passes_retry_dispatch_policy<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
@@ -27,7 +24,7 @@ where
 	issue_passes_retry_retention_policy(tracker, issue, project, workflow, state_store, hint)
 }
 
-pub(in crate::orchestrator) fn issue_passes_retry_retention_policy<T>(
+pub(crate) fn issue_passes_retry_retention_policy<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
@@ -55,14 +52,14 @@ where
 		return Ok(false);
 	}
 
-	Ok(!ordinary_dispatch_blocked_by_retained_review_handoff(
+	Ok(!dispatch_policy::ordinary_dispatch_blocked_by_retained_review_handoff(
 		project.service_id(),
 		issue,
 		state_store,
 	)?)
 }
 
-pub(in crate::orchestrator) fn issue_has_service_ownership<T>(
+pub(crate) fn issue_has_service_ownership<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	service_id: &str,
@@ -77,7 +74,7 @@ where
 	)
 }
 
-pub(in crate::orchestrator) fn issue_is_terminal_retry_guarded(
+pub(crate) fn issue_is_terminal_retry_guarded(
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
 	state_store: &StateStore,
@@ -88,11 +85,7 @@ pub(in crate::orchestrator) fn issue_is_terminal_retry_guarded(
 		|| terminal_guard_marker_path(project, &issue.identifier).exists())
 }
 
-fn terminal_guard_marker_path(project: &ServiceConfig, issue_identifier: &str) -> PathBuf {
-	project.worktree_root().join(issue_identifier).join(TERMINAL_GUARD_MARKER_FILE)
-}
-
-pub(in crate::orchestrator) fn write_terminal_guard_marker(
+pub(crate) fn write_terminal_guard_marker(
 	worktree_path: &Path,
 	run_id: &str,
 	attempt_number: i64,
@@ -105,7 +98,7 @@ pub(in crate::orchestrator) fn write_terminal_guard_marker(
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn write_retry_budget_marker(
+pub(crate) fn write_retry_budget_marker(
 	worktree_path: &Path,
 	run_id: &str,
 	attempt_number: i64,
@@ -119,7 +112,7 @@ pub(in crate::orchestrator) fn write_retry_budget_marker(
 	)
 }
 
-pub(in crate::orchestrator) fn retry_budget_base_for_issue_worktree(
+pub(crate) fn retry_budget_base_for_issue_worktree(
 	state_store: &StateStore,
 	issue_id: &str,
 	worktree_path: &Path,
@@ -129,7 +122,7 @@ pub(in crate::orchestrator) fn retry_budget_base_for_issue_worktree(
 		.max(state::read_run_retry_budget_attempt_count(worktree_path)?.unwrap_or(0)))
 }
 
-pub(in crate::orchestrator) fn retry_budget_base_for_dispatch_mode(
+pub(crate) fn retry_budget_base_for_dispatch_mode(
 	state_store: &StateStore,
 	issue_id: &str,
 	worktree_path: &Path,
@@ -149,7 +142,7 @@ pub(in crate::orchestrator) fn retry_budget_base_for_dispatch_mode(
 	)?))
 }
 
-pub(in crate::orchestrator) fn issue_retry_budget_exhausted(
+pub(crate) fn issue_retry_budget_exhausted(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_id: &str,
@@ -168,7 +161,7 @@ pub(in crate::orchestrator) fn issue_retry_budget_exhausted(
 	Ok(retry_budget_attempts >= i64::from(workflow.frontmatter().execution().max_attempts()))
 }
 
-pub(in crate::orchestrator) fn issue_retry_budget_exhausted_for_worktree(
+pub(crate) fn issue_retry_budget_exhausted_for_worktree(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_id: &str,
@@ -180,7 +173,7 @@ pub(in crate::orchestrator) fn issue_retry_budget_exhausted_for_worktree(
 	Ok(retry_budget_attempts >= i64::from(workflow.frontmatter().execution().max_attempts()))
 }
 
-pub(in crate::orchestrator) fn clear_terminal_guard_marker(worktree_path: &Path) -> Result<()> {
+pub(crate) fn clear_terminal_guard_marker(worktree_path: &Path) -> Result<()> {
 	let marker_path = worktree_path.join(TERMINAL_GUARD_MARKER_FILE);
 
 	match fs::remove_file(&marker_path) {
@@ -188,4 +181,8 @@ pub(in crate::orchestrator) fn clear_terminal_guard_marker(worktree_path: &Path)
 		Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
 		Err(error) => Err(error.into()),
 	}
+}
+
+fn terminal_guard_marker_path(project: &ServiceConfig, issue_identifier: &str) -> PathBuf {
+	project.worktree_root().join(issue_identifier).join(TERMINAL_GUARD_MARKER_FILE)
 }

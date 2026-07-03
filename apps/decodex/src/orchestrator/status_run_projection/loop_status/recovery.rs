@@ -4,7 +4,7 @@ use crate::orchestrator::{
 	OperatorRecoveryBudgetStatus, PrivateExecutionEvent, Value, status_run_projection,
 };
 
-pub(in crate::orchestrator) fn operator_architecture_recovery_status_from_event(
+pub(crate) fn operator_architecture_recovery_status_from_event(
 	event: &PrivateExecutionEvent,
 ) -> Option<OperatorArchitectureRecoveryStatus> {
 	if !matches!(
@@ -114,9 +114,7 @@ pub(in crate::orchestrator) fn operator_architecture_recovery_status_from_event(
 	})
 }
 
-pub(in crate::orchestrator) fn operator_architecture_recovery_status_for_reason(
-	reason_code: &str,
-) -> &'static str {
+pub(crate) fn operator_architecture_recovery_status_for_reason(reason_code: &str) -> &'static str {
 	match reason_code {
 		"architecture_recovery_started" => "active",
 		"architecture_recovery_exhausted" => "exhausted",
@@ -125,7 +123,7 @@ pub(in crate::orchestrator) fn operator_architecture_recovery_status_for_reason(
 	}
 }
 
-pub(in crate::orchestrator) fn operator_architecture_recovery_next_action(
+pub(crate) fn operator_architecture_recovery_next_action(
 	reason_code: &str,
 	policy_decision: Option<&str>,
 	requires_enhanced_evidence: bool,

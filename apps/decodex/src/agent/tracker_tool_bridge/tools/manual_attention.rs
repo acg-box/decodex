@@ -3,21 +3,21 @@ mod normalize;
 
 use serde_json::{self, Value};
 
-use crate::agent::tracker_tool_bridge::tools::{
-	COMMENT_KIND_MANUAL_ATTENTION, MANUAL_ATTENTION_TERMINAL_PATH,
-};
-use crate::agent::tracker_tool_bridge::{
-	self, CommentArgs, DynamicToolCallResponse, ISSUE_COMMENT_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
-	ReviewHandoffContext, TrackerToolBridge,
-};
-use crate::orchestrator::{
-	self, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AuthorityDecisionOption,
-	AuthorityDecisionRequestInput,
-};
-use crate::state::StateStore;
-use crate::tracker::{
-	self,
-	records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
+use crate::{
+	agent::tracker_tool_bridge::{
+		self, CommentArgs, DynamicToolCallResponse, ISSUE_COMMENT_TOOL_NAME,
+		ISSUE_LABEL_ADD_TOOL_NAME, ReviewHandoffContext, TrackerToolBridge,
+		tools::{COMMENT_KIND_MANUAL_ATTENTION, MANUAL_ATTENTION_TERMINAL_PATH},
+	},
+	orchestrator::{
+		self, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AuthorityDecisionOption,
+		AuthorityDecisionRequestInput,
+	},
+	state::StateStore,
+	tracker::{
+		self,
+		records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
+	},
 };
 
 #[derive(Debug)]

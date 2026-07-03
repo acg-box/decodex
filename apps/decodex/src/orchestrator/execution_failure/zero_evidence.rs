@@ -4,33 +4,32 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
-use super::{
-	IssueRunPlan, Report, Result, ServiceConfig, StateStore, run_failure_writeback_disposition,
+use crate::orchestrator::execution_failure::{
+	self, IssueRunPlan, Report, ServiceConfig, StateStore,
 };
 
 #[derive(Debug)]
-pub(in crate::orchestrator) struct AppServerZeroEvidenceStartFailure {
+pub(crate) struct AppServerZeroEvidenceStartFailure {
 	issue_identifier: String,
 	run_id: String,
 }
-
 impl AppServerZeroEvidenceStartFailure {
-	pub(in crate::orchestrator) fn new(issue_identifier: String, run_id: String) -> Self {
+	pub(crate) fn new(issue_identifier: String, run_id: String) -> Self {
 		Self { issue_identifier, run_id }
 	}
 
-	pub(in crate::orchestrator) fn error_class(&self) -> &'static str {
+	pub(crate) fn error_class(&self) -> &'static str {
 		"app_server_zero_evidence_start_failed"
 	}
 
-	pub(in crate::orchestrator) fn terminal_next_action(&self, recovery_gate: &str) -> String {
+	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
 		format!(
 			"inspect local app-server startup logs and Decodex account/runtime state for run `{}`, verify `decodex probe stdio://`, restart `decodex serve` if needed, {recovery_gate}",
 			self.run_id
 		)
 	}
 
-	pub(in crate::orchestrator) fn retry_next_action(&self) -> String {
+	pub(crate) fn retry_next_action(&self) -> String {
 		format!(
 			"restart the app-server and retry automatically for run `{}`; inspect private startup diagnostics if the retry budget exhausts",
 			self.run_id
@@ -62,13 +61,13 @@ pub(super) struct ZeroEvidenceAppServerStartFailureDiagnostic {
 	source_error_chain: Vec<String>,
 }
 
-pub(in crate::orchestrator) fn promote_zero_evidence_app_server_start_failure(
+pub(crate) fn promote_zero_evidence_app_server_start_failure(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 	error: Report,
 ) -> Report {
-	let writeback_disposition = run_failure_writeback_disposition(&error);
+	let writeback_disposition = execution_failure::run_failure_writeback_disposition(&error);
 
 	if writeback_disposition.requires_terminal_attention()
 		|| writeback_disposition.preserves_retry_through_zero_evidence()
@@ -121,11 +120,26 @@ pub(in crate::orchestrator) fn promote_zero_evidence_app_server_start_failure(
 	}
 }
 
+pub(crate) fn truncate_private_diagnostic_text(text: &str) -> String {
+	const MAX_PRIVATE_DIAGNOSTIC_TEXT_CHARS: usize = 2_000;
+
+	if text.chars().count() <= MAX_PRIVATE_DIAGNOSTIC_TEXT_CHARS {
+		return text.to_owned();
+	}
+
+	let mut truncated = text.chars().take(MAX_PRIVATE_DIAGNOSTIC_TEXT_CHARS).collect::<String>();
+
+	truncated.push_str("...<truncated>");
+
+	truncated
+}
+
 fn zero_evidence_app_server_start_failure_context(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
-) -> Result<Option<ZeroEvidenceAppServerStartFailureContext>> {
+) -> crate::orchestrator::execution_failure::Result<Option<ZeroEvidenceAppServerStartFailureContext>>
+{
 	let protocol_event_count = state_store.event_count(&issue_run.run_id)?;
 	let private_event_count = state_store
 		.list_private_execution_events(
@@ -157,7 +171,7 @@ fn record_zero_evidence_app_server_start_failure(
 	issue_run: &IssueRunPlan,
 	context: &ZeroEvidenceAppServerStartFailureContext,
 	diagnostic: &ZeroEvidenceAppServerStartFailureDiagnostic,
-) -> Result<()> {
+) -> crate::orchestrator::execution_failure::Result<()> {
 	state_store
 		.append_private_execution_event(
 			project.service_id(),
@@ -227,18 +241,4 @@ fn diagnostic_env_var_name_is_sensitive(name: &str) -> bool {
 		|| normalized.starts_with("pat_")
 		|| normalized.contains("_pat_")
 		|| normalized.contains("auth")
-}
-
-pub(in crate::orchestrator) fn truncate_private_diagnostic_text(text: &str) -> String {
-	const MAX_PRIVATE_DIAGNOSTIC_TEXT_CHARS: usize = 2_000;
-
-	if text.chars().count() <= MAX_PRIVATE_DIAGNOSTIC_TEXT_CHARS {
-		return text.to_owned();
-	}
-
-	let mut truncated = text.chars().take(MAX_PRIVATE_DIAGNOSTIC_TEXT_CHARS).collect::<String>();
-
-	truncated.push_str("...<truncated>");
-
-	truncated
 }

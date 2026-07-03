@@ -2,9 +2,10 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-use crate::state::CodexAccountProfileDailyUsageSummary;
-
-use super::usage_history::{AccountUsageDailySummary, AccountUsageEstimateSummary};
+use crate::{
+	accounts::usage_history::{AccountUsageDailySummary, AccountUsageEstimateSummary},
+	state::CodexAccountProfileDailyUsageSummary,
+};
 
 pub(crate) struct AccountLoginRequest {
 	pub(crate) codex_bin: String,

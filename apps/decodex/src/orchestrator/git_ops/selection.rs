@@ -1,7 +1,9 @@
 use std::path::Path;
 
-use super::repo_gate_changed_tracked_files;
-use crate::workflow::{ResolvedRepoGate, WorkflowExecution};
+use crate::{
+	orchestrator::git_ops,
+	workflow::{ResolvedRepoGate, WorkflowExecution},
+};
 
 pub(crate) fn select_repo_gate_for_worktree<'a>(
 	execution: &'a WorkflowExecution,
@@ -11,7 +13,7 @@ pub(crate) fn select_repo_gate_for_worktree<'a>(
 		return execution.default_repo_gate();
 	}
 
-	let changed_files = match repo_gate_changed_tracked_files(cwd) {
+	let changed_files = match git_ops::repo_gate_changed_tracked_files(cwd) {
 		Ok(changed_files) => changed_files,
 		Err(error) => {
 			tracing::warn!(

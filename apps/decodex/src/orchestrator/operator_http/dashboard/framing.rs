@@ -1,15 +1,15 @@
 use std::{
-	io::{ErrorKind, Read, Write},
+	io::{ErrorKind, Read as _, Write as _},
 	net::TcpStream,
 };
 
 use serde_json::Value;
 
-use super::super::{
-	DashboardClientFrame, OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES, Result, eyre, json,
+use crate::orchestrator::operator_http::{
+	self, DashboardClientFrame, OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES, Result, eyre,
 };
 
-pub(super) fn write_dashboard_websocket_event(
+pub(crate) fn write_dashboard_websocket_event(
 	stream: &mut TcpStream,
 	event_type: &'static str,
 	payload: &Value,
@@ -19,16 +19,7 @@ pub(super) fn write_dashboard_websocket_event(
 	Ok(())
 }
 
-pub(crate) fn dashboard_websocket_message(event_type: &str, payload: &Value) -> Result<Vec<u8>> {
-	let message = serde_json::to_vec(&json!({
-		"type": event_type,
-		"payload": payload,
-	}))?;
-
-	websocket_frame(0x1, &message)
-}
-
-pub(super) fn websocket_frame(opcode: u8, payload: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn websocket_frame(opcode: u8, payload: &[u8]) -> Result<Vec<u8>> {
 	let mut frame = Vec::with_capacity(payload.len().saturating_add(10));
 
 	frame.push(0x80 | opcode);
@@ -54,11 +45,11 @@ pub(super) fn websocket_frame(opcode: u8, payload: &[u8]) -> Result<Vec<u8>> {
 	Ok(frame)
 }
 
-pub(super) fn websocket_ping_frame() -> Vec<u8> {
+pub(crate) fn websocket_ping_frame() -> Vec<u8> {
 	vec![0x89, 0]
 }
 
-pub(super) fn read_dashboard_websocket_client_frames(
+pub(crate) fn read_dashboard_websocket_client_frames(
 	stream: &mut TcpStream,
 	buffer: &mut Vec<u8>,
 ) -> Result<Vec<DashboardClientFrame>> {
@@ -90,7 +81,7 @@ pub(super) fn read_dashboard_websocket_client_frames(
 	Ok(frames)
 }
 
-pub(super) fn parse_dashboard_websocket_client_frame(
+pub(crate) fn parse_dashboard_websocket_client_frame(
 	buffer: &mut Vec<u8>,
 ) -> Result<Option<DashboardClientFrame>> {
 	if buffer.len() < 2 {
@@ -181,4 +172,13 @@ pub(super) fn parse_dashboard_websocket_client_frame(
 	};
 
 	Ok(Some(frame))
+}
+
+pub(crate) fn dashboard_websocket_message(event_type: &str, payload: &Value) -> Result<Vec<u8>> {
+	let message = serde_json::to_vec(&operator_http::json!({
+		"type": event_type,
+		"payload": payload,
+	}))?;
+
+	websocket_frame(0x1, &message)
 }

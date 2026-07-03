@@ -1,10 +1,12 @@
-use super::*;
-
+use crate::orchestrator::tests::operator::status::{
+	self, ChildAgentActivitySummary, FakeTracker, OffsetDateTime, ReviewPolicyCheckpointInput,
+	StateStore, TEST_SERVICE_ID, orchestrator, slice, state, tracker,
+};
 #[test]
 fn operator_status_history_limit_applies_after_current_lanes_are_split_out() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let active_issue = sample_issue_with_sort_fields(
+	let active_issue = status::sample_issue_with_sort_fields(
 		"issue-1",
 		"PUB-101",
 		"Todo",
@@ -12,7 +14,7 @@ fn operator_status_history_limit_applies_after_current_lanes_are_split_out() {
 		Some(3),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let failed_issue = sample_issue_with_sort_fields(
+	let failed_issue = status::sample_issue_with_sort_fields(
 		"issue-2",
 		"PUB-102",
 		"Todo",
@@ -142,9 +144,9 @@ fn seed_grouped_history_lane_lifecycle_metrics(state_store: &StateStore, issue_i
 
 #[test]
 fn operator_status_history_lanes_group_attempts_by_issue() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let first_issue = sample_issue_with_sort_fields(
+	let first_issue = status::sample_issue_with_sort_fields(
 		"issue-1",
 		"XY-323",
 		"Done",
@@ -152,7 +154,7 @@ fn operator_status_history_lanes_group_attempts_by_issue() {
 		Some(3),
 		"2026-03-13T04:16:17.133Z",
 	);
-	let second_issue = sample_issue_with_sort_fields(
+	let second_issue = status::sample_issue_with_sort_fields(
 		"issue-2",
 		"XY-330",
 		"Done",
@@ -251,9 +253,9 @@ fn operator_status_history_lanes_group_attempts_by_issue() {
 
 #[test]
 fn operator_history_lifecycle_metrics_use_sealed_durable_activity() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-324",
 		"XY-324",
 		"Done",
@@ -310,9 +312,9 @@ fn operator_history_lifecycle_metrics_use_sealed_durable_activity() {
 
 #[test]
 fn operator_status_project_waiting_count_ignores_superseded_waiting_attempts() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-1",
 		"XY-451",
 		"Done",
@@ -347,9 +349,9 @@ fn operator_status_project_waiting_count_ignores_superseded_waiting_attempts() {
 
 #[test]
 fn operator_status_project_connector_state_ignores_superseded_retry_backoff_attempts() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-1",
 		"XY-452",
 		"Done",
@@ -395,9 +397,9 @@ fn operator_status_project_connector_state_ignores_superseded_retry_backoff_atte
 
 #[test]
 fn live_operator_history_lanes_prefer_linear_ledger_outcome() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let mut issue = sample_issue_with_sort_fields(
+	let mut issue = status::sample_issue_with_sort_fields(
 		"issue-1",
 		"XY-355",
 		"Done",
@@ -430,7 +432,7 @@ fn live_operator_history_lanes_prefer_linear_ledger_outcome() {
 	tracker
 		.issue_comments
 		.borrow_mut()
-		.insert(issue.id.clone(), successful_linear_execution_history_comments(&issue));
+		.insert(issue.id.clone(), status::successful_linear_execution_history_comments(&issue));
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
@@ -503,9 +505,9 @@ fn live_operator_history_lanes_prefer_linear_ledger_outcome() {
 
 #[test]
 fn local_operator_history_lanes_prefer_terminal_ledger_outcome() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-1",
 		"XY-799",
 		"Done",
@@ -513,7 +515,7 @@ fn local_operator_history_lanes_prefer_terminal_ledger_outcome() {
 		Some(3),
 		"2026-06-08T04:12:00Z",
 	);
-	let local_comments = successful_linear_execution_history_comments(&issue);
+	let local_comments = status::successful_linear_execution_history_comments(&issue);
 
 	state_store
 		.upsert_worktree(
@@ -530,7 +532,7 @@ fn local_operator_history_lanes_prefer_terminal_ledger_outcome() {
 		.clear_worktree(&issue.id)
 		.expect("completed lane cleanup should clear local worktree");
 
-	seed_local_linear_execution_events(&state_store, &local_comments);
+	status::seed_local_linear_execution_events(&state_store, &local_comments);
 
 	let snapshot = orchestrator::build_operator_state_snapshot_without_live_observers(
 		&config,
@@ -571,9 +573,9 @@ fn local_operator_history_lanes_prefer_terminal_ledger_outcome() {
 
 #[test]
 fn live_status_terminal_cleanup_demotes_unleased_protocol_observed_current_lane() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-xy-952",
 		"XY-952",
 		"Done",
@@ -604,9 +606,9 @@ fn live_status_terminal_cleanup_demotes_unleased_protocol_observed_current_lane(
 		)
 		.expect("protocol evidence should record");
 
-	seed_local_linear_execution_events(
+	status::seed_local_linear_execution_events(
 		&state_store,
-		&successful_linear_execution_history_comments_with_cleanup(&issue),
+		&status::successful_linear_execution_history_comments_with_cleanup(&issue),
 	);
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
@@ -640,9 +642,9 @@ fn live_status_terminal_cleanup_demotes_unleased_protocol_observed_current_lane(
 
 #[test]
 fn local_status_summary_counts_terminal_history_needs_attention_without_queue_candidate() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-xy-922",
 		"XY-922",
 		"Todo",
@@ -650,7 +652,8 @@ fn local_status_summary_counts_terminal_history_needs_attention_without_queue_ca
 		Some(3),
 		"2026-06-11T09:08:00Z",
 	);
-	let local_comments = retained_partial_progress_linear_execution_history_comments(&issue);
+	let local_comments =
+		status::retained_partial_progress_linear_execution_history_comments(&issue);
 
 	state_store
 		.upsert_worktree(
@@ -664,7 +667,7 @@ fn local_status_summary_counts_terminal_history_needs_attention_without_queue_ca
 		.record_run_attempt("xy-922-attempt-1-1781168400", &issue.id, 1, "failed")
 		.expect("failed attempt should record");
 
-	seed_local_linear_execution_events(&state_store, &local_comments);
+	status::seed_local_linear_execution_events(&state_store, &local_comments);
 
 	let snapshot = orchestrator::build_operator_state_snapshot_without_live_observers(
 		&config,
@@ -708,9 +711,9 @@ fn local_status_summary_counts_terminal_history_needs_attention_without_queue_ca
 
 #[test]
 fn local_status_summary_ignores_history_only_terminal_attention_without_current_owner() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-pub-1549",
 		"PUB-1549",
 		"Todo",
@@ -718,7 +721,8 @@ fn local_status_summary_ignores_history_only_terminal_attention_without_current_
 		Some(3),
 		"2026-06-12T01:56:00Z",
 	);
-	let local_comments = retained_partial_progress_linear_execution_history_comments(&issue);
+	let local_comments =
+		status::retained_partial_progress_linear_execution_history_comments(&issue);
 
 	state_store
 		.upsert_worktree(
@@ -735,7 +739,7 @@ fn local_status_summary_ignores_history_only_terminal_attention_without_current_
 		.clear_worktree(&issue.id)
 		.expect("historical lane should not have current retained ownership");
 
-	seed_local_linear_execution_events(&state_store, &local_comments);
+	status::seed_local_linear_execution_events(&state_store, &local_comments);
 
 	let snapshot = orchestrator::build_operator_state_snapshot_without_live_observers(
 		&config,
@@ -778,9 +782,9 @@ fn local_status_summary_ignores_history_only_terminal_attention_without_current_
 
 #[test]
 fn live_status_counts_terminal_attention_when_current_attention_label_remains() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-pub-1550",
 		"PUB-1550",
 		"Todo",
@@ -792,7 +796,7 @@ fn live_status_counts_terminal_attention_when_current_attention_label_remains() 
 
 	tracker.issue_comments.borrow_mut().insert(
 		issue.id.clone(),
-		vec![linear_execution_history_comment(
+		vec![status::linear_execution_history_comment(
 			&issue,
 			"needs_attention",
 			"2026-06-12T02:20:00Z",
@@ -850,12 +854,12 @@ fn live_status_counts_terminal_attention_when_current_attention_label_remains() 
 
 #[test]
 fn live_status_treats_adopted_ready_to_land_history_attention_as_history_only() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/360";
-	let mut issue = sample_issue_with_sort_fields(
+	let mut issue = status::sample_issue_with_sort_fields(
 		"issue-xy-948",
 		"XY-948",
 		"In Review",
@@ -870,7 +874,7 @@ fn live_status_treats_adopted_ready_to_land_history_attention_as_history_only() 
 
 	tracker.issue_comments.borrow_mut().insert(
 		issue.id.clone(),
-		vec![linear_execution_history_comment(
+		vec![status::linear_execution_history_comment(
 			&issue,
 			"needs_attention",
 			"2026-06-12T04:30:00Z",
@@ -969,10 +973,10 @@ fn live_status_treats_adopted_ready_to_land_history_attention_as_history_only() 
 
 #[test]
 fn live_status_does_not_count_done_history_attention_without_retained_ownership() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
-	let mut issue = sample_issue_with_sort_fields(
+	let mut issue = status::sample_issue_with_sort_fields(
 		"issue-pub-1549",
 		"PUB-1549",
 		"Done",
@@ -984,7 +988,7 @@ fn live_status_does_not_count_done_history_attention_without_retained_ownership(
 	issue.labels.retain(|label| label.name != queue_label);
 
 	let tracker = FakeTracker::new(vec![issue.clone()]);
-	let comments = retained_partial_progress_linear_execution_history_comments(&issue);
+	let comments = status::retained_partial_progress_linear_execution_history_comments(&issue);
 
 	state_store
 		.upsert_worktree(
@@ -1024,9 +1028,9 @@ fn live_status_does_not_count_done_history_attention_without_retained_ownership(
 
 #[test]
 fn live_operator_history_lanes_require_linear_execution_ledger_records() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = status::sample_issue_with_sort_fields(
 		"issue-1",
 		"XY-356",
 		"Done",

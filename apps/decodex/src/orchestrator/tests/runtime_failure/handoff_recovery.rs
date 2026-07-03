@@ -1,20 +1,22 @@
-use super::{
-	FakeTracker, RUN_ACTIVITY_MARKER_FILE, Report, ReviewHandoffMarker,
-	ReviewPolicyCheckpointInput, StateStore, fs, git_output, loop_guardrail_issue_run,
-	orchestrator, sample_issue, temp_project_layout, tracker,
+use crate::orchestrator::tests::{
+	self,
+	runtime_failure::{
+		self, FakeTracker, RUN_ACTIVITY_MARKER_FILE, Report, ReviewHandoffMarker,
+		ReviewPolicyCheckpointInput, StateStore, fs, orchestrator, tracker,
+	},
 };
 
 #[test]
 fn handle_failure_recovers_review_handoff_state_drift_before_no_effective_diff_terminalization() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_label = tracker::automation_active_label(config.service_id());
-	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let issue = tests::sample_issue("In Progress", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/957";
 
 	for attempt_number in 1..=2 {
-		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, attempt_number);
 		let error = Report::msg("child exited without useful change");
 
 		assert!(
@@ -29,8 +31,8 @@ fn handle_failure_recovers_review_handoff_state_drift_before_no_effective_diff_t
 		);
 	}
 
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
-	let head_oid = git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
+	let head_oid = runtime_failure::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
 	let handoff = ReviewHandoffMarker::new(
 		&issue_run.run_id,
 		issue_run.attempt_number,
@@ -108,12 +110,12 @@ fn handle_failure_recovers_review_handoff_state_drift_before_no_effective_diff_t
 
 #[test]
 fn handle_failure_requires_rebind_when_clean_handoff_checkpoint_has_no_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
-	let head_oid = git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
+	let head_oid = runtime_failure::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
 
 	state_store
 		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
@@ -184,12 +186,12 @@ fn handle_failure_requires_rebind_when_clean_handoff_checkpoint_has_no_marker() 
 
 #[test]
 fn handle_failure_requires_rebind_when_handoff_marker_head_ref_mismatches_without_checkpoint() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
-	let head_oid = git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
+	let head_oid = runtime_failure::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
 	let handoff = ReviewHandoffMarker::new(
 		&issue_run.run_id,
 		issue_run.attempt_number,
@@ -258,12 +260,12 @@ fn handle_failure_requires_rebind_when_handoff_marker_head_ref_mismatches_withou
 
 #[test]
 fn handle_failure_requires_rebind_when_handoff_marker_issue_state_is_unsupported() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Backlog", &[]);
+	let issue = tests::sample_issue("Backlog", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
-	let head_oid = git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
+	let head_oid = runtime_failure::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
 	let handoff = ReviewHandoffMarker::new(
 		&issue_run.run_id,
 		issue_run.attempt_number,
@@ -320,15 +322,15 @@ fn handle_failure_requires_rebind_when_handoff_marker_issue_state_is_unsupported
 
 #[test]
 fn loop_guardrail_does_not_classify_dirty_retained_diff_as_no_effective_diff() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 
 	fs::write(config.repo_root().join("README.md"), "retained validation-ready patch\n")
 		.expect("tracked file should become dirty");
 
 	for attempt_number in 1..=3 {
-		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, attempt_number);
 		let error = Report::msg("phase completed local validation without terminal handoff");
 		let stop = orchestrator::retryable_failure_loop_guardrail_stop(
 			&config,
@@ -355,15 +357,15 @@ fn loop_guardrail_does_not_classify_dirty_retained_diff_as_no_effective_diff() {
 
 #[test]
 fn loop_guardrail_does_not_classify_untracked_retained_files_as_no_effective_diff() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 
 	fs::write(config.repo_root().join("new-runbook.md"), "retained validation-ready file\n")
 		.expect("untracked source file should write");
 
 	for attempt_number in 1..=3 {
-		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, attempt_number);
 		let error = Report::msg("phase completed local validation without terminal handoff");
 		let stop = orchestrator::retryable_failure_loop_guardrail_stop(
 			&config,
@@ -390,9 +392,9 @@ fn loop_guardrail_does_not_classify_untracked_retained_files_as_no_effective_dif
 
 #[test]
 fn loop_guardrail_ignores_untracked_decodex_runtime_artifacts_for_no_effective_diff() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let control_dir = config.repo_root().join(".decodex-run-control");
 
 	fs::write(config.repo_root().join(RUN_ACTIVITY_MARKER_FILE), "heartbeat\n")
@@ -401,7 +403,7 @@ fn loop_guardrail_ignores_untracked_decodex_runtime_artifacts_for_no_effective_d
 	fs::write(control_dir.join("command.json"), "{}\n").expect("runtime control file should write");
 
 	for attempt_number in 1..=2 {
-		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, attempt_number);
 		let error = Report::msg("child exited without useful change");
 
 		assert!(
@@ -416,7 +418,7 @@ fn loop_guardrail_ignores_untracked_decodex_runtime_artifacts_for_no_effective_d
 		);
 	}
 
-	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
+	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
 	let error = Report::msg("child exited without useful change");
 	let stop = orchestrator::retryable_failure_loop_guardrail_stop(
 		&config,

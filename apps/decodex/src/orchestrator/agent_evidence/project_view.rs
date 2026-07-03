@@ -6,23 +6,20 @@ use crate::orchestrator::{
 	OperatorWorktreeStatus,
 };
 
-pub(in crate::orchestrator) struct AgentEvidenceProjectView<'a> {
-	pub(in crate::orchestrator) project_id: &'a str,
-	pub(in crate::orchestrator) warnings: Vec<String>,
-	pub(in crate::orchestrator) projects: Vec<&'a OperatorProjectStatus>,
-	pub(in crate::orchestrator) connector_backoffs: Vec<&'a OperatorConnectorBackoffStatus>,
-	pub(in crate::orchestrator) current_lanes: Vec<&'a OperatorRunStatus>,
-	pub(in crate::orchestrator) recent_runs: Vec<&'a OperatorRunStatus>,
-	pub(in crate::orchestrator) history_lanes: Vec<&'a OperatorHistoryLaneStatus>,
-	pub(in crate::orchestrator) queued_candidates: Vec<&'a OperatorQueuedIssueStatus>,
-	pub(in crate::orchestrator) recovery_worktrees: Vec<(&'a str, &'a OperatorWorktreeStatus)>,
-	pub(in crate::orchestrator) post_review_lanes: Vec<&'a OperatorPostReviewLaneStatus>,
+pub(crate) struct AgentEvidenceProjectView<'a> {
+	pub(crate) project_id: &'a str,
+	pub(crate) warnings: Vec<String>,
+	pub(crate) projects: Vec<&'a OperatorProjectStatus>,
+	pub(crate) connector_backoffs: Vec<&'a OperatorConnectorBackoffStatus>,
+	pub(crate) current_lanes: Vec<&'a OperatorRunStatus>,
+	pub(crate) recent_runs: Vec<&'a OperatorRunStatus>,
+	pub(crate) history_lanes: Vec<&'a OperatorHistoryLaneStatus>,
+	pub(crate) queued_candidates: Vec<&'a OperatorQueuedIssueStatus>,
+	pub(crate) recovery_worktrees: Vec<(&'a str, &'a OperatorWorktreeStatus)>,
+	pub(crate) post_review_lanes: Vec<&'a OperatorPostReviewLaneStatus>,
 }
 impl<'a> AgentEvidenceProjectView<'a> {
-	pub(in crate::orchestrator) fn from_snapshot(
-		snapshot: &'a OperatorStatusSnapshot,
-		project_id: &'a str,
-	) -> Self {
+	pub(crate) fn from_snapshot(snapshot: &'a OperatorStatusSnapshot, project_id: &'a str) -> Self {
 		let single_project_snapshot = snapshot.project_id == project_id;
 		let projects = snapshot
 			.projects
@@ -89,9 +86,7 @@ impl<'a> AgentEvidenceProjectView<'a> {
 	}
 }
 
-pub(in crate::orchestrator) fn agent_evidence_project_ids(
-	snapshot: &OperatorStatusSnapshot,
-) -> Vec<String> {
+pub(crate) fn agent_evidence_project_ids(snapshot: &OperatorStatusSnapshot) -> Vec<String> {
 	let mut project_ids = BTreeSet::new();
 
 	for project in &snapshot.projects {

@@ -1,6 +1,9 @@
-use super::{Result, StateData};
+use crate::state::sqlite_store::{
+	SqliteStateStore,
+	queries::{Result, StateData},
+};
 
-impl super::super::SqliteStateStore {
+impl SqliteStateStore {
 	pub(in crate::state) fn load_state(&self) -> Result<StateData> {
 		let mut state = StateData::default();
 

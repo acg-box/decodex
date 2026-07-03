@@ -1,9 +1,12 @@
-use super::{
-	OptionalExtension, ProtocolEventSummaryRecord, Result, StateData, params,
-	run_activity_summary_record_from_row, timestamp_parts,
+use crate::state::sqlite_store::{
+	SqliteStateStore,
+	queries::{
+		self, OptionalExtension, ProtocolEventSummaryRecord, Result, StateData,
+		run_activity_summary_record_from_row,
+	},
 };
 
-impl super::super::SqliteStateStore {
+impl SqliteStateStore {
 	pub(in crate::state) fn load_protocol_event_summaries(
 		&self,
 		state: &mut StateData,
@@ -18,6 +21,7 @@ impl super::super::SqliteStateStore {
 	) -> Result<()> {
 		for run_id in run_ids {
 			state.event_summaries.remove(run_id);
+
 			if !self.load_compacted_protocol_event_summary_for_run(state, run_id)? {
 				self.load_protocol_event_summary_for_run(state, run_id)?;
 			}
@@ -56,7 +60,7 @@ impl super::super::SqliteStateStore {
 			 AND last.sequence_number = totals.last_sequence_number",
 		)?;
 		let summary = statement
-			.query_row(params![run_id], |row| {
+			.query_row(queries::params![run_id], |row| {
 				Ok(ProtocolEventSummaryRecord {
 					event_count: row.get(0)?,
 					last_sequence_number: Some(row.get(1)?),
@@ -127,7 +131,7 @@ impl super::super::SqliteStateStore {
 			 updated_at, updated_at_unix FROM run_activity_summaries WHERE run_id = ?1",
 		)?;
 		let summary = statement
-			.query_row(params![run_id], run_activity_summary_record_from_row)
+			.query_row(queries::params![run_id], run_activity_summary_record_from_row)
 			.optional()?;
 
 		if let Some(summary) = summary {
@@ -177,7 +181,7 @@ impl super::super::SqliteStateStore {
 			 last_event_at_unix FROM protocol_event_summaries WHERE run_id = ?1",
 		)?;
 		let summary = statement
-			.query_row(params![run_id], |row| {
+			.query_row(queries::params![run_id], |row| {
 				Ok(ProtocolEventSummaryRecord {
 					event_count: row.get(0)?,
 					last_sequence_number: row.get(1)?,
@@ -202,14 +206,14 @@ impl super::super::SqliteStateStore {
 		run_id: &str,
 		summary: &ProtocolEventSummaryRecord,
 	) -> Result<()> {
-		let now = timestamp_parts();
+		let now = queries::timestamp_parts();
 
 		self.connection.execute(
 			"INSERT OR REPLACE INTO protocol_event_summaries (
 					run_id, event_count, last_sequence_number, last_event_type, last_event_at,
 					last_event_at_unix, compacted_at, compacted_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-			params![
+			queries::params![
 				run_id,
 				summary.event_count,
 				summary.last_sequence_number,

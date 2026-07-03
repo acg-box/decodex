@@ -28,14 +28,6 @@ impl GitHookCommand {
 	}
 }
 
-#[derive(Debug, Subcommand)]
-pub(super) enum GitHookSubcommand {
-	/// Validate the commit message file passed by Git's commit-msg hook.
-	CommitMsg(CommitMsgHookCommand),
-	/// Validate commits passed by Git's pre-push hook on stdin.
-	PrePush(PrePushHookCommand),
-}
-
 #[derive(Debug, Args)]
 pub(super) struct CommitMsgHookCommand {
 	/// Commit message file path supplied by Git.
@@ -74,6 +66,22 @@ impl PrePushHookCommand {
 	}
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrePushUpdate {
+	local_ref: String,
+	local_oid: String,
+	remote_ref: String,
+	remote_oid: String,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum GitHookSubcommand {
+	/// Validate the commit message file passed by Git's commit-msg hook.
+	CommitMsg(CommitMsgHookCommand),
+	/// Validate commits passed by Git's pre-push hook on stdin.
+	PrePush(PrePushHookCommand),
+}
+
 fn validate_subject(subject: &str) -> Result<()> {
 	commit_message::validate_commit_message_subject(subject).map_err(|error| {
 		eyre::eyre!(
@@ -97,14 +105,6 @@ fn extract_commit_subject(raw: &str) -> Result<&str> {
 	Ok(subject)
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct PrePushUpdate {
-	local_ref: String,
-	local_oid: String,
-	remote_ref: String,
-	remote_oid: String,
-}
-
 fn read_pre_push_updates(reader: impl BufRead) -> Result<Vec<PrePushUpdate>> {
 	let mut updates = Vec::new();
 
@@ -116,6 +116,7 @@ fn read_pre_push_updates(reader: impl BufRead) -> Result<Vec<PrePushUpdate>> {
 		}
 
 		let fields = line.split_whitespace().collect::<Vec<_>>();
+
 		if fields.len() != 4 {
 			eyre::bail!("Invalid pre-push input line `{line}`.");
 		}
@@ -215,11 +216,11 @@ fn is_zero_oid(value: &str) -> bool {
 mod tests {
 	use std::io::Cursor;
 
-	use super::{ZERO_OID, extract_commit_subject, read_pre_push_updates, validate_subject};
+	use crate::cli::git_hook_commands::{self, ZERO_OID};
 
 	#[test]
 	fn extract_commit_subject_ignores_blank_and_comment_lines() {
-		let subject = extract_commit_subject(
+		let subject = git_hook_commands::extract_commit_subject(
 			"\n# comment\n{\"schema\":\"decodex/commit/1\",\"summary\":\"ship fix\",\"authority\":\"manual\"}\n# trailing\n",
 		)
 		.expect("subject should be extracted");
@@ -232,7 +233,7 @@ mod tests {
 
 	#[test]
 	fn extract_commit_subject_rejects_bodies() {
-		let error = extract_commit_subject(
+		let error = git_hook_commands::extract_commit_subject(
 			"{\"schema\":\"decodex/commit/1\",\"summary\":\"ship fix\",\"authority\":\"manual\"}\nbody\n",
 		)
 		.expect_err("message body should be rejected");
@@ -242,7 +243,7 @@ mod tests {
 
 	#[test]
 	fn validate_subject_rejects_plain_text() {
-		let error = validate_subject("Improve account removal interaction")
+		let error = git_hook_commands::validate_subject("Improve account removal interaction")
 			.expect_err("plain text commit subject should fail");
 
 		assert!(error.to_string().contains("Invalid Decodex commit message subject"));
@@ -250,7 +251,7 @@ mod tests {
 
 	#[test]
 	fn read_pre_push_updates_parses_git_input_and_deletions() {
-		let updates = read_pre_push_updates(Cursor::new(format!(
+		let updates = git_hook_commands::read_pre_push_updates(Cursor::new(format!(
 			"refs/heads/main abc refs/heads/main def\nrefs/heads/topic {ZERO_OID} refs/heads/topic def\n"
 		)))
 		.expect("pre-push input should parse");

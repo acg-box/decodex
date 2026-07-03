@@ -1,4 +1,9 @@
-use super::*;
+use crate::{
+	recovery::{
+		LEGACY_MANUAL_CLOSEOUT_EVENT, REVIEW_HANDOFF_ADOPT_EVENT, REVIEW_HANDOFF_REBIND_EVENT,
+	},
+	tracker::records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
+};
 
 #[test]
 fn review_handoff_rebind_event_validation_accepts_required_fields() {
@@ -11,7 +16,7 @@ fn review_handoff_rebind_event_validation_accepts_required_fields() {
 			attempt_number: 1,
 		},
 		REVIEW_HANDOFF_REBIND_EVENT,
-		super::super::current_timestamp(),
+		super::current_timestamp(),
 		"anchor",
 	);
 
@@ -39,7 +44,7 @@ fn review_handoff_adopt_event_validation_accepts_required_fields() {
 			attempt_number: 1,
 		},
 		REVIEW_HANDOFF_ADOPT_EVENT,
-		super::super::current_timestamp(),
+		super::current_timestamp(),
 		"anchor",
 	);
 
@@ -67,8 +72,8 @@ fn merged_closeout_recovery_events_validate() {
 			run_id: "pub-1549-attempt-1-1781240781",
 			attempt_number: 1,
 		},
-		super::super::LEGACY_MANUAL_CLOSEOUT_EVENT,
-		super::super::current_timestamp(),
+		LEGACY_MANUAL_CLOSEOUT_EVENT,
+		super::current_timestamp(),
 		"anchor-closeout",
 	);
 
@@ -94,7 +99,7 @@ fn merged_closeout_recovery_events_validate() {
 			attempt_number: 1,
 		},
 		"cleanup_complete",
-		super::super::timestamp_after_seconds(1),
+		super::timestamp_after_seconds(1),
 		"anchor-cleanup",
 	);
 
@@ -123,7 +128,7 @@ fn review_handoff_rebind_event_requires_evidence() {
 			attempt_number: 1,
 		},
 		REVIEW_HANDOFF_REBIND_EVENT,
-		super::super::current_timestamp(),
+		super::current_timestamp(),
 		"anchor",
 	);
 

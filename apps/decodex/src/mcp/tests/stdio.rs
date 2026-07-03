@@ -1,22 +1,22 @@
 use serde_json::Value;
 
-use super::support::{response_at, run_stdio, run_stdio_raw, test_repo};
+use crate::mcp::tests::support::{self};
 
 #[test]
 fn resources_read_rejects_invalid_resource_uri() {
-	let repo = test_repo();
-	let responses = run_stdio(
+	let repo = support::test_repo();
+	let responses = support::run_stdio(
 		repo.path(),
 		r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"file:///etc/passwd"}}"#,
 	);
-	let error = response_at(&responses, 0).get("error").expect("error response");
+	let error = support::response_at(&responses, 0).get("error").expect("error response");
 
 	assert_eq!(error["code"], -32_602);
 }
 
 #[test]
 fn stdio_output_contains_only_json_rpc_responses() {
-	let repo = test_repo();
+	let repo = support::test_repo();
 	let input = [
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
 			r#"{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}"#,
@@ -28,7 +28,7 @@ fn stdio_output_contains_only_json_rpc_responses() {
 			r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"decodex_plan","arguments":{"intent":"validation_ready"}}}"#,
 		]
 		.join("\n");
-	let output = run_stdio_raw(repo.path(), &input);
+	let output = support::run_stdio_raw(repo.path(), &input);
 	let lines = output.lines().collect::<Vec<_>>();
 
 	assert_eq!(lines.len(), 7);

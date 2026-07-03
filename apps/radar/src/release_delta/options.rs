@@ -1,13 +1,11 @@
 //! Release option filtering and compact response shaping.
 
-use std::{collections::BTreeSet, path::Path};
-
-use serde_json::Value;
-
 use crate::{
-	RadarRefreshReleaseDeltaReport, optional_value_string,
-	prelude::{Result, eyre},
-	required_value_string,
+	prelude::Result,
+	release_delta::{
+		self, BTreeSet, Path, RadarRefreshReleaseDeltaReport, Value, eyre, optional_value_string,
+		required_value_string, serde_json,
+	},
 };
 
 pub(super) fn filter_release_options(
@@ -99,6 +97,6 @@ pub(super) fn release_delta_report(
 			.unwrap_or_default()
 			.to_owned(),
 		comparisons: payload.get("comparisons").and_then(Value::as_array).map_or(0, Vec::len),
-		out: crate::absolute_repo_path(root, out),
+		out: release_delta::absolute_repo_path(root, out),
 	}
 }

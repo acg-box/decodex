@@ -1,12 +1,12 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use crate::{
-	archive_hygiene,
+	archive_hygiene::plan,
 	config::ServiceConfig,
 	prelude::Result,
 	tracker::{
-		self, IssueTracker, TrackerIssue, TrackerIssueBlocker, TrackerLabel, TrackerState,
-		TrackerTeam,
+		self, IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker, TrackerLabel,
+		TrackerState, TrackerTeam,
 	},
 	workflow::WorkflowDocument,
 };
@@ -51,7 +51,6 @@ struct FakeArchiveTracker {
 	issues_by_label: HashMap<String, Vec<TrackerIssue>>,
 	archived_issue_ids: RefCell<Vec<String>>,
 }
-
 impl FakeArchiveTracker {
 	fn with_label(mut self, label: &str, issues: Vec<TrackerIssue>) -> Self {
 		self.issues_by_label.insert(label.to_owned(), issues);
@@ -81,7 +80,7 @@ impl IssueTracker for FakeArchiveTracker {
 		Ok(Vec::new())
 	}
 
-	fn list_comments(&self, _issue_id: &str) -> Result<Vec<tracker::TrackerComment>> {
+	fn list_comments(&self, _issue_id: &str) -> Result<Vec<TrackerComment>> {
 		Ok(Vec::new())
 	}
 
@@ -145,7 +144,7 @@ fn archive_plan_includes_only_old_terminal_repo_labeled_issues() {
 			issue("issue-equal", "XY-8", "Done", &["repo:decodex"], "2026-04-01T00:00:00Z"),
 		],
 	);
-	let plan = archive_hygiene::build_archive_plan(
+	let plan = plan::build_archive_plan(
 		&tracker,
 		&config,
 		&workflow,
@@ -192,7 +191,7 @@ fn archive_execution_uses_archive_mutation_only_for_candidates() {
 			issue("issue-new", "XY-2", "Done", &["repo:decodex"], "2026-04-20T00:00:00Z"),
 		],
 	);
-	let plan = archive_hygiene::build_archive_plan(
+	let plan = plan::build_archive_plan(
 		&tracker,
 		&config,
 		&workflow,

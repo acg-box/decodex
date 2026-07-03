@@ -1,5 +1,3 @@
-use super::*;
-
 mod operator_status_output_tests {
 	use std::io::{Error, ErrorKind, Result, Write};
 
@@ -48,6 +46,14 @@ use crate::{
 		ExecutionProgramNodeStage, ExecutionQueueIntent,
 	},
 	loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
+	orchestrator::tests::operator::status::{
+		self, Connection, DecisionContract, FakeTracker, HashMap,
+		OperatorCodexAccountControlStatus, OperatorExecutionProgramNodeStatus,
+		OperatorExecutionProgramStatus, OperatorGitHubCliAuthority, OperatorProjectStatus,
+		OperatorStatusSnapshot, ProtocolActivitySummary, ReviewHandoffMarker,
+		ReviewPolicyCheckpointInput, ServiceConfig, StateStore, Value, WorkflowDocument, env, eyre,
+		orchestrator, state,
+	},
 };
 
 #[test]
@@ -110,7 +116,7 @@ fn operator_status_text_surfaces_github_cli_authority() {
 
 #[test]
 fn operator_status_text_renders_human_readable_sections() {
-	let current_lane = operator_status_text_current_lane();
+	let current_lane = status::operator_status_text_current_lane();
 	let snapshot = OperatorStatusSnapshot {
 		project_id: String::from("pubfi"),
 		run_limit: 10,
@@ -126,12 +132,12 @@ fn operator_status_text_renders_human_readable_sections() {
 		},
 		accounts: Vec::new(),
 		current_lanes: vec![current_lane.clone()],
-		queued_candidates: operator_status_text_queued_candidates(),
+		queued_candidates: status::operator_status_text_queued_candidates(),
 		recent_runs: vec![current_lane],
 		history_lanes: Vec::new(),
 		execution_programs: Vec::new(),
-		worktrees: operator_status_text_worktrees(),
-		post_review_lanes: operator_status_text_post_review_lanes(),
+		worktrees: status::operator_status_text_worktrees(),
+		post_review_lanes: status::operator_status_text_post_review_lanes(),
 	};
 	let rendered = orchestrator::render_operator_status(&snapshot);
 	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
@@ -214,12 +220,12 @@ fn operator_status_text_renders_human_readable_sections() {
 	assert!(rendered.contains("worktree_path: .worktrees/PUB-103"));
 	assert!(rendered.contains("worktree_path: .worktrees/PUB-104"));
 
-	assert_recovery_worktree_roles_are_grouped(&rendered);
+	status::assert_recovery_worktree_roles_are_grouped(&rendered);
 }
 
 #[test]
 fn operator_status_text_sanitizes_private_protocol_activity_details() {
-	let mut current_lane = operator_status_text_current_lane();
+	let mut current_lane = status::operator_status_text_current_lane();
 
 	current_lane.protocol_activity = Some(ProtocolActivitySummary {
 		turn_status: Some(String::from("completed")),
@@ -425,7 +431,7 @@ fn operator_status_json_uses_direct_dispatch_program_fields() {
 
 #[test]
 fn operator_status_snapshot_surfaces_program_intake_and_node_readbacks() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	seed_program_readback_status(&state_store, &config);
@@ -441,7 +447,7 @@ fn operator_status_snapshot_surfaces_program_intake_and_node_readbacks() {
 
 #[test]
 fn operator_status_program_readback_prefers_post_review_owner_over_stale_active_label() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_id = "issue-post-review";
 	let issue_identifier = "PUB-946";
@@ -506,7 +512,7 @@ fn operator_status_program_readback_prefers_post_review_owner_over_stale_active_
 
 #[test]
 fn operator_status_program_readback_refreshes_live_tracker_issue_mapping() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let stale_mapping = status_program_issue_mapping("issue-live-refresh", "PUB-1597", "Todo")
 		.with_needs_attention_label(true);
@@ -536,7 +542,7 @@ fn operator_status_program_readback_refreshes_live_tracker_issue_mapping() {
 		.upsert_execution_program(config.service_id(), program)
 		.expect("program should persist");
 
-	let live_issue = sample_issue_with_sort_fields(
+	let live_issue = status::sample_issue_with_sort_fields(
 		"issue-live-refresh",
 		"PUB-1597",
 		"Done",
@@ -715,7 +721,7 @@ fn assert_program_node_readbacks(program: &OperatorExecutionProgramStatus, progr
 
 #[test]
 fn operator_status_json_surfaces_missing_contract_program_recovery() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let contract = accepted_status_decision_contract_fixture();
 	let program = ExecutionProgram::from_accepted_contract(
@@ -787,7 +793,7 @@ fn operator_status_json_surfaces_missing_contract_program_recovery() {
 
 #[test]
 fn operator_status_readback_uses_migrated_removed_flat_decision_contract_fields() {
-	let (temp_dir, config, workflow) = temp_project_layout();
+	let (temp_dir, config, workflow) = status::temp_project_layout();
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let state_store = StateStore::open(&state_path).expect("state store should open");
 	let contract = accepted_status_decision_contract_fixture();
@@ -856,8 +862,8 @@ fn operator_status_readback_uses_migrated_removed_flat_decision_contract_fields(
 	}
 
 	drop(state_store);
-	let state_store = StateStore::open(&state_path).expect("removed fields should migrate");
 
+	let state_store = StateStore::open(&state_path).expect("removed fields should migrate");
 	let migrated_contract = state_store
 		.decision_contract(config.service_id(), contract.contract_id())
 		.expect("migrated contract read should succeed")
@@ -980,7 +986,7 @@ fn accepted_status_decision_contract_fixture() -> DecisionContract {
 
 #[test]
 fn operator_status_json_and_text_surface_loop_review_and_recovery_state() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	seed_loop_status_runs(&state_store, &config);
@@ -1184,13 +1190,13 @@ fn status_run_json<'a>(snapshot_json: &'a Value, run_id: &str) -> &'a Value {
 		}
 	}
 
-	panic!("status run `{run_id}` should exist")
+	status::panic!("status run `{run_id}` should exist")
 }
 
 #[test]
 fn queue_explain_renders_candidate_reasons_without_running_dispatch() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
-	let candidates = operator_status_text_queued_candidates();
+	let (_temp_dir, config, _workflow) = status::temp_project_layout();
+	let candidates = status::operator_status_text_queued_candidates();
 	let rendered = orchestrator::render_queue_explain(&config, &candidates);
 
 	assert!(rendered.contains("Mode: dry-run queue explain"));
@@ -1340,7 +1346,7 @@ fn operator_status_text_surfaces_cleanup_blocker_pr_url() {
 
 #[test]
 fn operator_status_text_terminal_run_freshness_uses_terminal_update() {
-	let mut terminal_run = operator_status_text_current_lane();
+	let mut terminal_run = status::operator_status_text_current_lane();
 
 	terminal_run.status = String::from("succeeded");
 	terminal_run.phase = String::from("completed");
@@ -1384,7 +1390,7 @@ fn operator_status_text_terminal_run_freshness_uses_terminal_update() {
 
 #[test]
 fn operator_status_text_current_lane_without_live_activity_does_not_promote_updated_at() {
-	let mut current_lane = operator_status_text_current_lane();
+	let mut current_lane = status::operator_status_text_current_lane();
 
 	current_lane.updated_at = String::from("2026-03-14 09:00:00");
 	current_lane.last_run_activity_at = None;
@@ -1422,7 +1428,7 @@ fn operator_status_text_current_lane_without_live_activity_does_not_promote_upda
 
 #[test]
 fn operator_status_text_explains_unleased_live_running_lane() {
-	let mut current_lane = operator_status_text_current_lane();
+	let mut current_lane = status::operator_status_text_current_lane();
 
 	current_lane.run_lease = false;
 	current_lane.queue_lease_state = String::from("not_held");

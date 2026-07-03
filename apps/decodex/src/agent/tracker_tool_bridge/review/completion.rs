@@ -1,9 +1,12 @@
-use super::{PendingReviewCompletion, RunCompletionDisposition, TrackerToolBridge, eyre};
+use crate::{
+	agent::tracker_tool_bridge::review::{
+		PendingReviewCompletion, RunCompletionDisposition, TrackerToolBridge, eyre,
+	},
+	prelude::Result,
+};
 
 impl<'a> TrackerToolBridge<'a> {
-	pub(crate) fn completion_disposition(
-		&self,
-	) -> crate::prelude::Result<RunCompletionDisposition> {
+	pub(crate) fn completion_disposition(&self) -> Result<RunCompletionDisposition> {
 		let Some(review_context) = self.review_context.as_ref() else {
 			eyre::bail!(
 				"Review handoff context is unavailable for issue `{}`.",
@@ -15,15 +18,12 @@ impl<'a> TrackerToolBridge<'a> {
 		let review_completion = self.pending_review_completion.borrow().clone();
 
 		match (manual_attention_requested, manual_attention_comment_recorded, review_completion) {
-			(false, false, Some(PendingReviewCompletion::Handoff(_))) => {
-				Ok(RunCompletionDisposition::ReviewHandoff)
-			},
-			(false, false, Some(PendingReviewCompletion::Repair(_))) => {
-				Ok(RunCompletionDisposition::ReviewRepair)
-			},
-			(false, false, Some(PendingReviewCompletion::Closeout(_))) => {
-				Ok(RunCompletionDisposition::Closeout)
-			},
+			(false, false, Some(PendingReviewCompletion::Handoff(_))) =>
+				Ok(RunCompletionDisposition::ReviewHandoff),
+			(false, false, Some(PendingReviewCompletion::Repair(_))) =>
+				Ok(RunCompletionDisposition::ReviewRepair),
+			(false, false, Some(PendingReviewCompletion::Closeout(_))) =>
+				Ok(RunCompletionDisposition::Closeout),
 			(true, true, None) => Ok(RunCompletionDisposition::ManualAttention),
 			(true, false, None) => eyre::bail!(
 				"Run `{}` requested human attention with label `{}`, but issue `{}` never recorded the required explanatory comment.",
@@ -61,7 +61,7 @@ impl<'a> TrackerToolBridge<'a> {
 
 	pub(crate) fn finalized_completion_disposition(
 		&self,
-	) -> crate::prelude::Result<Option<RunCompletionDisposition>> {
+	) -> Result<Option<RunCompletionDisposition>> {
 		let Some(finalized_path) = *self.finalized_completion_path.borrow() else {
 			return Ok(None);
 		};

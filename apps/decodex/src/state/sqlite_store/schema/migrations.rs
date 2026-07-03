@@ -1,11 +1,12 @@
-use super::{
-	ChildAgentActivitySummary, OptionalExtension, Result, SqliteStateStore, eyre,
-	migrate_removed_decision_contract_fields, params, timestamp_parts,
+use crate::state::sqlite_store::schema::{
+	self, ChildAgentActivitySummary, OptionalExtension, Result, SqliteStateStore, eyre,
+	migrate_removed_decision_contract_fields,
 };
 
 impl SqliteStateStore {
 	pub(in crate::state) fn schema_version(&self) -> Result<Option<i64>> {
 		self.ensure_schema_meta_table()?;
+
 		let version = self
 			.connection
 			.query_row("SELECT value FROM schema_meta WHERE key = 'schema_version'", [], |row| {
@@ -32,11 +33,14 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 
 	pub(in crate::state) fn schema_migration_completed(&self, key: &str) -> Result<bool> {
 		self.ensure_schema_meta_table()?;
+
 		let value = self
 			.connection
-			.query_row("SELECT value FROM schema_meta WHERE key = ?1", params![key], |row| {
-				row.get::<_, String>(0)
-			})
+			.query_row(
+				"SELECT value FROM schema_meta WHERE key = ?1",
+				schema::params![key],
+				|row| row.get::<_, String>(0),
+			)
 			.optional()?;
 
 		Ok(value.as_deref() == Some("completed"))
@@ -48,7 +52,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 			"INSERT INTO schema_meta (key, value)
 			 VALUES (?1, 'completed')
 			 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-			params![key],
+			schema::params![key],
 		)?;
 
 		Ok(())
@@ -66,6 +70,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 				"migration:protocol_event_summaries_from_events:v12",
 			)?;
 		}
+
 		self.migrate_removed_decision_contract_fields()?;
 
 		Ok(())
@@ -93,7 +98,7 @@ ON CONFLICT(key) DO UPDATE SET value =
 	}
 
 	pub(in crate::state) fn backfill_protocol_event_summaries_from_events(&self) -> Result<()> {
-		let now = timestamp_parts();
+		let now = schema::timestamp_parts();
 
 		self.connection.execute(
 			"INSERT INTO protocol_event_summaries (
@@ -118,7 +123,7 @@ ON CONFLICT(key) DO UPDATE SET value =
 				 last_event_at_unix = excluded.last_event_at_unix,
 				 compacted_at = excluded.compacted_at,
 				 compacted_at_unix = excluded.compacted_at_unix",
-			params![now.text, now.unix],
+			schema::params![now.text, now.unix],
 		)?;
 
 		Ok(())
@@ -160,7 +165,7 @@ ON CONFLICT(key) DO UPDATE SET value =
 				"UPDATE decision_contracts
 				 SET payload_json = ?3
 				 WHERE project_id = ?1 AND contract_id = ?2",
-				params![project_id, contract_id, payload_json],
+				schema::params![project_id, contract_id, payload_json],
 			)?;
 		}
 
@@ -195,7 +200,7 @@ ON CONFLICT(key) DO UPDATE SET value =
 		for (run_id, child_agent_activity_json) in updates {
 			self.connection.execute(
 				"UPDATE run_activity_summaries SET child_agent_activity_json = ?2 WHERE run_id = ?1",
-				params![run_id, child_agent_activity_json],
+				schema::params![run_id, child_agent_activity_json],
 			)?;
 		}
 

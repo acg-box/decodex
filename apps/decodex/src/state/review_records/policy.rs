@@ -1,7 +1,6 @@
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
 
-use crate::state::runtime_row_parsers;
 use crate::{
 	prelude::{Result, eyre},
 	state::{
@@ -11,6 +10,7 @@ use crate::{
 			EvidenceArtifactKey, EvidenceArtifactRuntimeRecord, ReviewPolicyKey,
 			ReviewPolicyRuntimeRecord, TimestampParts,
 		},
+		runtime_row_parsers,
 	},
 };
 

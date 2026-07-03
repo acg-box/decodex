@@ -2,14 +2,10 @@ use std::path::{Path, PathBuf};
 
 use crate::{
 	config::{self, ServiceConfig},
+	manual::{self, ManualCommitActiveLaneBlocker},
 	prelude::{Result, eyre},
 	runtime,
 	state::{StateStore, WorktreeMapping},
-};
-
-use super::{
-	ManualCommitActiveLaneBlocker, current_branch_name_if_attached,
-	paths_match_for_manual_commit_guard,
 };
 
 pub(super) fn ensure_manual_commit_not_claimed_by_active_lane(
@@ -51,7 +47,7 @@ pub(super) fn manual_commit_active_lane_blocker_from_runtime(
 		return Ok(None);
 	}
 
-	let current_branch = current_branch_name_if_attached(cwd)?;
+	let current_branch = manual::current_branch_name_if_attached(cwd)?;
 
 	manual_commit_active_lane_blocker(
 		&state_store,
@@ -110,6 +106,6 @@ pub(super) fn manual_commit_matches_worktree_mapping(
 	worktree_root: &Path,
 	current_branch: Option<&str>,
 ) -> bool {
-	paths_match_for_manual_commit_guard(worktree_root, mapping.worktree_path())
+	manual::paths_match_for_manual_commit_guard(worktree_root, mapping.worktree_path())
 		&& current_branch.is_none_or(|branch| branch == mapping.branch_name())
 }

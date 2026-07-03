@@ -1,20 +1,11 @@
-use color_eyre::Report;
-
-use crate::{
-	orchestrator::{
-		ARCHITECTURE_RECOVERY_BUDGET, ARCHITECTURE_RECOVERY_RETRY_KIND,
-		TERMINAL_GUARDED_RUN_STATUS, ChildExitRetryContext, ChildRunRef, IssueDispatchMode,
-		IssueRunPlan, IssueTracker, Result, RetainedPartialProgress, TerminalFailureWritebackRuntime,
-		WorktreeManager, WorktreeSpec, apply_terminal_failure_writeback,
-		configured_public_projection_privacy_classifier, relative_worktree_path,
-		worktree_has_tracked_changes, write_retry_budget_marker, write_terminal_guard_marker,
-	},
-	state,
-	tracker::TrackerIssue,
+use crate::orchestrator::daemon_retry::{
+	self, ARCHITECTURE_RECOVERY_BUDGET, ARCHITECTURE_RECOVERY_RETRY_KIND, ChildExitRetryContext,
+	ChildRunRef, IssueDispatchMode, IssueRunPlan, IssueTracker, Report, Result,
+	RetainedPartialProgress, TERMINAL_GUARDED_RUN_STATUS, TerminalFailureWritebackRuntime,
+	TrackerIssue, WorktreeManager, WorktreeSpec, state,
 };
-use crate::orchestrator::daemon_retry::clear_retry_schedule_and_release;
 
-pub(in crate::orchestrator::daemon_retry) fn child_exit_retry_budget_attempt_count<T>(
+pub(crate) fn child_exit_retry_budget_attempt_count<T>(
 	context: &ChildExitRetryContext<'_, T>,
 	issue: &TrackerIssue,
 	child: ChildRunRef<'_>,
@@ -41,7 +32,7 @@ where
 	Ok(u32::try_from(retry_budget_attempts).unwrap_or(u32::MAX).max(1))
 }
 
-pub(in crate::orchestrator::daemon_retry) fn child_exit_retry_budget_limit<T>(
+pub(crate) fn child_exit_retry_budget_limit<T>(
 	context: &ChildExitRetryContext<'_, T>,
 	issue: &TrackerIssue,
 	child: ChildRunRef<'_>,
@@ -67,7 +58,7 @@ where
 	Ok(max_attempts)
 }
 
-pub(in crate::orchestrator::daemon_retry) fn terminalize_exhausted_child_exit_retry<T>(
+pub(crate) fn terminalize_exhausted_child_exit_retry<T>(
 	context: ChildExitRetryContext<'_, T>,
 	issue: TrackerIssue,
 	child: ChildRunRef<'_>,
@@ -86,9 +77,39 @@ where
 		dispatch_mode,
 		i64::from(retry_budget_attempts),
 	)?;
-	clear_retry_schedule_and_release(context.retry_queue, context.state_store, child.issue_id)?;
+
+	daemon_retry::clear_retry_schedule_and_release(
+		context.retry_queue,
+		context.state_store,
+		child.issue_id,
+	)?;
 
 	Ok(())
+}
+
+pub(crate) fn child_exit_worktree_spec<T>(
+	context: &ChildExitRetryContext<'_, T>,
+	issue: &TrackerIssue,
+) -> Result<WorktreeSpec>
+where
+	T: IssueTracker,
+{
+	if let Some(mapping) = context.state_store.worktree_for_issue(&issue.id)? {
+		return Ok(WorktreeSpec {
+			branch_name: mapping.branch_name().to_owned(),
+			issue_identifier: issue.identifier.clone(),
+			path: mapping.worktree_path().to_path_buf(),
+			reused_existing: true,
+		});
+	}
+
+	let worktree_manager = WorktreeManager::new(
+		context.project.service_id(),
+		context.project.repo_root(),
+		context.project.worktree_root(),
+	);
+
+	Ok(worktree_manager.plan_for_issue(&issue.identifier))
 }
 
 fn apply_child_exit_terminal_failure_writeback<T>(
@@ -115,8 +136,8 @@ where
 		run_id: child.run_id.to_owned(),
 		retry_budget_base: 0,
 	};
-	let worktree_path = relative_worktree_path(context.project, &issue_run.worktree);
-	let error = if worktree_has_tracked_changes(&issue_run.worktree.path) {
+	let worktree_path = daemon_retry::relative_worktree_path(context.project, &issue_run.worktree);
+	let error = if daemon_retry::worktree_has_tracked_changes(&issue_run.worktree.path) {
 		Report::new(RetainedPartialProgress {
 			issue_identifier: issue.identifier.clone(),
 			run_id: child.run_id.to_owned(),
@@ -129,8 +150,9 @@ where
 			child.run_id, issue.identifier
 		))
 	};
-	let privacy_classifier = configured_public_projection_privacy_classifier(context.project)?;
-	let outcome = apply_terminal_failure_writeback(
+	let privacy_classifier =
+		daemon_retry::configured_public_projection_privacy_classifier(context.project)?;
+	let outcome = daemon_retry::apply_terminal_failure_writeback(
 		context.tracker,
 		TerminalFailureWritebackRuntime {
 			service_id: context.project.service_id(),
@@ -145,7 +167,7 @@ where
 	)?;
 
 	if outcome.retry_guarded_by_state {
-		write_terminal_guard_marker(
+		daemon_retry::write_terminal_guard_marker(
 			&issue_run.worktree.path,
 			&issue_run.run_id,
 			issue_run.attempt_number,
@@ -154,7 +176,7 @@ where
 		context.state_store.update_run_status(&issue_run.run_id, TERMINAL_GUARDED_RUN_STATUS)?;
 	}
 
-	write_retry_budget_marker(
+	daemon_retry::write_retry_budget_marker(
 		&issue_run.worktree.path,
 		&issue_run.run_id,
 		issue_run.attempt_number,
@@ -175,29 +197,4 @@ where
 	);
 
 	Ok(())
-}
-
-pub(in crate::orchestrator::daemon_retry) fn child_exit_worktree_spec<T>(
-	context: &ChildExitRetryContext<'_, T>,
-	issue: &TrackerIssue,
-) -> Result<WorktreeSpec>
-where
-	T: IssueTracker,
-{
-	if let Some(mapping) = context.state_store.worktree_for_issue(&issue.id)? {
-		return Ok(WorktreeSpec {
-			branch_name: mapping.branch_name().to_owned(),
-			issue_identifier: issue.identifier.clone(),
-			path: mapping.worktree_path().to_path_buf(),
-			reused_existing: true,
-		});
-	}
-
-	let worktree_manager = WorktreeManager::new(
-		context.project.service_id(),
-		context.project.repo_root(),
-		context.project.worktree_root(),
-	);
-
-	Ok(worktree_manager.plan_for_issue(&issue.identifier))
 }

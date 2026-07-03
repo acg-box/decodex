@@ -9,6 +9,18 @@ mod validation;
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::{Result, eyre};
+use decision::{
+	autonomy_decision_research_evidence, autonomy_decision_research_options,
+	autonomy_decision_research_provenance, proposal_assumptions, proposal_conflict_domains,
+	proposal_constraints, proposal_issue_candidates, proposal_objections, proposal_objectives,
+	proposal_risk_notes, proposal_source_issue_identifier, proposal_stop_conditions,
+	proposal_validation_expectations,
+};
+use validation::{
+	autonomy_proposal_fingerprint, autonomy_proposal_id, autonomy_proposal_record_version,
+	autonomy_proposal_schema, derive_proposal_state, proposal_refusals, unique_sorted_strings,
+	validate_compile_input, validate_sorted_unique,
+};
 
 pub(crate) const AUTONOMY_PROPOSAL_SCHEMA: &str = "decodex.autonomy_proposal/1";
 
@@ -280,5 +292,4 @@ pub(crate) struct AutonomyProposal {
 	created_at: String,
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

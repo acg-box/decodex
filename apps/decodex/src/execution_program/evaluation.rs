@@ -2,9 +2,7 @@
 
 mod node;
 mod summary;
-
-pub(super) use self::node::{EvaluateNodeInput, evaluate_node};
 pub(crate) use self::{
-	node::ExecutionNodeEvaluation,
+	node::{EvaluateNodeInput, ExecutionNodeEvaluation, evaluate_node},
 	summary::{ExecutionProgramEvaluation, ExecutionProgramOperatorSummary},
 };

@@ -1,5 +1,6 @@
-use super::{RepoGateFailureDiagnostic, RepoGateTrackedRewriteDecision};
 use std::fmt::{Display, Formatter};
+
+use crate::orchestrator::git_ops::{RepoGateFailureDiagnostic, RepoGateTrackedRewriteDecision};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RepoGateFailureDisposition {
 	ContinueRepair,

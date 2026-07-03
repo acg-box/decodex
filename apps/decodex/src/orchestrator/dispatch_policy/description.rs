@@ -1,10 +1,6 @@
-use serde_json::Value;
+use crate::orchestrator::dispatch_policy::{TrackerIssue, Value};
 
-use crate::tracker::TrackerIssue;
-
-pub(in crate::orchestrator::dispatch_policy) fn description_is_machine_only_fenced_block(
-	description: &str,
-) -> bool {
+pub(crate) fn description_is_machine_only_fenced_block(description: &str) -> bool {
 	let trimmed = description.trim();
 
 	if trimmed.is_empty() {
@@ -67,6 +63,19 @@ pub(in crate::orchestrator::dispatch_policy) fn description_is_machine_only_fenc
 	saw_fence && !inside_fence
 }
 
+pub(crate) fn render_issue_description_for_prompt(issue: &TrackerIssue) -> String {
+	if issue.description.trim().is_empty() {
+		return String::from("(no description)");
+	}
+	if description_is_machine_only_fenced_block(&issue.description) {
+		return String::from(
+			"(machine-only tracker description omitted; this lane requires a separate generic issue briefing surface)",
+		);
+	}
+
+	issue.description.clone()
+}
+
 fn parse_code_fence(line: &str) -> Option<(u8, usize, &str)> {
 	let first_byte = *line.as_bytes().first()?;
 
@@ -92,17 +101,4 @@ fn fenced_block_is_machine_readable(fence_info: &str, fence_body: &str) -> bool 
 		Ok(payload) => payload.is_object() || payload.is_array(),
 		Err(_) => false,
 	}
-}
-
-pub(in crate::orchestrator) fn render_issue_description_for_prompt(issue: &TrackerIssue) -> String {
-	if issue.description.trim().is_empty() {
-		return String::from("(no description)");
-	}
-	if description_is_machine_only_fenced_block(&issue.description) {
-		return String::from(
-			"(machine-only tracker description omitted; this lane requires a separate generic issue briefing surface)",
-		);
-	}
-
-	issue.description.clone()
 }

@@ -298,12 +298,10 @@ fn marker_head_binding_mismatch(
 			local_head_oid,
 		) {
 			ReviewHandoffLineage::Descends => None,
-			ReviewHandoffLineage::Diverged => {
-				Some(("review_handoff_lineage_mismatch", "review_handoff.pr_head_oid"))
-			},
-			ReviewHandoffLineage::Unknown => {
-				Some(("review_handoff_lineage_check_failed", "review_handoff.pr_head_oid"))
-			},
+			ReviewHandoffLineage::Diverged =>
+				Some(("review_handoff_lineage_mismatch", "review_handoff.pr_head_oid")),
+			ReviewHandoffLineage::Unknown =>
+				Some(("review_handoff_lineage_check_failed", "review_handoff.pr_head_oid")),
 		}
 	} else if let Some(orchestration) = context.existing_orchestration {
 		orchestration_binding_mismatch(context, orchestration, local_head_oid)

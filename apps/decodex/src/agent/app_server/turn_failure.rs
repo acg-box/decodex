@@ -59,9 +59,8 @@ impl AppServerTurnFailure {
 
 	pub(crate) fn retry_next_action(&self) -> &'static str {
 		match self.codex_error_info.as_deref() {
-			Some("usageLimitExceeded") => {
-				"decodex will retry automatically and reselect or refresh the Codex account before the next attempt"
-			},
+			Some("usageLimitExceeded") =>
+				"decodex will retry automatically and reselect or refresh the Codex account before the next attempt",
 			_ => "decodex will retry automatically",
 		}
 	}

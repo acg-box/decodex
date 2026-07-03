@@ -10,9 +10,7 @@ use crate::orchestrator::{
 	},
 };
 
-pub(in crate::orchestrator) fn decide_post_review_lane(
-	input: &PostReviewLaneKernelInput<'_>,
-) -> OwnedLaneDecision {
+pub(crate) fn decide_post_review_lane(input: &PostReviewLaneKernelInput<'_>) -> OwnedLaneDecision {
 	let mut observation = LaneObservation::for_issue(input.issue_id);
 
 	observation.run_id = input.run_id.map(str::to_owned);
@@ -31,12 +29,13 @@ pub(in crate::orchestrator) fn decide_post_review_lane(
 		PostReviewLaneDecision::WaitForReview => {
 			observation.external_signal_pending = true;
 		},
-		PostReviewLaneDecision::Continue =>
+		PostReviewLaneDecision::Continue => {
 			if command::post_review_reason_is_cleanup(input.reason) {
 				observation.terminalization = TerminalizationState::CleanupPending;
 			} else {
 				observation.active_owned_work = true;
-			},
+			}
+		},
 		PostReviewLaneDecision::CloseoutBlocked
 		| PostReviewLaneDecision::CleanupBlocked
 		| PostReviewLaneDecision::Block => {
@@ -51,7 +50,7 @@ pub(in crate::orchestrator) fn decide_post_review_lane(
 	decision
 }
 
-pub(in crate::orchestrator) fn project_post_review_lane_decision(
+pub(crate) fn project_post_review_lane_decision(
 	input: &PostReviewLaneKernelInput<'_>,
 	decision: &OwnedLaneDecision,
 ) -> PostReviewLaneDecision {

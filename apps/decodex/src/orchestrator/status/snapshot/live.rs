@@ -1,13 +1,16 @@
 use std::path::Path;
 
-use crate::orchestrator::status::{
-	self, AccountActivityMode, GhPullRequestReviewStateInspector, IssueTracker,
-	LiveOperatorStatusObserverContext, LiveOperatorStatusSnapshotOptions, OperatorStatusSnapshot,
-	RunIssueMetadataHydration, ServiceConfig, StateStore, WorkflowDocument,
+use crate::{
+	orchestrator::status::{
+		self, AccountActivityMode, GhPullRequestReviewStateInspector, IssueTracker,
+		LiveOperatorStatusObserverContext, LiveOperatorStatusSnapshotOptions,
+		OperatorStatusSnapshot, RunIssueMetadataHydration, ServiceConfig, StateStore,
+		WorkflowDocument,
+	},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
-pub(in crate::orchestrator) fn build_live_operator_status_snapshot<T>(
+pub(crate) fn build_live_operator_status_snapshot<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -32,7 +35,7 @@ where
 	)
 }
 
-pub(in crate::orchestrator) fn build_status_command_operator_status_snapshot<T>(
+pub(crate) fn build_status_command_operator_status_snapshot<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -57,7 +60,7 @@ where
 	)
 }
 
-pub(in crate::orchestrator) fn build_control_plane_operator_status_snapshot<T>(
+pub(crate) fn build_control_plane_operator_status_snapshot<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -82,7 +85,7 @@ where
 	)
 }
 
-pub(in crate::orchestrator) fn build_live_operator_status_snapshot_with_history_ledger<T>(
+pub(crate) fn build_live_operator_status_snapshot_with_history_ledger<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,

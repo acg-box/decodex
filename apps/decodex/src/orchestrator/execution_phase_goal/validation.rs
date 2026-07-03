@@ -1,17 +1,19 @@
 use serde_json::Value;
 
-use crate::orchestrator::{
-	self, LaneDecisionSnapshot, LoopGuardrailRecoveryDecision, ManualAttentionRequested,
-	PhaseGoalKind, PhaseGoalTransition, RUN_OPERATION_REPO_GATE, RepoGateCommandOutcome,
-	RepoGateFailure, RepoGateFailureDisposition, RepoGateTrackedRewriteDecision, Report,
-	ResolvedRepoGate, Result,
-	execution_phase_goal::{
-		acceptance::{
-			self, PhaseAcceptanceCheck, PhaseAcceptanceCheckFailure, PhaseAcceptanceDecision,
-			phase_acceptance_blocker_count, phase_acceptance_docs_impact_valid,
-			phase_acceptance_has_non_goal_violation,
+use crate::{
+	orchestrator::{
+		self, LaneDecisionSnapshot, LoopGuardrailRecoveryDecision, ManualAttentionRequested,
+		PhaseGoalKind, PhaseGoalTransition, RUN_OPERATION_REPO_GATE, RepoGateCommandOutcome,
+		RepoGateFailure, RepoGateFailureDisposition, RepoGateTrackedRewriteDecision, Report,
+		ResolvedRepoGate, Result,
+		execution_phase_goal::{
+			acceptance::{
+				self, PhaseAcceptanceCheck, PhaseAcceptanceCheckFailure, PhaseAcceptanceDecision,
+				phase_acceptance_blocker_count, phase_acceptance_docs_impact_valid,
+				phase_acceptance_has_non_goal_violation,
+			},
+			controller::RepoGatePhaseGoalController,
 		},
-		controller::RepoGatePhaseGoalController,
 	},
 	state,
 };

@@ -2,9 +2,10 @@
 
 use sha2::{Digest as _, Sha256};
 
-use crate::prelude::Result;
-
-use super::{model::AutonomySignal, review::AutonomySignalReviewEvidence};
+use crate::{
+	autonomy_signal::{model::AutonomySignal, review::AutonomySignalReviewEvidence},
+	prelude::Result,
+};
 
 pub(super) fn autonomy_signal_id(fingerprint: &str) -> String {
 	format!("autonomy_signal:{fingerprint}")

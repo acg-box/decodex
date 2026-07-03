@@ -1,10 +1,6 @@
-use super::{
-	Deserialize, ErrorKind, Path, PathBuf, PullRequestIssueCommentsPageQuery,
-	PullRequestReviewStatePageQuery, Report, eyre, github, merge_pull_request_issue_comment_page,
-	merge_pull_request_review_state_page, next_pull_request_issue_comments_cursor,
-	next_pull_request_review_threads_cursor, pull_request_review_state_from_page,
-	query_pull_request_issue_comments_page, query_pull_request_review_state_page,
-	resolve_configured_env_var,
+use crate::orchestrator::types::{
+	self, Deserialize, ErrorKind, Path, PathBuf, PullRequestIssueCommentsPageQuery,
+	PullRequestReviewStatePageQuery, Report, eyre, github,
 };
 
 pub(crate) type PullRequestReadbackResult =
@@ -112,7 +108,7 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 	}
 
 	fn inspect_review_state_readback(&self, cwd: &Path, pr_url: &str) -> PullRequestReadbackResult {
-		let github_token = resolve_configured_env_var(
+		let github_token = types::resolve_configured_env_var(
 			"github.token_env_var",
 			self.github_token_env_var.as_deref(),
 		)?;
@@ -123,7 +119,7 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 
 		loop {
 			let repository =
-				query_pull_request_review_state_page(PullRequestReviewStatePageQuery {
+				types::query_pull_request_review_state_page(PullRequestReviewStatePageQuery {
 					cwd,
 					owner: &locator.owner,
 					repo: &locator.repo,
@@ -139,16 +135,22 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 				)
 			})?;
 			let next_cursor = match &mut review_state {
-				Some(review_state) => {
-					merge_pull_request_review_state_page(review_state, &repository, pull_request)?
-				},
+				Some(review_state) => types::merge_pull_request_review_state_page(
+					review_state,
+					&repository,
+					pull_request,
+				)?,
 				None => {
-					let next_cursor = next_pull_request_review_threads_cursor(pull_request)?;
+					let next_cursor = types::next_pull_request_review_threads_cursor(pull_request)?;
 
-					comments_after =
-						next_pull_request_issue_comments_cursor(&pull_request.comments, pr_url)?;
-					review_state =
-						Some(pull_request_review_state_from_page(&repository, pull_request)?);
+					comments_after = types::next_pull_request_issue_comments_cursor(
+						&pull_request.comments,
+						pr_url,
+					)?;
+					review_state = Some(types::pull_request_review_state_from_page(
+						&repository,
+						pull_request,
+					)?);
 
 					next_cursor
 				},
@@ -166,7 +168,7 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 
 		while let Some(cursor) = comments_after.take() {
 			let pull_request =
-				query_pull_request_issue_comments_page(PullRequestIssueCommentsPageQuery {
+				types::query_pull_request_issue_comments_page(PullRequestIssueCommentsPageQuery {
 					cwd,
 					owner: &locator.owner,
 					repo: &locator.repo,
@@ -178,7 +180,7 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 				})?;
 
 			comments_after =
-				merge_pull_request_issue_comment_page(&mut review_state, &pull_request)?;
+				types::merge_pull_request_issue_comment_page(&mut review_state, &pull_request)?;
 		}
 
 		Ok(review_state)

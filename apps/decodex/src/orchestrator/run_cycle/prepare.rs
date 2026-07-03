@@ -1,16 +1,7 @@
-use std::path::Path;
-
-use crate::{
-	orchestrator::{
-		IssueDispatchMode, IssueRunPlan, IssueTracker, PreferredRunIdentity,
-		PrepareIssueRunContext, Result, RetryIssueStateHint, StateStore, TrackerIssue,
-		build_run_id, cleanup_terminal_worktree, clear_terminal_guard_marker,
-		closeout_dispatch_block_reason, is_terminal_issue, issue_passes_current_dispatch_policy,
-		planned_issue_state_for_dispatch, refresh_issue, retry_budget_base_for_dispatch_mode,
-		validate_workflow_read_first_files, write_prepare_lifecycle_events,
-	},
-	prelude::eyre,
-	worktree::WorktreeSpec,
+use crate::orchestrator::run_cycle::{
+	self, IssueDispatchMode, IssueRunPlan, IssueTracker, Path, PreferredRunIdentity,
+	PrepareIssueRunContext, Result, RetryIssueStateHint, StateStore, TrackerIssue, WorktreeSpec,
+	eyre,
 };
 
 pub(crate) fn prepare_issue_run<T>(
@@ -29,7 +20,7 @@ where
 	else {
 		return Ok(None);
 	};
-	let retry_budget_base = retry_budget_base_for_dispatch_mode(
+	let retry_budget_base = run_cycle::retry_budget_base_for_dispatch_mode(
 		context.state_store,
 		&issue.id,
 		&planned_worktree.path,
@@ -37,14 +28,14 @@ where
 		context.preferred_retry_budget_base,
 	)?;
 	let lease_issue_id = issue.id.clone();
-	let issue_state = planned_issue_state_for_dispatch(
+	let issue_state = run_cycle::planned_issue_state_for_dispatch(
 		context.workflow,
 		&issue,
 		context.dispatch_mode,
 		context.preferred_issue_state,
 	);
 
-	validate_workflow_read_first_files(context.project, context.workflow)?;
+	run_cycle::validate_workflow_read_first_files(context.project, context.workflow)?;
 
 	if !context.dry_run
 		&& !context.lease_preacquired
@@ -77,7 +68,8 @@ where
 			)?;
 		}
 
-		let Some(refreshed_issue) = refresh_issue(context.tracker, &lease_issue_id)? else {
+		let Some(refreshed_issue) = run_cycle::refresh_issue(context.tracker, &lease_issue_id)?
+		else {
 			return Ok(None);
 		};
 
@@ -92,7 +84,8 @@ where
 		}
 		if !context.dry_run {
 			record_starting_attempt(context.state_store, &run_id, &issue.id, attempt_number)?;
-			clear_terminal_guard_marker(&worktree.path)?;
+
+			run_cycle::clear_terminal_guard_marker(&worktree.path)?;
 		}
 
 		let initial_issue_state = context
@@ -112,7 +105,7 @@ where
 		};
 
 		if !context.dry_run {
-			write_prepare_lifecycle_events(
+			run_cycle::write_prepare_lifecycle_events(
 				context.tracker,
 				context.project,
 				context.workflow,
@@ -151,6 +144,7 @@ where
 	let Some(worktree) = context.state_store.worktree_for_issue(&issue.id)? else {
 		return Ok(None);
 	};
+
 	if worktree.project_id() != context.project.service_id()
 		|| !worktree.worktree_path().try_exists()?
 	{
@@ -175,7 +169,7 @@ fn prepare_issue_run_dispatch_allowed<T>(
 where
 	T: IssueTracker,
 {
-	let dispatch_allowed = issue_passes_current_dispatch_policy(
+	let dispatch_allowed = run_cycle::issue_passes_current_dispatch_policy(
 		context.tracker,
 		refreshed_issue,
 		context.project,
@@ -191,7 +185,7 @@ where
 	if !dispatch_allowed {
 		if !context.dry_run
 			&& context.dispatch_mode == IssueDispatchMode::Closeout
-			&& let Some(reason) = closeout_dispatch_block_reason(
+			&& let Some(reason) = run_cycle::closeout_dispatch_block_reason(
 				context.tracker,
 				refreshed_issue,
 				context.project,
@@ -200,8 +194,8 @@ where
 			)? {
 			eyre::bail!("retained closeout dispatch blocked: {reason}");
 		}
-		if !context.dry_run && is_terminal_issue(refreshed_issue, context.workflow) {
-			cleanup_terminal_worktree(
+		if !context.dry_run && run_cycle::is_terminal_issue(refreshed_issue, context.workflow) {
+			run_cycle::cleanup_terminal_worktree(
 				context.state_store,
 				context.worktree_manager,
 				context.workflow,
@@ -265,8 +259,9 @@ fn resolve_prepare_run_identity(
 				preferred_run_identity.run_id.to_owned(),
 			)))
 		},
-		None => {
-			Ok(Some((next_attempt_number, build_run_id(&issue.identifier, next_attempt_number)?)))
-		},
+		None => Ok(Some((
+			next_attempt_number,
+			run_cycle::build_run_id(&issue.identifier, next_attempt_number)?,
+		))),
 	}
 }

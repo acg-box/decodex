@@ -1,24 +1,26 @@
-use super::*;
-
+use crate::orchestrator::tests::operator::status::http::{
+	self, DASHBOARD_MAX_WEBSOCKET_CLIENTS, DashboardClientSubscription, DashboardEventHub,
+	ProjectRegistration, StateStore, TempDir, TestEnvVarGuard, Value, orchestrator, state,
+};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn operator_dashboard_run_activity_event_keeps_unleased_app_server_current_lane() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("Todo", &[]);
+	let issue = http::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
-	git_status_success(
+	http::git_status_success(
 		config.repo_root(),
 		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
 	);
@@ -46,8 +48,7 @@ fn operator_dashboard_run_activity_event_keeps_unleased_app_server_current_lane(
 		&[],
 	)
 	.expect("thread status should write");
-
-	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
+	http::rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
 
 	let event =
 		orchestrator::build_operator_run_activity_event(&state_store).expect("event should build");
@@ -55,7 +56,7 @@ fn operator_dashboard_run_activity_event_keeps_unleased_app_server_current_lane(
 		orchestrator::dashboard_websocket_message(event.event.event_type, &event.event.payload)
 			.expect("event should serialize");
 	let (payload, _consumed) =
-		websocket_text_payload(&message).expect("event should be a text frame");
+		http::websocket_text_payload(&message).expect("event should be a text frame");
 	let payload: Value = serde_json::from_slice(payload).expect("event data should be json");
 	let data = &payload["payload"];
 	let current_lanes = data["currentLanes"].as_array().expect("current lanes should list");
@@ -81,16 +82,16 @@ fn operator_dashboard_run_activity_event_demotes_cleanup_complete_unleased_curre
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue_with_sort_fields(
+	let issue = http::sample_issue_with_sort_fields(
 		"issue-xy-952",
 		"XY-952",
 		"Done",
@@ -100,7 +101,7 @@ fn operator_dashboard_run_activity_event_demotes_cleanup_complete_unleased_curre
 	);
 	let worktree_path = config.worktree_root().join("XY-952");
 
-	git_status_success(
+	http::git_status_success(
 		config.repo_root(),
 		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
 	);
@@ -126,9 +127,9 @@ fn operator_dashboard_run_activity_event_demotes_cleanup_complete_unleased_curre
 		)
 		.expect("protocol evidence should record");
 
-	seed_local_linear_execution_events(
+	http::seed_local_linear_execution_events(
 		&state_store,
-		&successful_linear_execution_history_comments_with_cleanup(&issue),
+		&http::successful_linear_execution_history_comments_with_cleanup(&issue),
 	);
 
 	let event =
@@ -137,7 +138,7 @@ fn operator_dashboard_run_activity_event_demotes_cleanup_complete_unleased_curre
 		orchestrator::dashboard_websocket_message(event.event.event_type, &event.event.payload)
 			.expect("event should serialize");
 	let (payload, _consumed) =
-		websocket_text_payload(&message).expect("event should be a text frame");
+		http::websocket_text_payload(&message).expect("event should be a text frame");
 	let payload: Value = serde_json::from_slice(payload).expect("event data should be json");
 	let data = &payload["payload"];
 	let fingerprint: Value =
@@ -410,21 +411,21 @@ fn operator_dashboard_run_activity_event_includes_disabled_project_current_lanes
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let observer_store = StateStore::open(&state_path).expect("observer store should open");
 	let writer_store = StateStore::open(&state_path).expect("writer store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&http::service_config_path(config.repo_root()),
 		&config,
 		false,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("In Progress", &[]);
+	let issue = http::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
-	git_status_success(
+	http::git_status_success(
 		config.repo_root(),
 		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
 	);
@@ -451,7 +452,7 @@ fn operator_dashboard_run_activity_event_includes_disabled_project_current_lanes
 		orchestrator::dashboard_websocket_message(event.event.event_type, &event.event.payload)
 			.expect("event should serialize");
 	let (payload, _consumed) =
-		websocket_text_payload(&message).expect("event should be a text frame");
+		http::websocket_text_payload(&message).expect("event should be a text frame");
 	let payload: Value = serde_json::from_slice(payload).expect("event data should be json");
 	let data = &payload["payload"];
 	let current_lanes = data["currentLanes"].as_array().expect("current lanes should list");

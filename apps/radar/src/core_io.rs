@@ -1,15 +1,8 @@
 //! Shared Radar filesystem, schema, and repository helpers.
 
-use std::{
-	collections::BTreeSet,
-	fs,
-	path::{Path, PathBuf},
-};
-
-use serde_json::Value;
-
 use crate::{
-	CONFIG_FEATURE_CATALOG_PATH, GitHubApi, RadarRefreshQueueRequest, RefreshKind, prelude::eyre,
+	BTreeSet, CONFIG_FEATURE_CATALOG_PATH, GitHubApi, Path, PathBuf, RadarRefreshQueueRequest,
+	RefreshKind, Value, eyre, fs,
 };
 
 pub(crate) fn validate_expected_schema(

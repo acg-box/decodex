@@ -7,8 +7,7 @@ mod runtime_records;
 
 use std::{collections::BTreeMap, path::Path};
 
-#[cfg(unix)]
-use libc::{F_GETFD, FD_CLOEXEC};
+#[cfg(unix)] use libc::{F_GETFD, FD_CLOEXEC};
 use rusqlite::Connection;
 
 use crate::{

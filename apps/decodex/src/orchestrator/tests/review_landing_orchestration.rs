@@ -1,7 +1,18 @@
 use std::fs;
 
-use crate::{orchestrator::{self, tests, ReviewLevel, ReviewOrchestrationMarker, StateStore, TERMINAL_GUARDED_RUN_STATUS}, orchestrator::tests::{FakePullRequestReviewStateInspector, FakeTracker, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, review_landing_classification_review, review_landing_status_support}, worktree::WorktreeManager};
-use crate::test_support;
+use crate::{
+	orchestrator::{
+		self, ReviewLevel, ReviewOrchestrationMarker, StateStore, TERMINAL_GUARDED_RUN_STATUS,
+		tests,
+		tests::{
+			FakePullRequestReviewStateInspector, FakeTracker,
+			TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, review_landing_classification_review,
+			review_landing_status_support,
+		},
+	},
+	test_support,
+	worktree::WorktreeManager,
+};
 
 #[test]
 fn reconcile_post_review_orchestration_requests_external_review_without_thumbs_up_baseline() {
@@ -322,8 +333,12 @@ fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manua
 	let worktree =
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let pr_head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
-	let merge_commit_oid =
-		tests::commit_worktree_change(&worktree.path, "landed.txt", "landed\n", "land retained lane");
+	let merge_commit_oid = tests::commit_worktree_change(
+		&worktree.path,
+		"landed.txt",
+		"landed\n",
+		"land retained lane",
+	);
 	let current_head_oid =
 		tests::commit_worktree_change(&worktree.path, "later.txt", "later\n", "advance main later");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/203";
@@ -401,7 +416,8 @@ fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manua
 #[test]
 fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
-	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) =
+		tests::install_fake_admin_merge_gh_response(&temp_dir);
 	let config = tests::service_config_with_github_token_env_var_and_command_path(
 		&config,
 		"PATH",
@@ -415,7 +431,8 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
 	let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid =
+		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
@@ -431,7 +448,13 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 
 	let mut review_state = tests::sample_pull_request_review_state(
@@ -490,7 +513,8 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 #[test]
 fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_boundary() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
-	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) =
+		tests::install_fake_admin_merge_gh_response(&temp_dir);
 	let config = tests::service_config_with_github_token_env_var_and_command_path(
 		&config,
 		"PATH",
@@ -503,7 +527,8 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_boundary
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid =
+		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
@@ -519,7 +544,13 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_boundary
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 	review_landing_classification_review::record_block_landing_authority_boundary(
 		&state_store,
@@ -567,7 +598,8 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_boundary
 #[test]
 fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_boundary() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
-	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) =
+		tests::install_fake_admin_merge_gh_response(&temp_dir);
 	let config = tests::service_config_with_github_token_env_var_and_command_path(
 		&config,
 		"PATH",
@@ -580,7 +612,8 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_bou
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid =
+		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
@@ -596,7 +629,13 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_bou
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 	review_landing_classification_review::record_requires_human_authority_boundary(
 		&state_store,
@@ -644,7 +683,8 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_bou
 #[test]
 fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision_request() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
-	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) =
+		tests::install_fake_admin_merge_gh_response(&temp_dir);
 	let config = tests::service_config_with_github_token_env_var_and_command_path(
 		&config,
 		"PATH",
@@ -657,7 +697,8 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid =
+		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
@@ -673,7 +714,13 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 	review_landing_classification_review::record_authority_decision_request(&state_store, &issue);
 
@@ -718,7 +765,8 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision
 #[test]
 fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallback() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
-	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) =
+		tests::install_fake_admin_merge_gh_response(&temp_dir);
 	let config = tests::service_config_with_github_token_env_var_and_command_path(
 		&config,
 		"PATH",
@@ -731,7 +779,8 @@ fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallbac
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid =
+		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
@@ -747,7 +796,13 @@ fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallbac
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 
 	let mut review_state = tests::sample_pull_request_review_state(
@@ -805,7 +860,8 @@ fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_
 	review_level: ReviewLevel,
 ) {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
-	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) =
+		tests::install_fake_admin_merge_gh_response(&temp_dir);
 	let config = tests::service_config_with_review_level(
 		&tests::service_config_with_github_token_env_var_and_command_path(
 			&config,
@@ -822,7 +878,8 @@ fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
 	let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid =
+		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
@@ -894,7 +951,8 @@ fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_
 fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landing_to_agent_fallback()
  {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
-	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) =
+		tests::install_fake_admin_merge_gh_response(&temp_dir);
 	let config = tests::service_config_with_review_level(
 		&tests::service_config_with_github_token_env_var_and_command_path(
 			&config,
@@ -910,7 +968,8 @@ fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landin
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid =
+		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
@@ -969,7 +1028,8 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
 	let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
-	let head_oid = tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+	let head_oid =
+		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response_with_merge_exit_code(&temp_dir, &head_oid, 1);
 	let config = tests::service_config_with_github_token_env_var_and_command_path(
@@ -992,7 +1052,13 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 
 	let mut review_state = tests::sample_pull_request_review_state(
@@ -1471,7 +1537,13 @@ fn reconcile_post_review_orchestration_routes_thread_only_external_review_to_rep
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 
 	let mut review_state = tests::sample_pull_request_review_state(
@@ -1547,7 +1619,13 @@ fn reconcile_post_review_orchestration_fails_closed_when_pull_request_is_closed(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 
 	let mut review_state = tests::sample_pull_request_review_state(
@@ -1614,7 +1692,13 @@ fn reconcile_post_review_orchestration_skips_issue_with_run_lease() {
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, "waiting_for_result", 1),
+		&tests::sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
 	);
 
 	assert!(

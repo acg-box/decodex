@@ -2,7 +2,7 @@ use crate::orchestrator::{
 	AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, OperatorBoundaryStatus, PrivateExecutionEvent, Value,
 };
 
-pub(in crate::orchestrator) fn operator_boundary_policy_decision_from_disposition(
+pub(crate) fn operator_boundary_policy_decision_from_disposition(
 	disposition: &str,
 ) -> &'static str {
 	match disposition {
@@ -11,19 +11,15 @@ pub(in crate::orchestrator) fn operator_boundary_policy_decision_from_dispositio
 	}
 }
 
-pub(in crate::orchestrator) fn operator_boundary_policy_requires_enhanced_evidence(
-	policy_decision: &str,
-) -> bool {
+pub(crate) fn operator_boundary_policy_requires_enhanced_evidence(policy_decision: &str) -> bool {
 	matches!(policy_decision, "requires_enhanced_evidence" | "block_landing")
 }
 
-pub(in crate::orchestrator) fn operator_boundary_policy_blocks_landing(
-	policy_decision: &str,
-) -> bool {
+pub(crate) fn operator_boundary_policy_blocks_landing(policy_decision: &str) -> bool {
 	policy_decision == "block_landing"
 }
 
-pub(in crate::orchestrator) fn operator_boundary_status_from_event(
+pub(crate) fn operator_boundary_status_from_event(
 	event: &PrivateExecutionEvent,
 ) -> Option<OperatorBoundaryStatus> {
 	if event.event_type() != AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE {

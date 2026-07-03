@@ -1,17 +1,14 @@
 use crate::{
 	prelude::{Result, eyre},
 	pull_request::PullRequestLandingState,
+	recovery::{
+		context::RecoveryContext,
+		pull_request_inspection,
+		review_handoff_policy::{self, RebindMode, RebindSuccessStateTransition},
+	},
 	state::{ReviewHandoffMarker, ReviewOrchestrationMarker, WorktreeMapping},
 	tracker::{IssueTracker, TrackerIssue},
 	workflow::WorkflowTracker,
-};
-
-use crate::recovery::{
-	context::RecoveryContext,
-	pull_request_inspection::landing_url,
-	review_handoff_policy::{
-		RebindMode, RebindSuccessStateTransition, validate_rebind_issue_state_for_policy,
-	},
 };
 
 pub(in crate::recovery) fn load_issue_by_identifier<T>(
@@ -24,6 +21,57 @@ where
 	tracker
 		.get_issue_by_identifier(issue_identifier)?
 		.ok_or_else(|| eyre::eyre!("Tracker issue `{issue_identifier}` was not found."))
+}
+
+pub(in crate::recovery) fn validate_existing_handoff_refresh(
+	tracker_policy: &WorkflowTracker,
+	issue: &TrackerIssue,
+	worktree: &WorktreeMapping,
+	existing_handoff: &ReviewHandoffMarker,
+	existing_orchestration: Option<&ReviewOrchestrationMarker>,
+	landing_state: &PullRequestLandingState,
+	local_head_oid: &str,
+) -> Result<(String, i64, RebindMode)> {
+	if existing_handoff.pr_url() != pull_request_inspection::landing_url(landing_state) {
+		eyre::bail!(
+			"Issue `{}` already has a review lifecycle record for branch `{}` and PR `{}`; refusing to rebind it to `{}`.",
+			issue.identifier,
+			worktree.branch_name(),
+			existing_handoff.pr_url(),
+			pull_request_inspection::landing_url(landing_state)
+		);
+	}
+
+	let orchestration_is_current = existing_orchestration.is_none_or(|marker| {
+		marker.branch_name() == worktree.branch_name()
+			&& marker.pr_url() == pull_request_inspection::landing_url(landing_state)
+			&& marker.head_sha() == local_head_oid
+	});
+
+	if existing_handoff.pr_head_oid() == local_head_oid && orchestration_is_current {
+		if issue.state.name == tracker_policy.in_progress_state()
+			|| issue.state.name == tracker_policy.failure_state()
+		{
+			return Ok((
+				existing_handoff.run_id().to_owned(),
+				existing_handoff.attempt_number(),
+				RebindMode::CompleteExistingHandoffState,
+			));
+		}
+
+		eyre::bail!(
+			"Issue `{}` already has a review lifecycle record for branch `{}` and PR `{}` at head `{local_head_oid}`; no rebind is needed.",
+			issue.identifier,
+			worktree.branch_name(),
+			existing_handoff.pr_url()
+		);
+	}
+
+	Ok((
+		existing_handoff.run_id().to_owned(),
+		existing_handoff.attempt_number(),
+		RebindMode::RefreshExistingHandoff,
+	))
 }
 
 pub(super) fn validate_rebind_issue_context(
@@ -52,7 +100,11 @@ pub(super) fn validate_rebind_issue_state(
 	issue: &TrackerIssue,
 	mode: RebindMode,
 ) -> Result<Option<RebindSuccessStateTransition>> {
-	validate_rebind_issue_state_for_policy(context.workflow.frontmatter().tracker(), issue, mode)
+	review_handoff_policy::validate_rebind_issue_state_for_policy(
+		context.workflow.frontmatter().tracker(),
+		issue,
+		mode,
+	)
 }
 
 pub(super) fn validate_rebind_existing_handoff(
@@ -86,55 +138,4 @@ pub(super) fn validate_rebind_existing_handoff(
 		landing_state,
 		local_head_oid,
 	)
-}
-
-pub(in crate::recovery) fn validate_existing_handoff_refresh(
-	tracker_policy: &WorkflowTracker,
-	issue: &TrackerIssue,
-	worktree: &WorktreeMapping,
-	existing_handoff: &ReviewHandoffMarker,
-	existing_orchestration: Option<&ReviewOrchestrationMarker>,
-	landing_state: &PullRequestLandingState,
-	local_head_oid: &str,
-) -> Result<(String, i64, RebindMode)> {
-	if existing_handoff.pr_url() != landing_url(landing_state) {
-		eyre::bail!(
-			"Issue `{}` already has a review lifecycle record for branch `{}` and PR `{}`; refusing to rebind it to `{}`.",
-			issue.identifier,
-			worktree.branch_name(),
-			existing_handoff.pr_url(),
-			landing_url(landing_state)
-		);
-	}
-
-	let orchestration_is_current = existing_orchestration.is_none_or(|marker| {
-		marker.branch_name() == worktree.branch_name()
-			&& marker.pr_url() == landing_url(landing_state)
-			&& marker.head_sha() == local_head_oid
-	});
-
-	if existing_handoff.pr_head_oid() == local_head_oid && orchestration_is_current {
-		if issue.state.name == tracker_policy.in_progress_state()
-			|| issue.state.name == tracker_policy.failure_state()
-		{
-			return Ok((
-				existing_handoff.run_id().to_owned(),
-				existing_handoff.attempt_number(),
-				RebindMode::CompleteExistingHandoffState,
-			));
-		}
-
-		eyre::bail!(
-			"Issue `{}` already has a review lifecycle record for branch `{}` and PR `{}` at head `{local_head_oid}`; no rebind is needed.",
-			issue.identifier,
-			worktree.branch_name(),
-			existing_handoff.pr_url()
-		);
-	}
-
-	Ok((
-		existing_handoff.run_id().to_owned(),
-		existing_handoff.attempt_number(),
-		RebindMode::RefreshExistingHandoff,
-	))
 }
