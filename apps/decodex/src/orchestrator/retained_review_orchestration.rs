@@ -12,8 +12,10 @@ mod stale_worktree;
 pub(crate) use self::attention::apply_passive_retained_manual_attention_with_run_identity;
 #[cfg(test)]
 pub(crate) use self::markers::ensure_review_orchestration_marker;
+#[cfg(test)]
+pub(crate) use self::model::PassiveRetainedAttentionRuntime;
 pub(crate) use self::{
-	model::{PassiveRetainedAttentionRuntime, RetainedReviewLane},
+	model::RetainedReviewLane,
 	reconcile::{
 		reconcile_post_review_orchestration, reconcile_post_review_orchestration_with_inspector,
 	},
