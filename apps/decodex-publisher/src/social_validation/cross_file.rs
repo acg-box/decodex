@@ -1,6 +1,11 @@
 //! Cross-file social artifact uniqueness checks.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::{collections::BTreeMap, path::Path};
+
+use serde_json::Value;
+
+use super::{SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA};
+use crate::{path_arg, repo_root};
 
 #[derive(Debug)]
 pub(crate) struct SocialValidationState {

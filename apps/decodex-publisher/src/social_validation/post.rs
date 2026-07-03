@@ -1,6 +1,13 @@
 //! social_post/v1 schema validation.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use serde_json::{Map, Value};
+
+use super::{
+	SIGNAL_CONFIDENCE, SOCIAL_BLOCK_REASONS, SOCIAL_POST_LIFECYCLE_STATES, SOCIAL_POST_MODES,
+	SOCIAL_POST_PRIORITIES, SOCIAL_POST_STATUSES, SOCIAL_POST_WORTHINESS, choices,
+	is_empty_or_missing_array, is_https_string_array, is_non_empty_string, matches_one_of,
+	non_empty_array, string_field, validate_optional_string_list, validate_rfc3339_field,
+};
 
 pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<String>) {
 	for field in ["slug", "audience"] {
@@ -195,16 +202,20 @@ fn validate_social_post_decision_counts(
 	match string_field(entry, "status") {
 		Some("published")
 			if before.zip(after).is_none_or(|(before, after)| after != before + 1) =>
+		{
 			errors.push(
 				"decision.daily_count_after must equal daily_count_before + 1 for published posts"
 					.into(),
-			),
+			)
+		},
 		Some("blocked" | "failed" | "skipped")
 			if before.zip(after).is_none_or(|(before, after)| after != before) =>
+		{
 			errors.push(
 				"decision.daily_count_after must equal daily_count_before for non-published posts"
 					.into(),
-			),
+			)
+		},
 		_ => {},
 	}
 }
@@ -213,10 +224,12 @@ fn validate_social_post_status_payload(entry: &Map<String, Value>, errors: &mut 
 	match string_field(entry, "status") {
 		Some("published") => validate_social_post_publication(entry.get("publication"), errors),
 		Some("blocked") => validate_social_post_block(entry, errors),
-		Some("failed") if !is_non_empty_string(entry.get("failure_reason")) =>
-			errors.push("failure_reason is required when status is failed".into()),
-		Some("skipped") if !is_non_empty_string(entry.get("skip_reason")) =>
-			errors.push("skip_reason is required when status is skipped".into()),
+		Some("failed") if !is_non_empty_string(entry.get("failure_reason")) => {
+			errors.push("failure_reason is required when status is failed".into())
+		},
+		Some("skipped") if !is_non_empty_string(entry.get("skip_reason")) => {
+			errors.push("skip_reason is required when status is skipped".into())
+		},
 		_ => {},
 	}
 }

@@ -1,6 +1,12 @@
 //! social_publish_reservation/v1 schema validation.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use serde_json::{Map, Value};
+
+use super::{
+	SOCIAL_POST_MODES, SOCIAL_PUBLISH_RESERVATION_STATUSES, choices, is_https_string,
+	is_https_string_array, is_non_empty_string, matches_one_of, non_empty_array, string_field,
+	validate_non_empty_string_list, validate_optional_string_list, validate_rfc3339_field,
+};
 
 pub(super) fn validate_social_publish_reservation(
 	entry: &Map<String, Value>,
@@ -96,10 +102,12 @@ fn validate_social_publish_reservation_status_payload(
 	errors: &mut Vec<String>,
 ) {
 	match string_field(entry, "status") {
-		Some("consumed") if !is_non_empty_string(entry.get("consumed_by_social_post")) =>
-			errors.push("consumed_by_social_post is required when status is consumed".into()),
-		Some("canceled" | "expired") if !is_non_empty_string(entry.get("release_reason")) =>
-			errors.push("release_reason is required when status is canceled or expired".into()),
+		Some("consumed") if !is_non_empty_string(entry.get("consumed_by_social_post")) => {
+			errors.push("consumed_by_social_post is required when status is consumed".into())
+		},
+		Some("canceled" | "expired") if !is_non_empty_string(entry.get("release_reason")) => {
+			errors.push("release_reason is required when status is canceled or expired".into())
+		},
 		_ => {},
 	}
 }
