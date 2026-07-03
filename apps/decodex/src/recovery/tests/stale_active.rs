@@ -9,9 +9,7 @@ use std::{fs, path::Path};
 use crate::{
 	recovery::{
 		STALE_ACTIVE_RECOVERY_SCHEMA, STALE_ACTIVE_RELEASE_EVENT,
-		apply_stale_active_release_with_tracker, clear_stale_active_dead_run_claims_before_release,
-		diagnose_stale_active_issues, ensure_stale_active_run_claim_guard,
-		preflight_stale_active_worktree_cleanup, tests,
+		apply_stale_active_release_with_tracker, diagnose_stale_active_issues, tests,
 	},
 	state::{
 		self, ChildAgentActivitySummary, ProtocolActivityMarker, ProtocolActivitySummary,
