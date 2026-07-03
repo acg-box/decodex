@@ -1,3 +1,24 @@
+use std::{
+	fs::File,
+	io::{Result, Write as _},
+	os::fd::{AsRawFd, IntoRawFd},
+	path::Path,
+};
+
+use tempfile::TempDir;
+
+use crate::state::tests::{self, IN_PROGRESS_STATE};
+use crate::state::{PreacquiredLeaseGuards, StateStore};
+
+struct TestFile;
+impl TestFile {
+	fn write(path: impl AsRef<Path>, body: impl AsRef<[u8]>) -> Result<()> {
+		let mut file = File::create(path)?;
+
+		file.write_all(body.as_ref())
+	}
+}
+
 #[test]
 fn manages_issue_leases() {
 	let store = StateStore::open_in_memory().expect("in-memory state store should open");
@@ -87,7 +108,9 @@ fn read_only_shared_claim_check_does_not_remove_unlocked_claim_anchor() {
 	store
 		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("store should configure dispatch slot root");
-	fs::write(&issue_claim_path, "stale claim anchor\n").expect("stale claim anchor should write");
+
+	TestFile::write(&issue_claim_path, "stale claim anchor\n")
+		.expect("stale claim anchor should write");
 
 	assert!(
 		!store
@@ -98,7 +121,6 @@ fn read_only_shared_claim_check_does_not_remove_unlocked_claim_anchor() {
 		issue_claim_path.exists(),
 		"read-only shared claim check should not remove an unlocked claim anchor"
 	);
-
 	assert!(
 		!store
 			.issue_has_active_shared_claim("pubfi", "PUB-101")
@@ -116,7 +138,9 @@ fn observe_dispatch_slot_root_does_not_prune_unlocked_claim_anchor() {
 	let issue_claim_path = temp_dir.path().join(".decodex-issue-claim.PUB-101.lock");
 	let store = StateStore::open_in_memory().expect("state store should open");
 
-	fs::write(&issue_claim_path, "stale claim anchor\n").expect("stale claim anchor should write");
+	TestFile::write(&issue_claim_path, "stale claim anchor\n")
+		.expect("stale claim anchor should write");
+
 	store
 		.observe_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("store should observe dispatch slot root");
@@ -143,12 +167,13 @@ fn configure_dispatch_slot_root_prunes_unlocked_shared_lock_files() {
 	let stale_dispatch_slot_path = temp_dir.path().join(".decodex-dispatch-slot.0.lock");
 	let store = StateStore::open_in_memory().expect("state store should open");
 
-	fs::write(
+	TestFile::write(
 		&stale_issue_claim_path,
 		"project_id=pubfi\nissue_id=PUB-999\nrun_id=run-stale\nissue_state=In Progress\n",
 	)
 	.expect("stale issue-claim anchor should write");
-	fs::write(&stale_dispatch_slot_path, "").expect("stale dispatch-slot anchor should write");
+	TestFile::write(&stale_dispatch_slot_path, "")
+		.expect("stale dispatch-slot anchor should write");
 
 	store
 		.configure_dispatch_slot_root("pubfi", temp_dir.path())
@@ -522,11 +547,11 @@ fn adopted_preacquired_lease_restores_close_on_exec_on_inherited_fds() {
 	let dispatch_slot_fd = child_guard.as_raw_fd();
 
 	assert!(
-		!fd_has_close_on_exec(issue_claim_fd),
+		!tests::fd_has_close_on_exec(issue_claim_fd),
 		"handoff issue-claim fd should clear close-on-exec before exec"
 	);
 	assert!(
-		!fd_has_close_on_exec(dispatch_slot_fd),
+		!tests::fd_has_close_on_exec(dispatch_slot_fd),
 		"handoff dispatch-slot fd should clear close-on-exec before exec"
 	);
 
@@ -545,11 +570,11 @@ fn adopted_preacquired_lease_restores_close_on_exec_on_inherited_fds() {
 		.expect("child should adopt the inherited lease guard");
 
 	assert!(
-		fd_has_close_on_exec(issue_claim_fd),
+		tests::fd_has_close_on_exec(issue_claim_fd),
 		"adopted issue-claim fd must restore close-on-exec before spawning grandchildren"
 	);
 	assert!(
-		fd_has_close_on_exec(dispatch_slot_fd),
+		tests::fd_has_close_on_exec(dispatch_slot_fd),
 		"adopted dispatch-slot fd must restore close-on-exec before spawning grandchildren"
 	);
 
