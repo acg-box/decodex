@@ -1,3 +1,45 @@
+use std::{
+	fs::{File, ReadDir},
+	io::{self, Read as _, Write as _},
+	path::Path,
+	process, slice,
+};
+
+use rusqlite::Connection;
+use serde_json::Value;
+use tempfile::TempDir;
+use time::OffsetDateTime;
+
+use crate::state::{
+	self, ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
+	CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker, ProtocolActivitySummary,
+	RUN_ACTIVITY_MARKER_FILE, RUN_OPERATION_REPO_GATE, ReviewHandoffMarker,
+	ReviewOrchestrationMarker, ReviewPolicyCheckpointInput, StateStore,
+	tests::{self, IN_PROGRESS_STATE},
+};
+
+struct MarkerFile;
+impl MarkerFile {
+	fn read_dir(path: impl AsRef<Path>) -> io::Result<ReadDir> {
+		path.as_ref().read_dir()
+	}
+
+	fn read_to_string(path: impl AsRef<Path>) -> io::Result<String> {
+		let mut file = File::open(path)?;
+		let mut body = String::new();
+
+		file.read_to_string(&mut body)?;
+
+		Ok(body)
+	}
+
+	fn write(path: impl AsRef<Path>, body: impl AsRef<[u8]>) -> io::Result<()> {
+		let mut file = File::create(path)?;
+
+		file.write_all(body.as_ref())
+	}
+}
+
 #[test]
 fn records_run_attempts_and_events() {
 	let store = StateStore::open_in_memory().expect("in-memory state store should open");
@@ -291,7 +333,7 @@ fn assert_run_activity_marker_round_trips_clearable_auxiliary_fields() {
 	if let Some(host_boot_id) = state::current_host_boot_id() {
 		assert_eq!(marker.host_boot_id(), Some(host_boot_id.as_str()));
 		assert!(
-			fs::read_to_string(temp_dir.path().join(RUN_ACTIVITY_MARKER_FILE))
+			MarkerFile::read_to_string(temp_dir.path().join(RUN_ACTIVITY_MARKER_FILE))
 				.expect("activity marker body should load")
 				.contains(&format!("host_boot_id={host_boot_id}\n")),
 			"activity markers should record the host boot identity for reboot-safe liveness"
@@ -300,7 +342,7 @@ fn assert_run_activity_marker_round_trips_clearable_auxiliary_fields() {
 	if let Some(process_start_identity) = state::current_process_start_identity() {
 		assert_eq!(marker.process_start_identity(), Some(process_start_identity.as_str()));
 		assert!(
-			fs::read_to_string(temp_dir.path().join(RUN_ACTIVITY_MARKER_FILE))
+			MarkerFile::read_to_string(temp_dir.path().join(RUN_ACTIVITY_MARKER_FILE))
 				.expect("activity marker body should load")
 				.contains(&format!("process_start_identity={process_start_identity}\n")),
 			"activity markers should record the process start identity for PID-reuse-safe liveness"
@@ -479,7 +521,7 @@ fn run_protocol_non_work_events_do_not_refresh_progress_marker() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let stale_progress = OffsetDateTime::now_utc().unix_timestamp() - 3_600;
 
-	fs::write(
+	MarkerFile::write(
 		temp_dir.path().join(RUN_ACTIVITY_MARKER_FILE),
 		format!(
 			"run_id=run-1\nattempt_number=1\nlast_activity_unix_epoch={stale_progress}\nlast_protocol_activity_unix_epoch={stale_progress}\nlast_progress_unix_epoch={stale_progress}\n"
@@ -584,7 +626,7 @@ fn write_test_protocol_activity_marker(
 	event_count: i64,
 	last_event_type: &str,
 	protocol_activity: Option<&ProtocolActivitySummary>,
-) -> crate::state::Result<()> {
+) -> state::Result<()> {
 	state::write_run_protocol_activity_marker(
 		worktree_path,
 		&ProtocolActivityMarker {
@@ -622,7 +664,7 @@ fn assert_run_activity_marker_round_trips_account_summary() {
 	assert_eq!(marker.account(), Some(&summary));
 	assert_eq!(marker.accounts(), slice::from_ref(&summary));
 
-	let body = fs::read_to_string(temp_dir.path().join(RUN_ACTIVITY_MARKER_FILE))
+	let body = MarkerFile::read_to_string(temp_dir.path().join(RUN_ACTIVITY_MARKER_FILE))
 		.expect("marker body should read");
 
 	assert!(body.contains("account="));
@@ -662,7 +704,7 @@ fn assert_run_activity_marker_preserves_account_summary_after_activity_refresh()
 	assert_eq!(marker.account(), Some(&summary));
 	assert_eq!(marker.accounts(), slice::from_ref(&summary));
 
-	let leftover_temp_marker = fs::read_dir(temp_dir.path())
+	let leftover_temp_marker = MarkerFile::read_dir(temp_dir.path())
 		.expect("tempdir should be readable")
 		.filter_map(|entry| entry.ok())
 		.any(|entry| entry.file_name().to_string_lossy().contains(".decodex-run-activity."));
@@ -984,7 +1026,7 @@ fn persistent_clear_worktree_mapping_preserves_review_lifecycle() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let store = StateStore::open(&state_path).expect("state store should open");
-	let handoff = sample_pub_101_review_handoff();
+	let handoff = tests::sample_pub_101_review_handoff();
 
 	store
 		.upsert_worktree("pubfi", "PUB-101", "x/decodex-pub-101", "/tmp/worktrees/pub-101")

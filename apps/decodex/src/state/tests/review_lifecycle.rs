@@ -1,3 +1,11 @@
+use rusqlite::Connection;
+use tempfile::TempDir;
+
+use crate::state::{
+	ConnectorBackoffInput, LoopGuardrailCheckpointInput, ReviewCheckpointArtifactLookup,
+	ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpointInput, StateStore, tests,
+};
+
 #[test]
 fn loop_guardrail_checkpoints_track_fingerprints_and_retarget_issue() {
 	let store = StateStore::open_in_memory().expect("state store should open");
@@ -270,7 +278,7 @@ fn historical_review_marker_tables_drop_without_lifecycle_migration() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 
-	seed_dropped_review_marker_tables(&state_path);
+	tests::seed_dropped_review_marker_tables(&state_path);
 
 	let store = StateStore::open(&state_path).expect("state store should drop historical markers");
 
@@ -366,8 +374,8 @@ fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let store = StateStore::open(&state_path).expect("state store should open");
-	let removed_handoff = sample_pub_101_review_handoff();
-	let removed_orchestration = sample_pub_101_review_orchestration();
+	let removed_handoff = tests::sample_pub_101_review_handoff();
+	let removed_orchestration = tests::sample_pub_101_review_orchestration();
 	let kept_handoff = ReviewHandoffMarker::new(
 		"run-2",
 		1,
@@ -399,7 +407,7 @@ fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &removed_orchestration)
 		.expect("removed orchestration projection should persist");
 
-	upsert_handoff_review_policy_checkpoint(
+	tests::upsert_handoff_review_policy_checkpoint(
 		&store,
 		"PUB-101",
 		"run-1",
@@ -415,7 +423,7 @@ fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &kept_orchestration)
 		.expect("kept orchestration projection should persist");
 
-	upsert_handoff_review_policy_checkpoint(
+	tests::upsert_handoff_review_policy_checkpoint(
 		&store,
 		"PUB-101",
 		"run-2",
