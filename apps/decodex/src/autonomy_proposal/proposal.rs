@@ -1,4 +1,17 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use crate::{
+	autonomy_objective::AutonomyObjectiveContract,
+	autonomy_proposal::{
+		AUTONOMY_PROPOSAL_RECORD_VERSION, AUTONOMY_PROPOSAL_SCHEMA, AutonomyProposal,
+		AutonomyProposalChallengeEvidence, AutonomyProposalChallengeInput,
+		AutonomyProposalCompileInput, AutonomyProposalDecisionBridgeAuthority,
+		AutonomyProposalIssueCandidate, AutonomyProposalObjectiveLineage, AutonomyProposalRefusal,
+		AutonomyProposalRefusalReason, AutonomyProposalSourceSignal, AutonomyProposalState,
+		decision, validation,
+	},
+	autonomy_signal::AutonomySignal,
+	loop_contract::{DecisionContract, DecisionContractStatus},
+	prelude::{Result, eyre},
+};
 
 #[allow(dead_code)]
 impl AutonomyProposal {
@@ -7,7 +20,7 @@ impl AutonomyProposal {
 		signals: &[AutonomySignal],
 		input: AutonomyProposalCompileInput,
 	) -> Result<Self> {
-		validate_compile_input(&input)?;
+		validation::validate_compile_input(&input)?;
 
 		for signal in signals {
 			signal.validate()?;
@@ -26,8 +39,9 @@ impl AutonomyProposal {
 		source_signals.sort_by(|left, right| left.signal_id.cmp(&right.signal_id));
 		source_signals.dedup_by(|left, right| left.signal_id == right.signal_id);
 
-		let source_signal_ids =
-			unique_sorted_strings(source_signals.iter().map(|signal| signal.signal_id.clone()));
+		let source_signal_ids = validation::unique_sorted_strings(
+			source_signals.iter().map(|signal| signal.signal_id.clone()),
+		);
 		let allowed_surfaces =
 			objective.map(|objective| objective.allowed_surfaces().to_vec()).unwrap_or_default();
 		let validation_gates =
@@ -39,17 +53,21 @@ impl AutonomyProposal {
 		let review_requirements = objective
 			.map(|objective| vec![objective.review_policy().to_owned()])
 			.unwrap_or_default();
-		let contradictions = unique_sorted_strings(
+		let contradictions = validation::unique_sorted_strings(
 			signals.iter().flat_map(|signal| signal.contradictions().to_vec()),
 		);
-		let gaps = unique_sorted_strings(signals.iter().flat_map(|signal| signal.gaps().to_vec()));
-		let refusal_reasons = proposal_refusals(objective, signals, &input, &contradictions);
-		let state = derive_proposal_state(!source_signal_ids.is_empty(), &refusal_reasons);
-		let affected_identifiers = unique_sorted_strings(input.affected_identifiers);
+		let gaps = validation::unique_sorted_strings(
+			signals.iter().flat_map(|signal| signal.gaps().to_vec()),
+		);
+		let refusal_reasons =
+			validation::proposal_refusals(objective, signals, &input, &contradictions);
+		let state =
+			validation::derive_proposal_state(!source_signal_ids.is_empty(), &refusal_reasons);
+		let affected_identifiers = validation::unique_sorted_strings(input.affected_identifiers);
 		let issue_candidates = input.issue_candidates;
 		let mut proposal = Self {
-			schema: autonomy_proposal_schema(),
-			record_version: autonomy_proposal_record_version(),
+			schema: validation::autonomy_proposal_schema(),
+			record_version: validation::autonomy_proposal_record_version(),
 			id: String::new(),
 			fingerprint: String::new(),
 			project_id: input.project_id,
@@ -69,8 +87,8 @@ impl AutonomyProposal {
 			metrics,
 			non_goals,
 			review_requirements,
-			challenge_requirements: unique_sorted_strings(input.challenge_requirements),
-			rejected_alternatives: unique_sorted_strings(input.rejected_alternatives),
+			challenge_requirements: validation::unique_sorted_strings(input.challenge_requirements),
+			rejected_alternatives: validation::unique_sorted_strings(input.rejected_alternatives),
 			rollback_path: input.rollback_path,
 			issue_candidates,
 			contradictions,
@@ -81,9 +99,9 @@ impl AutonomyProposal {
 			non_executable: true,
 			created_at: input.created_at,
 		};
-		let fingerprint = autonomy_proposal_fingerprint(&proposal)?;
+		let fingerprint = validation::autonomy_proposal_fingerprint(&proposal)?;
 
-		proposal.id = autonomy_proposal_id(&fingerprint);
+		proposal.id = validation::autonomy_proposal_id(&fingerprint);
 		proposal.fingerprint = fingerprint;
 
 		proposal.validate()?;
@@ -212,28 +230,28 @@ impl AutonomyProposal {
 			"source_intent": {
 				"summary": format!("Accepted autonomy proposal: {}", self.summary),
 				"user_utterance": authority.reason.clone(),
-				"source_issue_identifier": proposal_source_issue_identifier(&self.affected_identifiers),
+				"source_issue_identifier": decision::proposal_source_issue_identifier(&self.affected_identifiers),
 			},
-			"research_provenance": autonomy_decision_research_provenance(self, &authority),
-			"research_evidence": autonomy_decision_research_evidence(self),
-			"research_options": autonomy_decision_research_options(self),
+			"research_provenance": decision::autonomy_decision_research_provenance(self, &authority),
+			"research_evidence": decision::autonomy_decision_research_evidence(self),
+			"research_options": decision::autonomy_decision_research_options(self),
 			"accepted_authority": {
-				"accepted_objectives": proposal_objectives(self),
+				"accepted_objectives": decision::proposal_objectives(self),
 				"non_goals": self.non_goals.clone(),
-				"constraints": proposal_constraints(self),
-				"assumptions": proposal_assumptions(self, &authority),
-				"objections": proposal_objections(self),
-				"stop_conditions": proposal_stop_conditions(self),
+				"constraints": decision::proposal_constraints(self),
+				"assumptions": decision::proposal_assumptions(self, &authority),
+				"objections": decision::proposal_objections(self),
+				"stop_conditions": decision::proposal_stop_conditions(self),
 			},
 			"execution_readiness": {
 				"summary": "Accepted autonomy proposal is ready for normal Decision Contract promotion.",
 				"ready_for_issue_shaping": true,
 				"missing_decisions": [],
-				"validation_expectations": proposal_validation_expectations(self),
-				"risk_notes": proposal_risk_notes(self),
-				"proposed_issues": proposal_issue_candidates(self),
+				"validation_expectations": decision::proposal_validation_expectations(self),
+				"risk_notes": decision::proposal_risk_notes(self),
+				"proposed_issues": decision::proposal_issue_candidates(self),
 				"promotion_targets": ["research_promote", "decision_contract"],
-				"conflict_domains": proposal_conflict_domains(self),
+				"conflict_domains": decision::proposal_conflict_domains(self),
 			},
 			"links": {
 				"generated_issue_ids": [],
@@ -260,17 +278,34 @@ impl AutonomyProposal {
 	}
 
 	pub(crate) fn validate(&self) -> Result<()> {
-		validate_required("autonomy proposal schema", &self.schema)?;
-		validate_required("autonomy proposal id", &self.id)?;
-		validate_required("autonomy proposal fingerprint", &self.fingerprint)?;
-		validate_required("autonomy proposal project_id", &self.project_id)?;
-		validate_required("autonomy proposal objective_id", &self.objective_id)?;
-		validate_required("autonomy proposal source_family", &self.source_family)?;
-		validate_required("autonomy proposal intended_surface", &self.intended_surface)?;
-		validate_required("autonomy proposal summary", &self.summary)?;
-		validate_required("autonomy proposal rollback_path", &self.rollback_path)?;
-		validate_required("autonomy proposal created_at", &self.created_at)?;
+		self.validate_required_fields()?;
+		self.validate_static_contract()?;
+		self.validate_objective_lineage()?;
+		self.validate_collections()?;
+		self.validate_embedded_records()?;
 
+		self.validate_fingerprint_identity()
+	}
+
+	fn validate_required_fields(&self) -> Result<()> {
+		validation::validate_required("autonomy proposal schema", &self.schema)?;
+		validation::validate_required("autonomy proposal id", &self.id)?;
+		validation::validate_required("autonomy proposal fingerprint", &self.fingerprint)?;
+		validation::validate_required("autonomy proposal project_id", &self.project_id)?;
+		validation::validate_required("autonomy proposal objective_id", &self.objective_id)?;
+		validation::validate_required("autonomy proposal source_family", &self.source_family)?;
+		validation::validate_required(
+			"autonomy proposal intended_surface",
+			&self.intended_surface,
+		)?;
+		validation::validate_required("autonomy proposal summary", &self.summary)?;
+		validation::validate_required("autonomy proposal rollback_path", &self.rollback_path)?;
+		validation::validate_required("autonomy proposal created_at", &self.created_at)?;
+
+		Ok(())
+	}
+
+	fn validate_static_contract(&self) -> Result<()> {
 		if self.schema != AUTONOMY_PROPOSAL_SCHEMA {
 			eyre::bail!(
 				"Autonomy proposal `{}` has unsupported schema `{}`.",
@@ -304,6 +339,11 @@ impl AutonomyProposal {
 				self.record_version
 			);
 		}
+
+		Ok(())
+	}
+
+	fn validate_objective_lineage(&self) -> Result<()> {
 		if self.objective_lineage.project_id != self.project_id
 			|| self.objective_lineage.objective_id != self.objective_id
 			|| self.objective_lineage.objective_version != self.objective_version
@@ -314,30 +354,51 @@ impl AutonomyProposal {
 			);
 		}
 
-		self.objective_lineage.validate()?;
+		self.objective_lineage.validate()
+	}
 
-		validate_sorted_unique("autonomy proposal source_signal_ids", &self.source_signal_ids)?;
-		validate_sorted_unique(
+	fn validate_collections(&self) -> Result<()> {
+		validation::validate_sorted_unique(
+			"autonomy proposal source_signal_ids",
+			&self.source_signal_ids,
+		)?;
+		validation::validate_sorted_unique(
 			"autonomy proposal affected_identifiers",
 			&self.affected_identifiers,
 		)?;
-		validate_string_list("autonomy proposal allowed_surfaces", &self.allowed_surfaces)?;
-		validate_string_list("autonomy proposal validation_gates", &self.validation_gates)?;
-		validate_string_list("autonomy proposal goals", &self.goals)?;
-		validate_string_list("autonomy proposal metrics", &self.metrics)?;
-		validate_string_list("autonomy proposal non_goals", &self.non_goals)?;
-		validate_string_list("autonomy proposal review_requirements", &self.review_requirements)?;
-		validate_sorted_unique(
+		validation::validate_string_list(
+			"autonomy proposal allowed_surfaces",
+			&self.allowed_surfaces,
+		)?;
+		validation::validate_string_list(
+			"autonomy proposal validation_gates",
+			&self.validation_gates,
+		)?;
+		validation::validate_string_list("autonomy proposal goals", &self.goals)?;
+		validation::validate_string_list("autonomy proposal metrics", &self.metrics)?;
+		validation::validate_string_list("autonomy proposal non_goals", &self.non_goals)?;
+		validation::validate_string_list(
+			"autonomy proposal review_requirements",
+			&self.review_requirements,
+		)?;
+		validation::validate_sorted_unique(
 			"autonomy proposal challenge_requirements",
 			&self.challenge_requirements,
 		)?;
-		validate_sorted_unique(
+		validation::validate_sorted_unique(
 			"autonomy proposal rejected_alternatives",
 			&self.rejected_alternatives,
 		)?;
-		validate_sorted_unique("autonomy proposal contradictions", &self.contradictions)?;
-		validate_sorted_unique("autonomy proposal gaps", &self.gaps)?;
+		validation::validate_sorted_unique(
+			"autonomy proposal contradictions",
+			&self.contradictions,
+		)?;
+		validation::validate_sorted_unique("autonomy proposal gaps", &self.gaps)?;
 
+		Ok(())
+	}
+
+	fn validate_embedded_records(&self) -> Result<()> {
 		let signal_ids_from_refs =
 			self.source_signals.iter().map(|signal| signal.signal_id.clone()).collect::<Vec<_>>();
 
@@ -358,7 +419,11 @@ impl AutonomyProposal {
 			challenge.validate()?;
 		}
 
-		let expected = autonomy_proposal_fingerprint(self)?;
+		Ok(())
+	}
+
+	fn validate_fingerprint_identity(&self) -> Result<()> {
+		let expected = validation::autonomy_proposal_fingerprint(self)?;
 
 		if expected != self.fingerprint {
 			eyre::bail!(
@@ -367,7 +432,7 @@ impl AutonomyProposal {
 			);
 		}
 
-		let expected_id = autonomy_proposal_id(&expected);
+		let expected_id = validation::autonomy_proposal_id(&expected);
 
 		if expected_id != self.id {
 			eyre::bail!(
