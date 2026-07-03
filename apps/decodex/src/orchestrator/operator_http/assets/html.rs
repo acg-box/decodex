@@ -13,11 +13,39 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/tokens/theme.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/tokens/base.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/foundation/masthead.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/masthead/shell.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/masthead/metrics.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/masthead/toolbar.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/foundation/notices.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/notices/trigger.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/notices/panel.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -41,6 +69,14 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/flow/strip.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/flow/steps.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/layout/workspace.css"
 			)),
 			include_str!(concat!(
@@ -58,6 +94,14 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/layout/cards.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/layout/cards/header.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/layout/cards/meta.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -81,11 +125,23 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/controls/visibility.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/accounts/controls.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/accounts/meta.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/pool/activity.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/pool/summary.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -101,7 +157,23 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/table/sorting.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/accounts/row-surface.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/row-surface/base.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/row-surface/state.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/row-surface/animations.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -125,7 +197,23 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/row-usage/windows.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/row-usage/state-credit.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/accounts/row-status.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/row-status/status.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/row-status/meta-slot.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),

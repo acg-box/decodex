@@ -1,0 +1,32 @@
+
+			.flow-strip {
+				position: relative;
+				padding: 9px 0 0;
+			}
+
+			.flow-strip::before {
+				content: "";
+				position: absolute;
+				top: 0;
+				left: 0;
+				right: 0;
+				height: 1px;
+				background: linear-gradient(90deg, transparent, var(--line), transparent);
+				pointer-events: none;
+			}
+
+			.flow-step span {
+				font-family: var(--mono);
+				font-size: var(--type-label);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+				color: var(--muted-strong);
+			}
+
+			.flow-step-labels {
+				display: grid;
+				grid-template-columns: repeat(4, minmax(0, 1fr));
+				align-items: baseline;
+				gap: 0;
+				min-width: 0;
+			}

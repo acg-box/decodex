@@ -1,0 +1,86 @@
+
+			.account-window {
+				display: inline-grid;
+				grid-template-columns: max-content max-content;
+				justify-content: center;
+				justify-items: center;
+				align-items: baseline;
+				gap: 1px 5px;
+				min-width: 0;
+				width: 100%;
+				font-family: var(--mono);
+				line-height: 1.18;
+				text-align: center;
+				transition:
+					color var(--fast) var(--ease);
+			}
+
+			.account-row:hover .account-window,
+			.account-row:focus-within .account-window {
+				color: var(--text);
+			}
+
+			.account-window.is-primary {
+				grid-area: primary;
+				justify-self: stretch;
+				min-width: 0;
+			}
+
+			.account-window.is-secondary {
+				grid-area: secondary;
+				justify-self: stretch;
+				min-width: 0;
+			}
+
+			.account-window-label {
+				display: none;
+				color: var(--muted);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+			}
+
+			.account-window > strong {
+				display: inline;
+				grid-column: 1;
+				grid-row: 1;
+				color: var(--text);
+				font-size: var(--type-label);
+				font-weight: var(--weight-label);
+				line-height: 1.15;
+			}
+
+			.account-window.is-danger > strong {
+				color: var(--danger);
+			}
+
+			.account-window.is-warn > strong {
+				color: var(--warning);
+			}
+
+			.account-window-reset {
+				display: inline;
+				grid-column: 2;
+				grid-row: 1;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				color: var(--muted);
+				font-family: var(--mono);
+				font-size: var(--type-label);
+				line-height: 1.08;
+				white-space: nowrap;
+			}
+
+			.account-window-date {
+				grid-column: 1 / -1;
+				grid-row: 2;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				color: var(--muted);
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				line-height: 1.12;
+				white-space: nowrap;
+			}
