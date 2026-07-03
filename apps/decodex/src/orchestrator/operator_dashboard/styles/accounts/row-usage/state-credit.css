@@ -1,0 +1,40 @@
+			.account-row-state {
+				grid-area: state;
+				justify-self: stretch;
+				display: flex;
+				justify-content: center;
+				min-width: 0;
+				width: auto;
+				text-align: center;
+				font-family: var(--sans);
+				font-size: var(--type-label);
+				color: var(--muted);
+			}
+
+			.account-row-credit {
+				grid-area: credit;
+				justify-self: center;
+				display: inline-flex;
+				align-items: baseline;
+				justify-content: center;
+				min-width: 0;
+				font-family: var(--mono);
+				font-size: var(--type-label);
+				line-height: 1.2;
+				text-align: center;
+				white-space: nowrap;
+				color: var(--muted);
+			}
+
+			.account-row-credit span {
+				display: none;
+			}
+
+			.account-row-credit strong {
+				color: var(--text);
+				font-weight: var(--weight-label);
+			}
+
+			.account-row-credit.is-danger strong {
+				color: var(--danger);
+			}

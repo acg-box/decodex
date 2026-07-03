@@ -1,0 +1,41 @@
+			* {
+				box-sizing: border-box;
+			}
+
+			html,
+			body {
+				margin: 0;
+				min-height: 100%;
+			}
+
+			html {
+				background: var(--bg);
+			}
+
+			body {
+				background:
+					radial-gradient(circle at top left, var(--bg-wash-primary), transparent 30%),
+					radial-gradient(circle at 84% 0%, var(--bg-wash-secondary), transparent 38%),
+					linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 32%),
+					var(--bg);
+				background-attachment: fixed, fixed, fixed, scroll;
+				background-size: 100vw 100vh, 100vw 100vh, 100vw 100vh, auto;
+				color: var(--text);
+				font-family: var(--sans);
+				transition:
+					background-color var(--medium) var(--ease),
+					color var(--medium) var(--ease);
+			}
+
+			body {
+				padding: 18px;
+			}
+
+			a {
+				color: inherit;
+			}
+
+			button {
+				font: inherit;
+				cursor: pointer;
+			}
