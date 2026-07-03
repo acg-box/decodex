@@ -66,6 +66,9 @@ pub(in crate::agent::app_server::activity::protocol) fn protocol_waiting_reason(
 	if event::protocol_activity_category(event_type) == "command_output" {
 		return Some(String::from("tool_execution"));
 	}
+	if event_type == "item/started" {
+		return Some(item_started_waiting_reason(payload_value.as_ref()));
+	}
 	if matches!(event_type, "item/tool/call/response" | "item/completed" | "turn/started")
 		|| event_type.ends_with("/delta")
 		|| event_type.ends_with("/response")
@@ -85,6 +88,40 @@ pub(in crate::agent::app_server::activity::protocol) fn protocol_waiting_reason(
 	}
 
 	None
+}
+
+fn item_started_waiting_reason(payload_value: Option<&Value>) -> String {
+	let Some(item_kind) = payload_value.and_then(|value| {
+		payload::string_at_paths(
+			value,
+			&[
+				&["params", "item", "type"],
+				&["params", "item", "kind"],
+				&["item", "type"],
+				&["item", "kind"],
+				&["params", "type"],
+				&["params", "kind"],
+				&["type"],
+				&["kind"],
+			],
+		)
+	}) else {
+		return String::from("protocol_activity");
+	};
+	let item_kind = item_kind.to_ascii_lowercase();
+
+	if matches!(
+		item_kind.as_str(),
+		"agentmessage" | "agentreasoning" | "assistantmessage" | "message" | "model" | "reasoning"
+	) {
+		return String::from("model_execution");
+	}
+	if item_kind.contains("tool") || item_kind.contains("command") || item_kind.contains("function")
+	{
+		return String::from("tool_execution");
+	}
+
+	String::from("protocol_activity")
 }
 
 pub(in crate::agent::app_server::activity::protocol) fn protocol_rate_limit_status(

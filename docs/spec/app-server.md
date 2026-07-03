@@ -178,6 +178,14 @@ To validate an upstream app-server protocol change:
 Additional notifications may be recorded opportunistically for diagnostics.
 `thread/goal/updated` is recorded as local protocol activity and may summarize the
 active phase and status for operator readback. It is not a public tracker signal.
+
+Retrying app-server `error` notifications are nonterminal. When an error payload
+sets `willRetry: true`, `decodex` must keep waiting for the same turn instead of
+treating the notification as the latest terminal turn failure. A later terminal
+`turn/completed` error, a non-retrying `error`, or the idle timeout may still end
+the attempt. Model-side `item/started` notifications keep the turn in the
+`model_execution` waiting state for liveness timeout selection; tool and command
+item starts must not extend model-execution idle handling.
 After `thread/archive` or `thread/archive/discarded` is recorded for a run, Decodex
 treats later non-terminal app-server events for that run as late diagnostics rather
 than authoritative progress. Those events are discarded into the runtime journal's
