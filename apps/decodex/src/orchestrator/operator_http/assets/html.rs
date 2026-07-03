@@ -109,7 +109,27 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/formatting/time/timestamps.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/formatting/time/stream.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/formatting/time/duration.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/app/formatting/run-state.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/formatting/run-state/telemetry.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/formatting/run-state/status.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -141,7 +161,35 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/labels/text.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/labels/theme.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/labels/fields.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/labels/status.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/app/render-primitives/details.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/details/facts.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/details/state.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/details/animation.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -185,7 +233,27 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/lifecycle/current-lane/metrics.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/lifecycle/current-lane/phases.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/render-primitives/lifecycle/current-lane/facts.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/app/accounts/selection.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/selection/account.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/accounts/selection/confirmation.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -398,6 +466,18 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/app/lanes/worktrees.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/lanes/worktrees/role.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/lanes/worktrees/fields.js"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/app/lanes/worktrees/render.js"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
