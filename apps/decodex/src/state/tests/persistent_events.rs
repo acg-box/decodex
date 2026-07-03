@@ -1,3 +1,19 @@
+use std::{
+	sync::{Arc, Barrier},
+	thread,
+};
+
+use rusqlite::{Connection, Result};
+use tempfile::TempDir;
+
+use crate::{
+	state::{
+		ProjectRegistration, StateStore,
+		tests::{self, IN_PROGRESS_STATE},
+	},
+	tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
+};
+
 #[test]
 fn persistent_event_appenders_can_write_distinct_runs_concurrently() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
@@ -155,12 +171,13 @@ fn persistent_open_keeps_protocol_backfill_marker_when_later_migration_fails() {
 	}
 
 	let connection = Connection::open(&state_path).expect("sqlite should open");
-	let mut removed_field_payload = serde_json::to_value(latent_decision_contract_fixture())
+	let mut removed_field_payload = serde_json::to_value(tests::latent_decision_contract_fixture())
 		.expect("fixture should encode as JSON");
 
 	removed_field_payload["contract_id"] = serde_json::json!("removed-field-invalid-contract");
 	removed_field_payload["status"] = serde_json::json!("accepted_promoted");
-	removed_field_payload["execution_readiness"]["ready_for_issue_shaping"] = serde_json::json!(false);
+	removed_field_payload["execution_readiness"]["ready_for_issue_shaping"] =
+		serde_json::json!(false);
 
 	let readiness = removed_field_payload
 		.get_mut("execution_readiness")
@@ -173,7 +190,6 @@ fn persistent_open_keeps_protocol_backfill_marker_when_later_migration_fails() {
 		String::from("proposed_issue_summaries"),
 		serde_json::json!(["Removed-field invalid summary."]),
 	);
-
 	connection
 		.execute("UPDATE schema_meta SET value = '11' WHERE key = 'schema_version'", [])
 		.expect("schema version should mark removed-field state");
@@ -254,6 +270,7 @@ fn persistent_open_preserves_future_schema_version() {
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 
 	StateStore::open(&state_path).expect("state store should create schema");
+
 	let connection = Connection::open(&state_path).expect("sqlite should open");
 
 	connection
@@ -384,7 +401,7 @@ fn late_protocol_events_after_thread_archive_use_discarded_sequence_namespace() 
 	let rows = statement
 		.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
 		.expect("protocol rows should query")
-		.collect::<rusqlite::Result<Vec<_>>>()
+		.collect::<Result<Vec<_>>>()
 		.expect("protocol rows should collect");
 	let discarded_rows = rows
 		.iter()
