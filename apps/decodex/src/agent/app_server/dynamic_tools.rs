@@ -4,7 +4,7 @@ use super::{
 	Display, DynamicToolCallParams, DynamicToolCallResponse, DynamicToolContentItem,
 	DynamicToolHandler, DynamicToolSpec, Error, Formatter, JsonRpcConnection, JsonRpcRequest,
 	RequestDispatchContext, RequestWaitPhase, RunRecorder, Serialize, TurnCompletionStatus, eyre,
-	fmt, record_server_request_response, serde_json, tracker_tool_bridge,
+	fmt, record_server_request_response, tracker_tool_bridge,
 };
 use color_eyre::eyre::Report;
 

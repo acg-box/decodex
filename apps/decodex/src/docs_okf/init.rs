@@ -1,7 +1,15 @@
 //! OKF bundle initialization and scaffold rendering.
 
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use std::{
+	fs,
+	io::ErrorKind,
+	path::{Path, PathBuf},
+};
+
+use crate::{
+	docs_okf::model::{OkfCheckProfile, OkfInitReport, OkfScaffoldFile},
+	prelude::Result,
+};
 
 pub(crate) fn init_okf_bundle(root: &Path, profile: OkfCheckProfile) -> Result<OkfInitReport> {
 	if profile == OkfCheckProfile::Decodex {

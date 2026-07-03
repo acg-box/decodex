@@ -1,6 +1,14 @@
 //! OKF and Decodex docs check orchestration.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::path::Path;
+
+use crate::{
+	docs_okf::{
+		model::{DocsCheckReport, DocsCheckScope, OkfCheckProfile, OkfCheckReport},
+		support::collect_files,
+	},
+	prelude::Result,
+};
 
 mod docs;
 mod okf;
