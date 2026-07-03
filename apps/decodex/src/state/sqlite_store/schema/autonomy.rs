@@ -1,5 +1,4 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use super::{Result, SqliteStateStore};
 
 impl SqliteStateStore {
 	pub(in crate::state) fn bootstrap_decision_contracts_schema(&self) -> Result<()> {

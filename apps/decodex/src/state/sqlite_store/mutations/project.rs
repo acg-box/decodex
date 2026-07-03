@@ -1,5 +1,7 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use super::{
+	ConnectorBackoff, ProjectRegistration, Result, SqliteStateStore, connector_backoff_from_row,
+	params,
+};
 
 impl SqliteStateStore {
 	pub(in crate::state) fn delete_project(&mut self, service_id: &str) -> Result<()> {

@@ -1,4 +1,11 @@
-use super::*;
+use std::{
+	fs,
+	path::PathBuf,
+	thread,
+	time::{Duration, Instant},
+};
+
+use crate::worktree::WorktreeManager;
 
 #[test]
 fn workspace_hook_shell_uses_posix_sh_for_sh_or_missing_shell() {
@@ -12,22 +19,25 @@ fn workspace_hook_shell_uses_posix_sh_for_sh_or_missing_shell() {
 
 #[test]
 fn creates_linked_worktree() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
 	let spec = manager.ensure_worktree("PUB-101", false).expect("worktree should be created");
 
 	assert_eq!(spec.branch_name, "x/pubfi-pub-101");
 	assert!(spec.path.join(".git").is_file());
-	assert_eq!(git_stdout(&spec.path, &["rev-parse", "--abbrev-ref", "HEAD"]), "x/pubfi-pub-101");
+	assert_eq!(
+		super::git_stdout(&spec.path, &["rev-parse", "--abbrev-ref", "HEAD"]),
+		"x/pubfi-pub-101"
+	);
 
 	let repo_git_dir = fs::canonicalize(repo_root.join(".git")).expect("repo git dir");
-	let git_dir = fs::canonicalize(PathBuf::from(git_stdout(
+	let git_dir = fs::canonicalize(PathBuf::from(super::git_stdout(
 		&spec.path,
 		&["rev-parse", "--path-format=absolute", "--git-dir"],
 	)))
 	.expect("git dir should canonicalize");
-	let git_common_dir = fs::canonicalize(PathBuf::from(git_stdout(
+	let git_common_dir = fs::canonicalize(PathBuf::from(super::git_stdout(
 		&spec.path,
 		&["rev-parse", "--path-format=absolute", "--git-common-dir"],
 	)))
@@ -46,11 +56,11 @@ fn creates_linked_worktree() {
 
 #[test]
 fn after_create_hook_runs_only_for_new_worktree() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let hook_log = repo_root.join("after-create.log");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-	let hooks = workspace_hooks(
+	let hooks = super::workspace_hooks(
 		r#"
 [execution.workspace_hooks]
 after_create_commands = ["printf '%s\n' \"$DECODEX_BRANCH\" >> \"$DECODEX_REPO_ROOT/after-create.log\""]
@@ -72,10 +82,10 @@ timeout_seconds = 60
 
 #[test]
 fn after_create_hook_failure_keeps_created_worktree() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-	let hooks = workspace_hooks(
+	let hooks = super::workspace_hooks(
 		r#"
 [execution.workspace_hooks]
 after_create_commands = ["exit 23"]
@@ -99,11 +109,11 @@ timeout_seconds = 60
 
 #[test]
 fn reused_lane_retries_bootstrap_after_interrupted_create_window() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let hook_log = repo_root.join("after-create.log");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-	let hooks = workspace_hooks(
+	let hooks = super::workspace_hooks(
 		r#"
 [execution.workspace_hooks]
 after_create_commands = ["printf '%s\n' \"$DECODEX_BRANCH\" >> \"$DECODEX_REPO_ROOT/after-create.log\""]
@@ -143,12 +153,12 @@ timeout_seconds = 60
 
 #[test]
 fn after_create_hook_retries_before_reused_lane_dispatch() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let hook_log = repo_root.join("after-create.log");
 	let allow_file = repo_root.join("allow-bootstrap");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-	let hooks = workspace_hooks(
+	let hooks = super::workspace_hooks(
 		r#"
 [execution.workspace_hooks]
 after_create_commands = ["printf '%s\n' \"$DECODEX_BRANCH\" >> \"$DECODEX_REPO_ROOT/after-create.log\" && test -f \"$DECODEX_REPO_ROOT/allow-bootstrap\""]
@@ -191,10 +201,10 @@ timeout_seconds = 60
 #[test]
 fn after_create_hook_handles_hook_managed_pending_marker_removal() {
 	{
-		let (_temp_dir, repo_root) = init_repo();
+		let (_temp_dir, repo_root) = super::init_repo();
 		let worktree_root = repo_root.join(".worktrees");
 		let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-		let hooks = workspace_hooks(
+		let hooks = super::workspace_hooks(
 			r#"
 [execution.workspace_hooks]
 after_create_commands = ["rm -f \"$DECODEX_WORKTREE_PATH/.decodex-after-create.pending\""]
@@ -213,10 +223,10 @@ timeout_seconds = 60
 		);
 	}
 	{
-		let (_temp_dir, repo_root) = init_repo();
+		let (_temp_dir, repo_root) = super::init_repo();
 		let worktree_root = repo_root.join(".worktrees");
 		let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-		let hooks = workspace_hooks(
+		let hooks = super::workspace_hooks(
 			r#"
 [execution.workspace_hooks]
 after_create_commands = ["rm -f \"$DECODEX_WORKTREE_PATH/.decodex-after-create.pending\"", "exit 23"]
@@ -241,7 +251,7 @@ timeout_seconds = 60
 
 #[test]
 fn workspace_hook_command_returns_without_waiting_for_background_child_pipe_close() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let start = Instant::now();
 	let output = super::super::run_workspace_hook_shell_command(
 		"sleep 5 & printf 'done\\n'",
@@ -262,7 +272,7 @@ fn workspace_hook_command_returns_without_waiting_for_background_child_pipe_clos
 #[cfg(unix)]
 #[test]
 fn workspace_hook_timeout_kills_background_descendants() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let child_pid_file = repo_root.join("hook-child.pid");
 	let error = super::super::run_workspace_hook_shell_command(
 		"sleep 300 & bg=$!; printf '%s\n' \"$bg\" > \"$DECODEX_REPO_ROOT/hook-child.pid\"; wait",
@@ -304,10 +314,10 @@ fn process_is_alive(process_id: i32) -> bool {
 
 #[test]
 fn after_create_hook_tolerates_verbose_success_output() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-	let hooks = workspace_hooks(
+	let hooks = super::workspace_hooks(
 		r#"
 [execution.workspace_hooks]
 timeout_seconds = 1
@@ -328,14 +338,17 @@ before_remove_commands = []
 
 #[test]
 fn creates_linked_worktree_when_repo_root_is_also_a_linked_worktree() {
-	let (_temp_dir, primary_repo_root) = init_repo();
+	let (_temp_dir, primary_repo_root) = super::init_repo();
 	let linked_repo_root = primary_repo_root.parent().unwrap().join("linked-root");
 
-	run_git(
+	super::run_git(
 		&primary_repo_root,
 		&["worktree", "add", "--quiet", "--detach", linked_repo_root.to_str().unwrap(), "HEAD"],
 	);
-	run_git(&linked_repo_root, &["checkout", "--quiet", "-B", "x/pubfi-linked-root", "HEAD"]);
+	super::run_git(
+		&linked_repo_root,
+		&["checkout", "--quiet", "-B", "x/pubfi-linked-root", "HEAD"],
+	);
 
 	let worktree_root = linked_repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &linked_repo_root, &worktree_root);
@@ -346,17 +359,17 @@ fn creates_linked_worktree_when_repo_root_is_also_a_linked_worktree() {
 	assert_eq!(spec.branch_name, "x/pubfi-pub-101");
 	assert!(spec.path.join(".git").is_file());
 
-	let repo_git_dir = fs::canonicalize(PathBuf::from(git_stdout(
+	let repo_git_dir = fs::canonicalize(PathBuf::from(super::git_stdout(
 		&linked_repo_root,
 		&["rev-parse", "--path-format=absolute", "--git-common-dir"],
 	)))
 	.expect("linked repo common dir should canonicalize");
-	let git_dir = fs::canonicalize(PathBuf::from(git_stdout(
+	let git_dir = fs::canonicalize(PathBuf::from(super::git_stdout(
 		&spec.path,
 		&["rev-parse", "--path-format=absolute", "--git-dir"],
 	)))
 	.expect("git dir should canonicalize");
-	let git_common_dir = fs::canonicalize(PathBuf::from(git_stdout(
+	let git_common_dir = fs::canonicalize(PathBuf::from(super::git_stdout(
 		&spec.path,
 		&["rev-parse", "--path-format=absolute", "--git-common-dir"],
 	)))
@@ -368,36 +381,42 @@ fn creates_linked_worktree_when_repo_root_is_also_a_linked_worktree() {
 
 #[test]
 fn linked_worktree_inherits_repo_local_identity_config() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
 
-	run_git(&repo_root, &["config", "user.signingkey", "worktree-tests"]);
-	run_git(&repo_root, &["config", "codex.github-identity", "y"]);
-	run_git(&repo_root, &["config", "codex.linear-workspace", "hackink"]);
+	super::run_git(&repo_root, &["config", "user.signingkey", "worktree-tests"]);
+	super::run_git(&repo_root, &["config", "codex.github-identity", "y"]);
+	super::run_git(&repo_root, &["config", "codex.linear-workspace", "hackink"]);
 
 	let spec = manager.ensure_worktree("PUB-101", false).expect("worktree should be created");
 
-	assert_eq!(git_stdout(&spec.path, &["config", "--get", "user.name"]), "Decodex Tests");
+	assert_eq!(super::git_stdout(&spec.path, &["config", "--get", "user.name"]), "Decodex Tests");
 	assert_eq!(
-		git_stdout(&spec.path, &["config", "--get", "user.email"]),
+		super::git_stdout(&spec.path, &["config", "--get", "user.email"]),
 		"decodex-tests@example.com"
 	);
-	assert_eq!(git_stdout(&spec.path, &["config", "--get", "commit.gpgsign"]), "false");
-	assert_eq!(git_stdout(&spec.path, &["config", "--get", "user.signingkey"]), "worktree-tests");
-	assert_eq!(git_stdout(&spec.path, &["config", "--get", "codex.github-identity"]), "y");
-	assert_eq!(git_stdout(&spec.path, &["config", "--get", "codex.linear-workspace"]), "hackink");
+	assert_eq!(super::git_stdout(&spec.path, &["config", "--get", "commit.gpgsign"]), "false");
+	assert_eq!(
+		super::git_stdout(&spec.path, &["config", "--get", "user.signingkey"]),
+		"worktree-tests"
+	);
+	assert_eq!(super::git_stdout(&spec.path, &["config", "--get", "codex.github-identity"]), "y");
+	assert_eq!(
+		super::git_stdout(&spec.path, &["config", "--get", "codex.linear-workspace"]),
+		"hackink"
+	);
 }
 
 #[test]
 fn linked_worktree_inherits_repo_local_identity_from_included_config() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
 	let included_config = repo_root.parent().unwrap().join("identity.inc");
 
-	run_git(&repo_root, &["config", "--unset-all", "user.name"]);
-	run_git(&repo_root, &["config", "--unset-all", "user.email"]);
+	super::run_git(&repo_root, &["config", "--unset-all", "user.name"]);
+	super::run_git(&repo_root, &["config", "--unset-all", "user.email"]);
 
 	fs::write(
 			&included_config,
@@ -405,45 +424,57 @@ fn linked_worktree_inherits_repo_local_identity_from_included_config() {
 		)
 		.expect("included config should write");
 
-	run_git(&repo_root, &["config", "--local", "include.path", included_config.to_str().unwrap()]);
+	super::run_git(
+		&repo_root,
+		&["config", "--local", "include.path", included_config.to_str().unwrap()],
+	);
 
 	let spec = manager.ensure_worktree("PUB-101", false).expect("worktree should be created");
 
-	assert_eq!(git_stdout(&spec.path, &["config", "--get", "user.name"]), "Included Tests");
-	assert_eq!(git_stdout(&spec.path, &["config", "--get", "user.email"]), "included@example.com");
-	assert_eq!(git_stdout(&spec.path, &["config", "--get", "codex.github-identity"]), "y");
-	assert_eq!(git_stdout(&spec.path, &["config", "--get", "codex.linear-workspace"]), "hackink");
+	assert_eq!(super::git_stdout(&spec.path, &["config", "--get", "user.name"]), "Included Tests");
+	assert_eq!(
+		super::git_stdout(&spec.path, &["config", "--get", "user.email"]),
+		"included@example.com"
+	);
+	assert_eq!(super::git_stdout(&spec.path, &["config", "--get", "codex.github-identity"]), "y");
+	assert_eq!(
+		super::git_stdout(&spec.path, &["config", "--get", "codex.linear-workspace"]),
+		"hackink"
+	);
 }
 
 #[test]
 fn linked_worktree_uses_existing_remote_lane_branch_when_present() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let bare_remote = repo_root.parent().unwrap().join("lane-remote.git");
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
 	let lane_branch = "x/pubfi-pub-101";
 
-	run_git(bare_remote.parent().unwrap(), &["init", "--bare", bare_remote.to_str().unwrap()]);
-	run_git(&repo_root, &["remote", "set-url", "origin", "../lane-remote.git"]);
-	run_git(&repo_root, &["push", "-u", "origin", "main"]);
-	run_git(&repo_root, &["checkout", "-b", lane_branch]);
+	super::run_git(
+		bare_remote.parent().unwrap(),
+		&["init", "--bare", bare_remote.to_str().unwrap()],
+	);
+	super::run_git(&repo_root, &["remote", "set-url", "origin", "../lane-remote.git"]);
+	super::run_git(&repo_root, &["push", "-u", "origin", "main"]);
+	super::run_git(&repo_root, &["checkout", "-b", lane_branch]);
 
 	fs::write(repo_root.join("LANE.md"), "lane branch\n").expect("lane file should write");
 
-	run_git(&repo_root, &["add", "LANE.md"]);
-	run_git(&repo_root, &["commit", "-m", "lane branch"]);
-	run_git(&repo_root, &["push", "-u", "origin", lane_branch]);
-	run_git(&repo_root, &["checkout", "main"]);
+	super::run_git(&repo_root, &["add", "LANE.md"]);
+	super::run_git(&repo_root, &["commit", "-m", "lane branch"]);
+	super::run_git(&repo_root, &["push", "-u", "origin", lane_branch]);
+	super::run_git(&repo_root, &["checkout", "main"]);
 
 	let spec = manager.ensure_worktree("PUB-101", false).expect("worktree should be created");
 
-	assert_eq!(git_stdout(&spec.path, &["rev-parse", "--abbrev-ref", "HEAD"]), lane_branch);
+	assert_eq!(super::git_stdout(&spec.path, &["rev-parse", "--abbrev-ref", "HEAD"]), lane_branch);
 	assert_eq!(
 		fs::read_to_string(spec.path.join("LANE.md")).expect("lane file should exist"),
 		"lane branch\n"
 	);
 	assert_eq!(
-		git_stdout(&spec.path, &["remote", "get-url", "origin"]),
+		super::git_stdout(&spec.path, &["remote", "get-url", "origin"]),
 		fs::canonicalize(&bare_remote)
 			.expect("bare remote should canonicalize")
 			.to_str()
@@ -453,26 +484,29 @@ fn linked_worktree_uses_existing_remote_lane_branch_when_present() {
 
 #[test]
 fn linked_worktree_push_uses_normalized_absolute_origin_when_source_remote_is_relative() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let bare_remote = repo_root.parent().unwrap().join("lane-remote.git");
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
 
-	run_git(bare_remote.parent().unwrap(), &["init", "--bare", bare_remote.to_str().unwrap()]);
-	run_git(&repo_root, &["remote", "set-url", "origin", "../lane-remote.git"]);
-	run_git(&repo_root, &["push", "-u", "origin", "main"]);
+	super::run_git(
+		bare_remote.parent().unwrap(),
+		&["init", "--bare", bare_remote.to_str().unwrap()],
+	);
+	super::run_git(&repo_root, &["remote", "set-url", "origin", "../lane-remote.git"]);
+	super::run_git(&repo_root, &["push", "-u", "origin", "main"]);
 
 	let spec = manager.ensure_worktree("PUB-101", false).expect("worktree should be created");
 
 	fs::write(spec.path.join("WORKTREE.md"), "linked worktree lane\n")
 		.expect("worktree file should write");
 
-	run_git(&spec.path, &["add", "WORKTREE.md"]);
-	run_git(&spec.path, &["commit", "-m", "worktree change"]);
-	run_git(&spec.path, &["push", "-u", "origin", "x/pubfi-pub-101"]);
+	super::run_git(&spec.path, &["add", "WORKTREE.md"]);
+	super::run_git(&spec.path, &["commit", "-m", "worktree change"]);
+	super::run_git(&spec.path, &["push", "-u", "origin", "x/pubfi-pub-101"]);
 
 	assert_eq!(
-		git_stdout(&spec.path, &["remote", "get-url", "origin"]),
+		super::git_stdout(&spec.path, &["remote", "get-url", "origin"]),
 		fs::canonicalize(&bare_remote)
 			.expect("bare remote should canonicalize")
 			.to_str()
@@ -482,25 +516,28 @@ fn linked_worktree_push_uses_normalized_absolute_origin_when_source_remote_is_re
 
 #[test]
 fn reused_linked_worktree_normalizes_relative_origin_on_reentry() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let bare_remote = repo_root.parent().unwrap().join("lane-remote.git");
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
 
-	run_git(bare_remote.parent().unwrap(), &["init", "--bare", bare_remote.to_str().unwrap()]);
-	run_git(&repo_root, &["remote", "set-url", "origin", "../lane-remote.git"]);
-	run_git(&repo_root, &["push", "-u", "origin", "main"]);
+	super::run_git(
+		bare_remote.parent().unwrap(),
+		&["init", "--bare", bare_remote.to_str().unwrap()],
+	);
+	super::run_git(&repo_root, &["remote", "set-url", "origin", "../lane-remote.git"]);
+	super::run_git(&repo_root, &["push", "-u", "origin", "main"]);
 
 	let created = manager.ensure_worktree("PUB-101", false).expect("worktree should be created");
 
-	run_git(&repo_root, &["remote", "set-url", "origin", "../lane-remote.git"]);
+	super::run_git(&repo_root, &["remote", "set-url", "origin", "../lane-remote.git"]);
 
 	let reused = manager.ensure_worktree("PUB-101", false).expect("worktree should be reused");
 
 	assert!(reused.reused_existing);
 	assert_eq!(reused.path, created.path);
 	assert_eq!(
-		git_stdout(&reused.path, &["remote", "get-url", "origin"]),
+		super::git_stdout(&reused.path, &["remote", "get-url", "origin"]),
 		fs::canonicalize(&bare_remote)
 			.expect("bare remote should canonicalize")
 			.to_str()
@@ -510,26 +547,29 @@ fn reused_linked_worktree_normalizes_relative_origin_on_reentry() {
 
 #[test]
 fn linked_worktree_leaves_home_relative_origin_unchanged() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 
-	run_git(&repo_root, &["remote", "set-url", "origin", "~/lane-remote.git"]);
+	super::run_git(&repo_root, &["remote", "set-url", "origin", "~/lane-remote.git"]);
 
 	super::super::normalize_origin_remote_for_worktrees(&repo_root)
 		.expect("home-relative remotes should bypass normalization");
 
-	assert_eq!(git_stdout(&repo_root, &["remote", "get-url", "origin"]), "~/lane-remote.git");
+	assert_eq!(
+		super::git_stdout(&repo_root, &["remote", "get-url", "origin"]),
+		"~/lane-remote.git"
+	);
 	assert!(!super::super::is_relative_filesystem_remote("~/lane-remote.git"));
 	assert!(!super::super::is_relative_filesystem_remote("~"));
 }
 
 #[test]
 fn linked_worktree_rolls_back_when_origin_normalization_fails() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
 	let spec = manager.plan_for_issue("PUB-101");
 
-	run_git(&repo_root, &["remote", "set-url", "origin", "../missing-remote.git"]);
+	super::run_git(&repo_root, &["remote", "set-url", "origin", "../missing-remote.git"]);
 
 	let error = manager
 		.ensure_worktree("PUB-101", false)
@@ -550,12 +590,12 @@ fn linked_worktree_rolls_back_when_origin_normalization_fails() {
 
 #[test]
 fn linked_worktree_fails_when_remote_branch_probe_errors() {
-	let (temp_dir, repo_root) = init_repo();
+	let (temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
 	let missing_remote = temp_dir.path().join("missing-origin.git");
 
-	run_git(&repo_root, &["remote", "set-url", "origin", missing_remote.to_str().unwrap()]);
+	super::run_git(&repo_root, &["remote", "set-url", "origin", missing_remote.to_str().unwrap()]);
 
 	let error = manager
 		.ensure_worktree("PUB-101", false)
@@ -566,13 +606,13 @@ fn linked_worktree_fails_when_remote_branch_probe_errors() {
 
 #[test]
 fn rejects_reused_non_worktree_checkout_with_embedded_git_dir() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let worktree_path = worktree_root.join("PUB-101");
 
 	fs::create_dir_all(&worktree_root).expect("worktree root should exist");
 
-	run_git(
+	super::run_git(
 		&repo_root,
 		&["clone", "--quiet", "--no-checkout", ".", worktree_path.to_str().unwrap()],
 	);
@@ -591,7 +631,7 @@ fn rejects_reused_non_worktree_checkout_with_embedded_git_dir() {
 
 #[test]
 fn removes_linked_worktree_path() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
 	let spec = manager.ensure_worktree("PUB-101", false).expect("worktree should exist");
@@ -599,19 +639,19 @@ fn removes_linked_worktree_path() {
 	assert!(manager.remove_worktree_path(&spec.path).expect("worktree should remove"));
 	assert!(!spec.path.exists());
 	assert!(
-		!git_stdout(&repo_root, &["worktree", "list", "--porcelain"])
+		!super::git_stdout(&repo_root, &["worktree", "list", "--porcelain"])
 			.contains(&format!("worktree {}", spec.path.display()))
 	);
 }
 
 #[test]
 fn removes_orphaned_marker_directory_without_linked_git_metadata() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let orphan_path = worktree_root.join("PUB-101");
 	let hook_log = repo_root.join("before-remove.log");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-	let hooks = workspace_hooks(
+	let hooks = super::workspace_hooks(
 		r#"
 [execution.workspace_hooks]
 after_create_commands = []
@@ -638,7 +678,7 @@ timeout_seconds = 60
 
 #[test]
 fn removes_orphaned_run_control_marker_directory_without_linked_git_metadata() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let orphan_path = worktree_root.join("PUB-102");
 	let control_dir = orphan_path.join(crate::state::RUN_CONTROL_CHANNEL_DIR);
@@ -658,11 +698,11 @@ fn removes_orphaned_run_control_marker_directory_without_linked_git_metadata() {
 
 #[test]
 fn before_remove_hook_runs_before_cleanup() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let hook_log = repo_root.join("before-remove.log");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-	let hooks = workspace_hooks(
+	let hooks = super::workspace_hooks(
 		r#"
 [execution.workspace_hooks]
 after_create_commands = []
@@ -691,10 +731,10 @@ timeout_seconds = 60
 
 #[test]
 fn before_remove_hook_failure_blocks_cleanup() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-	let hooks = workspace_hooks(
+	let hooks = super::workspace_hooks(
 		r#"
 [execution.workspace_hooks]
 after_create_commands = []
@@ -718,7 +758,7 @@ timeout_seconds = 60
 
 #[test]
 fn before_remove_hook_does_not_run_for_unregistered_directory() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let rogue_path = worktree_root.join("PUB-rogue");
 	let hook_log = repo_root.join("before-remove.log");
@@ -728,7 +768,7 @@ fn before_remove_hook_does_not_run_for_unregistered_directory() {
 		.expect("rogue path should contain a fake git pointer");
 
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
-	let hooks = workspace_hooks(
+	let hooks = super::workspace_hooks(
 		r#"
 [execution.workspace_hooks]
 after_create_commands = []
@@ -756,7 +796,7 @@ timeout_seconds = 60
 
 #[test]
 fn rejects_worktree_removal_when_path_escapes_root_via_parent_components() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let escaped_target = repo_root.join("outside").join("PUB-101");
 
