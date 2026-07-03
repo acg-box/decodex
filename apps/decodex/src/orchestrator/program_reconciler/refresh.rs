@@ -10,7 +10,7 @@ use crate::{
 	tracker,
 };
 
-pub(in crate::orchestrator) fn refresh_execution_program_issues<T>(
+pub(crate) fn refresh_execution_program_issues<T>(
 	tracker: &T,
 	records: &[ExecutionProgramRecord],
 ) -> Result<BTreeMap<String, TrackerIssue>>
@@ -36,7 +36,7 @@ where
 		.collect())
 }
 
-pub(in crate::orchestrator) fn refresh_execution_program_tracker_facts<T>(
+pub(crate) fn refresh_execution_program_tracker_facts<T>(
 	tracker: &T,
 	state_store: &StateStore,
 	service_id: &str,
@@ -83,7 +83,7 @@ where
 	Ok(RefreshedExecutionProgram { record, program, issues_by_node })
 }
 
-pub(in crate::orchestrator) fn refresh_execution_program_local_lifecycle_facts(
+pub(crate) fn refresh_execution_program_local_lifecycle_facts(
 	state_store: &StateStore,
 	service_id: &str,
 	node: &ExecutionProgramNode,
@@ -102,7 +102,7 @@ pub(in crate::orchestrator) fn refresh_execution_program_local_lifecycle_facts(
 		.with_linear_issue(issue.clone().with_post_review_lifecycle(has_post_review_lifecycle))
 }
 
-pub(in crate::orchestrator) fn program_issue_snapshot<T>(
+pub(crate) fn program_issue_snapshot<T>(
 	input: ProgramIssueSnapshotInput<'_, T>,
 ) -> Result<ProgramIssueSnapshot>
 where
