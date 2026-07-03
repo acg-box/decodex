@@ -312,7 +312,6 @@ fn retrying_error_notification_does_not_replace_latest_turn_failure() {
 		"previous transient failure",
 		None,
 	));
-
 	let outcome = super::handle_turn_execution_notification(
 		&notification,
 		"thread-1",
