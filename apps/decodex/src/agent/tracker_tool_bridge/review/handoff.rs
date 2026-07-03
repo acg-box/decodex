@@ -1,4 +1,10 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use super::{
+	LinearExecutionEventPublicProjection, PendingReviewAction, PendingReviewCompletion,
+	PullRequestDetails, REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK, Report, ReviewHandoffContext,
+	ReviewHandoffWritebackFailed, ReviewOrchestrationMarker, TrackerToolBridge, eyre,
+	linear_execution_review_event, review_handoff_marker_from_pull_request, tracker,
+	tracker_tool_bridge,
+};
 
 impl<'a> TrackerToolBridge<'a> {
 	pub(crate) fn apply_review_handoff(&self) -> crate::prelude::Result<()> {
