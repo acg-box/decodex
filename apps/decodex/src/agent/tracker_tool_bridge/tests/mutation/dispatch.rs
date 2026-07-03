@@ -1,38 +1,34 @@
-use records::CLOSEOUT_RECORD_TYPE;
-use records::CloseoutRecord;
+use std::process;
 
-use crate::tracker::{self, public_text};
-use crate::orchestrator::{self, AuthorityBoundaryPolicyDecision};
-use crate::orchestrator::AuthorityBoundaryCheckInput;
-use crate::orchestrator::AuthorityBoundaryDisposition;
+use tempfile::TempDir;
 
-fn seed_docs_impact_checkpoint(
-	state_store: &StateStore,
-	review_context: &ReviewHandoffContext,
-	issue_id: &str,
-	phase: &str,
-	head_sha: &str,
-) {
-	state_store
-		.append_private_execution_event(
-			&review_context.service_id,
-			issue_id,
-			&review_context.run_id,
-			review_context.attempt_number,
-			"progress_checkpoint",
-			serde_json::json!({
-				"phase": phase,
-				"docs_impact": "none",
-				"head_sha": head_sha
-			}),
-		)
-		.expect("docs impact checkpoint should seed");
-}
+use crate::agent::tracker_tool_bridge::tests::{
+	self, FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker,
+	GitHubTokenAssertingPullRequestInspector, TEST_SERVICE_ID, TestEnvVarGuard,
+};
+use crate::{
+	agent::tracker_tool_bridge::{
+		DynamicToolContentItem, DynamicToolHandler, ISSUE_COMMENT_TOOL_NAME,
+		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		ISSUE_TRANSITION_TOOL_NAME, TrackerToolBridge,
+	},
+	orchestrator::{
+		self, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition,
+		AuthorityBoundaryPolicyDecision,
+	},
+	state::StateStore,
+	tracker::{
+		self, TrackerComment, TrackerIssue, TrackerLabel, TrackerState, public_text,
+		records::{self, CLOSEOUT_RECORD_TYPE, CloseoutRecord},
+	},
+	workflow::WorkflowDocument,
+};
 
 #[test]
 fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let mut completed_issue = sample_review_issue();
+	let mut completed_issue = tests::sample_review_issue();
 
 	completed_issue.state =
 		TrackerState { id: String::from("state-done"), name: String::from("Done") };
@@ -41,10 +37,10 @@ fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
 		vec![completed_issue.clone()],
 		vec![completed_issue],
 	]);
-	let issue = sample_review_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_review_issue();
+	let workflow = tests::sample_workflow();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
-	let mut merged_pull_request = sample_pull_request();
+	let mut merged_pull_request = tests::sample_pull_request();
 
 	merged_pull_request.url = String::from(pr_url);
 	merged_pull_request.state = String::from("MERGED");
@@ -53,9 +49,11 @@ fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
 		Ok(merged_pull_request.clone()),
 		Ok(merged_pull_request),
 	]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let review_context = sample_closeout_context_in(temp_dir.path(), pr_url);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
+	let review_context = tests::sample_closeout_context_in(temp_dir.path(), pr_url);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
@@ -69,17 +67,17 @@ fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
 		&bridge,
 		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
 		serde_json::json!({
-			"pr_url": pr_url,
-			"summary": "Merged the approved lane and finished closeout."
-			}),
-		);
+		"pr_url": pr_url,
+		"summary": "Merged the approved lane and finished closeout."
+		}),
+	);
 
-	seed_docs_impact_checkpoint(
-		bridge_state_store(&bridge),
+	tests::seed_docs_impact_checkpoint(
+		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,
 		"closeout",
-		&sample_local_repo().head_oid,
+		&tests::sample_local_repo().head_oid,
 	);
 
 	let finalize_response = DynamicToolHandler::handle_call(
@@ -108,7 +106,7 @@ fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
 #[test]
 fn closeout_apply_writes_coarse_comment_without_replaying_existing_records() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let mut completed_issue = sample_review_issue();
+	let mut completed_issue = tests::sample_review_issue();
 
 	completed_issue.state =
 		TrackerState { id: String::from("state-done"), name: String::from("Done") };
@@ -122,10 +120,10 @@ fn closeout_apply_writes_coarse_comment_without_replaying_existing_records() {
 		vec![completed_issue.clone()],
 		vec![completed_issue],
 	]);
-	let issue = sample_review_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_review_issue();
+	let workflow = tests::sample_workflow();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
-	let mut merged_pull_request = sample_pull_request();
+	let mut merged_pull_request = tests::sample_pull_request();
 
 	merged_pull_request.url = String::from(pr_url);
 	merged_pull_request.state = String::from("MERGED");
@@ -155,9 +153,11 @@ fn closeout_apply_writes_coarse_comment_without_replaying_existing_records() {
 		Ok(merged_pull_request.clone()),
 		Ok(merged_pull_request),
 	]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let review_context = sample_closeout_context_in(temp_dir.path(), pr_url);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
+	let review_context = tests::sample_closeout_context_in(temp_dir.path(), pr_url);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
@@ -171,17 +171,17 @@ fn closeout_apply_writes_coarse_comment_without_replaying_existing_records() {
 		&bridge,
 		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
 		serde_json::json!({
-			"pr_url": pr_url,
-			"summary": "Merged the approved lane and finished closeout."
-			}),
-		);
+		"pr_url": pr_url,
+		"summary": "Merged the approved lane and finished closeout."
+		}),
+	);
 
-	seed_docs_impact_checkpoint(
-		bridge_state_store(&bridge),
+	tests::seed_docs_impact_checkpoint(
+		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,
 		"closeout",
-		&sample_local_repo().head_oid,
+		&tests::sample_local_repo().head_oid,
 	);
 
 	let finalize_response = DynamicToolHandler::handle_call(
@@ -208,7 +208,7 @@ fn closeout_clear_uses_server_team_label_lookup_for_active_label_removal() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
-	let mut completed_issue = sample_review_issue();
+	let mut completed_issue = tests::sample_review_issue();
 
 	completed_issue.state =
 		TrackerState { id: String::from("state-done"), name: String::from("Done") };
@@ -226,10 +226,10 @@ fn closeout_clear_uses_server_team_label_lookup_for_active_label_removal() {
 		vec![completed_issue.clone()],
 	])
 	.with_team_label_lookup_id(&completed_issue.team.id, &active_label, "label-active");
-	let issue = sample_review_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_review_issue();
+	let workflow = tests::sample_workflow();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
-	let mut merged_pull_request = sample_pull_request();
+	let mut merged_pull_request = tests::sample_pull_request();
 
 	merged_pull_request.url = String::from(pr_url);
 	merged_pull_request.state = String::from("MERGED");
@@ -238,9 +238,11 @@ fn closeout_clear_uses_server_team_label_lookup_for_active_label_removal() {
 		Ok(merged_pull_request.clone()),
 		Ok(merged_pull_request),
 	]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let review_context = sample_closeout_context_in(temp_dir.path(), pr_url);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
+	let review_context = tests::sample_closeout_context_in(temp_dir.path(), pr_url);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
@@ -254,17 +256,17 @@ fn closeout_clear_uses_server_team_label_lookup_for_active_label_removal() {
 		&bridge,
 		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
 		serde_json::json!({
-			"pr_url": pr_url,
-			"summary": "Merged the approved lane and finished closeout."
-			}),
-		);
+		"pr_url": pr_url,
+		"summary": "Merged the approved lane and finished closeout."
+		}),
+	);
 
-	seed_docs_impact_checkpoint(
-		bridge_state_store(&bridge),
+	tests::seed_docs_impact_checkpoint(
+		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,
 		"closeout",
-		&sample_local_repo().head_oid,
+		&tests::sample_local_repo().head_oid,
 	);
 
 	let finalize_response = DynamicToolHandler::handle_call(
@@ -291,7 +293,7 @@ fn closeout_clear_uses_server_team_label_lookup_for_active_label_removal() {
 fn closeout_apply_keeps_active_label_until_cleanup() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
-	let mut completed_issue = sample_review_issue();
+	let mut completed_issue = tests::sample_review_issue();
 
 	completed_issue.state =
 		TrackerState { id: String::from("state-done"), name: String::from("Done") };
@@ -304,10 +306,10 @@ fn closeout_apply_keeps_active_label_until_cleanup() {
 		vec![completed_issue.clone()],
 	])
 	.with_label_lookup_issues(&active_label, vec![completed_issue.clone()]);
-	let issue = sample_review_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_review_issue();
+	let workflow = tests::sample_workflow();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
-	let mut merged_pull_request = sample_pull_request();
+	let mut merged_pull_request = tests::sample_pull_request();
 
 	merged_pull_request.url = String::from(pr_url);
 	merged_pull_request.state = String::from("MERGED");
@@ -316,9 +318,11 @@ fn closeout_apply_keeps_active_label_until_cleanup() {
 		Ok(merged_pull_request.clone()),
 		Ok(merged_pull_request),
 	]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let review_context = sample_closeout_context_in(temp_dir.path(), pr_url);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
+	let review_context = tests::sample_closeout_context_in(temp_dir.path(), pr_url);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
@@ -332,17 +336,17 @@ fn closeout_apply_keeps_active_label_until_cleanup() {
 		&bridge,
 		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
 		serde_json::json!({
-			"pr_url": pr_url,
-			"summary": "Merged the approved lane and finished closeout."
-			}),
-		);
+		"pr_url": pr_url,
+		"summary": "Merged the approved lane and finished closeout."
+		}),
+	);
 
-	seed_docs_impact_checkpoint(
-		bridge_state_store(&bridge),
+	tests::seed_docs_impact_checkpoint(
+		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,
 		"closeout",
-		&sample_local_repo().head_oid,
+		&tests::sample_local_repo().head_oid,
 	);
 
 	let finalize_response = DynamicToolHandler::handle_call(
@@ -370,7 +374,7 @@ fn closeout_clear_clears_active_label_when_issue_labels_paginate() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
-	let mut completed_issue = sample_review_issue();
+	let mut completed_issue = tests::sample_review_issue();
 
 	completed_issue.state =
 		TrackerState { id: String::from("state-done"), name: String::from("Done") };
@@ -381,11 +385,11 @@ fn closeout_clear_clears_active_label_when_issue_labels_paginate() {
 	let tracker = FakeTracker::with_refresh_snapshots(vec![vec![completed_issue.clone()]])
 		.with_label_lookup_issues(&active_label, vec![completed_issue.clone()])
 		.with_label_lookup_issues(&queue_label, vec![completed_issue.clone()]);
-	let issue = sample_review_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_review_issue();
+	let workflow = tests::sample_workflow();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
 	let merged_pull_request = {
-		let mut pull_request = sample_pull_request();
+		let mut pull_request = tests::sample_pull_request();
 
 		pull_request.url = String::from(pr_url);
 		pull_request.state = String::from("MERGED");
@@ -396,13 +400,15 @@ fn closeout_clear_clears_active_label_when_issue_labels_paginate() {
 		Ok(merged_pull_request.clone()),
 		Ok(merged_pull_request),
 	]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_closeout_context_in(temp_dir.path(), pr_url),
+		tests::sample_closeout_context_in(temp_dir.path(), pr_url),
 		Some(TrackerToolBridge::leaked_test_state_store()),
 		&inspector,
 		&local_repo_inspector,
@@ -423,7 +429,7 @@ fn closeout_clear_treats_missing_lane_label_removal_as_idempotent() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
-	let mut completed_issue = sample_review_issue();
+	let mut completed_issue = tests::sample_review_issue();
 
 	completed_issue.state =
 		TrackerState { id: String::from("state-done"), name: String::from("Done") };
@@ -440,11 +446,11 @@ fn closeout_clear_treats_missing_lane_label_removal_as_idempotent() {
 
 	tracker.refresh_snapshots.replace(vec![vec![completed_issue.clone()]]);
 
-	let issue = sample_review_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_review_issue();
+	let workflow = tests::sample_workflow();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
 	let merged_pull_request = {
-		let mut pull_request = sample_pull_request();
+		let mut pull_request = tests::sample_pull_request();
 
 		pull_request.url = String::from(pr_url);
 		pull_request.state = String::from("MERGED");
@@ -455,13 +461,15 @@ fn closeout_clear_treats_missing_lane_label_removal_as_idempotent() {
 		Ok(merged_pull_request.clone()),
 		Ok(merged_pull_request),
 	]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_closeout_context_in(temp_dir.path(), pr_url),
+		tests::sample_closeout_context_in(temp_dir.path(), pr_url),
 		Some(TrackerToolBridge::leaked_test_state_store()),
 		&inspector,
 		&local_repo_inspector,
@@ -477,7 +485,7 @@ fn closeout_clear_skips_lane_labels_when_server_confirms_absent() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
-	let mut completed_issue = sample_review_issue();
+	let mut completed_issue = tests::sample_review_issue();
 
 	completed_issue.state =
 		TrackerState { id: String::from("state-done"), name: String::from("Done") };
@@ -487,11 +495,11 @@ fn closeout_clear_skips_lane_labels_when_server_confirms_absent() {
 		.retain(|label| label.name != active_label.as_str() && label.name != queue_label.as_str());
 
 	let tracker = FakeTracker::with_refresh_snapshots(vec![vec![completed_issue.clone()]]);
-	let issue = sample_review_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_review_issue();
+	let workflow = tests::sample_workflow();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
 	let merged_pull_request = {
-		let mut pull_request = sample_pull_request();
+		let mut pull_request = tests::sample_pull_request();
 
 		pull_request.url = String::from(pr_url);
 		pull_request.state = String::from("MERGED");
@@ -502,13 +510,15 @@ fn closeout_clear_skips_lane_labels_when_server_confirms_absent() {
 		Ok(merged_pull_request.clone()),
 		Ok(merged_pull_request),
 	]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_closeout_context_in(temp_dir.path(), pr_url),
+		tests::sample_closeout_context_in(temp_dir.path(), pr_url),
 		Some(TrackerToolBridge::leaked_test_state_store()),
 		&inspector,
 		&local_repo_inspector,
@@ -524,11 +534,11 @@ fn closeout_clear_skips_lane_labels_when_server_confirms_absent() {
 #[test]
 fn closeout_complete_rejects_issue_that_is_not_yet_completed() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let tracker = tracker_with_current_issue_snapshot(&sample_review_issue());
-	let issue = sample_review_issue();
-	let workflow = sample_workflow();
+	let tracker = tests::tracker_with_current_issue_snapshot(&tests::sample_review_issue());
+	let issue = tests::sample_review_issue();
+	let workflow = tests::sample_workflow();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/261";
-	let mut merged_pull_request = sample_pull_request();
+	let mut merged_pull_request = tests::sample_pull_request();
 
 	merged_pull_request.url = String::from(pr_url);
 	merged_pull_request.state = String::from("MERGED");
@@ -537,13 +547,15 @@ fn closeout_complete_rejects_issue_that_is_not_yet_completed() {
 		Ok(merged_pull_request.clone()),
 		Ok(merged_pull_request),
 	]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
 	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_closeout_context_in(temp_dir.path(), pr_url),
+		tests::sample_closeout_context_in(temp_dir.path(), pr_url),
 		Some(TrackerToolBridge::leaked_test_state_store()),
 		&inspector,
 		&local_repo_inspector,
@@ -570,16 +582,16 @@ fn closeout_complete_rejects_issue_that_is_not_yet_completed() {
 fn review_handoff_inspection_uses_configured_github_token() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let token_env_var = "DECODEX_TEST_REVIEW_HANDOFF_GITHUB_TOKEN";
 	let _env_guard = TestEnvVarGuard::set(token_env_var, "configured-review-token");
 	let inspector = GitHubTokenAssertingPullRequestInspector {
 		expected_token: String::from("configured-review-token"),
-		response: sample_pull_request(),
+		response: tests::sample_pull_request(),
 	};
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
-	let mut review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
+	let mut review_context = tests::sample_review_context_in(temp_dir.path());
 
 	review_context.github_token_env_var = Some(String::from(token_env_var));
 
@@ -592,7 +604,7 @@ fn review_handoff_inspection_uses_configured_github_token() {
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -611,11 +623,12 @@ fn review_handoff_inspection_rejects_missing_or_blank_github_token() {
 	{
 		let temp_dir = TempDir::new().expect("tempdir should create");
 		let tracker = FakeTracker::new();
-		let issue = sample_issue();
-		let workflow = sample_workflow();
+		let issue = tests::sample_issue();
+		let workflow = tests::sample_workflow();
 		let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
-		let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
-		let mut review_context = sample_review_context_in(temp_dir.path());
+		let local_repo_inspector =
+			FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
+		let mut review_context = tests::sample_review_context_in(temp_dir.path());
 
 		review_context.github_token_env_var = None;
 
@@ -624,13 +637,13 @@ fn review_handoff_inspection_rejects_missing_or_blank_github_token() {
 			&issue,
 			&workflow,
 			review_context.clone(),
-				&pull_request_inspector,
-				&local_repo_inspector,
-			);
+			&pull_request_inspector,
+			&local_repo_inspector,
+		);
 
-			write_clean_review_checkpoint(&bridge, &issue, &review_context);
+		tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
-			let response = DynamicToolHandler::handle_call(
+		let response = DynamicToolHandler::handle_call(
 			&bridge,
 			ISSUE_REVIEW_HANDOFF_TOOL_NAME,
 			serde_json::json!({
@@ -652,14 +665,15 @@ fn review_handoff_inspection_rejects_missing_or_blank_github_token() {
 	{
 		let temp_dir = TempDir::new().expect("tempdir should create");
 		let tracker = FakeTracker::new();
-		let issue = sample_issue();
-		let workflow = sample_workflow();
+		let issue = tests::sample_issue();
+		let workflow = tests::sample_workflow();
 		let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
-		let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+		let local_repo_inspector =
+			FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 		let env_var =
 			format!("DECODEX_TEST_BLANK_REVIEW_HANDOFF_GITHUB_TOKEN_ENV_{}", process::id());
 		let _env_guard = TestEnvVarGuard::set(&env_var, "");
-		let mut review_context = sample_review_context_in(temp_dir.path());
+		let mut review_context = tests::sample_review_context_in(temp_dir.path());
 
 		review_context.github_token_env_var = Some(env_var.clone());
 
@@ -668,13 +682,13 @@ fn review_handoff_inspection_rejects_missing_or_blank_github_token() {
 			&issue,
 			&workflow,
 			review_context.clone(),
-				&pull_request_inspector,
-				&local_repo_inspector,
-			);
+			&pull_request_inspector,
+			&local_repo_inspector,
+		);
 
-			write_clean_review_checkpoint(&bridge, &issue, &review_context);
+		tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
-			let response = DynamicToolHandler::handle_call(
+		let response = DynamicToolHandler::handle_call(
 			&bridge,
 			ISSUE_REVIEW_HANDOFF_TOOL_NAME,
 			serde_json::json!({
@@ -698,8 +712,8 @@ fn review_handoff_inspection_rejects_missing_or_blank_github_token() {
 #[test]
 fn transitions_current_issue_with_allowed_state() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -714,8 +728,8 @@ fn transitions_current_issue_with_allowed_state() {
 #[test]
 fn rejects_success_transition_without_review_handoff() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -738,8 +752,8 @@ fn rejects_success_transition_without_review_handoff() {
 #[test]
 fn rejects_invalid_transition_argument_shapes() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let cases = [
 		(
@@ -772,12 +786,17 @@ fn rejects_invalid_transition_argument_shapes() {
 #[test]
 fn rejects_success_transition_regardless_of_other_workflow_state_membership() {
 	for workflow in [
-		sample_workflow_with_startable_states(&["Todo", "In Review"]),
-		sample_workflow_with_tracker_states(&["Todo"], "In Progress", "In Review", "In Review"),
-		sample_workflow_with_tracker_states(&["Todo"], "In Review", "In Review", "Todo"),
+		tests::sample_workflow_with_startable_states(&["Todo", "In Review"]),
+		tests::sample_workflow_with_tracker_states(
+			&["Todo"],
+			"In Progress",
+			"In Review",
+			"In Review",
+		),
+		tests::sample_workflow_with_tracker_states(&["Todo"], "In Review", "In Review", "Todo"),
 	] {
 		let tracker = FakeTracker::new();
-		let issue = sample_issue();
+		let issue = tests::sample_issue();
 
 		assert_success_transition_requires_review_handoff(workflow, &tracker, &issue);
 	}
@@ -810,18 +829,14 @@ fn assert_success_transition_requires_review_handoff(
 #[test]
 fn rejects_tool_calls_for_another_issue() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
-	let mut args = manual_attention_comment_args();
+	let mut args = tests::manual_attention_comment_args();
 
 	args["issue_identifier"] = serde_json::json!("DEC-999");
 
-	let response = DynamicToolHandler::handle_call(
-		&bridge,
-		ISSUE_COMMENT_TOOL_NAME,
-		args,
-	);
+	let response = DynamicToolHandler::handle_call(&bridge, ISSUE_COMMENT_TOOL_NAME, args);
 
 	assert!(!response.success);
 	assert!(tracker.comments.borrow().is_empty());
@@ -829,16 +844,16 @@ fn rejects_tool_calls_for_another_issue() {
 
 #[test]
 fn accepts_manual_attention_public_summary_kind() {
-	let issue = sample_issue();
-	let tracker = tracker_with_current_issue_snapshot(&issue);
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -854,8 +869,11 @@ fn accepts_manual_attention_public_summary_kind() {
 		"manual-attention label intent must not mutate Linear before comment validation"
 	);
 
-	let comment_response =
-		DynamicToolHandler::handle_call(&bridge, ISSUE_COMMENT_TOOL_NAME, manual_attention_comment_args());
+	let comment_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_COMMENT_TOOL_NAME,
+		tests::manual_attention_comment_args(),
+	);
 
 	assert!(comment_response.success);
 
@@ -872,24 +890,18 @@ fn accepts_manual_attention_public_summary_kind() {
 	assert!(comment.contains("- raw_error: repo gate failed with public test output"));
 	assert_eq!(record.event_type, "needs_attention");
 	assert_eq!(record.error_class.as_deref(), Some("operator_decision_required"));
-	assert_eq!(
-		record.failed_command.as_deref(),
-		Some("cargo make test")
-	);
-	assert_eq!(
-		record.raw_error.as_deref(),
-		Some("repo gate failed with public test output")
-	);
+	assert_eq!(record.failed_command.as_deref(), Some("cargo make test"));
+	assert_eq!(record.raw_error.as_deref(), Some("repo gate failed with public test output"));
 }
 
 #[test]
 fn accepts_authority_boundary_decision_request_without_public_private_evidence_leakage() {
-	let issue = sample_issue();
-	let tracker = tracker_with_current_issue_snapshot(&issue);
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+	let workflow = tests::sample_workflow();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let private_diff_evidence = "private diff path /Users/example/decodex/.worktrees/DEC-1";
-	let review_context = sample_review_context();
+	let review_context = tests::sample_review_context();
 	let boundary_event = orchestrator::record_authority_boundary_check_private_event(
 		&state_store,
 		AuthorityBoundaryCheckInput {
@@ -908,8 +920,7 @@ fn accepts_authority_boundary_decision_request_without_public_private_evidence_l
 				legacy_disposition:
 					crate::orchestrator::AuthorityBoundaryDisposition::RequiresHuman,
 			}],
-			policy_decision:
-				AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
+			policy_decision: AuthorityBoundaryPolicyDecision::RequiresHumanDecision,
 			disposition: AuthorityBoundaryDisposition::RequiresHuman,
 			final_disposition_reason: "Accepted behavior needs explicit authority.",
 			improvement_signals: Vec::new(),
@@ -928,7 +939,7 @@ fn accepts_authority_boundary_decision_request_without_public_private_evidence_l
 		ISSUE_LABEL_ADD_TOOL_NAME,
 		serde_json::json!({ "label": "decodex:needs-attention" }),
 	);
-	let mut args = manual_attention_comment_args();
+	let mut args = tests::manual_attention_comment_args();
 
 	args["error_class"] = serde_json::json!("contract_boundary_required");
 	args["next_action"] = serde_json::json!(
@@ -968,12 +979,7 @@ fn accepts_authority_boundary_decision_request_without_public_private_evidence_l
 	let record = records::parse_linear_execution_event_record(comment)
 		.expect("decision request summary should include a ledger record");
 	let events = state_store
-		.list_private_execution_events(
-			TEST_SERVICE_ID,
-			&issue.id,
-			"pub-618-attempt-2-123",
-			2,
-		)
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, "pub-618-attempt-2-123", 2)
 		.expect("private decision event should list");
 	let decision_event = events
 		.iter()
@@ -986,10 +992,7 @@ fn accepts_authority_boundary_decision_request_without_public_private_evidence_l
 	assert!(comment.contains("- boundary: `accepted_behavior`"));
 	assert!(comment.contains("- recommendation: Revise the Decision Contract"));
 	assert!(!comment.contains(private_diff_evidence));
-	assert_eq!(
-		decision_event.payload()["decision_request_id"],
-		serde_json::json!("dr-dec-1-2")
-	);
+	assert_eq!(decision_event.payload()["decision_request_id"], serde_json::json!("dr-dec-1-2"));
 	assert_eq!(
 		decision_event.payload()["retained_diff_evidence"][0],
 		serde_json::json!(private_diff_evidence)
@@ -999,8 +1002,8 @@ fn accepts_authority_boundary_decision_request_without_public_private_evidence_l
 #[test]
 fn rejects_arbitrary_issue_comment_bodies() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -1051,16 +1054,16 @@ fn rejects_manual_attention_comments_with_private_or_unsupported_fields() {
 			"`summary` must be public/team-visible text; credential-like names are not allowed.",
 		),
 	] {
-		let issue = sample_issue();
-		let tracker = tracker_with_current_issue_snapshot(&issue);
-		let workflow = sample_workflow();
+		let issue = tests::sample_issue();
+		let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+		let workflow = tests::sample_workflow();
 		let inspector = FakePullRequestInspector::new(Vec::new());
 		let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 		let bridge = TrackerToolBridge::with_review_handoff_for_test(
 			&tracker,
 			&issue,
 			&workflow,
-			sample_review_context(),
+			tests::sample_review_context(),
 			&inspector,
 			&local_repo_inspector,
 		);
@@ -1069,7 +1072,7 @@ fn rejects_manual_attention_comments_with_private_or_unsupported_fields() {
 			ISSUE_LABEL_ADD_TOOL_NAME,
 			serde_json::json!({ "label": "decodex:needs-attention" }),
 		);
-		let mut args = manual_attention_comment_args();
+		let mut args = tests::manual_attention_comment_args();
 
 		args[field_name] = if matches!(field_name, "blockers" | "evidence") {
 			serde_json::json!([value])
@@ -1111,16 +1114,16 @@ fn rejects_manual_attention_comment_with_runtime_owned_error_class() {
 		"app_server_dynamic_tool_failed",
 		"phase_goal_terminal_path_missing",
 	] {
-		let issue = sample_issue();
-		let tracker = tracker_with_current_issue_snapshot(&issue);
-		let workflow = sample_workflow();
+		let issue = tests::sample_issue();
+		let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+		let workflow = tests::sample_workflow();
 		let inspector = FakePullRequestInspector::new(Vec::new());
 		let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 		let bridge = TrackerToolBridge::with_review_handoff_for_test(
 			&tracker,
 			&issue,
 			&workflow,
-			sample_review_context(),
+			tests::sample_review_context(),
 			&inspector,
 			&local_repo_inspector,
 		);
@@ -1129,7 +1132,7 @@ fn rejects_manual_attention_comment_with_runtime_owned_error_class() {
 			ISSUE_LABEL_ADD_TOOL_NAME,
 			serde_json::json!({ "label": "decodex:needs-attention" }),
 		);
-		let mut args = manual_attention_comment_args();
+		let mut args = tests::manual_attention_comment_args();
 
 		args["error_class"] = serde_json::json!(error_class);
 
@@ -1156,16 +1159,16 @@ fn rejects_manual_attention_comment_with_runtime_owned_error_class() {
 
 #[test]
 fn rejects_unsupported_issue_comment_kinds_without_mutation() {
-	let issue = sample_issue();
-	let tracker = tracker_with_current_issue_snapshot(&issue);
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -1202,21 +1205,24 @@ fn rejects_unsupported_issue_comment_kinds_without_mutation() {
 
 #[test]
 fn rejects_manual_attention_comment_before_needs_attention_label() {
-	let issue = sample_issue();
+	let issue = tests::sample_issue();
 	let tracker = FakeTracker::new();
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
-	let response =
-		DynamicToolHandler::handle_call(&bridge, ISSUE_COMMENT_TOOL_NAME, manual_attention_comment_args());
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_COMMENT_TOOL_NAME,
+		tests::manual_attention_comment_args(),
+	);
 
 	assert!(!response.success);
 	assert!(tracker.comments.borrow().is_empty());
@@ -1229,16 +1235,16 @@ fn rejects_manual_attention_comment_before_needs_attention_label() {
 
 #[test]
 fn rejects_manual_attention_comment_with_non_public_error_class_shape() {
-	let issue = sample_issue();
-	let tracker = tracker_with_current_issue_snapshot(&issue);
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -1247,7 +1253,7 @@ fn rejects_manual_attention_comment_with_non_public_error_class_shape() {
 		ISSUE_LABEL_ADD_TOOL_NAME,
 		serde_json::json!({ "label": "decodex:needs-attention" }),
 	);
-	let mut args = manual_attention_comment_args();
+	let mut args = tests::manual_attention_comment_args();
 
 	args["error_class"] = serde_json::json!("Missing-GITHUB_PAT_Y");
 
@@ -1293,9 +1299,9 @@ fn rejects_legacy_public_comments_with_sensitive_or_unknown_paths() {
 
 #[test]
 fn records_manual_attention_label_intent_without_linear_mutation() {
-	let issue = sample_issue();
+	let issue = tests::sample_issue();
 	let tracker = FakeTracker::new();
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -1314,9 +1320,9 @@ fn records_manual_attention_label_intent_without_linear_mutation() {
 
 #[test]
 fn adds_allowed_workflow_opt_out_label() {
-	let issue = sample_issue();
-	let tracker = tracker_with_current_issue_snapshot(&issue);
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+	let workflow = tests::sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -1331,8 +1337,8 @@ fn adds_allowed_workflow_opt_out_label() {
 #[test]
 fn rejects_invalid_label_add_argument_shapes() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let cases = [
 		(
