@@ -2,14 +2,14 @@ use std::cell::RefCell;
 
 use tempfile::TempDir;
 
-use crate::agent::tracker_tool_bridge::tests::sample_local_repo;
-use crate::agent::tracker_tool_bridge::tests::{
-	self, FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker, TEST_SERVICE_ID,
-};
 use crate::{
 	agent::tracker_tool_bridge::{
 		DynamicToolContentItem, DynamicToolHandler, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		TrackerToolBridge,
+		tests::{
+			self, FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker, TEST_SERVICE_ID,
+			sample_local_repo,
+		},
 	},
 	tracker::{
 		privacy_classifier::{
