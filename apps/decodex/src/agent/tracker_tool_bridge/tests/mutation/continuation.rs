@@ -1,8 +1,5 @@
 use tempfile::TempDir;
 
-use crate::agent::tracker_tool_bridge::tests::{
-	self, FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker,
-};
 use crate::{
 	agent::tracker_tool_bridge::{
 		DynamicToolContentItem, DynamicToolHandler, ISSUE_COMMENT_TOOL_NAME,
@@ -10,6 +7,7 @@ use crate::{
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
 		ISSUE_TRANSITION_TOOL_NAME, PullRequestDetails, RunCompletionDisposition,
 		TrackerToolBridge, TurnCompletionStatus,
+		tests::{self, FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker},
 	},
 	tracker::{TrackerLabel, TrackerState, records},
 };
