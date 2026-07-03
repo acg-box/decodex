@@ -7,9 +7,10 @@ use crate::{
 		AttemptCommand, Cli, Command, ProbeCommand, ProjectConfigArgs,
 		account_commands::{AccountCommand, AccountSubcommand, AccountUseCommand},
 		control_commands::{
-			LaneCommand, LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand,
-			LaneSubcommand, McpSubcommand, ProjectCommand, ProjectSubcommand, RunCommand,
-			ServeCommand, StatusCommand,
+			LaneCommand, ProjectCommand, RunCommand, ServeCommand, StatusCommand,
+			lane::{LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand, LaneSubcommand},
+			mcp::McpSubcommand,
+			project::ProjectSubcommand,
 		},
 	},
 	mcp::{McpCapabilityProfile, McpTransport},
