@@ -72,7 +72,7 @@ use self::schema_probe::{
 use self::server_requests::{record_interactive_request_state, record_server_request};
 use self::{
 	activity::{ChildActivityAccumulator, ProtocolActivityAccumulator, redact_identifier},
-	constants::{JSONRPC_METHOD_NOT_FOUND, REQUEST_TIMEOUT},
+	constants::{JSONRPC_METHOD_NOT_FOUND, REQUEST_TIMEOUT, THREAD_SESSION_REQUEST_TIMEOUT},
 	dynamic_tools::{
 		dispatch_dynamic_tool_call, dynamic_tool_call_unavailable_for_phase,
 		respond_to_dynamic_tool_call_dispatch,
