@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use rusqlite::Connection;
 
-pub(super) fn summary_counts(
-	connection: &Connection,
-) -> crate::prelude::Result<BTreeMap<String, i64>> {
+use crate::prelude::Result;
+
+pub(super) fn summary_counts(connection: &Connection) -> Result<BTreeMap<String, i64>> {
 	let mut result = BTreeMap::new();
 
 	for (key, table) in [

@@ -1,24 +1,5 @@
 //! Radar auxiliary automation and artifact tooling.
 
-use std::{
-	collections::{BTreeMap, BTreeSet, HashSet},
-	env,
-	fs::{self, OpenOptions},
-	io::Write as _,
-	iter,
-	path::{Path, PathBuf},
-	process,
-	sync::OnceLock,
-	time::Duration,
-};
-
-use regex::Regex;
-use reqwest::StatusCode;
-use serde_json::{self, Map, Value};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
-
-use crate::prelude::eyre;
-
 mod artifact_validation;
 mod cli;
 mod config;
@@ -27,73 +8,77 @@ mod github_bundle_client;
 mod github_token;
 mod ledger;
 mod paths;
+mod prelude {
+	pub use color_eyre::{Result, eyre};
+}
+mod core_io;
+mod operations;
 mod release_delta;
 mod requests;
 mod review_queue;
 mod signal_render;
 mod source_bundle;
+mod text_values;
+mod validation_files;
 
-mod prelude {
-	pub use color_eyre::{Result, eyre};
-}
+pub(crate) use self::{
+	core_io::{
+		absolute_repo_path, collect_bundle_json_files, ledger_path, load_known_feature_names,
+		repo_default_branch, sorted_json_files, validate_expected_schema,
+		write_json_if_material_changed,
+	},
+	operations::{build_bundle, refresh_queue, render_signal, validate, validate_bundles},
+	text_values::{
+		body_excerpt, extract_commit_sha_from_url, extract_pr_number_from_url,
+		optional_value_string, path_arg, percent_encode, pretty_json, repo_root,
+		required_value_i64, required_value_string, required_value_u64, resolve_against, short_sha,
+		slugify, string_array, string_array_from_value, truncate_patch_excerpt,
+	},
+	validation_files::{
+		collect_json_files, first_line, is_truthy_json_value, load_json, non_empty_array,
+		object_value, optional_string, queue_report, require_member, required_string, string_field,
+		utc_now_iso, validation_paths, write_json,
+	},
+};
+pub(crate) use self::{
+	ledger::{
+		default_ledger_path, ledger_artifact_link, ledger_bootstrap, ledger_ingest,
+		ledger_ingest_existing, ledger_summary,
+	},
+	release_delta::{backfill_release_range, refresh_release_delta},
+	requests::{
+		RadarBackfillReleaseRangeReport, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
+		RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
+		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
+		RadarRefreshQueueReport, RadarRefreshQueueRequest, RadarRefreshReleaseDeltaReport,
+		RadarRefreshReleaseDeltaRequest, RadarRenderSignalReport, RadarRenderSignalRequest,
+		RadarValidateRequest, RadarValidationReport,
+	},
+};
 
+use std::{sync::OnceLock, time::Duration};
+
+use clap::Parser;
+use regex::Regex;
+use reqwest::StatusCode;
+use serde_json::{self, Map, Value};
+
+use crate::prelude::eyre;
 #[cfg(test)]
-mod test_support {
-	use std::sync::{Mutex, MutexGuard, OnceLock};
-
-	pub(crate) struct TestEnvLockGuard {
-		_lock: MutexGuard<'static, ()>,
-	}
-
-	pub(crate) fn lock_test_env() -> TestEnvLockGuard {
-		TestEnvLockGuard {
-			_lock: test_env_mutex().lock().expect("test env mutex should not be poisoned"),
-		}
-	}
-
-	fn test_env_mutex() -> &'static Mutex<()> {
-		static TEST_ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-
-		TEST_ENV_MUTEX.get_or_init(|| Mutex::new(()))
-	}
-}
-
-/// Run the Radar CLI.
-pub fn run() -> prelude::Result<()> {
-	use clap::Parser as _;
-
-	color_eyre::install()?;
-
-	cli::Cli::parse().run()
-}
-
-#[cfg(test)] use artifact_validation::has_legacy_multi_agent_v2_context;
+use artifact_validation::has_legacy_multi_agent_v2_context;
 use artifact_validation::{
 	ValidationState, validate_analysis_draft, validate_artifact, validate_artifact_errors,
 	validate_artifact_for_path, validate_signal_file, validate_signal_slug_uniqueness,
 };
+use cli::Cli;
 use github_api::GitHubApi;
 use github_bundle_client::GithubClient;
 use github_token::github_token;
 use ledger::RadarLedger;
-pub(crate) use release_delta::{backfill_release_range, refresh_release_delta};
+use prelude::Result;
 use review_queue::{RecentCommit, build_review_queue};
 use signal_render::{rendered_config_flags, rendered_signal};
 use source_bundle::{build_commit_bundle_from_sources, build_pr_bundle_from_sources};
-
-pub(crate) use ledger::{
-	default_ledger_path, ledger_artifact_link, ledger_bootstrap, ledger_ingest,
-	ledger_ingest_existing, ledger_summary,
-};
-
-pub(crate) use requests::{
-	RadarBackfillReleaseRangeReport, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
-	RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
-	RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
-	RadarRefreshQueueReport, RadarRefreshQueueRequest, RadarRefreshReleaseDeltaReport,
-	RadarRefreshReleaseDeltaRequest, RadarRenderSignalReport, RadarRenderSignalRequest,
-	RadarValidateRequest, RadarValidationReport,
-};
 
 const BUNDLE_SCHEMA: &str = "github_change_bundle/v1";
 const CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA: &str = "control_plane_upgrade_candidate/v1";
@@ -205,12 +190,33 @@ enum RefreshKind {
 	Queue,
 	ReleaseDelta,
 }
-mod core_io;
-mod operations;
-mod text_values;
-mod validation_files;
 
-#[allow(clippy::wildcard_imports)]
-pub(crate) use self::{core_io::*, operations::*, text_values::*, validation_files::*};
+/// Run the Radar CLI.
+pub fn run() -> Result<()> {
+	color_eyre::install()?;
 
-#[cfg(test)] mod tests;
+	Cli::parse().run()
+}
+
+#[cfg(test)]
+mod test_support {
+	use std::sync::{Mutex, MutexGuard, OnceLock};
+
+	pub(crate) struct TestEnvLockGuard {
+		_lock: MutexGuard<'static, ()>,
+	}
+
+	pub(crate) fn lock_test_env() -> TestEnvLockGuard {
+		TestEnvLockGuard {
+			_lock: test_env_mutex().lock().expect("test env mutex should not be poisoned"),
+		}
+	}
+
+	fn test_env_mutex() -> &'static Mutex<()> {
+		static TEST_ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+
+		TEST_ENV_MUTEX.get_or_init(|| Mutex::new(()))
+	}
+}
+#[cfg(test)]
+mod tests;

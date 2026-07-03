@@ -1,14 +1,26 @@
 //! Artifact ingestion and schema-specific ledger extraction.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::path::Path;
+
+use rusqlite::Connection;
+use serde_json::Value;
+
+use crate::ledger::{
+	records::{self, ArtifactLinkInput, CommitInput, ReviewInput},
+	subjects::{self, RadarSubject},
+};
+use crate::{
+	BUNDLE_SCHEMA, SIGNAL_SCHEMA,
+	prelude::{Result, eyre},
+};
 
 pub(super) fn ingest_artifact_set(
 	connection: &Connection,
 	bundle_path: &Path,
 	analysis_path: Option<&Path>,
 	signal_path: Option<&Path>,
-) -> crate::prelude::Result<()> {
-	let bundle = load_json(bundle_path)?;
+) -> Result<()> {
+	let bundle = crate::load_json(bundle_path)?;
 	let signal_exists = signal_path.is_some_and(Path::exists);
 	let (repo, subject_kind, subject_id) = record_bundle(
 		connection,
@@ -19,7 +31,7 @@ pub(super) fn ingest_artifact_set(
 	)?;
 
 	if let Some(path) = analysis_path.filter(|path| path.exists()) {
-		record_artifact(
+		records::record_artifact(
 			connection,
 			ArtifactLinkInput {
 				repo: &repo,
@@ -38,7 +50,7 @@ pub(super) fn ingest_artifact_set(
 				&& subject.subject_kind == subject_kind
 				&& subject.subject_id == subject_id
 		}) {
-			record_artifact(
+			records::record_artifact(
 				connection,
 				ArtifactLinkInput {
 					repo: &repo,
@@ -54,103 +66,12 @@ pub(super) fn ingest_artifact_set(
 	Ok(())
 }
 
-fn record_bundle(
-	connection: &Connection,
-	bundle: &Value,
-	bundle_path: &Path,
-	status: &str,
-	reason: &str,
-) -> crate::prelude::Result<(String, String, String)> {
-	let validation = validate_artifact(bundle);
-
-	if validation.schema.as_deref() != Some(BUNDLE_SCHEMA) || !validation.errors.is_empty() {
-		let mut errors = validation.errors;
-
-		if validation.schema.as_deref() != Some(BUNDLE_SCHEMA) {
-			errors.insert(0, format!("schema must be {BUNDLE_SCHEMA}"));
-		}
-
-		eyre::bail!("Bundle validation failed:\n- {}", errors.join("\n- "));
-	}
-
-	let (repo, subject_kind, subject_id) = subject_for_bundle(bundle)?;
-	let bundle = object_value(bundle, "bundle")?;
-	let pr_number = bundle
-		.get("primary_pr")
-		.and_then(Value::as_object)
-		.and_then(|primary_pr| primary_pr.get("number"))
-		.and_then(Value::as_i64);
-	let commits = non_empty_array(bundle.get("commits"))
-		.ok_or_else(|| eyre::eyre!("commits must be a non-empty list"))?;
-
-	for commit in commits {
-		let commit = object_value(commit, "commit")?;
-
-		record_commit(
-			connection,
-			CommitInput {
-				repo: &repo,
-				sha: required_string(commit, "sha", "commit.sha")?,
-				title: required_string(commit, "message", "commit.message")?,
-				url: required_string(commit, "url", "commit.url")?,
-				committed_at: optional_string(commit, "committed_at"),
-				pr_number,
-			},
-		)?;
-	}
-
-	record_review(
-		connection,
-		ReviewInput {
-			repo: &repo,
-			subject_kind: &subject_kind,
-			subject_id: &subject_id,
-			status,
-			reason,
-			confidence: if status == "signal" { Some("confirmed") } else { None },
-		},
-	)?;
-	record_artifact(
-		connection,
-		ArtifactLinkInput {
-			repo: &repo,
-			subject_kind: &subject_kind,
-			subject_id: &subject_id,
-			artifact_kind: "bundle",
-			path: bundle_path,
-		},
-	)?;
-
-	Ok((repo, subject_kind, subject_id))
-}
-
-fn subject_for_bundle(bundle: &Value) -> crate::prelude::Result<(String, String, String)> {
-	let bundle = object_value(bundle, "bundle")?;
-	let repo = required_string(bundle, "repo", "repo")?.to_owned();
-
-	if let Some(number) = bundle
-		.get("primary_pr")
-		.and_then(Value::as_object)
-		.and_then(|primary_pr| primary_pr.get("number"))
-		.and_then(Value::as_u64)
-	{
-		return Ok((repo, "pr".into(), number.to_string()));
-	}
-
-	let commits = non_empty_array(bundle.get("commits"))
-		.ok_or_else(|| eyre::eyre!("commits must be a non-empty list"))?;
-	let first_commit = object_value(&commits[0], "commits[0]")?;
-	let sha = required_string(first_commit, "sha", "commits[0].sha")?;
-
-	Ok((repo, "commit".into(), sha.to_owned()))
-}
-
 pub(super) fn record_signal_artifact(
 	connection: &Connection,
 	signal_path: &Path,
-) -> crate::prelude::Result<Vec<RadarSubject>> {
-	let signal = load_json(signal_path)?;
-	let validation = validate_artifact(&signal);
+) -> Result<Vec<RadarSubject>> {
+	let signal = crate::load_json(signal_path)?;
+	let validation = crate::validate_artifact(&signal);
 
 	if validation.schema.as_deref() != Some(SIGNAL_SCHEMA) || !validation.errors.is_empty() {
 		let mut errors = validation.errors;
@@ -166,13 +87,13 @@ pub(super) fn record_signal_artifact(
 		);
 	}
 
-	let signal = object_value(&signal, "signal")?;
-	let slug = required_string(signal, "slug", "slug")?;
-	let confidence = required_string(signal, "confidence", "confidence")?;
-	let subjects = subject_refs_for_signal(signal);
+	let signal = crate::object_value(&signal, "signal")?;
+	let slug = crate::required_string(signal, "slug", "slug")?;
+	let confidence = crate::required_string(signal, "confidence", "confidence")?;
+	let subjects = subjects::subject_refs_for_signal(signal);
 
 	for subject in &subjects {
-		record_review(
+		records::record_review(
 			connection,
 			ReviewInput {
 				repo: &subject.repo,
@@ -183,7 +104,7 @@ pub(super) fn record_signal_artifact(
 				confidence: Some(confidence),
 			},
 		)?;
-		record_artifact(
+		records::record_artifact(
 			connection,
 			ArtifactLinkInput {
 				repo: &subject.repo,
@@ -196,4 +117,95 @@ pub(super) fn record_signal_artifact(
 	}
 
 	Ok(subjects)
+}
+
+fn record_bundle(
+	connection: &Connection,
+	bundle: &Value,
+	bundle_path: &Path,
+	status: &str,
+	reason: &str,
+) -> Result<(String, String, String)> {
+	let validation = crate::validate_artifact(bundle);
+
+	if validation.schema.as_deref() != Some(BUNDLE_SCHEMA) || !validation.errors.is_empty() {
+		let mut errors = validation.errors;
+
+		if validation.schema.as_deref() != Some(BUNDLE_SCHEMA) {
+			errors.insert(0, format!("schema must be {BUNDLE_SCHEMA}"));
+		}
+
+		eyre::bail!("Bundle validation failed:\n- {}", errors.join("\n- "));
+	}
+
+	let (repo, subject_kind, subject_id) = subject_for_bundle(bundle)?;
+	let bundle = crate::object_value(bundle, "bundle")?;
+	let pr_number = bundle
+		.get("primary_pr")
+		.and_then(Value::as_object)
+		.and_then(|primary_pr| primary_pr.get("number"))
+		.and_then(Value::as_i64);
+	let commits = crate::non_empty_array(bundle.get("commits"))
+		.ok_or_else(|| eyre::eyre!("commits must be a non-empty list"))?;
+
+	for commit in commits {
+		let commit = crate::object_value(commit, "commit")?;
+
+		records::record_commit(
+			connection,
+			CommitInput {
+				repo: &repo,
+				sha: crate::required_string(commit, "sha", "commit.sha")?,
+				title: crate::required_string(commit, "message", "commit.message")?,
+				url: crate::required_string(commit, "url", "commit.url")?,
+				committed_at: crate::optional_string(commit, "committed_at"),
+				pr_number,
+			},
+		)?;
+	}
+
+	records::record_review(
+		connection,
+		ReviewInput {
+			repo: &repo,
+			subject_kind: &subject_kind,
+			subject_id: &subject_id,
+			status,
+			reason,
+			confidence: if status == "signal" { Some("confirmed") } else { None },
+		},
+	)?;
+	records::record_artifact(
+		connection,
+		ArtifactLinkInput {
+			repo: &repo,
+			subject_kind: &subject_kind,
+			subject_id: &subject_id,
+			artifact_kind: "bundle",
+			path: bundle_path,
+		},
+	)?;
+
+	Ok((repo, subject_kind, subject_id))
+}
+
+fn subject_for_bundle(bundle: &Value) -> Result<(String, String, String)> {
+	let bundle = crate::object_value(bundle, "bundle")?;
+	let repo = crate::required_string(bundle, "repo", "repo")?.to_owned();
+
+	if let Some(number) = bundle
+		.get("primary_pr")
+		.and_then(Value::as_object)
+		.and_then(|primary_pr| primary_pr.get("number"))
+		.and_then(Value::as_u64)
+	{
+		return Ok((repo, "pr".into(), number.to_string()));
+	}
+
+	let commits = crate::non_empty_array(bundle.get("commits"))
+		.ok_or_else(|| eyre::eyre!("commits must be a non-empty list"))?;
+	let first_commit = crate::object_value(&commits[0], "commits[0]")?;
+	let sha = crate::required_string(first_commit, "sha", "commits[0].sha")?;
+
+	Ok((repo, "commit".into(), sha.to_owned()))
 }

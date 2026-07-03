@@ -1,27 +1,23 @@
-use std::{
-	env,
-	ffi::OsString,
-	fs,
-	path::{Path, PathBuf},
-	process::Command,
-};
+mod artifacts;
+mod automation;
+
+use std::{env, ffi::OsString, fs, path::Path};
 
 use serde_json::{self, Value};
 
-use crate::{
-	self as radar, RadarBackfillReleaseRangeRequest, RadarBundleValidateRequest,
-	RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest, RadarLedgerIngestExistingRequest,
-	RadarRenderSignalRequest, RadarValidateRequest, RefreshKind,
-};
+use crate::has_legacy_multi_agent_v2_context;
+use crate::test_support;
+use crate::test_support::TestEnvLockGuard;
+use crate::validate_artifact;
+use crate::validate_artifact_for_path;
 
 struct TestEnvVars {
-	_lock: crate::test_support::TestEnvLockGuard,
+	_lock: TestEnvLockGuard,
 	previous: Vec<(String, Option<OsString>)>,
 }
-
 impl TestEnvVars {
 	fn set(vars: &[(&str, Option<&str>)]) -> Self {
-		let lock = crate::test_support::lock_test_env();
+		let lock = test_support::lock_test_env();
 		let previous =
 			vars.iter().map(|(key, _)| ((*key).to_owned(), env::var_os(key))).collect::<Vec<_>>();
 
@@ -47,12 +43,8 @@ impl Drop for TestEnvVars {
 	}
 }
 
-mod artifacts;
-
-mod automation;
-
 fn assert_errors<const N: usize>(payload: &Value, expected: [&str; N]) {
-	let validation = radar::validate_artifact(payload);
+	let validation = self::validate_artifact(payload);
 
 	for expected_error in expected {
 		assert!(
@@ -68,7 +60,7 @@ fn assert_errors<const N: usize>(payload: &Value, expected: [&str; N]) {
 }
 
 fn assert_path_errors<const N: usize>(path: &str, payload: &Value, expected: [&str; N]) {
-	let validation = radar::validate_artifact_for_path(Path::new(path), payload);
+	let validation = self::validate_artifact_for_path(Path::new(path), payload);
 
 	for expected_error in expected {
 		assert!(
@@ -195,7 +187,7 @@ fn collect_assign_task_reference_violations(
 	if !lower.contains("assign_task") {
 		return;
 	}
-	if lower.contains("followup_task") && radar::has_legacy_multi_agent_v2_context(&lower) {
+	if lower.contains("followup_task") && self::has_legacy_multi_agent_v2_context(&lower) {
 		return;
 	}
 

@@ -4,27 +4,23 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 
-use super::{
+use crate::artifact_validation::{
 	model::ReleaseOptionTags,
-	support::{
-		is_https_string, is_non_empty_string, non_empty_array, string_field,
-		validate_optional_positive_integer_list, validate_optional_string_list,
-		validate_string_list,
-	},
+	support::{self},
 };
 
 pub(super) fn validate_release_delta(entry: &Map<String, Value>, errors: &mut Vec<String>) {
-	if string_field(entry, "repo").is_none_or(|repo| !repo.contains('/')) {
+	if support::string_field(entry, "repo").is_none_or(|repo| !repo.contains('/')) {
 		errors.push("repo must be owner/name".into());
 	}
-	if !is_non_empty_string(entry.get("tag_prefix")) {
+	if !support::is_non_empty_string(entry.get("tag_prefix")) {
 		errors.push("tag_prefix must be a non-empty string".into());
 	}
-	if !is_non_empty_string(entry.get("generated_at")) {
+	if !support::is_non_empty_string(entry.get("generated_at")) {
 		errors.push("generated_at must be a non-empty string".into());
 	}
 
-	let tag_prefix = string_field(entry, "tag_prefix").unwrap_or_default();
+	let tag_prefix = support::string_field(entry, "tag_prefix").unwrap_or_default();
 
 	validate_release_object(
 		entry.get("stable_release"),
@@ -35,7 +31,12 @@ pub(super) fn validate_release_delta(entry: &Map<String, Value>, errors: &mut Ve
 	);
 	validate_release_object(entry.get("prerelease"), "prerelease", tag_prefix, true, errors);
 	validate_compare_object(entry.get("compare"), "compare", errors);
-	validate_string_list(entry.get("tracked_signal_slugs"), "tracked_signal_slugs", errors);
+
+	support::validate_string_list(
+		entry.get("tracked_signal_slugs"),
+		"tracked_signal_slugs",
+		errors,
+	);
 
 	let option_tags = validate_release_options(entry.get("release_options"), errors);
 
@@ -56,12 +57,14 @@ pub(super) fn validate_release_object(
 	};
 
 	for field in ["tag_name", "name", "published_at", "url"] {
-		if !is_non_empty_string(release.get(field)) {
+		if !support::is_non_empty_string(release.get(field)) {
 			errors.push(format!("{field_name}.{field} must be a non-empty string"));
 		}
 	}
 
-	if string_field(release, "tag_name").is_some_and(|tag_name| !tag_name.starts_with(tag_prefix)) {
+	if support::string_field(release, "tag_name")
+		.is_some_and(|tag_name| !tag_name.starts_with(tag_prefix))
+	{
 		errors.push(format!("{field_name}.tag_name must start with tag_prefix"));
 	}
 	if release.get("prerelease").and_then(Value::as_bool) != Some(expect_prerelease) {
@@ -82,7 +85,7 @@ pub(super) fn validate_compare_object(
 		return;
 	};
 
-	if !is_non_empty_string(compare.get("status")) {
+	if !support::is_non_empty_string(compare.get("status")) {
 		errors.push(format!("{label}.status must be a non-empty string"));
 	}
 
@@ -92,16 +95,16 @@ pub(super) fn validate_compare_object(
 		}
 	}
 
-	if !is_https_string(compare.get("url")) {
+	if !support::is_https_string(compare.get("url")) {
 		errors.push(format!("{label}.url must be an https URL"));
 	}
 
-	validate_optional_string_list(
+	support::validate_optional_string_list(
 		compare.get("commit_shas"),
 		&format!("{label}.commit_shas"),
 		errors,
 	);
-	validate_optional_positive_integer_list(
+	support::validate_optional_positive_integer_list(
 		compare.get("pr_numbers"),
 		&format!("{label}.pr_numbers"),
 		errors,
@@ -144,7 +147,7 @@ pub(super) fn validate_release_option_group(
 	errors: &mut Vec<String>,
 	tags: &mut BTreeSet<String>,
 ) {
-	let Some(values) = non_empty_array(values) else {
+	let Some(values) = support::non_empty_array(values) else {
 		errors.push(format!("{label} must be a non-empty list"));
 
 		return;
@@ -157,7 +160,7 @@ pub(super) fn validate_release_option_group(
 			continue;
 		};
 
-		if let Some(tag_name) = string_field(release, "tag_name") {
+		if let Some(tag_name) = support::string_field(release, "tag_name") {
 			if tag_name.is_empty() {
 				errors.push(format!("{label}[{index}].tag_name must be a non-empty string"));
 			} else {
@@ -180,7 +183,7 @@ pub(super) fn validate_release_comparisons(
 	option_tags: &ReleaseOptionTags,
 	errors: &mut Vec<String>,
 ) {
-	let Some(comparisons) = non_empty_array(entry.get("comparisons")) else {
+	let Some(comparisons) = support::non_empty_array(entry.get("comparisons")) else {
 		errors.push("comparisons must be a non-empty list".into());
 
 		return;
@@ -207,7 +210,8 @@ pub(super) fn validate_release_comparisons(
 			&format!("comparisons[{index}].compare"),
 			errors,
 		);
-		validate_string_list(
+
+		support::validate_string_list(
 			comparison.get("tracked_signal_slugs"),
 			&format!("comparisons[{index}].tracked_signal_slugs"),
 			errors,
@@ -225,26 +229,32 @@ pub(super) fn validate_release_comparison_tags(
 	option_tags: &ReleaseOptionTags,
 	errors: &mut Vec<String>,
 ) {
-	match string_field(comparison, "stable_tag_name") {
-		Some("") =>
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
+	match support::string_field(comparison, "stable_tag_name") {
+		Some("") => {
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
+		},
 		Some(tag_name)
 			if !option_tags.stable.is_empty() && !option_tags.stable.contains(tag_name) =>
+		{
 			errors.push(format!(
 				"comparisons[{index}].stable_tag_name must exist in release_options.stable"
-			)),
+			))
+		},
 		Some(_) => {},
-		None =>
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
+		None => {
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
+		},
 	}
-	match string_field(comparison, "prerelease_tag_name") {
+	match support::string_field(comparison, "prerelease_tag_name") {
 		Some("") => errors
 			.push(format!("comparisons[{index}].prerelease_tag_name must be a non-empty string")),
 		Some(tag_name)
 			if !option_tags.preview.is_empty() && !option_tags.preview.contains(tag_name) =>
+		{
 			errors.push(format!(
 				"comparisons[{index}].prerelease_tag_name must exist in release_options.preview"
-			)),
+			))
+		},
 		Some(_) => {},
 		None => errors
 			.push(format!("comparisons[{index}].prerelease_tag_name must be a non-empty string")),
@@ -256,9 +266,9 @@ pub(super) fn comparison_matches_default(
 	stable_release: Option<&Map<String, Value>>,
 	prerelease: Option<&Map<String, Value>>,
 ) -> bool {
-	let stable_tag = stable_release.and_then(|release| string_field(release, "tag_name"));
-	let prerelease_tag = prerelease.and_then(|release| string_field(release, "tag_name"));
+	let stable_tag = stable_release.and_then(|release| support::string_field(release, "tag_name"));
+	let prerelease_tag = prerelease.and_then(|release| support::string_field(release, "tag_name"));
 
-	string_field(comparison, "stable_tag_name") == stable_tag
-		&& string_field(comparison, "prerelease_tag_name") == prerelease_tag
+	support::string_field(comparison, "stable_tag_name") == stable_tag
+		&& support::string_field(comparison, "prerelease_tag_name") == prerelease_tag
 }
