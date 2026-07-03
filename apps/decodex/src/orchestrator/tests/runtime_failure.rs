@@ -17,6 +17,7 @@ use time::OffsetDateTime;
 
 use crate::{
 	agent::CodexAccountAuthFailure,
+	orchestrator,
 	orchestrator::tests::{
 		self, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure,
 		AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerTransportFailure,
@@ -30,10 +31,10 @@ use crate::{
 		ReviewPolicyStopRequested, RunCompletionDisposition, ServiceConfig, StateStore,
 		TEST_SERVICE_ID, TestEnvVarGuard, TrackerIssue, Value, WorktreeManager, WorktreeSpec,
 		add_origin_remote, checkout_new_branch, commit_worktree_change, fs, git_output,
-		git_status_success, orchestrator, process, service_config_with_github_token_env_var, state,
-		temp_project_layout_with_read_first, tracker,
+		git_status_success, process, service_config_with_github_token_env_var,
+		temp_project_layout_with_read_first,
 	},
-	test_support,
+	state, test_support, tracker,
 };
 
 pub(super) fn loop_guardrail_issue_run(
