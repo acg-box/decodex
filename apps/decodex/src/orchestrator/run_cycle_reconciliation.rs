@@ -9,22 +9,16 @@ pub(crate) use self::{
 	},
 };
 
-use std::{
-	collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 
 use time::OffsetDateTime;
 
 use crate::{
 	orchestrator::{
-		IssueTracker, RunAttempt, RunLeaseDisposition, RunLeaseReconciliation, ServiceConfig,
-		StateStore, TERMINAL_GUARDED_RUN_STATUS, TrackerIssue, WorkflowDocument, WorktreeManager,
-		WorktreeMapping, apply_run_lease_reconciliation, cleanup_worktree_mapping,
-		closeout_dispatch_block_reason, is_issue_in_progress_for_run, is_terminal_issue,
-		issue_has_service_ownership, issue_passes_closeout_dispatch_policy,
-		mark_run_attempt_if_active, marker_process_is_alive, observed_idle_duration,
-		retained_review_handoff_matches_run, stalled_idle_duration,
-		worktree_activity_marker_is_fresh, worktree_has_tracked_changes,
+		IssueTracker, ServiceConfig, StateStore, TERMINAL_GUARDED_RUN_STATUS, TrackerIssue,
+		WorkflowDocument, WorktreeManager, WorktreeMapping, closeout_dispatch_block_reason,
+		is_terminal_issue, issue_passes_closeout_dispatch_policy, mark_run_attempt_if_active,
+		retained_review_handoff_matches_run, worktree_activity_marker_is_fresh,
 		worktree_mapping_is_stale_terminal_local_residue,
 	},
 	prelude::Result,

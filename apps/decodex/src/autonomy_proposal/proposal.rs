@@ -277,7 +277,9 @@ impl AutonomyProposal {
 	pub(crate) fn validate(&self) -> Result<()> {
 		self.validate_required_fields()?;
 		self.validate_static_invariants()?;
+		self.validate_objective_lineage()?;
 		self.validate_collections()?;
+		self.validate_embedded_records()?;
 		self.validate_nested_records()?;
 
 		self.validate_fingerprint_identity()
@@ -351,9 +353,6 @@ impl AutonomyProposal {
 		}
 
 		self.objective_lineage.validate()
-	}
-
-		Ok(())
 	}
 
 	fn validate_collections(&self) -> Result<()> {

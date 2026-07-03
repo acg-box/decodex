@@ -1,8 +1,11 @@
 mod archive;
 mod dynamic_tools;
+mod phase_goal_tests;
 mod preflight;
 mod recorder;
+mod request_tests;
 mod runtime;
+mod schema_tests;
 
 use std::{
 	cell::RefCell,
@@ -15,21 +18,19 @@ use std::{
 use serde_json::{self, Value};
 use tempfile::TempDir;
 
-use crate::state::StateStore;
 use crate::{
 	agent::{
 		app_server::{
 			APP_SERVER_REQUIRED_CLIENT_NOTIFICATIONS, APP_SERVER_REQUIRED_CLIENT_REQUESTS,
 			APP_SERVER_REQUIRED_SERVER_NOTIFICATIONS, APP_SERVER_REQUIRED_SERVER_REQUESTS,
 			APP_SERVER_SCHEMA_REQUIRED_MARKERS, AppServerCapabilityPreflightFailure,
-			AppServerCapabilityPreflightReport, AppServerDynamicToolFailure,
-			AppServerPhaseGoalFailure, AppServerRunResult, AppServerThreadArchiveOutcome,
-			AppServerThreadArchiveRequest, AppServerTurnFailure, CommandExecHealthCheck,
-			CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
+			AppServerCapabilityPreflightReport, AppServerPhaseGoalFailure, AppServerRunResult,
+			AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest, AppServerTurnFailure,
+			CommandExecHealthCheck, CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
 			ModelProviderCapabilitiesReadResponse, PhaseGoalController, PhaseGoalKind,
 			PhaseGoalSpec, PhaseGoalTransition, PluginListResponse, ProbeDynamicToolHandler,
 			REQUEST_TIMEOUT, RunRecorder, RuntimeConfigSummary, SkillsListResponse,
-			TurnContinuationGuard, UserInput, archive_app_server_thread_after_success,
+			TurnContinuationGuard, archive_app_server_thread_after_success,
 			classify_turn_completion, continuation_boundary_reached, execute_app_server_run,
 			failure_from_error_notification, handle_dynamic_tool_call,
 			handle_turn_execution_notification, mcp_preflight_can_degrade,
@@ -48,7 +49,6 @@ use crate::{
 			AppServerHomePreflightFailure, AppServerProcessEnv, JsonRpcError, JsonRpcErrorPayload,
 			JsonRpcMessage, JsonRpcNotification, ResolvedAppServerCodexHomeEnv, WireMessage,
 		},
-		json_rpc::{AppServerProcessEnv, JsonRpcMessage, JsonRpcNotification, WireMessage},
 		tracker_tool_bridge::{
 			DynamicToolCallResponse, DynamicToolHandler, DynamicToolSpec, TurnCompletionStatus,
 		},
@@ -57,7 +57,7 @@ use crate::{
 	run_control::{
 		LaneControlSteerRequest, LaneControlSteerRequestInput, LaneControlSteerResponse,
 	},
-	state::{self, StateStore},
+	state::StateStore,
 	test_support::TestEnvVarGuard,
 };
 

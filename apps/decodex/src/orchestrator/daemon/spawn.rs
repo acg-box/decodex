@@ -1,15 +1,21 @@
+#[cfg(unix)] use std::os::fd::AsRawFd;
+use std::{
+	env,
+	io::Write as _,
+	path::Path,
+	process::{Child, Command, Stdio},
+};
+
 use crate::{
+	cli::AttemptRequest,
 	orchestrator::{
-		daemon,
-		daemon::{
-			AsRawFd, AttemptRequest, Child, Command, DaemonRunChild, DaemonTickRuntimeContext,
-			IssueDispatchMode, IssueTracker, MaterializedDaemonSpawnState, Path,
-			PullRequestReviewStateInspector, RUN_OPERATION_AGENT_RUN, Result,
-			RetryDispatchDecision, RetryQueue, RunSummary, ServiceConfig, SpawnRunOnceChildRequest,
-			StateStore, Stdio, WorkflowDocument, WorktreeManager, WorktreeSpec, Write as _, env,
-			eyre,
-		},
+		self, DaemonRunChild, IssueDispatchMode, IssueTracker, MaterializedDaemonSpawnState,
+		PullRequestReviewStateInspector, RUN_OPERATION_AGENT_RUN, Result, RetryDispatchDecision,
+		RetryQueue, RunSummary, ServiceConfig, SpawnRunOnceChildRequest, StateStore,
+		WorkflowDocument, WorktreeManager, WorktreeSpec,
+		daemon::{self, DaemonTickRuntimeContext},
 	},
+	prelude::eyre,
 	state,
 };
 
@@ -34,10 +40,10 @@ where
 	match next_run {
 		Some((summary, from_retry_queue)) => {
 			if summary.dispatch_mode != IssueDispatchMode::Closeout {
-				daemon::ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
+				orchestrator::ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
 			}
 
-			daemon::validate_workflow_read_first_files(context.project, context.workflow)?;
+			orchestrator::validate_workflow_read_first_files(context.project, context.workflow)?;
 
 			state_store.configure_dispatch_slot_root(
 				context.project.service_id(),
@@ -249,7 +255,7 @@ where
 		RetryDispatchDecision::Blocked { excluded_issue_ids } => {
 			let excluded_issue_ids =
 				excluded_issue_ids.iter().map(String::as_str).collect::<Vec<_>>();
-			let issue_run = daemon::plan_project_issue_run_with_exclusions(
+			let issue_run = orchestrator::plan_project_issue_run_with_exclusions(
 				tracker,
 				project,
 				workflow,
@@ -259,11 +265,11 @@ where
 			)?;
 
 			Ok(issue_run.map(|issue_run| {
-				(daemon::run_summary_from_issue_run(project.service_id(), &issue_run), false)
+				(orchestrator::run_summary_from_issue_run(project.service_id(), &issue_run), false)
 			}))
 		},
 		RetryDispatchDecision::Continue => {
-			let issue_run = daemon::plan_project_issue_run_with_exclusions(
+			let issue_run = orchestrator::plan_project_issue_run_with_exclusions(
 				tracker,
 				project,
 				workflow,
@@ -273,7 +279,7 @@ where
 			)?;
 
 			Ok(issue_run.map(|issue_run| {
-				(daemon::run_summary_from_issue_run(project.service_id(), &issue_run), false)
+				(orchestrator::run_summary_from_issue_run(project.service_id(), &issue_run), false)
 			}))
 		},
 	}
@@ -286,7 +292,7 @@ pub(crate) fn materialize_daemon_spawn_state(
 	summary: &RunSummary,
 ) -> Result<MaterializedDaemonSpawnState> {
 	let worktree = materialize_run_summary_worktree(project, workflow, summary)?;
-	let retry_budget_base = daemon::retry_budget_base_for_dispatch_mode(
+	let retry_budget_base = orchestrator::retry_budget_base_for_dispatch_mode(
 		state_store,
 		&summary.issue_id,
 		&worktree.path,

@@ -8,7 +8,22 @@ use std::{
 
 use time::OffsetDateTime;
 
-use crate::{orchestrator::{self, tests, CONTINUATION_PENDING_RUN_STATUS, ChildExitRetryContext, ChildRunRef, DaemonRunChild, DaemonTickRuntimeContext, IssueDispatchMode, PullRequestReviewState, RetryDispatchDecision, RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, ReviewLevel, StateStore, TERMINAL_GUARDED_RUN_STATUS, TargetIssueRunContext}, orchestrator::tests::{FakePullRequestReviewStateInspector, FakeTracker, TEST_SERVICE_ID, recovery_terminal_support}, state, tracker::{self, TrackerIssue}, workflow::WorkflowDocument, worktree::WorktreeManager};
+use crate::{
+	orchestrator::{
+		self, CONTINUATION_PENDING_RUN_STATUS, ChildExitRetryContext, ChildRunRef, DaemonRunChild,
+		DaemonTickRuntimeContext, IssueDispatchMode, PullRequestReviewState, RetryDispatchDecision,
+		RetryEntry, RetryEntryLifecycle, RetryKind, RetryQueue, ReviewLevel, StateStore,
+		TERMINAL_GUARDED_RUN_STATUS, TargetIssueRunContext, tests,
+		tests::{
+			FakePullRequestReviewStateInspector, FakeTracker, TEST_SERVICE_ID,
+			recovery_terminal_support,
+		},
+	},
+	state,
+	tracker::{self, TrackerIssue},
+	workflow::WorkflowDocument,
+	worktree::WorktreeManager,
+};
 
 const PUB_704_RETAINED_HEAD_SUBJECT: &str =
 	r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-704"}"#;
@@ -842,10 +857,11 @@ fn schedule_retry_after_child_exit_records_continuation_retry_for_clean_exit() {
 #[test]
 fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_workflow_markdown(
-		&tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1).replace(
-			"canonicalize_commands = []",
-			"canonicalize_commands = [\"printf 'rewritten\\\\n' > other.txt\"]",
-		),
+		&tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1)
+			.replace(
+				"canonicalize_commands = []",
+				"canonicalize_commands = [\"printf 'rewritten\\\\n' > other.txt\"]",
+			),
 	);
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
@@ -1463,7 +1479,8 @@ fn spawn_sleeping_daemon_child(
 #[test]
 fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
-	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) =
+		tests::install_fake_admin_merge_gh_response(&temp_dir);
 	let config = tests::service_config_with_review_level(
 		&tests::service_config_with_github_token_env_var_and_command_path(
 			&base_config,
@@ -1577,7 +1594,8 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 #[test]
 fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
 	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
-	let (gh_command_path, invocation_log_path) = tests::install_fake_admin_merge_gh_response(&temp_dir);
+	let (gh_command_path, invocation_log_path) =
+		tests::install_fake_admin_merge_gh_response(&temp_dir);
 	let config = tests::service_config_with_review_level(
 		&tests::service_config_with_github_token_env_var_and_command_path(
 			&base_config,

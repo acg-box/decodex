@@ -41,9 +41,8 @@ where
 		})?;
 
 	match phase {
-		ReviewOrchestrationPhase::RequestPending => {
-			handle_request_pending_phase(project, state_store, lane, github_token)
-		},
+		ReviewOrchestrationPhase::RequestPending =>
+			handle_request_pending_phase(project, state_store, lane, github_token),
 		ReviewOrchestrationPhase::WaitingForAck => handle_waiting_for_ack_phase(
 			tracker,
 			project,

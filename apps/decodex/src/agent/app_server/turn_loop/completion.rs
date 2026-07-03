@@ -1,14 +1,22 @@
+use std::mem;
+
+use color_eyre::eyre::Report;
+
 use crate::{
-	agent::app_server::{
-		turn_loop,
-		turn_loop::{
-			AgentMessageDeltaNotification, AppServerTurnFailure, ErrorNotification,
-			ItemCompletedNotification, JsonRpcError, JsonRpcNotification, Report, RunOutcome,
-			RunRecorder, ThreadGoalUpdatedNotification, ThreadStatusChangedNotification,
-			TurnCompletedNotification, TurnError, eyre, mem, messages,
+	agent::{
+		app_server::{
+			protocol::{
+				AgentMessageDeltaNotification, ErrorNotification, ItemCompletedNotification,
+				RunOutcome, ThreadGoalUpdatedNotification, ThreadStatusChangedNotification,
+				TurnCompletedNotification, TurnError,
+			},
+			runtime_types::RunRecorder,
+			turn_failure::AppServerTurnFailure,
+			turn_loop::messages,
 		},
+		json_rpc::{JsonRpcError, JsonRpcNotification},
 	},
-	prelude::Result,
+	prelude::{Result, eyre},
 };
 
 pub(in crate::agent::app_server) fn handle_turn_execution_notification(
@@ -171,7 +179,7 @@ pub(super) fn adopt_thread_bound_notification_turn_id(
 	target_thread_id: &str,
 	target_turn_id: &mut String,
 ) -> Result<()> {
-	let Some(observed_turn_id) = turn_loop::turn_id_from_value(&notification.params) else {
+	let Some(observed_turn_id) = messages::turn_id_from_value(&notification.params) else {
 		return Ok(());
 	};
 
@@ -201,7 +209,7 @@ pub(super) fn adopt_thread_bound_notification_turn_id(
 }
 
 fn notification_targets_turn(notification: &JsonRpcNotification, target_turn_id: &str) -> bool {
-	turn_loop::turn_id_from_value(&notification.params)
+	messages::turn_id_from_value(&notification.params)
 		.is_none_or(|turn_id| turn_id == target_turn_id)
 }
 

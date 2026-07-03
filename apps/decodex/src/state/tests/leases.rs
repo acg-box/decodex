@@ -7,8 +7,9 @@ use std::{
 
 use tempfile::TempDir;
 
-use crate::state::tests::{self, IN_PROGRESS_STATE};
-use crate::state::{PreacquiredLeaseGuards, StateStore};
+use crate::state::{PreacquiredLeaseGuards, StateStore, tests};
+
+const LEASE_IN_PROGRESS_STATE: &str = "In Progress";
 
 struct TestFile;
 impl TestFile {
@@ -24,7 +25,7 @@ fn manages_issue_leases() {
 	let store = StateStore::open_in_memory().expect("in-memory state store should open");
 
 	store
-		.upsert_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+		.upsert_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 		.expect("lease should be inserted");
 
 	let lease = store
@@ -35,7 +36,7 @@ fn manages_issue_leases() {
 	assert_eq!(lease.issue_id(), "PUB-101");
 	assert_eq!(lease.run_id(), "run-1");
 	assert_eq!(lease.project_id(), "pubfi");
-	assert_eq!(lease.issue_state(), IN_PROGRESS_STATE);
+	assert_eq!(lease.issue_state(), LEASE_IN_PROGRESS_STATE);
 
 	store.clear_lease("PUB-101").expect("lease should be deleted");
 
@@ -48,22 +49,22 @@ fn tracks_issue_specific_leases_without_project_limit() {
 
 	assert!(
 		store
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("first lease acquisition should succeed")
 	);
 	assert!(
 		store
-			.try_acquire_lease("pubfi", "PUB-102", "run-2", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-102", "run-2", LEASE_IN_PROGRESS_STATE)
 			.expect("second lease acquisition should succeed for another issue")
 	);
 	assert!(
 		!store
-			.try_acquire_lease("pubfi", "PUB-101", "run-3", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-3", LEASE_IN_PROGRESS_STATE)
 			.expect("duplicate issue acquisition should be rejected")
 	);
 	assert!(
 		store
-			.try_acquire_lease("other", "PUB-201", "run-4", IN_PROGRESS_STATE)
+			.try_acquire_lease("other", "PUB-201", "run-4", LEASE_IN_PROGRESS_STATE)
 			.expect("other project should still acquire its own slot")
 	);
 }
@@ -81,7 +82,7 @@ fn cleared_shared_lease_removes_lock_anchor_files() {
 
 	assert!(
 		store
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("shared lease acquisition should succeed")
 	);
 	assert!(issue_claim_path.exists(), "active issue claim should create a lock anchor");
@@ -109,7 +110,8 @@ fn read_only_shared_claim_check_does_not_remove_unlocked_claim_anchor() {
 		.configure_dispatch_slot_root("pubfi", temp_dir.path())
 		.expect("store should configure dispatch slot root");
 
-	fs::write(&issue_claim_path, "stale claim anchor\n").expect("stale claim anchor should write");
+	TestFile::write(&issue_claim_path, "stale claim anchor\n")
+		.expect("stale claim anchor should write");
 
 	assert!(
 		!store
@@ -137,7 +139,8 @@ fn observe_dispatch_slot_root_does_not_prune_unlocked_claim_anchor() {
 	let issue_claim_path = temp_dir.path().join(".decodex-issue-claim.PUB-101.lock");
 	let store = StateStore::open_in_memory().expect("state store should open");
 
-	fs::write(&issue_claim_path, "stale claim anchor\n").expect("stale claim anchor should write");
+	TestFile::write(&issue_claim_path, "stale claim anchor\n")
+		.expect("stale claim anchor should write");
 
 	store
 		.observe_dispatch_slot_root("pubfi", temp_dir.path())
@@ -206,17 +209,17 @@ fn shared_dispatch_slots_allocate_on_demand_across_process_local_stores() {
 
 	assert!(
 		store_one
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("first shared lease acquisition should succeed")
 	);
 	assert!(
 		store_two
-			.try_acquire_lease("pubfi", "PUB-102", "run-2", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-102", "run-2", LEASE_IN_PROGRESS_STATE)
 			.expect("second store should acquire another shared slot")
 	);
 	assert!(
 		store_three
-			.try_acquire_lease("pubfi", "PUB-103", "run-3", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-103", "run-3", LEASE_IN_PROGRESS_STATE)
 			.expect("third store should acquire another shared slot")
 	);
 }
@@ -236,17 +239,17 @@ fn shared_issue_claim_blocks_duplicate_issue_across_process_local_stores() {
 
 	assert!(
 		store_one
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("first issue claim should succeed")
 	);
 	assert!(
 		!store_two
-			.try_acquire_lease("pubfi", "PUB-101", "run-2", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-2", LEASE_IN_PROGRESS_STATE)
 			.expect("duplicate issue claim should be rejected across processes")
 	);
 	assert!(
 		store_two
-			.try_acquire_lease("pubfi", "PUB-102", "run-3", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-102", "run-3", LEASE_IN_PROGRESS_STATE)
 			.expect("another issue should still acquire an independent dispatch slot")
 	);
 }
@@ -266,12 +269,12 @@ fn shared_issue_claim_reopens_same_issue_after_clear_across_process_local_stores
 
 	assert!(
 		store_one
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("first issue claim should succeed")
 	);
 	assert!(
 		!store_two
-			.try_acquire_lease("pubfi", "PUB-101", "run-2", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-2", LEASE_IN_PROGRESS_STATE)
 			.expect("duplicate issue claim should be rejected while the first lease is active")
 	);
 
@@ -279,7 +282,7 @@ fn shared_issue_claim_reopens_same_issue_after_clear_across_process_local_stores
 
 	assert!(
 		store_two
-			.try_acquire_lease("pubfi", "PUB-101", "run-2", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-2", LEASE_IN_PROGRESS_STATE)
 			.expect("same issue claim should reopen after the first lease clears")
 	);
 }
@@ -299,7 +302,7 @@ fn shared_issue_claim_listing_reports_other_process_state() {
 
 	assert!(
 		remote_store
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("remote issue claim should succeed")
 	);
 
@@ -310,7 +313,7 @@ fn shared_issue_claim_listing_reports_other_process_state() {
 	assert_eq!(leases.len(), 1);
 	assert_eq!(leases[0].issue_id(), "PUB-101");
 	assert_eq!(leases[0].run_id(), "run-1");
-	assert_eq!(leases[0].issue_state(), IN_PROGRESS_STATE);
+	assert_eq!(leases[0].issue_state(), LEASE_IN_PROGRESS_STATE);
 }
 
 #[cfg(unix)]
@@ -333,7 +336,7 @@ fn adopted_dispatch_slot_handoff_does_not_block_other_issues_after_parent_releas
 
 	assert!(
 		parent_store
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("parent should acquire the shared slot")
 	);
 
@@ -349,7 +352,7 @@ fn adopted_dispatch_slot_handoff_does_not_block_other_issues_after_parent_releas
 			"pubfi",
 			"PUB-101",
 			"run-1",
-			IN_PROGRESS_STATE,
+			LEASE_IN_PROGRESS_STATE,
 			PreacquiredLeaseGuards {
 				issue_claim_fd: child_issue_claim.into_raw_fd(),
 				dispatch_slot_fd: child_guard.into_raw_fd(),
@@ -363,7 +366,7 @@ fn adopted_dispatch_slot_handoff_does_not_block_other_issues_after_parent_releas
 
 	assert!(
 		contender_store
-			.try_acquire_lease("pubfi", "PUB-102", "run-2", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-102", "run-2", LEASE_IN_PROGRESS_STATE)
 			.expect("child-held guard should not block another issue")
 	);
 
@@ -392,7 +395,7 @@ fn adopted_issue_claim_blocks_same_issue_after_parent_clears_local_guard() {
 
 	assert!(
 		parent_store
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("parent should acquire the shared issue claim")
 	);
 
@@ -408,7 +411,7 @@ fn adopted_issue_claim_blocks_same_issue_after_parent_clears_local_guard() {
 			"pubfi",
 			"PUB-101",
 			"run-1",
-			IN_PROGRESS_STATE,
+			LEASE_IN_PROGRESS_STATE,
 			PreacquiredLeaseGuards {
 				issue_claim_fd: child_issue_claim.into_raw_fd(),
 				dispatch_slot_fd: child_guard.into_raw_fd(),
@@ -430,7 +433,7 @@ fn adopted_issue_claim_blocks_same_issue_after_parent_clears_local_guard() {
 	);
 	assert!(
 		!contender_store
-			.try_acquire_lease("pubfi", "PUB-101", "run-2", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-2", LEASE_IN_PROGRESS_STATE)
 			.expect("same issue should stay claimed while the child still holds the handoff fd")
 	);
 
@@ -466,7 +469,7 @@ fn parent_can_release_handed_off_guards_without_dropping_runtime_lease() {
 
 	assert!(
 		parent_store
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("parent should acquire the shared issue claim")
 	);
 
@@ -482,7 +485,7 @@ fn parent_can_release_handed_off_guards_without_dropping_runtime_lease() {
 			"pubfi",
 			"PUB-101",
 			"run-1",
-			IN_PROGRESS_STATE,
+			LEASE_IN_PROGRESS_STATE,
 			PreacquiredLeaseGuards {
 				issue_claim_fd: child_issue_claim.into_raw_fd(),
 				dispatch_slot_fd: child_guard.into_raw_fd(),
@@ -503,12 +506,12 @@ fn parent_can_release_handed_off_guards_without_dropping_runtime_lease() {
 	);
 	assert!(
 		!contender_store
-			.try_acquire_lease("pubfi", "PUB-101", "run-2", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-2", LEASE_IN_PROGRESS_STATE)
 			.expect("same issue should stay claimed by the child handoff")
 	);
 	assert!(
 		contender_store
-			.try_acquire_lease("pubfi", "PUB-102", "run-2", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-102", "run-2", LEASE_IN_PROGRESS_STATE)
 			.expect("another issue should acquire an independent dispatch slot")
 	);
 
@@ -531,7 +534,7 @@ fn adopted_preacquired_lease_restores_close_on_exec_on_inherited_fds() {
 
 	assert!(
 		parent_store
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("parent should acquire the shared slot")
 	);
 
@@ -558,7 +561,7 @@ fn adopted_preacquired_lease_restores_close_on_exec_on_inherited_fds() {
 			"pubfi",
 			"PUB-101",
 			"run-1",
-			IN_PROGRESS_STATE,
+			LEASE_IN_PROGRESS_STATE,
 			PreacquiredLeaseGuards {
 				issue_claim_fd: child_issue_claim.into_raw_fd(),
 				dispatch_slot_fd: child_guard.into_raw_fd(),
@@ -600,7 +603,7 @@ fn adopted_child_clear_releases_lock_when_descendant_keeps_inherited_fds_open() 
 
 	assert!(
 		parent_store
-			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
 			.expect("parent should acquire the shared slot")
 	);
 
@@ -620,7 +623,7 @@ fn adopted_child_clear_releases_lock_when_descendant_keeps_inherited_fds_open() 
 			"pubfi",
 			"PUB-101",
 			"run-1",
-			IN_PROGRESS_STATE,
+			LEASE_IN_PROGRESS_STATE,
 			PreacquiredLeaseGuards {
 				issue_claim_fd: child_issue_claim.into_raw_fd(),
 				dispatch_slot_fd: child_guard.into_raw_fd(),
@@ -633,7 +636,7 @@ fn adopted_child_clear_releases_lock_when_descendant_keeps_inherited_fds_open() 
 
 	assert!(
 		contender_store
-			.try_acquire_lease("pubfi", "PUB-101", "run-2", IN_PROGRESS_STATE)
+			.try_acquire_lease("pubfi", "PUB-101", "run-2", LEASE_IN_PROGRESS_STATE)
 			.expect("descendant-held fds must not keep the cleared lease claimed"),
 		"clearing an adopted child lease must release the shared claim and slot even if a descendant still holds inherited fds"
 	);

@@ -41,8 +41,8 @@ use self::{
 };
 use crate::{
 	ARTIFACT_KINDS, BUNDLE_SCHEMA, DEFAULT_LEDGER_PATH, REVIEW_STATUSES, RecentCommit,
-	SCHEMA_VERSION, SIGNAL_CONFIDENCE, SIGNAL_SCHEMA, UPSTREAM_SUBJECT_KINDS, load_json,
-	non_empty_array, object_value, optional_string,
+	SIGNAL_CONFIDENCE, SIGNAL_SCHEMA, UPSTREAM_SUBJECT_KINDS, load_json, non_empty_array,
+	object_value, optional_string,
 	prelude::eyre,
 	requests::{
 		RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,

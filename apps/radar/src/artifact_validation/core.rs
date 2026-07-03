@@ -24,8 +24,6 @@ use crate::{
 		eyre::{self, Report},
 	},
 };
-use crate::prelude::Result;
-use crate::prelude::eyre::{self, Report};
 
 pub(crate) fn validate_signal_file(path: &Path, payload: &Value) -> Result<()> {
 	let validation = validate_artifact(payload);

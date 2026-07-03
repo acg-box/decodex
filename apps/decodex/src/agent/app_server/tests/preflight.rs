@@ -4,10 +4,13 @@ use color_eyre::Report;
 
 use crate::{
 	agent::{
-		app_server::tests::{
-			AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
-			ModelProviderCapabilitiesReadResponse, PluginListResponse, REQUEST_TIMEOUT,
-			RunRecorder, RuntimeConfigSummary, SkillsListResponse,
+		app_server::{
+			protocol::{McpServerStatusSummary, ModelSummary},
+			tests::{
+				AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
+				ModelProviderCapabilitiesReadResponse, PluginListResponse, REQUEST_TIMEOUT,
+				RunRecorder, RuntimeConfigSummary, SkillsListResponse,
+			},
 		},
 		json_rpc::AppServerOutputTimeout,
 	},

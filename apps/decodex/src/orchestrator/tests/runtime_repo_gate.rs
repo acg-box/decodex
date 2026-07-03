@@ -7,7 +7,50 @@ use std::{
 use color_eyre::Report;
 use serde::Deserialize;
 
-use crate::orchestrator::execution_phase_goal;
+use crate::{
+	agent::PhaseGoalController,
+	orchestrator::{
+		self, AppServerCapabilityPreflightFailure, EvidenceRequest, IssueDispatchMode,
+		IssueRunPlan, ManualAttentionRequested, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
+		PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, PhaseGoalKind,
+		PhaseGoalSpec, PhaseGoalTransition, RepoGateFailure, RepoGatePhaseGoalController,
+		ServiceConfig, StateStore, execution_phase_goal, tests, tests::TEST_SERVICE_ID,
+	},
+	tracker::{self, TrackerIssue},
+	worktree::WorktreeSpec,
+};
+
+pub(super) fn record_phase_acceptance_progress_checkpoint(
+	config: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	blockers: &[&str],
+) {
+	let head_sha = tests::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	let blockers = blockers.iter().map(|blocker| (*blocker).to_owned()).collect::<Vec<_>>();
+
+	state_store
+		.append_private_execution_event(
+			config.service_id(),
+			&issue_run.issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+			"progress_checkpoint",
+			serde_json::json!({
+				"phase": "verifying",
+				"docs_impact": "none",
+				"focus": "Validate phase-specific work before handoff.",
+				"next_action": "Complete the active phase goal.",
+				"blockers": blockers,
+				"evidence": ["current worktree inspected"],
+				"verification": ["repo gate will run after phase goal completion"],
+				"head_sha": head_sha,
+				"branch": issue_run.worktree.branch_name.as_str(),
+				"worktree_path": issue_run.worktree.path.display().to_string(),
+			}),
+		)
+		.expect("phase acceptance progress checkpoint should record");
+}
 
 #[test]
 fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
@@ -24,7 +67,8 @@ fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
 	.expect_err("tracked autofix rewrites should fail the repo gate");
 	let tracked_contents = fs::read_to_string(repo_root.join("tracked.txt"))
 		.expect("tracked file should remain readable");
-	let tracked_status = tests::git_output(repo_root, &["status", "--porcelain", "--untracked-files=no"]);
+	let tracked_status =
+		tests::git_output(repo_root, &["status", "--porcelain", "--untracked-files=no"]);
 	let repo_gate_failure = error
 		.downcast_ref::<RepoGateFailure>()
 		.expect("repo gate failures should preserve structured classification");
@@ -44,9 +88,8 @@ fn repo_gate_stops_canonicalize_failure_after_scope_envelope_widening() {
 	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 
-	commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
-	commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
-
+	tests::commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
+	tests::commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
 	fs::write(repo_root.join("owned.txt"), "implementation\n")
 		.expect("pre-gate implementation diff should write");
 
@@ -76,9 +119,8 @@ fn repo_gate_stops_verify_failure_after_scope_envelope_widening() {
 	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
 
-	commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
-	commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
-
+	tests::commit_worktree_change(repo_root, "owned.txt", "before\n", "add owned file");
+	tests::commit_worktree_change(repo_root, "outside.txt", "before\n", "add outside file");
 	fs::write(repo_root.join("owned.txt"), "implementation\n")
 		.expect("pre-gate implementation diff should write");
 
@@ -106,8 +148,8 @@ fn repo_gate_stops_verify_failure_after_scope_envelope_widening() {
 #[test]
 fn completion_repo_gate_records_lane_decision_for_scope_envelope_violation() {
 	let failing_verify = "printf 'rewritten\\n' > outside.txt; exit 1";
-	let workflow_markdown = tests::sample_workflow_markdown("pubfi", &[], "Completion gate policy.\n", 1)
-		.replace(
+	let workflow_markdown =
+		tests::sample_workflow_markdown("pubfi", &[], "Completion gate policy.\n", 1).replace(
 			"verify_commands = []",
 			&format!(
 				"verify_commands = [{}]",
@@ -116,14 +158,20 @@ fn completion_repo_gate_records_lane_decision_for_scope_envelope_violation() {
 		);
 	let (_temp_dir, config, workflow) =
 		tests::temp_project_layout_with_workflow_markdown(&workflow_markdown);
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = phase_goal_repo_gate_issue_run(&config, &issue);
 
-	commit_worktree_change(config.repo_root(), "owned.txt", "before\n", "add owned file");
-	commit_worktree_change(config.repo_root(), "outside.txt", "before\n", "add outside file");
-
+	tests::commit_worktree_change(config.repo_root(), "owned.txt", "before\n", "add owned file");
+	tests::commit_worktree_change(
+		config.repo_root(),
+		"outside.txt",
+		"before\n",
+		"add outside file",
+	);
 	fs::write(config.repo_root().join("owned.txt"), "implementation\n")
 		.expect("pre-gate implementation diff should write");
 
@@ -221,8 +269,9 @@ fn repo_gate_classifies_git_index_lock_contention_as_retryable_runtime_failure()
 
 #[test]
 fn repo_gate_selects_matching_profile_for_scoped_lane_changes() {
-	let (temp_dir, config, workflow) =
-		tests::temp_project_layout_with_workflow_markdown(&tests::profile_scoped_workflow_markdown("pubfi"));
+	let (temp_dir, config, workflow) = tests::temp_project_layout_with_workflow_markdown(
+		&tests::profile_scoped_workflow_markdown("pubfi"),
+	);
 	let repo_root = config.repo_root();
 	let remote_root = temp_dir.path().join("origin.git");
 
@@ -245,8 +294,9 @@ fn repo_gate_selects_matching_profile_for_scoped_lane_changes() {
 
 #[test]
 fn repo_gate_falls_back_to_full_gate_when_changed_file_classification_is_unavailable() {
-	let (_temp_dir, config, workflow) =
-		tests::temp_project_layout_with_workflow_markdown(&tests::profile_scoped_workflow_markdown("pubfi"));
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_workflow_markdown(
+		&tests::profile_scoped_workflow_markdown("pubfi"),
+	);
 	let repo_root = config.repo_root();
 
 	tests::checkout_new_branch(repo_root, "config-subset");
@@ -283,8 +333,10 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 	);
 	let (_temp_dir, config, workflow) =
 		tests::temp_project_layout_with_workflow_markdown(&workflow_markdown);
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = tests::loop_guardrail_issue_run(&config, &issue, 1);
 
@@ -325,17 +377,20 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 fn phase_goal_repo_gate_failure_records_structured_diagnostic() {
 	let failing_command = "printf 'error: function has too many lines\\n --> apps/decodex/src/mcp.rs:12:1\\nfn mcp_tools() {}\\n' >&2; exit 1";
 	let workflow_markdown =
-		tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 3).replace(
-			"canonicalize_commands = []",
-			&format!(
-				"canonicalize_commands = [{}]",
-				serde_json::to_string(failing_command).expect("command should serialize")
-			),
-		);
+		tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 3)
+			.replace(
+				"canonicalize_commands = []",
+				&format!(
+					"canonicalize_commands = [{}]",
+					serde_json::to_string(failing_command).expect("command should serialize")
+				),
+			);
 	let (_temp_dir, config, workflow) =
 		tests::temp_project_layout_with_workflow_markdown(&workflow_markdown);
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = phase_goal_repo_gate_issue_run(&config, &issue);
 	let transition = RepoGatePhaseGoalController {
@@ -538,8 +593,10 @@ fn phase_goal_completion_continues_with_owned_tracked_rewrites_after_validation(
 				"verify_commands = [\"grep -qx rewritten ready.txt\"]",
 			),
 	);
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -607,8 +664,10 @@ fn phase_goal_completion_continues_with_owned_tracked_rewrites_after_validation(
 fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let remote_root = temp_dir.path().join("origin.git");
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -670,8 +729,10 @@ fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
 #[test]
 fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -735,8 +796,10 @@ fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
 #[test]
 fn phase_goal_acceptance_non_goal_violation_requests_manual_attention() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -797,8 +860,10 @@ fn phase_goal_acceptance_non_goal_violation_requests_manual_attention() {
 #[test]
 fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-cleared-blocker";
 
@@ -864,8 +929,10 @@ fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 #[test]
 fn blocking_lane_decision_evidence_prefers_kernel_projection_over_legacy_action() {
 	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-kernel-lane-decision";
 
@@ -919,8 +986,10 @@ fn blocking_lane_decision_evidence_prefers_kernel_projection_over_legacy_action(
 #[test]
 fn cleared_checkpoint_allows_same_run_phase_goal_recovery_candidate() {
 	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = phase_goal_repo_gate_issue_run(&config, &issue);
 
@@ -976,8 +1045,10 @@ fn cleared_checkpoint_allows_same_run_phase_goal_recovery_candidate() {
 #[test]
 fn cleared_checkpoint_allows_cross_attempt_phase_goal_inheritance() {
 	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let source_run_id = "pub-101-attempt-1";
 
@@ -1034,8 +1105,10 @@ fn cleared_checkpoint_allows_cross_attempt_phase_goal_inheritance() {
 #[test]
 fn retry_phase_goal_resumes_cross_attempt_handoff_after_recovered_validation_pass() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let first_issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -1117,8 +1190,10 @@ fn retry_phase_goal_resumes_cross_attempt_handoff_after_recovered_validation_pas
 #[test]
 fn retry_phase_goal_resumes_cross_attempt_active_handoff_phase() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
@@ -1176,8 +1251,10 @@ fn retry_phase_goal_resumes_cross_attempt_active_handoff_phase() {
 #[test]
 fn retry_phase_goal_does_not_resume_cross_attempt_phase_after_terminal_finalize() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
@@ -1244,8 +1321,10 @@ fn retry_phase_goal_does_not_resume_cross_attempt_phase_after_terminal_finalize(
 #[test]
 fn retry_phase_goal_uses_latest_open_phase_for_cross_attempt_resume() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
@@ -1313,8 +1392,10 @@ fn retry_phase_goal_uses_latest_open_phase_for_cross_attempt_resume() {
 #[test]
 fn retry_phase_goal_skips_empty_failed_start_attempt_for_cross_attempt_resume() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
@@ -1372,8 +1453,10 @@ fn retry_phase_goal_skips_empty_failed_start_attempt_for_cross_attempt_resume() 
 #[test]
 fn program_phase_goal_skips_empty_failed_start_attempt_for_cross_attempt_resume() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree = WorktreeSpec {
 		branch_name: String::from("x/pubfi-pub-101"),
@@ -1431,14 +1514,17 @@ fn program_phase_goal_skips_empty_failed_start_attempt_for_cross_attempt_resume(
 #[test]
 fn open_phase_goal_unowned_tracked_rewrites_stop_instead_of_repair_continuation() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_workflow_markdown(
-		&tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1).replace(
-			"canonicalize_commands = []",
-			"canonicalize_commands = [\"printf 'rewritten\\\\n' > other.txt\"]",
-		),
+		&tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1)
+			.replace(
+				"canonicalize_commands = []",
+				"canonicalize_commands = [\"printf 'rewritten\\\\n' > other.txt\"]",
+			),
 	);
 	let repo_root = config.repo_root();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -1517,14 +1603,17 @@ fn open_phase_goal_unowned_tracked_rewrites_stop_instead_of_repair_continuation(
 #[test]
 fn open_phase_goal_owned_tracked_rewrites_continue_to_handoff_recovery() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_workflow_markdown(
-		&tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1).replace(
-			"canonicalize_commands = []",
-			"canonicalize_commands = [\"printf 'rewritten\\\\n' > ready.txt\"]",
-		),
+		&tests::sample_workflow_markdown("pubfi", &[], "Phase goal validation policy.\n", 1)
+			.replace(
+				"canonicalize_commands = []",
+				"canonicalize_commands = [\"printf 'rewritten\\\\n' > ready.txt\"]",
+			),
 	);
 	let repo_root = config.repo_root();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -1606,8 +1695,10 @@ fn open_phase_goal_owned_tracked_rewrites_continue_to_handoff_recovery() {
 fn repeated_phase_goal_recovery_blocks_second_automatic_continuation() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let app_server_timeout =
 		Report::new(AppServerCapabilityPreflightFailure::method_timed_out_for_test(
@@ -1720,8 +1811,10 @@ fn repeated_phase_goal_recovery_blocks_second_automatic_continuation() {
 #[test]
 fn implementation_phase_goal_contract_requires_explicit_goal_completion() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
-	let issue =
-		tests::sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),

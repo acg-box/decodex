@@ -26,12 +26,9 @@ where
 			run_id: orchestration_marker.run_id().to_owned(),
 			attempt_number: orchestration_marker.attempt_number(),
 		},
-	},
-	prelude::Result,
-	state::{ReviewOrchestrationMarker, WorktreeMapping},
-	tracker::{IssueTracker, TrackerIssue},
-	worktree::WorktreeSpec,
-};
+		reason,
+	)
+}
 
 pub(crate) fn apply_passive_retained_manual_attention_with_run_identity<T>(
 	runtime: PassiveRetainedAttentionRuntime<'_, T>,
