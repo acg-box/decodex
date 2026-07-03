@@ -1,4 +1,12 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use crate::{
+	autonomy_proposal::{
+		AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE, AutonomyProposal,
+		AutonomyProposalAcceptedProjectPolicy, AutonomyProposalAuthorityActorKind,
+		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalRefusalReason,
+		AutonomyProposalState, validation,
+	},
+	prelude::{Result, eyre},
+};
 
 impl AutonomyProposalState {
 	pub(crate) fn as_str(self) -> &'static str {
@@ -70,35 +78,35 @@ impl AutonomyProposalAcceptedProjectPolicy {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required(
+		validation::validate_required(
 			"autonomy proposal accepted project policy.project_id",
 			&self.project_id,
 		)?;
-		validate_required(
+		validation::validate_required(
 			"autonomy proposal accepted project policy.objective_id",
 			&self.objective_id,
 		)?;
-		validate_required(
+		validation::validate_required(
 			"autonomy proposal accepted project policy.accepted_policy_id",
 			&self.accepted_policy_id,
 		)?;
-		validate_required(
+		validation::validate_required(
 			"autonomy proposal accepted project policy.accepted_policy_version",
 			&self.accepted_policy_version,
 		)?;
-		validate_required(
+		validation::validate_required(
 			"autonomy proposal accepted project policy.authority_ref",
 			&self.authority_ref,
 		)?;
-		validate_required(
+		validation::validate_required(
 			"autonomy proposal accepted project policy.authorized_actor",
 			&self.authorized_actor,
 		)?;
-		validate_string_list(
+		validation::validate_string_list(
 			"autonomy proposal accepted project policy.authorized_acceptance_sources",
 			&self.authorized_acceptance_sources,
 		)?;
-		validate_string_list(
+		validation::validate_string_list(
 			"autonomy proposal accepted project policy.authorized_scopes",
 			&self.authorized_scopes,
 		)?;
@@ -204,14 +212,23 @@ impl AutonomyProposalDecisionBridgeAuthority {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("autonomy proposal acceptance.accepted_by", &self.accepted_by)?;
-		validate_required("autonomy proposal acceptance.accepted_at", &self.accepted_at)?;
-		validate_required(
+		validation::validate_required(
+			"autonomy proposal acceptance.accepted_by",
+			&self.accepted_by,
+		)?;
+		validation::validate_required(
+			"autonomy proposal acceptance.accepted_at",
+			&self.accepted_at,
+		)?;
+		validation::validate_required(
 			"autonomy proposal acceptance.acceptance_source",
 			&self.acceptance_source,
 		)?;
-		validate_required("autonomy proposal acceptance.reason", &self.reason)?;
-		validate_required("autonomy proposal acceptance.proposal_actor", &self.proposal_actor)?;
+		validation::validate_required("autonomy proposal acceptance.reason", &self.reason)?;
+		validation::validate_required(
+			"autonomy proposal acceptance.proposal_actor",
+			&self.proposal_actor,
+		)?;
 
 		if let Some(policy) = &self.accepted_project_policy {
 			policy.validate_for_authority(self)?;

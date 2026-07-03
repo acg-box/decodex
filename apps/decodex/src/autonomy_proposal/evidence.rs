@@ -1,20 +1,34 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use crate::{
+	autonomy_proposal::{
+		AutonomyProposalChallengeEvidence, AutonomyProposalChallengeInput,
+		AutonomyProposalObjectiveLineage, AutonomyProposalRefusal, AutonomyProposalRefusalReason,
+		AutonomyProposalSourceSignal, validation,
+	},
+	autonomy_signal::AutonomySignal,
+	prelude::{Result, eyre},
+};
 
 impl AutonomyProposalObjectiveLineage {
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("autonomy proposal objective lineage.project_id", &self.project_id)?;
-		validate_required("autonomy proposal objective lineage.objective_id", &self.objective_id)?;
+		validation::validate_required(
+			"autonomy proposal objective lineage.project_id",
+			&self.project_id,
+		)?;
+		validation::validate_required(
+			"autonomy proposal objective lineage.objective_id",
+			&self.objective_id,
+		)?;
 
 		if self.objective_version == 0 {
 			eyre::bail!("Autonomy proposal objective lineage version must be greater than zero.");
 		}
 
-		validate_optional_required(
+		validation::validate_optional_required(
 			"autonomy proposal objective lineage.objective_state",
 			self.objective_state.as_deref(),
 		)?;
 
-		validate_optional_required(
+		validation::validate_optional_required(
 			"autonomy proposal objective lineage.objective_summary",
 			self.objective_summary.as_deref(),
 		)
@@ -35,14 +49,29 @@ impl AutonomyProposalSourceSignal {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("autonomy proposal source signal.signal_id", &self.signal_id)?;
-		validate_required("autonomy proposal source signal.kind", &self.kind)?;
-		validate_required("autonomy proposal source signal.freshness", &self.freshness)?;
-		validate_required("autonomy proposal source signal.evidence_class", &self.evidence_class)?;
-		validate_required("autonomy proposal source signal.confidence", &self.confidence)?;
-		validate_string_list("autonomy proposal source signal.gaps", &self.gaps)?;
+		validation::validate_required(
+			"autonomy proposal source signal.signal_id",
+			&self.signal_id,
+		)?;
+		validation::validate_required("autonomy proposal source signal.kind", &self.kind)?;
+		validation::validate_required(
+			"autonomy proposal source signal.freshness",
+			&self.freshness,
+		)?;
+		validation::validate_required(
+			"autonomy proposal source signal.evidence_class",
+			&self.evidence_class,
+		)?;
+		validation::validate_required(
+			"autonomy proposal source signal.confidence",
+			&self.confidence,
+		)?;
+		validation::validate_string_list("autonomy proposal source signal.gaps", &self.gaps)?;
 
-		validate_string_list("autonomy proposal source signal.contradictions", &self.contradictions)
+		validation::validate_string_list(
+			"autonomy proposal source signal.contradictions",
+			&self.contradictions,
+		)
 	}
 }
 
@@ -68,9 +97,12 @@ impl AutonomyProposalRefusal {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("autonomy proposal refusal.detail", &self.detail)?;
+		validation::validate_required("autonomy proposal refusal.detail", &self.detail)?;
 
-		validate_string_list("autonomy proposal refusal.evidence_refs", &self.evidence_refs)
+		validation::validate_string_list(
+			"autonomy proposal refusal.evidence_refs",
+			&self.evidence_refs,
+		)
 	}
 }
 
@@ -92,11 +124,20 @@ impl AutonomyProposalChallengeEvidence {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("autonomy proposal challenge.actor", &self.actor)?;
-		validate_required("autonomy proposal challenge.summary", &self.summary)?;
-		validate_required("autonomy proposal challenge.recorded_at", &self.recorded_at)?;
-		validate_string_list("autonomy proposal challenge.objections", &self.objections)?;
-		validate_string_list("autonomy proposal challenge.evidence_refs", &self.evidence_refs)?;
+		validation::validate_required("autonomy proposal challenge.actor", &self.actor)?;
+		validation::validate_required("autonomy proposal challenge.summary", &self.summary)?;
+		validation::validate_required(
+			"autonomy proposal challenge.recorded_at",
+			&self.recorded_at,
+		)?;
+		validation::validate_string_list(
+			"autonomy proposal challenge.objections",
+			&self.objections,
+		)?;
+		validation::validate_string_list(
+			"autonomy proposal challenge.evidence_refs",
+			&self.evidence_refs,
+		)?;
 
 		if self.acceptance_authority {
 			eyre::bail!("Autonomy proposal challenge evidence cannot be acceptance authority.");
