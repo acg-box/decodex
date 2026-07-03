@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::model::ValidationState;
+use crate::artifact_validation::model::ValidationState;
 
 pub(crate) fn validate_signal_slug_uniqueness(
 	path: &Path,
