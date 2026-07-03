@@ -304,8 +304,6 @@ pub(crate) use types::{
 	record_authority_boundary_check_private_event, record_authority_decision_request_private_event,
 };
 
-#[cfg(unix)]
-use std::os::fd::AsRawFd;
 use std::{
 	cmp::Ordering,
 	collections::{BTreeSet, HashMap, HashSet},
@@ -313,10 +311,10 @@ use std::{
 	error::Error,
 	fmt::{self, Display, Formatter},
 	fs::{self, File},
-	io::{ErrorKind, Write},
+	io::ErrorKind,
 	net::{SocketAddr, TcpListener},
 	path::{Path, PathBuf},
-	process::{Child, Command, Stdio},
+	process::{Child, Command},
 	slice,
 	sync::{
 		Arc, Mutex,
@@ -409,7 +407,7 @@ pub(in crate::orchestrator) use self::{
 	},
 };
 use crate::{
-	agent::{self, CodexAccountAuthFailure, CodexAccountPool, REVIEW_POLICY_CONVERGENCE_BUDGET},
+	agent::{CodexAccountAuthFailure, CodexAccountPool, REVIEW_POLICY_CONVERGENCE_BUDGET},
 	runtime, state,
 	state::PrivateExecutionEvent,
 	tracker::{self, privacy_classifier::PublicProjectionPrivacyClassifier},
