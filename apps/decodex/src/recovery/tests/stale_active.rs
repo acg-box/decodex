@@ -380,6 +380,22 @@ fn append_no_diff_guardrail_event(
 	branch_delta_present: bool,
 	effective_delta_present: bool,
 ) {
+	append_no_diff_guardrail_event_with_source_error_class(
+		store,
+		issue_id,
+		branch_delta_present,
+		effective_delta_present,
+		Some("app_server_turn_failed"),
+	);
+}
+
+fn append_no_diff_guardrail_event_with_source_error_class(
+	store: &StateStore,
+	issue_id: &str,
+	branch_delta_present: bool,
+	effective_delta_present: bool,
+	source_error_class: Option<&str>,
+) {
 	store
 		.append_private_execution_event(
 			"pubfi",
@@ -395,7 +411,7 @@ fn append_no_diff_guardrail_event(
 				.to_string(),
 				"reason": "no_effective_diff",
 				"schema": "decodex.loop_guardrail_checkpoint/1",
-				"source_error_class": "app_server_turn_failed",
+				"source_error_class": source_error_class,
 			}),
 		)
 		.expect("private guardrail evidence should record");
