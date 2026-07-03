@@ -1,5 +1,19 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use std::path::Path;
+
+use crate::git_credentials::GitCredentialSource;
+use crate::{
+	default_branch_sync, github,
+	orchestrator::{
+		IssueDispatchMode, IssueRunPlan, IssueTracker, Result, ServiceConfig, StateStore,
+		TrackerIssue, WorkflowDocument, delete_local_branch_if_present,
+		detach_worktree_head_from_branch_if_checked_out, issue_passes_dispatch_policy,
+		issue_passes_review_repair_dispatch_policy,
+		ordinary_dispatch_blocked_by_retained_review_handoff, tracker,
+	},
+	prelude::eyre,
+	state::{self, WorktreeMapping},
+	worktree::WorktreeManager,
+};
 
 pub(in crate::orchestrator) fn clear_recovered_issue_lease(
 	project_id: &str,
