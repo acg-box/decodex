@@ -1,5 +1,4 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use super::{Result, SqliteStateStore};
 
 const REVIEW_LIFECYCLE_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS review_lifecycle_records (

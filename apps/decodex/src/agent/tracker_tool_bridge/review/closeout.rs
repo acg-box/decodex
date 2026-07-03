@@ -1,4 +1,8 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use super::{
+	CLOSEOUT_PUBLIC_SUMMARY_FALLBACK, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
+	ISSUE_TRANSITION_TOOL_NAME, PendingReviewCompletion, PullRequestDetails, ReviewHandoffContext,
+	TrackerToolBridge, eyre, linear_execution_closeout_event, tracker, tracker_tool_bridge,
+};
 
 enum CloseoutIssueStateValidation {
 	RefreshRequired,
