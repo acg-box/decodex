@@ -1,18 +1,22 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use crate::{
+	config::ServiceConfig,
+	orchestrator::{IssueDispatchMode, Result, RunCycleRequest, RunSummary, TargetIssueRunContext},
+	tracker::linear::LinearClient,
+	workflow::WorkflowDocument,
+};
 
-const INTERNAL_RETAINED_DRAIN_MAX_PASSES: usize = 2;
+pub(in crate::orchestrator::run_cycle) const INTERNAL_RETAINED_DRAIN_MAX_PASSES: usize = 2;
 
-mod complete;
-mod prepare;
+pub(in crate::orchestrator::run_cycle) mod complete;
+pub(in crate::orchestrator::run_cycle) mod prepare;
 mod project;
 mod target_issue;
 
-use complete::complete_issue_run;
 #[cfg(test)]
 pub(crate) use complete::{
 	drain_non_github_review_retained_tail_with_inspector, run_retained_closeout_for_handoff_summary,
 };
+#[cfg(test)]
 pub(crate) use prepare::prepare_issue_run;
 pub(crate) use project::{plan_project_issue_run_with_exclusions, run_project_once};
 pub(crate) use target_issue::{
