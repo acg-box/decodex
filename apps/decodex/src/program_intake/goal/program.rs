@@ -5,7 +5,7 @@ use crate::{
 	},
 	loop_contract::DecisionContract,
 	prelude::Result,
-	program_intake::{goal, issue_batch, model::GoalIssuePlan},
+	program_intake::{goal, issue_batch::nodes, model::GoalIssuePlan},
 	tracker::{self, TrackerIssue},
 	workflow::WorkflowDocument,
 };
@@ -67,5 +67,5 @@ pub(in crate::program_intake) fn goal_issue_mapping(
 		.with_active_label(issue.has_label(&active_label))
 		.with_opt_out_label(issue.has_label(tracker_policy.opt_out_label()))
 		.with_needs_attention_label(issue.has_label(tracker_policy.needs_attention_label()))
-		.with_generic_dispatch_briefing(issue_batch::issue_has_generic_dispatch_briefing(issue)))
+		.with_generic_dispatch_briefing(nodes::issue_has_generic_dispatch_briefing(issue)))
 }
