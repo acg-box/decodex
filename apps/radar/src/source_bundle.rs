@@ -1,9 +1,8 @@
 //! GitHub source payload normalization for Radar bundle artifacts.
 
-use super::{
-	BUNDLE_SCHEMA, Map, OnceLock, Regex, Value, eyre, first_line, object_value, required_string,
-	serde_json, validate_artifact,
-};
+use regex::Error;
+
+use crate::{BUNDLE_SCHEMA, Map, OnceLock, Regex, Value, eyre, first_line, serde_json};
 
 pub(super) fn build_pr_bundle_from_sources(
 	repo: &str,
@@ -13,7 +12,7 @@ pub(super) fn build_pr_bundle_from_sources(
 	default_branch: &str,
 	notes: &[String],
 ) -> crate::prelude::Result<Value> {
-	let pr = object_value(pr, "pull request")?;
+	let pr = crate::object_value(pr, "pull request")?;
 	let commit_items =
 		commits.iter().map(commit_bundle_item).collect::<crate::prelude::Result<Vec<_>>>()?;
 	let file_items =
@@ -43,19 +42,19 @@ pub(super) fn build_pr_bundle_from_sources(
 
 	let primary_pr = serde_json::json!({
 		"number": required_u64(pr, "number", "primary_pr.number")?,
-		"title": required_string(pr, "title", "primary_pr.title")?,
+		"title": crate::required_string(pr, "title", "primary_pr.title")?,
 		"body": pr.get("body").and_then(Value::as_str).unwrap_or(""),
 		"state": pr
 			.get("merged_at")
 			.and_then(Value::as_str)
 			.filter(|value| !value.is_empty())
 			.map_or_else(
-				|| required_string(pr, "state", "primary_pr.state").map(str::to_owned),
+				|| crate::required_string(pr, "state", "primary_pr.state").map(str::to_owned),
 				|_| Ok("merged".to_owned()),
 			)?,
 		"merged_at": pr.get("merged_at").cloned().unwrap_or(Value::Null),
 		"labels": pr_labels(pr),
-		"url": required_string(pr, "html_url", "primary_pr.url")?,
+		"url": crate::required_string(pr, "html_url", "primary_pr.url")?,
 	});
 	let bundle = serde_json::json!({
 		"schema": BUNDLE_SCHEMA,
@@ -89,10 +88,11 @@ pub(super) fn build_commit_bundle_from_sources(
 	default_branch: &str,
 	notes: &[String],
 ) -> crate::prelude::Result<Value> {
-	let commit = object_value(commit, "commit")?;
+	let commit = crate::object_value(commit, "commit")?;
 	let files = commit.get("files").and_then(Value::as_array).cloned().unwrap_or_default();
 	let commit_payload = object_field(commit, "commit", "commit.commit")?;
-	let commit_message = required_string(commit_payload, "message", "commit.commit.message")?;
+	let commit_message =
+		crate::required_string(commit_payload, "message", "commit.commit.message")?;
 	let all_patch_text = files
 		.iter()
 		.filter_map(|file| file.get("patch").and_then(Value::as_str))
@@ -125,7 +125,7 @@ pub(super) fn build_commit_bundle_from_sources(
 }
 
 fn commit_bundle_item(commit: &Value) -> crate::prelude::Result<Value> {
-	let commit = object_value(commit, "commit")?;
+	let commit = crate::object_value(commit, "commit")?;
 	let payload = object_field(commit, "commit", "commit.commit")?;
 	let author = object_field(payload, "author", "commit.commit.author").ok();
 	let author_name = commit
@@ -137,20 +137,20 @@ fn commit_bundle_item(commit: &Value) -> crate::prelude::Result<Value> {
 	let committed_at = author.and_then(|author| author.get("date")).cloned().unwrap_or(Value::Null);
 
 	Ok(serde_json::json!({
-		"sha": required_string(commit, "sha", "commit.sha")?,
-		"message": first_line(required_string(payload, "message", "commit.commit.message")?),
-		"url": required_string(commit, "html_url", "commit.html_url")?,
+		"sha": crate::required_string(commit, "sha", "commit.sha")?,
+		"message": first_line(crate::required_string(payload, "message", "commit.commit.message")?),
+		"url": crate::required_string(commit, "html_url", "commit.html_url")?,
 		"author": author_name,
 		"committed_at": committed_at,
 	}))
 }
 
 fn file_bundle_item(file: &Value) -> crate::prelude::Result<Value> {
-	let file = object_value(file, "file")?;
+	let file = crate::object_value(file, "file")?;
 
 	Ok(serde_json::json!({
-		"path": required_string(file, "filename", "file.filename")?,
-		"status": required_string(file, "status", "file.status")?,
+		"path": crate::required_string(file, "filename", "file.filename")?,
+		"status": crate::required_string(file, "status", "file.status")?,
 		"additions": required_i64(file, "additions", "file.additions")?,
 		"deletions": required_i64(file, "deletions", "file.deletions")?,
 		"patch_excerpt": file
@@ -161,7 +161,7 @@ fn file_bundle_item(file: &Value) -> crate::prelude::Result<Value> {
 }
 
 fn validate_bundle_value(bundle: &Value) -> crate::prelude::Result<()> {
-	let validation = validate_artifact(bundle);
+	let validation = crate::validate_artifact(bundle);
 
 	if validation.errors.is_empty() && validation.schema.as_deref() == Some(BUNDLE_SCHEMA) {
 		Ok(())
@@ -275,7 +275,7 @@ fn collect_regex_matches(regex: &Regex, texts: &[&str]) -> crate::prelude::Resul
 }
 
 fn issue_ref_regex() -> crate::prelude::Result<&'static Regex> {
-	static ISSUE_REF_RE: OnceLock<std::result::Result<Regex, regex::Error>> = OnceLock::new();
+	static ISSUE_REF_RE: OnceLock<std::result::Result<Regex, Error>> = OnceLock::new();
 
 	ISSUE_REF_RE
 		.get_or_init(|| Regex::new(r"(?:^|[^\w])((?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+)"))
@@ -284,7 +284,7 @@ fn issue_ref_regex() -> crate::prelude::Result<&'static Regex> {
 }
 
 fn flag_regex() -> crate::prelude::Result<&'static Regex> {
-	static FLAG_RE: OnceLock<std::result::Result<Regex, regex::Error>> = OnceLock::new();
+	static FLAG_RE: OnceLock<std::result::Result<Regex, Error>> = OnceLock::new();
 
 	FLAG_RE
 		.get_or_init(|| {
