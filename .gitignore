@@ -20,6 +20,8 @@
 .env*
 .turbo
 model
+!apps/decodex/src/autonomy_signal/model/
+!apps/decodex/src/autonomy_signal/model/*.rs
 tmp
 
 # Kubernetes
