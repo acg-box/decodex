@@ -2,7 +2,7 @@ use crate::{
 	autonomy_signal::{
 		AUTONOMY_SIGNAL_SCHEMA, AutonomySignal,
 		fingerprint::{self},
-		model::autonomy_signal_record_version,
+		model,
 		types::{AutonomySignalKind, AutonomySignalSourceType},
 		validation::{self},
 	},
@@ -45,7 +45,7 @@ impl AutonomySignal {
 		if self.schema != AUTONOMY_SIGNAL_SCHEMA {
 			eyre::bail!("Autonomy signal `{}` has unsupported schema `{}`.", self.id, self.schema);
 		}
-		if self.record_version != autonomy_signal_record_version() {
+		if self.record_version != model::autonomy_signal_record_version() {
 			eyre::bail!(
 				"Autonomy signal `{}` has unsupported record_version `{}`.",
 				self.id,
@@ -63,6 +63,7 @@ impl AutonomySignal {
 		}
 
 		self.validate_source_specific_rules()?;
+
 		self.validate_fingerprint_identity()
 	}
 
