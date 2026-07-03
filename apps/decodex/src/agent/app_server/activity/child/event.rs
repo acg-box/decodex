@@ -20,10 +20,12 @@ pub(in crate::agent::app_server::activity::child) fn classify_child_activity_eve
 		.and_then(|value| payload::find_numeric_field(value, OUTPUT_TOKEN_KEYS));
 
 	match event_type {
-		"item/tool/call" =>
-			child_tool_call_event(payload_value.as_ref(), input_tokens, output_tokens),
-		"item/tool/call/response" =>
-			child_tool_response_event(payload_value.as_ref(), active_tool_name, payload),
+		"item/tool/call" => {
+			child_tool_call_event(payload_value.as_ref(), input_tokens, output_tokens)
+		},
+		"item/tool/call/response" => {
+			child_tool_response_event(payload_value.as_ref(), active_tool_name, payload)
+		},
 		"item/completed" => child_item_completed_event(payload_value.as_ref(), payload),
 		"item/agentMessage/delta" => ChildActivityEvent {
 			event_bucket: CHILD_BUCKET_MODEL.to_owned(),

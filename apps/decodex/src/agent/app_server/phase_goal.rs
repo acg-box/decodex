@@ -7,11 +7,11 @@ use std::{
 
 use color_eyre::Report;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{self, Value};
 
 use super::{
 	AppServerClient, AppServerRunRequest, RunRecorder, ThreadGoal, ThreadGoalClearParams,
-	ThreadGoalGetParams, ThreadGoalSetParams, ThreadGoalStatus, serde_json,
+	ThreadGoalGetParams, ThreadGoalSetParams, ThreadGoalStatus,
 };
 
 pub(crate) trait PhaseGoalController {

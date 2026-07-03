@@ -1,5 +1,23 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use std::collections::BTreeMap;
+
+use color_eyre::Report;
+
+use super::super::protocol::{McpServerStatusSummary, ModelSummary};
+use crate::{
+	agent::{
+		app_server::{
+			AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
+			REQUEST_TIMEOUT, RunRecorder,
+			protocol::{
+				ModelProviderCapabilitiesReadResponse, PluginListResponse, RuntimeConfigSummary,
+				SkillsListResponse,
+			},
+		},
+		json_rpc::AppServerOutputTimeout,
+	},
+	prelude::eyre,
+	state::StateStore,
+};
 
 #[test]
 fn capability_preflight_report_accepts_available_runtime_state() {
@@ -9,7 +27,7 @@ fn capability_preflight_report_accepts_available_runtime_state() {
 		approval_policy: Some(serde_json::json!("never")),
 		sandbox_mode: Some(serde_json::json!("workspaceWrite")),
 	};
-	let models = vec![super::super::ModelSummary {
+	let models = vec![ModelSummary {
 		id: String::from("model-gpt-5.4"),
 		model: String::from("gpt-5.4"),
 		display_name: String::from("GPT-5.4"),
@@ -44,7 +62,7 @@ fn capability_preflight_report_accepts_available_runtime_state() {
 		}],
 		marketplace_load_errors: Vec::new(),
 	};
-	let mcp = vec![super::super::McpServerStatusSummary {
+	let mcp = vec![McpServerStatusSummary {
 		auth_status: String::from("bearerToken"),
 		name: String::from("linear"),
 		tools: BTreeMap::from([(String::from("issue_transition"), serde_json::json!({}))]),
@@ -117,7 +135,7 @@ fn capability_preflight_report_blocks_missing_runtime_state() {
 		approval_policy: None,
 		sandbox_mode: None,
 	};
-	let models = vec![super::super::ModelSummary {
+	let models = vec![ModelSummary {
 		id: String::from("model-gpt-5.4"),
 		model: String::from("gpt-5.4"),
 		display_name: String::from("GPT-5.4"),
@@ -141,7 +159,7 @@ fn capability_preflight_report_blocks_missing_runtime_state() {
 			message: String::from("invalid marketplace"),
 		}],
 	};
-	let mcp = vec![super::super::McpServerStatusSummary {
+	let mcp = vec![McpServerStatusSummary {
 		auth_status: String::from("notLoggedIn"),
 		name: String::from("linear"),
 		tools: BTreeMap::new(),
