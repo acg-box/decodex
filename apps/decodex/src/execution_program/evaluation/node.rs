@@ -103,7 +103,18 @@ pub(crate) fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNod
 	let mut state = ExecutionReadinessState::Ready;
 	let mut lifecycle_state = None;
 
-	if !authority_matches
+	if let Some(issue) = node.linear_issue()
+		&& policy.issue_is_terminal(issue)
+	{
+		state = ExecutionReadinessState::Completed;
+		lifecycle_state = Some(ExecutionProgramNodeLifecycleState::Completed);
+
+		reasons.push(format!(
+			"mapped issue `{}` is already terminal in `{}`",
+			issue.issue_identifier(),
+			issue.issue_state()
+		));
+	} else if !authority_matches
 		|| current_fingerprint != program.accepted_contract_fingerprint
 		|| current_fingerprint != node.contract_fingerprint
 	{
@@ -119,17 +130,6 @@ pub(crate) fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNod
 		);
 
 		reasons.push(String::from("node no longer matches the accepted Decision Contract"));
-	} else if let Some(issue) = node.linear_issue()
-		&& policy.issue_is_terminal(issue)
-	{
-		state = ExecutionReadinessState::Completed;
-		lifecycle_state = Some(ExecutionProgramNodeLifecycleState::Completed);
-
-		reasons.push(format!(
-			"mapped issue `{}` is already terminal in `{}`",
-			issue.issue_identifier(),
-			issue.issue_state()
-		));
 	} else if let Some(issue) = node.linear_issue()
 		&& active_issue_ids.contains(issue.issue_id())
 		&& !issue.has_opt_out_label()
