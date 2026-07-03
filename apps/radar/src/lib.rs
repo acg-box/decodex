@@ -61,12 +61,10 @@ use std::{
 	iter,
 	path::{Path, PathBuf},
 	process,
-	sync::OnceLock,
 	time::Duration,
 };
 
 use clap::Parser as _;
-use regex::Regex;
 use reqwest::StatusCode;
 use serde_json::{self, Map, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
