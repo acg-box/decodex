@@ -1,4 +1,23 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::process::Command;
+
+use color_eyre::Report;
+
+use crate::{
+	git_credentials::GitCredentialSource,
+	orchestrator::{
+		HarnessOutcomeKind, IssueRunPlan, IssueTracker, LaneDecisionSnapshot,
+		ManualAttentionRequested, PhaseGoalKind, RUN_OPERATION_REPO_GATE,
+		RUN_OPERATION_REVIEW_WRITEBACK, RepoGateFailure, RepoGateTrackedRewriteDecision, Result,
+		RetainedReviewRepairPushFailed, RetainedReviewRepairPushFailureKind,
+		ReviewHandoffNeedsAttention, ReviewHandoffWritebackFailed, RunCompletionDisposition,
+		ServiceConfig, StateStore, TrackerToolBridge, WorkflowDocument,
+		cleanup_completed_post_review_lane, decide_lane_next_action,
+		record_harness_outcome_best_effort, repo_gate_output_text, resolve_configured_env_var,
+		run_repo_gate_commands, select_repo_gate_for_worktree, validate_review_handoff_runtime,
+		validate_review_repair_runtime, worktree_head_oid, write_cleanup_complete_lifecycle_event,
+		write_run_operation_marker_best_effort,
+	},
+};
 
 pub(crate) fn run_completion_repo_gate(
 	project: &ServiceConfig,

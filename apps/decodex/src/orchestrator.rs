@@ -410,7 +410,7 @@ pub(in crate::orchestrator) use self::{
 };
 use crate::{
 	agent::{self, CodexAccountAuthFailure, CodexAccountPool, REVIEW_POLICY_CONVERGENCE_BUDGET},
-	git_credentials, runtime, state,
+	runtime, state,
 	state::PrivateExecutionEvent,
 	tracker::{self, privacy_classifier::PublicProjectionPrivacyClassifier},
 };
