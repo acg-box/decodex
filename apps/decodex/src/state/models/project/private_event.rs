@@ -20,6 +20,7 @@ impl PrivateExecutionEvent {
 	}
 
 	/// Local project identifier owning the evidence row.
+	#[cfg(test)]
 	pub fn project_id(&self) -> &str {
 		&self.project_id
 	}
