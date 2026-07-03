@@ -362,7 +362,6 @@ pub(crate) use types::{
 };
 
 use std::{
-	cmp::Ordering,
 	collections::{BTreeSet, HashMap, HashSet},
 	env,
 	error::Error,
@@ -378,7 +377,7 @@ use std::{
 		mpsc::{self, Sender},
 	},
 	thread::{self, JoinHandle},
-	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+	time::{Duration, Instant},
 };
 
 use color_eyre::Report;
