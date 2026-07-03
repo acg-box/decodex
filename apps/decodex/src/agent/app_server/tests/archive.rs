@@ -1,5 +1,19 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use std::{env, fs, os::unix::fs::PermissionsExt};
+
+use tempfile::TempDir;
+
+use crate::{
+	agent::{
+		app_server::{
+			AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest, CommandExecHealthCheck,
+			protocol::CommandExecResponse,
+		},
+		json_rpc::AppServerProcessEnv,
+	},
+	prelude::eyre,
+	state::StateStore,
+	test_support::TestEnvVarGuard,
+};
 
 #[test]
 fn archive_thread_after_success_calls_app_server_archive_and_records_event() {
