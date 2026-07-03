@@ -15,46 +15,31 @@ pub(in crate::agent::app_server) use self::{
 	wait::{flush_pending_messages, is_app_server_output_timeout},
 };
 
-use std::{
-	mem,
-	time::{Duration, Instant},
-};
-
 use color_eyre::Report;
 
 use crate::{
 	agent::{
 		app_server::{
-			activity::protocol_activity_idle_timeout,
-			constants::RUN_CONTROL_POLL_INTERVAL,
 			dynamic_tools::{self},
-			lane_control::handle_pending_turn_control_requests,
 			phase_goal::{
 				self, AppServerPhaseGoalFailure, PhaseGoalRunStatus, PhaseGoalRuntime,
 				PhaseGoalTransition,
 			},
 			protocol::{
-				AgentMessageDeltaNotification, AppServerClient, ErrorNotification,
-				ItemCompletedNotification, RunOutcome, ThreadGoalStatus,
-				ThreadGoalUpdatedNotification, ThreadStatusChangedNotification,
-				TurnCompletedNotification, TurnError, TurnStartRequest, TurnSteerRequest,
+				AppServerClient, RunOutcome, ThreadGoalStatus, TurnStartRequest, TurnSteerRequest,
 				UserInput,
 			},
 			runtime_types::{
 				AppServerRunRequest, RequestDispatchContext, RequestWaitPhase, RunRecorder,
 				TurnContinuationGuard, TurnLoopResult,
 			},
-			server_requests::{
-				self, apply_protocol_message_side_effects,
-				handle_server_request_during_turn_execution,
-			},
+			server_requests::{self},
 			transport,
-			turn_failure::AppServerTurnFailure,
 		},
 		codex_accounts::CodexAccountProvider,
 		tracker_tool_bridge::{DynamicToolHandler, TurnCompletionStatus},
 	},
-	prelude::{Result, eyre},
+	prelude::Result,
 	state::StateStore,
 };
 

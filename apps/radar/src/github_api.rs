@@ -1,6 +1,5 @@
 use std::thread;
 
-use reqwest::Error;
 use reqwest::{
 	Error, StatusCode,
 	blocking::Client,

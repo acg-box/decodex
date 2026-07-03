@@ -36,6 +36,7 @@ use self::{
 	},
 	recovery::ensure_already_merged_manual_land_recovery_ready,
 };
+#[cfg(test)] use crate::pull_request::PullRequestLandingState;
 use crate::{
 	commit_message::{self, MANUAL_AUTHORITY},
 	default_branch_sync,
@@ -297,6 +298,68 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 	);
 
 	Ok(())
+}
+
+#[cfg(test)]
+fn resolve_authority(
+	config_path: Option<&Path>,
+	explicit: Option<&str>,
+	manual_authority: bool,
+	worktree_root: &Path,
+) -> Result<ManualAuthority> {
+	authority::resolve_authority(config_path, explicit, manual_authority, worktree_root)
+}
+
+#[cfg(test)]
+fn ensure_manual_land_checkout_is_managed_lane(
+	repo_root: &Path,
+	worktree_root: &Path,
+	identifier: &str,
+) -> Result<()> {
+	closeout::ensure_manual_land_checkout_is_managed_lane(repo_root, worktree_root, identifier)
+}
+
+#[cfg(test)]
+fn execute_land_merge(
+	context: &ManualLandContext,
+	current_head: &str,
+	landed_change_record: &str,
+	execution_mode: LandExecutionMode,
+) -> Result<String> {
+	landing::execute_land_merge(context, current_head, landed_change_record, execution_mode)
+}
+
+#[cfg(test)]
+fn load_authoritative_landed_change_record(
+	context: &ManualLandContext,
+	merge_commit: &str,
+) -> Result<String> {
+	landing::load_authoritative_landed_change_record(context, merge_commit)
+}
+
+#[cfg(test)]
+fn validate_landing_state(
+	landing_state: &PullRequestLandingState,
+	pr_url: &str,
+	expected_base_branch: &str,
+	current_branch: &str,
+	current_head: &str,
+) -> Result<LandExecutionMode> {
+	landing::validate_landing_state(
+		landing_state,
+		pr_url,
+		expected_base_branch,
+		current_branch,
+		current_head,
+	)
+}
+
+#[cfg(test)]
+fn finalize_already_merged_manual_land_recovery(
+	context: &ManualLandContext,
+	request: &ManualLandRequest,
+) -> Result<Option<ManualLandRecoveryOutcome>> {
+	recovery::finalize_already_merged_manual_land_recovery(context, request)
 }
 
 #[cfg(test)] mod tests;

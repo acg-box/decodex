@@ -1,13 +1,25 @@
+use std::time::{Duration, Instant};
+
+use color_eyre::eyre::Report;
+
 use crate::{
-	agent::app_server::turn_loop::{
-		self, AppServerClient, AppServerOutputTimeout, AppServerRunRequest, AppServerTurnFailure,
-		CodexAccountProvider, Duration, DynamicToolHandler, Instant, JsonRpcMessage,
-		JsonRpcRequest, RUN_CONTROL_POLL_INTERVAL, Report, RequestDispatchContext,
-		RequestWaitPhase, RunOutcome, RunRecorder, WireMessage,
-		completion::{self},
-		eyre, messages, transport,
+	agent::{
+		app_server::{
+			AppServerClient, activity,
+			constants::RUN_CONTROL_POLL_INTERVAL,
+			lane_control,
+			runtime_types::{
+				AppServerRunRequest, RequestDispatchContext, RequestWaitPhase, RunRecorder,
+			},
+			server_requests, transport,
+			turn_failure::AppServerTurnFailure,
+			turn_loop::{RunOutcome, completion, messages},
+		},
+		codex_accounts::CodexAccountProvider,
+		json_rpc::{AppServerOutputTimeout, JsonRpcMessage, JsonRpcRequest, WireMessage},
+		tracker_tool_bridge::DynamicToolHandler,
 	},
-	prelude::Result,
+	prelude::{Result, eyre},
 };
 
 pub(in crate::agent::app_server) fn flush_pending_messages(
@@ -16,10 +28,10 @@ pub(in crate::agent::app_server) fn flush_pending_messages(
 	target_thread_id: Option<&str>,
 ) -> Result<()> {
 	for message in client.drain_pending() {
-		if turn_loop::targets_thread(&message, target_thread_id) {
-			recorder.record(turn_loop::message_type(&message), &message.raw)?;
+		if messages::targets_thread(&message, target_thread_id) {
+			recorder.record(messages::message_type(&message), &message.raw)?;
 
-			turn_loop::apply_protocol_message_side_effects(recorder, &message)?;
+			server_requests::apply_protocol_message_side_effects(recorder, &message)?;
 		}
 	}
 
@@ -45,7 +57,7 @@ pub(super) fn wait_for_turn_completion(
 
 	loop {
 		if control_enabled
-			&& let Some(response_turn_id) = turn_loop::handle_pending_turn_control_requests(
+			&& let Some(response_turn_id) = lane_control::handle_pending_turn_control_requests(
 				client,
 				recorder,
 				request,
@@ -59,7 +71,7 @@ pub(super) fn wait_for_turn_completion(
 			last_activity_at = Instant::now();
 		}
 
-		let idle_timeout = turn_loop::protocol_activity_idle_timeout(
+		let idle_timeout = activity::protocol_activity_idle_timeout(
 			Some(&recorder.protocol_activity.summary),
 			request.timeout,
 		);
@@ -76,7 +88,7 @@ pub(super) fn wait_for_turn_completion(
 			continue;
 		};
 
-		if !turn_loop::targets_thread(&wire_message, Some(target_thread_id)) {
+		if !messages::targets_thread(&wire_message, Some(target_thread_id)) {
 			tracing::debug!(raw = %wire_message.raw, "Ignoring app-server message for another thread.");
 
 			continue;
@@ -84,9 +96,9 @@ pub(super) fn wait_for_turn_completion(
 
 		last_activity_at = Instant::now();
 
-		recorder.record(turn_loop::message_type(&wire_message), &wire_message.raw)?;
+		recorder.record(messages::message_type(&wire_message), &wire_message.raw)?;
 
-		turn_loop::apply_protocol_message_side_effects(recorder, &wire_message)?;
+		server_requests::apply_protocol_message_side_effects(recorder, &wire_message)?;
 
 		match &wire_message.message {
 			JsonRpcMessage::Notification(notification) => {
@@ -151,9 +163,7 @@ fn next_turn_wire_message(
 			if control_enabled
 				&& recv_timeout < wait_timeout
 				&& is_app_server_output_timeout(&error) =>
-		{
-			Ok(None)
-		},
+			Ok(None),
 		Err(error) => Err(error),
 	}
 }
@@ -167,7 +177,7 @@ fn handle_turn_execution_request(
 	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
 	codex_account_provider: Option<&dyn CodexAccountProvider>,
 ) -> Result<()> {
-	turn_loop::handle_server_request_during_turn_execution(
+	server_requests::handle_server_request_during_turn_execution(
 		client,
 		recorder,
 		request,

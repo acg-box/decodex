@@ -78,9 +78,8 @@ pub(in crate::program_intake) fn classify_issue(
 	}
 
 	match evaluation.lifecycle_state() {
-		ExecutionProgramNodeLifecycleState::Ready | ExecutionProgramNodeLifecycleState::Queued => {
-			IssueBatchIntakeClassification::Ready
-		},
+		ExecutionProgramNodeLifecycleState::Ready | ExecutionProgramNodeLifecycleState::Queued =>
+			IssueBatchIntakeClassification::Ready,
 		ExecutionProgramNodeLifecycleState::Planned
 		| ExecutionProgramNodeLifecycleState::Mapped
 		| ExecutionProgramNodeLifecycleState::Active

@@ -1,7 +1,12 @@
 use tempfile::TempDir;
 
-use crate::agent::{AppServerCapabilityPreflightReport, AppServerRunResult};
-use crate::{orchestrator::{self, tests, IssueDispatchMode, IssueRunPlan, StateStore, TERMINAL_GUARDED_RUN_STATUS}, worktree::WorktreeSpec};
+use crate::{
+	agent::{AppServerCapabilityPreflightReport, AppServerRunResult},
+	orchestrator::{
+		self, IssueDispatchMode, IssueRunPlan, StateStore, TERMINAL_GUARDED_RUN_STATUS, tests,
+	},
+	worktree::WorktreeSpec,
+};
 
 #[test]
 fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {

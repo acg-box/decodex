@@ -22,28 +22,19 @@ use daemon_retry::{
 	schedule_retry_after_child_exit,
 };
 
-use crate::{
-	cli::AttemptRequest,
-	orchestrator::{
-		self, AccountActivityMode, ActiveWorkflowOverride, AsRawFd, CachedWorkflowDocument, Child,
-		ChildExitRetryContext, ChildRunRef, Command, CurrentChildRunContext, DaemonRunChild,
-		DaemonTickContext, GhPullRequestReviewStateInspector, Instant, IssueDispatchMode,
-		IssueTracker, LinearClient, MaterializedDaemonSpawnState, OffsetDateTime,
-		OperatorConnectorBackoffStatus, OperatorStatusSnapshot, Path,
-		PullRequestReviewStateInspector, RUN_OPERATION_AGENT_RUN, RecoverableWorktreeSkipCache,
-		Result, RetryDispatchDecision, RetryKind, RetryQueue, RunAttempt, RunLeaseDisposition,
-		RunLeaseReconciliation, RunSummary, ServiceConfig, SpawnRunOnceChildRequest, StateStore,
-		Stdio, TargetIssueRunContext, WorkflowDocument, WorktreeManager, WorktreeSpec, Write,
-		apply_run_lease_reconciliation, daemon_retry,
-		ensure_project_has_no_merged_worktree_cleanup_debt, env, eyre,
-		inspect_exited_daemon_child_reconciliation, is_issue_not_dispatchable_for_current_dispatch,
-		is_terminal_issue, mark_run_attempt_if_active, plan_project_issue_run_with_exclusions,
-		refresh_issue, retained_review_handoff_matches_run, retry_budget_base_for_dispatch_mode,
-		run_lease_reconciliation_workflow, run_summary_from_issue_run, run_target_issue_once,
-		stalled_idle_duration, stalled_run_has_retained_partial_progress,
-		superseded_run_disposition, terminal_issue_keeps_retained_closeout,
-		validate_workflow_read_first_files,
-	},
+use crate::orchestrator::{
+	self, AccountActivityMode, ActiveWorkflowOverride, CachedWorkflowDocument, Child,
+	ChildExitRetryContext, ChildRunRef, CurrentChildRunContext, DaemonRunChild, DaemonTickContext,
+	GhPullRequestReviewStateInspector, Instant, IssueDispatchMode, IssueTracker, LinearClient,
+	OffsetDateTime, OperatorConnectorBackoffStatus, OperatorStatusSnapshot, Path,
+	PullRequestReviewStateInspector, RecoverableWorktreeSkipCache, Result, RetryDispatchDecision,
+	RetryKind, RetryQueue, RunAttempt, RunLeaseDisposition, RunLeaseReconciliation, ServiceConfig,
+	StateStore, TargetIssueRunContext, WorkflowDocument, WorktreeManager,
+	apply_run_lease_reconciliation, daemon_retry, inspect_exited_daemon_child_reconciliation,
+	is_issue_not_dispatchable_for_current_dispatch, is_terminal_issue, mark_run_attempt_if_active,
+	refresh_issue, retained_review_handoff_matches_run, run_lease_reconciliation_workflow,
+	run_target_issue_once, stalled_idle_duration, stalled_run_has_retained_partial_progress,
+	superseded_run_disposition, terminal_issue_keeps_retained_closeout,
 };
 #[cfg(not(test))] use retry_dispatch::plan_due_retry_run;
 

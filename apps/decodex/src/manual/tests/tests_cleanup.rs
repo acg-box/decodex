@@ -4,8 +4,10 @@ use tempfile::TempDir;
 
 use crate::{
 	github::RepositoryContext,
-	manual::tests::support::TestTracker,
-	manual::{self, ManualAuthority, ManualLandContext, ManualLandLedgerContext, tests},
+	manual::{
+		self, ManualAuthority, ManualLandContext, ManualLandLedgerContext, tests,
+		tests::support::TestTracker,
+	},
 	state::{ReviewHandoffMarker, StateStore},
 	tracker::{
 		TrackerState, privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier, records,

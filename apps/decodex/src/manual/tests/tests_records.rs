@@ -2,10 +2,12 @@ use std::fs;
 
 use tempfile::TempDir;
 
+#[rustfmt::skip]
+use crate::manual::{self, tests};
+#[rustfmt::skip]
 use crate::test_support::{self, TestEnvVarGuard};
 use crate::{
 	config::ServiceConfig,
-	manual::{self, tests},
 	runtime,
 	state::{ReviewHandoffMarker, StateStore},
 	worktree::WorktreeManager,

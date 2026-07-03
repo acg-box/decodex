@@ -1,4 +1,10 @@
-use crate::{orchestrator::{self, tests, ReviewOrchestrationMarker, StateStore}, orchestrator::tests::{TEST_EXTERNAL_REVIEW_AUTO_MERGE_ENABLED_AT, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT}};
+use crate::orchestrator::{
+	self, ReviewOrchestrationMarker, StateStore,
+	tests::{
+		self, TEST_EXTERNAL_REVIEW_AUTO_MERGE_ENABLED_AT, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,
+		TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT,
+	},
+};
 
 #[test]
 fn ensure_review_orchestration_marker_ignores_stale_tracker_record_from_prior_handoff() {
