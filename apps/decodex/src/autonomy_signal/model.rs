@@ -1,20 +1,19 @@
 //! Autonomy signal payload and validation.
 
+mod accessors;
+mod constructor;
+mod validation_impl;
+
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	autonomy_signal::{
-		fingerprint::{self},
-		review::AutonomySignalReviewEvidence,
-		types::{
-			AutonomySignalConfidence, AutonomySignalEvidenceClass, AutonomySignalFreshness,
-			AutonomySignalKind, AutonomySignalPrivacy, AutonomySignalSourceType,
-		},
-		validation::{self},
+use crate::autonomy_signal::{
+	review::AutonomySignalReviewEvidence,
+	types::{
+		AutonomySignalConfidence, AutonomySignalEvidenceClass, AutonomySignalFreshness,
+		AutonomySignalKind, AutonomySignalPrivacy, AutonomySignalSourceType,
 	},
-	prelude::{Result, eyre},
 };
 
 pub(crate) const AUTONOMY_SIGNAL_SCHEMA: &str = "decodex.autonomy_signal/1";
@@ -91,275 +90,10 @@ pub(crate) struct AutonomySignal {
 	pub(super) proposal_only: bool,
 	pub(super) created_at: String,
 }
-#[allow(dead_code)]
-impl AutonomySignal {
-	pub(crate) fn runtime_health(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::RuntimeHealth, input)
-	}
-
-	pub(crate) fn validation_regression(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::ValidationRegression, input)
-	}
-
-	pub(crate) fn review_feedback_cluster(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::ReviewFeedbackCluster, input)
-	}
-
-	pub(crate) fn user_feedback_cluster(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::UserFeedbackCluster, input)
-	}
-
-	pub(crate) fn spec_drift(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::SpecDrift, input)
-	}
-
-	pub(crate) fn protocol_drift(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::ProtocolDrift, input)
-	}
-
-	#[allow(dead_code)]
-	pub(crate) fn metric_regression(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::MetricRegression, input)
-	}
-
-	pub(crate) fn execution_friction(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::ExecutionFriction, input)
-	}
-
-	pub(crate) fn docs_skill_drift(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::DocsSkillDrift, input)
-	}
-
-	pub(crate) fn id(&self) -> &str {
-		&self.id
-	}
-
-	pub(crate) fn fingerprint(&self) -> &str {
-		&self.fingerprint
-	}
-
-	pub(crate) fn project_id(&self) -> &str {
-		&self.project_id
-	}
-
-	pub(crate) fn objective_id(&self) -> &str {
-		&self.objective_id
-	}
-
-	pub(crate) fn objective_version(&self) -> u64 {
-		self.objective_version
-	}
-
-	pub(crate) fn kind(&self) -> AutonomySignalKind {
-		self.kind
-	}
-
-	pub(crate) fn source_type(&self) -> AutonomySignalSourceType {
-		self.source_type
-	}
-
-	pub(crate) fn freshness(&self) -> AutonomySignalFreshness {
-		self.freshness
-	}
-
-	pub(crate) fn evidence_class(&self) -> AutonomySignalEvidenceClass {
-		self.evidence_class
-	}
-
-	pub(crate) fn confidence(&self) -> AutonomySignalConfidence {
-		self.confidence
-	}
-
-	pub(crate) fn privacy(&self) -> AutonomySignalPrivacy {
-		self.privacy
-	}
-
-	pub(crate) fn summary(&self) -> &str {
-		&self.summary
-	}
-
-	pub(crate) fn gaps(&self) -> &[String] {
-		&self.gaps
-	}
-
-	pub(crate) fn contradictions(&self) -> &[String] {
-		&self.contradictions
-	}
-
-	pub(crate) fn source_refs(&self) -> &[String] {
-		&self.source_refs
-	}
-
-	pub(crate) fn primary_source_refs(&self) -> &[String] {
-		&self.primary_source_refs
-	}
-
-	pub(crate) fn head_sha(&self) -> Option<&str> {
-		self.head_sha.as_deref()
-	}
-
-	pub(crate) fn review_evidence(&self) -> Option<&AutonomySignalReviewEvidence> {
-		self.review_evidence.as_ref()
-	}
-
-	pub(crate) fn validate(&self) -> Result<()> {
-		validation::validate_required("autonomy signal schema", &self.schema)?;
-		validation::validate_required("autonomy signal id", &self.id)?;
-		validation::validate_required("autonomy signal fingerprint", &self.fingerprint)?;
-		validation::validate_required("autonomy signal project_id", &self.project_id)?;
-		validation::validate_required("autonomy signal objective_id", &self.objective_id)?;
-		validation::validate_required("autonomy signal captured_at", &self.captured_at)?;
-		validation::validate_required("autonomy signal summary", &self.summary)?;
-		validation::validate_required("autonomy signal created_at", &self.created_at)?;
-		validation::validate_nonempty_list("autonomy signal source_refs", &self.source_refs)?;
-		validation::validate_nonempty_list("autonomy signal evidence", &self.evidence)?;
-		validation::validate_string_list(
-			"autonomy signal primary_source_refs",
-			&self.primary_source_refs,
-		)?;
-		validation::validate_string_list("autonomy signal contradictions", &self.contradictions)?;
-		validation::validate_string_list("autonomy signal gaps", &self.gaps)?;
-		validation::validate_optional_required(
-			"autonomy signal issue_id",
-			self.issue_id.as_deref(),
-		)?;
-		validation::validate_optional_required("autonomy signal run_id", self.run_id.as_deref())?;
-		validation::validate_optional_required(
-			"autonomy signal attempt_id",
-			self.attempt_id.as_deref(),
-		)?;
-		validation::validate_optional_required(
-			"autonomy signal head_sha",
-			self.head_sha.as_deref(),
-		)?;
-
-		if self.schema != AUTONOMY_SIGNAL_SCHEMA {
-			eyre::bail!("Autonomy signal `{}` has unsupported schema `{}`.", self.id, self.schema);
-		}
-		if self.record_version != AUTONOMY_SIGNAL_RECORD_VERSION {
-			eyre::bail!(
-				"Autonomy signal `{}` has unsupported record_version `{}`.",
-				self.id,
-				self.record_version
-			);
-		}
-		if self.objective_version == 0 {
-			eyre::bail!(
-				"Autonomy signal `{}` objective_version must be greater than zero.",
-				self.id
-			);
-		}
-		if !self.proposal_only {
-			eyre::bail!("Autonomy signal `{}` must remain proposal-only evidence.", self.id);
-		}
-
-		self.validate_source_specific_rules()?;
-
-		let expected = fingerprint::autonomy_signal_fingerprint(self)?;
-
-		if expected != self.fingerprint {
-			eyre::bail!(
-				"Autonomy signal `{}` fingerprint mismatch: expected `{expected}`.",
-				self.id
-			);
-		}
-
-		let expected_id = fingerprint::autonomy_signal_id(&expected);
-
-		if expected_id != self.id {
-			eyre::bail!(
-				"Autonomy signal id `{}` does not match fingerprint `{expected}`.",
-				self.id
-			);
-		}
-
-		Ok(())
-	}
-
-	fn from_input(kind: AutonomySignalKind, input: AutonomySignalInput) -> Result<Self> {
-		let mut signal = Self {
-			schema: autonomy_signal_schema(),
-			record_version: autonomy_signal_record_version(),
-			id: String::new(),
-			fingerprint: String::new(),
-			project_id: input.project_id,
-			objective_id: input.objective_id,
-			objective_version: input.objective_version,
-			kind,
-			source_type: input.source_type,
-			source_refs: input.source_refs,
-			primary_source_refs: input.primary_source_refs,
-			issue_id: input.issue_id,
-			run_id: input.run_id,
-			attempt_id: input.attempt_id,
-			head_sha: input.head_sha,
-			captured_at: input.captured_at,
-			freshness: input.freshness,
-			summary: input.summary,
-			evidence: input.evidence,
-			evidence_class: input.evidence_class,
-			contradictions: input.contradictions,
-			gaps: input.gaps,
-			confidence: input.confidence,
-			privacy: input.privacy,
-			observed_counts: input.observed_counts,
-			review_evidence: input.review_evidence,
-			proposal_only: input.proposal_only,
-			created_at: input.created_at,
-		};
-		let fingerprint = fingerprint::autonomy_signal_fingerprint(&signal)?;
-
-		signal.id = fingerprint::autonomy_signal_id(&fingerprint);
-		signal.fingerprint = fingerprint;
-
-		signal.validate()?;
-
-		Ok(signal)
-	}
-
-	fn validate_source_specific_rules(&self) -> Result<()> {
-		if matches!(
-			self.source_type,
-			AutonomySignalSourceType::Memory | AutonomySignalSourceType::Report
-		) && self.primary_source_refs.is_empty()
-		{
-			eyre::bail!(
-				"Memory/report autonomy signal `{}` requires primary_source_refs.",
-				self.id
-			);
-		}
-		if self.kind == AutonomySignalKind::ReviewFeedbackCluster
-			|| self.source_type == AutonomySignalSourceType::Review
-		{
-			let Some(review_evidence) = &self.review_evidence else {
-				eyre::bail!(
-					"Review-derived autonomy signal `{}` requires review_evidence.",
-					self.id
-				);
-			};
-
-			review_evidence.validate()?;
-
-			let Some(head_sha) = self.head_sha.as_deref() else {
-				eyre::bail!("Review-derived autonomy signal `{}` requires head_sha.", self.id);
-			};
-
-			if review_evidence.head_sha != head_sha {
-				eyre::bail!(
-					"Review-derived autonomy signal `{}` head_sha must match review evidence head.",
-					self.id
-				);
-			}
-		}
-
-		Ok(())
-	}
-}
-
-fn autonomy_signal_schema() -> String {
+pub(in crate::autonomy_signal::model) fn autonomy_signal_schema() -> String {
 	AUTONOMY_SIGNAL_SCHEMA.to_owned()
 }
 
-const fn autonomy_signal_record_version() -> u16 {
+pub(in crate::autonomy_signal::model) const fn autonomy_signal_record_version() -> u16 {
 	AUTONOMY_SIGNAL_RECORD_VERSION
 }
