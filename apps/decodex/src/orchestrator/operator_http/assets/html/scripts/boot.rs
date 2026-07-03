@@ -1,0 +1,26 @@
+pub(super) const SCRIPT_PARTS: &[&str] = &[
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/boot.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/preferences.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/preferences/layout.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/preferences/accounts.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/preferences/projects.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/preferences/controls.js"
+	)),
+];
