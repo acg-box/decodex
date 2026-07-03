@@ -2,7 +2,7 @@ use crate::{
 	autonomy_signal::{
 		AutonomySignal, AutonomySignalInput,
 		fingerprint::{self},
-		model::{autonomy_signal_record_version, autonomy_signal_schema},
+		model,
 		types::AutonomySignalKind,
 	},
 	prelude::Result,
@@ -49,8 +49,8 @@ impl AutonomySignal {
 
 	fn from_input(kind: AutonomySignalKind, input: AutonomySignalInput) -> Result<Self> {
 		let mut signal = Self {
-			schema: autonomy_signal_schema(),
-			record_version: autonomy_signal_record_version(),
+			schema: model::autonomy_signal_schema(),
+			record_version: model::autonomy_signal_record_version(),
 			id: String::new(),
 			fingerprint: String::new(),
 			project_id: input.project_id,
