@@ -25,6 +25,18 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/controls/theme.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/controls/transport.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/foundation/controls/links.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/foundation/flow.css"
 			)),
 			include_str!(concat!(
@@ -33,11 +45,35 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/layout/workspace/frame.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/layout/workspace/panels.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/layout/workspace/cards.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/layout/cards.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/layout/projects.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/layout/projects/table.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/layout/projects/rows.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/layout/projects/content.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
@@ -73,6 +109,18 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/row-identity/name-controls.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/row-identity/profile-controls.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/accounts/row-identity/plan.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/accounts/row-usage.css"
 			)),
 			include_str!(concat!(
@@ -85,11 +133,59 @@ pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyL
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/activity/child-layout.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/activity/child-metrics.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/activity/status-tone-grid.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/details.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/details/fields.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/details/disclosure.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/details/phases.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/details/fold-panels.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/details/empty-state.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
 				"/src/orchestrator/operator_dashboard/styles/responsive.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/responsive/wide.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/responsive/medium.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/responsive/mobile.css"
+			)),
+			include_str!(concat!(
+				env!("CARGO_MANIFEST_DIR"),
+				"/src/orchestrator/operator_dashboard/styles/responsive/motion.css"
 			)),
 			include_str!(concat!(
 				env!("CARGO_MANIFEST_DIR"),

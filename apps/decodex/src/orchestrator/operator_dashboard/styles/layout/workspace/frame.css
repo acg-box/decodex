@@ -1,0 +1,87 @@
+
+			.workspace {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr);
+				gap: 0;
+				align-items: start;
+				padding: 0 0 76px;
+				background: transparent;
+			}
+
+			.workspace[hidden],
+			.stack[hidden],
+			.section-marker[hidden],
+			.panel[hidden] {
+				display: none !important;
+			}
+
+			.stack {
+				display: grid;
+				gap: 0;
+			}
+
+			.section-marker {
+				--section-tone: var(--tone-muted);
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				justify-content: space-between;
+				gap: var(--space-sm) var(--space-row-indent);
+				margin: var(--space-section-y) var(--space-section-x) 0;
+				padding: var(--space-sm) 0 var(--space-xs);
+				border-top: 1px solid var(--line-strong);
+				font-family: var(--sans);
+				color: var(--muted);
+			}
+
+			.section-marker:first-child {
+				margin-top: 0;
+				padding-top: var(--space-panel-head-y);
+			}
+
+			.section-marker > span {
+				display: inline-flex;
+				align-items: center;
+				gap: 10px;
+				min-width: 0;
+				color: var(--muted-strong);
+				font-size: var(--type-section-title);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+				line-height: 1.25;
+				white-space: nowrap;
+			}
+
+			.section-marker > span::before {
+				content: "";
+				flex: 0 0 auto;
+				width: 2px;
+				height: 14px;
+				background: var(--section-tone);
+			}
+
+			.section-marker-meta {
+				flex: 0 1 auto;
+				min-width: 0;
+				max-width: min(320px, 50vw);
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				text-align: right;
+			}
+
+			.section-marker-control {
+				--section-tone: var(--tone-muted);
+			}
+
+			.section-marker-projects {
+				--section-tone: var(--info);
+			}
+
+			.section-marker-execution {
+				--section-tone: var(--tone-run);
+			}
+
+			.section-marker-aftercare {
+				--section-tone: var(--tone-review);
+			}

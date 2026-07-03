@@ -1,0 +1,68 @@
+			.card-list {
+				display: block;
+			}
+
+			.action-card,
+			.run-card,
+			.worktree-card {
+				isolation: isolate;
+				position: relative;
+				margin: 0;
+				padding: var(--space-card-y) 0 var(--space-card-y) var(--space-row-indent);
+				background: transparent;
+				border: 0;
+				border-bottom: 1px solid var(--line);
+				border-radius: 0;
+				overflow: hidden;
+				transition:
+					background-color var(--fast) var(--ease),
+					border-color var(--fast) var(--ease);
+			}
+
+			.action-card > *,
+			.run-card > *,
+			.worktree-card > * {
+				position: relative;
+				z-index: 1;
+			}
+
+			.action-card:hover,
+			.run-card:hover,
+			.worktree-card:hover {
+				background: linear-gradient(90deg, var(--hover), transparent 78%);
+			}
+
+			.card-list > :first-child {
+				padding-top: var(--space-card-y);
+			}
+
+			.card-list > :last-child {
+				border-bottom: 0;
+				padding-bottom: var(--space-card-y);
+			}
+
+			.action-card::before,
+			.run-card::before,
+			.worktree-card::before {
+				content: "";
+				position: absolute;
+				z-index: 2;
+				left: 0;
+				top: 16px;
+				bottom: 16px;
+				width: 3px;
+				background: var(--accent, transparent);
+				box-shadow: none;
+				transform-origin: left center;
+				transition:
+					background-color var(--fast) var(--ease),
+					box-shadow var(--medium) var(--ease),
+					transform var(--medium) var(--ease);
+			}
+
+			.action-card:hover::before,
+			.run-card:hover::before,
+			.worktree-card:hover::before {
+				box-shadow: 0 0 18px color-mix(in srgb, var(--accent, transparent) 42%, transparent);
+				transform: scaleX(1.45) scaleY(1.08);
+			}
