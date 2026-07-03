@@ -189,10 +189,9 @@ pub(crate) use self::{
 		count_unresolved_review_threads, format_run_once_summary, issue_comment_state_from_node,
 		merge_pull_request_issue_comment_page, merge_pull_request_review_state_page,
 		next_pull_request_issue_comments_cursor, next_pull_request_review_threads_cursor,
-		parse_github_timestamp_to_unix_epoch, pull_request_review_state_from_page,
-		pull_request_status_check_rollup_state, query_pull_request_issue_comments_page,
-		query_pull_request_review_state_page, reaction_group_actor_count,
-		review_summary_state_from_node,
+		pull_request_review_state_from_page, pull_request_status_check_rollup_state,
+		query_pull_request_issue_comments_page, query_pull_request_review_state_page,
+		reaction_group_actor_count, review_summary_state_from_node,
 	},
 };
 #[allow(unused_imports)]
