@@ -1,30 +1,14 @@
 //! Versioned dry-run autonomy proposal evidence.
 
-use std::{
-	collections::BTreeSet,
-	path::{Component, Path},
-};
-
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use sha2::{Digest as _, Sha256};
-
-use crate::{
-	autonomy_objective::{AutonomyObjectiveContract, AutonomyObjectiveState},
-	autonomy_signal::{AutonomySignal, AutonomySignalFreshness},
-	loop_contract::{DecisionContract, DecisionContractStatus},
-	prelude::{Result, eyre},
-};
-
 mod authority;
 mod decision;
 mod evidence;
 mod proposal;
-#[cfg(test)] mod tests;
 mod validation;
 
-#[allow(clippy::wildcard_imports)] use decision::*;
-#[allow(clippy::wildcard_imports)] use validation::*;
+use serde::{Deserialize, Serialize};
+
+use crate::prelude::{Result, eyre};
 
 pub(crate) const AUTONOMY_PROPOSAL_SCHEMA: &str = "decodex.autonomy_proposal/1";
 
@@ -121,22 +105,34 @@ pub(crate) struct AutonomyProposalIssueCandidate {
 }
 impl AutonomyProposalIssueCandidate {
 	fn validate(&self) -> Result<()> {
-		validate_required("autonomy proposal issue_candidates.key", &self.key)?;
-		validate_required("autonomy proposal issue_candidates.title", &self.title)?;
-		validate_required("autonomy proposal issue_candidates.objective", &self.objective)?;
-		validate_required("autonomy proposal issue_candidates.stage", &self.stage)?;
-		validate_string_list(
+		validation::validate_required("autonomy proposal issue_candidates.key", &self.key)?;
+		validation::validate_required("autonomy proposal issue_candidates.title", &self.title)?;
+		validation::validate_required(
+			"autonomy proposal issue_candidates.objective",
+			&self.objective,
+		)?;
+		validation::validate_required("autonomy proposal issue_candidates.stage", &self.stage)?;
+		validation::validate_string_list(
 			"autonomy proposal issue_candidates.dependencies",
 			&self.dependencies,
 		)?;
-		validate_string_list(
+		validation::validate_string_list(
 			"autonomy proposal issue_candidates.conflict_domains",
 			&self.conflict_domains,
 		)?;
-		validate_string_list("autonomy proposal issue_candidates.acceptance", &self.acceptance)?;
-		validate_string_list("autonomy proposal issue_candidates.validation", &self.validation)?;
-		validate_string_list("autonomy proposal issue_candidates.risk", &self.risk)?;
-		validate_required("autonomy proposal issue_candidates.queue_intent", &self.queue_intent)?;
+		validation::validate_string_list(
+			"autonomy proposal issue_candidates.acceptance",
+			&self.acceptance,
+		)?;
+		validation::validate_string_list(
+			"autonomy proposal issue_candidates.validation",
+			&self.validation,
+		)?;
+		validation::validate_string_list("autonomy proposal issue_candidates.risk", &self.risk)?;
+		validation::validate_required(
+			"autonomy proposal issue_candidates.queue_intent",
+			&self.queue_intent,
+		)?;
 
 		if self.acceptance.is_empty() {
 			eyre::bail!(
@@ -151,8 +147,9 @@ impl AutonomyProposalIssueCandidate {
 			);
 		}
 
-		validate_proposed_issue_stage(&self.key, &self.stage)?;
-		validate_proposed_issue_queue_intent(&self.key, &self.queue_intent)
+		validation::validate_proposed_issue_stage(&self.key, &self.stage)?;
+
+		validation::validate_proposed_issue_queue_intent(&self.key, &self.queue_intent)
 	}
 }
 
@@ -230,9 +227,9 @@ pub(crate) struct AutonomyProposalChallengeEvidence {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AutonomyProposal {
-	#[serde(default = "autonomy_proposal_schema")]
+	#[serde(default = "validation::autonomy_proposal_schema")]
 	schema: String,
-	#[serde(default = "autonomy_proposal_record_version")]
+	#[serde(default = "validation::autonomy_proposal_record_version")]
 	record_version: u16,
 	id: String,
 	fingerprint: String,
@@ -282,3 +279,6 @@ pub(crate) struct AutonomyProposal {
 	non_executable: bool,
 	created_at: String,
 }
+
+#[cfg(test)]
+mod tests;
