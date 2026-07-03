@@ -1,13 +1,34 @@
-use records::{REVIEW_HANDOFF_RECORD_TYPE, ReviewHandoffRecord};
+use std::{fs, path::Path};
 
-use crate::test_support;
+use tempfile::TempDir;
+
+use crate::{
+	agent::tracker_tool_bridge,
+	agent::tracker_tool_bridge::tests::{
+		self, FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker, TEST_SERVICE_ID,
+		review_policy,
+	},
+	agent::tracker_tool_bridge::{
+		DynamicToolContentItem, DynamicToolHandler, ISSUE_COMMENT_TOOL_NAME,
+		ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, PullRequestDetails, RepositoryIdentity,
+		ReviewHandoffWritebackFailed, RunCompletionDisposition, TrackerToolBridge,
+	},
+	state::{ReviewHandoffMarker, StateStore},
+	test_support,
+	tracker::{
+		TrackerComment,
+		records::{self, REVIEW_HANDOFF_RECORD_TYPE, ReviewHandoffRecord},
+	},
+};
 
 #[test]
 fn turn_completion_requires_explicit_terminal_finalize_after_review_handoff() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
 		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
@@ -18,8 +39,8 @@ fn turn_completion_requires_explicit_terminal_finalize_after_review_handoff() {
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/52"),
 	})]);
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -29,7 +50,7 @@ fn turn_completion_requires_explicit_terminal_finalize_after_review_handoff() {
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -53,12 +74,12 @@ fn turn_completion_requires_explicit_terminal_finalize_after_review_handoff() {
 fn review_handoff_reuses_same_head_clean_checkpoint_artifact_across_attempts() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let first_pull_request_inspector = FakePullRequestInspector::new(Vec::new());
-	let first_local_repo = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
-	let first_context = sample_review_context_in(temp_dir.path());
+	let first_local_repo = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
+	let first_context = tests::sample_review_context_in(temp_dir.path());
 	let first_bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
@@ -74,7 +95,7 @@ fn review_handoff_reuses_same_head_clean_checkpoint_artifact_across_attempts() {
 		serde_json::json!({
 			"reviewer": "independent_fresh_context",
 			"status": "clean",
-			"head_sha": sample_local_repo().head_oid,
+			"head_sha": tests::sample_local_repo().head_oid,
 			"review_contract": review_policy::handoff_review_contract_json(),
 			"checks": review_policy::review_checks_json(),
 			"evidence": ["fresh reviewer read the issue contract, current diff, and HEAD"]
@@ -83,14 +104,14 @@ fn review_handoff_reuses_same_head_clean_checkpoint_artifact_across_attempts() {
 
 	assert!(checkpoint_response.success);
 
-	let mut second_context = sample_review_context_in(temp_dir.path());
+	let mut second_context = tests::sample_review_context_in(temp_dir.path());
 
 	second_context.run_id = String::from("pub-618-attempt-3-456");
 	second_context.attempt_number = 3;
 
 	let pull_request_inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
-		head_ref_oid: sample_local_repo().head_oid,
+		head_ref_oid: tests::sample_local_repo().head_oid,
 		head_repository_name: String::from("decodex"),
 		head_repository_owner: String::from("hack-ink"),
 		is_draft: false,
@@ -98,7 +119,7 @@ fn review_handoff_reuses_same_head_clean_checkpoint_artifact_across_attempts() {
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/54"),
 	})]);
-	let second_local_repo = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let second_local_repo = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let second_bridge = TrackerToolBridge::with_review_handoff_inspectors(
 		&tracker,
 		&issue,
@@ -136,8 +157,8 @@ fn review_handoff_reuses_same_head_clean_checkpoint_artifact_across_attempts() {
 fn terminal_finalize_accepts_matching_review_handoff_path() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let pull_request = PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
 		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
@@ -150,8 +171,8 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 	};
 	let inspector =
 		FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request.clone())]);
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -163,7 +184,7 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 	let run_id = review_context.run_id.clone();
 	let attempt_number = review_context.attempt_number;
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let review_response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -202,7 +223,7 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 	DynamicToolHandler::validate_turn_completion(&bridge, "done")
 		.expect("matching finalization should allow the turn to complete");
 
-	let events = bridge_state_store(&bridge)
+	let events = tests::bridge_state_store(&bridge)
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &run_id, attempt_number)
 		.expect("private terminal events should read");
 
@@ -215,7 +236,7 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 		event.event_type() == "terminal_finalize" && event.payload()["path"] == "review_handoff"
 	}));
 
-	let handoff_marker = persisted_review_handoff_marker(&bridge, &issue, &review_context);
+	let handoff_marker = tests::persisted_review_handoff_marker(&bridge, &issue, &review_context);
 
 	assert_eq!(handoff_marker.pr_url(), "https://github.com/hack-ink/decodex/pull/53");
 	assert_eq!(handoff_marker.pr_head_oid(), "08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
@@ -225,8 +246,8 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 fn terminal_finalize_rejects_review_handoff_when_existing_marker_points_at_different_pr() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let pull_request = PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
 		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
@@ -239,9 +260,11 @@ fn terminal_finalize_rejects_review_handoff_when_existing_marker_points_at_diffe
 	};
 	let inspector =
 		FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request.clone())]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -251,8 +274,8 @@ fn terminal_finalize_rejects_review_handoff_when_existing_marker_points_at_diffe
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
-	bridge_state_store(&bridge)
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::bridge_state_store(&bridge)
 		.upsert_review_handoff_marker(
 			TEST_SERVICE_ID,
 			&issue.id,
@@ -303,7 +326,7 @@ fn terminal_finalize_rejects_review_handoff_when_existing_marker_points_at_diffe
 			if text.contains("Use explicit review-handoff recovery before rebinding this lane.")
 	));
 	assert_eq!(
-		persisted_review_handoff_marker(&bridge, &issue, &review_context).pr_url(),
+		tests::persisted_review_handoff_marker(&bridge, &issue, &review_context).pr_url(),
 		"https://github.com/hack-ink/decodex/pull/99"
 	);
 }
@@ -312,8 +335,8 @@ fn terminal_finalize_rejects_review_handoff_when_existing_marker_points_at_diffe
 fn terminal_finalize_requires_docs_impact_checkpoint_for_success_paths() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
 		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
@@ -324,8 +347,8 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_success_paths() {
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/55"),
 	})]);
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -335,7 +358,7 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_success_paths() {
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let review_response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -364,8 +387,8 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_success_paths() {
 fn terminal_finalize_requires_docs_impact_checkpoint_for_current_head() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
 		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
@@ -376,17 +399,17 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_current_head() {
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/56"),
 	})]);
-	let mut updated_local_repo = sample_local_repo();
+	let mut updated_local_repo = tests::sample_local_repo();
 
 	updated_local_repo.head_oid = String::from("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
 
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
-		Ok(sample_local_repo()),
-		Ok(sample_local_repo()),
-		Ok(sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
 		Ok(updated_local_repo),
 	]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -396,7 +419,7 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_current_head() {
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let checkpoint_response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -438,8 +461,8 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_current_head() {
 fn terminal_finalize_rejects_mismatched_path() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
 		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
@@ -450,8 +473,8 @@ fn terminal_finalize_rejects_mismatched_path() {
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/54"),
 	})]);
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -461,7 +484,7 @@ fn terminal_finalize_rejects_mismatched_path() {
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let review_response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -490,16 +513,16 @@ fn terminal_finalize_rejects_mismatched_path() {
 
 #[test]
 fn terminal_finalize_accepts_matching_manual_attention_path() {
-	let issue = sample_issue();
-	let tracker = tracker_with_current_issue_snapshot(&issue);
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let tracker = tests::tracker_with_current_issue_snapshot(&issue);
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
@@ -511,7 +534,7 @@ fn terminal_finalize_accepts_matching_manual_attention_path() {
 	let comment_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_COMMENT_TOOL_NAME,
-		manual_attention_comment_args(),
+		tests::manual_attention_comment_args(),
 	);
 	let checkpoint_response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -544,8 +567,8 @@ fn terminal_finalize_accepts_matching_manual_attention_path() {
 fn rejects_review_handoff_apply_when_lane_head_changes_after_recording() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(vec![
 		Ok(PullRequestDetails {
 			head_ref_name: String::from("x/decodex-pub-618"),
@@ -568,16 +591,16 @@ fn rejects_review_handoff_apply_when_lane_head_changes_after_recording() {
 			url: String::from("https://github.com/hack-ink/decodex/pull/47"),
 		}),
 	]);
-	let mut updated_local_repo = sample_local_repo();
+	let mut updated_local_repo = tests::sample_local_repo();
 
 	updated_local_repo.head_oid = String::from("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
 
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
-		Ok(sample_local_repo()),
-		Ok(sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
 		Ok(updated_local_repo),
 	]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -587,7 +610,7 @@ fn rejects_review_handoff_apply_when_lane_head_changes_after_recording() {
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -613,17 +636,19 @@ fn rejects_review_handoff_apply_when_lane_head_changes_after_recording() {
 fn review_handoff_apply_writes_coarse_comment_without_replaying_existing_records() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
-	let mut pull_request = sample_pull_request();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
+	let mut pull_request = tests::sample_pull_request();
 
 	pull_request.url = String::from("https://github.com/hack-ink/decodex/pull/47");
 
 	let inspector =
 		FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request.clone())]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let existing_record = records::append_structured_comment_record(
 		"Review handoff already persisted.",
 		&ReviewHandoffRecord {
@@ -658,7 +683,7 @@ fn review_handoff_apply_writes_coarse_comment_without_replaying_existing_records
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -683,9 +708,9 @@ fn review_handoff_apply_writes_coarse_comment_without_replaying_existing_records
 fn review_handoff_apply_does_not_duplicate_existing_ledger_event() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
-	let pull_request = sample_pull_request();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
+	let pull_request = tests::sample_pull_request();
 	let inspector = FakePullRequestInspector::new(vec![
 		Ok(pull_request.clone()),
 		Ok(pull_request.clone()),
@@ -693,12 +718,12 @@ fn review_handoff_apply_does_not_duplicate_existing_ledger_event() {
 		Ok(pull_request.clone()),
 	]);
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
-		Ok(sample_local_repo()),
-		Ok(sample_local_repo()),
-		Ok(sample_local_repo()),
-		Ok(sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
 	]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 
 	for _ in 0..2 {
 		let bridge = TrackerToolBridge::with_review_handoff_for_test(
@@ -710,7 +735,7 @@ fn review_handoff_apply_does_not_duplicate_existing_ledger_event() {
 			&local_repo_inspector,
 		);
 
-		write_clean_review_checkpoint(&bridge, &issue, &review_context);
+		tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 		let response = DynamicToolHandler::handle_call(
 			&bridge,
@@ -739,8 +764,8 @@ fn review_handoff_apply_does_not_duplicate_existing_ledger_event() {
 fn keeps_review_handoff_marker_when_state_transition_fails_after_tracker_record_write() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::with_state_update_error("tracker state write failed");
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(vec![
 		Ok(PullRequestDetails {
 			head_ref_name: String::from("x/decodex-pub-618"),
@@ -763,9 +788,11 @@ fn keeps_review_handoff_marker_when_state_transition_fails_after_tracker_record_
 			url: String::from("https://github.com/hack-ink/decodex/pull/49"),
 		}),
 	]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -775,7 +802,7 @@ fn keeps_review_handoff_marker_when_state_transition_fails_after_tracker_record_
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -796,7 +823,7 @@ fn keeps_review_handoff_marker_when_state_transition_fails_after_tracker_record_
 	assert_eq!(tracker.comments.borrow().len(), 1);
 	assert!(tracker.state_updates.borrow().is_empty());
 	assert_eq!(
-		bridge_state_store(&bridge)
+		tests::bridge_state_store(&bridge)
 			.review_handoff_marker(TEST_SERVICE_ID, &issue.id, "x/decodex-pub-618")
 			.expect("runtime handoff marker read should succeed")
 			.expect("partial review handoff should keep the retained marker")
@@ -809,8 +836,8 @@ fn keeps_review_handoff_marker_when_state_transition_fails_after_tracker_record_
 fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::with_comment_error("tracker comment write failed");
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(vec![
 		Ok(PullRequestDetails {
 			head_ref_name: String::from("x/decodex-pub-618"),
@@ -844,11 +871,11 @@ fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
 		}),
 	]);
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
-		Ok(sample_local_repo()),
-		Ok(sample_local_repo()),
-		Ok(sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
 	]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -858,7 +885,7 @@ fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -871,7 +898,7 @@ fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
 
 	assert!(response.success);
 
-	bridge_state_store(&bridge)
+	tests::bridge_state_store(&bridge)
 		.append_private_execution_event(
 			TEST_SERVICE_ID,
 			&issue.id,
@@ -881,7 +908,7 @@ fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
 			serde_json::json!({
 				"phase": "ready_for_review",
 				"docs_impact": "none",
-				"head_sha": sample_local_repo().head_oid,
+				"head_sha": tests::sample_local_repo().head_oid,
 				"focus": "Finalize review handoff.",
 				"next_action": "Record terminal finalize.",
 				"blockers": [],
@@ -913,7 +940,7 @@ fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
 	assert!(tracker.state_updates.borrow().is_empty());
 	assert!(tracker.comments.borrow().is_empty());
 	assert_eq!(
-		bridge_state_store(&bridge)
+		tests::bridge_state_store(&bridge)
 			.review_handoff_marker(TEST_SERVICE_ID, &issue.id, "x/decodex-pub-618")
 			.expect("runtime handoff marker read should succeed")
 			.expect("tracker writeback failure should keep durable handoff marker")
@@ -926,8 +953,8 @@ fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
 fn review_handoff_writeback_replaces_private_summary_with_public_fallback() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let pull_request = PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
 		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
@@ -940,9 +967,11 @@ fn review_handoff_writeback_replaces_private_summary_with_public_fallback() {
 	};
 	let inspector =
 		FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request.clone())]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -952,7 +981,7 @@ fn review_handoff_writeback_replaces_private_summary_with_public_fallback() {
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -988,8 +1017,8 @@ fn review_handoff_writeback_replaces_private_summary_with_public_fallback() {
 fn review_handoff_validation_failure_reports_recoverable_writeback_with_pr_url() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let pull_request = PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
 		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
@@ -1002,9 +1031,11 @@ fn review_handoff_validation_failure_reports_recoverable_writeback_with_pr_url()
 	};
 	let inspector =
 		FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request.clone())]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let mut review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
+	let mut review_context = tests::sample_review_context_in(temp_dir.path());
 
 	review_context.worktree_path = String::from("/Users/example/repo/.worktrees/PUB-618");
 
@@ -1017,7 +1048,7 @@ fn review_handoff_validation_failure_reports_recoverable_writeback_with_pr_url()
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -1049,7 +1080,7 @@ fn review_handoff_validation_failure_reports_recoverable_writeback_with_pr_url()
 	assert!(tracker.comments.borrow().is_empty());
 	assert!(tracker.state_updates.borrow().is_empty());
 	assert!(
-		bridge_state_store(&bridge)
+		tests::bridge_state_store(&bridge)
 			.review_handoff_marker(TEST_SERVICE_ID, &issue.id, "x/decodex-pub-618")
 			.expect("runtime handoff marker read should succeed")
 			.is_none()
@@ -1060,8 +1091,8 @@ fn review_handoff_validation_failure_reports_recoverable_writeback_with_pr_url()
 fn review_handoff_persists_runtime_state_without_local_marker_cache() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(vec![
 		Ok(PullRequestDetails {
 			head_ref_name: String::from("x/decodex-pub-618"),
@@ -1084,9 +1115,11 @@ fn review_handoff_persists_runtime_state_without_local_marker_cache() {
 			url: String::from("https://github.com/hack-ink/decodex/pull/150"),
 		}),
 	]);
-	let local_repo_inspector =
-		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(tests::sample_local_repo()),
+		Ok(tests::sample_local_repo()),
+	]);
+	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -1096,7 +1129,7 @@ fn review_handoff_persists_runtime_state_without_local_marker_cache() {
 		&local_repo_inspector,
 	);
 
-	write_clean_review_checkpoint(&bridge, &issue, &review_context);
+	tests::write_clean_review_checkpoint(&bridge, &issue, &review_context);
 
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -1116,10 +1149,10 @@ fn review_handoff_persists_runtime_state_without_local_marker_cache() {
 	assert_eq!(tracker.state_updates.borrow().as_slice(), ["state-review"]);
 	assert_eq!(tracker.comments.borrow().len(), 1);
 	assert_eq!(
-		persisted_review_handoff_marker(
+		tests::persisted_review_handoff_marker(
 			&bridge,
 			&issue,
-			&sample_review_context_in(temp_dir.path())
+			&tests::sample_review_context_in(temp_dir.path())
 		)
 		.pr_url(),
 		"https://github.com/hack-ink/decodex/pull/150"
@@ -1217,16 +1250,17 @@ fn rejects_invalid_pull_requests_for_review_handoff() {
 		),
 	] {
 		let tracker = FakeTracker::new();
-		let issue = sample_issue();
-		let workflow = sample_workflow();
+		let issue = tests::sample_issue();
+		let workflow = tests::sample_workflow();
 		let pr_url = pull_request.url.clone();
 		let inspector = FakePullRequestInspector::new(vec![Ok(pull_request)]);
-		let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+		let local_repo_inspector =
+			FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 		let bridge = TrackerToolBridge::with_review_handoff_for_test(
 			&tracker,
 			&issue,
 			&workflow,
-			sample_review_context(),
+			tests::sample_review_context(),
 			&inspector,
 			&local_repo_inspector,
 		);
@@ -1259,23 +1293,20 @@ fn rejects_invalid_pull_requests_for_review_handoff() {
 
 #[test]
 fn parses_credentialed_https_github_remote() {
-	let repository = super::parse_github_repository_identity(
+	let repository = tracker_tool_bridge::parse_github_repository_identity(
 		"https://x-access-token@github.com/hack-ink/decodex.git",
 	)
 	.expect("credentialed GitHub remote should parse");
 
 	assert_eq!(
 		repository,
-		super::RepositoryIdentity {
-			owner: String::from("hack-ink"),
-			name: String::from("decodex"),
-		}
+		RepositoryIdentity { owner: String::from("hack-ink"), name: String::from("decodex") }
 	);
 }
 
 #[test]
 fn parses_default_branch_from_ls_remote_symref_output() {
-	let parsed = super::parse_remote_head_symref_output(
+	let parsed = tracker_tool_bridge::parse_remote_head_symref_output(
 		"ref: refs/heads/main\tHEAD\n9c0ffee\tHEAD\n9c0ffee\trefs/heads/main\n",
 	);
 
@@ -1284,7 +1315,7 @@ fn parses_default_branch_from_ls_remote_symref_output() {
 
 #[test]
 fn ignores_non_head_lines_when_parsing_default_branch_from_ls_remote_output() {
-	let parsed = super::parse_remote_head_symref_output(
+	let parsed = tracker_tool_bridge::parse_remote_head_symref_output(
 		"9c0ffee\trefs/heads/main\n9c0ffee\trefs/heads/release/1.x\n",
 	);
 
@@ -1332,8 +1363,8 @@ fn resolve_lane_default_branch_prefers_cached_origin_head() {
 	);
 	run_git_for_handoff(&repo_root, &["checkout", "main"]);
 
-	let resolved =
-		super::resolve_lane_default_branch(&repo_root).expect("default branch should resolve");
+	let resolved = tracker_tool_bridge::resolve_lane_default_branch(&repo_root)
+		.expect("default branch should resolve");
 
 	assert_eq!(resolved, "main");
 }
@@ -1375,8 +1406,8 @@ fn resolve_lane_default_branch_uses_remote_head_when_local_cache_is_missing() {
 	run_git_for_handoff(&remote_root, &["symbolic-ref", "HEAD", "refs/heads/trunk"]);
 	run_git_for_handoff(&repo_root, &["checkout", "main"]);
 
-	let resolved =
-		super::resolve_lane_default_branch(&repo_root).expect("default branch should resolve");
+	let resolved = tracker_tool_bridge::resolve_lane_default_branch(&repo_root)
+		.expect("default branch should resolve");
 
 	assert_eq!(resolved, "trunk");
 }
@@ -1427,8 +1458,8 @@ fn resolve_lane_default_branch_uses_cached_origin_head_without_reachable_remote(
 		],
 	);
 
-	let resolved =
-		super::resolve_lane_default_branch(&repo_root).expect("default branch should resolve");
+	let resolved = tracker_tool_bridge::resolve_lane_default_branch(&repo_root)
+		.expect("default branch should resolve");
 
 	assert_eq!(resolved, "main");
 }
@@ -1447,15 +1478,15 @@ fn run_git_for_handoff(cwd: &Path, args: &[&str]) {
 #[test]
 fn publishes_protocol_safe_tool_names() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let inspector = FakePullRequestInspector::new(Vec::new());
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context(),
+		tests::sample_review_context(),
 		&inspector,
 		&local_repo_inspector,
 	);
