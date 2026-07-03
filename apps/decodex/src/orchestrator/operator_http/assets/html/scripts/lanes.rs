@@ -1,0 +1,30 @@
+pub(super) const SCRIPT_PARTS: &[&str] = &[
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/lanes/cards.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/lanes/current.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/lanes/recent.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/lanes/worktrees.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/lanes/worktrees/role.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/lanes/worktrees/fields.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/lanes/worktrees/render.js"
+	)),
+];
