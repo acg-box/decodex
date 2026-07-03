@@ -2,7 +2,8 @@ mod leases;
 mod terminal_cleanup;
 mod worktrees;
 
-use leases::{clear_terminal_lane_labels_once, reconcile_active_project_leases};
+use leases::reconcile_active_project_leases;
+pub(in crate::orchestrator::run_cycle_reconciliation) use leases::clear_terminal_lane_labels_once;
 pub(crate) use leases::{
 	retained_closeout_lease_has_fresh_activity, terminal_issue_keeps_retained_closeout,
 };
@@ -17,29 +18,23 @@ use worktrees::{
 
 use std::{
 	collections::{HashMap, HashSet},
-	path::Path,
-	time::Duration,
 };
 
 use time::OffsetDateTime;
 
-use super::{
-	IssueTracker, RunAttempt, RunLeaseDisposition, RunLeaseReconciliation, ServiceConfig,
-	StateStore, TERMINAL_GUARDED_RUN_STATUS, TrackerIssue, WorkflowDocument, WorktreeManager,
-	WorktreeMapping, apply_run_lease_reconciliation, cleanup_worktree_mapping,
-	closeout_dispatch_block_reason, is_issue_in_progress_for_run, is_terminal_issue,
-	issue_has_service_ownership, issue_passes_closeout_dispatch_policy, mark_run_attempt_if_active,
-	marker_process_is_alive, observed_idle_duration, retained_review_handoff_matches_run,
-	stalled_idle_duration, worktree_activity_marker_is_fresh, worktree_has_tracked_changes,
-	worktree_mapping_is_stale_terminal_local_residue,
-};
 use crate::{
+	config::ServiceConfig,
 	prelude::Result,
-	state::{self, IssueLease},
-	tracker,
+	state::StateStore,
+	tracker::IssueTracker,
+	workflow::WorkflowDocument,
+	worktree::WorktreeManager,
 };
 
-struct ProjectStateReconciliationContext<'a, T> {
+pub(in crate::orchestrator::run_cycle_reconciliation) struct ProjectStateReconciliationContext<
+	'a,
+	T,
+> {
 	tracker: &'a T,
 	project: &'a ServiceConfig,
 	workflow: &'a WorkflowDocument,

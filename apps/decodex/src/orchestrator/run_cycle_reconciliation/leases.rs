@@ -1,4 +1,19 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::collections::{HashMap, HashSet};
+
+use crate::{
+	config::ServiceConfig,
+	orchestrator::{
+		IssueTracker, closeout_dispatch_block_reason, is_terminal_issue,
+		issue_passes_closeout_dispatch_policy, mark_run_attempt_if_active,
+		retained_review_handoff_matches_run, run_cycle_reconciliation::ProjectStateReconciliationContext,
+		worktree_activity_marker_is_fresh,
+	},
+	prelude::Result,
+	state::{self, IssueLease, StateStore},
+	tracker::{self, TrackerIssue},
+	workflow::WorkflowDocument,
+	worktree::WorktreeManager,
+};
 
 pub(super) fn reconcile_active_project_leases<T>(
 	context: &ProjectStateReconciliationContext<'_, T>,
@@ -127,7 +142,7 @@ where
 	context.state_store.clear_lease(lease.issue_id())
 }
 
-pub(super) fn clear_terminal_lane_labels_once<T>(
+pub(in crate::orchestrator::run_cycle_reconciliation) fn clear_terminal_lane_labels_once<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	issue: &TrackerIssue,
