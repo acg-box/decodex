@@ -269,3 +269,43 @@ fn turn_completion_ignores_orphan_json_rpc_response() {
 	);
 	assert_eq!(marker.last_event_type(), Some("turn/completed"));
 }
+
+#[test]
+fn turn_completion_waits_through_retrying_error_notification() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let worktree_path = temp_dir.path().join("worktree");
+	let marker_path = temp_dir.path().join("activity");
+	let fake_bin_dir =
+		tests::install_fake_codex_script(&temp_dir, &tests::retrying_error_fake_codex_script());
+	let path_env = env::var("PATH").unwrap_or_default();
+	let _path_guard =
+		TestEnvVarGuard::set("PATH", &format!("{}:{path_env}", fake_bin_dir.display()));
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut request = tests::minimal_run_request();
+
+	fs::create_dir_all(&worktree_path).expect("worktree directory should create");
+
+	request.run_id = String::from("retrying-error-run");
+	request.issue_id = String::from("retrying-error-issue");
+	request.cwd = worktree_path.display().to_string();
+	request.timeout = Duration::from_secs(5);
+	request.activity_marker_path = Some(marker_path.clone());
+
+	let result = app_server::execute_app_server_run(&request, &state_store)
+		.expect("retrying error during turn wait should not fail the run");
+
+	assert_eq!(result.thread_id, "thread-1");
+	assert_eq!(result.turn_id, "turn-1");
+	assert_eq!(result.final_output, "ORPHAN_OK");
+
+	let marker = state::read_run_activity_marker_snapshot(&marker_path)
+		.expect("marker snapshot should load")
+		.expect("marker snapshot should exist");
+
+	assert_eq!(marker.last_event_type(), Some("turn/completed"));
+	assert!(
+		state_store
+			.run_has_protocol_event(&request.run_id, "error")
+			.expect("retrying error event lookup should load")
+	);
+}
