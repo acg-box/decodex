@@ -4,7 +4,7 @@ use crate::orchestrator::{
 	ProjectLoopEvidenceSnapshot, ProjectRunStatus, Value,
 };
 
-pub(in crate::orchestrator) fn operator_run_continuation_recovery_status(
+pub(crate) fn operator_run_continuation_recovery_status(
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	run: &ProjectRunStatus,
 ) -> Option<OperatorContinuationRecoveryStatus> {
@@ -46,7 +46,7 @@ pub(in crate::orchestrator) fn operator_run_continuation_recovery_status(
 	})
 }
 
-pub(in crate::orchestrator) fn operator_continuation_recovery_event_status(
+pub(crate) fn operator_continuation_recovery_event_status(
 	event: &PrivateExecutionEvent,
 ) -> Option<OperatorContinuationRecoveryStatus> {
 	let state = match event.event_type() {

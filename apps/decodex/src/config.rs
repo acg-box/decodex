@@ -31,8 +31,7 @@ use std::{
 
 use self::document::ServiceConfigDocument;
 use crate::prelude::{Result, eyre};
-#[cfg(test)]
-use git_paths::path_buf_from_git_line_output;
+#[cfg(test)] use git_paths::path_buf_from_git_line_output;
 
 const WORKFLOW_FILE_NAME: &str = "WORKFLOW.md";
 const PROJECT_CONFIG_FILE_NAME: &str = "project.toml";
@@ -210,5 +209,4 @@ fn normalize_path(path: &Path) -> PathBuf {
 	if normalized.as_os_str().is_empty() { PathBuf::from(".") } else { normalized }
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

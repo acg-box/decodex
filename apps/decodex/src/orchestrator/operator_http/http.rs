@@ -1,6 +1,8 @@
-use super::{
-	ErrorKind, OPERATOR_STATE_HEADER_TERMINATOR, OPERATOR_STATE_MAX_REQUEST_BYTES, Read, Result,
-	TcpStream, eyre,
+use std::str;
+
+use crate::orchestrator::operator_http::{
+	ErrorKind, OPERATOR_STATE_HEADER_TERMINATOR, OPERATOR_STATE_MAX_REQUEST_BYTES, Read as _,
+	Result, TcpStream, eyre,
 };
 
 pub(super) fn operator_http_header_value<'a>(
@@ -126,7 +128,7 @@ pub(super) fn percent_decode_operator_query_value(value: &str) -> Result<String>
 				index += 1;
 			},
 			b'%' if index + 2 < raw.len() => {
-				let hex = std::str::from_utf8(&raw[index + 1..index + 3])?;
+				let hex = str::from_utf8(&raw[index + 1..index + 3])?;
 				let byte = u8::from_str_radix(hex, 16)
 					.map_err(|error| eyre::eyre!("Invalid percent-encoded query value: {error}"))?;
 

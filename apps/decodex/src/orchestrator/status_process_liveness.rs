@@ -1,19 +1,15 @@
-#[cfg(target_os = "macos")]
-use std::mem;
-#[cfg(target_os = "macos")]
-use std::mem::MaybeUninit;
+#[cfg(target_os = "macos")] use std::mem;
+#[cfg(target_os = "macos")] use std::mem::MaybeUninit;
 use std::time::Duration;
 
 use libc::pid_t;
-#[cfg(target_os = "macos")]
-use libc::{PROC_PIDTBSDINFO, SZOMB, c_void, proc_bsdinfo};
+#[cfg(target_os = "macos")] use libc::{PROC_PIDTBSDINFO, SZOMB, c_void, proc_bsdinfo};
 
 use crate::{
 	agent::{self, RUN_LEASE_IDLE_TIMEOUT},
+	orchestrator::{self, MarkerProcessLiveness},
 	state::{self, RunActivityMarker},
 };
-
-use super::{MarkerProcessLiveness, observed_idle_duration};
 
 pub(super) fn worktree_activity_marker_is_fresh(
 	marker: &RunActivityMarker,
@@ -22,7 +18,9 @@ pub(super) fn worktree_activity_marker_is_fresh(
 	marker_process_is_alive(marker)
 		&& marker
 			.last_activity_unix_epoch()
-			.and_then(|last_activity| observed_idle_duration(last_activity, now_unix_epoch))
+			.and_then(|last_activity| {
+				orchestrator::observed_idle_duration(last_activity, now_unix_epoch)
+			})
 			.is_some_and(|idle_for| idle_for < run_activity_idle_timeout(Some(marker)))
 }
 
@@ -41,6 +39,26 @@ pub(super) fn marker_process_liveness_for_marker(
 	marker: &RunActivityMarker,
 ) -> Option<MarkerProcessLiveness> {
 	marker.process_id().map(|_| marker_process_liveness(marker))
+}
+
+pub(crate) fn process_is_alive(process_id: u32) -> bool {
+	let Ok(process_id) = pid_t::try_from(process_id) else {
+		return false;
+	};
+
+	if process_id <= 0 {
+		return false;
+	}
+
+	// Use the kernel liveness probe directly so recovery does not depend on a shell
+	// builtin or `kill` binary being present on PATH.
+	match unsafe { libc::kill(process_id, 0) } {
+		0 => !process_is_zombie_or_uninspectable_after_signalable_probe(process_id),
+		-1 =>
+			matches!(std::io::Error::last_os_error().raw_os_error(), Some(libc::EPERM))
+				&& !process_is_zombie(process_id),
+		_ => false,
+	}
 }
 
 fn marker_process_liveness(marker: &RunActivityMarker) -> MarkerProcessLiveness {
@@ -80,27 +98,6 @@ fn marker_process_liveness(marker: &RunActivityMarker) -> MarkerProcessLiveness 
 	MarkerProcessLiveness { alive: true, reason: "process_alive" }
 }
 
-pub(crate) fn process_is_alive(process_id: u32) -> bool {
-	let Ok(process_id) = pid_t::try_from(process_id) else {
-		return false;
-	};
-
-	if process_id <= 0 {
-		return false;
-	}
-
-	// Use the kernel liveness probe directly so recovery does not depend on a shell
-	// builtin or `kill` binary being present on PATH.
-	match unsafe { libc::kill(process_id, 0) } {
-		0 => !process_is_zombie_or_uninspectable_after_signalable_probe(process_id),
-		-1 => {
-			matches!(std::io::Error::last_os_error().raw_os_error(), Some(libc::EPERM))
-				&& !process_is_zombie(process_id)
-		},
-		_ => false,
-	}
-}
-
 fn process_is_zombie_or_uninspectable_after_signalable_probe(process_id: pid_t) -> bool {
 	process_is_zombie_or_uninspectable(process_id)
 }
@@ -112,7 +109,7 @@ fn process_is_zombie_or_uninspectable(process_id: pid_t) -> bool {
 
 #[cfg(target_os = "linux")]
 fn process_is_zombie(process_id: pid_t) -> bool {
-	let Ok(stat) = std::fs::read_to_string(format!("/proc/{process_id}/stat")) else {
+	let Ok(stat) = fs::read_to_string(format!("/proc/{process_id}/stat")) else {
 		return false;
 	};
 	let Some(comm_end) = stat.rfind(')') else {

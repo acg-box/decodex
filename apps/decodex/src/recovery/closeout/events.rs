@@ -1,19 +1,20 @@
-use crate::tracker::records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord};
-
-use crate::recovery::{
-	LEGACY_MANUAL_CLOSEOUT_ANCHOR, LEGACY_MANUAL_CLOSEOUT_EVENT, MERGED_CLOSEOUT_CLEANUP_ANCHOR,
-	MERGED_CLOSEOUT_CLOSEOUT_ANCHOR,
-	closeout::{LegacyCloseoutValidation, MergedCloseoutValidation},
-	context::RecoveryContext,
-	events::{current_timestamp, timestamp_after_seconds},
-	pull_request_inspection::landing_url,
+use crate::{
+	recovery::{
+		LEGACY_MANUAL_CLOSEOUT_ANCHOR, LEGACY_MANUAL_CLOSEOUT_EVENT,
+		MERGED_CLOSEOUT_CLEANUP_ANCHOR, MERGED_CLOSEOUT_CLOSEOUT_ANCHOR,
+		closeout::{LegacyCloseoutValidation, MergedCloseoutValidation},
+		context::RecoveryContext,
+		events::{self},
+		pull_request_inspection,
+	},
+	tracker::records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
 };
 
 pub(super) fn legacy_closeout_event(
 	context: &RecoveryContext,
 	validation: &LegacyCloseoutValidation,
 ) -> LinearExecutionEventRecord {
-	let pr_url = landing_url(&validation.landing_state);
+	let pr_url = pull_request_inspection::landing_url(&validation.landing_state);
 	let stable_anchor = records::stable_event_anchor(&[
 		pr_url,
 		&validation.local_head_oid,
@@ -30,7 +31,7 @@ pub(super) fn legacy_closeout_event(
 			attempt_number: 1,
 		},
 		LEGACY_MANUAL_CLOSEOUT_EVENT,
-		current_timestamp(),
+		events::current_timestamp(),
 		&stable_anchor,
 	);
 
@@ -67,7 +68,7 @@ pub(super) fn merged_closeout_event(
 	context: &RecoveryContext,
 	validation: &MergedCloseoutValidation,
 ) -> LinearExecutionEventRecord {
-	let pr_url = landing_url(&validation.landing_state);
+	let pr_url = pull_request_inspection::landing_url(&validation.landing_state);
 	let stable_anchor = records::stable_event_anchor(&[
 		pr_url,
 		&validation.merge_commit,
@@ -82,7 +83,7 @@ pub(super) fn merged_closeout_event(
 			attempt_number: validation.attempt_number,
 		},
 		LEGACY_MANUAL_CLOSEOUT_EVENT,
-		current_timestamp(),
+		events::current_timestamp(),
 		&stable_anchor,
 	);
 
@@ -117,7 +118,7 @@ pub(super) fn merged_closeout_cleanup_event(
 	context: &RecoveryContext,
 	validation: &MergedCloseoutValidation,
 ) -> LinearExecutionEventRecord {
-	let pr_url = landing_url(&validation.landing_state);
+	let pr_url = pull_request_inspection::landing_url(&validation.landing_state);
 	let stable_anchor = records::stable_event_anchor(&[
 		&validation.branch_name,
 		&validation.worktree_path_for_event,
@@ -133,7 +134,7 @@ pub(super) fn merged_closeout_cleanup_event(
 			attempt_number: validation.attempt_number,
 		},
 		"cleanup_complete",
-		timestamp_after_seconds(1),
+		events::timestamp_after_seconds(1),
 		&stable_anchor,
 	);
 

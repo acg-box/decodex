@@ -5,7 +5,7 @@ use crate::{
 	prelude::Result,
 };
 
-pub(in crate::orchestrator) fn write_cli_output<W>(writer: &mut W, output: &str) -> Result<()>
+pub(crate) fn write_cli_output<W>(writer: &mut W, output: &str) -> Result<()>
 where
 	W: Write,
 {
@@ -16,7 +16,7 @@ where
 	}
 }
 
-pub(in crate::orchestrator) fn publish_operator_snapshot(
+pub(crate) fn publish_operator_snapshot(
 	operator_state_endpoint: &OperatorStateEndpoint,
 	snapshot: &OperatorStatusSnapshot,
 ) {

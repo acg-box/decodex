@@ -1,8 +1,7 @@
-use super::*;
-
+use crate::orchestrator::tests::operator::status::dashboard;
 #[test]
 fn operator_dashboard_renders_account_usage_controls() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("function codexAccount(run, snapshot = null)"));
 	assert!(response.contains("function codexAccounts(run)"));
@@ -118,7 +117,7 @@ fn operator_dashboard_renders_account_usage_controls() {
 
 #[test]
 fn operator_dashboard_account_privacy_controls_use_compact_identities() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(
 		response
@@ -222,7 +221,7 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 
 #[test]
 fn operator_dashboard_account_errors_route_to_notice_dock_with_privacy() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("function codexAccountNotices(snapshot)"));
 	assert!(response.contains("for (const accountNotice of codexAccountNotices(snapshot))"));
@@ -241,7 +240,7 @@ fn operator_dashboard_account_errors_route_to_notice_dock_with_privacy() {
 
 #[test]
 fn operator_dashboard_uses_expanded_section_titles() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("<h2 id=\"current-lanes-title\">Current Lanes</h2>"));
 	assert!(response.contains("<h2 id=\"queue-title\">Intake Queue</h2>"));
@@ -252,7 +251,7 @@ fn operator_dashboard_uses_expanded_section_titles() {
 
 #[test]
 fn operator_dashboard_renders_account_sort_controls() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(
 		response
@@ -291,7 +290,7 @@ fn operator_dashboard_renders_account_sort_controls() {
 
 #[test]
 fn operator_dashboard_renders_project_sort_controls() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(
 		response.contains("const PROJECT_SORT_STORAGE_KEY = \"decodex.operator.projectSort\";")
@@ -334,7 +333,7 @@ fn operator_dashboard_renders_project_sort_controls() {
 
 #[test]
 fn operator_dashboard_accounts_keeps_compact_table_layout() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("run-meta-line"));
 	assert!(response.contains("account-pool-list"));
@@ -454,7 +453,7 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 
 #[test]
 fn operator_dashboard_accounts_renders_fixed_selection_affordance() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("is-selected"));
 	assert!(response.contains("is-ready"));
@@ -507,7 +506,7 @@ fn operator_dashboard_accounts_renders_fixed_selection_affordance() {
 
 #[test]
 fn operator_dashboard_accounts_keeps_identity_rows_compact() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("grid-template-areas:"));
 	assert!(response.contains("\"id plan primary secondary credit state\""));
@@ -561,7 +560,7 @@ fn operator_dashboard_accounts_keeps_identity_rows_compact() {
 
 #[test]
 fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("ACCOUNT_IDENTITY_MIN_EDGE_CHARS,"));
 	assert!(
@@ -646,7 +645,7 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 
 #[test]
 fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert_account_debug_and_credit_copy(&response);
 	assert_account_reset_copy(&response);

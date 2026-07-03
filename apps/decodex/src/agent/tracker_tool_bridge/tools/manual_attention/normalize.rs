@@ -1,15 +1,17 @@
-use crate::agent::tracker_tool_bridge::tools::{
-	COMMENT_KIND_MANUAL_ATTENTION,
-	manual_attention::{
-		NormalizedAuthorityDecisionOption, NormalizedAuthorityDecisionRequest,
-		NormalizedManualAttentionComment,
+use crate::{
+	agent::tracker_tool_bridge::{
+		self, AuthorityDecisionOptionArgs, AuthorityDecisionRequestArgs, CommentArgs,
+		ISSUE_COMMENT_TOOL_NAME,
+		tools::{
+			COMMENT_KIND_MANUAL_ATTENTION,
+			manual_attention::{
+				NormalizedAuthorityDecisionOption, NormalizedAuthorityDecisionRequest,
+				NormalizedManualAttentionComment,
+			},
+		},
 	},
+	tracker::public_text,
 };
-use crate::agent::tracker_tool_bridge::{
-	self, AuthorityDecisionOptionArgs, AuthorityDecisionRequestArgs, CommentArgs,
-	ISSUE_COMMENT_TOOL_NAME,
-};
-use crate::tracker::public_text;
 
 pub(super) fn normalize_manual_attention_comment(
 	parsed: CommentArgs,

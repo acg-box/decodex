@@ -4,15 +4,18 @@ mod prompting_review_context;
 mod prompting_review_guidance;
 mod prompting_workflow_context;
 
-use crate::orchestrator::{ServiceConfig, StateStore, IssueRunPlan, Result, ReviewHandoffContext, TrackerIssue, WorkflowDocument, IssueTracker, ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME, IssueDispatchMode, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, render_issue_description_for_prompt, ReviewLevel};
-
+use crate::orchestrator::{
+	self, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
+	ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+	ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+	ISSUE_TRANSITION_TOOL_NAME, IssueDispatchMode, IssueRunPlan, IssueTracker, Result,
+	ReviewHandoffContext, ReviewLevel, ServiceConfig, StateStore, TrackerIssue, WorkflowDocument,
+};
 pub(crate) const TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION: &str =
 	prompting_contracts::TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION;
+pub(crate) const DOCS_IMPACT_CONTRACT: &str = prompting_contracts::DOCS_IMPACT_CONTRACT;
 
-pub(in crate::orchestrator) const DOCS_IMPACT_CONTRACT: &str =
-	prompting_contracts::DOCS_IMPACT_CONTRACT;
-
-pub(in crate::orchestrator) fn build_review_run_context(
+pub(crate) fn build_review_run_context(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -20,18 +23,18 @@ pub(in crate::orchestrator) fn build_review_run_context(
 	prompting_review_context::build_review_run_context(project, state_store, issue_run)
 }
 
-pub(in crate::orchestrator) fn review_pull_request_title(issue: &TrackerIssue) -> String {
+pub(crate) fn review_pull_request_title(issue: &TrackerIssue) -> String {
 	prompting_workflow_context::review_pull_request_title(issue)
 }
 
-pub(in crate::orchestrator) fn validate_workflow_read_first_files(
+pub(crate) fn validate_workflow_read_first_files(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 ) -> Result<()> {
 	prompting_workflow_context::validate_workflow_read_first_files(project, workflow)
 }
 
-pub(in crate::orchestrator) fn build_developer_instructions<T>(
+pub(crate) fn build_developer_instructions<T>(
 	_tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -52,26 +55,7 @@ where
 	};
 	let mut sections = Vec::new();
 
-	if !workflow.body().trim().is_empty() {
-		sections.push(format!("Workflow policy\n{}", workflow.body()));
-	}
-
-	for relative_path in workflow.frontmatter().context().read_first() {
-		let contents =
-			prompting_workflow_context::read_workflow_read_first_file(project, relative_path)?;
-
-		sections.push(format!("File: {relative_path}\n{contents}"));
-	}
-
-	sections.push(String::from(
-		"Execution discipline\n- Keep pre-edit discovery bounded to the smallest code surface that can satisfy the current issue.\n- Start with the implementation files directly implicated by the issue before reading broader docs or repo-wide guidance.\n- Do not browse upstream references or general repository documentation unless a concrete ambiguity blocks the change.\n- Once the relevant change surface is identified, patch code and run validation instead of continuing broad searches.",
-	));
-	sections.push(String::from(DOCS_IMPACT_CONTRACT));
-	sections.push(String::from(
-		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/1` JSON commit message.\n- Required fields: `schema`, `summary`, and `authority`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- Optional fields: `related` and `breaking`.\n- Do not encode landing mode, CI status, closeout state, or other process-state fields in the commit message.",
-	));
-	sections.push(prompting_contracts::build_phase_goal_runtime_contract());
-	sections.push(String::from(TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION));
+	push_developer_instruction_base_sections(&mut sections, project, workflow)?;
 
 	if let Some(recovery_context) =
 		prompting_recovery::build_retry_recovery_context(issue_run.dispatch_mode)
@@ -172,7 +156,7 @@ where
 	Ok(sections.join("\n\n"))
 }
 
-pub(in crate::orchestrator) fn build_user_input<T>(
+pub(crate) fn build_user_input<T>(
 	_tracker: &T,
 	project: &ServiceConfig,
 	issue: &TrackerIssue,
@@ -192,7 +176,7 @@ where
 	} else {
 		""
 	};
-	let description = render_issue_description_for_prompt(issue);
+	let description = orchestrator::render_issue_description_for_prompt(issue);
 	let repair_architecture_guidance =
 		prompting_recovery::build_external_repair_architecture_guidance(
 			project,
@@ -288,7 +272,7 @@ where
 	}
 }
 
-pub(in crate::orchestrator) fn build_continuation_user_input(
+pub(crate) fn build_continuation_user_input(
 	issue: &TrackerIssue,
 	workflow: &WorkflowDocument,
 	dispatch_mode: IssueDispatchMode,
@@ -356,4 +340,33 @@ pub(in crate::orchestrator) fn build_continuation_user_input(
 				),
 		),
 	}
+}
+
+fn push_developer_instruction_base_sections(
+	sections: &mut Vec<String>,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+) -> Result<()> {
+	if !workflow.body().trim().is_empty() {
+		sections.push(format!("Workflow policy\n{}", workflow.body()));
+	}
+
+	for relative_path in workflow.frontmatter().context().read_first() {
+		let contents =
+			prompting_workflow_context::read_workflow_read_first_file(project, relative_path)?;
+
+		sections.push(format!("File: {relative_path}\n{contents}"));
+	}
+
+	sections.push(String::from(
+		"Execution discipline\n- Keep pre-edit discovery bounded to the smallest code surface that can satisfy the current issue.\n- Start with the implementation files directly implicated by the issue before reading broader docs or repo-wide guidance.\n- Do not browse upstream references or general repository documentation unless a concrete ambiguity blocks the change.\n- Once the relevant change surface is identified, patch code and run validation instead of continuing broad searches.",
+	));
+	sections.push(String::from(DOCS_IMPACT_CONTRACT));
+	sections.push(String::from(
+		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/1` JSON commit message.\n- Required fields: `schema`, `summary`, and `authority`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- Optional fields: `related` and `breaking`.\n- Do not encode landing mode, CI status, closeout state, or other process-state fields in the commit message.",
+	));
+	sections.push(prompting_contracts::build_phase_goal_runtime_contract());
+	sections.push(String::from(TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION));
+
+	Ok(())
 }

@@ -2,34 +2,38 @@ use std::{ffi::OsString, path::Path};
 
 use clap::{Parser, error::ErrorKind};
 
-use super::{
-	AppCommand, AttemptCommand, Cli, Command, ProbeCommand, ProjectConfigArgs,
-	account_commands::{AccountCommand, AccountSubcommand, AccountUseCommand},
-	control_commands::{
-		DiagnoseCommand, EvidenceCommand, LaneCommand, LaneInspectCommand, LaneInterruptCommand,
-		LaneSteerCommand, LaneSubcommand, McpSubcommand, ProjectCommand, ProjectSubcommand,
-		RunCommand, ServeCommand, StatusCommand,
+use crate::{
+	cli::{
+		AppCommand, AttemptCommand, Cli, Command, ProbeCommand, ProjectConfigArgs,
+		account_commands::{AccountCommand, AccountSubcommand, AccountUseCommand},
+		control_commands::{
+			DiagnoseCommand, EvidenceCommand, LaneCommand, LaneInspectCommand,
+			LaneInterruptCommand, LaneSteerCommand, LaneSubcommand, McpSubcommand, ProjectCommand,
+			ProjectSubcommand, RunCommand, ServeCommand, StatusCommand,
+		},
+		docs_okf_commands::{
+			DocsCommand, DocsGraphCommand, DocsSubcommand, OkfCommand, OkfFindCommand,
+			OkfFindFilters, OkfInitCommand, OkfInitProfileArg, OkfSubcommand,
+		},
+		git_hook_commands::{GitHookCommand, GitHookSubcommand},
+		manual_commands::{CommitCommand, LandCommand},
+		recovery_commands::{
+			GhostLaneCleanupCommand, GhostLaneDiagnoseCommand, GhostLaneRecoveryCommand,
+			GhostLaneRecoverySubcommand, LegacyCloseoutRecoveryCommand,
+			MergedCloseoutRecoveryCommand, RecoverCommand, RecoverSubcommand,
+			ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
+			ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
+			StaleActiveDiagnoseCommand, StaleActiveRecoveryCommand, StaleActiveRecoverySubcommand,
+			StaleActiveReleaseCommand,
+		},
+		research_intake_commands::{
+			IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand, IntakeSubcommand,
+			ResearchCommand, ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand,
+			ResearchSubcommand,
+		},
 	},
-	docs_okf_commands::{
-		DocsCommand, DocsGraphCommand, DocsSubcommand, OkfCommand, OkfFindCommand, OkfFindFilters,
-		OkfInitCommand, OkfInitProfileArg, OkfSubcommand,
-	},
-	git_hook_commands::{GitHookCommand, GitHookSubcommand},
-	manual_commands::{CommitCommand, LandCommand},
-	recovery_commands::{
-		GhostLaneCleanupCommand, GhostLaneDiagnoseCommand, GhostLaneRecoveryCommand,
-		GhostLaneRecoverySubcommand, LegacyCloseoutRecoveryCommand, MergedCloseoutRecoveryCommand,
-		RecoverCommand, RecoverSubcommand, ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand,
-		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
-		StaleActiveDiagnoseCommand, StaleActiveRecoveryCommand, StaleActiveRecoverySubcommand,
-		StaleActiveReleaseCommand,
-	},
-	research_intake_commands::{
-		IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand, IntakeSubcommand, ResearchCommand,
-		ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
-	},
+	mcp::{McpCapabilityProfile, McpTransport},
 };
-use crate::mcp::{McpCapabilityProfile, McpTransport};
 
 #[test]
 fn parses_app_command() {

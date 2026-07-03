@@ -1,29 +1,27 @@
 //! Decodex auxiliary publishing handoff tooling.
 
-use std::{
-	env,
-	fs::{self, OpenOptions},
-	io::Write as _,
-	path::{Path, PathBuf},
-	sync::OnceLock,
-};
-
-use serde::Serialize;
-use serde_json::{Map, Value};
-
 mod cli;
 mod social_publish;
 mod social_validation;
-
 mod prelude {
 	pub use color_eyre::{Result, eyre};
 }
 
-use prelude::{Result, eyre};
-use social_validation::{
-	SocialValidationState, validate_social_artifact, validate_social_artifact_for_path,
-	validate_social_cross_file_constraints,
+use std::{
+	env,
+	fs::{self, OpenOptions},
+	io::Write,
+	path::{Path, PathBuf},
+	sync::OnceLock,
 };
+
+use clap::Parser as _;
+use serde::Serialize;
+use serde_json::{Map, Value};
+
+use cli::Cli;
+use prelude::{Result, eyre};
+use social_validation::SocialValidationState;
 
 pub(crate) const SOCIAL_CANDIDATE_SCHEMA: &str = "social_candidate/v1";
 pub(crate) const SOCIAL_POST_SCHEMA: &str = "social_post/v1";
@@ -33,15 +31,6 @@ pub(crate) const DEFAULT_SOCIAL_CANDIDATES_DIR: &str =
 pub(crate) const DEFAULT_SOCIAL_RESERVATIONS_DIR: &str =
 	".agent/automations/decodex/cache/social/x/reservations";
 pub(crate) const DEFAULT_SOCIAL_POSTS_DIR: &str = ".agent/automations/decodex/cache/social/x/posts";
-
-/// Run the Decodex Publisher CLI.
-pub fn run() -> Result<()> {
-	use clap::Parser as _;
-
-	color_eyre::install()?;
-
-	cli::Cli::parse().run()
-}
 
 #[derive(Debug)]
 pub(crate) struct SocialReservePublishRequest {
@@ -80,6 +69,13 @@ pub(crate) struct SocialValidationReport {
 	pub(crate) errors: Vec<String>,
 }
 
+/// Run the Decodex Publisher CLI.
+pub fn run() -> Result<()> {
+	color_eyre::install()?;
+
+	Cli::parse().run()
+}
+
 pub(crate) fn reserve_social_publish(
 	request: &SocialReservePublishRequest,
 ) -> Result<SocialReservePublishReport> {
@@ -105,13 +101,20 @@ pub(crate) fn validate_social(paths: &[PathBuf]) -> Result<SocialValidationRepor
 
 	for path in &files {
 		let payload = load_json(path)?;
-		let validation = validate_social_artifact_for_path(path, &payload);
+		let validation = social_validation::validate_social_artifact_for_path(path, &payload);
 
 		for error in validation.errors {
 			errors.push(format!("{}: {error}", path_arg(&root, path)));
 		}
-		validate_social_cross_file_constraints(path, &payload, &mut state, &mut errors);
+
+		social_validation::validate_social_cross_file_constraints(
+			path,
+			&payload,
+			&mut state,
+			&mut errors,
+		);
 	}
+
 	if !errors.is_empty() {
 		return Err(eyre::eyre!("Social artifact validation failed:\n- {}", errors.join("\n- ")));
 	}
@@ -120,7 +123,7 @@ pub(crate) fn validate_social(paths: &[PathBuf]) -> Result<SocialValidationRepor
 }
 
 pub(crate) fn validate_generated_social_artifact(payload: &Value) -> Result<()> {
-	let validation = validate_social_artifact(payload);
+	let validation = social_validation::validate_social_artifact(payload);
 
 	if !validation.errors.is_empty() {
 		eyre::bail!("Social artifact validation failed:\n- {}", validation.errors.join("\n- "));
@@ -167,9 +170,11 @@ pub(crate) fn slugify(value: &str) -> String {
 
 		if ch.is_ascii_alphanumeric() {
 			slug.push(ch.to_ascii_lowercase());
+
 			previous_dash = false;
 		} else if !previous_dash && !slug.is_empty() {
 			slug.push('-');
+
 			previous_dash = true;
 		}
 	}
@@ -177,6 +182,7 @@ pub(crate) fn slugify(value: &str) -> String {
 	while slug.ends_with('-') {
 		slug.pop();
 	}
+
 	if slug.is_empty() { "social-post".into() } else { slug }
 }
 
@@ -212,8 +218,10 @@ pub(crate) fn collect_json_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
 		if !path.exists() {
 			continue;
 		}
+
 		collect_json_files_inner(path, &mut files)?;
 	}
+
 	files.sort();
 
 	Ok(files)

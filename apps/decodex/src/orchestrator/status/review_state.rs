@@ -1,14 +1,16 @@
-use super::{
-	Command, ExternalReviewRequestCiGate, OperatorPostReviewLaneStatus, Path,
-	PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
-	PostReviewLaneStateLoad, PostReviewReadbackDegradation, PullRequestLandingGateView,
-	PullRequestReadbackRootCause, PullRequestReviewState, PullRequestReviewStateInspector,
-	RetainedCloseoutPrMergeGate, ReviewHandoffMarker, ServiceConfig, TrackerIssue, WorktreeMapping,
-	env, eyre, pull_request, relative_worktree_path_for_path,
-	validate_post_review_lane_review_state,
+use crate::{
+	orchestrator::status::{
+		self, Command, ExternalReviewRequestCiGate, OperatorPostReviewLaneStatus, Path,
+		PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
+		PostReviewLaneStateLoad, PostReviewReadbackDegradation, PullRequestLandingGateView,
+		PullRequestReadbackRootCause, PullRequestReviewState, PullRequestReviewStateInspector,
+		RetainedCloseoutPrMergeGate, ReviewHandoffMarker, ServiceConfig, TrackerIssue,
+		WorktreeMapping, env, eyre,
+	},
+	pull_request,
 };
 
-pub(in crate::orchestrator) fn retained_closeout_pr_merge_gate_with_inspector<I>(
+pub(crate) fn retained_closeout_pr_merge_gate_with_inspector<I>(
 	worktree_path: &Path,
 	expected_branch_name: &str,
 	pr_url: &str,
@@ -35,7 +37,7 @@ where
 
 	Ok(
 		if matches!(
-			validate_post_review_lane_review_state(
+			status::validate_post_review_lane_review_state(
 				review_state,
 				expected_branch_name,
 				&local_head_oid,
@@ -54,7 +56,7 @@ where
 	)
 }
 
-pub(in crate::orchestrator) fn validate_post_review_lane_worktree<'a>(
+pub(crate) fn validate_post_review_lane_worktree<'a>(
 	snapshot: &'a PostReviewLaneSnapshot,
 	review_handoff: &ReviewHandoffMarker,
 ) -> std::result::Result<&'a str, &'static str> {
@@ -91,7 +93,7 @@ pub(in crate::orchestrator) fn validate_post_review_lane_worktree<'a>(
 	Ok(local_head_oid)
 }
 
-pub(in crate::orchestrator) fn worktree_head_descends_from_review_handoff(
+pub(crate) fn worktree_head_descends_from_review_handoff(
 	worktree_path: &Path,
 	recorded_head_oid: &str,
 	local_head_oid: &str,
@@ -114,7 +116,7 @@ pub(in crate::orchestrator) fn worktree_head_descends_from_review_handoff(
 	}
 }
 
-pub(in crate::orchestrator) fn initial_post_review_lane_classification(
+pub(crate) fn initial_post_review_lane_classification(
 	review_state: &PullRequestReviewState,
 ) -> PostReviewLaneClassification {
 	PostReviewLaneClassification {
@@ -132,7 +134,7 @@ pub(in crate::orchestrator) fn initial_post_review_lane_classification(
 	}
 }
 
-pub(in crate::orchestrator) fn blocked_post_review_lane_from_state(
+pub(crate) fn blocked_post_review_lane_from_state(
 	review_state: &PullRequestReviewState,
 	reason: &str,
 ) -> PostReviewLaneClassification {
@@ -146,9 +148,7 @@ pub(in crate::orchestrator) fn blocked_post_review_lane_from_state(
 	classification
 }
 
-pub(in crate::orchestrator) fn blocked_post_review_lane(
-	reason: &str,
-) -> PostReviewLaneClassification {
+pub(crate) fn blocked_post_review_lane(reason: &str) -> PostReviewLaneClassification {
 	PostReviewLaneClassification {
 		decision: PostReviewLaneDecision::Block,
 		reason: reason.to_owned(),
@@ -165,7 +165,7 @@ pub(in crate::orchestrator) fn blocked_post_review_lane(
 	}
 }
 
-pub(in crate::orchestrator) fn blocked_post_review_lane_from_handoff(
+pub(crate) fn blocked_post_review_lane_from_handoff(
 	review_handoff: &ReviewHandoffMarker,
 	reason: &str,
 ) -> PostReviewLaneClassification {
@@ -177,7 +177,7 @@ pub(in crate::orchestrator) fn blocked_post_review_lane_from_handoff(
 	classification
 }
 
-pub(in crate::orchestrator) fn readback_degraded_post_review_lane_from_handoff(
+pub(crate) fn readback_degraded_post_review_lane_from_handoff(
 	review_handoff: &ReviewHandoffMarker,
 	root_cause: PullRequestReadbackRootCause,
 ) -> PostReviewLaneClassification {
@@ -185,7 +185,7 @@ pub(in crate::orchestrator) fn readback_degraded_post_review_lane_from_handoff(
 		.wait_for_review_classification(None)
 }
 
-pub(in crate::orchestrator) fn blocked_post_review_lane_status(
+pub(crate) fn blocked_post_review_lane_status(
 	project: &ServiceConfig,
 	issue: &TrackerIssue,
 	worktree: &WorktreeMapping,
@@ -197,7 +197,7 @@ pub(in crate::orchestrator) fn blocked_post_review_lane_status(
 		issue_identifier: issue.identifier.clone(),
 		issue_state: issue.state.name.clone(),
 		branch_name: worktree.branch_name().to_owned(),
-		worktree_path: relative_worktree_path_for_path(project, worktree.worktree_path()),
+		worktree_path: status::relative_worktree_path_for_path(project, worktree.worktree_path()),
 		classification: String::from("blocked"),
 		reason: String::from(reason),
 		pr_url: None,
@@ -215,13 +215,12 @@ pub(in crate::orchestrator) fn blocked_post_review_lane_status(
 	}
 }
 
-pub(in crate::orchestrator) fn post_review_readback_root_cause_for_reason(
+pub(crate) fn post_review_readback_root_cause_for_reason(
 	reason: &str,
 ) -> Option<PullRequestReadbackRootCause> {
 	match reason {
-		"pull_request_repository_parse_failed" => {
-			Some(PullRequestReadbackRootCause::PullRequestShapeReadFailed)
-		},
+		"pull_request_repository_parse_failed" =>
+			Some(PullRequestReadbackRootCause::PullRequestShapeReadFailed),
 		"pull_request_branch_mismatch"
 		| "pull_request_head_mismatch"
 		| "pull_request_head_repository_name_mismatch"
@@ -231,10 +230,91 @@ pub(in crate::orchestrator) fn post_review_readback_root_cause_for_reason(
 		| "review_handoff_lineage_mismatch"
 		| "review_orchestration_branch_mismatch"
 		| "review_orchestration_head_mismatch"
-		| "review_orchestration_pr_mismatch" => {
-			Some(PullRequestReadbackRootCause::LineageValidationFailed)
-		},
+		| "review_orchestration_pr_mismatch" =>
+			Some(PullRequestReadbackRootCause::LineageValidationFailed),
 		_ => None,
+	}
+}
+
+pub(crate) fn resolve_configured_env_var(
+	field_name: &str,
+	env_var: Option<&str>,
+) -> crate::prelude::Result<String> {
+	let env_var = env_var.ok_or_else(|| {
+		eyre::eyre!("`{field_name}` must be configured for this GitHub-backed operation.")
+	})?;
+	let value = env::var(env_var).map_err(|error| {
+		eyre::eyre!(
+			"Failed to read environment variable `{env_var}` referenced by `{field_name}`: {error}"
+		)
+	})?;
+
+	if value.trim().is_empty() {
+		eyre::bail!(
+			"Environment variable `{env_var}` referenced by `{field_name}` must not be blank."
+		);
+	}
+
+	Ok(value)
+}
+
+pub(crate) fn external_review_request_ci_gate(
+	review_state: &PullRequestReviewState,
+) -> ExternalReviewRequestCiGate {
+	match review_state.status_check_rollup_state.as_deref() {
+		None | Some("SUCCESS") => ExternalReviewRequestCiGate::Ready,
+		Some("EXPECTED" | "PENDING") => ExternalReviewRequestCiGate::WaitForGreenChecks,
+		Some("ERROR" | "FAILURE") => ExternalReviewRequestCiGate::RepairRequired,
+		Some(_) => ExternalReviewRequestCiGate::WaitForGreenChecks,
+	}
+}
+
+pub(crate) fn failed_checks_require_repair(
+	check_state: Option<&str>,
+	merge_state_status: &str,
+) -> bool {
+	pull_request::failed_checks_require_repair(check_state, merge_state_status)
+}
+
+pub(crate) fn merge_state_requires_review_repair(
+	mergeable: &str,
+	merge_state_status: &str,
+) -> Option<&'static str> {
+	pull_request::merge_state_requires_review_repair(mergeable, merge_state_status)
+}
+
+pub(crate) fn review_state_landing_gates_satisfied(review_state: &PullRequestReviewState) -> bool {
+	pull_request::retained_landing_gates_satisfied(review_state_landing_gate_view(review_state))
+}
+
+pub(crate) fn review_state_clean_path_landing_gates_satisfied(
+	review_state: &PullRequestReviewState,
+) -> bool {
+	pull_request::retained_clean_path_landing_gates_satisfied(review_state_landing_gate_view(
+		review_state,
+	))
+}
+
+pub(crate) fn review_state_landing_requires_agent_fallback(
+	review_state: &PullRequestReviewState,
+) -> bool {
+	pull_request::retained_landing_requires_agent_fallback(review_state_landing_gate_view(
+		review_state,
+	))
+}
+
+pub(crate) fn review_state_landing_gate_view(
+	review_state: &PullRequestReviewState,
+) -> PullRequestLandingGateView<'_> {
+	PullRequestLandingGateView {
+		state: review_state.state.as_str(),
+		is_draft: review_state.is_draft,
+		review_decision: review_state.review_decision.as_deref(),
+		pending_review_requests: review_state.pending_review_requests,
+		mergeable: review_state.mergeable.as_str(),
+		merge_state_status: review_state.merge_state_status.as_str(),
+		status_check_rollup_state: review_state.status_check_rollup_state.as_deref(),
+		unresolved_review_threads: review_state.unresolved_review_threads,
 	}
 }
 
@@ -289,88 +369,4 @@ pub(crate) fn worktree_checkout_branch_name(
 	}
 
 	Ok(Some(branch_name))
-}
-
-pub(in crate::orchestrator) fn resolve_configured_env_var(
-	field_name: &str,
-	env_var: Option<&str>,
-) -> crate::prelude::Result<String> {
-	let env_var = env_var.ok_or_else(|| {
-		eyre::eyre!("`{field_name}` must be configured for this GitHub-backed operation.")
-	})?;
-	let value = env::var(env_var).map_err(|error| {
-		eyre::eyre!(
-			"Failed to read environment variable `{env_var}` referenced by `{field_name}`: {error}"
-		)
-	})?;
-
-	if value.trim().is_empty() {
-		eyre::bail!(
-			"Environment variable `{env_var}` referenced by `{field_name}` must not be blank."
-		);
-	}
-
-	Ok(value)
-}
-
-pub(in crate::orchestrator) fn external_review_request_ci_gate(
-	review_state: &PullRequestReviewState,
-) -> ExternalReviewRequestCiGate {
-	match review_state.status_check_rollup_state.as_deref() {
-		None | Some("SUCCESS") => ExternalReviewRequestCiGate::Ready,
-		Some("EXPECTED" | "PENDING") => ExternalReviewRequestCiGate::WaitForGreenChecks,
-		Some("ERROR" | "FAILURE") => ExternalReviewRequestCiGate::RepairRequired,
-		Some(_) => ExternalReviewRequestCiGate::WaitForGreenChecks,
-	}
-}
-
-pub(in crate::orchestrator) fn failed_checks_require_repair(
-	check_state: Option<&str>,
-	merge_state_status: &str,
-) -> bool {
-	pull_request::failed_checks_require_repair(check_state, merge_state_status)
-}
-
-pub(in crate::orchestrator) fn merge_state_requires_review_repair(
-	mergeable: &str,
-	merge_state_status: &str,
-) -> Option<&'static str> {
-	pull_request::merge_state_requires_review_repair(mergeable, merge_state_status)
-}
-
-pub(in crate::orchestrator) fn review_state_landing_gates_satisfied(
-	review_state: &PullRequestReviewState,
-) -> bool {
-	pull_request::retained_landing_gates_satisfied(review_state_landing_gate_view(review_state))
-}
-
-pub(in crate::orchestrator) fn review_state_clean_path_landing_gates_satisfied(
-	review_state: &PullRequestReviewState,
-) -> bool {
-	pull_request::retained_clean_path_landing_gates_satisfied(review_state_landing_gate_view(
-		review_state,
-	))
-}
-
-pub(in crate::orchestrator) fn review_state_landing_requires_agent_fallback(
-	review_state: &PullRequestReviewState,
-) -> bool {
-	pull_request::retained_landing_requires_agent_fallback(review_state_landing_gate_view(
-		review_state,
-	))
-}
-
-pub(in crate::orchestrator) fn review_state_landing_gate_view(
-	review_state: &PullRequestReviewState,
-) -> PullRequestLandingGateView<'_> {
-	PullRequestLandingGateView {
-		state: review_state.state.as_str(),
-		is_draft: review_state.is_draft,
-		review_decision: review_state.review_decision.as_deref(),
-		pending_review_requests: review_state.pending_review_requests,
-		mergeable: review_state.mergeable.as_str(),
-		merge_state_status: review_state.merge_state_status.as_str(),
-		status_check_rollup_state: review_state.status_check_rollup_state.as_deref(),
-		unresolved_review_threads: review_state.unresolved_review_threads,
-	}
 }

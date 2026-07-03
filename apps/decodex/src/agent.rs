@@ -4,14 +4,10 @@ mod decodex_tool_bridge;
 mod json_rpc;
 mod tracker_tool_bridge;
 
-#[cfg(test)]
-pub(crate) use self::app_server::AppServerCapabilityPreflightReport;
-#[cfg(test)]
-pub(crate) use self::app_server::MODEL_EXECUTION_IDLE_TIMEOUT;
-#[cfg(not(test))]
-pub(crate) use self::app_server::archive_app_server_thread_after_success;
-#[cfg(test)]
-pub(crate) use self::tracker_tool_bridge::DynamicToolHandler;
+#[cfg(test)] pub(crate) use self::app_server::AppServerCapabilityPreflightReport;
+#[cfg(test)] pub(crate) use self::app_server::MODEL_EXECUTION_IDLE_TIMEOUT;
+#[cfg(not(test))] pub(crate) use self::app_server::archive_app_server_thread_after_success;
+#[cfg(test)] pub(crate) use self::tracker_tool_bridge::DynamicToolHandler;
 pub(crate) use self::{
 	app_server::{
 		AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure,

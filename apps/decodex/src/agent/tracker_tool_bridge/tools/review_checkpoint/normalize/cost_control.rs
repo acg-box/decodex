@@ -1,16 +1,19 @@
-use crate::agent::tracker_tool_bridge::tools::review_checkpoint::finding_policy::ReviewFindingPolicyUpdate;
-use crate::agent::tracker_tool_bridge::tools::review_checkpoint::{
-	MAX_COMPACT_REVIEW_CHANGED_SURFACE_COUNT, REVIEW_CLASS_COMPACT_CURRENT_HEAD,
-	REVIEW_CLASS_FULL_CURRENT_HEAD, REVIEW_COST_CONTROL_NOT_PROVIDED, REVIEW_ROUTE_CURRENT_BLOCKER,
-	normalize::{self, contract},
-	routes,
+use crate::{
+	agent::tracker_tool_bridge::{
+		self, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, NormalizedReviewCheckpointContract,
+		NormalizedReviewCheckpointFinding, NormalizedReviewCheckpointFindingRoute,
+		NormalizedReviewCostControl, ReviewCostControlArgs, ReviewPolicyPhase, ReviewPolicyStatus,
+		tools::review_checkpoint::{
+			MAX_COMPACT_REVIEW_CHANGED_SURFACE_COUNT, REVIEW_CLASS_COMPACT_CURRENT_HEAD,
+			REVIEW_CLASS_FULL_CURRENT_HEAD, REVIEW_COST_CONTROL_NOT_PROVIDED,
+			REVIEW_ROUTE_CURRENT_BLOCKER,
+			finding_policy::ReviewFindingPolicyUpdate,
+			normalize::{self, contract},
+			routes,
+		},
+	},
+	tracker::public_text,
 };
-use crate::agent::tracker_tool_bridge::{
-	self, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, NormalizedReviewCheckpointContract,
-	NormalizedReviewCheckpointFinding, NormalizedReviewCheckpointFindingRoute,
-	NormalizedReviewCostControl, ReviewCostControlArgs, ReviewPolicyPhase, ReviewPolicyStatus,
-};
-use crate::tracker::public_text;
 
 pub(super) fn normalize_review_cost_control(
 	cost_control: Option<ReviewCostControlArgs>,
@@ -142,9 +145,8 @@ fn normalize_review_class(review_class: String) -> Result<String, String> {
 	};
 
 	match review_class {
-		REVIEW_CLASS_COMPACT_CURRENT_HEAD | REVIEW_CLASS_FULL_CURRENT_HEAD => {
-			Ok(review_class.to_owned())
-		},
+		REVIEW_CLASS_COMPACT_CURRENT_HEAD | REVIEW_CLASS_FULL_CURRENT_HEAD =>
+			Ok(review_class.to_owned()),
 		other => {
 			let compact = REVIEW_CLASS_COMPACT_CURRENT_HEAD;
 			let full = REVIEW_CLASS_FULL_CURRENT_HEAD;

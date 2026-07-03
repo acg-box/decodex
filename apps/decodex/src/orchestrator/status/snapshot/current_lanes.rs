@@ -1,12 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::orchestrator::status::{
-	self, OperatorRunStatus, ProjectLoopEvidenceSnapshot, ProjectRunStatus, ServiceConfig,
-	StateStore,
+use crate::{
+	orchestrator::status::{
+		self, OperatorRunStatus, ProjectLoopEvidenceSnapshot, ProjectRunStatus, ServiceConfig,
+		StateStore,
+	},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
-pub(in crate::orchestrator) fn operator_current_lane_statuses(
+pub(crate) fn operator_current_lane_statuses(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
@@ -65,7 +67,7 @@ pub(in crate::orchestrator) fn operator_current_lane_statuses(
 	Ok(current_lanes)
 }
 
-pub(in crate::orchestrator) fn operator_latest_attempt_by_issue_key<'a>(
+pub(crate) fn operator_latest_attempt_by_issue_key<'a>(
 	runs: impl Iterator<Item = &'a OperatorRunStatus>,
 ) -> HashMap<String, i64> {
 	let mut latest_attempt_by_issue_key = HashMap::new();
@@ -81,7 +83,7 @@ pub(in crate::orchestrator) fn operator_latest_attempt_by_issue_key<'a>(
 	latest_attempt_by_issue_key
 }
 
-pub(in crate::orchestrator) fn operator_run_is_superseded_by_newer_attempt(
+pub(crate) fn operator_run_is_superseded_by_newer_attempt(
 	run: &OperatorRunStatus,
 	latest_attempt_by_issue_key: &HashMap<String, i64>,
 ) -> bool {

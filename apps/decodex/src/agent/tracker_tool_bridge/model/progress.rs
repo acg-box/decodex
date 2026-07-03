@@ -1,29 +1,26 @@
 use super::review::ReviewHandoffContext;
 
 #[derive(Debug)]
-pub(in crate::agent::tracker_tool_bridge) struct NormalizedProgressCheckpoint {
-	pub(in crate::agent::tracker_tool_bridge) phase: ExecutionProgressPhase,
-	pub(in crate::agent::tracker_tool_bridge) docs_impact: DocsImpact,
-	pub(in crate::agent::tracker_tool_bridge) focus: String,
-	pub(in crate::agent::tracker_tool_bridge) next_action: String,
-	pub(in crate::agent::tracker_tool_bridge) blockers: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) verification: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) head_sha: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) branch: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) pr_url: Option<String>,
+pub(crate) struct NormalizedProgressCheckpoint {
+	pub(crate) phase: ExecutionProgressPhase,
+	pub(crate) docs_impact: DocsImpact,
+	pub(crate) focus: String,
+	pub(crate) next_action: String,
+	pub(crate) blockers: Vec<String>,
+	pub(crate) evidence: Vec<String>,
+	pub(crate) verification: Vec<String>,
+	pub(crate) head_sha: Option<String>,
+	pub(crate) branch: Option<String>,
+	pub(crate) pr_url: Option<String>,
 }
 impl NormalizedProgressCheckpoint {
-	pub(in crate::agent::tracker_tool_bridge) fn public_branch(
-		&self,
-		review_context: &ReviewHandoffContext,
-	) -> String {
+	pub(crate) fn public_branch(&self, review_context: &ReviewHandoffContext) -> String {
 		self.branch.clone().unwrap_or_else(|| review_context.branch_name.clone())
 	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::agent::tracker_tool_bridge) enum ExecutionProgressPhase {
+pub(crate) enum ExecutionProgressPhase {
 	Probing,
 	Implementing,
 	Verifying,
@@ -34,7 +31,7 @@ pub(in crate::agent::tracker_tool_bridge) enum ExecutionProgressPhase {
 	Closeout,
 }
 impl ExecutionProgressPhase {
-	pub(in crate::agent::tracker_tool_bridge) fn as_str(self) -> &'static str {
+	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::Probing => "probing",
 			Self::Implementing => "implementing",
@@ -47,9 +44,7 @@ impl ExecutionProgressPhase {
 		}
 	}
 
-	pub(in crate::agent::tracker_tool_bridge) fn parse(
-		value: &str,
-	) -> std::result::Result<Self, String> {
+	pub(crate) fn parse(value: &str) -> std::result::Result<Self, String> {
 		match value {
 			"probing" => Ok(Self::Probing),
 			"implementing" => Ok(Self::Implementing),
@@ -67,14 +62,14 @@ impl ExecutionProgressPhase {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::agent::tracker_tool_bridge) enum DocsImpact {
+pub(crate) enum DocsImpact {
 	None,
 	UpdateRequired,
 	ResearchRequired,
 	DriftRequired,
 }
 impl DocsImpact {
-	pub(in crate::agent::tracker_tool_bridge) fn as_str(self) -> &'static str {
+	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::None => "none",
 			Self::UpdateRequired => "update_required",
@@ -83,9 +78,7 @@ impl DocsImpact {
 		}
 	}
 
-	pub(in crate::agent::tracker_tool_bridge) fn parse(
-		value: &str,
-	) -> std::result::Result<Self, String> {
+	pub(crate) fn parse(value: &str) -> std::result::Result<Self, String> {
 		match value {
 			"none" => Ok(Self::None),
 			"update_required" => Ok(Self::UpdateRequired),

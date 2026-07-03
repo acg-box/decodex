@@ -1,12 +1,14 @@
 use std::{
 	error::Error,
-	fmt::{self, Display, Formatter},
+	fmt::{Display, Formatter},
 };
 
 use serde_json::Value;
 
-use super::selection::account_summary_is_limited;
-use crate::state::{CodexAccountActivitySummary, CodexAccountProfileDailyUsageSummary};
+use crate::{
+	agent::codex_accounts::selection,
+	state::{CodexAccountActivitySummary, CodexAccountProfileDailyUsageSummary},
+};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct AccountUsageSnapshot {
@@ -62,6 +64,29 @@ impl AccountProfileSnapshot {
 	}
 }
 
+#[derive(Debug)]
+pub(super) struct UsageProbeError {
+	pub(super) unauthorized: bool,
+	message: String,
+}
+impl UsageProbeError {
+	pub(super) fn unauthorized() -> Self {
+		Self { unauthorized: true, message: String::from("usage endpoint returned 401") }
+	}
+
+	pub(super) fn other(message: impl Into<String>) -> Self {
+		Self { unauthorized: false, message: message.into() }
+	}
+}
+
+impl Display for UsageProbeError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(&self.message)
+	}
+}
+
+impl Error for UsageProbeError {}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct UsageWindow {
 	pub(crate) window_seconds: Option<i64>,
@@ -80,29 +105,6 @@ pub(crate) struct CreditsSnapshot {
 	pub(crate) unlimited: bool,
 	pub(crate) balance: Option<String>,
 }
-
-#[derive(Debug)]
-pub(super) struct UsageProbeError {
-	pub(super) unauthorized: bool,
-	message: String,
-}
-impl UsageProbeError {
-	pub(super) fn unauthorized() -> Self {
-		Self { unauthorized: true, message: String::from("usage endpoint returned 401") }
-	}
-
-	pub(super) fn other(message: impl Into<String>) -> Self {
-		Self { unauthorized: false, message: message.into() }
-	}
-}
-
-impl Display for UsageProbeError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-		formatter.write_str(&self.message)
-	}
-}
-
-impl Error for UsageProbeError {}
 
 pub(super) fn usage_snapshot_from_payload(
 	payload: &Value,
@@ -155,6 +157,47 @@ pub(super) fn profile_snapshot_from_payload(
 	(!snapshot.is_empty()).then_some(snapshot)
 }
 
+pub(super) fn preserve_cached_usage_windows(
+	summaries: &mut [CodexAccountActivitySummary],
+	cached_summaries: &[CodexAccountActivitySummary],
+	now_unix_epoch: i64,
+) {
+	for summary in summaries {
+		if selection::account_summary_is_limited(summary) {
+			continue;
+		}
+
+		let Some(cached) =
+			cached_summaries.iter().find(|cached| account_summaries_match(summary, cached))
+		else {
+			continue;
+		};
+
+		preserve_primary_usage_window(summary, cached, now_unix_epoch);
+		preserve_secondary_usage_window(summary, cached, now_unix_epoch);
+	}
+}
+
+pub(super) fn number_as_i64(value: &Value) -> Option<i64> {
+	value
+		.as_i64()
+		.or_else(|| value.as_u64().and_then(|number| i64::try_from(number).ok()))
+		.or_else(|| value.as_f64().map(|number| number.round() as i64))
+}
+
+pub(super) fn json_scalar_to_string(value: &Value) -> Option<String> {
+	match value {
+		Value::String(text) if !text.is_empty() => Some(text.clone()),
+		Value::Number(number) => Some(number.to_string()),
+		Value::Bool(value) => Some(value.to_string()),
+		_ => None,
+	}
+}
+
+pub(super) fn nonblank_string(value: Option<&str>) -> Option<String> {
+	value.map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
+}
+
 fn profile_daily_usage_from_value(value: &Value) -> Option<CodexAccountProfileDailyUsageSummary> {
 	let date = nonblank_json_string(value.get("start_date"))?;
 	let tokens = nonnegative_number_as_i64(value.get("tokens"))?;
@@ -178,27 +221,6 @@ fn usage_window_from_value(value: Option<&Value>) -> Option<UsageWindow> {
 		remaining_percent,
 		resets_at_unix_epoch: value.get("reset_at").and_then(number_as_i64),
 	})
-}
-
-pub(super) fn preserve_cached_usage_windows(
-	summaries: &mut [CodexAccountActivitySummary],
-	cached_summaries: &[CodexAccountActivitySummary],
-	now_unix_epoch: i64,
-) {
-	for summary in summaries {
-		if account_summary_is_limited(summary) {
-			continue;
-		}
-
-		let Some(cached) =
-			cached_summaries.iter().find(|cached| account_summaries_match(summary, cached))
-		else {
-			continue;
-		};
-
-		preserve_primary_usage_window(summary, cached, now_unix_epoch);
-		preserve_secondary_usage_window(summary, cached, now_unix_epoch);
-	}
 }
 
 fn preserve_primary_usage_window(
@@ -289,30 +311,10 @@ fn rate_limit_reached_type_from_payload(payload: &Value) -> Option<String> {
 	json_scalar_to_string(reached)
 }
 
-pub(super) fn number_as_i64(value: &Value) -> Option<i64> {
-	value
-		.as_i64()
-		.or_else(|| value.as_u64().and_then(|number| i64::try_from(number).ok()))
-		.or_else(|| value.as_f64().map(|number| number.round() as i64))
-}
-
 fn nonnegative_number_as_i64(value: Option<&Value>) -> Option<i64> {
 	value.and_then(number_as_i64).map(|number| number.max(0))
 }
 
-pub(super) fn json_scalar_to_string(value: &Value) -> Option<String> {
-	match value {
-		Value::String(text) if !text.is_empty() => Some(text.clone()),
-		Value::Number(number) => Some(number.to_string()),
-		Value::Bool(value) => Some(value.to_string()),
-		_ => None,
-	}
-}
-
 fn nonblank_json_string(value: Option<&Value>) -> Option<String> {
 	value.and_then(json_scalar_to_string).and_then(|value| nonblank_string(Some(&value)))
-}
-
-pub(super) fn nonblank_string(value: Option<&str>) -> Option<String> {
-	value.map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
 }

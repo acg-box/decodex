@@ -1,12 +1,13 @@
 use std::path::Path;
 
-use crate::orchestrator::agent_evidence::capsules::runs;
 use crate::orchestrator::{
 	OperatorPostReviewLaneStatus,
-	agent_evidence::{self, AgentBlocker, AgentEvidenceProjectView, AgentRunCapsuleRef},
+	agent_evidence::{
+		self, AgentBlocker, AgentEvidenceProjectView, AgentRunCapsuleRef, capsules::runs,
+	},
 };
 
-pub(in crate::orchestrator) fn build_agent_blockers(
+pub(crate) fn build_agent_blockers(
 	project_view: &AgentEvidenceProjectView<'_>,
 	blockers_dir: &Path,
 	run_refs: &[AgentRunCapsuleRef],

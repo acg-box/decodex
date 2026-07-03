@@ -1,7 +1,6 @@
 //! Shared social artifact validation predicates.
 
-use serde_json::{Map, Value};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use crate::social_validation::{Map, OffsetDateTime, Rfc3339, Value};
 
 pub(super) fn validate_non_empty_string_list(
 	value: Option<&Value>,

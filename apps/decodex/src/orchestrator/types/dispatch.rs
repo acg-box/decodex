@@ -1,4 +1,4 @@
-use super::{
+use crate::orchestrator::types::{
 	Duration, PostReviewLaneClassification, PullRequestReviewState, RetainedReviewLane,
 	RetainedReviewLaneBlocked, RetainedReviewRunIdentity, RunSummary, TrackerIssue,
 };

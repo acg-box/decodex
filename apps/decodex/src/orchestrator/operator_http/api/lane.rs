@@ -1,10 +1,9 @@
 use std::time::Duration;
 
-use super::super::{
-	DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneSteerReport, LaneSteerRequest,
+use crate::orchestrator::operator_http::{
+	self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneSteerReport, LaneSteerRequest,
 	OperatorLaneInterruptHttpRequest, OperatorLaneSteerHttpRequest, Report, Result, ServiceConfig,
-	StateStore, eyre, http_response_bytes, json, lane_control, operator_http_query_value,
-	operator_http_query_value_alias, operator_http_request_body,
+	StateStore, eyre, lane_control,
 };
 
 pub(crate) fn build_operator_lane_inspect_http_response(
@@ -12,20 +11,43 @@ pub(crate) fn build_operator_lane_inspect_http_response(
 	request: &[u8],
 ) -> Vec<u8> {
 	match operator_lane_inspect_http_response_body(state_store, request) {
-		Ok(body) => http_response_bytes("200 OK", "application/json", &body),
+		Ok(body) => operator_http::http_response_bytes("200 OK", "application/json", &body),
 		Err(error) => operator_lane_error_http_response(error),
 	}
 }
 
-pub(super) fn operator_lane_inspect_http_response_body(
+pub(crate) fn build_operator_lane_interrupt_http_response(
+	state_store: &StateStore,
+	request: &[u8],
+) -> Vec<u8> {
+	match operator_lane_interrupt_http_response_body(state_store, request) {
+		Ok((status_line, body)) =>
+			operator_http::http_response_bytes(status_line, "application/json", &body),
+		Err(error) => operator_lane_error_http_response(error),
+	}
+}
+
+pub(crate) fn build_operator_lane_steer_http_response(
+	state_store: &StateStore,
+	request: &[u8],
+) -> Vec<u8> {
+	match operator_lane_steer_http_response_body(state_store, request) {
+		Ok((status_line, body)) =>
+			operator_http::http_response_bytes(status_line, "application/json", &body),
+		Err(error) => operator_lane_error_http_response(error),
+	}
+}
+
+pub(crate) fn operator_lane_inspect_http_response_body(
 	state_store: &StateStore,
 	request: &[u8],
 ) -> Result<Vec<u8>> {
-	let project_id = operator_http_query_value_alias(request, "projectId", "project_id")?;
-	let issue = operator_http_query_value(request, "issue")?
+	let project_id =
+		operator_http::operator_http_query_value_alias(request, "projectId", "project_id")?;
+	let issue = operator_http::operator_http_query_value(request, "issue")?
 		.filter(|issue| !issue.trim().is_empty())
 		.ok_or_else(|| eyre::eyre!("Lane inspect request requires issue query parameter."))?;
-	let run_id = operator_http_query_value_alias(request, "runId", "run_id")?;
+	let run_id = operator_http::operator_http_query_value_alias(request, "runId", "run_id")?;
 	let project = operator_lane_http_project(state_store, project_id.as_deref())?;
 	let report = lane_control::build_lane_inspect_report(
 		state_store,
@@ -37,21 +59,11 @@ pub(super) fn operator_lane_inspect_http_response_body(
 	serde_json::to_vec(&report).map_err(Into::into)
 }
 
-pub(crate) fn build_operator_lane_interrupt_http_response(
-	state_store: &StateStore,
-	request: &[u8],
-) -> Vec<u8> {
-	match operator_lane_interrupt_http_response_body(state_store, request) {
-		Ok((status_line, body)) => http_response_bytes(status_line, "application/json", &body),
-		Err(error) => operator_lane_error_http_response(error),
-	}
-}
-
-pub(super) fn operator_lane_interrupt_http_response_body(
+pub(crate) fn operator_lane_interrupt_http_response_body(
 	state_store: &StateStore,
 	request: &[u8],
 ) -> Result<(&'static str, Vec<u8>)> {
-	let body = operator_http_request_body(request)?;
+	let body = operator_http::operator_http_request_body(request)?;
 	let request: OperatorLaneInterruptHttpRequest = serde_json::from_slice(body)
 		.map_err(|error| eyre::eyre!("Lane interrupt request body was not valid JSON: {error}"))?;
 
@@ -77,21 +89,11 @@ pub(super) fn operator_lane_interrupt_http_response_body(
 	Ok((status_line, serde_json::to_vec(&report)?))
 }
 
-pub(crate) fn build_operator_lane_steer_http_response(
-	state_store: &StateStore,
-	request: &[u8],
-) -> Vec<u8> {
-	match operator_lane_steer_http_response_body(state_store, request) {
-		Ok((status_line, body)) => http_response_bytes(status_line, "application/json", &body),
-		Err(error) => operator_lane_error_http_response(error),
-	}
-}
-
-pub(super) fn operator_lane_steer_http_response_body(
+pub(crate) fn operator_lane_steer_http_response_body(
 	state_store: &StateStore,
 	request: &[u8],
 ) -> Result<(&'static str, Vec<u8>)> {
-	let body = operator_http_request_body(request)?;
+	let body = operator_http::operator_http_request_body(request)?;
 	let request: OperatorLaneSteerHttpRequest = serde_json::from_slice(body)
 		.map_err(|error| eyre::eyre!("Lane steer request body was not valid JSON: {error}"))?;
 	let issue = request
@@ -139,11 +141,11 @@ pub(super) fn operator_lane_steer_http_response_body(
 	Ok((status_line, serde_json::to_vec(&report)?))
 }
 
-pub(super) fn lane_steer_report_is_rejected_or_failed(report: &LaneSteerReport) -> bool {
+pub(crate) fn lane_steer_report_is_rejected_or_failed(report: &LaneSteerReport) -> bool {
 	matches!(report.outcome.as_str(), "rejected" | "failed" | "timed_out" | "fallback")
 }
 
-pub(super) fn operator_lane_http_project(
+pub(crate) fn operator_lane_http_project(
 	state_store: &StateStore,
 	project_id: Option<&str>,
 ) -> Result<ServiceConfig> {
@@ -172,9 +174,9 @@ pub(super) fn operator_lane_http_project(
 	ServiceConfig::from_path(registration.config_path())
 }
 
-pub(super) fn operator_lane_error_http_response(error: Report) -> Vec<u8> {
-	let body = serde_json::to_vec(&json!({ "error": error.to_string() }))
+pub(crate) fn operator_lane_error_http_response(error: Report) -> Vec<u8> {
+	let body = serde_json::to_vec(&operator_http::json!({ "error": error.to_string() }))
 		.unwrap_or_else(|_| br#"{"error":"lane request failed"}"#.to_vec());
 
-	http_response_bytes("400 Bad Request", "application/json", &body)
+	operator_http::http_response_bytes("400 Bad Request", "application/json", &body)
 }

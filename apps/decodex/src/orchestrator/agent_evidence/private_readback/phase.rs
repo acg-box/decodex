@@ -1,8 +1,8 @@
 use serde_json::Value;
 
-use crate::orchestrator::PrivateExecutionEvent;
-use crate::orchestrator::agent_evidence::{
-	PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PrivateEvidencePhaseAcceptanceSummary,
+use crate::orchestrator::{
+	PrivateExecutionEvent,
+	agent_evidence::{PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PrivateEvidencePhaseAcceptanceSummary},
 };
 
 pub(super) fn phase_acceptance_checks_from_private_events(

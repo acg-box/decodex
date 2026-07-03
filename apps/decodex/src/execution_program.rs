@@ -7,8 +7,6 @@ mod evaluation;
 mod intake;
 mod model;
 mod policy;
-#[cfg(test)]
-mod tests;
 mod validation;
 
 pub(crate) use self::{
@@ -25,3 +23,5 @@ pub(crate) use self::{
 		ExecutionDependencySnapshot, ExecutionProgramReadinessContext, ExecutionWorkflowPolicy,
 	},
 };
+
+#[cfg(test)] mod tests;

@@ -1,11 +1,9 @@
 //! Transactional Radar ledger writer.
 
-use std::{fs, path::Path};
-
-use rusqlite::{self, Connection};
-
-use crate::ledger::schema;
-use crate::{RecentCommit, prelude::Result};
+use crate::{
+	ledger::{self, Connection, Path, RecentCommit, fs, rusqlite},
+	prelude::Result,
+};
 
 #[derive(Debug)]
 pub(crate) struct RadarLedger {
@@ -19,7 +17,7 @@ impl RadarLedger {
 
 		let connection = Connection::open(path)?;
 
-		schema::initialize_ledger(&connection)?;
+		ledger::initialize_ledger(&connection)?;
 
 		connection.execute_batch("BEGIN IMMEDIATE")?;
 
@@ -32,7 +30,7 @@ impl RadarLedger {
 		commit: &RecentCommit,
 		pr_number: Option<u64>,
 	) -> Result<()> {
-		let timestamp = crate::utc_now_iso()?;
+		let timestamp = ledger::utc_now_iso()?;
 
 		self.connection.execute(
 			"
@@ -78,7 +76,7 @@ impl RadarLedger {
 		reason: &str,
 		confidence: Option<&str>,
 	) -> Result<()> {
-		let timestamp = crate::utc_now_iso()?;
+		let timestamp = ledger::utc_now_iso()?;
 
 		self.connection.execute(
 			"

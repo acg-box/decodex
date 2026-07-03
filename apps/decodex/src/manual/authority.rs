@@ -2,10 +2,9 @@ use std::path::Path;
 
 use crate::{
 	commit_message,
+	manual::ManualAuthority,
 	prelude::{Result, eyre},
 };
-
-use super::ManualAuthority;
 
 pub(super) fn resolve_authority(
 	config_path: Option<&Path>,

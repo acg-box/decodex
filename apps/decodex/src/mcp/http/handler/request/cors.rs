@@ -1,5 +1,4 @@
-use super::McpHttpHandler;
-use crate::mcp::http::{message::McpHttpRequest, security};
+use crate::mcp::http::{handler::request::McpHttpHandler, message::McpHttpRequest, security};
 
 impl McpHttpHandler {
 	pub(super) fn allowed_cors_origin(

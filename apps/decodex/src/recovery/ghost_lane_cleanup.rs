@@ -4,15 +4,13 @@ use crate::{
 	config::ServiceConfig,
 	orchestrator,
 	prelude::{Result, eyre},
+	recovery::{
+		GHOST_LANE_BLOCKED_CLASSIFICATION, GHOST_LANE_CLEANUP_EVENT, GHOST_LANE_TERMINAL_STATUS,
+		context::RecoveryContext, reports, reports::GhostLaneDiagnostic,
+	},
 	state::{RUN_CONTROL_CHANNEL_STATUS_FAILED, StateStore},
 	tracker::IssueTracker,
 	workflow::WorkflowDocument,
-};
-
-use super::{
-	GHOST_LANE_BLOCKED_CLASSIFICATION, GHOST_LANE_CLEANUP_EVENT, GHOST_LANE_TERMINAL_STATUS,
-	context::RecoveryContext,
-	reports::{GhostLaneDiagnostic, render_ghost_lane_issue},
 };
 
 pub(super) fn apply_ghost_lane_cleanup(
@@ -94,7 +92,7 @@ where
 
 	eyre::bail!(
 		"`recover ghost-lane cleanup` refused `{}` because live status reported blockers: {}",
-		render_ghost_lane_issue(diagnostic),
+		reports::render_ghost_lane_issue(diagnostic),
 		blockers.join(", ")
 	)
 }

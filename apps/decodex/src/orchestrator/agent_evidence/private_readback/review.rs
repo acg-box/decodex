@@ -1,9 +1,11 @@
 use serde_json::Value;
 
-use crate::orchestrator::PrivateExecutionEvent;
-use crate::orchestrator::agent_evidence::{
-	PrivateEvidenceReviewCheckpointSummary, PrivateEvidenceReviewRouteCount,
-	REVIEW_CHECKPOINT_EVENT_TYPE,
+use crate::orchestrator::{
+	PrivateExecutionEvent,
+	agent_evidence::{
+		PrivateEvidenceReviewCheckpointSummary, PrivateEvidenceReviewRouteCount,
+		REVIEW_CHECKPOINT_EVENT_TYPE,
+	},
 };
 
 pub(super) fn review_checkpoints_from_private_events(
@@ -161,9 +163,8 @@ fn review_checkpoint_next_action(status: &str) -> String {
 			"Repair accepted findings, rerun validation, and checkpoint the repaired head.",
 		),
 		"blocked" => String::from("Resolve the blocking review condition before continuing."),
-		"needs_architecture_review" => {
-			String::from("Escalate for an architecture decision before further repair churn.")
-		},
+		"needs_architecture_review" =>
+			String::from("Escalate for an architecture decision before further repair churn."),
 		_ => String::from("Inspect the Decodex Review checkpoint summary before continuing."),
 	}
 }

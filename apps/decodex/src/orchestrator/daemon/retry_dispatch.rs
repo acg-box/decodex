@@ -1,11 +1,6 @@
-use std::time::Instant;
-
-use crate::orchestrator::{
-	IssueDispatchMode, IssueTracker, Result, RetryDispatchDecision, RetryKind, RetryQueue,
-	ServiceConfig, StateStore, TargetIssueRunContext, WorkflowDocument, run_target_issue_once,
-};
-use crate::orchestrator::daemon_retry::{
-	clear_retry_schedule_and_release, retry_entry_is_temporarily_blocked,
+use crate::orchestrator::daemon::{
+	self, Instant, IssueDispatchMode, IssueTracker, Result, RetryDispatchDecision, RetryKind,
+	RetryQueue, ServiceConfig, StateStore, TargetIssueRunContext, WorkflowDocument,
 };
 
 pub(crate) fn plan_due_retry_run<T>(
@@ -49,7 +44,7 @@ where
 				IssueDispatchMode::ReviewRepair | IssueDispatchMode::Closeout
 			))
 		.then_some(workflow.frontmatter().tracker().in_progress_state());
-		let Some(summary) = run_target_issue_once(TargetIssueRunContext {
+		let Some(summary) = daemon::run_target_issue_once(TargetIssueRunContext {
 			tracker,
 			project,
 			workflow,
@@ -67,14 +62,19 @@ where
 			preferred_retry_budget_base: None,
 		})?
 		else {
-			if retry_entry_is_temporarily_blocked(tracker, project, workflow, state_store, &entry)?
-			{
+			if daemon::retry_entry_is_temporarily_blocked(
+				tracker,
+				project,
+				workflow,
+				state_store,
+				&entry,
+			)? {
 				blocked_issue_id.get_or_insert_with(|| entry.issue_id.clone());
 
 				continue;
 			}
 
-			clear_retry_schedule_and_release(retry_queue, state_store, &entry.issue_id)?;
+			daemon::clear_retry_schedule_and_release(retry_queue, state_store, &entry.issue_id)?;
 
 			continue;
 		};

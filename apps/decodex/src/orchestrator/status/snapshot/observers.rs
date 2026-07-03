@@ -2,14 +2,16 @@ use std::time::Instant;
 
 use time::OffsetDateTime;
 
-use crate::orchestrator::status::{
-	self, IssueTracker, LiveOperatorStatusObserverContext, OperatorConnectorBackoffStatus,
-	OperatorStatusSnapshot, ServiceConfig, StateStore, TrackerConnectorBackoff,
-	TrackerObserverOutcome,
+use crate::{
+	orchestrator::status::{
+		self, IssueTracker, LiveOperatorStatusObserverContext, OperatorConnectorBackoffStatus,
+		OperatorStatusSnapshot, ServiceConfig, StateStore, TrackerConnectorBackoff,
+		TrackerObserverOutcome,
+	},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
-pub(in crate::orchestrator) fn hydrate_live_operator_external_observers<T>(
+pub(crate) fn hydrate_live_operator_external_observers<T>(
 	context: LiveOperatorStatusObserverContext<'_, T>,
 	snapshot: &mut OperatorStatusSnapshot,
 ) -> Result<()>
@@ -71,7 +73,7 @@ where
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn pause_operator_snapshot_for_stored_tracker_backoff<T>(
+pub(crate) fn pause_operator_snapshot_for_stored_tracker_backoff<T>(
 	context: &LiveOperatorStatusObserverContext<'_, T>,
 	snapshot: &mut OperatorStatusSnapshot,
 ) -> Result<bool> {
@@ -88,7 +90,7 @@ pub(in crate::orchestrator) fn pause_operator_snapshot_for_stored_tracker_backof
 	Ok(true)
 }
 
-pub(in crate::orchestrator) fn apply_tracker_observer_outcome(
+pub(crate) fn apply_tracker_observer_outcome(
 	outcome: TrackerObserverOutcome,
 	snapshot: &mut OperatorStatusSnapshot,
 	state_store: &StateStore,
@@ -110,7 +112,7 @@ pub(in crate::orchestrator) fn apply_tracker_observer_outcome(
 	}
 }
 
-pub(in crate::orchestrator) fn pause_operator_snapshot_for_tracker_backoff(
+pub(crate) fn pause_operator_snapshot_for_tracker_backoff(
 	snapshot: &mut OperatorStatusSnapshot,
 	state_store: &StateStore,
 	project: &ServiceConfig,
@@ -124,7 +126,7 @@ pub(in crate::orchestrator) fn pause_operator_snapshot_for_tracker_backoff(
 	add_tracker_backoff_to_operator_snapshot(snapshot, &backoff);
 }
 
-pub(in crate::orchestrator) fn hydrate_queued_candidate_status_observer<T>(
+pub(crate) fn hydrate_queued_candidate_status_observer<T>(
 	context: &LiveOperatorStatusObserverContext<'_, T>,
 	snapshot: &mut OperatorStatusSnapshot,
 ) -> bool
@@ -171,7 +173,7 @@ where
 	}
 }
 
-pub(in crate::orchestrator) fn hydrate_post_review_lane_status_observer<T>(
+pub(crate) fn hydrate_post_review_lane_status_observer<T>(
 	context: &LiveOperatorStatusObserverContext<'_, T>,
 	snapshot: &mut OperatorStatusSnapshot,
 ) -> Result<bool>
@@ -226,7 +228,7 @@ where
 	}
 }
 
-pub(in crate::orchestrator) fn add_tracker_backoff_to_operator_snapshot(
+pub(crate) fn add_tracker_backoff_to_operator_snapshot(
 	snapshot: &mut OperatorStatusSnapshot,
 	backoff: &OperatorConnectorBackoffStatus,
 ) {
@@ -239,10 +241,7 @@ pub(in crate::orchestrator) fn add_tracker_backoff_to_operator_snapshot(
 	}
 }
 
-pub(in crate::orchestrator) fn add_operator_snapshot_warning(
-	snapshot: &mut OperatorStatusSnapshot,
-	warning: &str,
-) {
+pub(crate) fn add_operator_snapshot_warning(snapshot: &mut OperatorStatusSnapshot, warning: &str) {
 	if !snapshot.warnings.iter().any(|existing| existing == warning) {
 		snapshot.warnings.push(warning.to_owned());
 	}

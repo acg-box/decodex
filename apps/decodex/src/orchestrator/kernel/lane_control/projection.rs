@@ -3,7 +3,7 @@ use crate::orchestrator::kernel::{
 	state::{LaneStateAxes, LivenessState, OwnershipState, PolicyState, TerminalizationState},
 };
 
-pub(in crate::orchestrator) fn project_lane_control(
+pub(crate) fn project_lane_control(
 	input: &LaneControlKernelInput<'_>,
 ) -> LaneControlKernelProjection {
 	let has_fresh_execution = input.status_starting_or_running

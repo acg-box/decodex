@@ -1,8 +1,10 @@
-use crate::agent::codex_accounts::{
-	CodexAccountLogin,
-	pool::{CodexAccountPool, CodexAccountProvider},
+use crate::{
+	agent::codex_accounts::{
+		CodexAccountLogin,
+		pool::{CodexAccountPool, CodexAccountProvider},
+	},
+	prelude::{Result, eyre},
 };
-use crate::prelude::{Result, eyre};
 
 impl CodexAccountPool {
 	pub(in crate::agent::codex_accounts::pool) fn remember_selected_account(

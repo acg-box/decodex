@@ -105,6 +105,12 @@ impl LocalRepoInspector for LocalGitRepoInspector {
 	}
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct RepositoryIdentity {
+	pub(super) name: String,
+	pub(super) owner: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct PullRequestViewResponse {
 	#[serde(rename = "baseRefName")]
@@ -133,12 +139,6 @@ struct PullRequestRepositoryOwnerResponse {
 	login: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct RepositoryIdentity {
-	pub(super) name: String,
-	pub(super) owner: String,
-}
-
 pub(super) fn review_blocking_status_lines(status: &str) -> Vec<String> {
 	status
 		.lines()
@@ -147,17 +147,6 @@ pub(super) fn review_blocking_status_lines(status: &str) -> Vec<String> {
 		.filter(|line| !is_ignorable_runtime_status_line(line))
 		.map(ToOwned::to_owned)
 		.collect()
-}
-
-fn is_ignorable_runtime_status_line(line: &str) -> bool {
-	let Some(path) = line.strip_prefix("?? ") else {
-		return false;
-	};
-
-	path == ".decodex-run-activity"
-		|| path.starts_with(".decodex-run-activity/")
-		|| path == ".decodex-run-control"
-		|| path.starts_with(".decodex-run-control/")
 }
 
 pub(super) fn resolve_review_handoff_github_token(
@@ -181,60 +170,6 @@ pub(super) fn resolve_review_handoff_github_token(
 	}
 
 	Ok(value)
-}
-
-fn run_command_for_stdout(
-	command: &str,
-	args: &[&str],
-	cwd: &Path,
-	purpose: &str,
-) -> std::result::Result<String, String> {
-	let stdout = run_command_stdout(command, args, cwd, purpose)?;
-	let value = stdout.trim();
-
-	if value.is_empty() {
-		return Err(format!("Failed to {purpose} with `{command}`: command returned no output."));
-	}
-
-	Ok(value.to_owned())
-}
-
-fn run_command_for_stdout_allow_empty(
-	command: &str,
-	args: &[&str],
-	cwd: &Path,
-	purpose: &str,
-) -> std::result::Result<String, String> {
-	run_command_stdout(command, args, cwd, purpose)
-}
-
-fn run_command_stdout(
-	command: &str,
-	args: &[&str],
-	cwd: &Path,
-	purpose: &str,
-) -> std::result::Result<String, String> {
-	let output = Command::new(command)
-		.args(args)
-		.current_dir(cwd)
-		.output()
-		.map_err(|error| format!("Failed to {purpose} with `{command}`: {error}"))?;
-
-	if !output.status.success() {
-		let stderr = String::from_utf8_lossy(&output.stderr);
-		let stdout = String::from_utf8_lossy(&output.stdout);
-		let detail = if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() };
-
-		if detail.is_empty() {
-			return Err(format!("Failed to {purpose} with `{command}`."));
-		}
-
-		return Err(format!("Failed to {purpose} with `{command}`: {detail}"));
-	}
-
-	let stdout = String::from_utf8_lossy(&output.stdout);
-
-	Ok(stdout.into_owned())
 }
 
 pub(super) fn resolve_lane_default_branch(cwd: &Path) -> std::result::Result<String, String> {
@@ -336,6 +271,71 @@ pub(super) fn parse_github_repository_identity(
 	}
 
 	Ok(RepositoryIdentity { name: name.to_owned(), owner: owner.to_owned() })
+}
+
+fn is_ignorable_runtime_status_line(line: &str) -> bool {
+	let Some(path) = line.strip_prefix("?? ") else {
+		return false;
+	};
+
+	path == ".decodex-run-activity"
+		|| path.starts_with(".decodex-run-activity/")
+		|| path == ".decodex-run-control"
+		|| path.starts_with(".decodex-run-control/")
+}
+
+fn run_command_for_stdout(
+	command: &str,
+	args: &[&str],
+	cwd: &Path,
+	purpose: &str,
+) -> std::result::Result<String, String> {
+	let stdout = run_command_stdout(command, args, cwd, purpose)?;
+	let value = stdout.trim();
+
+	if value.is_empty() {
+		return Err(format!("Failed to {purpose} with `{command}`: command returned no output."));
+	}
+
+	Ok(value.to_owned())
+}
+
+fn run_command_for_stdout_allow_empty(
+	command: &str,
+	args: &[&str],
+	cwd: &Path,
+	purpose: &str,
+) -> std::result::Result<String, String> {
+	run_command_stdout(command, args, cwd, purpose)
+}
+
+fn run_command_stdout(
+	command: &str,
+	args: &[&str],
+	cwd: &Path,
+	purpose: &str,
+) -> std::result::Result<String, String> {
+	let output = Command::new(command)
+		.args(args)
+		.current_dir(cwd)
+		.output()
+		.map_err(|error| format!("Failed to {purpose} with `{command}`: {error}"))?;
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		let stdout = String::from_utf8_lossy(&output.stdout);
+		let detail = if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() };
+
+		if detail.is_empty() {
+			return Err(format!("Failed to {purpose} with `{command}`."));
+		}
+
+		return Err(format!("Failed to {purpose} with `{command}`: {detail}"));
+	}
+
+	let stdout = String::from_utf8_lossy(&output.stdout);
+
+	Ok(stdout.into_owned())
 }
 
 fn parse_github_remote_with_authority(remote_url: &str) -> std::result::Result<&str, String> {

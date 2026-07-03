@@ -1,20 +1,12 @@
 //! Public Radar ledger command entrypoints.
 
-use std::{collections::BTreeMap, path::PathBuf};
-
-use crate::ledger::{
-	files::{self},
-	ingest::{self},
-	records::{self, ArtifactLinkInput},
-	schema, stats,
-};
 use crate::{
-	DEFAULT_LEDGER_PATH,
-	prelude::Result,
-	requests::{
+	ledger::{
+		self, ArtifactLinkInput, BTreeMap, DEFAULT_LEDGER_PATH, PathBuf,
 		RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
 		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
 	},
+	prelude::Result,
 };
 
 /// Return the default local Radar ledger path.
@@ -24,7 +16,7 @@ pub(crate) fn default_ledger_path() -> PathBuf {
 
 /// Initialize the local Radar ledger schema.
 pub(crate) fn ledger_bootstrap(request: &RadarLedgerBootstrapRequest) -> Result<PathBuf> {
-	let connection = schema::open_ledger(&request.db_path)?;
+	let connection = ledger::open_ledger(&request.db_path)?;
 
 	connection.close().map_err(|(_, error)| error)?;
 
@@ -33,52 +25,52 @@ pub(crate) fn ledger_bootstrap(request: &RadarLedgerBootstrapRequest) -> Result<
 
 /// Ingest one bundle and optional derived artifacts into the local Radar ledger.
 pub(crate) fn ledger_ingest(request: &RadarLedgerIngestRequest) -> Result<BTreeMap<String, i64>> {
-	let connection = schema::open_ledger(&request.db_path)?;
+	let connection = ledger::open_ledger(&request.db_path)?;
 
-	ingest::ingest_artifact_set(
+	ledger::ingest_artifact_set(
 		&connection,
 		&request.bundle_path,
 		request.analysis_path.as_deref(),
 		request.signal_path.as_deref(),
 	)?;
 
-	stats::summary_counts(&connection)
+	ledger::summary_counts(&connection)
 }
 
 /// Ingest existing checked-in Radar artifacts into the local Radar ledger.
 pub(crate) fn ledger_ingest_existing(
 	request: &RadarLedgerIngestExistingRequest,
 ) -> Result<BTreeMap<String, i64>> {
-	let connection = schema::open_ledger(&request.db_path)?;
+	let connection = ledger::open_ledger(&request.db_path)?;
 	let mut ingested = 0_i64;
 
-	for bundle_path in files::json_files_in_directory(&request.bundles_dir)? {
-		let stem = files::file_stem(&bundle_path)?;
+	for bundle_path in ledger::json_files_in_directory(&request.bundles_dir)? {
+		let stem = ledger::file_stem(&bundle_path)?;
 		let candidate_analysis = request.analysis_dir.join(format!("{stem}.analysis.json"));
 		let candidate_signal = request.signals_dir.join(format!("{stem}.json"));
 
-		ingest::ingest_artifact_set(
+		ledger::ingest_artifact_set(
 			&connection,
 			&bundle_path,
-			files::existing_path(&candidate_analysis),
-			files::existing_path(&candidate_signal),
+			ledger::existing_path(&candidate_analysis),
+			ledger::existing_path(&candidate_signal),
 		)?;
 
 		ingested += 1;
 	}
 
 	let linked_signal_paths =
-		files::linked_signal_paths(&request.bundles_dir, &request.signals_dir)?;
+		ledger::linked_signal_paths(&request.bundles_dir, &request.signals_dir)?;
 
-	for signal_path in files::json_files_in_directory(&request.signals_dir)? {
+	for signal_path in ledger::json_files_in_directory(&request.signals_dir)? {
 		if linked_signal_paths.contains(&signal_path) {
 			continue;
 		}
 
-		ingest::record_signal_artifact(&connection, &signal_path)?;
+		ledger::record_signal_artifact(&connection, &signal_path)?;
 	}
 
-	let mut summary = stats::summary_counts(&connection)?;
+	let mut summary = ledger::summary_counts(&connection)?;
 
 	summary.insert("bundles_ingested".into(), ingested);
 
@@ -89,9 +81,9 @@ pub(crate) fn ledger_ingest_existing(
 pub(crate) fn ledger_artifact_link(
 	request: &RadarLedgerArtifactLinkRequest,
 ) -> Result<BTreeMap<String, i64>> {
-	let connection = schema::open_ledger(&request.db_path)?;
+	let connection = ledger::open_ledger(&request.db_path)?;
 
-	records::record_artifact(
+	ledger::record_artifact(
 		&connection,
 		ArtifactLinkInput {
 			repo: &request.repo,
@@ -102,12 +94,12 @@ pub(crate) fn ledger_artifact_link(
 		},
 	)?;
 
-	stats::summary_counts(&connection)
+	ledger::summary_counts(&connection)
 }
 
 /// Read local Radar ledger summary counts.
 pub(crate) fn ledger_summary(request: &RadarLedgerSummaryRequest) -> Result<BTreeMap<String, i64>> {
-	let connection = schema::open_ledger(&request.db_path)?;
+	let connection = ledger::open_ledger(&request.db_path)?;
 
-	stats::summary_counts(&connection)
+	ledger::summary_counts(&connection)
 }

@@ -6,7 +6,7 @@ use crate::{
 	state::RunActivityMarker,
 };
 
-pub(in crate::orchestrator::status_queued_attention) fn operator_active_label_attention_summary(
+pub(crate) fn operator_active_label_attention_summary(
 	reason: &str,
 	marker: Option<&RunActivityMarker>,
 	retry_budget_attempts: i64,
@@ -53,7 +53,7 @@ pub(in crate::orchestrator::status_queued_attention) fn operator_active_label_at
 	))
 }
 
-pub(in crate::orchestrator::status_queued_attention) fn operator_active_label_attention_next_action(
+pub(crate) fn operator_active_label_attention_next_action(
 	reason: &str,
 	issue_identifier: &str,
 	worktree_tracked_change_state: WorktreeTrackedChangeState,

@@ -2,7 +2,7 @@ use crate::orchestrator::{
 	self, OperatorStatusSnapshot, OperatorWorktreeStatus, QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT,
 };
 
-pub(in crate::orchestrator) fn rendered_recovery_worktrees(
+pub(crate) fn rendered_recovery_worktrees(
 	snapshot: &OperatorStatusSnapshot,
 ) -> Vec<(&str, &OperatorWorktreeStatus)> {
 	let mut rendered_worktrees = snapshot

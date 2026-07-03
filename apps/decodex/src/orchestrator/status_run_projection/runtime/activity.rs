@@ -1,10 +1,12 @@
-use crate::orchestrator::{
-	ChildAgentActivitySummary, OperatorRunAppServerState, ProtocolActivitySummary,
-	RUN_LEASE_IDLE_TIMEOUT, RunActivityMarker, status_run_projection,
+use crate::{
+	orchestrator::{
+		ChildAgentActivitySummary, OperatorRunAppServerState, ProtocolActivitySummary,
+		RUN_LEASE_IDLE_TIMEOUT, RunActivityMarker, status_run_projection,
+	},
+	tracker::public_text,
 };
-use crate::tracker::public_text;
 
-pub(in crate::orchestrator) fn operator_run_child_agent_activity(
+pub(crate) fn operator_run_child_agent_activity(
 	marker: Option<&RunActivityMarker>,
 	stored_summary: Option<&ChildAgentActivitySummary>,
 	now_unix_epoch: i64,
@@ -18,7 +20,7 @@ pub(in crate::orchestrator) fn operator_run_child_agent_activity(
 	stored_summary.cloned().map(ChildAgentActivitySummary::sealed_durable)
 }
 
-pub(in crate::orchestrator) fn operator_run_protocol_activity(
+pub(crate) fn operator_run_protocol_activity(
 	marker: Option<&RunActivityMarker>,
 	stored_summary: Option<&ProtocolActivitySummary>,
 	app_server_state: &OperatorRunAppServerState,
@@ -64,9 +66,7 @@ pub(in crate::orchestrator) fn operator_run_protocol_activity(
 	Some(summary)
 }
 
-pub(in crate::orchestrator) fn sanitize_operator_protocol_activity_summary(
-	summary: &mut ProtocolActivitySummary,
-) {
+pub(crate) fn sanitize_operator_protocol_activity_summary(summary: &mut ProtocolActivitySummary) {
 	for event in &mut summary.recent_events {
 		if let Some(detail) = event.detail.as_deref()
 			&& !operator_protocol_activity_detail_is_public(detail)
@@ -76,13 +76,13 @@ pub(in crate::orchestrator) fn sanitize_operator_protocol_activity_summary(
 	}
 }
 
-pub(in crate::orchestrator) fn operator_protocol_activity_detail_is_public(detail: &str) -> bool {
+pub(crate) fn operator_protocol_activity_detail_is_public(detail: &str) -> bool {
 	public_text::validate_public_text_field("protocol_activity.detail", detail).is_ok()
 		&& !contains_protocol_activity_host_path_shape(detail)
 		&& !contains_protocol_activity_secret_shape(detail)
 }
 
-pub(in crate::orchestrator) fn contains_protocol_activity_host_path_shape(detail: &str) -> bool {
+pub(crate) fn contains_protocol_activity_host_path_shape(detail: &str) -> bool {
 	let mut previous = None;
 	let mut chars = detail.char_indices().peekable();
 
@@ -118,7 +118,7 @@ pub(in crate::orchestrator) fn contains_protocol_activity_host_path_shape(detail
 	false
 }
 
-pub(in crate::orchestrator) fn contains_protocol_activity_secret_shape(detail: &str) -> bool {
+pub(crate) fn contains_protocol_activity_secret_shape(detail: &str) -> bool {
 	detail.split(protocol_activity_token_separator).any(|token| {
 		let normalized = token.to_ascii_lowercase();
 
@@ -128,11 +128,11 @@ pub(in crate::orchestrator) fn contains_protocol_activity_secret_shape(detail: &
 	})
 }
 
-pub(in crate::orchestrator) fn protocol_activity_token_separator(character: char) -> bool {
+pub(crate) fn protocol_activity_token_separator(character: char) -> bool {
 	!(character.is_ascii_alphanumeric() || character == '_' || character == '-')
 }
 
-pub(in crate::orchestrator) fn is_high_entropy_protocol_activity_token(token: &str) -> bool {
+pub(crate) fn is_high_entropy_protocol_activity_token(token: &str) -> bool {
 	if token.len() < 24 {
 		return false;
 	}

@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::orchestrator::types::operator_status::run::OperatorRunStatus;
-use crate::state::ChildAgentActivityBucket;
+use crate::{
+	orchestrator::types::operator_status::run::OperatorRunStatus, state::ChildAgentActivityBucket,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct OperatorHistoryLaneStatus {

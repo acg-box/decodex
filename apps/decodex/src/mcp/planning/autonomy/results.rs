@@ -4,109 +4,103 @@ use crate::{
 	autonomy_objective::AutonomyObjectiveContract,
 	autonomy_proposal::AutonomyProposal,
 	autonomy_signal::AutonomySignal,
-	mcp::{
-		autonomy_resources::{
-			mcp_autonomy_objective_summary, mcp_autonomy_proposal_summary,
-			mcp_autonomy_signal_summary,
-		},
-		observability::mcp_sanitized_value,
-	},
+	mcp::{autonomy_resources, observability},
 };
 
-pub(super) fn autonomy_objective_tool_result(
+pub(in crate::mcp) fn autonomy_objective_tool_result(
 	project_id: &str,
 	objective: &AutonomyObjectiveContract,
 	mode: &str,
 	persisted: bool,
 	updated_at: Option<&str>,
 ) -> Value {
-	mcp_sanitized_value(serde_json::json!({
+	observability::mcp_sanitized_value(serde_json::json!({
 		"schema": "decodex.mcp.autonomy_objective_result/1",
 		"status": "ok",
 		"mode": mode,
 		"persisted": persisted,
 		"project_id": project_id,
-		"objective": mcp_autonomy_objective_summary(objective, updated_at),
+		"objective": autonomy_resources::mcp_autonomy_objective_summary(objective, updated_at),
 		"authority_effect": "draft_only_no_execution_authority",
 		"next_action": "Accept an Objective Contract only through explicit human or accepted-policy authority; MCP profile access is not acceptance authority.",
 		"updated_at": updated_at
 	}))
 }
 
-pub(super) fn autonomy_objective_accept_tool_result(
+pub(in crate::mcp) fn autonomy_objective_accept_tool_result(
 	project_id: &str,
 	objective: &AutonomyObjectiveContract,
 	mode: &str,
 	persisted: bool,
 	updated_at: Option<&str>,
 ) -> Value {
-	mcp_sanitized_value(serde_json::json!({
+	observability::mcp_sanitized_value(serde_json::json!({
 		"schema": "decodex.mcp.autonomy_objective_result/1",
 		"status": "ok",
 		"mode": mode,
 		"persisted": persisted,
 		"project_id": project_id,
-		"objective": mcp_autonomy_objective_summary(objective, updated_at),
+		"objective": autonomy_resources::mcp_autonomy_objective_summary(objective, updated_at),
 		"authority_effect": "accepted_objective_no_execution_authority",
 		"next_action": "Accepted Objective Contracts allow objective-bound signals and proposals; execution still requires proposal acceptance, Decision Contract promotion, and Program Intake.",
 		"updated_at": updated_at
 	}))
 }
 
-pub(super) fn autonomy_signal_tool_result(
+pub(in crate::mcp) fn autonomy_signal_tool_result(
 	project_id: &str,
 	signal: &AutonomySignal,
 	mode: &str,
 	persisted: bool,
 	updated_at: Option<&str>,
 ) -> Value {
-	mcp_sanitized_value(serde_json::json!({
+	observability::mcp_sanitized_value(serde_json::json!({
 		"schema": "decodex.mcp.autonomy_signal_result/1",
 		"status": "ok",
 		"mode": mode,
 		"persisted": persisted,
 		"project_id": project_id,
-		"signal": mcp_autonomy_signal_summary(signal, updated_at),
+		"signal": autonomy_resources::mcp_autonomy_signal_summary(signal, updated_at),
 		"authority_effect": "proposal_only_evidence_no_execution_authority",
 		"next_action": "Cluster accepted-objective signals into a non-executable proposal before any Decision Contract promotion.",
 		"updated_at": updated_at
 	}))
 }
 
-pub(super) fn autonomy_proposal_tool_result(
+pub(in crate::mcp) fn autonomy_proposal_tool_result(
 	project_id: &str,
 	proposal: &AutonomyProposal,
 	mode: &str,
 	persisted: bool,
 	updated_at: Option<&str>,
 ) -> Value {
-	mcp_sanitized_value(serde_json::json!({
+	observability::mcp_sanitized_value(serde_json::json!({
 		"schema": "decodex.mcp.autonomy_proposal_result/1",
 		"status": "ok",
 		"mode": mode,
 		"persisted": persisted,
 		"project_id": project_id,
-		"proposal": mcp_autonomy_proposal_summary(proposal, updated_at),
+		"proposal": autonomy_resources::mcp_autonomy_proposal_summary(proposal, updated_at),
 		"authority_effect": "non_executable_proposal_evidence",
 		"next_action": "Challenge the proposal and request explicit promotion authority before creating a latent Decision Contract candidate.",
 		"updated_at": updated_at
 	}))
 }
 
-pub(super) fn autonomy_challenge_tool_result(
+pub(in crate::mcp) fn autonomy_challenge_tool_result(
 	project_id: &str,
 	proposal: &AutonomyProposal,
 	mode: &str,
 	persisted: bool,
 	updated_at: Option<&str>,
 ) -> Value {
-	mcp_sanitized_value(serde_json::json!({
+	observability::mcp_sanitized_value(serde_json::json!({
 		"schema": "decodex.mcp.autonomy_challenge_result/1",
 		"status": "ok",
 		"mode": mode,
 		"persisted": persisted,
 		"project_id": project_id,
-		"proposal": mcp_autonomy_proposal_summary(proposal, updated_at),
+		"proposal": autonomy_resources::mcp_autonomy_proposal_summary(proposal, updated_at),
 		"challenge_evidence_count": proposal.challenge_evidence().len(),
 		"authority_effect": "challenge_evidence_not_acceptance_authority",
 		"next_action": "Carry challenge objections as promotion constraints and request explicit promotion authority before creating execution work.",
@@ -114,20 +108,20 @@ pub(super) fn autonomy_challenge_tool_result(
 	}))
 }
 
-pub(super) fn autonomy_promotion_request_result(
+pub(in crate::mcp) fn autonomy_promotion_request_result(
 	project_id: &str,
 	proposal: &AutonomyProposal,
 	mode: &str,
 	persisted: bool,
 	decision_contract_id: Option<&str>,
 ) -> Value {
-	mcp_sanitized_value(serde_json::json!({
+	observability::mcp_sanitized_value(serde_json::json!({
 		"schema": "decodex.mcp.autonomy_promotion_request_result/1",
 		"status": "ok",
 		"mode": mode,
 		"persisted": persisted,
 		"project_id": project_id,
-		"proposal": mcp_autonomy_proposal_summary(proposal, None),
+		"proposal": autonomy_resources::mcp_autonomy_proposal_summary(proposal, None),
 		"decision_contract_id": decision_contract_id,
 		"execution_authority_granted": false,
 		"required_authority": [

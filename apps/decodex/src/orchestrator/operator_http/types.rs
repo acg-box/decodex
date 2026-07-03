@@ -11,9 +11,10 @@ use std::{
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::prelude::{Result, eyre};
-
-use super::{assets::DASHBOARD_MAX_WEBSOCKET_CLIENTS, dashboard::dashboard_event_for_subscription};
+use crate::{
+	orchestrator::operator_http::{assets::DASHBOARD_MAX_WEBSOCKET_CLIENTS, dashboard},
+	prelude::eyre,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum OperatorRequestRoute {
@@ -51,7 +52,7 @@ pub(crate) struct DashboardEventHub {
 	next_client_id: Arc<Mutex<u64>>,
 }
 impl DashboardEventHub {
-	pub(crate) fn subscribe(&self) -> Result<DashboardClientRegistration> {
+	pub(crate) fn subscribe(&self) -> crate::prelude::Result<DashboardClientRegistration> {
 		let (event_tx, event_rx) = mpsc::channel();
 		let mut clients = self
 			.clients
@@ -110,7 +111,9 @@ impl DashboardEventHub {
 		subscription: &DashboardClientSubscription,
 	) -> Option<DashboardBroadcastEvent> {
 		self.last_run_activity.lock().ok().and_then(|event| {
-			event.as_ref().and_then(|event| dashboard_event_for_subscription(event, subscription))
+			event
+				.as_ref()
+				.and_then(|event| dashboard::dashboard_event_for_subscription(event, subscription))
 		})
 	}
 
@@ -127,12 +130,6 @@ impl DashboardEventHub {
 	}
 }
 
-#[derive(Debug)]
-pub(super) struct DashboardClientHandle {
-	id: u64,
-	sender: Sender<DashboardBroadcastEvent>,
-}
-
 pub(crate) struct DashboardClientRegistration {
 	id: u64,
 	receiver: Receiver<DashboardBroadcastEvent>,
@@ -146,6 +143,7 @@ impl DashboardClientRegistration {
 		self.receiver.recv_timeout(timeout)
 	}
 }
+
 impl Drop for DashboardClientRegistration {
 	fn drop(&mut self) {
 		if let Ok(mut clients) = self.clients.lock() {
@@ -153,6 +151,7 @@ impl Drop for DashboardClientRegistration {
 		}
 	}
 }
+
 #[derive(Clone, Debug)]
 pub(crate) struct DashboardBroadcastEvent {
 	pub(crate) event_type: &'static str,
@@ -164,6 +163,17 @@ pub(crate) struct DashboardClientSubscription {
 	pub(crate) project_id: Option<String>,
 	pub(crate) issue_id: Option<String>,
 	pub(crate) run_id: Option<String>,
+}
+
+pub(crate) struct DashboardRunActivityEvent {
+	pub(crate) fingerprint: Vec<u8>,
+	pub(crate) event: DashboardBroadcastEvent,
+}
+
+#[derive(Debug)]
+pub(super) struct DashboardClientHandle {
+	id: u64,
+	sender: Sender<DashboardBroadcastEvent>,
 }
 
 #[derive(Default)]
@@ -239,9 +249,4 @@ pub(super) struct DashboardControlAck<'a> {
 	pub(super) issue_id: Option<&'a str>,
 	pub(super) run_id: Option<&'a str>,
 	pub(super) subscription: Option<&'a DashboardClientSubscription>,
-}
-
-pub(crate) struct DashboardRunActivityEvent {
-	pub(crate) fingerprint: Vec<u8>,
-	pub(crate) event: DashboardBroadcastEvent,
 }

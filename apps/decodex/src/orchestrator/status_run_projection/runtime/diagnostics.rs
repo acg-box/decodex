@@ -1,12 +1,15 @@
 use std::time::Duration;
 
-use crate::orchestrator::{
-	self, CONTINUATION_PENDING_RUN_STATUS, OperatorRunTiming, PrivateExecutionEvent,
-	ProtocolActivitySummary, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_IDLE,
-	RUN_OPERATION_WAITING_EXTERNAL, TERMINAL_GUARDED_RUN_STATUS, Value, state,
+use crate::{
+	orchestrator::{
+		self, CONTINUATION_PENDING_RUN_STATUS, OperatorRunTiming, PrivateExecutionEvent,
+		ProtocolActivitySummary, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_IDLE,
+		RUN_OPERATION_WAITING_EXTERNAL, TERMINAL_GUARDED_RUN_STATUS, Value,
+	},
+	state,
 };
 
-pub(in crate::orchestrator) fn classify_operator_run_operation(
+pub(crate) fn classify_operator_run_operation(
 	phase: &str,
 	marker_current_operation: Option<&str>,
 ) -> String {
@@ -25,7 +28,7 @@ pub(in crate::orchestrator) fn classify_operator_run_operation(
 	}
 }
 
-pub(in crate::orchestrator) fn operator_run_is_suspected_stall(
+pub(crate) fn operator_run_is_suspected_stall(
 	phase: &str,
 	last_progress_unix_epoch: Option<i64>,
 	now_unix_epoch: i64,
@@ -45,13 +48,11 @@ pub(in crate::orchestrator) fn operator_run_is_suspected_stall(
 		})
 }
 
-pub(in crate::orchestrator) fn suspected_operator_run_stall_threshold(
-	idle_timeout: Duration,
-) -> Duration {
+pub(crate) fn suspected_operator_run_stall_threshold(idle_timeout: Duration) -> Duration {
 	Duration::from_secs((idle_timeout.as_secs() / 2).max(1))
 }
 
-pub(in crate::orchestrator) fn operator_run_progress_diagnostic(
+pub(crate) fn operator_run_progress_diagnostic(
 	phase: &str,
 	timing: &OperatorRunTiming,
 	protocol_activity: Option<&ProtocolActivitySummary>,
@@ -95,7 +96,7 @@ pub(in crate::orchestrator) fn operator_run_progress_diagnostic(
 	progress_is_stale.then(|| String::from("protocol_only_activity"))
 }
 
-pub(in crate::orchestrator) fn operator_latest_repo_gate_failure_progress_diagnostic(
+pub(crate) fn operator_latest_repo_gate_failure_progress_diagnostic(
 	private_events: &[PrivateExecutionEvent],
 ) -> Option<String> {
 	private_events
@@ -105,7 +106,7 @@ pub(in crate::orchestrator) fn operator_latest_repo_gate_failure_progress_diagno
 		.and_then(operator_repo_gate_failure_progress_diagnostic)
 }
 
-pub(in crate::orchestrator) fn operator_repo_gate_failure_progress_diagnostic(
+pub(crate) fn operator_repo_gate_failure_progress_diagnostic(
 	event: &PrivateExecutionEvent,
 ) -> Option<String> {
 	if event.event_type() != "phase_goal_transition" {
@@ -128,7 +129,7 @@ pub(in crate::orchestrator) fn operator_repo_gate_failure_progress_diagnostic(
 	Some(format!("repo_gate_failure:{error_class}; failed_command:{failed_command}"))
 }
 
-pub(in crate::orchestrator) fn protocol_activity_is_non_work_only(
+pub(crate) fn protocol_activity_is_non_work_only(
 	protocol_activity: &ProtocolActivitySummary,
 ) -> bool {
 	!protocol_activity.recent_events.is_empty()
@@ -138,7 +139,7 @@ pub(in crate::orchestrator) fn protocol_activity_is_non_work_only(
 			.all(|event| !state::protocol_event_counts_as_work_progress(&event.event_type))
 }
 
-pub(in crate::orchestrator) fn visible_operator_run_retry_schedule(
+pub(crate) fn visible_operator_run_retry_schedule(
 	status: &str,
 	retry_kind: Option<&str>,
 	retry_ready_at_unix_epoch: Option<i64>,
@@ -155,7 +156,7 @@ pub(in crate::orchestrator) fn visible_operator_run_retry_schedule(
 	(retry_kind.map(str::to_owned), Some(retry_ready_at_unix_epoch))
 }
 
-pub(in crate::orchestrator) fn classify_operator_run_phase(
+pub(crate) fn classify_operator_run_phase(
 	status: &str,
 	retry_kind: Option<&str>,
 	retry_ready_at_unix_epoch: Option<i64>,
@@ -181,9 +182,8 @@ pub(in crate::orchestrator) fn classify_operator_run_phase(
 
 	match status {
 		"starting" | "running" => (String::from("executing"), None),
-		CONTINUATION_PENDING_RUN_STATUS => {
-			(String::from("waiting_continuation"), Some(String::from("turn_boundary")))
-		},
+		CONTINUATION_PENDING_RUN_STATUS =>
+			(String::from("waiting_continuation"), Some(String::from("turn_boundary"))),
 		"succeeded" => (String::from("completed"), None),
 		"failed" | "interrupted" | TERMINAL_GUARDED_RUN_STATUS => (String::from("failed"), None),
 		other => (other.to_owned(), None),

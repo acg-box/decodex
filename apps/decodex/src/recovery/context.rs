@@ -18,6 +18,7 @@ use crate::{
 };
 
 pub(super) const LINEAR_RATE_LIMIT_BACKOFF_WARNING: &str = "tracker_rate_limited";
+
 const LINEAR_RATE_LIMIT_BACKOFF_SECS: i64 = 15 * 60;
 const LINEAR_TRANSIENT_TIMEOUT_BACKOFF_WARNING: &str = "tracker_transient_timeout";
 const LINEAR_TRANSIENT_TIMEOUT_BACKOFF_SECS: i64 = 60;
@@ -60,24 +61,6 @@ pub(super) fn load_recovery_context_for_dry_run(
 	load_recovery_context_with_policy(config_path, runtime_mutation_policy)
 }
 
-fn load_recovery_context_with_policy(
-	config_path: Option<&Path>,
-	runtime_mutation_policy: RecoveryRuntimeMutationPolicy,
-) -> Result<RecoveryContext> {
-	let state_store = runtime::open_runtime_store()?;
-	let config_path = resolve_recovery_config_path(config_path, &state_store)?;
-	let config = ServiceConfig::from_path(&config_path)?;
-	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
-	let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
-
-	if runtime_mutation_policy.allows_runtime_writes() {
-		runtime::register_project_config(&state_store, &config_path, true)?;
-	}
-	state_store.observe_dispatch_slot_root(config.service_id(), config.worktree_root())?;
-
-	Ok(RecoveryContext { config, workflow, state_store, tracker, runtime_mutation_policy })
-}
-
 pub(super) fn active_recovery_tracker_backoff_message(
 	context: &RecoveryContext,
 ) -> Result<Option<String>> {
@@ -117,9 +100,8 @@ pub(super) fn remember_recovery_tracker_backoff_message(
 		let (reset_unix_epoch, reset_source) =
 			match parse_recovery_rate_limit_reset_unix_epoch(&message) {
 				Some(reset) if reset > now_unix_epoch => (reset, "linear"),
-				_ => {
-					(now_unix_epoch.saturating_add(LINEAR_RATE_LIMIT_BACKOFF_SECS), "local_default")
-				},
+				_ =>
+					(now_unix_epoch.saturating_add(LINEAR_RATE_LIMIT_BACKOFF_SECS), "local_default"),
 			};
 
 		(
@@ -171,6 +153,25 @@ pub(super) fn remember_recovery_tracker_backoff_message(
 		reset_unix_epoch,
 		reset_unix_epoch.saturating_sub(now_unix_epoch),
 	))
+}
+
+fn load_recovery_context_with_policy(
+	config_path: Option<&Path>,
+	runtime_mutation_policy: RecoveryRuntimeMutationPolicy,
+) -> Result<RecoveryContext> {
+	let state_store = runtime::open_runtime_store()?;
+	let config_path = resolve_recovery_config_path(config_path, &state_store)?;
+	let config = ServiceConfig::from_path(&config_path)?;
+	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
+	let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
+
+	if runtime_mutation_policy.allows_runtime_writes() {
+		runtime::register_project_config(&state_store, &config_path, true)?;
+	}
+
+	state_store.observe_dispatch_slot_root(config.service_id(), config.worktree_root())?;
+
+	Ok(RecoveryContext { config, workflow, state_store, tracker, runtime_mutation_policy })
 }
 
 fn parse_recovery_rate_limit_reset_unix_epoch(message: &str) -> Option<i64> {

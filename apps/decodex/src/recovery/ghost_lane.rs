@@ -1,30 +1,29 @@
 //! Ghost-lane recovery command orchestration.
 
-use super::{
-	GHOST_LANE_TERMINAL_STATUS, GhostLaneCleanupRequest, GhostLaneDiagnoseRequest,
-	GhostLaneRecoveryReport, active_recovery_tracker_backoff_message, apply_ghost_lane_cleanup,
-	apply_ghost_lane_live_status_blockers, diagnose_ghost_lanes, diagnose_ghost_lanes_read_only,
-	ensure_ghost_lane_live_status_allows_cleanup, load_recovery_context_for_dry_run,
-	load_recovery_context_read_only, remember_recovery_tracker_backoff_message,
-	render_ghost_lane_issue, render_ghost_lane_recovery_report,
-};
-use crate::prelude::{Result, eyre};
 use std::path::Path;
+
+use crate::{
+	prelude::{Result, eyre},
+	recovery::{
+		self, GHOST_LANE_TERMINAL_STATUS, GhostLaneCleanupRequest, GhostLaneDiagnoseRequest,
+		GhostLaneRecoveryReport,
+	},
+};
 
 /// Run a read-only missing-issue ghost-lane diagnostic.
 pub(crate) fn run_ghost_lane_diagnose(
 	config_path: Option<&Path>,
 	request: &GhostLaneDiagnoseRequest,
 ) -> Result<()> {
-	let context = load_recovery_context_read_only(config_path)?;
+	let context = recovery::load_recovery_context_read_only(config_path)?;
 
-	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
+	if let Some(message) = recovery::active_recovery_tracker_backoff_message(&context)? {
 		println!("{message}");
 
 		return Ok(());
 	}
 
-	let mut diagnostics = match diagnose_ghost_lanes_read_only(
+	let mut diagnostics = match recovery::diagnose_ghost_lanes_read_only(
 		context.config.service_id(),
 		context.config.worktree_root(),
 		&context.state_store,
@@ -33,9 +32,11 @@ pub(crate) fn run_ghost_lane_diagnose(
 	) {
 		Ok(diagnostics) => diagnostics,
 		Err(error) => {
-			if let Some(message) =
-				remember_recovery_tracker_backoff_message(&context, &error, "ghost_lane_recovery")
-			{
+			if let Some(message) = recovery::remember_recovery_tracker_backoff_message(
+				&context,
+				&error,
+				"ghost_lane_recovery",
+			) {
 				println!("{message}");
 
 				return Ok(());
@@ -45,10 +46,13 @@ pub(crate) fn run_ghost_lane_diagnose(
 		},
 	};
 
-	if let Err(error) = apply_ghost_lane_live_status_blockers(&context, &mut diagnostics) {
-		if let Some(message) =
-			remember_recovery_tracker_backoff_message(&context, &error, "ghost_lane_recovery")
-		{
+	if let Err(error) = recovery::apply_ghost_lane_live_status_blockers(&context, &mut diagnostics)
+	{
+		if let Some(message) = recovery::remember_recovery_tracker_backoff_message(
+			&context,
+			&error,
+			"ghost_lane_recovery",
+		) {
 			println!("{message}");
 
 			return Ok(());
@@ -63,7 +67,7 @@ pub(crate) fn run_ghost_lane_diagnose(
 	if request.json {
 		println!("{}", serde_json::to_string_pretty(&report)?);
 	} else {
-		print!("{}", render_ghost_lane_recovery_report(&report));
+		print!("{}", recovery::render_ghost_lane_recovery_report(&report));
 	}
 
 	Ok(())
@@ -74,16 +78,16 @@ pub(crate) fn run_ghost_lane_cleanup(
 	config_path: Option<&Path>,
 	request: &GhostLaneCleanupRequest,
 ) -> Result<()> {
-	let context = load_recovery_context_for_dry_run(config_path, request.dry_run)?;
+	let context = recovery::load_recovery_context_for_dry_run(config_path, request.dry_run)?;
 
-	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
+	if let Some(message) = recovery::active_recovery_tracker_backoff_message(&context)? {
 		println!("{message}");
 
 		return Ok(());
 	}
 
 	let mut diagnostics = match if context.runtime_mutation_policy.allows_runtime_writes() {
-		diagnose_ghost_lanes(
+		recovery::diagnose_ghost_lanes(
 			context.config.service_id(),
 			context.config.worktree_root(),
 			&context.state_store,
@@ -91,7 +95,7 @@ pub(crate) fn run_ghost_lane_cleanup(
 			Some(&request.issue),
 		)
 	} else {
-		diagnose_ghost_lanes_read_only(
+		recovery::diagnose_ghost_lanes_read_only(
 			context.config.service_id(),
 			context.config.worktree_root(),
 			&context.state_store,
@@ -101,9 +105,11 @@ pub(crate) fn run_ghost_lane_cleanup(
 	} {
 		Ok(diagnostics) => diagnostics,
 		Err(error) => {
-			if let Some(message) =
-				remember_recovery_tracker_backoff_message(&context, &error, "ghost_lane_recovery")
-			{
+			if let Some(message) = recovery::remember_recovery_tracker_backoff_message(
+				&context,
+				&error,
+				"ghost_lane_recovery",
+			) {
 				println!("{message}");
 
 				return Ok(());
@@ -124,10 +130,14 @@ pub(crate) fn run_ghost_lane_cleanup(
 		);
 	}
 
-	if let Err(error) = ensure_ghost_lane_live_status_allows_cleanup(&context, &diagnostic) {
-		if let Some(message) =
-			remember_recovery_tracker_backoff_message(&context, &error, "ghost_lane_recovery")
-		{
+	if let Err(error) =
+		recovery::ensure_ghost_lane_live_status_allows_cleanup(&context, &diagnostic)
+	{
+		if let Some(message) = recovery::remember_recovery_tracker_backoff_message(
+			&context,
+			&error,
+			"ghost_lane_recovery",
+		) {
 			println!("{message}");
 
 			return Ok(());
@@ -140,7 +150,7 @@ pub(crate) fn run_ghost_lane_cleanup(
 		println!(
 			"dry run: ghost lane cleanup validated for project={} issue={} run_id={} attempt={} classification={}",
 			diagnostic.project_id,
-			render_ghost_lane_issue(&diagnostic),
+			recovery::render_ghost_lane_issue(&diagnostic),
 			diagnostic.run_id,
 			diagnostic.attempt_number,
 			diagnostic.classification
@@ -149,12 +159,12 @@ pub(crate) fn run_ghost_lane_cleanup(
 		return Ok(());
 	}
 
-	apply_ghost_lane_cleanup(&context.state_store, &diagnostic)?;
+	recovery::apply_ghost_lane_cleanup(&context.state_store, &diagnostic)?;
 
 	println!(
 		"ghost lane cleanup ok: project={} issue={} run_id={} attempt={} status={} lease_cleared=yes",
 		diagnostic.project_id,
-		render_ghost_lane_issue(&diagnostic),
+		recovery::render_ghost_lane_issue(&diagnostic),
 		diagnostic.run_id,
 		diagnostic.attempt_number,
 		GHOST_LANE_TERMINAL_STATUS

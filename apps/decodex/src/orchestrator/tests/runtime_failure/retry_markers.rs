@@ -1,13 +1,18 @@
-use super::{
-	AppServerCapabilityPreflightFailure, IssueDispatchMode, IssueRunPlan, OffsetDateTime,
-	RepoGateFailureKind, Report, StateStore, WorktreeSpec, fs, orchestrator, sample_issue, state,
-	temp_project_layout,
+use crate::orchestrator::{
+	RepoGateFailure,
+	tests::{
+		self,
+		runtime_failure::{
+			AppServerCapabilityPreflightFailure, IssueDispatchMode, IssueRunPlan, OffsetDateTime,
+			RepoGateFailureKind, Report, StateStore, WorktreeSpec, fs, orchestrator, state,
+		},
+	},
 };
 
 #[test]
 fn repo_gate_lock_contention_runtime_retry_writes_specific_retry_schedule_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -28,7 +33,7 @@ fn repo_gate_lock_contention_runtime_retry_writes_specific_retry_schedule_marker
 		run_id: String::from("pub-101-attempt-1-123"),
 		retry_budget_base: 0,
 	};
-	let error = Report::new(orchestrator::RepoGateFailure::new(
+	let error = Report::new(RepoGateFailure::new(
 		RepoGateFailureKind::GitLockContention,
 		String::from(
 			"Failed to inspect tracked-file cleanliness after repo gate verification in `/tmp/repo`: fatal: Unable to create '.git/index.lock': File exists.",
@@ -53,8 +58,8 @@ fn repo_gate_lock_contention_runtime_retry_writes_specific_retry_schedule_marker
 
 #[test]
 fn app_server_preflight_timeout_runtime_retry_writes_failure_retry_schedule_marker() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -98,8 +103,8 @@ fn app_server_preflight_timeout_runtime_retry_writes_failure_retry_schedule_mark
 
 #[test]
 fn retry_budget_current_failure_does_not_double_count_handed_off_base() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
-	let issue = sample_issue("In Progress", &[]);
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
@@ -138,7 +143,7 @@ fn retry_budget_current_failure_does_not_double_count_handed_off_base() {
 
 #[test]
 fn repo_gate_terminal_failures_preserve_specific_error_class_after_retry_exhaustion() {
-	let error = Report::new(orchestrator::RepoGateFailure::new(
+	let error = Report::new(RepoGateFailure::new(
 		RepoGateFailureKind::VerifyCommandFailed,
 		String::from("Repo verify command `cargo make test` failed in `/tmp/repo`: test failed"),
 	));
@@ -155,7 +160,7 @@ fn repo_gate_terminal_failures_preserve_specific_error_class_after_retry_exhaust
 #[test]
 fn repo_gate_lock_contention_terminal_failures_preserve_specific_error_class_after_retry_exhaustion()
  {
-	let error = Report::new(orchestrator::RepoGateFailure::new(
+	let error = Report::new(RepoGateFailure::new(
 		RepoGateFailureKind::GitLockContention,
 		String::from(
 			"Failed to inspect tracked-file cleanliness after repo gate verification in `/tmp/repo`: fatal: Unable to create '.git/index.lock': File exists.",

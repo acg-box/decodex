@@ -1,13 +1,12 @@
 use serde_json::{self, Value};
 
-use super::{
-	super::{McpError, McpServer, ReadResourceParams},
-	templates::{docs_resource_templates, runtime_resource_templates},
-	types::McpResource,
+use crate::mcp::{
+	McpError, McpServer, ReadResourceParams,
+	resources::{templates, types::McpResource},
 };
 
 impl McpServer {
-	pub(in crate::mcp) fn list_resources(&self) -> crate::prelude::Result<Value, McpError> {
+	pub(in crate::mcp) fn list_resources(&self) -> Result<Value, McpError> {
 		let mut resources = self.context.docs_resources()?;
 
 		resources.extend(self.context.decision_contract_resources()?);
@@ -49,19 +48,16 @@ impl McpServer {
 	}
 
 	pub(in crate::mcp) fn list_resource_templates(&self) -> Value {
-		let mut resource_templates = docs_resource_templates();
+		let mut resource_templates = templates::docs_resource_templates();
 
-		resource_templates.extend(runtime_resource_templates());
+		resource_templates.extend(templates::runtime_resource_templates());
 
 		serde_json::json!({
 			"resourceTemplates": resource_templates
 		})
 	}
 
-	pub(in crate::mcp) fn read_resource(
-		&self,
-		params: Option<Value>,
-	) -> crate::prelude::Result<Value, McpError> {
+	pub(in crate::mcp) fn read_resource(&self, params: Option<Value>) -> Result<Value, McpError> {
 		let params = params.ok_or_else(McpError::invalid_params)?;
 		let params = serde_json::from_value::<ReadResourceParams>(params)
 			.map_err(|_| McpError::invalid_params())?;

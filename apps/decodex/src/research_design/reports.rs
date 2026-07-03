@@ -2,11 +2,11 @@ use serde::Serialize;
 
 use crate::{
 	loop_contract::{DecisionContract, DecisionContractStatus, DecisionProposedIssue},
+	research_design::{
+		ResearchDesignOutcome,
+		normalized::{self, NormalizedResearchDesignInput},
+	},
 	state::DecisionContractRecord,
-};
-use crate::research_design::{
-	ResearchDesignOutcome,
-	normalized::{self, NormalizedResearchDesignInput},
 };
 
 /// Compiler report for one persisted research/design run.

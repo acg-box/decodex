@@ -1,9 +1,12 @@
-use super::{PendingReviewCompletion, RunCompletionDisposition, TrackerToolBridge, eyre};
+use crate::{
+	agent::tracker_tool_bridge::review::{
+		PendingReviewCompletion, RunCompletionDisposition, TrackerToolBridge, eyre,
+	},
+	prelude::Result,
+};
 
 impl<'a> TrackerToolBridge<'a> {
-	pub(crate) fn completion_disposition(
-		&self,
-	) -> crate::prelude::Result<RunCompletionDisposition> {
+	pub(crate) fn completion_disposition(&self) -> Result<RunCompletionDisposition> {
 		let Some(review_context) = self.review_context.as_ref() else {
 			eyre::bail!(
 				"Review handoff context is unavailable for issue `{}`.",
@@ -61,7 +64,7 @@ impl<'a> TrackerToolBridge<'a> {
 
 	pub(crate) fn finalized_completion_disposition(
 		&self,
-	) -> crate::prelude::Result<Option<RunCompletionDisposition>> {
+	) -> Result<Option<RunCompletionDisposition>> {
 		let Some(finalized_path) = *self.finalized_completion_path.borrow() else {
 			return Ok(None);
 		};

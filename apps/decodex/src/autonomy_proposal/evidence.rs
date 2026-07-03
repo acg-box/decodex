@@ -2,7 +2,8 @@ use crate::{
 	autonomy_proposal::{
 		AutonomyProposalChallengeEvidence, AutonomyProposalChallengeInput,
 		AutonomyProposalObjectiveLineage, AutonomyProposalRefusal, AutonomyProposalRefusalReason,
-		AutonomyProposalSourceSignal, validation,
+		AutonomyProposalSourceSignal,
+		validation::{self},
 	},
 	autonomy_signal::AutonomySignal,
 	prelude::{Result, eyre},

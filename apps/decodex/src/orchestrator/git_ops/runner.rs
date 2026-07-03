@@ -2,81 +2,14 @@ use std::path::Path;
 
 use color_eyre::Report;
 
-use super::{
-	RepoGateCommandOutcome, RepoGateFailure, RepoGateFailureDiagnostic, RepoGateFailureKind,
-	command::run_repo_gate_shell_command,
-	diagnostic::repo_gate_failure_kind_for_output,
-	repo_gate_output_text,
-	rewrite::{
-		read_repo_gate_tracked_diff_snapshot, repo_gate_diff_rewrite_outcome,
-		repo_gate_scope_envelope_failure_or_source,
+use crate::{
+	orchestrator::git_ops::{
+		self, RepoGateCommandOutcome, RepoGateFailure, RepoGateFailureDiagnostic,
+		RepoGateFailureKind, command, diagnostic,
+		rewrite::{self},
 	},
+	prelude::Result,
 };
-use crate::prelude::Result;
-
-fn run_canonicalize_commands(commands: &[String], cwd: &Path) -> Result<()> {
-	for command in commands {
-		let output = run_repo_gate_shell_command(command, cwd)?;
-
-		if !output.status.success() {
-			let output_text = repo_gate_output_text(&output);
-			let diagnostic = RepoGateFailureDiagnostic::from_output(
-				"canonicalize",
-				command,
-				&output,
-				&output_text,
-			);
-
-			return Err(Report::new(
-				RepoGateFailure::new(
-					repo_gate_failure_kind_for_output(
-						RepoGateFailureKind::CanonicalizeCommandFailed,
-						&output_text,
-					),
-					format!(
-						"Repo canonicalize command `{}` failed in `{}`: {}",
-						command,
-						cwd.display(),
-						output_text
-					),
-				)
-				.with_diagnostic(diagnostic),
-			));
-		}
-	}
-
-	Ok(())
-}
-
-fn run_verify_commands(commands: &[String], cwd: &Path) -> Result<()> {
-	for command in commands {
-		let output = run_repo_gate_shell_command(command, cwd)?;
-
-		if !output.status.success() {
-			let output_text = repo_gate_output_text(&output);
-			let diagnostic =
-				RepoGateFailureDiagnostic::from_output("verify", command, &output, &output_text);
-
-			return Err(Report::new(
-				RepoGateFailure::new(
-					repo_gate_failure_kind_for_output(
-						RepoGateFailureKind::VerifyCommandFailed,
-						&output_text,
-					),
-					format!(
-						"Repo verify command `{}` failed in `{}`: {}",
-						command,
-						cwd.display(),
-						output_text
-					),
-				)
-				.with_diagnostic(diagnostic),
-			));
-		}
-	}
-
-	Ok(())
-}
 
 pub(crate) fn run_repo_gate_commands(
 	canonicalize_commands: &[String],
@@ -101,10 +34,10 @@ pub(crate) fn run_repo_gate_commands_with_rewrite_policy(
 	cwd: &Path,
 	allow_owned_rewrites: bool,
 ) -> Result<RepoGateCommandOutcome> {
-	let baseline_tracked_diff = read_repo_gate_tracked_diff_snapshot(cwd, "baseline")?;
+	let baseline_tracked_diff = rewrite::read_repo_gate_tracked_diff_snapshot(cwd, "baseline")?;
 
 	if let Err(error) = run_canonicalize_commands(canonicalize_commands, cwd) {
-		return Err(repo_gate_scope_envelope_failure_or_source(
+		return Err(rewrite::repo_gate_scope_envelope_failure_or_source(
 			cwd,
 			"canonicalize",
 			&baseline_tracked_diff,
@@ -112,7 +45,7 @@ pub(crate) fn run_repo_gate_commands_with_rewrite_policy(
 		));
 	}
 	if let Err(error) = run_verify_commands(verify_commands, cwd) {
-		return Err(repo_gate_scope_envelope_failure_or_source(
+		return Err(rewrite::repo_gate_scope_envelope_failure_or_source(
 			cwd,
 			"verify",
 			&baseline_tracked_diff,
@@ -120,10 +53,74 @@ pub(crate) fn run_repo_gate_commands_with_rewrite_policy(
 		));
 	}
 
-	repo_gate_diff_rewrite_outcome(
+	rewrite::repo_gate_diff_rewrite_outcome(
 		cwd,
 		"verification",
 		&baseline_tracked_diff,
 		allow_owned_rewrites,
 	)
+}
+
+fn run_canonicalize_commands(commands: &[String], cwd: &Path) -> Result<()> {
+	for command in commands {
+		let output = command::run_repo_gate_shell_command(command, cwd)?;
+
+		if !output.status.success() {
+			let output_text = git_ops::repo_gate_output_text(&output);
+			let diagnostic = RepoGateFailureDiagnostic::from_output(
+				"canonicalize",
+				command,
+				&output,
+				&output_text,
+			);
+
+			return Err(Report::new(
+				RepoGateFailure::new(
+					diagnostic::repo_gate_failure_kind_for_output(
+						RepoGateFailureKind::CanonicalizeCommandFailed,
+						&output_text,
+					),
+					format!(
+						"Repo canonicalize command `{}` failed in `{}`: {}",
+						command,
+						cwd.display(),
+						output_text
+					),
+				)
+				.with_diagnostic(diagnostic),
+			));
+		}
+	}
+
+	Ok(())
+}
+
+fn run_verify_commands(commands: &[String], cwd: &Path) -> Result<()> {
+	for command in commands {
+		let output = command::run_repo_gate_shell_command(command, cwd)?;
+
+		if !output.status.success() {
+			let output_text = git_ops::repo_gate_output_text(&output);
+			let diagnostic =
+				RepoGateFailureDiagnostic::from_output("verify", command, &output, &output_text);
+
+			return Err(Report::new(
+				RepoGateFailure::new(
+					diagnostic::repo_gate_failure_kind_for_output(
+						RepoGateFailureKind::VerifyCommandFailed,
+						&output_text,
+					),
+					format!(
+						"Repo verify command `{}` failed in `{}`: {}",
+						command,
+						cwd.display(),
+						output_text
+					),
+				)
+				.with_diagnostic(diagnostic),
+			));
+		}
+	}
+
+	Ok(())
 }

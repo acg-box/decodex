@@ -2,23 +2,26 @@ use std::path::{Path, PathBuf};
 
 use color_eyre::Report;
 
-use super::{
-	dynamic_tools::validated_dynamic_tool_specs,
-	protocol::{
-		self, AppServerClient, EffectiveThreadConfig, InitializeResponse, LoginAccountParams,
-		LoginAccountResponse, ThreadResumeRequest, ThreadSessionResponse, ThreadStartRequest,
-	},
-	runtime_types::{AppServerRunRequest, RequestDispatchContext, RequestWaitPhase, RunRecorder},
-	server_requests::handle_server_request_while_waiting,
-	transport::{annotate_transport_failure_phase, transport_failure_at_phase},
-};
 use crate::{
 	agent::{
+		app_server::{
+			dynamic_tools::validated_dynamic_tool_specs,
+			protocol::{
+				self, AppServerClient, EffectiveThreadConfig, InitializeResponse,
+				LoginAccountParams, LoginAccountResponse, ThreadResumeRequest,
+				ThreadSessionResponse, ThreadStartRequest,
+			},
+			runtime_types::{
+				AppServerRunRequest, RequestDispatchContext, RequestWaitPhase, RunRecorder,
+			},
+			server_requests,
+			transport::{self},
+		},
 		codex_accounts::{CodexAccountAuthFailure, CodexAccountLogin},
 		json_rpc::{AppServerHomePreflightFailure, ResolvedAppServerCodexHomeEnv},
 		tracker_tool_bridge::DynamicToolHandler,
 	},
-	prelude::eyre,
+	prelude::{Result, eyre},
 	state::{CodexAccountActivitySummary, StateStore},
 };
 
@@ -27,12 +30,12 @@ pub(super) fn initialize_client_for_run(
 	recorder: &mut RunRecorder<'_>,
 	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
 	expected_codex_home: &ResolvedAppServerCodexHomeEnv,
-) -> crate::prelude::Result<InitializeResponse> {
-	let response = annotate_transport_failure_phase(
+) -> Result<InitializeResponse> {
+	let response = transport::annotate_transport_failure_phase(
 		client.initialize_with_handler(
 			dynamic_tool_handler.is_some(),
 			|connection, wire_message, server_request| {
-				handle_server_request_while_waiting(
+				server_requests::handle_server_request_while_waiting(
 					connection,
 					recorder,
 					wire_message,
@@ -59,7 +62,7 @@ pub(super) fn login_codex_account_for_run(
 	client: &mut AppServerClient,
 	recorder: &mut RunRecorder<'_>,
 	request: &AppServerRunRequest<'_>,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	let Some(account_provider) = request.codex_account_provider else {
 		return Ok(());
 	};
@@ -76,11 +79,11 @@ pub(super) fn login_codex_account_for_run(
 
 	record_codex_account_login(recorder, account.summary())?;
 
-	let response = annotate_transport_failure_phase(
+	let response = transport::annotate_transport_failure_phase(
 		client.login_account_with_handler(
 			login_account_params(&account),
 			|connection, wire_message, server_request| {
-				handle_server_request_while_waiting(
+				server_requests::handle_server_request_while_waiting(
 					connection,
 					recorder,
 					wire_message,
@@ -148,83 +151,12 @@ pub(super) fn start_or_resume_thread_session(
 	client: &mut AppServerClient,
 	recorder: &mut RunRecorder<'_>,
 	request: &AppServerRunRequest<'_>,
-) -> crate::prelude::Result<ThreadSessionResponse> {
+) -> Result<ThreadSessionResponse> {
 	if let Some(resume_thread_id) = request.resume_thread_id.as_deref() {
 		return resume_existing_thread_session(client, recorder, request, resume_thread_id);
 	}
 
 	start_fresh_thread_session(client, recorder, request)
-}
-
-fn start_fresh_thread_session(
-	client: &mut AppServerClient,
-	recorder: &mut RunRecorder<'_>,
-	request: &AppServerRunRequest<'_>,
-) -> crate::prelude::Result<ThreadSessionResponse> {
-	let thread_start_request = build_thread_start_request(request)?;
-
-	annotate_transport_failure_phase(
-		client.start_thread_with_handler(
-			thread_start_request,
-			|connection, wire_message, server_request| {
-				handle_server_request_while_waiting(
-					connection,
-					recorder,
-					wire_message,
-					server_request,
-					RequestDispatchContext::new(
-						RequestWaitPhase::ThreadStart,
-						request.dynamic_tool_handler,
-						request.codex_account_provider,
-						None,
-						None,
-					),
-				)
-			},
-		),
-		RequestWaitPhase::ThreadStart,
-	)
-}
-
-fn resume_existing_thread_session(
-	client: &mut AppServerClient,
-	recorder: &mut RunRecorder<'_>,
-	request: &AppServerRunRequest<'_>,
-	resume_thread_id: &str,
-) -> crate::prelude::Result<ThreadSessionResponse> {
-	match client.resume_thread_with_handler(
-		build_thread_resume_request(resume_thread_id, request),
-		|connection, wire_message, server_request| {
-			handle_server_request_while_waiting(
-				connection,
-				recorder,
-				wire_message,
-				server_request,
-				RequestDispatchContext::new(
-					RequestWaitPhase::ThreadResume,
-					request.dynamic_tool_handler,
-					request.codex_account_provider,
-					Some(resume_thread_id),
-					None,
-				),
-			)
-		},
-	) {
-		Ok(response) => Ok(response),
-		Err(error) if thread_resume_error_allows_fallback(&error) => {
-			recorder.record(
-				"thread/resume/miss",
-				&serde_json::json!({
-					"requestedThreadId": resume_thread_id,
-					"error": error.to_string(),
-				})
-				.to_string(),
-			)?;
-
-			start_fresh_thread_session(client, recorder, request)
-		},
-		Err(error) => Err(transport_failure_at_phase(error, RequestWaitPhase::ThreadResume)),
-	}
 }
 
 pub(super) fn record_thread_session_start(
@@ -233,7 +165,7 @@ pub(super) fn record_thread_session_start(
 	recorder: &mut RunRecorder<'_>,
 	thread_id: &str,
 	effective_thread_config: &EffectiveThreadConfig,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	state_store.update_run_thread(&request.run_id, thread_id)?;
 	recorder.set_thread_id(thread_id)?;
 	recorder.set_effective_runtime(effective_thread_config)?;
@@ -245,7 +177,7 @@ pub(super) fn record_thread_session_start(
 
 pub(super) fn build_thread_start_request(
 	request: &AppServerRunRequest<'_>,
-) -> crate::prelude::Result<ThreadStartRequest> {
+) -> Result<ThreadStartRequest> {
 	let dynamic_tools = request
 		.dynamic_tool_handler
 		.map(validated_dynamic_tool_specs)
@@ -281,30 +213,10 @@ pub(super) fn login_account_params(account: &CodexAccountLogin) -> LoginAccountP
 	}
 }
 
-fn record_codex_account_login(
-	recorder: &mut RunRecorder<'_>,
-	summary: &CodexAccountActivitySummary,
-) -> crate::prelude::Result<()> {
-	recorder.record(
-		"account/login/start",
-		&serde_json::json!({
-			"type": "chatgptAuthTokens",
-			"accountFingerprint": summary.account_fingerprint.as_str(),
-			"planType": summary.plan_type.as_deref(),
-			"status": summary.status.as_str(),
-			"refreshStatus": summary.refresh_status.as_str(),
-			"primaryRemainingPercent": summary.primary_remaining_percent,
-			"secondaryRemainingPercent": summary.secondary_remaining_percent,
-			"rateLimitReachedType": summary.rate_limit_reached_type.as_deref(),
-		})
-		.to_string(),
-	)
-}
-
 pub(super) fn validate_effective_thread_config(
 	cwd: &str,
 	runtime: &EffectiveThreadConfig,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	if runtime.cwd != cwd {
 		eyre::bail!(
 			"app_server_protocol_failure: effective cwd `{}` did not match requested worktree `{cwd}`.",
@@ -329,7 +241,7 @@ pub(super) fn validate_effective_thread_config(
 pub(super) fn validate_initialize_codex_home(
 	expected: &ResolvedAppServerCodexHomeEnv,
 	response: &InitializeResponse,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	let expected_home = normalized_home_path(expected.codex_home());
 	let resolved_home = normalized_home_path(Path::new(&response.codex_home));
 
@@ -349,10 +261,6 @@ pub(super) fn validate_initialize_codex_home(
 	Ok(())
 }
 
-fn normalized_home_path(path: &Path) -> PathBuf {
-	path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
-}
-
 pub(super) fn thread_resume_error_allows_fallback(error: &Report) -> bool {
 	let message = error.to_string().to_lowercase();
 
@@ -361,4 +269,100 @@ pub(super) fn thread_resume_error_allows_fallback(error: &Report) -> bool {
 
 pub(super) fn thread_missing_error_message_allows_discard(message: &str) -> bool {
 	message.contains("no rollout found for thread id") || message.contains("thread not found")
+}
+
+fn start_fresh_thread_session(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &AppServerRunRequest<'_>,
+) -> Result<ThreadSessionResponse> {
+	let thread_start_request = build_thread_start_request(request)?;
+
+	transport::annotate_transport_failure_phase(
+		client.start_thread_with_handler(
+			thread_start_request,
+			|connection, wire_message, server_request| {
+				server_requests::handle_server_request_while_waiting(
+					connection,
+					recorder,
+					wire_message,
+					server_request,
+					RequestDispatchContext::new(
+						RequestWaitPhase::ThreadStart,
+						request.dynamic_tool_handler,
+						request.codex_account_provider,
+						None,
+						None,
+					),
+				)
+			},
+		),
+		RequestWaitPhase::ThreadStart,
+	)
+}
+
+fn resume_existing_thread_session(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &AppServerRunRequest<'_>,
+	resume_thread_id: &str,
+) -> Result<ThreadSessionResponse> {
+	match client.resume_thread_with_handler(
+		build_thread_resume_request(resume_thread_id, request),
+		|connection, wire_message, server_request| {
+			server_requests::handle_server_request_while_waiting(
+				connection,
+				recorder,
+				wire_message,
+				server_request,
+				RequestDispatchContext::new(
+					RequestWaitPhase::ThreadResume,
+					request.dynamic_tool_handler,
+					request.codex_account_provider,
+					Some(resume_thread_id),
+					None,
+				),
+			)
+		},
+	) {
+		Ok(response) => Ok(response),
+		Err(error) if thread_resume_error_allows_fallback(&error) => {
+			recorder.record(
+				"thread/resume/miss",
+				&serde_json::json!({
+					"requestedThreadId": resume_thread_id,
+					"error": error.to_string(),
+				})
+				.to_string(),
+			)?;
+
+			start_fresh_thread_session(client, recorder, request)
+		},
+		Err(error) =>
+			Err(transport::transport_failure_at_phase(error, RequestWaitPhase::ThreadResume)),
+	}
+}
+
+fn record_codex_account_login(
+	recorder: &mut RunRecorder<'_>,
+	summary: &CodexAccountActivitySummary,
+) -> Result<()> {
+	recorder.record(
+		"account/login/start",
+		&serde_json::json!({
+			"type": "chatgptAuthTokens",
+			"accountFingerprint": summary.account_fingerprint.as_str(),
+			"planType": summary.plan_type.as_deref(),
+			"status": summary.status.as_str(),
+			"refreshStatus": summary.refresh_status.as_str(),
+			"primaryRemainingPercent": summary.primary_remaining_percent,
+			"secondaryRemainingPercent": summary.secondary_remaining_percent,
+			"rateLimitReachedType": summary.rate_limit_reached_type.as_deref(),
+		})
+		.to_string(),
+	)
+}
+
+fn normalized_home_path(path: &Path) -> PathBuf {
+	path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }

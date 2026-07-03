@@ -4,7 +4,7 @@ mod lane_state;
 mod marker;
 
 #[allow(unused_imports)]
-pub(in crate::orchestrator) use self::{
+pub(crate) use self::{
 	classification::{
 		apply_non_github_review_post_review_classification,
 		apply_pre_orchestration_post_review_classification,

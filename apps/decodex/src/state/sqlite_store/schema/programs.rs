@@ -1,6 +1,5 @@
-use super::{
-	Result, SqliteStateStore, execution_program_record_from_row_parts,
-	execution_program_runtime_row_parts,
+use crate::state::sqlite_store::schema::{
+	self, Result, SqliteStateStore, execution_program_runtime_row_parts,
 };
 
 impl SqliteStateStore {
@@ -138,7 +137,7 @@ ON program_issue_mappings (project_id, issue_id, updated_at_unix);
 		let mut records = Vec::new();
 
 		for row in rows {
-			records.push(execution_program_record_from_row_parts(row?)?);
+			records.push(schema::execution_program_record_from_row_parts(row?)?);
 		}
 
 		drop(statement);

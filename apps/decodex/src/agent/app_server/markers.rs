@@ -3,17 +3,21 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use super::{
-	AppServerRunRequest, CodexAccountActivitySummary, CodexAccountMarker, EffectiveRuntimeMarker,
-	EffectiveThreadConfig, RUN_CONTROL_CHANNEL_DIR, RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE,
-	RUN_OPERATION_AGENT_RUN, RUN_OPERATION_APP_SERVER_PREFLIGHT, RunControlChannel, StateStore,
-	state,
+use crate::{
+	agent::app_server::{
+		AppServerRunRequest, CodexAccountActivitySummary, CodexAccountMarker,
+		EffectiveRuntimeMarker, EffectiveThreadConfig, RUN_CONTROL_CHANNEL_DIR,
+		RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE, RUN_OPERATION_AGENT_RUN,
+		RUN_OPERATION_APP_SERVER_PREFLIGHT, RunControlChannel, StateStore,
+	},
+	prelude::Result,
+	state::{self, ProtocolActivityMarker},
 };
 
 pub(super) fn publish_run_control_channel_for_request(
 	request: &AppServerRunRequest<'_>,
 	state_store: &StateStore,
-) -> crate::prelude::Result<Option<RunControlChannel>> {
+) -> Result<Option<RunControlChannel>> {
 	let Some(marker_path) = request.activity_marker_path.as_ref() else {
 		return Ok(None);
 	};
@@ -47,49 +51,6 @@ pub(super) fn publish_run_control_channel_for_request(
 	}
 
 	Ok(channel)
-}
-
-fn run_control_channel_path(marker_path: &Path, run_id: &str, attempt_number: i64) -> PathBuf {
-	marker_path
-		.join(RUN_CONTROL_CHANNEL_DIR)
-		.join(format!("{}-{attempt_number}.channel", sanitize_run_control_path_segment(run_id)))
-}
-
-fn sanitize_run_control_path_segment(value: &str) -> String {
-	let sanitized = value
-		.chars()
-		.map(|character| {
-			if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
-				character
-			} else {
-				'_'
-			}
-		})
-		.collect::<String>();
-
-	if sanitized.is_empty() { String::from("run") } else { sanitized }
-}
-
-fn write_run_control_channel_file(
-	channel_path: &Path,
-	request: &AppServerRunRequest<'_>,
-) -> crate::prelude::Result<()> {
-	if let Some(parent) = channel_path.parent() {
-		fs::create_dir_all(parent)?;
-	}
-
-	fs::write(
-		channel_path,
-		format!(
-			"schema=decodex.run_control_channel/v1\nrun_id={}\nissue_id={}\nattempt_number={}\ntransport={}\n",
-			request.run_id,
-			request.issue_id,
-			request.attempt_number,
-			state::RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE,
-		),
-	)?;
-
-	Ok(())
 }
 
 pub(super) fn write_activity_marker_best_effort(
@@ -139,7 +100,7 @@ pub(super) fn write_capability_preflight_marker_best_effort(request: &AppServerR
 
 pub(super) fn write_protocol_activity_marker_best_effort(
 	marker_path: &Path,
-	activity: &state::ProtocolActivityMarker<'_>,
+	activity: &ProtocolActivityMarker<'_>,
 ) {
 	if let Err(error) = state::write_run_protocol_activity_marker(marker_path, activity) {
 		tracing::warn!(
@@ -273,4 +234,47 @@ pub(super) fn write_thread_marker_best_effort(
 			"Failed to update worktree thread marker."
 		);
 	}
+}
+
+fn run_control_channel_path(marker_path: &Path, run_id: &str, attempt_number: i64) -> PathBuf {
+	marker_path
+		.join(RUN_CONTROL_CHANNEL_DIR)
+		.join(format!("{}-{attempt_number}.channel", sanitize_run_control_path_segment(run_id)))
+}
+
+fn sanitize_run_control_path_segment(value: &str) -> String {
+	let sanitized = value
+		.chars()
+		.map(|character| {
+			if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+				character
+			} else {
+				'_'
+			}
+		})
+		.collect::<String>();
+
+	if sanitized.is_empty() { String::from("run") } else { sanitized }
+}
+
+fn write_run_control_channel_file(
+	channel_path: &Path,
+	request: &AppServerRunRequest<'_>,
+) -> Result<()> {
+	if let Some(parent) = channel_path.parent() {
+		fs::create_dir_all(parent)?;
+	}
+
+	fs::write(
+		channel_path,
+		format!(
+			"schema=decodex.run_control_channel/v1\nrun_id={}\nissue_id={}\nattempt_number={}\ntransport={}\n",
+			request.run_id,
+			request.issue_id,
+			request.attempt_number,
+			state::RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE,
+		),
+	)?;
+
+	Ok(())
 }

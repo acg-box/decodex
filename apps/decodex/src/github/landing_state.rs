@@ -3,11 +3,10 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::{
+	github::{self},
 	prelude::{Result, eyre},
 	pull_request::PullRequestLandingState,
 };
-
-use super::{configure_gh_command, gh_command_with_config, parse_pull_request_url};
 
 const PULL_REQUEST_LANDING_STATE_QUERY: &str = r#"
 query($owner: String!, $name: String!, $number: Int!, $reviewThreadsAfter: String) {
@@ -156,7 +155,7 @@ pub(crate) fn inspect_pull_request_landing_state(
 	github_token: &str,
 	gh_command_path: Option<&Path>,
 ) -> Result<PullRequestLandingState> {
-	let locator = parse_pull_request_url(pr_url)?;
+	let locator = github::parse_pull_request_url(pr_url)?;
 	let mut review_threads_after: Option<String> = None;
 	let mut landing_state: Option<PullRequestLandingState> = None;
 
@@ -198,7 +197,7 @@ pub(crate) fn inspect_pull_request_landing_state(
 fn query_pull_request_landing_state_page(
 	query: PullRequestLandingStatePageQuery<'_>,
 ) -> Result<PullRequestLandingStateNode> {
-	let mut command = gh_command_with_config(query.gh_command_path);
+	let mut command = github::gh_command_with_config(query.gh_command_path);
 
 	command.args(["api", "graphql", "-f", &format!("query={PULL_REQUEST_LANDING_STATE_QUERY}")]);
 	command.args(["-F", &format!("owner={}", query.owner)]);
@@ -211,7 +210,7 @@ fn query_pull_request_landing_state_page(
 
 	command.current_dir(query.cwd);
 
-	configure_gh_command(&mut command, query.github_token);
+	github::configure_gh_command(&mut command, query.github_token);
 
 	let output = command.output()?;
 

@@ -1,5 +1,7 @@
-use super::{Result, StateStore, eyre, json, state};
-use state::PrivateExecutionEvent;
+use crate::{
+	orchestrator::types::{self, Result, StateStore, eyre},
+	state::PrivateExecutionEvent,
+};
 
 pub(crate) const AUTHORITY_DECISION_REQUEST_SCHEMA: &str = "decodex.authority_decision_request/1";
 pub(crate) const AUTHORITY_DECISION_REQUEST_EVENT_TYPE: &str = "authority_decision_request";
@@ -12,7 +14,6 @@ pub(crate) const PHASE_GOAL_RECOVERY_EVENT_TYPE: &str = "phase_goal_recovery";
 pub(crate) const PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE: &str = "phase_goal_recovery_blocked";
 pub(crate) const PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT: i64 = 1;
 pub(crate) const PHASE_ACCEPTANCE_CHECK_EVENT_TYPE: &str = "phase_acceptance_check";
-
 #[allow(dead_code)]
 pub(crate) const AUTHORITY_BOUNDARY_CHECK_SCHEMA: &str = "decodex.authority_boundary_check/1";
 pub(crate) const ARCHITECTURE_RECOVERY_PACKET_SCHEMA: &str =
@@ -83,9 +84,8 @@ impl AuthorityBoundarySurface {
 
 	pub(crate) fn policy_decision(self) -> AuthorityBoundaryPolicyDecision {
 		match self {
-			Self::ImplementationStrategy | Self::Runtime | Self::Tests | Self::Docs => {
-				AuthorityBoundaryPolicyDecision::AutoContinue
-			},
+			Self::ImplementationStrategy | Self::Runtime | Self::Tests | Self::Docs =>
+				AuthorityBoundaryPolicyDecision::AutoContinue,
 			Self::PublicApi
 			| Self::Config
 			| Self::Security
@@ -123,9 +123,8 @@ impl AuthorityBoundaryPolicyDecision {
 
 	pub(crate) fn disposition(self) -> AuthorityBoundaryDisposition {
 		match self {
-			Self::AutoContinue | Self::RequiresEnhancedEvidence | Self::BlockLanding => {
-				AuthorityBoundaryDisposition::WithinAuthority
-			},
+			Self::AutoContinue | Self::RequiresEnhancedEvidence | Self::BlockLanding =>
+				AuthorityBoundaryDisposition::WithinAuthority,
 			Self::RequiresHumanDecision => AuthorityBoundaryDisposition::RequiresHuman,
 		}
 	}
@@ -234,7 +233,7 @@ pub(crate) fn record_authority_boundary_check_private_event(
 		.changed_surfaces
 		.iter()
 		.map(|surface| {
-			json!({
+			types::json!({
 				"surface": surface.surface.as_str(),
 				"change_summary": surface.change_summary,
 				"policy_decision": surface.policy_decision.as_str(),
@@ -246,7 +245,7 @@ pub(crate) fn record_authority_boundary_check_private_event(
 		.improvement_signals
 		.iter()
 		.map(|signal| {
-			json!({
+			types::json!({
 				"kind": signal.kind,
 				"reason_code": signal.reason_code,
 				"target": signal.target,
@@ -254,7 +253,7 @@ pub(crate) fn record_authority_boundary_check_private_event(
 			})
 		})
 		.collect::<Vec<_>>();
-	let payload = json!({
+	let payload = types::json!({
 		"schema": AUTHORITY_BOUNDARY_CHECK_SCHEMA,
 		"record_version": 1,
 		"issue": {
@@ -303,13 +302,13 @@ pub(crate) fn record_authority_decision_request_private_event(
 		.options
 		.iter()
 		.map(|option| {
-			json!({
+			types::json!({
 				"label": option.label,
 				"description": option.description,
 			})
 		})
 		.collect::<Vec<_>>();
-	let payload = json!({
+	let payload = types::json!({
 		"schema": AUTHORITY_DECISION_REQUEST_SCHEMA,
 		"record_version": 1,
 		"decision_request_id": input.decision_request_id,

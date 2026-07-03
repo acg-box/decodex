@@ -4,9 +4,9 @@ use crate::{
 		LaneControlSteerResponse, Path, PendingLaneControlRequest, PendingLaneControlSteerRequest,
 		RequestDispatchContext, RequestWaitPhase, RunRecorder, TurnInterruptRequest,
 		lane_control::{errors, recording, rejection},
-		run_control,
 	},
 	prelude::Result,
+	run_control,
 };
 
 pub(in crate::agent::app_server) fn handle_pending_turn_control_requests(

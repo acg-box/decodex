@@ -1,8 +1,7 @@
-use crate::orchestrator::status_render::activity;
 use crate::orchestrator::{
 	self, EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH, OperatorContinuationRecoveryStatus,
 	OperatorHistoryLaneStatus, OperatorHistoryLedgerOutcome, OperatorLaneLifecycleMetrics,
-	OperatorPhaseAcceptanceStatus, OperatorRunStatus,
+	OperatorPhaseAcceptanceStatus, OperatorRunStatus, status_render::activity,
 };
 
 pub(super) fn append_rendered_history_lane(output: &mut String, lane: &OperatorHistoryLaneStatus) {
@@ -395,12 +394,9 @@ fn operator_run_queue_lease_summary(run: &OperatorRunStatus) -> String {
 		"process_stopped" => String::from("not_held (process_stopped needs attention)"),
 		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH
 			if orchestrator::operator_run_has_recent_app_server_execution(run) =>
-		{
-			String::from("not_held (app_server_activity keeps lane visible)")
-		},
-		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH => {
-			String::from("not_held (process_identity_mismatch needs attention)")
-		},
+			String::from("not_held (app_server_activity keeps lane visible)"),
+		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH =>
+			String::from("not_held (process_identity_mismatch needs attention)"),
 		_ => String::from("not_held"),
 	}
 }

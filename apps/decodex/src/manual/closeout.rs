@@ -3,28 +3,27 @@ mod issue;
 mod ledger;
 mod marker;
 
-pub(super) use self::cleanup::{
-	cleanup_manual_land_lane_checkout, ensure_manual_land_checkout_is_managed_lane,
-	ensure_manual_land_left_no_merged_worktree_cleanup_debt, manual_land_cleanup_identifier,
+#[cfg(test)] pub(super) use self::issue::ensure_manual_closeout_issue_scope;
+#[cfg(test)] pub(super) use self::marker::read_manual_land_closeout_marker;
+pub(super) use self::{
+	cleanup::{
+		cleanup_manual_land_lane_checkout, ensure_manual_land_checkout_is_managed_lane,
+		ensure_manual_land_left_no_merged_worktree_cleanup_debt, manual_land_cleanup_identifier,
+	},
+	issue::{apply_closeout, prepare_closeout},
+	ledger::{
+		clear_manual_closeout_issue_scope, clear_manual_closeout_runtime_state,
+		write_manual_land_cleanup_complete_event,
+	},
+	marker::{manual_land_closeout_matches, write_manual_land_closeout_marker},
 };
-#[cfg(test)]
-pub(super) use self::issue::ensure_manual_closeout_issue_scope;
-pub(super) use self::issue::{apply_closeout, prepare_closeout};
-pub(super) use self::ledger::{
-	clear_manual_closeout_issue_scope, clear_manual_closeout_runtime_state,
-	write_manual_land_cleanup_complete_event,
-};
-#[cfg(test)]
-pub(super) use self::marker::read_manual_land_closeout_marker;
-pub(super) use self::marker::{manual_land_closeout_matches, write_manual_land_closeout_marker};
 
 use crate::{
 	default_branch_sync,
+	manual::{ManualLandContext, ManualLandLedgerContext},
 	prelude::{Result, eyre},
 	runtime,
 };
-
-use crate::manual::{ManualLandContext, ManualLandLedgerContext};
 
 pub(super) fn finalize_land_closeout(
 	context: &ManualLandContext,

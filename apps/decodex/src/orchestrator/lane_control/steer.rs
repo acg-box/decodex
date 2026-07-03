@@ -1,9 +1,11 @@
 use std::path::Path;
 
-use crate::orchestrator::lane_control::context::{self};
 use crate::{
 	config::ServiceConfig,
-	orchestrator::{LaneSteerReport, LaneSteerRequest, OperatorRunStatus},
+	orchestrator::{
+		LaneSteerReport, LaneSteerRequest, OperatorRunStatus,
+		lane_control::context::{self},
+	},
 	prelude::{Result, eyre},
 	run_control::{
 		self, LaneControlSteerRequest, LaneControlSteerRequestInput, LaneControlSteerResponse,
@@ -196,9 +198,8 @@ fn lane_steer_report_from_response(
 ) -> LaneSteerReport {
 	let outcome = match &response.status {
 		LaneControlSteerResponseStatus::Delivered => RUN_CONTROL_ACTION_COMPLETED,
-		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected => {
-			RUN_CONTROL_ACTION_FAILED
-		},
+		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected =>
+			RUN_CONTROL_ACTION_FAILED,
 	};
 
 	LaneSteerReport {

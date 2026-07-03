@@ -1,32 +1,3 @@
-use std::collections::BTreeMap;
-use tempfile::TempDir;
-use time::OffsetDateTime;
-
-use orchestrator::{
-	AgentGitCredentialEnvironment, AgentGitCredentialsUnavailable,
-	AppServerZeroEvidenceStartFailure, LoopGuardrailReason, LoopGuardrailStopRequested,
-	RepoGateFailureKind, RunFailureWritebackDisposition, StalledRunNeedsAttention,
-};
-
-use crate::agent::CodexAccountAuthFailure;
-
-use super::{
-	AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure,
-	AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerTransportFailure,
-	AppServerTurnFailure, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput,
-	AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface,
-	ChildRunRef, Duration, FakeTracker, IssueDispatchMode, IssueRunPlan, ManualAttentionRequested,
-	Path, PhaseGoalKind, PrepareIssueRunContext, RUN_ACTIVITY_MARKER_FILE, RUN_LEASE_IDLE_TIMEOUT,
-	RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, Report, RetainedPartialProgress,
-	RetainedReviewRepairPushFailed, RetryComment, ReviewHandoffMarker, ReviewPolicyCheckpointInput,
-	ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, ServiceConfig,
-	StateStore, TEST_SERVICE_ID, TestEnvVarGuard, TrackerIssue, Value, WorktreeManager,
-	WorktreeSpec, add_origin_remote, checkout_new_branch, commit_worktree_change, fs, git_output,
-	git_status_success, orchestrator, process, sample_issue,
-	service_config_with_github_token_env_var, state, temp_project_layout,
-	temp_project_layout_with_read_first, tracker,
-};
-
 mod app_server;
 mod comments;
 mod handoff_recovery;
@@ -34,53 +5,36 @@ mod loop_guardrail;
 mod retry_markers;
 mod runtime_ops;
 
-fn git_config_value(
-	repo_root: &Path,
-	key: &str,
-	credentials: Option<&AgentGitCredentialEnvironment>,
-) -> Option<String> {
-	let mut probe = crate::test_support::hermetic_git_command();
+use std::collections::BTreeMap;
 
-	probe.arg("-C").arg(repo_root).args(["config", "--get", key]);
+use orchestrator::{
+	AgentGitCredentialEnvironment, AgentGitCredentialsUnavailable,
+	AppServerZeroEvidenceStartFailure, LoopGuardrailReason, LoopGuardrailStopRequested,
+	RepoGateFailureKind, RunFailureWritebackDisposition, StalledRunNeedsAttention,
+};
+use tempfile::TempDir;
+use time::OffsetDateTime;
 
-	if let Some(credentials) = credentials {
-		credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
-	}
-
-	let output = probe.output().expect("git config probe should run");
-
-	output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-}
-
-fn injected_git_config_keys(credentials: &AgentGitCredentialEnvironment) -> Vec<String> {
-	let mut probe = crate::test_support::hermetic_git_command();
-
-	credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
-
-	probe
-		.get_envs()
-		.filter_map(|(key, value)| {
-			Some((key.to_string_lossy().into_owned(), value?.to_string_lossy().into_owned()))
-		})
-		.filter(|(key, _)| key.starts_with("GIT_CONFIG_KEY_"))
-		.map(|(_, value)| value)
-		.collect()
-}
-
-fn injected_git_config_values(credentials: &AgentGitCredentialEnvironment) -> Vec<String> {
-	let mut probe = crate::test_support::hermetic_git_command();
-
-	credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
-
-	probe
-		.get_envs()
-		.filter_map(|(key, value)| {
-			Some((key.to_string_lossy().into_owned(), value?.to_string_lossy().into_owned()))
-		})
-		.filter(|(key, _)| key.starts_with("GIT_CONFIG_VALUE_"))
-		.map(|(_, value)| value)
-		.collect()
-}
+use crate::{
+	agent::CodexAccountAuthFailure,
+	orchestrator::tests::{
+		self, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure,
+		AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerTransportFailure,
+		AppServerTurnFailure, AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput,
+		AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface,
+		ChildRunRef, Duration, FakeTracker, IssueDispatchMode, IssueRunPlan,
+		ManualAttentionRequested, Path, PhaseGoalKind, PrepareIssueRunContext,
+		RUN_ACTIVITY_MARKER_FILE, RUN_LEASE_IDLE_TIMEOUT, RUN_OPERATION_RECONCILIATION,
+		RUN_OPERATION_REPO_GATE, Report, RetainedPartialProgress, RetainedReviewRepairPushFailed,
+		RetryComment, ReviewHandoffMarker, ReviewPolicyCheckpointInput, ReviewPolicyStopReason,
+		ReviewPolicyStopRequested, RunCompletionDisposition, ServiceConfig, StateStore,
+		TEST_SERVICE_ID, TestEnvVarGuard, TrackerIssue, Value, WorktreeManager, WorktreeSpec,
+		add_origin_remote, checkout_new_branch, commit_worktree_change, fs, git_output,
+		git_status_success, orchestrator, process, service_config_with_github_token_env_var, state,
+		temp_project_layout_with_read_first, tracker,
+	},
+	test_support,
+};
 
 pub(super) fn loop_guardrail_issue_run(
 	config: &ServiceConfig,
@@ -108,11 +62,59 @@ pub(super) fn loop_guardrail_issue_run(
 	}
 }
 
+fn git_config_value(
+	repo_root: &Path,
+	key: &str,
+	credentials: Option<&AgentGitCredentialEnvironment>,
+) -> Option<String> {
+	let mut probe = test_support::hermetic_git_command();
+
+	probe.arg("-C").arg(repo_root).args(["config", "--get", key]);
+
+	if let Some(credentials) = credentials {
+		credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
+	}
+
+	let output = probe.output().expect("git config probe should run");
+
+	output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+fn injected_git_config_keys(credentials: &AgentGitCredentialEnvironment) -> Vec<String> {
+	let mut probe = test_support::hermetic_git_command();
+
+	credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
+
+	probe
+		.get_envs()
+		.filter_map(|(key, value)| {
+			Some((key.to_string_lossy().into_owned(), value?.to_string_lossy().into_owned()))
+		})
+		.filter(|(key, _)| key.starts_with("GIT_CONFIG_KEY_"))
+		.map(|(_, value)| value)
+		.collect()
+}
+
+fn injected_git_config_values(credentials: &AgentGitCredentialEnvironment) -> Vec<String> {
+	let mut probe = test_support::hermetic_git_command();
+
+	credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
+
+	probe
+		.get_envs()
+		.filter_map(|(key, value)| {
+			Some((key.to_string_lossy().into_owned(), value?.to_string_lossy().into_owned()))
+		})
+		.filter(|(key, _)| key.starts_with("GIT_CONFIG_VALUE_"))
+		.map(|(_, value)| value)
+		.collect()
+}
+
 fn harness_outcome_payload_for_retryable_failure(error: Report) -> Value {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(Vec::new());
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Progress", &[]);
+	let issue = tests::sample_issue("In Progress", &[]);
 	let issue_run = loop_guardrail_issue_run(&config, &issue, 1);
 
 	state_store

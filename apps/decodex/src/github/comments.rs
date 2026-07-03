@@ -3,9 +3,10 @@ use std::path::Path;
 use serde::Deserialize;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::prelude::{Result, eyre};
-
-use super::{configure_gh_command, gh_command_with_config, parse_pull_request_url};
+use crate::{
+	github::{self},
+	prelude::{Result, eyre},
+};
 
 #[derive(Debug, Deserialize)]
 struct IssueCommentCreateResponse {
@@ -21,15 +22,15 @@ pub(crate) fn post_pull_request_issue_comment(
 	github_token: &str,
 	gh_command_path: Option<&Path>,
 ) -> Result<(i64, i64)> {
-	let locator = parse_pull_request_url(pr_url)?;
+	let locator = github::parse_pull_request_url(pr_url)?;
 	let endpoint =
 		format!("repos/{}/{}/issues/{}/comments", locator.owner, locator.repo, locator.number);
-	let mut command = gh_command_with_config(gh_command_path);
+	let mut command = github::gh_command_with_config(gh_command_path);
 
 	command.args(["api", endpoint.as_str(), "-f", &format!("body={body}")]);
 	command.current_dir(cwd);
 
-	configure_gh_command(&mut command, github_token);
+	github::configure_gh_command(&mut command, github_token);
 
 	let output = command.output()?;
 

@@ -1,5 +1,3 @@
-use serde_json::{self, Value};
-
 mod autonomy;
 mod foundation;
 mod operator;
@@ -24,6 +22,8 @@ pub(super) use self::{
 		project_control_tool_input_schema, project_control_tool_output_schema,
 	},
 };
+
+use serde_json::{self, Value};
 
 fn planning_authority_input_schema() -> Value {
 	serde_json::json!({

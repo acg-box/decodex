@@ -48,27 +48,27 @@ impl Error for ReviewHandoffWritebackFailed {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PullRequestDetails {
-	pub(in crate::agent::tracker_tool_bridge) base_ref_name: String,
-	pub(in crate::agent::tracker_tool_bridge) head_ref_name: String,
-	pub(in crate::agent::tracker_tool_bridge) head_ref_oid: String,
-	pub(in crate::agent::tracker_tool_bridge) head_repository_name: String,
-	pub(in crate::agent::tracker_tool_bridge) head_repository_owner: String,
-	pub(in crate::agent::tracker_tool_bridge) is_draft: bool,
-	pub(in crate::agent::tracker_tool_bridge) state: String,
-	pub(in crate::agent::tracker_tool_bridge) url: String,
+	pub(crate) base_ref_name: String,
+	pub(crate) head_ref_name: String,
+	pub(crate) head_ref_oid: String,
+	pub(crate) head_repository_name: String,
+	pub(crate) head_repository_owner: String,
+	pub(crate) is_draft: bool,
+	pub(crate) state: String,
+	pub(crate) url: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct LocalRepoDetails {
-	pub(in crate::agent::tracker_tool_bridge) default_branch: String,
-	pub(in crate::agent::tracker_tool_bridge) head_oid: String,
-	pub(in crate::agent::tracker_tool_bridge) head_tree_oid: String,
-	pub(in crate::agent::tracker_tool_bridge) repository_name: String,
-	pub(in crate::agent::tracker_tool_bridge) repository_owner: String,
-	pub(in crate::agent::tracker_tool_bridge) review_blocking_changes: Vec<String>,
+	pub(crate) default_branch: String,
+	pub(crate) head_oid: String,
+	pub(crate) head_tree_oid: String,
+	pub(crate) repository_name: String,
+	pub(crate) repository_owner: String,
+	pub(crate) review_blocking_changes: Vec<String>,
 }
 impl LocalRepoDetails {
-	pub(in crate::agent::tracker_tool_bridge) fn review_worktree_clean(&self) -> bool {
+	pub(crate) fn review_worktree_clean(&self) -> bool {
 		self.review_blocking_changes.is_empty()
 	}
 }
@@ -114,13 +114,13 @@ impl RunCompletionDisposition {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::agent::tracker_tool_bridge) struct PendingReviewAction {
-	pub(in crate::agent::tracker_tool_bridge) pr_url: String,
-	pub(in crate::agent::tracker_tool_bridge) summary: String,
+pub(crate) struct PendingReviewAction {
+	pub(crate) pr_url: String,
+	pub(crate) summary: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::agent::tracker_tool_bridge) enum PendingReviewCompletion {
+pub(crate) enum PendingReviewCompletion {
 	Handoff(PendingReviewAction),
 	Repair(PendingReviewAction),
 	Closeout(PendingReviewAction),

@@ -1,16 +1,16 @@
 use std::{
 	io::{Read as _, Write as _},
 	net::{SocketAddr, TcpStream},
+	str,
 };
 
 use time::OffsetDateTime;
 
-use super::{
-	DEFAULT_OPERATOR_LISTEN_ADDRESS, OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH,
+use crate::orchestrator::{
+	self, DEFAULT_OPERATOR_LISTEN_ADDRESS, OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH,
 	OPERATOR_STATE_HEADER_TERMINATOR, OperatorSnapshotWarningDetail, OperatorStatusSnapshot,
 	STATUS_OPERATOR_SNAPSHOT_CONNECT_TIMEOUT, STATUS_OPERATOR_SNAPSHOT_IO_TIMEOUT,
 	STATUS_OPERATOR_SNAPSHOT_MAX_AGE, STATUS_OPERATOR_SNAPSHOT_WARNING, ServiceConfig,
-	add_operator_snapshot_warning, empty_control_plane_snapshot, refresh_operator_project_summary,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -26,21 +26,6 @@ pub(crate) struct StatusSnapshotHttpResponse {
 
 pub(crate) fn status_should_attempt_operator_snapshot_cache(live: bool) -> bool {
 	!live
-}
-
-pub(super) fn status_snapshot_from_local_operator_cache(
-	project: &ServiceConfig,
-	limit: usize,
-) -> std::result::Result<OperatorStatusSnapshot, StatusSnapshotCacheMiss> {
-	let response = fetch_local_operator_snapshot_response()
-		.map_err(|reason| status_snapshot_cache_miss(reason, "start or restart the local Decodex operator listener, or use `decodex status --live` for a fresh direct read"))?;
-
-	status_snapshot_from_operator_cache_response(
-		project,
-		limit,
-		response,
-		OffsetDateTime::now_utc().unix_timestamp(),
-	)
 }
 
 pub(crate) fn status_snapshot_from_operator_cache_response(
@@ -76,6 +61,37 @@ pub(crate) fn status_snapshot_from_operator_cache_response(
 		})?;
 
 	project_status_snapshot_from_operator_cache(project, snapshot, limit, snapshot_age_seconds)
+}
+
+pub(super) fn status_snapshot_from_local_operator_cache(
+	project: &ServiceConfig,
+	limit: usize,
+) -> std::result::Result<OperatorStatusSnapshot, StatusSnapshotCacheMiss> {
+	let response = fetch_local_operator_snapshot_response()
+		.map_err(|reason| status_snapshot_cache_miss(reason, "start or restart the local Decodex operator listener, or use `decodex status --live` for a fresh direct read"))?;
+
+	status_snapshot_from_operator_cache_response(
+		project,
+		limit,
+		response,
+		OffsetDateTime::now_utc().unix_timestamp(),
+	)
+}
+
+pub(super) fn add_status_snapshot_cache_miss_warning(
+	snapshot: &mut OperatorStatusSnapshot,
+	project: &ServiceConfig,
+	cache_miss: StatusSnapshotCacheMiss,
+) {
+	orchestrator::add_operator_snapshot_warning(snapshot, STATUS_OPERATOR_SNAPSHOT_WARNING);
+
+	snapshot.warning_details.push(OperatorSnapshotWarningDetail {
+		warning: String::from(STATUS_OPERATOR_SNAPSHOT_WARNING),
+		project_id: Some(project.service_id().to_owned()),
+		repo_root: Some(project.repo_root().display().to_string()),
+		reason: cache_miss.reason,
+		next_action: Some(cache_miss.next_action),
+	});
 }
 
 fn fetch_local_operator_snapshot_response()
@@ -117,7 +133,7 @@ fn parse_operator_snapshot_http_response(
 		.windows(OPERATOR_STATE_HEADER_TERMINATOR.len())
 		.position(|window| window == OPERATOR_STATE_HEADER_TERMINATOR)
 		.ok_or_else(|| String::from("local operator snapshot response omitted HTTP headers"))?;
-	let headers = std::str::from_utf8(&response[..header_end])
+	let headers = str::from_utf8(&response[..header_end])
 		.map_err(|error| format!("local operator snapshot headers were not UTF-8: {error}"))?;
 	let Some(status_line) = headers.lines().next() else {
 		return Err(String::from("local operator snapshot response omitted HTTP status"));
@@ -171,7 +187,7 @@ fn project_status_snapshot_from_operator_cache(
 			"check that the local listener is serving the same registered project set, or use `decodex status --live`",
 		));
 	};
-	let mut project_snapshot = empty_control_plane_snapshot(limit);
+	let mut project_snapshot = orchestrator::empty_control_plane_snapshot(limit);
 
 	project_snapshot.project_id = project.service_id().to_owned();
 	project_snapshot.status_source = Some(String::from("operator_snapshot_cache"));
@@ -225,7 +241,8 @@ fn project_status_snapshot_from_operator_cache(
 	project_snapshot.warnings = project_warnings_from_details(&project_snapshot.warning_details);
 
 	truncate_status_snapshot_to_limit(&mut project_snapshot, limit);
-	refresh_operator_project_summary(&mut project_snapshot, None);
+
+	orchestrator::refresh_operator_project_summary(&mut project_snapshot, None);
 
 	Ok(project_snapshot)
 }
@@ -240,7 +257,8 @@ fn mark_cached_status_snapshot(
 	snapshot.snapshot_age_seconds = Some(snapshot_age_seconds);
 
 	truncate_status_snapshot_to_limit(snapshot, limit);
-	refresh_operator_project_summary(snapshot, None);
+
+	orchestrator::refresh_operator_project_summary(snapshot, None);
 }
 
 fn truncate_status_snapshot_to_limit(snapshot: &mut OperatorStatusSnapshot, limit: usize) {
@@ -265,20 +283,4 @@ fn status_snapshot_cache_miss(
 	next_action: impl Into<String>,
 ) -> StatusSnapshotCacheMiss {
 	StatusSnapshotCacheMiss { reason: reason.into(), next_action: next_action.into() }
-}
-
-pub(super) fn add_status_snapshot_cache_miss_warning(
-	snapshot: &mut OperatorStatusSnapshot,
-	project: &ServiceConfig,
-	cache_miss: StatusSnapshotCacheMiss,
-) {
-	add_operator_snapshot_warning(snapshot, STATUS_OPERATOR_SNAPSHOT_WARNING);
-
-	snapshot.warning_details.push(OperatorSnapshotWarningDetail {
-		warning: String::from(STATUS_OPERATOR_SNAPSHOT_WARNING),
-		project_id: Some(project.service_id().to_owned()),
-		repo_root: Some(project.repo_root().display().to_string()),
-		reason: cache_miss.reason,
-		next_action: Some(cache_miss.next_action),
-	});
 }

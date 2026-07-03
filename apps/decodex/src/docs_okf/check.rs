@@ -1,27 +1,10 @@
 //! OKF and Decodex docs check orchestration.
 
-use std::path::Path;
-
-use crate::{
-	docs_okf::{
-		model::{DocsCheckReport, DocsCheckScope, OkfCheckProfile, OkfCheckReport},
-		support::collect_files,
-	},
-	prelude::Result,
-};
-
 mod docs;
 mod okf;
 
-use self::{
-	docs::{
-		check_acronym_capitalization, check_concept_contracts, check_drift_surface, check_links,
-		check_markdown_only, check_markdown_readability, check_required_docs_layout,
-	},
-	okf::{
-		check_okf_core_concepts, check_okf_markdown_readability, check_okf_repo_memory_surface,
-		check_okf_wiki_surface,
-	},
+use crate::docs_okf::{
+	self, DocsCheckReport, DocsCheckScope, OkfCheckProfile, OkfCheckReport, Path, Result,
 };
 
 pub(crate) fn run_docs_check(root: &Path, scope: DocsCheckScope) -> Result<DocsCheckReport> {
@@ -33,27 +16,27 @@ pub(crate) fn run_docs_check(root: &Path, scope: DocsCheckScope) -> Result<DocsC
 
 	let mut files = Vec::new();
 
-	collect_files(&docs_root, &docs_root, &mut files)?;
+	docs_okf::collect_files(&docs_root, &docs_root, &mut files)?;
 
 	let mut report =
 		DocsCheckReport { scope, docs_root, concept_count: 0, link_count: 0, issues: Vec::new() };
 
 	if matches!(scope, DocsCheckScope::All | DocsCheckScope::Index | DocsCheckScope::Drift) {
-		check_required_docs_layout(&files, &mut report);
+		self::docs::check_required_docs_layout(&files, &mut report);
 	}
 
-	check_markdown_readability(&files, &mut report);
+	self::docs::check_markdown_readability(&files, &mut report);
 
 	if matches!(scope, DocsCheckScope::All | DocsCheckScope::Index) {
-		check_markdown_only(&files, &mut report);
-		check_acronym_capitalization(&files, &mut report);
-		check_concept_contracts(&files, &mut report);
+		self::docs::check_markdown_only(&files, &mut report);
+		self::docs::check_acronym_capitalization(&files, &mut report);
+		self::docs::check_concept_contracts(&files, &mut report);
 	}
 	if matches!(scope, DocsCheckScope::All | DocsCheckScope::Links) {
-		check_links(&files, &mut report)?;
+		self::docs::check_links(&files, &mut report)?;
 	}
 	if matches!(scope, DocsCheckScope::All | DocsCheckScope::Drift) {
-		check_drift_surface(&files, &mut report);
+		self::docs::check_drift_surface(&files, &mut report);
 	}
 
 	Ok(report)
@@ -103,7 +86,7 @@ pub(crate) fn run_okf_check(root: &Path, profile: OkfCheckProfile) -> Result<Okf
 
 	let mut files = Vec::new();
 
-	collect_files(&bundle_root, &bundle_root, &mut files)?;
+	docs_okf::collect_files(&bundle_root, &bundle_root, &mut files)?;
 
 	let mut report = OkfCheckReport {
 		profile,
@@ -113,14 +96,14 @@ pub(crate) fn run_okf_check(root: &Path, profile: OkfCheckProfile) -> Result<Okf
 		issues: Vec::new(),
 	};
 
-	check_okf_markdown_readability(&files, &mut report);
-	check_okf_core_concepts(&files, &mut report);
+	self::okf::check_okf_markdown_readability(&files, &mut report);
+	self::okf::check_okf_core_concepts(&files, &mut report);
 
 	if matches!(profile, OkfCheckProfile::Wiki | OkfCheckProfile::RepoMemory) {
-		check_okf_wiki_surface(&files, &mut report)?;
+		self::okf::check_okf_wiki_surface(&files, &mut report)?;
 	}
 	if profile == OkfCheckProfile::RepoMemory {
-		check_okf_repo_memory_surface(&files, &mut report);
+		self::okf::check_okf_repo_memory_surface(&files, &mut report);
 	}
 
 	Ok(report)

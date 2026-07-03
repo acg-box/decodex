@@ -1,4 +1,3 @@
-use crate::state::{runtime_row_parsers, store};
 use crate::{
 	autonomy_objective::AutonomyObjectiveState,
 	autonomy_signal::AutonomySignal,
@@ -6,6 +5,7 @@ use crate::{
 	state::{
 		AutonomySignalRecord, StateStore,
 		runtime_records::{AutonomyObjectiveKey, AutonomySignalKey, AutonomySignalRuntimeRecord},
+		runtime_row_parsers, store,
 	},
 };
 

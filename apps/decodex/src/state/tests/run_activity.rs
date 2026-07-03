@@ -1,44 +1,6 @@
-use std::{
-	fs::{File, ReadDir},
-	io::{self, Read as _, Write as _},
-	path::Path,
-	process, slice,
-};
 
-use rusqlite::Connection;
-use serde_json::Value;
-use tempfile::TempDir;
-use time::OffsetDateTime;
 
-use crate::state::{
-	self, ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
-	CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker, ProtocolActivitySummary,
-	RUN_ACTIVITY_MARKER_FILE, RUN_OPERATION_REPO_GATE, ReviewHandoffMarker,
-	ReviewOrchestrationMarker, ReviewPolicyCheckpointInput, StateStore,
-	tests::{self, IN_PROGRESS_STATE},
-};
-
-struct MarkerFile;
-impl MarkerFile {
-	fn read_dir(path: impl AsRef<Path>) -> io::Result<ReadDir> {
-		path.as_ref().read_dir()
-	}
-
-	fn read_to_string(path: impl AsRef<Path>) -> io::Result<String> {
-		let mut file = File::open(path)?;
-		let mut body = String::new();
-
-		file.read_to_string(&mut body)?;
-
-		Ok(body)
-	}
-
-	fn write(path: impl AsRef<Path>, body: impl AsRef<[u8]>) -> io::Result<()> {
-		let mut file = File::create(path)?;
-
-		file.write_all(body.as_ref())
-	}
-}
+use crate::prelude::Result;
 
 #[test]
 fn records_run_attempts_and_events() {
@@ -626,7 +588,7 @@ fn write_test_protocol_activity_marker(
 	event_count: i64,
 	last_event_type: &str,
 	protocol_activity: Option<&ProtocolActivitySummary>,
-) -> state::Result<()> {
+) -> Result<()> {
 	state::write_run_protocol_activity_marker(
 		worktree_path,
 		&ProtocolActivityMarker {

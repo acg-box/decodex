@@ -1,18 +1,12 @@
-use std::collections::{HashMap, HashSet};
-
 use crate::{
-	config::ServiceConfig,
 	orchestrator::{
-		IssueTracker, closeout_dispatch_block_reason, is_terminal_issue,
-		issue_passes_closeout_dispatch_policy, mark_run_attempt_if_active,
-		retained_review_handoff_matches_run, run_cycle_reconciliation::ProjectStateReconciliationContext,
-		worktree_activity_marker_is_fresh,
+		run_cycle_reconciliation,
+		run_cycle_reconciliation::{
+			HashMap, HashSet, IssueLease, IssueTracker, ProjectStateReconciliationContext, Result,
+			ServiceConfig, StateStore, TrackerIssue, WorkflowDocument, WorktreeManager, tracker,
+		},
 	},
-	prelude::Result,
-	state::{self, IssueLease, StateStore},
-	tracker::{self, TrackerIssue},
-	workflow::WorkflowDocument,
-	worktree::WorktreeManager,
+	state,
 };
 
 pub(super) fn reconcile_active_project_leases<T>(
@@ -50,6 +44,69 @@ where
 	Ok(())
 }
 
+pub(super) fn clear_terminal_lane_labels_once<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	issue: &TrackerIssue,
+	cleared_issue_ids: &mut HashSet<String>,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	if cleared_issue_ids.insert(issue.id.clone()) {
+		tracker::clear_automation_lane_labels(tracker, issue, project.service_id())?;
+	}
+
+	Ok(())
+}
+
+pub(crate) fn terminal_issue_keeps_retained_closeout<T>(
+	tracker: &T,
+	issue: &TrackerIssue,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+) -> Result<bool>
+where
+	T: IssueTracker + ?Sized,
+{
+	if !run_cycle_reconciliation::is_terminal_issue(issue, workflow) {
+		return Ok(false);
+	}
+
+	Ok(run_cycle_reconciliation::issue_passes_closeout_dispatch_policy(
+		tracker,
+		issue,
+		project,
+		workflow,
+		state_store,
+	)? || run_cycle_reconciliation::closeout_dispatch_block_reason(
+		tracker,
+		issue,
+		project,
+		workflow,
+		state_store,
+	)?
+	.is_some())
+}
+
+pub(crate) fn retained_closeout_lease_has_fresh_activity(
+	lease: &IssueLease,
+	issue: &TrackerIssue,
+	project: &ServiceConfig,
+	now_unix_epoch: i64,
+) -> Result<bool> {
+	let worktree_manager =
+		WorktreeManager::new(project.service_id(), project.repo_root(), project.worktree_root());
+	let worktree = worktree_manager.plan_for_issue(&issue.identifier);
+	let Some(marker) = state::read_run_activity_marker_snapshot(&worktree.path)? else {
+		return Ok(false);
+	};
+
+	Ok(marker.run_id() == lease.run_id()
+		&& run_cycle_reconciliation::worktree_activity_marker_is_fresh(&marker, now_unix_epoch))
+}
+
 fn reconcile_success_retained_review_lease<T>(
 	context: &ProjectStateReconciliationContext<'_, T>,
 	lease: &IssueLease,
@@ -62,7 +119,11 @@ where
 		&& issue.state.name == context.workflow.frontmatter().tracker().success_state()
 		&& retained_review_lease_matches_run(context.state_store, lease)?
 	{
-		mark_run_attempt_if_active(context.state_store, lease.run_id(), "succeeded")?;
+		run_cycle_reconciliation::mark_run_attempt_if_active(
+			context.state_store,
+			lease.run_id(),
+			"succeeded",
+		)?;
 
 		context.state_store.clear_lease(lease.issue_id())?;
 
@@ -105,7 +166,12 @@ where
 		issue,
 		cleared_terminal_lane_issue_ids,
 	)?;
-	mark_run_attempt_if_active(context.state_store, lease.run_id(), "interrupted")?;
+
+	run_cycle_reconciliation::mark_run_attempt_if_active(
+		context.state_store,
+		lease.run_id(),
+		"interrupted",
+	)?;
 
 	context.state_store.clear_lease(lease.issue_id())?;
 
@@ -122,12 +188,13 @@ where
 	T: IssueTracker,
 {
 	let reconciled_status = match issues_by_id.get(lease.issue_id()) {
-		Some(issue) if is_terminal_issue(issue, context.workflow) => "terminated",
+		Some(issue) if run_cycle_reconciliation::is_terminal_issue(issue, context.workflow) =>
+			"terminated",
 		Some(_) | None => "interrupted",
 	};
 
 	if let Some(issue) = issues_by_id.get(lease.issue_id())
-		&& is_terminal_issue(issue, context.workflow)
+		&& run_cycle_reconciliation::is_terminal_issue(issue, context.workflow)
 	{
 		clear_terminal_lane_labels_once(
 			context.tracker,
@@ -137,25 +204,13 @@ where
 		)?;
 	}
 
-	mark_run_attempt_if_active(context.state_store, lease.run_id(), reconciled_status)?;
+	run_cycle_reconciliation::mark_run_attempt_if_active(
+		context.state_store,
+		lease.run_id(),
+		reconciled_status,
+	)?;
 
 	context.state_store.clear_lease(lease.issue_id())
-}
-
-pub(in crate::orchestrator::run_cycle_reconciliation) fn clear_terminal_lane_labels_once<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	issue: &TrackerIssue,
-	cleared_issue_ids: &mut HashSet<String>,
-) -> Result<()>
-where
-	T: IssueTracker,
-{
-	if cleared_issue_ids.insert(issue.id.clone()) {
-		tracker::clear_automation_lane_labels(tracker, issue, project.service_id())?;
-	}
-
-	Ok(())
 }
 
 fn retained_review_lease_matches_run(state_store: &StateStore, lease: &IssueLease) -> Result<bool> {
@@ -164,41 +219,9 @@ fn retained_review_lease_matches_run(state_store: &StateStore, lease: &IssueLeas
 	};
 	let worktree_mapping = state_store.worktree_for_issue(lease.issue_id())?;
 
-	retained_review_handoff_matches_run(state_store, &run_attempt, worktree_mapping.as_ref())
-}
-
-pub(crate) fn terminal_issue_keeps_retained_closeout<T>(
-	tracker: &T,
-	issue: &TrackerIssue,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-) -> Result<bool>
-where
-	T: IssueTracker + ?Sized,
-{
-	if !is_terminal_issue(issue, workflow) {
-		return Ok(false);
-	}
-
-	Ok(issue_passes_closeout_dispatch_policy(tracker, issue, project, workflow, state_store)?
-		|| closeout_dispatch_block_reason(tracker, issue, project, workflow, state_store)?
-			.is_some())
-}
-
-pub(crate) fn retained_closeout_lease_has_fresh_activity(
-	lease: &IssueLease,
-	issue: &TrackerIssue,
-	project: &ServiceConfig,
-	now_unix_epoch: i64,
-) -> Result<bool> {
-	let worktree_manager =
-		WorktreeManager::new(project.service_id(), project.repo_root(), project.worktree_root());
-	let worktree = worktree_manager.plan_for_issue(&issue.identifier);
-	let Some(marker) = state::read_run_activity_marker_snapshot(&worktree.path)? else {
-		return Ok(false);
-	};
-
-	Ok(marker.run_id() == lease.run_id()
-		&& worktree_activity_marker_is_fresh(&marker, now_unix_epoch))
+	run_cycle_reconciliation::retained_review_handoff_matches_run(
+		state_store,
+		&run_attempt,
+		worktree_mapping.as_ref(),
+	)
 }

@@ -1,25 +1,31 @@
 use std::env;
 
-use super::{
-	constants::{
-		PROBE_DEVELOPER_INSTRUCTIONS, PROBE_EXPECTED_OUTPUT, PROBE_ISSUE_ID, PROBE_RUN_ID,
-		PROBE_TIMEOUT, PROBE_USER_INPUT,
+use crate::{
+	agent::{
+		app_server::{
+			self,
+			constants::{
+				PROBE_DEVELOPER_INSTRUCTIONS, PROBE_EXPECTED_OUTPUT, PROBE_ISSUE_ID, PROBE_RUN_ID,
+				PROBE_TIMEOUT, PROBE_USER_INPUT,
+			},
+			preflight::CommandExecHealthCheck,
+			protocol::ProbeDynamicToolHandler,
+			runtime_types::{AppServerRunRequest, AppServerRunResult},
+			schema_probe,
+		},
+		json_rpc::AppServerProcessEnv,
 	},
-	execute_app_server_run,
-	preflight::CommandExecHealthCheck,
-	protocol::ProbeDynamicToolHandler,
-	runtime_types::{AppServerRunRequest, AppServerRunResult},
-	schema_probe::probe_app_server_schema,
+	prelude::{Result, eyre},
+	state::StateStore,
 };
-use crate::{agent::json_rpc::AppServerProcessEnv, prelude::eyre, state::StateStore};
 
-pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServerRunResult> {
+pub(crate) fn probe_app_server(listen: &str) -> Result<AppServerRunResult> {
 	let state_store = StateStore::open_in_memory()?;
 	let probe_tool_handler = ProbeDynamicToolHandler;
 
-	probe_app_server_schema(&AppServerProcessEnv::default())?;
+	schema_probe::probe_app_server_schema(&AppServerProcessEnv::default())?;
 
-	let result = execute_app_server_run(
+	let result = app_server::execute_app_server_run(
 		&AppServerRunRequest {
 			project_id: String::from("probe"),
 			run_id: PROBE_RUN_ID.to_owned(),

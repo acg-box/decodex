@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	loop_contract::DecisionContractStatus,
 	prelude::{Result, eyre},
+	research_design::normalized,
 };
-use crate::research_design::normalized;
 
 /// Research/design outcome before any execution authority exists.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -18,9 +18,8 @@ pub(crate) enum ResearchDesignOutcome {
 impl ResearchDesignOutcome {
 	pub(super) fn contract_status(self) -> DecisionContractStatus {
 		match self {
-			Self::DecisionReady | Self::NotDecisionReady | Self::Blocked => {
-				DecisionContractStatus::DraftLatent
-			},
+			Self::DecisionReady | Self::NotDecisionReady | Self::Blocked =>
+				DecisionContractStatus::DraftLatent,
 			Self::NeedsHumanDecision => DecisionContractStatus::NeedsHumanDecision,
 		}
 	}

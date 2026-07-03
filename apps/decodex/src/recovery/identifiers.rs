@@ -23,62 +23,6 @@ pub(super) fn ghost_lane_issue_identifier(
 		})
 }
 
-fn ghost_lane_inferred_issue_identifier(run: &ProjectRunStatus) -> Option<String> {
-	ghost_lane_issue_identifier_from_run_id(run.run_id())
-		.or_else(|| run.branch_name().and_then(ghost_lane_issue_identifier_in_text))
-		.or_else(|| {
-			run.worktree_path()
-				.and_then(|path| ghost_lane_issue_identifier_in_text(&path.display().to_string()))
-		})
-		.or_else(|| {
-			commit_message::looks_like_issue_identifier(run.issue_id())
-				.then(|| run.issue_id().to_ascii_uppercase())
-		})
-}
-
-fn ghost_lane_issue_identifier_from_run_id(run_id: &str) -> Option<String> {
-	if let Some((candidate, _attempt_suffix)) = run_id.split_once("-attempt-") {
-		return ghost_lane_issue_identifier_in_text(candidate);
-	}
-	if let Some(candidate) = run_id.strip_prefix("recovered-") {
-		return ghost_lane_issue_identifier_in_text(candidate);
-	}
-
-	None
-}
-
-fn ghost_lane_issue_identifier_in_text(value: &str) -> Option<String> {
-	let bytes = value.as_bytes();
-
-	for index in 0..bytes.len() {
-		if !bytes[index].is_ascii_alphabetic() {
-			continue;
-		}
-
-		let mut prefix_end = index + 1;
-
-		while prefix_end < bytes.len() && bytes[prefix_end].is_ascii_alphanumeric() {
-			prefix_end += 1;
-		}
-
-		if prefix_end >= bytes.len() || bytes[prefix_end] != b'-' {
-			continue;
-		}
-
-		let mut digit_end = prefix_end + 1;
-
-		while digit_end < bytes.len() && bytes[digit_end].is_ascii_digit() {
-			digit_end += 1;
-		}
-
-		if digit_end > prefix_end + 1 {
-			return Some(value[index..digit_end].to_ascii_uppercase());
-		}
-	}
-
-	None
-}
-
 pub(super) fn ghost_lane_tracker_issue_selectors(
 	run: &ProjectRunStatus,
 	issue_identifier: Option<&str>,
@@ -143,6 +87,62 @@ pub(super) fn ghost_lane_run_matches_selector(run: &ProjectRunStatus, selector: 
 			selector.eq_ignore_ascii_case(candidate)
 				|| ghost_lane_identifier_suffix_matches(selector, candidate)
 		})
+}
+
+fn ghost_lane_inferred_issue_identifier(run: &ProjectRunStatus) -> Option<String> {
+	ghost_lane_issue_identifier_from_run_id(run.run_id())
+		.or_else(|| run.branch_name().and_then(ghost_lane_issue_identifier_in_text))
+		.or_else(|| {
+			run.worktree_path()
+				.and_then(|path| ghost_lane_issue_identifier_in_text(&path.display().to_string()))
+		})
+		.or_else(|| {
+			commit_message::looks_like_issue_identifier(run.issue_id())
+				.then(|| run.issue_id().to_ascii_uppercase())
+		})
+}
+
+fn ghost_lane_issue_identifier_from_run_id(run_id: &str) -> Option<String> {
+	if let Some((candidate, _attempt_suffix)) = run_id.split_once("-attempt-") {
+		return ghost_lane_issue_identifier_in_text(candidate);
+	}
+	if let Some(candidate) = run_id.strip_prefix("recovered-") {
+		return ghost_lane_issue_identifier_in_text(candidate);
+	}
+
+	None
+}
+
+fn ghost_lane_issue_identifier_in_text(value: &str) -> Option<String> {
+	let bytes = value.as_bytes();
+
+	for index in 0..bytes.len() {
+		if !bytes[index].is_ascii_alphabetic() {
+			continue;
+		}
+
+		let mut prefix_end = index + 1;
+
+		while prefix_end < bytes.len() && bytes[prefix_end].is_ascii_alphanumeric() {
+			prefix_end += 1;
+		}
+
+		if prefix_end >= bytes.len() || bytes[prefix_end] != b'-' {
+			continue;
+		}
+
+		let mut digit_end = prefix_end + 1;
+
+		while digit_end < bytes.len() && bytes[digit_end].is_ascii_digit() {
+			digit_end += 1;
+		}
+
+		if digit_end > prefix_end + 1 {
+			return Some(value[index..digit_end].to_ascii_uppercase());
+		}
+	}
+
+	None
 }
 
 fn ghost_lane_identifier_suffix_matches(left: &str, right: &str) -> bool {

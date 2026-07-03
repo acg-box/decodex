@@ -1,13 +1,16 @@
 use serde_json::{self, Value};
 
-use crate::agent::tracker_tool_bridge::{
-	self, DocsImpact, DynamicToolCallResponse, ExecutionProgressPhase, NormalizedProgressCheckpoint,
-	ProgressCheckpointArgs, ReviewHandoffContext, TrackerToolBridge,
-};
-use crate::state::StateStore;
-use crate::tracker::{
-	self,
-	records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
+use crate::{
+	agent::tracker_tool_bridge::{
+		self, DocsImpact, DynamicToolCallResponse, ExecutionProgressPhase,
+		NormalizedProgressCheckpoint, ProgressCheckpointArgs, ReviewHandoffContext,
+		TrackerToolBridge,
+	},
+	state::StateStore,
+	tracker::{
+		self,
+		records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
+	},
 };
 
 impl<'a> TrackerToolBridge<'a> {

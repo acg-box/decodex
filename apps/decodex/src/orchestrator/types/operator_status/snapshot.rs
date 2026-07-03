@@ -1,17 +1,20 @@
 use serde::{Deserialize, Serialize};
 
-use crate::orchestrator::types::operator_status::{
-	execution_program::OperatorExecutionProgramStatus,
-	lifecycle::OperatorHistoryLaneStatus,
-	post_review::OperatorPostReviewLaneStatus,
-	project::{
-		OperatorCodexAccountControlStatus, OperatorConnectorBackoffStatus, OperatorProjectStatus,
+use crate::{
+	orchestrator::types::operator_status::{
+		execution_program::OperatorExecutionProgramStatus,
+		lifecycle::OperatorHistoryLaneStatus,
+		post_review::OperatorPostReviewLaneStatus,
+		project::{
+			OperatorCodexAccountControlStatus, OperatorConnectorBackoffStatus,
+			OperatorProjectStatus,
+		},
+		queue::OperatorQueuedIssueStatus,
+		run::OperatorRunStatus,
+		worktree::OperatorWorktreeStatus,
 	},
-	queue::OperatorQueuedIssueStatus,
-	run::OperatorRunStatus,
-	worktree::OperatorWorktreeStatus,
+	state::CodexAccountActivitySummary,
 };
-use crate::state::CodexAccountActivitySummary;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct OperatorStatusSnapshot {

@@ -1,12 +1,27 @@
-use super::*;
-use crate::orchestrator::tests::recovery_terminal_support;
+use crate::orchestrator::tests::{
+	operator::status::{
+		running_lanes,
+		running_lanes::{
+			Connection, FakeTracker, HashMap, MODEL_EXECUTION_IDLE_TIMEOUT, OffsetDateTime,
+			PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE,
+			ProtocolActivityMarker, ProtocolActivitySummary, RUN_ACTIVITY_MARKER_FILE,
+			RUN_LEASE_IDLE_TIMEOUT, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_RECONCILIATION,
+			Read as _, ServiceConfig, Shutdown, StateStore, TEST_SERVICE_ID, TcpListener, TempDir,
+			TestEnvVarGuard, TrackerIssue, Write as _, fs, orchestrator, process, state, thread,
+			tracker,
+		},
+	},
+	recovery_terminal_support,
+};
 
 #[test]
 fn operator_status_snapshot_surfaces_repeated_continuation_recovery_lineage() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = running_lanes::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	for (run_id, attempt_number) in [("run-1", 1), ("run-2", 2)] {
@@ -75,10 +90,12 @@ fn operator_status_snapshot_surfaces_repeated_continuation_recovery_lineage() {
 
 #[test]
 fn operator_status_snapshot_surfaces_phase_acceptance_check() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue =
-		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let issue = running_lanes::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -140,11 +157,11 @@ fn operator_status_snapshot_surfaces_phase_acceptance_check() {
 
 #[test]
 fn operator_status_snapshot_surfaces_merged_dirty_ad_hoc_worktree() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join("accounts-column-format");
 
-	git_status_success(
+	running_lanes::git_status_success(
 		config.repo_root(),
 		&[
 			"worktree",
@@ -155,12 +172,16 @@ fn operator_status_snapshot_surfaces_merged_dirty_ad_hoc_worktree() {
 			"main",
 		],
 	);
-	commit_worktree_change(&worktree_path, "README.md", "feature work\n", "feature work");
-	git_status_success(
+	running_lanes::commit_worktree_change(
+		&worktree_path,
+		"README.md",
+		"feature work\n",
+		"feature work",
+	);
+	running_lanes::git_status_success(
 		config.repo_root(),
 		&["merge", "--no-ff", "xy/accounts-column-format", "-m", "land feature"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "dirty after land\n")
 		.expect("worktree file should become dirty");
 
@@ -199,7 +220,7 @@ fn operator_status_snapshot_surfaces_merged_dirty_ad_hoc_worktree() {
 
 #[test]
 fn operator_status_snapshot_explains_unavailable_worktree_hygiene() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	fs::remove_dir_all(config.repo_root().join(".git"))
@@ -237,12 +258,12 @@ fn operator_status_snapshot_explains_unavailable_worktree_hygiene() {
 
 #[test]
 fn operator_status_snapshot_updates_owned_merged_worktree_hygiene_without_global_warning() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Done", &[]);
+	let issue = running_lanes::sample_issue("Done", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
-	git_status_success(
+	running_lanes::git_status_success(
 		config.repo_root(),
 		&[
 			"worktree",
@@ -253,12 +274,16 @@ fn operator_status_snapshot_updates_owned_merged_worktree_hygiene_without_global
 			"main",
 		],
 	);
-	commit_worktree_change(&worktree_path, "README.md", "feature work\n", "feature work");
-	git_status_success(
+	running_lanes::commit_worktree_change(
+		&worktree_path,
+		"README.md",
+		"feature work\n",
+		"feature work",
+	);
+	running_lanes::git_status_success(
 		config.repo_root(),
 		&["merge", "--no-ff", "xy/pub-101-cleanup", "-m", "land feature"],
 	);
-
 	fs::write(worktree_path.join("README.md"), "dirty after land\n")
 		.expect("worktree file should become dirty");
 
@@ -295,11 +320,11 @@ fn operator_status_snapshot_updates_owned_merged_worktree_hygiene_without_global
 
 #[test]
 fn live_operator_status_snapshot_hydrates_current_lane_issue_display_metadata() {
-	let (temp_dir, config, workflow) = temp_project_layout();
+	let (temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "xy-392-attempt-1-1777551056";
 	let channel_path = temp_dir.path().join("control.channel");
-	let mut issue = sample_issue_with_sort_fields(
+	let mut issue = running_lanes::sample_issue_with_sort_fields(
 		"issue-active",
 		"XY-392",
 		"In Progress",
@@ -310,7 +335,7 @@ fn live_operator_status_snapshot_hydrates_current_lane_issue_display_metadata() 
 
 	issue.title = String::from("Hydrate issue display metadata on run rows");
 
-	git_status_success(
+	running_lanes::git_status_success(
 		config.repo_root(),
 		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
 	);
@@ -378,7 +403,7 @@ fn live_operator_status_snapshot_hydrates_current_lane_issue_display_metadata() 
 
 #[test]
 fn idle_operator_status_snapshot_has_no_runtime_or_recovery_noise() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
@@ -459,7 +484,7 @@ fn idle_operator_status_snapshot_has_no_runtime_or_recovery_noise() {
 
 #[test]
 fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
-	let (temp_dir, base_config, _workflow) = temp_project_layout();
+	let (temp_dir, base_config, _workflow) = running_lanes::temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
 	let accounts_path = temp_dir.path().join(".codex/decodex/accounts.jsonl");
@@ -484,7 +509,7 @@ fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
 	)
 	.expect("accounts fixture should write");
 
-	let mut config_toml = service_config_toml_for_config(
+	let mut config_toml = running_lanes::service_config_toml_for_config(
 		&base_config,
 		base_config.github().token_env_var(),
 		base_config.codex().review_level(),
@@ -492,9 +517,9 @@ fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
 
 	config_toml.push_str(&format!("\n[codex.accounts]\nusage_endpoint = \"{}\"\n", usage_endpoint));
 
-	write_service_config(base_config.repo_root(), &config_toml);
+	running_lanes::write_service_config(base_config.repo_root(), &config_toml);
 
-	let config = load_service_config(base_config.repo_root());
+	let config = running_lanes::load_service_config(base_config.repo_root());
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
@@ -522,7 +547,7 @@ fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
 
 #[test]
 fn status_command_snapshot_does_not_probe_configured_codex_accounts() {
-	let (temp_dir, base_config, workflow) = temp_project_layout();
+	let (temp_dir, base_config, workflow) = running_lanes::temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
 	let accounts_path = temp_dir.path().join(".codex/decodex/accounts.jsonl");
@@ -536,7 +561,7 @@ fn status_command_snapshot_does_not_probe_configured_codex_accounts() {
 	)
 	.expect("accounts fixture should write");
 
-	let mut config_toml = service_config_toml_for_config(
+	let mut config_toml = running_lanes::service_config_toml_for_config(
 		&base_config,
 		base_config.github().token_env_var(),
 		base_config.codex().review_level(),
@@ -545,9 +570,9 @@ fn status_command_snapshot_does_not_probe_configured_codex_accounts() {
 	config_toml
 		.push_str("\n[codex.accounts]\nusage_endpoint = \"http://127.0.0.1:9/wham/usage\"\n");
 
-	write_service_config(base_config.repo_root(), &config_toml);
+	running_lanes::write_service_config(base_config.repo_root(), &config_toml);
 
-	let config = load_service_config(base_config.repo_root());
+	let config = running_lanes::load_service_config(base_config.repo_root());
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
 	let snapshot = orchestrator::build_status_command_operator_status_snapshot(
@@ -616,7 +641,7 @@ fn usage_fixture_account_id(request: &str) -> Option<&str> {
 
 #[test]
 fn operator_status_snapshot_includes_local_recovery_worktree_directories() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join("PUB-199");
 
@@ -636,9 +661,9 @@ fn operator_status_snapshot_includes_local_recovery_worktree_directories() {
 
 #[test]
 fn completed_retained_worktree_without_post_review_owner_is_cleanup_only() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue_with_sort_fields(
+	let issue = running_lanes::sample_issue_with_sort_fields(
 		"issue-cleanup",
 		"PUB-199",
 		"Done",
@@ -686,9 +711,9 @@ fn completed_retained_worktree_without_post_review_owner_is_cleanup_only() {
 
 #[test]
 fn legacy_cleanup_only_worktree_requires_audited_manual_closeout() {
-	let (temp_dir, config, workflow) = temp_project_layout();
+	let (temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let db_path = temp_dir.path().join("legacy-runtime.sqlite3");
-	let issue = sample_issue_with_sort_fields(
+	let issue = running_lanes::sample_issue_with_sort_fields(
 		"issue-cleanup",
 		"PUB-199",
 		"Done",
@@ -751,8 +776,8 @@ fn legacy_cleanup_only_worktree_requires_audited_manual_closeout() {
 fn runtime_recovery_preserves_legacy_cleanup_only_provenance_without_recoverable_owner() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
 	let db_path = temp_dir.path().join("runtime.sqlite3");
-	let (_layout_dir, config, workflow) = temp_project_layout();
-	let issue = sample_issue_with_sort_fields(
+	let (_layout_dir, config, workflow) = running_lanes::temp_project_layout();
+	let issue = running_lanes::sample_issue_with_sort_fields(
 		"issue-legacy",
 		"PUB-199",
 		"Done",
@@ -808,7 +833,7 @@ fn runtime_recovery_preserves_legacy_cleanup_only_provenance_without_recoverable
 
 #[test]
 fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -851,7 +876,7 @@ fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
 
 #[test]
 fn runtime_recovery_splits_invalid_local_id_batch_without_losing_valid_issue() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let mut issue = recovery_terminal_support::sample_active_issue("In Progress");
 
 	issue.id = String::from("00000000-0000-0000-0000-000000000101");
@@ -909,7 +934,7 @@ fn runtime_recovery_splits_invalid_local_id_batch_without_losing_valid_issue() {
 
 #[test]
 fn post_review_worktree_refresh_splits_invalid_local_id_batch_without_losing_valid_issue() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let mut issue = recovery_terminal_support::sample_active_issue("In Review");
 
 	issue.id = String::from("00000000-0000-0000-0000-000000000101");
@@ -963,9 +988,9 @@ fn operator_status_snapshot_reports_retry_backoff_from_worktree_marker() {
 	for (retry_kind, expected_wait_reason) in
 		[("failure", "failure_retry"), ("git_lock_contention", "git_lock_contention")]
 	{
-		let (_temp_dir, config, _workflow) = temp_project_layout();
+		let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 		let state_store = StateStore::open_in_memory().expect("state store should open");
-		let issue = sample_issue("Todo", &[]);
+		let issue = running_lanes::sample_issue("Todo", &[]);
 		let worktree_path = config.worktree_root().join("PUB-101");
 
 		state_store
@@ -1004,9 +1029,9 @@ fn operator_status_snapshot_reports_retry_backoff_from_worktree_marker() {
 
 #[test]
 fn operator_status_snapshot_keeps_continuation_retry_from_orphaning_live_marker_worktree() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1056,9 +1081,9 @@ fn operator_status_snapshot_keeps_continuation_retry_from_orphaning_live_marker_
 
 #[test]
 fn operator_status_snapshot_ignores_retry_schedule_on_running_attempt() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1102,9 +1127,9 @@ fn operator_status_snapshot_ignores_retry_schedule_on_running_attempt() {
 
 #[test]
 fn operator_status_snapshot_reports_stalled_runs_explicitly() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1131,9 +1156,9 @@ fn operator_status_snapshot_reports_stalled_runs_explicitly() {
 
 #[test]
 fn operator_status_snapshot_surfaces_reconciliation_operation_for_stalled_runs() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1161,9 +1186,9 @@ fn operator_status_snapshot_surfaces_reconciliation_operation_for_stalled_runs()
 
 #[test]
 fn operator_status_snapshot_preserves_stalled_run_activity_when_tagging_reconciliation() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1224,9 +1249,9 @@ fn operator_status_snapshot_preserves_stalled_run_activity_when_tagging_reconcil
 
 #[test]
 fn operator_status_snapshot_marks_soft_stalls_before_hard_timeout() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1277,9 +1302,9 @@ fn operator_status_snapshot_marks_soft_stalls_before_hard_timeout() {
 
 #[test]
 fn operator_status_snapshot_diagnoses_protocol_only_model_execution() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -1377,9 +1402,9 @@ fn operator_status_snapshot_diagnoses_protocol_only_model_execution() {
 
 #[test]
 fn operator_status_snapshot_prioritizes_repo_gate_progress_diagnostic() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 
 	seed_running_repo_gate_status_lane(&state_store, &config, &issue);
 
@@ -1401,9 +1426,9 @@ fn operator_status_snapshot_prioritizes_repo_gate_progress_diagnostic() {
 
 #[test]
 fn operator_status_snapshot_clears_repo_gate_progress_after_later_transition() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 
 	seed_running_repo_gate_status_lane(&state_store, &config, &issue);
 

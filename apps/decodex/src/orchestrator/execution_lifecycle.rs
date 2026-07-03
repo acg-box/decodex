@@ -1,23 +1,28 @@
-use crate::orchestrator::{eyre, PublicProjectionPrivacyClassifier, ServiceConfig, IssueRunPlan, records, IssueTracker, StateStore, Result, WorkflowDocument, relative_worktree_path, configured_public_projection_privacy_classifier, worktree_head_oid, current_timestamp};
-use crate::tracker;
+use crate::{
+	orchestrator::{
+		self, IssueRunPlan, IssueTracker, PublicProjectionPrivacyClassifier, Result, ServiceConfig,
+		StateStore, WorkflowDocument, eyre, records,
+	},
+	tracker,
+};
 
-pub(in crate::orchestrator) struct TerminalFailureLifecycle<'a> {
-	pub(in crate::orchestrator) error_class: &'a str,
-	pub(in crate::orchestrator) next_action: &'a str,
-	pub(in crate::orchestrator) pr_url: Option<&'a str>,
-	pub(in crate::orchestrator) target_state: &'a str,
-	pub(in crate::orchestrator) worktree_path: &'a str,
-	pub(in crate::orchestrator) manual_attention_requested: bool,
-	pub(in crate::orchestrator) retained_source_error_class: Option<&'a str>,
+pub(crate) struct TerminalFailureLifecycle<'a> {
+	pub(crate) error_class: &'a str,
+	pub(crate) next_action: &'a str,
+	pub(crate) pr_url: Option<&'a str>,
+	pub(crate) target_state: &'a str,
+	pub(crate) worktree_path: &'a str,
+	pub(crate) manual_attention_requested: bool,
+	pub(crate) retained_source_error_class: Option<&'a str>,
 }
 
-pub(in crate::orchestrator) struct RunStartedLifecycleFields<'a> {
-	pub(in crate::orchestrator) worktree_path: &'a str,
-	pub(in crate::orchestrator) commit_sha: &'a str,
-	pub(in crate::orchestrator) privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
+pub(crate) struct RunStartedLifecycleFields<'a> {
+	pub(crate) worktree_path: &'a str,
+	pub(crate) commit_sha: &'a str,
+	pub(crate) privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
 }
 
-pub(in crate::orchestrator) fn lifecycle_event_identity<'a>(
+pub(crate) fn lifecycle_event_identity<'a>(
 	project: &'a ServiceConfig,
 	issue_run: &'a IssueRunPlan,
 ) -> records::LinearExecutionEventIdentity<'a> {
@@ -30,7 +35,7 @@ pub(in crate::orchestrator) fn lifecycle_event_identity<'a>(
 	}
 }
 
-pub(in crate::orchestrator) fn write_lifecycle_event<T>(
+pub(crate) fn write_lifecycle_event<T>(
 	tracker: &T,
 	state_store: &StateStore,
 	issue_id: &str,
@@ -63,7 +68,7 @@ where
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn write_prepare_lifecycle_events<T>(
+pub(crate) fn write_prepare_lifecycle_events<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -73,15 +78,17 @@ pub(in crate::orchestrator) fn write_prepare_lifecycle_events<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
-	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
-	let commit_sha = worktree_head_oid(&issue_run.worktree.path)?.ok_or_else(|| {
-		eyre::eyre!(
-			"Prepared worktree `{}` for issue `{}` did not expose a HEAD commit.",
-			issue_run.worktree.path.display(),
-			issue_run.issue.identifier
-		)
-	})?;
+	let worktree_path = orchestrator::relative_worktree_path(project, &issue_run.worktree);
+	let privacy_classifier =
+		orchestrator::configured_public_projection_privacy_classifier(project)?;
+	let commit_sha =
+		orchestrator::worktree_head_oid(&issue_run.worktree.path)?.ok_or_else(|| {
+			eyre::eyre!(
+				"Prepared worktree `{}` for issue `{}` did not expose a HEAD commit.",
+				issue_run.worktree.path.display(),
+				issue_run.issue.identifier
+			)
+		})?;
 
 	write_run_started_lifecycle_event(
 		tracker,
@@ -97,7 +104,7 @@ where
 	)
 }
 
-pub(in crate::orchestrator) fn write_run_started_lifecycle_event<T>(
+pub(crate) fn write_run_started_lifecycle_event<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -118,7 +125,7 @@ where
 	let mut record = records::LinearExecutionEventRecord::new(
 		lifecycle_event_identity(project, issue_run),
 		"run_started",
-		current_timestamp(),
+		orchestrator::current_timestamp(),
 		&anchor,
 	);
 
@@ -138,7 +145,7 @@ where
 	)
 }
 
-pub(in crate::orchestrator) fn terminal_failure_lifecycle_event(
+pub(crate) fn terminal_failure_lifecycle_event(
 	service_id: &str,
 	issue_run: &IssueRunPlan,
 	failure: TerminalFailureLifecycle<'_>,
@@ -160,7 +167,7 @@ pub(in crate::orchestrator) fn terminal_failure_lifecycle_event(
 			attempt_number: issue_run.attempt_number,
 		},
 		event_type,
-		current_timestamp(),
+		orchestrator::current_timestamp(),
 		&anchor,
 	);
 
@@ -207,7 +214,7 @@ pub(in crate::orchestrator) fn terminal_failure_lifecycle_event(
 	record
 }
 
-pub(in crate::orchestrator) fn write_cleanup_complete_lifecycle_event<T>(
+pub(crate) fn write_cleanup_complete_lifecycle_event<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	state_store: &StateStore,
@@ -218,8 +225,9 @@ pub(in crate::orchestrator) fn write_cleanup_complete_lifecycle_event<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
-	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
+	let worktree_path = orchestrator::relative_worktree_path(project, &issue_run.worktree);
+	let privacy_classifier =
+		orchestrator::configured_public_projection_privacy_classifier(project)?;
 	let anchor = records::stable_event_anchor(&[
 		&issue_run.worktree.branch_name,
 		commit_sha.unwrap_or_default(),
@@ -228,7 +236,7 @@ where
 	let mut record = records::LinearExecutionEventRecord::new(
 		lifecycle_event_identity(project, issue_run),
 		"cleanup_complete",
-		current_timestamp(),
+		orchestrator::current_timestamp(),
 		&anchor,
 	);
 

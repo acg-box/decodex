@@ -1,11 +1,17 @@
-use super::{
-	PendingReviewCompletion, REVIEW_REPAIR_PUBLIC_SUMMARY_FALLBACK, ReviewHandoffMarker,
-	ReviewOrchestrationMarker, TrackerToolBridge, eyre, linear_execution_review_event, tracker,
-	tracker_tool_bridge,
+use crate::{
+	agent::tracker_tool_bridge::{
+		review,
+		review::{
+			PendingReviewCompletion, REVIEW_REPAIR_PUBLIC_SUMMARY_FALLBACK, ReviewHandoffMarker,
+			ReviewOrchestrationMarker, TrackerToolBridge, eyre, tracker_tool_bridge,
+		},
+	},
+	prelude::Result,
+	tracker,
 };
 
 impl<'a> TrackerToolBridge<'a> {
-	pub(crate) fn apply_review_repair(&self) -> crate::prelude::Result<()> {
+	pub(crate) fn apply_review_repair(&self) -> Result<()> {
 		let Some(review_context) = self.review_context.as_ref() else {
 			eyre::bail!(
 				"Review handoff context is unavailable for issue `{}`.",
@@ -38,7 +44,7 @@ impl<'a> TrackerToolBridge<'a> {
 			&pending_review_repair,
 			public_summary.as_ref(),
 		);
-		let handoff_record = linear_execution_review_event(
+		let handoff_record = review::linear_execution_review_event(
 			self.issue,
 			review_context,
 			&pull_request,

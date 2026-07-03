@@ -2,20 +2,16 @@
 
 use crate::{
 	prelude::{Result, eyre},
+	recovery::{
+		evidence::{self, ghost_lane_record_has_pr_or_review_lineage},
+		process_liveness::StaleActiveProcessLiveness,
+		reports::StaleActiveDiagnostic,
+	},
 	state::{ProjectRunStatus, StateStore},
 	tracker::{
 		IssueTracker, TrackerIssue,
 		records::{self, LinearExecutionEventRecord},
 	},
-};
-
-use super::{
-	evidence::{
-		ghost_lane_record_has_pr_or_review_lineage, stale_active_private_event_allows_release,
-		stale_active_private_event_is_release_audit_for_run,
-	},
-	process_liveness::StaleActiveProcessLiveness,
-	reports::StaleActiveDiagnostic,
 };
 
 pub(super) fn inspect_stale_active_private_evidence(
@@ -36,16 +32,18 @@ pub(super) fn inspect_stale_active_private_evidence(
 	if events.is_empty() {
 		evidence.push(String::from("private_evidence_missing"));
 	} else {
-		let release_audit_present = events
-			.iter()
-			.any(|event| stale_active_private_event_is_release_audit_for_run(event, latest_run));
+		let release_audit_present = events.iter().any(|event| {
+			evidence::stale_active_private_event_is_release_audit_for_run(event, latest_run)
+		});
+
 		if release_audit_present {
 			evidence.push(String::from("stale_active_release_audit_present"));
 		}
+
 		let private_progress_events = events
 			.iter()
 			.filter(|event| {
-				!stale_active_private_event_allows_release(
+				!evidence::stale_active_private_event_allows_release(
 					event,
 					marker_liveness,
 					release_audit_present,
@@ -152,10 +150,10 @@ where
 		&diagnostic.issue_id,
 		&diagnostic.issue_identifier,
 	)?;
+
 	if records.iter().any(ghost_lane_record_has_pr_or_review_lineage) {
 		blockers.push("pr_or_review_lineage_present");
 	}
-
 	if blockers.is_empty() {
 		return Ok(());
 	}

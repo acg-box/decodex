@@ -1,29 +1,16 @@
 //! OKF bundle query and graph construction.
 
-use std::{
-	collections::BTreeSet,
-	path::{Path, PathBuf},
-};
-
-use regex::Regex;
-use serde_yaml::Mapping;
-
-use crate::{
-	docs_okf::{
-		model::{DocsFile, OkfBrokenLink, OkfConceptSummary, OkfGraph, OkfGraphEdge, OkfQuery},
-		support::{
-			frontmatter_string, frontmatter_value, is_concept_markdown, read_okf_files,
-			resolve_link_target, should_skip_link_target, split_yaml_frontmatter,
-		},
-	},
-	prelude::Result,
+use crate::docs_okf::{
+	self, BTreeSet, DocsFile, Mapping, OkfBrokenLink, OkfConceptSummary, OkfGraph, OkfGraphEdge,
+	OkfQuery, Path, PathBuf, Regex, Result,
+	serde_yaml::{self, Value},
 };
 
 pub(crate) fn query_okf_bundle(root: &Path, query: &OkfQuery) -> Result<Vec<OkfConceptSummary>> {
-	let files = read_okf_files(root)?;
+	let files = docs_okf::read_okf_files(root)?;
 	let mut concepts = Vec::new();
 
-	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
+	for file in files.iter().filter(|file| docs_okf::is_concept_markdown(&file.relative_path)) {
 		let Some(concept) = concept_summary(file) else {
 			continue;
 		};
@@ -40,13 +27,13 @@ pub(crate) fn query_okf_bundle(root: &Path, query: &OkfQuery) -> Result<Vec<OkfC
 
 /// Build an OKF concept graph from Markdown links and `related` frontmatter.
 pub(crate) fn build_okf_graph(root: &Path) -> Result<OkfGraph> {
-	let files = read_okf_files(root)?;
+	let files = docs_okf::read_okf_files(root)?;
 	let concept_paths = okf_concept_path_set(&files);
 	let mut concepts = Vec::new();
 	let mut edges = Vec::new();
 	let mut broken_links = Vec::new();
 
-	for file in files.iter().filter(|file| is_concept_markdown(&file.relative_path)) {
+	for file in files.iter().filter(|file| docs_okf::is_concept_markdown(&file.relative_path)) {
 		let Some(concept) = concept_summary(file) else {
 			continue;
 		};
@@ -104,21 +91,20 @@ pub(crate) fn render_okf_graph_summary(root: &Path, graph: &OkfGraph) -> String 
 
 fn concept_summary(file: &DocsFile) -> Option<OkfConceptSummary> {
 	let content = file.content.as_deref()?;
-	let (frontmatter, _) = split_yaml_frontmatter(content)?;
-	let serde_yaml::Value::Mapping(fields) =
-		serde_yaml::from_str::<serde_yaml::Value>(frontmatter).ok()?
+	let (frontmatter, _) = docs_okf::split_yaml_frontmatter(content)?;
+	let serde_yaml::Value::Mapping(fields) = serde_yaml::from_str::<Value>(frontmatter).ok()?
 	else {
 		return None;
 	};
-	let concept_type = frontmatter_string(&fields, "type")?.to_owned();
+	let concept_type = docs_okf::frontmatter_string(&fields, "type")?.to_owned();
 	let path = path_to_string(&file.relative_path);
-	let title = frontmatter_string(&fields, "title")
+	let title = docs_okf::frontmatter_string(&fields, "title")
 		.filter(|title| !title.is_empty())
 		.map_or_else(|| concept_id(&file.relative_path), str::to_owned);
-	let description = frontmatter_string(&fields, "description")
+	let description = docs_okf::frontmatter_string(&fields, "description")
 		.filter(|description| !description.is_empty())
 		.map(str::to_owned);
-	let resource = frontmatter_string(&fields, "resource")
+	let resource = docs_okf::frontmatter_string(&fields, "resource")
 		.filter(|resource| !resource.is_empty())
 		.map(str::to_owned);
 	let tags = frontmatter_string_list_lossy(&fields, "tags");
@@ -153,13 +139,12 @@ fn path_to_string(path: &Path) -> String {
 }
 
 fn frontmatter_string_list_lossy(fields: &Mapping, key: &str) -> Vec<String> {
-	match frontmatter_value(fields, key) {
+	match docs_okf::frontmatter_value(fields, key) {
 		Some(serde_yaml::Value::Sequence(items)) => items
 			.iter()
 			.filter_map(|item| match item {
-				serde_yaml::Value::String(value) if !value.trim().is_empty() => {
-					Some(value.trim().to_owned())
-				},
+				serde_yaml::Value::String(value) if !value.trim().is_empty() =>
+					Some(value.trim().to_owned()),
 				_ => None,
 			})
 			.collect(),
@@ -204,7 +189,7 @@ fn contains_ci(haystack: &str, needle: &str) -> bool {
 fn okf_concept_path_set(files: &[DocsFile]) -> BTreeSet<PathBuf> {
 	files
 		.iter()
-		.filter(|file| is_concept_markdown(&file.relative_path))
+		.filter(|file| docs_okf::is_concept_markdown(&file.relative_path))
 		.map(|file| file.relative_path.clone())
 		.collect()
 }
@@ -228,7 +213,7 @@ fn collect_markdown_graph_edges(
 		};
 		let target = target_match.as_str();
 
-		if should_skip_link_target(target) {
+		if docs_okf::should_skip_link_target(target) {
 			continue;
 		}
 
@@ -258,12 +243,10 @@ fn collect_related_graph_edges(
 	let Some(content) = file.content.as_deref() else {
 		return;
 	};
-	let Some((frontmatter, _)) = split_yaml_frontmatter(content) else {
+	let Some((frontmatter, _)) = docs_okf::split_yaml_frontmatter(content) else {
 		return;
 	};
-	let Ok(serde_yaml::Value::Mapping(fields)) =
-		serde_yaml::from_str::<serde_yaml::Value>(frontmatter)
-	else {
+	let Ok(serde_yaml::Value::Mapping(fields)) = serde_yaml::from_str::<Value>(frontmatter) else {
 		return;
 	};
 
@@ -292,7 +275,7 @@ fn push_graph_target(
 	edges: &mut Vec<OkfGraphEdge>,
 	broken_links: &mut Vec<OkfBrokenLink>,
 ) {
-	let Some(target_path) = resolve_link_target(&file.path, bundle_root, target) else {
+	let Some(target_path) = docs_okf::resolve_link_target(&file.path, bundle_root, target) else {
 		return;
 	};
 	let Ok(relative_target) = target_path.strip_prefix(bundle_root) else {

@@ -1,7 +1,8 @@
 use color_eyre::{Report, eyre::WrapErr};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
+	manual::ManualLandLedgerContext,
 	prelude::{Result, eyre},
 	state::StateStore,
 	tracker::{
@@ -9,8 +10,6 @@ use crate::{
 		records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
 	},
 };
-
-use crate::manual::ManualLandLedgerContext;
 
 pub(super) fn write_manual_land_landed_and_closeout_events<T>(
 	tracker: &T,
@@ -25,18 +24,6 @@ where
 	write_manual_land_lifecycle_event(tracker, ledger, &landed)?;
 
 	write_manual_land_lifecycle_event(tracker, ledger, &closeout)
-}
-
-pub(in crate::manual) fn write_manual_land_cleanup_complete_event<T>(
-	tracker: &T,
-	ledger: &ManualLandLedgerContext<'_>,
-) -> Result<()>
-where
-	T: IssueTracker + ?Sized,
-{
-	let cleanup_complete = manual_land_cleanup_complete_event(ledger);
-
-	write_manual_land_lifecycle_event(tracker, ledger, &cleanup_complete)
 }
 
 pub(super) fn write_manual_land_lifecycle_event<T>(
@@ -163,31 +150,9 @@ pub(super) fn manual_land_lifecycle_identity<'a>(
 }
 
 pub(super) fn manual_land_ordered_event_timestamp(offset_seconds: i64) -> String {
-	(OffsetDateTime::now_utc() + time::Duration::seconds(offset_seconds))
+	(OffsetDateTime::now_utc() + Duration::seconds(offset_seconds))
 		.format(&Rfc3339)
 		.expect("timestamp formatting should succeed")
-}
-
-pub(in crate::manual) fn clear_manual_closeout_issue_scope<T>(
-	tracker: &T,
-	issue: &TrackerIssue,
-	service_id: &str,
-	needs_attention_label: &str,
-) -> Result<()>
-where
-	T: IssueTracker + ?Sized,
-{
-	let closeout_labels = [
-		tracker::automation_active_label(service_id),
-		tracker::automation_queue_label(service_id),
-		needs_attention_label.to_owned(),
-	];
-
-	for label_name in closeout_labels {
-		clear_manual_closeout_issue_label(tracker, issue, &label_name)?;
-	}
-
-	Ok(())
 }
 
 pub(super) fn clear_manual_closeout_issue_label<T>(
@@ -203,27 +168,6 @@ where
 	{
 		return Err(error);
 	}
-
-	Ok(())
-}
-
-pub(in crate::manual) fn clear_manual_closeout_runtime_state(
-	state_store: &StateStore,
-	issue_id: &str,
-	handoff_run_id: &str,
-) -> Result<()> {
-	state_store.succeed_running_run_attempts_for_issue(issue_id).wrap_err_with(|| {
-		format!("Failed to finalize running runtime attempts for issue `{issue_id}`.")
-	})?;
-
-	succeed_manual_land_handoff_attempt(state_store, issue_id, handoff_run_id)?;
-
-	state_store
-		.clear_lease(issue_id)
-		.wrap_err_with(|| format!("Failed to clear runtime lease for issue `{issue_id}`."))?;
-	state_store.clear_worktree(issue_id).wrap_err_with(|| {
-		format!("Failed to clear runtime worktree state for issue `{issue_id}`.")
-	})?;
 
 	Ok(())
 }
@@ -254,4 +198,59 @@ pub(super) fn linear_label_not_on_issue_error(error: &Report) -> bool {
 	error
 		.chain()
 		.any(|source| source.to_string().to_ascii_lowercase().contains("label not on issue"))
+}
+
+pub(in crate::manual) fn write_manual_land_cleanup_complete_event<T>(
+	tracker: &T,
+	ledger: &ManualLandLedgerContext<'_>,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let cleanup_complete = manual_land_cleanup_complete_event(ledger);
+
+	write_manual_land_lifecycle_event(tracker, ledger, &cleanup_complete)
+}
+
+pub(in crate::manual) fn clear_manual_closeout_issue_scope<T>(
+	tracker: &T,
+	issue: &TrackerIssue,
+	service_id: &str,
+	needs_attention_label: &str,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let closeout_labels = [
+		tracker::automation_active_label(service_id),
+		tracker::automation_queue_label(service_id),
+		needs_attention_label.to_owned(),
+	];
+
+	for label_name in closeout_labels {
+		clear_manual_closeout_issue_label(tracker, issue, &label_name)?;
+	}
+
+	Ok(())
+}
+
+pub(in crate::manual) fn clear_manual_closeout_runtime_state(
+	state_store: &StateStore,
+	issue_id: &str,
+	handoff_run_id: &str,
+) -> Result<()> {
+	state_store.succeed_running_run_attempts_for_issue(issue_id).wrap_err_with(|| {
+		format!("Failed to finalize running runtime attempts for issue `{issue_id}`.")
+	})?;
+
+	succeed_manual_land_handoff_attempt(state_store, issue_id, handoff_run_id)?;
+
+	state_store
+		.clear_lease(issue_id)
+		.wrap_err_with(|| format!("Failed to clear runtime lease for issue `{issue_id}`."))?;
+	state_store.clear_worktree(issue_id).wrap_err_with(|| {
+		format!("Failed to clear runtime worktree state for issue `{issue_id}`.")
+	})?;
+
+	Ok(())
 }
