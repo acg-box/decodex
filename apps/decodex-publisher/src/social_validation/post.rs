@@ -1,9 +1,13 @@
 //! social_post/v1 schema validation.
 
-use crate::social_validation::{
-	self, Map, SIGNAL_CONFIDENCE, SOCIAL_BLOCK_REASONS, SOCIAL_POST_LIFECYCLE_STATES,
-	SOCIAL_POST_MODES, SOCIAL_POST_PRIORITIES, SOCIAL_POST_STATUSES, SOCIAL_POST_WORTHINESS, Value,
-};
+mod claims;
+mod decision;
+mod lifecycle;
+mod source_refs;
+mod status;
+mod text;
+
+use crate::social_validation::{self, Map, SOCIAL_POST_MODES, SOCIAL_POST_STATUSES, Value};
 
 pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<String>) {
 	for field in ["slug", "audience"] {
@@ -33,50 +37,27 @@ pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<
 }
 
 pub(super) fn validate_social_post_text(text: Option<&Value>, errors: &mut Vec<String>) {
-	let Some(items) = social_validation::non_empty_array(text) else {
-		errors.push("text must be a non-empty list of X-sized strings".into());
-
-		return;
-	};
-
-	for (index, text) in items.iter().enumerate() {
-		let Some(text) = text.as_str() else {
-			errors.push(format!("text[{index}] must be a string"));
-
-			continue;
-		};
-
-		validate_social_post_text_item(text, index, errors);
-	}
+	text::validate_social_post_text(text, errors);
 }
 
 pub(super) fn validate_social_post_claims(claims: Option<&Value>, errors: &mut Vec<String>) {
-	let Some(claims) = social_validation::non_empty_array(claims) else {
-		errors.push("claims must be a non-empty list of claim objects".into());
+	claims::validate_social_post_claims(claims, errors);
+}
 
-		return;
-	};
+fn validate_social_post_source_refs(refs: Option<&Value>, errors: &mut Vec<String>) {
+	source_refs::validate_social_post_source_refs(refs, errors);
+}
 
-	for (index, claim) in claims.iter().enumerate() {
-		let Some(claim) = claim.as_object() else {
-			errors.push(format!("claims[{index}] must be an object"));
+fn validate_social_post_decision(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	decision::validate_social_post_decision(entry, errors);
+}
 
-			continue;
-		};
+fn validate_social_post_status_payload(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	status::validate_social_post_status_payload(entry, errors);
+}
 
-		for field in ["text", "evidence"] {
-			if !social_validation::is_non_empty_string(claim.get(field)) {
-				errors.push(format!("claims[{index}].{field} must be a non-empty string"));
-			}
-		}
-
-		if !social_validation::matches_one_of(claim.get("confidence"), SIGNAL_CONFIDENCE) {
-			errors.push(format!(
-				"claims[{index}].confidence must be one of {}",
-				social_validation::choices(SIGNAL_CONFIDENCE)
-			));
-		}
-	}
+fn validate_social_post_lifecycle(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	lifecycle::validate_social_post_lifecycle(entry, errors);
 }
 
 fn validate_social_post_constants(entry: &Map<String, Value>, errors: &mut Vec<String>) {
@@ -97,223 +78,6 @@ fn validate_social_post_constants(entry: &Map<String, Value>, errors: &mut Vec<S
 		errors.push(format!(
 			"status must be one of {}",
 			social_validation::choices(SOCIAL_POST_STATUSES)
-		));
-	}
-}
-
-fn validate_social_post_text_item(text: &str, index: usize, errors: &mut Vec<String>) {
-	if text.is_empty() || text.chars().count() > 280 {
-		errors.push(format!("text[{index}] must be a non-empty X-sized string"));
-	}
-	if text.contains("Automated by @hackink") {
-		errors.push(format!("text[{index}] must not include automation attribution"));
-	}
-	if text.chars().count() > 260 && !text.contains("https://") {
-		errors.push(format!(
-			"text[{index}] longer than 260 characters must include an unavoidable direct source URL"
-		));
-	}
-
-	let normalized = text.trim().to_ascii_lowercase();
-
-	if normalized == "watching this"
-		|| normalized.starts_with("watching this.")
-		|| normalized.starts_with("tracking this.")
-		|| normalized.contains("new release available")
-	{
-		errors.push(format!(
-			"text[{index}] must name a concrete source-backed release, PR, protocol surface, workflow impact, or operator action"
-		));
-	}
-}
-
-fn validate_social_post_source_refs(refs: Option<&Value>, errors: &mut Vec<String>) {
-	let Some(refs) = refs.and_then(Value::as_object) else {
-		errors.push("source_refs must be an object".into());
-
-		return;
-	};
-	let has_refs = [
-		"reservations",
-		"signals",
-		"social_candidates",
-		"upstream_impacts",
-		"upstream_reviews",
-		"urls",
-	]
-	.iter()
-	.any(|field| {
-		refs.get(*field)
-			.is_some_and(|value| !social_validation::is_empty_or_missing_array(Some(value)))
-	});
-
-	if !has_refs {
-		errors.push(
-			"source_refs must include reservations, signals, social_candidates, upstream_impacts, upstream_reviews, or urls"
-				.into(),
-		);
-	}
-	if refs.get("urls").is_some_and(|urls| !social_validation::is_https_string_array(urls)) {
-		errors.push("source_refs.urls must be a list of https URLs".into());
-	}
-
-	for field in
-		["reservations", "signals", "social_candidates", "upstream_impacts", "upstream_reviews"]
-	{
-		social_validation::validate_optional_string_list(
-			refs.get(field),
-			&format!("source_refs.{field}"),
-			errors,
-		);
-	}
-}
-
-fn validate_social_post_decision(entry: &Map<String, Value>, errors: &mut Vec<String>) {
-	let Some(decision) = entry.get("decision").and_then(Value::as_object) else {
-		errors.push("decision must be an object".into());
-
-		return;
-	};
-
-	if !social_validation::matches_one_of(decision.get("worthiness"), SOCIAL_POST_WORTHINESS) {
-		errors.push(format!(
-			"decision.worthiness must be one of {}",
-			social_validation::choices(SOCIAL_POST_WORTHINESS)
-		));
-	}
-	if !social_validation::matches_one_of(decision.get("priority"), SOCIAL_POST_PRIORITIES) {
-		errors.push(format!(
-			"decision.priority must be one of {}",
-			social_validation::choices(SOCIAL_POST_PRIORITIES)
-		));
-	}
-
-	for field in ["idempotency_key", "reason", "day", "timezone"] {
-		if !social_validation::is_non_empty_string(decision.get(field)) {
-			errors.push(format!("decision.{field} must be a non-empty string"));
-		}
-	}
-
-	validate_social_post_decision_counts(entry, decision, errors);
-}
-
-fn validate_social_post_decision_counts(
-	entry: &Map<String, Value>,
-	decision: &Map<String, Value>,
-	errors: &mut Vec<String>,
-) {
-	if decision.get("daily_limit").and_then(Value::as_i64) != Some(8) {
-		errors.push("decision.daily_limit must be 8".into());
-	}
-
-	let before = decision.get("daily_count_before").and_then(Value::as_i64);
-	let after = decision.get("daily_count_after").and_then(Value::as_i64);
-
-	match social_validation::string_field(entry, "status") {
-		Some("published")
-			if before.zip(after).is_none_or(|(before, after)| after != before + 1) =>
-			errors.push(
-				"decision.daily_count_after must equal daily_count_before + 1 for published posts"
-					.into(),
-			),
-		Some("blocked" | "failed" | "skipped")
-			if before.zip(after).is_none_or(|(before, after)| after != before) =>
-			errors.push(
-				"decision.daily_count_after must equal daily_count_before for non-published posts"
-					.into(),
-			),
-		_ => {},
-	}
-}
-
-fn validate_social_post_status_payload(entry: &Map<String, Value>, errors: &mut Vec<String>) {
-	match social_validation::string_field(entry, "status") {
-		Some("published") => validate_social_post_publication(entry.get("publication"), errors),
-		Some("blocked") => validate_social_post_block(entry, errors),
-		Some("failed") if !social_validation::is_non_empty_string(entry.get("failure_reason")) =>
-			errors.push("failure_reason is required when status is failed".into()),
-		Some("skipped") if !social_validation::is_non_empty_string(entry.get("skip_reason")) =>
-			errors.push("skip_reason is required when status is skipped".into()),
-		_ => {},
-	}
-}
-
-fn validate_social_post_lifecycle(entry: &Map<String, Value>, errors: &mut Vec<String>) {
-	let Some(lifecycle) = entry.get("post_lifecycle") else {
-		return;
-	};
-	let Some(lifecycle) = lifecycle.as_object() else {
-		errors.push("post_lifecycle must be an object when present".into());
-
-		return;
-	};
-
-	if !social_validation::matches_one_of(
-		lifecycle.get("current_state"),
-		SOCIAL_POST_LIFECYCLE_STATES,
-	) {
-		errors.push(format!(
-			"post_lifecycle.current_state must be one of {}",
-			social_validation::choices(SOCIAL_POST_LIFECYCLE_STATES)
-		));
-	}
-	if !lifecycle.get("quote_eligible").is_some_and(Value::is_boolean) {
-		errors.push("post_lifecycle.quote_eligible must be a boolean".into());
-	}
-	if lifecycle
-		.get("reason")
-		.is_some_and(|value| !social_validation::is_non_empty_string(Some(value)))
-	{
-		errors.push("post_lifecycle.reason must be non-empty when present".into());
-	}
-	if lifecycle
-		.get("superseded_by_candidate")
-		.is_some_and(|value| !social_validation::is_non_empty_string(Some(value)))
-	{
-		errors.push("post_lifecycle.superseded_by_candidate must be non-empty when present".into());
-	}
-	if lifecycle.get("current_state").and_then(Value::as_str) != Some("live")
-		&& lifecycle.get("quote_eligible").and_then(Value::as_bool) == Some(true)
-	{
-		errors
-			.push("post_lifecycle.quote_eligible can be true only for live published posts".into());
-	}
-}
-
-fn validate_social_post_publication(publication: Option<&Value>, errors: &mut Vec<String>) {
-	let Some(publication) = publication.and_then(Value::as_object) else {
-		errors.push("publication must be an object when status is published".into());
-
-		return;
-	};
-
-	for field in ["posted_at", "publisher"] {
-		if !social_validation::is_non_empty_string(publication.get(field)) {
-			errors.push(format!("publication.{field} must be a non-empty string"));
-		}
-	}
-
-	social_validation::validate_rfc3339_field(publication, "posted_at", errors);
-
-	if !publication.get("account_verified").is_some_and(Value::is_boolean) {
-		errors.push("publication.account_verified must be a boolean".into());
-	}
-	if !publication.get("made_with_ai").is_some_and(Value::is_boolean) {
-		errors.push("publication.made_with_ai must be a boolean".into());
-	}
-	if publication.get("published_urls").is_some_and(|urls| {
-		!social_validation::is_https_string_array(urls)
-			|| social_validation::is_empty_or_missing_array(Some(urls))
-	}) {
-		errors.push("publication.published_urls must be a non-empty list of https URLs".into());
-	}
-}
-
-fn validate_social_post_block(entry: &Map<String, Value>, errors: &mut Vec<String>) {
-	if !social_validation::matches_one_of(entry.get("block_reason"), SOCIAL_BLOCK_REASONS) {
-		errors.push(format!(
-			"block_reason must be one of {}",
-			social_validation::choices(SOCIAL_BLOCK_REASONS)
 		));
 	}
 }
