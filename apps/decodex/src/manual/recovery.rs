@@ -8,13 +8,12 @@ use color_eyre::eyre::WrapErr;
 
 use crate::{
 	default_branch_sync, github,
+	manual::{
+		self, MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT, ManualLandContext, ManualLandRecoveryOutcome,
+		ManualLandRequest,
+	},
 	prelude::{Result, eyre},
 	pull_request::PullRequestLandingState,
-};
-
-use super::{
-	MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT, ManualLandContext, ManualLandRecoveryOutcome,
-	ManualLandRequest, ensure_manual_land_left_no_merged_worktree_cleanup_debt, run_git_capture,
 };
 
 pub(super) fn finalize_already_merged_manual_land_recovery(
@@ -98,7 +97,8 @@ pub(super) fn ensure_already_merged_manual_land_recovery_ready(
 		&context.repository.default_branch,
 	)?;
 	ensure_manual_land_recovery_lane_cleanup_complete(context, landing_state)?;
-	ensure_manual_land_left_no_merged_worktree_cleanup_debt(context)?;
+
+	manual::ensure_manual_land_left_no_merged_worktree_cleanup_debt(context)?;
 
 	Ok(())
 }
@@ -143,9 +143,9 @@ pub(super) fn ensure_repo_root_default_branch_current(
 	repo_root: &Path,
 	default_branch: &str,
 ) -> Result<()> {
-	let local_head = run_git_capture(repo_root, &["rev-parse", "HEAD"])?;
+	let local_head = manual::run_git_capture(repo_root, &["rev-parse", "HEAD"])?;
 	let tracking_ref = format!("refs/remotes/origin/{default_branch}");
-	let remote_head = run_git_capture(repo_root, &["rev-parse", tracking_ref.as_str()])?;
+	let remote_head = manual::run_git_capture(repo_root, &["rev-parse", tracking_ref.as_str()])?;
 
 	if local_head == remote_head {
 		return Ok(());
@@ -249,7 +249,7 @@ pub(super) fn linked_worktree_paths_for_landed_head_under_root(
 	branch_name: &str,
 	head_oid: &str,
 ) -> Result<Vec<PathBuf>> {
-	let output = run_git_capture(repo_root, &["worktree", "list", "--porcelain"])?;
+	let output = manual::run_git_capture(repo_root, &["worktree", "list", "--porcelain"])?;
 	let mut matches = Vec::new();
 	let mut current_path: Option<PathBuf> = None;
 	let mut current_head: Option<String> = None;

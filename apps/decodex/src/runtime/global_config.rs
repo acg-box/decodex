@@ -5,13 +5,14 @@ use std::{fs, io::ErrorKind};
 
 use toml::Value;
 
-use crate::prelude::{Result, eyre};
-
-use super::global_config_path;
+use crate::{
+	prelude::{Result, eyre},
+	runtime,
+};
 
 /// Read the global fixed account selector, when the operator pinned one.
 pub(crate) fn global_fixed_account_selector() -> Result<Option<String>> {
-	let config_path = global_config_path()?;
+	let config_path = runtime::global_config_path()?;
 	let input = match fs::read_to_string(&config_path) {
 		Ok(input) => input,
 		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
@@ -40,7 +41,7 @@ pub(crate) fn global_fixed_account_selector() -> Result<Option<String>> {
 /// Write the global fixed account selector. `None` returns the pool to balanced mode.
 #[cfg(test)]
 pub(crate) fn write_global_fixed_account_selector(selector: Option<&str>) -> Result<()> {
-	let config_path = global_config_path()?;
+	let config_path = runtime::global_config_path()?;
 	let input = match fs::read_to_string(&config_path) {
 		Ok(input) => input,
 		Err(error) if error.kind() == ErrorKind::NotFound => String::new(),

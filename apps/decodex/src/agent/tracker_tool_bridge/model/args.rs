@@ -1,106 +1,105 @@
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-pub(in crate::agent::tracker_tool_bridge) struct ScopeArgs {
-	pub(in crate::agent::tracker_tool_bridge) issue_id: Option<String>,
+pub(crate) struct ScopeArgs {
+	pub(crate) issue_id: Option<String>,
 
-	pub(in crate::agent::tracker_tool_bridge) issue_identifier: Option<String>,
+	pub(crate) issue_identifier: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct TransitionArgs {
+pub(crate) struct TransitionArgs {
 	#[serde(flatten)]
-	pub(in crate::agent::tracker_tool_bridge) scope: ScopeArgs,
-	pub(in crate::agent::tracker_tool_bridge) state: String,
+	pub(crate) scope: ScopeArgs,
+	pub(crate) state: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct CommentArgs {
+pub(crate) struct CommentArgs {
 	#[serde(flatten)]
-	pub(in crate::agent::tracker_tool_bridge) scope: ScopeArgs,
-	pub(in crate::agent::tracker_tool_bridge) kind: String,
-	pub(in crate::agent::tracker_tool_bridge) error_class: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) next_action: Option<String>,
+	pub(crate) scope: ScopeArgs,
+	pub(crate) kind: String,
+	pub(crate) error_class: Option<String>,
+	pub(crate) next_action: Option<String>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) blockers: Vec<String>,
+	pub(crate) blockers: Vec<String>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) failed_command: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) raw_error: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) summary: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) decision_request:
-		Option<AuthorityDecisionRequestArgs>,
+	pub(crate) evidence: Vec<String>,
+	pub(crate) failed_command: Option<String>,
+	pub(crate) raw_error: Option<String>,
+	pub(crate) summary: Option<String>,
+	pub(crate) decision_request: Option<AuthorityDecisionRequestArgs>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct AuthorityDecisionRequestArgs {
-	pub(in crate::agent::tracker_tool_bridge) boundary_check_id: i64,
-	pub(in crate::agent::tracker_tool_bridge) decision_request_id: String,
-	pub(in crate::agent::tracker_tool_bridge) reason_code: String,
-	pub(in crate::agent::tracker_tool_bridge) boundary_type: String,
-	pub(in crate::agent::tracker_tool_bridge) proposed_change: String,
-	pub(in crate::agent::tracker_tool_bridge) why_exceeds_authority: String,
+pub(crate) struct AuthorityDecisionRequestArgs {
+	pub(crate) boundary_check_id: i64,
+	pub(crate) decision_request_id: String,
+	pub(crate) reason_code: String,
+	pub(crate) boundary_type: String,
+	pub(crate) proposed_change: String,
+	pub(crate) why_exceeds_authority: String,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) options: Vec<AuthorityDecisionOptionArgs>,
-	pub(in crate::agent::tracker_tool_bridge) recommendation: String,
-	pub(in crate::agent::tracker_tool_bridge) resume_condition: String,
+	pub(crate) options: Vec<AuthorityDecisionOptionArgs>,
+	pub(crate) recommendation: String,
+	pub(crate) resume_condition: String,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) retained_worktree_evidence: Vec<String>,
+	pub(crate) retained_worktree_evidence: Vec<String>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) retained_diff_evidence: Vec<String>,
+	pub(crate) retained_diff_evidence: Vec<String>,
 	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) recovery_attempt_context: Vec<String>,
+	pub(crate) recovery_attempt_context: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct AuthorityDecisionOptionArgs {
-	pub(in crate::agent::tracker_tool_bridge) label: String,
-	pub(in crate::agent::tracker_tool_bridge) description: String,
+pub(crate) struct AuthorityDecisionOptionArgs {
+	pub(crate) label: String,
+	pub(crate) description: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewHandoffArgs {
+pub(crate) struct ReviewHandoffArgs {
 	#[serde(flatten)]
-	pub(in crate::agent::tracker_tool_bridge) scope: ScopeArgs,
-	pub(in crate::agent::tracker_tool_bridge) pr_url: String,
-	pub(in crate::agent::tracker_tool_bridge) summary: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct ProgressCheckpointArgs {
-	#[serde(flatten)]
-	pub(in crate::agent::tracker_tool_bridge) scope: ScopeArgs,
-	pub(in crate::agent::tracker_tool_bridge) phase: String,
-	pub(in crate::agent::tracker_tool_bridge) docs_impact: String,
-	pub(in crate::agent::tracker_tool_bridge) focus: String,
-	pub(in crate::agent::tracker_tool_bridge) next_action: String,
-	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) blockers: Vec<String>,
-	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) evidence: Vec<String>,
-	#[serde(default)]
-	pub(in crate::agent::tracker_tool_bridge) verification: Vec<String>,
-	pub(in crate::agent::tracker_tool_bridge) head_sha: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) branch: Option<String>,
-	pub(in crate::agent::tracker_tool_bridge) pr_url: Option<String>,
+	pub(crate) scope: ScopeArgs,
+	pub(crate) pr_url: String,
+	pub(crate) summary: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(in crate::agent::tracker_tool_bridge) struct LabelArgs {
+pub(crate) struct ProgressCheckpointArgs {
 	#[serde(flatten)]
-	pub(in crate::agent::tracker_tool_bridge) scope: ScopeArgs,
-	pub(in crate::agent::tracker_tool_bridge) label: String,
+	pub(crate) scope: ScopeArgs,
+	pub(crate) phase: String,
+	pub(crate) docs_impact: String,
+	pub(crate) focus: String,
+	pub(crate) next_action: String,
+	#[serde(default)]
+	pub(crate) blockers: Vec<String>,
+	#[serde(default)]
+	pub(crate) evidence: Vec<String>,
+	#[serde(default)]
+	pub(crate) verification: Vec<String>,
+	pub(crate) head_sha: Option<String>,
+	pub(crate) branch: Option<String>,
+	pub(crate) pr_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub(in crate::agent::tracker_tool_bridge) struct TerminalFinalizeArgs {
+#[serde(deny_unknown_fields)]
+pub(crate) struct LabelArgs {
 	#[serde(flatten)]
-	pub(in crate::agent::tracker_tool_bridge) scope: ScopeArgs,
-	pub(in crate::agent::tracker_tool_bridge) path: String,
+	pub(crate) scope: ScopeArgs,
+	pub(crate) label: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TerminalFinalizeArgs {
+	#[serde(flatten)]
+	pub(crate) scope: ScopeArgs,
+	pub(crate) path: String,
 }

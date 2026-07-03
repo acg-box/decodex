@@ -1,4 +1,3 @@
-use crate::orchestrator::tests::FakeTracker;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
@@ -16,7 +15,9 @@ use crate::{
 	},
 	config::ServiceConfig,
 	loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
-	orchestrator::{self, OperatorAutonomyLineageStatus, OperatorStatusSnapshot},
+	orchestrator::{
+		self, OperatorAutonomyLineageStatus, OperatorStatusSnapshot, tests::FakeTracker,
+	},
 	program_intake::{self, GoalIntakeRunRequest},
 	state::{ReviewHandoffMarker, StateStore},
 	tracker::TrackerIssue,
@@ -46,9 +47,9 @@ struct ReplayEvidenceSeed<'a> {
 
 #[test]
 fn operator_status_surfaces_autonomy_lineage_without_raw_payloads() {
-	let (_temp_dir, config, workflow) = super::super::temp_project_layout();
+	let (_temp_dir, config, workflow) = super::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = super::super::sample_issue("Todo", &[]);
+	let issue = super::sample_issue("Todo", &[]);
 	let seeded = seed_autonomy_lineage(&state_store, &config, &workflow, &issue);
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
@@ -58,9 +59,9 @@ fn operator_status_surfaces_autonomy_lineage_without_raw_payloads() {
 
 #[test]
 fn autonomy_lineage_does_not_use_unlinked_review_lifecycle_as_pr_evidence() {
-	let (_temp_dir, config, workflow) = super::super::temp_project_layout();
+	let (_temp_dir, config, workflow) = super::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = super::super::sample_issue("Todo", &[]);
+	let issue = super::sample_issue("Todo", &[]);
 	let seeded =
 		seed_autonomy_lineage_without_execution_evidence(&state_store, &config, &workflow, &issue);
 	let (generated_issue_id, generated_issue_identifier) =
@@ -129,9 +130,9 @@ fn autonomy_lineage_does_not_use_unlinked_review_lifecycle_as_pr_evidence() {
 
 #[test]
 fn autonomy_lineage_marks_same_pr_stale_head_lifecycle_as_partial() {
-	let (_temp_dir, config, workflow) = super::super::temp_project_layout();
+	let (_temp_dir, config, workflow) = super::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = super::super::sample_issue("Todo", &[]);
+	let issue = super::sample_issue("Todo", &[]);
 	let seeded =
 		seed_autonomy_lineage_without_execution_evidence(&state_store, &config, &workflow, &issue);
 	let (generated_issue_id, _generated_issue_identifier) =

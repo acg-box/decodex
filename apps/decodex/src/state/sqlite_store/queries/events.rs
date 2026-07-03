@@ -1,9 +1,12 @@
-use super::{
-	LinearExecutionEventRecord, LinearExecutionEventRuntimeRecord,
-	PrivateExecutionEventRuntimeRecord, Result, StateData, Value, params,
+use crate::state::sqlite_store::{
+	SqliteStateStore,
+	queries::{
+		self, LinearExecutionEventRecord, LinearExecutionEventRuntimeRecord,
+		PrivateExecutionEventRuntimeRecord, Result, StateData, Value,
+	},
 };
 
-impl super::super::SqliteStateStore {
+impl SqliteStateStore {
 	pub(in crate::state) fn load_linear_execution_events(
 		&self,
 		state: &mut StateData,
@@ -47,7 +50,7 @@ impl super::super::SqliteStateStore {
 			 FROM linear_execution_events \
 			 WHERE service_id = ?1 AND issue_id = ?2",
 		)?;
-		let rows = statement.query_map(params![service_id, issue_id], |row| {
+		let rows = statement.query_map(queries::params![service_id, issue_id], |row| {
 			Ok((
 				row.get::<_, String>(0)?,
 				row.get::<_, Option<i64>>(1)?,
@@ -138,7 +141,7 @@ impl super::super::SqliteStateStore {
 			 WHERE project_id = ?1 \
 			 ORDER BY record_id ASC",
 		)?;
-		let rows = statement.query_map(params![project_id], |row| {
+		let rows = statement.query_map(queries::params![project_id], |row| {
 			Ok((
 				row.get::<_, i64>(0)?,
 				row.get::<_, String>(1)?,

@@ -1,11 +1,10 @@
 use crate::{
 	prelude::{Result, eyre},
+	recovery::{
+		context::RecoveryContext, review_handoff::RebindLabelValidation,
+		review_handoff_policy::RebindMode,
+	},
 	tracker::{self, TrackerIssue},
-};
-
-use crate::recovery::{
-	context::RecoveryContext, review_handoff::RebindLabelValidation,
-	review_handoff_policy::RebindMode,
 };
 
 pub(super) fn validate_rebind_tracker_labels(
@@ -27,7 +26,6 @@ pub(super) fn validate_rebind_tracker_labels(
 				issue.identifier
 			);
 		}
-
 		if tracker::issue_team_label_id_with_server_confirmation(
 			&context.tracker,
 			issue,

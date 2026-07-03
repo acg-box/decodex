@@ -2,8 +2,8 @@
 
 use clap::Args;
 
-use super::ProjectConfigArgs;
 use crate::{
+	cli::ProjectConfigArgs,
 	manual::{self, ManualCommitRequest, ManualLandRequest},
 	prelude::Result,
 };

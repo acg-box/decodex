@@ -1,6 +1,6 @@
 //! Archive hygiene dry-run and execution output.
 
-use super::ArchivePlan;
+use crate::archive_hygiene::ArchivePlan;
 
 pub(super) fn print_archive_plan(
 	plan: &ArchivePlan,

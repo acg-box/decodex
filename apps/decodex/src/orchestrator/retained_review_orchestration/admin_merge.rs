@@ -1,23 +1,14 @@
-use std::{path::Path, process::Command};
-
 use crate::{
 	commit_message,
-	config::ServiceConfig,
-	github,
 	orchestrator::{
-		self, PostReviewRuntimeState, ReviewOrchestrationPhase,
-		kernel::command::CommandIntentKind,
+		self, retained_review_orchestration,
 		retained_review_orchestration::{
-			RetainedReviewLane, attention, command, markers,
-			model::{
-				RetainedAdminMergeReasons, RetainedReviewOrchestrationMarkerFields,
-				RetainedReviewRuntime,
-			},
+			Command, CommandIntentKind, IssueTracker, Path, PostReviewRuntimeState, Result,
+			RetainedAdminMergeReasons, RetainedReviewLane, RetainedReviewOrchestrationMarkerFields,
+			RetainedReviewRuntime, ReviewOrchestrationPhase, ServiceConfig, attention, eyre,
+			github, markers,
 		},
-		status,
 	},
-	prelude::{Result, eyre},
-	tracker::IssueTracker,
 };
 
 pub(super) fn start_retained_admin_merge<T>(
@@ -28,8 +19,8 @@ pub(super) fn start_retained_admin_merge<T>(
 where
 	T: IssueTracker,
 {
-	command::retained_review_command_adapter(
-		command::retained_review_command_intent(
+	retained_review_orchestration::retained_review_command_adapter(
+		retained_review_orchestration::retained_review_command_intent(
 			lane,
 			CommandIntentKind::StartRetainedLanding,
 			reasons.start_landing,
@@ -37,7 +28,7 @@ where
 		CommandIntentKind::StartRetainedLanding,
 	)?;
 
-	if let Some(reason) = status::authority_boundary_landing_requirement(
+	if let Some(reason) = orchestrator::authority_boundary_landing_requirement(
 		&lane.snapshot,
 		Some(PostReviewRuntimeState {
 			state_store: runtime.state_store,
@@ -57,7 +48,7 @@ where
 	}
 
 	if !lane.review_state.merge_commit_allowed {
-		return attention::apply_passive_retained_manual_attention(
+		return retained_review_orchestration::apply_passive_retained_manual_attention(
 			attention::passive_attention_runtime(runtime),
 			&lane.snapshot.issue,
 			&lane.snapshot.worktree,
@@ -77,7 +68,7 @@ where
 				"Retained admin merge could not derive a compliant landed change record."
 			);
 
-			return attention::apply_passive_retained_manual_attention(
+			return retained_review_orchestration::apply_passive_retained_manual_attention(
 				attention::passive_attention_runtime(runtime),
 				&lane.snapshot.issue,
 				&lane.snapshot.worktree,
@@ -122,7 +113,7 @@ where
 		);
 	}
 
-	attention::apply_passive_retained_manual_attention(
+	retained_review_orchestration::apply_passive_retained_manual_attention(
 		attention::passive_attention_runtime(runtime),
 		&lane.snapshot.issue,
 		&lane.snapshot.worktree,

@@ -43,7 +43,6 @@ pub(super) fn validate_proposed_issues(issues: &[DecisionProposedIssue]) -> Resu
 			eyre::bail!("Decision Contract proposed issue key `{}` is duplicated.", issue.key());
 		}
 	}
-
 	for issue in issues {
 		for dependency in issue.dependencies() {
 			if dependency == issue.key() {
@@ -67,34 +66,6 @@ pub(super) fn validate_proposed_issues(issues: &[DecisionProposedIssue]) -> Resu
 	for issue in issues {
 		validate_proposed_issue_acyclic(issue.key(), issues, &mut visiting, &mut visited)?;
 	}
-
-	Ok(())
-}
-
-fn validate_proposed_issue_acyclic(
-	key: &str,
-	issues: &[DecisionProposedIssue],
-	visiting: &mut BTreeSet<String>,
-	visited: &mut BTreeSet<String>,
-) -> Result<()> {
-	if visited.contains(key) {
-		return Ok(());
-	}
-	if !visiting.insert(key.to_owned()) {
-		eyre::bail!("Decision Contract proposed issue dependency cycle includes `{key}`.");
-	}
-
-	let issue = issues
-		.iter()
-		.find(|issue| issue.key() == key)
-		.ok_or_else(|| eyre::eyre!("Decision Contract proposed issue `{key}` does not exist."))?;
-
-	for dependency in issue.dependencies() {
-		validate_proposed_issue_acyclic(dependency, issues, visiting, visited)?;
-	}
-
-	visiting.remove(key);
-	visited.insert(key.to_owned());
 
 	Ok(())
 }
@@ -136,4 +107,32 @@ pub(super) fn normalized_link_values(
 	}
 
 	Ok(normalized)
+}
+
+fn validate_proposed_issue_acyclic(
+	key: &str,
+	issues: &[DecisionProposedIssue],
+	visiting: &mut BTreeSet<String>,
+	visited: &mut BTreeSet<String>,
+) -> Result<()> {
+	if visited.contains(key) {
+		return Ok(());
+	}
+	if !visiting.insert(key.to_owned()) {
+		eyre::bail!("Decision Contract proposed issue dependency cycle includes `{key}`.");
+	}
+
+	let issue = issues
+		.iter()
+		.find(|issue| issue.key() == key)
+		.ok_or_else(|| eyre::eyre!("Decision Contract proposed issue `{key}` does not exist."))?;
+
+	for dependency in issue.dependencies() {
+		validate_proposed_issue_acyclic(dependency, issues, visiting, visited)?;
+	}
+
+	visiting.remove(key);
+	visited.insert(key.to_owned());
+
+	Ok(())
 }

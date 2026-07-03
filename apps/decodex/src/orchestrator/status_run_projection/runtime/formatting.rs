@@ -1,8 +1,6 @@
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-pub(in crate::orchestrator) fn protocol_wait_reason_from_child_bucket(
-	current_bucket: &str,
-) -> String {
+pub(crate) fn protocol_wait_reason_from_child_bucket(current_bucket: &str) -> String {
 	match current_bucket {
 		"Model" => String::from("model_execution"),
 		"Protocol" => String::from("protocol_activity"),
@@ -10,7 +8,7 @@ pub(in crate::orchestrator) fn protocol_wait_reason_from_child_bucket(
 	}
 }
 
-pub(in crate::orchestrator) fn idle_duration_seconds(
+pub(crate) fn idle_duration_seconds(
 	last_activity_unix_epoch: Option<i64>,
 	now_unix_epoch: i64,
 ) -> Option<i64> {
@@ -19,10 +17,7 @@ pub(in crate::orchestrator) fn idle_duration_seconds(
 		.filter(|idle_for| *idle_for >= 0)
 }
 
-pub(in crate::orchestrator) fn max_optional_i64(
-	left: Option<i64>,
-	right: Option<i64>,
-) -> Option<i64> {
+pub(crate) fn max_optional_i64(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 	match (left, right) {
 		(Some(left), Some(right)) => Some(left.max(right)),
 		(Some(value), None) | (None, Some(value)) => Some(value),
@@ -30,9 +25,7 @@ pub(in crate::orchestrator) fn max_optional_i64(
 	}
 }
 
-pub(in crate::orchestrator) fn format_optional_unix_timestamp(
-	unix_epoch: Option<i64>,
-) -> Option<String> {
+pub(crate) fn format_optional_unix_timestamp(unix_epoch: Option<i64>) -> Option<String> {
 	unix_epoch.and_then(|unix_epoch| {
 		OffsetDateTime::from_unix_timestamp(unix_epoch)
 			.ok()
@@ -40,6 +33,6 @@ pub(in crate::orchestrator) fn format_optional_unix_timestamp(
 	})
 }
 
-pub(in crate::orchestrator) fn format_optional_i64(value: Option<i64>) -> String {
+pub(crate) fn format_optional_i64(value: Option<i64>) -> String {
 	value.map_or_else(|| String::from("none"), |value| value.to_string())
 }

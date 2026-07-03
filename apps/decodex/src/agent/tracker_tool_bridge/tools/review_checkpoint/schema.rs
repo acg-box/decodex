@@ -1,6 +1,6 @@
 use serde_json::{self, Map, Value};
 
-use super::{
+use crate::agent::tracker_tool_bridge::tools::review_checkpoint::{
 	REVIEW_CLASS_COMPACT_CURRENT_HEAD, REVIEW_CLASS_FULL_CURRENT_HEAD,
 	REVIEW_ROUTE_ARCHITECTURE_SIGNAL, REVIEW_ROUTE_CONTRACT_OR_AUTHORITY_DECISION_REQUIRED,
 	REVIEW_ROUTE_CURRENT_BLOCKER, REVIEW_ROUTE_DETERMINISTIC_GATE_CANDIDATE,
@@ -170,6 +170,14 @@ pub(in crate::agent::tracker_tool_bridge::tools) fn review_checkpoint_finding_ro
 	})
 }
 
+pub(in crate::agent::tracker_tool_bridge::tools) fn non_empty_string_array_schema() -> Value {
+	serde_json::json!({
+		"type": "array",
+		"items": { "type": "string" },
+		"minItems": 1
+	})
+}
+
 fn review_checkpoint_finding_route_schema() -> Value {
 	serde_json::json!({
 		"type": "string",
@@ -234,13 +242,5 @@ fn review_checkpoint_line_range_schema() -> Value {
 		},
 		"required": ["start", "end"],
 		"additionalProperties": false
-	})
-}
-
-pub(in crate::agent::tracker_tool_bridge::tools) fn non_empty_string_array_schema() -> Value {
-	serde_json::json!({
-		"type": "array",
-		"items": { "type": "string" },
-		"minItems": 1
 	})
 }

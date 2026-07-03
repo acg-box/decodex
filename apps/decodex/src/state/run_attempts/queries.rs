@@ -12,6 +12,7 @@ impl StateStore {
 	}
 
 	/// Read one run attempt by issue and attempt number.
+	#[cfg(test)]
 	pub fn run_attempt_for_issue_attempt(
 		&self,
 		issue_id: &str,

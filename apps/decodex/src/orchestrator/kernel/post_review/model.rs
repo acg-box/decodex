@@ -1,11 +1,11 @@
 use crate::orchestrator::PostReviewLaneDecision;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) struct PostReviewLaneKernelInput<'a> {
-	pub(in crate::orchestrator) issue_id: &'a str,
-	pub(in crate::orchestrator) run_id: Option<&'a str>,
-	pub(in crate::orchestrator) lifecycle_present: bool,
-	pub(in crate::orchestrator) proposed_decision: PostReviewLaneDecision,
-	pub(in crate::orchestrator) reason: &'a str,
-	pub(in crate::orchestrator) retry_budget_exhausted: bool,
+pub(crate) struct PostReviewLaneKernelInput<'a> {
+	pub(crate) issue_id: &'a str,
+	pub(crate) run_id: Option<&'a str>,
+	pub(crate) lifecycle_present: bool,
+	pub(crate) proposed_decision: PostReviewLaneDecision,
+	pub(crate) reason: &'a str,
+	pub(crate) retry_budget_exhausted: bool,
 }

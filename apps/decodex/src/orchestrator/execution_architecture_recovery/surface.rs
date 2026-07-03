@@ -1,10 +1,9 @@
-use super::{
-	ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE, ArchitectureRecoveryBoundary,
+use crate::orchestrator::execution_architecture_recovery::{
+	self, ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE, ArchitectureRecoveryBoundary,
 	AuthorityBoundaryChangedSurface, AuthorityBoundaryDisposition,
 	AuthorityBoundaryImprovementSignal, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface,
 	DecisionContractRecord, IssueRunPlan, LoopGuardrailReason, LoopGuardrailStopRequested, Path,
 	RepoGateFailure, RepoGateFailureDisposition, Report, Result, ServiceConfig, StateStore,
-	git_guardrail_output,
 };
 
 pub(super) fn classify_loop_guardrail_authority_boundary(
@@ -116,9 +115,10 @@ pub(super) fn architecture_recovery_changed_surfaces(
 		boundary.disposition,
 	);
 
-	if let Ok(Some(diff_paths)) =
-		git_guardrail_output(worktree_path, &["diff", "--name-only", "HEAD", "--"])
-	{
+	if let Ok(Some(diff_paths)) = execution_architecture_recovery::git_guardrail_output(
+		worktree_path,
+		&["diff", "--name-only", "HEAD", "--"],
+	) {
 		for relative_path in diff_paths.lines().filter(|path| !path.trim().is_empty()) {
 			for surface in architecture_recovery_surfaces_for_path(relative_path) {
 				push_architecture_recovery_changed_surface(
@@ -133,6 +133,87 @@ pub(super) fn architecture_recovery_changed_surfaces(
 	}
 
 	surfaces
+}
+
+pub(super) fn architecture_recovery_policy_decision(
+	surfaces: &[AuthorityBoundaryChangedSurface<'_>],
+) -> AuthorityBoundaryPolicyDecision {
+	surfaces.iter().fold(AuthorityBoundaryPolicyDecision::AutoContinue, |decision, surface| {
+		AuthorityBoundaryPolicyDecision::max(decision, surface.policy_decision)
+	})
+}
+
+pub(super) fn architecture_recovery_final_reason(
+	boundary: &ArchitectureRecoveryBoundary,
+	policy_decision: AuthorityBoundaryPolicyDecision,
+) -> &'static str {
+	if policy_decision == boundary.policy_decision {
+		return boundary.final_reason;
+	}
+
+	match policy_decision {
+		AuthorityBoundaryPolicyDecision::AutoContinue => boundary.final_reason,
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence =>
+			"Changed high-risk surfaces can continue recovery autonomously, but require enhanced evidence before review handoff or landing.",
+		AuthorityBoundaryPolicyDecision::BlockLanding =>
+			"Changed validation or review-policy surfaces can continue recovery autonomously, but block landing until the required evidence is restored.",
+		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => boundary.final_reason,
+	}
+}
+
+pub(super) fn architecture_recovery_improvement_signals(
+	reason: LoopGuardrailReason,
+	boundary: &ArchitectureRecoveryBoundary,
+) -> Vec<AuthorityBoundaryImprovementSignal<'static>> {
+	match boundary.disposition {
+		AuthorityBoundaryDisposition::WithinAuthority => match reason {
+			LoopGuardrailReason::ValidationRepeat
+			| LoopGuardrailReason::RemainingDeltaUnchanged => {
+				vec![AuthorityBoundaryImprovementSignal {
+					kind: "missing_validator",
+					reason_code: "validation_guardrail_repeated",
+					target: "validator:repo_gate",
+					recommendation: "Promote the repeated repo-gate failure into an earlier deterministic validator or fixture.",
+				}]
+			},
+			_ => vec![AuthorityBoundaryImprovementSignal {
+				kind: "weak_prompt",
+				reason_code: "architecture_recovery_strategy_needed",
+				target: "prompt:phase_goal_repair",
+				recommendation: "Prompt recovery agents to replace the ineffective strategy instead of repeating patch-only repair.",
+			}],
+		},
+		AuthorityBoundaryDisposition::RequiresHuman => vec![AuthorityBoundaryImprovementSignal {
+			kind: "underspecified_decision_contract",
+			reason_code: "contract_boundary_required",
+			target: "decision_contract:authority_envelope",
+			recommendation: "Record explicit accepted authority before retrying autonomous recovery.",
+		}],
+		AuthorityBoundaryDisposition::InsufficientEvidence => {
+			vec![AuthorityBoundaryImprovementSignal {
+				kind: "underspecified_decision_contract",
+				reason_code: "authority_evidence_missing",
+				target: "issue_template:loop_recovery",
+				recommendation: "Capture retained ownership, validation, and Decision Contract evidence before recovery.",
+			}]
+		},
+	}
+}
+
+pub(super) fn architecture_recovery_reason_code(
+	boundary: &ArchitectureRecoveryBoundary,
+	policy_decision: AuthorityBoundaryPolicyDecision,
+	budget_exhausted: bool,
+) -> &'static str {
+	if budget_exhausted {
+		"architecture_recovery_exhausted"
+	} else if boundary.boundary_type == AuthorityBoundarySurface::ExternalDependency {
+		"external_dependency_required"
+	} else if policy_decision.allows_autonomous_recovery() {
+		"architecture_recovery_started"
+	} else {
+		"contract_boundary_required"
+	}
 }
 
 fn push_architecture_recovery_changed_surface(
@@ -315,86 +396,5 @@ fn architecture_recovery_surface_summary(surface: AuthorityBoundarySurface) -> &
 			"Retained ownership evidence changed during recovery.",
 		AuthorityBoundarySurface::AuthorityEvidence =>
 			"Authority evidence changed or is insufficient during recovery.",
-	}
-}
-
-pub(super) fn architecture_recovery_policy_decision(
-	surfaces: &[AuthorityBoundaryChangedSurface<'_>],
-) -> AuthorityBoundaryPolicyDecision {
-	surfaces.iter().fold(AuthorityBoundaryPolicyDecision::AutoContinue, |decision, surface| {
-		AuthorityBoundaryPolicyDecision::max(decision, surface.policy_decision)
-	})
-}
-
-pub(super) fn architecture_recovery_final_reason(
-	boundary: &ArchitectureRecoveryBoundary,
-	policy_decision: AuthorityBoundaryPolicyDecision,
-) -> &'static str {
-	if policy_decision == boundary.policy_decision {
-		return boundary.final_reason;
-	}
-
-	match policy_decision {
-		AuthorityBoundaryPolicyDecision::AutoContinue => boundary.final_reason,
-		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence =>
-			"Changed high-risk surfaces can continue recovery autonomously, but require enhanced evidence before review handoff or landing.",
-		AuthorityBoundaryPolicyDecision::BlockLanding =>
-			"Changed validation or review-policy surfaces can continue recovery autonomously, but block landing until the required evidence is restored.",
-		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => boundary.final_reason,
-	}
-}
-
-pub(super) fn architecture_recovery_improvement_signals(
-	reason: LoopGuardrailReason,
-	boundary: &ArchitectureRecoveryBoundary,
-) -> Vec<AuthorityBoundaryImprovementSignal<'static>> {
-	match boundary.disposition {
-		AuthorityBoundaryDisposition::WithinAuthority => match reason {
-			LoopGuardrailReason::ValidationRepeat
-			| LoopGuardrailReason::RemainingDeltaUnchanged => {
-				vec![AuthorityBoundaryImprovementSignal {
-					kind: "missing_validator",
-					reason_code: "validation_guardrail_repeated",
-					target: "validator:repo_gate",
-					recommendation: "Promote the repeated repo-gate failure into an earlier deterministic validator or fixture.",
-				}]
-			},
-			_ => vec![AuthorityBoundaryImprovementSignal {
-				kind: "weak_prompt",
-				reason_code: "architecture_recovery_strategy_needed",
-				target: "prompt:phase_goal_repair",
-				recommendation: "Prompt recovery agents to replace the ineffective strategy instead of repeating patch-only repair.",
-			}],
-		},
-		AuthorityBoundaryDisposition::RequiresHuman => vec![AuthorityBoundaryImprovementSignal {
-			kind: "underspecified_decision_contract",
-			reason_code: "contract_boundary_required",
-			target: "decision_contract:authority_envelope",
-			recommendation: "Record explicit accepted authority before retrying autonomous recovery.",
-		}],
-		AuthorityBoundaryDisposition::InsufficientEvidence => {
-			vec![AuthorityBoundaryImprovementSignal {
-				kind: "underspecified_decision_contract",
-				reason_code: "authority_evidence_missing",
-				target: "issue_template:loop_recovery",
-				recommendation: "Capture retained ownership, validation, and Decision Contract evidence before recovery.",
-			}]
-		},
-	}
-}
-
-pub(super) fn architecture_recovery_reason_code(
-	boundary: &ArchitectureRecoveryBoundary,
-	policy_decision: AuthorityBoundaryPolicyDecision,
-	budget_exhausted: bool,
-) -> &'static str {
-	if budget_exhausted {
-		"architecture_recovery_exhausted"
-	} else if boundary.boundary_type == AuthorityBoundarySurface::ExternalDependency {
-		"external_dependency_required"
-	} else if policy_decision.allows_autonomous_recovery() {
-		"architecture_recovery_started"
-	} else {
-		"contract_boundary_required"
 	}
 }

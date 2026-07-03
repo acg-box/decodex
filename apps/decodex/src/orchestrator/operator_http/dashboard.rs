@@ -4,13 +4,12 @@ mod framing;
 mod handshake;
 mod run_activity;
 mod subscription;
-
-pub(crate) use self::run_activity::run_operator_run_activity_websocket_broadcasts;
-pub(super) use self::{
+pub(crate) use self::{
 	connection::handle_operator_dashboard_websocket_connection,
-	handshake::websocket_upgrade_required_response, subscription::dashboard_event_for_subscription,
+	handshake::websocket_upgrade_required_response,
+	run_activity::run_operator_run_activity_websocket_broadcasts,
+	subscription::dashboard_event_for_subscription,
 };
-
 #[cfg(test)]
 pub(crate) use self::{
 	framing::dashboard_websocket_message,
@@ -18,3 +17,5 @@ pub(crate) use self::{
 		build_operator_run_activity_event, strip_dashboard_run_activity_volatile_fields,
 	},
 };
+
+use crate::orchestrator::operator_http::snapshot;

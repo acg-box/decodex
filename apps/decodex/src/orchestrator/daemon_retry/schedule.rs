@@ -1,11 +1,6 @@
-use std::time::Duration;
-
-use crate::{
-	orchestrator::{
-		CONTINUATION_RETRY_DELAY_MS, FAILURE_RETRY_BASE_DELAY_MS, Result, RetryKind, RetryQueue,
-		StateStore, WorkflowDocument, clear_worktree_retry_schedule,
-	},
-	state,
+use crate::orchestrator::daemon_retry::{
+	self, CONTINUATION_RETRY_DELAY_MS, Duration, FAILURE_RETRY_BASE_DELAY_MS, Result, RetryKind,
+	RetryQueue, StateStore, WorkflowDocument, state,
 };
 
 pub(crate) fn write_retry_schedule_for_run(
@@ -36,6 +31,33 @@ pub(crate) fn write_retry_schedule_for_run(
 	Ok(())
 }
 
+pub(crate) fn retry_delay(kind: RetryKind, attempt: u32, workflow: &WorkflowDocument) -> Duration {
+	match kind {
+		RetryKind::Continuation => Duration::from_millis(CONTINUATION_RETRY_DELAY_MS),
+		RetryKind::Failure => {
+			let exponent = attempt.saturating_sub(1).min(31);
+			let multiplier = 1_u128 << exponent;
+			let requested = u128::from(FAILURE_RETRY_BASE_DELAY_MS).saturating_mul(multiplier);
+			let capped = requested
+				.min(u128::from(workflow.frontmatter().execution().max_retry_backoff_ms()));
+
+			Duration::from_millis(capped as u64)
+		},
+	}
+}
+
+pub(crate) fn clear_retry_schedule_and_release(
+	retry_queue: &mut RetryQueue,
+	state_store: &StateStore,
+	issue_id: &str,
+) -> Result<()> {
+	daemon_retry::clear_worktree_retry_schedule(state_store, issue_id)?;
+
+	retry_queue.release(issue_id);
+
+	Ok(())
+}
+
 fn preserved_retry_schedule_kind(
 	state_store: &StateStore,
 	issue_id: &str,
@@ -58,31 +80,4 @@ fn preserved_retry_schedule_kind(
 	}
 
 	Ok(default_kind.to_owned())
-}
-
-pub(in crate::orchestrator) fn clear_retry_schedule_and_release(
-	retry_queue: &mut RetryQueue,
-	state_store: &StateStore,
-	issue_id: &str,
-) -> Result<()> {
-	clear_worktree_retry_schedule(state_store, issue_id)?;
-
-	retry_queue.release(issue_id);
-
-	Ok(())
-}
-
-pub(crate) fn retry_delay(kind: RetryKind, attempt: u32, workflow: &WorkflowDocument) -> Duration {
-	match kind {
-		RetryKind::Continuation => Duration::from_millis(CONTINUATION_RETRY_DELAY_MS),
-		RetryKind::Failure => {
-			let exponent = attempt.saturating_sub(1).min(31);
-			let multiplier = 1_u128 << exponent;
-			let requested = u128::from(FAILURE_RETRY_BASE_DELAY_MS).saturating_mul(multiplier);
-			let capped = requested
-				.min(u128::from(workflow.frontmatter().execution().max_retry_backoff_ms()));
-
-			Duration::from_millis(capped as u64)
-		},
-	}
 }

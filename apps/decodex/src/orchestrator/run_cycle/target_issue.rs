@@ -1,28 +1,23 @@
-use time::OffsetDateTime;
+pub(crate) mod inferred;
+pub(crate) mod post_review;
+pub(crate) mod program;
+
+pub(crate) use inferred::run_target_issue_once_with_inferred_dispatch;
+#[cfg(test)] pub(crate) use program::select_target_status_visible_program_candidate;
 
 use crate::{
 	commit_message,
-	config::ServiceConfig,
 	orchestrator::{
-		IssueDispatchMode, IssueTracker, PreferredRunIdentity, PrepareIssueRunContext, Result,
-		RetainedReviewRunIdentity, RetryIssueStateHint, RunSummary, StateStore,
-		TargetIssueRunContext, TrackerIssue, closeout_dispatch_block_reason,
-		ensure_project_has_no_merged_worktree_cleanup_debt, issue_passes_current_dispatch_policy,
-		reconcile_project_state, recover_runtime_state_from_tracker_and_worktrees, refresh_issue,
-		retained_closeout_lease_has_fresh_activity, retained_closeout_preferred_run_identity,
+		run_cycle,
+		run_cycle::{
+			IssueDispatchMode, IssueTracker, OffsetDateTime, PreferredRunIdentity,
+			PrepareIssueRunContext, Result, RetainedReviewRunIdentity, RetryIssueStateHint,
+			RunSummary, ServiceConfig, StateStore, TargetIssueRunContext, TrackerIssue,
+			WorktreeManager, eyre,
+		},
 	},
-	prelude::eyre,
 	state::PreacquiredLeaseGuards,
-	worktree::WorktreeManager,
 };
-
-pub(in crate::orchestrator::run_cycle::target_issue) mod inferred;
-pub(in crate::orchestrator::run_cycle::target_issue) mod post_review;
-pub(in crate::orchestrator::run_cycle::target_issue) mod program;
-
-pub(crate) use inferred::run_target_issue_once_with_inferred_dispatch;
-#[cfg(test)]
-pub(crate) use program::select_target_status_visible_program_candidate;
 
 pub(crate) fn run_target_issue_once<T>(
 	context: TargetIssueRunContext<'_, T>,
@@ -50,7 +45,7 @@ where
 		adopt_preacquired_target_issue_lease(&context, &issue_id)?;
 	}
 	if !context.lease_preacquired {
-		recover_runtime_state_from_tracker_and_worktrees(
+		run_cycle::recover_runtime_state_from_tracker_and_worktrees(
 			context.tracker,
 			context.project,
 			context.workflow,
@@ -58,7 +53,7 @@ where
 		)?;
 
 		if !context.dry_run {
-			reconcile_project_state(
+			run_cycle::reconcile_project_state(
 				context.tracker,
 				context.project,
 				context.workflow,
@@ -68,7 +63,7 @@ where
 		}
 	}
 
-	let Some(issue) = refresh_issue(context.tracker, &issue_id)? else {
+	let Some(issue) = run_cycle::refresh_issue(context.tracker, &issue_id)? else {
 		return Ok(None);
 	};
 	let closeout_preferred_run_identity = target_closeout_preferred_run_identity(&context, &issue)?;
@@ -81,7 +76,7 @@ where
 		preferred_initial_issue_state: context.preferred_initial_issue_state,
 	};
 
-	if !issue_passes_current_dispatch_policy(
+	if !run_cycle::issue_passes_current_dispatch_policy(
 		context.tracker,
 		&issue,
 		context.project,
@@ -102,10 +97,10 @@ where
 		return Ok(None);
 	}
 	if !context.dry_run && context.dispatch_mode != IssueDispatchMode::Closeout {
-		ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
+		run_cycle::ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
 	}
 
-	let Some(issue_run) = crate::orchestrator::run_cycle::prepare::prepare_issue_run(
+	let Some(issue_run) = run_cycle::prepare_issue_run(
 		PrepareIssueRunContext {
 			tracker: context.tracker,
 			project: context.project,
@@ -126,7 +121,7 @@ where
 		return Ok(None);
 	};
 
-	crate::orchestrator::run_cycle::complete::complete_issue_run(
+	run_cycle::complete_issue_run(
 		context.tracker,
 		context.project,
 		context.workflow,
@@ -134,86 +129,6 @@ where
 		issue_run,
 		context.dry_run,
 	)
-}
-
-fn ensure_target_closeout_dispatch_is_unblocked<T>(
-	context: &TargetIssueRunContext<'_, T>,
-	issue: &TrackerIssue,
-) -> Result<()>
-where
-	T: IssueTracker,
-{
-	if context.dry_run || context.dispatch_mode != IssueDispatchMode::Closeout {
-		return Ok(());
-	}
-
-	let Some(reason) = closeout_dispatch_block_reason(
-		context.tracker,
-		issue,
-		context.project,
-		context.workflow,
-		context.state_store,
-	)?
-	else {
-		return Ok(());
-	};
-
-	eyre::bail!("retained closeout dispatch blocked: {reason}");
-}
-
-fn target_closeout_preferred_run_identity<T>(
-	context: &TargetIssueRunContext<'_, T>,
-	issue: &TrackerIssue,
-) -> Result<Option<RetainedReviewRunIdentity>>
-where
-	T: IssueTracker,
-{
-	if context.dispatch_mode != IssueDispatchMode::Closeout
-		|| context.preferred_run_identity.is_some()
-	{
-		return Ok(None);
-	}
-
-	retained_closeout_preferred_run_identity(
-		context.state_store,
-		context.project.service_id(),
-		issue,
-	)
-}
-
-fn preferred_run_identity_with_closeout_fallback<'a>(
-	preferred_run_identity: Option<PreferredRunIdentity<'a>>,
-	closeout_preferred_run_identity: Option<&'a RetainedReviewRunIdentity>,
-) -> Option<PreferredRunIdentity<'a>> {
-	match (preferred_run_identity, closeout_preferred_run_identity) {
-		(Some(identity), _) => Some(identity),
-		(None, Some(identity)) => Some(PreferredRunIdentity {
-			run_id: identity.run_id.as_str(),
-			attempt_number: identity.attempt_number,
-		}),
-		(None, None) => None,
-	}
-}
-
-fn target_issue_reuses_existing_closeout_claim<T>(
-	context: &TargetIssueRunContext<'_, T>,
-	issue_id: &str,
-	issue: &TrackerIssue,
-) -> Result<bool>
-where
-	T: IssueTracker,
-{
-	if context.lease_preacquired || context.dispatch_mode != IssueDispatchMode::Closeout {
-		return Ok(false);
-	}
-	if !context.state_store.issue_has_active_shared_claim(context.project.service_id(), issue_id)? {
-		return Ok(false);
-	}
-	if context.state_store.lease_for_issue(&issue.id)?.is_none() {
-		return Ok(false);
-	}
-
-	Ok(!closeout_lane_active_claim_blocks_dispatch(context.project, context.state_store, issue)?)
 }
 
 pub(crate) fn target_issue_active_claim_blocks_dispatch<T>(
@@ -255,13 +170,10 @@ pub(crate) fn closeout_lane_active_claim_blocks_dispatch(
 	};
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 
-	retained_closeout_lease_has_fresh_activity(&lease, issue, project, now_unix_epoch)
+	run_cycle::retained_closeout_lease_has_fresh_activity(&lease, issue, project, now_unix_epoch)
 }
 
-pub(in crate::orchestrator::run_cycle::target_issue) fn target_issue_run_context_with_dispatch_mode<
-	'a,
-	T,
->(
+pub(crate) fn target_issue_run_context_with_dispatch_mode<'a, T>(
 	context: &TargetIssueRunContext<'a, T>,
 	dispatch_mode: IssueDispatchMode,
 ) -> TargetIssueRunContext<'a, T> {
@@ -284,10 +196,7 @@ pub(in crate::orchestrator::run_cycle::target_issue) fn target_issue_run_context
 	}
 }
 
-pub(in crate::orchestrator::run_cycle::target_issue) fn resolve_target_issue_id<T>(
-	tracker: &T,
-	issue_reference: &str,
-) -> Result<String>
+pub(crate) fn resolve_target_issue_id<T>(tracker: &T, issue_reference: &str) -> Result<String>
 where
 	T: IssueTracker,
 {
@@ -298,6 +207,86 @@ where
 	}
 
 	Ok(issue_reference.to_owned())
+}
+
+fn ensure_target_closeout_dispatch_is_unblocked<T>(
+	context: &TargetIssueRunContext<'_, T>,
+	issue: &TrackerIssue,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	if context.dry_run || context.dispatch_mode != IssueDispatchMode::Closeout {
+		return Ok(());
+	}
+
+	let Some(reason) = run_cycle::closeout_dispatch_block_reason(
+		context.tracker,
+		issue,
+		context.project,
+		context.workflow,
+		context.state_store,
+	)?
+	else {
+		return Ok(());
+	};
+
+	eyre::bail!("retained closeout dispatch blocked: {reason}");
+}
+
+fn target_closeout_preferred_run_identity<T>(
+	context: &TargetIssueRunContext<'_, T>,
+	issue: &TrackerIssue,
+) -> Result<Option<RetainedReviewRunIdentity>>
+where
+	T: IssueTracker,
+{
+	if context.dispatch_mode != IssueDispatchMode::Closeout
+		|| context.preferred_run_identity.is_some()
+	{
+		return Ok(None);
+	}
+
+	run_cycle::retained_closeout_preferred_run_identity(
+		context.state_store,
+		context.project.service_id(),
+		issue,
+	)
+}
+
+fn preferred_run_identity_with_closeout_fallback<'a>(
+	preferred_run_identity: Option<PreferredRunIdentity<'a>>,
+	closeout_preferred_run_identity: Option<&'a RetainedReviewRunIdentity>,
+) -> Option<PreferredRunIdentity<'a>> {
+	match (preferred_run_identity, closeout_preferred_run_identity) {
+		(Some(identity), _) => Some(identity),
+		(None, Some(identity)) => Some(PreferredRunIdentity {
+			run_id: identity.run_id.as_str(),
+			attempt_number: identity.attempt_number,
+		}),
+		(None, None) => None,
+	}
+}
+
+fn target_issue_reuses_existing_closeout_claim<T>(
+	context: &TargetIssueRunContext<'_, T>,
+	issue_id: &str,
+	issue: &TrackerIssue,
+) -> Result<bool>
+where
+	T: IssueTracker,
+{
+	if context.lease_preacquired || context.dispatch_mode != IssueDispatchMode::Closeout {
+		return Ok(false);
+	}
+	if !context.state_store.issue_has_active_shared_claim(context.project.service_id(), issue_id)? {
+		return Ok(false);
+	}
+	if context.state_store.lease_for_issue(&issue.id)?.is_none() {
+		return Ok(false);
+	}
+
+	Ok(!closeout_lane_active_claim_blocks_dispatch(context.project, context.state_store, issue)?)
 }
 
 fn adopt_preacquired_target_issue_lease<T>(

@@ -1,10 +1,11 @@
 use std::path::{Component, Path};
 
-use crate::tracker::public_text;
-
-use super::{
-	LINEAR_EXECUTION_EVENT_RECORD_TYPE, LINEAR_EXECUTION_EVENT_RECORD_VERSION,
-	LinearExecutionEventRecord,
+use crate::tracker::{
+	public_text,
+	records::{
+		LINEAR_EXECUTION_EVENT_RECORD_TYPE, LINEAR_EXECUTION_EVENT_RECORD_VERSION,
+		LinearExecutionEventRecord,
+	},
 };
 
 pub(crate) fn validate_linear_execution_event_record(

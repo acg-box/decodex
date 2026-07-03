@@ -1,8 +1,9 @@
 use serde::de::DeserializeOwned;
 
-use crate::tracker::TrackerComment;
-
-use super::{LinearExecutionEventRecord, validate_linear_execution_event_record};
+use crate::tracker::{
+	TrackerComment,
+	records::{self, LinearExecutionEventRecord},
+};
 
 pub(crate) fn has_linear_execution_event_record(
 	comments: &[TrackerComment],
@@ -23,7 +24,7 @@ pub(crate) fn parse_linear_execution_event_record(
 	body: &str,
 ) -> Option<LinearExecutionEventRecord> {
 	parse_structured_comment::<LinearExecutionEventRecord>(body)
-		.filter(|record| validate_linear_execution_event_record(record).is_ok())
+		.filter(|record| records::validate_linear_execution_event_record(record).is_ok())
 }
 
 fn parse_structured_comment<T>(body: &str) -> Option<T>

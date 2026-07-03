@@ -1,12 +1,13 @@
 use std::cell::RefCell;
 
-use super::{EmptyToolResponseHandler, FailingToolHandler, NamespacedDynamicToolHandler};
 use crate::agent::{
-	app_server::AppServerTurnFailure,
+	app_server::tests::{
+		AppServerTurnFailure, EmptyToolResponseHandler, FailingToolHandler,
+		NamespacedDynamicToolHandler,
+	},
 	json_rpc::{JsonRpcNotification, JsonRpcRequest},
 	tracker_tool_bridge::DynamicToolContentItem,
 };
-
 #[test]
 fn dynamic_tool_call_accepts_thread_bound_request_when_payload_turn_id_differs() {
 	let handler = NamespacedDynamicToolHandler { seen_namespace: RefCell::new(None) };
@@ -22,12 +23,8 @@ fn dynamic_tool_call_accepts_thread_bound_request_when_payload_turn_id_differs()
 			"turnId": "tool-call-turn"
 		}),
 	};
-	let dispatch = super::super::handle_dynamic_tool_call(
-		Some(&handler),
-		&request,
-		"thread-1",
-		Some("active-turn"),
-	);
+	let dispatch =
+		super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("active-turn"));
 
 	assert!(dispatch.response.success);
 	assert!(dispatch.terminal_failure.is_none());
@@ -49,12 +46,8 @@ fn dynamic_tool_call_rejects_wrong_thread_even_when_payload_turn_id_differs() {
 			"turnId": "tool-call-turn"
 		}),
 	};
-	let dispatch = super::super::handle_dynamic_tool_call(
-		Some(&handler),
-		&request,
-		"thread-1",
-		Some("active-turn"),
-	);
+	let dispatch =
+		super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("active-turn"));
 
 	assert!(!dispatch.response.success);
 	assert_eq!(*handler.seen_namespace.borrow(), None);
@@ -86,12 +79,8 @@ fn dynamic_tool_call_rejects_invalid_response_shape() {
 			"turnId": "turn-1"
 		}),
 	};
-	let dispatch = super::super::handle_dynamic_tool_call(
-		Some(&handler),
-		&request,
-		"thread-1",
-		Some("turn-1"),
-	);
+	let dispatch =
+		super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("turn-1"));
 
 	assert!(!dispatch.response.success);
 	assert!(matches!(
@@ -122,12 +111,8 @@ fn dynamic_tool_call_records_tool_failures_without_terminal_protocol_failure() {
 			"turnId": "turn-1"
 		}),
 	};
-	let dispatch = super::super::handle_dynamic_tool_call(
-		Some(&handler),
-		&request,
-		"thread-1",
-		Some("turn-1"),
-	);
+	let dispatch =
+		super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("turn-1"));
 
 	assert!(!dispatch.response.success);
 	assert!(dispatch.terminal_failure.is_none());
@@ -154,8 +139,7 @@ fn dynamic_tool_call_can_validate_thread_without_fixed_turn_during_steer_rpc() {
 			"turnId": "turn-after-steer"
 		}),
 	};
-	let dispatch =
-		super::super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", None);
+	let dispatch = super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", None);
 
 	assert!(dispatch.response.success);
 	assert!(dispatch.terminal_failure.is_none());
@@ -178,7 +162,7 @@ fn usage_limit_notification_stops_current_turn_without_operator_attention() {
 	};
 	let mut final_output = String::new();
 	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
-	let error = super::super::handle_turn_execution_notification(
+	let error = super::handle_turn_execution_notification(
 		&notification,
 		"thread-1",
 		"turn-1",

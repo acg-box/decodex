@@ -1,11 +1,14 @@
-use crate::orchestrator::{
-	self, CONTINUATION_PENDING_RUN_STATUS, OperatorRunAppServerState, OperatorRunControlCapability,
-	OperatorRunProtocolSummary, OperatorRunTiming, ProjectRunStatus, RunActivityMarker, state,
-	status_run_projection,
+use crate::{
+	orchestrator::{
+		self, CONTINUATION_PENDING_RUN_STATUS, OperatorRunAppServerState,
+		OperatorRunControlCapability, OperatorRunProtocolSummary, OperatorRunTiming,
+		ProjectRunStatus, RunActivityMarker, status_run_projection,
+	},
+	prelude::Result,
+	state,
 };
-use crate::prelude::Result;
 
-pub(in crate::orchestrator) fn operator_run_control_capability(
+pub(crate) fn operator_run_control_capability(
 	run: &ProjectRunStatus,
 	app_server_state: &OperatorRunAppServerState,
 ) -> Option<OperatorRunControlCapability> {
@@ -26,7 +29,7 @@ pub(in crate::orchestrator) fn operator_run_control_capability(
 	})
 }
 
-pub(in crate::orchestrator) fn load_operator_run_marker(
+pub(crate) fn load_operator_run_marker(
 	run: &ProjectRunStatus,
 ) -> Result<Option<RunActivityMarker>> {
 	let marker = run.worktree_path().and_then(|worktree_path| {
@@ -38,7 +41,7 @@ pub(in crate::orchestrator) fn load_operator_run_marker(
 	}))
 }
 
-pub(in crate::orchestrator) fn operator_run_timing(
+pub(crate) fn operator_run_timing(
 	run: &ProjectRunStatus,
 	marker: Option<&RunActivityMarker>,
 	now_unix_epoch: i64,
@@ -80,7 +83,7 @@ pub(in crate::orchestrator) fn operator_run_timing(
 	}
 }
 
-pub(in crate::orchestrator) fn operator_run_app_server_state(
+pub(crate) fn operator_run_app_server_state(
 	run: &ProjectRunStatus,
 	marker: Option<&RunActivityMarker>,
 ) -> OperatorRunAppServerState {
@@ -119,7 +122,7 @@ pub(in crate::orchestrator) fn operator_run_app_server_state(
 	}
 }
 
-pub(in crate::orchestrator) fn operator_run_protocol_summary(
+pub(crate) fn operator_run_protocol_summary(
 	run: &ProjectRunStatus,
 	marker: Option<&RunActivityMarker>,
 ) -> OperatorRunProtocolSummary {
@@ -146,7 +149,7 @@ pub(in crate::orchestrator) fn operator_run_protocol_summary(
 	}
 }
 
-pub(in crate::orchestrator) fn marker_protocol_summary_supersedes_run(
+pub(crate) fn marker_protocol_summary_supersedes_run(
 	run: &ProjectRunStatus,
 	marker: Option<&RunActivityMarker>,
 ) -> bool {

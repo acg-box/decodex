@@ -3,7 +3,7 @@ use crate::orchestrator::status::{
 	PullRequestReviewState, ReviewOrchestrationMarker,
 };
 
-pub(in crate::orchestrator) fn request_comment_has_eyes(
+pub(crate) fn request_comment_has_eyes(
 	review_state: &PullRequestReviewState,
 	marker: &ReviewOrchestrationMarker,
 ) -> Option<bool> {
@@ -18,7 +18,7 @@ pub(in crate::orchestrator) fn request_comment_has_eyes(
 	)
 }
 
-pub(in crate::orchestrator) fn request_ack_timed_out(
+pub(crate) fn request_ack_timed_out(
 	marker: &ReviewOrchestrationMarker,
 	now_unix_epoch: i64,
 ) -> bool {
@@ -30,7 +30,7 @@ pub(in crate::orchestrator) fn request_ack_timed_out(
 		&& marker.request_retry_count() >= 1
 }
 
-pub(in crate::orchestrator) fn external_review_result_arrived(
+pub(crate) fn external_review_result_arrived(
 	review_state: &PullRequestReviewState,
 	marker: &ReviewOrchestrationMarker,
 ) -> bool {
@@ -48,7 +48,7 @@ pub(in crate::orchestrator) fn external_review_result_arrived(
 	})
 }
 
-pub(in crate::orchestrator) fn external_review_has_strict_pass_signals(
+pub(crate) fn external_review_has_strict_pass_signals(
 	review_state: &PullRequestReviewState,
 	marker: &ReviewOrchestrationMarker,
 ) -> bool {
@@ -70,7 +70,7 @@ pub(in crate::orchestrator) fn external_review_has_strict_pass_signals(
 		&& review_state.issue_description_external_review_thumbs_up_count > 0
 }
 
-pub(in crate::orchestrator) fn external_review_has_actionable_feedback(
+pub(crate) fn external_review_has_actionable_feedback(
 	review_state: &PullRequestReviewState,
 	marker: &ReviewOrchestrationMarker,
 ) -> bool {
@@ -91,15 +91,15 @@ pub(in crate::orchestrator) fn external_review_has_actionable_feedback(
 	})
 }
 
-pub(in crate::orchestrator) fn is_external_review_actor_login(login: Option<&str>) -> bool {
+pub(crate) fn is_external_review_actor_login(login: Option<&str>) -> bool {
 	login.is_some_and(|login| login.eq_ignore_ascii_case(EXTERNAL_REVIEW_ACTOR_LOGIN))
 }
 
-pub(in crate::orchestrator) fn external_review_body_is_strict_pass_signal(body: &str) -> bool {
+pub(crate) fn external_review_body_is_strict_pass_signal(body: &str) -> bool {
 	body.trim() == EXTERNAL_REVIEW_PASS_PHRASE
 }
 
-pub(in crate::orchestrator) fn external_review_body_has_actionable_feedback(body: &str) -> bool {
+pub(crate) fn external_review_body_has_actionable_feedback(body: &str) -> bool {
 	let trimmed = body.trim();
 
 	!trimmed.is_empty() && !external_review_body_is_strict_pass_signal(trimmed)

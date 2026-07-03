@@ -4,7 +4,7 @@ use crate::orchestrator::{
 	ProtocolActivitySummary,
 };
 
-pub(in crate::orchestrator::status_render) fn render_child_agent_activity_summary(
+pub(crate) fn render_child_agent_activity_summary(
 	summary: Option<&ChildAgentActivitySummary>,
 ) -> String {
 	let Some(summary) = summary else {
@@ -25,7 +25,7 @@ pub(in crate::orchestrator::status_render) fn render_child_agent_activity_summar
 	)
 }
 
-pub(in crate::orchestrator::status_render) fn render_protocol_activity_summary(
+pub(crate) fn render_protocol_activity_summary(
 	summary: Option<&ProtocolActivitySummary>,
 ) -> String {
 	let Some(summary) = summary else {
@@ -50,9 +50,7 @@ pub(in crate::orchestrator::status_render) fn render_protocol_activity_summary(
 	format!("turn={turn}; waiting={wait}; rate_limit={rate_limit}; recent={recent}")
 }
 
-pub(in crate::orchestrator::status_render) fn render_loop_status_summary(
-	status: Option<&OperatorLoopStatus>,
-) -> String {
+pub(crate) fn render_loop_status_summary(status: Option<&OperatorLoopStatus>) -> String {
 	let Some(status) = status else {
 		return String::from("none");
 	};
@@ -75,9 +73,7 @@ pub(in crate::orchestrator::status_render) fn render_loop_status_summary(
 	)
 }
 
-pub(in crate::orchestrator::status_render) fn render_loop_autonomy_signals_summary(
-	status: Option<&OperatorLoopStatus>,
-) -> String {
+pub(crate) fn render_loop_autonomy_signals_summary(status: Option<&OperatorLoopStatus>) -> String {
 	let Some(status) = status else {
 		return String::from("none");
 	};
@@ -108,9 +104,7 @@ pub(in crate::orchestrator::status_render) fn render_loop_autonomy_signals_summa
 		.join(";")
 }
 
-pub(in crate::orchestrator::status_render) fn render_loop_review_summary(
-	status: Option<&OperatorLoopStatus>,
-) -> String {
+pub(crate) fn render_loop_review_summary(status: Option<&OperatorLoopStatus>) -> String {
 	let Some(review) = status.and_then(|status| status.review.as_ref()) else {
 		return String::from("none");
 	};
@@ -135,7 +129,7 @@ pub(in crate::orchestrator::status_render) fn render_loop_review_summary(
 	format!("phase={} status={} {checkpoint}", review.phase, review.status)
 }
 
-pub(in crate::orchestrator::status_render) fn render_loop_architecture_recovery_summary(
+pub(crate) fn render_loop_architecture_recovery_summary(
 	status: Option<&OperatorLoopStatus>,
 ) -> String {
 	let Some(recovery) = status.and_then(|status| status.architecture_recovery.as_ref()) else {
@@ -160,9 +154,7 @@ pub(in crate::orchestrator::status_render) fn render_loop_architecture_recovery_
 	)
 }
 
-pub(in crate::orchestrator::status_render) fn render_loop_boundary_summary(
-	status: Option<&OperatorLoopStatus>,
-) -> String {
+pub(crate) fn render_loop_boundary_summary(status: Option<&OperatorLoopStatus>) -> String {
 	let Some(boundary) = status.and_then(|status| status.boundary.as_ref()) else {
 		return String::from("none");
 	};
@@ -180,7 +172,7 @@ pub(in crate::orchestrator::status_render) fn render_loop_boundary_summary(
 	)
 }
 
-pub(in crate::orchestrator::status_render) fn render_control_capability_summary(
+pub(crate) fn render_control_capability_summary(
 	capability: Option<&OperatorRunControlCapability>,
 ) -> String {
 	let Some(capability) = capability else {
@@ -195,9 +187,7 @@ pub(in crate::orchestrator::status_render) fn render_control_capability_summary(
 	)
 }
 
-pub(in crate::orchestrator::status_render) fn render_account_summary(
-	summary: Option<&CodexAccountActivitySummary>,
-) -> String {
+pub(crate) fn render_account_summary(summary: Option<&CodexAccountActivitySummary>) -> String {
 	let Some(summary) = summary else {
 		return String::from("none");
 	};
@@ -222,9 +212,7 @@ pub(in crate::orchestrator::status_render) fn render_account_summary(
 	)
 }
 
-pub(in crate::orchestrator::status_render) fn render_accounts_summary(
-	accounts: &[CodexAccountActivitySummary],
-) -> String {
+pub(crate) fn render_accounts_summary(accounts: &[CodexAccountActivitySummary]) -> String {
 	if accounts.is_empty() {
 		return String::from("none");
 	}
@@ -236,7 +224,7 @@ pub(in crate::orchestrator::status_render) fn render_accounts_summary(
 		.join(" | ")
 }
 
-pub(in crate::orchestrator::status_render) fn render_child_agent_context_pressure(
+pub(crate) fn render_child_agent_context_pressure(
 	summary: Option<&ChildAgentActivitySummary>,
 ) -> String {
 	let Some(summary) = summary else {
@@ -270,7 +258,7 @@ pub(in crate::orchestrator::status_render) fn render_child_agent_context_pressur
 	)
 }
 
-pub(in crate::orchestrator::status_render) fn format_seconds_compact(seconds: i64) -> String {
+pub(crate) fn format_seconds_compact(seconds: i64) -> String {
 	if seconds >= 3_600 {
 		return format!("{}h{}m", seconds / 3_600, (seconds % 3_600) / 60);
 	}

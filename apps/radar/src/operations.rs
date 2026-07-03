@@ -1,13 +1,10 @@
 //! Top-level Radar command operations.
 
-use std::path::PathBuf;
-
 use crate::{
-	BUNDLE_SCHEMA, GitHubApi, GithubClient, RadarBundleBuildRequest, RadarBundleValidateRequest,
-	RadarRefreshQueueReport, RadarRefreshQueueRequest, RadarRenderSignalReport,
-	RadarRenderSignalRequest, RadarValidateRequest, RadarValidationReport, RefreshKind,
-	SIGNAL_SCHEMA, ValidationState,
-	prelude::{Result, eyre},
+	BUNDLE_SCHEMA, GitHubApi, GithubClient, PathBuf, RadarBundleBuildRequest,
+	RadarBundleValidateRequest, RadarRefreshQueueReport, RadarRefreshQueueRequest,
+	RadarRenderSignalReport, RadarRenderSignalRequest, RadarValidateRequest, RadarValidationReport,
+	RefreshKind, SIGNAL_SCHEMA, ValidationState, eyre, prelude::Result,
 };
 
 pub(crate) fn refresh_queue(request: &RadarRefreshQueueRequest) -> Result<RadarRefreshQueueReport> {
@@ -78,9 +75,8 @@ pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> Result<PathBuf>
 			};
 
 			match promoted_pr {
-				Some(pr_number) => {
-					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?
-				},
+				Some(pr_number) =>
+					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?,
 				None => client.build_commit_bundle(&request.repo, commit_sha, &request.notes)?,
 			}
 		},

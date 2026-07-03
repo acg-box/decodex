@@ -1,10 +1,10 @@
 use serde_json::{self, Value};
 
-use crate::agent::tracker_tool_bridge::tools::{review_checkpoint::{self, ReviewFindingPolicyUpdate}};
 use crate::agent::tracker_tool_bridge::{
 	self, DynamicToolCallResponse, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, LocalRepoDetails,
 	NormalizedReviewCheckpointPayload, REVIEW_POLICY_CONVERGENCE_BUDGET, ReviewCheckpointArgs,
 	ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus, TrackerToolBridge,
+	tools::review_checkpoint::{self, ReviewFindingPolicyUpdate},
 };
 
 struct ReviewCheckpointPayloadCounts {
@@ -91,8 +91,10 @@ impl<'a> TrackerToolBridge<'a> {
 				accepted_findings: prepared.checkpoint_payload.accepted_findings.len(),
 				rejected_findings: prepared.checkpoint_payload.rejected_findings.len(),
 				finding_routes: prepared.checkpoint_payload.finding_routes.len(),
-				current_blockers: review_checkpoint::current_review_blocker_findings(&prepared.checkpoint_payload)
-					.count(),
+				current_blockers: review_checkpoint::current_review_blocker_findings(
+					&prepared.checkpoint_payload,
+				)
+				.count(),
 			},
 		);
 
@@ -211,7 +213,10 @@ impl<'a> TrackerToolBridge<'a> {
 		let previous_finding_policy = previous_state
 			.as_ref()
 			.and_then(|previous_state| {
-				review_checkpoint::review_finding_policy_from_previous_state(previous_state, review_policy_phase)
+				review_checkpoint::review_finding_policy_from_previous_state(
+					previous_state,
+					review_policy_phase,
+				)
 			})
 			.unwrap_or_default();
 		let previous_nonclean_rounds = previous_state

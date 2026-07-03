@@ -5,7 +5,9 @@ use rusqlite::Connection;
 use crate::{
 	RUN_CODEX_ANALYSIS_SCRIPT, RadarBackfillReleaseRangeRequest, RadarBundleValidateRequest,
 	RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest, RadarLedgerIngestExistingRequest,
+	backfill_release_range, ledger_artifact_link, ledger_bootstrap, ledger_ingest_existing,
 	tests::{self, TestEnvVars},
+	validate_bundles,
 };
 
 #[test]
@@ -56,7 +58,7 @@ fn dry_run_backfill_selects_unpublished_release_window_prs() {
 	fs::write(signals_dir.join("published.json"), tests::valid_signal().to_string())
 		.expect("signal should be written");
 
-	let report = crate::backfill_release_range(&RadarBackfillReleaseRangeRequest {
+	let report = self::backfill_release_range(&RadarBackfillReleaseRangeRequest {
 		repo: "openai/codex".into(),
 		release_delta: release_delta_path,
 		stable_tag: None,
@@ -183,7 +185,7 @@ fn ledger_bootstrap_drops_legacy_publisher_artifact_links_and_status() {
 
 	drop(connection);
 
-	crate::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
+	self::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
 		.expect("ledger bootstrap should migrate legacy publisher rows");
 
 	let connection = Connection::open(&db_path).expect("migrated ledger should open");
@@ -220,7 +222,7 @@ fn ledger_ingests_existing_bundle_analysis_and_signal_artifacts() {
 	fs::write(signals_dir.join("openai-codex-pr-22414.json"), tests::valid_signal().to_string())
 		.expect("signal fixture should be written");
 
-	let summary = crate::ledger_ingest_existing(&RadarLedgerIngestExistingRequest {
+	let summary = self::ledger_ingest_existing(&RadarLedgerIngestExistingRequest {
 		db_path: db_path.clone(),
 		bundles_dir,
 		analysis_dir,
@@ -284,10 +286,10 @@ fn ledger_artifact_link_records_control_plane_upgrade_candidate_after_schema_mig
 
 	fs::write(&candidate_path, r#"{"schema":"control_plane_upgrade_candidate/v1"}"#)
 		.expect("upgrade candidate fixture should be written");
-	crate::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
+	self::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
 		.expect("ledger bootstrap should add control-plane upgrade artifact kind");
 
-	let summary = crate::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
+	let summary = self::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
 		db_path: db_path.clone(),
 		repo: "openai/codex".into(),
 		subject_kind: "pr".into(),
@@ -370,7 +372,7 @@ fn validates_bundle_directories_and_rejects_other_schemas() {
 
 	fs::write(&bundle_path, tests::valid_bundle().to_string()).expect("bundle should be written");
 
-	let report = crate::validate_bundles(&RadarBundleValidateRequest {
+	let report = self::validate_bundles(&RadarBundleValidateRequest {
 		paths: vec![temp_dir.path().to_path_buf()],
 	})
 	.expect("bundle directory should validate");
@@ -379,7 +381,7 @@ fn validates_bundle_directories_and_rejects_other_schemas() {
 
 	fs::write(&signal_path, tests::valid_signal().to_string()).expect("signal should be written");
 
-	let error = crate::validate_bundles(&RadarBundleValidateRequest {
+	let error = self::validate_bundles(&RadarBundleValidateRequest {
 		paths: vec![temp_dir.path().to_path_buf()],
 	})
 	.expect_err("non-bundle schema should be rejected by bundle validation");

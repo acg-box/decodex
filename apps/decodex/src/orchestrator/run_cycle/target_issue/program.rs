@@ -5,7 +5,7 @@ use crate::orchestrator::{
 	StateStore, TargetIssueRunContext, WorktreeManager, run_cycle::target_issue,
 };
 
-pub(in crate::orchestrator::run_cycle::target_issue) fn run_target_status_visible_program_once<T>(
+pub(crate) fn run_target_status_visible_program_once<T>(
 	context: TargetIssueRunContext<'_, T>,
 ) -> Result<Option<RunSummary>>
 where

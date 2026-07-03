@@ -1,12 +1,14 @@
 use std::collections::BTreeSet;
 
-use crate::orchestrator::{
-	OperatorRunStatus, ProjectLoopEvidenceSnapshot, ServiceConfig, StateStore,
-	status_run_projection,
+use crate::{
+	orchestrator::{
+		OperatorRunStatus, ProjectLoopEvidenceSnapshot, ServiceConfig, StateStore,
+		status_run_projection,
+	},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
-pub(in crate::orchestrator) fn hydrate_current_lane_lifecycle_metrics(
+pub(crate) fn hydrate_current_lane_lifecycle_metrics(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
@@ -33,7 +35,7 @@ pub(in crate::orchestrator) fn hydrate_current_lane_lifecycle_metrics(
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn current_lane_lifecycle_attempts(
+pub(crate) fn current_lane_lifecycle_attempts(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
@@ -79,7 +81,7 @@ pub(in crate::orchestrator) fn current_lane_lifecycle_attempts(
 	Ok(attempts)
 }
 
-pub(in crate::orchestrator) fn operator_run_current_lane_snapshot_attempt(
+pub(crate) fn operator_run_current_lane_snapshot_attempt(
 	run: &OperatorRunStatus,
 ) -> OperatorRunStatus {
 	let mut snapshot = run.clone();

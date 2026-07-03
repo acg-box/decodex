@@ -8,10 +8,9 @@ use color_eyre::eyre::WrapErr;
 
 use crate::{
 	config,
+	manual::{MANUAL_LAND_CLOSEOUT_MARKER_GIT_PATH, ManualLandCloseoutMarkerRecord},
 	prelude::{Result, eyre},
 };
-
-use crate::manual::{MANUAL_LAND_CLOSEOUT_MARKER_GIT_PATH, ManualLandCloseoutMarkerRecord};
 
 pub(super) fn manual_land_closeout_marker_path(checkout_root: &Path) -> Result<PathBuf> {
 	let Some(git_dir) = config::git_dir_for_checkout(checkout_root)? else {

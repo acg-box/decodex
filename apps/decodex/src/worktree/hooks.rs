@@ -1,3 +1,4 @@
+#[cfg(unix)] use std::os::{fd::AsRawFd, unix::process::CommandExt as _};
 use std::{
 	env,
 	ffi::OsStr,
@@ -8,8 +9,6 @@ use std::{
 	thread,
 	time::{Duration, Instant},
 };
-
-#[cfg(unix)] use std::os::{fd::AsRawFd, unix::process::CommandExt as _};
 
 use libc::{ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, SIGKILL};
 
@@ -75,11 +74,6 @@ pub(super) fn workspace_hook_shell_from_env(
 	}
 
 	(std::ffi::OsString::from("/bin/sh"), "-c")
-}
-
-#[cfg(unix)]
-fn workspace_hook_shell() -> (std::ffi::OsString, &'static str) {
-	workspace_hook_shell_from_env(env::var_os("SHELL"))
 }
 
 #[cfg(unix)]
@@ -176,6 +170,23 @@ pub(super) fn run_workspace_hook_shell_command(
 	}
 }
 
+pub(super) fn append_output_details(buffer: &mut String, output: &Output) {
+	let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+	let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+
+	if !stdout.is_empty() {
+		buffer.push_str(&format!(" stdout: `{stdout}`."));
+	}
+	if !stderr.is_empty() {
+		buffer.push_str(&format!(" stderr: `{stderr}`."));
+	}
+}
+
+#[cfg(unix)]
+fn workspace_hook_shell() -> (std::ffi::OsString, &'static str) {
+	workspace_hook_shell_from_env(env::var_os("SHELL"))
+}
+
 #[cfg(unix)]
 fn configure_nonblocking_pipe<R>(reader: &R, stream_name: &str) -> Result<()>
 where
@@ -266,18 +277,6 @@ fn append_capped_workspace_hook_output(buffer: &mut Vec<u8>, chunk: &[u8]) {
 
 	buffer.extend_from_slice(&chunk[..chunk_len]);
 	buffer.extend_from_slice(&WORKSPACE_HOOK_TRUNCATED_MARKER[..marker_len]);
-}
-
-pub(super) fn append_output_details(buffer: &mut String, output: &Output) {
-	let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-	let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-
-	if !stdout.is_empty() {
-		buffer.push_str(&format!(" stdout: `{stdout}`."));
-	}
-	if !stderr.is_empty() {
-		buffer.push_str(&format!(" stderr: `{stderr}`."));
-	}
 }
 
 fn append_process_group_cleanup_details(buffer: &mut String, cleanup_result: Result<()>) {

@@ -10,27 +10,27 @@ use crate::{
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(in crate::mcp::planning::autonomy) struct AutonomyRequestPromotionToolArgs {
-	pub(in crate::mcp::planning::autonomy) mode: Option<String>,
-	pub(in crate::mcp::planning::autonomy) project_id: Option<String>,
-	pub(in crate::mcp::planning::autonomy) proposal_id: String,
-	pub(in crate::mcp::planning::autonomy) authority: Option<AutonomyProposalAcceptanceArgs>,
+pub(in crate::mcp) struct AutonomyRequestPromotionToolArgs {
+	pub(in crate::mcp) mode: Option<String>,
+	pub(in crate::mcp) project_id: Option<String>,
+	pub(in crate::mcp) proposal_id: String,
+	pub(in crate::mcp) authority: Option<AutonomyProposalAcceptanceArgs>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(in crate::mcp::planning::autonomy) struct AutonomyProposalAcceptanceArgs {
-	pub(in crate::mcp::planning::autonomy) accepted_by: String,
-	pub(in crate::mcp::planning::autonomy) accepted_by_kind: AutonomyProposalAuthorityActorKind,
-	pub(in crate::mcp::planning::autonomy) accepted_at: Option<String>,
-	pub(in crate::mcp::planning::autonomy) acceptance_source: String,
-	pub(in crate::mcp::planning::autonomy) reason: String,
-	pub(in crate::mcp::planning::autonomy) proposal_actor: String,
-	pub(in crate::mcp::planning::autonomy) proposal_actor_kind: AutonomyProposalAuthorityActorKind,
-	pub(in crate::mcp::planning::autonomy) accepted_project_policy: Option<Value>,
+pub(in crate::mcp) struct AutonomyProposalAcceptanceArgs {
+	pub(in crate::mcp) accepted_by: String,
+	pub(in crate::mcp) accepted_by_kind: AutonomyProposalAuthorityActorKind,
+	pub(in crate::mcp) accepted_at: Option<String>,
+	pub(in crate::mcp) acceptance_source: String,
+	pub(in crate::mcp) reason: String,
+	pub(in crate::mcp) proposal_actor: String,
+	pub(in crate::mcp) proposal_actor_kind: AutonomyProposalAuthorityActorKind,
+	pub(in crate::mcp) accepted_project_policy: Option<Value>,
 }
 impl AutonomyProposalAcceptanceArgs {
-	pub(in crate::mcp::planning::autonomy) fn into_decision_bridge_authority(
+	pub(in crate::mcp) fn into_decision_bridge_authority(
 		self,
 	) -> Result<AutonomyProposalDecisionBridgeAuthority, Value> {
 		if self.accepted_project_policy.is_some() {

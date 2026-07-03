@@ -1,15 +1,9 @@
 use std::path::Path;
 
-use crate::{
-	config::ServiceConfig,
-	orchestrator::{
-		GhPullRequestReviewStateInspector, IssueDispatchMode, IssueRunPlan, IssueTracker,
-		PullRequestReviewStateInspector, Result, RunSummary, StateStore, TargetIssueRunContext,
-		build_post_review_lane_statuses, execute_issue_run, post_review_lane_is_closeout_candidate,
-		reconcile_post_review_orchestration_with_inspector,
-		reconcile_terminal_thread_archive_backlog_best_effort, run_summary_from_issue_run,
-	},
-	workflow::WorkflowDocument,
+use crate::orchestrator::run_cycle::{
+	self, GhPullRequestReviewStateInspector, INTERNAL_RETAINED_DRAIN_MAX_PASSES, IssueDispatchMode,
+	IssueRunPlan, IssueTracker, PullRequestReviewStateInspector, Result, RunSummary, ServiceConfig,
+	StateStore, TargetIssueRunContext, WorkflowDocument,
 };
 
 pub(in crate::orchestrator::run_cycle) fn complete_issue_run<T>(
@@ -24,10 +18,10 @@ where
 	T: IssueTracker,
 {
 	if dry_run {
-		return Ok(Some(run_summary_from_issue_run(project.service_id(), &issue_run)));
+		return Ok(Some(run_cycle::run_summary_from_issue_run(project.service_id(), &issue_run)));
 	}
 
-	let summary = execute_issue_run(tracker, project, workflow, state_store, issue_run)?;
+	let summary = run_cycle::execute_issue_run(tracker, project, workflow, state_store, issue_run)?;
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
 		github_command_path: project.github().command_path().map(Path::to_path_buf),
@@ -55,7 +49,11 @@ where
 		summary
 	};
 
-	reconcile_terminal_thread_archive_backlog_best_effort(project, workflow, state_store);
+	run_cycle::reconcile_terminal_thread_archive_backlog_best_effort(
+		project,
+		workflow,
+		state_store,
+	);
 
 	Ok(Some(summary))
 }
@@ -70,7 +68,7 @@ pub(crate) fn run_retained_closeout_for_handoff_summary<T>(
 where
 	T: IssueTracker,
 {
-	crate::orchestrator::run_cycle::run_target_issue_once(TargetIssueRunContext {
+	run_cycle::run_target_issue_once(TargetIssueRunContext {
 		tracker,
 		project,
 		workflow,
@@ -116,8 +114,8 @@ where
 
 	let completed_state = workflow.frontmatter().tracker().resolved_completed_state();
 
-	for pass in 0..crate::orchestrator::run_cycle::INTERNAL_RETAINED_DRAIN_MAX_PASSES {
-		reconcile_post_review_orchestration_with_inspector(
+	for pass in 0..INTERNAL_RETAINED_DRAIN_MAX_PASSES {
+		run_cycle::reconcile_post_review_orchestration_with_inspector(
 			tracker,
 			project,
 			workflow,
@@ -125,7 +123,7 @@ where
 			review_state_inspector,
 		)?;
 
-		let Some(lane) = build_post_review_lane_statuses(
+		let Some(lane) = run_cycle::build_post_review_lane_statuses(
 			tracker,
 			project,
 			workflow,
@@ -137,7 +135,7 @@ where
 			return Ok(None);
 		};
 
-		if post_review_lane_is_closeout_candidate(&lane, completed_state) {
+		if run_cycle::post_review_lane_is_closeout_candidate(&lane, completed_state) {
 			if let Some(retained_summary) = run_closeout(summary)? {
 				return Ok(Some(retained_summary));
 			}
@@ -145,7 +143,7 @@ where
 			return Ok(None);
 		}
 		if lane.reason != "non_github_review_waiting_for_merge"
-			|| pass + 1 == crate::orchestrator::run_cycle::INTERNAL_RETAINED_DRAIN_MAX_PASSES
+			|| pass + 1 == INTERNAL_RETAINED_DRAIN_MAX_PASSES
 		{
 			return Ok(None);
 		}

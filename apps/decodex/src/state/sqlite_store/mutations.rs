@@ -1,4 +1,9 @@
-use super::{
+mod autonomy;
+mod cleanup;
+mod project;
+mod runs;
+
+use crate::state::sqlite_store::{
 	AutonomyObjectiveRuntimeRecord, AutonomyProposalRuntimeRecord, AutonomySignalRuntimeRecord,
 	ChildAgentActivitySummary, ConnectorBackoff, DecisionContractRuntimeRecord,
 	ExecutionProgramRuntimeRecord, IssueLease, LinearExecutionEventRuntimeRecord,
@@ -7,11 +12,6 @@ use super::{
 	RunControlChannelRecord, SqliteStateStore, StateData, WorktreeMappingRecord,
 	connector_backoff_from_row, eyre, params, persist, protocol_event_record_from_row,
 };
-
-mod autonomy;
-mod cleanup;
-mod project;
-mod runs;
 
 impl SqliteStateStore {
 	pub(in crate::state) fn persist_runtime_state(&mut self, state: &StateData) -> Result<()> {

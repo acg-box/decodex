@@ -7,6 +7,7 @@ use crate::{
 
 impl StateStore {
 	/// List recent run attempts for one project, including lease and protocol summary fields.
+	#[cfg(test)]
 	pub fn list_recent_runs(
 		&self,
 		project_id: &str,

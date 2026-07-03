@@ -6,11 +6,7 @@ use crate::agent::tracker_tool_bridge::{
 	NormalizedReviewCheckpointFinding, NormalizedReviewCheckpointPayload,
 	REVIEW_POLICY_CONVERGENCE_BUDGET, ReviewCheckpointFindingArgs, ReviewFindingPolicyRecord,
 	ReviewFindingPolicyState, ReviewPolicyPhase, ReviewPolicyState, ReviewPolicyStatus,
-};
-
-use super::{
-	REVIEW_ROUTE_CURRENT_BLOCKER, normalize::normalize_review_checkpoint_finding,
-	routes::current_review_blocker_findings,
+	tools::review_checkpoint::{REVIEW_ROUTE_CURRENT_BLOCKER, normalize, routes},
 };
 
 pub(in crate::agent::tracker_tool_bridge::tools) struct ReviewFindingPolicyUpdate {
@@ -50,7 +46,7 @@ pub(in crate::agent::tracker_tool_bridge::tools) fn review_finding_policy_update
 		.filter(|route| route.route == REVIEW_ROUTE_CURRENT_BLOCKER)
 		.filter_map(|route| route.finding_fingerprint.clone())
 		.collect::<BTreeSet<_>>();
-	let current_blocker_findings = current_review_blocker_findings(checkpoint_payload)
+	let current_blocker_findings = routes::current_review_blocker_findings(checkpoint_payload)
 		.map(|finding| finding.fingerprint.clone())
 		.collect::<BTreeSet<_>>();
 	let mut records = previous
@@ -61,7 +57,7 @@ pub(in crate::agent::tracker_tool_bridge::tools) fn review_finding_policy_update
 
 	match status {
 		ReviewPolicyStatus::Findings => {
-			for finding in current_review_blocker_findings(checkpoint_payload) {
+			for finding in routes::current_review_blocker_findings(checkpoint_payload) {
 				upsert_open_review_finding_record(
 					&mut records,
 					finding,
@@ -102,6 +98,23 @@ pub(in crate::agent::tracker_tool_bridge::tools) fn review_finding_policy_update
 	finding_policy.findings = records.into_values().collect();
 
 	ReviewFindingPolicyUpdate { nonclean_rounds, previous_nonclean_rounds, finding_policy }
+}
+
+pub(in crate::agent::tracker_tool_bridge::tools) fn review_finding_policy_from_previous_state(
+	previous_state: &ReviewPolicyState,
+	review_policy_phase: ReviewPolicyPhase,
+) -> Option<ReviewFindingPolicyState> {
+	if previous_state.phase != review_policy_phase {
+		return None;
+	}
+
+	let details = serde_json::from_str::<Value>(&previous_state.details_json).ok()?;
+
+	details
+		.get("finding_policy")
+		.cloned()
+		.and_then(|value| serde_json::from_value::<ReviewFindingPolicyState>(value).ok())
+		.or_else(|| migrate_legacy_review_finding_policy(previous_state, &details))
 }
 
 fn upsert_open_review_finding_record(
@@ -190,23 +203,6 @@ fn resolve_all_review_findings(
 	}
 }
 
-pub(in crate::agent::tracker_tool_bridge::tools) fn review_finding_policy_from_previous_state(
-	previous_state: &ReviewPolicyState,
-	review_policy_phase: ReviewPolicyPhase,
-) -> Option<ReviewFindingPolicyState> {
-	if previous_state.phase != review_policy_phase {
-		return None;
-	}
-
-	let details = serde_json::from_str::<Value>(&previous_state.details_json).ok()?;
-
-	details
-		.get("finding_policy")
-		.cloned()
-		.and_then(|value| serde_json::from_value::<ReviewFindingPolicyState>(value).ok())
-		.or_else(|| migrate_legacy_review_finding_policy(previous_state, &details))
-}
-
 fn migrate_legacy_review_finding_policy(
 	previous_state: &ReviewPolicyState,
 	details: &Value,
@@ -227,7 +223,7 @@ fn migrate_legacy_review_finding_policy(
 		let finding = serde_json::from_value::<ReviewCheckpointFindingArgs>(finding_value.clone())
 			.ok()
 			.and_then(|finding| {
-				normalize_review_checkpoint_finding(finding, previous_state.phase).ok()
+				normalize::normalize_review_checkpoint_finding(finding, previous_state.phase).ok()
 			})?;
 		let mut record = review_finding_policy_record(&finding, &previous_state.head_sha);
 

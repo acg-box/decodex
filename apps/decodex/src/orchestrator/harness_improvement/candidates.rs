@@ -1,4 +1,4 @@
-use super::{
+use crate::orchestrator::harness_improvement::{
 	HarnessImprovementCandidateSummary, HarnessLinearProjectionSummary, HarnessOutcomeContract,
 	HarnessOutcomeProgram, HarnessOutcomeRecordInput, HarnessOutcomeSignals, Value,
 };
@@ -16,71 +16,6 @@ pub(super) fn harness_improvement_candidates(
 	push_signal_candidates(&mut candidates, input, signals, linear_projection);
 
 	candidates.into_values().collect()
-}
-
-fn push_contract_candidates(
-	candidates: &mut std::collections::BTreeMap<String, HarnessImprovementCandidateSummary>,
-	input: &HarnessOutcomeRecordInput<'_>,
-	contracts: &[HarnessOutcomeContract],
-	programs: &[HarnessOutcomeProgram],
-) {
-	if contracts.is_empty() {
-		insert_candidate(
-			candidates,
-			"missing_issue_template_field",
-			"contract_provenance_missing",
-			&format!("issue:{}", input.issue_identifier),
-			0,
-			"Add source intent and Decision Contract id/provenance to generated issue briefs.",
-		);
-
-		return;
-	}
-
-	for contract in contracts {
-		if contract.missing_decision_count > 0 {
-			insert_candidate(
-				candidates,
-				"underspecified_decision_contract",
-				"missing_decisions",
-				&format!("decision_contract:{}", contract.contract_id),
-				0,
-				"Require missing decisions to be resolved before promotion or queueing.",
-			);
-		}
-		if contract.generated_issue_ids.is_empty()
-			&& contract.generated_issue_identifiers.is_empty()
-		{
-			insert_candidate(
-				candidates,
-				"missing_issue_template_field",
-				"generated_issue_links_missing",
-				&format!("decision_contract:{}", contract.contract_id),
-				0,
-				"Record generated issue ids or identifiers when research is promoted.",
-			);
-		}
-		if contract.conflict_domains.is_empty() {
-			insert_candidate(
-				candidates,
-				"missing_issue_template_field",
-				"conflict_domains_missing",
-				&format!("decision_contract:{}", contract.contract_id),
-				0,
-				"Require conflict-domain notes in contracts or generated issue templates.",
-			);
-		}
-	}
-	for program in programs.iter().filter(|program| program.node_count == 0) {
-		insert_candidate(
-			candidates,
-			"stale_readiness_model",
-			"execution_program_has_no_nodes",
-			&format!("execution_program:{}", program.program_id),
-			0,
-			"Regenerate internal Execution Program readiness from the accepted contract.",
-		);
-	}
 }
 
 pub(super) fn push_signal_candidates(
@@ -193,6 +128,103 @@ pub(super) fn first_decision_contract_target(payload: &Value) -> Option<String> 
 		.map(|contract_id| format!("decision_contract:{contract_id}"))
 }
 
+pub(super) fn harness_candidates_from_payload(
+	payload: &Value,
+) -> Vec<HarnessImprovementCandidateSummary> {
+	payload
+		.get("improvement_candidates")
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(|candidate| {
+			Some(HarnessImprovementCandidateSummary {
+				kind: json_string(candidate.get("kind"))?,
+				reason_code: json_string(candidate.get("reason_code"))?,
+				target: json_string(candidate.get("target"))?,
+				source_event_count: candidate
+					.get("source_event_count")
+					.and_then(Value::as_u64)
+					.and_then(|value| usize::try_from(value).ok())
+					.unwrap_or(0),
+				recommendation: json_string(candidate.get("recommendation"))?,
+			})
+		})
+		.collect()
+}
+
+pub(super) fn json_string(value: Option<&Value>) -> Option<String> {
+	value.and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_owned)
+}
+
+pub(super) fn json_array_len(value: Option<&Value>) -> usize {
+	value.and_then(Value::as_array).map_or(0, Vec::len)
+}
+
+fn push_contract_candidates(
+	candidates: &mut std::collections::BTreeMap<String, HarnessImprovementCandidateSummary>,
+	input: &HarnessOutcomeRecordInput<'_>,
+	contracts: &[HarnessOutcomeContract],
+	programs: &[HarnessOutcomeProgram],
+) {
+	if contracts.is_empty() {
+		insert_candidate(
+			candidates,
+			"missing_issue_template_field",
+			"contract_provenance_missing",
+			&format!("issue:{}", input.issue_identifier),
+			0,
+			"Add source intent and Decision Contract id/provenance to generated issue briefs.",
+		);
+
+		return;
+	}
+
+	for contract in contracts {
+		if contract.missing_decision_count > 0 {
+			insert_candidate(
+				candidates,
+				"underspecified_decision_contract",
+				"missing_decisions",
+				&format!("decision_contract:{}", contract.contract_id),
+				0,
+				"Require missing decisions to be resolved before promotion or queueing.",
+			);
+		}
+		if contract.generated_issue_ids.is_empty()
+			&& contract.generated_issue_identifiers.is_empty()
+		{
+			insert_candidate(
+				candidates,
+				"missing_issue_template_field",
+				"generated_issue_links_missing",
+				&format!("decision_contract:{}", contract.contract_id),
+				0,
+				"Record generated issue ids or identifiers when research is promoted.",
+			);
+		}
+		if contract.conflict_domains.is_empty() {
+			insert_candidate(
+				candidates,
+				"missing_issue_template_field",
+				"conflict_domains_missing",
+				&format!("decision_contract:{}", contract.contract_id),
+				0,
+				"Require conflict-domain notes in contracts or generated issue templates.",
+			);
+		}
+	}
+	for program in programs.iter().filter(|program| program.node_count == 0) {
+		insert_candidate(
+			candidates,
+			"stale_readiness_model",
+			"execution_program_has_no_nodes",
+			&format!("execution_program:{}", program.program_id),
+			0,
+			"Regenerate internal Execution Program readiness from the accepted contract.",
+		);
+	}
+}
+
 fn guardrail_candidate_kind(reason: &str) -> (&'static str, &'static str) {
 	match reason {
 		"dependency_program_stale" => (
@@ -229,36 +261,4 @@ fn insert_candidate(
 		source_event_count,
 		recommendation: recommendation.to_owned(),
 	});
-}
-
-pub(super) fn harness_candidates_from_payload(
-	payload: &Value,
-) -> Vec<HarnessImprovementCandidateSummary> {
-	payload
-		.get("improvement_candidates")
-		.and_then(Value::as_array)
-		.into_iter()
-		.flatten()
-		.filter_map(|candidate| {
-			Some(HarnessImprovementCandidateSummary {
-				kind: json_string(candidate.get("kind"))?,
-				reason_code: json_string(candidate.get("reason_code"))?,
-				target: json_string(candidate.get("target"))?,
-				source_event_count: candidate
-					.get("source_event_count")
-					.and_then(Value::as_u64)
-					.and_then(|value| usize::try_from(value).ok())
-					.unwrap_or(0),
-				recommendation: json_string(candidate.get("recommendation"))?,
-			})
-		})
-		.collect()
-}
-
-pub(super) fn json_string(value: Option<&Value>) -> Option<String> {
-	value.and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_owned)
-}
-
-pub(super) fn json_array_len(value: Option<&Value>) -> usize {
-	value.and_then(Value::as_array).map_or(0, Vec::len)
 }

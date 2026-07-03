@@ -5,11 +5,11 @@ use std::{env, ffi::OsString, fs, path::Path};
 
 use serde_json::{self, Value};
 
-use crate::has_legacy_multi_agent_v2_context;
-use crate::test_support;
-use crate::test_support::TestEnvLockGuard;
-use crate::validate_artifact;
-use crate::validate_artifact_for_path;
+use crate::{
+	github_token, has_legacy_multi_agent_v2_context,
+	test_support::{self, TestEnvLockGuard},
+	validate_artifact, validate_artifact_for_path,
+};
 
 struct TestEnvVars {
 	_lock: TestEnvLockGuard,

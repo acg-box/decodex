@@ -1,7 +1,7 @@
-use super::{
-	AutonomyObjectiveRuntimeRecord, AutonomyProposalRuntimeRecord, AutonomySignalRuntimeRecord,
-	DecisionContractRuntimeRecord, ExecutionProgramRuntimeRecord, Result, SqliteStateStore, eyre,
-	params, persist,
+use crate::state::sqlite_store::mutations::{
+	self, AutonomyObjectiveRuntimeRecord, AutonomyProposalRuntimeRecord,
+	AutonomySignalRuntimeRecord, DecisionContractRuntimeRecord, ExecutionProgramRuntimeRecord,
+	Result, SqliteStateStore, eyre, persist,
 };
 
 impl SqliteStateStore {
@@ -23,7 +23,7 @@ impl SqliteStateStore {
 				 payload_json = excluded.payload_json,
 				 updated_at = excluded.updated_at,
 				 updated_at_unix = excluded.updated_at_unix",
-			params![
+			mutations::params![
 				&record.project_id,
 				record.contract.contract_id(),
 				record.source_issue_id.as_deref(),
@@ -58,7 +58,7 @@ impl SqliteStateStore {
 				 payload_json = excluded.payload_json,
 				 updated_at = excluded.updated_at,
 				 updated_at_unix = excluded.updated_at_unix",
-			params![
+			mutations::params![
 				&record.project_id,
 				record.objective.id(),
 				version,
@@ -101,7 +101,7 @@ impl SqliteStateStore {
 				 payload_json = excluded.payload_json,
 				 updated_at = excluded.updated_at,
 				 updated_at_unix = excluded.updated_at_unix",
-			params![
+			mutations::params![
 				&record.project_id,
 				record.signal.id(),
 				record.signal.objective_id(),
@@ -148,7 +148,7 @@ impl SqliteStateStore {
 				 payload_json = excluded.payload_json,
 				 updated_at = excluded.updated_at,
 				 updated_at_unix = excluded.updated_at_unix",
-			params![
+			mutations::params![
 				&record.project_id,
 				record.proposal.id(),
 				record.proposal.objective_id(),
@@ -185,7 +185,7 @@ impl SqliteStateStore {
 				 payload_json = excluded.payload_json,
 				 updated_at = excluded.updated_at,
 				 updated_at_unix = excluded.updated_at_unix",
-			params![
+			mutations::params![
 				&record.project_id,
 				record.program.program_id(),
 				record.source_contract_id.as_deref(),
@@ -207,11 +207,11 @@ impl SqliteStateStore {
 	) -> Result<()> {
 		self.connection.execute(
 			"DELETE FROM program_intake_plans WHERE project_id = ?1 AND program_id = ?2",
-			params![&record.project_id, record.program.program_id()],
+			mutations::params![&record.project_id, record.program.program_id()],
 		)?;
 		self.connection.execute(
 			"DELETE FROM program_issue_mappings WHERE project_id = ?1 AND program_id = ?2",
-			params![&record.project_id, record.program.program_id()],
+			mutations::params![&record.project_id, record.program.program_id()],
 		)?;
 
 		persist::insert_program_intake_state(&self.connection, record)

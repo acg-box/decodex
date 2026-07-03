@@ -5,7 +5,7 @@ mod review;
 mod summary;
 
 #[allow(unused_imports)]
-pub(in crate::orchestrator) use self::{
+pub(crate) use self::{
 	aggregate::{operator_loop_status_for_run, operator_loop_status_for_run_with_evidence},
 	boundary::{
 		operator_boundary_policy_blocks_landing,

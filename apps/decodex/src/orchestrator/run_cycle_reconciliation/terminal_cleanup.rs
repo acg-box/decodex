@@ -1,10 +1,6 @@
-use std::collections::HashSet;
-
-use crate::{
-	config::ServiceConfig,
-	orchestrator::{TERMINAL_GUARDED_RUN_STATUS, worktree_mapping_is_stale_terminal_local_residue},
-	prelude::Result,
-	state::{IssueLease, StateStore, WorktreeMapping},
+use crate::orchestrator::run_cycle_reconciliation::{
+	self, HashSet, IssueLease, Result, ServiceConfig, StateStore, TERMINAL_GUARDED_RUN_STATUS,
+	WorktreeMapping,
 };
 
 pub(super) fn clear_stale_terminal_local_worktree_mappings(
@@ -18,7 +14,7 @@ pub(super) fn clear_stale_terminal_local_worktree_mappings(
 	let mut cleared_issue_ids = Vec::new();
 
 	for mapping in worktrees.iter() {
-		if !worktree_mapping_is_stale_terminal_local_residue(
+		if !run_cycle_reconciliation::worktree_mapping_is_stale_terminal_local_residue(
 			project,
 			state_store,
 			mapping,

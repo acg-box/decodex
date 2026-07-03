@@ -1,13 +1,12 @@
 use std::{collections::HashMap, path::Path};
 
-use super::{
-	GhPullRequestReviewStateInspector, IssueDispatchMode, IssueTracker,
-	OperatorPostReviewLaneStatus, PostReviewLaneDecision, PullRequestReviewStateInspector,
-	RetainedReviewRunIdentity, SelectedIssueRunCandidate, ServiceConfig, StateStore,
-	TERMINAL_GUARDED_RUN_STATUS, TrackerIssue, WorkflowDocument, WorktreeMapping,
-	build_post_review_lane_statuses, closeout_lane_active_claim_blocks_dispatch,
-};
 use crate::{
+	orchestrator::{
+		self, GhPullRequestReviewStateInspector, IssueDispatchMode, IssueTracker,
+		OperatorPostReviewLaneStatus, PostReviewLaneDecision, PullRequestReviewStateInspector,
+		RetainedReviewRunIdentity, SelectedIssueRunCandidate, ServiceConfig, StateStore,
+		TERMINAL_GUARDED_RUN_STATUS, TrackerIssue, WorkflowDocument, WorktreeMapping,
+	},
 	prelude::{Result, eyre},
 	state,
 };
@@ -82,7 +81,7 @@ where
 	T: IssueTracker,
 	I: PullRequestReviewStateInspector,
 {
-	let lanes = build_post_review_lane_statuses(
+	let lanes = orchestrator::build_post_review_lane_statuses(
 		tracker,
 		project,
 		workflow,
@@ -136,7 +135,7 @@ where
 	I: PullRequestReviewStateInspector,
 {
 	let completed_state = workflow.frontmatter().tracker().resolved_completed_state();
-	let lanes = build_post_review_lane_statuses(
+	let lanes = orchestrator::build_post_review_lane_statuses(
 		tracker,
 		project,
 		workflow,
@@ -169,7 +168,11 @@ where
 		}
 
 		if let Some(issue) = issues_by_id.remove(&lane.issue_id) {
-			if closeout_lane_active_claim_blocks_dispatch(project, state_store, &issue)? {
+			if orchestrator::closeout_lane_active_claim_blocks_dispatch(
+				project,
+				state_store,
+				&issue,
+			)? {
 				continue;
 			}
 
@@ -244,48 +247,6 @@ pub(crate) fn retained_closeout_run_identity_is_reusable(
 	Ok(!matches!(existing_attempt.status(), "failed" | "interrupted" | TERMINAL_GUARDED_RUN_STATUS))
 }
 
-fn retained_closeout_handoff_identity_is_reusable_after_parent_reconciliation(
-	state_store: &StateStore,
-	issue_id: &str,
-	identity: &RetainedReviewRunIdentity,
-	worktree: &WorktreeMapping,
-) -> Result<bool> {
-	if state_store.issue_has_retry_budget_attempt_after(issue_id, identity.attempt_number)? {
-		return Ok(false);
-	}
-
-	let Some(existing_attempt) = state_store.run_attempt(&identity.run_id)? else {
-		return Ok(false);
-	};
-
-	if existing_attempt.issue_id() != issue_id
-		|| existing_attempt.attempt_number() != identity.attempt_number
-	{
-		return Ok(false);
-	}
-	if !matches!(existing_attempt.status(), "failed" | "interrupted") {
-		return Ok(false);
-	}
-	if worktree_has_retry_schedule_for_run(worktree.worktree_path(), identity)? {
-		return Ok(false);
-	}
-
-	Ok(true)
-}
-
-fn worktree_has_retry_schedule_for_run(
-	worktree_path: &Path,
-	identity: &RetainedReviewRunIdentity,
-) -> Result<bool> {
-	let Some(marker) = state::read_run_activity_marker_snapshot(worktree_path)? else {
-		return Ok(false);
-	};
-
-	Ok(marker.run_id() == identity.run_id
-		&& marker.attempt_number() == identity.attempt_number
-		&& marker.retry_kind().is_some())
-}
-
 pub(crate) fn post_review_lane_is_closeout_candidate(
 	lane: &OperatorPostReviewLaneStatus,
 	_completed_state: &str,
@@ -312,7 +273,7 @@ where
 	T: IssueTracker,
 	I: PullRequestReviewStateInspector,
 {
-	let lanes = build_post_review_lane_statuses(
+	let lanes = orchestrator::build_post_review_lane_statuses(
 		tracker,
 		project,
 		workflow,
@@ -368,7 +329,7 @@ where
 	I: PullRequestReviewStateInspector,
 {
 	let completed_state = workflow.frontmatter().tracker().resolved_completed_state();
-	let lanes = build_post_review_lane_statuses(
+	let lanes = orchestrator::build_post_review_lane_statuses(
 		tracker,
 		project,
 		workflow,
@@ -405,7 +366,7 @@ where
 	};
 	let issue = issues.swap_remove(issue_index);
 
-	if closeout_lane_active_claim_blocks_dispatch(project, state_store, &issue)? {
+	if orchestrator::closeout_lane_active_claim_blocks_dispatch(project, state_store, &issue)? {
 		return Ok(None);
 	}
 
@@ -418,4 +379,46 @@ where
 		preferred_run_identity,
 		program_dispatch: None,
 	}))
+}
+
+fn retained_closeout_handoff_identity_is_reusable_after_parent_reconciliation(
+	state_store: &StateStore,
+	issue_id: &str,
+	identity: &RetainedReviewRunIdentity,
+	worktree: &WorktreeMapping,
+) -> Result<bool> {
+	if state_store.issue_has_retry_budget_attempt_after(issue_id, identity.attempt_number)? {
+		return Ok(false);
+	}
+
+	let Some(existing_attempt) = state_store.run_attempt(&identity.run_id)? else {
+		return Ok(false);
+	};
+
+	if existing_attempt.issue_id() != issue_id
+		|| existing_attempt.attempt_number() != identity.attempt_number
+	{
+		return Ok(false);
+	}
+	if !matches!(existing_attempt.status(), "failed" | "interrupted") {
+		return Ok(false);
+	}
+	if worktree_has_retry_schedule_for_run(worktree.worktree_path(), identity)? {
+		return Ok(false);
+	}
+
+	Ok(true)
+}
+
+fn worktree_has_retry_schedule_for_run(
+	worktree_path: &Path,
+	identity: &RetainedReviewRunIdentity,
+) -> Result<bool> {
+	let Some(marker) = state::read_run_activity_marker_snapshot(worktree_path)? else {
+		return Ok(false);
+	};
+
+	Ok(marker.run_id() == identity.run_id
+		&& marker.attempt_number() == identity.attempt_number
+		&& marker.retry_kind().is_some())
 }

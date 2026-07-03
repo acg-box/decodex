@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-use crate::orchestrator::PostReviewLaneDecision;
-use crate::orchestrator::types::operator_status::loop_status::OperatorLoopStatus;
-use crate::state::{ReviewHandoffMarker, WorktreeMapping};
-use crate::tracker::TrackerIssue;
+use crate::{
+	orchestrator::{
+		PostReviewLaneDecision, types::operator_status::loop_status::OperatorLoopStatus,
+	},
+	state::{ReviewHandoffMarker, WorktreeMapping},
+	tracker::TrackerIssue,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct OperatorPostReviewLaneStatus {

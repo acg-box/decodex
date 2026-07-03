@@ -4,7 +4,7 @@ use clap::ValueEnum;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::RESOURCE_NOT_FOUND_CODE;
+use crate::mcp::RESOURCE_NOT_FOUND_CODE;
 
 /// MCP transport supported by the native Decodex gateway.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -15,7 +15,6 @@ pub(crate) enum McpTransport {
 	/// MCP Streamable HTTP endpoint for remote-capable clients.
 	StreamableHttp,
 }
-
 impl McpTransport {
 	pub(super) fn as_str(self) -> &'static str {
 		match self {
@@ -45,7 +44,6 @@ pub(crate) enum McpCapabilityProfile {
 	/// Full local operator profile for supported Decodex MCP tools.
 	Admin,
 }
-
 impl McpCapabilityProfile {
 	pub(super) const ALL: [Self; 4] = [Self::Observe, Self::Plan, Self::Operate, Self::Admin];
 
@@ -89,7 +87,6 @@ pub(super) struct McpError {
 	pub(super) code: i64,
 	pub(super) message: String,
 }
-
 impl McpError {
 	pub(super) fn invalid_params() -> Self {
 		Self { code: -32_602, message: String::from("Invalid params") }

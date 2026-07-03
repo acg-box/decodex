@@ -2,14 +2,13 @@ use std::{path::Path, thread};
 
 use crate::{
 	github,
+	manual::{
+		self, LandExecutionMode, MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT,
+		MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS, MANUAL_LAND_MERGEABILITY_RETRY_DELAY,
+		ManualLandContext,
+	},
 	prelude::{Result, eyre},
 	pull_request::{self, LandingGateMode, PullRequestLandingGateView, PullRequestLandingState},
-};
-
-use super::{
-	LandExecutionMode, MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT,
-	MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS, MANUAL_LAND_MERGEABILITY_RETRY_DELAY,
-	ManualLandContext, ensure_clean_worktree,
 };
 
 pub(super) fn inspect_pull_request_landing_state_for_manual_land(
@@ -57,7 +56,7 @@ pub(super) fn execute_land_merge(
 ) -> Result<String> {
 	match execution_mode {
 		LandExecutionMode::MergeAndCloseout => {
-			ensure_clean_worktree(&context.cwd)?;
+			manual::ensure_clean_worktree(&context.cwd)?;
 
 			if !context.repository.merge_commit_allowed {
 				eyre::bail!(

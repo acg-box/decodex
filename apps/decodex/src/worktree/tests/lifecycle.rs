@@ -1,16 +1,23 @@
 use std::{
+	ffi::OsString,
 	fs,
+	io::Error,
 	path::PathBuf,
 	thread,
 	time::{Duration, Instant},
 };
 
-use crate::worktree::WorktreeManager;
+use libc::ESRCH;
+
+use crate::{
+	state::{RUN_ACTIVITY_MARKER_FILE, RUN_CONTROL_CHANNEL_DIR},
+	worktree::{self, WorktreeManager, git, hooks},
+};
 
 #[test]
 fn workspace_hook_shell_uses_posix_sh_for_sh_or_missing_shell() {
-	for shell_env in [Some(std::ffi::OsString::from("/bin/sh")), None] {
-		let (shell, shell_flag) = super::super::workspace_hook_shell_from_env(shell_env);
+	for shell_env in [Some(OsString::from("/bin/sh")), None] {
+		let (shell, shell_flag) = worktree::workspace_hook_shell_from_env(shell_env);
 
 		assert_eq!(shell, std::ffi::OsString::from("/bin/sh"));
 		assert_eq!(shell_flag, "-c");
@@ -46,7 +53,7 @@ fn creates_linked_worktree() {
 	assert!(git_dir.starts_with(repo_git_dir.join("worktrees")));
 	assert_eq!(git_common_dir, repo_git_dir);
 	assert!(
-		super::super::worktree_is_registered(
+		git::worktree_is_registered(
 			&repo_root,
 			&fs::canonicalize(&spec.path).expect("canonical worktree path")
 		)
@@ -102,7 +109,7 @@ timeout_seconds = 60
 	assert!(planned.path.exists(), "failed hook should keep the worktree for inspection");
 	assert!(planned.path.join(".git").is_file(), "failed hook should keep the linked worktree");
 	assert!(
-		super::super::after_create_pending_marker_path(&planned.path).exists(),
+		hooks::after_create_pending_marker_path(&planned.path).exists(),
 		"failed after-create hook should leave a pending bootstrap marker"
 	);
 }
@@ -131,7 +138,7 @@ timeout_seconds = 60
 	manager.validate_worktree_boundary(&planned.path).expect("created worktree should validate");
 
 	assert!(
-		super::super::after_create_pending_marker_path(&planned.path).exists(),
+		hooks::after_create_pending_marker_path(&planned.path).exists(),
 		"newly created lane should persist the pending bootstrap marker before first hook run"
 	);
 	assert!(!hook_log.exists(), "simulated crash window should not have run hooks yet");
@@ -146,7 +153,7 @@ timeout_seconds = 60
 		"x/pubfi-pub-101\n"
 	);
 	assert!(
-		!super::super::after_create_pending_marker_path(&planned.path).exists(),
+		!hooks::after_create_pending_marker_path(&planned.path).exists(),
 		"successful resumed bootstrap should clear the pending marker"
 	);
 }
@@ -177,7 +184,7 @@ timeout_seconds = 60
 		"x/pubfi-pub-101\n"
 	);
 	assert!(
-		super::super::after_create_pending_marker_path(&planned.path).exists(),
+		hooks::after_create_pending_marker_path(&planned.path).exists(),
 		"failed bootstrap should leave the pending marker behind"
 	);
 
@@ -193,7 +200,7 @@ timeout_seconds = 60
 		"x/pubfi-pub-101\nx/pubfi-pub-101\n"
 	);
 	assert!(
-		!super::super::after_create_pending_marker_path(&planned.path).exists(),
+		!hooks::after_create_pending_marker_path(&planned.path).exists(),
 		"successful retry should clear the pending bootstrap marker"
 	);
 }
@@ -218,7 +225,7 @@ timeout_seconds = 60
 
 		assert!(spec.path.exists(), "worktree should remain usable after bootstrap");
 		assert!(
-			!super::super::after_create_pending_marker_path(&spec.path).exists(),
+			!hooks::after_create_pending_marker_path(&spec.path).exists(),
 			"successful hook should not leave a stale pending marker behind"
 		);
 	}
@@ -243,7 +250,7 @@ timeout_seconds = 60
 			error.to_string().contains("Workspace hook `after_create` command `exit 23` failed")
 		);
 		assert!(
-			super::super::after_create_pending_marker_path(&planned.path).exists(),
+			hooks::after_create_pending_marker_path(&planned.path).exists(),
 			"failed bootstrap should restore the pending marker even if an earlier command removed it"
 		);
 	}
@@ -253,7 +260,7 @@ timeout_seconds = 60
 fn workspace_hook_command_returns_without_waiting_for_background_child_pipe_close() {
 	let (_temp_dir, repo_root) = super::init_repo();
 	let start = Instant::now();
-	let output = super::super::run_workspace_hook_shell_command(
+	let output = hooks::run_workspace_hook_shell_command(
 		"sleep 5 & printf 'done\\n'",
 		&repo_root,
 		&[],
@@ -274,7 +281,7 @@ fn workspace_hook_command_returns_without_waiting_for_background_child_pipe_clos
 fn workspace_hook_timeout_kills_background_descendants() {
 	let (_temp_dir, repo_root) = super::init_repo();
 	let child_pid_file = repo_root.join("hook-child.pid");
-	let error = super::super::run_workspace_hook_shell_command(
+	let error = hooks::run_workspace_hook_shell_command(
 		"sleep 300 & bg=$!; printf '%s\n' \"$bg\" > \"$DECODEX_REPO_ROOT/hook-child.pid\"; wait",
 		&repo_root,
 		&[("DECODEX_REPO_ROOT", repo_root.display().to_string())],
@@ -309,7 +316,7 @@ fn process_is_alive(process_id: i32) -> bool {
 		return true;
 	}
 
-	std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+	Error::last_os_error().raw_os_error() != Some(ESRCH)
 }
 
 #[test]
@@ -331,7 +338,7 @@ before_remove_commands = []
 
 	assert!(spec.path.exists(), "worktree should remain usable after verbose bootstrap");
 	assert!(
-		!super::super::after_create_pending_marker_path(&spec.path).exists(),
+		!hooks::after_create_pending_marker_path(&spec.path).exists(),
 		"successful verbose hook should clear the pending marker"
 	);
 }
@@ -417,13 +424,11 @@ fn linked_worktree_inherits_repo_local_identity_from_included_config() {
 
 	super::run_git(&repo_root, &["config", "--unset-all", "user.name"]);
 	super::run_git(&repo_root, &["config", "--unset-all", "user.email"]);
-
 	fs::write(
 			&included_config,
 			"[user]\n\tname = Included Tests\n\temail = included@example.com\n[codex]\n\tgithub-identity = y\n\tlinear-workspace = hackink\n",
-		)
-		.expect("included config should write");
-
+			)
+			.expect("included config should write");
 	super::run_git(
 		&repo_root,
 		&["config", "--local", "include.path", included_config.to_str().unwrap()],
@@ -458,9 +463,7 @@ fn linked_worktree_uses_existing_remote_lane_branch_when_present() {
 	super::run_git(&repo_root, &["remote", "set-url", "origin", "../lane-remote.git"]);
 	super::run_git(&repo_root, &["push", "-u", "origin", "main"]);
 	super::run_git(&repo_root, &["checkout", "-b", lane_branch]);
-
 	fs::write(repo_root.join("LANE.md"), "lane branch\n").expect("lane file should write");
-
 	super::run_git(&repo_root, &["add", "LANE.md"]);
 	super::run_git(&repo_root, &["commit", "-m", "lane branch"]);
 	super::run_git(&repo_root, &["push", "-u", "origin", lane_branch]);
@@ -500,7 +503,6 @@ fn linked_worktree_push_uses_normalized_absolute_origin_when_source_remote_is_re
 
 	fs::write(spec.path.join("WORKTREE.md"), "linked worktree lane\n")
 		.expect("worktree file should write");
-
 	super::run_git(&spec.path, &["add", "WORKTREE.md"]);
 	super::run_git(&spec.path, &["commit", "-m", "worktree change"]);
 	super::run_git(&spec.path, &["push", "-u", "origin", "x/pubfi-pub-101"]);
@@ -550,16 +552,15 @@ fn linked_worktree_leaves_home_relative_origin_unchanged() {
 	let (_temp_dir, repo_root) = super::init_repo();
 
 	super::run_git(&repo_root, &["remote", "set-url", "origin", "~/lane-remote.git"]);
-
-	super::super::normalize_origin_remote_for_worktrees(&repo_root)
+	git::normalize_origin_remote_for_worktrees(&repo_root)
 		.expect("home-relative remotes should bypass normalization");
 
 	assert_eq!(
 		super::git_stdout(&repo_root, &["remote", "get-url", "origin"]),
 		"~/lane-remote.git"
 	);
-	assert!(!super::super::is_relative_filesystem_remote("~/lane-remote.git"));
-	assert!(!super::super::is_relative_filesystem_remote("~"));
+	assert!(!worktree::is_relative_filesystem_remote("~/lane-remote.git"));
+	assert!(!worktree::is_relative_filesystem_remote("~"));
 }
 
 #[test]
@@ -582,7 +583,7 @@ fn linked_worktree_rolls_back_when_origin_normalization_fails() {
 	);
 	assert!(!spec.path.exists(), "failed setup should remove the new worktree path");
 	assert!(
-		!super::super::worktree_is_registered(&repo_root, &spec.path)
+		!git::worktree_is_registered(&repo_root, &spec.path)
 			.expect("worktree registration should inspect"),
 		"failed setup should unregister the new worktree"
 	);
@@ -611,7 +612,6 @@ fn rejects_reused_non_worktree_checkout_with_embedded_git_dir() {
 	let worktree_path = worktree_root.join("PUB-101");
 
 	fs::create_dir_all(&worktree_root).expect("worktree root should exist");
-
 	super::run_git(
 		&repo_root,
 		&["clone", "--quiet", "--no-checkout", ".", worktree_path.to_str().unwrap()],
@@ -661,7 +661,7 @@ timeout_seconds = 60
 	);
 
 	fs::create_dir_all(&orphan_path).expect("orphan path should exist");
-	fs::write(orphan_path.join(crate::state::RUN_ACTIVITY_MARKER_FILE), "run_id=run-orphan\n")
+	fs::write(orphan_path.join(RUN_ACTIVITY_MARKER_FILE), "run_id=run-orphan\n")
 		.expect("runtime marker should write");
 
 	assert!(
@@ -681,7 +681,7 @@ fn removes_orphaned_run_control_marker_directory_without_linked_git_metadata() {
 	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let orphan_path = worktree_root.join("PUB-102");
-	let control_dir = orphan_path.join(crate::state::RUN_CONTROL_CHANNEL_DIR);
+	let control_dir = orphan_path.join(RUN_CONTROL_CHANNEL_DIR);
 	let manager = WorktreeManager::new("pubfi", &repo_root, &worktree_root);
 
 	fs::create_dir_all(&control_dir).expect("run-control marker directory should exist");

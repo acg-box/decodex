@@ -1,18 +1,26 @@
-use crate::{
-	config::ServiceConfig,
-	orchestrator::{IssueDispatchMode, RetryIssueStateHint},
-	prelude::Result,
-	state::StateStore,
-	tracker::{self, IssueTracker, TrackerIssue},
-	workflow::WorkflowDocument,
-};
+pub(crate) mod lifecycle;
 
 mod closeout;
 mod description;
-pub(in crate::orchestrator) mod lifecycle;
 mod retry_budget;
-
-pub(in crate::orchestrator) use closeout::{
+pub(crate) use self::{
+	description::render_issue_description_for_prompt,
+	lifecycle::{
+		cleanup_completed_post_review_lane, cleanup_terminal_worktree, cleanup_worktree_mapping,
+		clear_recovered_issue_lease, clear_worktree_retry_schedule, is_issue_eligible,
+		is_issue_in_progress_for_run, is_issue_not_dispatchable_for_current_dispatch,
+		is_terminal_issue, mark_run_attempt_if_active, refresh_issue, state_name_is_terminal,
+		todo_blocker_rule_passes,
+	},
+	retry_budget::{
+		clear_terminal_guard_marker, issue_has_service_ownership,
+		issue_passes_retry_dispatch_policy, issue_passes_retry_retention_policy,
+		issue_retry_budget_exhausted, issue_retry_budget_exhausted_for_worktree,
+		retry_budget_base_for_dispatch_mode, retry_budget_base_for_issue_worktree,
+		write_retry_budget_marker, write_terminal_guard_marker,
+	},
+};
+pub(crate) use closeout::{
 	closeout_dispatch_block_reason, evaluate_closeout_dispatch_policy_with_inspector,
 	issue_passes_closeout_dispatch_policy, issue_passes_review_repair_dispatch_policy,
 };
@@ -21,27 +29,26 @@ pub(crate) use closeout::{
 	closeout_dispatch_block_reason_with_inspector,
 	issue_passes_closeout_dispatch_policy_with_inspector,
 };
-pub(in crate::orchestrator::dispatch_policy) use description::description_is_machine_only_fenced_block;
-pub(in crate::orchestrator) use description::render_issue_description_for_prompt;
-pub(in crate::orchestrator) use lifecycle::{
-	cleanup_completed_post_review_lane, cleanup_terminal_worktree, cleanup_worktree_mapping,
-	clear_recovered_issue_lease, clear_worktree_retry_schedule, is_issue_eligible,
-	is_issue_in_progress_for_run, is_issue_not_dispatchable_for_current_dispatch,
-	is_terminal_issue, mark_run_attempt_if_active, refresh_issue, state_name_is_terminal,
-	todo_blocker_rule_passes,
-};
-pub(in crate::orchestrator) use retry_budget::{
-	clear_terminal_guard_marker, issue_has_service_ownership, issue_passes_retry_dispatch_policy,
-	issue_passes_retry_retention_policy, issue_retry_budget_exhausted,
-	issue_retry_budget_exhausted_for_worktree, retry_budget_base_for_dispatch_mode,
-	retry_budget_base_for_issue_worktree, write_retry_budget_marker, write_terminal_guard_marker,
+pub(crate) use description::description_is_machine_only_fenced_block;
+
+use crate::{
+	orchestrator::{
+		ErrorKind, GhPullRequestReviewStateInspector, GitCredentialSource, IssueDispatchMode,
+		IssueRunPlan, IssueTracker, Path, PathBuf, PullRequestReviewStateInspector, Result,
+		RetainedCloseoutPrMergeGate, RetryIssueStateHint, ServiceConfig, StateStore,
+		TERMINAL_GUARD_MARKER_FILE, TERMINAL_GUARDED_RUN_STATUS, TrackerIssue, Value,
+		WorkflowDocument, WorktreeManager, WorktreeMapping, WorktreeSpec, default_branch_sync,
+		delete_local_branch_if_present, detach_worktree_head_from_branch_if_checked_out, eyre, fs,
+		github, retained_closeout_pr_merge_gate_with_inspector,
+	},
+	tracker,
 };
 
-pub(in crate::orchestrator) const ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON: &str =
+pub(crate) const ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON: &str =
 	"review_handoff_state_transition_pending";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum CloseoutDispatchEligibility {
+pub(crate) enum CloseoutDispatchEligibility {
 	Eligible,
 	Ineligible,
 	Blocked(&'static str),
@@ -51,7 +58,7 @@ pub(crate) fn issue_has_generic_dispatch_briefing(issue: &TrackerIssue) -> bool 
 	!description_is_machine_only_fenced_block(&issue.description)
 }
 
-pub(in crate::orchestrator) fn ordinary_dispatch_blocked_by_retained_review_handoff(
+pub(crate) fn ordinary_dispatch_blocked_by_retained_review_handoff(
 	project_id: &str,
 	issue: &TrackerIssue,
 	state_store: &StateStore,
@@ -73,7 +80,7 @@ pub(in crate::orchestrator) fn ordinary_dispatch_blocked_by_retained_review_hand
 	Ok(review_handoff.branch_name() == worktree.branch_name())
 }
 
-pub(in crate::orchestrator) fn issue_passes_dispatch_policy<T>(
+pub(crate) fn issue_passes_dispatch_policy<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	workflow: &WorkflowDocument,
@@ -116,7 +123,7 @@ where
 	Ok(true)
 }
 
-pub(in crate::orchestrator) fn issue_passes_current_dispatch_policy<T>(
+pub(crate) fn issue_passes_current_dispatch_policy<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
@@ -149,15 +156,22 @@ where
 					state_store,
 				)?)
 		},
-		IssueDispatchMode::Retry => {
-			issue_passes_retry_dispatch_policy(tracker, issue, project, workflow, state_store, hint)
-		},
-		IssueDispatchMode::ReviewRepair => {
+		IssueDispatchMode::Retry => self::retry_budget::issue_passes_retry_dispatch_policy(
+			tracker,
+			issue,
+			project,
+			workflow,
+			state_store,
+			hint,
+		),
+		IssueDispatchMode::ReviewRepair =>
 			Ok(issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?
-				&& !issue_retry_budget_exhausted(workflow, state_store, &issue.id)?)
-		},
-		IssueDispatchMode::Closeout => {
-			issue_passes_closeout_dispatch_policy(tracker, issue, project, workflow, state_store)
-		},
+				&& !self::retry_budget::issue_retry_budget_exhausted(
+					workflow,
+					state_store,
+					&issue.id,
+				)?),
+		IssueDispatchMode::Closeout =>
+			issue_passes_closeout_dispatch_policy(tracker, issue, project, workflow, state_store),
 	}
 }

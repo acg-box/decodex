@@ -5,7 +5,7 @@ use crate::orchestrator::{
 	},
 };
 
-pub(in crate::orchestrator) fn agent_connector_backoff(
+pub(crate) fn agent_connector_backoff(
 	backoff: &OperatorConnectorBackoffStatus,
 ) -> AgentConnectorBackoff {
 	AgentConnectorBackoff {
@@ -25,7 +25,7 @@ pub(in crate::orchestrator) fn agent_connector_backoff(
 	}
 }
 
-pub(in crate::orchestrator) fn agent_recovery_worktree(
+pub(crate) fn agent_recovery_worktree(
 	role: &str,
 	worktree: &OperatorWorktreeStatus,
 ) -> AgentRecoveryWorktree {
@@ -46,9 +46,7 @@ pub(in crate::orchestrator) fn agent_recovery_worktree(
 	}
 }
 
-pub(in crate::orchestrator) fn agent_recovery_contract(
-	blocker: &AgentBlocker,
-) -> Option<AgentRecoveryContract> {
+pub(crate) fn agent_recovery_contract(blocker: &AgentBlocker) -> Option<AgentRecoveryContract> {
 	let command = if blocker.reason_code == "missing_review_handoff_record" {
 		blocker
 			.issue_identifier

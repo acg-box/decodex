@@ -2,16 +2,16 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use super::super::{
-	model::{
-		ExecutionConflictDomain, ExecutionDispatchAction, ExecutionLinearIssueMapping,
-		ExecutionProgram, ExecutionProgramDependency, ExecutionProgramNode,
-		ExecutionProgramNodeLifecycleState, ExecutionProgramNodeStage, ExecutionQueueIntent,
-		ExecutionReadinessState,
-	},
-	policy::{ExecutionDependencySnapshot, ExecutionWorkflowPolicy},
-};
 use crate::{
+	execution_program::{
+		model::{
+			ExecutionConflictDomain, ExecutionDispatchAction, ExecutionLinearIssueMapping,
+			ExecutionProgram, ExecutionProgramDependency, ExecutionProgramNode,
+			ExecutionProgramNodeLifecycleState, ExecutionProgramNodeStage, ExecutionQueueIntent,
+			ExecutionReadinessState,
+		},
+		policy::{ExecutionDependencySnapshot, ExecutionWorkflowPolicy},
+	},
 	loop_contract::{DecisionContract, DecisionContractStatus},
 	prelude::Result,
 };
@@ -70,22 +70,19 @@ impl ExecutionNodeEvaluation {
 	}
 }
 
-pub(in crate::execution_program) struct EvaluateNodeInput<'a> {
-	pub(in crate::execution_program) program: &'a ExecutionProgram,
-	pub(in crate::execution_program) node: &'a ExecutionProgramNode,
-	pub(in crate::execution_program) current_contract: Option<&'a DecisionContract>,
-	pub(in crate::execution_program) current_fingerprint: &'a str,
-	pub(in crate::execution_program) policy: &'a ExecutionWorkflowPolicy,
-	pub(in crate::execution_program) node_lookup: &'a BTreeMap<&'a str, &'a ExecutionProgramNode>,
-	pub(in crate::execution_program) dependency_lookup:
-		&'a BTreeMap<&'a str, &'a ExecutionDependencySnapshot>,
-	pub(in crate::execution_program) occupied_conflicts: &'a HashSet<&'a ExecutionConflictDomain>,
-	pub(in crate::execution_program) active_issue_ids: &'a HashSet<&'a str>,
+pub(crate) struct EvaluateNodeInput<'a> {
+	pub(crate) program: &'a ExecutionProgram,
+	pub(crate) node: &'a ExecutionProgramNode,
+	pub(crate) current_contract: Option<&'a DecisionContract>,
+	pub(crate) current_fingerprint: &'a str,
+	pub(crate) policy: &'a ExecutionWorkflowPolicy,
+	pub(crate) node_lookup: &'a BTreeMap<&'a str, &'a ExecutionProgramNode>,
+	pub(crate) dependency_lookup: &'a BTreeMap<&'a str, &'a ExecutionDependencySnapshot>,
+	pub(crate) occupied_conflicts: &'a HashSet<&'a ExecutionConflictDomain>,
+	pub(crate) active_issue_ids: &'a HashSet<&'a str>,
 }
 
-pub(in crate::execution_program) fn evaluate_node(
-	input: EvaluateNodeInput<'_>,
-) -> Result<ExecutionNodeEvaluation> {
+pub(crate) fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation> {
 	let EvaluateNodeInput {
 		program,
 		node,

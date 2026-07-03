@@ -1,10 +1,11 @@
 use std::path::Path;
 
-use crate::prelude::{Result, eyre};
-
-use super::{
-	ConnectorBackoff, ConnectorBackoffInput, DispatchSlotConfig, ProjectRegistration, StateStore,
-	prune_unlocked_shared_lock_files, timestamp_parts,
+use crate::{
+	prelude::{Result, eyre},
+	state::store::{
+		self, ConnectorBackoff, ConnectorBackoffInput, DispatchSlotConfig, ProjectRegistration,
+		StateStore,
+	},
 };
 
 impl StateStore {
@@ -76,7 +77,7 @@ impl StateStore {
 		&self,
 		input: ConnectorBackoffInput<'_>,
 	) -> Result<ConnectorBackoff> {
-		let now = timestamp_parts();
+		let now = store::timestamp_parts();
 		let record = ConnectorBackoff {
 			project_id: input.project_id.to_owned(),
 			connector: input.connector.to_owned(),
@@ -134,7 +135,7 @@ impl StateStore {
 		let mut state = self.lock_without_refresh()?;
 
 		if state.issue_claim_guards.is_empty() && state.dispatch_slot_guards.is_empty() {
-			prune_unlocked_shared_lock_files(&worktree_root)?;
+			store::prune_unlocked_shared_lock_files(&worktree_root)?;
 		}
 
 		state

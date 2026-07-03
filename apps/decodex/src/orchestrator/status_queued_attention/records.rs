@@ -7,7 +7,7 @@ use crate::{
 	tracker::{IssueTracker, TrackerIssue, records::LinearExecutionEventRecord},
 };
 
-pub(in crate::orchestrator) fn operator_authority_decision_request_status_from_event(
+pub(crate) fn operator_authority_decision_request_status_from_event(
 	event: &PrivateExecutionEvent,
 ) -> Option<OperatorAuthorityDecisionRequestStatus> {
 	let payload = event.payload();
@@ -35,9 +35,7 @@ pub(in crate::orchestrator) fn operator_authority_decision_request_status_from_e
 	})
 }
 
-pub(in crate::orchestrator::status_queued_attention) fn operator_queued_issue_latest_attention_record<
-	T,
->(
+pub(crate) fn operator_queued_issue_latest_attention_record<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	state_store: &StateStore,

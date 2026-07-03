@@ -2,8 +2,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::artifact_validation::constants::ANALYSIS_MODES;
-use crate::artifact_validation::support;
+use crate::artifact_validation::{constants::ANALYSIS_MODES, support};
 
 pub(super) fn validate_bundle(bundle: &Map<String, Value>, errors: &mut Vec<String>) {
 	if support::string_field(bundle, "repo").is_none_or(|repo| !repo.contains('/')) {

@@ -6,13 +6,13 @@ mod validation;
 
 use std::path::Path;
 
-use crate::recovery::{
-	pull_request_inspection::landing_url,
-	requests::{LegacyCloseoutRecoveryRequest, MergedCloseoutRecoveryRequest},
-};
 use crate::{
 	prelude::{Result, eyre},
 	pull_request::PullRequestLandingState,
+	recovery::{
+		pull_request_inspection,
+		requests::{LegacyCloseoutRecoveryRequest, MergedCloseoutRecoveryRequest},
+	},
 	state::WorktreeMapping,
 	tracker::TrackerIssue,
 };
@@ -58,7 +58,7 @@ pub(crate) fn run_legacy_closeout(
 			context.config.service_id(),
 			validation.issue.identifier,
 			validation.worktree.branch_name(),
-			landing_url(&validation.landing_state),
+			pull_request_inspection::landing_url(&validation.landing_state),
 			validation.local_head_oid,
 			validation.merge_commit,
 			validation.worktree.provenance().source()
@@ -66,7 +66,6 @@ pub(crate) fn run_legacy_closeout(
 
 		return Ok(());
 	}
-
 	if !request.manual_authority {
 		eyre::bail!(
 			"`recover legacy-closeout` writes a closeout audit and requires --manual-authority outside dry-run mode."
@@ -81,7 +80,7 @@ pub(crate) fn run_legacy_closeout(
 		context.config.service_id(),
 		validation.issue.identifier,
 		validation.worktree.branch_name(),
-		landing_url(&validation.landing_state),
+		pull_request_inspection::landing_url(&validation.landing_state),
 		validation.local_head_oid,
 		validation.merge_commit,
 	);
@@ -104,7 +103,7 @@ pub(crate) fn run_merged_closeout(
 			validation.issue.identifier,
 			validation.branch_name,
 			validation.worktree_path_for_event,
-			landing_url(&validation.landing_state),
+			pull_request_inspection::landing_url(&validation.landing_state),
 			validation.landing_state.head_ref_oid,
 			validation.merge_commit,
 			validation.run_id,
@@ -113,7 +112,6 @@ pub(crate) fn run_merged_closeout(
 
 		return Ok(());
 	}
-
 	if !request.manual_authority {
 		eyre::bail!(
 			"`recover merged-closeout` writes closeout and cleanup ledger records and requires --manual-authority outside dry-run mode."
@@ -129,7 +127,7 @@ pub(crate) fn run_merged_closeout(
 		validation.issue.identifier,
 		validation.branch_name,
 		validation.worktree_path_for_event,
-		landing_url(&validation.landing_state),
+		pull_request_inspection::landing_url(&validation.landing_state),
 		validation.landing_state.head_ref_oid,
 		validation.merge_commit,
 		closeout_recorded,

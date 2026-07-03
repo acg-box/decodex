@@ -1,8 +1,7 @@
 use crate::{
 	execution_program::{ExecutionProgramReadinessContext, ExecutionWorkflowPolicy},
 	prelude::{Result, eyre},
-	program_intake::model::ApplyGoalIssuesInput,
-	program_intake::{GoalIntakeReport, GoalIntakeRunRequest, goal},
+	program_intake::{GoalIntakeReport, GoalIntakeRunRequest, goal, model::ApplyGoalIssuesInput},
 	tracker::IssueTracker,
 };
 

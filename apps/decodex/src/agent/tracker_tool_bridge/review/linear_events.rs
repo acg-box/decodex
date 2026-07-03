@@ -41,19 +41,6 @@ pub(super) fn review_handoff_marker_lineage_matches(
 		&& existing.pr_head_oid() == marker.pr_head_oid()
 }
 
-fn linear_execution_identity<'a>(
-	issue: &'a TrackerIssue,
-	review_context: &'a ReviewHandoffContext,
-) -> records::LinearExecutionEventIdentity<'a> {
-	records::LinearExecutionEventIdentity {
-		service_id: &review_context.service_id,
-		issue_id: &issue.id,
-		issue_identifier: &issue.identifier,
-		run_id: &review_context.run_id,
-		attempt_number: review_context.attempt_number,
-	}
-}
-
 pub(super) fn linear_execution_review_event(
 	issue: &TrackerIssue,
 	review_context: &ReviewHandoffContext,
@@ -106,4 +93,17 @@ pub(super) fn linear_execution_closeout_event(
 	record.validation_result = Some(String::from("passed"));
 
 	record
+}
+
+fn linear_execution_identity<'a>(
+	issue: &'a TrackerIssue,
+	review_context: &'a ReviewHandoffContext,
+) -> records::LinearExecutionEventIdentity<'a> {
+	records::LinearExecutionEventIdentity {
+		service_id: &review_context.service_id,
+		issue_id: &issue.id,
+		issue_identifier: &issue.identifier,
+		run_id: &review_context.run_id,
+		attempt_number: review_context.attempt_number,
+	}
 }

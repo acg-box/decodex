@@ -4,9 +4,8 @@ use crate::{
 	github,
 	prelude::{Result, eyre},
 	pull_request::PullRequestLandingState,
+	recovery::context::RecoveryContext,
 };
-
-use super::context::RecoveryContext;
 
 pub(super) fn inspect_rebind_pull_request(
 	context: &RecoveryContext,

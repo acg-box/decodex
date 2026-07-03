@@ -1,14 +1,32 @@
-use super::*;
+use std::fs;
+
+use tempfile::TempDir;
+
+use crate::{
+	recovery::{
+		RecoveryRuntimeMutationPolicy,
+		tests::{self, GhostLaneTestTracker},
+	},
+	state::{
+		self, ChildAgentActivitySummary, ProtocolActivityMarker, RUN_ACTIVITY_MARKER_FILE,
+		ReviewHandoffMarker, ReviewPolicyCheckpointInput, StateStore,
+	},
+	tracker::{
+		self, TrackerComment, records,
+		records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
+	},
+};
 
 #[test]
 fn stale_active_diagnose_blocks_private_progress_from_older_attempt() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	issue.identifier = String::from("PUB-1626");
+
 	store
 		.record_run_attempt("run-old", &issue.id, 1, "running")
 		.expect("old run attempt should record");
@@ -35,14 +53,14 @@ fn stale_active_diagnose_blocks_private_progress_from_older_attempt() {
 		.expect("private progress should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -76,11 +94,12 @@ fn stale_active_diagnose_blocks_private_progress_from_older_attempt() {
 fn stale_active_diagnose_blocks_protocol_event_evidence() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	issue.identifier = String::from("PUB-1626");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -97,14 +116,14 @@ fn stale_active_diagnose_blocks_protocol_event_evidence() {
 		.expect("protocol event should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -112,9 +131,7 @@ fn stale_active_diagnose_blocks_protocol_event_evidence() {
 	assert_eq!(diagnostic.classification, super::super::super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
 	assert!(diagnostic.blockers.contains(&String::from("protocol_event_evidence_present")));
 	assert!(
-		diagnostic
-			.next_action
-			.contains("runtime ownership still appears live or unsettled")
+		diagnostic.next_action.contains("runtime ownership still appears live or unsettled")
 			&& diagnostic.next_action.contains("decodex lane inspect PUB-1626"),
 		"runtime evidence blockers should route to lane-control inspection, got {:?}",
 		diagnostic.next_action
@@ -126,12 +143,13 @@ fn stale_active_diagnose_blocks_protocol_event_evidence() {
 fn stale_active_diagnose_blocks_marker_protocol_activity_evidence() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
 	let worktree_path = temp_dir.path().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	issue.identifier = String::from("PUB-1626");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -143,6 +161,7 @@ fn stale_active_diagnose_blocks_marker_protocol_activity_evidence() {
 			&worktree_path.display().to_string(),
 		)
 		.expect("worktree mapping should record");
+
 	state::write_run_protocol_activity_marker(
 		&worktree_path,
 		&ProtocolActivityMarker {
@@ -159,14 +178,14 @@ fn stale_active_diagnose_blocks_marker_protocol_activity_evidence() {
 	.expect("protocol marker should write");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -183,15 +202,17 @@ fn stale_active_diagnose_blocks_marker_protocol_activity_evidence() {
 fn stale_active_diagnose_blocks_untracked_worktree_progress() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
 	let worktree_path = temp_dir.path().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	issue.identifier = String::from("PUB-1626");
-	init_git_repo(&worktree_path);
+
+	tests::init_git_repo(&worktree_path);
 	fs::write(worktree_path.join("new_source.rs"), "fn retained_progress() {}\n")
 		.expect("untracked source should write");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -205,14 +226,14 @@ fn stale_active_diagnose_blocks_untracked_worktree_progress() {
 		.expect("worktree mapping should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -226,15 +247,17 @@ fn stale_active_diagnose_blocks_untracked_worktree_progress() {
 fn stale_active_diagnose_blocks_non_git_retained_files() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
 	let worktree_path = temp_dir.path().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	issue.identifier = String::from("PUB-1626");
+
 	fs::create_dir_all(&worktree_path).expect("retained path should create");
 	fs::write(worktree_path.join("retained.txt"), "retained work\n")
 		.expect("retained file should write");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -248,14 +271,14 @@ fn stale_active_diagnose_blocks_non_git_retained_files() {
 		.expect("worktree mapping should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -269,12 +292,13 @@ fn stale_active_diagnose_blocks_non_git_retained_files() {
 fn stale_active_diagnose_blocks_child_agent_activity_summary() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
 	let activity = ChildAgentActivitySummary { event_count: 1, ..Default::default() };
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	issue.identifier = String::from("PUB-1626");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -291,14 +315,14 @@ fn stale_active_diagnose_blocks_child_agent_activity_summary() {
 		.expect("child activity should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -313,14 +337,16 @@ fn stale_active_diagnose_blocks_when_worktree_status_unknown() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let worktree_path = temp_dir.path().join("PUB-1626");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	fs::create_dir_all(&worktree_path).expect("worktree path should create");
 	fs::write(worktree_path.join(".git"), "gitdir: /does/not/exist\n")
 		.expect("invalid gitdir should write");
+
 	issue.identifier = String::from("PUB-1626");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -334,14 +360,14 @@ fn stale_active_diagnose_blocks_when_worktree_status_unknown() {
 		.expect("worktree mapping should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -355,12 +381,13 @@ fn stale_active_diagnose_blocks_when_worktree_status_unknown() {
 fn stale_active_diagnose_blocks_needs_attention_label() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
 	let needs_attention_label = String::from("decodex:needs-attention");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label, needs_attention_label]);
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label, needs_attention_label]);
 
 	issue.identifier = String::from("PUB-1626");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -374,14 +401,14 @@ fn stale_active_diagnose_blocks_needs_attention_label() {
 		.expect("worktree mapping should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -395,11 +422,12 @@ fn stale_active_diagnose_blocks_needs_attention_label() {
 fn stale_active_diagnose_blocks_review_policy_checkpoint() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	issue.identifier = String::from("PUB-1626");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -427,14 +455,14 @@ fn stale_active_diagnose_blocks_review_policy_checkpoint() {
 		.expect("review checkpoint should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -442,9 +470,7 @@ fn stale_active_diagnose_blocks_review_policy_checkpoint() {
 	assert_eq!(diagnostic.classification, super::super::super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
 	assert!(diagnostic.blockers.contains(&String::from("review_policy_checkpoint_present")));
 	assert!(
-		diagnostic
-			.next_action
-			.contains("review-handoff diagnose PUB-1626 --json"),
+		diagnostic.next_action.contains("review-handoff diagnose PUB-1626 --json"),
 		"review blockers should route to review-handoff recovery, got {:?}",
 		diagnostic.next_action
 	);
@@ -455,12 +481,13 @@ fn stale_active_diagnose_blocks_review_policy_checkpoint() {
 fn stale_active_diagnose_blocks_identifier_keyed_review_policy_checkpoint() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	issue.id = String::from("linear-issue-1626");
 	issue.identifier = String::from("PUB-1626");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -488,14 +515,14 @@ fn stale_active_diagnose_blocks_identifier_keyed_review_policy_checkpoint() {
 		.expect("identifier-keyed review checkpoint should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -509,9 +536,9 @@ fn stale_active_diagnose_blocks_identifier_keyed_review_policy_checkpoint() {
 fn stale_active_diagnose_blocks_identifier_keyed_pr_lineage() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 	let mut event = LinearExecutionEventRecord::new(
 		LinearExecutionEventIdentity {
 			service_id: "pubfi",
@@ -535,6 +562,7 @@ fn stale_active_diagnose_blocks_identifier_keyed_pr_lineage() {
 	event.validation_result = Some(String::from("passed"));
 	event.summary = Some(String::from("Recorded review handoff lineage."));
 	event.terminal_path = Some(String::from("review_handoff"));
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -549,14 +577,14 @@ fn stale_active_diagnose_blocks_identifier_keyed_pr_lineage() {
 	store.record_linear_execution_event(&event).expect("linear event should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -564,9 +592,7 @@ fn stale_active_diagnose_blocks_identifier_keyed_pr_lineage() {
 	assert_eq!(diagnostic.classification, super::super::super::STALE_ACTIVE_BLOCKED_CLASSIFICATION);
 	assert!(diagnostic.blockers.contains(&String::from("pr_or_review_lineage_present")));
 	assert!(
-		diagnostic
-			.next_action
-			.contains("review-handoff diagnose PUB-1626 --json"),
+		diagnostic.next_action.contains("review-handoff diagnose PUB-1626 --json"),
 		"PR lineage blockers should route to review-handoff recovery, got {:?}",
 		diagnostic.next_action
 	);
@@ -577,9 +603,9 @@ fn stale_active_diagnose_blocks_identifier_keyed_pr_lineage() {
 fn stale_active_diagnose_blocks_tracker_comment_pr_lineage() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 	let mut event = LinearExecutionEventRecord::new(
 		LinearExecutionEventIdentity {
 			service_id: "pubfi",
@@ -626,14 +652,14 @@ fn stale_active_diagnose_blocks_tracker_comment_pr_lineage() {
 		.expect("worktree mapping should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]).with_comments(vec![comment]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -647,9 +673,8 @@ fn stale_active_diagnose_blocks_tracker_comment_pr_lineage() {
 fn stale_active_diagnose_blocks_identifier_keyed_review_lifecycle() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
 	let marker = ReviewHandoffMarker::new(
 		"run-1626",
 		1,
@@ -659,9 +684,11 @@ fn stale_active_diagnose_blocks_identifier_keyed_review_lifecycle() {
 		"x/pubfi-pub-1626",
 		"2222222222222222222222222222222222222222",
 	);
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	issue.id = String::from("linear-issue-1626");
 	issue.identifier = String::from("PUB-1626");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -678,14 +705,14 @@ fn stale_active_diagnose_blocks_identifier_keyed_review_lifecycle() {
 		.expect("identifier-keyed review lifecycle should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
@@ -699,14 +726,16 @@ fn stale_active_diagnose_blocks_identifier_keyed_review_lifecycle() {
 fn stale_active_diagnose_blocks_unreadable_activity_marker() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let workflow = sample_workflow();
+	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let mut issue = sample_issue_with_labels("Todo", &[active_label]);
 	let worktree_path = temp_dir.path().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
 
 	issue.identifier = String::from("PUB-1626");
-	fs::create_dir_all(worktree_path.join(state::RUN_ACTIVITY_MARKER_FILE))
+
+	fs::create_dir_all(worktree_path.join(RUN_ACTIVITY_MARKER_FILE))
 		.expect("directory marker should create");
+
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -720,14 +749,14 @@ fn stale_active_diagnose_blocks_unreadable_activity_marker() {
 		.expect("worktree mapping should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
-	let diagnostics = super::super::super::diagnose_stale_active_issues(
+	let diagnostics = super::diagnose_stale_active_issues(
 		"pubfi",
 		&workflow,
 		temp_dir.path(),
 		&store,
 		&tracker,
 		Some("PUB-1626"),
-		super::super::super::RecoveryRuntimeMutationPolicy::ReadOnly,
+		RecoveryRuntimeMutationPolicy::ReadOnly,
 	)
 	.expect("stale active diagnosis should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");

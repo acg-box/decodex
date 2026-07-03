@@ -2,34 +2,30 @@ mod leases;
 mod terminal_cleanup;
 mod worktrees;
 
-use leases::reconcile_active_project_leases;
-pub(in crate::orchestrator::run_cycle_reconciliation) use leases::clear_terminal_lane_labels_once;
-pub(crate) use leases::{
-	retained_closeout_lease_has_fresh_activity, terminal_issue_keeps_retained_closeout,
-};
-use terminal_cleanup::clear_stale_terminal_local_worktree_mappings;
-pub(crate) use terminal_cleanup::{
-	local_run_attempt_status_is_terminal, looks_like_tracker_issue_identifier_key,
-};
-use worktrees::{
-	cleanup_missing_orphaned_project_worktree_mappings, cleanup_terminal_project_worktrees,
-	reconcile_orphaned_active_worktree_runs,
+pub(crate) use self::{
+	leases::{retained_closeout_lease_has_fresh_activity, terminal_issue_keeps_retained_closeout},
+	terminal_cleanup::{
+		local_run_attempt_status_is_terminal, looks_like_tracker_issue_identifier_key,
+	},
 };
 
-use std::{
-	collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 
 use time::OffsetDateTime;
 
 use crate::{
-	config::ServiceConfig,
+	orchestrator::{
+		IssueTracker, ServiceConfig, StateStore, TERMINAL_GUARDED_RUN_STATUS, TrackerIssue,
+		WorkflowDocument, WorktreeManager, WorktreeMapping, closeout_dispatch_block_reason,
+		is_terminal_issue, issue_passes_closeout_dispatch_policy, mark_run_attempt_if_active,
+		retained_review_handoff_matches_run, worktree_activity_marker_is_fresh,
+		worktree_mapping_is_stale_terminal_local_residue,
+	},
 	prelude::Result,
-	state::StateStore,
-	tracker::IssueTracker,
-	workflow::WorkflowDocument,
-	worktree::WorktreeManager,
+	state::IssueLease,
+	tracker,
 };
+use leases::clear_terminal_lane_labels_once;
 
 pub(in crate::orchestrator::run_cycle_reconciliation) struct ProjectStateReconciliationContext<
 	'a,
@@ -59,7 +55,12 @@ where
 		return Ok(());
 	}
 
-	clear_stale_terminal_local_worktree_mappings(project, state_store, &leases, &mut worktrees)?;
+	terminal_cleanup::clear_stale_terminal_local_worktree_mappings(
+		project,
+		state_store,
+		&leases,
+		&mut worktrees,
+	)?;
 
 	if leases.is_empty() && worktrees.is_empty() {
 		return Ok(());
@@ -89,27 +90,27 @@ where
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 	let mut cleared_terminal_lane_issue_ids = HashSet::new();
 
-	reconcile_active_project_leases(
+	leases::reconcile_active_project_leases(
 		&reconciliation_context,
 		&leases,
 		&issues_by_id,
 		now_unix_epoch,
 		&mut cleared_terminal_lane_issue_ids,
 	)?;
-	cleanup_missing_orphaned_project_worktree_mappings(
+	worktrees::cleanup_missing_orphaned_project_worktree_mappings(
 		&reconciliation_context,
 		&leases,
 		&worktrees,
 		&issues_by_id,
 	)?;
-	reconcile_orphaned_active_worktree_runs(
+	worktrees::reconcile_orphaned_active_worktree_runs(
 		&reconciliation_context,
 		&leases,
 		&worktrees,
 		&issues_by_id,
 		now_unix_epoch,
 	)?;
-	cleanup_terminal_project_worktrees(
+	worktrees::cleanup_terminal_project_worktrees(
 		&reconciliation_context,
 		&worktrees,
 		&issues_by_id,

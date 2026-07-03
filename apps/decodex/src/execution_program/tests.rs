@@ -4,12 +4,10 @@ use crate::{
 		ExecutionDispatchAction, ExecutionLinearIssueMapping, ExecutionProgram,
 		ExecutionProgramDependency, ExecutionProgramNode, ExecutionProgramNodeStage,
 		ExecutionProgramReadinessContext, ExecutionQueueIntent, ExecutionReadinessState,
-		ExecutionWorkflowPolicy,
+		ExecutionWorkflowPolicy, intake::ProgramIntakeKind,
 	},
 	loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
 };
-
-use super::intake::ProgramIntakeKind;
 
 fn latent_contract_fixture() -> DecisionContract {
 	serde_json::from_str(include_str!(concat!(

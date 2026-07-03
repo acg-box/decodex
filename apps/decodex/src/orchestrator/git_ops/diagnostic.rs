@@ -1,8 +1,8 @@
 use std::{collections::BTreeSet, fmt::Display, process::Output};
 
-use serde_json::{Value, json};
+use serde_json::{self, Value};
 
-use super::RepoGateFailureKind;
+use crate::orchestrator::git_ops::RepoGateFailureKind;
 
 const REPO_GATE_DIAGNOSTIC_EXCERPT_LIMIT: usize = 4_000;
 const REPO_GATE_DIAGNOSTIC_LINE_LIMIT: usize = 16;
@@ -77,7 +77,7 @@ impl RepoGateFailureDiagnostic {
 	}
 
 	pub(crate) fn to_json(&self) -> Value {
-		json!({
+		serde_json::json!({
 			"schema": "decodex.repo_gate_failure_diagnostic/1",
 			"stage": self.stage,
 			"failed_command": &self.failed_command,
@@ -113,6 +113,23 @@ pub(crate) fn repo_gate_output_text(output: &Output) -> String {
 	}
 
 	String::from("(command produced no output)")
+}
+
+pub(super) fn repo_gate_git_output_lines(output: &Output) -> BTreeSet<String> {
+	let stdout = String::from_utf8_lossy(&output.stdout);
+
+	stdout.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_owned).collect()
+}
+
+pub(super) fn repo_gate_failure_kind_for_output(
+	default_kind: RepoGateFailureKind,
+	output_text: &str,
+) -> RepoGateFailureKind {
+	if repo_gate_is_git_lock_contention(output_text) {
+		RepoGateFailureKind::GitLockContention
+	} else {
+		default_kind
+	}
 }
 
 fn repo_gate_bounded_output_excerpt(output_text: &str, limit: usize) -> (String, bool) {
@@ -215,12 +232,6 @@ fn repo_gate_truncate_diagnostic_line(line: &str) -> String {
 	line
 }
 
-pub(super) fn repo_gate_git_output_lines(output: &Output) -> BTreeSet<String> {
-	let stdout = String::from_utf8_lossy(&output.stdout);
-
-	stdout.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_owned).collect()
-}
-
 fn repo_gate_is_git_lock_contention(output_text: &str) -> bool {
 	let output_text = output_text.to_ascii_lowercase();
 
@@ -228,15 +239,4 @@ fn repo_gate_is_git_lock_contention(output_text: &str) -> bool {
 		&& (output_text.contains("file exists")
 			|| output_text.contains("already exists")
 			|| output_text.contains("another git process seems to be running"))
-}
-
-pub(super) fn repo_gate_failure_kind_for_output(
-	default_kind: RepoGateFailureKind,
-	output_text: &str,
-) -> RepoGateFailureKind {
-	if repo_gate_is_git_lock_contention(output_text) {
-		RepoGateFailureKind::GitLockContention
-	} else {
-		default_kind
-	}
 }

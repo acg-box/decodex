@@ -4,31 +4,22 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::prelude::{Result, eyre};
-
-use super::{
-	fingerprint::{autonomy_signal_fingerprint, autonomy_signal_id},
-	review::AutonomySignalReviewEvidence,
-	types::{
-		AutonomySignalConfidence, AutonomySignalEvidenceClass, AutonomySignalFreshness,
-		AutonomySignalKind, AutonomySignalPrivacy, AutonomySignalSourceType,
+use crate::{
+	autonomy_signal::{
+		fingerprint::{self},
+		review::AutonomySignalReviewEvidence,
+		types::{
+			AutonomySignalConfidence, AutonomySignalEvidenceClass, AutonomySignalFreshness,
+			AutonomySignalKind, AutonomySignalPrivacy, AutonomySignalSourceType,
+		},
+		validation::{self},
 	},
-	validation::{
-		validate_nonempty_list, validate_optional_required, validate_required, validate_string_list,
-	},
+	prelude::{Result, eyre},
 };
 
 pub(crate) const AUTONOMY_SIGNAL_SCHEMA: &str = "decodex.autonomy_signal/1";
 
 const AUTONOMY_SIGNAL_RECORD_VERSION: u16 = 1;
-
-fn autonomy_signal_schema() -> String {
-	AUTONOMY_SIGNAL_SCHEMA.to_owned()
-}
-
-const fn autonomy_signal_record_version() -> u16 {
-	AUTONOMY_SIGNAL_RECORD_VERSION
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AutonomySignalInput {
@@ -212,23 +203,35 @@ impl AutonomySignal {
 	}
 
 	pub(crate) fn validate(&self) -> Result<()> {
-		validate_required("autonomy signal schema", &self.schema)?;
-		validate_required("autonomy signal id", &self.id)?;
-		validate_required("autonomy signal fingerprint", &self.fingerprint)?;
-		validate_required("autonomy signal project_id", &self.project_id)?;
-		validate_required("autonomy signal objective_id", &self.objective_id)?;
-		validate_required("autonomy signal captured_at", &self.captured_at)?;
-		validate_required("autonomy signal summary", &self.summary)?;
-		validate_required("autonomy signal created_at", &self.created_at)?;
-		validate_nonempty_list("autonomy signal source_refs", &self.source_refs)?;
-		validate_nonempty_list("autonomy signal evidence", &self.evidence)?;
-		validate_string_list("autonomy signal primary_source_refs", &self.primary_source_refs)?;
-		validate_string_list("autonomy signal contradictions", &self.contradictions)?;
-		validate_string_list("autonomy signal gaps", &self.gaps)?;
-		validate_optional_required("autonomy signal issue_id", self.issue_id.as_deref())?;
-		validate_optional_required("autonomy signal run_id", self.run_id.as_deref())?;
-		validate_optional_required("autonomy signal attempt_id", self.attempt_id.as_deref())?;
-		validate_optional_required("autonomy signal head_sha", self.head_sha.as_deref())?;
+		validation::validate_required("autonomy signal schema", &self.schema)?;
+		validation::validate_required("autonomy signal id", &self.id)?;
+		validation::validate_required("autonomy signal fingerprint", &self.fingerprint)?;
+		validation::validate_required("autonomy signal project_id", &self.project_id)?;
+		validation::validate_required("autonomy signal objective_id", &self.objective_id)?;
+		validation::validate_required("autonomy signal captured_at", &self.captured_at)?;
+		validation::validate_required("autonomy signal summary", &self.summary)?;
+		validation::validate_required("autonomy signal created_at", &self.created_at)?;
+		validation::validate_nonempty_list("autonomy signal source_refs", &self.source_refs)?;
+		validation::validate_nonempty_list("autonomy signal evidence", &self.evidence)?;
+		validation::validate_string_list(
+			"autonomy signal primary_source_refs",
+			&self.primary_source_refs,
+		)?;
+		validation::validate_string_list("autonomy signal contradictions", &self.contradictions)?;
+		validation::validate_string_list("autonomy signal gaps", &self.gaps)?;
+		validation::validate_optional_required(
+			"autonomy signal issue_id",
+			self.issue_id.as_deref(),
+		)?;
+		validation::validate_optional_required("autonomy signal run_id", self.run_id.as_deref())?;
+		validation::validate_optional_required(
+			"autonomy signal attempt_id",
+			self.attempt_id.as_deref(),
+		)?;
+		validation::validate_optional_required(
+			"autonomy signal head_sha",
+			self.head_sha.as_deref(),
+		)?;
 
 		if self.schema != AUTONOMY_SIGNAL_SCHEMA {
 			eyre::bail!("Autonomy signal `{}` has unsupported schema `{}`.", self.id, self.schema);
@@ -252,7 +255,7 @@ impl AutonomySignal {
 
 		self.validate_source_specific_rules()?;
 
-		let expected = autonomy_signal_fingerprint(self)?;
+		let expected = fingerprint::autonomy_signal_fingerprint(self)?;
 
 		if expected != self.fingerprint {
 			eyre::bail!(
@@ -261,7 +264,7 @@ impl AutonomySignal {
 			);
 		}
 
-		let expected_id = autonomy_signal_id(&expected);
+		let expected_id = fingerprint::autonomy_signal_id(&expected);
 
 		if expected_id != self.id {
 			eyre::bail!(
@@ -304,9 +307,9 @@ impl AutonomySignal {
 			proposal_only: input.proposal_only,
 			created_at: input.created_at,
 		};
-		let fingerprint = autonomy_signal_fingerprint(&signal)?;
+		let fingerprint = fingerprint::autonomy_signal_fingerprint(&signal)?;
 
-		signal.id = autonomy_signal_id(&fingerprint);
+		signal.id = fingerprint::autonomy_signal_id(&fingerprint);
 		signal.fingerprint = fingerprint;
 
 		signal.validate()?;
@@ -351,4 +354,12 @@ impl AutonomySignal {
 
 		Ok(())
 	}
+}
+
+fn autonomy_signal_schema() -> String {
+	AUTONOMY_SIGNAL_SCHEMA.to_owned()
+}
+
+const fn autonomy_signal_record_version() -> u16 {
+	AUTONOMY_SIGNAL_RECORD_VERSION
 }

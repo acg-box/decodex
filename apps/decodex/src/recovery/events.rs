@@ -4,13 +4,12 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
 	prelude::Result,
+	recovery::{
+		self, AdoptValidation, REVIEW_HANDOFF_ADOPT_EVENT, REVIEW_HANDOFF_REBIND_EVENT,
+		RebindValidation, RecoveryContext,
+	},
 	state::StateStore,
 	tracker::records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
-};
-
-use super::{
-	AdoptValidation, REVIEW_HANDOFF_ADOPT_EVENT, REVIEW_HANDOFF_REBIND_EVENT, RebindValidation,
-	RecoveryContext, landing_url,
 };
 
 pub(super) fn append_review_handoff_rebind_private_event(
@@ -34,7 +33,7 @@ pub(super) fn append_review_handoff_rebind_private_event(
 				"issue_identifier": &validation.issue.identifier,
 				"branch": validation.worktree.branch_name(),
 				"worktree_path": &validation.worktree_path_for_event,
-				"pr_url": landing_url(&validation.landing_state),
+				"pr_url": recovery::landing_url(&validation.landing_state),
 				"pr_head_sha": &validation.local_head_oid,
 				"pr_base_ref": &validation.landing_state.base_ref_name,
 				"pr_state": &validation.landing_state.state,
@@ -72,7 +71,7 @@ pub(super) fn append_review_handoff_adopt_private_event(
 				"issue_identifier": &validation.issue.identifier,
 				"branch": &validation.branch_name,
 				"worktree_path": &validation.worktree_path_for_event,
-				"pr_url": landing_url(&validation.landing_state),
+				"pr_url": recovery::landing_url(&validation.landing_state),
 				"pr_head_sha": &validation.local_head_oid,
 				"pr_base_ref": &validation.landing_state.base_ref_name,
 				"pr_state": &validation.landing_state.state,
@@ -95,7 +94,7 @@ pub(super) fn review_handoff_rebind_event(
 	validation: &RebindValidation,
 	active_label_restored: bool,
 ) -> LinearExecutionEventRecord {
-	let pr_url = landing_url(&validation.landing_state);
+	let pr_url = recovery::landing_url(&validation.landing_state);
 	let stable_anchor = records::stable_event_anchor(&[
 		pr_url,
 		&validation.local_head_oid,
@@ -146,7 +145,7 @@ pub(super) fn review_handoff_adopt_event(
 	validation: &AdoptValidation,
 	active_label_restored: bool,
 ) -> LinearExecutionEventRecord {
-	let pr_url = landing_url(&validation.landing_state);
+	let pr_url = recovery::landing_url(&validation.landing_state);
 	let stable_anchor = records::stable_event_anchor(&[
 		pr_url,
 		&validation.local_head_oid,

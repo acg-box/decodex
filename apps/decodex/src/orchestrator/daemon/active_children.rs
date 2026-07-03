@@ -1,18 +1,9 @@
-use std::process::Child;
-
-use time::OffsetDateTime;
-
-use crate::orchestrator::{
-	ActiveWorkflowOverride, ChildExitRetryContext, ChildRunRef, CurrentChildRunContext,
-	DaemonRunChild, IssueDispatchMode, IssueTracker, Result, RetryQueue, RunAttempt,
-	RunLeaseDisposition, RunLeaseReconciliation, ServiceConfig, StateStore, WorkflowDocument,
-	WorktreeManager, apply_run_lease_reconciliation, inspect_exited_daemon_child_reconciliation,
-	is_issue_not_dispatchable_for_current_dispatch, is_terminal_issue, mark_run_attempt_if_active,
-	refresh_issue, retained_review_handoff_matches_run, run_lease_reconciliation_workflow,
-	stalled_idle_duration, stalled_run_has_retained_partial_progress,
-	superseded_run_disposition, terminal_issue_keeps_retained_closeout,
+use crate::orchestrator::daemon::{
+	self, ActiveWorkflowOverride, Child, ChildExitRetryContext, ChildRunRef,
+	CurrentChildRunContext, DaemonRunChild, IssueDispatchMode, IssueTracker, OffsetDateTime,
+	Result, RetryQueue, RunAttempt, RunLeaseDisposition, RunLeaseReconciliation, ServiceConfig,
+	StateStore, WorkflowDocument, WorktreeManager,
 };
-use crate::orchestrator::daemon_retry::schedule_retry_after_child_exit;
 
 pub(crate) fn inspect_or_clear_active_children<T>(
 	active_children: &mut Vec<DaemonRunChild>,
@@ -33,7 +24,11 @@ where
 		let child_exited = child_exit_status.is_some();
 
 		if child_exited && child_exit_status.is_some_and(|status| !status.success()) {
-			mark_run_attempt_if_active(state_store, &active_children[index].run_id, "failed")?;
+			daemon::mark_run_attempt_if_active(
+				state_store,
+				&active_children[index].run_id,
+				"failed",
+			)?;
 		}
 
 		let child_ref = ChildRunRef {
@@ -42,7 +37,7 @@ where
 			attempt_number: active_children[index].attempt_number,
 		};
 		let actions = if child_exited {
-			inspect_exited_daemon_child_reconciliation(
+			daemon::inspect_exited_daemon_child_reconciliation(
 				tracker,
 				project,
 				workflow,
@@ -67,7 +62,7 @@ where
 		if actions.is_empty() {
 			if child_exited {
 				if child_exit_status.is_some_and(|status| status.success()) {
-					mark_run_attempt_if_active(
+					daemon::mark_run_attempt_if_active(
 						state_store,
 						&active_children[index].run_id,
 						"succeeded",
@@ -84,7 +79,7 @@ where
 				clear_orphaned_daemon_child_state(state_store, child_ref, false)?;
 
 				if let Some(exit_status) = child_exit_status {
-					schedule_retry_after_child_exit(
+					daemon::schedule_retry_after_child_exit(
 						ChildExitRetryContext {
 							retry_queue,
 							tracker,
@@ -118,7 +113,13 @@ where
 			stop_daemon_child(&mut daemon_child.child)?;
 		}
 
-		apply_run_lease_reconciliation(tracker, project, state_store, worktree_manager, actions)?;
+		daemon::apply_run_lease_reconciliation(
+			tracker,
+			project,
+			state_store,
+			worktree_manager,
+			actions,
+		)?;
 	}
 
 	Ok(())
@@ -156,7 +157,7 @@ where
 	T: IssueTracker,
 {
 	let child = child_context.child;
-	let Some(issue) = refresh_issue(tracker, child.issue_id)? else {
+	let Some(issue) = daemon::refresh_issue(tracker, child.issue_id)? else {
 		return Ok(Vec::new());
 	};
 	let Some(run_attempt) = state_store.run_attempt(child.run_id)? else {
@@ -164,7 +165,7 @@ where
 	};
 	let worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
 
-	if let Some(disposition) = superseded_run_disposition(state_store, &run_attempt)? {
+	if let Some(disposition) = daemon::superseded_run_disposition(state_store, &run_attempt)? {
 		return Ok(vec![RunLeaseReconciliation {
 			issue: issue.clone(),
 			run_attempt,
@@ -174,13 +175,13 @@ where
 		}]);
 	}
 
-	let action_workflow = run_lease_reconciliation_workflow(
+	let action_workflow = daemon::run_lease_reconciliation_workflow(
 		workflow,
 		Some(ActiveWorkflowOverride { child, workflow: child_context.workflow }),
 		&issue,
 		&run_attempt,
 	);
-	let retained_closeout = terminal_issue_keeps_retained_closeout(
+	let retained_closeout = daemon::terminal_issue_keeps_retained_closeout(
 		tracker,
 		&issue,
 		project,
@@ -189,15 +190,15 @@ where
 	)?;
 	let completed_closeout_child =
 		matches!(child_context.dispatch_mode, IssueDispatchMode::Closeout)
-			&& is_terminal_issue(&issue, action_workflow);
+			&& daemon::is_terminal_issue(&issue, action_workflow);
 	let disposition = if !retained_closeout
 		&& !completed_closeout_child
-		&& is_terminal_issue(&issue, action_workflow)
+		&& daemon::is_terminal_issue(&issue, action_workflow)
 	{
 		Some(RunLeaseDisposition::Terminal)
 	} else if !retained_closeout
 		&& !completed_closeout_child
-		&& is_issue_not_dispatchable_for_current_dispatch(
+		&& daemon::is_issue_not_dispatchable_for_current_dispatch(
 			tracker,
 			&issue,
 			project,
@@ -205,16 +206,19 @@ where
 			child_context.dispatch_mode,
 		)? {
 		Some(RunLeaseDisposition::NotDispatchable)
-	} else if let Some(idle_for) =
-		stalled_idle_duration(state_store, &run_attempt, worktree_mapping.as_ref(), now_unix_epoch)?
-	{
-		if retained_review_handoff_matches_run(
+	} else if let Some(idle_for) = daemon::stalled_idle_duration(
+		state_store,
+		&run_attempt,
+		worktree_mapping.as_ref(),
+		now_unix_epoch,
+	)? {
+		if daemon::retained_review_handoff_matches_run(
 			state_store,
 			&run_attempt,
 			worktree_mapping.as_ref(),
 		)? {
 			Some(RunLeaseDisposition::RetainedReviewComplete)
-		} else if stalled_run_has_retained_partial_progress(worktree_mapping.as_ref()) {
+		} else if daemon::stalled_run_has_retained_partial_progress(worktree_mapping.as_ref()) {
 			Some(RunLeaseDisposition::StalledRetainedPartialProgress { idle_for })
 		} else {
 			Some(RunLeaseDisposition::Stalled { idle_for })
@@ -250,7 +254,7 @@ pub(crate) fn clear_orphaned_daemon_child_state(
 		);
 	}
 	if mark_interrupted && let Some(run_attempt) = resolved_run_attempt.as_ref() {
-		mark_run_attempt_if_active(state_store, run_attempt.run_id(), "interrupted")?;
+		daemon::mark_run_attempt_if_active(state_store, run_attempt.run_id(), "interrupted")?;
 	}
 
 	let existing_lease = state_store.lease_for_issue(child.issue_id)?;

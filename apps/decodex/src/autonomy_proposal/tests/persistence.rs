@@ -1,8 +1,7 @@
-use crate::autonomy_proposal::tests::ExpectNone;
 use crate::{
 	autonomy_proposal::{
 		AutonomyProposal, AutonomyProposalChallengeInput, AutonomyProposalChallengeSource,
-		AutonomyProposalState, tests,
+		AutonomyProposalState, tests, tests::ExpectNone,
 	},
 	state::StateStore,
 };

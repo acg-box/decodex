@@ -6,12 +6,14 @@ use std::{
 
 use time::OffsetDateTime;
 
-use crate::{prelude::eyre, state::CodexAccountActivitySummary};
-
-use super::{
-	AccountPoolRecord, CodexAccountAuthFailure, CodexAccountPool,
-	refresh::RefreshStatus,
-	usage::{AccountUsageSnapshot, preserve_cached_usage_windows},
+use crate::{
+	agent::codex_accounts::{
+		AccountPoolRecord, CodexAccountAuthFailure, CodexAccountPool,
+		refresh::RefreshStatus,
+		usage::{self, AccountUsageSnapshot},
+	},
+	prelude::{Result, eyre},
+	state::CodexAccountActivitySummary,
 };
 
 const ACCOUNT_ACTIVITY_CACHE_TTL_SECONDS: i64 = 60;
@@ -20,9 +22,7 @@ const ACCOUNT_ACTIVITY_PROBE_MAX_CONCURRENCY: usize = 8;
 static ACCOUNT_ACTIVITY_CACHE: OnceLock<Mutex<Option<AccountActivityCacheEntry>>> = OnceLock::new();
 
 impl CodexAccountPool {
-	pub(crate) fn account_activity_summaries(
-		&self,
-	) -> crate::prelude::Result<Vec<CodexAccountActivitySummary>> {
+	pub(crate) fn account_activity_summaries(&self) -> Result<Vec<CodexAccountActivitySummary>> {
 		let _guard = self.lock_records()?;
 		let mut records = self.load_records()?;
 
@@ -32,7 +32,7 @@ impl CodexAccountPool {
 	pub(crate) fn account_activity_summaries_cached(
 		&self,
 		force_refresh: bool,
-	) -> crate::prelude::Result<Vec<CodexAccountActivitySummary>> {
+	) -> Result<Vec<CodexAccountActivitySummary>> {
 		let now = OffsetDateTime::now_utc().unix_timestamp();
 		let cache_key = self.cache_key();
 		let cache = ACCOUNT_ACTIVITY_CACHE.get_or_init(|| Mutex::new(None));
@@ -59,7 +59,7 @@ impl CodexAccountPool {
 		if let Some(entry) = cached.as_ref()
 			&& entry.key == cache_key
 		{
-			preserve_cached_usage_windows(&mut summaries, &entry.summaries, now);
+			usage::preserve_cached_usage_windows(&mut summaries, &entry.summaries, now);
 		}
 
 		*cached = Some(AccountActivityCacheEntry {
@@ -73,7 +73,7 @@ impl CodexAccountPool {
 
 	pub(crate) fn account_activity_summaries_snapshot(
 		&self,
-	) -> crate::prelude::Result<Vec<CodexAccountActivitySummary>> {
+	) -> Result<Vec<CodexAccountActivitySummary>> {
 		let now = OffsetDateTime::now_utc().unix_timestamp();
 		let cache_key = self.cache_key();
 		let cache = ACCOUNT_ACTIVITY_CACHE.get_or_init(|| Mutex::new(None));
@@ -107,7 +107,7 @@ impl CodexAccountPool {
 	fn probe_account_activity_summaries(
 		&self,
 		records: &mut [AccountPoolRecord],
-	) -> crate::prelude::Result<Vec<CodexAccountActivitySummary>> {
+	) -> Result<Vec<CodexAccountActivitySummary>> {
 		let now = OffsetDateTime::now_utc().unix_timestamp();
 		let mut summaries_by_index = vec![None; records.len()];
 		let mut probe_inputs = Vec::new();
@@ -150,7 +150,7 @@ impl CodexAccountPool {
 		&self,
 		inputs: &[AccountActivityProbeInput],
 		now: i64,
-	) -> crate::prelude::Result<Vec<AccountActivityProbeResult>> {
+	) -> Result<Vec<AccountActivityProbeResult>> {
 		thread::scope(|scope| {
 			let handles = inputs
 				.iter()
@@ -175,7 +175,7 @@ impl CodexAccountPool {
 		&self,
 		input: AccountActivityProbeInput,
 		now: i64,
-	) -> crate::prelude::Result<AccountActivityProbeResult> {
+	) -> Result<AccountActivityProbeResult> {
 		let mut record = input.record;
 		let mut records_changed = false;
 		let refresh_status = match self.proactive_refresh_record(&mut record, now) {
@@ -250,7 +250,7 @@ impl CodexAccountPool {
 		record: &AccountPoolRecord,
 		usage: AccountUsageSnapshot,
 		refresh_status: &str,
-	) -> crate::prelude::Result<CodexAccountActivitySummary> {
+	) -> Result<CodexAccountActivitySummary> {
 		let profile = self.probe_record_profile(record).ok().flatten();
 
 		record.activity_summary_from_usage_profile(usage, profile, refresh_status)

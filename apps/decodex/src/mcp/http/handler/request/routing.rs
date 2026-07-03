@@ -1,22 +1,19 @@
 use serde_json::Value;
 
-use super::McpHttpHandler;
 use crate::{
 	mcp::{
 		self, MCP_HTTP_ENDPOINT_PATH,
 		http::{
 			auth::McpHttpAuthorization,
+			handler::request::McpHttpHandler,
 			message::{McpHttpRequest, McpHttpResponse},
 		},
 	},
-	prelude,
+	prelude::Result,
 };
 
 impl McpHttpHandler {
-	pub(super) fn handle_request(
-		&mut self,
-		request: McpHttpRequest,
-	) -> prelude::Result<McpHttpResponse> {
+	pub(super) fn handle_request(&mut self, request: McpHttpRequest) -> Result<McpHttpResponse> {
 		let cors_origin = match self.allowed_cors_origin(&request) {
 			Ok(origin) => origin,
 			Err(()) => {

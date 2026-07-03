@@ -22,13 +22,6 @@ use std::{
 
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::{
-	config::ServiceConfig,
-	loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
-	prelude::{Result, eyre},
-	runtime,
-	state::StateStore,
-};
 #[cfg(test)]
 use self::{
 	compiler::compile_research_design_run,
@@ -38,6 +31,13 @@ use self::{
 		ResearchSubworkInput,
 	},
 	lifecycle::ensure_contract_authorizes_execution,
+};
+use crate::{
+	config::ServiceConfig,
+	loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
+	prelude::{Result, eyre},
+	runtime,
+	state::StateStore,
 };
 
 /// Compile and persist a research/design result into the local runtime store.
@@ -106,5 +106,4 @@ fn resolve_research_project_config_path(
 	})
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

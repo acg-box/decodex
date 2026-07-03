@@ -2,15 +2,14 @@ use std::collections::BTreeMap;
 
 use color_eyre::Report;
 
-use super::super::protocol::{McpServerStatusSummary, ModelSummary};
 use crate::{
 	agent::{
 		app_server::{
-			AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
-			REQUEST_TIMEOUT, RunRecorder,
-			protocol::{
-				ModelProviderCapabilitiesReadResponse, PluginListResponse, RuntimeConfigSummary,
-				SkillsListResponse,
+			protocol::{McpServerStatusSummary, ModelSummary},
+			tests::{
+				AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
+				ModelProviderCapabilitiesReadResponse, PluginListResponse, REQUEST_TIMEOUT,
+				RunRecorder, RuntimeConfigSummary, SkillsListResponse,
 			},
 		},
 		json_rpc::AppServerOutputTimeout,
@@ -18,7 +17,6 @@ use crate::{
 	prelude::eyre,
 	state::StateStore,
 };
-
 #[test]
 fn capability_preflight_report_accepts_available_runtime_state() {
 	let config = RuntimeConfigSummary {
@@ -69,12 +67,12 @@ fn capability_preflight_report_accepts_available_runtime_state() {
 	}];
 	let mut report = AppServerCapabilityPreflightReport::new();
 
-	super::super::record_config_preflight(&mut report, &config);
-	super::super::record_model_preflight(&mut report, &config, &models);
-	super::super::record_model_provider_preflight(&mut report, &capabilities);
-	super::super::record_skills_preflight(&mut report, "/tmp/worktree", &skills);
-	super::super::record_plugin_preflight(&mut report, &plugins);
-	super::super::record_mcp_preflight(&mut report, &mcp);
+	super::record_config_preflight(&mut report, &config);
+	super::record_model_preflight(&mut report, &config, &models);
+	super::record_model_provider_preflight(&mut report, &capabilities);
+	super::record_skills_preflight(&mut report, "/tmp/worktree", &skills);
+	super::record_plugin_preflight(&mut report, &plugins);
+	super::record_mcp_preflight(&mut report, &mcp);
 
 	assert!(!report.has_blockers());
 	assert_eq!(report.checks().len(), 6);
@@ -111,7 +109,7 @@ fn capability_preflight_report_allows_enabled_skills_with_scan_diagnostics() {
 	};
 	let mut report = AppServerCapabilityPreflightReport::new();
 
-	super::super::record_skills_preflight(&mut report, "/tmp/worktree", &skills);
+	super::record_skills_preflight(&mut report, "/tmp/worktree", &skills);
 
 	assert!(!report.has_blockers());
 	assert_eq!(report.checks()[0].status, super::super::AppServerCapabilityPreflightStatus::Ok);
@@ -166,10 +164,10 @@ fn capability_preflight_report_blocks_missing_runtime_state() {
 	}];
 	let mut report = AppServerCapabilityPreflightReport::new();
 
-	super::super::record_model_preflight(&mut report, &config, &models);
-	super::super::record_skills_preflight(&mut report, "/tmp/worktree", &skills);
-	super::super::record_plugin_preflight(&mut report, &plugins);
-	super::super::record_mcp_preflight(&mut report, &mcp);
+	super::record_model_preflight(&mut report, &config, &models);
+	super::record_skills_preflight(&mut report, "/tmp/worktree", &skills);
+	super::record_plugin_preflight(&mut report, &plugins);
+	super::record_mcp_preflight(&mut report, &mcp);
 
 	assert!(report.has_blockers());
 	assert_eq!(
@@ -180,7 +178,7 @@ fn capability_preflight_report_blocks_missing_runtime_state() {
 
 #[test]
 fn plugin_list_preflight_uses_local_marketplaces() {
-	let params = super::super::plugin_list_params_for_preflight("/tmp/worktree");
+	let params = super::plugin_list_params_for_preflight("/tmp/worktree");
 	let serialized = serde_json::to_value(&params).expect("plugin params should serialize");
 
 	assert_eq!(serialized["cwds"], serde_json::json!(["/tmp/worktree"]));
@@ -215,11 +213,10 @@ fn capability_preflight_request_error_records_method_blocker() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let mut recorder = RunRecorder::new(&state_store, "run-1", 1, None);
 	let report = AppServerCapabilityPreflightReport::new();
-	let error =
-		super::super::preflight_request::<(), _>(&mut recorder, &report, "model/list", || {
-			Err(eyre::eyre!("JSON-RPC error -32601: Method not found"))
-		})
-		.expect_err("unsupported app-server method should fail preflight");
+	let error = super::preflight_request::<(), _>(&mut recorder, &report, "model/list", || {
+		Err(eyre::eyre!("JSON-RPC error -32601: Method not found"))
+	})
+	.expect_err("unsupported app-server method should fail preflight");
 	let failure = error
 		.downcast_ref::<AppServerCapabilityPreflightFailure>()
 		.expect("preflight request error should be typed");
@@ -237,7 +234,7 @@ fn plugin_list_preflight_timeout_retries_once_before_success() {
 	let mut recorder = RunRecorder::new(&state_store, "run-1", 1, None);
 	let report = AppServerCapabilityPreflightReport::new();
 	let mut attempts = 0;
-	let response = super::super::preflight_request_with_timeout_retry(
+	let response = super::preflight_request_with_timeout_retry(
 		&mut recorder,
 		&report,
 		"plugin/list",
@@ -262,7 +259,7 @@ fn plugin_list_preflight_timeout_failure_is_typed_retryable_timeout() {
 	let mut recorder = RunRecorder::new(&state_store, "run-1", 1, None);
 	let report = AppServerCapabilityPreflightReport::new();
 	let mut attempts = 0;
-	let error = super::super::preflight_request_with_timeout_retry::<(), _>(
+	let error = super::preflight_request_with_timeout_retry::<(), _>(
 		&mut recorder,
 		&report,
 		"plugin/list",
@@ -306,9 +303,9 @@ fn mcp_preflight_timeout_degrades_to_recorded_ok_check() {
 	let error = Report::new(AppServerOutputTimeout);
 	let mut report = AppServerCapabilityPreflightReport::new();
 
-	assert!(super::super::mcp_preflight_can_degrade(&error));
+	assert!(super::mcp_preflight_can_degrade(&error));
 
-	super::super::record_mcp_preflight_degraded(&mut report, &error);
+	super::record_mcp_preflight_degraded(&mut report, &error);
 
 	assert!(!report.has_blockers());
 	assert_eq!(report.checks().len(), 1);

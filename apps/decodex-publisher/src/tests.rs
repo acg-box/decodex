@@ -1,8 +1,8 @@
-use std::fs;
+use std::{fs, path::Path};
 
 use serde_json::Value;
 
-use super::*;
+use crate::{SocialReservePublishRequest, social_validation};
 
 #[test]
 fn validates_social_reservation_and_rejects_bad_timestamp() {
@@ -28,7 +28,7 @@ fn rejects_duplicate_active_social_publish_reservation_idempotency_keys() {
 	fs::write(&second, valid_social_publish_reservation().to_string())
 		.expect("fixture should be written");
 
-	let error = validate_social(&[temp_dir.path().to_path_buf()])
+	let error = crate::validate_social(&[temp_dir.path().to_path_buf()])
 		.expect_err("duplicate active reservations should be rejected")
 		.to_string();
 
@@ -39,7 +39,7 @@ fn rejects_duplicate_active_social_publish_reservation_idempotency_keys() {
 fn social_reserve_publish_writes_active_reservation_once() {
 	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
 	let request = social_reserve_request(temp_dir.path(), false);
-	let report = reserve_social_publish(&request).expect("reservation should pass");
+	let report = crate::reserve_social_publish(&request).expect("reservation should pass");
 
 	assert_eq!(report.status, "reserved");
 	assert!(
@@ -47,7 +47,7 @@ fn social_reserve_publish_writes_active_reservation_once() {
 		"reservation should be written"
 	);
 
-	let duplicate = reserve_social_publish(&request)
+	let duplicate = crate::reserve_social_publish(&request)
 		.expect_err("duplicate reservation should fail closed")
 		.to_string();
 
@@ -95,12 +95,13 @@ fn assert_social_errors<const N: usize>(payload: &Value, expected: [&str; N]) {
 			"expected {expected:?} in {errors:?}"
 		);
 	}
+
 	if expected.is_empty() {
 		assert!(errors.is_empty(), "unexpected validation errors: {errors:?}");
 	}
 }
 
-fn social_reserve_request(root: &std::path::Path, dry_run: bool) -> SocialReservePublishRequest {
+fn social_reserve_request(root: &Path, dry_run: bool) -> SocialReservePublishRequest {
 	SocialReservePublishRequest {
 		slug: "openai-codex-pr-22414".into(),
 		mode: "operator_impact".into(),

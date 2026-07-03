@@ -4,19 +4,23 @@ mod global_config;
 mod paths;
 mod projects;
 
-use crate::{prelude::Result, state::StateStore};
-
+#[cfg(test)]
+pub(crate) use self::{
+	global_config::write_global_fixed_account_selector, paths::decodex_home_dir_from,
+};
+pub(crate) use self::{
+	paths::{
+		accounts_path, agent_evidence_dir, decodex_home_dir, global_config_path, log_dir,
+		project_config_dir, runtime_db_path,
+	},
+	projects::{
+		register_project_config, registered_config_path_for_cwd,
+		registered_config_path_for_project_id,
+	},
+};
 pub(crate) use global_config::global_fixed_account_selector;
-#[cfg(test)] pub(crate) use global_config::write_global_fixed_account_selector;
-pub(crate) use paths::{
-	accounts_path, agent_evidence_dir, decodex_home_dir, global_config_path, log_dir,
-	project_config_dir, runtime_db_path,
-};
-pub(crate) use projects::{
-	register_project_config, registered_config_path_for_cwd, registered_config_path_for_project_id,
-};
 
-#[cfg(test)] pub(crate) use paths::decodex_home_dir_from;
+use crate::{prelude::Result, state::StateStore};
 
 /// Open the global single-machine runtime database.
 pub(crate) fn open_runtime_store() -> Result<StateStore> {

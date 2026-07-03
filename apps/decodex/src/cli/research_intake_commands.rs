@@ -8,9 +8,9 @@ use std::{
 
 use clap::{Args, Subcommand, ValueEnum};
 
-use super::ProjectConfigArgs;
 use crate::{
 	archive_hygiene::{self, ArchiveHygieneRequest},
+	cli::ProjectConfigArgs,
 	maintenance::{self, MaintenanceMode, MaintenancePruneRequest, MaintenanceScope},
 	prelude::{Result, eyre},
 	program_intake::{self, GoalIntakeCommandRequest, IssueBatchIntakeCommandRequest},

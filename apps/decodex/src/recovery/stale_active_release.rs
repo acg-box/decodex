@@ -7,24 +7,28 @@ use color_eyre::eyre::WrapErr;
 use crate::{
 	config::ServiceConfig,
 	prelude::{Result, eyre},
+	recovery::{
+		GHOST_LANE_TERMINAL_STATUS, STALE_ACTIVE_RECOVERY_SCHEMA, STALE_ACTIVE_RELEASE_EVENT,
+		context::{RecoveryContext, RecoveryRuntimeMutationPolicy},
+		git_worktree,
+		reports::StaleActiveDiagnostic,
+		stale_active_authority,
+		stale_active_diagnosis::{self},
+		stale_active_labels::{self},
+		stale_active_worktree,
+	},
 	state::{RUN_CONTROL_CHANNEL_STATUS_FAILED, StateStore, WorktreeMapping},
 	tracker::{self, IssueTracker, TrackerIssue},
 	workflow::WorkflowDocument,
 	worktree::WorktreeManager,
 };
 
-use super::{
-	GHOST_LANE_TERMINAL_STATUS, STALE_ACTIVE_RECOVERY_SCHEMA, STALE_ACTIVE_RELEASE_EVENT,
-	context::{RecoveryContext, RecoveryRuntimeMutationPolicy},
-	git_worktree::worktree_has_tracked_changes_for_recovery,
-	reports::StaleActiveDiagnostic,
-	stale_active_authority::ensure_stale_active_review_authority_missing,
-	stale_active_diagnosis::{diagnose_stale_active_issues, lookup_stale_active_issue},
-	stale_active_labels::{
-		stale_active_diagnostic_issue_keys, stale_active_issue_has_active_shared_claim,
-	},
-	stale_active_worktree::stale_active_worktree_mapping_for_keys,
-};
+#[derive(Clone, Debug)]
+enum StaleActiveWorktreeCleanup {
+	None,
+	UnmappedPath(PathBuf),
+	Mapped(WorktreeMapping),
+}
 
 pub(super) fn apply_stale_active_release(
 	context: &RecoveryContext,
@@ -57,10 +61,18 @@ where
 		diagnostic,
 	)?;
 	let worktree_cleanup = preflight_stale_active_worktree_cleanup_plan(state_store, &diagnostic)?;
-	ensure_stale_active_review_authority_missing(tracker, state_store, &diagnostic)?;
+
+	stale_active_authority::ensure_stale_active_review_authority_missing(
+		tracker,
+		state_store,
+		&diagnostic,
+	)?;
+
 	let cleared_run_lease =
 		clear_stale_active_dead_run_claims_before_release(state_store, &diagnostic)?;
+
 	ensure_stale_active_run_claim_guard(config, state_store, &diagnostic)?;
+
 	let active_label = tracker::automation_active_label(config.service_id());
 
 	if let Some(run_id) = diagnostic.latest_run_id.as_deref()
@@ -73,6 +85,7 @@ where
 		{
 			state_store.update_run_status(run_id, GHOST_LANE_TERMINAL_STATUS)?;
 		}
+
 		state_store.retire_run_control_channel_for_attempt(
 			run_id,
 			attempt_number,
@@ -80,7 +93,12 @@ where
 		)?;
 	}
 
-	ensure_stale_active_review_authority_missing(tracker, state_store, &diagnostic)?;
+	stale_active_authority::ensure_stale_active_review_authority_missing(
+		tracker,
+		state_store,
+		&diagnostic,
+	)?;
+
 	cleanup_stale_active_worktree_mapping(
 		config,
 		workflow,
@@ -119,8 +137,14 @@ where
 			.map(|_| ())?;
 	}
 
-	ensure_stale_active_review_authority_missing(tracker, state_store, &diagnostic)?;
+	stale_active_authority::ensure_stale_active_review_authority_missing(
+		tracker,
+		state_store,
+		&diagnostic,
+	)?;
+
 	ensure_stale_active_run_claim_guard(config, state_store, &diagnostic)?;
+
 	let final_diagnostic = refreshed_stale_active_release_diagnostic(
 		tracker,
 		config,
@@ -128,9 +152,18 @@ where
 		state_store,
 		&diagnostic,
 	)?;
-	ensure_stale_active_review_authority_missing(tracker, state_store, &final_diagnostic)?;
+
+	stale_active_authority::ensure_stale_active_review_authority_missing(
+		tracker,
+		state_store,
+		&final_diagnostic,
+	)?;
+
 	ensure_stale_active_run_claim_guard(config, state_store, &final_diagnostic)?;
-	let issue = lookup_stale_active_issue(tracker, &diagnostic.issue_identifier)?;
+
+	let issue =
+		stale_active_diagnosis::lookup_stale_active_issue(tracker, &diagnostic.issue_identifier)?;
+
 	restore_stale_active_startable_state_if_queued(tracker, workflow, &issue, &final_diagnostic)?;
 
 	tracker::set_issue_label_presence(tracker, &issue, &active_label, false)?;
@@ -153,17 +186,51 @@ pub(super) fn clear_stale_active_dead_run_claims_before_release(
 	};
 	let mut cleared = false;
 
-	for issue_key in stale_active_diagnostic_issue_keys(diagnostic) {
+	for issue_key in stale_active_labels::stale_active_diagnostic_issue_keys(diagnostic) {
 		let Some(lease) = state_store.lease_for_issue(&issue_key)? else {
 			continue;
 		};
+
 		if lease.project_id() == diagnostic.project_id && lease.run_id() == run_id {
 			state_store.clear_lease(&issue_key)?;
+
 			cleared = true;
 		}
 	}
 
 	Ok(cleared)
+}
+
+pub(super) fn ensure_stale_active_run_claim_guard(
+	config: &ServiceConfig,
+	state_store: &StateStore,
+	diagnostic: &StaleActiveDiagnostic,
+) -> Result<()> {
+	let issue_keys = stale_active_labels::stale_active_diagnostic_issue_keys(diagnostic);
+
+	match stale_active_labels::stale_active_issue_has_active_shared_claim(
+		config.service_id(),
+		state_store,
+		&issue_keys,
+	) {
+		Ok(false) => Ok(()),
+		Ok(true) => eyre::bail!(
+			"`recover stale-active release` refused `{}` because a run lease or shared claim appeared before active-label release.",
+			diagnostic.issue_identifier
+		),
+		Err(error) => eyre::bail!(
+			"`recover stale-active release` refused `{}` because run lease/shared claim state could not be inspected before active-label release: {}",
+			diagnostic.issue_identifier,
+			error
+		),
+	}
+}
+
+pub(super) fn preflight_stale_active_worktree_cleanup(
+	state_store: &StateStore,
+	diagnostic: &StaleActiveDiagnostic,
+) -> Result<()> {
+	preflight_stale_active_worktree_cleanup_plan(state_store, diagnostic).map(|_| ())
 }
 
 fn refreshed_stale_active_release_diagnostic<T>(
@@ -176,7 +243,7 @@ fn refreshed_stale_active_release_diagnostic<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let mut diagnostics = diagnose_stale_active_issues(
+	let mut diagnostics = stale_active_diagnosis::diagnose_stale_active_issues(
 		config.service_id(),
 		workflow,
 		config.worktree_root(),
@@ -223,6 +290,7 @@ where
 	}
 
 	let tracker_policy = workflow.frontmatter().tracker();
+
 	if tracker_policy.startable_states().iter().any(|state| state == &issue.state.name) {
 		return Ok(());
 	}
@@ -256,48 +324,14 @@ fn stale_active_attempt_status_needs_terminal_guard(status: &str) -> bool {
 	)
 }
 
-pub(super) fn ensure_stale_active_run_claim_guard(
-	config: &ServiceConfig,
-	state_store: &StateStore,
-	diagnostic: &StaleActiveDiagnostic,
-) -> Result<()> {
-	let issue_keys = stale_active_diagnostic_issue_keys(diagnostic);
-
-	match stale_active_issue_has_active_shared_claim(config.service_id(), state_store, &issue_keys)
-	{
-		Ok(false) => Ok(()),
-		Ok(true) => eyre::bail!(
-			"`recover stale-active release` refused `{}` because a run lease or shared claim appeared before active-label release.",
-			diagnostic.issue_identifier
-		),
-		Err(error) => eyre::bail!(
-			"`recover stale-active release` refused `{}` because run lease/shared claim state could not be inspected before active-label release: {}",
-			diagnostic.issue_identifier,
-			error
-		),
-	}
-}
-
-#[derive(Clone, Debug)]
-enum StaleActiveWorktreeCleanup {
-	None,
-	UnmappedPath(PathBuf),
-	Mapped(WorktreeMapping),
-}
-
-pub(super) fn preflight_stale_active_worktree_cleanup(
-	state_store: &StateStore,
-	diagnostic: &StaleActiveDiagnostic,
-) -> Result<()> {
-	preflight_stale_active_worktree_cleanup_plan(state_store, diagnostic).map(|_| ())
-}
-
 fn preflight_stale_active_worktree_cleanup_plan(
 	state_store: &StateStore,
 	diagnostic: &StaleActiveDiagnostic,
 ) -> Result<StaleActiveWorktreeCleanup> {
-	let issue_keys = stale_active_diagnostic_issue_keys(diagnostic);
-	let Some(mapping) = stale_active_worktree_mapping_for_keys(state_store, &issue_keys)? else {
+	let issue_keys = stale_active_labels::stale_active_diagnostic_issue_keys(diagnostic);
+	let Some(mapping) =
+		stale_active_worktree::stale_active_worktree_mapping_for_keys(state_store, &issue_keys)?
+	else {
 		if let Some(worktree_path) = diagnostic.worktree_path.as_deref().map(PathBuf::from)
 			&& stale_active_worktree_path_exists_for_cleanup(
 				&diagnostic.issue_identifier,
@@ -337,7 +371,7 @@ fn stale_active_worktree_path_exists_for_cleanup(
 }
 
 fn ensure_stale_active_worktree_clean(issue_identifier: &str, worktree_path: &Path) -> Result<()> {
-	if worktree_has_tracked_changes_for_recovery(worktree_path)? {
+	if git_worktree::worktree_has_tracked_changes_for_recovery(worktree_path)? {
 		eyre::bail!(
 			"`recover stale-active release` refused `{}` because retained worktree changes appeared before cleanup.",
 			issue_identifier
@@ -362,6 +396,7 @@ fn cleanup_stale_active_worktree_mapping(
 				config.repo_root(),
 				config.worktree_root(),
 			);
+
 			worktree_manager.remove_worktree_path(&worktree_path)?;
 		},
 		StaleActiveWorktreeCleanup::Mapped(mapping) => {
@@ -370,6 +405,7 @@ fn cleanup_stale_active_worktree_mapping(
 				config.repo_root(),
 				config.worktree_root(),
 			);
+
 			worktree_manager.remove_worktree_path_with_hooks(
 				&diagnostic.issue_identifier,
 				mapping.branch_name(),
@@ -380,6 +416,7 @@ fn cleanup_stale_active_worktree_mapping(
 	};
 
 	state_store.clear_worktree_mapping(&diagnostic.issue_id)?;
+
 	if diagnostic.issue_identifier != diagnostic.issue_id {
 		state_store.clear_worktree_mapping(&diagnostic.issue_identifier)?;
 	}

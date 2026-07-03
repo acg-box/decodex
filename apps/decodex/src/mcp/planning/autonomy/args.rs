@@ -2,7 +2,7 @@ mod objective;
 mod proposal;
 mod signal;
 
-pub(super) use self::{
+pub(in crate::mcp) use self::{
 	objective::{AutonomyAcceptObjectiveToolArgs, AutonomyDraftObjectiveToolArgs},
 	proposal::{
 		AutonomyChallengeProposalToolArgs, AutonomyCompileProposalToolArgs,

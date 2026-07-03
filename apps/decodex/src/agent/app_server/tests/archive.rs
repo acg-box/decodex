@@ -4,9 +4,9 @@ use tempfile::TempDir;
 
 use crate::{
 	agent::{
-		app_server::{
+		app_server::tests::{
 			AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest, CommandExecHealthCheck,
-			protocol::CommandExecResponse,
+			CommandExecResponse,
 		},
 		json_rpc::AppServerProcessEnv,
 	},
@@ -14,7 +14,6 @@ use crate::{
 	state::StateStore,
 	test_support::TestEnvVarGuard,
 };
-
 #[test]
 fn archive_thread_after_success_calls_app_server_archive_and_records_event() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
@@ -85,7 +84,7 @@ for line in sys.stdin:
 		.record_run_attempt("run-1", "issue-1", 1, "succeeded")
 		.expect("run attempt should record");
 
-	let outcome = super::super::archive_app_server_thread_after_success(
+	let outcome = super::archive_app_server_thread_after_success(
 		&AppServerThreadArchiveRequest {
 			run_id: "run-1",
 			issue_id: "issue-1",
@@ -132,18 +131,18 @@ fn missing_thread_archive_errors_record_discarded_terminal_event() {
 		.record_run_attempt("run-1", "issue-1", 1, "succeeded")
 		.expect("run attempt should record");
 
-	super::super::record_thread_archive_result_best_effort(
+	super::record_thread_archive_result_best_effort(
 		&state_store,
 		&request,
 		Ok(&AppServerThreadArchiveOutcome::DiscardedMissingThread),
 	);
 
-	assert!(super::super::thread_archive_error_allows_discard(&eyre::eyre!(
+	assert!(super::thread_archive_error_allows_discard(&eyre::eyre!(
 		"no rollout found for thread id thread-1"
 	)));
-	assert!(super::super::thread_archive_error_allows_discard(&eyre::eyre!("thread not found")));
-	assert!(super::super::thread_archive_error_allows_discard(&eyre::eyre!("already archived")));
-	assert!(!super::super::thread_archive_error_allows_discard(&eyre::eyre!(
+	assert!(super::thread_archive_error_allows_discard(&eyre::eyre!("thread not found")));
+	assert!(super::thread_archive_error_allows_discard(&eyre::eyre!("already archived")));
+	assert!(!super::thread_archive_error_allows_discard(&eyre::eyre!(
 		"failed to load rollout from disk"
 	)));
 	assert!(
@@ -169,14 +168,13 @@ fn command_exec_health_check_validates_exact_buffered_result() {
 	let response =
 		CommandExecResponse { exit_code: 0, stdout: String::from("ok"), stderr: String::new() };
 
-	super::super::validate_command_exec_health_check_result(&health_check, &response)
+	super::validate_command_exec_health_check_result(&health_check, &response)
 		.expect("matching command exec result should pass");
 
 	let bad_response =
 		CommandExecResponse { exit_code: 0, stdout: String::from("wrong"), stderr: String::new() };
-	let error =
-		super::super::validate_command_exec_health_check_result(&health_check, &bad_response)
-			.expect_err("mismatched stdout should fail health check");
+	let error = super::validate_command_exec_health_check_result(&health_check, &bad_response)
+		.expect_err("mismatched stdout should fail health check");
 
 	assert!(error.to_string().contains("expected \"ok\""));
 }

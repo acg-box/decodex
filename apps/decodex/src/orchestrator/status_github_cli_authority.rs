@@ -3,10 +3,9 @@ use std::path::Path;
 use crate::{
 	config::ServiceConfig,
 	github::{self, GhCommandResolution},
+	orchestrator::OperatorGitHubCliAuthority,
 	state::ProjectRegistration,
 };
-
-use super::OperatorGitHubCliAuthority;
 
 pub(super) fn operator_github_cli_authority(project: &ServiceConfig) -> OperatorGitHubCliAuthority {
 	operator_github_cli_authority_from_resolution(&github::gh_command_resolution(
@@ -47,15 +46,13 @@ fn operator_github_cli_authority_from_resolution(
 
 fn github_cli_authority_next_action(discovery_tier: &str, available: bool) -> String {
 	match (discovery_tier, available) {
-		("configured", true) => {
-			String::from("No action needed; Decodex will use the configured GitHub CLI path.")
-		},
+		("configured", true) =>
+			String::from("No action needed; Decodex will use the configured GitHub CLI path."),
 		("configured", false) => String::from(
 			"Fix `github.command_path` in project.toml so it points to an installed `gh` binary.",
 		),
-		("path", true) => {
-			String::from("No action needed; Decodex resolved `gh` from the process PATH.")
-		},
+		("path", true) =>
+			String::from("No action needed; Decodex resolved `gh` from the process PATH."),
 		("user-bin" | "known-fallback", true) => String::from(
 			"Set `github.command_path` in project.toml if this fallback path is unexpected.",
 		),

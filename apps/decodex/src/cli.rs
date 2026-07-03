@@ -6,6 +6,21 @@ mod manual_commands;
 mod recovery_commands;
 mod research_intake_commands;
 
+use std::{
+	fs,
+	io::{self, Read},
+	path::{Path, PathBuf},
+};
+
+use clap::{
+	Args, Parser, Subcommand,
+	builder::{
+		Styles,
+		styling::{AnsiColor, Effects},
+	},
+};
+use serde::{Deserialize, Serialize};
+
 use self::{
 	account_commands::AccountCommand,
 	control_commands::{
@@ -20,21 +35,6 @@ use self::{
 		ArchiveLinearCommand, IntakeCommand, MaintenanceCommand, ResearchCommand,
 	},
 };
-use std::{
-	fs,
-	io::{self, Read as _},
-	path::{Path, PathBuf},
-};
-
-use clap::{
-	Args, Parser, Subcommand,
-	builder::{
-		Styles,
-		styling::{AnsiColor, Effects},
-	},
-};
-use serde::{Deserialize, Serialize};
-
 use crate::{
 	agent,
 	orchestrator::{self, IssueDispatchMode, RunOnceRequest},
@@ -347,5 +347,4 @@ fn open_decodex_app(_bundle: Option<&Path>, _new: bool) -> Result<()> {
 	eyre::bail!("`decodex app` is only supported on macOS");
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

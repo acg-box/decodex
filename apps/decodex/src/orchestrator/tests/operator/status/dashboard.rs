@@ -1,6 +1,10 @@
-use super::*;
+mod accounts;
+mod activity;
+mod projects;
 
-fn dashboard_response() -> String {
+use crate::orchestrator;
+
+pub(super) fn dashboard_response() -> String {
 	String::from_utf8(
 		orchestrator::build_operator_state_http_response(
 			format!(
@@ -703,7 +707,3 @@ fn operator_dashboard_current_lane_status_copy_stays_concise() {
 	);
 	assert!(!response.contains(&["Process stopped;", " recovery needed."].concat()));
 }
-
-mod accounts;
-mod activity;
-mod projects;

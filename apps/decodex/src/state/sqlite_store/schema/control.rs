@@ -1,4 +1,4 @@
-use super::{Result, SqliteStateStore};
+use crate::state::sqlite_store::schema::{Result, SqliteStateStore};
 
 impl SqliteStateStore {
 	pub(in crate::state) fn bootstrap_run_control_channels_schema(&self) -> Result<()> {

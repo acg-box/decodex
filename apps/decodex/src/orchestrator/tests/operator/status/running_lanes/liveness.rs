@@ -1,10 +1,12 @@
-use super::*;
-
+use crate::orchestrator::tests::operator::status::running_lanes::{
+	self, Command, Duration, Instant, ProjectRegistration, ProtocolActivityMarker,
+	ReviewHandoffMarker, StateStore, fs, orchestrator, process, state, thread,
+};
 #[test]
 fn operator_status_snapshot_counts_stopped_active_process_as_attention_not_running() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -41,9 +43,9 @@ fn operator_status_snapshot_counts_stopped_active_process_as_attention_not_runni
 
 #[test]
 fn operator_status_snapshot_treats_dead_leased_app_server_run_as_attention_not_running() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -113,9 +115,9 @@ fn operator_status_snapshot_treats_dead_leased_app_server_run_as_attention_not_r
 #[cfg(unix)]
 #[test]
 fn operator_status_snapshot_counts_zombie_active_process_as_attention_not_running() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let mut child = Command::new("/bin/sh")
 		.arg("-c")
@@ -180,9 +182,9 @@ fn operator_status_snapshot_counts_zombie_active_process_as_attention_not_runnin
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn operator_status_snapshot_counts_previous_boot_process_as_attention_not_running() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -203,8 +205,7 @@ fn operator_status_snapshot_counts_previous_boot_process_as_attention_not_runnin
 	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
 	state::write_run_activity_marker_for_process(&worktree_path, "run-1", 1, process::id())
 		.expect("live process marker should write");
-
-	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
+	running_lanes::rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
@@ -227,9 +228,9 @@ fn operator_status_snapshot_counts_previous_boot_process_as_attention_not_runnin
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn operator_status_snapshot_projects_unleased_app_server_current_lane_as_retained_attention() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -254,8 +255,7 @@ fn operator_status_snapshot_projects_unleased_app_server_current_lane_as_retaine
 		&[],
 	)
 	.expect("thread status should write");
-
-	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
+	running_lanes::rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
@@ -290,9 +290,9 @@ fn operator_status_snapshot_projects_unleased_app_server_current_lane_as_retaine
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn operator_status_snapshot_does_not_shadow_post_review_lane_with_retained_attention_run() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -317,8 +317,7 @@ fn operator_status_snapshot_does_not_shadow_post_review_lane_with_retained_atten
 		&[],
 	)
 	.expect("thread status should write");
-
-	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
+	running_lanes::rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
 
 	let mut snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
@@ -368,9 +367,9 @@ fn operator_status_snapshot_does_not_shadow_post_review_lane_with_retained_atten
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn operator_status_snapshot_post_review_lane_owns_orphaned_live_thread_worktree() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("In Review", &[]);
+	let issue = running_lanes::sample_issue("In Review", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -440,9 +439,9 @@ fn operator_status_snapshot_post_review_lane_owns_orphaned_live_thread_worktree(
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn operator_status_snapshot_counts_reused_pid_as_attention_not_running() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -463,8 +462,10 @@ fn operator_status_snapshot_counts_reused_pid_as_attention_not_running() {
 	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
 	state::write_run_activity_marker_for_process(&worktree_path, "run-1", 1, process::id())
 		.expect("live process marker should write");
-
-	rewrite_run_activity_marker_process_start_identity(&worktree_path, "previous-process-start");
+	running_lanes::rewrite_run_activity_marker_process_start_identity(
+		&worktree_path,
+		"previous-process-start",
+	);
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
@@ -483,9 +484,9 @@ fn operator_status_snapshot_counts_reused_pid_as_attention_not_running() {
 
 #[test]
 fn operator_status_snapshot_keeps_unleased_live_process_visible_but_not_running() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -533,9 +534,9 @@ fn operator_status_snapshot_keeps_unleased_live_process_visible_but_not_running(
 
 #[test]
 fn operator_status_snapshot_keeps_terminal_status_live_process_in_recent_orphan_bucket() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -590,9 +591,9 @@ fn operator_status_snapshot_keeps_terminal_status_live_process_in_recent_orphan_
 
 #[test]
 fn operator_status_snapshot_excludes_terminal_thread_archive_from_running_lanes() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "failed")
@@ -619,9 +620,9 @@ fn operator_status_snapshot_excludes_terminal_thread_archive_from_running_lanes(
 
 #[test]
 fn operator_status_snapshot_projects_terminal_run_with_active_thread_as_retained_attention() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -646,8 +647,7 @@ fn operator_status_snapshot_projects_terminal_run_with_active_thread_as_retained
 		&[],
 	)
 	.expect("thread status should write");
-
-	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
+	running_lanes::rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
@@ -676,9 +676,9 @@ fn operator_status_snapshot_projects_terminal_run_with_active_thread_as_retained
 
 #[test]
 fn operator_status_snapshot_keeps_succeeded_status_live_process_in_recent_orphan_bucket() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store
@@ -728,16 +728,16 @@ fn operator_status_snapshot_keeps_succeeded_status_live_process_in_recent_orphan
 
 #[test]
 fn operator_status_projects_terminal_finalized_run_as_pending_not_active() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&running_lanes::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store.upsert_project(&registration).expect("project should register");
@@ -787,9 +787,9 @@ fn operator_status_projects_terminal_finalized_run_as_pending_not_active() {
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
 
-	assert_terminal_pending_status_projection(&snapshot);
-	assert_terminal_pending_lane_inspect(&state_store);
-	assert_terminal_pending_interrupt_rejects_force(&state_store);
+	running_lanes::assert_terminal_pending_status_projection(&snapshot);
+	running_lanes::assert_terminal_pending_lane_inspect(&state_store);
+	running_lanes::assert_terminal_pending_interrupt_rejects_force(&state_store);
 
 	if matches!(child.try_wait(), Ok(None)) {
 		child.kill().expect("sleep child should be killable");
@@ -800,16 +800,16 @@ fn operator_status_projects_terminal_finalized_run_as_pending_not_active() {
 
 #[test]
 fn operator_status_projects_terminal_finalized_handoff_missing_lifecycle_marker() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&running_lanes::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
 	state_store.upsert_project(&registration).expect("project should register");
@@ -881,16 +881,16 @@ fn operator_status_projects_terminal_finalized_handoff_missing_lifecycle_marker(
 
 #[test]
 fn operator_status_projects_terminal_finalized_repair_missing_lifecycle_marker() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&running_lanes::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let pr_head_oid = "08a20f7dfb9526e7421a5f095b1c6adec84e52d6";
 
@@ -963,16 +963,16 @@ fn operator_status_projects_terminal_finalized_repair_missing_lifecycle_marker()
 
 #[test]
 fn operator_status_projects_terminal_finalized_repair_stale_lifecycle_marker() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
-		&service_config_path(config.repo_root()),
+		&running_lanes::service_config_path(config.repo_root()),
 		&config,
 		true,
 		"test-fingerprint",
 	);
-	let issue = sample_issue("Todo", &[]);
+	let issue = running_lanes::sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 	let old_head_oid = "1111111111111111111111111111111111111111";
 	let repaired_head_oid = "2222222222222222222222222222222222222222";

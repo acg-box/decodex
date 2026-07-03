@@ -2,10 +2,12 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::execution_program::{
-	ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary,
+use crate::{
+	execution_program::{
+		ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary,
+	},
+	state::ExecutionProgramRecord,
 };
-use crate::state::ExecutionProgramRecord;
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct OperatorExecutionProgramStatus {

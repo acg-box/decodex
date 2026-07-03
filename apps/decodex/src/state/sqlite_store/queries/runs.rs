@@ -1,10 +1,16 @@
-use super::{
-	PathBuf, Result, RunAttemptRecord, RunControlChannelRecord, StateData, params,
-	run_attempt_record_from_row,
+use crate::state::sqlite_store::{
+	SqliteStateStore,
+	queries::{
+		self, PathBuf, RunAttemptRecord, RunControlChannelRecord, StateData,
+		run_attempt_record_from_row,
+	},
 };
 
-impl super::super::SqliteStateStore {
-	pub(in crate::state) fn load_run_attempts(&self, state: &mut StateData) -> Result<()> {
+impl SqliteStateStore {
+	pub(in crate::state) fn load_run_attempts(
+		&self,
+		state: &mut StateData,
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
 			 updated_at, updated_at_unix FROM run_attempts",
@@ -41,13 +47,14 @@ impl super::super::SqliteStateStore {
 		&self,
 		state: &mut StateData,
 		project_id: &str,
-	) -> Result<()> {
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
 			 updated_at, updated_at_unix FROM run_attempts \
 			 WHERE project_id = ?1",
 		)?;
-		let rows = statement.query_map(params![project_id], run_attempt_record_from_row)?;
+		let rows =
+			statement.query_map(queries::params![project_id], run_attempt_record_from_row)?;
 
 		for row in rows {
 			let attempt = row?;
@@ -58,7 +65,10 @@ impl super::super::SqliteStateStore {
 		Ok(())
 	}
 
-	pub(in crate::state) fn load_run_control_channels(&self, state: &mut StateData) -> Result<()> {
+	pub(in crate::state) fn load_run_control_channels(
+		&self,
+		state: &mut StateData,
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT run_id, project_id, issue_id, attempt_number, transport, channel_path, status, \
 			 published_at, published_at_unix, updated_at, updated_at_unix \
@@ -93,13 +103,13 @@ impl super::super::SqliteStateStore {
 		&self,
 		state: &mut StateData,
 		project_id: &str,
-	) -> Result<()> {
+	) -> crate::state::sqlite_store::queries::Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT run_id, project_id, issue_id, attempt_number, transport, channel_path, status, \
 			 published_at, published_at_unix, updated_at, updated_at_unix \
 			 FROM run_control_channels WHERE project_id = ?1",
 		)?;
-		let rows = statement.query_map(params![project_id], |row| {
+		let rows = statement.query_map(queries::params![project_id], |row| {
 			Ok(RunControlChannelRecord {
 				run_id: row.get(0)?,
 				project_id: row.get(1)?,
@@ -124,12 +134,15 @@ impl super::super::SqliteStateStore {
 		Ok(())
 	}
 
-	pub(in crate::state) fn retry_budget_attempt_count(&self, issue_id: &str) -> Result<i64> {
+	pub(in crate::state) fn retry_budget_attempt_count(
+		&self,
+		issue_id: &str,
+	) -> crate::state::sqlite_store::queries::Result<i64> {
 		self.connection
 			.query_row(
 				"SELECT COUNT(*) FROM run_attempts \
 				 WHERE issue_id = ?1 AND status IN ('failed', 'interrupted', 'terminal_guarded')",
-				params![issue_id],
+				queries::params![issue_id],
 				|row| row.get(0),
 			)
 			.map_err(Into::into)
@@ -139,25 +152,26 @@ impl super::super::SqliteStateStore {
 		&self,
 		issue_id: &str,
 		attempt_number: i64,
-	) -> Result<bool> {
+	) -> crate::state::sqlite_store::queries::Result<bool> {
 		let count = self.connection.query_row(
 			"SELECT COUNT(*) FROM run_attempts \
 			 WHERE issue_id = ?1 \
 			 AND attempt_number > ?2 \
 			 AND status IN ('failed', 'interrupted', 'terminal_guarded') \
 			 LIMIT 1",
-			params![issue_id, attempt_number],
+			queries::params![issue_id, attempt_number],
 			|row| row.get::<_, i64>(0),
 		)?;
 
 		Ok(count > 0)
 	}
 
+	#[cfg(test)]
 	pub(in crate::state) fn run_attempt_for_issue_attempt(
 		&self,
 		issue_id: &str,
 		attempt_number: i64,
-	) -> Result<Option<RunAttemptRecord>> {
+	) -> crate::state::sqlite_store::queries::Result<Option<RunAttemptRecord>> {
 		let mut statement = self.connection.prepare(
 			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
 			 updated_at, updated_at_unix FROM run_attempts \
@@ -165,7 +179,7 @@ impl super::super::SqliteStateStore {
 			 ORDER BY updated_at_unix DESC, run_id DESC \
 			 LIMIT 1",
 		)?;
-		let mut rows = statement.query(params![issue_id, attempt_number])?;
+		let mut rows = statement.query(queries::params![issue_id, attempt_number])?;
 
 		Ok(rows.next()?.map(run_attempt_record_from_row).transpose()?)
 	}
@@ -173,7 +187,7 @@ impl super::super::SqliteStateStore {
 	pub(in crate::state) fn latest_run_attempt_for_issue(
 		&self,
 		issue_id: &str,
-	) -> Result<Option<RunAttemptRecord>> {
+	) -> crate::state::sqlite_store::queries::Result<Option<RunAttemptRecord>> {
 		let mut statement = self.connection.prepare(
 			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
 			 updated_at, updated_at_unix FROM run_attempts \
@@ -181,7 +195,7 @@ impl super::super::SqliteStateStore {
 			 ORDER BY attempt_number DESC, updated_at_unix DESC, run_id DESC \
 			 LIMIT 1",
 		)?;
-		let mut rows = statement.query(params![issue_id])?;
+		let mut rows = statement.query(queries::params![issue_id])?;
 
 		Ok(rows.next()?.map(run_attempt_record_from_row).transpose()?)
 	}
@@ -189,14 +203,14 @@ impl super::super::SqliteStateStore {
 	pub(in crate::state) fn list_run_attempts_for_issue(
 		&self,
 		issue_id: &str,
-	) -> Result<Vec<RunAttemptRecord>> {
+	) -> crate::state::sqlite_store::queries::Result<Vec<RunAttemptRecord>> {
 		let mut statement = self.connection.prepare(
 			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
 			 updated_at, updated_at_unix FROM run_attempts \
 			 WHERE issue_id = ?1 \
 			 ORDER BY attempt_number ASC, run_id ASC",
 		)?;
-		let rows = statement.query_map(params![issue_id], run_attempt_record_from_row)?;
+		let rows = statement.query_map(queries::params![issue_id], run_attempt_record_from_row)?;
 
 		rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
 	}
@@ -204,14 +218,15 @@ impl super::super::SqliteStateStore {
 	pub(in crate::state) fn list_run_attempts_for_project(
 		&self,
 		project_id: &str,
-	) -> Result<Vec<RunAttemptRecord>> {
+	) -> crate::state::sqlite_store::queries::Result<Vec<RunAttemptRecord>> {
 		let mut statement = self.connection.prepare(
 			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
 			 updated_at, updated_at_unix FROM run_attempts \
 			 WHERE project_id = ?1 \
 			 ORDER BY updated_at_unix DESC, run_id ASC",
 		)?;
-		let rows = statement.query_map(params![project_id], run_attempt_record_from_row)?;
+		let rows =
+			statement.query_map(queries::params![project_id], run_attempt_record_from_row)?;
 
 		rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
 	}
@@ -220,14 +235,14 @@ impl super::super::SqliteStateStore {
 		&self,
 		run_id: &str,
 		event_type: &str,
-	) -> Result<bool> {
+	) -> crate::state::sqlite_store::queries::Result<bool> {
 		let exists = self.connection.query_row(
 			"SELECT EXISTS(
 			 SELECT 1 FROM protocol_events
 			 WHERE run_id = ?1 AND event_type = ?2
 			 LIMIT 1
 			 )",
-			params![run_id, event_type],
+			queries::params![run_id, event_type],
 			|row| row.get::<_, i64>(0),
 		)?;
 

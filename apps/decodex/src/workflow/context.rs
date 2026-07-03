@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::validation::validate_repo_relative_paths;
+use crate::{prelude::Result, workflow::validation};
 
 /// Repo-local early-load context.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -14,7 +14,7 @@ impl WorkflowContext {
 		&self.read_first
 	}
 
-	pub(super) fn validate(&self) -> crate::prelude::Result<()> {
-		validate_repo_relative_paths("context.read_first", &self.read_first)
+	pub(super) fn validate(&self) -> Result<()> {
+		validation::validate_repo_relative_paths("context.read_first", &self.read_first)
 	}
 }

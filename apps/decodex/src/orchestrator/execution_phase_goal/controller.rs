@@ -1,26 +1,25 @@
 use serde_json::Value;
 
-use crate::orchestrator::execution_phase_goal::{
-	acceptance,
-	recovery::{self, phase_goal_kind_from_str},
-};
 use crate::orchestrator::{
 	self, IssueDispatchMode, IssueRunPlan, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec,
 	PhaseGoalTransition, Result, ServiceConfig, StateStore, WorkflowDocument,
+	execution_phase_goal::{
+		acceptance,
+		recovery::{self, phase_goal_kind_from_str},
+	},
 };
 
-pub(in crate::orchestrator) struct RepoGatePhaseGoalController<'a> {
-	pub(in crate::orchestrator) project: &'a ServiceConfig,
-	pub(in crate::orchestrator) workflow: &'a WorkflowDocument,
-	pub(in crate::orchestrator) state_store: &'a StateStore,
-	pub(in crate::orchestrator) issue_run: &'a IssueRunPlan,
+pub(crate) struct RepoGatePhaseGoalController<'a> {
+	pub(crate) project: &'a ServiceConfig,
+	pub(crate) workflow: &'a WorkflowDocument,
+	pub(crate) state_store: &'a StateStore,
+	pub(crate) issue_run: &'a IssueRunPlan,
 }
 impl RepoGatePhaseGoalController<'_> {
 	fn initial_phase_goal_kind(&self) -> PhaseGoalKind {
 		match self.issue_run.dispatch_mode {
-			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry => {
-				PhaseGoalKind::ImplementToValidationReady
-			},
+			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry =>
+				PhaseGoalKind::ImplementToValidationReady,
 			IssueDispatchMode::ReviewRepair => PhaseGoalKind::RepairAcceptedReviewFindings,
 			IssueDispatchMode::Closeout => PhaseGoalKind::HandoffEvidence,
 		}
@@ -90,7 +89,7 @@ impl PhaseGoalController for RepoGatePhaseGoalController<'_> {
 	}
 }
 
-pub(in crate::orchestrator) fn build_phase_goal_controller<'a>(
+pub(crate) fn build_phase_goal_controller<'a>(
 	project: &'a ServiceConfig,
 	workflow: &'a WorkflowDocument,
 	state_store: &'a StateStore,

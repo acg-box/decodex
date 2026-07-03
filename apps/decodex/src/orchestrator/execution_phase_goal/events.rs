@@ -1,11 +1,11 @@
 use serde_json::Value;
 
-use crate::orchestrator::execution_phase_goal::{
-	acceptance::PhaseAcceptanceCheck, controller::RepoGatePhaseGoalController,
-};
 use crate::orchestrator::{
 	self, LaneDecisionSnapshot, LaneNextAction, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PhaseGoalKind,
 	PhaseGoalSpec, RepoGateTrackedRewriteDecision, Result,
+	execution_phase_goal::{
+		acceptance::PhaseAcceptanceCheck, controller::RepoGatePhaseGoalController,
+	},
 };
 
 impl RepoGatePhaseGoalController<'_> {

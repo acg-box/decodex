@@ -5,16 +5,15 @@ use rusqlite::{self, Connection};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-	prelude::{Result, eyre},
-	runtime as control_runtime,
-};
-
-use super::{
-	policy::{MaintenanceMode, MaintenancePolicy, MaintenanceScope},
-	reports::{
-		RuntimeMaintenanceAction, RuntimeMaintenanceReport, RuntimeMaintenanceWarning,
-		RuntimeProtocolCandidate, WalCheckpointReport,
+	maintenance::{
+		policy::{MaintenanceMode, MaintenancePolicy, MaintenanceScope},
+		reports::{
+			RuntimeMaintenanceAction, RuntimeMaintenanceReport, RuntimeMaintenanceWarning,
+			RuntimeProtocolCandidate, WalCheckpointReport,
+		},
 	},
+	prelude::{Result, eyre},
+	runtime,
 };
 
 pub(crate) fn ensure_protocol_event_summary_table(connection: &Connection) -> Result<()> {
@@ -40,7 +39,7 @@ pub(super) fn maintain_runtime(
 	policy: MaintenancePolicy,
 	generated_at: OffsetDateTime,
 ) -> Result<RuntimeMaintenanceReport> {
-	let database_path = control_runtime::runtime_db_path()?;
+	let database_path = runtime::runtime_db_path()?;
 	let mut report = RuntimeMaintenanceReport {
 		database_path: database_path.display().to_string(),
 		protocol_event_retention_days: policy.protocol_event_retention_days,
@@ -130,7 +129,7 @@ pub(super) fn maintain_wal(
 		return Ok(None);
 	}
 
-	let database_path = control_runtime::runtime_db_path()?;
+	let database_path = runtime::runtime_db_path()?;
 
 	if !database_path.exists() {
 		return Ok(None);
