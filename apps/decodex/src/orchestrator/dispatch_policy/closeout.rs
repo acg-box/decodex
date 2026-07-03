@@ -1,5 +1,14 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use std::path::Path;
+
+use crate::{
+	orchestrator::{
+		CloseoutDispatchEligibility, GhPullRequestReviewStateInspector, IssueTracker,
+		PullRequestReviewStateInspector, Result, RetainedCloseoutPrMergeGate, ServiceConfig,
+		StateStore, TrackerIssue, WorkflowDocument, issue_has_service_ownership,
+		retained_closeout_pr_merge_gate_with_inspector,
+	},
+	worktree::{WorktreeManager, WorktreeSpec},
+};
 
 pub(in crate::orchestrator) fn issue_passes_review_repair_dispatch_policy<T>(
 	tracker: &T,

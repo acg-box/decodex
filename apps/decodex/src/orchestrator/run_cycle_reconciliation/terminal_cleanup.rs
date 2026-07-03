@@ -1,4 +1,11 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::collections::HashSet;
+
+use crate::{
+	config::ServiceConfig,
+	orchestrator::{TERMINAL_GUARDED_RUN_STATUS, worktree_mapping_is_stale_terminal_local_residue},
+	prelude::Result,
+	state::{IssueLease, StateStore, WorktreeMapping},
+};
 
 pub(super) fn clear_stale_terminal_local_worktree_mappings(
 	project: &ServiceConfig,
