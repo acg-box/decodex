@@ -1,5 +1,18 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use color_eyre::Report;
+
+use crate::{
+	orchestrator::{
+		ARCHITECTURE_RECOVERY_BUDGET, ARCHITECTURE_RECOVERY_RETRY_KIND,
+		TERMINAL_GUARDED_RUN_STATUS, ChildExitRetryContext, ChildRunRef, IssueDispatchMode,
+		IssueRunPlan, IssueTracker, Result, RetainedPartialProgress, TerminalFailureWritebackRuntime,
+		WorktreeManager, WorktreeSpec, apply_terminal_failure_writeback,
+		configured_public_projection_privacy_classifier, relative_worktree_path,
+		worktree_has_tracked_changes, write_retry_budget_marker, write_terminal_guard_marker,
+	},
+	state,
+	tracker::TrackerIssue,
+};
+use crate::orchestrator::daemon_retry::clear_retry_schedule_and_release;
 
 pub(in crate::orchestrator::daemon_retry) fn child_exit_retry_budget_attempt_count<T>(
 	context: &ChildExitRetryContext<'_, T>,

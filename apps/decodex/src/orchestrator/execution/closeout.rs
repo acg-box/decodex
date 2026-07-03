@@ -1,4 +1,8 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use crate::orchestrator::{
+	IssueDispatchMode, IssueRunPlan, IssueTracker, Result, ReviewHandoffContext, RunSummary,
+	ServiceConfig, StateStore, TrackerToolBridge, WorkflowDocument, execute_deterministic_closeout,
+	run_summary_from_issue_run,
+};
 
 pub(super) fn maybe_execute_deterministic_closeout<T>(
 	tracker: &T,

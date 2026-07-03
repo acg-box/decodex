@@ -1,7 +1,12 @@
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::path::Path;
 
-use agent::AppServerProcessEnv;
-use git_credentials::GitSigningConfig;
+use color_eyre::Report;
+
+use crate::{
+	agent::AppServerProcessEnv,
+	git_credentials::GitSigningConfig,
+	orchestrator::{AgentGitCredentialsUnavailable, Result, ServiceConfig},
+};
 
 pub(crate) struct AgentGitCredentialEnvironment {
 	process_env: AppServerProcessEnv,
