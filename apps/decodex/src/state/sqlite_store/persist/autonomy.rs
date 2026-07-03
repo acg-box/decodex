@@ -1,5 +1,4 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use super::{Result, StateData, Transaction, eyre, params};
 
 pub(in crate::state::sqlite_store) fn persist_decision_contracts(
 	transaction: &Transaction<'_>,
