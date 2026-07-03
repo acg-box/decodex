@@ -267,8 +267,9 @@ pub(crate) use self::{
 		stalled_protocol_idle_duration,
 	},
 	retained_review_orchestration::{
-		PassiveRetainedAttentionRuntime, apply_passive_retained_manual_attention_with_run_identity,
-		ensure_review_orchestration_marker,
+		PassiveRetainedAttentionRuntime,
+		attention::apply_passive_retained_manual_attention_with_run_identity,
+		markers::ensure_review_orchestration_marker,
 	},
 };
 #[cfg(test)]
