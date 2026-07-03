@@ -11,8 +11,7 @@ mod research_intake_commands;
 
 pub(crate) use self::attempt_command::AttemptRequest;
 
-#[cfg(test)]
-use std::ffi::OsString;
+#[cfg(test)] use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use clap::{
