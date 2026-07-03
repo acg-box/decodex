@@ -8,7 +8,7 @@ use crate::{
 	},
 };
 
-pub(in crate::orchestrator) fn execution_program_readiness_context(
+pub(crate) fn execution_program_readiness_context(
 	service_id: &str,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
@@ -29,7 +29,7 @@ pub(in crate::orchestrator) fn execution_program_readiness_context(
 		.with_active_issue_ids(active_issue_ids))
 }
 
-pub(in crate::orchestrator) fn execution_program_dependency_snapshots(
+pub(crate) fn execution_program_dependency_snapshots(
 	programs: &[RefreshedExecutionProgram],
 ) -> Result<Vec<ExecutionDependencySnapshot>> {
 	let mut snapshots = BTreeMap::new();
@@ -60,7 +60,7 @@ pub(in crate::orchestrator) fn execution_program_dependency_snapshots(
 	Ok(snapshots.into_values().collect())
 }
 
-pub(in crate::orchestrator) fn insert_dependency_snapshot(
+pub(crate) fn insert_dependency_snapshot(
 	snapshots: &mut BTreeMap<String, ExecutionDependencySnapshot>,
 	dependency_id: &str,
 	state: &str,
@@ -77,7 +77,7 @@ pub(in crate::orchestrator) fn insert_dependency_snapshot(
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn execution_program_occupied_conflict_domains(
+pub(crate) fn execution_program_occupied_conflict_domains(
 	service_id: &str,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
@@ -120,7 +120,7 @@ pub(in crate::orchestrator) fn execution_program_occupied_conflict_domains(
 	Ok(occupied)
 }
 
-pub(in crate::orchestrator) fn program_issue_occupies_conflict_domain(
+pub(crate) fn program_issue_occupies_conflict_domain(
 	service_id: &str,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
