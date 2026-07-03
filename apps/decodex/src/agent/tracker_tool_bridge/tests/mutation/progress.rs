@@ -1,3 +1,24 @@
+use std::cell::RefCell;
+
+use tempfile::TempDir;
+
+use crate::agent::tracker_tool_bridge::tests::sample_local_repo;
+use crate::agent::tracker_tool_bridge::tests::{
+	self, FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker, TEST_SERVICE_ID,
+};
+use crate::{
+	agent::tracker_tool_bridge::{
+		DynamicToolContentItem, DynamicToolHandler, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+		TrackerToolBridge,
+	},
+	tracker::{
+		privacy_classifier::{
+			PublicProjectionPrivacyClassification, PublicProjectionPrivacyClassifier,
+		},
+		records,
+	},
+};
+
 struct FakeProjectionClassifier {
 	verdict: PublicProjectionPrivacyClassification,
 	seen_text: RefCell<Vec<String>>,
@@ -23,16 +44,16 @@ impl PublicProjectionPrivacyClassifier for FakeProjectionClassifier {
 #[test]
 fn progress_checkpoint_preserves_private_payload_and_publishes_projection() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		tests::sample_review_context_in(temp_dir.path()),
 		&pull_request_inspector,
 		&local_repo_inspector,
 	);
@@ -76,7 +97,7 @@ fn progress_checkpoint_preserves_private_payload_and_publishes_projection() {
 	assert!(record.verification.is_none());
 	assert!(record.commit_sha.is_none());
 
-	let private_events = bridge_state_store(&bridge)
+	let private_events = tests::bridge_state_store(&bridge)
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, "pub-618-attempt-2-123", 2)
 		.expect("private checkpoint events should list");
 
@@ -86,39 +107,40 @@ fn progress_checkpoint_preserves_private_payload_and_publishes_projection() {
 		private_events[0].payload()["focus"],
 		serde_json::json!("Wire the new execution-state skill into tracker-driven flows.")
 	);
-		assert_eq!(
-			private_events[0].payload()["next_action"],
-			serde_json::json!("Add the issue_progress_checkpoint runtime tool.")
-		);
-		assert_eq!(private_events[0].payload()["docs_impact"], serde_json::json!("none"));
-		assert_eq!(
-			private_events[0].payload()["evidence"],
-			serde_json::json!(["Research decision favors Linear-backed execution snapshots."])
-		);
+	assert_eq!(
+		private_events[0].payload()["next_action"],
+		serde_json::json!("Add the issue_progress_checkpoint runtime tool.")
+	);
+	assert_eq!(private_events[0].payload()["docs_impact"], serde_json::json!("none"));
+	assert_eq!(
+		private_events[0].payload()["evidence"],
+		serde_json::json!(["Research decision favors Linear-backed execution snapshots."])
+	);
 	assert_eq!(
 		private_events[0].payload()["verification"],
-		serde_json::json!(["Local inventory of active execution-state boundary references completed."])
+		serde_json::json!([
+			"Local inventory of active execution-state boundary references completed."
+		])
 	);
 	assert_eq!(
 		private_events[0].payload()["head_sha"],
-		serde_json::json!(sample_local_repo().head_oid)
+		serde_json::json!(tests::sample_local_repo().head_oid)
 	);
 }
 
 #[test]
 fn progress_checkpoint_classifier_allows_public_projection() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let temp_dir = TempDir::new().expect("tempdir should create");
-	let classifier =
-		FakeProjectionClassifier::new(PublicProjectionPrivacyClassification::Allow);
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let classifier = FakeProjectionClassifier::new(PublicProjectionPrivacyClassification::Allow);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_classifier_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		tests::sample_review_context_in(temp_dir.path()),
 		&classifier,
 		&local_repo_inspector,
 	);
@@ -154,19 +176,19 @@ fn progress_checkpoint_classifier_allows_public_projection() {
 #[test]
 fn progress_checkpoint_suspicious_classifier_replaces_public_summary() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let classifier =
 		FakeProjectionClassifier::new(PublicProjectionPrivacyClassification::Suspicious {
 			reason: String::from("fake suspicious projection"),
 		});
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_classifier_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		tests::sample_review_context_in(temp_dir.path()),
 		&classifier,
 		&local_repo_inspector,
 	);
@@ -198,19 +220,19 @@ fn progress_checkpoint_suspicious_classifier_replaces_public_summary() {
 #[test]
 fn progress_checkpoint_unavailable_classifier_preserves_private_event() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let classifier =
 		FakeProjectionClassifier::new(PublicProjectionPrivacyClassification::Unavailable {
 			reason: String::from("fake unavailable classifier"),
 		});
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_classifier_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		tests::sample_review_context_in(temp_dir.path()),
 		&classifier,
 		&local_repo_inspector,
 	);
@@ -238,7 +260,7 @@ fn progress_checkpoint_unavailable_classifier_preserves_private_event() {
 		Some(records::PRIVACY_CLASSIFIER_WITHHELD_PUBLIC_SUMMARY)
 	);
 
-	let private_events = bridge_state_store(&bridge)
+	let private_events = tests::bridge_state_store(&bridge)
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, "pub-618-attempt-2-123", 2)
 		.expect("private checkpoint events should list");
 
@@ -255,8 +277,8 @@ fn progress_checkpoint_unavailable_classifier_preserves_private_event() {
 #[test]
 fn blocked_progress_checkpoint_requires_concrete_blocker() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
@@ -284,16 +306,16 @@ fn blocked_progress_checkpoint_requires_concrete_blocker() {
 #[test]
 fn progress_checkpoint_rejects_stale_head_sha() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		tests::sample_review_context_in(temp_dir.path()),
 		&pull_request_inspector,
 		&local_repo_inspector,
 	);
@@ -324,16 +346,16 @@ fn progress_checkpoint_rejects_stale_head_sha() {
 #[test]
 fn progress_checkpoint_normalizes_matching_short_head_sha_to_full_head() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		tests::sample_review_context_in(temp_dir.path()),
 		&pull_request_inspector,
 		&local_repo_inspector,
 	);
@@ -347,7 +369,7 @@ fn progress_checkpoint_normalizes_matching_short_head_sha_to_full_head() {
 			"next_action": "Record the closeout checkpoint with the live lane head.",
 			"blockers": [],
 			"evidence": [],
-			"head_sha": &sample_local_repo().head_oid[..7]
+			"head_sha": &tests::sample_local_repo().head_oid[..7]
 		}),
 	);
 
@@ -359,29 +381,29 @@ fn progress_checkpoint_normalizes_matching_short_head_sha_to_full_head() {
 
 	assert!(record.commit_sha.is_none());
 
-	let private_events = bridge_state_store(&bridge)
+	let private_events = tests::bridge_state_store(&bridge)
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, "pub-618-attempt-2-123", 2)
 		.expect("private checkpoint events should list");
 
 	assert_eq!(
 		private_events[0].payload()["head_sha"],
-		serde_json::json!(sample_local_repo().head_oid)
+		serde_json::json!(tests::sample_local_repo().head_oid)
 	);
 }
 
 #[test]
 fn progress_checkpoint_retries_preserve_private_events_without_duplicate_public_projection() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		tests::sample_review_context_in(temp_dir.path()),
 		&pull_request_inspector,
 		&local_repo_inspector,
 	);
@@ -406,7 +428,7 @@ fn progress_checkpoint_retries_preserve_private_events_without_duplicate_public_
 	assert!(second.success);
 	assert_eq!(tracker.comments.borrow().len(), 1);
 
-	let private_events = bridge_state_store(&bridge)
+	let private_events = tests::bridge_state_store(&bridge)
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, "pub-618-attempt-2-123", 2)
 		.expect("private checkpoint events should list");
 
@@ -416,16 +438,16 @@ fn progress_checkpoint_retries_preserve_private_events_without_duplicate_public_
 #[test]
 fn progress_checkpoint_public_projection_changes_only_on_material_signal() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		tests::sample_review_context_in(temp_dir.path()),
 		&pull_request_inspector,
 		&local_repo_inspector,
 	);
@@ -478,7 +500,7 @@ fn progress_checkpoint_public_projection_changes_only_on_material_signal() {
 		"private-only changes inside the same public phase must not flood Linear"
 	);
 
-	let private_events = bridge_state_store(&bridge)
+	let private_events = tests::bridge_state_store(&bridge)
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, "pub-618-attempt-2-123", 2)
 		.expect("private checkpoint events should list");
 
@@ -488,16 +510,16 @@ fn progress_checkpoint_public_projection_changes_only_on_material_signal() {
 #[test]
 fn progress_checkpoint_stores_private_text_but_redacts_public_projection() {
 	let tracker = FakeTracker::new();
-	let issue = sample_issue();
-	let workflow = sample_workflow();
+	let issue = tests::sample_issue();
+	let workflow = tests::sample_workflow();
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo())]);
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
 		&workflow,
-		sample_review_context_in(temp_dir.path()),
+		tests::sample_review_context_in(temp_dir.path()),
 		&pull_request_inspector,
 		&local_repo_inspector,
 	);
@@ -532,7 +554,7 @@ fn progress_checkpoint_stores_private_text_but_redacts_public_projection() {
 	assert!(record.next_action.is_none());
 	assert!(record.evidence.is_none());
 
-	let private_events = bridge_state_store(&bridge)
+	let private_events = tests::bridge_state_store(&bridge)
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, "pub-618-attempt-2-123", 2)
 		.expect("private checkpoint events should list");
 
