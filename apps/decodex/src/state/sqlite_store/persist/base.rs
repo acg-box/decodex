@@ -1,5 +1,4 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use super::{ChildAgentActivitySummary, Result, StateData, Transaction, params};
 
 pub(in crate::state::sqlite_store) fn persist_projects(
 	transaction: &Transaction<'_>,
