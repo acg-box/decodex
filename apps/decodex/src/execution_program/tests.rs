@@ -189,6 +189,25 @@ fn stale_contract_drift_blocks_direct_dispatch() {
 }
 
 #[test]
+fn terminal_issue_mapping_wins_over_stale_contract_drift() {
+	let terminal_node = ready_node("node-terminal", "XY-903")
+		.with_contract_fingerprint("stale-contract-fingerprint")
+		.expect("fingerprint should override")
+		.with_linear_issue(issue("XY-903", "Done"))
+		.expect("terminal issue should attach");
+	let (contract, program) = program_with(vec![terminal_node]);
+	let evaluation = program
+		.evaluate(&contract, &workflow_policy(), &ExecutionProgramReadinessContext::new())
+		.expect("program should evaluate");
+	let node = &evaluation.nodes()[0];
+
+	assert_eq!(node.state(), ExecutionReadinessState::Completed);
+	assert_eq!(node.dispatch_action(), None);
+	assert_eq!(evaluation.operator_summary().completed_count, 1);
+	assert_eq!(evaluation.operator_summary().stale_count, 0);
+}
+
+#[test]
 fn conflict_domain_blocks_ready_node() {
 	let conflict = ExecutionConflictDomain::new(
 		ExecutionConflictDomainKind::File,
