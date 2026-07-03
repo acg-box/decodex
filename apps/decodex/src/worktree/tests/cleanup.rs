@@ -1,14 +1,14 @@
-use super::*;
+use std::fs;
 
 #[test]
 fn merged_worktree_cleanup_debts_detects_dirty_merged_worktree() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let worktree_path = worktree_root.join("accounts-column-format");
 
 	fs::create_dir_all(&worktree_root).expect("worktree root should exist");
 
-	run_git(
+	super::run_git(
 		&repo_root,
 		&[
 			"worktree",
@@ -23,9 +23,12 @@ fn merged_worktree_cleanup_debts_detects_dirty_merged_worktree() {
 	fs::write(worktree_path.join("README.md"), "feature work\n")
 		.expect("worktree file should write");
 
-	run_git(&worktree_path, &["add", "README.md"]);
-	run_git(&worktree_path, &["commit", "-m", "feature work"]);
-	run_git(&repo_root, &["merge", "--no-ff", "xy/accounts-column-format", "-m", "land feature"]);
+	super::run_git(&worktree_path, &["add", "README.md"]);
+	super::run_git(&worktree_path, &["commit", "-m", "feature work"]);
+	super::run_git(
+		&repo_root,
+		&["merge", "--no-ff", "xy/accounts-column-format", "-m", "land feature"],
+	);
 
 	fs::write(worktree_path.join("README.md"), "dirty after land\n")
 		.expect("worktree file should become dirty");
@@ -44,13 +47,13 @@ fn merged_worktree_cleanup_debts_detects_dirty_merged_worktree() {
 
 #[test]
 fn merged_worktree_cleanup_debts_treats_decodex_runtime_artifacts_as_clean() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let worktree_path = worktree_root.join("accounts-column-format");
 
 	fs::create_dir_all(&worktree_root).expect("worktree root should exist");
 
-	run_git(
+	super::run_git(
 		&repo_root,
 		&[
 			"worktree",
@@ -65,9 +68,12 @@ fn merged_worktree_cleanup_debts_treats_decodex_runtime_artifacts_as_clean() {
 	fs::write(worktree_path.join("README.md"), "feature work\n")
 		.expect("worktree file should write");
 
-	run_git(&worktree_path, &["add", "README.md"]);
-	run_git(&worktree_path, &["commit", "-m", "feature work"]);
-	run_git(&repo_root, &["merge", "--no-ff", "xy/accounts-column-format", "-m", "land feature"]);
+	super::run_git(&worktree_path, &["add", "README.md"]);
+	super::run_git(&worktree_path, &["commit", "-m", "feature work"]);
+	super::run_git(
+		&repo_root,
+		&["merge", "--no-ff", "xy/accounts-column-format", "-m", "land feature"],
+	);
 
 	fs::write(worktree_path.join(crate::state::RUN_ACTIVITY_MARKER_FILE), "agent_run\n")
 		.expect("activity marker should write");
@@ -88,13 +94,13 @@ fn merged_worktree_cleanup_debts_treats_decodex_runtime_artifacts_as_clean() {
 
 #[test]
 fn merged_worktree_cleanup_debts_ignores_dirty_worktree_started_from_old_default() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let worktree_path = worktree_root.join("scroll-capture-motion");
 
 	fs::create_dir_all(&worktree_root).expect("worktree root should exist");
 
-	run_git(
+	super::run_git(
 		&repo_root,
 		&[
 			"worktree",
@@ -109,8 +115,8 @@ fn merged_worktree_cleanup_debts_ignores_dirty_worktree_started_from_old_default
 	fs::write(repo_root.join("main.txt"), "main advanced\n")
 		.expect("main branch file should write");
 
-	run_git(&repo_root, &["add", "main.txt"]);
-	run_git(&repo_root, &["commit", "-m", "advance main"]);
+	super::run_git(&repo_root, &["add", "main.txt"]);
+	super::run_git(&repo_root, &["commit", "-m", "advance main"]);
 
 	fs::write(worktree_path.join("README.md"), "manual dirty work\n")
 		.expect("worktree file should become dirty");
@@ -126,13 +132,13 @@ fn merged_worktree_cleanup_debts_ignores_dirty_worktree_started_from_old_default
 
 #[test]
 fn merged_worktree_cleanup_debts_ignores_unmerged_worktree() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let worktree_path = worktree_root.join("dashboard-ws-control-plane");
 
 	fs::create_dir_all(&worktree_root).expect("worktree root should exist");
 
-	run_git(
+	super::run_git(
 		&repo_root,
 		&[
 			"worktree",
@@ -147,8 +153,8 @@ fn merged_worktree_cleanup_debts_ignores_unmerged_worktree() {
 	fs::write(worktree_path.join("README.md"), "feature work\n")
 		.expect("worktree file should write");
 
-	run_git(&worktree_path, &["add", "README.md"]);
-	run_git(&worktree_path, &["commit", "-m", "feature work"]);
+	super::run_git(&worktree_path, &["add", "README.md"]);
+	super::run_git(&worktree_path, &["commit", "-m", "feature work"]);
 
 	let debts = super::super::merged_worktree_cleanup_debts(&repo_root, &worktree_root, "main")
 		.expect("cleanup debt scan should succeed");
@@ -158,13 +164,13 @@ fn merged_worktree_cleanup_debts_ignores_unmerged_worktree() {
 
 #[test]
 fn merged_worktree_cleanup_debts_ignores_dirty_worktree_at_default_tip() {
-	let (_temp_dir, repo_root) = init_repo();
+	let (_temp_dir, repo_root) = super::init_repo();
 	let worktree_root = repo_root.join(".worktrees");
 	let worktree_path = worktree_root.join("XY-454");
 
 	fs::create_dir_all(&worktree_root).expect("worktree root should exist");
 
-	run_git(
+	super::run_git(
 		&repo_root,
 		&[
 			"worktree",

@@ -2,8 +2,6 @@ use std::{
 	fs,
 	path::{Path, PathBuf},
 	process::Command,
-	thread,
-	time::{Duration, Instant},
 };
 
 use tempfile::TempDir;

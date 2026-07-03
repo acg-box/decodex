@@ -1,5 +1,7 @@
-#[allow(clippy::wildcard_imports)]
-use super::*;
+use super::{
+	Result, SqliteStateStore, execution_program_record_from_row_parts,
+	execution_program_runtime_row_parts,
+};
 
 impl SqliteStateStore {
 	pub(in crate::state) fn bootstrap_execution_programs_schema(&self) -> Result<()> {
