@@ -6,7 +6,10 @@ use crate::{
 		ExecutionProgram, ExecutionProgramReadinessContext, ExecutionWorkflowPolicy,
 	},
 	prelude::{Result, eyre},
-	program_intake::{IssueBatchIntakeReport, issue_batch},
+	program_intake::{
+		IssueBatchIntakeReport,
+		issue_batch::{identity, nodes, reporting},
+	},
 	state::StateStore,
 	tracker::{self, IssueTracker},
 	workflow::WorkflowDocument,
@@ -29,7 +32,7 @@ where
 		eyre::bail!("Issue-batch intake requires exactly one of dry_run or persist.");
 	}
 
-	let issue_identifiers = issue_batch::normalize_issue_identifiers(issue_identifiers)?;
+	let issue_identifiers = identity::normalize_issue_identifiers(issue_identifiers)?;
 	let active_label = tracker::automation_active_label(config.service_id());
 	let policy = ExecutionWorkflowPolicy::from_workflow(config.service_id(), workflow)?;
 	let mut resolved = BTreeMap::new();
@@ -45,11 +48,11 @@ where
 	}
 
 	let batch_fingerprint =
-		issue_batch::issue_batch_fingerprint(config.service_id(), &issue_identifiers, &resolved);
-	let program_id = issue_batch::issue_batch_program_id(config.service_id(), &batch_fingerprint);
+		identity::issue_batch_fingerprint(config.service_id(), &issue_identifiers, &resolved);
+	let program_id = identity::issue_batch_program_id(config.service_id(), &batch_fingerprint);
 	let supplied_node_ids = issue_identifiers
 		.iter()
-		.map(|identifier| (identifier.clone(), issue_batch::node_id_for_issue(identifier)))
+		.map(|identifier| (identifier.clone(), identity::node_id_for_issue(identifier)))
 		.collect::<BTreeMap<_, _>>();
 	let mut nodes = Vec::new();
 	let mut dependency_snapshots = Vec::new();
@@ -57,14 +60,14 @@ where
 
 	for identifier in &issue_identifiers {
 		if let Some(issue) = resolved.get(identifier) {
-			let facts = issue_batch::issue_facts(tracker, workflow, issue, &active_label)?;
+			let facts = nodes::issue_facts(tracker, workflow, issue, &active_label)?;
 
 			dependency_snapshots
-				.extend(issue_batch::dependency_snapshots_for(issue, &supplied_node_ids)?);
-			nodes.push(issue_batch::issue_node(issue, &facts, workflow, &supplied_node_ids)?);
+				.extend(nodes::dependency_snapshots_for(issue, &supplied_node_ids)?);
+			nodes.push(nodes::issue_node(issue, &facts, workflow, &supplied_node_ids)?);
 			facts_by_identifier.insert(identifier.clone(), facts);
 		} else {
-			nodes.push(issue_batch::unmapped_node(identifier)?);
+			nodes.push(nodes::unmapped_node(identifier)?);
 		}
 	}
 
@@ -91,7 +94,7 @@ where
 
 	for identifier in &issue_identifiers {
 		if missing.iter().any(|missing| missing == identifier) {
-			rows.push(issue_batch::unmapped_report_row(identifier));
+			rows.push(reporting::unmapped_report_row(identifier));
 
 			continue;
 		}
@@ -106,10 +109,10 @@ where
 			.get(identifier)
 			.ok_or_else(|| eyre::eyre!("Issue evaluation for `{identifier}` disappeared."))?;
 
-		rows.push(issue_batch::issue_report_row(issue, facts, evaluation, workflow));
+		rows.push(reporting::issue_report_row(issue, facts, evaluation, workflow));
 	}
 
-	let counts = issue_batch::classify_counts(&rows);
+	let counts = reporting::classify_counts(&rows);
 
 	if persist {
 		state_store.upsert_execution_program(config.service_id(), program)?;
