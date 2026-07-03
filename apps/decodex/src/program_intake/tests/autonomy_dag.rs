@@ -16,8 +16,9 @@ use crate::{
 		AutonomySignalSourceType,
 	},
 	loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
-	program_intake::tests::test_support,
-	program_intake::{self, GoalIntakeIssueAction, GoalIntakeReport, GoalIntakeRunRequest},
+	program_intake::{
+		self, GoalIntakeIssueAction, GoalIntakeReport, GoalIntakeRunRequest, tests::test_support,
+	},
 	state::StateStore,
 };
 
