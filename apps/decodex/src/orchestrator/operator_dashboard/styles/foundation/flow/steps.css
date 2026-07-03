@@ -1,0 +1,69 @@
+			.flow-step {
+				display: grid;
+				grid-template-columns: auto minmax(0, 1fr);
+				align-items: baseline;
+				gap: 10px;
+				min-width: 0;
+				padding: 0 18px;
+				transition:
+					color var(--fast) var(--ease);
+			}
+
+			.flow-step:first-child {
+				padding-left: 0;
+			}
+
+			.flow-step + .flow-step {
+				border-left: 1px solid var(--line);
+			}
+
+			.flow-step strong {
+				color: var(--text);
+				font-family: var(--mono);
+				font-size: var(--type-label);
+				font-weight: var(--weight-label);
+				font-variant-numeric: tabular-nums;
+				letter-spacing: 0;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				text-align: right;
+				white-space: nowrap;
+			}
+
+			.flow-step.active span {
+				color: var(--accent);
+			}
+
+			.flow-step.active strong {
+				color: var(--accent);
+			}
+
+			.flow-step strong .metric-number {
+				color: var(--text);
+			}
+
+			.flow-step strong .metric-label {
+				color: var(--muted);
+			}
+
+			.flow-step.active strong .metric-number,
+			.flow-step.active strong .metric-label {
+				color: var(--accent);
+			}
+
+			.flow-step[data-flow-step="queue"] {
+				--accent: var(--tone-queue);
+			}
+
+			.flow-step[data-flow-step="run"] {
+				--accent: var(--tone-run);
+			}
+
+			.flow-step[data-flow-step="review"] {
+				--accent: var(--tone-review);
+			}
+
+			.flow-step[data-flow-step="land"] {
+				--accent: var(--tone-land);
+			}
