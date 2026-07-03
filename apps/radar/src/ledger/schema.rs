@@ -2,9 +2,9 @@ use std::{fs, path::Path};
 
 use rusqlite::{Connection, OptionalExtension as _};
 
-use super::SCHEMA_VERSION;
+use crate::prelude::Result;
 
-pub(super) fn open_ledger(path: &Path) -> crate::prelude::Result<Connection> {
+pub(super) fn open_ledger(path: &Path) -> Result<Connection> {
 	if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
 		fs::create_dir_all(parent)?;
 	}
@@ -16,7 +16,7 @@ pub(super) fn open_ledger(path: &Path) -> crate::prelude::Result<Connection> {
 	Ok(connection)
 }
 
-pub(super) fn initialize_ledger(connection: &Connection) -> crate::prelude::Result<()> {
+pub(super) fn initialize_ledger(connection: &Connection) -> Result<()> {
 	connection.execute_batch(
 		"
 		PRAGMA foreign_keys = ON;
@@ -108,13 +108,13 @@ pub(super) fn initialize_ledger(connection: &Connection) -> crate::prelude::Resu
 		VALUES ('schema_version', ?1)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value
 		",
-		rusqlite::params![SCHEMA_VERSION.to_string()],
+		rusqlite::params![crate::SCHEMA_VERSION.to_string()],
 	)?;
 
 	Ok(())
 }
 
-fn migrate_artifact_link_kinds(connection: &Connection) -> crate::prelude::Result<()> {
+fn migrate_artifact_link_kinds(connection: &Connection) -> Result<()> {
 	let table_sql = connection
 		.query_row(
 			"
@@ -126,6 +126,7 @@ fn migrate_artifact_link_kinds(connection: &Connection) -> crate::prelude::Resul
 			|row| row.get::<_, String>(0),
 		)
 		.optional()?;
+
 	if table_sql.is_none() {
 		return Ok(());
 	};
@@ -195,7 +196,7 @@ fn migrate_artifact_link_kinds(connection: &Connection) -> crate::prelude::Resul
 	Ok(())
 }
 
-fn migrate_radar_review_statuses(connection: &Connection) -> crate::prelude::Result<()> {
+fn migrate_radar_review_statuses(connection: &Connection) -> Result<()> {
 	let table_sql = connection
 		.query_row(
 			"
@@ -207,6 +208,7 @@ fn migrate_radar_review_statuses(connection: &Connection) -> crate::prelude::Res
 			|row| row.get::<_, String>(0),
 		)
 		.optional()?;
+
 	if table_sql.is_none() {
 		return Ok(());
 	};

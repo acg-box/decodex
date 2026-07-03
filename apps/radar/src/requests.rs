@@ -7,7 +7,8 @@ use std::{
 
 use serde::Serialize;
 
-use super::{
+use crate::DEFAULT_MIN_STABLE_TAG;
+use crate::{
 	DEFAULT_LEDGER_PATH, DEFAULT_PAIR_LIMIT, DEFAULT_PREVIEW_LIMIT, DEFAULT_QUEUE_OUT,
 	DEFAULT_RELEASE_DELTA_OUT, DEFAULT_SEARCH_LIMIT, DEFAULT_SIGNALS_DIR, DEFAULT_STABLE_LIMIT,
 	DEFAULT_TAG_PREFIX,
@@ -107,7 +108,7 @@ impl Default for RadarRefreshReleaseDeltaRequest {
 			stable_limit: DEFAULT_STABLE_LIMIT,
 			preview_limit: DEFAULT_PREVIEW_LIMIT,
 			pair_limit: DEFAULT_PAIR_LIMIT,
-			min_stable_tag: super::DEFAULT_MIN_STABLE_TAG.to_owned(),
+			min_stable_tag: DEFAULT_MIN_STABLE_TAG.to_owned(),
 			dry_run: false,
 		}
 	}
@@ -285,7 +286,7 @@ pub(crate) struct RadarBackfillReleaseRangeReport {
 	pub(crate) dry_run: bool,
 }
 impl Display for RadarBackfillReleaseRangeReport {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		write!(formatter, "{}", serde_json::to_string_pretty(self).map_err(|_| fmt::Error)?)
 	}
 }

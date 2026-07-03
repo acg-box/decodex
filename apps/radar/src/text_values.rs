@@ -1,6 +1,16 @@
 //! Text, path, and JSON value normalization helpers.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::{
+	env,
+	path::{Path, PathBuf},
+};
+
+use serde_json::Value;
+
+use crate::{
+	config::DEFAULT_CONFIG_PATH,
+	prelude::{Result, eyre},
+};
 
 pub(crate) fn short_sha(value: &str) -> String {
 	value.chars().take(7).collect()
@@ -29,11 +39,11 @@ pub(crate) fn slugify(value: &str) -> String {
 	if slug.is_empty() { "signal".into() } else { slug }
 }
 
-pub(crate) fn repo_root() -> crate::prelude::Result<PathBuf> {
+pub(crate) fn repo_root() -> Result<PathBuf> {
 	let mut candidate = env::current_dir()?;
 
 	loop {
-		if candidate.join(config::DEFAULT_CONFIG_PATH).is_file()
+		if candidate.join(DEFAULT_CONFIG_PATH).is_file()
 			&& candidate.join("apps/radar/src/lib.rs").is_file()
 		{
 			return Ok(candidate);
@@ -54,7 +64,7 @@ pub(crate) fn path_arg(root: &Path, path: &Path) -> String {
 	path.strip_prefix(root).unwrap_or(path).display().to_string()
 }
 
-pub(crate) fn pretty_json(payload: &Value) -> crate::prelude::Result<String> {
+pub(crate) fn pretty_json(payload: &Value) -> Result<String> {
 	serde_json::to_string_pretty(payload).map_err(Into::into)
 }
 
@@ -68,10 +78,7 @@ pub(crate) fn body_excerpt(body: &str) -> String {
 	}
 }
 
-pub(crate) fn required_value_string(
-	payload: &Value,
-	field: &str,
-) -> crate::prelude::Result<String> {
+pub(crate) fn required_value_string(payload: &Value, field: &str) -> Result<String> {
 	payload
 		.get(field)
 		.and_then(Value::as_str)
@@ -84,14 +91,14 @@ pub(crate) fn optional_value_string(payload: &Value, field: &str) -> Option<Stri
 	payload.get(field).and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_owned)
 }
 
-pub(crate) fn required_value_u64(payload: &Value, field: &str) -> crate::prelude::Result<u64> {
+pub(crate) fn required_value_u64(payload: &Value, field: &str) -> Result<u64> {
 	payload
 		.get(field)
 		.and_then(Value::as_u64)
 		.ok_or_else(|| eyre::eyre!("{field} must be a positive integer"))
 }
 
-pub(crate) fn required_value_i64(payload: &Value, field: &str) -> crate::prelude::Result<i64> {
+pub(crate) fn required_value_i64(payload: &Value, field: &str) -> Result<i64> {
 	payload
 		.get(field)
 		.and_then(Value::as_i64)

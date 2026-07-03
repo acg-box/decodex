@@ -1,13 +1,23 @@
 //! Shared Radar filesystem, schema, and repository helpers.
 
-#[allow(clippy::wildcard_imports)] use super::*;
+use std::{
+	collections::BTreeSet,
+	fs,
+	path::{Path, PathBuf},
+};
+
+use serde_json::Value;
+
+use crate::{
+	CONFIG_FEATURE_CATALOG_PATH, GitHubApi, RadarRefreshQueueRequest, RefreshKind, prelude::eyre,
+};
 
 pub(crate) fn validate_expected_schema(
 	value: &Value,
 	schema: &str,
 	label: &str,
 ) -> crate::prelude::Result<()> {
-	let validation = validate_artifact(value);
+	let validation = crate::validate_artifact(value);
 
 	if validation.schema.as_deref() != Some(schema) {
 		return Err(eyre::eyre!("{label} schema must be {schema}"));
@@ -25,7 +35,7 @@ pub(crate) fn validate_expected_schema(
 pub(crate) fn repo_default_branch(api: &GitHubApi, repo: &str) -> crate::prelude::Result<String> {
 	let payload = api.get(&format!("https://api.github.com/repos/{repo}"))?.payload;
 
-	required_value_string(&payload, "default_branch")
+	crate::required_value_string(&payload, "default_branch")
 		.map_err(|error| eyre::eyre!("Unable to resolve default branch for {repo}: {error}"))
 }
 
@@ -81,7 +91,7 @@ pub(crate) fn write_json_if_material_changed(
 	payload: &Value,
 	kind: RefreshKind,
 ) -> crate::prelude::Result<bool> {
-	if let Ok(existing) = load_json(path)
+	if let Ok(existing) = crate::load_json(path)
 		&& material_json(&existing, &kind) == material_json(payload, &kind)
 	{
 		return Ok(false);
@@ -90,7 +100,7 @@ pub(crate) fn write_json_if_material_changed(
 		fs::create_dir_all(parent)?;
 	}
 
-	fs::write(path, format!("{}\n", pretty_json(payload)?))?;
+	fs::write(path, format!("{}\n", crate::pretty_json(payload)?))?;
 
 	Ok(true)
 }
@@ -116,7 +126,7 @@ pub(crate) fn load_known_feature_names(root: &Path) -> crate::prelude::Result<BT
 		return Ok(BTreeSet::new());
 	}
 
-	let payload = load_json(&path)?;
+	let payload = crate::load_json(&path)?;
 	let names = payload
 		.get("features")
 		.and_then(Value::as_array)
