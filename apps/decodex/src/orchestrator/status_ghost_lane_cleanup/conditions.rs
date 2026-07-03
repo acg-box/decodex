@@ -4,32 +4,26 @@ use crate::orchestrator::{
 	kernel::state::{LivenessState, OwnershipState, PolicyState, TerminalizationState},
 };
 
-pub(in crate::orchestrator::status_ghost_lane_cleanup) fn missing_issue_ghost_lane_status_allows_cleanup(
-	run: &OperatorRunStatus,
-) -> bool {
+pub(crate) fn missing_issue_ghost_lane_status_allows_cleanup(run: &OperatorRunStatus) -> bool {
 	run.ownership_state == GHOST_LANE_OWNERSHIP_STATE
 		&& run.policy_state == GHOST_LANE_POLICY_STATE
 		&& run.lane_control_next_action == GHOST_LANE_NEXT_ACTION
 }
 
-pub(in crate::orchestrator::status_ghost_lane_cleanup) fn missing_issue_ghost_lane_status_is_cleanup_complete(
-	run: &OperatorRunStatus,
-) -> bool {
+pub(crate) fn missing_issue_ghost_lane_status_is_cleanup_complete(run: &OperatorRunStatus) -> bool {
 	run.ownership_state == OwnershipState::Closed.as_str()
 		&& run.policy_state == PolicyState::Allowed.as_str()
 		&& run.lane_control_next_action == "no_action"
 		&& missing_issue_ghost_lane_cleanup_audit_present(run)
 }
 
-pub(in crate::orchestrator::status_ghost_lane_cleanup) fn missing_issue_ghost_lane_cleanup_audit_present(
-	run: &OperatorRunStatus,
-) -> bool {
+pub(crate) fn missing_issue_ghost_lane_cleanup_audit_present(run: &OperatorRunStatus) -> bool {
 	run.lane_control_conditions
 		.iter()
 		.any(|condition| condition == "ghost_lane_cleanup_audit_present")
 }
 
-pub(in crate::orchestrator::status_ghost_lane_cleanup) fn apply_missing_issue_ghost_lane_cleanup_complete_run_projection(
+pub(crate) fn apply_missing_issue_ghost_lane_cleanup_complete_run_projection(
 	run: &mut OperatorRunStatus,
 ) {
 	run.status = String::from(GHOST_LANE_TERMINAL_STATUS);
@@ -63,10 +57,7 @@ pub(in crate::orchestrator::status_ghost_lane_cleanup) fn apply_missing_issue_gh
 	}
 }
 
-pub(in crate::orchestrator::status_ghost_lane_cleanup) fn append_lane_control_condition(
-	run: &mut OperatorRunStatus,
-	condition: &str,
-) {
+pub(crate) fn append_lane_control_condition(run: &mut OperatorRunStatus, condition: &str) {
 	if !run.lane_control_conditions.iter().any(|value| value == condition) {
 		run.lane_control_conditions.push(condition.to_owned());
 	}

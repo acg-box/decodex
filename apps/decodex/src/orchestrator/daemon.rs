@@ -1,43 +1,51 @@
-use std::path::Path;
-
-use crate::{
-	config::ServiceConfig,
-	orchestrator::{
-		AccountActivityMode, CachedWorkflowDocument, DaemonRunChild, DaemonTickContext,
-		GhPullRequestReviewStateInspector, IssueTracker, OperatorConnectorBackoffStatus,
-		OperatorStatusSnapshot, PullRequestReviewStateInspector, RecoverableWorktreeSkipCache,
-		Result, RetryQueue, StateStore, WorkflowDocument, WorktreeManager,
-		add_operator_snapshot_warning, apply_terminal_history_ledger_outcomes,
-		build_control_plane_operator_status_snapshot, build_degraded_post_review_lane_statuses,
-		build_operator_status_snapshot_with_account_mode,
-		hydrate_history_lanes_from_local_ledger, reconcile_post_review_orchestration_with_inspector,
-		reconcile_project_state, reconcile_terminal_thread_archive_backlog_best_effort,
-		recover_runtime_state_from_tracker_and_worktrees_with_skip_cache,
-		refresh_operator_project_summary, warnings_include_tracker_backoff,
-	},
-	tracker::linear::LinearClient,
-};
-
 mod active_children;
 mod retry_dispatch;
 mod spawn;
 
-#[cfg(not(test))] use active_children::inspect_or_clear_active_children;
+#[cfg(test)]
+pub(crate) use self::{
+	active_children::{
+		inspect_current_daemon_child_reconciliation,
+		inspect_current_daemon_child_reconciliation_at, inspect_or_clear_active_children,
+	},
+	retry_dispatch::plan_due_retry_run,
+	spawn::{
+		materialize_daemon_spawn_state, materialize_run_summary_worktree, plan_next_daemon_run,
+	},
+};
 pub(crate) use active_children::{
 	clear_orphaned_daemon_child_state, resolve_child_exit_run_attempt,
 };
-#[cfg(test)]
-pub(crate) use active_children::{
-	inspect_current_daemon_child_reconciliation, inspect_current_daemon_child_reconciliation_at,
-	inspect_or_clear_active_children,
+
+use daemon_retry::{
+	clear_retry_schedule_and_release, retry_entry_is_temporarily_blocked,
+	schedule_retry_after_child_exit,
+};
+
+use crate::{
+	cli::AttemptRequest,
+	orchestrator::{
+		self, AccountActivityMode, ActiveWorkflowOverride, AsRawFd, CachedWorkflowDocument, Child,
+		ChildExitRetryContext, ChildRunRef, Command, CurrentChildRunContext, DaemonRunChild,
+		DaemonTickContext, GhPullRequestReviewStateInspector, Instant, IssueDispatchMode,
+		IssueTracker, LinearClient, MaterializedDaemonSpawnState, OffsetDateTime,
+		OperatorConnectorBackoffStatus, OperatorStatusSnapshot, Path,
+		PullRequestReviewStateInspector, RUN_OPERATION_AGENT_RUN, RecoverableWorktreeSkipCache,
+		Result, RetryDispatchDecision, RetryKind, RetryQueue, RunAttempt, RunLeaseDisposition,
+		RunLeaseReconciliation, RunSummary, ServiceConfig, SpawnRunOnceChildRequest, StateStore,
+		Stdio, TargetIssueRunContext, WorkflowDocument, WorktreeManager, WorktreeSpec, Write,
+		apply_run_lease_reconciliation, daemon_retry,
+		ensure_project_has_no_merged_worktree_cleanup_debt, env, eyre,
+		inspect_exited_daemon_child_reconciliation, is_issue_not_dispatchable_for_current_dispatch,
+		is_terminal_issue, mark_run_attempt_if_active, plan_project_issue_run_with_exclusions,
+		refresh_issue, retained_review_handoff_matches_run, retry_budget_base_for_dispatch_mode,
+		run_lease_reconciliation_workflow, run_summary_from_issue_run, run_target_issue_once,
+		stalled_idle_duration, stalled_run_has_retained_partial_progress,
+		superseded_run_disposition, terminal_issue_keeps_retained_closeout,
+		validate_workflow_read_first_files,
+	},
 };
 #[cfg(not(test))] use retry_dispatch::plan_due_retry_run;
-#[cfg(test)] pub(crate) use retry_dispatch::plan_due_retry_run;
-use spawn::spawn_next_daemon_child;
-#[cfg(test)]
-pub(crate) use spawn::{
-	materialize_daemon_spawn_state, materialize_run_summary_worktree, plan_next_daemon_run,
-};
 
 pub(crate) struct DaemonTickRuntimeContext<'a, T, I> {
 	pub(crate) tracker: &'a T,
@@ -141,7 +149,7 @@ where
 	T: IssueTracker,
 	I: PullRequestReviewStateInspector,
 {
-	inspect_or_clear_active_children(
+	active_children::inspect_or_clear_active_children(
 		active_children,
 		retry_queue,
 		context.tracker,
@@ -165,21 +173,21 @@ where
 		)?;
 	}
 
-	reconcile_post_review_orchestration_with_inspector(
+	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		context.tracker,
 		context.project,
 		context.workflow,
 		state_store,
 		context.review_state_inspector,
 	)?;
-	reconcile_terminal_thread_archive_backlog_best_effort(
+	orchestrator::reconcile_terminal_thread_archive_backlog_best_effort(
 		context.project,
 		context.workflow,
 		state_store,
 	);
 
 	loop {
-		if !spawn_next_daemon_child(
+		if !spawn::spawn_next_daemon_child(
 			config_path,
 			state_store,
 			active_children,
@@ -204,7 +212,7 @@ pub(crate) fn recover_and_reconcile_idle_daemon_state<T>(
 where
 	T: IssueTracker,
 {
-	let _ = recover_runtime_state_from_tracker_and_worktrees_with_skip_cache(
+	let _ = orchestrator::recover_runtime_state_from_tracker_and_worktrees_with_skip_cache(
 		tracker,
 		project,
 		workflow,
@@ -212,7 +220,7 @@ where
 		recoverable_worktree_skip_cache,
 	)?;
 
-	reconcile_project_state(tracker, project, workflow, state_store, worktree_manager)
+	orchestrator::reconcile_project_state(tracker, project, workflow, state_store, worktree_manager)
 }
 
 pub(crate) fn build_operator_state_snapshot_for_publish<T>(
@@ -228,7 +236,7 @@ where
 	T: IssueTracker,
 {
 	let mut snapshot = if warnings.is_empty() {
-		build_control_plane_operator_status_snapshot(
+		orchestrator::build_control_plane_operator_status_snapshot(
 			tracker,
 			project,
 			workflow,
@@ -236,7 +244,7 @@ where
 			limit,
 		)?
 	} else {
-		build_operator_status_snapshot_with_account_mode(
+		orchestrator::build_operator_status_snapshot_with_account_mode(
 			project,
 			state_store,
 			limit,
@@ -245,18 +253,18 @@ where
 	};
 
 	if !warnings.is_empty() {
-		hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
+		orchestrator::hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
 	}
 
-	apply_terminal_history_ledger_outcomes(&mut snapshot);
+	orchestrator::apply_terminal_history_ledger_outcomes(&mut snapshot);
 
-	if warnings_include_tracker_backoff(warnings) {
+	if orchestrator::warnings_include_tracker_backoff(warnings) {
 		let review_state_inspector = GhPullRequestReviewStateInspector {
 			github_token_env_var: Some(project.github().token_env_var().to_owned()),
 			github_command_path: project.github().command_path().map(Path::to_path_buf),
 		};
 
-		snapshot.post_review_lanes = build_degraded_post_review_lane_statuses(
+		snapshot.post_review_lanes = orchestrator::build_degraded_post_review_lane_statuses(
 			project,
 			state_store,
 			&review_state_inspector,
@@ -264,16 +272,19 @@ where
 	}
 
 	for warning in warnings {
-		add_operator_snapshot_warning(&mut snapshot, warning);
+		orchestrator::add_operator_snapshot_warning(&mut snapshot, warning);
 	}
 
 	snapshot.connector_backoffs.extend(connector_backoffs.iter().cloned());
 
 	if !warnings.is_empty() {
-		add_operator_snapshot_warning(&mut snapshot, "external_observer_status_skipped");
+		orchestrator::add_operator_snapshot_warning(
+			&mut snapshot,
+			"external_observer_status_skipped",
+		);
 	}
 
-	refresh_operator_project_summary(&mut snapshot, None);
+	orchestrator::refresh_operator_project_summary(&mut snapshot, None);
 
 	Ok(snapshot)
 }

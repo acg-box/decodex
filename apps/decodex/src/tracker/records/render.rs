@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::Error;
 
-use super::{LinearExecutionEventIdentity, LinearExecutionEventRecord};
+use crate::tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord};
 
 pub(crate) fn render_linear_execution_event_comment_body(
 	record: &LinearExecutionEventRecord,
@@ -48,15 +48,6 @@ pub(crate) fn render_progress_checkpoint_public_projection(
 	record
 }
 
-fn format_structured_comment<T>(record: &T) -> std::result::Result<String, Error>
-where
-	T: Serialize,
-{
-	let payload = serde_json::to_string_pretty(record)?;
-
-	Ok(format!("```json\n{payload}\n```"))
-}
-
 pub(crate) fn append_structured_comment_record<T>(
 	body: &str,
 	record: &T,
@@ -87,4 +78,13 @@ pub(crate) fn stable_event_anchor(parts: &[&str]) -> String {
 	}
 
 	format!("{hash:016x}")
+}
+
+fn format_structured_comment<T>(record: &T) -> std::result::Result<String, Error>
+where
+	T: Serialize,
+{
+	let payload = serde_json::to_string_pretty(record)?;
+
+	Ok(format!("```json\n{payload}\n```"))
 }

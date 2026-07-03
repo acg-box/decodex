@@ -1,7 +1,10 @@
-use super::{
-	CLOSEOUT_PUBLIC_SUMMARY_FALLBACK, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
-	ISSUE_TRANSITION_TOOL_NAME, PendingReviewCompletion, PullRequestDetails, ReviewHandoffContext,
-	TrackerToolBridge, eyre, linear_execution_closeout_event, tracker, tracker_tool_bridge,
+use crate::{
+	agent::tracker_tool_bridge::review::{
+		self, CLOSEOUT_PUBLIC_SUMMARY_FALLBACK, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
+		ISSUE_TRANSITION_TOOL_NAME, PendingReviewCompletion, PullRequestDetails,
+		ReviewHandoffContext, TrackerToolBridge, eyre, tracker_tool_bridge,
+	},
+	tracker,
 };
 
 enum CloseoutIssueStateValidation {
@@ -110,7 +113,7 @@ impl<'a> TrackerToolBridge<'a> {
 			summary,
 			CLOSEOUT_PUBLIC_SUMMARY_FALLBACK,
 		);
-		let closeout_record = linear_execution_closeout_event(
+		let closeout_record = review::linear_execution_closeout_event(
 			self.issue,
 			review_context,
 			&pull_request,

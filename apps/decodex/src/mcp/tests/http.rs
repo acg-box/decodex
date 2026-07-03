@@ -1,21 +1,17 @@
 use serde_json::Value;
 
 use crate::mcp::{
-	self, DEFAULT_MCP_HTTP_LISTEN_ADDRESS, McpCapabilityProfile, McpHttpAuthorization,
-};
-
-use super::support::{
-	http_delete, http_handler, http_handler_with_allowed_origins, http_handler_with_authorization,
-	http_options, http_post, run_http, test_repo,
+	DEFAULT_MCP_HTTP_LISTEN_ADDRESS, McpCapabilityProfile, McpHttpAuthorization, http,
+	tests::support,
 };
 
 #[test]
 fn streamable_http_json_post_initializes_session() {
-	let repo = test_repo();
-	let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
-	let response = run_http(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler(repo.path(), McpCapabilityProfile::Admin);
+	let response = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193"), ("Accept", "application/json")],
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
@@ -40,11 +36,11 @@ fn streamable_http_json_post_initializes_session() {
 
 #[test]
 fn streamable_http_allows_cors_preflight_for_trusted_origin() {
-	let repo = test_repo();
-	let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
-	let response = run_http(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler(repo.path(), McpCapabilityProfile::Admin);
+	let response = support::run_http(
 		&mut handler,
-		http_options(
+		support::http_options(
 			"/mcp",
 			[
 				("Origin", "http://127.0.0.1:8193"),
@@ -65,8 +61,8 @@ fn streamable_http_allows_cors_preflight_for_trusted_origin() {
 
 #[test]
 fn streamable_http_bearer_auth_challenges_missing_or_invalid_authorization() {
-	let repo = test_repo();
-	let mut handler = http_handler_with_authorization(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler_with_authorization(
 		repo.path(),
 		McpCapabilityProfile::Observe,
 		McpHttpAuthorization::from_token_for_test("secret-token"),
@@ -76,9 +72,9 @@ fn streamable_http_bearer_auth_challenges_missing_or_invalid_authorization() {
 		vec![("Origin", "http://127.0.0.1:8193")],
 		vec![("Origin", "http://127.0.0.1:8193"), ("Authorization", "Bearer wrong-token")],
 	] {
-		let response = run_http(
+		let response = support::run_http(
 			&mut handler,
-			http_post(
+			support::http_post(
 				"/mcp",
 				headers,
 				r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
@@ -95,15 +91,15 @@ fn streamable_http_bearer_auth_challenges_missing_or_invalid_authorization() {
 
 #[test]
 fn streamable_http_bearer_auth_accepts_valid_authorization() {
-	let repo = test_repo();
-	let mut handler = http_handler_with_authorization(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler_with_authorization(
 		repo.path(),
 		McpCapabilityProfile::Observe,
 		McpHttpAuthorization::from_token_for_test("secret-token"),
 	);
-	let preflight = run_http(
+	let preflight = support::run_http(
 		&mut handler,
-		http_options(
+		support::http_options(
 			"/mcp",
 			[
 				("Origin", "http://127.0.0.1:8193"),
@@ -112,9 +108,9 @@ fn streamable_http_bearer_auth_accepts_valid_authorization() {
 			],
 		),
 	);
-	let response = run_http(
+	let response = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193"), ("Authorization", "Bearer secret-token")],
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
@@ -138,22 +134,22 @@ fn streamable_http_bearer_auth_accepts_valid_authorization() {
 
 #[test]
 fn streamable_http_allows_configured_origin() {
-	let repo = test_repo();
-	let mut handler = http_handler_with_allowed_origins(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler_with_allowed_origins(
 		repo.path(),
 		McpCapabilityProfile::Admin,
 		vec![String::from("https://relay.example")],
 	);
-	let preflight = run_http(
+	let preflight = support::run_http(
 		&mut handler,
-		http_options(
+		support::http_options(
 			"/mcp",
 			[("Origin", "https://relay.example"), ("Access-Control-Request-Method", "POST")],
 		),
 	);
-	let initialize = run_http(
+	let initialize = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "https://relay.example")],
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
@@ -169,20 +165,20 @@ fn streamable_http_allows_configured_origin() {
 
 #[test]
 fn streamable_http_sse_response_includes_progress_notification() {
-	let repo = test_repo();
-	let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
-	let initialize = run_http(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler(repo.path(), McpCapabilityProfile::Admin);
+	let initialize = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193")],
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
 		),
 	);
 	let session_id = initialize.header("mcp-session-id").expect("session id").to_owned();
-	let response = run_http(
+	let response = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[
 				("Origin", "http://127.0.0.1:8193"),
@@ -205,11 +201,11 @@ fn streamable_http_sse_response_includes_progress_notification() {
 
 #[test]
 fn streamable_http_initialize_notification_does_not_create_session() {
-	let repo = test_repo();
-	let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
-	let response = run_http(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler(repo.path(), McpCapabilityProfile::Admin);
+	let response = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193")],
 			r#"{"jsonrpc":"2.0","method":"initialize","params":{}}"#,
@@ -219,9 +215,9 @@ fn streamable_http_initialize_notification_does_not_create_session() {
 	assert_eq!(response.status, "HTTP/1.1 202 Accepted");
 	assert_eq!(response.header("mcp-session-id"), None);
 
-	let response = run_http(
+	let response = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[
 				("Origin", "http://127.0.0.1:8193"),
@@ -238,11 +234,11 @@ fn streamable_http_initialize_notification_does_not_create_session() {
 
 #[test]
 fn streamable_http_invalid_initialize_does_not_create_session() {
-	let repo = test_repo();
-	let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
-	let response = run_http(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler(repo.path(), McpCapabilityProfile::Admin);
+	let response = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193")],
 			r#"{"jsonrpc":"1.0","id":1,"method":"initialize","params":{}}"#,
@@ -257,11 +253,11 @@ fn streamable_http_invalid_initialize_does_not_create_session() {
 
 #[test]
 fn streamable_http_rejects_disallowed_origin() {
-	let repo = test_repo();
-	let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
-	let response = run_http(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler(repo.path(), McpCapabilityProfile::Admin);
+	let response = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "https://example.invalid")],
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
@@ -275,20 +271,20 @@ fn streamable_http_rejects_disallowed_origin() {
 
 #[test]
 fn streamable_http_delete_invalidates_session() {
-	let repo = test_repo();
-	let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
-	let initialize = run_http(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler(repo.path(), McpCapabilityProfile::Admin);
+	let initialize = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193")],
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
 		),
 	);
 	let session_id = initialize.header("mcp-session-id").expect("session id").to_owned();
-	let delete = run_http(
+	let delete = support::run_http(
 		&mut handler,
-		http_delete(
+		support::http_delete(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193"), ("Mcp-Session-Id", session_id.as_str())],
 		),
@@ -297,9 +293,9 @@ fn streamable_http_delete_invalidates_session() {
 	assert_eq!(delete.status, "HTTP/1.1 202 Accepted");
 	assert_eq!(delete.header("access-control-allow-origin"), Some("http://127.0.0.1:8193"));
 
-	let response = run_http(
+	let response = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193"), ("Mcp-Session-Id", session_id.as_str())],
 			r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
@@ -314,7 +310,7 @@ fn streamable_http_delete_invalidates_session() {
 #[test]
 fn streamable_http_bind_guard_requires_loopback_or_allowed_origin() {
 	assert!(
-		mcp::validate_mcp_http_listen_address(
+		http::validate_mcp_http_listen_address(
 			DEFAULT_MCP_HTTP_LISTEN_ADDRESS,
 			&[],
 			&McpHttpAuthorization::disabled()
@@ -322,7 +318,7 @@ fn streamable_http_bind_guard_requires_loopback_or_allowed_origin() {
 		.is_ok()
 	);
 	assert!(
-		mcp::validate_mcp_http_listen_address(
+		http::validate_mcp_http_listen_address(
 			"0.0.0.0:8193",
 			&[],
 			&McpHttpAuthorization::disabled()
@@ -330,7 +326,7 @@ fn streamable_http_bind_guard_requires_loopback_or_allowed_origin() {
 		.is_err()
 	);
 	assert!(
-		mcp::validate_mcp_http_listen_address(
+		http::validate_mcp_http_listen_address(
 			"0.0.0.0:8193",
 			&[String::from("https://relay.example")],
 			&McpHttpAuthorization::disabled()
@@ -338,7 +334,7 @@ fn streamable_http_bind_guard_requires_loopback_or_allowed_origin() {
 		.is_err()
 	);
 	assert!(
-		mcp::validate_mcp_http_listen_address(
+		http::validate_mcp_http_listen_address(
 			"0.0.0.0:8193",
 			&[String::from("https://relay.example")],
 			&McpHttpAuthorization::from_token_for_test("secret-token")
@@ -350,7 +346,7 @@ fn streamable_http_bind_guard_requires_loopback_or_allowed_origin() {
 #[test]
 fn streamable_http_elevated_profile_requires_bearer_authorization() {
 	assert!(
-		mcp::validate_mcp_http_capability_profile(
+		http::validate_mcp_http_capability_profile(
 			McpCapabilityProfile::Observe,
 			&McpHttpAuthorization::disabled()
 		)
@@ -361,11 +357,11 @@ fn streamable_http_elevated_profile_requires_bearer_authorization() {
 		[McpCapabilityProfile::Plan, McpCapabilityProfile::Operate, McpCapabilityProfile::Admin]
 	{
 		assert!(
-			mcp::validate_mcp_http_capability_profile(profile, &McpHttpAuthorization::disabled())
+			http::validate_mcp_http_capability_profile(profile, &McpHttpAuthorization::disabled())
 				.is_err()
 		);
 		assert!(
-			mcp::validate_mcp_http_capability_profile(
+			http::validate_mcp_http_capability_profile(
 				profile,
 				&McpHttpAuthorization::from_token_for_test("secret-token")
 			)
@@ -376,21 +372,21 @@ fn streamable_http_elevated_profile_requires_bearer_authorization() {
 
 #[test]
 fn streamable_http_requires_known_session_after_initialize() {
-	let repo = test_repo();
-	let mut handler = http_handler(repo.path(), McpCapabilityProfile::Admin);
+	let repo = support::test_repo();
+	let mut handler = support::http_handler(repo.path(), McpCapabilityProfile::Admin);
 
-	run_http(
+	support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193")],
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
 		),
 	);
 
-	let response = run_http(
+	let response = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193")],
 			r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
@@ -404,20 +400,20 @@ fn streamable_http_requires_known_session_after_initialize() {
 
 #[test]
 fn streamable_http_observe_profile_exposes_only_observe_tool() {
-	let repo = test_repo();
-	let mut handler = http_handler(repo.path(), McpCapabilityProfile::Observe);
-	let initialize = run_http(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler(repo.path(), McpCapabilityProfile::Observe);
+	let initialize = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193")],
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
 		),
 	);
 	let session_id = initialize.header("mcp-session-id").expect("session id").to_owned();
-	let response = run_http(
+	let response = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193"), ("Mcp-Session-Id", session_id.as_str())],
 			r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
@@ -436,11 +432,11 @@ fn streamable_http_observe_profile_exposes_only_observe_tool() {
 
 #[test]
 fn streamable_http_observe_profile_refuses_operate_and_admin_calls() {
-	let repo = test_repo();
-	let mut handler = http_handler(repo.path(), McpCapabilityProfile::Observe);
-	let initialize = run_http(
+	let repo = support::test_repo();
+	let mut handler = support::http_handler(repo.path(), McpCapabilityProfile::Observe);
+	let initialize = support::run_http(
 		&mut handler,
-		http_post(
+		support::http_post(
 			"/mcp",
 			[("Origin", "http://127.0.0.1:8193")],
 			r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
@@ -452,9 +448,9 @@ fn streamable_http_observe_profile_refuses_operate_and_admin_calls() {
 		("decodex_lane_control", "operate", r#"{"action":"inspect"}"#),
 		("decodex_project_control", "admin", r#"{"action":"status","projectId":"pubfi"}"#),
 	] {
-		let response = run_http(
+		let response = support::run_http(
 			&mut handler,
-			http_post(
+			support::http_post(
 				"/mcp",
 				[("Origin", "http://127.0.0.1:8193"), ("Mcp-Session-Id", session_id.as_str())],
 				&format!(

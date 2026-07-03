@@ -1,14 +1,17 @@
-use super::{
-	HarnessOutcomeKind, IssueRunPlan, IssueTracker, PreparedTerminalFailureWriteback, Report,
-	Result, RetainedPartialProgress, TerminalFailureEventRecordStatus, TerminalFailureLifecycle,
-	TerminalFailureOutcome, TerminalFailureWritebackRuntime, WorkflowDocument,
-	ensure_automation_activity_label, eyre, format_terminal_failure_comment,
-	record_harness_outcome_best_effort, records, terminal_failure_comment_details,
-	terminal_failure_lifecycle_event, terminal_failure_pr_url, terminal_failure_recovery_gate,
-	tracker,
+use crate::{
+	orchestrator::{
+		execution_failure,
+		execution_failure::{
+			HarnessOutcomeKind, IssueRunPlan, IssueTracker, PreparedTerminalFailureWriteback,
+			Report, Result, RetainedPartialProgress, TerminalFailureEventRecordStatus,
+			TerminalFailureLifecycle, TerminalFailureOutcome, TerminalFailureWritebackRuntime,
+			WorkflowDocument, eyre,
+		},
+	},
+	tracker::{self, records},
 };
 
-pub(in crate::orchestrator) fn apply_terminal_failure_writeback<T>(
+pub(crate) fn apply_terminal_failure_writeback<T>(
 	tracker: &T,
 	runtime: TerminalFailureWritebackRuntime<'_>,
 	workflow: &WorkflowDocument,
@@ -51,7 +54,7 @@ where
 			HarnessOutcomeKind::TerminalFailure
 		};
 
-		record_harness_outcome_best_effort(
+		execution_failure::record_harness_outcome_best_effort(
 			state_store,
 			runtime.service_id,
 			issue_run,
@@ -101,19 +104,22 @@ where
 				issue_run.issue.identifier
 			)
 		})?;
-	let recovery_gate = terminal_failure_recovery_gate(
+	let recovery_gate = execution_failure::terminal_failure_recovery_gate(
 		needs_attention_label,
 		needs_attention_label_id.is_some(),
 		retry_guarded_by_state,
 		tracker_policy.in_progress_state(),
 	);
-	let (error_class, next_action) =
-		terminal_failure_comment_details(manual_attention_requested, error, &recovery_gate);
-	let pr_url = terminal_failure_pr_url(error);
+	let (error_class, next_action) = execution_failure::terminal_failure_comment_details(
+		manual_attention_requested,
+		error,
+		&recovery_gate,
+	);
+	let pr_url = execution_failure::terminal_failure_pr_url(error);
 	let retained_source_error_class = error
 		.downcast_ref::<RetainedPartialProgress>()
 		.and_then(|partial_progress| partial_progress.source_error_class.as_deref());
-	let comment = format_terminal_failure_comment(
+	let comment = execution_failure::format_terminal_failure_comment(
 		&issue_run.run_id,
 		issue_run.attempt_number,
 		worktree_path.to_owned(),
@@ -122,7 +128,7 @@ where
 		error_class,
 		&next_action,
 	);
-	let event = terminal_failure_lifecycle_event(
+	let event = execution_failure::terminal_failure_lifecycle_event(
 		runtime.service_id,
 		issue_run,
 		TerminalFailureLifecycle {
@@ -313,7 +319,12 @@ where
 		);
 	}
 
-	ensure_automation_activity_label(tracker, &issue_run.issue, service_id, false)?;
+	execution_failure::ensure_automation_activity_label(
+		tracker,
+		&issue_run.issue,
+		service_id,
+		false,
+	)?;
 
 	Ok(needs_attention_label_id.is_some())
 }

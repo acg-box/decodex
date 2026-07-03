@@ -5,13 +5,18 @@ mod review;
 mod review_checkpoint;
 mod review_policy;
 
-pub(super) use self::{
+pub(crate) use self::{
 	args::{
 		AuthorityDecisionOptionArgs, AuthorityDecisionRequestArgs, CommentArgs, LabelArgs,
 		ProgressCheckpointArgs, ReviewHandoffArgs, ScopeArgs, TerminalFinalizeArgs, TransitionArgs,
 	},
+	dynamic_tool::{DynamicToolCallResponse, DynamicToolContentItem, DynamicToolSpec},
 	progress::{DocsImpact, ExecutionProgressPhase, NormalizedProgressCheckpoint},
-	review::{PendingReviewAction, PendingReviewCompletion},
+	review::{
+		LocalRepoDetails, PendingReviewAction, PendingReviewCompletion, PullRequestDetails,
+		ReviewExecutionMode, ReviewHandoffContext, ReviewHandoffWritebackFailed,
+		RunCompletionDisposition, TurnCompletionStatus,
+	},
 	review_checkpoint::{
 		NormalizedRejectedReviewCheckpointFinding, NormalizedReviewCheckpointContract,
 		NormalizedReviewCheckpointFinding, NormalizedReviewCheckpointFindingRoute,
@@ -22,14 +27,8 @@ pub(super) use self::{
 		ReviewCheckpointLineRangeArgs, ReviewCheckpointRejectedFindingArgs, ReviewCostControlArgs,
 		ReviewFindingPolicyRecord, ReviewFindingPolicyState,
 	},
-	review_policy::{ReviewPolicyPhase, ReviewPolicyState, ReviewPolicyStatus},
-};
-
-pub(crate) use self::{
-	dynamic_tool::{DynamicToolCallResponse, DynamicToolContentItem, DynamicToolSpec},
-	review::{
-		LocalRepoDetails, PullRequestDetails, ReviewExecutionMode, ReviewHandoffContext,
-		ReviewHandoffWritebackFailed, RunCompletionDisposition, TurnCompletionStatus,
+	review_policy::{
+		ReviewPolicyPhase, ReviewPolicyState, ReviewPolicyStatus, ReviewPolicyStopReason,
+		ReviewPolicyStopRequested,
 	},
-	review_policy::{ReviewPolicyStopReason, ReviewPolicyStopRequested},
 };

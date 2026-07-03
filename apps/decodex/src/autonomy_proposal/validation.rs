@@ -15,7 +15,6 @@ use crate::{
 	autonomy_signal::{AutonomySignal, AutonomySignalFreshness},
 	prelude::{Result, eyre},
 };
-
 pub(super) fn proposal_refusals(
 	objective: Option<&AutonomyObjectiveContract>,
 	signals: &[AutonomySignal],

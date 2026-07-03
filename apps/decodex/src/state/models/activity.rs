@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct ChildAgentActivitySummary {
 	pub(crate) buckets: Vec<ChildAgentActivityBucket>,
 	pub(crate) current_bucket: Option<String>,
@@ -73,7 +73,7 @@ impl ChildAgentActivitySummary {
 	}
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct ChildAgentActivityBucket {
 	pub(crate) name: String,
 	pub(crate) wall_seconds: i64,
@@ -84,7 +84,7 @@ pub(crate) struct ChildAgentActivityBucket {
 	pub(crate) output_bytes: i64,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct ProtocolActivitySummary {
 	pub(crate) turn_status: Option<String>,
 	pub(crate) waiting_reason: Option<String>,
@@ -92,14 +92,14 @@ pub(crate) struct ProtocolActivitySummary {
 	pub(crate) recent_events: Vec<ProtocolActivityEventSummary>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct ProtocolActivityEventSummary {
 	pub(crate) event_type: String,
 	pub(crate) category: String,
 	pub(crate) detail: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct CodexAccountActivitySummary {
 	pub(crate) account_fingerprint: String,
 	pub(crate) email: Option<String>,
@@ -140,7 +140,7 @@ pub(crate) struct CodexAccountActivitySummary {
 	pub(crate) note: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct CodexAccountProfileDailyUsageSummary {
 	pub(crate) date: String,
 	pub(crate) tokens: i64,

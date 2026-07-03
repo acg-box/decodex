@@ -1,30 +1,20 @@
 use std::{
-	io::Write,
+	io::Write as _,
 	net::TcpStream,
 	sync::{Arc, Mutex, mpsc::RecvTimeoutError},
 	time::{Duration, Instant},
 };
 
-use super::{
-	super::{
+use crate::orchestrator::{
+	OPERATOR_DASHBOARD_WS_HEARTBEAT_INTERVAL,
+	operator_http::{
 		DashboardClientFrame, DashboardEventHub, DashboardWebSocketSession,
-		PublishedOperatorSnapshot, Result, StateStore, dashboard_current_snapshot_event_payload,
+		PublishedOperatorSnapshot, Result, StateStore,
+		dashboard::{control, framing, handshake, run_activity, snapshot, subscription},
 	},
-	control::{
-		dashboard_control_ack_should_push_run_activity, dashboard_control_ack_should_push_snapshot,
-		dashboard_control_ready_payload, handle_dashboard_client_message,
-	},
-	framing::{
-		read_dashboard_websocket_client_frames, websocket_frame, websocket_ping_frame,
-		write_dashboard_websocket_event,
-	},
-	handshake::operator_dashboard_websocket_response_headers,
-	run_activity::write_cached_dashboard_run_activity_event,
-	subscription::dashboard_event_for_subscription,
 };
-use crate::orchestrator::OPERATOR_DASHBOARD_WS_HEARTBEAT_INTERVAL;
 
-pub(in crate::orchestrator::operator_http) fn handle_operator_dashboard_websocket_connection(
+pub(crate) fn handle_operator_dashboard_websocket_connection(
 	mut stream: TcpStream,
 	request: &[u8],
 	snapshot: &Arc<Mutex<PublishedOperatorSnapshot>>,
@@ -34,7 +24,7 @@ pub(in crate::orchestrator::operator_http) fn handle_operator_dashboard_websocke
 	stream.set_read_timeout(Some(Duration::from_millis(20)))?;
 	stream.set_write_timeout(Some(Duration::from_secs(2)))?;
 
-	let response = match operator_dashboard_websocket_response_headers(request) {
+	let response = match handshake::operator_dashboard_websocket_response_headers(request) {
 		Ok(response) => response,
 		Err(response) => {
 			stream.write_all(&response)?;
@@ -49,35 +39,48 @@ pub(in crate::orchestrator::operator_http) fn handle_operator_dashboard_websocke
 
 	stream.write_all(&response)?;
 
-	write_dashboard_websocket_event(
+	framing::write_dashboard_websocket_event(
 		&mut stream,
 		"controlReady",
-		&dashboard_control_ready_payload(&session.subscription),
+		&control::dashboard_control_ready_payload(&session.subscription),
 	)?;
 
-	if let Some(payload) = dashboard_current_snapshot_event_payload(snapshot)? {
-		write_dashboard_websocket_event(&mut stream, "snapshot", &payload)?;
+	if let Some(payload) = snapshot::dashboard_current_snapshot_event_payload(snapshot)? {
+		framing::write_dashboard_websocket_event(&mut stream, "snapshot", &payload)?;
 	}
 
-	write_cached_dashboard_run_activity_event(&mut stream, dashboard_events, &session.subscription);
+	run_activity::write_cached_dashboard_run_activity_event(
+		&mut stream,
+		dashboard_events,
+		&session.subscription,
+	);
 
 	loop {
-		for frame in read_dashboard_websocket_client_frames(&mut stream, &mut client_frame_buffer)?
+		for frame in
+			framing::read_dashboard_websocket_client_frames(&mut stream, &mut client_frame_buffer)?
 		{
 			match frame {
 				DashboardClientFrame::Text(payload) => {
-					let response =
-						handle_dashboard_client_message(&mut session, state_store, &payload);
+					let response = control::handle_dashboard_client_message(
+						&mut session,
+						state_store,
+						&payload,
+					);
 
-					write_dashboard_websocket_event(&mut stream, "controlAck", &response)?;
+					framing::write_dashboard_websocket_event(&mut stream, "controlAck", &response)?;
 
-					if dashboard_control_ack_should_push_snapshot(&response)
-						&& let Some(payload) = dashboard_current_snapshot_event_payload(snapshot)?
+					if control::dashboard_control_ack_should_push_snapshot(&response)
+						&& let Some(payload) =
+							snapshot::dashboard_current_snapshot_event_payload(snapshot)?
 					{
-						write_dashboard_websocket_event(&mut stream, "snapshot", &payload)?;
+						framing::write_dashboard_websocket_event(
+							&mut stream,
+							"snapshot",
+							&payload,
+						)?;
 					}
-					if dashboard_control_ack_should_push_run_activity(&response) {
-						write_cached_dashboard_run_activity_event(
+					if control::dashboard_control_ack_should_push_run_activity(&response) {
+						run_activity::write_cached_dashboard_run_activity_event(
 							&mut stream,
 							dashboard_events,
 							&session.subscription,
@@ -86,7 +89,7 @@ pub(in crate::orchestrator::operator_http) fn handle_operator_dashboard_websocke
 				},
 				DashboardClientFrame::Close => return Ok(()),
 				DashboardClientFrame::Ping(payload) => {
-					stream.write_all(&websocket_frame(0xA, &payload)?)?;
+					stream.write_all(&framing::websocket_frame(0xA, &payload)?)?;
 				},
 				DashboardClientFrame::Pong => {},
 			}
@@ -94,9 +97,14 @@ pub(in crate::orchestrator::operator_http) fn handle_operator_dashboard_websocke
 
 		match events.recv_timeout(Duration::from_millis(100)) {
 			Ok(event) => {
-				if let Some(event) = dashboard_event_for_subscription(&event, &session.subscription)
+				if let Some(event) =
+					subscription::dashboard_event_for_subscription(&event, &session.subscription)
 				{
-					write_dashboard_websocket_event(&mut stream, event.event_type, &event.payload)?;
+					framing::write_dashboard_websocket_event(
+						&mut stream,
+						event.event_type,
+						&event.payload,
+					)?;
 				}
 			},
 			Err(RecvTimeoutError::Timeout) => {},
@@ -104,7 +112,7 @@ pub(in crate::orchestrator::operator_http) fn handle_operator_dashboard_websocke
 		}
 
 		if last_heartbeat.elapsed() >= OPERATOR_DASHBOARD_WS_HEARTBEAT_INTERVAL {
-			stream.write_all(&websocket_ping_frame())?;
+			stream.write_all(&framing::websocket_ping_frame())?;
 
 			last_heartbeat = Instant::now();
 		}

@@ -6,7 +6,7 @@ use crate::orchestrator::agent_evidence::{
 	runtime,
 };
 
-pub(in crate::orchestrator) fn write_agent_evidence_snapshot(
+pub(crate) fn write_agent_evidence_snapshot(
 	snapshot: &OperatorStatusSnapshot,
 	source: AgentEvidenceSource,
 ) -> Result<Vec<AgentEvidenceWriteResult>> {
@@ -106,7 +106,7 @@ pub(in crate::orchestrator) fn write_agent_evidence_snapshot(
 	Ok(results)
 }
 
-pub(in crate::orchestrator) fn write_agent_evidence_best_effort(
+pub(crate) fn write_agent_evidence_best_effort(
 	snapshot: &OperatorStatusSnapshot,
 	source: AgentEvidenceSource,
 ) {
@@ -119,9 +119,7 @@ pub(in crate::orchestrator) fn write_agent_evidence_best_effort(
 	}
 }
 
-pub(in crate::orchestrator) fn render_agent_evidence_write_result(
-	result: &AgentEvidenceWriteResult,
-) -> String {
+pub(crate) fn render_agent_evidence_write_result(result: &AgentEvidenceWriteResult) -> String {
 	format!(
 		"agent evidence written: project={} blockers={} run_capsules={} warnings={} index={}\n",
 		result.project_id,

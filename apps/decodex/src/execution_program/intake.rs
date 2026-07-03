@@ -2,14 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{
-	contract::{
-		decision_contract_autonomy_signal_refs, decision_contract_provenance_reference,
-		ensure_accepted_contract,
-	},
-	validation::{validate_optional, validate_required, validate_string_list},
-};
 use crate::{
+	execution_program::{
+		contract::{self},
+		validation::{self},
+	},
 	loop_contract::DecisionContract,
 	prelude::{Result, eyre},
 };
@@ -67,7 +64,7 @@ impl ProgramIntakePlan {
 		contract: &DecisionContract,
 		accepted_contract_fingerprint: impl Into<String>,
 	) -> Result<Self> {
-		ensure_accepted_contract(contract)?;
+		contract::ensure_accepted_contract(contract)?;
 
 		let public_summary =
 			contract.accepted_authority().accepted_objectives().first().cloned().unwrap_or_else(
@@ -80,15 +77,15 @@ impl ProgramIntakePlan {
 			service_id: service_id.into(),
 			intake_kind: ProgramIntakeKind::GoalIntake,
 			source_contract_id: Some(contract.contract_id().to_owned()),
-			source_objective_ref: decision_contract_provenance_reference(
+			source_objective_ref: contract::decision_contract_provenance_reference(
 				contract,
 				"autonomy_objective",
 			),
-			source_proposal_id: decision_contract_provenance_reference(
+			source_proposal_id: contract::decision_contract_provenance_reference(
 				contract,
 				"autonomy_proposal",
 			),
-			source_signal_refs: decision_contract_autonomy_signal_refs(contract),
+			source_signal_refs: contract::decision_contract_autonomy_signal_refs(contract),
 			accepted_contract_fingerprint: accepted_contract_fingerprint.into(),
 			public_summary,
 		};
@@ -171,14 +168,14 @@ impl ProgramIntakePlan {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("program intake plan schema", &self.schema)?;
-		validate_required("program intake plan plan_id", &self.plan_id)?;
-		validate_required("program intake plan service_id", &self.service_id)?;
-		validate_required(
+		validation::validate_required("program intake plan schema", &self.schema)?;
+		validation::validate_required("program intake plan plan_id", &self.plan_id)?;
+		validation::validate_required("program intake plan service_id", &self.service_id)?;
+		validation::validate_required(
 			"program intake plan accepted_contract_fingerprint",
 			&self.accepted_contract_fingerprint,
 		)?;
-		validate_required("program intake plan public_summary", &self.public_summary)?;
+		validation::validate_required("program intake plan public_summary", &self.public_summary)?;
 
 		if self.schema != PROGRAM_INTAKE_PLAN_SCHEMA {
 			eyre::bail!(
@@ -232,15 +229,18 @@ impl ProgramIntakePlan {
 			);
 		}
 
-		validate_optional(
+		validation::validate_optional(
 			"program intake plan source_objective_ref",
 			self.source_objective_ref.as_deref(),
 		)?;
-		validate_optional(
+		validation::validate_optional(
 			"program intake plan source_proposal_id",
 			self.source_proposal_id.as_deref(),
 		)?;
-		validate_string_list("program intake plan source_signal_refs", &self.source_signal_refs)?;
+		validation::validate_string_list(
+			"program intake plan source_signal_refs",
+			&self.source_signal_refs,
+		)?;
 
 		Ok(())
 	}

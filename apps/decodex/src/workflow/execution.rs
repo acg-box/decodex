@@ -6,9 +6,10 @@ use std::{
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 
-use crate::prelude::eyre;
-
-use super::validation::{validate_repo_relative_paths, validate_string_entries};
+use crate::{
+	prelude::{Result, eyre},
+	workflow::validation::{self},
+};
 
 /// Repo-local execution and repo-gate policy.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -97,9 +98,12 @@ impl WorkflowExecution {
 		self.default_repo_gate()
 	}
 
-	pub(super) fn validate(&self) -> crate::prelude::Result<()> {
-		validate_string_entries("execution.canonicalize_commands", &self.canonicalize_commands)?;
-		validate_string_entries("execution.verify_commands", &self.verify_commands)?;
+	pub(super) fn validate(&self) -> Result<()> {
+		validation::validate_string_entries(
+			"execution.canonicalize_commands",
+			&self.canonicalize_commands,
+		)?;
+		validation::validate_string_entries("execution.verify_commands", &self.verify_commands)?;
 
 		for (profile_name, profile) in &self.gate_profiles {
 			let trimmed = profile_name.trim();
@@ -146,16 +150,16 @@ impl WorkflowWorkspaceHooks {
 		self.timeout_seconds
 	}
 
-	fn validate(&self) -> crate::prelude::Result<()> {
+	fn validate(&self) -> Result<()> {
 		if self.timeout_seconds == 0 {
 			eyre::bail!("`execution.workspace_hooks.timeout_seconds` must be greater than zero.");
 		}
 
-		validate_string_entries(
+		validation::validate_string_entries(
 			"execution.workspace_hooks.after_create_commands",
 			&self.after_create_commands,
 		)?;
-		validate_string_entries(
+		validation::validate_string_entries(
 			"execution.workspace_hooks.before_remove_commands",
 			&self.before_remove_commands,
 		)?;
@@ -194,7 +198,7 @@ impl WorkflowGateProfile {
 		&self.verify_commands
 	}
 
-	fn validate(&self, profile_name: &str) -> crate::prelude::Result<()> {
+	fn validate(&self, profile_name: &str) -> Result<()> {
 		if self.paths.is_empty() {
 			eyre::bail!("`execution.gate_profiles.{profile_name}.paths` must not be empty.");
 		}
@@ -204,18 +208,18 @@ impl WorkflowGateProfile {
 			);
 		}
 
-		validate_repo_relative_paths(
+		validation::validate_repo_relative_paths(
 			&format!("execution.gate_profiles.{profile_name}.paths"),
 			&self.paths,
 		)?;
 
 		self.compile_path_set(profile_name)?;
 
-		validate_string_entries(
+		validation::validate_string_entries(
 			&format!("execution.gate_profiles.{profile_name}.canonicalize_commands"),
 			&self.canonicalize_commands,
 		)?;
-		validate_string_entries(
+		validation::validate_string_entries(
 			&format!("execution.gate_profiles.{profile_name}.verify_commands"),
 			&self.verify_commands,
 		)?;
@@ -223,10 +227,7 @@ impl WorkflowGateProfile {
 		Ok(())
 	}
 
-	fn matches_changed_files(
-		&self,
-		changed_files: &BTreeSet<String>,
-	) -> crate::prelude::Result<bool> {
+	fn matches_changed_files(&self, changed_files: &BTreeSet<String>) -> Result<bool> {
 		let path_set = self.compile_path_set("runtime")?;
 
 		match self.match_mode {
@@ -235,7 +236,7 @@ impl WorkflowGateProfile {
 		}
 	}
 
-	fn compile_path_set(&self, profile_name: &str) -> crate::prelude::Result<GlobSet> {
+	fn compile_path_set(&self, profile_name: &str) -> Result<GlobSet> {
 		let mut builder = GlobSetBuilder::new();
 
 		for path in &self.paths {

@@ -1,10 +1,26 @@
-use super::*;
+use std::{cell::RefCell, fs};
+
+use tempfile::TempDir;
+
+use crate::{
+	recovery::{
+		GHOST_LANE_BLOCKED_CLASSIFICATION, GHOST_LANE_CLASSIFICATION, GHOST_LANE_CLEANUP_EVENT,
+		GHOST_LANE_TERMINAL_STATUS, GhostLaneDiagnostic,
+		MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION, RecoveryRuntimeMutationPolicy,
+		tests::{self, GhostLaneTestTracker},
+	},
+	state::{
+		self, ChildAgentActivitySummary, ReviewHandoffMarker, ReviewPolicyCheckpointInput,
+		StateStore,
+	},
+	tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
+};
 
 #[test]
 fn ghost_lane_live_status_overlay_tracker_backoff_stays_read_only() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
 	let missing_tracker = GhostLaneTestTracker::missing();
 	let error_tracker =
 		GhostLaneTestTracker::refresh_error("Linear connector timed out while testing");
@@ -18,7 +34,7 @@ fn ghost_lane_live_status_overlay_tracker_backoff_stays_read_only() {
 		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
 		.expect("lease should record");
 
-	let mut diagnostics = super::super::diagnose_ghost_lanes_read_only(
+	let mut diagnostics = super::diagnose_ghost_lanes_read_only(
 		context.config.service_id(),
 		context.config.worktree_root(),
 		&context.state_store,
@@ -26,7 +42,7 @@ fn ghost_lane_live_status_overlay_tracker_backoff_stays_read_only() {
 		Some("PUB-012"),
 	)
 	.expect("ghost lane diagnostic should run");
-	let error = super::super::apply_ghost_lane_live_status_blockers_with_tracker(
+	let error = super::apply_ghost_lane_live_status_blockers_with_tracker(
 		&error_tracker,
 		&context.config,
 		&context.workflow,
@@ -34,12 +50,9 @@ fn ghost_lane_live_status_overlay_tracker_backoff_stays_read_only() {
 		&mut diagnostics,
 	)
 	.expect_err("overlay tracker error should surface for recovery backoff wrapping");
-	let message = super::super::remember_recovery_tracker_backoff_message(
-		&context,
-		&error,
-		"ghost_lane_recovery",
-	)
-	.expect("timeout should become a recovery backoff message");
+	let message =
+		super::remember_recovery_tracker_backoff_message(&context, &error, "ghost_lane_recovery")
+			.expect("timeout should become a recovery backoff message");
 
 	assert!(message.contains("ghost_lane_recovery"));
 	assert!(
@@ -56,7 +69,7 @@ fn ghost_lane_live_status_overlay_tracker_backoff_stays_read_only() {
 fn ghost_lane_diagnose_live_status_overlay_blocks_active_thread_marker() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
 	let tracker = GhostLaneTestTracker::missing();
 	let worktree_path = context.config.worktree_root().join("PUB-012");
 	let mut diagnostics = vec![super::super::GhostLaneDiagnostic {
@@ -105,7 +118,7 @@ fn ghost_lane_diagnose_live_status_overlay_blocks_active_thread_marker() {
 		&[String::from("waitingOnApproval")],
 	)
 	.expect("active thread marker should write");
-	super::super::apply_ghost_lane_live_status_blockers_with_tracker(
+	super::apply_ghost_lane_live_status_blockers_with_tracker(
 		&tracker,
 		&context.config,
 		&context.workflow,
@@ -125,10 +138,10 @@ fn ghost_lane_diagnose_live_status_overlay_blocks_active_thread_marker() {
 fn ghost_lane_cleanup_live_status_gate_rejects_active_thread_marker() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
 	let tracker = GhostLaneTestTracker::missing();
 	let worktree_path = context.config.worktree_root().join("PUB-012");
-	let diagnostic = super::super::GhostLaneDiagnostic {
+	let diagnostic = GhostLaneDiagnostic {
 		project_id: String::from("pubfi"),
 		issue_id: String::from("PUB-012"),
 		issue_identifier: Some(String::from("PUBFI-012")),
@@ -175,7 +188,7 @@ fn ghost_lane_cleanup_live_status_gate_rejects_active_thread_marker() {
 	)
 	.expect("active thread marker should write");
 
-	let error = super::super::ensure_ghost_lane_live_status_allows_cleanup_with_tracker(
+	let error = super::ensure_ghost_lane_live_status_allows_cleanup_with_tracker(
 		&tracker,
 		&context.config,
 		&context.workflow,
@@ -199,14 +212,9 @@ fn ghost_lane_cleanup_terminalizes_missing_issue_lease_and_records_private_audit
 	store.record_run_attempt("run-12", "PUB-012", 1, "running").expect("run attempt should record");
 	store.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress").expect("lease should record");
 
-	let mut diagnostics = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUBFI-012"),
-	)
-	.expect("ghost lane diagnostic should run");
+	let mut diagnostics =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUBFI-012"))
+			.expect("ghost lane diagnostic should run");
 	let diagnostic = diagnostics.pop().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.classification, GHOST_LANE_CLASSIFICATION);
@@ -219,7 +227,7 @@ fn ghost_lane_cleanup_terminalizes_missing_issue_lease_and_records_private_audit
 	assert!(diagnostic.evidence.contains(&String::from("private_evidence_missing")));
 	assert!(diagnostic.evidence.contains(&String::from("review_lineage_missing")));
 
-	super::super::apply_ghost_lane_cleanup(&store, &diagnostic).expect("cleanup should apply");
+	super::apply_ghost_lane_cleanup(&store, &diagnostic).expect("cleanup should apply");
 
 	assert!(
 		store.list_leased_runs("pubfi").expect("leased runs should load").is_empty(),
@@ -248,7 +256,7 @@ fn ghost_lane_cleanup_terminalizes_missing_issue_lease_and_records_private_audit
 fn ghost_lane_cleanup_dry_run_validation_keeps_runtime_state_untouched() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
 	let tracker = GhostLaneTestTracker::missing();
 
 	context
@@ -260,7 +268,7 @@ fn ghost_lane_cleanup_dry_run_validation_keeps_runtime_state_untouched() {
 		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
 		.expect("lease should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes_read_only(
+	let diagnostics = super::diagnose_ghost_lanes_read_only(
 		context.config.service_id(),
 		context.config.worktree_root(),
 		&context.state_store,
@@ -272,7 +280,7 @@ fn ghost_lane_cleanup_dry_run_validation_keeps_runtime_state_untouched() {
 
 	assert!(diagnostic.recoverable());
 
-	super::super::ensure_ghost_lane_live_status_allows_cleanup_with_tracker(
+	super::ensure_ghost_lane_live_status_allows_cleanup_with_tracker(
 		&tracker,
 		&context.config,
 		&context.workflow,
@@ -303,12 +311,12 @@ fn ghost_lane_cleanup_dry_run_validation_keeps_runtime_state_untouched() {
 fn ghost_lane_diagnostic_allows_mcp_test_fixture_control_evidence() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
 	let tracker = GhostLaneTestTracker::missing();
 
-	seed_mcp_test_fixture_ghost_lane(&context.state_store, context.config.worktree_root());
+	tests::seed_mcp_test_fixture_ghost_lane(&context.state_store, context.config.worktree_root());
 
-	let diagnostics = super::super::diagnose_ghost_lanes_read_only(
+	let diagnostics = super::diagnose_ghost_lanes_read_only(
 		context.config.service_id(),
 		context.config.worktree_root(),
 		&context.state_store,
@@ -337,13 +345,13 @@ fn ghost_lane_diagnostic_allows_mcp_test_fixture_control_evidence() {
 fn ghost_lane_diagnostic_allows_prior_mcp_test_fixture_cleanup_audit() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
 	let tracker = GhostLaneTestTracker::missing();
 
-	seed_mcp_test_fixture_ghost_lane(&context.state_store, context.config.worktree_root());
-	append_mcp_test_fixture_ghost_lane_cleanup_audit(&context.state_store);
+	tests::seed_mcp_test_fixture_ghost_lane(&context.state_store, context.config.worktree_root());
+	tests::append_mcp_test_fixture_ghost_lane_cleanup_audit(&context.state_store);
 
-	let diagnostics = super::super::diagnose_ghost_lanes_read_only(
+	let diagnostics = super::diagnose_ghost_lanes_read_only(
 		context.config.service_id(),
 		context.config.worktree_root(),
 		&context.state_store,
@@ -367,10 +375,10 @@ fn ghost_lane_diagnostic_allows_prior_mcp_test_fixture_cleanup_audit() {
 fn ghost_lane_diagnostic_fails_closed_when_mcp_fixture_has_mixed_private_evidence() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
-		sample_recovery_context(&temp_dir, super::super::RecoveryRuntimeMutationPolicy::ReadOnly);
+		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
 	let tracker = GhostLaneTestTracker::missing();
 
-	seed_mcp_test_fixture_ghost_lane(&context.state_store, context.config.worktree_root());
+	tests::seed_mcp_test_fixture_ghost_lane(&context.state_store, context.config.worktree_root());
 
 	context
 		.state_store
@@ -384,7 +392,7 @@ fn ghost_lane_diagnostic_fails_closed_when_mcp_fixture_has_mixed_private_evidenc
 		)
 		.expect("real private evidence should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes_read_only(
+	let diagnostics = super::diagnose_ghost_lanes_read_only(
 		context.config.service_id(),
 		context.config.worktree_root(),
 		&context.state_store,
@@ -410,7 +418,7 @@ fn ghost_lane_diagnostic_treats_invalid_local_issue_id_refresh_as_missing_issue(
 	store.record_run_attempt("run-12", "PUB-012", 1, "running").expect("run attempt should record");
 	store.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress").expect("lease should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes_read_only(
+	let diagnostics = super::diagnose_ghost_lanes_read_only(
 		"pubfi",
 		temp_dir.path(),
 		&store,
@@ -436,7 +444,7 @@ fn ghost_lane_diagnostic_treats_missing_identifier_lookup_as_missing_issue() {
 	store.record_run_attempt("run-12", "PUB-012", 1, "running").expect("run attempt should record");
 	store.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress").expect("lease should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes_read_only(
+	let diagnostics = super::diagnose_ghost_lanes_read_only(
 		"pubfi",
 		temp_dir.path(),
 		&store,
@@ -455,7 +463,7 @@ fn ghost_lane_diagnostic_treats_missing_identifier_lookup_as_missing_issue() {
 fn ghost_lane_diagnostic_fails_closed_when_requested_issue_identifier_exists() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let mut issue = sample_issue("In Progress");
+	let mut issue = tests::sample_issue("In Progress");
 
 	issue.id = String::from("linear-pubfi-012");
 	issue.identifier = String::from("PUBFI-012");
@@ -474,14 +482,9 @@ fn ghost_lane_diagnostic_fails_closed_when_requested_issue_identifier_exists() {
 	store.record_run_attempt("run-12", "PUB-012", 1, "running").expect("run attempt should record");
 	store.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress").expect("lease should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUBFI-012"),
-	)
-	.expect("ghost lane diagnostic should run");
+	let diagnostics =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUBFI-012"))
+			.expect("ghost lane diagnostic should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
@@ -503,14 +506,9 @@ fn ghost_lane_diagnostic_rejects_unrelated_requested_identifier() {
 	store.record_run_attempt("run-12", "ABC-012", 1, "running").expect("run attempt should record");
 	store.upsert_lease("pubfi", "ABC-012", "run-12", "In Progress").expect("lease should record");
 
-	let error = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUBFI-012"),
-	)
-	.expect_err("unrelated issue prefixes should not match by numeric suffix alone");
+	let error =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUBFI-012"))
+			.expect_err("unrelated issue prefixes should not match by numeric suffix alone");
 
 	assert!(format!("{error:#}").contains("No leased lane matched"), "unexpected error: {error:#}");
 	assert!(
@@ -531,14 +529,9 @@ fn ghost_lane_diagnostic_fails_closed_when_requested_worktree_exists() {
 	store.record_run_attempt("run-12", "PUB-012", 1, "running").expect("run attempt should record");
 	store.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress").expect("lease should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUBFI-012"),
-	)
-	.expect("ghost lane diagnostic should run");
+	let diagnostics =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUBFI-012"))
+			.expect("ghost lane diagnostic should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
@@ -563,14 +556,9 @@ fn ghost_lane_diagnostic_fails_closed_when_control_channel_row_exists() {
 		.publish_run_control_channel_for_active_attempt("run-12", 1, &channel_path, "local_file")
 		.expect("control channel row should publish");
 
-	let diagnostics = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUB-012"),
-	)
-	.expect("ghost lane diagnostic should run");
+	let diagnostics =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUB-012"))
+			.expect("ghost lane diagnostic should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
@@ -602,14 +590,9 @@ fn ghost_lane_diagnostic_fails_closed_when_private_evidence_exists() {
 		)
 		.expect("private evidence should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUB-012"),
-	)
-	.expect("ghost lane diagnostic should run");
+	let diagnostics =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUB-012"))
+			.expect("ghost lane diagnostic should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
@@ -642,14 +625,9 @@ fn ghost_lane_diagnostic_fails_closed_when_review_lifecycle_exists() {
 		.upsert_review_handoff_marker("pubfi", "PUB-012", &marker)
 		.expect("review lifecycle should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUB-012"),
-	)
-	.expect("ghost lane diagnostic should run");
+	let diagnostics =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUB-012"))
+			.expect("ghost lane diagnostic should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
@@ -684,14 +662,9 @@ fn ghost_lane_diagnostic_fails_closed_when_review_checkpoint_exists() {
 		})
 		.expect("review checkpoint should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUB-012"),
-	)
-	.expect("ghost lane diagnostic should run");
+	let diagnostics =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUB-012"))
+			.expect("ghost lane diagnostic should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
@@ -732,14 +705,9 @@ fn ghost_lane_diagnostic_fails_closed_when_pr_lineage_exists() {
 	store.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress").expect("lease should record");
 	store.record_linear_execution_event(&event).expect("linear event should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUB-012"),
-	)
-	.expect("ghost lane diagnostic should run");
+	let diagnostics =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUB-012"))
+			.expect("ghost lane diagnostic should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
@@ -763,14 +731,9 @@ fn ghost_lane_diagnostic_fails_closed_when_retained_worktree_exists() {
 	store.record_run_attempt("run-12", "PUB-012", 1, "running").expect("run attempt should record");
 	store.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress").expect("lease should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUB-012"),
-	)
-	.expect("ghost lane diagnostic should run");
+	let diagnostics =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUB-012"))
+			.expect("ghost lane diagnostic should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);
@@ -795,14 +758,9 @@ fn ghost_lane_diagnostic_fails_closed_when_activity_summary_exists() {
 		.expect("activity summary should record");
 	store.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress").expect("lease should record");
 
-	let diagnostics = super::super::diagnose_ghost_lanes(
-		"pubfi",
-		temp_dir.path(),
-		&store,
-		&tracker,
-		Some("PUB-012"),
-	)
-	.expect("ghost lane diagnostic should run");
+	let diagnostics =
+		super::diagnose_ghost_lanes("pubfi", temp_dir.path(), &store, &tracker, Some("PUB-012"))
+			.expect("ghost lane diagnostic should run");
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.classification, GHOST_LANE_BLOCKED_CLASSIFICATION);

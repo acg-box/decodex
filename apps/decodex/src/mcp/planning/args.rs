@@ -4,42 +4,42 @@ use crate::research_design::{ResearchDesignOutcome, ResearchDesignRunInput};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ResearchCompileToolArgs {
-	pub(super) mode: Option<String>,
-	pub(super) project_id: Option<String>,
-	pub(super) input: Option<ResearchDesignRunInput>,
-	pub(super) intent: Option<String>,
-	pub(super) source_issue: Option<String>,
-	pub(super) outcome: Option<ResearchDesignOutcome>,
-	pub(super) authority: Option<PlanningAuthorityArgs>,
+pub(in crate::mcp) struct ResearchCompileToolArgs {
+	pub(in crate::mcp) mode: Option<String>,
+	pub(in crate::mcp) project_id: Option<String>,
+	pub(in crate::mcp) input: Option<ResearchDesignRunInput>,
+	pub(in crate::mcp) intent: Option<String>,
+	pub(in crate::mcp) source_issue: Option<String>,
+	pub(in crate::mcp) outcome: Option<ResearchDesignOutcome>,
+	pub(in crate::mcp) authority: Option<PlanningAuthorityArgs>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ResearchPromoteToolArgs {
-	pub(super) mode: Option<String>,
-	pub(super) project_id: Option<String>,
-	pub(super) contract_id: String,
-	pub(super) authority: Option<PlanningAuthorityArgs>,
+pub(in crate::mcp) struct ResearchPromoteToolArgs {
+	pub(in crate::mcp) mode: Option<String>,
+	pub(in crate::mcp) project_id: Option<String>,
+	pub(in crate::mcp) contract_id: String,
+	pub(in crate::mcp) authority: Option<PlanningAuthorityArgs>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct IntakeGoalToolArgs {
-	pub(super) mode: Option<String>,
-	pub(super) contract_id: String,
-	pub(super) team_issue_identifier: Option<String>,
-	pub(super) authority: Option<PlanningAuthorityArgs>,
+pub(in crate::mcp) struct IntakeGoalToolArgs {
+	pub(in crate::mcp) mode: Option<String>,
+	pub(in crate::mcp) contract_id: String,
+	pub(in crate::mcp) team_issue_identifier: Option<String>,
+	pub(in crate::mcp) authority: Option<PlanningAuthorityArgs>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct PlanningAuthorityArgs {
-	pub(super) source: Option<String>,
-	pub(super) reason: Option<String>,
-	pub(super) accepted_by: Option<String>,
-	pub(super) accepted_at: Option<String>,
-	pub(super) acceptance_source: Option<String>,
-	pub(super) run_id: Option<String>,
-	pub(super) expected_turn_id: Option<String>,
+pub(in crate::mcp) struct PlanningAuthorityArgs {
+	pub(in crate::mcp) source: Option<String>,
+	pub(in crate::mcp) reason: Option<String>,
+	pub(in crate::mcp) accepted_by: Option<String>,
+	pub(in crate::mcp) accepted_at: Option<String>,
+	pub(in crate::mcp) acceptance_source: Option<String>,
+	pub(in crate::mcp) run_id: Option<String>,
+	pub(in crate::mcp) expected_turn_id: Option<String>,
 }

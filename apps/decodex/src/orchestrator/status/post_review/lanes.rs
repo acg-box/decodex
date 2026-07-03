@@ -1,25 +1,24 @@
-use std::collections::HashMap;
-
-use super::{
-	OperatorLoopStatus, OperatorPostReviewLaneStatus, OperatorStatusSnapshot,
-	PostReviewLaneBuildContext, PostReviewLaneClassification, PostReviewLaneDecision,
-	PostReviewLaneSnapshot, PullRequestReviewStateInspector, ServiceConfig, StateStore,
-	TrackerIssue, WorkflowDocument, WorktreeMapping, blocked_post_review_lane_status,
-	issue_retry_budget_exhausted_for_worktree, operator_loop_status_for_run,
-	relative_worktree_path_for_path, tracker, worktree_checkout_branch_name, worktree_head_oid,
+use crate::{
+	orchestrator::status::{
+		post_review,
+		post_review::{
+			HashMap, OperatorLoopStatus, OperatorPostReviewLaneStatus, OperatorStatusSnapshot,
+			PostReviewLaneBuildContext, PostReviewLaneClassification, PostReviewLaneDecision,
+			PostReviewLaneSnapshot, PullRequestReviewStateInspector, ServiceConfig, StateStore,
+			TrackerIssue, WorkflowDocument, WorktreeMapping,
+		},
+	},
+	prelude::Result,
+	tracker,
 };
-use super::{
-	classification::classify_post_review_lane_with_project,
-	retry_budget::retry_budget_exhausted_post_review_lane_classification,
-};
 
-pub(in crate::orchestrator) fn build_post_review_lane_statuses_from_worktree_issues<I>(
+pub(crate) fn build_post_review_lane_statuses_from_worktree_issues<I>(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	review_state_inspector: &I,
 	worktree_issues: Vec<(WorktreeMapping, TrackerIssue)>,
-) -> crate::prelude::Result<Vec<OperatorPostReviewLaneStatus>>
+) -> Result<Vec<OperatorPostReviewLaneStatus>>
 where
 	I: PullRequestReviewStateInspector,
 {
@@ -49,7 +48,7 @@ where
 	Ok(lanes)
 }
 
-pub(in crate::orchestrator) fn hydrate_worktree_issue_metadata(
+pub(crate) fn hydrate_worktree_issue_metadata(
 	snapshot: &mut OperatorStatusSnapshot,
 	worktree_issues: &[(WorktreeMapping, TrackerIssue)],
 ) {
@@ -68,11 +67,11 @@ pub(in crate::orchestrator) fn hydrate_worktree_issue_metadata(
 	}
 }
 
-pub(in crate::orchestrator) fn build_post_review_lane_status<I>(
+pub(crate) fn build_post_review_lane_status<I>(
 	context: &PostReviewLaneBuildContext<'_, I>,
 	issue: TrackerIssue,
 	worktree: WorktreeMapping,
-) -> crate::prelude::Result<Option<OperatorPostReviewLaneStatus>>
+) -> Result<Option<OperatorPostReviewLaneStatus>>
 where
 	I: PullRequestReviewStateInspector,
 {
@@ -81,7 +80,7 @@ where
 	}
 
 	if let Some(reason) = post_review_lane_static_block_reason(&issue, context.workflow)? {
-		return Ok(Some(blocked_post_review_lane_status(
+		return Ok(Some(post_review::blocked_post_review_lane_status(
 			context.project,
 			&issue,
 			&worktree,
@@ -89,7 +88,7 @@ where
 		)));
 	}
 
-	let retry_budget_exhausted = issue_retry_budget_exhausted_for_worktree(
+	let retry_budget_exhausted = post_review::issue_retry_budget_exhausted_for_worktree(
 		context.workflow,
 		context.state_store,
 		&issue.id,
@@ -105,21 +104,22 @@ where
 		return Ok(None);
 	}
 
-	let local_branch_name = match worktree_checkout_branch_name(worktree.worktree_path()) {
-		Ok(local_branch_name) => local_branch_name,
-		Err(_error) => {
-			return Ok(Some(blocked_post_review_lane_status(
-				context.project,
-				&issue,
-				&worktree,
-				"worktree_checkout_branch_read_failed",
-			)));
-		},
-	};
-	let local_head_oid = match worktree_head_oid(worktree.worktree_path()) {
+	let local_branch_name =
+		match post_review::worktree_checkout_branch_name(worktree.worktree_path()) {
+			Ok(local_branch_name) => local_branch_name,
+			Err(_error) => {
+				return Ok(Some(post_review::blocked_post_review_lane_status(
+					context.project,
+					&issue,
+					&worktree,
+					"worktree_checkout_branch_read_failed",
+				)));
+			},
+		};
+	let local_head_oid = match post_review::worktree_head_oid(worktree.worktree_path()) {
 		Ok(local_head_oid) => local_head_oid,
 		Err(_error) => {
-			return Ok(Some(blocked_post_review_lane_status(
+			return Ok(Some(post_review::blocked_post_review_lane_status(
 				context.project,
 				&issue,
 				&worktree,
@@ -134,7 +134,7 @@ where
 		local_branch_name,
 		local_head_oid,
 	};
-	let mut classification = classify_post_review_lane_with_project(
+	let mut classification = post_review::classify_post_review_lane_with_project(
 		&snapshot,
 		context.project,
 		context.workflow,
@@ -143,7 +143,7 @@ where
 	)?;
 
 	if retry_budget_exhausted {
-		classification = retry_budget_exhausted_post_review_lane_classification(
+		classification = post_review::retry_budget_exhausted_post_review_lane_classification(
 			&snapshot,
 			context.project,
 			context.workflow,
@@ -167,7 +167,7 @@ where
 	)?))
 }
 
-pub(in crate::orchestrator) fn apply_active_ownership_warning_to_post_review_lane(
+pub(crate) fn apply_active_ownership_warning_to_post_review_lane(
 	project: &ServiceConfig,
 	success_state: &str,
 	snapshot: &PostReviewLaneSnapshot,
@@ -185,12 +185,12 @@ pub(in crate::orchestrator) fn apply_active_ownership_warning_to_post_review_lan
 	}
 }
 
-pub(in crate::orchestrator) fn post_review_lane_status_from_classification(
+pub(crate) fn post_review_lane_status_from_classification(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	snapshot: &PostReviewLaneSnapshot,
 	classification: PostReviewLaneClassification,
-) -> crate::prelude::Result<OperatorPostReviewLaneStatus> {
+) -> Result<OperatorPostReviewLaneStatus> {
 	let loop_status =
 		operator_post_review_loop_status(project, state_store, snapshot, classification.decision)?;
 
@@ -200,7 +200,10 @@ pub(in crate::orchestrator) fn post_review_lane_status_from_classification(
 		issue_identifier: snapshot.issue.identifier.clone(),
 		issue_state: snapshot.issue.state.name.clone(),
 		branch_name: snapshot.worktree.branch_name().to_owned(),
-		worktree_path: relative_worktree_path_for_path(project, snapshot.worktree.worktree_path()),
+		worktree_path: post_review::relative_worktree_path_for_path(
+			project,
+			snapshot.worktree.worktree_path(),
+		),
 		classification: classification.decision.as_str().to_owned(),
 		reason: classification.reason,
 		pr_url: classification.pr_url,
@@ -217,12 +220,12 @@ pub(in crate::orchestrator) fn post_review_lane_status_from_classification(
 	})
 }
 
-pub(in crate::orchestrator) fn operator_post_review_loop_status(
+pub(crate) fn operator_post_review_loop_status(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	snapshot: &PostReviewLaneSnapshot,
 	decision: PostReviewLaneDecision,
-) -> crate::prelude::Result<Option<OperatorLoopStatus>> {
+) -> Result<Option<OperatorLoopStatus>> {
 	let Some(review_handoff) = snapshot.review_handoff.as_ref() else {
 		return Ok(None);
 	};
@@ -231,7 +234,7 @@ pub(in crate::orchestrator) fn operator_post_review_loop_status(
 		_ => Some("repair"),
 	};
 
-	operator_loop_status_for_run(
+	post_review::operator_loop_status_for_run(
 		project,
 		state_store,
 		&snapshot.issue.id,
@@ -243,10 +246,10 @@ pub(in crate::orchestrator) fn operator_post_review_loop_status(
 	.map(Some)
 }
 
-pub(in crate::orchestrator) fn post_review_lane_static_block_reason(
+pub(crate) fn post_review_lane_static_block_reason(
 	issue: &TrackerIssue,
 	workflow: &WorkflowDocument,
-) -> crate::prelude::Result<Option<&'static str>> {
+) -> Result<Option<&'static str>> {
 	let tracker_policy = workflow.frontmatter().tracker();
 
 	if issue.has_label(tracker_policy.opt_out_label()) {

@@ -2,7 +2,7 @@ mod axes;
 mod intent;
 mod model;
 
-pub(in crate::orchestrator) use self::model::{DecisionBlocker, OwnedLaneDecision};
+pub(crate) use self::model::{DecisionBlocker, OwnedLaneDecision};
 
 use crate::orchestrator::kernel::{
 	action::OwnedLaneAction,
@@ -13,9 +13,7 @@ use crate::orchestrator::kernel::{
 	state::{PolicyState, TerminalizationState},
 };
 
-pub(in crate::orchestrator) fn decide_owned_lane(
-	observation: &LaneObservation,
-) -> OwnedLaneDecision {
+pub(crate) fn decide_owned_lane(observation: &LaneObservation) -> OwnedLaneDecision {
 	if observation.contradictory_authority {
 		return manual_decision(observation, ReasonCode::ContradictoryAuthority);
 	}

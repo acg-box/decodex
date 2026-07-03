@@ -3,16 +3,13 @@
 mod artifact_validation;
 mod cli;
 mod config;
+mod core_io;
 mod github_api;
 mod github_bundle_client;
 mod github_token;
 mod ledger;
-mod paths;
-mod prelude {
-	pub use color_eyre::{Result, eyre};
-}
-mod core_io;
 mod operations;
+mod paths;
 mod release_delta;
 mod requests;
 mod review_queue;
@@ -20,6 +17,9 @@ mod signal_render;
 mod source_bundle;
 mod text_values;
 mod validation_files;
+mod prelude {
+	pub use color_eyre::{Result, eyre};
+}
 
 pub(crate) use self::{
 	core_io::{
@@ -27,7 +27,20 @@ pub(crate) use self::{
 		repo_default_branch, sorted_json_files, validate_expected_schema,
 		write_json_if_material_changed,
 	},
+	ledger::{
+		default_ledger_path, ledger_artifact_link, ledger_bootstrap, ledger_ingest,
+		ledger_ingest_existing, ledger_summary,
+	},
 	operations::{build_bundle, refresh_queue, render_signal, validate, validate_bundles},
+	release_delta::{backfill_release_range, refresh_release_delta},
+	requests::{
+		RadarBackfillReleaseRangeReport, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
+		RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
+		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
+		RadarRefreshQueueReport, RadarRefreshQueueRequest, RadarRefreshReleaseDeltaReport,
+		RadarRefreshReleaseDeltaRequest, RadarRenderSignalReport, RadarRenderSignalRequest,
+		RadarValidateRequest, RadarValidationReport,
+	},
 	text_values::{
 		body_excerpt, extract_commit_sha_from_url, extract_pr_number_from_url,
 		optional_value_string, path_arg, percent_encode, pretty_json, repo_root,
@@ -40,32 +53,26 @@ pub(crate) use self::{
 		utc_now_iso, validation_paths, write_json,
 	},
 };
-pub(crate) use self::{
-	ledger::{
-		default_ledger_path, ledger_artifact_link, ledger_bootstrap, ledger_ingest,
-		ledger_ingest_existing, ledger_summary,
-	},
-	release_delta::{backfill_release_range, refresh_release_delta},
-	requests::{
-		RadarBackfillReleaseRangeReport, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
-		RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
-		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
-		RadarRefreshQueueReport, RadarRefreshQueueRequest, RadarRefreshReleaseDeltaReport,
-		RadarRefreshReleaseDeltaRequest, RadarRenderSignalReport, RadarRenderSignalRequest,
-		RadarValidateRequest, RadarValidationReport,
-	},
+
+use std::{
+	collections::{BTreeMap, BTreeSet, HashSet},
+	fs::{self, OpenOptions},
+	io::Write,
+	iter,
+	path::{Path, PathBuf},
+	process,
+	sync::OnceLock,
+	time::Duration,
 };
 
-use std::{sync::OnceLock, time::Duration};
-
-use clap::Parser;
+use clap::Parser as _;
 use regex::Regex;
 use reqwest::StatusCode;
 use serde_json::{self, Map, Value};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::prelude::eyre;
-#[cfg(test)]
-use artifact_validation::has_legacy_multi_agent_v2_context;
+#[cfg(test)] use artifact_validation::has_legacy_multi_agent_v2_context;
 use artifact_validation::{
 	ValidationState, validate_analysis_draft, validate_artifact, validate_artifact_errors,
 	validate_artifact_for_path, validate_signal_file, validate_signal_slug_uniqueness,
@@ -218,5 +225,4 @@ mod test_support {
 		TEST_ENV_MUTEX.get_or_init(|| Mutex::new(()))
 	}
 }
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

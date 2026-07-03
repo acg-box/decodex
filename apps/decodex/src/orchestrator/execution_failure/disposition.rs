@@ -10,9 +10,7 @@ use crate::orchestrator::execution_failure::{
 	WorkflowDocument,
 };
 
-pub(in crate::orchestrator) fn run_failure_writeback_disposition(
-	error: &Report,
-) -> RunFailureWritebackDisposition {
+pub(crate) fn run_failure_writeback_disposition(error: &Report) -> RunFailureWritebackDisposition {
 	if error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
 		|| error
@@ -64,7 +62,7 @@ pub(in crate::orchestrator) fn run_failure_writeback_disposition(
 	}
 }
 
-pub(in crate::orchestrator) fn preserve_manual_attention_request(
+pub(crate) fn preserve_manual_attention_request(
 	completion_disposition: Result<RunCompletionDisposition>,
 	issue_run: &IssueRunPlan,
 	workflow: &WorkflowDocument,
@@ -83,7 +81,7 @@ pub(in crate::orchestrator) fn preserve_manual_attention_request(
 	error
 }
 
-pub(in crate::orchestrator) fn preserve_and_promote_app_server_run_failure(
+pub(crate) fn preserve_and_promote_app_server_run_failure(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -102,9 +100,7 @@ pub(in crate::orchestrator) fn preserve_and_promote_app_server_run_failure(
 	)
 }
 
-pub(in crate::orchestrator) fn retained_progress_source_error_class(
-	error: &Report,
-) -> Option<&'static str> {
+pub(crate) fn retained_progress_source_error_class(error: &Report) -> Option<&'static str> {
 	if let Some(app_server_failure) = error.downcast_ref::<AppServerZeroEvidenceStartFailure>() {
 		Some(app_server_failure.error_class())
 	} else if error.downcast_ref::<StalledRunNeedsAttention>().is_some() {
@@ -138,7 +134,7 @@ pub(in crate::orchestrator) fn retained_progress_source_error_class(
 	}
 }
 
-pub(in crate::orchestrator::execution_failure) fn retained_partial_progress_error(
+pub(crate) fn retained_partial_progress_error(
 	error: &Report,
 	issue_run: &IssueRunPlan,
 	worktree_path: &str,

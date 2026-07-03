@@ -8,6 +8,7 @@ use color_eyre::eyre::WrapErr;
 use crate::{
 	config::{self, ServiceConfig},
 	github::{self},
+	manual::{self, ManualAuthority, ManualLandContext, ManualLandRequest, PreparedCloseout, git},
 	prelude::{Result, eyre},
 	runtime,
 	state::{ReviewHandoffMarker, StateStore},
@@ -15,19 +16,13 @@ use crate::{
 	workflow::WorkflowDocument,
 };
 
-use super::{
-	ManualAuthority, ManualLandContext, ManualLandRequest, PreparedCloseout, current_branch_name,
-	current_worktree_root, paths_match_for_manual_commit_guard, prepare_closeout,
-	resolve_land_authority,
-};
-
 pub(super) fn prepare_manual_land_context(
 	config_path: Option<&Path>,
 	request: &ManualLandRequest,
 ) -> Result<ManualLandContext> {
 	let cwd = env::current_dir()?;
-	let worktree_root = current_worktree_root(&cwd)?;
-	let current_branch = current_branch_name(&cwd)?;
+	let worktree_root = git::current_worktree_root(&cwd)?;
+	let current_branch = manual::current_branch_name(&cwd)?;
 
 	if request.manual_authority && config_path.is_none() {
 		return prepare_unregistered_manual_land_context(
@@ -62,7 +57,7 @@ pub(super) fn prepare_configured_manual_land_context(
 
 	ensure_cli_repo_context(&cwd, &config, &canonical_repo_root)?;
 
-	let authority = resolve_land_authority(
+	let authority = manual::resolve_land_authority(
 		Some(resolved_config_path),
 		request.authority.as_deref(),
 		request.manual_authority,
@@ -129,7 +124,7 @@ pub(super) fn prepare_unregistered_manual_land_context(
 	current_branch: String,
 	request: &ManualLandRequest,
 ) -> Result<ManualLandContext> {
-	let authority = resolve_land_authority(
+	let authority = manual::resolve_land_authority(
 		None,
 		request.authority.as_deref(),
 		request.manual_authority,
@@ -216,7 +211,7 @@ pub(super) fn infer_unregistered_manual_land_worktree_root(
 ) -> PathBuf {
 	let conventional_worktree_root = canonical_repo_root.join(".worktrees");
 
-	if paths_match_for_manual_commit_guard(worktree_root, canonical_repo_root)
+	if manual::paths_match_for_manual_commit_guard(worktree_root, canonical_repo_root)
 		|| paths_match_for_manual_land_root(worktree_root, &conventional_worktree_root)
 	{
 		return conventional_worktree_root;
@@ -242,7 +237,7 @@ pub(super) fn prepare_manual_land_closeout(
 		return Ok(None);
 	};
 
-	prepare_closeout(config, workflow, authority_issue).map(Some)
+	manual::prepare_closeout(config, workflow, authority_issue).map(Some)
 }
 
 pub(super) fn resolve_manual_config_path(explicit: Option<&Path>, cwd: &Path) -> Result<PathBuf> {
@@ -266,7 +261,7 @@ pub(super) fn ensure_cli_repo_context(
 	config: &ServiceConfig,
 	canonical_repo_root: &Path,
 ) -> Result<()> {
-	let worktree_root = current_worktree_root(cwd)?;
+	let worktree_root = git::current_worktree_root(cwd)?;
 
 	if worktree_root == canonical_repo_root
 		|| config::checkouts_share_repository(&worktree_root, canonical_repo_root)?

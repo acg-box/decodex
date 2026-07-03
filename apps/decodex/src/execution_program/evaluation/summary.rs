@@ -1,12 +1,15 @@
 //! Full-program readiness summaries.
 
-use super::{super::model::ExecutionProgramNodeLifecycleState, node::ExecutionNodeEvaluation};
+use crate::execution_program::{
+	evaluation::node::ExecutionNodeEvaluation,
+	model::{ExecutionProgramNodeLifecycleState, ExecutionReadinessState},
+};
 
 /// Full readiness result for one Execution Program.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ExecutionProgramEvaluation {
-	pub(in crate::execution_program) program_id: String,
-	pub(in crate::execution_program) nodes: Vec<ExecutionNodeEvaluation>,
+	pub(crate) program_id: String,
+	pub(crate) nodes: Vec<ExecutionNodeEvaluation>,
 }
 impl ExecutionProgramEvaluation {
 	/// Node evaluations.
@@ -18,7 +21,7 @@ impl ExecutionProgramEvaluation {
 	pub(crate) fn ready_node_ids(&self) -> Vec<&str> {
 		self.nodes
 			.iter()
-			.filter(|node| node.state == super::super::model::ExecutionReadinessState::Ready)
+			.filter(|node| node.state == ExecutionReadinessState::Ready)
 			.map(|node| node.node_id.as_str())
 			.collect()
 	}

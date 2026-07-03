@@ -6,18 +6,14 @@ use std::sync::{
 use serde_json::Value;
 use time::OffsetDateTime;
 
-use crate::orchestrator::DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT;
-
-use super::{
-	super::{
-		DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS, DashboardBroadcastEvent,
+use crate::orchestrator::{
+	self, DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
+	operator_http::{
+		self, DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS, DashboardBroadcastEvent,
 		DashboardEventHub, DashboardRunActivityEvent, OPERATOR_RUN_ACTIVITY_STREAM_INTERVAL,
 		OperatorCodexAccountControlStatus, OperatorRunStatus, Result, ServiceConfig, StateStore,
-		TcpStream, WorkflowDocument, build_operator_state_snapshot_without_live_observers,
-		global_codex_account_control_status, json, operator_snapshot_presentation_value,
-		types::DashboardClientSubscription,
+		TcpStream, WorkflowDocument, dashboard::framing, types::DashboardClientSubscription,
 	},
-	framing::write_dashboard_websocket_event,
 };
 
 pub(crate) fn run_operator_run_activity_websocket_broadcasts(
@@ -60,7 +56,7 @@ pub(crate) fn build_operator_run_activity_event(
 	state_store: &StateStore,
 ) -> Result<DashboardRunActivityEvent> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
-	let account_control = global_codex_account_control_status();
+	let account_control = operator_http::global_codex_account_control_status();
 	let mut current_lanes = Vec::new();
 
 	for registration in state_store.list_projects()? {
@@ -90,7 +86,7 @@ pub(crate) fn build_operator_run_activity_event(
 				continue;
 			},
 		};
-		let project_snapshot = build_operator_state_snapshot_without_live_observers(
+		let project_snapshot = orchestrator::build_operator_state_snapshot_without_live_observers(
 			&project,
 			&workflow,
 			state_store,
@@ -107,8 +103,8 @@ pub(crate) fn build_operator_run_activity_event(
 	let fingerprint_payload =
 		dashboard_run_activity_fingerprint_payload(&account_control, &current_lanes)?;
 	let fingerprint = serde_json::to_vec(&fingerprint_payload)?;
-	let presentation = operator_snapshot_presentation_value(&current_lanes)?;
-	let payload = json!({
+	let presentation = operator_http::operator_snapshot_presentation_value(&current_lanes)?;
+	let payload = operator_http::json!({
 		"emittedAtUnixEpoch": now_unix_epoch,
 		"accountControl": &account_control,
 		"currentLanes": &current_lanes,
@@ -121,23 +117,6 @@ pub(crate) fn build_operator_run_activity_event(
 		fingerprint,
 		event: DashboardBroadcastEvent { event_type: "runActivity", payload },
 	})
-}
-
-pub(super) fn dashboard_run_activity_fingerprint_payload(
-	account_control: &OperatorCodexAccountControlStatus,
-	current_lanes: &[OperatorRunStatus],
-) -> Result<Value> {
-	let mut fingerprint_payload = json!({
-		"accountControl": account_control,
-		"currentLanes": current_lanes,
-		"currentLanesComplete": true,
-		"currentLaneScope": "complete",
-		"presentation": operator_snapshot_presentation_value(current_lanes)?,
-	});
-
-	strip_dashboard_run_activity_volatile_fields(&mut fingerprint_payload);
-
-	Ok(fingerprint_payload)
 }
 
 pub(crate) fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
@@ -158,13 +137,30 @@ pub(crate) fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
 	}
 }
 
-pub(super) fn dashboard_run_activity_event_has_current_lanes(
+pub(crate) fn dashboard_run_activity_fingerprint_payload(
+	account_control: &OperatorCodexAccountControlStatus,
+	current_lanes: &[OperatorRunStatus],
+) -> Result<Value> {
+	let mut fingerprint_payload = operator_http::json!({
+		"accountControl": account_control,
+		"currentLanes": current_lanes,
+		"currentLanesComplete": true,
+		"currentLaneScope": "complete",
+		"presentation": operator_http::operator_snapshot_presentation_value(current_lanes)?,
+	});
+
+	strip_dashboard_run_activity_volatile_fields(&mut fingerprint_payload);
+
+	Ok(fingerprint_payload)
+}
+
+pub(crate) fn dashboard_run_activity_event_has_current_lanes(
 	event: &DashboardBroadcastEvent,
 ) -> bool {
 	event.payload.get("currentLanes").and_then(Value::as_array).is_some_and(|runs| !runs.is_empty())
 }
 
-pub(super) fn write_cached_dashboard_run_activity_event(
+pub(crate) fn write_cached_dashboard_run_activity_event(
 	stream: &mut TcpStream,
 	dashboard_events: &DashboardEventHub,
 	subscription: &DashboardClientSubscription,
@@ -172,7 +168,7 @@ pub(super) fn write_cached_dashboard_run_activity_event(
 	match dashboard_events.cached_run_activity_event(subscription) {
 		Some(event) if dashboard_run_activity_event_has_current_lanes(&event) => {
 			if let Err(error) =
-				write_dashboard_websocket_event(stream, event.event_type, &event.payload)
+				framing::write_dashboard_websocket_event(stream, event.event_type, &event.payload)
 			{
 				tracing::warn!(
 					?error,

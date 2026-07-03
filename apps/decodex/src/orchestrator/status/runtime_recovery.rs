@@ -1,20 +1,21 @@
-use super::{
-	BTreeSet, CodexAccountActivitySummary, Instant, IssueTracker, OffsetDateTime, Path,
-	RecoverableWorktreeSkipCache, RecoveredRuntimeState, RetryIssueStateHint, RunActivityMarker,
-	ServiceConfig, StateStore, TrackerIssue, WorkflowDocument, WorktreeManager, WorktreeMapping,
-	WorktreeSpec, active_shared_issue_ids, clear_recovered_issue_lease, compare_issue_candidates,
-	fs, issue_passes_closeout_dispatch_policy, issue_passes_retry_dispatch_policy, slice, state,
-	tracker, worktree_activity_marker_is_fresh, worktree_mapping_is_stale_terminal_local_residue,
+use crate::{
+	commit_message,
+	orchestrator::status::{
+		self, BTreeSet, CodexAccountActivitySummary, Instant, IssueTracker, OffsetDateTime, Path,
+		RecoverableWorktreeSkipCache, RecoveredRuntimeState, RetryIssueStateHint,
+		RunActivityMarker, ServiceConfig, StateStore, TrackerIssue, WorkflowDocument,
+		WorktreeManager, WorktreeMapping, WorktreeSpec, compare_issue_candidates, fs, slice,
+	},
+	prelude::Result,
+	state, tracker,
 };
 
-use crate::commit_message;
-
-pub(in crate::orchestrator) fn recover_runtime_state_from_tracker_and_worktrees<T>(
+pub(crate) fn recover_runtime_state_from_tracker_and_worktrees<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
-) -> crate::prelude::Result<RecoveredRuntimeState>
+) -> Result<RecoveredRuntimeState>
 where
 	T: IssueTracker,
 {
@@ -27,23 +28,23 @@ where
 	)
 }
 
-pub(in crate::orchestrator) fn recover_runtime_state_from_tracker_and_worktrees_with_skip_cache<T>(
+pub(crate) fn recover_runtime_state_from_tracker_and_worktrees_with_skip_cache<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	mut recoverable_worktree_skip_cache: Option<&mut RecoverableWorktreeSkipCache>,
-) -> crate::prelude::Result<RecoveredRuntimeState>
+) -> Result<RecoveredRuntimeState>
 where
 	T: IssueTracker,
 {
 	let worktree_manager =
 		WorktreeManager::new(project.service_id(), project.repo_root(), project.worktree_root());
-	let active_issue_ids = active_shared_issue_ids(project, state_store)?;
+	let active_issue_ids = status::active_shared_issue_ids(project, state_store)?;
 	let mut issue_ids = Vec::new();
 
 	for mapping in state_store.list_worktrees(project.service_id())? {
-		if worktree_mapping_is_stale_terminal_local_residue(
+		if status::worktree_mapping_is_stale_terminal_local_residue(
 			project,
 			state_store,
 			&mapping,
@@ -101,10 +102,10 @@ where
 	Ok(RecoveredRuntimeState { recoverable_issues })
 }
 
-pub(in crate::orchestrator) fn refresh_recoverable_runtime_issues<T>(
+pub(crate) fn refresh_recoverable_runtime_issues<T>(
 	tracker: &T,
 	issue_ids: &[String],
-) -> crate::prelude::Result<Vec<TrackerIssue>>
+) -> Result<Vec<TrackerIssue>>
 where
 	T: IssueTracker,
 {
@@ -132,7 +133,7 @@ where
 	}
 }
 
-pub(in crate::orchestrator) fn recover_issue_runtime_state<T>(
+pub(crate) fn recover_issue_runtime_state<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -140,7 +141,7 @@ pub(in crate::orchestrator) fn recover_issue_runtime_state<T>(
 	worktree_manager: &WorktreeManager,
 	issue: TrackerIssue,
 	now_unix_epoch: i64,
-) -> crate::prelude::Result<Option<TrackerIssue>>
+) -> Result<Option<TrackerIssue>>
 where
 	T: IssueTracker,
 {
@@ -175,7 +176,7 @@ where
 	if issue.state.name == workflow.frontmatter().tracker().success_state()
 		&& recovered_service_ownership
 		&& let Some(marker) = activity_marker.as_ref()
-		&& worktree_activity_marker_is_fresh(marker, now_unix_epoch)
+		&& status::worktree_activity_marker_is_fresh(marker, now_unix_epoch)
 	{
 		upsert_recovered_worktree_mapping(
 			project,
@@ -188,7 +189,13 @@ where
 
 		return Ok(None);
 	}
-	if issue_passes_closeout_dispatch_policy(tracker, &issue, project, workflow, state_store)? {
+	if status::issue_passes_closeout_dispatch_policy(
+		tracker,
+		&issue,
+		project,
+		workflow,
+		state_store,
+	)? {
 		upsert_recovered_worktree_mapping(
 			project,
 			state_store,
@@ -198,7 +205,7 @@ where
 		)?;
 
 		match activity_marker.as_ref() {
-			Some(marker) if worktree_activity_marker_is_fresh(marker, now_unix_epoch) => {
+			Some(marker) if status::worktree_activity_marker_is_fresh(marker, now_unix_epoch) => {
 				record_recovered_activity_lease(project, state_store, &issue, marker)?;
 
 				return Ok(None);
@@ -206,7 +213,7 @@ where
 			_ => {},
 		}
 	}
-	if issue_passes_retry_dispatch_policy(
+	if status::issue_passes_retry_dispatch_policy(
 		tracker,
 		&issue,
 		project,
@@ -223,13 +230,13 @@ where
 		)?;
 
 		match activity_marker.as_ref() {
-			Some(marker) if worktree_activity_marker_is_fresh(marker, now_unix_epoch) => {
+			Some(marker) if status::worktree_activity_marker_is_fresh(marker, now_unix_epoch) => {
 				record_recovered_activity_lease(project, state_store, &issue, marker)?;
 
 				return Ok(None);
 			},
 			Some(marker) => {
-				clear_recovered_issue_lease(
+				status::clear_recovered_issue_lease(
 					project.service_id(),
 					&issue.id,
 					Some(marker.run_id()),
@@ -237,7 +244,12 @@ where
 				)?;
 			},
 			None => {
-				clear_recovered_issue_lease(project.service_id(), &issue.id, None, state_store)?;
+				status::clear_recovered_issue_lease(
+					project.service_id(),
+					&issue.id,
+					None,
+					state_store,
+				)?;
 			},
 		}
 
@@ -247,14 +259,15 @@ where
 	Ok(None)
 }
 
-pub(in crate::orchestrator) fn existing_recoverable_worktree_spec(
+pub(crate) fn existing_recoverable_worktree_spec(
 	project_id: &str,
 	issue: &TrackerIssue,
 	mapping: Option<&WorktreeMapping>,
-) -> crate::prelude::Result<Option<WorktreeSpec>> {
+) -> Result<Option<WorktreeSpec>> {
 	let Some(mapping) = mapping else {
 		return Ok(None);
 	};
+
 	if mapping.project_id() != project_id || !mapping.worktree_path().try_exists()? {
 		return Ok(None);
 	}
@@ -267,13 +280,13 @@ pub(in crate::orchestrator) fn existing_recoverable_worktree_spec(
 	}))
 }
 
-pub(in crate::orchestrator) fn upsert_recovered_worktree_mapping(
+pub(crate) fn upsert_recovered_worktree_mapping(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue: &TrackerIssue,
 	worktree: &WorktreeSpec,
 	activity_marker: Option<&RunActivityMarker>,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	state_store.upsert_recovered_worktree(
 		project.service_id(),
 		&issue.id,
@@ -283,7 +296,7 @@ pub(in crate::orchestrator) fn upsert_recovered_worktree_mapping(
 	)
 }
 
-pub(in crate::orchestrator) fn recovered_worktree_observed_at_unix(
+pub(crate) fn recovered_worktree_observed_at_unix(
 	activity_marker: Option<&RunActivityMarker>,
 ) -> Option<i64> {
 	activity_marker.and_then(|marker| {
@@ -298,12 +311,12 @@ pub(in crate::orchestrator) fn recovered_worktree_observed_at_unix(
 	})
 }
 
-pub(in crate::orchestrator) fn record_recovered_activity_lease(
+pub(crate) fn record_recovered_activity_lease(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue: &TrackerIssue,
 	marker: &RunActivityMarker,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	state_store.record_run_attempt(
 		marker.run_id(),
 		&issue.id,
@@ -320,11 +333,11 @@ pub(in crate::orchestrator) fn record_recovered_activity_lease(
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn issue_has_recovered_service_ownership<T>(
+pub(crate) fn issue_has_recovered_service_ownership<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	service_id: &str,
-) -> crate::prelude::Result<bool>
+) -> Result<bool>
 where
 	T: IssueTracker,
 {
@@ -335,14 +348,14 @@ where
 	)
 }
 
-pub(in crate::orchestrator) fn append_recoverable_tracker_issue<T>(
+pub(crate) fn append_recoverable_tracker_issue<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	issue_identifier: &str,
 	known_identifiers: &mut BTreeSet<String>,
 	issues: &mut Vec<TrackerIssue>,
 	mut recoverable_worktree_skip_cache: Option<&mut RecoverableWorktreeSkipCache>,
-) -> crate::prelude::Result<()>
+) -> Result<()>
 where
 	T: IssueTracker,
 {
@@ -401,9 +414,7 @@ where
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn recoverable_worktree_identifiers(
-	worktree_root: &Path,
-) -> crate::prelude::Result<Vec<String>> {
+pub(crate) fn recoverable_worktree_identifiers(worktree_root: &Path) -> Result<Vec<String>> {
 	if !worktree_root.exists() {
 		return Ok(Vec::new());
 	}
@@ -426,15 +437,15 @@ pub(in crate::orchestrator) fn recoverable_worktree_identifiers(
 	Ok(issue_identifiers)
 }
 
-pub(in crate::orchestrator) fn hydrate_status_snapshot_state(
+pub(crate) fn hydrate_status_snapshot_state(
 	_project: &ServiceConfig,
 	_state_store: &StateStore,
 	_recovered_state: RecoveredRuntimeState,
-) -> crate::prelude::Result<()> {
+) -> Result<()> {
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn append_primary_account_if_missing(
+pub(crate) fn append_primary_account_if_missing(
 	accounts: &mut Vec<CodexAccountActivitySummary>,
 	account: Option<&CodexAccountActivitySummary>,
 ) {

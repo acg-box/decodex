@@ -1,13 +1,15 @@
-use super::{
-	Arc, DashboardEventHub, JoinHandle, Mutex, OffsetDateTime, OperatorStatusSnapshot, Sender,
-	SocketAddr, StateStore, TcpListener, eyre, json, mpsc, operator_snapshot_json_value,
-	run_operator_run_activity_websocket_broadcasts, run_operator_state_endpoint, thread,
+use crate::{
+	orchestrator::types::{
+		self, Arc, DashboardEventHub, JoinHandle, Mutex, OffsetDateTime, OperatorStatusSnapshot,
+		Sender, SocketAddr, StateStore, TcpListener, eyre, mpsc, thread,
+	},
+	prelude::Result,
 };
 
 pub(crate) struct OperatorStateEndpoint {
 	pub(crate) listen_address: SocketAddr,
 	pub(crate) snapshot: Arc<Mutex<PublishedOperatorSnapshot>>,
-	pub(in crate::orchestrator) dashboard_events: DashboardEventHub,
+	pub(crate) dashboard_events: DashboardEventHub,
 	pub(crate) control_requests: OperatorControlRequests,
 	pub(crate) shutdown_tx: Sender<()>,
 	pub(crate) activity_shutdown_tx: Sender<()>,
@@ -15,10 +17,7 @@ pub(crate) struct OperatorStateEndpoint {
 	pub(crate) activity_thread: Option<JoinHandle<()>>,
 }
 impl OperatorStateEndpoint {
-	pub(crate) fn start(
-		listen_address: &str,
-		state_store: Arc<StateStore>,
-	) -> crate::prelude::Result<Self> {
+	pub(crate) fn start(listen_address: &str, state_store: Arc<StateStore>) -> Result<Self> {
 		let listener = TcpListener::bind(listen_address).map_err(|error| {
 			eyre::eyre!("Failed to bind operator state endpoint on `{listen_address}`: {error}")
 		})?;
@@ -41,7 +40,7 @@ impl OperatorStateEndpoint {
 		let server_state_store = Arc::clone(&state_store);
 		let (shutdown_tx, shutdown_rx) = mpsc::channel();
 		let server_thread = thread::spawn(move || {
-			run_operator_state_endpoint(
+			types::run_operator_state_endpoint(
 				listener,
 				shared_snapshot,
 				server_dashboard_events,
@@ -53,7 +52,7 @@ impl OperatorStateEndpoint {
 		let activity_dashboard_events = dashboard_events.clone();
 		let (activity_shutdown_tx, activity_shutdown_rx) = mpsc::channel();
 		let activity_thread = thread::spawn(move || {
-			run_operator_run_activity_websocket_broadcasts(
+			types::run_operator_run_activity_websocket_broadcasts(
 				state_store,
 				activity_dashboard_events,
 				activity_shutdown_rx,
@@ -76,11 +75,8 @@ impl OperatorStateEndpoint {
 		self.listen_address
 	}
 
-	pub(crate) fn publish_snapshot(
-		&self,
-		snapshot: &OperatorStatusSnapshot,
-	) -> crate::prelude::Result<()> {
-		let snapshot_value = operator_snapshot_json_value(snapshot)?;
+	pub(crate) fn publish_snapshot(&self, snapshot: &OperatorStatusSnapshot) -> Result<()> {
+		let snapshot_value = types::operator_snapshot_json_value(snapshot)?;
 		let snapshot_json = serde_json::to_vec(&snapshot_value)?;
 		let last_publish_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 		let mut guard = self
@@ -97,7 +93,7 @@ impl OperatorStateEndpoint {
 
 		self.dashboard_events.broadcast(
 			"snapshot",
-			json!({
+			types::json!({
 				"snapshotPublishedAtUnixEpoch": last_publish_unix_epoch,
 				"snapshot": snapshot_value,
 			}),
@@ -106,9 +102,7 @@ impl OperatorStateEndpoint {
 		Ok(())
 	}
 
-	pub(crate) fn drain_linear_scan_requests(
-		&self,
-	) -> crate::prelude::Result<Vec<OperatorLinearScanRequest>> {
+	pub(crate) fn drain_linear_scan_requests(&self) -> Result<Vec<OperatorLinearScanRequest>> {
 		self.control_requests.drain_linear_scan_requests()
 	}
 }
@@ -143,10 +137,7 @@ pub(crate) struct OperatorControlRequests {
 	pub(crate) linear_scan_requests: Arc<Mutex<Vec<OperatorLinearScanRequest>>>,
 }
 impl OperatorControlRequests {
-	pub(crate) fn request_linear_scan(
-		&self,
-		project_id: Option<String>,
-	) -> crate::prelude::Result<()> {
+	pub(crate) fn request_linear_scan(&self, project_id: Option<String>) -> Result<()> {
 		let mut requests = self
 			.linear_scan_requests
 			.lock()
@@ -157,9 +148,7 @@ impl OperatorControlRequests {
 		Ok(())
 	}
 
-	pub(crate) fn drain_linear_scan_requests(
-		&self,
-	) -> crate::prelude::Result<Vec<OperatorLinearScanRequest>> {
+	pub(crate) fn drain_linear_scan_requests(&self) -> Result<Vec<OperatorLinearScanRequest>> {
 		let mut requests = self
 			.linear_scan_requests
 			.lock()

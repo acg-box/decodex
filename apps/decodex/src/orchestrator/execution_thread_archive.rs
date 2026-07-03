@@ -1,10 +1,12 @@
 use std::collections::HashSet;
 
-use crate::agent::{AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest};
-
-use super::{
-	AppServerProcessEnv, AppServerRunResult, IssueRunPlan, Result, ServiceConfig, StateStore,
-	TERMINAL_GUARDED_RUN_STATUS, WorkflowDocument,
+#[cfg(not(test))] use crate::agent;
+use crate::{
+	agent::{AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest},
+	orchestrator::{
+		AppServerProcessEnv, AppServerRunResult, IssueRunPlan, Result, ServiceConfig, StateStore,
+		TERMINAL_GUARDED_RUN_STATUS, WorkflowDocument,
+	},
 };
 
 #[derive(Clone)]
@@ -86,6 +88,35 @@ pub(super) fn reconcile_terminal_thread_archive_backlog_best_effort(
 	}
 }
 
+#[cfg(test)]
+pub(super) fn completed_issue_thread_archive_candidates(
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	run_result: &AppServerRunResult,
+) -> Result<Vec<ThreadArchiveCandidate>> {
+	issue_thread_archive_candidates(
+		state_store,
+		&issue_run.issue.id,
+		&issue_run.issue.identifier,
+		Some(ThreadArchiveCandidate {
+			issue_id: issue_run.issue.id.clone(),
+			issue_identifier: issue_run.issue.identifier.clone(),
+			run_id: issue_run.run_id.clone(),
+			attempt_number: issue_run.attempt_number,
+			thread_id: run_result.thread_id.clone(),
+			sequence_number: run_result.event_count.saturating_add(1),
+		}),
+	)
+}
+
+#[cfg(test)]
+pub(super) fn terminal_thread_archive_backlog_candidates(
+	state_store: &StateStore,
+	project_id: &str,
+) -> Result<Vec<ThreadArchiveCandidate>> {
+	terminal_thread_archive_backlog_candidates_inner(state_store, project_id)
+}
+
 fn archive_issue_threads_best_effort(
 	project: &ServiceConfig,
 	state_store: &StateStore,
@@ -121,27 +152,6 @@ fn archive_issue_threads_best_effort(
 			&candidate,
 		);
 	}
-}
-
-#[cfg(test)]
-pub(super) fn completed_issue_thread_archive_candidates(
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	run_result: &AppServerRunResult,
-) -> Result<Vec<ThreadArchiveCandidate>> {
-	issue_thread_archive_candidates(
-		state_store,
-		&issue_run.issue.id,
-		&issue_run.issue.identifier,
-		Some(ThreadArchiveCandidate {
-			issue_id: issue_run.issue.id.clone(),
-			issue_identifier: issue_run.issue.identifier.clone(),
-			run_id: issue_run.run_id.clone(),
-			attempt_number: issue_run.attempt_number,
-			thread_id: run_result.thread_id.clone(),
-			sequence_number: run_result.event_count.saturating_add(1),
-		}),
-	)
 }
 
 fn issue_thread_archive_candidates(
@@ -192,14 +202,6 @@ fn issue_thread_archive_candidates(
 	}
 
 	Ok(candidates)
-}
-
-#[cfg(test)]
-pub(super) fn terminal_thread_archive_backlog_candidates(
-	state_store: &StateStore,
-	project_id: &str,
-) -> Result<Vec<ThreadArchiveCandidate>> {
-	terminal_thread_archive_backlog_candidates_inner(state_store, project_id)
 }
 
 #[cfg(not(test))]
@@ -302,8 +304,7 @@ fn archive_completed_issue_thread_best_effort(
 		sequence_number: candidate.sequence_number,
 	};
 	#[cfg(not(test))]
-	let archive_result =
-		crate::agent::archive_app_server_thread_after_success(&archive_request, state_store);
+	let archive_result = agent::archive_app_server_thread_after_success(&archive_request, state_store);
 	#[cfg(test)]
 	let archive_result = {
 		state_store

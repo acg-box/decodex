@@ -1,9 +1,9 @@
-pub(in crate::orchestrator) mod action;
-pub(in crate::orchestrator) mod command;
-pub(in crate::orchestrator) mod decision;
-pub(in crate::orchestrator) mod facts;
-pub(in crate::orchestrator) mod lane_control;
-pub(in crate::orchestrator) mod post_review;
-pub(in crate::orchestrator) mod projection;
-pub(in crate::orchestrator) mod reason;
-pub(in crate::orchestrator) mod state;
+pub(crate) mod action;
+pub(crate) mod command;
+pub(crate) mod decision;
+pub(crate) mod facts;
+pub(crate) mod lane_control;
+pub(crate) mod post_review;
+pub(crate) mod projection;
+pub(crate) mod reason;
+pub(crate) mod state;

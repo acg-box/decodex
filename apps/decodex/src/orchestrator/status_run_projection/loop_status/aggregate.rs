@@ -1,10 +1,12 @@
-use crate::orchestrator::{
-	self, AUTHORITY_DECISION_REQUEST_EVENT_TYPE, OperatorLoopStatus, ProjectLoopEvidenceSnapshot,
-	ServiceConfig, StateStore, status_run_projection,
+use crate::{
+	orchestrator::{
+		self, AUTHORITY_DECISION_REQUEST_EVENT_TYPE, OperatorLoopStatus,
+		ProjectLoopEvidenceSnapshot, ServiceConfig, StateStore, status_run_projection,
+	},
+	prelude::Result,
 };
-use crate::prelude::Result;
 
-pub(in crate::orchestrator) fn operator_loop_status_for_run(
+pub(crate) fn operator_loop_status_for_run(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_id: &str,
@@ -26,7 +28,7 @@ pub(in crate::orchestrator) fn operator_loop_status_for_run(
 	)
 }
 
-pub(in crate::orchestrator) fn operator_loop_status_for_run_with_evidence(
+pub(crate) fn operator_loop_status_for_run_with_evidence(
 	project: &ServiceConfig,
 	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	issue_id: &str,

@@ -1,3 +1,6 @@
+mod cleanup;
+mod lifecycle;
+
 use std::{
 	fs,
 	path::{Path, PathBuf},
@@ -7,10 +10,12 @@ use std::{
 use tempfile::TempDir;
 
 use crate::{
-	test_support::hermetic_git_command, workflow::WorkflowDocument, worktree::WorktreeManager,
+	test_support,
+	workflow::{WorkflowDocument, WorkflowWorkspaceHooks},
+	worktree::WorktreeManager,
 };
 
-fn workspace_hooks(workspace_hooks_frontmatter: &str) -> crate::workflow::WorkflowWorkspaceHooks {
+fn workspace_hooks(workspace_hooks_frontmatter: &str) -> WorkflowWorkspaceHooks {
 	let markdown = format!(
 		r#"
 +++
@@ -55,7 +60,7 @@ read_first = []
 }
 
 fn test_git_command() -> Command {
-	hermetic_git_command()
+	test_support::hermetic_git_command()
 }
 
 fn run_git(repo_root: &Path, args: &[&str]) {
@@ -98,20 +103,24 @@ fn git_stdout(repo_root: &Path, args: &[&str]) -> String {
 fn init_repo() -> (TempDir, PathBuf) {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let repo_root = temp_dir.path().join("repo");
-	let default_origin = repo_root.parent().unwrap().join("source-origin.git");
+	let default_origin =
+		repo_root.parent().expect("test repo should have a parent").join("source-origin.git");
 
 	fs::create_dir_all(&repo_root).expect("repo root should exist");
 
 	run_git(
-		default_origin.parent().unwrap(),
-		&["init", "--bare", default_origin.to_str().unwrap()],
+		default_origin.parent().expect("origin path should have a parent"),
+		&["init", "--bare", default_origin.to_str().expect("origin path should be UTF-8")],
 	);
 	run_git(&repo_root, &["init", "--initial-branch", "main"]);
 	run_git(&repo_root, &["config", "user.name", "Decodex Tests"]);
 	run_git(&repo_root, &["config", "user.email", "decodex-tests@example.com"]);
 	run_git(&repo_root, &["config", "commit.gpgsign", "false"]);
 	run_git(&repo_root, &["config", "tag.gpgsign", "false"]);
-	run_git(&repo_root, &["remote", "add", "origin", default_origin.to_str().unwrap()]);
+	run_git(
+		&repo_root,
+		&["remote", "add", "origin", default_origin.to_str().expect("origin path should be UTF-8")],
+	);
 
 	fs::write(repo_root.join("README.md"), "hello\n").expect("seed file should write");
 
@@ -120,10 +129,6 @@ fn init_repo() -> (TempDir, PathBuf) {
 
 	(temp_dir, repo_root)
 }
-
-mod cleanup;
-
-mod lifecycle;
 
 #[test]
 fn plans_worktree_paths_and_identity_scoped_branch_names() {

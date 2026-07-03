@@ -1,5 +1,6 @@
-use crate::orchestrator::execution_phase_goal::controller::RepoGatePhaseGoalController;
-use crate::orchestrator::{PhaseGoalKind, PhaseGoalSpec};
+use crate::orchestrator::{
+	PhaseGoalKind, PhaseGoalSpec, execution_phase_goal::controller::RepoGatePhaseGoalController,
+};
 
 impl RepoGatePhaseGoalController<'_> {
 	pub(super) fn phase_goal_spec(

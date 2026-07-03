@@ -1,24 +1,23 @@
-use super::super::{
-	OperatorControlRequests, OperatorLinearScanHttpRequest, Result, eyre, http_response_bytes,
-	json, operator_http_request_body,
+use crate::orchestrator::operator_http::{
+	self, OperatorControlRequests, OperatorLinearScanHttpRequest, Result, eyre,
 };
 
-pub(in crate::orchestrator::operator_http) fn build_operator_linear_scan_http_response(
+pub(crate) fn build_operator_linear_scan_http_response(
 	control_requests: &OperatorControlRequests,
 	request: &[u8],
 ) -> Vec<u8> {
 	match operator_linear_scan_http_response_body(control_requests, request) {
-		Ok(body) => http_response_bytes("202 Accepted", "application/json", &body),
+		Ok(body) => operator_http::http_response_bytes("202 Accepted", "application/json", &body),
 		Err(error) => {
-			let body = serde_json::to_vec(&json!({ "error": error.to_string() }))
+			let body = serde_json::to_vec(&operator_http::json!({ "error": error.to_string() }))
 				.unwrap_or_else(|_| br#"{"error":"linear scan request failed"}"#.to_vec());
 
-			http_response_bytes("400 Bad Request", "application/json", &body)
+			operator_http::http_response_bytes("400 Bad Request", "application/json", &body)
 		},
 	}
 }
 
-pub(super) fn operator_linear_scan_http_response_body(
+pub(crate) fn operator_linear_scan_http_response_body(
 	control_requests: &OperatorControlRequests,
 	request: &[u8],
 ) -> Result<Vec<u8>> {
@@ -27,7 +26,7 @@ pub(super) fn operator_linear_scan_http_response_body(
 
 	control_requests.request_linear_scan(project_id.clone())?;
 
-	serde_json::to_vec(&json!({
+	serde_json::to_vec(&operator_http::json!({
 		"status": "queued",
 		"scope": scope,
 		"project_id": project_id,
@@ -36,8 +35,8 @@ pub(super) fn operator_linear_scan_http_response_body(
 	.map_err(Into::into)
 }
 
-pub(super) fn operator_linear_scan_request_project_id(request: &[u8]) -> Result<Option<String>> {
-	let body = operator_http_request_body(request)?;
+pub(crate) fn operator_linear_scan_request_project_id(request: &[u8]) -> Result<Option<String>> {
+	let body = operator_http::operator_http_request_body(request)?;
 
 	if body.is_empty() {
 		return Ok(None);

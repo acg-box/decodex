@@ -1,6 +1,6 @@
 use crate::orchestrator::OperatorRunStatus;
 
-pub(in crate::orchestrator) fn operator_run_group_key(run: &OperatorRunStatus) -> String {
+pub(crate) fn operator_run_group_key(run: &OperatorRunStatus) -> String {
 	let issue_id = run.issue_id.trim();
 
 	if !issue_id.is_empty() && !issue_id.eq_ignore_ascii_case("unknown") {
@@ -10,7 +10,7 @@ pub(in crate::orchestrator) fn operator_run_group_key(run: &OperatorRunStatus) -
 	operator_run_issue_key(run)
 }
 
-pub(in crate::orchestrator) fn operator_run_issue_key(run: &OperatorRunStatus) -> String {
+pub(crate) fn operator_run_issue_key(run: &OperatorRunStatus) -> String {
 	if let Some(issue_identifier) = run
 		.issue_identifier
 		.as_ref()
@@ -31,7 +31,7 @@ pub(in crate::orchestrator) fn operator_run_issue_key(run: &OperatorRunStatus) -
 	if issue_id.is_empty() { String::from("unknown") } else { issue_id.to_owned() }
 }
 
-pub(in crate::orchestrator) fn operator_run_issue_identifier_from_fields(
+pub(crate) fn operator_run_issue_identifier_from_fields(
 	run_id: &str,
 	branch_name: Option<&str>,
 	worktree_path: Option<&str>,
@@ -49,7 +49,7 @@ pub(in crate::orchestrator) fn operator_run_issue_identifier_from_fields(
 	None
 }
 
-pub(in crate::orchestrator) fn issue_identifier_from_run_id(run_id: &str) -> Option<String> {
+pub(crate) fn issue_identifier_from_run_id(run_id: &str) -> Option<String> {
 	if let Some((candidate, _attempt_suffix)) = run_id.split_once("-attempt-") {
 		return issue_identifier_in_text(candidate);
 	}
@@ -60,7 +60,7 @@ pub(in crate::orchestrator) fn issue_identifier_from_run_id(run_id: &str) -> Opt
 	None
 }
 
-pub(in crate::orchestrator) fn issue_identifier_in_text(value: &str) -> Option<String> {
+pub(crate) fn issue_identifier_in_text(value: &str) -> Option<String> {
 	let bytes = value.as_bytes();
 
 	for index in 0..bytes.len() {

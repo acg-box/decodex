@@ -1,8 +1,7 @@
-use super::*;
-
+use crate::orchestrator::tests::operator::status::dashboard;
 #[test]
 fn operator_dashboard_omits_lane_mutation_controls() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(!response.contains("function dashboardSubscriptionMatches(subscription)"));
 	assert!(!response.contains("function clearDashboardSubscription(shouldSend = true)"));
@@ -39,8 +38,14 @@ fn operator_dashboard_omits_lane_mutation_controls() {
 
 #[test]
 fn operator_dashboard_projects_keep_status_summary_compact() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
+	assert_dashboard_project_summary_helpers(&response);
+	assert_dashboard_queue_summary_contract(&response);
+	assert_dashboard_project_table_contract(&response);
+}
+
+fn assert_dashboard_project_summary_helpers(response: &str) {
 	assert!(response.contains("function projectCapacitySummary(project)"));
 	assert!(response.contains("function renderProjectStats(project)"));
 	assert!(response.contains("function projectHasActiveWork(project)"));
@@ -67,6 +72,9 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(response.contains("return token || \"none\";"));
 	assert!(!response.contains(".replace(/_/g, \" \")"));
 	assert!(!response.contains("External sync skipped"));
+}
+
+fn assert_dashboard_queue_summary_contract(response: &str) {
 	assert!(response.contains("function displayTextRepeats(left, right)"));
 	assert!(response.contains("function inlineStatusFact(label, value)"));
 	assert!(response.contains("titleCaseLabel(label)"));
@@ -117,6 +125,9 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(!response.contains("function projectScopeKicker"));
 	assert!(!response.contains("return projects.length === 1 ? \"Current\" : \"Selected\";"));
 	assert!(response.contains("return \"\";"));
+}
+
+fn assert_dashboard_project_table_contract(response: &str) {
 	assert!(!response.contains("<h2 id=\"projects-title\">Projects</h2>"));
 	assert!(!response.contains("id=\"projects-meta\""));
 	assert!(!response.contains("project-panel-head"));
@@ -164,7 +175,7 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 
 #[test]
 fn operator_dashboard_projects_show_compact_activity_work_and_location() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(!response.contains("<h2>Active</h2>"));
 	assert!(!response.contains("<h2>All</h2>"));
@@ -271,7 +282,7 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 
 #[test]
 fn operator_dashboard_normalizes_review_state_tokens() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("function compactStateToken(value)"));
 	assert!(response.contains("return formatDetailToken(value);"));
@@ -302,7 +313,7 @@ fn operator_dashboard_normalizes_review_state_tokens() {
 
 #[test]
 fn operator_dashboard_review_cards_omit_static_summary_copy() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("const shadowedByCurrentLane ="));
 	assert!(
@@ -327,7 +338,7 @@ fn operator_dashboard_review_cards_omit_static_summary_copy() {
 
 #[test]
 fn operator_dashboard_projects_filter_uses_icon_toggle() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(
 		response.contains("const PROJECT_FILTER_STORAGE_KEY = \"decodex.operator.projectFilter\";")
@@ -373,7 +384,7 @@ fn operator_dashboard_projects_filter_uses_icon_toggle() {
 
 #[test]
 fn operator_dashboard_empty_lane_meta_uses_counts() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(!response.contains("Snapshot pending"));
 	assert!(!response.contains("COPY.waitingSnapshot"));
@@ -398,7 +409,7 @@ fn operator_dashboard_empty_lane_meta_uses_counts() {
 
 #[test]
 fn operator_dashboard_flow_counts_distinguish_intake_attention() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("queuedCandidateNeedsAttention"));
 	assert!(response.contains("intakeAttentionCount"));
@@ -433,7 +444,7 @@ fn operator_dashboard_flow_counts_distinguish_intake_attention() {
 
 #[test]
 fn operator_dashboard_does_not_hide_claimed_queue_without_local_lane() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 
 	assert!(response.contains("const currentLaneByIssue = new Map();"));
 	assert!(response.contains("for (const key of issueIdentityKeys(run))"));
@@ -445,7 +456,7 @@ fn operator_dashboard_does_not_hide_claimed_queue_without_local_lane() {
 
 #[test]
 fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
-	let response = dashboard_response();
+	let response = dashboard::dashboard_response();
 	let reason_text = response
 		.split("function queuedCandidateReasonText(candidate)")
 		.nth(1)

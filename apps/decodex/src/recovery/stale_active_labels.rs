@@ -2,12 +2,11 @@
 
 use crate::{
 	prelude::Result,
+	recovery::reports::StaleActiveDiagnostic,
 	state::StateStore,
 	tracker::{self, IssueTracker, TrackerIssue},
 	workflow::WorkflowDocument,
 };
-
-use super::reports::StaleActiveDiagnostic;
 
 pub(super) struct StaleActiveLabelSnapshot {
 	pub(super) queue_label_present: bool,
@@ -86,6 +85,7 @@ pub(super) fn inspect_stale_active_shared_claim(
 				false
 			},
 		};
+
 	if active_shared_claim {
 		blockers.push(String::from("active_shared_claim_present"));
 	} else if !blockers.iter().any(|blocker| blocker == "active_shared_claim_unknown") {
@@ -115,5 +115,6 @@ fn stale_active_issue_keys(issue_id: &str, issue_identifier: &str) -> Vec<String
 	if issue_identifier != issue_id {
 		keys.push(issue_identifier.to_owned());
 	}
+
 	keys
 }

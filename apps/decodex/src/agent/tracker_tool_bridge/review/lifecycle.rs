@@ -1,15 +1,17 @@
-use super::{
-	ISSUE_TRANSITION_TOOL_NAME, PendingReviewCompletion, PullRequestDetails,
-	REVIEW_COMPLETION_INTENT_EVENT_TYPE, ReviewExecutionMode, ReviewHandoffContext,
-	ReviewHandoffMarker, ReviewOrchestrationMarker, RunCompletionDisposition, ScopeArgs,
-	TrackerIssue, TrackerToolBridge, Value, eyre, records, review_handoff_marker_from_pull_request,
-	review_handoff_marker_lineage_matches, tracker_tool_bridge,
+use crate::{
+	agent::tracker_tool_bridge::review::{
+		self, ISSUE_TRANSITION_TOOL_NAME, PendingReviewCompletion, PullRequestDetails,
+		REVIEW_COMPLETION_INTENT_EVENT_TYPE, ReviewExecutionMode, ReviewHandoffContext,
+		ReviewHandoffMarker, ReviewOrchestrationMarker, RunCompletionDisposition, ScopeArgs,
+		TrackerIssue, TrackerToolBridge, Value, eyre, tracker_tool_bridge,
+	},
+	tracker::records::LinearExecutionEventRecord,
 };
 
 impl<'a> TrackerToolBridge<'a> {
 	pub(super) fn persist_linear_execution_event(
 		&self,
-		record: &records::LinearExecutionEventRecord,
+		record: &LinearExecutionEventRecord,
 	) -> crate::prelude::Result<()> {
 		if let Some(state_store) = self.state_store {
 			state_store.record_linear_execution_event(record)?;
@@ -49,7 +51,7 @@ impl<'a> TrackerToolBridge<'a> {
 			&review_context.service_id,
 			&self.issue.id,
 			&review_context.branch_name,
-		)? && !review_handoff_marker_lineage_matches(&existing, marker)
+		)? && !review::review_handoff_marker_lineage_matches(&existing, marker)
 		{
 			eyre::bail!(
 				"Existing review lifecycle record for issue `{}` branch `{}` points at PR `{}` head `{}`, but the current review handoff intent points at PR `{}` head `{}`. Use explicit review-handoff recovery before rebinding this lane.",
@@ -374,7 +376,8 @@ impl<'a> TrackerToolBridge<'a> {
 			&pull_request,
 		)?;
 
-		let handoff_marker = review_handoff_marker_from_pull_request(review_context, &pull_request);
+		let handoff_marker =
+			review::review_handoff_marker_from_pull_request(review_context, &pull_request);
 
 		self.persist_review_handoff_marker_for_handoff(review_context, &handoff_marker).map_err(
 			|error| {

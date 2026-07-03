@@ -1,6 +1,6 @@
 use crate::{orchestrator::OperatorWorktreeProvenanceStatus, state::WorktreeMapping};
 
-pub(in crate::orchestrator::status_worktrees) fn operator_worktree_provenance_from_mapping(
+pub(crate) fn operator_worktree_provenance_from_mapping(
 	mapping: &WorktreeMapping,
 ) -> OperatorWorktreeProvenanceStatus {
 	operator_worktree_provenance(
@@ -10,7 +10,7 @@ pub(in crate::orchestrator::status_worktrees) fn operator_worktree_provenance_fr
 	)
 }
 
-pub(in crate::orchestrator::status_worktrees) fn operator_worktree_provenance(
+pub(crate) fn operator_worktree_provenance(
 	source: &str,
 	created_at_unix: Option<i64>,
 	updated_at_unix: Option<i64>,

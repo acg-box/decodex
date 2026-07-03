@@ -26,11 +26,10 @@ pub(super) fn redact_reasoning_protocol_activity(value: &mut Value) {
 				redact_reasoning_protocol_activity(child);
 			}
 		},
-		Value::Array(items) => {
+		Value::Array(items) =>
 			for item in items {
 				redact_reasoning_protocol_activity(item);
-			}
-		},
+			},
 		_ => {},
 	}
 }

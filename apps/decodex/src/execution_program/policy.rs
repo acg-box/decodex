@@ -2,11 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use super::{
-	model::{ExecutionConflictDomain, ExecutionLinearIssueMapping, ExecutionQueueIntent},
-	validation::{validate_optional, validate_required, validate_string_list},
-};
 use crate::{
+	execution_program::{
+		model::{ExecutionConflictDomain, ExecutionLinearIssueMapping, ExecutionQueueIntent},
+		validation::{self},
+	},
 	prelude::{Result, eyre},
 	tracker,
 	workflow::WorkflowDocument,
@@ -78,13 +78,22 @@ impl ExecutionWorkflowPolicy {
 	}
 
 	fn validate(&self) -> Result<()> {
-		validate_required("execution workflow service_id", &self.service_id)?;
-		validate_required("execution workflow queue_label", &self.queue_label)?;
-		validate_required("execution workflow active_label", &self.active_label)?;
-		validate_required("execution workflow opt_out_label", &self.opt_out_label)?;
-		validate_required("execution workflow needs_attention_label", &self.needs_attention_label)?;
-		validate_string_list("execution workflow startable_states", &self.startable_states)?;
-		validate_string_list("execution workflow terminal_states", &self.terminal_states)?;
+		validation::validate_required("execution workflow service_id", &self.service_id)?;
+		validation::validate_required("execution workflow queue_label", &self.queue_label)?;
+		validation::validate_required("execution workflow active_label", &self.active_label)?;
+		validation::validate_required("execution workflow opt_out_label", &self.opt_out_label)?;
+		validation::validate_required(
+			"execution workflow needs_attention_label",
+			&self.needs_attention_label,
+		)?;
+		validation::validate_string_list(
+			"execution workflow startable_states",
+			&self.startable_states,
+		)?;
+		validation::validate_string_list(
+			"execution workflow terminal_states",
+			&self.terminal_states,
+		)?;
 
 		if self.startable_states.is_empty() {
 			eyre::bail!("Execution workflow startable_states must not be empty.");
@@ -138,9 +147,12 @@ impl ExecutionDependencySnapshot {
 	}
 
 	fn validate(&self) -> Result<()> {
-		validate_required("execution dependency snapshot.dependency_id", &self.dependency_id)?;
+		validation::validate_required(
+			"execution dependency snapshot.dependency_id",
+			&self.dependency_id,
+		)?;
 
-		validate_optional(
+		validation::validate_optional(
 			"execution dependency snapshot.tracker_state",
 			self.tracker_state.as_deref(),
 		)

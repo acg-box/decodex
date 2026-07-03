@@ -8,11 +8,12 @@ use std::{
 
 use color_eyre::Report;
 
-use super::{
-	RepoGateFailure, RepoGateFailureDiagnostic, RepoGateFailureKind,
-	diagnostic::repo_gate_git_output_lines, repo_gate_output_text,
+use crate::{
+	orchestrator::git_ops::{
+		self, RepoGateFailure, RepoGateFailureDiagnostic, RepoGateFailureKind, diagnostic,
+	},
+	prelude::{Result, eyre},
 };
-use crate::prelude::{Result, eyre};
 
 pub(crate) fn repo_gate_shell_from_env(shell: Option<OsString>) -> (OsString, &'static str) {
 	if let Some(shell) = shell
@@ -32,8 +33,37 @@ pub(crate) fn repo_gate_shell_from_env(shell: Option<OsString>) -> (OsString, &'
 	(OsString::from("/bin/sh"), "-c")
 }
 
-fn repo_gate_shell() -> (OsString, &'static str) {
-	repo_gate_shell_from_env(env::var_os("SHELL"))
+pub(crate) fn run_repo_gate_cleanliness_check_with_git(
+	git_binary: &OsStr,
+	cwd: &Path,
+) -> Result<Output> {
+	Command::new(git_binary)
+		.arg("-C")
+		.arg(cwd)
+		.args(["status", "--porcelain", "--untracked-files=no"])
+		.output()
+		.map_err(|error| {
+			Report::new(RepoGateFailure::new(
+				RepoGateFailureKind::CommandSpawnFailed,
+				format!(
+					"Failed to spawn repo gate tracked-file cleanliness check in `{}` via `{}`: {}",
+					cwd.display(),
+					git_binary.to_string_lossy(),
+					error
+				),
+			))
+		})
+}
+
+pub(crate) fn repo_gate_changed_tracked_files(cwd: &Path) -> Result<BTreeSet<String>> {
+	let base_ref = repo_gate_remote_head_ref(cwd)?;
+	let merge_base = repo_gate_merge_base(cwd, &base_ref)?;
+	let committed_range = format!("{merge_base}..HEAD");
+	let mut changed_files = repo_gate_changed_files_for_diff_spec(cwd, &committed_range)?;
+
+	changed_files.extend(repo_gate_changed_files_for_diff_spec(cwd, "HEAD")?);
+
+	Ok(changed_files)
 }
 
 pub(super) fn run_repo_gate_shell_command(command: &str, cwd: &Path) -> Result<Output> {
@@ -59,26 +89,8 @@ pub(super) fn run_repo_gate_shell_command(command: &str, cwd: &Path) -> Result<O
 	})
 }
 
-pub(crate) fn run_repo_gate_cleanliness_check_with_git(
-	git_binary: &OsStr,
-	cwd: &Path,
-) -> Result<Output> {
-	Command::new(git_binary)
-		.arg("-C")
-		.arg(cwd)
-		.args(["status", "--porcelain", "--untracked-files=no"])
-		.output()
-		.map_err(|error| {
-			Report::new(RepoGateFailure::new(
-				RepoGateFailureKind::CommandSpawnFailed,
-				format!(
-					"Failed to spawn repo gate tracked-file cleanliness check in `{}` via `{}`: {}",
-					cwd.display(),
-					git_binary.to_string_lossy(),
-					error
-				),
-			))
-		})
+fn repo_gate_shell() -> (OsString, &'static str) {
+	repo_gate_shell_from_env(env::var_os("SHELL"))
 }
 
 fn run_repo_gate_git_command(args: &[&str], cwd: &Path) -> Result<Output> {
@@ -99,7 +111,7 @@ fn repo_gate_remote_head_ref(cwd: &Path) -> Result<String> {
 	)?;
 
 	if output.status.success() {
-		let remote_head = repo_gate_output_text(&output);
+		let remote_head = git_ops::repo_gate_output_text(&output);
 
 		if !remote_head.is_empty() && remote_head != "(command produced no output)" {
 			return Ok(remote_head);
@@ -113,7 +125,7 @@ fn repo_gate_remote_head_ref(cwd: &Path) -> Result<String> {
 		eyre::bail!(
 			"Failed to resolve `origin/HEAD` for repo-gate changed-file classification in `{}`: {}",
 			cwd.display(),
-			repo_gate_output_text(&remote_probe)
+			git_ops::repo_gate_output_text(&remote_probe)
 		);
 	}
 
@@ -142,11 +154,11 @@ fn repo_gate_merge_base(cwd: &Path, base_ref: &str) -> Result<String> {
 			"Failed to resolve merge-base for repo-gate changed-file classification in `{}` against `{}`: {}",
 			cwd.display(),
 			base_ref,
-			repo_gate_output_text(&output)
+			git_ops::repo_gate_output_text(&output)
 		);
 	}
 
-	let merge_base = repo_gate_output_text(&output);
+	let merge_base = git_ops::repo_gate_output_text(&output);
 
 	if merge_base.is_empty() || merge_base == "(command produced no output)" {
 		eyre::bail!(
@@ -170,20 +182,9 @@ fn repo_gate_changed_files_for_diff_spec(cwd: &Path, diff_spec: &str) -> Result<
 			"Failed to compute repo-gate changed-file classification in `{}` for diff `{}`: {}",
 			cwd.display(),
 			diff_spec,
-			repo_gate_output_text(&output)
+			git_ops::repo_gate_output_text(&output)
 		);
 	}
 
-	Ok(repo_gate_git_output_lines(&output))
-}
-
-pub(crate) fn repo_gate_changed_tracked_files(cwd: &Path) -> Result<BTreeSet<String>> {
-	let base_ref = repo_gate_remote_head_ref(cwd)?;
-	let merge_base = repo_gate_merge_base(cwd, &base_ref)?;
-	let committed_range = format!("{merge_base}..HEAD");
-	let mut changed_files = repo_gate_changed_files_for_diff_spec(cwd, &committed_range)?;
-
-	changed_files.extend(repo_gate_changed_files_for_diff_spec(cwd, "HEAD")?);
-
-	Ok(changed_files)
+	Ok(diagnostic::repo_gate_git_output_lines(&output))
 }

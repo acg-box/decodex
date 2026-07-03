@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde_json::{self, Value};
 
-use crate::mcp::{TOOL_PLAN, invalid_tool_arguments, tool_success};
+use crate::mcp::{self, TOOL_PLAN};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -15,7 +15,7 @@ pub(in crate::mcp) fn call_plan_tool(arguments: Value) -> Value {
 	let params = match serde_json::from_value::<PlanToolArgs>(arguments) {
 		Ok(params) => params,
 		Err(_) => {
-			return invalid_tool_arguments(
+			return mcp::invalid_tool_arguments(
 				TOOL_PLAN,
 				"`intent` is required and must be one of research, validation_ready, handoff, or lane_control.",
 			);
@@ -26,13 +26,13 @@ pub(in crate::mcp) fn call_plan_tool(arguments: Value) -> Value {
 		params.intent.as_str(),
 		"research" | "validation_ready" | "handoff" | "lane_control"
 	) {
-		return invalid_tool_arguments(
+		return mcp::invalid_tool_arguments(
 			TOOL_PLAN,
 			"`intent` must be one of research, validation_ready, handoff, or lane_control.",
 		);
 	}
 
-	tool_success(plan_tool_result(&params))
+	mcp::tool_success(plan_tool_result(&params))
 }
 
 fn plan_tool_result(params: &PlanToolArgs) -> Value {

@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 
-use super::super::{
-	AccountUseRequest, OperatorAccountRequest, OperatorRequestRoute, Result, accounts, eyre,
-	http_response_bytes, json, operator_http_request_body,
+use crate::{
+	accounts,
+	orchestrator::operator_http::{
+		self, AccountUseRequest, OperatorAccountRequest, OperatorRequestRoute, Result, eyre,
+	},
 };
 
-pub(in crate::orchestrator::operator_http) fn operator_request_route_is_account_api(
-	route: &OperatorRequestRoute,
-) -> bool {
+pub(crate) fn operator_request_route_is_account_api(route: &OperatorRequestRoute) -> bool {
 	matches!(
 		route,
 		OperatorRequestRoute::AccountList { .. }
@@ -20,22 +20,22 @@ pub(in crate::orchestrator::operator_http) fn operator_request_route_is_account_
 	)
 }
 
-pub(in crate::orchestrator::operator_http) fn build_operator_account_http_response(
+pub(crate) fn build_operator_account_http_response(
 	route: OperatorRequestRoute,
 	request: &[u8],
 ) -> Vec<u8> {
 	match operator_account_http_response_body(route, request) {
-		Ok(body) => http_response_bytes("200 OK", "application/json", &body),
+		Ok(body) => operator_http::http_response_bytes("200 OK", "application/json", &body),
 		Err(error) => {
-			let body = serde_json::to_vec(&json!({ "error": error.to_string() }))
+			let body = serde_json::to_vec(&operator_http::json!({ "error": error.to_string() }))
 				.unwrap_or_else(|_| br#"{"error":"account request failed"}"#.to_vec());
 
-			http_response_bytes("400 Bad Request", "application/json", &body)
+			operator_http::http_response_bytes("400 Bad Request", "application/json", &body)
 		},
 	}
 }
 
-pub(super) fn operator_account_http_response_body(
+pub(crate) fn operator_account_http_response_body(
 	route: OperatorRequestRoute,
 	request: &[u8],
 ) -> Result<Vec<u8>> {
@@ -109,7 +109,7 @@ pub(super) fn operator_account_http_response_body(
 	}
 }
 
-pub(super) fn operator_account_request_selector(request: &[u8]) -> Result<String> {
+pub(crate) fn operator_account_request_selector(request: &[u8]) -> Result<String> {
 	let body = operator_account_request_body(request)?;
 
 	body.selector
@@ -117,8 +117,8 @@ pub(super) fn operator_account_request_selector(request: &[u8]) -> Result<String
 		.ok_or_else(|| eyre::eyre!("Account request requires selector."))
 }
 
-pub(super) fn operator_account_request_body(request: &[u8]) -> Result<OperatorAccountRequest> {
-	let body = operator_http_request_body(request)?;
+pub(crate) fn operator_account_request_body(request: &[u8]) -> Result<OperatorAccountRequest> {
+	let body = operator_http::operator_http_request_body(request)?;
 
 	if body.is_empty() {
 		return Ok(OperatorAccountRequest {

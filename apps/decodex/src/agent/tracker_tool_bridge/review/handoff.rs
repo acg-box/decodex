@@ -1,13 +1,19 @@
-use super::{
-	LinearExecutionEventPublicProjection, PendingReviewAction, PendingReviewCompletion,
-	PullRequestDetails, REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK, Report, ReviewHandoffContext,
-	ReviewHandoffWritebackFailed, ReviewOrchestrationMarker, TrackerToolBridge, eyre,
-	linear_execution_review_event, review_handoff_marker_from_pull_request, tracker,
-	tracker_tool_bridge,
+use crate::{
+	agent::tracker_tool_bridge::{
+		review,
+		review::{
+			LinearExecutionEventPublicProjection, PendingReviewAction, PendingReviewCompletion,
+			PullRequestDetails, REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK, Report,
+			ReviewHandoffContext, ReviewHandoffWritebackFailed, ReviewOrchestrationMarker,
+			TrackerToolBridge, eyre, tracker_tool_bridge,
+		},
+	},
+	prelude::Result,
+	tracker,
 };
 
 impl<'a> TrackerToolBridge<'a> {
-	pub(crate) fn apply_review_handoff(&self) -> crate::prelude::Result<()> {
+	pub(crate) fn apply_review_handoff(&self) -> Result<()> {
 		let Some(review_context) = self.review_context.as_ref() else {
 			eyre::bail!(
 				"Review handoff context is unavailable for issue `{}`.",
@@ -44,7 +50,8 @@ impl<'a> TrackerToolBridge<'a> {
 			&pull_request,
 			success_state,
 		)?;
-		let handoff_marker = review_handoff_marker_from_pull_request(review_context, &pull_request);
+		let handoff_marker =
+			review::review_handoff_marker_from_pull_request(review_context, &pull_request);
 		let orchestration_marker = ReviewOrchestrationMarker::new(
 			review_context.run_id.clone(),
 			review_context.attempt_number,
@@ -100,7 +107,7 @@ impl<'a> TrackerToolBridge<'a> {
 		pending_review_handoff: &PendingReviewAction,
 		pull_request: &PullRequestDetails,
 		success_state: &str,
-	) -> crate::prelude::Result<LinearExecutionEventPublicProjection> {
+	) -> Result<LinearExecutionEventPublicProjection> {
 		let public_summary = tracker_tool_bridge::public_summary_or_fallback(
 			&pending_review_handoff.summary,
 			REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK,
@@ -110,7 +117,7 @@ impl<'a> TrackerToolBridge<'a> {
 			pending_review_handoff,
 			public_summary.as_ref(),
 		);
-		let handoff_record = linear_execution_review_event(
+		let handoff_record = review::linear_execution_review_event(
 			self.issue,
 			review_context,
 			pull_request,

@@ -1,13 +1,27 @@
-use super::*;
+use std::{fs, path::Path};
+
+use tempfile::TempDir;
+
+use crate::{
+	prelude::{Result, eyre},
+	recovery::{
+		AdoptValidation, HandoffDiagnosticRequest, REVIEW_HANDOFF_ADOPT_EVENT,
+		REVIEW_HANDOFF_BOUND_CLASSIFICATION, REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION,
+		REVIEW_HANDOFF_REBIND_EVENT, REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION, RebindMode,
+		RebindValidation,
+		tests::{self},
+	},
+	state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore},
+};
 
 #[test]
 fn rebind_state_allows_missing_marker_partial_in_progress_handoff() {
-	let workflow = sample_workflow();
-	let issue = sample_issue("In Progress");
-	let transition = super::super::validate_rebind_issue_state_for_policy(
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("In Progress");
+	let transition = super::validate_rebind_issue_state_for_policy(
 		workflow.frontmatter().tracker(),
 		&issue,
-		super::super::RebindMode::RestoreMissingHandoff,
+		RebindMode::RestoreMissingHandoff,
 	)
 	.expect("missing-marker rebind should recover partial in-progress handoff")
 	.expect("partial in-progress handoff should transition to success state");
@@ -18,12 +32,12 @@ fn rebind_state_allows_missing_marker_partial_in_progress_handoff() {
 
 #[test]
 fn rebind_state_allows_current_marker_partial_in_progress_handoff() {
-	let workflow = sample_workflow();
-	let issue = sample_issue("In Progress");
-	let transition = super::super::validate_rebind_issue_state_for_policy(
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("In Progress");
+	let transition = super::validate_rebind_issue_state_for_policy(
 		workflow.frontmatter().tracker(),
 		&issue,
-		super::super::RebindMode::CompleteExistingHandoffState,
+		RebindMode::CompleteExistingHandoffState,
 	)
 	.expect("current-marker state completion should recover partial in-progress handoff")
 	.expect("partial in-progress handoff should transition to success state");
@@ -34,12 +48,12 @@ fn rebind_state_allows_current_marker_partial_in_progress_handoff() {
 
 #[test]
 fn rebind_state_allows_current_marker_failure_state_drift_recovery() {
-	let workflow = sample_workflow();
-	let issue = sample_issue("Todo");
-	let transition = super::super::validate_rebind_issue_state_for_policy(
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("Todo");
+	let transition = super::validate_rebind_issue_state_for_policy(
 		workflow.frontmatter().tracker(),
 		&issue,
-		super::super::RebindMode::CompleteExistingHandoffState,
+		RebindMode::CompleteExistingHandoffState,
 	)
 	.expect("current-marker state completion should recover failure-state drift")
 	.expect("failure-state drift should transition to success state");
@@ -50,14 +64,11 @@ fn rebind_state_allows_current_marker_failure_state_drift_recovery() {
 
 #[test]
 fn rebind_state_rejects_failure_state_without_current_marker_repair_mode() {
-	let workflow = sample_workflow();
-	let issue = sample_issue("Todo");
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("Todo");
 
-	for mode in [
-		super::super::RebindMode::RestoreMissingHandoff,
-		super::super::RebindMode::RefreshExistingHandoff,
-	] {
-		let error = super::super::validate_rebind_issue_state_for_policy(
+	for mode in [RebindMode::RestoreMissingHandoff, RebindMode::RefreshExistingHandoff] {
+		let error = super::validate_rebind_issue_state_for_policy(
 			workflow.frontmatter().tracker(),
 			&issue,
 			mode,
@@ -73,12 +84,12 @@ fn rebind_state_rejects_failure_state_without_current_marker_repair_mode() {
 
 #[test]
 fn rebind_state_requires_success_state_for_existing_marker_refresh() {
-	let workflow = sample_workflow();
-	let issue = sample_issue("In Progress");
-	let error = super::super::validate_rebind_issue_state_for_policy(
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("In Progress");
+	let error = super::validate_rebind_issue_state_for_policy(
 		workflow.frontmatter().tracker(),
 		&issue,
-		super::super::RebindMode::RefreshExistingHandoff,
+		RebindMode::RefreshExistingHandoff,
 	)
 	.expect_err("existing-marker refresh should still require success state");
 
@@ -88,9 +99,9 @@ fn rebind_state_requires_success_state_for_existing_marker_refresh() {
 
 #[test]
 fn adopt_state_allows_in_progress_or_review_only() {
-	let workflow = sample_workflow();
-	let in_progress = sample_issue("In Progress");
-	let transition = super::super::validate_adopt_issue_state_for_policy(
+	let workflow = tests::sample_workflow();
+	let in_progress = tests::sample_issue("In Progress");
+	let transition = super::validate_adopt_issue_state_for_policy(
 		workflow.frontmatter().tracker(),
 		&in_progress,
 	)
@@ -100,28 +111,24 @@ fn adopt_state_allows_in_progress_or_review_only() {
 	assert_eq!(transition.state_name, "In Review");
 	assert_eq!(transition.state_id, "state-review");
 
-	let in_review = sample_issue("In Review");
-	let no_transition = super::super::validate_adopt_issue_state_for_policy(
-		workflow.frontmatter().tracker(),
-		&in_review,
-	)
-	.expect("in-review issue should remain adoptable");
+	let in_review = tests::sample_issue("In Review");
+	let no_transition =
+		super::validate_adopt_issue_state_for_policy(workflow.frontmatter().tracker(), &in_review)
+			.expect("in-review issue should remain adoptable");
 
 	assert!(no_transition.is_none());
 
-	let todo = sample_issue("Todo");
-	let error = super::super::validate_adopt_issue_state_for_policy(
-		workflow.frontmatter().tracker(),
-		&todo,
-	)
-	.expect_err("manual takeover should not bypass failure/start states");
+	let todo = tests::sample_issue("Todo");
+	let error =
+		super::validate_adopt_issue_state_for_policy(workflow.frontmatter().tracker(), &todo)
+			.expect_err("manual takeover should not bypass failure/start states");
 
 	assert!(error.to_string().contains("manual takeover adopt requires"));
 }
 
 #[test]
 fn adopt_landing_state_rejects_pending_checks() {
-	let mut landing_state = sample_landing_state(
+	let mut landing_state = tests::sample_landing_state(
 		"https://github.com/hack-ink/decodex/pull/344",
 		"xy/xy-944-manual-takeover-adopt",
 		"1123456789abcdef0123456789abcdef01234567",
@@ -129,7 +136,7 @@ fn adopt_landing_state_rejects_pending_checks() {
 
 	landing_state.status_check_rollup_state = Some(String::from("PENDING"));
 
-	let error = super::super::validate_adopt_landing_state(&landing_state)
+	let error = super::validate_adopt_landing_state(&landing_state)
 		.expect_err("manual takeover must not adopt pending checks");
 
 	assert!(error.to_string().contains("still waiting on checks"));
@@ -137,7 +144,7 @@ fn adopt_landing_state_rejects_pending_checks() {
 
 #[test]
 fn adopt_landing_state_rejects_blocked_merge_state_after_green_gates() {
-	let mut landing_state = sample_landing_state(
+	let mut landing_state = tests::sample_landing_state(
 		"https://github.com/hack-ink/decodex/pull/344",
 		"xy/xy-944-manual-takeover-adopt",
 		"1123456789abcdef0123456789abcdef01234567",
@@ -145,7 +152,7 @@ fn adopt_landing_state_rejects_blocked_merge_state_after_green_gates() {
 
 	landing_state.merge_state_status = String::from("BLOCKED");
 
-	let error = super::super::validate_adopt_landing_state(&landing_state)
+	let error = super::validate_adopt_landing_state(&landing_state)
 		.expect_err("manual takeover should not bypass blocked merge state");
 
 	assert!(error.to_string().contains("not ready to adopt"));
@@ -154,7 +161,7 @@ fn adopt_landing_state_rejects_blocked_merge_state_after_green_gates() {
 
 #[test]
 fn adopt_landing_state_rejects_closed_or_draft_prs() {
-	let mut closed = sample_landing_state(
+	let mut closed = tests::sample_landing_state(
 		"https://github.com/hack-ink/decodex/pull/344",
 		"xy/xy-944-manual-takeover-adopt",
 		"1123456789abcdef0123456789abcdef01234567",
@@ -162,12 +169,12 @@ fn adopt_landing_state_rejects_closed_or_draft_prs() {
 
 	closed.state = String::from("CLOSED");
 
-	let error = super::super::validate_adopt_landing_state(&closed)
+	let error = super::validate_adopt_landing_state(&closed)
 		.expect_err("manual takeover must reject closed PRs");
 
 	assert!(error.to_string().contains("adopt requires `OPEN`"));
 
-	let mut draft = sample_landing_state(
+	let mut draft = tests::sample_landing_state(
 		"https://github.com/hack-ink/decodex/pull/344",
 		"xy/xy-944-manual-takeover-adopt",
 		"1123456789abcdef0123456789abcdef01234567",
@@ -175,7 +182,7 @@ fn adopt_landing_state_rejects_closed_or_draft_prs() {
 
 	draft.is_draft = true;
 
-	let error = super::super::validate_adopt_landing_state(&draft)
+	let error = super::validate_adopt_landing_state(&draft)
 		.expect_err("manual takeover must reject draft PRs");
 
 	assert!(error.to_string().contains("is still draft"));
@@ -183,7 +190,7 @@ fn adopt_landing_state_rejects_closed_or_draft_prs() {
 
 #[test]
 fn adopt_landing_state_rejects_failed_required_checks() {
-	let mut landing_state = sample_landing_state(
+	let mut landing_state = tests::sample_landing_state(
 		"https://github.com/hack-ink/decodex/pull/344",
 		"xy/xy-944-manual-takeover-adopt",
 		"1123456789abcdef0123456789abcdef01234567",
@@ -192,7 +199,7 @@ fn adopt_landing_state_rejects_failed_required_checks() {
 	landing_state.status_check_rollup_state = Some(String::from("FAILURE"));
 	landing_state.merge_state_status = String::from("BLOCKED");
 
-	let error = super::super::validate_adopt_landing_state(&landing_state)
+	let error = super::validate_adopt_landing_state(&landing_state)
 		.expect_err("manual takeover must reject failed required checks");
 
 	assert!(error.to_string().contains("failed required checks"));
@@ -202,46 +209,36 @@ fn adopt_landing_state_rejects_failed_required_checks() {
 fn adopt_existing_worktree_mapping_accepts_same_project_and_path() {
 	let temp_dir = TempDir::new().expect("temp worktree should exist");
 	let branch_name = "x/pubfi-pub-718";
-	let issue = sample_issue("In Progress");
-	let mapping = sample_worktree_at(branch_name, temp_dir.path());
+	let issue = tests::sample_issue("In Progress");
+	let mapping = tests::sample_worktree_at(branch_name, temp_dir.path());
 	let canonical_worktree =
 		fs::canonicalize(temp_dir.path()).expect("temp worktree should canonicalize");
 
-	super::super::validate_adopt_existing_worktree_mapping(
-		"pubfi",
-		&issue,
-		&mapping,
-		&canonical_worktree,
-	)
-	.expect("matching mapping should be accepted");
+	super::validate_adopt_existing_worktree_mapping("pubfi", &issue, &mapping, &canonical_worktree)
+		.expect("matching mapping should be accepted");
 }
 
 #[test]
 fn adopt_existing_worktree_mapping_accepts_stale_branch_for_same_path() {
 	let retained_dir = TempDir::new().expect("retained worktree should exist");
-	let issue = sample_issue("In Progress");
-	let mapping = sample_worktree_at("x/pubfi-pub-718-old", retained_dir.path());
+	let issue = tests::sample_issue("In Progress");
+	let mapping = tests::sample_worktree_at("x/pubfi-pub-718-old", retained_dir.path());
 	let retained_worktree =
 		fs::canonicalize(retained_dir.path()).expect("retained worktree should canonicalize");
 
-	super::super::validate_adopt_existing_worktree_mapping(
-		"pubfi",
-		&issue,
-		&mapping,
-		&retained_worktree,
-	)
-	.expect("stale mapping branch should be adopted when path matches");
+	super::validate_adopt_existing_worktree_mapping("pubfi", &issue, &mapping, &retained_worktree)
+		.expect("stale mapping branch should be adopted when path matches");
 }
 
 #[test]
 fn adopt_existing_worktree_mapping_rejects_stale_path() {
 	let retained_dir = TempDir::new().expect("retained worktree should exist");
 	let current_dir = TempDir::new().expect("current worktree should exist");
-	let issue = sample_issue("In Progress");
-	let mapping = sample_worktree_at("x/pubfi-pub-718", retained_dir.path());
+	let issue = tests::sample_issue("In Progress");
+	let mapping = tests::sample_worktree_at("x/pubfi-pub-718", retained_dir.path());
 	let current_worktree =
 		fs::canonicalize(current_dir.path()).expect("current worktree should canonicalize");
-	let error = super::super::validate_adopt_existing_worktree_mapping(
+	let error = super::validate_adopt_existing_worktree_mapping(
 		"pubfi",
 		&issue,
 		&mapping,
@@ -255,10 +252,10 @@ fn adopt_existing_worktree_mapping_rejects_stale_path() {
 #[test]
 fn manual_adopt_run_id_is_stable_for_head() {
 	let head_oid = "0123456789abcdef0123456789abcdef01234567";
-	let run_id = super::super::manual_adopt_run_id("XY-944", 2, head_oid);
+	let run_id = super::manual_adopt_run_id("XY-944", 2, head_oid);
 
 	assert_eq!(run_id, "xy-944-manual-adopt-2-0123456789ab");
-	assert_eq!(run_id, super::super::manual_adopt_run_id("XY-944", 2, head_oid));
+	assert_eq!(run_id, super::manual_adopt_run_id("XY-944", 2, head_oid));
 }
 
 #[test]
@@ -267,13 +264,13 @@ fn adopt_private_event_records_manual_takeover_lifecycle_evidence() {
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
-	let validation = super::super::AdoptValidation {
-		issue: sample_issue("In Review"),
+	let validation = AdoptValidation {
+		issue: tests::sample_issue("In Review"),
 		branch_name: branch_name.to_owned(),
 		worktree_path: Path::new("/tmp/PUB-718").to_path_buf(),
 		run_id: String::from("pub-718-manual-adopt-2-1123456789ab"),
 		attempt_number: 2,
-		landing_state: sample_landing_state(pr_url, branch_name, head_oid),
+		landing_state: tests::sample_landing_state(pr_url, branch_name, head_oid),
 		local_head_oid: head_oid.to_owned(),
 		worktree_path_for_event: Some(String::from(".worktrees/PUB-718")),
 		active_label_present: false,
@@ -281,7 +278,7 @@ fn adopt_private_event_records_manual_takeover_lifecycle_evidence() {
 		previous_worktree_mapping: None,
 	};
 
-	super::super::append_review_handoff_adopt_private_event(
+	super::append_review_handoff_adopt_private_event(
 		&state_store,
 		"pubfi",
 		&validation,
@@ -289,7 +286,7 @@ fn adopt_private_event_records_manual_takeover_lifecycle_evidence() {
 		false,
 	)
 	.expect("adopt private event should append");
-	super::super::append_review_handoff_adopt_private_event(
+	super::append_review_handoff_adopt_private_event(
 		&state_store,
 		"pubfi",
 		&validation,
@@ -332,22 +329,22 @@ fn rebind_private_event_records_retained_lifecycle_evidence() {
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
-	let validation = super::super::RebindValidation {
-		issue: sample_issue("In Review"),
-		worktree: sample_worktree(branch_name),
+	let validation = RebindValidation {
+		issue: tests::sample_issue("In Review"),
+		worktree: tests::sample_worktree(branch_name),
 		run_id: String::from("pub-718-attempt-2-1123456789ab"),
 		attempt_number: 2,
-		landing_state: sample_landing_state(pr_url, branch_name, head_oid),
+		landing_state: tests::sample_landing_state(pr_url, branch_name, head_oid),
 		local_head_oid: head_oid.to_owned(),
 		worktree_path_for_event: Some(String::from(".worktrees/PUB-718")),
 		active_label_present: true,
 		restore_active_label: false,
-		mode: super::super::RebindMode::RefreshExistingHandoff,
+		mode: RebindMode::RefreshExistingHandoff,
 		success_state_transition: None,
 		clear_needs_attention_label: false,
 	};
 
-	super::super::append_review_handoff_rebind_private_event(
+	super::append_review_handoff_rebind_private_event(
 		&state_store,
 		"pubfi",
 		&validation,
@@ -409,16 +406,13 @@ fn rebind_lifecycle_marker_write_failure_clears_partial_handoff_marker() {
 		0,
 		None,
 	);
-
-	let error = super::super::write_review_lifecycle_markers_with_rollback(
+	let error = super::write_review_lifecycle_markers_with_rollback(
 		&state_store,
 		"pubfi",
 		"issue-id",
 		&handoff,
 		&orchestration,
-		|| -> crate::prelude::Result<()> {
-			Err(crate::prelude::eyre::eyre!("orchestration marker write failed"))
-		},
+		|| -> Result<()> { Err(eyre::eyre!("orchestration marker write failed")) },
 	)
 	.expect_err("orchestration write failure should be returned");
 
@@ -441,8 +435,8 @@ fn rebind_lifecycle_marker_write_failure_clears_partial_handoff_marker() {
 fn diagnostic_treats_descendant_handoff_head_as_bound() {
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
-	let (temp_dir, original_head, current_head) = temp_git_worktree(branch_name);
-	let worktree = sample_worktree_at(branch_name, temp_dir.path());
+	let (temp_dir, original_head, current_head) = tests::temp_git_worktree(branch_name);
+	let worktree = tests::sample_worktree_at(branch_name, temp_dir.path());
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -452,8 +446,8 @@ fn diagnostic_treats_descendant_handoff_head_as_bound() {
 		branch_name,
 		original_head,
 	);
-	let landing_state = sample_landing_state(pr_url, branch_name, &current_head);
-	let diagnostic = super::super::diagnostic_binding(super::super::HandoffDiagnosticRequest {
+	let landing_state = tests::sample_landing_state(pr_url, branch_name, &current_head);
+	let diagnostic = super::diagnostic_binding(HandoffDiagnosticRequest {
 		service_id: "pubfi",
 		issue_identifier: "PUB-718",
 		issue_state_name: "In Review",
@@ -480,7 +474,7 @@ fn diagnostic_requires_rebind_when_current_marker_state_transition_pending() {
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
-	let worktree = sample_worktree(branch_name);
+	let worktree = tests::sample_worktree(branch_name);
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -504,8 +498,8 @@ fn diagnostic_requires_rebind_when_current_marker_state_transition_pending() {
 		0,
 		None,
 	);
-	let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
-	let diagnostic = super::super::diagnostic_binding(super::super::HandoffDiagnosticRequest {
+	let landing_state = tests::sample_landing_state(pr_url, branch_name, head_oid);
+	let diagnostic = super::diagnostic_binding(HandoffDiagnosticRequest {
 		service_id: "pubfi",
 		issue_identifier: "PUB-718",
 		issue_state_name: "In Progress",
@@ -533,8 +527,8 @@ fn diagnostic_requires_rebind_when_current_marker_state_transition_pending() {
 fn diagnostic_requires_refresh_when_handoff_head_is_stale() {
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
-	let (temp_dir, original_head, rebased_head) = temp_rebased_git_worktree(branch_name);
-	let worktree = sample_worktree_at(branch_name, temp_dir.path());
+	let (temp_dir, original_head, rebased_head) = tests::temp_rebased_git_worktree(branch_name);
+	let worktree = tests::sample_worktree_at(branch_name, temp_dir.path());
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -544,8 +538,8 @@ fn diagnostic_requires_refresh_when_handoff_head_is_stale() {
 		branch_name,
 		original_head,
 	);
-	let landing_state = sample_landing_state(pr_url, branch_name, &rebased_head);
-	let diagnostic = super::super::diagnostic_binding(super::super::HandoffDiagnosticRequest {
+	let landing_state = tests::sample_landing_state(pr_url, branch_name, &rebased_head);
+	let diagnostic = super::diagnostic_binding(HandoffDiagnosticRequest {
 		service_id: "pubfi",
 		issue_identifier: "PUB-718",
 		issue_state_name: "In Review",
@@ -575,7 +569,7 @@ fn diagnostic_requires_refresh_when_orchestration_head_is_stale() {
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
-	let worktree = sample_worktree(branch_name);
+	let worktree = tests::sample_worktree(branch_name);
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -599,8 +593,8 @@ fn diagnostic_requires_refresh_when_orchestration_head_is_stale() {
 		0,
 		None,
 	);
-	let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
-	let diagnostic = super::super::diagnostic_binding(super::super::HandoffDiagnosticRequest {
+	let landing_state = tests::sample_landing_state(pr_url, branch_name, head_oid);
+	let diagnostic = super::diagnostic_binding(HandoffDiagnosticRequest {
 		service_id: "pubfi",
 		issue_identifier: "PUB-718",
 		issue_state_name: "In Review",
@@ -627,7 +621,7 @@ fn diagnostic_bound_handoff_reports_missing_active_ownership_recovery() {
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
-	let worktree = sample_worktree(branch_name);
+	let worktree = tests::sample_worktree(branch_name);
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -651,8 +645,8 @@ fn diagnostic_bound_handoff_reports_missing_active_ownership_recovery() {
 		0,
 		None,
 	);
-	let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
-	let diagnostic = super::super::diagnostic_binding(super::super::HandoffDiagnosticRequest {
+	let landing_state = tests::sample_landing_state(pr_url, branch_name, head_oid);
+	let diagnostic = super::diagnostic_binding(HandoffDiagnosticRequest {
 		service_id: "pubfi",
 		issue_identifier: "PUB-718",
 		issue_state_name: "In Review",
@@ -681,7 +675,7 @@ fn diagnostic_reports_rebind_for_failure_state_ownership_drift() {
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
-	let worktree = sample_worktree(branch_name);
+	let worktree = tests::sample_worktree(branch_name);
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -705,8 +699,8 @@ fn diagnostic_reports_rebind_for_failure_state_ownership_drift() {
 		0,
 		None,
 	);
-	let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
-	let diagnostic = super::super::diagnostic_binding(super::super::HandoffDiagnosticRequest {
+	let landing_state = tests::sample_landing_state(pr_url, branch_name, head_oid);
+	let diagnostic = super::diagnostic_binding(HandoffDiagnosticRequest {
 		service_id: "pubfi",
 		issue_identifier: "PUB-718",
 		issue_state_name: "Todo",
@@ -736,7 +730,7 @@ fn diagnostic_reports_rebind_for_failure_state_drift_with_active_label() {
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
-	let worktree = sample_worktree(branch_name);
+	let worktree = tests::sample_worktree(branch_name);
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -760,8 +754,8 @@ fn diagnostic_reports_rebind_for_failure_state_drift_with_active_label() {
 		0,
 		None,
 	);
-	let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
-	let diagnostic = super::super::diagnostic_binding(super::super::HandoffDiagnosticRequest {
+	let landing_state = tests::sample_landing_state(pr_url, branch_name, head_oid);
+	let diagnostic = super::diagnostic_binding(HandoffDiagnosticRequest {
 		service_id: "pubfi",
 		issue_identifier: "PUB-718",
 		issue_state_name: "Todo",
@@ -787,11 +781,11 @@ fn diagnostic_reports_rebind_for_failure_state_drift_with_active_label() {
 
 #[test]
 fn rebind_validation_refreshes_existing_same_branch_pr_marker() {
-	let workflow = sample_workflow();
-	let issue = sample_issue("In Review");
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("In Review");
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
-	let worktree = sample_worktree(branch_name);
+	let worktree = tests::sample_worktree(branch_name);
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -801,9 +795,12 @@ fn rebind_validation_refreshes_existing_same_branch_pr_marker() {
 		branch_name,
 		"0123456789abcdef0123456789abcdef01234567",
 	);
-	let landing_state =
-		sample_landing_state(pr_url, branch_name, "1123456789abcdef0123456789abcdef01234567");
-	let (run_id, attempt_number, mode) = super::super::validate_existing_handoff_refresh(
+	let landing_state = tests::sample_landing_state(
+		pr_url,
+		branch_name,
+		"1123456789abcdef0123456789abcdef01234567",
+	);
+	let (run_id, attempt_number, mode) = super::validate_existing_handoff_refresh(
 		workflow.frontmatter().tracker(),
 		&issue,
 		&worktree,
@@ -821,11 +818,11 @@ fn rebind_validation_refreshes_existing_same_branch_pr_marker() {
 
 #[test]
 fn rebind_validation_rejects_stale_marker_failure_state_drift_recovery() {
-	let workflow = sample_workflow();
-	let issue = sample_issue("Todo");
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("Todo");
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
-	let worktree = sample_worktree(branch_name);
+	let worktree = tests::sample_worktree(branch_name);
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -835,9 +832,12 @@ fn rebind_validation_rejects_stale_marker_failure_state_drift_recovery() {
 		branch_name,
 		"0123456789abcdef0123456789abcdef01234567",
 	);
-	let landing_state =
-		sample_landing_state(pr_url, branch_name, "1123456789abcdef0123456789abcdef01234567");
-	let (_run_id, _attempt_number, mode) = super::super::validate_existing_handoff_refresh(
+	let landing_state = tests::sample_landing_state(
+		pr_url,
+		branch_name,
+		"1123456789abcdef0123456789abcdef01234567",
+	);
+	let (_run_id, _attempt_number, mode) = super::validate_existing_handoff_refresh(
 		workflow.frontmatter().tracker(),
 		&issue,
 		&worktree,
@@ -850,7 +850,7 @@ fn rebind_validation_rejects_stale_marker_failure_state_drift_recovery() {
 
 	assert_eq!(mode, super::super::RebindMode::RefreshExistingHandoff);
 
-	let error = super::super::validate_rebind_issue_state_for_policy(
+	let error = super::validate_rebind_issue_state_for_policy(
 		workflow.frontmatter().tracker(),
 		&issue,
 		mode,
@@ -862,12 +862,12 @@ fn rebind_validation_rejects_stale_marker_failure_state_drift_recovery() {
 
 #[test]
 fn rebind_validation_rejects_current_existing_marker_as_noop() {
-	let workflow = sample_workflow();
-	let issue = sample_issue("In Review");
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("In Review");
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
-	let worktree = sample_worktree(branch_name);
+	let worktree = tests::sample_worktree(branch_name);
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -891,8 +891,8 @@ fn rebind_validation_rejects_current_existing_marker_as_noop() {
 		0,
 		None,
 	);
-	let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
-	let error = super::super::validate_existing_handoff_refresh(
+	let landing_state = tests::sample_landing_state(pr_url, branch_name, head_oid);
+	let error = super::validate_existing_handoff_refresh(
 		workflow.frontmatter().tracker(),
 		&issue,
 		&worktree,
@@ -908,12 +908,12 @@ fn rebind_validation_rejects_current_existing_marker_as_noop() {
 
 #[test]
 fn rebind_validation_completes_current_existing_marker_state_transition() {
-	let workflow = sample_workflow();
-	let issue = sample_issue("In Progress");
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("In Progress");
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
-	let worktree = sample_worktree(branch_name);
+	let worktree = tests::sample_worktree(branch_name);
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -937,8 +937,8 @@ fn rebind_validation_completes_current_existing_marker_state_transition() {
 		0,
 		None,
 	);
-	let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
-	let (run_id, attempt_number, mode) = super::super::validate_existing_handoff_refresh(
+	let landing_state = tests::sample_landing_state(pr_url, branch_name, head_oid);
+	let (run_id, attempt_number, mode) = super::validate_existing_handoff_refresh(
 		workflow.frontmatter().tracker(),
 		&issue,
 		&worktree,
@@ -956,12 +956,12 @@ fn rebind_validation_completes_current_existing_marker_state_transition() {
 
 #[test]
 fn rebind_validation_completes_current_existing_marker_failure_state_drift() {
-	let workflow = sample_workflow();
-	let issue = sample_issue("Todo");
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("Todo");
 	let branch_name = "x/pubfi-pub-718";
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
-	let worktree = sample_worktree(branch_name);
+	let worktree = tests::sample_worktree(branch_name);
 	let handoff = ReviewHandoffMarker::new(
 		"pub-718-attempt-1",
 		1,
@@ -985,8 +985,8 @@ fn rebind_validation_completes_current_existing_marker_failure_state_drift() {
 		0,
 		None,
 	);
-	let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
-	let (run_id, attempt_number, mode) = super::super::validate_existing_handoff_refresh(
+	let landing_state = tests::sample_landing_state(pr_url, branch_name, head_oid);
+	let (run_id, attempt_number, mode) = super::validate_existing_handoff_refresh(
 		workflow.frontmatter().tracker(),
 		&issue,
 		&worktree,

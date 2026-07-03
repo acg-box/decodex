@@ -1,9 +1,12 @@
-use crate::orchestrator::{
-	EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH, OperatorRunAppServerState,
-	OperatorRunProtocolSummary, OperatorRunTiming, RUN_LEASE_IDLE_TIMEOUT, state,
+use crate::{
+	orchestrator::{
+		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH, OperatorRunAppServerState,
+		OperatorRunProtocolSummary, OperatorRunTiming, RUN_LEASE_IDLE_TIMEOUT,
+	},
+	state,
 };
 
-pub(in crate::orchestrator) fn operator_run_visible_status(
+pub(crate) fn operator_run_visible_status(
 	attempt_status: &str,
 	app_server_state: &OperatorRunAppServerState,
 	protocol_summary: &OperatorRunProtocolSummary,
@@ -22,7 +25,7 @@ pub(in crate::orchestrator) fn operator_run_visible_status(
 	attempt_status.to_owned()
 }
 
-pub(in crate::orchestrator) fn operator_run_status_projection_reason(
+pub(crate) fn operator_run_status_projection_reason(
 	attempt_status: &str,
 	visible_status: &str,
 	app_server_state: &OperatorRunAppServerState,
@@ -44,7 +47,7 @@ pub(in crate::orchestrator) fn operator_run_status_projection_reason(
 		.map(|source| format!("{projection_kind}_promoted_by_{source}"))
 }
 
-pub(in crate::orchestrator) fn operator_run_live_evidence_source(
+pub(crate) fn operator_run_live_evidence_source(
 	app_server_state: &OperatorRunAppServerState,
 	protocol_summary: &OperatorRunProtocolSummary,
 	timing: &OperatorRunTiming,
@@ -75,7 +78,7 @@ pub(in crate::orchestrator) fn operator_run_live_evidence_source(
 	None
 }
 
-pub(in crate::orchestrator) fn operator_run_has_recent_protocol_execution_evidence(
+pub(crate) fn operator_run_has_recent_protocol_execution_evidence(
 	protocol_summary: &OperatorRunProtocolSummary,
 	timing: &OperatorRunTiming,
 ) -> bool {
@@ -86,9 +89,7 @@ pub(in crate::orchestrator) fn operator_run_has_recent_protocol_execution_eviden
 		})
 }
 
-pub(in crate::orchestrator) fn operator_protocol_event_counts_as_live_execution(
-	event_type: Option<&str>,
-) -> bool {
+pub(crate) fn operator_protocol_event_counts_as_live_execution(event_type: Option<&str>) -> bool {
 	let Some(event_type) = event_type else {
 		return false;
 	};
@@ -97,7 +98,7 @@ pub(in crate::orchestrator) fn operator_protocol_event_counts_as_live_execution(
 		&& !matches!(event_type.to_ascii_lowercase().as_str(), "thread/archive" | "turn/completed")
 }
 
-pub(in crate::orchestrator) fn operator_run_has_app_server_execution_evidence(
+pub(crate) fn operator_run_has_app_server_execution_evidence(
 	app_server_state: &OperatorRunAppServerState,
 	protocol_summary: &OperatorRunProtocolSummary,
 	timing: &OperatorRunTiming,
@@ -114,11 +115,11 @@ pub(in crate::orchestrator) fn operator_run_has_app_server_execution_evidence(
 		})
 }
 
-pub(in crate::orchestrator) fn operator_run_queue_lease_state(run_lease: bool) -> String {
+pub(crate) fn operator_run_queue_lease_state(run_lease: bool) -> String {
 	if run_lease { String::from("held") } else { String::from("not_held") }
 }
 
-pub(in crate::orchestrator) fn operator_run_execution_liveness(
+pub(crate) fn operator_run_execution_liveness(
 	status: &str,
 	timing: &OperatorRunTiming,
 	app_server_state: &OperatorRunAppServerState,
@@ -149,8 +150,6 @@ pub(in crate::orchestrator) fn operator_run_execution_liveness(
 	String::from("not_captured")
 }
 
-pub(in crate::orchestrator) fn process_liveness_reason_is_identity_mismatch(
-	reason: Option<&str>,
-) -> bool {
+pub(crate) fn process_liveness_reason_is_identity_mismatch(reason: Option<&str>) -> bool {
 	matches!(reason, Some("host_boot_id_mismatch" | "process_start_identity_mismatch"))
 }

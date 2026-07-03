@@ -16,8 +16,13 @@ use std::{cell::RefCell, path::Path};
 
 use color_eyre::Report;
 use serde_json::Value;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+#[cfg(test)]
+use self::inspectors::{
+	RepositoryIdentity, parse_github_repository_identity, parse_remote_head_symref_output,
+	resolve_lane_default_branch, review_blocking_status_lines,
+};
 use self::{
 	inspectors::{
 		GhPullRequestInspector, LocalGitRepoInspector, resolve_review_handoff_github_token,
@@ -41,11 +46,6 @@ use self::{
 		normalize_optional_progress_field, normalize_progress_list, normalize_summary,
 		public_summary_or_fallback,
 	},
-};
-#[cfg(test)]
-use self::inspectors::{
-	RepositoryIdentity, parse_github_repository_identity, parse_remote_head_symref_output,
-	resolve_lane_default_branch, review_blocking_status_lines,
 };
 use crate::{
 	prelude::eyre,

@@ -2,9 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::prelude::{Result, eyre};
-
-use super::validation::validate_required;
+use crate::{
+	autonomy_objective::validation,
+	prelude::{Result, eyre},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -75,10 +76,16 @@ impl AutonomyObjectiveAcceptance {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("autonomy objective acceptance.accepted_by", &self.accepted_by)?;
-		validate_required("autonomy objective acceptance.accepted_at", &self.accepted_at)?;
+		validation::validate_required(
+			"autonomy objective acceptance.accepted_by",
+			&self.accepted_by,
+		)?;
+		validation::validate_required(
+			"autonomy objective acceptance.accepted_at",
+			&self.accepted_at,
+		)?;
 
-		validate_required(
+		validation::validate_required(
 			"autonomy objective acceptance.acceptance_source",
 			&self.acceptance_source,
 		)
@@ -119,11 +126,20 @@ impl AutonomyObjectiveRejection {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("autonomy objective rejection.rejected_by", &self.rejected_by)?;
-		validate_required("autonomy objective rejection.rejected_at", &self.rejected_at)?;
-		validate_required("autonomy objective rejection.rejection_source", &self.rejection_source)?;
+		validation::validate_required(
+			"autonomy objective rejection.rejected_by",
+			&self.rejected_by,
+		)?;
+		validation::validate_required(
+			"autonomy objective rejection.rejected_at",
+			&self.rejected_at,
+		)?;
+		validation::validate_required(
+			"autonomy objective rejection.rejection_source",
+			&self.rejection_source,
+		)?;
 
-		validate_required("autonomy objective rejection.reason", &self.reason)
+		validation::validate_required("autonomy objective rejection.reason", &self.reason)
 	}
 }
 
@@ -171,7 +187,7 @@ impl AutonomyObjectiveSupersession {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required(
+		validation::validate_required(
 			"autonomy objective supersession.superseded_by_objective_id",
 			&self.superseded_by_objective_id,
 		)?;
@@ -182,13 +198,19 @@ impl AutonomyObjectiveSupersession {
 			);
 		}
 
-		validate_required("autonomy objective supersession.superseded_by", &self.superseded_by)?;
-		validate_required("autonomy objective supersession.superseded_at", &self.superseded_at)?;
-		validate_required(
+		validation::validate_required(
+			"autonomy objective supersession.superseded_by",
+			&self.superseded_by,
+		)?;
+		validation::validate_required(
+			"autonomy objective supersession.superseded_at",
+			&self.superseded_at,
+		)?;
+		validation::validate_required(
 			"autonomy objective supersession.supersession_source",
 			&self.supersession_source,
 		)?;
 
-		validate_required("autonomy objective supersession.reason", &self.reason)
+		validation::validate_required("autonomy objective supersession.reason", &self.reason)
 	}
 }

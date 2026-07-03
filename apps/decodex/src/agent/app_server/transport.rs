@@ -1,12 +1,14 @@
 use color_eyre::Report;
 
-use super::runtime_types::RequestWaitPhase;
-use crate::agent::json_rpc;
+use crate::{
+	agent::{app_server::runtime_types::RequestWaitPhase, json_rpc},
+	prelude::Result,
+};
 
 pub(super) fn annotate_transport_failure_phase<T>(
-	result: crate::prelude::Result<T>,
+	result: Result<T>,
 	phase: RequestWaitPhase,
-) -> crate::prelude::Result<T> {
+) -> Result<T> {
 	result.map_err(|error| transport_failure_at_phase(error, phase))
 }
 

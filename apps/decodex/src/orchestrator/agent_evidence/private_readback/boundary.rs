@@ -1,9 +1,11 @@
 use serde_json::Value;
 
-use crate::orchestrator::PrivateExecutionEvent;
-use crate::orchestrator::agent_evidence::{
-	AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
-	PrivateEvidenceBoundaryCheckSummary, PrivateEvidenceDecisionRequestSummary,
+use crate::orchestrator::{
+	PrivateExecutionEvent,
+	agent_evidence::{
+		AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
+		PrivateEvidenceBoundaryCheckSummary, PrivateEvidenceDecisionRequestSummary,
+	},
 };
 
 pub(super) fn boundary_checks_from_private_events(
@@ -95,18 +97,16 @@ fn boundary_check_from_private_event(
 
 fn boundary_check_next_action(policy_decision: &str) -> String {
 	match policy_decision {
-		"auto_continue" => {
-			String::from("Continue autonomous architecture recovery inside the accepted boundary.")
-		},
+		"auto_continue" =>
+			String::from("Continue autonomous architecture recovery inside the accepted boundary."),
 		"requires_enhanced_evidence" => String::from(
 			"Continue recovery and preserve enhanced evidence before review handoff or landing.",
 		),
 		"block_landing" => String::from(
 			"Continue recovery, but block landing until review or validation policy evidence is restored.",
 		),
-		"requires_human_decision" => {
-			String::from("Stop for a human boundary decision before continuing.")
-		},
+		"requires_human_decision" =>
+			String::from("Stop for a human boundary decision before continuing."),
 		_ => String::from("Inspect the authority boundary summary before continuing."),
 	}
 }

@@ -1,7 +1,6 @@
-use super::{
-	Arc, Mutex, OperatorRunStatus, OperatorStatusSnapshot, PublishedOperatorSnapshot, Result,
-	Value, eyre, global_codex_account_control_status, http_response_bytes,
-	http_response_bytes_with_headers, json, operator_snapshot_presentation_value,
+use crate::orchestrator::operator_http::{
+	self, Arc, Mutex, OperatorRunStatus, OperatorStatusSnapshot, PublishedOperatorSnapshot, Result,
+	Value, eyre,
 };
 
 pub(super) fn snapshot_json_with_live_account_control(snapshot_json: &[u8]) -> Vec<u8> {
@@ -16,11 +15,11 @@ pub(super) fn snapshot_json_with_live_account_control(snapshot_json: &[u8]) -> V
 		return snapshot_json.to_vec();
 	}
 
-	let account_control = global_codex_account_control_status();
+	let account_control = operator_http::global_codex_account_control_status();
 
 	snapshot_object.insert(
 		String::from("account_control"),
-		json!({
+		operator_http::json!({
 			"mode": account_control.mode,
 			"account_selector": account_control.account_selector,
 		}),
@@ -38,7 +37,7 @@ pub(super) fn build_operator_app_snapshot_http_response(
 	let snapshot = match snapshot.lock() {
 		Ok(snapshot) => snapshot,
 		Err(error) => {
-			return http_response_bytes(
+			return operator_http::http_response_bytes(
 				"500 Internal Server Error",
 				"text/plain; charset=utf-8",
 				format!("operator snapshot lock poisoned: {error}").as_bytes(),
@@ -46,7 +45,7 @@ pub(super) fn build_operator_app_snapshot_http_response(
 		},
 	};
 	let Some(snapshot_json) = snapshot.snapshot_json.as_deref() else {
-		return http_response_bytes_with_headers(
+		return operator_http::http_response_bytes_with_headers(
 			"200 OK",
 			"application/json",
 			&[("Cache-Control", String::from("no-store"))],
@@ -60,15 +59,7 @@ pub(super) fn build_operator_app_snapshot_http_response(
 		headers.push(("X-Decodex-Snapshot-Unix-Epoch", published_at.to_string()));
 	}
 
-	http_response_bytes_with_headers("200 OK", "application/json", &headers, &body)
-}
-
-pub(crate) fn operator_snapshot_json_value(snapshot: &OperatorStatusSnapshot) -> Result<Value> {
-	let mut value = serde_json::to_value(snapshot)?;
-
-	attach_operator_snapshot_presentation(&mut value, &snapshot.current_lanes)?;
-
-	Ok(value)
+	operator_http::http_response_bytes_with_headers("200 OK", "application/json", &headers, &body)
 }
 
 pub(super) fn attach_operator_snapshot_presentation(
@@ -78,7 +69,7 @@ pub(super) fn attach_operator_snapshot_presentation(
 	if let Some(object) = snapshot.as_object_mut() {
 		object.insert(
 			String::from("presentation"),
-			operator_snapshot_presentation_value(current_lanes)?,
+			operator_http::operator_snapshot_presentation_value(current_lanes)?,
 		);
 	}
 
@@ -98,8 +89,16 @@ pub(super) fn dashboard_current_snapshot_event_payload(
 	let snapshot_json = snapshot_json_with_live_account_control(snapshot_json);
 	let snapshot = serde_json::from_slice::<Value>(&snapshot_json)?;
 
-	Ok(Some(json!({
+	Ok(Some(operator_http::json!({
 		"snapshotPublishedAtUnixEpoch": published_snapshot.last_publish_unix_epoch,
 		"snapshot": snapshot,
 	})))
+}
+
+pub(crate) fn operator_snapshot_json_value(snapshot: &OperatorStatusSnapshot) -> Result<Value> {
+	let mut value = serde_json::to_value(snapshot)?;
+
+	attach_operator_snapshot_presentation(&mut value, &snapshot.current_lanes)?;
+
+	Ok(value)
 }

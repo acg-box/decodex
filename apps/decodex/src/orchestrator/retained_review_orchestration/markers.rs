@@ -1,15 +1,26 @@
-use crate::{
-	orchestrator::{
-		ReviewOrchestrationPhase,
-		kernel::command::{CommandIntent, CommandIntentKind},
-		retained_review_orchestration::{
-			RetainedReviewLane, command, model::RetainedReviewOrchestrationMarkerFields,
-		},
-	},
-	prelude::{Result, eyre},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore},
-	tracker::TrackerIssue,
+use crate::orchestrator::retained_review_orchestration::{
+	self, CommandIntent, CommandIntentKind, Result, RetainedReviewLane,
+	RetainedReviewOrchestrationMarkerFields, ReviewHandoffMarker, ReviewOrchestrationMarker,
+	ReviewOrchestrationPhase, StateStore, TrackerIssue, eyre,
 };
+
+pub(super) fn write_retained_review_orchestration_marker_for_command(
+	state_store: &StateStore,
+	lane: &RetainedReviewLane,
+	kind: CommandIntentKind,
+	reason: &str,
+	phase: ReviewOrchestrationPhase,
+	fields: RetainedReviewOrchestrationMarkerFields,
+) -> Result<()> {
+	write_retained_review_orchestration_marker(
+		state_store,
+		lane,
+		retained_review_orchestration::retained_review_command_intent(lane, kind, reason),
+		kind,
+		phase,
+		fields,
+	)
+}
 
 pub(crate) fn ensure_review_orchestration_marker(
 	project_id: &str,
@@ -40,8 +51,8 @@ pub(crate) fn ensure_review_orchestration_marker(
 				None,
 			);
 
-			command::retained_review_command_adapter(
-				command::retained_review_command_intent_for_issue(
+			retained_review_orchestration::retained_review_command_adapter(
+				retained_review_orchestration::retained_review_command_intent_for_issue(
 					&issue.id,
 					Some(marker.run_id()),
 					CommandIntentKind::SyncReviewOrchestrationMarker,
@@ -87,8 +98,8 @@ pub(crate) fn ensure_review_orchestration_marker(
 		None,
 	);
 
-	command::retained_review_command_adapter(
-		command::retained_review_command_intent_for_issue(
+	retained_review_orchestration::retained_review_command_adapter(
+		retained_review_orchestration::retained_review_command_intent_for_issue(
 			&issue.id,
 			Some(review_handoff.run_id()),
 			CommandIntentKind::SyncReviewOrchestrationMarker,
@@ -102,24 +113,6 @@ pub(crate) fn ensure_review_orchestration_marker(
 	Ok(marker)
 }
 
-pub(super) fn write_retained_review_orchestration_marker_for_command(
-	state_store: &StateStore,
-	lane: &RetainedReviewLane,
-	kind: CommandIntentKind,
-	reason: &str,
-	phase: ReviewOrchestrationPhase,
-	fields: RetainedReviewOrchestrationMarkerFields,
-) -> Result<()> {
-	write_retained_review_orchestration_marker(
-		state_store,
-		lane,
-		command::retained_review_command_intent(lane, kind, reason),
-		kind,
-		phase,
-		fields,
-	)
-}
-
 fn write_retained_review_orchestration_marker(
 	state_store: &StateStore,
 	lane: &RetainedReviewLane,
@@ -128,7 +121,7 @@ fn write_retained_review_orchestration_marker(
 	phase: ReviewOrchestrationPhase,
 	fields: RetainedReviewOrchestrationMarkerFields,
 ) -> Result<()> {
-	command::retained_review_command_adapter(command_intent, expected_kind)?;
+	retained_review_orchestration::retained_review_command_adapter(command_intent, expected_kind)?;
 
 	let local_head_oid =
 		lane.snapshot.local_head_oid.as_deref().ok_or_else(|| {

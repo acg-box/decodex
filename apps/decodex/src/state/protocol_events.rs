@@ -1,11 +1,11 @@
 use sha2::{Digest as _, Sha256};
 
-use super::{StateData, StateStore};
 use crate::{
 	prelude::{Result, eyre},
 	state::{
+		StateData, StateStore,
 		runtime_records::{ProtocolEventRecord, ProtocolEventSummaryRecord},
-		runtime_row_parsers::{protocol_event_summary_from_events, timestamp_parts},
+		runtime_row_parsers,
 	},
 };
 
@@ -38,7 +38,7 @@ impl StateStore {
 		event_type: &str,
 		payload: &str,
 	) -> Result<()> {
-		let now = timestamp_parts();
+		let now = runtime_row_parsers::timestamp_parts();
 		let mut state = self.lock_without_refresh()?;
 		let event = ProtocolEventRecord {
 			sequence_number,
@@ -164,6 +164,7 @@ impl StateStore {
 				inserted_event.sequence_number == last_sequence_number.saturating_add(1)
 			}) {
 				summary.record_event(&inserted_event);
+
 				let summary = summary.clone();
 
 				self.upsert_protocol_event_summary_locked(run_id, &summary)?;
@@ -171,7 +172,7 @@ impl StateStore {
 				self.rebuild_protocol_event_summaries_for_runs_locked(state, &[run_id.to_owned()])?;
 			}
 		} else if let Some(events) = state.events.get(run_id) {
-			let summary = protocol_event_summary_from_events(events);
+			let summary = runtime_row_parsers::protocol_event_summary_from_events(events);
 
 			state.event_summaries.insert(run_id.to_owned(), summary);
 		}

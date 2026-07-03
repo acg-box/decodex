@@ -10,7 +10,7 @@ use tempfile::TempDir;
 
 use crate::{
 	config::{self, ReviewLevel, ServiceConfig},
-	test_support::hermetic_git_command,
+	test_support,
 	worktree::WorktreeManager,
 };
 
@@ -811,7 +811,7 @@ fn canonical_repo_root_for_checkout_prefers_shared_repo_root_for_linked_worktree
 	fs::create_dir_all(&worktree_root).expect("worktree root should exist");
 
 	assert!(
-		hermetic_git_command()
+		test_support::hermetic_git_command()
 			.args(["init", "-b", "main"])
 			.current_dir(temp_dir.path())
 			.arg(&repo_root)
@@ -820,7 +820,7 @@ fn canonical_repo_root_for_checkout_prefers_shared_repo_root_for_linked_worktree
 			.success()
 	);
 	assert!(
-		hermetic_git_command()
+		test_support::hermetic_git_command()
 			.args(["config", "user.name", "Decodex Tests"])
 			.current_dir(&repo_root)
 			.status()
@@ -828,7 +828,7 @@ fn canonical_repo_root_for_checkout_prefers_shared_repo_root_for_linked_worktree
 			.success()
 	);
 	assert!(
-		hermetic_git_command()
+		test_support::hermetic_git_command()
 			.args(["config", "user.email", "decodex-tests@example.com"])
 			.current_dir(&repo_root)
 			.status()
@@ -836,7 +836,7 @@ fn canonical_repo_root_for_checkout_prefers_shared_repo_root_for_linked_worktree
 			.success()
 	);
 	assert!(
-		hermetic_git_command()
+		test_support::hermetic_git_command()
 			.args(["config", "commit.gpgsign", "false"])
 			.current_dir(&repo_root)
 			.status()
@@ -847,7 +847,7 @@ fn canonical_repo_root_for_checkout_prefers_shared_repo_root_for_linked_worktree
 	fs::write(repo_root.join("README.md"), "bootstrap\n").expect("readme should write");
 
 	assert!(
-		hermetic_git_command()
+		test_support::hermetic_git_command()
 			.args(["add", "README.md"])
 			.current_dir(&repo_root)
 			.status()
@@ -855,7 +855,7 @@ fn canonical_repo_root_for_checkout_prefers_shared_repo_root_for_linked_worktree
 			.success()
 	);
 	assert!(
-		hermetic_git_command()
+		test_support::hermetic_git_command()
 			.args(["commit", "-m", "seed repo"])
 			.current_dir(&repo_root)
 			.status()

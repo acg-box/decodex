@@ -1,9 +1,11 @@
-use crate::tracker;
-
-use super::{
-	IssueDispatchMode, IssueTracker, PullRequestReviewStateInspector, RetainedCloseoutPrMergeGate,
-	TrackerIssue, TrackerToolBridge, TurnContinuationGuard, WorkflowDocument, eyre, refresh_issue,
-	retained_closeout_pr_merge_gate_with_inspector,
+use crate::{
+	orchestrator::types::{
+		self, IssueDispatchMode, IssueTracker, PullRequestReviewStateInspector,
+		RetainedCloseoutPrMergeGate, TrackerIssue, TrackerToolBridge, TurnContinuationGuard,
+		WorkflowDocument, eyre,
+	},
+	prelude::Result,
+	tracker,
 };
 
 pub(crate) struct IssueTurnContinuationGuard<'a, T> {
@@ -24,10 +26,7 @@ impl<T> IssueTurnContinuationGuard<'_, T>
 where
 	T: IssueTracker,
 {
-	pub(crate) fn issue_has_service_ownership(
-		&self,
-		issue: &TrackerIssue,
-	) -> crate::prelude::Result<bool> {
+	pub(crate) fn issue_has_service_ownership(&self, issue: &TrackerIssue) -> Result<bool> {
 		tracker::issue_has_label_with_server_confirmation(
 			self.tracker,
 			issue,
@@ -35,7 +34,7 @@ where
 		)
 	}
 
-	pub(crate) fn completed_closeout_pr_is_merged(&self) -> crate::prelude::Result<bool> {
+	pub(crate) fn completed_closeout_pr_is_merged(&self) -> Result<bool> {
 		let Some(review_state_inspector) = self.review_state_inspector else {
 			return Ok(false);
 		};
@@ -46,7 +45,7 @@ where
 			return Ok(false);
 		};
 
-		match retained_closeout_pr_merge_gate_with_inspector(
+		match types::retained_closeout_pr_merge_gate_with_inspector(
 			&review_context.cwd,
 			&review_context.branch_name,
 			pr_url,
@@ -67,8 +66,8 @@ impl<T> TurnContinuationGuard for IssueTurnContinuationGuard<'_, T>
 where
 	T: IssueTracker,
 {
-	fn should_continue_turn(&self, _turn_count: u32) -> crate::prelude::Result<bool> {
-		let Some(issue) = refresh_issue(self.tracker, self.issue_id)? else {
+	fn should_continue_turn(&self, _turn_count: u32) -> Result<bool> {
+		let Some(issue) = types::refresh_issue(self.tracker, self.issue_id)? else {
 			return Ok(false);
 		};
 		let tracker_policy = self.workflow.frontmatter().tracker();
@@ -108,9 +107,9 @@ where
 		Ok(stale_startup_snapshot)
 	}
 
-	fn validate_continuation_boundary(&self, turn_count: u32) -> crate::prelude::Result<()> {
+	fn validate_continuation_boundary(&self, turn_count: u32) -> Result<()> {
 		if self.dispatch_mode == IssueDispatchMode::ReviewRepair {
-			let Some(issue) = refresh_issue(self.tracker, self.issue_id)? else {
+			let Some(issue) = types::refresh_issue(self.tracker, self.issue_id)? else {
 				return Ok(());
 			};
 			let tracker_policy = self.workflow.frontmatter().tracker();
@@ -131,7 +130,7 @@ where
 			);
 		}
 		if self.dispatch_mode == IssueDispatchMode::Closeout {
-			let Some(issue) = refresh_issue(self.tracker, self.issue_id)? else {
+			let Some(issue) = types::refresh_issue(self.tracker, self.issue_id)? else {
 				return Ok(());
 			};
 			let tracker_policy = self.workflow.frontmatter().tracker();
@@ -161,7 +160,7 @@ where
 			return Ok(());
 		}
 		if self.tracker_tool_bridge.startup_transition_succeeded_locally() {
-			let Some(issue) = refresh_issue(self.tracker, self.issue_id)? else {
+			let Some(issue) = types::refresh_issue(self.tracker, self.issue_id)? else {
 				return Ok(());
 			};
 			let tracker_policy = self.workflow.frontmatter().tracker();
@@ -175,7 +174,7 @@ where
 			}
 		}
 
-		let Some(issue) = refresh_issue(self.tracker, self.issue_id)? else {
+		let Some(issue) = types::refresh_issue(self.tracker, self.issue_id)? else {
 			return Ok(());
 		};
 		let in_progress = self.workflow.frontmatter().tracker().in_progress_state();

@@ -1,15 +1,9 @@
-use crate::{
-	orchestrator::{
-		ChildExitRetryContext, ChildRunRef, IssueDispatchMode, IssueRunPlan, IssueTracker, Result,
-		handle_failure, recover_phase_goal_continuation, run_failure_requires_terminal_attention,
-	},
-	tracker::TrackerIssue,
-};
 use crate::orchestrator::daemon_retry::{
-	ChildExitPhaseGoalRecovery, child_exit_worktree_spec, clear_retry_schedule_and_release,
+	self, ChildExitPhaseGoalRecovery, ChildExitRetryContext, ChildRunRef, IssueDispatchMode,
+	IssueRunPlan, IssueTracker, Result, TrackerIssue,
 };
 
-pub(in crate::orchestrator::daemon_retry) fn recover_child_exit_phase_goal<T>(
+pub(crate) fn recover_child_exit_phase_goal<T>(
 	context: &mut ChildExitRetryContext<'_, T>,
 	issue: &TrackerIssue,
 	child: ChildRunRef<'_>,
@@ -34,7 +28,11 @@ where
 	)?;
 
 	if matches!(recovery, ChildExitPhaseGoalRecovery::Terminalized) {
-		clear_retry_schedule_and_release(context.retry_queue, context.state_store, issue_id)?;
+		daemon_retry::clear_retry_schedule_and_release(
+			context.retry_queue,
+			context.state_store,
+			issue_id,
+		)?;
 	}
 
 	Ok(recovery)
@@ -50,7 +48,7 @@ fn maybe_recover_child_exit_phase_goal_continuation<T>(
 where
 	T: IssueTracker,
 {
-	let worktree = child_exit_worktree_spec(context, issue)?;
+	let worktree = daemon_retry::child_exit_worktree_spec(context, issue)?;
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -63,7 +61,7 @@ where
 		run_id: child.run_id.to_owned(),
 		retry_budget_base: 0,
 	};
-	let recovery = match recover_phase_goal_continuation(
+	let recovery = match daemon_retry::recover_phase_goal_continuation(
 		context.project,
 		context.workflow,
 		context.state_store,
@@ -72,8 +70,8 @@ where
 		Some("child_exit_failed"),
 	) {
 		Ok(recovery) => recovery,
-		Err(error) if run_failure_requires_terminal_attention(&error) => {
-			handle_failure(
+		Err(error) if daemon_retry::run_failure_requires_terminal_attention(&error) => {
+			daemon_retry::handle_failure(
 				context.tracker,
 				context.project,
 				context.workflow,

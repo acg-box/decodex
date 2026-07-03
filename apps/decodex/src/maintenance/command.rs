@@ -5,16 +5,14 @@ use std::{
 
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::prelude::Result;
-
-use super::{
-	files::{
-		maintain_agent_evidence, maintain_backups, maintain_git_askpass_helpers_for_scope,
-		maintain_logs,
+use crate::{
+	maintenance::{
+		files::{self},
+		policy::{MaintenanceMode, MaintenancePolicy, MaintenancePruneRequest, MaintenanceScope},
+		reports::MaintenanceReport,
+		runtime::{self},
 	},
-	policy::{MaintenanceMode, MaintenancePolicy, MaintenancePruneRequest, MaintenanceScope},
-	reports::MaintenanceReport,
-	runtime::{maintain_runtime, maintain_wal},
+	prelude::Result,
 };
 
 pub(crate) fn run_prune_command(request: MaintenancePruneRequest) -> Result<()> {
@@ -46,13 +44,18 @@ pub(crate) fn run_prune_with_policy(
 ) -> Result<MaintenanceReport> {
 	let generated_at = OffsetDateTime::now_utc();
 	let system_now = SystemTime::now();
-	let logs = maintain_logs(request.mode, policy, system_now, generated_at)?;
-	let agent_evidence = maintain_agent_evidence(request.mode, policy, system_now, generated_at)?;
-	let git_askpass_helpers =
-		maintain_git_askpass_helpers_for_scope(request.mode, request.scope, policy, system_now)?;
-	let backups = maintain_backups(request.mode, policy, system_now)?;
-	let runtime = maintain_runtime(request.mode, request.scope, policy, generated_at)?;
-	let wal_checkpoint = maintain_wal(request.mode, request.scope)?;
+	let logs = files::maintain_logs(request.mode, policy, system_now, generated_at)?;
+	let agent_evidence =
+		files::maintain_agent_evidence(request.mode, policy, system_now, generated_at)?;
+	let git_askpass_helpers = files::maintain_git_askpass_helpers_for_scope(
+		request.mode,
+		request.scope,
+		policy,
+		system_now,
+	)?;
+	let backups = files::maintain_backups(request.mode, policy, system_now)?;
+	let runtime = runtime::maintain_runtime(request.mode, request.scope, policy, generated_at)?;
+	let wal_checkpoint = runtime::maintain_wal(request.mode, request.scope)?;
 
 	Ok(MaintenanceReport {
 		schema: "decodex.maintenance_report/1",

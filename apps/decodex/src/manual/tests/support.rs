@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use crate::{
-	prelude::eyre,
+	prelude::{Result, eyre},
 	tracker::{IssueTracker, TrackerIssue},
 };
 
@@ -12,7 +12,6 @@ pub(super) struct TestTracker {
 	pub(super) label_removals: RefCell<Vec<Vec<String>>>,
 	pub(super) label_removal_error: Option<String>,
 }
-
 impl TestTracker {
 	pub(super) fn new() -> Self {
 		Self {
@@ -38,36 +37,23 @@ impl TestTracker {
 }
 
 impl IssueTracker for TestTracker {
-	fn list_issues_with_label(
-		&self,
-		label_name: &str,
-	) -> crate::prelude::Result<Vec<TrackerIssue>> {
+	fn list_issues_with_label(&self, label_name: &str) -> Result<Vec<TrackerIssue>> {
 		Ok(self.issues_by_label.get(label_name).cloned().unwrap_or_default())
 	}
 
-	fn find_team_label_id(
-		&self,
-		_team_id: &str,
-		_label_name: &str,
-	) -> crate::prelude::Result<Option<String>> {
+	fn find_team_label_id(&self, _team_id: &str, _label_name: &str) -> Result<Option<String>> {
 		Ok(None)
 	}
 
-	fn get_issue_by_identifier(
-		&self,
-		_issue_identifier: &str,
-	) -> crate::prelude::Result<Option<TrackerIssue>> {
+	fn get_issue_by_identifier(&self, _issue_identifier: &str) -> Result<Option<TrackerIssue>> {
 		Ok(None)
 	}
 
-	fn refresh_issues(&self, _issue_ids: &[String]) -> crate::prelude::Result<Vec<TrackerIssue>> {
+	fn refresh_issues(&self, _issue_ids: &[String]) -> Result<Vec<TrackerIssue>> {
 		Ok(Vec::new())
 	}
 
-	fn list_comments(
-		&self,
-		_issue_id: &str,
-	) -> crate::prelude::Result<Vec<crate::tracker::TrackerComment>> {
+	fn list_comments(&self, _issue_id: &str) -> Result<Vec<crate::tracker::TrackerComment>> {
 		Ok(self
 			.comments
 			.borrow()
@@ -79,25 +65,17 @@ impl IssueTracker for TestTracker {
 			.collect())
 	}
 
-	fn update_issue_state(&self, issue_id: &str, state_id: &str) -> crate::prelude::Result<()> {
+	fn update_issue_state(&self, issue_id: &str, state_id: &str) -> Result<()> {
 		self.state_updates.borrow_mut().push(vec![issue_id.to_owned(), state_id.to_owned()]);
 
 		Ok(())
 	}
 
-	fn add_issue_labels(
-		&self,
-		_issue_id: &str,
-		_label_ids: &[String],
-	) -> crate::prelude::Result<()> {
+	fn add_issue_labels(&self, _issue_id: &str, _label_ids: &[String]) -> Result<()> {
 		Ok(())
 	}
 
-	fn remove_issue_labels(
-		&self,
-		_issue_id: &str,
-		label_ids: &[String],
-	) -> crate::prelude::Result<()> {
+	fn remove_issue_labels(&self, _issue_id: &str, label_ids: &[String]) -> Result<()> {
 		self.label_removals.borrow_mut().push(label_ids.to_vec());
 
 		if let Some(message) = self.label_removal_error.as_ref() {
@@ -107,7 +85,7 @@ impl IssueTracker for TestTracker {
 		Ok(())
 	}
 
-	fn create_comment(&self, _issue_id: &str, body: &str) -> crate::prelude::Result<()> {
+	fn create_comment(&self, _issue_id: &str, body: &str) -> Result<()> {
 		self.comments.borrow_mut().push(body.to_owned());
 
 		Ok(())

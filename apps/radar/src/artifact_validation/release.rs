@@ -230,9 +230,8 @@ pub(super) fn validate_release_comparison_tags(
 	errors: &mut Vec<String>,
 ) {
 	match support::string_field(comparison, "stable_tag_name") {
-		Some("") => {
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
-		},
+		Some("") =>
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
 		Some(tag_name)
 			if !option_tags.stable.is_empty() && !option_tags.stable.contains(tag_name) =>
 		{

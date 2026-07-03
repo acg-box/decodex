@@ -1,7 +1,6 @@
-use crate::orchestrator::{
-	IssueDispatchMode, IssueRunPlan, IssueTracker, Result, ReviewHandoffContext, RunSummary,
-	ServiceConfig, StateStore, TrackerToolBridge, WorkflowDocument, execute_deterministic_closeout,
-	run_summary_from_issue_run,
+use crate::orchestrator::execution::{
+	self, IssueDispatchMode, IssueRunPlan, IssueTracker, Result, ReviewHandoffContext, RunSummary,
+	ServiceConfig, StateStore, TrackerToolBridge, WorkflowDocument,
 };
 
 pub(super) fn maybe_execute_deterministic_closeout<T>(
@@ -20,7 +19,7 @@ where
 		return Ok(None);
 	}
 
-	execute_deterministic_closeout(
+	execution::execute_deterministic_closeout(
 		tracker,
 		project,
 		workflow,
@@ -30,5 +29,5 @@ where
 		review_context,
 	)?;
 
-	Ok(Some(run_summary_from_issue_run(project.service_id(), issue_run)))
+	Ok(Some(execution::run_summary_from_issue_run(project.service_id(), issue_run)))
 }

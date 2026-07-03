@@ -61,30 +61,28 @@ impl ReviewPolicyStopReason {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::agent::tracker_tool_bridge) struct ReviewPolicyState {
-	pub(in crate::agent::tracker_tool_bridge) phase: ReviewPolicyPhase,
-	pub(in crate::agent::tracker_tool_bridge) status: ReviewPolicyStatus,
-	pub(in crate::agent::tracker_tool_bridge) head_sha: String,
-	pub(in crate::agent::tracker_tool_bridge) nonclean_rounds: i64,
-	pub(in crate::agent::tracker_tool_bridge) details_json: String,
+pub(crate) struct ReviewPolicyState {
+	pub(crate) phase: ReviewPolicyPhase,
+	pub(crate) status: ReviewPolicyStatus,
+	pub(crate) head_sha: String,
+	pub(crate) nonclean_rounds: i64,
+	pub(crate) details_json: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::agent::tracker_tool_bridge) enum ReviewPolicyPhase {
+pub(crate) enum ReviewPolicyPhase {
 	Handoff,
 	Repair,
 }
 impl ReviewPolicyPhase {
-	pub(in crate::agent::tracker_tool_bridge) fn as_str(self) -> &'static str {
+	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::Handoff => "handoff",
 			Self::Repair => "repair",
 		}
 	}
 
-	pub(in crate::agent::tracker_tool_bridge) fn for_mode(
-		mode: ReviewExecutionMode,
-	) -> Option<Self> {
+	pub(crate) fn for_mode(mode: ReviewExecutionMode) -> Option<Self> {
 		match mode {
 			ReviewExecutionMode::Handoff => Some(Self::Handoff),
 			ReviewExecutionMode::Repair => Some(Self::Repair),
@@ -92,9 +90,7 @@ impl ReviewPolicyPhase {
 		}
 	}
 
-	pub(in crate::agent::tracker_tool_bridge) fn parse(
-		value: &str,
-	) -> std::result::Result<Self, String> {
+	pub(crate) fn parse(value: &str) -> std::result::Result<Self, String> {
 		match value {
 			"handoff" => Ok(Self::Handoff),
 			"repair" => Ok(Self::Repair),
@@ -106,14 +102,14 @@ impl ReviewPolicyPhase {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::agent::tracker_tool_bridge) enum ReviewPolicyStatus {
+pub(crate) enum ReviewPolicyStatus {
 	Clean,
 	Findings,
 	NeedsArchitectureReview,
 	Blocked,
 }
 impl ReviewPolicyStatus {
-	pub(in crate::agent::tracker_tool_bridge) fn as_str(self) -> &'static str {
+	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::Clean => "clean",
 			Self::Findings => "findings",
@@ -122,9 +118,7 @@ impl ReviewPolicyStatus {
 		}
 	}
 
-	pub(in crate::agent::tracker_tool_bridge) fn parse(
-		value: &str,
-	) -> std::result::Result<Self, String> {
+	pub(crate) fn parse(value: &str) -> std::result::Result<Self, String> {
 		match value {
 			"clean" => Ok(Self::Clean),
 			"findings" => Ok(Self::Findings),

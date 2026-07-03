@@ -13,7 +13,7 @@ pub enum ReviewLevel {
 	Standard,
 	/// Require standard review plus the GitHub Review path.
 	#[default]
- Strict,
+	Strict,
 }
 impl ReviewLevel {
 	/// Config string for this level.

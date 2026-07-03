@@ -1,4 +1,4 @@
-use super::{
+use crate::orchestrator::types::{
 	Child, HashMap, Instant, IssueDispatchMode, LinearClient, PathBuf,
 	RECOVERABLE_WORKTREE_SKIP_TTL, RetryKind, RunAttempt, RunLeaseDisposition, ServiceConfig,
 	TrackerIssue, WorkflowDocument, WorktreeManager, WorktreeMapping,
@@ -38,7 +38,6 @@ pub(crate) enum RetryEntryLifecycle {
 	ReviewRepair,
 	Closeout,
 }
-
 impl RetryEntryLifecycle {
 	pub(crate) const fn for_dispatch_mode(dispatch_mode: IssueDispatchMode) -> Self {
 		match dispatch_mode {

@@ -2,19 +2,16 @@ use std::collections::HashMap;
 
 use crate::{
 	config::{ReviewLevel, ServiceConfig},
-	prelude::eyre,
+	orchestrator::{
+		self, GhPullRequestReviewStateInspector, OperatorExecutionProgramStatus,
+		OperatorHistoryLedgerOutcome, OperatorReviewRouteCount, PostReviewLaneClassification,
+		PostReviewLaneDecision, PullRequestReadbackRootCause, PullRequestReviewState,
+		ReviewOrchestrationPhase, TrackerConnectorBackoff,
+	},
+	prelude::{Result, eyre},
 	state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore},
 	tracker::records::LinearExecutionEventRecord,
 	workflow::WorkflowDocument,
-};
-
-use super::{
-	GhPullRequestReviewStateInspector, OperatorExecutionProgramStatus,
-	OperatorHistoryLedgerOutcome, OperatorReviewRouteCount, PostReviewLaneClassification,
-	PostReviewLaneDecision, PullRequestReadbackRootCause, PullRequestReviewState,
-	ReviewOrchestrationPhase, TrackerConnectorBackoff, external_review_has_strict_pass_signals,
-	external_review_result_arrived, request_comment_has_eyes,
-	review_state_clean_path_landing_gates_satisfied, review_state_landing_requires_agent_fallback,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -144,7 +141,7 @@ impl PostReviewOrchestrationStatus {
 	pub(super) fn from_review_state(
 		review_state: &PullRequestReviewState,
 		orchestration_marker: &ReviewOrchestrationMarker,
-	) -> crate::prelude::Result<Self> {
+	) -> Result<Self> {
 		let phase =
 			ReviewOrchestrationPhase::parse(orchestration_marker.phase()).map_err(|error| {
 				eyre::eyre!("Failed to parse retained review orchestration phase: {error}")
@@ -152,22 +149,23 @@ impl PostReviewOrchestrationStatus {
 
 		Ok(Self {
 			phase,
-			request_acknowledged: request_comment_has_eyes(review_state, orchestration_marker)
-				.unwrap_or(false),
-			review_result_arrived: external_review_result_arrived(
+			request_acknowledged: orchestrator::request_comment_has_eyes(
+				review_state,
+				orchestration_marker,
+			)
+			.unwrap_or(false),
+			review_result_arrived: orchestrator::external_review_result_arrived(
 				review_state,
 				orchestration_marker,
 			),
-			strict_pass: external_review_has_strict_pass_signals(
+			strict_pass: orchestrator::external_review_has_strict_pass_signals(
 				review_state,
 				orchestration_marker,
 			),
-			clean_path_landing_gates_satisfied: review_state_clean_path_landing_gates_satisfied(
-				review_state,
-			),
-			landing_requires_agent_fallback: review_state_landing_requires_agent_fallback(
-				review_state,
-			),
+			clean_path_landing_gates_satisfied:
+				orchestrator::review_state_clean_path_landing_gates_satisfied(review_state),
+			landing_requires_agent_fallback:
+				orchestrator::review_state_landing_requires_agent_fallback(review_state),
 		})
 	}
 }

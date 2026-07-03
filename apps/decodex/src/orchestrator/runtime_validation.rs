@@ -1,6 +1,6 @@
-use crate::orchestrator::{eyre, ServiceConfig, Result, resolve_configured_env_var, Path, github, Command};
+use crate::orchestrator::{self, Command, Path, Result, ServiceConfig, eyre, github};
 
-pub(in crate::orchestrator) fn validate_review_handoff_runtime(
+pub(crate) fn validate_review_handoff_runtime(
 	project: &ServiceConfig,
 	dry_run: bool,
 ) -> Result<()> {
@@ -9,15 +9,16 @@ pub(in crate::orchestrator) fn validate_review_handoff_runtime(
 	}
 
 	validate_command_available("gh", project.github().command_path(), "PR-backed review handoff")?;
-	resolve_configured_env_var("github.token_env_var", Some(project.github().token_env_var()))?;
+
+	orchestrator::resolve_configured_env_var(
+		"github.token_env_var",
+		Some(project.github().token_env_var()),
+	)?;
 
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn validate_review_repair_runtime(
-	project: &ServiceConfig,
-	dry_run: bool,
-) -> Result<()> {
+pub(crate) fn validate_review_repair_runtime(project: &ServiceConfig, dry_run: bool) -> Result<()> {
 	if dry_run {
 		return Ok(());
 	}
@@ -27,15 +28,16 @@ pub(in crate::orchestrator) fn validate_review_repair_runtime(
 		project.github().command_path(),
 		"retained review-repair re-entry",
 	)?;
-	resolve_configured_env_var("github.token_env_var", Some(project.github().token_env_var()))?;
+
+	orchestrator::resolve_configured_env_var(
+		"github.token_env_var",
+		Some(project.github().token_env_var()),
+	)?;
 
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn validate_closeout_runtime(
-	project: &ServiceConfig,
-	dry_run: bool,
-) -> Result<()> {
+pub(crate) fn validate_closeout_runtime(project: &ServiceConfig, dry_run: bool) -> Result<()> {
 	if dry_run {
 		return Ok(());
 	}
@@ -45,16 +47,20 @@ pub(in crate::orchestrator) fn validate_closeout_runtime(
 		project.github().command_path(),
 		"retained closeout re-entry",
 	)?;
-	resolve_configured_env_var("github.token_env_var", Some(project.github().token_env_var()))?;
+
+	orchestrator::resolve_configured_env_var(
+		"github.token_env_var",
+		Some(project.github().token_env_var()),
+	)?;
 
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn validate_daemon_runtime() -> Result<()> {
+pub(crate) fn validate_daemon_runtime() -> Result<()> {
 	Ok(())
 }
 
-pub(in crate::orchestrator) fn validate_command_available(
+pub(crate) fn validate_command_available(
 	command: &str,
 	configured_path: Option<&Path>,
 	purpose: &str,

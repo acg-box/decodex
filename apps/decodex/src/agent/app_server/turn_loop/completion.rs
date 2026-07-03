@@ -1,22 +1,14 @@
-use std::mem;
-
-use color_eyre::eyre::Report;
-
-use super::{
-	super::{
-		protocol::{
-			AgentMessageDeltaNotification, ErrorNotification, ItemCompletedNotification,
-			RunOutcome, ThreadGoalUpdatedNotification, ThreadStatusChangedNotification,
-			TurnCompletedNotification, TurnError,
-		},
-		runtime_types::RunRecorder,
-		turn_failure::AppServerTurnFailure,
-	},
-	messages::{thread_id_from_notification, turn_id_from_value},
-};
 use crate::{
-	agent::json_rpc::{JsonRpcError, JsonRpcNotification},
-	prelude::eyre,
+	agent::app_server::{
+		turn_loop,
+		turn_loop::{
+			AgentMessageDeltaNotification, AppServerTurnFailure, ErrorNotification,
+			ItemCompletedNotification, JsonRpcError, JsonRpcNotification, Report, RunOutcome,
+			RunRecorder, ThreadGoalUpdatedNotification, ThreadStatusChangedNotification,
+			TurnCompletedNotification, TurnError, eyre, mem, messages,
+		},
+	},
+	prelude::Result,
 };
 
 pub(in crate::agent::app_server) fn handle_turn_execution_notification(
@@ -25,7 +17,7 @@ pub(in crate::agent::app_server) fn handle_turn_execution_notification(
 	target_turn_id: &str,
 	final_output: &mut String,
 	latest_turn_failure: &mut Option<AppServerTurnFailure>,
-) -> crate::prelude::Result<Option<RunOutcome>> {
+) -> Result<Option<RunOutcome>> {
 	match notification.method.as_str() {
 		"thread/status/changed" => {
 			let payload: ThreadStatusChangedNotification =
@@ -124,50 +116,11 @@ pub(in crate::agent::app_server) fn handle_turn_execution_notification(
 	Ok(None)
 }
 
-pub(super) fn adopt_thread_bound_notification_turn_id(
-	recorder: &mut RunRecorder<'_>,
-	notification: &JsonRpcNotification,
-	target_thread_id: &str,
-	target_turn_id: &mut String,
-) -> crate::prelude::Result<()> {
-	let Some(observed_turn_id) = turn_id_from_value(&notification.params) else {
-		return Ok(());
-	};
-
-	if observed_turn_id == target_turn_id {
-		return Ok(());
-	}
-	if thread_id_from_notification(notification)
-		.is_none_or(|thread_id| thread_id != target_thread_id)
-	{
-		return Ok(());
-	}
-
-	tracing::warn!(
-		target_thread_id,
-		previous_turn_id = target_turn_id.as_str(),
-		observed_turn_id,
-		method = notification.method.as_str(),
-		"App-server notification turn id differed from the turn/start response; adopting thread-bound notification turn id."
-	);
-
-	recorder.state_store.update_run_turn(recorder.run_id, observed_turn_id)?;
-	recorder.set_turn_id(observed_turn_id)?;
-
-	*target_turn_id = observed_turn_id.to_owned();
-
-	Ok(())
-}
-
-fn notification_targets_turn(notification: &JsonRpcNotification, target_turn_id: &str) -> bool {
-	turn_id_from_value(&notification.params).is_none_or(|turn_id| turn_id == target_turn_id)
-}
-
 pub(in crate::agent::app_server) fn failure_from_error_notification(
 	notification: &JsonRpcNotification,
 	target_thread_id: &str,
 	target_turn_id: &str,
-) -> crate::prelude::Result<Option<(AppServerTurnFailure, Option<bool>)>> {
+) -> Result<Option<(AppServerTurnFailure, Option<bool>)>> {
 	let payload: ErrorNotification = serde_json::from_value(notification.params.clone())?;
 	let payload_turn_matches =
 		payload.turn_id.as_deref().is_none_or(|turn_id| turn_id == target_turn_id);
@@ -186,21 +139,6 @@ pub(in crate::agent::app_server) fn failure_from_error_notification(
 	);
 
 	Ok(Some((failure, payload.will_retry)))
-}
-
-fn turn_failure_from_turn_error(
-	thread_id: &str,
-	turn_id: Option<&str>,
-	status: &str,
-	error: &TurnError,
-) -> AppServerTurnFailure {
-	AppServerTurnFailure::new(
-		thread_id,
-		turn_id.map(str::to_owned),
-		status,
-		error.message.clone(),
-		error.codex_error_info.clone(),
-	)
 }
 
 pub(in crate::agent::app_server) fn turn_failure_from_json_rpc_error_response(
@@ -224,5 +162,60 @@ pub(in crate::agent::app_server) fn turn_failure_from_json_rpc_error_response(
 			error.error.code, error.error.message
 		),
 		None,
+	)
+}
+
+pub(super) fn adopt_thread_bound_notification_turn_id(
+	recorder: &mut RunRecorder<'_>,
+	notification: &JsonRpcNotification,
+	target_thread_id: &str,
+	target_turn_id: &mut String,
+) -> Result<()> {
+	let Some(observed_turn_id) = turn_loop::turn_id_from_value(&notification.params) else {
+		return Ok(());
+	};
+
+	if observed_turn_id == target_turn_id {
+		return Ok(());
+	}
+	if messages::thread_id_from_notification(notification)
+		.is_none_or(|thread_id| thread_id != target_thread_id)
+	{
+		return Ok(());
+	}
+
+	tracing::warn!(
+		target_thread_id,
+		previous_turn_id = target_turn_id.as_str(),
+		observed_turn_id,
+		method = notification.method.as_str(),
+		"App-server notification turn id differed from the turn/start response; adopting thread-bound notification turn id."
+	);
+
+	recorder.state_store.update_run_turn(recorder.run_id, observed_turn_id)?;
+	recorder.set_turn_id(observed_turn_id)?;
+
+	*target_turn_id = observed_turn_id.to_owned();
+
+	Ok(())
+}
+
+fn notification_targets_turn(notification: &JsonRpcNotification, target_turn_id: &str) -> bool {
+	turn_loop::turn_id_from_value(&notification.params)
+		.is_none_or(|turn_id| turn_id == target_turn_id)
+}
+
+fn turn_failure_from_turn_error(
+	thread_id: &str,
+	turn_id: Option<&str>,
+	status: &str,
+	error: &TurnError,
+) -> AppServerTurnFailure {
+	AppServerTurnFailure::new(
+		thread_id,
+		turn_id.map(str::to_owned),
+		status,
+		error.message.clone(),
+		error.codex_error_info.clone(),
 	)
 }

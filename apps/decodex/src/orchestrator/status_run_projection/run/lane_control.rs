@@ -1,11 +1,31 @@
-use crate::orchestrator::{
-	CONTINUATION_PENDING_RUN_STATUS, OperatorLaneControlProjection, OperatorRunStatus,
-	REVIEW_POLICY_CONVERGENCE_BUDGET,
-	kernel::{
-		lane_control::{LaneControlKernelInput, project_lane_control},
-		state::PolicyState,
+use crate::{
+	agent::RUN_LEASE_IDLE_TIMEOUT,
+	orchestrator::{
+		CONTINUATION_PENDING_RUN_STATUS, OperatorLaneControlProjection, OperatorRunStatus,
+		REVIEW_POLICY_CONVERGENCE_BUDGET,
+		kernel::{
+			lane_control::{self, LaneControlKernelInput},
+			state::PolicyState,
+		},
 	},
 };
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct OperatorRunLaneControlReadback {
+	pub(crate) has_live_execution: bool,
+	pub(crate) has_authoritative_live_owner: bool,
+	pub(crate) counts_as_current_lane: bool,
+	pub(crate) counts_as_running: bool,
+	pub(crate) counts_as_attention: bool,
+}
+
+struct OperatorRunLaneControlState {
+	projection: OperatorLaneControlProjection,
+	has_fresh_execution: bool,
+	readback: OperatorRunLaneControlReadback,
+	counts_as_attention: bool,
+	counts_as_running: bool,
+}
 
 pub(super) fn hydrate_operator_run_derived_status(
 	mut status: OperatorRunStatus,
@@ -25,31 +45,14 @@ pub(super) fn hydrate_operator_run_derived_status(
 	status
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) struct OperatorRunLaneControlReadback {
-	pub(in crate::orchestrator) has_live_execution: bool,
-	pub(in crate::orchestrator) has_authoritative_live_owner: bool,
-	pub(in crate::orchestrator) counts_as_current_lane: bool,
-	pub(in crate::orchestrator) counts_as_running: bool,
-	pub(in crate::orchestrator) counts_as_attention: bool,
-}
-
-struct OperatorRunLaneControlState {
-	projection: OperatorLaneControlProjection,
-	has_fresh_execution: bool,
-	readback: OperatorRunLaneControlReadback,
-	counts_as_attention: bool,
-	counts_as_running: bool,
-}
-
-pub(in crate::orchestrator) fn operator_run_lane_control_readback(
+pub(crate) fn operator_run_lane_control_readback(
 	run: &OperatorRunStatus,
 ) -> OperatorRunLaneControlReadback {
 	operator_lane_control_state(run).readback
 }
 
 fn operator_lane_control_state(run: &OperatorRunStatus) -> OperatorRunLaneControlState {
-	let projection = project_lane_control(&operator_lane_control_kernel_input(run));
+	let projection = lane_control::project_lane_control(&operator_lane_control_kernel_input(run));
 
 	OperatorRunLaneControlState {
 		projection: OperatorLaneControlProjection {
@@ -182,7 +185,7 @@ fn operator_run_has_recent_app_server_execution(run: &OperatorRunStatus) -> bool
 		|| !run.thread_active_flags.is_empty()
 		|| run.protocol_idle_for_seconds.is_some_and(|idle_for| {
 			u64::try_from(idle_for)
-				.is_ok_and(|idle_for| idle_for < crate::agent::RUN_LEASE_IDLE_TIMEOUT.as_secs())
+				.is_ok_and(|idle_for| idle_for < RUN_LEASE_IDLE_TIMEOUT.as_secs())
 		})
 }
 
@@ -194,9 +197,8 @@ fn operator_run_has_stale_execution_without_known_process(run: &OperatorRunStatu
 		&& !operator_run_has_recent_app_server_execution(run)
 		&& [run.idle_for_seconds, run.protocol_idle_for_seconds].iter().any(|idle_for| {
 			idle_for.is_some_and(|idle_for| {
-				u64::try_from(idle_for).is_ok_and(|idle_for| {
-					idle_for >= crate::agent::RUN_LEASE_IDLE_TIMEOUT.as_secs()
-				})
+				u64::try_from(idle_for)
+					.is_ok_and(|idle_for| idle_for >= RUN_LEASE_IDLE_TIMEOUT.as_secs())
 			})
 		})
 }

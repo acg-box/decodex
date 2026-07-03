@@ -5,18 +5,24 @@ use std::path::Path;
 use serde_json::{Map, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::artifact_validation::support;
-use crate::artifact_validation::{
-	ANALYSIS_DRAFT_KIND, BUNDLE_SCHEMA, CONFIG_FEATURE_CATALOG_SCHEMA,
-	CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA, RADAR_ARCHIVE_HISTORICAL_RETENTION_CUTOFF,
-	RELEASE_DELTA_SCHEMA, SIGNAL_CONFIDENCE, SIGNAL_SCHEMA, UPSTREAM_IMPACT_SCHEMA,
-	UPSTREAM_REVIEW_LINEAR_FOLLOWUP_CUTOFF, UPSTREAM_REVIEW_QUEUE_SCHEMA, UPSTREAM_REVIEW_SCHEMA,
-	archive, bundle,
-	constants::{RADAR_ARCHIVE_MANIFEST_SCHEMA, SIGNAL_IMPACT, SIGNAL_KINDS},
-	model::{ArtifactValidation, ArtifactValidationOptions},
-	release,
-	signal::{self},
-	upstream::{self},
+use crate::{
+	artifact_validation::{
+		ANALYSIS_DRAFT_KIND, BUNDLE_SCHEMA, CONFIG_FEATURE_CATALOG_SCHEMA,
+		CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA, RADAR_ARCHIVE_HISTORICAL_RETENTION_CUTOFF,
+		RELEASE_DELTA_SCHEMA, SIGNAL_CONFIDENCE, SIGNAL_SCHEMA, UPSTREAM_IMPACT_SCHEMA,
+		UPSTREAM_REVIEW_LINEAR_FOLLOWUP_CUTOFF, UPSTREAM_REVIEW_QUEUE_SCHEMA,
+		UPSTREAM_REVIEW_SCHEMA, archive, bundle,
+		constants::{RADAR_ARCHIVE_MANIFEST_SCHEMA, SIGNAL_IMPACT, SIGNAL_KINDS},
+		model::{ArtifactValidation, ArtifactValidationOptions},
+		release,
+		signal::{self},
+		support,
+		upstream::{self},
+	},
+	prelude::{
+		Result,
+		eyre::{self, Report},
+	},
 };
 use crate::prelude::Result;
 use crate::prelude::eyre::{self, Report};
@@ -87,9 +93,8 @@ pub(crate) fn validate_artifact(payload: &Value) -> ArtifactValidation {
 pub(crate) fn validate_artifact_for_path(path: &Path, payload: &Value) -> ArtifactValidation {
 	if is_analysis_draft_path(path) && payload.get("schema").is_none() {
 		return match validate_analysis_draft(payload) {
-			Ok(()) => {
-				ArtifactValidation { schema: Some(ANALYSIS_DRAFT_KIND.into()), errors: Vec::new() }
-			},
+			Ok(()) =>
+				ArtifactValidation { schema: Some(ANALYSIS_DRAFT_KIND.into()), errors: Vec::new() },
 			Err(error) => ArtifactValidation {
 				schema: Some(ANALYSIS_DRAFT_KIND.into()),
 				errors: analysis_draft_error_lines(error),
@@ -123,27 +128,21 @@ pub(crate) fn validate_artifact_with_options(
 
 	match schema.as_deref() {
 		Some(BUNDLE_SCHEMA) => bundle::validate_bundle(entry, &mut errors),
-		Some(CONFIG_FEATURE_CATALOG_SCHEMA) => {
-			signal::validate_config_feature_catalog(entry, &mut errors)
-		},
-		Some(CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA) => {
-			upstream::validate_control_plane_upgrade_candidate(entry, &mut errors)
-		},
-		Some(RADAR_ARCHIVE_MANIFEST_SCHEMA) => {
-			archive::validate_radar_archive_manifest(entry, options, &mut errors)
-		},
+		Some(CONFIG_FEATURE_CATALOG_SCHEMA) =>
+			signal::validate_config_feature_catalog(entry, &mut errors),
+		Some(CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA) =>
+			upstream::validate_control_plane_upgrade_candidate(entry, &mut errors),
+		Some(RADAR_ARCHIVE_MANIFEST_SCHEMA) =>
+			archive::validate_radar_archive_manifest(entry, options, &mut errors),
 		Some(RELEASE_DELTA_SCHEMA) => release::validate_release_delta(entry, &mut errors),
 		Some(SIGNAL_SCHEMA) => signal::validate_signal(entry, &mut errors),
 		Some(UPSTREAM_IMPACT_SCHEMA) => upstream::validate_upstream_impact(entry, &mut errors),
-		Some(UPSTREAM_REVIEW_QUEUE_SCHEMA) => {
-			upstream::validate_upstream_review_queue(entry, &mut errors)
-		},
-		Some(UPSTREAM_REVIEW_SCHEMA) => {
-			upstream::validate_upstream_review(entry, options, &mut errors)
-		},
-		Some(_) | None => {
-			errors.push(format!("schema must be one of {}", support::known_schemas()))
-		},
+		Some(UPSTREAM_REVIEW_QUEUE_SCHEMA) =>
+			upstream::validate_upstream_review_queue(entry, &mut errors),
+		Some(UPSTREAM_REVIEW_SCHEMA) =>
+			upstream::validate_upstream_review(entry, options, &mut errors),
+		Some(_) | None =>
+			errors.push(format!("schema must be one of {}", support::known_schemas())),
 	}
 
 	ArtifactValidation { schema, errors }

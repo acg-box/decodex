@@ -1,9 +1,9 @@
 use std::{
 	error::Error,
-	fmt::{self, Display, Formatter},
+	fmt::{Display, Formatter},
 };
 
-use super::AccountPoolRecord;
+use crate::agent::codex_accounts::AccountPoolRecord;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CodexAccountAuthFailure {
@@ -59,7 +59,7 @@ impl CodexAccountAuthFailure {
 }
 
 impl Display for CodexAccountAuthFailure {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		write!(
 			formatter,
 			"Codex account `{}` authentication failed: {}",

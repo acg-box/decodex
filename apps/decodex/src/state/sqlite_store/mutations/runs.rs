@@ -1,8 +1,8 @@
-use super::{
-	ChildAgentActivitySummary, IssueLease, LinearExecutionEventRuntimeRecord, OptionalExtension,
-	PrivateExecutionEventRuntimeRecord, ProtocolEventRecord, Result, RunActivitySummaryRecord,
-	RunAttemptRecord, RunControlChannelRecord, SqliteStateStore, WorktreeMappingRecord, params,
-	persist, protocol_event_record_from_row,
+use crate::state::sqlite_store::mutations::{
+	self, ChildAgentActivitySummary, IssueLease, LinearExecutionEventRuntimeRecord,
+	OptionalExtension, PrivateExecutionEventRuntimeRecord, ProtocolEventRecord, Result,
+	RunActivitySummaryRecord, RunAttemptRecord, RunControlChannelRecord, SqliteStateStore,
+	WorktreeMappingRecord, persist, protocol_event_record_from_row,
 };
 
 impl SqliteStateStore {
@@ -12,7 +12,7 @@ impl SqliteStateStore {
 					run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id,
 					updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-			params![
+			mutations::params![
 				&attempt.run_id,
 				attempt.project_id.as_deref(),
 				&attempt.issue_id,
@@ -37,7 +37,7 @@ impl SqliteStateStore {
 					run_id, project_id, issue_id, attempt_number, transport, channel_path, status,
 					published_at, published_at_unix, updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-			params![
+			mutations::params![
 				&channel.run_id,
 				&channel.project_id,
 				&channel.issue_id,
@@ -74,7 +74,7 @@ impl SqliteStateStore {
 					run_id, attempt_number, child_agent_activity_json, protocol_activity_json,
 					updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-			params![
+			mutations::params![
 				&summary.run_id,
 				summary.attempt_number,
 				child_agent_activity_json.as_deref(),
@@ -96,7 +96,12 @@ impl SqliteStateStore {
 		transaction.execute(
 			"INSERT OR REPLACE INTO leases (issue_id, project_id, run_id, issue_state)
 			 VALUES (?1, ?2, ?3, ?4)",
-			params![lease.issue_id(), lease.project_id(), lease.run_id(), lease.issue_state()],
+			mutations::params![
+				lease.issue_id(),
+				lease.project_id(),
+				lease.run_id(),
+				lease.issue_state()
+			],
 		)?;
 
 		persist::update_run_attempt_project(
@@ -123,7 +128,7 @@ impl SqliteStateStore {
 				provenance_source, created_at_unix, updated_at_unix
 			 )
 			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-			params![
+			mutations::params![
 				&mapping.issue_id,
 				&mapping.project_id,
 				&mapping.branch_name,
@@ -155,7 +160,7 @@ impl SqliteStateStore {
 			"INSERT OR IGNORE INTO protocol_events (
 					run_id, sequence_number, event_type, payload_sha256, created_at, created_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-			params![
+			mutations::params![
 				run_id,
 				event.sequence_number,
 				&event.event_type,
@@ -178,7 +183,7 @@ impl SqliteStateStore {
 			.query_row(
 				"SELECT sequence_number, event_type, payload_sha256, created_at, created_at_unix \
 				 FROM protocol_events WHERE run_id = ?1 AND sequence_number = ?2",
-				params![run_id, sequence_number],
+				mutations::params![run_id, sequence_number],
 				protocol_event_record_from_row,
 			)
 			.optional()?)
@@ -194,7 +199,7 @@ impl SqliteStateStore {
 					idempotency_key, service_id, issue_id, event_type, event_timestamp,
 					event_unix, payload_json, recorded_at, recorded_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-			params![
+			mutations::params![
 				&record.record.idempotency_key,
 				&record.record.service_id,
 				&record.record.issue_id,
@@ -216,7 +221,7 @@ impl SqliteStateStore {
 	) -> Result<()> {
 		self.connection.execute(
 			"DELETE FROM linear_execution_events WHERE idempotency_key = ?1",
-			params![idempotency_key],
+			mutations::params![idempotency_key],
 		)?;
 
 		Ok(())
@@ -233,7 +238,7 @@ impl SqliteStateStore {
 					project_id, issue_id, run_id, attempt_number, event_type, payload_json,
 					recorded_at, recorded_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-			params![
+			mutations::params![
 				&record.project_id,
 				&record.issue_id,
 				&record.run_id,

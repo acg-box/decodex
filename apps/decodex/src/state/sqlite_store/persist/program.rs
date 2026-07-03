@@ -1,7 +1,5 @@
-use super::{
-	Connection, ExecutionProgramRuntimeRecord, Result, StateData, Transaction,
-	derived_program_intake_plan_records, derived_program_issue_mapping_records, params,
-	sqlite_bool_value,
+use crate::state::sqlite_store::persist::{
+	self, Connection, ExecutionProgramRuntimeRecord, Result, StateData, Transaction,
 };
 
 pub(in crate::state::sqlite_store) fn persist_program_intake_state(
@@ -15,7 +13,7 @@ pub(in crate::state::sqlite_store) fn persist_program_intake_state(
 					accepted_contract_fingerprint, public_summary, created_at, created_at_unix,
 					updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-			params![
+			persist::params![
 				&record.project_id,
 				&record.program_id,
 				&record.plan_id,
@@ -38,7 +36,7 @@ pub(in crate::state::sqlite_store) fn persist_program_intake_state(
 					has_generic_dispatch_briefing, created_at, created_at_unix, updated_at,
 					updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-			params![
+			persist::params![
 				&record.project_id,
 				&record.program_id,
 				&record.node_id,
@@ -46,10 +44,10 @@ pub(in crate::state::sqlite_store) fn persist_program_intake_state(
 				&record.issue_identifier,
 				&record.issue_state,
 				&record.queue_intent,
-				sqlite_bool_value(record.has_active_label),
-				sqlite_bool_value(record.has_opt_out_label),
-				sqlite_bool_value(record.has_needs_attention_label),
-				sqlite_bool_value(record.has_generic_dispatch_briefing),
+				persist::sqlite_bool_value(record.has_active_label),
+				persist::sqlite_bool_value(record.has_opt_out_label),
+				persist::sqlite_bool_value(record.has_needs_attention_label),
+				persist::sqlite_bool_value(record.has_generic_dispatch_briefing),
 				&record.created_at,
 				record.created_at_unix,
 				&record.updated_at,
@@ -65,14 +63,14 @@ pub(in crate::state::sqlite_store) fn insert_program_intake_state(
 	connection: &Connection,
 	record: &ExecutionProgramRuntimeRecord,
 ) -> Result<()> {
-	for plan in derived_program_intake_plan_records(record) {
+	for plan in persist::derived_program_intake_plan_records(record) {
 		connection.execute(
 			"INSERT OR REPLACE INTO program_intake_plans (
 					project_id, program_id, plan_id, intake_kind, source_contract_id,
 					accepted_contract_fingerprint, public_summary, created_at, created_at_unix,
 					updated_at, updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-			params![
+			persist::params![
 				&plan.project_id,
 				&plan.program_id,
 				&plan.plan_id,
@@ -87,7 +85,7 @@ pub(in crate::state::sqlite_store) fn insert_program_intake_state(
 			],
 		)?;
 	}
-	for mapping in derived_program_issue_mapping_records(record) {
+	for mapping in persist::derived_program_issue_mapping_records(record) {
 		connection.execute(
 			"INSERT OR REPLACE INTO program_issue_mappings (
 					project_id, program_id, node_id, issue_id, issue_identifier, issue_state,
@@ -95,7 +93,7 @@ pub(in crate::state::sqlite_store) fn insert_program_intake_state(
 					has_generic_dispatch_briefing, created_at, created_at_unix, updated_at,
 					updated_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-			params![
+			persist::params![
 				&mapping.project_id,
 				&mapping.program_id,
 				&mapping.node_id,
@@ -103,10 +101,10 @@ pub(in crate::state::sqlite_store) fn insert_program_intake_state(
 				&mapping.issue_identifier,
 				&mapping.issue_state,
 				&mapping.queue_intent,
-				sqlite_bool_value(mapping.has_active_label),
-				sqlite_bool_value(mapping.has_opt_out_label),
-				sqlite_bool_value(mapping.has_needs_attention_label),
-				sqlite_bool_value(mapping.has_generic_dispatch_briefing),
+				persist::sqlite_bool_value(mapping.has_active_label),
+				persist::sqlite_bool_value(mapping.has_opt_out_label),
+				persist::sqlite_bool_value(mapping.has_needs_attention_label),
+				persist::sqlite_bool_value(mapping.has_generic_dispatch_briefing),
 				&mapping.created_at,
 				mapping.created_at_unix,
 				&mapping.updated_at,

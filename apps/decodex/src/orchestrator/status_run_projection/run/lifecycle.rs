@@ -1,8 +1,7 @@
-use crate::orchestrator::status_process_liveness;
-use crate::orchestrator::status_run_projection::runtime;
 use crate::orchestrator::{
 	OperatorRunAppServerState, OperatorRunLifecycleProjection, OperatorRunProtocolSummary,
 	OperatorRunTiming, OperatorTerminalFinalizeProjection, ProjectRunStatus, RunActivityMarker,
+	status_process_liveness, status_run_projection::runtime,
 };
 
 pub(super) fn operator_run_lifecycle_projection(

@@ -1,5 +1,10 @@
-use super::*;
+use std::panic;
 
+use crate::orchestrator::tests::operator::status::http::{
+	self, Arc, DashboardEventHub, Duration, ErrorKind, Mutex, OffsetDateTime,
+	OperatorControlRequests, PublishedOperatorSnapshot, Read as _, Shutdown, StateStore,
+	TcpListener, TcpStream, TempDir, TestEnvVarGuard, Value, Write, orchestrator, runtime, thread,
+};
 #[test]
 fn operator_state_endpoint_reads_complete_headers_before_parsing() {
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
@@ -89,9 +94,10 @@ fn operator_state_endpoint_overlays_live_account_control_on_published_snapshot()
 		)
 		.expect("handler should serve websocket snapshot");
 	});
-	let (mut client, response, mut frame) = open_dashboard_websocket_client(address);
-	let served_snapshot =
-		read_websocket_json_until(&mut client, &mut frame, |payload| payload["type"] == "snapshot");
+	let (mut client, response, mut frame) = http::open_dashboard_websocket_client(address);
+	let served_snapshot = http::read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "snapshot"
+	});
 
 	assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
 	assert_eq!(served_snapshot["payload"]["snapshot"]["account_control"]["mode"], "fixed");
@@ -156,7 +162,7 @@ fn operator_state_endpoint_serves_large_app_snapshot_without_truncation() {
 				Err(error) if error.kind() == ErrorKind::WouldBlock => {
 					thread::sleep(Duration::from_millis(5));
 				},
-				Err(error) => panic!("listener should accept a connection: {error}"),
+				Err(error) => http::panic!("listener should accept a connection: {error}"),
 			}
 		};
 
@@ -226,7 +232,7 @@ fn operator_state_endpoint_livez_ignores_poisoned_snapshot_lock() {
 	let _ = panic::catch_unwind(move || {
 		let _guard = poisoned_snapshot.lock().expect("snapshot lock should acquire");
 
-		panic!("poison snapshot lock");
+		http::panic!("poison snapshot lock");
 	});
 	let server_snapshot = Arc::clone(&snapshot);
 	let server_state_store = Arc::clone(&state_store);

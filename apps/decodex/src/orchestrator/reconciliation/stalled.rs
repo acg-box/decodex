@@ -1,27 +1,18 @@
-use std::{
-	path::Path,
-	time::Duration,
-};
-
-use color_eyre::Report;
-use time::OffsetDateTime;
-
 use crate::{
 	orchestrator::{
-		CONTINUATION_PENDING_RUN_STATUS, IssueDispatchMode, IssueRunPlan, IssueTracker,
-		RetainedPartialProgress, RetryKind, RunAttempt, RunLeaseDisposition,
-		RunLeaseReconciliation, RUN_OPERATION_RECONCILIATION, Result, ServiceConfig, StateStore,
-		StalledRunNeedsAttention, WorkflowDocument, WorktreeManager, WorktreeMapping,
-		WorktreeSpec, handle_failure, planned_issue_state_for_dispatch,
-		recover_phase_goal_continuation, relative_worktree_path,
-		retry_budget_base_for_issue_worktree, retry_delay, run_failure_requires_terminal_attention,
-		worktree_has_tracked_changes, write_retry_schedule_for_run,
+		reconciliation,
+		reconciliation::{
+			CONTINUATION_PENDING_RUN_STATUS, Duration, IssueDispatchMode, IssueRunPlan,
+			IssueTracker, OffsetDateTime, Path, RUN_OPERATION_RECONCILIATION, Report, Result,
+			RetainedPartialProgress, RetryKind, RunAttempt, RunLeaseDisposition,
+			RunLeaseReconciliation, ServiceConfig, StalledRunNeedsAttention, StateStore,
+			TrackerIssue, WorkflowDocument, WorktreeManager, WorktreeMapping, WorktreeSpec,
+		},
 	},
 	state,
-	tracker::TrackerIssue,
 };
 
-pub(in crate::orchestrator::reconciliation) fn reconcile_stalled_run_lease<T>(
+pub(crate) fn reconcile_stalled_run_lease<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	state_store: &StateStore,
@@ -53,7 +44,8 @@ where
 		issue_run.attempt_number,
 		RUN_OPERATION_RECONCILIATION,
 	);
-	handle_failure(
+
+	reconciliation::handle_failure(
 		tracker,
 		project,
 		&action.workflow,
@@ -69,7 +61,7 @@ where
 	Ok(())
 }
 
-pub(in crate::orchestrator::reconciliation) fn reconcile_stalled_retained_partial_progress_run<T>(
+pub(crate) fn reconcile_stalled_retained_partial_progress_run<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	state_store: &StateStore,
@@ -99,11 +91,18 @@ where
 		&issue_run,
 	) {
 		Ok(recovered) => recovered,
-		Err(error) if run_failure_requires_terminal_attention(&error) => {
+		Err(error) if reconciliation::run_failure_requires_terminal_attention(&error) => {
 			state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
 			state_store.clear_lease(&action.issue.id)?;
 
-			handle_failure(tracker, project, &action.workflow, state_store, &issue_run, &error)?;
+			reconciliation::handle_failure(
+				tracker,
+				project,
+				&action.workflow,
+				state_store,
+				&issue_run,
+				&error,
+			)?;
 
 			return Ok(());
 		},
@@ -117,7 +116,7 @@ where
 	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
 	state_store.clear_lease(&action.issue.id)?;
 
-	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
+	let worktree_path = reconciliation::relative_worktree_path(project, &issue_run.worktree);
 
 	write_reconciliation_operation_marker_best_effort(
 		&issue_run.worktree.path,
@@ -125,7 +124,8 @@ where
 		issue_run.attempt_number,
 		RUN_OPERATION_RECONCILIATION,
 	);
-	handle_failure(
+
+	reconciliation::handle_failure(
 		tracker,
 		project,
 		&action.workflow,
@@ -142,6 +142,77 @@ where
 	Ok(())
 }
 
+pub(crate) fn reconcile_stalled_attention_run_lease(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	action: &RunLeaseReconciliation,
+	idle_for: Duration,
+) -> Result<()> {
+	tracing::warn!(
+		project_id = project.service_id(),
+		issue_id = action.issue.id,
+		issue = action.issue.identifier,
+		run_id = action.run_attempt.run_id(),
+		disposition = "stalled_already_needs_attention",
+		idle_for_s = idle_for.as_secs(),
+		"Reconciling stalled run that is already blocked for operator attention."
+	);
+
+	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
+
+	state_store.clear_lease(&action.issue.id)
+}
+
+pub(crate) fn stalled_run_has_retained_partial_progress(
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> bool {
+	match worktree_mapping {
+		Some(mapping) => reconciliation::worktree_has_tracked_changes(mapping.worktree_path()),
+		None => false,
+	}
+}
+
+pub(crate) fn retained_review_handoff_matches_run(
+	state_store: &StateStore,
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> Result<bool> {
+	let Some(worktree_mapping) = worktree_mapping else {
+		return Ok(false);
+	};
+	let Some(marker) = state_store.review_handoff_marker(
+		worktree_mapping.project_id(),
+		run_attempt.issue_id(),
+		worktree_mapping.branch_name(),
+	)?
+	else {
+		return Ok(false);
+	};
+
+	Ok(marker.run_id() == run_attempt.run_id()
+		&& marker.attempt_number() == run_attempt.attempt_number()
+		&& marker.branch_name() == worktree_mapping.branch_name())
+}
+
+pub(crate) fn superseded_run_disposition(
+	state_store: &StateStore,
+	run_attempt: &RunAttempt,
+) -> Result<Option<RunLeaseDisposition>> {
+	let Some(latest_attempt) = state_store.latest_run_attempt_for_issue(run_attempt.issue_id())?
+	else {
+		return Ok(None);
+	};
+
+	if latest_attempt.attempt_number() <= run_attempt.attempt_number() {
+		return Ok(None);
+	}
+
+	Ok(Some(RunLeaseDisposition::Superseded {
+		newer_run_id: latest_attempt.run_id().to_owned(),
+		newer_attempt_number: latest_attempt.attempt_number(),
+	}))
+}
+
 fn try_recover_stalled_retained_phase_goal(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -156,7 +227,7 @@ fn try_recover_stalled_retained_phase_goal(
 		RUN_OPERATION_RECONCILIATION,
 	);
 
-	let recovery = recover_phase_goal_continuation(
+	let recovery = reconciliation::recover_phase_goal_continuation(
 		project,
 		workflow,
 		state_store,
@@ -193,12 +264,12 @@ fn write_stalled_phase_goal_continuation_retry_marker(
 	issue_run: &IssueRunPlan,
 ) -> Result<()> {
 	let attempt = u32::try_from(issue_run.attempt_number).unwrap_or(u32::MAX).max(1);
-	let delay = retry_delay(RetryKind::Continuation, attempt, workflow);
+	let delay = reconciliation::retry_delay(RetryKind::Continuation, attempt, workflow);
 	let retry_ready_at_unix_epoch = OffsetDateTime::now_utc().unix_timestamp().saturating_add(
 		i64::try_from((delay.as_millis().saturating_add(999)) / 1_000).unwrap_or(i64::MAX),
 	);
 
-	write_retry_schedule_for_run(
+	reconciliation::write_retry_schedule_for_run(
 		state_store,
 		&issue_run.issue.id,
 		&issue_run.run_id,
@@ -222,12 +293,15 @@ fn stalled_reconciliation_issue_run(
 			reused_existing: true,
 		},
 	);
-	let retry_budget_base =
-		retry_budget_base_for_issue_worktree(state_store, &action.issue.id, &worktree.path)?;
+	let retry_budget_base = reconciliation::retry_budget_base_for_issue_worktree(
+		state_store,
+		&action.issue.id,
+		&worktree.path,
+	)?;
 
 	Ok(IssueRunPlan {
 		issue: action.issue.clone(),
-		issue_state: planned_issue_state_for_dispatch(
+		issue_state: reconciliation::planned_issue_state_for_dispatch(
 			&action.workflow,
 			&action.issue,
 			IssueDispatchMode::Retry,
@@ -242,27 +316,6 @@ fn stalled_reconciliation_issue_run(
 		run_id: action.run_attempt.run_id().to_owned(),
 		retry_budget_base,
 	})
-}
-
-pub(in crate::orchestrator::reconciliation) fn reconcile_stalled_attention_run_lease(
-	project: &ServiceConfig,
-	state_store: &StateStore,
-	action: &RunLeaseReconciliation,
-	idle_for: Duration,
-) -> Result<()> {
-	tracing::warn!(
-		project_id = project.service_id(),
-		issue_id = action.issue.id,
-		issue = action.issue.identifier,
-		run_id = action.run_attempt.run_id(),
-		disposition = "stalled_already_needs_attention",
-		idle_for_s = idle_for.as_secs(),
-		"Reconciling stalled run that is already blocked for operator attention."
-	);
-
-	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
-
-	state_store.clear_lease(&action.issue.id)
 }
 
 fn write_reconciliation_operation_marker_best_effort(
@@ -286,54 +339,4 @@ fn write_reconciliation_operation_marker_best_effort(
 			"Run operation marker write failed; continuing stalled-run reconciliation."
 		);
 	}
-}
-
-pub(in crate::orchestrator) fn stalled_run_has_retained_partial_progress(
-	worktree_mapping: Option<&WorktreeMapping>,
-) -> bool {
-	match worktree_mapping {
-		Some(mapping) => worktree_has_tracked_changes(mapping.worktree_path()),
-		None => false,
-	}
-}
-
-pub(in crate::orchestrator) fn retained_review_handoff_matches_run(
-	state_store: &StateStore,
-	run_attempt: &RunAttempt,
-	worktree_mapping: Option<&WorktreeMapping>,
-) -> Result<bool> {
-	let Some(worktree_mapping) = worktree_mapping else {
-		return Ok(false);
-	};
-	let Some(marker) = state_store.review_handoff_marker(
-		worktree_mapping.project_id(),
-		run_attempt.issue_id(),
-		worktree_mapping.branch_name(),
-	)?
-	else {
-		return Ok(false);
-	};
-
-	Ok(marker.run_id() == run_attempt.run_id()
-		&& marker.attempt_number() == run_attempt.attempt_number()
-		&& marker.branch_name() == worktree_mapping.branch_name())
-}
-
-pub(in crate::orchestrator) fn superseded_run_disposition(
-	state_store: &StateStore,
-	run_attempt: &RunAttempt,
-) -> Result<Option<RunLeaseDisposition>> {
-	let Some(latest_attempt) = state_store.latest_run_attempt_for_issue(run_attempt.issue_id())?
-	else {
-		return Ok(None);
-	};
-
-	if latest_attempt.attempt_number() <= run_attempt.attempt_number() {
-		return Ok(None);
-	}
-
-	Ok(Some(RunLeaseDisposition::Superseded {
-		newer_run_id: latest_attempt.run_id().to_owned(),
-		newer_attempt_number: latest_attempt.attempt_number(),
-	}))
 }

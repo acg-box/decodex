@@ -1,15 +1,11 @@
-use crate::prelude::Result;
-
-use super::super::{
-	AccountActivityMode, AgentEvidenceSource, DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
-	OperatorProjectStatus, OperatorStatusSnapshot, ProjectRegistration, ServiceConfig, StateStore,
-	WorkflowDocument, add_operator_snapshot_warning, apply_operator_lane_terminal_projection,
-	build_operator_status_snapshot_with_account_mode,
-	current_lane_terminal_projection_from_local_ledger, global_codex_account_control_status,
-	hydrate_history_lanes_from_local_ledger, operator_run_counts_as_running,
-	refresh_operator_project_summary, refresh_worktree_ownership, write_agent_evidence_best_effort,
+use crate::{
+	orchestrator::{
+		self, AccountActivityMode, AgentEvidenceSource, OperatorProjectStatus,
+		OperatorStatusSnapshot, ProjectRegistration, ServiceConfig, StateStore, WorkflowDocument,
+		entrypoints_control_plane::{DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT, status},
+	},
+	prelude::Result,
 };
-use super::status::{empty_control_plane_snapshot, operator_project_status_from_registration};
 
 pub(crate) struct ControlPlaneProjectTick {
 	pub(crate) snapshot: Option<OperatorStatusSnapshot>,
@@ -50,10 +46,10 @@ where
 		aggregate_control_plane_snapshot(registered_project_count, project_snapshots);
 
 	snapshot.projects = project_statuses;
-	snapshot.account_control = global_codex_account_control_status();
+	snapshot.account_control = orchestrator::global_codex_account_control_status();
 
 	for warning in snapshot_warnings {
-		add_operator_snapshot_warning(&mut snapshot, warning);
+		orchestrator::add_operator_snapshot_warning(&mut snapshot, warning);
 	}
 
 	snapshot
@@ -64,7 +60,7 @@ pub(crate) fn control_plane_disabled_project_observer_tick(
 	state_store: &StateStore,
 	snapshot_warnings: &mut Vec<&'static str>,
 ) -> ControlPlaneProjectTick {
-	let project_status = operator_project_status_from_registration(project, 0);
+	let project_status = status::operator_project_status_from_registration(project, 0);
 	let current_lanes = match state_store.list_leased_runs(project.service_id()) {
 		Ok(current_lanes) => current_lanes,
 		Err(error) => {
@@ -114,21 +110,6 @@ pub(crate) fn control_plane_disabled_project_observer_tick(
 	}
 }
 
-fn build_registered_project_local_snapshot(
-	project: &ProjectRegistration,
-	state_store: &StateStore,
-) -> Result<OperatorStatusSnapshot> {
-	let config = ServiceConfig::from_path(project.config_path())?;
-	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
-
-	build_operator_state_snapshot_without_live_observers(
-		&config,
-		&workflow,
-		state_store,
-		DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
-	)
-}
-
 pub(crate) fn hydrate_project_status_from_local_snapshot(
 	project_status: &mut OperatorProjectStatus,
 	project_snapshot: &OperatorStatusSnapshot,
@@ -140,7 +121,7 @@ pub(crate) fn hydrate_project_status_from_local_snapshot(
 		project_status.running_lane_count = project_snapshot
 			.current_lanes
 			.iter()
-			.filter(|run| operator_run_counts_as_running(run))
+			.filter(|run| orchestrator::operator_run_counts_as_running(run))
 			.count();
 	}
 }
@@ -161,29 +142,12 @@ pub(crate) fn hydrate_project_status_from_registered_status(
 		project_status.warning_count.saturating_add(local_status.warning_count);
 }
 
-fn aggregate_control_plane_snapshot(
-	registered_project_count: usize,
-	mut project_snapshots: Vec<OperatorStatusSnapshot>,
-) -> OperatorStatusSnapshot {
-	if registered_project_count == 1 && project_snapshots.len() == 1 {
-		return project_snapshots.remove(0);
-	}
-
-	let mut snapshot = empty_control_plane_snapshot(DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT);
-
-	for project_snapshot in project_snapshots {
-		append_control_plane_project_snapshot(&mut snapshot, project_snapshot);
-	}
-
-	snapshot
-}
-
 pub(crate) fn append_control_plane_project_snapshot(
 	snapshot: &mut OperatorStatusSnapshot,
 	project_snapshot: OperatorStatusSnapshot,
 ) {
 	for warning in project_snapshot.warnings {
-		add_operator_snapshot_warning(snapshot, &warning);
+		orchestrator::add_operator_snapshot_warning(snapshot, &warning);
 	}
 
 	snapshot.warning_details.extend(project_snapshot.warning_details);
@@ -206,28 +170,31 @@ pub(crate) fn build_operator_state_snapshot_without_live_observers(
 ) -> Result<OperatorStatusSnapshot> {
 	state_store.configure_dispatch_slot_root(project.service_id(), project.worktree_root())?;
 
-	let mut snapshot = build_operator_status_snapshot_with_account_mode(
+	let mut snapshot = orchestrator::build_operator_status_snapshot_with_account_mode(
 		project,
 		state_store,
 		limit,
 		AccountActivityMode::Snapshot,
 	)?;
 
-	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
+	orchestrator::hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
 
-	let terminal_projection =
-		current_lane_terminal_projection_from_local_ledger(project, state_store, &snapshot)?;
+	let terminal_projection = orchestrator::current_lane_terminal_projection_from_local_ledger(
+		project,
+		state_store,
+		&snapshot,
+	)?;
 
-	apply_operator_lane_terminal_projection(
+	orchestrator::apply_operator_lane_terminal_projection(
 		&mut snapshot,
 		terminal_projection,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
 	);
-	refresh_worktree_ownership(
+	orchestrator::refresh_worktree_ownership(
 		&mut snapshot,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
 	);
-	refresh_operator_project_summary(
+	orchestrator::refresh_operator_project_summary(
 		&mut snapshot,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
 	);
@@ -246,5 +213,37 @@ pub(crate) fn complete_project_status(
 }
 
 pub(crate) fn write_snapshot_evidence(snapshot: &OperatorStatusSnapshot) {
-	write_agent_evidence_best_effort(snapshot, AgentEvidenceSource::ServeTick);
+	orchestrator::write_agent_evidence_best_effort(snapshot, AgentEvidenceSource::ServeTick);
+}
+
+fn build_registered_project_local_snapshot(
+	project: &ProjectRegistration,
+	state_store: &StateStore,
+) -> Result<OperatorStatusSnapshot> {
+	let config = ServiceConfig::from_path(project.config_path())?;
+	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
+
+	build_operator_state_snapshot_without_live_observers(
+		&config,
+		&workflow,
+		state_store,
+		DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
+	)
+}
+
+fn aggregate_control_plane_snapshot(
+	registered_project_count: usize,
+	mut project_snapshots: Vec<OperatorStatusSnapshot>,
+) -> OperatorStatusSnapshot {
+	if registered_project_count == 1 && project_snapshots.len() == 1 {
+		return project_snapshots.remove(0);
+	}
+
+	let mut snapshot = status::empty_control_plane_snapshot(DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT);
+
+	for project_snapshot in project_snapshots {
+		append_control_plane_project_snapshot(&mut snapshot, project_snapshot);
+	}
+
+	snapshot
 }

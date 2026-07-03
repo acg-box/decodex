@@ -1,16 +1,18 @@
 use std::slice;
 
-use crate::orchestrator::execution_failure::{
-	self, ARCHITECTURE_RECOVERY_RETRY_KIND, ArchitectureRecoveryStart, FailureHandlingContext,
-	HarnessOutcomeKind, IssueRunPlan, IssueTracker, LoopGuardrailRecoveryDecision,
-	LoopGuardrailStopRequested, ManualAttentionRequested, OffsetDateTime, Report, Result,
-	RetryComment, RetryKind, ReviewPolicyStopReason, ReviewPolicyStopRequested, ServiceConfig,
-	StateStore, TERMINAL_GUARDED_RUN_STATUS, TerminalFailureWritebackRuntime, TrackerIssue,
-	WorkflowDocument, disposition,
+use crate::{
+	orchestrator::execution_failure::{
+		self, ARCHITECTURE_RECOVERY_RETRY_KIND, ArchitectureRecoveryStart, FailureHandlingContext,
+		HarnessOutcomeKind, IssueRunPlan, IssueTracker, LoopGuardrailRecoveryDecision,
+		LoopGuardrailStopRequested, ManualAttentionRequested, OffsetDateTime, Report, Result,
+		RetryComment, RetryKind, ReviewPolicyStopReason, ReviewPolicyStopRequested, ServiceConfig,
+		StateStore, TERMINAL_GUARDED_RUN_STATUS, TerminalFailureWritebackRuntime, TrackerIssue,
+		WorkflowDocument, disposition,
+	},
+	state, tracker,
 };
-use crate::{state, tracker};
 
-pub(in crate::orchestrator) fn handle_failure<T>(
+pub(crate) fn handle_failure<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -69,16 +71,14 @@ where
 			execution_failure::loop_guardrail_stop_from_review_policy(review_policy_stop),
 			error,
 		)? {
-			LoopGuardrailRecoveryDecision::Start(recovery) => {
+			LoopGuardrailRecoveryDecision::Start(recovery) =>
 				apply_architecture_recovery_retry_writeback(
 					&failure_context,
 					recovery,
 					max_attempts,
-				)
-			},
-			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) => {
-				apply_loop_guardrail_failure_writeback(&failure_context, loop_guardrail_stop)
-			},
+				),
+			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) =>
+				apply_loop_guardrail_failure_writeback(&failure_context, loop_guardrail_stop),
 		};
 	}
 	if let Some(loop_guardrail_stop) = loop_guardrail_stop {
@@ -89,16 +89,14 @@ where
 			loop_guardrail_stop,
 			error,
 		)? {
-			LoopGuardrailRecoveryDecision::Start(recovery) => {
+			LoopGuardrailRecoveryDecision::Start(recovery) =>
 				apply_architecture_recovery_retry_writeback(
 					&failure_context,
 					recovery,
 					max_attempts,
-				)
-			},
-			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) => {
-				apply_loop_guardrail_failure_writeback(&failure_context, loop_guardrail_stop)
-			},
+				),
+			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) =>
+				apply_loop_guardrail_failure_writeback(&failure_context, loop_guardrail_stop),
 		};
 	}
 
@@ -119,7 +117,7 @@ where
 	)
 }
 
-pub(in crate::orchestrator) fn retryable_failure_loop_guardrail_stop_unless_terminal_attention(
+pub(crate) fn retryable_failure_loop_guardrail_stop_unless_terminal_attention(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -138,7 +136,7 @@ pub(in crate::orchestrator) fn retryable_failure_loop_guardrail_stop_unless_term
 	}
 }
 
-pub(in crate::orchestrator) fn retry_budget_attempts_for_current_failure(
+pub(crate) fn retry_budget_attempts_for_current_failure(
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 ) -> Result<i64> {
@@ -153,7 +151,7 @@ pub(in crate::orchestrator) fn retry_budget_attempts_for_current_failure(
 	Ok(issue_run.retry_budget_base.max(previous_state_attempts) + i64::from(current_attempt_counts))
 }
 
-pub(in crate::orchestrator) fn ensure_automation_activity_label<T>(
+pub(crate) fn ensure_automation_activity_label<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
 	service_id: &str,

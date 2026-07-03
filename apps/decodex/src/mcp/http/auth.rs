@@ -2,19 +2,19 @@ use std::env;
 
 use serde_json::Value;
 
-use crate::prelude::{Result, eyre};
-
-use super::{
-	super::json_rpc_error,
-	MCP_AUTHORIZATION_HEADER, MCP_WWW_AUTHENTICATE_HEADER,
-	message::{McpHttpRequest, McpHttpResponse},
+use crate::{
+	mcp,
+	mcp::http::{
+		MCP_AUTHORIZATION_HEADER, MCP_WWW_AUTHENTICATE_HEADER,
+		message::{McpHttpRequest, McpHttpResponse},
+	},
+	prelude::{Result, eyre},
 };
 
 #[derive(Clone, Default)]
 pub(in crate::mcp) struct McpHttpAuthorization {
 	token: Option<String>,
 }
-
 impl McpHttpAuthorization {
 	pub(in crate::mcp) fn disabled() -> Self {
 		Self { token: None }
@@ -59,7 +59,7 @@ impl McpHttpAuthorization {
 	pub(super) fn unauthorized_response() -> McpHttpResponse {
 		let mut response = McpHttpResponse::json_error(
 			"401 Unauthorized",
-			json_rpc_error(Value::Null, -32_000, "Unauthorized"),
+			mcp::json_rpc_error(Value::Null, -32_000, "Unauthorized"),
 		);
 
 		response.headers.push(("WWW-Authenticate", String::from(MCP_WWW_AUTHENTICATE_HEADER)));
