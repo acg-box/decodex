@@ -1,0 +1,31 @@
+.site-section {
+  width: min(100%, 82rem);
+  margin: 0 auto;
+  padding: 3.25rem 1.15rem 0;
+  scroll-margin-top: 1.25rem;
+}
+
+.docs-section {
+  padding-bottom: 5rem;
+}
+
+.section-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.65rem;
+  margin-bottom: 1.05rem;
+}
+
+.section-heading h2 {
+  color: var(--ink);
+  font-size: clamp(2rem, 3.6vw, 3.6rem);
+  font-weight: 830;
+  line-height: 0.98;
+}
+
+.section-heading p {
+  max-width: 42rem;
+  color: var(--ink-soft);
+  font-size: 1rem;
+  line-height: 1.58;
+}
