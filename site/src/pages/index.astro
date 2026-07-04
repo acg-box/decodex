@@ -3,7 +3,21 @@ import AppcastDownloadWidget from "@/components/AppcastDownloadWidget.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import { commands, decodexGitHubUrl, docs, productLoops } from "@/lib/homeContent";
-import interactionRuntimeScript from "@/scripts/homeInteractions.js?raw";
+import homeInteractionBindScript from "@/scripts/homeInteractions/bind.js?raw";
+import homeInteractionHeroScript from "@/scripts/homeInteractions/hero.js?raw";
+import homeInteractionPressScript from "@/scripts/homeInteractions/press.js?raw";
+import homeInteractionQueryScript from "@/scripts/homeInteractions/query.js?raw";
+import homeInteractionRevealScript from "@/scripts/homeInteractions/reveals.js?raw";
+import homeInteractionStateScript from "@/scripts/homeInteractions/state.js?raw";
+
+const interactionRuntimeScript = [
+  homeInteractionStateScript,
+  homeInteractionQueryScript,
+  homeInteractionRevealScript,
+  homeInteractionPressScript,
+  homeInteractionHeroScript,
+  homeInteractionBindScript,
+].join("\n");
 ---
 
 <BaseLayout

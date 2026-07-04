@@ -1,7 +1,15 @@
 mod active_children;
+mod context;
+mod publish;
 mod retry_dispatch;
 mod spawn;
 
+#[cfg(test)] pub(crate) use self::context::load_daemon_tick_workflow;
+pub(crate) use self::{
+	active_children::{clear_orphaned_daemon_child_state, resolve_child_exit_run_attempt},
+	context::load_daemon_tick_context,
+	publish::build_operator_state_snapshot_for_publish,
+};
 #[cfg(test)]
 pub(crate) use self::{
 	active_children::{
@@ -13,9 +21,6 @@ pub(crate) use self::{
 		materialize_daemon_spawn_state, materialize_run_summary_worktree, plan_next_daemon_run,
 	},
 };
-pub(crate) use active_children::{
-	clear_orphaned_daemon_child_state, resolve_child_exit_run_attempt,
-};
 
 use daemon_retry::{
 	clear_retry_schedule_and_release, retry_entry_is_temporarily_blocked,
@@ -23,10 +28,9 @@ use daemon_retry::{
 };
 
 use crate::orchestrator::{
-	self, AccountActivityMode, ActiveWorkflowOverride, CachedWorkflowDocument, Child,
-	ChildExitRetryContext, ChildRunRef, CurrentChildRunContext, DaemonRunChild, DaemonTickContext,
-	GhPullRequestReviewStateInspector, Instant, IssueDispatchMode, IssueTracker, LinearClient,
-	OffsetDateTime, OperatorConnectorBackoffStatus, OperatorStatusSnapshot, Path,
+	self, ActiveWorkflowOverride, Child, ChildExitRetryContext, ChildRunRef,
+	CurrentChildRunContext, DaemonRunChild, DaemonTickContext, GhPullRequestReviewStateInspector,
+	Instant, IssueDispatchMode, IssueTracker, OffsetDateTime, Path,
 	PullRequestReviewStateInspector, RecoverableWorktreeSkipCache, Result, RetryDispatchDecision,
 	RetryKind, RetryQueue, RunAttempt, RunLeaseDisposition, RunLeaseReconciliation, ServiceConfig,
 	StateStore, TargetIssueRunContext, WorkflowDocument, WorktreeManager,
@@ -45,59 +49,6 @@ pub(crate) struct DaemonTickRuntimeContext<'a, T, I> {
 	pub(crate) worktree_manager: &'a WorktreeManager,
 	pub(crate) review_state_inspector: &'a I,
 	pub(crate) recoverable_worktree_skip_cache: Option<&'a mut RecoverableWorktreeSkipCache>,
-}
-
-pub(crate) fn load_daemon_tick_context(
-	config_path: &Path,
-	workflow_cache: &mut Option<CachedWorkflowDocument>,
-) -> Result<DaemonTickContext> {
-	let config = ServiceConfig::from_path(config_path)?;
-	let workflow = load_daemon_tick_workflow(&config, workflow_cache)?;
-	let api_key = config.tracker().resolve_api_key()?;
-	let tracker = LinearClient::new(api_key)?;
-	let worktree_manager =
-		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
-
-	Ok(DaemonTickContext { config, workflow, tracker, worktree_manager })
-}
-
-pub(crate) fn load_daemon_tick_workflow(
-	config: &ServiceConfig,
-	workflow_cache: &mut Option<CachedWorkflowDocument>,
-) -> Result<WorkflowDocument> {
-	let workflow_path = config.workflow_path().to_path_buf();
-	let cached_same_path = workflow_cache
-		.as_ref()
-		.filter(|cached| cached.path == workflow_path)
-		.map(|cached| cached.document.clone());
-
-	match WorkflowDocument::from_path(&workflow_path) {
-		Ok(workflow) => {
-			if cached_same_path.as_ref().is_some_and(|cached| cached != &workflow) {
-				tracing::info!(
-					workflow_path = %workflow_path.display(),
-					"Reloaded project WORKFLOW.md for future control-plane decisions."
-				);
-			}
-
-			*workflow_cache =
-				Some(CachedWorkflowDocument { path: workflow_path, document: workflow.clone() });
-
-			Ok(workflow)
-		},
-		Err(error) =>
-			if let Some(cached_workflow) = cached_same_path {
-				tracing::warn!(
-					workflow_path = %workflow_path.display(),
-					?error,
-					"Failed to reload project WORKFLOW.md; keeping the last known good workflow active for control-plane decisions."
-				);
-
-				Ok(cached_workflow)
-			} else {
-				Err(error)
-			},
-	}
 }
 
 pub(crate) fn run_daemon_tick(
@@ -212,70 +163,4 @@ where
 	)?;
 
 	orchestrator::reconcile_project_state(tracker, project, workflow, state_store, worktree_manager)
-}
-
-pub(crate) fn build_operator_state_snapshot_for_publish<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	limit: usize,
-	warnings: &[&str],
-	connector_backoffs: &[OperatorConnectorBackoffStatus],
-) -> Result<OperatorStatusSnapshot>
-where
-	T: IssueTracker,
-{
-	let mut snapshot = if warnings.is_empty() {
-		orchestrator::build_control_plane_operator_status_snapshot(
-			tracker,
-			project,
-			workflow,
-			state_store,
-			limit,
-		)?
-	} else {
-		orchestrator::build_operator_status_snapshot_with_account_mode(
-			project,
-			state_store,
-			limit,
-			AccountActivityMode::Snapshot,
-		)?
-	};
-
-	if !warnings.is_empty() {
-		orchestrator::hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
-	}
-
-	orchestrator::apply_terminal_history_ledger_outcomes(&mut snapshot);
-
-	if orchestrator::warnings_include_tracker_backoff(warnings) {
-		let review_state_inspector = GhPullRequestReviewStateInspector {
-			github_token_env_var: Some(project.github().token_env_var().to_owned()),
-			github_command_path: project.github().command_path().map(Path::to_path_buf),
-		};
-
-		snapshot.post_review_lanes = orchestrator::build_degraded_post_review_lane_statuses(
-			project,
-			state_store,
-			&review_state_inspector,
-		)?;
-	}
-
-	for warning in warnings {
-		orchestrator::add_operator_snapshot_warning(&mut snapshot, warning);
-	}
-
-	snapshot.connector_backoffs.extend(connector_backoffs.iter().cloned());
-
-	if !warnings.is_empty() {
-		orchestrator::add_operator_snapshot_warning(
-			&mut snapshot,
-			"external_observer_status_skipped",
-		);
-	}
-
-	orchestrator::refresh_operator_project_summary(&mut snapshot, None);
-
-	Ok(snapshot)
 }
