@@ -115,11 +115,6 @@ impl ExecutionLinearIssueMapping {
 		self.has_needs_attention_label
 	}
 
-	/// Whether the mapped issue currently has open dependency blockers in the tracker.
-	pub(crate) fn has_open_tracker_blockers(&self) -> bool {
-		self.has_open_tracker_blockers
-	}
-
 	/// Whether the issue description is usable as a generic dispatch briefing.
 	pub(crate) fn has_generic_dispatch_briefing(&self) -> bool {
 		self.has_generic_dispatch_briefing

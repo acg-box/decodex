@@ -129,6 +129,7 @@ impl ExecutionProgramNode {
 	}
 
 	/// Override the accepted-contract fingerprint used for drift detection.
+	#[cfg(test)]
 	pub(crate) fn with_contract_fingerprint(
 		mut self,
 		fingerprint: impl Into<String>,
