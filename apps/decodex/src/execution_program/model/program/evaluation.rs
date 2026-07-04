@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use crate::{
 	execution_program::{
-		contract, evaluation,
-		evaluation::ExecutionProgramEvaluation,
+		contract,
+		evaluation::{self, EvaluateNodeInput, ExecutionProgramEvaluation},
 		model::ExecutionProgram,
 		policy::{ExecutionProgramReadinessContext, ExecutionWorkflowPolicy},
 	},
@@ -74,7 +74,7 @@ impl ExecutionProgram {
 		let mut nodes = Vec::new();
 
 		for node in &self.nodes {
-			nodes.push(evaluation::evaluate_node(evaluation::EvaluateNodeInput {
+			nodes.push(evaluation::evaluate_node(EvaluateNodeInput {
 				program: self,
 				node,
 				current_contract,
