@@ -7,9 +7,7 @@ extension LoginPanelPresenter {
 		private weak var state: LoginWindowState?
 		private var panel: LoginFloatingPanel?
 		private var hostingView: NSHostingView<LoginSheetView>?
-		private weak var lastPlacementParent: NSWindow?
-		private var lastPanelSize: NSSize?
-		private var hasPlacedPanel = false
+		private let placementState = LoginPanelPlacementState()
 		private var isClosingProgrammatically = false
 
 		@MainActor
@@ -52,9 +50,7 @@ extension LoginPanelPresenter {
 			}
 			panel = nil
 			hostingView = nil
-			lastPlacementParent = nil
-			lastPanelSize = nil
-			hasPlacedPanel = false
+			placementState.reset()
 			guard isClosingProgrammatically == false else {
 				return
 			}
@@ -106,9 +102,7 @@ extension LoginPanelPresenter {
 			isClosingProgrammatically = false
 			self.panel = nil
 			hostingView = nil
-			lastPlacementParent = nil
-			lastPanelSize = nil
-			hasPlacedPanel = false
+			placementState.reset()
 		}
 
 		@MainActor
@@ -121,21 +115,21 @@ extension LoginPanelPresenter {
 			let fittingSize = hostingView.fittingSize
 			let panelSize = LoginPanelLayout.panelSize(for: fittingSize)
 			let parentWindow = hostView?.window
-			let parentChanged = windowsDiffer(lastPlacementParent, parentWindow)
-			let sizeChanged = lastPanelSize.map { LoginPanelLayout.sizeDiffers($0, panelSize) } ?? true
-			guard forcePlacement || parentChanged || sizeChanged else {
+			guard placementState.shouldPlace(
+				parentWindow: parentWindow,
+				panelSize: panelSize,
+				forcePlacement: forcePlacement
+			) else {
 				return
 			}
 
-			let currentFrame = hasPlacedPanel ? panel.frame : nil
+			let currentFrame = placementState.hasPlacedPanel ? panel.frame : nil
 			let frame = NSRect(
 				origin: origin(for: panelSize, parentWindow: parentWindow, currentFrame: currentFrame),
 				size: panelSize
 			)
 			panel.setFrame(frame, display: true)
-			lastPlacementParent = parentWindow
-			lastPanelSize = panelSize
-			hasPlacedPanel = true
+			placementState.markPlaced(parentWindow: parentWindow, panelSize: panelSize)
 		}
 
 		@MainActor
@@ -145,7 +139,7 @@ extension LoginPanelPresenter {
 				let hadParent = panel.parent != nil
 				panel.parent?.removeChildWindow(panel)
 				panel.orderFrontRegardless()
-				return hadParent || windowsDiffer(lastPlacementParent, nil)
+				return hadParent || placementState.parentDiffers(from: nil)
 			}
 
 			let parentChanged = panel.parent !== parentWindow
@@ -173,26 +167,5 @@ extension LoginPanelPresenter {
 				visibleFrame: screen?.visibleFrame ?? LoginPanelLayout.fallbackVisibleFrame
 			)
 		}
-
-		private func windowsDiffer(_ lhs: NSWindow?, _ rhs: NSWindow?) -> Bool {
-			switch (lhs, rhs) {
-			case (nil, nil):
-				return false
-			case (.some(let lhs), .some(let rhs)):
-				return lhs !== rhs
-			default:
-				return true
-			}
-		}
-	}
-}
-
-final class LoginFloatingPanel: NSPanel {
-	override var canBecomeKey: Bool {
-		true
-	}
-
-	override var canBecomeMain: Bool {
-		false
 	}
 }
