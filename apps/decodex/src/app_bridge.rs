@@ -1,88 +1,22 @@
 //! Internal JSON bridge used by the bundled Decodex App helper.
 
-use std::{
-	io::{self, Read as _, Write as _},
-	path::PathBuf,
-};
+mod event;
+mod request;
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use std::{io, path::PathBuf};
 
 use crate::{
 	accounts::{self, AccountListResponse, AccountLoginRequest, AccountUseRequest},
+	app_bridge::{event::AppBridgeEvent, request::AppBridgeRequest},
 	codex_config,
 	prelude::{Result, eyre},
 };
-
-#[derive(Deserialize)]
-#[serde(tag = "operation", rename_all = "snake_case")]
-enum AppBridgeRequest {
-	#[serde(rename = "account_list")]
-	List {
-		#[serde(default)]
-		include_usage: bool,
-		#[serde(default)]
-		force_refresh: bool,
-	},
-	#[serde(rename = "account_select")]
-	Select {
-		selector: String,
-		#[serde(default)]
-		include_usage: bool,
-	},
-	#[serde(rename = "account_clear")]
-	Clear {
-		#[serde(default)]
-		include_usage: bool,
-	},
-	#[serde(rename = "account_logout")]
-	Logout {
-		selector: String,
-		#[serde(default)]
-		include_usage: bool,
-	},
-	#[serde(rename = "account_import")]
-	Import {
-		auth_json_path: String,
-		#[serde(default)]
-		include_usage: bool,
-	},
-	#[serde(rename = "account_use")]
-	Use { selector: String, auth_json_path: Option<String> },
-	#[serde(rename = "account_login")]
-	Login {
-		#[serde(default = "default_codex_bin")]
-		codex_bin: String,
-		#[serde(default)]
-		keep_temp_home: bool,
-		#[serde(default)]
-		include_usage: bool,
-	},
-	#[serde(rename = "codex_fast_mode_status")]
-	FastModeStatus,
-	#[serde(rename = "codex_fast_mode_set")]
-	FastModeSet { enabled: bool },
-}
-
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum AppBridgeEvent<'a, T = Value>
-where
-	T: Serialize,
-{
-	Output { text: &'a str },
-	Result { payload: T },
-	Error { message: String },
-}
 
 /// Run one Decodex App helper request from stdin and write JSON events to stdout.
 pub fn run() -> Result<()> {
 	color_eyre::install()?;
 
-	let mut input = String::new();
-
-	io::stdin().read_to_string(&mut input)?;
-
+	let input = io::read_to_string(io::stdin())?;
 	let request = serde_json::from_str::<AppBridgeRequest>(&input)
 		.map_err(|error| eyre::eyre!("Invalid Decodex App bridge request: {error}"))?;
 
@@ -92,7 +26,7 @@ pub fn run() -> Result<()> {
 			let event: AppBridgeEvent<'_, ()> =
 				AppBridgeEvent::Error { message: error.to_string() };
 
-			emit_event(&event)?;
+			event::emit_event(&event)?;
 
 			Err(error)
 		},
@@ -103,9 +37,9 @@ fn handle_request(request: AppBridgeRequest) -> Result<()> {
 	match request {
 		AppBridgeRequest::List { include_usage, force_refresh } =>
 			if include_usage {
-				emit_result(&accounts::account_list_with_cached_usage(force_refresh)?)
+				event::emit_result(&accounts::account_list_with_cached_usage(force_refresh)?)
 			} else {
-				emit_result(&accounts::account_list()?)
+				event::emit_result(&accounts::account_list()?)
 			},
 		AppBridgeRequest::Select { selector, include_usage } =>
 			emit_account_list_result(accounts::account_select(&selector)?, include_usage),
@@ -119,7 +53,7 @@ fn handle_request(request: AppBridgeRequest) -> Result<()> {
 			emit_account_list_result(accounts::account_import(&auth_json_path)?, include_usage)
 		},
 		AppBridgeRequest::Use { selector, auth_json_path } =>
-			emit_result(&accounts::account_use(&AccountUseRequest {
+			event::emit_result(&accounts::account_use(&AccountUseRequest {
 				selector,
 				auth_json_path: auth_json_path.map(Into::into),
 				json: true,
@@ -130,15 +64,15 @@ fn handle_request(request: AppBridgeRequest) -> Result<()> {
 				|chunk| {
 					let event: AppBridgeEvent<'_, ()> = AppBridgeEvent::Output { text: chunk };
 
-					emit_event(&event)
+					event::emit_event(&event)
 				},
 			)?;
 
 			emit_account_list_result(response, include_usage)
 		},
-		AppBridgeRequest::FastModeStatus => emit_result(&codex_config::fast_mode_status()?),
+		AppBridgeRequest::FastModeStatus => event::emit_result(&codex_config::fast_mode_status()?),
 		AppBridgeRequest::FastModeSet { enabled } =>
-			emit_result(&codex_config::set_fast_mode(enabled)?),
+			event::emit_result(&codex_config::set_fast_mode(enabled)?),
 	}
 }
 
@@ -146,37 +80,12 @@ fn emit_account_list_result(response: AccountListResponse, include_usage: bool) 
 	let response =
 		if include_usage { accounts::hydrate_account_list_usage(response) } else { response };
 
-	emit_result(&response)
-}
-
-fn emit_result<T>(payload: &T) -> Result<()>
-where
-	T: Serialize,
-{
-	emit_event(&AppBridgeEvent::Result { payload })
-}
-
-fn emit_event<T>(event: &AppBridgeEvent<'_, T>) -> Result<()>
-where
-	T: Serialize,
-{
-	let mut stdout = io::stdout().lock();
-
-	serde_json::to_writer(&mut stdout, event)?;
-
-	stdout.write_all(b"\n")?;
-	stdout.flush()?;
-
-	Ok(())
-}
-
-fn default_codex_bin() -> String {
-	String::from("codex")
+	event::emit_result(&response)
 }
 
 #[cfg(test)]
 mod tests {
-	use crate::app_bridge::AppBridgeRequest;
+	use crate::app_bridge::request::AppBridgeRequest;
 
 	#[test]
 	fn parses_account_use_bridge_request() {
