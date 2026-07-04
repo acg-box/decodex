@@ -12,7 +12,8 @@ use crate::{
 			AutonomyObjectiveKey, AutonomyProposalKey, AutonomyProposalRuntimeRecord,
 			AutonomySignalKey,
 		},
-		runtime_row_parsers, store,
+		runtime_row_parsers,
+		store::validation,
 	},
 };
 
@@ -23,7 +24,7 @@ impl StateStore {
 		project_id: &str,
 		proposal: AutonomyProposal,
 	) -> Result<AutonomyProposalRecord> {
-		store::validate_autonomy_proposal_record_inputs(project_id, &proposal)?;
+		validation::validate_autonomy_proposal_record_inputs(project_id, &proposal)?;
 
 		let now = runtime_row_parsers::timestamp_parts();
 		let mut state = self.lock()?;
@@ -105,8 +106,8 @@ impl StateStore {
 		proposal_id: &str,
 		challenge: AutonomyProposalChallengeInput,
 	) -> Result<AutonomyProposalRecord> {
-		store::validate_required_autonomy_proposal_field("project_id", project_id)?;
-		store::validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
+		validation::validate_required_autonomy_proposal_field("project_id", project_id)?;
+		validation::validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
 
 		let now = runtime_row_parsers::timestamp_parts();
 		let key = AutonomyProposalKey::new(project_id, proposal_id);
@@ -136,8 +137,8 @@ impl StateStore {
 		proposal_id: &str,
 		authority: AutonomyProposalDecisionBridgeAuthority,
 	) -> Result<DecisionContractRecord> {
-		store::validate_required_autonomy_proposal_field("project_id", project_id)?;
-		store::validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
+		validation::validate_required_autonomy_proposal_field("project_id", project_id)?;
+		validation::validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
 
 		let proposal_record = self
 			.autonomy_proposal(project_id, proposal_id)?

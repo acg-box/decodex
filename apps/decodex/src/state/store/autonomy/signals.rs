@@ -5,7 +5,8 @@ use crate::{
 	state::{
 		AutonomySignalRecord, StateStore,
 		runtime_records::{AutonomyObjectiveKey, AutonomySignalKey, AutonomySignalRuntimeRecord},
-		runtime_row_parsers, store,
+		runtime_row_parsers,
+		store::validation,
 	},
 };
 
@@ -17,7 +18,7 @@ impl StateStore {
 		project_id: &str,
 		signal: AutonomySignal,
 	) -> Result<AutonomySignalRecord> {
-		store::validate_autonomy_signal_record_inputs(project_id, &signal)?;
+		validation::validate_autonomy_signal_record_inputs(project_id, &signal)?;
 
 		let now = runtime_row_parsers::timestamp_parts();
 		let mut state = self.lock()?;
@@ -72,8 +73,8 @@ impl StateStore {
 		project_id: &str,
 		signal_id: &str,
 	) -> Result<Option<AutonomySignalRecord>> {
-		store::validate_required_autonomy_signal_field("project_id", project_id)?;
-		store::validate_required_autonomy_signal_field("signal_id", signal_id)?;
+		validation::validate_required_autonomy_signal_field("project_id", project_id)?;
+		validation::validate_required_autonomy_signal_field("signal_id", signal_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -99,9 +100,9 @@ impl StateStore {
 		objective_id: &str,
 		objective_version: u64,
 	) -> Result<Vec<AutonomySignalRecord>> {
-		store::validate_required_autonomy_signal_field("project_id", project_id)?;
-		store::validate_required_autonomy_signal_field("objective_id", objective_id)?;
-		store::validate_autonomy_objective_version(objective_version)?;
+		validation::validate_required_autonomy_signal_field("project_id", project_id)?;
+		validation::validate_required_autonomy_signal_field("objective_id", objective_id)?;
+		validation::validate_autonomy_objective_version(objective_version)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -138,7 +139,7 @@ impl StateStore {
 		project_id: &str,
 		limit: usize,
 	) -> Result<Vec<AutonomySignalRecord>> {
-		store::validate_required_autonomy_signal_field("project_id", project_id)?;
+		validation::validate_required_autonomy_signal_field("project_id", project_id)?;
 
 		if limit == 0 {
 			return Ok(Vec::new());

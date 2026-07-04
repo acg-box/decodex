@@ -4,7 +4,10 @@ use crate::{
 	state::{
 		runtime_records::{DecisionContractKey, DecisionContractRuntimeRecord},
 		store,
-		store::{DecisionContractRecord, StateStore, compare_decision_contract_runtime_records},
+		store::{
+			DecisionContractRecord, StateStore, compare_decision_contract_runtime_records,
+			validation,
+		},
 	},
 };
 
@@ -15,7 +18,11 @@ impl StateStore {
 		source_issue_id: Option<&str>,
 		contract: DecisionContract,
 	) -> Result<DecisionContractRecord> {
-		store::validate_decision_contract_record_inputs(project_id, source_issue_id, &contract)?;
+		validation::validate_decision_contract_record_inputs(
+			project_id,
+			source_issue_id,
+			&contract,
+		)?;
 
 		let now = store::timestamp_parts();
 		let mut state = self.lock_without_refresh()?;
@@ -48,8 +55,8 @@ impl StateStore {
 		project_id: &str,
 		contract_id: &str,
 	) -> Result<Option<DecisionContractRecord>> {
-		store::validate_required_decision_contract_field("project_id", project_id)?;
-		store::validate_required_decision_contract_field("contract_id", contract_id)?;
+		validation::validate_required_decision_contract_field("project_id", project_id)?;
+		validation::validate_required_decision_contract_field("contract_id", contract_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -74,8 +81,8 @@ impl StateStore {
 		project_id: &str,
 		source_issue_id: &str,
 	) -> Result<Vec<DecisionContractRecord>> {
-		store::validate_required_decision_contract_field("project_id", project_id)?;
-		store::validate_required_decision_contract_field("source_issue_id", source_issue_id)?;
+		validation::validate_required_decision_contract_field("project_id", project_id)?;
+		validation::validate_required_decision_contract_field("source_issue_id", source_issue_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -110,7 +117,7 @@ impl StateStore {
 		&self,
 		project_id: &str,
 	) -> Result<Vec<DecisionContractRecord>> {
-		store::validate_required_decision_contract_field("project_id", project_id)?;
+		validation::validate_required_decision_contract_field("project_id", project_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -182,8 +189,8 @@ impl StateStore {
 		contract_id: &str,
 		update: impl FnOnce(&mut DecisionContract) -> Result<()>,
 	) -> Result<DecisionContractRecord> {
-		store::validate_required_decision_contract_field("project_id", project_id)?;
-		store::validate_required_decision_contract_field("contract_id", contract_id)?;
+		validation::validate_required_decision_contract_field("project_id", project_id)?;
+		validation::validate_required_decision_contract_field("contract_id", contract_id)?;
 
 		let now = store::timestamp_parts();
 		let key = DecisionContractKey::new(project_id, contract_id);

@@ -1,7 +1,7 @@
 use crate::{
 	autonomy_proposal::{AutonomyProposal, AutonomyProposalCompileInput},
 	prelude::{Result, eyre},
-	state::{StateStore, store},
+	state::{StateStore, store::validation},
 };
 
 impl StateStore {
@@ -17,7 +17,7 @@ impl StateStore {
 		let mut signals = Vec::new();
 
 		for signal_id in signal_ids {
-			store::validate_required_autonomy_proposal_field("signal_id", signal_id)?;
+			validation::validate_required_autonomy_proposal_field("signal_id", signal_id)?;
 
 			let signal = self.autonomy_signal(&input.project_id, signal_id)?.ok_or_else(|| {
 				eyre::eyre!("Autonomy proposal signal `{signal_id}` does not exist.")
