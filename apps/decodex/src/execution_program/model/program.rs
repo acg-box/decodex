@@ -38,19 +38,9 @@ impl ExecutionProgram {
 		&self.program_id
 	}
 
-	/// Service id that owns queue-label decisions.
-	pub(crate) fn service_id(&self) -> &str {
-		&self.service_id
-	}
-
 	/// Accepted Decision Contract id that authorized this program, for goal intake.
 	pub(crate) fn source_contract_id(&self) -> Option<&str> {
 		self.source_contract_id.as_deref()
-	}
-
-	/// Stable authority fingerprint for this program.
-	pub(crate) fn accepted_contract_fingerprint(&self) -> &str {
-		&self.accepted_contract_fingerprint
 	}
 
 	/// Durable program-intake plan metadata, when the payload is not a legacy row.
