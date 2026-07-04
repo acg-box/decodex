@@ -22,6 +22,8 @@
 model
 !apps/decodex/src/autonomy_signal/model/
 !apps/decodex/src/autonomy_signal/model/*.rs
+!apps/decodex/src/execution_program/model/
+!apps/decodex/src/execution_program/model/**/*.rs
 tmp
 
 # Kubernetes
