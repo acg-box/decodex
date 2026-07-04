@@ -4,7 +4,8 @@ use crate::{
 	state::{
 		AutonomyObjectiveRecord, StateStore,
 		runtime_records::{AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord},
-		runtime_row_parsers, store,
+		runtime_row_parsers,
+		store::validation,
 	},
 };
 
@@ -16,7 +17,7 @@ impl StateStore {
 		project_id: &str,
 		objective: AutonomyObjectiveContract,
 	) -> Result<AutonomyObjectiveRecord> {
-		store::validate_autonomy_objective_record_inputs(project_id, &objective)?;
+		validation::validate_autonomy_objective_record_inputs(project_id, &objective)?;
 
 		if objective.state() != AutonomyObjectiveState::Draft {
 			eyre::bail!("Autonomy objective drafts must be stored with state `draft`.");
@@ -65,9 +66,9 @@ impl StateStore {
 		objective_id: &str,
 		version: u64,
 	) -> Result<Option<AutonomyObjectiveRecord>> {
-		store::validate_required_autonomy_objective_field("project_id", project_id)?;
-		store::validate_required_autonomy_objective_field("objective_id", objective_id)?;
-		store::validate_autonomy_objective_version(version)?;
+		validation::validate_required_autonomy_objective_field("project_id", project_id)?;
+		validation::validate_required_autonomy_objective_field("objective_id", objective_id)?;
+		validation::validate_autonomy_objective_version(version)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -92,8 +93,8 @@ impl StateStore {
 		project_id: &str,
 		objective_id: &str,
 	) -> Result<Option<AutonomyObjectiveRecord>> {
-		store::validate_required_autonomy_objective_field("project_id", project_id)?;
-		store::validate_required_autonomy_objective_field("objective_id", objective_id)?;
+		validation::validate_required_autonomy_objective_field("project_id", project_id)?;
+		validation::validate_required_autonomy_objective_field("objective_id", objective_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -124,8 +125,8 @@ impl StateStore {
 		project_id: &str,
 		objective_id: &str,
 	) -> Result<Vec<AutonomyObjectiveRecord>> {
-		store::validate_required_autonomy_objective_field("project_id", project_id)?;
-		store::validate_required_autonomy_objective_field("objective_id", objective_id)?;
+		validation::validate_required_autonomy_objective_field("project_id", project_id)?;
+		validation::validate_required_autonomy_objective_field("objective_id", objective_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -160,7 +161,7 @@ impl StateStore {
 		project_id: &str,
 		limit: usize,
 	) -> Result<Vec<AutonomyObjectiveRecord>> {
-		store::validate_required_autonomy_objective_field("project_id", project_id)?;
+		validation::validate_required_autonomy_objective_field("project_id", project_id)?;
 
 		if limit == 0 {
 			return Ok(Vec::new());

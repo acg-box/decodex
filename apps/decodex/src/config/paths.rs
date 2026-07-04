@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::{
-	config::{self, validation},
+	config::{path_resolution, validation},
 	prelude::{Result, eyre},
 };
 
@@ -34,8 +34,8 @@ impl ProjectPathsConfig {
 		let Some(path) = self.repo_root.as_deref() else {
 			eyre::bail!("`paths.repo_root` is required for every Decodex project config.");
 		};
-		let repo_root = config::resolve_relative_path(config_dir, path);
-		let repo_root = config::canonicalize_path_best_effort(&repo_root);
+		let repo_root = path_resolution::resolve_relative_path(config_dir, path);
+		let repo_root = path_resolution::canonicalize_path_best_effort(&repo_root);
 
 		validation::validate_nonempty_path("paths.repo_root", &repo_root)?;
 
@@ -45,7 +45,7 @@ impl ProjectPathsConfig {
 	pub(super) fn resolve_worktree_root(&self, repo_root: &Path) -> Result<PathBuf> {
 		let worktree_root = self.worktree_root.as_deref().map_or_else(
 			|| repo_root.join(".worktrees"),
-			|path| config::resolve_relative_path(repo_root, path),
+			|path| path_resolution::resolve_relative_path(repo_root, path),
 		);
 
 		validation::validate_nonempty_path("paths.worktree_root", &worktree_root)?;

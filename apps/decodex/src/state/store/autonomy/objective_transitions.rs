@@ -6,7 +6,7 @@ use crate::{
 	prelude::{Result, eyre},
 	state::{
 		AutonomyObjectiveRecord, StateStore, runtime_records::AutonomyObjectiveKey,
-		runtime_row_parsers, store,
+		runtime_row_parsers, store::validation,
 	},
 };
 
@@ -20,9 +20,9 @@ impl StateStore {
 		version: u64,
 		acceptance: AutonomyObjectiveAcceptance,
 	) -> Result<AutonomyObjectiveRecord> {
-		store::validate_required_autonomy_objective_field("project_id", project_id)?;
-		store::validate_required_autonomy_objective_field("objective_id", objective_id)?;
-		store::validate_autonomy_objective_version(version)?;
+		validation::validate_required_autonomy_objective_field("project_id", project_id)?;
+		validation::validate_required_autonomy_objective_field("objective_id", objective_id)?;
+		validation::validate_autonomy_objective_version(version)?;
 
 		let superseded_by = acceptance.accepted_by().to_owned();
 		let superseded_at = acceptance.accepted_at().to_owned();
@@ -139,9 +139,9 @@ impl StateStore {
 		version: u64,
 		update: impl FnOnce(&mut AutonomyObjectiveContract) -> Result<()>,
 	) -> Result<AutonomyObjectiveRecord> {
-		store::validate_required_autonomy_objective_field("project_id", project_id)?;
-		store::validate_required_autonomy_objective_field("objective_id", objective_id)?;
-		store::validate_autonomy_objective_version(version)?;
+		validation::validate_required_autonomy_objective_field("project_id", project_id)?;
+		validation::validate_required_autonomy_objective_field("objective_id", objective_id)?;
+		validation::validate_autonomy_objective_version(version)?;
 
 		let now = runtime_row_parsers::timestamp_parts();
 		let key = AutonomyObjectiveKey::new(project_id, objective_id, version);

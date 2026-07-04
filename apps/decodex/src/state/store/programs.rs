@@ -7,7 +7,7 @@ use crate::{
 		store::{
 			ExecutionProgramRecord, ProgramIntakePlanRecord, ProgramIssueMappingRecord, StateStore,
 			compare_execution_program_runtime_records, compare_program_intake_plan_records,
-			compare_program_issue_mapping_records,
+			compare_program_issue_mapping_records, validation,
 		},
 	},
 };
@@ -20,7 +20,7 @@ impl StateStore {
 		project_id: &str,
 		program: ExecutionProgram,
 	) -> Result<ExecutionProgramRecord> {
-		store::validate_execution_program_record_inputs(project_id, &program)?;
+		validation::validate_execution_program_record_inputs(project_id, &program)?;
 
 		let now = store::timestamp_parts();
 		let mut state = self.lock_without_refresh()?;
@@ -55,8 +55,8 @@ impl StateStore {
 		project_id: &str,
 		program_id: &str,
 	) -> Result<Option<ExecutionProgramRecord>> {
-		store::validate_required_execution_program_field("project_id", project_id)?;
-		store::validate_required_execution_program_field("program_id", program_id)?;
+		validation::validate_required_execution_program_field("project_id", project_id)?;
+		validation::validate_required_execution_program_field("program_id", program_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -81,8 +81,11 @@ impl StateStore {
 		project_id: &str,
 		source_contract_id: &str,
 	) -> Result<Vec<ExecutionProgramRecord>> {
-		store::validate_required_execution_program_field("project_id", project_id)?;
-		store::validate_required_execution_program_field("source_contract_id", source_contract_id)?;
+		validation::validate_required_execution_program_field("project_id", project_id)?;
+		validation::validate_required_execution_program_field(
+			"source_contract_id",
+			source_contract_id,
+		)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -117,7 +120,7 @@ impl StateStore {
 		&self,
 		project_id: &str,
 	) -> Result<Vec<ExecutionProgramRecord>> {
-		store::validate_required_execution_program_field("project_id", project_id)?;
+		validation::validate_required_execution_program_field("project_id", project_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -149,7 +152,7 @@ impl StateStore {
 		&self,
 		project_id: &str,
 	) -> Result<Vec<ProgramIntakePlanRecord>> {
-		store::validate_required_execution_program_field("project_id", project_id)?;
+		validation::validate_required_execution_program_field("project_id", project_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -177,8 +180,8 @@ impl StateStore {
 		project_id: &str,
 		program_id: &str,
 	) -> Result<Vec<ProgramIssueMappingRecord>> {
-		store::validate_required_execution_program_field("project_id", project_id)?;
-		store::validate_required_execution_program_field("program_id", program_id)?;
+		validation::validate_required_execution_program_field("project_id", project_id)?;
+		validation::validate_required_execution_program_field("program_id", program_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
