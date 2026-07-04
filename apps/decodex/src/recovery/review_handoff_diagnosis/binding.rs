@@ -132,6 +132,8 @@ pub(in crate::recovery) fn diagnostic_binding(
 		mismatched_field: None,
 		next_action: actions::bound_handoff_next_action(
 			request.service_id,
+			request.issue_identifier,
+			existing_handoff.pr_url(),
 			request.active_label_present,
 		),
 	}
@@ -152,7 +154,12 @@ fn handoff_issue_state_drift_diagnostic(
 				existing_handoff.pr_url(),
 			)
 		} else if request.issue_state_name == request.success_state {
-			actions::bound_handoff_next_action(request.service_id, request.active_label_present)
+			actions::bound_handoff_next_action(
+				request.service_id,
+				request.issue_identifier,
+				existing_handoff.pr_url(),
+				request.active_label_present,
+			)
 		} else {
 			actions::issue_state_mismatch_next_action(
 				request.success_state,
