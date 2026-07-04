@@ -55,16 +55,6 @@ pub(in crate::state) fn compare_recent_autonomy_signal_runtime_records(
 }
 
 #[allow(dead_code)]
-pub(in crate::state) fn compare_autonomy_proposal_runtime_records(
-	left: &AutonomyProposalRuntimeRecord,
-	right: &AutonomyProposalRuntimeRecord,
-) -> Ordering {
-	left.updated_at_unix
-		.cmp(&right.updated_at_unix)
-		.then_with(|| left.proposal.id().cmp(right.proposal.id()))
-}
-
-#[allow(dead_code)]
 pub(in crate::state) fn compare_recent_autonomy_proposal_runtime_records(
 	left: &AutonomyProposalRuntimeRecord,
 	right: &AutonomyProposalRuntimeRecord,

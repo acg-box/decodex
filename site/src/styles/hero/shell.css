@@ -1,0 +1,42 @@
+.official-site {
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, transparent 0, transparent 42rem, var(--bg) 42rem),
+    var(--bg);
+}
+
+.official-hero {
+  position: relative;
+  --hero-shift-x: 0px;
+  --hero-shift-y: 0px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: min(43rem, 100vh);
+  overflow: hidden;
+  background: var(--hero-background);
+  color: var(--stage-ink);
+}
+
+.official-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--hero-veil);
+  pointer-events: none;
+}
+
+.official-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(var(--hero-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hero-grid-line) 1px, transparent 1px);
+  background-size: 2.4rem 2.4rem;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.68), transparent 78%);
+  pointer-events: none;
+  transform: translate3d(var(--hero-shift-x), var(--hero-shift-y), 0);
+  transition: transform 220ms ease-out;
+}

@@ -1,0 +1,33 @@
+.hero-bottom {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 82rem);
+  margin: 0 auto;
+  padding: 0 1.15rem 1.2rem;
+}
+
+.hero-bottom div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.78rem 0.65rem;
+  background: var(--stage-glass-bg);
+  backdrop-filter: blur(16px);
+  transition:
+    background-color 180ms ease,
+    transform 180ms ease;
+}
+
+.hero-bottom div:hover {
+  background: var(--stage-glass-bg-hover);
+  transform: translateY(-0.08rem);
+}
+
+.hero-bottom strong {
+  color: var(--stage-ink);
+  font-size: 1.08rem;
+  font-weight: 820;
+  line-height: 1;
+}

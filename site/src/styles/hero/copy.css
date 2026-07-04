@@ -1,0 +1,82 @@
+.hero-grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.4rem;
+  align-items: center;
+  width: min(100%, 82rem);
+  margin: 0 auto;
+  padding: 2.2rem 1.15rem 1.8rem;
+}
+
+.hero-copy {
+  display: grid;
+  gap: 1.05rem;
+  align-content: center;
+  min-width: 0;
+}
+
+.hero-copy h1 {
+  color: var(--stage-ink);
+  font-size: clamp(4.25rem, 13vw, 9.5rem);
+  font-weight: 850;
+  line-height: 0.82;
+}
+
+.hero-copy p {
+  max-width: 47rem;
+  color: var(--stage-soft);
+  font-size: clamp(1rem, 1.55vw, 1.24rem);
+  line-height: 1.62;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.hero-actions a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.18rem;
+  padding: 0.52rem 0.72rem;
+  border: 1px solid var(--stage-control-border);
+  border-radius: 0.28rem;
+  color: var(--stage-ink);
+  font-size: 0.84rem;
+  font-weight: 780;
+  line-height: 1;
+  will-change: transform;
+}
+
+.hero-actions a:first-child {
+  border-color: color-mix(in srgb, var(--lime) 84%, transparent);
+  background: color-mix(in srgb, var(--lime) 12%, transparent);
+  color: var(--stage-ink);
+}
+
+.hero-actions a:hover,
+.hero-actions a:focus-visible {
+  border-color: var(--stage-action-hover-border);
+  background: var(--stage-action-hover-bg);
+  color: var(--stage-action-hover-ink);
+  transform: translateY(-0.08rem);
+}
+
+.hero-actions a:first-child:hover,
+.hero-actions a:first-child:focus-visible {
+  border-color: var(--stage-primary-action-hover-bg);
+  background: var(--stage-primary-action-hover-bg);
+  color: var(--stage-primary-action-hover-ink);
+}
+
+.hero-actions a[data-pressed="true"],
+.appcast-download__primary[data-pressed="true"],
+.appcast-download__version[data-pressed="true"],
+.doc-link[data-pressed="true"] {
+  transform: translateY(0) scale(0.985);
+}
