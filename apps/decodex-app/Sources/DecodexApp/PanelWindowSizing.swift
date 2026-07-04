@@ -91,6 +91,7 @@ private struct PanelWindowSizingModifier: ViewModifier {
 
 	func body(content: Content) -> some View {
 		content
+			.fixedSize(horizontal: false, vertical: true)
 			.background {
 				GeometryReader { proxy in
 					Color.clear.preference(key: PanelWindowContentSizeKey.self, value: proxy.size)
