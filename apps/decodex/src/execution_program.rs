@@ -1,7 +1,5 @@
 //! Internal Execution Program model and readiness evaluator.
 
-#![allow(dead_code)]
-
 mod contract;
 mod evaluation;
 mod intake;
