@@ -4,6 +4,7 @@ use crate::{
 		AutonomyProposalRecord, StateStore,
 		runtime_records::{AutonomyProposalKey, AutonomyProposalRuntimeRecord},
 		store,
+		store::validation,
 	},
 };
 
@@ -14,8 +15,8 @@ impl StateStore {
 		project_id: &str,
 		proposal_id: &str,
 	) -> Result<Option<AutonomyProposalRecord>> {
-		store::validate_required_autonomy_proposal_field("project_id", project_id)?;
-		store::validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
+		validation::validate_required_autonomy_proposal_field("project_id", project_id)?;
+		validation::validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -39,7 +40,7 @@ impl StateStore {
 		project_id: &str,
 		limit: usize,
 	) -> Result<Vec<AutonomyProposalRecord>> {
-		store::validate_required_autonomy_proposal_field("project_id", project_id)?;
+		validation::validate_required_autonomy_proposal_field("project_id", project_id)?;
 
 		if limit == 0 {
 			return Ok(Vec::new());

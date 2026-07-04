@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-	config::{self, git_paths, git_paths::worktree_list},
+	config::{git_paths, git_paths::worktree_list, path_resolution},
 	prelude::Result,
 };
 
@@ -14,9 +14,9 @@ pub(crate) fn shared_repo_root_for_checkout(
 	worktree_root: Option<&Path>,
 ) -> Result<Option<PathBuf>> {
 	let git_dir = git_paths::git_absolute_rev_parse(cwd, "git-dir")?
-		.map(|path| config::canonicalize_path_best_effort(&path));
+		.map(|path| path_resolution::canonicalize_path_best_effort(&path));
 	let common_dir = git_paths::git_absolute_rev_parse(cwd, "git-common-dir")?
-		.map(|path| config::canonicalize_path_best_effort(&path));
+		.map(|path| path_resolution::canonicalize_path_best_effort(&path));
 	let prefers_shared_repo_root = git_dir.is_some() && git_dir != common_dir;
 
 	if prefers_shared_repo_root {
@@ -62,20 +62,20 @@ fn repo_root_from_git_worktree_list(
 	worktree_root: &Path,
 ) -> Result<Option<PathBuf>> {
 	for path in worktree_list::git_worktree_roots(cwd)? {
-		let path = config::canonicalize_path_best_effort(&path);
+		let path = path_resolution::canonicalize_path_best_effort(&path);
 
 		if path == worktree_root || path == common_dir {
 			continue;
 		}
 		if git_paths::git_absolute_rev_parse(&path, "git-common-dir")?
-			.map(|path| config::canonicalize_path_best_effort(&path))
+			.map(|path| path_resolution::canonicalize_path_best_effort(&path))
 			.as_deref()
 			!= Some(common_dir)
 		{
 			continue;
 		}
 		if git_paths::git_absolute_rev_parse(&path, "git-dir")?
-			.map(|path| config::canonicalize_path_best_effort(&path))
+			.map(|path| path_resolution::canonicalize_path_best_effort(&path))
 			.as_deref()
 			== Some(common_dir)
 		{

@@ -10,12 +10,12 @@ use std::{
 	process::Command,
 };
 
-use crate::{config, prelude::Result};
+use crate::{config::path_resolution, prelude::Result};
 
 /// Canonical repository root for the current Git checkout.
 pub fn canonical_repo_root_for_checkout(cwd: &Path) -> Result<Option<PathBuf>> {
 	let worktree_root = git_absolute_rev_parse(cwd, "show-toplevel")?
-		.map(|path| config::canonicalize_path_best_effort(&path));
+		.map(|path| path_resolution::canonicalize_path_best_effort(&path));
 
 	if let Some(shared_repo_root) =
 		shared::shared_repo_root_for_checkout(cwd, worktree_root.as_deref())?
@@ -29,15 +29,15 @@ pub fn canonical_repo_root_for_checkout(cwd: &Path) -> Result<Option<PathBuf>> {
 /// Absolute Git administrative directory for the current checkout.
 pub fn git_dir_for_checkout(cwd: &Path) -> Result<Option<PathBuf>> {
 	Ok(git_absolute_rev_parse(cwd, "git-dir")?
-		.map(|path| config::canonicalize_path_best_effort(&path)))
+		.map(|path| path_resolution::canonicalize_path_best_effort(&path)))
 }
 
 /// Whether two Git checkouts belong to the same shared repository.
 pub fn checkouts_share_repository(a: &Path, b: &Path) -> Result<bool> {
 	let a_common_dir = git_absolute_rev_parse(a, "git-common-dir")?
-		.map(|path| config::canonicalize_path_best_effort(&path));
+		.map(|path| path_resolution::canonicalize_path_best_effort(&path));
 	let b_common_dir = git_absolute_rev_parse(b, "git-common-dir")?
-		.map(|path| config::canonicalize_path_best_effort(&path));
+		.map(|path| path_resolution::canonicalize_path_best_effort(&path));
 
 	Ok(a_common_dir.is_some() && a_common_dir == b_common_dir)
 }
