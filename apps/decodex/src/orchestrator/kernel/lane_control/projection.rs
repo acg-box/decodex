@@ -19,6 +19,7 @@ pub(crate) fn project_lane_control(
 		|| input.phase_needs_attention
 		|| input.suspected_stall
 		|| input.phase_stalled
+		|| input.thread_terminal_failure
 		|| input.process_alive == Some(false) && input.status_starting_or_running
 		|| input.stale_execution_without_known_process;
 	let liveness = lane_control_liveness(input);
@@ -112,14 +113,14 @@ fn lane_control_ownership(
 	terminalization: TerminalizationState,
 	needs_attention_signal: bool,
 ) -> OwnershipState {
-	if input.run_lease && input.attempt_active && !policy_requires_attention(policy) {
-		return OwnershipState::LeasedRun;
-	}
 	if policy_requires_attention(policy)
 		|| needs_attention_signal
 		|| !input.run_lease && liveness == LivenessState::HostBootMismatch
 	{
 		return OwnershipState::RetainedAttention;
+	}
+	if input.run_lease && input.attempt_active {
+		return OwnershipState::LeasedRun;
 	}
 	if input.continuation_wait {
 		return OwnershipState::ContinuationPending;

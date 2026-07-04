@@ -20,6 +20,7 @@ pub(crate) struct LaneControlKernelInput<'a> {
 	pub(crate) host_boot_mismatch: bool,
 	pub(crate) not_running_signal: bool,
 	pub(crate) thread_active: bool,
+	pub(crate) thread_terminal_failure: bool,
 	pub(crate) protocol_recent: bool,
 	pub(crate) suspected_stall: bool,
 	pub(crate) stale_execution_without_known_process: bool,
