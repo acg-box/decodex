@@ -75,6 +75,7 @@ struct AccountPanelView: View {
 		.controlSize(.small)
 		.symbolRenderingMode(.hierarchical)
 		.animation(PanelMotion.panelLayout, value: panelAnimationKey)
+		.sizesPanelWindowToContent()
 	}
 
 	private var accountList: some View {
