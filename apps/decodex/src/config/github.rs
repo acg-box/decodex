@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::{
-	config::{self, validation},
+	config::{path_resolution, validation},
 	prelude::Result,
 };
 
@@ -34,7 +34,8 @@ impl ProjectGitHubConfig {
 		if let Some(command_path) = self.command_path.take() {
 			validation::validate_nonempty_path("github.command_path", &command_path)?;
 
-			self.command_path = Some(config::resolve_relative_path(config_dir, &command_path));
+			self.command_path =
+				Some(path_resolution::resolve_relative_path(config_dir, &command_path));
 		}
 
 		Ok(self)

@@ -22,6 +22,25 @@ pub(in crate::manual) const MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT: Duration =
 pub(in crate::manual) const MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS: usize = 4;
 pub(in crate::manual) const MANUAL_LAND_MERGEABILITY_RETRY_DELAY: Duration = Duration::from_secs(2);
 
+#[derive(Debug)]
+pub(crate) struct ManualCommitRequest {
+	pub(crate) summary: String,
+	pub(crate) authority: Option<String>,
+	pub(crate) manual_authority: bool,
+	pub(crate) related: Vec<String>,
+	pub(crate) breaking: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct ManualLandRequest {
+	pub(crate) summary: String,
+	pub(crate) authority: Option<String>,
+	pub(crate) manual_authority: bool,
+	pub(crate) pr_url: Option<String>,
+	pub(crate) related: Vec<String>,
+	pub(crate) breaking: bool,
+}
+
 pub(in crate::manual) struct PreparedCloseout {
 	pub(in crate::manual) tracker: LinearClient,
 	pub(in crate::manual) issue: TrackerIssue,
@@ -82,6 +101,13 @@ pub(in crate::manual) struct ManualLandLedgerContext<'a> {
 	pub(in crate::manual) privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::manual) struct ManualCommitActiveLaneBlocker {
+	pub(in crate::manual) issue_id: String,
+	pub(in crate::manual) branch_name: String,
+	pub(in crate::manual) worktree_path: PathBuf,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::manual) enum LandExecutionMode {
 	MergeAndCloseout,
@@ -111,11 +137,4 @@ impl ManualAuthority {
 	pub(in crate::manual) fn is_manual(&self) -> bool {
 		matches!(self, Self::Manual)
 	}
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::manual) struct ManualCommitActiveLaneBlocker {
-	pub(in crate::manual) issue_id: String,
-	pub(in crate::manual) branch_name: String,
-	pub(in crate::manual) worktree_path: PathBuf,
 }
