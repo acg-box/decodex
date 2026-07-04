@@ -150,8 +150,6 @@ pub(crate) enum ExecutionProgramNodeLifecycleState {
 	Mapped,
 	/// Node is ready for direct dispatch.
 	Ready,
-	/// Node was retained in a ready-to-dispatch position.
-	Queued,
 	/// Node already has a current lane.
 	Active,
 	/// Node is owned by a retained post-review lane.
@@ -174,7 +172,6 @@ impl ExecutionProgramNodeLifecycleState {
 			Self::Planned => "planned",
 			Self::Mapped => "mapped",
 			Self::Ready => "ready",
-			Self::Queued => "queued",
 			Self::Active => "active",
 			Self::PostReview => "post_review",
 			Self::Blocked => "blocked",

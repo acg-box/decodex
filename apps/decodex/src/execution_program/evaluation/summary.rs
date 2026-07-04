@@ -1,8 +1,8 @@
 //! Full-program readiness summaries.
 
+#[cfg(test)] use crate::execution_program::model::ExecutionReadinessState;
 use crate::execution_program::{
-	evaluation::node::ExecutionNodeEvaluation,
-	model::{ExecutionProgramNodeLifecycleState, ExecutionReadinessState},
+	evaluation::node::ExecutionNodeEvaluation, model::ExecutionProgramNodeLifecycleState,
 };
 
 /// Full readiness result for one Execution Program.
@@ -18,6 +18,7 @@ impl ExecutionProgramEvaluation {
 	}
 
 	/// Nodes that are internally ready.
+	#[cfg(test)]
 	pub(crate) fn ready_node_ids(&self) -> Vec<&str> {
 		self.nodes
 			.iter()
@@ -27,6 +28,7 @@ impl ExecutionProgramEvaluation {
 	}
 
 	/// Nodes that can be dispatched directly by the program scheduler.
+	#[cfg(test)]
 	pub(crate) fn dispatchable_node_ids(&self) -> Vec<&str> {
 		self.nodes
 			.iter()
@@ -65,7 +67,6 @@ impl ExecutionProgramEvaluation {
 					summary.held_count += 1;
 				},
 				ExecutionProgramNodeLifecycleState::Ready => summary.ready_count += 1,
-				ExecutionProgramNodeLifecycleState::Queued => summary.queued_count += 1,
 				ExecutionProgramNodeLifecycleState::Blocked => summary.blocked_count += 1,
 				ExecutionProgramNodeLifecycleState::Active => {
 					summary.active_count += 1;
