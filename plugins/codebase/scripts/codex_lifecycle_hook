@@ -6,478 +6,133 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
-import shlex
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
-STATE_DIR = Path.home() / ".codex" / "hack-ink-hooks"
-STATE_PATH = STATE_DIR / "events.jsonl"
-COMMIT_SCHEMA = "decodex/commit/1"
-LARGE_CHANGE_THRESHOLD = 800
-LARGE_ADDITION_THRESHOLD = 500
-SOURCE_ADDITION_THRESHOLD = 250
-NEW_SOURCE_FILE_THRESHOLD = 350
-LARGE_SOURCE_FILE_LINE_THRESHOLD = 1000
-LARGE_SOURCE_TOUCH_THRESHOLD = 80
-
-REPO_WORK_HINT = (
-    "For non-trivial repository implementation or verification, load $codebase:work. "
-    "Keep development source-backed: inspect the nearest checked-in README/docs/"
-    "AGENTS, OKF/LLM Wiki, or repo-memory owner when that context may shape command "
-    "authority, architecture, or durable claims. Use $codebase:verification before "
-    "ready/done/fixed claims."
+from codex_lifecycle_hook_lib.constants import (
+    ANTI_MONOLITH_HINT,
+    ALWAYS_MUTATING_TOOL_NAMES,
+    COMMIT_COMMAND_TERMS,
+    COMMIT_SCHEMA,
+    COMMIT_STYLE_HINT,
+    DELIBERATION_GATE_HINT,
+    DEPENDENCY_POLICY_HINT,
+    ENGLISH_ONLY_HINT,
+    FAKE_RUST_MODULARIZATION_PATTERNS,
+    FAKE_MODULARIZATION_HINT,
+    KNOWLEDGE_HINT,
+    LARGE_ADDITION_THRESHOLD,
+    LARGE_CHANGE_THRESHOLD,
+    LARGE_SOURCE_FILE_LINE_THRESHOLD,
+    LARGE_SOURCE_TOUCH_THRESHOLD,
+    MUTATING_COMMAND_TERMS,
+    PUBLIC_SURFACE_HINT,
+    REPO_WORK_HINT,
+    ROOT_TASK_BRANCH_BLOCK,
+    ROOT_TASK_BRANCH_SWITCH_BLOCK,
+    NEW_SOURCE_FILE_THRESHOLD,
+    SOURCE_ADDITION_THRESHOLD,
+    SOURCE_EXTENSIONS,
+    SHELL_MUTATING_COMMANDS,
+    STATE_DIR,
+    STATE_PATH,
+    TASK_RUNNER_HINT,
 )
-KNOWLEDGE_HINT = (
-    "For docs, OKF/LLM Wiki, semantic drift, repo-memory, or knowledge updates, "
-    "load the matching $knowledge:* owner, including $knowledge:writeback after "
-    "stable changes."
+from codex_lifecycle_hook_lib.git_state import (
+    ahead_commit_subjects,
+    changed_file_stats,
+    changed_paths,
+    commit_subject_is_valid,
+    file_line_count,
+    git_branch_ref_exists,
+    git_current_branch,
+    git_default_branch,
+    git_is_root_worktree,
+    git_output,
+    git_root,
+    invalid_ahead_commit_subjects,
 )
-ENGLISH_ONLY_HINT = (
-    "Use English for every durable or executable artifact by default. Direct "
-    "user-facing chat may mirror the user's language. Non-English durable content "
-    "requires an explicit user request, preserved external source text, or a "
-    "language/locale artifact such as i18n, translation fixtures, tokenizer tests, "
-    "or locale catalogs."
+from codex_lifecycle_hook_lib.payload import (
+    first_payload_string_for_keys,
+    load_payload,
+    payload_command_text,
+    walk_strings,
 )
-
-COMMIT_STYLE_HINT = (
-    "When Codex creates or pushes commits in this checkout, use a single-line "
-    f"`{COMMIT_SCHEMA}` JSON commit message with required `schema`, `summary`, "
-    "and `authority` fields. Do not use prose commit subjects."
+from codex_lifecycle_hook_lib.shell import (
+    checkout_branch_target,
+    git_command_cwd_targets_root,
+    git_switch_targets,
+    has_shell_control_or_redirection,
+    has_shell_substitution,
+    has_unquoted_redirection,
+    has_unquoted_shell_control,
+    is_only_root_switch_back,
+    is_switch_back_segment,
+    payload_is_mutating,
+    payload_tool_name,
+    shell_segment_is_mutating,
+    shell_segments,
+    shell_token_segments,
+    shell_tokens,
+    split_git_command,
+    switches_root_back_to_default_branch,
+    switches_root_to_non_default_branch,
+    target_is_default_branch,
+    text_has_any,
+    unwrap_shell_command_tokens,
 )
-ANTI_MONOLITH_HINT = (
-    "Large, generated, or growing implementation files are present. Before commit, "
-    "push, or ready/done claims, load $codebase:work and run a module-boundary check: "
-    "split files that mix unrelated concerns or state why the owner boundary is "
-    "deliberate. Use $deliberation:skeptic when the structure is material."
-)
-FAKE_MODULARIZATION_HINT = (
-    "Rust files in the current diff use `include!`, `#[path]`, or equivalent "
-    "original-scope fragment wiring. Do not claim this as modularization: physical "
-    "file splitting is not a Rust module boundary. Replace it with normal `mod` "
-    "modules, explicit owner APIs, and visibility boundaries, or document the include "
-    "as generated/FFI adapter plumbing that does not count toward the refactor."
-)
-PUBLIC_SURFACE_HINT = (
-    "Changed files include docs, plugin/skill, command/config, status/help, or "
-    "workflow-facing surfaces. Before ready/done/commit, read or update the "
-    "source-backed docs/OKF/LLM Wiki owner; use $knowledge:docs-drift or "
-    "$knowledge:writeback when a source-backed claim changed."
-)
-DEPENDENCY_POLICY_HINT = (
-    "Changed files include dependency manifests, lockfiles, generated dependency "
-    "artifacts, or workflow action refs. Load $codebase:dependency-policy and report "
-    "whether this is a roll or style-only dependency change with version/SHA evidence, "
-    "a discovered-candidate inventory, and residual dependency checks."
-)
-TASK_RUNNER_HINT = (
-    "Changed files include Makefile.toml or an equivalent task-runner surface. Load "
-    "$codebase:work and apply the task-runner checklist: action-family grouping, "
-    "action-first public names, no command aliases, deterministic ordering, no long "
-    "inline shell, and stale-command reverse checks."
-)
-
-ROOT_TASK_BRANCH_BLOCK = (
-    "Refusing repository mutation from the root worktree on a non-default branch. "
-    "Root direct-push work must stay on the default branch. PR/task-branch work "
-    "must happen in `.worktrees/<task>/`; a task branch in the root worktree is not "
-    "an isolated working context."
-)
-ROOT_TASK_BRANCH_SWITCH_BLOCK = (
-    "Refusing to switch the root worktree to a task branch. Root direct-push work "
-    "must stay on the default branch. PR/task-branch work must happen in "
-    "`.worktrees/<task>/`."
-)
-DELIBERATION_GATE_HINT = (
-    "When the task involves design, architecture, refactor, root-cause debugging, "
-    "research, option comparison, or important ready/done claims, use compact "
-    "first-principles framing with $deliberation:grill, source-backed evidence "
-    "with $deliberation:scout when facts are not local and obvious, and skeptic "
-    "review with $deliberation:skeptic before material conclusions. Inline only "
-    "for one local question that fits in 1-2 files or one command and cannot affect "
-    "architecture, debugging, review repair, public contracts, docs drift, "
-    "commit/land, or ready/done decisions. Do not wait for the user to explicitly "
-    "request subagents; when the inline exception fails and subagent tools "
-    "are allowed, dispatch bounded read-only scout/skeptic subagents. If "
-    "subagent tools are unavailable, name the inline fallback."
-)
-
-COMMIT_COMMAND_TERMS = [
-    "git commit",
-    "git push",
-    "gh pr merge",
-]
-ALWAYS_MUTATING_TOOL_NAMES = {
-    "apply_patch",
-    "edit",
-    "write",
-}
-MUTATING_COMMAND_TERMS = (
-    "add",
-    "am",
-    "apply",
-    "cherry-pick",
-    "clean",
-    "commit",
-    "merge",
-    "mv",
-    "pull",
-    "push",
-    "rebase",
-    "reset",
-    "restore",
-    "rm",
-    "stash",
-    "switch",
-    "checkout",
-)
-GIT_GLOBAL_OPTIONS_WITH_ARG = {
-    "-C",
-    "-c",
-    "--exec-path",
-    "--git-dir",
-    "--namespace",
-    "--super-prefix",
-    "--work-tree",
-}
-GIT_GLOBAL_OPTIONS_WITH_VALUE_PREFIX = (
-    "--exec-path=",
-    "--git-dir=",
-    "--namespace=",
-    "--super-prefix=",
-    "--work-tree=",
-)
-GIT_BRANCH_CREATE_OPTIONS = {
-    "-b",
-    "-B",
-    "-c",
-    "-C",
-    "--create",
-    "--force-create",
-    "--orphan",
-}
-GIT_OPTIONS_WITH_ARG = {
-    "--conflict",
-    "--pathspec-from-file",
-}
-SHELL_MUTATING_COMMANDS = {
-    "cp",
-    "install",
-    "mkdir",
-    "mv",
-    "rm",
-    "tee",
-    "touch",
-}
-REDIRECTION_OPERATORS = {
-    ">",
-    ">>",
-    "1>",
-    "1>>",
-    "2>",
-    "2>>",
-    "&>",
-    "&>>",
-}
-PUBLIC_SURFACE_PREFIXES = (
-    ".agents/",
-    ".codex/",
-    ".github/",
-    "docs/",
-    "plugins/",
-    "scripts/",
-)
-PUBLIC_SURFACE_NAMES = {
-    "AGENTS.md",
-    "README.md",
-    "SKILL.md",
-}
-TASK_RUNNER_NAMES = {
-    "Justfile",
-    "Makefile.toml",
-    "Taskfile.yaml",
-    "Taskfile.yml",
-    "justfile",
-}
-DEPENDENCY_SURFACE_NAMES = {
-    "Cargo.lock",
-    "Cargo.toml",
-    "Gemfile",
-    "Gemfile.lock",
-    "bun.lock",
-    "bun.lockb",
-    "go.mod",
-    "go.sum",
-    "package-lock.json",
-    "package.json",
-    "pnpm-lock.yaml",
-    "pnpm-workspace.yaml",
-    "poetry.lock",
-    "pyproject.toml",
-    "requirements.txt",
-    "yarn.lock",
-}
-SOURCE_EXTENSIONS = {
-    ".c",
-    ".cc",
-    ".cpp",
-    ".cs",
-    ".css",
-    ".go",
-    ".h",
-    ".hpp",
-    ".html",
-    ".java",
-    ".js",
-    ".jsx",
-    ".kt",
-    ".mjs",
-    ".php",
-    ".py",
-    ".rb",
-    ".rs",
-    ".scss",
-    ".sh",
-    ".sql",
-    ".swift",
-    ".ts",
-    ".tsx",
-    ".vue",
-    ".zig",
-}
-FAKE_RUST_MODULARIZATION_PATTERNS = (
-    "include!(",
-    "#[path",
-)
-PUBLIC_SURFACE_SEGMENTS = (
-    "config",
-    "configs",
-    "help",
-    "hook",
-    "hooks",
-    "skill",
-    "skills",
-    "workflow",
-    "workflows",
-)
-PUBLIC_SURFACE_STEMS = (
-    "config",
-    "help",
-    "hook",
-    "skill",
-    "status",
-    "workflow",
-)
-EXCLUDED_LARGE_CHANGE_PARTS = (
-    "/dist/",
-    "/target/",
-    "/node_modules/",
-    "/vendor/",
-    "package-lock.json",
-    "pnpm-lock.yaml",
-    "yarn.lock",
-    "Cargo.lock",
+from codex_lifecycle_hook_lib.surfaces import (
+    dependency_surface_paths,
+    path_excluded_from_large_change,
+    path_is_dependency_surface,
+    path_is_public_surface,
+    path_is_task_runner_surface,
+    public_surface_paths,
+    task_runner_paths,
 )
 
 
-def load_payload() -> dict[str, Any]:
-    raw = sys.stdin.read()
-    if not raw.strip():
-        return {}
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError:
-        return {"raw": raw[:1000]}
-    return value if isinstance(value, dict) else {"value": value}
+def pre_tool_use_block_reason(payload: dict[str, Any], root: str | None, text: str) -> str | None:
+    if not root or not git_is_root_worktree():
+        return None
 
+    default_branch = git_default_branch()
+    current_branch = git_current_branch()
+    if not default_branch or not current_branch:
+        return None
 
-def walk_strings(value: Any) -> list[str]:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        strings: list[str] = []
-        for item in value.values():
-            strings.extend(walk_strings(item))
-        return strings
-    if isinstance(value, list):
-        strings = []
-        for item in value:
-            strings.extend(walk_strings(item))
-        return strings
-    return []
+    if current_branch == default_branch:
+        if switches_root_to_non_default_branch(text, default_branch, root):
+            return ROOT_TASK_BRANCH_SWITCH_BLOCK
+        return None
 
+    if is_only_root_switch_back(text, default_branch, root):
+        return None
 
-def first_payload_string_for_keys(value: Any, keys: set[str]) -> str | None:
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if key in keys and isinstance(item, str):
-                return item
-        for item in value.values():
-            nested = first_payload_string_for_keys(item, keys)
-            if nested is not None:
-                return nested
-    if isinstance(value, list):
-        for item in value:
-            nested = first_payload_string_for_keys(item, keys)
-            if nested is not None:
-                return nested
+    if payload_is_mutating(payload, text, root):
+        return ROOT_TASK_BRANCH_BLOCK
     return None
 
 
-def payload_command_text(payload: dict[str, Any]) -> str:
-    command = first_payload_string_for_keys(payload, {"cmd", "command", "script"})
-    if command is not None:
-        return command
-    return " ".join(walk_strings(payload))
-
-
-def git_output(args: list[str], timeout: int = 3, cwd: Path | None = None) -> str | None:
-    try:
-        result = subprocess.run(
-            args,
-            check=True,
-            cwd=str(cwd) if cwd is not None else None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=timeout,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return result.stdout
-
-
-def git_root() -> str | None:
-    output = git_output(["git", "rev-parse", "--show-toplevel"], timeout=2)
-    return output.strip() if output else None
-
-
-def git_current_branch() -> str | None:
-    output = git_output(["git", "branch", "--show-current"], timeout=2)
-    branch = output.strip() if output else ""
-    return branch or None
-
-
-def git_default_branch() -> str | None:
-    output = git_output(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], timeout=2)
-    if output:
-        branch = output.strip()
-        if "/" in branch:
-            return branch.split("/", maxsplit=1)[1]
-        if branch:
-            return branch
-    output = git_output(["git", "config", "--get", "init.defaultBranch"], timeout=2)
-    branch = output.strip() if output else ""
-    return branch or "main"
-
-
-def git_is_root_worktree() -> bool:
-    git_dir = git_output(["git", "rev-parse", "--path-format=absolute", "--git-dir"], timeout=2)
-    common_dir = git_output(
-        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        timeout=2,
-    )
-    if not git_dir or not common_dir:
-        return False
-    try:
-        return Path(git_dir.strip()).resolve() == Path(common_dir.strip()).resolve()
-    except OSError:
-        return git_dir.strip() == common_dir.strip()
-
-
-def git_branch_ref_exists(target: str) -> bool:
-    if not target:
-        return False
-    refs = [target, f"refs/heads/{target}", f"refs/remotes/{target}", f"refs/remotes/origin/{target}"]
-    return any(git_output(["git", "rev-parse", "--verify", "--quiet", ref], timeout=2) for ref in refs)
-
-
-def changed_file_stats() -> list[dict[str, Any]]:
-    output = git_output(["git", "diff", "HEAD", "--numstat"])
-    if output is None:
-        return []
-    stats = []
-    for line in output.splitlines():
-        parts = line.split("\t")
-        if len(parts) != 3:
+def dedupe_hints(hints: list[str]) -> list[str]:
+    seen = set()
+    unique = []
+    for hint in hints:
+        if hint in seen:
             continue
-        added, removed, path = parts
-        try:
-            total = int(added) + int(removed)
-        except ValueError:
-            total = 0
-        stats.append({"path": path, "added": added, "removed": removed, "changed": total})
-    return stats
-
-
-def changed_paths() -> list[str]:
-    output = git_output(["git", "diff", "HEAD", "--name-only"])
-    if output is None:
-        return []
-    return sorted({line.strip() for line in output.splitlines() if line.strip()})
-
-
-def path_is_public_surface(path: str) -> bool:
-    if path in PUBLIC_SURFACE_NAMES or path.rsplit("/", maxsplit=1)[-1] in PUBLIC_SURFACE_NAMES:
-        return True
-    if path.startswith(PUBLIC_SURFACE_PREFIXES):
-        return True
-    lowered = path.lower()
-    parts = [part for part in lowered.split("/") if part]
-    stem = Path(path).stem.lower()
-    return any(part in PUBLIC_SURFACE_SEGMENTS for part in parts) or stem in PUBLIC_SURFACE_STEMS
-
-
-def public_surface_paths(paths: list[str] | None = None) -> list[str]:
-    paths = changed_paths() if paths is None else paths
-    return [path for path in paths if path_is_public_surface(path)]
-
-
-def path_is_task_runner_surface(path: str) -> bool:
-    return path.rsplit("/", maxsplit=1)[-1] in TASK_RUNNER_NAMES
-
-
-def task_runner_paths(paths: list[str] | None = None) -> list[str]:
-    paths = changed_paths() if paths is None else paths
-    return [path for path in paths if path_is_task_runner_surface(path)]
-
-
-def path_is_dependency_surface(path: str) -> bool:
-    name = path.rsplit("/", maxsplit=1)[-1]
-    if name in DEPENDENCY_SURFACE_NAMES:
-        return True
-    return path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml"))
-
-
-def dependency_surface_paths(paths: list[str] | None = None) -> list[str]:
-    paths = changed_paths() if paths is None else paths
-    return [path for path in paths if path_is_dependency_surface(path)]
-
-
-def path_excluded_from_large_change(path: str) -> bool:
-    normalized = f"/{path}"
-    return any(part in normalized for part in EXCLUDED_LARGE_CHANGE_PARTS)
+        seen.add(hint)
+        unique.append(hint)
+    return unique
 
 
 def path_is_source_file(path: str) -> bool:
     return Path(path).suffix in SOURCE_EXTENSIONS and not path_excluded_from_large_change(path)
-
-
-def file_line_count(path: str, root: str | None = None) -> int | None:
-    root = git_root() if root is None else root
-    if not root:
-        return None
-    full_path = Path(root) / path
-    try:
-        with full_path.open("r", encoding="utf-8", errors="ignore") as handle:
-            return sum(1 for _ in handle)
-    except OSError:
-        return None
 
 
 def fake_modularization_paths(paths: list[str] | None = None) -> list[str]:
@@ -536,212 +191,6 @@ def large_change_paths(stats: list[dict[str, Any]] | None = None) -> list[str]:
     return large_paths
 
 
-def commit_subject_is_valid(subject: str) -> bool:
-    if "\n" in subject:
-        return False
-    try:
-        value = json.loads(subject)
-    except json.JSONDecodeError:
-        return False
-    if not isinstance(value, dict):
-        return False
-    return (
-        value.get("schema") == COMMIT_SCHEMA
-        and isinstance(value.get("summary"), str)
-        and bool(value["summary"].strip())
-        and isinstance(value.get("authority"), str)
-        and bool(value["authority"].strip())
-    )
-
-
-def ahead_commit_subjects(limit: int = 20) -> list[str]:
-    output = git_output(["git", "rev-list", "--format=%s", "@{u}..HEAD"], timeout=4)
-    if output is None:
-        return []
-    subjects = [
-        line.strip()
-        for line in output.splitlines()
-        if line.strip() and not line.startswith("commit ")
-    ]
-    return subjects[:limit]
-
-
-def invalid_ahead_commit_subjects() -> list[str]:
-    return [subject for subject in ahead_commit_subjects() if not commit_subject_is_valid(subject)]
-
-
-def text_has_any(text: str, terms: list[str]) -> bool:
-    lowered = text.lower()
-    return any(term in lowered for term in terms)
-
-
-def payload_tool_name(payload: dict[str, Any]) -> str:
-    for key in ("tool_name", "toolName", "tool"):
-        value = payload.get(key)
-        if isinstance(value, str):
-            return value
-    return ""
-
-
-def shell_segments(text: str) -> list[str]:
-    return [" ".join(tokens) for tokens in shell_token_segments(text)]
-
-
-def shell_token_segments(text: str) -> list[list[str]]:
-    segments: list[list[str]] = []
-    try:
-        lexer = shlex.shlex(text.replace("\n", ";"), posix=True, punctuation_chars=";&|<>")
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:
-        return []
-    current: list[str] = []
-    for token in tokens:
-        if token in {";", "&&", "||", "|", "&"}:
-            if current:
-                segments.append(current)
-                current = []
-            continue
-        current.append(token)
-    if current:
-        segments.append(current)
-    return segments
-
-
-def shell_tokens(segment: str) -> list[str]:
-    segments = shell_token_segments(segment)
-    return segments[0] if segments else []
-
-
-def split_git_command(tokens: list[str]) -> tuple[str, list[str], str | None] | None:
-    tokens = unwrap_shell_command_tokens(tokens)
-    if not tokens or tokens[0] != "git":
-        return None
-    index = 1
-    command_cwd: str | None = None
-    while index < len(tokens):
-        token = tokens[index]
-        if token == "--":
-            index += 1
-            break
-        if token in GIT_GLOBAL_OPTIONS_WITH_ARG:
-            if token == "-C" and index + 1 < len(tokens):
-                command_cwd = tokens[index + 1]
-            index += 2
-            continue
-        if any(token.startswith(prefix) for prefix in GIT_GLOBAL_OPTIONS_WITH_VALUE_PREFIX):
-            index += 1
-            continue
-        if token.startswith("-"):
-            index += 1
-            continue
-        break
-    if index >= len(tokens):
-        return None
-    return tokens[index], tokens[index + 1 :], command_cwd
-
-
-def unwrap_shell_command_tokens(tokens: list[str]) -> list[str]:
-    index = 0
-    while index < len(tokens) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[index]):
-        index += 1
-    if index < len(tokens) and tokens[index] == "env":
-        index += 1
-        while index < len(tokens):
-            token = tokens[index]
-            if token == "--":
-                index += 1
-                break
-            if token in {"-S", "--split-string"} and index + 1 < len(tokens):
-                try:
-                    return shlex.split(tokens[index + 1]) + tokens[index + 2 :]
-                except ValueError:
-                    return []
-            if token.startswith("-S") and len(token) > 2:
-                try:
-                    return shlex.split(token[2:]) + tokens[index + 1 :]
-                except ValueError:
-                    return []
-            if token.startswith("--split-string="):
-                try:
-                    return shlex.split(token.split("=", maxsplit=1)[1]) + tokens[index + 1 :]
-                except ValueError:
-                    return []
-            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token):
-                index += 1
-                continue
-            if token in {"-i", "--ignore-environment", "-0", "--null"}:
-                index += 1
-                continue
-            if token in {"-u", "--unset", "-C", "--chdir", "-P", "--path"}:
-                index += 2
-                continue
-            if token.startswith(("--unset=", "--chdir=", "--path=")):
-                index += 1
-                continue
-            if token.startswith("-"):
-                index += 1
-                continue
-            break
-        while index < len(tokens) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[index]):
-            index += 1
-    return tokens[index:]
-
-
-def git_command_cwd_targets_root(command_cwd: str | None, root: str | None) -> bool:
-    if not command_cwd or not root:
-        return True
-    try:
-        root_path = Path(root).resolve()
-        cwd_path = Path(command_cwd)
-        if not cwd_path.is_absolute():
-            cwd_path = root_path / cwd_path
-        cwd_path = cwd_path.resolve()
-    except OSError:
-        return True
-    worktrees_path = root_path / ".worktrees"
-    if cwd_path == worktrees_path or worktrees_path not in cwd_path.parents:
-        return True
-    target_root = git_output(["git", "rev-parse", "--show-toplevel"], timeout=2, cwd=cwd_path)
-    if not target_root:
-        return True
-    try:
-        return Path(target_root.strip()).resolve() == root_path
-    except OSError:
-        return True
-
-
-def checkout_branch_target(args: list[str], command: str) -> tuple[str, bool] | None:
-    args_before_pathspec = args[: args.index("--")] if "--" in args else args
-    index = 0
-    operands: list[str] = []
-    while index < len(args_before_pathspec):
-        token = args_before_pathspec[index]
-        if token in GIT_BRANCH_CREATE_OPTIONS:
-            target = args_before_pathspec[index + 1] if index + 1 < len(args_before_pathspec) else ""
-            return target, True
-        if token in GIT_OPTIONS_WITH_ARG:
-            index += 2
-            continue
-        if token.startswith("--"):
-            index += 1
-            continue
-        if token.startswith("-") and token not in {"-", "@{-1}"}:
-            index += 1
-            continue
-        operands.append(token)
-        index += 1
-
-    if "--" in args:
-        return None
-    if not operands:
-        return None
-    target = operands[0]
-    if command == "switch" or target in {"-", "@{-1}"} or git_branch_ref_exists(target):
-        return target, False
-    return None
-
-
 def git_switch_targets(text: str, root: str | None = None) -> list[tuple[str, bool]]:
     targets: list[tuple[str, bool]] = []
     for tokens in shell_token_segments(text):
@@ -757,10 +206,6 @@ def git_switch_targets(text: str, root: str | None = None) -> list[tuple[str, bo
         if target:
             targets.append(target)
     return targets
-
-
-def target_is_default_branch(target: str, default_branch: str) -> bool:
-    return target in {default_branch, f"origin/{default_branch}", f"refs/heads/{default_branch}"}
 
 
 def switches_root_to_non_default_branch(text: str, default_branch: str, root: str | None = None) -> bool:
@@ -797,110 +242,11 @@ def is_switch_back_segment(tokens: list[str], default_branch: str, root: str | N
     )
 
 
-def has_shell_control_or_redirection(text: str) -> bool:
-    return has_unquoted_shell_control(text) or has_unquoted_redirection(text) or has_shell_substitution(text)
-
-
-def has_shell_substitution(text: str) -> bool:
-    single_quote = False
-    double_quote = False
-    escaped = False
-    index = 0
-    while index < len(text):
-        char = text[index]
-        if escaped:
-            escaped = False
-            index += 1
-            continue
-        if char == "\\":
-            escaped = True
-            index += 1
-            continue
-        if char == "'" and not double_quote:
-            single_quote = not single_quote
-            index += 1
-            continue
-        if char == '"' and not single_quote:
-            double_quote = not double_quote
-            index += 1
-            continue
-        if not single_quote and (char == "`" or text.startswith("$(", index)):
-            return True
-        index += 1
-    return False
-
-
-def has_unquoted_shell_control(text: str) -> bool:
-    single_quote = False
-    double_quote = False
-    escaped = False
-    index = 0
-    while index < len(text):
-        char = text[index]
-        if escaped:
-            escaped = False
-            index += 1
-            continue
-        if char == "\\":
-            escaped = True
-            index += 1
-            continue
-        if char == "'" and not double_quote:
-            single_quote = not single_quote
-            index += 1
-            continue
-        if char == '"' and not single_quote:
-            double_quote = not double_quote
-            index += 1
-            continue
-        if not single_quote and not double_quote:
-            if text.startswith("&&", index) or text.startswith("||", index):
-                return True
-            if char in {"|", ";", "&", "\n"}:
-                return True
-        index += 1
-    return False
-
-
-def has_unquoted_redirection(text: str) -> bool:
-    single_quote = False
-    double_quote = False
-    escaped = False
-    for char in text:
-        if escaped:
-            escaped = False
-            continue
-        if char == "\\":
-            escaped = True
-            continue
-        if char == "'" and not double_quote:
-            single_quote = not single_quote
-            continue
-        if char == '"' and not single_quote:
-            double_quote = not double_quote
-            continue
-        if not single_quote and not double_quote and char in {"<", ">"}:
-            return True
-    return False
-
-
 def is_only_root_switch_back(text: str, default_branch: str, root: str | None = None) -> bool:
     if has_shell_control_or_redirection(text):
         return False
     segments = shell_token_segments(text)
     return bool(segments) and all(is_switch_back_segment(segment, default_branch, root) for segment in segments)
-
-
-def payload_is_mutating(payload: dict[str, Any], text: str, root: str | None = None) -> bool:
-    tool_name = payload_tool_name(payload).lower()
-    if any(name in tool_name for name in ALWAYS_MUTATING_TOOL_NAMES):
-        return True
-    if has_shell_substitution(text) or has_unquoted_redirection(text):
-        return True
-    for tokens in shell_token_segments(text):
-        if shell_segment_is_mutating(tokens, root):
-            return True
-    return False
 
 
 def shell_segment_is_mutating(tokens: list[str], root: str | None = None) -> bool:
@@ -927,37 +273,16 @@ def shell_segment_is_mutating(tokens: list[str], root: str | None = None) -> boo
     return False
 
 
-def pre_tool_use_block_reason(payload: dict[str, Any], root: str | None, text: str) -> str | None:
-    if not root or not git_is_root_worktree():
-        return None
-
-    default_branch = git_default_branch()
-    current_branch = git_current_branch()
-    if not default_branch or not current_branch:
-        return None
-
-    if current_branch == default_branch:
-        if switches_root_to_non_default_branch(text, default_branch, root):
-            return ROOT_TASK_BRANCH_SWITCH_BLOCK
-        return None
-
-    if is_only_root_switch_back(text, default_branch, root):
-        return None
-
-    if payload_is_mutating(payload, text, root):
-        return ROOT_TASK_BRANCH_BLOCK
-    return None
-
-
-def dedupe_hints(hints: list[str]) -> list[str]:
-    seen = set()
-    unique = []
-    for hint in hints:
-        if hint in seen:
-            continue
-        seen.add(hint)
-        unique.append(hint)
-    return unique
+def payload_is_mutating(payload: dict[str, Any], text: str, root: str | None = None) -> bool:
+    tool_name = payload_tool_name(payload).lower()
+    if any(name in tool_name for name in ALWAYS_MUTATING_TOOL_NAMES):
+        return True
+    if has_shell_substitution(text) or has_unquoted_redirection(text):
+        return True
+    for tokens in shell_token_segments(text):
+        if shell_segment_is_mutating(tokens, root):
+            return True
+    return False
 
 
 def route_hints(text: str, root: str | None, event: str = "UserPromptSubmit") -> list[str]:
