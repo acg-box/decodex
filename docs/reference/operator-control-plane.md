@@ -6,9 +6,9 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/recovery/stale_active_guidance.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard/body.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/mcp.rs]
-drift_watch: [decodex serve, decodex status, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, stale_active_release, stale_active_state_restore_pending, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
-last_verified: 2026-07-02
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/recovery/stale_active_guidance.rs, apps/decodex/src/recovery/review_handoff_diagnosis.rs, apps/decodex/src/recovery/reports.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/status_worktrees/ownership.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard/body.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/orchestrator/tests/operator/status/history/attention/terminal_attention.rs, apps/decodex/src/mcp.rs]
+drift_watch: [decodex serve, decodex status, decodex status --live, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, review_handoff_writeback_failed, retained_attention, stale_active_release, stale_active_state_restore_pending, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
+last_verified: 2026-07-04
 ---
 # Operator Control Plane
 
@@ -706,7 +706,12 @@ Worktree visibility follows the owning dashboard section:
   same issue is currently owned by a non-attention `Review & Landing` row such as
   `wait_for_review` or `ready_to_land`, that row controls the current action summary;
   stale active-label or worktree echoes from an older terminal ledger record stay in
-  Run Ledger history instead of reappearing as current attention.
+  Run Ledger history instead of reappearing as current attention. When the final
+  terminal failure class is `review_handoff_writeback_failed`, the retained worktree
+  `recovery_next_action` points first to
+  `decodex recover review-handoff diagnose <ISSUE> --json`; the diagnostic then
+  reports either verified retained PR lineage with a rebind plan or the concrete
+  external PR read failure through `pr_read_error`.
 - `decodex lane inspect` applies the same issue-scoped terminal Run Ledger projection
   to old or unowned runs. Cleanup-complete history renders as
   `status=cleanup_complete`, `ownership_state=closed`, `liveness_state=not_running`,

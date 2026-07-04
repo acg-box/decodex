@@ -102,13 +102,7 @@ fn worktree_ownership(
 				"Run Ledger owns this worktree through terminal `{}` outcome.",
 				lane.ledger_outcome.final_outcome
 			),
-			next_action: Some(lane.ledger_outcome.needs_attention_reason.clone().unwrap_or_else(
-				|| {
-					String::from(
-						"inspect the retained worktree diff and resolve the terminal attention outcome manually",
-					)
-				},
-			)),
+			next_action: Some(history_attention_worktree_next_action(lane)),
 			audit_required: false,
 		};
 	}
@@ -143,6 +137,25 @@ fn worktree_ownership(
 		next_action: audit_required.then(|| legacy_cleanup_next_action(worktree)),
 		audit_required,
 	}
+}
+
+fn history_attention_worktree_next_action(lane: &OperatorHistoryLaneStatus) -> String {
+	let Some(reason) = lane.ledger_outcome.needs_attention_reason.as_deref() else {
+		return String::from(
+			"inspect the retained worktree diff and resolve the terminal attention outcome manually",
+		);
+	};
+
+	if lane.ledger_outcome.final_outcome == "terminal_failure"
+		&& reason == "review_handoff_writeback_failed"
+		&& let Some(issue_identifier) = lane.issue_identifier.as_deref()
+	{
+		return format!(
+			"Run `decodex recover review-handoff diagnose {issue_identifier} --json` to verify retained PR lineage, then follow the reported rebind recovery command."
+		);
+	}
+
+	reason.to_owned()
 }
 
 fn post_review_worktree_ownership(lane: &OperatorPostReviewLaneStatus) -> WorktreeOwnership {
