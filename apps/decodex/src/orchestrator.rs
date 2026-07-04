@@ -86,9 +86,9 @@ pub(crate) use self::{
 		issue_passes_retry_retention_policy, issue_passes_review_repair_dispatch_policy,
 		issue_retry_budget_exhausted, issue_retry_budget_exhausted_for_worktree,
 		mark_run_attempt_if_active, ordinary_dispatch_blocked_by_retained_review_handoff,
-		refresh_issue, render_issue_description_for_prompt, retry_budget_base_for_dispatch_mode,
-		retry_budget_base_for_issue_worktree, state_name_is_terminal, todo_blocker_rule_passes,
-		write_retry_budget_marker, write_terminal_guard_marker,
+		refresh_issue, retry_budget_base_for_dispatch_mode, retry_budget_base_for_issue_worktree,
+		state_name_is_terminal, todo_blocker_rule_passes, write_retry_budget_marker,
+		write_terminal_guard_marker,
 	},
 	entrypoints::{
 		McpLaneSteerRequest, build_mcp_lane_control_resource, build_mcp_status_resource,
