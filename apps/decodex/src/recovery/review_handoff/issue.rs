@@ -94,7 +94,14 @@ pub(in crate::recovery) fn validate_rebind_existing_handoff(
 		return Ok((
 			attempt.run_id().to_owned(),
 			attempt.attempt_number(),
-			missing_handoff_rebind_mode(context, issue, &attempt)?,
+			missing_handoff_rebind_mode(
+				context,
+				issue,
+				worktree,
+				landing_state,
+				local_head_oid,
+				&attempt,
+			)?,
 		));
 	};
 
@@ -145,6 +152,9 @@ pub(super) fn validate_rebind_issue_state(
 fn missing_handoff_rebind_mode(
 	context: &RecoveryContext,
 	issue: &TrackerIssue,
+	worktree: &WorktreeMapping,
+	landing_state: &PullRequestLandingState,
+	local_head_oid: &str,
 	attempt: &RunAttempt,
 ) -> Result<RebindMode> {
 	if issue.state.name != context.workflow.frontmatter().tracker().failure_state() {
@@ -161,20 +171,30 @@ fn missing_handoff_rebind_mode(
 				| "terminal_failure"
 				| "landed" | "review_handoff"
 				| "repair_handoff"
-				| "pr_opened"
-				| "pr_updated"
 		)
 	});
 
 	if latest_lifecycle_outcome.is_some_and(|event| {
 		event.run_id == attempt.run_id()
 			&& event.attempt_number == attempt.attempt_number()
+			&& event_matches_rebind_target(event, worktree, landing_state, local_head_oid)
 			&& event_proves_review_handoff_writeback_failure(event)
 	}) {
 		Ok(RebindMode::RestoreMissingHandoffAfterWritebackFailure)
 	} else {
 		Ok(RebindMode::RestoreMissingHandoff)
 	}
+}
+
+fn event_matches_rebind_target(
+	event: &LinearExecutionEventRecord,
+	worktree: &WorktreeMapping,
+	landing_state: &PullRequestLandingState,
+	local_head_oid: &str,
+) -> bool {
+	event.branch.as_deref() == Some(worktree.branch_name())
+		&& event.pr_url.as_deref() == Some(pull_request_inspection::landing_url(landing_state))
+		&& event.pr_head_sha.as_deref().is_none_or(|head_sha| head_sha == local_head_oid)
 }
 
 fn event_proves_review_handoff_writeback_failure(event: &LinearExecutionEventRecord) -> bool {
