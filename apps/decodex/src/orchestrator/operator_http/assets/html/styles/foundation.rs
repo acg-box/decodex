@@ -1,0 +1,76 @@
+const STYLE_PARTS: &[&str] = &[
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/tokens.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/tokens/theme.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/tokens/base.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/masthead.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/masthead/shell.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/masthead/metrics.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/masthead/toolbar.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/notices.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/notices/trigger.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/notices/panel.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/controls.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/controls/theme.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/controls/transport.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/controls/links.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/flow.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/flow/strip.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/foundation/flow/steps.css"
+	)),
+];
+
+pub(super) fn append_style_parts(html: &mut String) {
+	for style in STYLE_PARTS {
+		html.push_str(style);
+	}
+}
