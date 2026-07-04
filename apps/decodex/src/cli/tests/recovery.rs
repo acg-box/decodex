@@ -6,12 +6,20 @@ use crate::cli::{
 	Cli, Command, ProjectConfigArgs,
 	control_commands::{DiagnoseCommand, EvidenceCommand},
 	recovery_commands::{
-		GhostLaneCleanupCommand, GhostLaneDiagnoseCommand, GhostLaneRecoveryCommand,
-		GhostLaneRecoverySubcommand, LegacyCloseoutRecoveryCommand, MergedCloseoutRecoveryCommand,
-		RecoverCommand, RecoverSubcommand, ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand,
-		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
-		StaleActiveDiagnoseCommand, StaleActiveRecoveryCommand, StaleActiveRecoverySubcommand,
-		StaleActiveReleaseCommand,
+		RecoverCommand, RecoverSubcommand,
+		closeout::{LegacyCloseoutRecoveryCommand, MergedCloseoutRecoveryCommand},
+		ghost_lane::{
+			GhostLaneCleanupCommand, GhostLaneDiagnoseCommand, GhostLaneRecoveryCommand,
+			GhostLaneRecoverySubcommand,
+		},
+		review_handoff::{
+			ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
+			ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
+		},
+		stale_active::{
+			StaleActiveDiagnoseCommand, StaleActiveRecoveryCommand, StaleActiveRecoverySubcommand,
+			StaleActiveReleaseCommand,
+		},
 	},
 };
 
