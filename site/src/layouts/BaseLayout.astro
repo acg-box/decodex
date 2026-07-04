@@ -1,5 +1,7 @@
 ---
 import "@/styles/global.css";
+import themeInitScript from "@/scripts/theme/init.js?raw";
+import themeToggleScript from "@/scripts/theme/toggle.js?raw";
 
 type Props = {
   title?: string;
@@ -10,92 +12,6 @@ const {
   title = "Decodex",
   description = "Repo-native control plane for Codex work and retained lanes.",
 } = Astro.props;
-
-const themeInitScript = `(function () {
-  var storageKey = "decodex-theme";
-  var lightColor = "#f7f8fc";
-  var darkColor = "#1a1b26";
-  var query = window.matchMedia("(prefers-color-scheme: dark)");
-
-  function readStoredTheme() {
-    try {
-      var value = localStorage.getItem(storageKey);
-      return value === "light" || value === "dark" ? value : "system";
-    } catch (_) {
-      return "system";
-    }
-  }
-
-  function resolvedTheme(theme) {
-    return theme === "system" ? (query.matches ? "dark" : "light") : theme;
-  }
-
-  function applyTheme(theme) {
-    var root = document.documentElement;
-    var resolved = resolvedTheme(theme);
-    root.dataset.theme = theme;
-    root.style.colorScheme = resolved;
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", resolved === "dark" ? darkColor : lightColor);
-  }
-
-  window.__decodexTheme = {
-    get: readStoredTheme,
-    set: function (theme) {
-      try {
-        if (theme === "system") localStorage.removeItem(storageKey);
-        else localStorage.setItem(storageKey, theme);
-      } catch (_) {}
-      applyTheme(theme);
-      window.dispatchEvent(new CustomEvent("decodex-theme-change", { detail: { theme: theme } }));
-    }
-  };
-
-  query.addEventListener("change", function () {
-    if (readStoredTheme() === "system") {
-      applyTheme("system");
-      window.dispatchEvent(new CustomEvent("decodex-theme-change", { detail: { theme: "system" } }));
-    }
-  });
-
-  applyTheme(readStoredTheme());
-})();`;
-
-const themeToggleScript = `(function () {
-  function readTheme() {
-    return window.__decodexTheme && typeof window.__decodexTheme.get === "function"
-      ? window.__decodexTheme.get()
-      : "system";
-  }
-
-  function syncButtons(theme) {
-    document.querySelectorAll("[data-theme-option]").forEach(function (button) {
-      button.setAttribute(
-        "aria-pressed",
-        button.getAttribute("data-theme-option") === theme ? "true" : "false"
-      );
-    });
-  }
-
-  function bind() {
-    document.querySelectorAll("[data-theme-option]").forEach(function (button) {
-      if (button.dataset.themeBound === "true") return;
-      button.dataset.themeBound = "true";
-      button.addEventListener("click", function () {
-        var theme = button.getAttribute("data-theme-option");
-        if (!theme || !window.__decodexTheme) return;
-        window.__decodexTheme.set(theme);
-      });
-    });
-    syncButtons(readTheme());
-  }
-
-  document.addEventListener("astro:page-load", bind);
-  document.addEventListener("DOMContentLoaded", bind);
-  window.addEventListener("decodex-theme-change", function (event) {
-    syncButtons(event.detail && event.detail.theme ? event.detail.theme : readTheme());
-  });
-})();`;
 ---
 
 <!doctype html>
