@@ -86,7 +86,7 @@ use runtime_row_parsers::{
 	compare_recent_autonomy_signal_runtime_records, parse_linear_execution_event_unix,
 	timestamp_parts, validate_private_execution_event_inputs,
 };
-use store::running_run_attempt_status;
+use store::retarget::running_run_attempt_status;
 
 pub(crate) const RUN_ACTIVITY_MARKER_FILE: &str = ".decodex-run-activity";
 pub(crate) const RUN_OPERATION_IDLE: &str = "idle";

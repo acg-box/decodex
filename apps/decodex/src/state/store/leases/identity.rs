@@ -1,6 +1,6 @@
 use crate::{
 	prelude::Result,
-	state::{IssueLease, StateStore, store},
+	state::{IssueLease, StateStore, store::retarget},
 };
 
 impl StateStore {
@@ -27,22 +27,22 @@ impl StateStore {
 			state.worktrees.entry(canonical_issue_id.to_owned()).or_insert(mapping);
 		}
 
-		store::retarget_review_lifecycle_issue(
+		retarget::retarget_review_lifecycle_issue(
 			&mut state.review_lifecycle_records,
 			previous_issue_id,
 			canonical_issue_id,
 		);
-		store::retarget_review_policy_issue(
+		retarget::retarget_review_policy_issue(
 			&mut state.review_policy_checkpoints,
 			previous_issue_id,
 			canonical_issue_id,
 		);
-		store::retarget_evidence_artifact_issue(
+		retarget::retarget_evidence_artifact_issue(
 			&mut state.evidence_artifacts,
 			previous_issue_id,
 			canonical_issue_id,
 		);
-		store::retarget_loop_guardrail_issue(
+		retarget::retarget_loop_guardrail_issue(
 			&mut state.loop_guardrail_checkpoints,
 			previous_issue_id,
 			canonical_issue_id,
