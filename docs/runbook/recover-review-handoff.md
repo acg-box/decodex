@@ -6,7 +6,7 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook]
-code_refs: [apps/decodex/src/recovery/review_handoff.rs, apps/decodex/src/recovery/review_handoff_diagnosis.rs, apps/decodex/src/recovery/review_handoff_diagnosis/actions.rs, apps/decodex/src/recovery/reports.rs, apps/decodex/src/recovery/tests/review_handoff/diagnostics/ownership_drift.rs, apps/decodex/src/recovery/tests/context.rs]
+code_refs: [apps/decodex/src/recovery/review_handoff.rs, apps/decodex/src/recovery/review_handoff/issue.rs, apps/decodex/src/recovery/review_handoff/labels.rs, apps/decodex/src/recovery/review_handoff_diagnosis.rs, apps/decodex/src/recovery/review_handoff_diagnosis/actions.rs, apps/decodex/src/recovery/reports.rs, apps/decodex/src/recovery/tests/review_handoff/rebind_validation.rs, apps/decodex/src/recovery/tests/review_handoff/diagnostics/ownership_drift.rs, apps/decodex/src/recovery/tests/context.rs]
 drift_watch: [decodex recover review-handoff diagnose, decodex recover review-handoff rebind, review_handoff_writeback_failed, review_handoff_ownership_drift, pull_request_state_read_failed, decodex:active:<service-id>, decodex:needs-attention]
 last_verified: 2026-07-04
 ---
@@ -74,24 +74,29 @@ advanced, the command may also move the issue from the workflow
 succeeds. If stale failure writeback already moved an already-current record lane to
 `tracker.failure_state`, removed `decodex:active:<service-id>`, or added
 `tracker.needs_attention_label`, rebind may restore the active service label, clear the
-needs-attention label, and move the issue to `tracker.success_state`; this is only for
-current same-PR same-head records, not for missing or stale record recovery. It does
-not merge the PR, queue follow-up issues, or clean worktrees.
+needs-attention label, and move the issue to `tracker.success_state`. That
+failure-state repair is supported for already-current same-PR same-head records and
+for the narrower missing-record case where the latest local Run Ledger terminal
+outcome for the latest attempt proves `review_handoff_writeback_failed` or terminal
+attention caused by review handoff writeback. It does not merge the PR, queue
+follow-up issues, or clean worktrees.
 
 The command rejects the rebind unless all of these are true:
 
 - the issue is in the workflow `tracker.success_state`, still in
   `tracker.in_progress_state` from a partial normal handoff with a missing or
   already-current lifecycle record, or in `tracker.failure_state` only when an
-  already-current record proves that stale failure writeback caused tracker state drift
+  already-current record proves that stale failure writeback caused tracker state
+  drift or when a missing lifecycle record is paired with a latest local Run Ledger
+  terminal outcome proving `review_handoff_writeback_failed`
 - the issue does not have the opt-out label
 - the issue does not have the needs-attention label, except for the already-current
-  record plus `tracker.failure_state` drift case where rebind clears it after recording
-  the audit
+  record plus `tracker.failure_state` drift case or the proven missing-record
+  writeback-failure case where rebind clears it after recording the audit
 - the issue still has `decodex:active:<service-id>` ownership, except for the
-  already-current record plus `tracker.failure_state` drift case where rebind verifies
-  the active service label exists on the issue team and restores it after local
-  lifecycle state is written
+  already-current record plus `tracker.failure_state` drift case or the proven
+  missing-record writeback-failure case where rebind verifies the active service label
+  exists on the issue team and restores it after local lifecycle state is written
 - the retained worktree branch matches the runtime DB worktree mapping
 - the retained worktree has no local source changes except top-level Decodex runtime
   artifacts such as `.decodex-run-activity` and `.decodex-run-control/`
@@ -214,12 +219,17 @@ the diagnostic `next_action` instead of hand-adding labels. For an already-curre
 same-PR same-head lane in `tracker.failure_state` or `tracker.in_progress_state`, that
 next action is `recover review-handoff rebind --dry-run`; the dry run reports
 `would_restore_active_label=true` when live rebind can restore the active service
-label after validating the retained worktree and PR lineage. If the lane has no
-retained lifecycle record because a human PR needs manual takeover, run
-`recover review-handoff adopt --dry-run`; adopt reports `would_restore_active_label`
-for its own takeover path. If the issue still has `decodex:needs-attention`, clear that
-label only after the recorded blocker has been repaired or an explicit recovery
-command says it will clear the label itself.
+label after validating the retained worktree and PR lineage. A missing lifecycle
+record in `tracker.failure_state` can use the same rebind command only when the latest
+local Run Ledger terminal outcome for the latest attempt proves
+`review_handoff_writeback_failed`; the dry run reports
+`would_restore_active_label=true`, `would_clear_needs_attention_label=true`, and
+`state_transition=In Review` when the recovery is valid. If the lane has no retained
+lifecycle record because a human PR needs manual takeover, run `recover
+review-handoff adopt --dry-run`; adopt reports `would_restore_active_label` for its
+own takeover path. If the issue still has `decodex:needs-attention`, clear that label
+only after the recorded blocker has been repaired or an explicit recovery command says
+it will clear the label itself.
 
 After an explicit recovery restores or confirms ownership, rerun:
 

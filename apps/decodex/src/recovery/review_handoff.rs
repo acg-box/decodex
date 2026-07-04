@@ -14,7 +14,9 @@ pub(super) use self::{
 };
 #[cfg(test)]
 pub(super) use self::{
-	issue::validate_existing_handoff_refresh, worktree::validate_adopt_existing_worktree_mapping,
+	issue::{validate_existing_handoff_refresh, validate_rebind_existing_handoff},
+	labels::validate_rebind_tracker_labels_with_tracker,
+	worktree::validate_adopt_existing_worktree_mapping,
 };
 
 use std::env;
