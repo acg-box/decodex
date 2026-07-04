@@ -1,0 +1,117 @@
+.site-header {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  width: min(100%, 82rem);
+  margin: 0 auto;
+  padding: 1.1rem 1.15rem;
+}
+
+.site-logo {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+}
+
+.site-logo__image {
+  display: block;
+  width: auto;
+  height: 2.35rem;
+  transition:
+    filter 180ms ease,
+    transform 180ms ease;
+}
+
+.site-logo:hover .site-logo__image,
+.site-logo:focus-visible .site-logo__image {
+  filter: drop-shadow(0 0 14px rgba(182, 241, 58, 0.2));
+  transform: translateY(-0.05rem);
+}
+
+.site-nav {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.site-nav a {
+  position: relative;
+  color: var(--stage-soft);
+  font-size: 0.84rem;
+  font-weight: 740;
+  line-height: 1;
+  padding-block: 0.46rem;
+}
+
+.site-nav a::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0.2rem;
+  left: 0;
+  height: 1px;
+  background: var(--lime);
+  opacity: 0;
+  transform: scaleX(0);
+  transform-origin: right;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.site-nav a:hover,
+.site-nav a:focus-visible {
+  color: var(--stage-ink);
+}
+
+.site-nav a:hover::after,
+.site-nav a:focus-visible::after {
+  opacity: 1;
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  width: fit-content;
+  padding: 0.18rem;
+  border: 1px solid var(--stage-control-border);
+  border-radius: 0.42rem;
+  background: var(--stage-control-bg);
+  backdrop-filter: blur(16px);
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.theme-toggle__button {
+  min-height: 1.8rem;
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-radius: 0.28rem;
+  background: transparent;
+  color: var(--stage-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.theme-toggle__button:hover {
+  background: var(--stage-control-hover);
+  color: var(--stage-ink);
+}
+
+.theme-toggle__button[aria-pressed="true"] {
+  background: var(--stage-selected-bg);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  color: var(--stage-selected-ink);
+}
