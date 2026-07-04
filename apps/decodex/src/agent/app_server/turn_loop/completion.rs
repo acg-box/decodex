@@ -31,9 +31,10 @@ pub(in crate::agent::app_server) fn handle_turn_execution_notification(
 			let payload: ThreadStatusChangedNotification =
 				serde_json::from_value(notification.params.clone())?;
 
-			if payload.status.kind == "systemError" && latest_turn_failure.is_none() {
-				*latest_turn_failure =
-					Some(AppServerTurnFailure::from_system_error(&payload.thread_id));
+			if payload.status.kind == "systemError" {
+				return Err(Report::new(latest_turn_failure.take().unwrap_or_else(|| {
+					AppServerTurnFailure::from_system_error(&payload.thread_id)
+				})));
 			}
 		},
 		"error" => {
