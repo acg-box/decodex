@@ -1,11 +1,19 @@
 //! Docs and OKF CLI command definitions.
 
-use std::path::{Path, PathBuf};
+mod profiles;
+mod query;
 
-use clap::{Args, Subcommand, ValueEnum};
+pub(super) use self::{
+	profiles::{OkfInitProfileArg, OkfProfileArg},
+	query::OkfFindFilters,
+};
+
+use std::path::PathBuf;
+
+use clap::{Args, Subcommand};
 
 use crate::{
-	docs_okf::{self, DocsCheckScope, OkfCheckProfile, OkfQuery},
+	docs_okf::{self, DocsCheckScope, OkfCheckProfile},
 	prelude::{Result, eyre},
 };
 
@@ -24,8 +32,8 @@ impl DocsCommand {
 			DocsSubcommand::Index => self.run_check(DocsCheckScope::Index),
 			DocsSubcommand::Links => self.run_check(DocsCheckScope::Links),
 			DocsSubcommand::Drift => self.run_check(DocsCheckScope::Drift),
-			DocsSubcommand::Find(args) => run_okf_find(&self.root, &args.filters),
-			DocsSubcommand::Graph(args) => run_okf_graph(&self.root, args.json),
+			DocsSubcommand::Find(args) => query::run_okf_find(&self.root, &args.filters),
+			DocsSubcommand::Graph(args) => query::run_okf_graph(&self.root, args.json),
 		}
 	}
 
@@ -52,8 +60,8 @@ impl OkfCommand {
 		match &self.command {
 			OkfSubcommand::Init(args) => args.run(),
 			OkfSubcommand::Check(args) => args.run(),
-			OkfSubcommand::Find(args) => run_okf_find(&args.root, &args.filters),
-			OkfSubcommand::Graph(args) => run_okf_graph(&args.root, args.json),
+			OkfSubcommand::Find(args) => query::run_okf_find(&args.root, &args.filters),
+			OkfSubcommand::Graph(args) => query::run_okf_graph(&args.root, args.json),
 		}
 	}
 }
@@ -142,44 +150,6 @@ pub(super) struct DocsGraphCommand {
 	pub(super) json: bool,
 }
 
-#[derive(Debug, Args)]
-pub(super) struct OkfFindFilters {
-	/// Match concept type.
-	#[arg(long = "type")]
-	pub(super) concept_type: Option<String>,
-	/// Match exact tag. May be repeated.
-	#[arg(long)]
-	pub(super) tag: Vec<String>,
-	/// Match resource URI substring.
-	#[arg(long)]
-	pub(super) resource: Option<String>,
-	/// Match source_refs substring.
-	#[arg(long)]
-	pub(super) source_ref: Option<String>,
-	/// Match code_refs substring.
-	#[arg(long)]
-	pub(super) code_ref: Option<String>,
-	/// Match related refs substring.
-	#[arg(long)]
-	pub(super) related: Option<String>,
-	/// Match path, title, or description substring.
-	#[arg(long)]
-	pub(super) text: Option<String>,
-}
-impl From<&OkfFindFilters> for OkfQuery {
-	fn from(value: &OkfFindFilters) -> Self {
-		Self {
-			concept_type: value.concept_type.clone(),
-			tags: value.tag.clone(),
-			resource: value.resource.clone(),
-			source_ref: value.source_ref.clone(),
-			code_ref: value.code_ref.clone(),
-			related: value.related.clone(),
-			text: value.text.clone(),
-		}
-	}
-}
-
 #[derive(Debug, Subcommand)]
 pub(super) enum DocsSubcommand {
 	/// Validate the complete Markdown-only Decodex docs bundle.
@@ -206,76 +176,4 @@ pub(super) enum OkfSubcommand {
 	Find(OkfFindCommand),
 	/// Print an OKF concept graph.
 	Graph(OkfGraphCommand),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-#[value(rename_all = "kebab-case")]
-pub(super) enum OkfProfileArg {
-	Core,
-	Wiki,
-	RepoMemory,
-	Decodex,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-#[value(rename_all = "kebab-case")]
-pub(super) enum OkfInitProfileArg {
-	Core,
-	Wiki,
-	RepoMemory,
-}
-
-impl From<OkfProfileArg> for OkfCheckProfile {
-	fn from(value: OkfProfileArg) -> Self {
-		match value {
-			OkfProfileArg::Core => Self::Core,
-			OkfProfileArg::Wiki => Self::Wiki,
-			OkfProfileArg::RepoMemory => Self::RepoMemory,
-			OkfProfileArg::Decodex => Self::Decodex,
-		}
-	}
-}
-
-impl From<OkfInitProfileArg> for OkfCheckProfile {
-	fn from(value: OkfInitProfileArg) -> Self {
-		match value {
-			OkfInitProfileArg::Core => Self::Core,
-			OkfInitProfileArg::Wiki => Self::Wiki,
-			OkfInitProfileArg::RepoMemory => Self::RepoMemory,
-		}
-	}
-}
-
-fn run_okf_find(root: &Path, filters: &OkfFindFilters) -> Result<()> {
-	let query = OkfQuery::from(filters);
-	let concepts = docs_okf::query_okf_bundle(root, &query)?;
-
-	println!("okf find: concepts={} root={}", concepts.len(), root.display());
-
-	for concept in concepts {
-		println!(
-			"{} | {} | {}{}",
-			concept.path,
-			concept.concept_type,
-			concept.title,
-			concept
-				.description
-				.as_deref()
-				.map_or(String::new(), |description| format!(" | {description}"))
-		);
-	}
-
-	Ok(())
-}
-
-fn run_okf_graph(root: &Path, json: bool) -> Result<()> {
-	let graph = docs_okf::build_okf_graph(root)?;
-
-	if json {
-		print!("{}", docs_okf::render_okf_graph_json(&graph)?);
-	} else {
-		print!("{}", docs_okf::render_okf_graph_summary(root, &graph));
-	}
-
-	Ok(())
 }
