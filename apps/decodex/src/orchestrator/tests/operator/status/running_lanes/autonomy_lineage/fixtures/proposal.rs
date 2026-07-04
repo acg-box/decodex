@@ -1,7 +1,7 @@
 use crate::{
 	autonomy_proposal::{
 		AutonomyProposalAuthorityActorKind, AutonomyProposalCompileInput,
-		AutonomyProposalDecisionBridgeAuthority,
+		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalDecisionBridgeAuthorityInput,
 	},
 	loop_contract::{DecisionPromotion, DecisionPromotionActorKind},
 	orchestrator::tests::operator::status::running_lanes::autonomy_lineage::fixtures::{
@@ -45,14 +45,16 @@ pub(super) fn record_autonomy_proposals(
 
 pub(super) fn promote_autonomy_proposal(state_store: &StateStore, proposal_id: &str) -> String {
 	let authority = AutonomyProposalDecisionBridgeAuthority::new(
-		"operator",
-		AutonomyProposalAuthorityActorKind::User,
-		"2026-06-23T00:02:00Z",
-		"linear:XY-1089",
-		"Accept autonomy lineage proposal.",
-		"operator",
-		AutonomyProposalAuthorityActorKind::User,
-		None,
+		AutonomyProposalDecisionBridgeAuthorityInput {
+			accepted_by: String::from("operator"),
+			accepted_by_kind: AutonomyProposalAuthorityActorKind::User,
+			accepted_at: String::from("2026-06-23T00:02:00Z"),
+			acceptance_source: String::from("linear:XY-1089"),
+			reason: String::from("Accept autonomy lineage proposal."),
+			proposal_actor: String::from("operator"),
+			proposal_actor_kind: AutonomyProposalAuthorityActorKind::User,
+			accepted_project_policy: None,
+		},
 	)
 	.expect("proposal authority should build");
 	let decision = state_store

@@ -4,6 +4,7 @@ use serde_json::Value;
 use crate::{
 	autonomy_proposal::{
 		AutonomyProposalAuthorityActorKind, AutonomyProposalDecisionBridgeAuthority,
+		AutonomyProposalDecisionBridgeAuthorityInput,
 	},
 	mcp::{self, planning},
 };
@@ -40,16 +41,16 @@ impl AutonomyProposalAcceptanceArgs {
 			));
 		}
 
-		AutonomyProposalDecisionBridgeAuthority::new(
-			self.accepted_by,
-			self.accepted_by_kind,
-			self.accepted_at.unwrap_or_else(planning::mcp_now_rfc3339),
-			self.acceptance_source,
-			self.reason,
-			self.proposal_actor,
-			self.proposal_actor_kind,
-			None,
-		)
+		AutonomyProposalDecisionBridgeAuthority::new(AutonomyProposalDecisionBridgeAuthorityInput {
+			accepted_by: self.accepted_by,
+			accepted_by_kind: self.accepted_by_kind,
+			accepted_at: self.accepted_at.unwrap_or_else(planning::mcp_now_rfc3339),
+			acceptance_source: self.acceptance_source,
+			reason: self.reason,
+			proposal_actor: self.proposal_actor,
+			proposal_actor_kind: self.proposal_actor_kind,
+			accepted_project_policy: None,
+		})
 		.map_err(|error| {
 			mcp::tool_refusal(
 				"autonomy_acceptance_authority_refused",

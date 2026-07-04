@@ -13,7 +13,10 @@ pub(crate) use self::{
 		AutonomyProposalChallengeEvidence, AutonomyProposalChallengeInput,
 		AutonomyProposalChallengeSource,
 	},
-	input::{AutonomyProposalCompileInput, AutonomyProposalDecisionBridgeAuthority},
+	input::{
+		AutonomyProposalCompileInput, AutonomyProposalDecisionBridgeAuthority,
+		AutonomyProposalDecisionBridgeAuthorityInput,
+	},
 	issue::AutonomyProposalIssueCandidate,
 	lineage::{AutonomyProposalObjectiveLineage, AutonomyProposalSourceSignal},
 	record::AutonomyProposal,
