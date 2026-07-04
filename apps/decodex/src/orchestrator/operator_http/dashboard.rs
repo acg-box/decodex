@@ -1,5 +1,7 @@
 mod connection;
 mod control;
+mod control_ack;
+mod control_actions;
 mod framing;
 mod handshake;
 mod run_activity;
