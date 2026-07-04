@@ -1,4 +1,5 @@
-use color_eyre::Report;
+mod continuation;
+mod failure;
 
 use crate::{
 	agent::{
@@ -85,7 +86,7 @@ where
 			max_turns: input.workflow.frontmatter().execution().max_turns(),
 			timeout: RUN_LEASE_IDLE_TIMEOUT,
 			process_env: input.process_env.clone(),
-			continuation_user_input: Some(build_issue_run_continuation_user_input(
+			continuation_user_input: Some(continuation::build_issue_run_continuation_user_input(
 				input.project,
 				input.workflow,
 				input.issue_run,
@@ -107,7 +108,7 @@ where
 	) {
 		Ok(run_result) => run_result,
 		Err(error) => {
-			if let Some(summary) = maybe_finalize_after_terminalized_app_server_failure(
+			if let Some(summary) = failure::maybe_finalize_after_terminalized_app_server_failure(
 				input.tracker,
 				input.project,
 				input.workflow,
@@ -194,79 +195,4 @@ where
 	);
 
 	Ok(orchestrator::run_summary_from_issue_run(run.project.service_id(), run.issue_run))
-}
-
-fn build_issue_run_continuation_user_input(
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	issue_run: &IssueRunPlan,
-	review_context: &ReviewHandoffContext,
-) -> String {
-	orchestrator::build_continuation_user_input(
-		&issue_run.issue,
-		workflow,
-		issue_run.dispatch_mode,
-		review_context.recorded_pr_url.as_deref(),
-		workflow.frontmatter().tracker().success_state(),
-		project.codex().review_level(),
-	)
-}
-
-fn maybe_finalize_after_terminalized_app_server_failure<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	tracker_tool_bridge: &TrackerToolBridge<'_>,
-	error: &Report,
-) -> Result<Option<RunSummary>>
-where
-	T: IssueTracker,
-{
-	let Some(disposition) = tracker_tool_bridge.finalized_completion_disposition()? else {
-		return Ok(None);
-	};
-
-	state_store.append_private_execution_event(
-		project.service_id(),
-		&issue_run.issue.id,
-		&issue_run.run_id,
-		issue_run.attempt_number,
-		"terminal_finalize_app_server_failure_recovery",
-		serde_json::json!({
-			"path": disposition.as_str(),
-			"source_error": error.to_string(),
-			"recovery": "apply_terminal_completion_writeback",
-		}),
-	)?;
-
-	tracing::warn!(
-		project_id = project.service_id(),
-		issue_id = issue_run.issue.id,
-		issue = issue_run.issue.identifier,
-		run_id = issue_run.run_id,
-		attempt = issue_run.attempt_number,
-		path = disposition.as_str(),
-		error = %error,
-		"App-server run failed after terminal finalize; applying terminal completion writeback."
-	);
-
-	completion::apply_run_completion_disposition(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		issue_run,
-		tracker_tool_bridge,
-	)?;
-
-	state_store.record_run_attempt(
-		&issue_run.run_id,
-		&issue_run.issue.id,
-		issue_run.attempt_number,
-		"succeeded",
-	)?;
-
-	Ok(Some(orchestrator::run_summary_from_issue_run(project.service_id(), issue_run)))
 }
