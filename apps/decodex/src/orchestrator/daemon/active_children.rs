@@ -1,8 +1,15 @@
+mod cleanup;
+mod inspection;
+
+pub(crate) use self::cleanup::{clear_orphaned_daemon_child_state, resolve_child_exit_run_attempt};
+#[cfg(test)]
+pub(crate) use self::inspection::{
+	inspect_current_daemon_child_reconciliation, inspect_current_daemon_child_reconciliation_at,
+};
+
 use crate::orchestrator::daemon::{
-	self, ActiveWorkflowOverride, Child, ChildExitRetryContext, ChildRunRef,
-	CurrentChildRunContext, DaemonRunChild, IssueDispatchMode, IssueTracker, OffsetDateTime,
-	Result, RetryQueue, RunAttempt, RunLeaseDisposition, RunLeaseReconciliation, ServiceConfig,
-	StateStore, WorkflowDocument, WorktreeManager,
+	self, ChildExitRetryContext, ChildRunRef, CurrentChildRunContext, DaemonRunChild, IssueTracker,
+	Result, RetryQueue, ServiceConfig, StateStore, WorkflowDocument, WorktreeManager,
 };
 
 pub(crate) fn inspect_or_clear_active_children<T>(
@@ -46,7 +53,7 @@ where
 				child_ref.run_id,
 			)?
 		} else {
-			inspect_current_daemon_child_reconciliation(
+			inspection::inspect_current_daemon_child_reconciliation(
 				tracker,
 				project,
 				workflow,
@@ -76,7 +83,7 @@ where
 					attempt_number: daemon_child.attempt_number,
 				};
 
-				clear_orphaned_daemon_child_state(state_store, child_ref, false)?;
+				cleanup::clear_orphaned_daemon_child_state(state_store, child_ref, false)?;
 
 				if let Some(exit_status) = child_exit_status {
 					daemon::schedule_retry_after_child_exit(
@@ -110,7 +117,7 @@ where
 			retry_queue.release(&daemon_child.issue_id);
 		}
 		if !child_exited {
-			stop_daemon_child(&mut daemon_child.child)?;
+			cleanup::stop_daemon_child(&mut daemon_child.child)?;
 		}
 
 		daemon::apply_run_lease_reconciliation(
@@ -121,187 +128,6 @@ where
 			actions,
 		)?;
 	}
-
-	Ok(())
-}
-
-pub(crate) fn inspect_current_daemon_child_reconciliation<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	child_context: CurrentChildRunContext<'_>,
-) -> Result<Vec<RunLeaseReconciliation>>
-where
-	T: IssueTracker,
-{
-	inspect_current_daemon_child_reconciliation_at(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		child_context,
-		OffsetDateTime::now_utc().unix_timestamp(),
-	)
-}
-
-pub(crate) fn inspect_current_daemon_child_reconciliation_at<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	child_context: CurrentChildRunContext<'_>,
-	now_unix_epoch: i64,
-) -> Result<Vec<RunLeaseReconciliation>>
-where
-	T: IssueTracker,
-{
-	let child = child_context.child;
-	let Some(issue) = daemon::refresh_issue(tracker, child.issue_id)? else {
-		return Ok(Vec::new());
-	};
-	let Some(run_attempt) = state_store.run_attempt(child.run_id)? else {
-		return Ok(Vec::new());
-	};
-	let worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
-
-	if let Some(disposition) = daemon::superseded_run_disposition(state_store, &run_attempt)? {
-		return Ok(vec![RunLeaseReconciliation {
-			issue: issue.clone(),
-			run_attempt,
-			worktree_mapping,
-			disposition,
-			workflow: workflow.clone(),
-		}]);
-	}
-
-	let action_workflow = daemon::run_lease_reconciliation_workflow(
-		workflow,
-		Some(ActiveWorkflowOverride { child, workflow: child_context.workflow }),
-		&issue,
-		&run_attempt,
-	);
-	let retained_closeout = daemon::terminal_issue_keeps_retained_closeout(
-		tracker,
-		&issue,
-		project,
-		action_workflow,
-		state_store,
-	)?;
-	let completed_closeout_child =
-		matches!(child_context.dispatch_mode, IssueDispatchMode::Closeout)
-			&& daemon::is_terminal_issue(&issue, action_workflow);
-	let disposition = if !retained_closeout
-		&& !completed_closeout_child
-		&& daemon::is_terminal_issue(&issue, action_workflow)
-	{
-		Some(RunLeaseDisposition::Terminal)
-	} else if !retained_closeout
-		&& !completed_closeout_child
-		&& daemon::is_issue_not_dispatchable_for_current_dispatch(
-			tracker,
-			&issue,
-			project,
-			action_workflow,
-			child_context.dispatch_mode,
-		)? {
-		Some(RunLeaseDisposition::NotDispatchable)
-	} else if let Some(idle_for) = daemon::stalled_idle_duration(
-		state_store,
-		&run_attempt,
-		worktree_mapping.as_ref(),
-		now_unix_epoch,
-	)? {
-		if daemon::retained_review_handoff_matches_run(
-			state_store,
-			&run_attempt,
-			worktree_mapping.as_ref(),
-		)? {
-			Some(RunLeaseDisposition::RetainedReviewComplete)
-		} else if daemon::stalled_run_has_retained_partial_progress(worktree_mapping.as_ref()) {
-			Some(RunLeaseDisposition::StalledRetainedPartialProgress { idle_for })
-		} else {
-			Some(RunLeaseDisposition::Stalled { idle_for })
-		}
-	} else {
-		None
-	};
-
-	Ok(disposition.map_or_else(Vec::new, |disposition| {
-		vec![RunLeaseReconciliation {
-			issue: issue.clone(),
-			run_attempt,
-			worktree_mapping,
-			disposition,
-			workflow: action_workflow.clone(),
-		}]
-	}))
-}
-
-pub(crate) fn clear_orphaned_daemon_child_state(
-	state_store: &StateStore,
-	child: ChildRunRef<'_>,
-	mark_interrupted: bool,
-) -> Result<()> {
-	let resolved_run_attempt = resolve_child_exit_run_attempt(state_store, child)?;
-
-	if resolved_run_attempt.is_none() {
-		tracing::debug!(
-			issue_id = child.issue_id,
-			run_id = child.run_id,
-			attempt = child.attempt_number,
-			"Daemon child exited without a matching recorded run attempt; skipping orphan cleanup."
-		);
-	}
-	if mark_interrupted && let Some(run_attempt) = resolved_run_attempt.as_ref() {
-		daemon::mark_run_attempt_if_active(state_store, run_attempt.run_id(), "interrupted")?;
-	}
-
-	let existing_lease = state_store.lease_for_issue(child.issue_id)?;
-	let issue_unowned_or_matches_run = existing_lease.as_ref().is_none_or(|lease| {
-		resolved_run_attempt
-			.as_ref()
-			.is_some_and(|run_attempt| lease.run_id() == run_attempt.run_id())
-			|| lease.run_id() == child.run_id
-	});
-
-	if existing_lease.is_some() && issue_unowned_or_matches_run {
-		state_store.clear_lease(child.issue_id)?;
-	}
-	if resolved_run_attempt.is_some()
-		&& issue_unowned_or_matches_run
-		&& let Some(mapping) = state_store.worktree_for_issue(child.issue_id)?
-		&& !mapping.worktree_path().try_exists()?
-	{
-		tracing::debug!(
-			issue_id = child.issue_id,
-			run_id = child.run_id,
-			attempt = child.attempt_number,
-			branch = mapping.branch_name(),
-			worktree_path = %mapping.worktree_path().display(),
-			"Cleared daemon child worktree mapping after the checkout was removed."
-		);
-
-		state_store.clear_worktree(child.issue_id)?;
-	}
-
-	Ok(())
-}
-
-pub(crate) fn resolve_child_exit_run_attempt(
-	state_store: &StateStore,
-	child: ChildRunRef<'_>,
-) -> Result<Option<RunAttempt>> {
-	state_store.run_attempt(child.run_id)
-}
-
-fn stop_daemon_child(child: &mut Child) -> Result<()> {
-	if child.try_wait()?.is_some() {
-		return Ok(());
-	}
-
-	let _ = child.kill();
-	let _ = child.wait();
 
 	Ok(())
 }
