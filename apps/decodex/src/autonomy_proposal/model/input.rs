@@ -21,6 +21,18 @@ pub(crate) struct AutonomyProposalCompileInput {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AutonomyProposalDecisionBridgeAuthorityInput {
+	pub(crate) accepted_by: String,
+	pub(crate) accepted_by_kind: AutonomyProposalAuthorityActorKind,
+	pub(crate) accepted_at: String,
+	pub(crate) acceptance_source: String,
+	pub(crate) reason: String,
+	pub(crate) proposal_actor: String,
+	pub(crate) proposal_actor_kind: AutonomyProposalAuthorityActorKind,
+	pub(crate) accepted_project_policy: Option<AutonomyProposalAcceptedProjectPolicy>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AutonomyProposalDecisionBridgeAuthority {
 	pub(crate) accepted_by: String,
 	pub(crate) accepted_by_kind: AutonomyProposalAuthorityActorKind,

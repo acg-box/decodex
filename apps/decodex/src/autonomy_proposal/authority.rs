@@ -1,7 +1,8 @@
 use crate::autonomy_proposal::{
 	AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE, AutonomyProposal, AutonomyProposalAcceptedProjectPolicy,
 	AutonomyProposalAuthorityActorKind, AutonomyProposalDecisionBridgeAuthority,
-	AutonomyProposalRefusalReason, AutonomyProposalState, Result, eyre,
+	AutonomyProposalDecisionBridgeAuthorityInput, AutonomyProposalRefusalReason,
+	AutonomyProposalState, Result, eyre,
 	validation::{self},
 };
 
@@ -42,38 +43,6 @@ impl AutonomyProposalAuthorityActorKind {
 }
 
 impl AutonomyProposalAcceptedProjectPolicy {
-	#[allow(clippy::too_many_arguments)]
-	#[cfg_attr(not(test), allow(dead_code))]
-	pub(crate) fn new(
-		project_id: impl Into<String>,
-		objective_id: impl Into<String>,
-		objective_version: u64,
-		accepted_policy_id: impl Into<String>,
-		accepted_policy_version: impl Into<String>,
-		authority_ref: impl Into<String>,
-		authorized_actor: impl Into<String>,
-		authorized_actor_kind: AutonomyProposalAuthorityActorKind,
-		authorized_acceptance_sources: Vec<String>,
-		authorized_scopes: Vec<String>,
-	) -> Result<Self> {
-		let policy = Self {
-			project_id: project_id.into(),
-			objective_id: objective_id.into(),
-			objective_version,
-			accepted_policy_id: accepted_policy_id.into(),
-			accepted_policy_version: accepted_policy_version.into(),
-			authority_ref: authority_ref.into(),
-			authorized_actor: authorized_actor.into(),
-			authorized_actor_kind,
-			authorized_acceptance_sources,
-			authorized_scopes,
-		};
-
-		policy.validate()?;
-
-		Ok(policy)
-	}
-
 	pub(super) fn validate(&self) -> Result<()> {
 		validation::validate_required(
 			"autonomy proposal accepted project policy.project_id",
@@ -180,27 +149,16 @@ impl AutonomyProposalAcceptedProjectPolicy {
 }
 
 impl AutonomyProposalDecisionBridgeAuthority {
-	#[allow(clippy::too_many_arguments)]
-	#[cfg_attr(not(test), allow(dead_code))]
-	pub(crate) fn new(
-		accepted_by: impl Into<String>,
-		accepted_by_kind: AutonomyProposalAuthorityActorKind,
-		accepted_at: impl Into<String>,
-		acceptance_source: impl Into<String>,
-		reason: impl Into<String>,
-		proposal_actor: impl Into<String>,
-		proposal_actor_kind: AutonomyProposalAuthorityActorKind,
-		accepted_project_policy: Option<AutonomyProposalAcceptedProjectPolicy>,
-	) -> Result<Self> {
+	pub(crate) fn new(input: AutonomyProposalDecisionBridgeAuthorityInput) -> Result<Self> {
 		let authority = Self {
-			accepted_by: accepted_by.into(),
-			accepted_by_kind,
-			accepted_at: accepted_at.into(),
-			acceptance_source: acceptance_source.into(),
-			reason: reason.into(),
-			proposal_actor: proposal_actor.into(),
-			proposal_actor_kind,
-			accepted_project_policy,
+			accepted_by: input.accepted_by,
+			accepted_by_kind: input.accepted_by_kind,
+			accepted_at: input.accepted_at,
+			acceptance_source: input.acceptance_source,
+			reason: input.reason,
+			proposal_actor: input.proposal_actor,
+			proposal_actor_kind: input.proposal_actor_kind,
+			accepted_project_policy: input.accepted_project_policy,
 		};
 
 		authority.validate()?;
