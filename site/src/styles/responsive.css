@@ -1,0 +1,64 @@
+@media (min-width: 720px) {
+  .site-nav {
+    display: flex;
+  }
+
+  .hero-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+    gap: 2rem;
+    padding-top: 2.8rem;
+  }
+
+  .hero-bottom {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .system-panel,
+  .command-panel {
+    grid-template-columns: minmax(14rem, 0.38fr) minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+
+  .docs-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 719px) {
+  .site-header {
+    gap: 0.65rem;
+  }
+
+  .site-logo__image {
+    height: 1.9rem;
+  }
+
+  .theme-toggle__button {
+    padding-inline: 0.5rem;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(3.35rem, 18vw, 5.4rem);
+  }
+
+  .hero-panel {
+    justify-self: stretch;
+  }
+
+  .hero-panel__copy,
+  .appcast-download__primary,
+  .appcast-download__body {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .appcast-download__body {
+    margin-left: 0;
+  }
+
+  .appcast-download__panel {
+    right: auto;
+    left: 0;
+    transform-origin: top left;
+  }
+}
