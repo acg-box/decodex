@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
 	execution_program::{
-		intake::ProgramIntakeKind,
+		intake::{ProgramIntakeKind, ProgramIntakePlan},
 		model::{EXECUTION_PROGRAM_RECORD_VERSION, EXECUTION_PROGRAM_SCHEMA, ExecutionProgram},
 		validation,
 	},
@@ -67,10 +67,7 @@ impl ExecutionProgram {
 		Ok(())
 	}
 
-	fn validate_intake_plan(
-		&self,
-		plan: &crate::execution_program::intake::ProgramIntakePlan,
-	) -> Result<()> {
+	fn validate_intake_plan(&self, plan: &ProgramIntakePlan) -> Result<()> {
 		plan.validate()?;
 
 		if plan.service_id != self.service_id {

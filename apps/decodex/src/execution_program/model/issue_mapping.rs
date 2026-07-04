@@ -2,8 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::super::validation::{is_false, validate_required};
-use crate::prelude::Result;
+use crate::{execution_program::validation, prelude::Result};
 
 /// Normal Linear issue mapping for an executable program node.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -14,10 +13,10 @@ pub(crate) struct ExecutionLinearIssueMapping {
 	pub(in crate::execution_program) has_active_label: bool,
 	pub(in crate::execution_program) has_opt_out_label: bool,
 	pub(in crate::execution_program) has_needs_attention_label: bool,
-	#[serde(default, skip_serializing_if = "is_false")]
+	#[serde(default, skip_serializing_if = "validation::is_false")]
 	pub(in crate::execution_program) has_open_tracker_blockers: bool,
 	pub(in crate::execution_program) has_generic_dispatch_briefing: bool,
-	#[serde(default, skip_serializing_if = "is_false")]
+	#[serde(default, skip_serializing_if = "validation::is_false")]
 	pub(in crate::execution_program) has_post_review_lifecycle: bool,
 }
 impl ExecutionLinearIssueMapping {
@@ -132,12 +131,15 @@ impl ExecutionLinearIssueMapping {
 	}
 
 	pub(super) fn validate(&self) -> Result<()> {
-		validate_required("execution program issue_mapping.issue_id", &self.issue_id)?;
-		validate_required(
+		validation::validate_required("execution program issue_mapping.issue_id", &self.issue_id)?;
+		validation::validate_required(
 			"execution program issue_mapping.issue_identifier",
 			&self.issue_identifier,
 		)?;
-		validate_required("execution program issue_mapping.issue_state", &self.issue_state)?;
+		validation::validate_required(
+			"execution program issue_mapping.issue_state",
+			&self.issue_state,
+		)?;
 
 		Ok(())
 	}
