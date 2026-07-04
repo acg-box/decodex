@@ -16,6 +16,7 @@ pub(super) struct RebindSuccessStateTransition {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum RebindMode {
 	RestoreMissingHandoff,
+	RestoreMissingHandoffAfterWritebackFailure,
 	RefreshExistingHandoff,
 	CompleteExistingHandoffState,
 }
@@ -23,22 +24,33 @@ impl RebindMode {
 	pub(super) fn as_str(self) -> &'static str {
 		match self {
 			Self::RestoreMissingHandoff => "restore_missing_handoff",
+			Self::RestoreMissingHandoffAfterWritebackFailure =>
+				"restore_missing_handoff_after_writeback_failure",
 			Self::RefreshExistingHandoff => "refresh_existing_handoff",
 			Self::CompleteExistingHandoffState => "complete_existing_handoff_state",
 		}
 	}
 
 	pub(super) fn allows_failure_state_drift_repair(self) -> bool {
-		self == Self::CompleteExistingHandoffState
+		matches!(
+			self,
+			Self::RestoreMissingHandoffAfterWritebackFailure | Self::CompleteExistingHandoffState
+		)
 	}
 
 	pub(super) fn allows_partial_handoff_state_completion(self) -> bool {
-		matches!(self, Self::RestoreMissingHandoff | Self::CompleteExistingHandoffState)
+		matches!(
+			self,
+			Self::RestoreMissingHandoff
+				| Self::RestoreMissingHandoffAfterWritebackFailure
+				| Self::CompleteExistingHandoffState
+		)
 	}
 
 	pub(super) fn evidence_value(self) -> &'static str {
 		match self {
 			Self::RestoreMissingHandoff => "absent",
+			Self::RestoreMissingHandoffAfterWritebackFailure => "absent_after_writeback_failure",
 			Self::RefreshExistingHandoff => "refreshed",
 			Self::CompleteExistingHandoffState => "current_state_transition",
 		}
@@ -46,7 +58,8 @@ impl RebindMode {
 
 	pub(super) fn summary_action(self) -> &'static str {
 		match self {
-			Self::RestoreMissingHandoff => "restored retained review lifecycle record",
+			Self::RestoreMissingHandoff | Self::RestoreMissingHandoffAfterWritebackFailure =>
+				"restored retained review lifecycle record",
 			Self::RefreshExistingHandoff => "refreshed retained review lifecycle record",
 			Self::CompleteExistingHandoffState => "completed retained review handoff state",
 		}

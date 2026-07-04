@@ -56,6 +56,22 @@ fn rebind_state_allows_current_marker_failure_state_drift_recovery() {
 }
 
 #[test]
+fn rebind_state_allows_missing_marker_writeback_failure_recovery() {
+	let workflow = tests::sample_workflow();
+	let issue = tests::sample_issue("Todo");
+	let transition = super::validate_rebind_issue_state_for_policy(
+		workflow.frontmatter().tracker(),
+		&issue,
+		RebindMode::RestoreMissingHandoffAfterWritebackFailure,
+	)
+	.expect("missing-marker writeback failure should recover failure-state drift")
+	.expect("failure-state writeback recovery should transition to success state");
+
+	assert_eq!(transition.state_name, "In Review");
+	assert_eq!(transition.state_id, "state-review");
+}
+
+#[test]
 fn rebind_state_rejects_failure_state_without_current_marker_repair_mode() {
 	let workflow = tests::sample_workflow();
 	let issue = tests::sample_issue("Todo");

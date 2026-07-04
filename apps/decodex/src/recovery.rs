@@ -79,7 +79,10 @@ use reports::{
 };
 use review_handoff::{AdoptValidation, RebindValidation, load_issue_by_identifier};
 #[cfg(test)]
-use review_handoff::{validate_adopt_existing_worktree_mapping, validate_existing_handoff_refresh};
+use review_handoff::{
+	validate_adopt_existing_worktree_mapping, validate_existing_handoff_refresh,
+	validate_rebind_existing_handoff, validate_rebind_tracker_labels_with_tracker,
+};
 #[cfg(test)] use review_handoff_apply::write_review_lifecycle_markers_with_rollback;
 #[cfg(test)]
 use review_handoff_diagnosis::{

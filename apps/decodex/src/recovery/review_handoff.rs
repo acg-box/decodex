@@ -10,7 +10,9 @@ pub(super) use self::{
 };
 #[cfg(test)]
 pub(super) use self::{
-	issue::validate_existing_handoff_refresh, worktree::validate_adopt_existing_worktree_mapping,
+	issue::{validate_existing_handoff_refresh, validate_rebind_existing_handoff},
+	labels::validate_rebind_tracker_labels_with_tracker,
+	worktree::validate_adopt_existing_worktree_mapping,
 };
 
 use std::{
@@ -147,7 +149,7 @@ pub(crate) fn run_review_handoff_rebind(
 			.map_or("none", |transition| transition.state_name.as_str());
 
 		println!(
-			"dry run: review handoff rebind validated for project={} issue={} branch={} pr={} head={} mode={} active_label_present={} would_restore_active_label={} state_transition={}",
+			"dry run: review handoff rebind validated for project={} issue={} branch={} pr={} head={} mode={} active_label_present={} would_restore_active_label={} would_clear_needs_attention_label={} state_transition={}",
 			context.config.service_id(),
 			validation.issue.identifier,
 			validation.worktree.branch_name(),
@@ -156,6 +158,7 @@ pub(crate) fn run_review_handoff_rebind(
 			validation.mode.evidence_value(),
 			validation.active_label_present,
 			validation.should_restore_active_label(),
+			validation.clear_needs_attention_label,
 			state_transition
 		);
 
