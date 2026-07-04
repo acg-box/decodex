@@ -1,14 +1,10 @@
-use crate::{
-	orchestrator::{
-		run_cycle,
-		run_cycle::{
-			IssueDispatchMode, IssueRunPlan, IssueTracker, PreferredRunIdentity,
-			PrepareIssueRunContext, RecoveredRuntimeState, Result, RetryIssueStateHint, RunSummary,
-			SelectedIssueRunCandidate, ServiceConfig, StateStore, TrackerIssue, WorkflowDocument,
-			WorktreeManager, eyre, slice,
-		},
-	},
-	tracker,
+mod candidate;
+mod queue;
+
+use crate::orchestrator::run_cycle::{
+	self, IssueDispatchMode, IssueRunPlan, IssueTracker, PreferredRunIdentity,
+	PrepareIssueRunContext, Result, RetryIssueStateHint, RunSummary, ServiceConfig, StateStore,
+	WorkflowDocument, WorktreeManager, eyre, slice,
 };
 
 pub(crate) fn run_project_once<T>(
@@ -58,7 +54,7 @@ where
 		run_cycle::reconcile_post_review_orchestration(tracker, project, workflow, state_store)?;
 	}
 
-	let Some(selected_issue) = select_project_issue_run_candidate(
+	let Some(selected_issue) = candidate::select_project_issue_run_candidate(
 		tracker,
 		project,
 		workflow,
@@ -186,146 +182,6 @@ where
 	};
 
 	run_cycle::complete_issue_run(tracker, project, workflow, state_store, issue_run, dry_run)
-}
-
-fn select_project_issue_run_candidate<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	recovered_state: RecoveredRuntimeState,
-	dry_run: bool,
-	excluded_issue_ids: &[&str],
-) -> Result<Option<SelectedIssueRunCandidate>>
-where
-	T: IssueTracker,
-{
-	let selected_retry_issue = select_recovered_retry_issue_candidate(
-		project,
-		state_store,
-		recovered_state,
-		excluded_issue_ids,
-	)?;
-	let selected_post_review_issue = run_cycle::select_post_review_issue_candidate(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		excluded_issue_ids,
-	)?;
-
-	if let Some(candidate) = selected_retry_issue.or(selected_post_review_issue) {
-		return Ok(Some(candidate));
-	}
-	if let Some(candidate) = run_cycle::select_execution_program_run_candidate(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		excluded_issue_ids,
-	)? {
-		return Ok(Some(candidate));
-	}
-
-	let issues = queued_issues_for_dispatch(tracker, project, workflow, state_store, dry_run)?;
-
-	Ok(run_cycle::select_issue_candidate_with_exclusions(
-		tracker,
-		issues,
-		workflow,
-		state_store,
-		project.service_id(),
-		excluded_issue_ids,
-	)?
-	.map(|issue| SelectedIssueRunCandidate::new(issue, IssueDispatchMode::Normal)))
-}
-
-fn select_recovered_retry_issue_candidate(
-	project: &ServiceConfig,
-	state_store: &StateStore,
-	recovered_state: RecoveredRuntimeState,
-	excluded_issue_ids: &[&str],
-) -> Result<Option<SelectedIssueRunCandidate>> {
-	for issue in recovered_state.recoverable_issues {
-		if excluded_issue_ids.contains(&issue.id.as_str()) {
-			continue;
-		}
-		if state_store.issue_has_active_shared_claim(project.service_id(), &issue.id)? {
-			continue;
-		}
-
-		return Ok(Some(SelectedIssueRunCandidate::new(issue, IssueDispatchMode::Retry)));
-	}
-
-	Ok(None)
-}
-
-fn queued_issues_for_dispatch<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	dry_run: bool,
-) -> Result<Vec<TrackerIssue>>
-where
-	T: IssueTracker,
-{
-	let queue_label = tracker::automation_queue_label(project.service_id());
-	let issues = clear_terminal_queued_lane_labels(
-		tracker,
-		project,
-		workflow,
-		tracker.list_issues_with_label(&queue_label)?,
-		dry_run,
-	)?;
-
-	if !dry_run {
-		let plan =
-			run_cycle::build_queued_candidate_status_plan(tracker, project, workflow, state_store)?;
-
-		run_cycle::apply_queued_candidate_guardrail_commands(
-			project,
-			workflow,
-			state_store,
-			&plan.guardrail_commands,
-		)?;
-	}
-
-	Ok(issues)
-}
-
-fn clear_terminal_queued_lane_labels<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	issues: Vec<TrackerIssue>,
-	dry_run: bool,
-) -> Result<Vec<TrackerIssue>>
-where
-	T: IssueTracker,
-{
-	let mut nonterminal_issues = Vec::with_capacity(issues.len());
-
-	for issue in issues {
-		if run_cycle::is_terminal_issue(&issue, workflow) {
-			if !dry_run {
-				tracker::clear_automation_lane_labels(tracker, &issue, project.service_id())?;
-
-				tracing::info!(
-					project_id = project.service_id(),
-					issue_id = issue.id,
-					issue = issue.identifier,
-					"Cleared automation lane labels from terminal queued issue."
-				);
-			}
-
-			continue;
-		}
-
-		nonterminal_issues.push(issue);
-	}
-
-	Ok(nonterminal_issues)
 }
 
 fn replan_project_issue_run_after_excluding<T>(
