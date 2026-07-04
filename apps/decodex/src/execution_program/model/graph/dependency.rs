@@ -20,18 +20,6 @@ impl ExecutionProgramDependency {
 		Ok(dependency)
 	}
 
-	/// Override the terminal tracker states that satisfy this dependency.
-	pub(crate) fn with_required_terminal_states(
-		mut self,
-		states: impl IntoIterator<Item = impl Into<String>>,
-	) -> Result<Self> {
-		self.required_terminal_states = states.into_iter().map(Into::into).collect();
-
-		self.validate()?;
-
-		Ok(self)
-	}
-
 	/// Dependency node or issue identifier.
 	pub(crate) fn dependency_id(&self) -> &str {
 		&self.dependency_id
