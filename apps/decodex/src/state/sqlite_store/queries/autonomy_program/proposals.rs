@@ -111,57 +111,6 @@ impl SqliteStateStore {
 			.transpose()
 	}
 
-	pub(in crate::state) fn list_autonomy_proposals_for_objective(
-		&self,
-		project_id: &str,
-		objective_id: &str,
-		objective_version: u64,
-	) -> Result<Vec<AutonomyProposalRuntimeRecord>> {
-		let version = i64::try_from(objective_version).map_err(|_| {
-			eyre::eyre!("Autonomy proposal objective_version exceeds SQLite integer range.")
-		})?;
-		let mut statement = self.connection.prepare(
-			"SELECT project_id, proposal_id, objective_id, objective_version, state, fingerprint, \
-			 source_family, intended_surface, payload_json, created_at, created_at_unix, \
-			 updated_at, updated_at_unix \
-			 FROM autonomy_proposals \
-			 WHERE project_id = ?1 AND objective_id = ?2 AND objective_version = ?3 \
-			 ORDER BY updated_at_unix ASC, proposal_id ASC",
-		)?;
-		let rows = statement.query_map(
-			rusqlite::params![project_id, objective_id, version],
-			runtime_row_parsers::autonomy_proposal_runtime_row_parts,
-		)?;
-		let mut records = Vec::new();
-
-		for row in rows {
-			let parts = row?;
-			let record = match runtime_row_parsers::autonomy_proposal_record_from_row_parts(parts) {
-				Ok(record) => record,
-				Err(error)
-					if load_errors::autonomy_proposal_load_error_is_quarantinable(
-						error.as_ref(),
-					) =>
-				{
-					tracing::warn!(
-						error = %error,
-						project_id,
-						objective_id,
-						objective_version,
-						"Skipped invalid Autonomy Proposal during objective list read."
-					);
-
-					continue;
-				},
-				Err(error) => return Err(error),
-			};
-
-			records.push(record);
-		}
-
-		Ok(records)
-	}
-
 	pub(in crate::state) fn recent_autonomy_proposals_for_project(
 		&self,
 		project_id: &str,

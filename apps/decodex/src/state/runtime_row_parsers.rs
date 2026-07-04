@@ -22,9 +22,8 @@ pub(super) use self::{
 		validate_private_execution_event_inputs,
 	},
 	comparisons::{
-		compare_autonomy_proposal_runtime_records, compare_autonomy_signal_runtime_records,
-		compare_decision_contract_runtime_records, compare_execution_program_runtime_records,
-		compare_linear_execution_event_runtime_records,
+		compare_autonomy_signal_runtime_records, compare_decision_contract_runtime_records,
+		compare_execution_program_runtime_records, compare_linear_execution_event_runtime_records,
 		compare_private_execution_event_runtime_records, compare_program_intake_plan_records,
 		compare_program_issue_mapping_records, compare_recent_autonomy_proposal_runtime_records,
 		compare_recent_autonomy_signal_runtime_records,
