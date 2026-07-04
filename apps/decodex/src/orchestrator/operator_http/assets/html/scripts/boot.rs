@@ -1,7 +1,23 @@
 pub(super) const SCRIPT_PARTS: &[&str] = &[
 	include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
-		"/src/orchestrator/operator_dashboard/app/boot.js"
+		"/src/orchestrator/operator_dashboard/app/boot/constants.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/boot/account-names.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/boot/nodes.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/boot/state.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/boot/layout.js"
 	)),
 	include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
