@@ -1,5 +1,13 @@
 # Documentation Log
 
+## 2026-07-04
+
+- Updated review-handoff recovery docs for validated retained PR lanes that failed
+  during `review_handoff_writeback_failed`: diagnosis now covers failure-state
+  retained lanes, reports concrete PR readback errors, and routes missing active
+  ownership through audited `recover review-handoff rebind` instead of manual label
+  surgery.
+
 ## 2026-07-02
 
 - Added blocker-family guidance for tracker-present stale-active diagnostics so

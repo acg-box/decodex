@@ -11,12 +11,14 @@ pub(super) fn missing_handoff_next_action(service_id: &str, issue_identifier: &s
 
 pub(super) fn bound_handoff_next_action(
 	service_id: &str,
+	issue_identifier: &str,
+	pr_url: &str,
 	active_label_present: Option<bool>,
 ) -> String {
 	if active_label_present == Some(false) {
 		return format!(
-			"Restore explicit lane ownership with label `{}`, then rerun `decodex recover review-handoff diagnose <ISSUE>` and continue the existing post-review lifecycle.",
-			tracker::automation_active_label(service_id)
+			"Run `decodex recover review-handoff rebind {issue_identifier} --pr {pr_url} --dry-run`, then rerun without `--dry-run` to restore `{}` ownership if validation passes.",
+			tracker::automation_active_label(service_id),
 		);
 	}
 
