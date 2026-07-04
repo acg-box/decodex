@@ -118,6 +118,7 @@ fn operator_lane_control_kernel_input(run: &OperatorRunStatus) -> LaneControlKer
 		),
 		thread_active: matches!(run.thread_status.as_deref(), Some("active"))
 			|| !run.thread_active_flags.is_empty(),
+		thread_terminal_failure: operator_run_thread_terminal_failure(run),
 		protocol_recent: operator_run_has_recent_app_server_execution(run),
 		suspected_stall: run.suspected_stall,
 		stale_execution_without_known_process:
@@ -187,6 +188,12 @@ fn operator_run_has_recent_app_server_execution(run: &OperatorRunStatus) -> bool
 			u64::try_from(idle_for)
 				.is_ok_and(|idle_for| idle_for < RUN_LEASE_IDLE_TIMEOUT.as_secs())
 		})
+}
+
+fn operator_run_thread_terminal_failure(run: &OperatorRunStatus) -> bool {
+	matches!(run.thread_status.as_deref(), Some("systemError" | "failed" | "interrupted"))
+		&& matches!(run.status.as_str(), "starting" | "running")
+		&& run.phase == "executing"
 }
 
 fn operator_run_has_stale_execution_without_known_process(run: &OperatorRunStatus) -> bool {

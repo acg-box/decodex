@@ -111,6 +111,78 @@ fn retrying_error_notification_does_not_replace_latest_turn_failure() {
 }
 
 #[test]
+fn thread_system_error_notification_fails_turn_immediately() {
+	let notification = JsonRpcNotification {
+		method: String::from("thread/status/changed"),
+		params: serde_json::json!({
+			"threadId": "thread-1",
+			"status": {
+				"type": "systemError",
+				"activeFlags": []
+			}
+		}),
+	};
+	let mut final_output = String::new();
+	let mut latest_turn_failure = None;
+	let result = super::handle_turn_execution_notification(
+		&notification,
+		"thread-1",
+		"turn-1",
+		&mut final_output,
+		&mut latest_turn_failure,
+	);
+	let error = match result {
+		Ok(_) => panic!("systemError should fail the turn immediately"),
+		Err(error) => error,
+	};
+	let failure =
+		error.downcast_ref::<AppServerTurnFailure>().expect("error should be a turn failure");
+
+	assert!(failure.to_string().contains("systemError"));
+	assert_eq!(failure.error_class(), "app_server_turn_failed");
+	assert!(latest_turn_failure.is_none());
+}
+
+#[test]
+fn thread_system_error_notification_fails_immediately_with_latest_turn_failure() {
+	let notification = JsonRpcNotification {
+		method: String::from("thread/status/changed"),
+		params: serde_json::json!({
+			"threadId": "thread-1",
+			"status": {
+				"type": "systemError",
+				"activeFlags": []
+			}
+		}),
+	};
+	let mut final_output = String::new();
+	let mut latest_turn_failure = Some(AppServerTurnFailure::new(
+		"thread-1",
+		Some(String::from("turn-1")),
+		"failed",
+		"previous structured turn error",
+		None,
+	));
+	let result = super::handle_turn_execution_notification(
+		&notification,
+		"thread-1",
+		"turn-1",
+		&mut final_output,
+		&mut latest_turn_failure,
+	);
+	let error = match result {
+		Ok(_) => panic!("systemError should fail the turn immediately"),
+		Err(error) => error,
+	};
+	let failure =
+		error.downcast_ref::<AppServerTurnFailure>().expect("error should be a turn failure");
+
+	assert!(failure.to_string().contains("previous structured turn error"));
+	assert_eq!(failure.error_class(), "app_server_turn_failed");
+	assert!(latest_turn_failure.is_none());
+}
+
+#[test]
 fn json_rpc_error_response_becomes_recoverable_turn_failure() {
 	let error = JsonRpcError {
 		id: serde_json::json!(7),

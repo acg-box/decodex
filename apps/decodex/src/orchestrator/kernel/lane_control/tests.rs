@@ -23,6 +23,7 @@ fn input() -> LaneControlKernelInput<'static> {
 		host_boot_mismatch: false,
 		not_running_signal: false,
 		thread_active: false,
+		thread_terminal_failure: false,
 		protocol_recent: false,
 		suspected_stall: false,
 		stale_execution_without_known_process: false,
@@ -43,6 +44,24 @@ fn leased_running_lane_projects_stable_status_fields() {
 	assert!(projection.counts_as_current_lane);
 	assert!(projection.has_live_execution);
 	assert!(projection.has_authoritative_live_owner);
+}
+
+#[test]
+fn terminal_thread_failure_demotes_leased_run_to_attention() {
+	let mut input = input();
+
+	input.process_alive = None;
+	input.execution_liveness_observed = true;
+	input.thread_terminal_failure = true;
+
+	let projection = lane_control::project_lane_control(&input);
+
+	assert_eq!(projection.axes.ownership, OwnershipState::RetainedAttention);
+	assert!(projection.needs_attention_signal);
+	assert!(projection.counts_as_attention);
+	assert!(!projection.counts_as_running);
+	assert!(projection.counts_as_current_lane);
+	assert_eq!(projection.next_action, "inspect_lane_state");
 }
 
 #[test]
