@@ -1,6 +1,9 @@
-use crate::orchestrator::execution::{
-	self, DecodexRunContext, IssueRunPlan, IssueTracker, Path, RUN_OPERATION_GIT_CREDENTIALS,
-	Result, ReviewHandoffContext, ServiceConfig, StateStore, WorkflowDocument, state,
+use crate::{
+	orchestrator::execution::{
+		self, DecodexRunContext, IssueRunPlan, IssueTracker, Path, RUN_OPERATION_GIT_CREDENTIALS,
+		Result, ReviewHandoffContext, ServiceConfig, StateStore, WorkflowDocument,
+	},
+	state,
 };
 
 pub(super) fn build_run_developer_instructions<T>(
