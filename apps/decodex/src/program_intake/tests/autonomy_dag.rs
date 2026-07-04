@@ -8,7 +8,8 @@ use crate::{
 	autonomy_proposal::{
 		AutonomyProposalAuthorityActorKind, AutonomyProposalChallengeInput,
 		AutonomyProposalChallengeSource, AutonomyProposalCompileInput,
-		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalIssueCandidate,
+		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalDecisionBridgeAuthorityInput,
+		AutonomyProposalIssueCandidate,
 	},
 	autonomy_signal::{
 		AutonomySignal, AutonomySignalConfidence, AutonomySignalEvidenceClass,
@@ -323,15 +324,17 @@ fn autonomy_dag_issue_candidate(
 }
 
 fn autonomy_dag_bridge_authority() -> AutonomyProposalDecisionBridgeAuthority {
-	AutonomyProposalDecisionBridgeAuthority::new(
-		"operator",
-		AutonomyProposalAuthorityActorKind::User,
-		"2026-06-30T00:02:30Z",
-		"isolated-test",
-		"Operator accepted the isolated DAG proposal for Decision Contract promotion.",
-		"decodex-test-agent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		None,
-	)
+	AutonomyProposalDecisionBridgeAuthority::new(AutonomyProposalDecisionBridgeAuthorityInput {
+		accepted_by: String::from("operator"),
+		accepted_by_kind: AutonomyProposalAuthorityActorKind::User,
+		accepted_at: String::from("2026-06-30T00:02:30Z"),
+		acceptance_source: String::from("isolated-test"),
+		reason: String::from(
+			"Operator accepted the isolated DAG proposal for Decision Contract promotion.",
+		),
+		proposal_actor: String::from("decodex-test-agent"),
+		proposal_actor_kind: AutonomyProposalAuthorityActorKind::ExternalAgent,
+		accepted_project_policy: None,
+	})
 	.expect("bridge authority should validate")
 }

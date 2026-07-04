@@ -11,10 +11,11 @@ use crate::{
 		AutonomyObjectiveAcceptance, AutonomyObjectiveActorKind, AutonomyObjectiveContract,
 	},
 	autonomy_proposal::{
-		AutonomyProposal, AutonomyProposalAcceptedProjectPolicy,
-		AutonomyProposalAuthorityActorKind, AutonomyProposalChallengeInput,
-		AutonomyProposalChallengeSource, AutonomyProposalCompileInput,
-		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalIssueCandidate,
+		AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE, AutonomyProposal,
+		AutonomyProposalAcceptedProjectPolicy, AutonomyProposalAuthorityActorKind,
+		AutonomyProposalChallengeInput, AutonomyProposalChallengeSource,
+		AutonomyProposalCompileInput, AutonomyProposalDecisionBridgeAuthority,
+		AutonomyProposalDecisionBridgeAuthorityInput, AutonomyProposalIssueCandidate,
 		AutonomyProposalState,
 	},
 	autonomy_signal::{
@@ -33,6 +34,48 @@ trait ExpectNone {
 impl<T> ExpectNone for Option<T> {
 	fn expect_none(self, message: &str) {
 		assert!(self.is_none(), "{message}");
+	}
+}
+
+pub(in crate::autonomy_proposal::tests) fn accepted_project_policy_fixture(
+	objective_id: &str,
+	authorized_actor: &str,
+	authorized_actor_kind: AutonomyProposalAuthorityActorKind,
+	acceptance_source: &str,
+	acceptance_scope: &str,
+) -> AutonomyProposalAcceptedProjectPolicy {
+	AutonomyProposalAcceptedProjectPolicy {
+		project_id: String::from("decodex"),
+		objective_id: objective_id.to_owned(),
+		objective_version: 1,
+		accepted_policy_id: String::from("quality-autonomy-policy"),
+		accepted_policy_version: String::from("1"),
+		authority_ref: String::from("decodex.runtime_policy:quality-autonomy-policy@1"),
+		authorized_actor: authorized_actor.to_owned(),
+		authorized_actor_kind,
+		authorized_acceptance_sources: vec![acceptance_source.to_owned()],
+		authorized_scopes: vec![acceptance_scope.to_owned()],
+	}
+}
+
+pub(in crate::autonomy_proposal::tests) fn decision_bridge_authority_input(
+	accepted_by: &str,
+	accepted_by_kind: AutonomyProposalAuthorityActorKind,
+	acceptance_source: &str,
+	reason: &str,
+	proposal_actor: &str,
+	proposal_actor_kind: AutonomyProposalAuthorityActorKind,
+	accepted_project_policy: Option<AutonomyProposalAcceptedProjectPolicy>,
+) -> AutonomyProposalDecisionBridgeAuthorityInput {
+	AutonomyProposalDecisionBridgeAuthorityInput {
+		accepted_by: accepted_by.to_owned(),
+		accepted_by_kind,
+		accepted_at: String::from("2026-06-22T00:03:00Z"),
+		acceptance_source: acceptance_source.to_owned(),
+		reason: reason.to_owned(),
+		proposal_actor: proposal_actor.to_owned(),
+		proposal_actor_kind,
+		accepted_project_policy,
 	}
 }
 
@@ -174,16 +217,16 @@ fn issue_candidate(
 }
 
 fn bridge_authority() -> AutonomyProposalDecisionBridgeAuthority {
-	AutonomyProposalDecisionBridgeAuthority::new(
-		"operator",
-		AutonomyProposalAuthorityActorKind::User,
-		"2026-06-22T00:03:00Z",
-		"conversation",
-		"Operator accepted the proposal for Decision Contract promotion.",
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		None,
-	)
+	AutonomyProposalDecisionBridgeAuthority::new(AutonomyProposalDecisionBridgeAuthorityInput {
+		accepted_by: String::from("operator"),
+		accepted_by_kind: AutonomyProposalAuthorityActorKind::User,
+		accepted_at: String::from("2026-06-22T00:03:00Z"),
+		acceptance_source: String::from("conversation"),
+		reason: String::from("Operator accepted the proposal for Decision Contract promotion."),
+		proposal_actor: String::from("subagent"),
+		proposal_actor_kind: AutonomyProposalAuthorityActorKind::ExternalAgent,
+		accepted_project_policy: None,
+	})
 	.expect("bridge authority should validate")
 }
 
@@ -192,36 +235,30 @@ fn accepted_project_policy(
 	authorized_actor_kind: AutonomyProposalAuthorityActorKind,
 	acceptance_source: &str,
 ) -> AutonomyProposalAcceptedProjectPolicy {
-	AutonomyProposalAcceptedProjectPolicy::new(
-		"decodex",
+	accepted_project_policy_fixture(
 		"quality-autonomy",
-		1,
-		"quality-autonomy-policy",
-		"1",
-		"decodex.runtime_policy:quality-autonomy-policy@1",
 		authorized_actor,
 		authorized_actor_kind,
-		vec![String::from(acceptance_source)],
-		vec![String::from(super::AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE)],
+		acceptance_source,
+		AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE,
 	)
-	.expect("accepted project policy should validate")
 }
 
 fn runtime_policy_bridge_authority() -> AutonomyProposalDecisionBridgeAuthority {
-	AutonomyProposalDecisionBridgeAuthority::new(
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		"2026-06-22T00:03:00Z",
-		"runtime-policy",
-		"Accepted project policy allows this agent to accept the proposal.",
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		Some(accepted_project_policy(
+	AutonomyProposalDecisionBridgeAuthority::new(AutonomyProposalDecisionBridgeAuthorityInput {
+		accepted_by: String::from("subagent"),
+		accepted_by_kind: AutonomyProposalAuthorityActorKind::ExternalAgent,
+		accepted_at: String::from("2026-06-22T00:03:00Z"),
+		acceptance_source: String::from("runtime-policy"),
+		reason: String::from("Accepted project policy allows this agent to accept the proposal."),
+		proposal_actor: String::from("subagent"),
+		proposal_actor_kind: AutonomyProposalAuthorityActorKind::ExternalAgent,
+		accepted_project_policy: Some(accepted_project_policy(
 			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			"runtime-policy",
 		)),
-	)
+	})
 	.expect("policy-backed bridge authority should validate")
 }
 

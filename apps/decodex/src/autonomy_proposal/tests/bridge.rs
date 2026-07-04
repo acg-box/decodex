@@ -2,9 +2,8 @@ use std::slice;
 
 use crate::{
 	autonomy_proposal::{
-		AutonomyProposal, AutonomyProposalAcceptedProjectPolicy,
-		AutonomyProposalAuthorityActorKind, AutonomyProposalDecisionBridgeAuthority,
-		AutonomyProposalState, tests,
+		AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE, AutonomyProposal, AutonomyProposalAuthorityActorKind,
+		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalState, tests,
 	},
 	autonomy_signal::{AutonomySignal, AutonomySignalSourceType},
 	loop_contract::{DecisionContractStatus, DecisionPromotion, DecisionPromotionActorKind},
@@ -221,94 +220,92 @@ fn autonomy_decision_bridge_rejected_and_needs_human_proposals_remain_non_execut
 }
 
 fn assert_external_agent_policy_authority_validation() {
-	let self_accept_without_policy = AutonomyProposalDecisionBridgeAuthority::new(
-		"subagent",
-		AutonomyProposalAuthorityActorKind::User,
-		"2026-06-22T00:03:00Z",
-		"agent-output",
-		"Agent accepted its own proposal.",
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		None,
-	);
+	let self_accept_without_policy =
+		AutonomyProposalDecisionBridgeAuthority::new(tests::decision_bridge_authority_input(
+			"subagent",
+			AutonomyProposalAuthorityActorKind::User,
+			"agent-output",
+			"Agent accepted its own proposal.",
+			"subagent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			None,
+		));
 
 	assert!(self_accept_without_policy.is_err());
 
-	let wrong_actor_policy = AutonomyProposalDecisionBridgeAuthority::new(
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		"2026-06-22T00:03:00Z",
-		"runtime-policy",
-		"Agent tried to rely on another actor's policy.",
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		Some(tests::accepted_project_policy(
-			"other-agent",
+	let wrong_actor_policy =
+		AutonomyProposalDecisionBridgeAuthority::new(tests::decision_bridge_authority_input(
+			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
 			"runtime-policy",
-		)),
-	);
+			"Agent tried to rely on another actor's policy.",
+			"subagent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			Some(tests::accepted_project_policy(
+				"other-agent",
+				AutonomyProposalAuthorityActorKind::ExternalAgent,
+				"runtime-policy",
+			)),
+		));
 
 	assert!(wrong_actor_policy.is_err());
 
-	let wrong_source_policy = AutonomyProposalDecisionBridgeAuthority::new(
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		"2026-06-22T00:03:00Z",
-		"runtime-policy",
-		"Agent tried to rely on a policy for a different source.",
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		Some(tests::accepted_project_policy(
+	let wrong_source_policy =
+		AutonomyProposalDecisionBridgeAuthority::new(tests::decision_bridge_authority_input(
 			"subagent",
 			AutonomyProposalAuthorityActorKind::ExternalAgent,
-			"manual-only",
-		)),
-	);
+			"runtime-policy",
+			"Agent tried to rely on a policy for a different source.",
+			"subagent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			Some(tests::accepted_project_policy(
+				"subagent",
+				AutonomyProposalAuthorityActorKind::ExternalAgent,
+				"manual-only",
+			)),
+		));
 
 	assert!(wrong_source_policy.is_err());
 
-	let missing_acceptance_scope = AutonomyProposalAcceptedProjectPolicy::new(
-		"decodex",
-		"quality-autonomy",
-		1,
-		"quality-autonomy-policy",
-		"1",
-		"decodex.runtime_policy:quality-autonomy-policy@1",
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		vec![String::from("runtime-policy")],
-		vec![String::from("other_scope")],
-	);
+	let missing_acceptance_scope =
+		AutonomyProposalDecisionBridgeAuthority::new(tests::decision_bridge_authority_input(
+			"subagent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			"runtime-policy",
+			"Accepted project policy is missing the required acceptance scope.",
+			"subagent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			Some(tests::accepted_project_policy_fixture(
+				"quality-autonomy",
+				"subagent",
+				AutonomyProposalAuthorityActorKind::ExternalAgent,
+				"runtime-policy",
+				"other_scope",
+			)),
+		));
 
 	assert!(missing_acceptance_scope.is_err());
 }
 
 fn assert_policy_objective_lineage_required(store: &StateStore, proposal_id: &str) {
-	let wrong_objective_policy = AutonomyProposalAcceptedProjectPolicy::new(
-		"decodex",
+	let wrong_objective_policy = tests::accepted_project_policy_fixture(
 		"other-objective",
-		1,
-		"quality-autonomy-policy",
-		"1",
-		"decodex.runtime_policy:quality-autonomy-policy@1",
 		"subagent",
 		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		vec![String::from("runtime-policy")],
-		vec![String::from(crate::autonomy_proposal::AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE)],
-	)
-	.expect("wrong objective policy shape should still validate");
-	let wrong_objective_authority = AutonomyProposalDecisionBridgeAuthority::new(
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		"2026-06-22T00:03:00Z",
 		"runtime-policy",
-		"Accepted project policy references the wrong objective.",
-		"subagent",
-		AutonomyProposalAuthorityActorKind::ExternalAgent,
-		Some(wrong_objective_policy),
-	)
-	.expect("authority validates before proposal lineage is checked");
+		AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE,
+	);
+	let wrong_objective_authority =
+		AutonomyProposalDecisionBridgeAuthority::new(tests::decision_bridge_authority_input(
+			"subagent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			"runtime-policy",
+			"Accepted project policy references the wrong objective.",
+			"subagent",
+			AutonomyProposalAuthorityActorKind::ExternalAgent,
+			Some(wrong_objective_policy),
+		))
+		.expect("authority validates before proposal lineage is checked");
 	let wrong_objective_accept = store
 		.accept_autonomy_proposal_as_decision_contract_candidate(
 			"decodex",
