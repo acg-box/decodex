@@ -6,7 +6,9 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook]
-last_verified: 2026-06-27
+code_refs: [apps/decodex/src/recovery/review_handoff.rs, apps/decodex/src/recovery/review_handoff_diagnosis.rs, apps/decodex/src/recovery/review_handoff_diagnosis/actions.rs, apps/decodex/src/recovery/reports.rs, apps/decodex/src/recovery/tests/review_handoff/diagnostics/ownership_drift.rs, apps/decodex/src/recovery/tests/context.rs]
+drift_watch: [decodex recover review-handoff diagnose, decodex recover review-handoff rebind, review_handoff_writeback_failed, review_handoff_ownership_drift, pull_request_state_read_failed, decodex:active:<service-id>, decodex:needs-attention]
+last_verified: 2026-07-04
 ---
 # Recover Review Handoff
 
@@ -38,8 +40,11 @@ Use `--json` for a structured report.
 The diagnostic is read-only. It reports the issue, tracker state, branch, worktree,
 local branch, local head, worktree cleanliness, existing PR URL when one is already
 bound, stored lifecycle handoff head, stored lifecycle phase head, PR base/head when
-readable, the mismatched field when one is known, active automation label presence,
-and the suggested next command.
+readable, the exact PR readback error when an external PR read fails, the mismatched
+field when one is known, active automation label presence, and the suggested next
+command. Retained lanes that already reached review handoff but then failed during
+handoff writeback remain diagnosable even when the tracker issue is back in the
+workflow `tracker.failure_state` and is missing `decodex:active:<service-id>`.
 
 ## Explicit Rebind
 

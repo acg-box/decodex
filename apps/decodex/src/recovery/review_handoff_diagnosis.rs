@@ -48,13 +48,17 @@ where
 	let tracker_policy = context.workflow.frontmatter().tracker();
 	let success_state = tracker_policy.success_state();
 	let in_progress_state = tracker_policy.in_progress_state();
+	let failure_state = tracker_policy.failure_state();
 
 	for worktree in worktrees {
 		let Some(issue) = issues_by_id.get(worktree.issue_id()).cloned() else {
 			continue;
 		};
 
-		if issue.state.name != success_state && issue.state.name != in_progress_state {
+		if issue.state.name != success_state
+			&& issue.state.name != in_progress_state
+			&& issue.state.name != failure_state
+		{
 			continue;
 		}
 
@@ -133,6 +137,7 @@ fn stale_terminal_residue_review_handoff_diagnostic(
 		existing_lifecycle_phase_head_oid: None,
 		pr_base_ref: None,
 		pr_head_oid: None,
+		pr_read_error: None,
 		mismatched_field: None,
 		active_label_present: None,
 		next_action: String::from(
@@ -198,10 +203,13 @@ fn diagnose_issue_worktree(
 		})
 		.transpose()?
 		.flatten();
-	let pr_inspection = existing_handoff
-		.as_ref()
-		.and_then(|handoff| recovery::inspect_project_pull_request(context, handoff.pr_url()).ok())
-		.map(|(landing_state, _default_branch)| landing_state);
+	let (pr_inspection, pr_read_error) =
+		existing_handoff.as_ref().map_or((None, None), |handoff| {
+			match recovery::inspect_project_pull_request(context, handoff.pr_url()) {
+				Ok((landing_state, _default_branch)) => (Some(landing_state), None),
+				Err(error) => (None, Some(error.to_string())),
+			}
+		});
 	let local_branch_name =
 		git_worktree::worktree_checkout_branch_name(worktree.worktree_path()).ok().flatten();
 	let local_head_oid = git_worktree::worktree_head_oid(worktree.worktree_path()).ok().flatten();
@@ -251,6 +259,7 @@ fn diagnose_issue_worktree(
 			.map(|orchestration| orchestration.head_sha().to_owned()),
 		pr_base_ref: binding.pr_base_ref,
 		pr_head_oid: binding.pr_head_oid,
+		pr_read_error,
 		mismatched_field: binding.mismatched_field,
 		active_label_present,
 		next_action: binding.next_action,
