@@ -1,0 +1,60 @@
+.hero-panel {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  gap: 1rem;
+  align-content: end;
+  width: min(100%, 24rem);
+  justify-self: stretch;
+  padding: 1rem;
+  border: 1px solid var(--stage-control-border);
+  border-radius: 0.5rem;
+  background: var(--stage-glass-bg);
+  backdrop-filter: blur(18px);
+}
+
+.hero-panel__logo {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.hero-panel__logo img {
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 1rem;
+  box-shadow: 0 18px 42px rgba(20, 32, 52, 0.2);
+}
+
+.hero-panel__copy {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  text-align: right;
+}
+
+.hero-panel__copy span,
+.hero-bottom span,
+.system-panel__lead span,
+.system-loop span,
+.command-panel__copy span,
+.doc-link strong,
+.appcast-download__kicker {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 780;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.official-hero .hero-panel__copy span,
+.official-hero .hero-bottom span,
+.official-hero .appcast-download__kicker {
+  color: var(--stage-muted);
+}
+
+.hero-panel__copy strong {
+  color: var(--stage-ink);
+  font-size: 1.22rem;
+  font-weight: 820;
+  line-height: 1.12;
+}
