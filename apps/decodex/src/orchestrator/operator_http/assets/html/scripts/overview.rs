@@ -29,7 +29,19 @@ pub(super) const SCRIPT_PARTS: &[&str] = &[
 	)),
 	include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
-		"/src/orchestrator/operator_dashboard/app/overview/projects/model.js"
+		"/src/orchestrator/operator_dashboard/app/overview/projects/project-model/selection.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/overview/projects/project-model/health.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/overview/projects/project-model/stats.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/overview/projects/project-model/location.js"
 	)),
 	include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
