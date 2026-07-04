@@ -159,7 +159,7 @@ pub(crate) use self::{
 		run_control_plane_tick,
 	},
 	entrypoints_status_cache::{
-		StatusSnapshotHttpResponse, status_snapshot_from_operator_cache_response,
+		client::StatusSnapshotHttpResponse, project::status_snapshot_from_operator_cache_response,
 	},
 };
 #[allow(unused_imports)]
