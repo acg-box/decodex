@@ -4,12 +4,10 @@ mod commit_guard;
 mod context;
 mod git;
 mod landing;
+mod model;
 mod recovery;
 
-use std::{
-	env,
-	path::{Path, PathBuf},
-};
+use std::{env, path::Path};
 
 use self::{
 	authority::resolve_land_authority,
@@ -17,6 +15,13 @@ use self::{
 	git::{
 		current_branch_name, current_branch_name_if_attached, ensure_clean_worktree,
 		paths_match_for_manual_commit_guard, run_git_capture,
+	},
+	model::{
+		LandExecutionMode, MANUAL_LAND_CLOSEOUT_MARKER_GIT_PATH,
+		MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT, MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS,
+		MANUAL_LAND_MERGEABILITY_RETRY_DELAY, ManualAuthority, ManualCommitActiveLaneBlocker,
+		ManualLandCloseoutMarkerRecord, ManualLandContext, ManualLandLedgerContext,
+		ManualLandRecoveryOutcome, PreparedCloseout,
 	},
 };
 #[cfg(test)]
@@ -36,29 +41,12 @@ use self::{
 	},
 	recovery::ensure_already_merged_manual_land_recovery_ready,
 };
+#[cfg(test)] use crate::github::RepositoryContext;
 #[cfg(test)] use crate::pull_request::PullRequestLandingState;
 use crate::{
-	commit_message::{self, MANUAL_AUTHORITY},
-	default_branch_sync,
-	git_credentials::GitCredentialSource,
-	github::{self, RepositoryContext},
+	commit_message, default_branch_sync, github,
 	prelude::{Result, eyre},
-	state::{ReviewHandoffMarker, StateStore},
-	tracker::{
-		TrackerIssue,
-		linear::LinearClient,
-		privacy_classifier::{
-			ConfiguredPublicProjectionPrivacyClassifier, PublicProjectionPrivacyClassifier,
-		},
-	},
-	workflow::WorkflowDocument,
 };
-
-const MANUAL_LAND_CLOSEOUT_MARKER_GIT_PATH: &str = "decodex/manual-land-closeout";
-const MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT: std::time::Duration =
-	std::time::Duration::from_secs(15 * 60);
-const MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS: usize = 4;
-const MANUAL_LAND_MERGEABILITY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[derive(Debug)]
 pub(crate) struct ManualCommitRequest {
@@ -77,103 +65,6 @@ pub(crate) struct ManualLandRequest {
 	pub(crate) pr_url: Option<String>,
 	pub(crate) related: Vec<String>,
 	pub(crate) breaking: bool,
-}
-
-struct PreparedCloseout {
-	tracker: LinearClient,
-	issue: TrackerIssue,
-	completed_state: String,
-	service_id: String,
-	needs_attention_label: String,
-}
-
-struct ManualLandContext {
-	cwd: PathBuf,
-	current_branch: String,
-	worktree_root: PathBuf,
-	project_worktree_root: PathBuf,
-	canonical_repo_root: PathBuf,
-	authority: ManualAuthority,
-	service_id: String,
-	workflow: Option<WorkflowDocument>,
-	github_token_env_var: String,
-	github_token: String,
-	github_command_path: Option<PathBuf>,
-	repository: RepositoryContext,
-	prepared_closeout: Option<PreparedCloseout>,
-	review_handoff: Option<ReviewHandoffMarker>,
-	pr_url: String,
-	review_branch: String,
-	public_projection_privacy_classifier: ConfiguredPublicProjectionPrivacyClassifier,
-}
-impl ManualLandContext {
-	fn default_branch_git_credentials(&self) -> GitCredentialSource<'_> {
-		GitCredentialSource::new(&self.github_token_env_var, &self.github_token)
-	}
-}
-
-struct ManualLandRecoveryOutcome {
-	merge_commit: String,
-}
-
-#[derive(Default)]
-struct ManualLandCloseoutMarkerRecord {
-	pr_url: Option<String>,
-	merge_commit: Option<String>,
-	branch_name: Option<String>,
-	landed_change: Option<String>,
-}
-
-struct ManualLandLedgerContext<'a> {
-	service_id: &'a str,
-	issue: &'a TrackerIssue,
-	state_store: &'a StateStore,
-	handoff: &'a ReviewHandoffMarker,
-	pr_url: &'a str,
-	merge_commit: &'a str,
-	branch_name: &'a str,
-	worktree_path: &'a str,
-	completed_state: &'a str,
-	default_branch: &'a str,
-	privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum LandExecutionMode {
-	MergeAndCloseout,
-	CloseoutOnly,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum ManualAuthority {
-	Issue(String),
-	Manual,
-}
-impl ManualAuthority {
-	fn commit_message_value(&self) -> &str {
-		match self {
-			Self::Issue(identifier) => identifier.as_str(),
-			Self::Manual => MANUAL_AUTHORITY,
-		}
-	}
-
-	fn issue_identifier(&self) -> Option<&str> {
-		match self {
-			Self::Issue(identifier) => Some(identifier.as_str()),
-			Self::Manual => None,
-		}
-	}
-
-	fn is_manual(&self) -> bool {
-		matches!(self, Self::Manual)
-	}
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct ManualCommitActiveLaneBlocker {
-	issue_id: String,
-	branch_name: String,
-	worktree_path: PathBuf,
 }
 
 pub(crate) fn run_commit(config_path: Option<&Path>, request: &ManualCommitRequest) -> Result<()> {
