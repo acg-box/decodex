@@ -1,14 +1,23 @@
+pub(in crate::state) mod retarget;
+
 mod autonomy;
 mod decision_contracts;
 mod execution_evidence;
+mod inputs;
 mod leases;
 mod persistence;
 mod programs;
 mod projects;
 
-pub(crate) use execution_evidence::ProjectLoopEvidenceSnapshot;
+pub(crate) use self::{
+	execution_evidence::ProjectLoopEvidenceSnapshot,
+	inputs::{
+		ConnectorBackoffInput, LoopGuardrailCheckpointInput, ReviewCheckpointArtifactLookup,
+		ReviewPolicyCheckpointInput,
+	},
+};
 
-use std::{collections::HashMap, path::Path, sync::Mutex};
+use std::{path::Path, sync::Mutex};
 
 use crate::{
 	autonomy_objective::AutonomyObjectiveContract,
@@ -33,62 +42,11 @@ use crate::{
 		compare_recent_autonomy_signal_runtime_records, dispatch_slot_lock_path,
 		issue_claim_id_from_path, issue_claim_lock_path, parse_linear_execution_event_unix,
 		prune_unlocked_shared_lock_files, read_issue_claim_record,
-		read_run_activity_marker_snapshot, remove_lock_file_if_exists,
-		runtime_records::{
-			EvidenceArtifactKey, EvidenceArtifactRuntimeRecord, LoopGuardrailKey,
-			LoopGuardrailRuntimeRecord, ReviewLifecycleKey, ReviewLifecycleRuntimeRecord,
-			ReviewPolicyKey, ReviewPolicyRuntimeRecord,
-		},
-		set_close_on_exec,
-		sqlite_store::SqliteStateStore,
-		timestamp_parts, validate_private_execution_event_inputs, write_issue_claim_record,
+		read_run_activity_marker_snapshot, remove_lock_file_if_exists, set_close_on_exec,
+		sqlite_store::SqliteStateStore, timestamp_parts, validate_private_execution_event_inputs,
+		write_issue_claim_record,
 	},
 };
-
-/// Input fields for recording a project-scoped external connector backoff.
-pub(crate) struct ConnectorBackoffInput<'a> {
-	pub(crate) project_id: &'a str,
-	pub(crate) connector: &'a str,
-	pub(crate) sync_phase: &'a str,
-	pub(crate) quota_class: &'a str,
-	pub(crate) reset_unix_epoch: i64,
-	pub(crate) reset_source: &'a str,
-	pub(crate) warning: &'a str,
-}
-
-/// Input fields for recording the latest review-policy checkpoint.
-pub(crate) struct ReviewPolicyCheckpointInput<'a> {
-	pub(crate) project_id: &'a str,
-	pub(crate) issue_id: &'a str,
-	pub(crate) run_id: &'a str,
-	pub(crate) attempt_number: i64,
-	pub(crate) phase: &'a str,
-	pub(crate) review_level: &'a str,
-	pub(crate) status: &'a str,
-	pub(crate) head_sha: &'a str,
-	pub(crate) nonclean_rounds: i64,
-	pub(crate) details_json: &'a str,
-}
-
-/// Input fields for looking up a review checkpoint by its reusable evidence key.
-pub(crate) struct ReviewCheckpointArtifactLookup<'a> {
-	pub(crate) project_id: &'a str,
-	pub(crate) issue_id: &'a str,
-	pub(crate) phase: &'a str,
-	pub(crate) review_level: &'a str,
-	pub(crate) head_sha: &'a str,
-}
-
-/// Input fields for recording the latest loop-guardrail checkpoint.
-pub(crate) struct LoopGuardrailCheckpointInput<'a> {
-	pub(crate) project_id: &'a str,
-	pub(crate) issue_id: &'a str,
-	pub(crate) reason: &'a str,
-	pub(crate) fingerprint: &'a str,
-	pub(crate) run_id: &'a str,
-	pub(crate) attempt_number: i64,
-	pub(crate) details_json: &'a str,
-}
 
 /// Local runtime store for leases, attempts, worktrees, protocol events, and private evidence.
 #[derive(Default)]
@@ -116,105 +74,6 @@ impl StateStore {
 	pub fn open_in_memory() -> Result<Self> {
 		Ok(Self::default())
 	}
-}
-
-pub(super) fn retarget_review_lifecycle_issue(
-	records: &mut HashMap<ReviewLifecycleKey, ReviewLifecycleRuntimeRecord>,
-	previous_issue_id: &str,
-	canonical_issue_id: &str,
-) {
-	let previous_keys =
-		records.keys().filter(|key| key.issue_id == previous_issue_id).cloned().collect::<Vec<_>>();
-
-	for key in previous_keys {
-		let Some(mut record) = records.remove(&key) else {
-			continue;
-		};
-
-		record.issue_id = canonical_issue_id.to_owned();
-
-		records
-			.entry(ReviewLifecycleKey::new(&key.project_id, canonical_issue_id, &key.branch_name))
-			.or_insert(record);
-	}
-}
-
-pub(super) fn retarget_review_policy_issue(
-	records: &mut HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
-	previous_issue_id: &str,
-	canonical_issue_id: &str,
-) {
-	let previous_keys =
-		records.keys().filter(|key| key.issue_id == previous_issue_id).cloned().collect::<Vec<_>>();
-
-	for key in previous_keys {
-		let Some(mut record) = records.remove(&key) else {
-			continue;
-		};
-
-		record.issue_id = canonical_issue_id.to_owned();
-
-		records
-			.entry(ReviewPolicyKey::new(
-				&key.project_id,
-				canonical_issue_id,
-				&key.run_id,
-				key.attempt_number,
-				&key.phase,
-			))
-			.or_insert(record);
-	}
-}
-
-pub(super) fn retarget_evidence_artifact_issue(
-	records: &mut HashMap<EvidenceArtifactKey, EvidenceArtifactRuntimeRecord>,
-	previous_issue_id: &str,
-	canonical_issue_id: &str,
-) {
-	let previous_keys =
-		records.keys().filter(|key| key.issue_id == previous_issue_id).cloned().collect::<Vec<_>>();
-
-	for key in previous_keys {
-		let Some(mut record) = records.remove(&key) else {
-			continue;
-		};
-
-		record.issue_id = canonical_issue_id.to_owned();
-
-		records
-			.entry(EvidenceArtifactKey::new(
-				&key.project_id,
-				canonical_issue_id,
-				&key.artifact_kind,
-				&key.key_hash,
-			))
-			.or_insert(record);
-	}
-}
-
-pub(super) fn retarget_loop_guardrail_issue(
-	records: &mut HashMap<LoopGuardrailKey, LoopGuardrailRuntimeRecord>,
-	previous_issue_id: &str,
-	canonical_issue_id: &str,
-) {
-	let previous_keys =
-		records.keys().filter(|key| key.issue_id == previous_issue_id).cloned().collect::<Vec<_>>();
-
-	for key in previous_keys {
-		let Some(mut record) = records.remove(&key) else {
-			continue;
-		};
-
-		record.issue_id = canonical_issue_id.to_owned();
-
-		records
-			.entry(LoopGuardrailKey::new(&key.project_id, canonical_issue_id, &key.reason))
-			.or_insert(record);
-	}
-}
-
-pub(super) fn running_run_attempt_status(status: &str) -> bool {
-	matches!(status, "starting" | "running")
 }
 
 #[allow(dead_code)]
