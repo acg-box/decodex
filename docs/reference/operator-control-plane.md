@@ -6,7 +6,7 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/recovery/stale_active_guidance.rs, apps/decodex/src/recovery/review_handoff_diagnosis.rs, apps/decodex/src/recovery/reports.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/status_worktrees/ownership.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard/body.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/orchestrator/tests/operator/status/history/attention/terminal_attention.rs, apps/decodex/src/mcp.rs]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/recovery/stale_active_guidance.rs, apps/decodex/src/recovery/review_handoff/issue.rs, apps/decodex/src/recovery/review_handoff/labels.rs, apps/decodex/src/recovery/review_handoff_diagnosis.rs, apps/decodex/src/recovery/reports.rs, apps/decodex/src/recovery/tests/review_handoff/rebind_validation.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/status_worktrees/ownership.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_dashboard/body.html, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/orchestrator/tests/operator/status/history/attention/terminal_attention.rs, apps/decodex/src/mcp.rs]
 drift_watch: [decodex serve, decodex status, decodex status --live, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, review_handoff_writeback_failed, retained_attention, stale_active_release, stale_active_state_restore_pending, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, runtime.sqlite3, project.toml, WORKFLOW.md]
 last_verified: 2026-07-04
 ---
@@ -573,7 +573,12 @@ Worktree visibility follows the owning dashboard section:
   review worktree but cannot find the authoritative runtime DB review lifecycle
   record. Treat this as an orphaned retained review lane: inspect it with
   `decodex recover review-handoff diagnose <ISSUE>`, then use the explicit rebind path
-  only after the PR URL and retained worktree lineage match exactly.
+  only after the PR URL and retained worktree lineage match exactly. If the tracker
+  issue is in `tracker.failure_state`, has `decodex:needs-attention`, lacks
+  `decodex:active:<service-id>`, and the latest local Run Ledger terminal outcome for
+  the latest attempt proves `review_handoff_writeback_failed`, the rebind dry run is
+  the supported recovery path; it must report active-label restoration,
+  needs-attention cleanup, and transition back to `tracker.success_state`.
 - Review lifecycle handoff or phase head mismatch reasons mean Decodex found a
   retained lifecycle record but one stored field no longer matches the clean retained
   worktree and PR head. `decodex status` keeps the bound PR URL visible when it can

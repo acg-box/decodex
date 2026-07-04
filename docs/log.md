@@ -7,6 +7,10 @@
   retained lanes, reports concrete PR readback errors, and routes missing active
   ownership through audited `recover review-handoff rebind` instead of manual label
   surgery.
+- Clarified that `recover review-handoff rebind` may restore a missing review
+  lifecycle record from `tracker.failure_state` only when the latest local Run Ledger
+  terminal outcome proves review-handoff writeback failure, and that the dry run must
+  report active-label restoration, needs-attention cleanup, and transition to review.
 
 ## 2026-07-02
 
