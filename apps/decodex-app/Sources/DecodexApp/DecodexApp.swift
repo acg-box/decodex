@@ -104,6 +104,7 @@ struct DecodexApp: App {
 			}
 		}
 		.menuBarExtraStyle(.window)
+		.windowResizability(.contentSize)
 	}
 
 	@ViewBuilder
