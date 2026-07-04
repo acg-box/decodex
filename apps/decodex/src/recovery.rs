@@ -35,7 +35,7 @@ pub(crate) use self::{
 		MergedCloseoutRecoveryRequest, ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest,
 		ReviewHandoffRebindRequest, StaleActiveDiagnoseRequest, StaleActiveReleaseRequest,
 	},
-	review_handoff::{
+	review_handoff::commands::{
 		run_review_handoff_adopt, run_review_handoff_diagnose, run_review_handoff_rebind,
 	},
 	stale_active::{run_stale_active_diagnose, run_stale_active_release},
