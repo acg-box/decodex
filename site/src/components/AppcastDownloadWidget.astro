@@ -1,9 +1,22 @@
 ---
-import appcastDownloadScript from "@/scripts/appcastDownload.js?raw";
+import appcastBindScript from "@/scripts/appcastDownload/bind.js?raw";
+import appcastFetchScript from "@/scripts/appcastDownload/fetch.js?raw";
+import appcastMenuScript from "@/scripts/appcastDownload/menu.js?raw";
+import appcastParseScript from "@/scripts/appcastDownload/parse.js?raw";
+import appcastRenderScript from "@/scripts/appcastDownload/render.js?raw";
+import appcastStateScript from "@/scripts/appcastDownload/state.js?raw";
 
 const appcastUrl = "https://persistent.oaistatic.com/codex-app-beta/appcast.xml";
 const appName = "Codex (Beta).app";
 const appDownloadLabel = "Download Codex beta";
+const appcastDownloadScript = [
+  appcastStateScript,
+  appcastParseScript,
+  appcastFetchScript,
+  appcastMenuScript,
+  appcastRenderScript,
+  appcastBindScript,
+].join("\n");
 ---
 
 <div class="appcast-download" data-appcast-root data-appcast-url={appcastUrl} data-app-name={appName}>
