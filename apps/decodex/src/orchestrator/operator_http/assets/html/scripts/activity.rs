@@ -9,7 +9,23 @@ pub(super) const SCRIPT_PARTS: &[&str] = &[
 	)),
 	include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
-		"/src/orchestrator/operator_dashboard/app/activity/child-agent/buckets.js"
+		"/src/orchestrator/operator_dashboard/app/activity/child-agent/buckets/metrics.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/activity/child-agent/buckets/identity.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/activity/child-agent/buckets/signals.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/activity/child-agent/buckets/duration.js"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/app/activity/child-agent/buckets/list.js"
 	)),
 	include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
