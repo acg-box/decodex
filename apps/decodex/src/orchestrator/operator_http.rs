@@ -25,11 +25,11 @@ pub(crate) use self::{
 		strip_dashboard_run_activity_volatile_fields,
 	},
 	server::handle_operator_state_endpoint_connection,
-	types::DashboardClientSubscription,
+	types::dashboard_events::DashboardClientSubscription,
 };
 pub(crate) use self::{
 	dashboard::run_operator_run_activity_websocket_broadcasts, server::run_operator_state_endpoint,
-	snapshot::operator_snapshot_json_value, types::DashboardEventHub,
+	snapshot::operator_snapshot_json_value, types::dashboard_events::DashboardEventHub,
 };
 
 use std::{
@@ -62,10 +62,16 @@ use self::{
 	routes::{build_operator_state_http_response_for_route, parse_operator_state_request_route},
 	snapshot::build_operator_app_snapshot_http_response,
 	types::{
-		DashboardBroadcastEvent, DashboardClientFrame, DashboardClientMessage, DashboardControlAck,
-		DashboardRunActivityEvent, DashboardWebSocketSession, OperatorAccountRequest,
-		OperatorLaneInterruptHttpRequest, OperatorLaneSteerHttpRequest,
-		OperatorLinearScanHttpRequest, OperatorRequestRoute,
+		dashboard_events::{DashboardBroadcastEvent, DashboardRunActivityEvent},
+		requests::{
+			OperatorAccountRequest, OperatorLaneInterruptHttpRequest, OperatorLaneSteerHttpRequest,
+			OperatorLinearScanHttpRequest,
+		},
+		routes::OperatorRequestRoute,
+		websocket::{
+			DashboardClientFrame, DashboardClientMessage, DashboardControlAck,
+			DashboardWebSocketSession,
+		},
 	},
 };
 use crate::{
