@@ -3,7 +3,7 @@ use crate::orchestrator::execution_failure::{
 	ManualAttentionRequested, Report, Result, ReviewHandoffMarker, ServiceConfig, StateStore,
 	TERMINAL_GUARDED_RUN_STATUS, TerminalFailureWritebackRuntime, WorkflowDocument,
 	review_handoff_drift::{
-		lineage, recovery, types::REVIEW_HANDOFF_STATE_DRIFT_DETECTED_EVENT_TYPE,
+		lineage, recovery::transition, types::REVIEW_HANDOFF_STATE_DRIFT_DETECTED_EVENT_TYPE,
 	},
 };
 
@@ -156,7 +156,7 @@ fn review_handoff_marker_drift_reason(
 	if !lineage.allows_lifecycle_recovery() {
 		return Ok(Some(format!("review_handoff_marker_{}", lineage.as_str())));
 	}
-	if recovery::review_handoff_state_drift_success_transition(workflow, issue_run)?.is_some() {
+	if transition::review_handoff_state_drift_success_transition(workflow, issue_run)?.is_some() {
 		return Ok(None);
 	}
 
