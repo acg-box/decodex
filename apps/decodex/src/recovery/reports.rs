@@ -31,6 +31,7 @@ pub(super) struct ReviewHandoffDiagnostic {
 	pub(super) existing_lifecycle_phase_head_oid: Option<String>,
 	pub(super) pr_base_ref: Option<String>,
 	pub(super) pr_head_oid: Option<String>,
+	pub(super) pr_read_error: Option<String>,
 	pub(super) mismatched_field: Option<String>,
 	pub(super) active_label_present: Option<bool>,
 	pub(super) next_action: String,
@@ -118,7 +119,7 @@ pub(super) fn render_review_handoff_recovery_report(
 
 	for diagnostic in &report.diagnostics {
 		output.push_str(&format!(
-			"- issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  local_branch: {}\n  local_head: {}\n  worktree_clean: {}\n  existing_pr_url: {}\n  existing_lifecycle_handoff_head: {}\n  existing_lifecycle_phase_head: {}\n  pr_base_ref: {}\n  pr_head: {}\n  mismatched_field: {}\n  active_label_present: {}\n  next_action: {}\n",
+			"- issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  local_branch: {}\n  local_head: {}\n  worktree_clean: {}\n  existing_pr_url: {}\n  existing_lifecycle_handoff_head: {}\n  existing_lifecycle_phase_head: {}\n  pr_base_ref: {}\n  pr_head: {}\n  pr_read_error: {}\n  mismatched_field: {}\n  active_label_present: {}\n  next_action: {}\n",
 			diagnostic.issue_identifier,
 			diagnostic.issue_state,
 			diagnostic.classification,
@@ -133,6 +134,7 @@ pub(super) fn render_review_handoff_recovery_report(
 			optional_text(diagnostic.existing_lifecycle_phase_head_oid.as_deref()),
 			optional_text(diagnostic.pr_base_ref.as_deref()),
 			optional_text(diagnostic.pr_head_oid.as_deref()),
+			optional_text(diagnostic.pr_read_error.as_deref()),
 			optional_text(diagnostic.mismatched_field.as_deref()),
 			diagnostic.active_label_present.map_or_else(|| String::from("unknown"), |present| present.to_string()),
 			diagnostic.next_action,

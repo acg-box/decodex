@@ -57,7 +57,8 @@ fn diagnostic_bound_handoff_reports_missing_active_ownership_recovery() {
 	assert_eq!(diagnostic.reason, "active_ownership_label_missing");
 	assert_eq!(diagnostic.mismatched_field.as_deref(), Some("issue.labels"));
 	assert!(diagnostic.next_action.contains("decodex:active:pubfi"));
-	assert!(diagnostic.next_action.contains("Restore explicit lane ownership"));
+	assert!(diagnostic.next_action.contains("rebind PUB-718"));
+	assert!(diagnostic.next_action.contains("--dry-run"));
 }
 
 #[test]
