@@ -1,0 +1,78 @@
+.appcast-download {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.appcast-download__surface {
+  position: relative;
+  display: grid;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.appcast-download__primary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: right;
+  will-change: transform;
+}
+
+.appcast-download__primary:focus-visible {
+  border-radius: 0.38rem;
+  outline: 1.5px solid color-mix(in srgb, var(--lime) 75%, transparent);
+  outline-offset: 0.18rem;
+}
+
+.appcast-download__body {
+  display: grid;
+  justify-items: end;
+  gap: 0.18rem;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.appcast-download__title {
+  color: var(--stage-ink);
+  font-size: 0.92rem;
+  font-weight: 780;
+  line-height: 1.15;
+}
+
+.appcast-download__meta-row {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.appcast-download__meta {
+  color: var(--stage-soft);
+  font-size: 0.82rem;
+  line-height: 1.18;
+  white-space: nowrap;
+}
+
+.appcast-download__meta-row .appcast-download__meta::before {
+  margin-inline: 0.35rem;
+  color: var(--stage-muted);
+  content: ".";
+}
+
+.appcast-download__primary:hover .appcast-download__title,
+.appcast-download[data-appcast-open="true"] .appcast-download__title,
+.appcast-download:hover .appcast-download__title,
+.appcast-download:focus-within .appcast-download__title,
+.appcast-download__primary:focus-visible .appcast-download__title {
+  color: var(--stage-action-hover-ink);
+}

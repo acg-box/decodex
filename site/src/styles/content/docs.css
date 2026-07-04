@@ -1,0 +1,38 @@
+.docs-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.55rem;
+}
+
+.doc-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: baseline;
+  min-height: 3.4rem;
+  padding: 0.78rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+  border-radius: 0.38rem;
+  background: color-mix(in srgb, var(--panel-soft) 24%, transparent);
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    transform 180ms ease;
+}
+
+.doc-link:hover,
+.doc-link:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 18%, transparent);
+  transform: translateY(-0.08rem);
+}
+
+.doc-link span {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.doc-link strong {
+  color: var(--muted);
+}
