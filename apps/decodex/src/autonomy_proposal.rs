@@ -11,9 +11,9 @@ pub(crate) use self::model::{
 	AutonomyProposal, AutonomyProposalAcceptedProjectPolicy, AutonomyProposalAuthorityActorKind,
 	AutonomyProposalChallengeEvidence, AutonomyProposalChallengeInput,
 	AutonomyProposalChallengeSource, AutonomyProposalCompileInput,
-	AutonomyProposalDecisionBridgeAuthority, AutonomyProposalIssueCandidate,
-	AutonomyProposalObjectiveLineage, AutonomyProposalRefusal, AutonomyProposalRefusalReason,
-	AutonomyProposalSourceSignal, AutonomyProposalState,
+	AutonomyProposalDecisionBridgeAuthority, AutonomyProposalDecisionBridgeAuthorityInput,
+	AutonomyProposalIssueCandidate, AutonomyProposalObjectiveLineage, AutonomyProposalRefusal,
+	AutonomyProposalRefusalReason, AutonomyProposalSourceSignal, AutonomyProposalState,
 };
 
 use crate::prelude::{Result, eyre};
