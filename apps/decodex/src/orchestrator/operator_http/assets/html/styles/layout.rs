@@ -1,0 +1,56 @@
+const STYLE_PARTS: &[&str] = &[
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/workspace.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/workspace/frame.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/workspace/panels.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/workspace/cards.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/cards.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/cards/header.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/cards/meta.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/projects.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/projects/table.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/projects/rows.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/projects/content.css"
+	)),
+	include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/src/orchestrator/operator_dashboard/styles/layout/controls.css"
+	)),
+];
+
+pub(super) fn append_style_parts(html: &mut String) {
+	for style in STYLE_PARTS {
+		html.push_str(style);
+	}
+}
