@@ -4,18 +4,23 @@ use crate::{
 		context::RecoveryContext, review_handoff::RebindLabelValidation,
 		review_handoff_policy::RebindMode,
 	},
-	tracker::{self, TrackerIssue},
+	tracker::{self, IssueTracker, TrackerIssue},
+	workflow::WorkflowTracker,
 };
 
-pub(super) fn validate_rebind_tracker_labels(
-	context: &RecoveryContext,
+pub(in crate::recovery) fn validate_rebind_tracker_labels_with_tracker<T>(
+	tracker_client: &T,
+	service_id: &str,
+	tracker_policy: &WorkflowTracker,
 	issue: &TrackerIssue,
 	mode: RebindMode,
-) -> Result<RebindLabelValidation> {
-	let active_label = tracker::automation_active_label(context.config.service_id());
+) -> Result<RebindLabelValidation>
+where
+	T: IssueTracker + ?Sized,
+{
+	let active_label = tracker::automation_active_label(service_id);
 	let active_label_present =
-		tracker::issue_has_label_with_server_confirmation(&context.tracker, issue, &active_label)?;
-	let tracker_policy = context.workflow.frontmatter().tracker();
+		tracker::issue_has_label_with_server_confirmation(tracker_client, issue, &active_label)?;
 
 	if !active_label_present {
 		if !mode.allows_failure_state_drift_repair()
@@ -27,7 +32,7 @@ pub(super) fn validate_rebind_tracker_labels(
 			);
 		}
 		if tracker::issue_team_label_id_with_server_confirmation(
-			&context.tracker,
+			tracker_client,
 			issue,
 			&active_label,
 		)?
@@ -42,7 +47,7 @@ pub(super) fn validate_rebind_tracker_labels(
 
 	let needs_attention_label = tracker_policy.needs_attention_label();
 	let needs_attention_present = tracker::issue_has_label_with_server_confirmation(
-		&context.tracker,
+		tracker_client,
 		issue,
 		needs_attention_label,
 	)?;
@@ -58,7 +63,7 @@ pub(super) fn validate_rebind_tracker_labels(
 		&& issue.state.name == tracker_policy.failure_state()
 	{
 		if tracker::issue_team_label_id_with_server_confirmation(
-			&context.tracker,
+			tracker_client,
 			issue,
 			needs_attention_label,
 		)?
@@ -81,6 +86,20 @@ pub(super) fn validate_rebind_tracker_labels(
 		"Issue `{}` has needs-attention label `{}`.",
 		issue.identifier,
 		needs_attention_label
+	)
+}
+
+pub(super) fn validate_rebind_tracker_labels(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+	mode: RebindMode,
+) -> Result<RebindLabelValidation> {
+	validate_rebind_tracker_labels_with_tracker(
+		&context.tracker,
+		context.config.service_id(),
+		context.workflow.frontmatter().tracker(),
+		issue,
+		mode,
 	)
 }
 
