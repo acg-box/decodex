@@ -50,9 +50,9 @@ use crate::{
 		architecture_recovery_retry_next_action, configured_public_projection_privacy_classifier,
 		eyre, format_retry_comment, format_terminal_failure_comment, json,
 		latest_open_issue_phase_goal_before_attempt, loop_guardrail_architecture_recovery_decision,
-		record_harness_outcome_best_effort, records::LinearExecutionEventPublicProjection,
-		relative_worktree_path, repo_gate_changed_tracked_files, retry_comment_details,
-		retry_delay, terminal_failure_comment_details, terminal_failure_lifecycle_event,
+		record_harness_outcome_best_effort, relative_worktree_path,
+		repo_gate_changed_tracked_files, retry_comment_details, retry_delay,
+		terminal_failure_comment_details, terminal_failure_lifecycle_event,
 		terminal_failure_pr_url, terminal_failure_recovery_gate, worktree_has_tracked_changes,
 		worktree_head_oid, write_retry_budget_marker, write_terminal_guard_marker,
 	},
@@ -103,13 +103,6 @@ impl RunFailureWritebackDisposition {
 pub(super) enum LoopGuardrailRecoveryDecision {
 	Start(ArchitectureRecoveryStart),
 	HumanRequired(LoopGuardrailStopRequested),
-}
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum TerminalFailureEventRecordStatus {
-	Recorded,
-	Duplicate,
-	NoLocalStore,
 }
 
 #[derive(Debug)]
@@ -181,16 +174,6 @@ pub(super) struct LoopGuardrailWorktreeFingerprint {
 	pub(super) effective_status_hash: String,
 	pub(super) branch_delta_present: bool,
 	pub(super) effective_delta_present: bool,
-}
-
-struct PreparedTerminalFailureWriteback {
-	failure_state_id: String,
-	needs_attention_label: String,
-	needs_attention_label_id: Option<String>,
-	terminal_failure_state_name: String,
-	projection: LinearExecutionEventPublicProjection,
-	error_class: &'static str,
-	retry_guarded_by_state: bool,
 }
 
 struct FailureHandlingContext<'a, T>
