@@ -2,14 +2,14 @@ use sha2::{Digest as _, Sha256};
 
 use crate::agent::tracker_tool_bridge::{
 	self, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, NormalizedReviewCheckpointContract,
-	ReviewCheckpointContractArgs, ReviewPolicyPhase,
+	ReviewCheckpointContractArgs, ReviewPolicyPhase, tools::review_checkpoint::normalize::shared,
 };
 
 pub(super) fn normalize_review_checkpoint_contract(
 	contract: ReviewCheckpointContractArgs,
 	review_policy_phase: ReviewPolicyPhase,
 ) -> Result<NormalizedReviewCheckpointContract, String> {
-	let workflow_policy_source = super::normalize_required_review_text(
+	let workflow_policy_source = shared::normalize_required_review_text(
 		contract.workflow_policy_source,
 		"review_contract.workflow_policy_source",
 	)?;
@@ -23,7 +23,7 @@ pub(super) fn normalize_review_checkpoint_contract(
 	let review_type = normalize_review_type(contract.review_type, review_policy_phase)?;
 	let risk_tier = normalize_review_risk_tier(contract.risk_tier)?;
 	let objective =
-		super::normalize_required_review_text(contract.objective, "review_contract.objective")?;
+		shared::normalize_required_review_text(contract.objective, "review_contract.objective")?;
 	let scope = normalize_required_review_contract_list(contract.scope, "review_contract.scope")?;
 	let non_goals =
 		normalize_required_review_contract_list(contract.non_goals, "review_contract.non_goals")?;
