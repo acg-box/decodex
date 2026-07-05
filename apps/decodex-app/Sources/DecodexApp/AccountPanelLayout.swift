@@ -28,3 +28,8 @@ enum AccountPanelLayout {
 		return screen?.visibleFrame.height ?? 760
 	}
 }
+
+enum AccountPrivacy {
+	static let hiddenValue = "hidden"
+	static let visibleValue = "visible"
+}
