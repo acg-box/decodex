@@ -144,7 +144,10 @@ state or this state machine.
   surface for existing Linear issues. It classifies the supplied batch as ready,
   held, blocked, stale, or unmapped and builds the same internal program model used
   by later persistence, but it must not mutate Linear or write local runtime rows.
-  `--apply` writes only local runtime Program Intake and Execution Program state.
+  Dry-run reports mark `scheduler_visible=false`; any `dispatch_action=dispatch`
+  in that mode is a hypothetical result for the transient plan, not scheduler
+  authority. `--apply` writes only local runtime Program Intake and Execution
+  Program state and reports `scheduler_visible=true`.
 - Each scheduler pass evaluates persisted Execution Programs before ordinary queued
   issue selection. The Program scheduler refreshes mapped Linear issue state,
   dependency observations, local shared run claims, retained review/landing
@@ -155,7 +158,10 @@ state or this state machine.
 - When `decodex run <ISSUE>` targets a mapped Program node, inferred dispatch checks
   the same persisted Program eligibility before ordinary queue-label dispatch. A
   target whose node currently has `dispatch_action = dispatch` starts with `program`
-  dispatch mode without requiring `decodex:queued:<service-id>`.
+  dispatch mode without requiring `decodex:queued:<service-id>`. If no eligible lane
+  is selected, the operator hint must include Program Intake readback guidance so the
+  operator can distinguish a missing persisted node from ordinary queue-label
+  eligibility.
 
 The evidence boundary is ordered from private runtime authority to public collaboration
 mirror:
