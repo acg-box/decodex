@@ -15,6 +15,8 @@ pub(crate) struct IssueBatchIntakeReport {
 	pub(crate) dry_run: bool,
 	/// Whether local runtime state was persisted.
 	pub(crate) persisted: bool,
+	/// Whether dispatchable nodes in this report are visible to the Program scheduler.
+	pub(crate) scheduler_visible: bool,
 	/// Deterministic classification counts.
 	pub(crate) counts: IssueBatchIntakeCounts,
 	/// Per-issue classification rows.

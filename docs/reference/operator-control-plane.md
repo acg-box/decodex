@@ -218,7 +218,10 @@ the operator hint points to the ordinary queue checklist: `Todo`, the service-sc
 non-terminal state, no open dependency blockers, and no active issue claim. Ready
 Program Intake nodes are not queue-label candidates; they appear under Execution
 Programs, and `decodex run <ISSUE>` can start a mapped dispatchable Program node with
-`program` dispatch mode.
+`program` dispatch mode. Issue-batch dry-run reports set `scheduler_visible=false`;
+their `dispatch_action=dispatch` rows describe the transient plan only. After
+`--apply`, status Program Intake readback is the operator surface for any persisted
+node blocker before ordinary queue-label checks.
 
 The runtime database is the local source of truth for active execution. Linear and
 GitHub remain external collaboration mirrors and validation surfaces.
