@@ -40,7 +40,9 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(response.contains(
 		".account-pool-metric-value[data-tone=\"muted\"] {\n\t\t\t\tcolor: var(--muted-strong);"
 	));
+
 	assert_account_profile_layout(&response);
+
 	assert!(!response.contains("account-profile-table"));
 	assert!(!response.contains("account-profile-guide"));
 	assert!(!response.contains(".account-profile-row"));
