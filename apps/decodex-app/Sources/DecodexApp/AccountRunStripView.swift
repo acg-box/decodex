@@ -273,6 +273,8 @@ struct AccountRunStripFadeMask: View {
 struct AccountRunStripEdgeButton: View {
 	let direction: AccountRunStripScrollDirection
 	let isEnabled: Bool
+	var accessibilityLabel: String? = nil
+	var disabledHelp: String? = nil
 	let clickAction: () -> Void
 	let startContinuousAction: () -> Void
 	let stopContinuousAction: () -> Void
@@ -309,9 +311,17 @@ struct AccountRunStripEdgeButton: View {
 					cancelPress()
 				}
 			}
-			.help(isEnabled ? direction.accessibilityLabel : direction.disabledHelp)
-			.accessibilityLabel(direction.accessibilityLabel)
+			.help(isEnabled ? resolvedAccessibilityLabel : resolvedDisabledHelp)
+			.accessibilityLabel(resolvedAccessibilityLabel)
 			.accessibilityValue(isEnabled ? "Available" : "Unavailable")
+	}
+
+	private var resolvedAccessibilityLabel: String {
+		accessibilityLabel ?? direction.accessibilityLabel
+	}
+
+	private var resolvedDisabledHelp: String {
+		disabledHelp ?? direction.disabledHelp
 	}
 
 	private var tint: Color {
