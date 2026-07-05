@@ -17,10 +17,9 @@ mod schema_tests;
 use crate::{
 	agent::{
 		app_server::{
-			APP_SERVER_SCHEMA_REQUIRED_MARKERS, AppServerCapabilityPreflightFailure,
-			AppServerCapabilityPreflightReport, AppServerThreadArchiveOutcome,
-			AppServerThreadArchiveRequest, AppServerTurnFailure, CommandExecHealthCheck,
-			CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
+			AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
+			AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest, AppServerTurnFailure,
+			CommandExecHealthCheck, CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
 			ModelProviderCapabilitiesReadResponse, PluginListResponse, ProbeDynamicToolHandler,
 			REQUEST_TIMEOUT, RunRecorder, RuntimeConfigSummary, SkillsListResponse,
 			archive_app_server_thread_after_success, execute_app_server_run,
