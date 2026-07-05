@@ -3,6 +3,27 @@ use crate::orchestrator::tests::operator::status::dashboard;
 #[test]
 fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	let response = dashboard::dashboard_response();
+	let account_row_plan = response
+		.split(".account-row-plan {")
+		.nth(1)
+		.expect("account row plan style should exist")
+		.split(".account-window {")
+		.next()
+		.expect("account row plan style should end before account window style");
+	let account_window_value = response
+		.split(".account-window > strong {")
+		.nth(1)
+		.expect("account window value style should exist")
+		.split(".account-window.is-danger > strong")
+		.next()
+		.expect("account window value style should end before danger tone");
+	let account_row_state = response
+		.split(".account-row-state {")
+		.nth(1)
+		.expect("account row state style should exist")
+		.split(".account-row-credit {")
+		.next()
+		.expect("account row state style should end before credit style");
 
 	assert!(response.contains("ACCOUNT_IDENTITY_MIN_EDGE_CHARS,"));
 	assert!(
@@ -30,6 +51,14 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	));
 	assert!(!response.contains(".account-pool-list > .account-row:last-child"));
 	assert!(response.contains("account-row-credit"));
+	assert!(account_row_plan.contains("font-family: var(--mono);"));
+	assert!(account_row_plan.contains("font-size: 11px;"));
+	assert!(account_row_plan.contains("white-space: nowrap;\n\t\t\t}"));
+	assert!(account_window_value.contains("font-size: 13px;"));
+	assert!(account_window_value.contains("font-weight: 650;"));
+	assert!(account_row_state.contains("font-family: var(--mono);"));
+	assert!(account_row_state.contains("font-size: 11px;"));
+	assert!(account_row_state.contains("color: var(--muted);\n\t\t\t}"));
 	assert!(response.contains(".account-row-credit {\n\t\t\t\tgrid-area: credit;"));
 	assert!(response.contains(
 		".account-row-credit {\n\t\t\t\tgrid-area: credit;\n\t\t\t\tjustify-self: center;"

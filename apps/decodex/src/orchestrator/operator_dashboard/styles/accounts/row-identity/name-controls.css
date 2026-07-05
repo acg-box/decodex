@@ -19,8 +19,8 @@
 				text-overflow: ellipsis;
 				white-space: nowrap;
 				color: var(--text);
-				font-size: var(--type-label);
-				font-weight: var(--weight-label);
+				font-size: 13px;
+				font-weight: 650;
 			}
 
 			.account-name-button {
@@ -35,9 +35,9 @@
 				background: transparent;
 				color: var(--text);
 				font-family: var(--mono);
-				font-size: var(--type-label);
+				font-size: 13px;
 				font-variant-ligatures: none;
-				font-weight: var(--weight-label);
+				font-weight: 650;
 				letter-spacing: 0;
 				line-height: 1.25;
 				cursor: pointer;

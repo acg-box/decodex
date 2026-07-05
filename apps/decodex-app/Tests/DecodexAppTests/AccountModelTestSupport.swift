@@ -25,7 +25,9 @@ func makeAccount(
 	checkedAtUnixEpoch: Int? = nil,
 	primaryRemainingPercent: Int? = nil,
 	profilePeakDailyTokens: Int? = nil,
-	profileDailyUsage: [AccountProfileDailyUsage]? = nil
+	profileDailyUsage: [AccountProfileDailyUsage]? = nil,
+	resetCreditsAvailableCount: Int? = nil,
+	resetCredits: [AccountResetCredit]? = nil
 ) -> CodexAccount {
 	CodexAccount(
 		accountFingerprint: accountFingerprint,
@@ -57,6 +59,10 @@ func makeAccount(
 		creditsHasCredits: nil,
 		creditsUnlimited: nil,
 		creditsBalance: nil,
+		resetCreditsAvailableCount: resetCreditsAvailableCount,
+		resetCreditsTotalEarnedCount: nil,
+		resetCreditsCheckedAtUnixEpoch: nil,
+		resetCredits: resetCredits,
 		rateLimitReachedType: nil,
 		profileDisplayName: nil,
 		profileUsername: nil,

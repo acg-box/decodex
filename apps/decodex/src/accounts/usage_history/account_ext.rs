@@ -19,13 +19,29 @@ impl AccountListResponse {
 		accounts_path: &Path,
 		force_refresh: bool,
 	) {
+		let pool = match CodexAccountPool::from_accounts_path(accounts_path) {
+			Ok(pool) => pool,
+			Err(error) => {
+				self.usage_probe_error = Some(error.to_string());
+
+				return;
+			},
+		};
+
+		self.hydrate_usage_from_pool(&pool, accounts_path, force_refresh);
+	}
+
+	pub(crate) fn hydrate_usage_from_pool(
+		&mut self,
+		pool: &CodexAccountPool,
+		accounts_path: &Path,
+		force_refresh: bool,
+	) {
 		if self.accounts.is_empty() {
 			return;
 		}
 
-		match CodexAccountPool::from_accounts_path(accounts_path)
-			.and_then(|pool| pool.account_activity_summaries_cached(force_refresh))
-		{
+		match pool.account_activity_summaries_cached(force_refresh) {
 			Ok(summaries) => {
 				self.apply_usage_summaries(&summaries);
 
@@ -102,6 +118,12 @@ impl AccountSummary {
 		self.credits_unlimited = summary.credits_unlimited;
 
 		self.credits_balance.clone_from(&summary.credits_balance);
+
+		self.reset_credits_available_count = summary.reset_credits_available_count;
+		self.reset_credits_total_earned_count = summary.reset_credits_total_earned_count;
+		self.reset_credits_checked_at_unix_epoch = summary.reset_credits_checked_at_unix_epoch;
+
+		self.reset_credits.clone_from(&summary.reset_credits);
 		self.rate_limit_reached_type.clone_from(&summary.rate_limit_reached_type);
 		self.profile_display_name.clone_from(&summary.profile_display_name);
 		self.profile_username.clone_from(&summary.profile_username);

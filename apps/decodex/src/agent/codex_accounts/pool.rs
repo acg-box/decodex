@@ -19,6 +19,7 @@ pub(crate) struct CodexAccountPool {
 	pub(super) path: PathBuf,
 	pub(super) usage_endpoint: String,
 	pub(super) profile_endpoint: Option<String>,
+	pub(super) reset_credits_endpoint: String,
 	pub(super) refresh_endpoint: String,
 	pub(super) fixed_account: Option<String>,
 	pub(super) codex_auth_path: PathBuf,

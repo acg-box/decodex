@@ -7,8 +7,8 @@ use reqwest::blocking::Client;
 
 use crate::{
 	agent::codex_accounts::{
-		DEFAULT_REFRESH_ENDPOINT, DEFAULT_USAGE_ENDPOINT, HTTP_TIMEOUT, pool::CodexAccountPool,
-		record, usage,
+		DEFAULT_REFRESH_ENDPOINT, DEFAULT_RESET_CREDITS_ENDPOINT, DEFAULT_USAGE_ENDPOINT,
+		HTTP_TIMEOUT, pool::CodexAccountPool, record, usage,
 	},
 	config::ProjectCodexAccountsConfig,
 	prelude::Result,
@@ -24,18 +24,26 @@ impl CodexAccountPool {
 			runtime::accounts_path()?,
 			usage_endpoint,
 			config.profile_endpoint(),
+			config.reset_credits_endpoint().unwrap_or(DEFAULT_RESET_CREDITS_ENDPOINT),
 			config.refresh_endpoint().unwrap_or(DEFAULT_REFRESH_ENDPOINT),
 			fixed_account.as_deref(),
 		)
 	}
 
 	pub(crate) fn from_accounts_path(path: impl AsRef<Path>) -> Result<Self> {
-		Self::new_with_fixed_account(path, DEFAULT_USAGE_ENDPOINT, DEFAULT_REFRESH_ENDPOINT, None)
+		Self::new_with_fixed_account(
+			path,
+			DEFAULT_USAGE_ENDPOINT,
+			DEFAULT_RESET_CREDITS_ENDPOINT,
+			DEFAULT_REFRESH_ENDPOINT,
+			None,
+		)
 	}
 
 	pub(in crate::agent::codex_accounts) fn new_with_fixed_account(
 		path: impl AsRef<Path>,
 		usage_endpoint: impl Into<String>,
+		reset_credits_endpoint: impl Into<String>,
 		refresh_endpoint: impl Into<String>,
 		fixed_account: Option<&str>,
 	) -> Result<Self> {
@@ -43,6 +51,7 @@ impl CodexAccountPool {
 			path,
 			usage_endpoint,
 			None,
+			reset_credits_endpoint,
 			refresh_endpoint,
 			fixed_account,
 		)
@@ -52,6 +61,7 @@ impl CodexAccountPool {
 		path: impl AsRef<Path>,
 		usage_endpoint: impl Into<String>,
 		profile_endpoint: Option<&str>,
+		reset_credits_endpoint: impl Into<String>,
 		refresh_endpoint: impl Into<String>,
 		fixed_account: Option<&str>,
 	) -> Result<Self> {
@@ -59,6 +69,7 @@ impl CodexAccountPool {
 			path,
 			usage_endpoint,
 			profile_endpoint,
+			reset_credits_endpoint,
 			refresh_endpoint,
 			fixed_account,
 			record::default_codex_auth_json_path()?,
@@ -69,6 +80,7 @@ impl CodexAccountPool {
 	pub(in crate::agent::codex_accounts) fn new_with_fixed_account_and_codex_auth_path(
 		path: impl AsRef<Path>,
 		usage_endpoint: impl Into<String>,
+		reset_credits_endpoint: impl Into<String>,
 		refresh_endpoint: impl Into<String>,
 		fixed_account: Option<&str>,
 		codex_auth_path: impl Into<PathBuf>,
@@ -77,6 +89,7 @@ impl CodexAccountPool {
 			path,
 			usage_endpoint,
 			None,
+			reset_credits_endpoint,
 			refresh_endpoint,
 			fixed_account,
 			codex_auth_path,
@@ -87,6 +100,7 @@ impl CodexAccountPool {
 		path: impl AsRef<Path>,
 		usage_endpoint: impl Into<String>,
 		profile_endpoint: Option<&str>,
+		reset_credits_endpoint: impl Into<String>,
 		refresh_endpoint: impl Into<String>,
 		fixed_account: Option<&str>,
 		codex_auth_path: impl Into<PathBuf>,
@@ -101,6 +115,7 @@ impl CodexAccountPool {
 			path: path.as_ref().to_path_buf(),
 			usage_endpoint,
 			profile_endpoint,
+			reset_credits_endpoint: reset_credits_endpoint.into(),
 			refresh_endpoint: refresh_endpoint.into(),
 			fixed_account: fixed_account
 				.map(str::trim)

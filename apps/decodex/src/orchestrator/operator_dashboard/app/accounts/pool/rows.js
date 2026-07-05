@@ -14,6 +14,11 @@
 						String(account.status || "").toLowerCase() === "selected" ? " is-selected" : "";
 					const metaFacts = codexAccountMetaFacts(account);
 					const credits = codexAccountCreditsSummary(account);
+					const resetCredits = codexAccountResetCreditsSummary(account);
+					const creditValue = credits || "-";
+					const creditTitle = [credits ? `credits ${credits}` : "credits unavailable", resetCredits ? `reset cards ${resetCredits}` : ""]
+						.filter(Boolean)
+						.join(", ");
 					const creditTone = codexAccountCreditsTone(account);
 					const creditClass = creditTone ? ` is-${creditTone}` : "";
 					const identityClass = codexAccountShowsEmail(account) ? " is-machine" : "";
@@ -36,9 +41,9 @@
 								<div class="account-row-plan">${escapeHtml(weight)}</div>
 								${renderCodexAccountPoolWindow(account, "primary")}
 								${renderCodexAccountPoolWindow(account, "secondary")}
-								<div class="account-row-credit${creditClass}">
-									<span>credits</span>
-									<strong>${escapeHtml(credits || "-")}</strong>
+								<div class="account-row-credit${creditClass}" title="${escapeHtml(creditTitle)}">
+									<strong>${escapeHtml(creditValue)}</strong>
+									${resetCredits ? `<small class="account-row-reset-credit">${escapeHtml(resetCredits)}</small>` : ""}
 								</div>
 								<div class="account-row-state">
 									<strong class="account-status">${escapeHtml(codexAccountStatusLabel(account))}</strong>
@@ -68,7 +73,8 @@
 				function renderCodexAccountProfilePanel(account, snapshot, profileKey, expanded) {
 					const facts = codexAccountProfileFactMap(account);
 					const activity = renderCodexAccountProfileActivityStrip(account);
-					if (!facts.size && !activity) {
+					const resetCredits = renderCodexAccountResetCreditsStrip(account);
+					if (!facts.size && !activity && !resetCredits) {
 						return "";
 					}
 
@@ -106,6 +112,10 @@
 										`,
 									)
 									.join("")}
+								<div class="account-profile-activity is-reset-cards">
+									<span class="account-profile-activity-label">Reset cards</span>
+									${resetCredits || '<strong class="account-profile-empty">-</strong>'}
+								</div>
 								<div class="account-profile-activity">
 									<span class="account-profile-activity-label">Activity</span>
 									${activity || '<strong class="account-profile-empty">-</strong>'}

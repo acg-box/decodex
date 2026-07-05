@@ -6,7 +6,9 @@ use crate::agent::codex_accounts::{
 	CODEX_USER_AGENT,
 	pool::CodexAccountPool,
 	record::AccountPoolRecord,
-	usage::{self, AccountProfileSnapshot, AccountUsageSnapshot, UsageProbeError},
+	usage::{
+		self, AccountProfileSnapshot, AccountUsageSnapshot, ResetCreditsSnapshot, UsageProbeError,
+	},
 };
 
 impl CodexAccountPool {
@@ -31,7 +33,7 @@ impl CodexAccountPool {
 		let status = response.status();
 
 		if status == StatusCode::UNAUTHORIZED {
-			return Err(UsageProbeError::unauthorized());
+			return Err(UsageProbeError::unauthorized("usage endpoint"));
 		}
 		if !status.is_success() {
 			return Err(UsageProbeError::other(format!("usage endpoint returned {status}")));
@@ -68,7 +70,7 @@ impl CodexAccountPool {
 		let status = response.status();
 
 		if status == StatusCode::UNAUTHORIZED {
-			return Err(UsageProbeError::unauthorized());
+			return Err(UsageProbeError::unauthorized("profile endpoint"));
 		}
 		if !status.is_success() {
 			return Err(UsageProbeError::other(format!("profile endpoint returned {status}")));
@@ -79,6 +81,45 @@ impl CodexAccountPool {
 		})?;
 
 		Ok(usage::profile_snapshot_from_payload(
+			&payload,
+			OffsetDateTime::now_utc().unix_timestamp(),
+		))
+	}
+
+	pub(in crate::agent::codex_accounts) fn probe_record_reset_credits(
+		&self,
+		record: &AccountPoolRecord,
+	) -> std::result::Result<ResetCreditsSnapshot, UsageProbeError> {
+		let access_token = record
+			.access_token()
+			.ok_or_else(|| UsageProbeError::other("account is missing an access token"))?;
+		let account_id = record
+			.account_id()
+			.ok_or_else(|| UsageProbeError::other("account is missing an account id"))?;
+		let response = self
+			.client
+			.get(&self.reset_credits_endpoint)
+			.bearer_auth(access_token)
+			.header("ChatGPT-Account-Id", account_id)
+			.header("User-Agent", CODEX_USER_AGENT)
+			.send()
+			.map_err(|error| UsageProbeError::other(error.to_string()))?;
+		let status = response.status();
+
+		if status == StatusCode::UNAUTHORIZED {
+			return Err(UsageProbeError::unauthorized("reset credits endpoint"));
+		}
+		if !status.is_success() {
+			return Err(UsageProbeError::other(format!(
+				"reset credits endpoint returned {status}"
+			)));
+		}
+
+		let payload = response.json::<Value>().map_err(|error| {
+			UsageProbeError::other(format!("reset credits JSON did not parse: {error}"))
+		})?;
+
+		Ok(usage::reset_credits_snapshot_from_payload(
 			&payload,
 			OffsetDateTime::now_utc().unix_timestamp(),
 		))
