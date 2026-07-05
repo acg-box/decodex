@@ -1,10 +1,16 @@
 mod candidates;
 mod model;
+mod model_candidate;
+mod model_constants;
+mod model_kind;
+mod model_payload;
+mod model_signals;
 mod payload;
 mod record;
 
-pub(crate) use model::{
-	HarnessImprovementCandidateSummary, HarnessOutcomeKind, HarnessOutcomeRecordInput,
+pub(crate) use self::{
+	model_candidate::HarnessImprovementCandidateSummary,
+	model_kind::{HarnessOutcomeKind, HarnessOutcomeRecordInput},
 };
 #[cfg(test)] pub(crate) use record::record_harness_outcome_for_issue_run;
 pub(crate) use record::{
