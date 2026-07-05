@@ -1,8 +1,9 @@
 use crate::orchestrator::{
 	RepoGateFailure,
 	tests::runtime_failure::{
-		self, AppServerCapabilityPreflightFailure, Duration, RUN_LEASE_IDLE_TIMEOUT,
-		RepoGateFailureKind, Report, RetryComment, StalledRunNeedsAttention, orchestrator,
+		self, AppServerCapabilityPreflightFailure, AppServerTurnFailure, Duration,
+		RUN_LEASE_IDLE_TIMEOUT, RepoGateFailureKind, Report, RetryComment,
+		StalledRunNeedsAttention, orchestrator,
 	},
 };
 
@@ -115,4 +116,19 @@ fn app_server_preflight_timeout_retry_comments_preserve_specific_error_class() {
 	assert!(next_action.contains("retry app-server preflight automatically"));
 	assert!(next_action.contains("`plugin/list` timeout"));
 	assert!(next_action.contains("retry budget exhausts"));
+}
+
+#[test]
+fn app_server_turn_retry_comments_preserve_specific_error_class() {
+	let error = Report::new(AppServerTurnFailure::new(
+		"thread-1",
+		Some(String::from("turn-1")),
+		"failed",
+		"transient model failure",
+		None,
+	));
+	let (error_class, next_action) = orchestrator::retry_comment_details(&error);
+
+	assert_eq!(error_class, "app_server_turn_failed");
+	assert_eq!(next_action, "decodex will retry automatically");
 }

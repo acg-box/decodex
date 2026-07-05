@@ -144,3 +144,16 @@ pub(super) fn retrying_error_fake_codex_script() -> String {
         send({"id": 999, "result": {"late": True}})"#,
 	)
 }
+
+pub(super) fn interrupted_without_error_fake_codex_script() -> String {
+	orphan_response_fake_codex_script().replace(
+		r#"        send({"method": "turn/completed", "params": {
+            "threadId": "thread-1",
+            "turn": {"id": "turn-1", "status": "completed", "error": None}
+        }})"#,
+		r#"        send({"method": "turn/completed", "params": {
+            "threadId": "thread-1",
+            "turn": {"id": "turn-1", "status": "interrupted", "error": None}
+        }})"#,
+	)
+}

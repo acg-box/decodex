@@ -53,7 +53,8 @@ use dynamic_tool_handlers::{
 	LiveResumeDynamicToolHandler, NamespacedDynamicToolHandler,
 };
 use fake_codex_scripts::{
-	install_fake_codex_script, orphan_response_fake_codex_script, retrying_error_fake_codex_script,
+	install_fake_codex_script, interrupted_without_error_fake_codex_script,
+	orphan_response_fake_codex_script, retrying_error_fake_codex_script,
 	slow_thread_start_fake_codex_script,
 };
 use phase_goal_support::{

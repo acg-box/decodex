@@ -20,6 +20,7 @@ pub(in crate::agent::tracker_tool_bridge::tools::manual_attention::normalize) fn
 			| "app_server_dynamic_tool_protocol_failure"
 			| "app_server_dynamic_tool_failed"
 			| "app_server_turn_failed"
+			| "app_server_turn_missing_error_payload"
 			| "app_server_usage_limit_exceeded"
 	) || runtime_owned_baseline_error_class(error_class)
 }
