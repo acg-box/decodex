@@ -1,6 +1,83 @@
 import AppKit
 import SwiftUI
 
+struct LoginPanelPresenter: NSViewRepresentable {
+	@ObservedObject var store: AccountStore
+	@ObservedObject var state: LoginWindowState
+
+	func makeCoordinator() -> Coordinator {
+		Coordinator()
+	}
+
+	func makeNSView(context: Context) -> NSView {
+		let view = NSView(frame: .zero)
+		context.coordinator.hostView = view
+
+		return view
+	}
+
+	func updateNSView(_ nsView: NSView, context: Context) {
+		context.coordinator.hostView = nsView
+		context.coordinator.update(store: store, state: state)
+	}
+}
+
+final class LoginFloatingPanel: NSPanel {
+	override var canBecomeKey: Bool {
+		true
+	}
+
+	override var canBecomeMain: Bool {
+		false
+	}
+}
+
+final class LoginPanelPlacementState {
+	weak var lastParent: NSWindow?
+	var lastPanelSize: NSSize?
+	var hasPlacedPanel = false
+
+	func reset() {
+		lastParent = nil
+		lastPanelSize = nil
+		hasPlacedPanel = false
+	}
+
+	func shouldPlace(
+		parentWindow: NSWindow?,
+		panelSize: NSSize,
+		forcePlacement: Bool
+	) -> Bool {
+		let parentChanged = Self.windowsDiffer(lastParent, parentWindow)
+		let sizeChanged = lastPanelSize.map {
+			LoginPanelLayout.sizeDiffers($0, panelSize)
+		} ?? true
+
+		return forcePlacement || parentChanged || sizeChanged
+	}
+
+	func markPlaced(parentWindow: NSWindow?, panelSize: NSSize) {
+		lastParent = parentWindow
+		lastPanelSize = panelSize
+		hasPlacedPanel = true
+	}
+
+	func parentDiffers(from window: NSWindow?) -> Bool {
+		Self.windowsDiffer(lastParent, window)
+	}
+
+	private static func windowsDiffer(_ lhs: NSWindow?, _ rhs: NSWindow?) -> Bool {
+		switch (lhs, rhs) {
+		case (nil, nil):
+			return false
+		case (.some(let lhs), .some(let rhs)):
+			return lhs !== rhs
+		default:
+			return true
+		}
+	}
+}
+
 extension LoginPanelPresenter {
 	final class Coordinator: NSObject, NSWindowDelegate {
 		weak var hostView: NSView?

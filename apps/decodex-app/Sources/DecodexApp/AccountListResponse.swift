@@ -21,3 +21,30 @@ struct AccountListResponse: Decodable {
 		case usageProbeError = "usage_probe_error"
 	}
 }
+
+extension AccountListResponse {
+	func updatingCodexAuth(_ identity: CodexAuthIdentity) -> AccountListResponse {
+		AccountListResponse(
+			accountsPath: accountsPath,
+			globalConfigPath: globalConfigPath,
+			codexAuthPath: codexAuthPath,
+			codexAuth: identity,
+			control: control,
+			accounts: accounts.map { account in
+				account.withCodexActive(account.matchesSelector(identity.selector))
+			},
+			usageEstimate: usageEstimate,
+			usageProbeError: usageProbeError
+		)
+	}
+}
+
+struct AccountControl: Decodable {
+	let mode: String
+	let accountSelector: String?
+
+	enum CodingKeys: String, CodingKey {
+		case mode
+		case accountSelector = "account_selector"
+	}
+}
