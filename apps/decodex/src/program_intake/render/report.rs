@@ -4,9 +4,11 @@ use crate::program_intake::model::{GoalIntakeReport, IssueBatchIntakeReport};
 pub(crate) fn render_issue_batch_intake_report(report: &IssueBatchIntakeReport) -> String {
 	let mode = if report.persisted { "apply" } else { "dry-run" };
 	let mut output = format!(
-		"program intake {mode}: service={} program={} ready={} held={} blocked={} stale={} unmapped={}\n",
+		"program intake {mode}: service={} program={} persisted={} scheduler_visible={} ready={} held={} blocked={} stale={} unmapped={}\n",
 		report.service_id,
 		report.program_id,
+		report.persisted,
+		report.scheduler_visible,
 		report.counts.ready,
 		report.counts.held,
 		report.counts.blocked,

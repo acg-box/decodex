@@ -16,4 +16,7 @@ fn no_eligible_issue_message_includes_operator_hint() {
 	assert!(message.contains("non-terminal state"));
 	assert!(message.contains("dependency blockers"));
 	assert!(message.contains("no active issue claim"));
+	assert!(message.contains("Program Intake"));
+	assert!(message.contains("decodex status --live"));
+	assert!(message.contains("decodex intake issues --project pubfi --apply <ISSUE>"));
 }

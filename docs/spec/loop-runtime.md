@@ -454,11 +454,13 @@ The operator CLI surface for existing issues is
 `decodex intake issues --project <service-id> <ISSUE>... --dry-run`, or the same
 command with `--config <PROJECT_DIR>`. Dry-run reads tracker state and prints a
 deterministic ready/held/blocked/stale/unmapped report without mutating Linear and
-without persisting local runtime rows. `--apply` is an explicit local-runtime write:
-it stores the Program Intake Plan, Execution Program payload, and issue mappings, but
-it must not apply or remove `decodex:queued:<service-id>`. Ready mapped nodes are
-dispatched directly by the Program scheduler rather than converted into queued-label
-work.
+without persisting local runtime rows. Dry-run reports set `scheduler_visible=false`,
+so `dispatch_action=dispatch` means the transient plan would be dispatchable only
+after persistence. `--apply` is an explicit local-runtime write: it stores the Program
+Intake Plan, Execution Program payload, and issue mappings, and sets
+`scheduler_visible=true`, but it must not apply or remove
+`decodex:queued:<service-id>`. Ready mapped nodes are dispatched directly by the
+Program scheduler rather than converted into queued-label work.
 
 ## Internal Execution Program
 
