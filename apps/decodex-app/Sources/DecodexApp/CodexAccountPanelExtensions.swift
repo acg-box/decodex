@@ -55,11 +55,34 @@ extension CodexAccount {
 	}
 
 	var hasUsageSummary: Bool {
-		hasUsageWindowSummary || hasProfileSummary
+		hasUsageWindowSummary || hasProfileSummary || hasResetCreditsSummary
 	}
 
 	var hasUsageWindowSummary: Bool {
 		hasPrimaryUsageData || hasSecondaryUsageData
+	}
+
+	var availableResetCredits: [AccountResetCredit] {
+		(resetCredits ?? [])
+			.filter { credit in
+				let status = credit.status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+				return status == nil || status == "" || status == "available"
+			}
+			.sorted {
+				($0.expiresAtUnixEpoch ?? Int.max) < ($1.expiresAtUnixEpoch ?? Int.max)
+			}
+	}
+
+	var visibleResetCreditCount: Int? {
+		if let resetCreditsAvailableCount {
+			return resetCreditsAvailableCount
+		}
+		let count = availableResetCredits.count
+		return count > 0 ? count : nil
+	}
+
+	var hasResetCreditsSummary: Bool {
+		visibleResetCreditCount.map { $0 > 0 } ?? false
 	}
 
 	var recentUsageRecords: [AccountUsageRecord] {

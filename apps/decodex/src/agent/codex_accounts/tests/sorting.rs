@@ -141,6 +141,7 @@ fn account_pool_rotates_equal_full_usage_across_dispatches() {
 		FULL_USAGE, FULL_USAGE, FULL_USAGE, FULL_USAGE, FULL_USAGE, FULL_USAGE, FULL_USAGE,
 		FULL_USAGE, FULL_USAGE,
 	]);
+	let reset_credits_endpoint = super::start_codex_reset_credits_fixture_server(9);
 
 	fs::write(
 		&accounts_path,
@@ -154,6 +155,7 @@ fn account_pool_rotates_equal_full_usage_across_dispatches() {
 	let pool = CodexAccountPool::new_with_fixed_account(
 		&accounts_path,
 		usage_endpoint,
+		reset_credits_endpoint,
 		DEFAULT_REFRESH_ENDPOINT,
 		None,
 	)

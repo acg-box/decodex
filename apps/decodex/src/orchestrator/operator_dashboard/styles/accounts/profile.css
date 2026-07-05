@@ -17,7 +17,7 @@
 
 			.account-profile-panel-inner {
 				display: grid;
-				grid-template-columns: repeat(5, minmax(0, 1fr));
+				grid-template-columns: repeat(6, minmax(0, 1fr));
 				align-items: center;
 				gap: 8px var(--space-row-y);
 				min-width: 0;
@@ -66,6 +66,39 @@
 			.account-profile-activity {
 				justify-items: center;
 				text-align: center;
+			}
+
+			.account-profile-activity.is-reset-cards {
+				justify-items: center;
+			}
+
+			.account-reset-credit-strip {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+				align-items: center;
+				gap: 3px 12px;
+				justify-content: center;
+				max-width: 100%;
+				max-height: 46px;
+				min-width: 0;
+				overflow-y: auto;
+				padding-right: 7px;
+				scrollbar-width: thin;
+			}
+
+			.account-reset-credit-chip {
+				display: block;
+				justify-self: center;
+				min-width: 0;
+				max-width: none;
+				padding: 0;
+				border: 0;
+				overflow: visible;
+				color: var(--muted-strong);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				line-height: 1.2;
+				white-space: nowrap;
 			}
 
 			.account-profile-panel:last-child {

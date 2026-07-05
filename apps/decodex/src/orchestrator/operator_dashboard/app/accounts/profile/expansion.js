@@ -7,7 +7,8 @@
 				function codexAccountHasProfileDetails(account) {
 					return (
 						codexAccountProfileMetaFacts(account).length > 0 ||
-						codexAccountProfileDailyUsage(account).length > 0
+						codexAccountProfileDailyUsage(account).length > 0 ||
+						codexAccountResetCreditsAvailableCount(account) > 0
 					);
 				}
 

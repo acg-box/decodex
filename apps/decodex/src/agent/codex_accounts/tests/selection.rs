@@ -14,6 +14,7 @@ fn fixed_account_selection_uses_configured_account_without_balancing() {
 	let usage_endpoint = super::start_codex_usage_fixture_server(vec![
 		r#"{"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":85},"secondary_window":{"used_percent":90}}}"#,
 	]);
+	let reset_credits_endpoint = super::start_codex_reset_credits_fixture_server(1);
 
 	fs::write(
 		&accounts_path,
@@ -26,6 +27,7 @@ fn fixed_account_selection_uses_configured_account_without_balancing() {
 	let pool = CodexAccountPool::new_with_fixed_account(
 		&accounts_path,
 		usage_endpoint,
+		reset_credits_endpoint,
 		DEFAULT_REFRESH_ENDPOINT,
 		Some("copy@example.com"),
 	)
@@ -49,6 +51,7 @@ fn selection_marks_refresh_auth_failure_and_selects_next_account() {
 	let usage_endpoint = super::start_codex_usage_fixture_server(vec![
 		r#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":0},"secondary_window":{"used_percent":0}}}"#,
 	]);
+	let reset_credits_endpoint = super::start_codex_reset_credits_fixture_server(1);
 
 	fs::write(
 		&accounts_path,
@@ -61,6 +64,7 @@ fn selection_marks_refresh_auth_failure_and_selects_next_account() {
 	let pool = CodexAccountPool::new_with_fixed_account(
 		&accounts_path,
 		usage_endpoint,
+		reset_credits_endpoint,
 		refresh_endpoint,
 		None,
 	)

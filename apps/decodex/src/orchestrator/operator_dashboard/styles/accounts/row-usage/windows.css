@@ -35,9 +35,9 @@
 			.account-window-label {
 				display: none;
 				color: var(--muted);
-				font-size: var(--type-caption);
-				font-weight: var(--weight-label);
-				letter-spacing: var(--tracking-caps);
+				font-size: 10px;
+				font-weight: 650;
+				letter-spacing: 0.03em;
 			}
 
 			.account-window > strong {
@@ -45,8 +45,8 @@
 				grid-column: 1;
 				grid-row: 1;
 				color: var(--text);
-				font-size: var(--type-label);
-				font-weight: var(--weight-label);
+				font-size: 13px;
+				font-weight: 650;
 				line-height: 1.15;
 			}
 
@@ -67,7 +67,7 @@
 				text-overflow: ellipsis;
 				color: var(--muted);
 				font-family: var(--mono);
-				font-size: var(--type-label);
+				font-size: 11px;
 				line-height: 1.08;
 				white-space: nowrap;
 			}
@@ -80,7 +80,7 @@
 				text-overflow: ellipsis;
 				color: var(--muted);
 				font-family: var(--mono);
-				font-size: var(--type-caption);
+				font-size: 10px;
 				line-height: 1.12;
 				white-space: nowrap;
 			}

@@ -1,7 +1,10 @@
 use serde_json::Value;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-	agent::codex_accounts::usage::{AccountProfileSnapshot, AccountUsageSnapshot},
+	agent::codex_accounts::usage::{
+		AccountProfileSnapshot, AccountUsageSnapshot, ResetCreditSummary, ResetCreditsSnapshot,
+	},
 	state::CodexAccountProfileDailyUsageSummary,
 };
 
@@ -54,6 +57,24 @@ pub(crate) fn profile_snapshot_from_payload(
 	};
 
 	(!snapshot.is_empty()).then_some(snapshot)
+}
+
+pub(crate) fn reset_credits_snapshot_from_payload(
+	payload: &Value,
+	checked_at_unix_epoch: i64,
+) -> ResetCreditsSnapshot {
+	let credits = payload
+		.get("credits")
+		.and_then(Value::as_array)
+		.map(|items| items.iter().filter_map(reset_credit_from_value).collect::<Vec<_>>())
+		.unwrap_or_default();
+
+	ResetCreditsSnapshot {
+		available_count: nonnegative_number_as_i64(payload.get("available_count")),
+		total_earned_count: nonnegative_number_as_i64(payload.get("total_earned_count")),
+		credits,
+		checked_at_unix_epoch,
+	}
 }
 
 pub(crate) fn number_as_i64(value: &Value) -> Option<i64> {
@@ -133,4 +154,19 @@ fn nonnegative_number_as_i64(value: Option<&Value>) -> Option<i64> {
 
 fn nonblank_json_string(value: Option<&Value>) -> Option<String> {
 	value.and_then(json_scalar_to_string).and_then(|value| nonblank_string(Some(&value)))
+}
+
+fn reset_credit_from_value(value: &Value) -> Option<ResetCreditSummary> {
+	let status = nonblank_json_string(value.get("status"));
+	let granted_at_unix_epoch =
+		value.get("granted_at").and_then(json_scalar_to_string).and_then(rfc3339_unix_epoch);
+	let expires_at_unix_epoch =
+		value.get("expires_at").and_then(json_scalar_to_string).and_then(rfc3339_unix_epoch);
+
+	(granted_at_unix_epoch.is_some() || expires_at_unix_epoch.is_some())
+		.then_some(ResetCreditSummary { granted_at_unix_epoch, expires_at_unix_epoch, status })
+}
+
+fn rfc3339_unix_epoch(value: String) -> Option<i64> {
+	OffsetDateTime::parse(value.trim(), &Rfc3339).ok().map(|timestamp| timestamp.unix_timestamp())
 }

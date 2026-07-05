@@ -48,15 +48,4 @@ impl AccountStore {
 
 		self.response_from_records(&records)
 	}
-
-	pub(super) fn list_with_cached_usage(
-		&self,
-		force_refresh: bool,
-	) -> Result<AccountListResponse> {
-		let mut response = self.list()?;
-
-		response.hydrate_usage_from_path(&self.accounts_path, force_refresh);
-
-		Ok(response)
-	}
 }

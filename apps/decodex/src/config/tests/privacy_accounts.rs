@@ -94,6 +94,7 @@ fn parses_codex_accounts_settings() {
 						[codex.accounts]
 						usage_endpoint = "http://127.0.0.1:1234/wham/usage"
 						profile_endpoint = "http://127.0.0.1:1234/wham/profiles/me"
+						reset_credits_endpoint = "http://127.0.0.1:1234/wham/rate-limit-reset-credits"
 						refresh_endpoint = "http://127.0.0.1:1234/oauth/token"
 					"#,
 	);
@@ -102,6 +103,10 @@ fn parses_codex_accounts_settings() {
 
 	assert_eq!(accounts.usage_endpoint(), Some("http://127.0.0.1:1234/wham/usage"));
 	assert_eq!(accounts.profile_endpoint(), Some("http://127.0.0.1:1234/wham/profiles/me"));
+	assert_eq!(
+		accounts.reset_credits_endpoint(),
+		Some("http://127.0.0.1:1234/wham/rate-limit-reset-credits")
+	);
 	assert_eq!(accounts.refresh_endpoint(), Some("http://127.0.0.1:1234/oauth/token"));
 }
 

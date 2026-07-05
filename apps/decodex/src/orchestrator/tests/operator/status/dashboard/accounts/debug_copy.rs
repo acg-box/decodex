@@ -50,12 +50,25 @@ fn assert_account_debug_and_credit_copy(response: &str) {
 	assert!(response.contains("return \"ready\";"));
 	assert!(response.contains("codexAccountReachedType(account).includes(\"credit\")"));
 	assert!(response.contains("const credits = codexAccountCreditsSummary(account);"));
+	assert!(response.contains("const resetCredits = codexAccountResetCreditsSummary(account);"));
+	assert!(response.contains("const creditValue = credits || \"-\";"));
+	assert!(response.contains("reset cards ${resetCredits}"));
 	assert!(response.contains("const creditTone = codexAccountCreditsTone(account);"));
-	assert!(response.contains("<span>credits</span>"));
-	assert!(response.contains("<strong>${escapeHtml(credits || \"-\")}</strong>"));
+	assert!(!response.contains("<span>credits</span>"));
+	assert!(response.contains("<strong>${escapeHtml(creditValue)}</strong>"));
+	assert!(response.contains("account-row-reset-credit"));
+	assert!(response.contains("function codexAccountResetCreditCompactTimestamp(value)"));
+	assert!(response.contains("const CODEX_ACCOUNT_RESET_CREDIT_LOCALE = \"en-US\";"));
+	assert!(response.contains("const CODEX_ACCOUNT_RESET_CREDIT_TIME_ZONE = \"Asia/Shanghai\";"));
+	assert!(response.contains("function codexAccountResetCreditExpiry(card)"));
+	assert!(response.contains("return codexAccountResetCreditCompactTimestamp(card.expiresAt);"));
+	assert!(!response.contains("return `${granted} -> ${expires}`;"));
+	assert!(response.contains("${cards\n\t\t\t\t\t\t\t\t\t.map((card) => {"));
+	assert!(!response.contains("cards.slice(0, 5)"));
+	assert!(!response.contains("account-reset-credit-more"));
 
 	let account_credit_index = response
-		.find("<div class=\"account-row-credit${creditClass}\">")
+		.find("<div class=\"account-row-credit${creditClass}\"")
 		.expect("account credit cell render");
 	let account_status_index =
 		response.find("<div class=\"account-row-state\">").expect("account status cell render");

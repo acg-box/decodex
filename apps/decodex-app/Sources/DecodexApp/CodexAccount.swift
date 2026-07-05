@@ -30,6 +30,10 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	let creditsHasCredits: Bool?
 	let creditsUnlimited: Bool?
 	let creditsBalance: String?
+	let resetCreditsAvailableCount: Int?
+	let resetCreditsTotalEarnedCount: Int?
+	let resetCreditsCheckedAtUnixEpoch: Int?
+	let resetCredits: [AccountResetCredit]?
 	let rateLimitReachedType: String?
 	let profileDisplayName: String?
 	let profileUsername: String?
@@ -74,6 +78,10 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case creditsHasCredits = "credits_has_credits"
 		case creditsUnlimited = "credits_unlimited"
 		case creditsBalance = "credits_balance"
+		case resetCreditsAvailableCount = "reset_credits_available_count"
+		case resetCreditsTotalEarnedCount = "reset_credits_total_earned_count"
+		case resetCreditsCheckedAtUnixEpoch = "reset_credits_checked_at_unix_epoch"
+		case resetCredits = "reset_credits"
 		case rateLimitReachedType = "rate_limit_reached_type"
 		case profileDisplayName = "profile_display_name"
 		case profileUsername = "profile_username"
@@ -143,6 +151,10 @@ extension CodexAccount {
 			creditsHasCredits: creditsHasCredits,
 			creditsUnlimited: creditsUnlimited,
 			creditsBalance: creditsBalance,
+			resetCreditsAvailableCount: resetCreditsAvailableCount,
+			resetCreditsTotalEarnedCount: resetCreditsTotalEarnedCount,
+			resetCreditsCheckedAtUnixEpoch: resetCreditsCheckedAtUnixEpoch,
+			resetCredits: resetCredits,
 			rateLimitReachedType: rateLimitReachedType,
 			profileDisplayName: profileDisplayName,
 			profileUsername: profileUsername,
@@ -336,5 +348,17 @@ extension CodexAccount {
 		}
 
 		return 1
+	}
+}
+
+struct AccountResetCredit: Decodable, Equatable {
+	let grantedAtUnixEpoch: Int?
+	let expiresAtUnixEpoch: Int?
+	let status: String?
+
+	enum CodingKeys: String, CodingKey {
+		case grantedAtUnixEpoch = "granted_at_unix_epoch"
+		case expiresAtUnixEpoch = "expires_at_unix_epoch"
+		case status
 	}
 }

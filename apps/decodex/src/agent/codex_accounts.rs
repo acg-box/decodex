@@ -24,11 +24,14 @@ use self::{
 	refresh::{CodexTokenData, ProactiveRefreshReason},
 	selection::compare_account_candidates,
 	usage::{
-		CreditsSnapshot, UsageWindow, profile_snapshot_from_payload, usage_snapshot_from_payload,
+		CreditsSnapshot, ResetCreditSummary, UsageWindow, profile_snapshot_from_payload,
+		reset_credits_snapshot_from_payload, usage_snapshot_from_payload,
 	},
 };
 const DEFAULT_USAGE_ENDPOINT: &str = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_PROFILE_ENDPOINT: &str = "https://chatgpt.com/backend-api/wham/profiles/me";
+const DEFAULT_RESET_CREDITS_ENDPOINT: &str =
+	"https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 const DEFAULT_REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 const CODEX_USER_AGENT: &str = "codex-cli";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";

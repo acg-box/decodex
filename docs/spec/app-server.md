@@ -6,10 +6,11 @@ status: active
 authority: normative
 owner: runtime
 tags: [spec]
-code_refs: [apps/decodex/src/agent/app_server.rs, apps/decodex/src/agent/app_server/protocol.rs, apps/decodex/src/agent/app_server/tests.rs, apps/decodex/src/agent/tracker_tool_bridge.rs]
+code_refs: [apps/decodex/src/agent/app_server.rs, apps/decodex/src/agent/app_server/protocol.rs, apps/decodex/src/agent/app_server/tests.rs, apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/codex_accounts/pool/usage_probe.rs, apps/decodex/src/accounts/types.rs, apps/decodex/src/orchestrator/operator_http/api/account.rs]
 related: [./tracker-tools.md, ./lane-control.md, ./runtime.md]
-drift_watch: ["codex app-server generate-json-schema --experimental", "decodex probe stdio://", ThreadStartParams.dynamicTools, dynamicTools, "type:function", "type:namespace", ClientRequest, ServerRequest, ClientNotification, ServerNotification, "account/rateLimitResetCredit/consume", "externalAgentConfig/import/readHistories", "thread/realtime/appendSpeech", "externalAgentConfig/import/progress"]
-last_verified: 2026-06-19
+drift_watch: ["codex app-server generate-json-schema --experimental", "decodex probe stdio://", ThreadStartParams.dynamicTools, dynamicTools, "type:function", "type:namespace", ClientRequest, ServerRequest, ClientNotification, ServerNotification, "account/rateLimitResetCredit/consume", "externalAgentConfig/import/readHistories", "thread/realtime/appendSpeech", "externalAgentConfig/import/progress", "/wham/rate-limit-reset-credits", reset_credits_available_count, reset_credits]
+last_verified: 2026-07-04
+verification_evidence: "Live schema probe of /backend-api/wham/rate-limit-reset-credits on 2026-07-04 returned HTTP 200 with top-level available_count, total_earned_count, and credits[] entries containing granted_at, expires_at, status, and upstream identity fields. Decodex stores only counts plus grant/expiry/status times and treats 401 as an auth/header failure diagnostic."
 ---
 # App-Server Specification
 
@@ -289,7 +290,12 @@ When `[codex.accounts]` is enabled, the account pool is a global Decodex file at
 override. The pool accepts flat `auth.json`-style JSONL records or records wrapped as
 `{ "auth": ... }`.
 Before login, Decodex probes configured accounts through the ChatGPT usage endpoint.
-By default, it skips disabled, cooling-down, and incomplete records, penalizes
+Account visibility probes also read the reset-credit endpoint and expose only
+available counts plus card grant/expiry timestamps in local account summaries; token
+material, reset-credit ids, profile user ids, images, and other unique upstream ids
+must not be serialized to operator UIs. Reset-credit card visibility is informational
+and must not change account-selection scoring unless a later promoted spec says so.
+By default, Decodex skips disabled, cooling-down, and incomplete records, penalizes
 usage-limited records, scores both the short primary window and the longer secondary
 window, prefers the account with the strongest remaining bottleneck capacity, and uses
 the least-recently selected account to break equal capacity scores. If the global
