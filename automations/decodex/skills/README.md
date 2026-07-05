@@ -4,7 +4,8 @@ Purpose: Route repo-local skills for Decodex Publisher public-post quality and
 publication records.
 
 These skills are checked-in repository-development instructions. They are not packaged
-with the installable Decodex plugin under `plugins/decodex/`.
+with the installable Decodex plugin under `plugins/decodex/`, and they must not be
+copied into global `$CODEX_HOME/skills`.
 
 ## Skill Map
 

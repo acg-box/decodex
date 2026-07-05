@@ -4,7 +4,8 @@ Purpose: Route repo-local Radar skills for upstream Codex evidence gathering and
 signal drafting.
 
 These skills are checked-in repository-development instructions. They are not packaged
-with the installable Decodex plugin under `plugins/decodex/`.
+with the installable Decodex plugin under `plugins/decodex/`, and they must not be
+copied into global `$CODEX_HOME/skills`.
 
 ## Skill Map
 
