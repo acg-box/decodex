@@ -24,8 +24,5 @@ pub(in crate::recovery::tests) use self::{
 	trackers::{FinalNeedsAttentionTracker, GhostLaneTestTracker},
 };
 pub(in crate::recovery::tests) use crate::recovery::{
-	active_recovery_tracker_backoff_message, current_timestamp,
-	diagnose_all_retained_review_worktrees_with_tracker, diagnose_issue_with_tracker,
-	remember_recovery_tracker_backoff_message, timestamp_after_seconds,
-	worktree_blocking_status_lines,
+	current_timestamp, timestamp_after_seconds, worktree_blocking_status_lines,
 };
