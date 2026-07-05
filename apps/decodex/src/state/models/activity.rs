@@ -66,6 +66,11 @@ pub(crate) struct CodexAccountActivitySummary {
 	pub(crate) credits_has_credits: Option<bool>,
 	pub(crate) credits_unlimited: Option<bool>,
 	pub(crate) credits_balance: Option<String>,
+	pub(crate) reset_credits_available_count: Option<i64>,
+	pub(crate) reset_credits_total_earned_count: Option<i64>,
+	pub(crate) reset_credits_checked_at_unix_epoch: Option<i64>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub(crate) reset_credits: Vec<CodexAccountResetCreditSummary>,
 	pub(crate) rate_limit_reached_type: Option<String>,
 	pub(crate) cooldown_until_unix_epoch: Option<i64>,
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -87,6 +92,13 @@ pub(crate) struct CodexAccountActivitySummary {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub(crate) profile_daily_usage: Vec<CodexAccountProfileDailyUsageSummary>,
 	pub(crate) note: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct CodexAccountResetCreditSummary {
+	pub(crate) granted_at_unix_epoch: Option<i64>,
+	pub(crate) expires_at_unix_epoch: Option<i64>,
+	pub(crate) status: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]

@@ -2,7 +2,10 @@ use tempfile::TempDir;
 
 use crate::{
 	accounts::{store::AccountStore, tests},
-	state::{CodexAccountActivitySummary, CodexAccountProfileDailyUsageSummary},
+	state::{
+		CodexAccountActivitySummary, CodexAccountProfileDailyUsageSummary,
+		CodexAccountResetCreditSummary,
+	},
 };
 
 #[test]
@@ -40,6 +43,14 @@ fn list_response_merges_usage_snapshot() {
 		credits_has_credits: Some(true),
 		credits_unlimited: Some(false),
 		credits_balance: Some(String::from("9.99")),
+		reset_credits_available_count: Some(2),
+		reset_credits_total_earned_count: Some(7),
+		reset_credits_checked_at_unix_epoch: Some(1_800_000_001),
+		reset_credits: vec![CodexAccountResetCreditSummary {
+			granted_at_unix_epoch: Some(1_782_366_690),
+			expires_at_unix_epoch: Some(1_784_958_690),
+			status: Some(String::from("available")),
+		}],
 		rate_limit_reached_type: None,
 		profile_lifetime_tokens: Some(47_200_000_000),
 		profile_peak_daily_tokens: Some(1_500_000_000),
@@ -59,6 +70,10 @@ fn list_response_merges_usage_snapshot() {
 	assert_eq!(response.accounts[0].secondary_window_seconds, Some(604_800));
 	assert_eq!(response.accounts[0].secondary_remaining_percent, Some(91));
 	assert_eq!(response.accounts[0].credits_balance.as_deref(), Some("9.99"));
+	assert_eq!(response.accounts[0].reset_credits_available_count, Some(2));
+	assert_eq!(response.accounts[0].reset_credits_total_earned_count, Some(7));
+	assert_eq!(response.accounts[0].reset_credits_checked_at_unix_epoch, Some(1_800_000_001));
+	assert_eq!(response.accounts[0].reset_credits[0].expires_at_unix_epoch, Some(1_784_958_690));
 	assert_eq!(response.accounts[0].profile_lifetime_tokens, Some(47_200_000_000));
 	assert_eq!(response.accounts[0].profile_peak_daily_tokens, Some(1_500_000_000));
 	assert_eq!(response.accounts[0].profile_longest_task_seconds, Some(10_080));

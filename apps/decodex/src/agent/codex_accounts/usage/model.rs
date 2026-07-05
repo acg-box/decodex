@@ -65,8 +65,13 @@ pub(crate) struct UsageProbeError {
 	message: String,
 }
 impl UsageProbeError {
-	pub(crate) fn unauthorized() -> Self {
-		Self { unauthorized: true, message: String::from("usage endpoint returned 401") }
+	pub(crate) fn unauthorized(endpoint: &str) -> Self {
+		Self {
+			unauthorized: true,
+			message: format!(
+				"{endpoint} returned 401; credentials may be expired or the Authorization header may be missing or invalid"
+			),
+		}
 	}
 
 	pub(crate) fn other(message: impl Into<String>) -> Self {
@@ -99,4 +104,19 @@ pub(crate) struct CreditsSnapshot {
 	pub(crate) has_credits: bool,
 	pub(crate) unlimited: bool,
 	pub(crate) balance: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ResetCreditsSnapshot {
+	pub(crate) available_count: Option<i64>,
+	pub(crate) total_earned_count: Option<i64>,
+	pub(crate) credits: Vec<ResetCreditSummary>,
+	pub(crate) checked_at_unix_epoch: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ResetCreditSummary {
+	pub(crate) granted_at_unix_epoch: Option<i64>,
+	pub(crate) expires_at_unix_epoch: Option<i64>,
+	pub(crate) status: Option<String>,
 }

@@ -173,7 +173,21 @@ impl CodexAccountPool {
 		refresh_status: &str,
 	) -> Result<CodexAccountActivitySummary> {
 		let profile = self.probe_record_profile(record).ok().flatten();
+		let (reset_credits, reset_credits_note) = match self.probe_record_reset_credits(record) {
+			Ok(snapshot) => (Some(snapshot), None),
+			Err(error) => (None, Some(format!("reset credits probe failed: {error}"))),
+		};
+		let mut summary = record.activity_summary_from_usage_profile(
+			usage,
+			profile,
+			reset_credits,
+			refresh_status,
+		)?;
 
-		record.activity_summary_from_usage_profile(usage, profile, refresh_status)
+		if let Some(note) = reset_credits_note {
+			summary.note = Some(note);
+		}
+
+		Ok(summary)
 	}
 }
