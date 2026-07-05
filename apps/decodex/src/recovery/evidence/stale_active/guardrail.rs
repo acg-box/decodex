@@ -21,7 +21,10 @@ fn stale_active_no_diff_guardrail_source_is_startup_or_turn_failure(
 ) -> bool {
 	let source_error_class = payload.get("source_error_class").and_then(serde_json::Value::as_str);
 
-	matches!(source_error_class, Some("app_server_turn_failed") | None)
+	matches!(
+		source_error_class,
+		Some("app_server_turn_failed" | "app_server_turn_missing_error_payload") | None
+	)
 }
 
 fn stale_active_guardrail_details_have_no_delta(payload: &serde_json::Value) -> bool {
