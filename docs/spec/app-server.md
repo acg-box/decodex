@@ -581,6 +581,11 @@ Rationale:
 - Classify the turn as success, retryable failure, or terminal failure.
 - A same-thread completion for the adopted notification turn id completes the active
   Decodex turn even when the original `turn/start` response id was different.
+- A terminal non-`completed` turn status without a `turn.error` payload is still a
+  structured app-server turn failure, not a generic runtime error. Decodex records
+  `app_server_turn_missing_error_payload`, preserves the terminal status such as
+  `interrupted` in the private error message, and routes retry or retry-budget
+  exhaustion through the same retained-lane recovery path as other turn failures.
 
 ## Error handling
 
