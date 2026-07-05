@@ -58,10 +58,9 @@
 				--space-section-y: 16px;
 				--space-card-y: 16px;
 				--mono:
-					"Menlo", "Monaco", "SFMono-Regular", "SF Mono", ui-monospace, "Cascadia Mono",
-					"Roboto Mono", "Consolas", monospace;
+					"SFMono-Regular", "IBM Plex Mono", "Menlo", "Monaco", "Consolas", monospace;
 				--sans:
-					-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue", sans-serif;
+					"SF Pro Display", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
 			}
 
 			:root[data-theme="dark"] {

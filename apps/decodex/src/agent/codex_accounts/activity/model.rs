@@ -7,6 +7,7 @@ pub(in crate::agent::codex_accounts::activity) struct AccountActivityCacheKey {
 	pub(in crate::agent::codex_accounts::activity) path: PathBuf,
 	pub(in crate::agent::codex_accounts::activity) usage_endpoint: String,
 	pub(in crate::agent::codex_accounts::activity) profile_endpoint: Option<String>,
+	pub(in crate::agent::codex_accounts::activity) reset_credits_endpoint: String,
 	pub(in crate::agent::codex_accounts::activity) refresh_endpoint: String,
 }
 

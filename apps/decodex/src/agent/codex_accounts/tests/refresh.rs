@@ -17,6 +17,7 @@ fn refresh_account_marks_auth_failure_and_returns_typed_error() {
 		r#"{"error":"invalid refresh token"}"#,
 	)]);
 	let usage_endpoint = super::start_codex_usage_fixture_server(Vec::new());
+	let reset_credits_endpoint = super::start_codex_reset_credits_fixture_server(0);
 
 	fs::write(
 		&accounts_path,
@@ -27,6 +28,7 @@ fn refresh_account_marks_auth_failure_and_returns_typed_error() {
 	let pool = CodexAccountPool::new_with_fixed_account(
 		&accounts_path,
 		usage_endpoint,
+		reset_credits_endpoint,
 		refresh_endpoint,
 		None,
 	)
@@ -55,6 +57,7 @@ fn token_refresh_syncs_matching_codex_auth_json() {
 	let usage_endpoint = super::start_codex_usage_fixture_server(vec![
 		r#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":0},"secondary_window":{"used_percent":0}}}"#,
 	]);
+	let reset_credits_endpoint = super::start_codex_reset_credits_fixture_server(1);
 
 	fs::write(
 		&accounts_path,
@@ -72,6 +75,7 @@ fn token_refresh_syncs_matching_codex_auth_json() {
 	let pool = CodexAccountPool::new_with_fixed_account_and_codex_auth_path(
 		&accounts_path,
 		usage_endpoint,
+		reset_credits_endpoint,
 		refresh_endpoint,
 		None,
 		codex_auth_path.clone(),
@@ -107,6 +111,7 @@ fn token_refresh_leaves_nonmatching_codex_auth_json_unchanged() {
 	let usage_endpoint = super::start_codex_usage_fixture_server(vec![
 		r#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":0},"secondary_window":{"used_percent":0}}}"#,
 	]);
+	let reset_credits_endpoint = super::start_codex_reset_credits_fixture_server(1);
 
 	fs::write(
 		&accounts_path,
@@ -124,6 +129,7 @@ fn token_refresh_leaves_nonmatching_codex_auth_json_unchanged() {
 	let pool = CodexAccountPool::new_with_fixed_account_and_codex_auth_path(
 		&accounts_path,
 		usage_endpoint,
+		reset_credits_endpoint,
 		refresh_endpoint,
 		None,
 		codex_auth_path.clone(),

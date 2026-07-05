@@ -64,6 +64,7 @@ fn account_activity_snapshot_uses_configured_records_without_usage_probe() {
 	let pool = CodexAccountPool::new_with_fixed_account(
 		&accounts_path,
 		"http://127.0.0.1:9/usage",
+		"http://127.0.0.1:9/reset-credits",
 		DEFAULT_REFRESH_ENDPOINT,
 		None,
 	)

@@ -52,6 +52,7 @@ impl ProjectCodexConfig {
 pub struct ProjectCodexAccountsConfig {
 	usage_endpoint: Option<String>,
 	profile_endpoint: Option<String>,
+	reset_credits_endpoint: Option<String>,
 	refresh_endpoint: Option<String>,
 }
 impl ProjectCodexAccountsConfig {
@@ -63,6 +64,11 @@ impl ProjectCodexAccountsConfig {
 	/// Override for ChatGPT profile-stat probes. Defaults to Codex `/wham/profiles/me`.
 	pub fn profile_endpoint(&self) -> Option<&str> {
 		self.profile_endpoint.as_deref()
+	}
+
+	/// Override for ChatGPT reset-credit probes.
+	pub fn reset_credits_endpoint(&self) -> Option<&str> {
+		self.reset_credits_endpoint.as_deref()
 	}
 
 	/// Override for ChatGPT OAuth refresh. Defaults to the Codex auth token endpoint.
@@ -78,6 +84,10 @@ impl ProjectCodexAccountsConfig {
 		validation::validate_optional_nonempty_string(
 			"codex.accounts.profile_endpoint",
 			self.profile_endpoint.as_deref(),
+		)?;
+		validation::validate_optional_nonempty_string(
+			"codex.accounts.reset_credits_endpoint",
+			self.reset_credits_endpoint.as_deref(),
 		)?;
 		validation::validate_optional_nonempty_string(
 			"codex.accounts.refresh_endpoint",

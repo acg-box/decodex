@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+- Documented account-pool reset-credit visibility: the server-owned account API now
+  exposes only reset-card counts and grant/expiry timestamps to shared Web and
+  Decodex App clients, while unique upstream ids and token material remain out of UI
+  payloads.
 - Updated review-handoff recovery docs for validated retained PR lanes that failed
   during `review_handoff_writeback_failed`: diagnosis now covers failure-state
   retained lanes, reports concrete PR readback errors, and routes missing active
