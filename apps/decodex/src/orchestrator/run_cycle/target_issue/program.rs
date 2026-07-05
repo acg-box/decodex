@@ -11,11 +11,26 @@ pub(crate) fn run_target_status_visible_program_once<T>(
 where
 	T: IssueTracker,
 {
-	let Some(_) = select_target_status_visible_program_candidate(&context)? else {
+	let Some(selected) = select_target_status_visible_program_candidate(&context)? else {
 		return Ok(None);
 	};
+	let program_dispatch = selected.program_dispatch.clone();
+	let dry_run = context.dry_run;
+	let state_store = context.state_store;
+	let project_id = context.project.service_id().to_owned();
 
-	target_issue::run_target_issue_once(context)
+	target_issue::run_target_issue_once_after_prepare(context, |issue_run| {
+		if !dry_run && let Some(program_dispatch) = program_dispatch.as_ref() {
+			orchestrator::record_program_dispatch_selected(
+				state_store,
+				&project_id,
+				issue_run,
+				program_dispatch,
+			)?;
+		}
+
+		Ok(())
+	})
 }
 
 pub(crate) fn select_target_status_visible_program_candidate<T>(

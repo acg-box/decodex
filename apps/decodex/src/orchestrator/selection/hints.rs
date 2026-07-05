@@ -18,8 +18,9 @@ pub(crate) fn format_no_eligible_issue_message(
 
 pub(crate) fn format_status_no_eligible_issue_hint(service_id: &str) -> String {
 	format!(
-		"Hint: check `Todo`, label {}, no opt-out/manual-only or needs-attention labels, non-terminal state, no open dependency blockers, and no active issue claim.",
+		"Hint: check `Todo`, label {}, no opt-out/manual-only or needs-attention labels, non-terminal state, no open dependency blockers, and no active issue claim. For Program Intake targets, check `decodex status --live` Program Intake readback; if no persisted dispatchable node is listed, run `{}` first.",
 		format_no_eligible_queue_label_hint(service_id),
+		format_program_intake_apply_hint(service_id),
 	)
 }
 
@@ -29,8 +30,9 @@ pub(crate) fn format_no_eligible_issue_hint(
 	needs_attention_label: &str,
 ) -> String {
 	format!(
-		"Hint: check `Todo`, label {}, no `{opt_out_label}`/`{needs_attention_label}`, non-terminal state, no open dependency blockers, and no active issue claim.",
+		"Hint: check `Todo`, label {}, no `{opt_out_label}`/`{needs_attention_label}`, non-terminal state, no open dependency blockers, and no active issue claim. For Program Intake targets, check `decodex status --live` Program Intake readback; if no persisted dispatchable node is listed, run `{}` first.",
 		format_no_eligible_queue_label_hint(service_id),
+		format_program_intake_apply_hint(service_id),
 	)
 }
 
@@ -41,5 +43,13 @@ pub(crate) fn format_no_eligible_queue_label_hint(service_id: &str) -> String {
 		String::from("`decodex:queued:<service-id>`")
 	} else {
 		format!("`decodex:queued:<service-id>` (this project: `{queue_label}`)")
+	}
+}
+
+fn format_program_intake_apply_hint(service_id: &str) -> String {
+	if service_id == "all" {
+		String::from("decodex intake issues --project <service-id> --apply <ISSUE>")
+	} else {
+		format!("decodex intake issues --project {service_id} --apply <ISSUE>")
 	}
 }
