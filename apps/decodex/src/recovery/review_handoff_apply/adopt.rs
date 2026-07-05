@@ -1,3 +1,8 @@
+mod failure;
+mod labels;
+mod local_state;
+mod rollback;
+
 use crate::{
 	prelude::Result,
 	recovery::{
@@ -5,7 +10,7 @@ use crate::{
 		review_handoff_apply::audit,
 	},
 	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
-	tracker::{self, IssueTracker},
+	tracker::IssueTracker,
 };
 
 pub(in crate::recovery) fn apply_review_handoff_adopt(
@@ -35,11 +40,15 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 		0,
 		None,
 	);
-	let local_state_write =
-		write_adopt_local_state(context, validation, &handoff_marker, &orchestration_marker);
+	let local_state_write = local_state::write_adopt_local_state(
+		context,
+		validation,
+		&handoff_marker,
+		&orchestration_marker,
+	);
 
 	if let Err(error) = local_state_write {
-		mark_adopt_attempt_failed(context, validation);
+		failure::mark_adopt_attempt_failed(context, validation);
 
 		context.state_store.clear_review_lifecycle_for_handoff(
 			context.config.service_id(),
@@ -48,15 +57,15 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 			&orchestration_marker,
 		)?;
 
-		rollback_adopt_worktree_mapping(context, validation)?;
+		rollback::rollback_adopt_worktree_mapping(context, validation)?;
 
 		return Err(error);
 	}
 
-	let active_label_restored = match restore_adopt_active_label(context, validation) {
+	let active_label_restored = match labels::restore_adopt_active_label(context, validation) {
 		Ok(active_label_restored) => active_label_restored,
 		Err(error) => {
-			mark_adopt_attempt_failed(context, validation);
+			failure::mark_adopt_attempt_failed(context, validation);
 
 			context.state_store.clear_review_lifecycle_for_handoff(
 				context.config.service_id(),
@@ -65,7 +74,7 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 				&orchestration_marker,
 			)?;
 
-			rollback_adopt_worktree_mapping(context, validation)?;
+			rollback::rollback_adopt_worktree_mapping(context, validation)?;
 
 			return Err(error);
 		},
@@ -75,7 +84,7 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 	if let Err(error) = audit::write_adopt_audit(context, validation, &event)
 		.and_then(|()| context.state_store.record_linear_execution_event(&event))
 	{
-		mark_adopt_attempt_failed(context, validation);
+		failure::mark_adopt_attempt_failed(context, validation);
 
 		context.state_store.clear_review_lifecycle_for_handoff(
 			context.config.service_id(),
@@ -84,8 +93,12 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 			&orchestration_marker,
 		)?;
 
-		rollback_adopt_active_label_restoration(context, validation, active_label_restored)?;
-		rollback_adopt_worktree_mapping(context, validation)?;
+		labels::rollback_adopt_active_label_restoration(
+			context,
+			validation,
+			active_label_restored,
+		)?;
+		rollback::rollback_adopt_worktree_mapping(context, validation)?;
 
 		return Err(error);
 	}
@@ -102,101 +115,4 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 	)?;
 
 	Ok(())
-}
-
-fn write_adopt_local_state(
-	context: &RecoveryContext,
-	validation: &AdoptValidation,
-	handoff_marker: &ReviewHandoffMarker,
-	orchestration_marker: &ReviewOrchestrationMarker,
-) -> Result<()> {
-	let worktree_path = validation.worktree_path.to_string_lossy().to_string();
-
-	context
-		.state_store
-		.upsert_worktree(
-			context.config.service_id(),
-			&validation.issue.id,
-			&validation.branch_name,
-			&worktree_path,
-		)
-		.and_then(|()| {
-			context.state_store.record_run_attempt(
-				&validation.run_id,
-				&validation.issue.id,
-				validation.attempt_number,
-				"starting",
-			)
-		})
-		.and_then(|()| {
-			context.state_store.upsert_review_handoff_marker(
-				context.config.service_id(),
-				&validation.issue.id,
-				handoff_marker,
-			)
-		})
-		.and_then(|()| {
-			context.state_store.upsert_review_orchestration_marker(
-				context.config.service_id(),
-				&validation.issue.id,
-				orchestration_marker,
-			)
-		})
-}
-
-fn restore_adopt_active_label(
-	context: &RecoveryContext,
-	validation: &AdoptValidation,
-) -> Result<bool> {
-	if !validation.should_restore_active_label() {
-		return Ok(false);
-	}
-
-	let active_label = tracker::automation_active_label(context.config.service_id());
-
-	tracker::set_issue_label_presence(&context.tracker, &validation.issue, &active_label, true)
-}
-
-fn rollback_adopt_active_label_restoration(
-	context: &RecoveryContext,
-	validation: &AdoptValidation,
-	active_label_restored: bool,
-) -> Result<()> {
-	if !active_label_restored {
-		return Ok(());
-	}
-
-	let active_label = tracker::automation_active_label(context.config.service_id());
-
-	tracker::set_issue_label_presence(&context.tracker, &validation.issue, &active_label, false)?;
-
-	Ok(())
-}
-
-fn rollback_adopt_worktree_mapping(
-	context: &RecoveryContext,
-	validation: &AdoptValidation,
-) -> Result<()> {
-	if let Some(mapping) = validation.previous_worktree_mapping.as_ref() {
-		let worktree_path = mapping.worktree_path().to_string_lossy();
-
-		return context.state_store.upsert_worktree(
-			mapping.project_id(),
-			mapping.issue_id(),
-			mapping.branch_name(),
-			&worktree_path,
-		);
-	}
-
-	context.state_store.clear_worktree(&validation.issue.id)
-}
-
-fn mark_adopt_attempt_failed(context: &RecoveryContext, validation: &AdoptValidation) {
-	if let Err(error) = context.state_store.update_run_status(&validation.run_id, "failed") {
-		tracing::warn!(
-			?error,
-			run_id = %validation.run_id,
-			"Failed to mark manual takeover adopt attempt failed."
-		);
-	}
 }
