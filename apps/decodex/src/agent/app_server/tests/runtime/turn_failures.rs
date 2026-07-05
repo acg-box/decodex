@@ -183,6 +183,39 @@ fn thread_system_error_notification_fails_immediately_with_latest_turn_failure()
 }
 
 #[test]
+fn turn_completed_without_error_payload_becomes_structured_turn_failure() {
+	let notification = JsonRpcNotification {
+		method: String::from("turn/completed"),
+		params: serde_json::json!({
+			"turn": {
+				"id": "turn-1",
+				"status": "interrupted",
+				"error": null
+			}
+		}),
+	};
+	let mut final_output = String::new();
+	let mut latest_turn_failure = None;
+	let result = super::handle_turn_execution_notification(
+		&notification,
+		"thread-1",
+		"turn-1",
+		&mut final_output,
+		&mut latest_turn_failure,
+	);
+	let error = match result {
+		Ok(_) => panic!("interrupted turn without payload should fail the turn"),
+		Err(error) => error,
+	};
+	let failure =
+		error.downcast_ref::<AppServerTurnFailure>().expect("error should be a turn failure");
+
+	assert_eq!(failure.error_class(), "app_server_turn_missing_error_payload");
+	assert!(failure.to_string().contains("without an explicit error payload"));
+	assert!(latest_turn_failure.is_none());
+}
+
+#[test]
 fn json_rpc_error_response_becomes_recoverable_turn_failure() {
 	let error = JsonRpcError {
 		id: serde_json::json!(7),

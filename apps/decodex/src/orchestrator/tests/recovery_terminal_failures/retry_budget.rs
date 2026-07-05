@@ -46,7 +46,7 @@ fn retryable_app_server_failures_do_not_write_attention_before_budget_exhaustion
 			"transient model failure",
 			None,
 		)),
-		"retryable_execution_failure",
+		"app_server_turn_failed",
 	);
 	assert_retryable_failure_writeback_does_not_require_attention(
 		&config,

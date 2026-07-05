@@ -15,7 +15,7 @@ use crate::{
 		},
 		json_rpc::JsonRpcNotification,
 	},
-	prelude::{Result, eyre},
+	prelude::Result,
 };
 
 pub(in crate::agent::app_server) fn handle_turn_execution_notification(
@@ -102,11 +102,11 @@ pub(in crate::agent::app_server) fn handle_turn_execution_notification(
 				return Err(Report::new(failure));
 			}
 
-			eyre::bail!(
-				"Turn `{}` ended with status `{}` without an explicit error payload.",
-				payload.turn.id,
-				payload.turn.status
-			);
+			return Err(Report::new(AppServerTurnFailure::from_missing_error_payload(
+				target_thread_id,
+				&payload.turn.id,
+				&payload.turn.status,
+			)));
 		},
 		"thread/goal/updated" => {
 			let payload: ThreadGoalUpdatedNotification =

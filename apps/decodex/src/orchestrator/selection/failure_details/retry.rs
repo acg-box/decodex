@@ -56,9 +56,7 @@ pub(crate) fn retry_comment_details(error: &Report) -> (&'static str, String) {
 		);
 	}
 
-	if let Some(app_server_failure) = error.downcast_ref::<AppServerTurnFailure>()
-		&& app_server_failure.is_retryable_capacity_failure()
-	{
+	if let Some(app_server_failure) = error.downcast_ref::<AppServerTurnFailure>() {
 		return (
 			app_server_failure.error_class(),
 			app_server_failure.retry_next_action().to_owned(),
