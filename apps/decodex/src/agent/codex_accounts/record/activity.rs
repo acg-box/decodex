@@ -6,10 +6,10 @@ use crate::{
 		login::CodexAccountLogin,
 		record::model::{self, AccountPoolRecord},
 		refresh::{self, ProactiveRefreshReason},
-		usage::{AccountProfileSnapshot, AccountUsageSnapshot},
+		usage::{AccountProfileSnapshot, AccountUsageSnapshot, ResetCreditsSnapshot},
 	},
 	prelude::{Result, eyre},
-	state::CodexAccountActivitySummary,
+	state::{CodexAccountActivitySummary, CodexAccountResetCreditSummary},
 };
 
 impl AccountPoolRecord {
@@ -132,12 +132,27 @@ impl AccountPoolRecord {
 		&self,
 		usage: AccountUsageSnapshot,
 		profile: Option<AccountProfileSnapshot>,
+		reset_credits: Option<ResetCreditsSnapshot>,
 		refresh_status: &str,
 	) -> Result<CodexAccountActivitySummary> {
 		let mut summary = self.activity_summary_from_usage(usage, refresh_status)?;
 
 		if let Some(profile) = profile {
 			profile.apply_to_summary(&mut summary);
+		}
+		if let Some(reset_credits) = reset_credits {
+			summary.reset_credits_available_count = reset_credits.available_count;
+			summary.reset_credits_total_earned_count = reset_credits.total_earned_count;
+			summary.reset_credits_checked_at_unix_epoch = Some(reset_credits.checked_at_unix_epoch);
+			summary.reset_credits = reset_credits
+				.credits
+				.into_iter()
+				.map(|credit| CodexAccountResetCreditSummary {
+					granted_at_unix_epoch: credit.granted_at_unix_epoch,
+					expires_at_unix_epoch: credit.expires_at_unix_epoch,
+					status: credit.status,
+				})
+				.collect();
 		}
 
 		Ok(summary)

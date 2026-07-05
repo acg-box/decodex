@@ -40,18 +40,7 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(response.contains(
 		".account-pool-metric-value[data-tone=\"muted\"] {\n\t\t\t\tcolor: var(--muted-strong);"
 	));
-	assert!(!response.contains(".account-pool-activity-strip {\n\t\t\t\tgrid-column: 1 / -1;"));
-	assert!(response.contains("account-profile-activity-strip"));
-	assert!(response.contains("account-profile-toggle"));
-	assert!(response.contains("account-profile-panel"));
-	assert!(response.contains(".account-profile-panel.is-open"));
-	assert!(response.contains("grid-template-columns: repeat(5, minmax(0, 1fr));"));
-	assert!(response.contains("account-profile-fact"));
-	assert!(response.contains("account-profile-activity"));
-	assert!(response.contains("[\"Lifetime\", facts.get(\"tok\") || \"-\"]"));
-	assert!(response.contains("Lifetime tok"));
-	assert!(response.contains("Peak day"));
-	assert!(response.contains("Longest task"));
+	assert_account_profile_layout(&response);
 	assert!(!response.contains("account-profile-table"));
 	assert!(!response.contains("account-profile-guide"));
 	assert!(!response.contains(".account-profile-row"));
@@ -118,4 +107,24 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(response.contains("title=\"${escapeHtml(resetTitle)}\""));
 	assert!(response.contains("account-window-date"));
 	assert!(!response.contains("<span class=\"is-reset\">Reset</span>"));
+}
+
+fn assert_account_profile_layout(response: &str) {
+	assert!(!response.contains(".account-pool-activity-strip {\n\t\t\t\tgrid-column: 1 / -1;"));
+	assert!(response.contains("account-profile-activity-strip"));
+	assert!(response.contains("account-profile-toggle"));
+	assert!(response.contains("account-profile-panel"));
+	assert!(response.contains(".account-profile-panel.is-open"));
+	assert!(response.contains("grid-template-columns: repeat(6, minmax(0, 1fr));"));
+	assert!(!response.contains("grid-column: span 2;"));
+	assert!(response.contains("max-height: 46px;"));
+	assert!(response.contains("overflow-y: auto;"));
+	assert!(response.contains("grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));"));
+	assert!(response.contains("gap: 3px 12px;"));
+	assert!(response.contains("account-profile-fact"));
+	assert!(response.contains("account-profile-activity"));
+	assert!(response.contains("[\"Lifetime\", facts.get(\"tok\") || \"-\"]"));
+	assert!(response.contains("Lifetime tok"));
+	assert!(response.contains("Peak day"));
+	assert!(response.contains("Longest task"));
 }

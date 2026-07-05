@@ -7,8 +7,8 @@ mod run_control;
 pub(crate) use self::{
 	activity::{
 		ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
-		CodexAccountProfileDailyUsageSummary, ProtocolActivityEventSummary,
-		ProtocolActivitySummary, RunActivityMarker,
+		CodexAccountProfileDailyUsageSummary, CodexAccountResetCreditSummary,
+		ProtocolActivityEventSummary, ProtocolActivitySummary, RunActivityMarker,
 	},
 	autonomy_program::{
 		AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
