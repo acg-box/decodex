@@ -123,6 +123,7 @@ where
 		program_id,
 		dry_run,
 		persisted: persist,
+		scheduler_visible: persist,
 		counts,
 		issues: rows,
 	})
