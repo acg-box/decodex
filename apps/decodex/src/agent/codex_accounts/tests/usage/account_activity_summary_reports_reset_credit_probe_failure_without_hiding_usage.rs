@@ -2,19 +2,17 @@ use std::fs;
 
 use tempfile::TempDir;
 
-use crate::agent::codex_accounts::{
-	CodexAccountPool, DEFAULT_REFRESH_ENDPOINT,
-};
+use crate::agent::codex_accounts::{CodexAccountPool, DEFAULT_REFRESH_ENDPOINT, tests};
 
 #[test]
 fn account_activity_summary_reports_reset_credit_probe_failure_without_hiding_usage() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let accounts_path = temp_dir.path().join("accounts.jsonl");
-	let usage_endpoint = super::super::start_codex_usage_fixture_server(vec![
+	let usage_endpoint = tests::start_codex_usage_fixture_server(vec![
 		r#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":0},"secondary_window":{"used_percent":20}}}"#,
 	]);
 	let (reset_credits_endpoint, reset_requests) =
-		super::super::start_codex_status_fixture_server_with_request_capture(
+		tests::start_codex_status_fixture_server_with_request_capture(
 			"/reset-credits",
 			vec![(401, "Unauthorized", r#"{"error":"bad token"}"#)],
 		);
