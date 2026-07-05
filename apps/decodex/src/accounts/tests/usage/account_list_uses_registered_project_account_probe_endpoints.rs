@@ -56,6 +56,7 @@ worktree_root = ".worktrees"
 	.expect("project config should write");
 
 	let state_store = runtime::open_runtime_store().expect("state store should open");
+
 	runtime::register_project_config(&state_store, &project_dir, true)
 		.expect("project should register");
 
