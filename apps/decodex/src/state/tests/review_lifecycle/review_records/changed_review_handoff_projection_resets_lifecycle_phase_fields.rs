@@ -1,0 +1,80 @@
+use crate::state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore};
+
+#[test]
+fn changed_review_handoff_projection_resets_lifecycle_phase_fields() {
+	let store = StateStore::open_in_memory().expect("state store should open");
+	let old_handoff = ReviewHandoffMarker::new(
+		"run-1",
+		1,
+		"x/decodex-pub-101",
+		"https://github.com/hack-ink/decodex/pull/101",
+		"main",
+		"x/decodex-pub-101",
+		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+	);
+	let old_orchestration = ReviewOrchestrationMarker::new(
+		"run-1",
+		1,
+		"x/decodex-pub-101",
+		"https://github.com/hack-ink/decodex/pull/101",
+		"19b20f7dfb9526e7421a5f095b1c6adec84e52d7",
+		"waiting_for_ack",
+		Some(1_234),
+		Some(1_775_200_000),
+		Some(3),
+		2,
+		4,
+		Some(1_775_200_900),
+	);
+	let new_handoff = ReviewHandoffMarker::new(
+		"run-2",
+		1,
+		"x/decodex-pub-101",
+		"https://github.com/hack-ink/decodex/pull/101",
+		"main",
+		"x/decodex-pub-101",
+		"28c20f7dfb9526e7421a5f095b1c6adec84e52d8",
+	);
+
+	store
+		.upsert_review_handoff_marker("pubfi", "PUB-101", &old_handoff)
+		.expect("old handoff projection should persist");
+	store
+		.upsert_review_orchestration_marker("pubfi", "PUB-101", &old_orchestration)
+		.expect("old orchestration projection should persist");
+	store
+		.upsert_review_handoff_marker("pubfi", "PUB-101", &new_handoff)
+		.expect("changed handoff projection should persist");
+
+	let lifecycle = store
+		.review_lifecycle_record("pubfi", "PUB-101", "x/decodex-pub-101")
+		.expect("review lifecycle record should read")
+		.expect("review lifecycle record should exist");
+
+	assert_eq!(lifecycle.run_id(), "run-2");
+	assert_eq!(lifecycle.pr_head_oid(), "28c20f7dfb9526e7421a5f095b1c6adec84e52d8");
+	assert_eq!(lifecycle.head_sha(), "28c20f7dfb9526e7421a5f095b1c6adec84e52d8");
+	assert_eq!(lifecycle.phase(), "request_pending");
+	assert_eq!(lifecycle.request_comment_database_id(), None);
+	assert_eq!(lifecycle.request_created_at_unix_epoch(), None);
+	assert_eq!(lifecycle.request_description_thumbs_up_count(), None);
+	assert_eq!(lifecycle.request_retry_count(), 0);
+	assert_eq!(lifecycle.external_round_count(), 0);
+	assert_eq!(lifecycle.auto_merge_enabled_at_unix_epoch(), None);
+	assert_eq!(lifecycle.landing_state(), "not_started");
+	assert_eq!(lifecycle.closeout_state(), "not_started");
+	assert_eq!(lifecycle.repair_attempt_count(), 0);
+	assert_eq!(lifecycle.evidence_json(), "{}");
+	assert_eq!(lifecycle.next_action(), "");
+
+	let orchestration = store
+		.review_orchestration_marker("pubfi", "PUB-101", &new_handoff)
+		.expect("new orchestration projection should read")
+		.expect("new orchestration projection should exist");
+
+	assert_eq!(orchestration.run_id(), "run-2");
+	assert_eq!(orchestration.head_sha(), "28c20f7dfb9526e7421a5f095b1c6adec84e52d8");
+	assert_eq!(orchestration.phase(), "request_pending");
+	assert_eq!(orchestration.request_retry_count(), 0);
+	assert_eq!(orchestration.external_round_count(), 0);
+}
