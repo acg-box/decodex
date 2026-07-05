@@ -65,9 +65,8 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 	assert!(response.contains("--tone-ready: #1d8968;"));
 	assert!(response.contains("--tone-ready: #5cc59f;"));
 	assert!(response.contains(".tone-ready"));
-	assert!(response.contains("-apple-system, BlinkMacSystemFont"));
-	assert!(response.contains("\"Menlo\", \"Monaco\", \"SFMono-Regular\", \"SF Mono\""));
-	assert!(response.contains("ui-monospace, \"Cascadia Mono\","));
+	assert!(response.contains("\"SF Pro Display\", \"Avenir Next\""));
+	assert!(response.contains("\"SFMono-Regular\", \"IBM Plex Mono\", \"Menlo\""));
 	assert!(response.contains("--space-panel-head-y: 12px;"));
 	assert!(response.contains("--space-row-y: 12px;"));
 	assert!(response.contains("--space-card-y: 16px;"));

@@ -88,6 +88,7 @@ impl CodexAccountPool {
 			path: self.path.clone(),
 			usage_endpoint: self.usage_endpoint.clone(),
 			profile_endpoint: self.profile_endpoint.clone(),
+			reset_credits_endpoint: self.reset_credits_endpoint.clone(),
 			refresh_endpoint: self.refresh_endpoint.clone(),
 		}
 	}

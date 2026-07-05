@@ -6,7 +6,10 @@ use crate::{
 		store::AccountStore,
 		types::{AccountImportRequest, AccountListResponse, AccountUseRequest, AccountUseResponse},
 	},
+	agent::CodexAccountPool,
+	config::ServiceConfig,
 	prelude::Result,
+	runtime,
 };
 
 pub(crate) fn run_account_list(json: bool) -> Result<()> {
@@ -38,13 +41,16 @@ pub(crate) fn account_list() -> Result<AccountListResponse> {
 }
 
 pub(crate) fn account_list_with_cached_usage(force_refresh: bool) -> Result<AccountListResponse> {
-	AccountStore::global()?.list_with_cached_usage(force_refresh)
+	let store = AccountStore::global()?;
+	let mut response = store.list()?;
+
+	hydrate_account_list_usage_from_configured_pool(&mut response, force_refresh);
+
+	Ok(response)
 }
 
 pub(crate) fn hydrate_account_list_usage(mut response: AccountListResponse) -> AccountListResponse {
-	let accounts_path = PathBuf::from(&response.accounts_path);
-
-	response.hydrate_usage_from_path(&accounts_path, false);
+	hydrate_account_list_usage_from_configured_pool(&mut response, false);
 
 	response
 }
@@ -74,4 +80,36 @@ pub(crate) fn account_import(auth_json_path: &Path) -> Result<AccountListRespons
 
 pub(crate) fn account_use(request: &AccountUseRequest) -> Result<AccountUseResponse> {
 	AccountStore::global()?.use_for_codex(&request.selector, request.auth_json_path.as_deref())
+}
+
+fn hydrate_account_list_usage_from_configured_pool(
+	response: &mut AccountListResponse,
+	force_refresh: bool,
+) {
+	let accounts_path = PathBuf::from(&response.accounts_path);
+
+	match configured_account_pool() {
+		Ok(Some(pool)) => response.hydrate_usage_from_pool(&pool, &accounts_path, force_refresh),
+		Ok(None) => response.hydrate_usage_from_path(&accounts_path, force_refresh),
+		Err(error) => response.usage_probe_error = Some(error.to_string()),
+	}
+}
+
+fn configured_account_pool() -> Result<Option<CodexAccountPool>> {
+	let state_store = runtime::open_runtime_store()?;
+
+	for project in state_store.list_projects()? {
+		if !project.enabled() {
+			continue;
+		}
+
+		let config = ServiceConfig::from_path(project.config_path())?;
+		let Some(accounts) = config.codex().accounts() else {
+			continue;
+		};
+
+		return CodexAccountPool::from_config(accounts).map(Some);
+	}
+
+	Ok(None)
 }
