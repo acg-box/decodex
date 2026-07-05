@@ -5,7 +5,7 @@ use crate::{
 	orchestrator::{
 		self, IssueRunPlan, PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT,
 		PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE, Result,
-		ServiceConfig, StateStore, execution_phase_goal::recovery::events,
+		ServiceConfig, StateStore, execution_phase_goal::recovery::events::parsing,
 	},
 };
 
@@ -47,9 +47,9 @@ pub(in crate::orchestrator::execution_phase_goal::recovery) fn matching_phase_go
 		.iter()
 		.filter(|event| {
 			event.event_type() == PHASE_GOAL_RECOVERY_EVENT_TYPE
-				&& events::phase_goal_recovery_event_source_phase(event.payload())
+				&& parsing::phase_goal_recovery_event_source_phase(event.payload())
 					.is_some_and(|phase| phase == source_phase.as_str())
-				&& events::phase_goal_recovery_event_source_error_class(event.payload())
+				&& parsing::phase_goal_recovery_event_source_error_class(event.payload())
 					.is_some_and(|class| class == source_error_class)
 		})
 		.count() as i64)
