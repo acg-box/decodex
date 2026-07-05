@@ -7,8 +7,8 @@ mod review;
 
 use crate::state::sqlite_store::{
 	ChildAgentActivitySummary, OptionalExtension, Result, SqliteStateStore,
-	execution_program_record_from_row_parts, execution_program_runtime_row_parts, eyre,
-	migrate_removed_decision_contract_fields, params, timestamp_parts,
+	execution_program_record_from_row_parts, execution_program_runtime_row_parts, eyre, params,
+	timestamp_parts,
 };
 
 impl SqliteStateStore {

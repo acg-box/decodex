@@ -21,8 +21,8 @@ use crate::{
 		},
 		runtime_row_parsers::{
 			connector_backoff_from_row, execution_program_record_from_row_parts,
-			execution_program_runtime_row_parts, migrate_removed_decision_contract_fields,
-			protocol_event_record_from_row, sqlite_bool_value, timestamp_parts,
+			execution_program_runtime_row_parts, protocol_event_record_from_row, sqlite_bool_value,
+			timestamp_parts,
 		},
 	},
 };
