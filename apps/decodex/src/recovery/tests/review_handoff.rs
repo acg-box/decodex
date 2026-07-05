@@ -5,7 +5,5 @@ mod state_policy;
 
 pub(super) use crate::recovery::{
 	append_review_handoff_adopt_private_event, append_review_handoff_rebind_private_event,
-	diagnostic_binding, manual_adopt_run_id, validate_adopt_existing_worktree_mapping,
-	validate_adopt_issue_state_for_policy, validate_adopt_landing_state,
-	validate_rebind_issue_state_for_policy, write_review_lifecycle_markers_with_rollback,
+	diagnostic_binding, write_review_lifecycle_markers_with_rollback,
 };
