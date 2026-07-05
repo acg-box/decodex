@@ -30,9 +30,13 @@ use time::{Date, Month};
 
 use self::{
 	model::{
-		ALLOWED_AUTHORITIES, ALLOWED_CONCEPT_TYPES, ALLOWED_PROMOTION_TARGETS, ALLOWED_STATUSES,
-		DRIFT_AUDIT_HEADINGS, DocsCheckIssue, DocsFile, OkfScaffoldFile, REQUIRED_CONCEPT_KEYS,
-		REQUIRED_DOCS_FILES, RESEARCH_CONTRACT_HEADINGS,
+		constants::{
+			ALLOWED_AUTHORITIES, ALLOWED_CONCEPT_TYPES, ALLOWED_PROMOTION_TARGETS,
+			ALLOWED_STATUSES, DRIFT_AUDIT_HEADINGS, REQUIRED_CONCEPT_KEYS, REQUIRED_DOCS_FILES,
+			RESEARCH_CONTRACT_HEADINGS,
+		},
+		files::{DocsFile, OkfScaffoldFile},
+		reports::DocsCheckIssue,
 	},
 	support::{
 		collect_files, concept_type, docs_dirs_with_content, file_path_set, frontmatter_string,
