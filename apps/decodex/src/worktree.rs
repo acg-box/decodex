@@ -12,7 +12,7 @@ pub(crate) use cleanup::{
 
 use std::path::PathBuf;
 
-#[cfg(test)] use git::is_relative_filesystem_remote;
+#[cfg(test)] use git::remote::is_relative_filesystem_remote;
 #[cfg(test)] use hooks::workspace_hook_shell_from_env;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
