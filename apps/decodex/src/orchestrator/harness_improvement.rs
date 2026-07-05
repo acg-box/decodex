@@ -6,8 +6,7 @@ mod record;
 pub(crate) use self::model::{
 	HarnessImprovementCandidateSummary, HarnessOutcomeKind, HarnessOutcomeRecordInput,
 };
-#[cfg(test)]
-pub(crate) use record::record_harness_outcome_for_issue_run;
+#[cfg(test)] pub(crate) use record::record_harness_outcome_for_issue_run;
 pub(crate) use record::{
 	harness_improvement_candidates_from_private_events, record_harness_outcome_best_effort,
 };
