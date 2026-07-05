@@ -216,6 +216,40 @@ fn turn_completed_without_error_payload_becomes_structured_turn_failure() {
 }
 
 #[test]
+fn missing_error_payload_terminal_guidance_is_status_neutral() {
+	let notification = JsonRpcNotification {
+		method: String::from("turn/completed"),
+		params: serde_json::json!({
+			"turn": {
+				"id": "turn-1",
+				"status": "failed",
+				"error": null
+			}
+		}),
+	};
+	let mut final_output = String::new();
+	let mut latest_turn_failure = None;
+	let result = super::handle_turn_execution_notification(
+		&notification,
+		"thread-1",
+		"turn-1",
+		&mut final_output,
+		&mut latest_turn_failure,
+	);
+	let error = match result {
+		Ok(_) => panic!("failed turn without payload should fail the turn"),
+		Err(error) => error,
+	};
+	let failure =
+		error.downcast_ref::<AppServerTurnFailure>().expect("error should be a turn failure");
+	let next_action = failure.terminal_next_action("recover manually");
+
+	assert!(next_action.contains("terminal turn status `failed`"));
+	assert!(next_action.contains("terminal turn left useful worktree changes"));
+	assert!(!next_action.contains("interrupted turn"));
+}
+
+#[test]
 fn json_rpc_error_response_becomes_recoverable_turn_failure() {
 	let error = JsonRpcError {
 		id: serde_json::json!(7),

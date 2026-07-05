@@ -89,7 +89,7 @@ impl AppServerTurnFailure {
 	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
 		if self.missing_error_payload {
 			return format!(
-				"inspect app-server protocol activity for the terminal turn status `{}`, verify whether the interrupted turn left useful worktree changes, {recovery_gate}",
+				"inspect app-server protocol activity for the terminal turn status `{}`, verify whether the terminal turn left useful worktree changes, {recovery_gate}",
 				self.status
 			);
 		}
