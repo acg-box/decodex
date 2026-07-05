@@ -149,6 +149,7 @@ fn rejects_manual_attention_comment_with_runtime_owned_error_class() {
 		"stalled_run_detected",
 		"app_server_plugin_list_timeout",
 		"app_server_turn_failed",
+		"app_server_turn_missing_error_payload",
 		"app_server_usage_limit_exceeded",
 		"app_server_dynamic_tool_failed",
 		"phase_goal_terminal_path_missing",
