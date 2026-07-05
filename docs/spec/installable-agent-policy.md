@@ -33,6 +33,11 @@ policy.
   `docs/spec/`, the
   registered project `WORKFLOW.md`, project `project.toml`, repo-local runbooks, or
   the Decodex plugin skill that owns a reusable method.
+- Repo-local skills under `automations/*/skills/` are not installable global skills.
+  They may be referenced by repo-owned automation prompts and runbooks, but they must
+  not be copied into `$CODEX_HOME/skills`. Use
+  `scripts/config/sync_installable_plugins.py --apply --clean-repo-local-skills` to
+  sync installable `plugins/*` and remove exact-copy global mistakes.
 - Global agent guidance may point agents toward repository-declared policy, but it
   must not become the source of truth for a repository gate, tracker state name,
   token environment variable, Linear label, branch layout, review loop, merge method,

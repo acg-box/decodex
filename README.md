@@ -373,6 +373,17 @@ cargo make test
 Use `lint` for the read-only lint gate and `lint-fix` for the canonicalizing lint
 path used by registered Decodex workflow gates.
 
+Sync installable Codex plugins with the guarded installer:
+
+```sh
+python3 scripts/config/sync_installable_plugins.py --apply --clean-repo-local-skills
+```
+
+This installs only `plugins/*` into `$CODEX_HOME/plugins/cache/hack-ink/*/<version>`.
+Repo-local skills under `automations/*/skills/` are development and automation
+inputs for this repository; they must not be installed into global
+`$CODEX_HOME/skills`.
+
 Node package type checks and builds are available separately:
 
 ```sh
