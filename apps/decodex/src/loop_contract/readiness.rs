@@ -1,28 +1,12 @@
-use serde::{Deserialize, Serialize};
+mod records;
+
+pub(crate) use records::{DecisionExecutionReadiness, DecisionProposedIssue};
 
 use crate::{
 	loop_contract::{schema::DecisionContractStatus, validation},
 	prelude::{Result, eyre},
 };
 
-/// Natural-language readiness summary for later issue shaping.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DecisionExecutionReadiness {
-	summary: String,
-	pub(super) ready_for_issue_shaping: bool,
-	#[serde(default)]
-	pub(super) missing_decisions: Vec<String>,
-	#[serde(default)]
-	validation_expectations: Vec<String>,
-	#[serde(default)]
-	risk_notes: Vec<String>,
-	pub(super) proposed_issues: Vec<DecisionProposedIssue>,
-	#[serde(default)]
-	promotion_targets: Vec<String>,
-	#[serde(default)]
-	conflict_domains: Vec<String>,
-}
 #[allow(dead_code)]
 impl DecisionExecutionReadiness {
 	pub(crate) fn summary(&self) -> &str {
@@ -110,21 +94,6 @@ impl DecisionExecutionReadiness {
 	}
 }
 
-/// Structured issue-shaping input retained inside Decision Contract readiness.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DecisionProposedIssue {
-	key: String,
-	title: String,
-	objective: String,
-	stage: String,
-	dependencies: Vec<String>,
-	conflict_domains: Vec<String>,
-	acceptance: Vec<String>,
-	validation: Vec<String>,
-	risk: Vec<String>,
-	queue_intent: String,
-}
 #[allow(dead_code)]
 impl DecisionProposedIssue {
 	pub(crate) fn key(&self) -> &str {

@@ -1,5 +1,11 @@
 //! Objective lifecycle metadata and states.
 
+mod records;
+
+pub(crate) use records::{
+	AutonomyObjectiveAcceptance, AutonomyObjectiveRejection, AutonomyObjectiveSupersession,
+};
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -34,15 +40,6 @@ pub(crate) enum AutonomyObjectiveActorKind {
 	RuntimePolicy,
 }
 
-/// Acceptance metadata that turns a draft objective version into authority.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct AutonomyObjectiveAcceptance {
-	accepted_by: String,
-	accepted_by_kind: AutonomyObjectiveActorKind,
-	accepted_at: String,
-	acceptance_source: String,
-}
 #[allow(dead_code)]
 impl AutonomyObjectiveAcceptance {
 	pub(crate) fn new(
@@ -92,15 +89,6 @@ impl AutonomyObjectiveAcceptance {
 	}
 }
 
-/// Rejection metadata for a draft objective version that did not become authority.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct AutonomyObjectiveRejection {
-	rejected_by: String,
-	rejected_at: String,
-	rejection_source: String,
-	reason: String,
-}
 #[allow(dead_code)]
 impl AutonomyObjectiveRejection {
 	pub(crate) fn new(
@@ -143,17 +131,6 @@ impl AutonomyObjectiveRejection {
 	}
 }
 
-/// Supersession metadata linking an older objective version to the replacing version.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct AutonomyObjectiveSupersession {
-	superseded_by_objective_id: String,
-	superseded_by_version: u64,
-	superseded_by: String,
-	superseded_at: String,
-	supersession_source: String,
-	reason: String,
-}
 #[allow(dead_code)]
 impl AutonomyObjectiveSupersession {
 	pub(crate) fn new(
