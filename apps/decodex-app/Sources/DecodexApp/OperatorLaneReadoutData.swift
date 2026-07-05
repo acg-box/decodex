@@ -88,3 +88,7 @@ extension OperatorLanePopoverView {
 		operatorModelProgressReadout(for: run, currentTime: currentTime)
 	}
 }
+
+func rawPanelToken(_ value: String) -> String {
+	value.trimmingCharacters(in: .whitespacesAndNewlines)
+}
