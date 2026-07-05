@@ -43,6 +43,13 @@ fn issue_batch_dry_run_classifies_without_persisting() {
 	)
 	.expect("dry-run should classify");
 
+	assert!(!report.persisted);
+	assert!(!report.scheduler_visible);
+
+	let rendered = program_intake::render_issue_batch_intake_report(&report);
+
+	assert!(rendered.contains("persisted=false"));
+	assert!(rendered.contains("scheduler_visible=false"));
 	assert_eq!(report.counts.ready, 1);
 	assert_eq!(report.counts.held, 1);
 	assert_eq!(report.counts.blocked, 1);
@@ -108,6 +115,12 @@ fn issue_batch_persist_writes_program_and_adjacent_intake_state() {
 	.expect("persist should write local state");
 
 	assert!(report.persisted);
+	assert!(report.scheduler_visible);
+
+	let rendered = program_intake::render_issue_batch_intake_report(&report);
+
+	assert!(rendered.contains("persisted=true"));
+	assert!(rendered.contains("scheduler_visible=true"));
 	assert_eq!(store.list_execution_programs("decodex").expect("programs").len(), 1);
 	assert_eq!(store.list_program_intake_plans("decodex").expect("plans").len(), 1);
 	assert_eq!(
