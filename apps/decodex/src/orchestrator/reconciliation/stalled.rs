@@ -1,11 +1,17 @@
 mod markers;
 mod phase_goal;
 mod plan;
+mod readback;
+
+pub(crate) use self::readback::{
+	retained_review_handoff_matches_run, stalled_run_has_retained_partial_progress,
+	superseded_run_disposition,
+};
 
 use crate::orchestrator::reconciliation::{
 	self, Duration, IssueTracker, RUN_OPERATION_RECONCILIATION, Report, Result,
-	RetainedPartialProgress, RunAttempt, RunLeaseDisposition, RunLeaseReconciliation,
-	ServiceConfig, StalledRunNeedsAttention, StateStore, WorktreeManager, WorktreeMapping,
+	RetainedPartialProgress, RunLeaseReconciliation, ServiceConfig, StalledRunNeedsAttention,
+	StateStore, WorktreeManager,
 };
 
 pub(crate) fn reconcile_stalled_run_lease<T>(
@@ -155,54 +161,4 @@ pub(crate) fn reconcile_stalled_attention_run_lease(
 	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
 
 	state_store.clear_lease(&action.issue.id)
-}
-
-pub(crate) fn stalled_run_has_retained_partial_progress(
-	worktree_mapping: Option<&WorktreeMapping>,
-) -> bool {
-	match worktree_mapping {
-		Some(mapping) => reconciliation::worktree_has_tracked_changes(mapping.worktree_path()),
-		None => false,
-	}
-}
-
-pub(crate) fn retained_review_handoff_matches_run(
-	state_store: &StateStore,
-	run_attempt: &RunAttempt,
-	worktree_mapping: Option<&WorktreeMapping>,
-) -> Result<bool> {
-	let Some(worktree_mapping) = worktree_mapping else {
-		return Ok(false);
-	};
-	let Some(marker) = state_store.review_handoff_marker(
-		worktree_mapping.project_id(),
-		run_attempt.issue_id(),
-		worktree_mapping.branch_name(),
-	)?
-	else {
-		return Ok(false);
-	};
-
-	Ok(marker.run_id() == run_attempt.run_id()
-		&& marker.attempt_number() == run_attempt.attempt_number()
-		&& marker.branch_name() == worktree_mapping.branch_name())
-}
-
-pub(crate) fn superseded_run_disposition(
-	state_store: &StateStore,
-	run_attempt: &RunAttempt,
-) -> Result<Option<RunLeaseDisposition>> {
-	let Some(latest_attempt) = state_store.latest_run_attempt_for_issue(run_attempt.issue_id())?
-	else {
-		return Ok(None);
-	};
-
-	if latest_attempt.attempt_number() <= run_attempt.attempt_number() {
-		return Ok(None);
-	}
-
-	Ok(Some(RunLeaseDisposition::Superseded {
-		newer_run_id: latest_attempt.run_id().to_owned(),
-		newer_attempt_number: latest_attempt.attempt_number(),
-	}))
 }
