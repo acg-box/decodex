@@ -1,7 +1,7 @@
 {
   "name": "codebase",
   "version": "0.2.0",
-  "description": "Codebase work contracts for repository command authority, task runners, module boundaries, dependency policy, review repair, verification, and debugging.",
+  "description": "Codebase work contracts for repository command authority, task runners, module boundaries, modularization/refactors, dependency policy, review repair, verification, and debugging.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "Codebase",
     "shortDescription": "Follow repository command, module, review, verification, and debugging contracts.",
-    "longDescription": "Routes checked-in command authority, task-runner structure, module-boundary defaults, dependency policy, review repair, verification evidence, root-cause debugging, and dynamic read-only subagent boundaries for code repositories.",
+    "longDescription": "Routes checked-in command authority, task-runner structure, module-boundary and modularization defaults, dependency policy, review repair, verification evidence, root-cause debugging, and dynamic read-only subagent boundaries for code repositories.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [

@@ -17,6 +17,7 @@ from pathlib import Path
 SCRIPT_PATH = (
     Path(__file__).parents[3] / "plugins" / "codebase" / "scripts" / "codex_lifecycle_hook"
 )
+HOOKS_PATH = Path(__file__).parents[3] / "plugins" / "codebase" / "hooks" / "hooks.json"
 
 
 def load_hook_module():
@@ -35,6 +36,7 @@ class CodexLifecycleHookTests(unittest.TestCase):
         self.hook.dependency_surface_paths = lambda paths=None: []
         self.hook.task_runner_paths = lambda paths=None: []
         self.hook.fake_modularization_paths = lambda paths=None: []
+        self.hook.module_boundary_risk_paths = lambda paths=None: []
 
     def test_route_hints_selects_codebase_knowledge_and_deliberation(self) -> None:
         self.hook.large_change_paths = lambda stats=None: []
@@ -608,6 +610,7 @@ class CodexLifecycleHookTests(unittest.TestCase):
         joined = "\n".join(hints)
         self.assertIn("$deliberation:skeptic", joined)
         self.assertIn("module-boundary", joined)
+        self.assertIn("review trigger, not a split rule", joined)
 
     def test_source_growth_adds_module_guard(self) -> None:
         self.hook.git_root = lambda: "/tmp/repo"
@@ -643,9 +646,46 @@ class CodexLifecycleHookTests(unittest.TestCase):
         hints = self.hook.route_hints("", "/tmp/repo", "PostToolUse")
 
         joined = "\n".join(hints)
-        self.assertIn("physical file splitting is not a Rust module boundary", joined)
-        self.assertIn("normal `mod` modules", joined)
+        self.assertIn("pseudo-modularization", joined)
+        self.assertIn("explicit owner APIs", joined)
         self.assertIn("$deliberation:skeptic", joined)
+
+    def test_module_prompt_adds_boundary_guidance(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: []
+
+        hints = self.hook.route_hints("Refactor this package into better modules", "/tmp/repo")
+
+        joined = "\n".join(hints)
+        self.assertIn("$codebase:work", joined)
+        self.assertIn("Module-boundary work is in scope", joined)
+        self.assertIn("Do not use fixed line counts", joined)
+
+    def test_generic_bucket_source_path_adds_boundary_guidance(self) -> None:
+        self.hook.large_change_paths = lambda stats=None: []
+        self.hook.public_surface_paths = lambda paths=None: []
+        self.hook.module_boundary_risk_paths = lambda paths=None: ["src/utils/parser.ts"]
+
+        hints = self.hook.route_hints("", "/tmp/repo", "PostToolUse")
+
+        joined = "\n".join(hints)
+        self.assertIn("Module-boundary work is in scope", joined)
+        self.assertIn("$deliberation:skeptic", joined)
+
+    def test_module_boundary_risk_paths_detects_generic_source_bucket(self) -> None:
+        module = load_hook_module()
+
+        self.assertEqual(
+            module.module_boundary_risk_paths(["src/utils/parser.ts", "docs/shared/index.md"]),
+            ["src/utils/parser.ts"],
+        )
+
+    def test_post_tool_use_matches_shell_tool_names(self) -> None:
+        config = json.loads(HOOKS_PATH.read_text(encoding="utf-8"))
+        matcher = config["hooks"]["PostToolUse"][0]["matcher"]
+
+        self.assertIn("Shell", matcher)
+        self.assertIn("exec_command", matcher)
 
     def test_small_source_change_does_not_add_module_guard(self) -> None:
         self.hook.git_root = lambda: "/tmp/repo"
