@@ -32,22 +32,6 @@ mod run_cycle_reconciliation;
 mod runtime_validation;
 mod selection;
 mod status;
-mod status_autonomy;
-mod status_execution_programs;
-mod status_ghost_lane_cleanup;
-mod status_ghost_lane_evidence;
-mod status_github_cli_authority;
-mod status_history_ledger;
-mod status_history_projection;
-mod status_issue_metadata;
-mod status_models;
-mod status_process_liveness;
-mod status_project_display;
-mod status_queued_attention;
-mod status_render;
-mod status_run_projection;
-mod status_summary;
-mod status_worktrees;
 mod types;
 pub(crate) use self::{
 	constants::{
@@ -141,7 +125,18 @@ pub(crate) use self::{
 		reconcile_project_state, retained_closeout_lease_has_fresh_activity,
 		terminal_issue_keeps_retained_closeout,
 	},
-	status::{worktree_checkout_branch_name, worktree_head_oid},
+	status::{
+		autonomy as status_autonomy, execution_programs as status_execution_programs,
+		ghost_lane_cleanup as status_ghost_lane_cleanup,
+		ghost_lane_evidence as status_ghost_lane_evidence,
+		github_cli_authority as status_github_cli_authority,
+		history_ledger as status_history_ledger, history_projection as status_history_projection,
+		issue_metadata as status_issue_metadata, models as status_models,
+		operator_worktrees as status_worktrees, process_liveness as status_process_liveness,
+		project_display as status_project_display, queued_attention as status_queued_attention,
+		render as status_render, run_projection as status_run_projection,
+		summary as status_summary, worktree_checkout_branch_name, worktree_head_oid,
+	},
 	status_ghost_lane_cleanup::ghost_lane_cleanup_status_blockers,
 	status_process_liveness::process_is_alive,
 	status_render::{render_operator_status, render_queue_explain, rendered_recovery_worktrees},
@@ -395,6 +390,104 @@ use crate::{
 #[allow(unused_imports)]
 #[rustfmt::skip]
 use crate::{agent::{RUN_LEASE_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerProcessEnv, AppServerRunRequest, AppServerRunResult, AppServerTransportFailure, AppServerTurnFailure, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, DecodexRunContext, DecodexToolBridge, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition, ReviewHandoffContext, ReviewHandoffWritebackFailed, ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, TrackerToolBridge, TurnContinuationGuard}, config::{ReviewLevel, ServiceConfig}, execution_program::{ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary, ExecutionProgramReadinessContext, ExecutionWorkflowPolicy}, git_credentials::GitCredentialSource, github, prelude::{Result, eyre}, state::{ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary, ExecutionProgramRecord, LoopGuardrailCheckpoint, LoopGuardrailCheckpointInput, ProjectRegistration, ProjectRunStatus, ProtocolActivitySummary, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_GIT_CREDENTIALS, RUN_OPERATION_IDLE, RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, RUN_OPERATION_REVIEW_WRITEBACK, RUN_OPERATION_WAITING_EXTERNAL, ReviewHandoffMarker, ReviewOrchestrationMarker, RunActivityMarker, RunAttempt, StateStore, WorktreeMapping}, tracker::{IssueTracker, TrackerIssue, linear::LinearClient, records}, workflow::WorkflowDocument, worktree::{WorktreeManager, WorktreeSpec}};
+#[cfg(test)] use self::status::classify_post_review_lane;
+#[allow(unused_imports)]
+use self::status::{
+	ATTENTION_ERROR_EVIDENCE_MISSING, EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH,
+	GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING, GHOST_LANE_NEXT_ACTION, GHOST_LANE_OWNERSHIP_STATE,
+	GHOST_LANE_POLICY_STATE, GHOST_LANE_TERMINAL_STATUS, QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT,
+	WorktreeTrackedChangeState, add_operator_snapshot_warning,
+	apply_queued_candidate_guardrail_commands, authority_boundary_landing_requirement,
+	build_control_plane_operator_status_snapshot, build_degraded_post_review_lane_statuses,
+	build_lane_inspect_operator_runs, build_live_operator_status_snapshot,
+	build_operator_status_snapshot, build_operator_status_snapshot_with_account_mode,
+	build_post_review_lane_statuses, build_queued_candidate_status_plan,
+	build_queued_candidate_statuses, build_status_command_operator_status_snapshot,
+	external_review_has_actionable_feedback, external_review_has_strict_pass_signals,
+	external_review_request_ci_gate, external_review_result_arrived, failed_checks_require_repair,
+	global_codex_account_control_status, hydrate_status_snapshot_state,
+	load_post_review_lane_review_state, load_post_review_worktree_issues,
+	merge_state_requires_review_repair, recover_runtime_state_from_tracker_and_worktrees,
+	recover_runtime_state_from_tracker_and_worktrees_with_skip_cache,
+	recoverable_worktree_identifiers, request_comment_has_eyes, resolve_configured_env_var,
+	retained_closeout_pr_merge_gate_with_inspector,
+	review_state_clean_path_landing_gates_satisfied, review_state_landing_gates_satisfied,
+	review_state_landing_requires_agent_fallback, validate_review_orchestration_marker,
+	worktree_has_tracked_changes, worktree_tracked_change_state,
+};
+use self::{
+	lane_decision::{LaneDecisionSnapshot, LaneNextAction, decide_lane_next_action},
+	status_autonomy::{
+		operator_autonomy_lineage_statuses, operator_autonomy_objective_status,
+		operator_autonomy_proposal_statuses, operator_autonomy_report_status,
+		operator_autonomy_signal_statuses,
+	},
+	status_execution_programs::operator_execution_program_statuses,
+	status_ghost_lane_cleanup::{
+		apply_missing_issue_ghost_lane_projection, mark_operator_run_tracker_issue_missing,
+	},
+	status_github_cli_authority::{
+		operator_github_cli_authority, operator_github_cli_authority_from_registration,
+	},
+	status_history_ledger::{
+		collect_history_ledger_records, compare_history_ledger_record_position,
+		hydrate_history_lanes_from_linear_ledger, local_history_ledger_records,
+		not_loaded_history_ledger_outcome, operator_history_ledger_outcome,
+		parse_rfc3339_unix_epoch,
+	},
+	status_history_projection::{
+		apply_operator_lane_terminal_projection, apply_terminal_history_ledger_outcome_to_run,
+		apply_terminal_history_ledger_outcomes, current_lane_has_authoritative_live_owner,
+		current_lane_terminal_projection_from_local_ledger, history_lane_group_key,
+		history_ledger_outcome_is_terminal, history_ledger_outcome_requires_attention,
+		hydrate_history_lanes_from_local_ledger, suppress_terminal_attention_queue_echoes,
+	},
+	status_issue_metadata::{
+		fill_missing_history_lane_issue_metadata, fill_missing_run_issue_metadata,
+		hydrate_operator_run_rows_from_tracker, operator_run_is_stale_terminal_local_residue,
+		operator_run_tracker_issue_identifier_selector,
+	},
+	status_models::{
+		AccountActivityMode, ExternalReviewRequestCiGate, LiveOperatorStatusObserverContext,
+		LiveOperatorStatusSnapshotOptions, MarkerProcessLiveness, OperatorExecutionProgramReadback,
+		OperatorHistoryLedgerRecord, OperatorIssueDisplayMetadata, OperatorLaneControlProjection,
+		OperatorLaneTerminalProjection, OperatorLifecycleMetricPhase,
+		OperatorReviewCheckpointSummaryFields, OperatorRunAppServerState,
+		OperatorRunLifecycleProjection, OperatorRunProtocolSummary, OperatorRunTiming,
+		OperatorTerminalFinalizeProjection, PostReviewLaneBuildContext,
+		PostReviewOrchestrationStatus, PostReviewReadbackDegradation, PostReviewRuntimeState,
+		RetainedCloseoutPrMergeGate, RunIssueMetadataHydration, TrackerObserverOutcome,
+		WorktreeOwnership,
+	},
+	status_process_liveness::{
+		marker_process_is_alive, marker_process_liveness_for_marker,
+		worktree_activity_marker_is_fresh,
+	},
+	status_project_display::operator_project_display_name,
+	status_queued_attention::{
+		operator_authority_decision_request_status_from_event,
+		operator_queued_issue_attention_status,
+	},
+	status_run_projection::{
+		format_optional_i64, format_optional_unix_timestamp,
+		hydrate_current_lane_lifecycle_metrics, operator_boundary_policy_blocks_landing,
+		operator_boundary_policy_requires_enhanced_evidence, operator_history_lanes,
+		operator_loop_status_for_run, operator_protocol_activity_detail_is_public,
+		operator_run_group_key, operator_run_issue_identifier_from_fields, operator_run_status,
+	},
+	status_summary::{
+		hydrate_post_review_lane_current_lane_shadowing, operator_issue_attention_key,
+		operator_run_counts_as_attention, operator_run_counts_as_current_lane,
+		operator_run_counts_as_running, operator_run_counts_as_waiting,
+		operator_run_has_live_execution, operator_run_has_recent_app_server_execution,
+		project_attention_count, project_history_only_attention_count,
+		queued_candidate_counts_as_waiting_intake, refresh_operator_project_summary,
+	},
+	status_worktrees::{
+		active_shared_issue_ids, operator_status_worktrees, refresh_worktree_ownership,
+		stale_terminal_local_issue_ids,
+	},
+};
 use crate::tracker::records::LinearExecutionEventRecord;
 #[cfg(test)] use agent_evidence::PrivateEvidenceReadback;
 use agent_evidence::{
@@ -447,97 +540,5 @@ use execution_thread_archive::{
 use harness_improvement::{HarnessOutcomeKind, record_harness_outcome_best_effort};
 #[cfg(test)]
 use harness_improvement::{HarnessOutcomeRecordInput, record_harness_outcome_for_issue_run};
-use lane_decision::{LaneDecisionSnapshot, LaneNextAction, decide_lane_next_action};
-#[cfg(test)] use status::classify_post_review_lane;
-#[allow(unused_imports)]
-use status::{
-	ATTENTION_ERROR_EVIDENCE_MISSING, EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH,
-	GHOST_LANE_CONDITION_TRACKER_ISSUE_MISSING, GHOST_LANE_NEXT_ACTION, GHOST_LANE_OWNERSHIP_STATE,
-	GHOST_LANE_POLICY_STATE, GHOST_LANE_TERMINAL_STATUS, QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT,
-	WorktreeTrackedChangeState, add_operator_snapshot_warning,
-	apply_queued_candidate_guardrail_commands, authority_boundary_landing_requirement,
-	build_control_plane_operator_status_snapshot, build_degraded_post_review_lane_statuses,
-	build_lane_inspect_operator_runs, build_live_operator_status_snapshot,
-	build_operator_status_snapshot, build_operator_status_snapshot_with_account_mode,
-	build_post_review_lane_statuses, build_queued_candidate_status_plan,
-	build_queued_candidate_statuses, build_status_command_operator_status_snapshot,
-	external_review_has_actionable_feedback, external_review_has_strict_pass_signals,
-	external_review_request_ci_gate, external_review_result_arrived, failed_checks_require_repair,
-	global_codex_account_control_status, hydrate_status_snapshot_state,
-	load_post_review_lane_review_state, load_post_review_worktree_issues,
-	merge_state_requires_review_repair, recover_runtime_state_from_tracker_and_worktrees,
-	recover_runtime_state_from_tracker_and_worktrees_with_skip_cache,
-	recoverable_worktree_identifiers, request_comment_has_eyes, resolve_configured_env_var,
-	retained_closeout_pr_merge_gate_with_inspector,
-	review_state_clean_path_landing_gates_satisfied, review_state_landing_gates_satisfied,
-	review_state_landing_requires_agent_fallback, validate_review_orchestration_marker,
-	worktree_has_tracked_changes, worktree_tracked_change_state,
-};
-use status_autonomy::{
-	operator_autonomy_lineage_statuses, operator_autonomy_objective_status,
-	operator_autonomy_proposal_statuses, operator_autonomy_report_status,
-	operator_autonomy_signal_statuses,
-};
-use status_execution_programs::operator_execution_program_statuses;
-use status_ghost_lane_cleanup::{
-	apply_missing_issue_ghost_lane_projection, mark_operator_run_tracker_issue_missing,
-};
-use status_github_cli_authority::{
-	operator_github_cli_authority, operator_github_cli_authority_from_registration,
-};
-use status_history_ledger::{
-	collect_history_ledger_records, compare_history_ledger_record_position,
-	hydrate_history_lanes_from_linear_ledger, local_history_ledger_records,
-	not_loaded_history_ledger_outcome, operator_history_ledger_outcome, parse_rfc3339_unix_epoch,
-};
-use status_history_projection::{
-	apply_operator_lane_terminal_projection, apply_terminal_history_ledger_outcome_to_run,
-	apply_terminal_history_ledger_outcomes, current_lane_has_authoritative_live_owner,
-	current_lane_terminal_projection_from_local_ledger, history_lane_group_key,
-	history_ledger_outcome_is_terminal, history_ledger_outcome_requires_attention,
-	hydrate_history_lanes_from_local_ledger, suppress_terminal_attention_queue_echoes,
-};
-use status_issue_metadata::{
-	fill_missing_history_lane_issue_metadata, fill_missing_run_issue_metadata,
-	hydrate_operator_run_rows_from_tracker, operator_run_is_stale_terminal_local_residue,
-	operator_run_tracker_issue_identifier_selector,
-};
-use status_models::{
-	AccountActivityMode, ExternalReviewRequestCiGate, LiveOperatorStatusObserverContext,
-	LiveOperatorStatusSnapshotOptions, MarkerProcessLiveness, OperatorExecutionProgramReadback,
-	OperatorHistoryLedgerRecord, OperatorIssueDisplayMetadata, OperatorLaneControlProjection,
-	OperatorLaneTerminalProjection, OperatorLifecycleMetricPhase,
-	OperatorReviewCheckpointSummaryFields, OperatorRunAppServerState,
-	OperatorRunLifecycleProjection, OperatorRunProtocolSummary, OperatorRunTiming,
-	OperatorTerminalFinalizeProjection, PostReviewLaneBuildContext, PostReviewOrchestrationStatus,
-	PostReviewReadbackDegradation, PostReviewRuntimeState, RetainedCloseoutPrMergeGate,
-	RunIssueMetadataHydration, TrackerObserverOutcome, WorktreeOwnership,
-};
-use status_process_liveness::{
-	marker_process_is_alive, marker_process_liveness_for_marker, worktree_activity_marker_is_fresh,
-};
-use status_project_display::operator_project_display_name;
-use status_queued_attention::{
-	operator_authority_decision_request_status_from_event, operator_queued_issue_attention_status,
-};
-use status_run_projection::{
-	format_optional_i64, format_optional_unix_timestamp, hydrate_current_lane_lifecycle_metrics,
-	operator_boundary_policy_blocks_landing, operator_boundary_policy_requires_enhanced_evidence,
-	operator_history_lanes, operator_loop_status_for_run,
-	operator_protocol_activity_detail_is_public, operator_run_group_key,
-	operator_run_issue_identifier_from_fields, operator_run_status,
-};
-use status_summary::{
-	hydrate_post_review_lane_current_lane_shadowing, operator_issue_attention_key,
-	operator_run_counts_as_attention, operator_run_counts_as_current_lane,
-	operator_run_counts_as_running, operator_run_counts_as_waiting,
-	operator_run_has_live_execution, operator_run_has_recent_app_server_execution,
-	project_attention_count, project_history_only_attention_count,
-	queued_candidate_counts_as_waiting_intake, refresh_operator_project_summary,
-};
-use status_worktrees::{
-	active_shared_issue_ids, operator_status_worktrees, refresh_worktree_ownership,
-	stale_terminal_local_issue_ids,
-};
 
 #[cfg(test)] mod tests;
