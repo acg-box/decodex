@@ -23,11 +23,12 @@ pub(crate) fn operator_execution_program_readiness_context(
 		state_store,
 		records,
 	)?;
-	let active_issue_ids = state_store
-		.list_active_shared_leases(service_id)?
-		.into_iter()
-		.map(|lease| lease.issue_id().to_owned())
-		.collect::<Vec<_>>();
+	let active_issue_ids = self::operator_execution_program_active_issue_ids(
+		service_id,
+		workflow,
+		state_store,
+		records,
+	)?;
 
 	Ok(ExecutionProgramReadinessContext::new()
 		.with_dependency_snapshots(dependency_snapshots)
@@ -45,6 +46,40 @@ pub(crate) fn operator_execution_program_mapped_issue_ids(
 		.collect::<BTreeSet<_>>()
 		.into_iter()
 		.collect()
+}
+
+fn operator_execution_program_active_issue_ids(
+	service_id: &str,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	records: &[ExecutionProgramRecord],
+) -> Result<Vec<String>> {
+	let retained_issue_ids = state_store
+		.list_worktrees(service_id)?
+		.into_iter()
+		.map(|worktree| worktree.issue_id().to_owned())
+		.collect::<BTreeSet<_>>();
+	let mut active_issue_ids = state_store
+		.list_active_shared_leases(service_id)?
+		.into_iter()
+		.map(|lease| lease.issue_id().to_owned())
+		.collect::<BTreeSet<_>>();
+
+	for record in records {
+		for node in record.program().nodes() {
+			let Some(issue) = node.linear_issue() else {
+				continue;
+			};
+
+			if retained_issue_ids.contains(issue.issue_id())
+				&& !orchestrator::state_name_is_terminal(issue.issue_state(), workflow)
+			{
+				active_issue_ids.insert(issue.issue_id().to_owned());
+			}
+		}
+	}
+
+	Ok(active_issue_ids.into_iter().collect())
 }
 
 fn operator_execution_program_dependency_snapshots(

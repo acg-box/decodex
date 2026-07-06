@@ -1,8 +1,16 @@
-use crate::orchestrator::run_cycle::{
-	self, IssueDispatchMode, IssueRunPlan, IssueTracker, PreferredRunIdentity,
-	PrepareIssueRunContext, Result, RetryIssueStateHint, ServiceConfig, StateStore,
-	WorkflowDocument, WorktreeManager, eyre, project::candidate, slice,
+use crate::orchestrator::{
+	ProgramDispatchSelection,
+	run_cycle::{
+		self, IssueDispatchMode, IssueRunPlan, IssueTracker, PreferredRunIdentity,
+		PrepareIssueRunContext, Result, RetryIssueStateHint, ServiceConfig, StateStore,
+		WorkflowDocument, WorktreeManager, eyre, project::candidate, slice,
+	},
 };
+
+pub(crate) struct PlannedProjectIssueRun {
+	pub(crate) issue_run: IssueRunPlan,
+	pub(crate) program_dispatch: Option<ProgramDispatchSelection>,
+}
 
 pub(crate) fn plan_project_issue_run_with_exclusions<T>(
 	tracker: &T,
@@ -12,6 +20,28 @@ pub(crate) fn plan_project_issue_run_with_exclusions<T>(
 	dry_run: bool,
 	excluded_issue_ids: &[&str],
 ) -> Result<Option<IssueRunPlan>>
+where
+	T: IssueTracker,
+{
+	Ok(plan_project_issue_run_with_program_dispatch(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		dry_run,
+		excluded_issue_ids,
+	)?
+	.map(|planned| planned.issue_run))
+}
+
+pub(crate) fn plan_project_issue_run_with_program_dispatch<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	dry_run: bool,
+	excluded_issue_ids: &[&str],
+) -> Result<Option<PlannedProjectIssueRun>>
 where
 	T: IssueTracker,
 {
@@ -85,7 +115,7 @@ where
 			return Ok(None);
 		}
 
-		return replan_project_issue_run_after_excluding(
+		return replan_project_issue_run_with_program_dispatch_after_excluding(
 			tracker,
 			project,
 			workflow,
@@ -131,10 +161,10 @@ where
 		)?;
 	}
 
-	Ok(Some(issue_run))
+	Ok(Some(PlannedProjectIssueRun { issue_run, program_dispatch }))
 }
 
-fn replan_project_issue_run_after_excluding<T>(
+fn replan_project_issue_run_with_program_dispatch_after_excluding<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -142,7 +172,7 @@ fn replan_project_issue_run_after_excluding<T>(
 	dry_run: bool,
 	excluded_issue_ids: &[&str],
 	issue_id: &str,
-) -> Result<Option<IssueRunPlan>>
+) -> Result<Option<PlannedProjectIssueRun>>
 where
 	T: IssueTracker,
 {
@@ -150,7 +180,7 @@ where
 
 	next_excluded_issue_ids.push(issue_id);
 
-	plan_project_issue_run_with_exclusions(
+	plan_project_issue_run_with_program_dispatch(
 		tracker,
 		project,
 		workflow,

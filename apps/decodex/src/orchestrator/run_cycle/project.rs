@@ -3,7 +3,9 @@ mod execution;
 mod planning;
 mod queue;
 
-pub(crate) use planning::plan_project_issue_run_with_exclusions;
+pub(crate) use planning::{
+	plan_project_issue_run_with_exclusions, plan_project_issue_run_with_program_dispatch,
+};
 
 use crate::orchestrator::run_cycle::{
 	IssueTracker, Result, RunSummary, ServiceConfig, StateStore, WorkflowDocument,

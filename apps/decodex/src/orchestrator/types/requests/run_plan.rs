@@ -1,6 +1,6 @@
 use crate::orchestrator::types::{
-	IssueDispatchMode, Path, PathBuf, RetryQueue, ServiceConfig, StateStore, TrackerIssue,
-	WorkflowDocument, WorktreeManager, WorktreeSpec,
+	IssueDispatchMode, Path, PathBuf, ProgramDispatchSelection, RetryQueue, ServiceConfig,
+	StateStore, TrackerIssue, WorkflowDocument, WorktreeManager, WorktreeSpec,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -18,6 +18,7 @@ pub(crate) struct RunSummary {
 	pub(crate) attempt_number: i64,
 	pub(crate) run_id: String,
 	pub(crate) continuation_pending: bool,
+	pub(crate) program_dispatch: Option<ProgramDispatchSelection>,
 }
 
 #[derive(Clone, Debug)]

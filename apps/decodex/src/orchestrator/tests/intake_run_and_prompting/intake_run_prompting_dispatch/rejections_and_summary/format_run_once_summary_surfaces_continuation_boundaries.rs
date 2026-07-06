@@ -17,6 +17,7 @@ fn format_run_once_summary_surfaces_continuation_boundaries() {
 		attempt_number: 1,
 		run_id: String::from("pub-101-attempt-1"),
 		continuation_pending: true,
+		program_dispatch: None,
 	};
 	let message = orchestrator::format_run_once_summary(&summary, false);
 

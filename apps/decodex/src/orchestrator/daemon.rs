@@ -37,8 +37,9 @@ use crate::orchestrator::{
 	apply_run_lease_reconciliation, daemon_retry, inspect_exited_daemon_child_reconciliation,
 	is_issue_not_dispatchable_for_current_dispatch, is_terminal_issue, mark_run_attempt_if_active,
 	refresh_issue, retained_review_handoff_matches_run, run_lease_reconciliation_workflow,
-	run_target_issue_once, stalled_idle_duration, stalled_run_has_retained_partial_progress,
-	superseded_run_disposition, terminal_issue_keeps_retained_closeout,
+	run_target_issue_once, run_target_status_visible_program_once, stalled_idle_duration,
+	stalled_run_has_retained_partial_progress, superseded_run_disposition,
+	terminal_issue_keeps_retained_closeout,
 };
 #[cfg(not(test))] use retry_dispatch::plan_due_retry_run;
 

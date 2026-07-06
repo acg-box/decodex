@@ -1,5 +1,12 @@
 # Documentation Log
 
+## 2026-07-06
+
+- Clarified that Program Intake dry-run dispatch readback uses current local runtime
+  occupancy, including live shared leases and retained nonterminal worktrees, and
+  that daemon Program dispatch must preserve selected Program node provenance before
+  child spawn records `program_dispatch_selected`.
+
 ## 2026-07-04
 
 - Documented account-pool reset-credit visibility: the server-owned account API now

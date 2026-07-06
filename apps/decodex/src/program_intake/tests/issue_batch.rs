@@ -77,6 +77,76 @@ fn issue_batch_dry_run_classifies_without_persisting() {
 }
 
 #[test]
+fn issue_batch_dry_run_uses_runtime_context_for_dispatch_action() {
+	let store = StateStore::open_in_memory().expect("store should open");
+	let workflow = test_support::workflow();
+	let config = test_support::test_config();
+	let tracker = FakeTracker::default().with_issues([test_support::issue("XY-1", "Todo")]);
+
+	store
+		.upsert_worktree("decodex", "id-XY-1", "x/decodex-xy-1", "/tmp/decodex/.worktrees/XY-1")
+		.expect("retained worktree should record");
+
+	let report = program_intake::run_issue_batch_intake(
+		&store,
+		&tracker,
+		&config,
+		&workflow,
+		vec![String::from("XY-1")],
+		true,
+		false,
+	)
+	.expect("dry-run should classify with runtime context");
+
+	assert_eq!(report.counts.ready, 0);
+	assert_eq!(report.counts.held, 1);
+	assert_eq!(report.issues[0].classification, IssueBatchIntakeClassification::Held);
+	assert_eq!(report.issues[0].dispatch_action, None);
+}
+
+#[test]
+fn issue_batch_dry_run_uses_runtime_conflict_occupancy() {
+	let store = StateStore::open_in_memory().expect("store should open");
+	let workflow = test_support::workflow();
+	let config = test_support::test_config();
+	let tracker = FakeTracker::default().with_issues([
+		test_support::issue("XY-0", "In Progress").with_label("repo:alpha"),
+		test_support::issue("XY-1", "Todo").with_label("repo:alpha"),
+	]);
+
+	program_intake::run_issue_batch_intake(
+		&store,
+		&tracker,
+		&config,
+		&workflow,
+		vec![String::from("XY-0")],
+		false,
+		true,
+	)
+	.expect("persist should write occupied program");
+
+	store
+		.upsert_worktree("decodex", "id-XY-0", "x/decodex-xy-0", "/tmp/decodex/.worktrees/XY-0")
+		.expect("retained worktree should record");
+
+	let report = program_intake::run_issue_batch_intake(
+		&store,
+		&tracker,
+		&config,
+		&workflow,
+		vec![String::from("XY-1")],
+		true,
+		false,
+	)
+	.expect("dry-run should classify with occupied conflict domains");
+
+	assert_eq!(report.counts.ready, 0);
+	assert_eq!(report.counts.blocked, 1);
+	assert_eq!(report.issues[0].classification, IssueBatchIntakeClassification::Blocked);
+	assert_eq!(report.issues[0].dispatch_action, None);
+}
+
+#[test]
 fn project_registration_is_persist_only_for_command_path() {
 	let store = StateStore::open_in_memory().expect("store should open");
 	let temp_dir = TempDir::new().expect("temp dir should create");

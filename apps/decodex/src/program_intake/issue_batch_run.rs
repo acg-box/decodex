@@ -2,13 +2,12 @@ use std::collections::BTreeMap;
 
 use crate::{
 	config::ServiceConfig,
-	execution_program::{
-		ExecutionProgram, ExecutionProgramReadinessContext, ExecutionWorkflowPolicy,
-	},
+	execution_program::{ExecutionProgram, ExecutionWorkflowPolicy},
 	prelude::{Result, eyre},
 	program_intake::{
 		IssueBatchIntakeReport,
 		issue_batch::{identity, nodes, reporting},
+		readiness,
 	},
 	state::StateStore,
 	tracker::{self, IssueTracker},
@@ -78,8 +77,13 @@ where
 		format!("Issue-batch intake for {} issue(s).", issue_identifiers.len()),
 		nodes,
 	)?;
-	let context =
-		ExecutionProgramReadinessContext::new().with_dependency_snapshots(dependency_snapshots);
+	let context = readiness::intake_readiness_context(
+		config.service_id(),
+		workflow,
+		state_store,
+		&program,
+		dependency_snapshots,
+	)?;
 	let evaluation = program.evaluate_issue_batch(&policy, &context)?;
 	let evaluation_by_issue = evaluation
 		.nodes()
