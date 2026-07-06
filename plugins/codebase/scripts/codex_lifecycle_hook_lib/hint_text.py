@@ -29,16 +29,23 @@ COMMIT_STYLE_HINT = (
     "and `authority` fields. Do not use prose commit subjects."
 )
 ANTI_MONOLITH_HINT = (
-    "Large, generated, or growing implementation files are present. Before commit, "
-    "push, or ready/done claims, load $codebase:work and run a module-boundary check: "
-    "split files that mix unrelated concerns or state why the owner boundary is "
-    "deliberate. Use $deliberation:skeptic when the structure is material."
+    "Large, generated, or growing implementation files are present. Treat size as "
+    "a module-boundary review trigger, not a split rule. Before commit, push, or "
+    "ready/done claims, load $codebase:work and check ownership: split files that "
+    "mix unrelated concerns, or state why the current owner boundary is deliberate. "
+    "Use $deliberation:skeptic when the structure is material."
+)
+MODULE_BOUNDARY_HINT = (
+    "Module-boundary work is in scope. Load $codebase:work and use ownership rules "
+    "before judging or editing: split or merge by responsibility, public contract, "
+    "state ownership, change cadence, validation surface, and reader navigation. "
+    "Do not use fixed line counts as the decision rule."
 )
 FAKE_MODULARIZATION_HINT = (
-    "Rust files in the current diff use `include!`, `#[path]`, or equivalent "
-    "original-scope fragment wiring. Do not claim this as modularization: physical "
-    "file splitting is not a Rust module boundary. Replace it with normal `mod` "
-    "modules, explicit owner APIs, and visibility boundaries, or document the include "
+    "The current diff has signs of pseudo-modularization such as textual includes, "
+    "original-scope fragment wiring, compatibility shims, or files that only move "
+    "code without creating an owner boundary. Do not claim that as modularization. "
+    "Replace it with explicit owner APIs and visibility boundaries, or document it "
     "as generated/FFI adapter plumbing that does not count toward the refactor."
 )
 PUBLIC_SURFACE_HINT = (
