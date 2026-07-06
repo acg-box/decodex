@@ -455,9 +455,11 @@ The operator CLI surface for existing issues is
 command with `--config <PROJECT_DIR>`. Dry-run reads tracker state and prints a
 deterministic ready/held/blocked/stale/unmapped report without mutating Linear and
 without persisting local runtime rows. Dry-run reports set `scheduler_visible=false`,
-so `dispatch_action=dispatch` means the transient plan would be dispatchable only
-after persistence. `--apply` is an explicit local-runtime write: it stores the Program
-Intake Plan, Execution Program payload, and issue mappings, and sets
+so `dispatch_action=dispatch` means the transient plan would be dispatchable after
+persistence under the current local runtime occupancy. Existing live shared leases
+and retained nonterminal worktree mappings are part of that occupancy and must render
+the row held instead of dispatchable. `--apply` is an explicit local-runtime write: it
+stores the Program Intake Plan, Execution Program payload, and issue mappings, and sets
 `scheduler_visible=true`, but it must not apply or remove
 `decodex:queued:<service-id>`. Ready mapped nodes are dispatched directly by the
 Program scheduler rather than converted into queued-label work.

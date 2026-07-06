@@ -102,6 +102,7 @@ fn same_run_closeout_reuses_matching_active_handoff_lease() {
 		attempt_number: 1,
 		run_id: fixture.completed_run_id.clone(),
 		continuation_pending: false,
+		program_dispatch: None,
 	};
 	let summary = orchestrator::run_retained_closeout_for_handoff_summary(
 		&fixture.tracker,
