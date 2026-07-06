@@ -1,6 +1,6 @@
 use crate::{
 	recovery::stale_active_reentry::{
-		control, evidence, local_cleanup, types::StaleActiveStartableStateRestoreReentryInput,
+		control, local_cleanup, types::StaleActiveStartableStateRestoreReentryInput,
 	},
 	state::ProjectRunStatus,
 };
@@ -45,13 +45,13 @@ fn stale_active_startable_state_restore_reentry_allowed(
 		&& control::reentry_control_channel_inactive_or_absent(
 			input.control_channel,
 			audit_evidence,
-		) && evidence::evidence_contains(
+		) && super::evidence_contains(
 		audit_evidence,
 		"only_stale_active_or_failed_control_evidence_present",
-	) && evidence::evidence_contains(audit_evidence, "review_lineage_missing")
-		&& evidence::evidence_contains(audit_evidence, "stale_active_release_audit_present")
-		&& evidence::evidence_contains(audit_evidence, "worktree_mapping_missing")
-		&& evidence::evidence_contains(audit_evidence, "worktree_missing")
+	) && super::evidence_contains(audit_evidence, "review_lineage_missing")
+		&& super::evidence_contains(audit_evidence, "stale_active_release_audit_present")
+		&& super::evidence_contains(audit_evidence, "worktree_mapping_missing")
+		&& super::evidence_contains(audit_evidence, "worktree_missing")
 }
 
 fn stale_active_startable_state_restore_reentry_blocker(blocker: &str) -> bool {
