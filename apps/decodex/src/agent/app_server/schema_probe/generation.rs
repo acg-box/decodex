@@ -8,7 +8,7 @@ use crate::{
 				APP_SERVER_SCHEMA_REQUIRED_MARKERS,
 			},
 			evidence::AppServerSchemaProbeEvidence,
-			output, validation,
+			validation,
 		},
 		json_rpc::{self, AppServerProcessEnv},
 	},
@@ -40,8 +40,8 @@ pub(in crate::agent::app_server) fn probe_app_server_schema(
 		eyre::bail!(
 			"`{APP_SERVER_SCHEMA_GENERATE_COMMAND}` failed with status {}: stdout={} stderr={}",
 			output.status,
-			output::command_output_excerpt(&output.stdout),
-			output::command_output_excerpt(&output.stderr)
+			command_output_excerpt(&output.stdout),
+			command_output_excerpt(&output.stderr)
 		);
 	}
 
@@ -51,4 +51,12 @@ pub(in crate::agent::app_server) fn probe_app_server_schema(
 		APP_SERVER_SCHEMA_PROBE_OUT_DIR.to_owned(),
 		APP_SERVER_SCHEMA_REQUIRED_MARKERS,
 	))
+}
+
+fn command_output_excerpt(output: &[u8]) -> String {
+	let text = String::from_utf8_lossy(output);
+	let trimmed = text.trim();
+	let excerpt = trimmed.chars().take(1_000).collect::<String>();
+
+	if excerpt.is_empty() { String::from("<empty>") } else { excerpt }
 }

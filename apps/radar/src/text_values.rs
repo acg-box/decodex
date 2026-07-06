@@ -8,7 +8,7 @@ use std::{
 use serde_json::Value;
 
 use crate::{
-	config::DEFAULT_CONFIG_PATH,
+	paths::DEFAULT_CONFIG_PATH,
 	prelude::{Result, eyre},
 };
 
