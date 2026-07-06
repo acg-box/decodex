@@ -2,7 +2,6 @@ mod accounts;
 mod child_agent;
 mod loop_status;
 mod protocol;
-mod time;
 
 pub(crate) use self::{
 	accounts::{render_account_summary, render_accounts_summary},
@@ -13,5 +12,15 @@ pub(crate) use self::{
 		render_loop_review_summary, render_loop_status_summary,
 	},
 	protocol::render_protocol_activity_summary,
-	time::format_seconds_compact,
 };
+
+pub(crate) fn format_seconds_compact(seconds: i64) -> String {
+	if seconds >= 3_600 {
+		return format!("{}h{}m", seconds / 3_600, (seconds % 3_600) / 60);
+	}
+	if seconds >= 60 {
+		return format!("{}m{}s", seconds / 60, seconds % 60);
+	}
+
+	format!("{seconds}s")
+}

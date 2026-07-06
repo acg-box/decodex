@@ -4,17 +4,14 @@ use std::{
 	process::Command,
 };
 
-use crate::{
-	prelude::{Result, eyre},
-	recovery::git_worktree::command,
-};
+use crate::prelude::{Result, eyre};
 
 pub(in crate::recovery) fn git_toplevel_path(cwd: &Path) -> Result<PathBuf> {
 	let output =
 		Command::new("git").arg("-C").arg(cwd).args(["rev-parse", "--show-toplevel"]).output()?;
 
 	if output.status.success() {
-		return Ok(PathBuf::from(command::trimmed_stdout(&output.stdout)?));
+		return Ok(PathBuf::from(super::trimmed_stdout(&output.stdout)?));
 	}
 
 	let stderr = String::from_utf8_lossy(&output.stderr);
@@ -36,7 +33,7 @@ pub(in crate::recovery) fn worktree_checkout_branch_name(
 		.output()?;
 
 	if output.status.success() {
-		return Ok(Some(command::trimmed_stdout(&output.stdout)?));
+		return Ok(Some(super::trimmed_stdout(&output.stdout)?));
 	}
 	if output.status.code() == Some(1) {
 		return Ok(None);

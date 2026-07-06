@@ -2,7 +2,6 @@
 
 mod artifact_validation;
 mod cli;
-mod config;
 mod constants;
 mod core_io;
 mod github_api;

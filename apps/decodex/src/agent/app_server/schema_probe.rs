@@ -6,7 +6,6 @@ mod evidence;
 mod generation;
 mod markers;
 mod method_unions;
-mod output;
 mod validation;
 
 #[cfg(test)]
