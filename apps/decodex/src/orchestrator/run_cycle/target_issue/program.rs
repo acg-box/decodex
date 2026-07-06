@@ -18,8 +18,7 @@ where
 	let dry_run = context.dry_run;
 	let state_store = context.state_store;
 	let project_id = context.project.service_id().to_owned();
-
-	target_issue::run_target_issue_once_after_prepare(context, |issue_run| {
+	let mut summary = target_issue::run_target_issue_once_after_prepare(context, |issue_run| {
 		if !dry_run && let Some(program_dispatch) = program_dispatch.as_ref() {
 			orchestrator::record_program_dispatch_selected(
 				state_store,
@@ -30,7 +29,13 @@ where
 		}
 
 		Ok(())
-	})
+	})?;
+
+	if let Some(summary) = summary.as_mut() {
+		summary.program_dispatch = program_dispatch;
+	}
+
+	Ok(summary)
 }
 
 pub(crate) fn select_target_status_visible_program_candidate<T>(

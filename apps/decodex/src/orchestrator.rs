@@ -174,9 +174,9 @@ pub(crate) use self::{
 		ProgramSchedulerSummary, RefreshedExecutionProgram, execution_program_dependency_snapshots,
 		execution_program_occupied_conflict_domains, execution_program_readiness_context,
 		insert_dependency_snapshot, program_issue_occupies_conflict_domain, program_issue_snapshot,
-		record_program_dispatch_selected, refresh_execution_program_issues,
-		refresh_execution_program_local_lifecycle_facts, refresh_execution_program_tracker_facts,
-		select_execution_program_run_candidate,
+		record_program_dispatch_selected, record_program_dispatch_selected_for_summary,
+		refresh_execution_program_issues, refresh_execution_program_local_lifecycle_facts,
+		refresh_execution_program_tracker_facts, select_execution_program_run_candidate,
 		select_execution_program_run_candidate_with_summary,
 	},
 	pull_request_review::{
@@ -220,6 +220,7 @@ pub(crate) use self::{
 	run_cycle::{
 		closeout_lane_active_claim_blocks_dispatch, load_configured_cycle_workflow,
 		plan_project_issue_run_with_exclusions, run_configured_cycle, run_target_issue_once,
+		run_target_status_visible_program_once,
 	},
 };
 #[cfg(test)]

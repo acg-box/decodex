@@ -7,7 +7,10 @@ mod context;
 mod identity;
 mod lease;
 
-pub(crate) use inferred::run_target_issue_once_with_inferred_dispatch;
+pub(crate) use self::{
+	inferred::run_target_issue_once_with_inferred_dispatch,
+	program::run_target_status_visible_program_once,
+};
 #[cfg(test)] pub(crate) use program::select_target_status_visible_program_candidate;
 
 use crate::orchestrator::run_cycle::{
