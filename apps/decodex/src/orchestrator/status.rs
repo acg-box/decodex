@@ -1,3 +1,20 @@
+pub(crate) mod autonomy;
+pub(crate) mod execution_programs;
+pub(crate) mod ghost_lane_cleanup;
+pub(crate) mod ghost_lane_evidence;
+pub(crate) mod github_cli_authority;
+pub(crate) mod history_ledger;
+pub(crate) mod history_projection;
+pub(crate) mod issue_metadata;
+pub(crate) mod models;
+pub(crate) mod operator_worktrees;
+pub(crate) mod process_liveness;
+pub(crate) mod project_display;
+pub(crate) mod queued_attention;
+pub(crate) mod render;
+pub(crate) mod run_projection;
+pub(crate) mod summary;
+
 mod post_review;
 mod queue;
 mod review_orchestration;
