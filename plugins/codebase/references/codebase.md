@@ -26,12 +26,14 @@ Read when `$codebase:work` needs exact command, structure, validation, or eviden
 - Avoid pseudo-modularization. Do not create files that only wrap one trivial
   helper, one constant, one forwarding function, or re-exports unless that file is
   the canonical owner for the concept.
-- Put code and constants in the nearest real owner: paths in path owners, schemas in
-  schema owners, assets in asset owners, parsing helpers near parsers, and policy
-  predicates near policy owners.
-- Do not claim modularization by using textual includes, original-scope tricks,
-  compatibility shims, or moving tests away from production code. Generated/FFI
-  includes are documented plumbing, not modularization progress.
+- Put code and constants in the nearest real owner. For example, keep paths in path
+  owners, schemas in schema owners, assets in asset owners, parsing helpers near
+  parsers, and policy predicates near policy owners. Avoid dumping unrelated code
+  into generic `utils`, `common`, `shared`, or `misc` buckets.
+- Do not claim modularization by using textual includes, compatibility shims,
+  mechanisms that keep code executing in the old owner's scope, or by moving tests
+  away from production code. Generated/FFI includes are documented plumbing, not
+  modularization progress.
 
 ## Task Runner Structure
 
