@@ -1,6 +1,5 @@
 //! Git worktree inspection helpers for recovery validation.
 
-mod command;
 mod lineage;
 mod paths;
 mod status;
@@ -15,3 +14,9 @@ pub(in crate::recovery) use self::{
 		worktree_is_clean,
 	},
 };
+
+use crate::prelude::Result;
+
+pub(in crate::recovery::git_worktree) fn trimmed_stdout(stdout: &[u8]) -> Result<String> {
+	Ok(String::from_utf8(stdout.to_vec())?.trim().to_owned())
+}

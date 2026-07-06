@@ -2,7 +2,6 @@ use std::{path::Path, process::Command};
 
 use crate::{
 	prelude::{Result, eyre},
-	recovery::git_worktree::command,
 	state,
 };
 
@@ -14,7 +13,7 @@ pub(in crate::recovery) fn worktree_head_oid(worktree_path: &Path) -> Result<Opt
 		.output()?;
 
 	if output.status.success() {
-		return Ok(Some(command::trimmed_stdout(&output.stdout)?));
+		return Ok(Some(super::trimmed_stdout(&output.stdout)?));
 	}
 	if output.status.code() == Some(128) {
 		return Ok(None);
@@ -111,7 +110,7 @@ fn worktree_remote_default_ref(worktree_path: &Path) -> Result<Option<String>> {
 		.output()?;
 
 	if output.status.success() {
-		let value = command::trimmed_stdout(&output.stdout)?;
+		let value = super::trimmed_stdout(&output.stdout)?;
 
 		if !value.is_empty() {
 			return Ok(Some(value));
