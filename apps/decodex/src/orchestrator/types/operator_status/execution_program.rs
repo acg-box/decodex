@@ -1,12 +1,10 @@
-use std::collections::BTreeSet;
+mod readback;
+mod reasons;
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	execution_program::{
-		ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramNodeLifecycleState,
-		ExecutionProgramOperatorSummary,
-	},
+	execution_program::{ExecutionProgramEvaluation, ExecutionProgramOperatorSummary},
 	state::ExecutionProgramRecord,
 };
 
@@ -87,8 +85,8 @@ impl OperatorExecutionProgramStatus {
 			node_readbacks: evaluation
 				.nodes()
 				.iter()
-				.filter(|program_node| operator_execution_program_node_should_render(program_node))
-				.map(operator_execution_program_node_readback)
+				.filter(|program_node| readback::node_should_render(program_node))
+				.map(readback::node_status)
 				.collect(),
 			readback_warning: None,
 		}
@@ -122,8 +120,8 @@ impl OperatorExecutionProgramStatus {
 			stale_count: node_count,
 			superseded_count: 0,
 			dispatchable_count: 0,
-			mapped_issue_identifiers: operator_execution_program_mapped_issue_identifiers(record),
-			node_readbacks: operator_execution_program_missing_contract_nodes(record),
+			mapped_issue_identifiers: readback::mapped_issue_identifiers(record),
+			node_readbacks: readback::missing_contract_nodes(record),
 			readback_warning: Some(String::from("source_decision_contract_missing")),
 		}
 	}
@@ -157,208 +155,4 @@ fn operator_execution_program_status(
 
 fn operator_execution_program_unknown_status() -> String {
 	String::from("unknown")
-}
-
-fn operator_execution_program_node_should_render(node: &ExecutionNodeEvaluation) -> bool {
-	node.dispatch_action().is_some()
-		|| matches!(
-			node.lifecycle_state(),
-			ExecutionProgramNodeLifecycleState::Active
-				| ExecutionProgramNodeLifecycleState::Blocked
-				| ExecutionProgramNodeLifecycleState::Mapped
-				| ExecutionProgramNodeLifecycleState::NeedsAttention
-				| ExecutionProgramNodeLifecycleState::PostReview
-				| ExecutionProgramNodeLifecycleState::Planned
-				| ExecutionProgramNodeLifecycleState::Stale
-				| ExecutionProgramNodeLifecycleState::Superseded
-		)
-}
-
-fn operator_execution_program_node_readback(
-	node: &ExecutionNodeEvaluation,
-) -> OperatorExecutionProgramNodeStatus {
-	let reason_codes = operator_execution_program_reason_codes(node.reasons());
-	let reasons = node
-		.reasons()
-		.iter()
-		.map(|program_reason| operator_execution_program_public_reason(program_reason))
-		.collect::<Vec<_>>();
-	let issue = node.linear_issue();
-
-	OperatorExecutionProgramNodeStatus {
-		program_stage: node.stage().as_str().to_owned(),
-		lifecycle_state: node.lifecycle_state().as_str().to_owned(),
-		readiness_state: node.state().as_str().to_owned(),
-		issue_identifier: issue.map(|issue| issue.issue_identifier().to_owned()),
-		issue_state: issue.map(|issue| issue.issue_state().to_owned()),
-		dispatch_action: node.dispatch_action().map(|action| action.as_str().to_owned()),
-		next_action: operator_execution_program_node_next_action(node, &reason_codes),
-		reason_codes,
-		reasons,
-	}
-}
-
-fn operator_execution_program_missing_contract_nodes(
-	record: &ExecutionProgramRecord,
-) -> Vec<OperatorExecutionProgramNodeStatus> {
-	record
-		.program()
-		.nodes()
-		.iter()
-		.map(|node| {
-			let issue = node.linear_issue();
-
-			OperatorExecutionProgramNodeStatus {
-				program_stage: node.stage().as_str().to_owned(),
-				lifecycle_state: String::from("stale"),
-				readiness_state: String::from("stale"),
-				issue_identifier: issue.map(|issue| issue.issue_identifier().to_owned()),
-				issue_state: issue.map(|issue| issue.issue_state().to_owned()),
-				dispatch_action: None,
-				reason_codes: vec![String::from("source_decision_contract_missing")],
-				reasons: vec![String::from("source Decision Contract is missing")],
-				next_action: String::from(
-					"Restore or supersede the source Decision Contract before dispatching this program.",
-				),
-			}
-		})
-		.collect()
-}
-
-fn operator_execution_program_node_next_action(
-	node: &ExecutionNodeEvaluation,
-	reason_codes: &[String],
-) -> String {
-	if matches!(
-		node.lifecycle_state(),
-		ExecutionProgramNodeLifecycleState::Stale | ExecutionProgramNodeLifecycleState::Superseded
-	) {
-		return String::from(
-			"Refresh or supersede the accepted Decision Contract before dispatching this program.",
-		);
-	}
-	if reason_codes.iter().any(|code| code == "dependency_not_terminal") {
-		return String::from(
-			"Complete the dependency issue or refresh the Execution Program dependency plan if this remains stale.",
-		);
-	}
-	if matches!(node.lifecycle_state(), ExecutionProgramNodeLifecycleState::NeedsAttention)
-		|| reason_codes.iter().any(|code| code == "mapped_issue_needs_attention")
-	{
-		return String::from(
-			"Resolve the mapped issue's needs-attention stop before dispatching this node.",
-		);
-	}
-	if matches!(node.lifecycle_state(), ExecutionProgramNodeLifecycleState::Active) {
-		return String::from(
-			"Wait for the current lane or recover its retained state before dispatching this node.",
-		);
-	}
-	if matches!(node.lifecycle_state(), ExecutionProgramNodeLifecycleState::PostReview)
-		|| reason_codes.iter().any(|code| code == "mapped_issue_post_review_owner")
-	{
-		return String::from(
-			"Continue the retained post-review lifecycle before dispatching this program node.",
-		);
-	}
-	if node.dispatch_action().is_some() {
-		return String::from("The program scheduler can dispatch this node directly.");
-	}
-	if matches!(
-		node.lifecycle_state(),
-		ExecutionProgramNodeLifecycleState::Planned | ExecutionProgramNodeLifecycleState::Mapped
-	) {
-		return String::from("Map, promote, or unpause this intake node before dispatching it.");
-	}
-	if matches!(node.lifecycle_state(), ExecutionProgramNodeLifecycleState::Blocked) {
-		return String::from(
-			"Repair mapped issue blockers, briefing, or program readiness before retrying.",
-		);
-	}
-
-	String::from("No operator action required.")
-}
-
-fn operator_execution_program_mapped_issue_identifiers(
-	record: &ExecutionProgramRecord,
-) -> Vec<String> {
-	let mut identifiers = record
-		.program()
-		.nodes()
-		.iter()
-		.filter_map(|node| node.linear_issue().map(|issue| issue.issue_identifier().to_owned()))
-		.collect::<Vec<_>>();
-
-	identifiers.sort();
-	identifiers.dedup();
-
-	identifiers
-}
-
-fn operator_execution_program_reason_codes(reasons: &[String]) -> Vec<String> {
-	let mut seen = BTreeSet::new();
-
-	for reason in reasons {
-		seen.insert(operator_execution_program_reason_code(reason).to_owned());
-	}
-
-	seen.into_iter().collect()
-}
-
-fn operator_execution_program_reason_code(reason: &str) -> &'static str {
-	if reason == "node no longer matches the accepted Decision Contract" {
-		"accepted_contract_mismatch"
-	} else if reason == "node dispatch intent is not-ready" {
-		"dispatch_intent_not_ready"
-	} else if reason == "node dispatch intent is paused" {
-		"dispatch_intent_paused"
-	} else if reason == "node already has a current lane" {
-		"current_lane_present"
-	} else if reason == "node dispatch intent is terminal" {
-		"dispatch_intent_terminal"
-	} else if reason == "node is ready for normal Linear issue execution" {
-		"ready_for_linear_execution"
-	} else if reason == "node has no acceptance expectations" {
-		"acceptance_expectations_missing"
-	} else if reason == "node has no validation expectations" {
-		"validation_expectations_missing"
-	} else if reason.starts_with("dependency `") {
-		"dependency_not_terminal"
-	} else if reason.starts_with("conflict domain `") {
-		"conflict_domain_occupied"
-	} else if reason == "node has no normal Linear issue mapping" {
-		"linear_issue_mapping_missing"
-	} else if reason.contains(" is already terminal in `") {
-		"mapped_issue_terminal"
-	} else if reason.contains(" is not in a startable state") {
-		"mapped_issue_not_startable"
-	} else if reason.contains(" already carries `") {
-		"mapped_issue_active_label_present"
-	} else if reason.contains(" is owned by the retained post-review lifecycle") {
-		"mapped_issue_post_review_owner"
-	} else if reason.contains(" carries `decodex:manual-only`") {
-		"mapped_issue_manual_only"
-	} else if reason.contains(" carries `decodex:needs-attention`") {
-		"mapped_issue_needs_attention"
-	} else if reason.contains(" has open tracker dependency blockers") {
-		"mapped_issue_open_blockers"
-	} else if reason.contains(" is missing a generic dispatch briefing") {
-		"mapped_issue_dispatch_briefing_missing"
-	} else {
-		"program_readiness_blocked"
-	}
-}
-
-fn operator_execution_program_public_reason(reason: &str) -> String {
-	if reason.starts_with("conflict domain `") {
-		String::from("another active or retained program node occupies this conflict domain")
-	} else if reason.contains(" is owned by the retained post-review lifecycle") {
-		String::from(
-			"Review & Landing owns this issue until post-review landing or closeout finishes",
-		)
-	} else if reason.starts_with("dependency `") {
-		String::from("a dependency has not reached a required terminal state")
-	} else {
-		reason.to_owned()
-	}
 }
