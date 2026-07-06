@@ -25,7 +25,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Edit|Write|apply_patch",
+        "matcher": "Bash|Shell|exec_command|Edit|Write|apply_patch",
         "hooks": [
           {
             "type": "command",

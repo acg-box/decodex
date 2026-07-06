@@ -78,6 +78,28 @@ SOURCE_EXTENSIONS = {
     ".vue",
     ".zig",
 }
+GENERIC_MODULE_BUCKET_SEGMENTS = (
+    "common",
+    "misc",
+    "shared",
+    "utils",
+)
+MODULE_BOUNDARY_PROMPT_TERMS = [
+    "code organization",
+    "file split",
+    "file splits",
+    "file merge",
+    "file merges",
+    "merge files",
+    "modular",
+    "modularization",
+    "module boundary",
+    "module-boundary",
+    "monolith",
+    "refactor",
+    "split file",
+    "split files",
+]
 FAKE_RUST_MODULARIZATION_PATTERNS = (
     "include!(",
     "#[path",
