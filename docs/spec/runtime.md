@@ -145,16 +145,20 @@ state or this state machine.
   held, blocked, stale, or unmapped and builds the same internal program model used
   by later persistence, but it must not mutate Linear or write local runtime rows.
   Dry-run reports mark `scheduler_visible=false`; any `dispatch_action=dispatch`
-  in that mode is a hypothetical result for the transient plan, not scheduler
-  authority. `--apply` writes only local runtime Program Intake and Execution
-  Program state and reports `scheduler_visible=true`.
+  in that mode is a hypothetical result for the transient plan under current local
+  runtime occupancy, not scheduler authority. Retained nonterminal worktree mappings
+  and live shared leases must suppress dry-run dispatch readback the same way they
+  suppress scheduler dispatch. `--apply` writes only local runtime Program Intake
+  and Execution Program state and reports `scheduler_visible=true`.
 - Each scheduler pass evaluates persisted Execution Programs before ordinary queued
   issue selection. The Program scheduler refreshes mapped Linear issue state,
   dependency observations, local shared run claims, retained review/landing
   worktrees, needs-attention labels, and occupied conflict domains; then it directly selects
-  dispatchable ready nodes with `program` dispatch mode. It must not apply or remove
-  service queue labels, and Program readiness must not wait for the ordinary
-  Linear-backed queue scan interval.
+  nodes with a concrete Program dispatch action using `program` dispatch mode. Daemon
+  child planning must preserve the selected Program id/node id until spawn records the
+  `program_dispatch_selected` private event, before launching the child process. It
+  must not apply or remove service queue labels, and Program readiness must not wait
+  for the ordinary Linear-backed queue scan interval.
 - When `decodex run <ISSUE>` targets a mapped Program node, inferred dispatch checks
   the same persisted Program eligibility before ordinary queue-label dispatch. A
   target whose node currently has `dispatch_action = dispatch` starts with `program`

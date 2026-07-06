@@ -7,6 +7,7 @@ mod model;
 mod policy;
 mod validation;
 
+#[cfg(test)] pub(crate) use self::model::ExecutionReadinessState;
 pub(crate) use self::{
 	evaluation::{
 		ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary,
@@ -15,7 +16,7 @@ pub(crate) use self::{
 		ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionDispatchAction,
 		ExecutionLinearIssueMapping, ExecutionProgram, ExecutionProgramDependency,
 		ExecutionProgramNode, ExecutionProgramNodeLifecycleState, ExecutionProgramNodeStage,
-		ExecutionQueueIntent, ExecutionReadinessState,
+		ExecutionQueueIntent,
 	},
 	policy::{
 		ExecutionDependencySnapshot, ExecutionProgramReadinessContext, ExecutionWorkflowPolicy,
