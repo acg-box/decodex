@@ -17,14 +17,20 @@ Read when `$codebase:work` needs exact command, structure, validation, or eviden
 
 ## Module Boundaries
 
-- "Split the file" is not enough; modularization means language-level modules,
-  ownership, APIs, and visibility boundaries.
-- Rust refactors must use normal `mod`/file modules, explicit `pub`/`pub(crate)`
-  surfaces, owner-specific types/functions, and tests for the new boundary.
-- Do not claim Rust module/refactor completion by moving code into fragments pulled
-  back with `include!`, `#[path]`, or original-scope tricks; that is physical file
-  splitting, not Rust module design.
-- Moving tests out reduces noise but is not production module design. Generated/FFI
+- Modularization is an ownership decision, not a file-size target. Split or merge
+  by responsibility, public contract, state ownership, change cadence, validation
+  surface, and reader navigation; do not use fixed line counts as the decision rule.
+- Good modules own real concepts: domain behavior, state transitions, protocols,
+  persistence, adapters, rendering, policies, validation, or a narrow API shared by
+  callers. Small cohesive modules are fine; large cohesive owners are also fine.
+- Avoid pseudo-modularization. Do not create files that only wrap one trivial
+  helper, one constant, one forwarding function, or re-exports unless that file is
+  the canonical owner for the concept.
+- Put code and constants in the nearest real owner: paths in path owners, schemas in
+  schema owners, assets in asset owners, parsing helpers near parsers, and policy
+  predicates near policy owners.
+- Do not claim modularization by using textual includes, original-scope tricks,
+  compatibility shims, or moving tests away from production code. Generated/FFI
   includes are documented plumbing, not modularization progress.
 
 ## Task Runner Structure
