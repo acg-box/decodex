@@ -81,6 +81,14 @@ where
 				&daemon_spawn_state.worktree.path.display().to_string(),
 			)?;
 
+			if let Some(program_dispatch) = summary.program_dispatch.as_ref() {
+				orchestrator::record_program_dispatch_selected_for_summary(
+					state_store,
+					&summary,
+					program_dispatch,
+				)?;
+			}
+
 			let mut child = child::spawn_planned_daemon_child(
 				config_path,
 				state_store,

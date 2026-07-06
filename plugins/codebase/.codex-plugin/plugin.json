@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "Codebase",
     "shortDescription": "Follow repository command, module, review, verification, and debugging contracts.",
-    "longDescription": "Routes checked-in command authority, task-runner structure, module-boundary and modularization defaults, dependency policy, review repair, verification evidence, root-cause debugging, and dynamic read-only subagent boundaries for code repositories.",
+    "longDescription": "Routes checked-in command authority, task-runner structure, module-boundary defaults, modularization defaults, dependency policy, review repair, verification evidence, root-cause debugging, and dynamic read-only subagent boundaries for code repositories.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [

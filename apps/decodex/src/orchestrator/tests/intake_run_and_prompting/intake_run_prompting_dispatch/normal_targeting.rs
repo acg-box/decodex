@@ -32,6 +32,7 @@ fn dry_run_selects_one_issue_and_plans_worktree() {
 			attempt_number: 1,
 			run_id: summary.run_id.clone(),
 			continuation_pending: false,
+			program_dispatch: None,
 		}
 	);
 	assert!(tracker.comments.borrow().is_empty());

@@ -19,7 +19,8 @@ pub(crate) use self::{
 		refresh_execution_program_local_lifecycle_facts, refresh_execution_program_tracker_facts,
 	},
 	selection::{
-		record_program_dispatch_selected, select_execution_program_run_candidate,
+		record_program_dispatch_selected, record_program_dispatch_selected_for_summary,
+		select_execution_program_run_candidate,
 		select_execution_program_run_candidate_with_summary,
 	},
 };

@@ -10,10 +10,10 @@ source_refs: []
 code_refs:
   - apps/decodex/src/orchestrator/kernel/lane_control.rs
   - apps/decodex/src/orchestrator/kernel/state.rs
-  - apps/decodex/src/orchestrator/status_run_projection/run/lane_control.rs
-  - apps/decodex/src/orchestrator/status_summary.rs
-  - apps/decodex/src/orchestrator/status_history_projection.rs
-  - apps/decodex/src/orchestrator/status_ghost_lane_cleanup/projection.rs
+  - apps/decodex/src/orchestrator/status/run_projection/run/lane_control.rs
+  - apps/decodex/src/orchestrator/status/summary.rs
+  - apps/decodex/src/orchestrator/status/history_projection.rs
+  - apps/decodex/src/orchestrator/status/ghost_lane_cleanup/projection.rs
   - apps/decodex/src/orchestrator/tests/operator/status/http.rs
   - apps/decodex/src/agent/tracker_tool_bridge/tools.rs
 related: [lane-control.md, runtime.md]

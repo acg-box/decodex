@@ -18,6 +18,7 @@ pub(crate) fn run_summary_from_issue_run(project_id: &str, issue_run: &IssueRunP
 		attempt_number: issue_run.attempt_number,
 		run_id: issue_run.run_id.clone(),
 		continuation_pending: false,
+		program_dispatch: None,
 	}
 }
 

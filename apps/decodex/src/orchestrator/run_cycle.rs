@@ -15,10 +15,13 @@ pub(crate) use self::{
 };
 pub(crate) use self::{
 	prepare::prepare_issue_run,
-	project::{plan_project_issue_run_with_exclusions, run_project_once},
+	project::{
+		plan_project_issue_run_with_exclusions, plan_project_issue_run_with_program_dispatch,
+		run_project_once,
+	},
 	target_issue::{
 		closeout_lane_active_claim_blocks_dispatch, run_target_issue_once,
-		run_target_issue_once_with_inferred_dispatch,
+		run_target_issue_once_with_inferred_dispatch, run_target_status_visible_program_once,
 	},
 };
 

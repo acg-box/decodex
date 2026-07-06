@@ -44,7 +44,7 @@ where
 				IssueDispatchMode::ReviewRepair | IssueDispatchMode::Closeout
 			))
 		.then_some(workflow.frontmatter().tracker().in_progress_state());
-		let Some(summary) = daemon::run_target_issue_once(TargetIssueRunContext {
+		let retry_context = TargetIssueRunContext {
 			tracker,
 			project,
 			workflow,
@@ -60,8 +60,13 @@ where
 			dispatch_mode: entry.dispatch_mode,
 			preferred_run_identity: None,
 			preferred_retry_budget_base: None,
-		})?
-		else {
+		};
+		let retry_summary = if entry.dispatch_mode == IssueDispatchMode::Program {
+			daemon::run_target_status_visible_program_once(retry_context)?
+		} else {
+			daemon::run_target_issue_once(retry_context)?
+		};
+		let Some(summary) = retry_summary else {
 			if daemon::retry_entry_is_temporarily_blocked(
 				tracker,
 				project,

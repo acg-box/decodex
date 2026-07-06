@@ -6,7 +6,7 @@ status: active
 authority: current_state
 owner: docs
 tags: [reference]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/recovery/stale_active_guidance.rs, apps/decodex/src/recovery/review_handoff/issue.rs, apps/decodex/src/recovery/review_handoff/labels.rs, apps/decodex/src/recovery/review_handoff_diagnosis.rs, apps/decodex/src/recovery/reports.rs, apps/decodex/src/recovery/tests/review_handoff/rebind_validation.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/status_worktrees/ownership.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_http/api/account.rs, apps/decodex/src/orchestrator/operator_dashboard/body.html, apps/decodex/src/orchestrator/operator_dashboard/app/accounts/pool/rows.js, apps/decodex/src/orchestrator/operator_dashboard/app/accounts/profile/credits.js, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/orchestrator/tests/operator/status/history/attention/terminal_attention.rs, apps/decodex/src/agent/codex_accounts/pool/usage_probe.rs, apps/decodex/src/accounts/types.rs, apps/decodex-app/Sources/DecodexApp/CodexAccount.swift, apps/decodex-app/Sources/DecodexApp/AccountUsageSummaryViews.swift, apps/decodex/src/mcp.rs]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/recovery/stale_active_guidance.rs, apps/decodex/src/recovery/review_handoff/issue.rs, apps/decodex/src/recovery/review_handoff/labels.rs, apps/decodex/src/recovery/review_handoff_diagnosis.rs, apps/decodex/src/recovery/reports.rs, apps/decodex/src/recovery/tests/review_handoff/rebind_validation.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/status/operator_worktrees/ownership.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_http/api/account.rs, apps/decodex/src/orchestrator/operator_dashboard/body.html, apps/decodex/src/orchestrator/operator_dashboard/app/accounts/pool/rows.js, apps/decodex/src/orchestrator/operator_dashboard/app/accounts/profile/credits.js, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/orchestrator/tests/operator/status/history/attention/terminal_attention.rs, apps/decodex/src/agent/codex_accounts/pool/usage_probe.rs, apps/decodex/src/accounts/types.rs, apps/decodex-app/Sources/DecodexApp/CodexAccount.swift, apps/decodex-app/Sources/DecodexApp/AccountUsageSummaryViews.swift, apps/decodex/src/mcp.rs]
 drift_watch: [decodex serve, decodex status, decodex status --live, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, review_handoff_writeback_failed, retained_attention, stale_active_release, stale_active_state_restore_pending, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, /api/accounts, /wham/rate-limit-reset-credits, reset_credits_available_count, reset_credits, runtime.sqlite3, project.toml, WORKFLOW.md]
 last_verified: 2026-07-04
 ---
@@ -219,9 +219,10 @@ non-terminal state, no open dependency blockers, and no active issue claim. Read
 Program Intake nodes are not queue-label candidates; they appear under Execution
 Programs, and `decodex run <ISSUE>` can start a mapped dispatchable Program node with
 `program` dispatch mode. Issue-batch dry-run reports set `scheduler_visible=false`;
-their `dispatch_action=dispatch` rows describe the transient plan only. After
-`--apply`, status Program Intake readback is the operator surface for any persisted
-node blocker before ordinary queue-label checks.
+their `dispatch_action=dispatch` rows describe the transient plan under current
+local runtime occupancy only; live shared leases and retained nonterminal worktrees
+render held rows instead. After `--apply`, status Program Intake readback is the
+operator surface for any persisted node blocker before ordinary queue-label checks.
 
 The runtime database is the local source of truth for active execution. Linear and
 GitHub remain external collaboration mirrors and validation surfaces.

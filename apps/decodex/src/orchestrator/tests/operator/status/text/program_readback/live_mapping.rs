@@ -26,6 +26,53 @@ fn operator_status_snapshot_surfaces_program_intake_and_node_readbacks() {
 }
 
 #[test]
+fn operator_status_program_readback_marks_retained_worktree_node_active_without_conflict_domain() {
+	let (_temp_dir, config, workflow) = status::temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_id = "issue-retained-no-conflict";
+	let node = program_readback::status_program_node(
+		"node-retained-no-conflict",
+		issue_id,
+		"PUB-1598",
+		"Todo",
+		ExecutionQueueIntent::ReadyToQueue,
+	);
+	let program = ExecutionProgram::from_issue_batch_intake(
+		"program-retained-no-conflict",
+		config.service_id(),
+		"program-retained-no-conflict-fingerprint",
+		"Read retained no-conflict Program node.",
+		vec![node],
+	)
+	.expect("program should build");
+
+	state_store
+		.upsert_execution_program(config.service_id(), program)
+		.expect("program should persist");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			issue_id,
+			"x/pubfi-pub-1598",
+			&config.repo_root().display().to_string(),
+		)
+		.expect("retained worktree should persist");
+
+	let snapshot =
+		program_readback::build_program_readback_snapshot(&config, &workflow, &state_store);
+	let program = snapshot.execution_programs.first().expect("program should surface");
+	let node = program.node_readbacks.first().expect("retained node should surface");
+
+	assert_eq!(program.status, "active");
+	assert_eq!(program.active_count, 1);
+	assert_eq!(program.dispatchable_count, 0);
+	assert_eq!(node.lifecycle_state, "active");
+	assert_eq!(node.dispatch_action, None);
+	assert!(node.reason_codes.contains(&String::from("current_lane_present")));
+	assert!(!node.reason_codes.contains(&String::from("conflict_domain_occupied")));
+}
+
+#[test]
 fn operator_status_program_readback_prefers_post_review_owner_over_stale_active_label() {
 	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");

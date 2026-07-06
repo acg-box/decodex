@@ -1,6 +1,6 @@
 use crate::orchestrator::{
 	self, IssueTracker, Result, RetryDispatchDecision, RetryQueue, RunSummary, ServiceConfig,
-	StateStore, WorkflowDocument, daemon,
+	StateStore, WorkflowDocument, daemon, run_cycle,
 };
 
 pub(crate) fn plan_next_daemon_run<T>(
@@ -18,7 +18,7 @@ where
 		RetryDispatchDecision::Blocked { excluded_issue_ids } => {
 			let excluded_issue_ids =
 				excluded_issue_ids.iter().map(String::as_str).collect::<Vec<_>>();
-			let issue_run = orchestrator::plan_project_issue_run_with_exclusions(
+			let planned = run_cycle::plan_project_issue_run_with_program_dispatch(
 				tracker,
 				project,
 				workflow,
@@ -27,12 +27,19 @@ where
 				&excluded_issue_ids,
 			)?;
 
-			Ok(issue_run.map(|issue_run| {
-				(orchestrator::run_summary_from_issue_run(project.service_id(), &issue_run), false)
+			Ok(planned.map(|planned| {
+				let mut summary = orchestrator::run_summary_from_issue_run(
+					project.service_id(),
+					&planned.issue_run,
+				);
+
+				summary.program_dispatch = planned.program_dispatch;
+
+				(summary, false)
 			}))
 		},
 		RetryDispatchDecision::Continue => {
-			let issue_run = orchestrator::plan_project_issue_run_with_exclusions(
+			let planned = run_cycle::plan_project_issue_run_with_program_dispatch(
 				tracker,
 				project,
 				workflow,
@@ -41,8 +48,15 @@ where
 				&[],
 			)?;
 
-			Ok(issue_run.map(|issue_run| {
-				(orchestrator::run_summary_from_issue_run(project.service_id(), &issue_run), false)
+			Ok(planned.map(|planned| {
+				let mut summary = orchestrator::run_summary_from_issue_run(
+					project.service_id(),
+					&planned.issue_run,
+				);
+
+				summary.program_dispatch = planned.program_dispatch;
+
+				(summary, false)
 			}))
 		},
 	}
