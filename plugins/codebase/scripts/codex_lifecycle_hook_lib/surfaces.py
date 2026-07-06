@@ -9,6 +9,7 @@ from .constants import (
     DEPENDENCY_SURFACE_NAMES,
     EXCLUDED_LARGE_CHANGE_PARTS,
     FAKE_RUST_MODULARIZATION_PATTERNS,
+    GENERIC_MODULE_BUCKET_SEGMENTS,
     LARGE_ADDITION_THRESHOLD,
     LARGE_CHANGE_THRESHOLD,
     LARGE_SOURCE_FILE_LINE_THRESHOLD,
@@ -86,6 +87,25 @@ def fake_modularization_paths(paths: list[str] | None = None) -> list[str]:
         if any(pattern in text for pattern in FAKE_RUST_MODULARIZATION_PATTERNS):
             offenders.append(path)
     return offenders
+
+
+def path_has_generic_module_bucket(path: str) -> bool:
+    lowered = path.lower()
+    parts = [part for part in Path(lowered).parts if part]
+    stem = Path(lowered).stem
+    return (
+        any(part in GENERIC_MODULE_BUCKET_SEGMENTS for part in parts)
+        or stem in GENERIC_MODULE_BUCKET_SEGMENTS
+    )
+
+
+def module_boundary_risk_paths(paths: list[str] | None = None) -> list[str]:
+    paths = changed_paths() if paths is None else paths
+    return [
+        path
+        for path in paths
+        if path_is_source_file(path) and path_has_generic_module_bucket(path)
+    ]
 
 
 def large_change_paths(stats: list[dict[str, Any]] | None = None) -> list[str]:
