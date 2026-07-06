@@ -43,6 +43,7 @@ pub(super) fn sample_handoff_summary(issue: &TrackerIssue, worktree_path: &Path)
 		attempt_number: 1,
 		run_id: String::from("run-review-handoff"),
 		continuation_pending: false,
+		program_dispatch: None,
 	}
 }
 

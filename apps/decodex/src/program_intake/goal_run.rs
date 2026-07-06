@@ -1,7 +1,9 @@
 use crate::{
-	execution_program::{ExecutionProgramReadinessContext, ExecutionWorkflowPolicy},
+	execution_program::ExecutionWorkflowPolicy,
 	prelude::{Result, eyre},
-	program_intake::{GoalIntakeReport, GoalIntakeRunRequest, goal, model::ApplyGoalIssuesInput},
+	program_intake::{
+		GoalIntakeReport, GoalIntakeRunRequest, goal, model::ApplyGoalIssuesInput, readiness,
+	},
 	tracker::IssueTracker,
 };
 
@@ -69,7 +71,13 @@ where
 		let evaluation = program.evaluate(
 			&linked_contract,
 			&ExecutionWorkflowPolicy::from_workflow(config.service_id(), workflow)?,
-			&ExecutionProgramReadinessContext::new(),
+			&readiness::intake_readiness_context(
+				config.service_id(),
+				workflow,
+				state_store,
+				&program,
+				Vec::new(),
+			)?,
 		)?;
 		let rows = goal::applied_goal_issue_rows(&plans, &issues, &linked_issues, &evaluation);
 

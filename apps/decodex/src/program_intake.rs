@@ -6,6 +6,7 @@ mod goal_run;
 mod issue_batch;
 mod issue_batch_run;
 mod model;
+mod readiness;
 mod render;
 
 #[cfg(test)] pub(crate) use self::render::validate_generated_issue_text;

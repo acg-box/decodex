@@ -16,7 +16,7 @@ code_refs:
   - apps/decodex/src/orchestrator/kernel/post_review.rs
   - apps/decodex/src/orchestrator/kernel/state.rs
   - apps/decodex/src/orchestrator/lane_decision.rs
-  - apps/decodex/src/orchestrator/status_run_projection/run/lane_control.rs
+  - apps/decodex/src/orchestrator/status/run_projection/run/lane_control.rs
   - apps/decodex/src/orchestrator/status/queue.rs
   - apps/decodex/src/orchestrator/status/review_orchestration.rs
   - apps/decodex/src/orchestrator/retained_review_orchestration.rs
