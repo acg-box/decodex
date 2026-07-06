@@ -33,6 +33,8 @@ from codex_lifecycle_hook_lib.constants import (
     LARGE_CHANGE_THRESHOLD,
     LARGE_SOURCE_FILE_LINE_THRESHOLD,
     LARGE_SOURCE_TOUCH_THRESHOLD,
+    MODULE_BOUNDARY_HINT,
+    MODULE_BOUNDARY_PROMPT_TERMS,
     MUTATING_COMMAND_TERMS,
     PUBLIC_SURFACE_HINT,
     REPO_WORK_HINT,
@@ -91,6 +93,7 @@ from codex_lifecycle_hook_lib.shell import (
 )
 from codex_lifecycle_hook_lib.surfaces import (
     dependency_surface_paths,
+    module_boundary_risk_paths,
     path_excluded_from_large_change,
     path_is_dependency_surface,
     path_is_public_surface,
@@ -307,8 +310,21 @@ def route_hints(text: str, root: str | None, event: str = "UserPromptSubmit") ->
     dependency_paths = dependency_surface_paths() if inspect_worktree else []
     task_paths = task_runner_paths() if inspect_worktree else []
     fake_module_paths = fake_modularization_paths() if inspect_worktree else []
-    if large_paths or surface_paths or dependency_paths or task_paths or fake_module_paths:
+    module_risk_paths = module_boundary_risk_paths() if inspect_worktree else []
+    module_prompt = root and text_has_any(text, MODULE_BOUNDARY_PROMPT_TERMS)
+    has_route_surface = (
+        large_paths
+        or surface_paths
+        or dependency_paths
+        or task_paths
+        or fake_module_paths
+        or module_risk_paths
+        or module_prompt
+    )
+    if has_route_surface:
         hints.append(REPO_WORK_HINT)
+    if module_prompt or module_risk_paths:
+        hints.append(MODULE_BOUNDARY_HINT)
     if large_paths:
         hints.append(ANTI_MONOLITH_HINT)
     if fake_module_paths:
@@ -323,7 +339,7 @@ def route_hints(text: str, root: str | None, event: str = "UserPromptSubmit") ->
         hints.append(KNOWLEDGE_HINT)
         hints.append(PUBLIC_SURFACE_HINT)
 
-    if large_paths or surface_paths or task_paths or fake_module_paths:
+    if large_paths or surface_paths or task_paths or fake_module_paths or module_risk_paths:
         hints.append(DELIBERATION_GATE_HINT)
 
     if root and "git push" in lowered:
@@ -365,6 +381,9 @@ def record_event(event: str, payload: dict[str, Any], root: str | None, hints: l
     fake_module_paths = fake_modularization_paths()
     if fake_module_paths:
         record["fake_modularization_paths"] = fake_module_paths[:20]
+    module_risk_paths = module_boundary_risk_paths()
+    if module_risk_paths:
+        record["module_boundary_risk_paths"] = module_risk_paths[:20]
     with STATE_PATH.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
 

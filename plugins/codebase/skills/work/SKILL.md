@@ -1,6 +1,6 @@
 ---
 name: work
-description: Use when repository code work needs command authority, module boundaries, task runners, config contracts, dependency policy, validation, subagent boundaries, or completion evidence.
+description: Use when repository code work needs command authority, module boundaries, modularization, refactors, file splits/merges, task runners, config contracts, dependency policy, validation, subagent boundaries, or completion evidence.
 ---
 
 # Codebase Work
