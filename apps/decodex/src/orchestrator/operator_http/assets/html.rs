@@ -1,10 +1,20 @@
-mod markup;
 mod scripts;
 mod styles;
 
 use std::sync::LazyLock;
 
-use self::markup::{BODY, HEAD, TAIL};
+const HEAD: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/src/orchestrator/operator_dashboard/head.html"
+));
+const BODY: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/src/orchestrator/operator_dashboard/body.html"
+));
+const TAIL: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/src/orchestrator/operator_dashboard/tail.html"
+));
 
 pub(in crate::orchestrator::operator_http) static OPERATOR_DASHBOARD_HTML: LazyLock<String> =
 	LazyLock::new(|| {

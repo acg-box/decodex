@@ -1,5 +1,6 @@
 //! Canonical Radar-owned repository paths.
 
+pub(crate) const DEFAULT_CONFIG_PATH: &str = "automations/radar/radar.toml";
 pub(crate) const DEFAULT_LEDGER_PATH: &str = ".agent/automations/radar/cache/github/radar.sqlite3";
 pub(crate) const DEFAULT_QUEUE_OUT: &str =
 	".agent/automations/radar/cache/github/review-queue/openai-codex-latest.json";
