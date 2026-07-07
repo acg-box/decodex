@@ -10,12 +10,12 @@ fn autonomy_signal_memory_and_report_sources_require_primary_refs_and_proposal_o
 		input.primary_source_refs = Vec::new();
 		input.proposal_only = false;
 
-		assert!(AutonomySignal::docs_skill_drift(input.clone()).is_err());
+		assert!(AutonomySignal::docs_plugin_drift(input.clone()).is_err());
 
 		input.primary_source_refs = vec![String::from("docs/spec/runtime.md")];
 		input.proposal_only = true;
 
-		AutonomySignal::docs_skill_drift(input)
+		AutonomySignal::docs_plugin_drift(input)
 			.expect("memory/report signals with primary refs remain proposal-only");
 	}
 }

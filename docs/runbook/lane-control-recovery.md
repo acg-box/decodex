@@ -1,7 +1,7 @@
 ---
 type: "Runbook"
 title: "Lane-Control Recovery"
-description: "OKF concept for Lane-Control Recovery."
+description: "Procedure for recovering Decodex lanes after control-plane interventions or ambiguous retained evidence."
 status: active
 authority: procedural
 owner: automation
@@ -149,8 +149,8 @@ apply manual attention with a typed reason such as `contract_boundary_required`,
 | `no_effective_diff` | The retained worktree status, private retry evidence, whether any useful tracked delta exists, Architecture Recovery Packet, and boundary policy. | Autonomous recovery may continue only when evidence proves the next strategy is an engineering implementation change inside authority; otherwise a human identifies the next diff, resets intentionally, or updates authority. |
 | `remaining_delta_unchanged` | The unchanged tracked delta, latest validation evidence, Architecture Recovery Packet, and boundary policy. | The next repair must be bounded, materially different, and inside authority; otherwise a human accepts/resets the patch or updates authority. |
 | `review_churn` or `review_policy_exhausted` | Fresh-context review checkpoints, active/stop finding fingerprints, accepted findings, rejected findings, current head, Architecture Recovery Packet, and boundary policy. | A materially different implementation strategy may continue with `block_landing`; architecture/product direction changes require human authority. |
-| `dependency_program_stale` | The open blocker issue, Execution Program readiness, and whether the dependency split is still correct. | Resolve the dependency, refresh/split the program, or update the research/Decision Contract; do not auto-recover as ordinary implementation work. |
-| `uncovered_direction` | The missing requirement, decision, or research gap named in public/private evidence. | A research or Decision Contract captures the missing direction and the issue is updated or requeued from that authority. |
+| `dependency_program_stale` | The open blocker issue, Execution Program readiness, and whether the dependency split is still correct. | Resolve the dependency, refresh/split the program, or update accepted Decision Contract authority; do not auto-recover as ordinary implementation work. |
+| `uncovered_direction` | The missing requirement or decision gap named in public/private evidence. | An accepted Decision Contract captures the missing direction and the issue is updated or requeued from that authority. |
 | `ambiguous_retained_progress` | Retained worktree diff, ownership markers, PR lineage if present, private evidence, and boundary policy. | A human chooses one path: resume same lane, finish manual repair, or reset/discard the retained patch explicitly. |
 
 Before treating retained progress as human-owned, check the current run activity

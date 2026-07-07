@@ -15,7 +15,6 @@ pub(in crate::mcp::tests) fn test_repo() -> TempDir {
 	write_file(repo.path().join("docs/policy.md"), "# Policy\n");
 	write_file(repo.path().join("docs/spec/runtime.md"), "# Runtime\n\nSpec body.\n");
 	write_file(repo.path().join("docs/decisions/mcp-gateway.md"), "# MCP\n");
-	write_file(repo.path().join("docs/research/sample-report.md"), "# Sample Research\n");
 
 	repo
 }

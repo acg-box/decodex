@@ -1,7 +1,7 @@
 ---
 type: "Runbook"
 title: "Self-Dogfood Pilot"
-description: "OKF concept for Self-Dogfood Pilot."
+description: "Procedure for running a bounded Decodex self-dogfood pilot."
 status: active
 authority: procedural
 owner: automation

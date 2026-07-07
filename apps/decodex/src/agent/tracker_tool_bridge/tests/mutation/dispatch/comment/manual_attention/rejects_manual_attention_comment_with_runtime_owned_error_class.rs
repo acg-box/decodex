@@ -12,7 +12,7 @@ fn rejects_manual_attention_comment_with_runtime_owned_error_class() {
 		"repo_gate_baseline_failed",
 		"repo_gate_preexisting_baseline_failed",
 		"repo_gate_global_baseline_failed",
-		"repository_wide_docs_okf_check_failed",
+		"repository_wide_docs_gate_failed",
 		"pre_existing_docs_gate_failed",
 		"repo_gate_git_lock_contention",
 		"stalled_run_detected",

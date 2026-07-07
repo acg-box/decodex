@@ -74,7 +74,7 @@ fn decision_contract_reload_migrates_removed_flat_issue_summary_rows() {
 		project_contracts.iter().map(|record| record.contract_id()).collect::<Vec<_>>();
 
 	assert_eq!(project_contracts.len(), 2);
-	assert!(contract_ids.contains(&"research-x-loop-contract"));
+	assert!(contract_ids.contains(&"decision-x-loop-contract"));
 	assert!(contract_ids.contains(&"removed-flat-issue-contract"));
 
 	let migrated_contract = reopened

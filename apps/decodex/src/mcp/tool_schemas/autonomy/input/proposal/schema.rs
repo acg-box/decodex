@@ -91,7 +91,7 @@ fn autonomy_issue_candidate_schema() -> Value {
 			},
 			"stage": {
 				"type": "string",
-				"enum": ["research", "design", "spec", "schema", "runtime", "plugin", "eval", "handoff"],
+				"enum": ["design", "spec", "schema", "runtime", "plugin", "eval", "handoff"],
 				"description": "Execution stage for the candidate."
 			},
 			"dependencies": {

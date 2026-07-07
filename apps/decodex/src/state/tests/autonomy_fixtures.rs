@@ -26,7 +26,7 @@ pub(crate) fn autonomy_objective_fixture(version: u64) -> AutonomyObjectiveContr
 		"metrics": ["Validation retry count stays below objective tolerance."],
 		"allowed_surfaces": ["apps/decodex/src", "docs/spec"],
 		"allowed_signal_kinds": ["validation_regression", "review_feedback_cluster"],
-		"validation_gates": ["cargo make check-docs"],
+		"validation_gates": ["cargo make check"],
 		"review_policy": "independent current-head review required",
 		"memory_policy": "read-only source-linked memory only",
 		"report_policy": "public-safe summaries only"

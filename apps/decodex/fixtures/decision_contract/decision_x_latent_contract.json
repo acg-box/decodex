@@ -1,29 +1,29 @@
 {
   "schema": "decodex.decision_contract/1",
   "record_version": 1,
-  "contract_id": "research-x-loop-contract",
+  "contract_id": "decision-x-loop-contract",
   "status": "draft_latent",
   "source_intent": {
-    "summary": "Research X and shape follow-up work.",
-    "user_utterance": "research X",
+    "summary": "Decide X and shape follow-up work.",
+    "user_utterance": "decide X",
     "source_issue_identifier": "XY-852"
   },
   "research_provenance": [
     {
       "kind": "spec",
       "reference": "docs/spec/loop-runtime.md",
-      "summary": "Research output remains latent until accepted or promoted."
+      "summary": "Decision input remains latent until accepted."
     },
     {
       "kind": "conversation",
-      "reference": "codex-thread:research-x",
-      "summary": "Natural-language research request produced a candidate decision package."
+      "reference": "codex-thread:decision-x",
+      "summary": "Natural-language decision request produced a candidate decision package."
     }
   ],
   "research_evidence": [
     {
-      "claim": "A research result can carry enough detail for later issue shaping.",
-      "support": "The contract keeps objectives, constraints, assumptions, objections, and stop conditions together before promotion.",
+      "claim": "A decision input can carry enough detail for later issue shaping.",
+      "support": "The contract keeps objectives, constraints, assumptions, objections, and stop conditions together before acceptance.",
       "source_ref": "docs/spec/loop-runtime.md"
     },
     {
@@ -38,7 +38,7 @@
       "Preserve private runtime evidence as the source of truth while exposing only sparse public projection references."
     ],
     "non_goals": [
-      "Do not auto-execute research output.",
+      "Do not auto-execute unaccepted decision input.",
       "Do not expose graph mechanics as the user workflow."
     ],
     "constraints": [
@@ -49,7 +49,7 @@
       "Future issue-shaping code can consume the accepted contract without asking the user to restate all details."
     ],
     "objections": [
-      "Promotion must fail when required acceptance criteria are missing."
+      "Acceptance must fail when required criteria are missing."
     ],
     "stop_conditions": [
       "Request human decision when unresolved direction affects acceptance criteria.",
@@ -57,19 +57,19 @@
     ]
   },
   "execution_readiness": {
-    "summary": "Ready for issue shaping after acceptance; latent status prevents queueing until promotion.",
+    "summary": "Ready for issue shaping after acceptance; latent status prevents queueing until acceptance.",
     "ready_for_issue_shaping": true,
     "missing_decisions": [],
     "validation_expectations": [
       "Serialization round-trip passes.",
-      "Promotion transition records acceptance metadata."
+      "Acceptance transition records metadata."
     ],
     "risk_notes": [
-      "Do not infer execution authority from research provenance alone."
+      "Do not infer execution authority from evidence provenance alone."
     ],
     "proposed_issues": [
       {
-        "key": "research-x-contract-model",
+        "key": "decision-x-contract-model",
         "title": "Define the runtime-facing Decision Contract model.",
         "objective": "Define the runtime-facing Decision Contract model.",
         "stage": "schema",
@@ -82,10 +82,10 @@
         ],
         "validation": [
           "Serialization round-trip passes.",
-          "Promotion transition records acceptance metadata."
+          "Acceptance transition records metadata."
         ],
         "risk": [
-          "Do not infer execution authority from research provenance alone."
+          "Do not infer execution authority from evidence provenance alone."
         ],
         "queue_intent": "ready_to_queue"
       }
@@ -101,19 +101,19 @@
       {
         "project_id": "decodex",
         "issue_id": "XY-852",
-        "run_id": "research-x-run",
+        "run_id": "decision-x-run",
         "attempt_number": 1,
         "record_id": 1,
-        "event_type": "research_result"
+        "event_type": "decision_input"
       }
     ],
     "public_projection_refs": [
       {
         "surface": "linear",
         "reference": "XY-852",
-        "summary": "Public issue briefing names the research-to-execution handoff without containing private loop evidence."
+        "summary": "Public issue briefing names the accepted-decision handoff without containing private loop evidence."
       }
     ],
-    "public_summary": "Latent research-to-execution contract awaiting acceptance."
+    "public_summary": "Latent Decision Contract awaiting acceptance."
   }
 }

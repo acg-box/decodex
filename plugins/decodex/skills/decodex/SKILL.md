@@ -6,12 +6,10 @@ description: Use when routing Decodex work.
 # Decodex
 
 Route Decodex work to the narrowest Decodex-owned surface. Read
-`../../references/routing.md` when research, promotion, planning, runtime ops,
+`../../references/routing.md` when planning, runtime ops,
 commit, or landing boundaries matter.
 
-- `research`: bounded investigation before execution.
-- `research-promote`: explicit acceptance of latent research.
-- `planning`: accepted work needs issues or Program readiness.
+- `planning`: accepted Decodex work needs issues or Program readiness.
 - `decodex-ops`: runtime operations, retained automation, human-driven CLI, labels,
   intake, recovery, and lane control.
 - `commit`, `land`: only their narrow high-risk authority surfaces.
@@ -19,9 +17,10 @@ commit, or landing boundaries matter.
 Companion plugin routing:
 
 - Repository command authority, task-runner structure, review repair, verification,
-  dependency policy, and debugging belong to `$codebase:*`.
-- Skeptic passes belong to `$deliberation:skeptic`.
-- Docs, OKF/LLM Wiki, semantic drift, and repo-memory belong to `$knowledge:*`.
+  dependency policy, and debugging belong to the external installed `codebase` plugin.
+- Repo knowledge belongs to the external installed `knowledge` plugin.
+- Research, frame, scout, and skeptic work belongs to the external installed `research`
+  plugin.
 
 For MCP gateway, runtime, tracker, or control-plane work, read
 `../../references/routing.md` before choosing tools. MCP is a typed facade; it does
@@ -47,5 +46,5 @@ acceptance and proposal acceptance still require explicit human or accepted
 project-policy authority resolved from trusted Decodex state, not a caller-supplied
 policy body.
 
-Research is latent until promoted. Program Intake is not queue-label polling.
-Decodex-owned landing uses `decodex land`, not raw GitHub merge paths.
+Program Intake is not queue-label polling. Decodex-owned landing uses `decodex land`,
+not raw GitHub merge paths.
