@@ -61,11 +61,11 @@ cargo nextest list --workspace --all-targets --all-features 2>/dev/null \
 | Tracker tool bridge | 101 | `apps/decodex/src/agent/tracker_tool_bridge/tests.rs`, `apps/decodex/src/agent/tracker_tool_bridge/tests/**/*.rs` | Dynamic tracker tools, continuation guards, review handoff writes, closeout writes |
 | App-server protocol/runtime | 96 | `apps/decodex/src/agent/app_server/tests.rs`, `apps/decodex/src/agent/json_rpc.rs`, app-server protocol tests | JSON-RPC parsing, turn execution, dynamic tools, thread config, transport failures |
 | Runtime state, locks, and maintenance | 93 | `state::tests`, `runtime::tests`, `maintenance::tests` | Persistent local state, lock ownership, runtime database contracts, local retention |
-| Workflow, config, and docs parsing | 62 | `workflow::tests`, `config::tests`, `codex_config::tests`, `docs_okf::tests` | `WORKFLOW.md`, project config, Codex config edits, removed-field rejection, default policy, OKF docs parsing |
+| Workflow and config parsing | 62 | `workflow::tests`, `config::tests`, `codex_config::tests` | `WORKFLOW.md`, project config, Codex config edits, removed-field rejection, and default policy |
 | Git, worktree, landing, and recovery helpers | 161 | `worktree::tests`, `manual::tests`, `commit_message::tests`, `github::tests`, `default_branch_sync::tests`, `pull_request::tests`, `recovery::tests`, `git_credentials::tests` | Git/worktree behavior, manual landing, GitHub/PR helpers, recovery commands, commit-message policy |
 | Account, CLI, archive, tracker, and MCP integration | 155 | `accounts::tests`, `agent::codex_accounts::tests`, `agent::decodex_tool_bridge::tests`, `app_bridge::tests`, `cli::tests`, `archive_hygiene::tests`, `tracker::*::tests`, `mcp::tests`, `apps/decodex/tests/mcp_stdio.rs` | User-facing commands, account pools, app bridge parsing, archive hygiene, direct tracker adapter, MCP resources, HTTP transport, bearer auth, schema-bound planning tools, inspect-first operate/admin tools, remote-safe observability templates, process-level MCP smoke, and public-text behavior |
 | Program intake | 10 | `program_intake::tests` | Decision Contract materialization, Linear issue shaping, and internal Execution Program persistence |
-| Loop contract and research surfaces | 30 | `loop_contract::tests`, `execution_program::tests`, `research_design::tests`, `plugin_surface_tests` | Decision Contract schema, Execution Program readiness, research compile/promote, and plugin trigger behavior |
+| Loop contract and plugin surfaces | 30 | `loop_contract::tests`, `execution_program::tests`, `plugin_surface_tests` | Decision Contract schema, Execution Program readiness, and Decodex plugin trigger behavior |
 
 ## Orchestrator Inventory
 
@@ -83,7 +83,7 @@ large catch-all test file unless the behavior crosses several of these stages.
 | `apps/decodex/src/orchestrator/tests/retry/selection.rs` | 14 | Retry queue selection and blocked retry candidates |
 | `apps/decodex/src/orchestrator/tests/runtime/repo_gate.rs` | 9 | Repo gate command selection, cleanliness, shell fallback, and failure classification |
 | `apps/decodex/src/orchestrator/tests/runtime_failure/` | 66 | Failure comments, retry markers, loop guardrails, handoff recovery, app-server failures, runtime credentials, cleanup, lease release |
-| `apps/decodex/src/orchestrator/tests/runtime/loop_scenarios.rs` | 2 | Research-to-execution loop scenarios, Program dispatch readiness, phase-goal validation, review, guardrails, and harness feedback |
+| `apps/decodex/src/orchestrator/tests/runtime/loop_scenarios.rs` | 2 | Accepted Decision Contract loop scenarios, Program dispatch readiness, phase-goal validation, review, guardrails, and harness feedback |
 | `apps/decodex/src/orchestrator/tests/runtime/thread_archive.rs` | 1 | Completed-thread archive candidate filtering |
 | `apps/decodex/src/orchestrator/tests/recovery/reconciliation.rs` | 24 | Stale lease, recovery worktree, and reconciliation behavior |
 | `apps/decodex/src/orchestrator/tests/recovery/terminal_support.rs` | 0 | Shared retained recovery and closeout fixtures |

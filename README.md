@@ -14,7 +14,7 @@ Repo-native agent orchestration, retained lanes, and local operator control.
 ## Feature Highlights
 
 - Rust CLI and runtime for repo-native retained coding-agent lanes.
-- Natural-language-first loop-runtime contract with research/decision promotion,
+- Natural-language-first loop-runtime contract with accepted decision intake,
   internal execution-program state, and normal Linear issue lanes.
 - Objective-driven project autonomy design with first-class Objective Contracts,
   typed signals, non-executable proposals, and normal Program Intake execution.
@@ -24,8 +24,8 @@ Repo-native agent orchestration, retained lanes, and local operator control.
   snapshot/control traffic at `/dashboard/control`, Decodex App snapshot/account
   APIs under `/api/`, and `GET /livez` for liveness.
 - Static Astro site for the public Decodex product surface and app download entry.
-- Installable agent plugins for Decodex lifecycle work, knowledge/docs/writeback
-  workflows, codebase contracts, and scout/grill/skeptic deliberation.
+- Installable Decodex agent plugin for runtime planning, operations, commit, and
+  landing workflows.
 - Repository documentation split by question type into spec, runbook, reference, and
   decision lanes.
 
@@ -62,13 +62,7 @@ runtime.
 - `apps/decodex-app/` owns the native macOS app that manages Decodex
   Codex accounts through the bundled Rust app helper.
 - `site/` owns the Astro static product site and app download entry.
-- `plugins/decodex/` owns Decodex lifecycle skills.
-- `plugins/knowledge/` owns docs, OKF/LLM Wiki, semantic drift, repo-memory, and
-  knowledge writeback skills.
-- `plugins/codebase/` owns reusable repository command, task-runner, review,
-  verification, debugging, and dependency-policy skills.
-- `plugins/deliberation/` owns generic read-only scout, grill, challenge, and
-  skeptic review skills.
+- `plugins/decodex/` owns Decodex runtime/operator lifecycle skills.
 - `docs/` remains the authoritative documentation surface.
 - `automations/decodex/automations.toml` and `automations/radar/automations.toml`
   are the portable Codex app automation source; install live local configs from a
@@ -107,9 +101,6 @@ decodex status --live
 decodex diagnose --json
 decodex maintenance prune --dry-run
 decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>
-decodex research compile --intent "research X"
-decodex research compile --input research-design-run.json
-decodex research promote <CONTRACT_ID>
 decodex intake goal --project decodex <CONTRACT_ID> --dry-run
 decodex intake goal --project decodex <CONTRACT_ID> --apply
 decodex intake issues --project decodex XY-1 XY-2 --dry-run
@@ -147,30 +138,14 @@ ordinary queue-label scan: the runtime keeps the Program graph in local state,
 refreshes only the mapped Linear issue facts needed for readiness, and directly
 dispatches ready DAG nodes with `program` dispatch mode.
 
-`decodex research compile` is the native Decodex research/design entrypoint. It
-accepts minimal natural-language intake or a structured research/design JSON packet,
-then persists a contract-first `decodex.decision_contract/1` payload in local runtime
-SQLite. The Decodex research method frames the question first, records an evidence
-ledger, compares realistic options, forms a challenge-ready judgment, resolves
-challenge objections, and then ends as `decision_ready`, `not_decision_ready`,
-`blocked`, or
-`needs_human_decision`. New Decodex research may use `docs/research/` only for
-Markdown OKF research concepts; checked-in research JSON event logs are no longer a
-valid docs shape. A compiled contract is latent and cannot queue work, mutate tracker
-state, set goals, or authorize implementation.
-`decodex research promote` records explicit acceptance for a stored contract; only
-promoted contracts may later feed issue shaping or internal Execution Program
-readiness.
-
-`decodex intake goal` materializes a promoted Decision Contract. `--dry-run` prints
+`decodex intake goal` materializes an accepted Decision Contract. `--dry-run` prints
 the proposed normal Linear issues, dependencies, conflict domains, and dispatch plan
 without mutating Linear or local Program Intake rows. `--apply` creates or updates the
 generated normal Linear issue briefs and persists the internal Execution Program plus
 contract/program links in runtime SQLite. Apply does not run implementation or apply
 queue labels; the persisted Program becomes eligible for direct graph dispatch on the
-next scheduler pass. If the contract is still
-latent, needs a decision, or lacks issue-shaping authority, intake stops before
-creating executable work.
+next scheduler pass. If the contract is not accepted, needs a decision, or lacks
+issue-shaping authority, intake stops before creating executable work.
 
 `decodex intake issues` materializes a supplied batch of existing Linear issues into
 local Program Intake state. `--dry-run` prints the deterministic ready/held/blocked
@@ -197,22 +172,22 @@ minimum direct-listener boundary, not OAuth Protected Resource Metadata; OAuth o
 managed relay can still sit in front for broader MCP client interoperability.
 The gateway advertises resources, resource templates, prompts, tools, logging
 compatibility, and progress notifications. Resources expose checked-in documentation,
-checked-in Markdown research concepts, runtime Decision Contract readback, local status
-snapshots, remote-safe live status/activity projections, current/recent status-window
-run event/protocol/child-agent activity/progress diagnostics, PR/review-state readback,
-lane-inspect aliases, and lane-control readback. The tool catalog is schema-bound and
-deliberately small. Local stdio defaults to the `admin` capability profile; Streamable
+runtime Decision Contract readback, local status snapshots, remote-safe live
+status/activity projections, current/recent status-window run event/protocol/child-agent
+activity/progress diagnostics, PR/review-state readback, lane-inspect aliases, and
+lane-control readback. The tool catalog is schema-bound and deliberately small. Local
+stdio defaults to the `admin` capability profile; Streamable
 HTTP defaults to `observe`. Both can be set with
 `--capability-profile observe|plan|operate|admin`; `tools/list` filters by the active
 profile and `tools/call` returns structured refusals for tools above it. Observe is
-read-only. Plan exposes research, goal-intake, and objective-driven autonomy tools:
-dry-run modes validate or preview without tracker or Program Intake mutation, while
-apply/promote modes require explicit authority fields and return structured refusals
-when authority or project context is missing. Autonomy plan tools can draft and accept
-Objective Contracts, submit signals, compile or challenge proposals, and request
-proposal promotion without starting execution. Direct Objective Contract acceptance
-requires human/operator authority; policy-backed acceptance fails closed until it is
-resolved from trusted Decodex runtime authority state. Operate exposes
+read-only. Plan exposes goal-intake and objective-driven autonomy tools: dry-run modes
+validate or preview without tracker or Program Intake mutation, while apply modes
+require explicit authority fields and return structured refusals when authority or
+project context is missing. Autonomy plan tools can draft and accept Objective
+Contracts, submit signals, compile or challenge proposals, and request proposal
+acceptance without starting execution. Direct Objective Contract acceptance requires
+human/operator authority; policy-backed acceptance fails closed until it is resolved
+from trusted Decodex runtime authority state. Operate exposes
 `decodex_lane_control`
 as an inspect-first lane-control facade: `inspect` returns current preconditions,
 `steer` and `interrupt` delegate through existing lane-control guards only with
@@ -403,8 +378,6 @@ The tracked workspace currently keeps:
   and maintenance workflow lane
 - `docs/reference/` as the current repository and artifact surface map lane
 - `docs/decisions/` as the durable design-rationale lane
-- `docs/research/` as Markdown OKF research concepts and supporting evidence, not
-  runtime authority
 - `dev/` as local development helpers, such as the operator dashboard mock server
 - `assets/` as generated Decodex App icon source notes, Icon Composer foreground,
   generated `.icns`, and menu bar template assets

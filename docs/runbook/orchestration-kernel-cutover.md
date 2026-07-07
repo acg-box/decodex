@@ -42,7 +42,7 @@ drift_watch:
   - review_lifecycle_records
   - cargo make check-rust
   - cargo make test
-  - cargo make check-docs
+  - cargo make check
 last_verified: 2026-07-01
 ---
 
@@ -217,7 +217,7 @@ Exit gate:
 
 Exit gate:
 
-- [x] `cargo make check-docs` passes.
+- [x] `cargo make check` passes.
 - [x] `cargo make check-rust` passes.
 - [x] `cargo make test` passes, or all failures are proven unrelated and scoped.
 - [x] Final subagent review has no unresolved blocker.
@@ -252,7 +252,7 @@ Current checkpoint evidence:
   - `cargo test -p decodex operator::status::http::lane_control --lib`: pass,
     11 tests.
 - CP6 broad validation:
-  - `cargo make check-docs`: pass.
+  - `cargo make check`: pass.
   - `cargo make check-node`: pass after `npm ci` restored `site/node_modules`.
   - `cargo make check-rust`: pass.
   - `cargo make test`: pass, 1620 passed, 1 skipped.

@@ -128,9 +128,9 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - `issue_progress_checkpoint` must keep the routed issue description generic. The full
   structured checkpoint payload belongs in private runtime execution events, not in
   the issue description or Linear comments.
-- Research-to-execution Decision Contracts are local runtime records, not tracker
+- Accepted Decision Contracts are local runtime records, not tracker
   tool comments or issue-description payloads. Tracker tools may later publish sparse
-  public projections or generated issue links after promotion, but they must not copy
+  public projections or generated issue links after acceptance, but they must not copy
   the private `decodex.decision_contract/1` payload into Linear.
 - Internal Execution Programs are local runtime records, not tracker comments or
   issue-description payloads. Program dispatch is direct: the scheduler evaluates
@@ -378,11 +378,11 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   reports `needs_architecture_review` / `blocked`,
   `decodex` must stop the lane through the human-required failure path instead of
   retrying automatically.
-- Review-policy stops do not dispatch research directly. `decodex` may surface
-  operator guidance for a bounded research follow-up, but future runtime-owned research
-  escalation is valid only after a separate adapter contract can verify the current
-  head, review phase, normalized stop kind, normalized error class, issue/run identity,
-  and latest bounded-review evidence.
+- Review-policy stops do not dispatch external investigation directly. `decodex` may
+  surface operator guidance for a bounded follow-up, but any external workflow is
+  valid only after a separate adapter contract can verify the current head, review
+  phase, normalized stop kind, normalized error class, issue/run identity, and latest
+  bounded-review evidence.
 - If the turn completes without a valid recorded `issue_review_handoff` and without an explicit human-attention exit, `decodex` must treat the run as failed rather than silently moving the issue to `In Review`.
 - If the turn completes without a matching `issue_terminal_finalize` call for the resolved terminal path, `decodex` must treat the run as failed before reporting the attempt as successful.
 - If PR-backed success writeback partially succeeds, for example the issue reaches `In Review` but the completion comment fails to post, `decodex` must treat the lane as human-required and must not place it back on the automatic retry path.

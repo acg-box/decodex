@@ -99,7 +99,7 @@ fn autonomy_proposal_refusal_reasons_are_specific_and_inspectable() {
 	assert_eq!(traversal_surface.state(), AutonomyProposalState::Rejected);
 	assert!(traversal_surface.has_refusal_reason(AutonomyProposalRefusalReason::DisallowedSurface));
 
-	let docs_signal = AutonomySignal::docs_skill_drift(tests::signal_input())
+	let docs_signal = AutonomySignal::docs_plugin_drift(tests::signal_input())
 		.expect("docs signal should validate");
 	let disallowed_kind =
 		AutonomyProposal::compile_dry_run(Some(&objective), &[docs_signal], tests::compile_input())

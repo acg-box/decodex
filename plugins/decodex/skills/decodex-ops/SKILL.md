@@ -52,8 +52,8 @@ service labels, recovery, or lane-control details matter.
 - `decodex:needs-attention`: human-required stop.
 - Read `<service-id>` from `project.toml`; do not guess it.
 - Queue only issues startable under `WORKFLOW.md`.
-- Require promoted research or explicit execution intent before research-derived
-  intake.
+- Require explicit execution intent or accepted project-policy authority before
+  derived intake.
 
 ## Boundaries
 

@@ -38,15 +38,11 @@ For build, test, run, setup, validation, and task-runner command entrypoints, re
 | `automations/decodex/` | Repo-local source for Decodex Publisher automations and social publication records. Generated social artifacts stay under `.agent/automations/decodex/cache/social`. |
 | `scripts/assets/` | Asset-generation helpers for checked-in app and tray icon assets. |
 | `scripts/macos/` | macOS-only app packaging and local bundle verification helpers. |
-| `plugins/decodex/` | Canonical installable Decodex lifecycle plugin source. It owns research, issue briefing, planning, runtime ops, commit, and land. |
-| `plugins/knowledge/` | Knowledge plugin for docs, OKF/LLM Wiki, semantic drift, source-backed repo memory, and knowledge writeback. |
-| `plugins/codebase/` | Reusable repository work plugin for command authority, task-runner structure, dependency policy, review repair, verification, debugging, and dynamic read-only subagent boundaries. |
-| `plugins/deliberation/` | Portable deliberation plugin for read-only scout, grill, and skeptic review. |
+| `plugins/decodex/` | Canonical installable Decodex runtime/operator plugin source. It owns Decodex planning, runtime ops, commit, and land. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
 | `docs/reference/` | Current repository and artifact surface maps. |
 | `docs/decisions/` | Durable rationale for repository-level design choices. |
-| `docs/research/` | Markdown OKF research concepts and supporting evidence. It does not own runtime authority, policy, current-state reference, or durable rationale until promoted into the matching primary docs lane. |
 | `dev/` | Local development helpers, such as the operator dashboard mock server. |
 | `assets/` | Shared static assets that are not owned by the Astro app's generated output. Decodex App icons live under `assets/app-icon/{source,composer,generated}/`; menu bar template assets live under `assets/tray-icon/{source,generated}/`; `scripts/assets/render_decodex_app_icons.swift` regenerates the icon set. |
 | `Makefile.toml` | Repo-native task names and automation entrypoints. |
@@ -150,9 +146,8 @@ tracker routing, and policy.
 - Reusable agent-facing Decodex usage instructions live under `plugins/decodex/`.
 - `docs/runbook/`, `docs/reference/`, and `docs/decisions/` must not override runtime or
   workflow authority.
-- `docs/research/` is a Markdown OKF research concept lane. Current Decodex runtime
-  research authority still flows through runtime-local Decision Contracts until
-  accepted and promoted.
+- Generic research workflows live in external installed team plugins. Decodex runtime
+  authority flows through accepted Decision Contracts and Program Intake.
 
 ## Local-only and generated directories
 

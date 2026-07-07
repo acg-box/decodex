@@ -22,7 +22,6 @@ related:
   - ../decisions/project-autonomy-control-plane.md
   - ../spec/loop-runtime.md
   - ../spec/runtime.md
-  - ./research-to-execution-loop.md
 drift_watch:
   - decodex.autonomy_objective/1
   - decodex.autonomy_signal/1
@@ -73,7 +72,7 @@ Deliverables:
 Validation:
 
 ```sh
-cargo make check-docs
+cargo make check
 git diff --check
 ```
 
@@ -176,7 +175,7 @@ Required tests:
 cargo test -p decodex autonomy_objective --lib
 cargo test -p decodex config --lib
 cargo make fmt-check
-cargo make check-docs
+cargo make check
 ```
 
 Stop conditions:
@@ -205,7 +204,7 @@ Implementation surfaces:
   - `spec_drift`
   - `protocol_drift`
   - `execution_friction`
-  - `docs_skill_drift`
+  - `docs_plugin_drift`
 - Operator/status readback for recent signals.
 - Store APIs that record one signal, read one signal, list signals by exact
   Objective Contract id/version, and list recent project signals for status readback.
@@ -226,7 +225,7 @@ Required tests:
 cargo test -p decodex autonomy_signal --lib
 cargo test -p decodex review --lib
 cargo make fmt-check
-cargo make check-docs
+cargo make check
 ```
 
 Stop conditions:
@@ -266,7 +265,7 @@ Required tests:
 cargo test -p decodex autonomy_proposal --lib
 cargo test -p decodex loop_contract --lib
 cargo make fmt-check
-cargo make check-docs
+cargo make check
 ```
 
 Stop conditions:
@@ -291,8 +290,8 @@ Deliverables:
 - Accepted proposal generates a latent Decision Contract candidate that preserves
   objective lineage, signals, contradictions, gaps, validation gates, and review
   policy.
-- Existing `research_promote` and Decision Contract promotion semantics remain the
-  authority boundary.
+- Existing accepted Decision Contract authority semantics remain the execution
+  boundary.
 - Proposal acceptance cannot be performed by the same external agent that submitted
   the proposal unless project policy explicitly accepts that actor as policy
   authority.
@@ -303,7 +302,7 @@ Required tests:
 cargo test -p decodex autonomy_decision_bridge --lib
 cargo test -p decodex program_intake --lib
 cargo make fmt-check
-cargo make check-docs
+cargo make check
 ```
 
 Stop conditions:
@@ -338,7 +337,7 @@ Required tests:
 cargo test -p decodex program_intake --lib
 cargo test -p decodex orchestrator --lib
 cargo make fmt-check
-cargo make check-docs
+cargo make check
 ```
 
 Stop conditions:
@@ -373,7 +372,7 @@ Required tests:
 cargo test -p decodex operator --lib
 cargo test -p decodex status --lib
 cargo make fmt-check
-cargo make check-docs
+cargo make check
 ```
 
 Stop conditions:
@@ -410,7 +409,7 @@ Required tests:
 cargo test -p decodex mcp --lib
 cargo test -p decodex plugin_surface_tests --lib
 cargo make fmt-check
-cargo make check-docs
+cargo make check
 ```
 
 Stop conditions:
@@ -436,7 +435,7 @@ Dogfood signals:
 - `protocol_drift`
 - `review_feedback_cluster`
 - `execution_friction`
-- `docs_skill_drift`
+- `docs_plugin_drift`
 - `validation_regression`
 - `user_feedback_cluster`
 
@@ -462,7 +461,7 @@ Recommended full gate before broad enablement:
 
 ```sh
 cargo make fmt-check
-cargo make check-docs
+cargo make check
 cargo test -p decodex --lib
 cargo make check
 ```

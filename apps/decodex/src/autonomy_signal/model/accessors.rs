@@ -9,6 +9,14 @@ use crate::autonomy_signal::{
 
 #[allow(dead_code)]
 impl AutonomySignal {
+	pub(crate) fn schema(&self) -> &str {
+		&self.schema
+	}
+
+	pub(crate) fn record_version(&self) -> u16 {
+		self.record_version
+	}
+
 	pub(crate) fn id(&self) -> &str {
 		&self.id
 	}
@@ -73,8 +81,28 @@ impl AutonomySignal {
 		&self.primary_source_refs
 	}
 
+	pub(crate) fn issue_id(&self) -> Option<&str> {
+		self.issue_id.as_deref()
+	}
+
+	pub(crate) fn run_id(&self) -> Option<&str> {
+		self.run_id.as_deref()
+	}
+
+	pub(crate) fn attempt_id(&self) -> Option<&str> {
+		self.attempt_id.as_deref()
+	}
+
 	pub(crate) fn head_sha(&self) -> Option<&str> {
 		self.head_sha.as_deref()
+	}
+
+	pub(crate) fn evidence(&self) -> &[String] {
+		&self.evidence
+	}
+
+	pub(crate) fn proposal_only(&self) -> bool {
+		self.proposal_only
 	}
 
 	pub(crate) fn review_evidence(&self) -> Option<&AutonomySignalReviewEvidence> {

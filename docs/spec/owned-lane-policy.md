@@ -169,7 +169,7 @@ This action requires:
 | `In Review` lane now has actionable review repair work | PR still belongs to lane; actionable review feedback is present; retained lane remains reusable | `resume_retained_lane` | Yes |
 | `In Review` lane has green checks, satisfied review, and is mergeable | PR still belongs to lane; approvals satisfied; unresolved blocking review work absent; checks green; mergeable | `ready_to_land` | Yes |
 | Pre-PR independent review or post-review repair churn exceeded the configured convergence budget | Runtime-owned review checkpoints show repeated `findings` in the same phase crossed the configured limit; the current repair strategy no longer has a bounded low-risk patch path | `manual_intervention_required`, or `retry_automatically` only when an Architecture Recovery Packet plus Authority Boundary Check authorizes a materially different recovery strategy | Yes, only through the authorized Architecture Recovery Packet path while recovery budget remains. Review-policy churn may continue with `block_landing` while preserving the landing block. |
-| Review-policy stop cannot recover autonomously | Runtime-owned review checkpoints identify `needs_architecture_review`, an Authority Boundary Check result outside the lane authority, insufficient recovery evidence, or exhausted recovery budget for the current head, phase, evidence, and stop class | `manual_intervention_required` | No direct retry; future research escalation may run only through a separate structured adapter contract |
+| Review-policy stop cannot recover autonomously | Runtime-owned review checkpoints identify `needs_architecture_review`, an Authority Boundary Check result outside the lane authority, insufficient recovery evidence, or exhausted recovery budget for the current head, phase, evidence, and stop class | `manual_intervention_required` | No direct retry; future decision follow-up may run only through a separate structured adapter contract |
 | Merge already happened but closeout or cleanup is incomplete | Merged PR is authoritative; closeout or cleanup evidence is still missing | `continue` | Yes |
 | Signals are contradictory or incomplete in a way that requires guesswork | Tracker, retained lane, review, or cleanup signals disagree materially | `manual_intervention_required` | No |
 
@@ -201,7 +201,7 @@ For review-policy churn, the runtime counts only structured review checkpoints:
 - recording `issue_review_handoff` or `issue_review_repair_complete` clears the retained review-policy state
 
 Review-policy stops are also the only review failures eligible for a future
-runtime-owned research escalation path. That path is not an additional action class and
+structured decision follow-up path. That path is not an additional action class and
 does not by itself clear the current stop decision. `needs_architecture_review` and
 `blocked` still enter `manual_intervention_required`, receive the configured
 human-attention guard, and stay ineligible until the blocking signal is materially
@@ -212,7 +212,7 @@ recovery and recovery budget remains. Review-policy churn may continue with
 `block_landing` while preserving the landing block; otherwise the lane enters
 `manual_intervention_required`.
 
-Any future research escalation must use the same runtime decision class plus a separate
+Any future decision follow-up must use the same runtime decision class plus a separate
 adapter contract. Free-form terminal comments, skill prose, old review memory, or stale
 worktree state are not sufficient dispatch inputs. The minimum dispatch evidence is the
 current lane head, review-policy head, review phase, normalized stop kind, normalized
@@ -226,7 +226,7 @@ dispatch envelope but not the same question:
 - convergence stop asks whether repeated findings should continue as repair work,
   become a redesign, or stop
 
-`blocked` remains a human-required stop and is not a research-escalation input by
+`blocked` remains a human-required stop and is not a decision-follow-up input by
 default.
 
 Human intervention is not complete merely because a human observed the failure. Human intervention is complete only when the blocking signal is materially cleared.
