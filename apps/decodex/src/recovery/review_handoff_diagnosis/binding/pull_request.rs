@@ -16,17 +16,17 @@ pub(in crate::recovery) fn pull_request_binding_mismatch(
 	pr_head_oid: &Option<String>,
 ) -> Option<HandoffBindingDiagnostic> {
 	if context
-		.existing_handoff
+		.existing_lifecycle
 		.target_base_ref_name()
 		.is_some_and(|base_ref| base_ref != pr_inspection.base_ref_name.as_str())
 	{
 		return Some(diagnostics::rebind_required_diagnostic(
-			"review_handoff_base_mismatch",
-			"review_handoff.target_base_ref_name",
+			"review_lifecycle_base_mismatch",
+			"review_lifecycle.target_base_ref_name",
 			pr_base_ref.clone(),
 			pr_head_oid.clone(),
 			context.issue_identifier,
-			context.existing_handoff.pr_url(),
+			context.existing_lifecycle.pr_url(),
 		));
 	}
 
@@ -46,7 +46,7 @@ pub(in crate::recovery) fn pull_request_binding_mismatch(
 			pr_head_oid.clone(),
 			actions::inspect_handoff_next_action(
 				context.issue_identifier,
-				context.existing_handoff.pr_url(),
+				context.existing_lifecycle.pr_url(),
 			),
 		)
 	})

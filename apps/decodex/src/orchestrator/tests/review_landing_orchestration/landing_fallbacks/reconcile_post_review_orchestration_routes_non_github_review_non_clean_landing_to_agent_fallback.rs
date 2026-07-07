@@ -25,7 +25,7 @@ fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landin
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
-	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
+	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 

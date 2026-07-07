@@ -52,7 +52,7 @@ pub(in crate::recovery) fn validate_adopt_current_worktree(
 	Ok(canonical_worktree)
 }
 
-pub(in crate::recovery) fn validate_adopt_absent_handoff_marker(
+pub(in crate::recovery) fn validate_adopt_absent_lifecycle_record(
 	context: &RecoveryContext,
 	issue: &TrackerIssue,
 	branch_name: &str,
@@ -69,7 +69,7 @@ pub(in crate::recovery) fn validate_adopt_absent_handoff_marker(
 	for branch in branches {
 		if context
 			.state_store
-			.review_handoff_marker(context.config.service_id(), &issue.id, &branch)?
+			.review_lifecycle_record(context.config.service_id(), &issue.id, &branch)?
 			.is_some()
 		{
 			eyre::bail!(

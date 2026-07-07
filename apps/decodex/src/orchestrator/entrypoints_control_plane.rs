@@ -11,7 +11,8 @@ pub(crate) use self::{dev::run_control_plane_dev_tick, tick::run_control_plane_t
 pub(crate) use diagnose::{
 	build_diagnose_live_snapshot, runtime_recovery_error_class, runtime_recovery_warning,
 };
-#[cfg(test)] pub(crate) use project_tick::{linear_scan_due, remember_next_linear_scan};
+#[cfg(test)]
+pub(crate) use project_tick::{linear_scan_due, remember_next_linear_scan};
 pub(crate) use snapshot::build_operator_state_snapshot_without_live_observers;
 #[cfg(test)]
 pub(crate) use snapshot::{

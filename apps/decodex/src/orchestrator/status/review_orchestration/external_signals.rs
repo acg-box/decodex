@@ -1,11 +1,12 @@
 use crate::orchestrator::status::{
 	EXTERNAL_REVIEW_ACK_TIMEOUT_SECS, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE,
-	PullRequestReviewState, ReviewOrchestrationMarker,
+	PullRequestReviewState,
 };
+use crate::state::ReviewLifecycleReadback;
 
 pub(crate) fn request_comment_has_eyes(
 	review_state: &PullRequestReviewState,
-	marker: &ReviewOrchestrationMarker,
+	marker: &impl ReviewLifecycleReadback,
 ) -> Option<bool> {
 	let request_comment_id = marker.request_comment_database_id()?;
 
@@ -19,7 +20,7 @@ pub(crate) fn request_comment_has_eyes(
 }
 
 pub(crate) fn request_ack_timed_out(
-	marker: &ReviewOrchestrationMarker,
+	marker: &impl ReviewLifecycleReadback,
 	now_unix_epoch: i64,
 ) -> bool {
 	let Some(request_created_at_unix_epoch) = marker.request_created_at_unix_epoch() else {
@@ -32,7 +33,7 @@ pub(crate) fn request_ack_timed_out(
 
 pub(crate) fn external_review_result_arrived(
 	review_state: &PullRequestReviewState,
-	marker: &ReviewOrchestrationMarker,
+	marker: &impl ReviewLifecycleReadback,
 ) -> bool {
 	let Some(request_created_at_unix_epoch) = marker.request_created_at_unix_epoch() else {
 		return false;
@@ -50,7 +51,7 @@ pub(crate) fn external_review_result_arrived(
 
 pub(crate) fn external_review_has_strict_pass_signals(
 	review_state: &PullRequestReviewState,
-	marker: &ReviewOrchestrationMarker,
+	marker: &impl ReviewLifecycleReadback,
 ) -> bool {
 	let Some(request_created_at_unix_epoch) = marker.request_created_at_unix_epoch() else {
 		return false;
@@ -72,7 +73,7 @@ pub(crate) fn external_review_has_strict_pass_signals(
 
 pub(crate) fn external_review_has_actionable_feedback(
 	review_state: &PullRequestReviewState,
-	marker: &ReviewOrchestrationMarker,
+	marker: &impl ReviewLifecycleReadback,
 ) -> bool {
 	let Some(request_created_at_unix_epoch) = marker.request_created_at_unix_epoch() else {
 		return false;

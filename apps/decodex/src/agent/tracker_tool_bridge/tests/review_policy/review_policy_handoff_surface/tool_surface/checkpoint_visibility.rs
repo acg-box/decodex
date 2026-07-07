@@ -5,7 +5,7 @@ use crate::agent::tracker_tool_bridge::tests::{
 };
 
 #[test]
-fn review_checkpoint_tool_surface_excludes_closeout() {
+fn review_checkpoint_tool_surface_is_runtime_owned() {
 	let tracker = FakeTracker::new();
 	let issue = tests::sample_issue();
 	let review_issue = tests::sample_review_issue();
@@ -59,7 +59,7 @@ fn review_checkpoint_tool_surface_excludes_closeout() {
 	assert!(handoff_tools.contains(&String::from(ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME)));
 	assert!(repair_tools.contains(&String::from(ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME)));
 	assert!(closeout_tools.contains(&String::from(ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME)));
-	assert!(handoff_tools.contains(&String::from(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME)));
-	assert!(repair_tools.contains(&String::from(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME)));
+	assert!(!handoff_tools.contains(&String::from(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME)));
+	assert!(!repair_tools.contains(&String::from(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME)));
 	assert!(!closeout_tools.contains(&String::from(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME)));
 }

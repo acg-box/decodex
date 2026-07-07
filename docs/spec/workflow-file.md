@@ -173,7 +173,7 @@ Supported keys:
 
 `verify_commands` are the repo-native read-only verification surface. They run after `canonicalize_commands` and must pass before review handoff, review repair completion, or landing-related push can proceed.
 
-Together, `canonicalize_commands` and `verify_commands` are the default full repo-native gate. They run after agent execution and before the success writeback is committed, and they are also the required pre-push gate for PR-head refreshes, review handoff, review repair pushes, and landing-related sync unless a narrower named gate profile is selected. Local commits use the separate `decodex/commit/1` contract; they do not require any additional lifecycle-specific commit contract.
+Together, `canonicalize_commands` and `verify_commands` are the default full repo-native gate. They run after agent execution and before the success writeback is committed, and they are also the required pre-push gate for PR-head refreshes, review handoff, review repair pushes, and landing-related sync unless a narrower named gate profile is selected. Local commits use the separate `decodex/commit/2` contract; they do not require any additional lifecycle-specific commit contract.
 
 Removed execution fields:
 

@@ -48,8 +48,9 @@ pub(in crate::docs_okf::graph) fn frontmatter_string_list_lossy(
 		Some(serde_yaml::Value::Sequence(items)) => items
 			.iter()
 			.filter_map(|item| match item {
-				serde_yaml::Value::String(value) if !value.trim().is_empty() =>
-					Some(value.trim().to_owned()),
+				serde_yaml::Value::String(value) if !value.trim().is_empty() => {
+					Some(value.trim().to_owned())
+				},
 				_ => None,
 			})
 			.collect(),

@@ -72,17 +72,19 @@ where
 			execution_failure::loop_guardrail_stop_from_review_policy(review_policy_stop),
 			error,
 		)? {
-			LoopGuardrailRecoveryDecision::Start(recovery) =>
+			LoopGuardrailRecoveryDecision::Start(recovery) => {
 				writeback::apply_architecture_recovery_retry_writeback(
 					&failure_context,
 					recovery,
 					max_attempts,
-				),
-			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) =>
+				)
+			},
+			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) => {
 				writeback::apply_loop_guardrail_failure_writeback(
 					&failure_context,
 					loop_guardrail_stop,
-				),
+				)
+			},
 		};
 	}
 	if let Some(loop_guardrail_stop) = loop_guardrail_stop {
@@ -93,17 +95,19 @@ where
 			loop_guardrail_stop,
 			error,
 		)? {
-			LoopGuardrailRecoveryDecision::Start(recovery) =>
+			LoopGuardrailRecoveryDecision::Start(recovery) => {
 				writeback::apply_architecture_recovery_retry_writeback(
 					&failure_context,
 					recovery,
 					max_attempts,
-				),
-			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) =>
+				)
+			},
+			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) => {
 				writeback::apply_loop_guardrail_failure_writeback(
 					&failure_context,
 					loop_guardrail_stop,
-				),
+				)
+			},
 		};
 	}
 

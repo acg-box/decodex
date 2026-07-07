@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use crate::{
 	agent::tracker_tool_bridge::{self, PullRequestDetails, ReviewHandoffContext},
-	state::ReviewHandoffMarker,
+	state::{ReviewLifecycleHandoffInput, ReviewLifecycleRecord},
 	tracker::{TrackerIssue, records},
 };
 
@@ -15,30 +15,30 @@ pub(super) fn review_policy_stop_fingerprint(details_json: &str) -> Option<Strin
 		.map(str::to_owned)
 }
 
-pub(super) fn review_handoff_marker_from_pull_request(
-	review_context: &ReviewHandoffContext,
-	pull_request: &PullRequestDetails,
-) -> ReviewHandoffMarker {
-	ReviewHandoffMarker::new(
-		review_context.run_id.clone(),
-		review_context.attempt_number,
-		review_context.branch_name.clone(),
-		pull_request.url.clone(),
-		pull_request.base_ref_name.clone(),
-		pull_request.head_ref_name.clone(),
-		pull_request.head_ref_oid.clone(),
-	)
+pub(super) fn review_lifecycle_handoff_from_pull_request<'a>(
+	review_context: &'a ReviewHandoffContext,
+	pull_request: &'a PullRequestDetails,
+) -> ReviewLifecycleHandoffInput<'a> {
+	ReviewLifecycleHandoffInput {
+		run_id: &review_context.run_id,
+		attempt_number: review_context.attempt_number,
+		branch_name: &review_context.branch_name,
+		pr_url: &pull_request.url,
+		base_ref_name: &pull_request.base_ref_name,
+		head_ref_name: &pull_request.head_ref_name,
+		head_sha: &pull_request.head_ref_oid,
+	}
 }
 
-pub(super) fn review_handoff_marker_lineage_matches(
-	existing: &ReviewHandoffMarker,
-	marker: &ReviewHandoffMarker,
+pub(super) fn review_lifecycle_handoff_lineage_matches(
+	existing: &ReviewLifecycleRecord,
+	input: &ReviewLifecycleHandoffInput<'_>,
 ) -> bool {
-	existing.branch_name() == marker.branch_name()
-		&& existing.pr_url() == marker.pr_url()
-		&& existing.target_base_ref_name() == marker.target_base_ref_name()
-		&& existing.pr_head_ref_name() == marker.pr_head_ref_name()
-		&& existing.pr_head_oid() == marker.pr_head_oid()
+	existing.branch_name() == input.branch_name
+		&& existing.pr_url() == input.pr_url
+		&& existing.target_base_ref_name() == Some(input.base_ref_name)
+		&& existing.pr_head_ref_name() == input.head_ref_name
+		&& existing.pr_head_oid() == input.head_sha
 }
 
 pub(super) fn linear_execution_review_event(

@@ -51,7 +51,7 @@ Defines: The tracker ownership boundary, preferred transport, issue-scoped tool 
 - Tool calls that reference any other issue must be rejected.
 - Tool calls that request unsupported operations must be rejected.
 
-## Minimum tool surface
+## Minimum agent tool surface
 
 The follow-up MVP should support these issue-scoped operations:
 
@@ -65,8 +65,6 @@ The follow-up MVP should support these issue-scoped operations:
     it must not accept arbitrary agent-authored comment bodies
 - `issue_progress_checkpoint`
   - append the current durable execution-state snapshot to private runtime evidence and publish only the low-frequency public projection when the public lifecycle signal changes
-- `issue_review_checkpoint`
-  - record the normalized repo-native bounded-review result for the current handoff or repair phase
 - `issue_review_handoff`
   - validate and record a PR-backed success handoff for the current issue
 - `issue_label_add`
@@ -75,6 +73,10 @@ The follow-up MVP should support these issue-scoped operations:
     configured `needs_attention_label`
 - `issue_terminal_finalize`
   - explicitly finalize the current run's terminal tracker path after the required tracker writes already exist
+
+`issue_review_checkpoint` is a runtime-owned evidence writer, not an agent-facing
+tool. Decodex may use that internal path after PR-backed handoff or retained repair
+completion to persist the normalized bounded-review result for the current phase.
 
 Additional operations such as richer metadata updates may be added later, but they are not required for the first PR-backed self-dogfood pilot.
 
@@ -174,9 +176,9 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   public lifecycle signal changes materially, such as the normalized phase or public
   branch/PR projection anchor changing. Repeated private evidence updates inside the
   same public signal must append private runtime events without adding Linear comments.
-- `issue_review_checkpoint` is available only when `[codex].review` is `"standard"`
-  or `"strict"`, and only during the pre-PR handoff phase and retained
-  review-repair runs; `closeout` does not expose it.
+- The runtime-owned `issue_review_checkpoint` evidence writer is enabled only when
+  `[codex].review` is `"standard"` or `"strict"`, and only for the post-handoff or
+  retained review-repair phase; no agent run exposes it in dynamic tool specs.
 - `issue_review_checkpoint` must accept only these normalized statuses:
   `clean`, `findings`, `needs_architecture_review`, `blocked`.
 - `issue_review_checkpoint` must bind every checkpoint to an explicit `head_sha`
@@ -265,16 +267,19 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   active current-blocker fingerprints, per-fingerprint repeat counts, and an
   optional `stop_fingerprint`. The persisted payload also includes a compact route
   summary with route counts and one route-derived next action for local readback.
-- When `[codex].review` is `"standard"` or `"strict"`, `decodex` treats
-  `issue_review_checkpoint` as the only authoritative structured review-policy
-  signal. Skill prose or wrapper-local result words must not replace it.
+- When `[codex].review` is `"standard"` or `"strict"`, `decodex` treats the
+  runtime-owned `issue_review_checkpoint` artifact as the only authoritative
+  structured review-policy signal. Skill prose, wrapper-local result words, or
+  agent-authored summaries must not replace it.
 - When `[codex].review` is `"standard"` or `"strict"`, `issue_review_handoff` and
-  `issue_review_repair_complete` must require the latest `clean` checkpoint for the
-  current phase and current lane head, not merely any older clean checkpoint from the
-  same lane. They must also re-check that review-blocking local changes are still
-  absent before reusing that checkpoint, so dirty edits after review cannot pass
-  under the same `HEAD`.
-- When `[codex].review` is `"off"` or `"basic"`, `issue_review_handoff` and
+  `issue_review_repair_complete` record only the pushed PR lifecycle fact. Runtime
+  post-review classification and retained orchestration must require the latest
+  `clean` checkpoint for the current phase and current lane head before landing or
+  proceeding on the clean path, not merely any older clean checkpoint from the same
+  lane. They must also re-check that review-blocking local changes are still absent
+  before using that checkpoint, so dirty edits after review cannot pass under the
+  same `HEAD`.
+- When `[codex].review` is `"off"`, `issue_review_handoff` and
   `issue_review_repair_complete` must not require `issue_review_checkpoint`; they
   still must pass PR validation, branch/head checks, and the configured repository
   validation gate before writeback.

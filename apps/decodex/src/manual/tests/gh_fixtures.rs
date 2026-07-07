@@ -1,4 +1,5 @@
-#[cfg(unix)] use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
 	env, fs,
 	path::{Path, PathBuf},
@@ -122,7 +123,7 @@ pub(in crate::manual::tests) fn install_fake_admin_merge_gh(
 		temp_dir,
 		merged_head_oid,
 		"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-		r#"{"schema":"decodex/commit/1","summary":"ship hotfix","authority":"manual"}"#,
+		r#"{"schema":"decodex/commit/2","change":"ship hotfix","authority":"manual","impact":"compatible"}"#,
 		0,
 	)
 }

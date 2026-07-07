@@ -19,7 +19,7 @@ where
 	T: IssueTracker,
 {
 	let Some(auto_merge_enabled_at_unix_epoch) =
-		lane.orchestration_marker.auto_merge_enabled_at_unix_epoch()
+		lane.lifecycle_record().auto_merge_enabled_at_unix_epoch()
 	else {
 		return Ok(());
 	};
@@ -34,7 +34,7 @@ where
 		PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 		&lane.snapshot.issue,
 		&lane.snapshot.worktree,
-		&lane.orchestration_marker,
+		lane.lifecycle_record(),
 		timeout_reason,
 	)
 }

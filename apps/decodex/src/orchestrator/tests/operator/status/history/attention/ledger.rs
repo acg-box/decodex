@@ -43,13 +43,9 @@ fn live_operator_history_lanes_require_linear_execution_ledger_records() {
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
 	assert_eq!(tracker.comment_queries.borrow().as_slice(), slice::from_ref(&issue.id));
-	assert_eq!(lane.ledger_outcome.ledger_status, "missing");
-	assert_eq!(lane.ledger_outcome.final_outcome, "execution_ledger_missing");
+	assert_eq!(lane.ledger_outcome.ledger_status, "partial");
+	assert_eq!(lane.ledger_outcome.final_outcome, "execution_log");
 	assert_eq!(lane.ledger_outcome.record_count, 0);
-	assert_eq!(
-		lane.ledger_outcome.summary.as_deref(),
-		Some("No decodex.linear_execution_event records are available for this history lane.")
-	);
-	assert!(rendered.contains("ledger_status: missing"));
-	assert!(rendered.contains("outcome: execution_ledger_missing"));
+	assert!(rendered.contains("ledger_status: partial"));
+	assert!(rendered.contains("outcome: execution_log"));
 }

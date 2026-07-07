@@ -21,9 +21,9 @@ pub(crate) use self::{
 		validate_post_review_lane_review_state,
 	},
 	marker::{
-		clean_current_head_review_repair_writeback_pending, load_post_review_orchestration_marker,
+		clean_current_head_review_repair_writeback_pending, load_post_review_lifecycle_record,
 		review_repair_completion_intent_matches_current_head,
 		review_repair_terminal_finalize_event_matches_snapshot,
-		validate_review_orchestration_marker,
+		validate_post_review_lifecycle_record,
 	},
 };

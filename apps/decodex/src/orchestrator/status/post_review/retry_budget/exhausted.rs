@@ -15,7 +15,7 @@ where
 {
 	if classification.pr_url.is_none() {
 		classification.pr_url =
-			snapshot.review_handoff.as_ref().map(|marker| marker.pr_url().to_owned());
+			snapshot.lifecycle_record.as_ref().map(|marker| marker.pr_url().to_owned());
 	}
 	if classification.pr_state.is_none()
 		&& let Some(review_state) = retry_budget::retry_budget_exhausted_merged_review_state(

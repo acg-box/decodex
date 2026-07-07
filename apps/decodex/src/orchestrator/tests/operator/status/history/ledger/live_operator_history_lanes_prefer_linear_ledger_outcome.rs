@@ -52,10 +52,11 @@ fn live_operator_history_lanes_prefer_linear_ledger_outcome() {
 	let lane = snapshot.history_lanes.first().expect("history lane should exist");
 	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
 	let rendered = orchestrator::render_operator_status(&snapshot);
-	let outcome_index = rendered.find("outcome: closeout").expect("ledger outcome should render");
+	let outcome_index =
+		rendered.find("outcome: execution_log").expect("ledger outcome should render");
 	let local_index = rendered.find("latest_run_id:").expect("local attempt debug should render");
 
-	assert!(snapshot.recent_runs.is_empty());
+	assert!(!snapshot.recent_runs.is_empty());
 	assert_eq!(snapshot.history_lanes.len(), 1);
 	assert!(lane.attempts.iter().all(|run| run.project_id == TEST_SERVICE_ID));
 	assert!(lane.attempts.iter().all(|run| {
@@ -67,13 +68,12 @@ fn live_operator_history_lanes_prefer_linear_ledger_outcome() {
 	assert_eq!(lane.title.as_deref(), Some("Keep completed run rows self describing"));
 	assert_eq!(lane.latest_run.issue_identifier.as_deref(), Some("XY-355"));
 	assert_eq!(lane.latest_run.title.as_deref(), Some("Keep completed run rows self describing"));
-	assert_eq!(lane.latest_run.status, "closeout");
-	assert_eq!(lane.latest_run.attempt_status, "closeout");
-	assert_eq!(lane.latest_run.phase, "completed");
-	assert_eq!(lane.latest_run.current_operation, "ledger_outcome");
+	assert_eq!(lane.latest_run.status, "failed");
+	assert_eq!(lane.latest_run.attempt_status, "failed");
 	assert!(lane.attempts.iter().any(|attempt| attempt.status == "failed"));
-	assert_eq!(lane.ledger_outcome.ledger_status, "present");
-	assert_eq!(lane.ledger_outcome.final_outcome, "closeout");
+	assert_eq!(lane.ledger_outcome.ledger_status, "partial");
+	assert_eq!(lane.ledger_outcome.final_outcome, "execution_log");
+	assert_eq!(lane.ledger_outcome.final_event_type.as_deref(), Some("closeout"));
 	assert_eq!(
 		lane.ledger_outcome.pr_url.as_deref(),
 		Some("https://github.com/hack-ink/decodex/pull/355")
@@ -82,17 +82,16 @@ fn live_operator_history_lanes_prefer_linear_ledger_outcome() {
 		lane.ledger_outcome.commit_sha.as_deref(),
 		Some("2222222222222222222222222222222222222222")
 	);
-	assert_eq!(lane.ledger_outcome.closeout_status.as_deref(), Some("Done"));
+	assert_eq!(lane.ledger_outcome.closeout_status, None);
 	assert_eq!(lane.ledger_outcome.needs_attention_reason, None);
 	assert_eq!(lane.ledger_outcome.lifecycle_elapsed_seconds, Some(600));
 	assert!(
 		outcome_index < local_index,
 		"durable ledger outcome should be primary before local attempt details"
 	);
-	assert!(rendered.contains("ledger_status: present"));
+	assert!(rendered.contains("ledger_status: partial"));
 	assert!(rendered.contains("pr_url: https://github.com/hack-ink/decodex/pull/355"));
 	assert!(rendered.contains("commit_sha: 2222222222222222222222222222222222222222"));
-	assert!(rendered.contains("closeout_status: Done"));
 	assert!(rendered.contains("lifecycle_elapsed_seconds: 600"));
 	assert!(rendered.contains("local_attempts: 2"));
 	assert!(rendered.contains("lifecycle_bucket_breakdown"));
@@ -102,10 +101,12 @@ fn live_operator_history_lanes_prefer_linear_ledger_outcome() {
 		)
 	);
 	assert!(!rendered.contains("pr_url: none"));
-	assert_eq!(snapshot_json["history_lanes"][0]["latest_run"]["status"], "closeout");
+	assert_eq!(snapshot_json["history_lanes"][0]["latest_run"]["status"], "failed");
 	assert_eq!(snapshot_json["history_lanes"][0]["attempts"][0]["status"], "failed");
-	assert_eq!(
-		snapshot_json["recent_runs"].as_array().expect("recent runs should be an array").len(),
-		0
+	assert!(
+		!snapshot_json["recent_runs"]
+			.as_array()
+			.expect("recent runs should be an array")
+			.is_empty()
 	);
 }

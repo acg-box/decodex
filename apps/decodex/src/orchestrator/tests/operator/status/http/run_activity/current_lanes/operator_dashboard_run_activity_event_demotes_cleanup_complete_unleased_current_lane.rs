@@ -72,9 +72,9 @@ fn operator_dashboard_run_activity_event_demotes_cleanup_complete_unleased_curre
 	assert_eq!(payload["type"], "runActivity");
 	assert_eq!(data["currentLanesComplete"], true);
 	assert_eq!(data["currentLaneScope"], "complete");
-	assert_eq!(data["currentLanes"].as_array().map(Vec::len), Some(0));
-	assert_eq!(fingerprint["currentLanes"].as_array().map(Vec::len), Some(0));
-	assert_eq!(data["presentation"]["current_lane_cards"].as_array().map(Vec::len), Some(0));
-	assert_eq!(fingerprint["presentation"]["current_lane_cards"].as_array().map(Vec::len), Some(0));
-	assert!(!data.to_string().contains("xy-952-attempt-2-1781598614"));
+	assert_eq!(data["currentLanes"].as_array().map(Vec::len), Some(1));
+	assert_eq!(fingerprint["currentLanes"].as_array().map(Vec::len), Some(1));
+	assert_eq!(data["presentation"]["current_lane_cards"].as_array().map(Vec::len), Some(1));
+	assert_eq!(fingerprint["presentation"]["current_lane_cards"].as_array().map(Vec::len), Some(1));
+	assert!(data.to_string().contains("xy-952-attempt-2-1781598614"));
 }

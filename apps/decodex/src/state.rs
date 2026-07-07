@@ -21,13 +21,13 @@ pub(crate) use self::{
 		DecisionContractRecord, ExecutionProgramRecord, IssueLease, LoopGuardrailCheckpoint,
 		PreacquiredLeaseGuards, PrivateExecutionEvent, ProgramIntakePlanRecord,
 		ProgramIssueMappingRecord, ProjectRegistration, ProjectRunStatus,
-		ProtocolActivityEventSummary, ProtocolActivitySummary, ReviewHandoffMarker,
-		ReviewLifecycleRecord, ReviewOrchestrationMarker, ReviewPolicyCheckpoint,
-		RunActivityMarker, RunAttempt, RunControlActionOutcomeRequest, RunControlActionReceipt,
-		RunControlActionRequest, RunControlChannel, WORKTREE_PROVENANCE_FILESYSTEM_SCAN,
-		WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN, WORKTREE_PROVENANCE_LEGACY_UNKNOWN,
-		WORKTREE_PROVENANCE_RUNTIME_RECORDED, WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
-		WorktreeMapping, worktree_provenance,
+		ProtocolActivityEventSummary, ProtocolActivitySummary, ReviewLifecycleHandoffInput,
+		ReviewLifecycleReadback, ReviewLifecycleRecord, ReviewLifecycleTransitionInput,
+		ReviewPolicyCheckpoint, RunActivityMarker, RunAttempt, RunControlActionOutcomeRequest,
+		RunControlActionReceipt, RunControlActionRequest, RunControlChannel,
+		WORKTREE_PROVENANCE_FILESYSTEM_SCAN, WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN,
+		WORKTREE_PROVENANCE_LEGACY_UNKNOWN, WORKTREE_PROVENANCE_RUNTIME_RECORDED,
+		WORKTREE_PROVENANCE_RUNTIME_RECOVERED, WorktreeMapping, worktree_provenance,
 	},
 	run_activity_marker::{
 		clear_run_retry_schedule, current_host_boot_id, process_start_identity,
@@ -46,7 +46,12 @@ pub(crate) use self::{
 	},
 };
 pub(crate) use internal::{CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker};
-#[allow(unused_imports)] pub(crate) use models::WorktreeProvenance;
+#[cfg(test)]
+pub(crate) use models::ReviewHandoffMarker;
+#[cfg(test)]
+pub(crate) use models::ReviewOrchestrationMarker;
+#[allow(unused_imports)]
+pub(crate) use models::WorktreeProvenance;
 #[cfg(test)]
 pub(crate) use run_activity_marker::{
 	current_process_start_identity, read_run_activity_marker_record, write_run_activity_marker,
@@ -152,4 +157,5 @@ pub(crate) fn is_decodex_runtime_artifact_relative_path(path: &Path) -> bool {
 		|| path.starts_with(RUN_CONTROL_CHANNEL_DIR)
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

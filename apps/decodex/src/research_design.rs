@@ -106,4 +106,5 @@ fn resolve_research_project_config_path(
 	})
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

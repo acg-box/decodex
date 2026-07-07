@@ -65,7 +65,7 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_current_head() {
 	let tracker = FakeTracker::new();
 	let issue = tests::sample_issue();
 	let workflow = tests::sample_workflow();
-	let inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
+	let pull_request = PullRequestDetails {
 		head_ref_name: String::from("x/decodex-pub-618"),
 		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
 		head_repository_name: String::from("decodex"),
@@ -74,13 +74,13 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_current_head() {
 		state: String::from("OPEN"),
 		base_ref_name: String::from("main"),
 		url: String::from("https://github.com/hack-ink/decodex/pull/56"),
-	})]);
+	};
+	let inspector = FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request)]);
 	let mut updated_local_repo = tests::sample_local_repo();
 
 	updated_local_repo.head_oid = String::from("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
 
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
-		Ok(tests::sample_local_repo()),
 		Ok(tests::sample_local_repo()),
 		Ok(tests::sample_local_repo()),
 		Ok(updated_local_repo),

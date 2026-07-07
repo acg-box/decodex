@@ -59,7 +59,7 @@ fn inspect_non_git_worktree(
 	blockers: &mut Vec<String>,
 ) -> Option<String> {
 	match worktree_path.join(".git").try_exists() {
-		Ok(false) =>
+		Ok(false) => {
 			match state::retained_path_contains_only_decodex_runtime_artifacts(worktree_path) {
 				Ok(true) => {
 					evidence.push(String::from("worktree_non_git_marker_directory"));
@@ -77,7 +77,8 @@ fn inspect_non_git_worktree(
 
 					Some(String::from("tracked_changes_unknown"))
 				},
-			},
+			}
+		},
 		Ok(true) => None,
 		Err(error) => {
 			blockers.push(String::from("worktree_tracked_changes_unknown"));

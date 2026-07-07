@@ -7,12 +7,12 @@ use crate::{
 			binding::model::{HandoffBindingDiagnostic, HandoffDiagnosticRequest},
 		},
 	},
-	state::ReviewHandoffMarker,
+	state::ReviewLifecycleRecord,
 };
 
 pub(in crate::recovery) fn handoff_issue_state_drift_diagnostic(
 	request: &HandoffDiagnosticRequest<'_>,
-	existing_handoff: &ReviewHandoffMarker,
+	existing_lifecycle: &ReviewLifecycleRecord,
 	pr_base_ref: Option<String>,
 	pr_head_oid: Option<String>,
 ) -> Option<HandoffBindingDiagnostic> {
@@ -22,13 +22,13 @@ pub(in crate::recovery) fn handoff_issue_state_drift_diagnostic(
 		{
 			actions::rebind_state_transition_next_action(
 				request.issue_identifier,
-				existing_handoff.pr_url(),
+				existing_lifecycle.pr_url(),
 			)
 		} else if request.issue_state_name == request.success_state {
 			actions::bound_handoff_next_action(
 				request.service_id,
 				request.issue_identifier,
-				existing_handoff.pr_url(),
+				existing_lifecycle.pr_url(),
 				request.active_label_present,
 			)
 		} else {
@@ -56,7 +56,7 @@ pub(in crate::recovery) fn handoff_issue_state_drift_diagnostic(
 			mismatched_field: Some(String::from("issue.state")),
 			next_action: actions::rebind_state_transition_next_action(
 				request.issue_identifier,
-				existing_handoff.pr_url(),
+				existing_lifecycle.pr_url(),
 			),
 		});
 	}
@@ -69,7 +69,7 @@ pub(in crate::recovery) fn handoff_issue_state_drift_diagnostic(
 			mismatched_field: Some(String::from("issue.state")),
 			next_action: actions::rebind_state_transition_next_action(
 				request.issue_identifier,
-				existing_handoff.pr_url(),
+				existing_lifecycle.pr_url(),
 			),
 		});
 	}

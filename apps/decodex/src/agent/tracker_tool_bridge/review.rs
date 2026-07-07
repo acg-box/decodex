@@ -18,10 +18,9 @@ use crate::{
 		RunCompletionDisposition, TrackerToolBridge,
 	},
 	prelude::eyre,
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
 	tracker::records::LinearExecutionEventPublicProjection,
 };
 use linear_events::{
 	linear_execution_closeout_event, linear_execution_review_event,
-	review_handoff_marker_from_pull_request, review_handoff_marker_lineage_matches,
+	review_lifecycle_handoff_from_pull_request, review_lifecycle_handoff_lineage_matches,
 };

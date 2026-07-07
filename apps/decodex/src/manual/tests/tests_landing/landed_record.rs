@@ -17,7 +17,7 @@ fn load_authoritative_landed_change_record_uses_merge_commit_subject() {
 			&temp_dir,
 			"cafebabe",
 			"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-			r#"{"schema":"decodex/commit/1","summary":"actual merge subject","authority":"manual"}"#,
+			r#"{"schema":"decodex/commit/2","change":"actual merge subject","authority":"manual","impact":"compatible"}"#,
 			0,
 		);
 	let context = ManualLandContext {
@@ -39,7 +39,7 @@ fn load_authoritative_landed_change_record_uses_merge_commit_subject() {
 			merge_commit_allowed: true,
 		},
 		prepared_closeout: None,
-		review_handoff: None,
+		review_lifecycle: None,
 		pr_url: String::from("https://github.com/hack-ink/decodex/pull/64"),
 		review_branch: String::from("xy-225"),
 		public_projection_privacy_classifier: ConfiguredPublicProjectionPrivacyClassifier::Disabled,
@@ -50,7 +50,7 @@ fn load_authoritative_landed_change_record_uses_merge_commit_subject() {
 
 	assert_eq!(
 		landed_change_record,
-		r#"{"schema":"decodex/commit/1","summary":"actual merge subject","authority":"manual"}"#
+		r#"{"schema":"decodex/commit/2","change":"actual merge subject","authority":"manual","impact":"compatible"}"#
 	);
 	assert_eq!(
 		fs::read_to_string(&invocation_log_path)

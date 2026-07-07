@@ -65,10 +65,12 @@ pub(crate) fn project_post_review_lane_decision(
 				PostReviewLaneDecision::Block
 			} else {
 				match input.proposed_decision {
-					PostReviewLaneDecision::CloseoutBlocked =>
-						PostReviewLaneDecision::CloseoutBlocked,
-					PostReviewLaneDecision::CleanupBlocked =>
-						PostReviewLaneDecision::CleanupBlocked,
+					PostReviewLaneDecision::CloseoutBlocked => {
+						PostReviewLaneDecision::CloseoutBlocked
+					},
+					PostReviewLaneDecision::CleanupBlocked => {
+						PostReviewLaneDecision::CleanupBlocked
+					},
 					_ => PostReviewLaneDecision::Block,
 				}
 			}

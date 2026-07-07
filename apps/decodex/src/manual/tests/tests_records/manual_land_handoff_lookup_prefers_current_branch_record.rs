@@ -38,10 +38,11 @@ fn manual_land_handoff_lookup_prefers_current_branch_record() {
 		)
 		.expect("unrelated runtime handoff should persist");
 
-	let handoff = manual::read_manual_land_handoff(&state_store, "decodex", &issue.id, "xy-225")
-		.expect("manual land handoff should read")
-		.expect("current branch handoff should be found");
+	let lifecycle_record =
+		manual::read_manual_land_lifecycle(&state_store, "decodex", &issue.id, "xy-225")
+			.expect("manual land lifecycle should read")
+			.expect("current branch lifecycle should be found");
 
-	assert_eq!(handoff.branch_name(), "xy-225");
-	assert_eq!(handoff.pr_url(), "https://github.com/hack-ink/decodex/pull/67");
+	assert_eq!(lifecycle_record.branch_name(), "xy-225");
+	assert_eq!(lifecycle_record.pr_url(), "https://github.com/hack-ink/decodex/pull/67");
 }

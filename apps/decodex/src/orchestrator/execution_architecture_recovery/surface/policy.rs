@@ -22,10 +22,12 @@ pub(in crate::orchestrator::execution_architecture_recovery) fn architecture_rec
 
 	match policy_decision {
 		AuthorityBoundaryPolicyDecision::AutoContinue => boundary.final_reason,
-		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence =>
-			"Changed high-risk surfaces can continue recovery autonomously, but require enhanced evidence before review handoff or landing.",
-		AuthorityBoundaryPolicyDecision::BlockLanding =>
-			"Changed validation or review-policy surfaces can continue recovery autonomously, but block landing until the required evidence is restored.",
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence => {
+			"Changed high-risk surfaces can continue recovery autonomously, but require enhanced evidence before review handoff or landing."
+		},
+		AuthorityBoundaryPolicyDecision::BlockLanding => {
+			"Changed validation or review-policy surfaces can continue recovery autonomously, but block landing until the required evidence is restored."
+		},
 		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => boundary.final_reason,
 	}
 }

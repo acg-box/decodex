@@ -49,18 +49,24 @@ impl PhaseAcceptanceCheck {
 	pub(crate) fn next_action(&self) -> &'static str {
 		match self.reason_code {
 			"accepted" => "continue to handoff evidence",
-			"missing_progress_checkpoint" =>
-				"record a current-HEAD issue_progress_checkpoint with docs_impact before completing the phase goal again",
-			"stale_progress_checkpoint" =>
-				"record a fresh issue_progress_checkpoint for the current worktree HEAD before completing the phase goal again",
-			"docs_impact_missing" =>
-				"record parseable docs_impact in the current-HEAD issue_progress_checkpoint",
-			"no_effective_delta" =>
-				"produce an issue-scoped effective delta before completing the phase goal again",
-			"non_goal_violation" =>
-				"remove or explicitly resolve the non-goal or scope violation before handoff",
-			"progress_blockers_present" =>
-				"clear recorded progress blockers or route to manual attention before handoff",
+			"missing_progress_checkpoint" => {
+				"record a current-HEAD issue_progress_checkpoint with docs_impact before completing the phase goal again"
+			},
+			"stale_progress_checkpoint" => {
+				"record a fresh issue_progress_checkpoint for the current worktree HEAD before completing the phase goal again"
+			},
+			"docs_impact_missing" => {
+				"record parseable docs_impact in the current-HEAD issue_progress_checkpoint"
+			},
+			"no_effective_delta" => {
+				"produce an issue-scoped effective delta before completing the phase goal again"
+			},
+			"non_goal_violation" => {
+				"remove or explicitly resolve the non-goal or scope violation before handoff"
+			},
+			"progress_blockers_present" => {
+				"clear recorded progress blockers or route to manual attention before handoff"
+			},
 			_ => "inspect phase_acceptance_check evidence before selecting the next phase",
 		}
 	}

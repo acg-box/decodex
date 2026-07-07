@@ -5,7 +5,7 @@ use crate::{
 		self, ReviewLevel,
 		tests::{self, FakeTracker, TEST_SERVICE_ID, recovery_terminal_support},
 	},
-	state::{self, StateStore},
+	state::{self, ReviewPolicyCheckpointInput, StateStore},
 	tracker,
 	worktree::WorktreeManager,
 };
@@ -132,10 +132,8 @@ fn run_project_once_recovers_ready_post_review_lane_before_landing() {
 		.ensure_worktree(&issue.identifier, false)
 		.expect("retained review worktree should be created");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/333";
-	let head_subject =
-		r#"{"schema":"decodex/commit/1","summary":"Add retry hint","authority":"PUB-101"}"#;
-	let landed_subject =
-		r#"{"schema":"decodex/commit/1","summary":"Land Add retry hint","authority":"PUB-101"}"#;
+	let head_subject = r#"{"schema":"decodex/commit/2","change":"Add retry hint","authority":"PUB-101","impact":"compatible"}"#;
+	let landed_subject = r#"{"schema":"decodex/commit/2","change":"Land Add retry hint","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid = tests::commit_worktree_change(
 		&worktree.path,
 		"retained-ready.txt",
@@ -153,6 +151,20 @@ fn run_project_once_recovers_ready_post_review_lane_before_landing() {
 		&issue.id,
 		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &issue.id,
+			run_id: "runtime-review",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: "standard",
+			status: "clean",
+			head_sha: &head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("runtime clean review checkpoint should seed");
 
 	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
 		.expect("recovered retained post-review lane should reconcile");
@@ -173,7 +185,7 @@ fn run_project_once_recovers_ready_post_review_lane_before_landing() {
 		.map(str::to_owned)
 		.collect::<Vec<_>>();
 
-	assert_eq!(marker.phase(), "waiting_for_merge");
+	assert_eq!(marker.phase(), "landed");
 	assert_eq!(
 		gh_invocation,
 		vec![

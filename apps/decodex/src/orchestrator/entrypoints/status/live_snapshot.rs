@@ -38,8 +38,9 @@ pub(in crate::orchestrator::entrypoints::status) fn build_live_status_command_sn
 	let mut snapshot_warnings = Vec::new();
 
 	match recovered_state {
-		Ok(recovered_state) =>
-			orchestrator::hydrate_status_snapshot_state(config, state_store, recovered_state)?,
+		Ok(recovered_state) => {
+			orchestrator::hydrate_status_snapshot_state(config, state_store, recovered_state)?
+		},
 		Err(error) => {
 			if let Some(backoff) =
 				orchestrator::tracker_connector_backoff(&error, Instant::now(), "runtime_recovery")

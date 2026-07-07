@@ -7,7 +7,6 @@ fn parses_codex_review_levels() {
 	for (case_name, codex_body, expected_level) in [
 		("default strict level", "", ReviewLevel::Strict),
 		("explicit off level", r#"review = "off""#, ReviewLevel::Off),
-		("explicit basic level", r#"review = "basic""#, ReviewLevel::Basic),
 		("explicit standard level", r#"review = "standard""#, ReviewLevel::Standard),
 		("explicit strict level", r#"review = "strict""#, ReviewLevel::Strict),
 	] {

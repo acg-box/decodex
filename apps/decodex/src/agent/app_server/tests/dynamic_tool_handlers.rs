@@ -66,6 +66,28 @@ impl DynamicToolHandler for FailingToolHandler {
 	}
 }
 
+pub(super) struct HiddenCheckpointToolHandler {
+	pub(super) called: RefCell<bool>,
+}
+impl DynamicToolHandler for HiddenCheckpointToolHandler {
+	fn tool_specs(&self) -> Vec<DynamicToolSpec> {
+		vec![DynamicToolSpec::new(
+			"issue_review_handoff",
+			"Declared handoff tool.",
+			serde_json::json!({
+				"type": "object",
+				"additionalProperties": false
+			}),
+		)]
+	}
+
+	fn handle_call(&self, tool_name: &str, _arguments: Value) -> DynamicToolCallResponse {
+		self.called.replace(true);
+
+		DynamicToolCallResponse::success(format!("called {tool_name}"))
+	}
+}
+
 pub(super) struct NamespacedDynamicToolHandler {
 	pub(super) seen_namespace: RefCell<Option<String>>,
 }

@@ -18,7 +18,8 @@ pub(super) use self::{
 	},
 	ordering::compare_project_run_status,
 };
-#[cfg(unix)] pub(super) use locks::{clear_close_on_exec, set_close_on_exec};
+#[cfg(unix)]
+pub(super) use locks::{clear_close_on_exec, set_close_on_exec};
 
 use crate::state::{
 	ChildAgentActivitySummary, CodexAccountActivitySummary, ProtocolActivitySummary,

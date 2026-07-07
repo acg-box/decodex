@@ -11,6 +11,9 @@ full landing and recovery boundaries.
 1. Confirm PR, base, head, mergeability, and checks.
 2. Run `decodex land --authority <ISSUE> --pr <URL> "<summary>"`, or
    `decodex land --manual-authority --pr <URL> "<summary>"` for non-issue work.
+   Issue-authority landing writes final landing/closeout state only through the
+   lifecycle kernel and runtime state adapter; tracker comments and local receipts
+   are projections.
    Non-issue manual-authority landing does not require a registered project when
    GitHub credentials are available from `GH_TOKEN`, `GITHUB_TOKEN`, or `gh auth token`;
    pass `--config <PROJECT_DIR>` only when configured GitHub credentials or workspace

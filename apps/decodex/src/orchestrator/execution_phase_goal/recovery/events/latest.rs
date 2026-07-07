@@ -92,12 +92,13 @@ pub(crate) fn latest_open_issue_phase_goal_before_attempt(
 			{
 				progress_blockers_cleared = true;
 			},
-			PHASE_GOAL_RECOVERY_EVENT_TYPE | "phase_goal_next" | "phase_goal_transition" =>
+			PHASE_GOAL_RECOVERY_EVENT_TYPE | "phase_goal_next" | "phase_goal_transition" => {
 				if let Some(phase) =
 					parsing::phase_goal_continuation_next_phase(event.event_type(), event.payload())
 				{
 					return Ok(Some(phase));
-				},
+				}
+			},
 			"phase_goal_set" | "phase_goal_status" => {
 				if let Some(phase) = parsing::phase_goal_active_phase(event.payload()) {
 					return Ok(Some(phase));

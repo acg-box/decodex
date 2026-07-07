@@ -33,7 +33,7 @@ fn execute_land_merge_uses_admin_merge() {
 			merge_commit_allowed: true,
 		},
 		prepared_closeout: None,
-		review_handoff: None,
+		review_lifecycle: None,
 		pr_url: String::from("https://github.com/hack-ink/decodex/pull/64"),
 		review_branch: String::from("xy-225"),
 		public_projection_privacy_classifier: ConfiguredPublicProjectionPrivacyClassifier::Disabled,
@@ -41,7 +41,7 @@ fn execute_land_merge_uses_admin_merge() {
 	let merge_commit = manual::execute_land_merge(
 		&context,
 		"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-		r#"{"schema":"decodex/commit/1","summary":"ship hotfix","authority":"manual"}"#,
+		r#"{"schema":"decodex/commit/2","change":"ship hotfix","authority":"manual","impact":"compatible"}"#,
 		LandExecutionMode::MergeAndCloseout,
 	)
 	.expect("manual land should admin-merge successfully");
@@ -53,7 +53,7 @@ fn execute_land_merge_uses_admin_merge() {
 			.lines()
 			.collect::<Vec<_>>(),
 		vec![
-			"pr merge --admin --merge --match-head-commit deadbeefdeadbeefdeadbeefdeadbeefdeadbeef --subject {\"schema\":\"decodex/commit/1\",\"summary\":\"ship hotfix\",\"authority\":\"manual\"} --body  https://github.com/hack-ink/decodex/pull/64",
+			"pr merge --admin --merge --match-head-commit deadbeefdeadbeefdeadbeefdeadbeefdeadbeef --subject {\"schema\":\"decodex/commit/2\",\"change\":\"ship hotfix\",\"authority\":\"manual\",\"impact\":\"compatible\"} --body  https://github.com/hack-ink/decodex/pull/64",
 			"pr view https://github.com/hack-ink/decodex/pull/64 --json state,headRefOid,mergeCommit",
 		]
 	);
@@ -68,7 +68,7 @@ fn execute_land_merge_tolerates_already_merged_merge_race() {
 			&temp_dir,
 			"cafebabe",
 			"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-			r#"{"schema":"decodex/commit/1","summary":"ship hotfix","authority":"manual"}"#,
+			r#"{"schema":"decodex/commit/2","change":"ship hotfix","authority":"manual","impact":"compatible"}"#,
 			1,
 		);
 	let context = ManualLandContext {
@@ -90,7 +90,7 @@ fn execute_land_merge_tolerates_already_merged_merge_race() {
 			merge_commit_allowed: true,
 		},
 		prepared_closeout: None,
-		review_handoff: None,
+		review_lifecycle: None,
 		pr_url: String::from("https://github.com/hack-ink/decodex/pull/64"),
 		review_branch: String::from("xy-225"),
 		public_projection_privacy_classifier: ConfiguredPublicProjectionPrivacyClassifier::Disabled,
@@ -98,7 +98,7 @@ fn execute_land_merge_tolerates_already_merged_merge_race() {
 	let merge_commit = manual::execute_land_merge(
 		&context,
 		"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-		r#"{"schema":"decodex/commit/1","summary":"ship hotfix","authority":"manual"}"#,
+		r#"{"schema":"decodex/commit/2","change":"ship hotfix","authority":"manual","impact":"compatible"}"#,
 		LandExecutionMode::MergeAndCloseout,
 	)
 	.expect("manual land should accept an already-merged PR race");
@@ -110,7 +110,7 @@ fn execute_land_merge_tolerates_already_merged_merge_race() {
 			.lines()
 			.collect::<Vec<_>>(),
 		vec![
-			"pr merge --admin --merge --match-head-commit deadbeefdeadbeefdeadbeefdeadbeefdeadbeef --subject {\"schema\":\"decodex/commit/1\",\"summary\":\"ship hotfix\",\"authority\":\"manual\"} --body  https://github.com/hack-ink/decodex/pull/64",
+			"pr merge --admin --merge --match-head-commit deadbeefdeadbeefdeadbeefdeadbeefdeadbeef --subject {\"schema\":\"decodex/commit/2\",\"change\":\"ship hotfix\",\"authority\":\"manual\",\"impact\":\"compatible\"} --body  https://github.com/hack-ink/decodex/pull/64",
 			"pr view https://github.com/hack-ink/decodex/pull/64 --json state,headRefOid,mergeCommit",
 			"pr view https://github.com/hack-ink/decodex/pull/64 --json state,headRefOid,mergeCommit",
 		]

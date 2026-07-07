@@ -6,7 +6,7 @@ use crate::agent::tracker_tool_bridge::{
 };
 
 impl<'a> TrackerToolBridge<'a> {
-	pub(in crate::agent::tracker_tool_bridge) fn persist_terminal_review_handoff_marker(
+	pub(in crate::agent::tracker_tool_bridge) fn persist_terminal_review_lifecycle_handoff(
 		&self,
 		review_context: &ReviewHandoffContext,
 	) -> std::result::Result<(), String> {
@@ -32,17 +32,16 @@ impl<'a> TrackerToolBridge<'a> {
 			&pull_request,
 		)?;
 
-		let handoff_marker =
-			review::review_handoff_marker_from_pull_request(review_context, &pull_request);
+		let lifecycle_handoff =
+			review::review_lifecycle_handoff_from_pull_request(review_context, &pull_request);
 
-		self.persist_review_handoff_marker_for_handoff(review_context, &handoff_marker).map_err(
-			|error| {
+		self.persist_review_lifecycle_handoff_for_handoff(review_context, lifecycle_handoff)
+			.map_err(|error| {
 				format!(
-					"Failed to persist durable review handoff lifecycle marker for issue `{}`: {error}",
+					"Failed to persist durable review lifecycle handoff for issue `{}`: {error}",
 					self.issue.identifier
 				)
-			},
-		)
+			})
 	}
 
 	fn require_matching_review_completion_intent(

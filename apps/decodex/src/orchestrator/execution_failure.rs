@@ -28,7 +28,8 @@ pub(super) use loop_guardrail::{
 	loop_guardrail_text_hash, loop_guardrail_worktree_fingerprint,
 	retryable_failure_loop_guardrail_stop, run_failure_requires_terminal_attention,
 };
-#[cfg(test)] pub(super) use retryable_writeback::write_retry_schedule_marker_for_runtime_retry;
+#[cfg(test)]
+pub(super) use retryable_writeback::write_retry_schedule_marker_for_runtime_retry;
 
 use sha2::Digest;
 
@@ -43,16 +44,15 @@ use crate::{
 		ManualAttentionRequested, OffsetDateTime, Path, PhaseAcceptanceCheckFailure,
 		RepoGateFailure, RepoGateFailureDiagnostic, RepoGateFailureDisposition, Report, Result,
 		RetainedPartialProgress, RetainedReviewNeedsAttention, RetryComment, RetryKind,
-		ReviewHandoffMarker, ReviewHandoffNeedsAttention, ReviewOrchestrationMarker,
-		ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, ServiceConfig,
-		Sha256, StalledRunNeedsAttention, StateStore, TERMINAL_GUARDED_RUN_STATUS,
-		TerminalFailureLifecycle, TerminalFailureOutcome, TrackerIssue, WorkflowDocument,
-		architecture_recovery_retry_next_action, configured_public_projection_privacy_classifier,
-		eyre, format_retry_comment, format_terminal_failure_comment, json,
-		latest_open_issue_phase_goal_before_attempt, loop_guardrail_architecture_recovery_decision,
-		record_harness_outcome_best_effort, relative_worktree_path,
-		repo_gate_changed_tracked_files, retry_comment_details, retry_delay,
-		terminal_failure_comment_details, terminal_failure_lifecycle_event,
+		ReviewHandoffNeedsAttention, ReviewPolicyStopReason, ReviewPolicyStopRequested,
+		RunCompletionDisposition, ServiceConfig, Sha256, StalledRunNeedsAttention, StateStore,
+		TERMINAL_GUARDED_RUN_STATUS, TerminalFailureLifecycle, TerminalFailureOutcome,
+		TrackerIssue, WorkflowDocument, architecture_recovery_retry_next_action,
+		configured_public_projection_privacy_classifier, eyre, format_retry_comment,
+		format_terminal_failure_comment, json, latest_open_issue_phase_goal_before_attempt,
+		loop_guardrail_architecture_recovery_decision, record_harness_outcome_best_effort,
+		relative_worktree_path, repo_gate_changed_tracked_files, retry_comment_details,
+		retry_delay, terminal_failure_comment_details, terminal_failure_lifecycle_event,
 		terminal_failure_pr_url, terminal_failure_recovery_gate, worktree_has_tracked_changes,
 		worktree_head_oid, write_retry_budget_marker, write_terminal_guard_marker,
 	},

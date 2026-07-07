@@ -34,12 +34,14 @@ impl LoopGuardrailReason {
 			"no_effective_diff" => Some(Self::NoEffectiveDiff),
 			"remaining_delta_unchanged" => Some(Self::RemainingDeltaUnchanged),
 			"review_churn" | "review_policy_exhausted" => Some(Self::ReviewChurn),
-			"review_handoff_state_drift" | "review_handoff_rebind_required" =>
-				Some(Self::ReviewHandoffStateDrift),
+			"review_handoff_state_drift" | "review_handoff_rebind_required" => {
+				Some(Self::ReviewHandoffStateDrift)
+			},
 			"dependency_program_stale" | "dependency_blocked" => Some(Self::DependencyProgramStale),
 			"uncovered_direction" | "research_contract_required" => Some(Self::UncoveredDirection),
-			"ambiguous_retained_progress" | "ownership_ambiguous" =>
-				Some(Self::AmbiguousRetainedProgress),
+			"ambiguous_retained_progress" | "ownership_ambiguous" => {
+				Some(Self::AmbiguousRetainedProgress)
+			},
 			_ => None,
 		}
 	}
@@ -59,7 +61,7 @@ impl LoopGuardrailReason {
 				"inspect the repeated review findings and current head; decide the next repair or architecture review manually before requeueing, {recovery_gate}"
 			),
 			Self::ReviewHandoffStateDrift => format!(
-				"inspect the retained review handoff marker, clean review checkpoint, PR head, and issue state; restore or rebind the post-review lifecycle before clearing attention, {recovery_gate}"
+				"inspect the retained review lifecycle authority, clean review checkpoint, PR head, and issue state; restore or rebind the post-review lifecycle before clearing attention, {recovery_gate}"
 			),
 			Self::DependencyProgramStale => format!(
 				"inspect the dependency blocker and Execution Program readiness evidence; refresh dependencies or split/research the program before requeueing, {recovery_gate}"
@@ -150,42 +152,6 @@ pub(crate) enum RetainedReviewLaneLoad {
 	Wait(String),
 	Ready(Box<RetainedReviewLane>),
 	Blocked(Box<RetainedReviewLaneBlocked>),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ReviewOrchestrationPhase {
-	RequestPending,
-	WaitingForAck,
-	WaitingForResult,
-	RepairRequired,
-	PassWaitingForGates,
-	WaitingForMerge,
-}
-impl ReviewOrchestrationPhase {
-	pub(crate) fn as_str(self) -> &'static str {
-		match self {
-			Self::RequestPending => "request_pending",
-			Self::WaitingForAck => "waiting_for_ack",
-			Self::WaitingForResult => "waiting_for_result",
-			Self::RepairRequired => "repair_required",
-			Self::PassWaitingForGates => "pass_waiting_for_gates",
-			Self::WaitingForMerge => "waiting_for_merge",
-		}
-	}
-
-	pub(crate) fn parse(value: &str) -> std::result::Result<Self, String> {
-		match value {
-			"request_pending" => Ok(Self::RequestPending),
-			"waiting_for_ack" => Ok(Self::WaitingForAck),
-			"waiting_for_result" => Ok(Self::WaitingForResult),
-			"repair_required" => Ok(Self::RepairRequired),
-			"pass_waiting_for_gates" => Ok(Self::PassWaitingForGates),
-			"waiting_for_merge" => Ok(Self::WaitingForMerge),
-			other => Err(format!(
-				"Unknown review orchestration phase `{other}` in retained review marker."
-			)),
-		}
-	}
 }
 
 pub(crate) enum PostReviewLaneStateLoad {

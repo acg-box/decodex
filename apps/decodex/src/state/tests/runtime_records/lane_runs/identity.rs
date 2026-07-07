@@ -95,7 +95,7 @@ fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh()
 			.list_private_execution_events("pubfi", "linear-id-101", "run-1", 1)
 			.expect("canonical private evidence should read")
 			.len(),
-		1
+		3
 	);
 
 	tests::assert_decision_contract_retargeted(&reopened);

@@ -1,7 +1,7 @@
 use crate::state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore};
 
 #[test]
-fn changed_review_handoff_projection_resets_lifecycle_phase_fields() {
+fn changed_review_handoff_authority_resets_lifecycle_phase_fields() {
 	let store = StateStore::open_in_memory().expect("state store should open");
 	let old_handoff = ReviewHandoffMarker::new(
 		"run-1",
@@ -64,8 +64,11 @@ fn changed_review_handoff_projection_resets_lifecycle_phase_fields() {
 	assert_eq!(lifecycle.landing_state(), "not_started");
 	assert_eq!(lifecycle.closeout_state(), "not_started");
 	assert_eq!(lifecycle.repair_attempt_count(), 0);
-	assert_eq!(lifecycle.evidence_json(), "{}");
-	assert_eq!(lifecycle.next_action(), "");
+	assert!(lifecycle.evidence_json().contains("lifecycle_authority_recorded"));
+	assert_eq!(lifecycle.transition(), "review_handoff_recorded");
+	assert_eq!(lifecycle.previous_state(), "review_waiting");
+	assert_eq!(lifecycle.next_state(), "review_pending");
+	assert_eq!(lifecycle.next_action(), "wait_for_runtime_review_gate_or_external_review");
 
 	let orchestration = store
 		.review_orchestration_marker("pubfi", "PUB-101", &new_handoff)

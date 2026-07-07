@@ -40,10 +40,12 @@ impl AppServerPhaseGoalFailure {
 
 	pub(crate) fn error_class(&self) -> &'static str {
 		match self.kind {
-			AppServerPhaseGoalFailureKind::Unsupported { .. } =>
-				"app_server_phase_goal_unsupported",
-			AppServerPhaseGoalFailureKind::MissingTerminalPath { .. } =>
-				"phase_goal_terminal_path_missing",
+			AppServerPhaseGoalFailureKind::Unsupported { .. } => {
+				"app_server_phase_goal_unsupported"
+			},
+			AppServerPhaseGoalFailureKind::MissingTerminalPath { .. } => {
+				"phase_goal_terminal_path_missing"
+			},
 		}
 	}
 

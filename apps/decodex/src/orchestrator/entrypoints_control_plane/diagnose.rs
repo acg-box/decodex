@@ -44,8 +44,9 @@ where
 		workflow,
 		state_store,
 	) {
-		Ok(recovered_state) =>
-			orchestrator::hydrate_status_snapshot_state(config, state_store, recovered_state)?,
+		Ok(recovered_state) => {
+			orchestrator::hydrate_status_snapshot_state(config, state_store, recovered_state)?
+		},
 		Err(error) => {
 			let warning = runtime_recovery_warning("diagnose_runtime_recovery_unavailable", &error);
 

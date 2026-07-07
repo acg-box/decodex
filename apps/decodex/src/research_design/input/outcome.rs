@@ -14,8 +14,9 @@ pub(crate) enum ResearchDesignOutcome {
 impl ResearchDesignOutcome {
 	pub(in crate::research_design) fn contract_status(self) -> DecisionContractStatus {
 		match self {
-			Self::DecisionReady | Self::NotDecisionReady | Self::Blocked =>
-				DecisionContractStatus::DraftLatent,
+			Self::DecisionReady | Self::NotDecisionReady | Self::Blocked => {
+				DecisionContractStatus::DraftLatent
+			},
 			Self::NeedsHumanDecision => DecisionContractStatus::NeedsHumanDecision,
 		}
 	}

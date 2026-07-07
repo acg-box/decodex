@@ -5,6 +5,7 @@ use crate::orchestrator::{
 		review_landing_classification_review, review_landing_status_support,
 	},
 };
+use crate::state::ReviewPolicyCheckpointInput;
 
 #[test]
 fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision_request() {
@@ -22,7 +23,7 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
-	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
+	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
@@ -48,6 +49,20 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_decision
 			1,
 		),
 	);
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &issue.id,
+			run_id: "run-1:runtime-review:repair:ready",
+			attempt_number: 1,
+			phase: "repair",
+			review_level: "strict",
+			status: "clean",
+			head_sha: &head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("runtime review checkpoint should persist");
 	review_landing_classification_review::record_authority_decision_request(&state_store, &issue);
 
 	let mut review_state = tests::sample_pull_request_review_state(

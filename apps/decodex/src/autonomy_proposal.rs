@@ -23,4 +23,5 @@ pub(crate) const AUTONOMY_PROPOSAL_SCHEMA: &str = "decodex.autonomy_proposal/1";
 const AUTONOMY_PROPOSAL_RECORD_VERSION: u16 = 1;
 const AUTONOMY_PROPOSAL_ACCEPTANCE_SCOPE: &str = "autonomy_proposal_acceptance";
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

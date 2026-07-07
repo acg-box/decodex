@@ -17,12 +17,15 @@ pub(crate) fn handle_dashboard_control_action(
 ) -> Value {
 	match action {
 		"focus" => dashboard_focus_control_ack(session, message, action),
-		"clearFocus" | "clearSubscription" =>
-			dashboard_clear_focus_control_ack(session, message, action),
-		"selectAccount" =>
-			dashboard_account_selection_control_ack(session, state_store, message, action, true),
-		"clearAccountSelection" =>
-			dashboard_account_selection_control_ack(session, state_store, message, action, false),
+		"clearFocus" | "clearSubscription" => {
+			dashboard_clear_focus_control_ack(session, message, action)
+		},
+		"selectAccount" => {
+			dashboard_account_selection_control_ack(session, state_store, message, action, true)
+		},
+		"clearAccountSelection" => {
+			dashboard_account_selection_control_ack(session, state_store, message, action, false)
+		},
 		"ack" | "ackNotice" => control_ack::dashboard_control_ack_for_message(
 			session,
 			message,

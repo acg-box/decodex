@@ -1,6 +1,6 @@
 mod diagnostics;
 mod issue_state;
-mod marker;
+mod lifecycle_authority;
 mod model;
 mod pull_request;
 mod worktree;
@@ -19,7 +19,7 @@ use crate::recovery::{
 pub(in crate::recovery) fn diagnostic_binding(
 	request: HandoffDiagnosticRequest<'_>,
 ) -> HandoffBindingDiagnostic {
-	let Some(existing_handoff) = request.existing_handoff else {
+	let Some(existing_lifecycle) = request.existing_lifecycle else {
 		return HandoffBindingDiagnostic {
 			classification: String::from(ORPHANED_REVIEW_HANDOFF_CLASSIFICATION),
 			reason: String::from(MISSING_HANDOFF_REASON),
@@ -35,8 +35,7 @@ pub(in crate::recovery) fn diagnostic_binding(
 	let context = HandoffDiagnosticContext {
 		issue_identifier: request.issue_identifier,
 		worktree: request.worktree,
-		existing_handoff,
-		existing_orchestration: request.existing_orchestration,
+		existing_lifecycle,
 		local_branch_name: request.local_branch_name,
 		local_head_oid: request.local_head_oid,
 		worktree_clean: request.worktree_clean,
@@ -58,7 +57,7 @@ pub(in crate::recovery) fn diagnostic_binding(
 			pr_head_oid,
 			actions::inspect_handoff_next_action(
 				request.issue_identifier,
-				existing_handoff.pr_url(),
+				existing_lifecycle.pr_url(),
 			),
 		);
 	};
@@ -71,7 +70,7 @@ pub(in crate::recovery) fn diagnostic_binding(
 			mismatched_field: Some(String::from("pr_url")),
 			next_action: actions::inspect_handoff_next_action(
 				request.issue_identifier,
-				existing_handoff.pr_url(),
+				existing_lifecycle.pr_url(),
 			),
 		};
 	};
@@ -84,14 +83,17 @@ pub(in crate::recovery) fn diagnostic_binding(
 	) {
 		return diagnostic;
 	}
-	if let Some(diagnostic) =
-		marker::marker_head_binding_mismatch(&context, local_head_oid, &pr_base_ref, &pr_head_oid)
-	{
+	if let Some(diagnostic) = lifecycle_authority::lifecycle_authority_head_binding_mismatch(
+		&context,
+		local_head_oid,
+		&pr_base_ref,
+		&pr_head_oid,
+	) {
 		return diagnostic;
 	}
 	if let Some(diagnostic) = issue_state::handoff_issue_state_drift_diagnostic(
 		&request,
-		existing_handoff,
+		existing_lifecycle,
 		pr_base_ref.clone(),
 		pr_head_oid.clone(),
 	) {
@@ -100,14 +102,14 @@ pub(in crate::recovery) fn diagnostic_binding(
 
 	HandoffBindingDiagnostic {
 		classification: String::from(REVIEW_HANDOFF_BOUND_CLASSIFICATION),
-		reason: String::from("review_handoff_record_present"),
+		reason: String::from("review_lifecycle_authority_present"),
 		pr_base_ref,
 		pr_head_oid,
 		mismatched_field: None,
 		next_action: actions::bound_handoff_next_action(
 			request.service_id,
 			request.issue_identifier,
-			existing_handoff.pr_url(),
+			existing_lifecycle.pr_url(),
 			request.active_label_present,
 		),
 	}

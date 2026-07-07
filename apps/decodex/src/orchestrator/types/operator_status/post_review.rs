@@ -4,7 +4,7 @@ use crate::{
 	orchestrator::{
 		PostReviewLaneDecision, types::operator_status::loop_status::OperatorLoopStatus,
 	},
-	state::{ReviewHandoffMarker, WorktreeMapping},
+	state::{ReviewLifecycleRecord, WorktreeMapping},
 	tracker::TrackerIssue,
 };
 
@@ -36,7 +36,7 @@ pub(crate) struct OperatorPostReviewLaneStatus {
 pub(crate) struct PostReviewLaneSnapshot {
 	pub(crate) issue: TrackerIssue,
 	pub(crate) worktree: WorktreeMapping,
-	pub(crate) review_handoff: Option<ReviewHandoffMarker>,
+	pub(crate) lifecycle_record: Option<ReviewLifecycleRecord>,
 	pub(crate) local_branch_name: Option<String>,
 	pub(crate) local_head_oid: Option<String>,
 }

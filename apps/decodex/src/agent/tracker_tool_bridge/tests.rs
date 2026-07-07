@@ -15,7 +15,7 @@ pub(crate) use crate::{
 		TurnCompletionStatus,
 	},
 	config::ReviewLevel,
-	state::{ReviewCheckpointArtifactLookup, ReviewHandoffMarker},
+	state::ReviewCheckpointArtifactLookup,
 	tracker::TrackerState,
 	workflow::WorkflowDocument,
 };

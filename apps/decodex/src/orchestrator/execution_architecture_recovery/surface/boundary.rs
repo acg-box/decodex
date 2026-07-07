@@ -17,19 +17,22 @@ pub(in crate::orchestrator::execution_architecture_recovery) fn classify_loop_gu
 	match stop.reason {
 		LoopGuardrailReason::ValidationRepeat | LoopGuardrailReason::RemainingDeltaUnchanged
 			if source_is_repo_gate =>
+		{
 			ArchitectureRecoveryBoundary {
 				disposition: AuthorityBoundaryDisposition::WithinAuthority,
 				policy_decision: AuthorityBoundaryPolicyDecision::AutoContinue,
 				final_reason: "Repo-gate convergence failed on an engineering implementation problem; architecture recovery may change implementation strategy without weakening validation.",
 				boundary_type: AuthorityBoundarySurface::ImplementationStrategy,
-			},
-		LoopGuardrailReason::NoEffectiveDiff if source_is_repo_gate =>
+			}
+		},
+		LoopGuardrailReason::NoEffectiveDiff if source_is_repo_gate => {
 			ArchitectureRecoveryBoundary {
 				disposition: AuthorityBoundaryDisposition::WithinAuthority,
 				policy_decision: AuthorityBoundaryPolicyDecision::AutoContinue,
 				final_reason: "No-effective-diff convergence followed repo-gate repair work; architecture recovery may replace the ineffective implementation strategy.",
 				boundary_type: AuthorityBoundarySurface::ImplementationStrategy,
-			},
+			}
+		},
 		LoopGuardrailReason::ReviewChurn => ArchitectureRecoveryBoundary {
 			disposition: AuthorityBoundaryDisposition::WithinAuthority,
 			policy_decision: AuthorityBoundaryPolicyDecision::BlockLanding,
