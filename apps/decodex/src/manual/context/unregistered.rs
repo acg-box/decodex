@@ -46,7 +46,7 @@ pub(in crate::manual) fn prepare_unregistered_manual_land_context(
 		github_command_path: None,
 		repository,
 		prepared_closeout: None,
-		review_handoff: None,
+		review_lifecycle: None,
 		pr_url,
 		review_branch: current_branch,
 		public_projection_privacy_classifier: ConfiguredPublicProjectionPrivacyClassifier::Disabled,

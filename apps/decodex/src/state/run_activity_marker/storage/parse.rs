@@ -14,12 +14,15 @@ pub(crate) fn parse_run_activity_marker_record(marker_body: &str) -> RunActivity
 			"process_id" => marker.process_id = value.parse::<u32>().ok(),
 			"host_boot_id" => marker.host_boot_id = Some(value.to_owned()),
 			"process_start_identity" => marker.process_start_identity = Some(value.to_owned()),
-			"last_activity_unix_epoch" =>
-				marker.last_activity_unix_epoch = value.parse::<i64>().ok(),
-			"last_protocol_activity_unix_epoch" =>
-				marker.last_protocol_activity_unix_epoch = value.parse::<i64>().ok(),
-			"last_progress_unix_epoch" =>
-				marker.last_progress_unix_epoch = value.parse::<i64>().ok(),
+			"last_activity_unix_epoch" => {
+				marker.last_activity_unix_epoch = value.parse::<i64>().ok()
+			},
+			"last_protocol_activity_unix_epoch" => {
+				marker.last_protocol_activity_unix_epoch = value.parse::<i64>().ok()
+			},
+			"last_progress_unix_epoch" => {
+				marker.last_progress_unix_epoch = value.parse::<i64>().ok()
+			},
 			"current_operation" => marker.current_operation = Some(value.to_owned()),
 			"thread_id" => marker.thread_id = Some(value.to_owned()),
 			"turn_id" => marker.turn_id = Some(value.to_owned()),
@@ -30,24 +33,30 @@ pub(crate) fn parse_run_activity_marker_record(marker_body: &str) -> RunActivity
 			"effective_model" => marker.effective_model = Some(value.to_owned()),
 			"effective_model_provider" => marker.effective_model_provider = Some(value.to_owned()),
 			"effective_cwd" => marker.effective_cwd = Some(value.to_owned()),
-			"effective_approval_policy" =>
-				marker.effective_approval_policy = Some(value.to_owned()),
-			"effective_approvals_reviewer" =>
-				marker.effective_approvals_reviewer = Some(value.to_owned()),
+			"effective_approval_policy" => {
+				marker.effective_approval_policy = Some(value.to_owned())
+			},
+			"effective_approvals_reviewer" => {
+				marker.effective_approvals_reviewer = Some(value.to_owned())
+			},
 			"effective_sandbox_mode" => marker.effective_sandbox_mode = Some(value.to_owned()),
-			"child_agent_activity" =>
-				marker.child_agent_activity = serde_json::from_str(value).ok(),
+			"child_agent_activity" => {
+				marker.child_agent_activity = serde_json::from_str(value).ok()
+			},
 			"protocol_activity" => marker.protocol_activity = serde_json::from_str(value).ok(),
 			"account" => marker.account = serde_json::from_str(value).ok(),
-			"accounts" =>
+			"accounts" => {
 				if let Ok(accounts) = serde_json::from_str(value) {
 					marker.accounts = accounts;
-				},
-			"retry_budget_attempt_count" =>
-				marker.retry_budget_attempt_count = value.parse::<i64>().ok(),
+				}
+			},
+			"retry_budget_attempt_count" => {
+				marker.retry_budget_attempt_count = value.parse::<i64>().ok()
+			},
 			"retry_kind" => marker.retry_kind = Some(value.to_owned()),
-			"retry_ready_at_unix_epoch" =>
-				marker.retry_ready_at_unix_epoch = value.parse::<i64>().ok(),
+			"retry_ready_at_unix_epoch" => {
+				marker.retry_ready_at_unix_epoch = value.parse::<i64>().ok()
+			},
 			_ => {},
 		}
 	}

@@ -102,7 +102,7 @@ fn handle_failure_recovers_review_handoff_state_drift_before_no_effective_diff_t
 
 	assert!(events.iter().any(|event| {
 		event.event_type() == "review_handoff_state_drift_recovered"
-			&& event.payload()["reason"] == "current_review_handoff_marker"
+			&& event.payload()["reason"] == "current_review_lifecycle_authority"
 			&& event.payload()["target_issue_state"] == "In Review"
 	}));
 }

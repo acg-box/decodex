@@ -4,7 +4,7 @@ use crate::{
 	config::ServiceConfig,
 	manual::{
 		ManualLandLedgerContext, PreparedCloseout,
-		closeout::{ledger, marker},
+		closeout::{ledger, receipt},
 	},
 	prelude::{Result, eyre},
 	tracker::{self, IssueTracker, TrackerIssue, linear::LinearClient},
@@ -32,6 +32,7 @@ pub(in crate::manual) fn prepare_closeout(
 		completed_state,
 		service_id: config.service_id().to_owned(),
 		needs_attention_label,
+		review_level: config.codex().review_level(),
 	})
 }
 
@@ -76,7 +77,7 @@ where
 
 		tracker.update_issue_state(ledger.issue.id.as_str(), state_id)?;
 	}
-	if !marker::manual_land_closeout_matches(
+	if !receipt::manual_land_closeout_receipt_matches(
 		checkout_root,
 		ledger.pr_url,
 		ledger.merge_commit,
@@ -92,7 +93,7 @@ where
 			)
 			.as_str(),
 		)?;
-		marker::write_manual_land_closeout_marker(
+		receipt::write_manual_land_closeout_receipt(
 			checkout_root,
 			ledger.pr_url,
 			ledger.merge_commit,
@@ -105,7 +106,7 @@ where
 	ledger::succeed_manual_land_handoff_attempt(
 		ledger.state_store,
 		&ledger.issue.id,
-		ledger.handoff.run_id(),
+		ledger.lifecycle_record.run_id(),
 	)?;
 
 	Ok(())

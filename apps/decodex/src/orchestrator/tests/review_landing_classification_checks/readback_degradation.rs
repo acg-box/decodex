@@ -43,7 +43,7 @@ fn classify_post_review_lane_degrades_pull_request_state_read_failures_to_handof
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -77,10 +77,10 @@ fn post_review_readback_degradation_helper_preserves_warning_and_typed_cause() {
 	let marker_head_oid = "1111111111111111111111111111111111111111";
 	let review_head_oid = "2222222222222222222222222222222222222222";
 	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
-	let review_handoff =
-		tests::sample_review_handoff_marker("x/pubfi-pub-101", pr_url, marker_head_oid);
-	let pull_request_readback = PostReviewReadbackDegradation::pull_request_state_from_handoff(
-		&review_handoff,
+	let lifecycle_record =
+		tests::sample_review_lifecycle_record("x/pubfi-pub-101", pr_url, marker_head_oid);
+	let pull_request_readback = PostReviewReadbackDegradation::pull_request_state_from_lifecycle(
+		&lifecycle_record,
 		PullRequestReadbackRootCause::GithubApiReadFailed,
 	)
 	.wait_for_review_classification(None);
@@ -100,7 +100,7 @@ fn post_review_readback_degradation_helper_preserves_warning_and_typed_cause() {
 	assert_eq!(pull_request_readback.pr_state, None);
 
 	let tracker_readback =
-		PostReviewReadbackDegradation::tracker_issue_from_handoff(&review_handoff)
+		PostReviewReadbackDegradation::tracker_issue_from_lifecycle(&lifecycle_record)
 			.wait_for_review_classification(Some(tests::sample_pull_request_review_state(
 				pr_url,
 				"x/pubfi-pub-101",

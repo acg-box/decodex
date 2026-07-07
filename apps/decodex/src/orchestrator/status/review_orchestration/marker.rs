@@ -1,32 +1,28 @@
 use crate::{
 	orchestrator::status::{
 		self, PostReviewLaneClassification, PostReviewLaneSnapshot, PostReviewRuntimeState,
-		PrivateExecutionEvent, PullRequestReviewState, ReviewCheckpointArtifactLookup,
-		ReviewOrchestrationMarker, Value,
+		PrivateExecutionEvent, PullRequestReviewState, ReviewCheckpointArtifactLookup, Value,
 	},
 	prelude::Result,
+	state::{ReviewLifecycleReadback, ReviewLifecycleRecord},
 };
 
-pub(crate) fn load_post_review_orchestration_marker(
+pub(crate) fn load_post_review_lifecycle_record(
 	snapshot: &PostReviewLaneSnapshot,
 	review_state: &PullRequestReviewState,
 	classification: &mut PostReviewLaneClassification,
 	runtime_state: Option<PostReviewRuntimeState<'_>>,
-) -> Result<Option<ReviewOrchestrationMarker>> {
-	let review_handoff = snapshot
-		.review_handoff
-		.as_ref()
-		.expect("review handoff should exist before orchestration classification");
-	let orchestration_marker = if let Some(runtime_state) = runtime_state {
-		runtime_state.state_store.review_orchestration_marker(
+) -> Result<Option<ReviewLifecycleRecord>> {
+	let lifecycle_record = if let Some(runtime_state) = runtime_state {
+		runtime_state.state_store.review_lifecycle_record(
 			runtime_state.project_id,
 			&snapshot.issue.id,
-			review_handoff,
+			snapshot.worktree.branch_name(),
 		)?
 	} else {
 		None
 	};
-	let Some(orchestration_marker) = orchestration_marker else {
+	let Some(lifecycle_record) = lifecycle_record else {
 		if clean_current_head_review_repair_writeback_pending(
 			snapshot,
 			review_state,
@@ -46,7 +42,7 @@ pub(crate) fn load_post_review_orchestration_marker(
 	};
 
 	if let Some(reason) =
-		validate_review_orchestration_marker(snapshot, review_state, &orchestration_marker)
+		validate_post_review_lifecycle_record(snapshot, review_state, &lifecycle_record)
 	{
 		if reason == "review_orchestration_head_mismatch"
 			&& clean_current_head_review_repair_writeback_pending(
@@ -66,7 +62,7 @@ pub(crate) fn load_post_review_orchestration_marker(
 		return Ok(None);
 	}
 
-	Ok(Some(orchestration_marker))
+	Ok(Some(lifecycle_record))
 }
 
 pub(crate) fn clean_current_head_review_repair_writeback_pending(
@@ -167,10 +163,10 @@ pub(crate) fn review_repair_completion_intent_matches_current_head(
 		&& payload.get("pr_head_oid").and_then(Value::as_str) == Some(local_head_oid)
 }
 
-pub(crate) fn validate_review_orchestration_marker(
+pub(crate) fn validate_post_review_lifecycle_record(
 	snapshot: &PostReviewLaneSnapshot,
 	review_state: &PullRequestReviewState,
-	marker: &ReviewOrchestrationMarker,
+	marker: &impl ReviewLifecycleReadback,
 ) -> Option<&'static str> {
 	let Some(local_head_oid) = snapshot.local_head_oid.as_deref() else {
 		return Some("worktree_head_missing");

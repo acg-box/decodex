@@ -4,7 +4,10 @@ use tempfile::TempDir;
 
 use crate::orchestrator::{
 	self, PostReviewLaneDecision, PostReviewLaneSnapshot, StateStore,
-	tests::{self, FakePullRequestReviewStateInspector, TEST_SERVICE_ID},
+	tests::{
+		self, FakePullRequestReviewStateInspector, TEST_SERVICE_ID,
+		review_landing_classification_review,
+	},
 };
 
 #[test]
@@ -16,6 +19,7 @@ fn classify_post_review_lane_ready_to_land_allows_zero_required_review_repos() {
 	let worktree_path = temp_dir.path().join("lane");
 
 	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+	review_landing_classification_review::initialize_empty_git_worktree(&worktree_path);
 
 	state_store
 		.upsert_worktree(
@@ -35,7 +39,7 @@ fn classify_post_review_lane_ready_to_land_allows_zero_required_review_repos() {
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -70,6 +74,11 @@ fn classify_post_review_lane_ready_to_land_allows_zero_required_review_repos() {
 
 	tests::add_external_review_ack(&mut review_state);
 	tests::add_external_review_pass(&mut review_state);
+	super::super::record_clean_review_checkpoint_for_head(
+		&state_store,
+		&snapshot.issue.id,
+		&head_oid,
+	);
 
 	let classification = orchestrator::classify_post_review_lane(
 		&snapshot,

@@ -5,7 +5,7 @@ use crate::state::{
 };
 
 #[test]
-fn persistent_clear_worktree_deletes_review_lifecycle() {
+fn persistent_clear_worktree_preserves_authority_review_lifecycle() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let store = StateStore::open(&state_path).expect("state store should open");
@@ -53,13 +53,13 @@ fn persistent_clear_worktree_deletes_review_lifecycle() {
 		reopened
 			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
 			.expect("handoff lookup should succeed")
-			.is_none()
+			.is_some()
 	);
 	assert!(
 		reopened
 			.review_orchestration_marker("pubfi", "PUB-101", &handoff)
 			.expect("orchestration lookup should succeed")
-			.is_none()
+			.is_some()
 	);
 }
 

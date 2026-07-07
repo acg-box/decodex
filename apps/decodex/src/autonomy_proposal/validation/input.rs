@@ -86,8 +86,9 @@ pub(super) fn validate_issue_candidates(
 
 pub(super) fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
 	match stage {
-		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" =>
-			Ok(()),
+		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" => {
+			Ok(())
+		},
 		_ => {
 			eyre::bail!(
 				"Autonomy proposal issue candidate `{key}` has unsupported stage `{stage}`."
@@ -98,8 +99,9 @@ pub(super) fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()
 
 pub(super) fn validate_proposed_issue_queue_intent(key: &str, queue_intent: &str) -> Result<()> {
 	match queue_intent {
-		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" =>
-			Ok(()),
+		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" => {
+			Ok(())
+		},
 		_ => eyre::bail!(
 			"Autonomy proposal issue candidate `{key}` has unsupported queue_intent `{queue_intent}`."
 		),

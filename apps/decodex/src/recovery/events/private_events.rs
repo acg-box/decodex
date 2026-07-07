@@ -76,7 +76,7 @@ pub(in crate::recovery) fn append_review_handoff_adopt_private_event(
 				"active_label_present": validation.active_label_present,
 				"active_label_restored": active_label_restored,
 				"existing_retained_worktree_mapping": validation.previous_worktree_mapping.is_some(),
-				"existing_review_handoff_marker": false,
+				"existing_review_lifecycle_record": false,
 				"manual_takeover_adopt": true,
 				"next_action": "continue retained post-review lifecycle",
 			}),

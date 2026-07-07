@@ -3,7 +3,7 @@ use crate::{
 		model::{COMMIT_MESSAGE_SCHEMA, CommitMessage},
 		normalize, parse,
 	},
-	prelude::Result,
+	prelude::{Result, eyre},
 };
 
 pub(crate) fn build_commit_message(
@@ -12,19 +12,18 @@ pub(crate) fn build_commit_message(
 	related: &[String],
 	breaking: bool,
 ) -> Result<String> {
+	if !related.is_empty() {
+		eyre::bail!("`decodex/commit/2` is commit-local and does not accept related issues");
+	}
 	let summary = normalize::normalize_single_line_field("summary", summary)?;
 	let authority = normalize::normalize_commit_authority("authority", authority)?;
-	let related = related
-		.iter()
-		.map(|value| normalize::normalize_issue_identifier("related", value))
-		.collect::<Result<Vec<_>>>()?;
+	let impact = commit_impact(breaking);
 
 	serde_json::to_string(&CommitMessage {
 		schema: COMMIT_MESSAGE_SCHEMA,
-		summary: summary.as_str(),
+		change: summary.as_str(),
 		authority: authority.as_str(),
-		related,
-		breaking,
+		impact,
 	})
 	.map_err(Into::into)
 }
@@ -46,11 +45,12 @@ pub(crate) fn build_landed_merge_commit_message(
 	expected_authority: &str,
 ) -> Result<String> {
 	let record = parse::parse_commit_message_record(head_message, Some(expected_authority))?;
-	let landed_summary = landing_summary(&record.summary);
+	let landed_summary = landing_summary(&record.change);
 	let authority =
 		normalize::normalize_commit_authority("expected_authority", expected_authority)?;
+	let breaking = record.impact == "breaking";
 
-	build_commit_message(&landed_summary, &authority, &record.related, record.breaking)
+	build_commit_message(&landed_summary, &authority, &[], breaking)
 }
 
 pub(crate) fn validate_commit_message_subject(message: &str) -> Result<()> {
@@ -63,4 +63,8 @@ fn landing_summary(summary: &str) -> String {
 	let summary = summary.strip_prefix("Land ").unwrap_or(summary);
 
 	format!("Land {summary}")
+}
+
+fn commit_impact(breaking: bool) -> &'static str {
+	if breaking { "breaking" } else { "compatible" }
 }

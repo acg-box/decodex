@@ -23,7 +23,8 @@ mod runtime_recovery;
 mod snapshot;
 mod worktrees;
 
-#[cfg(test)] pub(crate) use self::post_review::classify_post_review_lane;
+#[cfg(test)]
+pub(crate) use self::post_review::classify_post_review_lane;
 pub(crate) use self::{
 	post_review::{
 		authority_boundary_landing_requirement, build_degraded_post_review_lane_statuses,
@@ -39,20 +40,20 @@ pub(crate) use self::{
 		apply_pre_orchestration_post_review_classification,
 		apply_review_orchestration_phase_classification, external_review_has_actionable_feedback,
 		external_review_has_strict_pass_signals, external_review_result_arrived,
-		load_post_review_lane_review_state, load_post_review_orchestration_marker,
+		load_post_review_lane_review_state, load_post_review_lifecycle_record,
 		request_ack_timed_out, request_comment_has_eyes, validate_post_review_lane_review_state,
-		validate_review_orchestration_marker,
+		validate_post_review_lifecycle_record,
 	},
 	review_state::{
-		blocked_post_review_lane, blocked_post_review_lane_from_handoff,
+		blocked_post_review_lane, blocked_post_review_lane_from_lifecycle,
 		blocked_post_review_lane_from_state, blocked_post_review_lane_status,
 		external_review_request_ci_gate, failed_checks_require_repair,
 		initial_post_review_lane_classification, merge_state_requires_review_repair,
-		readback_degraded_post_review_lane_from_handoff, resolve_configured_env_var,
+		readback_degraded_post_review_lane_from_lifecycle, resolve_configured_env_var,
 		retained_closeout_pr_merge_gate_with_inspector,
 		review_state_clean_path_landing_gates_satisfied, review_state_landing_gates_satisfied,
 		review_state_landing_requires_agent_fallback, validate_post_review_lane_worktree,
-		worktree_head_descends_from_review_handoff,
+		worktree_head_descends_from_lifecycle_record,
 	},
 	runtime_recovery::{
 		append_primary_account_if_missing, hydrate_status_snapshot_state,
@@ -73,7 +74,8 @@ pub(crate) use self::{
 };
 pub(crate) use review_state::{worktree_checkout_branch_name, worktree_head_oid};
 
-#[allow(unused_imports)] use crate::github::PullRequestMergeViewResponse;
+#[allow(unused_imports)]
+use crate::github::PullRequestMergeViewResponse;
 use crate::orchestrator::kernel::state::{OwnershipState, PolicyState};
 #[allow(unused_imports)]
 use crate::orchestrator::{
@@ -89,17 +91,16 @@ use crate::orchestrator::{
 	OperatorPostReviewLaneStatus, OperatorProjectStatus, OperatorQueuedIssueStatus,
 	OperatorRunStatus, OperatorStatusSnapshot, Path, PostReviewLaneBuildContext,
 	PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
-	PostReviewLaneStateLoad, PostReviewOrchestrationStatus, PostReviewReadbackDegradation,
-	PostReviewRuntimeState, PrivateExecutionEvent, ProjectRunStatus, PullRequestReadbackRootCause,
-	PullRequestReviewState, PullRequestReviewStateInspector, RecoverableWorktreeSkipCache,
-	RecoveredRuntimeState, RetainedCloseoutPrMergeGate, RetryIssueStateHint, ReviewHandoffMarker,
-	ReviewOrchestrationMarker, ReviewOrchestrationPhase, RunActivityMarker,
-	RunIssueMetadataHydration, ServiceConfig, StateStore, TrackerConnectorBackoff, TrackerIssue,
-	TrackerObserverOutcome, Value, WorkflowDocument, WorktreeManager, WorktreeMapping,
-	WorktreeSpec, active_shared_issue_ids, active_stored_tracker_backoff_status,
-	apply_missing_issue_ghost_lane_projection, apply_operator_lane_terminal_projection,
-	apply_terminal_history_ledger_outcome_to_run, classify_pull_request_readback_report,
-	clear_recovered_issue_lease, compare_issue_candidates,
+	PostReviewLaneStateLoad, PostReviewLifecycleAction, PostReviewOrchestrationStatus,
+	PostReviewReadbackDegradation, PostReviewRuntimeState, PrivateExecutionEvent, ProjectRunStatus,
+	PullRequestReadbackRootCause, PullRequestReviewState, PullRequestReviewStateInspector,
+	RecoverableWorktreeSkipCache, RecoveredRuntimeState, RetainedCloseoutPrMergeGate,
+	RetryIssueStateHint, RunActivityMarker, RunIssueMetadataHydration, ServiceConfig, StateStore,
+	TrackerConnectorBackoff, TrackerIssue, TrackerObserverOutcome, Value, WorkflowDocument,
+	WorktreeManager, WorktreeMapping, WorktreeSpec, active_shared_issue_ids,
+	active_stored_tracker_backoff_status, apply_missing_issue_ghost_lane_projection,
+	apply_operator_lane_terminal_projection, apply_terminal_history_ledger_outcome_to_run,
+	classify_pull_request_readback_report, clear_recovered_issue_lease, compare_issue_candidates,
 	current_lane_has_authoritative_live_owner, current_lane_terminal_projection_from_local_ledger,
 	env, eyre, fs, github, history_ledger_outcome_is_terminal,
 	hydrate_current_lane_lifecycle_metrics, hydrate_history_lanes_from_linear_ledger,
@@ -125,7 +126,8 @@ use crate::orchestrator::{
 use crate::state::{
 	ProjectLoopEvidenceSnapshot, ProtocolActivityEventSummary, ReviewCheckpointArtifactLookup,
 };
-#[allow(unused_imports)] use crate::tracker::records::LinearExecutionEventRecord;
+#[allow(unused_imports)]
+use crate::tracker::records::LinearExecutionEventRecord;
 #[allow(unused_imports)]
 use crate::{
 	agent::REVIEW_POLICY_CONVERGENCE_BUDGET, pull_request::PullRequestLandingGateView,

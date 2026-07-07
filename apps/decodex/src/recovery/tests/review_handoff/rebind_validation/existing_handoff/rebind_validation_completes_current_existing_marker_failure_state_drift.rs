@@ -1,6 +1,6 @@
 use crate::{
 	recovery::{self, RebindMode, tests},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
+	state::{ReviewHandoffMarker, ReviewLifecycleRecord, ReviewOrchestrationMarker},
 };
 
 #[test]
@@ -39,8 +39,7 @@ fn rebind_validation_completes_current_existing_marker_failure_state_drift() {
 		workflow.frontmatter().tracker(),
 		&issue,
 		&worktree,
-		&handoff,
-		Some(&orchestration),
+		&ReviewLifecycleRecord::from_test_review_markers(&handoff, Some(&orchestration)),
 		&landing_state,
 		head_oid,
 	)

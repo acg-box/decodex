@@ -42,32 +42,42 @@ impl RepoGateFailureKind {
 
 	fn disposition(self) -> RepoGateFailureDisposition {
 		match self {
-			Self::CanonicalizeCommandFailed | Self::VerifyCommandFailed =>
-				RepoGateFailureDisposition::ContinueRepair,
-			Self::TrackedRewritesLeft | Self::ScopeEnvelopeViolation =>
-				RepoGateFailureDisposition::NeedsHumanAttention,
+			Self::CanonicalizeCommandFailed | Self::VerifyCommandFailed => {
+				RepoGateFailureDisposition::ContinueRepair
+			},
+			Self::TrackedRewritesLeft | Self::ScopeEnvelopeViolation => {
+				RepoGateFailureDisposition::NeedsHumanAttention
+			},
 			Self::GitLockContention => RepoGateFailureDisposition::RetryAfterBackoff,
-			Self::CommandSpawnFailed | Self::CleanlinessCheckFailed =>
-				RepoGateFailureDisposition::NeedsHumanAttention,
+			Self::CommandSpawnFailed | Self::CleanlinessCheckFailed => {
+				RepoGateFailureDisposition::NeedsHumanAttention
+			},
 		}
 	}
 
 	fn retry_next_action(self) -> &'static str {
 		match self {
-			Self::CanonicalizeCommandFailed =>
-				"additional agent repair is required before repo canonicalization can pass; decodex will retry automatically",
-			Self::VerifyCommandFailed =>
-				"additional agent repair is required before repo verification can pass; decodex will retry automatically",
-			Self::TrackedRewritesLeft =>
-				"automatic retry is stopped because the repo gate left tracked rewrites after completing; inspect the retained worktree manually",
-			Self::ScopeEnvelopeViolation =>
-				"automatic retry is stopped because the repo gate wrote files outside the lane scope envelope",
-			Self::GitLockContention =>
-				"another Git process appears to hold `.git/index.lock`; decodex will wait briefly, refresh lane state, and retry automatically",
-			Self::CommandSpawnFailed =>
-				"manual repair is required to restore repo-gate command execution",
-			Self::CleanlinessCheckFailed =>
-				"manual repair is required to restore repo-gate tracked-file inspection",
+			Self::CanonicalizeCommandFailed => {
+				"additional agent repair is required before repo canonicalization can pass; decodex will retry automatically"
+			},
+			Self::VerifyCommandFailed => {
+				"additional agent repair is required before repo verification can pass; decodex will retry automatically"
+			},
+			Self::TrackedRewritesLeft => {
+				"automatic retry is stopped because the repo gate left tracked rewrites after completing; inspect the retained worktree manually"
+			},
+			Self::ScopeEnvelopeViolation => {
+				"automatic retry is stopped because the repo gate wrote files outside the lane scope envelope"
+			},
+			Self::GitLockContention => {
+				"another Git process appears to hold `.git/index.lock`; decodex will wait briefly, refresh lane state, and retry automatically"
+			},
+			Self::CommandSpawnFailed => {
+				"manual repair is required to restore repo-gate command execution"
+			},
+			Self::CleanlinessCheckFailed => {
+				"manual repair is required to restore repo-gate tracked-file inspection"
+			},
 		}
 	}
 

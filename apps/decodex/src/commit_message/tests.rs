@@ -8,24 +8,21 @@ fn build_commit_message_omits_empty_related_and_false_breaking() {
 
 	assert_eq!(
 		message,
-		r#"{"schema":"decodex/commit/1","summary":"tighten workflow defaults","authority":"XY-225"}"#
+		r#"{"schema":"decodex/commit/2","change":"tighten workflow defaults","authority":"XY-225","impact":"compatible"}"#
 	);
 }
 
 #[test]
-fn build_commit_message_includes_optional_fields() {
+fn build_commit_message_rejects_related_issues() {
 	let message = commit_message::build_commit_message(
 		"tighten workflow defaults",
 		"XY-225",
 		&[String::from("XY-12"), String::from("XY-99")],
 		true,
 	)
-	.expect("commit message should build");
+	.expect_err("related issues should be outside commit/2");
 
-	assert_eq!(
-		message,
-		r#"{"schema":"decodex/commit/1","summary":"tighten workflow defaults","authority":"XY-225","related":["XY-12","XY-99"],"breaking":true}"#
-	);
+	assert!(message.to_string().contains("does not accept related"));
 }
 
 #[test]
@@ -33,15 +30,15 @@ fn build_landing_commit_message_normalizes_land_prefix() {
 	for (summary, related, breaking, expected) in [
 		(
 			"tighten workflow defaults",
-			vec![String::from("XY-12")],
+			Vec::new(),
 			true,
-			r#"{"schema":"decodex/commit/1","summary":"Land tighten workflow defaults","authority":"XY-225","related":["XY-12"],"breaking":true}"#,
+			r#"{"schema":"decodex/commit/2","change":"Land tighten workflow defaults","authority":"XY-225","impact":"breaking"}"#,
 		),
 		(
 			"Land tighten workflow defaults",
 			Vec::new(),
 			false,
-			r#"{"schema":"decodex/commit/1","summary":"Land tighten workflow defaults","authority":"XY-225"}"#,
+			r#"{"schema":"decodex/commit/2","change":"Land tighten workflow defaults","authority":"XY-225","impact":"compatible"}"#,
 		),
 	] {
 		let message =
@@ -68,7 +65,7 @@ fn build_commit_message_accepts_manual_authority() {
 
 	assert_eq!(
 		message,
-		r#"{"schema":"decodex/commit/1","summary":"ship hotfix outside tracker","authority":"manual"}"#
+		r#"{"schema":"decodex/commit/2","change":"ship hotfix outside tracker","authority":"manual","impact":"compatible"}"#
 	);
 }
 
@@ -86,12 +83,12 @@ fn looks_like_issue_identifier_requires_suffix_number() {
 fn build_landed_merge_commit_message_normalizes_land_prefix() {
 	for (head_message, expected) in [
 		(
-			r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"XY-225","related":["XY-12"],"breaking":true}"#,
-			r#"{"schema":"decodex/commit/1","summary":"Land ship fix","authority":"XY-225","related":["XY-12"],"breaking":true}"#,
+			r#"{"schema":"decodex/commit/2","change":"ship fix","authority":"XY-225","impact":"breaking"}"#,
+			r#"{"schema":"decodex/commit/2","change":"Land ship fix","authority":"XY-225","impact":"breaking"}"#,
 		),
 		(
-			r#"{"schema":"decodex/commit/1","summary":"Land ship fix","authority":"XY-225"}"#,
-			r#"{"schema":"decodex/commit/1","summary":"Land ship fix","authority":"XY-225"}"#,
+			r#"{"schema":"decodex/commit/2","change":"Land ship fix","authority":"XY-225","impact":"compatible"}"#,
+			r#"{"schema":"decodex/commit/2","change":"Land ship fix","authority":"XY-225","impact":"compatible"}"#,
 		),
 	] {
 		let landed_message =
@@ -106,7 +103,7 @@ fn build_landed_merge_commit_message_normalizes_land_prefix() {
 fn build_landed_merge_commit_message_rejects_invalid_head_subjects() {
 	for (head_message, authority, expected) in [
 		(
-			r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"XY-225"}"#,
+			r#"{"schema":"decodex/commit/2","change":"ship fix","authority":"XY-225","impact":"compatible"}"#,
 			"XY-226",
 			"does not match expected authority",
 		),
@@ -122,7 +119,7 @@ fn build_landed_merge_commit_message_rejects_invalid_head_subjects() {
 #[test]
 fn validate_commit_message_subject_accepts_schema_record_without_expected_authority() {
 	commit_message::validate_commit_message_subject(
-		r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"manual"}"#,
+		r#"{"schema":"decodex/commit/2","change":"ship fix","authority":"manual","impact":"compatible"}"#,
 	)
 	.expect("manual schema subject should validate");
 }
@@ -132,15 +129,19 @@ fn validate_commit_message_subject_rejects_non_schema_records() {
 	for (message, expected) in [
 		("ship fix", "expected value"),
 		(
-			r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"manual","extra":true}"#,
+			r#"{"schema":"decodex/commit/2","change":"ship fix","authority":"manual","impact":"compatible","extra":true}"#,
 			"unknown field",
 		),
 		(
-			r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"manual","related":["not-an-issue"]}"#,
-			"issue identifier",
+			r#"{"schema":"decodex/commit/2","change":"ship fix","authority":"manual","impact":"unknown"}"#,
+			"impact",
 		),
 		(
-			r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"not-an-issue"}"#,
+			r#"{"schema":"decodex/commit/2","change":"ship fix","authority":"manual","impact":"compatible","related":["XY-12"]}"#,
+			"unknown field",
+		),
+		(
+			r#"{"schema":"decodex/commit/2","change":"ship fix","authority":"not-an-issue","impact":"compatible"}"#,
 			"authority",
 		),
 	] {

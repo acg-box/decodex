@@ -31,7 +31,7 @@ fn review_repair_tool_surface_excludes_issue_transition() {
 	assert!(tool_names.contains(&String::from(ISSUE_COMMENT_TOOL_NAME)));
 	assert!(tool_names.contains(&String::from(ISSUE_LABEL_ADD_TOOL_NAME)));
 	assert!(tool_names.contains(&String::from(ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME)));
-	assert!(tool_names.contains(&String::from(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME)));
+	assert!(!tool_names.contains(&String::from(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME)));
 	assert!(tool_names.contains(&String::from(ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME)));
 	assert!(tool_names.contains(&String::from(ISSUE_TERMINAL_FINALIZE_TOOL_NAME)));
 }

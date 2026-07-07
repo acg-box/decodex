@@ -47,8 +47,9 @@ fn operator_state_snapshot_publish_reads_local_completed_ledger_details_without_
 	let lane = snapshot.history_lanes.first().expect("history lane should exist");
 	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
 
-	assert_eq!(lane.ledger_outcome.ledger_status, "present");
-	assert_eq!(lane.ledger_outcome.final_outcome, "cleanup_complete");
+	assert_eq!(lane.ledger_outcome.ledger_status, "partial");
+	assert_eq!(lane.ledger_outcome.final_outcome, "execution_log");
+	assert_eq!(lane.ledger_outcome.final_event_type.as_deref(), Some("cleanup_complete"));
 	assert_eq!(
 		lane.ledger_outcome.pr_url.as_deref(),
 		Some("https://github.com/hack-ink/decodex/pull/355")
@@ -57,10 +58,10 @@ fn operator_state_snapshot_publish_reads_local_completed_ledger_details_without_
 		lane.ledger_outcome.commit_sha.as_deref(),
 		Some("2222222222222222222222222222222222222222")
 	);
-	assert_eq!(lane.ledger_outcome.closeout_status.as_deref(), Some("completed"));
+	assert_eq!(lane.ledger_outcome.closeout_status, None);
 	assert_eq!(lane.ledger_outcome.lifecycle_elapsed_seconds, Some(660));
 	assert_eq!(lane.ledger_outcome.record_count, 6);
-	assert_eq!(snapshot_json["history_lanes"][0]["ledger_outcome"]["ledger_status"], "present");
+	assert_eq!(snapshot_json["history_lanes"][0]["ledger_outcome"]["ledger_status"], "partial");
 	assert_eq!(
 		snapshot_json["history_lanes"][0]["ledger_outcome"]["pr_url"],
 		"https://github.com/hack-ink/decodex/pull/355"

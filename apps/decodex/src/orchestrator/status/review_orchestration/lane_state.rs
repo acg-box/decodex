@@ -15,25 +15,25 @@ pub(crate) fn load_post_review_lane_review_state<I>(
 where
 	I: PullRequestReviewStateInspector,
 {
-	if let Some(review_handoff) = snapshot.review_handoff.as_ref() {
+	if let Some(lifecycle_record) = snapshot.lifecycle_record.as_ref() {
 		let local_head_oid =
-			match status::validate_post_review_lane_worktree(snapshot, review_handoff) {
+			match status::validate_post_review_lane_worktree(snapshot, lifecycle_record) {
 				Ok(local_head_oid) => local_head_oid,
 				Err(reason) => {
 					return Ok(PostReviewLaneStateLoad::Classification(
-						status::blocked_post_review_lane_from_handoff(review_handoff, reason),
+						status::blocked_post_review_lane_from_lifecycle(lifecycle_record, reason),
 					));
 				},
 			};
 		let review_state = match review_state_inspector.inspect_review_state_readback(
 			snapshot.worktree.worktree_path(),
-			review_handoff.pr_url(),
+			lifecycle_record.pr_url(),
 		) {
 			Ok(review_state) => review_state,
 			Err(error) => {
 				return Ok(PostReviewLaneStateLoad::Classification(
-					status::readback_degraded_post_review_lane_from_handoff(
-						review_handoff,
+					status::readback_degraded_post_review_lane_from_lifecycle(
+						lifecycle_record,
 						error.root_cause(),
 					),
 				));
@@ -49,7 +49,7 @@ where
 	}
 
 	Ok(PostReviewLaneStateLoad::Classification(status::blocked_post_review_lane(
-		"missing_review_handoff_record",
+		"missing_review_lifecycle_record",
 	)))
 }
 
@@ -147,7 +147,7 @@ pub(crate) fn merged_pr_local_head_matches_landed_lineage(
 		return Ok(true);
 	}
 
-	status::worktree_head_descends_from_review_handoff(
+	status::worktree_head_descends_from_lifecycle_record(
 		worktree_path,
 		merge_commit_oid,
 		local_head_oid,

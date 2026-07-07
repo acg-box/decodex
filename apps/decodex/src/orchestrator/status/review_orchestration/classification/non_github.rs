@@ -1,27 +1,27 @@
 use crate::{
 	orchestrator::status::{
 		self, EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS, PostReviewLaneClassification,
-		PostReviewLaneDecision, PullRequestReviewState, ReviewOrchestrationMarker,
-		ReviewOrchestrationPhase,
+		PostReviewLaneDecision, PostReviewLifecycleAction, PullRequestReviewState,
 	},
-	prelude::{Result, eyre},
+	prelude::Result,
+	state::ReviewLifecycleRecord,
 };
 
 pub(crate) fn apply_non_github_review_post_review_classification(
 	classification: &mut PostReviewLaneClassification,
 	review_state: &PullRequestReviewState,
-	orchestration_marker: Option<&ReviewOrchestrationMarker>,
+	lifecycle_record: Option<&ReviewLifecycleRecord>,
 	now_unix_epoch: i64,
 ) -> Result<()> {
-	if let Some(orchestration_marker) = orchestration_marker {
-		let phase =
-			ReviewOrchestrationPhase::parse(orchestration_marker.phase()).map_err(|error| {
-				eyre::eyre!("Failed to parse retained review orchestration phase: {error}")
-			})?;
+	if let Some(lifecycle_record) = lifecycle_record {
+		let action = PostReviewLifecycleAction::parse(lifecycle_record.next_action())?;
 
-		if phase == ReviewOrchestrationPhase::WaitingForMerge {
-			if let Some(auto_merge_enabled_at) =
-				orchestration_marker.auto_merge_enabled_at_unix_epoch()
+		if matches!(
+			action,
+			PostReviewLifecycleAction::PollLandingReadback
+				| PostReviewLifecycleAction::RunCloseoutAdapter
+		) {
+			if let Some(auto_merge_enabled_at) = lifecycle_record.auto_merge_enabled_at_unix_epoch()
 				&& now_unix_epoch - auto_merge_enabled_at
 					> EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS
 			{
@@ -35,7 +35,7 @@ pub(crate) fn apply_non_github_review_post_review_classification(
 
 			return Ok(());
 		}
-		if phase == ReviewOrchestrationPhase::RepairRequired {
+		if action == PostReviewLifecycleAction::RunReviewRepair {
 			classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
 			classification.reason =
 				if status::review_state_landing_requires_agent_fallback(review_state) {

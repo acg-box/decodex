@@ -28,13 +28,15 @@ For MCP gateway, runtime, tracker, or control-plane work, read
 not bypass Decision Contract, lane-control, review, landing, tracker, or runtime
 authority gates.
 
-For lane lifecycle architecture, treat the orchestration kernel as the runtime
-authority boundary. Read `docs/runbook/orchestration-kernel-cutover.md` with
+For lane lifecycle architecture, treat the lifecycle kernel as the runtime authority
+boundary. Read `docs/runbook/orchestration-kernel-cutover.md` with
 `docs/spec/owned-lane-policy.md`, `docs/spec/lane-control-state.md`, and
 `docs/spec/post-review-lifecycle.md` when work touches scheduler, retry,
-post-review, queue, status, lane-control, or operator readback decisions. Runtime
-surfaces may collect facts, execute command intents, or render projections; they
-must not reintroduce independent lifecycle policy branches.
+post-review, queue, status, lane-control, landing, closeout, or operator readback
+decisions. Runtime surfaces may collect structured facts, execute command intents,
+or render projections; final post-review lifecycle states must come from the pure
+kernel and be persisted by the runtime state adapter as
+`decodex/lifecycle-authority-record/1` plus a `decodex/lifecycle-event/1` envelope.
 
 For autonomy work, route to `decodex://docs/spec/autonomy-control-plane`,
 `decodex://docs/decisions/mcp-capability-gateway-and-skill-slimming`, and the
@@ -48,4 +50,6 @@ project-policy authority resolved from trusted Decodex state, not a caller-suppl
 policy body.
 
 Research is latent until promoted. Program Intake is not queue-label polling.
-Decodex-owned landing uses `decodex land`, not raw GitHub merge paths.
+Decodex-owned landing uses `decodex land`, not raw GitHub merge paths. Issue-authority
+manual landing enters lifecycle authority; non-issue `--manual-authority --pr` remains
+the local receipt exception.

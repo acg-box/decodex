@@ -17,14 +17,14 @@ pub(crate) fn retained_closeout_preferred_run_identity(
 	let Some(worktree) = state_store.worktree_for_issue(&issue.id)? else {
 		return Ok(None);
 	};
-	let Some(review_handoff) =
-		state_store.review_handoff_marker(project_id, &issue.id, worktree.branch_name())?
+	let Some(lifecycle_record) =
+		state_store.review_lifecycle_record(project_id, &issue.id, worktree.branch_name())?
 	else {
 		return Ok(None);
 	};
 	let identity = RetainedReviewRunIdentity {
-		run_id: review_handoff.run_id().to_owned(),
-		attempt_number: review_handoff.attempt_number(),
+		run_id: lifecycle_record.run_id().to_owned(),
+		attempt_number: lifecycle_record.attempt_number(),
 	};
 
 	if retained_closeout_run_identity_is_reusable(state_store, &issue.id, &identity)?

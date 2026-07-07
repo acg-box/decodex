@@ -6,15 +6,15 @@ use crate::orchestrator::{
 	},
 };
 
-pub(super) fn review_handoff_drift_marker_rebind_command_intent(
+pub(super) fn review_handoff_drift_lifecycle_authority_rebind_command_intent(
 	issue_id: &str,
 	run_id: &str,
 ) -> CommandIntent {
 	post_review::build_post_review_command_intent(
 		issue_id,
 		Some(run_id),
-		"review_handoff_state_drift_orchestration_rebound",
-		CommandIntentKind::SyncReviewOrchestrationMarker,
+		"review_handoff_state_drift_lifecycle_authority_rebound",
+		CommandIntentKind::SyncReviewLifecycleAuthority,
 	)
 }
 

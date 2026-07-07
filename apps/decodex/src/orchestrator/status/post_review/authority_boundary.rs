@@ -2,7 +2,7 @@ use crate::{
 	orchestrator::status::post_review::{
 		AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
 		PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
-		PostReviewRuntimeState, PrivateExecutionEvent, ReviewHandoffMarker, Value,
+		PostReviewRuntimeState, PrivateExecutionEvent, Value,
 		operator_boundary_policy_blocks_landing,
 		operator_boundary_policy_requires_enhanced_evidence,
 	},
@@ -90,7 +90,7 @@ pub(crate) fn authority_boundary_clearance_review_checkpoint(
 	let expected_head = snapshot
 		.local_head_oid
 		.as_deref()
-		.or_else(|| snapshot.review_handoff.as_ref().map(ReviewHandoffMarker::pr_head_oid));
+		.or_else(|| snapshot.lifecycle_record.as_ref().map(|record| record.pr_head_oid()));
 
 	expected_head == Some(checkpoint_head)
 }

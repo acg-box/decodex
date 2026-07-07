@@ -3,6 +3,7 @@ use crate::{
 		self, StateStore, tests,
 		tests::{FakePullRequestReviewStateInspector, FakeTracker},
 	},
+	state::ReviewPolicyCheckpointInput,
 	worktree::WorktreeManager,
 };
 
@@ -63,6 +64,20 @@ fn build_post_review_lane_statuses_allows_descendant_review_handoff_head_after_r
 
 	tests::add_external_review_ack(&mut review_state);
 	tests::add_external_review_pass(&mut review_state);
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &issue.id,
+			run_id: "runtime-review",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: "strict",
+			status: "clean",
+			head_sha: &current_head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("runtime review checkpoint should persist");
 
 	let lanes = orchestrator::build_post_review_lane_statuses(
 		&tracker,

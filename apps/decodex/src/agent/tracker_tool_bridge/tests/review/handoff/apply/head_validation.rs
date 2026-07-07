@@ -37,11 +37,8 @@ fn rejects_review_handoff_apply_when_lane_head_changes_after_recording() {
 
 	updated_local_repo.head_oid = String::from("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
 
-	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
-		Ok(tests::sample_local_repo()),
-		Ok(tests::sample_local_repo()),
-		Ok(updated_local_repo),
-	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(tests::sample_local_repo()), Ok(updated_local_repo)]);
 	let review_context = tests::sample_review_context_in(temp_dir.path());
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,

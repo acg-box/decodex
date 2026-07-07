@@ -31,8 +31,7 @@ pub(crate) use self::{
 	dispatch::{
 		IssueDispatchMode, LoopGuardrailReason, PostReviewLaneDecision, PostReviewLaneStateLoad,
 		ProgramDispatchSelection, RetainedReviewLaneLoad, RetryDispatchDecision,
-		RetryIssueStateHint, RetryKind, ReviewOrchestrationPhase, RunLeaseDisposition,
-		SelectedIssueRunCandidate,
+		RetryIssueStateHint, RetryKind, RunLeaseDisposition, SelectedIssueRunCandidate,
 	},
 	errors::{
 		AgentGitCredentialsUnavailable, LoopGuardrailStopRequested, ManualAttentionRequested,

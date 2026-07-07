@@ -17,14 +17,16 @@ use std::{io, net::TcpListener, str};
 
 use serde_json::{self, Value};
 
-#[cfg(test)] use self::http::{McpHttpHandler, McpHttpSessions, http_header_end};
+#[cfg(test)]
+use self::http::{McpHttpHandler, McpHttpSessions, http_header_end};
 #[cfg(test)]
 use self::observability::{
 	mcp_activity_tail_resource, mcp_pr_review_state_resource, mcp_public_post_review_lane,
 	mcp_run_activity_summary, mcp_run_resource, mcp_status_live_resource,
 	sanitize_mcp_observability_value,
 };
-#[cfg(test)] use self::resources::ResourceContent;
+#[cfg(test)]
+use self::resources::ResourceContent;
 use self::{
 	context::McpContext,
 	http::McpHttpAuthorization,
@@ -186,4 +188,5 @@ fn safe_autonomy_record_identifier(value: &str) -> bool {
 		&& !value.contains("..")
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

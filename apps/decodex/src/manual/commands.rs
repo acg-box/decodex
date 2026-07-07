@@ -75,9 +75,9 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 			context.current_branch,
 		);
 	}
-	if context.prepared_closeout.is_some() && context.review_handoff.is_none() {
+	if context.prepared_closeout.is_some() && context.review_lifecycle.is_none() {
 		eyre::bail!(
-			"`decodex land` issue closeout requires a retained review handoff marker so it can write deterministic Linear execution ledger events. Run `decodex recover review-handoff rebind` for `{}` before retrying.",
+			"`decodex land` issue closeout requires a retained review lifecycle authority so it can write deterministic Linear execution ledger events. Run `decodex recover review-handoff rebind` for `{}` before retrying.",
 			context.current_branch
 		);
 	}

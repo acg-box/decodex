@@ -1,6 +1,8 @@
+use crate::state::ReviewLifecycleRecord;
+
 use crate::orchestrator::status::{
 	self, Command, Path, PostReviewLaneSnapshot, PostReviewLaneStateLoad, PullRequestReviewState,
-	PullRequestReviewStateInspector, RetainedCloseoutPrMergeGate, ReviewHandoffMarker,
+	PullRequestReviewStateInspector, RetainedCloseoutPrMergeGate,
 };
 
 pub(crate) fn retained_closeout_pr_merge_gate_with_inspector<I>(
@@ -51,9 +53,9 @@ where
 
 pub(crate) fn validate_post_review_lane_worktree<'a>(
 	snapshot: &'a PostReviewLaneSnapshot,
-	review_handoff: &ReviewHandoffMarker,
+	lifecycle_record: &ReviewLifecycleRecord,
 ) -> std::result::Result<&'a str, &'static str> {
-	if review_handoff.branch_name() != snapshot.worktree.branch_name() {
+	if lifecycle_record.branch_name() != snapshot.worktree.branch_name() {
 		return Err("worktree_branch_mismatch");
 	}
 
@@ -61,7 +63,7 @@ pub(crate) fn validate_post_review_lane_worktree<'a>(
 		return Err("worktree_checkout_branch_missing");
 	};
 
-	if local_branch_name != review_handoff.branch_name()
+	if local_branch_name != lifecycle_record.branch_name()
 		|| local_branch_name != snapshot.worktree.branch_name()
 	{
 		return Err("worktree_checkout_branch_mismatch");
@@ -71,22 +73,22 @@ pub(crate) fn validate_post_review_lane_worktree<'a>(
 		return Err("worktree_head_missing");
 	};
 
-	if local_head_oid != review_handoff.pr_head_oid() {
-		match worktree_head_descends_from_review_handoff(
+	if local_head_oid != lifecycle_record.pr_head_oid() {
+		match worktree_head_descends_from_lifecycle_record(
 			snapshot.worktree.worktree_path(),
-			review_handoff.pr_head_oid(),
+			lifecycle_record.pr_head_oid(),
 			local_head_oid,
 		) {
 			Ok(true) => {},
-			Ok(false) => return Err("review_handoff_lineage_mismatch"),
-			Err(()) => return Err("review_handoff_lineage_check_failed"),
+			Ok(false) => return Err("lifecycle_record_lineage_mismatch"),
+			Err(()) => return Err("lifecycle_record_lineage_check_failed"),
 		}
 	}
 
 	Ok(local_head_oid)
 }
 
-pub(crate) fn worktree_head_descends_from_review_handoff(
+pub(crate) fn worktree_head_descends_from_lifecycle_record(
 	worktree_path: &Path,
 	recorded_head_oid: &str,
 	local_head_oid: &str,

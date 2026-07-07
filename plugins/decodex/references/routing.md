@@ -37,11 +37,16 @@ Use when Decodex work crosses research, planning, ops, commit, or landing.
   workflow, terminal-state, dependency, opt-out, and active-lease checks.
 - `decodex:active:<service-id>` is runtime ownership, not "please start work";
   `decodex:manual-only` opts out; `decodex:needs-attention` stops automation.
-- Lane lifecycle policy belongs to the typed orchestration kernel. Scheduler, retry,
-  post-review, queue, status, dashboard, MCP, and tracker surfaces are fact
-  collectors, command-intent executors, or compatibility projections after cutover.
+- Lane lifecycle policy belongs to the pure lifecycle kernel. Scheduler, retry,
+  post-review, queue, status, dashboard, MCP, tracker, landing, closeout, and recovery
+  surfaces are structured-fact collectors, command-intent executors, or compatibility
+  projections after cutover. Final post-review state is the runtime state's
+  `decodex/lifecycle-authority-record/1` projection plus append-only
+  `decodex/lifecycle-event/1` envelope, not a tracker comment or local receipt.
 - Use `decodex commit` for human-driven commits and `decodex land` for PR landing;
-  diagnose missing review handoff before rebind/adopt recovery.
+  diagnose missing review handoff before rebind/adopt recovery. Issue-authority
+  manual landing enters lifecycle authority; non-issue `--manual-authority --pr` is
+  the local receipt exception.
 - MCP is a typed facade, not a bypass. Non-loopback Streamable HTTP requires origin
   plus bearer auth; profiles above `observe` require bearer auth.
 - CORS is not authentication; typed plan tools and inspect-first operate/admin

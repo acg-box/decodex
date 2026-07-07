@@ -68,8 +68,12 @@ fn review_lifecycle_record_roundtrip_preserves_required_fields_and_projection() 
 	assert_eq!(lifecycle.landing_state(), "not_started");
 	assert_eq!(lifecycle.closeout_state(), "not_started");
 	assert_eq!(lifecycle.repair_attempt_count(), 0);
-	assert_eq!(lifecycle.evidence_json(), "{}");
-	assert_eq!(lifecycle.next_action(), "");
+	assert!(lifecycle.evidence_json().contains("lifecycle_authority_recorded"));
+	assert_eq!(lifecycle.sequence(), 2);
+	assert_eq!(lifecycle.transition(), "review_wait_recorded");
+	assert_eq!(lifecycle.previous_state(), "review_pending");
+	assert_eq!(lifecycle.next_state(), "review_waiting");
+	assert_eq!(lifecycle.next_action(), "wait_for_external_review_ack");
 	assert!(!lifecycle.updated_at().is_empty());
 	assert!(lifecycle.updated_at_unix() > 0);
 

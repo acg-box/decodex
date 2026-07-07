@@ -14,7 +14,11 @@ impl SqliteStateStore {
 			 request_comment_database_id, request_created_at_unix_epoch, \
 			 request_description_thumbs_up_count, request_retry_count, external_round_count, \
 			 auto_merge_enabled_at_unix_epoch, landing_state, closeout_state, \
-			 repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix \
+			 repair_attempt_count, evidence_json, next_action, schema_version, subject_id, \
+			 sequence, transition, previous_state, next_state, review_level, \
+			 review_gate_state, base_branch, validated_head_sha, worktree_path, merge_commit, \
+			 cleanup_state, authority, actor, source_evidence_refs_json, idempotency_key, \
+			 correlation_id, causation_id, decided_at, updated_at, updated_at_unix \
 			 FROM review_lifecycle_records",
 		)?;
 		let rows = statement.query_map([], review_lifecycle_record_from_row)?;
@@ -39,7 +43,11 @@ impl SqliteStateStore {
 			 request_comment_database_id, request_created_at_unix_epoch, \
 			 request_description_thumbs_up_count, request_retry_count, external_round_count, \
 			 auto_merge_enabled_at_unix_epoch, landing_state, closeout_state, \
-			 repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix \
+			 repair_attempt_count, evidence_json, next_action, schema_version, subject_id, \
+			 sequence, transition, previous_state, next_state, review_level, \
+			 review_gate_state, base_branch, validated_head_sha, worktree_path, merge_commit, \
+			 cleanup_state, authority, actor, source_evidence_refs_json, idempotency_key, \
+			 correlation_id, causation_id, decided_at, updated_at, updated_at_unix \
 			 FROM review_lifecycle_records WHERE project_id = ?1",
 		)?;
 		let rows =
@@ -91,8 +99,28 @@ fn review_lifecycle_record_from_row(
 			repair_attempt_count: row.get(19)?,
 			evidence_json: row.get(20)?,
 			next_action: row.get(21)?,
-			updated_at: row.get(22)?,
-			updated_at_unix: row.get(23)?,
+			schema_version: row.get(22)?,
+			subject_id: row.get(23)?,
+			sequence: row.get(24)?,
+			transition: row.get(25)?,
+			previous_state: row.get(26)?,
+			next_state: row.get(27)?,
+			review_level: row.get(28)?,
+			review_gate_state: row.get(29)?,
+			base_branch: row.get(30)?,
+			validated_head_sha: row.get(31)?,
+			worktree_path: row.get(32)?,
+			merge_commit: row.get(33)?,
+			cleanup_state: row.get(34)?,
+			authority: row.get(35)?,
+			actor: row.get(36)?,
+			source_evidence_refs_json: row.get(37)?,
+			idempotency_key: row.get(38)?,
+			correlation_id: row.get(39)?,
+			causation_id: row.get(40)?,
+			decided_at: row.get(41)?,
+			updated_at: row.get(42)?,
+			updated_at_unix: row.get(43)?,
 		},
 	))
 }

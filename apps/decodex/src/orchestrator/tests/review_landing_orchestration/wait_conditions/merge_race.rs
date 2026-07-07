@@ -6,6 +6,7 @@ use crate::orchestrator::{
 		self, FakePullRequestReviewStateInspector, FakeTracker, review_landing_status_support,
 	},
 };
+use crate::state::ReviewPolicyCheckpointInput;
 
 #[test]
 fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
@@ -16,8 +17,8 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
-	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
+	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
+	let landed_merge_subject = r#"{"schema":"decodex/commit/2","change":"Land current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 	let (gh_command_path, invocation_log_path) =
@@ -50,6 +51,20 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 			1,
 		),
 	);
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &issue.id,
+			run_id: "run-1:runtime-review:repair:ready",
+			attempt_number: 1,
+			phase: "repair",
+			review_level: "strict",
+			status: "clean",
+			head_sha: &head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("runtime review checkpoint should persist");
 
 	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
@@ -73,19 +88,12 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 	)
 	.expect("post-review orchestration should accept an already-merged PR race");
 
-	let marker = tests::persisted_review_orchestration_marker_for_path(
-		&state_store,
-		config.service_id(),
-		&repo_root,
-	);
 	let gh_invocation = fs::read_to_string(&invocation_log_path)
 		.expect("fake gh invocation log should read")
 		.lines()
 		.map(str::to_owned)
 		.collect::<Vec<_>>();
 
-	assert_eq!(marker.phase(), "waiting_for_merge");
-	assert!(marker.auto_merge_enabled_at_unix_epoch().is_some());
 	assert_eq!(
 		gh_invocation,
 		vec![
@@ -105,8 +113,19 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 			String::from(pr_url),
 			String::from("--json"),
 			String::from("state,headRefOid,mergeCommit"),
+			String::from("pr"),
+			String::from("view"),
+			String::from(pr_url),
+			String::from("--json"),
+			String::from("state,headRefOid,mergeCommit"),
 		]
 	);
+	let lifecycle = state_store
+		.review_lifecycle_record(config.service_id(), &issue.id, "main")
+		.expect("lifecycle record should read")
+		.expect("landing authority should record");
+	assert_eq!(lifecycle.next_state(), "landed");
+	assert_eq!(lifecycle.merge_commit(), Some("cafebabe"));
 	assert!(
 		tracker.comments.borrow().is_empty(),
 		"already-merged race handling should persist orchestration in StateStore, not Linear comments",

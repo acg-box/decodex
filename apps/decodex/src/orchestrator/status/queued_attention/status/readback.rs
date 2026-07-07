@@ -34,7 +34,7 @@ pub(crate) fn operator_queued_issue_loop_status(
 		.or_else(|| marker.map(RunActivityMarker::attempt_number));
 
 	match (run_id, attempt_number) {
-		(Some(run_id), Some(attempt_number)) =>
+		(Some(run_id), Some(attempt_number)) => {
 			status_run_projection::operator_loop_status_for_run(
 				project,
 				state_store,
@@ -44,7 +44,8 @@ pub(crate) fn operator_queued_issue_loop_status(
 				Some("handoff"),
 				None,
 			)
-			.map(Some),
+			.map(Some)
+		},
 		_ => Ok(None),
 	}
 }

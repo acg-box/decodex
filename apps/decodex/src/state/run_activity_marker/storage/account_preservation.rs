@@ -14,9 +14,10 @@ pub(crate) fn preserve_current_run_account_marker_fields(
 		return;
 	};
 	let keep_current_account = match next.account.as_ref() {
-		Some(next_account) =>
+		Some(next_account) => {
 			account_marker_observed_unix_epoch(&current_account)
-				> account_marker_observed_unix_epoch(next_account),
+				> account_marker_observed_unix_epoch(next_account)
+		},
 		None => true,
 	};
 

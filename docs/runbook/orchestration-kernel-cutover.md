@@ -61,6 +61,197 @@ linked specs.
 Covers: Target architecture, checkpoints, required subagent reviews, validation gates,
 and completion evidence.
 
+## Active Lifecycle Slimming Ledger
+
+This ledger tracks the direct lifecycle-slimming follow-up. It is the durable
+anti-drift checklist for the current work; the high-level goal only states the final
+acceptance contract.
+
+### Scope Lock
+
+- Remove Self Check review mode and all Basic review behavior from active runtime,
+  prompts, config, tests, and docs.
+- Remove the agent-facing review checkpoint tool from normal handoff and repair
+  flows.
+- Keep Standard review as a runtime-owned harness, not as an agent-reported
+  checkpoint.
+- Keep Strict review and GitHub review semantics fail-closed.
+- Keep current-head clean review checkpoint semantics, docs impact, PR/head/worktree
+  lineage, and review-blocking dirty-worktree checks.
+- Do not preserve old/new compatibility branches, legacy marker authority, or
+  short-term dual logic.
+- Treat status, dashboard, recovery, landing, and closeout as projections or
+  side-effect adapters over the lifecycle kernel result.
+
+### Slice Checklist
+
+- [x] Slice 1: Delete Self Check and Basic review from active config, prompts, docs,
+  and tests.
+- [x] Slice 2a: Delete the agent-facing `issue_review_checkpoint` surface from normal
+  app-server tool exposure.
+- [x] Slice 2b: Stop requiring agents to produce a clean checkpoint before
+  `issue_review_handoff` or `issue_review_repair_complete`.
+- [x] Slice 2c: Preserve current-head clean review checkpoint validation for runtime
+  post-review progression.
+- [x] Slice 2d: Distinguish `handoff`, `repair`, and missing runtime checkpoint phases
+  in post-review facts.
+- [x] Slice 2e: Re-check review-blocking worktree dirtiness after a clean checkpoint
+  before allowing landing progression.
+- [x] Slice 2f: Add or confirm a runtime-owned Standard review checkpoint producer so
+  Standard lanes cannot wait forever after the agent-facing checkpoint surface is
+  removed.
+- [x] Slice 2g: Run a fresh skeptic review for the Standard-review gate and close all
+  blockers before marking Slice 2 complete.
+- [ ] Slice 3: Collapse handoff, orchestration, landing, repair, and closeout authority
+  into the single `review_lifecycle_records` authority record.
+- [x] Slice 4: Build one structured post-review facts builder and route all
+  post-review classifiers through it.
+- [ ] Slice 5: Make the lifecycle kernel the only producer of post-review
+  `next_action`; all callers must consume kernel output or command intents.
+- [ ] Slice 6: Delete old classifiers, marker compatibility, duplicated
+  churn/retry/blocker state machines, and authority-like projection writers.
+- [x] Slice 7: Update specs, runbooks, and operator docs to describe only the new
+  lifecycle authority model.
+- [ ] Slice 8: Run focused tests, reverse scans, broad validation, and final skeptic
+  challenge before any ready/done claim.
+
+### Current Independent Review Findings
+
+- [x] Repair-phase checkpoint was incorrectly keyed as `handoff`; fixed by carrying
+  actual checkpoint phase through facts and classifiers.
+- [x] Clean checkpoint progression did not re-check review-blocking dirty worktree
+  changes; fixed with a post-checkpoint dirty gate.
+- [x] Runtime-owned Standard review producer is proven with focused tests: pending
+  Standard lanes invoke a runtime-owned reviewer, clean handoff checkpoints unblock
+  the next reconcile tick, and prior non-clean review findings force a repair-phase
+  runtime checkpoint.
+- [x] Runtime-owned Standard review producer failures are bounded: retry count is
+  persisted in the retained lifecycle authority and three consecutive producer
+  failures become durable manual attention instead of an endless pending loop.
+- [x] Runtime-owned Standard review terminal statuses fail closed durably:
+  `blocked`, `needs_architecture_review`, and unknown checkpoint statuses route to
+  retained manual attention rather than silently waiting.
+- [x] Runtime-owned Standard review is only invoked after landing gates are green;
+  pending checks keep the lane waiting without spending a review run.
+- [x] Strict review now composes both gates: GitHub Review pass is necessary but not
+  sufficient; landing still waits for a runtime-owned clean checkpoint on the
+  reviewed head.
+- [x] Strict status/dashboard projection now composes both gates too: a GitHub Review
+  pass with green landing gates still projects `runtime_standard_review_checkpoint_pending`
+  until the current head has a runtime-owned clean checkpoint.
+- [x] Strict review producer failures stay in the external-result phase and preserve
+  the runtime retry count, so GitHub Review is not re-requested and bounded failure
+  still escalates to manual attention.
+- [x] Runtime checkpoint lookup is current-head and phase-aware: same-head handoff
+  and repair checkpoints are resolved by current artifact evidence instead of a
+  fixed phase priority that can hide newer clean evidence.
+- [x] Lifecycle authority projection is proven as the terminal source for landing and
+  closeout: admin merge, manual issue-authority landing, already-merged recovery,
+  and closeout adapters now submit kernel evidence and persist authority envelopes.
+- [x] The handoff and orchestration state-store adapters no longer seed fake
+  lifecycle-authority rows with `sequence = 0` / `runtime_projection`; they submit
+  lifecycle-kernel decisions and persist authority envelopes before updating
+  retained review readback fields.
+- [x] Retained review loading now starts from `review_lifecycle_records`, fails closed
+  when the lifecycle authority is missing or lacks PR base lineage, and exposes the
+  retained lane as `ReviewLifecycleRecord` rather than an orchestration marker.
+- [x] Ordinary dispatch blocking, post-review status loading, strict/non-GitHub status
+  classification, and retained closeout cleanup now read the lifecycle authority
+  record first instead of using handoff/orchestration marker tables as the semantic
+  source.
+- [x] Runtime retained-review dispatch no longer parses `ReviewOrchestrationPhase`
+  from persisted state. It consumes kernel-owned `next_action` values instead:
+  request, ack wait, result wait, landing-gate wait, repair, landing readback,
+  closeout, or manual attention.
+- [x] Status/dashboard classification no longer parses old orchestration phases.
+  It consumes the same lifecycle `next_action` projection, so runtime and operator
+  readback now share the lifecycle-kernel action vocabulary.
+- [x] Active retained-review reconciliation and execution-failure drift recovery now
+  write lifecycle transitions through `record_review_lifecycle_transition` instead
+  of constructing orchestration marker records as the authority write path.
+- [x] Admin merge success now records `landed` as the final lifecycle authority
+  state without writing a later `waiting_for_merge` orchestration projection over
+  that terminal authority.
+- [x] Agent tracker-tool persistence and explicit review-handoff recovery apply now
+  write post-review transition state through `ReviewLifecycleTransitionInput`
+  instead of constructing active `ReviewOrchestrationMarker` authority writes.
+- [x] Retained review command intents and command facts now use lifecycle-authority
+  vocabulary (`SyncReviewLifecycleAuthority` /
+  `ReviewLifecycleAuthorityCurrent`) instead of orchestration-marker vocabulary.
+- [x] Retained reconciliation and execution-failure drift recovery helper modules
+  now write retained lifecycle authority transitions directly; active marker-shaped
+  helper names were removed from those runtime paths.
+- [x] Review-handoff rebind validation and recovery diagnostics now consume
+  `ReviewLifecycleRecord` directly instead of rebuilding handoff/orchestration
+  marker compatibility records before checking PR, head, branch, and issue-state
+  binding.
+- [x] Prompt context and post-review status snapshots now carry
+  `ReviewLifecycleRecord` authority records directly instead of projecting retained
+  review readback through `ReviewHandoffMarker` fields.
+- [x] Manual issue-authority landing context now carries
+  `ReviewLifecycleRecord` through closeout ledger and lifecycle decision writes
+  instead of converting the record back into a `ReviewHandoffMarker`.
+- [x] Tracker-tool handoff/repair completion and explicit review-handoff
+  adopt/rebind recovery now create lifecycle authority with direct
+  `ReviewLifecycleHandoffInput` plus transition input instead of constructing active
+  `ReviewHandoffMarker` write adapters.
+- [ ] Remaining cutover blocker: state test adapters and many tests still expose
+  `ReviewHandoffMarker` / `ReviewOrchestrationMarker` adapter terminology as
+  compatibility read models. They must become authority-first records/facts with
+  legacy names confined to tests or removed before Slice 3/6 can close.
+- [x] Old Linear execution ledger is demoted to execution-log/audit/readback context:
+  it no longer answers landed, closed, cleanup, or final lifecycle state.
+- [x] `decodex/commit/2` is commit-local only: `change`, `authority`, and `impact`;
+  landing, PR, source branch, closeout, and related metadata are rejected or kept out
+  of the schema.
+
+### Required Reverse Scans
+
+Before completion, these scans must return no active old-authority paths except
+intentional deleted-file diffs or documented historical text:
+
+```sh
+rg -n 'review_checkpoint_tool_specs|review_checkpoint_(reviewer|status|contract|checks|finding_routes|findings_array)_schema|review_cost_control_schema|non_empty_string_array_schema|require_clean_review_checkpoint|mod clean_checkpoint_gate|mod schema;' apps/decodex/src -S
+rg -n 'Self Check|basic review|ReviewLevel::Basic|review_level.*basic|before PR handoff|before `issue_review_handoff`|before `issue_review_repair_complete`|Decodex exposes `issue_review_checkpoint`|exposes `issue_review_checkpoint`|Call .*issue_review_checkpoint' docs apps/decodex/src -S
+```
+
+### Required Validation
+
+- [x] `cargo test -p decodex lifecycle --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex standard_review_waits_for_runtime_review_checkpoint_before_landing --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex reconcile_post_review_orchestration_waits_for_runtime_standard_review_checkpoint --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex reconcile_post_review_orchestration_escalates_runtime_standard_review_checkpoint_failure_after_budget --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex reconcile_post_review_orchestration_routes_runtime_standard_review --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex reconcile_post_review_orchestration_routes_unknown_runtime_standard_review_status_to_attention --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex reconcile_post_review_orchestration_runs_runtime_standard_review_after_external_pass_before_admin_merge --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex reconcile_post_review_orchestration_escalates_strict_runtime_review_failure_without_restarting_external_request --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex runtime_review_checkpoint_status_for_head_prefers_current_same_head_handoff_artifact --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex reconcile_post_review_orchestration_skips_runtime_standard_review_while_landing_gates_pending --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex review_landing_orchestration::landing_fallbacks --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex landed_lineage_merge::admin_merge --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex reconcile_post_review_orchestration_runs_runtime_standard --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex runtime_review_ --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex build_post_review_lane_statuses_waits_for_runtime_checkpoint_after_strict_pass --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex review_lifecycle --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex review_landing_status_rows --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex review_landing_orchestration --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex review --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex review_policy --all-features -- --test-threads=1`
+- [x] `cargo test -p decodex review_level --all-features -- --test-threads=1`
+- [x] `cargo make check-docs`
+- [x] `git diff --check`
+- [ ] Final fresh skeptic review has no unresolved blocker.
+
+Current hard-cutover evidence:
+
+- [x] `cargo fmt --package decodex`
+- [x] `cargo check -p decodex --all-features`
+- [ ] `cargo test -p decodex --lib`
+- [ ] `cargo test -p decodex`
+- [x] `cargo run -p decodex --bin decodex -- docs check`
+- [x] `git diff --check`
+- [ ] Fresh read-only skeptic review reported PASS after blocker repair.
+
 ## Target Shape
 
 The runtime decision path must become:

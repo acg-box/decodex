@@ -1,9 +1,12 @@
-#[cfg(target_os = "macos")] use std::mem;
-#[cfg(target_os = "macos")] use std::mem::MaybeUninit;
+#[cfg(target_os = "macos")]
+use std::mem;
+#[cfg(target_os = "macos")]
+use std::mem::MaybeUninit;
 use std::time::Duration;
 
 use libc::pid_t;
-#[cfg(target_os = "macos")] use libc::{PROC_PIDTBSDINFO, SZOMB, c_void, proc_bsdinfo};
+#[cfg(target_os = "macos")]
+use libc::{PROC_PIDTBSDINFO, SZOMB, c_void, proc_bsdinfo};
 
 use crate::{
 	agent::{self, RUN_LEASE_IDLE_TIMEOUT},
@@ -56,9 +59,10 @@ pub(crate) fn process_is_alive(process_id: u32) -> bool {
 	// builtin or `kill` binary being present on PATH.
 	match unsafe { libc::kill(process_id, 0) } {
 		0 => !process_is_zombie_or_uninspectable_after_signalable_probe(process_id),
-		-1 =>
+		-1 => {
 			matches!(std::io::Error::last_os_error().raw_os_error(), Some(libc::EPERM))
-				&& !process_is_zombie(process_id),
+				&& !process_is_zombie(process_id)
+		},
 		_ => false,
 	}
 }

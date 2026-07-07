@@ -3,7 +3,11 @@ mod handoff_head;
 mod merge_readiness;
 mod request_and_findings;
 
-use std::fs;
+use std::{
+	fs,
+	path::Path,
+	process::{Command, Stdio},
+};
 
 use tempfile::TempDir;
 
@@ -15,6 +19,7 @@ use crate::{
 		StateStore, tests,
 		tests::{FakePullRequestReviewStateInspector, TEST_SERVICE_ID},
 	},
+	state::ReviewPolicyCheckpointInput,
 	tracker::TrackerIssue,
 };
 
@@ -141,24 +146,31 @@ pub(super) fn record_clean_review_checkpoint_for_head(
 	head_oid: &str,
 ) {
 	state_store
-		.append_private_execution_event(
-			TEST_SERVICE_ID,
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: TEST_SERVICE_ID,
 			issue_id,
-			"run-review",
-			2,
-			"review_checkpoint",
-			serde_json::json!({
-				"phase": "handoff",
-				"status": "clean",
-				"head_sha": head_oid,
-				"nonclean_rounds": 0,
-				"review": {
-					"accepted_findings": [],
-					"rejected_findings": [],
-				}
-			}),
-		)
+			run_id: "run-review",
+			attempt_number: 2,
+			phase: "handoff",
+			review_level: "standard",
+			status: "clean",
+			head_sha: head_oid,
+			nonclean_rounds: 0,
+			details_json: r#"{"accepted_findings":[],"rejected_findings":[]}"#,
+		})
 		.expect("clean review checkpoint should persist");
+}
+
+pub(super) fn initialize_empty_git_worktree(worktree_path: &Path) {
+	let status = Command::new("git")
+		.arg("-C")
+		.arg(worktree_path)
+		.arg("init")
+		.stdout(Stdio::null())
+		.stderr(Stdio::null())
+		.status()
+		.expect("git init should run");
+	assert!(status.success(), "git init should succeed");
 }
 
 fn record_requires_enhanced_evidence_authority_boundary(
@@ -209,7 +221,7 @@ fn classify_post_review_lane_with_pr_state(
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,

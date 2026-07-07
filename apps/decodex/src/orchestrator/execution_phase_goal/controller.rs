@@ -18,8 +18,9 @@ pub(crate) struct RepoGatePhaseGoalController<'a> {
 impl RepoGatePhaseGoalController<'_> {
 	fn initial_phase_goal_kind(&self) -> PhaseGoalKind {
 		match self.issue_run.dispatch_mode {
-			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry =>
-				PhaseGoalKind::ImplementToValidationReady,
+			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry => {
+				PhaseGoalKind::ImplementToValidationReady
+			},
 			IssueDispatchMode::ReviewRepair => PhaseGoalKind::RepairAcceptedReviewFindings,
 			IssueDispatchMode::Closeout => PhaseGoalKind::HandoffEvidence,
 		}

@@ -2,7 +2,7 @@ use tempfile::TempDir;
 
 use crate::{
 	manual::{self, ManualLandLedgerContext, tests, tests::support::TestTracker},
-	state::{ReviewHandoffMarker, StateStore},
+	state::{ReviewHandoffMarker, ReviewLifecycleRecord, StateStore},
 	tracker::{
 		TrackerState, privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier, records,
 	},
@@ -30,16 +30,16 @@ fn manual_land_issue_closeout_writes_success_ledger_after_existing_marker() {
 		String::from("xy/pub-1161"),
 		String::from("3cf2d24033527a774340c7d70c5ce437c90afe55"),
 	);
+	let lifecycle_record = ReviewLifecycleRecord::from_test_review_markers(&handoff, None);
 
 	state_store
 		.record_run_attempt(handoff.run_id(), &issue.id, handoff.attempt_number(), "failed")
 		.expect("failed handoff attempt should record");
 
 	let merge_commit = "81e90b530148a0be69afa5bd33ce6ab84d485a3a";
-	let landed_change_record =
-		r#"{"schema":"decodex/commit/1","summary":"Land PUB-1161","authority":"PUB-1161"}"#;
+	let landed_change_record = r#"{"schema":"decodex/commit/2","change":"Land PUB-1161","authority":"PUB-1161","impact":"compatible"}"#;
 
-	manual::write_manual_land_closeout_marker(
+	manual::write_manual_land_closeout_receipt(
 		&checkout,
 		"https://github.com/helixbox/pubfi-mono-v2/pull/95",
 		merge_commit,
@@ -52,7 +52,7 @@ fn manual_land_issue_closeout_writes_success_ledger_after_existing_marker() {
 		service_id: "pubfi",
 		issue: &issue,
 		state_store: &state_store,
-		handoff: &handoff,
+		lifecycle_record: &lifecycle_record,
 		pr_url: "https://github.com/helixbox/pubfi-mono-v2/pull/95",
 		merge_commit,
 		branch_name: "xy/pub-1161",

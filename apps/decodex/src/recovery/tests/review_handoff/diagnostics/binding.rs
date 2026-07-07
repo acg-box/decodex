@@ -3,7 +3,7 @@ use crate::{
 		HandoffDiagnosticRequest, REVIEW_HANDOFF_BOUND_CLASSIFICATION,
 		REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION, tests, tests::review_handoff,
 	},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
+	state::{ReviewHandoffMarker, ReviewLifecycleRecord, ReviewOrchestrationMarker},
 };
 
 #[test]
@@ -30,8 +30,7 @@ fn diagnostic_treats_descendant_handoff_head_as_bound() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: None,
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_review_markers(&handoff, None)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(&current_head),
 		worktree_clean: Some(true),
@@ -40,7 +39,7 @@ fn diagnostic_treats_descendant_handoff_head_as_bound() {
 	});
 
 	assert_eq!(diagnostic.classification, REVIEW_HANDOFF_BOUND_CLASSIFICATION);
-	assert_eq!(diagnostic.reason, "review_handoff_record_present");
+	assert_eq!(diagnostic.reason, "review_lifecycle_authority_present");
 	assert_eq!(diagnostic.mismatched_field, None);
 }
 
@@ -82,8 +81,10 @@ fn diagnostic_requires_rebind_when_current_marker_state_transition_pending() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: Some(&orchestration),
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_review_markers(
+			&handoff,
+			Some(&orchestration),
+		)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(head_oid),
 		worktree_clean: Some(true),
@@ -122,8 +123,7 @@ fn diagnostic_requires_refresh_when_handoff_head_is_stale() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: None,
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_review_markers(&handoff, None)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(&rebased_head),
 		worktree_clean: Some(true),
@@ -132,9 +132,9 @@ fn diagnostic_requires_refresh_when_handoff_head_is_stale() {
 	});
 
 	assert_eq!(diagnostic.classification, REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION);
-	assert_eq!(diagnostic.reason, "review_handoff_lineage_mismatch");
+	assert_eq!(diagnostic.reason, "review_lifecycle_lineage_mismatch");
 	assert_eq!(diagnostic.pr_head_oid.as_deref(), Some(rebased_head.as_str()));
-	assert_eq!(diagnostic.mismatched_field.as_deref(), Some("review_handoff.pr_head_oid"));
+	assert_eq!(diagnostic.mismatched_field.as_deref(), Some("review_lifecycle.pr_head_oid"));
 	assert!(diagnostic.next_action.contains("rebind PUB-718"));
 	assert!(diagnostic.next_action.contains("--dry-run"));
 }
@@ -177,8 +177,10 @@ fn diagnostic_requires_refresh_when_orchestration_head_is_stale() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: Some(&orchestration),
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_review_markers(
+			&handoff,
+			Some(&orchestration),
+		)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(head_oid),
 		worktree_clean: Some(true),
@@ -187,6 +189,6 @@ fn diagnostic_requires_refresh_when_orchestration_head_is_stale() {
 	});
 
 	assert_eq!(diagnostic.classification, REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION);
-	assert_eq!(diagnostic.reason, "review_orchestration_head_mismatch");
-	assert_eq!(diagnostic.mismatched_field.as_deref(), Some("review_orchestration.head_sha"));
+	assert_eq!(diagnostic.reason, "review_lifecycle_head_mismatch");
+	assert_eq!(diagnostic.mismatched_field.as_deref(), Some("review_lifecycle.head_sha"));
 }

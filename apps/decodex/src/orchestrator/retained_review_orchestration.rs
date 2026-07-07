@@ -1,5 +1,5 @@
 pub(in crate::orchestrator) mod attention;
-pub(in crate::orchestrator) mod markers;
+pub(in crate::orchestrator) mod lifecycle_authority;
 
 mod admin_merge;
 mod command;
@@ -9,6 +9,8 @@ mod phases;
 mod reconcile;
 mod stale_worktree;
 
+#[cfg(test)]
+pub(crate) use self::reconcile::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner;
 pub(crate) use self::{
 	attention::apply_passive_retained_manual_attention,
 	model::{PassiveRetainedAttentionRuntime, RetainedReviewLane},
@@ -28,7 +30,7 @@ use self::{
 		retained_review_command_intent_for_issue,
 	},
 	model::{
-		RetainedAdminMergeReasons, RetainedReviewOrchestrationMarkerFields, RetainedReviewRuntime,
+		RetainedAdminMergeReasons, RetainedReviewLifecycleAuthorityFields, RetainedReviewRuntime,
 	},
 };
 use crate::{
@@ -38,12 +40,11 @@ use crate::{
 		EXTERNAL_REVIEW_ACK_TIMEOUT_SECS, EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS,
 		EXTERNAL_REVIEW_REQUEST_BODY, ExternalReviewRequestCiGate, IssueDispatchMode, IssueRunPlan,
 		PostReviewRuntimeState, PullRequestReviewState, RetainedReviewNeedsAttention,
-		RetainedReviewRunIdentity, ReviewOrchestrationPhase, TerminalFailureWritebackRuntime,
-		WorktreeSpec,
+		RetainedReviewRunIdentity, TerminalFailureWritebackRuntime, WorktreeSpec,
 		kernel::command::{CommandIntent, CommandIntentKind},
 	},
 	prelude::{Result, eyre},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore, WorktreeMapping},
+	state::{ReviewLifecycleReadback, StateStore, WorktreeMapping},
 	tracker::{IssueTracker, TrackerIssue},
 	workflow::WorkflowDocument,
 };

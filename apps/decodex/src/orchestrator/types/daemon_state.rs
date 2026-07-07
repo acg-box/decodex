@@ -45,8 +45,9 @@ impl RetryEntryLifecycle {
 		match dispatch_mode {
 			IssueDispatchMode::ReviewRepair => Self::ReviewRepair,
 			IssueDispatchMode::Closeout => Self::Closeout,
-			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry =>
-				Self::Active,
+			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry => {
+				Self::Active
+			},
 		}
 	}
 }

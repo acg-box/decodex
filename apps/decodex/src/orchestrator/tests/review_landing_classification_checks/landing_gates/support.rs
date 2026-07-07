@@ -37,7 +37,11 @@ pub(crate) fn snapshot_for_issue_state(
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(BRANCH_NAME, PR_URL, HEAD_OID)),
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
+			BRANCH_NAME,
+			PR_URL,
+			HEAD_OID,
+		)),
 		local_branch_name: Some(String::from(local_branch_name)),
 		local_head_oid: Some(String::from(HEAD_OID)),
 	};

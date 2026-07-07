@@ -15,6 +15,17 @@ pub(super) fn sample_review_handoff_marker(
 	state::ReviewHandoffMarker::new("run-1", 1, branch_name, pr_url, "main", branch_name, head_oid)
 }
 
+pub(super) fn sample_review_lifecycle_record(
+	branch_name: &str,
+	pr_url: &str,
+	head_oid: &str,
+) -> state::ReviewLifecycleRecord {
+	state::ReviewLifecycleRecord::from_test_review_markers(
+		&sample_review_handoff_marker(branch_name, pr_url, head_oid),
+		None,
+	)
+}
+
 pub(super) fn seed_review_handoff_marker(
 	state_store: &StateStore,
 	project_id: &str,

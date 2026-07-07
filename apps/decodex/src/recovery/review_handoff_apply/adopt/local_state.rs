@@ -1,14 +1,14 @@
 use crate::{
 	prelude::Result,
 	recovery::{AdoptValidation, RecoveryContext},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
+	state::{ReviewLifecycleHandoffInput, ReviewLifecycleTransitionInput},
 };
 
 pub(in crate::recovery::review_handoff_apply::adopt) fn write_adopt_local_state(
 	context: &RecoveryContext,
 	validation: &AdoptValidation,
-	handoff_marker: &ReviewHandoffMarker,
-	orchestration_marker: &ReviewOrchestrationMarker,
+	handoff_input: ReviewLifecycleHandoffInput<'_>,
+	transition_input: ReviewLifecycleTransitionInput<'_>,
 ) -> Result<()> {
 	let worktree_path = validation.worktree_path.to_string_lossy().to_string();
 
@@ -29,17 +29,17 @@ pub(in crate::recovery::review_handoff_apply::adopt) fn write_adopt_local_state(
 			)
 		})
 		.and_then(|()| {
-			context.state_store.upsert_review_handoff_marker(
+			context.state_store.record_review_lifecycle_handoff(
 				context.config.service_id(),
 				&validation.issue.id,
-				handoff_marker,
+				handoff_input,
 			)
 		})
 		.and_then(|()| {
-			context.state_store.upsert_review_orchestration_marker(
+			context.state_store.record_review_lifecycle_transition(
 				context.config.service_id(),
 				&validation.issue.id,
-				orchestration_marker,
+				transition_input,
 			)
 		})
 }

@@ -28,8 +28,9 @@ impl RepoGatePhaseGoalController<'_> {
 			selected_repo_gate.verify_commands(),
 			&self.issue_run.worktree.path,
 		) {
-			Ok(repo_gate_outcome) =>
-				self.continue_after_repo_gate_pass(phase, &selected_repo_gate, &repo_gate_outcome),
+			Ok(repo_gate_outcome) => {
+				self.continue_after_repo_gate_pass(phase, &selected_repo_gate, &repo_gate_outcome)
+			},
 			Err(error) => self.continue_after_repo_gate_error(phase, error),
 		}
 	}

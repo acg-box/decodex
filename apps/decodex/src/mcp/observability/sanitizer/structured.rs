@@ -58,10 +58,11 @@ pub(in crate::mcp) fn sanitize_mcp_observability_value(value: &mut Value) {
 				*text = String::from("redacted_sensitive_detail");
 			}
 		},
-		Value::Array(items) =>
+		Value::Array(items) => {
 			for item in items {
 				sanitize_mcp_observability_value(item);
-			},
+			}
+		},
 		_ => {},
 	}
 }

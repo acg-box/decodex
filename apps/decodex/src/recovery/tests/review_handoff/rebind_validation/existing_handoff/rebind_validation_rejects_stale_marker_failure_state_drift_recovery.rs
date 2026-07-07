@@ -1,6 +1,6 @@
 use crate::{
 	recovery::{self, RebindMode, tests},
-	state::ReviewHandoffMarker,
+	state::{ReviewHandoffMarker, ReviewLifecycleRecord},
 };
 
 #[test]
@@ -28,8 +28,7 @@ fn rebind_validation_rejects_stale_marker_failure_state_drift_recovery() {
 		workflow.frontmatter().tracker(),
 		&issue,
 		&worktree,
-		&handoff,
-		None,
+		&ReviewLifecycleRecord::from_test_review_markers(&handoff, None),
 		&landing_state,
 		"1123456789abcdef0123456789abcdef01234567",
 	)

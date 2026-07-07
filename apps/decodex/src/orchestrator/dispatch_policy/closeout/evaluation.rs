@@ -23,7 +23,7 @@ where
 	let Some(worktree) = closeout_worktree(issue, project, state_store)? else {
 		return Ok(CloseoutDispatchEligibility::Ineligible);
 	};
-	let Some(review_handoff) = state_store.review_handoff_marker(
+	let Some(lifecycle_record) = state_store.review_lifecycle_record(
 		project.service_id(),
 		&issue.id,
 		&worktree.branch_name,
@@ -32,7 +32,7 @@ where
 		return Ok(CloseoutDispatchEligibility::Blocked("missing_review_handoff_record"));
 	};
 
-	if review_handoff.branch_name() != worktree.branch_name {
+	if lifecycle_record.branch_name() != worktree.branch_name {
 		return Ok(CloseoutDispatchEligibility::Ineligible);
 	}
 
@@ -40,7 +40,7 @@ where
 		dispatch_policy::retained_closeout_pr_merge_gate_with_inspector(
 			&worktree.path,
 			&worktree.branch_name,
-			review_handoff.pr_url(),
+			lifecycle_record.pr_url(),
 			review_state_inspector,
 		)?,
 	))
@@ -157,9 +157,11 @@ fn closeout_merge_gate_eligibility(
 ) -> CloseoutDispatchEligibility {
 	match merge_gate {
 		RetainedCloseoutPrMergeGate::Merged => CloseoutDispatchEligibility::Eligible,
-		RetainedCloseoutPrMergeGate::NotMerged =>
-			CloseoutDispatchEligibility::Blocked("pull_request_not_merged"),
-		RetainedCloseoutPrMergeGate::PullRequestStateReadFailed =>
-			CloseoutDispatchEligibility::Blocked("pull_request_state_read_failed"),
+		RetainedCloseoutPrMergeGate::NotMerged => {
+			CloseoutDispatchEligibility::Blocked("pull_request_not_merged")
+		},
+		RetainedCloseoutPrMergeGate::PullRequestStateReadFailed => {
+			CloseoutDispatchEligibility::Blocked("pull_request_state_read_failed")
+		},
 	}
 }

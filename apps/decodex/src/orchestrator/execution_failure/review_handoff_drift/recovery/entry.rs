@@ -4,7 +4,7 @@ use crate::{
 		WorkflowDocument,
 		review_handoff_drift::{
 			attention, lineage,
-			recovery::{marker, transition},
+			recovery::{lifecycle_authority, transition},
 			types::{
 				REVIEW_HANDOFF_STATE_DRIFT_RECOVERED_EVENT_TYPE, ReviewHandoffStateDriftTransition,
 			},
@@ -85,7 +85,7 @@ where
 		return Ok(false);
 	}
 
-	let Some(review_handoff) = state_store.review_handoff_marker(
+	let Some(lifecycle_record) = state_store.review_lifecycle_record(
 		project.service_id(),
 		&issue_run.issue.id,
 		&issue_run.worktree.branch_name,
@@ -94,15 +94,15 @@ where
 		return Ok(false);
 	};
 
-	if review_handoff.branch_name() != issue_run.worktree.branch_name
-		|| review_handoff.pr_head_ref_name() != issue_run.worktree.branch_name
+	if lifecycle_record.branch_name() != issue_run.worktree.branch_name
+		|| lifecycle_record.pr_head_ref_name() != issue_run.worktree.branch_name
 	{
 		return Ok(false);
 	}
 
 	let lineage = lineage::review_handoff_failure_drift_lineage(
 		&issue_run.worktree.path,
-		review_handoff.pr_head_oid(),
+		lifecycle_record.pr_head_oid(),
 		&worktree_fingerprint.head_sha,
 	);
 
@@ -120,11 +120,11 @@ where
 	};
 	let issue_state_recovered =
 		matches!(success_state_transition, ReviewHandoffStateDriftTransition::MoveToSuccess(_));
-	let rebounded_orchestration = marker::rebound_review_handoff_orchestration_marker(
+	let rebounded_authority = lifecycle_authority::rebound_review_handoff_lifecycle_authority(
 		project,
 		state_store,
 		issue_run,
-		&review_handoff,
+		&lifecycle_record,
 		&worktree_fingerprint.head_sha,
 	)?;
 	let needs_attention_cleared = tracker::set_issue_label_presence(
@@ -150,18 +150,18 @@ where
 			REVIEW_HANDOFF_STATE_DRIFT_RECOVERED_EVENT_TYPE,
 			serde_json::json!({
 				"schema": "decodex.review_handoff_state_drift_recovered/1",
-				"reason": "current_review_handoff_marker",
+				"reason": "current_review_lifecycle_authority",
 				"source_error_class": lineage::review_handoff_failure_drift_source_error_class(error),
 				"branch_name": issue_run.worktree.branch_name,
-				"pr_url": review_handoff.pr_url(),
-				"marker_head_sha": review_handoff.pr_head_oid(),
+				"pr_url": lifecycle_record.pr_url(),
+				"marker_head_sha": lifecycle_record.pr_head_oid(),
 				"local_head_sha": worktree_fingerprint.head_sha,
 				"lineage": lineage.as_str(),
 				"previous_issue_state": current_state,
 				"target_issue_state": success_state,
 				"issue_state_recovered": issue_state_recovered,
 				"needs_attention_cleared": needs_attention_cleared,
-				"orchestration_rebound": rebounded_orchestration,
+				"orchestration_rebound": rebounded_authority,
 			}),
 		)
 		.map(|_| ())?;
@@ -173,7 +173,7 @@ where
 		run_id = issue_run.run_id,
 		attempt = issue_run.attempt_number,
 		branch = issue_run.worktree.branch_name,
-		pr_url = review_handoff.pr_url(),
+		pr_url = lifecycle_record.pr_url(),
 		lineage = lineage.as_str(),
 		"Recovered review handoff state drift before retry/no-diff failure writeback."
 	);

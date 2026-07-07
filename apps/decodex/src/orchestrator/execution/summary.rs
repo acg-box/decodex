@@ -29,8 +29,9 @@ pub(crate) fn planned_issue_state_for_dispatch(
 	preferred_issue_state: Option<&str>,
 ) -> String {
 	match dispatch_mode {
-		IssueDispatchMode::Normal | IssueDispatchMode::Program =>
-			workflow.frontmatter().tracker().in_progress_state().to_owned(),
+		IssueDispatchMode::Normal | IssueDispatchMode::Program => {
+			workflow.frontmatter().tracker().in_progress_state().to_owned()
+		},
 		IssueDispatchMode::Retry => preferred_issue_state
 			.filter(|state| {
 				*state == workflow.frontmatter().tracker().in_progress_state()
