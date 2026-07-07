@@ -50,18 +50,18 @@ fn decision_contract_snapshot_load_quarantines_invalid_issue_dependency_rows() {
 	let reopened =
 		StateStore::open(&state_path).expect("invalid dependency contract should be quarantined");
 	let valid_contract = reopened
-		.decision_contract("decodex", "research-x-loop-contract")
+		.decision_contract("decodex", "decision-x-loop-contract")
 		.expect("valid contract should remain readable")
 		.expect("valid contract should exist");
 
-	assert_eq!(valid_contract.contract_id(), "research-x-loop-contract");
+	assert_eq!(valid_contract.contract_id(), "decision-x-loop-contract");
 
 	let project_contracts = reopened
 		.list_decision_contracts_for_project("decodex")
 		.expect("project contract list should skip invalid rows");
 
 	assert_eq!(project_contracts.len(), 1);
-	assert_eq!(project_contracts[0].contract_id(), "research-x-loop-contract");
+	assert_eq!(project_contracts[0].contract_id(), "decision-x-loop-contract");
 	assert!(
 		reopened
 			.list_decision_contracts_for_issue("decodex", "XY-BROKEN")

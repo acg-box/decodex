@@ -12,13 +12,21 @@ pub(super) fn autonomy_signal_id(fingerprint: &str) -> String {
 }
 
 pub(super) fn autonomy_signal_fingerprint(signal: &AutonomySignal) -> Result<String> {
+	autonomy_signal_fingerprint_for_kind(signal, signal.kind.as_str())
+}
+
+pub(super) fn legacy_docs_skill_drift_fingerprint(signal: &AutonomySignal) -> Result<String> {
+	autonomy_signal_fingerprint_for_kind(signal, "docs_skill_drift")
+}
+
+fn autonomy_signal_fingerprint_for_kind(signal: &AutonomySignal, kind: &str) -> Result<String> {
 	let material = serde_json::json!({
 		"schema": signal.schema,
 		"record_version": signal.record_version,
 		"project_id": signal.project_id,
 		"objective_id": signal.objective_id,
 		"objective_version": signal.objective_version,
-		"kind": signal.kind.as_str(),
+		"kind": kind,
 		"source_type": signal.source_type.as_str(),
 		"source_refs": sorted_strings(&signal.source_refs),
 		"primary_source_refs": sorted_strings(&signal.primary_source_refs),

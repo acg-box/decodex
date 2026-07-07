@@ -37,9 +37,11 @@ pub(crate) fn retained_review_needs_attention_error_class(reason: &str) -> &'sta
 		},
 		"pull_request_not_open" => "pull_request_not_open",
 		"retained_admin_merge_subject_unavailable" => "retained_admin_merge_subject_unavailable",
-		"review_orchestration_branch_mismatch" => "review_orchestration_branch_mismatch",
-		"review_orchestration_head_mismatch" => "review_orchestration_head_mismatch",
-		"review_orchestration_pr_mismatch" => "review_orchestration_pr_mismatch",
+		"review_lifecycle_authority_branch_mismatch" => {
+			"review_lifecycle_authority_branch_mismatch"
+		},
+		"review_lifecycle_authority_head_mismatch" => "review_lifecycle_authority_head_mismatch",
+		"review_lifecycle_authority_pr_mismatch" => "review_lifecycle_authority_pr_mismatch",
 		"runtime_standard_review_blocked" => "runtime_standard_review_blocked",
 		"runtime_standard_review_checkpoint_producer_failed" => {
 			"runtime_standard_review_checkpoint_producer_failed"

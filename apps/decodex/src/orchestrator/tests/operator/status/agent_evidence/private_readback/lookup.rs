@@ -101,7 +101,7 @@ fn private_evidence_readback_returns_manual_adopt_events_and_stable_command() {
 				"active_label_present": false,
 				"active_label_restored": true,
 				"existing_retained_worktree_mapping": true,
-				"existing_review_handoff_marker": false,
+				"existing_review_lifecycle_authority": false,
 				"manual_takeover_adopt": true,
 				"next_action": "continue retained post-review lifecycle"
 			}),

@@ -9,7 +9,7 @@ use crate::{
 			fixtures::{self, ReplayEvidenceSeed, SERVICE_ID},
 		},
 	},
-	state::{ReviewHandoffMarker, StateStore},
+	state::{ReviewLifecycleHandoffFixture, StateStore},
 };
 
 #[test]
@@ -25,7 +25,7 @@ fn autonomy_lineage_does_not_use_unlinked_review_lifecycle_as_pr_evidence() {
 	);
 	let (generated_issue_id, generated_issue_identifier) =
 		fixtures::generated_issue_link(&state_store, &seeded.decision_contract_id);
-	let stale_review_marker = ReviewHandoffMarker::new(
+	let stale_review_marker = ReviewLifecycleHandoffFixture::new(
 		"stale-review-run",
 		1,
 		"y/decodex-stale-review",
@@ -36,7 +36,11 @@ fn autonomy_lineage_does_not_use_unlinked_review_lifecycle_as_pr_evidence() {
 	);
 
 	state_store
-		.upsert_review_handoff_marker(SERVICE_ID, &generated_issue_id, &stale_review_marker)
+		.upsert_review_lifecycle_handoff_fixture(
+			SERVICE_ID,
+			&generated_issue_id,
+			&stale_review_marker,
+		)
 		.expect("stale review marker should persist");
 
 	for (kind, source_ref, summary) in [
@@ -102,7 +106,7 @@ fn autonomy_lineage_marks_same_pr_stale_head_lifecycle_as_partial() {
 		fixtures::generated_issue_link(&state_store, &seeded.decision_contract_id);
 	let stale_head_oid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 	let fresh_head_oid = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-	let stale_review_marker = ReviewHandoffMarker::new(
+	let stale_review_marker = ReviewLifecycleHandoffFixture::new(
 		"run-dogfood-review",
 		1,
 		"y/decodex-xy-1091",
@@ -113,7 +117,11 @@ fn autonomy_lineage_marks_same_pr_stale_head_lifecycle_as_partial() {
 	);
 
 	state_store
-		.upsert_review_handoff_marker(SERVICE_ID, &generated_issue_id, &stale_review_marker)
+		.upsert_review_lifecycle_handoff_fixture(
+			SERVICE_ID,
+			&generated_issue_id,
+			&stale_review_marker,
+		)
 		.expect("stale review marker should persist");
 
 	fixtures::record_replay_evidence_event(

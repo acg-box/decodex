@@ -3,7 +3,8 @@ use std::path::Path;
 use rusqlite::Connection;
 
 use crate::state::{
-	ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpointInput, StateStore,
+	ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture, ReviewPolicyCheckpointInput,
+	StateStore,
 };
 
 const DROPPED_REVIEW_MARKER_TABLES_FIXTURE: &str = r#"
@@ -92,8 +93,8 @@ INSERT INTO review_orchestrations (
 	1771290240, 5, 2, 4, 1771290300, '2026-06-17T01:04:00Z', 1771290240
 );
 "#;
-pub(crate) fn sample_pub_101_review_handoff() -> ReviewHandoffMarker {
-	ReviewHandoffMarker::new(
+pub(crate) fn sample_pub_101_review_handoff() -> ReviewLifecycleHandoffFixture {
+	ReviewLifecycleHandoffFixture::new(
 		"run-1",
 		1,
 		"x/decodex-pub-101",
@@ -104,8 +105,8 @@ pub(crate) fn sample_pub_101_review_handoff() -> ReviewHandoffMarker {
 	)
 }
 
-pub(crate) fn sample_pub_101_review_orchestration() -> ReviewOrchestrationMarker {
-	ReviewOrchestrationMarker::new(
+pub(crate) fn sample_pub_101_review_orchestration() -> ReviewLifecycleTransitionFixture {
+	ReviewLifecycleTransitionFixture::new(
 		"run-1",
 		1,
 		"x/decodex-pub-101",

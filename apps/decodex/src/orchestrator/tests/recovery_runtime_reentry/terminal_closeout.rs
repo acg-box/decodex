@@ -30,11 +30,11 @@ fn run_project_once_clears_stale_completed_closeout_lease_but_keeps_worktree() {
 	let run_id = "run-closeout-startup";
 	let pr_url = "https://github.com/hack-ink/decodex/pull/178";
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store
@@ -104,11 +104,11 @@ fn run_project_once_preserves_fresh_completed_closeout_lease() {
 	let run_id = "run-closeout-fresh-startup";
 	let pr_url = "https://github.com/hack-ink/decodex/pull/178";
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 	state::write_run_activity_marker(&worktree.path, run_id, 1)
 		.expect("fresh activity marker should write");
@@ -250,11 +250,11 @@ fn run_project_once_preserves_completed_unmerged_closeout_worktree() {
 		&temp_dir, &worktree, pr_url, &head_oid,
 	);
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store

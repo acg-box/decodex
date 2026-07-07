@@ -35,17 +35,17 @@ fn build_post_review_lane_statuses_reports_ready_to_land() {
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			"main",
 			pr_url,
 			&head_oid,
@@ -129,17 +129,17 @@ fn build_post_review_lane_statuses_waits_for_runtime_checkpoint_after_strict_pas
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			"main",
 			pr_url,
 			&head_oid,
@@ -177,7 +177,7 @@ fn build_post_review_lane_statuses_waits_for_runtime_checkpoint_after_strict_pas
 }
 
 #[test]
-fn build_post_review_lane_statuses_waits_when_clean_repair_head_outruns_lifecycle_marker() {
+fn build_post_review_lane_statuses_waits_when_clean_repair_head_outruns_lifecycle_authority() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =
@@ -185,7 +185,7 @@ fn build_post_review_lane_statuses_waits_when_clean_repair_head_outruns_lifecycl
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 	let (worktree, repaired_head_oid) =
-		support::retained_worktree_with_stale_review_lifecycle_marker(
+		support::retained_worktree_with_stale_review_lifecycle_authority(
 			&config,
 			&state_store,
 			&issue,
@@ -222,9 +222,9 @@ fn build_post_review_lane_statuses_waits_when_clean_repair_head_outruns_lifecycl
 
 	assert_eq!(lanes.len(), 1);
 	assert_eq!(lanes[0].classification, "wait_for_review");
-	assert_eq!(lanes[0].reason, "review_repair_writeback_stale_lifecycle_marker");
+	assert_eq!(lanes[0].reason, "review_repair_writeback_stale_lifecycle_authority");
 	assert_eq!(
 		lanes[0].readback_warning.as_deref(),
-		Some("review_repair_writeback_stale_lifecycle_marker")
+		Some("review_repair_writeback_stale_lifecycle_authority")
 	);
 }

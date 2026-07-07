@@ -31,7 +31,7 @@ fn schedule_retry_after_child_exit_records_failure_retry_for_closeout_issue_afte
 		&temp_dir, &worktree, pr_url, &head_oid,
 	);
 
-	tests::seed_review_handoff_marker(
+	tests::seed_review_lifecycle_handoff_fixture(
 		&state_store,
 		config.service_id(),
 		&issue.id,
@@ -118,7 +118,7 @@ fn schedule_retry_after_child_exit_keeps_blocked_closeout_retry_for_completed_is
 		&temp_dir, &worktree, pr_url, &head_oid,
 	);
 
-	tests::seed_review_handoff_marker(
+	tests::seed_review_lifecycle_handoff_fixture(
 		&state_store,
 		config.service_id(),
 		&issue.id,

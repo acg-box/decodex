@@ -4,9 +4,9 @@ mod handoff;
 mod records;
 
 #[cfg(test)]
-pub(crate) use self::handoff::ReviewHandoffMarker;
+pub(crate) use self::handoff::ReviewLifecycleHandoffFixture;
 #[cfg(test)]
-pub(crate) use self::records::ReviewOrchestrationMarker;
+pub(crate) use self::records::ReviewLifecycleTransitionFixture;
 pub(crate) use self::{
 	checkpoints::{LoopGuardrailCheckpoint, ReviewPolicyCheckpoint},
 	records::{ReviewLifecycleHandoffInput, ReviewLifecycleRecord, ReviewLifecycleTransitionInput},
@@ -25,7 +25,7 @@ pub(crate) trait ReviewLifecycleReadback {
 
 #[cfg(test)]
 #[allow(dead_code)]
-impl ReviewOrchestrationMarker {
+impl ReviewLifecycleTransitionFixture {
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
 		run_id: impl Into<String>,
@@ -129,7 +129,7 @@ impl ReviewOrchestrationMarker {
 
 #[cfg(test)]
 #[allow(dead_code)]
-impl ReviewHandoffMarker {
+impl ReviewLifecycleHandoffFixture {
 	pub(crate) fn from_lifecycle_record(record: &ReviewLifecycleRecord) -> Option<Self> {
 		Some(Self::new(
 			record.run_id().to_owned(),
@@ -144,7 +144,7 @@ impl ReviewHandoffMarker {
 }
 
 #[cfg(test)]
-impl ReviewLifecycleReadback for ReviewOrchestrationMarker {
+impl ReviewLifecycleReadback for ReviewLifecycleTransitionFixture {
 	fn branch_name(&self) -> &str {
 		self.branch_name()
 	}
@@ -181,12 +181,12 @@ impl ReviewLifecycleReadback for ReviewOrchestrationMarker {
 #[allow(dead_code)]
 impl ReviewLifecycleRecord {
 	#[cfg(test)]
-	pub(crate) fn from_test_review_markers(
-		handoff: &ReviewHandoffMarker,
-		orchestration: Option<&ReviewOrchestrationMarker>,
+	pub(crate) fn from_test_lifecycle_fixtures(
+		handoff: &ReviewLifecycleHandoffFixture,
+		orchestration: Option<&ReviewLifecycleTransitionFixture>,
 	) -> Self {
 		let head_sha = orchestration
-			.map(ReviewOrchestrationMarker::head_sha)
+			.map(ReviewLifecycleTransitionFixture::head_sha)
 			.unwrap_or_else(|| handoff.pr_head_oid());
 		Self {
 			project_id: String::from("test"),
@@ -200,23 +200,23 @@ impl ReviewLifecycleRecord {
 			pr_head_oid: handoff.pr_head_oid().to_owned(),
 			head_sha: head_sha.to_owned(),
 			phase: orchestration
-				.map(ReviewOrchestrationMarker::phase)
+				.map(ReviewLifecycleTransitionFixture::phase)
 				.unwrap_or("request_pending")
 				.to_owned(),
 			request_comment_database_id: orchestration
-				.and_then(ReviewOrchestrationMarker::request_comment_database_id),
+				.and_then(ReviewLifecycleTransitionFixture::request_comment_database_id),
 			request_created_at_unix_epoch: orchestration
-				.and_then(ReviewOrchestrationMarker::request_created_at_unix_epoch),
+				.and_then(ReviewLifecycleTransitionFixture::request_created_at_unix_epoch),
 			request_description_thumbs_up_count: orchestration
-				.and_then(ReviewOrchestrationMarker::request_description_thumbs_up_count),
+				.and_then(ReviewLifecycleTransitionFixture::request_description_thumbs_up_count),
 			request_retry_count: orchestration
-				.map(ReviewOrchestrationMarker::request_retry_count)
+				.map(ReviewLifecycleTransitionFixture::request_retry_count)
 				.unwrap_or(0),
 			external_round_count: orchestration
-				.map(ReviewOrchestrationMarker::external_round_count)
+				.map(ReviewLifecycleTransitionFixture::external_round_count)
 				.unwrap_or(0),
 			auto_merge_enabled_at_unix_epoch: orchestration
-				.and_then(ReviewOrchestrationMarker::auto_merge_enabled_at_unix_epoch),
+				.and_then(ReviewLifecycleTransitionFixture::auto_merge_enabled_at_unix_epoch),
 			landing_state: String::from("not_started"),
 			closeout_state: String::from("not_started"),
 			repair_attempt_count: 0,

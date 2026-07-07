@@ -29,23 +29,4 @@ impl McpContext {
 
 		files::read_file_resource(&uri.raw, path, "text/markdown")
 	}
-
-	pub(super) fn read_research_resource(
-		&self,
-		uri: &ResourceUri,
-	) -> Result<ResourceContent, McpError> {
-		let [concept] = uri.segments.as_slice() else {
-			return Err(McpError::resource_not_found());
-		};
-
-		if !files::safe_resource_stem(concept) {
-			return Err(McpError::resource_not_found());
-		}
-
-		files::read_file_resource(
-			&uri.raw,
-			self.repo_root.join("docs/research").join(format!("{concept}.md")),
-			"text/markdown",
-		)
-	}
 }

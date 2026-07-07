@@ -55,9 +55,8 @@ Then keep the body explicit:
 ## Current governing specs
 
 - [`loop-runtime.md`](./loop-runtime.md) defines the natural-language-first loop
-  runtime, Decodex-native Research/Decision stage, latent Loop/Decision Contract,
-  internal Execution Program, phase-scoped goals, unattended execution behavior, and
-  loop guardrails.
+  runtime, accepted Decision Contract boundary, internal Execution Program,
+  phase-scoped goals, unattended execution behavior, and loop guardrails.
 - [`autonomy-control-plane.md`](./autonomy-control-plane.md) defines the
   objective-driven project autonomy control plane, Objective Contract boundary,
   signal and proposal schemas, MCP action matrix, memory boundary, and self-dogfood
@@ -98,5 +97,3 @@ Then keep the body explicit:
   contract.
 - [`workflow-file.md`](./workflow-file.md) defines registered project `WORKFLOW.md`
   configuration semantics and required fields.
-- [`okf-knowledge-layer.md`](./okf-knowledge-layer.md) defines the portable OKF
-  engine, LLM Wiki profile stack, Decodex docs command surface, and profile boundary.

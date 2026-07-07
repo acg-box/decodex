@@ -68,7 +68,7 @@ fn review_handoff_persists_runtime_state_without_local_marker_cache() {
 	assert_eq!(tracker.state_updates.borrow().as_slice(), ["state-review"]);
 	assert_eq!(tracker.comments.borrow().len(), 1);
 	assert_eq!(
-		tests::persisted_review_handoff_marker(
+		tests::persisted_review_lifecycle_handoff_fixture(
 			&bridge,
 			&issue,
 			&tests::sample_review_context_in(temp_dir.path())

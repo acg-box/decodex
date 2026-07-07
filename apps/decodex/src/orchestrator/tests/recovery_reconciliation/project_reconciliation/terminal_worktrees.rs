@@ -87,7 +87,7 @@ fn project_reconciliation_preserves_terminal_identifier_worktree_with_review_aut
 		)
 		.expect("stale worktree mapping should record");
 
-	tests::seed_review_handoff_marker(
+	tests::seed_review_lifecycle_handoff_fixture(
 		&state_store,
 		config.service_id(),
 		stale_issue_id,
@@ -129,7 +129,7 @@ fn project_reconciliation_preserves_terminal_identifier_worktree_with_review_aut
 	);
 	assert!(
 		state_store
-			.review_handoff_marker(config.service_id(), stale_issue_id, branch_name)
+			.review_lifecycle_handoff_fixture(config.service_id(), stale_issue_id, branch_name)
 			.expect("review handoff lookup should succeed")
 			.is_some(),
 		"review lifecycle authority must be preserved"

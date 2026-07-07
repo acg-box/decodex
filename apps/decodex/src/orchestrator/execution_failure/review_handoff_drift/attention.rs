@@ -60,7 +60,7 @@ pub(super) fn review_handoff_state_drift_attention_error(
 				return Ok(None);
 			}
 
-			Some(String::from("missing_review_handoff_marker"))
+			Some(String::from("missing_review_lifecycle_record"))
 		},
 	};
 	let Some(drift_reason) = drift_reason else {
@@ -144,10 +144,10 @@ fn review_lifecycle_record_drift_reason(
 	lifecycle_record: &ReviewLifecycleRecord,
 ) -> Result<Option<String>> {
 	if lifecycle_record.branch_name() != issue_run.worktree.branch_name {
-		return Ok(Some(String::from("review_handoff_marker_branch_mismatch")));
+		return Ok(Some(String::from("review_lifecycle_authority_branch_mismatch")));
 	}
 	if lifecycle_record.pr_head_ref_name() != issue_run.worktree.branch_name {
-		return Ok(Some(String::from("review_handoff_marker_pr_head_ref_mismatch")));
+		return Ok(Some(String::from("review_lifecycle_authority_pr_head_ref_mismatch")));
 	}
 
 	let lineage = lineage::review_handoff_failure_drift_lineage(
@@ -157,11 +157,11 @@ fn review_lifecycle_record_drift_reason(
 	);
 
 	if !lineage.allows_lifecycle_recovery() {
-		return Ok(Some(format!("review_handoff_marker_{}", lineage.as_str())));
+		return Ok(Some(format!("review_lifecycle_authority_{}", lineage.as_str())));
 	}
 	if transition::review_handoff_state_drift_success_transition(workflow, issue_run)?.is_some() {
 		return Ok(None);
 	}
 
-	Ok(Some(String::from("review_handoff_marker_issue_state_unsupported")))
+	Ok(Some(String::from("review_lifecycle_authority_issue_state_unsupported")))
 }

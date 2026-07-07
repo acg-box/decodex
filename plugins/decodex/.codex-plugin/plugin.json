@@ -1,7 +1,7 @@
 {
   "name": "decodex",
   "version": "0.2.0",
-  "description": "Decodex lifecycle workflows for research, promotion, issue planning, ops, commit, and landing.",
+  "description": "Decodex runtime and operator workflows for planning, ops, commit, and landing.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -21,8 +21,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Decodex",
-    "shortDescription": "Maintain Decodex research, planning, operations, commit, and landing.",
-    "longDescription": "Routes Decodex bounded research, promotion, issue briefing and planning, runtime ops, commit, and landing. Repository execution policy, knowledge/docs, and generic challenge live in companion plugins.",
+    "shortDescription": "Operate Decodex planning, runtime ops, commit, and landing.",
+    "longDescription": "Routes Decodex product/runtime work: issue briefing and planning, runtime ops, lane control, recovery, commit, and landing. Generic repository work, OpenWiki-backed knowledge, and research/skeptic review live in external installed codebase, knowledge, and research plugins.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -33,8 +33,7 @@
     "privacyPolicyURL": "https://github.com/hack-ink/decodex",
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
-      "Research this with Decodex.",
-      "Plan accepted Decodex work.",
+      "Plan Decodex runtime work.",
       "Operate Decodex."
     ],
     "brandColor": "#0F766E"

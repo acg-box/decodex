@@ -2,7 +2,7 @@ use tempfile::TempDir;
 
 use crate::{
 	manual::{self, ManualLandLedgerContext, tests, tests::support::TestTracker},
-	state::{ReviewHandoffMarker, ReviewLifecycleRecord, StateStore},
+	state::{ReviewLifecycleHandoffFixture, ReviewLifecycleRecord, StateStore},
 	tracker::{
 		TrackerState, privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier, records,
 	},
@@ -21,7 +21,7 @@ fn manual_land_issue_closeout_writes_success_ledger_after_existing_marker() {
 		.states
 		.push(TrackerState { id: String::from("state-done"), name: String::from("Done") });
 
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		String::from("pub-1161-attempt-1"),
 		1,
 		String::from("xy/pub-1161"),
@@ -30,7 +30,7 @@ fn manual_land_issue_closeout_writes_success_ledger_after_existing_marker() {
 		String::from("xy/pub-1161"),
 		String::from("3cf2d24033527a774340c7d70c5ce437c90afe55"),
 	);
-	let lifecycle_record = ReviewLifecycleRecord::from_test_review_markers(&handoff, None);
+	let lifecycle_record = ReviewLifecycleRecord::from_test_lifecycle_fixtures(&handoff, None);
 
 	state_store
 		.record_run_attempt(handoff.run_id(), &issue.id, handoff.attempt_number(), "failed")

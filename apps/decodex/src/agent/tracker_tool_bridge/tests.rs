@@ -24,7 +24,7 @@ pub(crate) use support::{
 	FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker,
 	GitHubTokenAssertingPullRequestInspector, TestEnvVarGuard,
 	assert_review_policy_checkpoint_cleared, bridge_state_store, manual_attention_comment_args,
-	persisted_review_handoff_marker, persisted_review_orchestration_marker,
+	persisted_review_lifecycle_handoff_fixture, persisted_review_lifecycle_transition_fixture,
 	persisted_review_policy_checkpoint, sample_closeout_context_in, sample_in_progress_issue,
 	sample_issue, sample_local_repo, sample_pull_request, sample_review_context,
 	sample_review_context_in, sample_review_issue, sample_review_repair_context_in,

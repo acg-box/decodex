@@ -86,9 +86,7 @@ pub(super) fn validate_issue_candidates(
 
 pub(super) fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
 	match stage {
-		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" => {
-			Ok(())
-		},
+		"design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" => Ok(()),
 		_ => {
 			eyre::bail!(
 				"Autonomy proposal issue candidate `{key}` has unsupported stage `{stage}`."

@@ -1,6 +1,6 @@
 use crate::{
 	orchestrator::{
-		self, ReviewHandoffMarker, StateStore, tests,
+		self, ReviewLifecycleHandoffFixture, StateStore, tests,
 		tests::{FakePullRequestReviewStateInspector, FakeTracker},
 	},
 	worktree::WorktreeManager,
@@ -21,11 +21,11 @@ fn build_post_review_lane_statuses_keeps_unmerged_retry_budget_blocked() {
 	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/120";
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&ReviewHandoffMarker::new(
+		&ReviewLifecycleHandoffFixture::new(
 			"run-review-handoff",
 			1,
 			&worktree.branch_name,

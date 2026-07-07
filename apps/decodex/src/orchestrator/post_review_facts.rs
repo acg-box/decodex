@@ -232,7 +232,8 @@ mod tests {
 	use super::*;
 	use crate::orchestrator::PullRequestReviewState;
 	use crate::state::{
-		ReviewHandoffMarker, ReviewLifecycleRecord, ReviewPolicyCheckpointInput, StateStore,
+		ReviewLifecycleHandoffFixture, ReviewLifecycleRecord, ReviewPolicyCheckpointInput,
+		StateStore,
 	};
 
 	#[test]
@@ -257,7 +258,7 @@ mod tests {
 			issue_comments: Vec::new(),
 			reviews: Vec::new(),
 		};
-		let handoff = ReviewHandoffMarker::new(
+		let handoff = ReviewLifecycleHandoffFixture::new(
 			"run-1",
 			2,
 			"x/pub-101",
@@ -270,7 +271,7 @@ mod tests {
 		let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 			project_id: "pubfi",
 			issue_id: "PUB-101",
-			review_lifecycle: Some(&ReviewLifecycleRecord::from_test_review_markers(
+			review_lifecycle: Some(&ReviewLifecycleRecord::from_test_lifecycle_fixtures(
 				&handoff, None,
 			)),
 			review_state: &review_state,

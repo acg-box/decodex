@@ -21,7 +21,6 @@ fn resources_templates_list_exposes_parameterized_resources() {
 		.collect::<Vec<_>>();
 
 	assert!(uri_templates.contains(&"decodex://docs/spec/{topic}"));
-	assert!(uri_templates.contains(&"decodex://research/{concept}"));
 	assert!(uri_templates.contains(&"decodex://projects/{project_id}/lane-control/{issue}"));
 	assert!(uri_templates.contains(&"decodex://projects/{project_id}/status_live"));
 	assert!(uri_templates.contains(&"decodex://projects/{project_id}/activity_tail"));

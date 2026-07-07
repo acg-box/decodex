@@ -41,11 +41,11 @@ fn run_lease_reconciliation_keeps_completed_closeout_lane_with_fresh_activity() 
 		)
 		.expect("worktree mapping should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 	state::write_run_activity_marker(&worktree.path, run_id, 1)
 		.expect("fresh activity marker should write");
@@ -98,11 +98,11 @@ fn active_daemon_child_reconciliation_keeps_completed_closeout_lane_with_fresh_a
 		)
 		.expect("worktree mapping should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 	state::write_run_activity_marker(&worktree.path, run_id, 1)
 		.expect("fresh activity marker should write");

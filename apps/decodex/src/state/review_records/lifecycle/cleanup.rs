@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::state::{ReviewHandoffMarker, ReviewOrchestrationMarker};
+use crate::state::{ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture};
 use crate::{
 	prelude::Result,
 	state::{StateStore, runtime_records::ReviewLifecycleKey},
@@ -65,17 +65,17 @@ impl StateStore {
 		&self,
 		project_id: &str,
 		issue_id: &str,
-		handoff_marker: &ReviewHandoffMarker,
-		orchestration_marker: &ReviewOrchestrationMarker,
+		handoff_fixture: &ReviewLifecycleHandoffFixture,
+		transition_fixture: &ReviewLifecycleTransitionFixture,
 	) -> Result<()> {
 		let lifecycle_key =
-			ReviewLifecycleKey::new(project_id, issue_id, handoff_marker.branch_name());
+			ReviewLifecycleKey::new(project_id, issue_id, handoff_fixture.branch_name());
 		let mut state = self.lock()?;
 
 		if state
 			.review_lifecycle_records
 			.get(&lifecycle_key)
-			.is_some_and(|record| record.matches_handoff_identity(handoff_marker))
+			.is_some_and(|record| record.matches_handoff_identity(handoff_fixture))
 		{
 			state.review_lifecycle_records.remove(&lifecycle_key);
 		}
@@ -83,17 +83,17 @@ impl StateStore {
 		state.review_policy_checkpoints.retain(|key, _record| {
 			key.project_id != project_id
 				|| key.issue_id != issue_id
-				|| key.run_id != orchestration_marker.run_id()
-				|| key.attempt_number != orchestration_marker.attempt_number()
+				|| key.run_id != transition_fixture.run_id()
+				|| key.attempt_number != transition_fixture.attempt_number()
 		});
 		self.persist_runtime_state_locked(&state)?;
 
 		self.delete_review_marker_identity_locked(
 			project_id,
 			issue_id,
-			handoff_marker.branch_name(),
-			orchestration_marker.run_id(),
-			orchestration_marker.attempt_number(),
+			handoff_fixture.branch_name(),
+			transition_fixture.run_id(),
+			transition_fixture.attempt_number(),
 		)
 	}
 }

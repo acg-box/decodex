@@ -36,11 +36,11 @@ fn build_post_review_lane_statuses_blocks_worktree_head_read_failures() {
 	.to_owned();
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 	fs::remove_file(&branch_ref_path).expect("branch ref should remove");
 

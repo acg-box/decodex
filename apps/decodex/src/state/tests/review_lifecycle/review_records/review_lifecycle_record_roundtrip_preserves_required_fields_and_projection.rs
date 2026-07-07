@@ -1,9 +1,9 @@
-use crate::state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore};
+use crate::state::{ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture, StateStore};
 
 #[test]
 fn review_lifecycle_record_roundtrip_preserves_required_fields_and_projection() {
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"run-1",
 		2,
 		"x/decodex-pub-101",
@@ -14,17 +14,17 @@ fn review_lifecycle_record_roundtrip_preserves_required_fields_and_projection() 
 	);
 
 	store
-		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &handoff)
 		.expect("review handoff projection should persist");
 
 	let restored_handoff = store
-		.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+		.review_lifecycle_handoff_fixture("pubfi", "PUB-101", "x/decodex-pub-101")
 		.expect("review handoff projection should read")
 		.expect("review handoff projection should exist");
 
 	assert_eq!(restored_handoff, handoff);
 
-	let orchestration = ReviewOrchestrationMarker::new(
+	let orchestration = ReviewLifecycleTransitionFixture::new(
 		"run-1",
 		2,
 		"x/decodex-pub-101",
@@ -40,7 +40,7 @@ fn review_lifecycle_record_roundtrip_preserves_required_fields_and_projection() 
 	);
 
 	store
-		.upsert_review_orchestration_marker("pubfi", "PUB-101", &orchestration)
+		.upsert_review_lifecycle_transition_fixture("pubfi", "PUB-101", &orchestration)
 		.expect("review orchestration projection should persist");
 
 	let lifecycle = store
@@ -78,7 +78,7 @@ fn review_lifecycle_record_roundtrip_preserves_required_fields_and_projection() 
 	assert!(lifecycle.updated_at_unix() > 0);
 
 	store
-		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &handoff)
 		.expect("same handoff projection should persist without resetting lifecycle state");
 
 	let lifecycle = store
@@ -90,7 +90,7 @@ fn review_lifecycle_record_roundtrip_preserves_required_fields_and_projection() 
 	assert_eq!(lifecycle.request_comment_database_id(), Some(1_234));
 
 	let restored_orchestration = store
-		.review_orchestration_marker("pubfi", "PUB-101", &handoff)
+		.review_lifecycle_transition_fixture("pubfi", "PUB-101", &handoff)
 		.expect("review orchestration projection should read")
 		.expect("review orchestration projection should exist");
 

@@ -38,7 +38,7 @@ pub(crate) use self::{
 	review_orchestration::{
 		apply_non_github_review_post_review_classification,
 		apply_pre_orchestration_post_review_classification,
-		apply_review_orchestration_phase_classification, external_review_has_actionable_feedback,
+		apply_review_lifecycle_action_classification, external_review_has_actionable_feedback,
 		external_review_has_strict_pass_signals, external_review_result_arrived,
 		load_post_review_lane_review_state, load_post_review_lifecycle_record,
 		request_ack_timed_out, request_comment_has_eyes, validate_post_review_lane_review_state,

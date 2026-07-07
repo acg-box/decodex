@@ -7,7 +7,7 @@ use crate::orchestrator::{
 };
 
 #[test]
-fn reconcile_post_review_orchestration_rebinds_stale_head_marker_after_repair_push() {
+fn reconcile_post_review_orchestration_rebinds_stale_head_lifecycle_authority_after_repair_push() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let config = tests::service_config_with_github_token_env_var(&config, "PATH");
 	let _path_guard = tests::install_fake_post_issue_comment_gh_response(
@@ -29,17 +29,17 @@ fn reconcile_post_review_orchestration_rebinds_stale_head_marker_after_repair_pu
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &marker_head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &marker_head_oid),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			"main",
 			pr_url,
 			&marker_head_oid,
@@ -66,9 +66,9 @@ fn reconcile_post_review_orchestration_rebinds_stale_head_marker_after_repair_pu
 		&state_store,
 		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
 	)
-	.expect("post-review orchestration should rebind stale marker without attention");
+	.expect("post-review orchestration should rebind stale lifecycle authority without attention");
 
-	let marker = tests::persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,

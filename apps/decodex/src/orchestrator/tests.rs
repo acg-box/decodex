@@ -82,12 +82,13 @@ use self::{
 		temp_project_layout_with_workflow_markdown, write_service_config,
 	},
 	review_markers::{
-		persisted_review_handoff_marker, persisted_review_orchestration_marker,
-		persisted_review_orchestration_marker_for_path, sample_review_handoff_marker,
-		sample_review_lifecycle_record, sample_review_orchestration_marker,
-		seed_review_handoff_marker, seed_review_handoff_marker_for_path,
-		seed_review_handoff_marker_value, seed_review_orchestration_marker,
-		seed_review_orchestration_marker_for_path, worktree_mapping_for_path,
+		persisted_review_lifecycle_handoff_fixture, persisted_review_lifecycle_transition_fixture,
+		persisted_review_lifecycle_transition_fixture_for_path,
+		sample_review_lifecycle_handoff_fixture, sample_review_lifecycle_record,
+		sample_review_lifecycle_transition_fixture, seed_review_lifecycle_handoff_fixture,
+		seed_review_lifecycle_handoff_fixture_for_path,
+		seed_review_lifecycle_handoff_fixture_value, seed_review_lifecycle_transition_fixture,
+		seed_review_lifecycle_transition_fixture_for_path, worktree_mapping_for_path,
 	},
 	review_state::{
 		FakePullRequestReviewStateInspector, add_external_review_ack, add_external_review_findings,
@@ -121,7 +122,7 @@ use crate::{
 		PullRequestReviewStateRepository, PullRequestReviewSummaryState,
 		PullRequestReviewThreadConnection, PullRequestReviewThreadNode,
 		PullRequestStatusCheckRollup, RetainedPartialProgress, RetainedReviewRepairPushFailed,
-		RetryComment, ReviewHandoffMarker, RunCompletionDisposition,
+		RetryComment, ReviewLifecycleHandoffFixture, RunCompletionDisposition,
 	},
 	prelude::Result,
 	state::{

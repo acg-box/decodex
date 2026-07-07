@@ -1,14 +1,14 @@
 ---
 type: "Drift Audit"
 title: "MCP Remote Control Productization"
-description: "Audit Streamable HTTP remote-control docs against code, tests, research, and external MCP security guidance."
+description: "Audit Streamable HTTP remote-control docs against code, tests, and external MCP security guidance."
 status: active
 authority: evidence
 owner: docs
 tags: [mcp, remote-control, semantic-drift, evidence]
 source_refs: [https://modelcontextprotocol.io/specification/2025-11-25/basic/transports, https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization, https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices, https://modelcontextprotocol.io/specification/draft/changelog, https://www.nsa.gov/Portals/75/documents/Cybersecurity/CSI_MCP_SECURITY.pdf?ver=bmgiSbNQLP6Z_GiWtRt6bg%3D%3D]
-code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/mcp.rs, apps/decodex/tests/mcp_stdio.rs, README.md, docs/spec/runtime.md, docs/runbook/mcp-remote-control.md, docs/reference/operator-control-plane.md, docs/research/mcp-remote-control-productization.md]
-related: [../spec/runtime.md, ../runbook/mcp-remote-control.md, ../reference/operator-control-plane.md, ../decisions/mcp-capability-gateway-and-skill-slimming.md, ../research/mcp-remote-control-productization.md]
+code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/mcp.rs, apps/decodex/tests/mcp_stdio.rs, README.md, docs/spec/runtime.md, docs/runbook/mcp-remote-control.md, docs/reference/operator-control-plane.md]
+related: [../spec/runtime.md, ../runbook/mcp-remote-control.md, ../reference/operator-control-plane.md, ../decisions/mcp-capability-gateway-and-skill-slimming.md]
 drift_watch: [decodex mcp serve --transport streamable-http, --allow-origin, --bearer-token-env, Authorization, Mcp-Session-Id, text/event-stream, decodex_observe, decodex_lane_control, decodex_project_control, authorization, protected-resource, process-level smoke]
 last_verified: 2026-06-18
 ---
@@ -45,8 +45,8 @@ last_verified: 2026-06-18
   lane-control refusals, project-control `scan` refusal, and public-text guards.
 - `apps/decodex/tests/mcp_stdio.rs` covers stdio process smoke and a real
   `decodex mcp serve --transport streamable-http` child-process smoke.
-- `docs/research/mcp-remote-control-productization.md` records the external evidence
-  and selected staged productization strategy.
+- `docs/decisions/mcp-capability-gateway-and-skill-slimming.md` records the selected
+  staged productization strategy.
 - Official MCP transport and authorization docs, MCP security guidance, the MCP draft
   changelog, and the NSA May 2026 guidance all support fail-closed remote access,
   explicit authorization boundaries, no token passthrough, and a future-compatible
@@ -64,7 +64,8 @@ last_verified: 2026-06-18
   guards.
 - `cargo test -p decodex --test mcp_stdio mcp_streamable_http_process_observe_profile_smoke -- --nocapture`
   passes the real child-process Streamable HTTP smoke.
-- `decodex docs check` must pass after this docs promotion.
+- The repository validation gate that matches the touched surface must pass after this
+  documentation promotion.
 
 ## Verdict
 
@@ -96,6 +97,5 @@ interoperability work, not a current Decodex claim.
 - [`../spec/runtime.md`](../spec/runtime.md)
 - [`../runbook/mcp-remote-control.md`](../runbook/mcp-remote-control.md)
 - [`../reference/operator-control-plane.md`](../reference/operator-control-plane.md)
-- [`../research/mcp-remote-control-productization.md`](../research/mcp-remote-control-productization.md)
 - [`../../apps/decodex/src/mcp.rs`](../../apps/decodex/src/mcp.rs)
 - [`../../apps/decodex/tests/mcp_stdio.rs`](../../apps/decodex/tests/mcp_stdio.rs)

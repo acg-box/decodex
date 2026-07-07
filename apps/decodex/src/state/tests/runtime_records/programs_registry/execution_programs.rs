@@ -20,7 +20,7 @@ fn execution_programs_persist_reload_and_list_by_contract() {
 
 	assert_eq!(record.project_id(), "decodex");
 	assert_eq!(record.program_id(), "program-853");
-	assert_eq!(record.source_contract_id(), Some("research-x-loop-contract"));
+	assert_eq!(record.source_contract_id(), Some("decision-x-loop-contract"));
 	assert_eq!(record.program().nodes().len(), 1);
 	assert!(record.created_at_unix() > 0);
 	assert!(record.updated_at_unix() >= record.created_at_unix());
@@ -32,10 +32,10 @@ fn execution_programs_persist_reload_and_list_by_contract() {
 		.expect("execution program should exist");
 
 	assert_eq!(reloaded.created_at(), record.created_at());
-	assert_eq!(reloaded.program().source_contract_id(), Some("research-x-loop-contract"));
+	assert_eq!(reloaded.program().source_contract_id(), Some("decision-x-loop-contract"));
 
 	let contract_programs = reopened
-		.list_execution_programs_for_contract("decodex", "research-x-loop-contract")
+		.list_execution_programs_for_contract("decodex", "decision-x-loop-contract")
 		.expect("contract programs should list");
 
 	assert_eq!(contract_programs.len(), 1);
@@ -53,7 +53,7 @@ fn execution_programs_persist_reload_and_list_by_contract() {
 	assert_eq!(intake_plans.len(), 1);
 	assert_eq!(intake_plans[0].program_id(), "program-853");
 	assert_eq!(intake_plans[0].intake_kind(), "goal_intake");
-	assert_eq!(intake_plans[0].source_contract_id(), Some("research-x-loop-contract"));
+	assert_eq!(intake_plans[0].source_contract_id(), Some("decision-x-loop-contract"));
 
 	let issue_mappings = reopened
 		.list_program_issue_mappings("decodex", "program-853")
@@ -124,7 +124,7 @@ fn decision_contract_reload_rejects_row_key_payload_mismatch() {
 
 	let mut payload = serde_json::from_str::<Value>(include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
-		"/fixtures/decision_contract/research_x_latent_contract.json"
+		"/fixtures/decision_contract/decision_x_latent_contract.json"
 	)))
 	.expect("fixture should parse as JSON");
 
@@ -137,7 +137,7 @@ fn decision_contract_reload_rejects_row_key_payload_mismatch() {
 			"UPDATE decision_contracts SET payload_json = ?1 WHERE contract_id = ?2",
 			rusqlite::params![
 				serde_json::to_string(&payload).expect("payload should serialize"),
-				"research-x-loop-contract",
+				"decision-x-loop-contract",
 			],
 		)
 		.expect("decision contract row should corrupt for test");

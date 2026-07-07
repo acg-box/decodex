@@ -1,5 +1,0 @@
-interface:
-  display_name: "Codebase Verification"
-  short_description: "Fresh evidence for done, fixed, passing, and ready claims"
-policy:
-  allow_implicit_invocation: false

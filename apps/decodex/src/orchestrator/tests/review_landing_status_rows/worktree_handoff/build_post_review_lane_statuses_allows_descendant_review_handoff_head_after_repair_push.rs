@@ -32,17 +32,21 @@ fn build_post_review_lane_statuses_allows_descendant_review_handoff_head_after_r
 		)
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &marker_head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(
+			&worktree.branch_name,
+			pr_url,
+			&marker_head_oid,
+		),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			&worktree.branch_name,
 			pr_url,
 			&current_head_oid,

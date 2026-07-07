@@ -64,7 +64,7 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 			.success()
 	);
 
-	tests::seed_review_handoff_marker(
+	tests::seed_review_lifecycle_handoff_fixture(
 		&state_store,
 		config.service_id(),
 		&issue.id,

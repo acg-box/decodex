@@ -32,7 +32,7 @@ impl DecisionResearchProvenance {
 	}
 }
 
-/// Non-authoritative research evidence retained before promotion.
+/// Non-authoritative decision evidence retained before acceptance.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct DecisionResearchEvidence {
 	#[serde(default = "validation::default_research_evidence_kind")]

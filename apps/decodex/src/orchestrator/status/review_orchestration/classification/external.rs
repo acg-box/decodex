@@ -5,7 +5,7 @@ use crate::orchestrator::status::{
 };
 use crate::state::ReviewLifecycleRecord;
 
-pub(crate) fn apply_review_orchestration_phase_classification(
+pub(crate) fn apply_review_lifecycle_action_classification(
 	classification: &mut PostReviewLaneClassification,
 	review_state: &PullRequestReviewState,
 	lifecycle_record: &ReviewLifecycleRecord,

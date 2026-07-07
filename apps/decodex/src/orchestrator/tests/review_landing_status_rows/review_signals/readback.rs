@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[test]
-fn build_post_review_lane_statuses_preserves_handoff_marker_when_pr_readback_fails() {
+fn build_post_review_lane_statuses_preserves_lifecycle_authority_when_pr_readback_fails() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = tests::sample_issue("In Review", &[]);
@@ -35,11 +35,11 @@ fn build_post_review_lane_statuses_preserves_handoff_marker_when_pr_readback_fai
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
 
 	let lanes = orchestrator::build_post_review_lane_statuses(
@@ -92,11 +92,11 @@ fn build_post_review_lane_statuses_skips_external_review_when_disabled() {
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
 
 	let review_state = tests::sample_pull_request_review_state(
@@ -155,11 +155,11 @@ fn standard_review_waits_for_runtime_review_checkpoint_before_landing() {
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
 
 	let review_state = tests::sample_pull_request_review_state(

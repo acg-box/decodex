@@ -5,8 +5,7 @@ use crate::{
 		self, McpError, TOOL_AUTONOMY_ACCEPT_OBJECTIVE, TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
 		TOOL_AUTONOMY_COMPILE_PROPOSAL, TOOL_AUTONOMY_DRAFT_OBJECTIVE,
 		TOOL_AUTONOMY_REQUEST_PROMOTION, TOOL_AUTONOMY_SUBMIT_SIGNAL, TOOL_INTAKE_GOAL,
-		TOOL_LANE_CONTROL, TOOL_OBSERVE, TOOL_PLAN, TOOL_PROJECT_CONTROL, TOOL_RESEARCH_COMPILE,
-		TOOL_RESEARCH_PROMOTE, planning,
+		TOOL_LANE_CONTROL, TOOL_OBSERVE, TOOL_PLAN, TOOL_PROJECT_CONTROL, planning,
 		server::{core::McpServer, protocol::CallToolParams},
 		tools,
 	},
@@ -47,8 +46,6 @@ impl McpServer {
 		match params.name.as_str() {
 			TOOL_OBSERVE => Ok(self.call_observe_tool(arguments)),
 			TOOL_PLAN => Ok(planning::call_plan_tool(arguments)),
-			TOOL_RESEARCH_COMPILE => Ok(self.call_research_compile_tool(arguments)),
-			TOOL_RESEARCH_PROMOTE => Ok(self.call_research_promote_tool(arguments)),
 			TOOL_INTAKE_GOAL => Ok(self.call_intake_goal_tool(arguments)),
 			TOOL_AUTONOMY_DRAFT_OBJECTIVE => Ok(self.call_autonomy_draft_objective_tool(arguments)),
 			TOOL_AUTONOMY_ACCEPT_OBJECTIVE => {

@@ -9,7 +9,8 @@ Shape accepted work into Decodex-native issue briefs and Program Intake readines
 Read `../../references/routing.md` for project policy and Program-vs-label dispatch
 rules.
 
-- Use this only after promotion or explicit execution instruction.
+- Use this only after explicit Decodex execution instruction or accepted
+  project-policy authority.
 - Own issue shaping here; do not call external delivery `issue`, `split`, `brief`,
   `handoff`, or `progress` skills for Decodex planning.
 - Give each issue one outcome, scope, landing zone, acceptance, validation,
@@ -27,7 +28,7 @@ rules.
 - For existing issue-batch intake, hold issues that lack a generic dispatch briefing
   instead of treating machine-only blocks, private pointers, progress checkpoints, or
   review summaries as executable issue text.
-- When an MCP client is available, prefer `research_promote` and `intake_goal` for
-  typed readiness/apply boundaries; dry-run stays non-mutating and apply requires
-  explicit authority.
-- Do not replace `WORKFLOW.md`, mutate active state, or queue latent research.
+- When an MCP client is available, prefer `intake_goal` for typed Program Intake
+  readiness/apply boundaries; dry-run stays non-mutating and apply requires explicit
+  authority.
+- Do not replace `WORKFLOW.md`, mutate active state, or queue unaccepted decisions.
