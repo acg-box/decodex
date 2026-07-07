@@ -4,7 +4,6 @@
 # | task              | type      | cwd  |
 # | ----------------- | --------- | ---- |
 # | check             | composite |      |
-# | check-docs        | command   |      |
 # | check-node        | composite |      |
 # | check-node-types  | command   | site |
 # | check-rust        | command   |      |
@@ -14,26 +13,11 @@ clear = true
 workspace = false
 dependencies = [
 	"build",
-	"check-docs",
 	"check-node",
 	"check-rust",
 	"fmt-check",
 	"lint",
 	"test",
-]
-
-[tasks.check-docs]
-workspace = false
-command = "cargo"
-args = [
-	"run",
-	"-p",
-	"decodex",
-	"--bin",
-	"decodex",
-	"--",
-	"docs",
-	"check",
 ]
 
 [tasks.check-node]

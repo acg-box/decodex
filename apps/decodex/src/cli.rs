@@ -2,7 +2,6 @@ mod account_commands;
 mod app_command;
 mod attempt_command;
 mod control_commands;
-mod docs_okf_commands;
 mod git_hook_commands;
 mod manual_commands;
 mod probe_command;
@@ -30,14 +29,11 @@ use self::{
 		DiagnoseCommand, EvidenceCommand, LaneCommand, McpCommand, ProjectCommand, RunCommand,
 		ServeCommand, StatusCommand,
 	},
-	docs_okf_commands::{DocsCommand, OkfCommand},
 	git_hook_commands::GitHookCommand,
 	manual_commands::{CommitCommand, LandCommand},
 	probe_command::ProbeCommand,
 	recovery_commands::RecoverCommand,
-	research_intake_commands::{
-		ArchiveLinearCommand, IntakeCommand, MaintenanceCommand, ResearchCommand,
-	},
+	research_intake_commands::{ArchiveLinearCommand, IntakeCommand, MaintenanceCommand},
 };
 use crate::prelude::Result;
 
@@ -76,9 +72,6 @@ impl Cli {
 			Command::Status(args) => args.run(),
 			Command::Diagnose(args) => args.run(),
 			Command::Evidence(args) => args.run(),
-			Command::Docs(args) => args.run(),
-			Command::Okf(args) => args.run(),
-			Command::Research(args) => args.run(),
 			Command::Intake(args) => args.run(),
 			Command::Recover(args) => args.run(),
 			Command::ArchiveLinear(args) => args.run(),
@@ -130,12 +123,6 @@ enum Command {
 	Diagnose(DiagnoseCommand),
 	/// Inspect local-only private execution evidence for one issue or run.
 	Evidence(EvidenceCommand),
-	/// Validate the repo docs as a Markdown-only OKF knowledge bundle.
-	Docs(DocsCommand),
-	/// Inspect portable OKF bundles.
-	Okf(OkfCommand),
-	/// Compile or promote Decodex-native research/design contracts.
-	Research(ResearchCommand),
 	/// Operator issue-batch intake into internal Execution Programs, not a graph editor.
 	Intake(IntakeCommand),
 	/// Diagnose or explicitly repair supported retained-lane recovery cases.

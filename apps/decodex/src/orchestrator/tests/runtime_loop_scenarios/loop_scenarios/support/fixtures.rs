@@ -175,9 +175,9 @@ pub(crate) fn loop_scenario_assert_harness_candidates(
 pub(crate) fn loop_scenario_research_x_contract() -> DecisionContract {
 	serde_json::from_str(include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
-		"/fixtures/decision_contract/research_x_latent_contract.json"
+		"/fixtures/decision_contract/decision_x_latent_contract.json"
 	)))
-	.expect("research X fixture should deserialize")
+	.expect("decision X fixture should deserialize")
 }
 
 pub(crate) fn loop_scenario_node(

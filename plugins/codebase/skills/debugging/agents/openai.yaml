@@ -1,5 +1,0 @@
-interface:
-  display_name: "Codebase Debugging"
-  short_description: "Root-cause debugging for repository bugs and failing checks"
-policy:
-  allow_implicit_invocation: false

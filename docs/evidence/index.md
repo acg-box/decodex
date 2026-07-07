@@ -5,8 +5,6 @@ claims without becoming implementation authority by themselves.
 
 ## Concepts
 
-- [Decodex Plugin Eval](./decodex-plugin-eval.md)
-- [Docs Self-Iteration](./docs-self-iteration.md)
 - [MCP Remote Control Productization](./mcp-remote-control-productization.md)
 
 ## Maintenance
@@ -15,5 +13,5 @@ claims without becoming implementation authority by themselves.
   concepts.
 - Keep private runtime evidence in Decodex runtime storage, not in `docs/`.
 - Link evidence concepts from the owning `spec`, `runbook`, `reference`,
-  `decision`, or `research` concept.
+  or `decision` concept.
 - Keep semantic-drift proof here when the audit needs durable, public-safe reuse.

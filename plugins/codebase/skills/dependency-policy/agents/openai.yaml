@@ -1,5 +1,0 @@
-interface:
-  display_name: "Dependency Policy"
-  short_description: "Dependency rolls, style cleanup, lockfiles, and action pins"
-policy:
-  allow_implicit_invocation: false

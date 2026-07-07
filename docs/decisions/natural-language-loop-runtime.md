@@ -14,9 +14,10 @@ Status: accepted
 Date: 2026-06-09
 Question: Should Decodex expose execution graphs as the user workflow, or keep graph
 semantics internal behind a natural-language loop runtime?
-Decision: Decodex should be a natural-language-first loop runtime. Research produces a
-latent Loop/Decision Contract, accepted decisions promote into an internal Execution
-Program, and normal Linear issues remain the executable Decodex lanes.
+Decision: Decodex should be a natural-language-first loop runtime. Accepted decisions
+become runtime-local Decision Contracts, Decision Contracts materialize into an
+internal Execution Program, and normal Linear issues remain the executable Decodex
+lanes.
 
 ## Context
 
@@ -28,10 +29,11 @@ ordinary use more complicated than the existing Codex conversation workflow.
 
 The intended everyday flow is:
 
-1. The user discusses and researches work in Codex conversation.
-2. Research or design produces a latent decision package.
+1. The user discusses work in Codex conversation and may use external team workflows
+   for investigation.
+2. Accepted direction is recorded as a Decision Contract.
 3. The user accepts the direction or asks Decodex to arrange or push it forward.
-4. Decodex promotes accepted decisions into internal execution state and normal Linear
+4. Decodex materializes accepted decisions into internal execution state and normal Linear
    lanes.
 
 ## Decision
@@ -39,9 +41,8 @@ The intended everyday flow is:
 Decodex keeps graph semantics backstage.
 
 - The user-facing surface stays natural language.
-- Decodex owns a native Research/Decision stage for Decodex work.
-- Research output is latent until accepted or promoted.
-- Accepted decisions become a Loop/Decision Contract.
+- Generic investigation lives outside Decodex runtime ownership.
+- Accepted decisions become a Decision Contract.
 - The loop runtime derives an internal Execution Program with DAG semantics such as
   objective lineage, dependencies, stage, conflict domain, acceptance criteria, queue
   intent, ready-node selection, and drift handling.
@@ -73,9 +74,9 @@ of letting the runtime use those surfaces as execution adapters.
   graph ids or DAG commands.
 - New execution-program code must bridge into existing Linear issue lanes rather than
   replacing them.
-- Research adapters must preserve an acceptance/promotion boundary before queueing or
-  implementation starts.
-- Loop stop conditions must route to failure attribution, research-contract feedback,
+- External investigation adapters must preserve an acceptance boundary before queueing
+  or implementation starts.
+- Loop stop conditions must route to failure attribution, accepted decision updates,
   architecture review, or manual attention instead of infinite patching.
 - Harness telemetry should improve prompts, skills, validators, issue templates, and
   loop policy without retroactively changing accepted lane contracts.
