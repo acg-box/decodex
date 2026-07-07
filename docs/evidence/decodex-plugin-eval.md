@@ -103,7 +103,7 @@ Codebase:
 
 `plugins/codebase/hooks/hooks.json` adds auxiliary Codex lifecycle hints for
 `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `PreCompact`. It reminds Codex
-about `decodex/commit/1` commit-message style before commit or push operations, warns
+about `decodex/commit/2` commit-message style before commit or push operations, warns
 about large implementation diffs before ready/commit claims, and keeps development
 coupled to source-backed docs, OKF/LLM Wiki, or durable knowledge before non-trivial
 repo work and when public code/config/command/status/plugin surfaces change. The

@@ -118,7 +118,7 @@ api_key_env_var = "LINEAR_API_KEY"
 token_env_var = "GITHUB_TOKEN"
 
 [codex]
-review = "basic"
+review = "standard"
 
 # Optional secondary public-projection privacy guard.
 # [privacy_classifier]
@@ -138,10 +138,10 @@ Notes:
 - Decodex does not expose repo-local model or reasoning overrides. `codex app-server` inherits those defaults from `~/.codex/config.toml`.
 - `api_key_env_var` is required and must name the environment variable that stores the Linear API token.
 - `github.token_env_var` is required for PR-backed review handoff validation and post-review PR-state inspection and must name the environment variable that stores the GitHub token.
-- For the self-dogfood pilot, use `[codex].review = "basic"` when the lane should
-  use only Self Check, `"standard"` when it should also require Decodex Review, and
-  `"strict"` when it should additionally request GitHub Review after PR handoff.
-  `"off"` skips review gates. If omitted, the default is `"strict"`.
+- For the self-dogfood pilot, use `[codex].review = "standard"` when the lane should
+  require Decodex Review, and `"strict"` when it should additionally request GitHub
+  Review after PR handoff. `"off"` skips review gates. If omitted, the default is
+  `"strict"`.
 - Retained lanes require phase-scoped app-server goals. If the selected Codex
   app-server lacks `thread/goal/*` methods, Decodex fails fast with an unsupported
   app-server blocker instead of using ordinary non-goal continuation.

@@ -7,9 +7,7 @@ use serde::Deserialize;
 pub enum ReviewLevel {
 	/// Disable review gates.
 	Off,
-	/// Require implementation self-check only.
-	Basic,
-	/// Require self-check plus the Decodex Review checkpoint gate.
+	/// Require the Decodex Review checkpoint gate.
 	Standard,
 	/// Require standard review plus the GitHub Review path.
 	#[default]
@@ -20,15 +18,9 @@ impl ReviewLevel {
 	pub const fn as_str(self) -> &'static str {
 		match self {
 			Self::Off => "off",
-			Self::Basic => "basic",
 			Self::Standard => "standard",
 			Self::Strict => "strict",
 		}
-	}
-
-	/// Whether this level prompts the implementation self-check.
-	pub const fn uses_self_check(self) -> bool {
-		!matches!(self, Self::Off)
 	}
 
 	/// Whether this level uses the structured Decodex Review checkpoint gate.

@@ -7,7 +7,8 @@ mod model;
 mod policy;
 mod validation;
 
-#[cfg(test)] pub(crate) use self::model::ExecutionReadinessState;
+#[cfg(test)]
+pub(crate) use self::model::ExecutionReadinessState;
 pub(crate) use self::{
 	evaluation::{
 		ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary,
@@ -23,4 +24,5 @@ pub(crate) use self::{
 	},
 };
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

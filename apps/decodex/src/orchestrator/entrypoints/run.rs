@@ -45,8 +45,9 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 
 	let preferred_run_identity = match (request.preferred_run_id, request.preferred_attempt_number)
 	{
-		(Some(run_id), Some(attempt_number)) =>
-			Some(PreferredRunIdentity { run_id, attempt_number }),
+		(Some(run_id), Some(attempt_number)) => {
+			Some(PreferredRunIdentity { run_id, attempt_number })
+		},
 		(None, None) => None,
 		_ => eyre::bail!("preferred run identity requires both `run_id` and `attempt_number`."),
 	};

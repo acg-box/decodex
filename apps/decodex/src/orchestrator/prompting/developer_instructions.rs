@@ -153,7 +153,7 @@ fn push_developer_instruction_base_sections(
 	));
 	sections.push(String::from(DOCS_IMPACT_CONTRACT));
 	sections.push(String::from(
-		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/1` JSON commit message.\n- Required fields: `schema`, `summary`, and `authority`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- Optional fields: `related` and `breaking`.\n- Do not encode landing mode, CI status, closeout state, or other process-state fields in the commit message.",
+		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/2` JSON commit message.\n- Required fields: `schema`, `change`, `authority`, and `impact`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- `impact` must be `compatible` or `breaking`.\n- Do not encode related issues, source branch, landing mode, PR state, closeout state, or other process-state fields in the commit message.",
 	));
 	sections.push(prompting_contracts::build_phase_goal_runtime_contract());
 	sections.push(String::from(TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION));

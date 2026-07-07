@@ -6,7 +6,7 @@ status: active
 authority: procedural
 owner: automation
 tags: [runbook]
-last_verified: 2026-06-16
+last_verified: 2026-07-07
 ---
 # Review Config Migration
 
@@ -25,14 +25,13 @@ Every migrated project config uses only this review key:
 
 ```toml
 [codex]
-review = "off" # or "basic", "standard", "strict"
+review = "off" # or "standard", "strict"
 ```
 
 The levels mean:
 
 - `off`: no review gate.
-- `basic`: Self Check only.
-- `standard`: Self Check plus Decodex Review through `issue_review_checkpoint`.
+- `standard`: Decodex Review through `issue_review_checkpoint`.
 - `strict`: Standard plus GitHub Review through the existing `@codex review` path.
 
 ## Historical Mapping
@@ -42,14 +41,14 @@ Use the old fields only as migration input:
 | Old fields | New level |
 | --- | --- |
 | `internal_review_mode = "off"` and `external_review_enabled = false` | `review = "off"` |
-| `internal_review_mode = "prompt"` and `external_review_enabled = false` | `review = "basic"` |
+| `internal_review_mode = "prompt"` and `external_review_enabled = false` | `review = "off"` if no independent gate is required, otherwise `review = "standard"` |
 | `internal_review_mode = "loop"` and `external_review_enabled = false` | `review = "standard"` |
 | `internal_review_mode = "loop"` and `external_review_enabled = true` | `review = "strict"` |
 
-If an old config combined prompt-only Self Check with GitHub Review, choose the new
-level by intent: use `basic` to keep Self Check only, or `strict` to keep the GitHub
-Review path. The new model intentionally does not preserve every historical
-cross-product.
+If an old config combined prompt-only local review with GitHub Review, choose the new
+level by intent: use `standard` to keep an independent Decodex Review gate or
+`strict` to keep the GitHub Review path. The new model intentionally does not
+preserve prompt-only review as a supported cross-product.
 
 ## Files To Inspect
 

@@ -1,5 +1,21 @@
 # Documentation Log
 
+## 2026-07-07
+
+- Promoted the post-review lifecycle hard-cutover into the runtime specs and
+  Decodex skills: final landing/closeout state is now described as a pure kernel
+  decision persisted by the runtime state adapter as
+  `decodex/lifecycle-authority-record/1` plus `decodex/lifecycle-event/1`, while
+  Linear comments and manual receipts remain projections or execution logs.
+- Removed prompt-only `basic` review and Self Check from the active review-level
+  contract. The docs now describe only `off`, `standard`, and `strict`, with
+  historical prompt-only review migrating to either no gate or independent Decodex
+  Review.
+- Moved Standard/Strict Decodex Review checkpoint ownership out of agent handoff and
+  repair prompts. Agents now record pushed PR lifecycle facts; the runtime-owned
+  review gate records `issue_review_checkpoint` evidence and post-review
+  classification consumes the current-head artifact before clean-path landing.
+
 ## 2026-07-06
 
 - Clarified that Program Intake dry-run dispatch readback uses current local runtime
@@ -206,7 +222,7 @@
   records typed push failures before marker refresh, and only refreshes retained
   review lineage after PR readback confirms the remote head matches local `HEAD`.
 - Tightened the Codebase Codex lifecycle hook so Codex-owned commit/push attempts
-  receive the `decodex/commit/1` JSON message contract, large implementation diffs
+  receive the `decodex/commit/2` JSON message contract, large implementation diffs
   trigger module-boundary challenge guidance before ready claims, public
   code/config/command/status/plugin surface changes stay coupled to docs or durable
   knowledge checks, non-trivial repo work starts from nearby source-backed docs,

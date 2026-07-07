@@ -3,7 +3,7 @@ use crate::{
 		HandoffDiagnosticRequest, REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION,
 		REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION, tests, tests::review_handoff,
 	},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
+	state::{ReviewHandoffMarker, ReviewLifecycleRecord, ReviewOrchestrationMarker},
 };
 
 #[test]
@@ -44,8 +44,10 @@ fn diagnostic_bound_handoff_reports_missing_active_ownership_recovery() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: Some(&orchestration),
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_review_markers(
+			&handoff,
+			Some(&orchestration),
+		)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(head_oid),
 		worktree_clean: Some(true),
@@ -99,8 +101,10 @@ fn diagnostic_reports_rebind_for_failure_state_ownership_drift() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: Some(&orchestration),
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_review_markers(
+			&handoff,
+			Some(&orchestration),
+		)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(head_oid),
 		worktree_clean: Some(true),
@@ -154,8 +158,10 @@ fn diagnostic_reports_rebind_for_failure_state_drift_with_active_label() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: Some(&orchestration),
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_review_markers(
+			&handoff,
+			Some(&orchestration),
+		)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(head_oid),
 		worktree_clean: Some(true),

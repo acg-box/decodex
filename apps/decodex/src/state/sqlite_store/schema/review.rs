@@ -24,6 +24,26 @@ CREATE TABLE IF NOT EXISTS review_lifecycle_records (
 	repair_attempt_count INTEGER NOT NULL DEFAULT 0,
 	evidence_json TEXT NOT NULL DEFAULT '{}',
 	next_action TEXT NOT NULL DEFAULT '',
+	schema_version TEXT NOT NULL DEFAULT 'decodex/lifecycle-authority-record/1',
+	subject_id TEXT NOT NULL DEFAULT '',
+	sequence INTEGER NOT NULL DEFAULT 0,
+	transition TEXT NOT NULL DEFAULT '',
+	previous_state TEXT NOT NULL DEFAULT '',
+	next_state TEXT NOT NULL DEFAULT '',
+	review_level TEXT NOT NULL DEFAULT '',
+	review_gate_state TEXT NOT NULL DEFAULT '',
+	base_branch TEXT,
+	validated_head_sha TEXT NOT NULL DEFAULT '',
+	worktree_path TEXT NOT NULL DEFAULT '',
+	merge_commit TEXT,
+	cleanup_state TEXT NOT NULL DEFAULT 'not_started',
+	authority TEXT NOT NULL DEFAULT '',
+	actor TEXT NOT NULL DEFAULT '',
+	source_evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+	idempotency_key TEXT NOT NULL DEFAULT '',
+	correlation_id TEXT NOT NULL DEFAULT '',
+	causation_id TEXT,
+	decided_at TEXT NOT NULL DEFAULT '',
 	updated_at TEXT NOT NULL,
 	updated_at_unix INTEGER NOT NULL,
 	PRIMARY KEY (project_id, issue_id, branch_name)
@@ -77,6 +97,81 @@ impl SqliteStateStore {
 			"details_json",
 			"ALTER TABLE review_policy_checkpoints ADD COLUMN details_json TEXT NOT NULL DEFAULT '{}'",
 		)?;
+		for (column, sql) in [
+			(
+				"schema_version",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN schema_version TEXT NOT NULL DEFAULT 'decodex/lifecycle-authority-record/1'",
+			),
+			(
+				"subject_id",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN subject_id TEXT NOT NULL DEFAULT ''",
+			),
+			(
+				"sequence",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN sequence INTEGER NOT NULL DEFAULT 0",
+			),
+			(
+				"transition",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN transition TEXT NOT NULL DEFAULT ''",
+			),
+			(
+				"previous_state",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN previous_state TEXT NOT NULL DEFAULT ''",
+			),
+			(
+				"next_state",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN next_state TEXT NOT NULL DEFAULT ''",
+			),
+			(
+				"review_level",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN review_level TEXT NOT NULL DEFAULT ''",
+			),
+			(
+				"review_gate_state",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN review_gate_state TEXT NOT NULL DEFAULT ''",
+			),
+			("base_branch", "ALTER TABLE review_lifecycle_records ADD COLUMN base_branch TEXT"),
+			(
+				"validated_head_sha",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN validated_head_sha TEXT NOT NULL DEFAULT ''",
+			),
+			(
+				"worktree_path",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN worktree_path TEXT NOT NULL DEFAULT ''",
+			),
+			("merge_commit", "ALTER TABLE review_lifecycle_records ADD COLUMN merge_commit TEXT"),
+			(
+				"cleanup_state",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN cleanup_state TEXT NOT NULL DEFAULT 'not_started'",
+			),
+			(
+				"authority",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN authority TEXT NOT NULL DEFAULT ''",
+			),
+			(
+				"actor",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN actor TEXT NOT NULL DEFAULT ''",
+			),
+			(
+				"source_evidence_refs_json",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN source_evidence_refs_json TEXT NOT NULL DEFAULT '[]'",
+			),
+			(
+				"idempotency_key",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT ''",
+			),
+			(
+				"correlation_id",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
+			),
+			("causation_id", "ALTER TABLE review_lifecycle_records ADD COLUMN causation_id TEXT"),
+			(
+				"decided_at",
+				"ALTER TABLE review_lifecycle_records ADD COLUMN decided_at TEXT NOT NULL DEFAULT ''",
+			),
+		] {
+			self.ensure_column("review_lifecycle_records", column, sql)?;
+		}
 
 		Ok(())
 	}

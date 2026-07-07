@@ -109,7 +109,9 @@ pub(super) fn record_wire_message_safely(
 	match &wire_message.message {
 		JsonRpcMessage::Request(request)
 			if request.method == "account/chatgptAuthTokens/refresh" =>
-			record_codex_account_refresh_request(recorder, request),
+		{
+			record_codex_account_refresh_request(recorder, request)
+		},
 		_ => recorder.record(app_server::message_type(wire_message), &wire_message.raw),
 	}
 }

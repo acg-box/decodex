@@ -19,6 +19,7 @@ fn classify_post_review_lane_blocks_landing_for_unresolved_authority_boundary() 
 	let worktree_path = temp_dir.path().join("lane");
 
 	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+	review_landing_classification_review::initialize_empty_git_worktree(&worktree_path);
 
 	state_store
 		.upsert_worktree(
@@ -38,7 +39,7 @@ fn classify_post_review_lane_blocks_landing_for_unresolved_authority_boundary() 
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -86,8 +87,8 @@ fn classify_post_review_lane_blocks_landing_for_unresolved_authority_boundary() 
 	)
 	.expect("classification should succeed");
 
-	assert_eq!(classification.decision, PostReviewLaneDecision::NeedsReviewRepair);
-	assert_eq!(classification.reason, "authority_boundary_blocks_landing");
+	assert_eq!(classification.decision, PostReviewLaneDecision::WaitForReview);
+	assert_eq!(classification.reason, "runtime_standard_review_checkpoint_pending");
 
 	review_landing_classification_review::record_clean_review_checkpoint_for_head(
 		&state_store,
@@ -103,6 +104,6 @@ fn classify_post_review_lane_blocks_landing_for_unresolved_authority_boundary() 
 	)
 	.expect("classification should succeed");
 
-	assert_eq!(classification.decision, PostReviewLaneDecision::ReadyToLand);
-	assert_eq!(classification.reason, "external_review_passed_strict");
+	assert_eq!(classification.decision, PostReviewLaneDecision::NeedsReviewRepair);
+	assert_eq!(classification.reason, "authority_boundary_blocks_landing");
 }

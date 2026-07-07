@@ -5,7 +5,7 @@ use crate::{
 	config::ServiceConfig,
 	orchestrator::{self, IssueDispatchMode, IssueRunPlan},
 	prelude::{Result, eyre},
-	state::{ReviewHandoffMarker, StateStore},
+	state::{ReviewLifecycleRecord, StateStore},
 };
 
 pub(crate) fn build_review_run_context(
@@ -17,10 +17,10 @@ pub(crate) fn build_review_run_context(
 		IssueDispatchMode::ReviewRepair => {
 			orchestrator::validate_review_repair_runtime(project, false)?;
 
-			let review_handoff = read_retained_review_handoff(project, state_store, issue_run)?
+			let lifecycle_record = read_retained_review_lifecycle(project, state_store, issue_run)?
 				.ok_or_else(|| {
 					eyre::eyre!(
-						"Retained review-repair run `{}` for issue `{}` requires an existing runtime review handoff.",
+						"Retained review-repair run `{}` for issue `{}` requires an existing review lifecycle authority.",
 						issue_run.run_id,
 						issue_run.issue.identifier
 					)
@@ -37,16 +37,16 @@ pub(crate) fn build_review_run_context(
 				github_command_path: project.github().command_path().map(Path::to_path_buf),
 				review_level: project.codex().review_level(),
 				mode: ReviewExecutionMode::Repair,
-				recorded_pr_url: Some(review_handoff.pr_url().to_owned()),
+				recorded_pr_url: Some(lifecycle_record.pr_url().to_owned()),
 			})
 		},
 		IssueDispatchMode::Closeout => {
 			orchestrator::validate_closeout_runtime(project, false)?;
 
-			let review_handoff = read_retained_review_handoff(project, state_store, issue_run)?
+			let lifecycle_record = read_retained_review_lifecycle(project, state_store, issue_run)?
 				.ok_or_else(|| {
 					eyre::eyre!(
-						"Retained closeout run `{}` for issue `{}` requires an existing runtime review handoff.",
+						"Retained closeout run `{}` for issue `{}` requires an existing review lifecycle authority.",
 						issue_run.run_id,
 						issue_run.issue.identifier
 					)
@@ -63,7 +63,7 @@ pub(crate) fn build_review_run_context(
 				github_command_path: project.github().command_path().map(Path::to_path_buf),
 				review_level: project.codex().review_level(),
 				mode: ReviewExecutionMode::Closeout,
-				recorded_pr_url: Some(review_handoff.pr_url().to_owned()),
+				recorded_pr_url: Some(lifecycle_record.pr_url().to_owned()),
 			})
 		},
 		_ => Ok(ReviewHandoffContext {
@@ -82,12 +82,12 @@ pub(crate) fn build_review_run_context(
 	}
 }
 
-fn read_retained_review_handoff(
+fn read_retained_review_lifecycle(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
-) -> Result<Option<ReviewHandoffMarker>> {
-	state_store.review_handoff_marker(
+) -> Result<Option<ReviewLifecycleRecord>> {
+	state_store.review_lifecycle_record(
 		project.service_id(),
 		&issue_run.issue.id,
 		&issue_run.worktree.branch_name,

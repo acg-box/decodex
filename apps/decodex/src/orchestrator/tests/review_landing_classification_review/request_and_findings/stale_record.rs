@@ -60,7 +60,7 @@ fn classify_post_review_lane_ignores_stale_review_orchestration_record_from_prio
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -87,6 +87,6 @@ fn classify_post_review_lane_ignores_stale_review_orchestration_record_from_prio
 	)
 	.expect("classification should succeed");
 
-	assert_eq!(classification.decision, PostReviewLaneDecision::WaitForReview);
-	assert_eq!(classification.reason, "external_review_request_pending");
+	assert_eq!(classification.decision, PostReviewLaneDecision::Block);
+	assert_eq!(classification.reason, "review_orchestration_pr_mismatch");
 }

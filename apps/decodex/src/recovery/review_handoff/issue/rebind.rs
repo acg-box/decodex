@@ -6,7 +6,7 @@ use crate::{
 		review_handoff::issue::{existing, missing},
 		review_handoff_policy::{RebindMode, RebindSuccessStateTransition},
 	},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker, WorktreeMapping},
+	state::{ReviewLifecycleRecord, WorktreeMapping},
 	tracker::TrackerIssue,
 };
 
@@ -14,12 +14,11 @@ pub(in crate::recovery) fn validate_rebind_existing_handoff(
 	context: &RecoveryContext,
 	issue: &TrackerIssue,
 	worktree: &WorktreeMapping,
-	existing_handoff: Option<&ReviewHandoffMarker>,
-	existing_orchestration: Option<&ReviewOrchestrationMarker>,
+	existing_lifecycle: Option<&ReviewLifecycleRecord>,
 	landing_state: &PullRequestLandingState,
 	local_head_oid: &str,
 ) -> Result<(String, i64, RebindMode)> {
-	let Some(existing_handoff) = existing_handoff else {
+	let Some(existing_lifecycle) = existing_lifecycle else {
 		let attempt =
 			context.state_store.latest_run_attempt_for_issue(&issue.id)?.ok_or_else(|| {
 				eyre::eyre!("Issue `{}` has no recorded run attempt to rebind.", issue.identifier)
@@ -43,8 +42,7 @@ pub(in crate::recovery) fn validate_rebind_existing_handoff(
 		context.workflow.frontmatter().tracker(),
 		issue,
 		worktree,
-		existing_handoff,
-		existing_orchestration,
+		existing_lifecycle,
 		landing_state,
 		local_head_oid,
 	)

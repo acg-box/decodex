@@ -1,18 +1,20 @@
 use crate::orchestrator::status::{
 	self, EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS, ExternalReviewRequestCiGate,
-	PostReviewLaneClassification, PostReviewLaneDecision, PostReviewOrchestrationStatus,
-	PullRequestReviewState, ReviewOrchestrationMarker, ReviewOrchestrationPhase,
+	PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLifecycleAction,
+	PostReviewOrchestrationStatus, PullRequestReviewState,
 };
+use crate::state::ReviewLifecycleRecord;
 
 pub(crate) fn apply_review_orchestration_phase_classification(
 	classification: &mut PostReviewLaneClassification,
 	review_state: &PullRequestReviewState,
-	orchestration_marker: &ReviewOrchestrationMarker,
+	lifecycle_record: &ReviewLifecycleRecord,
 	orchestration_status: &PostReviewOrchestrationStatus,
 	now_unix_epoch: i64,
 ) {
-	match orchestration_status.phase {
-		ReviewOrchestrationPhase::RequestPending => {
+	match orchestration_status.action {
+		PostReviewLifecycleAction::StartReviewGateOrExternalReview
+		| PostReviewLifecycleAction::RequestExternalReview => {
 			match status::external_review_request_ci_gate(review_state) {
 				ExternalReviewRequestCiGate::Ready => {
 					classification.reason = String::from("external_review_request_pending");
@@ -28,23 +30,24 @@ pub(crate) fn apply_review_orchestration_phase_classification(
 				},
 			}
 		},
-		ReviewOrchestrationPhase::WaitingForAck =>
+		PostReviewLifecycleAction::WaitForExternalReviewAck => {
 			if orchestration_status.request_acknowledged {
 				classification.reason = String::from("external_review_result_pending");
-			} else if status::request_ack_timed_out(orchestration_marker, now_unix_epoch) {
+			} else if status::request_ack_timed_out(lifecycle_record, now_unix_epoch) {
 				*classification = status::blocked_post_review_lane_from_state(
 					review_state,
 					"external_review_ack_timeout",
 				);
 			} else {
 				classification.reason = String::from("external_review_ack_pending");
-			},
-		ReviewOrchestrationPhase::WaitingForResult => {
+			}
+		},
+		PostReviewLifecycleAction::WaitForExternalReviewResult => {
 			if !orchestration_status.request_acknowledged {
 				classification.reason = String::from("external_review_ack_pending");
 			} else if status::external_review_has_actionable_feedback(
 				review_state,
-				orchestration_marker,
+				lifecycle_record,
 			) {
 				classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
 				classification.reason = String::from("external_review_feedback_pending_repair");
@@ -69,7 +72,7 @@ pub(crate) fn apply_review_orchestration_phase_classification(
 				classification.reason = String::from("external_review_result_pending");
 			}
 		},
-		ReviewOrchestrationPhase::RepairRequired => {
+		PostReviewLifecycleAction::RunReviewRepair => {
 			classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
 			classification.reason = if orchestration_status.landing_requires_agent_fallback {
 				String::from("retained_landing_agent_fallback_required")
@@ -77,8 +80,8 @@ pub(crate) fn apply_review_orchestration_phase_classification(
 				String::from("external_review_feedback_pending_repair")
 			};
 		},
-		ReviewOrchestrationPhase::PassWaitingForGates =>
-			if status::external_review_has_actionable_feedback(review_state, orchestration_marker) {
+		PostReviewLifecycleAction::WaitForLandingGates => {
+			if status::external_review_has_actionable_feedback(review_state, lifecycle_record) {
 				classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
 				classification.reason = String::from("external_review_feedback_pending_repair");
 			} else if orchestration_status.strict_pass
@@ -98,10 +101,11 @@ pub(crate) fn apply_review_orchestration_phase_classification(
 					review_state,
 					"external_review_pass_signal_missing",
 				);
-			},
-		ReviewOrchestrationPhase::WaitingForMerge => {
-			if let Some(auto_merge_enabled_at) =
-				orchestration_marker.auto_merge_enabled_at_unix_epoch()
+			}
+		},
+		PostReviewLifecycleAction::PollLandingReadback
+		| PostReviewLifecycleAction::RunCloseoutAdapter => {
+			if let Some(auto_merge_enabled_at) = lifecycle_record.auto_merge_enabled_at_unix_epoch()
 				&& now_unix_epoch - auto_merge_enabled_at
 					> EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS
 			{
@@ -112,6 +116,12 @@ pub(crate) fn apply_review_orchestration_phase_classification(
 			} else {
 				classification.reason = String::from("external_review_waiting_for_merge");
 			}
+		},
+		PostReviewLifecycleAction::RequestManualAttention => {
+			*classification = status::blocked_post_review_lane_from_state(
+				review_state,
+				"request_manual_attention",
+			);
 		},
 	}
 }

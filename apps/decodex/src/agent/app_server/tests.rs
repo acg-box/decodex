@@ -44,8 +44,9 @@ use completion_handlers::{
 	YieldingContinuationGuard,
 };
 use dynamic_tool_handlers::{
-	EmptyToolResponseHandler, FailingToolHandler, InvalidToolNameHandler, LiveResumeBoundaryGuard,
-	LiveResumeDynamicToolHandler, NamespacedDynamicToolHandler,
+	EmptyToolResponseHandler, FailingToolHandler, HiddenCheckpointToolHandler,
+	InvalidToolNameHandler, LiveResumeBoundaryGuard, LiveResumeDynamicToolHandler,
+	NamespacedDynamicToolHandler,
 };
 use fake_codex_scripts::{
 	install_fake_codex_script, interrupted_without_error_fake_codex_script,

@@ -28,7 +28,7 @@ impl StateStore {
 		sqlite.retarget_issue_identity(previous_issue_id, canonical_issue_id)
 	}
 
-	pub(in crate::state) fn delete_worktree_and_review_lifecycle_locked(
+	pub(in crate::state) fn delete_worktree_and_review_ephemera_locked(
 		&self,
 		issue_id: &str,
 	) -> Result<()> {
@@ -38,7 +38,7 @@ impl StateStore {
 		let mut sqlite =
 			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
-		sqlite.delete_worktree_and_review_lifecycle(issue_id)
+		sqlite.delete_worktree_and_review_ephemera(issue_id)
 	}
 
 	pub(in crate::state) fn delete_worktree_mapping_locked(&self, issue_id: &str) -> Result<()> {

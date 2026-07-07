@@ -4,7 +4,8 @@ mod lanes;
 mod retry_budget;
 mod worktrees;
 
-#[cfg(test)] pub(crate) use self::classification::classify_post_review_lane;
+#[cfg(test)]
+pub(crate) use self::classification::classify_post_review_lane;
 pub(crate) use self::{
 	authority_boundary::{
 		apply_authority_boundary_landing_policy, authority_boundary_landing_requirement,
@@ -37,14 +38,14 @@ use crate::orchestrator::{
 		PostReviewLaneDecision, PostReviewLaneSnapshot, PostReviewLaneStateLoad,
 		PostReviewOrchestrationStatus, PostReviewReadbackDegradation, PostReviewRuntimeState,
 		PrivateExecutionEvent, PullRequestMergeViewResponse, PullRequestReadbackRootCause,
-		PullRequestReviewState, PullRequestReviewStateInspector, ReviewHandoffMarker,
-		ServiceConfig, StateStore, TrackerIssue, Value, WorkflowDocument, WorktreeMapping,
-		active_shared_issue_ids, apply_non_github_review_post_review_classification,
+		PullRequestReviewState, PullRequestReviewStateInspector, ServiceConfig, StateStore,
+		TrackerIssue, Value, WorkflowDocument, WorktreeMapping, active_shared_issue_ids,
+		apply_non_github_review_post_review_classification,
 		apply_pre_orchestration_post_review_classification,
 		apply_review_orchestration_phase_classification, blocked_post_review_lane_status,
 		classify_pull_request_readback_report, github, initial_post_review_lane_classification,
 		issue_retry_budget_exhausted_for_worktree, load_post_review_lane_review_state,
-		load_post_review_orchestration_marker, operator_boundary_policy_blocks_landing,
+		load_post_review_lifecycle_record, operator_boundary_policy_blocks_landing,
 		operator_boundary_policy_requires_enhanced_evidence, operator_loop_status_for_run,
 		refresh_recoverable_runtime_issues, relative_worktree_path_for_path,
 		resolve_configured_env_var, worktree_checkout_branch_name, worktree_head_oid,

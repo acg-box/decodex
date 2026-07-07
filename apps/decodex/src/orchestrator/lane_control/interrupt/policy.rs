@@ -23,16 +23,18 @@ pub(in crate::orchestrator::lane_control) fn lane_interrupt_next_action(
 	}
 
 	match soft.status.as_str() {
-		"delivered" =>
-			String::from("Inspect the lane until the app-server turn records completion."),
-		"pending" =>
+		"delivered" => {
+			String::from("Inspect the lane until the app-server turn records completion.")
+		},
+		"pending" => {
 			if force {
 				String::from("Soft interrupt is pending; forced fallback was not attempted.")
 			} else {
 				String::from(
 					"Re-run inspect shortly, or retry interrupt with --force if operator intent is to kill the process.",
 				)
-			},
+			}
+		},
 		"rejected" => String::from(
 			"Inspect the lane identity before retrying; resolver rejection is not converted into hard fallback.",
 		),
@@ -52,9 +54,10 @@ pub(in crate::orchestrator::lane_control) fn soft_interrupt_allows_hard_fallback
 	}
 
 	match soft.status.as_str() {
-		"pending" | "failed" | "unavailable" =>
+		"pending" | "failed" | "unavailable" => {
 			soft.error_class.as_deref() != Some("lane_not_active")
-				|| run.process_id.is_some() && run.process_alive != Some(false),
+				|| run.process_id.is_some() && run.process_alive != Some(false)
+		},
 		"rejected" => soft.error_class.as_deref() == Some("run_lease_missing"),
 		_ => false,
 	}

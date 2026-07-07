@@ -19,7 +19,7 @@ pub(crate) fn retained_review_handoff_matches_run(
 	let Some(worktree_mapping) = worktree_mapping else {
 		return Ok(false);
 	};
-	let Some(marker) = state_store.review_handoff_marker(
+	let Some(record) = state_store.review_lifecycle_record(
 		worktree_mapping.project_id(),
 		run_attempt.issue_id(),
 		worktree_mapping.branch_name(),
@@ -28,9 +28,9 @@ pub(crate) fn retained_review_handoff_matches_run(
 		return Ok(false);
 	};
 
-	Ok(marker.run_id() == run_attempt.run_id()
-		&& marker.attempt_number() == run_attempt.attempt_number()
-		&& marker.branch_name() == worktree_mapping.branch_name())
+	Ok(record.run_id() == run_attempt.run_id()
+		&& record.attempt_number() == run_attempt.attempt_number()
+		&& record.branch_name() == worktree_mapping.branch_name())
 }
 
 pub(crate) fn superseded_run_disposition(

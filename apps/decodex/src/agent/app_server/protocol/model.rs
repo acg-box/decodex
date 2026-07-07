@@ -54,7 +54,8 @@ pub(in crate::agent::app_server) use catalog::{
 	SkillsListEntry,
 };
 
-#[cfg(test)] use crate::agent::app_server::REQUEST_TIMEOUT;
+#[cfg(test)]
+use crate::agent::app_server::REQUEST_TIMEOUT;
 use helpers::{externally_tagged_value_name, string_like_json_value};
 
 #[cfg(test)]

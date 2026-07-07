@@ -27,7 +27,6 @@ fn rebind_validation_rejects_missing_handoff_failure_state_without_writeback_led
 		&issue,
 		&worktree,
 		None,
-		None,
 		&landing_state,
 		head_oid,
 	)

@@ -1,7 +1,9 @@
+use crate::state::ReviewLifecycleRecord;
+
 use crate::orchestrator::status::{
 	self, OperatorPostReviewLaneStatus, PostReviewLaneClassification, PostReviewLaneDecision,
 	PostReviewReadbackDegradation, PullRequestReadbackRootCause, PullRequestReviewState,
-	ReviewHandoffMarker, ServiceConfig, TrackerIssue, WorktreeMapping,
+	ServiceConfig, TrackerIssue, WorktreeMapping,
 };
 
 pub(crate) fn initial_post_review_lane_classification(
@@ -53,23 +55,23 @@ pub(crate) fn blocked_post_review_lane(reason: &str) -> PostReviewLaneClassifica
 	}
 }
 
-pub(crate) fn blocked_post_review_lane_from_handoff(
-	review_handoff: &ReviewHandoffMarker,
+pub(crate) fn blocked_post_review_lane_from_lifecycle(
+	lifecycle_record: &ReviewLifecycleRecord,
 	reason: &str,
 ) -> PostReviewLaneClassification {
 	let mut classification = blocked_post_review_lane(reason);
 
-	classification.pr_url = Some(review_handoff.pr_url().to_owned());
-	classification.pr_head_sha = Some(review_handoff.pr_head_oid().to_owned());
+	classification.pr_url = Some(lifecycle_record.pr_url().to_owned());
+	classification.pr_head_sha = Some(lifecycle_record.pr_head_oid().to_owned());
 
 	classification
 }
 
-pub(crate) fn readback_degraded_post_review_lane_from_handoff(
-	review_handoff: &ReviewHandoffMarker,
+pub(crate) fn readback_degraded_post_review_lane_from_lifecycle(
+	lifecycle_record: &ReviewLifecycleRecord,
 	root_cause: PullRequestReadbackRootCause,
 ) -> PostReviewLaneClassification {
-	PostReviewReadbackDegradation::pull_request_state_from_handoff(review_handoff, root_cause)
+	PostReviewReadbackDegradation::pull_request_state_from_lifecycle(lifecycle_record, root_cause)
 		.wait_for_review_classification(None)
 }
 
@@ -107,19 +109,21 @@ fn post_review_readback_root_cause_for_reason(
 	reason: &str,
 ) -> Option<PullRequestReadbackRootCause> {
 	match reason {
-		"pull_request_repository_parse_failed" =>
-			Some(PullRequestReadbackRootCause::PullRequestShapeReadFailed),
+		"pull_request_repository_parse_failed" => {
+			Some(PullRequestReadbackRootCause::PullRequestShapeReadFailed)
+		},
 		"pull_request_branch_mismatch"
 		| "pull_request_head_mismatch"
 		| "pull_request_head_repository_name_mismatch"
 		| "pull_request_head_repository_owner_mismatch"
 		| "pull_request_merge_commit_lineage_check_failed"
-		| "review_handoff_lineage_check_failed"
-		| "review_handoff_lineage_mismatch"
+		| "lifecycle_record_lineage_check_failed"
+		| "lifecycle_record_lineage_mismatch"
 		| "review_orchestration_branch_mismatch"
 		| "review_orchestration_head_mismatch"
-		| "review_orchestration_pr_mismatch" =>
-			Some(PullRequestReadbackRootCause::LineageValidationFailed),
+		| "review_orchestration_pr_mismatch" => {
+			Some(PullRequestReadbackRootCause::LineageValidationFailed)
+		},
 		_ => None,
 	}
 }

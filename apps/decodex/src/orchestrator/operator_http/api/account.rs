@@ -40,9 +40,10 @@ pub(crate) fn operator_account_http_response_body(
 	request: &[u8],
 ) -> Result<Vec<u8>> {
 	match route {
-		OperatorRequestRoute::AccountList { force_refresh } =>
+		OperatorRequestRoute::AccountList { force_refresh } => {
 			serde_json::to_vec(&accounts::account_list_with_cached_usage(force_refresh)?)
-				.map_err(Into::into),
+				.map_err(Into::into)
+		},
 		OperatorRequestRoute::AccountSelect => {
 			let selector = operator_account_request_selector(request)?;
 			let response =

@@ -102,25 +102,14 @@ fn diagnose_issue_worktree(
 	issue: TrackerIssue,
 	worktree: WorktreeMapping,
 ) -> Result<ReviewHandoffDiagnostic> {
-	let existing_handoff = context.state_store.review_handoff_marker(
+	let existing_lifecycle = context.state_store.review_lifecycle_record(
 		context.config.service_id(),
 		&issue.id,
 		worktree.branch_name(),
 	)?;
-	let existing_orchestration = existing_handoff
-		.as_ref()
-		.map(|handoff| {
-			context.state_store.review_orchestration_marker(
-				context.config.service_id(),
-				&issue.id,
-				handoff,
-			)
-		})
-		.transpose()?
-		.flatten();
 	let (pr_inspection, pr_read_error) =
-		existing_handoff.as_ref().map_or((None, None), |handoff| {
-			match recovery::inspect_project_pull_request(context, handoff.pr_url()) {
+		existing_lifecycle.as_ref().map_or((None, None), |lifecycle| {
+			match recovery::inspect_project_pull_request(context, lifecycle.pr_url()) {
 				Ok((landing_state, _default_branch)) => (Some(landing_state), None),
 				Err(error) => (None, Some(error.to_string())),
 			}
@@ -144,8 +133,7 @@ fn diagnose_issue_worktree(
 		in_progress_state: context.workflow.frontmatter().tracker().in_progress_state(),
 		failure_state: context.workflow.frontmatter().tracker().failure_state(),
 		worktree: &worktree,
-		existing_handoff: existing_handoff.as_ref(),
-		existing_orchestration: existing_orchestration.as_ref(),
+		existing_lifecycle: existing_lifecycle.as_ref(),
 		local_branch_name: local_branch_name.as_deref(),
 		local_head_oid: local_head_oid.as_deref(),
 		worktree_clean,
@@ -165,13 +153,13 @@ fn diagnose_issue_worktree(
 		local_branch_name,
 		local_head_oid,
 		worktree_clean,
-		existing_pr_url: existing_handoff.as_ref().map(|handoff| handoff.pr_url().to_owned()),
-		existing_lifecycle_handoff_head_oid: existing_handoff
+		existing_pr_url: existing_lifecycle.as_ref().map(|lifecycle| lifecycle.pr_url().to_owned()),
+		existing_lifecycle_handoff_head_oid: existing_lifecycle
 			.as_ref()
-			.map(|handoff| handoff.pr_head_oid().to_owned()),
-		existing_lifecycle_phase_head_oid: existing_orchestration
+			.map(|lifecycle| lifecycle.pr_head_oid().to_owned()),
+		existing_lifecycle_phase_head_oid: existing_lifecycle
 			.as_ref()
-			.map(|orchestration| orchestration.head_sha().to_owned()),
+			.map(|lifecycle| lifecycle.head_sha().to_owned()),
 		pr_base_ref: binding.pr_base_ref,
 		pr_head_oid: binding.pr_head_oid,
 		pr_read_error,

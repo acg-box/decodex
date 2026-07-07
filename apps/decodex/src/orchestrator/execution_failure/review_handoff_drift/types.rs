@@ -2,7 +2,7 @@ pub(super) const REVIEW_HANDOFF_STATE_DRIFT_DETECTED_EVENT_TYPE: &str =
 	"review_handoff_state_drift_detected";
 pub(super) const REVIEW_HANDOFF_STATE_DRIFT_RECOVERED_EVENT_TYPE: &str =
 	"review_handoff_state_drift_recovered";
-pub(super) const REVIEW_HANDOFF_REBOUND_ORCHESTRATION_PHASE: &str = "request_pending";
+pub(super) const REVIEW_HANDOFF_REBOUND_LIFECYCLE_PHASE: &str = "request_pending";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ReviewHandoffFailureDriftLineage {

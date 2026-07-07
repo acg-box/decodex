@@ -1,11 +1,13 @@
 use crate::{
 	orchestrator,
+	orchestrator::retained_review_orchestration::phases::RetainedReviewLifecycleAction,
 	orchestrator::retained_review_orchestration::{
 		self, CommandIntentKind, IssueTracker, PullRequestReviewState, Result,
-		RetainedAdminMergeReasons, RetainedReviewLane, RetainedReviewOrchestrationMarkerFields,
-		RetainedReviewRuntime, ReviewOrchestrationMarker, ReviewOrchestrationPhase, admin_merge,
-		attention, markers,
+		RetainedAdminMergeReasons, RetainedReviewLane, RetainedReviewLifecycleAuthorityFields,
+		RetainedReviewRuntime, ReviewLifecycleReadback, admin_merge, attention,
+		lifecycle_authority,
 	},
+	orchestrator::runtime_standard_review::RuntimeStandardReviewRunner,
 };
 
 pub(in crate::orchestrator::retained_review_orchestration::phases) fn handle_waiting_for_result_phase<
@@ -13,24 +15,27 @@ pub(in crate::orchestrator::retained_review_orchestration::phases) fn handle_wai
 >(
 	runtime: &mut RetainedReviewRuntime<'_, T>,
 	lane: &RetainedReviewLane,
-	phase: ReviewOrchestrationPhase,
+	action: RetainedReviewLifecycleAction,
+	runtime_review_runner: &impl RuntimeStandardReviewRunner,
 ) -> Result<()>
 where
 	T: IssueTracker,
 {
-	if external_review_requires_repair(&lane.review_state, &lane.orchestration_marker) {
-		return markers::write_retained_review_orchestration_marker_for_command(
+	if external_review_requires_repair(&lane.review_state, lane.lifecycle_record()) {
+		return lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 			runtime.state_store,
 			lane,
 			CommandIntentKind::StartReviewRepair,
 			"external_review_feedback_pending_repair",
-			ReviewOrchestrationPhase::RepairRequired,
-			RetainedReviewOrchestrationMarkerFields {
+			"repair_required",
+			RetainedReviewLifecycleAuthorityFields {
 				external_round_count: lane
-					.orchestration_marker
+					.lifecycle_record()
 					.external_round_count()
 					.saturating_add(1),
-				..RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker)
+				..RetainedReviewLifecycleAuthorityFields::from_lifecycle_record(
+					lane.lifecycle_record(),
+				)
 			},
 		);
 	}
@@ -43,20 +48,31 @@ where
 	)
 	.is_some()
 	{
-		return markers::write_retained_review_orchestration_marker_for_command(
+		return lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 			runtime.state_store,
 			lane,
 			CommandIntentKind::StartReviewRepair,
 			"required_checks_or_merge_state_repair_required",
-			ReviewOrchestrationPhase::RepairRequired,
-			RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
+			"repair_required",
+			RetainedReviewLifecycleAuthorityFields::from_lifecycle_record(lane.lifecycle_record()),
 		);
 	}
 	if orchestrator::external_review_has_strict_pass_signals(
 		&lane.review_state,
-		&lane.orchestration_marker,
+		lane.lifecycle_record(),
 	) {
 		if orchestrator::review_state_clean_path_landing_gates_satisfied(&lane.review_state) {
+			if super::non_github::runtime_standard_review_gate_requires_wait_or_repair(
+				runtime.tracker,
+				runtime.project,
+				runtime.workflow,
+				runtime.state_store,
+				lane,
+				runtime_review_runner,
+			)? {
+				return Ok(());
+			}
+
 			return admin_merge::start_retained_admin_merge(
 				runtime,
 				lane,
@@ -68,35 +84,38 @@ where
 			);
 		}
 		if orchestrator::review_state_landing_requires_agent_fallback(&lane.review_state) {
-			return markers::write_retained_review_orchestration_marker_for_command(
+			return lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 				runtime.state_store,
 				lane,
 				CommandIntentKind::StartReviewRepair,
 				"retained_landing_agent_fallback_required",
-				ReviewOrchestrationPhase::RepairRequired,
-				RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
+				"repair_required",
+				RetainedReviewLifecycleAuthorityFields::from_lifecycle_record(
+					lane.lifecycle_record(),
+				),
 			);
 		}
-		if phase == ReviewOrchestrationPhase::WaitingForResult {
-			return markers::write_retained_review_orchestration_marker_for_command(
+		if action == RetainedReviewLifecycleAction::WaitForExternalReviewResult {
+			return lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 				runtime.state_store,
 				lane,
 				CommandIntentKind::WaitExternal,
 				"external_review_passed_waiting_for_gates",
-				ReviewOrchestrationPhase::PassWaitingForGates,
-				RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
+				"pass_waiting_for_gates",
+				RetainedReviewLifecycleAuthorityFields::from_lifecycle_record(
+					lane.lifecycle_record(),
+				),
 			);
 		}
 
 		return Ok(());
 	}
-	if orchestrator::external_review_result_arrived(&lane.review_state, &lane.orchestration_marker)
-	{
+	if orchestrator::external_review_result_arrived(&lane.review_state, lane.lifecycle_record()) {
 		return retained_review_orchestration::apply_passive_retained_manual_attention(
 			attention::passive_attention_runtime(runtime),
 			&lane.snapshot.issue,
 			&lane.snapshot.worktree,
-			&lane.orchestration_marker,
+			lane.lifecycle_record(),
 			"external_review_pass_signal_missing",
 		);
 	}
@@ -106,7 +125,7 @@ where
 
 pub(in crate::orchestrator::retained_review_orchestration::phases) fn external_review_requires_repair(
 	review_state: &PullRequestReviewState,
-	marker: &ReviewOrchestrationMarker,
+	marker: &impl ReviewLifecycleReadback,
 ) -> bool {
 	review_state.unresolved_review_threads > 0
 		|| matches!(review_state.review_decision.as_deref(), Some("CHANGES_REQUESTED"))

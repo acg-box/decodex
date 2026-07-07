@@ -3,7 +3,8 @@ mod environment;
 mod errors;
 mod wire;
 
-#[cfg(test)] pub(crate) use self::wire::JsonRpcErrorPayload;
+#[cfg(test)]
+pub(crate) use self::wire::JsonRpcErrorPayload;
 pub(crate) use self::{
 	connection::JsonRpcConnection,
 	environment::{AppServerProcessEnv, ResolvedAppServerCodexHomeEnv, app_server_command_program},
@@ -11,4 +12,5 @@ pub(crate) use self::{
 	wire::{JsonRpcError, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, WireMessage},
 };
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

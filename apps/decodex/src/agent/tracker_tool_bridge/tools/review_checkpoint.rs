@@ -1,7 +1,6 @@
 mod finding_policy;
 mod normalize;
 mod routes;
-mod schema;
 
 pub(super) use self::{
 	finding_policy::{
@@ -10,12 +9,6 @@ pub(super) use self::{
 	},
 	normalize::{normalize_review_checkpoint_payload, validate_review_cost_control_policy_state},
 	routes::current_review_blocker_findings,
-	schema::{
-		non_empty_string_array_schema, review_checkpoint_checks_schema,
-		review_checkpoint_contract_schema, review_checkpoint_finding_routes_schema,
-		review_checkpoint_findings_array_schema, review_checkpoint_reviewer_schema,
-		review_checkpoint_status_schema, review_cost_control_schema,
-	},
 };
 
 const INDEPENDENT_FRESH_CONTEXT_REVIEWER: &str = "independent_fresh_context";

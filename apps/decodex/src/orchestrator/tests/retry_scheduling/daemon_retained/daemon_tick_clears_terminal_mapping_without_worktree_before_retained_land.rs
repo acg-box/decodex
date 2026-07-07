@@ -8,6 +8,7 @@ use crate::{
 			},
 		},
 	},
+	state::ReviewPolicyCheckpointInput,
 	worktree::WorktreeManager,
 };
 
@@ -89,6 +90,20 @@ fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
 		&retained_issue.id,
 		&tests::sample_review_handoff_marker(&retained_worktree.branch_name, pr_url, &head_oid),
 	);
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &retained_issue.id,
+			run_id: "run-1",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: "standard",
+			status: "clean",
+			head_sha: &head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("runtime standard checkpoint should persist");
 
 	let mut active_children = Vec::new();
 	let mut retry_queue = RetryQueue::default();

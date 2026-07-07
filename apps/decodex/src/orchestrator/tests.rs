@@ -36,7 +36,8 @@ mod runtime_thread_archive;
 // Operator status plus retained post-review review/landing behavior.
 mod operator;
 
-#[cfg(unix)] use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
 	cell::RefCell,
 	collections::{BTreeSet, HashMap},
@@ -83,10 +84,10 @@ use self::{
 	review_markers::{
 		persisted_review_handoff_marker, persisted_review_orchestration_marker,
 		persisted_review_orchestration_marker_for_path, sample_review_handoff_marker,
-		sample_review_orchestration_marker, seed_review_handoff_marker,
-		seed_review_handoff_marker_for_path, seed_review_handoff_marker_value,
-		seed_review_orchestration_marker, seed_review_orchestration_marker_for_path,
-		worktree_mapping_for_path,
+		sample_review_lifecycle_record, sample_review_orchestration_marker,
+		seed_review_handoff_marker, seed_review_handoff_marker_for_path,
+		seed_review_handoff_marker_value, seed_review_orchestration_marker,
+		seed_review_orchestration_marker_for_path, worktree_mapping_for_path,
 	},
 	review_state::{
 		FakePullRequestReviewStateInspector, add_external_review_ack, add_external_review_findings,

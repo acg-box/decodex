@@ -72,16 +72,15 @@ where
 		&issue.id,
 		worktree.worktree_path(),
 	)?;
-	let review_handoff = context.state_store.review_handoff_marker(
+	let lifecycle_record = context.state_store.review_lifecycle_record(
 		context.project.service_id(),
 		&issue.id,
 		worktree.branch_name(),
 	)?;
 
-	if issue.state.name == context.completed_state && review_handoff.is_none() {
+	if issue.state.name == context.completed_state && lifecycle_record.is_none() {
 		return Ok(None);
 	}
-
 	let local_branch_name =
 		match post_review::worktree_checkout_branch_name(worktree.worktree_path()) {
 			Ok(local_branch_name) => local_branch_name,
@@ -108,7 +107,7 @@ where
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff,
+		lifecycle_record,
 		local_branch_name,
 		local_head_oid,
 	};

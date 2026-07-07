@@ -69,7 +69,7 @@ fn build_post_review_lane_statuses_blocks_review_handoff_lineage_rewrite() {
 
 	assert_eq!(lanes.len(), 1);
 	assert_eq!(lanes[0].classification, "blocked");
-	assert_eq!(lanes[0].reason, "review_handoff_lineage_mismatch");
+	assert_eq!(lanes[0].reason, "lifecycle_record_lineage_mismatch");
 	assert_eq!(lanes[0].readback_root_cause.as_deref(), Some("lineage_validation_failed"));
 	assert_eq!(lanes[0].pr_url.as_deref(), Some(pr_url));
 }

@@ -66,29 +66,29 @@ pub(crate) fn cleanup_completed_post_review_lane(
 ) -> Result<()> {
 	let worktree_manager =
 		WorktreeManager::new(project.service_id(), project.repo_root(), project.worktree_root());
-	let review_handoff = state_store
-		.review_handoff_marker(
+	let lifecycle_record = state_store
+		.review_lifecycle_record(
 			project.service_id(),
 			&issue_run.issue.id,
 			&issue_run.worktree.branch_name,
 		)?
 		.ok_or_else(|| {
 			eyre::eyre!(
-				"Retained closeout cleanup for issue `{}` requires an existing runtime review handoff.",
+				"Retained closeout cleanup for issue `{}` requires an existing runtime review lifecycle authority.",
 				issue_run.issue.identifier
 			)
 		})?;
 	let default_branch =
-		review_handoff.target_base_ref_name().ok_or_else(|| {
+		lifecycle_record.target_base_ref_name().ok_or_else(|| {
 			eyre::eyre!(
-				"Retained closeout cleanup for issue `{}` requires the review handoff marker to record the PR target base branch.",
+				"Retained closeout cleanup for issue `{}` requires the review lifecycle authority to record the PR target base branch.",
 				issue_run.issue.identifier
 			)
 		})?;
 	let github_token = project.github().resolve_token()?;
 	let landing_state = github::inspect_pull_request_landing_state(
 		&issue_run.worktree.path,
-		review_handoff.pr_url(),
+		lifecycle_record.pr_url(),
 		&github_token,
 		project.github().command_path(),
 	)?;
@@ -97,7 +97,7 @@ pub(crate) fn cleanup_completed_post_review_lane(
 		eyre::bail!(
 			"Retained closeout cleanup for issue `{}` requires PR `{}` to be merged, but GitHub reports `{}`.",
 			issue_run.issue.identifier,
-			review_handoff.pr_url(),
+			lifecycle_record.pr_url(),
 			landing_state.state
 		);
 	}
@@ -105,7 +105,7 @@ pub(crate) fn cleanup_completed_post_review_lane(
 		eyre::bail!(
 			"Retained closeout cleanup for issue `{}` expected PR `{}` target branch `{}`, but GitHub reports `{}`. Re-run review handoff/repair before cleanup.",
 			issue_run.issue.identifier,
-			review_handoff.pr_url(),
+			lifecycle_record.pr_url(),
 			default_branch,
 			landing_state.base_ref_name
 		);
@@ -120,7 +120,7 @@ pub(crate) fn cleanup_completed_post_review_lane(
 	)?;
 	github::delete_pull_request_head_branch_if_present(
 		project.repo_root(),
-		review_handoff.pr_url(),
+		lifecycle_record.pr_url(),
 		&issue_run.worktree.branch_name,
 		&github_token,
 		project.github().command_path(),

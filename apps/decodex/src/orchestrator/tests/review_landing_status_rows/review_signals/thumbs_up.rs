@@ -6,6 +6,7 @@ use crate::{
 			TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID, TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT,
 		},
 	},
+	state::ReviewPolicyCheckpointInput,
 	test_support,
 };
 
@@ -82,6 +83,20 @@ fn build_post_review_lane_statuses_accepts_existing_description_thumbs_up_for_la
 		"APPROVED",
 		TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT + 1,
 	);
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &issue.id,
+			run_id: "runtime-review",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: "strict",
+			status: "clean",
+			head_sha: &head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("runtime review checkpoint should persist");
 
 	let lanes = orchestrator::build_post_review_lane_statuses(
 		&tracker,

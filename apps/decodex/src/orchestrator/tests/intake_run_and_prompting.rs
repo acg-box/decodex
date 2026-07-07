@@ -59,27 +59,19 @@ fn assert_manual_attention_prompt_guidance(prompt: &str, expects_handoff_guard: 
 	}
 }
 
-fn assert_review_route_prompt_guidance(prompt: &str) {
-	assert!(prompt.contains("Adjudicate every reviewer signal into `finding_routes`"));
-	assert!(prompt.contains("must route to `current_blocker`"));
-	assert!(prompt.contains("structured route evidence before any repair loop uses the signal"));
-	assert!(prompt.contains("Non-current `finding_routes`"));
-	assert!(prompt.contains("must not drive repair churn"));
+fn assert_runtime_owned_review_prompt_guidance(prompt: &str) {
+	assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
+	assert!(prompt.contains("Do not request Decodex Review yourself"));
+	assert!(prompt.contains("do not call `issue_review_checkpoint`"));
+	assert!(prompt.contains("Decodex owns the independent current-head"));
 }
 
 fn assert_review_repair_developer_prompt(prompt: &str) {
 	assert!(prompt.contains(ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME));
-	assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
 	assert!(prompt.contains("Do not move the issue back to `In Progress`"));
 	assert!(prompt.contains("do not call `issue_review_handoff`"));
-	assert!(prompt.contains(
-		"Decodex Review: request an independent fresh-context read-only verification pass"
-	));
-	assert!(prompt.contains("review_type = \"repair_verification\""));
+	assert_runtime_owned_review_prompt_guidance(prompt);
 	assert!(prompt.contains("registered project workflow policy"));
-	assert!(prompt.contains("structured accepted/rejected findings"));
-
-	assert_review_route_prompt_guidance(prompt);
 
 	assert!(prompt.contains(
 		"including non-thread review summaries, validate the claim against the codebase, tests, and requirements"
@@ -93,14 +85,7 @@ fn assert_review_repair_developer_prompt(prompt: &str) {
 
 fn assert_review_repair_user_prompt(prompt: &str, pr_url: &str) {
 	assert!(prompt.contains(pr_url));
-	assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
-	assert!(prompt.contains(
-		"Decodex Review: request an independent fresh-context read-only verification pass"
-	));
-	assert!(prompt.contains("review_contract"));
-	assert!(prompt.contains("structured accepted/rejected findings"));
-
-	assert_review_route_prompt_guidance(prompt);
+	assert_runtime_owned_review_prompt_guidance(prompt);
 
 	assert!(prompt.contains(
 		"Read the current review feedback on `https://github.com/hack-ink/decodex/pull/77`, including non-thread review summaries"
@@ -119,12 +104,8 @@ fn assert_review_repair_user_prompt(prompt: &str, pr_url: &str) {
 }
 
 fn assert_review_repair_continuation_prompt(prompt: &str) {
-	assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
 	assert!(prompt.contains("Resume by committing any review-blocking repair edits"));
-	assert!(prompt.contains("review_type = \"repair_verification\""));
-	assert!(prompt.contains("structured accepted/rejected findings"));
-
-	assert_review_route_prompt_guidance(prompt);
+	assert_runtime_owned_review_prompt_guidance(prompt);
 
 	assert!(prompt.contains(
 		"Validate each actionable review claim against the codebase, tests, and requirements before changing code"

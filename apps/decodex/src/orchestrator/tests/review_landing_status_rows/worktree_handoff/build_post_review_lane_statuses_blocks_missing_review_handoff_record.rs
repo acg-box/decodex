@@ -52,6 +52,6 @@ fn build_post_review_lane_statuses_blocks_missing_review_handoff_record() {
 
 		assert_eq!(lanes.len(), 1);
 		assert_eq!(lanes[0].classification, "blocked");
-		assert_eq!(lanes[0].reason, "missing_review_handoff_record");
+		assert_eq!(lanes[0].reason, "missing_review_lifecycle_record");
 	}
 }

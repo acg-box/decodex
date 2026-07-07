@@ -27,6 +27,30 @@ struct PreparedReviewCheckpoint {
 }
 
 impl<'a> TrackerToolBridge<'a> {
+	pub(crate) fn record_runtime_review_checkpoint(
+		&self,
+		arguments: Value,
+	) -> crate::prelude::Result<()> {
+		let response = self.handle_review_checkpoint(arguments);
+
+		if response.success {
+			return Ok(());
+		}
+
+		let message = response
+			.content_items
+			.into_iter()
+			.map(|item| match item {
+				crate::agent::tracker_tool_bridge::DynamicToolContentItem::InputText { text } => {
+					text
+				},
+			})
+			.collect::<Vec<_>>()
+			.join("\n");
+
+		crate::prelude::eyre::bail!(message)
+	}
+
 	pub(super) fn handle_review_checkpoint(&self, arguments: Value) -> DynamicToolCallResponse {
 		let parsed = match serde_json::from_value::<ReviewCheckpointArgs>(arguments) {
 			Ok(parsed) => parsed,

@@ -43,8 +43,9 @@ pub(crate) fn phase_acceptance_repair_phase(phase: PhaseGoalKind) -> PhaseGoalKi
 pub(crate) fn phase_validation_pass_next_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
 	match phase {
 		PhaseGoalKind::RepairAcceptedReviewFindings => PhaseGoalKind::ReviewRepairEvidence,
-		PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures =>
-			PhaseGoalKind::HandoffEvidence,
+		PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures => {
+			PhaseGoalKind::HandoffEvidence
+		},
 		PhaseGoalKind::ReviewRepairEvidence | PhaseGoalKind::HandoffEvidence => phase,
 	}
 }

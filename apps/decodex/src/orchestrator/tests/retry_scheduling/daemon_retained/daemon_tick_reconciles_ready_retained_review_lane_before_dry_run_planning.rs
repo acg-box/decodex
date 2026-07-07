@@ -8,6 +8,7 @@ use crate::{
 			},
 		},
 	},
+	state::ReviewPolicyCheckpointInput,
 	worktree::WorktreeManager,
 };
 
@@ -76,6 +77,20 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 		&retained_issue.id,
 		&tests::sample_review_handoff_marker(&retained_worktree.branch_name, pr_url, &head_oid),
 	);
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &retained_issue.id,
+			run_id: "runtime-review",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: "standard",
+			status: "clean",
+			head_sha: &head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("runtime clean review checkpoint should seed");
 
 	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
@@ -116,7 +131,7 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 		&retained_worktree.path,
 	);
 
-	assert_eq!(marker.phase(), "waiting_for_merge");
+	assert_eq!(marker.phase(), "landed");
 
 	support::assert_fake_admin_merge_invocation_present(
 		&invocation_log_path,

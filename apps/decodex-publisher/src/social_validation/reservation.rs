@@ -117,10 +117,14 @@ fn validate_social_publish_reservation_status_payload(
 	match social_validation::string_field(entry, "status") {
 		Some("consumed")
 			if !social_validation::is_non_empty_string(entry.get("consumed_by_social_post")) =>
-			errors.push("consumed_by_social_post is required when status is consumed".into()),
+		{
+			errors.push("consumed_by_social_post is required when status is consumed".into())
+		},
 		Some("canceled" | "expired")
 			if !social_validation::is_non_empty_string(entry.get("release_reason")) =>
-			errors.push("release_reason is required when status is canceled or expired".into()),
+		{
+			errors.push("release_reason is required when status is canceled or expired".into())
+		},
 		_ => {},
 	}
 }

@@ -180,13 +180,13 @@ mirror:
 | Runtime SQLite `program_intake_plans` | Queryable local projection of `decodex.program_intake_plan/1` metadata, including intake kind, source contract when present, authority fingerprint, and public-safe summary. The paired versioned program payload retains optional private objective/signal/proposal lineage for accepted autonomy-derived intake. |
 | Runtime SQLite `program_issue_mappings` | Queryable local projection of each internal program node's mapped Linear issue, tracker state, dispatch intent, active/manual/attention facts, and dispatch-briefing fact. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing run lease ownership. |
-| Runtime SQLite `review_lifecycle_records` | Single authoritative post-review record for one retained PR-backed lane. It stores handoff identity, PR URL, base/head branch, validated head OID, current post-review phase, review-request metadata, landing/closeout/repair state, evidence, and next action. Handoff and orchestration tool-boundary shapes are projections of this record, not separate durable authority. Historical `review_handoffs` and `review_orchestrations` tables are dropped during bootstrap, not migrated or used as readback authority. |
+| Runtime SQLite `review_lifecycle_records` | Projection of the canonical `decodex/lifecycle-authority-record/1` for one retained PR-backed lane. It stores sequence, subject, phase, transition, previous/next state, review gate, PR URL, base/head branch, validated head OID, merge commit, cleanup state, actor, evidence refs, idempotency/correlation/causation ids, and next action. The pure lifecycle kernel decides final transitions, and the runtime state adapter transactionally writes this projection plus the append-only `decodex/lifecycle-event/1` private event. Handoff and orchestration tool-boundary shapes are projections of this record, not separate durable authority. Historical `review_handoffs` and `review_orchestrations` tables are dropped during bootstrap, not migrated or used as readback authority. |
 | Runtime SQLite `review_policy_checkpoints` | Current run-attempt projection of bounded-review checkpoint state for one project, issue, run, attempt, and phase. The row supports immediate operator/status readback and remains cleared after review handoff or retained repair completion. |
 | Runtime SQLite `evidence_artifacts` | Canonical evidence-keyed artifact store for reusable runtime proofs. Review checkpoints are keyed by artifact kind, phase, current `HEAD`, review level, and review prompt version; matching artifacts are the only review-policy proof accepted by completion and mutation-fence checks, and mismatched keys fail closed. |
 | Runtime SQLite `loop_guardrail_checkpoints` | Latest convergence checkpoint for one project, issue, and guardrail reason. It stores the fingerprint, consecutive count, run id, attempt number, and structured detail used to stop non-converging loops without replaying Linear comments. |
 | Agent evidence under `~/.codex/decodex/agent-evidence/<service-id>/` | Derived local handoff view for repair agents. It may reference private evidence readback commands and compact run capsules, but it is not scheduling authority and is not a public mirror. |
 | Logs under `~/.codex/decodex/logs/` and `.decodex-run-activity` | Diagnostic process and liveness signals. They may explain what a local process did, but they are not the structured execution ledger and must not be replayed as tracker state. |
-| Linear execution ledger comments | Low-frequency public projection for team-visible lifecycle state. They carry coarse start, progress phase, PR, handoff, failure, landing, closeout, and cleanup summaries only. |
+| Linear execution ledger comments | Low-frequency public projection for team-visible lifecycle state and historical execution context. They carry coarse start, progress phase, PR, handoff, failure, landing, closeout, and cleanup summaries only, and must not be used as final `landed`, `closed`, or cleanup authority when a lifecycle authority record is required. |
 
 ### Operator snapshot recovery boundary
 
@@ -608,12 +608,15 @@ the failure as
 not send this condition through implementation architecture recovery and must not
 mislabel it as ordinary no-effective-diff repair churn.
 
-When `[codex].review` is `"standard"` or `"strict"`, handoff and retained
-review-repair runs also consume the latest structured `issue_review_checkpoint`
-state for the current phase and current lane head from the owned lane:
+When `[codex].review` is `"standard"` or `"strict"`, runtime post-handoff and
+retained review-repair orchestration consume the latest structured
+`issue_review_checkpoint` state for the current phase and current lane head from the
+owned lane:
 
-- no checkpoint and no terminal path: allow a clean continuation boundary
-- latest checkpoint `clean` and no terminal path: allow continuation so the agent can finish handoff or repair completion
+- no checkpoint after handoff or repair completion: wait for the runtime-owned
+  review gate instead of landing or selecting a clean-path continuation
+- latest checkpoint `clean`: allow the post-review lifecycle to continue toward the
+  next clean-path action when the ordinary PR and repository gates also pass
 - latest checkpoint `findings` where every active `current_blocker` fingerprint has
   been seen fewer than three times in the same phase: allow continuation
 - latest checkpoint `findings` where any active `current_blocker` fingerprint has
@@ -627,9 +630,10 @@ state for the current phase and current lane head from the owned lane:
 `review_policy_checkpoints` table keyed by project, issue, run, attempt, and phase,
 and persists the reusable proof in `evidence_artifacts`. The artifact key includes
 artifact kind `issue_review_checkpoint`, phase, current `HEAD`, `[codex].review`
-level, and review prompt version. `issue_review_handoff`,
-`issue_review_repair_complete`, and review-policy mutation fences require the
-matching evidence artifact to be `clean`; a missing or mismatched key fails closed.
+level, and review prompt version. Post-review classification, retained
+orchestration, and review-policy mutation fences require the matching evidence
+artifact to be `clean` before clean-path landing or continuation; a missing or
+mismatched key fails closed.
 The stored checkpoint contains `phase`, `status`, `head_sha`, `nonclean_rounds`, and
 `details_json`.
 `nonclean_rounds` is the current phase's max active `current_blocker` repeat count;
@@ -655,10 +659,11 @@ count as the active loop-review readback before falling back to the per-phase
 `review_policy_checkpoints` rows. Older per-phase rows remain repair history, but a
 stale `repair` row must not keep `lane_control_next_action` on old finding repair
 instructions after a newer current-head clean `handoff` checkpoint has been recorded.
-Recording `issue_review_handoff` or `issue_review_repair_complete` clears the current
-run-attempt `review_policy_checkpoints` row for that phase after the reusable clean
-evidence artifact has been consumed.
-When `[codex].review` is `"off"` or `"basic"`, Decodex does not expose
+Recording `issue_review_handoff` or `issue_review_repair_complete` clears any
+run-attempt `review_policy_checkpoints` row left from the agent run. The subsequent
+runtime-owned review gate records the reusable current-head evidence artifact that
+post-review orchestration consumes.
+When `[codex].review` is `"off"`, Decodex does not expose
 `issue_review_checkpoint`, does not require a clean checkpoint before review handoff
 or repair completion, and ignores stale review-policy state while classifying clean
 turn boundaries.
@@ -849,7 +854,7 @@ mutations, or duplicate comment for that logical event.
 
 The local runtime store is the global Decodex SQLite database for one local installation. It lives at `~/.codex/decodex/runtime.sqlite3`, not inside any registered project checkout or worktree. Every row that belongs to a repo is scoped by `project_id`. Decodex logs live beside that database under `~/.codex/decodex/logs/`, the optional shared Codex account pool lives at `~/.codex/decodex/accounts.jsonl`, global operator config lives at `~/.codex/decodex/config.toml`, bounded local account usage estimates live at `~/.codex/decodex/account-usage-history.jsonl`, and agent-readable derived evidence lives under `~/.codex/decodex/agent-evidence/<service-id>/`; vendor-qualified app-data directories and per-project runtime databases are not part of the runtime contract. Global operator config owns account-pool routing and shared account display-name offsets. The account pool also owns persisted `auth_failed` refresh-authentication state so scheduling does not route new lanes to accounts that must be re-logged or replaced. Account usage history owns local seven-day display estimates and non-secret account capacity weights only; it does not contain token material and does not decide scheduling. UI-only preferences such as theme, table sorting, and local privacy visibility are not runtime state.
 
-Project contracts live outside registered repositories under `~/.codex/decodex/projects/<service-id>/`. Each project directory must contain `project.toml` and `WORKFLOW.md`; arbitrary project file names such as `<service-id>.toml` are not part of the contract. `project.toml` must set `[paths].repo_root` so the project contract is explicit. The `[github]` table owns the routed token environment variable and may also set `command_path` when the expected `gh` binary should be explicit for GUI-launched runs. The `[codex]` table owns app-server-adjacent runtime policy such as `review`. `review` accepts `"off"`, `"basic"`, `"standard"`, and `"strict"` and defaults to `"strict"` when omitted. The `[autonomy]` table owns references for objective-driven project-autonomy policy. It defaults to latent-only with `auto_promote = false` and `auto_intake = false`. `auto_promote = true` requires references to an accepted runtime Objective Contract version and an accepted runtime project-policy authority record; that runtime policy record, not `project.toml`, owns policy id, version, scope, accepted-by metadata, acceptance source, allowed signal kinds, allowed surfaces, validation gates, review policy, explicit cooldown, and explicit write budget. `auto_intake = true` also requires the `team_issue_identifier` tracker anchor while issue creation is allowed. Project config may reference those authority objects, but config presence alone does not grant unattended execution authority and must not embed or replace the accepted authority records. Unknown autonomy config keys, policy bodies, allowed signal kinds, allowed surfaces, validation gates, cooldowns, and write budgets are refused by config parsing rather than treated as latent policy. Phase-scoped goal support is mandatory and is not project-configurable. Project registration stores the centralized `config_path`, target `repo_root`, `worktree_root`, and workflow path in the global runtime database. Commands that start inside a registered checkout or lane worktree resolve the project through that registry; they do not discover or trust worktree-local config files. Project config refreshes preserve an existing enabled or disabled registry toggle; only explicit operator commands such as `decodex project add <project-dir>`, `decodex project enable <service-id>`, and `decodex project disable <service-id>` may change that toggle. `decodex serve` schedules and polls enabled registered projects from the global runtime database; the operator and App projections must still expose active runtime DB-backed attempts for disabled projects because pause is a future-dispatch control, not a visibility or ownership deletion. It must not scan `.codex` history, repo-local config files, or currently open worktrees to infer additional projects.
+Project contracts live outside registered repositories under `~/.codex/decodex/projects/<service-id>/`. Each project directory must contain `project.toml` and `WORKFLOW.md`; arbitrary project file names such as `<service-id>.toml` are not part of the contract. `project.toml` must set `[paths].repo_root` so the project contract is explicit. The `[github]` table owns the routed token environment variable and may also set `command_path` when the expected `gh` binary should be explicit for GUI-launched runs. The `[codex]` table owns app-server-adjacent runtime policy such as `review`. `review` accepts `"off"`, `"standard"`, and `"strict"` and defaults to `"strict"` when omitted. The `[autonomy]` table owns references for objective-driven project-autonomy policy. It defaults to latent-only with `auto_promote = false` and `auto_intake = false`. `auto_promote = true` requires references to an accepted runtime Objective Contract version and an accepted runtime project-policy authority record; that runtime policy record, not `project.toml`, owns policy id, version, scope, accepted-by metadata, acceptance source, allowed signal kinds, allowed surfaces, validation gates, review policy, explicit cooldown, and explicit write budget. `auto_intake = true` also requires the `team_issue_identifier` tracker anchor while issue creation is allowed. Project config may reference those authority objects, but config presence alone does not grant unattended execution authority and must not embed or replace the accepted authority records. Unknown autonomy config keys, policy bodies, allowed signal kinds, allowed surfaces, validation gates, cooldowns, and write budgets are refused by config parsing rather than treated as latent policy. Phase-scoped goal support is mandatory and is not project-configurable. Project registration stores the centralized `config_path`, target `repo_root`, `worktree_root`, and workflow path in the global runtime database. Commands that start inside a registered checkout or lane worktree resolve the project through that registry; they do not discover or trust worktree-local config files. Project config refreshes preserve an existing enabled or disabled registry toggle; only explicit operator commands such as `decodex project add <project-dir>`, `decodex project enable <service-id>`, and `decodex project disable <service-id>` may change that toggle. `decodex serve` schedules and polls enabled registered projects from the global runtime database; the operator and App projections must still expose active runtime DB-backed attempts for disabled projects because pause is a future-dispatch control, not a visibility or ownership deletion. It must not scan `.codex` history, repo-local config files, or currently open worktrees to infer additional projects.
 
 `project.toml` may also configure `[privacy_classifier]` with a loopback HTTP
 `endpoint` and bounded `timeout_ms` for an operator-managed local classifier runtime.

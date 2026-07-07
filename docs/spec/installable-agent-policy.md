@@ -58,7 +58,7 @@ policy.
 | Identity | Derive external-service identity from repo, project, or tool configuration; stop when required identity is missing or contradictory. | Person-to-token maps, workspace names, fallback identities, and exact `GITHUB_*` or `LINEAR_*` variables. |
 | Validation | Run the repository-declared gate before review handoff, PR-head refresh, or branch-state mutation. | `WORKFLOW.md` frontmatter keys, command lists, or gate-profile selection semantics. |
 | Review | Review the current head before handoff or merge and repair verified findings. | Decodex bounded review checkpoint tools, review-round accounting, GitHub Review signals, or landing-entry rules. |
-| Commit messages | Follow the repository's declared commit-message contract. | The `decodex/commit/1` schema when the target repository does not declare it. |
+| Commit messages | Follow the repository's declared commit-message contract. | The `decodex/commit/2` schema when the target repository does not declare it. |
 | Change control | Do not overwrite unrelated local changes; stop when ownership is unclear. | Retained-lane reconciliation, recovery worktree classification, or closeout cleanup policy. |
 
 ## Decodex policy destinations

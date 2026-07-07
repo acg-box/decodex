@@ -41,7 +41,6 @@ fn rebind_validation_allows_missing_handoff_after_writeback_failure_ledger() {
 		&issue,
 		&worktree,
 		None,
-		None,
 		&landing_state,
 		head_oid,
 	)
