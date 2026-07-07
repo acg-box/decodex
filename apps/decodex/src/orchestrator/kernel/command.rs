@@ -14,7 +14,7 @@ pub(crate) enum CommandIntentKind {
 	StartRetainedLanding,
 	StartRetainedCloseout,
 	FinishRetainedCleanup,
-	SyncReviewOrchestrationMarker,
+	SyncReviewLifecycleAuthority,
 	ObserveLoopGuardrailCheckpoint,
 	ClearLoopGuardrailCheckpoint,
 }
@@ -35,7 +35,7 @@ impl CommandIntentKind {
 			Self::StartRetainedLanding => "start_retained_landing",
 			Self::StartRetainedCloseout => "start_retained_closeout",
 			Self::FinishRetainedCleanup => "finish_retained_cleanup",
-			Self::SyncReviewOrchestrationMarker => "sync_review_orchestration_marker",
+			Self::SyncReviewLifecycleAuthority => "sync_review_lifecycle_authority",
 			Self::ObserveLoopGuardrailCheckpoint => "observe_loop_guardrail_checkpoint",
 			Self::ClearLoopGuardrailCheckpoint => "clear_loop_guardrail_checkpoint",
 		}
@@ -69,7 +69,7 @@ pub(crate) enum CommandFact {
 	RetainedLandingStarted,
 	RetainedCloseoutStarted,
 	RetainedCleanupCompleted,
-	ReviewOrchestrationMarkerCurrent,
+	ReviewLifecycleAuthorityCurrent,
 	OpenTrackerBlockersPresent,
 	OpenTrackerBlockersResolved,
 	LoopGuardrailCheckpointObserved,
@@ -97,15 +97,16 @@ impl CommandFact {
 			Self::TerminalCleanupPending => "terminal_cleanup_pending",
 			Self::ExternalReviewRequested => "external_review_requested",
 			Self::ExternalReviewRequestPresent => "external_review_request_present",
-			Self::ExternalReviewAcknowledgementObserved =>
-				"external_review_acknowledgement_observed",
+			Self::ExternalReviewAcknowledgementObserved => {
+				"external_review_acknowledgement_observed"
+			},
 			Self::ExternalReviewAcknowledgementPending => "external_review_acknowledgement_pending",
 			Self::ExternalReviewRequestRetryAvailable => "external_review_request_retry_available",
 			Self::ReviewRepairStarted => "review_repair_started",
 			Self::RetainedLandingStarted => "retained_landing_started",
 			Self::RetainedCloseoutStarted => "retained_closeout_started",
 			Self::RetainedCleanupCompleted => "retained_cleanup_completed",
-			Self::ReviewOrchestrationMarkerCurrent => "review_orchestration_marker_current",
+			Self::ReviewLifecycleAuthorityCurrent => "review_lifecycle_authority_current",
 			Self::OpenTrackerBlockersPresent => "open_tracker_blockers_present",
 			Self::OpenTrackerBlockersResolved => "open_tracker_blockers_resolved",
 			Self::LoopGuardrailCheckpointObserved => "loop_guardrail_checkpoint_observed",

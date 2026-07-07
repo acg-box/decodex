@@ -5,7 +5,7 @@ use crate::{
 	worktree::{WorktreeManager, WorktreeSpec},
 };
 
-pub(super) fn retained_worktree_with_stale_review_lifecycle_marker(
+pub(super) fn retained_worktree_with_stale_review_lifecycle_authority(
 	config: &ServiceConfig,
 	state_store: &StateStore,
 	issue: &TrackerIssue,
@@ -26,11 +26,11 @@ pub(super) fn retained_worktree_with_stale_review_lifecycle_marker(
 		)
 		.expect("worktree should record");
 
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			&worktree.branch_name,
 			pr_url,
 			&old_head_oid,

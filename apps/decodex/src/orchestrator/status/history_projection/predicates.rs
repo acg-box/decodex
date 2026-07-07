@@ -11,10 +11,7 @@ pub(crate) fn current_lane_has_authoritative_live_owner(run: &OperatorRunStatus)
 
 pub(crate) fn history_ledger_outcome_is_terminal(outcome: &OperatorHistoryLedgerOutcome) -> bool {
 	outcome.ledger_status == "present"
-		&& matches!(
-			outcome.final_outcome.as_str(),
-			"cleanup_complete" | "closeout" | "landed" | "needs_attention" | "terminal_failure"
-		)
+		&& matches!(outcome.final_outcome.as_str(), "needs_attention" | "terminal_failure")
 }
 
 pub(crate) fn history_ledger_outcome_requires_attention(

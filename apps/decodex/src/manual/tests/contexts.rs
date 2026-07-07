@@ -28,7 +28,7 @@ pub(in crate::manual::tests) fn repo_root_manual_land_context(
 			merge_commit_allowed: true,
 		},
 		prepared_closeout: None,
-		review_handoff: None,
+		review_lifecycle: None,
 		pr_url: String::from("https://github.com/hack-ink/decodex/pull/64"),
 		review_branch: String::from("main"),
 		public_projection_privacy_classifier: ConfiguredPublicProjectionPrivacyClassifier::Disabled,

@@ -44,7 +44,6 @@ fn rebind_validation_rejects_missing_handoff_writeback_ledger_for_wrong_pr() {
 		&issue,
 		&worktree,
 		None,
-		None,
 		&landing_state,
 		head_oid,
 	)

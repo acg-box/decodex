@@ -1,6 +1,4 @@
-use crate::agent::tracker_tool_bridge::{
-	DynamicToolSpec, ReviewExecutionMode, ReviewHandoffContext, TrackerToolBridge,
-};
+use crate::agent::tracker_tool_bridge::{DynamicToolSpec, ReviewExecutionMode, TrackerToolBridge};
 
 impl<'a> TrackerToolBridge<'a> {
 	pub(in crate::agent::tracker_tool_bridge) fn build_tool_specs(&self) -> Vec<DynamicToolSpec> {
@@ -10,27 +8,11 @@ impl<'a> TrackerToolBridge<'a> {
 
 				tool_specs.extend(self.progress_checkpoint_tool_specs());
 
-				if self
-					.review_context
-					.as_ref()
-					.is_some_and(ReviewHandoffContext::decodex_review_checkpoint_enabled)
-				{
-					tool_specs.extend(self.review_checkpoint_tool_specs());
-				}
-
 				tool_specs
 			},
 			Some(ReviewExecutionMode::Closeout) => self.closeout_base_tool_specs(),
 			Some(ReviewExecutionMode::Handoff) => {
 				let mut tool_specs = self.base_tool_specs();
-
-				if self
-					.review_context
-					.as_ref()
-					.is_some_and(ReviewHandoffContext::decodex_review_checkpoint_enabled)
-				{
-					tool_specs.extend(self.review_checkpoint_tool_specs());
-				}
 
 				tool_specs.extend(self.review_handoff_tool_specs());
 

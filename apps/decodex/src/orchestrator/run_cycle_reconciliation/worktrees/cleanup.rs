@@ -48,7 +48,7 @@ where
 			|| issue_has_running_attempt(context.state_store, &issue.id)?
 			|| context
 				.state_store
-				.review_handoff_marker(
+				.review_lifecycle_record(
 					context.project.service_id(),
 					mapping.issue_id(),
 					mapping.branch_name(),

@@ -40,7 +40,7 @@ fn validate_rebind_request(
 ) -> Result<RebindValidation> {
 	let issue = issue::load_issue_by_identifier(&context.tracker, &request.issue)?;
 	let worktree = issue::validate_rebind_issue_context(context, &issue)?;
-	let existing_handoff = context.state_store.review_handoff_marker(
+	let existing_lifecycle = context.state_store.review_lifecycle_record(
 		context.config.service_id(),
 		&issue.id,
 		worktree.branch_name(),
@@ -48,23 +48,11 @@ fn validate_rebind_request(
 	let landing_state =
 		pull_request_inspection::inspect_rebind_pull_request(context, &request.pr_url)?;
 	let local_head_oid = worktree::validate_rebind_worktree(&worktree, &landing_state)?;
-	let existing_orchestration = existing_handoff
-		.as_ref()
-		.map(|handoff| {
-			context.state_store.review_orchestration_marker(
-				context.config.service_id(),
-				&issue.id,
-				handoff,
-			)
-		})
-		.transpose()?
-		.flatten();
 	let (run_id, attempt_number, mode) = issue::validate_rebind_existing_handoff(
 		context,
 		&issue,
 		&worktree,
-		existing_handoff.as_ref(),
-		existing_orchestration.as_ref(),
+		existing_lifecycle.as_ref(),
 		&landing_state,
 		&local_head_oid,
 	)?;
@@ -114,7 +102,7 @@ fn validate_adopt_request(
 	let local_head_oid = git_worktree::worktree_head_oid(&worktree_path)?
 		.ok_or_else(|| eyre::eyre!("Manual takeover worktree has no readable HEAD."))?;
 
-	worktree::validate_adopt_absent_handoff_marker(
+	worktree::validate_adopt_absent_lifecycle_record(
 		context,
 		&issue,
 		&branch_name,

@@ -18,13 +18,14 @@ where
 
 	for index in 0..plan_count {
 		let issue = match contract.links().generated_issue_identifiers().get(index) {
-			Some(identifier) =>
+			Some(identifier) => {
 				Some(tracker.get_issue_by_identifier(identifier)?.ok_or_else(|| {
 					eyre::eyre!(
 						"Generated issue link `{identifier}` for Decision Contract `{}` did not resolve.",
 						contract.contract_id()
 					)
-				})?),
+				})?)
+			},
 			None => None,
 		};
 

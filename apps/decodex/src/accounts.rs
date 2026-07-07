@@ -35,4 +35,5 @@ pub(in crate::accounts) const ACCOUNT_RANDOM_NAMES: &[&str] = &[
 	"Taylor", "Theo", "Val",
 ];
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

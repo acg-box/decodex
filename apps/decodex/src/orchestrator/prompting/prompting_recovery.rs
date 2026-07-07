@@ -97,12 +97,12 @@ pub(super) fn build_external_repair_architecture_guidance(
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 ) -> String {
-	let review_handoff = match state_store.review_handoff_marker(
+	let lifecycle_record = match state_store.review_lifecycle_record(
 		project.service_id(),
 		&issue_run.issue.id,
 		&issue_run.worktree.branch_name,
 	) {
-		Ok(Some(review_handoff)) => review_handoff,
+		Ok(Some(lifecycle_record)) => lifecycle_record,
 		Ok(None) => return String::new(),
 		Err(error) => {
 			tracing::warn!(
@@ -116,33 +116,14 @@ pub(super) fn build_external_repair_architecture_guidance(
 			return String::new();
 		},
 	};
-	let marker = match state_store.review_orchestration_marker(
-		project.service_id(),
-		&issue_run.issue.id,
-		&review_handoff,
-	) {
-		Ok(Some(marker)) => marker,
-		Ok(None) => return String::new(),
-		Err(error) => {
-			tracing::warn!(
-				?error,
-				issue = issue_run.issue.identifier,
-				run_id = issue_run.run_id,
-				worktree_path = %issue_run.worktree.path.display(),
-				"Retained review prompt could not read runtime orchestration state; omitting architecture guidance."
-			);
 
-			return String::new();
-		},
-	};
-
-	if marker.external_round_count() < 4 {
+	if lifecycle_record.external_round_count() < 4 {
 		return String::new();
 	}
 
 	format!(
 		"- This retained repair is GitHub Review round {}. Before another patch-only cycle, decide whether the repeated churn points to an architectural or root-cause defect that local patching will not converge.\n- If it is architectural, take the manual-attention path instead of continuing patch-on-patch repair.\n- If it is not architectural and the findings are still normal retained review work, continue this repair normally; a successful `{}` will reset the GitHub Review round budget.\n",
-		marker.external_round_count(),
+		lifecycle_record.external_round_count(),
 		ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME
 	)
 }

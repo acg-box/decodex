@@ -6,6 +6,7 @@ use crate::orchestrator::{
 		self, FakePullRequestReviewStateInspector, FakeTracker, review_landing_status_support,
 	},
 };
+use crate::state::ReviewPolicyCheckpointInput;
 
 #[test]
 fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
@@ -23,8 +24,8 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
-	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
-	let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
+	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
+	let landed_merge_subject = r#"{"schema":"decodex/commit/2","change":"Land current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
@@ -32,17 +33,17 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			"main",
 			pr_url,
 			&head_oid,
@@ -50,6 +51,20 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 			1,
 		),
 	);
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &issue.id,
+			run_id: "run-1:runtime-review:repair:ready",
+			attempt_number: 1,
+			phase: "repair",
+			review_level: "strict",
+			status: "clean",
+			head_sha: &head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("strict runtime review checkpoint should persist");
 
 	let mut review_state = tests::sample_pull_request_review_state(
 		pr_url,
@@ -73,19 +88,12 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = tests::persisted_review_orchestration_marker_for_path(
-		&state_store,
-		config.service_id(),
-		&repo_root,
-	);
 	let gh_invocation = fs::read_to_string(&invocation_log_path)
 		.expect("fake gh invocation log should read")
 		.lines()
 		.map(str::to_owned)
 		.collect::<Vec<_>>();
 
-	assert_eq!(marker.phase(), "waiting_for_merge");
-	assert!(marker.auto_merge_enabled_at_unix_epoch().is_some());
 	assert_eq!(
 		gh_invocation,
 		vec![
@@ -100,6 +108,99 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 			String::from("--body"),
 			String::new(),
 			String::from(pr_url),
+			String::from("pr"),
+			String::from("view"),
+			String::from(pr_url),
+			String::from("--json"),
+			String::from("state,headRefOid,mergeCommit"),
 		]
 	);
+	let lifecycle = state_store
+		.review_lifecycle_record(config.service_id(), &issue.id, "main")
+		.expect("lifecycle record should read")
+		.expect("landing authority should record");
+	assert_eq!(lifecycle.next_state(), "landed");
+	assert_eq!(lifecycle.transition(), "landed");
+	assert_eq!(lifecycle.merge_commit(), Some("cafebabe"));
+}
+
+#[test]
+fn reconcile_post_review_orchestration_records_lifecycle_attention_when_admin_merge_unavailable() {
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let repo_root = config.repo_root().to_path_buf();
+	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
+	let merge_subject = r#"{"schema":"decodex/commit/2","change":"blocked retained handoff","authority":"PUB-101","impact":"compatible"}"#;
+	let head_oid =
+		tests::commit_worktree_change(&repo_root, "blocked.txt", "ready\n", merge_subject);
+
+	state_store
+		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
+		.expect("worktree should record");
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
+	);
+	tests::seed_review_lifecycle_transition_fixture_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&tests::sample_review_lifecycle_transition_fixture(
+			"main",
+			pr_url,
+			&head_oid,
+			"waiting_for_result",
+			1,
+		),
+	);
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &issue.id,
+			run_id: "run-1:runtime-review:repair:ready",
+			attempt_number: 1,
+			phase: "repair",
+			review_level: "strict",
+			status: "clean",
+			head_sha: &head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("strict runtime review checkpoint should persist");
+
+	let mut review_state = tests::sample_pull_request_review_state(
+		pr_url,
+		"main",
+		&head_oid,
+		Some("APPROVED"),
+		"MERGEABLE",
+		"CLEAN",
+		Some("SUCCESS"),
+		0,
+	);
+	tests::add_external_review_ack(&mut review_state);
+	tests::add_external_review_pass(&mut review_state);
+	review_state.merge_commit_allowed = false;
+
+	orchestrator::reconcile_post_review_orchestration_with_inspector(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
+	)
+	.expect("post-review orchestration should request attention");
+
+	let lifecycle = state_store
+		.review_lifecycle_record(config.service_id(), &issue.id, "main")
+		.expect("lifecycle record should read")
+		.expect("manual attention authority should record");
+	assert_eq!(lifecycle.next_state(), "manual_attention_required");
+	assert_eq!(lifecycle.transition(), "manual_attention_required");
+	assert_eq!(lifecycle.next_action(), "request_manual_attention");
 }

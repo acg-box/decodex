@@ -5,7 +5,8 @@ use tempfile::TempDir;
 use crate::{
 	recovery::{GHOST_LANE_BLOCKED_CLASSIFICATION, tests::GhostLaneTestTracker},
 	state::{
-		ChildAgentActivitySummary, ReviewHandoffMarker, ReviewPolicyCheckpointInput, StateStore,
+		ChildAgentActivitySummary, ReviewLifecycleHandoffFixture, ReviewPolicyCheckpointInput,
+		StateStore,
 	},
 	tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
 };
@@ -102,7 +103,7 @@ fn ghost_lane_diagnostic_fails_closed_when_review_lifecycle_exists() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = GhostLaneTestTracker::missing();
-	let marker = ReviewHandoffMarker::new(
+	let marker = ReviewLifecycleHandoffFixture::new(
 		"run-12",
 		1,
 		"x/pubfi-pub-012",
@@ -115,7 +116,7 @@ fn ghost_lane_diagnostic_fails_closed_when_review_lifecycle_exists() {
 	store.record_run_attempt("run-12", "PUB-012", 1, "running").expect("run attempt should record");
 	store.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress").expect("lease should record");
 	store
-		.upsert_review_handoff_marker("pubfi", "PUB-012", &marker)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-012", &marker)
 		.expect("review lifecycle should record");
 
 	let diagnostics =

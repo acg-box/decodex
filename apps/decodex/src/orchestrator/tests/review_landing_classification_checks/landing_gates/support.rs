@@ -37,7 +37,11 @@ pub(crate) fn snapshot_for_issue_state(
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(BRANCH_NAME, PR_URL, HEAD_OID)),
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
+			BRANCH_NAME,
+			PR_URL,
+			HEAD_OID,
+		)),
 		local_branch_name: Some(String::from(local_branch_name)),
 		local_head_oid: Some(String::from(HEAD_OID)),
 	};
@@ -68,11 +72,11 @@ pub(crate) fn seed_review_marker(
 	stage: &str,
 	external_round_count: i64,
 ) {
-	tests::seed_review_orchestration_marker(
+	tests::seed_review_lifecycle_transition_fixture(
 		state_store,
 		SERVICE_ID,
 		&snapshot.issue.id,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			BRANCH_NAME,
 			PR_URL,
 			HEAD_OID,

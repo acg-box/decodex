@@ -1,6 +1,6 @@
 use crate::orchestrator::tests::operator::status::{
-	self, FakeTracker, Instant, OffsetDateTime, ReviewHandoffMarker, StateStore, TEST_SERVICE_ID,
-	TRACKER_RATE_LIMIT_WARNING, Value, eyre, orchestrator, slice,
+	self, FakeTracker, Instant, OffsetDateTime, ReviewLifecycleHandoffFixture, StateStore,
+	TEST_SERVICE_ID, TRACKER_RATE_LIMIT_WARNING, Value, eyre, orchestrator, slice,
 };
 
 #[test]
@@ -34,10 +34,10 @@ fn operator_state_snapshot_reports_tracker_rate_limit_as_backoff() {
 		)
 		.expect("worktree should record");
 	state_store
-		.upsert_review_handoff_marker(
+		.upsert_review_lifecycle_handoff_fixture(
 			TEST_SERVICE_ID,
 			&issue.id,
-			&ReviewHandoffMarker::new(
+			&ReviewLifecycleHandoffFixture::new(
 				"pub-101-attempt-1",
 				1,
 				branch_name,

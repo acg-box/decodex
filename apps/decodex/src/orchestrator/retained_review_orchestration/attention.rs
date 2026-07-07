@@ -3,7 +3,7 @@ use crate::{
 	orchestrator::retained_review_orchestration::{
 		IssueDispatchMode, IssueRunPlan, IssueTracker, PassiveRetainedAttentionRuntime, Report,
 		Result, RetainedReviewNeedsAttention, RetainedReviewRunIdentity, RetainedReviewRuntime,
-		ReviewOrchestrationMarker, TerminalFailureWritebackRuntime, TrackerIssue, WorktreeMapping,
+		ReviewLifecycleReadback, TerminalFailureWritebackRuntime, TrackerIssue, WorktreeMapping,
 		WorktreeSpec,
 	},
 };
@@ -12,7 +12,7 @@ pub(crate) fn apply_passive_retained_manual_attention<T>(
 	runtime: PassiveRetainedAttentionRuntime<'_, T>,
 	issue: &TrackerIssue,
 	worktree: &WorktreeMapping,
-	orchestration_marker: &ReviewOrchestrationMarker,
+	lifecycle_record: &impl ReviewLifecycleReadback,
 	reason: &str,
 ) -> Result<()>
 where
@@ -23,8 +23,8 @@ where
 		issue,
 		worktree,
 		&RetainedReviewRunIdentity {
-			run_id: orchestration_marker.run_id().to_owned(),
-			attempt_number: orchestration_marker.attempt_number(),
+			run_id: lifecycle_record.run_id().to_owned(),
+			attempt_number: lifecycle_record.attempt_number(),
 		},
 		reason,
 	)
@@ -108,7 +108,7 @@ where
 		return Ok(false);
 	}
 
-	let Some(review_handoff) = runtime.state_store.review_handoff_marker(
+	let Some(lifecycle_record) = runtime.state_store.review_lifecycle_record(
 		runtime.project.service_id(),
 		&issue.id,
 		worktree.branch_name(),
@@ -122,9 +122,9 @@ where
 		issue_id = issue.id.as_str(),
 		issue = issue.identifier.as_str(),
 		branch = worktree.branch_name(),
-		pr_url = review_handoff.pr_url(),
-		pr_head_sha = review_handoff.pr_head_oid(),
-		"Skipping stale retained review attention writeback because review handoff is now rebound."
+		pr_url = lifecycle_record.pr_url(),
+		pr_head_sha = lifecycle_record.pr_head_oid(),
+		"Skipping stale retained review attention writeback because review lifecycle authority is now rebound."
 	);
 
 	Ok(true)

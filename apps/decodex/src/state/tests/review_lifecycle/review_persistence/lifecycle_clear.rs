@@ -1,6 +1,8 @@
 use tempfile::TempDir;
 
-use crate::state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore, tests};
+use crate::state::{
+	ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture, StateStore, tests,
+};
 
 #[test]
 fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
@@ -9,7 +11,7 @@ fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
 	let store = StateStore::open(&state_path).expect("state store should open");
 	let removed_handoff = tests::sample_pub_101_review_handoff();
 	let removed_orchestration = tests::sample_pub_101_review_orchestration();
-	let kept_handoff = ReviewHandoffMarker::new(
+	let kept_handoff = ReviewLifecycleHandoffFixture::new(
 		"run-2",
 		1,
 		"x/decodex-pub-101-review",
@@ -18,7 +20,7 @@ fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
 		"x/decodex-pub-101-review",
 		"18a20f7dfb9526e7421a5f095b1c6adec84e52d6",
 	);
-	let kept_orchestration = ReviewOrchestrationMarker::new(
+	let kept_orchestration = ReviewLifecycleTransitionFixture::new(
 		"run-2",
 		1,
 		"x/decodex-pub-101-review",
@@ -34,10 +36,10 @@ fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
 	);
 
 	store
-		.upsert_review_handoff_marker("pubfi", "PUB-101", &removed_handoff)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &removed_handoff)
 		.expect("removed handoff projection should persist");
 	store
-		.upsert_review_orchestration_marker("pubfi", "PUB-101", &removed_orchestration)
+		.upsert_review_lifecycle_transition_fixture("pubfi", "PUB-101", &removed_orchestration)
 		.expect("removed orchestration projection should persist");
 
 	tests::upsert_handoff_review_policy_checkpoint(
@@ -50,10 +52,10 @@ fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
 	);
 
 	store
-		.upsert_review_handoff_marker("pubfi", "PUB-101", &kept_handoff)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &kept_handoff)
 		.expect("kept handoff projection should persist");
 	store
-		.upsert_review_orchestration_marker("pubfi", "PUB-101", &kept_orchestration)
+		.upsert_review_lifecycle_transition_fixture("pubfi", "PUB-101", &kept_orchestration)
 		.expect("kept orchestration projection should persist");
 
 	tests::upsert_handoff_review_policy_checkpoint(
@@ -78,19 +80,19 @@ fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
 
 	assert!(
 		reopened
-			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+			.review_lifecycle_handoff_fixture("pubfi", "PUB-101", "x/decodex-pub-101")
 			.expect("removed handoff projection should read")
 			.is_none()
 	);
 	assert_eq!(
 		reopened
-			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101-review")
+			.review_lifecycle_handoff_fixture("pubfi", "PUB-101", "x/decodex-pub-101-review")
 			.expect("kept handoff projection should read"),
 		Some(kept_handoff.clone())
 	);
 	assert_eq!(
 		reopened
-			.review_orchestration_marker("pubfi", "PUB-101", &kept_handoff)
+			.review_lifecycle_transition_fixture("pubfi", "PUB-101", &kept_handoff)
 			.expect("kept orchestration projection should read"),
 		Some(kept_orchestration)
 	);
@@ -113,7 +115,7 @@ fn clear_review_lifecycle_for_handoff_preserves_other_branches() {
 #[test]
 fn missing_review_lifecycle_projections_return_absent() {
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"run-1",
 		2,
 		"x/decodex-pub-101",
@@ -125,13 +127,13 @@ fn missing_review_lifecycle_projections_return_absent() {
 
 	assert!(
 		store
-			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+			.review_lifecycle_handoff_fixture("pubfi", "PUB-101", "x/decodex-pub-101")
 			.expect("review handoff projection should read")
 			.is_none()
 	);
 	assert!(
 		store
-			.review_orchestration_marker("pubfi", "PUB-101", &handoff)
+			.review_lifecycle_transition_fixture("pubfi", "PUB-101", &handoff)
 			.expect("review orchestration projection should read")
 			.is_none()
 	);

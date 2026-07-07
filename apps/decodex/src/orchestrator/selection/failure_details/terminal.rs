@@ -35,7 +35,7 @@ pub(crate) fn terminal_failure_comment_details(
 		(
 			error_class,
 			format!(
-				"inspect retained review orchestration reason `{}`, resolve the blocker manually, {recovery_gate}",
+				"inspect retained review lifecycle reason `{}`, resolve the blocker manually, {recovery_gate}",
 				retained_review_needs_attention.reason
 			),
 		)

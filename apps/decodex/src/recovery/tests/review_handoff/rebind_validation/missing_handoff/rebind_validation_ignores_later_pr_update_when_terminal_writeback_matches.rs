@@ -68,7 +68,6 @@ fn rebind_validation_ignores_later_pr_update_when_terminal_writeback_matches() {
 		&issue,
 		&worktree,
 		None,
-		None,
 		&landing_state,
 		head_oid,
 	)

@@ -1,4 +1,6 @@
-use crate::state::{ReviewHandoffMarker, ReviewLifecycleRecord};
+#[cfg(test)]
+use crate::state::ReviewLifecycleHandoffFixture;
+use crate::state::ReviewLifecycleRecord;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(in crate::state) struct ReviewLifecycleKey {
@@ -40,6 +42,26 @@ pub(in crate::state) struct ReviewLifecycleRuntimeRecord {
 	pub(in crate::state) repair_attempt_count: i64,
 	pub(in crate::state) evidence_json: String,
 	pub(in crate::state) next_action: String,
+	pub(in crate::state) schema_version: String,
+	pub(in crate::state) subject_id: String,
+	pub(in crate::state) sequence: i64,
+	pub(in crate::state) transition: String,
+	pub(in crate::state) previous_state: String,
+	pub(in crate::state) next_state: String,
+	pub(in crate::state) review_level: String,
+	pub(in crate::state) review_gate_state: String,
+	pub(in crate::state) base_branch: Option<String>,
+	pub(in crate::state) validated_head_sha: String,
+	pub(in crate::state) worktree_path: String,
+	pub(in crate::state) merge_commit: Option<String>,
+	pub(in crate::state) cleanup_state: String,
+	pub(in crate::state) authority: String,
+	pub(in crate::state) actor: String,
+	pub(in crate::state) source_evidence_refs_json: String,
+	pub(in crate::state) idempotency_key: String,
+	pub(in crate::state) correlation_id: String,
+	pub(in crate::state) causation_id: Option<String>,
+	pub(in crate::state) decided_at: String,
 	pub(in crate::state) updated_at: String,
 	pub(in crate::state) updated_at_unix: i64,
 }
@@ -68,12 +90,36 @@ impl ReviewLifecycleRuntimeRecord {
 			repair_attempt_count: self.repair_attempt_count,
 			evidence_json: self.evidence_json.clone(),
 			next_action: self.next_action.clone(),
+			schema_version: self.schema_version.clone(),
+			subject_id: self.subject_id.clone(),
+			sequence: self.sequence,
+			transition: self.transition.clone(),
+			previous_state: self.previous_state.clone(),
+			next_state: self.next_state.clone(),
+			review_level: self.review_level.clone(),
+			review_gate_state: self.review_gate_state.clone(),
+			base_branch: self.base_branch.clone(),
+			validated_head_sha: self.validated_head_sha.clone(),
+			worktree_path: self.worktree_path.clone(),
+			merge_commit: self.merge_commit.clone(),
+			cleanup_state: self.cleanup_state.clone(),
+			authority: self.authority.clone(),
+			actor: self.actor.clone(),
+			source_evidence_refs_json: self.source_evidence_refs_json.clone(),
+			idempotency_key: self.idempotency_key.clone(),
+			correlation_id: self.correlation_id.clone(),
+			causation_id: self.causation_id.clone(),
+			decided_at: self.decided_at.clone(),
 			updated_at: self.updated_at.clone(),
 			updated_at_unix: self.updated_at_unix,
 		}
 	}
 
-	pub(in crate::state) fn matches_handoff_identity(&self, handoff: &ReviewHandoffMarker) -> bool {
+	#[cfg(test)]
+	pub(in crate::state) fn matches_handoff_identity(
+		&self,
+		handoff: &ReviewLifecycleHandoffFixture,
+	) -> bool {
 		self.run_id == handoff.run_id()
 			&& self.attempt_number == handoff.attempt_number()
 			&& self.branch_name == handoff.branch_name()

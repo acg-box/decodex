@@ -71,8 +71,9 @@ pub(crate) fn operator_loop_status_next_action(
 	}
 	if let Some(boundary) = boundary {
 		return match boundary.policy_decision.as_str() {
-			"requires_human_decision" =>
-				Some(String::from("Resolve the Authority Boundary Check before retrying the lane.")),
+			"requires_human_decision" => {
+				Some(String::from("Resolve the Authority Boundary Check before retrying the lane."))
+			},
 			"block_landing" => Some(String::from(
 				"Continue recovery, but block landing until review or validation policy evidence is restored.",
 			)),
@@ -106,10 +107,12 @@ pub(crate) fn operator_loop_status_next_action(
 			"findings" => Some(String::from(
 				"Repair validated review findings and record a fresh checkpoint.",
 			)),
-			"blocked" =>
-				Some(String::from("Resolve the blocked Decodex Review before continuing.")),
-			"needs_architecture_review" =>
-				Some(String::from("Get architecture direction before continuing review repair.")),
+			"blocked" => {
+				Some(String::from("Resolve the blocked Decodex Review before continuing."))
+			},
+			"needs_architecture_review" => {
+				Some(String::from("Get architecture direction before continuing review repair."))
+			},
 			_ => None,
 		}
 	})

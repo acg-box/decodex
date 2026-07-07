@@ -1,8 +1,18 @@
+use std::path::Path;
+
 use crate::{
 	agent::tracker_tool_bridge::review::{
 		self, CLOSEOUT_PUBLIC_SUMMARY_FALLBACK, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
 		ISSUE_TRANSITION_TOOL_NAME, PendingReviewCompletion, PullRequestDetails,
 		ReviewHandoffContext, TrackerToolBridge, eyre, tracker_tool_bridge,
+	},
+	orchestrator::{
+		PostReviewLifecycleFactsInput, PullRequestReviewState, build_post_review_lifecycle_facts,
+		kernel::lifecycle::{
+			LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
+			PreviousLifecycleAuthority, decide_lifecycle_transition,
+		},
+		runtime_review_checkpoint_status_for_head,
 	},
 	tracker,
 };
@@ -76,6 +86,32 @@ impl<'a> TrackerToolBridge<'a> {
 			pull_request,
 			CloseoutIssueStateValidation::AlreadyVerified,
 			"Validated merged PR lineage and completed retained closeout.",
+		)
+	}
+
+	pub(crate) fn record_validated_deterministic_cleanup_completion(
+		&self,
+		pull_request: &PullRequestDetails,
+	) -> crate::prelude::Result<()> {
+		let Some(review_context) = self.review_context.as_ref() else {
+			eyre::bail!(
+				"Review handoff context is unavailable for issue `{}`.",
+				self.issue.identifier
+			);
+		};
+		let Some(state_store) = self.state_store else {
+			return Ok(());
+		};
+
+		self.record_closeout_lifecycle_transition(
+			state_store,
+			review_context,
+			pull_request,
+			LifecycleEvidenceKind::CloseoutCompletion,
+			"landed",
+			"completed",
+			"completed",
+			"deterministic_closeout_cleanup_complete",
 		)
 	}
 
@@ -156,6 +192,133 @@ impl<'a> TrackerToolBridge<'a> {
 		)?;
 
 		self.persist_linear_execution_event(&projection.record)?;
+		self.record_closeout_lifecycle_decision(review_context, &pull_request)?;
+
+		Ok(())
+	}
+
+	fn record_closeout_lifecycle_decision(
+		&self,
+		review_context: &ReviewHandoffContext,
+		pull_request: &PullRequestDetails,
+	) -> crate::prelude::Result<()> {
+		let Some(state_store) = self.state_store else {
+			return Ok(());
+		};
+		self.record_closeout_lifecycle_transition(
+			state_store,
+			review_context,
+			pull_request,
+			LifecycleEvidenceKind::LandingReadback,
+			"landed",
+			"not_started",
+			"not_started",
+			"closeout_landing_readback",
+		)?;
+		self.record_closeout_lifecycle_transition(
+			state_store,
+			review_context,
+			pull_request,
+			LifecycleEvidenceKind::CloseoutCompletion,
+			"landed",
+			"completed",
+			"pending",
+			"issue_closeout_complete",
+		)
+	}
+
+	fn record_closeout_lifecycle_transition(
+		&self,
+		state_store: &crate::state::StateStore,
+		review_context: &ReviewHandoffContext,
+		pull_request: &PullRequestDetails,
+		evidence_kind: LifecycleEvidenceKind,
+		landing_state: &str,
+		closeout_state: &str,
+		cleanup_state: &str,
+		causation_id: &str,
+	) -> crate::prelude::Result<()> {
+		let checkpoint = runtime_review_checkpoint_status_for_head(
+			state_store,
+			&review_context.service_id,
+			&self.issue.id,
+			review_context.review_level,
+			&pull_request.head_ref_oid,
+		)?;
+		let review_state = PullRequestReviewState {
+			url: pull_request.url.clone(),
+			state: pull_request.state.clone(),
+			is_draft: pull_request.is_draft,
+			review_decision: Some(String::from("APPROVED")),
+			merge_commit_allowed: false,
+			pending_review_requests: 0,
+			mergeable: String::from("MERGEABLE"),
+			merge_state_status: String::from("CLEAN"),
+			head_ref_name: pull_request.head_ref_name.clone(),
+			head_ref_oid: pull_request.head_ref_oid.clone(),
+			merge_commit_oid: None,
+			head_repository_name: Some(pull_request.head_repository_name.clone()),
+			head_repository_owner: Some(pull_request.head_repository_owner.clone()),
+			status_check_rollup_state: Some(String::from("SUCCESS")),
+			unresolved_review_threads: 0,
+			issue_description_external_review_thumbs_up_count: 0,
+			issue_comments: Vec::new(),
+			reviews: Vec::new(),
+		};
+		let previous_record = state_store.review_lifecycle_record(
+			&review_context.service_id,
+			&self.issue.id,
+			&review_context.branch_name,
+		)?;
+		let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+			project_id: &review_context.service_id,
+			issue_id: &self.issue.id,
+			review_lifecycle: previous_record.as_ref(),
+			review_state: &review_state,
+			worktree_path: Path::new(&review_context.worktree_path),
+			review_level: review_context.review_level,
+			phase: "closeout",
+			landing_state: Some(landing_state),
+			closeout_state: Some(closeout_state),
+			validated_head_sha: Some(&pull_request.head_ref_oid),
+			review_checkpoint_phase: checkpoint.as_ref().map(|checkpoint| checkpoint.phase),
+			review_checkpoint_status: checkpoint
+				.as_ref()
+				.map(|checkpoint| checkpoint.status.as_str()),
+		});
+		let previous = previous_record.as_ref().map(|record| PreviousLifecycleAuthority {
+			sequence: record.sequence(),
+			next_state: record.next_state(),
+		});
+		let merge_commit = previous_record.as_ref().and_then(|record| record.merge_commit());
+		let idempotency_key = format!(
+			"{}:{}:{}:{}:{}",
+			review_context.service_id,
+			self.issue.id,
+			pull_request.head_ref_oid,
+			evidence_kind.as_str(),
+			causation_id
+		);
+		let decision = decide_lifecycle_transition(LifecycleDecisionInput {
+			facts: &facts,
+			previous,
+			evidence_kind,
+			outcome: LifecycleOutcome::Succeeded,
+			merge_commit,
+			cleanup_state: Some(cleanup_state),
+			authority: "issue_authority",
+			actor: "closeout_adapter",
+			idempotency_key: &idempotency_key,
+			correlation_id: &review_context.run_id,
+			causation_id: Some(causation_id),
+			decided_at: &tracker_tool_bridge::current_timestamp(),
+		});
+
+		state_store.record_lifecycle_decision(
+			&review_context.run_id,
+			review_context.attempt_number,
+			&decision,
+		)?;
 
 		Ok(())
 	}

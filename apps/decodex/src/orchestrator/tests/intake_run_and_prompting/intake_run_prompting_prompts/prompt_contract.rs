@@ -91,14 +91,12 @@ fn normal_prompts_record_manual_attention_label_intent_before_label_application(
 }
 
 #[test]
-fn normal_prompts_require_review_signal_routes_before_repair() {
+fn normal_prompts_delegate_decodex_review_to_runtime_gate() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let surfaces = intake_run_and_prompting::build_normal_prompt_surfaces(&config, &workflow);
 
 	for prompt in surfaces.all() {
-		intake_run_and_prompting::assert_review_route_prompt_guidance(prompt);
-
-		assert!(prompt.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
+		intake_run_and_prompting::assert_runtime_owned_review_prompt_guidance(prompt);
 	}
 }
 
@@ -182,5 +180,5 @@ fn normal_prompts_require_issue_prefixed_pull_request_title() {
 		continuation_input
 			.contains(&format!("ensure the non-draft PR title is `{expected_title}`"))
 	);
-	assert!(developer_instructions.contains("single-line `decodex/commit/1` JSON commit message"));
+	assert!(developer_instructions.contains("single-line `decodex/commit/2` JSON commit message"));
 }

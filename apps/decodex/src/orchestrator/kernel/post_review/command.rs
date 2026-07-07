@@ -50,13 +50,15 @@ fn post_review_decision_for_command_kind(kind: CommandIntentKind) -> PostReviewL
 		CommandIntentKind::RequestExternalReview
 		| CommandIntentKind::ProbeExternalReviewAcknowledgement
 		| CommandIntentKind::ResendExternalReviewRequest
-		| CommandIntentKind::SyncReviewOrchestrationMarker
+		| CommandIntentKind::SyncReviewLifecycleAuthority
 		| CommandIntentKind::WaitExternal => PostReviewLaneDecision::WaitForReview,
 		CommandIntentKind::StartReviewRepair => PostReviewLaneDecision::NeedsReviewRepair,
-		CommandIntentKind::StartRetainedLanding | CommandIntentKind::LandReadyPullRequest =>
-			PostReviewLaneDecision::ReadyToLand,
-		CommandIntentKind::StartRetainedCloseout | CommandIntentKind::FinishRetainedCleanup =>
-			PostReviewLaneDecision::Continue,
+		CommandIntentKind::StartRetainedLanding | CommandIntentKind::LandReadyPullRequest => {
+			PostReviewLaneDecision::ReadyToLand
+		},
+		CommandIntentKind::StartRetainedCloseout | CommandIntentKind::FinishRetainedCleanup => {
+			PostReviewLaneDecision::Continue
+		},
 		_ => PostReviewLaneDecision::Block,
 	}
 }
@@ -67,16 +69,18 @@ fn post_review_command_kind(input: &PostReviewLaneKernelInput<'_>) -> Option<Com
 		PostReviewLaneDecision::NeedsReviewRepair => Some(CommandIntentKind::StartReviewRepair),
 		PostReviewLaneDecision::WaitForReview => match input.reason {
 			"external_review_request_pending" => Some(CommandIntentKind::RequestExternalReview),
-			"external_review_ack_pending" =>
-				Some(CommandIntentKind::ProbeExternalReviewAcknowledgement),
+			"external_review_ack_pending" => {
+				Some(CommandIntentKind::ProbeExternalReviewAcknowledgement)
+			},
 			_ => Some(CommandIntentKind::WaitExternal),
 		},
-		PostReviewLaneDecision::Continue =>
+		PostReviewLaneDecision::Continue => {
 			if post_review_reason_is_cleanup(input.reason) {
 				Some(CommandIntentKind::FinishRetainedCleanup)
 			} else {
 				Some(CommandIntentKind::StartRetainedCloseout)
-			},
+			}
+		},
 		PostReviewLaneDecision::CloseoutBlocked
 		| PostReviewLaneDecision::CleanupBlocked
 		| PostReviewLaneDecision::Block => None,
@@ -132,7 +136,7 @@ fn post_review_command_preconditions(kind: CommandIntentKind) -> Vec<CommandFact
 		CommandIntentKind::WaitExternal
 		| CommandIntentKind::StartReviewRepair
 		| CommandIntentKind::StartRetainedCloseout
-		| CommandIntentKind::SyncReviewOrchestrationMarker => {},
+		| CommandIntentKind::SyncReviewLifecycleAuthority => {},
 		_ => {},
 	}
 
@@ -152,8 +156,8 @@ fn post_review_command_postconditions(kind: CommandIntentKind) -> Vec<CommandFac
 		CommandIntentKind::StartRetainedLanding => vec![CommandFact::RetainedLandingStarted],
 		CommandIntentKind::StartRetainedCloseout => vec![CommandFact::RetainedCloseoutStarted],
 		CommandIntentKind::FinishRetainedCleanup => vec![CommandFact::RetainedCleanupCompleted],
-		CommandIntentKind::SyncReviewOrchestrationMarker => {
-			vec![CommandFact::ReviewOrchestrationMarkerCurrent]
+		CommandIntentKind::SyncReviewLifecycleAuthority => {
+			vec![CommandFact::ReviewLifecycleAuthorityCurrent]
 		},
 		CommandIntentKind::WaitExternal => vec![CommandFact::ExternalSignalStillPending],
 		_ => Vec::new(),

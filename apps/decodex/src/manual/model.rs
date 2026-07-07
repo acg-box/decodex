@@ -2,9 +2,10 @@ use std::{path::PathBuf, time::Duration};
 
 use crate::{
 	commit_message::MANUAL_AUTHORITY,
+	config::ReviewLevel,
 	git_credentials::GitCredentialSource,
 	github::RepositoryContext,
-	state::{ReviewHandoffMarker, StateStore},
+	state::{ReviewLifecycleRecord, StateStore},
 	tracker::{
 		TrackerIssue,
 		linear::LinearClient,
@@ -15,7 +16,7 @@ use crate::{
 	workflow::WorkflowDocument,
 };
 
-pub(in crate::manual) const MANUAL_LAND_CLOSEOUT_MARKER_GIT_PATH: &str =
+pub(in crate::manual) const MANUAL_LAND_CLOSEOUT_RECEIPT_GIT_PATH: &str =
 	"decodex/manual-land-closeout";
 pub(in crate::manual) const MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT: Duration =
 	Duration::from_secs(15 * 60);
@@ -47,6 +48,7 @@ pub(in crate::manual) struct PreparedCloseout {
 	pub(in crate::manual) completed_state: String,
 	pub(in crate::manual) service_id: String,
 	pub(in crate::manual) needs_attention_label: String,
+	pub(in crate::manual) review_level: ReviewLevel,
 }
 
 pub(in crate::manual) struct ManualLandContext {
@@ -63,7 +65,7 @@ pub(in crate::manual) struct ManualLandContext {
 	pub(in crate::manual) github_command_path: Option<PathBuf>,
 	pub(in crate::manual) repository: RepositoryContext,
 	pub(in crate::manual) prepared_closeout: Option<PreparedCloseout>,
-	pub(in crate::manual) review_handoff: Option<ReviewHandoffMarker>,
+	pub(in crate::manual) review_lifecycle: Option<ReviewLifecycleRecord>,
 	pub(in crate::manual) pr_url: String,
 	pub(in crate::manual) review_branch: String,
 	pub(in crate::manual) public_projection_privacy_classifier:
@@ -80,7 +82,7 @@ pub(in crate::manual) struct ManualLandRecoveryOutcome {
 }
 
 #[derive(Default)]
-pub(in crate::manual) struct ManualLandCloseoutMarkerRecord {
+pub(in crate::manual) struct ManualLandCloseoutReceiptRecord {
 	pub(in crate::manual) pr_url: Option<String>,
 	pub(in crate::manual) merge_commit: Option<String>,
 	pub(in crate::manual) branch_name: Option<String>,
@@ -91,7 +93,7 @@ pub(in crate::manual) struct ManualLandLedgerContext<'a> {
 	pub(in crate::manual) service_id: &'a str,
 	pub(in crate::manual) issue: &'a TrackerIssue,
 	pub(in crate::manual) state_store: &'a StateStore,
-	pub(in crate::manual) handoff: &'a ReviewHandoffMarker,
+	pub(in crate::manual) lifecycle_record: &'a ReviewLifecycleRecord,
 	pub(in crate::manual) pr_url: &'a str,
 	pub(in crate::manual) merge_commit: &'a str,
 	pub(in crate::manual) branch_name: &'a str,

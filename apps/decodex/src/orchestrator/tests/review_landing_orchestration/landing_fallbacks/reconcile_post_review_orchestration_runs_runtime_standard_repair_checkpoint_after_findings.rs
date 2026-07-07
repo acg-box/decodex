@@ -1,0 +1,6 @@
+use crate::orchestrator::tests::review_landing_orchestration::landing_fallbacks;
+
+#[test]
+fn reconcile_post_review_orchestration_runs_runtime_standard_repair_checkpoint_after_findings() {
+	landing_fallbacks::assert_reconcile_post_review_orchestration_runs_runtime_standard_repair_checkpoint_after_findings();
+}

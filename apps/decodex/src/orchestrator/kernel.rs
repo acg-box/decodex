@@ -3,6 +3,7 @@ pub(crate) mod command;
 pub(crate) mod decision;
 pub(crate) mod facts;
 pub(crate) mod lane_control;
+pub(crate) mod lifecycle;
 pub(crate) mod post_review;
 pub(crate) mod projection;
 pub(crate) mod reason;

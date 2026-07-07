@@ -30,8 +30,9 @@ fn inspect_process_liveness(
 	match marker_liveness {
 		StaleActiveProcessLiveness::Alive => blockers.push(String::from("process_alive")),
 		StaleActiveProcessLiveness::NotAlive => evidence.push(String::from("process_not_alive")),
-		StaleActiveProcessLiveness::Unknown =>
-			blockers.push(String::from("process_liveness_unknown")),
+		StaleActiveProcessLiveness::Unknown => {
+			blockers.push(String::from("process_liveness_unknown"))
+		},
 	}
 }
 

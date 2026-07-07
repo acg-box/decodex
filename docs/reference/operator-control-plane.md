@@ -834,9 +834,9 @@ map to an operator decision.
   queue lease, do not count as suspected stalls, and should not expose hard-interrupt
   fallback as an available control.
   Handoff and repair writeback gaps must use deterministic wait reasons such as
-  `review_handoff_writeback_missing_lifecycle_marker`,
-  `review_repair_writeback_missing_lifecycle_marker`, or
-  `review_repair_writeback_stale_lifecycle_marker` instead of projecting an ordinary
+  `review_handoff_writeback_missing_lifecycle_authority`,
+  `review_repair_writeback_missing_lifecycle_authority`, or
+  `review_repair_writeback_stale_lifecycle_authority` instead of projecting an ordinary
   implementation lane as pending review work.
 - Child-agent activity comes from `.decodex-run-activity` when the app-server recorder
   captured model/tool/tracker/browser/image buckets.

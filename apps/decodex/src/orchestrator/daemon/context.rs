@@ -41,7 +41,7 @@ pub(crate) fn load_daemon_tick_workflow(
 
 			Ok(workflow)
 		},
-		Err(error) =>
+		Err(error) => {
 			if let Some(cached_workflow) = cached_same_path {
 				tracing::warn!(
 					workflow_path = %workflow_path.display(),
@@ -52,6 +52,7 @@ pub(crate) fn load_daemon_tick_workflow(
 				Ok(cached_workflow)
 			} else {
 				Err(error)
-			},
+			}
+		},
 	}
 }

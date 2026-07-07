@@ -3,7 +3,7 @@ use crate::{
 		ReviewExecutionMode, ReviewHandoffContext, TrackerToolBridge, tests::support::fixtures,
 	},
 	state::{
-		ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpoint,
+		ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture, ReviewPolicyCheckpoint,
 		ReviewPolicyCheckpointInput, StateStore,
 	},
 	tracker::TrackerIssue,
@@ -138,25 +138,29 @@ pub(crate) fn assert_review_policy_checkpoint_cleared(
 	);
 }
 
-pub(crate) fn persisted_review_handoff_marker(
+pub(crate) fn persisted_review_lifecycle_handoff_fixture(
 	bridge: &TrackerToolBridge<'_>,
 	issue: &TrackerIssue,
 	review_context: &ReviewHandoffContext,
-) -> ReviewHandoffMarker {
+) -> ReviewLifecycleHandoffFixture {
 	bridge_state_store(bridge)
-		.review_handoff_marker(&review_context.service_id, &issue.id, &review_context.branch_name)
-		.expect("review handoff marker should read")
-		.expect("review handoff marker should exist")
+		.review_lifecycle_handoff_fixture(
+			&review_context.service_id,
+			&issue.id,
+			&review_context.branch_name,
+		)
+		.expect("review lifecycle handoff fixture should read")
+		.expect("review lifecycle handoff fixture should exist")
 }
 
-pub(crate) fn persisted_review_orchestration_marker(
+pub(crate) fn persisted_review_lifecycle_transition_fixture(
 	bridge: &TrackerToolBridge<'_>,
 	issue: &TrackerIssue,
 	review_context: &ReviewHandoffContext,
-	review_handoff: &ReviewHandoffMarker,
-) -> ReviewOrchestrationMarker {
+	review_handoff: &ReviewLifecycleHandoffFixture,
+) -> ReviewLifecycleTransitionFixture {
 	bridge_state_store(bridge)
-		.review_orchestration_marker(&review_context.service_id, &issue.id, review_handoff)
-		.expect("review orchestration marker should read")
-		.expect("review orchestration marker should exist")
+		.review_lifecycle_transition_fixture(&review_context.service_id, &issue.id, review_handoff)
+		.expect("review lifecycle transition fixture should read")
+		.expect("review lifecycle transition fixture should exist")
 }

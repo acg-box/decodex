@@ -1,5 +1,5 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ReviewHandoffMarker {
+pub(crate) struct ReviewLifecycleHandoffFixture {
 	pub(in crate::state) run_id: String,
 	pub(in crate::state) attempt_number: i64,
 	pub(in crate::state) branch_name: String,
@@ -8,7 +8,7 @@ pub(crate) struct ReviewHandoffMarker {
 	pub(in crate::state) pr_head_ref_name: String,
 	pub(in crate::state) pr_head_oid: String,
 }
-impl ReviewHandoffMarker {
+impl ReviewLifecycleHandoffFixture {
 	pub(crate) fn new(
 		run_id: impl Into<String>,
 		attempt_number: i64,

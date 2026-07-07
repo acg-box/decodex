@@ -14,7 +14,7 @@ fn historical_review_marker_tables_drop_without_lifecycle_migration() {
 
 	assert!(
 		store
-			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+			.review_lifecycle_handoff_fixture("pubfi", "PUB-101", "x/decodex-pub-101")
 			.expect("handoff projection should read")
 			.is_none(),
 		"historical review_handoffs rows must not become lifecycle records"

@@ -36,9 +36,10 @@ where
 
 	ensure_closeout_issue_completed_state(tracker, workflow, issue_run)?;
 
-	tracker_tool_bridge.apply_validated_deterministic_closeout(pull_request)?;
+	tracker_tool_bridge.apply_validated_deterministic_closeout(pull_request.clone())?;
 
 	orchestrator::cleanup_completed_post_review_lane(project, workflow, state_store, issue_run)?;
+	tracker_tool_bridge.record_validated_deterministic_cleanup_completion(&pull_request)?;
 	orchestrator::write_cleanup_complete_lifecycle_event(
 		tracker,
 		project,

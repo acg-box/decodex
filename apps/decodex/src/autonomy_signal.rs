@@ -17,4 +17,5 @@ pub(crate) use types::{
 	AutonomySignalKind, AutonomySignalPrivacy, AutonomySignalSourceType,
 };
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

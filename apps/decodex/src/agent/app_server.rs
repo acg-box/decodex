@@ -50,10 +50,12 @@ use std::{
 use serde::Serialize;
 use serde_json::{self, Value};
 
-#[cfg(test)] use self::dynamic_tools::dispatch::handle_dynamic_tool_call;
+#[cfg(test)]
+use self::dynamic_tools::dispatch::handle_dynamic_tool_call;
 #[cfg(test)]
 use self::dynamic_tools::{classify_turn_completion, reject_nonterminal_single_turn_completion};
-#[cfg(test)] use self::lane_control::steer_error_class;
+#[cfg(test)]
+use self::lane_control::steer_error_class;
 #[cfg(test)]
 use self::preflight::{
 	AppServerCapabilityPreflightStatus, build_command_exec_health_check_params,
@@ -62,7 +64,8 @@ use self::preflight::{
 	record_mcp_preflight_degraded, record_model_preflight, record_model_provider_preflight,
 	record_plugin_preflight, record_skills_preflight, validate_command_exec_health_check_result,
 };
-#[cfg(test)] use self::protocol::{InitializeResponse, ProbeDynamicToolHandler, UserInput};
+#[cfg(test)]
+use self::protocol::{InitializeResponse, ProbeDynamicToolHandler, UserInput};
 #[cfg(test)]
 use self::schema_probe::{
 	APP_SERVER_REQUIRED_CLIENT_NOTIFICATIONS, APP_SERVER_REQUIRED_CLIENT_REQUESTS,
@@ -139,4 +142,5 @@ use crate::{
 	},
 };
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

@@ -59,25 +59,36 @@ pub(super) fn assert_admin_merge_invocation(
 		.map(str::to_owned)
 		.collect::<Vec<_>>();
 
-	assert_eq!(
-		gh_invocation,
-		vec![
-			String::from("pr"),
-			String::from("merge"),
-			String::from("--admin"),
-			String::from("--merge"),
-			String::from("--match-head-commit"),
-			String::from(head_oid),
-			String::from("--subject"),
-			String::from(landed_merge_subject),
-			String::from("--body"),
-			String::new(),
-			String::from(pr_url),
-			String::from("pr"),
-			String::from("view"),
-			String::from(pr_url),
-			String::from("--json"),
-			String::from("state,headRefOid,mergeCommit"),
-		]
-	);
+	let expected = vec![
+		String::from("pr"),
+		String::from("merge"),
+		String::from("--admin"),
+		String::from("--merge"),
+		String::from("--match-head-commit"),
+		String::from(head_oid),
+		String::from("--subject"),
+		String::from(landed_merge_subject),
+		String::from("--body"),
+		String::new(),
+		String::from(pr_url),
+		String::from("pr"),
+		String::from("view"),
+		String::from(pr_url),
+		String::from("--json"),
+		String::from("state,headRefOid,mergeCommit"),
+	];
+
+	assert!(gh_invocation.starts_with(&expected));
+	for extra_view in gh_invocation[expected.len()..].chunks(5) {
+		assert_eq!(
+			extra_view,
+			[
+				String::from("pr"),
+				String::from("view"),
+				String::from(pr_url),
+				String::from("--json"),
+				String::from("state,headRefOid,mergeCommit"),
+			]
+		);
+	}
 }

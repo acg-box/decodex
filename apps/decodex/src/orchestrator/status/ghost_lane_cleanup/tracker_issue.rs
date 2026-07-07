@@ -38,10 +38,11 @@ where
 {
 	if !run.issue_id.trim().is_empty() && !run.issue_id.eq_ignore_ascii_case("unknown") {
 		match tracker.refresh_issues(slice::from_ref(&run.issue_id)) {
-			Ok(issues) =>
+			Ok(issues) => {
 				if let Some(issue) = issues.into_iter().next() {
 					return Ok(Some(issue));
-				},
+				}
+			},
 			Err(error)
 				if tracker::issue_lookup_missing_error_for_candidate(&error, &run.issue_id) => {},
 			Err(error) => return Err(error),
@@ -54,8 +55,9 @@ where
 
 	match tracker.get_issue_by_identifier(&selector) {
 		Ok(issue) => Ok(issue),
-		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, &selector) =>
-			Ok(None),
+		Err(error) if tracker::issue_lookup_missing_error_for_candidate(&error, &selector) => {
+			Ok(None)
+		},
 		Err(error) => Err(error),
 	}
 }

@@ -58,7 +58,7 @@ impl<'a> TrackerToolBridge<'a> {
 		}
 
 		if actual_path == RunCompletionDisposition::ReviewHandoff
-			&& let Err(error) = self.persist_terminal_review_handoff_marker(review_context)
+			&& let Err(error) = self.persist_terminal_review_lifecycle_handoff(review_context)
 		{
 			return DynamicToolCallResponse::failure(error);
 		}

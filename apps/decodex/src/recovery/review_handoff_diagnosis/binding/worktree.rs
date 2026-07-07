@@ -11,8 +11,8 @@ pub(in crate::recovery) fn worktree_binding_mismatch(
 	pr_base_ref: &Option<String>,
 	pr_head_oid: &Option<String>,
 ) -> Option<HandoffBindingDiagnostic> {
-	let mismatch = if context.existing_handoff.branch_name() != context.worktree.branch_name() {
-		Some(("review_handoff_branch_mismatch", "review_handoff.branch_name"))
+	let mismatch = if context.existing_lifecycle.branch_name() != context.worktree.branch_name() {
+		Some(("review_lifecycle_branch_mismatch", "review_lifecycle.branch_name"))
 	} else if context.local_branch_name.is_none() {
 		Some(("worktree_checkout_branch_missing", "worktree.local_branch"))
 	} else if context.local_branch_name != Some(context.worktree.branch_name()) {
@@ -33,7 +33,7 @@ pub(in crate::recovery) fn worktree_binding_mismatch(
 			pr_head_oid.clone(),
 			actions::inspect_handoff_next_action(
 				context.issue_identifier,
-				context.existing_handoff.pr_url(),
+				context.existing_lifecycle.pr_url(),
 			),
 		)
 	})

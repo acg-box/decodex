@@ -38,11 +38,11 @@ fn targeted_identifier_dispatch_accepts_stopped_active_closeout_lease() {
 
 	state::write_run_activity_marker_for_process(&worktree.path, "run-1", 1, u32::MAX)
 		.expect("stopped closeout activity marker should write");
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let _path_guard = recovery_terminal_support::install_fake_merged_pr_gh_response(

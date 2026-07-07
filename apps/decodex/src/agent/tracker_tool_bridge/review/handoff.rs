@@ -4,11 +4,12 @@ use crate::{
 		review::{
 			LinearExecutionEventPublicProjection, PendingReviewAction, PendingReviewCompletion,
 			PullRequestDetails, REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK, Report,
-			ReviewHandoffContext, ReviewHandoffWritebackFailed, ReviewOrchestrationMarker,
-			TrackerToolBridge, eyre, tracker_tool_bridge,
+			ReviewHandoffContext, ReviewHandoffWritebackFailed, TrackerToolBridge, eyre,
+			tracker_tool_bridge,
 		},
 	},
 	prelude::Result,
+	state::ReviewLifecycleTransitionInput,
 	tracker,
 };
 
@@ -50,25 +51,27 @@ impl<'a> TrackerToolBridge<'a> {
 			&pull_request,
 			success_state,
 		)?;
-		let handoff_marker =
-			review::review_handoff_marker_from_pull_request(review_context, &pull_request);
-		let orchestration_marker = ReviewOrchestrationMarker::new(
-			review_context.run_id.clone(),
-			review_context.attempt_number,
-			review_context.branch_name.clone(),
-			pull_request.url.clone(),
-			pull_request.head_ref_oid.clone(),
-			"request_pending",
-			None,
-			None,
-			None,
-			0,
-			0,
-			None,
-		);
+		let lifecycle_handoff =
+			review::review_lifecycle_handoff_from_pull_request(review_context, &pull_request);
 
-		self.persist_review_handoff_marker_for_handoff(review_context, &handoff_marker)?;
-		self.persist_review_orchestration_marker(review_context, &orchestration_marker)?;
+		self.persist_review_lifecycle_handoff_for_handoff(review_context, lifecycle_handoff)?;
+		self.persist_review_lifecycle_transition(
+			review_context,
+			ReviewLifecycleTransitionInput {
+				run_id: &review_context.run_id,
+				attempt_number: review_context.attempt_number,
+				branch_name: &review_context.branch_name,
+				pr_url: &pull_request.url,
+				head_sha: &pull_request.head_ref_oid,
+				phase: "request_pending",
+				request_comment_database_id: None,
+				request_created_at_unix_epoch: None,
+				request_description_thumbs_up_count: None,
+				request_retry_count: 0,
+				external_round_count: 0,
+				auto_merge_enabled_at_unix_epoch: None,
+			},
+		)?;
 
 		if let Err(error) = tracker::create_prepared_linear_execution_event_comment(
 			self.tracker,

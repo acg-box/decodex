@@ -122,11 +122,13 @@ impl StateStore {
 		let mut state = self.lock()?;
 
 		state.worktrees.remove(issue_id);
-		state.review_lifecycle_records.retain(|key, _record| key.issue_id != issue_id);
+		state
+			.review_lifecycle_records
+			.retain(|key, record| key.issue_id != issue_id || record.sequence > 0);
 		state.review_policy_checkpoints.retain(|key, _record| key.issue_id != issue_id);
 		self.persist_runtime_state_locked(&state)?;
 
-		self.delete_worktree_and_review_lifecycle_locked(issue_id)
+		self.delete_worktree_and_review_ephemera_locked(issue_id)
 	}
 
 	/// Remove only the worktree mapping for one issue.

@@ -52,11 +52,11 @@ fn plan_project_issue_run_prefers_post_review_repair_lane_over_normal_candidate(
 		)
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&repair_issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let inspector = FakePullRequestReviewStateInspector::new(vec![Ok(
@@ -150,11 +150,11 @@ fn post_review_repair_selection_skips_exhausted_retry_budget() {
 			.expect("failed repair attempt should record");
 	}
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&repair_issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let inspector = FakePullRequestReviewStateInspector::new(vec![Ok(
@@ -232,7 +232,7 @@ fn targeted_post_review_repair_skips_persisted_exhausted_retry_budget() {
 }
 
 #[test]
-fn targeted_retry_blocks_retained_review_handoff_marker_in_state_transition_window() {
+fn targeted_retry_blocks_retained_review_lifecycle_authority_in_state_transition_window() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
@@ -255,11 +255,11 @@ fn targeted_retry_blocks_retained_review_handoff_marker_in_state_transition_wind
 		)
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let summary = orchestrator::run_target_issue_once(TargetIssueRunContext {

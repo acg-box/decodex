@@ -17,7 +17,7 @@ pub(in crate::orchestrator::status::post_review::lanes) fn apply_active_ownershi
 	snapshot: &PostReviewLaneSnapshot,
 	classification: &mut PostReviewLaneClassification,
 ) {
-	if snapshot.review_handoff.is_none()
+	if snapshot.lifecycle_record.is_none()
 		|| snapshot.issue.state.name != success_state
 		|| !snapshot.issue.labels_complete
 		|| snapshot.issue.has_label(&tracker::automation_active_label(project.service_id()))
@@ -86,7 +86,7 @@ fn operator_post_review_loop_status(
 	snapshot: &PostReviewLaneSnapshot,
 	decision: PostReviewLaneDecision,
 ) -> Result<Option<OperatorLoopStatus>> {
-	let Some(review_handoff) = snapshot.review_handoff.as_ref() else {
+	let Some(lifecycle_record) = snapshot.lifecycle_record.as_ref() else {
 		return Ok(None);
 	};
 	let default_review_phase = match decision {
@@ -98,8 +98,8 @@ fn operator_post_review_loop_status(
 		project,
 		state_store,
 		&snapshot.issue.id,
-		review_handoff.run_id(),
-		review_handoff.attempt_number(),
+		lifecycle_record.run_id(),
+		lifecycle_record.attempt_number(),
 		default_review_phase,
 		None,
 	)

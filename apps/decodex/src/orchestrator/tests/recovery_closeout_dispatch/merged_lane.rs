@@ -64,7 +64,7 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 			.success()
 	);
 
-	tests::seed_review_handoff_marker(
+	tests::seed_review_lifecycle_handoff_fixture(
 		&state_store,
 		config.service_id(),
 		&issue.id,
@@ -104,6 +104,13 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 		.collect::<Vec<_>>();
 
 	assert_eq!(event_types, vec![String::from("closeout"), String::from("cleanup_complete")]);
+	let lifecycle_record = state_store
+		.review_lifecycle_record(config.service_id(), &issue.id, &worktree.branch_name)
+		.expect("lifecycle authority lookup should succeed")
+		.expect("deterministic closeout should preserve lifecycle authority");
+	assert_eq!(lifecycle_record.next_state(), "closed");
+	assert_eq!(lifecycle_record.transition(), "closeout_completed");
+	assert_eq!(lifecycle_record.cleanup_state(), "completed");
 	assert!(!worktree.path.exists(), "deterministic closeout should remove the retained worktree");
 	assert!(
 		state_store

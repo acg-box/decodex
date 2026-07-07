@@ -39,7 +39,7 @@ fn classify_post_review_lane_blocks_stale_review_handoff_head_without_lineage_pr
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&marker_head_oid,
@@ -67,7 +67,7 @@ fn classify_post_review_lane_blocks_stale_review_handoff_head_without_lineage_pr
 	.expect("classification should succeed");
 
 	assert_eq!(classification.decision, PostReviewLaneDecision::Block);
-	assert_eq!(classification.reason, "review_handoff_lineage_check_failed");
+	assert_eq!(classification.reason, "lifecycle_record_lineage_check_failed");
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn classify_post_review_lane_blocks_when_pull_request_head_differs_from_worktree
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			&branch_name,
 			"https://github.com/hack-ink/decodex/pull/174",
 			&marker_head_oid,

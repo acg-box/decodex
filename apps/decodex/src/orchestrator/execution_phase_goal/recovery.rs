@@ -1,7 +1,8 @@
 mod events;
 mod records;
 
-#[cfg(test)] pub(crate) use self::events::latest_phase_goal_recovery_candidate;
+#[cfg(test)]
+pub(crate) use self::events::latest_phase_goal_recovery_candidate;
 pub(crate) use self::events::{
 	issue_has_blocking_lane_decision_evidence, latest_open_issue_phase_goal_before_attempt,
 	phase_goal_kind_from_str,
