@@ -1,6 +1,6 @@
 use tempfile::TempDir;
 
-use crate::state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore};
+use crate::state::{ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture, StateStore};
 
 #[test]
 fn persistent_review_lifecycle_survives_stale_store_persist_and_is_visible() {
@@ -8,7 +8,7 @@ fn persistent_review_lifecycle_survives_stale_store_persist_and_is_visible() {
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let observer = StateStore::open(&state_path).expect("observer state store should open");
 	let writer = StateStore::open(&state_path).expect("writer state store should open");
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"run-1",
 		1,
 		"x/decodex-pub-101",
@@ -17,7 +17,7 @@ fn persistent_review_lifecycle_survives_stale_store_persist_and_is_visible() {
 		"x/decodex-pub-101",
 		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
 	);
-	let orchestration = ReviewOrchestrationMarker::new(
+	let orchestration = ReviewLifecycleTransitionFixture::new(
 		"run-1",
 		1,
 		"x/decodex-pub-101",
@@ -33,14 +33,14 @@ fn persistent_review_lifecycle_survives_stale_store_persist_and_is_visible() {
 	);
 
 	writer
-		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &handoff)
 		.expect("handoff projection should persist");
 	writer
-		.upsert_review_orchestration_marker("pubfi", "PUB-101", &orchestration)
+		.upsert_review_lifecycle_transition_fixture("pubfi", "PUB-101", &orchestration)
 		.expect("orchestration projection should persist");
 
 	let observed_handoff = observer
-		.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+		.review_lifecycle_handoff_fixture("pubfi", "PUB-101", "x/decodex-pub-101")
 		.expect("observer should read handoff projection")
 		.expect("observer should see lifecycle written by another store");
 
@@ -54,13 +54,13 @@ fn persistent_review_lifecycle_survives_stale_store_persist_and_is_visible() {
 
 	assert_eq!(
 		reopened
-			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+			.review_lifecycle_handoff_fixture("pubfi", "PUB-101", "x/decodex-pub-101")
 			.expect("reopened store should read handoff projection"),
 		Some(handoff.clone())
 	);
 	assert_eq!(
 		reopened
-			.review_orchestration_marker("pubfi", "PUB-101", &handoff)
+			.review_lifecycle_transition_fixture("pubfi", "PUB-101", &handoff)
 			.expect("reopened store should read orchestration projection"),
 		Some(orchestration)
 	);

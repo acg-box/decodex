@@ -27,7 +27,7 @@ pub(super) fn docs_resources(repo_root: &Path) -> Result<Vec<McpResource>, McpEr
 		"Checked-in Decodex documentation policy.",
 	);
 
-	for lane in ["spec", "runbook", "reference", "decisions", "research"] {
+	for lane in ["spec", "runbook", "reference", "decisions"] {
 		let docs_dir = repo_root.join("docs").join(lane);
 
 		for entry in read_sorted_dir(&docs_dir)? {
@@ -41,17 +41,6 @@ pub(super) fn docs_resources(repo_root: &Path) -> Result<Vec<McpResource>, McpEr
 				"Checked-in Decodex documentation resource.",
 			));
 		}
-	}
-	for entry in read_sorted_dir(&repo_root.join("docs/research"))? {
-		let Some(stem) = markdown_stem(&entry) else {
-			continue;
-		};
-
-		resources.push(McpResource::markdown(
-			format!("decodex://research/{stem}"),
-			format!("docs/research/{stem}.md"),
-			"Checked-in Markdown Research Contract concept.",
-		));
 	}
 
 	Ok(resources)

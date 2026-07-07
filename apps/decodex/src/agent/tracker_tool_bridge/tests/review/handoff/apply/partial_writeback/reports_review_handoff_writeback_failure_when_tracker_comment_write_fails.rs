@@ -115,9 +115,9 @@ fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
 	assert!(tracker.comments.borrow().is_empty());
 	assert_eq!(
 		tests::bridge_state_store(&bridge)
-			.review_handoff_marker(TEST_SERVICE_ID, &issue.id, "x/decodex-pub-618")
-			.expect("runtime handoff marker read should succeed")
-			.expect("tracker writeback failure should keep durable handoff marker")
+			.review_lifecycle_handoff_fixture(TEST_SERVICE_ID, &issue.id, "x/decodex-pub-618")
+			.expect("runtime lifecycle authority read should succeed")
+			.expect("tracker writeback failure should keep durable lifecycle authority")
 			.pr_url(),
 		"https://github.com/hack-ink/decodex/pull/50"
 	);

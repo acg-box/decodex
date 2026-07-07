@@ -1,6 +1,6 @@
 use crate::{
 	orchestrator::{
-		self, ReviewHandoffMarker,
+		self, ReviewLifecycleHandoffFixture,
 		tests::{self, FakeTracker, recovery_terminal_support},
 	},
 	state::StateStore,
@@ -30,11 +30,11 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_remote_delete_fail
 		);
 
 	recovery_terminal_support::initialize_closeout_cleanup_origin(config.repo_root(), &remote_root);
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&ReviewHandoffMarker::new(
+		&ReviewLifecycleHandoffFixture::new(
 			"run-closeout-cleanup",
 			1,
 			"main",

@@ -147,7 +147,7 @@ where
 	let orchestration_status =
 		PostReviewOrchestrationStatus::from_review_state(&review_state, &lifecycle_record)?;
 
-	post_review::apply_review_orchestration_phase_classification(
+	post_review::apply_review_lifecycle_action_classification(
 		&mut classification,
 		&review_state,
 		&lifecycle_record,

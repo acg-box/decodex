@@ -1,5 +1,0 @@
-interface:
-  display_name: "Review Feedback"
-  short_description: "Evidence-based review feedback triage and repair"
-policy:
-  allow_implicit_invocation: false

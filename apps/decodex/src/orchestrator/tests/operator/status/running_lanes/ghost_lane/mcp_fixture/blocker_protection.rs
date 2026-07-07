@@ -1,5 +1,5 @@
 use crate::orchestrator::tests::operator::status::running_lanes::{
-	self, FakeTracker, ReviewHandoffMarker, StateStore, TEST_SERVICE_ID, orchestrator,
+	self, FakeTracker, ReviewLifecycleHandoffFixture, StateStore, TEST_SERVICE_ID, orchestrator,
 };
 
 #[test]
@@ -7,7 +7,7 @@ fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_review_lifecycle
 	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
-	let marker = ReviewHandoffMarker::new(
+	let marker = ReviewLifecycleHandoffFixture::new(
 		"run-12",
 		1,
 		"x/pubfi-pub-012",
@@ -24,7 +24,7 @@ fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_review_lifecycle
 		.upsert_lease("pubfi", "PUB-012", "run-12", "In Progress")
 		.expect("lease should record");
 	state_store
-		.upsert_review_handoff_marker(TEST_SERVICE_ID, "PUB-012", &marker)
+		.upsert_review_lifecycle_handoff_fixture(TEST_SERVICE_ID, "PUB-012", &marker)
 		.expect("review lifecycle should record");
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(

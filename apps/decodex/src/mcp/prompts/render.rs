@@ -4,10 +4,6 @@ use crate::mcp::prompts::arguments;
 
 pub(super) fn mcp_prompt_result(name: &str, arguments: Value) -> Option<Value> {
 	let text = match name {
-		"decodex_research" => format!(
-			"Use Decodex research routing for this intent, keep the result latent until explicitly promoted, and preserve evidence, options, judgment, challenge, decision, validation expectations, and stop conditions.\n\nIntent: {}",
-			arguments::prompt_argument(&arguments, "intent")?
-		),
 		"decodex_validation_ready" => format!(
 			"Work only to Decodex validation-ready state for issue {}. Implement the smallest coherent code and docs change, run targeted validation, record a current-HEAD docs-impact checkpoint, then complete the active phase goal without push or PR handoff.\n\nPhase: {}",
 			arguments::prompt_argument(&arguments, "issue")?,
@@ -41,7 +37,6 @@ pub(super) fn mcp_prompt_result(name: &str, arguments: Value) -> Option<Value> {
 
 fn prompt_description(name: &str) -> &'static str {
 	match name {
-		"decodex_research" => "Contract-first bounded Decodex research prompt.",
 		"decodex_validation_ready" => "Decodex implementation-phase validation-ready prompt.",
 		"decodex_handoff" => "Decodex verified review-handoff prompt.",
 		"decodex_lane_control" => "Decodex inspect-first lane-control prompt.",

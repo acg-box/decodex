@@ -9,13 +9,13 @@ use crate::{
 			LifecycleEvidenceKind, LifecycleOutcome, decide_lifecycle_transition,
 		},
 	},
-	state::{ReviewHandoffMarker, ReviewLifecycleRecord, StateStore},
+	state::{ReviewLifecycleHandoffFixture, ReviewLifecycleRecord, StateStore},
 };
 
 #[test]
 fn lifecycle_authority_adapter_writes_record_and_event_transactionally() {
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"run-1",
 		1,
 		"x/pub-101",
@@ -24,7 +24,7 @@ fn lifecycle_authority_adapter_writes_record_and_event_transactionally() {
 		"x/pub-101",
 		"head-sha",
 	);
-	let lifecycle_record = ReviewLifecycleRecord::from_test_review_markers(&handoff, None);
+	let lifecycle_record = ReviewLifecycleRecord::from_test_lifecycle_fixtures(&handoff, None);
 	let review_state = PullRequestReviewState {
 		url: String::from("https://github.com/hack-ink/decodex/pull/101"),
 		state: String::from("OPEN"),

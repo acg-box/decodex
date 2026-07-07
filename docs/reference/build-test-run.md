@@ -5,10 +5,10 @@ description: Answers how to validate this repo, run checks, and find setup, buil
 status: active
 authority: current_state
 owner: docs
-tags: [reference, build, test, run, validation, setup, automation, resources, entrypoints, agent, repo-memory]
+tags: [reference, build, test, run, validation, setup, automation, resources, entrypoints, agent]
 source_refs: []
 code_refs: [Makefile.toml, Cargo.toml, apps/decodex/Cargo.toml, site/package.json, apps/decodex-app/Package.swift, README.md]
-related: [./workspace-layout.md, ./test-suite.md, ./docs-knowledge-map.md, ../policy.md, ../runbook/release-readiness.md, ../spec/okf-knowledge-layer.md]
+related: [./workspace-layout.md, ./test-suite.md, ../policy.md, ../runbook/release-readiness.md]
 drift_watch: [Makefile.toml, Cargo.toml, site/package.json, apps/decodex-app/Package.swift, cargo make --list-all-steps, cargo make check, cargo nextest list --workspace --all-targets --all-features, automations/decodex/scripts/config/sync_automations.py, automations/decodex/automations.toml, automations/radar/automations.toml]
 last_verified: 2026-06-27
 ---
@@ -38,7 +38,6 @@ subcommands matter.
 The root `check` task is the aggregate repository gate. It currently depends on:
 
 - `build`
-- `check-docs`
 - `check-node`
 - `check-rust`
 - `fmt-check`
@@ -46,16 +45,15 @@ The root `check` task is the aggregate repository gate. It currently depends on:
 - `test`
 
 This makes `cargo make check` the first command to reach for before claiming a broad
-repository change is ready. For narrow documentation-only edits, `check-docs` is the
-focused gate, but a broad ready/land claim should still consider the aggregate gate or
-explain why a narrower check is sufficient.
+repository change is ready. For narrow documentation-only edits, use checks that match
+the touched surface, but a broad ready/land claim should still consider the aggregate
+gate or explain why a narrower check is sufficient.
 
 ## Primary Validation Gates
 
 | Task | Command surface | Owns |
 | --- | --- | --- |
-| `cargo make check` | composite root task | Aggregate build, docs, node, Rust, format, lint, and test validation |
-| `cargo make check-docs` | `decodex docs check` | Decodex docs OKF/profile validation |
+| `cargo make check` | composite root task | Aggregate build, node, Rust, format, lint, and test validation |
 | `cargo make check-rust` | `cargo check --all-features --all-targets --workspace` | Rust workspace type checking |
 | `cargo make check-node` | `npm run check` in `site/` | Astro and TypeScript site checks |
 | `cargo make fmt-check` | Rust nightly fmt plus Taplo check | Rust and TOML formatting |
@@ -72,9 +70,6 @@ native app surface.
 Use these commands when a change does not need the full aggregate gate:
 
 ```sh
-decodex docs check
-decodex docs graph
-decodex docs find --tag validation
 cargo check --all-features --all-targets --workspace
 cargo nextest run --workspace --all-targets --all-features
 cargo test -p decodex <filter>
@@ -93,7 +88,7 @@ decodex serve --listen-address 127.0.0.1:8192
 ```
 
 `README.md` remains the better source for the broad CLI usage list. This document owns
-the repository-memory owner for validation and entrypoint selection.
+validation and entrypoint selection.
 
 Use these commands when installing or auditing repo-owned Codex app automations on a
 new machine:
@@ -117,7 +112,6 @@ databases before writing.
 | --- | --- |
 | Runtime CLI | `apps/decodex/src/main.rs`, `apps/decodex/src/cli.rs`, `apps/decodex/src/lib.rs` |
 | App helper binary | `apps/decodex/src/bin/decodex-app-helper.rs` |
-| OKF/docs command behavior | `apps/decodex/src/docs_okf.rs`, `apps/decodex/src/cli.rs` |
 | Rust package manifest | `apps/decodex/Cargo.toml` |
 | Root workspace manifest | `Cargo.toml` |
 | Static site scripts | `site/package.json` |
@@ -139,7 +133,7 @@ The following paths are generated or local-only and are not source entrypoints:
 
 ## Owner Boundary
 
-This concept owns build, test, run, validation, setup, automation resources, and
+This reference owns build, test, run, validation, setup, automation resources, and
 automation entrypoints questions. Use [`./test-suite.md`](./test-suite.md) for test
 inventory and placement standards, and [`./workspace-layout.md`](./workspace-layout.md)
 for directory ownership boundaries.

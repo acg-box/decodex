@@ -71,11 +71,15 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 		.record_run_attempt("leased-run", &active_issue.id, 1, "running")
 		.expect("current lane should record");
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&retained_issue.id,
-		&tests::sample_review_handoff_marker(&retained_worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(
+			&retained_worktree.branch_name,
+			pr_url,
+			&head_oid,
+		),
 	);
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
@@ -125,7 +129,7 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 
 	result.expect("daemon tick should reconcile retained review lanes");
 
-	let marker = tests::persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&retained_worktree.path,

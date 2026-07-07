@@ -5,7 +5,7 @@ use crate::config::ServiceConfig;
 #[rustfmt::skip]
 use crate::orchestrator::tests::{self, TEST_SERVICE_ID};
 #[rustfmt::skip]
-use crate::orchestrator::{self, IssueDispatchMode, ReviewHandoffMarker};
+use crate::orchestrator::{self, IssueDispatchMode, ReviewLifecycleHandoffFixture};
 #[rustfmt::skip]
 use crate::state::StateStore;
 #[rustfmt::skip]
@@ -125,10 +125,10 @@ pub(in crate::orchestrator::tests) fn closeout_identity_fixture() -> CloseoutIde
 	);
 
 	state_store
-		.upsert_review_handoff_marker(
+		.upsert_review_lifecycle_handoff_fixture(
 			config.service_id(),
 			&issue.id,
-			&ReviewHandoffMarker::new(
+			&ReviewLifecycleHandoffFixture::new(
 				&completed_run_id,
 				1,
 				&worktree.branch_name,
@@ -138,7 +138,7 @@ pub(in crate::orchestrator::tests) fn closeout_identity_fixture() -> CloseoutIde
 				&head_oid,
 			),
 		)
-		.expect("review handoff marker should persist");
+		.expect("review lifecycle handoff fixture should persist");
 	state_store
 		.record_run_attempt(&completed_run_id, &issue.id, 1, "succeeded")
 		.expect("completed handoff attempt should record");

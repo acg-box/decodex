@@ -17,7 +17,7 @@ fn decision_contracts_persist_reload_and_promote_without_linear_mirror() {
 
 	assert_eq!(record.project_id(), "decodex");
 	assert_eq!(record.source_issue_id(), Some("XY-852"));
-	assert_eq!(record.contract_id(), "research-x-loop-contract");
+	assert_eq!(record.contract_id(), "decision-x-loop-contract");
 	assert_eq!(record.status(), DecisionContractStatus::DraftLatent);
 	assert!(record.created_at_unix() > 0);
 	assert!(record.updated_at_unix() >= record.created_at_unix());
@@ -25,7 +25,7 @@ fn decision_contracts_persist_reload_and_promote_without_linear_mirror() {
 	let promoted = store
 		.promote_decision_contract(
 			"decodex",
-			"research-x-loop-contract",
+			"decision-x-loop-contract",
 			tests::sample_decision_promotion(),
 		)
 		.expect("latent contract should promote");
@@ -45,7 +45,7 @@ fn decision_contracts_persist_reload_and_promote_without_linear_mirror() {
 
 	let reopened = StateStore::open(&state_path).expect("state store should reopen");
 	let reloaded = reopened
-		.decision_contract("decodex", "research-x-loop-contract")
+		.decision_contract("decodex", "decision-x-loop-contract")
 		.expect("decision contract should read")
 		.expect("decision contract should exist");
 
@@ -60,14 +60,14 @@ fn decision_contracts_persist_reload_and_promote_without_linear_mirror() {
 		.expect("source issue contracts should list");
 
 	assert_eq!(issue_contracts.len(), 1);
-	assert_eq!(issue_contracts[0].contract_id(), "research-x-loop-contract");
+	assert_eq!(issue_contracts[0].contract_id(), "decision-x-loop-contract");
 
 	let project_contracts = reopened
 		.list_decision_contracts_for_project("decodex")
 		.expect("project contracts should list");
 
 	assert_eq!(project_contracts.len(), 1);
-	assert_eq!(project_contracts[0].contract_id(), "research-x-loop-contract");
+	assert_eq!(project_contracts[0].contract_id(), "decision-x-loop-contract");
 }
 
 #[test]
@@ -85,7 +85,7 @@ fn decision_contracts_record_human_decision_and_rejection_transitions() {
 	let waiting = store
 		.mark_decision_contract_needs_human_decision(
 			"decodex",
-			"research-x-loop-contract",
+			"decision-x-loop-contract",
 			"Choose which generated issue should run first.",
 		)
 		.expect("contract should record human decision need");
@@ -103,21 +103,21 @@ fn decision_contracts_record_human_decision_and_rejection_transitions() {
 	let rejected = store
 		.reject_decision_contract(
 			"decodex",
-			"research-x-loop-contract",
-			Some(String::from("research-x-loop-contract-v2")),
+			"decision-x-loop-contract",
+			Some(String::from("decision-x-loop-contract-v2")),
 		)
 		.expect("contract should reject");
 
 	assert_eq!(rejected.status(), DecisionContractStatus::RejectedSuperseded);
 	assert_eq!(
 		rejected.contract().links().superseded_by_contract_id(),
-		Some("research-x-loop-contract-v2")
+		Some("decision-x-loop-contract-v2")
 	);
 	assert!(
 		store
 			.promote_decision_contract(
 				"decodex",
-				"research-x-loop-contract",
+				"decision-x-loop-contract",
 				tests::sample_decision_promotion()
 			)
 			.is_err(),

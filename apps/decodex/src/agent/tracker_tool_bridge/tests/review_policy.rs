@@ -15,7 +15,8 @@ use crate::{
 		tests::{self, FakeLocalRepoInspector, FakePullRequestInspector, LocalRepoDetails},
 	},
 	state::{
-		ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpointInput, StateStore,
+		ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture,
+		ReviewPolicyCheckpointInput, StateStore,
 	},
 };
 
@@ -245,7 +246,7 @@ pub(in crate::agent::tracker_tool_bridge::tests) fn seed_review_repair_apply_sta
 	pr_url: &str,
 	external_round_count: i64,
 ) {
-	let review_handoff = ReviewHandoffMarker::new(
+	let review_handoff = ReviewLifecycleHandoffFixture::new(
 		String::from("pub-618-attempt-2-100"),
 		2,
 		review_context.branch_name.clone(),
@@ -256,8 +257,12 @@ pub(in crate::agent::tracker_tool_bridge::tests) fn seed_review_repair_apply_sta
 	);
 
 	state_store
-		.upsert_review_handoff_marker(&review_context.service_id, issue_id, &review_handoff)
-		.expect("original review handoff marker should persist");
+		.upsert_review_lifecycle_handoff_fixture(
+			&review_context.service_id,
+			issue_id,
+			&review_handoff,
+		)
+		.expect("original review lifecycle handoff fixture should persist");
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: &review_context.service_id,
@@ -273,10 +278,10 @@ pub(in crate::agent::tracker_tool_bridge::tests) fn seed_review_repair_apply_sta
 		})
 		.expect("repair review checkpoint should persist");
 	state_store
-		.upsert_review_orchestration_marker(
+		.upsert_review_lifecycle_transition_fixture(
 			&review_context.service_id,
 			issue_id,
-			&ReviewOrchestrationMarker::new(
+			&ReviewLifecycleTransitionFixture::new(
 				review_handoff.run_id().to_owned(),
 				review_handoff.attempt_number(),
 				review_handoff.branch_name().to_owned(),
@@ -291,5 +296,5 @@ pub(in crate::agent::tracker_tool_bridge::tests) fn seed_review_repair_apply_sta
 				None,
 			),
 		)
-		.expect("review orchestration marker should persist");
+		.expect("review lifecycle transition fixture should persist");
 }

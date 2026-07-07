@@ -50,11 +50,11 @@ fn active_daemon_child_reconciliation_treats_completed_retained_handoff_as_succe
 		.append_event(run_id, 1, "thread/status/changed", "{\"status\":\"active\"}")
 		.expect("stale run activity should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let now =

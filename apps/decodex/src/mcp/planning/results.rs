@@ -1,59 +1,6 @@
 use serde_json::{self, Value};
 
-use crate::{
-	program_intake::{self, GoalIntakeIssueReport, GoalIntakeReport},
-	research_design::ResearchDesignRunReport,
-};
-
-pub(in crate::mcp) fn research_compile_result(
-	report: &ResearchDesignRunReport,
-	persisted: bool,
-	mode: &str,
-) -> Value {
-	serde_json::json!({
-		"schema": "decodex.mcp.research_compile_result/1",
-		"status": "ok",
-		"mode": mode,
-		"persisted": persisted,
-		"contract_id": report.contract_id,
-		"contract_status": report.contract_status.as_str(),
-		"ready_for_issue_shaping": report.ready_for_issue_shaping,
-		"issue_generation_ready_after_promotion": report.issue_generation_ready_after_promotion,
-		"execution_authority_granted": report.execution_authority_granted,
-		"proposed_issue_count": report.proposed_issues.len(),
-		"promotion_targets": report.promotion_targets,
-		"conflict_domains": report.conflict_domains,
-		"next_action": if persisted {
-			"Promote the Decision Contract only after explicit acceptance."
-		} else {
-			"Re-run with mode=apply and explicit authority to persist a latent Decision Contract."
-		}
-	})
-}
-
-pub(in crate::mcp) fn research_promote_readiness_result(
-	contract_id: &str,
-	contract_status: &str,
-	ready_for_issue_shaping: bool,
-	persisted: bool,
-	mode: &str,
-) -> Value {
-	serde_json::json!({
-		"schema": "decodex.mcp.research_promote_result/1",
-		"status": "ok",
-		"mode": mode,
-		"persisted": persisted,
-		"contract_id": contract_id,
-		"contract_status": contract_status,
-		"execution_authority_granted": persisted && contract_status == "accepted_promoted",
-		"ready_for_issue_shaping": ready_for_issue_shaping,
-		"next_action": if persisted {
-			"Use intake_goal dry_run to inspect issue shaping before apply."
-		} else {
-			"Re-run with mode=apply and explicit acceptance authority to promote."
-		}
-	})
-}
+use crate::program_intake::{self, GoalIntakeIssueReport, GoalIntakeReport};
 
 pub(in crate::mcp) fn intake_goal_result(report: &GoalIntakeReport, mode: &str) -> Value {
 	let issues = report.issues.iter().map(intake_goal_issue_result).collect::<Vec<_>>();

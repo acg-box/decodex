@@ -293,7 +293,7 @@ pub(crate) use self::{
 #[cfg(test)]
 pub(crate) use crate::agent::ISSUE_REVIEW_CHECKPOINT_TOOL_NAME;
 #[cfg(test)]
-pub(crate) use crate::state::{ReviewHandoffMarker, ReviewOrchestrationMarker};
+pub(crate) use crate::state::{ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture};
 pub(crate) use crate::workflow::ResolvedRepoGate;
 #[cfg(test)]
 pub(crate) use daemon::{

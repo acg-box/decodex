@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::state::{ReviewHandoffMarker, ReviewOrchestrationMarker};
+use crate::state::{ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture};
 use crate::{
 	orchestrator::{
 		PostReviewLifecycleFacts, RuntimeReviewGateState,
@@ -50,11 +50,11 @@ impl StateStore {
 
 	/// Create or replace the retained review orchestration projection for one issue lane.
 	#[cfg(test)]
-	pub(crate) fn upsert_review_orchestration_marker(
+	pub(crate) fn upsert_review_lifecycle_transition_fixture(
 		&self,
 		project_id: &str,
 		issue_id: &str,
-		marker: &ReviewOrchestrationMarker,
+		marker: &ReviewLifecycleTransitionFixture,
 	) -> Result<()> {
 		self.record_review_lifecycle_transition(
 			project_id,
@@ -78,12 +78,12 @@ impl StateStore {
 
 	/// Read retained review orchestration for the current handoff identity.
 	#[cfg(test)]
-	pub(crate) fn review_orchestration_marker(
+	pub(crate) fn review_lifecycle_transition_fixture(
 		&self,
 		project_id: &str,
 		issue_id: &str,
-		review_handoff: &ReviewHandoffMarker,
-	) -> Result<Option<ReviewOrchestrationMarker>> {
+		review_handoff: &ReviewLifecycleHandoffFixture,
+	) -> Result<Option<ReviewLifecycleTransitionFixture>> {
 		let Some(record) =
 			self.review_lifecycle_record(project_id, issue_id, review_handoff.branch_name())?
 		else {
@@ -98,7 +98,7 @@ impl StateStore {
 			return Ok(None);
 		}
 
-		Ok(Some(ReviewOrchestrationMarker::new(
+		Ok(Some(ReviewLifecycleTransitionFixture::new(
 			record.run_id().to_owned(),
 			record.attempt_number(),
 			record.branch_name().to_owned(),
@@ -167,7 +167,7 @@ fn record_orchestration_lifecycle_authority(
 		outcome: LifecycleOutcome::Intent,
 		merge_commit: None,
 		cleanup_state: Some("not_started"),
-		authority: "review_orchestration_runtime",
+		authority: "review_lifecycle_runtime",
 		actor: "state_adapter",
 		idempotency_key: &idempotency_key,
 		correlation_id: input.run_id,

@@ -105,7 +105,7 @@ Use exactly one `control_plane_impact` value:
 | --- | --- |
 | `none` | No plausible Control Plane implication. |
 | `watch` | Worth tracking, but no concrete Decodex runtime or operator action is clear yet. |
-| `candidate` | Could improve Control Plane and deserves a bounded issue or research pass. |
+| `candidate` | Could improve Control Plane and deserves a bounded issue or investigation pass. |
 | `compat_risk` | May break, narrow, or change assumptions in app-server, plugin, config, permission, sandbox, browser, MCP, or tracker flows. |
 | `adopt_now` | Evidence is strong enough to create an implementation issue without more discovery. |
 

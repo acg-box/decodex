@@ -3,7 +3,7 @@ use crate::orchestrator::tests::operator::status::running_lanes::{
 };
 
 #[test]
-fn operator_status_projects_terminal_finalized_handoff_missing_lifecycle_marker() {
+fn operator_status_projects_terminal_finalized_handoff_missing_lifecycle_authority() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
@@ -78,13 +78,13 @@ fn operator_status_projects_terminal_finalized_handoff_missing_lifecycle_marker(
 	assert_eq!(run.phase, "terminal_pending");
 	assert_eq!(
 		run.wait_reason.as_deref(),
-		Some("review_handoff_writeback_missing_lifecycle_marker")
+		Some("review_handoff_writeback_missing_lifecycle_authority")
 	);
 	assert_eq!(run.current_operation, state::RUN_OPERATION_REVIEW_WRITEBACK);
 }
 
 #[test]
-fn operator_status_projects_terminal_finalized_repair_missing_lifecycle_marker() {
+fn operator_status_projects_terminal_finalized_repair_missing_lifecycle_authority() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
@@ -160,7 +160,7 @@ fn operator_status_projects_terminal_finalized_repair_missing_lifecycle_marker()
 	assert_eq!(run.phase, "terminal_pending");
 	assert_eq!(
 		run.wait_reason.as_deref(),
-		Some("review_repair_writeback_missing_lifecycle_marker")
+		Some("review_repair_writeback_missing_lifecycle_authority")
 	);
 	assert_eq!(run.current_operation, state::RUN_OPERATION_REVIEW_WRITEBACK);
 }

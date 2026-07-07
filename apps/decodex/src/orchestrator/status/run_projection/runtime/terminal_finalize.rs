@@ -66,7 +66,7 @@ pub(crate) fn review_handoff_terminal_finalize_wait_reason(
 	};
 
 	if loop_evidence.review_lifecycle_record(run.issue_id(), branch).is_none() {
-		return "review_handoff_writeback_missing_lifecycle_marker";
+		return "review_handoff_writeback_missing_lifecycle_authority";
 	}
 
 	"review_handoff_writeback"
@@ -105,7 +105,7 @@ pub(crate) fn review_repair_terminal_finalize_wait_reason(
 	};
 	let Some(lifecycle_record) = loop_evidence.review_lifecycle_record(run.issue_id(), branch)
 	else {
-		return "review_repair_writeback_missing_lifecycle_marker";
+		return "review_repair_writeback_missing_lifecycle_authority";
 	};
 
 	if lifecycle_record.pr_url() != pr_url
@@ -113,7 +113,7 @@ pub(crate) fn review_repair_terminal_finalize_wait_reason(
 		|| lifecycle_record.pr_head_oid() != pr_head_oid
 		|| lifecycle_record.head_sha() != pr_head_oid
 	{
-		return "review_repair_writeback_stale_lifecycle_marker";
+		return "review_repair_writeback_stale_lifecycle_authority";
 	}
 
 	"review_repair_writeback"

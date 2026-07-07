@@ -1,6 +1,6 @@
 use crate::{
 	orchestrator::{
-		self, IssueDispatchMode, ReviewHandoffMarker, TargetIssueRunContext,
+		self, IssueDispatchMode, ReviewLifecycleHandoffFixture, TargetIssueRunContext,
 		tests::{
 			self, FakePullRequestReviewStateInspector, FakeTracker,
 			intake_candidate_selection::support,
@@ -82,7 +82,7 @@ fn closeout_dispatch_policy_rejects_open_pull_request() {
 		let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 		let pr_url = "https://github.com/hack-ink/decodex/pull/176";
 
-		tests::seed_review_handoff_marker(
+		tests::seed_review_lifecycle_handoff_fixture(
 			&state_store,
 			config.service_id(),
 			&closeout_issue.id,
@@ -194,7 +194,7 @@ fn closeout_dispatch_policy_rejects_completed_issue_without_service_active_label
 	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/177";
 
-	tests::seed_review_handoff_marker(
+	tests::seed_review_lifecycle_handoff_fixture(
 		&state_store,
 		config.service_id(),
 		&closeout_issue.id,
@@ -259,7 +259,7 @@ fn closeout_dispatch_policy_allows_completed_issue_after_pull_request_merges() {
 	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/177";
 
-	tests::seed_review_handoff_marker(
+	tests::seed_review_lifecycle_handoff_fixture(
 		&state_store,
 		config.service_id(),
 		&closeout_issue.id,
@@ -311,7 +311,7 @@ fn closeout_dispatch_policy_uses_matching_handoff_record_for_current_branch() {
 	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let current_pr_url = "https://github.com/hack-ink/decodex/pull/177";
 
-	tests::seed_review_handoff_marker(
+	tests::seed_review_lifecycle_handoff_fixture(
 		&state_store,
 		config.service_id(),
 		&closeout_issue.id,
@@ -321,10 +321,10 @@ fn closeout_dispatch_policy_uses_matching_handoff_record_for_current_branch() {
 	);
 
 	state_store
-		.upsert_review_handoff_marker(
+		.upsert_review_lifecycle_handoff_fixture(
 			config.service_id(),
 			&closeout_issue.id,
-			&ReviewHandoffMarker::new(
+			&ReviewLifecycleHandoffFixture::new(
 				String::from("run-review-handoff-newer"),
 				2,
 				String::from("x/pubfi-pub-101-next"),
@@ -381,11 +381,11 @@ fn non_dry_run_closeout_dispatch_errors_when_pr_state_read_fails() {
 	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/179";
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let error = orchestrator::run_target_issue_once(TargetIssueRunContext {
@@ -436,11 +436,11 @@ fn post_review_closeout_selection_skips_completed_issue_with_open_pull_request()
 		)
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&closeout_issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let open_pr_review_state = tests::sample_pull_request_review_state(

@@ -53,14 +53,14 @@ pub(in crate::mcp::tests) fn accepted_mcp_goal_contract() -> DecisionContract {
 					"objective": "Expose schema-bound MCP planning tools.",
 					"stage": "runtime",
 					"dependencies": [],
-					"conflict_domains": ["module:decodex-research-intake-tools"],
+					"conflict_domains": ["module:decodex-intake-tools"],
 					"acceptance": ["Planning tools are listed through tools/list."],
 					"validation": ["cargo test -p decodex mcp::tests -- --nocapture"],
 					"risk": ["Do not expose internal graph mechanics."],
 					"queue_intent": "ready_to_queue"
 				}
 			],
-			"conflict_domains": ["module:decodex-research-intake-tools"]
+			"conflict_domains": ["module:decodex-intake-tools"]
 		},
 		"links": {
 			"generated_issue_ids": [],
@@ -94,7 +94,7 @@ pub(in crate::mcp::tests) fn accepted_mcp_goal_contract() -> DecisionContract {
 pub(in crate::mcp::tests) fn latent_decision_contract_fixture() -> DecisionContract {
 	serde_json::from_str(include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
-		"/fixtures/decision_contract/research_x_latent_contract.json"
+		"/fixtures/decision_contract/decision_x_latent_contract.json"
 	)))
-	.expect("research X latent contract fixture should deserialize")
+	.expect("decision X latent contract fixture should deserialize")
 }

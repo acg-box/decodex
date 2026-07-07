@@ -28,11 +28,5 @@ pub(in crate::mcp::resources) fn docs_resource_templates() -> Vec<Value> {
 			"Checked-in Decodex design-rationale concepts.",
 			"text/markdown",
 		),
-		(
-			"decodex://research/{concept}",
-			"Decodex research concepts",
-			"Checked-in Markdown Research Contract concepts.",
-			"text/markdown",
-		),
 	])
 }

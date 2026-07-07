@@ -1,5 +1,5 @@
 use crate::orchestrator::{
-	self, IssueDispatchMode, RetryQueue, ReviewOrchestrationMarker,
+	self, IssueDispatchMode, RetryQueue, ReviewLifecycleTransitionFixture,
 	tests::{
 		TEST_EXTERNAL_REVIEW_AUTO_MERGE_ENABLED_AT, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,
 		TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT, recovery_terminal_support, {self},
@@ -19,11 +19,11 @@ fn daemon_planned_closeout_reuses_handoff_identity_after_parent_failed_status() 
 		.update_run_status(&fixture.completed_run_id, "failed")
 		.expect("daemon parent failed status should record");
 
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&fixture.state_store,
 		fixture.config.service_id(),
 		&fixture.worktree.path,
-		&ReviewOrchestrationMarker::new(
+		&ReviewLifecycleTransitionFixture::new(
 			&fixture.completed_run_id,
 			1,
 			&fixture.worktree.branch_name,

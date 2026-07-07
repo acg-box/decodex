@@ -15,7 +15,6 @@ mod cli;
 mod codex_config;
 mod commit_message;
 mod default_branch_sync;
-mod docs_okf;
 mod execution_program;
 mod git_credentials;
 mod github;
@@ -30,7 +29,6 @@ mod prelude {
 	pub use color_eyre::{Result, eyre};
 }
 mod recovery;
-mod research_design;
 mod run_control;
 mod runtime;
 mod tracker;

@@ -45,11 +45,11 @@ fn classify_post_review_lane_waits_when_external_review_request_is_still_pending
 			local_head_oid: Some(head_oid.clone()),
 		};
 
-		tests::seed_review_orchestration_marker(
+		tests::seed_review_lifecycle_transition_fixture(
 			&state_store,
 			TEST_SERVICE_ID,
 			&snapshot.issue.id,
-			&tests::sample_review_orchestration_marker(
+			&tests::sample_review_lifecycle_transition_fixture(
 				"x/pubfi-pub-101",
 				"https://github.com/hack-ink/decodex/pull/174",
 				&head_oid,

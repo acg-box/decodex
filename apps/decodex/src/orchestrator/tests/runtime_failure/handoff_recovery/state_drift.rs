@@ -1,3 +1,3 @@
 mod handoff_recovery;
-mod marker_mismatch;
-mod missing_marker;
+mod lifecycle_authority_mismatch;
+mod missing_lifecycle_authority;

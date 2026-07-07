@@ -18,6 +18,7 @@ fn tools_list_exposes_schema_bound_tools() {
 		.iter()
 		.filter_map(|tool| tool.get("name").and_then(Value::as_str))
 		.collect::<Vec<_>>();
+	let intake_goal_tool_name = "intake_goal";
 	let plan = tools
 		.iter()
 		.find(|tool| tool.get("name").and_then(Value::as_str) == Some("decodex_plan"))
@@ -26,20 +27,18 @@ fn tools_list_exposes_schema_bound_tools() {
 		.iter()
 		.find(|tool| tool.get("name").and_then(Value::as_str) == Some("autonomy_compile_proposal"))
 		.expect("autonomy_compile_proposal tool should exist");
+	let intake_goal = tools
+		.iter()
+		.find(|tool| tool.get("name").and_then(Value::as_str) == Some(intake_goal_tool_name))
+		.expect("planning tool should exist");
 
-	for tool_name in ["research_compile", "research_promote", "intake_goal"] {
-		assert!(tool_names.contains(&tool_name), "{tool_name} should be listed");
-
-		let tool = tools
-			.iter()
-			.find(|tool| tool.get("name").and_then(Value::as_str) == Some(tool_name))
-			.expect("planning tool should exist");
-
-		assert!(tool.get("inputSchema").is_some());
-		assert!(tool.get("outputSchema").is_some());
-		assert_eq!(tool["_meta"]["decodex/capabilityProfile"], "plan");
-	}
-
+	assert!(
+		tool_names.contains(&intake_goal_tool_name),
+		"{intake_goal_tool_name} should be listed"
+	);
+	assert!(intake_goal.get("inputSchema").is_some());
+	assert!(intake_goal.get("outputSchema").is_some());
+	assert_eq!(intake_goal["_meta"]["decodex/capabilityProfile"], "plan");
 	assert!(plan.get("inputSchema").is_some());
 	assert!(plan.get("outputSchema").is_some());
 	assert_eq!(plan["_meta"]["decodex/capabilityProfile"], "plan");
@@ -61,26 +60,7 @@ fn tools_list_exposes_schema_bound_tools() {
 		Some("tool"),
 	);
 	support::assert_tool_output_schema_variant(
-		tools
-			.iter()
-			.find(|tool| tool.get("name").and_then(Value::as_str) == Some("research_compile"))
-			.expect("research_compile tool should exist"),
-		"decodex.mcp.research_compile_result/1",
-		Some("contract_id"),
-	);
-	support::assert_tool_output_schema_variant(
-		tools
-			.iter()
-			.find(|tool| tool.get("name").and_then(Value::as_str) == Some("research_promote"))
-			.expect("research_promote tool should exist"),
-		"decodex.mcp.research_promote_result/1",
-		Some("contract_id"),
-	);
-	support::assert_tool_output_schema_variant(
-		tools
-			.iter()
-			.find(|tool| tool.get("name").and_then(Value::as_str) == Some("intake_goal"))
-			.expect("intake_goal tool should exist"),
+		intake_goal,
 		"decodex.mcp.intake_goal_result/1",
 		Some("issues"),
 	);

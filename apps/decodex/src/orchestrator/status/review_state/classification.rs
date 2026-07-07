@@ -119,9 +119,9 @@ fn post_review_readback_root_cause_for_reason(
 		| "pull_request_merge_commit_lineage_check_failed"
 		| "lifecycle_record_lineage_check_failed"
 		| "lifecycle_record_lineage_mismatch"
-		| "review_orchestration_branch_mismatch"
-		| "review_orchestration_head_mismatch"
-		| "review_orchestration_pr_mismatch" => {
+		| "review_lifecycle_authority_branch_mismatch"
+		| "review_lifecycle_authority_head_mismatch"
+		| "review_lifecycle_authority_pr_mismatch" => {
 			Some(PullRequestReadbackRootCause::LineageValidationFailed)
 		},
 		_ => None,

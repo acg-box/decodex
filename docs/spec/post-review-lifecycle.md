@@ -154,7 +154,7 @@ and `decodex run` must not repair this state automatically.
 If operator status sees private `review_completion_intent` plus
 `issue_terminal_finalize(path = "review_handoff")` but no matching
 `review_lifecycle_records` row, it must expose a deterministic pending writeback
-reason such as `review_handoff_writeback_missing_lifecycle_marker`. That readback is
+reason such as `review_handoff_writeback_missing_lifecycle_authority`. That readback is
 only a fail-closed recovery contract: recovery may proceed automatically only when the
 exact private intent, PR URL, retained branch, local `HEAD`, and PR head still match.
 Otherwise operators must use explicit diagnose, rebind, or adopt recovery.
@@ -399,8 +399,8 @@ During the narrow interval after `issue_review_repair_complete` and
 `review_lifecycle_records` row has been refreshed to the repaired PR head, operator
 status must treat the exact private completion intent plus current-head clean repair
 checkpoint artifact as transitional writeback evidence. That transition may surface
-`review_repair_writeback_missing_lifecycle_marker` or
-`review_repair_writeback_stale_lifecycle_marker`, but it must not revive stale repair
+`review_repair_writeback_missing_lifecycle_authority` or
+`review_repair_writeback_stale_lifecycle_authority`, but it must not revive stale repair
 findings, request a duplicate review checkpoint, or classify the repaired lane as a
 new ordinary implementation run. The transition is valid only when the issue, branch,
 run attempt, PR URL, PR head ref, PR head OID, local `HEAD`, and clean repair

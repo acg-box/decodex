@@ -1,6 +1,6 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg(test)]
-pub(crate) struct ReviewOrchestrationMarker {
+pub(crate) struct ReviewLifecycleTransitionFixture {
 	pub(in crate::state) run_id: String,
 	pub(in crate::state) attempt_number: i64,
 	pub(in crate::state) branch_name: String,

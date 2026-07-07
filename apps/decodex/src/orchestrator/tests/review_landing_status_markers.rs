@@ -1,5 +1,5 @@
 use crate::orchestrator::{
-	self, ReviewOrchestrationMarker, StateStore,
+	self, ReviewLifecycleTransitionFixture, StateStore,
 	tests::{
 		self, TEST_EXTERNAL_REVIEW_AUTO_MERGE_ENABLED_AT, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,
 		TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT,
@@ -16,15 +16,16 @@ fn ensure_review_lifecycle_authority_ignores_stale_marker_projection_from_prior_
 	let branch_name = "x/pubfi-pub-101";
 	let stale_pr_url = "https://github.com/hack-ink/decodex/pull/99";
 
-	let stale_handoff = tests::sample_review_handoff_marker(branch_name, stale_pr_url, "deadbeef");
+	let stale_handoff =
+		tests::sample_review_lifecycle_handoff_fixture(branch_name, stale_pr_url, "deadbeef");
 	state_store
-		.upsert_review_handoff_marker(config.service_id(), &issue.id, &stale_handoff)
+		.upsert_review_lifecycle_handoff_fixture(config.service_id(), &issue.id, &stale_handoff)
 		.expect("stale handoff should persist");
 	state_store
-		.upsert_review_orchestration_marker(
+		.upsert_review_lifecycle_transition_fixture(
 			config.service_id(),
 			&issue.id,
-			&ReviewOrchestrationMarker::new(
+			&ReviewLifecycleTransitionFixture::new(
 				String::from("run-0"),
 				7,
 				String::from(branch_name),
@@ -42,9 +43,9 @@ fn ensure_review_lifecycle_authority_ignores_stale_marker_projection_from_prior_
 		.expect("stale orchestration marker should persist");
 
 	let current_handoff =
-		tests::sample_review_handoff_marker(branch_name, current_pr_url, head_oid);
+		tests::sample_review_lifecycle_handoff_fixture(branch_name, current_pr_url, head_oid);
 	state_store
-		.upsert_review_handoff_marker(config.service_id(), &issue.id, &current_handoff)
+		.upsert_review_lifecycle_handoff_fixture(config.service_id(), &issue.id, &current_handoff)
 		.expect("current lifecycle authority should persist");
 	let lifecycle_record = state_store
 		.review_lifecycle_record(config.service_id(), &issue.id, branch_name)

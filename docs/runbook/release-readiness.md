@@ -1,7 +1,7 @@
 ---
 type: "Runbook"
 title: "Release Readiness"
-description: "OKF concept for Release Readiness."
+description: "Procedure for checking Decodex release readiness before tagging or publishing."
 status: active
 authority: procedural
 owner: automation
@@ -118,13 +118,13 @@ Collect evidence in this order:
 
 Decodex v0.2.0 closes the Loop Engineering release candidate. The release moves
 Decodex from isolated retained-lane automation toward an evidence-backed loop that can
-connect research/design, Decision Contracts, issue/program shaping, queued execution,
-review, recovery, PR handoff, and release-readiness verification.
+connect accepted Decision Contracts, issue/program shaping, queued execution, review,
+recovery, PR handoff, and release-readiness verification.
 
 Shipped capabilities:
 
-- Natural-language research and design intake now compiles local Decision Contract
-  candidates and keeps research output latent until explicit promotion.
+- Natural-language accepted-decision intake now compiles local Decision Contract
+  candidates before Program readiness.
 - Accepted Decision Contracts can feed internal Execution Program readiness while
   normal Linear issues remain the executable lane boundary.
 - Phase-scoped Codex goals make implementation, validation repair, review repair, and
