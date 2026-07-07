@@ -1,20 +1,20 @@
 ---
 type: "Spec"
 title: "Review Orchestration"
-description: "Define the normative review orchestration contract that sits above runtime-native review handoff, retained review repair, and landing. Status: normative Read this when: You are implementing or reviewing how a Decodex-owned lane requests Self Check, Decodex Review, or GitHub Review, counts review rounds, reacts to review results, or transitions from review pass into handoff or landing. Not this document: The low-level app-server protocol, the post-`In Review` lane phase model, the tracker tool schema, or local skill payloads. Defines: Shared review-loop semantics, reviewer-source-specific rules, strict GitHub Review adapter signals, review-round accounting, architecture-escalation rules, landing entry requirements, and manual-intervention boundaries."
+description: "Define the normative review orchestration contract that sits above runtime-native review handoff, retained review repair, and landing. Status: normative Read this when: You are implementing or reviewing how a Decodex-owned lane requests Decodex Review or GitHub Review, counts review rounds, reacts to review results, or transitions from review pass into handoff or landing. Not this document: The low-level app-server protocol, the post-`In Review` lane phase model, the tracker tool schema, or local skill payloads. Defines: Shared review-loop semantics, reviewer-source-specific rules, strict GitHub Review adapter signals, review-round accounting, architecture-escalation rules, landing entry requirements, and manual-intervention boundaries."
 status: active
 authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/agent/tracker_tool_bridge/review.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs]
 drift_watch: [issue_review_checkpoint, issue_review_handoff, issue_review_repair_complete, review_contract, review_cost_control, review_policy_checkpoints, finding_routes, evidence_artifacts, authority_boundary_check, decodex.autonomy_signal/1]
-last_verified: 2026-06-23
+last_verified: 2026-07-07
 ---
 # Review Orchestration
 
 Purpose: Define the normative review orchestration contract that sits above runtime-native review handoff, retained review repair, and landing.
 Status: normative
-Read this when: You are implementing or reviewing how a Decodex-owned lane requests Self Check, Decodex Review, or GitHub Review, counts review rounds, reacts to review results, or transitions from review pass into handoff or landing.
+Read this when: You are implementing or reviewing how a Decodex-owned lane requests Decodex Review or GitHub Review, counts review rounds, reacts to review results, or transitions from review pass into handoff or landing.
 Not this document: The low-level app-server protocol, the post-`In Review` lane phase model, the tracker tool schema, or local skill payloads.
 Defines: Shared review-loop semantics, reviewer-source-specific rules, strict GitHub Review adapter signals, review-round accounting, architecture-escalation rules, landing entry requirements, and manual-intervention boundaries.
 
@@ -46,16 +46,15 @@ There is one shared review loop for Decodex-owned lanes:
 4. request review again until the lane passes or stops for escalation
 
 Review behavior is selected per service through the registered project config
-`[codex].review`. The supported levels are `"off"`, `"basic"`, `"standard"`, and
-`"strict"`.
+`[codex].review`. The supported levels are `"off"`, `"standard"`, and `"strict"`.
 
 The levels map to review sources as follows:
 
 - `off`: no review gate.
-- `basic`: Self Check only. The agent reviews its own work repeatedly and fixes
-  obvious issues before handoff.
-- `standard`: Self Check plus Decodex Review. Decodex exposes and requires the
-  runtime-owned independent fresh-context `issue_review_checkpoint` gate.
+- `standard`: Decodex requires the runtime-owned independent fresh-context
+  `issue_review_checkpoint` artifact gate after PR-backed handoff or retained
+  repair completion. The checkpoint writer is not exposed to the implementing
+  agent.
 - `strict`: Standard plus GitHub Review. After Decodex Review and PR-backed
   handoff, Decodex uses the runtime-owned GitHub `@codex review` path where the
   existing adapter supports it.
@@ -82,12 +81,12 @@ After any review arrives:
 - repair only the verified issues
 - keep the repair batch scoped to the smallest coherent owned change set
 - rerun the repository validation required for the current head before the next review request
-- when `[codex].review` is `"standard"` or `"strict"`, record the normalized Decodex Review
-  result for the exact clean committed current `HEAD` through
-  `issue_review_checkpoint`, including the explicit independent reviewer source,
-  review contract, reviewed head/tree binding, checklist notes, accepted findings,
-  rejected findings, non-empty evidence, repair guidance, and `finding_routes`
-  adjudication for every reviewer signal
+- when `[codex].review` is `"standard"` or `"strict"`, the runtime records the
+  normalized Decodex Review result for the exact clean committed current `HEAD`
+  through the `issue_review_checkpoint` artifact path, including the explicit
+  independent reviewer source, review contract, reviewed head/tree binding,
+  checklist notes, accepted findings, rejected findings, non-empty evidence,
+  repair guidance, and `finding_routes` adjudication for every reviewer signal
 - before a repair loop uses any review signal, route it through `finding_routes`:
   accepted current repair work must be bound to an accepted finding and routed as
   `current_blocker`; non-current or non-repair signals must use their matching
@@ -135,32 +134,34 @@ Review level is service-controlled.
 
 Rules:
 
-- `[codex].review = "off"` skips Self Check, Decodex Review, and GitHub Review.
+- `[codex].review = "off"` skips Decodex Review and GitHub Review.
   Decodex does not expose `issue_review_checkpoint`, does not require a clean
   checkpoint before handoff or repair completion, and ignores stale review-policy
   checkpoint state for turn-stop classification.
-- `[codex].review = "basic"` injects the Self Check instruction and does not expose
-  or require the checkpoint tool. It does not use GitHub Review.
-- `[codex].review = "standard"` uses Self Check plus the runtime-owned independent
-  fresh-context read-only Decodex Review checkpoint loop. Decodex exposes
-  `issue_review_checkpoint`, requires a clean committed current-HEAD `clean`
-  evidence artifact before `issue_review_handoff` or
-  `issue_review_repair_complete`, re-checks that review-blocking local changes are
-  absent before reusing that artifact, stores structured accepted/rejected finding
-  evidence plus `finding_routes`, and applies the review-policy stop rules to stale
-  or non-clean keyed artifact state.
+- `[codex].review = "standard"` uses the runtime-owned independent fresh-context
+  read-only Decodex Review checkpoint loop. The implementing agent records
+  `issue_review_handoff` or `issue_review_repair_complete` after pushing the
+  validated PR head; Decodex then requests review, records a clean committed
+  current-HEAD `clean` evidence artifact before landing or continuing the retained
+  repair lifecycle, re-checks that review-blocking local changes are absent before
+  using that artifact, stores structured accepted/rejected finding evidence plus
+  `finding_routes`, and applies the review-policy stop rules to missing, stale, or
+  non-clean keyed artifact state.
   That review checkpoint is separate from the current-head `issue_progress_checkpoint`
   with `docs_impact` required before terminal finalization. It does not use GitHub
   Review.
 - `[codex].review = "strict"` uses the standard requirements and then participates
   in the GitHub Review loop.
 - Omitted `[codex].review` defaults to `"strict"`.
+- `basic` is not a supported review level. Historical prompt-only self-review must
+  migrate to either `"off"` when no review gate is desired or `"standard"` when the
+  harness should require independent runtime-owned review.
 - In `"standard"` and `"strict"` levels, the runtime may choose the exact local transport or
   child-conversation mechanism, but it must remain a fully runtime-controlled
   read-only review request. The reviewer must not edit files, push, land, or mutate
   tracker state.
 - In `"standard"` and `"strict"` levels, Decodex Review must use the same bounded review method and normalized review outcomes as any other review pass.
-- In `"standard"` and `"strict"` levels, pre-handoff Decodex Review uses
+- In `"standard"` and `"strict"` levels, the initial runtime-owned Decodex Review uses
   `review_type = "full_current_head_review"`. Retained repair Decodex Review uses
   `review_type = "repair_verification"` and is limited to accepted findings routed as
   `current_blocker` from the previous review plus contract regressions. New unrelated
@@ -174,7 +175,7 @@ Rules:
   binds the committed current `HEAD`, and the reviewer must still perform both the
   intended-behavior and adversarial checks from the registered workflow policy.
   Compact review is valid only for a low-risk, small, validation-backed, clean
-  pre-handoff lane with current-head evidence, validation evidence that is current
+  post-handoff lane with current-head evidence, validation evidence that is current
   for the reviewed `HEAD`, sufficient current-head evidence quality, no high-risk
   surfaces, no accepted findings, no blocking routes, and no prior non-clean
   review-policy state. Full review is forced for repair verification, accepted
@@ -187,26 +188,27 @@ Rules:
   an evidence-keyed artifact. The key must include artifact kind
   `issue_review_checkpoint`, review phase, current `HEAD`, review level, and review
   prompt version. A later attempt may reuse that artifact only when every key
-  dimension still matches; completion and mutation-fence checks read this artifact
-  rather than the run-local projection. A new `HEAD`, changed review level, or changed
-  prompt version invalidates the proof.
+  dimension still matches; post-review classification, retained orchestration, and
+  mutation-fence checks read this artifact rather than the run-local projection. A
+  new `HEAD`, changed review level, or changed prompt version invalidates the proof.
 - In `"standard"` and `"strict"` levels, a `findings` checkpoint requires at least
   one accepted finding routed as `current_blocker`; rejected, non-current, or
   non-actionable reviewer comments may be recorded with a `clean` checkpoint and must
   not become repair input.
 - If Decodex Review returns an ambiguous or contradictory result that the runtime
   cannot classify without guessing, stop for `manual_intervention_required`.
-- Decodex Review pass transitions into the normal PR-backed review handoff flow, not
-  directly into landing.
-- Self Check is not sufficient when the loop-runtime risk policy
-  requires independent review. Use the Decodex Review checkpoint boundary
-  before treating the lane as ready for handoff or landing.
+- Decodex Review pass after PR-backed handoff transitions into the normal
+  post-review wait, repair, or landing flow, not directly into landing without the
+  ordinary PR gates.
+- Local or prompt-only self-review is not a Decodex review gate. Use the Decodex
+  Review checkpoint boundary before treating the lane as ready for landing whenever
+  independent review is required.
 
 ## Decodex Review signal routing
 
 `issue_review_checkpoint` separates reviewer disposition from repair scheduling. The
-reviewer and implementing agent still decide whether a signal is accepted, rejected,
-needs more evidence, belongs to follow-up, exposes a risk or reviewer-rubric gap, or
+runtime-owned review adapter decides whether a signal is accepted, rejected, needs
+more evidence, belongs to follow-up, exposes a risk or reviewer-rubric gap, or
 identifies architecture, issue-contract, landing, or authority blockers. That
 judgment must be serialized as `finding_routes` before the runtime lets any signal
 enter a repair loop.
@@ -321,7 +323,7 @@ The next step after review pass depends on reviewer source.
 - when `[codex].review` is `"standard"` or `"strict"`, record `issue_review_handoff`
   only after the latest bounded-review result for that handoff phase and current
   `HEAD` is `clean`
-- when `[codex].review` is `"off"` or `"basic"`, record `issue_review_handoff`
+- when `[codex].review` is `"off"`, record `issue_review_handoff`
   after the branch is pushed, the non-draft PR is ready, and required validation has
   passed
 - if `[codex].review` is not `"strict"`, treat that PR-backed handoff as sufficient

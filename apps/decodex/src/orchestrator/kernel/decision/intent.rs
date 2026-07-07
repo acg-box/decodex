@@ -81,7 +81,7 @@ fn intent_preconditions(kind: CommandIntentKind) -> Vec<CommandFact> {
 			preconditions.push(CommandFact::PostReviewLifecyclePresent);
 			preconditions.push(CommandFact::TerminalCleanupPending);
 		},
-		CommandIntentKind::SyncReviewOrchestrationMarker => {
+		CommandIntentKind::SyncReviewLifecycleAuthority => {
 			preconditions.push(CommandFact::PostReviewLifecyclePresent);
 		},
 		CommandIntentKind::ObserveLoopGuardrailCheckpoint => {
@@ -117,8 +117,8 @@ fn intent_expected_postconditions(kind: CommandIntentKind) -> Vec<CommandFact> {
 		CommandIntentKind::StartRetainedLanding => vec![CommandFact::RetainedLandingStarted],
 		CommandIntentKind::StartRetainedCloseout => vec![CommandFact::RetainedCloseoutStarted],
 		CommandIntentKind::FinishRetainedCleanup => vec![CommandFact::RetainedCleanupCompleted],
-		CommandIntentKind::SyncReviewOrchestrationMarker => {
-			vec![CommandFact::ReviewOrchestrationMarkerCurrent]
+		CommandIntentKind::SyncReviewLifecycleAuthority => {
+			vec![CommandFact::ReviewLifecycleAuthorityCurrent]
 		},
 		CommandIntentKind::ObserveLoopGuardrailCheckpoint => {
 			vec![CommandFact::LoopGuardrailCheckpointObserved]

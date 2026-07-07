@@ -104,7 +104,8 @@ fn guardrail_candidate_kind(reason: &str) -> (&'static str, &'static str) {
 			"missing_validator",
 			"Promote the repeated failure into an earlier deterministic validator or fixture.",
 		),
-		_ =>
-			("weak_prompt", "Tighten loop instructions so future attempts stop or repair earlier."),
+		_ => {
+			("weak_prompt", "Tighten loop instructions so future attempts stop or repair earlier.")
+		},
 	}
 }

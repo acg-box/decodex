@@ -1,7 +1,7 @@
 use crate::{
 	agent::tracker_tool_bridge::{ReviewHandoffContext, TrackerToolBridge, review},
 	prelude::{Result, eyre},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
+	state::{ReviewLifecycleHandoffInput, ReviewLifecycleTransitionInput},
 	tracker::records::LinearExecutionEventRecord,
 };
 
@@ -17,10 +17,10 @@ impl<'a> TrackerToolBridge<'a> {
 		Ok(())
 	}
 
-	pub(in crate::agent::tracker_tool_bridge::review) fn persist_review_handoff_marker(
+	pub(in crate::agent::tracker_tool_bridge::review) fn persist_review_lifecycle_handoff(
 		&self,
 		review_context: &ReviewHandoffContext,
-		marker: &ReviewHandoffMarker,
+		input: ReviewLifecycleHandoffInput<'_>,
 	) -> Result<()> {
 		let state_store = self.state_store.ok_or_else(|| {
 			eyre::eyre!(
@@ -29,13 +29,17 @@ impl<'a> TrackerToolBridge<'a> {
 			)
 		})?;
 
-		state_store.upsert_review_handoff_marker(&review_context.service_id, &self.issue.id, marker)
+		state_store.record_review_lifecycle_handoff(
+			&review_context.service_id,
+			&self.issue.id,
+			input,
+		)
 	}
 
-	pub(in crate::agent::tracker_tool_bridge::review) fn persist_review_handoff_marker_for_handoff(
+	pub(in crate::agent::tracker_tool_bridge::review) fn persist_review_lifecycle_handoff_for_handoff(
 		&self,
 		review_context: &ReviewHandoffContext,
-		marker: &ReviewHandoffMarker,
+		input: ReviewLifecycleHandoffInput<'_>,
 	) -> Result<()> {
 		let state_store = self.state_store.ok_or_else(|| {
 			eyre::eyre!(
@@ -44,42 +48,43 @@ impl<'a> TrackerToolBridge<'a> {
 			)
 		})?;
 
-		if let Some(existing) = state_store.review_handoff_marker(
+		if let Some(existing_record) = state_store.review_lifecycle_record(
 			&review_context.service_id,
 			&self.issue.id,
 			&review_context.branch_name,
-		)? && !review::review_handoff_marker_lineage_matches(&existing, marker)
-		{
-			eyre::bail!(
-				"Existing review lifecycle record for issue `{}` branch `{}` points at PR `{}` head `{}`, but the current review handoff intent points at PR `{}` head `{}`. Use explicit review-handoff recovery before rebinding this lane.",
-				self.issue.identifier,
-				review_context.branch_name,
-				existing.pr_url(),
-				existing.pr_head_oid(),
-				marker.pr_url(),
-				marker.pr_head_oid()
-			);
+		)? {
+			if !review::review_lifecycle_handoff_lineage_matches(&existing_record, &input) {
+				eyre::bail!(
+					"Existing review lifecycle record for issue `{}` branch `{}` points at PR `{}` head `{}`, but the current review handoff intent points at PR `{}` head `{}`. Use explicit review-handoff recovery before rebinding this lane.",
+					self.issue.identifier,
+					review_context.branch_name,
+					existing_record.pr_url(),
+					existing_record.pr_head_oid(),
+					input.pr_url,
+					input.head_sha
+				);
+			}
 		}
 
-		self.persist_review_handoff_marker(review_context, marker)
+		self.persist_review_lifecycle_handoff(review_context, input)
 	}
 
-	pub(in crate::agent::tracker_tool_bridge::review) fn persist_review_orchestration_marker(
+	pub(in crate::agent::tracker_tool_bridge::review) fn persist_review_lifecycle_transition(
 		&self,
 		review_context: &ReviewHandoffContext,
-		marker: &ReviewOrchestrationMarker,
+		input: ReviewLifecycleTransitionInput<'_>,
 	) -> Result<()> {
 		let state_store = self.state_store.ok_or_else(|| {
 			eyre::eyre!(
-				"Runtime state store is required to persist review orchestration for issue `{}`.",
+				"Runtime state store is required to persist review lifecycle transition for issue `{}`.",
 				self.issue.identifier
 			)
 		})?;
 
-		state_store.upsert_review_orchestration_marker(
+		state_store.record_review_lifecycle_transition(
 			&review_context.service_id,
 			&self.issue.id,
-			marker,
+			input,
 		)
 	}
 }

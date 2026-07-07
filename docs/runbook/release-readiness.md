@@ -94,9 +94,9 @@ Collect evidence in this order:
    ```
 
 9. Dogfood at least one real Decodex lane with `[codex].review = "standard"`.
-   The lane must reach PR handoff or another release-safe terminal state, and it must
-   leave an inspectable Decodex Review checkpoint.
-   Manual PR review comments or local self-check notes do not replace the runtime
+   The lane must reach PR handoff or another release-safe terminal state, and the
+   runtime-owned review gate must leave an inspectable Decodex Review checkpoint.
+   Manual PR review comments or local review notes do not replace the runtime
    checkpoint: `decodex evidence <ISSUE> --json` for the dogfood lane must show a
    non-empty `review_checkpoints` array. The release remains blocked, even if the
    implementation PR lands, when that runtime checkpoint is absent.
@@ -130,9 +130,9 @@ Shipped capabilities:
 - Phase-scoped Codex goals make implementation, validation repair, review repair, and
   handoff evidence distinct runtime phases.
 - The review-level config model is consolidated under `[codex].review` with `off`,
-  `basic`, `standard`, and `strict` levels.
-- Standard review requires Self Check plus Decodex Review through structured
-  `issue_review_checkpoint` evidence before PR handoff.
+  `standard`, and `strict` levels.
+- Standard review requires Decodex Review through structured runtime-owned
+  `issue_review_checkpoint` evidence after PR handoff and before clean-path landing.
 - Loop guardrails, Architecture Recovery Packets, and Authority Boundary Checks
   preserve review, recovery, and human-required stop evidence instead of collapsing
   repeated failures into generic retry state.

@@ -73,7 +73,7 @@ fn records_review_handoff_and_applies_it_after_validation() {
 }
 
 #[test]
-fn review_handoff_apply_persists_runtime_handoff_marker() {
+fn review_handoff_apply_persists_runtime_lifecycle_authority() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
 	let issue = tests::sample_issue();
@@ -129,7 +129,8 @@ fn review_handoff_apply_persists_runtime_handoff_marker() {
 
 	bridge.apply_review_handoff().expect("review handoff should apply");
 
-	let marker = tests::persisted_review_handoff_marker(&bridge, &issue, &review_context);
+	let marker =
+		tests::persisted_review_lifecycle_handoff_fixture(&bridge, &issue, &review_context);
 
 	assert_eq!(marker.branch_name(), review_context.branch_name);
 	assert_eq!(marker.pr_url(), "https://github.com/hack-ink/decodex/pull/142");

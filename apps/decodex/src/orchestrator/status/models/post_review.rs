@@ -1,10 +1,10 @@
 use crate::{
 	orchestrator::{
 		self, PostReviewLaneClassification, PostReviewLaneDecision, PullRequestReadbackRootCause,
-		PullRequestReviewState, ReviewOrchestrationPhase,
+		PullRequestReviewState,
 	},
 	prelude::{Result, eyre},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
+	state::ReviewLifecycleRecord,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -15,26 +15,26 @@ pub(in crate::orchestrator) struct PostReviewReadbackDegradation<'a> {
 	pub(in crate::orchestrator) pr_head_sha: &'a str,
 }
 impl<'a> PostReviewReadbackDegradation<'a> {
-	pub(in crate::orchestrator) fn tracker_issue_from_handoff(
-		review_handoff: &'a ReviewHandoffMarker,
+	pub(in crate::orchestrator) fn tracker_issue_from_lifecycle(
+		lifecycle_record: &'a ReviewLifecycleRecord,
 	) -> Self {
 		Self {
 			reason: "tracker_issue_readback_degraded",
 			root_cause: PullRequestReadbackRootCause::TrackerIssueReadbackFailed,
-			pr_url: review_handoff.pr_url(),
-			pr_head_sha: review_handoff.pr_head_oid(),
+			pr_url: lifecycle_record.pr_url(),
+			pr_head_sha: lifecycle_record.pr_head_oid(),
 		}
 	}
 
-	pub(in crate::orchestrator) fn pull_request_state_from_handoff(
-		review_handoff: &'a ReviewHandoffMarker,
+	pub(in crate::orchestrator) fn pull_request_state_from_lifecycle(
+		lifecycle_record: &'a ReviewLifecycleRecord,
 		root_cause: PullRequestReadbackRootCause,
 	) -> Self {
 		Self {
 			reason: "pull_request_state_read_failed",
 			root_cause,
-			pr_url: review_handoff.pr_url(),
-			pr_head_sha: review_handoff.pr_head_oid(),
+			pr_url: lifecycle_record.pr_url(),
+			pr_head_sha: lifecycle_record.pr_head_oid(),
 		}
 	}
 
@@ -78,37 +78,64 @@ impl<'a> PostReviewReadbackDegradation<'a> {
 }
 
 pub(in crate::orchestrator) struct PostReviewOrchestrationStatus {
-	pub(in crate::orchestrator) phase: ReviewOrchestrationPhase,
+	pub(in crate::orchestrator) action: PostReviewLifecycleAction,
 	pub(in crate::orchestrator) request_acknowledged: bool,
 	pub(in crate::orchestrator) review_result_arrived: bool,
 	pub(in crate::orchestrator) strict_pass: bool,
 	pub(in crate::orchestrator) clean_path_landing_gates_satisfied: bool,
 	pub(in crate::orchestrator) landing_requires_agent_fallback: bool,
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::orchestrator) enum PostReviewLifecycleAction {
+	StartReviewGateOrExternalReview,
+	RequestExternalReview,
+	WaitForExternalReviewAck,
+	WaitForExternalReviewResult,
+	WaitForLandingGates,
+	RunReviewRepair,
+	PollLandingReadback,
+	RunCloseoutAdapter,
+	RequestManualAttention,
+}
+impl PostReviewLifecycleAction {
+	pub(in crate::orchestrator) fn parse(value: &str) -> Result<Self> {
+		Ok(match value {
+			"wait_for_runtime_review_gate_or_external_review" => {
+				Self::StartReviewGateOrExternalReview
+			},
+			"request_external_review" => Self::RequestExternalReview,
+			"wait_for_external_review_ack" => Self::WaitForExternalReviewAck,
+			"wait_for_external_review_result" => Self::WaitForExternalReviewResult,
+			"wait_for_landing_gates" => Self::WaitForLandingGates,
+			"run_retained_review_repair_adapter" => Self::RunReviewRepair,
+			"poll_landing_readback" => Self::PollLandingReadback,
+			"run_retained_closeout_adapter" => Self::RunCloseoutAdapter,
+			"request_manual_attention" => Self::RequestManualAttention,
+			_ => eyre::bail!("Unknown post-review lifecycle action `{value}`."),
+		})
+	}
+}
 impl PostReviewOrchestrationStatus {
 	pub(in crate::orchestrator) fn from_review_state(
 		review_state: &PullRequestReviewState,
-		orchestration_marker: &ReviewOrchestrationMarker,
+		lifecycle_record: &ReviewLifecycleRecord,
 	) -> Result<Self> {
-		let phase =
-			ReviewOrchestrationPhase::parse(orchestration_marker.phase()).map_err(|error| {
-				eyre::eyre!("Failed to parse retained review orchestration phase: {error}")
-			})?;
+		let action = PostReviewLifecycleAction::parse(lifecycle_record.next_action())?;
 
 		Ok(Self {
-			phase,
+			action,
 			request_acknowledged: orchestrator::request_comment_has_eyes(
 				review_state,
-				orchestration_marker,
+				lifecycle_record,
 			)
 			.unwrap_or(false),
 			review_result_arrived: orchestrator::external_review_result_arrived(
 				review_state,
-				orchestration_marker,
+				lifecycle_record,
 			),
 			strict_pass: orchestrator::external_review_has_strict_pass_signals(
 				review_state,
-				orchestration_marker,
+				lifecycle_record,
 			),
 			clean_path_landing_gates_satisfied:
 				orchestrator::review_state_clean_path_landing_gates_satisfied(review_state),

@@ -21,7 +21,7 @@ fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallbac
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
-	let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
+	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
 
@@ -29,17 +29,17 @@ fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallbac
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			"main",
 			pr_url,
 			&head_oid,
@@ -70,7 +70,7 @@ fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallbac
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = tests::persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,

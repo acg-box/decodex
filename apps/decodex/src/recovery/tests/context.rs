@@ -8,7 +8,7 @@ use crate::{
 		RecoveryRuntimeMutationPolicy,
 		tests::{self, GhostLaneTestTracker},
 	},
-	state::{ConnectorBackoffInput, ReviewHandoffMarker},
+	state::{ConnectorBackoffInput, ReviewLifecycleHandoffFixture},
 };
 
 #[test]
@@ -173,10 +173,10 @@ fn review_handoff_diagnose_includes_failure_state_retained_lane_and_pr_read_erro
 		.expect("failed attempt should record");
 	context
 		.state_store
-		.upsert_review_handoff_marker(
+		.upsert_review_lifecycle_handoff_fixture(
 			context.config.service_id(),
 			&issue.id,
-			&ReviewHandoffMarker::new(
+			&ReviewLifecycleHandoffFixture::new(
 				"pub-718-attempt-1",
 				1,
 				branch_name,
@@ -186,7 +186,7 @@ fn review_handoff_diagnose_includes_failure_state_retained_lane_and_pr_read_erro
 				&head_oid,
 			),
 		)
-		.expect("review handoff marker should record");
+		.expect("review lifecycle handoff fixture should record");
 
 	let diagnostics =
 		super::diagnose_all_retained_review_worktrees_with_tracker(&context, &tracker)

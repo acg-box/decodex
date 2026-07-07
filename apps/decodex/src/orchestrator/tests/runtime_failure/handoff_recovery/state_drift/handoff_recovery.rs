@@ -1,7 +1,7 @@
 use crate::orchestrator::tests::{
 	self,
 	runtime_failure::{
-		self, FakeTracker, Report, ReviewHandoffMarker, StateStore, orchestrator, tracker,
+		self, FakeTracker, Report, ReviewLifecycleHandoffFixture, StateStore, orchestrator, tracker,
 	},
 };
 
@@ -32,7 +32,7 @@ fn handle_failure_recovers_review_handoff_state_drift_before_no_effective_diff_t
 
 	let issue_run = runtime_failure::loop_guardrail_issue_run(&config, &issue, 3);
 	let head_oid = runtime_failure::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		&issue_run.run_id,
 		issue_run.attempt_number,
 		&issue_run.worktree.branch_name,
@@ -46,8 +46,8 @@ fn handle_failure_recovers_review_handoff_state_drift_before_no_effective_diff_t
 		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
 		.expect("run attempt should record");
 	state_store
-		.upsert_review_handoff_marker(config.service_id(), &issue.id, &handoff)
-		.expect("review handoff marker should record");
+		.upsert_review_lifecycle_handoff_fixture(config.service_id(), &issue.id, &handoff)
+		.expect("review lifecycle handoff fixture should record");
 
 	orchestrator::handle_failure(
 		&tracker,
@@ -84,7 +84,7 @@ fn handle_failure_recovers_review_handoff_state_drift_before_no_effective_diff_t
 	assert_eq!(run_attempt.status(), "succeeded");
 
 	let orchestration = state_store
-		.review_orchestration_marker(config.service_id(), &issue.id, &handoff)
+		.review_lifecycle_transition_fixture(config.service_id(), &issue.id, &handoff)
 		.expect("review orchestration should read")
 		.expect("review orchestration should be rebound");
 
@@ -102,7 +102,7 @@ fn handle_failure_recovers_review_handoff_state_drift_before_no_effective_diff_t
 
 	assert!(events.iter().any(|event| {
 		event.event_type() == "review_handoff_state_drift_recovered"
-			&& event.payload()["reason"] == "current_review_handoff_marker"
+			&& event.payload()["reason"] == "current_review_lifecycle_authority"
 			&& event.payload()["target_issue_state"] == "In Review"
 	}));
 }

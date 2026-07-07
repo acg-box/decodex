@@ -182,8 +182,9 @@ pub(crate) fn classify_operator_run_phase(
 
 	match status {
 		"starting" | "running" => (String::from("executing"), None),
-		CONTINUATION_PENDING_RUN_STATUS =>
-			(String::from("waiting_continuation"), Some(String::from("turn_boundary"))),
+		CONTINUATION_PENDING_RUN_STATUS => {
+			(String::from("waiting_continuation"), Some(String::from("turn_boundary")))
+		},
 		"succeeded" => (String::from("completed"), None),
 		"failed" | "interrupted" | TERMINAL_GUARDED_RUN_STATUS => (String::from("failed"), None),
 		other => (other.to_owned(), None),

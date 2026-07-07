@@ -101,25 +101,31 @@ fn validate_release_comparison_tags(
 	errors: &mut Vec<String>,
 ) {
 	match support::string_field(comparison, "stable_tag_name") {
-		Some("") =>
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
+		Some("") => {
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
+		},
 		Some(tag_name)
 			if !option_tags.stable.is_empty() && !option_tags.stable.contains(tag_name) =>
+		{
 			errors.push(format!(
 				"comparisons[{index}].stable_tag_name must exist in release_options.stable"
-			)),
+			))
+		},
 		Some(_) => {},
-		None =>
-			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string")),
+		None => {
+			errors.push(format!("comparisons[{index}].stable_tag_name must be a non-empty string"))
+		},
 	}
 	match support::string_field(comparison, "prerelease_tag_name") {
 		Some("") => errors
 			.push(format!("comparisons[{index}].prerelease_tag_name must be a non-empty string")),
 		Some(tag_name)
 			if !option_tags.preview.is_empty() && !option_tags.preview.contains(tag_name) =>
+		{
 			errors.push(format!(
 				"comparisons[{index}].prerelease_tag_name must exist in release_options.preview"
-			)),
+			))
+		},
 		Some(_) => {},
 		None => errors
 			.push(format!("comparisons[{index}].prerelease_tag_name must be a non-empty string")),

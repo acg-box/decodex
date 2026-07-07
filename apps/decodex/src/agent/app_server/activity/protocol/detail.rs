@@ -99,8 +99,9 @@ pub(in crate::agent::app_server::activity::protocol) fn token_usage_detail(
 	.and_then(payload::json_number_to_i64);
 
 	match (input_tokens, output_tokens) {
-		(Some(input_tokens), Some(output_tokens)) =>
-			Some(format!("input={input_tokens}, output={output_tokens}")),
+		(Some(input_tokens), Some(output_tokens)) => {
+			Some(format!("input={input_tokens}, output={output_tokens}"))
+		},
 		(Some(input_tokens), None) => Some(format!("input={input_tokens}")),
 		(None, Some(output_tokens)) => Some(format!("output={output_tokens}")),
 		(None, None) => None,

@@ -45,20 +45,20 @@ mod tests {
 	#[test]
 	fn extract_commit_subject_ignores_blank_and_comment_lines() {
 		let subject = commit_msg::extract_commit_subject(
-			"\n# comment\n{\"schema\":\"decodex/commit/1\",\"summary\":\"ship fix\",\"authority\":\"manual\"}\n# trailing\n",
+			"\n# comment\n{\"schema\":\"decodex/commit/2\",\"change\":\"ship fix\",\"authority\":\"manual\",\"impact\":\"compatible\"}\n# trailing\n",
 		)
 		.expect("subject should be extracted");
 
 		assert_eq!(
 			subject,
-			r#"{"schema":"decodex/commit/1","summary":"ship fix","authority":"manual"}"#
+			r#"{"schema":"decodex/commit/2","change":"ship fix","authority":"manual","impact":"compatible"}"#
 		);
 	}
 
 	#[test]
 	fn extract_commit_subject_rejects_bodies() {
 		let error = commit_msg::extract_commit_subject(
-			"{\"schema\":\"decodex/commit/1\",\"summary\":\"ship fix\",\"authority\":\"manual\"}\nbody\n",
+			"{\"schema\":\"decodex/commit/2\",\"change\":\"ship fix\",\"authority\":\"manual\",\"impact\":\"compatible\"}\nbody\n",
 		)
 		.expect_err("message body should be rejected");
 

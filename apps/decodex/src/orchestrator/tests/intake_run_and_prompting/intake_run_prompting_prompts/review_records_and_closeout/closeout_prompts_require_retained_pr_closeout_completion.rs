@@ -61,7 +61,7 @@ fn closeout_prompts_require_retained_pr_closeout_completion() {
 	assert!(developer_instructions.contains(ISSUE_TRANSITION_TOOL_NAME));
 	assert!(developer_instructions.contains("Merge is already authoritative"));
 	assert!(developer_instructions.contains("Do not land, merge, or request review"));
-	assert!(developer_instructions.contains("single-line `decodex/commit/1` JSON commit message"));
+	assert!(developer_instructions.contains("single-line `decodex/commit/2` JSON commit message"));
 	assert!(developer_instructions.contains("do not call `issue_review_handoff`"));
 	assert!(developer_instructions.contains("may already be in `Done`"));
 	assert!(developer_instructions.contains(

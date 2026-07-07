@@ -1,3 +1,3 @@
 mod binding;
-mod lifecycle_marker;
+mod lifecycle_authority;
 mod ownership_drift;

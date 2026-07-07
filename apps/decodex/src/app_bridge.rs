@@ -35,29 +35,34 @@ pub fn run() -> Result<()> {
 
 fn handle_request(request: AppBridgeRequest) -> Result<()> {
 	match request {
-		AppBridgeRequest::List { include_usage, force_refresh } =>
+		AppBridgeRequest::List { include_usage, force_refresh } => {
 			if include_usage {
 				event::emit_result(&accounts::account_list_with_cached_usage(force_refresh)?)
 			} else {
 				event::emit_result(&accounts::account_list()?)
-			},
-		AppBridgeRequest::Select { selector, include_usage } =>
-			emit_account_list_result(accounts::account_select(&selector)?, include_usage),
-		AppBridgeRequest::Clear { include_usage } =>
-			emit_account_list_result(accounts::account_clear()?, include_usage),
-		AppBridgeRequest::Logout { selector, include_usage } =>
-			emit_account_list_result(accounts::account_logout(&selector)?, include_usage),
+			}
+		},
+		AppBridgeRequest::Select { selector, include_usage } => {
+			emit_account_list_result(accounts::account_select(&selector)?, include_usage)
+		},
+		AppBridgeRequest::Clear { include_usage } => {
+			emit_account_list_result(accounts::account_clear()?, include_usage)
+		},
+		AppBridgeRequest::Logout { selector, include_usage } => {
+			emit_account_list_result(accounts::account_logout(&selector)?, include_usage)
+		},
 		AppBridgeRequest::Import { auth_json_path, include_usage } => {
 			let auth_json_path = PathBuf::from(auth_json_path);
 
 			emit_account_list_result(accounts::account_import(&auth_json_path)?, include_usage)
 		},
-		AppBridgeRequest::Use { selector, auth_json_path } =>
+		AppBridgeRequest::Use { selector, auth_json_path } => {
 			event::emit_result(&accounts::account_use(&AccountUseRequest {
 				selector,
 				auth_json_path: auth_json_path.map(Into::into),
 				json: true,
-			})?),
+			})?)
+		},
 		AppBridgeRequest::Login { codex_bin, keep_temp_home, include_usage } => {
 			let response = accounts::account_login(
 				&AccountLoginRequest { codex_bin, keep_temp_home },
@@ -71,8 +76,9 @@ fn handle_request(request: AppBridgeRequest) -> Result<()> {
 			emit_account_list_result(response, include_usage)
 		},
 		AppBridgeRequest::FastModeStatus => event::emit_result(&codex_config::fast_mode_status()?),
-		AppBridgeRequest::FastModeSet { enabled } =>
-			event::emit_result(&codex_config::set_fast_mode(enabled)?),
+		AppBridgeRequest::FastModeSet { enabled } => {
+			event::emit_result(&codex_config::set_fast_mode(enabled)?)
+		},
 	}
 }
 

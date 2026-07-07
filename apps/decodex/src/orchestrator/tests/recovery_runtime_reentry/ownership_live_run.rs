@@ -29,11 +29,11 @@ fn idle_daemon_recovery_reconstructs_completed_closeout_worktree_mapping() {
 	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/178";
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 	orchestrator::recover_and_reconcile_idle_daemon_state(
 		&tracker,

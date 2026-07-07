@@ -19,20 +19,22 @@ fn project_lane_next_action(
 	decision: &OwnedLaneDecision,
 ) -> LaneNextAction {
 	match decision.decision_class {
-		OwnedLaneAction::ManualInterventionRequired =>
+		OwnedLaneAction::ManualInterventionRequired => {
 			if snapshot.ambiguous_lineage {
 				LaneNextAction::ForbiddenStaleOrAmbiguous
 			} else {
 				LaneNextAction::NeedsAttention
-			},
-		OwnedLaneAction::Continue =>
+			}
+		},
+		OwnedLaneAction::Continue => {
 			if snapshot.terminal_evidence_present {
 				LaneNextAction::CleanupTerminal
 			} else if snapshot.active_phase.is_some() && !snapshot.phase_acceptance_failure {
 				LaneNextAction::RunRepoGate
 			} else {
 				LaneNextAction::ContinueCurrentPhase
-			},
+			}
+		},
 		OwnedLaneAction::RetryAutomatically => LaneNextAction::RetryFailure,
 		OwnedLaneAction::ResumeRetainedLane => LaneNextAction::ResumeContinuation,
 		OwnedLaneAction::WaitForExternalSignal => LaneNextAction::WaitExternal,
@@ -63,12 +65,15 @@ fn project_lane_reason(
 
 	if let Some(disposition) = snapshot.repo_gate_disposition {
 		return match disposition {
-			RepoGateFailureDisposition::ContinueRepair =>
-				"repo-gate failure remains an issue-local repair",
-			RepoGateFailureDisposition::RetryAfterBackoff =>
-				"repo-gate failure requires backoff before retry",
-			RepoGateFailureDisposition::NeedsHumanAttention =>
-				"repo-gate failure crossed an authority boundary",
+			RepoGateFailureDisposition::ContinueRepair => {
+				"repo-gate failure remains an issue-local repair"
+			},
+			RepoGateFailureDisposition::RetryAfterBackoff => {
+				"repo-gate failure requires backoff before retry"
+			},
+			RepoGateFailureDisposition::NeedsHumanAttention => {
+				"repo-gate failure crossed an authority boundary"
+			},
 		};
 	}
 

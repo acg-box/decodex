@@ -90,8 +90,9 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 		event.event_type() == "terminal_finalize" && event.payload()["path"] == "review_handoff"
 	}));
 
-	let handoff_marker = tests::persisted_review_handoff_marker(&bridge, &issue, &review_context);
+	let handoff_fixture =
+		tests::persisted_review_lifecycle_handoff_fixture(&bridge, &issue, &review_context);
 
-	assert_eq!(handoff_marker.pr_url(), "https://github.com/hack-ink/decodex/pull/53");
-	assert_eq!(handoff_marker.pr_head_oid(), "08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
+	assert_eq!(handoff_fixture.pr_url(), "https://github.com/hack-ink/decodex/pull/53");
+	assert_eq!(handoff_fixture.pr_head_oid(), "08a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 }

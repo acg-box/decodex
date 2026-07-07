@@ -57,9 +57,6 @@ impl<'a> TrackerToolBridge<'a> {
 			Err(error) => return DynamicToolCallResponse::failure(error),
 		};
 
-		if let Err(error) = self.require_clean_review_checkpoint(review_context) {
-			return DynamicToolCallResponse::failure(error);
-		}
 		if let Err(error) = self.clear_review_policy_state_after_completion(
 			review_context,
 			ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,

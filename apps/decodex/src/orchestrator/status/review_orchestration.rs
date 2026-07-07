@@ -1,14 +1,14 @@
 mod classification;
 mod external_signals;
 mod lane_state;
-mod marker;
+mod lifecycle_record;
 
 #[allow(unused_imports)]
 pub(crate) use self::{
 	classification::{
 		apply_non_github_review_post_review_classification,
 		apply_pre_orchestration_post_review_classification,
-		apply_review_orchestration_phase_classification,
+		apply_review_lifecycle_action_classification,
 	},
 	external_signals::{
 		external_review_body_has_actionable_feedback, external_review_body_is_strict_pass_signal,
@@ -20,10 +20,10 @@ pub(crate) use self::{
 		load_post_review_lane_review_state, merged_pr_local_head_matches_landed_lineage,
 		validate_post_review_lane_review_state,
 	},
-	marker::{
-		clean_current_head_review_repair_writeback_pending, load_post_review_orchestration_marker,
+	lifecycle_record::{
+		clean_current_head_review_repair_writeback_pending, load_post_review_lifecycle_record,
 		review_repair_completion_intent_matches_current_head,
 		review_repair_terminal_finalize_event_matches_snapshot,
-		validate_review_orchestration_marker,
+		validate_post_review_lifecycle_record,
 	},
 };

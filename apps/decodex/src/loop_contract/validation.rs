@@ -72,8 +72,9 @@ pub(super) fn validate_proposed_issues(issues: &[DecisionProposedIssue]) -> Resu
 
 pub(super) fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()> {
 	match stage {
-		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" =>
-			Ok(()),
+		"research" | "design" | "spec" | "schema" | "runtime" | "plugin" | "eval" | "handoff" => {
+			Ok(())
+		},
 		_ => {
 			eyre::bail!("Decision Contract proposed issue `{key}` has unsupported stage `{stage}`.")
 		},
@@ -82,8 +83,9 @@ pub(super) fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()
 
 pub(super) fn validate_proposed_issue_queue_intent(key: &str, queue_intent: &str) -> Result<()> {
 	match queue_intent {
-		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" =>
-			Ok(()),
+		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" => {
+			Ok(())
+		},
 		_ => eyre::bail!(
 			"Decision Contract proposed issue `{key}` has unsupported queue_intent `{queue_intent}`."
 		),

@@ -38,8 +38,9 @@ where
 		state_store,
 		&records,
 	) {
-		Ok(statuses) =>
-			Ok(OperatorExecutionProgramReadback { statuses, issue_metadata_unavailable: false }),
+		Ok(statuses) => {
+			Ok(OperatorExecutionProgramReadback { statuses, issue_metadata_unavailable: false })
+		},
 		Err(error) => {
 			let _ = error;
 

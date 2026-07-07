@@ -71,7 +71,7 @@ where
 fn manual_land_landed_event(ledger: &ManualLandLedgerContext<'_>) -> LinearExecutionEventRecord {
 	let anchor = records::stable_event_anchor(&[
 		ledger.pr_url,
-		ledger.handoff.pr_head_oid(),
+		ledger.lifecycle_record.pr_head_oid(),
 		ledger.merge_commit,
 		"manual_land_landed",
 	]);
@@ -84,9 +84,10 @@ fn manual_land_landed_event(ledger: &ManualLandLedgerContext<'_>) -> LinearExecu
 
 	record.branch = Some(ledger.branch_name.to_owned());
 	record.pr_url = Some(ledger.pr_url.to_owned());
-	record.pr_head_sha = Some(ledger.handoff.pr_head_oid().to_owned());
-	record.pr_base_ref =
-		Some(ledger.handoff.target_base_ref_name().unwrap_or(ledger.default_branch).to_owned());
+	record.pr_head_sha = Some(ledger.lifecycle_record.pr_head_oid().to_owned());
+	record.pr_base_ref = Some(
+		ledger.lifecycle_record.target_base_ref_name().unwrap_or(ledger.default_branch).to_owned(),
+	);
 	record.commit_sha = Some(ledger.merge_commit.to_owned());
 	record.summary =
 		Some(format!("Manual land merged {} for {}.", ledger.pr_url, ledger.issue.identifier));
@@ -150,8 +151,8 @@ fn manual_land_lifecycle_identity<'a>(
 		service_id: ledger.service_id,
 		issue_id: &ledger.issue.id,
 		issue_identifier: &ledger.issue.identifier,
-		run_id: ledger.handoff.run_id(),
-		attempt_number: ledger.handoff.attempt_number(),
+		run_id: ledger.lifecycle_record.run_id(),
+		attempt_number: ledger.lifecycle_record.attempt_number(),
 	}
 }
 

@@ -4,6 +4,8 @@ mod project;
 mod review;
 mod run_control;
 
+#[cfg(test)]
+pub(crate) use self::review::ReviewLifecycleTransitionFixture;
 pub(crate) use self::{
 	activity::{
 		ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
@@ -23,11 +25,13 @@ pub(crate) use self::{
 		worktree_provenance,
 	},
 	review::{
-		LoopGuardrailCheckpoint, ReviewHandoffMarker, ReviewLifecycleRecord,
-		ReviewOrchestrationMarker, ReviewPolicyCheckpoint,
+		LoopGuardrailCheckpoint, ReviewLifecycleHandoffInput, ReviewLifecycleReadback,
+		ReviewLifecycleRecord, ReviewLifecycleTransitionInput, ReviewPolicyCheckpoint,
 	},
 	run_control::{
 		IssueLease, PreacquiredLeaseGuards, RunAttempt, RunControlActionOutcomeRequest,
 		RunControlActionReceipt, RunControlActionRequest, RunControlChannel,
 	},
 };
+#[cfg(test)]
+pub(crate) use review::ReviewLifecycleHandoffFixture;

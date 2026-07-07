@@ -15,8 +15,9 @@ impl RebindMode {
 	pub(in crate::recovery) fn as_str(self) -> &'static str {
 		match self {
 			Self::RestoreMissingHandoff => "restore_missing_handoff",
-			Self::RestoreMissingHandoffAfterWritebackFailure =>
-				"restore_missing_handoff_after_writeback_failure",
+			Self::RestoreMissingHandoffAfterWritebackFailure => {
+				"restore_missing_handoff_after_writeback_failure"
+			},
 			Self::RefreshExistingHandoff => "refresh_existing_handoff",
 			Self::CompleteExistingHandoffState => "complete_existing_handoff_state",
 		}
@@ -49,8 +50,9 @@ impl RebindMode {
 
 	pub(in crate::recovery) fn summary_action(self) -> &'static str {
 		match self {
-			Self::RestoreMissingHandoff | Self::RestoreMissingHandoffAfterWritebackFailure =>
-				"restored retained review lifecycle record",
+			Self::RestoreMissingHandoff | Self::RestoreMissingHandoffAfterWritebackFailure => {
+				"restored retained review lifecycle record"
+			},
 			Self::RefreshExistingHandoff => "refreshed retained review lifecycle record",
 			Self::CompleteExistingHandoffState => "completed retained review handoff state",
 		}

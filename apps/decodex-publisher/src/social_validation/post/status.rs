@@ -7,10 +7,12 @@ pub(super) fn validate_social_post_status_payload(
 	match social_validation::string_field(entry, "status") {
 		Some("published") => validate_social_post_publication(entry.get("publication"), errors),
 		Some("blocked") => validate_social_post_block(entry, errors),
-		Some("failed") if !social_validation::is_non_empty_string(entry.get("failure_reason")) =>
-			errors.push("failure_reason is required when status is failed".into()),
-		Some("skipped") if !social_validation::is_non_empty_string(entry.get("skip_reason")) =>
-			errors.push("skip_reason is required when status is skipped".into()),
+		Some("failed") if !social_validation::is_non_empty_string(entry.get("failure_reason")) => {
+			errors.push("failure_reason is required when status is failed".into())
+		},
+		Some("skipped") if !social_validation::is_non_empty_string(entry.get("skip_reason")) => {
+			errors.push("skip_reason is required when status is skipped".into())
+		},
 		_ => {},
 	}
 }
