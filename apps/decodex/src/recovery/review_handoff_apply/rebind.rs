@@ -2,7 +2,7 @@ use crate::{
 	prelude::Result,
 	recovery::{
 		self, REBOUND_LIFECYCLE_PHASE, RebindValidation, RecoveryContext,
-		review_handoff_apply::{audit, markers},
+		review_handoff_apply::{audit, lifecycle},
 	},
 	state::{ReviewLifecycleHandoffInput, ReviewLifecycleTransitionInput},
 	tracker::{self, IssueTracker},
@@ -21,7 +21,7 @@ pub(in crate::recovery) fn apply_review_handoff_rebind(
 		head_ref_name: &validation.landing_state.head_ref_name,
 		head_sha: &validation.local_head_oid,
 	};
-	markers::write_review_lifecycle_with_rollback(
+	lifecycle::write_review_lifecycle_with_rollback(
 		&context.state_store,
 		context.config.service_id(),
 		&validation.issue.id,
@@ -91,7 +91,7 @@ pub(in crate::recovery) fn apply_review_handoff_rebind(
 		&context.state_store,
 		context.config.service_id(),
 		validation,
-		"local_markers_written",
+		"local_lifecycle_written",
 		active_label_restored,
 	)?;
 

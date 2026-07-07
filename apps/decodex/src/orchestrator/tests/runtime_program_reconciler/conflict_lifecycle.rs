@@ -6,7 +6,7 @@ use crate::{
 		self,
 		tests::{self, FakeTracker, runtime_program_reconciler::support},
 	},
-	state::{ReviewHandoffMarker, StateStore},
+	state::{ReviewLifecycleHandoffFixture, StateStore},
 	tracker,
 	worktree::WorktreeManager,
 };
@@ -100,10 +100,10 @@ fn post_review_lifecycle_holds_program_node_and_peer_conflict_domain() {
 		)
 		.expect("program should persist");
 	store
-		.upsert_review_handoff_marker(
+		.upsert_review_lifecycle_handoff_fixture(
 			config.service_id(),
 			&post_review_issue.id,
-			&ReviewHandoffMarker::new(
+			&ReviewLifecycleHandoffFixture::new(
 				"pub-206-attempt-1",
 				1,
 				"x/pubfi-pub-206",

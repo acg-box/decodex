@@ -1,4 +1,4 @@
-//! Versioned Loop/Decision Contract model for research-to-execution handoff.
+//! Versioned Loop/Decision Contract model for accepted-decision execution handoff.
 
 pub(crate) mod authority;
 pub(crate) mod evidence;

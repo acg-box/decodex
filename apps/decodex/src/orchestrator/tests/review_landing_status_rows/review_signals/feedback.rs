@@ -35,17 +35,17 @@ fn build_post_review_lane_statuses_routes_mixed_external_pass_and_feedback_to_re
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			"main",
 			pr_url,
 			&head_oid,
@@ -121,17 +121,17 @@ fn build_post_review_lane_statuses_ignores_non_external_review_signals() {
 			.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 			.expect("worktree should record");
 
-		tests::seed_review_handoff_marker_for_path(
+		tests::seed_review_lifecycle_handoff_fixture_for_path(
 			&state_store,
 			config.service_id(),
 			&repo_root,
-			&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+			&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 		);
-		tests::seed_review_orchestration_marker_for_path(
+		tests::seed_review_lifecycle_transition_fixture_for_path(
 			&state_store,
 			config.service_id(),
 			&repo_root,
-			&tests::sample_review_orchestration_marker("main", pr_url, &head_oid, phase, 1),
+			&tests::sample_review_lifecycle_transition_fixture("main", pr_url, &head_oid, phase, 1),
 		);
 
 		let mut review_state = tests::sample_pull_request_review_state(

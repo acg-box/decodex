@@ -73,11 +73,11 @@ fn closeout_dispatch_validates_pr_before_marking_issue_done() {
 		config.repo_root(),
 		&remote_root,
 	);
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	let issue_run = recovery_terminal_support::sample_closeout_issue_run(

@@ -43,8 +43,8 @@ impl AutonomySignal {
 		Self::from_input(AutonomySignalKind::ExecutionFriction, input)
 	}
 
-	pub(crate) fn docs_skill_drift(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::DocsSkillDrift, input)
+	pub(crate) fn docs_plugin_drift(input: AutonomySignalInput) -> Result<Self> {
+		Self::from_input(AutonomySignalKind::DocsPluginDrift, input)
 	}
 
 	fn from_input(kind: AutonomySignalKind, input: AutonomySignalInput) -> Result<Self> {
@@ -78,13 +78,26 @@ impl AutonomySignal {
 			proposal_only: input.proposal_only,
 			created_at: input.created_at,
 		};
-		let fingerprint = fingerprint::autonomy_signal_fingerprint(&signal)?;
 
-		signal.id = fingerprint::autonomy_signal_id(&fingerprint);
-		signal.fingerprint = fingerprint;
-
+		signal.recompute_canonical_identity()?;
 		signal.validate()?;
 
 		Ok(signal)
+	}
+
+	pub(crate) fn recompute_canonical_identity(&mut self) -> Result<()> {
+		let fingerprint = fingerprint::autonomy_signal_fingerprint(self)?;
+
+		self.id = fingerprint::autonomy_signal_id(&fingerprint);
+		self.fingerprint = fingerprint;
+
+		Ok(())
+	}
+
+	pub(crate) fn legacy_docs_skill_drift_identity(&self) -> Result<(String, String)> {
+		let fingerprint = fingerprint::legacy_docs_skill_drift_fingerprint(self)?;
+		let id = fingerprint::autonomy_signal_id(&fingerprint);
+
+		Ok((id, fingerprint))
 	}
 }

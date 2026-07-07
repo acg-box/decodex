@@ -1,9 +1,9 @@
-use crate::state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore};
+use crate::state::{ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture, StateStore};
 
 #[test]
 fn changed_review_handoff_authority_resets_lifecycle_phase_fields() {
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let old_handoff = ReviewHandoffMarker::new(
+	let old_handoff = ReviewLifecycleHandoffFixture::new(
 		"run-1",
 		1,
 		"x/decodex-pub-101",
@@ -12,7 +12,7 @@ fn changed_review_handoff_authority_resets_lifecycle_phase_fields() {
 		"x/decodex-pub-101",
 		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
 	);
-	let old_orchestration = ReviewOrchestrationMarker::new(
+	let old_orchestration = ReviewLifecycleTransitionFixture::new(
 		"run-1",
 		1,
 		"x/decodex-pub-101",
@@ -26,7 +26,7 @@ fn changed_review_handoff_authority_resets_lifecycle_phase_fields() {
 		4,
 		Some(1_775_200_900),
 	);
-	let new_handoff = ReviewHandoffMarker::new(
+	let new_handoff = ReviewLifecycleHandoffFixture::new(
 		"run-2",
 		1,
 		"x/decodex-pub-101",
@@ -37,13 +37,13 @@ fn changed_review_handoff_authority_resets_lifecycle_phase_fields() {
 	);
 
 	store
-		.upsert_review_handoff_marker("pubfi", "PUB-101", &old_handoff)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &old_handoff)
 		.expect("old handoff projection should persist");
 	store
-		.upsert_review_orchestration_marker("pubfi", "PUB-101", &old_orchestration)
+		.upsert_review_lifecycle_transition_fixture("pubfi", "PUB-101", &old_orchestration)
 		.expect("old orchestration projection should persist");
 	store
-		.upsert_review_handoff_marker("pubfi", "PUB-101", &new_handoff)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &new_handoff)
 		.expect("changed handoff projection should persist");
 
 	let lifecycle = store
@@ -71,7 +71,7 @@ fn changed_review_handoff_authority_resets_lifecycle_phase_fields() {
 	assert_eq!(lifecycle.next_action(), "wait_for_runtime_review_gate_or_external_review");
 
 	let orchestration = store
-		.review_orchestration_marker("pubfi", "PUB-101", &new_handoff)
+		.review_lifecycle_transition_fixture("pubfi", "PUB-101", &new_handoff)
 		.expect("new orchestration projection should read")
 		.expect("new orchestration projection should exist");
 

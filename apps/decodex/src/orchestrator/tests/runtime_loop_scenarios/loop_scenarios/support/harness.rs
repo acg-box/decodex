@@ -330,7 +330,7 @@ impl LoopScenarioHarness {
 				AuthorityBoundaryImprovementSignal {
 					kind: "underspecified_decision_contract",
 					reason_code: "authority_underspecified",
-					target: "decision_contract:research-x-loop-contract",
+					target: "decision_contract:decision-x-loop-contract",
 					recommendation:
 						"Add explicit accepted-behavior authority before autonomous recovery.",
 				},

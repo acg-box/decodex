@@ -3,18 +3,6 @@ use serde_json::Value;
 pub(super) fn mcp_prompts() -> Vec<Value> {
 	vec![
 		serde_json::json!({
-			"name": "decodex_research",
-			"title": "Decodex Research",
-			"description": "Frame bounded Decodex research as a latent Decision Contract candidate.",
-			"arguments": [
-				{
-					"name": "intent",
-					"description": "Natural-language research question or design uncertainty.",
-					"required": true
-				}
-			]
-		}),
-		serde_json::json!({
 			"name": "decodex_validation_ready",
 			"title": "Decodex Validation Ready",
 			"description": "Drive an implementation or repair lane to local validation-ready evidence.",

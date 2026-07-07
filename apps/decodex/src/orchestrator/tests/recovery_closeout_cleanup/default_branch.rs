@@ -45,11 +45,11 @@ fn merged_closeout_retry_exhaustion_reports_cleanup_blocker_with_pr_url_after_de
 			.success()
 	);
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store

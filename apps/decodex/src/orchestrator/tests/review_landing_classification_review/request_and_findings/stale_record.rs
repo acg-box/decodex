@@ -3,7 +3,8 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::orchestrator::{
-	self, PostReviewLaneDecision, PostReviewLaneSnapshot, ReviewOrchestrationMarker, StateStore,
+	self, PostReviewLaneDecision, PostReviewLaneSnapshot, ReviewLifecycleTransitionFixture,
+	StateStore,
 	tests::{
 		self, FakePullRequestReviewStateInspector, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,
 		TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT,
@@ -37,10 +38,10 @@ fn classify_post_review_lane_ignores_stale_review_orchestration_record_from_prio
 		.expect("worktree should exist");
 
 	state_store
-		.upsert_review_orchestration_marker(
+		.upsert_review_lifecycle_transition_fixture(
 			"pubfi",
 			&issue.id,
-			&ReviewOrchestrationMarker::new(
+			&ReviewLifecycleTransitionFixture::new(
 				"run-0",
 				7,
 				"x/pubfi-pub-101",
@@ -55,7 +56,7 @@ fn classify_post_review_lane_ignores_stale_review_orchestration_record_from_prio
 				None,
 			),
 		)
-		.expect("stale review orchestration marker should persist");
+		.expect("stale review lifecycle transition fixture should persist");
 
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
@@ -88,5 +89,5 @@ fn classify_post_review_lane_ignores_stale_review_orchestration_record_from_prio
 	.expect("classification should succeed");
 
 	assert_eq!(classification.decision, PostReviewLaneDecision::Block);
-	assert_eq!(classification.reason, "review_orchestration_pr_mismatch");
+	assert_eq!(classification.reason, "review_lifecycle_authority_pr_mismatch");
 }

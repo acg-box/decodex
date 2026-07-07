@@ -65,11 +65,11 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delet
 			.success()
 	);
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store
@@ -104,10 +104,10 @@ fn cleanup_completed_post_review_lane_preserves_worktree_when_local_branch_delet
 	);
 	assert!(
 		state_store
-			.review_handoff_marker(config.service_id(), &issue.id, &worktree.branch_name)
-			.expect("review handoff marker read should succeed")
+			.review_lifecycle_handoff_fixture(config.service_id(), &issue.id, &worktree.branch_name)
+			.expect("review lifecycle handoff fixture read should succeed")
 			.is_some(),
-		"cleanup must preserve the runtime review handoff marker so closeout can retry later"
+		"cleanup must preserve the runtime review lifecycle handoff fixture so closeout can retry later"
 	);
 	assert!(
 		state_store

@@ -31,17 +31,17 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_bou
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			"main",
 			pr_url,
 			&head_oid,
@@ -90,7 +90,7 @@ fn reconcile_post_review_orchestration_blocks_admin_merge_for_human_decision_bou
 	)
 	.expect("post-review orchestration should wait for human authority decision");
 
-	let marker = tests::persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,

@@ -2,7 +2,7 @@ use crate::{
 	orchestrator::tests::operator::status::running_lanes::autonomy_lineage::fixtures::{
 		ReplayEvidenceSeed, SERVICE_ID,
 	},
-	state::{ReviewHandoffMarker, StateStore},
+	state::{ReviewLifecycleHandoffFixture, StateStore},
 };
 
 pub(super) struct ExecutionEvidenceSeed<'a> {
@@ -16,7 +16,7 @@ pub(super) fn record_dogfood_execution_evidence(
 ) -> String {
 	let (generated_issue_id, generated_issue_identifier) =
 		generated_issue_link(state_store, seed.decision_contract_id);
-	let review_marker = ReviewHandoffMarker::new(
+	let review_marker = ReviewLifecycleHandoffFixture::new(
 		"run-dogfood-review",
 		1,
 		"y/decodex-xy-1091",
@@ -27,8 +27,8 @@ pub(super) fn record_dogfood_execution_evidence(
 	);
 
 	state_store
-		.upsert_review_handoff_marker(SERVICE_ID, &generated_issue_id, &review_marker)
-		.expect("review handoff marker should persist");
+		.upsert_review_lifecycle_handoff_fixture(SERVICE_ID, &generated_issue_id, &review_marker)
+		.expect("review lifecycle handoff fixture should persist");
 
 	record_replay_evidence_event(
 		state_store,

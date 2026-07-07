@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[test]
-fn classify_post_review_lane_degrades_pull_request_state_read_failures_to_handoff_marker() {
+fn classify_post_review_lane_degrades_pull_request_state_read_failures_to_lifecycle_authority() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("In Review", &[]);

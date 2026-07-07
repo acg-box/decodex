@@ -1,5 +1,5 @@
 use crate::orchestrator::tests::operator::status::{
-	self, FakeTracker, ReviewHandoffMarker, StateStore, TEST_SERVICE_ID, orchestrator,
+	self, FakeTracker, ReviewLifecycleHandoffFixture, StateStore, TEST_SERVICE_ID, orchestrator,
 };
 
 #[test]
@@ -15,7 +15,7 @@ fn live_operator_status_snapshot_preserves_retained_handoff_during_linear_backof
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/101";
 	let head_sha = "1111111111111111111111111111111111111111";
 	let worktree_path = config.worktree_root().join(&issue.identifier);
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"pub-101-attempt-1",
 		1,
 		branch_name,
@@ -34,7 +34,7 @@ fn live_operator_status_snapshot_preserves_retained_handoff_during_linear_backof
 		)
 		.expect("worktree should record");
 	state_store
-		.upsert_review_handoff_marker(TEST_SERVICE_ID, &issue.id, &handoff)
+		.upsert_review_lifecycle_handoff_fixture(TEST_SERVICE_ID, &issue.id, &handoff)
 		.expect("review handoff should record");
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(

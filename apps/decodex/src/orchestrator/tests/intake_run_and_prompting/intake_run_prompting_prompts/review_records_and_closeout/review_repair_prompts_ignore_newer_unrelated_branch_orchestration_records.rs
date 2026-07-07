@@ -1,6 +1,7 @@
 use crate::{
 	orchestrator::{
-		self, IssueDispatchMode, IssueRunPlan, ReviewHandoffMarker, ReviewOrchestrationMarker,
+		self, IssueDispatchMode, IssueRunPlan, ReviewLifecycleHandoffFixture,
+		ReviewLifecycleTransitionFixture,
 		tests::{self, FakeTracker},
 	},
 	state::StateStore,
@@ -15,7 +16,7 @@ fn review_repair_prompts_ignore_newer_unrelated_branch_orchestration_records() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/77";
-	let current_handoff = ReviewHandoffMarker::new(
+	let current_handoff = ReviewLifecycleHandoffFixture::new(
 		"pub-101-attempt-4-123",
 		4,
 		"x/pubfi-pub-101",
@@ -25,17 +26,17 @@ fn review_repair_prompts_ignore_newer_unrelated_branch_orchestration_records() {
 		"abc123",
 	);
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
 		&current_handoff,
 	);
-	tests::seed_review_orchestration_marker(
+	tests::seed_review_lifecycle_transition_fixture(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&ReviewOrchestrationMarker::new(
+		&ReviewLifecycleTransitionFixture::new(
 			"pub-101-attempt-4-123",
 			4,
 			"x/pubfi-pub-101",
@@ -51,7 +52,7 @@ fn review_repair_prompts_ignore_newer_unrelated_branch_orchestration_records() {
 		),
 	);
 
-	let unrelated_handoff = ReviewHandoffMarker::new(
+	let unrelated_handoff = ReviewLifecycleHandoffFixture::new(
 		"other-run",
 		1,
 		"x/pubfi-pub-101-next",
@@ -61,17 +62,17 @@ fn review_repair_prompts_ignore_newer_unrelated_branch_orchestration_records() {
 		"def456",
 	);
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
 		&unrelated_handoff,
 	);
-	tests::seed_review_orchestration_marker(
+	tests::seed_review_lifecycle_transition_fixture(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&ReviewOrchestrationMarker::new(
+		&ReviewLifecycleTransitionFixture::new(
 			"other-run",
 			1,
 			"x/pubfi-pub-101-next",

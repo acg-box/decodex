@@ -1,6 +1,5 @@
 mod builds_macos_open_arguments_for_decodex_app;
 mod commit_rejects_authority_and_manual_authority_together;
-mod docs_command_rejects_legacy_lint_alias;
 mod land_manual_authority_requires_pr;
 mod parses_app_bundle_and_new_instance;
 mod parses_app_command;
@@ -8,6 +7,4 @@ mod parses_commit_with_authority_related_and_breaking;
 mod parses_git_hook_commands;
 mod parses_land_with_pr_override;
 mod parses_manual_authority_commands;
-mod parses_okf_and_docs_find_graph_commands;
-mod parses_okf_init_command;
 mod rejects_radar_as_runtime_subcommand;

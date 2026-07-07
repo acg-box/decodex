@@ -92,7 +92,7 @@ fn rebind_state_rejects_failure_state_without_current_marker_repair_mode() {
 }
 
 #[test]
-fn rebind_state_requires_success_state_for_existing_marker_refresh() {
+fn rebind_state_requires_success_state_for_existing_authority_refresh() {
 	let workflow = tests::sample_workflow();
 	let issue = tests::sample_issue("In Progress");
 	let error = super::validate_rebind_issue_state_for_policy(
@@ -100,7 +100,7 @@ fn rebind_state_requires_success_state_for_existing_marker_refresh() {
 		&issue,
 		RebindMode::RefreshExistingHandoff,
 	)
-	.expect_err("existing-marker refresh should still require success state");
+	.expect_err("existing-lifecycle-authority refresh should still require success state");
 
 	assert!(error.to_string().contains("requires `In Review`"));
 	assert!(!error.to_string().contains("partial missing-marker"));

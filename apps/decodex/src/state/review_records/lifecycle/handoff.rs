@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::state::{ReviewHandoffMarker, runtime_records::ReviewLifecycleKey};
+use crate::state::{ReviewLifecycleHandoffFixture, runtime_records::ReviewLifecycleKey};
 use crate::{
 	orchestrator::{
 		PostReviewLifecycleFacts, RuntimeReviewGateState,
@@ -25,11 +25,11 @@ impl StateStore {
 
 	/// Create or replace the retained review handoff projection for one issue lane.
 	#[cfg(test)]
-	pub(crate) fn upsert_review_handoff_marker(
+	pub(crate) fn upsert_review_lifecycle_handoff_fixture(
 		&self,
 		project_id: &str,
 		issue_id: &str,
-		marker: &ReviewHandoffMarker,
+		marker: &ReviewLifecycleHandoffFixture,
 	) -> Result<()> {
 		record_handoff_lifecycle_authority(
 			self,
@@ -91,14 +91,14 @@ impl StateStore {
 
 	/// Read the retained review handoff projection for one issue branch.
 	#[cfg(test)]
-	pub(crate) fn review_handoff_marker(
+	pub(crate) fn review_lifecycle_handoff_fixture(
 		&self,
 		project_id: &str,
 		issue_id: &str,
 		branch_name: &str,
-	) -> Result<Option<ReviewHandoffMarker>> {
+	) -> Result<Option<ReviewLifecycleHandoffFixture>> {
 		Ok(self.review_lifecycle_record(project_id, issue_id, branch_name)?.map(|record| {
-			ReviewHandoffMarker {
+			ReviewLifecycleHandoffFixture {
 				run_id: record.run_id().to_owned(),
 				attempt_number: record.attempt_number(),
 				branch_name: record.branch_name().to_owned(),

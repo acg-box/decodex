@@ -102,8 +102,8 @@ checkpoint must include an explicit `review_contract` whose
 `workflow_policy_source` is `registered_project_workflow`. The contract scopes the
 review objective, changed surface, non-goals, validation evidence, risk tier, required
 checks, and allowed expansion triggers. When review reveals missing direction rather
-than a repairable finding, route the gap through Decodex-native research and Decision
-Contract update, not the legacy external research artifact lane.
+than a repairable finding, route the gap through an external investigation workflow
+and accepted Decision Contract update before execution continues.
 
 ## Review round accounting
 
@@ -161,7 +161,7 @@ Rules:
   read-only review request. The reviewer must not edit files, push, land, or mutate
   tracker state.
 - In `"standard"` and `"strict"` levels, Decodex Review must use the same bounded review method and normalized review outcomes as any other review pass.
-- In `"standard"` and `"strict"` levels, pre-handoff Decodex Review uses
+- In `"standard"` and `"strict"` levels, the initial runtime-owned Decodex Review uses
   `review_type = "full_current_head_review"`. Retained repair Decodex Review uses
   `review_type = "repair_verification"` and is limited to accepted findings routed as
   `current_blocker` from the previous review plus contract regressions. New unrelated
@@ -175,7 +175,7 @@ Rules:
   binds the committed current `HEAD`, and the reviewer must still perform both the
   intended-behavior and adversarial checks from the registered workflow policy.
   Compact review is valid only for a low-risk, small, validation-backed, clean
-  pre-handoff lane with current-head evidence, validation evidence that is current
+  post-handoff lane with current-head evidence, validation evidence that is current
   for the reviewed `HEAD`, sufficient current-head evidence quality, no high-risk
   surfaces, no accepted findings, no blocking routes, and no prior non-clean
   review-policy state. Full review is forced for repair verification, accepted
@@ -389,10 +389,10 @@ The lane must stop for `manual_intervention_required` when any of these occur:
 - merged PR visibility does not arrive within the configured polling ceiling
 - Authority Boundary Check or architecture recovery outcome concludes repeated review churn is outside the lane authority, insufficiently evidenced, externally blocked, or recovery budget exhausted
 
-## Review-stop research escalation
+## Review-Stop Decision Follow-Up
 
-Review-policy stops may become inputs to a bounded research flow, but the stop itself
-does not dispatch research automatically.
+Review-policy stops may become inputs to an external decision follow-up, but the stop
+itself does not dispatch investigation work automatically.
 
 Current required behavior:
 
@@ -409,12 +409,12 @@ Current required behavior:
   - `architecture_review_required`
   - `review_policy_exhausted` or the loop-guardrail projection `review_churn`
   - `review_policy_blocked`
-- A terminal failure comment may point the operator toward a bounded research follow-up,
-  but that guidance is not a research dispatch signal.
+- A terminal failure comment may point the operator toward a bounded external
+  follow-up, but that guidance is not a dispatch signal.
 
-Future runtime-owned research escalation is allowed only after a separate implementation
+Future decision follow-up integration is allowed only after a separate implementation
 defines a machine-checkable adapter contract. That contract must require all of these
-inputs before dispatch:
+inputs before handoff:
 
 - service id, issue id, issue identifier, run id, attempt number, branch, and
   repository-relative worktree path
@@ -430,7 +430,7 @@ inputs before dispatch:
   route summary, current-blocker fingerprints, validated findings, or architecture
   concern
 - PR URL when the stop happens during retained review repair
-- explicit research question, non-goals, and expected decision shape
+- explicit question, non-goals, and expected decision shape
 
 Authority boundary:
 
@@ -438,7 +438,7 @@ Authority boundary:
   any future decision to dispatch an escalation request.
 - Repository policy owns the bounded review method, repo gate commands, and local
   convergence thresholds when those thresholds are externalized.
-- A research plugin or adapter owns the research method and the produced artifact. It
+- An external team workflow or adapter owns the investigation method and produced artifact. It
   must not clear `decodex:needs-attention`, move the issue, resume the implementation
   lane, edit the implementation worktree, or decide that the original lane is ready for
   review.
@@ -446,8 +446,8 @@ Authority boundary:
 Architecture stops and convergence stops share the same future adapter envelope, but
 they remain distinct escalation kinds. `architecture_stop` asks for an architectural
 decision. `convergence_stop` asks whether repeated validated findings need another
-repair slice, a redesign, or manual cancellation. `blocked` is not a research
-escalation kind unless a later human or runtime classifier converts the blocker into a
+repair slice, a redesign, or manual cancellation. `blocked` is not a decision
+follow-up kind unless a later human or runtime classifier converts the blocker into a
 structured architecture or convergence stop.
 
 ## Examples

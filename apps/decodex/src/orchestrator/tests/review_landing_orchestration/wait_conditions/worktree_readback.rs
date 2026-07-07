@@ -2,7 +2,7 @@ use std::fs;
 
 use crate::{
 	orchestrator::{
-		self, ReviewOrchestrationMarker, StateStore,
+		self, ReviewLifecycleTransitionFixture, StateStore,
 		tests::{
 			self, FakePullRequestReviewStateInspector, FakeTracker, review_landing_status_support,
 		},
@@ -35,17 +35,17 @@ fn reconcile_post_review_orchestration_waits_when_worktree_head_read_fails() {
 		)
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&ReviewOrchestrationMarker::new(
+		&ReviewLifecycleTransitionFixture::new(
 			"run-1",
 			1,
 			&worktree.branch_name,
@@ -106,11 +106,11 @@ fn reconcile_post_review_orchestration_waits_when_worktree_branch_read_fails() {
 		)
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(branch_name, pr_url, &head_oid),
 	);
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
 		&tracker,

@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::state::ReviewHandoffMarker;
+use crate::state::ReviewLifecycleHandoffFixture;
 use crate::state::ReviewLifecycleRecord;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -116,7 +116,10 @@ impl ReviewLifecycleRuntimeRecord {
 	}
 
 	#[cfg(test)]
-	pub(in crate::state) fn matches_handoff_identity(&self, handoff: &ReviewHandoffMarker) -> bool {
+	pub(in crate::state) fn matches_handoff_identity(
+		&self,
+		handoff: &ReviewLifecycleHandoffFixture,
+	) -> bool {
 		self.run_id == handoff.run_id()
 			&& self.attempt_number == handoff.attempt_number()
 			&& self.branch_name == handoff.branch_name()

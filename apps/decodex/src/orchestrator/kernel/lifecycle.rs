@@ -298,7 +298,7 @@ mod tests {
 				LifecycleOutcome, decide_lifecycle_transition,
 			},
 		},
-		state::{ReviewHandoffMarker, ReviewLifecycleRecord},
+		state::{ReviewLifecycleHandoffFixture, ReviewLifecycleRecord},
 	};
 
 	use crate::orchestrator::{PostReviewLifecycleFactsInput, build_post_review_lifecycle_facts};
@@ -308,8 +308,8 @@ mod tests {
 		let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 			project_id: "pubfi",
 			issue_id: "PUB-101",
-			review_lifecycle: Some(&ReviewLifecycleRecord::from_test_review_markers(
-				&ReviewHandoffMarker::new(
+			review_lifecycle: Some(&ReviewLifecycleRecord::from_test_lifecycle_fixtures(
+				&ReviewLifecycleHandoffFixture::new(
 					"run-1",
 					1,
 					"x/pub-101",

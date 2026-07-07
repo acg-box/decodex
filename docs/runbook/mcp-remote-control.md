@@ -8,7 +8,7 @@ owner: runtime
 tags: [mcp, remote-control, operator, runbook]
 source_refs: [https://modelcontextprotocol.io/specification/2025-11-25/basic/transports, https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization, https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices, https://modelcontextprotocol.io/specification/draft/changelog]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/mcp.rs, apps/decodex/tests/mcp_stdio.rs]
-related: [../spec/runtime.md, ../reference/operator-control-plane.md, ../decisions/mcp-capability-gateway-and-skill-slimming.md, ../evidence/mcp-remote-control-productization.md, ../research/mcp-remote-control-productization.md]
+related: [../spec/runtime.md, ../reference/operator-control-plane.md, ../decisions/mcp-capability-gateway-and-skill-slimming.md, ../evidence/mcp-remote-control-productization.md]
 drift_watch: [decodex mcp serve --transport streamable-http, --capability-profile, --allow-origin, --bearer-token-env, Authorization, Mcp-Session-Id, decodex_observe, decodex_lane_control, decodex_project_control]
 last_verified: 2026-06-18
 ---
@@ -77,7 +77,7 @@ Use the narrowest profile that fits the task:
 | Profile | Use | Boundary |
 | --- | --- | --- |
 | `observe` | Read public-safe status and activity. | Default for Streamable HTTP. |
-| `plan` | Use schema-bound research and intake planning tools. | Streamable HTTP requires `--bearer-token-env`; apply/promote modes still require explicit authority fields. |
+| `plan` | Use schema-bound intake planning and objective-proposal tools. | Streamable HTTP requires `--bearer-token-env`; apply modes still require explicit authority fields. |
 | `operate` | Inspect, steer, or interrupt a current lane. | Streamable HTTP requires `--bearer-token-env`, plus inspect-first run/turn authority. |
 | `admin` | Read project status or pause/resume future dispatch. | Streamable HTTP requires `--bearer-token-env` and explicit authority; active lanes are not killed. |
 

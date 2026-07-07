@@ -1,6 +1,7 @@
 use crate::{
 	orchestrator::{
-		self, IssueDispatchMode, IssueRunPlan, ReviewHandoffMarker, ReviewOrchestrationMarker,
+		self, IssueDispatchMode, IssueRunPlan, ReviewLifecycleHandoffFixture,
+		ReviewLifecycleTransitionFixture,
 		tests::{self, FakeTracker},
 	},
 	state::StateStore,
@@ -15,7 +16,7 @@ fn review_repair_prompts_surface_architecture_check_on_fourth_external_round() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/77";
-	let review_handoff = ReviewHandoffMarker::new(
+	let review_handoff = ReviewLifecycleHandoffFixture::new(
 		"pub-101-attempt-4-123",
 		4,
 		"x/pubfi-pub-101",
@@ -25,17 +26,17 @@ fn review_repair_prompts_surface_architecture_check_on_fourth_external_round() {
 		"abc123",
 	);
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
 		&review_handoff,
 	);
-	tests::seed_review_orchestration_marker(
+	tests::seed_review_lifecycle_transition_fixture(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&ReviewOrchestrationMarker::new(
+		&ReviewLifecycleTransitionFixture::new(
 			"pub-101-attempt-4-123",
 			4,
 			"x/pubfi-pub-101",

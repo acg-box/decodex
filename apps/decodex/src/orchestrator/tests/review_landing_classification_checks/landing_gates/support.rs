@@ -72,11 +72,11 @@ pub(crate) fn seed_review_marker(
 	stage: &str,
 	external_round_count: i64,
 ) {
-	tests::seed_review_orchestration_marker(
+	tests::seed_review_lifecycle_transition_fixture(
 		state_store,
 		SERVICE_ID,
 		&snapshot.issue.id,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			BRANCH_NAME,
 			PR_URL,
 			HEAD_OID,

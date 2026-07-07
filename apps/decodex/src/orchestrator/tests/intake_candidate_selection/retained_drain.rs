@@ -56,11 +56,11 @@ fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visi
 			)
 			.expect("worktree should record");
 
-		tests::seed_review_handoff_marker_for_path(
+		tests::seed_review_lifecycle_handoff_fixture_for_path(
 			&state_store,
 			config.service_id(),
 			&repo_root,
-			&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+			&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 		);
 		state_store
 			.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
@@ -125,7 +125,7 @@ fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visi
 		assert_eq!(drained, closeout_available.then_some(closeout_summary.clone()));
 		assert_eq!(*closeout_dispatches.borrow(), vec![issue.id.clone()]);
 
-		let marker = tests::persisted_review_orchestration_marker_for_path(
+		let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
 			&state_store,
 			config.service_id(),
 			&repo_root,
@@ -160,11 +160,11 @@ fn non_github_review_retained_drain_stops_cleanly_when_checks_are_pending() {
 		.upsert_worktree(config.service_id(), &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
 
 	let handoff_summary = support::sample_handoff_summary(&issue, &repo_root);
@@ -208,7 +208,7 @@ fn non_github_review_retained_drain_stops_cleanly_when_checks_are_pending() {
 	assert!(drained.is_none());
 	assert!(closeout_dispatches.borrow().is_empty());
 
-	let marker = tests::persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,

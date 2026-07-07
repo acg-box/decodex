@@ -42,7 +42,7 @@ use crate::orchestrator::{
 		TrackerIssue, Value, WorkflowDocument, WorktreeMapping, active_shared_issue_ids,
 		apply_non_github_review_post_review_classification,
 		apply_pre_orchestration_post_review_classification,
-		apply_review_orchestration_phase_classification, blocked_post_review_lane_status,
+		apply_review_lifecycle_action_classification, blocked_post_review_lane_status,
 		classify_pull_request_readback_report, github, initial_post_review_lane_classification,
 		issue_retry_budget_exhausted_for_worktree, load_post_review_lane_review_state,
 		load_post_review_lifecycle_record, operator_boundary_policy_blocks_landing,

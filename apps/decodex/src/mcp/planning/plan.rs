@@ -17,18 +17,18 @@ pub(in crate::mcp) fn call_plan_tool(arguments: Value) -> Value {
 		Err(_) => {
 			return mcp::invalid_tool_arguments(
 				TOOL_PLAN,
-				"`intent` is required and must be one of research, validation_ready, handoff, or lane_control.",
+				"`intent` is required and must be one of validation_ready, handoff, lane_control, or intake_goal.",
 			);
 		},
 	};
 
 	if !matches!(
 		params.intent.as_str(),
-		"research" | "validation_ready" | "handoff" | "lane_control"
+		"validation_ready" | "handoff" | "lane_control" | "intake_goal"
 	) {
 		return mcp::invalid_tool_arguments(
 			TOOL_PLAN,
-			"`intent` must be one of research, validation_ready, handoff, or lane_control.",
+			"`intent` must be one of validation_ready, handoff, lane_control, or intake_goal.",
 		);
 	}
 
@@ -37,10 +37,10 @@ pub(in crate::mcp) fn call_plan_tool(arguments: Value) -> Value {
 
 fn plan_tool_result(params: &PlanToolArgs) -> Value {
 	let (prompt, resource_hint, next_action) = match params.intent.as_str() {
-		"research" => (
-			"decodex_research",
-			"decodex://docs/spec/loop-runtime",
-			"Use the research prompt and keep output latent until explicit promotion.",
+		"intake_goal" => (
+			"decodex_validation_ready",
+			"decodex://docs/reference/build-test-run",
+			"Use intake_goal dry_run first, then apply only with explicit accepted Decision Contract authority.",
 		),
 		"handoff" => (
 			"decodex_handoff",

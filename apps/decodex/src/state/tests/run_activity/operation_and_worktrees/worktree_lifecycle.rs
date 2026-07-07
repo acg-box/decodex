@@ -1,7 +1,8 @@
 use tempfile::TempDir;
 
 use crate::state::{
-	ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpointInput, StateStore, tests,
+	ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture, ReviewPolicyCheckpointInput,
+	StateStore, tests,
 };
 
 #[test]
@@ -9,7 +10,7 @@ fn persistent_clear_worktree_preserves_authority_review_lifecycle() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let store = StateStore::open(&state_path).expect("state store should open");
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"run-1",
 		1,
 		"x/decodex-pub-101",
@@ -18,7 +19,7 @@ fn persistent_clear_worktree_preserves_authority_review_lifecycle() {
 		"x/decodex-pub-101",
 		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
 	);
-	let orchestration = ReviewOrchestrationMarker::new(
+	let orchestration = ReviewLifecycleTransitionFixture::new(
 		"run-1",
 		1,
 		"x/decodex-pub-101",
@@ -37,10 +38,10 @@ fn persistent_clear_worktree_preserves_authority_review_lifecycle() {
 		.upsert_worktree("pubfi", "PUB-101", "x/decodex-pub-101", "/tmp/worktrees/pub-101")
 		.expect("worktree mapping should be recorded");
 	store
-		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &handoff)
 		.expect("handoff projection should persist");
 	store
-		.upsert_review_orchestration_marker("pubfi", "PUB-101", &orchestration)
+		.upsert_review_lifecycle_transition_fixture("pubfi", "PUB-101", &orchestration)
 		.expect("orchestration projection should persist");
 	store.clear_worktree("PUB-101").expect("worktree cleanup should persist");
 
@@ -51,13 +52,13 @@ fn persistent_clear_worktree_preserves_authority_review_lifecycle() {
 	);
 	assert!(
 		reopened
-			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+			.review_lifecycle_handoff_fixture("pubfi", "PUB-101", "x/decodex-pub-101")
 			.expect("handoff lookup should succeed")
 			.is_some()
 	);
 	assert!(
 		reopened
-			.review_orchestration_marker("pubfi", "PUB-101", &handoff)
+			.review_lifecycle_transition_fixture("pubfi", "PUB-101", &handoff)
 			.expect("orchestration lookup should succeed")
 			.is_some()
 	);
@@ -74,7 +75,7 @@ fn persistent_clear_worktree_mapping_preserves_review_lifecycle() {
 		.upsert_worktree("pubfi", "PUB-101", "x/decodex-pub-101", "/tmp/worktrees/pub-101")
 		.expect("worktree mapping should be recorded");
 	store
-		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &handoff)
 		.expect("handoff projection should persist");
 	store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
@@ -99,7 +100,7 @@ fn persistent_clear_worktree_mapping_preserves_review_lifecycle() {
 	);
 	assert!(
 		reopened
-			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+			.review_lifecycle_handoff_fixture("pubfi", "PUB-101", "x/decodex-pub-101")
 			.expect("handoff lookup should succeed")
 			.is_some()
 	);

@@ -47,9 +47,9 @@ pub(crate) use self::{
 };
 pub(crate) use internal::{CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker};
 #[cfg(test)]
-pub(crate) use models::ReviewHandoffMarker;
+pub(crate) use models::ReviewLifecycleHandoffFixture;
 #[cfg(test)]
-pub(crate) use models::ReviewOrchestrationMarker;
+pub(crate) use models::ReviewLifecycleTransitionFixture;
 #[allow(unused_imports)]
 pub(crate) use models::WorktreeProvenance;
 #[cfg(test)]

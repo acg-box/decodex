@@ -74,8 +74,8 @@ fn review_handoff_validation_failure_reports_recoverable_writeback_with_pr_url()
 	assert!(tracker.state_updates.borrow().is_empty());
 	assert!(
 		tests::bridge_state_store(&bridge)
-			.review_handoff_marker(TEST_SERVICE_ID, &issue.id, "x/decodex-pub-618")
-			.expect("runtime handoff marker read should succeed")
+			.review_lifecycle_handoff_fixture(TEST_SERVICE_ID, &issue.id, "x/decodex-pub-618")
+			.expect("runtime lifecycle authority read should succeed")
 			.is_none()
 	);
 }

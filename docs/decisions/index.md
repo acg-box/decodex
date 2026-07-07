@@ -21,20 +21,14 @@ Question this index answers: "why was it designed this way?"
 ## Current decisions
 
 - [`natural-language-loop-runtime.md`](./natural-language-loop-runtime.md) records why
-  Decodex keeps execution-graph semantics internal behind a natural-language research
-  and promotion surface.
+  Decodex keeps execution-graph semantics internal behind accepted Decision Contracts
+  and Program Intake.
 - [`project-autonomy-control-plane.md`](./project-autonomy-control-plane.md) records
   why Decodex autonomy is objective-driven, project-general, Codex-first for human
   authoring, and not a hidden runtime self-repair loop or standalone memory product.
-- [`decodex-plugin-source.md`](./decodex-plugin-source.md) records why this repository
-  owns the canonical Decodex plugin plus knowledge, codebase, and deliberation
-  companion plugin sources.
 - [`mcp-capability-gateway-and-skill-slimming.md`](./mcp-capability-gateway-and-skill-slimming.md)
   records why Decodex should introduce an MCP capability gateway while slimming
   skills into static routing, authority, and safety entrypoints.
-- [`okf-research-knowledge-lifecycle.md`](./okf-research-knowledge-lifecycle.md)
-  records why research promotion is an OKF knowledge operation and how LLM Wiki
-  hygiene keeps `docs/research/` from competing with authoritative owners.
 - [`static-public-site.md`](./static-public-site.md) records why the public Decodex site
   remains static while runtime/operator behavior stays in the CLI and local control
   plane.

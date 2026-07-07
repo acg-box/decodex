@@ -33,7 +33,7 @@ fn runtime_owned_baseline_error_class(error_class: &str) -> bool {
 		"repo_wide",
 		"repository_wide",
 		"global_baseline",
-		"docs_okf",
+		"docs_gate",
 	]
 	.iter()
 	.any(|pattern| error_class.contains(pattern))

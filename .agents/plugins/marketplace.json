@@ -1,0 +1,20 @@
+{
+  "name": "hack-ink",
+  "interface": {
+    "displayName": "hack-ink"
+  },
+  "plugins": [
+    {
+      "name": "decodex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/decodex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Development"
+    }
+  ]
+}

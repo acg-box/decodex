@@ -44,8 +44,8 @@ Decodex currently runs as a local, single-machine control plane:
 - Each project row is scoped by `project_id` and canonical `repo_root`.
 - The project-owned `WORKFLOW.md` remains the execution-policy contract for that
   registered repo.
-- The everyday loop-runtime surface remains Codex conversation. Research/decision
-  promotion and internal Execution Program state are governed by
+- The everyday loop-runtime surface remains Codex conversation. Accepted Decision
+  Contracts and internal Execution Program state are governed by
   [`../spec/loop-runtime.md`](../spec/loop-runtime.md), not by dashboard graph editing
   or user-visible DAG commands.
 - Program intake readback is intentionally summarized: operators may see counts of
@@ -97,10 +97,10 @@ override when set.
 Local MCP hosts can use `decodex mcp serve --transport stdio` for local core MCP
 protocol primitives or `decodex mcp serve --transport streamable-http` for remote
 permitted clients that reach the daemon through an operator-chosen local listener,
-tunnel, or relay. Both transports list and read checked-in docs, checked-in Markdown
-research concepts, Decision Contract readback, status snapshots, and lane-control
-readback; both also advertise resource templates for `status_live`, `activity_tail`,
-`lane_inspect`, current/recent status-window run events, protocol activity,
+tunnel, or relay. Both transports list and read checked-in Decodex docs, Decision
+Contract readback, status snapshots, and lane-control readback; both also advertise
+resource templates for `status_live`, `activity_tail`, `lane_inspect`,
+current/recent status-window run events, protocol activity,
 child-agent activity, progress diagnostics, and PR/review state. These projections
 reuse local operator snapshot summaries and exclude hidden reasoning, raw steer text,
 private evidence, and local path payloads. Run-scoped resource reads return
@@ -150,25 +150,11 @@ An empty `POST /api/linear-scan` queues a scan for all enabled projects. Request
 consumed by the next 15-second control-plane tick and still respect any active tracker
 rate-limit backoff.
 
-Research/design work has a runtime-local command path:
-
-```sh
-decodex research compile --intent "research X"
-decodex research compile --input research-design-run.json
-decodex research promote <CONTRACT_ID>
-```
-
-`research compile` writes a local Decision Contract candidate into runtime SQLite and
-returns a bounded outcome: `decision_ready`, `not_decision_ready`, `blocked`, or
-`needs_human_decision`. Decodex research first probes the decision, records evidence,
-compares options, forms a challenge-ready judgment, resolves or preserves challenge
-objections, and only then chooses the outcome. It may retain private evidence
-references, option comparisons, structured proposed issues, conflict domains, and
-dispatch intent for later issue shaping, but it does not enqueue issues, mutate Linear
-state, set goals, or start lane execution. `research promote` records the accepted
-boundary for an existing contract; later issue generation or Execution Program
-readiness must consume the promoted contract's structured `proposed_issues[]` instead
-of treating a research summary as authority.
+Accepted Decision Contracts can be materialized through Program Intake. Intake may
+retain private evidence references, option comparisons, structured proposed issues,
+conflict domains, and dispatch intent for later issue shaping, but it does not enqueue
+issues, mutate Linear state, set goals, or start lane execution until apply authority
+is explicit.
 
 Lane inspect and interrupt are local control APIs, not dashboard UI actions:
 
@@ -664,8 +650,8 @@ Worktree visibility follows the owning dashboard section:
   progress after retries.
 - `dependency_program_stale` in `Intake Queue` means the same open blocker fingerprint
   has repeated through the guardrail threshold. Refresh the dependency issue, split or
-  repair the Execution Program, or route research/decision work before requeueing; do
-  not clear it as a transient queue delay.
+  repair the Execution Program, or update accepted decision authority before
+  requeueing; do not clear it as a transient queue delay.
 - `linear_active_label_present` in `Intake Queue` means the issue still carries
   service active ownership while it is also queued, but local status could not prove a
   matching run lease. Treat it as a recovery/attention row, not ready work. If its
@@ -848,9 +834,9 @@ map to an operator decision.
   queue lease, do not count as suspected stalls, and should not expose hard-interrupt
   fallback as an available control.
   Handoff and repair writeback gaps must use deterministic wait reasons such as
-  `review_handoff_writeback_missing_lifecycle_marker`,
-  `review_repair_writeback_missing_lifecycle_marker`, or
-  `review_repair_writeback_stale_lifecycle_marker` instead of projecting an ordinary
+  `review_handoff_writeback_missing_lifecycle_authority`,
+  `review_repair_writeback_missing_lifecycle_authority`, or
+  `review_repair_writeback_stale_lifecycle_authority` instead of projecting an ordinary
   implementation lane as pending review work.
 - Child-agent activity comes from `.decodex-run-activity` when the app-server recorder
   captured model/tool/tracker/browser/image buckets.

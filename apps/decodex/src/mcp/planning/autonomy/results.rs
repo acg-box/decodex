@@ -139,7 +139,7 @@ pub(in crate::mcp) fn autonomy_promotion_request_result(
 			"promotion_requirements_readback_only"
 		},
 		"next_action": if persisted {
-			"Promote the resulting Decision Contract through research_promote before Program Intake or issue work."
+			"Accept the resulting Decision Contract before Program Intake or issue work."
 		} else {
 			"Re-run with mode=apply only after explicit proposal acceptance authority is available."
 		}

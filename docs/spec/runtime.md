@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/lane_decision.rs, apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/execution_phase_goal.rs, apps/decodex/src/orchestrator/git_ops.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/config.rs, decodex.example.toml]
-drift_watch: [lane_decision, continuation_lineage, issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, repo_gate_tracked_rewrites_left, repo_gate_scope_envelope_violation, protocol_events, review_policy_checkpoints, review_checkpoint, review_lifecycle_records, lane_control_next_action, review_handoff_pending, review_repair_pending, review_repair_writeback_missing_lifecycle_marker, review_repair_writeback_stale_lifecycle_marker, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings, autonomy_proposals, decodex.autonomy_proposal/1, "[autonomy]", auto_promote, auto_intake, "[autonomy.runtime_policy]", accepted_objective_id, accepted_objective_version, accepted_policy_id, accepted_policy_version, policy_authority_ref]
+drift_watch: [lane_decision, continuation_lineage, issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, repo_gate_tracked_rewrites_left, repo_gate_scope_envelope_violation, protocol_events, review_policy_checkpoints, review_checkpoint, review_lifecycle_records, lane_control_next_action, review_handoff_pending, review_repair_pending, review_repair_writeback_missing_lifecycle_authority, review_repair_writeback_stale_lifecycle_authority, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings, autonomy_proposals, decodex.autonomy_proposal/1, "[autonomy]", auto_promote, auto_intake, "[autonomy.runtime_policy]", accepted_objective_id, accepted_objective_version, accepted_policy_id, accepted_policy_version, policy_authority_ref]
 last_verified: 2026-06-30
 ---
 # Runtime Specification
@@ -27,10 +27,9 @@ Defines: The runtime scope, source-of-truth boundaries, eligibility rules, lane 
 
 ## Relationship To Loop Runtime
 
-[`loop-runtime.md`](./loop-runtime.md) owns the natural-language-first layer above
-individual issue lanes: Decodex-native Research/Decision, latent Loop/Decision
-Contracts, internal Execution Programs, phase-scoped goals, unattended execution
-behavior, and loop guardrails.
+[`loop-runtime.md`](./loop-runtime.md) owns the layer above individual issue lanes:
+accepted Decision Contracts, Program Intake, internal Execution Programs,
+phase-scoped goals, unattended execution behavior, and loop guardrails.
 
 This document owns the lower-level lane runtime. A promoted Execution Program may
 shape dispatch intent and normal Linear issues, but executable work still enters this
@@ -92,9 +91,8 @@ state or this state machine.
   paths and credentials plus `WORKFLOW.md` for execution policy. They do not store
   runtime ownership.
 - The local SQLite database must not become a replacement for the human issue backlog. It is the operator control-plane state for this machine.
-- `decodex research compile` and `decodex research promote` are runtime-local
-  Decision Contract writes. They update the SQLite `decision_contracts` surface and do
-  not by themselves create Linear issues, queue intent, goals, or executable lanes.
+- Accepted Decision Contract writes update the SQLite `decision_contracts` surface and
+  do not by themselves create Linear issues, queue intent, goals, or executable lanes.
 - Runtime schema migration owns removed Decision Contract payload rewrites. Schema 12
   removes `execution_readiness.proposed_issue_summaries` and
   `execution_readiness.queue_intent` rows from SQLite by converting summaries into
@@ -104,16 +102,16 @@ state or this state machine.
 - `decodex mcp serve --transport stdio` is the local MCP gateway for desktop and CLI
   clients. The stdio gateway advertises resources, resource templates, prompts, tools,
   logging compatibility, and progress notifications. Resources read checked-in docs,
-  checked-in Markdown research concepts, runtime Decision Contracts, local status
+  runtime Decision Contracts, local status
   snapshots, remote-safe live status/activity projections, current/recent status-window
   run event/protocol/child activity/progress diagnostics, PR/review state,
   lane-inspect aliases, and lane-control readback. Tools are schema-bound and
   deliberately small: `decodex_observe` is read-only, `decodex_plan` returns static
-  workflow routing, and the plan-profile `research_compile`, `research_promote`, and
-  `intake_goal` tools expose dry-run/apply boundaries over existing Decodex research,
-  promotion, and Program Intake authority checks. Dry-run planning calls do not mutate
-  tracker state or Program Intake rows. Apply/promote calls require explicit authority
-  fields and return structured refusals when authority or project context is missing.
+  workflow routing, and the plan-profile `intake_goal` tool exposes dry-run/apply
+  boundaries over existing Decodex Program Intake authority checks. Dry-run planning
+  calls do not mutate tracker state or Program Intake rows. Apply calls require
+  explicit authority fields and return structured refusals when authority or project
+  context is missing.
   Operate exposes `decodex_lane_control` as an inspect-first facade over existing
   lane-control authority: `inspect` returns current preconditions, mutating `steer`
   and `interrupt` require matching inspected run/turn authority, and unsupported
@@ -173,7 +171,7 @@ mirror:
 | Surface | Boundary |
 | --- | --- |
 | Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, recovery detail, and `decodex.harness_outcome/1` feedback records belong. |
-| Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by research/design and later promoted into execution authority. The row status is indexed for local runtime lookup, and the structured runtime payload remains the local machine authority. Checked-in research documentation belongs in Markdown OKF concepts under `docs/research/`, not JSON docs artifacts. |
+| Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by accepted planning and later materialized into execution authority. The row status is indexed for local runtime lookup, and the structured runtime payload remains the local machine authority. |
 | Runtime SQLite `autonomy_signals` | Versioned `decodex.autonomy_signal/1` payloads scoped by project and exact Objective Contract id/version. Rows are read-only evidence for future proposal compilation, expose freshness, gaps, contradictions, confidence, and privacy in status readback, and do not mutate tracker state, runtime authority rows outside signal persistence, worktrees, GitHub, Program Intake, proposals, or execution state. |
 | Runtime SQLite `autonomy_proposals` | Versioned `decodex.autonomy_proposal/1` dry-run records scoped by project, exact Objective Contract id/version, and referenced signal ids. Rows expose stable evidence-bound proposal identity, objective lineage, source signals, goals, metrics, non-goals, allowed surfaces, validation gates, review and challenge requirements, rejected alternatives, rollback path, contradictions, gaps, refusal reasons, and challenge evidence in readback. Proposal persistence remains non-executable and must not mutate tracker state, GitHub, worktrees, Program Intake, Decision Contracts, or execution state. |
 | Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads with embedded or linked `decodex.program_intake_plan/1` planning data. They hold internal node lifecycle/readiness, dependency, conflict-domain, dispatch intent, drift, and normal-issue mapping; Linear issue descriptions and ledger comments are only coarse projections. |
@@ -251,10 +249,9 @@ This boundary does not create a project-local runtime database contract. The run
 - Lease: A local guarantee that only one active `decodex` run is processing a given issue.
 - Run attempt: One bounded orchestration pass for one issue.
 - Lane: The branch plus linked Git worktree checkout associated with one issue.
-- Decision Contract: An accepted loop-runtime decision package, also called the
-  Loop/Decision Contract. Research output is only latent until accepted or promoted
-  under [`loop-runtime.md`](./loop-runtime.md). The runtime-facing serialized payload
-  is `decodex.decision_contract/1`; statuses are `draft_latent`,
+- Decision Contract: A loop-runtime planning package that is executable only after
+  accepted authority is recorded under [`loop-runtime.md`](./loop-runtime.md). The
+  runtime-facing serialized payload is `decodex.decision_contract/1`; statuses are `draft_latent`,
   `accepted_promoted`, `rejected_superseded`, and `needs_human_decision`.
 - Execution Program: Internal loop-runtime state derived from accepted Decision
   Contracts or accepted issue-batch intake. The durable planning payload is
@@ -668,15 +665,14 @@ When `[codex].review` is `"off"`, Decodex does not expose
 or repair completion, and ignores stale review-policy state while classifying clean
 turn boundaries.
 
-The review-policy human-required failure path is also the boundary for any later
-runtime-owned research escalation. The current runtime must not dispatch research from
-a review stop. Exhausted review findings may enter architecture recovery only as a
-review-policy surface with `block_landing`, which permits a materially different
-implementation strategy but keeps handoff or landing blocked until review evidence is
-restored; `needs_architecture_review` and `blocked` review stops remain
-human-required. Future research escalation may only consume structured review-stop
-evidence through the adapter contract defined by
-[`review-orchestration.md`](./review-orchestration.md).
+The review-policy human-required failure path is also the boundary for later
+architecture recovery. The current runtime must not dispatch generic investigation
+work from a review stop. Exhausted review findings may enter architecture recovery
+only as a review-policy surface with `block_landing`, which permits a materially
+different implementation strategy but keeps handoff or landing blocked until review
+evidence is restored; `needs_architecture_review` and `blocked` review stops remain
+human-required. Any external investigation must return through accepted Decision
+Contract or issue authority before execution.
 
 ### Success writeback
 
@@ -806,8 +802,8 @@ Linear summaries can distinguish the stop class or recovery boundary:
 - `dependency_program_stale`: a queued issue kept the same open dependency blocker
   fingerprint across three status observations, indicating Execution Program readiness
   or issue decomposition is stale.
-- `uncovered_direction`: execution found missing direction that must feed back into a
-  research or Decision Contract before more implementation.
+- `uncovered_direction`: execution found missing direction that must feed back into an
+  accepted Decision Contract before more implementation.
 - `ambiguous_retained_progress`: retained local work or ownership evidence is useful
   but ambiguous enough that a human must choose resume, reset, or manual repair.
 - `contract_boundary_required`: recovery would change accepted authority, or evidence
@@ -949,8 +945,8 @@ terminalized `review_repair` attempt has a matching repair completion intent for
 current retained worktree branch, PR URL, PR head ref, and local/PR head OID, and the
 runtime still has a clean reusable repair checkpoint artifact for that same head, a
 missing or stale review lifecycle marker is a typed pending writeback condition
-(`review_repair_writeback_missing_lifecycle_marker` or
-`review_repair_writeback_stale_lifecycle_marker`). Status may keep the retained lane
+(`review_repair_writeback_missing_lifecycle_authority` or
+`review_repair_writeback_stale_lifecycle_authority`). Status may keep the retained lane
 in `wait_for_review` while that writeback catches up, but it must not re-project old
 review-finding repair instructions or request a new external review from stale
 lifecycle state. The retained lifecycle controller must preserve the post-review
@@ -1215,7 +1211,7 @@ After a process restart, recent-run history, run lease ownership, retained post-
   isolated from Decodex authority checks so a future final stateless MCP protocol can
   be added without changing tool schemas or lane-control semantics.
 - MCP tools must not replace the app-server dynamic tool bridge, create execution
-  authority from latent research without promotion, expose Program graph identifiers
+  authority from unaccepted Decision Contracts, expose Program graph identifiers
   in ordinary tool output, or mutate lanes without the inspect-first run/turn
   authority already enforced by existing lane-control guards. MCP observability
   projections must stay public-safe: no hidden reasoning, raw steer text, private

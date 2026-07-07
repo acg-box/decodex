@@ -1,6 +1,6 @@
 use crate::{
 	orchestrator::{
-		self, ReviewOrchestrationMarker, StateStore,
+		self, ReviewLifecycleTransitionFixture, StateStore,
 		tests::{
 			self, FakePullRequestReviewStateInspector, FakeTracker, review_landing_status_support,
 		},
@@ -39,17 +39,21 @@ fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manua
 		)
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &pr_head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(
+			&worktree.branch_name,
+			pr_url,
+			&pr_head_oid,
+		),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&ReviewOrchestrationMarker::new(
+		&ReviewLifecycleTransitionFixture::new(
 			"run-1",
 			1,
 			&worktree.branch_name,
@@ -88,7 +92,7 @@ fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manua
 	)
 	.expect("merged post-review orchestration should not fail");
 
-	let marker = tests::persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,

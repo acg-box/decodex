@@ -5,7 +5,7 @@ mod review;
 mod run_control;
 
 #[cfg(test)]
-pub(crate) use self::review::ReviewOrchestrationMarker;
+pub(crate) use self::review::ReviewLifecycleTransitionFixture;
 pub(crate) use self::{
 	activity::{
 		ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
@@ -34,4 +34,4 @@ pub(crate) use self::{
 	},
 };
 #[cfg(test)]
-pub(crate) use review::ReviewHandoffMarker;
+pub(crate) use review::ReviewLifecycleHandoffFixture;

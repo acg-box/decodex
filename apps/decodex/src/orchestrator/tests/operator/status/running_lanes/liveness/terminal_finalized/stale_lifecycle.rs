@@ -1,9 +1,9 @@
 use crate::orchestrator::tests::operator::status::running_lanes::{
-	self, ProjectRegistration, ReviewHandoffMarker, StateStore, fs, orchestrator, state,
+	self, ProjectRegistration, ReviewLifecycleHandoffFixture, StateStore, fs, orchestrator, state,
 };
 
 #[test]
-fn operator_status_projects_terminal_finalized_repair_stale_lifecycle_marker() {
+fn operator_status_projects_terminal_finalized_repair_stale_lifecycle_authority() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
@@ -31,10 +31,10 @@ fn operator_status_projects_terminal_finalized_repair_stale_lifecycle_marker() {
 		)
 		.expect("worktree should record");
 	state_store
-		.upsert_review_handoff_marker(
+		.upsert_review_lifecycle_handoff_fixture(
 			"pubfi",
 			&issue.id,
-			&ReviewHandoffMarker::new(
+			&ReviewLifecycleHandoffFixture::new(
 				"run-old",
 				1,
 				"x/pubfi-pub-101",
@@ -93,6 +93,9 @@ fn operator_status_projects_terminal_finalized_repair_stale_lifecycle_marker() {
 
 	assert_eq!(run.status, "review_repair_pending");
 	assert_eq!(run.phase, "terminal_pending");
-	assert_eq!(run.wait_reason.as_deref(), Some("review_repair_writeback_stale_lifecycle_marker"));
+	assert_eq!(
+		run.wait_reason.as_deref(),
+		Some("review_repair_writeback_stale_lifecycle_authority")
+	);
 	assert_eq!(run.current_operation, state::RUN_OPERATION_REVIEW_WRITEBACK);
 }

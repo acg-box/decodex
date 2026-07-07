@@ -22,9 +22,9 @@ fn live_operator_status_snapshot_surfaces_needs_attention_event_cause() {
 			"2026-03-13T09:20:00Z",
 			"retained-review-head-mismatch",
 			|record| {
-				record.error_class = Some(String::from("review_orchestration_head_mismatch"));
+				record.error_class = Some(String::from("review_lifecycle_authority_head_mismatch"));
 				record.next_action = Some(String::from(
-					"inspect retained review orchestration reason `review_orchestration_head_mismatch`, resolve the blocker manually",
+					"inspect retained review lifecycle reason `review_lifecycle_authority_head_mismatch`, resolve the blocker manually",
 				));
 				record.summary = Some(String::from(
 					"Retained review orchestration requires operator attention.",
@@ -33,7 +33,7 @@ fn live_operator_status_snapshot_surfaces_needs_attention_event_cause() {
 					"retained review orchestration head mismatch",
 				)]);
 				record.evidence = Some(vec![String::from(
-					"review orchestration marker head differs from local worktree HEAD",
+					"review lifecycle transition fixture head differs from local worktree HEAD",
 				)]);
 				record.terminal_path = Some(String::from("manual_attention"));
 			},
@@ -60,14 +60,18 @@ fn live_operator_status_snapshot_surfaces_needs_attention_event_cause() {
 	assert_eq!(candidate.reason, "issue_needs_attention");
 	assert_eq!(
 		attention.attention_error_class.as_deref(),
-		Some("review_orchestration_head_mismatch")
+		Some("review_lifecycle_authority_head_mismatch")
 	);
 	assert_eq!(
 		attention.attention_next_action.as_deref(),
 		Some(
-			"inspect retained review orchestration reason `review_orchestration_head_mismatch`, resolve the blocker manually"
+			"inspect retained review lifecycle reason `review_lifecycle_authority_head_mismatch`, resolve the blocker manually"
 		)
 	);
-	assert!(rendered.contains("attention_cause: review_orchestration_head_mismatch"));
-	assert!(rendered.contains("attention_next_action: inspect retained review orchestration"));
+	assert!(rendered.contains("attention_cause: review_lifecycle_authority_head_mismatch"));
+	assert!(
+		rendered.contains(
+			"attention_next_action: inspect retained review lifecycle reason `review_lifecycle_authority_head_mismatch`, resolve the blocker manually"
+		)
+	);
 }
