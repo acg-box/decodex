@@ -13,7 +13,8 @@ pub(crate) enum AutonomySignalKind {
 	ProtocolDrift,
 	MetricRegression,
 	ExecutionFriction,
-	DocsSkillDrift,
+	#[serde(alias = "docs_skill_drift")]
+	DocsPluginDrift,
 }
 impl AutonomySignalKind {
 	pub(crate) fn as_str(self) -> &'static str {
@@ -26,8 +27,13 @@ impl AutonomySignalKind {
 			Self::ProtocolDrift => "protocol_drift",
 			Self::MetricRegression => "metric_regression",
 			Self::ExecutionFriction => "execution_friction",
-			Self::DocsSkillDrift => "docs_skill_drift",
+			Self::DocsPluginDrift => "docs_plugin_drift",
 		}
+	}
+
+	pub(crate) fn matches_stored_kind(self, value: &str) -> bool {
+		value == self.as_str()
+			|| matches!(self, Self::DocsPluginDrift) && value == "docs_skill_drift"
 	}
 }
 

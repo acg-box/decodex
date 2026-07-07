@@ -1,14 +1,7 @@
 use serde_json::{self, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::mcp::{self, TOOL_RESEARCH_PROMOTE, planning::PlanningAuthorityArgs};
-
-pub(in crate::mcp) struct PromotionAuthority<'a> {
-	pub(in crate::mcp) accepted_by: &'a str,
-	pub(in crate::mcp) accepted_at: Option<&'a String>,
-	pub(in crate::mcp) acceptance_source: &'a str,
-	pub(in crate::mcp) reason: Option<&'a String>,
-}
+use crate::mcp::{self, planning::PlanningAuthorityArgs};
 
 pub(in crate::mcp) fn planning_authority_present(
 	authority: Option<&PlanningAuthorityArgs>,
@@ -23,37 +16,6 @@ pub(in crate::mcp) fn planning_authority_present(
 
 	mcp::non_empty_string(authority.source.as_deref()).is_some()
 		&& mcp::non_empty_string(authority.reason.as_deref()).is_some()
-}
-
-pub(in crate::mcp) fn promotion_authority(
-	authority: Option<&PlanningAuthorityArgs>,
-) -> Result<PromotionAuthority<'_>, Value> {
-	let Some(authority) = authority else {
-		return Err(missing_authority_refusal(
-			TOOL_RESEARCH_PROMOTE,
-			"research_promote apply requires authority.acceptedBy and authority.acceptanceSource.",
-		));
-	};
-	let accepted_by = mcp::non_empty_string(authority.accepted_by.as_deref()).ok_or_else(|| {
-		missing_authority_refusal(
-			TOOL_RESEARCH_PROMOTE,
-			"research_promote apply requires authority.acceptedBy.",
-		)
-	})?;
-	let acceptance_source = mcp::non_empty_string(authority.acceptance_source.as_deref())
-		.ok_or_else(|| {
-			missing_authority_refusal(
-				TOOL_RESEARCH_PROMOTE,
-				"research_promote apply requires authority.acceptanceSource.",
-			)
-		})?;
-
-	Ok(PromotionAuthority {
-		accepted_by,
-		accepted_at: authority.accepted_at.as_ref(),
-		acceptance_source,
-		reason: authority.reason.as_ref(),
-	})
 }
 
 pub(in crate::mcp) fn missing_authority_refusal(tool: &str, message: &str) -> Value {

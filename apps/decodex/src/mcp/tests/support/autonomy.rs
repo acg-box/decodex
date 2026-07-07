@@ -107,7 +107,7 @@ pub(in crate::mcp::tests) fn autonomy_objective_fixture() -> AutonomyObjectiveCo
 		"non_goals": ["Do not bypass Decision Contract authority."],
 		"metrics": ["Validation retry count stays below objective tolerance."],
 		"allowed_surfaces": ["apps/decodex/src/mcp.rs", "docs/spec/autonomy-control-plane.md"],
-		"allowed_signal_kinds": ["runtime_health", "docs_skill_drift"],
+		"allowed_signal_kinds": ["runtime_health", "docs_plugin_drift"],
 		"validation_gates": ["cargo test -p decodex mcp --lib"],
 		"review_policy": "independent current-head review required",
 		"memory_policy": "source-linked read-only memory only",

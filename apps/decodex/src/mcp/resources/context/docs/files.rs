@@ -19,7 +19,7 @@ pub(super) fn read_file_resource(
 }
 
 pub(super) fn docs_lane_allowed(lane: &str) -> bool {
-	matches!(lane, "spec" | "runbook" | "reference" | "decisions" | "research")
+	matches!(lane, "spec" | "runbook" | "reference" | "decisions")
 }
 
 pub(super) fn safe_resource_stem(value: &str) -> bool {

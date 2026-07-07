@@ -31,7 +31,7 @@ pub(in crate::mcp) fn plan_tool_input_schema() -> Value {
 		"properties": {
 			"intent": {
 				"type": "string",
-				"enum": ["research", "validation_ready", "handoff", "lane_control"],
+				"enum": ["validation_ready", "handoff", "lane_control", "intake_goal"],
 				"description": "Decodex workflow intent to route."
 			},
 			"issue": {
@@ -40,70 +40,10 @@ pub(in crate::mcp) fn plan_tool_input_schema() -> Value {
 			},
 			"contractId": {
 				"type": "string",
-				"description": "Optional Decision Contract id for research or intake planning."
+				"description": "Optional accepted Decision Contract id for intake planning."
 			}
 		},
 		"required": ["intent"]
-	})
-}
-
-pub(in crate::mcp) fn research_compile_tool_input_schema() -> Value {
-	serde_json::json!({
-		"type": "object",
-		"additionalProperties": false,
-		"properties": {
-			"mode": {
-				"type": "string",
-				"enum": ["dry_run", "apply"],
-				"description": "dry_run validates without persistence; apply persists a latent Decision Contract."
-			},
-			"projectId": {
-				"type": "string",
-				"description": "Optional Decodex service id when the MCP context is not project-scoped."
-			},
-			"input": {
-				"type": "object",
-				"additionalProperties": true,
-				"description": "Structured Decodex research/design input."
-			},
-			"intent": {
-				"type": "string",
-				"description": "Minimal natural-language research/design intent."
-			},
-			"sourceIssue": {
-				"type": "string",
-				"description": "Optional source tracker issue identifier for minimal intent intake."
-			},
-			"outcome": {
-				"type": "string",
-				"enum": ["decision_ready", "not_decision_ready", "blocked", "needs_human_decision"]
-			},
-			"authority": tool_schemas::planning_authority_input_schema()
-		}
-	})
-}
-
-pub(in crate::mcp) fn research_promote_tool_input_schema() -> Value {
-	serde_json::json!({
-		"type": "object",
-		"additionalProperties": false,
-		"properties": {
-			"mode": {
-				"type": "string",
-				"enum": ["dry_run", "apply"],
-				"description": "dry_run inspects readiness; apply records explicit acceptance."
-			},
-			"projectId": {
-				"type": "string",
-				"description": "Optional Decodex service id when the MCP context is not project-scoped."
-			},
-			"contractId": {
-				"type": "string",
-				"description": "Decision Contract identifier to inspect or promote."
-			},
-			"authority": tool_schemas::planning_authority_input_schema()
-		},
-		"required": ["contractId"]
 	})
 }
 

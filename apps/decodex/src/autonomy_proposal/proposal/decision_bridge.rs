@@ -61,7 +61,7 @@ impl AutonomyProposal {
 				"validation_expectations": decision::proposal_validation_expectations(self),
 				"risk_notes": decision::proposal_risk_notes(self),
 				"proposed_issues": decision::proposal_issue_candidates(self),
-				"promotion_targets": ["research_promote", "decision_contract"],
+				"promotion_targets": ["accepted_decision_contract"],
 				"conflict_domains": decision::proposal_conflict_domains(self),
 			},
 			"links": {
